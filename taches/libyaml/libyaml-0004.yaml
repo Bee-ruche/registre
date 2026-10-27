@@ -1,0 +1,29 @@
+id: libyaml-0004
+projet: libyaml
+categorie: parsing-serialisation
+type: test
+taille: S
+titre: "Fuzzing de l'analyseur : dictionnaire YAML et graines ciblées"
+contexte: >
+  Relecture de libyaml-0002 (27/10, clang 18 + libFuzzer, sandbox) : le harnais différentiel signale
+  bien une régression semée quand on lui donne l'entrée qui la déclenche, mais 60 s de libFuzzer
+  (environ 25 000 entrées) n'ont pas trouvé seules une régression simple dans les échappements des
+  scalaires entre guillemets (\0 rendu en '0' dans src/scanner.c). Le fuzzing part du corpus généré,
+  sans dictionnaire : les jetons rares de YAML (échappements \0 \x \u \U \N \_ \L \P, indicateurs
+  %YAML %TAG ! !! & * ? | > ---  ..., BOM, tabulations, fins de ligne CR et CRLF) n'apparaissent que
+  par hasard. Ajouter un dictionnaire libFuzzer (bee/fuzz/yaml.dict, passé par -dict= dans
+  bee/fuzz/lancer.sh) et quelques graines courtes ciblées sur ces jetons, générées par lancer.sh (pas
+  de fichiers d'entrée versionnés). Le repli gcc peut ignorer le dictionnaire.
+fichiers: [bee/fuzz/yaml.dict, bee/fuzz/lancer.sh]
+portee: 1.0
+metrique: null
+critere_acceptation:
+  - "CI verte (R2) ; le job fuzzing tourne 10 min sans écart nouveau sur la base"
+  - "trois régressions semées dans les échappements et les indicateurs (dont \\0 rendu en '0' dans scanner.c), chacune trouvée en moins de 120 s de libFuzzer sur au moins 2 lancements sur 3 ; chiffres avant et après dans le manifeste"
+  - "aucune entrée fautive ni trace publiée (mode discret inchangé)"
+  - "le débit du fuzzing (entrées par seconde) ne baisse pas de plus de 10 %"
+hors_perimetre: [sources de libyaml, bee/fuzz/fuzz_parse.c, sérialisation du flux]
+depend_de: [libyaml-0002]
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-27"
