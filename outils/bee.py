@@ -1337,9 +1337,11 @@ def cmd_publier(args):
         raise ErreurBee("le registre n'est pas valide, la PR serait refusée :\n  " + "\n  ".join(problemes[:10]))
     branche_initiale = executer(["git", "rev-parse", "--abbrev-ref", "HEAD"], depot).stdout.strip()
     base = re.sub(r"[^a-z0-9]+", "-", args.titre.lower().translate(str.maketrans("àâäéèêëîïôöùûüç", "aaaeeeeiioouuuc"))).strip("-")[:50] or "publication"
-    branche, n = f"bee/{base}", 2
+    # Horodatée pour ne jamais retomber sur une branche distante restée d'une publication précédente.
+    racine_branche = f"bee/{base}-{maintenant().strftime('%Y%m%d-%H%M%S')}"
+    branche, n = racine_branche, 2
     while executer(["git", "rev-parse", "--verify", "--quiet", branche], depot, verifier=False).returncode == 0:
-        branche, n = f"bee/{base}-{n}", n + 1
+        branche, n = f"{racine_branche}-{n}", n + 1
     executer(["git", "switch", "-c", branche], depot)
     try:
         executer(["git", "add", "--", *changements], depot)

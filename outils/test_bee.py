@@ -396,10 +396,10 @@ class TestPublier(BaseTest):
         self.assertEqual(code, 0, texte)
         self.assertIn("fusionnée", texte)
         appels = self.journal.read_text(encoding="utf-8")
-        self.assertIn("api repos/Bee-ruche/registre/pulls -X POST -f title=Réservation miniz-0099 -f head=bee/reservation-miniz-0099 -f base=main", appels)
+        self.assertIn("api repos/Bee-ruche/registre/pulls -X POST -f title=Réservation miniz-0099 -f head=bee/reservation-miniz-0099-20261027-120000 -f base=main", appels)
         self.assertEqual(git(self.dossier, "rev-parse", "--abbrev-ref", "HEAD").strip(), "main")
-        self.assertIn("bee/reservation-miniz-0099", git(self.dossier, "ls-remote", "--heads", "origin"))
-        fichiers = git(self.dossier, "show", "--name-only", "--format=", "bee/reservation-miniz-0099").split()
+        self.assertIn("bee/reservation-miniz-0099-20261027-120000", git(self.dossier, "ls-remote", "--heads", "origin"))
+        fichiers = git(self.dossier, "show", "--name-only", "--format=", "bee/reservation-miniz-0099-20261027-120000").split()
         self.assertEqual(fichiers, ["taches/miniz/miniz-0099.yaml"], "seul le fichier de la tâche est publié")
 
     def test_fichier_hors_libre_service_refuse(self):
@@ -422,7 +422,7 @@ class TestPublier(BaseTest):
         code, texte = self.bee("publier", "--titre", "Réservation miniz-0099", "--delai", "0", "--intervalle", "0")
         self.assertEqual(code, 2)
         self.assertIn("relecture humaine", texte)
-        self.assertIn("bee/reservation-miniz-0099-2", git(self.dossier, "branch"), "un second titre identique reçoit un suffixe")
+        self.assertIn("bee/reservation-miniz-0099-20261027-120000-2", git(self.dossier, "branch"), "un second titre identique reçoit un suffixe")
 
     def test_rien_a_publier(self):
         code, texte = self.bee("publier", "--titre", "Rien")
