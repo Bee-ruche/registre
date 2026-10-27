@@ -34,3 +34,6 @@ notes:
   - par: "bee"
     le: "2026-10-27T01:40:00Z"
     texte: "En cours de réalisation par l'agent fondateur de Bee ; sera soumise comme première contribution (porte de la phase 1)."
+  - par: "bidji29"
+    le: "2026-10-27T02:51:52Z"
+    texte: "Avancée : outillage en construction dans le fork (briques communes du corpus et de l'empreinte SHA-256 écrites ; tests différentiels, fuzzing, banc A/B et CI à suivre)."
