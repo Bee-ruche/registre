@@ -905,8 +905,9 @@ def verifier_fork(reg, depot, base, tete, identifiant_tache, auteur=None):
         problemes += verifier_manifeste(reg, manifeste, "CONTRIBUTION.yaml", auteur)
         if isinstance(manifeste, dict) and manifeste.get("tache") != identifiant_tache:
             problemes.append(f"CONTRIBUTION.yaml : tâche « {manifeste.get('tache')} » au lieu de « {identifiant_tache} »")
-    if total == 0 and not problemes:
-        avertissements.append("aucune ligne de code modifiée hors tests et bancs : est-ce bien la bonne branche ?")
+    if total == 0 and not problemes and tache["type"] == "optimisation":
+        # Normal pour une tâche de mesure ou d'outillage, qui ne touche que bee/ et tests/.
+        avertissements.append("aucune ligne de code modifiée hors tests et bancs pour une optimisation : est-ce bien la bonne branche ?")
     return problemes, total, avertissements
 
 
@@ -1017,7 +1018,7 @@ def cmd_inscrire(args):
     if args.categories:
         donnees["categories_preferees"] = args.categories
     ecrire_yaml(chemin, donnees)
-    print(f"✓ {reg.rel(chemin)} créé. Ouvrez une pull request « Inscription {args.pseudo} » sur le registre.")
+    print(f"✓ {reg.rel(chemin)} créé. Publiez : bee publier --titre 'Inscription {args.pseudo}'")
     return 0
 
 
@@ -1041,7 +1042,7 @@ def cmd_prendre(args):
     modifier_tache(chemin, statut="reservee", reservation={"utilisateur": args.utilisateur, "depuis": en_iso(maintenant())})
     heures = reg.config.get("reservation_max_heures", 72)
     print(f"✓ {args.tache} réservée pour {args.utilisateur} ({heures} h maximum, règle R7).")
-    print(f"  Ouvrez une pull request « Réservation {args.tache} » sur le registre ; elle est fusionnée automatiquement si elle est valide.")
+    print(f"  Publiez : bee publier --titre 'Réservation {args.tache}' (fusionnée automatiquement si elle est valide).")
     return 0
 
 
@@ -1160,7 +1161,7 @@ def cmd_soumettre(args):
     ecrire_yaml(reg.racine / "contributions" / t["projet"] / f"{identifiant}.yaml", donnees)
     modifier_tache(chemin, statut="en_relecture", reservation=None, contribution=identifiant)
     print(f"✓ contribution {identifiant} enregistrée, tâche {args.tache} en relecture.")
-    print(f"  Ouvrez une pull request « Soumission {identifiant} » sur le registre.")
+    print(f"  Publiez : bee publier --titre 'Soumission {identifiant}'")
     return 0
 
 
@@ -1183,7 +1184,7 @@ def cmd_relire(args):
     enr = dict(enr)
     enr["relectures"] = list(enr.get("relectures") or []) + [relecture]
     ecrire_yaml(chemin, enr)
-    print(f"✓ relecture {args.avis} ajoutée à {args.contribution}. Ouvrez une pull request « Relecture {args.contribution} ».")
+    print(f"✓ relecture {args.avis} ajoutée à {args.contribution}. Publiez : bee publier --titre 'Relecture {args.contribution}'")
     return 0
 
 
@@ -1204,7 +1205,7 @@ def cmd_voter(args):
         donnees["motif"] = args.motif
     chemin = reg.racine / "votes" / args.sujet / f"{args.utilisateur}.yaml"
     ecrire_yaml(chemin, donnees)
-    print(f"✓ vote {args.valeur:+d} enregistré ({reg.rel(chemin)}). Ouvrez une pull request « Vote {args.sujet} ».")
+    print(f"✓ vote {args.valeur:+d} enregistré ({reg.rel(chemin)}). Publiez : bee publier --titre 'Vote {args.sujet}'")
     return 0
 
 
@@ -1219,7 +1220,7 @@ def cmd_proposer(args):
     donnees = {"id": identifiant, "auteur": args.utilisateur, "regle": args.regle, "texte_propose": args.texte,
                "motif": args.motif, "ouverte_le": en_iso(maintenant()), "statut": "ouverte"}
     ecrire_yaml(reg.racine / "propositions" / f"{identifiant}.yaml", donnees)
-    print(f"✓ proposition {identifiant} créée. Ouvrez une pull request « Proposition {identifiant} » ; le vote dure {reg.config.get('duree_vote_jours', 7)} jours.")
+    print(f"✓ proposition {identifiant} créée. Publiez : bee publier --titre 'Proposition {identifiant}' ; le vote dure {reg.config.get('duree_vote_jours', 7)} jours.")
     return 0
 
 
@@ -1479,7 +1480,7 @@ def raisons_acceptation(reg, cid):
         liste = ", ".join(juges[:5]) + (" …" if len(juges) > 5 else "")
         if tache.get("type") not in ("test", "mesure"):
             exiger(False, f"la PR modifie des juges ({liste}) : interdit pour une tâche {tache.get('type')} (commandement 3)")
-        else:
+        elif auteur not in reg.conseil:  # un auteur du conseil répond lui-même de ses juges (comme pour la porte humaine)
             exiger(any(r.get("relecteur") in reg.conseil or niveau_de(niveaux, r.get("relecteur")) == "Confirmé" for r in favorables),
                    f"la PR modifie des juges ({liste}) : une relecture favorable du conseil ou d'un Confirmé est exigée")
     requises = min(int(cfg.get("relectures_requises", 2)), len(eligibles))
@@ -1631,6 +1632,13 @@ def cmd_publier(args):
     problemes = verifier_registre(Registre(depot))
     if problemes:
         raise ErreurBee("le registre n'est pas valide, la PR serait refusée :\n  " + "\n  ".join(problemes[:10]))
+    if args.a_blanc:
+        print("✓ à blanc : les fichiers relèvent du libre-service et le registre reste valide. Rien n'a été écrit ni poussé.")
+        print(f"  Dépôt : {amont} — PR « {args.titre} »")
+        for c in changements:
+            print(f"  - {c}")
+        print("  Sans --a-blanc, bee publierait : branche, commit, poussée, PR, attente de la fusion automatique.")
+        return 0
     branche_initiale = executer(["git", "rev-parse", "--abbrev-ref", "HEAD"], depot).stdout.strip()
     base = re.sub(r"[^a-z0-9]+", "-", args.titre.lower().translate(str.maketrans("àâäéèêëîïôöùûüç", "aaaeeeeiioouuuc"))).strip("-")[:50] or "publication"
     # Horodatée pour ne jamais retomber sur une branche distante restée d'une publication précédente.
@@ -1833,6 +1841,8 @@ def construire_analyseur():
     p.add_argument("--corps", help="texte de la PR (facultatif)")
     p.add_argument("--amont", help="dépôt du registre (défaut : <organisation>/registre)")
     p.add_argument("--sans-attendre", action="store_true", help="ne pas attendre la fusion")
+    p.add_argument("--a-blanc", "--dry-run", action="store_true",
+                   help="vérifie tout et affiche ce qui serait publié, sans rien écrire ni pousser")
     p.add_argument("--delai", type=int, default=10, help="minutes d'attente au plus (défaut : 10)")
     p.add_argument("--intervalle", type=float, default=15, help=argparse.SUPPRESS)
 

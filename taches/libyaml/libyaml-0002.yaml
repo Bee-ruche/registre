@@ -9,8 +9,10 @@ contexte: >
   (compatible libFuzzer et avec le pilote de repli bee/fuzz/pilote_aleatoire.c déjà présent) qui
   analyse une entrée arbitraire avec libyaml et consomme tous les événements, sous ASan et UBSan.
   Différentiel : comparer base et candidat sur la même entrée (même flux d'événements, même statut
-  d'erreur) comme le fait le fuzzing de miniz (option --reference) ; un écart NOUVEAU fait échouer,
-  un écart préexistant est seulement signalé. En mode CI (dépôt public), ne jamais publier l'entrée
+  d'erreur), par exemple en liant les deux dans un même exécutable (symboles de la base renommés).
+  Un écart est NOUVEAU s'il n'apparaît pas aussi en rejouant l'entrée sur la base seule (c'est ce que
+  fait l'option --reference du fuzzing de miniz, qui ne compare pas les sorties) : un écart NOUVEAU
+  fait échouer, un écart préexistant est seulement signalé. En mode CI (dépôt public), ne jamais publier l'entrée
   fautive ni la trace : mode discret, empreinte seulement (voir docs/securite.md du registre).
   Ajouter un job « fuzzing » à bee-ci.yml, sur le modèle de celui de minizBee.
 fichiers: [bee/fuzz/fuzz_parse.c, bee/fuzz/lancer.sh, .github/workflows/bee-ci.yml]

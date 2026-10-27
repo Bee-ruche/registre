@@ -375,6 +375,20 @@ class TestRegistre(BaseTest):
         code, texte = self.bee("verifier-acceptation", cid)
         self.assertEqual(code, 0, texte)
 
+    def test_outillage_du_conseil_non_bloque(self):
+        self.regler_porte_humaine(False)
+        cid = self.soumettre_0099(auteur="bidji29")
+        # la tâche 0099 est une optimisation : on la convertit en tâche d'outillage pour ce cas
+        chemin = self.dossier / "taches/miniz/miniz-0099.yaml"
+        chemin.write_text(chemin.read_text(encoding="utf-8").replace("type: optimisation", "type: test"), encoding="utf-8")
+        self.enregistrer_verdict_vert(cid, "bee/tests/nouveau_test.c")
+        for relecteur in ("bruno", "chloe"):
+            self.assertEqual(self.bee("relire", cid, "--utilisateur", relecteur, "--avis", "favorable",
+                                      "--motif", "Relu, le test est pertinent.")[0], 0)
+        os.environ["BEE_MAINTENANT"] = "2026-10-29T12:00:00Z"
+        code, texte = self.bee("verifier-acceptation", cid)
+        self.assertEqual(code, 0, texte)
+
     def test_adverse_verdict_incoherent_refuse(self):
         cid = self.soumettre_0099()
         verdict = self.dossier / "verdict.json"
@@ -729,6 +743,17 @@ class TestPublier(BaseTest):
         self.assertIn("bee/reservation-miniz-0099-20261027-120000", git(self.dossier, "ls-remote", "--heads", "origin"))
         fichiers = git(self.dossier, "show", "--name-only", "--format=", "bee/reservation-miniz-0099-20261027-120000").split()
         self.assertEqual(fichiers, ["taches/miniz/miniz-0099.yaml"], "seul le fichier de la tâche est publié")
+
+    def test_a_blanc_n_ecrit_rien(self):
+        self.bee("prendre", "miniz-0099", "--utilisateur", "alice")
+        avant = git(self.dossier, "rev-parse", "HEAD")
+        code, texte = self.bee("publier", "--titre", "Réservation miniz-0099", "--a-blanc")
+        self.assertEqual(code, 0, texte)
+        self.assertIn("Rien n'a été écrit ni poussé", texte)
+        self.assertIn("taches/miniz/miniz-0099.yaml", texte)
+        self.assertFalse(self.journal.exists(), "aucun appel à gh")
+        self.assertEqual(git(self.dossier, "rev-parse", "HEAD"), avant)
+        self.assertNotIn("bee/", git(self.dossier, "ls-remote", "--heads", "origin"))
 
     def test_fichier_hors_libre_service_refuse(self):
         self.bee("prendre", "miniz-0099", "--utilisateur", "alice")

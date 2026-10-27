@@ -68,6 +68,6 @@ relectures:                 # ajoutées par bee relire, en ajout seul
 | `verdict` | La CI | `bee enregistrer-verdict` |
 | `relectures` | Chaque relecteur, une fois | `bee relire` |
 | `defaut_confirme` sur une relecture | Le conseil ou la CI | Après reproduction du défaut |
-| `statut` final, `motif_decision`, `decidee_le` | Le conseil (amorçage) puis la CI | Selon R3 |
+| `statut` final, `motif_decision`, `decidee_le` | Le workflow d'intégration (bee integrer, bee cloturer) | Selon R3 ; « annulee » si la PR est fermée sans fusion |
 
 Une contribution intégrée puis découverte fautive passe en `annulee` : elle ne compte plus pour son auteur, et les relecteurs qui l'avaient approuvée perdent un point ([reputation.md](reputation.md)).

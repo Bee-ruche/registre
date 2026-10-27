@@ -39,7 +39,8 @@ Une tâche est un fichier YAML, `taches/<projet>/<id>.yaml`, assez complet pour 
 ## Cycle de vie
 
 ```
-ouverte ──bee prendre──▶ reservee ──bee soumettre──▶ en_relecture ──conseil / CI──▶ integree
+ouverte ──bee prendre──▶ reservee ──bee soumettre──▶ en_relecture ──workflow d'intégration (R3)──▶ integree
+                                                     └──PR fermée sans fusion (bee cloturer)──▶ ouverte
    ▲                         │                             │
    └──bee liberer / 72 h ────┘                             └────────────▶ refusee
 ```

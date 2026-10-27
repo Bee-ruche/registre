@@ -10,7 +10,7 @@ contexte: >
   en YAML, le ré-analyser, et exiger un flux d'événements identique (aux normalisations de forme
   documentées près). Écrire bee/tests/aller_retour.c et l'intégrer à bee/tests/lancer.sh, avec ses
   propres empreintes de référence. Garder la durée totale des tests raisonnable (< 30 s en CI).
-fichiers: [bee/tests/lancer.sh]
+fichiers: [bee/tests/aller_retour.c, bee/tests/lancer.sh, bee/Makefile]
 portee: 0.7
 metrique: null
 critere_acceptation:

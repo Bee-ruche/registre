@@ -13,8 +13,9 @@ contexte: >
   compare 2 octets à la fois (l. 776-827 : TDEFL_READ_UNALIGNED_WORD, c01/s01, boucle de 4 × 16
   bits), mais elle est compilée seulement si MINIZ_USE_UNALIGNED_LOADS_AND_STORES vaut 1, et
   miniz.h le met à 0 par défaut, y compris sur x86-64 (l. 218-227) : c'est la variante octet par
-  octet (l. 829-871) qui tourne partout. Activer cette variante pour tdefl_find_match SEULEMENT
-  (sans activer tdefl_compress_fast ni le reste) donne une sortie identique sur tout le corpus.
+  octet (l. 829-871) qui tourne partout. ATTENTION : activer telle quelle cette
+  variante change la sortie compressée (41 empreintes sur 305, voir la note vérifiée ci-dessous) ; la
+  tâche demande une comparaison 16 bits qui choisit EXACTEMENT les mêmes correspondances.
   Mesures exploratoires : essai hors dépôt, machine partagée (Xeon 2,1 GHz virtualisé, 2 cœurs,
   gcc 13.3), ab.py 10 répétitions ; à refaire, elles ne font pas foi. Instructions −7,9 % (n6),
   −8,4 % (n9), −5,2 % (n1) ; débit +16,9 % au niveau 6 (10/10 paires), +8,0 % au niveau 9 (10/10),

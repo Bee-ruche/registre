@@ -7,16 +7,18 @@ titre: "Mesurer le bruit du banc A/B sur d'autres machines"
 contexte: >
   La règle R4 refuse un gain qui reste dans le bruit, mais le bruit n'a été mesuré que
   sur la machine qui a créé le banc. Lancez bee/bench/ab.py en comparant la base à
-  elle-même (test A/A) sur votre machine, au moins 3 fois, avec et sans --instructions.
-  Rapportez pour chaque métrique l'écart relatif maximal observé et la configuration
-  (processeur, système, compilateur, charge). Si le bruit dépasse 2 % sur une métrique,
+  elle-même (test A/A) sur votre machine : au moins 3 passages sans --instructions et 3 avec
+  (10 répétitions chacun). Rapportez, pour chaque métrique, le plus grand écart relatif de médiane
+  observé entre A et A (le « gain » que rapporte ab.py), le nombre de passages jugés « au-delà du
+  bruit » à tort, et la configuration (processeur, système, compilateur, charge de la machine).
+  Joignez les rapports JSON dans bee/resultats/miniz-0003/ du fork. Si le bruit dépasse 2 % sur une métrique,
   proposez dans une note un réglage (nombre de répétitions, sous-corpus, méthode de seuil).
-fichiers: [bee/bench/ab.py]
+fichiers: [bee/resultats/miniz-0003/]
 portee: 0.8
 metrique: null
 critere_acceptation:
-  - "résultats des 3 tests A/A joints au manifeste, avec la configuration de la machine"
-  - "écart relatif maximal par métrique, calculé et non estimé"
+  - "rapports JSON des 6 passages A/A dans bee/resultats/miniz-0003/, avec la configuration de la machine"
+  - "plus grand écart relatif de médiane par métrique et nombre de faux « au-delà du bruit », calculés et non estimés"
   - "aucune modification de bee/bench/ab.py dans cette contribution (mesure seule)"
 hors_perimetre: [modifier le banc, modifier miniz]
 depend_de: [miniz-0001]
