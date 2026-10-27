@@ -6,3 +6,11 @@ resume: Sortie des codes de Huffman par mots de 64 bits.
 statut: en_relecture
 soumise_le: '2026-10-27T11:20:14Z'
 relectures: []
+verdict:
+  ci: verte
+  gain: 0.11430884500603211
+  au_dela_du_bruit: true
+  lignes_modifiees: 21
+  ecart_declare: 0.0354
+  sha: c5309b4bc0ef9cb1662f70387b1da68f575539cc
+  execution: https://github.com/Bee-ruche/minizBee/actions/runs/40495342458
