@@ -22,6 +22,12 @@ on:
   schedule:
     - cron: "26,56 * * * *"
   workflow_dispatch:
+  # Activité du registre (relectures et votes fusionnés, verdicts reportés) : voir verdicts.yml. GitHub
+  # n'enchaîne pas plus de trois workflow_run : la collecte des verdicts lancée par la fusion automatique
+  # ne relance pas ce workflow, d'où les deux sources. Seul le code de main s'exécute.
+  workflow_run:
+    workflows: ["Fusion automatique", "Verdicts des forks"]
+    types: [completed]
 
 permissions:
   contents: write

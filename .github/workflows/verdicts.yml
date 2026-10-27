@@ -8,6 +8,12 @@ on:
   schedule:
     - cron: "11,41 * * * *"
   workflow_dispatch:
+  # Activité du registre : chaque passage de la fusion automatique (réservation, soumission, relecture,
+  # vote…) déclenche aussi une collecte. En pratique, GitHub espace les cron de plusieurs heures.
+  # Seul le code de main s'exécute ; l'événement ne sert que de signal.
+  workflow_run:
+    workflows: ["Fusion automatique"]
+    types: [completed]
 
 permissions:
   contents: write
