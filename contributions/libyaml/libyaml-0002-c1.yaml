@@ -1,0 +1,9 @@
+id: libyaml-0002-c1
+tache: libyaml-0002
+auteur: bidji29
+pr: https://github.com/Bee-ruche/libyamlBee/pull/1
+resume: Harnais de fuzzing différentiel de l'analyseur (base contre candidat, ASan/UBSan) et job fuzzing
+  dans la CI.
+statut: en_relecture
+soumise_le: '2026-10-27T20:01:37Z'
+relectures: []
