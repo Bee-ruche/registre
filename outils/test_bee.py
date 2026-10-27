@@ -94,7 +94,7 @@ class BaseTest(unittest.TestCase):
     def soumettre_0099(self, auteur="alice"):
         self.assertEqual(self.bee("prendre", "miniz-0099", "--utilisateur", auteur)[0], 0)
         code, texte = self.bee("soumettre", "miniz-0099", "--utilisateur", auteur,
-                               "--pr", "https://github.com/Bee-ruche/minizBee/pull/7", "--resume", "Essai.")
+                               "--pr", "https://github.com/Bee-ruche/minizBee/pull/99007", "--resume", "Essai.")
         self.assertEqual(code, 0, texte)
         return "miniz-0099-c1"
 
@@ -361,7 +361,7 @@ class TestRegistre(BaseTest):
             .replace("metrique: debit_compression_n6", "metrique: null"), encoding="utf-8")
         self.assertEqual(self.bee("prendre", "miniz-9003", "--utilisateur", "alice")[0], 0)
         self.assertEqual(self.bee("soumettre", "miniz-9003", "--utilisateur", "alice",
-                                  "--pr", "https://github.com/Bee-ruche/minizBee/pull/8")[0], 0)
+                                  "--pr", "https://github.com/Bee-ruche/minizBee/pull/99008")[0], 0)
         cid = "miniz-9003-c1"
         self.enregistrer_verdict_vert(cid, "bee/tests/nouveau_test.c")
         for relecteur in ("bruno", "chloe"):
@@ -699,7 +699,7 @@ class TestPullRequests(BaseTest):
         git(self.dossier, "switch", "-qc", "sans-reservation")
         bee.ecrire_yaml(self.dossier / "contributions/miniz/miniz-0099-c1.yaml", {
             "id": "miniz-0099-c1", "tache": "miniz-0099", "auteur": "alice",
-            "pr": "https://github.com/Bee-ruche/minizBee/pull/7", "statut": "en_relecture",
+            "pr": "https://github.com/Bee-ruche/minizBee/pull/99007", "statut": "en_relecture",
             "soumise_le": "2026-10-27T12:00:00Z", "relectures": []})
         self.commit()
         code, texte = self.verifier("alice", "--fusion-auto")
@@ -715,7 +715,7 @@ class TestPullRequests(BaseTest):
         self.reserver_sur_main("miniz-0099")
         git(self.dossier, "switch", "-qc", "soumission")
         self.assertEqual(self.bee("soumettre", "miniz-0099", "--utilisateur", "alice",
-                                  "--pr", "https://github.com/Bee-ruche/minizBee/pull/7")[0], 0)
+                                  "--pr", "https://github.com/Bee-ruche/minizBee/pull/99007")[0], 0)
         self.commit()
         code, texte = self.verifier("alice", "--fusion-auto")
         self.assertEqual(code, 0, f"le parcours légitime doit passer : {texte}")
@@ -733,7 +733,7 @@ class TestPullRequests(BaseTest):
         git(self.dossier, "switch", "-qc", "doublon")
         for t in ("miniz-0099", "miniz-9001"):
             self.assertEqual(self.bee("soumettre", t, "--utilisateur", "alice",
-                                      "--pr", "https://github.com/Bee-ruche/minizBee/pull/7")[0], 0)
+                                      "--pr", "https://github.com/Bee-ruche/minizBee/pull/99007")[0], 0)
         self.commit()
         code, texte = self.verifier("alice", "--fusion-auto")
         self.assertEqual(code, 1, texte)
