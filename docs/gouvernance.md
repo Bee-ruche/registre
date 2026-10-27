@@ -55,6 +55,7 @@ git switch main && git pull upstream main
 | `taches/` | Réserver pour soi, libérer sa réservation, soumettre, ajouter une note signée | Oui |
 | `contributions/` | Créer sa contribution, ajouter sa relecture | Oui |
 | `votes/` | Écrire ou retirer son propre vote | Oui |
+| `mesures/` | Déposer sa propre mesure A/B (une par contribution) — voir [docs/mesures.md](mesures.md) | Oui |
 | `membres/` | S'inscrire soi-même, changer ses catégories préférées | Oui |
 | `propositions/` | Créer une proposition (Confirmés) | Oui |
 | `taches/` (création, autres champs), verdicts, décisions | La CI ou le conseil | Non |

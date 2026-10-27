@@ -265,6 +265,11 @@ class Registre:
             donnees = self._lire_fichier(chemin)
             if donnees is not None:
                 self.votes.append((chemin, donnees))
+        self.mesures = []
+        for chemin in sorted(self.racine.glob("mesures/*/*.yaml")):
+            donnees = self._lire_fichier(chemin)
+            if donnees is not None:
+                self.mesures.append((chemin, donnees))
 
     def _lire(self, relatif):
         chemin = self.racine / relatif
@@ -562,6 +567,22 @@ def verifier_registre(reg):
                 ajouter(f"{lieu} : on ne vote pas pour sa propre contribution (commandement 3)")
         elif vote["sujet"] not in reg.propositions:
             ajouter(f"{lieu} : sujet de vote inconnu « {vote['sujet']} »")
+
+    for chemin, mesure in reg.mesures:
+        lieu = reg.rel(chemin)
+        if not selon_schema("mesure", chemin, mesure):
+            continue
+        stem = pathlib.PurePosixPath(chemin).stem
+        dossier = pathlib.PurePosixPath(chemin).parent.name
+        if mesure["soumise_par"] != stem:
+            ajouter(f"{lieu} : soumise_par « {mesure['soumise_par']} » différent du nom de fichier « {stem} »")
+        if mesure["contribution"] != dossier:
+            ajouter(f"{lieu} : rangée dans mesures/{dossier}/ au lieu de mesures/{mesure['contribution']}/")
+        if mesure["contribution"] not in reg.enregistrements:
+            ajouter(f"{lieu} : contribution inconnue « {mesure['contribution']} »")
+        if mesure["soumise_par"] not in reg.membres and mesure["soumise_par"] not in reg.conseil:
+            ajouter(f"{lieu} : soumise par « {mesure['soumise_par']} », qui n'est pas inscrit")
+        instant_valide(chemin, mesure["le"], "le")
     return problemes
 
 
@@ -769,6 +790,16 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None):
                            f"{chemin} : le vote sur {sujet} est clos")
             continue
 
+        if partie[0] == "mesures" and len(partie) == 3:
+            natures.append("mesure")
+            exiger(pathlib.PurePosixPath(chemin).stem == auteur, f"{chemin} : on ne dépose une mesure qu'en son nom ({auteur})")
+            exiger(auteur in reg.membres or est_conseil, f"{chemin} : {auteur} doit d'abord s'inscrire (bee inscrire)")
+            if statut_git != "D" and exiger(isinstance(nouveau, dict), f"{chemin} : fichier illisible"):
+                exiger(nouveau.get("soumise_par") == auteur, f"{chemin} : soumise_par déclaré différent de {auteur}")
+                exiger(nouveau.get("contribution") == partie[1], f"{chemin} : la mesure doit être rangée sous sa contribution")
+                exiger(nouveau.get("contribution") in reg.enregistrements, f"{chemin} : contribution « {nouveau.get('contribution')} » inconnue")
+            continue
+
         if partie[0] == "membres" and len(partie) == 2:
             natures.append("inscription" if statut_git == "A" else "profil")
             exiger(pathlib.PurePosixPath(chemin).stem == auteur or est_conseil, f"{chemin} : on ne s'inscrit qu'en son nom ({auteur})")
@@ -804,7 +835,7 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None):
     return problemes, natures
 
 
-LIBRE_SERVICE = {"reservation", "liberation", "soumission", "note", "relecture", "vote", "inscription", "profil", "proposition"}
+LIBRE_SERVICE = {"reservation", "liberation", "soumission", "note", "relecture", "vote", "mesure", "inscription", "profil", "proposition"}
 
 
 # --------------------------------------------------------------------------
@@ -1297,6 +1328,56 @@ def cmd_enregistrer_verdict(args):
     return 0
 
 
+def cmd_enregistrer_mesure(args):
+    """Transforme un rapport ab.py (--json) en fiche de mesure mesures/<contribution>/<pseudo>.yaml."""
+    reg = Registre(args.registre)
+    reg.exiger_membre(args.utilisateur)
+    reg.enregistrement(args.contribution)  # lève une erreur si la contribution est inconnue
+    with open(args.ab, encoding="utf-8") as f:
+        brut = json.load(f)
+    machine = brut.get("machine") or {}
+    config = {k: machine[k] for k in ("processeur", "architecture", "coeurs", "systeme", "compilateur") if machine.get(k) is not None}
+    if not config.get("architecture"):
+        raise ErreurBee(f"{args.ab} : champ machine/architecture absent ; est-ce bien une sortie de bee/bench/ab.py ?")
+    metriques = {}
+    for nom, m in (brut.get("metriques") or {}).items():
+        if not isinstance(m, dict) or "gain" not in m:
+            continue
+        signe = m.get("test_du_signe") or {}
+        entree = {"gain": round(float(m["gain"]), 6), "au_dela_du_bruit": bool(m.get("au_dela_du_bruit"))}
+        if signe.get("victoires_B") is not None:
+            entree["victoires_b"] = int(signe["victoires_B"])
+        if signe.get("paires_utiles") is not None:
+            entree["paires"] = int(signe["paires_utiles"])
+        metriques[nom] = entree
+    if not metriques:
+        raise ErreurBee(f"{args.ab} : aucune métrique exploitable dans le rapport ab.py")
+    fiche = {
+        "contribution": args.contribution,
+        "soumise_par": args.utilisateur,
+        "le": en_iso(maintenant()),
+        "base": str((brut.get("base") or {}).get("commit") or args.base or ""),
+        "candidat": str((brut.get("candidat") or {}).get("commit") or args.candidat or ""),
+        "config": config,
+        "metriques": metriques,
+    }
+    if brut.get("repetitions"):
+        fiche["repetitions"] = int(brut["repetitions"])
+    if args.outil:
+        fiche["outil"] = args.outil
+    if args.motif:
+        fiche["motif"] = args.motif
+    if len(fiche["base"]) < 7 or len(fiche["candidat"]) < 7:
+        raise ErreurBee("sha base/candidat absents du rapport ; précisez --base et --candidat (les commits comparés)")
+    chemin = reg.racine / "mesures" / args.contribution / f"{args.utilisateur}.yaml"
+    ecrire_yaml(chemin, fiche)
+    visee = ", ".join(f"{n} {100 * e['gain']:+.1f}%{'*' if e['au_dela_du_bruit'] else ''}" for n, e in metriques.items())
+    print(f"✓ mesure enregistrée ({reg.rel(chemin)}) sur {config.get('architecture')} / {config.get('compilateur', '?')}.")
+    print(f"  {visee}   (* = au-delà du bruit)")
+    print(f"  Publiez-la : bee publier --titre \"Mesure {args.contribution} ({config.get('architecture')})\".")
+    return 0
+
+
 def cmd_en_attente(args):
     reg = Registre(args.registre)
     resultat = [{"id": cid, "pr": enr.get("pr"), "sha_verdict": (enr.get("verdict") or {}).get("sha")}
@@ -1305,7 +1386,7 @@ def cmd_en_attente(args):
     return 0
 
 
-DOSSIERS_LIBRE_SERVICE = ("taches/", "contributions/", "votes/", "membres/", "propositions/")
+DOSSIERS_LIBRE_SERVICE = ("taches/", "contributions/", "votes/", "mesures/", "membres/", "propositions/")
 
 
 def executer(commande, depot=None, verifier=True):
@@ -1461,6 +1542,16 @@ def construire_analyseur():
     p.add_argument("--avis", required=True, choices=["favorable", "defavorable"])
     p.add_argument("--motif", required=True, help="ce que vous avez vérifié, ce que vous avez trouvé")
     p.add_argument("--defaut", action="store_true", help="vous signalez un défaut reproductible (décrit dans le motif)")
+
+    p = ajouter("enregistrer-mesure", cmd_enregistrer_mesure,
+                "Transforme un rapport ab.py (--json) en fiche de mesure pour une contribution, sur votre configuration.")
+    p.add_argument("contribution", help="id de la contribution mesurée (ex. miniz-0011-c1)")
+    p.add_argument("--ab", required=True, help="rapport JSON produit par bee/bench/ab.py --json")
+    p.add_argument("--utilisateur", required=True)
+    p.add_argument("--base", help="sha de référence si absent du rapport")
+    p.add_argument("--candidat", help="sha candidat si absent du rapport")
+    p.add_argument("--outil", help="provenance de l'outillage (version de bee, ou sha du bee/ du fork)")
+    p.add_argument("--motif", help="remarque libre (anomalie, bridage thermique…)")
 
     p = ajouter("voter", cmd_voter, "Vote sur une contribution (importance) ou une proposition de règle.")
     p.add_argument("sujet", help="id de contribution (ex. miniz-0007-c1) ou de proposition (ex. P-0001)")

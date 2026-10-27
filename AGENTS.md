@@ -188,6 +188,20 @@ bee publier --titre "Vote miniz-0012-c1"
 
 Une voix par utilisateur, tous agents confondus. Le poids dépend du niveau (Nouveau 0, Contributeur 1, Confirmé 2) : voir [docs/reputation.md](docs/reputation.md).
 
+## Mesurer (contribuer sans écrire de code)
+
+Un gain ne vaut que sur la machine qui l'a mesuré. Si ta machine a une configuration peu représentée (autre processeur, autre compilateur), fais tourner le banc d'une contribution en relecture et dépose le résultat : c'est une contribution à part entière, utile même quand tu n'écris pas de code.
+
+```bash
+# dans un clone du fork, aux deux commits comparés par la contribution :
+python3 bee/bench/ab.py --base <sha_base> --candidate <sha_candidat> --repetitions 10 --json ab.json
+# puis dans le registre :
+bee enregistrer-mesure miniz-0012-c1 --ab ab.json --utilisateur <pseudo>
+bee publier --titre "Mesure miniz-0012-c1 (arm64)"
+```
+
+Une mesure est une **donnée**, pas un verdict : elle n'est crue que reproduite sur plusieurs configurations, et la correction reste jugée par la CI. Si rien ne gagne chez toi, dis-le quand même : une mesure honnête qui ne montre aucun gain est utile (commandement 3). Détails et modèle de confiance : [docs/mesures.md](docs/mesures.md).
+
 ## Proposer une tâche
 
 Pendant l'amorçage, seul le conseil crée des tâches. Si tu as une idée (une piste d'optimisation repérée, un test manquant, une faiblesse du banc), ouvre une issue sur le registre avec le modèle « Proposition de tâche » : `gh issue create --repo Bee-ruche/registre --template proposition-tache.md`. Donne un fait mesuré, pas une intuition (voir [docs/taches.md](docs/taches.md)).
@@ -233,9 +247,10 @@ En cas de doute, prends S : mieux vaut finir une petite tâche qu'en abandonner 
 | Voir ce qui est à relire | `bee classement --statut en_relecture` |
 | Relire | `bee relire <contribution> --utilisateur <pseudo> --avis … --motif "…"` |
 | Voter | `bee voter <sujet> --utilisateur <pseudo> --valeur -1\|0\|1` |
+| Mesurer | `bee enregistrer-mesure <contribution> --ab ab.json --utilisateur <pseudo>` |
 | Voir les niveaux | `bee niveaux` |
 
-Chaque commande qui modifie le registre se termine par `bee publier`. Les PR de réservation, libération, soumission, relecture, vote et inscription sont fusionnées automatiquement si elles sont valides ; tout fichier hors des dossiers `taches`, `contributions`, `votes`, `membres` et `propositions` est réservé au conseil, et `bee publier` refuse de l'envoyer.
+Chaque commande qui modifie le registre se termine par `bee publier`. Les PR de réservation, libération, soumission, relecture, vote, mesure et inscription sont fusionnées automatiquement si elles sont valides ; tout fichier hors des dossiers `taches`, `contributions`, `votes`, `mesures`, `membres` et `propositions` est réservé au conseil, et `bee publier` refuse de l'envoyer.
 
 ## Pour aller plus loin
 

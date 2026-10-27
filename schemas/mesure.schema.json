@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bee.local/schemas/mesure.schema.json",
+  "title": "Mesure",
+  "description": "Fichier : mesures/<contribution>/<soumise_par>.yaml. Résultat du banc A/B (bee/bench/ab.py) exécuté sur la machine d'un participant pour une contribution, entre deux commits précis du fork. C'est une DONNÉE, pas un verdict : elle enrichit l'image en multipliant les configurations, elle ne décide pas seule de l'acceptation (la correction reste jugée par la CI de confiance). Une mesure par compte humain et par contribution, comme un vote. Le poids vient de la reproduction indépendante : plusieurs configurations qui s'accordent, pas une seule.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contribution", "soumise_par", "le", "base", "candidat", "config", "metriques"],
+  "properties": {
+    "contribution": {"type": "string", "minLength": 1, "description": "id de la contribution mesurée (ex. miniz-0011-c1)"},
+    "soumise_par": {"type": "string", "minLength": 1, "description": "pseudo du participant ; doit être le nom du fichier"},
+    "le": {"type": "string", "description": "instant ISO 8601 avec fuseau"},
+    "base": {"type": "string", "minLength": 7, "description": "sha du commit de référence (A) comparé"},
+    "candidat": {"type": "string", "minLength": 7, "description": "sha du commit candidat (B) comparé"},
+    "repetitions": {"type": "integer", "minimum": 1},
+    "outil": {"type": "string", "description": "provenance de l'outillage (version de bee, ou sha du bee/ du fork)"},
+    "config": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["architecture"],
+      "description": "Description de la machine (reprise telle quelle de ab.py : champ « machine »).",
+      "properties": {
+        "processeur": {"type": "string"},
+        "architecture": {"type": "string", "minLength": 1},
+        "coeurs": {"type": "integer", "minimum": 1},
+        "systeme": {"type": "string"},
+        "compilateur": {"type": "string"}
+      }
+    },
+    "metriques": {
+      "type": "object",
+      "minProperties": 1,
+      "description": "Une entrée par métrique mesurée (débit_compression_n1, …).",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["gain", "au_dela_du_bruit"],
+        "properties": {
+          "gain": {"type": "number", "description": "gain relatif, positif = mieux"},
+          "au_dela_du_bruit": {"type": "boolean", "description": "test du signe sur les paires A/B entrelacées"},
+          "victoires_b": {"type": "integer", "minimum": 0, "description": "paires où le candidat gagne"},
+          "paires": {"type": "integer", "minimum": 0, "description": "paires non égales (N du test du signe)"}
+        }
+      }
+    },
+    "motif": {"type": "string", "description": "remarque libre (anomalie observée, bridage thermique, etc.)"}
+  }
+}

@@ -203,6 +203,38 @@ class TestRegistre(BaseTest):
         self.assertAlmostEqual(score["S"], 0.03 / 3 / 1.1)
         self.assertEqual(score["V"], 1.0)
 
+    def test_mesure_enregistree_et_valide(self):
+        cid = self.soumettre_0099()
+        rapport = self.dossier / "ab.json"
+        rapport.write_text(json.dumps({
+            "repetitions": 10,
+            "base": {"commit": "2948eebafc5b"},
+            "candidat": {"commit": "839b676aaaaa"},
+            "machine": {"processeur": "Apple M3", "architecture": "arm64", "coeurs": 8,
+                        "systeme": "Darwin", "compilateur": "clang 17"},
+            "metriques": {
+                "debit_compression_n6": {"gain": 0.051, "au_dela_du_bruit": True,
+                                          "test_du_signe": {"victoires_B": 9, "paires_utiles": 10}},
+                "ratio_n6": {"gain": 0.0, "au_dela_du_bruit": False},
+            },
+        }), encoding="utf-8")
+        # Une mesure par un AUTRE participant que l'auteur : config indépendante.
+        code, texte = self.bee("enregistrer-mesure", cid, "--ab", str(rapport), "--utilisateur", "bruno")
+        self.assertEqual(code, 0, texte)
+        fiche = bee.lire_yaml(self.dossier / "mesures" / cid / "bruno.yaml")
+        self.assertEqual(fiche["config"]["architecture"], "arm64")
+        self.assertEqual(fiche["metriques"]["debit_compression_n6"]["victoires_b"], 9)
+        self.assertTrue(fiche["metriques"]["debit_compression_n6"]["au_dela_du_bruit"])
+        self.valide()
+
+    def test_mesure_contribution_inconnue_refusee(self):
+        rapport = self.dossier / "ab.json"
+        rapport.write_text(json.dumps({"base": {"commit": "aaaaaaa"}, "candidat": {"commit": "bbbbbbb"},
+                                       "machine": {"architecture": "x86_64"},
+                                       "metriques": {"debit_compression_n6": {"gain": 0.01, "au_dela_du_bruit": False}}}), encoding="utf-8")
+        code, _ = self.bee("enregistrer-mesure", "miniz-9999-c1", "--ab", str(rapport), "--utilisateur", "alice")
+        self.assertEqual(code, 1, "une mesure pour une contribution inexistante doit échouer")
+
     def test_score_de_la_charte(self):
         reg = bee.Registre(self.dossier)
         enr = {"id": "x-0001-c1", "tache": "miniz-0099", "verdict": {"ci": "verte", "gain": 0.03, "lignes_modifiees": 10},
@@ -366,6 +398,23 @@ class TestPullRequests(BaseTest):
         self.assertEqual(self.verifier("bruno")[0], 1)
         code, texte = self.verifier("chloe", "--fusion-auto")
         self.assertEqual(code, 0, texte)
+
+    def test_mesure_libre_service(self):
+        cid = self.soumettre_0099()
+        self.commit("soumission")
+        git(self.dossier, "switch", "-qc", "mesure")
+        rapport = self.dossier / "ab.json"
+        rapport.write_text(json.dumps({"base": {"commit": "2948eeb"}, "candidat": {"commit": "839b676"},
+                                       "machine": {"architecture": "arm64", "compilateur": "clang 17"},
+                                       "metriques": {"debit_compression_n6": {"gain": 0.05, "au_dela_du_bruit": True,
+                                                     "test_du_signe": {"victoires_B": 9, "paires_utiles": 10}}}}), encoding="utf-8")
+        self.bee("enregistrer-mesure", cid, "--ab", str(rapport), "--utilisateur", "bruno")
+        rapport.unlink()  # ne pas committer le JSON brut
+        self.commit()
+        code, texte = self.verifier("bruno", "--fusion-auto")
+        self.assertEqual(code, 0, texte)
+        self.assertIn("FUSION_AUTO=oui", texte)
+        self.assertEqual(self.verifier("chloe")[0], 1, "on ne dépose pas une mesure au nom d'un autre")
 
 
 class TestPublier(BaseTest):
