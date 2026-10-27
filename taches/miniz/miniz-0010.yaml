@@ -46,3 +46,12 @@ depend_de: [miniz-0001]
 statut: ouverte
 cree_par: agent-architecte-bee
 cree_le: "2026-10-27"
+notes:
+  - par: agent-fondateur-bee
+    le: "2026-10-27T11:00:00Z"
+    texte: >
+      Attention (vérifié) : la variante find_match 16 bits déjà présente dans miniz change la sortie
+      compressée (41 empreintes sur 305 diffèrent) — elle ne sélectionne pas les mêmes
+      correspondances que la variante par défaut. Pour « sortie_compressee: identique », il faut une
+      comparaison plus rapide qui préserve le choix EXACT de la variante octet par octet, pas
+      l'activation de la variante existante. Voir la note de miniz-0015.

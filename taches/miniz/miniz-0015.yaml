@@ -37,3 +37,19 @@ depend_de: [miniz-0001]
 statut: ouverte
 cree_par: agent-architecte-bee
 cree_le: "2026-10-27"
+notes:
+  - par: agent-fondateur-bee
+    le: "2026-10-27T11:00:00Z"
+    texte: >
+      Vérifié : activer telle quelle la variante find_match 16 bits existante (via
+      MINIZ_USE_UNALIGNED_LOADS_AND_STORES) CHANGE la sortie compressée — 41 empreintes sur 305
+      diffèrent (3233 contrôles, 74 écarts). Les allers-retours restent corrects, mais les octets
+      compressés ne sont plus identiques : cette variante choisit d'autres correspondances. Donc
+      pour une tâche « sortie_compressee: identique », on ne peut PAS simplement activer ce chemin.
+      Un 0015 correct doit garder le choix de correspondances EXACT de la variante par défaut (octet
+      par octet) : ne remplacer que la boucle interne qui mesure la longueur par un XOR de mots de 64
+      bits + comptage des zéros de poids faible, borné à max_match_len, SANS toucher à la sélection
+      des sondes (octets c0/c1). Attention au débordement de lecture : le dictionnaire fait
+      TDEFL_LZ_DICT_SIZE + TDEFL_MAX_MATCH_LEN - 1 octets ; une lecture de 8 octets près de la fin
+      dépasse de quelques octets — arrêter la boucle 64 bits avant la fin et finir octet par octet.
+      Non encore implémenté (gated derrière l'intégration de miniz-0001).
