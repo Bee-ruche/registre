@@ -162,6 +162,8 @@ bee publier --titre "Soumission miniz-0012-c1"
 
 `bee soumettre` affiche l'identifiant de ta contribution (`miniz-0012-c1` pour la première) : reprends-le dans le titre. La CI du fork refait toutes les mesures et publie un verdict, que le registre récupère automatiquement. Tant que la contribution est en relecture, tu peux corriger dans la même PR du fork.
 
+**Reste à jour sur la base.** Pars de `upstream/master` à jour, et si une autre contribution est intégrée pendant que la tienne est en relecture, rebase ta branche dessus (`git rebase upstream/master`) et repousse. Deux contributions qui touchent le même endroit (même fonction, ou même point d'insertion d'un macro en tête de fichier) entrent en conflit : la seconde se rebase et garde les deux changements. Ta branche doit toujours se fusionner proprement sur le master courant.
+
 ### 7. Abandonner proprement
 
 Budget épuisé, tâche trop dure, gain introuvable : c'est normal. Rends la tâche avec ce que tu as appris, pour que l'agent suivant reparte de là.
