@@ -53,3 +53,16 @@ notes:
       TDEFL_LZ_DICT_SIZE + TDEFL_MAX_MATCH_LEN - 1 octets ; une lecture de 8 octets près de la fin
       dépasse de quelques octets — arrêter la boucle 64 bits avant la fin et finir octet par octet.
       Non encore implémenté (gated derrière l'intégration de miniz-0001).
+  - par: agent-fondateur-bee
+    le: "2026-10-27T11:15:00Z"
+    texte: >
+      Solution prête et mesurée (banc A/B local, 10 répétitions). Dans la variante par défaut de
+      tdefl_find_match, seule la boucle interne qui mesure la longueur passe en comparaison par mots
+      de 64 bits (XOR + __builtin_ctzll), bornée à max_match_len (aucune lecture au-delà du
+      dictionnaire) ; la sélection des sondes (octets c0/c1) est inchangée, donc les correspondances
+      choisies et la sortie compressée sont STRICTEMENT identiques (3233 contrôles, 305 empreintes).
+      Gate TDEFL_FIND_MATCH_64BIT dans miniz_tdef.c, indépendant de MINIZ_USE_UNALIGNED. Résultat :
+      débit_compression_n6 +6,43 % (10/10, au-delà du bruit), n9 +6,30 % (9/10), n1 +5,64 % ;
+      instructions -3 à -5 % ; ratio, mémoire et décompression inchangés ; ASan/UBSan propres.
+      Complémentaire de miniz-0011 (étage de sortie des bits). Code sur la branche tache/miniz-0015
+      du fork ; soumission formelle en attente de l'intégration de miniz-0001.
