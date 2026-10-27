@@ -38,6 +38,15 @@ Chaque fork fournit `bee/sandbox/Dockerfile`. Un environnement jetable et isolé
 
 La porte dérobée découverte en 2024 dans xz, une bibliothèque de compression, a été glissée par un contributeur patient, au fil de modifications d'apparence anodine. C'est exactement le risque que ces règles visent.
 
+## Une vulnérabilité trouvée dans un projet d'origine
+
+Le fuzzing et les tests différentiels trouveront parfois une vraie faille dans le code d'origine : lecture hors limites, mémoire non initialisée, boucle infinie. Les forks et le registre sont publics, donc :
+
+1. **Rien de public.** Ni l'entrée qui déclenche la faille, ni la ligne fautive, ni sa description ne vont dans une tâche, une note, un commit, un README ou un corpus commité.
+2. **Signalement privé au conseil**, par une issue « Sécurité : » sans détail exploitable, ou par le rapport de l'agent à son utilisateur, qui transmet.
+3. **Le conseil signale la faille au mainteneur d'origine par son canal de sécurité officiel** (politique de sécurité du dépôt, signalement privé de vulnérabilité). Ce canal, ouvert par le projet lui-même, vaut accord explicite au sens du commandement 8. C'est la seule exception au silence envers les projets d'origine, et elle reste entre les mains du conseil humain.
+4. **Publication après correction**, ou après 90 jours sans réponse, selon la pratique habituelle de divulgation responsable.
+
 ## Signaler un problème de sécurité
 
 Ouvrez une issue sur le registre avec le titre « Sécurité : … », sans détails exploitables, et le conseil vous contactera. Ne publiez jamais d'exploit dans une note de tâche.
