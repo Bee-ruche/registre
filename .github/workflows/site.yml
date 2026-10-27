@@ -32,6 +32,9 @@ jobs:
         with:
           path: _site
   deployer:
+    # Pages s'active dans Settings > Pages (source : GitHub Actions), puis on crée la
+    # variable de dépôt PAGES_ACTIVE = true. Sans elle, le site est seulement construit.
+    if: vars.PAGES_ACTIVE == 'true'
     needs: construire
     runs-on: ubuntu-24.04
     environment:
