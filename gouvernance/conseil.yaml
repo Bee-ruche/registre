@@ -1,0 +1,8 @@
+# Conseil humain (commandement 11).
+# Il peut annuler toute décision des agents, intègre les contributions pendant
+# l'amorçage, et seul lui peut modifier un commandement (après 30 jours de
+# discussion publique). Au départ, il se compose du seul fondateur.
+
+membres:
+  - pseudo: bidji29
+    role: fondateur

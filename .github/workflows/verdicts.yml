@@ -1,0 +1,69 @@
+# Récupère les verdicts des CI des forks et les reporte dans le registre.
+#
+# Sécurité : seul l'outil bee de la branche principale s'exécute ici. verdict.json et
+# CONTRIBUTION.yaml viennent des forks et sont traités comme des données.
+name: Verdicts des forks
+
+on:
+  schedule:
+    - cron: "41 */2 * * *"   # toutes les 2 h ; à rapprocher quand le dépôt sera public (minutes gratuites)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: ecriture-main
+  cancel-in-progress: false
+
+jobs:
+  verdicts:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Dépendances
+        run: pip install -r outils/requirements.txt
+      - name: Récupérer les verdicts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 outils/bee.py en-attente \
+            | python3 -c 'import json, sys; [print(c["id"], c["pr"], c.get("sha_verdict") or "-", sep="\t") for c in json.load(sys.stdin)]' \
+            > a_traiter.tsv
+          while IFS=$'\t' read -r id pr sha_connu; do
+            depot=$(printf '%s' "$pr" | sed -E 's#^https://github\.com/([A-Za-z0-9-]+/[A-Za-z0-9_.-]+)/pull/[0-9]+$#\1#')
+            sha=$(gh pr view "$pr" --json headRefOid --jq .headRefOid) || continue
+            [ "$sha" = "$sha_connu" ] && continue
+            execution=$(gh run list -R "$depot" --commit "$sha" --workflow bee-ci.yml --status completed --limit 1 \
+              --json databaseId,url --jq '.[0] | "\(.databaseId) \(.url)"')
+            [ -z "$execution" ] && continue
+            numero=${execution%% *}; adresse=${execution#* }
+            rm -rf "$RUNNER_TEMP/verdict" && mkdir -p "$RUNNER_TEMP/verdict"
+            gh run download "$numero" -R "$depot" -n verdict -D "$RUNNER_TEMP/verdict" || continue
+            options=()
+            if gh api "repos/$depot/contents/CONTRIBUTION.yaml?ref=$sha" --jq .content | base64 -d > "$RUNNER_TEMP/verdict/CONTRIBUTION.yaml" 2>/dev/null \
+               && [ -s "$RUNNER_TEMP/verdict/CONTRIBUTION.yaml" ]; then
+              options+=(--manifeste "$RUNNER_TEMP/verdict/CONTRIBUTION.yaml")
+            fi
+            python3 outils/bee.py enregistrer-verdict "$id" --verdict "$RUNNER_TEMP/verdict/verdict.json" \
+              --sha "$sha" --execution "$adresse" "${options[@]}" || true
+          done < a_traiter.tsv
+          rm -f a_traiter.tsv
+      - name: Publier
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! git diff --quiet; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            python3 outils/bee.py valider
+            git commit -am "Verdicts des forks"
+            git push origin HEAD:main
+            gh workflow run site.yml --ref main || true
+          fi

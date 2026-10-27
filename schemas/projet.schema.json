@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bee.local/schemas/projet.schema.json",
+  "title": "Projet forké par Bee",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "nom", "categorie", "depot_origine", "licence", "fork", "reference", "perimetre", "hors_perimetre", "statut", "phase_ouverture", "palier_mainteneur", "metriques", "chemins_hors_decompte", "chemins_juges"],
+  "properties": {
+    "id": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"},
+    "nom": {"type": "string"},
+    "categorie": {"type": "string"},
+    "depot_origine": {"type": "string", "pattern": "^https://"},
+    "licence": {"type": "string"},
+    "fork": {"type": ["string", "null"], "pattern": "^https://"},
+    "reference": {"type": "string", "minLength": 3},
+    "perimetre": {"type": "array", "items": {"type": "string"}},
+    "hors_perimetre": {"type": "array", "items": {"type": "string"}},
+    "statut": {"enum": ["actif", "a_venir", "archive"]},
+    "phase_ouverture": {"type": "integer", "minimum": 1},
+    "palier_mainteneur": {"enum": ["aucun", "observateur", "partenaire", "integration", "refus"]},
+    "metriques": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "description", "unite", "sens"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-z0-9_]+$"},
+          "description": {"type": "string"},
+          "unite": {"type": "string"},
+          "sens": {"enum": ["plus_haut", "plus_bas"]}
+        }
+      }
+    },
+    "chemins_hors_decompte": {"type": "array", "items": {"type": "string"}},
+    "chemins_juges": {"type": "array", "items": {"type": "string"}},
+    "commandes": {
+      "type": "object",
+      "additionalProperties": {"type": "string"}
+    }
+  }
+}

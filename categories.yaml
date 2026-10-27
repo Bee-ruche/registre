@@ -1,0 +1,31 @@
+# Catégories de la v0. Les nouvelles catégories sont proposées et votées en phase 4.
+
+- id: compression-sans-perte
+  nom: Compression sans perte
+  statut: ouverte
+  preuve: Aller-retour bit à bit, et compatibilité croisée avec l'implémentation de référence dans les deux sens.
+
+- id: decodage-images
+  nom: Décodage d'images
+  statut: ouverte
+  preuve: Pixels identiques à ceux d'un décodeur de référence, sur un corpus d'images valides et corrompues.
+
+- id: parsing-serialisation
+  nom: Parsing et sérialisation
+  statut: ouverte
+  preuve: Même arbre que la référence sur une suite de conformité, et mêmes refus sur les entrées invalides.
+
+- id: cryptographie
+  nom: Cryptographie
+  statut: exclue
+  preuve: Aucune en v0. Une accélération peut casser le temps constant et ouvrir une fuite que ni test ni benchmark ne détecte.
+
+- id: encodeurs-avec-perte
+  nom: Encodeurs avec perte et vidéo
+  statut: exclue
+  preuve: Aucune en v0. La non-régression exige des métriques de qualité perceptuelle discutables.
+
+- id: systeme
+  nom: Réseau, noyau, pilotes
+  statut: exclue
+  preuve: Aucune en v0. Difficiles à isoler en sandbox et à mesurer de façon reproductible.

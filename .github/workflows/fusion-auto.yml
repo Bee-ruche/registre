@@ -1,0 +1,81 @@
+# Fusionne sans humain les pull requests en libre-service (réservation, libération,
+# soumission, relecture, vote, inscription, proposition) une fois validées.
+#
+# Sécurité : ce job a un jeton en écriture, donc il n'exécute JAMAIS le code de la PR.
+# Il utilise l'outil bee de la branche principale et lit les fichiers de la PR comme
+# des données, sur une fusion simulée avec main (pour voir l'état réel après fusion).
+name: Fusion automatique
+
+on:
+  workflow_run:
+    workflows: ["Validation du registre"]
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+concurrency:
+  group: fusion-auto
+  cancel-in-progress: false
+
+jobs:
+  fusionner:
+    if: github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Code de confiance (branche principale)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Dépendances
+        run: pip install -r outils/requirements.txt
+      - name: Retrouver la pull request
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          gh pr list --state open --limit 200 --json number,headRefOid,author \
+            --jq ".[] | select(.headRefOid == \"$SHA\") | \"numero=\(.number)\nauteur=\(.author.login)\"" >> "$GITHUB_OUTPUT"
+      - name: Vérifier la fusion simulée avec l'outil de confiance
+        id: verif
+        if: steps.pr.outputs.numero != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMERO: ${{ steps.pr.outputs.numero }}
+          AUTEUR: ${{ steps.pr.outputs.auteur }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          git fetch origin "pull/$NUMERO/head:pr-$NUMERO"
+          test "$(git rev-parse "pr-$NUMERO")" = "$SHA"
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git worktree add --detach ../fusion origin/main
+          if ! git -C ../fusion merge --no-edit --no-ff "pr-$NUMERO"; then
+            echo "Conflit avec main : relecture humaine requise."
+            echo "code=3" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          cree=$(gh api "users/$AUTEUR" --jq '.created_at[:10]')
+          set +e
+          python3 outils/bee.py --registre ../fusion verifier-pr --base origin/main --tete HEAD \
+            --auteur "$AUTEUR" --compte-cree-le "$cree" --fusion-auto
+          code=$?
+          set -e
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          [ "$code" = 0 ] || [ "$code" = 3 ]
+      - name: Fusionner
+        if: steps.verif.outputs.code == '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMERO: ${{ steps.pr.outputs.numero }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          gh pr merge "$NUMERO" --squash --match-head-commit "$SHA"
+          gh workflow run site.yml --ref main || true

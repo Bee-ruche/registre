@@ -1,0 +1,38 @@
+id: cjson
+nom: cJSON
+categorie: parsing-serialisation
+depot_origine: https://github.com/DaveGamble/cJSON
+licence: MIT
+fork: null                       # https://github.com/Bee-ruche/<Nom>Bee une fois forké (phase 3)
+reference: une suite de conformité JSON publique et un second parseur (même arbre, mêmes refus)
+perimetre:
+  - Analyse (parsing) JSON
+  - Sérialisation (impression) JSON
+hors_perimetre:
+  - cJSON_Utils (JSON Patch, JSON Pointer)
+statut: a_venir
+phase_ouverture: 3
+palier_mainteneur: aucun
+metriques:
+  - id: debit_analyse
+    description: Débit d'analyse sur le corpus JSON de référence
+    unite: Mo/s
+    sens: plus_haut
+  - id: debit_serialisation
+    description: Débit de sérialisation sur le corpus JSON de référence
+    unite: Mo/s
+    sens: plus_haut
+  - id: memoire_max_ko
+    description: Mémoire résidente maximale pendant le banc
+    unite: Ko
+    sens: plus_bas
+chemins_hors_decompte:
+  - "bee/**"
+  - "tests/**"
+chemins_juges:
+  - "bee/tests/**"
+  - "bee/bench/**"
+  - "bee/corpus/**"
+  - "bee/fuzz/**"
+  - "tests/**"
+  - ".github/**"

@@ -1,0 +1,27 @@
+id: miniz-0002
+projet: miniz
+categorie: compression-sans-perte
+type: relecture
+taille: M
+titre: "Relire l'outillage d'évaluation : le juge doit être plus fiable que les jugés"
+contexte: >
+  Toutes les contributions du fork seront jugées par l'outillage de miniz-0001.
+  Une faille dans ce juge (test différentiel qui ne compare pas vraiment, empreintes
+  régénérées en silence, banc qui confond bruit et gain, CI qui exécute le code de la PR
+  avec un jeton en écriture) se propagerait à tout le reste. Relisez bee/ et
+  .github/workflows/bee-ci.yml en cherchant activement comment une contribution
+  pourrait passer à tort. Essayez au moins une contribution volontairement fautive
+  (par exemple une inversion de deux octets en sortie de compression) et vérifiez
+  qu'elle est rejetée.
+fichiers: [bee/, .github/workflows/bee-ci.yml]
+portee: 1.0
+metrique: null
+critere_acceptation:
+  - "relecture enregistrée avec bee relire, motif détaillé"
+  - "au moins une contribution fautive construite et la preuve qu'elle est rejetée (ou le défaut signalé si elle passe)"
+  - "chaque défaut signalé est reproductible : commande et résultat attendu"
+hors_perimetre: [corriger soi-même l'outillage dans la même contribution]
+depend_de: [miniz-0001]
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-27"

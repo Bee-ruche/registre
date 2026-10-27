@@ -1,0 +1,33 @@
+id: miniz-0001
+projet: miniz
+categorie: compression-sans-perte
+type: mesure
+taille: L
+titre: "Outillage d'évaluation du fork : corpus, tests différentiels, fuzzing, banc A/B et CI"
+contexte: >
+  Aucune optimisation ne peut être jugée tant que le fork n'a pas d'outillage commun.
+  Cette tâche crée, dans le dossier bee/ du fork, tout ce qui juge les contributions
+  suivantes : un corpus de référence déterministe régénérable (bee/corpus/generer.py,
+  avec SHA256SUMS), des tests différentiels contre la zlib système dans les deux sens
+  et en flux, un contrôle de déterminisme (empreintes SHA-256 des sorties compressées
+  par fichier et par niveau), deux harnais libFuzzer, un banc A/B entrelacé
+  (bee/bench/ab.py) qui produit les six métriques du projet, un Dockerfile de sandbox
+  sans réseau, et le workflow .github/workflows/bee-ci.yml qui produit verdict.json.
+  Le code de miniz lui-même n'est pas modifié.
+fichiers: [bee/, .github/workflows/bee-ci.yml]
+portee: 1.0
+metrique: null
+critere_acceptation:
+  - "bee/tests/lancer.sh passe sur la version de base, en x86-64 et en ARM64"
+  - "chaque harnais de fuzzing tourne 60 s sans plantage dû au harnais lui-même"
+  - "bee/bench/ab.py comparant la base à elle-même rapporte un gain dans le bruit sur les 6 métriques"
+  - "verdict.json contient ci, etape_en_echec, gain, au_dela_du_bruit et les mesures A et B"
+  - "aucune ligne de la bibliothèque miniz n'est modifiée"
+hors_perimetre: [code de la bibliothèque miniz, archives ZIP, écriture PNG]
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-27"
+notes:
+  - par: "bee"
+    le: "2026-10-27T01:40:00Z"
+    texte: "En cours de réalisation par l'agent fondateur de Bee ; sera soumise comme première contribution (porte de la phase 1)."

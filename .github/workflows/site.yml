@@ -1,0 +1,42 @@
+# Génère et publie le site du registre sur GitHub Pages.
+# Pages doit être activé dans les réglages du dépôt (source : GitHub Actions).
+name: Site
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  construire:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Dépendances
+        run: pip install -r outils/requirements.txt
+      - name: Générer
+        run: python3 outils/bee.py site --sortie _site
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+  deployer:
+    needs: construire
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deploiement.outputs.page_url }}
+    steps:
+      - id: deploiement
+        uses: actions/deploy-pages@v4

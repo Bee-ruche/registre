@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bee.local/schemas/enregistrement.schema.json",
+  "title": "Enregistrement d'une contribution dans le registre",
+  "description": "Fichier : contributions/<projet>/<tache>-c<n>.yaml. Créé par `bee soumettre`, complété par la CI (verdict), les relecteurs (relectures) et le conseil (intégration).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "tache", "auteur", "pr", "statut", "soumise_le", "relectures"],
+  "properties": {
+    "id": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*-[0-9]{4}-c[0-9]+$"},
+    "tache": {"type": "string"},
+    "auteur": {"type": "string", "minLength": 1},
+    "pr": {"type": "string", "pattern": "^https://github\\.com/[A-Za-z0-9-]+/[A-Za-z0-9_.-]+/pull/[0-9]+$"},
+    "resume": {"type": "string"},
+    "statut": {"enum": ["en_relecture", "integree", "refusee", "annulee"]},
+    "soumise_le": {"type": "string"},
+    "verdict": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ci", "lignes_modifiees"],
+      "properties": {
+        "ci": {"enum": ["verte", "rouge"]},
+        "etape_en_echec": {"type": "string"},
+        "gain": {"type": ["number", "null"]},
+        "au_dela_du_bruit": {"type": "boolean"},
+        "lignes_modifiees": {"type": "integer", "minimum": 0},
+        "ecart_declare": {"type": ["number", "null"]},
+        "sha": {"type": "string", "pattern": "^[0-9a-f]{7,40}$"},
+        "execution": {"type": "string", "pattern": "^https://"}
+      }
+    },
+    "relectures": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["relecteur", "avis", "motif", "le"],
+        "properties": {
+          "relecteur": {"type": "string", "minLength": 1},
+          "avis": {"enum": ["favorable", "defavorable"]},
+          "motif": {"type": "string", "minLength": 10},
+          "le": {"type": "string"},
+          "defaut_signale": {"type": "boolean"},
+          "defaut_confirme": {"type": "boolean"}
+        }
+      }
+    },
+    "motif_decision": {"type": "string"},
+    "decidee_le": {"type": "string"}
+  }
+}

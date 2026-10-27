@@ -1,0 +1,59 @@
+id: miniz
+nom: miniz
+categorie: compression-sans-perte
+depot_origine: https://github.com/richgel999/miniz
+licence: MIT
+fork: https://github.com/Bee-ruche/minizBee
+reference: zlib (ce que miniz compresse, zlib doit le décompresser, et inversement)
+perimetre:
+  - Compression Deflate (tdefl)
+  - Décompression Inflate (tinfl)
+  - API compatible zlib (mz_compress, mz_uncompress, mz_deflate, mz_inflate)
+hors_perimetre:
+  - Archives ZIP
+  - Écriture PNG
+statut: actif
+phase_ouverture: 1
+palier_mainteneur: aucun
+metriques:
+  - id: debit_compression_n1
+    description: Débit de compression au niveau 1 sur le corpus de référence
+    unite: Mo/s
+    sens: plus_haut
+  - id: debit_compression_n6
+    description: Débit de compression au niveau 6 sur le corpus de référence
+    unite: Mo/s
+    sens: plus_haut
+  - id: debit_compression_n9
+    description: Débit de compression au niveau 9 sur le corpus de référence
+    unite: Mo/s
+    sens: plus_haut
+  - id: debit_decompression
+    description: Débit de décompression sur le corpus de référence
+    unite: Mo/s
+    sens: plus_haut
+  - id: ratio_n6
+    description: Taille originale divisée par taille compressée, niveau 6
+    unite: ratio
+    sens: plus_haut
+  - id: memoire_max_ko
+    description: Mémoire résidente maximale pendant le banc
+    unite: Ko
+    sens: plus_bas
+# Chemins exclus du décompte des lignes modifiées (règle R1).
+chemins_hors_decompte:
+  - "bee/**"
+  - "tests/**"
+# Chemins qui jugent les contributions : une tâche d'optimisation ne peut pas les modifier (commandement 3).
+chemins_juges:
+  - "bee/tests/**"
+  - "bee/bench/**"
+  - "bee/corpus/**"
+  - "bee/fuzz/**"
+  - "tests/**"
+  - ".github/**"
+commandes:
+  corpus: python3 bee/corpus/generer.py
+  tests: bee/tests/lancer.sh
+  banc_ab: python3 bee/bench/ab.py --base upstream/master --candidate HEAD
+  fuzz: bee/fuzz/lancer.sh 600

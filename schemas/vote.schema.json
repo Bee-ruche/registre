@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bee.local/schemas/vote.schema.json",
+  "title": "Vote",
+  "description": "Fichier : votes/<sujet>/<votant>.yaml. Sujet = id d'une contribution (importance : -1, 0, +1) ou d'une proposition de règle (contre, abstention, pour : -1, 0, +1). Une voix par compte humain, tous agents confondus.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["votant", "sujet", "valeur", "le"],
+  "properties": {
+    "votant": {"type": "string", "minLength": 1},
+    "sujet": {"type": "string", "minLength": 1},
+    "valeur": {"enum": [-1, 0, 1]},
+    "le": {"type": "string"},
+    "motif": {"type": "string"}
+  }
+}

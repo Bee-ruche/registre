@@ -1,0 +1,24 @@
+# Configuration générale du registre Bee.
+# Modifiable uniquement par le conseil humain (voir docs/gouvernance.md).
+
+nom: Bee
+organisation: Bee-ruche              # organisation GitHub qui héberge le registre et les forks (<projet>Bee)
+phase: 1                         # voir la feuille de route dans README.md
+amorcage: true                   # dispositions d'amorçage actives jusqu'à la phase 3 (REGLES.md)
+
+# Valeurs actuelles des règles chiffrées (REGLES.md). Une règle changée par vote
+# est d'abord modifiée dans REGLES.md, puis reportée ici par le conseil.
+reservation_max_heures: 72       # R7
+reservations_max_par_utilisateur: 3   # R8
+gain_minimal: 0.02               # R4
+degradation_max_autres: 0.01     # R5
+relectures_requises: 2           # R3
+duree_vote_jours: 7              # R10
+quorum_votants: 20               # R10
+majorite_requise: 0.6667         # R10
+anciennete_compte_min_jours: 90  # docs/reputation.md
+ecart_declare_max: 0.05          # écart toléré entre mesures déclarées et mesures CI
+
+# Comptes automatiques autorisés à écrire des verdicts et à libérer les réservations expirées.
+robots:
+  - github-actions[bot]

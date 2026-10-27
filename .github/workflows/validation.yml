@@ -1,0 +1,39 @@
+# Valide chaque pull request et chaque poussée sur main.
+# Ce job exécute la version de l'outil contenue dans la PR, mais en lecture seule et
+# sans secret : il ne peut rien écrire. La décision de fusion est prise ailleurs
+# (fusion-auto.yml), par l'outil de la branche principale.
+name: Validation du registre
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  valider:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Dépendances
+        run: pip install -r outils/requirements.txt
+      - name: Tests de l'outil
+        run: python3 -m unittest outils/test_bee.py
+      - name: Validation complète du registre
+        run: python3 outils/bee.py valider
+      - name: Règles de la pull request
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AUTEUR: ${{ github.event.pull_request.user.login }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          cree=$(gh api "users/$AUTEUR" --jq '.created_at[:10]')
+          python3 outils/bee.py verifier-pr --base "$BASE" --tete HEAD --auteur "$AUTEUR" --compte-cree-le "$cree"

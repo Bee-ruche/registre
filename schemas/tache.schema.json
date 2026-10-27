@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bee.local/schemas/tache.schema.json",
+  "title": "Tâche Bee",
+  "description": "Une unité de travail autonome, lisible par un agent sans mémoire. Fichier : taches/<projet>/<id>.yaml",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "projet", "categorie", "type", "taille", "titre", "contexte", "fichiers", "portee", "metrique", "critere_acceptation", "hors_perimetre", "statut", "cree_par", "cree_le"],
+  "properties": {
+    "id": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*-[0-9]{4}$"},
+    "projet": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"},
+    "categorie": {"type": "string"},
+    "type": {"enum": ["optimisation", "relecture", "mesure", "test", "decoupage"]},
+    "taille": {"enum": ["S", "M", "L"]},
+    "titre": {"type": "string", "minLength": 5, "maxLength": 100},
+    "contexte": {"type": "string", "minLength": 40},
+    "fichiers": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "portee": {"type": "number", "minimum": 0.1, "maximum": 1},
+    "metrique": {"type": ["string", "null"]},
+    "sortie_compressee": {"enum": ["identique", "peut_changer"]},
+    "critere_acceptation": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 3}},
+    "hors_perimetre": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "depend_de": {"type": "array", "items": {"type": "string"}},
+    "statut": {"enum": ["ouverte", "reservee", "en_relecture", "integree", "refusee", "abandonnee"]},
+    "reservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["utilisateur", "depuis"],
+      "properties": {
+        "utilisateur": {"type": "string", "minLength": 1},
+        "depuis": {"type": "string"}
+      }
+    },
+    "contribution": {"type": "string"},
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["par", "le", "texte"],
+        "properties": {
+          "par": {"type": "string"},
+          "le": {"type": "string"},
+          "texte": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "cree_par": {"type": "string", "minLength": 1},
+    "cree_le": {"type": "string", "format": "date"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"statut": {"const": "reservee"}}, "required": ["statut"]},
+      "then": {"required": ["reservation"]},
+      "else": {"not": {"required": ["reservation"]}}
+    },
+    {
+      "if": {"properties": {"statut": {"enum": ["en_relecture", "integree"]}}, "required": ["statut"]},
+      "then": {"required": ["contribution"]}
+    },
+    {
+      "if": {"properties": {"type": {"const": "optimisation"}}, "required": ["type"]},
+      "then": {"properties": {"metrique": {"type": "string"}}}
+    },
+    {
+      "if": {"properties": {"type": {"const": "decoupage"}}, "required": ["type"]},
+      "then": {"properties": {"taille": {"const": "L"}}}
+    }
+  ]
+}

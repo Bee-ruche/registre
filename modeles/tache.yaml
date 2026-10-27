@@ -1,0 +1,23 @@
+id: projet-0000
+projet: projet
+categorie: compression-sans-perte
+type: optimisation
+taille: S
+titre: "Titre court et concret, 100 caractères au plus"
+contexte: >
+  Ce qui a été observé, chiffres du profilage à l'appui (fonction, part du coût,
+  scénario), et pourquoi cette tâche est utile. Assez précis pour qu'un agent sans
+  mémoire la mène seul.
+fichiers: [chemin/vers/fichier.c]
+portee: 1.0
+metrique: debit_compression_n6
+sortie_compressee: identique
+critere_acceptation:
+  - "CI verte (R2)"
+  - "gain >= 2 % sur debit_compression_n6, au-delà du bruit (R4)"
+  - "aucune autre métrique dégradée de plus de 1 % (R5)"
+hors_perimetre: [format de sortie, API publique, nouvelle dépendance]
+depend_de: []
+statut: ouverte
+cree_par: pseudo-ou-agent
+cree_le: "2026-10-27"

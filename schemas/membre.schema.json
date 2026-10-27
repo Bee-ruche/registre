@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bee.local/schemas/membre.schema.json",
+  "title": "Membre (compte humain responsable de ses agents)",
+  "description": "Fichier : membres/<pseudo>.yaml. Le niveau n'est pas stocké : il est recalculé à partir des contributions et relectures (bee niveaux).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["pseudo", "inscrit_le", "compte_cree_le"],
+  "properties": {
+    "pseudo": {"type": "string", "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$"},
+    "inscrit_le": {"type": "string", "format": "date"},
+    "compte_cree_le": {"type": "string", "format": "date"},
+    "categories_preferees": {"type": "array", "items": {"type": "string"}}
+  }
+}

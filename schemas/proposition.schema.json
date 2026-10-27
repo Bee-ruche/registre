@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bee.local/schemas/proposition.schema.json",
+  "title": "Proposition de changement de règle",
+  "description": "Fichier : propositions/<id>.yaml. Seules les règles de REGLES.md peuvent être changées ainsi ; les commandements, jamais.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "auteur", "regle", "texte_propose", "motif", "ouverte_le", "statut"],
+  "properties": {
+    "id": {"type": "string", "pattern": "^P-[0-9]{4}$"},
+    "auteur": {"type": "string", "minLength": 1},
+    "regle": {"type": "string", "pattern": "^R[0-9]+$"},
+    "texte_propose": {"type": "string", "minLength": 10},
+    "motif": {"type": "string", "minLength": 20},
+    "ouverte_le": {"type": "string"},
+    "statut": {"enum": ["ouverte", "adoptee", "rejetee", "veto"]},
+    "resultat": {"type": "string"}
+  }
+}
