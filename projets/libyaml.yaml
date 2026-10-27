@@ -1,0 +1,43 @@
+id: libyaml
+nom: libyaml
+categorie: parsing-serialisation
+depot_origine: https://github.com/yaml/libyaml
+licence: MIT
+fork: null                       # https://github.com/Bee-ruche/libyamlBee
+reference: yaml-test-suite (flux d'événements attendus, via tests/run-parser-test-suite.c) et libfyaml ; même flux d'événements, mêmes erreurs
+perimetre:
+  - Analyseur (scanner, parser)
+  - Chargeur de documents
+  - Émetteur
+hors_perimetre:
+  - API publique (yaml.h)
+statut: a_venir
+phase_ouverture: 3
+palier_mainteneur: aucun
+metriques:
+  - id: debit_analyse
+    description: Débit du parseur seul (événements) sur le corpus de référence
+    unite: Mo/s
+    sens: plus_haut
+  - id: debit_chargement
+    description: Débit du chargeur de documents sur le corpus de référence
+    unite: Mo/s
+    sens: plus_haut
+  - id: debit_emission
+    description: Débit de l'émetteur sur le corpus de référence
+    unite: Mo/s
+    sens: plus_haut
+  - id: memoire_max_ko
+    description: Pic de tas pendant le chargement
+    unite: Ko
+    sens: plus_bas
+chemins_hors_decompte:
+  - "bee/**"
+  - "tests/**"
+chemins_juges:
+  - "bee/tests/**"
+  - "bee/bench/**"
+  - "bee/corpus/**"
+  - "bee/fuzz/**"
+  - "tests/**"
+  - ".github/**"

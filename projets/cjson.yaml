@@ -3,7 +3,7 @@ nom: cJSON
 categorie: parsing-serialisation
 depot_origine: https://github.com/DaveGamble/cJSON
 licence: MIT
-fork: null                       # https://github.com/Bee-ruche/<Nom>Bee une fois forké (phase 3)
+fork: null                       # https://github.com/Bee-ruche/<Nom>Bee une fois forké (réserve, phase 4)
 reference: une suite de conformité JSON publique et un second parseur (même arbre, mêmes refus)
 perimetre:
   - Analyse (parsing) JSON
@@ -11,7 +11,7 @@ perimetre:
 hors_perimetre:
   - cJSON_Utils (JSON Patch, JSON Pointer)
 statut: a_venir
-phase_ouverture: 3
+phase_ouverture: 4
 palier_mainteneur: aucun
 metriques:
   - id: debit_analyse

@@ -1,0 +1,48 @@
+id: bzip2
+nom: bzip2
+categorie: compression-sans-perte
+depot_origine: https://sourceware.org/git/bzip2.git
+licence: BSD (licence propre à bzip2)
+fork: null                       # https://github.com/Bee-ruche/bzip2Bee (import depuis sourceware, pas depuis le miroir GitLab figé)
+reference: sortie de la version d'origine, octet pour octet (algorithme déterministe) ; corpus bzip2-tests (empreintes et fichiers corrompus) ; décodeurs indépendants (Wuffs, libbzip2-rs)
+perimetre:
+  - Compression (tri de blocs, codage de Huffman)
+  - Décompression
+  - API libbzip2
+hors_perimetre:
+  - Outils bzip2recover et bzgrep
+  - Format de sortie
+statut: a_venir
+phase_ouverture: 3
+palier_mainteneur: aucun
+metriques:
+  - id: debit_compression_n1
+    description: Débit de compression au niveau -1 sur le corpus de référence
+    unite: Mo/s
+    sens: plus_haut
+  - id: debit_compression_n9
+    description: Débit de compression au niveau -9 sur le corpus de référence
+    unite: Mo/s
+    sens: plus_haut
+  - id: debit_decompression
+    description: Débit de décompression (octets produits) sur le corpus de référence
+    unite: Mo/s
+    sens: plus_haut
+  - id: pire_cas_tri
+    description: Temps de compression des entrées très répétitives (pire cas du tri de blocs)
+    unite: s
+    sens: plus_bas
+  - id: memoire_max_ko
+    description: Pic mémoire mesuré par les crochets bzalloc et bzfree
+    unite: Ko
+    sens: plus_bas
+chemins_hors_decompte:
+  - "bee/**"
+  - "tests/**"
+chemins_juges:
+  - "bee/tests/**"
+  - "bee/bench/**"
+  - "bee/corpus/**"
+  - "bee/fuzz/**"
+  - "tests/**"
+  - ".github/**"

@@ -1,0 +1,42 @@
+id: giflib
+nom: giflib
+categorie: decodage-images
+depot_origine: https://sourceforge.net/p/giflib/code/
+licence: MIT
+fork: null                       # https://github.com/Bee-ruche/giflibBee (import depuis SourceForge)
+reference: décodeurs GIF indépendants (Wuffs std/gif, stb_image, libnsgif) ; mêmes indices de couleur, palettes et codes d'erreur
+perimetre:
+  - Décodage GIF (DGifSlurp, DGifGetLine)
+hors_perimetre:
+  - Encodage GIF
+  - Outils en ligne de commande
+statut: a_venir
+phase_ouverture: 3
+palier_mainteneur: aucun
+metriques:
+  - id: debit_decodage
+    description: Débit de décodage sur le corpus GIF de référence
+    unite: Mpixels/s
+    sens: plus_haut
+  - id: debit_animation
+    description: Trames décodées par seconde sur les GIF animés du corpus
+    unite: trames/s
+    sens: plus_haut
+  - id: latence_icones
+    description: Temps moyen de décodage d'une petite icône (moins de 64 × 64)
+    unite: µs
+    sens: plus_bas
+  - id: memoire_max_ko
+    description: Pic de tas pendant DGifSlurp
+    unite: Ko
+    sens: plus_bas
+chemins_hors_decompte:
+  - "bee/**"
+  - "tests/**"
+chemins_juges:
+  - "bee/tests/**"
+  - "bee/bench/**"
+  - "bee/corpus/**"
+  - "bee/fuzz/**"
+  - "tests/**"
+  - ".github/**"
