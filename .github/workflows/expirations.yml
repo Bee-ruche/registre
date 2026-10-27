@@ -35,8 +35,16 @@ jobs:
           if ! git diff --quiet; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            python3 outils/bee.py valider
-            git commit -am "Libération des réservations expirées (R7)"
-            git push origin HEAD:main
-            gh workflow run site.yml --ref main || true
+            git commit -qam "Libération des réservations expirées (R7)"
+            # main a pu avancer pendant ce passage (fusions libre-service) : se rebaser, revalider, réessayer.
+            for essai in 1 2 3; do
+              if git pull -q --rebase origin main && python3 outils/bee.py valider && git push origin HEAD:main; then
+                gh workflow run site.yml --ref main || true
+                exit 0
+              fi
+              git rebase --abort 2>/dev/null || true
+              sleep $((essai * 10))
+            done
+            echo "::error::publication impossible après 3 essais ; le prochain passage refera le travail (idempotent)."
+            exit 1
           fi

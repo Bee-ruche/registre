@@ -27,7 +27,8 @@
         "ecart_declare": {"type": ["number", "null"]},
         "amorcage": {"type": "boolean"},
         "sha": {"type": "string", "pattern": "^[0-9a-f]{7,40}$"},
-        "execution": {"type": "string", "pattern": "^https://"}
+        "execution": {"type": "string", "pattern": "^https://"},
+        "degradations": {"type": "object", "additionalProperties": {"type": ["number", "null"]}}
       }
     },
     "relectures": {
@@ -42,7 +43,8 @@
           "motif": {"type": "string", "minLength": 10},
           "le": {"type": "string"},
           "defaut_signale": {"type": "boolean"},
-          "defaut_confirme": {"type": "boolean"}
+          "defaut_confirme": {"type": "boolean"},
+          "sha": {"type": "string", "pattern": "^[0-9a-f]{7,40}$"}
         }
       }
     },

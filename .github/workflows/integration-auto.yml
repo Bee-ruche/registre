@@ -1,18 +1,21 @@
-# Intègre sans humain les contributions qui satisfont la règle R3.
+# Intègre les contributions qui satisfont la règle R3, et clôt celles qui ont été abandonnées.
 #
 # Pour chaque contribution en relecture, l'outil bee de la branche principale décide seul
-# (bee verifier-acceptation : CI verte + relectures + vote pondéré de la ruche + fenêtre écoulée).
-# Si c'est bon, la PR du projet est fusionnée (fusion côté serveur : le code du fork n'est JAMAIS
-# exécuté ici), puis bee integrer passe la contribution et sa tâche en « integree ». Aucun humain.
+# (bee verifier-acceptation : CI verte, R4/R5, relectures sur le commit jugé, avis défavorables,
+# vote pondéré, fenêtre, porte humaine temporaire). Si c'est bon :
+#   - la PR n'est fusionnée QUE sur le commit que la CI a jugé (--match-head-commit) ;
+#   - une PR déjà fusionnée à la main (par le conseil, pendant la porte humaine) est consignée si et
+#     seulement si elle l'a été sur ce même commit ;
+#   - puis bee integrer passe la contribution et sa tâche en « integree ».
+# Une PR fermée sans fusion fait clore la contribution (bee cloturer) et rouvrir sa tâche.
 #
-# Sécurité : seul l'outil bee de main s'exécute ; les fichiers des forks sont des données.
+# Sécurité : seul l'outil bee de main s'exécute ; les fichiers des forks sont des données, et la
+# fusion se fait côté serveur (le code du fork n'est jamais exécuté ici).
 #
-# Jeton de fusion :
-#   - dépôt du projet = ce dépôt (architecture répartie, un dépôt par projet) → le jeton par défaut suffit ;
-#   - dépôt distinct (fork séparé) → secret d'organisation BEE_INTEGRATION_TOKEN. Absent, la fusion
-#     distante est sautée et la contribution reste en relecture. NE PAS le créer tant que le juge n'est
-#     pas sûr (docs/architecture.md, étape 2 bis) : aujourd'hui le verdict peut être influencé par la PR
-#     jugée et n'est pas lié au commit fusionné.
+# Jeton de fusion : PR dans ce dépôt → jeton par défaut ; PR sur un fork → secret
+# BEE_INTEGRATION_TOKEN. NE PAS créer ce secret tant que le juge n'est pas sûr (docs/architecture.md,
+# étape 2 bis). Sans lui, une contribution intégrable attend que le conseil fusionne la PR à la main ;
+# le passage suivant de ce workflow consigne alors l'intégration.
 name: Intégration automatique
 
 on:
@@ -22,6 +25,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
   actions: write
 
 concurrency:
@@ -40,35 +44,41 @@ jobs:
           python-version: "3.12"
       - name: Dépendances
         run: pip install -r outils/requirements.txt
-      - name: Intégrer ce qui satisfait R3
+      - name: Intégrer ce qui satisfait R3, clore ce qui est abandonné
         env:
-          GH_TOKEN_DEFAUT: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
           BEE_INTEGRATION_TOKEN: ${{ secrets.BEE_INTEGRATION_TOKEN }}
         run: |
           python3 outils/bee.py en-attente \
-            | python3 -c 'import json, sys; [print(c["id"], c["pr"], sep="\t") for c in json.load(sys.stdin) if c.get("pr")]' \
+            | python3 -c 'import json, sys; [print(c["id"], c["pr"], c.get("sha_verdict") or "-", sep="\t") for c in json.load(sys.stdin) if c.get("pr")]' \
             > a_integrer.tsv
-          while IFS=$'\t' read -r id pr; do
-            # Décision mécanique de la ruche (R3), sans humain. Non intégrable → on passe.
-            python3 outils/bee.py verifier-acceptation "$id" || continue
+          while IFS=$'\t' read -r id pr sha; do
             depot=$(printf '%s' "$pr" | sed -E 's#^https://github\.com/([A-Za-z0-9-]+/[A-Za-z0-9_.-]+)/pull/[0-9]+$#\1#')
-            if [ "$depot" = "$GITHUB_REPOSITORY" ]; then
-              jeton="$GH_TOKEN_DEFAUT"
-            else
-              jeton="$BEE_INTEGRATION_TOKEN"
-            fi
-            if [ -z "$jeton" ]; then
-              echo "::notice::$id : fusion sur $depot impossible sans BEE_INTEGRATION_TOKEN ; laissée en relecture."
+            infos=$(gh pr view "$pr" --json state,headRefOid,mergeCommit \
+              --jq '"\(.state) \(.headRefOid) \(.mergeCommit.oid // "-")"') || continue
+            read -r etat tete fusion <<< "$infos"
+            if [ "$etat" = "CLOSED" ]; then
+              python3 outils/bee.py cloturer "$id" --motif "PR fermée sans fusion." || true
               continue
             fi
-            etat=$(GH_TOKEN="$jeton" gh pr view "$pr" --json state --jq .state) || continue
-            if [ "$etat" != "MERGED" ]; then
-              GH_TOKEN="$jeton" gh pr merge "$pr" --merge --delete-branch=false \
-                || { echo "::warning::$id : fusion impossible (conflit à rebaser, ou PR non mergeable) ; laissée en relecture."; continue; }
+            python3 outils/bee.py verifier-acceptation "$id" || continue
+            if [ "$sha" = "-" ]; then
+              echo "::notice::$id : verdict sans commit associé ; laissée en relecture."; continue
             fi
-            sha=$(GH_TOKEN="$jeton" gh pr view "$pr" --json mergeCommit --jq '.mergeCommit.oid // ""')
-            if [ -n "$sha" ]; then
-              python3 outils/bee.py integrer "$id" --fusion-sha "$sha" || true
+            if [ "$tete" != "$sha" ]; then
+              echo "::notice::$id : la PR est sur $tete, le verdict sur $sha ; on attend le verdict du nouveau commit."; continue
+            fi
+            if [ "$etat" != "MERGED" ]; then
+              if [ "$depot" = "$GITHUB_REPOSITORY" ]; then jeton="$GH_TOKEN"; else jeton="$BEE_INTEGRATION_TOKEN"; fi
+              if [ -z "$jeton" ]; then
+                echo "::notice::$id : intégrable ; la PR $pr attend sa fusion (pas de jeton d'intégration)."; continue
+              fi
+              GH_TOKEN="$jeton" gh pr merge "$pr" --merge --match-head-commit "$sha" --delete-branch=false \
+                || { echo "::warning::$id : fusion refusée (conflit à rebaser, ou nouveau commit) ; laissée en relecture."; continue; }
+              fusion=$(GH_TOKEN="$jeton" gh pr view "$pr" --json mergeCommit --jq '.mergeCommit.oid // "-"')
+            fi
+            if [ "$fusion" != "-" ]; then
+              python3 outils/bee.py integrer "$id" --fusion-sha "$fusion" || true
             else
               python3 outils/bee.py integrer "$id" || true
             fi
@@ -81,8 +91,16 @@ jobs:
           if ! git diff --quiet; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            python3 outils/bee.py valider
-            git commit -am "Intégrations automatiques (R3, sans humain)"
-            git push origin HEAD:main
-            gh workflow run site.yml --ref main || true
+            git commit -qam "Intégrations et clôtures automatiques (R3)"
+            # main a pu avancer pendant ce passage (fusions libre-service) : se rebaser, revalider, réessayer.
+            for essai in 1 2 3; do
+              if git pull -q --rebase origin main && python3 outils/bee.py valider && git push origin HEAD:main; then
+                gh workflow run site.yml --ref main || true
+                exit 0
+              fi
+              git rebase --abort 2>/dev/null || true
+              sleep $((essai * 10))
+            done
+            echo "::error::publication impossible après 3 essais ; le prochain passage refera le travail (idempotent)."
+            exit 1
           fi

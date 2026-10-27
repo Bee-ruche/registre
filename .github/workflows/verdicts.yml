@@ -34,12 +34,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           python3 outils/bee.py en-attente \
-            | python3 -c 'import json, sys; [print(c["id"], c["pr"], c.get("sha_verdict") or "-", sep="\t") for c in json.load(sys.stdin)]' \
+            | python3 -c 'import json, sys; [print(c["id"], c["pr"], c.get("sha_verdict") or "-", c.get("ci_verdict") or "-", sep="\t") for c in json.load(sys.stdin)]' \
             > a_traiter.tsv
-          while IFS=$'\t' read -r id pr sha_connu; do
+          while IFS=$'\t' read -r id pr sha_connu ci_connue; do
             depot=$(printf '%s' "$pr" | sed -E 's#^https://github\.com/([A-Za-z0-9-]+/[A-Za-z0-9_.-]+)/pull/[0-9]+$#\1#')
             sha=$(gh pr view "$pr" --json headRefOid --jq .headRefOid) || continue
-            [ "$sha" = "$sha_connu" ] && continue
+            # Un verdict vert sur ce commit est définitif ; un rouge peut venir d'une panne passagère
+            # (runner indisponible) : on relit la dernière exécution terminée, qui a pu être relancée.
+            [ "$sha" = "$sha_connu" ] && [ "$ci_connue" = "verte" ] && continue
             execution=$(gh run list -R "$depot" --commit "$sha" --workflow bee-ci.yml --status completed --limit 1 \
               --json databaseId,url --jq '.[0] | "\(.databaseId) \(.url)"')
             [ -z "$execution" ] && continue
@@ -62,8 +64,16 @@ jobs:
           if ! git diff --quiet; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            python3 outils/bee.py valider
-            git commit -am "Verdicts des forks"
-            git push origin HEAD:main
-            gh workflow run site.yml --ref main || true
+            git commit -qam "Verdicts des forks"
+            # main a pu avancer pendant ce passage (fusions libre-service) : se rebaser, revalider, réessayer.
+            for essai in 1 2 3; do
+              if git pull -q --rebase origin main && python3 outils/bee.py valider && git push origin HEAD:main; then
+                gh workflow run site.yml --ref main || true
+                exit 0
+              fi
+              git rebase --abort 2>/dev/null || true
+              sleep $((essai * 10))
+            done
+            echo "::error::publication impossible après 3 essais ; le prochain passage refera le travail (idempotent)."
+            exit 1
           fi

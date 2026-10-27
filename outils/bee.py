@@ -752,9 +752,25 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None):
             if statut_git == "A":
                 natures.append("soumission")
                 if exiger(isinstance(nouveau, dict), f"{chemin} : fichier illisible"):
+                    cid = pathlib.PurePosixPath(chemin).stem
                     exiger(nouveau.get("auteur") == auteur, f"{chemin} : l'auteur déclaré doit être {auteur}")
                     exiger(nouveau.get("statut") == "en_relecture" and not nouveau.get("relectures") and "verdict" not in nouveau,
                            f"{chemin} : une contribution naît en_relecture, sans relecture ni verdict")
+                    # Pas de soumission sans réservation : la même PR fait passer la tâche, réservée par
+                    # l'auteur, en relecture avec cette contribution (contrôlé aussi côté tâche).
+                    t = reg.taches.get(nouveau.get("tache") or "", (None, {}))[1]
+                    exiger(t.get("statut") == "en_relecture" and t.get("contribution") == cid,
+                           f"{chemin} : la PR doit aussi passer la tâche {nouveau.get('tache')} (réservée par {auteur}) "
+                           f"en relecture avec la contribution {cid} : bee soumettre le fait")
+                    # La fenêtre d'ouverture de R3 part de soumise_le : il doit être l'heure réelle.
+                    try:
+                        soumise = lire_instant(nouveau.get("soumise_le"), chemin)
+                        exiger(instant - dt.timedelta(hours=2) <= soumise <= instant + dt.timedelta(minutes=10),
+                               f"{chemin} : soumise_le doit être l'heure de la soumission (à 2 h près) ; relancez bee soumettre")
+                    except ErreurBee as e:
+                        problemes.append(str(e))
+                    autres = [i for i, (_, e) in reg.enregistrements.items() if i != cid and e.get("pr") == nouveau.get("pr")]
+                    exiger(not autres, f"{chemin} : la PR {nouveau.get('pr')} est déjà liée à {', '.join(autres)}")
                 continue
             if statut_git == "D":
                 natures.append("gouvernance")
@@ -766,6 +782,8 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None):
             differences = {k for k in set(ancien) | set(nouveau) if ancien.get(k) != nouveau.get(k)}
             if differences == {"relectures"}:
                 natures.append("relecture")
+                exiger(ancien.get("statut") == "en_relecture",
+                       f"{chemin} : on ne relit qu'une contribution en relecture (statut : {ancien.get('statut')})")
                 anciennes, nouvelles = ancien.get("relectures") or [], nouveau.get("relectures") or []
                 if exiger(nouvelles[:len(anciennes)] == anciennes, f"{chemin} : les relectures sont en ajout seul"):
                     for r in nouvelles[len(anciennes):]:
@@ -1157,6 +1175,9 @@ def cmd_relire(args):
     if any(r.get("relecteur") == args.utilisateur for r in enr.get("relectures") or []):
         raise ErreurBee(f"{args.utilisateur} a déjà relu {args.contribution}")
     relecture = {"relecteur": args.utilisateur, "avis": args.avis, "motif": args.motif, "le": en_iso(maintenant())}
+    sha = (enr.get("verdict") or {}).get("sha")
+    if sha:
+        relecture["sha"] = sha  # la relecture porte sur ce commit ; un nouveau push la rend caduque (R3)
     if args.defaut:
         relecture["defaut_signale"] = True
     enr = dict(enr)
@@ -1307,10 +1328,21 @@ def cmd_enregistrer_verdict(args):
         verdict["au_dela_du_bruit"] = bool(brut["au_dela_du_bruit"])
     if brut.get("amorcage"):
         verdict["amorcage"] = True  # juges venus de la PR elle-même : à signaler aux relecteurs
+    degradations = brut.get("degradations")
+    if isinstance(degradations, dict):
+        # R5 : métriques dégradées au-delà du bruit, avec leur gain relatif (négatif = pire).
+        verdict["degradations"] = {str(m): (float(g) if isinstance(g, (int, float)) and not isinstance(g, bool) else None)
+                                   for m, g in degradations.items()}
     lignes = args.lignes if args.lignes is not None else brut.get("lignes_modifiees")
     if lignes is None:
         raise ErreurBee("nombre de lignes modifiées inconnu : passez --lignes ou fournissez lignes_modifiees dans le verdict")
-    verdict["lignes_modifiees"] = int(lignes)
+    try:
+        lignes = int(lignes)
+    except (TypeError, ValueError):
+        raise ErreurBee(f"lignes_modifiees illisible : {lignes!r}")
+    if lignes < 0:
+        raise ErreurBee(f"lignes_modifiees négatif ({lignes}) : verdict refusé")
+    verdict["lignes_modifiees"] = lignes
     if args.manifeste:
         declare = gain_declare(reg, lire_yaml(args.manifeste), reg.tache(enr["tache"])[1])
         verdict["ecart_declare"] = round(abs(declare - verdict["gain"]), 4) if declare is not None and verdict["gain"] is not None else None
@@ -1411,12 +1443,33 @@ def raisons_acceptation(reg, cid):
         gain, seuil = verdict.get("gain"), float(cfg.get("gain_minimal", 0.02))
         exiger(gain is not None and gain >= seuil, f"gain {gain} sous le seuil {seuil} (R4)")
         exiger(bool(verdict.get("au_dela_du_bruit")), "gain pas au-delà du bruit (R4)")
+    tolerance = float(cfg.get("degradation_max_autres", 0.01))
+    hors_tolerance = {m: g for m, g in (verdict.get("degradations") or {}).items()
+                      if m != tache.get("metrique") and (g is None or g < -tolerance)}
+    exiger(not hors_tolerance, "R5 : métrique(s) dégradée(s) au-delà de la tolérance : "
+           + ", ".join(f"{m} ({'?' if g is None else f'{100 * g:+.1f} %'})" for m, g in hors_tolerance.items()))
 
     relectures = enr.get("relectures") or []
     exiger(not any(r.get("defaut_confirme") for r in relectures), "un défaut confirmé reste à résoudre")
-    favorables = [r for r in relectures if r.get("avis") == "favorable" and r.get("relecteur") != auteur]
+    sha_verdict = verdict.get("sha")
+
+    def actuelle(r):
+        """Une relecture ne vaut que pour le commit qu'elle a relu (celui du verdict)."""
+        return not sha_verdict or r.get("sha") == sha_verdict
+
+    autres = [r for r in relectures if r.get("relecteur") != auteur]
+    favorables = [r for r in autres if r.get("avis") == "favorable" and actuelle(r)]
+    defavorables = [r for r in autres if r.get("avis") == "defavorable" and actuelle(r)]
+    perimees = [r for r in autres if not actuelle(r)]
     requises = min(int(cfg.get("relectures_requises", 2)), len(eligibles))
-    exiger(len(favorables) >= requises, f"{len(favorables)} relecture(s) favorable(s) sur {requises} requise(s)")
+    exiger(len(favorables) >= requises, f"{len(favorables)} relecture(s) favorable(s) sur {requises} requise(s)"
+           + (f" ; {len(perimees)} relecture(s) portent sur un commit antérieur et ne comptent plus" if perimees else ""))
+    exiger(not defavorables or len(favorables) > len(defavorables),
+           f"{len(defavorables)} relecture(s) défavorable(s) contre {len(favorables)} favorable(s)")
+    bloquantes = sorted({r.get("relecteur") for r in defavorables
+                         if r.get("relecteur") in reg.conseil or niveau_de(niveaux, r.get("relecteur")) == "Confirmé"})
+    exiger(not bloquantes, f"relecture défavorable de {', '.join(bloquantes)} (conseil ou Confirmé) : "
+           "elle bloque jusqu'à un nouveau commit, qui la rend caduque")
     if [m for m in eligibles if niveau_de(niveaux, m) == "Confirmé"]:
         exiger(any(niveau_de(niveaux, r.get("relecteur")) == "Confirmé" for r in favorables),
                "aucune relecture favorable d'un Confirmé (il en faut une quand un Confirmé est disponible)")
@@ -1491,9 +1544,35 @@ def cmd_integrer(args):
     return 0
 
 
+def cmd_cloturer(args):
+    """Sortie automatique : clôt une contribution abandonnée (PR fermée sans fusion).
+
+    La contribution passe en « annulee » et sa tâche est rouverte, avec une note pour l'agent suivant.
+    Sans cela, une contribution abandonnée verrouillerait sa tâche pour toujours.
+    """
+    reg = Registre(args.registre)
+    chemin, enr = reg.enregistrement(args.contribution)
+    if enr.get("statut") != "en_relecture":
+        print(f"{args.contribution} n'est pas en relecture (statut : {enr.get('statut')}) ; rien à clore.")
+        return 1
+    enr = dict(enr)
+    enr["statut"] = "annulee"
+    enr["decidee_le"] = en_iso(maintenant())
+    enr["motif_decision"] = args.motif
+    ecrire_yaml(chemin, enr)
+    chemin_tache, tache = reg.tache(enr["tache"])
+    if tache.get("contribution") == args.contribution and tache.get("statut") == "en_relecture":
+        modifier_tache(chemin_tache, statut="ouverte", reservation=None, contribution=None,
+                       note={"par": args.par, "le": en_iso(maintenant()),
+                             "texte": f"{args.contribution} close sans intégration : {args.motif} Tâche rouverte."})
+    print(f"✓ {args.contribution} close (annulee) ; tâche {enr['tache']} rouverte.")
+    return 0
+
+
 def cmd_en_attente(args):
     reg = Registre(args.registre)
-    resultat = [{"id": cid, "pr": enr.get("pr"), "sha_verdict": (enr.get("verdict") or {}).get("sha")}
+    resultat = [{"id": cid, "pr": enr.get("pr"), "sha_verdict": (enr.get("verdict") or {}).get("sha"),
+                 "ci_verdict": (enr.get("verdict") or {}).get("ci")}
                 for cid, (_, enr) in sorted(reg.enregistrements.items()) if enr.get("statut") == "en_relecture"]
     print(json.dumps(resultat, ensure_ascii=False, indent=2))
     return 0
@@ -1697,6 +1776,12 @@ def construire_analyseur():
                 "Intègre une contribution si R3 est satisfaite : passe contribution et tâche en « integree ». Utilisé par le workflow de confiance.")
     p.add_argument("contribution", help="id de la contribution (ex. miniz-0012-c1)")
     p.add_argument("--fusion-sha", help="SHA du commit de fusion sur le dépôt du projet, consigné dans la contribution")
+
+    p = ajouter("cloturer", cmd_cloturer,
+                "Clôt une contribution abandonnée (PR fermée sans fusion) et rouvre sa tâche. Utilisé par le workflow de confiance.")
+    p.add_argument("contribution", help="id de la contribution (ex. miniz-0012-c1)")
+    p.add_argument("--motif", required=True, help="raison de la clôture (ex. « PR fermée sans fusion »)")
+    p.add_argument("--par", default="github-actions[bot]", help="signature de la note laissée sur la tâche")
 
     p = ajouter("verifier-pr", cmd_verifier_pr, "Vérifie une pull request sur le registre (utilisé par la CI).")
     p.add_argument("--base", required=True)

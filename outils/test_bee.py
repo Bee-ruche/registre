@@ -275,6 +275,73 @@ class TestRegistre(BaseTest):
         self.assertEqual(code, 0, texte)
         self.assertIn("Aucune validation humaine requise", texte)
 
+    # --- Tests adverses de R3 (revue du 27/10) ---
+
+    def test_adverse_r3_defavorable_du_conseil_bloque(self):
+        cid = self.preparer_contribution_verte("alice", ("bruno", "chloe"))
+        self.assertEqual(self.bee("relire", cid, "--utilisateur", "bidji29", "--avis", "defavorable",
+                                  "--motif", "Lecture hors limites possible ligne 120.")[0], 0)
+        code, texte = self.bee("verifier-acceptation", cid)
+        self.assertEqual(code, 1, texte)
+        self.assertIn("défavorable de bidji29", texte)
+
+    def test_adverse_r3_defavorables_non_ignores(self):
+        self.regler_porte_humaine(False)
+        cid = self.preparer_contribution_verte("alice", ("bruno",))
+        self.assertEqual(self.bee("relire", cid, "--utilisateur", "chloe", "--avis", "defavorable",
+                                  "--motif", "Le gain disparaît sur ARM64.")[0], 0)
+        code, texte = self.bee("verifier-acceptation", cid)
+        self.assertEqual(code, 1, texte)
+        self.assertIn("défavorable(s) contre", texte)
+
+    def test_adverse_r3_r5_degradation(self):
+        self.regler_porte_humaine(False)
+        cid = self.soumettre_0099()
+        verdict = self.dossier / "verdict.json"
+        verdict.write_text(json.dumps({"ci": "verte", "gain": 0.05, "au_dela_du_bruit": True, "lignes_modifiees": 10,
+                                       "degradations": {"ratio_n6": -0.40, "memoire_max_ko": -0.004}}), encoding="utf-8")
+        self.assertEqual(self.bee("enregistrer-verdict", cid, "--verdict", str(verdict), "--sha", "abc1234")[0], 0)
+        os.environ["BEE_MAINTENANT"] = "2026-10-29T12:00:00Z"
+        code, texte = self.bee("verifier-acceptation", cid)
+        self.assertEqual(code, 1, texte)
+        self.assertIn("R5", texte)
+        self.assertIn("ratio_n6", texte)
+        self.assertNotIn("memoire_max_ko", texte, "une dégradation sous la tolérance de 1 % ne bloque pas")
+
+    def test_adverse_r3_relectures_d_un_ancien_commit(self):
+        cid = self.preparer_contribution_verte("alice", ("bruno", "chloe", "bidji29"))
+        self.assertEqual(self.bee("voter", cid, "--utilisateur", "bidji29", "--valeur", "1")[0], 0)
+        self.assertEqual(self.bee("verifier-acceptation", cid)[0], 0)
+        # L'auteur pousse un nouveau commit : le nouveau verdict porte sur def5678, les relectures sur abc1234.
+        verdict = self.dossier / "verdict.json"
+        self.assertEqual(self.bee("enregistrer-verdict", cid, "--verdict", str(verdict), "--sha", "def5678")[0], 0)
+        code, texte = self.bee("verifier-acceptation", cid)
+        self.assertEqual(code, 1, texte)
+        self.assertIn("commit antérieur", texte)
+
+    def test_adverse_verdict_incoherent_refuse(self):
+        cid = self.soumettre_0099()
+        verdict = self.dossier / "verdict.json"
+        verdict.write_text(json.dumps({"ci": "verte", "gain": 0.05, "lignes_modifiees": -5}), encoding="utf-8")
+        code, texte = self.bee("enregistrer-verdict", cid, "--verdict", str(verdict), "--sha", "abc1234")
+        self.assertEqual(code, 1, texte)
+        self.assertNotIn("verdict", bee.Registre(self.dossier).enregistrement(cid)[1])
+        self.valide()
+
+    def test_cloturer_rouvre_la_tache(self):
+        cid = self.soumettre_0099()
+        code, texte = self.bee("cloturer", cid, "--motif", "PR fermée sans fusion.")
+        self.assertEqual(code, 0, texte)
+        _, enr = bee.Registre(self.dossier).enregistrement(cid)
+        self.assertEqual(enr["statut"], "annulee")
+        tache = self.tache("miniz-0099")
+        self.assertEqual(tache["statut"], "ouverte")
+        self.assertNotIn("contribution", tache)
+        self.assertNotIn("reservation", tache)
+        self.assertIn(cid, tache["notes"][-1]["texte"])
+        self.valide()
+        self.assertEqual(self.bee("cloturer", cid, "--motif", "Encore.")[0], 1)
+
     def test_integrer_refuse_sans_acceptation(self):
         cid = self.soumettre_0099()  # pas de verdict, pas de relecture, fenêtre non écoulée
         code, texte = self.bee("integrer", cid)
@@ -479,6 +546,69 @@ class TestPullRequests(BaseTest):
         self.assertEqual(self.verifier("bruno")[0], 1)
         code, texte = self.verifier("chloe", "--fusion-auto")
         self.assertEqual(code, 0, texte)
+
+    # --- Tests adverses (revue du 27/10) : chaque contournement connu doit être refusé. ---
+
+    def test_adverse_soumission_sans_reservation(self):
+        git(self.dossier, "switch", "-qc", "sans-reservation")
+        bee.ecrire_yaml(self.dossier / "contributions/miniz/miniz-0099-c1.yaml", {
+            "id": "miniz-0099-c1", "tache": "miniz-0099", "auteur": "alice",
+            "pr": "https://github.com/Bee-ruche/minizBee/pull/7", "statut": "en_relecture",
+            "soumise_le": "2026-10-27T12:00:00Z", "relectures": []})
+        self.commit()
+        code, texte = self.verifier("alice", "--fusion-auto")
+        self.assertEqual(code, 1, texte)
+        self.assertIn("bee soumettre le fait", texte)
+
+    def reserver_sur_main(self, *taches):
+        for t in taches:
+            self.assertEqual(self.bee("prendre", t, "--utilisateur", "alice")[0], 0)
+        self.commit("réservations")
+
+    def test_adverse_soumission_antidatee(self):
+        self.reserver_sur_main("miniz-0099")
+        git(self.dossier, "switch", "-qc", "soumission")
+        self.assertEqual(self.bee("soumettre", "miniz-0099", "--utilisateur", "alice",
+                                  "--pr", "https://github.com/Bee-ruche/minizBee/pull/7")[0], 0)
+        self.commit()
+        code, texte = self.verifier("alice", "--fusion-auto")
+        self.assertEqual(code, 0, f"le parcours légitime doit passer : {texte}")
+        chemin = self.dossier / "contributions/miniz/miniz-0099-c1.yaml"
+        enr = bee.lire_yaml(chemin)
+        enr["soumise_le"] = "2020-01-01T00:00:00Z"  # pour faire croire la fenêtre de R3 écoulée
+        bee.ecrire_yaml(chemin, enr)
+        self.commit("antidatée")
+        code, texte = self.verifier("alice", "--fusion-auto")
+        self.assertEqual(code, 1, texte)
+        self.assertIn("soumise_le", texte)
+
+    def test_adverse_pr_deja_liee(self):
+        self.reserver_sur_main("miniz-0099", "miniz-9001")
+        git(self.dossier, "switch", "-qc", "doublon")
+        for t in ("miniz-0099", "miniz-9001"):
+            self.assertEqual(self.bee("soumettre", t, "--utilisateur", "alice",
+                                      "--pr", "https://github.com/Bee-ruche/minizBee/pull/7")[0], 0)
+        self.commit()
+        code, texte = self.verifier("alice", "--fusion-auto")
+        self.assertEqual(code, 1, texte)
+        self.assertIn("déjà liée", texte)
+
+    def test_adverse_relecture_retroactive(self):
+        cid = self.soumettre_0099()
+        chemin = self.dossier / f"contributions/miniz/{cid}.yaml"
+        enr = bee.lire_yaml(chemin)
+        enr["statut"] = "integree"
+        bee.ecrire_yaml(chemin, enr)
+        bee.modifier_tache(self.dossier / "taches/miniz/miniz-0099.yaml", statut="integree")
+        self.commit("intégrée")
+        git(self.dossier, "switch", "-qc", "retroactive")
+        enr["relectures"] = [{"relecteur": "bruno", "avis": "favorable", "motif": "Relue après coup pour les points.",
+                              "le": "2026-10-27T12:00:00Z"}]
+        bee.ecrire_yaml(chemin, enr)
+        self.commit()
+        code, texte = self.verifier("bruno", "--fusion-auto")
+        self.assertEqual(code, 1, texte)
+        self.assertIn("qu'une contribution en relecture", texte)
 
     def test_mesure_libre_service(self):
         cid = self.soumettre_0099()
