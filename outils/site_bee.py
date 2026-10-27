@@ -249,14 +249,18 @@ def generer(bee, reg, sortie):
     for p in projets:
         siennes = [t for t in taches if t.get("projet") == p.get("id")]
         faites = sum(1 for t in siennes if t.get("statut") == "integree")
-        if p.get("statut") == "actif":
+        repartil = p.get("depot_registre")
+        if repartil:
+            resume = "registre réparti"
+        elif p.get("statut") == "actif":
             resume = f"{len(siennes)} tâche{'s' if len(siennes) > 1 else ''}, {faites} intégrée{'s' if faites > 1 else ''}"
         else:
             resume = f"ouvre en phase {p.get('phase_ouverture')}"
         categorie = reg.categories.get(p.get("categorie"), {}).get("nom", p.get("categorie", ""))
+        lien_shard = f" · <a href='{e(repartil)}'>dépôt du projet ↗</a>" if repartil else ""
         corps.append(
             f"<section class='rayon' aria-labelledby='r-{e(p['id'])}'><h3 id='r-{e(p['id'])}'><a href='projets/{e(p['id'])}.html'>{e(p.get('nom', p['id']))}</a></h3>"
-            f"<p class='doux'>{e(categorie)}, {e(resume)}</p>{rayon_svg(reg, siennes, '') if siennes else ''}</section>")
+            f"<p class='doux'>{e(categorie)}, {e(resume)}{lien_shard}</p>{rayon_svg(reg, siennes, '') if siennes else ''}</section>")
     corps.append("</div>")
     corps.append(legende())
 
@@ -345,6 +349,7 @@ def generer(bee, reg, sortie):
              f"<dt>Licence</dt><dd>{e(p.get('licence', ''))}</dd>",
              f"<dt>Statut</dt><dd>{'actif' if p.get('statut') == 'actif' else 'ouvre en phase ' + str(p.get('phase_ouverture'))}</dd>",
              f"<dt>Référence</dt><dd>{e(p.get('reference', ''))}</dd>",
+             (f"<dt>Registre</dt><dd>réparti — <a href='{e(p['depot_registre'])}'>{e(p['depot_registre'])}</a></dd>" if p.get("depot_registre") else ""),
              f"<dt>Dans le périmètre</dt><dd>{e(', '.join(p.get('perimetre') or []))}</dd>",
              f"<dt>Hors périmètre</dt><dd>{e(', '.join(p.get('hors_perimetre') or []))}</dd>",
              f"<dt>Preuve exigée</dt><dd>{e(categorie.get('preuve', ''))}</dd>",
@@ -355,12 +360,16 @@ def generer(bee, reg, sortie):
                           f"<td>{'plus haut' if m.get('sens') == 'plus_haut' else 'plus bas'}</td></tr>" for m in p.get("metriques") or []]))
         c.append("<p class='doux petit'>Une optimisation ne peut pas modifier ces chemins, qui la jugent : " + ", ".join(f"<code>{e(x)}</code>" for x in p.get("chemins_juges") or []) + ".</p>")
         c.append("<h2>Tâches</h2>")
-        lignes = []
-        for t in siennes:
-            libelle, classe = etat_tache(reg, t)
-            lignes.append(f"<tr><td><a class='id' href='../taches/{e(t['id'])}.html'>{e(t['id'])}</a></td><td>{e(t.get('titre', ''))}</td>"
-                          f"<td>{e(t.get('type', ''))}</td><td>{e(t.get('taille', ''))}</td><td><span class='statut'><svg width='14' height='16' viewBox='0 0 14 16' aria-hidden='true'>{alveole(7, 8, 6, classe)}</svg>{e(libelle)}</span></td></tr>")
-        c.append(tableau([("Tâche", False), ("Titre", False), ("Type", False), ("Taille", False), ("Statut", False)], lignes, vide="Aucune tâche pour ce projet pour l'instant.", classe_table="t-projet"))
+        if p.get("depot_registre"):
+            c.append(f"<p class='doux'>Ce projet a son propre registre réparti : tâches, contributions et votes "
+                     f"vivent dans <a href='{e(p['depot_registre'])}'>{e(p['depot_registre'])}</a>, avec sa propre CI.</p>")
+        else:
+            lignes = []
+            for t in siennes:
+                libelle, classe = etat_tache(reg, t)
+                lignes.append(f"<tr><td><a class='id' href='../taches/{e(t['id'])}.html'>{e(t['id'])}</a></td><td>{e(t.get('titre', ''))}</td>"
+                              f"<td>{e(t.get('type', ''))}</td><td>{e(t.get('taille', ''))}</td><td><span class='statut'><svg width='14' height='16' viewBox='0 0 14 16' aria-hidden='true'>{alveole(7, 8, 6, classe)}</svg>{e(libelle)}</span></td></tr>")
+            c.append(tableau([("Tâche", False), ("Titre", False), ("Type", False), ("Taille", False), ("Statut", False)], lignes, vide="Aucune tâche pour ce projet pour l'instant.", classe_table="t-projet"))
         (sortie / "projets" / f"{p['id']}.html").write_text(page(f"{p.get('nom', p['id'])}, projet Bee", "".join(c), 1, "", reg, horodatage), encoding="utf-8")
 
     # ---------- tâches ----------

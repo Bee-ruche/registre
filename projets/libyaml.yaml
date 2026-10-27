@@ -50,3 +50,4 @@ commandes:
   tests: bee/tests/lancer.sh
   banc_ab: python3 bee/bench/ab.py --base upstream/master --candidate HEAD
   fuzz: bee/fuzz/lancer.sh 600
+depot_registre: https://github.com/Bee-ruche/libyamlBee

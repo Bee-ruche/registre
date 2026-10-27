@@ -646,7 +646,8 @@ def git(depot, *arguments):
 
 
 def lire_yaml_ref(depot, ref, chemin):
-    resultat = subprocess.run(["git", "-C", str(depot), "show", f"{ref}:{chemin}"], capture_output=True, text=True)
+    # `./` : git résout le chemin par rapport au dossier -C (utile quand le registre est un sous-dossier, cas réparti).
+    resultat = subprocess.run(["git", "-C", str(depot), "show", f"{ref}:./{chemin}"], capture_output=True, text=True)
     if resultat.returncode != 0:
         return None
     return charger_texte_yaml(resultat.stdout, f"{ref}:{chemin}")
@@ -659,7 +660,10 @@ def correspond(chemin, motifs):
 def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None):
     """Renvoie (problèmes, natures). `reg` doit refléter l'état de la tête de la PR."""
     instant = instant or maintenant()
-    sorties = git(reg.racine, "diff", "--name-status", "--no-renames", f"{base}...{tete}")
+    # --relative : chemins relatifs à la racine du registre, et ne voit que ce sous-arbre.
+    # Au central (racine = racine du dépôt) c'est sans effet ; en réparti (registre dans un sous-dossier),
+    # cela scope la vérification au registre et ignore les fichiers de code de la même PR.
+    sorties = git(reg.racine, "diff", "--name-status", "--no-renames", "--relative", f"{base}...{tete}")
     changements = [ligne.split("\t", 1) for ligne in sorties.splitlines() if ligne.strip()]
     est_conseil = auteur in reg.conseil
     est_robot = auteur in reg.robots
@@ -1505,7 +1509,8 @@ def cmd_publier(args):
     reg = Registre(args.registre)
     depot = reg.racine
     organisation = reg.config.get("organisation", "")
-    amont = args.amont or f"{organisation}/registre"
+    # Un registre réparti (shard d'un projet) déclare son propre dépôt ; sinon c'est le dépôt central.
+    amont = args.amont or reg.config.get("depot_registre") or f"{organisation}/registre"
     changements = [l[3:].strip().strip('"') for l in executer(["git", "status", "--porcelain", "--untracked-files=all"], depot).stdout.splitlines() if l.strip()]
     if not changements:
         raise ErreurBee("aucun changement à publier (avez-vous lancé bee prendre, soumettre, relire, voter… ?)")

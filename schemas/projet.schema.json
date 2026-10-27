@@ -38,6 +38,7 @@
     "commandes": {
       "type": "object",
       "additionalProperties": {"type": "string"}
-    }
+    },
+    "depot_registre": {"type": "string", "pattern": "^https://github\\.com/[A-Za-z0-9-]+/[A-Za-z0-9_.-]+$", "description": "Architecture répartie : dépôt qui héberge le registre de ce projet (tâches, contributions, votes, CI). Absent = hébergé par le dépôt central."}
   }
 }
