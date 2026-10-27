@@ -7,3 +7,48 @@ resume: 'Juge isolé : code de la PR en conteneur sans réseau, sorties vérifi�
 statut: en_relecture
 soumise_le: '2026-10-27T22:05:47Z'
 relectures: []
+verdict:
+  ci: verte
+  gain: null
+  au_dela_du_bruit: false
+  instructions:
+    instructions_n1:
+      A: 187633277.0
+      B: 187633277.0
+      gain: 0.0
+    instructions_n6:
+      A: 357330380.0
+      B: 357330380.0
+      gain: 0.0
+    instructions_n9:
+      A: 510575201.0
+      B: 510575201.0
+      gain: 0.0
+    instructions_decompression:
+      A: 35138646.0
+      B: 35138646.0
+      gain: 0.0
+  degradations:
+    debit_compression_n9: -0.0014880990208624434
+  juge:
+    version: 1
+    sorties_comparees: 7868
+    constructions_suspectes: []
+  lignes_modifiees: 156
+  ecart_declare: null
+  sha: 5863f92f7ec1f4b22e32507d913aeb618244126b
+  fichiers_controles: true
+  juges_modifies:
+  - .github/workflows/bee-ci.yml
+  - bee/README.md
+  - bee/ci/test_verdict.py
+  - bee/ci/verdict.py
+  - bee/juge/Dockerfile
+  - bee/juge/analyse.py
+  - bee/juge/chrono.c
+  - bee/juge/construire.sh
+  - bee/juge/execution.c
+  - bee/juge/isoler.sh
+  - bee/juge/juge.py
+  - bee/juge/test_juge.py
+  execution: https://github.com/Bee-ruche/minizBee/actions/runs/40594207377
