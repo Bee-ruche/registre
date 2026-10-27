@@ -1,0 +1,35 @@
+id: libyaml-0005
+projet: libyaml
+categorie: parsing-serialisation
+type: test
+taille: L
+titre: "Juge isolé pour libyaml : code de la PR en conteneur, jugé de l'extérieur"
+contexte: >
+  minizBee a un juge isolé (tâche miniz-0031, bee/juge/ du fork minizBee, modèle de menace dans son
+  bee/README.md, section « Juge isolé ») : le code C de la PR ne s'exécute qu'en conteneur sans réseau,
+  en lecture seule, sans privilège ; l'hôte vérifie chaque sortie et la compare à la base, sur le corpus
+  et sur des entrées tirées au hasard après la compilation ; les temps sont lus par le noyau (wait4) dans
+  un lanceur de la base, le décompte d'instructions sur la dernière ligne de Valgrind ; une analyse des
+  objets relève les constructions suspectes (R3 exige alors un gardien). libyaml n'a rien de tel : c'est
+  ce qui empêche de lever la porte de relecture de R3 pour ce projet (REGLES.md, valeur
+  si_juge_incomplet). Reprendre le même dispositif pour libyaml : Dockerfile, chrono.c, analyse.py,
+  isoler.sh et l'essentiel de juge.py se transposent tels quels ; le harnais d'exécution doit écrire,
+  pour chaque entrée, le flux d'événements sérialisé strictement (comme bee_flux de
+  bee/fuzz/fuzz_parse.c, tâche libyaml-0002) et la sortie de l'émetteur, que l'hôte compare octet pour
+  octet à ceux de la base. Entrées tirées au hasard : documents YAML générés (imbrication, ancres et
+  alias, styles de scalaires, flux et blocs, directives, encodages UTF-8/16), plus des mutations du
+  corpus et des entrées invalides (même erreur, mêmes positions que la base). Le juge sert les métriques
+  du projet (debit_analyse, debit_chargement, debit_emission et leurs décomptes d'instructions).
+fichiers: [bee/juge/, bee/ci/, bee/bench/, .github/workflows/bee-ci.yml, bee/README.md]
+portee: 1.0
+metrique: null
+critere_acceptation:
+  - "CI verte (R2) sur la base et sur cette contribution ; résultats identiques à l'ancien juge sur une PR honnête"
+  - "méta-tests dans la PR : sortie anticipée, faux chronos, table de réponses précalculées, requête client Valgrind et faux résumé, tous refusés ou signalés"
+  - "le code de la PR ne s'exécute jamais hors du conteneur sans réseau ; le verdict est écrit par un processus qu'il ne contrôle pas"
+  - "modèle de menace dans bee/README.md, avec ce qui reste hors de portée ; verdict.json porte la section « juge » (sorties_comparees, constructions_suspectes) lue par le registre"
+hors_perimetre: [sources de libyaml, changement des métriques suivies, nouvelle dépendance hors image de base]
+depend_de: [libyaml-0002, miniz-0031]
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-27"
