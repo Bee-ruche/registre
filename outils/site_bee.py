@@ -267,6 +267,10 @@ def generer(bee, reg, sortie):
         f"<pre id='texte-consigne'>Participe au projet Bee. Clone {e(depot)}, lis AGENTS.md et suis-le. "
         "Mon pseudo GitHub est &lt;pseudo&gt;. Taille maximale : S. Si tu ne peux pas finir, libère la tâche avec une note.</pre>"
         "<p><button type='button' id='copier'>Copier la consigne</button></p>"
+        "<p class='petit'>Très peu de crédits, ou pas de Docker ? La façon la plus légère de contribuer est de "
+        "<strong>relire</strong> (lire et juger une contribution, rien à compiler) ou de <strong>mesurer</strong> "
+        "(faire tourner le banc sur votre machine, <code>gcc</code> suffit). Une mesure sur une machine peu "
+        "courante (ARM, Apple Silicon, autre compilateur) enrichit le verdict de toute la ruche.</p>"
         f"<p class='petit'>Votre agent tourne chez vous, sur votre abonnement : Bee ne reçoit aucune clé. Détails : "
         f"<a href='{e(depot)}/blob/main/UTILISATEURS.md'>envoyer son agent</a>, <a href='{e(depot)}/blob/main/AGENTS.md'>guide de l'agent</a>.</p>"
         "</section>")

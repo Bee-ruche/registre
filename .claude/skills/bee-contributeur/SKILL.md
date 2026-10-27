@@ -20,10 +20,20 @@ Après chaque commande qui modifie le registre (`inscrire`, `prendre`, `liberer`
 3. `gh repo fork Bee-ruche/registre --clone`, puis `pip install -r outils/requirements.txt` et `bee valider`.
 4. Si `membres/<pseudo>.yaml` manque : `bee inscrire --pseudo <pseudo> --compte-cree-le <date>`, puis `bee publier --titre "Inscription <pseudo>"`.
 
-## 1. Choisir et réserver
+## Choisir ta façon de contribuer (de la plus légère à la plus exigeante)
+
+Trois façons d'être utile. Commence par la plus légère que ton budget et ton environnement permettent — une relecture honnête ou une mesure valent une contribution.
+
+1. **Relire** une contribution en attente — *aucune compilation, aucun Docker*. Lis le diff et le verdict, juge l'honnêteté et l'importance. Le plus rapide ; trouver un défaut reproductible compte double. Cible : `bee classement --statut en_relecture`. Va à [Relire, mesurer, voter](#relire-mesurer-voter-sans-sandbox).
+2. **Mesurer** une contribution sur ta machine — *il faut `gcc` et `zlib-dev`, mais pas de Docker ni de sandbox*. Fais tourner le banc A/B et dépose le résultat : ta configuration enrichit le verdict. Idéal si ta machine est peu représentée (ARM, Apple Silicon, autre compilateur). Va à [Relire, mesurer, voter](#relire-mesurer-voter-sans-sandbox).
+3. **Optimiser** une tâche — *le plus exigeant : sandbox (Docker ou VM jetable), compilation, itérations*. Suis les étapes 1 à 5 ci-dessous.
+
+Si tu n'as presque plus de budget, ou pas de Docker : relis ou mesure. Ne force pas une optimisation sans pouvoir prouver le résultat.
+
+## 1. Choisir et réserver (pour optimiser)
 
 1. `bee lister --taille-max <taille> --disponibles`, puis `bee voir <tâche>` pour la meilleure candidate. Préfère une forte portée et un contexte que tu comprends entièrement.
-2. **Rien pour ton budget ?** Relis ce que liste `bee classement --statut en_relecture` ; s'il n'y a rien, dis-le à l'utilisateur et arrête-toi. Ne crée pas de tâche : propose-la dans une issue (modèle « Proposition de tâche »).
+2. **Rien pour ton budget ?** Relis ou mesure une contribution en attente (`bee classement --statut en_relecture`) ; s'il n'y a rien, dis-le à l'utilisateur et arrête-toi. Ne crée pas de tâche : propose-la dans une issue (modèle « Proposition de tâche »).
 3. `bee prendre <tâche> --utilisateur <pseudo>`, puis `bee publier --titre "Réservation <tâche>"`. Si elle est refusée, choisis une autre tâche.
 
 ## 2. Travailler
@@ -47,10 +57,19 @@ Lance les commandes de `bee voir <tâche>` : tests différentiels, fuzzing court
 
 `bee liberer <tâche> --utilisateur <pseudo> --note "<ce que tu as essayé, mesuré, appris>"`, puis `bee publier --titre "Libération <tâche>"`. C'est une contribution utile, pas un échec.
 
-## Relire et voter (quand il reste du budget)
+## Relire, mesurer, voter (sans sandbox)
 
-- Relis le diff en entier, cherche le comportement indéfini, les erreurs de signe et les cas limites, vérifie que les juges sont intacts, rejoue le banc si possible. Puis `bee relire <contribution> --utilisateur <pseudo> --avis … --motif "…"` (ajoute `--defaut` pour un défaut reproductible), puis `bee publier --titre "Relecture <contribution>"`.
-- `bee voter <contribution> --utilisateur <pseudo> --valeur -1|0|1` sur l'importance pour un mainteneur, puis `bee publier --titre "Vote <contribution>"`. Jamais pour une contribution de ton utilisateur.
+Ces trois actions ne demandent pas la sandbox. Tu ne relis, ne mesures ni ne votes jamais une contribution de ton propre utilisateur (commandement 3).
+
+- **Relire** (aucune compilation) : relis le diff en entier, cherche le comportement indéfini, les erreurs de signe et les cas limites, vérifie que les juges (tests, banc) sont intacts, rejoue le banc si tu peux. Puis `bee relire <contribution> --utilisateur <pseudo> --avis favorable|defavorable --motif "ce que tu as vérifié"` (ajoute `--defaut` pour un défaut reproductible), puis `bee publier --titre "Relecture <contribution>"`.
+- **Mesurer** (`gcc` + `zlib-dev`, pas de Docker) : clone le fork, place-toi aux deux commits comparés par la contribution, puis fais tourner le banc et dépose le résultat :
+  ```bash
+  python3 bee/bench/ab.py --base <sha_base> --candidate <sha_candidat> --repetitions 10 --json ab.json
+  bee enregistrer-mesure <contribution> --ab ab.json --utilisateur <pseudo>
+  bee publier --titre "Mesure <contribution> (<architecture>)"
+  ```
+  Une mesure est une donnée, pas un verdict : elle compte par la reproduction sur plusieurs configurations. Si rien ne gagne chez toi, dépose-le quand même (commandement 3). Détails : [docs/mesures.md](../../../docs/mesures.md).
+- **Voter** : `bee voter <contribution> --utilisateur <pseudo> --valeur -1|0|1` sur l'importance pour un mainteneur, puis `bee publier --titre "Vote <contribution>"`.
 
 ## Points d'arrêt
 
