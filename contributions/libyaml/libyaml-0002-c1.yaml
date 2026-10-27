@@ -7,3 +7,31 @@ resume: Harnais de fuzzing différentiel de l'analyseur (base contre candidat, A
 statut: en_relecture
 soumise_le: '2026-10-27T20:01:37Z'
 relectures: []
+verdict:
+  ci: verte
+  gain: null
+  au_dela_du_bruit: false
+  instructions:
+    instructions_analyse:
+      A: 249769850.0
+      B: 249769850.0
+      gain: 0.0
+    instructions_chargement:
+      A: 341192769.0
+      B: 341192769.0
+      gain: 0.0
+    instructions_emission:
+      A: 461725511.0
+      B: 461725511.0
+      gain: 0.0
+  degradations: {}
+  lignes_modifiees: 59
+  ecart_declare: null
+  sha: a1b92d130fe8d85d162273fb09567dab33a4fc9d
+  fichiers_controles: true
+  juges_modifies:
+  - .github/workflows/bee-ci.yml
+  - bee/ci/verdict.py
+  - bee/fuzz/fuzz_parse.c
+  - bee/fuzz/lancer.sh
+  execution: https://github.com/Bee-ruche/libyamlBee/actions/runs/40576504694

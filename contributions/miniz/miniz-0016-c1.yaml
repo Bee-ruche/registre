@@ -7,3 +7,30 @@ resume: 'tinfl_decompress : Adler-32 par blocs de 16 octets en arithmétique 64 
 statut: en_relecture
 soumise_le: '2026-10-27T19:54:05Z'
 relectures: []
+verdict:
+  ci: verte
+  gain: 0.09549250983345892
+  au_dela_du_bruit: true
+  instructions:
+    instructions_n1:
+      A: 187597150.0
+      B: 187597150.0
+      gain: 0.0
+    instructions_n6:
+      A: 357228867.0
+      B: 357228867.0
+      gain: 0.0
+    instructions_n9:
+      A: 510229776.0
+      B: 510229776.0
+      gain: 0.0
+    instructions_decompression:
+      A: 34164249.0
+      B: 32504226.0
+      gain: 0.04858947726320573
+  degradations: {}
+  lignes_modifiees: 23
+  ecart_declare: 0.0083
+  sha: 214cbc6ff40549353c03dc834d9337f34e60a5a6
+  fichiers_controles: true
+  execution: https://github.com/Bee-ruche/minizBee/actions/runs/40573222392
