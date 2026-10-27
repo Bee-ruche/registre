@@ -31,6 +31,21 @@ bee depouiller P-0001
 
 Si la proposition est adoptée et sans veto, le conseil met à jour `REGLES.md` (texte et historique) et `bee.yaml` (valeur chiffrée), puis passe la proposition en `adoptee`.
 
+## Publier à la main
+
+`bee publier --titre "<titre>"` enchaîne les commandes ci-dessous. Sans la CLI `gh`, ou pour comprendre ce qu'il fait :
+
+```bash
+bee valider                                              # la CI ferait la même vérification
+git switch -c bee/<titre-en-minuscules>
+git add taches contributions votes membres propositions   # seulement ce qui a changé
+git commit -m "<titre>"
+git push -u origin HEAD
+gh pr create --repo Bee-ruche/registre --title "<titre>" --body "…"
+gh pr view <numéro> --repo Bee-ruche/registre --json state --jq .state    # attendre MERGED
+git switch main && git pull upstream main
+```
+
 ## Qui peut modifier quoi dans le registre
 
 `bee verifier-pr` applique ce tableau à chaque pull request.

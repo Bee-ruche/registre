@@ -348,6 +348,80 @@ class TestPullRequests(BaseTest):
         self.assertEqual(code, 0, texte)
 
 
+class TestPublier(BaseTest):
+    """bee publier avec de vrais dépôts git locaux et un faux gh qui journalise ses appels."""
+
+    def setUp(self):
+        super().setUp()
+        racine = pathlib.Path(self.temp.name)
+        git(self.dossier, "init", "-q", "-b", "main")
+        git(self.dossier, "-c", "user.name=t", "-c", "user.email=t@t", "add", "-A")
+        git(self.dossier, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "base")
+        git(self.dossier, "config", "user.name", "t")
+        git(self.dossier, "config", "user.email", "t@t")
+        subprocess.run(["git", "clone", "-q", "--bare", str(self.dossier), str(racine / "distant.git")], check=True)
+        git(self.dossier, "remote", "add", "origin", str(racine / "distant.git"))
+        git(self.dossier, "fetch", "-q", "origin")
+        self.journal = racine / "gh.journal"
+        self.etat = racine / "gh.etat"
+        self.etat.write_text('{"state": "MERGED"}', encoding="utf-8")
+        binaire = racine / "bin"
+        binaire.mkdir()
+        (binaire / "gh").write_text(
+            "#!/bin/sh\n"
+            f"echo \"$@\" >> '{self.journal}'\n"
+            "case \"$1 $2\" in\n"
+            "  'pr create') echo 'https://github.com/Bee-ruche/registre/pull/42' ;;\n"
+            f"  'pr view') cat '{self.etat}' ;;\n"
+            "esac\n", encoding="utf-8")
+        (binaire / "gh").chmod(0o755)
+        self.ancien_path = os.environ["PATH"]
+        os.environ["PATH"] = f"{binaire}{os.pathsep}{self.ancien_path}"
+
+    def tearDown(self):
+        os.environ["PATH"] = self.ancien_path
+        super().tearDown()
+
+    def test_reservation_publiee_et_fusionnee(self):
+        self.bee("prendre", "miniz-0099", "--utilisateur", "alice")
+        code, texte = self.bee("publier", "--titre", "Réservation miniz-0099", "--intervalle", "0")
+        self.assertEqual(code, 0, texte)
+        self.assertIn("fusionnée", texte)
+        appels = self.journal.read_text(encoding="utf-8")
+        self.assertIn("pr create --repo Bee-ruche/registre --head bee/reservation-miniz-0099 --base main --title Réservation miniz-0099", appels)
+        self.assertEqual(git(self.dossier, "rev-parse", "--abbrev-ref", "HEAD").strip(), "main")
+        self.assertIn("bee/reservation-miniz-0099", git(self.dossier, "ls-remote", "--heads", "origin"))
+        fichiers = git(self.dossier, "show", "--name-only", "--format=", "bee/reservation-miniz-0099").split()
+        self.assertEqual(fichiers, ["taches/miniz/miniz-0099.yaml"], "seul le fichier de la tâche est publié")
+
+    def test_fichier_hors_libre_service_refuse(self):
+        self.bee("prendre", "miniz-0099", "--utilisateur", "alice")
+        (self.dossier / "CONTRIBUTION.yaml.bak").write_text("égaré\n", encoding="utf-8")
+        code, texte = self.bee("publier", "--titre", "Réservation miniz-0099", "--intervalle", "0")
+        self.assertEqual(code, 1)
+        self.assertIn("CONTRIBUTION.yaml.bak", texte)
+        self.assertFalse(self.journal.exists(), "aucune PR ne doit être ouverte")
+
+    def test_pr_fermee_ou_en_attente(self):
+        self.bee("prendre", "miniz-0099", "--utilisateur", "alice")
+        self.etat.write_text('{"state": "CLOSED"}', encoding="utf-8")
+        code, texte = self.bee("publier", "--titre", "Réservation miniz-0099", "--intervalle", "0")
+        self.assertEqual(code, 1)
+        self.assertIn("refusée", texte)
+        self.bee("liberer", "miniz-0099", "--utilisateur", "alice")
+        self.bee("prendre", "miniz-0099", "--utilisateur", "bruno")
+        self.etat.write_text('{"state": "OPEN"}', encoding="utf-8")
+        code, texte = self.bee("publier", "--titre", "Réservation miniz-0099", "--delai", "0", "--intervalle", "0")
+        self.assertEqual(code, 2)
+        self.assertIn("relecture humaine", texte)
+        self.assertIn("bee/reservation-miniz-0099-2", git(self.dossier, "branch"), "un second titre identique reçoit un suffixe")
+
+    def test_rien_a_publier(self):
+        code, texte = self.bee("publier", "--titre", "Rien")
+        self.assertEqual(code, 1)
+        self.assertIn("aucun changement", texte)
+
+
 class TestFork(BaseTest):
     def setUp(self):
         super().setUp()

@@ -1294,6 +1294,77 @@ def cmd_en_attente(args):
     return 0
 
 
+DOSSIERS_LIBRE_SERVICE = ("taches/", "contributions/", "votes/", "membres/", "propositions/")
+
+
+def executer(commande, depot=None, verifier=True):
+    """Lance une commande (git, gh) et renvoie sa sortie ; ErreurBee lisible en cas d'échec."""
+    resultat = subprocess.run(commande, cwd=depot, capture_output=True, text=True)
+    if verifier and resultat.returncode != 0:
+        raise ErreurBee(f"{' '.join(commande[:3])} … a échoué : {(resultat.stderr or resultat.stdout).strip()[:500]}")
+    return resultat
+
+
+def proprietaire_depot(url):
+    correspondance = re.search(r"github\.com[:/]([A-Za-z0-9-]+)/([A-Za-z0-9_.-]+?)(?:\.git)?/?$", url or "")
+    return (correspondance[1], correspondance[2]) if correspondance else (None, None)
+
+
+def cmd_publier(args):
+    """Branche, commit, push, PR, puis attente de la fusion : une action du registre en une commande."""
+    reg = Registre(args.registre)
+    depot = reg.racine
+    organisation = reg.config.get("organisation", "")
+    amont = args.amont or f"{organisation}/registre"
+    changements = [l[3:].strip().strip('"') for l in executer(["git", "status", "--porcelain", "--untracked-files=all"], depot).stdout.splitlines() if l.strip()]
+    if not changements:
+        raise ErreurBee("aucun changement à publier (avez-vous lancé bee prendre, soumettre, relire, voter… ?)")
+    interdits = [c for c in changements if not c.startswith(DOSSIERS_LIBRE_SERVICE)]
+    if interdits:
+        raise ErreurBee("ces fichiers ne relèvent pas du libre-service et feraient refuser la PR : " + ", ".join(interdits[:8])
+                        + ". Retirez-les (git restore ou git rm --cached) ; s'ils sont voulus, c'est une PR pour le conseil.")
+    problemes = verifier_registre(Registre(depot))
+    if problemes:
+        raise ErreurBee("le registre n'est pas valide, la PR serait refusée :\n  " + "\n  ".join(problemes[:10]))
+    branche_initiale = executer(["git", "rev-parse", "--abbrev-ref", "HEAD"], depot).stdout.strip()
+    base = re.sub(r"[^a-z0-9]+", "-", args.titre.lower().translate(str.maketrans("àâäéèêëîïôöùûüç", "aaaeeeeiioouuuc"))).strip("-")[:50] or "publication"
+    branche, n = f"bee/{base}", 2
+    while executer(["git", "rev-parse", "--verify", "--quiet", branche], depot, verifier=False).returncode == 0:
+        branche, n = f"bee/{base}-{n}", n + 1
+    executer(["git", "switch", "-c", branche], depot)
+    executer(["git", "add", "--", *changements], depot)
+    executer(["git", "commit", "-m", args.titre], depot)
+    executer(["git", "push", "-u", "origin", branche], depot)
+    proprietaire, _ = proprietaire_depot(executer(["git", "remote", "get-url", "origin"], depot).stdout.strip())
+    proprietaire_amont, _ = proprietaire_depot(f"https://github.com/{amont}")
+    tete = branche if proprietaire in (None, proprietaire_amont) else f"{proprietaire}:{branche}"
+    corps = args.corps or f"Publié avec `bee publier`.\n\nNature : {args.titre}."
+    adresse = executer(["gh", "pr", "create", "--repo", amont, "--head", tete, "--base", "main", "--title", args.titre, "--body", corps], depot).stdout.strip().splitlines()[-1]
+    print(f"✓ PR ouverte : {adresse}")
+    executer(["git", "switch", branche_initiale if branche_initiale != "HEAD" else "main"], depot, verifier=False)
+    if args.sans_attendre:
+        print("  Pensez à attendre sa fusion avant l'étape suivante (gh pr view --json state).")
+        return 0
+    import time
+    limite = time.monotonic() + args.delai * 60
+    print(f"  Attente de la fusion (au plus {args.delai} min)…")
+    while True:
+        etat = json.loads(executer(["gh", "pr", "view", adresse, "--json", "state"], depot).stdout or "{}").get("state")
+        if etat == "MERGED":
+            distant = "upstream" if executer(["git", "remote", "get-url", "upstream"], depot, verifier=False).returncode == 0 else "origin"
+            executer(["git", "switch", "main"], depot, verifier=False)
+            executer(["git", "pull", "--ff-only", distant, "main"], depot)
+            print("✓ PR fusionnée ; main est à jour. Vous pouvez passer à l'étape suivante.")
+            return 0
+        if etat == "CLOSED":
+            raise ErreurBee(f"la PR a été refusée et fermée : lisez le message de la CI sur {adresse}")
+        if time.monotonic() > limite:
+            print(f"⚠ la PR est toujours ouverte après {args.delai} min : elle attend sans doute une relecture humaine. "
+                  "Ne l'attendez pas : faites autre chose ou arrêtez-vous.")
+            return 2
+        time.sleep(args.intervalle)
+
+
 def cmd_site(args):
     reg = Registre(args.registre)
     chemin = generer_site(reg, args.sortie)
@@ -1411,6 +1482,14 @@ def construire_analyseur():
     p.add_argument("--lignes", type=int, help="lignes modifiées hors tests, si le verdict ne les donne pas")
     p.add_argument("--sha", help="commit évalué")
     p.add_argument("--execution", help="adresse de l'exécution de CI")
+
+    p = ajouter("publier", cmd_publier, "Publie vos changements du registre : branche, commit, push, PR, puis attente de la fusion.")
+    p.add_argument("--titre", required=True, help="ex. « Réservation miniz-0012 », « Soumission miniz-0012-c1 »")
+    p.add_argument("--corps", help="texte de la PR (facultatif)")
+    p.add_argument("--amont", help="dépôt du registre (défaut : <organisation>/registre)")
+    p.add_argument("--sans-attendre", action="store_true", help="ne pas attendre la fusion")
+    p.add_argument("--delai", type=int, default=10, help="minutes d'attente au plus (défaut : 10)")
+    p.add_argument("--intervalle", type=float, default=15, help=argparse.SUPPRESS)
 
     ajouter("en-attente", cmd_en_attente, "Liste en JSON les contributions en relecture et le commit de leur dernier verdict (utilisé par la CI).")
 
