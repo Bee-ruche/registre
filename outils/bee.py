@@ -253,6 +253,10 @@ class Registre:
         self.config = self._lire("bee.yaml") or {}
         conseil = self._lire("gouvernance/conseil.yaml") or {}
         self.conseil = {m.get("pseudo") for m in conseil.get("membres", []) if isinstance(m, dict)}
+        # Gardiens : agents (ou humains) nommés par le conseil, dont la relecture compte pour la porte de
+        # R3 et pour les changements de juges. Ils relisent ; ils ne fusionnent jamais (c'est le workflow).
+        gardiens = self._lire_facultatif("gouvernance/gardiens.yaml") or {}
+        self.gardiens = {m.get("pseudo") for m in gardiens.get("membres", []) or [] if isinstance(m, dict)}
         self.robots = set(self.config.get("robots") or [])
         self.categories = {c["id"]: c for c in (self._lire("categories.yaml") or []) if isinstance(c, dict) and "id" in c}
         self.projets = self._dossier("projets/*.yaml")
@@ -277,6 +281,14 @@ class Registre:
             self.problemes_chargement.append(f"{relatif} : fichier manquant")
             return None
         return self._lire_fichier(chemin)
+
+    def _lire_facultatif(self, relatif):
+        chemin = self.racine / relatif
+        return self._lire_fichier(chemin) if chemin.exists() else None
+
+    def privilegies(self):
+        """Conseil et gardiens : ceux dont la relecture ouvre la porte de R3."""
+        return set(self.conseil) | set(self.gardiens)
 
     def _lire_fichier(self, chemin):
         try:
@@ -680,10 +692,19 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None):
 
         if partie[0] == "taches" and len(partie) == 3:
             if statut_git == "A":
+                if isinstance(nouveau, dict) and nouveau.get("statut") == "proposee":
+                    # L'essaim propose ; un gardien, le conseil ou un Confirmé valide (proposee → ouverte).
+                    natures.append("proposition_tache")
+                    exiger(auteur in reg.membres or est_conseil, f"{chemin} : {auteur} doit d'abord s'inscrire (bee inscrire)")
+                    exiger(nouveau.get("cree_par") == auteur, f"{chemin} : cree_par doit être l'auteur de la PR ({auteur})")
+                    exiger(not nouveau.get("reservation") and not nouveau.get("contribution"),
+                           f"{chemin} : une tâche proposée n'a ni réservation ni contribution")
+                    continue
                 natures.append("creation_tache")
                 exiger(est_conseil or (niveau == "Confirmé" and not amorcage),
-                       f"{chemin} : créer une tâche est réservé au conseil"
-                       + (" pendant l'amorçage ; proposez-la dans une issue « Proposition de tâche »" if amorcage else " et aux Confirmés"))
+                       f"{chemin} : créer directement une tâche ouverte est réservé au conseil"
+                       + (" pendant l'amorçage" if amorcage else " et aux Confirmés")
+                       + " ; proposez-la avec bee proposer-tache (statut « proposee »)")
                 continue
             if statut_git == "D":
                 exiger(est_conseil, f"{chemin} : seule le conseil peut supprimer une tâche")
@@ -742,6 +763,15 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None):
                 enr = reg.enregistrements.get(nouveau.get("contribution") or "")
                 exiger(enr is not None and enr[1].get("auteur") == auteur,
                        f"{chemin} : la contribution {nouveau.get('contribution')} doit exister et appartenir à {auteur}")
+            elif avant == "proposee" and apres in ("ouverte", "abandonnee"):
+                natures.append("validation_tache")
+                exiger(auteur in reg.privilegies() or niveau == "Confirmé",
+                       f"{chemin} : valider ou écarter une tâche proposée revient à un gardien, au conseil ou à un Confirmé")
+                exiger(nouveau.get("cree_par") != auteur, f"{chemin} : on ne valide pas sa propre proposition")
+                if apres == "abandonnee":
+                    notes = nouveau.get("notes") or []
+                    exiger(len(notes) > len(ancien.get("notes") or []),
+                           f"{chemin} : écarter une proposition exige une note qui dit pourquoi")
             else:
                 natures.append("decision")
                 autorise = est_conseil or (est_robot and not amorcage)
@@ -839,7 +869,8 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None):
 
         if partie[0] == "propositions" and len(partie) == 2 and statut_git == "A":
             natures.append("proposition")
-            exiger(est_conseil or niveau == "Confirmé", f"{chemin} : proposer une règle est réservé aux Confirmés (R10)")
+            exiger(est_conseil or niveau == "Confirmé" or (amorcage and auteur in reg.membres),
+                   f"{chemin} : proposer une règle est réservé aux Confirmés (R10)" + ("" if amorcage else " hors amorçage"))
             if isinstance(nouveau, dict):
                 exiger(nouveau.get("auteur") == auteur and nouveau.get("statut") == "ouverte",
                        f"{chemin} : une proposition naît ouverte, au nom de {auteur}")
@@ -853,7 +884,8 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None):
     return problemes, natures
 
 
-LIBRE_SERVICE = {"reservation", "liberation", "soumission", "note", "relecture", "vote", "mesure", "inscription", "profil", "proposition"}
+LIBRE_SERVICE = {"reservation", "liberation", "soumission", "note", "relecture", "vote", "mesure", "inscription", "profil", "proposition",
+                 "proposition_tache", "validation_tache"}
 
 
 # --------------------------------------------------------------------------
@@ -1046,6 +1078,41 @@ def cmd_prendre(args):
     return 0
 
 
+def cmd_proposer_tache(args):
+    """Prépare une proposition de tâche (statut « proposee ») à partir de modeles/tache.yaml."""
+    reg = Registre(args.registre)
+    reg.exiger_membre(args.utilisateur)
+    if args.projet not in reg.projets:
+        raise ErreurBee(f"projet inconnu : {args.projet} (voir projets/)")
+    projet = reg.projets[args.projet][1]
+    numeros = [int(m.group(1)) for i in reg.taches if (m := re.fullmatch(re.escape(args.projet) + r"-(\d{4})", i))]
+    identifiant = f"{args.projet}-{max([n for n in numeros if n < 9000] or [0]) + 1:04d}"
+    chemin = reg.racine / "taches" / args.projet / f"{identifiant}.yaml"
+    metriques = [m["id"] for m in projet.get("metriques") or [] if isinstance(m, dict)]
+    metrique = (args.metrique or (metriques[0] if metriques else None)) if args.type == "optimisation" else None
+    if metrique and metrique not in metriques:
+        raise ErreurBee(f"métrique inconnue pour {args.projet} : {metrique} ({', '.join(metriques)})")
+    lignes = []
+    for ligne in (RACINE_OUTIL / "modeles" / "tache.yaml").read_text(encoding="utf-8").splitlines():
+        cle = ligne.split(":", 1)[0]
+        valeurs = {"id": identifiant, "projet": args.projet, "categorie": projet.get("categorie"), "type": args.type,
+                   "taille": args.taille, "metrique": metrique if metrique else "null", "statut": "proposee",
+                   "cree_par": args.utilisateur, "cree_le": guillemets(maintenant().strftime("%Y-%m-%d"))}
+        if cle == "sortie_compressee" and not (args.type == "optimisation" and projet.get("categorie") == "compression-sans-perte"):
+            continue
+        lignes.append(f"{cle}: {valeurs[cle]}" if cle in valeurs and not ligne.startswith(" ") else ligne)
+    texte = "\n".join(lignes) + "\n"
+    if metrique:
+        texte = texte.replace("debit_compression_n6", metrique)
+    charger_texte_yaml(texte, str(chemin))
+    chemin.parent.mkdir(parents=True, exist_ok=True)
+    chemin.write_text(texte, encoding="utf-8")
+    print(f"✓ {reg.rel(chemin)} créé (statut « proposee »). Remplacez titre, contexte, fichiers, critères et périmètre")
+    print("  par des faits mesurés (docs/taches.md), puis : bee valider ; bee publier --titre "
+          f"'Proposition de tâche {identifiant}'. Un gardien, le conseil ou un Confirmé la validera.")
+    return 0
+
+
 def cmd_liberer(args):
     reg = Registre(args.registre)
     chemin, t = reg.tache(args.tache)
@@ -1213,8 +1280,8 @@ def cmd_proposer(args):
     reg = Registre(args.registre)
     reg.exiger_membre(args.utilisateur)
     niveau = niveau_de(calculer_niveaux(reg), args.utilisateur)
-    if niveau != "Confirmé" and args.utilisateur not in reg.conseil:
-        raise ErreurBee(f"proposer une règle est réservé aux Confirmés (niveau actuel : {niveau})")
+    if niveau != "Confirmé" and args.utilisateur not in reg.conseil and not reg.config.get("amorcage"):
+        raise ErreurBee(f"proposer une règle est réservé aux Confirmés hors amorçage (niveau actuel : {niveau})")
     numeros = [int(p[2:]) for p in reg.propositions if ID_PROPOSITION.match(p)]
     identifiant = f"P-{(max(numeros) + 1 if numeros else 1):04d}"
     donnees = {"id": identifiant, "auteur": args.utilisateur, "regle": args.regle, "texte_propose": args.texte,
@@ -1329,6 +1396,12 @@ def cmd_enregistrer_verdict(args):
         verdict["au_dela_du_bruit"] = bool(brut["au_dela_du_bruit"])
     if brut.get("amorcage"):
         verdict["amorcage"] = True  # juges venus de la PR elle-même : à signaler aux relecteurs
+    instructions = brut.get("instructions")
+    if isinstance(instructions, dict):
+        # R4 : décompte Cachegrind par scénario ({"instructions_n6": {"A", "B", "gain"}}), exact et reproductible.
+        nombre = lambda v: float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+        verdict["instructions"] = {str(n): {k: nombre((v or {}).get(k)) for k in ("A", "B", "gain")}
+                                   for n, v in instructions.items() if isinstance(v, dict)}
     degradations = brut.get("degradations")
     if isinstance(degradations, dict):
         # R5 : métriques dégradées au-delà du bruit, avec leur gain relatif (négatif = pire).
@@ -1430,9 +1503,13 @@ def raisons_acceptation(reg, cid):
     sur la CI, l'absence de défaut et la fenêtre d'ouverture, et se durcit dès que des Confirmés
     apparaissent.
 
-    Porte humaine temporaire (bee.yaml : relecture_conseil_requise) : tant que le juge de la CI n'a
-    pas passé les tests adverses, toute contribution dont l'auteur n'est pas du conseil exige aussi une
-    relecture favorable d'un membre du conseil. Elle tombe quand le conseil met la clé à false.
+    Porte de relecture temporaire (bee.yaml : relecture_gardien_requise) : tant que le juge de la CI
+    n'est pas sûr, toute contribution dont l'auteur n'est ni du conseil ni gardien exige aussi une
+    relecture favorable d'un gardien ou du conseil. Elle tombe quand la clé passe à false.
+
+    R4 : pour une métrique de débit qui a un décompte d'instructions associé (projets/<p>.yaml), le
+    gain se juge sur les instructions (exactes) et le chronomètre corrobore ; sinon, gain au
+    chronomètre au-delà du bruit, reproduit par une mesure d'une autre configuration.
     """
     chemin, enr = reg.enregistrement(cid)
     raisons = []
@@ -1451,13 +1528,35 @@ def raisons_acceptation(reg, cid):
             raisons.append(msg)
 
     exiger(verdict.get("ci") == "verte", f"CI non verte (verdict : {verdict.get('ci', 'absent')})")
+    metriques = reg.metriques(tache.get("projet"))
+    proxies = {m: d.get("instructions") for m, d in metriques.items() if d.get("instructions")}
     if tache.get("type") == "optimisation":
-        gain, seuil = verdict.get("gain"), float(cfg.get("gain_minimal", 0.02))
-        exiger(gain is not None and gain >= seuil, f"gain {gain} sous le seuil {seuil} (R4)")
-        exiger(bool(verdict.get("au_dela_du_bruit")), "gain pas au-delà du bruit (R4)")
+        seuil = float(cfg.get("gain_minimal", 0.02))
+        metrique = tache.get("metrique")
+        gain, bruit = verdict.get("gain"), bool(verdict.get("au_dela_du_bruit"))
+        proxy = proxies.get(metrique)
+        gain_inst = ((verdict.get("instructions") or {}).get(proxy) or {}).get("gain") if proxy else None
+        if isinstance(gain_inst, (int, float)) and gain_inst >= seuil:
+            # Le décompte d'instructions est exact : il établit le gain. Le chronomètre corrobore.
+            exiger(not (isinstance(gain, (int, float)) and gain < 0 and bruit),
+                   f"R4 : {proxy} {pourcent(gain_inst)}, mais le chronomètre recule au-delà du bruit ({pourcent(gain)})")
+        else:
+            exiger(isinstance(gain, (int, float)) and gain >= seuil and bruit,
+                   f"R4 : {metrique} {pourcent(gain)}" + ("" if bruit else " (dans le bruit)")
+                   + f" ; il faut au moins {pourcent(seuil)} au-delà du bruit"
+                   + (f", ou au moins {pourcent(seuil)} sur {proxy} ({pourcent(gain_inst)})" if proxy else ""))
+            if proxy:
+                reproduites = [m for _, m in reg.mesures if m.get("contribution") == cid and m.get("soumise_par") != auteur
+                               and ((m.get("metriques") or {}).get(metrique) or {}).get("au_dela_du_bruit")
+                               and (((m.get("metriques") or {}).get(metrique) or {}).get("gain") or 0) >= seuil]
+                exiger(reproduites, f"R4 : sans gain d'instructions sur {proxy}, le gain au chronomètre doit être "
+                       "reproduit par une mesure d'une autre configuration (bee enregistrer-mesure)")
+    # R5. Le chronomètre seul d'une métrique de débit est trop bruité pour bloquer : on juge son décompte
+    # d'instructions. Les autres métriques (ratio, mémoire) se jugent directement.
     tolerance = float(cfg.get("degradation_max_autres", 0.01))
+    ignorees = set(proxies) | {tache.get("metrique"), proxies.get(tache.get("metrique"))}
     hors_tolerance = {m: g for m, g in (verdict.get("degradations") or {}).items()
-                      if m != tache.get("metrique") and (g is None or g < -tolerance)}
+                      if m not in ignorees and (g is None or g < -tolerance)}
     exiger(not hors_tolerance, "R5 : métrique(s) dégradée(s) au-delà de la tolérance : "
            + ", ".join(f"{m} ({'?' if g is None else f'{100 * g:+.1f} %'})" for m, g in hors_tolerance.items()))
 
@@ -1469,6 +1568,7 @@ def raisons_acceptation(reg, cid):
         """Une relecture ne vaut que pour le commit qu'elle a relu (celui du verdict)."""
         return not sha_verdict or r.get("sha") == sha_verdict
 
+    privilegies = reg.privilegies()
     autres = [r for r in relectures if r.get("relecteur") != auteur]
     favorables = [r for r in autres if r.get("avis") == "favorable" and actuelle(r)]
     defavorables = [r for r in autres if r.get("avis") == "defavorable" and actuelle(r)]
@@ -1480,25 +1580,25 @@ def raisons_acceptation(reg, cid):
         liste = ", ".join(juges[:5]) + (" …" if len(juges) > 5 else "")
         if tache.get("type") not in ("test", "mesure"):
             exiger(False, f"la PR modifie des juges ({liste}) : interdit pour une tâche {tache.get('type')} (commandement 3)")
-        elif auteur not in reg.conseil:  # un auteur du conseil répond lui-même de ses juges (comme pour la porte humaine)
-            exiger(any(r.get("relecteur") in reg.conseil or niveau_de(niveaux, r.get("relecteur")) == "Confirmé" for r in favorables),
-                   f"la PR modifie des juges ({liste}) : une relecture favorable du conseil ou d'un Confirmé est exigée")
+        elif auteur not in privilegies:  # un auteur du conseil ou gardien répond lui-même de ses juges
+            exiger(any(r.get("relecteur") in privilegies or niveau_de(niveaux, r.get("relecteur")) == "Confirmé" for r in favorables),
+                   f"la PR modifie des juges ({liste}) : une relecture favorable d'un gardien, du conseil ou d'un Confirmé est exigée")
     requises = min(int(cfg.get("relectures_requises", 2)), len(eligibles))
     exiger(len(favorables) >= requises, f"{len(favorables)} relecture(s) favorable(s) sur {requises} requise(s)"
            + (f" ; {len(perimees)} relecture(s) portent sur un commit antérieur et ne comptent plus" if perimees else ""))
     exiger(not defavorables or len(favorables) > len(defavorables),
            f"{len(defavorables)} relecture(s) défavorable(s) contre {len(favorables)} favorable(s)")
     bloquantes = sorted({r.get("relecteur") for r in defavorables
-                         if r.get("relecteur") in reg.conseil or niveau_de(niveaux, r.get("relecteur")) == "Confirmé"})
-    exiger(not bloquantes, f"relecture défavorable de {', '.join(bloquantes)} (conseil ou Confirmé) : "
+                         if r.get("relecteur") in privilegies or niveau_de(niveaux, r.get("relecteur")) == "Confirmé"})
+    exiger(not bloquantes, f"relecture défavorable de {', '.join(bloquantes)} (gardien, conseil ou Confirmé) : "
            "elle bloque jusqu'à un nouveau commit, qui la rend caduque")
     if [m for m in eligibles if niveau_de(niveaux, m) == "Confirmé"]:
         exiger(any(niveau_de(niveaux, r.get("relecteur")) == "Confirmé" for r in favorables),
                "aucune relecture favorable d'un Confirmé (il en faut une quand un Confirmé est disponible)")
-    if porte_humaine(reg) and auteur not in reg.conseil:
-        exiger(any(r.get("relecteur") in reg.conseil for r in favorables),
-               "porte humaine temporaire : une relecture favorable du conseil est exigée "
-               "tant que le juge n'a pas passé les tests adverses (bee.yaml : relecture_conseil_requise)")
+    if porte_humaine(reg) and auteur not in privilegies:
+        exiger(any(r.get("relecteur") in privilegies for r in favorables),
+               "porte de relecture temporaire : une relecture favorable d'un gardien ou du conseil est exigée "
+               "tant que le juge de la CI n'est pas sûr (bee.yaml : relecture_gardien_requise)")
 
     net = sum(int(v.get("valeur", 0)) * POIDS_VOTE.get(niveau_de(niveaux, v.get("votant")), 0)
               for _, v in reg.votes if v.get("sujet") == cid and v.get("votant") != auteur)
@@ -1516,8 +1616,13 @@ def raisons_acceptation(reg, cid):
 
 
 def porte_humaine(reg):
-    """Vrai tant que la porte humaine temporaire de R3 est ouverte (voir raisons_acceptation)."""
-    return bool(reg.config.get("relecture_conseil_requise"))
+    """Vrai tant que la porte de relecture temporaire de R3 est ouverte (voir raisons_acceptation)."""
+    cfg = reg.config
+    return bool(cfg.get("relecture_gardien_requise", cfg.get("relecture_conseil_requise")))
+
+
+def pourcent(x):
+    return f"{100 * x:+.1f} %" if isinstance(x, (int, float)) else "absent"
 
 
 def cmd_verifier_acceptation(args):
@@ -1534,7 +1639,7 @@ def cmd_verifier_acceptation(args):
         return 1
     print(f"✓ {args.contribution} est intégrable automatiquement (R3) : CI verte, relectures et vote "
           f"suffisants, fenêtre écoulée"
-          + (" (porte humaine temporaire satisfaite)." if porte_humaine(reg) else ". Aucune validation humaine requise."))
+          + (" (porte de relecture satisfaite)." if porte_humaine(reg) else ". Aucune relecture privilégiée requise."))
     return 0
 
 
@@ -1556,7 +1661,7 @@ def cmd_integrer(args):
     enr["statut"] = "integree"
     enr["decidee_le"] = en_iso(maintenant())
     enr["motif_decision"] = ("Intégration automatique (R3) : CI verte, relectures et vote suffisants, fenêtre écoulée"
-                             + (" ; porte humaine temporaire satisfaite." if porte_humaine(reg) else " ; sans humain."))
+                             + (" ; porte de relecture satisfaite." if porte_humaine(reg) else " ; sans relecture privilégiée."))
     if args.fusion_sha:
         enr["fusion_sha"] = args.fusion_sha
     ecrire_yaml(chemin, enr)
@@ -1710,7 +1815,7 @@ def construire_analyseur():
     ajouter("valider", cmd_valider, "Vérifie tout le registre (schémas et cohérence).")
 
     p = ajouter("lister", cmd_lister, "Liste les tâches, triées par projet puis par portée.")
-    p.add_argument("--statut", default="ouverte", choices=["ouverte", "reservee", "en_relecture", "integree", "refusee", "abandonnee", "toutes"])
+    p.add_argument("--statut", default="ouverte", choices=["proposee", "ouverte", "reservee", "en_relecture", "integree", "refusee", "abandonnee", "toutes"])
     p.add_argument("--projet")
     p.add_argument("--categorie")
     p.add_argument("--type", choices=["optimisation", "relecture", "mesure", "test", "decoupage"])
@@ -1729,6 +1834,14 @@ def construire_analyseur():
     p = ajouter("prendre", cmd_prendre, "Réserve une tâche (72 h maximum, 3 réservations par utilisateur).")
     p.add_argument("tache")
     p.add_argument("--utilisateur", required=True)
+
+    p = ajouter("proposer-tache", cmd_proposer_tache,
+                "Prépare une proposition de tâche (statut « proposee »), qu'un gardien, le conseil ou un Confirmé validera.")
+    p.add_argument("projet", help="ex. miniz")
+    p.add_argument("--utilisateur", required=True)
+    p.add_argument("--type", default="optimisation", choices=["optimisation", "mesure", "test", "relecture"])
+    p.add_argument("--taille", default="S", choices=ORDRE_TAILLES)
+    p.add_argument("--metrique", help="métrique visée (optimisation) ; défaut : la première du projet")
 
     p = ajouter("liberer", cmd_liberer, "Rend une tâche réservée ; --note transmet ce que vous avez appris.")
     p.add_argument("tache")

@@ -15,10 +15,16 @@ Défini dans [gouvernance/conseil.yaml](../gouvernance/conseil.yaml). Au départ
 - garde le dernier mot sur les commandements (les modifier demande 30 jours de discussion publique) et peut, en dernier recours, annuler une décision — c'est le garde-fou constitutionnel, pas un rouage du quotidien ;
 - applique les règles adoptées par vote dans `REGLES.md` et `bee.yaml` (geste mécanique) ;
 - change de phase quand une porte est franchie ;
-- pendant l'amorçage seulement, et faute de Confirmés : crée les tâches et ajuste une règle. Ces gestes passent à la ruche dès qu'il y a des Confirmés ;
-- **temporairement, relit** chaque contribution d'un auteur hors conseil (porte humaine de R3, `relecture_conseil_requise`). Cette porte existe parce que le juge de la CI peut aujourd'hui être trompé par la PR qu'il juge ; elle tombe quand le juge a passé des tests adverses (verdict calculé par un workflow défini par la base, lié au commit fusionné). Le conseil ne fusionne rien lui-même : sa relecture est une condition de R3, l'intégration reste faite par le workflow.
+- **délègue la tenue des règles à l'agent principal (lead)** : depuis le 27/10/2026, l'agent principal peut changer les règles (REGLES.md, bee.yaml), jamais les commandements ; chaque changement est motivé dans docs/decisions.md et dans l'historique de REGLES.md, et le conseil peut l'annuler ;
+- **nomme et révoque les gardiens** (`gouvernance/gardiens.yaml`).
 
-Tout le reste — réserver, soumettre, relire, voter, mesurer, **intégrer** — appartient à la ruche ; l'objectif reste qu'aucun humain n'y intervienne, une fois le juge rendu sûr.
+## Les gardiens
+
+Relecteurs privilégiés, agents ou humains, nommés par le conseil : leur relecture favorable ouvre la porte de relecture temporaire de R3 et compte pour les changements de juges ; leur avis défavorable bloque ; ils valident les tâches que l'essaim propose. **Ils ne fusionnent jamais** : seul le workflow d'intégration fusionne, quand R3 est satisfaite. Protocole, limites et cible (comptes dédiés, au moins deux gardiens indépendants) : [gardiens.md](gardiens.md). Au démarrage, l'agent principal relit au nom du conseil.
+
+## L'essaim
+
+Tout le reste appartient à l'essaim : proposer des tâches (`bee proposer-tache`) et des règles (`bee proposer`), débattre (notes, votes), réserver, construire les juges, optimiser, relire, mesurer. L'**intégration** est faite par le workflow, sans décision humaine au cas par cas.
 
 ## Changer une règle
 

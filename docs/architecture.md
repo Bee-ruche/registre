@@ -48,8 +48,8 @@ et tâche en `integree`) **uniquement** si R3 est satisfaite. Le workflow de con
 [`.github/workflows/integration-auto.yml`](../.github/workflows/) enchaîne les deux : il vérifie,
 fusionne la PR du projet (fusion côté serveur — le code du fork n'est jamais exécuté là) et consigne
 l'intégration avec l'outil de la branche principale. **Objectif : aucun humain.** En attendant que
-le juge soit sûr (voir ci-dessous), la porte humaine temporaire de R3 exige une relecture favorable
-du conseil pour tout auteur hors conseil ; le conseil relit, le workflow intègre.
+le juge soit sûr (voir ci-dessous), la porte de relecture temporaire de R3 exige une relecture favorable
+d'un gardien ou du conseil pour tout autre auteur ; le gardien relit, le workflow intègre (docs/gardiens.md).
 
 ### Pourquoi « sans humain » ne veut pas dire « sans confiance »
 
@@ -71,8 +71,8 @@ auprès de GitHub) ; le verdict, les relectures et la fusion sont liés au même
 des avis défavorables et de R5 ; la fenêtre ne s'antidate plus ; pas de soumission sans réservation.
 **Reste ouvert :** le code C d'une PR s'exécute dans les jobs qui le mesurent, et un code malveillant
 peut fausser ses propres tests ou mesures de l'intérieur (par exemple en terminant le processus avec
-succès avant le test). Tant que ce point n'est pas réglé, la porte humaine de R3 reste ouverte : le
-conseil lit le diff.
+succès avant le test). Tant que ce point n'est pas réglé, la porte de relecture de R3 reste ouverte : un
+gardien lit le diff et rejoue les tests.
 
 ## Plan de migration (par étapes)
 
@@ -80,12 +80,13 @@ conseil lit le diff.
    que les commandements.
 2. **Workflow d'intégration** (écrit) : `bee verifier-acceptation`, `bee integrer` et le workflow
    `integration-auto.yml`. Fusionner dans un fork demande un jeton d'organisation
-   (`BEE_INTEGRATION_TOKEN`) ; **il ne sera créé qu'une fois le juge rendu sûr** (étape 2 bis).
-   Sans lui, le workflow laisse la contribution en relecture.
+   (`BEE_INTEGRATION_TOKEN`). Il est sûr depuis que la porte de relecture garantit qu'un gardien a relu
+   exactement le commit fusionné (fusion liée au sha jugé). Sans lui, le workflow laisse la contribution
+   en relecture.
 2 bis. **Juge sûr.** Fait (27/10) : contrôle des fichiers de la PR par le registre, verdict +
    relectures + fusion liés au même commit, R3 complétée (avis défavorables, R5, fenêtre non
    antidatable, soumission ⇔ réservation, sortie automatique), tests adverses. Reste, pour fermer la
-   porte humaine et créer le jeton : **exécuter le code de la PR dans un conteneur isolé et le juger
+   porte de relecture : **exécuter le code de la PR dans un conteneur isolé et le juger
    de l'extérieur** (sorties vérifiées et temps mesurés par un processus que le code ne contrôle pas),
    avec une part d'entrées tirées au hasard à chaque exécution pour qu'aucun code ne puisse précalculer
    ses réponses. C'est un chantier d'outillage pour la ruche.

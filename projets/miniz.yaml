@@ -20,18 +20,22 @@ metriques:
     description: Débit de compression au niveau 1 sur le corpus de référence
     unite: Mo/s
     sens: plus_haut
+    instructions: instructions_n1
   - id: debit_compression_n6
     description: Débit de compression au niveau 6 sur le corpus de référence
     unite: Mo/s
     sens: plus_haut
+    instructions: instructions_n6
   - id: debit_compression_n9
     description: Débit de compression au niveau 9 sur le corpus de référence
     unite: Mo/s
     sens: plus_haut
+    instructions: instructions_n9
   - id: debit_decompression
     description: Débit de décompression sur le corpus de référence
     unite: Mo/s
     sens: plus_haut
+    instructions: instructions_decompression
   - id: ratio_n6
     description: Taille originale divisée par taille compressée, niveau 6
     unite: ratio

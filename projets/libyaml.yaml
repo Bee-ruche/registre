@@ -19,14 +19,17 @@ metriques:
     description: Débit du parseur seul (événements) sur le corpus de référence
     unite: Mo/s
     sens: plus_haut
+    instructions: instructions_analyse
   - id: debit_chargement
     description: Débit du chargeur de documents sur le corpus de référence
     unite: Mo/s
     sens: plus_haut
+    instructions: instructions_chargement
   - id: debit_emission
     description: Débit de l'émetteur sur le corpus de référence
     unite: Mo/s
     sens: plus_haut
+    instructions: instructions_emission
   - id: memoire_max_ko
     description: Pic de tas pendant le chargement
     unite: Ko

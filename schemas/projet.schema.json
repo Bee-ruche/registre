@@ -29,7 +29,8 @@
           "id": {"type": "string", "pattern": "^[a-z0-9_]+$"},
           "description": {"type": "string"},
           "unite": {"type": "string"},
-          "sens": {"enum": ["plus_haut", "plus_bas"]}
+          "sens": {"enum": ["plus_haut", "plus_bas"]},
+          "instructions": {"type": "string", "pattern": "^instructions_[a-z0-9_]+$", "description": "R4 : scénario du décompte d'instructions (Cachegrind) qui juge le gain de cette métrique de débit"}
         }
       }
     },

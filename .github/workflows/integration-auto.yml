@@ -13,9 +13,9 @@
 # fusion se fait côté serveur (le code du fork n'est jamais exécuté ici).
 #
 # Jeton de fusion : PR dans ce dépôt → jeton par défaut ; PR sur un fork → secret
-# BEE_INTEGRATION_TOKEN. NE PAS créer ce secret tant que le juge n'est pas sûr (docs/architecture.md,
-# étape 2 bis). Sans lui, une contribution intégrable attend que le conseil fusionne la PR à la main ;
-# le passage suivant de ce workflow consigne alors l'intégration.
+# BEE_INTEGRATION_TOKEN (jeton à accès fin, écriture sur les forks). Sûr tant que la porte de relecture
+# de R3 est ouverte : un gardien a relu exactement le commit fusionné. Sans lui, une contribution
+# intégrable attend une fusion à la main ; le passage suivant de ce workflow consigne alors l'intégration.
 name: Intégration automatique
 
 on:

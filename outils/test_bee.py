@@ -14,6 +14,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import bee  # noqa: E402
 
 RACINE = pathlib.Path(__file__).resolve().parent.parent
+# Décompte d'instructions d'un candidat qui gagne 5 % sur le scénario n6 (R4 se juge dessus).
+INSTRUCTIONS_N6 = {"instructions_n6": {"A": 1000000, "B": 950000, "gain": 0.05}}
 
 TACHE_OPTIMISATION = """id: miniz-0099
 projet: miniz
@@ -212,14 +214,14 @@ class TestRegistre(BaseTest):
     def regler_porte_humaine(self, active):
         chemin = self.dossier / "bee.yaml"
         texte = chemin.read_text(encoding="utf-8")
-        self.assertIn("relecture_conseil_requise:", texte)
-        chemin.write_text(texte.replace("relecture_conseil_requise: true", f"relecture_conseil_requise: {'true' if active else 'false'}"),
+        self.assertIn("relecture_gardien_requise:", texte)
+        chemin.write_text(texte.replace("relecture_gardien_requise: true", f"relecture_gardien_requise: {'true' if active else 'false'}"),
                           encoding="utf-8")
 
     def test_acceptation_automatique(self):
         cid = self.soumettre_0099()  # auteur alice
         verdict = self.dossier / "verdict.json"
-        verdict.write_text(json.dumps({"ci": "verte", "gain": 0.05, "au_dela_du_bruit": True,
+        verdict.write_text(json.dumps({"ci": "verte", "gain": 0.05, "au_dela_du_bruit": True, "instructions": INSTRUCTIONS_N6,
                                        "lignes_modifiees": 10}), encoding="utf-8")
         self.assertEqual(self.bee("enregistrer-verdict", cid, "--verdict", str(verdict), "--sha", "abc1234", "--fichiers", self.fichiers_pr())[0], 0)
         # Fenêtre pas écoulée et pas assez de relectures : pas encore intégrable.
@@ -237,7 +239,7 @@ class TestRegistre(BaseTest):
         os.environ["BEE_MAINTENANT"] = "2026-10-29T12:00:00Z"
         code, texte = self.bee("verifier-acceptation", cid)
         self.assertEqual(code, 1, texte)
-        self.assertIn("porte humaine", texte)
+        self.assertIn("porte de relecture", texte)
         self.assertEqual(self.bee("relire", cid, "--utilisateur", "bidji29", "--avis", "favorable",
                                   "--motif", "Relu par le conseil, diff conforme.")[0], 0)
         code, texte = self.bee("verifier-acceptation", cid)
@@ -259,7 +261,7 @@ class TestRegistre(BaseTest):
     def preparer_contribution_verte(self, auteur, relecteurs):
         cid = self.soumettre_0099(auteur=auteur)
         verdict = self.dossier / "verdict.json"
-        verdict.write_text(json.dumps({"ci": "verte", "gain": 0.05, "au_dela_du_bruit": True,
+        verdict.write_text(json.dumps({"ci": "verte", "gain": 0.05, "au_dela_du_bruit": True, "instructions": INSTRUCTIONS_N6,
                                        "lignes_modifiees": 10}), encoding="utf-8")
         self.assertEqual(self.bee("enregistrer-verdict", cid, "--verdict", str(verdict), "--sha", "abc1234", "--fichiers", self.fichiers_pr())[0], 0)
         for relecteur in relecteurs:
@@ -279,7 +281,7 @@ class TestRegistre(BaseTest):
         self.assertEqual(self.bee("voter", cid, "--utilisateur", "bidji29", "--valeur", "1")[0], 0)
         code, texte = self.bee("verifier-acceptation", cid)
         self.assertEqual(code, 0, texte)
-        self.assertIn("Aucune validation humaine requise", texte)
+        self.assertIn("Aucune relecture privilégiée requise", texte)
 
     # --- Tests adverses de R3 (revue du 27/10) ---
 
@@ -304,7 +306,7 @@ class TestRegistre(BaseTest):
         self.regler_porte_humaine(False)
         cid = self.soumettre_0099()
         verdict = self.dossier / "verdict.json"
-        verdict.write_text(json.dumps({"ci": "verte", "gain": 0.05, "au_dela_du_bruit": True, "lignes_modifiees": 10,
+        verdict.write_text(json.dumps({"ci": "verte", "gain": 0.05, "au_dela_du_bruit": True, "instructions": INSTRUCTIONS_N6, "lignes_modifiees": 10,
                                        "degradations": {"ratio_n6": -0.40, "memoire_max_ko": -0.004}}), encoding="utf-8")
         self.assertEqual(self.bee("enregistrer-verdict", cid, "--verdict", str(verdict), "--sha", "abc1234", "--fichiers", self.fichiers_pr())[0], 0)
         os.environ["BEE_MAINTENANT"] = "2026-10-29T12:00:00Z"
@@ -327,7 +329,7 @@ class TestRegistre(BaseTest):
 
     def enregistrer_verdict_vert(self, cid, *fichiers, controle=True):
         verdict = self.dossier / "verdict.json"
-        verdict.write_text(json.dumps({"ci": "verte", "gain": 0.05, "au_dela_du_bruit": True,
+        verdict.write_text(json.dumps({"ci": "verte", "gain": 0.05, "au_dela_du_bruit": True, "instructions": INSTRUCTIONS_N6,
                                        "lignes_modifiees": 10}), encoding="utf-8")
         options = ["--fichiers", self.fichiers_pr(*fichiers)] if controle else []
         self.assertEqual(self.bee("enregistrer-verdict", cid, "--verdict", str(verdict), "--sha", "abc1234", *options)[0], 0)
@@ -386,6 +388,75 @@ class TestRegistre(BaseTest):
             self.assertEqual(self.bee("relire", cid, "--utilisateur", relecteur, "--avis", "favorable",
                                       "--motif", "Relu, le test est pertinent.")[0], 0)
         os.environ["BEE_MAINTENANT"] = "2026-10-29T12:00:00Z"
+        code, texte = self.bee("verifier-acceptation", cid)
+        self.assertEqual(code, 0, texte)
+
+    # --- R4 et R5 fondées sur le décompte d'instructions (27/10) ---
+
+    def verdict_r4(self, cid, gain, bruit, gain_instructions, degradations=None, sha="abc1234"):
+        verdict = self.dossier / "verdict.json"
+        brut = {"ci": "verte", "gain": gain, "au_dela_du_bruit": bruit, "lignes_modifiees": 10,
+                "instructions": {"instructions_n6": {"A": 1000000, "B": 1000000 * (1 - gain_instructions), "gain": gain_instructions}}}
+        if degradations:
+            brut["degradations"] = degradations
+        verdict.write_text(json.dumps(brut), encoding="utf-8")
+        self.assertEqual(self.bee("enregistrer-verdict", cid, "--verdict", str(verdict), "--sha", sha,
+                                  "--fichiers", self.fichiers_pr())[0], 0)
+
+    def contribution_relue(self, *verdict):
+        self.regler_porte_humaine(False)
+        cid = self.soumettre_0099()
+        self.verdict_r4(cid, *verdict)
+        for relecteur in ("bruno", "chloe"):
+            self.assertEqual(self.bee("relire", cid, "--utilisateur", relecteur, "--avis", "favorable",
+                                      "--motif", "Relu, rien à signaler ici.")[0], 0)
+        self.assertEqual(self.bee("voter", cid, "--utilisateur", "bidji29", "--valeur", "1")[0], 0)
+        os.environ["BEE_MAINTENANT"] = "2026-10-29T12:00:00Z"
+        return cid
+
+    def test_r4_gain_etabli_par_les_instructions(self):
+        cid = self.contribution_relue(0.005, False, 0.04)  # chronomètre dans le bruit, instructions -4 %
+        code, texte = self.bee("verifier-acceptation", cid)
+        self.assertEqual(code, 0, texte)
+
+    def test_r4_chronometre_qui_recule_bloque(self):
+        cid = self.contribution_relue(-0.05, True, 0.04)
+        code, texte = self.bee("verifier-acceptation", cid)
+        self.assertEqual(code, 1, texte)
+        self.assertIn("le chronomètre recule", texte)
+
+    def test_r4_chronometre_seul_exige_une_reproduction(self):
+        cid = self.contribution_relue(0.06, True, 0.0)  # +6 % au chronomètre, instructions inchangées
+        code, texte = self.bee("verifier-acceptation", cid)
+        self.assertEqual(code, 1, texte)
+        self.assertIn("reproduit par une mesure", texte)
+        rapport = self.dossier / "ab.json"
+        rapport.write_text(json.dumps({"base": {"commit": "2948eeb"}, "candidat": {"commit": "abc1234"},
+                                       "machine": {"architecture": "arm64", "compilateur": "clang 17"},
+                                       "metriques": {"debit_compression_n6": {"gain": 0.05, "au_dela_du_bruit": True,
+                                                     "test_du_signe": {"victoires_B": 10, "paires_utiles": 10}}}}), encoding="utf-8")
+        self.assertEqual(self.bee("enregistrer-mesure", cid, "--ab", str(rapport), "--utilisateur", "bruno")[0], 0)
+        code, texte = self.bee("verifier-acceptation", cid)
+        self.assertEqual(code, 0, texte)
+
+    def test_r5_chronometre_bruite_ignore_instructions_jugees(self):
+        cid = self.contribution_relue(0.05, True, 0.05, {"debit_compression_n1": -0.05})
+        self.assertEqual(self.bee("verifier-acceptation", cid)[0], 0, "un recul au chronomètre seul ne bloque pas")
+        self.verdict_r4(cid, 0.05, True, 0.05, {"instructions_n1": -0.03})
+        code, texte = self.bee("verifier-acceptation", cid)
+        self.assertEqual(code, 1, texte)
+        self.assertIn("R5", texte)
+        self.assertIn("instructions_n1", texte)
+
+    def test_gardien_ouvre_la_porte_de_relecture(self):
+        (self.dossier / "gouvernance/gardiens.yaml").write_text("membres:\n  - pseudo: bruno\n", encoding="utf-8")
+        cid = self.preparer_contribution_verte("alice", ("chloe",))
+        self.assertEqual(self.bee("voter", cid, "--utilisateur", "bidji29", "--valeur", "1")[0], 0)
+        code, texte = self.bee("verifier-acceptation", cid)
+        self.assertEqual(code, 1, texte)
+        self.assertIn("gardien", texte)
+        self.assertEqual(self.bee("relire", cid, "--utilisateur", "bruno", "--avis", "favorable",
+                                  "--motif", "Relu par le gardien : diff et tests rejoués.")[0], 0)
         code, texte = self.bee("verifier-acceptation", cid)
         self.assertEqual(code, 0, texte)
 
@@ -543,7 +614,12 @@ class TestRegistre(BaseTest):
         bee.ecrire_yaml(self.dossier / "membres/bidji29.yaml", {"pseudo": "bidji29", "inscrit_le": "2026-10-27", "compte_cree_le": "2015-01-01"})
         code, texte = self.bee("proposer", "--utilisateur", "bidji29", "--regle", "R4", "--texte", "Au moins 1,5 % sur la métrique visée.", "--motif", "Le bruit mesuré est plus faible que prévu.")
         self.assertEqual(code, 0, texte)
-        self.assertEqual(self.bee("proposer", "--utilisateur", "alice", "--regle", "R4", "--texte", "Autre texte assez long.", "--motif", "Alice n'est pas Confirmée.")[0], 1)
+        # pendant l'amorçage, tout membre peut proposer (l'essaim débat) ; hors amorçage, Confirmés seulement
+        self.assertEqual(self.bee("proposer", "--utilisateur", "alice", "--regle", "R4", "--texte", "Autre texte assez long.", "--motif", "Proposée par une Nouvelle.")[0], 0)
+        chemin = self.dossier / "bee.yaml"
+        chemin.write_text(chemin.read_text(encoding="utf-8").replace("amorcage: true", "amorcage: false"), encoding="utf-8")
+        self.assertEqual(self.bee("proposer", "--utilisateur", "alice", "--regle", "R4", "--texte", "Encore un autre texte.", "--motif", "Alice n'est pas Confirmée.")[0], 1)
+        chemin.write_text(chemin.read_text(encoding="utf-8").replace("amorcage: false", "amorcage: true"), encoding="utf-8")
         self.assertEqual(self.bee("voter", "P-0001", "--utilisateur", "alice", "--valeur", "1")[0], 0)
         self.valide()
         os.environ["BEE_MAINTENANT"] = "2026-11-04T12:00:01Z"
@@ -679,6 +755,62 @@ class TestPullRequests(BaseTest):
         code, texte = self.verifier("bruno", "--fusion-auto")
         self.assertEqual(code, 1, texte)
         self.assertIn("qu'une contribution en relecture", texte)
+
+    # --- L'essaim propose, les gardiens valident (27/10) ---
+
+    def test_proposition_de_tache_par_un_membre(self):
+        git(self.dossier, "switch", "-qc", "proposition")
+        code, texte = self.bee("proposer-tache", "miniz", "--utilisateur", "alice", "--taille", "S")
+        self.assertEqual(code, 0, texte)
+        nouvelles = [l.split()[-1] for l in git(self.dossier, "status", "--porcelain", "--untracked-files=all").splitlines()]
+        self.assertEqual(len(nouvelles), 1, nouvelles)
+        tache = bee.lire_yaml(self.dossier / nouvelles[0])
+        self.assertEqual((tache["statut"], tache["cree_par"]), ("proposee", "alice"))
+        self.valide()
+        self.commit()
+        code, texte = self.verifier("alice", "--fusion-auto")
+        self.assertEqual(code, 0, texte)
+        self.assertIn("FUSION_AUTO=oui", texte)
+        self.assertEqual(self.verifier("bruno")[0], 1, "on ne propose qu'en son nom")
+        self.assertNotIn(tache["id"], self.bee("lister")[1], "une proposition n'est pas encore disponible")
+
+    def proposer_sur_main(self):
+        self.assertEqual(self.bee("proposer-tache", "miniz", "--utilisateur", "alice")[0], 0)
+        self.commit("proposition")
+        return next(i for i, (_, t) in bee.Registre(self.dossier).taches.items() if t.get("statut") == "proposee")
+
+    def test_validation_d_une_proposition(self):
+        tid = self.proposer_sur_main()
+        git(self.dossier, "switch", "-qc", "validation")
+        bee.modifier_tache(self.dossier / f"taches/miniz/{tid}.yaml", statut="ouverte")
+        self.commit()
+        code, texte = self.verifier("bidji29", "--fusion-auto")
+        self.assertEqual(code, 0, texte)
+        self.assertIn("FUSION_AUTO=oui", texte)
+        self.assertEqual(self.verifier("bruno")[0], 1, "un Nouveau ne valide pas")
+        self.assertEqual(self.verifier("alice")[0], 1, "on ne valide pas sa propre proposition")
+
+    def test_ecarter_une_proposition_exige_une_note(self):
+        tid = self.proposer_sur_main()
+        git(self.dossier, "switch", "-qc", "ecart")
+        chemin = self.dossier / f"taches/miniz/{tid}.yaml"
+        bee.modifier_tache(chemin, statut="abandonnee")
+        self.commit()
+        self.assertEqual(self.verifier("bidji29")[0], 1)
+        bee.modifier_tache(chemin, note={"par": "bidji29", "le": "2026-10-27T12:00:00Z",
+                                         "texte": "Écartée : aucune mesure ne montre ce coût dans le profil."})
+        self.commit("note")
+        code, texte = self.verifier("bidji29", "--fusion-auto")
+        self.assertEqual(code, 0, texte)
+
+    def test_proposition_de_regle_par_un_membre_en_amorcage(self):
+        git(self.dossier, "switch", "-qc", "regle")
+        code, texte = self.bee("proposer", "--utilisateur", "alice", "--regle", "R7", "--texte", "Réservation de 48 h au plus.",
+                               "--motif", "Les tâches S se finissent en une session.")
+        self.assertEqual(code, 0, texte)
+        self.commit()
+        code, texte = self.verifier("alice", "--fusion-auto")
+        self.assertEqual(code, 0, texte)
 
     def test_mesure_libre_service(self):
         cid = self.soumettre_0099()
