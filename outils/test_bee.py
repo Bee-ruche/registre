@@ -372,15 +372,15 @@ class TestPublier(BaseTest):
         git(self.dossier, "fetch", "-q", "origin")
         self.journal = racine / "gh.journal"
         self.etat = racine / "gh.etat"
-        self.etat.write_text('{"state": "MERGED"}', encoding="utf-8")
+        self.etat.write_text('{"state": "closed", "merged": true}', encoding="utf-8")
         binaire = racine / "bin"
         binaire.mkdir()
         (binaire / "gh").write_text(
             "#!/bin/sh\n"
             f"echo \"$@\" >> '{self.journal}'\n"
-            "case \"$1 $2\" in\n"
-            "  'pr create') echo 'https://github.com/Bee-ruche/registre/pull/42' ;;\n"
-            f"  'pr view') cat '{self.etat}' ;;\n"
+            "case \"$*\" in\n"
+            "  *'-X POST'*) echo '{\"html_url\": \"https://github.com/Bee-ruche/registre/pull/42\", \"number\": 42}' ;;\n"
+            f"  *pulls/42*) cat '{self.etat}' ;;\n"
             "esac\n", encoding="utf-8")
         (binaire / "gh").chmod(0o755)
         self.ancien_path = os.environ["PATH"]
@@ -396,7 +396,7 @@ class TestPublier(BaseTest):
         self.assertEqual(code, 0, texte)
         self.assertIn("fusionnée", texte)
         appels = self.journal.read_text(encoding="utf-8")
-        self.assertIn("pr create --repo Bee-ruche/registre --head bee/reservation-miniz-0099 --base main --title Réservation miniz-0099", appels)
+        self.assertIn("api repos/Bee-ruche/registre/pulls -X POST -f title=Réservation miniz-0099 -f head=bee/reservation-miniz-0099 -f base=main", appels)
         self.assertEqual(git(self.dossier, "rev-parse", "--abbrev-ref", "HEAD").strip(), "main")
         self.assertIn("bee/reservation-miniz-0099", git(self.dossier, "ls-remote", "--heads", "origin"))
         fichiers = git(self.dossier, "show", "--name-only", "--format=", "bee/reservation-miniz-0099").split()
@@ -412,13 +412,13 @@ class TestPublier(BaseTest):
 
     def test_pr_fermee_ou_en_attente(self):
         self.bee("prendre", "miniz-0099", "--utilisateur", "alice")
-        self.etat.write_text('{"state": "CLOSED"}', encoding="utf-8")
+        self.etat.write_text('{"state": "closed", "merged": false}', encoding="utf-8")
         code, texte = self.bee("publier", "--titre", "Réservation miniz-0099", "--intervalle", "0")
         self.assertEqual(code, 1)
         self.assertIn("refusée", texte)
         self.bee("liberer", "miniz-0099", "--utilisateur", "alice")
         self.bee("prendre", "miniz-0099", "--utilisateur", "bruno")
-        self.etat.write_text('{"state": "OPEN"}', encoding="utf-8")
+        self.etat.write_text('{"state": "open", "merged": false}', encoding="utf-8")
         code, texte = self.bee("publier", "--titre", "Réservation miniz-0099", "--delai", "0", "--intervalle", "0")
         self.assertEqual(code, 2)
         self.assertIn("relecture humaine", texte)

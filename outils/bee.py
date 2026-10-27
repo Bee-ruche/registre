@@ -1341,16 +1341,21 @@ def cmd_publier(args):
     while executer(["git", "rev-parse", "--verify", "--quiet", branche], depot, verifier=False).returncode == 0:
         branche, n = f"bee/{base}-{n}", n + 1
     executer(["git", "switch", "-c", branche], depot)
-    executer(["git", "add", "--", *changements], depot)
-    executer(["git", "commit", "-m", args.titre], depot)
-    executer(["git", "push", "-u", "origin", branche], depot)
-    proprietaire, _ = proprietaire_depot(executer(["git", "remote", "get-url", "origin"], depot).stdout.strip())
-    proprietaire_amont, _ = proprietaire_depot(f"https://github.com/{amont}")
-    tete = branche if proprietaire in (None, proprietaire_amont) else f"{proprietaire}:{branche}"
-    corps = args.corps or f"Publié avec `bee publier`.\n\nNature : {args.titre}."
-    adresse = executer(["gh", "pr", "create", "--repo", amont, "--head", tete, "--base", "main", "--title", args.titre, "--body", corps], depot).stdout.strip().splitlines()[-1]
+    try:
+        executer(["git", "add", "--", *changements], depot)
+        executer(["git", "commit", "-m", args.titre], depot)
+        executer(["git", "push", "-u", "origin", branche], depot)
+        proprietaire, _ = proprietaire_depot(executer(["git", "remote", "get-url", "origin"], depot).stdout.strip())
+        proprietaire_amont, _ = proprietaire_depot(f"https://github.com/{amont}")
+        tete = branche if proprietaire in (None, proprietaire_amont) else f"{proprietaire}:{branche}"
+        corps = args.corps or f"Publié avec `bee publier`.\n\nNature : {args.titre}."
+        # API REST plutôt que `gh pr create` (GraphQL) : elle fonctionne aussi dans les environnements restreints.
+        pr = json.loads(executer(["gh", "api", f"repos/{amont}/pulls", "-X", "POST", "-f", f"title={args.titre}",
+                                  "-f", f"head={tete}", "-f", "base=main", "-f", f"body={corps}"], depot).stdout)
+    finally:
+        executer(["git", "switch", branche_initiale if branche_initiale != "HEAD" else "main"], depot, verifier=False)
+    adresse, numero = pr["html_url"], pr["number"]
     print(f"✓ PR ouverte : {adresse}")
-    executer(["git", "switch", branche_initiale if branche_initiale != "HEAD" else "main"], depot, verifier=False)
     if args.sans_attendre:
         print("  Pensez à attendre sa fusion avant l'étape suivante (gh pr view --json state).")
         return 0
@@ -1358,7 +1363,8 @@ def cmd_publier(args):
     limite = time.monotonic() + args.delai * 60
     print(f"  Attente de la fusion (au plus {args.delai} min)…")
     while True:
-        etat = json.loads(executer(["gh", "pr", "view", adresse, "--json", "state"], depot).stdout or "{}").get("state")
+        infos = json.loads(executer(["gh", "api", f"repos/{amont}/pulls/{numero}"], depot).stdout or "{}")
+        etat = "MERGED" if infos.get("merged") else str(infos.get("state", "")).upper()
         if etat == "MERGED":
             distant = "upstream" if executer(["git", "remote", "get-url", "upstream"], depot, verifier=False).returncode == 0 else "origin"
             executer(["git", "switch", "main"], depot, verifier=False)
