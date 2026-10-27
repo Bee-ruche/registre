@@ -113,6 +113,54 @@ def lire_date(texte, origine=""):
         raise ErreurBee(f"{origine} : date invalide « {texte} » (attendu : 2026-10-27)") from None
 
 
+TYPES_JSON = {"string": "un texte", "number": "un nombre", "integer": "un entier", "array": "une liste",
+              "object": "un objet", "null": "null", "boolean": "vrai ou faux"}
+
+
+def message_schema(erreur):
+    """Traduit en français les erreurs de validation les plus courantes."""
+    v, attendu, valeur = erreur.validator, erreur.validator_value, erreur.instance
+    if v == "required":
+        manquants = [c for c in attendu if isinstance(valeur, dict) and c not in valeur]
+        return f"champ obligatoire manquant : {', '.join(manquants) or ', '.join(attendu)}"
+    if v == "enum":
+        return f"valeur « {valeur} » non permise (attendu : {', '.join(str(x) for x in attendu)})"
+    if v == "const":
+        return f"valeur « {valeur} » non permise (attendu : {attendu})"
+    if v == "type":
+        types = attendu if isinstance(attendu, list) else [attendu]
+        return f"« {valeur} » devrait être {' ou '.join(TYPES_JSON.get(t, t) for t in types)}"
+    if v == "minLength":
+        return f"texte trop court ({len(valeur)} caractères, minimum {attendu})"
+    if v == "maxLength":
+        return f"texte trop long ({len(valeur)} caractères, maximum {attendu})"
+    if v == "pattern":
+        return f"format incorrect : « {valeur} »"
+    if v == "format":
+        return f"« {valeur} » n'est pas au format {attendu}"
+    if v == "additionalProperties":
+        connus = set((erreur.schema or {}).get("properties", {}))
+        return f"champ(s) inconnu(s) : {', '.join(sorted(set(valeur) - connus)) if isinstance(valeur, dict) else valeur}"
+    if v == "minimum":
+        return f"valeur {valeur} inférieure au minimum {attendu}"
+    if v == "maximum":
+        return f"valeur {valeur} supérieure au maximum {attendu}"
+    if v == "minItems":
+        return f"liste trop courte (au moins {attendu} élément(s))"
+    if v == "not":
+        return "champ non permis dans cet état (par exemple une réservation sur une tâche qui n'est pas réservée)"
+    return erreur.message
+
+
+def champs_a_remplir(donnees, chemin=""):
+    """Chemins des valeurs qui contiennent encore « À REMPLIR »."""
+    if isinstance(donnees, dict):
+        return [c for cle, val in donnees.items() for c in champs_a_remplir(val, f"{chemin}/{cle}" if chemin else str(cle))]
+    if isinstance(donnees, list):
+        return [c for i, val in enumerate(donnees) for c in champs_a_remplir(val, f"{chemin}/{i}")]
+    return [chemin or "(racine)"] if isinstance(donnees, str) and A_REMPLIR in donnees else []
+
+
 # --------------------------------------------------------------------------
 # Édition textuelle des tâches (préserve la mise en forme écrite à la main)
 # --------------------------------------------------------------------------
@@ -264,7 +312,8 @@ class Registre:
 
     def exiger_membre(self, pseudo):
         if pseudo not in self.membres and pseudo not in self.conseil:
-            raise ErreurBee(f"{pseudo} n'est pas inscrit. Inscription : bee inscrire --pseudo {pseudo} --compte-cree-le AAAA-MM-JJ")
+            raise ErreurBee(f"{pseudo} n'est pas inscrit dans ce registre. Si votre PR d'inscription est ouverte, attendez sa fusion, "
+                            f"puis : git switch main && git pull upstream main. Sinon : bee inscrire --pseudo {pseudo} --compte-cree-le AAAA-MM-JJ")
 
     def est_integree(self, identifiant):
         return identifiant in self.taches and self.taches[identifiant][1].get("statut") == "integree"
@@ -384,7 +433,7 @@ def verifier_registre(reg):
         valide = True
         for erreur in sorted(reg.schema(nom).iter_errors(donnees), key=lambda e: [str(x) for x in e.absolute_path]):
             lieu = "/".join(str(x) for x in erreur.absolute_path) or "(racine)"
-            ajouter(f"{reg.rel(chemin)} : {lieu} : {erreur.message}")
+            ajouter(f"{reg.rel(chemin)} : {lieu} : {message_schema(erreur)}")
             valide = False
         return valide
 
@@ -520,11 +569,20 @@ def verifier_manifeste(reg, donnees, origine="CONTRIBUTION.yaml", utilisateur=No
     problemes = []
     if not isinstance(donnees, dict):
         return [f"{origine} : le fichier doit contenir un objet YAML"]
+    a_remplir = champs_a_remplir(donnees)
+    if a_remplir:
+        problemes.append(f"{origine} : il reste des champs « {A_REMPLIR} » : {', '.join(a_remplir)}")
     for erreur in sorted(reg.schema("contribution").iter_errors(donnees), key=lambda e: [str(x) for x in e.absolute_path]):
+        if isinstance(erreur.instance, str) and A_REMPLIR in erreur.instance:
+            continue  # déjà signalé ci-dessus
         lieu = "/".join(str(x) for x in erreur.absolute_path) or "(racine)"
-        problemes.append(f"{origine} : {lieu} : {erreur.message}")
-    if A_REMPLIR in json.dumps(donnees, ensure_ascii=False):
-        problemes.append(f"{origine} : il reste des champs « {A_REMPLIR} »")
+        problemes.append(f"{origine} : {lieu} : {message_schema(erreur)}")
+    mesures_brutes = donnees.get("mesures") if isinstance(donnees.get("mesures"), dict) else {}
+    for cote in ("avant", "apres"):
+        bloc = mesures_brutes.get(cote)
+        for cle, valeur in (bloc.items() if isinstance(bloc, dict) else []):
+            if isinstance(valeur, (int, float)) and valeur == 0:
+                problemes.append(f"{origine} : mesures/{cote}/{cle} vaut 0 : indiquez la valeur réellement mesurée (commandement 2)")
     tache = reg.taches.get(donnees.get("tache"))
     if not tache:
         problemes.append(f"{origine} : tâche inconnue « {donnees.get('tache')} »")
@@ -533,17 +591,20 @@ def verifier_manifeste(reg, donnees, origine="CONTRIBUTION.yaml", utilisateur=No
     if utilisateur and donnees.get("utilisateur") != utilisateur:
         problemes.append(f"{origine} : utilisateur « {donnees.get('utilisateur')} » différent de l'auteur de la PR « {utilisateur} »")
     if tache.get("type") in ("optimisation", "mesure") and "mesures" not in donnees:
-        problemes.append(f"{origine} : une tâche de type {tache['type']} exige le bloc mesures (commandement 2)")
-    mesures = donnees.get("mesures") or {}
+        problemes.append(f"{origine} : une tâche de type {tache['type']} exige le bloc mesures (commandement 2). "
+                         "Sans mesure réelle, ne soumettez pas : libérez la tâche avec une note.")
+    mesures = mesures_brutes
     connues = reg.metriques(tache.get("projet"))
     for cote in ("avant", "apres"):
-        for cle in (mesures.get(cote) or {}):
+        bloc = mesures.get(cote) if isinstance(mesures.get(cote), dict) else {}
+        for cle in bloc:
             if connues and cle not in connues:
-                problemes.append(f"{origine} : mesures/{cote}/{cle} : métrique inconnue du projet")
+                problemes.append(f"{origine} : mesures/{cote}/{cle} : métrique inconnue du projet ({', '.join(connues)})")
     metrique = tache.get("metrique")
     if tache.get("type") == "optimisation" and mesures and metrique:
         for cote in ("avant", "apres"):
-            if metrique not in (mesures.get(cote) or {}):
+            bloc = mesures.get(cote) if isinstance(mesures.get(cote), dict) else {}
+            if metrique not in bloc:
                 problemes.append(f"{origine} : mesures/{cote} doit contenir la métrique visée « {metrique} »")
     taille_reelle = donnees.get("taille_reelle")
     if taille_reelle in ORDRE_TAILLES and tache.get("taille") in ORDRE_TAILLES:
@@ -600,7 +661,8 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None):
             if statut_git == "A":
                 natures.append("creation_tache")
                 exiger(est_conseil or (niveau == "Confirmé" and not amorcage),
-                       f"{chemin} : créer une tâche est réservé au conseil et aux Confirmés (tâches de découpage)")
+                       f"{chemin} : créer une tâche est réservé au conseil"
+                       + (" pendant l'amorçage ; proposez-la dans une issue « Proposition de tâche »" if amorcage else " et aux Confirmés"))
                 continue
             if statut_git == "D":
                 exiger(est_conseil, f"{chemin} : seule le conseil peut supprimer une tâche")
@@ -736,7 +798,8 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None):
 
         natures.append("gouvernance")
         exiger(est_conseil, f"{chemin} : modification réservée au conseil humain"
-               + (" (et 30 jours de discussion publique : commandement 11)" if chemin == "COMMANDEMENTS.md" else ""))
+               + (" (et 30 jours de discussion publique : commandement 11)" if chemin == "COMMANDEMENTS.md"
+                  else " ; si ce fichier est arrivé par erreur dans la PR, retirez-le (git rm --cached, puis commit)"))
 
     return problemes, natures
 
@@ -749,12 +812,23 @@ LIBRE_SERVICE = {"reservation", "liberation", "soumission", "note", "relecture",
 # --------------------------------------------------------------------------
 
 def verifier_fork(reg, depot, base, tete, identifiant_tache, auteur=None):
+    """Renvoie (problèmes, lignes modifiées, avertissements) pour une branche de contribution."""
     _, tache = reg.tache(identifiant_tache)
     _, projet = reg.projets[tache["projet"]]
     exclus = list(projet.get("chemins_hors_decompte") or []) + ["CONTRIBUTION.yaml"]
     juges = list(projet.get("chemins_juges") or [])
-    problemes = []
+    problemes, avertissements = [], []
     total = 0
+    for ref in (base, tete):
+        if subprocess.run(["git", "-C", str(depot), "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}"], capture_output=True).returncode != 0:
+            conseil = " Lancez d'abord : git fetch upstream" if "upstream" in ref else ""
+            raise ErreurBee(f"révision « {ref} » introuvable dans {depot}.{conseil}")
+    if tete == "HEAD":
+        en_attente = [l[3:] for l in git(depot, "status", "--porcelain", "--untracked-files=no").splitlines() if l.strip()]
+        if en_attente:
+            problemes.append(f"{len(en_attente)} fichier(s) modifié(s) mais non commité(s) ({', '.join(en_attente[:5])}"
+                             f"{'…' if len(en_attente) > 5 else ''}) : l'outil vérifie le dernier commit, pas le disque. Commitez d'abord.")
+    fichiers_tache = [f.rstrip("/") for f in tache.get("fichiers") or []]
     for ligne in git(depot, "diff", "--numstat", "--no-renames", f"{base}...{tete}").splitlines():
         ajoutees, retirees, chemin = ligne.split("\t", 2)
         if correspond(chemin, exclus):
@@ -763,6 +837,8 @@ def verifier_fork(reg, depot, base, tete, identifiant_tache, auteur=None):
             problemes.append(f"{chemin} : fichier binaire modifié (commandement 7 : pas de binaire opaque)")
             continue
         total += int(ajoutees) + int(retirees)
+        if fichiers_tache and not any(chemin == f or chemin.startswith(f + "/") for f in fichiers_tache):
+            avertissements.append(f"{chemin} : hors des fichiers de la tâche ({', '.join(fichiers_tache)}) ; justifiez-le dans le manifeste, les relecteurs jugeront")
     maximum = LIGNES_MAX[tache["taille"]]
     if total > maximum:
         problemes.append(f"R1 : {total} lignes modifiées, maximum {maximum} pour une tâche {tache['taille']}")
@@ -772,12 +848,17 @@ def verifier_fork(reg, depot, base, tete, identifiant_tache, auteur=None):
                 problemes.append(f"{chemin} : une tâche {tache['type']} ne peut pas modifier ce qui la juge (commandement 3)")
     manifeste = lire_yaml_ref(depot, tete, "CONTRIBUTION.yaml")
     if manifeste is None:
-        problemes.append("CONTRIBUTION.yaml absent à la racine de la branche (bee manifeste)")
+        if (pathlib.Path(depot) / "CONTRIBUTION.yaml").exists():
+            problemes.append("CONTRIBUTION.yaml existe sur le disque mais n'est pas commité : git add CONTRIBUTION.yaml puis commit")
+        else:
+            problemes.append("CONTRIBUTION.yaml absent à la racine de la branche (bee manifeste … --sortie <fork>/CONTRIBUTION.yaml)")
     else:
         problemes += verifier_manifeste(reg, manifeste, "CONTRIBUTION.yaml", auteur)
         if isinstance(manifeste, dict) and manifeste.get("tache") != identifiant_tache:
             problemes.append(f"CONTRIBUTION.yaml : tâche « {manifeste.get('tache')} » au lieu de « {identifiant_tache} »")
-    return problemes, total
+    if total == 0 and not problemes:
+        avertissements.append("aucune ligne de code modifiée hors tests et bancs : est-ce bien la bonne branche ?")
+    return problemes, total, avertissements
 
 
 # --------------------------------------------------------------------------
@@ -939,7 +1020,7 @@ def cmd_valider(args):
 
 def cmd_lister(args):
     reg = Registre(args.registre)
-    resultat = []
+    resultat, masquees = [], []
     for _, t in sorted(reg.taches.values(), key=lambda x: (x[1].get("projet", ""), -float(x[1].get("portee", 0)), x[1].get("id", ""))):
         if not isinstance(t, dict):
             continue
@@ -955,16 +1036,27 @@ def cmd_lister(args):
             continue
         bloquee = reg.bloquee_par(t)
         if args.disponibles and bloquee:
+            masquees.append((t["id"], bloquee))
             continue
         resultat.append({**t, "bloquee_par": bloquee})
     if args.json:
         print(json.dumps(resultat, ensure_ascii=False, indent=2))
         return 0
+    if masquees:
+        attentes = sorted({d for _, b in masquees for d in b})
+        message_masquees = f"{len(masquees)} tâche(s) masquée(s) car elles attendent l'intégration de : {', '.join(attentes)}."
     if not resultat:
-        print("Aucune tâche ne correspond.")
+        print("Aucune tâche ne correspond." + (f" {message_masquees}" if masquees else ""))
+        en_relecture = sum(1 for _, e in reg.enregistrements.values() if isinstance(e, dict) and e.get("statut") == "en_relecture")
+        if en_relecture:
+            print(f"Il y a {en_relecture} contribution(s) à relire : bee classement --statut en_relecture")
+        else:
+            print("Rien à relire non plus : dites-le à votre utilisateur et arrêtez-vous (AGENTS.md, « Quand t'arrêter »).")
         return 0
     afficher_tableau(["ID", "TYPE", "TAILLE", "PORTÉE", "STATUT", "TITRE"],
                      [[t["id"], t["type"], t["taille"], f"{float(t['portee']):.1f}", t["statut"] + (" (bloquée)" if t["bloquee_par"] else ""), t["titre"]] for t in resultat])
+    if masquees:
+        print(f"\n{message_masquees}")
     return 0
 
 
@@ -1080,9 +1172,9 @@ def cmd_manifeste(args):
             "mesures:",
             f"  machine: \"{A_REMPLIR} : processeur, système, compilateur\"",
             f"  commande: {guillemets((projet.get('commandes') or {}).get('banc_ab', A_REMPLIR))}",
-            "  repetitions: 10",
+            f"  repetitions: \"{A_REMPLIR} : nombre de répétitions réellement faites\"",
             "  avant:",
-        ] + [f"    {m}: 0  # {A_REMPLIR}" for m in metriques] + ["  apres:"] + [f"    {m}: 0  # {A_REMPLIR}" for m in metriques]
+        ] + [f"    {m}: \"{A_REMPLIR}\"" for m in metriques] + ["  apres:"] + [f"    {m}: \"{A_REMPLIR}\"" for m in metriques]
     lignes += [
         "teste:",
         f"  - \"{A_REMPLIR} : ce que vous avez réellement exécuté (tests, différentiel, fuzzing…)\"",
@@ -1118,7 +1210,13 @@ def cmd_soumettre(args):
     chemin, t = reg.tache(args.tache)
     titulaire = (t.get("reservation") or {}).get("utilisateur")
     if t.get("statut") != "reservee" or titulaire != args.utilisateur:
-        raise ErreurBee(f"{args.tache} doit être réservée par {args.utilisateur} (statut : {t.get('statut')}, titulaire : {titulaire})")
+        raise ErreurBee(f"{args.tache} doit être réservée par {args.utilisateur} (statut : {t.get('statut')}, titulaire : {titulaire}). "
+                        "Si votre PR de réservation est ouverte, attendez sa fusion puis : git switch main && git pull upstream main")
+    fork = (reg.projets.get(t["projet"], (None, {}))[1].get("fork") or "").rstrip("/")
+    if not re.fullmatch(r"https://github\.com/[A-Za-z0-9-]+/[A-Za-z0-9_.-]+/pull/[0-9]+", args.pr):
+        raise ErreurBee(f"adresse de PR invalide : {args.pr} (attendu : https://github.com/<organisation>/<dépôt>/pull/<numéro>)")
+    if fork and not args.pr.lower().startswith(fork.lower() + "/pull/"):
+        raise ErreurBee(f"la PR doit être ouverte sur le fork du projet : {fork}/pull/<numéro> (reçu : {args.pr})")
     rang = 1 + sum(1 for cid in reg.enregistrements if cid.startswith(args.tache + "-c"))
     identifiant = f"{args.tache}-c{rang}"
     donnees = {"id": identifiant, "tache": args.tache, "auteur": args.utilisateur, "pr": args.pr}
@@ -1215,6 +1313,8 @@ def cmd_classement(args):
     for cid, (_, enr) in reg.enregistrements.items():
         if args.projet and reg.taches.get(enr.get("tache"), (None, {}))[1].get("projet") != args.projet:
             continue
+        if args.statut and enr.get("statut") != args.statut:
+            continue
         score = calculer_score(reg, enr, niveaux)
         lignes.append({"id": cid, "statut": enr.get("statut"), "auteur": enr.get("auteur"), "resume": enr.get("resume", ""), **(score or {"S": None})})
     lignes.sort(key=lambda x: -(x["S"] if x["S"] is not None else -1))
@@ -1253,7 +1353,9 @@ def cmd_verifier_pr(args):
 
 def cmd_verifier_fork(args):
     reg = Registre(args.registre)
-    problemes, total = verifier_fork(reg, args.depot, args.base, args.tete, args.tache, args.auteur)
+    problemes, total, avertissements = verifier_fork(reg, args.depot, args.base, args.tete, args.tache, args.auteur)
+    for a in avertissements:
+        print(f"⚠ {a}")
     for p in problemes:
         print(f"✗ {p}")
     if problemes:
@@ -1409,6 +1511,7 @@ def construire_analyseur():
 
     p = ajouter("classement", cmd_classement, "Classe les contributions par score.")
     p.add_argument("--projet")
+    p.add_argument("--statut", choices=["en_relecture", "integree", "refusee", "annulee"], help="ex. en_relecture : les contributions à relire")
     p.add_argument("--json", action="store_true")
 
     p = ajouter("verifier-pr", cmd_verifier_pr, "Vérifie une pull request sur le registre (utilisé par la CI).")

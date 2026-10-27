@@ -223,10 +223,41 @@ class TestRegistre(BaseTest):
 
     def test_pr_hors_fork_refusee(self):
         self.bee("prendre", "miniz-0099", "--utilisateur", "alice")
-        self.bee("soumettre", "miniz-0099", "--utilisateur", "alice", "--pr", "https://github.com/autre/depot/pull/1")
+        code, texte = self.bee("soumettre", "miniz-0099", "--utilisateur", "alice", "--pr", "https://github.com/autre/depot/pull/1")
+        self.assertEqual(code, 1)
+        self.assertIn("fork du projet", texte)
+        # et si quelqu'un écrit l'enregistrement à la main, valider le refuse aussi
+        bee.ecrire_yaml(self.dossier / "contributions/miniz/miniz-0099-c1.yaml",
+                        {"id": "miniz-0099-c1", "tache": "miniz-0099", "auteur": "alice", "pr": "https://github.com/autre/depot/pull/1",
+                         "statut": "en_relecture", "soumise_le": "2026-10-27T12:00:00Z", "relectures": []})
         code, texte = self.bee("valider")
         self.assertEqual(code, 1)
         self.assertIn("fork du projet", texte)
+
+    def test_mesures_a_zero_refusees(self):
+        chemin = self.dossier / "CONTRIBUTION.yaml"
+        chemin.write_text(MANIFESTE_REMPLI.replace("debit_compression_n6: 55.0", "debit_compression_n6: 0"), encoding="utf-8")
+        code, texte = self.bee("valider-contribution", str(chemin))
+        self.assertEqual(code, 1)
+        self.assertIn("vaut 0", texte)
+
+    def test_messages_en_francais(self):
+        bee.ecrire_yaml(self.dossier / "membres/zoe.yaml", {"pseudo": "zoe", "inscrit_le": "2026-10-27"})
+        code, texte = self.bee("valider")
+        self.assertEqual(code, 1)
+        self.assertIn("champ obligatoire manquant : compte_cree_le", texte)
+
+    def test_lister_signale_les_taches_masquees(self):
+        code, texte = self.bee("lister", "--type", "relecture", "--disponibles")
+        self.assertEqual(code, 0)
+        self.assertIn("masquée", texte)
+        self.assertIn("miniz-0001", texte)
+        self.assertIn("arrêtez-vous", texte)
+
+    def test_attente_de_fusion_expliquee(self):
+        code, texte = self.bee("prendre", "miniz-0099", "--utilisateur", "inconnu")
+        self.assertEqual(code, 1)
+        self.assertIn("attendez sa fusion", texte)
 
     def test_site(self):
         self.soumettre_0099()
@@ -360,6 +391,27 @@ class TestFork(BaseTest):
         code, texte = self.verifier()
         self.assertEqual(code, 1)
         self.assertIn("CONTRIBUTION.yaml absent", texte)
+
+    def test_travail_non_commite(self):
+        (self.fork / "miniz_tdef.c").write_text("modifié\n", encoding="utf-8")
+        (self.fork / "CONTRIBUTION.yaml").write_text(MANIFESTE_REMPLI, encoding="utf-8")
+        code, texte = self.verifier()
+        self.assertEqual(code, 1)
+        self.assertIn("non commité", texte)
+        self.assertIn("existe sur le disque", texte)
+
+    def test_fichier_hors_tache_et_base_inconnue(self):
+        chemin = self.fork / "miniz_tdef.c"
+        chemin.write_text(chemin.read_text().replace("ligne 5\n", "ligne cinq\n"), encoding="utf-8")
+        (self.fork / "miniz_zip.c").write_text("hors périmètre\n", encoding="utf-8")
+        (self.fork / "CONTRIBUTION.yaml").write_text(MANIFESTE_REMPLI, encoding="utf-8")
+        self.commit()
+        code, texte = self.verifier()
+        self.assertEqual(code, 0, texte)
+        self.assertIn("⚠ miniz_zip.c : hors des fichiers de la tâche", texte)
+        code, texte = self.bee("verifier-fork", "--tache", "miniz-0099", "--base", "upstream/master", "--depot", str(self.fork))
+        self.assertEqual(code, 1)
+        self.assertIn("git fetch upstream", texte)
 
 
 MANIFESTE_REMPLI = """tache: miniz-0099

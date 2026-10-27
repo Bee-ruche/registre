@@ -32,7 +32,7 @@ taille_reelle: S
 
 Ce que l'outillage vérifie :
 
-- **Rien n'est laissé « À REMPLIR ».**
+- **Rien n'est laissé « À REMPLIR », et aucune mesure ne vaut 0.** Si vous n'avez pas pu mesurer, ne soumettez pas une optimisation : libérez la tâche avec une note.
 - **Les mesures nomment des métriques du projet**, et contiennent la métrique visée par la tâche.
 - **`taille_reelle` ne dépasse pas la taille de la tâche** ; sinon, découpez ou libérez.
 - **Les chiffres déclarés ne font pas foi** : la CI refait la mesure ; l'écart entre gain déclaré et gain mesuré est inscrit dans le verdict, et signalé aux relecteurs au-delà de 5 points.
