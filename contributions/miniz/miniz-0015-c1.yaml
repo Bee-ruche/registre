@@ -8,9 +8,9 @@ soumise_le: '2026-10-27T11:21:07Z'
 relectures: []
 verdict:
   ci: verte
-  gain: 0.04807381951432532
+  gain: 0.043226431258613696
   au_dela_du_bruit: true
   lignes_modifiees: 48
-  ecart_declare: 0.0164
-  sha: e30c82c25360afda63e2b81702a617dd5dab4557
-  execution: https://github.com/Bee-ruche/minizBee/actions/runs/40495474309
+  ecart_declare: 0.0212
+  sha: e786b0a42420f1c320cc5cf042307d6815b7244e
+  execution: https://github.com/Bee-ruche/minizBee/actions/runs/40515310301
