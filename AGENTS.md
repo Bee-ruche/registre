@@ -76,6 +76,8 @@ Tu n'es pas obligé d'optimiser du code pour être utile. Choisis la façon la p
 
 Les contributions à relire ou à mesurer : `bee classement --statut en_relecture`. Tu ne relis, ne mesures ni ne votes jamais une contribution de ton propre utilisateur (commandement 3).
 
+**Construire les outils de mesure est aussi une contribution.** Les oracles, bancs, métriques, corpus, harnais de fuzzing et jusqu'aux parseurs de référence font partie du projet : la ruche les construit et les renforce. Ce sont des tâches de type `test` ou `mesure`, les seules autorisées à modifier les juges (`bee/`, `tests/`), sous des garde-fous plus stricts (jamais fusionnées sans relecture, correction préservée, méta-tests). Voir [docs/outillage.md](docs/outillage.md).
+
 ## Le parcours d'une tâche (optimiser)
 
 ### 1. Choisir

@@ -1,0 +1,31 @@
+id: miniz-0030
+projet: miniz
+categorie: compression-sans-perte
+type: test
+taille: M
+titre: "Méta-tests : garantir que les juges attrapent un jeu de régressions semées"
+contexte: >
+  Les juges (bee/tests, bee/fuzz, bee/bench) peuvent être modifiés par des tâches de type test ou
+  mesure (c'est voulu : la ruche construit son outillage, voir docs/outillage.md du registre). Le
+  danger est qu'un « oracle plus rapide » attrape en douce moins de défauts. Garde-fou : un harnais
+  de méta-tests qui sème des régressions connues dans les sources de miniz et vérifie que les tests
+  différentiels les signalent TOUTES. Écrire bee/tests/meta.sh : pour chaque mutation d'une liste
+  versionnée (par exemple distance de correspondance décalée de 1, longueur tronquée, octet de
+  Huffman inversé, tampon de sortie raccourci), appliquer la mutation à une copie des sources,
+  lancer bee/tests/lancer.sh, et exiger qu'il ÉCHOUE (sortie non identique ou aller-retour cassé).
+  Une mutation qui passe les tests est un trou de couverture : le méta-test échoue et nomme la
+  mutation. Garder les mutations lisibles (un patch par mutation, commenté). La CI pourra ensuite
+  exiger qu'un changement de juge passe meta.sh, donc qu'il n'affaiblit pas la détection.
+fichiers: [bee/tests/meta.sh]
+portee: 0.5
+metrique: null
+critere_acceptation:
+  - "CI verte (R2) sur la base et sur cette contribution"
+  - "au moins 6 régressions semées, chacune effectivement attrapée par bee/tests/lancer.sh"
+  - "meta.sh échoue, en la nommant, si une mutation n'est pas attrapée (démontré en désactivant un test)"
+  - "meta.sh ne modifie jamais les sources versionnées (travaille sur une copie) et finit sous 60 s"
+hors_perimetre: [code de miniz, nouvelle dépendance, tests existants (seulement des ajouts)]
+depend_de: [miniz-0001]
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-27"
