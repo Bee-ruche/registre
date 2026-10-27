@@ -405,6 +405,8 @@ def generer(bee, reg, sortie):
                       f"<dt>Gain mesuré</dt><dd>{pourcent(verdict['gain']) if verdict.get('gain') is not None else '—'}"
                       f"{'' if verdict.get('au_dela_du_bruit', True) else ', dans le bruit'}</dd>",
                       f"<dt>Lignes modifiées</dt><dd>{verdict.get('lignes_modifiees', '—')}</dd>"]
+            if verdict.get("amorcage"):
+                lignes.append("<dt>Amorçage</dt><dd>oui : cette contribution apporte ses propres juges, qui l'ont évaluée ; elle doit être relue de près</dd>")
             if verdict.get("ecart_declare") is not None:
                 lignes.append(f"<dt>Écart avec le gain déclaré</dt><dd>{nombre(100 * verdict['ecart_declare'], 1)} points</dd>")
             if verdict.get("execution"):

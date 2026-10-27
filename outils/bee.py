@@ -1274,6 +1274,8 @@ def cmd_enregistrer_verdict(args):
     verdict["gain"] = float(gain) if gain is not None else None
     if "au_dela_du_bruit" in brut:
         verdict["au_dela_du_bruit"] = bool(brut["au_dela_du_bruit"])
+    if brut.get("amorcage"):
+        verdict["amorcage"] = True  # juges venus de la PR elle-même : à signaler aux relecteurs
     lignes = args.lignes if args.lignes is not None else brut.get("lignes_modifiees")
     if lignes is None:
         raise ErreurBee("nombre de lignes modifiées inconnu : passez --lignes ou fournissez lignes_modifiees dans le verdict")

@@ -187,7 +187,7 @@ class TestRegistre(BaseTest):
         self.assertEqual(self.bee("voter", cid, "--utilisateur", "chloe", "--valeur", "1")[0], 0)
         self.valide()
         verdict = self.dossier / "verdict.json"
-        verdict.write_text(json.dumps({"ci": "verte", "gain": 0.03, "au_dela_du_bruit": True, "lignes_modifiees": 10}), encoding="utf-8")
+        verdict.write_text(json.dumps({"ci": "verte", "gain": 0.03, "au_dela_du_bruit": True, "lignes_modifiees": 10, "amorcage": True}), encoding="utf-8")
         manifeste = self.dossier / "CONTRIBUTION.yaml"
         manifeste.write_text(MANIFESTE_REMPLI, encoding="utf-8")
         code, texte = self.bee("enregistrer-verdict", cid, "--verdict", str(verdict), "--manifeste", str(manifeste), "--sha", "abc1234")
@@ -195,6 +195,7 @@ class TestRegistre(BaseTest):
         self.assertIn("écart", texte, "gain déclaré 10 % contre 3 % mesuré : alerte")
         enr = bee.lire_yaml(self.dossier / f"contributions/miniz/{cid}.yaml")
         self.assertEqual(enr["verdict"]["ecart_declare"], 0.07)
+        self.assertTrue(enr["verdict"]["amorcage"])
         self.valide()
         reg = bee.Registre(self.dossier)
         score = bee.calculer_score(reg, enr, bee.calculer_niveaux(reg))

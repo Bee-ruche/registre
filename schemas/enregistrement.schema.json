@@ -25,6 +25,7 @@
         "au_dela_du_bruit": {"type": "boolean"},
         "lignes_modifiees": {"type": "integer", "minimum": 0},
         "ecart_declare": {"type": ["number", "null"]},
+        "amorcage": {"type": "boolean"},
         "sha": {"type": "string", "pattern": "^[0-9a-f]{7,40}$"},
         "execution": {"type": "string", "pattern": "^https://"}
       }
