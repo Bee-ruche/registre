@@ -6,7 +6,7 @@ name: Verdicts des forks
 
 on:
   schedule:
-    - cron: "41 */2 * * *"   # toutes les 2 h ; à rapprocher quand le dépôt sera public (minutes gratuites)
+    - cron: "11,41 * * * *"
   workflow_dispatch:
 
 permissions:

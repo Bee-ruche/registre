@@ -1,9 +1,9 @@
-# Libère les réservations de plus de 72 h (règle R7), toutes les 6 heures.
+# Libère chaque heure les réservations de plus de 72 h (règle R7).
 name: Réservations expirées
 
 on:
   schedule:
-    - cron: "17 */6 * * *"   # toutes les 6 h : le dépôt est privé, chaque exécution coûte des minutes
+    - cron: "17 * * * *"
   workflow_dispatch:
 
 permissions:
