@@ -892,11 +892,16 @@ LIBRE_SERVICE = {"reservation", "liberation", "soumission", "note", "relecture",
 # Vérification d'une branche de contribution sur un fork (règle R1, commandement 3)
 # --------------------------------------------------------------------------
 
+def chemin_manifeste(identifiant_tache):
+    """Emplacement du manifeste d'une contribution dans le fork."""
+    return f"manifestes/{identifiant_tache}.yaml"
+
+
 def verifier_fork(reg, depot, base, tete, identifiant_tache, auteur=None):
     """Renvoie (problèmes, lignes modifiées, avertissements) pour une branche de contribution."""
     _, tache = reg.tache(identifiant_tache)
     _, projet = reg.projets[tache["projet"]]
-    exclus = list(projet.get("chemins_hors_decompte") or []) + ["CONTRIBUTION.yaml"]
+    exclus = list(projet.get("chemins_hors_decompte") or []) + ["CONTRIBUTION.yaml", "manifestes/**"]
     juges = list(projet.get("chemins_juges") or [])
     problemes, avertissements = [], []
     total = 0
@@ -927,16 +932,30 @@ def verifier_fork(reg, depot, base, tete, identifiant_tache, auteur=None):
         for chemin in git(depot, "diff", "--name-only", "--no-renames", f"{base}...{tete}").splitlines():
             if correspond(chemin, juges):
                 problemes.append(f"{chemin} : une tâche {tache['type']} ne peut pas modifier ce qui la juge (commandement 3)")
-    manifeste = lire_yaml_ref(depot, tete, "CONTRIBUTION.yaml")
+    # Manifeste : manifestes/<tâche>.yaml (un fichier par tâche, donc pas de conflit entre deux PR), sinon
+    # l'ancien emplacement CONTRIBUTION.yaml à la racine.
+    nom_manifeste = chemin_manifeste(identifiant_tache)
+    manifeste = lire_yaml_ref(depot, tete, nom_manifeste)
+    ancien = None
     if manifeste is None:
-        if (pathlib.Path(depot) / "CONTRIBUTION.yaml").exists():
-            problemes.append("CONTRIBUTION.yaml existe sur le disque mais n'est pas commité : git add CONTRIBUTION.yaml puis commit")
+        ancien = lire_yaml_ref(depot, tete, "CONTRIBUTION.yaml")
+        if ancien is not None and isinstance(ancien, dict) and ancien.get("tache") == identifiant_tache:
+            nom_manifeste, manifeste = "CONTRIBUTION.yaml", ancien
+    if manifeste is None:
+        candidats = [nom_manifeste] + (["CONTRIBUTION.yaml"] if ancien is None else [])
+        sur_disque = [n for n in candidats if (pathlib.Path(depot) / n).exists()]
+        if sur_disque:
+            problemes.append(f"{sur_disque[0]} existe sur le disque mais n'est pas commité : git add {sur_disque[0]} puis commit")
         else:
-            problemes.append("CONTRIBUTION.yaml absent à la racine de la branche (bee manifeste … --sortie <fork>/CONTRIBUTION.yaml)")
+            problemes.append(f"{nom_manifeste} absent de la branche (bee manifeste {identifiant_tache} … --sortie <fork>/{nom_manifeste})")
     else:
-        problemes += verifier_manifeste(reg, manifeste, "CONTRIBUTION.yaml", auteur)
+        problemes += verifier_manifeste(reg, manifeste, nom_manifeste, auteur)
         if isinstance(manifeste, dict) and manifeste.get("tache") != identifiant_tache:
-            problemes.append(f"CONTRIBUTION.yaml : tâche « {manifeste.get('tache')} » au lieu de « {identifiant_tache} »")
+            problemes.append(f"{nom_manifeste} : tâche « {manifeste.get('tache')} » au lieu de « {identifiant_tache} »")
+    autres = [c for c in git(depot, "diff", "--name-only", "--no-renames", f"{base}...{tete}").splitlines()
+              if correspond(c, ["manifestes/**"]) and c != chemin_manifeste(identifiant_tache)]
+    if autres:
+        problemes.append(f"la branche modifie le manifeste d'une autre tâche ({', '.join(autres[:3])}) : une PR, une tâche")
     if total == 0 and not problemes and tache["type"] == "optimisation":
         # Normal pour une tâche de mesure ou d'outillage, qui ne touche que bee/ et tests/.
         avertissements.append("aucune ligne de code modifiée hors tests et bancs pour une optimisation : est-ce bien la bonne branche ?")

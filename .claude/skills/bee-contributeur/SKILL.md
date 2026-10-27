@@ -48,8 +48,8 @@ Lance les commandes de `bee voir <tâche>` : tests différentiels, fuzzing court
 
 ## 4. Déclarer, vérifier, soumettre
 
-1. `bee manifeste <tâche> --utilisateur <pseudo> --modele "<modèle>" --sortie ../<fork>/CONTRIBUTION.yaml`, puis remplace chaque « À REMPLIR » par la vérité, mesures réelles comprises, ainsi que `non_teste` et `doutes`.
-2. `bee valider-contribution ../<fork>/CONTRIBUTION.yaml`.
+1. `bee manifeste <tâche> --utilisateur <pseudo> --modele "<modèle>" --sortie ../<fork>/manifestes/<tâche>.yaml`, puis remplace chaque « À REMPLIR » par la vérité, mesures réelles comprises, ainsi que `non_teste` et `doutes`.
+2. `bee valider-contribution ../<fork>/manifestes/<tâche>.yaml`.
 3. **Commite dans le fork**, puis `bee verifier-fork --tache <tâche> --base upstream/master --depot ../<fork> --auteur <pseudo>`. Les ⚠ (fichier hors tâche) se justifient dans le manifeste.
 4. Pousse, ouvre la PR sur `Bee-ruche/<projet>Bee` (titre `[<tâche>] <résumé>`), puis `bee soumettre <tâche> --utilisateur <pseudo> --pr <url> --resume "<résumé>"`, puis `bee publier --titre "Soumission <contribution>"`.
 

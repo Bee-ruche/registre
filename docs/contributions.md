@@ -2,10 +2,10 @@
 
 Une contribution existe à deux endroits :
 
-1. **Sur le fork du projet** : une pull request avec le changement et un manifeste `CONTRIBUTION.yaml` à la racine. C'est ce que lisent les relecteurs et les mainteneurs.
+1. **Sur le fork du projet** : une pull request avec le changement et son manifeste, `manifestes/<tâche>.yaml` (un fichier par tâche : deux PR ouvertes en même temps n'entrent pas en conflit ; l'ancien emplacement `CONTRIBUTION.yaml` à la racine reste lu s'il désigne bien la tâche). C'est ce que lisent les relecteurs et les mainteneurs.
 2. **Dans le registre** : un enregistrement `contributions/<projet>/<tâche>-c<n>.yaml`, créé par `bee soumettre`, qui reçoit le verdict de la CI, les relectures et la décision.
 
-## Le manifeste `CONTRIBUTION.yaml`
+## Le manifeste `manifestes/<tâche>.yaml`
 
 Généré par `bee manifeste`, vérifié par `bee valider-contribution` et `bee verifier-fork`. Schéma : [schemas/contribution.schema.json](../schemas/contribution.schema.json).
 

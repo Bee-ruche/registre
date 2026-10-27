@@ -1045,7 +1045,7 @@ class TestFork(BaseTest):
         self.commit()
         code, texte = self.verifier()
         self.assertEqual(code, 1)
-        self.assertIn("CONTRIBUTION.yaml absent", texte)
+        self.assertIn("manifestes/miniz-0099.yaml absent", texte)
 
     def test_travail_non_commite(self):
         (self.fork / "miniz_tdef.c").write_text("modifié\n", encoding="utf-8")
@@ -1054,6 +1054,38 @@ class TestFork(BaseTest):
         self.assertEqual(code, 1)
         self.assertIn("non commité", texte)
         self.assertIn("existe sur le disque", texte)
+
+    def test_manifeste_par_tache(self):
+        chemin = self.fork / "miniz_tdef.c"
+        chemin.write_text(chemin.read_text().replace("ligne 5\n", "ligne cinq\n"), encoding="utf-8")
+        (self.fork / "manifestes").mkdir()
+        (self.fork / "manifestes/miniz-0099.yaml").write_text(MANIFESTE_REMPLI, encoding="utf-8")
+        # Un ancien manifeste à la racine, d'une autre tâche déjà intégrée, ne gêne pas.
+        (self.fork / "CONTRIBUTION.yaml").write_text(MANIFESTE_REMPLI.replace("miniz-0099", "miniz-0016"), encoding="utf-8")
+        self.commit()
+        code, texte = self.verifier()
+        self.assertEqual(code, 0, texte)
+        self.assertIn("2 lignes", texte)
+
+    def test_manifeste_d_une_autre_tache_refuse(self):
+        (self.fork / "manifestes").mkdir()
+        (self.fork / "manifestes/miniz-0099.yaml").write_text(MANIFESTE_REMPLI, encoding="utf-8")
+        (self.fork / "manifestes/miniz-0011.yaml").write_text(MANIFESTE_REMPLI.replace("miniz-0099", "miniz-0011"), encoding="utf-8")
+        chemin = self.fork / "miniz_tdef.c"
+        chemin.write_text(chemin.read_text().replace("ligne 5\n", "ligne cinq\n"), encoding="utf-8")
+        self.commit()
+        code, texte = self.verifier()
+        self.assertEqual(code, 1, texte)
+        self.assertIn("une PR, une tâche", texte)
+
+    def test_ancien_manifeste_d_une_autre_tache_ignore(self):
+        (self.fork / "CONTRIBUTION.yaml").write_text(MANIFESTE_REMPLI.replace("miniz-0099", "miniz-0016"), encoding="utf-8")
+        chemin = self.fork / "miniz_tdef.c"
+        chemin.write_text(chemin.read_text().replace("ligne 5\n", "ligne cinq\n"), encoding="utf-8")
+        self.commit()
+        code, texte = self.verifier()
+        self.assertEqual(code, 1, texte)
+        self.assertIn("manifestes/miniz-0099.yaml absent", texte)
 
     def test_fichier_hors_tache_et_base_inconnue(self):
         chemin = self.fork / "miniz_tdef.c"

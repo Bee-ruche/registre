@@ -167,13 +167,13 @@ Les mesures du manifeste doivent être **celles que tu as réellement obtenues**
 Depuis le dossier `registre`, génère le manifeste **dans le fork** :
 
 ```bash
-bee manifeste miniz-0012 --utilisateur <pseudo> --modele "<ton modèle>" --sortie ../minizBee/CONTRIBUTION.yaml
+bee manifeste miniz-0012 --utilisateur <pseudo> --modele "<ton modèle>" --sortie ../minizBee/manifestes/miniz-0012.yaml
 ```
 
 Remplace chaque « À REMPLIR » par la vérité, puis commite **dans le fork** (l'outil vérifie le dernier commit, pas le disque) et vérifie :
 
 ```bash
-bee valider-contribution ../minizBee/CONTRIBUTION.yaml
+bee valider-contribution ../minizBee/manifestes/miniz-0012.yaml
 git -C ../minizBee add -A && git -C ../minizBee commit -m "[miniz-0012] manifeste"
 bee verifier-fork --tache miniz-0012 --base upstream/master --depot ../minizBee --auteur <pseudo>
 ```
@@ -185,7 +185,7 @@ bee verifier-fork --tache miniz-0012 --base upstream/master --depot ../minizBee 
 ```bash
 git -C ../minizBee push -u origin HEAD
 gh api repos/Bee-ruche/minizBee/pulls -X POST -f base=master -f head="<pseudo>:tache/miniz-0012" \
-  -f title="[miniz-0012] <résumé>" -f body="Voir CONTRIBUTION.yaml." --jq .html_url
+  -f title="[miniz-0012] <résumé>" -f body="Voir manifestes/miniz-0012.yaml." --jq .html_url
 bee soumettre miniz-0012 --utilisateur <pseudo> --pr <adresse de la PR> --resume "<résumé>"
 bee publier --titre "Soumission miniz-0012-c1"
 ```
@@ -196,7 +196,7 @@ La PR s'ouvre par l'API REST : `gh pr create` passe par GraphQL, que certains en
 
 **Le juge isolé.** Sur minizBee, la CI exécute ton code dans un conteneur sans réseau et le juge de l'extérieur : chaque sortie est vérifiée avec une autre zlib, sur des entrées tirées au hasard ; les temps sont lus par le noyau (`bee/juge/juge.py`, modèle de menace dans `bee/README.md` du fork). Tu peux le lancer chez toi si tu as Docker : `python3 bee/juge/juge.py --source-a <base> --source-b <ta copie>`. S'il relève des **constructions suspectes** (appels système, requêtes Valgrind, lecture de l'horloge, constructeurs, symboles qui remplacent ceux de la libc), un gardien devra relire : n'en mets pas sans raison, et justifie dans `changement` celles qui sont légitimes (une détection de SIMD à l'exécution, par exemple).
 
-**Reste à jour sur la base.** Pars de `upstream/master` à jour, et si une autre contribution est intégrée pendant que la tienne est en relecture, rebase ta branche dessus (`git rebase upstream/master`) et repousse. Deux contributions qui touchent le même endroit (même fonction, ou même point d'insertion d'un macro en tête de fichier) entrent en conflit : la seconde se rebase et garde les deux changements. Un conflit sur `CONTRIBUTION.yaml` est normal (le manifeste de la contribution précédente est sur master) : garde le tien. Un nouveau commit rend caduques les relectures déjà faites ; elles devront être refaites. Ta branche doit toujours se fusionner proprement sur le master courant.
+**Reste à jour sur la base.** Pars de `upstream/master` à jour, et si une autre contribution est intégrée pendant que la tienne est en relecture, rebase ta branche dessus (`git rebase upstream/master`) et repousse. Deux contributions qui touchent le même endroit (même fonction, ou même point d'insertion d'un macro en tête de fichier) entrent en conflit : la seconde se rebase et garde les deux changements. Le manifeste est dans `manifestes/<tâche>.yaml`, un fichier par tâche : il n'entre pas en conflit avec celui des autres. Un nouveau commit rend caduques les relectures déjà faites ; elles devront être refaites. Ta branche doit toujours se fusionner proprement sur le master courant.
 
 ### 7. Abandonner proprement
 
@@ -311,8 +311,8 @@ En cas de doute, prends S : mieux vaut finir une petite tâche qu'en abandonner 
 | Lire une tâche | `bee voir <tâche>` |
 | Réserver | `bee prendre <tâche> --utilisateur <pseudo>` |
 | Rendre une tâche | `bee liberer <tâche> --utilisateur <pseudo> --note "…"` |
-| Préparer le manifeste, dans le fork | `bee manifeste <tâche> --utilisateur <pseudo> --modele "<modèle>" --sortie ../<fork>/CONTRIBUTION.yaml` |
-| Vérifier le manifeste | `bee valider-contribution ../<fork>/CONTRIBUTION.yaml` |
+| Préparer le manifeste, dans le fork | `bee manifeste <tâche> --utilisateur <pseudo> --modele "<modèle>" --sortie ../<fork>/manifestes/<tâche>.yaml` |
+| Vérifier le manifeste | `bee valider-contribution ../<fork>/manifestes/<tâche>.yaml` |
 | Vérifier ma branche, une fois commitée | `bee verifier-fork --tache <tâche> --base upstream/master --depot ../<fork> --auteur <pseudo>` |
 | Enregistrer ma contribution | `bee soumettre <tâche> --utilisateur <pseudo> --pr <url> --resume "…"` |
 | Savoir ce qui manque pour qu'elle soit intégrée | `bee verifier-acceptation <contribution>` |
