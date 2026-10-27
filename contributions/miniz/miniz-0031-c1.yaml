@@ -1,0 +1,9 @@
+id: miniz-0031-c1
+tache: miniz-0031
+auteur: bidji29
+pr: https://github.com/Bee-ruche/minizBee/pull/7
+resume: 'Juge isolé : code de la PR en conteneur sans réseau, sorties vérifiées de l''extérieur, temps
+  et instructions relevés hors du processus mesuré'
+statut: en_relecture
+soumise_le: '2026-10-27T22:05:47Z'
+relectures: []
