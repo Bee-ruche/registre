@@ -460,6 +460,79 @@ class TestRegistre(BaseTest):
         code, texte = self.bee("verifier-acceptation", cid)
         self.assertEqual(code, 0, texte)
 
+    # --- Juge isolé des forks (miniz-0031) ---
+
+    def contribution_jugee(self, suspects=(), sorties=914, auteur="alice"):
+        cid = self.soumettre_0099(auteur=auteur)
+        verdict = self.dossier / "verdict.json"
+        verdict.write_text(json.dumps({"ci": "verte", "gain": 0.05, "au_dela_du_bruit": True, "instructions": INSTRUCTIONS_N6,
+                                       "lignes_modifiees": 10,
+                                       "juge": {"version": 1, "graine": "ab" * 16, "sorties_comparees": sorties,
+                                                "constructions_suspectes": list(suspects)}}), encoding="utf-8")
+        self.assertEqual(self.bee("enregistrer-verdict", cid, "--verdict", str(verdict), "--sha", "abc1234",
+                                  "--fichiers", self.fichiers_pr())[0], 0)
+        for relecteur in ("bruno", "chloe"):
+            if relecteur != auteur:
+                self.assertEqual(self.bee("relire", cid, "--utilisateur", relecteur, "--avis", "favorable",
+                                          "--motif", "Relu, rien à signaler ici.")[0], 0)
+        if auteur != "bidji29":
+            self.assertEqual(self.bee("voter", cid, "--utilisateur", "bidji29", "--valeur", "1")[0], 0)
+        os.environ["BEE_MAINTENANT"] = "2026-10-29T12:00:00Z"
+        return cid
+
+    def regler_porte(self, valeur):
+        chemin = self.dossier / "bee.yaml"
+        texte = chemin.read_text(encoding="utf-8")
+        chemin.write_text(texte.replace("relecture_gardien_requise: true", f"relecture_gardien_requise: {valeur}"), encoding="utf-8")
+
+    def test_juge_isole_enregistre_et_borne(self):
+        suspects = [{"type": "instruction", "detail": "syscall : 1 occurrence(s) contre 0 dans la base" + "x" * 500, "autre": 1}] * 60
+        cid = self.contribution_jugee(suspects)
+        _, enr = bee.Registre(self.dossier).enregistrement(cid)
+        juge = enr["verdict"]["juge"]
+        self.assertEqual(juge["sorties_comparees"], 914)
+        self.assertEqual(len(juge["constructions_suspectes"]), 50)
+        self.assertLessEqual(len(juge["constructions_suspectes"][0]["detail"]), 300)
+        self.valide()
+
+    def test_constructions_suspectes_exigent_un_gardien(self):
+        self.regler_porte("false")
+        cid = self.contribution_jugee([{"type": "instruction", "detail": "préambule_valgrind : 4 occurrence(s)"}])
+        code, texte = self.bee("verifier-acceptation", cid)
+        self.assertEqual(code, 1, texte)
+        self.assertIn("construction(s) suspecte(s)", texte)
+        self.assertEqual(self.bee("relire", cid, "--utilisateur", "bidji29", "--avis", "favorable",
+                                  "--motif", "Relu : la détection SIMD est légitime, mesures rejouées.")[0], 0)
+        code, texte = self.bee("verifier-acceptation", cid)
+        self.assertEqual(code, 0, texte)
+
+    def test_constructions_suspectes_meme_pour_un_auteur_privilegie(self):
+        cid = self.contribution_jugee([{"type": "appel_externe", "detail": "execve (miniz.o)"}], auteur="bidji29")
+        code, texte = self.bee("verifier-acceptation", cid)
+        self.assertEqual(code, 1, texte)
+        self.assertIn("construction(s) suspecte(s)", texte)
+
+    def test_porte_si_juge_incomplet(self):
+        self.regler_porte("si_juge_incomplet")
+        complet = self.contribution_jugee()
+        code, texte = self.bee("verifier-acceptation", complet)
+        self.assertEqual(code, 0, texte)  # juge isolé complet, rien de suspect : pas de gardien requis
+
+    def test_porte_si_juge_incomplet_sans_juge(self):
+        self.regler_porte("si_juge_incomplet")
+        cid = self.preparer_contribution_verte("alice", ("bruno", "chloe"))  # verdict sans section juge
+        self.assertEqual(self.bee("voter", cid, "--utilisateur", "bidji29", "--valeur", "1")[0], 0)
+        code, texte = self.bee("verifier-acceptation", cid)
+        self.assertEqual(code, 1, texte)
+        self.assertIn("pas entièrement jugé", texte)
+
+    def test_porte_si_juge_incomplet_juge_sans_sorties(self):
+        self.regler_porte("si_juge_incomplet")
+        cid = self.contribution_jugee(sorties=0)
+        code, texte = self.bee("verifier-acceptation", cid)
+        self.assertEqual(code, 1, texte)
+        self.assertIn("pas entièrement jugé", texte)
+
     def test_adverse_verdict_incoherent_refuse(self):
         cid = self.soumettre_0099()
         verdict = self.dossier / "verdict.json"

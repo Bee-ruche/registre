@@ -32,7 +32,17 @@
         "instructions": {"type": "object", "additionalProperties": {"type": "object", "additionalProperties": false,
           "properties": {"A": {"type": ["number", "null"]}, "B": {"type": ["number", "null"]}, "gain": {"type": ["number", "null"]}}}},
         "fichiers_controles": {"type": "boolean"},
-        "juges_modifies": {"type": "array", "items": {"type": "string"}, "maxItems": 50}
+        "juges_modifies": {"type": "array", "items": {"type": "string"}, "maxItems": 50},
+        "juge": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "version": {"type": ["integer", "null"]},
+            "sorties_comparees": {"type": ["integer", "null"]},
+            "constructions_suspectes": {"type": "array", "maxItems": 50, "items": {"type": "object", "additionalProperties": false,
+              "required": ["type", "detail"], "properties": {"type": {"type": "string"}, "detail": {"type": "string"}}}}
+          }
+        }
       }
     },
     "relectures": {

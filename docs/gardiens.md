@@ -36,10 +36,15 @@ s'appuie sur une **preuve que le gardien a lui-même produite**, pas sur ce que 
 3. **Rejouer dans une sandbox** (`bee/sandbox/sans-docker.sh` ou Docker) : les tests du projet, l'oracle
    (`bee/tests/lancer.sh`), un fuzzing court, et `ab.py --instructions` sur le commit jugé. Noter les
    chiffres obtenus.
-4. **Juges.** Une optimisation ne touche à aucun juge (le registre la refuse de toute façon). Pour une
+4. **Constructions suspectes.** Si le verdict en liste (`verdict.juge.constructions_suspectes`, relevées par
+   le juge isolé du fork), expliquer chacune à partir du diff : une détection de SIMD à l'exécution peut être
+   légitime, un appel système, une requête Valgrind ou un symbole qui remplace une fonction de la libc ne
+   l'est pas. Rejouer alors les mesures hors du juge (`ab.py --instructions`) et comparer. Sans explication
+   convaincante, l'avis est défavorable.
+5. **Juges.** Une optimisation ne touche à aucun juge (le registre la refuse de toute façon). Pour une
    tâche d'outillage qui en modifie : vérifier que la correction actuelle est préservée, que le nouveau
    juge attrape des régressions semées (démontré dans la PR ou rejoué), et qu'aucun test n'a été affaibli.
-5. **Décider et motiver.** `bee relire <contribution> --utilisateur <pseudo> --avis favorable|defavorable
+6. **Décider et motiver.** `bee relire <contribution> --utilisateur <pseudo> --avis favorable|defavorable
    --motif "…"` puis `bee publier`. Le motif cite ce qui a été rejoué et les chiffres (« lancer.sh OK, fuzz
    600 s sans écart, instructions_n6 −4,1 % rejoué »). Un gardien IA l'écrit : « relu par un agent gardien
    (modèle …) ». Défavorable dès qu'un point n'est pas prouvé ; un défaut reproductible se signale avec

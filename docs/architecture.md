@@ -69,10 +69,19 @@ influencer. Une revue a trouvé plusieurs failles ; corrigées et couvertes par 
 le verdict d'une PR qui touche son workflow ou ses juges est détecté par le registre (fichiers lus
 auprès de GitHub) ; le verdict, les relectures et la fusion sont liés au même commit ; R3 tient compte
 des avis défavorables et de R5 ; la fenêtre ne s'antidate plus ; pas de soumission sans réservation.
-**Reste ouvert :** le code C d'une PR s'exécute dans les jobs qui le mesurent, et un code malveillant
-peut fausser ses propres tests ou mesures de l'intérieur (par exemple en terminant le processus avec
-succès avant le test). Tant que ce point n'est pas réglé, la porte de relecture de R3 reste ouverte : un
-gardien lit le diff et rejoue les tests.
+**Juge isolé (miniz, tâche miniz-0031, en relecture).** Le code C d'une PR ne s'exécute plus que dans un
+conteneur sans réseau, en lecture seule, sans privilège ; l'hôte vérifie chaque sortie avec sa propre
+zlib, sur le corpus et sur des entrées tirées au hasard après la compilation ; les temps sont lus par le
+noyau (`wait4`) dans un lanceur de la base, le décompte d'instructions sur la dernière ligne de Valgrind ;
+une analyse des objets compilés relève les constructions qui pourraient tromper la mesure de l'intérieur
+(R3 exige alors un gardien). Méta-tests : sortie anticipée et table précalculée refusées, faux chronos,
+requête Valgrind et faux résumé signalés. Modèle de menace : `bee/README.md` du fork, « Juge isolé ».
+**Reste ouvert :** libyaml n'a pas encore de juge isolé ; une écriture délibérée dans la mémoire de
+Valgrind fausserait le décompte sans construction visible (au pire un faux gain sur un code juste) ; et
+aucun juge ne prouve l'absence d'une porte dérobée déclenchée par une entrée précise. La porte de
+relecture reste ouverte (`true`) jusqu'à ce que le juge isolé soit intégré et ait jugé une optimisation
+réelle ; elle passera ensuite à `si_juge_incomplet`, qui ne vise plus que ce que le juge n'a pas
+entièrement jugé.
 
 ## Plan de migration (par étapes)
 
@@ -85,11 +94,10 @@ gardien lit le diff et rejoue les tests.
    en relecture.
 2 bis. **Juge sûr.** Fait (27/10) : contrôle des fichiers de la PR par le registre, verdict +
    relectures + fusion liés au même commit, R3 complétée (avis défavorables, R5, fenêtre non
-   antidatable, soumission ⇔ réservation, sortie automatique), tests adverses. Reste, pour fermer la
-   porte de relecture : **exécuter le code de la PR dans un conteneur isolé et le juger
-   de l'extérieur** (sorties vérifiées et temps mesurés par un processus que le code ne contrôle pas),
-   avec une part d'entrées tirées au hasard à chaque exécution pour qu'aucun code ne puisse précalculer
-   ses réponses. C'est un chantier d'outillage pour la ruche.
+   antidatable, soumission ⇔ réservation, sortie automatique), tests adverses. Construit (27/10, tâche
+   miniz-0031, en relecture) : **le juge isolé** pour miniz (code de la PR en conteneur, jugé de
+   l'extérieur, entrées tirées au hasard, temps lus par le noyau, constructions suspectes). Reste : le
+   même juge pour libyaml, puis la porte de relecture à `si_juge_incomplet`.
 3. **Répartir** (une première tentative sur libyaml, le 27/10, a été annulée le jour même) : déplacer
    tâches/contributions/votes/mesures de chaque projet vers son dépôt ; agréger la réputation au
    central. Prérequis tirés de la tentative :

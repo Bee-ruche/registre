@@ -1407,6 +1407,20 @@ def cmd_enregistrer_verdict(args):
         # R5 : métriques dégradées au-delà du bruit, avec leur gain relatif (négatif = pire).
         verdict["degradations"] = {str(m): (float(g) if isinstance(g, (int, float)) and not isinstance(g, bool) else None)
                                    for m, g in degradations.items()}
+    juge = brut.get("juge")
+    if isinstance(juge, dict):
+        # Juge isolé du fork : sorties vérifiées de l'extérieur, et constructions qui pourraient tromper la
+        # mesure de l'intérieur (R3 exige alors un gardien). Donnée : bornée et typée ici.
+        suspects = juge.get("constructions_suspectes")
+        if not isinstance(suspects, list):
+            suspects = [{"type": "illisible", "detail": "liste des constructions suspectes absente ou illisible"}]
+        entier = lambda v: v if isinstance(v, int) and not isinstance(v, bool) and v >= 0 else None  # noqa: E731
+        verdict["juge"] = {
+            "version": entier(juge.get("version")),
+            "sorties_comparees": entier(juge.get("sorties_comparees")),
+            "constructions_suspectes": [{"type": str(s.get("type", ""))[:40], "detail": str(s.get("detail", ""))[:300]}
+                                        for s in suspects[:50] if isinstance(s, dict)],
+        }
     lignes = args.lignes if args.lignes is not None else brut.get("lignes_modifiees")
     if lignes is None:
         raise ErreurBee("nombre de lignes modifiées inconnu : passez --lignes ou fournissez lignes_modifiees dans le verdict")
@@ -1505,7 +1519,12 @@ def raisons_acceptation(reg, cid):
 
     Porte de relecture temporaire (bee.yaml : relecture_gardien_requise) : tant que le juge de la CI
     n'est pas sûr, toute contribution dont l'auteur n'est ni du conseil ni gardien exige aussi une
-    relecture favorable d'un gardien ou du conseil. Elle tombe quand la clé passe à false.
+    relecture favorable d'un gardien ou du conseil. Avec la valeur « si_juge_incomplet », elle ne
+    s'applique plus qu'aux contributions que le juge isolé n'a pas entièrement jugées (voir
+    juge_complet) ; elle tombe quand la clé passe à false.
+
+    Constructions suspectes : si le juge isolé en a relevé (appels système, requêtes Valgrind…), une
+    relecture favorable d'un gardien ou du conseil est exigée, quel que soit l'auteur et la porte.
 
     R4 : pour une métrique de débit qui a un décompte d'instructions associé (projets/<p>.yaml), le
     gain se juge sur les instructions (exactes) et le chronomètre corrobore ; sinon, gain au
@@ -1595,10 +1614,17 @@ def raisons_acceptation(reg, cid):
     if [m for m in eligibles if niveau_de(niveaux, m) == "Confirmé"]:
         exiger(any(niveau_de(niveaux, r.get("relecteur")) == "Confirmé" for r in favorables),
                "aucune relecture favorable d'un Confirmé (il en faut une quand un Confirmé est disponible)")
-    if porte_humaine(reg) and auteur not in privilegies:
+    if porte_exigee(reg, verdict) and auteur not in privilegies:
         exiger(any(r.get("relecteur") in privilegies for r in favorables),
                "porte de relecture temporaire : une relecture favorable d'un gardien ou du conseil est exigée "
-               "tant que le juge de la CI n'est pas sûr (bee.yaml : relecture_gardien_requise)")
+               + ("tant que le juge de la CI n'est pas sûr" if mode_porte(reg) == "toujours"
+                  else "car le juge isolé n'a pas entièrement jugé cette contribution")
+               + " (bee.yaml : relecture_gardien_requise)")
+    suspects = ((verdict.get("juge") or {}).get("constructions_suspectes")) or []
+    if suspects:
+        exiger(any(r.get("relecteur") in privilegies for r in favorables),
+               f"{len(suspects)} construction(s) suspecte(s) relevée(s) par le juge isolé "
+               f"({suspects[0].get('detail', '')[:80]}…) : une relecture favorable d'un gardien ou du conseil est exigée")
 
     net = sum(int(v.get("valeur", 0)) * POIDS_VOTE.get(niveau_de(niveaux, v.get("votant")), 0)
               for _, v in reg.votes if v.get("sujet") == cid and v.get("votant") != auteur)
@@ -1615,10 +1641,33 @@ def raisons_acceptation(reg, cid):
     return chemin, enr, raisons
 
 
-def porte_humaine(reg):
-    """Vrai tant que la porte de relecture temporaire de R3 est ouverte (voir raisons_acceptation)."""
+def mode_porte(reg):
+    """« toujours », « si_juge_incomplet » ou « jamais » (bee.yaml : relecture_gardien_requise)."""
     cfg = reg.config
-    return bool(cfg.get("relecture_gardien_requise", cfg.get("relecture_conseil_requise")))
+    valeur = cfg.get("relecture_gardien_requise", cfg.get("relecture_conseil_requise"))
+    if valeur == "si_juge_incomplet":
+        return "si_juge_incomplet"
+    return "toujours" if valeur else "jamais"
+
+
+def juge_complet(verdict):
+    """Le juge isolé a-t-il entièrement jugé ce verdict ? Liste des fichiers contrôlée par le registre, aucun
+    juge modifié, sorties vérifiées de l'extérieur, aucune construction suspecte, et pas d'amorçage."""
+    juge = verdict.get("juge") or {}
+    return bool(verdict.get("fichiers_controles") and not verdict.get("juges_modifies") and not verdict.get("amorcage")
+                and isinstance(juge.get("sorties_comparees"), int) and juge["sorties_comparees"] > 0
+                and not juge.get("constructions_suspectes"))
+
+
+def porte_exigee(reg, verdict):
+    """Vrai si la porte de relecture temporaire de R3 s'applique à ce verdict."""
+    mode = mode_porte(reg)
+    return mode == "toujours" or (mode == "si_juge_incomplet" and not juge_complet(verdict))
+
+
+def porte_humaine(reg):
+    """Vrai tant que la porte de relecture temporaire de R3 peut s'appliquer (voir raisons_acceptation)."""
+    return mode_porte(reg) != "jamais"
 
 
 def pourcent(x):

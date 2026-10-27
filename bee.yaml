@@ -16,7 +16,8 @@ relectures_requises: 2           # R3 (cible ; plafonnée aux relecteurs éligib
 vote_net_min: 2                  # R3 : vote net pondéré minimal pour l'intégration automatique
 fenetre_acceptation_heures: 24   # R3 : délai d'ouverture avant intégration automatique (le temps que la ruche voie et vote)
 relecture_gardien_requise: true  # R3 : porte de relecture TEMPORAIRE — une relecture favorable d'un gardien ou du conseil est
-                                 # exigée pour tout autre auteur, tant que le juge de la CI n'est pas sûr (tâche miniz-0031)
+                                 # exigée pour tout autre auteur, tant que le juge de la CI n'est pas sûr. Valeurs : true,
+                                 # si_juge_incomplet (seulement si le juge isolé du fork n'a pas tout jugé), false
 duree_vote_jours: 7              # R10
 quorum_votants: 20               # R10
 majorite_requise: 0.6667         # R10
