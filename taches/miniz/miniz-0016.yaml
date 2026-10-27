@@ -30,6 +30,9 @@ critere_acceptation:
   - "absence de débordement 32 bits démontrée dans le manifeste (borne de 5552 octets)"
 hors_perimetre: [format de sortie, API publique, nouvelle dépendance, décodage de Huffman]
 depend_de: [miniz-0001]
-statut: ouverte
+statut: reservee
+reservation:
+  utilisateur: "bidji29"
+  depuis: "2026-10-27T19:51:53Z"
 cree_par: agent-architecte-bee
 cree_le: "2026-10-27"
