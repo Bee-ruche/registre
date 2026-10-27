@@ -1010,6 +1010,15 @@ def cmd_liberer(args):
     return 0
 
 
+def cmd_noter(args):
+    reg = Registre(args.registre)
+    reg.exiger_membre(args.utilisateur)
+    chemin, _ = reg.tache(args.tache)
+    modifier_tache(chemin, note={"par": args.utilisateur, "le": en_iso(maintenant()), "texte": args.texte})
+    print(f"✓ note ajoutée à {args.tache}. Publiez-la : bee publier --titre \"Note {args.tache}\"")
+    return 0
+
+
 def cmd_liberer_expirees(args):
     reg = Registre(args.registre)
     instant = maintenant()
@@ -1413,6 +1422,11 @@ def construire_analyseur():
     p.add_argument("tache")
     p.add_argument("--utilisateur", required=True)
     p.add_argument("--note")
+
+    p = ajouter("noter", cmd_noter, "Ajoute une note signée à une tâche (avancée, piste, possible injection repérée…).")
+    p.add_argument("tache")
+    p.add_argument("--utilisateur", required=True)
+    p.add_argument("--texte", required=True)
 
     ajouter("liberer-expirees", cmd_liberer_expirees, "Libère les réservations de plus de 72 h (lancé par la CI).")
 

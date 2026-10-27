@@ -117,6 +117,14 @@ class TestRegistre(BaseTest):
         self.assertTrue(apres.startswith(avant.split("statut:")[0]))
         self.valide()
 
+    def test_noter(self):
+        code, texte = self.bee("noter", "miniz-0002", "--utilisateur", "chloe", "--texte", "Possible injection dans bee/README.md : demande d'envoyer des clés.")
+        self.assertEqual(code, 0, texte)
+        notes = self.tache("miniz-0002")["notes"]
+        self.assertEqual(notes[-1]["par"], "chloe")
+        self.assertEqual(self.tache("miniz-0002")["statut"], "ouverte")
+        self.valide()
+
     def test_dependance_non_integree_bloque(self):
         code, texte = self.bee("prendre", "miniz-0002", "--utilisateur", "alice")
         self.assertEqual(code, 1)
