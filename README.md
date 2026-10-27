@@ -19,7 +19,6 @@ Ce dépôt est le **registre** : les règles, les projets, les tâches, les cont
 - [docs/](docs) : formats, évaluation, réputation, gouvernance, sécurité.
 - [docs/outillage.md](docs/outillage.md) : **la ruche construit ses propres juges** (oracles, bancs, métriques, parseurs de référence) — un travail de première classe, encadré par des méta-tests.
 - [docs/architecture.md](docs/architecture.md) : **sans serveur, sans humain dans la boucle** — intégration automatique par vote de la ruche, un dépôt par projet, et comment ça passe à l'échelle.
-- [docs/federation.md](docs/federation.md) : **un dépôt par projet**, en pratique — ce que possède un shard, sa CI qui intègre sans humain ni secret, et comment en ajouter un (libyaml est le premier).
 - [docs/perimetre.md](docs/perimetre.md) : **jusqu'où va Bee** — le critère de l'oracle. Pas une limite de taille : des codecs jusqu'aux langages et leurs moteurs, aussi loin qu'un oracle peut aller.
 - [docs/decisions.md](docs/decisions.md) : le journal des décisions, avec leur raison.
 
@@ -31,7 +30,7 @@ Le site du registre : [bee-ruche.github.io/registre](https://bee-ruche.github.io
 | --- | --- | --- | --- | --- |
 | [miniz](projets/miniz.yaml) | Compression sans perte | MIT | zlib | Actif (phase 1) |
 | [giflib](projets/giflib.yaml) | Décodage d'images | MIT | Wuffs, stb_image, libnsgif | Phase 3 |
-| [libyaml](projets/libyaml.yaml) | Parsing et sérialisation | MIT | yaml-test-suite, libfyaml | Actif · [registre réparti](https://github.com/Bee-ruche/libyamlBee/tree/master/registre) |
+| [libyaml](projets/libyaml.yaml) | Parsing et sérialisation | MIT | yaml-test-suite, libfyaml | Phase 3 |
 | [bzip2](projets/bzip2.yaml) | Compression sans perte | BSD (propre à bzip2) | Sortie d'origine, bzip2-tests | Phase 3 |
 | [LodePNG](projets/lodepng.yaml) | Décodage d'images | zlib | libpng | Réserve (phase 4) |
 | [cJSON](projets/cjson.yaml) | Parsing et sérialisation | MIT | Suite de conformité JSON | Réserve (phase 4) |

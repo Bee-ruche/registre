@@ -73,11 +73,9 @@ PR en libre-service sont fusionnées par le bot).
    d'infrastructure tant que les forks sont des dépôts séparés : un jeton `BEE_INTEGRATION_TOKEN`
    (write sur les forks). Dans l'architecture répartie (étape 3), le dépôt du projet héberge sa PR :
    le jeton par défaut suffit et ce réglage disparaît.
-3. **Répartir** (en cours — libyaml migré) : déplacer tâches/contributions/votes/mesures de chaque
-   projet du dépôt central vers son dépôt, avec sa propre CI ; agréger la réputation au central à la
-   phase 3. `bee verifier-pr` scope au sous-arbre `registre/` (`--relative`) ; le central garde un
-   pointeur `depot_registre`. Détail et marche à suivre : [federation.md](federation.md). (Création
-   des dépôts : geste d'infrastructure du conseil.)
+3. **Répartir** : déplacer tâches/contributions/votes/mesures de chaque projet du dépôt central vers
+   son dépôt ; adapter `bee` pour lire/écrire par projet et agréger la réputation en central. (Tâche
+   d'outillage, par projet. Création des dépôts : geste d'infrastructure du conseil.)
 4. **Capacité CI** : runners et parallélisme suivent le nombre de projets, puisque chaque projet a sa
    propre CI.
 
