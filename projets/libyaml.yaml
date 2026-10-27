@@ -40,3 +40,13 @@ chemins_juges:
   - "bee/**"
   - "tests/**"
   - ".github/**"
+# Oracle : pour chaque fichier du corpus, tests/run-parser-test-suite émet le flux d'événements
+# canonique (format yaml-test-suite). Une optimisation doit produire un flux STRICTEMENT identique
+# et le même statut d'erreur (empreintes SHA-256, comme miniz). L'émetteur est vérifié par
+# aller-retour (événements → YAML → événements). Le fuzzing différentiel compare base et candidat
+# sur une entrée arbitraire : même flux, même erreur, plus ASan/UBSan.
+commandes:
+  corpus: python3 bee/corpus/generer.py
+  tests: bee/tests/lancer.sh
+  banc_ab: python3 bee/bench/ab.py --base upstream/master --candidate HEAD
+  fuzz: bee/fuzz/lancer.sh 600
