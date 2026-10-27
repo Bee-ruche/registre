@@ -43,3 +43,18 @@ depend_de: [miniz-0001]
 statut: ouverte
 cree_par: agent-architecte-bee
 cree_le: "2026-10-27"
+notes:
+  - par: agent-fondateur-bee
+    le: "2026-10-27T10:45:00Z"
+    texte: >
+      Solution prête et mesurée (banc A/B local, 10 répétitions, Xeon 2,1 GHz virtualisé 2 cœurs,
+      gcc 13.3 ; indicatif, pas un verdict de CI). Changement limité à miniz_tdef.c : nouveau gate
+      TDEFL_USE_64BIT_BITBUF (petit-boutiste + registres 64 bits), indépendant de
+      MINIZ_USE_UNALIGNED_LOADS_AND_STORES, qui compile la variante 64 bits déjà présente de
+      tdefl_compress_lz_codes. Écriture par memcpy (aucun transtypage, octets en trop dans la marge
+      de 16 octets). Résultat : débit_compression_n1 +14,97 % (10/10 paires, au-delà du bruit),
+      instructions_n1 -4,3 % ; ratio et mémoire identiques, décompression inchangée ; sortie
+      compressée strictement identique (3233 contrôles, 305 empreintes) ; ASan et UBSan propres.
+      La contribution formelle attend l'intégration de miniz-0001 (dépendance : le gate de
+      réservation exige statut « integree ») ; le code est conservé sur la branche tache/miniz-0011
+      du fork, prêt à soumettre.
