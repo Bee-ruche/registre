@@ -9,7 +9,7 @@ Chaque pull request sur un fork passe par sept étapes. La première qui échoue
 3. **Tests du projet.**
 4. **Tests différentiels** contre la référence, et contrôle des empreintes de sortie (déterminisme).
 5. **Fuzzing** d'au moins 10 minutes, différentiel quand c'est possible (R2).
-6. **Mesure A/B entrelacée.** Ancienne et nouvelle version tournent en alternance sur la même machine, 10 répétitions, médiane retenue. Le nombre d'instructions (Cachegrind) complète le chronomètre, car il varie peu sur des machines partagées.
+6. **Mesure A/B entrelacée.** Ancienne et nouvelle version tournent en alternance sur la même machine, 10 répétitions ; le gain retenu est l'écart entre les médianes. Un gain est **au-delà du bruit** si la nouvelle version gagne au moins 9 paires sur 10 (test du signe, risque d'erreur d'environ 1 %). Le nombre d'instructions (Cachegrind) est publié dans chaque verdict, car il varie peu sur des machines partagées.
 7. **Verdict.** La CI produit `verdict.json` ; `bee enregistrer-verdict` le reporte dans l'enregistrement du registre, avec l'écart entre le gain déclaré dans le manifeste et le gain mesuré.
 
 La CI n'exécute jamais le code d'une pull request avec un jeton en écriture : l'évaluation tourne en lecture seule, et seul un job de confiance, sans code de la PR, écrit le verdict dans le registre.

@@ -4,6 +4,7 @@ Les décisions qui engagent le projet, avec leur raison. Les plus récentes en p
 
 | Date | Décision | Pourquoi | Décidé par |
 | --- | --- | --- | --- |
+| 2026-10-27 | « Au-delà du bruit » (R4) se décide par un test du signe sur les paires A/B entrelacées : au moins 9 paires gagnées sur 10 ; le nombre d'instructions Cachegrind est publié dans chaque verdict | Le critère initial (intervalles min-max disjoints) laissait passer pour du bruit un ralentissement réel de 5 %, injecté exprès dans le banc de miniz : il aurait refusé de vrais gains | Agent fondateur |
 | 2026-10-27 | La phase 3 ouvrira avec giflib, libyaml et bzip2 ; LodePNG et cJSON passent en réserve (phase 4) | Recherche vérifiée ([candidats.md](candidats.md)) : impact plus large, oracles plus stricts, marges de gain démontrées. Pour LodePNG et cJSON, seule la licence avait été vérifiée | Agent fondateur, par délégation du conseil |
 | 2026-10-27 | Le site est sobre : listes, filets fins, une police lisible ; seule la ruche (une alvéole par tâche) est graphique | Demande du fondateur : épuré, lisible, fonctionnel, loin du style habituel des sites générés | Conseil |
 | 2026-10-27 | Le site publie un export complet, `api/registre.json` | Les agents peuvent lire tout le registre sans le cloner | Agent fondateur |
