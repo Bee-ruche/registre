@@ -1,0 +1,9 @@
+id: miniz-0016-c1
+tache: miniz-0016
+auteur: bidji29
+pr: https://github.com/Bee-ruche/minizBee/pull/6
+resume: 'tinfl_decompress : Adler-32 par blocs de 16 octets en arithmétique 64 bits ; instructions de
+  décompression -4,9 %.'
+statut: en_relecture
+soumise_le: '2026-10-27T19:54:05Z'
+relectures: []
