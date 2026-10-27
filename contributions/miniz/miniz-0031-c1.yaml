@@ -11,36 +11,38 @@ verdict:
   ci: verte
   gain: null
   au_dela_du_bruit: false
+  amorcage: true
   instructions:
     instructions_n1:
-      A: 187633277.0
-      B: 187633277.0
+      A: 188277281.0
+      B: 188277281.0
       gain: 0.0
     instructions_n6:
-      A: 357330380.0
-      B: 357330380.0
+      A: 357972321.0
+      B: 357972321.0
       gain: 0.0
     instructions_n9:
-      A: 510575201.0
-      B: 510575201.0
+      A: 511171038.0
+      B: 511171038.0
       gain: 0.0
     instructions_decompression:
-      A: 35138646.0
-      B: 35138646.0
+      A: 35798150.0
+      B: 35798150.0
       gain: 0.0
-  degradations:
-    debit_compression_n9: -0.0014880990208624434
+  degradations: {}
   juge:
-    version: 1
+    version: 2
     sorties_comparees: 7868
     constructions_suspectes: []
-  lignes_modifiees: 156
-  ecart_declare: null
-  sha: 5863f92f7ec1f4b22e32507d913aeb618244126b
+  lignes_modifiees: 162
+  sha: 4bdbd92a21b3fc53231b043b00a7685ab105dee7
   fichiers_controles: true
   juges_modifies:
   - .github/workflows/bee-ci.yml
   - bee/README.md
+  - bee/ci/juges.sh
+  - bee/ci/manifeste.sh
+  - bee/ci/tache.py
   - bee/ci/test_verdict.py
   - bee/ci/verdict.py
   - bee/juge/Dockerfile
@@ -51,4 +53,4 @@ verdict:
   - bee/juge/isoler.sh
   - bee/juge/juge.py
   - bee/juge/test_juge.py
-  execution: https://github.com/Bee-ruche/minizBee/actions/runs/40594207377
+  execution: https://github.com/Bee-ruche/minizBee/actions/runs/40599150007
