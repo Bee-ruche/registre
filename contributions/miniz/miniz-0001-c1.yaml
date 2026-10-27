@@ -1,0 +1,9 @@
+id: miniz-0001-c1
+tache: miniz-0001
+auteur: bidji29
+pr: https://github.com/Bee-ruche/minizBee/pull/1
+resume: 'Outillage d''évaluation du fork : corpus déterministe, tests différentiels contre zlib, fuzzing,
+  banc A/B et CI.'
+statut: en_relecture
+soumise_le: '2026-10-27T05:21:11Z'
+relectures: []
