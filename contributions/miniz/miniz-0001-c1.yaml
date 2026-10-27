@@ -4,9 +4,15 @@ auteur: bidji29
 pr: https://github.com/Bee-ruche/minizBee/pull/1
 resume: 'Outillage d''évaluation du fork : corpus déterministe, tests différentiels contre zlib, fuzzing,
   banc A/B et CI.'
-statut: en_relecture
+statut: integree
 soumise_le: '2026-10-27T05:21:11Z'
 relectures: []
+decidee_le: '2026-10-27T11:16:00Z'
+motif_decision: >
+  Intégrée par le conseil pendant l'amorçage (validation de bidji29). CI verte sur x86-64 et ARM64
+  (tests différentiels, fuzzing, banc A/B), verdict enregistré. Exception d'amorçage : pas de
+  relecture par un second utilisateur humain, faute d'un autre membre inscrit ; la validation du
+  conseil en tient lieu. PR du fork fusionnée sur master (c78a036), l'outillage bee/ y est désormais.
 verdict:
   ci: verte
   gain: null
