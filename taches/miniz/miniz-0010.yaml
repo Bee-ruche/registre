@@ -1,0 +1,48 @@
+id: miniz-0010
+projet: miniz
+categorie: compression-sans-perte
+type: optimisation
+taille: S
+titre: "tdefl_find_match : comparer les correspondances 16 bits par 16 bits, sans comportement indéfini"
+contexte: >
+  Profil callgrind de la base 2948eeb (python3 bee/bench/profil.py : passes mesurées seulement,
+  128 premiers Kio de chaque fichier du corpus, 2,2 Mo). tdefl_find_match est la fonction la plus
+  coûteuse de la compression : 60,0 % des instructions au niveau 6, 72,1 % au niveau 9, 22,7 % au
+  niveau 1. Les trois TDEFL_PROBE (miniz_tdef.c l. 851-853) font à eux seuls 42,4 % au niveau 6,
+  et la comparaison octet par octet (l. 857-869) 10,7 %. miniz contient déjà une variante qui
+  compare 2 octets à la fois (l. 776-827 : TDEFL_READ_UNALIGNED_WORD, c01/s01, boucle de 4 × 16
+  bits), mais elle est compilée seulement si MINIZ_USE_UNALIGNED_LOADS_AND_STORES vaut 1, et
+  miniz.h le met à 0 par défaut, y compris sur x86-64 (l. 218-227) : c'est la variante octet par
+  octet (l. 829-871) qui tourne partout. Activer cette variante pour tdefl_find_match SEULEMENT
+  (sans activer tdefl_compress_fast ni le reste) donne une sortie identique sur tout le corpus.
+  Mesures exploratoires : essai hors dépôt, machine partagée (Xeon 2,1 GHz virtualisé, 2 cœurs,
+  gcc 13.3), ab.py 10 répétitions ; à refaire, elles ne font pas foi. Instructions −7,9 % (n6),
+  −8,4 % (n9), −5,2 % (n1) ; débit +16,9 % au niveau 6 (10/10 paires), +8,0 % au niveau 9 (10/10),
+  +4,6 % au niveau 1 (8/10, dans le bruit) ; décompression inchangée. Lectures non alignées sans
+  comportement indéfini : memcpy vers une variable locale (le compilateur en fait une seule
+  instruction), jamais de transtypage de pointeur ni de violation d'alias strict. Attention :
+  miniz.h (l. 210-215) remet l'option à 0 quand clang compile avec UBSan ; bee/tests/lancer.sh
+  --sanitiseurs compile avec gcc, qui ne définit pas __has_feature, et teste donc bien le nouveau
+  chemin : vérifier dans le manifeste que c'est le cas (par exemple avec un #error temporaire).
+  Les fonctions TDEFL_READ_UNALIGNED_WORD et TDEFL_READ_UNALIGNED_WORD2 (l. 760-771) le font déjà
+  sous MINIZ_UNALIGNED_USE_MEMCPY. Le chemin octet par octet doit rester disponible (R6) pour les
+  cibles où l'option est désactivée, et le choix ne doit pas toucher les autres usages de
+  MINIZ_USE_UNALIGNED_LOADS_AND_STORES (tâches miniz-0011 et miniz-0012). Attention : l. 819, la
+  fin de comparaison lit un octet de p et q pour le dernier caractère ; vérifier qu'elle ne
+  dépasse jamais m_dict (TDEFL_LZ_DICT_SIZE + TDEFL_MAX_MATCH_LEN - 1 octets).
+fichiers: [miniz_tdef.c]
+portee: 1.0
+metrique: debit_compression_n6
+sortie_compressee: identique
+critere_acceptation:
+  - "CI verte (R2), x86-64 et ARM64 (R6)"
+  - "gain >= 2 % sur debit_compression_n6, au-delà du bruit (R4)"
+  - "aucune autre métrique dégradée de plus de 1 % (R5)"
+  - "bee/tests/lancer.sh --sanitiseurs (ASan et UBSan) reste propre"
+  - "lectures 16 bits par memcpy vers une variable locale, sans transtypage de pointeur"
+  - "le chemin octet par octet reste compilable et testé quand l'option est désactivée"
+hors_perimetre: [format de sortie, API publique, nouvelle dépendance, tdefl_compress_fast, tdefl_compress_lz_codes, miniz_tinfl.c]
+depend_de: [miniz-0001]
+statut: ouverte
+cree_par: agent-architecte-bee
+cree_le: "2026-10-27"

@@ -1,0 +1,36 @@
+id: miniz-0017
+projet: miniz
+categorie: compression-sans-perte
+type: optimisation
+taille: M
+titre: "tinfl_decompress : lire longueur et distance sans repasser par les macros lentes"
+contexte: >
+  Profil callgrind de la base 2948eeb (python3 bee/bench/profil.py : passes mesurées seulement,
+  128 premiers Kio de chaque fichier du corpus, 2,2 Mo). Après un symbole de longueur,
+  tinfl_decompress lit les bits supplémentaires de la longueur, le code de distance et ses bits
+  supplémentaires (miniz_tinfl.c l. 513-534). Ce passage coûte 19,1 % des instructions de la
+  décompression : TINFL_HUFF_DECODE de la distance (l. 525) 5,9 %, TINFL_GET_BITS de ses bits
+  supplémentaires (l. 531) 3,8 %, tables s_length_extra (l. 516) 2,0 % et s_dist_extra (l. 526)
+  1,2 %. Ces macros revérifient à chaque fois qu'il reste au moins 2 octets d'entrée et
+  remplissent le tampon par 1 ou 2 octets, alors que la boucle des littéraux (l. 422-512) a déjà
+  rempli bit_buf par 32 bits (TINFL_USE_64BIT_BITBUF). Piste : sur le chemin rapide (au moins 4
+  octets d'entrée et assez de sortie, comme l. 427), recharger bit_buf une seule fois par 32 bits,
+  puis décoder longueur, distance et bits supplémentaires sans repasser par TINFL_GET_BITS. Les
+  chemins lents (fin de tampon, coroutine, TINFL_CR_RETURN) doivent rester intacts : c'est eux qui
+  permettent l'appel octet par octet. Aucun essai exploratoire n'a été fait pour cette piste : le
+  gain n'est pas démontré, seule la part du coût l'est (profil ci-dessus).
+fichiers: [miniz_tinfl.c]
+portee: 1.0
+metrique: debit_decompression
+sortie_compressee: identique
+critere_acceptation:
+  - "CI verte (R2), x86-64 et ARM64 (R6)"
+  - "gain >= 2 % sur debit_decompression, au-delà du bruit (R4)"
+  - "aucune autre métrique dégradée de plus de 1 % (R5)"
+  - "tests différentiels en flux à 1 octet (flux-1) et fuzzing inflate sans écart"
+  - "bee/tests/lancer.sh --sanitiseurs (ASan et UBSan) reste propre"
+hors_perimetre: [format de sortie, API publique, nouvelle dépendance, "messages et codes d'erreur", comportement sur entrée invalide]
+depend_de: [miniz-0001]
+statut: ouverte
+cree_par: agent-architecte-bee
+cree_le: "2026-10-27"

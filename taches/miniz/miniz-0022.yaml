@@ -1,0 +1,34 @@
+id: miniz-0022
+projet: miniz
+categorie: compression-sans-perte
+type: optimisation
+taille: S
+titre: "tinfl_decompress : construire les tables de Huffman avec moins de remises à zéro"
+contexte: >
+  Profil callgrind de la base 2948eeb (python3 bee/bench/profil.py : passes mesurées seulement,
+  128 premiers Kio de chaque fichier du corpus, 2,2 Mo). La construction des tables de décodage de
+  chaque bloc dynamique (miniz_tinfl.c l. 327-392) coûte 4,1 % des instructions de la
+  décompression. À chaque bloc, elle remet à zéro les 1024 entrées de m_look_up (TINFL_MEMSET l.
+  338, 2 Kio) et l'arbre (tinfl_clear_tree l. 177-185), renverse les codes bit à bit (l. 359-360)
+  et remplit la table par pas de 1 << code_size (l. 364-368). Sur les petits fichiers du corpus,
+  c'est une part bien plus grande du temps : 35 fichiers de moins de 1 Kio, avec un débit de
+  décompression de 120 Mo/s contre 410 Mo/s pour l'ensemble. Pistes : renverser les codes par une
+  table de 256 ou 1024 entrées ; ne remettre à zéro que les entrées utilisées ; éviter le memset
+  complet quand tous les codes tiennent dans TINFL_FAST_LOOKUP_BITS. Les tables produites doivent
+  rester identiques, et les contrôles de validité (l. 349-352) intacts. Aucun essai exploratoire
+  n'a été fait pour cette piste : le gain n'est pas démontré, seule la part du coût l'est (profil
+  ci-dessus).
+fichiers: [miniz_tinfl.c]
+portee: 0.6
+metrique: debit_decompression
+sortie_compressee: identique
+critere_acceptation:
+  - "CI verte (R2), x86-64 et ARM64 (R6)"
+  - "gain >= 2 % sur debit_decompression, au-delà du bruit (R4)"
+  - "aucune autre métrique dégradée de plus de 1 % (R5)"
+  - "fuzzing inflate (fuzz_inflate) 10 minutes sans écart"
+hors_perimetre: [format de sortie, API publique, nouvelle dépendance, contrôles de validité des tables]
+depend_de: [miniz-0001]
+statut: ouverte
+cree_par: agent-architecte-bee
+cree_le: "2026-10-27"

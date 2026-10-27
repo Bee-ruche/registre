@@ -24,9 +24,8 @@ metriques:
     sens: plus_bas
 chemins_hors_decompte:
   - "bee/**"
+# Chemins qui jugent les contributions : une tâche d'optimisation ne peut pas les modifier (commandement 3).
+# Tout bee/ en fait partie : corpus, tests, fuzzing, banc, scripts de CI, code commun, Makefile.
 chemins_juges:
-  - "bee/tests/**"
-  - "bee/bench/**"
-  - "bee/corpus/**"
-  - "bee/fuzz/**"
+  - "bee/**"
   - ".github/**"

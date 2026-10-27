@@ -1,0 +1,30 @@
+id: miniz-0028
+projet: miniz
+categorie: compression-sans-perte
+type: mesure
+taille: M
+titre: "Corpus : ajouter des familles réalistes absentes (HTML, journaux compressés, binaires exécutables)"
+contexte: >
+  Le corpus de référence (bee/corpus/generer.py, 61 fichiers, 12,0 Mo) est entièrement
+  synthétique, à part les sources de miniz. Il lui manque des familles qui dominent le trafic web
+  : HTML et CSS, JavaScript minifié, binaire exécutable (code machine), et données déjà
+  compressées (PNG, gzip), sur lesquelles le bloc brut de repli de tdefl_flush_block (miniz_tdef.c
+  l. 657-676) est le chemin principal. La répartition actuelle par famille (texte 3,6 Mo,
+  structuré 3,4 Mo, binaire 2,1 Mo, répétitif 1,6 Mo, code 1,3 Mo, petits 10 Ko) favorise les
+  données très compressibles. Ajouter 2 à 4 Mo de ces familles, de façon déterministe : sources
+  libres figées par identifiant d'objet git (comme SOURCES_FIGEES) ou générateurs à graine fixe,
+  sans téléchargement au moment de la génération. Régénérer SHA256SUMS et les empreintes de
+  référence sur la base. Taille totale sous 16 Mo.
+fichiers: [bee/corpus/generer.py, bee/corpus/SHA256SUMS, bee/tests/empreintes-reference.txt]
+portee: 0.7
+metrique: null
+critere_acceptation:
+  - "CI verte (R2) sur la base et sur cette contribution"
+  - "génération identique sous Python 3.10, 3.11, 3.12 et 3.13 (sommes jointes)"
+  - "chaque source reprise : licence compatible et identifiant figé indiqués dans le manifeste"
+  - "corpus total entre 12 et 16 Mo, test A/A d'ab.py dans le bruit sur le nouveau corpus"
+hors_perimetre: [code de miniz, banc, fichiers sans licence libre, téléchargement au moment de la génération]
+depend_de: [miniz-0001]
+statut: ouverte
+cree_par: agent-architecte-bee
+cree_le: "2026-10-27"

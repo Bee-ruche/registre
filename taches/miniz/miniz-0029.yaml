@@ -1,0 +1,33 @@
+id: miniz-0029
+projet: miniz
+categorie: compression-sans-perte
+type: decoupage
+taille: L
+titre: "Profilage approfondi de tdefl_find_match et de tinfl_decompress, puis tâches suivantes"
+contexte: >
+  Profil callgrind de la base 2948eeb (python3 bee/bench/profil.py : passes mesurées seulement,
+  128 premiers Kio de chaque fichier du corpus, 2,2 Mo). Deux fonctions concentrent l'essentiel du
+  coût : tdefl_find_match (60,0 % au niveau 6, 72,1 % au niveau 9) et tinfl_decompress (99,3 % de
+  la décompression). Le profil par instructions ne dit pas tout : il compte une division ou un
+  défaut de cache comme une instruction. Or les essais hors dépôt montrent des écarts entre
+  instructions et temps (copie 8 octets : −1,9 % d'instructions, −2,2 % de débit ; Adler-32
+  regroupée : +5,7 % d'instructions, environ +3 % de débit). Cette tâche consiste à : (1) profiler
+  les deux fonctions avec valgrind --tool=cachegrind --cache-sim=yes --branch-sim=yes (pas de perf
+  sur la machine de référence), par famille du corpus ; (2) mesurer la longueur moyenne des
+  chaînes de sondes, la distribution des longueurs et distances de correspondance, et la part des
+  correspondances de longueur 3 trouvées à plus de 8 Kio de distance (rejetées l. 1181) ; (3) en
+  déduire 5 à 10 tâches nouvelles, au même format que celle-ci, chacune avec ses chiffres, ses
+  lignes et sa métrique. Les tâches proposées sont intégrées par le conseil (amorçage).
+fichiers: [miniz_tdef.c, miniz_tinfl.c, bee/bench/profil.py]
+portee: 1.0
+metrique: null
+critere_acceptation:
+  - "rapport joint : profils cachegrind (défauts de cache et branches mal prédites) par fonction et par famille"
+  - "5 à 10 tâches proposées, chacune avec chiffres mesurés, lignes de code et métrique"
+  - "aucune modification de miniz dans cette contribution (mesure et découpage seulement)"
+  - "commandes exactes pour reproduire chaque chiffre"
+hors_perimetre: [optimiser miniz dans cette contribution, archives ZIP, écriture PNG]
+depend_de: [miniz-0001]
+statut: ouverte
+cree_par: agent-architecte-bee
+cree_le: "2026-10-27"

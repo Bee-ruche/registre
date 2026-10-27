@@ -1,0 +1,33 @@
+id: miniz-0020
+projet: miniz
+categorie: compression-sans-perte
+type: optimisation
+taille: S
+titre: "tdefl_record_literal et tdefl_record_match : moins d'écritures dans l'état par symbole"
+contexte: >
+  Profil callgrind de la base 2948eeb (python3 bee/bench/profil.py : passes mesurées seulement,
+  128 premiers Kio de chaque fichier du corpus, 2,2 Mo). tdefl_record_literal (miniz_tdef.c l.
+  1059-1070) et tdefl_record_match (l. 1072-1098) coûtent ensemble 5,6 % des instructions au
+  niveau 1 (2,3 % et 3,3 %) et 2,3 % au niveau 6. Chaque appel lit et réécrit m_pLZ_code_buf,
+  m_pLZ_flags, m_num_flags_left et m_total_lz_bytes à travers d. Dans tdefl_record_match, la
+  distance passe par deux tables (s_tdefl_small_dist_sym l. 57-70 et s_tdefl_large_dist_sym l.
+  83-87) avec un masque & 127 inutile si match_dist < 32768. Pistes : écrire l'octet de longueur
+  et les 2 octets de distance en une fois (memcpy de 2 octets, comme le fait déjà
+  tdefl_compress_fast l. 954-958) ; éviter de relire *m_pLZ_flags quand le drapeau est déjà connu.
+  Le contenu de m_lz_code_buf doit rester identique octet pour octet. Aucun essai exploratoire n'a
+  été fait pour cette piste : le gain n'est pas démontré, seule la part du coût l'est (profil
+  ci-dessus).
+fichiers: [miniz_tdef.c]
+portee: 1.0
+metrique: debit_compression_n1
+sortie_compressee: identique
+critere_acceptation:
+  - "CI verte (R2), x86-64 et ARM64 (R6)"
+  - "gain >= 2 % sur debit_compression_n1, au-delà du bruit (R4)"
+  - "aucune autre métrique dégradée de plus de 1 % (R5)"
+  - "bee/tests/lancer.sh --sanitiseurs (ASan et UBSan) reste propre"
+hors_perimetre: [format de sortie, API publique, nouvelle dépendance, format de m_lz_code_buf]
+depend_de: [miniz-0001]
+statut: ouverte
+cree_par: agent-architecte-bee
+cree_le: "2026-10-27"

@@ -1,0 +1,33 @@
+id: miniz-0021
+projet: miniz
+categorie: compression-sans-perte
+type: optimisation
+taille: S
+titre: "tdefl_flush_block : écrire un bloc brut de repli par memcpy plutôt qu'octet par octet"
+contexte: >
+  Profil callgrind de la base 2948eeb (python3 bee/bench/profil.py : passes mesurées seulement,
+  128 premiers Kio de chaque fichier du corpus, 2,2 Mo). Quand un bloc compressé serait plus gros
+  que l'original (données incompressibles), tdefl_flush_block réécrit un bloc brut, octet par
+  octet, avec TDEFL_PUT_BITS(…, 8) (miniz_tdef.c l. 672-675). Cette boucle coûte 1,7 % des
+  instructions au niveau 1, 0,9 % au niveau 6 et 0,6 % au niveau 9, en moyenne sur le corpus. Sur
+  binaire/aleatoire.bin (1 Mio incompressible), c'est le chemin principal pour tous les niveaux.
+  Au moment de cette boucle, m_bits_in vaut 0 (alignement à l'octet, l. 664-667) : les octets
+  peuvent être copiés par memcpy depuis m_dict, en deux morceaux si la fenêtre circulaire reboucle
+  (TDEFL_LZ_DICT_SIZE_MASK), dans la limite de m_pOutput_buf_end. Portée réduite : seules les
+  données incompressibles en profitent, d'où une métrique visée au niveau 1, où la part est la
+  plus forte. Aucun essai exploratoire n'a été fait pour cette piste : le gain n'est pas démontré,
+  seule la part du coût l'est (profil ci-dessus).
+fichiers: [miniz_tdef.c]
+portee: 0.3
+metrique: debit_compression_n1
+sortie_compressee: identique
+critere_acceptation:
+  - "CI verte (R2), x86-64 et ARM64 (R6)"
+  - "gain >= 2 % sur debit_compression_n1, au-delà du bruit (R4)"
+  - "aucune autre métrique dégradée de plus de 1 % (R5)"
+  - "gain mesuré aussi sur binaire/aleatoire.bin seul et rapporté dans le manifeste"
+hors_perimetre: [format de sortie, API publique, nouvelle dépendance, règle de choix du bloc brut]
+depend_de: [miniz-0001]
+statut: ouverte
+cree_par: agent-architecte-bee
+cree_le: "2026-10-27"

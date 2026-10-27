@@ -1,0 +1,45 @@
+id: miniz-0011
+projet: miniz
+categorie: compression-sans-perte
+type: optimisation
+taille: S
+titre: "tdefl_compress_lz_codes : activer l'écriture des bits par mots de 64 bits"
+contexte: >
+  Profil callgrind de la base 2948eeb (python3 bee/bench/profil.py : passes mesurées seulement,
+  128 premiers Kio de chaque fichier du corpus, 2,2 Mo). tdefl_compress_lz_codes, qui écrit les
+  codes de Huffman de chaque bloc, coûte 13,6 % des instructions au niveau 1, 5,7 % au niveau 6 et
+  4,0 % au niveau 9. La variante compilée par défaut (miniz_tdef.c l. 544-589) passe par la macro
+  TDEFL_PUT_BITS, qui vide le tampon octet par octet avec un test de fin de sortie à chaque octet
+  (l. 271-287) ; les lignes 582 et 576 font à elles seules 3,6 % et 2,2 % au niveau 1. Une
+  variante qui accumule dans un mot de 64 bits et écrit 8 octets d'un coup existe déjà (l.
+  449-542), mais elle n'est compilée que si MINIZ_USE_UNALIGNED_LOADS_AND_STORES vaut 1, ce qui
+  n'est pas le cas par défaut (miniz.h l. 218-227). Activer cette variante seule (petit-boutiste,
+  registres 64 bits) donne une sortie identique sur tout le corpus. Mesures exploratoires : essai
+  hors dépôt, machine partagée (Xeon 2,1 GHz virtualisé, 2 cœurs, gcc 13.3), ab.py 10 répétitions
+  ; à refaire, elles ne font pas foi. Instructions −4,3 % (n1), −1,9 % (n6), −1,3 % (n9) ; débit
+  +12,8 % au niveau 1 (10/10 paires), +4,1 % au niveau 6 (8/10, dans le bruit), décompression
+  inchangée. Lectures non alignées sans comportement indéfini : memcpy vers une variable locale
+  (le compilateur en fait une seule instruction), jamais de transtypage de pointeur ni de
+  violation d'alias strict. Attention : miniz.h (l. 210-215) remet l'option à 0 quand clang
+  compile avec UBSan ; bee/tests/lancer.sh --sanitiseurs compile avec gcc, qui ne définit pas
+  __has_feature, et teste donc bien le nouveau chemin : vérifier dans le manifeste que c'est le
+  cas (par exemple avec un #error temporaire). L'écriture 64 bits (l. 519, memcpy de bit_buffer)
+  est déjà faite par memcpy ; vérifier qu'aucune autre lecture ou écriture ne passe par un
+  transtypage. Le tampon de sortie a 16 octets de marge (m_pOutput_buf_end = … - 16, l. 612) : le
+  justifier dans le manifeste. Garder la variante générique (gros-boutiste, 32 bits).
+fichiers: [miniz_tdef.c]
+portee: 1.0
+metrique: debit_compression_n1
+sortie_compressee: identique
+critere_acceptation:
+  - "CI verte (R2), x86-64 et ARM64 (R6)"
+  - "gain >= 2 % sur debit_compression_n1, au-delà du bruit (R4)"
+  - "aucune autre métrique dégradée de plus de 1 % (R5)"
+  - "bee/tests/lancer.sh --sanitiseurs (ASan et UBSan) reste propre"
+  - "écritures 64 bits par memcpy, sans transtypage de pointeur"
+  - "la variante générique reste compilée sur les cibles gros-boutistes ou 32 bits"
+hors_perimetre: [format de sortie, API publique, nouvelle dépendance, tdefl_find_match, tdefl_compress_fast, miniz_tinfl.c]
+depend_de: [miniz-0001]
+statut: ouverte
+cree_par: agent-architecte-bee
+cree_le: "2026-10-27"

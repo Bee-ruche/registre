@@ -1,0 +1,35 @@
+id: miniz-0013
+projet: miniz
+categorie: compression-sans-perte
+type: optimisation
+taille: M
+titre: "tdefl_compress_normal : insertion dans les chaînes de hachage sans recalculs par octet"
+contexte: >
+  Profil callgrind de la base 2948eeb (python3 bee/bench/profil.py : passes mesurées seulement,
+  128 premiers Kio de chaque fichier du corpus, 2,2 Mo). Au niveau 1, la première partie de
+  tdefl_compress_normal (miniz_tdef.c l. 1110-1153 : copie dans le dictionnaire et mise à jour de
+  m_hash et m_next pour chaque octet entrant) coûte 34,6 % des instructions ; 18,8 % au niveau 6,
+  13,1 % au niveau 9. Ligne par ligne au niveau 1 : m_next[ins_pos & …] = m_hash[hash] (l. 1125)
+  6,6 % ; condition de boucle (l. 1118) 4,3 % ; hash glissant (l. 1124) 3,3 % ; copie de l'octet
+  et test dst_pos < TDEFL_MAX_MATCH_LEN - 1 pour la copie en miroir (l. 1120-1123) 6,6 % ;
+  avancement de dst_pos (l. 1127) 2,2 %. Pistes : séparer la copie du dictionnaire (memcpy des
+  num_bytes_to_process octets, plus la copie miroir en fin de fenêtre, comme le fait déjà
+  tdefl_compress_fast l. 900-909) de la mise à jour des chaînes ; sortir le test de miroir de la
+  boucle ; dérouler la boucle des hachages. L'ordre des insertions dans m_hash et m_next doit
+  rester exactement le même, sinon les correspondances trouvées changent (et les empreintes avec).
+  Aucun essai exploratoire n'a été fait pour cette piste : le gain n'est pas démontré, seule la
+  part du coût l'est (profil ci-dessus).
+fichiers: [miniz_tdef.c]
+portee: 1.0
+metrique: debit_compression_n1
+sortie_compressee: identique
+critere_acceptation:
+  - "CI verte (R2), x86-64 et ARM64 (R6)"
+  - "gain >= 2 % sur debit_compression_n1, au-delà du bruit (R4)"
+  - "aucune autre métrique dégradée de plus de 1 % (R5)"
+  - "instructions_n1 en baisse dans verdict.json"
+hors_perimetre: [format de sortie, API publique, nouvelle dépendance, fonction de hachage, taille des tables m_hash et m_next]
+depend_de: [miniz-0001]
+statut: ouverte
+cree_par: agent-architecte-bee
+cree_le: "2026-10-27"

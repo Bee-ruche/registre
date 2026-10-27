@@ -1,0 +1,39 @@
+id: miniz-0015
+projet: miniz
+categorie: compression-sans-perte
+type: optimisation
+taille: S
+titre: "tdefl_find_match : comparer les correspondances par mots de 64 bits"
+contexte: >
+  Profil callgrind de la base 2948eeb (python3 bee/bench/profil.py : passes mesurées seulement,
+  128 premiers Kio de chaque fichier du corpus, 2,2 Mo). Une fois une sonde retenue,
+  tdefl_find_match compare les deux chaînes : octet par octet dans la variante par défaut
+  (miniz_tdef.c l. 857-869 : 10,7 % des instructions au niveau 6, 10,5 % au niveau 9, 9,6 % au
+  niveau 1), ou par 16 bits dans la variante l. 804-825 (5,6 % au niveau 6 dans un essai hors
+  dépôt où cette variante était active). La comparaison peut se faire par mots de 64 bits : XOR de
+  deux mots lus par memcpy, puis nombre de zéros de poids faible (__builtin_ctzll sous gcc et
+  clang, avec un repli portable) pour trouver le premier octet différent, en s'arrêtant à
+  max_match_len. Lectures non alignées sans comportement indéfini : memcpy vers une variable
+  locale (le compilateur en fait une seule instruction), jamais de transtypage de pointeur ni de
+  violation d'alias strict. Attention : miniz.h (l. 210-215) remet l'option à 0 quand clang
+  compile avec UBSan ; bee/tests/lancer.sh --sanitiseurs compile avec gcc, qui ne définit pas
+  __has_feature, et teste donc bien le nouveau chemin : vérifier dans le manifeste que c'est le
+  cas (par exemple avec un #error temporaire). Il faut prouver que la lecture de 8 octets ne
+  dépasse ni m_dict (TDEFL_LZ_DICT_SIZE + TDEFL_MAX_MATCH_LEN - 1 octets) ni la fenêtre valide, ou
+  arrêter la boucle 64 bits avant la fin. À coordonner avec miniz-0010 : s'appuyer sur la variante
+  active quand la tâche commence et le dire dans le manifeste. Garder un chemin générique (R6).
+fichiers: [miniz_tdef.c]
+portee: 1.0
+metrique: debit_compression_n6
+sortie_compressee: identique
+critere_acceptation:
+  - "CI verte (R2), x86-64 et ARM64 (R6)"
+  - "gain >= 2 % sur debit_compression_n6, au-delà du bruit (R4)"
+  - "aucune autre métrique dégradée de plus de 1 % (R5)"
+  - "bee/tests/lancer.sh --sanitiseurs (ASan et UBSan) reste propre"
+  - "lectures 64 bits par memcpy, bornes justifiées dans le manifeste, repli sans __builtin_ctzll"
+hors_perimetre: [format de sortie, API publique, nouvelle dépendance, SIMD sans chemin générique]
+depend_de: [miniz-0001]
+statut: ouverte
+cree_par: agent-architecte-bee
+cree_le: "2026-10-27"

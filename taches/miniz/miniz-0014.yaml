@@ -1,0 +1,34 @@
+id: miniz-0014
+projet: miniz
+categorie: compression-sans-perte
+type: optimisation
+taille: S
+titre: "tdefl_find_match : sortir de la boucle de sondes les lectures répétées de l'état"
+contexte: >
+  Profil callgrind de la base 2948eeb (python3 bee/bench/profil.py : passes mesurées seulement,
+  128 premiers Kio de chaque fichier du corpus, 2,2 Mo). Les trois TDEFL_PROBE de la variante
+  octet par octet de tdefl_find_match (miniz_tdef.c l. 844-853) coûtent 42,4 % des instructions au
+  niveau 6 et 55,3 % au niveau 9, et le test --num_probes_left (l. 842) 2,5 % et 3,0 %. Chaque
+  sonde relit d->m_next et d->m_dict à travers le pointeur d, recalcule probe_pos + match_len et
+  refait deux comparaisons d'octets (c0, c1). Pistes, à mesurer une par une : pointeurs locaux
+  vers m_next et m_dict (le compilateur ne peut pas toujours prouver l'absence d'alias), pointeur
+  précalculé m_dict + match_len - 1, comparaison des deux octets c1/c0 en une seule lecture 16
+  bits par memcpy. Cette tâche porte sur la variante octet par octet, celle qui tourne par défaut.
+  Elle est indépendante de miniz-0010 (qui active la variante 16 bits) : si miniz-0010 est
+  intégrée avant, appliquer la même idée aux deux variantes, ou à celle qui reste active sur
+  l'architecture mesurée, et le dire dans le manifeste. Aucun essai exploratoire n'a été fait pour
+  cette piste : le gain n'est pas démontré, seule la part du coût l'est (profil ci-dessus).
+fichiers: [miniz_tdef.c]
+portee: 1.0
+metrique: debit_compression_n9
+sortie_compressee: identique
+critere_acceptation:
+  - "CI verte (R2), x86-64 et ARM64 (R6)"
+  - "gain >= 2 % sur debit_compression_n9, au-delà du bruit (R4)"
+  - "aucune autre métrique dégradée de plus de 1 % (R5)"
+  - "bee/tests/lancer.sh --sanitiseurs (ASan et UBSan) reste propre"
+hors_perimetre: [format de sortie, API publique, nouvelle dépendance, nombre de sondes (s_tdefl_num_probes), fonction de hachage]
+depend_de: [miniz-0001]
+statut: ouverte
+cree_par: agent-architecte-bee
+cree_le: "2026-10-27"

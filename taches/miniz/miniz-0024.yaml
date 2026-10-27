@@ -1,0 +1,32 @@
+id: miniz-0024
+projet: miniz
+categorie: compression-sans-perte
+type: test
+taille: S
+titre: "Tests différentiels du niveau 10 et des vidages aux niveaux 1 et 9"
+contexte: >
+  Deux chemins du périmètre ne sont pas couverts par bee/tests/differentiel.c. (1) Le niveau 10 («
+  caché », 1500 sondes, s_tdefl_num_probes de miniz_tdef.c l. 601) n'est testé que par le fuzzing
+  de compression ; or toute optimisation de tdefl_find_match le touche. (2) Les vidages
+  MZ_SYNC_FLUSH et MZ_FULL_FLUSH ne sont testés qu'au niveau 6 (contrôle « vidages », empreinte «
+  6v »). Au niveau 1, l'analyse est gloutonne (TDEFL_GREEDY_PARSING_FLAG,
+  tdefl_create_comp_flags_from_zip_params l. 1464) et tdefl_compress_normal (l. 1185-1222) ne
+  garde pas de correspondance en attente ; au niveau 9, les sondes sont plus longues. Le vidage
+  complet remet m_hash et m_next à zéro (l. 1323-1328) : ses interactions avec ces deux modes ne
+  sont pas vérifiées. Ajouter : le niveau 10 aux contrôles miniz->zlib et miniz->miniz, avec
+  empreinte (niveau « 10 » dans empreintes-reference.txt, régénéré sur la base) ; le contrôle «
+  vidages » aux niveaux 1 et 9, avec empreintes « 1v » et « 9v ».
+fichiers: [bee/tests/differentiel.c, bee/tests/empreintes-reference.txt]
+portee: 0.5
+metrique: null
+critere_acceptation:
+  - "CI verte (R2) sur la base et sur cette contribution"
+  - "le niveau 10 figure dans empreintes-reference.txt, régénéré sur la base"
+  - "une mutation de s_tdefl_num_probes[10] fait échouer les empreintes"
+  - "une mutation du vidage complet (l. 1323-1328, par exemple ne plus remettre m_next à zéro) est détectée au niveau 1 ou 9"
+  - "durée de bee/tests/lancer.sh inférieure à 30 s sur la machine de CI"
+hors_perimetre: [code de miniz, tests existants (seulement des ajouts), nouvelle dépendance]
+depend_de: [miniz-0001]
+statut: ouverte
+cree_par: agent-architecte-bee
+cree_le: "2026-10-27"

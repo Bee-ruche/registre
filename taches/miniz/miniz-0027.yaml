@@ -1,0 +1,31 @@
+id: miniz-0027
+projet: miniz
+categorie: compression-sans-perte
+type: mesure
+taille: S
+titre: "Ajouter au banc un ratio_n1 et des débits par famille du corpus"
+contexte: >
+  Le banc (bee/bench/banc.c) ne mesure le ratio qu'au niveau 6 (ratio_n6) et agrège tout le
+  corpus. Deux angles morts en découlent. (1) Une tâche qui modifie le niveau 1 en acceptant de
+  changer la sortie (par exemple réactiver tdefl_compress_fast, miniz_tdef.c l. 885-1056 : dans un
+  essai hors dépôt, débit n1 ×1,85 mais ratio n1 de 2,833 à 2,587, −8,7 %) ne peut pas être jugée,
+  faute de ratio_n1. (2) Les familles réagissent très différemment : au niveau 6, texte 19,0 Mo/s,
+  structuré 19,8, binaire 16,7, répétitif 433, petits fichiers 26,5 ; une optimisation qui ne
+  gagne que sur le répétitif ressortirait gonflée. Ajouter au JSON du banc, en plus des six
+  métriques existantes et sans les changer : ratio_n1, ratio_n9, et un objet « par_famille »
+  (débits n1, n6, n9, décompression par dossier du corpus). Mettre à jour ab.py (médianes et test
+  du signe pour les nouvelles clés) et le README. Les nouvelles métriques doivent ensuite être
+  proposées au registre (projets/miniz.yaml) par le conseil : le noter dans le manifeste.
+fichiers: [bee/bench/banc.c, bee/bench/ab.py, bee/README.md]
+portee: 0.5
+metrique: null
+critere_acceptation:
+  - "CI verte (R2) sur la base et sur cette contribution"
+  - "les six clés existantes du JSON sont inchangées (nom, unité, valeurs à la précision près)"
+  - "test A/A d'ab.py avec les nouvelles clés : tout dans le bruit (rapport joint)"
+  - "durée d'une exécution du banc en hausse de moins de 30 %"
+hors_perimetre: [code de miniz, corpus, règles du registre]
+depend_de: [miniz-0001]
+statut: ouverte
+cree_par: agent-architecte-bee
+cree_le: "2026-10-27"

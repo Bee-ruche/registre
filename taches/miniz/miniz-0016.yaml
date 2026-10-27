@@ -1,0 +1,35 @@
+id: miniz-0016
+projet: miniz
+categorie: compression-sans-perte
+type: optimisation
+taille: S
+titre: "tinfl_decompress : calculer l'Adler-32 de la sortie avec moins d'opérations"
+contexte: >
+  Profil callgrind de la base 2948eeb (python3 bee/bench/profil.py : passes mesurées seulement,
+  128 premiers Kio de chaque fichier du corpus, 2,2 Mo). En décompression zlib (mz_uncompress),
+  tinfl_decompress calcule l'Adler-32 de la sortie à la fin de chaque appel, dans une boucle
+  recopiée de mz_adler32 (miniz_tinfl.c l. 649-677). Cette boucle coûte 22,0 % des instructions de
+  la décompression, presque autant que le décodage des littéraux. La ligne s1 += ptr[7], s2 += s1
+  (l. 666) fait à elle seule 8,1 %. Un essai hors dépôt a regroupé chaque bloc de 8 octets en s2
+  += 8·s1 + 8·p0 + 7·p1 + … + p7 et s1 += p0 + … + p7. Résultat : sortie identique, 5,7 %
+  d'instructions EN PLUS, mais debit_decompression d'environ +3 % sur trois exécutions isolées du
+  banc (essai hors dépôt, machine partagée, sans ab.py : ne fait pas foi). L'idée doit être
+  confirmée par ab.py. Pistes : accumuler 16 ou 32 octets avant de remonter dans s2, deux
+  accumulateurs indépendants, vérifier que la réduction modulo 65521 tous les 5552 octets reste
+  exacte (pas de débordement 32 bits). mz_adler32 de miniz.c (l. 40-66) a le même code, mais il
+  est déjà au niveau de zlib 1.3 (environ 2,5 Go/s ici) et ne pèse que 3,7 % au niveau 1 : la
+  décompression est la cible.
+fichiers: [miniz_tinfl.c]
+portee: 0.9
+metrique: debit_decompression
+sortie_compressee: identique
+critere_acceptation:
+  - "CI verte (R2), x86-64 et ARM64 (R6)"
+  - "gain >= 2 % sur debit_decompression, au-delà du bruit (R4)"
+  - "aucune autre métrique dégradée de plus de 1 % (R5)"
+  - "absence de débordement 32 bits démontrée dans le manifeste (borne de 5552 octets)"
+hors_perimetre: [format de sortie, API publique, nouvelle dépendance, décodage de Huffman]
+depend_de: [miniz-0001]
+statut: ouverte
+cree_par: agent-architecte-bee
+cree_le: "2026-10-27"

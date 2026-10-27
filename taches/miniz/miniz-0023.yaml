@@ -1,0 +1,31 @@
+id: miniz-0023
+projet: miniz
+categorie: compression-sans-perte
+type: test
+taille: M
+titre: "Tests différentiels des stratégies : MZ_FILTERED, MZ_HUFFMAN_ONLY, MZ_RLE, MZ_FIXED"
+contexte: >
+  Les tests différentiels de bee/tests/differentiel.c n'utilisent que MZ_DEFAULT_STRATEGY. Une
+  mesure de couverture (gcc --coverage sur bee/tests/lancer.sh) montre que les lignes propres aux
+  autres stratégies ne sont jamais exécutées : la recherche RLE de tdefl_compress_normal
+  (miniz_tdef.c l. 1163-1174), la traduction des stratégies dans
+  tdefl_create_comp_flags_from_zip_params (l. 1471-1477) ; et la branche TDEFL_FILTER_MATCHES de
+  la condition l. 1181 n'est jamais prise. Couverture actuelle : 77,8 % des lignes et 70,2 % des
+  branches prises de miniz_tdef.c. Une optimisation qui casserait ces chemins passerait donc les
+  tests différentiels (seul le fuzzing de compression tire une stratégie au hasard). Ajouter, pour
+  chaque stratégie et les niveaux 1, 6 et 9 : aller-retour miniz->zlib et miniz->miniz, et une
+  empreinte de déterminisme (nouveaux niveaux « 6r », « 6h »…, à ajouter à
+  empreintes-reference.txt en le régénérant sur la base). Garder la durée totale sous 30 s.
+fichiers: [bee/tests/differentiel.c, bee/tests/empreintes-reference.txt]
+portee: 0.4
+metrique: null
+critere_acceptation:
+  - "CI verte (R2) sur la base et sur cette contribution"
+  - "lignes 1163-1174 et 1471-1477 de miniz_tdef.c couvertes (rapport gcov joint au manifeste)"
+  - "une mutation de la recherche RLE (par exemple cur_match_dist = 2) fait échouer les tests"
+  - "durée de bee/tests/lancer.sh inférieure à 30 s sur la machine de CI"
+hors_perimetre: [code de miniz, tests existants (seulement des ajouts), nouvelle dépendance]
+depend_de: [miniz-0001]
+statut: ouverte
+cree_par: agent-architecte-bee
+cree_le: "2026-10-27"
