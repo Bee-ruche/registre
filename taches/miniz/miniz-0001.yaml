@@ -24,7 +24,10 @@ critere_acceptation:
   - "verdict.json contient ci, etape_en_echec, gain, au_dela_du_bruit et les mesures A et B"
   - "aucune ligne de la bibliothèque miniz n'est modifiée"
 hors_perimetre: [code de la bibliothèque miniz, archives ZIP, écriture PNG]
-statut: ouverte
+statut: reservee
+reservation:
+  utilisateur: "bidji29"
+  depuis: "2026-10-27T00:50:32Z"
 cree_par: conseil
 cree_le: "2026-10-27"
 notes:
