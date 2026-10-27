@@ -203,6 +203,28 @@ class TestRegistre(BaseTest):
         self.assertAlmostEqual(score["S"], 0.03 / 3 / 1.1)
         self.assertEqual(score["V"], 1.0)
 
+    def test_acceptation_automatique_sans_humain(self):
+        cid = self.soumettre_0099()  # auteur alice
+        verdict = self.dossier / "verdict.json"
+        verdict.write_text(json.dumps({"ci": "verte", "gain": 0.05, "au_dela_du_bruit": True,
+                                       "lignes_modifiees": 10}), encoding="utf-8")
+        self.assertEqual(self.bee("enregistrer-verdict", cid, "--verdict", str(verdict), "--sha", "abc1234")[0], 0)
+        # Fenêtre pas écoulée et pas assez de relectures : pas encore intégrable.
+        code, texte = self.bee("verifier-acceptation", cid)
+        self.assertEqual(code, 1, texte)
+        self.assertIn("relecture", texte + " fenêtre")
+        # Deux relectures favorables d'autres utilisateurs, et un vote net suffisant.
+        self.assertEqual(self.bee("relire", cid, "--utilisateur", "bruno", "--avis", "favorable", "--motif", "Relu.")[0], 0)
+        self.assertEqual(self.bee("relire", cid, "--utilisateur", "chloe", "--avis", "favorable", "--motif", "Relu aussi.")[0], 0)
+        self.assertEqual(self.bee("voter", cid, "--utilisateur", "bidji29", "--valeur", "1")[0], 0)
+        # Toujours pas : la fenêtre d'ouverture n'est pas écoulée.
+        self.assertEqual(self.bee("verifier-acceptation", cid)[0], 1)
+        # On avance le temps au-delà de la fenêtre : intégrable, sans aucun humain dans la boucle.
+        os.environ["BEE_MAINTENANT"] = "2026-10-29T12:00:00Z"
+        code, texte = self.bee("verifier-acceptation", cid)
+        self.assertEqual(code, 0, texte)
+        self.assertIn("intégrable", texte)
+
     def test_mesure_enregistree_et_valide(self):
         cid = self.soumettre_0099()
         rapport = self.dossier / "ab.json"

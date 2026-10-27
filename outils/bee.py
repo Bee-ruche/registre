@@ -771,8 +771,8 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None):
                     for r in nouvelles[len(anciennes):]:
                         exiger(r.get("relecteur") == auteur, f"{chemin} : une relecture ajoutée doit être celle de {auteur}")
                         exiger(r.get("relecteur") != nouveau.get("auteur"), f"{chemin} : on ne relit pas sa propre contribution")
-                        exiger(not r.get("defaut_confirme") or est_conseil or est_robot,
-                               f"{chemin} : seul le conseil ou la CI confirme un défaut")
+                        exiger(not r.get("defaut_confirme") or est_robot or niveau == "Confirmé" or est_conseil,
+                               f"{chemin} : un défaut n'est confirmé que par la CI ou une relecture Confirmé")
             else:
                 natures.append("decision")
                 exiger(est_conseil or est_robot, f"{chemin} : verdict, statut et confirmation de défaut sont écrits par la CI ou le conseil")
@@ -1378,6 +1378,70 @@ def cmd_enregistrer_mesure(args):
     return 0
 
 
+def cmd_verifier_acceptation(args):
+    """Règle R3 exécutable : une contribution est-elle intégrable automatiquement, sans humain ?
+
+    Renvoie 0 si oui (le workflow de confiance peut fusionner), 1 sinon avec les raisons.
+    Les seuils de relectures et de vote sont plafonnés à ce que les membres éligibles (autres que
+    l'auteur) peuvent fournir : pendant l'amorçage, quand la ruche est petite, l'intégration repose
+    sur la CI, l'absence de défaut et la fenêtre d'ouverture, et se durcit à mesure que des Confirmés
+    apparaissent. Aucune validation humaine n'intervient jamais.
+    """
+    reg = Registre(args.registre)
+    chemin, enr = reg.enregistrement(args.contribution)
+    if enr.get("statut") != "en_relecture":
+        print(f"{args.contribution} n'est pas en relecture (statut : {enr.get('statut')}) ; rien à intégrer.")
+        return 1
+    cfg = reg.config
+    auteur = enr.get("auteur")
+    tache = reg.taches.get(enr.get("tache"), (None, {}))[1]
+    verdict = enr.get("verdict") or {}
+    niveaux = calculer_niveaux(reg)
+    eligibles = [m for m in (set(reg.membres) | set(reg.conseil)) if m != auteur]
+    raisons = []
+
+    def exiger(cond, msg):
+        if not cond:
+            raisons.append(msg)
+
+    exiger(verdict.get("ci") == "verte", f"CI non verte (verdict : {verdict.get('ci', 'absent')})")
+    if tache.get("type") == "optimisation":
+        gain, seuil = verdict.get("gain"), float(cfg.get("gain_minimal", 0.02))
+        exiger(gain is not None and gain >= seuil, f"gain {gain} sous le seuil {seuil} (R4)")
+        exiger(bool(verdict.get("au_dela_du_bruit")), "gain pas au-delà du bruit (R4)")
+
+    relectures = enr.get("relectures") or []
+    exiger(not any(r.get("defaut_confirme") for r in relectures), "un défaut confirmé reste à résoudre")
+    favorables = [r for r in relectures if r.get("avis") == "favorable" and r.get("relecteur") != auteur]
+    requises = min(int(cfg.get("relectures_requises", 2)), len(eligibles))
+    exiger(len(favorables) >= requises, f"{len(favorables)} relecture(s) favorable(s) sur {requises} requise(s)")
+    if [m for m in eligibles if niveau_de(niveaux, m) == "Confirmé"]:
+        exiger(any(niveau_de(niveaux, r.get("relecteur")) == "Confirmé" for r in favorables),
+               "aucune relecture favorable d'un Confirmé (il en faut une quand un Confirmé est disponible)")
+
+    net = sum(int(v.get("valeur", 0)) * POIDS_VOTE.get(niveau_de(niveaux, v.get("votant")), 0)
+              for _, v in reg.votes if v.get("sujet") == args.contribution and v.get("votant") != auteur)
+    poids_dispo = sum(POIDS_VOTE.get(niveau_de(niveaux, m), 0) for m in eligibles)
+    seuil_vote = min(int(cfg.get("vote_net_min", 2)), poids_dispo)
+    exiger(net >= seuil_vote, f"vote net de la ruche {net} sous le seuil {seuil_vote} (pondéré)")
+
+    try:
+        heures = (maintenant() - lire_instant(enr.get("soumise_le"), reg.rel(chemin))).total_seconds() / 3600
+        fenetre = float(cfg.get("fenetre_acceptation_heures", 24))
+        exiger(heures >= fenetre, f"fenêtre d'ouverture : {heures:.0f} h écoulées sur {fenetre:.0f} h")
+    except ErreurBee:
+        raisons.append("date de soumission illisible")
+
+    if raisons:
+        print(f"✗ {args.contribution} : pas encore intégrable.")
+        for r in raisons:
+            print("  - " + r)
+        return 1
+    print(f"✓ {args.contribution} est intégrable automatiquement (R3) : CI verte, relectures et vote "
+          f"suffisants, fenêtre écoulée. Aucune validation humaine requise.")
+    return 0
+
+
 def cmd_en_attente(args):
     reg = Registre(args.registre)
     resultat = [{"id": cid, "pr": enr.get("pr"), "sha_verdict": (enr.get("verdict") or {}).get("sha")}
@@ -1575,6 +1639,10 @@ def construire_analyseur():
     p.add_argument("--projet")
     p.add_argument("--statut", choices=["en_relecture", "integree", "refusee", "annulee"], help="ex. en_relecture : les contributions à relire")
     p.add_argument("--json", action="store_true")
+
+    p = ajouter("verifier-acceptation", cmd_verifier_acceptation,
+                "Règle R3 : une contribution est-elle intégrable automatiquement (CI + relectures + vote + fenêtre), sans humain ?")
+    p.add_argument("contribution", help="id de la contribution (ex. miniz-0012-c1)")
 
     p = ajouter("verifier-pr", cmd_verifier_pr, "Vérifie une pull request sur le registre (utilisé par la CI).")
     p.add_argument("--base", required=True)
