@@ -28,7 +28,9 @@
         "amorcage": {"type": "boolean"},
         "sha": {"type": "string", "pattern": "^[0-9a-f]{7,40}$"},
         "execution": {"type": "string", "pattern": "^https://"},
-        "degradations": {"type": "object", "additionalProperties": {"type": ["number", "null"]}}
+        "degradations": {"type": "object", "additionalProperties": {"type": ["number", "null"]}},
+        "fichiers_controles": {"type": "boolean"},
+        "juges_modifies": {"type": "array", "items": {"type": "string"}, "maxItems": 50}
       }
     },
     "relectures": {

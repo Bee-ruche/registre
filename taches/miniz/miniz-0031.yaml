@@ -1,0 +1,34 @@
+id: miniz-0031
+projet: miniz
+categorie: compression-sans-perte
+type: test
+taille: L
+titre: "Juge isolé : exécuter le code de la PR en conteneur et le juger de l'extérieur"
+contexte: >
+  Aujourd'hui, le code C d'une PR s'exécute dans les mêmes jobs que les tests et le banc qui le
+  jugent : un code malveillant peut fausser ses propres résultats de l'intérieur (terminer le
+  processus avec succès avant un test, écrire de faux chronos). C'est la dernière raison de la porte
+  humaine de R3 (docs/architecture.md du registre, étape 2 bis). Objectif : que les étapes
+  « tests différentiels » et « banc A/B » ne fassent plus confiance au processus qui exécute le code
+  de la PR. Piste : construire les binaires de la PR, les lancer dans un conteneur sans réseau
+  (docker run --network none, système de fichiers en lecture seule sauf un dossier de sortie),
+  et faire vérifier les sorties par un processus extérieur au conteneur, avec l'outil de la base :
+  décompression par zlib et comparaison au corpus, empreintes comparées à celles que la base
+  produit elle-même, temps mesurés de l'extérieur (durée du processus conteneurisé), décompte
+  d'instructions par Cachegrind lancé de l'extérieur. Ajouter, à chaque exécution, une part
+  d'entrées tirées au hasard (graine choisie par le job, inconnue de la PR) pour qu'aucun code ne
+  puisse précalculer ses réponses. Rédiger d'abord, dans bee/README.md, le modèle de menace : ce que
+  le code de la PR peut faire, ce qu'il ne peut plus faire.
+fichiers: [bee/ci/, bee/bench/, bee/tests/, .github/workflows/bee-ci.yml, bee/README.md]
+portee: 1.0
+metrique: null
+critere_acceptation:
+  - "CI verte (R2) sur la base et sur cette contribution ; résultats identiques à l'ancien juge sur une PR honnête"
+  - "démonstration, dans la PR, de trois codes malveillants (sortie anticipée en succès, faux chronos, table de réponses précalculées) tous détectés"
+  - "le code de la PR ne s'exécute jamais hors du conteneur sans réseau ; le verdict est écrit par un processus qu'il ne contrôle pas"
+  - "modèle de menace écrit dans bee/README.md, avec ce qui reste hors de portée"
+hors_perimetre: [code de miniz, changement des métriques suivies, nouvelle dépendance hors image de base]
+depend_de: [miniz-0001]
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-27"

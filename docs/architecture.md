@@ -65,10 +65,14 @@ du conseil pour tout auteur hors conseil ; le conseil relit, le workflow intègr
   réputation et le pouvoir constitutionnel ; c'est un choix délibéré d'autonomie.
 
 **État au 27 octobre 2026.** Ce raisonnement suppose un juge que la contribution ne peut pas
-influencer. Une revue a montré que ce n'est pas encore le cas : le verdict est produit par un workflow
-que la PR peut modifier, il n'est pas lié au commit finalement fusionné, et R3 ne tient pas encore
-compte des signaux négatifs (relecture défavorable, vote contre, dégradations R5). Tant que ces points
-ne sont pas corrigés et couverts par des tests adverses, la porte humaine de R3 reste ouverte.
+influencer. Une revue a trouvé plusieurs failles ; corrigées et couvertes par des tests adverses :
+le verdict d'une PR qui touche son workflow ou ses juges est détecté par le registre (fichiers lus
+auprès de GitHub) ; le verdict, les relectures et la fusion sont liés au même commit ; R3 tient compte
+des avis défavorables et de R5 ; la fenêtre ne s'antidate plus ; pas de soumission sans réservation.
+**Reste ouvert :** le code C d'une PR s'exécute dans les jobs qui le mesurent, et un code malveillant
+peut fausser ses propres tests ou mesures de l'intérieur (par exemple en terminant le processus avec
+succès avant le test). Tant que ce point n'est pas réglé, la porte humaine de R3 reste ouverte : le
+conseil lit le diff.
 
 ## Plan de migration (par étapes)
 
@@ -78,11 +82,13 @@ ne sont pas corrigés et couverts par des tests adverses, la porte humaine de R3
    `integration-auto.yml`. Fusionner dans un fork demande un jeton d'organisation
    (`BEE_INTEGRATION_TOKEN`) ; **il ne sera créé qu'une fois le juge rendu sûr** (étape 2 bis).
    Sans lui, le workflow laisse la contribution en relecture.
-2 bis. **Juge sûr** (à faire, prioritaire) : verdict calculé par un workflow défini par la base (sans
-   droit d'écriture ni secret), lié au commit de tête et à la base ; fusion conditionnée à ce commit ;
-   R3 complétée (signaux négatifs, R5, fenêtre mesurée par GitHub, soumission ⇔ réservation, sortie
-   automatique) ; tests adverses pour chaque contournement connu. C'est la condition pour fermer la
-   porte humaine et créer le jeton.
+2 bis. **Juge sûr.** Fait (27/10) : contrôle des fichiers de la PR par le registre, verdict +
+   relectures + fusion liés au même commit, R3 complétée (avis défavorables, R5, fenêtre non
+   antidatable, soumission ⇔ réservation, sortie automatique), tests adverses. Reste, pour fermer la
+   porte humaine et créer le jeton : **exécuter le code de la PR dans un conteneur isolé et le juger
+   de l'extérieur** (sorties vérifiées et temps mesurés par un processus que le code ne contrôle pas),
+   avec une part d'entrées tirées au hasard à chaque exécution pour qu'aucun code ne puisse précalculer
+   ses réponses. C'est un chantier d'outillage pour la ruche.
 3. **Répartir** (une première tentative sur libyaml, le 27/10, a été annulée le jour même) : déplacer
    tâches/contributions/votes/mesures de chaque projet vers son dépôt ; agréger la réputation au
    central. Prérequis tirés de la tentative :

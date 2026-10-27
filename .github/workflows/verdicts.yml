@@ -48,7 +48,12 @@ jobs:
             numero=${execution%% *}; adresse=${execution#* }
             rm -rf "$RUNNER_TEMP/verdict" && mkdir -p "$RUNNER_TEMP/verdict"
             gh run download "$numero" -R "$depot" -n verdict -D "$RUNNER_TEMP/verdict" || continue
-            options=()
+            # Contrôle de confiance : les fichiers modifiés par la PR, lus auprès de l'API GitHub. Une PR qui
+            # touche son workflow ou ses juges a pu fabriquer son verdict ; R3 la refuse (optimisation) ou
+            # exige une relecture du conseil ou d'un Confirmé (tâche d'outillage).
+            gh api "repos/$depot/pulls/${pr##*/}/files" --paginate \
+              --jq '.[] | .filename, (.previous_filename // empty)' > "$RUNNER_TEMP/verdict/fichiers.txt" || continue
+            options=(--fichiers "$RUNNER_TEMP/verdict/fichiers.txt")
             if gh api "repos/$depot/contents/CONTRIBUTION.yaml?ref=$sha" --jq .content | base64 -d > "$RUNNER_TEMP/verdict/CONTRIBUTION.yaml" 2>/dev/null \
                && [ -s "$RUNNER_TEMP/verdict/CONTRIBUTION.yaml" ]; then
               options+=(--manifeste "$RUNNER_TEMP/verdict/CONTRIBUTION.yaml")

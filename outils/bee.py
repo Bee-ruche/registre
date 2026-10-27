@@ -1348,6 +1348,17 @@ def cmd_enregistrer_verdict(args):
         verdict["ecart_declare"] = round(abs(declare - verdict["gain"]), 4) if declare is not None and verdict["gain"] is not None else None
     if args.sha:
         verdict["sha"] = args.sha
+    if args.fichiers:
+        # Contrôle de confiance : la liste vient de l'API GitHub (workflow du registre), pas de la PR.
+        # Une PR qui touche son workflow ou ses juges a pu fabriquer son propre verdict.
+        with open(args.fichiers, encoding="utf-8") as f:
+            fichiers = sorted({l.strip() for l in f if l.strip()})
+        projet = reg.projets.get(reg.tache(enr["tache"])[1].get("projet"), (None, {}))[1]
+        motifs = [".github/**"] + list(projet.get("chemins_juges") or [])
+        juges = [c for c in fichiers if correspond(c, motifs)]
+        verdict["fichiers_controles"] = True
+        if juges:
+            verdict["juges_modifies"] = juges[:50]
     if args.execution:
         verdict["execution"] = args.execution
     enr = dict(enr)
@@ -1461,6 +1472,16 @@ def raisons_acceptation(reg, cid):
     favorables = [r for r in autres if r.get("avis") == "favorable" and actuelle(r)]
     defavorables = [r for r in autres if r.get("avis") == "defavorable" and actuelle(r)]
     perimees = [r for r in autres if not actuelle(r)]
+    exiger(bool(verdict.get("fichiers_controles")),
+           "verdict non contrôlé : la liste des fichiers de la PR n'a pas été vérifiée par le workflow du registre")
+    juges = verdict.get("juges_modifies") or []
+    if juges:
+        liste = ", ".join(juges[:5]) + (" …" if len(juges) > 5 else "")
+        if tache.get("type") not in ("test", "mesure"):
+            exiger(False, f"la PR modifie des juges ({liste}) : interdit pour une tâche {tache.get('type')} (commandement 3)")
+        else:
+            exiger(any(r.get("relecteur") in reg.conseil or niveau_de(niveaux, r.get("relecteur")) == "Confirmé" for r in favorables),
+                   f"la PR modifie des juges ({liste}) : une relecture favorable du conseil ou d'un Confirmé est exigée")
     requises = min(int(cfg.get("relectures_requises", 2)), len(eligibles))
     exiger(len(favorables) >= requises, f"{len(favorables)} relecture(s) favorable(s) sur {requises} requise(s)"
            + (f" ; {len(perimees)} relecture(s) portent sur un commit antérieur et ne comptent plus" if perimees else ""))
@@ -1804,6 +1825,8 @@ def construire_analyseur():
     p.add_argument("--lignes", type=int, help="lignes modifiées hors tests, si le verdict ne les donne pas")
     p.add_argument("--sha", help="commit évalué")
     p.add_argument("--execution", help="adresse de l'exécution de CI")
+    p.add_argument("--fichiers", help="liste des fichiers modifiés par la PR (un par ligne), lue par le workflow de confiance "
+                                      "auprès de l'API GitHub ; sans elle, le verdict n'est pas intégrable")
 
     p = ajouter("publier", cmd_publier, "Publie vos changements du registre : branche, commit, push, PR, puis attente de la fusion.")
     p.add_argument("--titre", required=True, help="ex. « Réservation miniz-0012 », « Soumission miniz-0012-c1 »")

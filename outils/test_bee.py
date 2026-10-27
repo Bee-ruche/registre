@@ -83,6 +83,12 @@ class BaseTest(unittest.TestCase):
         projet = identifiant.rsplit("-", 1)[0]
         return bee.lire_yaml(self.dossier / "taches" / projet / f"{identifiant}.yaml")
 
+    def fichiers_pr(self, *chemins):
+        """Liste des fichiers d'une PR, telle que le workflow du registre la lit auprès de l'API GitHub."""
+        chemin = self.dossier / "fichiers-pr.txt"
+        chemin.write_text("\n".join(chemins or ("miniz_tdef.c",)) + "\n", encoding="utf-8")
+        return str(chemin)
+
     def soumettre_0099(self, auteur="alice"):
         self.assertEqual(self.bee("prendre", "miniz-0099", "--utilisateur", auteur)[0], 0)
         code, texte = self.bee("soumettre", "miniz-0099", "--utilisateur", auteur,
@@ -215,7 +221,7 @@ class TestRegistre(BaseTest):
         verdict = self.dossier / "verdict.json"
         verdict.write_text(json.dumps({"ci": "verte", "gain": 0.05, "au_dela_du_bruit": True,
                                        "lignes_modifiees": 10}), encoding="utf-8")
-        self.assertEqual(self.bee("enregistrer-verdict", cid, "--verdict", str(verdict), "--sha", "abc1234")[0], 0)
+        self.assertEqual(self.bee("enregistrer-verdict", cid, "--verdict", str(verdict), "--sha", "abc1234", "--fichiers", self.fichiers_pr())[0], 0)
         # Fenêtre pas écoulée et pas assez de relectures : pas encore intégrable.
         code, texte = self.bee("verifier-acceptation", cid)
         self.assertEqual(code, 1, texte)
@@ -255,7 +261,7 @@ class TestRegistre(BaseTest):
         verdict = self.dossier / "verdict.json"
         verdict.write_text(json.dumps({"ci": "verte", "gain": 0.05, "au_dela_du_bruit": True,
                                        "lignes_modifiees": 10}), encoding="utf-8")
-        self.assertEqual(self.bee("enregistrer-verdict", cid, "--verdict", str(verdict), "--sha", "abc1234")[0], 0)
+        self.assertEqual(self.bee("enregistrer-verdict", cid, "--verdict", str(verdict), "--sha", "abc1234", "--fichiers", self.fichiers_pr())[0], 0)
         for relecteur in relecteurs:
             self.assertEqual(self.bee("relire", cid, "--utilisateur", relecteur, "--avis", "favorable",
                                       "--motif", "Relu, rien à signaler ici.")[0], 0)
@@ -300,7 +306,7 @@ class TestRegistre(BaseTest):
         verdict = self.dossier / "verdict.json"
         verdict.write_text(json.dumps({"ci": "verte", "gain": 0.05, "au_dela_du_bruit": True, "lignes_modifiees": 10,
                                        "degradations": {"ratio_n6": -0.40, "memoire_max_ko": -0.004}}), encoding="utf-8")
-        self.assertEqual(self.bee("enregistrer-verdict", cid, "--verdict", str(verdict), "--sha", "abc1234")[0], 0)
+        self.assertEqual(self.bee("enregistrer-verdict", cid, "--verdict", str(verdict), "--sha", "abc1234", "--fichiers", self.fichiers_pr())[0], 0)
         os.environ["BEE_MAINTENANT"] = "2026-10-29T12:00:00Z"
         code, texte = self.bee("verifier-acceptation", cid)
         self.assertEqual(code, 1, texte)
@@ -314,10 +320,60 @@ class TestRegistre(BaseTest):
         self.assertEqual(self.bee("verifier-acceptation", cid)[0], 0)
         # L'auteur pousse un nouveau commit : le nouveau verdict porte sur def5678, les relectures sur abc1234.
         verdict = self.dossier / "verdict.json"
-        self.assertEqual(self.bee("enregistrer-verdict", cid, "--verdict", str(verdict), "--sha", "def5678")[0], 0)
+        self.assertEqual(self.bee("enregistrer-verdict", cid, "--verdict", str(verdict), "--sha", "def5678", "--fichiers", self.fichiers_pr())[0], 0)
         code, texte = self.bee("verifier-acceptation", cid)
         self.assertEqual(code, 1, texte)
         self.assertIn("commit antérieur", texte)
+
+    def enregistrer_verdict_vert(self, cid, *fichiers, controle=True):
+        verdict = self.dossier / "verdict.json"
+        verdict.write_text(json.dumps({"ci": "verte", "gain": 0.05, "au_dela_du_bruit": True,
+                                       "lignes_modifiees": 10}), encoding="utf-8")
+        options = ["--fichiers", self.fichiers_pr(*fichiers)] if controle else []
+        self.assertEqual(self.bee("enregistrer-verdict", cid, "--verdict", str(verdict), "--sha", "abc1234", *options)[0], 0)
+
+    def test_adverse_r3_verdict_non_controle(self):
+        self.regler_porte_humaine(False)
+        cid = self.soumettre_0099()
+        self.enregistrer_verdict_vert(cid, controle=False)
+        os.environ["BEE_MAINTENANT"] = "2026-10-29T12:00:00Z"
+        code, texte = self.bee("verifier-acceptation", cid)
+        self.assertEqual(code, 1, texte)
+        self.assertIn("verdict non contrôlé", texte)
+
+    def test_adverse_r3_optimisation_qui_modifie_son_workflow(self):
+        cid = self.soumettre_0099()
+        self.enregistrer_verdict_vert(cid, "miniz_tdef.c", ".github/workflows/bee-ci.yml")
+        _, enr = bee.Registre(self.dossier).enregistrement(cid)
+        self.assertEqual(enr["verdict"]["juges_modifies"], [".github/workflows/bee-ci.yml"])
+        os.environ["BEE_MAINTENANT"] = "2026-10-29T12:00:00Z"
+        code, texte = self.bee("verifier-acceptation", cid)
+        self.assertEqual(code, 1, texte)
+        self.assertIn("modifie des juges", texte)
+        self.assertIn("commandement 3", texte)
+
+    def test_tache_d_outillage_qui_modifie_les_juges_exige_le_conseil(self):
+        self.regler_porte_humaine(False)
+        (self.dossier / "taches/miniz/miniz-9003.yaml").write_text(
+            TACHE_OPTIMISATION.replace("miniz-0099", "miniz-9003").replace("type: optimisation", "type: test")
+            .replace("metrique: debit_compression_n6", "metrique: null"), encoding="utf-8")
+        self.assertEqual(self.bee("prendre", "miniz-9003", "--utilisateur", "alice")[0], 0)
+        self.assertEqual(self.bee("soumettre", "miniz-9003", "--utilisateur", "alice",
+                                  "--pr", "https://github.com/Bee-ruche/minizBee/pull/8")[0], 0)
+        cid = "miniz-9003-c1"
+        self.enregistrer_verdict_vert(cid, "bee/tests/nouveau_test.c")
+        for relecteur in ("bruno", "chloe"):
+            self.assertEqual(self.bee("relire", cid, "--utilisateur", relecteur, "--avis", "favorable",
+                                      "--motif", "Relu, le test est pertinent.")[0], 0)
+        self.assertEqual(self.bee("voter", cid, "--utilisateur", "bidji29", "--valeur", "1")[0], 0)
+        os.environ["BEE_MAINTENANT"] = "2026-10-29T12:00:00Z"
+        code, texte = self.bee("verifier-acceptation", cid)
+        self.assertEqual(code, 1, texte)
+        self.assertIn("conseil ou d'un Confirmé", texte)
+        self.assertEqual(self.bee("relire", cid, "--utilisateur", "bidji29", "--avis", "favorable",
+                                  "--motif", "Juge renforcé, relu par le conseil.")[0], 0)
+        code, texte = self.bee("verifier-acceptation", cid)
+        self.assertEqual(code, 0, texte)
 
     def test_adverse_verdict_incoherent_refuse(self):
         cid = self.soumettre_0099()
