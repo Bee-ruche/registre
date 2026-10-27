@@ -214,8 +214,8 @@ class TestRegistre(BaseTest):
         self.assertEqual(code, 1, texte)
         self.assertIn("relecture", texte + " fenêtre")
         # Deux relectures favorables d'autres utilisateurs, et un vote net suffisant.
-        self.assertEqual(self.bee("relire", cid, "--utilisateur", "bruno", "--avis", "favorable", "--motif", "Relu.")[0], 0)
-        self.assertEqual(self.bee("relire", cid, "--utilisateur", "chloe", "--avis", "favorable", "--motif", "Relu aussi.")[0], 0)
+        self.assertEqual(self.bee("relire", cid, "--utilisateur", "bruno", "--avis", "favorable", "--motif", "Relu, le diff est net et sûr.")[0], 0)
+        self.assertEqual(self.bee("relire", cid, "--utilisateur", "chloe", "--avis", "favorable", "--motif", "Relu aussi, rien à redire.")[0], 0)
         self.assertEqual(self.bee("voter", cid, "--utilisateur", "bidji29", "--valeur", "1")[0], 0)
         # Toujours pas : la fenêtre d'ouverture n'est pas écoulée.
         self.assertEqual(self.bee("verifier-acceptation", cid)[0], 1)
@@ -224,6 +224,27 @@ class TestRegistre(BaseTest):
         code, texte = self.bee("verifier-acceptation", cid)
         self.assertEqual(code, 0, texte)
         self.assertIn("intégrable", texte)
+        # integrer applique la décision mécanique : contribution et tâche passent en « integree ».
+        code, texte = self.bee("integrer", cid, "--fusion-sha", "deadbee")
+        self.assertEqual(code, 0, texte)
+        _, enr = bee.Registre(self.dossier).enregistrement(cid)
+        self.assertEqual(enr["statut"], "integree")
+        self.assertEqual(enr.get("fusion_sha"), "deadbee")
+        self.assertIn("decidee_le", enr)
+        self.assertEqual(self.tache("miniz-0099")["statut"], "integree")
+        self.valide()
+        # Idempotence : une fois intégrée, elle n'est plus intégrable (statut ≠ en_relecture).
+        self.assertEqual(self.bee("verifier-acceptation", cid)[0], 1)
+        self.assertEqual(self.bee("integrer", cid)[0], 1)
+
+    def test_integrer_refuse_sans_acceptation(self):
+        cid = self.soumettre_0099()  # pas de verdict, pas de relecture, fenêtre non écoulée
+        code, texte = self.bee("integrer", cid)
+        self.assertEqual(code, 1, texte)
+        self.assertIn("pas intégrable", texte)
+        # Rien n'a été écrit : la contribution reste en relecture.
+        _, enr = bee.Registre(self.dossier).enregistrement(cid)
+        self.assertEqual(enr["statut"], "en_relecture")
 
     def test_mesure_enregistree_et_valide(self):
         cid = self.soumettre_0099()

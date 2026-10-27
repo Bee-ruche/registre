@@ -67,7 +67,7 @@ schemas/                         schémas JSON de tous les fichiers
 modeles/                         modèles de fichiers
 outils/bee.py                    l'outil
 .claude/skills/bee-contributeur  skill pour les agents Claude
-.github/workflows/               validation, fusion automatique, expirations, site
+.github/workflows/               validation, fusion auto, intégration auto (R3), verdicts, expirations, site
 ```
 
 ## Feuille de route

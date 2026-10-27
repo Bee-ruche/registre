@@ -1378,27 +1378,25 @@ def cmd_enregistrer_mesure(args):
     return 0
 
 
-def cmd_verifier_acceptation(args):
-    """Règle R3 exécutable : une contribution est-elle intégrable automatiquement, sans humain ?
+def raisons_acceptation(reg, cid):
+    """Raisons qui empêchent l'intégration automatique de `cid` (R3) ; liste vide = intégrable.
 
-    Renvoie 0 si oui (le workflow de confiance peut fusionner), 1 sinon avec les raisons.
-    Les seuils de relectures et de vote sont plafonnés à ce que les membres éligibles (autres que
-    l'auteur) peuvent fournir : pendant l'amorçage, quand la ruche est petite, l'intégration repose
-    sur la CI, l'absence de défaut et la fenêtre d'ouverture, et se durcit à mesure que des Confirmés
+    Renvoie (chemin, enr, raisons). Les seuils de relectures et de vote sont plafonnés à ce que les
+    membres éligibles (autres que l'auteur) peuvent fournir : pendant l'amorçage l'intégration repose
+    sur la CI, l'absence de défaut et la fenêtre d'ouverture, et se durcit dès que des Confirmés
     apparaissent. Aucune validation humaine n'intervient jamais.
     """
-    reg = Registre(args.registre)
-    chemin, enr = reg.enregistrement(args.contribution)
+    chemin, enr = reg.enregistrement(cid)
+    raisons = []
     if enr.get("statut") != "en_relecture":
-        print(f"{args.contribution} n'est pas en relecture (statut : {enr.get('statut')}) ; rien à intégrer.")
-        return 1
+        raisons.append(f"statut « {enr.get('statut')} » (seule une contribution en_relecture s'intègre)")
+        return chemin, enr, raisons
     cfg = reg.config
     auteur = enr.get("auteur")
     tache = reg.taches.get(enr.get("tache"), (None, {}))[1]
     verdict = enr.get("verdict") or {}
     niveaux = calculer_niveaux(reg)
     eligibles = [m for m in (set(reg.membres) | set(reg.conseil)) if m != auteur]
-    raisons = []
 
     def exiger(cond, msg):
         if not cond:
@@ -1420,7 +1418,7 @@ def cmd_verifier_acceptation(args):
                "aucune relecture favorable d'un Confirmé (il en faut une quand un Confirmé est disponible)")
 
     net = sum(int(v.get("valeur", 0)) * POIDS_VOTE.get(niveau_de(niveaux, v.get("votant")), 0)
-              for _, v in reg.votes if v.get("sujet") == args.contribution and v.get("votant") != auteur)
+              for _, v in reg.votes if v.get("sujet") == cid and v.get("votant") != auteur)
     poids_dispo = sum(POIDS_VOTE.get(niveau_de(niveaux, m), 0) for m in eligibles)
     seuil_vote = min(int(cfg.get("vote_net_min", 2)), poids_dispo)
     exiger(net >= seuil_vote, f"vote net de la ruche {net} sous le seuil {seuil_vote} (pondéré)")
@@ -1431,7 +1429,16 @@ def cmd_verifier_acceptation(args):
         exiger(heures >= fenetre, f"fenêtre d'ouverture : {heures:.0f} h écoulées sur {fenetre:.0f} h")
     except ErreurBee:
         raisons.append("date de soumission illisible")
+    return chemin, enr, raisons
 
+
+def cmd_verifier_acceptation(args):
+    """Règle R3 exécutable : une contribution est-elle intégrable automatiquement, sans humain ?
+
+    Code 0 si oui (le workflow de confiance peut intégrer), 1 sinon avec les raisons. Ne modifie rien.
+    """
+    reg = Registre(args.registre)
+    _, _, raisons = raisons_acceptation(reg, args.contribution)
     if raisons:
         print(f"✗ {args.contribution} : pas encore intégrable.")
         for r in raisons:
@@ -1439,6 +1446,33 @@ def cmd_verifier_acceptation(args):
         return 1
     print(f"✓ {args.contribution} est intégrable automatiquement (R3) : CI verte, relectures et vote "
           f"suffisants, fenêtre écoulée. Aucune validation humaine requise.")
+    return 0
+
+
+def cmd_integrer(args):
+    """Intègre une contribution si et seulement si R3 est satisfaite — sans humain.
+
+    Met à jour le registre (contribution et tâche passent en « integree »). La fusion du code sur le
+    dépôt du projet est faite par le workflow de confiance (même dépôt dans l'architecture répartie),
+    qui appelle d'abord verifier-acceptation. Refuse, sans rien écrire, si R3 n'est pas remplie.
+    """
+    reg = Registre(args.registre)
+    chemin, enr, raisons = raisons_acceptation(reg, args.contribution)
+    if raisons:
+        print(f"✗ {args.contribution} n'est pas intégrable automatiquement :")
+        for r in raisons:
+            print("  - " + r)
+        return 1
+    enr = dict(enr)
+    enr["statut"] = "integree"
+    enr["decidee_le"] = en_iso(maintenant())
+    enr["motif_decision"] = "Intégration automatique (R3) : CI verte, relectures et vote suffisants, fenêtre écoulée ; sans humain."
+    if args.fusion_sha:
+        enr["fusion_sha"] = args.fusion_sha
+    ecrire_yaml(chemin, enr)
+    modifier_tache(reg.tache(enr["tache"])[0], statut="integree")
+    print(f"✓ {args.contribution} intégrée automatiquement (R3), sans validation humaine.")
+    print(f"  PR du projet à fusionner : {enr.get('pr', '(inconnue)')}")
     return 0
 
 
@@ -1643,6 +1677,11 @@ def construire_analyseur():
     p = ajouter("verifier-acceptation", cmd_verifier_acceptation,
                 "Règle R3 : une contribution est-elle intégrable automatiquement (CI + relectures + vote + fenêtre), sans humain ?")
     p.add_argument("contribution", help="id de la contribution (ex. miniz-0012-c1)")
+
+    p = ajouter("integrer", cmd_integrer,
+                "Intègre une contribution si R3 est satisfaite (sans humain) : passe contribution et tâche en « integree ». Utilisé par le workflow de confiance.")
+    p.add_argument("contribution", help="id de la contribution (ex. miniz-0012-c1)")
+    p.add_argument("--fusion-sha", help="SHA du commit de fusion sur le dépôt du projet, consigné dans la contribution")
 
     p = ajouter("verifier-pr", cmd_verifier_pr, "Vérifie une pull request sur le registre (utilisé par la CI).")
     p.add_argument("--base", required=True)

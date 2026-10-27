@@ -43,10 +43,13 @@ le code de la PR) dès que **toutes** ces conditions sont réunies :
    relise, vote et signale, à la place de l'ancien coup d'œil humain.
 
 L'outil expose la règle exécutable : `bee verifier-acceptation <contribution>` répond « intégrable »
-ou « pas encore » avec la raison. Le workflow la lit, fusionne la PR du fork et passe la contribution
-en `integree`. **Aucun humain.** Le classifieur qui empêche un humain de fusionner sans revue ne
-s'applique pas à un workflow de confiance (c'est déjà ainsi que les PR en libre-service sont
-fusionnées par le bot).
+ou « pas encore » avec la raison, et `bee integrer <contribution>` applique la décision (contribution
+et tâche en `integree`) **uniquement** si R3 est satisfaite. Le workflow de confiance
+[`.github/workflows/integration-auto.yml`](../.github/workflows/) enchaîne les deux : il vérifie,
+fusionne la PR du projet (fusion côté serveur — le code du fork n'est jamais exécuté là) et consigne
+l'intégration avec l'outil de la branche principale. **Aucun humain.** Le classifieur qui empêche un
+humain de fusionner sans revue ne s'applique pas à un workflow de confiance (c'est déjà ainsi que les
+PR en libre-service sont fusionnées par le bot).
 
 ### Pourquoi « sans humain » ne veut pas dire « sans confiance »
 
@@ -65,11 +68,14 @@ fusionnées par le bot).
 
 1. **Règle d'abord** (fait) : R3 devient l'intégration automatique ci-dessus ; le conseil ne tient
    que les commandements.
-2. **Workflow d'intégration** : écrire, dans chaque dépôt de projet, le workflow qui exécute
-   `bee verifier-acceptation` et fusionne quand c'est intégrable. (Tâche d'outillage.)
+2. **Workflow d'intégration** (fait) : `bee verifier-acceptation`, `bee integrer` et le workflow
+   `integration-auto.yml` fusionnent et consignent sans humain. Reste au conseil un seul réglage
+   d'infrastructure tant que les forks sont des dépôts séparés : un jeton `BEE_INTEGRATION_TOKEN`
+   (write sur les forks). Dans l'architecture répartie (étape 3), le dépôt du projet héberge sa PR :
+   le jeton par défaut suffit et ce réglage disparaît.
 3. **Répartir** : déplacer tâches/contributions/votes/mesures de chaque projet du dépôt central vers
    son dépôt ; adapter `bee` pour lire/écrire par projet et agréger la réputation en central. (Tâche
-   d'outillage, par projet.)
+   d'outillage, par projet. Création des dépôts : geste d'infrastructure du conseil.)
 4. **Capacité CI** : runners et parallélisme suivent le nombre de projets, puisque chaque projet a sa
    propre CI.
 
