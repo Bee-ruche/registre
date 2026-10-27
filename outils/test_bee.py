@@ -54,6 +54,11 @@ class BaseTest(unittest.TestCase):
         self.dossier = pathlib.Path(self.temp.name) / "registre"
         shutil.copytree(RACINE, self.dossier, ignore=shutil.ignore_patterns(".git", "_site", "__pycache__"))
         (self.dossier / "taches" / "miniz" / "miniz-0099.yaml").write_text(TACHE_OPTIMISATION, encoding="utf-8")
+        # Tâches fictives indépendantes de l'état réel du registre : 9002 attend 9001.
+        (self.dossier / "taches" / "miniz" / "miniz-9001.yaml").write_text(TACHE_OPTIMISATION.replace("miniz-0099", "miniz-9001"), encoding="utf-8")
+        (self.dossier / "taches" / "miniz" / "miniz-9002.yaml").write_text(
+            TACHE_OPTIMISATION.replace("miniz-0099", "miniz-9002").replace("type: optimisation", "type: test").replace("metrique: debit_compression_n6", "metrique: null")
+            .replace("sortie_compressee: identique\n", "").replace("statut: ouverte", "depend_de: [miniz-9001]\nstatut: ouverte"), encoding="utf-8")
         self.ancien_maintenant = os.environ.get("BEE_MAINTENANT")
         os.environ["BEE_MAINTENANT"] = "2026-10-27T12:00:00Z"
         for pseudo in ("alice", "bruno", "chloe"):
@@ -126,9 +131,9 @@ class TestRegistre(BaseTest):
         self.valide()
 
     def test_dependance_non_integree_bloque(self):
-        code, texte = self.bee("prendre", "miniz-0002", "--utilisateur", "alice")
+        code, texte = self.bee("prendre", "miniz-9002", "--utilisateur", "alice")
         self.assertEqual(code, 1)
-        self.assertIn("miniz-0001", texte)
+        self.assertIn("miniz-9001", texte)
 
     def test_limite_r8(self):
         for i in range(4):
@@ -256,10 +261,16 @@ class TestRegistre(BaseTest):
         self.assertIn("champ obligatoire manquant : compte_cree_le", texte)
 
     def test_lister_signale_les_taches_masquees(self):
-        code, texte = self.bee("lister", "--type", "relecture", "--disponibles")
+        code, texte = self.bee("lister", "--type", "test", "--disponibles")
         self.assertEqual(code, 0)
         self.assertIn("masquée", texte)
-        self.assertIn("miniz-0001", texte)
+        self.assertIn("miniz-9001", texte)
+
+    def test_lister_rien_a_faire(self):
+        shutil.rmtree(self.dossier / "contributions", ignore_errors=True)  # dossier absent quand il est vide (git ne suit pas les dossiers vides)
+        code, texte = self.bee("lister", "--categorie", "decodage-images", "--disponibles")
+        self.assertEqual(code, 0)
+        self.assertIn("Aucune tâche", texte)
         self.assertIn("arrêtez-vous", texte)
 
     def test_attente_de_fusion_expliquee(self):
