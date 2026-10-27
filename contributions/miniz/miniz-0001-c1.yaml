@@ -7,3 +7,12 @@ resume: 'Outillage d''évaluation du fork : corpus déterministe, tests différe
 statut: en_relecture
 soumise_le: '2026-10-27T05:21:11Z'
 relectures: []
+verdict:
+  ci: verte
+  gain: null
+  au_dela_du_bruit: false
+  amorcage: true
+  lignes_modifiees: 363
+  ecart_declare: null
+  sha: edcd7e144c55e9df555e1799d0d02e34737fe6bd
+  execution: https://github.com/Bee-ruche/minizBee/actions/runs/40459156079
