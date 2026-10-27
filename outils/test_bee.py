@@ -415,7 +415,22 @@ class TestRegistre(BaseTest):
         return cid
 
     def test_r4_gain_etabli_par_les_instructions(self):
-        cid = self.contribution_relue(0.005, False, 0.04)  # chronomètre dans le bruit, instructions -4 %
+        cid = self.contribution_relue(0.012, True, 0.04)  # instructions -4 %, chronomètre +1,2 % au-delà du bruit
+        code, texte = self.bee("verifier-acceptation", cid)
+        self.assertEqual(code, 0, texte)
+
+    def test_adverse_r4_instructions_sans_confirmation_du_chronometre(self):
+        # Revue adverse du 27/10 : un gain d'instructions fabriqué (travail déplacé) ne se voit pas au chronomètre.
+        cid = self.contribution_relue(0.005, False, 0.04)
+        code, texte = self.bee("verifier-acceptation", cid)
+        self.assertEqual(code, 1, texte)
+        self.assertIn("ne le confirme pas", texte)
+        rapport = self.dossier / "ab.json"
+        rapport.write_text(json.dumps({"base": {"commit": "2948eeb"}, "candidat": {"commit": "abc1234"},
+                                       "machine": {"architecture": "arm64", "compilateur": "clang 17"},
+                                       "metriques": {"debit_compression_n6": {"gain": 0.011, "au_dela_du_bruit": True,
+                                                     "test_du_signe": {"victoires_B": 10, "paires_utiles": 10}}}}), encoding="utf-8")
+        self.assertEqual(self.bee("enregistrer-mesure", cid, "--ab", str(rapport), "--utilisateur", "bruno")[0], 0)
         code, texte = self.bee("verifier-acceptation", cid)
         self.assertEqual(code, 0, texte)
 

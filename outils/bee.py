@@ -1555,20 +1555,31 @@ def raisons_acceptation(reg, cid):
         gain, bruit = verdict.get("gain"), bool(verdict.get("au_dela_du_bruit"))
         proxy = proxies.get(metrique)
         gain_inst = ((verdict.get("instructions") or {}).get(proxy) or {}).get("gain") if proxy else None
+
+        def reproduit(minimum):
+            """Mesures d'autres configurations (pas de l'auteur) qui voient le gain au chronomètre, au-delà du bruit."""
+            return [m for _, m in reg.mesures if m.get("contribution") == cid and m.get("soumise_par") != auteur
+                    and ((m.get("metriques") or {}).get(metrique) or {}).get("au_dela_du_bruit")
+                    and (((m.get("metriques") or {}).get(metrique) or {}).get("gain") or 0) > minimum]
+
         if isinstance(gain_inst, (int, float)) and gain_inst >= seuil:
-            # Le décompte d'instructions est exact : il établit le gain. Le chronomètre corrobore.
-            exiger(not (isinstance(gain, (int, float)) and gain < 0 and bruit),
-                   f"R4 : {proxy} {pourcent(gain_inst)}, mais le chronomètre recule au-delà du bruit ({pourcent(gain)})")
+            # Le décompte d'instructions établit l'ampleur du gain ; le chronomètre doit le CONFIRMER (gain au-delà
+            # du bruit), sinon une autre configuration doit le reproduire. Revue adverse du 27/10 : moins
+            # d'instructions ne veut pas toujours dire plus rapide (mélange d'instructions, travail déplacé).
+            recule = isinstance(gain, (int, float)) and gain < 0 and bruit
+            exiger(not recule, f"R4 : {proxy} {pourcent(gain_inst)}, mais le chronomètre recule au-delà du bruit ({pourcent(gain)})")
+            confirme = isinstance(gain, (int, float)) and gain > 0 and bruit
+            if not recule and not confirme:
+                exiger(reproduit(0.0), f"R4 : {proxy} {pourcent(gain_inst)}, mais le chronomètre ne le confirme pas au-delà "
+                       f"du bruit ({pourcent(gain)}) : il faut une mesure d'une autre configuration qui voie le gain "
+                       "(bee enregistrer-mesure)")
         else:
             exiger(isinstance(gain, (int, float)) and gain >= seuil and bruit,
                    f"R4 : {metrique} {pourcent(gain)}" + ("" if bruit else " (dans le bruit)")
                    + f" ; il faut au moins {pourcent(seuil)} au-delà du bruit"
                    + (f", ou au moins {pourcent(seuil)} sur {proxy} ({pourcent(gain_inst)})" if proxy else ""))
             if proxy:
-                reproduites = [m for _, m in reg.mesures if m.get("contribution") == cid and m.get("soumise_par") != auteur
-                               and ((m.get("metriques") or {}).get(metrique) or {}).get("au_dela_du_bruit")
-                               and (((m.get("metriques") or {}).get(metrique) or {}).get("gain") or 0) >= seuil]
-                exiger(reproduites, f"R4 : sans gain d'instructions sur {proxy}, le gain au chronomètre doit être "
+                exiger(reproduit(seuil - 1e-12), f"R4 : sans gain d'instructions sur {proxy}, le gain au chronomètre doit être "
                        "reproduit par une mesure d'une autre configuration (bee enregistrer-mesure)")
     # R5. Le chronomètre seul d'une métrique de débit est trop bruité pour bloquer : on juge son décompte
     # d'instructions. Les autres métriques (ratio, mémoire) se jugent directement.
