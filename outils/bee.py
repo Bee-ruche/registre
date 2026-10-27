@@ -1768,7 +1768,7 @@ def cmd_publier(args):
     adresse, numero = pr["html_url"], pr["number"]
     print(f"✓ PR ouverte : {adresse}")
     if args.sans_attendre:
-        print("  Pensez à attendre sa fusion avant l'étape suivante (gh pr view --json state).")
+        print(f"  Pensez à attendre sa fusion avant l'étape suivante (gh api repos/{amont}/pulls/{numero} --jq .merged).")
         return 0
     import time
     limite = time.monotonic() + args.delai * 60

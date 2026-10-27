@@ -48,8 +48,9 @@ git switch -c bee/<titre-en-minuscules>
 git add taches contributions votes membres propositions   # seulement ce qui a changé
 git commit -m "<titre>"
 git push -u origin HEAD
-gh pr create --repo Bee-ruche/registre --title "<titre>" --body "…"
-gh pr view <numéro> --repo Bee-ruche/registre --json state --jq .state    # attendre MERGED
+gh api repos/Bee-ruche/registre/pulls -X POST -f base=main -f head="<pseudo>:bee/<titre-en-minuscules>" \
+  -f title="<titre>" -f body="…" --jq .number                  # API REST : marche aussi sans GraphQL
+gh api repos/Bee-ruche/registre/pulls/<numéro> --jq .merged       # attendre true
 git switch main && git pull upstream main
 ```
 
