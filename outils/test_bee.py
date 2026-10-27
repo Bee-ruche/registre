@@ -203,7 +203,14 @@ class TestRegistre(BaseTest):
         self.assertAlmostEqual(score["S"], 0.03 / 3 / 1.1)
         self.assertEqual(score["V"], 1.0)
 
-    def test_acceptation_automatique_sans_humain(self):
+    def regler_porte_humaine(self, active):
+        chemin = self.dossier / "bee.yaml"
+        texte = chemin.read_text(encoding="utf-8")
+        self.assertIn("relecture_conseil_requise:", texte)
+        chemin.write_text(texte.replace("relecture_conseil_requise: true", f"relecture_conseil_requise: {'true' if active else 'false'}"),
+                          encoding="utf-8")
+
+    def test_acceptation_automatique(self):
         cid = self.soumettre_0099()  # auteur alice
         verdict = self.dossier / "verdict.json"
         verdict.write_text(json.dumps({"ci": "verte", "gain": 0.05, "au_dela_du_bruit": True,
@@ -219,8 +226,14 @@ class TestRegistre(BaseTest):
         self.assertEqual(self.bee("voter", cid, "--utilisateur", "bidji29", "--valeur", "1")[0], 0)
         # Toujours pas : la fenêtre d'ouverture n'est pas écoulée.
         self.assertEqual(self.bee("verifier-acceptation", cid)[0], 1)
-        # On avance le temps au-delà de la fenêtre : intégrable, sans aucun humain dans la boucle.
+        # On avance le temps au-delà de la fenêtre. La porte humaine temporaire bloque encore :
+        # l'auteur n'est pas du conseil et aucun membre du conseil n'a relu.
         os.environ["BEE_MAINTENANT"] = "2026-10-29T12:00:00Z"
+        code, texte = self.bee("verifier-acceptation", cid)
+        self.assertEqual(code, 1, texte)
+        self.assertIn("porte humaine", texte)
+        self.assertEqual(self.bee("relire", cid, "--utilisateur", "bidji29", "--avis", "favorable",
+                                  "--motif", "Relu par le conseil, diff conforme.")[0], 0)
         code, texte = self.bee("verifier-acceptation", cid)
         self.assertEqual(code, 0, texte)
         self.assertIn("intégrable", texte)
@@ -236,6 +249,31 @@ class TestRegistre(BaseTest):
         # Idempotence : une fois intégrée, elle n'est plus intégrable (statut ≠ en_relecture).
         self.assertEqual(self.bee("verifier-acceptation", cid)[0], 1)
         self.assertEqual(self.bee("integrer", cid)[0], 1)
+
+    def preparer_contribution_verte(self, auteur, relecteurs):
+        cid = self.soumettre_0099(auteur=auteur)
+        verdict = self.dossier / "verdict.json"
+        verdict.write_text(json.dumps({"ci": "verte", "gain": 0.05, "au_dela_du_bruit": True,
+                                       "lignes_modifiees": 10}), encoding="utf-8")
+        self.assertEqual(self.bee("enregistrer-verdict", cid, "--verdict", str(verdict), "--sha", "abc1234")[0], 0)
+        for relecteur in relecteurs:
+            self.assertEqual(self.bee("relire", cid, "--utilisateur", relecteur, "--avis", "favorable",
+                                      "--motif", "Relu, rien à signaler ici.")[0], 0)
+        os.environ["BEE_MAINTENANT"] = "2026-10-29T12:00:00Z"
+        return cid
+
+    def test_porte_humaine_satisfaite_par_un_auteur_du_conseil(self):
+        cid = self.preparer_contribution_verte("bidji29", ("bruno", "chloe"))
+        code, texte = self.bee("verifier-acceptation", cid)
+        self.assertEqual(code, 0, texte)
+
+    def test_porte_humaine_fermee(self):
+        self.regler_porte_humaine(False)
+        cid = self.preparer_contribution_verte("alice", ("bruno", "chloe"))
+        self.assertEqual(self.bee("voter", cid, "--utilisateur", "bidji29", "--valeur", "1")[0], 0)
+        code, texte = self.bee("verifier-acceptation", cid)
+        self.assertEqual(code, 0, texte)
+        self.assertIn("Aucune validation humaine requise", texte)
 
     def test_integrer_refuse_sans_acceptation(self):
         cid = self.soumettre_0099()  # pas de verdict, pas de relecture, fenêtre non écoulée

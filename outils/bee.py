@@ -1384,7 +1384,11 @@ def raisons_acceptation(reg, cid):
     Renvoie (chemin, enr, raisons). Les seuils de relectures et de vote sont plafonnés à ce que les
     membres éligibles (autres que l'auteur) peuvent fournir : pendant l'amorçage l'intégration repose
     sur la CI, l'absence de défaut et la fenêtre d'ouverture, et se durcit dès que des Confirmés
-    apparaissent. Aucune validation humaine n'intervient jamais.
+    apparaissent.
+
+    Porte humaine temporaire (bee.yaml : relecture_conseil_requise) : tant que le juge de la CI n'a
+    pas passé les tests adverses, toute contribution dont l'auteur n'est pas du conseil exige aussi une
+    relecture favorable d'un membre du conseil. Elle tombe quand le conseil met la clé à false.
     """
     chemin, enr = reg.enregistrement(cid)
     raisons = []
@@ -1416,6 +1420,10 @@ def raisons_acceptation(reg, cid):
     if [m for m in eligibles if niveau_de(niveaux, m) == "Confirmé"]:
         exiger(any(niveau_de(niveaux, r.get("relecteur")) == "Confirmé" for r in favorables),
                "aucune relecture favorable d'un Confirmé (il en faut une quand un Confirmé est disponible)")
+    if porte_humaine(reg) and auteur not in reg.conseil:
+        exiger(any(r.get("relecteur") in reg.conseil for r in favorables),
+               "porte humaine temporaire : une relecture favorable du conseil est exigée "
+               "tant que le juge n'a pas passé les tests adverses (bee.yaml : relecture_conseil_requise)")
 
     net = sum(int(v.get("valeur", 0)) * POIDS_VOTE.get(niveau_de(niveaux, v.get("votant")), 0)
               for _, v in reg.votes if v.get("sujet") == cid and v.get("votant") != auteur)
@@ -1432,8 +1440,13 @@ def raisons_acceptation(reg, cid):
     return chemin, enr, raisons
 
 
+def porte_humaine(reg):
+    """Vrai tant que la porte humaine temporaire de R3 est ouverte (voir raisons_acceptation)."""
+    return bool(reg.config.get("relecture_conseil_requise"))
+
+
 def cmd_verifier_acceptation(args):
-    """Règle R3 exécutable : une contribution est-elle intégrable automatiquement, sans humain ?
+    """Règle R3 exécutable : une contribution est-elle intégrable automatiquement ?
 
     Code 0 si oui (le workflow de confiance peut intégrer), 1 sinon avec les raisons. Ne modifie rien.
     """
@@ -1445,12 +1458,13 @@ def cmd_verifier_acceptation(args):
             print("  - " + r)
         return 1
     print(f"✓ {args.contribution} est intégrable automatiquement (R3) : CI verte, relectures et vote "
-          f"suffisants, fenêtre écoulée. Aucune validation humaine requise.")
+          f"suffisants, fenêtre écoulée"
+          + (" (porte humaine temporaire satisfaite)." if porte_humaine(reg) else ". Aucune validation humaine requise."))
     return 0
 
 
 def cmd_integrer(args):
-    """Intègre une contribution si et seulement si R3 est satisfaite — sans humain.
+    """Intègre une contribution si et seulement si R3 est satisfaite.
 
     Met à jour le registre (contribution et tâche passent en « integree »). La fusion du code sur le
     dépôt du projet est faite par le workflow de confiance (même dépôt dans l'architecture répartie),
@@ -1466,12 +1480,13 @@ def cmd_integrer(args):
     enr = dict(enr)
     enr["statut"] = "integree"
     enr["decidee_le"] = en_iso(maintenant())
-    enr["motif_decision"] = "Intégration automatique (R3) : CI verte, relectures et vote suffisants, fenêtre écoulée ; sans humain."
+    enr["motif_decision"] = ("Intégration automatique (R3) : CI verte, relectures et vote suffisants, fenêtre écoulée"
+                             + (" ; porte humaine temporaire satisfaite." if porte_humaine(reg) else " ; sans humain."))
     if args.fusion_sha:
         enr["fusion_sha"] = args.fusion_sha
     ecrire_yaml(chemin, enr)
     modifier_tache(reg.tache(enr["tache"])[0], statut="integree")
-    print(f"✓ {args.contribution} intégrée automatiquement (R3), sans validation humaine.")
+    print(f"✓ {args.contribution} intégrée automatiquement (R3).")
     print(f"  PR du projet à fusionner : {enr.get('pr', '(inconnue)')}")
     return 0
 
@@ -1675,11 +1690,11 @@ def construire_analyseur():
     p.add_argument("--json", action="store_true")
 
     p = ajouter("verifier-acceptation", cmd_verifier_acceptation,
-                "Règle R3 : une contribution est-elle intégrable automatiquement (CI + relectures + vote + fenêtre), sans humain ?")
+                "Règle R3 : une contribution est-elle intégrable automatiquement (CI + relectures + vote + fenêtre, + porte humaine temporaire) ?")
     p.add_argument("contribution", help="id de la contribution (ex. miniz-0012-c1)")
 
     p = ajouter("integrer", cmd_integrer,
-                "Intègre une contribution si R3 est satisfaite (sans humain) : passe contribution et tâche en « integree ». Utilisé par le workflow de confiance.")
+                "Intègre une contribution si R3 est satisfaite : passe contribution et tâche en « integree ». Utilisé par le workflow de confiance.")
     p.add_argument("contribution", help="id de la contribution (ex. miniz-0012-c1)")
     p.add_argument("--fusion-sha", help="SHA du commit de fusion sur le dépôt du projet, consigné dans la contribution")
 

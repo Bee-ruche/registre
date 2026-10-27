@@ -47,9 +47,9 @@ ou « pas encore » avec la raison, et `bee integrer <contribution>` applique la
 et tâche en `integree`) **uniquement** si R3 est satisfaite. Le workflow de confiance
 [`.github/workflows/integration-auto.yml`](../.github/workflows/) enchaîne les deux : il vérifie,
 fusionne la PR du projet (fusion côté serveur — le code du fork n'est jamais exécuté là) et consigne
-l'intégration avec l'outil de la branche principale. **Aucun humain.** Le classifieur qui empêche un
-humain de fusionner sans revue ne s'applique pas à un workflow de confiance (c'est déjà ainsi que les
-PR en libre-service sont fusionnées par le bot).
+l'intégration avec l'outil de la branche principale. **Objectif : aucun humain.** En attendant que
+le juge soit sûr (voir ci-dessous), la porte humaine temporaire de R3 exige une relecture favorable
+du conseil pour tout auteur hors conseil ; le conseil relit, le workflow intègre.
 
 ### Pourquoi « sans humain » ne veut pas dire « sans confiance »
 
@@ -64,18 +64,35 @@ PR en libre-service sont fusionnées par le bot).
 - Risque résiduel assumé : une collusion de comptes établis. Il est borné par l'économie de
   réputation et le pouvoir constitutionnel ; c'est un choix délibéré d'autonomie.
 
+**État au 27 octobre 2026.** Ce raisonnement suppose un juge que la contribution ne peut pas
+influencer. Une revue a montré que ce n'est pas encore le cas : le verdict est produit par un workflow
+que la PR peut modifier, il n'est pas lié au commit finalement fusionné, et R3 ne tient pas encore
+compte des signaux négatifs (relecture défavorable, vote contre, dégradations R5). Tant que ces points
+ne sont pas corrigés et couverts par des tests adverses, la porte humaine de R3 reste ouverte.
+
 ## Plan de migration (par étapes)
 
 1. **Règle d'abord** (fait) : R3 devient l'intégration automatique ci-dessus ; le conseil ne tient
    que les commandements.
-2. **Workflow d'intégration** (fait) : `bee verifier-acceptation`, `bee integrer` et le workflow
-   `integration-auto.yml` fusionnent et consignent sans humain. Reste au conseil un seul réglage
-   d'infrastructure tant que les forks sont des dépôts séparés : un jeton `BEE_INTEGRATION_TOKEN`
-   (write sur les forks). Dans l'architecture répartie (étape 3), le dépôt du projet héberge sa PR :
-   le jeton par défaut suffit et ce réglage disparaît.
-3. **Répartir** : déplacer tâches/contributions/votes/mesures de chaque projet du dépôt central vers
-   son dépôt ; adapter `bee` pour lire/écrire par projet et agréger la réputation en central. (Tâche
-   d'outillage, par projet. Création des dépôts : geste d'infrastructure du conseil.)
+2. **Workflow d'intégration** (écrit) : `bee verifier-acceptation`, `bee integrer` et le workflow
+   `integration-auto.yml`. Fusionner dans un fork demande un jeton d'organisation
+   (`BEE_INTEGRATION_TOKEN`) ; **il ne sera créé qu'une fois le juge rendu sûr** (étape 2 bis).
+   Sans lui, le workflow laisse la contribution en relecture.
+2 bis. **Juge sûr** (à faire, prioritaire) : verdict calculé par un workflow défini par la base (sans
+   droit d'écriture ni secret), lié au commit de tête et à la base ; fusion conditionnée à ce commit ;
+   R3 complétée (signaux négatifs, R5, fenêtre mesurée par GitHub, soumission ⇔ réservation, sortie
+   automatique) ; tests adverses pour chaque contournement connu. C'est la condition pour fermer la
+   porte humaine et créer le jeton.
+3. **Répartir** (une première tentative sur libyaml, le 27/10, a été annulée le jour même) : déplacer
+   tâches/contributions/votes/mesures de chaque projet vers son dépôt ; agréger la réputation au
+   central. Prérequis tirés de la tentative :
+   - le vérificateur de PR **refuse** tout fichier hors du registre, il ne l'ignore jamais (sinon une
+     PR « libre-service » fait fusionner du code) ;
+   - `bee` versionné et workflows réutilisables (`workflow_call`) épinglés par tag, au lieu de copies
+     par dépôt et d'un outil pris sur `main` ;
+   - pas de cache de constitution ni de membres à synchroniser à la main ;
+   - intégration et publication du registre sans course quand elles visent le même dépôt ;
+   - CI des forks paramétrée par `projets/<projet>.yaml`, pas copiée d'un projet à l'autre.
 4. **Capacité CI** : runners et parallélisme suivent le nombre de projets, puisque chaque projet a sa
    propre CI.
 

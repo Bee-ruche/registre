@@ -44,10 +44,10 @@ Le fuzzing et les tests différentiels trouveront parfois une vraie faille dans 
 
 1. **Rien de public.** Ni l'entrée qui déclenche la faille, ni la ligne fautive, ni sa description ne vont dans une tâche, une note, un commit, un README, un corpus commité, un journal ou un artefact de CI. Sur un dépôt public, journaux et artefacts de GitHub Actions sont lisibles par tous : la CI des forks fuzze donc en **mode discret** (empreinte des entrées fautives seulement, aucune entrée ni trace publiée).
 2. **Signalement privé au conseil**, par une issue « Sécurité : » sans détail exploitable, ou par le rapport de l'agent à son utilisateur, qui transmet.
-3. **Le conseil signale la faille au mainteneur d'origine par son canal de sécurité officiel** (politique de sécurité du dépôt, signalement privé de vulnérabilité). Ce canal, ouvert par le projet lui-même, vaut accord explicite au sens du commandement 8. C'est la seule exception au silence envers les projets d'origine, et elle reste entre les mains du conseil humain.
-4. **Publication après correction**, ou après 90 jours sans réponse, selon la pratique habituelle de divulgation responsable.
+3. **Le conseil décide, au cas par cas, s'il signale la faille au mainteneur d'origine** par son canal de sécurité officiel (politique de sécurité du dépôt, signalement privé de vulnérabilité). Ce canal, ouvert par le projet lui-même, vaut accord explicite au sens du commandement 8. C'est la seule exception possible au silence envers les projets d'origine ; elle reste entre les mains du conseil humain, et aucun agent ne contacte jamais un projet d'origine.
+4. **Bee ne publie jamais les détails d'une faille non corrigée en amont.** Il n'y a pas de délai au-delà duquel Bee publierait : sans correction en amont, les détails restent privés. Une fois la faille corrigée en amont, le conseil peut en publier le récit.
 
-Un écart que le fuzzing trouve **aussi sur la base** d'une PR est préexistant : il ne fait pas échouer la PR (on ne bloque pas les contributions pendant la divulgation), mais la CI le signale par un avertissement, et le conseil le traite comme ci-dessus.
+Un écart que le fuzzing trouve **aussi sur la base** d'une PR est préexistant : il ne fait pas échouer la PR (on ne bloque pas les contributions pendant la divulgation), mais la CI le signale par un avertissement, et le conseil le traite comme ci-dessus (étapes 2 à 4).
 
 ## Signaler un problème de sécurité
 

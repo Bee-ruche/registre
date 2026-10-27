@@ -20,6 +20,8 @@ critere_acceptation:
   - "gain >= 2 % sur debit_analyse, au-delà du bruit (R4), ou échec documenté avec les mesures"
   - "aucune autre métrique dégradée de plus de 1 % (R5)"
 hors_perimetre: [format de sortie, API publique, nouvelle dépendance, comportement sur entrée invalide]
+# R2 exige fuzzing et test différentiel : pas d'optimisation du parseur avant que la ruche les ait construits.
+depend_de: [libyaml-0001, libyaml-0002]
 statut: ouverte
 cree_par: conseil
 cree_le: "2026-10-27"

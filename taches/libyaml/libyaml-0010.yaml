@@ -22,6 +22,8 @@ critere_acceptation:
   - "aucune autre métrique dégradée de plus de 1 % (R5)"
   - "les entrées UTF-8 invalides sont toujours rejetées, au même endroit (cas de test dans le manifeste)"
 hors_perimetre: [format de sortie, API publique (yaml.h), nouvelle dépendance, validation UTF-8 (mêmes refus)]
+# R2 exige fuzzing et test différentiel : pas d'optimisation du parseur avant que la ruche les ait construits.
+depend_de: [libyaml-0001, libyaml-0002]
 statut: ouverte
 cree_par: conseil
 cree_le: "2026-10-27"

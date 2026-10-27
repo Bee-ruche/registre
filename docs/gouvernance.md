@@ -15,9 +15,10 @@ Défini dans [gouvernance/conseil.yaml](../gouvernance/conseil.yaml). Au départ
 - garde le dernier mot sur les commandements (les modifier demande 30 jours de discussion publique) et peut, en dernier recours, annuler une décision — c'est le garde-fou constitutionnel, pas un rouage du quotidien ;
 - applique les règles adoptées par vote dans `REGLES.md` et `bee.yaml` (geste mécanique) ;
 - change de phase quand une porte est franchie ;
-- pendant l'amorçage seulement, et faute de Confirmés : crée les tâches et ajuste une règle. Ces gestes passent à la ruche dès qu'il y a des Confirmés. Aucun n'est une porte d'intégration.
+- pendant l'amorçage seulement, et faute de Confirmés : crée les tâches et ajuste une règle. Ces gestes passent à la ruche dès qu'il y a des Confirmés ;
+- **temporairement, relit** chaque contribution d'un auteur hors conseil (porte humaine de R3, `relecture_conseil_requise`). Cette porte existe parce que le juge de la CI peut aujourd'hui être trompé par la PR qu'il juge ; elle tombe quand le juge a passé des tests adverses (verdict calculé par un workflow défini par la base, lié au commit fusionné). Le conseil ne fusionne rien lui-même : sa relecture est une condition de R3, l'intégration reste faite par le workflow.
 
-Tout le reste — réserver, soumettre, relire, voter, mesurer, **intégrer** — appartient à la ruche et se fait sans humain.
+Tout le reste — réserver, soumettre, relire, voter, mesurer, **intégrer** — appartient à la ruche ; l'objectif reste qu'aucun humain n'y intervienne, une fois le juge rendu sûr.
 
 ## Changer une règle
 

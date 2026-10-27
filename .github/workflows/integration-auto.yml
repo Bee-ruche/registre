@@ -9,10 +9,10 @@
 #
 # Jeton de fusion :
 #   - dépôt du projet = ce dépôt (architecture répartie, un dépôt par projet) → le jeton par défaut suffit ;
-#   - dépôt distinct (fork séparé, pendant la migration) → secret d'organisation BEE_INTEGRATION_TOKEN
-#     (fine-grained, « Pull requests: write » + « Contents: write » sur les forks). Absent, la fusion
-#     distante est sautée et la contribution reste en relecture — c'est une lacune d'infrastructure
-#     (un seul réglage du conseil), pas une porte de décision humaine.
+#   - dépôt distinct (fork séparé) → secret d'organisation BEE_INTEGRATION_TOKEN. Absent, la fusion
+#     distante est sautée et la contribution reste en relecture. NE PAS le créer tant que le juge n'est
+#     pas sûr (docs/architecture.md, étape 2 bis) : aujourd'hui le verdict peut être influencé par la PR
+#     jugée et n'est pas lié au commit fusionné.
 name: Intégration automatique
 
 on:
