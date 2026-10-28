@@ -1,0 +1,30 @@
+id: miniz-0032
+projet: miniz
+categorie: compression-sans-perte
+type: test
+taille: L
+titre: "Juge commun : extraire la partie commune du juge isolé et faire de minizBee son premier greffon"
+contexte: >
+  Spécification : docs/juge-commun.md du registre. Le juge isolé de minizBee (bee/juge/, tâche
+  miniz-0031) mêle ce qui protège (isolement, lanceur chrono, lecture sûre des sorties, analyse des
+  objets, graine, statistiques, rapport) et ce qui juge miniz (harnais, entrées, vérification,
+  scénarios). Deux livrables liés. (1) Dans le registre : outils/juge/ (partie commune) et un workflow
+  réutilisable .github/workflows/juge.yml (workflow_call), avec des méta-tests sur un projet jouet ;
+  c'est une PR d'outillage du registre, que le conseil (ou l'agent principal par délégation) relit et
+  fusionne, puis étiquette juge-v1. (2) Dans minizBee, la contribution jugée par la CI : bee/juge/
+  réduit à un greffon (projet.py) et au harnais (execution.c), bee-ci.yml qui appelle
+  Bee-ruche/registre/.github/workflows/juge.yml@juge-v1, et les méta-tests de minizBee
+  (bee/juge/test_juge.py) qui doivent donner exactement les mêmes résultats qu'avant l'extraction.
+fichiers: [bee/juge/, bee/ci/, .github/workflows/bee-ci.yml, bee/README.md]
+portee: 1.0
+metrique: null
+critere_acceptation:
+  - "CI verte (R2) ; sur une PR honnête, mêmes vérifications et mêmes décomptes d'instructions qu'avec le juge de miniz-0031"
+  - "les 7 méta-tests de minizBee (sortie anticipée, faux chronos, table précalculée, requête Valgrind, faux résumé, travail déplacé, honnête) donnent les mêmes résultats"
+  - "la partie commune a ses propres méta-tests, sur un projet jouet, dans le registre"
+  - "le greffon est lu depuis la base de la PR, jamais depuis la PR ; modèle de menace de bee/README.md mis à jour"
+hors_perimetre: [code de miniz, changement des métriques suivies, nouvelle dépendance hors image de base]
+depend_de: [miniz-0031]
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-28"
