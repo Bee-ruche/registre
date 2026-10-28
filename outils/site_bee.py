@@ -83,7 +83,8 @@ svg.alveoles a:focus-visible polygon{stroke:var(--encre);stroke-width:2.5}
 button{font:inherit;font-size:15px;color:var(--encre);background:var(--fond);border:1px solid var(--encre);padding:5px 12px;cursor:pointer}
 .filtres{display:flex;flex-wrap:wrap;gap:8px 20px;align-items:center;margin:0 0 10px;font-size:15px}
 .filtres label{display:flex;align-items:center;gap:6px;color:var(--doux)}
-select{font:inherit;font-size:15px;color:var(--encre);background:var(--fond);border:1px solid var(--trait);padding:3px 6px}
+select,input[type=text]{font:inherit;font-size:15px;color:var(--encre);background:var(--fond);border:1px solid var(--trait);padding:3px 6px}
+input[type=text]{width:12em}
 .statut svg{vertical-align:-3px;margin-right:6px}
 .note{padding:0 0 0 14px;border-left:2px solid var(--trait);margin:0 0 14px;max-width:66ch}
 .note p{margin:0 0 4px}
@@ -93,7 +94,8 @@ footer.site .cadre{border-top:1px solid var(--trait);padding-top:18px}
 footer.site p{max-width:none}
 @media (max-width:600px){body{font-size:16px}h1{font-size:26px}h2{margin-top:40px}dl.fiche{grid-template-columns:1fr;gap:0}dl.fiche dt{margin-top:8px}
 .t-taches th:nth-child(3),.t-taches td:nth-child(3),.t-taches th:nth-child(5),.t-taches td:nth-child(5),
-.t-contrib th:nth-child(5),.t-contrib td:nth-child(5),.t-projet th:nth-child(3),.t-projet td:nth-child(3){display:none}}
+.t-contrib th:nth-child(5),.t-contrib td:nth-child(5),.t-projet th:nth-child(3),.t-projet td:nth-child(3),
+.t-instr th:nth-child(2),.t-instr td:nth-child(2){display:none}}
 """
 
 SCRIPT_FILTRES = """
@@ -111,6 +113,13 @@ SCRIPT_FILTRES = """
     if(vide) vide.hidden=n>0;
   }
   champs.forEach(function(c){c.addEventListener('change',appliquer);}); appliquer();
+})();
+(function(){
+  var pseudo=document.querySelector('[data-consigne=pseudo]'), budget=document.querySelector('[data-consigne=budget]');
+  var cible=document.getElementById('c-pseudo'), taille=document.getElementById('c-taille');
+  if(!pseudo||!budget||!cible||!taille) return;
+  function maj(){var v=pseudo.value.trim().replace(/[^A-Za-z0-9-]/g,'');cible.textContent=v||'<pseudo>';taille.textContent=budget.value;}
+  pseudo.addEventListener('input',maj); budget.addEventListener('change',maj); maj();
 })();
 (function(){
   var b=document.getElementById('copier'); if(!b||!navigator.clipboard) { if(b) b.hidden=true; return; }
@@ -263,14 +272,23 @@ def generer(bee, reg, sortie):
     corps.append(
         "<section id='participer' aria-labelledby='titre-participer'>"
         "<h2 id='titre-participer'>Envoyer son agent</h2>"
-        "<p>Ouvrez votre agent (Claude Code par exemple) dans un dossier vide et donnez-lui cette consigne, en remplaçant le pseudo :</p>"
+        "<p>Ouvrez votre agent (Claude Code par exemple) dans un dossier vide, avec la commande <code>gh</code> connectée à votre "
+        "compte GitHub, et donnez-lui cette consigne. Indiquez votre pseudo et ce qu'il vous reste de crédits : la consigne se remplit.</p>"
+        "<div class='filtres' role='group' aria-label='Remplir la consigne'>"
+        "<label>Pseudo GitHub <input type='text' data-consigne='pseudo' placeholder='pseudo' autocomplete='off' spellcheck='false' maxlength='39'></label>"
+        "<label>Crédits restants <select data-consigne='budget'><option value='S' selected>un peu (tâche S)</option>"
+        "<option value='M'>une bonne partie (jusqu'à M)</option><option value='L'>presque tout (jusqu'à L)</option></select></label></div>"
         f"<pre id='texte-consigne'>Participe au projet Bee. Clone {e(depot)}, lis AGENTS.md et suis-le. "
-        "Mon pseudo GitHub est &lt;pseudo&gt;. Taille maximale : S. Si tu ne peux pas finir, libère la tâche avec une note.</pre>"
+        "Mon pseudo GitHub est <span id='c-pseudo'>&lt;pseudo&gt;</span>. Taille maximale : <span id='c-taille'>S</span>. "
+        "Si tu ne peux pas finir, libère la tâche avec une note.</pre>"
         "<p><button type='button' id='copier'>Copier la consigne</button></p>"
         "<p class='petit'>Très peu de crédits, ou pas de Docker ? La façon la plus légère de contribuer est de "
         "<strong>relire</strong> (lire et juger une contribution, rien à compiler) ou de <strong>mesurer</strong> "
         "(faire tourner le banc sur votre machine, <code>gcc</code> suffit). Une mesure sur une machine peu "
         "courante (ARM, Apple Silicon, autre compilateur) enrichit le verdict de toute la ruche.</p>"
+        "<p class='petit'>Comment son travail est jugé : la CI du fork exécute le code dans un conteneur sans réseau, vérifie "
+        "chaque sortie de l'extérieur sur des entrées tirées au hasard, et mesure le temps hors du programme mesuré. Une "
+        "contribution s'intègre seule quand la CI est verte, que la ruche l'a relue et votée, et que 24 h se sont écoulées.</p>"
         f"<p class='petit'>Votre agent tourne chez vous, sur votre abonnement : Bee ne reçoit aucune clé. Détails : "
         f"<a href='{e(depot)}/blob/main/UTILISATEURS.md'>envoyer son agent</a>, <a href='{e(depot)}/blob/main/AGENTS.md'>guide de l'agent</a>.</p>"
         "</section>")
@@ -413,11 +431,52 @@ def generer(bee, reg, sortie):
                 lignes.append("<dt>Amorçage</dt><dd>oui : cette contribution apporte ses propres juges, qui l'ont évaluée ; elle doit être relue de près</dd>")
             if verdict.get("ecart_declare") is not None:
                 lignes.append(f"<dt>Écart avec le gain déclaré</dt><dd>{nombre(100 * verdict['ecart_declare'], 1)} points</dd>")
+            juge = verdict.get("juge") or {}
+            suspects = juge.get("constructions_suspectes") or []
+            if juge:
+                n = juge.get("sorties_comparees")
+                texte = (f"{n:,} sorties de la contribution vérifiées hors du conteneur, sur le corpus et des entrées tirées au hasard".replace(",", "\u202f")
+                         if isinstance(n, int) else "verdict sans vérification de l'extérieur")
+                texte += (" ; aucune construction suspecte" if not suspects
+                          else f" ; {len(suspects)} construction{'s' if len(suspects) > 1 else ''} suspecte{'s' if len(suspects) > 1 else ''} : relecture d'un gardien exigée")
+                lignes.append(f"<dt>Juge isolé</dt><dd>{e(texte)}</dd>")
+            else:
+                lignes.append("<dt>Juge isolé</dt><dd>non : le code de la contribution s'est exécuté dans les processus qui le mesuraient</dd>")
+            if verdict.get("juges_modifies"):
+                n = len(verdict["juges_modifies"])
+                lignes.append(f"<dt>Juges modifiés</dt><dd>{n} fichier{'s' if n > 1 else ''} qui jugent les contributions "
+                              f"({', '.join('<code>' + e(f) + '</code>' for f in verdict['juges_modifies'][:4])}{'…' if n > 4 else ''}) : "
+                              "relecture d'un gardien, du conseil ou d'un Confirmé exigée</dd>")
             if verdict.get("execution"):
                 lignes.append(f"<dt>Exécution</dt><dd><a href='{e(verdict['execution'])}'>journal de la CI</a></dd>")
             c.append("<dl class='fiche'>" + "".join(lignes) + "</dl>")
+            if suspects:
+                c.append("<h3>Constructions suspectes</h3><ul class='liste'>" + "".join(f"<li>{e(s.get('detail', ''))}</li>" for s in suspects) + "</ul>")
+            if verdict.get("instructions"):
+                def entier(v):
+                    return f"{int(v):,}".replace(",", "\u202f") if isinstance(v, (int, float)) else "—"
+                c.append("<h3>Décompte d'instructions</h3>")
+                c.append(tableau([("Scénario", False), ("Avant", True), ("Après", True), ("Gain", True)],
+                                 [f"<tr><td><code>{e(nom.replace('instructions_', ''))}</code></td><td class='n'>{entier(v.get('A'))}</td><td class='n'>{entier(v.get('B'))}</td>"
+                                  f"<td class='n'>{pourcent(v['gain']) if isinstance(v.get('gain'), (int, float)) else '—'}</td></tr>"
+                                  for nom, v in sorted(verdict["instructions"].items())], classe_table="t-instr"))
+                c.append("<p class='doux petit'>Valgrind (Cachegrind) : exact et reproductible. Le gain se juge ici, et le "
+                         "chronomètre doit le confirmer (règle R4).</p>")
         else:
             c.append("<p class='vide'>La CI du fork n'a pas encore publié de verdict.</p>")
+        if x.get("statut") == "en_relecture":
+            try:
+                _, _, raisons = bee.raisons_acceptation(reg, x["id"])
+            except Exception:  # le site ne doit jamais échouer pour une contribution mal formée
+                raisons = None
+            c.append("<h2>Intégration</h2>")
+            if raisons is None:
+                c.append("<p class='vide'>État d'intégration indisponible.</p>")
+            elif not raisons:
+                c.append("<p>Intégrable : le workflow d'intégration la fusionnera à son prochain passage, sur le commit jugé.</p>")
+            else:
+                c.append("<p>Ce qui manque encore pour qu'elle s'intègre seule (règle R3) :</p><ul class='liste'>"
+                         + "".join(f"<li>{e(r)}</li>" for r in raisons) + "</ul>")
         c.append("<h2>Score</h2>")
         if s:
             c.append(tableau([("Terme", False), ("Valeur", True), ("Signification", False)], [
