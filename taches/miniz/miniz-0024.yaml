@@ -27,6 +27,9 @@ critere_acceptation:
   - "durée de bee/tests/lancer.sh inférieure à 30 s sur la machine de CI"
 hors_perimetre: [code de miniz, tests existants (seulement des ajouts), nouvelle dépendance]
 depend_de: [miniz-0001]
-statut: ouverte
+statut: reservee
+reservation:
+  utilisateur: "bidji29"
+  depuis: "2026-10-28T05:39:52Z"
 cree_par: agent-architecte-bee
 cree_le: "2026-10-27"
