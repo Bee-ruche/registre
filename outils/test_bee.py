@@ -2768,6 +2768,27 @@ class TestRevueAdverse(BaseParallele):
         code, texte = self.acceptation(c1)
         self.assertEqual(code, 0, texte)
 
+    def test_N3b_une_vieille_contribution_sans_verdict_ne_retarde_pas_chaque_nouvelle(self):
+        self.fermer_porte()
+        self.assertEqual(self.bee("prendre", "miniz-0099", "--utilisateur", "alice")[0], 0)  # 27/10 12 h
+        self.a("2026-10-27T12:30:00Z")
+        self.parallele("miniz-0099", "chloe")
+        self.a("2026-10-27T13:00:00Z")
+        z = self.soumettre("miniz-0099", "chloe", 999999)  # Z : jamais de verdict, auteur engagé bien avant X
+        self.a("2026-10-27T13:30:00Z")
+        self.assertEqual(self.bee("liberer", "miniz-0099", "--utilisateur", "alice")[0], 0)
+        self.a("2026-11-06T10:00:00Z")  # dix jours plus tard
+        self.parallele("miniz-0099", "bruno")
+        self.a("2026-11-06T12:00:00Z")
+        x = self.soumettre("miniz-0099", "bruno", 99101)
+        self.verdict(x, 0.03)
+        self.relire(x, "alice", "bidji29")
+        self.assertLessEqual(bee.debut_engagement(self.enr(z)), bee._instant_ou_rien(self.enr(x)["soumise_le"]))
+        self.a("2026-11-07T12:00:00Z")  # fin de la fenêtre de X, bien avant X + 96 h
+        code, texte = self.acceptation(x)
+        self.assertEqual(code, 0, texte)
+        self.assertNotIn(z, texte)
+
     def test_N4_une_date_dans_le_futur_est_refusee_et_ne_bloque_personne(self):
         self.fermer_porte()
         self.init_git()

@@ -2577,10 +2577,11 @@ def raisons_course(reg, cid, niveaux, instant):
       1. tout participant engagé sur la tâche AVANT la soumission de X (titulaire, inscrit en parallèle) qui n'a pas
          encore soumis, jusqu'à sa contribution, son retrait ou son expiration R7 ; un engagement postérieur à la
          soumission de X ne la retarde pas ;
-      2. toute concurrente pas encore départagée : dans sa fenêtre de R3 (24 h depuis sa soumission), ou sans verdict
-         de CI si son auteur était engagé sur la tâche avant la soumission de X (une CI lente ne fait pas perdre la
-         course à qui travaillait déjà ; une contribution d'un engagé tardif, sans verdict, ne retarde X que pendant sa
-         fenêtre) ;
+      2. toute concurrente Z pas encore départagée : dans sa fenêtre de R3 (24 h depuis sa soumission), ou sans verdict
+         de CI si son auteur était engagé sur la tâche avant la soumission de X, jusqu'à min(soumise_le(Z) + 96 h,
+         soumise_le(X) + 96 h) (une CI lente ne fait pas perdre la course à qui travaillait déjà, mais une vieille
+         contribution sans verdict ne retarde pas chaque nouvelle ; celle d'un engagé tardif, sans verdict, ne retarde X
+         que pendant sa fenêtre) ;
       3. toute concurrente mieux classée (cle_classement : le gain mesuré, sinon le vote net, puis l'ancienneté).
     De soumise_le(X) + 96 h à + 120 h, X n'attend que les concurrentes intégrables (raisons_r3 vide) mieux classées
     qu'elle : le workflow les intègre d'abord. Ensuite, plus rien ne retient X : une concurrente mieux classée qui ne
@@ -2616,8 +2617,11 @@ def raisons_course(reg, cid, niveaux, instant):
             debut = _instant_ou_rien(e.get("soumise_le"))
             dans_sa_fenetre = debut is None or instant - debut < fenetre
             engagee_avant = (debut_engagement(e) or FUTUR_LOINTAIN) <= soumise
-            if not e.get("verdict") and (dans_sa_fenetre or engagee_avant):
-                limite = protection if engagee_avant or debut is None else min(debut + fenetre, protection)
+            # Sans verdict, une concurrente d'un auteur engagé avant X n'est attendue que jusqu'à la fin de SA protection
+            # (et jamais au-delà de celle de X) : une vieille contribution sans verdict ne retarde pas chaque nouvelle.
+            limite_engagee = min(bornes_attente(reg, e)[0], protection) if debut is not None else protection
+            if not e.get("verdict") and (dans_sa_fenetre or (engagee_avant and instant < limite_engagee)):
+                limite = limite_engagee if engagee_avant or debut is None else min(debut + fenetre, protection)
                 raisons.append(f"course (R3) : la concurrente {c} attend le verdict de sa CI et pourrait être mieux classée ; "
                                + ("son auteur travaillait sur la tâche avant cette soumission : " if engagee_avant else "")
                                + f"on l'attend au plus tard jusqu'au {en_iso(limite)}")
