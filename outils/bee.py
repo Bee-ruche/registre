@@ -1549,6 +1549,8 @@ def raisons_acceptation(reg, cid):
     s'applique plus qu'aux contributions que le juge isolé n'a pas entièrement jugées (voir
     juge_complet) ; elle tombe quand la clé passe à false.
 
+    Un auteur du conseil ou gardien n'en est dispensé que s'il n'existe aucun autre privilégié (amorçage).
+
     Constructions suspectes : si le juge isolé en a relevé (appels système, requêtes Valgrind…), une
     relecture favorable d'un gardien ou du conseil est exigée, quel que soit l'auteur et la porte.
 
@@ -1651,7 +1653,10 @@ def raisons_acceptation(reg, cid):
     if [m for m in eligibles if niveau_de(niveaux, m) == "Confirmé"]:
         exiger(any(niveau_de(niveaux, r.get("relecteur")) == "Confirmé" for r in favorables),
                "aucune relecture favorable d'un Confirmé (il en faut une quand un Confirmé est disponible)")
-    if porte_exigee(reg, verdict) and auteur not in privilegies:
+    # Un auteur privilégié ne se dispense de la porte que s'il n'existe aucun autre privilégié pour relire
+    # (amorçage) : dès qu'un gardien est nommé, le conseil aussi est relu.
+    autres_privilegies = [m for m in privilegies if m != auteur]
+    if porte_exigee(reg, verdict) and (auteur not in privilegies or autres_privilegies):
         exiger(any(r.get("relecteur") in privilegies for r in favorables),
                "porte de relecture temporaire : une relecture favorable d'un gardien ou du conseil est exigée "
                + ("tant que le juge de la CI n'est pas sûr" if mode_porte(reg) == "toujours"

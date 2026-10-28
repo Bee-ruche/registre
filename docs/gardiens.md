@@ -71,6 +71,6 @@ Les commandements restent au conseil humain seul (commandement 11).
 ## Le gardien d'aujourd'hui, et la cible
 
 Au 27/10/2026, l'agent principal relit au nom du conseil (compte bidji29) : la liste des gardiens est
-vide. Limite connue : une contribution du compte bidji29 n'est relue par personne d'autre. Cible :
+vide. Limite connue : tant qu'aucun gardien n'est nommé, une contribution du compte bidji29 n'est relue par personne d'autre ; dès qu'un gardien l'est, R3 exige sa relecture pour les contributions du conseil aussi. Cible :
 des **comptes dédiés** (un compte GitHub par agent gardien), au moins **deux gardiens indépendants**
 (sessions et modèles différents), et deux relectures de gardiens pour toute modification des juges.

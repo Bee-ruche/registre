@@ -282,6 +282,17 @@ class TestRegistre(BaseTest):
         code, texte = self.bee("verifier-acceptation", cid)
         self.assertEqual(code, 0, texte)
 
+    def test_porte_auteur_du_conseil_relu_des_qu_un_gardien_existe(self):
+        (self.dossier / "gouvernance/gardiens.yaml").write_text("membres:\n  - pseudo: bruno\n", encoding="utf-8")
+        cid = self.preparer_contribution_verte("bidji29", ("chloe",))
+        code, texte = self.bee("verifier-acceptation", cid)
+        self.assertEqual(code, 1, texte)
+        self.assertIn("porte de relecture", texte)
+        self.assertEqual(self.bee("relire", cid, "--utilisateur", "bruno", "--avis", "favorable",
+                                  "--motif", "Relu par le gardien : diff et tests rejoués.")[0], 0)
+        code, texte = self.bee("verifier-acceptation", cid)
+        self.assertEqual(code, 0, texte)
+
     def test_porte_humaine_fermee(self):
         self.regler_porte_humaine(False)
         cid = self.preparer_contribution_verte("alice", ("bruno", "chloe"))
