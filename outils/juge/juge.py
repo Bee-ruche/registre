@@ -67,16 +67,10 @@ METHODES_REQUISES = ("corpus", "verification", "verifier", "fixes", "repetition"
 RELEVES = (("symboles", "symboles.txt"), ("sections", "sections.txt"), ("desassemblage", "desassemblage.txt"))
 OBJET = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.+-]{0,127}\.o")
 IDENTIFIANT = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,63}")
-PREFIXE = re.compile(r"[A-Za-z_][A-Za-z0-9_]{1,31}")
+PREFIXE = re.compile(r"[A-Za-z][A-Za-z0-9]{0,30}_")  # un mot suivi de « _ » : frontière d'identifiant
 PERMIS_MAX = 64
-# Fonctions qu'aucun greffon ne peut déclarer permises : elles servent à tromper la mesure (horloge,
-# processus, environnement, signaux, appels système), pas à compresser ni à analyser.
-JAMAIS_PERMIS = frozenset({
-    "syscall", "clock_gettime", "clock_getres", "gettimeofday", "time", "times", "getrusage", "fork", "vfork",
-    "clone", "execve", "execv", "execvp", "execl", "execlp", "system", "popen", "posix_spawn", "dlopen", "dlsym",
-    "getenv", "secure_getenv", "ptrace", "prctl", "signal", "sigaction", "raise", "kill", "alarm", "setitimer",
-    "sched_setaffinity", "mprotect",
-})
+JAMAIS_PERMIS = analyse.JAMAIS_PERMIS
+UNITES = (".c", ".S", ".s", ".cc", ".cpp", ".cxx")  # unités de traduction : chacune doit laisser son objet
 ARCHITECTURES_ANALYSEES = ("x86_64", "amd64")  # mnémoniques et préambule de Valgrind connus d'analyse.py
 VALGRIND = ["/usr/bin/valgrind", "--tool=cachegrind", "--cache-sim=no", "--vgdb=no", "--cachegrind-out-file=/dev/null"]
 
@@ -112,7 +106,10 @@ def charger_greffon(outillage, options):
     # l'analyse des objets (revue adverse du 28/10) ; les fonctions qui trompent la mesure ne sont jamais permises.
     prefixes, permis = tuple(projet.PREFIXES), tuple(getattr(projet, "PERMIS", ()))
     if not prefixes or any(not isinstance(p, str) or not PREFIXE.fullmatch(p) for p in prefixes):
-        raise Erreur("PREFIXES du greffon invalides : au moins un préfixe, chacun d'au moins deux caractères d'identifiant")
+        raise Erreur("PREFIXES du greffon invalides : au moins un préfixe, chacun un mot terminé par « _ » (mz_, yaml_…)")
+    couvrants = sorted(n for n in JAMAIS_PERMIS if n.startswith(prefixes))
+    if couvrants:
+        raise Erreur("PREFIXES du greffon : couvriraient des fonctions jamais permises : " + ", ".join(couvrants))
     if len(permis) > PERMIS_MAX or any(not isinstance(n, str) or not IDENTIFIANT.fullmatch(n) for n in permis):
         raise Erreur(f"PERMIS du greffon invalide : au plus {PERMIS_MAX} noms de fonctions")
     interdits = sorted(set(permis) & JAMAIS_PERMIS)
@@ -180,13 +177,17 @@ def copier_outillage(outillage, source_a, destination, projet):
 
 
 def objets_attendus(sources):
-    """Un objet obj/<nom>.o par fichier .c copié des SOURCES de la variante."""
-    attendus = set()
+    """Un objet obj/<nom>.o par unité de traduction (.c, .S, .cc…) copiée des SOURCES de la variante.
+
+    Deux unités de même nom dans deux dossiers ne peuvent pas laisser chacune son objet : refusé (None)."""
+    vus = {}
     for dossier, _, noms in os.walk(sources):
         for n in noms:
-            if n.endswith(".c"):
-                attendus.add(n[:-2] + ".o")
-    return attendus
+            racine, extension = os.path.splitext(n)
+            if extension in UNITES:
+                vus.setdefault(racine + ".o", []).append(os.path.relpath(os.path.join(dossier, n), sources))
+    doublons = sorted(c for c, l in vus.items() if len(l) > 1)
+    return set(vus), doublons
 
 
 def construire(docker, projet, sources, outillage, sortie, etiquette, travail):
@@ -214,7 +215,11 @@ def construire(docker, projet, sources, outillage, sortie, etiquette, travail):
         if not OBJET.fullmatch(n) or not stat.S_ISREG(st.st_mode):
             raise echec(f"{etiquette} : objet invalide dans obj/ : {propre(n, 80)}")
         objets.append(n)
-    manquants = sorted(objets_attendus(sources) - set(objets))
+    attendus, doublons = objets_attendus(sources)
+    if doublons:
+        raise echec(f"{etiquette} : unités de traduction homonymes (un seul objet possible dans obj/) : "
+                    + ", ".join(propre(d, 80) for d in doublons[:10]))
+    manquants = sorted(attendus - set(objets))
     if manquants:
         raise echec(f"{etiquette} : fichier(s) source(s) sans objet dans obj/ (non compilés ou non relevables) : "
                     + ", ".join(propre(m, 80) for m in manquants[:10]))

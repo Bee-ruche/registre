@@ -17,6 +17,16 @@ le registre exige alors la relecture d'un gardien (R3). Ce module ne lit que du 
 
 import re
 
+# Fonctions qui servent à tromper la mesure (horloge, processus, environnement, signaux, appels système), pas à
+# compresser ni à analyser : jamais permises, et signalées par leur nom exact AVANT toute exemption par l'espace de
+# noms du projet ou par la liste PERMIS du greffon (revue adverse n° 2 du 28/10 : un préfixe « ge » couvrait getenv).
+JAMAIS_PERMIS = frozenset({
+    "syscall", "clock_gettime", "clock_getres", "gettimeofday", "time", "times", "getrusage", "fork", "vfork",
+    "clone", "execve", "execv", "execvp", "execl", "execlp", "system", "popen", "posix_spawn", "dlopen", "dlsym",
+    "getenv", "secure_getenv", "ptrace", "prctl", "signal", "sigaction", "raise", "kill", "alarm", "setitimer",
+    "sched_setaffinity", "mprotect",
+})
+
 # Fonctions de la libc qu'une bibliothèque de calcul peut appeler sans rien changer à la mesure : mémoire et chaînes.
 INDEFINIS_PERMIS = frozenset({
     "memcpy", "memmove", "memset", "memcmp", "malloc", "calloc", "realloc", "free", "strlen",
@@ -122,7 +132,10 @@ def analyser(releves_a, releves_b, diff_sources="", prefixes=(), permis=()):
     definis_a = {nom for (nom, t) in sym_a if t not in "Uuvw" and t.isupper()}
     indefinis_a = {nom for (nom, t) in sym_a if t in ("U", "w", "v")}
     for (nom, t), fichier in sorted(sym_b.items()):
-        if t in ("i", "u") and (nom, t) not in sym_a:
+        if nom in JAMAIS_PERMIS and (nom, t) not in sym_a:
+            suspects.append({"type": "appel_interdit" if t in ("U", "w", "v") else "symbole_interdit",
+                             "detail": f"{nom} ({fichier}) : fonction qui sert à tromper la mesure (jamais permise)"})
+        elif t in ("i", "u") and (nom, t) not in sym_a:
             suspects.append({"type": "symbole", "detail": f"{nom} ({fichier}) : fonction indirecte ou symbole unique (type {t})"})
         elif t in ("U", "w", "v"):
             if nom not in tous_permis and nom not in indefinis_a and not (prefixes and nom.startswith(prefixes)):
@@ -140,12 +153,32 @@ def analyser(releves_a, releves_b, diff_sources="", prefixes=(), permis=()):
             raison = "préambule de requête client Valgrind (suspend le décompte d'instructions)" if mot == "preambule_valgrind" \
                 else MNEMONIQUES_SUSPECTS[mot]
             suspects.append({"type": "instruction", "detail": f"{mot} : {n} occurrence(s) contre {mn_a.get(mot, 0)} dans la base ({raison})"})
-    for ligne in diff_sources.splitlines():
-        if not ligne.startswith("+") or ligne.startswith("+++"):
-            continue
+    for ligne in lignes_ajoutees(diff_sources):
         for motif, raison in MOTS_SOURCE:
             if motif.search(ligne):
-                extrait = ligne[1:].strip()[:120]
+                extrait = ligne.strip()[:120]
                 suspects.append({"type": "source", "detail": f"{raison} : « {extrait} »"})
                 break
     return suspects
+
+
+def lignes_ajoutees(diff_sources):
+    """Lignes ajoutées par le diff, les continuations « \\ » en fin de ligne recollées (« __as\\ » puis « m »
+    forment « __asm » pour le préprocesseur : revue adverse n° 2 du 28/10)."""
+    logiques, courante = [], None
+    for ligne in diff_sources.splitlines():
+        if not ligne.startswith("+") or ligne.startswith("+++"):
+            if courante is not None:
+                logiques.append(courante)
+                courante = None
+            continue
+        texte = ligne[1:]
+        courante = texte if courante is None else courante + texte
+        if courante.endswith("\\"):
+            courante = courante[:-1]
+        else:
+            logiques.append(courante)
+            courante = None
+    if courante is not None:
+        logiques.append(courante)
+    return logiques

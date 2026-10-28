@@ -21,7 +21,7 @@ from lecture import Erreur
 Entree = collections.namedtuple("Entree", "cote nom donnees taille attendu")
 Entree.__new__.__defaults__ = (None,)
 
-NOM_PERMIS = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}")
+NOM_PERMIS = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,62}")  # 63 caractères au plus : « %63s » des harnais
 COTE_PERMIS = re.compile(r"[a-z]")
 
 

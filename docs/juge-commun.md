@@ -38,8 +38,8 @@ lue par le juge commun **depuis la base de la PR** (jamais depuis la PR). Modèl
 | --- | --- |
 | `NOM`, `PAQUETS` | nom du projet ; paquets ajoutés à l'image commune (une ligne `RUN`, noms vérifiés) |
 | `SOURCES`, `SOURCES_REQUISES` | motifs glob des fichiers du projet copiés dans le conteneur et compilés (`miniz.c`, `src/*.c`…) ; tout lien symbolique est refusé ; le diff analysé est celui de ces mêmes motifs |
-| `OUTILLAGE`, `EN_TETES_BASE`, `CONSTRUIRE` | dossiers de la base montés sur `/outillage` ; en-têtes de la base copiés dans `/outillage/base/` (le harnais se compile avec eux) ; script de construction, qui doit produire `execution` et laisser **chaque objet du projet dans `obj/`**, un `obj/<nom>.o` par fichier `.c` des `SOURCES` (le juge s'arrête sinon) |
-| `PREFIXES`, `PERMIS` | espace de noms du projet (au moins un préfixe, chacun d'au moins deux caractères) et fonctions externes permises en plus de la liste commune (64 au plus ; jamais l'horloge, les processus, l'environnement, les signaux ni les appels système) |
+| `OUTILLAGE`, `EN_TETES_BASE`, `CONSTRUIRE` | dossiers de la base montés sur `/outillage` ; en-têtes de la base copiés dans `/outillage/base/` (le harnais se compile avec eux) ; script de construction, qui doit produire `execution` et laisser **chaque objet du projet dans `obj/`**, un `obj/<nom>.o` par unité de traduction des `SOURCES` (`.c`, `.S`, `.cc`…), deux unités homonymes étant refusées (le juge s'arrête sinon) |
+| `PREFIXES`, `PERMIS` | espace de noms du projet (au moins un préfixe, chacun un mot terminé par `_` : `mz_`, `yaml_`) et fonctions externes permises en plus de la liste commune (64 au plus). Les fonctions qui servent à tromper la mesure (horloge, processus, environnement, signaux, appels système : `analyse.JAMAIS_PERMIS`) ne sont jamais permises et sont signalées par leur nom exact, avant toute exemption |
 | `COTES` | côtés d'entrées (`f`, `z`…) : un conteneur par côté, jamais deux côtés montés ensemble |
 | `SCENARIOS`, `INSTRUCTIONS`, `METRIQUES`, `METHODE` | scénarios mesurés au chronomètre et leur côté ; ceux dont on compte les instructions ; métriques (nom, sens, unité) ; textes de méthode ajoutés au rapport |
 | `corpus(outillage)` | corpus de la base, `[(nom, octets)]` (aide : `entrees.charger_corpus`) |
@@ -63,8 +63,9 @@ Règles de sûreté, vérifiées par le juge commun (revue adverse du 28/10) :
 - un harnais ne dimensionne jamais un tampon d'après le seul code jugé (borne connue du format, au minimum) ;
 - l'analyse des instructions ne couvre que x86-64 : sur une autre architecture, le juge le signale comme
   construction suspecte (un gardien relit) ;
-- le balayage du texte du diff (assembleur, en-têtes système, concaténation de jetons…) n'est qu'un
-  filet : c'est l'analyse des objets qui voit le code réellement produit. Une PR qui modifie `bee/juge/` est une tâche d'outillage : le registre
+- le balayage du texte du diff (assembleur, en-têtes système, concaténation de jetons, lignes
+  recollées après `\`…) n'est qu'un filet : c'est l'analyse des objets qui voit le code réellement
+  produit. Une PR qui modifie `bee/juge/` est une tâche d'outillage : le registre
 le détecte et exige un gardien (R3).
 
 ## Versions

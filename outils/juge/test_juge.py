@@ -78,8 +78,23 @@ class TestAnalyse(unittest.TestCase):
         self.assertEqual(sorted(s["type"] for s in analyse.analyser(releves(), b, permis=("qsort",))), ["symbole_defini"])
 
     def test_symbole_qui_remplace_la_libc(self):
-        b = releves(nm=NM_A + "/s/obj/rle.o: clock_gettime T 0000000000000300 0000000000000010\n")
-        self.assertEqual([s["type"] for s in analyse.analyser(releves(), b, prefixes=("rle_",))], ["symbole_defini"])
+        b = releves(nm=NM_A + "/s/obj/rle.o: clock_gettime T 0000000000000300 0000000000000010\n"
+                             "/s/obj/rle.o: memcmp T 0000000000000400 0000000000000010\n")
+        self.assertEqual(sorted(s["type"] for s in analyse.analyser(releves(), b, prefixes=("rle_",))),
+                         ["symbole_defini", "symbole_interdit"])
+
+    def test_jamais_permis_malgre_prefixe_ou_permis(self):
+        """Revue adverse n° 2 : un préfixe « ge » ou une entrée PERMIS ne blanchit pas getenv."""
+        b = releves(nm=NM_A + "/s/obj/rle.o: getenv U\n/s/obj/rle.o: syscall U\n")
+        types = [s["type"] for s in analyse.analyser(releves(), b, prefixes=("rle_", "ge", "sy"), permis=("getenv",))]
+        self.assertEqual(types, ["appel_interdit", "appel_interdit"])
+        a = releves(nm=NM_A + "/s/obj/rle.o: getenv U\n")
+        self.assertEqual([s["type"] for s in analyse.analyser(a, b, prefixes=("rle_",))], ["appel_interdit"])  # syscall seul
+
+    def test_continuation_de_ligne(self):
+        diff = "+++ b/rle.c\n+    __as\\\n+m volatile(\"\");\n+    int x = 1;\n"
+        self.assertEqual(analyse.lignes_ajoutees(diff), ["    __as" + "m volatile(\"\");", "    int x = 1;"])
+        self.assertEqual(len(analyse.analyser(releves(), releves(), diff, prefixes=("rle_",))), 1)
 
     def test_constructeur_et_instructions(self):
         b = releves(sections=SECTIONS_A + "  1 .init_array   00000008  0000000000000000  0000000000000000  00001140  2**3\n",
@@ -216,7 +231,7 @@ class TestGreffon(unittest.TestCase):
         self.ecrire(texte.replace(ancien, nouveau))
 
     def test_prefixes_vides_ou_courts_refuses(self):
-        for valeur in ('("",)', '()', '("r",)', '("rle-",)'):
+        for valeur in ('("",)', '()', '("r",)', '("rle-",)', '("rle",)', '("ge",)', '("rle_", "cl")', '("sys",)'):
             self.greffon_modifie('PREFIXES = ("rle_",)', f"PREFIXES = {valeur}")
             with self.assertRaises(lecture.Erreur, msg=valeur):
                 juge.charger_greffon(self.base, {})
@@ -240,6 +255,20 @@ class TestGreffon(unittest.TestCase):
         sys.path.insert(0, ICI)
         with self.assertRaises(lecture.Erreur):
             juge.charger_greffon(self.base, {})
+
+
+class TestObjetsAttendus(unittest.TestCase):
+    def test_unites_et_homonymes(self):
+        racine = tempfile.mkdtemp()
+        try:
+            for chemin in ("src/a.c", "src/b.S", "src/c.cc", "src/d.h", "lib/e.c"):
+                os.makedirs(os.path.join(racine, os.path.dirname(chemin)), exist_ok=True)
+                open(os.path.join(racine, chemin), "w").close()
+            self.assertEqual(juge.objets_attendus(racine), ({"a.o", "b.o", "c.o", "e.o"}, []))
+            open(os.path.join(racine, "lib", "a.c"), "w").close()
+            self.assertEqual(juge.objets_attendus(racine)[1], ["a.o"])
+        finally:
+            shutil.rmtree(racine)
 
 
 class TestCouverture(unittest.TestCase):
@@ -378,6 +407,11 @@ def jetons_scindes(texte, corpus):
                      '    RLE_Z volatile("rol $3, %%rdi\\n\\trol $13, %%rdi\\n\\trol $61, %%rdi\\n\\trol $51, %%rdi" ::: "rdi");\n')
 
 
+def appel_blanchi_par_prefixe(texte, corpus):
+    texte = remplacer(texte, INCLUDE, INCLUDE + "#include <stdlib.h>\n")
+    return remplacer(texte, DEBUT_COMPRESSER, DEBUT_COMPRESSER + '    { char *volatile e = getenv("BEE_SECRET"); (void)e; }\n')
+
+
 def travail_deplace(texte, corpus):
     """La table du CRC est construite d'avance dans rle_borne, que le harnais appelle juste avant de compresser."""
     texte = remplacer(texte, INCLUDE, INCLUDE + "#include <stdlib.h>\n")
@@ -478,7 +512,7 @@ class TestJugeContreVariantes(unittest.TestCase):
     def test_faux_chronos(self):
         code, rapport, _ = self.juger("faux_chronos", self.preparer("faux_chronos", faux_chronos), True)
         self.assertEqual(code, 0)
-        self.assertIn("symbole_defini", self.types_suspects(rapport))
+        self.assertIn("symbole_interdit", self.types_suspects(rapport))
         m = rapport["metriques"]["debit_compression"]
         self.assertLess(m["B"]["mediane"], m["A"]["mediane"])
 
@@ -542,6 +576,12 @@ class TestJugeContreVariantes(unittest.TestCase):
         code, _, sortie = self.juger("greffon_distrait", self.preparer("greffon_distrait"), True, base=base)
         self.assertEqual(code, 2)
         self.assertIn("aucune sortie de B", sortie)
+
+    def test_appel_interdit(self):
+        """Revue adverse n° 2 : getenv est signalé par son nom, quel que soit l'espace de noms déclaré."""
+        code, rapport, _ = self.juger("appel_interdit", self.preparer("appel_interdit", appel_blanchi_par_prefixe), True)
+        self.assertEqual(code, 0)
+        self.assertIn("getenv", " ".join(s["detail"] for s in rapport["juge"]["constructions_suspectes"]))
 
     def test_lien_symbolique(self):
         source_b = self.preparer("lien_symbolique")
