@@ -7,3 +7,29 @@ resume: 'tdefl_find_match (variante octet par octet) : chaque sonde compare les 
 statut: en_relecture
 soumise_le: '2026-10-28T03:07:25Z'
 relectures: []
+verdict:
+  ci: verte
+  gain: 0.08668240522149717
+  au_dela_du_bruit: true
+  instructions:
+    instructions_n1:
+      A: 187597150.0
+      B: 184879639.0
+      gain: 0.014485886379403956
+    instructions_n6:
+      A: 357228867.0
+      B: 348576042.0
+      gain: 0.024222076655412095
+    instructions_n9:
+      A: 510229776.0
+      B: 496610996.0
+      gain: 0.026691464592219383
+    instructions_decompression:
+      A: 34164249.0
+      B: 34164249.0
+      gain: 0.0
+  degradations: {}
+  lignes_modifiees: 16
+  sha: 16f8f51c4df5c56d50f3bab5672e7c919f687e8d
+  fichiers_controles: true
+  execution: https://github.com/Bee-ruche/minizBee/actions/runs/40624855078

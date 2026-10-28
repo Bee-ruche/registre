@@ -7,3 +7,30 @@ resume: 'Oracle d''aller-retour de l''émetteur : chaque document est ré-émis 
 statut: en_relecture
 soumise_le: '2026-10-28T03:17:08Z'
 relectures: []
+verdict:
+  ci: verte
+  gain: null
+  au_dela_du_bruit: false
+  instructions:
+    instructions_analyse:
+      A: 249769850.0
+      B: 249769850.0
+      gain: 0.0
+    instructions_chargement:
+      A: 341192769.0
+      B: 341192769.0
+      gain: 0.0
+    instructions_emission:
+      A: 461725511.0
+      B: 461725511.0
+      gain: 0.0
+  degradations: {}
+  lignes_modifiees: 0
+  sha: a5097dc395362503c4ec4bfb5f2facf9a3de2804
+  fichiers_controles: true
+  juges_modifies:
+  - bee/Makefile
+  - bee/tests/aller_retour.c
+  - bee/tests/empreintes-aller-retour.txt
+  - bee/tests/lancer.sh
+  execution: https://github.com/Bee-ruche/libyamlBee/actions/runs/40625791846
