@@ -1,0 +1,10 @@
+id: ruche-0001-c1
+tache: ruche-0001
+auteur: bidji29
+pr: https://github.com/Bee-ruche/registre/pull/28
+resume: Travail en parallèle déclaré (bee prendre --en-parallele), contributions concurrentes et choix
+  de la mieux classée avec attentes bornées, conflit d'intérêts des participants, PR liée à son auteur,
+  clés YAML canoniques ; P-0001 adoptée. 176 tests ; trois revues adverses, tout fermé.
+statut: en_relecture
+soumise_le: '2026-10-28T16:27:15Z'
+relectures: []
