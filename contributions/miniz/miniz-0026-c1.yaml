@@ -1,0 +1,9 @@
+id: miniz-0026-c1
+tache: miniz-0026
+auteur: bidji29
+pr: https://github.com/Bee-ruche/minizBee/pull/11
+resume: 'Cas limites de l''API compatible zlib : 192 appels comparés à zlib, écarts tolérés listés et
+  justifiés ; couverture des branches de miniz.c de 55 % à 94 %.'
+statut: en_relecture
+soumise_le: '2026-10-28T06:50:11Z'
+relectures: []
