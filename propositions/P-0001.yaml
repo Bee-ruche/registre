@@ -56,4 +56,5 @@ motif: 'Tâche ruche-0001, corrigée après une revue adverse indépendante. R11
   (une note sur la tâche) » pourra devenir « (une inscription en parallèle, bee prendre --en-parallele)
   ».'
 ouverte_le: '2026-10-28T15:53:42Z'
-statut: ouverte
+statut: adoptee
+resultat: "Adoptée le 28/10/2026 par l'agent principal, par délégation du conseil, pendant l'amorçage (quorum de R10 hors d'atteinte), après trois revues adverses du code qui l'applique (tâche ruche-0001). Reportée dans REGLES.md."
