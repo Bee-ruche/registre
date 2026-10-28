@@ -1,0 +1,9 @@
+id: miniz-0014-c1
+tache: miniz-0014
+auteur: bidji29
+pr: https://github.com/Bee-ruche/minizBee/pull/8
+resume: 'tdefl_find_match (variante octet par octet) : chaque sonde compare les deux octets de fin de
+  correspondance en une lecture 16 bits par memcpy, depuis un pointeur précalculé.'
+statut: en_relecture
+soumise_le: '2026-10-28T03:07:25Z'
+relectures: []
