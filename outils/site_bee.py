@@ -285,8 +285,8 @@ def course_html(bee, reg, tid, niveaux, instant, prefixe):
                         + ("<p>Plusieurs contributions concourent pour cette tâche : la règle R3 n'intègre que la mieux classée "
                            "(le gain mesuré par la CI ; sans gain mesurable, le vote net ; puis la plus ancienne) et écarte les autres. "
                            if len(lignes) > 1 or course["engages"] else "<p>")
-                        + f"Clôture de la course : {date_fr(course['cloture'] or '')} ; plus aucune attente après le {date_fr(course['fin_des_attentes'] or '')}"
-                        + (" (passée : seules les contributions intégrables restent en course)." if course["close"] else ".") + "</p>"
+                        + "Chaque contribution est protégée 96 h après sa soumission (on attend ce qui pourrait la battre), puis "
+                        "n'attend plus, au plus 24 h, qu'une concurrente intégrable mieux classée.</p>"
                         + tableau([("Rang", True), ("Contribution", False), ("Auteur", False), ("Gain mesuré", True), ("Vote net", True), ("Soumise", False)], lignes))
     return "".join(morceaux)
 

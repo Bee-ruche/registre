@@ -18,6 +18,7 @@ import datetime as dt
 import fnmatch
 import html
 import json
+import math
 import os
 import pathlib
 import re
@@ -61,11 +62,23 @@ class ChargeurBee(yaml.SafeLoader):
     textuelle des robots (modifier_tache) ne touche que le premier bloc : un fichier ainsi écrit tromperait les
     contrôles et bloquerait les robots. Il est illisible, donc refusé partout (valider, verifier-pr)."""
 
+    def compose_node(self, parent, index):
+        # Ni ancre (&a), ni alias (*a), ni étiquette explicite (!!str, !truc…) : la valeur lue doit être celle qu'on voit
+        # écrite, et celle que les robots éditent ligne à ligne.
+        evenement = self.peek_event()
+        if isinstance(evenement, yaml.AliasEvent):
+            raise yaml.composer.ComposerError(None, None, "alias YAML (*…) refusé", evenement.start_mark)
+        if getattr(evenement, "anchor", None) is not None:
+            raise yaml.composer.ComposerError(None, None, "ancre YAML (&…) refusée", evenement.start_mark)
+        if getattr(evenement, "tag", None) is not None:
+            raise yaml.composer.ComposerError(None, None, f"étiquette YAML explicite ({evenement.tag}) refusée", evenement.start_mark)
+        return super().compose_node(parent, index)
+
     def construct_mapping(self, node, deep=False):
         vues = set()
         for noeud_cle, _ in node.value:
             if noeud_cle.tag == "tag:yaml.org,2002:merge":
-                continue
+                raise yaml.constructor.ConstructorError(None, None, "clé de fusion YAML (<<) refusée", noeud_cle.start_mark)
             cle = self.construct_object(noeud_cle, deep=deep)
             try:
                 deja = cle in vues
@@ -92,6 +105,21 @@ def charger_texte_yaml(texte, origine="<texte>"):
 
 def lire_yaml(chemin):
     return charger_texte_yaml(pathlib.Path(chemin).read_text(encoding="utf-8"), str(chemin))
+
+
+def problemes_de_forme(texte, donnees):
+    """Chaque clé de premier niveau d'un objet est écrite `cle:` en colonne 0, exactement une fois, sans guillemets ni
+    espace avant les deux-points : c'est sur cette forme que travaille l'édition textuelle des robots (modifier_tache).
+    Une clé écrite autrement (« "reservation": », « statut : », en ligne {…}) serait lue mais pas éditée : refusée."""
+    if not isinstance(donnees, dict):
+        return []
+    problemes = []
+    for cle in donnees:
+        motif = re.compile(r"^" + re.escape(str(cle)) + r":(?=\s|$)", re.M)
+        if len(motif.findall(texte)) != 1:
+            problemes.append(f"clé de premier niveau « {cle} » : elle s'écrit `{cle}:` en colonne 0, une seule fois, sans "
+                             "guillemets ni espace avant les deux-points")
+    return problemes
 
 
 def ecrire_yaml(chemin, donnees):
@@ -327,10 +355,13 @@ class Registre:
 
     def _lire_fichier(self, chemin):
         try:
-            return lire_yaml(chemin)
+            texte = pathlib.Path(chemin).read_text(encoding="utf-8")
+            donnees = charger_texte_yaml(texte, str(chemin))
         except ErreurBee as e:
             self.problemes_chargement.append(str(e))
             return None
+        self.problemes_chargement += [f"{self.rel(chemin)} : {p}" for p in problemes_de_forme(texte, donnees)]
+        return donnees
 
     def _dossier(self, motif):
         resultat = {}
@@ -397,6 +428,9 @@ class Registre:
 # Les contributions en course se lisent dans contributions/ (clé tache), jamais dans une liste recopiée.
 
 FUTUR_LOINTAIN = dt.datetime.max.replace(tzinfo=dt.timezone.utc)
+PASSE = dt.datetime.min.replace(tzinfo=dt.timezone.utc)
+# Une date déclarée (réservation, inscription, soumission) ne dépasse jamais l'instant de vérification de plus d'une minute.
+AVANCE_MAX = dt.timedelta(minutes=1)
 
 
 def paralleles_de(tache):
@@ -470,9 +504,11 @@ def concurrents_de(reg, enr):
 
 
 def avis_recevable(relecture, concurrents):
-    """Un concurrent ne peut que reconnaître la contribution d'un autre : seul son avis favorable, sans défaut, compte."""
-    return relecture.get("relecteur") not in concurrents or (
-        relecture.get("avis") == "favorable" and not relecture.get("defaut_signale") and not relecture.get("defaut_confirme"))
+    """Un concurrent ne peut que reconnaître la contribution d'un autre : seul son avis favorable, sans défaut, compte.
+    Exception : un défaut CONFIRMÉ (par la CI, le conseil ou un Confirmé) compte toujours, quel que soit le relecteur :
+    il n'est plus un avis, c'est un fait établi par un tiers."""
+    return relecture.get("relecteur") not in concurrents or bool(relecture.get("defaut_confirme")) or (
+        relecture.get("avis") == "favorable" and not relecture.get("defaut_signale"))
 
 
 def vote_recevable(vote, concurrents):
@@ -492,14 +528,19 @@ def gain_mesure(reg, enr):
     """Ce que la machine mesure d'une contribution : le terme de gain du score, G × P / (1 + L/100) (docs/evaluation.md),
     sans la confiance (relectures) ni le vote. None sans verdict vert qui mesure un gain (tests, mesures, ruche…)."""
     verdict = enr.get("verdict") or {}
-    if verdict.get("ci") != "verte" or not isinstance(verdict.get("gain"), (int, float)) or isinstance(verdict.get("gain"), bool):
+    gain = verdict.get("gain")
+    if verdict.get("ci") != "verte" or not isinstance(gain, (int, float)) or isinstance(gain, bool) or not math.isfinite(gain):
+        return None
+    # Un gain ne se croit que mesuré par un verdict contrôlé (fichiers de la PR lus par le registre) et sans juge modifié.
+    if not verdict.get("fichiers_controles") or verdict.get("juges_modifies"):
         return None
     tache = reg.taches.get(enr.get("tache"), (None, {}))[1] or {}
     try:
         portee, lignes = float(tache.get("portee", 1.0)), int(verdict.get("lignes_modifiees", 0))
     except (TypeError, ValueError):
         return None
-    return float(verdict["gain"]) * portee / (1 + lignes / 100)
+    valeur = float(gain) * portee / (1 + lignes / 100)
+    return valeur if math.isfinite(valeur) else None
 
 
 def cle_classement(reg, enr, niveaux):
@@ -518,17 +559,23 @@ def classement_course(reg, tid, niveaux):
     return sorted(contributions_en_course(reg, tid), key=lambda x: cle_classement(reg, x[1], niveaux))
 
 
-def duree_course(reg):
-    """Durée de la course : R7 (le temps de soumettre pour qui était engagé avant) + la fenêtre de R3 (le temps de relire)."""
-    return dt.timedelta(hours=float(reg.config.get("reservation_max_heures", 72)) + float(reg.config.get("fenetre_acceptation_heures", 24)))
+def debut_engagement(enr):
+    """Début de l'engagement de l'auteur sur la tâche avant de soumettre (engage_depuis : sa réservation ou son inscription
+    en parallèle), sinon sa soumission (enregistrements antérieurs à ce champ)."""
+    return _instant_ou_rien(enr.get("engage_depuis")) or _instant_ou_rien(enr.get("soumise_le"))
 
 
-def cloture_course(reg, tid):
-    """Clôture de la course d'une tâche : soumission la plus ancienne encore en relecture + duree_course. Une soumission
-    plus récente ne la repousse jamais : F ≤ soumise_le(X) + 96 h, et toute attente de X finit au plus tard à F + 24 h,
-    soit soumise_le(X) + 120 h (raisons_course)."""
-    instants = [i for i in (_instant_ou_rien(e.get("soumise_le")) for _, e in contributions_en_course(reg, tid)) if i]
-    return min(instants) + duree_course(reg) if instants else None
+def bornes_attente(reg, enr):
+    """Bornes propres à une contribution X (R3, course) : (fin de sa protection, fin de toute attente).
+    Jusqu'à soumise_le(X) + 72 h (R7) + 24 h (fenêtre de R3) = 96 h, X attend ce qui pourrait la battre ; jusqu'à
+    + 24 h encore (120 h), une concurrente intégrable mieux classée ; ensuite, plus rien. Ces bornes ne dépendent que
+    de X : ni une contribution ancienne qui traîne, ni une soumission plus récente ne les déplacent."""
+    soumise = _instant_ou_rien(enr.get("soumise_le"))
+    if soumise is None:
+        return None, None
+    duree_r7 = dt.timedelta(hours=float(reg.config.get("reservation_max_heures", 72)))
+    fenetre = dt.timedelta(hours=float(reg.config.get("fenetre_acceptation_heures", 24)))
+    return soumise + duree_r7 + fenetre, soumise + duree_r7 + 2 * fenetre
 
 
 def depart_du_titulaire(reg, tid, paralleles):
@@ -658,24 +705,24 @@ def etat_du_cap(reg, instant=None, jours=None):
 
 
 def etat_course(reg, tid, niveaux, instant):
-    """La course d'une tâche, pour la montrer : contributions classées, engagés qui travaillent encore, clôture."""
+    """La course d'une tâche, pour la montrer : contributions classées (avec leurs bornes d'attente propres), engagés qui
+    travaillent encore."""
     t = reg.taches.get(tid, (None, {}))[1] or {}
-    cloture = cloture_course(reg, tid)
     contributions = []
     for rang, (cid, e) in enumerate(classement_course(reg, tid, niveaux), start=1):
         gain = gain_mesure(reg, e)
+        protection, fin = bornes_attente(reg, e)
         contributions.append({"rang": rang, "contribution": cid, "auteur": e.get("auteur"), "soumise_le": e.get("soumise_le"),
                               "gain_mesure": round(gain, 6) if gain is not None else None, "vote_net": vote_net(reg, e, niveaux),
-                              "ci": (e.get("verdict") or {}).get("ci")})
-    fenetre = dt.timedelta(hours=float(reg.config.get("fenetre_acceptation_heures", 24)))
+                              "ci": (e.get("verdict") or {}).get("ci"),
+                              "protegee_jusqu_au": en_iso(protection) if protection else None,
+                              "attentes_jusqu_au": en_iso(fin) if fin else None})
     engages = []
     r = t.get("reservation") or {}
     if t.get("statut") == "reservee" and isinstance(r, dict) and r.get("utilisateur"):
         engages.append({"utilisateur": r.get("utilisateur"), "role": "titulaire", "depuis": r.get("depuis")})
     engages += [{"utilisateur": p.get("utilisateur"), "role": "en parallèle", "depuis": p.get("depuis")} for p in paralleles_de(t)]
-    return {"tache": tid, "cloture": en_iso(cloture) if cloture else None, "close": bool(cloture and instant >= cloture),
-            "fin_des_attentes": en_iso(cloture + fenetre) if cloture else None,
-            "contributions": contributions, "engages": engages}
+    return {"tache": tid, "contributions": contributions, "engages": engages}
 
 
 def tableau_essaim(reg, instant=None, jours_notes=7):
@@ -999,7 +1046,15 @@ def verifier_registre(reg):
             retenue = reg.enregistrements.get(enr.get("retenue"), (None, {}))[1] or {}
             if enr.get("retenue") == enr["id"] or retenue.get("tache") != enr["tache"] or retenue.get("statut") not in ("integree", "annulee"):
                 ajouter(f"{lieu} : écartée au profit de « {enr.get('retenue')} », qui n'est pas une contribution intégrée de la même tâche")
+        if enr.get("jamais_integree") and enr.get("fusion_sha"):
+            ajouter(f"{lieu} : jamais_integree contredit fusion_sha : une contribution fusionnée a été intégrée, "
+                    "ses relecteurs en répondent si elle est annulée")
         instant_valide(chemin, enr["soumise_le"], "soumise_le")
+        if "engage_depuis" in enr:
+            instant_valide(chemin, enr["engage_depuis"], "engage_depuis")
+            debut, soumise = _instant_ou_rien(enr["engage_depuis"]), _instant_ou_rien(enr["soumise_le"])
+            if debut and soumise and debut > soumise:
+                ajouter(f"{lieu} : engage_depuis ({enr['engage_depuis']}) est postérieur à la soumission")
         vus = set()
         for i, r in enumerate(enr["relectures"]):
             if r["relecteur"] == enr["auteur"]:
@@ -1191,11 +1246,12 @@ def verifier_engagements(reg, chemin, ancien, nouveau, differences, auteur, *, e
             # elle doit être l'heure réelle, ni antidatée ni postdatée, et jamais antérieure à ce qui existe déjà sur
             # la tâche (on s'inscrit après la réservation, après les inscrits et après les soumissions en course).
             depuis = lire_instant(p.get("depuis"), chemin)
-            exiger(instant - dt.timedelta(hours=2) <= depuis <= instant + dt.timedelta(minutes=10),
-                   "l'inscription en parallèle doit être datée de l'heure de la PR (à 2 h près) ; relancez bee prendre --en-parallele")
+            exiger(instant - dt.timedelta(hours=2) <= depuis <= instant + AVANCE_MAX,
+                   "l'inscription en parallèle doit être datée de l'heure de la PR (à 2 h près, jamais dans le futur) ; "
+                   "relancez bee prendre --en-parallele")
             existants = [ra.get("depuis")] + [x.get("depuis") for x in pa] + [
                 e.get("soumise_le") for _, e in contributions_en_course(reg, nouveau.get("id"))]
-            exiger(all(depuis >= i for i in (_instant_ou_rien(x) for x in existants) if i),
+            exiger(all(depuis >= i for i in (_instant_ou_rien(x) for x in existants) if i and i <= instant),
                    "une inscription en parallèle ne peut pas être antérieure à la réservation, aux inscriptions ni aux "
                    "soumissions déjà sur la tâche")
         except ErreurBee as e:
@@ -1218,8 +1274,29 @@ def verifier_engagements(reg, chemin, ancien, nouveau, differences, auteur, *, e
     return "inscription_parallele" if pa != pn else "note", problemes
 
 
-def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None):
-    """Renvoie (problèmes, natures). `reg` doit refléter l'état de la tête de la PR."""
+def contributions_de_la_pr(reg, base, tete):
+    """Contributions ajoutées ou modifiées par la PR : [(chemin, contribution lue dans la tête)]."""
+    sorties = git(reg.racine, "diff", "--name-status", "--no-renames", f"{base}...{tete}")
+    resultat = []
+    for ligne in sorties.splitlines():
+        statut_git, _, chemin = ligne.partition("\t")
+        partie = chemin.split("/")
+        if statut_git in ("A", "M") and partie[0] == "contributions" and len(partie) == 3 and chemin.endswith(".yaml"):
+            try:
+                nouveau = lire_yaml_ref(reg.racine, tete, chemin)
+            except ErreurBee:
+                continue
+            if isinstance(nouveau, dict):
+                resultat.append((chemin, nouveau))
+    return resultat
+
+
+def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, auteurs_pr=None):
+    """Renvoie (problèmes, natures). `reg` doit refléter l'état de la tête de la PR.
+
+    auteurs_pr : {adresse de PR: login GitHub de son auteur}, relevé par fusion-auto auprès de l'API pour chaque PR
+    déclarée dans une contribution ajoutée ou modifiée ; s'il est fourni, chacune doit appartenir à l'auteur de la
+    contribution, et une PR absente de la liste est refusée (échec fermé)."""
     instant = instant or maintenant()
     sorties = git(reg.racine, "diff", "--name-status", "--no-renames", f"{base}...{tete}")
     changements = [ligne.split("\t", 1) for ligne in sorties.splitlines() if ligne.strip()]
@@ -1299,7 +1376,7 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None):
                 exiger(auteur in reg.membres or est_conseil, f"{chemin} : {auteur} doit d'abord s'inscrire (bee inscrire)")
                 try:
                     depuis = lire_instant(reservation.get("depuis"), chemin)
-                    exiger(depuis <= instant + dt.timedelta(minutes=10), f"{chemin} : réservation datée dans le futur")
+                    exiger(depuis <= instant + AVANCE_MAX, f"{chemin} : réservation datée dans le futur")
                 except ErreurBee as e:
                     problemes.append(str(e))
                 exiger(not reg.bloquee_par(nouveau), f"{chemin} : la tâche dépend de {', '.join(reg.bloquee_par(nouveau))}, pas encore intégrée(s)")
@@ -1393,19 +1470,40 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None):
                     # La fenêtre d'ouverture de R3 part de soumise_le : il doit être l'heure réelle.
                     try:
                         soumise = lire_instant(nouveau.get("soumise_le"), chemin)
-                        exiger(instant - dt.timedelta(hours=2) <= soumise <= instant + dt.timedelta(minutes=10),
-                               f"{chemin} : soumise_le doit être l'heure de la soumission (à 2 h près) ; relancez bee soumettre")
+                        exiger(instant - dt.timedelta(hours=2) <= soumise <= instant + AVANCE_MAX,
+                               f"{chemin} : soumise_le doit être l'heure de la soumission (à 2 h près, jamais dans le futur) ; "
+                               "relancez bee soumettre")
                         # Course (R3) : l'ordre des soumissions et des engagements départage et borne les attentes. Une
                         # soumission est postérieure à tout ce qui est déjà sur la tâche dans la base (réservation, toutes
                         # les inscriptions en parallèle) et à toute soumission déjà en course : sinon, antidatée dans la
-                        # tolérance de 2 h, elle échapperait à l'attente des engagés d'avant elle (raisons_course, 1).
+                        # tolérance de 2 h, elle échapperait à l'attente des engagés d'avant elle (raisons_course, 1). On ne
+                        # compare qu'aux dates déjà passées : une inscription datée dans le futur ne bloque personne.
                         anterieurs = ([(t_base.get("reservation") or {}).get("depuis")] + [p.get("depuis") for p in paralleles_de(t_base)]
                                       + [e.get("soumise_le") for c, e in contributions_en_course(reg, nouveau.get("tache")) if c != cid])
-                        exiger(all(soumise >= i for i in (_instant_ou_rien(x) for x in anterieurs) if i),
+                        exiger(all(soumise >= i for i in (_instant_ou_rien(x) for x in anterieurs) if i and i <= instant),
                                f"{chemin} : soumise_le ne peut pas précéder l'engagement de {auteur} sur la tâche, ni aucun autre "
                                "engagement (réservation, inscription en parallèle) ou soumission déjà présent ; relancez bee soumettre")
+                        # Début de l'engagement de l'auteur (R3, course) : celui de la base, tel quel.
+                        attendu = ((t_base.get("reservation") or {}).get("depuis") if par_titulaire else
+                                   next((p.get("depuis") for p in paralleles_de(t_base) if p.get("utilisateur") == auteur), None)
+                                   if par_parallele else None)
+                        engage = _instant_ou_rien(nouveau.get("engage_depuis"))
+                        if par_titulaire or par_parallele:
+                            exiger(nouveau.get("engage_depuis") == attendu,
+                                   f"{chemin} : engage_depuis doit être le début de l'engagement de {auteur} sur la tâche ({attendu}) ; "
+                                   "bee soumettre l'écrit")
+                        else:  # le conseil réserve et soumet dans la même PR
+                            exiger(engage is not None and soumise - dt.timedelta(hours=2) <= engage <= soumise,
+                                   f"{chemin} : engage_depuis doit être l'heure de la réservation, juste avant la soumission")
                     except ErreurBee as e:
                         problemes.append(str(e))
+                    # La PR déclarée doit avoir pour auteur GitHub l'auteur de la contribution (le pseudo d'un membre est
+                    # son login) : sinon on squatterait la PR d'un autre. fusion-auto fournit ces auteurs (--auteurs-pr) ;
+                    # quand ils sont fournis, une PR absente de la liste est refusée (échec fermé).
+                    if auteurs_pr is not None:
+                        exiger(str(auteurs_pr.get(nouveau.get("pr")) or "").lower() == str(nouveau.get("auteur") or "").lower() != "",
+                               f"{chemin} : la PR {nouveau.get('pr')} doit avoir été ouverte par {nouveau.get('auteur')} sur GitHub "
+                               f"(auteur relevé : {auteurs_pr.get(nouveau.get('pr')) or 'inconnu'})")
                     autres = [i for i, (_, e) in reg.enregistrements.items() if i != cid and e.get("pr") == nouveau.get("pr")]
                     exiger(not autres, f"{chemin} : la PR {nouveau.get('pr')} est déjà liée à {', '.join(autres)}")
                 continue
@@ -1417,6 +1515,10 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None):
                 problemes.append(f"{chemin} : fichier illisible")
                 continue
             differences = {k for k in set(ancien) | set(nouveau) if ancien.get(k) != nouveau.get(k)}
+            if auteurs_pr is not None:
+                exiger(str(auteurs_pr.get(nouveau.get("pr")) or "").lower() == str(nouveau.get("auteur") or "").lower() != "",
+                       f"{chemin} : la PR {nouveau.get('pr')} doit avoir été ouverte par {nouveau.get('auteur')} sur GitHub "
+                       f"(auteur relevé : {auteurs_pr.get(nouveau.get('pr')) or 'inconnu'})")
             if differences == {"relectures"}:
                 natures.append("relecture")
                 exiger(ancien.get("statut") == "en_relecture",
@@ -1427,8 +1529,8 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None):
                     for r in nouvelles[len(anciennes):]:
                         exiger(r.get("relecteur") == auteur, f"{chemin} : une relecture ajoutée doit être celle de {auteur}")
                         exiger(r.get("relecteur") != nouveau.get("auteur"), f"{chemin} : on ne relit pas sa propre contribution")
-                        exiger(not r.get("defaut_confirme") or est_robot or niveau == "Confirmé" or est_conseil,
-                               f"{chemin} : un défaut n'est confirmé que par la CI ou une relecture Confirmé")
+                        exiger(not r.get("defaut_confirme") or est_robot or niveau == "Confirmé" or est_conseil or auteur in reg.gardiens,
+                               f"{chemin} : un défaut n'est confirmé que par la CI, le conseil, un gardien ou une relecture Confirmé")
                         # Ajoutée maintenant, par un concurrent : seul un avis favorable sans défaut (sa date déclarée
                         # n'y change rien).
                         exiger(r.get("relecteur") not in concurrents or (
@@ -1782,8 +1884,7 @@ def cmd_essaim(args):
                                for x in c["contributions"])
             engages = ", ".join(f"{e['utilisateur']} ({e['role']})" for e in c["engages"])
             print(f"  - {c['tache']} : {rangs}" + (f" ; travaillent encore : {engages}" if engages else "")
-                  + f" ; clôture de la course : {c['cloture']}" + (" (passée)" if c["close"] else "")
-                  + f" ; plus aucune attente après le {c['fin_des_attentes']}")
+                  + " ; chaque contribution attend au plus 120 h après sa soumission")
     if tableau["notes"]:
         print("\nNotes récentes (7 jours) :")
         for n in tableau["notes"]:
@@ -1819,11 +1920,12 @@ def cmd_voir(args):
         echeance = en_iso(fin + dt.timedelta(hours=float(reg.config.get("reservation_max_heures", 72)))) if fin else "?"
         print(f"# {e['role']} : {e['utilisateur']}, depuis {e['depuis']} (échéance R7 : {echeance})")
     if course["contributions"]:
-        print(f"# contributions en course (R3, de la mieux classée à la moins bien classée ; clôture de la course : "
-              f"{course['cloture']}{', passée' if course['close'] else ''} ; plus aucune attente après le {course['fin_des_attentes']}) :")
+        print("# contributions en course (R3, de la mieux classée à la moins bien classée ; chacune est protégée 96 h après sa "
+              "soumission, puis n'attend plus, au plus 24 h, qu'une concurrente intégrable mieux classée) :")
         for c in course["contributions"]:
             print(f"#   {c['rang']}. {c['contribution']} par {c['auteur']}, soumise le {c['soumise_le']}, CI {c['ci'] or 'en attente'}, "
-                  f"gain mesuré {'—' if c['gain_mesure'] is None else format(c['gain_mesure'], '.4f')}, vote net {c['vote_net']:+d}")
+                  f"gain mesuré {'—' if c['gain_mesure'] is None else format(c['gain_mesure'], '.4f')}, vote net {c['vote_net']:+d}, "
+                  f"protégée jusqu'au {c['protegee_jusqu_au']}, plus aucune attente après le {c['attentes_jusqu_au']}")
     if t.get("statut") in ("reservee", "en_relecture"):
         print(f"# rejoindre en parallèle : bee prendre {t['id']} --utilisateur <pseudo> --en-parallele")
     return 0
@@ -2106,7 +2208,11 @@ def cmd_soumettre(args):
     donnees = {"id": identifiant, "tache": args.tache, "auteur": args.utilisateur, "pr": args.pr}
     if args.resume:
         donnees["resume"] = args.resume
-    donnees.update({"statut": "en_relecture", "soumise_le": en_iso(maintenant()), "relectures": []})
+    # Début de l'engagement de l'auteur (sa réservation ou son inscription en parallèle) : R3 s'en sert pour savoir s'il
+    # travaillait déjà sur la tâche avant la soumission d'une concurrente (raisons_course, 2) ; verifier-pr le contrôle.
+    engagement = (next(p.get("depuis") for p in paralleles if p.get("utilisateur") == args.utilisateur) if en_parallele
+                  else (t.get("reservation") or {}).get("depuis"))
+    donnees.update({"statut": "en_relecture", "soumise_le": en_iso(maintenant()), "engage_depuis": engagement, "relectures": []})
     ecrire_yaml(reg.racine / "contributions" / t["projet"] / f"{identifiant}.yaml", donnees)
     if en_parallele:
         # Soumission d'un inscrit en parallèle : il quitte la liste, sa contribution entre en course ; la réservation
@@ -2235,9 +2341,37 @@ def cmd_classement(args):
     return 0
 
 
+ADRESSE_PR = re.compile(r"^https://github\.com/([A-Za-z0-9-]+)/([A-Za-z0-9_][A-Za-z0-9_.-]*)/pull/([0-9]+)$")
+
+
+def lire_auteurs_pr(chemin):
+    """Fichier « adresse<TAB>login » (un par ligne), écrit par fusion-auto d'après l'API GitHub."""
+    auteurs = {}
+    for ligne in pathlib.Path(chemin).read_text(encoding="utf-8").splitlines():
+        adresse, _, login = ligne.partition("\t")
+        if ADRESSE_PR.match(adresse.strip()):
+            auteurs[adresse.strip()] = login.strip()
+    return auteurs
+
+
+def cmd_prs_declarees(args):
+    """Adresses de PR déclarées par les contributions ajoutées ou modifiées entre base et tête (une par ligne, déjà
+    validées par expression régulière) : fusion-auto relève l'auteur GitHub de chacune avant verifier-pr."""
+    reg = Registre(args.registre)
+    vues = []
+    for _, contribution in contributions_de_la_pr(reg, args.base, args.tete):
+        adresse = str(contribution.get("pr") or "")
+        if ADRESSE_PR.match(adresse) and adresse not in vues:
+            vues.append(adresse)
+    for adresse in vues:
+        print(adresse)
+    return 0
+
+
 def cmd_verifier_pr(args):
     reg = Registre(args.registre)
-    problemes, natures = verifier_pr(reg, args.base, args.tete, args.auteur, args.compte_cree_le)
+    auteurs_pr = lire_auteurs_pr(args.auteurs_pr) if args.auteurs_pr else None
+    problemes, natures = verifier_pr(reg, args.base, args.tete, args.auteur, args.compte_cree_le, auteurs_pr=auteurs_pr)
     problemes = verifier_registre(reg) + problemes
     for p in problemes:
         print(f"✗ {p}")
@@ -2285,6 +2419,18 @@ def cmd_enregistrer_verdict(args):
     chemin, enr = reg.enregistrement(args.contribution)
     with open(args.verdict, encoding="utf-8") as f:
         brut = json.load(f)
+    # Aucun nombre non fini (NaN, ±Infinity : json les accepte) dans un verdict : il fausserait le classement (R3).
+    def non_fini(valeur):
+        if isinstance(valeur, float):
+            return not math.isfinite(valeur)
+        if isinstance(valeur, dict):
+            return any(non_fini(v) for v in valeur.values())
+        if isinstance(valeur, list):
+            return any(non_fini(v) for v in valeur)
+        return False
+
+    if non_fini(brut):
+        raise ErreurBee(f"{args.verdict} : nombre non fini (NaN ou infini) dans le verdict : refusé")
     ci = str(brut.get("ci", "")).lower()
     verdict = {"ci": "verte" if ci in ("verte", "vert", "green", "success", "succes", "succès") else "rouge"}
     if verdict["ci"] == "rouge":
@@ -2426,34 +2572,34 @@ def raisons_course(reg, cid, niveaux, instant):
     """R3, contributions concurrentes : X n'est intégrée que si aucune concurrente encore en course ne pourrait être
     mieux classée. Liste vide = X peut passer (si raisons_r3 est vide aussi).
 
-    Soit F la clôture de la course (cloture_course : première soumission encore en relecture + 72 h + 24 h).
-    Avant F, X attend :
+    Les bornes sont propres à X (bornes_attente), et ne dépendent d'aucune autre contribution. Jusqu'à
+    soumise_le(X) + 96 h (72 h de R7 + 24 h de fenêtre), X attend :
       1. tout participant engagé sur la tâche AVANT la soumission de X (titulaire, inscrit en parallèle) qui n'a pas
          encore soumis, jusqu'à sa contribution, son retrait ou son expiration R7 ; un engagement postérieur à la
          soumission de X ne la retarde pas ;
-      2. toute concurrente pas encore départagée : sans verdict de CI, ou dans sa fenêtre de R3 (24 h depuis sa
-         soumission) ;
+      2. toute concurrente pas encore départagée : dans sa fenêtre de R3 (24 h depuis sa soumission), ou sans verdict
+         de CI si son auteur était engagé sur la tâche avant la soumission de X (une CI lente ne fait pas perdre la
+         course à qui travaillait déjà ; une contribution d'un engagé tardif, sans verdict, ne retarde X que pendant sa
+         fenêtre) ;
       3. toute concurrente mieux classée (cle_classement : le gain mesuré, sinon le vote net, puis l'ancienneté).
-    De F à F + 24 h (la fenêtre de R3), X n'attend que les concurrentes intégrables (raisons_r3 vide) mieux classées
-    qu'elle : le workflow les intègre d'abord. À partir de F + 24 h, X n'attend plus personne : une concurrente mieux
-    classée qui ne s'est pas intégrée d'elle-même (PR en conflit, commit sans verdict…) ne retient plus X. Toute attente
-    finit donc au plus tard à F + 24 h, qui ne dépasse jamais soumise_le(X) + 72 h + 24 h + 24 h = 120 h.
+    De soumise_le(X) + 96 h à + 120 h, X n'attend que les concurrentes intégrables (raisons_r3 vide) mieux classées
+    qu'elle : le workflow les intègre d'abord. Ensuite, plus rien ne retient X : une concurrente mieux classée qui ne
+    s'est pas intégrée d'elle-même (PR en conflit, commit sans verdict…) ne bloque plus. Toute attente de X finit donc au
+    plus tard à soumise_le(X) + 120 h, quelle que soit l'ancienneté des autres contributions de la tâche.
     """
     _, enr = reg.enregistrement(cid)
     tid = enr.get("tache")
     t = reg.taches.get(tid, (None, {}))[1] or {}
     rivales = [(c, e) for c, e in contributions_en_course(reg, tid) if c != cid]
     soumise = _instant_ou_rien(enr.get("soumise_le"))
-    cloture = cloture_course(reg, tid)
-    if soumise is None or cloture is None:
-        return []
+    protection, fin_attentes = bornes_attente(reg, enr)
+    if soumise is None or instant >= fin_attentes:
+        return []  # borne dure : passé soumise_le(X) + 120 h, personne ne retient plus X
     fenetre = dt.timedelta(hours=float(reg.config.get("fenetre_acceptation_heures", 24)))
-    if instant >= cloture + fenetre:
-        return []  # borne dure : passé F + 24 h, personne ne retient plus X
     raisons = []
     ma_cle = cle_classement(reg, enr, niveaux)
-    fin, ultime = en_iso(cloture), en_iso(cloture + fenetre)
-    if instant < cloture:
+    jusqu = en_iso(protection)
+    if instant < protection:
         duree_r7 = dt.timedelta(hours=float(reg.config.get("reservation_max_heures", 72)))
         engages = []
         r = t.get("reservation") or {}
@@ -2465,24 +2611,27 @@ def raisons_course(reg, cid, niveaux, instant):
             if qui != enr.get("auteur") and debut is not None and debut <= soumise and not engagement_expire(reg, depuis, instant):
                 raisons.append(f"course (R3) : {qui} ({role}) travaille sur la tâche depuis {depuis}, avant cette soumission : "
                                f"on attend sa contribution, son retrait ou son expiration (R7, {en_iso(debut + duree_r7)}), "
-                               f"au plus tard la clôture de la course ({fin})")
+                               f"au plus tard jusqu'au {jusqu}")
         for c, e in rivales:
             debut = _instant_ou_rien(e.get("soumise_le"))
-            if not e.get("verdict"):
-                # Une CI lente ne fait pas perdre la course : sans verdict, on l'attend jusqu'à la clôture.
+            dans_sa_fenetre = debut is None or instant - debut < fenetre
+            engagee_avant = (debut_engagement(e) or FUTUR_LOINTAIN) <= soumise
+            if not e.get("verdict") and (dans_sa_fenetre or engagee_avant):
+                limite = protection if engagee_avant or debut is None else min(debut + fenetre, protection)
                 raisons.append(f"course (R3) : la concurrente {c} attend le verdict de sa CI et pourrait être mieux classée ; "
-                               f"on l'attend au plus tard jusqu'à la clôture de la course ({fin})")
-            elif debut is None or instant - debut < fenetre:
+                               + ("son auteur travaillait sur la tâche avant cette soumission : " if engagee_avant else "")
+                               + f"on l'attend au plus tard jusqu'au {en_iso(limite)}")
+            elif e.get("verdict") and dans_sa_fenetre:
                 raisons.append(f"course (R3) : la concurrente {c} est encore dans sa fenêtre de relecture et de vote (jusqu'au "
-                               f"{en_iso(min(debut + fenetre, cloture)) if debut else fin}) et pourrait être mieux classée")
+                               f"{en_iso(min(debut + fenetre, protection)) if debut else jusqu}) et pourrait être mieux classée")
             elif cle_classement(reg, e, niveaux) < ma_cle:
                 raisons.append(f"course (R3) : la concurrente {c} est mieux classée (gain mesuré, sinon vote net, puis "
-                               f"ancienneté) ; si elle n'est pas intégrable à la clôture de la course ({fin}), elle sera hors course")
+                               f"ancienneté) ; si elle n'est pas intégrable le {jusqu}, elle ne retiendra plus cette contribution")
     else:
         for c, e in rivales:
             if cle_classement(reg, e, niveaux) < ma_cle and not raisons_r3(reg, c)[2]:
                 raisons.append(f"course (R3) : la concurrente {c}, intégrable, est mieux classée : c'est elle qui doit être "
-                               f"intégrée ; si elle ne l'est pas d'ici le {ultime}, plus rien ne retient celle-ci")
+                               f"intégrée ; si elle ne l'est pas d'ici le {en_iso(fin_attentes)}, plus rien ne retient celle-ci")
     return raisons
 
 
@@ -2768,9 +2917,13 @@ def cmd_cloturer(args):
     fusionnees = set()
     if args.fusionnees and pathlib.Path(args.fusionnees).exists():
         fusionnees = {l.strip() for l in pathlib.Path(args.fusionnees).read_text(encoding="utf-8").splitlines() if l.strip()}
+    # Seule compte une concurrente intégrée APRÈS la soumission de celle-ci (une intégration d'une manche antérieure,
+    # tâche rouverte depuis, n'en fait pas une course perdue), ou en relecture avec sa PR fusionnée.
+    soumise = _instant_ou_rien(enr.get("soumise_le")) or FUTUR_LOINTAIN
     gagnantes = sorted(c for c, (_, e) in reg.enregistrements.items()
                        if isinstance(e, dict) and c != args.contribution and e.get("tache") == enr.get("tache")
-                       and (e.get("statut") == "integree" or (c in fusionnees and e.get("statut") == "en_relecture")))
+                       and ((e.get("statut") == "integree" and (_instant_ou_rien(e.get("decidee_le")) or PASSE) >= soumise)
+                            or (c in fusionnees and e.get("statut") == "en_relecture")))
     if gagnantes:
         print(f"{args.contribution} n'est pas close : sa concurrente {', '.join(gagnantes)} est intégrée ou fusionnée ; "
               "le passage d'intégration l'écartera (R3).")
@@ -3083,6 +3236,14 @@ def construire_analyseur():
     p.add_argument("--auteur", required=True)
     p.add_argument("--compte-cree-le", help="date de création du compte, fournie par l'API GitHub")
     p.add_argument("--fusion-auto", action="store_true", help="code 0 si fusionnable sans humain, 3 sinon")
+    p.add_argument("--auteurs-pr", help="fichier « adresse<TAB>login » : auteur GitHub de chaque PR déclarée dans une contribution "
+                                        "ajoutée ou modifiée (relevé par fusion-auto) ; chacune doit être celle de l'auteur de la "
+                                        "contribution, et une PR absente est refusée")
+
+    p = ajouter("prs-declarees", cmd_prs_declarees,
+                "Liste les PR déclarées par les contributions ajoutées ou modifiées d'une PR du registre (utilisé par fusion-auto).")
+    p.add_argument("--base", required=True)
+    p.add_argument("--tete", default="HEAD")
 
     p = ajouter("verifier-fork", cmd_verifier_fork, "Vérifie une branche de contribution sur un fork (R1, commandement 3, manifeste).")
     p.add_argument("--tache", required=True)

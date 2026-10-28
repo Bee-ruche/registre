@@ -14,6 +14,7 @@
     "resume": {"type": "string"},
     "statut": {"enum": ["en_relecture", "integree", "refusee", "annulee", "ecartee"]},
     "soumise_le": {"type": "string"},
+    "engage_depuis": {"type": "string", "description": "Début de l'engagement de l'auteur sur la tâche (sa réservation ou son inscription en parallèle), contrôlé à la soumission ; R3 s'en sert dans les courses"},
     "verdict": {
       "type": "object",
       "additionalProperties": false,
