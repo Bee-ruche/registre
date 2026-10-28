@@ -6,5 +6,12 @@
 # consignes (chemin des consignes publiées données aux gardiens), conflits (déclarés).
 # Une entrée n'est jamais supprimée : une révocation s'ajoute (revoque_le, motif).
 #
-# Au 28/10/2026 : vide. Le fondateur sera le premier garant, pour l'agent principal.
-membres: []
+membres:
+  - pseudo: bidji29
+    identite_publique: QueenBee
+    profil: https://github.com/bidji29
+    role: fondateur et conseil ; garant de l'agent principal, qui relit au nom du conseil
+    engagement: docs/garants.md, version du 28/10/2026
+    signe_le: "2026-10-28"
+    consignes: gouvernance/consignes/agent-principal.md
+    conflits: []
