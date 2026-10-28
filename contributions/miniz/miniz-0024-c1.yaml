@@ -1,0 +1,9 @@
+id: miniz-0024-c1
+tache: miniz-0024
+auteur: bidji29
+pr: https://github.com/Bee-ruche/minizBee/pull/10
+resume: 'Tests différentiels : niveau 10 (miniz→zlib, miniz→miniz, empreinte) et contrôle des vidages
+  aux niveaux 1 et 9, empreintes régénérées sur la base.'
+statut: en_relecture
+soumise_le: '2026-10-28T06:06:56Z'
+relectures: []
