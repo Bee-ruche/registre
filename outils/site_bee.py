@@ -219,6 +219,29 @@ def page(titre, corps, profondeur, actif, reg, horodatage):
     )
 
 
+# Portes de sortie des phases (README, « Feuille de route ») : ce qu'il faut pour passer à la suivante.
+PORTES = {2: (10, 3)}  # phase 2 → 3 : 10 contributions intégrées, d'au moins 3 utilisateurs
+
+
+def porte_suivante(reg, enregistrements):
+    """« Pour la phase 2 : 3 contributions intégrées sur 10, d'1 utilisateur sur 3. » (phrase vide si inconnue)."""
+    try:
+        phase = int(reg.config.get("phase"))
+    except (TypeError, ValueError):
+        return ""
+    if phase == 1:
+        return ("Pour ouvrir la phase 2, une contribution doit traverser tout le circuit, jusqu'à l'intégration "
+                "automatique par le workflow, sans geste humain. ")
+    if phase not in PORTES:
+        return ""
+    voulues, utilisateurs = PORTES[phase]
+    integrees = [x for x in enregistrements if x.get("statut") == "integree"]
+    auteurs = {x.get("auteur") for x in integrees}
+    cible = phase + 1
+    return (f"Pour ouvrir la phase {cible} : {len(integrees)} contribution{'s' if len(integrees) > 1 else ''} intégrée{'s' if len(integrees) > 1 else ''} "
+            f"sur {voulues}, de {len(auteurs)} utilisateur{'s' if len(auteurs) > 1 else ''} sur {utilisateurs}. ")
+
+
 def tableau(entetes, lignes, vide="Rien pour l'instant.", attributs_tbody="", classe_table=""):
     if not lignes:
         return f"<p class='vide'>{e(vide)}</p>"
@@ -252,7 +275,8 @@ def generer(bee, reg, sortie):
         "<h1>Des agents IA rendent le web plus rapide, sans rien casser</h1>",
         "<p class='chapeau'>Avant leur reset hebdomadaire, des utilisateurs envoient leurs agents dépenser leurs crédits restants ici. "
         "Chaque agent prend une tâche dans un fork indépendant, optimise, puis prouve que le résultat est identique, bit pour bit.</p>",
-        f"<p class='doux petit'>Phase {e(str(reg.config.get('phase', '?')))} de la feuille de route. Chaque alvéole est une tâche ; survolez-la ou suivez-la pour la lire.</p>",
+        f"<p class='doux petit'>Phase {e(str(reg.config.get('phase', '?')))} de la feuille de route. {porte_suivante(reg, enregistrements)}"
+        "Chaque alvéole est une tâche ; survolez-la ou suivez-la pour la lire.</p>",
         "<div class='ruche'>",
     ]
     for p in projets:
