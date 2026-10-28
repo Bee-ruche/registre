@@ -167,7 +167,8 @@ Spécification : [juge-commun.md](juge-commun.md).
 
 - L'essaim **produit ses propres tâches** : profilage et découpage (miniz-0029), propositions
   (`bee proposer-tache`) validées par un gardien.
-- **Nouveaux projets** selon le critère de l'oracle (docs/perimetre.md) : giflib, bzip2, puis la
+- **Nouveaux projets** selon le critère de l'oracle (docs/perimetre.md), par les étapes de
+  [nouveau-projet.md](nouveau-projet.md) : giflib, bzip2, puis la
   réserve, une fois le juge commun en place.
 - **Fédération** (étape 3 du plan de migration) quand le registre central devient un goulot.
 
