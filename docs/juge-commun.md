@@ -37,10 +37,9 @@ lue par le juge commun **depuis la base de la PR** (jamais depuis la PR). Modèl
 | Élément | Rôle |
 | --- | --- |
 | `NOM`, `PAQUETS` | nom du projet ; paquets ajoutés à l'image commune (une ligne `RUN`, noms vérifiés) |
-| `SOURCES`, `SOURCES_REQUISES` | motifs glob des fichiers du projet copiés dans le conteneur (`miniz*.c`, `src/*.c`…) ; tout lien symbolique est refusé |
-| `DIFF` | motifs passés à `git diff` pour l'analyse des lignes ajoutées |
-| `OUTILLAGE`, `EN_TETES_BASE`, `CONSTRUIRE` | dossiers de la base montés sur `/outillage` ; en-têtes de la base copiés dans `/outillage/base/` (le harnais se compile avec eux) ; script de construction, qui doit produire `execution` et les relevés `symboles.txt`, `sections.txt`, `desassemblage.txt` |
-| `PREFIXES`, `PERMIS` | espace de noms du projet et fonctions externes permises en plus de la liste commune, pour l'analyse des objets |
+| `SOURCES`, `SOURCES_REQUISES` | motifs glob des fichiers du projet copiés dans le conteneur et compilés (`miniz.c`, `src/*.c`…) ; tout lien symbolique est refusé ; le diff analysé est celui de ces mêmes motifs |
+| `OUTILLAGE`, `EN_TETES_BASE`, `CONSTRUIRE` | dossiers de la base montés sur `/outillage` ; en-têtes de la base copiés dans `/outillage/base/` (le harnais se compile avec eux) ; script de construction, qui doit produire `execution` et laisser **chaque objet du projet dans `obj/`**, un `obj/<nom>.o` par fichier `.c` des `SOURCES` (le juge s'arrête sinon) |
+| `PREFIXES`, `PERMIS` | espace de noms du projet (au moins un préfixe, chacun d'au moins deux caractères) et fonctions externes permises en plus de la liste commune (64 au plus ; jamais l'horloge, les processus, l'environnement, les signaux ni les appels système) |
 | `COTES` | côtés d'entrées (`f`, `z`…) : un conteneur par côté, jamais deux côtés montés ensemble |
 | `SCENARIOS`, `INSTRUCTIONS`, `METRIQUES`, `METHODE` | scénarios mesurés au chronomètre et leur côté ; ceux dont on compte les instructions ; métriques (nom, sens, unité) ; textes de méthode ajoutés au rapport |
 | `corpus(outillage)` | corpus de la base, `[(nom, octets)]` (aide : `entrees.charger_corpus`) |
@@ -54,8 +53,18 @@ Le harnais (`execution`) est appelé `execution <mode> /entrees /sorties`, avec 
 un nom de scénario ; `/entrees/liste` donne une ligne `<côté> <nom> <entier>` par entrée, dont les
 octets sont dans `/entrees/<côté>/<nom>`.
 
-Règle de sûreté : le greffon ne voit les sorties qu'à travers `lecture.Sorties`, et n'exécute rien de
-ce que le conteneur a produit. Une PR qui modifie `bee/juge/` est une tâche d'outillage : le registre
+Règles de sûreté, vérifiées par le juge commun (revue adverse du 28/10) :
+- les relevés d'analyse (`nm`, `objdump`) sont produits par le juge commun lui-même, dans un conteneur, sur
+  tous les objets de `obj/` : un script de construction ne peut ni les omettre ni les vider ;
+- le greffon ne voit les sorties qu'à travers `lecture.Sorties`, qui retient ce qu'il a lu : à chaque
+  étape, chaque entrée doit avoir eu au moins une sortie de B lue, sinon le juge s'arrête (code 2) ;
+- le greffon n'exécute rien de ce que le conteneur a produit et ne met jamais d'octets venus du
+  conteneur dans un message sans `lecture.propre` ; toute exception imprévue est une erreur (code 2) ;
+- un harnais ne dimensionne jamais un tampon d'après le seul code jugé (borne connue du format, au minimum) ;
+- l'analyse des instructions ne couvre que x86-64 : sur une autre architecture, le juge le signale comme
+  construction suspecte (un gardien relit) ;
+- le balayage du texte du diff (assembleur, en-têtes système, concaténation de jetons…) n'est qu'un
+  filet : c'est l'analyse des objets qui voit le code réellement produit. Une PR qui modifie `bee/juge/` est une tâche d'outillage : le registre
 le détecte et exige un gardien (R3).
 
 ## Versions

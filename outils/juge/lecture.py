@@ -98,10 +98,14 @@ def statut(racine, relatif):
 class Sorties:
     """Les sorties d'une variante (A ou B) pour une étape, un dossier par côté (« f », « z »…).
 
-    C'est la seule vue que le greffon d'un projet a sur ce que le conteneur a écrit."""
+    C'est la seule vue que le greffon d'un projet a sur ce que le conteneur a écrit. Elle retient ce que
+    le greffon a effectivement lu (`lues`) : le juge commun vérifie ensuite que chaque entrée a eu au
+    moins une sortie de B lue, si bien qu'un greffon qui oublie une entrée ou un scénario est arrêté au
+    lieu de laisser passer une sortie que personne n'a regardée (revue adverse du 28/10)."""
 
     def __init__(self, racines):
         self._racines = dict(racines)
+        self.lues = set()
 
     def _racine(self, cote):
         if cote not in self._racines:
@@ -109,10 +113,25 @@ class Sorties:
         return self._racines[cote]
 
     def lire(self, cote, relatif, maximum=TAILLE_MAX_SORTIE):
-        return lire_sortie(self._racine(cote), relatif, maximum)
+        donnees = lire_sortie(self._racine(cote), relatif, maximum)
+        if donnees is not None:
+            self.lues.add((cote, relatif))
+        return donnees
 
     def exiger(self, cote, relatif, maximum=TAILLE_MAX_SORTIE):
-        return exiger(self._racine(cote), relatif, maximum)
+        donnees = exiger(self._racine(cote), relatif, maximum)
+        self.lues.add((cote, relatif))
+        return donnees
 
     def statut(self, cote, relatif):
-        return statut(self._racine(cote), relatif)
+        resultat = statut(self._racine(cote), relatif)
+        self.lues.add((cote, relatif))
+        return resultat
+
+    def couvre(self, cote, nom):
+        """Vrai si une sortie lue de ce côté porte le nom de l'entrée (« c/k000.6 » couvre k000)."""
+        for c, relatif in self.lues:
+            dernier = relatif.rsplit("/", 1)[-1]
+            if c == cote and (dernier == nom or dernier.startswith(nom + ".")):
+                return True
+        return False

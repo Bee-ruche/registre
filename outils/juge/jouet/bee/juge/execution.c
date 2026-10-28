@@ -72,7 +72,13 @@ static void compresser(const char *nom)
 {
     size_t n, m;
     unsigned char *src = lire("f", nom, &n);
-    unsigned char *dst = (unsigned char *)malloc(rle_borne(n));
+    size_t borne = rle_borne(n);
+    unsigned char *dst;
+    /* Un harnais ne dimensionne jamais un tampon d'après le seul code jugé : la borne du format, connue
+       ici, est un minimum (revue adverse du 28/10). */
+    if (borne < 8 + n + n / 128 + 1)
+        mourir("borne sous-dimensionnée", nom);
+    dst = (unsigned char *)malloc(borne);
     if (!dst)
         mourir("mémoire insuffisante", nom);
     m = rle_compresser(src, n, dst);

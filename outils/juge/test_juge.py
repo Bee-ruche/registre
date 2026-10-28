@@ -18,6 +18,12 @@ uniquement DANS le conteneur du juge. Ce sont les mêmes ruses que celles des m�
   travail_deplace    le travail de rle_compresser est fait d'avance dans rle_borne, appelée juste avant
   greffon_de_la_pr   la PR apporte son propre greffon et son propre harnais, qui acceptent tout : ignorés
   lien_symbolique    rle.c de la PR est un lien symbolique (vers un fichier de l'hôte)
+et, depuis la revue adverse du 28/10 (défauts de contrat d'un greffon) :
+  releves_vides      le script de construction de la base écrit un désassemblage vide : sans effet, le juge
+                     relève lui-même les objets, et la requête Valgrind reste signalée
+  objet_oublie       le script de construction ne laisse pas l'objet du projet dans obj/ : erreur
+  jetons_scindes     l'assembleur est formé par concaténation de jetons (a##sm) : vu dans les objets
+  greffon_distrait   un greffon qui ne lit pas les sorties de B d'un scénario : erreur, pas d'acceptation
 """
 
 import json
@@ -204,12 +210,58 @@ class TestGreffon(unittest.TestCase):
         with self.assertRaises(lecture.Erreur):
             juge.charger_greffon(self.base, {})
 
+    def greffon_modifie(self, ancien, nouveau):
+        texte = open(os.path.join(JOUET, "bee", "juge", "projet.py"), encoding="utf-8").read()
+        self.assertEqual(texte.count(ancien), 1)
+        self.ecrire(texte.replace(ancien, nouveau))
+
+    def test_prefixes_vides_ou_courts_refuses(self):
+        for valeur in ('("",)', '()', '("r",)', '("rle-",)'):
+            self.greffon_modifie('PREFIXES = ("rle_",)', f"PREFIXES = {valeur}")
+            with self.assertRaises(lecture.Erreur, msg=valeur):
+                juge.charger_greffon(self.base, {})
+
+    def test_permis_jamais_permis(self):
+        self.greffon_modifie("PERMIS = ()", 'PERMIS = ("qsort", "clock_gettime")')
+        with self.assertRaises(lecture.Erreur) as e:
+            juge.charger_greffon(self.base, {})
+        self.assertIn("clock_gettime", str(e.exception))
+        self.greffon_modifie("PERMIS = ()", 'PERMIS = ("qsort",)')
+        juge.charger_greffon(self.base, {})
+
+    def test_diff_n_existe_plus(self):
+        self.greffon_modifie('SOURCES = ["rle.c", "rle.h"]', 'SOURCES = ["rle.c", "rle.h"]\n    DIFF = ["rle.c"]')
+        with self.assertRaises(lecture.Erreur):
+            juge.charger_greffon(self.base, {})
+
     def test_scenario_hors_cotes(self):
         texte = open(os.path.join(JOUET, "bee", "juge", "projet.py"), encoding="utf-8").read()
         self.ecrire(texte.replace('SCENARIOS = {"compression": "f"', 'SCENARIOS = {"compression": "q"'))
         sys.path.insert(0, ICI)
         with self.assertRaises(lecture.Erreur):
             juge.charger_greffon(self.base, {})
+
+
+class TestCouverture(unittest.TestCase):
+    def test_sorties_lues_et_couverture(self):
+        racine = tempfile.mkdtemp()
+        try:
+            os.makedirs(os.path.join(racine, "c"))
+            for nom in ("k000.6", "k001"):
+                with open(os.path.join(racine, "c", nom), "wb") as f:
+                    f.write(b"x")
+            vue = lecture.Sorties({"f": racine})
+            vue.exiger("f", "c/k000.6")
+            self.assertTrue(vue.couvre("f", "k000"))
+            self.assertFalse(vue.couvre("f", "k00"))
+            self.assertFalse(vue.couvre("f", "k001"))
+            liste = [entrees.Entree("f", "k000", b"", 0), entrees.Entree("f", "k001", b"", 0)]
+            with self.assertRaises(lecture.Erreur):
+                juge.exiger_couverture(vue, liste, "essai")
+            vue.lire("f", "c/k001")
+            juge.exiger_couverture(vue, liste, "essai")
+        finally:
+            shutil.rmtree(racine)
 
 
 class TestCodecDeReference(unittest.TestCase):
@@ -319,6 +371,13 @@ def faux_resume(texte, corpus):
     return remplacer(texte, DEBUT_COMPRESSER, DEBUT_COMPRESSER + '    fputs("==1== I   refs:        1\\n", stderr);\n')
 
 
+def jetons_scindes(texte, corpus):
+    """Préambule des requêtes Valgrind en assembleur, le mot « asm » formé par concaténation de jetons."""
+    texte = remplacer(texte, INCLUDE, INCLUDE + "#define RLE_COLLE(a, b) a##b\n#define RLE_Z RLE_COLLE(a, sm)\n")
+    return remplacer(texte, DEBUT_COMPRESSER, DEBUT_COMPRESSER +
+                     '    RLE_Z volatile("rol $3, %%rdi\\n\\trol $13, %%rdi\\n\\trol $61, %%rdi\\n\\trol $51, %%rdi" ::: "rdi");\n')
+
+
 def travail_deplace(texte, corpus):
     """La table du CRC est construite d'avance dans rle_borne, que le harnais appelle juste avant de compresser."""
     texte = remplacer(texte, INCLUDE, INCLUDE + "#include <stdlib.h>\n")
@@ -375,8 +434,19 @@ class TestJugeContreVariantes(unittest.TestCase):
                 f.write(transformation(texte, self.corpus))
         return source_b
 
-    def juger(self, nom, source_b, sans_instructions=False):
-        commande = [sys.executable, os.path.join(ICI, "juge.py"), "--outillage", JOUET, "--source-a", JOUET,
+    def base_modifiee(self, nom, fichier, ancien, nouveau):
+        """Copie du jouet (la BASE) dont un fichier d'outillage est modifié."""
+        base = os.path.join(self.travail, "base-" + nom)
+        shutil.copytree(JOUET, base, ignore=shutil.ignore_patterns("__pycache__"))
+        chemin = os.path.join(base, fichier)
+        with open(chemin, encoding="utf-8") as f:
+            texte = f.read()
+        with open(chemin, "w", encoding="utf-8") as f:
+            f.write(texte.replace(ancien, nouveau) if texte.count(ancien) >= 1 else remplacer(texte, ancien, nouveau))
+        return base
+
+    def juger(self, nom, source_b, sans_instructions=False, base=JOUET):
+        commande = [sys.executable, os.path.join(ICI, "juge.py"), "--outillage", base, "--source-a", base,
                     "--source-b", source_b, "--repetitions", "2", "--chauffe", "0"]
         if sans_instructions:
             commande.append("--sans-instructions")
@@ -445,6 +515,33 @@ class TestJugeContreVariantes(unittest.TestCase):
         code, _, sortie = self.juger("greffon_de_la_pr", source_b, True)
         self.assertEqual(code, 1)
         self.assertIn("REFUS", sortie)
+
+    def test_releves_vides(self):
+        base = self.base_modifiee("releves_vides", "bee/juge/construire.sh", 'echo "construction terminée"',
+                                  ': > "$sortie/desassemblage.txt"\necho "construction terminée"')
+        code, rapport, _ = self.juger("releves_vides", self.preparer("releves_vides", requete_valgrind), True, base=base)
+        self.assertEqual(code, 0)
+        self.assertIn("preambule_valgrind", " ".join(s["detail"] for s in rapport["juge"]["constructions_suspectes"]))
+
+    def test_objet_oublie(self):
+        """L'objet du projet est compilé hors de obj/ : il échapperait à l'analyse, le juge s'arrête."""
+        base = self.base_modifiee("objet_oublie", "bee/juge/construire.sh", '"$sortie/obj/rle.o"', '"$sortie/rle.o"')
+        code, _, sortie = self.juger("objet_oublie", self.preparer("objet_oublie"), True, base=base)
+        self.assertEqual(code, 2)
+        self.assertIn("sans objet", sortie)
+
+    def test_jetons_scindes(self):
+        code, rapport, _ = self.juger("jetons_scindes", self.preparer("jetons_scindes", jetons_scindes), True)
+        self.assertEqual(code, 0)
+        self.assertIn("preambule_valgrind", " ".join(s["detail"] for s in rapport["juge"]["constructions_suspectes"]))
+
+    def test_greffon_distrait(self):
+        """Le greffon de la base oublie de lire les décompressions de B : erreur, jamais une acceptation."""
+        base = self.base_modifiee("greffon_distrait", "bee/juge/projet.py",
+                                  'if b.exiger("z", f"decompression/d/{e.nom}") != e.attendu:', "if False:")
+        code, _, sortie = self.juger("greffon_distrait", self.preparer("greffon_distrait"), True, base=base)
+        self.assertEqual(code, 2)
+        self.assertIn("aucune sortie de B", sortie)
 
     def test_lien_symbolique(self):
         source_b = self.preparer("lien_symbolique")

@@ -56,6 +56,10 @@ MOTS_SOURCE = [
      "détection de l'environnement de mesure"),
     (re.compile(r"\b(?:__builtin_ia32_rdtscp?|__rdtsc|__builtin_cpu_supports|__builtin_cpu_init)\b"),
      "lecture du processeur ou de l'horloge"),
+    # Ce balayage du texte n'est qu'un filet : la concaténation de jetons (« a##sm ») ou _Pragma peuvent
+    # former un mot interdit que les motifs ci-dessus ne voient pas (revue adverse du 28/10). L'analyse
+    # des objets, elle, voit le code produit.
+    (re.compile(r"##|\b_Pragma\b|#\s*pragma\b"), "concaténation de jetons ou pragma (peut former un mot interdit)"),
 ]
 
 

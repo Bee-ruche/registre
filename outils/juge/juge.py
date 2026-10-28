@@ -38,7 +38,9 @@ import hashlib
 import importlib.util
 import json
 import os
+import platform
 import random
+import re
 import secrets
 import shutil
 import stat
@@ -46,6 +48,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import traceback
 
 ICI = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ICI)
@@ -58,10 +61,23 @@ from lecture import Erreur, Refus, Sorties, exiger, journal, propre  # noqa: E40
 VERSION_COMMUNE = 1   # étiquette juge-v1 du registre
 VERSION_JUGE = 3      # numérotation de verdict.json : 2 = juge de minizBee (miniz-0031), 3 = juge commun v1
 CHEMIN_GREFFON = os.path.join("bee", "juge", "projet.py")
-ATTRIBUTS_REQUIS = ("NOM", "SOURCES", "SOURCES_REQUISES", "DIFF", "OUTILLAGE", "EN_TETES_BASE", "CONSTRUIRE",
+ATTRIBUTS_REQUIS = ("NOM", "SOURCES", "SOURCES_REQUISES", "OUTILLAGE", "EN_TETES_BASE", "CONSTRUIRE",
                     "PREFIXES", "COTES", "SCENARIOS", "INSTRUCTIONS", "METRIQUES")
 METHODES_REQUISES = ("corpus", "verification", "verifier", "fixes", "repetition", "instructions", "scenario")
 RELEVES = (("symboles", "symboles.txt"), ("sections", "sections.txt"), ("desassemblage", "desassemblage.txt"))
+OBJET = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.+-]{0,127}\.o")
+IDENTIFIANT = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,63}")
+PREFIXE = re.compile(r"[A-Za-z_][A-Za-z0-9_]{1,31}")
+PERMIS_MAX = 64
+# Fonctions qu'aucun greffon ne peut déclarer permises : elles servent à tromper la mesure (horloge,
+# processus, environnement, signaux, appels système), pas à compresser ni à analyser.
+JAMAIS_PERMIS = frozenset({
+    "syscall", "clock_gettime", "clock_getres", "gettimeofday", "time", "times", "getrusage", "fork", "vfork",
+    "clone", "execve", "execv", "execvp", "execl", "execlp", "system", "popen", "posix_spawn", "dlopen", "dlsym",
+    "getenv", "secure_getenv", "ptrace", "prctl", "signal", "sigaction", "raise", "kill", "alarm", "setitimer",
+    "sched_setaffinity", "mprotect",
+})
+ARCHITECTURES_ANALYSEES = ("x86_64", "amd64")  # mnémoniques et préambule de Valgrind connus d'analyse.py
 VALGRIND = ["/usr/bin/valgrind", "--tool=cachegrind", "--cache-sim=no", "--vgdb=no", "--cachegrind-out-file=/dev/null"]
 
 
@@ -92,6 +108,18 @@ def charger_greffon(outillage, options):
             raise Erreur(f"scénario invalide dans le greffon : {s}")
     if any(s not in projet.SCENARIOS for s in projet.INSTRUCTIONS):
         raise Erreur("INSTRUCTIONS du greffon : scénario inconnu")
+    # Espace de noms et fonctions permises : un préfixe vide ou trop court éteindrait deux catégories de
+    # l'analyse des objets (revue adverse du 28/10) ; les fonctions qui trompent la mesure ne sont jamais permises.
+    prefixes, permis = tuple(projet.PREFIXES), tuple(getattr(projet, "PERMIS", ()))
+    if not prefixes or any(not isinstance(p, str) or not PREFIXE.fullmatch(p) for p in prefixes):
+        raise Erreur("PREFIXES du greffon invalides : au moins un préfixe, chacun d'au moins deux caractères d'identifiant")
+    if len(permis) > PERMIS_MAX or any(not isinstance(n, str) or not IDENTIFIANT.fullmatch(n) for n in permis):
+        raise Erreur(f"PERMIS du greffon invalide : au plus {PERMIS_MAX} noms de fonctions")
+    interdits = sorted(set(permis) & JAMAIS_PERMIS)
+    if interdits:
+        raise Erreur("PERMIS du greffon : fonctions jamais permises : " + ", ".join(interdits))
+    if hasattr(projet, "DIFF"):
+        raise Erreur("DIFF n'existe plus : le diff analysé est celui de SOURCES (revue adverse du 28/10)")
     for chemin_relatif in list(projet.OUTILLAGE) + [projet.CONSTRUIRE]:
         if os.path.isabs(chemin_relatif) or ".." in chemin_relatif.split("/"):
             raise Erreur(f"chemin d'outillage invalide dans le greffon : {chemin_relatif}")
@@ -151,16 +179,60 @@ def copier_outillage(outillage, source_a, destination, projet):
     return destination
 
 
-def construire(docker, projet, sources, outillage, sortie, etiquette):
-    """Compile une variante dans le conteneur (script CONSTRUIRE de la base) ; renvoie les relevés d'analyse."""
+def objets_attendus(sources):
+    """Un objet obj/<nom>.o par fichier .c copié des SOURCES de la variante."""
+    attendus = set()
+    for dossier, _, noms in os.walk(sources):
+        for n in noms:
+            if n.endswith(".c"):
+                attendus.add(n[:-2] + ".o")
+    return attendus
+
+
+def construire(docker, projet, sources, outillage, sortie, etiquette, travail):
+    """Compile une variante dans le conteneur (script CONSTRUIRE de la base), puis relève ses objets.
+
+    Contrat du script : le harnais lié dans <sortie>/execution, et CHAQUE objet du projet dans
+    <sortie>/obj/<nom>.o (un par fichier .c des SOURCES). Les relevés d'analyse (nm, objdump) sont produits
+    ensuite par le juge commun lui-même, sur tous ces objets : un script de construction ne peut ni les
+    omettre ni les vider (revue adverse du 28/10)."""
     conteneur.dossier_ouvert(sortie)
     commande = ["sh", "/outillage/" + projet.CONSTRUIRE, "/sources", "/outillage", "/sortie"]
     r = docker.lancer(commande, [(sources, "/sources", True), (outillage, "/outillage", True), (sortie, "/sortie", False)],
                       pids=64, delai=900)
+    echec = Erreur if etiquette == "A" else Refus
     if r.returncode != 0:
-        message = f"la compilation de {etiquette} a échoué : " + propre(r.stderr)
-        raise (Erreur(message) if etiquette == "A" else Refus(message))
-    return {cle: exiger(sortie, nom, 64 << 20).decode("utf-8", "replace") for cle, nom in RELEVES}
+        raise echec(f"la compilation de {etiquette} a échoué : " + propre(r.stderr))
+    dossier_obj = os.path.join(sortie, "obj")
+    if os.path.islink(dossier_obj) or not os.path.isdir(dossier_obj):
+        raise echec(f"{etiquette} : pas de dossier obj/ après la construction")
+    objets = []
+    for n in sorted(os.listdir(dossier_obj)):
+        st = os.lstat(os.path.join(dossier_obj, n))
+        if not n.endswith(".o"):
+            continue
+        if not OBJET.fullmatch(n) or not stat.S_ISREG(st.st_mode):
+            raise echec(f"{etiquette} : objet invalide dans obj/ : {propre(n, 80)}")
+        objets.append(n)
+    manquants = sorted(objets_attendus(sources) - set(objets))
+    if manquants:
+        raise echec(f"{etiquette} : fichier(s) source(s) sans objet dans obj/ (non compilés ou non relevables) : "
+                    + ", ".join(propre(m, 80) for m in manquants[:10]))
+    if not objets:
+        raise echec(f"{etiquette} : aucun objet dans obj/")
+    releves_dossier = conteneur.dossier_ouvert(os.path.join(travail, f"releves-{etiquette}"))
+    script = ('umask 000 && cd /construction/obj && nm -P -A "$@" > /releves/symboles.txt'
+              ' && objdump -h "$@" > /releves/sections.txt && objdump -d --no-show-raw-insn "$@" > /releves/desassemblage.txt')
+    r = docker.lancer(["sh", "-c", script, "releves"] + objets,
+                      [(sortie, "/construction", True), (releves_dossier, "/releves", False)], pids=64, delai=900)
+    if r.returncode != 0:
+        raise echec(f"{etiquette} : relevés d'analyse impossibles : " + propre(r.stderr))
+    releves = {cle: exiger(releves_dossier, nom, 256 << 20).decode("utf-8", "replace") for cle, nom in RELEVES}
+    for o in objets:  # chaque objet figure dans chaque relevé (objdump : « <objet>:     file format … »)
+        if not any(ligne.startswith(o + ":") for ligne in releves["desassemblage"].splitlines()) or \
+           not any(ligne.startswith(o + ":") for ligne in releves["sections"].splitlines()):
+            raise Erreur(f"{etiquette} : {o} absent des relevés d'analyse : juge mal monté")
+    return releves
 
 
 # ------------------------------------------------------------------ exécution
@@ -197,9 +269,17 @@ def effacer(*groupes):
 
 
 def entier_compte(n):
-    if not isinstance(n, int) or n < 0:
+    if not isinstance(n, int) or isinstance(n, bool) or n < 0:
         raise Erreur("le greffon doit renvoyer un nombre de sorties comparées (entier positif)")
     return n
+
+
+def exiger_couverture(sorties_b, entrees, etape):
+    """Chaque entrée doit avoir eu au moins une sortie de B lue par le greffon pendant l'étape."""
+    oubliees = [e.nom for e in entrees if not sorties_b.couvre(e.cote, e.nom)]
+    if oubliees:
+        raise Erreur(f"{etape} : le greffon n'a lu aucune sortie de B pour {len(oubliees)} entrée(s) "
+                     f"({', '.join(oubliees[:5])}) : juge mal monté")
 
 
 # ------------------------------------------------------------------ programme
@@ -258,16 +338,21 @@ def main(argv=None):
         outils = copier_outillage(outillage, source_a, os.path.join(travail, "outillage"), projet)
         chrono = conteneur.compiler_chrono(docker, travail)
         constructions = {v: os.path.join(travail, f"construction-{v}") for v in "AB"}
-        releves = {"A": construire(docker, projet, source_a, outils, constructions["A"], "A"),
-                   "B": construire(docker, projet, source_b, outils, constructions["B"], "B")}
+        releves = {"A": construire(docker, projet, source_a, outils, constructions["A"], "A", travail),
+                   "B": construire(docker, projet, source_b, outils, constructions["B"], "B", travail)}
         journal("A et B compilés dans le conteneur")
 
         diff = ""
         if args.depot_diff and args.base and args.tete:
             diff = subprocess.run(["git", "-C", args.depot_diff, "diff", "--no-color", "--no-ext-diff", "--no-textconv", "--unified=0",
-                                   f"{args.base}...{args.tete}", "--"] + list(projet.DIFF),
+                                   f"{args.base}...{args.tete}", "--"] + list(projet.SOURCES),
                                   capture_output=True, text=True, errors="replace").stdout
         suspects = analyse.analyser(releves["A"], releves["B"], diff, prefixes=projet.PREFIXES, permis=getattr(projet, "PERMIS", ()))
+        architecture = platform.machine().lower()
+        if architecture not in ARCHITECTURES_ANALYSEES:
+            # analyse.py ne connaît que les instructions x86-64 : ailleurs, le désassemblage n'est pas analysé.
+            suspects.append({"type": "architecture", "detail": f"{architecture} : instructions des objets non analysées "
+                                                               "(analyse.py ne couvre que x86-64)"})
         for s in suspects:
             journal(f"construction suspecte : {propre(s['detail'], 300)}")
 
@@ -287,7 +372,11 @@ def main(argv=None):
             racines[v] = sorties_de(travail, f"sorties-verification-{v}", cotes)
             for cote in cotes:
                 execution.lancer(v, dossiers[cote], racines[v][cote], [("verifier", commande)], delai=3600)
-        comparees += entier_compte(projet.verifier(Sorties(racines["A"]), Sorties(racines["B"]), entrees))
+        vue_b = Sorties(racines["B"])
+        comparees += entier_compte(projet.verifier(Sorties(racines["A"]), vue_b, entrees))
+        exiger_couverture(vue_b, entrees, "vérification")
+        if comparees == 0:
+            raise Erreur("vérification : aucune sortie comparée : juge mal monté")
         fixes = {v: dict(projet.fixes(Sorties(racines[v]), corpus)) for v in "AB"}
         effacer(racines["A"], racines["B"], dossiers)
         journal(f"vérification : {comparees} sorties de B justes ({len(entrees)} entrées)")
@@ -305,9 +394,11 @@ def main(argv=None):
                 brut[v] = lancer_par_cote(execution, v, dossiers, sorties[v], plans)
             for v in "AB":
                 valeurs = {}
-                for s in projet.SCENARIOS:
-                    vals, n = projet.scenario(s, Sorties(sorties["A"]), Sorties(sorties[v]), entrees, brut[v][s])
+                for s, cote in projet.SCENARIOS.items():
+                    vue = Sorties(sorties[v])
+                    vals, n = projet.scenario(s, Sorties(sorties["A"]), vue, entrees, brut[v][s])
                     comparees += entier_compte(n)
+                    exiger_couverture(vue, [e for e in entrees if e.cote == cote], f"scénario {s} ({v})")
                     valeurs.update(vals)
                 valeurs.update(fixes[v])
                 if i >= args.chauffe:
@@ -354,8 +445,10 @@ def main(argv=None):
                 sorties[v] = sorties_de(travail, f"sorties-instructions-{v}", cotes)
                 comptes[v] = lancer_par_cote(execution, v, dossiers, sorties[v], plans, valgrind=True, delai=3600)
             for s in projet.INSTRUCTIONS:
-                _, n = projet.scenario(s, Sorties(sorties["A"]), Sorties(sorties["B"]), entrees, comptes["B"][s])
+                vue = Sorties(sorties["B"])
+                _, n = projet.scenario(s, Sorties(sorties["A"]), vue, entrees, comptes["B"][s])
                 comparees += entier_compte(n)
+                exiger_couverture(vue, [e for e in entrees if e.cote == projet.SCENARIOS[s]], f"instructions {s}")
             effacer(sorties["A"], sorties["B"], dossiers)
             rapport["instructions"] = {}
             for s in projet.INSTRUCTIONS:
@@ -380,6 +473,8 @@ def main(argv=None):
             "image": image,
             "isolation": " ".join(conteneur.ISOLATION) + " --pids-limit 2 (exécution), 64 (compilation)",
             "verification": verification,
+            "analyse": {"architecture": platform.machine().lower(), "prefixes": list(projet.PREFIXES),
+                        "permis": list(getattr(projet, "PERMIS", ()))},
             "constructions_suspectes": suspects,
         }
         rapport["duree_s"] = round(time.time() - debut, 1)
@@ -403,8 +498,11 @@ if __name__ == "__main__":
     try:
         sys.exit(main())
     except Refus as e:
-        print(f"juge : REFUS : {e}", file=sys.stderr)
+        print(f"juge : REFUS : {propre(str(e), 3000)}", file=sys.stderr)
         sys.exit(1)
     except Erreur as e:
-        print(f"juge : erreur : {e}", file=sys.stderr)
+        print(f"juge : erreur : {propre(str(e), 3000)}", file=sys.stderr)
+        sys.exit(2)
+    except Exception:  # noqa: BLE001 — défaut du juge ou du greffon : jamais un succès, jamais une trace brute
+        print("juge : erreur interne (juge ou greffon) : " + propre(traceback.format_exc(), 3000), file=sys.stderr)
         sys.exit(2)

@@ -68,7 +68,6 @@ class Projet:
     PAQUETS = []                       # l'image commune suffit
     SOURCES = ["rle.c", "rle.h"]
     SOURCES_REQUISES = ["rle.c", "rle.h"]
-    DIFF = ["rle.c", "rle.h"]
     OUTILLAGE = ["bee/juge"]
     EN_TETES_BASE = ["rle.h"]
     CONSTRUIRE = "bee/juge/construire.sh"
