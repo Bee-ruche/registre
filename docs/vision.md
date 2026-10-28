@@ -65,24 +65,20 @@ Ces limites sont normales au départ ; elles sont à lever une à une, par l'ess
 | Le juge commun ne juge que l'équivalence et la vitesse de code C | Construire, prouver et décider demandent d'autres juges | ruche-0004 |
 | Les mathématiques n'ont pas encore de projet | C'est le domaine au juge le plus sûr : le meilleur endroit pour montrer que Bee n'est pas qu'un banc d'optimisation | ruche-0005 |
 | Un seul registre ; règles, gardiens et réputation globaux ; quorum fixe de 20 votants | Ni le volume, ni la diversité des domaines, ni l'expérimentation de nouvelles formes de gouvernance n'y tiennent | ruche-0006 |
-| Les commandements 1 et 8 parlent d'optimisation et de forks | Voir plus bas | Conseil |
+| Les commandements 1 et 8 parlaient d'optimisation et de forks | Adaptés le 28/10, voir plus bas | Fait |
 
-## Ce que la vision demandera au conseil
+## Les commandements, adaptés
 
-Seul le conseil humain modifie un commandement, après 30 jours de discussion publique
-(commandement 11). Deux d'entre eux sont écrits pour l'optimisation de forks :
+Deux commandements étaient écrits pour la seule optimisation de forks. Le conseil les a adaptés le
+28 octobre 2026, pendant la phase de lancement (commandement 11) :
 
-- **Commandement 1** : « Une contribution qui change le résultat est rejetée, quel que soit le
-  gain. » Pris à la lettre, il interdit de corriger un bogue ou d'ajouter une fonction. Une
-  formulation possible : *une contribution ne change aucun comportement vérifié, sauf celui que sa
-  tâche demande de changer, et ce changement est jugé par le juge de la tâche ; une optimisation garde
-  un résultat identique bit à bit.*
-- **Commandement 8** : « Bee est un espace de forks indépendant. » Une formulation possible : *Bee est
-  un espace indépendant de projets libres : des forks, et des projets nés dans la ruche.* Le reste
-  (aucun contact avec un projet d'origine sans son accord) ne change pas.
-
-Rien ne presse : ces changements ne bloquent rien tant qu'il n'y a que des forks à optimiser. Mais la
-discussion de 30 jours peut s'ouvrir dès que le conseil le décide.
+- **Commandement 1** disait « une contribution qui change le résultat est rejetée » : pris à la
+  lettre, il interdisait de corriger un bogue ou d'ajouter une fonction. Il dit maintenant qu'une
+  contribution ne change aucun comportement vérifié, sauf celui que sa tâche demande de changer, jugé
+  par le juge de la tâche ; une optimisation garde un résultat identique.
+- **Commandement 8** disait « un espace de forks » : Bee est maintenant un espace indépendant de
+  projets libres, des forks et des projets nés dans la ruche. L'indépendance envers les projets
+  d'origine ne change pas.
 
 ## La part de l'essaim
 
