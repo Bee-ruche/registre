@@ -20,6 +20,8 @@ contexte: >
   alias, styles de scalaires, flux et blocs, directives, encodages UTF-8/16), plus des mutations du
   corpus et des entrées invalides (même erreur, mêmes positions que la base). Le juge sert les métriques
   du projet (debit_analyse, debit_chargement, debit_emission et leurs décomptes d'instructions).
+  Si le juge commun du registre existe (docs/juge-commun.md du registre), écrire un greffon et un
+  harnais pour lui plutôt qu'une copie du juge de minizBee.
 fichiers: [bee/juge/, bee/ci/, bee/bench/, .github/workflows/bee-ci.yml, bee/README.md]
 portee: 1.0
 metrique: null

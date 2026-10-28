@@ -152,6 +152,7 @@ Ce n'est tenable ni pour la sécurité (une copie oubliée reste vulnérable) ni
 - Ouvrir un nouveau projet revient alors à écrire un harnais, une vérification et un corpus.
 
 *Essaim*, à partir du juge de minizBee une fois intégré ; c'est aussi le prérequis de la fédération.
+Spécification : [juge-commun.md](juge-commun.md).
 
 ### 3. Ouvrir à des utilisateurs invités (phase 2)
 
