@@ -50,6 +50,21 @@ def git(depot, *arguments):
     return subprocess.run(["git", "-C", str(depot), *arguments], check=True, capture_output=True, text=True).stdout
 
 
+class TestWorkflows(unittest.TestCase):
+    """Un workflow illisible ne tourne pas du tout, sans prévenir : chaque fichier doit être du YAML valide."""
+
+    def test_workflows_lisibles(self):
+        import yaml
+        dossier = pathlib.Path(__file__).resolve().parent.parent / ".github" / "workflows"
+        fichiers = sorted(dossier.glob("*.yml"))
+        self.assertTrue(fichiers)
+        for f in fichiers:
+            with self.subTest(workflow=f.name):
+                donnees = yaml.safe_load(f.read_text(encoding="utf-8"))
+                self.assertIsInstance(donnees, dict)
+                self.assertIn("jobs", donnees)
+
+
 class BaseTest(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -495,13 +510,13 @@ class TestRegistre(BaseTest):
 
     # --- Juge isolé des forks (miniz-0031) ---
 
-    def contribution_jugee(self, suspects=(), sorties=914, auteur="alice"):
+    def contribution_jugee(self, suspects=(), sorties=914, auteur="alice", extra_juge=None):
         cid = self.soumettre_0099(auteur=auteur)
         verdict = self.dossier / "verdict.json"
+        juge = {"version": 1, "graine": "ab" * 16, "sorties_comparees": sorties, "constructions_suspectes": list(suspects)}
+        juge.update(extra_juge or {})
         verdict.write_text(json.dumps({"ci": "verte", "gain": 0.05, "au_dela_du_bruit": True, "instructions": INSTRUCTIONS_N6,
-                                       "lignes_modifiees": 10,
-                                       "juge": {"version": 1, "graine": "ab" * 16, "sorties_comparees": sorties,
-                                                "constructions_suspectes": list(suspects)}}), encoding="utf-8")
+                                       "lignes_modifiees": 10, "juge": juge}), encoding="utf-8")
         self.assertEqual(self.bee("enregistrer-verdict", cid, "--verdict", str(verdict), "--sha", "abc1234",
                                   "--fichiers", self.fichiers_pr())[0], 0)
         for relecteur in ("bruno", "chloe"):
@@ -527,6 +542,16 @@ class TestRegistre(BaseTest):
         self.assertEqual(len(juge["constructions_suspectes"]), 50)
         self.assertLessEqual(len(juge["constructions_suspectes"][0]["detail"]), 300)
         self.valide()
+
+    def test_juge_commun_enregistre_son_etiquette(self):
+        cid = self.contribution_jugee(extra_juge={"version": 3, "commun": "juge-v1", "projet": "miniz", "greffon": "f" * 64})
+        juge = bee.Registre(self.dossier).enregistrement(cid)[1]["verdict"]["juge"]
+        self.assertEqual((juge["version"], juge["commun"]), (3, "juge-v1"))
+        self.valide()
+
+    def test_juge_commun_etiquette_invalide_ignoree(self):
+        cid = self.contribution_jugee(extra_juge={"commun": "juge-v1; rm -rf /"})
+        self.assertIsNone(bee.Registre(self.dossier).enregistrement(cid)[1]["verdict"]["juge"]["commun"])
 
     def test_constructions_suspectes_exigent_un_gardien(self):
         self.regler_porte("false")

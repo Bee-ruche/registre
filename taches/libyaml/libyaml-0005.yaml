@@ -3,35 +3,34 @@ projet: libyaml
 categorie: parsing-serialisation
 type: test
 taille: L
-titre: "Juge isolé pour libyaml : code de la PR en conteneur, jugé de l'extérieur"
+titre: "Juge isolé pour libyaml : greffon et harnais pour le juge commun du registre"
 contexte: >
-  minizBee a un juge isolé (tâche miniz-0031, bee/juge/ du fork minizBee, modèle de menace dans son
-  bee/README.md, section « Juge isolé ») : le code C de la PR ne s'exécute qu'en conteneur sans réseau,
-  en lecture seule, sans privilège ; l'hôte vérifie chaque sortie et la compare à la base, sur le corpus
-  et sur des entrées tirées au hasard après la compilation ; les temps sont lus par le noyau (wait4) dans
-  un lanceur de la base, le décompte d'instructions sur la dernière ligne de Valgrind ; une analyse des
-  objets relève les constructions suspectes (R3 exige alors un gardien). libyaml n'a rien de tel : c'est
-  ce qui empêche de lever la porte de relecture de R3 pour ce projet (REGLES.md, valeur
-  si_juge_incomplet). Reprendre le même dispositif pour libyaml : Dockerfile, chrono.c, analyse.py,
-  isoler.sh et l'essentiel de juge.py se transposent tels quels ; le harnais d'exécution doit écrire,
-  pour chaque entrée, le flux d'événements sérialisé strictement (comme bee_flux de
-  bee/fuzz/fuzz_parse.c, tâche libyaml-0002) et la sortie de l'émetteur, que l'hôte compare octet pour
-  octet à ceux de la base. Entrées tirées au hasard : documents YAML générés (imbrication, ancres et
-  alias, styles de scalaires, flux et blocs, directives, encodages UTF-8/16), plus des mutations du
-  corpus et des entrées invalides (même erreur, mêmes positions que la base). Le juge sert les métriques
-  du projet (debit_analyse, debit_chargement, debit_emission et leurs décomptes d'instructions).
-  Si le juge commun du registre existe (docs/juge-commun.md du registre), écrire un greffon et un
-  harnais pour lui plutôt qu'une copie du juge de minizBee.
+  Le juge commun du registre (outils/juge/, docs/juge-commun.md, étiquette juge-v1) exécute le code
+  C de la PR en conteneur sans réseau, en lecture seule, sans privilège ; il compile, mesure par
+  wait4 dans son propre lanceur, compte les instructions de tout le processus, analyse les objets et
+  ne lit les sorties que de façon sûre. Le projet ne fournit qu'un GREFFON (bee/juge/projet.py, lu
+  depuis la base de la PR), un HARNAIS (bee/juge/execution.c) et un script de construction ; le
+  modèle complet et commenté est le projet jouet outils/juge/jouet/ du registre, et le greffon de
+  minizBee (tâche miniz-0032) en est un second exemple. libyaml n'a rien de tel : c'est ce qui
+  empêche de lever la porte de relecture de R3 pour ce projet (REGLES.md, valeur
+  si_juge_incomplet). Le harnais écrit, pour chaque entrée, le flux d'événements sérialisé
+  strictement (comme bee_flux de bee/fuzz/fuzz_parse.c, tâche libyaml-0002) et la sortie de
+  l'émetteur, que le greffon compare octet pour octet à ceux de la base. Entrées tirées au hasard
+  par le greffon : documents YAML générés (imbrication, ancres et alias, styles de scalaires, flux et
+  blocs, directives, encodages UTF-8/16), mutations du corpus et entrées invalides (même erreur,
+  mêmes positions que la base). Scénarios et métriques : ceux du projet (debit_analyse,
+  debit_chargement, debit_emission et leurs décomptes d'instructions). bee-ci.yml appelle
+  Bee-ruche/registre/.github/workflows/juge.yml@juge-v1.
 fichiers: [bee/juge/, bee/ci/, bee/bench/, .github/workflows/bee-ci.yml, bee/README.md]
 portee: 1.0
 metrique: null
 critere_acceptation:
-  - "CI verte (R2) sur la base et sur cette contribution ; résultats identiques à l'ancien juge sur une PR honnête"
-  - "méta-tests dans la PR : sortie anticipée, faux chronos, table de réponses précalculées, requête client Valgrind et faux résumé, tous refusés ou signalés"
-  - "le code de la PR ne s'exécute jamais hors du conteneur sans réseau ; le verdict est écrit par un processus qu'il ne contrôle pas"
-  - "modèle de menace dans bee/README.md, avec ce qui reste hors de portée ; verdict.json porte la section « juge » (sorties_comparees, constructions_suspectes) lue par le registre"
-hors_perimetre: [sources de libyaml, changement des métriques suivies, nouvelle dépendance hors image de base]
-depend_de: [libyaml-0002, miniz-0031]
+  - "CI verte (R2) sur la base et sur cette contribution ; sur une PR honnête, aucune construction suspecte et décomptes d'instructions de A et B identiques"
+  - "méta-tests dans la PR (bee/juge/test_juge.py, sur le modèle de outils/juge/test_juge.py) : sortie anticipée, faux chronos, table de réponses précalculées, requête client Valgrind et faux résumé, tous refusés ou signalés"
+  - "le code de la PR ne s'exécute jamais hors du conteneur sans réseau ; le greffon est lu depuis la base"
+  - "modèle de menace dans bee/README.md, avec ce qui reste hors de portée ; verdict.json porte la section « juge » (version, commun, sorties_comparees, constructions_suspectes) lue par le registre"
+hors_perimetre: [sources de libyaml, outils/juge/ du registre, changement des métriques suivies, nouvelle dépendance hors image]
+depend_de: [libyaml-0002]
 statut: ouverte
 cree_par: conseil
 cree_le: "2026-10-27"

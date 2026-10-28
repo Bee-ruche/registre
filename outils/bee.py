@@ -1445,6 +1445,8 @@ def cmd_enregistrer_verdict(args):
         entier = lambda v: v if isinstance(v, int) and not isinstance(v, bool) and v >= 0 else None  # noqa: E731
         verdict["juge"] = {
             "version": entier(juge.get("version")),
+            # Juge commun du registre (outils/juge/, docs/juge-commun.md) : étiquette qui a rendu le verdict.
+            "commun": juge.get("commun") if isinstance(juge.get("commun"), str) and re.fullmatch(r"juge-v\d{1,4}", juge.get("commun")) else None,
             "sorties_comparees": entier(juge.get("sorties_comparees")),
             "constructions_suspectes": [{"type": str(s.get("type", ""))[:40], "detail": str(s.get("detail", ""))[:300]}
                                         for s in suspects[:50] if isinstance(s, dict)],

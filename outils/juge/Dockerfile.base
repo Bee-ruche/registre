@@ -1,0 +1,19 @@
+# Image commune du juge Bee (outils/juge/, docs/juge-commun.md).
+#
+# Construite AVANT que le moindre fichier de la PR ne soit monté : c'est la seule étape avec réseau.
+# Ensuite, tout ce qui touche au code de la PR (compilation, exécution, mesures) tourne dans des
+# conteneurs de cette image, sans réseau, en lecture seule, sans privilège (outils/juge/juge.py).
+#
+# outils/juge/conteneur.py ajoute à ce fichier une ligne RUN avec les paquets propres au projet (PAQUETS
+# du greffon), puis l'utilisateur sans privilège. L'étiquette de l'image est l'empreinte du tout.
+#
+# Image de base épinglée par empreinte (index multi-architecture : x86-64 et ARM64), tirée du miroir
+# de Docker Hub tenu par Google (pas de limite de débit anonyme sur les machines de CI partagées).
+FROM mirror.gcr.io/library/ubuntu@sha256:24737cef17f4e22b1977df7d9a05e77c4e28b7da5b8911f8d8ccda136bf3573c
+
+# gcc, make, libc6-dev : compilation du projet, du harnais et du lanceur chrono ; binutils : analyse des
+# objets (nm, objdump) ; valgrind : décompte d'instructions ; python3-minimal : outillage des projets.
+RUN apt-get update -q \
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends \
+      gcc make binutils libc6-dev valgrind python3-minimal \
+ && rm -rf /var/lib/apt/lists/*

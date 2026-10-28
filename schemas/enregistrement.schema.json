@@ -38,6 +38,7 @@
           "additionalProperties": false,
           "properties": {
             "version": {"type": ["integer", "null"]},
+            "commun": {"type": ["string", "null"], "pattern": "^juge-v[0-9]{1,4}$"},
             "sorties_comparees": {"type": ["integer", "null"]},
             "constructions_suspectes": {"type": "array", "maxItems": 50, "items": {"type": "object", "additionalProperties": false,
               "required": ["type", "detail"], "properties": {"type": {"type": "string"}, "detail": {"type": "string"}}}}

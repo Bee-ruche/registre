@@ -151,8 +151,13 @@ Ce n'est tenable ni pour la sécurité (une copie oubliée reste vulnérable) ni
   malveillantes) suivie d'une nouvelle étiquette ; chaque fork monte de version par une PR.
 - Ouvrir un nouveau projet revient alors à écrire un harnais, une vérification et un corpus.
 
-*Essaim*, à partir du juge de minizBee une fois intégré ; c'est aussi le prérequis de la fédération.
-Spécification : [juge-commun.md](juge-commun.md).
+Spécification : [juge-commun.md](juge-commun.md). C'est aussi le prérequis de la fédération.
+
+État au 28/10 au matin : la partie commune est construite (`outils/juge/`, workflow réutilisable
+`juge.yml`, méta-tests sur un projet jouet), *lead*. Un greffon d'essai de minizBee rend exactement
+les mêmes résultats que le juge de miniz-0031 à graine égale (sorties comparées et décomptes
+d'instructions). Restent, pour l'*essaim* : le passage de minizBee au juge commun (miniz-0032, après
+l'intégration de miniz-0031) et le greffon de libyaml (libyaml-0005, après libyaml-0002).
 
 ### 3. Ouvrir à des utilisateurs invités (phase 2)
 
