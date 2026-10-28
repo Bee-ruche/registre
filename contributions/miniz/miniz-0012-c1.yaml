@@ -7,3 +7,29 @@ resume: 'tinfl_decompress : correspondances sans chevauchement d''au moins 4 oct
 statut: en_relecture
 soumise_le: '2026-10-28T07:36:02Z'
 relectures: []
+verdict:
+  ci: verte
+  gain: 0.17177510578212107
+  au_dela_du_bruit: true
+  instructions:
+    instructions_n1:
+      A: 187597150.0
+      B: 187597150.0
+      gain: 0.0
+    instructions_n6:
+      A: 357228867.0
+      B: 357228867.0
+      gain: 0.0
+    instructions_n9:
+      A: 510229776.0
+      B: 510229776.0
+      gain: 0.0
+    instructions_decompression:
+      A: 34164249.0
+      B: 31622112.0
+      gain: 0.07440927502899308
+  degradations: {}
+  lignes_modifiees: 33
+  sha: f9518592d6596e2f1db7d257826bcff97066611e
+  fichiers_controles: true
+  execution: https://github.com/Bee-ruche/minizBee/actions/runs/40651119172
