@@ -1,0 +1,9 @@
+id: libyaml-0003-c1
+tache: libyaml-0003
+auteur: bidji29
+pr: https://github.com/Bee-ruche/libyamlBee/pull/2
+resume: 'Oracle d''aller-retour de l''émetteur : chaque document est ré-émis puis ré-analysé, et doit
+  redonner le même flux d''événements aux normalisations documentées près.'
+statut: en_relecture
+soumise_le: '2026-10-28T03:17:08Z'
+relectures: []
