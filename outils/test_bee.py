@@ -2655,7 +2655,7 @@ class TestRevueAdverse(BaseParallele):
         chemin = self.dossier / f"contributions/miniz/{c1}.yaml"
         enr = bee.lire_yaml(chemin)
         enr["relectures"] = [{"relecteur": "chloe", "avis": "defavorable", "motif": "Défaut confirmé.", "le": "2026-10-27T18:00:00Z",
-                              "defaut_signale": True, "defaut_confirme": True}]
+                              "defaut_signale": True, "defaut_confirme": True, "confirme_par": "bidji29"}]
         enr.update({"statut": "ecartee", "retenue": c2, "decidee_le": "2026-10-29T00:00:00Z", "motif_decision": "x"})
         bee.ecrire_yaml(chemin, enr)
         chemin = self.dossier / f"contributions/miniz/{c2}.yaml"
@@ -2742,7 +2742,7 @@ class TestRevueAdverse(BaseParallele):
         self.assertEqual(code, 0, texte)
         chemin = self.dossier / f"contributions/miniz/{c1}.yaml"  # le conseil confirme le défaut
         enr = bee.lire_yaml(chemin)
-        enr["relectures"][-1]["defaut_confirme"] = True
+        enr["relectures"][-1].update({"defaut_confirme": True, "confirme_par": "bidji29"})
         bee.ecrire_yaml(chemin, enr)
         self.a("2026-10-28T13:00:00Z")
         self.parallele("miniz-0099", "bruno")  # bruno s'engage pour faire mieux
@@ -2899,6 +2899,159 @@ class TestRevueAdverse(BaseParallele):
         self.assertEqual(code, 0, texte)
         self.assertEqual(self.enr(c2)["statut"], "annulee")
         self.valide()
+
+    # ------------------------------------------------------------------------------------------------
+    # Troisième revue adverse (N10, N11)
+    # ------------------------------------------------------------------------------------------------
+
+    def test_N10_un_bloc_coupe_n_echappe_pas_au_controle_de_forme(self):
+        self.init_git()
+        self.assertEqual(self.bee("prendre", "miniz-0099", "--utilisateur", "alice")[0], 0)
+        self.commit("réservation d'alice")
+        chemin = self.dossier / "taches/miniz/miniz-0099.yaml"
+        propre = chemin.read_text(encoding="utf-8")
+        reservation = 'reservation:\n  utilisateur: "alice"\n  depuis: "2026-10-27T12:00:00Z"'
+        self.assertIn(reservation, propre)
+        variantes = {
+            "N10a commentaire en colonne 0 dans le bloc des inscrits": propre.replace(
+                "statut: reservee", 'statut: reservee\nparalleles:\n# approche : SIMD\n  - utilisateur: "chloe"\n'
+                                    '    depuis: "2026-10-27T12:00:00Z"', 1),
+            "N10b réservation d'un autre en ligne, continuée en colonne 0": propre.replace(
+                reservation, 'reservation: {utilisateur: "alice",\ndepuis: "2026-10-27T12:00:00Z"}'),
+        }
+        for i, (nom, texte) in enumerate(variantes.items()):
+            with self.subTest(nom):
+                git(self.dossier, "switch", "-q", "main")
+                self.branche(f"forme-{i}")
+                chemin.write_text(texte, encoding="utf-8")
+                self.assertIsInstance(bee.charger_texte_yaml(texte), dict)  # du YAML valide, lu sans erreur
+                self.commit()
+                code, sortie = self.bee("valider")
+                self.assertEqual(code, 1, sortie)
+                self.assertIn("ne se relit pas seul", sortie)
+                code, sortie = self.verifier("chloe", "--fusion-auto")
+                self.assertEqual(code, 1, sortie)
+        # Un commentaire en colonne 0 entre deux clés reste permis, et les robots écrivent toujours une forme acceptée.
+        git(self.dossier, "switch", "-q", "main")
+        chemin.write_text(propre.replace("\nreservation:", "\n# titulaire\nreservation:", 1), encoding="utf-8")
+        self.valide()
+        self.a("2026-10-27T13:00:00Z")
+        self.parallele("miniz-0099", "chloe")
+        self.valide()
+        self.a("2026-10-30T12:30:00Z")
+        code, sortie = self.bee("liberer-expirees")
+        self.assertEqual(code, 0, sortie)
+        self.assertEqual(self.tache("miniz-0099")["reservation"]["utilisateur"], "chloe")
+        self.valide()
+
+    def preparer_defaut(self):
+        """bruno, gardien, inscrit en parallèle ; c1 d'alice en course ; david lui a signalé un défaut (commité)."""
+        (self.dossier / "gouvernance/gardiens.yaml").write_text("membres:\n  - pseudo: bruno\n", encoding="utf-8")
+        self.fermer_porte()
+        self.assertEqual(self.bee("inscrire", "--pseudo", "david", "--compte-cree-le", "2020-01-01")[0], 0)
+        self.assertEqual(self.bee("prendre", "miniz-0099", "--utilisateur", "alice")[0], 0)
+        self.a("2026-10-27T13:00:00Z")
+        self.parallele("miniz-0099", "bruno")
+        self.a("2026-10-27T14:00:00Z")
+        c1 = self.soumettre("miniz-0099", "alice", 99102)
+        self.verdict(c1, 0.05)
+        code, texte = self.bee("relire", c1, "--utilisateur", "david", "--avis", "defavorable", "--defaut",
+                               "--motif", "Lecture hors limites sur une entrée vide (reproduit).")
+        self.assertEqual(code, 0, texte)
+        self.init_git()
+        self.a("2026-10-27T15:00:00Z")
+        return c1, self.dossier / f"contributions/miniz/{c1}.yaml"
+
+    def test_N11a_un_defaut_n_est_confirme_que_par_un_tiers_dans_sa_propre_pr(self):
+        c1, chemin = self.preparer_defaut()
+        # Le gardien bruno se retire et, dans la même PR, signale et confirme son propre défaut : refusé.
+        self.branche("auto-confirmation")
+        self.assertEqual(self.bee("liberer", "miniz-0099", "--utilisateur", "bruno")[0], 0)
+        enr = bee.lire_yaml(chemin)
+        enr["relectures"].append({"relecteur": "bruno", "avis": "defavorable", "motif": "Défaut grave (non reproduit).",
+                                  "le": "2026-10-27T15:00:00Z", "sha": "abc1234", "defaut_signale": True, "defaut_confirme": True,
+                                  "confirme_par": "bruno"})
+        bee.ecrire_yaml(chemin, enr)
+        self.commit()
+        code, texte = self.verifier("bruno", "--fusion-auto")
+        self.assertEqual(code, 1, texte)
+        self.assertIn("ne confirme pas son propre défaut", texte)
+        code, texte = self.bee("valider")  # poussé sans PR, refusé aussi
+        self.assertEqual(code, 1, texte)
+        # Il se retire et confirme le défaut de david dans la même PR : encore en course dans la base, refusé.
+        git(self.dossier, "switch", "-q", "main")
+        self.branche("esquive")
+        self.assertEqual(self.bee("liberer", "miniz-0099", "--utilisateur", "bruno")[0], 0)
+        self.assertEqual(self.bee("confirmer-defaut", c1, "--relecteur", "david", "--utilisateur", "bruno")[0], 0)
+        self.commit()
+        code, texte = self.verifier("bruno", "--fusion-auto")
+        self.assertEqual(code, 1, texte)
+        self.assertIn("est en course sur la tâche miniz-0099", texte)
+        # Engagé, l'outil le lui refuse ; david ne confirme pas son propre défaut ; chloe n'est pas privilégiée.
+        git(self.dossier, "switch", "-q", "main")
+        for qui in ("bruno", "david", "chloe"):
+            code, texte = self.bee("confirmer-defaut", c1, "--relecteur", "david", "--utilisateur", qui)
+            self.assertEqual(code, 1, f"{qui} : {texte}")
+        # Le conseil confirme au nom d'un autre : refusé.
+        self.branche("au-nom-d-un-autre")
+        enr = bee.lire_yaml(chemin)
+        enr["relectures"][0].update({"defaut_confirme": True, "confirme_par": "bruno"})
+        bee.ecrire_yaml(chemin, enr)
+        self.commit()
+        code, texte = self.verifier("bidji29", "--fusion-auto")
+        self.assertEqual(code, 1, texte)
+        self.assertIn("porte le nom de l'auteur de la PR", texte)
+        # Le conseil, tiers hors de la course, confirme dans sa propre PR : accepté.
+        git(self.dossier, "checkout", "-q", "--", ".")
+        git(self.dossier, "switch", "-q", "main")
+        self.branche("confirmation")
+        code, texte = self.bee("confirmer-defaut", c1, "--relecteur", "david", "--utilisateur", "bidji29")
+        self.assertEqual(code, 0, texte)
+        self.commit()
+        code, texte = self.verifier("bidji29", "--fusion-auto")
+        self.assertEqual(code, 0, texte)
+        self.valide()
+
+    def test_N11b_un_defaut_confirme_perime_avec_un_nouveau_commit_juge(self):
+        c1, chemin = self.preparer_defaut()
+        self.assertEqual(self.bee("liberer", "miniz-0099", "--utilisateur", "bruno")[0], 0)
+        self.relire(c1, "chloe", "bruno")
+        self.assertEqual(self.bee("confirmer-defaut", c1, "--relecteur", "david", "--utilisateur", "bidji29")[0], 0)
+        self.a("2026-10-29T15:00:00Z")
+        code, texte = self.acceptation(c1)
+        self.assertEqual(code, 1, texte)
+        self.assertIn("un défaut confirmé reste à résoudre", texte)
+        # alice corrige : nouveau commit jugé, relu à nouveau. Le défaut visait l'ancien commit : il ne bloque plus.
+        verdict = json.loads((self.dossier / "verdict.json").read_text(encoding="utf-8"))
+        (self.dossier / "verdict.json").write_text(json.dumps(verdict), encoding="utf-8")
+        self.assertEqual(self.bee("enregistrer-verdict", c1, "--verdict", str(self.dossier / "verdict.json"), "--sha", "def5678",
+                                  "--fichiers", self.fichiers_pr())[0], 0)
+        enr = bee.lire_yaml(chemin)
+        for r in enr["relectures"]:
+            if r["relecteur"] in ("chloe", "bruno"):
+                r["sha"] = "def5678"
+        bee.ecrire_yaml(chemin, enr)
+        code, texte = self.acceptation(c1)
+        self.assertEqual(code, 0, texte)
+
+    def test_N11c_seul_un_defaut_confirme_par_un_tiers_rapporte(self):
+        c1 = self.soumettre_0099("alice")
+        self.assertEqual(self.bee("inscrire", "--pseudo", "david", "--compte-cree-le", "2020-01-01")[0], 0)
+        chemin = self.dossier / f"contributions/miniz/{c1}.yaml"
+        enr = bee.lire_yaml(chemin)
+        defaut = {"avis": "defavorable", "motif": "Lecture hors limites (reproduit).", "le": "2026-10-27T12:00:00Z",
+                  "defaut_signale": True, "defaut_confirme": True}
+        enr["relectures"] = [{"relecteur": "chloe", **defaut, "confirme_par": "bidji29"},
+                             {"relecteur": "david", **defaut, "confirme_par": "david"},
+                             {"relecteur": "bruno", **defaut}]
+        bee.ecrire_yaml(chemin, enr)
+        niveaux = bee.calculer_niveaux(bee.Registre(self.dossier))
+        self.assertEqual((niveaux["chloe"]["relectures"], niveaux["david"]["relectures"], niveaux["bruno"]["relectures"]), (2, 0, 0))
+        code, texte = self.bee("valider")
+        self.assertEqual(code, 1, texte)
+        self.assertIn("relectures/1", texte)
+        self.assertIn("relectures/2", texte)
+        self.assertNotIn("relectures/0 : un défaut", texte)
 
 
 MANIFESTE_REMPLI = """tache: miniz-0099

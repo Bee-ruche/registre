@@ -614,7 +614,7 @@ def generer(bee, reg, sortie):
         c.append("<h2>Relectures</h2>")
         if x.get("relectures"):
             c.append("".join(f"<div class='note'><p class='doux'>{e(r.get('relecteur', ''))}, avis {e(r.get('avis', ''))}, le {date_fr(r.get('le', ''))}"
-                             f"{', défaut signalé' if r.get('defaut_signale') else ''}{', défaut confirmé' if r.get('defaut_confirme') else ''}</p><p>{e(r.get('motif', ''))}</p></div>"
+                             f"{', défaut signalé' if r.get('defaut_signale') else ''}{((', défaut confirmé par ' + e(r.get('confirme_par'))) if r.get('confirme_par') else ', défaut confirmé') if r.get('defaut_confirme') else ''}</p><p>{e(r.get('motif', ''))}</p></div>"
                              for r in x["relectures"]))
         else:
             c.append("<p class='vide'>Aucune relecture pour l'instant.</p>")

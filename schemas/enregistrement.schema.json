@@ -60,6 +60,7 @@
           "le": {"type": "string"},
           "defaut_signale": {"type": "boolean"},
           "defaut_confirme": {"type": "boolean"},
+          "confirme_par": {"type": "string", "minLength": 1, "description": "Qui a confirmé le défaut : la CI, le conseil, un gardien ou un Confirmé, jamais le relecteur qui l'a signalé"},
           "sha": {"type": "string", "pattern": "^[0-9a-f]{7,40}$"}
         }
       }

@@ -119,6 +119,32 @@ def problemes_de_forme(texte, donnees):
         if len(motif.findall(texte)) != 1:
             problemes.append(f"clé de premier niveau « {cle} » : elle s'écrit `{cle}:` en colonne 0, une seule fois, sans "
                              "guillemets ni espace avant les deux-points")
+    if problemes:
+        return problemes
+    # Le bloc que les robots éditent (_bloc_racine) doit être exactement la valeur lue : relu seul, il donne
+    # {cle: valeur} ; et les blocs couvrent tout le fichier, hors lignes vides et commentaires. Un commentaire en colonne
+    # 0 au milieu d'une liste, ou un objet en ligne continué en colonne 0, coupent le bloc : refusés.
+    lignes = texte.split("\n")
+    couvertes = set()
+    for cle, valeur in donnees.items():
+        position = _bloc_racine(lignes, str(cle))
+        if position is None:
+            problemes.append(f"clé de premier niveau « {cle} » : bloc introuvable")
+            continue
+        debut, fin = position
+        couvertes.update(range(debut, fin))
+        try:
+            seul = charger_texte_yaml("\n".join(lignes[debut:fin]) + "\n")
+        except ErreurBee:
+            seul = None
+        if not (isinstance(seul, dict) and list(seul) == [cle] and seul[cle] == valeur):
+            problemes.append(f"clé de premier niveau « {cle} » : son bloc (lignes {debut + 1} à {fin}) ne se relit pas seul avec "
+                             "la valeur du fichier ; ses lignes suivantes s'écrivent indentées (ni commentaire en colonne 0 "
+                             "dans le bloc, ni valeur en ligne continuée en colonne 0)")
+    orphelines = [i + 1 for i, ligne in enumerate(lignes)
+                  if i not in couvertes and ligne.strip() and not ligne.lstrip().startswith("#")]
+    if orphelines:
+        problemes.append(f"ligne(s) {', '.join(map(str, orphelines[:5]))} hors de tout bloc de premier niveau")
     return problemes
 
 
@@ -313,6 +339,7 @@ class Registre:
         self.dossier_schemas = pathlib.Path(schemas or RACINE_OUTIL / "schemas")
         self._schemas = {}
         self.problemes_chargement = []
+        self._formes_a_controler = []  # (chemin, texte, données) : contrôle de forme fait par verifier_registre seul
         self.config = self._lire("bee.yaml") or {}
         conseil = self._lire("gouvernance/conseil.yaml") or {}
         self.conseil = {m.get("pseudo") for m in conseil.get("membres", []) if isinstance(m, dict)}
@@ -360,8 +387,12 @@ class Registre:
         except ErreurBee as e:
             self.problemes_chargement.append(str(e))
             return None
-        self.problemes_chargement += [f"{self.rel(chemin)} : {p}" for p in problemes_de_forme(texte, donnees)]
+        self._formes_a_controler.append((chemin, texte, donnees))
         return donnees
+
+    def problemes_forme(self):
+        """Forme des fichiers lus (problemes_de_forme) : coûteuse, elle n'est contrôlée que par verifier_registre."""
+        return [f"{self.rel(c)} : {p}" for c, texte, donnees in self._formes_a_controler for p in problemes_de_forme(texte, donnees)]
 
     def _dossier(self, motif):
         resultat = {}
@@ -503,10 +534,27 @@ def concurrents_de(reg, enr):
     return participants_course(reg, enr.get("tache")) - {enr.get("auteur")}
 
 
+CLES_CONFIRMATION = ("defaut_confirme", "confirme_par")
+
+
+def confirme_par_un_tiers(relecture):
+    """Un défaut est confirmé par un tiers (confirme_par) : la CI, le conseil, un gardien ou un Confirmé autre que le
+    relecteur qui l'a signalé. Seul un tel défaut rapporte (+2) à son relecteur."""
+    par = relecture.get("confirme_par")
+    return bool(relecture.get("defaut_confirme")) and bool(par) and par != relecture.get("relecteur")
+
+
+def est_confirmation(ancienne, nouvelle):
+    """`nouvelle` est `ancienne`, un défaut signalé pas encore confirmé, à laquelle on n'a ajouté que la confirmation."""
+    return (isinstance(ancienne, dict) and isinstance(nouvelle, dict) and bool(ancienne.get("defaut_signale"))
+            and not any(k in ancienne for k in CLES_CONFIRMATION) and nouvelle.get("defaut_confirme") is True
+            and {k: v for k, v in nouvelle.items() if k not in CLES_CONFIRMATION} == ancienne)
+
+
 def avis_recevable(relecture, concurrents):
     """Un concurrent ne peut que reconnaître la contribution d'un autre : seul son avis favorable, sans défaut, compte.
-    Exception : un défaut CONFIRMÉ (par la CI, le conseil ou un Confirmé) compte toujours, quel que soit le relecteur :
-    il n'est plus un avis, c'est un fait établi par un tiers."""
+    Exception : un défaut CONFIRMÉ (par un tiers : la CI, le conseil, un gardien ou un Confirmé) compte toujours, quel
+    que soit le relecteur : il n'est plus un avis, c'est un fait établi par un tiers."""
     return relecture.get("relecteur") not in concurrents or bool(relecture.get("defaut_confirme")) or (
         relecture.get("avis") == "favorable" and not relecture.get("defaut_signale"))
 
@@ -801,7 +849,7 @@ def calculer_niveaux(reg):
             stats[enr["auteur"]]["integrees"] += 1
         for r in enr.get("relectures") or []:
             s = stats[r.get("relecteur")]
-            if r.get("defaut_confirme"):
+            if confirme_par_un_tiers(r):  # un défaut ne rapporte que confirmé par un tiers
                 s["relectures"] += 2
             elif statut == "annulee" and r.get("avis") == "favorable" and not enr.get("jamais_integree"):
                 # Seule une contribution intégrée puis annulée coûte un point à qui l'avait approuvée ; une contribution
@@ -884,7 +932,7 @@ def depouiller_proposition(reg, identifiant, niveaux, instant):
 # --------------------------------------------------------------------------
 
 def verifier_registre(reg):
-    problemes = list(reg.problemes_chargement)
+    problemes = list(reg.problemes_chargement) + reg.problemes_forme()
     ajouter = problemes.append
 
     def selon_schema(nom, chemin, donnees):
@@ -1063,6 +1111,9 @@ def verifier_registre(reg):
                 ajouter(f"{lieu} : relectures/{i} : {r['relecteur']} a déjà relu cette contribution")
             vus.add(r["relecteur"])
             instant_valide(chemin, r["le"], f"relectures/{i}/le")
+            if (r.get("defaut_confirme") or "confirme_par" in r) and not (r.get("defaut_signale") and confirme_par_un_tiers(r)):
+                ajouter(f"{lieu} : relectures/{i} : un défaut confirmé est un défaut signalé, confirmé par un tiers nommé dans "
+                        "confirme_par (la CI, le conseil, un gardien ou un Confirmé), jamais par son relecteur")
 
     for stem, (chemin, prop) in reg.propositions.items():
         if not selon_schema("proposition", chemin, prop):
@@ -1519,18 +1570,46 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
                 exiger(str(auteurs_pr.get(nouveau.get("pr")) or "").lower() == str(nouveau.get("auteur") or "").lower() != "",
                        f"{chemin} : la PR {nouveau.get('pr')} doit avoir été ouverte par {nouveau.get('auteur')} sur GitHub "
                        f"(auteur relevé : {auteurs_pr.get(nouveau.get('pr')) or 'inconnu'})")
+            # Confirmation d'un défaut (N11) : toujours par un tiers, l'auteur de la PR, nommé dans confirme_par : la CI, le
+            # conseil, un gardien ou un Confirmé, ni le relecteur qui l'a signalé, ni un participant à la course de la
+            # tâche (avant ou après la PR), ni l'auteur de la contribution.
+            anciennes, nouvelles = ancien.get("relectures") or [], nouveau.get("relectures") or []
+            if isinstance(anciennes, list) and isinstance(nouvelles, list):
+                t_base = lire_yaml_ref(reg.racine, base, f"taches/{partie[1]}/{nouveau.get('tache')}.yaml")
+                t_base = t_base if isinstance(t_base, dict) else {}
+                engages_base = {p.get("utilisateur") for p in paralleles_de(t_base)}
+                if t_base.get("statut") == "reservee":
+                    engages_base.add((t_base.get("reservation") or {}).get("utilisateur"))
+                for i, r in enumerate(nouvelles):
+                    avant = anciennes[i] if i < len(anciennes) else None
+                    if not isinstance(r, dict) or not r.get("defaut_confirme") or (isinstance(avant, dict) and avant.get("defaut_confirme")):
+                        continue
+                    exiger(avant is not None and est_confirmation(avant, r),
+                           f"{chemin} : un défaut se confirme sur la relecture d'un autre qui l'a signalé, sans rien y changer "
+                           "d'autre (bee confirmer-defaut) ; une relecture ne confirme jamais son propre défaut")
+                    exiger(r.get("confirme_par") == auteur, f"{chemin} : la confirmation porte le nom de l'auteur de la PR ({auteur})")
+                    exiger(auteur != r.get("relecteur"), f"{chemin} : {auteur} ne confirme pas son propre défaut : un tiers le confirme")
+                    exiger(est_robot or est_conseil or auteur in reg.gardiens or niveau == "Confirmé",
+                           f"{chemin} : un défaut n'est confirmé que par la CI, le conseil, un gardien ou un Confirmé")
+                    exiger(auteur != nouveau.get("auteur") and auteur not in participants_course(reg, nouveau.get("tache"))
+                           and auteur not in engages_base,
+                           f"{chemin} : {auteur} est en course sur la tâche {nouveau.get('tache')} : il n'y confirme pas de défaut "
+                           "(commandement 3)")
             if differences == {"relectures"}:
                 natures.append("relecture")
                 exiger(ancien.get("statut") == "en_relecture",
                        f"{chemin} : on ne relit qu'une contribution en relecture (statut : {ancien.get('statut')})")
-                anciennes, nouvelles = ancien.get("relectures") or [], nouveau.get("relectures") or []
-                if exiger(nouvelles[:len(anciennes)] == anciennes, f"{chemin} : les relectures sont en ajout seul"):
+                changees = [i for i in range(min(len(anciennes), len(nouvelles))) if nouvelles[i] != anciennes[i]]
+                if exiger(len(nouvelles) >= len(anciennes) and all(est_confirmation(anciennes[i], nouvelles[i]) for i in changees),
+                          f"{chemin} : les relectures sont en ajout seul ; on n'en change aucune, sauf pour confirmer le défaut "
+                          "qu'un autre a signalé (bee confirmer-defaut)"):
                     concurrents = concurrents_de(reg, nouveau)
                     for r in nouvelles[len(anciennes):]:
                         exiger(r.get("relecteur") == auteur, f"{chemin} : une relecture ajoutée doit être celle de {auteur}")
                         exiger(r.get("relecteur") != nouveau.get("auteur"), f"{chemin} : on ne relit pas sa propre contribution")
-                        exiger(not r.get("defaut_confirme") or est_robot or niveau == "Confirmé" or est_conseil or auteur in reg.gardiens,
-                               f"{chemin} : un défaut n'est confirmé que par la CI, le conseil, un gardien ou une relecture Confirmé")
+                        exiger(not any(k in r for k in CLES_CONFIRMATION),
+                               f"{chemin} : une relecture ne confirme pas son propre défaut : la confirmation vient d'un tiers "
+                               "(la CI, le conseil, un gardien ou un Confirmé, bee confirmer-defaut)")
                         # Ajoutée maintenant, par un concurrent : seul un avis favorable sans défaut (sa date déclarée
                         # n'y change rien).
                         exiger(r.get("relecteur") not in concurrents or (
@@ -2257,6 +2336,35 @@ def cmd_relire(args):
     return 0
 
 
+def cmd_confirmer_defaut(args):
+    """Un tiers (la CI, le conseil, un gardien ou un Confirmé) confirme, après l'avoir reproduit, le défaut qu'un autre a
+    signalé. Le défaut confirmé bloque R3 tant que le commit jugé est celui qu'il visait, et rapporte +2 à son relecteur."""
+    reg = Registre(args.registre)
+    u = args.utilisateur
+    if u not in reg.robots:
+        reg.exiger_membre(u)
+    chemin, enr = reg.enregistrement(args.contribution)
+    if enr.get("statut") != "en_relecture":
+        raise ErreurBee(f"{args.contribution} n'est plus en relecture (statut : {enr.get('statut')})")
+    if not (u in reg.robots or u in reg.conseil or u in reg.gardiens or niveau_de(calculer_niveaux(reg), u) == "Confirmé"):
+        raise ErreurBee("un défaut n'est confirmé que par la CI, le conseil, un gardien ou un Confirmé")
+    if u == args.relecteur:
+        raise ErreurBee("on ne confirme pas son propre défaut : un tiers le confirme")
+    if u == enr.get("auteur") or u in participants_course(reg, enr.get("tache")):
+        raise ErreurBee(f"{u} est en course sur la tâche {enr.get('tache')} : il n'y confirme pas de défaut (commandement 3)")
+    relectures = list(enr.get("relectures") or [])
+    for i, r in enumerate(relectures):
+        if r.get("relecteur") == args.relecteur and r.get("defaut_signale") and not r.get("defaut_confirme"):
+            relectures[i] = {**r, "defaut_confirme": True, "confirme_par": u}
+            break
+    else:
+        raise ErreurBee(f"{args.relecteur} n'a pas signalé de défaut à confirmer sur {args.contribution}")
+    ecrire_yaml(chemin, {**enr, "relectures": relectures})
+    print(f"✓ défaut signalé par {args.relecteur} confirmé sur {args.contribution}. "
+          f"Publiez : bee publier --titre 'Défaut confirmé {args.contribution}'")
+    return 0
+
+
 def cmd_voter(args):
     reg = Registre(args.registre)
     reg.exiger_membre(args.utilisateur)
@@ -2726,12 +2834,14 @@ def raisons_r3(reg, cid):
     # (seul son avis favorable compte) et ne vote pas sur elle (commandement 3). Sans concurrence, rien ne change.
     concurrents = concurrents_de(reg, enr)
     relectures = [r for r in enr.get("relectures") or [] if avis_recevable(r, concurrents)]
-    exiger(not any(r.get("defaut_confirme") for r in relectures), "un défaut confirmé reste à résoudre")
     sha_verdict = verdict.get("sha")
 
     def actuelle(r):
         """Une relecture ne vaut que pour le commit qu'elle a relu (celui du verdict)."""
         return not sha_verdict or r.get("sha") == sha_verdict
+
+    # Un défaut confirmé est lié au commit jugé, comme un avis défavorable : un nouveau commit jugé le rend périmé.
+    exiger(not any(r.get("defaut_confirme") and actuelle(r) for r in relectures), "un défaut confirmé reste à résoudre")
 
     privilegies = reg.privilegies()
     autres = [r for r in relectures if r.get("relecteur") != auteur]
@@ -3178,6 +3288,12 @@ def construire_analyseur():
     p.add_argument("--avis", required=True, choices=["favorable", "defavorable"])
     p.add_argument("--motif", required=True, help="ce que vous avez vérifié, ce que vous avez trouvé")
     p.add_argument("--defaut", action="store_true", help="vous signalez un défaut reproductible (décrit dans le motif)")
+
+    p = ajouter("confirmer-defaut", cmd_confirmer_defaut,
+                "Confirme le défaut qu'un autre a signalé, après l'avoir reproduit (CI, conseil, gardien ou Confirmé).")
+    p.add_argument("contribution")
+    p.add_argument("--relecteur", required=True, help="qui a signalé le défaut")
+    p.add_argument("--utilisateur", required=True, help="vous, qui le confirmez")
 
     p = ajouter("enregistrer-mesure", cmd_enregistrer_mesure,
                 "Transforme un rapport ab.py (--json) en fiche de mesure pour une contribution, sur votre configuration.")

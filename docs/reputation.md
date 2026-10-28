@@ -20,7 +20,7 @@ Pendant l'amorçage (jusqu'à la phase 3), les niveaux ne limitent pas la taille
 | --- | --- |
 | Relecture favorable d'une contribution finalement intégrée | +1 |
 | Relecture défavorable d'une contribution finalement refusée | +1 |
-| Défaut signalé, puis confirmé par le conseil ou la CI | +2 |
+| Défaut signalé, puis confirmé par un tiers (la CI, le conseil, un gardien ou un Confirmé autre que celui qui l'a signalé, `confirme_par`) | +2 |
 | Relecture favorable d'une contribution intégrée puis annulée | −1 |
 | Relecture d'une contribution annulée sans avoir été intégrée (PR fermée sans fusion, marque `jamais_integree`) | 0 |
 | Relecture d'une contribution écartée au profit d'une concurrente (R3), favorable, défavorable ou défaut confirmé | 0 |
