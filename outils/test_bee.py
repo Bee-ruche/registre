@@ -2431,6 +2431,15 @@ class TestRevueAdverse(BaseParallele):
         return texte.split("contribution ", 1)[1].split(" ", 1)[0]
 
     def test_I3_le_conseil_integre_une_course_de_la_ruche(self):
+        # La copie du registre réel peut avoir ruche-0001 en relecture : on repart d'une tâche ouverte, sans contribution.
+        chemin_tache = self.dossier / "taches/ruche/ruche-0001.yaml"
+        tache = bee.lire_yaml(chemin_tache)
+        for cle in ("reservation", "contribution", "paralleles"):
+            tache.pop(cle, None)
+        tache["statut"] = "ouverte"
+        bee.ecrire_yaml(chemin_tache, tache)
+        for ancienne in (self.dossier / "contributions/ruche").glob("ruche-0001-c*.yaml"):
+            ancienne.unlink()
         self.init_git()
         self.assertEqual(self.bee("prendre", "ruche-0001", "--utilisateur", "alice")[0], 0)
         self.a("2026-10-27T13:00:00Z")
