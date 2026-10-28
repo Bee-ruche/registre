@@ -1098,6 +1098,13 @@ class TestFork(BaseTest):
         self.assertEqual(code, 1, texte)
         self.assertIn("existe déjà", texte)
 
+    def test_manifeste_chemin_explicite_cree_le_dossier(self):
+        cible = self.fork / "manifestes" / "miniz-0099.yaml"
+        self.assertFalse(cible.parent.exists())
+        code, texte = self.bee("manifeste", "miniz-0099", "--utilisateur", "alice", "--sortie", str(cible))
+        self.assertEqual(code, 0, texte)
+        self.assertTrue(cible.exists())
+
     def test_manifeste_par_tache(self):
         chemin = self.fork / "miniz_tdef.c"
         chemin.write_text(chemin.read_text().replace("ligne 5\n", "ligne cinq\n"), encoding="utf-8")

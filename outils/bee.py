@@ -1210,6 +1210,8 @@ def cmd_manifeste(args):
         if sortie.is_dir():
             # Un dossier (la racine du fork) : le manifeste va à sa place, manifestes/<tâche>.yaml.
             sortie = sortie / chemin_manifeste(t["id"])
+        if sortie.parent.name == "manifestes":
+            # Le dossier manifestes/ du fork peut ne pas exister encore (premier manifeste par tâche).
             sortie.parent.mkdir(parents=True, exist_ok=True)
         if sortie.exists():
             raise ErreurBee(f"{sortie} existe déjà : supprimez-le ou choisissez un autre fichier (rien n'a été écrasé)")

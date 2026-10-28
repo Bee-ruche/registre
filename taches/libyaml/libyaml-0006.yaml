@@ -1,0 +1,33 @@
+id: libyaml-0006
+projet: libyaml
+categorie: parsing-serialisation
+type: test
+taille: M
+titre: "Aller-retour par l'API document (yaml_parser_load, yaml_emitter_dump) et réglages de l'émetteur"
+contexte: >
+  L'oracle d'aller-retour de libyaml-0003 (bee/tests/aller_retour.c) passe par l'API événements
+  (yaml_emitter_emit) avec les réglages par défaut. Or la métrique debit_emission mesure
+  yaml_emitter_dump d'un document chargé (bee/bench/banc.c, bee_passe_emission) : une optimisation
+  de src/dumper.c seul, ou du chemin de chargement (src/loader.c), ne serait pas jugée par
+  l'aller-retour. Étendre aller_retour.c (ou un second harnais) : (1) charger chaque document par
+  yaml_parser_load, le ré-émettre par yaml_emitter_dump, ré-analyser et comparer le flux
+  d'événements au flux d'origine, avec les mêmes normalisations N1 à N4 et, s'il en faut d'autres
+  (ancres renommées par le dumper, par exemple), les ajouter une par une, justifiées par une règle de
+  src/dumper.c ; (2) répéter l'aller-retour des deux API avec des réglages non par défaut de
+  l'émetteur : canonique (yaml_emitter_set_canonical), unicode, largeur et indentation extrêmes,
+  sauts de ligne CR et CRLF. Empreintes propres à chaque configuration, régénérées sur la base.
+  Constats de l'agent de libyaml-0003 (manifeste de cette tâche) : le corpus ne déclenche aucune
+  normalisation, les 22 cas intégrés à aller_retour.c le font.
+fichiers: [bee/tests/aller_retour.c, bee/tests/empreintes-aller-retour.txt, bee/tests/lancer.sh, bee/Makefile]
+portee: 0.8
+metrique: null
+critere_acceptation:
+  - "CI verte (R2), x86-64 et ARM64"
+  - "l'aller-retour par yaml_emitter_dump est stable sur tout le corpus et les cas intégrés ; normalisations supplémentaires listées et justifiées"
+  - "une mutation de src/dumper.c qui change la structure ré-analysée (par exemple ancres ou alias perdus) fait échouer le test"
+  - "chaque réglage non par défaut a ses empreintes ; durée totale de bee/tests/lancer.sh inférieure à 30 s en CI"
+hors_perimetre: [sources de libyaml, corpus (bee/corpus/), oracle d'analyse (oracle.c)]
+depend_de: [libyaml-0003]
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-28"
