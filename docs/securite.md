@@ -28,7 +28,7 @@ Chaque fork fournit `bee/sandbox/Dockerfile`. Un environnement jetable et isolé
 
 - **Évaluation en lecture seule.** Le code d'une PR n'est exécuté que par des jobs sans secret et avec un jeton en lecture seule.
 - **Écriture par du code de confiance.** Le job qui fusionne ou écrit un verdict utilise l'outil `bee` de la branche principale. Il lit les fichiers de la PR comme des données, sans les exécuter.
-- **Jamais de workflow fusionné par la machine.** Le jeton d'intégration (`BEE_INTEGRATION_TOKEN`) n'a pas le droit de modifier un workflow GitHub Actions : une PR qui change la CI d'un fork (son juge) n'est jamais fusionnée automatiquement, même quand R3 est satisfaite. Le conseil la fusionne, et le workflow d'intégration la consigne ensuite, si elle l'a été sur le commit jugé.
+- **Jamais de workflow fusionné par la machine.** Une PR qui change un workflow GitHub Actions d'un fork (son juge) n'est jamais fusionnée automatiquement, même quand R3 est satisfaite : le workflow d'intégration lit la liste des fichiers de la PR et s'arrête (et s'arrête aussi s'il ne peut pas la lire), quels que soient les droits de `BEE_INTEGRATION_TOKEN`. Le conseil la fusionne, et le workflow d'intégration la consigne ensuite, si elle l'a été sur le commit jugé.
 - **Schémas de confiance.** `bee` charge toujours ses schémas depuis son propre dossier : une PR qui modifierait `schemas/` ne peut pas assouplir sa propre validation, et cette modification est de toute façon réservée au conseil.
 
 ## 4. Rien de caché (commandement 7)

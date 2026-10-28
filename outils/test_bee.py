@@ -2175,7 +2175,11 @@ if args[:2] == ["run", "download"]:
         json.dump(pr["verdict"], f)
     sys.exit(0)
 if args[:1] == ["api"] and "/pulls/" in args[1] and args[1].endswith("/files"):
-    print("miniz_tdef.c")
+    proprietaire, depot, _, numero = args[1].split("/")[1:5]
+    pr = etat.get(f"https://github.com/{proprietaire}/{depot}/pull/{numero}") or {}
+    if pr.get("fichiers_illisibles"):
+        sys.exit(1)
+    print("\n".join(pr.get("fichiers") or ["miniz_tdef.c"]))
     sys.exit(0)
 if args[:1] == ["api"] and args[1].startswith("users/"):
     print("2020-01-01")
@@ -2289,6 +2293,24 @@ class TestRevueAdverse(BaseParallele):
         _, etat, _ = self.etape("Intégrer")
         self.assertEqual(etat[PR_MINIZ + "99101"]["state"], "MERGED")
         self.assertEqual((self.enr(c1)["statut"], self.enr(c2)["statut"]), ("integree", "ecartee"))
+
+    def test_une_pr_qui_modifie_un_workflow_de_ci_n_est_jamais_fusionnee_automatiquement(self):
+        c1, c2 = self.course_relue()
+        etats = {PR_MINIZ + "99101": {"state": "OPEN", "head": "abc1234", "auteur": "bruno",
+                                      "fichiers": ["bee/ci/verdict.py", ".github/workflows/bee-ci.yml"]},
+                 PR_MINIZ + "99102": {"state": "OPEN", "head": "abc1234", "auteur": "alice", "fichiers_illisibles": True}}
+        self.a("2026-11-02T00:00:00Z")  # au-delà de 120 h : plus rien ne retient l'une ou l'autre
+        sortie, etat, appels = self.etape("Intégrer", etats)
+        self.assertFalse(self.appels_de(appels, "pr", "merge"), "ni un workflow modifié, ni une liste de fichiers illisible")
+        self.assertIn("modifie un workflow de CI", sortie)
+        self.assertIn("fichiers de la PR illisibles", sortie)
+        self.assertEqual((etat[PR_MINIZ + "99101"]["state"], etat[PR_MINIZ + "99102"]["state"]), ("OPEN", "OPEN"))
+        self.assertEqual((self.enr(c1)["statut"], self.enr(c2)["statut"]), ("en_relecture", "en_relecture"))
+        # Fusionnée à la main par le conseil sur le commit jugé : consignée au passage suivant.
+        etat[PR_MINIZ + "99102"].update({"state": "MERGED", "merge": "e" * 40, "fichiers_illisibles": False})
+        _, _, appels = self.etape("Intégrer", etat)
+        self.assertFalse(self.appels_de(appels, "pr", "merge"))
+        self.assertEqual((self.enr(c2)["statut"], self.enr(c2).get("fusion_sha")), ("integree", "e" * 40))
 
     def test_B1_en_attente_liste_la_mieux_classee_d_abord(self):
         c1, c2 = self.course_relue()
