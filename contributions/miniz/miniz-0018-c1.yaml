@@ -1,0 +1,11 @@
+id: miniz-0018-c1
+tache: miniz-0018
+auteur: bidji29
+pr: https://github.com/Bee-ruche/minizBee/pull/13
+resume: 'tinfl_decompress, boucle des littéraux : test de fin de sortie sur une borne précalculée, tests
+  code_len == 0 dans la branche rare. Instructions de décompression −4,3 % ; 7 868 sorties identiques
+  au juge isolé local.'
+statut: en_relecture
+soumise_le: '2026-10-28T22:39:34Z'
+engage_depuis: '2026-10-28T02:10:57Z'
+relectures: []
