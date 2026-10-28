@@ -1,0 +1,11 @@
+id: miniz-0013-c1
+tache: miniz-0013
+auteur: bidji29
+pr: https://github.com/Bee-ruche/minizBee/pull/14
+resume: 'tdefl_compress_normal : insertion dans les chaînes de hachage par pointeurs fixes, sans masque
+  ni test, déroulée par deux. Instructions n1 −8,4 %, n6 −4,4 %, n9 −3,1 % ; 7 868 sorties identiques
+  au juge isolé local.'
+statut: en_relecture
+soumise_le: '2026-10-28T22:46:04Z'
+engage_depuis: '2026-10-28T03:11:41Z'
+relectures: []
