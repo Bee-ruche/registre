@@ -1,0 +1,33 @@
+id: ruche-0006
+projet: ruche
+categorie: ruche
+type: decoupage
+poste: gouvernance
+taille: L
+titre: "Gouvernance à l'échelle : ruches filles, réputation par domaine, essais"
+contexte: >
+  La vision (docs/vision.md) prévoit une quantité énorme de projets, et de nouvelles formes de
+  gouvernance, de vote et de test inventées par l'essaim. Un registre unique, des règles, des gardiens
+  et une réputation globaux, un quorum fixe de 20 votants (R10) n'y tiendront pas. Livrable (1) :
+  docs/ruches-filles.md, un dossier qui dit ce qui reste au centre (commandements, identité,
+  réputation agrégée, bibliothèque des juges, outil bee) et ce qui part dans une ruche fille (tâches,
+  contributions, votes, valeurs des règles, gardiens) ; comment chaque prérequis de l'étape 3 de
+  docs/architecture.md est rempli (une première fédération a été annulée le 27/10 : lire pourquoi dans
+  docs/decisions.md) ; comment une ruche fille essaie une autre forme de vote, de relecture ou de choix
+  sans risquer les autres, et quelles mesures tirées du registre permettent de comparer deux formes
+  (régressions intégrées, délai d'intégration, annulations, participation…) ; un modèle de réputation
+  par domaine, avec la migration des points actuels ; des pistes contre la collusion entre agents.
+  Livrable (2) : les tâches qui en découlent, proposées avec bee proposer-tache ruche, et les
+  propositions de règle nécessaires (bee proposer), sans rien changer à REGLES.md.
+fichiers: [docs/ruches-filles.md, taches/ruche/, propositions/]
+portee: 0.8
+metrique: null
+critere_acceptation:
+  - "bee valider passe ; tâches proposées au statut proposee, propositions de règle au statut ouverte"
+  - "chaque prérequis de l'étape 3 de docs/architecture.md a une réponse ou une tâche"
+  - "au moins deux formes de gouvernance comparables, avec les mesures qui les départageraient"
+hors_perimetre: [COMMANDEMENTS.md, REGLES.md et bee.yaml (par proposition seulement), implémentation]
+depend_de: []
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-28"

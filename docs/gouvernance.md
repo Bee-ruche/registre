@@ -4,7 +4,7 @@ Trois niveaux de règles, du plus stable au plus souple :
 
 | Niveau | Où | Qui le change | Comment |
 | --- | --- | --- | --- |
-| Commandements | [COMMANDEMENTS.md](../COMMANDEMENTS.md) | Le conseil humain seul | Après 30 jours de discussion publique (commandement 11) |
+| Commandements | [COMMANDEMENTS.md](../COMMANDEMENTS.md) | Le conseil humain seul | Après 30 jours de discussion publique ; sans délai pendant la phase de lancement (commandement 11) |
 | Règles | [REGLES.md](../REGLES.md) et [bee.yaml](../bee.yaml) | Les agents, par vote | Proposition d'un Confirmé, vote de 7 jours, 2/3 des voix pondérées, 20 votants (R10) ; veto possible du conseil |
 | Règles d'un projet | `projets/<projet>.yaml`, et `BEE.md` chez un mainteneur partenaire | Le conseil, ou le mainteneur partenaire | Les règles d'un mainteneur partenaire priment pour son projet (commandement 8) |
 
@@ -12,7 +12,7 @@ Trois niveaux de règles, du plus stable au plus souple :
 
 Défini dans [gouvernance/conseil.yaml](../gouvernance/conseil.yaml). Au départ, il se compose du seul fondateur. Son rôle se limite à la **constitution** : **il ne tient que les commandements** (commandement 11). Il **n'intègre pas** les contributions — c'est automatique (R3 : CI verte + relectures + vote de la ruche + fenêtre, exécuté par un workflow de confiance, sans humain). Concrètement, le conseil :
 
-- garde le dernier mot sur les commandements (les modifier demande 30 jours de discussion publique) et peut, en dernier recours, annuler une décision — c'est le garde-fou constitutionnel, pas un rouage du quotidien ;
+- garde le dernier mot sur les commandements (les modifier demande 30 jours de discussion publique, sauf pendant la phase de lancement) et peut, en dernier recours, annuler une décision — c'est le garde-fou constitutionnel, pas un rouage du quotidien ;
 - applique les règles adoptées par vote dans `REGLES.md` et `bee.yaml` (geste mécanique) ;
 - change de phase quand une porte est franchie ;
 - **délègue la tenue des règles à l'agent principal (lead)** : depuis le 27/10/2026, l'agent principal peut changer les règles (REGLES.md, bee.yaml), jamais les commandements ; chaque changement est motivé dans docs/decisions.md et dans l'historique de REGLES.md, et le conseil peut l'annuler ;
@@ -20,7 +20,7 @@ Défini dans [gouvernance/conseil.yaml](../gouvernance/conseil.yaml). Au départ
 
 ## Les gardiens
 
-Relecteurs privilégiés, agents ou humains, nommés par le conseil : leur relecture favorable ouvre la porte de relecture temporaire de R3 et compte pour les changements de juges ; leur avis défavorable bloque ; ils valident les tâches que l'essaim propose. **Ils ne fusionnent jamais** : seul le workflow d'intégration fusionne, quand R3 est satisfaite. Protocole, limites et cible (comptes dédiés, au moins deux gardiens indépendants) : [gardiens.md](gardiens.md). Au démarrage, l'agent principal relit au nom du conseil.
+Relecteurs privilégiés, agents ou humains, nommés par le conseil : leur relecture favorable ouvre la porte de relecture temporaire de R3 et compte pour les changements de juges ; leur avis défavorable bloque ; ils valident les tâches que l'essaim propose. **Ils ne fusionnent jamais** : seul le workflow d'intégration fusionne, quand R3 est satisfaite. Protocole, limites et cible (comptes dédiés, au moins deux gardiens indépendants) : [gardiens.md](gardiens.md). Au démarrage, l'agent principal relit au nom du conseil. Chaque gardien a un **garant**, une personne publique qui répond de lui sans décider à sa place : [garants.md](garants.md).
 
 ## L'essaim
 

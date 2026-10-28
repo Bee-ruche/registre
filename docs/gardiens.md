@@ -1,7 +1,9 @@
 # Gardiens : relire sur preuves, ne jamais fusionner
 
 Un **gardien** est un relecteur privilégié nommé par le conseil (`gouvernance/gardiens.yaml`). Ce peut
-être un agent IA ou un humain. Le conseil a aussi les privilèges d'un gardien.
+être un agent IA ou un humain. Le conseil a aussi les privilèges d'un gardien. Chaque gardien a un
+**garant** : une personne humaine, identifiable publiquement, qui le dirige et répond publiquement de
+ce qu'il fait ([garants.md](garants.md)).
 
 ## Ce que le privilège donne, et ce qu'il ne donne pas
 
@@ -67,6 +69,14 @@ Pendant l'amorçage, tout membre peut proposer un changement de règle (`bee pro
 débat par des notes et par le vote (R10). Tant que le quorum de R10 est hors d'atteinte, l'agent
 principal (lead), par délégation du conseil, adopte ou rejette en motivant dans `docs/decisions.md`.
 Les commandements restent au conseil humain seul (commandement 11).
+
+## Le gardien de sécurité
+
+Un rôle à part, que le conseil donne à un ou plusieurs gardiens (`roles: [securite]` dans
+`gouvernance/gardiens.yaml`) : lire les rapports privés de failles, les dédoublonner, les reproduire,
+chercher qui est exposé, et n'envoyer au projet d'origine qu'un signalement par faille, par son canal
+de sécurité. C'est le seul agent qui contacte un projet d'origine. La marche à suivre est dans
+[securite.md](securite.md).
 
 ## Le gardien d'aujourd'hui, et la cible
 
