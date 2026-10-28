@@ -18,6 +18,7 @@ import datetime as dt
 import fnmatch
 import html
 import json
+import math
 import os
 import pathlib
 import re
@@ -40,7 +41,7 @@ TAILLES_PAR_NIVEAU = {"Nouveau": ("S",), "Contributeur": ("S", "M"), "Confirmé"
 ID_CONTRIBUTION = re.compile(r"^(?P<tache>[a-z0-9]+(?:-[a-z0-9]+)*-[0-9]{4})-c(?P<n>[0-9]+)$")
 ID_PROPOSITION = re.compile(r"^P-[0-9]{4}$")
 A_REMPLIR = "À REMPLIR"
-CLES_LIBRE_SERVICE_TACHE = {"statut", "reservation", "contribution", "notes"}
+CLES_LIBRE_SERVICE_TACHE = {"statut", "reservation", "paralleles", "contribution", "notes"}
 # Outillage du registre (tâches de la ruche) : un membre peut le modifier par PR, jamais fusionnée automatiquement.
 CHEMINS_OUTILLAGE = ("outils/*", "schemas/*", "modeles/*", "docs/*", ".github/*", ".claude/*",
                      "AGENTS.md", "README.md", "UTILISATEURS.md", "MAINTENEURS.md")
@@ -55,7 +56,38 @@ class ErreurBee(Exception):
 # --------------------------------------------------------------------------
 
 class ChargeurBee(yaml.SafeLoader):
-    """Chargeur YAML qui garde les dates en texte : les schémas les attendent ainsi."""
+    """Chargeur YAML qui garde les dates en texte (les schémas les attendent ainsi) et refuse les clés en double.
+
+    Une clé répétée (deux blocs reservation:, paralleles:…) serait lue avec la dernière valeur, alors que l'édition
+    textuelle des robots (modifier_tache) ne touche que le premier bloc : un fichier ainsi écrit tromperait les
+    contrôles et bloquerait les robots. Il est illisible, donc refusé partout (valider, verifier-pr)."""
+
+    def compose_node(self, parent, index):
+        # Ni ancre (&a), ni alias (*a), ni étiquette explicite (!!str, !truc…) : la valeur lue doit être celle qu'on voit
+        # écrite, et celle que les robots éditent ligne à ligne.
+        evenement = self.peek_event()
+        if isinstance(evenement, yaml.AliasEvent):
+            raise yaml.composer.ComposerError(None, None, "alias YAML (*…) refusé", evenement.start_mark)
+        if getattr(evenement, "anchor", None) is not None:
+            raise yaml.composer.ComposerError(None, None, "ancre YAML (&…) refusée", evenement.start_mark)
+        if getattr(evenement, "tag", None) is not None:
+            raise yaml.composer.ComposerError(None, None, f"étiquette YAML explicite ({evenement.tag}) refusée", evenement.start_mark)
+        return super().compose_node(parent, index)
+
+    def construct_mapping(self, node, deep=False):
+        vues = set()
+        for noeud_cle, _ in node.value:
+            if noeud_cle.tag == "tag:yaml.org,2002:merge":
+                raise yaml.constructor.ConstructorError(None, None, "clé de fusion YAML (<<) refusée", noeud_cle.start_mark)
+            cle = self.construct_object(noeud_cle, deep=deep)
+            try:
+                deja = cle in vues
+                vues.add(cle)
+            except TypeError:  # clé non hachable : la construction elle-même la refusera
+                continue
+            if deja:
+                raise yaml.constructor.ConstructorError(None, None, f"clé « {cle} » en double", noeud_cle.start_mark)
+        return super().construct_mapping(node, deep=deep)
 
 
 ChargeurBee.yaml_implicit_resolvers = {
@@ -73,6 +105,47 @@ def charger_texte_yaml(texte, origine="<texte>"):
 
 def lire_yaml(chemin):
     return charger_texte_yaml(pathlib.Path(chemin).read_text(encoding="utf-8"), str(chemin))
+
+
+def problemes_de_forme(texte, donnees):
+    """Chaque clé de premier niveau d'un objet est écrite `cle:` en colonne 0, exactement une fois, sans guillemets ni
+    espace avant les deux-points : c'est sur cette forme que travaille l'édition textuelle des robots (modifier_tache).
+    Une clé écrite autrement (« "reservation": », « statut : », en ligne {…}) serait lue mais pas éditée : refusée."""
+    if not isinstance(donnees, dict):
+        return []
+    problemes = []
+    for cle in donnees:
+        motif = re.compile(r"^" + re.escape(str(cle)) + r":(?=\s|$)", re.M)
+        if len(motif.findall(texte)) != 1:
+            problemes.append(f"clé de premier niveau « {cle} » : elle s'écrit `{cle}:` en colonne 0, une seule fois, sans "
+                             "guillemets ni espace avant les deux-points")
+    if problemes:
+        return problemes
+    # Le bloc que les robots éditent (_bloc_racine) doit être exactement la valeur lue : relu seul, il donne
+    # {cle: valeur} ; et les blocs couvrent tout le fichier, hors lignes vides et commentaires. Un commentaire en colonne
+    # 0 au milieu d'une liste, ou un objet en ligne continué en colonne 0, coupent le bloc : refusés.
+    lignes = texte.split("\n")
+    couvertes = set()
+    for cle, valeur in donnees.items():
+        position = _bloc_racine(lignes, str(cle))
+        if position is None:
+            problemes.append(f"clé de premier niveau « {cle} » : bloc introuvable")
+            continue
+        debut, fin = position
+        couvertes.update(range(debut, fin))
+        try:
+            seul = charger_texte_yaml("\n".join(lignes[debut:fin]) + "\n")
+        except ErreurBee:
+            seul = None
+        if not (isinstance(seul, dict) and list(seul) == [cle] and seul[cle] == valeur):
+            problemes.append(f"clé de premier niveau « {cle} » : son bloc (lignes {debut + 1} à {fin}) ne se relit pas seul avec "
+                             "la valeur du fichier ; ses lignes suivantes s'écrivent indentées (ni commentaire en colonne 0 "
+                             "dans le bloc, ni valeur en ligne continuée en colonne 0)")
+    orphelines = [i + 1 for i, ligne in enumerate(lignes)
+                  if i not in couvertes and ligne.strip() and not ligne.lstrip().startswith("#")]
+    if orphelines:
+        problemes.append(f"ligne(s) {', '.join(map(str, orphelines[:5]))} hors de tout bloc de premier niveau")
+    return problemes
 
 
 def ecrire_yaml(chemin, donnees):
@@ -215,7 +288,14 @@ def remplacer_bloc(texte, cle, nouvelles_lignes, apres=None):
 _INCHANGE = object()
 
 
-def modifier_tache(chemin, *, statut=None, reservation=_INCHANGE, contribution=_INCHANGE, note=None):
+def _derniere_cle_presente(texte, cles):
+    """La dernière des clés de premier niveau présentes dans le texte (ancre d'insertion), sinon la première."""
+    lignes = texte.split("\n")
+    presentes = [c for c in cles if _bloc_racine(lignes, c)]
+    return presentes[-1] if presentes else cles[0]
+
+
+def modifier_tache(chemin, *, statut=None, reservation=_INCHANGE, paralleles=_INCHANGE, contribution=_INCHANGE, note=None):
     texte = pathlib.Path(chemin).read_text(encoding="utf-8")
     if statut is not None:
         texte = remplacer_bloc(texte, "statut", [f"statut: {statut}"])
@@ -226,9 +306,15 @@ def modifier_tache(chemin, *, statut=None, reservation=_INCHANGE, contribution=_
             f"  depuis: {guillemets(reservation['depuis'])}",
         ]
         texte = remplacer_bloc(texte, "reservation", lignes, apres="statut")
+    if paralleles is not _INCHANGE:
+        # Inscriptions en parallèle (R11) : une liste vide retire le bloc.
+        lignes = ["paralleles:"] if paralleles else []
+        for p in paralleles or []:
+            lignes += [f"  - utilisateur: {guillemets(p['utilisateur'])}", f"    depuis: {guillemets(p['depuis'])}"]
+        texte = remplacer_bloc(texte, "paralleles", lignes, apres=_derniere_cle_presente(texte, ["statut", "reservation"]))
     if contribution is not _INCHANGE:
         lignes = [] if contribution is None else [f"contribution: {contribution}"]
-        texte = remplacer_bloc(texte, "contribution", lignes, apres="reservation" if reservation not in (_INCHANGE, None) else "statut")
+        texte = remplacer_bloc(texte, "contribution", lignes, apres=_derniere_cle_presente(texte, ["statut", "reservation", "paralleles"]))
     if note is not None:
         notes = list(charger_texte_yaml(texte, str(chemin)).get("notes") or []) + [note]
         lignes = ["notes:"]
@@ -253,6 +339,7 @@ class Registre:
         self.dossier_schemas = pathlib.Path(schemas or RACINE_OUTIL / "schemas")
         self._schemas = {}
         self.problemes_chargement = []
+        self._formes_a_controler = []  # (chemin, texte, données) : contrôle de forme fait par verifier_registre seul
         self.config = self._lire("bee.yaml") or {}
         conseil = self._lire("gouvernance/conseil.yaml") or {}
         self.conseil = {m.get("pseudo") for m in conseil.get("membres", []) if isinstance(m, dict)}
@@ -295,10 +382,17 @@ class Registre:
 
     def _lire_fichier(self, chemin):
         try:
-            return lire_yaml(chemin)
+            texte = pathlib.Path(chemin).read_text(encoding="utf-8")
+            donnees = charger_texte_yaml(texte, str(chemin))
         except ErreurBee as e:
             self.problemes_chargement.append(str(e))
             return None
+        self._formes_a_controler.append((chemin, texte, donnees))
+        return donnees
+
+    def problemes_forme(self):
+        """Forme des fichiers lus (problemes_de_forme) : coûteuse, elle n'est contrôlée que par verifier_registre."""
+        return [f"{self.rel(c)} : {p}" for c, texte, donnees in self._formes_a_controler for p in problemes_de_forme(texte, donnees)]
 
     def _dossier(self, motif):
         resultat = {}
@@ -345,6 +439,225 @@ class Registre:
         if projet not in self.projets:
             return {}
         return {m["id"]: m for m in self.projets[projet][1].get("metriques") or [] if isinstance(m, dict)}
+
+
+# --------------------------------------------------------------------------
+# Travail en parallèle déclaré et course entre contributions concurrentes (R3, R7, R8, R11)
+# --------------------------------------------------------------------------
+#
+# Une tâche a au plus un titulaire (clé reservation). D'autres abeilles peuvent s'y inscrire en parallèle
+# (clé paralleles : [{utilisateur, depuis}]), au su de tous, tant qu'elle est réservée ou en relecture, et
+# chacune peut soumettre sa propre contribution <tâche>-cN. Les contributions d'une même tâche en relecture
+# sont en course : R3 n'intègre que la meilleure (raisons_course) et écarte les autres.
+#
+# Le statut de la tâche suit le titulaire (docs/contributions.md, « Travail en parallèle ») :
+#   reservee      un titulaire travaille ; des contributions d'inscrits en parallèle peuvent déjà être en
+#                 relecture : sa réservation et son échéance R7 n'en sont pas touchées ;
+#   en_relecture  personne ne tient la réservation et au moins une contribution est en relecture ;
+#   ouverte       ni titulaire, ni inscrit en parallèle, ni contribution en course.
+# La clé contribution désigne la dernière contribution soumise ; une fois la tâche intégrée, la retenue.
+# Les contributions en course se lisent dans contributions/ (clé tache), jamais dans une liste recopiée.
+
+FUTUR_LOINTAIN = dt.datetime.max.replace(tzinfo=dt.timezone.utc)
+PASSE = dt.datetime.min.replace(tzinfo=dt.timezone.utc)
+# Une date déclarée (réservation, inscription, soumission) ne dépasse jamais l'instant de vérification de plus d'une minute.
+AVANCE_MAX = dt.timedelta(minutes=1)
+
+
+def paralleles_de(tache):
+    """Inscriptions en parallèle d'une tâche, dans l'ordre du fichier : [{utilisateur, depuis}]."""
+    liste = (tache or {}).get("paralleles") if isinstance(tache, dict) else None
+    return [p for p in liste or [] if isinstance(p, dict)]
+
+
+def plus_ancien(paralleles):
+    """L'inscrit en parallèle qui devient titulaire si le titulaire s'en va : l'inscription la plus ancienne,
+    puis la première de la liste à date égale. Ne dépend pas de l'heure : la promotion se vérifie seule."""
+    if not paralleles:
+        return None
+    return min(enumerate(paralleles), key=lambda ip: (_instant_ou_rien(ip[1].get("depuis")) or FUTUR_LOINTAIN, ip[0]))[1]
+
+
+def sans(paralleles, utilisateur):
+    """La liste des inscriptions privée de celle de `utilisateur` (ordre conservé)."""
+    return [p for p in paralleles if p.get("utilisateur") != utilisateur]
+
+
+def engagements_de(reg, utilisateur):
+    """R8 : réservations et inscriptions en parallèle de l'utilisateur, tous agents confondus : [(tâche, genre)]."""
+    resultat = []
+    for tid, (_, t) in sorted(reg.taches.items()):
+        if not isinstance(t, dict):
+            continue
+        if (t.get("reservation") or {}).get("utilisateur") == utilisateur:
+            resultat.append((tid, "réservation"))
+        if any(p.get("utilisateur") == utilisateur for p in paralleles_de(t)):
+            resultat.append((tid, "en parallèle"))
+    return resultat
+
+
+def engagement_expire(reg, depuis, instant):
+    """R7 : une réservation ou une inscription en parallèle sans contribution prend fin après reservation_max_heures."""
+    debut = _instant_ou_rien(depuis)
+    return debut is not None and instant - debut > dt.timedelta(hours=float(reg.config.get("reservation_max_heures", 72)))
+
+
+def numeros_contributions(reg, tid, sauf=None):
+    """Numéros N des contributions <tid>-cN déjà enregistrées (sauf `sauf`)."""
+    return [int(m["n"]) for cid in reg.enregistrements if cid != sauf
+            for m in [ID_CONTRIBUTION.match(cid)] if m and m["tache"] == tid]
+
+
+def contributions_en_course(reg, tid):
+    """Contributions de la tâche encore en relecture, de la plus ancienne à la plus récente : [(id, enregistrement)]."""
+    liste = [(cid, e) for cid, (_, e) in reg.enregistrements.items()
+             if isinstance(e, dict) and e.get("tache") == tid and e.get("statut") == "en_relecture"]
+    return sorted(liste, key=lambda x: (_instant_ou_rien(x[1].get("soumise_le")) or FUTUR_LOINTAIN, x[0]))
+
+
+def participants_course(reg, tid):
+    """Les parties prenantes ACTUELLES de la course d'une tâche : titulaire, inscrits en parallèle, auteurs des
+    contributions en relecture."""
+    t = reg.taches.get(tid, (None, {}))[1] or {}
+    qui = set()
+    if isinstance(t, dict) and t.get("statut") == "reservee":
+        qui.add((t.get("reservation") or {}).get("utilisateur"))
+    qui |= {p.get("utilisateur") for p in paralleles_de(t)}
+    qui |= {e.get("auteur") for _, e in contributions_en_course(reg, tid)}
+    return qui - {None}
+
+
+def concurrents_de(reg, enr):
+    """Ceux qui sont en concurrence avec l'auteur de `enr` sur sa tâche, en ce moment (commandement 3 : on ne juge pas
+    son concurrent). Tant qu'ils sont engagés dans la course, leurs votes et leurs avis défavorables sur cette
+    contribution ne comptent pas, quelle que soit leur date ; leurs avis favorables comptent."""
+    return participants_course(reg, enr.get("tache")) - {enr.get("auteur")}
+
+
+CLES_CONFIRMATION = ("defaut_confirme", "confirme_par")
+
+
+def confirme_par_un_tiers(relecture):
+    """Un défaut est confirmé par un tiers (confirme_par) : la CI, le conseil, un gardien ou un Confirmé autre que le
+    relecteur qui l'a signalé. Seul un tel défaut rapporte (+2) à son relecteur."""
+    par = relecture.get("confirme_par")
+    return bool(relecture.get("defaut_confirme")) and bool(par) and par != relecture.get("relecteur")
+
+
+def est_confirmation(ancienne, nouvelle):
+    """`nouvelle` est `ancienne`, un défaut signalé pas encore confirmé, à laquelle on n'a ajouté que la confirmation."""
+    return (isinstance(ancienne, dict) and isinstance(nouvelle, dict) and bool(ancienne.get("defaut_signale"))
+            and not any(k in ancienne for k in CLES_CONFIRMATION) and nouvelle.get("defaut_confirme") is True
+            and {k: v for k, v in nouvelle.items() if k not in CLES_CONFIRMATION} == ancienne)
+
+
+def jugees_par(reg, tid, pseudo):
+    """Contributions encore en course de la tâche sur lesquelles `pseudo` a donné un avis défavorable ou confirmé un
+    défaut. Qui a jugé une course n'y entre plus (commandement 3) : ni inscription en parallèle, ni réservation, tant
+    que ces contributions sont en course ; on ne se retire pas pour juger puis revenir concourir."""
+    return [c for c, e in contributions_en_course(reg, tid)
+            if any(isinstance(r, dict) and ((r.get("relecteur") == pseudo and r.get("avis") == "defavorable")
+                                            or r.get("confirme_par") == pseudo)
+                   for r in e.get("relectures") or [])]
+
+
+def message_juge(tid, pseudo, jugees):
+    return (f"{pseudo} a jugé défavorablement ou confirmé un défaut sur {', '.join(jugees)}, encore en course sur {tid} : "
+            "qui a jugé une course n'y entre plus tant que ces contributions sont en course (commandement 3)")
+
+
+def avis_recevable(relecture, concurrents):
+    """Un concurrent ne peut que reconnaître la contribution d'un autre : seul son avis favorable, sans défaut, compte.
+    Exception : un défaut CONFIRMÉ (par un tiers : la CI, le conseil, un gardien ou un Confirmé) compte toujours, quel
+    que soit le relecteur : il n'est plus un avis, c'est un fait établi par un tiers."""
+    return relecture.get("relecteur") not in concurrents or bool(relecture.get("defaut_confirme")) or (
+        relecture.get("avis") == "favorable" and not relecture.get("defaut_signale"))
+
+
+def vote_recevable(vote, concurrents):
+    """Un concurrent ne vote pas sur une contribution concurrente : tant qu'il est en course, aucun de ses votes ne compte."""
+    return vote.get("votant") not in concurrents
+
+
+def vote_net(reg, enr, niveaux):
+    """Vote net pondéré d'une contribution : ni l'auteur, ni ses concurrents actuels."""
+    concurrents = concurrents_de(reg, enr)
+    return sum(int(v.get("valeur", 0)) * POIDS_VOTE.get(niveau_de(niveaux, v.get("votant")), 0)
+               for _, v in reg.votes if v.get("sujet") == enr.get("id") and v.get("votant") != enr.get("auteur")
+               and vote_recevable(v, concurrents))
+
+
+def gain_mesure(reg, enr):
+    """Ce que la machine mesure d'une contribution : le terme de gain du score, G × P / (1 + L/100) (docs/evaluation.md),
+    sans la confiance (relectures) ni le vote. None sans verdict vert qui mesure un gain (tests, mesures, ruche…)."""
+    verdict = enr.get("verdict") or {}
+    gain = verdict.get("gain")
+    if verdict.get("ci") != "verte" or not isinstance(gain, (int, float)) or isinstance(gain, bool) or not math.isfinite(gain):
+        return None
+    # Un gain ne se croit que mesuré par un verdict contrôlé (fichiers de la PR lus par le registre) et sans juge modifié.
+    if not verdict.get("fichiers_controles") or verdict.get("juges_modifies"):
+        return None
+    tache = reg.taches.get(enr.get("tache"), (None, {}))[1] or {}
+    try:
+        portee, lignes = float(tache.get("portee", 1.0)), int(verdict.get("lignes_modifiees", 0))
+    except (TypeError, ValueError):
+        return None
+    valeur = float(gain) * portee / (1 + lignes / 100)
+    return valeur if math.isfinite(valeur) else None
+
+
+def cle_classement(reg, enr, niveaux):
+    """Rang dans une course (R3), du meilleur au moins bon. La machine juge ce qu'elle peut mesurer, l'essaim départage
+    le reste : une contribution au gain mesuré se classe sur ce gain seul (gain_mesure ; relectures et votes restent des
+    conditions de R3, pas des critères de classement), et passe devant celles qui n'en ont pas ; entre celles-ci (tests,
+    mesures, ruche, CI pas verte), le vote net pondéré. Puis la soumission la plus ancienne, puis l'identifiant : ordre
+    total, le choix est déterministe."""
+    gain = gain_mesure(reg, enr)
+    return (gain is None, -(gain or 0.0), -vote_net(reg, enr, niveaux) if gain is None else 0,
+            _instant_ou_rien(enr.get("soumise_le")) or FUTUR_LOINTAIN, str(enr.get("id")))
+
+
+def classement_course(reg, tid, niveaux):
+    """Les contributions de la tâche en relecture, de la mieux classée à la moins bien classée."""
+    return sorted(contributions_en_course(reg, tid), key=lambda x: cle_classement(reg, x[1], niveaux))
+
+
+def debut_engagement(enr):
+    """Début de l'engagement de l'auteur sur la tâche avant de soumettre (engage_depuis : sa réservation ou son inscription
+    en parallèle), sinon sa soumission (enregistrements antérieurs à ce champ)."""
+    return _instant_ou_rien(enr.get("engage_depuis")) or _instant_ou_rien(enr.get("soumise_le"))
+
+
+def bornes_attente(reg, enr):
+    """Bornes propres à une contribution X (R3, course) : (fin de sa protection, fin de toute attente).
+    Jusqu'à soumise_le(X) + 72 h (R7) + 24 h (fenêtre de R3) = 96 h, X attend ce qui pourrait la battre ; jusqu'à
+    + 24 h encore (120 h), une concurrente intégrable mieux classée ; ensuite, plus rien. Ces bornes ne dépendent que
+    de X : ni une contribution ancienne qui traîne, ni une soumission plus récente ne les déplacent."""
+    soumise = _instant_ou_rien(enr.get("soumise_le"))
+    if soumise is None:
+        return None, None
+    duree_r7 = dt.timedelta(hours=float(reg.config.get("reservation_max_heures", 72)))
+    fenetre = dt.timedelta(hours=float(reg.config.get("fenetre_acceptation_heures", 24)))
+    return soumise + duree_r7 + fenetre, soumise + duree_r7 + 2 * fenetre
+
+
+def depart_du_titulaire(reg, tid, paralleles):
+    """Ce que devient une tâche réservée quand son titulaire s'en va (libération ou expiration, R7) :
+    le plus ancien inscrit en parallèle devient titulaire, à la date de son inscription (l'échéance ne s'allonge
+    pas) ; sinon, la tâche passe en relecture s'il y a des contributions en course ; sinon, elle est rouverte.
+    Renvoie (changements pour modifier_tache, phrase pour la note)."""
+    elu = plus_ancien(paralleles)
+    if elu:
+        reste = sans(paralleles, elu["utilisateur"])
+        return ({"reservation": {"utilisateur": elu["utilisateur"], "depuis": elu["depuis"]}, "paralleles": reste},
+                f"{elu['utilisateur']}, inscrit en parallèle depuis {elu['depuis']}, devient titulaire à cette date "
+                "(R7 : l'échéance ne s'allonge pas).")
+    en_course = contributions_en_course(reg, tid)
+    if en_course:
+        derniere = en_course[-1][0]
+        return ({"statut": "en_relecture", "reservation": None, "contribution": derniere},
+                f"La tâche passe en relecture : contribution(s) en course : {', '.join(c for c, _ in en_course)}.")
+    return {"statut": "ouverte", "reservation": None}, ""
 
 
 # --------------------------------------------------------------------------
@@ -413,6 +726,9 @@ def activite_par_poste(reg, instant=None, jours=None):
         reservation = t.get("reservation") or {}
         if t.get("statut") == "reservee" and isinstance(reservation, dict):
             compter(poste, poids, reservation.get("depuis"), "travail en cours", reservation.get("utilisateur"))
+        # Une inscription en parallèle (R11) est du travail en cours, comme une réservation.
+        for p in paralleles_de(t) if t.get("statut") in ("reservee", "en_relecture") else []:
+            compter(poste, poids, p.get("depuis"), "travail en cours", p.get("utilisateur"))
         compter(poste, POIDS_GESTES["creation_tache"], t.get("cree_le"), "tâches créées ou proposées", t.get("cree_par"))
         for n in t.get("notes") or []:
             if isinstance(n, dict):
@@ -451,30 +767,73 @@ def etat_du_cap(reg, instant=None, jours=None):
     return {"fenetre_jours": jours, "total": round(total, 2), "postes": lignes, "en_retard": en_retard}
 
 
+def etat_course(reg, tid, niveaux, instant):
+    """La course d'une tâche, pour la montrer : contributions classées (avec leurs bornes d'attente propres), engagés qui
+    travaillent encore."""
+    t = reg.taches.get(tid, (None, {}))[1] or {}
+    contributions = []
+    for rang, (cid, e) in enumerate(classement_course(reg, tid, niveaux), start=1):
+        gain = gain_mesure(reg, e)
+        protection, fin = bornes_attente(reg, e)
+        contributions.append({"rang": rang, "contribution": cid, "auteur": e.get("auteur"), "soumise_le": e.get("soumise_le"),
+                              "gain_mesure": round(gain, 6) if gain is not None else None, "vote_net": vote_net(reg, e, niveaux),
+                              "ci": (e.get("verdict") or {}).get("ci"),
+                              "protegee_jusqu_au": en_iso(protection) if protection else None,
+                              "attentes_jusqu_au": en_iso(fin) if fin else None})
+    engages = []
+    r = t.get("reservation") or {}
+    if t.get("statut") == "reservee" and isinstance(r, dict) and r.get("utilisateur"):
+        engages.append({"utilisateur": r.get("utilisateur"), "role": "titulaire", "depuis": r.get("depuis")})
+    engages += [{"utilisateur": p.get("utilisateur"), "role": "en parallèle", "depuis": p.get("depuis")} for p in paralleles_de(t)]
+    return {"tache": tid, "contributions": contributions, "engages": engages}
+
+
 def tableau_essaim(reg, instant=None, jours_notes=7):
-    """Qui fait quoi : réservations en cours, contributions en relecture, notes récentes (coordination, R11)."""
+    """Qui fait quoi : réservations et inscriptions en parallèle, contributions en relecture et courses entre
+    contributions concurrentes, notes récentes (coordination, R11)."""
     instant = instant or maintenant()
     heures_max = float(reg.config.get("reservation_max_heures", 72))
     fenetre = float(reg.config.get("fenetre_acceptation_heures", 24))
     heures = lambda depuis: round((instant - depuis).total_seconds() / 3600, 1)  # noqa: E731
-    en_cours, relecture, notes = [], [], []
+    niveaux = calculer_niveaux(reg)
+    en_cours, relecture, courses, notes = [], [], [], []
     for tid, (_, t) in sorted(reg.taches.items()):
         r = t.get("reservation") or {}
-        if t.get("statut") != "reservee" or not isinstance(r, dict):
+        paralleles = paralleles_de(t) if t.get("statut") in ("reservee", "en_relecture") else []
+        if (t.get("statut") != "reservee" or not isinstance(r, dict)) and not paralleles:
             continue
-        depuis = _instant_ou_rien(r.get("depuis"))
+        titulaire = t.get("statut") == "reservee" and isinstance(r, dict)
+        depuis = _instant_ou_rien(r.get("depuis")) if titulaire else None
+        inscrits = []
+        for p in paralleles:
+            debut = _instant_ou_rien(p.get("depuis"))
+            inscrits.append({"utilisateur": p.get("utilisateur"), "depuis": p.get("depuis"), "heures": heures(debut) if debut else None,
+                             "expire_dans_heures": round(heures_max - heures(debut), 1) if debut else None})
         en_cours.append({"tache": tid, "titre": t.get("titre"), "poste": poste_de(t), "taille": t.get("taille"),
-                         "utilisateur": r.get("utilisateur"), "depuis": r.get("depuis"),
+                         "statut": t.get("statut"), "utilisateur": r.get("utilisateur") if titulaire else None,
+                         "depuis": r.get("depuis") if titulaire else None,
                          "heures": heures(depuis) if depuis else None,
-                         "expire_dans_heures": round(heures_max - heures(depuis), 1) if depuis else None})
+                         "expire_dans_heures": round(heures_max - heures(depuis), 1) if depuis else None,
+                         "paralleles": inscrits})
+    rangs = {}
+    for tid in sorted({e.get("tache") for _, (_, e) in reg.enregistrements.items() if isinstance(e, dict) and e.get("statut") == "en_relecture"}):
+        course = etat_course(reg, tid, niveaux, instant)
+        for c in course["contributions"]:
+            rangs[c["contribution"]] = (c["rang"], len(course["contributions"]))
+        # Une course se montre dès qu'il y a de la concurrence : plusieurs contributions, ou une contribution et
+        # des abeilles qui travaillent encore sur la même tâche.
+        if len(course["contributions"]) > 1 or course["engages"]:
+            courses.append(course)
     for cid, (_, e) in sorted(reg.enregistrements.items()):
         if not isinstance(e, dict) or e.get("statut") != "en_relecture":
             continue
         soumise = _instant_ou_rien(e.get("soumise_le"))
         t = reg.taches.get(e.get("tache"), (None, {}))[1] or {}
+        rang, total = rangs.get(cid, (1, 1))
         relecture.append({"contribution": cid, "tache": e.get("tache"), "poste": poste_de(t), "auteur": e.get("auteur"),
                           "pr": e.get("pr"), "ci": (e.get("verdict") or {}).get("ci"), "relectures": len(e.get("relectures") or []),
-                          "fenetre_restante_heures": round(max(0.0, fenetre - heures(soumise)), 1) if soumise else None})
+                          "fenetre_restante_heures": round(max(0.0, fenetre - heures(soumise)), 1) if soumise else None,
+                          "rang": rang, "concurrentes": [c for c, _ in contributions_en_course(reg, e.get("tache")) if c != cid]})
     limite = instant - dt.timedelta(days=jours_notes)
     for tid, (_, t) in reg.taches.items():
         for n in t.get("notes") or []:
@@ -482,7 +841,7 @@ def tableau_essaim(reg, instant=None, jours_notes=7):
             if moment and moment >= limite and n.get("par") not in reg.robots:
                 notes.append({"tache": tid, "par": n.get("par"), "le": n.get("le"), "texte": str(n.get("texte", ""))})
     notes.sort(key=lambda n: str(n["le"]), reverse=True)
-    return {"en_cours": en_cours, "en_relecture": relecture, "notes": notes[:15]}
+    return {"en_cours": en_cours, "en_relecture": relecture, "courses": courses, "notes": notes[:15]}
 
 
 # --------------------------------------------------------------------------
@@ -497,13 +856,19 @@ def calculer_niveaux(reg):
         if not isinstance(enr, dict) or "auteur" not in enr:
             continue
         statut = enr.get("statut")
+        # « ecartee » (une concurrente a été retenue à sa place, R3) n'est pas un refus : elle vaut 0, pour l'auteur
+        # comme pour chacun de ses relecteurs, défaut confirmé compris (docs/reputation.md).
+        if statut == "ecartee":
+            continue
         if statut == "integree":
             stats[enr["auteur"]]["integrees"] += 1
         for r in enr.get("relectures") or []:
             s = stats[r.get("relecteur")]
-            if r.get("defaut_confirme"):
+            if confirme_par_un_tiers(r):  # un défaut ne rapporte que confirmé par un tiers
                 s["relectures"] += 2
-            elif statut == "annulee" and r.get("avis") == "favorable":
+            elif statut == "annulee" and r.get("avis") == "favorable" and not enr.get("jamais_integree"):
+                # Seule une contribution intégrée puis annulée coûte un point à qui l'avait approuvée ; une contribution
+                # close sans avoir été intégrée (PR fermée sans fusion, bee cloturer) vaut 0 (docs/reputation.md).
                 s["relectures"] -= 1
             elif (statut == "integree" and r.get("avis") == "favorable") or (statut == "refusee" and r.get("avis") == "defavorable"):
                 s["relectures"] += 1
@@ -535,8 +900,9 @@ def calculer_score(reg, enr, niveaux):
     favorables = {r["relecteur"] for r in enr.get("relectures") or [] if r.get("avis") == "favorable"}
     confiance = min(1.0, len(favorables) / 3)
     numerateur = denominateur = 0
+    concurrents = concurrents_de(reg, enr)  # course entre contributions d'une même tâche : on ne vote pas sur son concurrent
     for _, vote in reg.votes:
-        if vote.get("sujet") == enr.get("id"):
+        if vote.get("sujet") == enr.get("id") and vote_recevable(vote, concurrents):
             poids = POIDS_VOTE[niveau_de(niveaux, vote.get("votant"))]
             numerateur += poids * vote.get("valeur", 0)
             denominateur += poids
@@ -581,7 +947,7 @@ def depouiller_proposition(reg, identifiant, niveaux, instant):
 # --------------------------------------------------------------------------
 
 def verifier_registre(reg):
-    problemes = list(reg.problemes_chargement)
+    problemes = list(reg.problemes_chargement) + reg.problemes_forme()
     ajouter = problemes.append
 
     def selon_schema(nom, chemin, donnees):
@@ -678,18 +1044,42 @@ def verifier_registre(reg):
             reservations[tache["reservation"]["utilisateur"]].append(tache["id"])
             if tache["reservation"]["utilisateur"] not in reg.membres and tache["reservation"]["utilisateur"] not in reg.conseil:
                 ajouter(f"{lieu} : réservée par « {tache['reservation']['utilisateur']} », qui n'est pas inscrit")
+        # Travail en parallèle (R11) : chacun une fois, jamais le titulaire, jamais l'auteur d'une contribution en course.
+        vus_paralleles = set()
+        auteurs_en_course = {e.get("auteur") for _, e in contributions_en_course(reg, tache["id"])}
+        for i, p in enumerate(tache.get("paralleles") or []):
+            qui = p["utilisateur"]
+            instant_valide(chemin, p["depuis"], f"paralleles/{i}/depuis")
+            reservations[qui].append(f"{tache['id']} (en parallèle)")
+            if qui not in reg.membres and qui not in reg.conseil:
+                ajouter(f"{lieu} : paralleles/{i} : « {qui} » n'est pas inscrit")
+            if qui in vus_paralleles:
+                ajouter(f"{lieu} : paralleles/{i} : {qui} est déjà inscrit en parallèle")
+            if qui == (tache.get("reservation") or {}).get("utilisateur"):
+                ajouter(f"{lieu} : paralleles/{i} : {qui} est le titulaire ; il ne s'inscrit pas en parallèle sur sa propre tâche")
+            if qui in auteurs_en_course:
+                ajouter(f"{lieu} : paralleles/{i} : {qui} a déjà une contribution en course sur cette tâche")
+            vus_paralleles.add(qui)
         if "contribution" in tache:
             if tache["contribution"] not in reg.enregistrements:
                 ajouter(f"{lieu} : contribution « {tache['contribution']} » introuvable dans contributions/")
             elif not tache["contribution"].startswith(tache["id"] + "-c"):
                 ajouter(f"{lieu} : la contribution « {tache['contribution']} » ne correspond pas à cette tâche")
+            elif tache["statut"] in ("reservee", "en_relecture") and reg.enregistrements[tache["contribution"]][1].get("statut") != "en_relecture":
+                ajouter(f"{lieu} : tâche {tache['statut']}, mais sa contribution « {tache['contribution']} » n'est plus en relecture")
+        if tache["statut"] in ("integree", "ouverte", "proposee", "abandonnee"):
+            # R3 : une fois une contribution intégrée, ses concurrentes sont écartées dans le même commit ; une tâche
+            # ouverte n'a plus de contribution en course.
+            restantes = [c for c, _ in contributions_en_course(reg, tache["id"])]
+            if restantes:
+                ajouter(f"{lieu} : tâche {tache['statut']}, mais contribution(s) encore en relecture : {', '.join(restantes)}")
         for i, note in enumerate(tache.get("notes") or []):
             instant_valide(chemin, note["le"], f"notes/{i}/le")
 
     maximum = int(reg.config.get("reservations_max_par_utilisateur", 3))
     for pseudo, ids in sorted(reservations.items()):
         if len(ids) > maximum:
-            ajouter(f"règle R8 : {pseudo} a {len(ids)} réservations ({', '.join(ids)}), maximum {maximum}")
+            ajouter(f"règle R8 : {pseudo} a {len(ids)} réservations ou inscriptions en parallèle ({', '.join(ids)}), maximum {maximum}")
 
     for stem, (chemin, enr) in reg.enregistrements.items():
         if not selon_schema("enregistrement", chemin, enr):
@@ -707,11 +1097,27 @@ def verifier_registre(reg):
             if chemin.parent.name != tache[1].get("projet"):
                 ajouter(f"{lieu} : rangée dans contributions/{chemin.parent.name}/ au lieu de contributions/{tache[1].get('projet')}/")
             fork = reg.projets.get(tache[1].get("projet"), (None, {}))[1].get("fork")
-            if fork and not enr["pr"].lower().startswith(fork.lower().rstrip("/") + "/pull/"):
+            if not fork:
+                ajouter(f"{lieu} : le projet {tache[1].get('projet')} n'a pas de fork : aucune contribution n'y est possible")
+            elif not enr["pr"].lower().startswith(fork.lower().rstrip("/") + "/pull/"):
                 ajouter(f"{lieu} : la PR doit être ouverte sur le fork du projet ({fork})")
         if enr["auteur"] not in reg.membres and enr["auteur"] not in reg.conseil:
             ajouter(f"{lieu} : auteur « {enr['auteur']} » non inscrit")
+        if enr["statut"] == "ecartee":
+            # R3 : une contribution n'est écartée qu'au profit d'une concurrente de la même tâche, intégrée (ou intégrée
+            # puis annulée par le conseil).
+            retenue = reg.enregistrements.get(enr.get("retenue"), (None, {}))[1] or {}
+            if enr.get("retenue") == enr["id"] or retenue.get("tache") != enr["tache"] or retenue.get("statut") not in ("integree", "annulee"):
+                ajouter(f"{lieu} : écartée au profit de « {enr.get('retenue')} », qui n'est pas une contribution intégrée de la même tâche")
+        if enr.get("jamais_integree") and enr.get("fusion_sha"):
+            ajouter(f"{lieu} : jamais_integree contredit fusion_sha : une contribution fusionnée a été intégrée, "
+                    "ses relecteurs en répondent si elle est annulée")
         instant_valide(chemin, enr["soumise_le"], "soumise_le")
+        if "engage_depuis" in enr:
+            instant_valide(chemin, enr["engage_depuis"], "engage_depuis")
+            debut, soumise = _instant_ou_rien(enr["engage_depuis"]), _instant_ou_rien(enr["soumise_le"])
+            if debut and soumise and debut > soumise:
+                ajouter(f"{lieu} : engage_depuis ({enr['engage_depuis']}) est postérieur à la soumission")
         vus = set()
         for i, r in enumerate(enr["relectures"]):
             if r["relecteur"] == enr["auteur"]:
@@ -720,6 +1126,9 @@ def verifier_registre(reg):
                 ajouter(f"{lieu} : relectures/{i} : {r['relecteur']} a déjà relu cette contribution")
             vus.add(r["relecteur"])
             instant_valide(chemin, r["le"], f"relectures/{i}/le")
+            if (r.get("defaut_confirme") or "confirme_par" in r) and not (r.get("defaut_signale") and confirme_par_un_tiers(r)):
+                ajouter(f"{lieu} : relectures/{i} : un défaut confirmé est un défaut signalé, confirmé par un tiers nommé dans "
+                        "confirme_par (la CI, le conseil, un gardien ou un Confirmé), jamais par son relecteur")
 
     for stem, (chemin, prop) in reg.propositions.items():
         if not selon_schema("proposition", chemin, prop):
@@ -835,8 +1244,127 @@ def correspond(chemin, motifs):
     return any(fnmatch.fnmatchcase(chemin, motif) for motif in motifs)
 
 
-def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None):
-    """Renvoie (problèmes, natures). `reg` doit refléter l'état de la tête de la PR."""
+def verifier_engagements(reg, chemin, ancien, nouveau, differences, auteur, *, est_conseil, est_robot, instant, ajoutees,
+                         niveau, amorcage):
+    """Transitions du travail en parallèle à statut constant (réservée → réservée, en relecture → en relecture).
+
+    Renvoie (nature, problèmes). Chaque transition est en libre-service et contrôlée : on ne s'inscrit et ne se
+    retire que soi-même ; on ne soumet en parallèle que si l'on est inscrit ; la réservation d'un autre ne change
+    de main que par la promotion du plus ancien inscrit, à la date de son inscription (R7).
+    """
+    problemes = []
+
+    def exiger(condition, message):
+        if not condition:
+            problemes.append(f"{chemin} : {message}")
+        return condition
+
+    pa, pn = paralleles_de(ancien), paralleles_de(nouveau)
+    ra, rn = ancien.get("reservation") or {}, nouveau.get("reservation") or {}
+    ca, cn = ancien.get("contribution"), nouveau.get("contribution")
+    titulaire = ra.get("utilisateur")
+
+    if ra != rn:
+        # Le titulaire s'en va (libération, ou expiration constatée par le robot) : le plus ancien inscrit prend sa place.
+        exiger(differences <= {"reservation", "paralleles", "notes"},
+               "une promotion ne change que la réservation et la liste des inscrits en parallèle")
+        elu = plus_ancien(pa)
+        if exiger(elu is not None and bool(rn),
+                  f"la réservation de {titulaire} ne change de main que par la promotion du plus ancien inscrit en parallèle "
+                  "(bee liberer le fait)"):
+            exiger(rn == {"utilisateur": elu.get("utilisateur"), "depuis": elu.get("depuis")},
+                   f"le nouveau titulaire doit être le plus ancien inscrit en parallèle, {elu.get('utilisateur')}, à la date de "
+                   f"son inscription ({elu.get('depuis')}) : l'échéance R7 ne s'allonge pas")
+            exiger(pn == sans(pa, elu.get("utilisateur")), "seul le nouveau titulaire quitte la liste des inscrits en parallèle")
+        exiger(titulaire == auteur or est_conseil or (est_robot and engagement_expire(reg, ra.get("depuis"), instant)),
+               f"seul le titulaire ({titulaire}) libère sa réservation avant expiration")
+        return "promotion", problemes
+
+    if ca != cn:
+        # Soumission d'un inscrit en parallèle : sa contribution entre en course, la réservation du titulaire ne bouge pas.
+        exiger(differences <= {"paralleles", "contribution", "notes"},
+               "une soumission en parallèle ne change que la liste des inscrits et la contribution de la tâche")
+        inscrit = any(p.get("utilisateur") == auteur for p in pa)
+        exiger(inscrit, f"{auteur} n'est pas inscrit en parallèle sur cette tâche : on ne soumet en parallèle que si l'on y est "
+                        "inscrit (bee prendre --en-parallele)")
+        exiger(pn == sans(pa, auteur), "une soumission en parallèle ne retire de la liste que son auteur")
+        enr = reg.enregistrements.get(cn or "", (None, {}))[1] or {}
+        exiger(cn in ajoutees and enr.get("auteur") == auteur,
+               f"la contribution {cn} doit être créée dans cette PR, au nom de {auteur} : bee soumettre le fait")
+        return "soumission_parallele", problemes
+
+    exiger(differences <= {"paralleles", "notes"}, "changement non autorisé sans changement de statut")
+    ajouts = [p for p in pn if p not in pa]
+    retraits = [p for p in pa if p not in pn]
+    if ajouts and not retraits:
+        exiger(len(ajouts) == 1 and pn[:len(pa)] == pa, "une inscription en parallèle à la fois, en fin de liste")
+        p = ajouts[0]
+        qui = p.get("utilisateur")
+        exiger(qui == auteur, f"on ne s'inscrit en parallèle que soi-même ({auteur}), pas {qui}")
+        exiger(auteur in reg.membres or est_conseil, f"{auteur} doit d'abord s'inscrire (bee inscrire)")
+        exiger(qui != titulaire, f"{qui} est le titulaire : il ne s'inscrit pas en parallèle sur sa propre tâche")
+        exiger(len({x.get("utilisateur") for x in pn}) == len(pn), f"{qui} est déjà inscrit en parallèle")
+        en_course = [c for c, e in contributions_en_course(reg, nouveau.get("id")) if e.get("auteur") == qui]
+        exiger(not en_course, f"{qui} a déjà une contribution en course ({', '.join(en_course)}) : on l'améliore par un nouveau "
+                              "commit sur sa PR, on n'en soumet pas une autre")
+        jugees = jugees_par(reg, nouveau.get("id"), qui)
+        exiger(not jugees, message_juge(nouveau.get("id"), qui, jugees))
+        try:
+            # La date d'inscription fixe le rang de promotion et dit si l'inscription précède une soumission (R3) :
+            # elle doit être l'heure réelle, ni antidatée ni postdatée, et jamais antérieure à ce qui existe déjà sur
+            # la tâche (on s'inscrit après la réservation, après les inscrits et après les soumissions en course).
+            depuis = lire_instant(p.get("depuis"), chemin)
+            exiger(instant - dt.timedelta(hours=2) <= depuis <= instant + AVANCE_MAX,
+                   "l'inscription en parallèle doit être datée de l'heure de la PR (à 2 h près, jamais dans le futur) ; "
+                   "relancez bee prendre --en-parallele")
+            existants = [ra.get("depuis")] + [x.get("depuis") for x in pa] + [
+                e.get("soumise_le") for _, e in contributions_en_course(reg, nouveau.get("id"))]
+            exiger(all(depuis >= i for i in (_instant_ou_rien(x) for x in existants) if i and i <= instant),
+                   "une inscription en parallèle ne peut pas être antérieure à la réservation, aux inscriptions ni aux "
+                   "soumissions déjà sur la tâche")
+        except ErreurBee as e:
+            problemes.append(str(e))
+        exiger(not reg.bloquee_par(nouveau), f"la tâche dépend de {', '.join(reg.bloquee_par(nouveau))}, pas encore intégrée(s)")
+        if not amorcage:
+            exiger(nouveau.get("taille") in TAILLES_PAR_NIVEAU[niveau], f"taille {nouveau.get('taille')} non accessible au niveau {niveau}")
+            exiger(nouveau.get("type") != "decoupage" or niveau == "Confirmé", "le découpage est réservé aux Confirmés")
+        return "inscription_parallele", problemes
+    if retraits and not ajouts:
+        exiger(len(retraits) == 1 and pn == [x for x in pa if x != retraits[0]],
+               "une PR ne retire qu'une inscription en parallèle, la sienne, sans réordonner les autres")
+        p = retraits[0]
+        qui = p.get("utilisateur")
+        exiger(qui == auteur or est_conseil or (est_robot and engagement_expire(reg, p.get("depuis"), instant)),
+               f"on ne retire que sa propre inscription en parallèle ({qui} n'est pas {auteur})")
+        return "retrait_parallele", problemes
+    if pa != pn:
+        problemes.append(f"{chemin} : on ne modifie pas une inscription en parallèle existante ; on s'inscrit ou on se retire")
+    return "inscription_parallele" if pa != pn else "note", problemes
+
+
+def contributions_de_la_pr(reg, base, tete):
+    """Contributions ajoutées ou modifiées par la PR : [(chemin, contribution lue dans la tête)]."""
+    sorties = git(reg.racine, "diff", "--name-status", "--no-renames", f"{base}...{tete}")
+    resultat = []
+    for ligne in sorties.splitlines():
+        statut_git, _, chemin = ligne.partition("\t")
+        partie = chemin.split("/")
+        if statut_git in ("A", "M") and partie[0] == "contributions" and len(partie) == 3 and chemin.endswith(".yaml"):
+            try:
+                nouveau = lire_yaml_ref(reg.racine, tete, chemin)
+            except ErreurBee:
+                continue
+            if isinstance(nouveau, dict):
+                resultat.append((chemin, nouveau))
+    return resultat
+
+
+def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, auteurs_pr=None):
+    """Renvoie (problèmes, natures). `reg` doit refléter l'état de la tête de la PR.
+
+    auteurs_pr : {adresse de PR: login GitHub de son auteur}, relevé par fusion-auto auprès de l'API pour chaque PR
+    déclarée dans une contribution ajoutée ou modifiée ; s'il est fourni, chacune doit appartenir à l'auteur de la
+    contribution, et une PR absente de la liste est refusée (échec fermé)."""
     instant = instant or maintenant()
     sorties = git(reg.racine, "diff", "--name-status", "--no-renames", f"{base}...{tete}")
     changements = [ligne.split("\t", 1) for ligne in sorties.splitlines() if ligne.strip()]
@@ -846,6 +1374,9 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None):
     niveaux = calculer_niveaux(reg)
     niveau = niveau_de(niveaux, auteur)
     problemes, natures = [], []
+    # Contributions créées par la PR : une soumission (du titulaire ou d'un inscrit en parallèle) en crée une, et une seule.
+    ajoutees = {pathlib.PurePosixPath(c).stem for s, c in changements if s == "A" and c.startswith("contributions/")}
+    modifiees = {pathlib.PurePosixPath(c).stem: c for s, c in changements if s == "M" and c.startswith("contributions/")}
 
     def exiger(condition, message):
         if not condition:
@@ -893,17 +1424,29 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None):
                         exiger(note.get("par") == auteur or est_robot,
                                f"{chemin} : une note ajoutée doit être signée par l'auteur de la PR ({auteur})")
             avant, apres = ancien.get("statut"), nouveau.get("statut")
-            if avant == apres:
+            pa, pn = paralleles_de(ancien), paralleles_de(nouveau)
+            tid = nouveau.get("id")
+            if avant == apres and avant in ("reservee", "en_relecture") and differences & {"paralleles", "reservation", "contribution"}:
+                # Travail en parallèle (R11) : inscription, retrait, soumission d'un inscrit, promotion.
+                nature, refus = verifier_engagements(reg, chemin, ancien, nouveau, differences, auteur, est_conseil=est_conseil,
+                                                     est_robot=est_robot, instant=instant, ajoutees=ajoutees, niveau=niveau,
+                                                     amorcage=amorcage)
+                natures.append(nature)
+                problemes.extend(refus)
+            elif avant == apres:
                 exiger(differences <= {"notes"}, f"{chemin} : changement non autorisé sans changement de statut")
                 natures.append("note")
             elif (avant, apres) == ("ouverte", "reservee"):
                 natures.append("reservation")
                 reservation = nouveau.get("reservation") or {}
+                exiger(not pn, f"{chemin} : une réservation n'inscrit personne en parallèle (bee prendre --en-parallele, chacun pour soi)")
                 exiger(reservation.get("utilisateur") == auteur, f"{chemin} : on ne réserve que pour soi ({auteur})")
                 exiger(auteur in reg.membres or est_conseil, f"{chemin} : {auteur} doit d'abord s'inscrire (bee inscrire)")
+                jugees = jugees_par(reg, nouveau.get("id"), auteur)
+                exiger(not jugees, f"{chemin} : {message_juge(nouveau.get('id'), auteur, jugees)}")
                 try:
                     depuis = lire_instant(reservation.get("depuis"), chemin)
-                    exiger(depuis <= instant + dt.timedelta(minutes=10), f"{chemin} : réservation datée dans le futur")
+                    exiger(depuis <= instant + AVANCE_MAX, f"{chemin} : réservation datée dans le futur")
                 except ErreurBee as e:
                     problemes.append(str(e))
                 exiger(not reg.bloquee_par(nouveau), f"{chemin} : la tâche dépend de {', '.join(reg.bloquee_par(nouveau))}, pas encore intégrée(s)")
@@ -912,7 +1455,10 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None):
                            f"{chemin} : taille {nouveau.get('taille')} non accessible au niveau {niveau}")
                     exiger(nouveau.get("type") != "decoupage" or niveau == "Confirmé",
                            f"{chemin} : le découpage est réservé aux Confirmés")
-            elif (avant, apres) == ("reservee", "ouverte"):
+            elif (avant, apres) == ("reservee", "ouverte") or (
+                    (avant, apres) == ("reservee", "en_relecture") and nouveau.get("contribution") not in ajoutees):
+                # Libération par le titulaire (ou expiration constatée par le robot). Vers « ouverte » s'il ne reste
+                # personne ; vers « en_relecture » s'il reste des contributions en course et aucun inscrit en parallèle.
                 natures.append("liberation")
                 titulaire = (ancien.get("reservation") or {}).get("utilisateur")
                 expiree = False
@@ -923,6 +1469,17 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None):
                     pass
                 exiger(titulaire == auteur or est_conseil or (est_robot and expiree),
                        f"{chemin} : seul le titulaire ({titulaire}) libère sa réservation avant expiration")
+                exiger(not pa, f"{chemin} : des abeilles sont inscrites en parallèle ({', '.join(p.get('utilisateur', '?') for p in pa)}) : "
+                               "la plus ancienne devient titulaire, la tâche reste réservée (bee liberer le fait)")
+                en_course = [c for c, _ in contributions_en_course(reg, tid)]
+                if apres == "ouverte":
+                    exiger(not en_course, f"{chemin} : des contributions sont en course ({', '.join(en_course)}) : "
+                                          "la tâche passe en relecture, pas en « ouverte » (bee liberer le fait)")
+                else:
+                    exiger(differences <= {"statut", "reservation", "contribution", "notes"},
+                           f"{chemin} : une libération ne change que le statut, la réservation et la contribution de la tâche")
+                    exiger(nouveau.get("contribution") in en_course,
+                           f"{chemin} : la tâche ne passe en relecture que si sa contribution est en course")
             elif (avant, apres) == ("reservee", "en_relecture"):
                 natures.append("soumission")
                 titulaire = (ancien.get("reservation") or {}).get("utilisateur")
@@ -930,6 +1487,7 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None):
                 enr = reg.enregistrements.get(nouveau.get("contribution") or "")
                 exiger(enr is not None and enr[1].get("auteur") == auteur,
                        f"{chemin} : la contribution {nouveau.get('contribution')} doit exister et appartenir à {auteur}")
+                exiger(pa == pn, f"{chemin} : la soumission du titulaire ne touche pas aux inscriptions en parallèle")
             elif avant == "proposee" and apres in ("ouverte", "abandonnee"):
                 natures.append("validation_tache")
                 exiger(auteur in reg.privilegies() or niveau == "Confirmé",
@@ -953,19 +1511,69 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None):
                     exiger(nouveau.get("auteur") == auteur, f"{chemin} : l'auteur déclaré doit être {auteur}")
                     exiger(nouveau.get("statut") == "en_relecture" and not nouveau.get("relectures") and "verdict" not in nouveau,
                            f"{chemin} : une contribution naît en_relecture, sans relecture ni verdict")
-                    # Pas de soumission sans réservation : la même PR fait passer la tâche, réservée par
-                    # l'auteur, en relecture avec cette contribution (contrôlé aussi côté tâche).
+                    # Pas de soumission sans engagement : la même PR fait passer la tâche, réservée par l'auteur, en
+                    # relecture avec cette contribution ; ou, pour un inscrit en parallèle, le retire de la liste et
+                    # pointe la tâche sur cette contribution (contrôlé aussi côté tâche).
                     t = reg.taches.get(nouveau.get("tache") or "", (None, {}))[1]
-                    exiger(t.get("statut") == "en_relecture" and t.get("contribution") == cid,
+                    t_base = lire_yaml_ref(reg.racine, base, f"taches/{partie[1]}/{nouveau.get('tache')}.yaml")
+                    t_base = t_base if isinstance(t_base, dict) else {}
+                    par_titulaire = (t.get("statut") == "en_relecture" and t_base.get("statut") == "reservee"
+                                     and (t_base.get("reservation") or {}).get("utilisateur") == auteur)
+                    par_parallele = (t.get("statut") in ("reservee", "en_relecture") and t.get("statut") == t_base.get("statut")
+                                     and any(p.get("utilisateur") == auteur for p in paralleles_de(t_base))
+                                     and not any(p.get("utilisateur") == auteur for p in paralleles_de(t)))
+                    # Le conseil peut réserver et soumettre dans une même PR (tâche ouverte dans la base) ; la transition
+                    # de la tâche reste une « decision », jamais fusionnée automatiquement.
+                    par_conseil = est_conseil and t_base.get("statut") == "ouverte" and t.get("statut") == "en_relecture"
+                    exiger(t.get("contribution") == cid and (par_titulaire or par_parallele or par_conseil),
                            f"{chemin} : la PR doit aussi passer la tâche {nouveau.get('tache')} (réservée par {auteur}) "
-                           f"en relecture avec la contribution {cid} : bee soumettre le fait")
+                           f"en relecture avec la contribution {cid}, ou, pour un inscrit en parallèle, le retirer de la liste "
+                           f"des inscrits et pointer la tâche sur {cid} : bee soumettre le fait")
+                    # Numérotation : le numéro suivant le plus grand déjà pris pour la tâche, jamais un trou (bee soumettre).
+                    m = ID_CONTRIBUTION.match(cid)
+                    attendu = 1 + max(numeros_contributions(reg, nouveau.get("tache"), sauf=cid), default=0)
+                    exiger(bool(m) and m["tache"] == nouveau.get("tache") and int(m["n"]) == attendu,
+                           f"{chemin} : la contribution suivante de {nouveau.get('tache')} est {nouveau.get('tache')}-c{attendu} : "
+                           "bee soumettre la numérote")
+                    projet = reg.projets.get(t.get("projet"), (None, {}))[1] or {}
+                    exiger(bool(projet.get("fork")), f"{chemin} : le projet {t.get('projet')} n'a pas de fork : aucune contribution n'y est possible")
                     # La fenêtre d'ouverture de R3 part de soumise_le : il doit être l'heure réelle.
                     try:
                         soumise = lire_instant(nouveau.get("soumise_le"), chemin)
-                        exiger(instant - dt.timedelta(hours=2) <= soumise <= instant + dt.timedelta(minutes=10),
-                               f"{chemin} : soumise_le doit être l'heure de la soumission (à 2 h près) ; relancez bee soumettre")
+                        exiger(instant - dt.timedelta(hours=2) <= soumise <= instant + AVANCE_MAX,
+                               f"{chemin} : soumise_le doit être l'heure de la soumission (à 2 h près, jamais dans le futur) ; "
+                               "relancez bee soumettre")
+                        # Course (R3) : l'ordre des soumissions et des engagements départage et borne les attentes. Une
+                        # soumission est postérieure à tout ce qui est déjà sur la tâche dans la base (réservation, toutes
+                        # les inscriptions en parallèle) et à toute soumission déjà en course : sinon, antidatée dans la
+                        # tolérance de 2 h, elle échapperait à l'attente des engagés d'avant elle (raisons_course, 1). On ne
+                        # compare qu'aux dates déjà passées : une inscription datée dans le futur ne bloque personne.
+                        anterieurs = ([(t_base.get("reservation") or {}).get("depuis")] + [p.get("depuis") for p in paralleles_de(t_base)]
+                                      + [e.get("soumise_le") for c, e in contributions_en_course(reg, nouveau.get("tache")) if c != cid])
+                        exiger(all(soumise >= i for i in (_instant_ou_rien(x) for x in anterieurs) if i and i <= instant),
+                               f"{chemin} : soumise_le ne peut pas précéder l'engagement de {auteur} sur la tâche, ni aucun autre "
+                               "engagement (réservation, inscription en parallèle) ou soumission déjà présent ; relancez bee soumettre")
+                        # Début de l'engagement de l'auteur (R3, course) : celui de la base, tel quel.
+                        attendu = ((t_base.get("reservation") or {}).get("depuis") if par_titulaire else
+                                   next((p.get("depuis") for p in paralleles_de(t_base) if p.get("utilisateur") == auteur), None)
+                                   if par_parallele else None)
+                        engage = _instant_ou_rien(nouveau.get("engage_depuis"))
+                        if par_titulaire or par_parallele:
+                            exiger(nouveau.get("engage_depuis") == attendu,
+                                   f"{chemin} : engage_depuis doit être le début de l'engagement de {auteur} sur la tâche ({attendu}) ; "
+                                   "bee soumettre l'écrit")
+                        else:  # le conseil réserve et soumet dans la même PR
+                            exiger(engage is not None and soumise - dt.timedelta(hours=2) <= engage <= soumise,
+                                   f"{chemin} : engage_depuis doit être l'heure de la réservation, juste avant la soumission")
                     except ErreurBee as e:
                         problemes.append(str(e))
+                    # La PR déclarée doit avoir pour auteur GitHub l'auteur de la contribution (le pseudo d'un membre est
+                    # son login) : sinon on squatterait la PR d'un autre. fusion-auto fournit ces auteurs (--auteurs-pr) ;
+                    # quand ils sont fournis, une PR absente de la liste est refusée (échec fermé).
+                    if auteurs_pr is not None:
+                        exiger(str(auteurs_pr.get(nouveau.get("pr")) or "").lower() == str(nouveau.get("auteur") or "").lower() != "",
+                               f"{chemin} : la PR {nouveau.get('pr')} doit avoir été ouverte par {nouveau.get('auteur')} sur GitHub "
+                               f"(auteur relevé : {auteurs_pr.get(nouveau.get('pr')) or 'inconnu'})")
                     autres = [i for i, (_, e) in reg.enregistrements.items() if i != cid and e.get("pr") == nouveau.get("pr")]
                     exiger(not autres, f"{chemin} : la PR {nouveau.get('pr')} est déjà liée à {', '.join(autres)}")
                 continue
@@ -977,25 +1585,93 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None):
                 problemes.append(f"{chemin} : fichier illisible")
                 continue
             differences = {k for k in set(ancien) | set(nouveau) if ancien.get(k) != nouveau.get(k)}
+            if auteurs_pr is not None:
+                exiger(str(auteurs_pr.get(nouveau.get("pr")) or "").lower() == str(nouveau.get("auteur") or "").lower() != "",
+                       f"{chemin} : la PR {nouveau.get('pr')} doit avoir été ouverte par {nouveau.get('auteur')} sur GitHub "
+                       f"(auteur relevé : {auteurs_pr.get(nouveau.get('pr')) or 'inconnu'})")
+            # Confirmation d'un défaut (N11) : toujours par un tiers, l'auteur de la PR, nommé dans confirme_par : la CI, le
+            # conseil, un gardien ou un Confirmé, ni le relecteur qui l'a signalé, ni un participant à la course de la
+            # tâche (avant ou après la PR), ni l'auteur de la contribution.
+            anciennes, nouvelles = ancien.get("relectures") or [], nouveau.get("relectures") or []
+            if isinstance(anciennes, list) and isinstance(nouvelles, list):
+                t_base = lire_yaml_ref(reg.racine, base, f"taches/{partie[1]}/{nouveau.get('tache')}.yaml")
+                t_base = t_base if isinstance(t_base, dict) else {}
+                engages_base = {p.get("utilisateur") for p in paralleles_de(t_base)}
+                if t_base.get("statut") == "reservee":
+                    engages_base.add((t_base.get("reservation") or {}).get("utilisateur"))
+                for i, r in enumerate(nouvelles):
+                    avant = anciennes[i] if i < len(anciennes) else None
+                    if not isinstance(r, dict) or not r.get("defaut_confirme") or (isinstance(avant, dict) and avant.get("defaut_confirme")):
+                        continue
+                    exiger(avant is not None and est_confirmation(avant, r),
+                           f"{chemin} : un défaut se confirme sur la relecture d'un autre qui l'a signalé, sans rien y changer "
+                           "d'autre (bee confirmer-defaut) ; une relecture ne confirme jamais son propre défaut")
+                    exiger(r.get("confirme_par") == auteur, f"{chemin} : la confirmation porte le nom de l'auteur de la PR ({auteur})")
+                    exiger(auteur != r.get("relecteur"), f"{chemin} : {auteur} ne confirme pas son propre défaut : un tiers le confirme")
+                    exiger(est_robot or est_conseil or auteur in reg.gardiens or niveau == "Confirmé",
+                           f"{chemin} : un défaut n'est confirmé que par la CI, le conseil, un gardien ou un Confirmé")
+                    exiger(auteur != nouveau.get("auteur") and auteur not in participants_course(reg, nouveau.get("tache"))
+                           and auteur not in engages_base,
+                           f"{chemin} : {auteur} est en course sur la tâche {nouveau.get('tache')} : il n'y confirme pas de défaut "
+                           "(commandement 3)")
             if differences == {"relectures"}:
                 natures.append("relecture")
                 exiger(ancien.get("statut") == "en_relecture",
                        f"{chemin} : on ne relit qu'une contribution en relecture (statut : {ancien.get('statut')})")
-                anciennes, nouvelles = ancien.get("relectures") or [], nouveau.get("relectures") or []
-                if exiger(nouvelles[:len(anciennes)] == anciennes, f"{chemin} : les relectures sont en ajout seul"):
+                changees = [i for i in range(min(len(anciennes), len(nouvelles))) if nouvelles[i] != anciennes[i]]
+                if exiger(len(nouvelles) >= len(anciennes) and all(est_confirmation(anciennes[i], nouvelles[i]) for i in changees),
+                          f"{chemin} : les relectures sont en ajout seul ; on n'en change aucune, sauf pour confirmer le défaut "
+                          "qu'un autre a signalé (bee confirmer-defaut)"):
+                    concurrents = concurrents_de(reg, nouveau)
                     for r in nouvelles[len(anciennes):]:
                         exiger(r.get("relecteur") == auteur, f"{chemin} : une relecture ajoutée doit être celle de {auteur}")
                         exiger(r.get("relecteur") != nouveau.get("auteur"), f"{chemin} : on ne relit pas sa propre contribution")
-                        exiger(not r.get("defaut_confirme") or est_robot or niveau == "Confirmé" or est_conseil,
-                               f"{chemin} : un défaut n'est confirmé que par la CI ou une relecture Confirmé")
+                        exiger(not any(k in r for k in CLES_CONFIRMATION),
+                               f"{chemin} : une relecture ne confirme pas son propre défaut : la confirmation vient d'un tiers "
+                               "(la CI, le conseil, un gardien ou un Confirmé, bee confirmer-defaut)")
+                        # Ajoutée maintenant, par un concurrent : seul un avis favorable sans défaut (sa date déclarée
+                        # n'y change rien).
+                        exiger(r.get("relecteur") not in concurrents or (
+                                   r.get("avis") == "favorable" and not r.get("defaut_signale") and not r.get("defaut_confirme")),
+                               f"{chemin} : {r.get('relecteur')} est en course sur la même tâche : son avis défavorable sur une "
+                               "concurrente ne compterait pas (commandement 3) ; seul un avis favorable est recevable")
             else:
                 natures.append("decision")
                 exiger(est_conseil or est_robot, f"{chemin} : verdict, statut et confirmation de défaut sont écrits par la CI ou le conseil")
+                if nouveau.get("statut") == "ecartee" and ancien.get("statut") != "ecartee":
+                    # R3 : une concurrente n'est écartée que dans le même commit que l'intégration de la contribution
+                    # retenue, par le robot d'intégration, ou par le conseil quand il intègre lui-même (tâches de la
+                    # ruche, jamais intégrées automatiquement) ; et alors toutes les concurrentes en course sont écartées
+                    # au profit de la même retenue. Jamais un écartement seul, à la main.
+                    retenue = nouveau.get("retenue") or ""
+                    chemin_retenue = modifiees.get(retenue)
+                    avant_r = lire_yaml_ref(reg.racine, base, chemin_retenue) if chemin_retenue else None
+                    apres_r = reg.enregistrements.get(retenue, (None, {}))[1] or {}
+                    integree_ici = (isinstance(avant_r, dict) and avant_r.get("statut") == "en_relecture"
+                                    and apres_r.get("statut") == "integree" and apres_r.get("tache") == nouveau.get("tache"))
+                    restantes = [c for c, _ in contributions_en_course(reg, nouveau.get("tache"))]
+                    autres_retenues = sorted({str(e.get("retenue")) for c, (_, e) in reg.enregistrements.items()
+                                              if c in modifiees and isinstance(e, dict) and e.get("tache") == nouveau.get("tache")
+                                              and e.get("statut") == "ecartee" and e.get("retenue") != retenue})
+                    exiger(est_robot or est_conseil, f"{chemin} : seul le robot d'intégration écarte une contribution concurrente "
+                                                     "(R3), ou le conseil quand il intègre lui-même la retenue ; jamais un membre à la main")
+                    exiger(integree_ici, f"{chemin} : une contribution n'est écartée que dans le même commit que l'intégration "
+                                         f"de la contribution retenue ({retenue or 'non nommée'})")
+                    exiger(not restantes and not autres_retenues,
+                           f"{chemin} : l'intégration de {retenue or 'la retenue'} écarte toutes les concurrentes en course à son profit "
+                           f"(encore en relecture : {', '.join(restantes) or 'aucune'} ; écartées au profit d'une autre : "
+                           f"{', '.join(r or '?' for r in autres_retenues) or 'aucune'})")
             continue
 
         if partie[0] == "votes" and len(partie) == 3:
             natures.append("vote")
             exiger(pathlib.PurePosixPath(chemin).stem == auteur, f"{chemin} : on ne vote qu'en son nom ({auteur})")
+            # Course (R3) : un participant engagé ne vote pas sur une concurrente, ni ne modifie ou ne retire un vote
+            # qu'il y avait déposé (le dossier du vote nomme son sujet, même pour une suppression).
+            if partie[1] in reg.enregistrements:
+                exiger(auteur not in concurrents_de(reg, reg.enregistrements[partie[1]][1]),
+                       f"{chemin} : {auteur} est en course sur la même tâche que {partie[1]} : on ne vote pas sur une concurrente, "
+                       "et on ne change ni ne retire son vote tant qu'on est en course (commandement 3)")
             if statut_git != "D" and exiger(isinstance(nouveau, dict), f"{chemin} : fichier illisible"):
                 exiger(nouveau.get("votant") == auteur, f"{chemin} : votant déclaré différent de {auteur}")
                 sujet = nouveau.get("sujet", "")
@@ -1059,7 +1735,9 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None):
 
 
 LIBRE_SERVICE = {"reservation", "liberation", "soumission", "note", "relecture", "vote", "mesure", "inscription", "profil", "proposition",
-                 "proposition_tache", "validation_tache"}
+                 "proposition_tache", "validation_tache",
+                 # Travail en parallèle (R11) : chacune de ces transitions est contrôlée par verifier_engagements.
+                 "inscription_parallele", "retrait_parallele", "soumission_parallele", "promotion"}
 
 
 # --------------------------------------------------------------------------
@@ -1277,29 +1955,42 @@ def cmd_essaim(args):
     if args.json:
         print(json.dumps(tableau, ensure_ascii=False, indent=2))
         return 0
-    print("En cours (réservations) :")
+    heures = lambda h: "-" if h is None else f"{h:g} h"  # noqa: E731
+    print("En cours (réservations et inscriptions en parallèle) :")
     if tableau["en_cours"]:
-        afficher_tableau(["TÂCHE", "POSTE", "TAILLE", "QUI", "DEPUIS", "EXPIRE DANS"],
-                         [[x["tache"], x["poste"], x["taille"], x["utilisateur"],
-                           "-" if x["heures"] is None else f"{x['heures']:g} h",
-                           "-" if x["expire_dans_heures"] is None else f"{x['expire_dans_heures']:g} h"] for x in tableau["en_cours"]])
+        afficher_tableau(["TÂCHE", "POSTE", "TAILLE", "QUI", "DEPUIS", "EXPIRE DANS", "EN PARALLÈLE (EXPIRE DANS)"],
+                         [[x["tache"], x["poste"], x["taille"], x["utilisateur"] or f"- ({x['statut']})",
+                           heures(x["heures"]), heures(x["expire_dans_heures"]),
+                           ", ".join(f"{p['utilisateur']} ({heures(p['expire_dans_heures'])})" for p in x["paralleles"]) or "-"]
+                          for x in tableau["en_cours"]])
     else:
         print("  personne.")
     print("\nEn relecture (contributions soumises) :")
     if tableau["en_relecture"]:
-        afficher_tableau(["CONTRIBUTION", "POSTE", "AUTEUR", "CI", "RELECTURES", "FENÊTRE RESTANTE"],
+        afficher_tableau(["CONTRIBUTION", "POSTE", "AUTEUR", "CI", "RELECTURES", "FENÊTRE RESTANTE", "CONCURRENTES"],
                          [[x["contribution"], x["poste"], x["auteur"], x["ci"] or "en attente", x["relectures"],
-                           "-" if x["fenetre_restante_heures"] is None else f"{x['fenetre_restante_heures']:g} h"]
+                           heures(x["fenetre_restante_heures"]),
+                           f"rang {x['rang']} : " + ", ".join(x["concurrentes"]) if x["concurrentes"] else "-"]
                           for x in tableau["en_relecture"]])
     else:
         print("  rien.")
+    if tableau["courses"]:
+        print("\nCourses (R3 : une seule contribution par tâche est intégrée, la mieux classée : gain mesuré, sinon vote net) :")
+        for c in tableau["courses"]:
+            rangs = " ; ".join(f"{x['rang']}. {x['contribution']} ({x['auteur']}, gain mesuré "
+                               f"{'—' if x['gain_mesure'] is None else format(x['gain_mesure'], '.4f')}, vote {x['vote_net']:+d})"
+                               for x in c["contributions"])
+            engages = ", ".join(f"{e['utilisateur']} ({e['role']})" for e in c["engages"])
+            print(f"  - {c['tache']} : {rangs}" + (f" ; travaillent encore : {engages}" if engages else "")
+                  + " ; chaque contribution attend au plus 120 h après sa soumission")
     if tableau["notes"]:
         print("\nNotes récentes (7 jours) :")
         for n in tableau["notes"]:
             texte = n["texte"] if len(n["texte"]) <= 140 else n["texte"][:137] + "…"
             print(f"  - {n['tache']}, {n['par']}, {n['le']} : {texte}")
-    print("\nAvant de choisir : évitez de reprendre seul ce qu'un autre fait déjà ; si deux approches valent d'être "
-          "comparées, dites-le dans une note de la tâche (bee noter). Cap de la ruche : bee cap.")
+    print("\nAvant de choisir : évitez de reprendre seul ce qu'un autre fait déjà. Pour travailler sur une tâche déjà "
+          "réservée ou en relecture, inscrivez-vous en parallèle (bee prendre <tâche> --utilisateur <pseudo> --en-parallele) : "
+          "tout le monde le voit, et R3 choisit la meilleure contribution. Cap de la ruche : bee cap.")
     return 0
 
 
@@ -1319,6 +2010,22 @@ def cmd_voir(args):
         print(f"# fork : {projet['fork']}")
     for nom, commande in (projet.get("commandes") or {}).items():
         print(f"# commande {nom} : {commande}")
+    # Travail en parallèle et course (R3, R7, R11) : qui travaille encore, quelles contributions sont en concurrence.
+    instant = maintenant()
+    course = etat_course(reg, t["id"], calculer_niveaux(reg), instant)
+    for e in course["engages"]:
+        fin = _instant_ou_rien(e["depuis"])
+        echeance = en_iso(fin + dt.timedelta(hours=float(reg.config.get("reservation_max_heures", 72)))) if fin else "?"
+        print(f"# {e['role']} : {e['utilisateur']}, depuis {e['depuis']} (échéance R7 : {echeance})")
+    if course["contributions"]:
+        print("# contributions en course (R3, de la mieux classée à la moins bien classée ; chacune est protégée 96 h après sa "
+              "soumission, puis n'attend plus, au plus 24 h, qu'une concurrente intégrable mieux classée) :")
+        for c in course["contributions"]:
+            print(f"#   {c['rang']}. {c['contribution']} par {c['auteur']}, soumise le {c['soumise_le']}, CI {c['ci'] or 'en attente'}, "
+                  f"gain mesuré {'—' if c['gain_mesure'] is None else format(c['gain_mesure'], '.4f')}, vote net {c['vote_net']:+d}, "
+                  f"protégée jusqu'au {c['protegee_jusqu_au']}, plus aucune attente après le {c['attentes_jusqu_au']}")
+    if t.get("statut") in ("reservee", "en_relecture"):
+        print(f"# rejoindre en parallèle : bee prendre {t['id']} --utilisateur <pseudo> --en-parallele")
     return 0
 
 
@@ -1340,23 +2047,77 @@ def cmd_inscrire(args):
     return 0
 
 
+def exiger_r8(reg, utilisateur):
+    """R8 : réservations et inscriptions en parallèle comptent ensemble, tous agents confondus."""
+    deja = engagements_de(reg, utilisateur)
+    maximum = int(reg.config.get("reservations_max_par_utilisateur", 3))
+    if len(deja) >= maximum:
+        liste = ", ".join(tid + (" (en parallèle)" if genre == "en parallèle" else "") for tid, genre in deja)
+        raise ErreurBee(f"règle R8 : {utilisateur} a déjà {len(deja)} réservations ou inscriptions en parallèle ({liste}), maximum {maximum}")
+
+
+def prendre_en_parallele(reg, args, chemin, t):
+    """S'inscrire en parallèle sur une tâche réservée ou en relecture (R11) : au su de tous, sans toucher au titulaire."""
+    statut, u = t.get("statut"), args.utilisateur
+    if statut == "ouverte":
+        raise ErreurBee(f"{args.tache} est ouverte : réservez-la normalement (bee prendre {args.tache} --utilisateur {u}) ; "
+                        "--en-parallele sert à rejoindre une tâche déjà réservée ou en relecture")
+    if statut not in ("reservee", "en_relecture"):
+        raise ErreurBee(f"{args.tache} n'accepte pas d'inscription en parallèle (statut : {statut})")
+    titulaire = (t.get("reservation") or {}).get("utilisateur")
+    if titulaire == u:
+        raise ErreurBee(f"{u} est déjà titulaire de {args.tache}")
+    paralleles = paralleles_de(t)
+    if any(p.get("utilisateur") == u for p in paralleles):
+        raise ErreurBee(f"{u} est déjà inscrit en parallèle sur {args.tache}")
+    siennes = [c for c, e in contributions_en_course(reg, args.tache) if e.get("auteur") == u]
+    if siennes:
+        raise ErreurBee(f"{u} a déjà une contribution en course sur {args.tache} ({', '.join(siennes)}) : améliorez-la par un "
+                        "nouveau commit sur sa PR plutôt que d'en soumettre une autre")
+    if reg.bloquee_par(t):
+        raise ErreurBee(f"{args.tache} attend l'intégration de : {', '.join(reg.bloquee_par(t))}")
+    jugees = jugees_par(reg, args.tache, u)
+    if jugees:
+        raise ErreurBee(message_juge(args.tache, u, jugees))
+    if not reg.config.get("amorcage") and u not in reg.conseil:
+        niveau = niveau_de(calculer_niveaux(reg), u)
+        if t["taille"] not in TAILLES_PAR_NIVEAU[niveau] or (t["type"] == "decoupage" and niveau != "Confirmé"):
+            raise ErreurBee(f"{args.tache} ({t['type']}, {t['taille']}) n'est pas accessible au niveau {niveau} (docs/reputation.md)")
+    exiger_r8(reg, u)
+    modifier_tache(chemin, paralleles=paralleles + [{"utilisateur": u, "depuis": en_iso(maintenant())}])
+    heures = reg.config.get("reservation_max_heures", 72)
+    print(f"✓ {u} inscrit en parallèle sur {args.tache}" + (f" (titulaire : {titulaire}, dont la réservation ne change pas)." if titulaire else "."))
+    print(f"  Votre inscription compte dans R8 et prend fin après {heures} h sans contribution (R7). Si le titulaire s'en va, "
+          "le plus ancien inscrit devient titulaire.")
+    en_course = contributions_en_course(reg, args.tache)
+    if en_course:
+        print(f"  Déjà en course : {', '.join(c for c, _ in en_course)}. Votre inscription, postérieure à leur soumission, ne retarde "
+              "pas leur intégration (R3) ; votre contribution les rejoindra si elle arrive à temps.")
+    print(f"  Dites votre approche dans une note (bee noter), puis publiez : bee publier --titre 'Inscription en parallèle {args.tache}'.")
+    return 0
+
+
 def cmd_prendre(args):
     reg = Registre(args.registre)
     reg.exiger_membre(args.utilisateur)
     chemin, t = reg.tache(args.tache)
+    if getattr(args, "en_parallele", False):
+        return prendre_en_parallele(reg, args, chemin, t)
     if t.get("statut") != "ouverte":
-        raise ErreurBee(f"{args.tache} n'est pas ouverte (statut : {t.get('statut')})")
+        conseil = (f" ; pour y travailler aussi, au su de tous : bee prendre {args.tache} --utilisateur {args.utilisateur} --en-parallele"
+                   if t.get("statut") in ("reservee", "en_relecture") else "")
+        raise ErreurBee(f"{args.tache} n'est pas ouverte (statut : {t.get('statut')}){conseil}")
     bloquee = reg.bloquee_par(t)
     if bloquee:
         raise ErreurBee(f"{args.tache} attend l'intégration de : {', '.join(bloquee)}")
+    jugees = jugees_par(reg, args.tache, args.utilisateur)
+    if jugees:
+        raise ErreurBee(message_juge(args.tache, args.utilisateur, jugees))
     if not reg.config.get("amorcage") and args.utilisateur not in reg.conseil:
         niveau = niveau_de(calculer_niveaux(reg), args.utilisateur)
         if t["taille"] not in TAILLES_PAR_NIVEAU[niveau] or (t["type"] == "decoupage" and niveau != "Confirmé"):
             raise ErreurBee(f"{args.tache} ({t['type']}, {t['taille']}) n'est pas accessible au niveau {niveau} (docs/reputation.md)")
-    deja = [tid for tid, (_, x) in reg.taches.items() if (x.get("reservation") or {}).get("utilisateur") == args.utilisateur]
-    maximum = int(reg.config.get("reservations_max_par_utilisateur", 3))
-    if len(deja) >= maximum:
-        raise ErreurBee(f"règle R8 : {args.utilisateur} a déjà {len(deja)} réservations ({', '.join(deja)}), maximum {maximum}")
+    exiger_r8(reg, args.utilisateur)
     modifier_tache(chemin, statut="reservee", reservation={"utilisateur": args.utilisateur, "depuis": en_iso(maintenant())})
     heures = reg.config.get("reservation_max_heures", 72)
     print(f"✓ {args.tache} réservée pour {args.utilisateur} ({heures} h maximum, règle R7).")
@@ -1403,13 +2164,26 @@ def cmd_liberer(args):
     reg = Registre(args.registre)
     chemin, t = reg.tache(args.tache)
     titulaire = (t.get("reservation") or {}).get("utilisateur")
+    paralleles = paralleles_de(t)
+    astuce = "" if args.note else " Astuce : --note \"ce que vous avez appris\" aide l'agent suivant."
+    if any(p.get("utilisateur") == args.utilisateur for p in paralleles):
+        # Un inscrit en parallèle se retire lui-même ; personne d'autre n'est touché.
+        note = {"par": args.utilisateur, "le": en_iso(maintenant()), "texte": args.note} if args.note else None
+        modifier_tache(chemin, paralleles=sans(paralleles, args.utilisateur), note=note)
+        print(f"✓ inscription en parallèle de {args.utilisateur} sur {args.tache} retirée." + astuce)
+        return 0
     if t.get("statut") != "reservee":
         raise ErreurBee(f"{args.tache} n'est pas réservée")
     if titulaire != args.utilisateur and args.utilisateur not in reg.conseil:
         raise ErreurBee(f"{args.tache} est réservée par {titulaire}, pas par {args.utilisateur}")
-    note = {"par": args.utilisateur, "le": en_iso(maintenant()), "texte": args.note} if args.note else None
-    modifier_tache(chemin, statut="ouverte", reservation=None, note=note)
-    print(f"✓ {args.tache} libérée." + ("" if args.note else " Astuce : --note \"ce que vous avez appris\" aide l'agent suivant."))
+    changements, phrase = depart_du_titulaire(reg, args.tache, paralleles)
+    texte = " ".join(x for x in (args.note, phrase) if x)
+    note = {"par": args.utilisateur, "le": en_iso(maintenant()), "texte": texte} if texte else None
+    modifier_tache(chemin, note=note, **changements)
+    suite = {None: "", "en_relecture": " Elle passe en relecture (contributions en course)."}.get(changements.get("statut"), "")
+    if "paralleles" in changements:
+        suite = f" {changements['reservation']['utilisateur']} devient titulaire (inscrit en parallèle le plus ancien)."
+    print(f"✓ {args.tache} libérée.{suite}{astuce}")
     return 0
 
 
@@ -1423,19 +2197,32 @@ def cmd_noter(args):
 
 
 def cmd_liberer_expirees(args):
+    """R7, appliquée par le robot : réservations et inscriptions en parallèle sans contribution prennent fin après 72 h.
+    Les inscriptions expirées sont retirées d'abord ; puis, si la réservation du titulaire a expiré, le plus ancien
+    inscrit restant devient titulaire (à la date de son inscription), sinon la tâche passe en relecture ou est rouverte."""
     reg = Registre(args.registre)
     instant = maintenant()
     limite = dt.timedelta(hours=int(reg.config.get("reservation_max_heures", 72)))
     liberees = []
     for tid, (chemin, t) in sorted(reg.taches.items()):
-        if t.get("statut") != "reservee":
+        if t.get("statut") not in ("reservee", "en_relecture"):
             continue
-        depuis = lire_instant(t["reservation"]["depuis"], reg.rel(chemin))
-        if instant - depuis > limite:
-            texte = f"Réservation de {t['reservation']['utilisateur']} expirée après {limite.total_seconds() / 3600:.0f} h (R7)."
-            modifier_tache(chemin, statut="ouverte", reservation=None, note={"par": "bee", "le": en_iso(instant), "texte": texte})
+        paralleles = paralleles_de(t)
+        expirees = [p for p in paralleles if instant - lire_instant(p["depuis"], reg.rel(chemin)) > limite]
+        restants = [p for p in paralleles if p not in expirees]
+        textes = [f"Inscription en parallèle de {p['utilisateur']} expirée après {limite.total_seconds() / 3600:.0f} h (R7)." for p in expirees]
+        changements = {"paralleles": restants} if expirees else {}
+        if t.get("statut") == "reservee":
+            depuis = lire_instant(t["reservation"]["depuis"], reg.rel(chemin))
+            if instant - depuis > limite:
+                textes.insert(0, f"Réservation de {t['reservation']['utilisateur']} expirée après {limite.total_seconds() / 3600:.0f} h (R7).")
+                suite, phrase = depart_du_titulaire(reg, tid, restants)
+                changements.update(suite)
+                textes += [phrase] if phrase else []
+        if changements:
+            modifier_tache(chemin, note={"par": "bee", "le": en_iso(instant), "texte": " ".join(textes)}, **changements)
             liberees.append(tid)
-    print("✓ réservations expirées libérées : " + (", ".join(liberees) if liberees else "aucune"))
+    print("✓ réservations et inscriptions en parallèle expirées libérées : " + (", ".join(liberees) if liberees else "aucune"))
     return 0
 
 
@@ -1506,21 +2293,42 @@ def cmd_soumettre(args):
     reg.exiger_membre(args.utilisateur)
     chemin, t = reg.tache(args.tache)
     titulaire = (t.get("reservation") or {}).get("utilisateur")
-    if t.get("statut") != "reservee" or titulaire != args.utilisateur:
-        raise ErreurBee(f"{args.tache} doit être réservée par {args.utilisateur} (statut : {t.get('statut')}, titulaire : {titulaire}). "
+    paralleles = paralleles_de(t)
+    en_parallele = t.get("statut") in ("reservee", "en_relecture") and any(p.get("utilisateur") == args.utilisateur for p in paralleles)
+    if not en_parallele and (t.get("statut") != "reservee" or titulaire != args.utilisateur):
+        raise ErreurBee(f"{args.tache} doit être réservée par {args.utilisateur}, ou {args.utilisateur} doit y être inscrit en parallèle "
+                        f"(statut : {t.get('statut')}, titulaire : {titulaire}). "
                         "Si votre PR de réservation est ouverte, attendez sa fusion puis : git switch main && git pull upstream main")
     fork = (reg.projets.get(t["projet"], (None, {}))[1].get("fork") or "").rstrip("/")
+    if not fork:
+        raise ErreurBee(f"le projet {t['projet']} n'a pas encore de fork : aucune contribution ne peut y être soumise")
     if not re.fullmatch(r"https://github\.com/[A-Za-z0-9-]+/[A-Za-z0-9_.-]+/pull/[0-9]+", args.pr):
         raise ErreurBee(f"adresse de PR invalide : {args.pr} (attendu : https://github.com/<organisation>/<dépôt>/pull/<numéro>)")
-    if fork and not args.pr.lower().startswith(fork.lower() + "/pull/"):
+    if not args.pr.lower().startswith(fork.lower() + "/pull/"):
         raise ErreurBee(f"la PR doit être ouverte sur le fork du projet : {fork}/pull/<numéro> (reçu : {args.pr})")
-    rang = 1 + sum(1 for cid in reg.enregistrements if cid.startswith(args.tache + "-c"))
+    # Numéro suivant le plus grand déjà pris (verifier_pr l'exige) : jamais un fichier existant écrasé.
+    rang = 1 + max(numeros_contributions(reg, args.tache), default=0)
     identifiant = f"{args.tache}-c{rang}"
     donnees = {"id": identifiant, "tache": args.tache, "auteur": args.utilisateur, "pr": args.pr}
     if args.resume:
         donnees["resume"] = args.resume
-    donnees.update({"statut": "en_relecture", "soumise_le": en_iso(maintenant()), "relectures": []})
+    # Début de l'engagement de l'auteur (sa réservation ou son inscription en parallèle) : R3 s'en sert pour savoir s'il
+    # travaillait déjà sur la tâche avant la soumission d'une concurrente (raisons_course, 2) ; verifier-pr le contrôle.
+    engagement = (next(p.get("depuis") for p in paralleles if p.get("utilisateur") == args.utilisateur) if en_parallele
+                  else (t.get("reservation") or {}).get("depuis"))
+    donnees.update({"statut": "en_relecture", "soumise_le": en_iso(maintenant()), "engage_depuis": engagement, "relectures": []})
     ecrire_yaml(reg.racine / "contributions" / t["projet"] / f"{identifiant}.yaml", donnees)
+    if en_parallele:
+        # Soumission d'un inscrit en parallèle : il quitte la liste, sa contribution entre en course ; la réservation
+        # du titulaire et le statut de la tâche ne changent pas (R3, course entre contributions concurrentes).
+        modifier_tache(chemin, paralleles=sans(paralleles, args.utilisateur), contribution=identifiant)
+        autres = [c for c, _ in contributions_en_course(reg, args.tache)]
+        print(f"✓ contribution {identifiant} enregistrée, en course sur {args.tache}"
+              + (f" avec {', '.join(autres)}" if autres else "")
+              + (f" ; {titulaire} reste titulaire et peut encore soumettre." if titulaire else "."))
+        print("  R3 n'intégrera que la mieux classée (bee voir, bee essaim). Publiez : "
+              f"bee publier --titre 'Soumission {identifiant}'")
+        return 0
     modifier_tache(chemin, statut="en_relecture", reservation=None, contribution=identifiant)
     print(f"✓ contribution {identifiant} enregistrée, tâche {args.tache} en relecture.")
     print(f"  Publiez : bee publier --titre 'Soumission {identifiant}'")
@@ -1537,6 +2345,9 @@ def cmd_relire(args):
         raise ErreurBee(f"{args.contribution} n'est plus en relecture (statut : {enr.get('statut')})")
     if any(r.get("relecteur") == args.utilisateur for r in enr.get("relectures") or []):
         raise ErreurBee(f"{args.utilisateur} a déjà relu {args.contribution}")
+    if args.utilisateur in concurrents_de(reg, enr) and (args.avis != "favorable" or args.defaut):
+        raise ErreurBee(f"{args.utilisateur} est en course sur la même tâche ({enr.get('tache')}) : un avis défavorable sur une "
+                        "concurrente ne compterait pas (commandement 3). Laissez un autre relire, ou retirez-vous de la course.")
     relecture = {"relecteur": args.utilisateur, "avis": args.avis, "motif": args.motif, "le": en_iso(maintenant())}
     sha = (enr.get("verdict") or {}).get("sha")
     if sha:
@@ -1550,12 +2361,44 @@ def cmd_relire(args):
     return 0
 
 
+def cmd_confirmer_defaut(args):
+    """Un tiers (la CI, le conseil, un gardien ou un Confirmé) confirme, après l'avoir reproduit, le défaut qu'un autre a
+    signalé. Le défaut confirmé bloque R3 tant que le commit jugé est celui qu'il visait, et rapporte +2 à son relecteur."""
+    reg = Registre(args.registre)
+    u = args.utilisateur
+    if u not in reg.robots:
+        reg.exiger_membre(u)
+    chemin, enr = reg.enregistrement(args.contribution)
+    if enr.get("statut") != "en_relecture":
+        raise ErreurBee(f"{args.contribution} n'est plus en relecture (statut : {enr.get('statut')})")
+    if not (u in reg.robots or u in reg.conseil or u in reg.gardiens or niveau_de(calculer_niveaux(reg), u) == "Confirmé"):
+        raise ErreurBee("un défaut n'est confirmé que par la CI, le conseil, un gardien ou un Confirmé")
+    if u == args.relecteur:
+        raise ErreurBee("on ne confirme pas son propre défaut : un tiers le confirme")
+    if u == enr.get("auteur") or u in participants_course(reg, enr.get("tache")):
+        raise ErreurBee(f"{u} est en course sur la tâche {enr.get('tache')} : il n'y confirme pas de défaut (commandement 3)")
+    relectures = list(enr.get("relectures") or [])
+    for i, r in enumerate(relectures):
+        if r.get("relecteur") == args.relecteur and r.get("defaut_signale") and not r.get("defaut_confirme"):
+            relectures[i] = {**r, "defaut_confirme": True, "confirme_par": u}
+            break
+    else:
+        raise ErreurBee(f"{args.relecteur} n'a pas signalé de défaut à confirmer sur {args.contribution}")
+    ecrire_yaml(chemin, {**enr, "relectures": relectures})
+    print(f"✓ défaut signalé par {args.relecteur} confirmé sur {args.contribution}. "
+          f"Publiez : bee publier --titre 'Défaut confirmé {args.contribution}'")
+    return 0
+
+
 def cmd_voter(args):
     reg = Registre(args.registre)
     reg.exiger_membre(args.utilisateur)
     if args.sujet in reg.enregistrements:
         if reg.enregistrements[args.sujet][1].get("auteur") == args.utilisateur:
             raise ErreurBee("on ne vote pas pour sa propre contribution (commandement 3)")
+        if args.utilisateur in concurrents_de(reg, reg.enregistrements[args.sujet][1]):
+            raise ErreurBee(f"{args.utilisateur} est en course sur la même tâche que {args.sujet} : on ne vote pas sur une "
+                            "concurrente (commandement 3)")
     elif args.sujet in reg.propositions:
         resultat = depouiller_proposition(reg, args.sujet, calculer_niveaux(reg), maintenant())
         if resultat["terminee"] or reg.propositions[args.sujet][1].get("statut") != "ouverte":
@@ -1631,9 +2474,37 @@ def cmd_classement(args):
     return 0
 
 
+ADRESSE_PR = re.compile(r"^https://github\.com/([A-Za-z0-9-]+)/([A-Za-z0-9_][A-Za-z0-9_.-]*)/pull/([0-9]+)$")
+
+
+def lire_auteurs_pr(chemin):
+    """Fichier « adresse<TAB>login » (un par ligne), écrit par fusion-auto d'après l'API GitHub."""
+    auteurs = {}
+    for ligne in pathlib.Path(chemin).read_text(encoding="utf-8").splitlines():
+        adresse, _, login = ligne.partition("\t")
+        if ADRESSE_PR.match(adresse.strip()):
+            auteurs[adresse.strip()] = login.strip()
+    return auteurs
+
+
+def cmd_prs_declarees(args):
+    """Adresses de PR déclarées par les contributions ajoutées ou modifiées entre base et tête (une par ligne, déjà
+    validées par expression régulière) : fusion-auto relève l'auteur GitHub de chacune avant verifier-pr."""
+    reg = Registre(args.registre)
+    vues = []
+    for _, contribution in contributions_de_la_pr(reg, args.base, args.tete):
+        adresse = str(contribution.get("pr") or "")
+        if ADRESSE_PR.match(adresse) and adresse not in vues:
+            vues.append(adresse)
+    for adresse in vues:
+        print(adresse)
+    return 0
+
+
 def cmd_verifier_pr(args):
     reg = Registre(args.registre)
-    problemes, natures = verifier_pr(reg, args.base, args.tete, args.auteur, args.compte_cree_le)
+    auteurs_pr = lire_auteurs_pr(args.auteurs_pr) if args.auteurs_pr else None
+    problemes, natures = verifier_pr(reg, args.base, args.tete, args.auteur, args.compte_cree_le, auteurs_pr=auteurs_pr)
     problemes = verifier_registre(reg) + problemes
     for p in problemes:
         print(f"✗ {p}")
@@ -1681,6 +2552,18 @@ def cmd_enregistrer_verdict(args):
     chemin, enr = reg.enregistrement(args.contribution)
     with open(args.verdict, encoding="utf-8") as f:
         brut = json.load(f)
+    # Aucun nombre non fini (NaN, ±Infinity : json les accepte) dans un verdict : il fausserait le classement (R3).
+    def non_fini(valeur):
+        if isinstance(valeur, float):
+            return not math.isfinite(valeur)
+        if isinstance(valeur, dict):
+            return any(non_fini(v) for v in valeur.values())
+        if isinstance(valeur, list):
+            return any(non_fini(v) for v in valeur)
+        return False
+
+    if non_fini(brut):
+        raise ErreurBee(f"{args.verdict} : nombre non fini (NaN ou infini) dans le verdict : refusé")
     ci = str(brut.get("ci", "")).lower()
     verdict = {"ci": "verte" if ci in ("verte", "vert", "green", "success", "succes", "succès") else "rouge"}
     if verdict["ci"] == "rouge":
@@ -1806,8 +2689,91 @@ def cmd_enregistrer_mesure(args):
     return 0
 
 
-def raisons_acceptation(reg, cid):
+def raisons_acceptation(reg, cid, instant=None):
     """Raisons qui empêchent l'intégration automatique de `cid` (R3) ; liste vide = intégrable.
+
+    Renvoie (chemin, enr, raisons) : les conditions de R3 pour la contribution seule (raisons_r3), puis, si
+    d'autres contributions de la même tâche sont en course, la règle de choix entre concurrentes (raisons_course).
+    """
+    chemin, enr, raisons = raisons_r3(reg, cid)
+    if enr.get("statut") == "en_relecture":
+        raisons += raisons_course(reg, cid, calculer_niveaux(reg), instant or maintenant())
+    return chemin, enr, raisons
+
+
+def raisons_course(reg, cid, niveaux, instant):
+    """R3, contributions concurrentes : X n'est intégrée que si aucune concurrente encore en course ne pourrait être
+    mieux classée. Liste vide = X peut passer (si raisons_r3 est vide aussi).
+
+    Les bornes sont propres à X (bornes_attente), et ne dépendent d'aucune autre contribution. Jusqu'à
+    soumise_le(X) + 96 h (72 h de R7 + 24 h de fenêtre), X attend :
+      1. tout participant engagé sur la tâche AVANT la soumission de X (titulaire, inscrit en parallèle) qui n'a pas
+         encore soumis, jusqu'à sa contribution, son retrait ou son expiration R7 ; un engagement postérieur à la
+         soumission de X ne la retarde pas ;
+      2. toute concurrente Z pas encore départagée : dans sa fenêtre de R3 (24 h depuis sa soumission), ou sans verdict
+         de CI si son auteur était engagé sur la tâche avant la soumission de X, jusqu'à min(soumise_le(Z) + 96 h,
+         soumise_le(X) + 96 h) (une CI lente ne fait pas perdre la course à qui travaillait déjà, mais une vieille
+         contribution sans verdict ne retarde pas chaque nouvelle ; celle d'un engagé tardif, sans verdict, ne retarde X
+         que pendant sa fenêtre) ;
+      3. toute concurrente mieux classée (cle_classement : le gain mesuré, sinon le vote net, puis l'ancienneté).
+    De soumise_le(X) + 96 h à + 120 h, X n'attend que les concurrentes intégrables (raisons_r3 vide) mieux classées
+    qu'elle : le workflow les intègre d'abord. Ensuite, plus rien ne retient X : une concurrente mieux classée qui ne
+    s'est pas intégrée d'elle-même (PR en conflit, commit sans verdict…) ne bloque plus. Toute attente de X finit donc au
+    plus tard à soumise_le(X) + 120 h, quelle que soit l'ancienneté des autres contributions de la tâche.
+    """
+    _, enr = reg.enregistrement(cid)
+    tid = enr.get("tache")
+    t = reg.taches.get(tid, (None, {}))[1] or {}
+    rivales = [(c, e) for c, e in contributions_en_course(reg, tid) if c != cid]
+    soumise = _instant_ou_rien(enr.get("soumise_le"))
+    protection, fin_attentes = bornes_attente(reg, enr)
+    if soumise is None or instant >= fin_attentes:
+        return []  # borne dure : passé soumise_le(X) + 120 h, personne ne retient plus X
+    fenetre = dt.timedelta(hours=float(reg.config.get("fenetre_acceptation_heures", 24)))
+    raisons = []
+    ma_cle = cle_classement(reg, enr, niveaux)
+    jusqu = en_iso(protection)
+    if instant < protection:
+        duree_r7 = dt.timedelta(hours=float(reg.config.get("reservation_max_heures", 72)))
+        engages = []
+        r = t.get("reservation") or {}
+        if t.get("statut") == "reservee" and isinstance(r, dict) and r.get("utilisateur"):
+            engages.append((r.get("utilisateur"), "titulaire", r.get("depuis")))
+        engages += [(p.get("utilisateur"), "inscrit en parallèle", p.get("depuis")) for p in paralleles_de(t)]
+        for qui, role, depuis in engages:
+            debut = _instant_ou_rien(depuis)
+            if qui != enr.get("auteur") and debut is not None and debut <= soumise and not engagement_expire(reg, depuis, instant):
+                raisons.append(f"course (R3) : {qui} ({role}) travaille sur la tâche depuis {depuis}, avant cette soumission : "
+                               f"on attend sa contribution, son retrait ou son expiration (R7, {en_iso(debut + duree_r7)}), "
+                               f"au plus tard jusqu'au {jusqu}")
+        for c, e in rivales:
+            debut = _instant_ou_rien(e.get("soumise_le"))
+            dans_sa_fenetre = debut is None or instant - debut < fenetre
+            engagee_avant = (debut_engagement(e) or FUTUR_LOINTAIN) <= soumise
+            # Sans verdict, une concurrente d'un auteur engagé avant X n'est attendue que jusqu'à la fin de SA protection
+            # (et jamais au-delà de celle de X) : une vieille contribution sans verdict ne retarde pas chaque nouvelle.
+            limite_engagee = min(bornes_attente(reg, e)[0], protection) if debut is not None else protection
+            if not e.get("verdict") and (dans_sa_fenetre or (engagee_avant and instant < limite_engagee)):
+                limite = limite_engagee if engagee_avant or debut is None else min(debut + fenetre, protection)
+                raisons.append(f"course (R3) : la concurrente {c} attend le verdict de sa CI et pourrait être mieux classée ; "
+                               + ("son auteur travaillait sur la tâche avant cette soumission : " if engagee_avant else "")
+                               + f"on l'attend au plus tard jusqu'au {en_iso(limite)}")
+            elif e.get("verdict") and dans_sa_fenetre:
+                raisons.append(f"course (R3) : la concurrente {c} est encore dans sa fenêtre de relecture et de vote (jusqu'au "
+                               f"{en_iso(min(debut + fenetre, protection)) if debut else jusqu}) et pourrait être mieux classée")
+            elif cle_classement(reg, e, niveaux) < ma_cle:
+                raisons.append(f"course (R3) : la concurrente {c} est mieux classée (gain mesuré, sinon vote net, puis "
+                               f"ancienneté) ; si elle n'est pas intégrable le {jusqu}, elle ne retiendra plus cette contribution")
+    else:
+        for c, e in rivales:
+            if cle_classement(reg, e, niveaux) < ma_cle and not raisons_r3(reg, c)[2]:
+                raisons.append(f"course (R3) : la concurrente {c}, intégrable, est mieux classée : c'est elle qui doit être "
+                               f"intégrée ; si elle ne l'est pas d'ici le {en_iso(fin_attentes)}, plus rien ne retient celle-ci")
+    return raisons
+
+
+def raisons_r3(reg, cid):
+    """Conditions de R3 pour la contribution seule ; liste vide = elle les remplit (la course est à part).
 
     Renvoie (chemin, enr, raisons). Les seuils de relectures et de vote sont plafonnés à ce que les
     membres éligibles (autres que l'auteur) peuvent fournir : pendant l'amorçage l'intégration repose
@@ -1889,13 +2855,18 @@ def raisons_acceptation(reg, cid):
     exiger(not hors_tolerance, "R5 : métrique(s) dégradée(s) au-delà de la tolérance : "
            + ", ".join(f"{m} ({'?' if g is None else f'{100 * g:+.1f} %'})" for m, g in hors_tolerance.items()))
 
-    relectures = enr.get("relectures") or []
-    exiger(not any(r.get("defaut_confirme") for r in relectures), "un défaut confirmé reste à résoudre")
+    # Course entre contributions d'une même tâche : un concurrent de l'auteur ne peut que reconnaître sa contribution
+    # (seul son avis favorable compte) et ne vote pas sur elle (commandement 3). Sans concurrence, rien ne change.
+    concurrents = concurrents_de(reg, enr)
+    relectures = [r for r in enr.get("relectures") or [] if avis_recevable(r, concurrents)]
     sha_verdict = verdict.get("sha")
 
     def actuelle(r):
         """Une relecture ne vaut que pour le commit qu'elle a relu (celui du verdict)."""
         return not sha_verdict or r.get("sha") == sha_verdict
+
+    # Un défaut confirmé est lié au commit jugé, comme un avis défavorable : un nouveau commit jugé le rend périmé.
+    exiger(not any(r.get("defaut_confirme") and actuelle(r) for r in relectures), "un défaut confirmé reste à résoudre")
 
     privilegies = reg.privilegies()
     autres = [r for r in relectures if r.get("relecteur") != auteur]
@@ -1939,9 +2910,9 @@ def raisons_acceptation(reg, cid):
                f"{len(suspects)} construction(s) suspecte(s) relevée(s) par le juge isolé "
                f"({suspects[0].get('detail', '')[:80]}…) : une relecture favorable d'un gardien ou du conseil est exigée")
 
-    net = sum(int(v.get("valeur", 0)) * POIDS_VOTE.get(niveau_de(niveaux, v.get("votant")), 0)
-              for _, v in reg.votes if v.get("sujet") == cid and v.get("votant") != auteur)
-    poids_dispo = sum(POIDS_VOTE.get(niveau_de(niveaux, m), 0) for m in eligibles)
+    net = vote_net(reg, enr, niveaux)
+    # Les concurrents ne peuvent plus voter sur cette contribution : leur poids ne compte pas dans le seuil atteignable.
+    poids_dispo = sum(POIDS_VOTE.get(niveau_de(niveaux, m), 0) for m in eligibles if m not in concurrents)
     seuil_vote = min(int(cfg.get("vote_net_min", 2)), poids_dispo)
     exiger(net >= seuil_vote, f"vote net de la ruche {net} sous le seuil {seuil_vote} (pondéré)")
 
@@ -2019,17 +2990,52 @@ def cmd_integrer(args):
         for r in raisons:
             print("  - " + r)
         return 1
+    instant = en_iso(maintenant())
+    tid = enr["tache"]
+    rivales = [(c, e) for c, e in contributions_en_course(reg, tid) if c != args.contribution]
     enr = dict(enr)
     enr["statut"] = "integree"
-    enr["decidee_le"] = en_iso(maintenant())
+    enr["decidee_le"] = instant
     enr["motif_decision"] = ("Intégration automatique (R3) : CI verte, relectures et vote suffisants, fenêtre écoulée"
-                             + (" ; porte de relecture satisfaite." if porte_humaine(reg) else " ; sans relecture privilégiée."))
+                             + (" ; porte de relecture satisfaite" if porte_humaine(reg) else " ; sans relecture privilégiée")
+                             + (f" ; meilleure de sa course devant {', '.join(c for c, _ in rivales)}." if rivales else "."))
     if args.fusion_sha:
         enr["fusion_sha"] = args.fusion_sha
     ecrire_yaml(chemin, enr)
-    modifier_tache(reg.tache(enr["tache"])[0], statut="integree")
+    # R3 : les concurrentes encore en relecture sont écartées au profit de la retenue, dans la même écriture (donc le
+    # même commit du workflow). Écartée n'est pas refusée : rien ne compte contre l'auteur ni ses relecteurs.
+    for c, e in rivales:
+        e = dict(e)
+        e["statut"] = "ecartee"
+        e["retenue"] = args.contribution
+        e["decidee_le"] = instant
+        e["motif_decision"] = (f"Écartée au profit de {args.contribution}, retenue par R3 (course entre contributions concurrentes "
+                               f"de {tid}). Ce n'est pas un refus : rien ne compte contre son auteur ni ses relecteurs.")
+        ecrire_yaml(reg.enregistrements[c][0], e)
+    chemin_tache, tache = reg.tache(tid)
+    changements = {}
+    if tache.get("contribution") != args.contribution:
+        changements["contribution"] = args.contribution
+    fins = []
+    if (tache.get("reservation") or {}).get("utilisateur"):
+        changements["reservation"] = None
+        fins.append(f"{tache['reservation']['utilisateur']} (titulaire)")
+    if paralleles_de(tache):
+        changements["paralleles"] = None
+        fins += [f"{p['utilisateur']} (en parallèle)" for p in paralleles_de(tache)]
+    textes = []
+    if rivales:
+        textes.append(f"Contribution retenue : {args.contribution} (R3). Écartée(s) à son profit : {', '.join(c for c, _ in rivales)}.")
+    if fins:
+        textes.append(f"La tâche est intégrée : les engagements de {', '.join(fins)} prennent fin.")
+    note = {"par": "github-actions[bot]", "le": instant, "texte": " ".join(textes)} if textes else None
+    modifier_tache(chemin_tache, statut="integree", note=note, **changements)
     print(f"✓ {args.contribution} intégrée automatiquement (R3).")
     print(f"  PR du projet à fusionner : {enr.get('pr', '(inconnue)')}")
+    for c, e in rivales:
+        # La PR de chaque concurrente écartée est fermée par le workflow, après la publication du registre (bee ecartees),
+        # si elle est encore ouverte et que son auteur GitHub est bien celui de la contribution.
+        print(f"ecartee: {c} {e.get('pr', '')} {e.get('auteur', '')}")
     return 0
 
 
@@ -2044,26 +3050,80 @@ def cmd_cloturer(args):
     if enr.get("statut") != "en_relecture":
         print(f"{args.contribution} n'est pas en relecture (statut : {enr.get('statut')}) ; rien à clore.")
         return 1
+    # R3 : si une concurrente de la même tâche est intégrée, ou si sa PR est fusionnée (le passage d'intégration va
+    # l'intégrer), cette contribution a perdu la course : elle sera écartée, pas annulée. On la laisse au passage
+    # d'intégration (idempotent : une publication manquée ne la fait jamais finir « annulee »).
+    fusionnees = set()
+    if args.fusionnees and pathlib.Path(args.fusionnees).exists():
+        fusionnees = {l.strip() for l in pathlib.Path(args.fusionnees).read_text(encoding="utf-8").splitlines() if l.strip()}
+    # Seule compte une concurrente intégrée APRÈS la soumission de celle-ci (une intégration d'une manche antérieure,
+    # tâche rouverte depuis, n'en fait pas une course perdue), ou en relecture avec sa PR fusionnée.
+    soumise = _instant_ou_rien(enr.get("soumise_le")) or FUTUR_LOINTAIN
+    gagnantes = sorted(c for c, (_, e) in reg.enregistrements.items()
+                       if isinstance(e, dict) and c != args.contribution and e.get("tache") == enr.get("tache")
+                       and ((e.get("statut") == "integree" and (_instant_ou_rien(e.get("decidee_le")) or PASSE) >= soumise)
+                            or (c in fusionnees and e.get("statut") == "en_relecture")))
+    if gagnantes:
+        print(f"{args.contribution} n'est pas close : sa concurrente {', '.join(gagnantes)} est intégrée ou fusionnée ; "
+              "le passage d'intégration l'écartera (R3).")
+        return 1
     enr = dict(enr)
     enr["statut"] = "annulee"
+    enr["jamais_integree"] = True  # close depuis la relecture : ses relecteurs ne perdent rien (docs/reputation.md)
     enr["decidee_le"] = en_iso(maintenant())
     enr["motif_decision"] = args.motif
     ecrire_yaml(chemin, enr)
     chemin_tache, tache = reg.tache(enr["tache"])
-    if tache.get("contribution") == args.contribution and tache.get("statut") == "en_relecture":
+    restantes = [c for c, _ in contributions_en_course(reg, enr["tache"]) if c != args.contribution]
+    paralleles = paralleles_de(tache)
+    texte = f"{args.contribution} close sans intégration : {args.motif}"
+    note = lambda suite: {"par": args.par, "le": en_iso(maintenant()), "texte": f"{texte} {suite}"}  # noqa: E731
+    pointeur = {"contribution": restantes[-1] if restantes else None} if tache.get("contribution") == args.contribution else {}
+    if restantes or (tache.get("statut") == "reservee" and tache.get("contribution") == args.contribution):
+        # Course : les autres contributions restent en relecture, ou le titulaire travaille encore.
+        modifier_tache(chemin_tache, note=note("La course continue" + (f" : {', '.join(restantes)}." if restantes else ".")), **pointeur)
+        print(f"✓ {args.contribution} close (annulee) ; tâche {enr['tache']} toujours {tache.get('statut')}.")
+    elif tache.get("statut") == "en_relecture" and paralleles:
+        elu = plus_ancien(paralleles)
+        modifier_tache(chemin_tache, statut="reservee", reservation={"utilisateur": elu["utilisateur"], "depuis": elu["depuis"]},
+                       paralleles=sans(paralleles, elu["utilisateur"]), contribution=None,
+                       note=note(f"{elu['utilisateur']}, inscrit en parallèle depuis {elu['depuis']}, devient titulaire à cette date "
+                                 "(R7 : l'échéance ne s'allonge pas)."))
+        print(f"✓ {args.contribution} close (annulee) ; {elu['utilisateur']} devient titulaire de {enr['tache']}.")
+    elif tache.get("contribution") == args.contribution and tache.get("statut") == "en_relecture":
         modifier_tache(chemin_tache, statut="ouverte", reservation=None, contribution=None,
                        note={"par": args.par, "le": en_iso(maintenant()),
                              "texte": f"{args.contribution} close sans intégration : {args.motif} Tâche rouverte."})
-    print(f"✓ {args.contribution} close (annulee) ; tâche {enr['tache']} rouverte.")
+        print(f"✓ {args.contribution} close (annulee) ; tâche {enr['tache']} rouverte.")
+    else:
+        print(f"✓ {args.contribution} close (annulee).")
     return 0
 
 
 def cmd_en_attente(args):
+    """Contributions en relecture, par tâche et de la mieux classée à la moins bien classée (R3) : le workflow
+    d'intégration essaie d'abord la meilleure de chaque course."""
     reg = Registre(args.registre)
-    resultat = [{"id": cid, "pr": enr.get("pr"), "sha_verdict": (enr.get("verdict") or {}).get("sha"),
+    niveaux = calculer_niveaux(reg)
+    taches = sorted({e.get("tache") for _, (_, e) in reg.enregistrements.items() if isinstance(e, dict) and e.get("statut") == "en_relecture"})
+    # auteur : le pseudo d'un membre est son login GitHub ; les workflows vérifient que la PR est bien la sienne.
+    resultat = [{"id": cid, "pr": enr.get("pr"), "auteur": enr.get("auteur"), "sha_verdict": (enr.get("verdict") or {}).get("sha"),
                  "ci_verdict": (enr.get("verdict") or {}).get("ci")}
-                for cid, (_, enr) in sorted(reg.enregistrements.items()) if enr.get("statut") == "en_relecture"]
+                for tid in taches for cid, enr in classement_course(reg, tid, niveaux)]
     print(json.dumps(resultat, ensure_ascii=False, indent=2))
+    return 0
+
+
+def cmd_ecartees(args):
+    """Contributions écartées récemment (R3), une par ligne : id, PR, auteur, retenue (séparés par des tabulations).
+    Lu par le workflow d'intégration, après la publication du registre, pour fermer leur PR si elle est encore ouverte
+    et appartient bien à l'auteur de la contribution."""
+    reg = Registre(args.registre)
+    limite = maintenant() - dt.timedelta(days=args.jours)
+    for cid, (_, e) in sorted(reg.enregistrements.items()):
+        decidee = _instant_ou_rien(e.get("decidee_le")) if isinstance(e, dict) else None
+        if isinstance(e, dict) and e.get("statut") == "ecartee" and decidee and decidee >= limite:
+            print("\t".join(str(e.get(k) or "-") for k in ("id", "pr", "auteur", "retenue")))
     return 0
 
 
@@ -2202,9 +3262,12 @@ def construire_analyseur():
     p.add_argument("--compte-cree-le", required=True, help="date de création du compte GitHub (AAAA-MM-JJ)")
     p.add_argument("--categories", nargs="*")
 
-    p = ajouter("prendre", cmd_prendre, "Réserve une tâche (72 h maximum, 3 réservations par utilisateur).")
+    p = ajouter("prendre", cmd_prendre, "Réserve une tâche (72 h maximum, 3 réservations ou inscriptions en parallèle par utilisateur).")
     p.add_argument("tache")
     p.add_argument("--utilisateur", required=True)
+    p.add_argument("--en-parallele", action="store_true",
+                   help="s'inscrire en parallèle sur une tâche déjà réservée ou en relecture, au su de tous (R11) : la réservation "
+                        "du titulaire ne change pas ; votre contribution entrera en course avec les autres (R3)")
 
     p = ajouter("proposer-tache", cmd_proposer_tache,
                 "Prépare une proposition de tâche (statut « proposee »), qu'un gardien, le conseil ou un Confirmé validera.")
@@ -2214,7 +3277,8 @@ def construire_analyseur():
     p.add_argument("--taille", default="S", choices=ORDRE_TAILLES)
     p.add_argument("--metrique", help="métrique visée (optimisation) ; défaut : la première du projet")
 
-    p = ajouter("liberer", cmd_liberer, "Rend une tâche réservée ; --note transmet ce que vous avez appris.")
+    p = ajouter("liberer", cmd_liberer, "Rend une tâche réservée, ou retire votre inscription en parallèle ; --note transmet ce que "
+                                         "vous avez appris. Si d'autres sont inscrits en parallèle, le plus ancien devient titulaire.")
     p.add_argument("tache")
     p.add_argument("--utilisateur", required=True)
     p.add_argument("--note")
@@ -2224,7 +3288,8 @@ def construire_analyseur():
     p.add_argument("--utilisateur", required=True)
     p.add_argument("--texte", required=True)
 
-    ajouter("liberer-expirees", cmd_liberer_expirees, "Libère les réservations de plus de 72 h (lancé par la CI).")
+    ajouter("liberer-expirees", cmd_liberer_expirees,
+            "Libère les réservations et inscriptions en parallèle de plus de 72 h, avec promotion du plus ancien inscrit (lancé par la CI).")
 
     p = ajouter("manifeste", cmd_manifeste, "Génère le manifeste à remplir pour une tâche (manifestes/<tâche>.yaml dans le fork).")
     p.add_argument("tache")
@@ -2248,6 +3313,12 @@ def construire_analyseur():
     p.add_argument("--avis", required=True, choices=["favorable", "defavorable"])
     p.add_argument("--motif", required=True, help="ce que vous avez vérifié, ce que vous avez trouvé")
     p.add_argument("--defaut", action="store_true", help="vous signalez un défaut reproductible (décrit dans le motif)")
+
+    p = ajouter("confirmer-defaut", cmd_confirmer_defaut,
+                "Confirme le défaut qu'un autre a signalé, après l'avoir reproduit (CI, conseil, gardien ou Confirmé).")
+    p.add_argument("contribution")
+    p.add_argument("--relecteur", required=True, help="qui a signalé le défaut")
+    p.add_argument("--utilisateur", required=True, help="vous, qui le confirmez")
 
     p = ajouter("enregistrer-mesure", cmd_enregistrer_mesure,
                 "Transforme un rapport ab.py (--json) en fiche de mesure pour une contribution, sur votre configuration.")
@@ -2279,7 +3350,7 @@ def construire_analyseur():
 
     p = ajouter("classement", cmd_classement, "Classe les contributions par score.")
     p.add_argument("--projet")
-    p.add_argument("--statut", choices=["en_relecture", "integree", "refusee", "annulee"], help="ex. en_relecture : les contributions à relire")
+    p.add_argument("--statut", choices=["en_relecture", "integree", "refusee", "annulee", "ecartee"], help="ex. en_relecture : les contributions à relire")
     p.add_argument("--json", action="store_true")
 
     p = ajouter("verifier-acceptation", cmd_verifier_acceptation,
@@ -2287,7 +3358,8 @@ def construire_analyseur():
     p.add_argument("contribution", help="id de la contribution (ex. miniz-0012-c1)")
 
     p = ajouter("integrer", cmd_integrer,
-                "Intègre une contribution si R3 est satisfaite : passe contribution et tâche en « integree ». Utilisé par le workflow de confiance.")
+                "Intègre une contribution si R3 est satisfaite : passe contribution et tâche en « integree », et écarte les "
+                "contributions concurrentes de la même tâche. Utilisé par le workflow de confiance.")
     p.add_argument("contribution", help="id de la contribution (ex. miniz-0012-c1)")
     p.add_argument("--fusion-sha", help="SHA du commit de fusion sur le dépôt du projet, consigné dans la contribution")
 
@@ -2296,6 +3368,12 @@ def construire_analyseur():
     p.add_argument("contribution", help="id de la contribution (ex. miniz-0012-c1)")
     p.add_argument("--motif", required=True, help="raison de la clôture (ex. « PR fermée sans fusion »)")
     p.add_argument("--par", default="github-actions[bot]", help="signature de la note laissée sur la tâche")
+    p.add_argument("--fusionnees", help="fichier des contributions dont la PR est fusionnée (une par ligne) : une concurrente "
+                                        "fusionnée ou intégrée empêche la clôture, la contribution sera écartée (R3)")
+
+    p = ajouter("ecartees", cmd_ecartees,
+                "Liste les contributions écartées récemment (id, PR, auteur, retenue). Utilisé par le workflow d'intégration.")
+    p.add_argument("--jours", type=int, default=7, help="écartées depuis au plus ce nombre de jours (défaut : 7)")
 
     p = ajouter("verifier-pr", cmd_verifier_pr, "Vérifie une pull request sur le registre (utilisé par la CI).")
     p.add_argument("--base", required=True)
@@ -2303,6 +3381,14 @@ def construire_analyseur():
     p.add_argument("--auteur", required=True)
     p.add_argument("--compte-cree-le", help="date de création du compte, fournie par l'API GitHub")
     p.add_argument("--fusion-auto", action="store_true", help="code 0 si fusionnable sans humain, 3 sinon")
+    p.add_argument("--auteurs-pr", help="fichier « adresse<TAB>login » : auteur GitHub de chaque PR déclarée dans une contribution "
+                                        "ajoutée ou modifiée (relevé par fusion-auto) ; chacune doit être celle de l'auteur de la "
+                                        "contribution, et une PR absente est refusée")
+
+    p = ajouter("prs-declarees", cmd_prs_declarees,
+                "Liste les PR déclarées par les contributions ajoutées ou modifiées d'une PR du registre (utilisé par fusion-auto).")
+    p.add_argument("--base", required=True)
+    p.add_argument("--tete", default="HEAD")
 
     p = ajouter("verifier-fork", cmd_verifier_fork, "Vérifie une branche de contribution sur un fork (R1, commandement 3, manifeste).")
     p.add_argument("--tache", required=True)

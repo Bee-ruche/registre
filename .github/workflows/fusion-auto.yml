@@ -63,9 +63,22 @@ jobs:
             exit 0
           fi
           cree=$(gh api "users/$AUTEUR" --jq '.created_at[:10]')
+          # Auteur GitHub de chaque PR déclarée dans une contribution ajoutée ou modifiée : verifier-pr exige que ce soit
+          # l'auteur de la contribution (pas de squat de la PR d'un autre), et refuse une PR dont l'auteur n'a pas pu être
+          # relevé (échec fermé). Les adresses viennent du contenu de la PR : on les revalide ici par expression
+          # régulière et on n'appelle l'API qu'avec leurs composants validés.
+          : > "$RUNNER_TEMP/auteurs_pr.tsv"
+          python3 outils/bee.py --registre ../fusion prs-declarees --base origin/main --tete HEAD > "$RUNNER_TEMP/prs.txt"
+          while IFS= read -r adresse; do
+            if [[ "$adresse" =~ ^https://github\.com/([A-Za-z0-9-]+)/([A-Za-z0-9_][A-Za-z0-9_.-]*)/pull/([0-9]+)$ ]]; then
+              proprietaire="${BASH_REMATCH[1]}"; depot="${BASH_REMATCH[2]}"; numero="${BASH_REMATCH[3]}"
+              login=$(gh api "repos/${proprietaire}/${depot}/pulls/${numero}" --jq '.user.login // ""' < /dev/null) || login=""
+              printf '%s\t%s\n' "$adresse" "$login" >> "$RUNNER_TEMP/auteurs_pr.tsv"
+            fi
+          done < "$RUNNER_TEMP/prs.txt"
           set +e
           python3 outils/bee.py --registre ../fusion verifier-pr --base origin/main --tete HEAD \
-            --auteur "$AUTEUR" --compte-cree-le "$cree" --fusion-auto
+            --auteur "$AUTEUR" --compte-cree-le "$cree" --auteurs-pr "$RUNNER_TEMP/auteurs_pr.tsv" --fusion-auto
           code=$?
           set -e
           echo "code=$code" >> "$GITHUB_OUTPUT"

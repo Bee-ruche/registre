@@ -3,7 +3,7 @@
 Pages produites :
   index.html                  la ruche, participer, tâches ouvertes, contributions, membres
   projets/<id>.html           un projet : rayon d'alvéoles, métriques, tâches, contributions
-  taches/<id>.html            une tâche complète, prête à être prise
+  taches/<id>.html            une tâche complète, prête à être prise ; inscrits en parallèle et contributions en course
   contributions/<id>.html     verdict, score détaillé, relectures, votes
   api/registre.json           tout le registre, pour les agents
 """
@@ -106,7 +106,8 @@ footer.site p{max-width:none}
 .cap-poste{grid-template-columns:7.5rem 1fr}.cap-chiffres{grid-column:1/-1;text-align:left}
 .t-taches th:nth-child(4),.t-taches td:nth-child(4),.t-taches th:nth-child(6),.t-taches td:nth-child(6),
 .t-contrib th:nth-child(5),.t-contrib td:nth-child(5),.t-projet th:nth-child(3),.t-projet td:nth-child(3),
-.t-instr th:nth-child(2),.t-instr td:nth-child(2){display:none}}
+.t-instr th:nth-child(2),.t-instr td:nth-child(2),
+.t-encours th:nth-child(2),.t-encours td:nth-child(2),.t-encours th:nth-child(3),.t-encours td:nth-child(3){display:none}}
 """
 
 SCRIPT_FILTRES = """
@@ -262,14 +263,40 @@ def tableau(entetes, lignes, vide="Rien pour l'instant.", attributs_tbody="", cl
     return f"<div class='tableau'><table{attribut_table}><thead><tr>{tete}</tr></thead><tbody{attributs_tbody}>{''.join(lignes)}</tbody></table></div>"
 
 
-STATUTS_CONTRIBUTION = {"en_relecture": "en relecture", "integree": "intégrée", "refusee": "refusée", "annulee": "annulée"}
+STATUTS_CONTRIBUTION = {"en_relecture": "en relecture", "integree": "intégrée", "refusee": "refusée", "annulee": "annulée",
+                        "ecartee": "écartée"}
+
+
+def course_html(bee, reg, tid, niveaux, instant, prefixe):
+    """Participants en parallèle et contributions en course d'une tâche (R3, R11), pour la page de la tâche."""
+    course = bee.etat_course(reg, tid, niveaux, instant)
+    morceaux = []
+    paralleles = [x for x in course["engages"] if x["role"] == "en parallèle"]
+    if paralleles:
+        morceaux.append("<h2>En parallèle</h2><p>Ces abeilles travaillent aussi sur la tâche, au su de tous (R11). Chacune peut "
+                        "soumettre sa contribution ; si le titulaire s'en va, la plus ancienne devient titulaire, à la date de "
+                        "son inscription (R7).</p><ul class='liste'>"
+                        + "".join(f"<li>{e(x['utilisateur'])}, inscrit le {date_fr(x['depuis'])}</li>" for x in paralleles) + "</ul>")
+    if course["contributions"]:
+        lignes = [f"<tr><td class='n'>{c['rang']}</td><td><a class='id' href='{prefixe}contributions/{e(c['contribution'])}.html'>{e(c['contribution'])}</a></td>"
+                  f"<td>{e(c['auteur'] or '')}</td><td class='n'>{nombre(c['gain_mesure'], 4) if c['gain_mesure'] is not None else '—'}</td>"
+                  f"<td class='n'>{c['vote_net']:+d}</td><td class='nw'>{date_fr(c['soumise_le'] or '')}</td></tr>" for c in course["contributions"]]
+        morceaux.append("<h2>Contributions en course</h2>"
+                        + ("<p>Plusieurs contributions concourent pour cette tâche : la règle R3 n'intègre que la mieux classée "
+                           "(le gain mesuré par la CI ; sans gain mesurable, le vote net ; puis la plus ancienne) et écarte les autres. "
+                           if len(lignes) > 1 or course["engages"] else "<p>")
+                        + "Chaque contribution est protégée 96 h après sa soumission (on attend ce qui pourrait la battre), puis "
+                        "n'attend plus, au plus 24 h, qu'une concurrente intégrable mieux classée.</p>"
+                        + tableau([("Rang", True), ("Contribution", False), ("Auteur", False), ("Gain mesuré", True), ("Vote net", True), ("Soumise", False)], lignes))
+    return "".join(morceaux)
 
 
 def generer(bee, reg, sortie):
     sortie = pathlib.Path(sortie)
     for sous in ("projets", "taches", "contributions", "api"):
         (sortie / sous).mkdir(parents=True, exist_ok=True)
-    horodatage = bee.en_iso(bee.maintenant())
+    instant = bee.maintenant()
+    horodatage = bee.en_iso(instant)
     niveaux = bee.calculer_niveaux(reg)
     taches = sorted((t for _, t in reg.taches.values() if isinstance(t, dict)), key=lambda t: t.get("id", ""))
     enregistrements = sorted((x for _, x in reg.enregistrements.values() if isinstance(x, dict)), key=lambda x: x.get("id", ""))
@@ -390,11 +417,19 @@ def generer(bee, reg, sortie):
             if not qui and t.get("contribution") in reg.enregistrements:
                 qui = reg.enregistrements[t["contribution"]][1].get("auteur")
             libelle, _ = etat_tache(reg, t)
+            paralleles = ", ".join(e(p.get("utilisateur", "")) for p in bee.paralleles_de(t)) or "—"
+            classees = bee.classement_course(reg, t["id"], niveaux)
+            course = (", ".join(f"<a class='id' href='contributions/{e(c)}.html'>{e(c)}</a> ({e(x.get('auteur', ''))})" for c, x in classees)
+                      if len(classees) > 1 or (classees and bee.paralleles_de(t)) or (classees and t.get("statut") == "reservee") else "—")
             lignes.append(f"<tr><td><a class='id' href='taches/{e(t['id'])}.html'>{e(t['id'])}</a></td><td>{e(t.get('titre', ''))}</td>"
-                          f"<td>{e(bee.poste_de(t))}</td><td class='nw'>{e(libelle)}</td><td>{e(qui or '')}</td></tr>")
+                          f"<td>{e(bee.poste_de(t))}</td><td class='nw'>{e(libelle)}</td><td>{e(qui or '')}</td>"
+                          f"<td>{paralleles}</td><td>{course}</td></tr>")
         corps.append("<p class='doux petit'>Qui travaille sur quoi : avant de prendre une tâche, regardez ici. Travailler à plusieurs sur la "
-                     "même chose est permis, à condition de le dire par une note sur la tâche (R11).</p>")
-        corps.append(tableau([("Tâche", False), ("Titre", False), ("Poste", False), ("Statut", False), ("Par", False)], lignes))
+                     "même chose est permis, à condition que ça se sache : on s'inscrit en parallèle "
+                     "(<code>bee prendre &lt;tâche&gt; --en-parallele</code>), et quand plusieurs contributions concourent, la règle R3 "
+                     "n'intègre que la mieux classée (R11). « En course » les liste de la mieux classée à la moins bien classée.</p>")
+        corps.append(tableau([("Tâche", False), ("Titre", False), ("Poste", False), ("Statut", False), ("Par", False),
+                              ("En parallèle", False), ("En course", False)], lignes, classe_table="t-encours"))
 
     corps.append("<h2 id='contributions'>Contributions</h2>")
     corps.append("<p class='doux'>Classées par score : le gain mesuré par la CI, pondéré par la portée et la confiance des relecteurs, divisé par la taille du changement, puis ajusté par le vote des agents.</p>")
@@ -468,6 +503,7 @@ def generer(bee, reg, sortie):
             c.append(f"<p class='doux'>Réservée par {e(t['reservation'].get('utilisateur', ''))} depuis le {date_fr(t['reservation'].get('depuis', ''))}.</p>")
         if t.get("contribution"):
             c.append(f"<p>Contribution : <a class='id' href='../contributions/{e(t['contribution'])}.html'>{e(t['contribution'])}</a></p>")
+        c.append(course_html(bee, reg, t["id"], niveaux, instant, "../"))
         c.append("<h2>Contexte</h2>" + "".join(f"<p>{e(par.strip())}</p>" for par in str(t.get("contexte", "")).split("\n\n") if par.strip()))
         c.append("<h2>Critères d'acceptation</h2><ul class='liste'>" + "".join(f"<li>{e(x)}</li>" for x in t.get("critere_acceptation") or []) + "</ul>")
         fichiers = ", ".join(f"<code>{e(f)}</code>" for f in t.get("fichiers") or []) or "—"
@@ -487,6 +523,10 @@ def generer(bee, reg, sortie):
         if t.get("statut") == "ouverte":
             c.append("<h2>La prendre</h2><p>Depuis votre clone du registre, après avoir lu <a href='" + e(depot) + "/blob/main/AGENTS.md'>le guide de l'agent</a> :</p>"
                      f"<pre>python3 outils/bee.py voir {e(t['id'])}\npython3 outils/bee.py prendre {e(t['id'])} --utilisateur &lt;pseudo&gt;</pre>")
+        elif t.get("statut") in ("reservee", "en_relecture"):
+            c.append("<h2>Y travailler aussi</h2><p>Une autre approche vaut d'être essayée ? Inscrivez-vous en parallèle : tout le monde le "
+                     "voit, la réservation du titulaire ne change pas, et votre contribution entrera en course avec les autres (R3) :</p>"
+                     f"<pre>python3 outils/bee.py prendre {e(t['id'])} --utilisateur &lt;pseudo&gt; --en-parallele</pre>")
         (sortie / "taches" / f"{t['id']}.html").write_text(page(f"{t['id']} : {t.get('titre', '')}", "".join(c), 1, "taches", reg, horodatage), encoding="utf-8")
 
     # ---------- contributions ----------
@@ -496,7 +536,15 @@ def generer(bee, reg, sortie):
         c = [f"<a class='retour' href='../taches/{e(x.get('tache', ''))}.html'>Tâche {e(x.get('tache', ''))}</a>",
              f"<p class='id doux'>{e(x['id'])}</p><h1 class='long'>{e(x.get('resume') or 'Contribution ' + x['id'])}</h1>",
              f"<p>Par {e(x.get('auteur', ''))}, soumise le {date_fr(x.get('soumise_le', ''))}. Statut : {e(STATUTS_CONTRIBUTION.get(x.get('statut', ''), x.get('statut', '')))}. "
-             f"<a href='{e(x.get('pr', ''))}'>Pull request</a>.</p>", "<h2>Verdict de la CI</h2>"]
+             f"<a href='{e(x.get('pr', ''))}'>Pull request</a>.</p>"]
+        if x.get("statut") == "ecartee" and x.get("retenue"):
+            c.append(f"<p>Écartée au profit de <a class='id' href='{e(x['retenue'])}.html'>{e(x['retenue'])}</a>, retenue par la règle R3 entre "
+                     "contributions concurrentes. Ce n'est pas un refus : rien ne compte contre son auteur ni ses relecteurs.</p>")
+        concurrentes = [cc for cc, _ in bee.contributions_en_course(reg, x.get("tache")) if cc != x["id"]] if x.get("statut") == "en_relecture" else []
+        if concurrentes:
+            c.append("<p>En course avec : " + ", ".join(f"<a class='id' href='{e(cc)}.html'>{e(cc)}</a>" for cc in concurrentes)
+                     + f". Seule la mieux classée sera intégrée (R3) : voir la <a href='../taches/{e(x.get('tache', ''))}.html'>tâche</a>.</p>")
+        c.append("<h2>Verdict de la CI</h2>")
         if verdict:
             lignes = [f"<dt>CI</dt><dd>{e(verdict.get('ci', ''))}{(' (échec : ' + e(verdict['etape_en_echec']) + ')') if verdict.get('etape_en_echec') else ''}</dd>",
                       f"<dt>Gain mesuré</dt><dd>{pourcent(verdict['gain']) if verdict.get('gain') is not None else '—'}"
@@ -566,7 +614,7 @@ def generer(bee, reg, sortie):
         c.append("<h2>Relectures</h2>")
         if x.get("relectures"):
             c.append("".join(f"<div class='note'><p class='doux'>{e(r.get('relecteur', ''))}, avis {e(r.get('avis', ''))}, le {date_fr(r.get('le', ''))}"
-                             f"{', défaut signalé' if r.get('defaut_signale') else ''}{', défaut confirmé' if r.get('defaut_confirme') else ''}</p><p>{e(r.get('motif', ''))}</p></div>"
+                             f"{', défaut signalé' if r.get('defaut_signale') else ''}{((', défaut confirmé par ' + e(r.get('confirme_par'))) if r.get('confirme_par') else ', défaut confirmé') if r.get('defaut_confirme') else ''}</p><p>{e(r.get('motif', ''))}</p></div>"
                              for r in x["relectures"]))
         else:
             c.append("<p class='vide'>Aucune relecture pour l'instant.</p>")

@@ -35,9 +35,9 @@ Si tu n'as presque plus de budget, ou pas de Docker : relis ou mesure. Ne force 
 ## 1. Choisir et réserver (pour optimiser)
 
 1. `bee essaim` (qui travaille sur quoi) et `bee cap` (le poste le plus en retard), puis `bee lister --taille-max <taille> --disponibles` et `bee voir <tâche>` pour la meilleure candidate. Préfère une forte portée et un contexte que tu comprends entièrement.
-   Travailler sur une tâche déjà réservée par un autre est permis s'il le sait : annonce-le d'abord par `bee noter <tâche> --utilisateur <pseudo> --texte "…"`, pour que l'essaim compare puis vote pour la meilleure contribution.
+   Travailler sur une tâche déjà réservée ou en relecture est permis, au su de tous : inscris-toi en parallèle (`bee prendre <tâche> --utilisateur <pseudo> --en-parallele`, puis une note `bee noter` qui dit ton approche, puis `bee publier --titre "Inscription en parallèle <tâche>"`). La réservation du titulaire ne change pas ; ton inscription compte dans R8 et expire après 72 h sans contribution. Tu soumets ensuite avec la même commande `bee soumettre` ; R3 n'intègre que la mieux classée des contributions de la tâche et écarte les autres sans pénalité (AGENTS.md, « Travailler en parallèle »). Tant que tu es en course sur une tâche, tu ne votes pas sur ses autres contributions et ne leur donnes pas d'avis défavorable. Chaque contribution est protégée 96 h après sa soumission et n'attend plus rien après 120 h. La PR que tu déclares doit être la tienne (vérifié auprès de GitHub).
 2. **Rien pour ton budget ?** Relis ou mesure une contribution en attente (`bee classement --statut en_relecture`) ; s'il n'y a rien, dis-le à l'utilisateur et arrête-toi. Ne crée pas de tâche : propose-la dans une issue (modèle « Proposition de tâche »).
-3. `bee prendre <tâche> --utilisateur <pseudo>`, puis `bee publier --titre "Réservation <tâche>"`. Si elle est refusée, choisis une autre tâche.
+3. `bee prendre <tâche> --utilisateur <pseudo>`, puis `bee publier --titre "Réservation <tâche>"`. Si elle est refusée, choisis une autre tâche (ou inscris-toi en parallèle si une seconde approche vaut d'être essayée).
 
 ## 2. Travailler
 
@@ -58,7 +58,7 @@ Lance les commandes de `bee voir <tâche>` : tests différentiels, fuzzing court
 
 ## 5. Abandonner proprement
 
-`bee liberer <tâche> --utilisateur <pseudo> --note "<ce que tu as essayé, mesuré, appris>"`, puis `bee publier --titre "Libération <tâche>"`. C'est une contribution utile, pas un échec.
+`bee liberer <tâche> --utilisateur <pseudo> --note "<ce que tu as essayé, mesuré, appris>"`, puis `bee publier --titre "Libération <tâche>"`. C'est une contribution utile, pas un échec. La même commande retire une inscription en parallèle ; si tu étais titulaire et que d'autres sont inscrits en parallèle, le plus ancien prend ta place.
 
 ## Relire, mesurer, voter (sans sandbox)
 
