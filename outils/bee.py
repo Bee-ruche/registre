@@ -551,6 +551,21 @@ def est_confirmation(ancienne, nouvelle):
             and {k: v for k, v in nouvelle.items() if k not in CLES_CONFIRMATION} == ancienne)
 
 
+def jugees_par(reg, tid, pseudo):
+    """Contributions encore en course de la tâche sur lesquelles `pseudo` a donné un avis défavorable ou confirmé un
+    défaut. Qui a jugé une course n'y entre plus (commandement 3) : ni inscription en parallèle, ni réservation, tant
+    que ces contributions sont en course ; on ne se retire pas pour juger puis revenir concourir."""
+    return [c for c, e in contributions_en_course(reg, tid)
+            if any(isinstance(r, dict) and ((r.get("relecteur") == pseudo and r.get("avis") == "defavorable")
+                                            or r.get("confirme_par") == pseudo)
+                   for r in e.get("relectures") or [])]
+
+
+def message_juge(tid, pseudo, jugees):
+    return (f"{pseudo} a jugé défavorablement ou confirmé un défaut sur {', '.join(jugees)}, encore en course sur {tid} : "
+            "qui a jugé une course n'y entre plus tant que ces contributions sont en course (commandement 3)")
+
+
 def avis_recevable(relecture, concurrents):
     """Un concurrent ne peut que reconnaître la contribution d'un autre : seul son avis favorable, sans défaut, compte.
     Exception : un défaut CONFIRMÉ (par un tiers : la CI, le conseil, un gardien ou un Confirmé) compte toujours, quel
@@ -1292,6 +1307,8 @@ def verifier_engagements(reg, chemin, ancien, nouveau, differences, auteur, *, e
         en_course = [c for c, e in contributions_en_course(reg, nouveau.get("id")) if e.get("auteur") == qui]
         exiger(not en_course, f"{qui} a déjà une contribution en course ({', '.join(en_course)}) : on l'améliore par un nouveau "
                               "commit sur sa PR, on n'en soumet pas une autre")
+        jugees = jugees_par(reg, nouveau.get("id"), qui)
+        exiger(not jugees, message_juge(nouveau.get("id"), qui, jugees))
         try:
             # La date d'inscription fixe le rang de promotion et dit si l'inscription précède une soumission (R3) :
             # elle doit être l'heure réelle, ni antidatée ni postdatée, et jamais antérieure à ce qui existe déjà sur
@@ -1425,6 +1442,8 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
                 exiger(not pn, f"{chemin} : une réservation n'inscrit personne en parallèle (bee prendre --en-parallele, chacun pour soi)")
                 exiger(reservation.get("utilisateur") == auteur, f"{chemin} : on ne réserve que pour soi ({auteur})")
                 exiger(auteur in reg.membres or est_conseil, f"{chemin} : {auteur} doit d'abord s'inscrire (bee inscrire)")
+                jugees = jugees_par(reg, nouveau.get("id"), auteur)
+                exiger(not jugees, f"{chemin} : {message_juge(nouveau.get('id'), auteur, jugees)}")
                 try:
                     depuis = lire_instant(reservation.get("depuis"), chemin)
                     exiger(depuis <= instant + AVANCE_MAX, f"{chemin} : réservation datée dans le futur")
@@ -2057,6 +2076,9 @@ def prendre_en_parallele(reg, args, chemin, t):
                         "nouveau commit sur sa PR plutôt que d'en soumettre une autre")
     if reg.bloquee_par(t):
         raise ErreurBee(f"{args.tache} attend l'intégration de : {', '.join(reg.bloquee_par(t))}")
+    jugees = jugees_par(reg, args.tache, u)
+    if jugees:
+        raise ErreurBee(message_juge(args.tache, u, jugees))
     if not reg.config.get("amorcage") and u not in reg.conseil:
         niveau = niveau_de(calculer_niveaux(reg), u)
         if t["taille"] not in TAILLES_PAR_NIVEAU[niveau] or (t["type"] == "decoupage" and niveau != "Confirmé"):
@@ -2088,6 +2110,9 @@ def cmd_prendre(args):
     bloquee = reg.bloquee_par(t)
     if bloquee:
         raise ErreurBee(f"{args.tache} attend l'intégration de : {', '.join(bloquee)}")
+    jugees = jugees_par(reg, args.tache, args.utilisateur)
+    if jugees:
+        raise ErreurBee(message_juge(args.tache, args.utilisateur, jugees))
     if not reg.config.get("amorcage") and args.utilisateur not in reg.conseil:
         niveau = niveau_de(calculer_niveaux(reg), args.utilisateur)
         if t["taille"] not in TAILLES_PAR_NIVEAU[niveau] or (t["type"] == "decoupage" and niveau != "Confirmé"):

@@ -31,7 +31,8 @@ texte_propose: 'Une proposition pour trois règles qui vont ensemble (travail en
   en course (commandement 3) ; un défaut confirmé compte toujours ; il n''est confirmé que par un tiers
   (la CI, le conseil, ou un gardien ou un Confirmé autre que celui qui l''a signalé, hors de la course
   de la tâche), et, comme un avis défavorable, il est lié au commit jugé : un nouveau commit jugé le rend
-  périmé. »
+  périmé. Qui a donné un avis défavorable ou confirmé un défaut sur une contribution encore en course
+  ne s''inscrit pas en parallèle ni ne réserve cette tâche tant qu''elle y est. »
 
   R7 : remplacer par : « Une réservation, ou une inscription en parallèle (R11), sans contribution prend
   fin après 72 h. Si le titulaire s''en va (libération ou expiration) alors que d''autres sont inscrits
@@ -54,5 +55,5 @@ motif: 'Tâche ruche-0001, corrigée après une revue adverse indépendante. R11
   seule proposition, rattachée à R3, car les trois changements vont ensemble ; la parenthèse de R11 «
   (une note sur la tâche) » pourra devenir « (une inscription en parallèle, bee prendre --en-parallele)
   ».'
-ouverte_le: '2026-10-28T15:33:35Z'
+ouverte_le: '2026-10-28T15:53:42Z'
 statut: ouverte

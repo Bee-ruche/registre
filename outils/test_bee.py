@@ -1827,7 +1827,11 @@ class TestCourse(BaseParallele):
         bloquee = lambda: [r for r in bee.raisons_r3(bee.Registre(self.dossier), c1)[2] if "défavorable de chloe" in r]  # noqa: E731
         self.assertTrue(bloquee(), "pas encore engagée : son avis bloque")
         self.a("2026-10-27T19:00:00Z")
-        self.parallele("miniz-0099", "chloe")
+        self.parallele("miniz-0099", "chloe", attendu=1)  # qui a jugé la course n'y entre plus
+        self.assertTrue(bloquee(), "toujours hors de la course : son avis bloque")
+        # Engagée malgré tout (inscription écrite hors de l'outil) : son avis défavorable, même antérieur, ne compte plus.
+        bee.modifier_tache(self.dossier / "taches/miniz/miniz-0099.yaml",
+                           paralleles=[{"utilisateur": "chloe", "depuis": "2026-10-27T19:00:00Z"}])
         self.assertFalse(bloquee(), "engagée dans la course : son avis défavorable, même antérieur, ne compte plus")
         self.assertEqual(self.bee("relire", c2, "--utilisateur", "chloe", "--avis", "defavorable", "--motif", "Une autre à bloquer.")[0], 1,
                          "engagée, elle ne donne plus d'avis défavorable sur la course")
@@ -3033,6 +3037,39 @@ class TestRevueAdverse(BaseParallele):
         bee.ecrire_yaml(chemin, enr)
         code, texte = self.acceptation(c1)
         self.assertEqual(code, 0, texte)
+
+    def test_N11d_qui_a_juge_une_course_n_y_revient_pas(self):
+        c1, chemin = self.preparer_defaut()
+        # Le gardien bruno se retire (PR 1), confirme le défaut signalé par david (PR 2), puis veut revenir (PR 3).
+        self.branche("retrait")
+        self.assertEqual(self.bee("liberer", "miniz-0099", "--utilisateur", "bruno")[0], 0)
+        self.commit()
+        code, texte = self.verifier("bruno", "--fusion-auto")
+        self.assertEqual(code, 0, texte)
+        self.fusionner("retrait")
+        self.branche("confirmation")
+        self.assertEqual(self.bee("confirmer-defaut", c1, "--relecteur", "david", "--utilisateur", "bruno")[0], 0)
+        self.commit()
+        code, texte = self.verifier("bruno", "--fusion-auto")
+        self.assertEqual(code, 0, texte)
+        self.fusionner("confirmation")
+        self.a("2026-10-27T16:00:00Z")
+        code, texte = self.bee("prendre", "miniz-0099", "--utilisateur", "bruno", "--en-parallele")
+        self.assertEqual(code, 1, texte)
+        self.assertIn("n'y entre plus", texte)
+        # Écrite à la main, l'inscription est refusée par verifier-pr.
+        self.branche("retour")
+        bee.modifier_tache(self.dossier / "taches/miniz/miniz-0099.yaml",
+                           paralleles=[{"utilisateur": "bruno", "depuis": "2026-10-27T16:00:00Z"}])
+        self.commit()
+        code, texte = self.verifier("bruno", "--fusion-auto")
+        self.assertEqual(code, 1, texte)
+        self.assertIn("n'y entre plus", texte)
+        # Même règle pour david, qui a donné l'avis défavorable ; chloe, qui n'a rien jugé, s'inscrit.
+        git(self.dossier, "switch", "-q", "main")
+        self.assertEqual(self.bee("prendre", "miniz-0099", "--utilisateur", "david", "--en-parallele")[0], 1)
+        self.parallele("miniz-0099", "chloe")
+        self.valide()
 
     def test_N11c_seul_un_defaut_confirme_par_un_tiers_rapporte(self):
         c1 = self.soumettre_0099("alice")
