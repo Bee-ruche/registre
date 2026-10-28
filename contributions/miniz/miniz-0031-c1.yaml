@@ -4,7 +4,7 @@ auteur: bidji29
 pr: https://github.com/Bee-ruche/minizBee/pull/7
 resume: 'Juge isolé : code de la PR en conteneur sans réseau, sorties vérifiées de l''extérieur, temps
   et instructions relevés hors du processus mesuré'
-statut: en_relecture
+statut: integree
 soumise_le: '2026-10-27T22:05:47Z'
 relectures: []
 verdict:
@@ -54,3 +54,7 @@ verdict:
   - bee/juge/juge.py
   - bee/juge/test_juge.py
   execution: https://github.com/Bee-ruche/minizBee/actions/runs/40599150007
+decidee_le: '2026-10-28T22:26:11Z'
+motif_decision: 'Intégration automatique (R3) : CI verte, relectures et vote suffisants, fenêtre écoulée
+  ; porte de relecture satisfaite.'
+fusion_sha: 978d90ebee05d0a5a9af6f957de5c42f9ea48472

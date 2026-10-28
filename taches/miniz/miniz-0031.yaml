@@ -29,7 +29,7 @@ critere_acceptation:
   - "modèle de menace écrit dans bee/README.md, avec ce qui reste hors de portée"
 hors_perimetre: [code de miniz, changement des métriques suivies, nouvelle dépendance hors image de base]
 depend_de: [miniz-0001]
-statut: en_relecture
+statut: integree
 contribution: miniz-0031-c1
 cree_par: conseil
 cree_le: "2026-10-27"
