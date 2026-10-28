@@ -55,6 +55,13 @@ class BaseTest(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.dossier = pathlib.Path(self.temp.name) / "registre"
         shutil.copytree(RACINE, self.dossier, ignore=shutil.ignore_patterns(".git", "_site", "__pycache__"))
+        # Les tests ne dépendent pas des réservations en cours dans le vrai registre (règle R8 : 3 au plus).
+        for chemin in (self.dossier / "taches").glob("*/*.yaml"):
+            tache = bee.lire_yaml(chemin)
+            if isinstance(tache, dict) and tache.get("statut") == "reservee":
+                tache["statut"] = "ouverte"
+                tache.pop("reservation", None)
+                bee.ecrire_yaml(chemin, tache)
         (self.dossier / "taches" / "miniz" / "miniz-0099.yaml").write_text(TACHE_OPTIMISATION, encoding="utf-8")
         # Tâches fictives indépendantes de l'état réel du registre : 9002 attend 9001.
         (self.dossier / "taches" / "miniz" / "miniz-9001.yaml").write_text(TACHE_OPTIMISATION.replace("miniz-0099", "miniz-9001"), encoding="utf-8")
