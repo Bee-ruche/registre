@@ -26,7 +26,7 @@ jobs:
         run: pip install -r outils/requirements.txt
       - name: Tests de l'outil
         run: python3 -m unittest outils/test_bee.py
-      - name: Tests unitaires du juge commun (sans Docker ; méta-tests : juge-commun.yml)
+      - name: "Tests unitaires du juge commun (sans Docker ; méta-tests dans juge-commun.yml)"
         run: python3 outils/juge/test_juge.py
       - name: Validation complète du registre
         run: python3 outils/bee.py valider

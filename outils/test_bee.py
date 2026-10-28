@@ -50,6 +50,21 @@ def git(depot, *arguments):
     return subprocess.run(["git", "-C", str(depot), *arguments], check=True, capture_output=True, text=True).stdout
 
 
+class TestWorkflows(unittest.TestCase):
+    """Un workflow illisible ne tourne pas du tout, sans prévenir : chaque fichier doit être du YAML valide."""
+
+    def test_workflows_lisibles(self):
+        import yaml
+        dossier = pathlib.Path(__file__).resolve().parent.parent / ".github" / "workflows"
+        fichiers = sorted(dossier.glob("*.yml"))
+        self.assertTrue(fichiers)
+        for f in fichiers:
+            with self.subTest(workflow=f.name):
+                donnees = yaml.safe_load(f.read_text(encoding="utf-8"))
+                self.assertIsInstance(donnees, dict)
+                self.assertIn("jobs", donnees)
+
+
 class BaseTest(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
