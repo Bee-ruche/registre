@@ -35,3 +35,7 @@ depend_de: [miniz-0031]
 statut: ouverte
 cree_par: conseil
 cree_le: "2026-10-28"
+notes:
+  - par: "bidji29"
+    le: "2026-10-28T22:33:28Z"
+    texte: "28/10 au soir : le juge isolé (miniz-0031) est intégré sur master (PR #7, 978d90e). En passant au juge commun, retirer aussi le CONTRIBUTION.yaml laissé à la racine de master par les premières contributions : les manifestes vont dans manifestes/<tâche>.yaml. Rappel : une PR qui modifie un workflow de CI n'est jamais fusionnée automatiquement ; le conseil la fusionne après la relecture d'un gardien."
