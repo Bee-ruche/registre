@@ -55,7 +55,26 @@ class ErreurBee(Exception):
 # --------------------------------------------------------------------------
 
 class ChargeurBee(yaml.SafeLoader):
-    """Chargeur YAML qui garde les dates en texte : les schémas les attendent ainsi."""
+    """Chargeur YAML qui garde les dates en texte (les schémas les attendent ainsi) et refuse les clés en double.
+
+    Une clé répétée (deux blocs reservation:, paralleles:…) serait lue avec la dernière valeur, alors que l'édition
+    textuelle des robots (modifier_tache) ne touche que le premier bloc : un fichier ainsi écrit tromperait les
+    contrôles et bloquerait les robots. Il est illisible, donc refusé partout (valider, verifier-pr)."""
+
+    def construct_mapping(self, node, deep=False):
+        vues = set()
+        for noeud_cle, _ in node.value:
+            if noeud_cle.tag == "tag:yaml.org,2002:merge":
+                continue
+            cle = self.construct_object(noeud_cle, deep=deep)
+            try:
+                deja = cle in vues
+                vues.add(cle)
+            except TypeError:  # clé non hachable : la construction elle-même la refusera
+                continue
+            if deja:
+                raise yaml.constructor.ConstructorError(None, None, f"clé « {cle} » en double", noeud_cle.start_mark)
+        return super().construct_mapping(node, deep=deep)
 
 
 ChargeurBee.yaml_implicit_resolvers = {
@@ -418,6 +437,12 @@ def engagement_expire(reg, depuis, instant):
     return debut is not None and instant - debut > dt.timedelta(hours=float(reg.config.get("reservation_max_heures", 72)))
 
 
+def numeros_contributions(reg, tid, sauf=None):
+    """Numéros N des contributions <tid>-cN déjà enregistrées (sauf `sauf`)."""
+    return [int(m["n"]) for cid in reg.enregistrements if cid != sauf
+            for m in [ID_CONTRIBUTION.match(cid)] if m and m["tache"] == tid]
+
+
 def contributions_en_course(reg, tid):
     """Contributions de la tâche encore en relecture, de la plus ancienne à la plus récente : [(id, enregistrement)]."""
     liste = [(cid, e) for cid, (_, e) in reg.enregistrements.items()
@@ -425,71 +450,66 @@ def contributions_en_course(reg, tid):
     return sorted(liste, key=lambda x: (_instant_ou_rien(x[1].get("soumise_le")) or FUTUR_LOINTAIN, x[0]))
 
 
-PASSE_LOINTAIN = dt.datetime.min.replace(tzinfo=dt.timezone.utc)
-
-
 def participants_course(reg, tid):
-    """Les parties prenantes de la course d'une tâche et le début de leur engagement : {pseudo: instant}.
-    Titulaire (depuis sa réservation), inscrits en parallèle (depuis leur inscription), auteurs des contributions en
-    relecture (au plus tard depuis leur soumission). Une date illisible compte comme engagée depuis toujours."""
+    """Les parties prenantes ACTUELLES de la course d'une tâche : titulaire, inscrits en parallèle, auteurs des
+    contributions en relecture."""
     t = reg.taches.get(tid, (None, {}))[1] or {}
-    debuts = {}
-
-    def noter(qui, quand):
-        if qui:
-            instant = _instant_ou_rien(quand) or PASSE_LOINTAIN
-            debuts[qui] = min(debuts.get(qui, instant), instant)
-
+    qui = set()
     if isinstance(t, dict) and t.get("statut") == "reservee":
-        noter((t.get("reservation") or {}).get("utilisateur"), (t.get("reservation") or {}).get("depuis"))
-    for p in paralleles_de(t):
-        noter(p.get("utilisateur"), p.get("depuis"))
-    for _, e in contributions_en_course(reg, tid):
-        noter(e.get("auteur"), e.get("soumise_le"))
-    return debuts
+        qui.add((t.get("reservation") or {}).get("utilisateur"))
+    qui |= {p.get("utilisateur") for p in paralleles_de(t)}
+    qui |= {e.get("auteur") for _, e in contributions_en_course(reg, tid)}
+    return qui - {None}
 
 
 def concurrents_de(reg, enr):
-    """Ceux qui sont en concurrence avec l'auteur de `enr` sur sa tâche, et depuis quand : {pseudo: instant}.
-    Commandement 3 : on ne juge pas son concurrent. Depuis son engagement, un concurrent ne vote pas sur cette
-    contribution et seul son avis favorable y compte ; ce qu'il en a dit avant de s'engager reste valable."""
-    return {qui: debut for qui, debut in participants_course(reg, enr.get("tache")).items() if qui != enr.get("auteur")}
-
-
-def _avant_engagement(objet, concurrents, qui):
-    """Vrai si `objet` (relecture ou vote) est daté d'avant l'engagement de `qui` dans la course."""
-    quand = _instant_ou_rien(objet.get("le"))
-    return quand is not None and quand < concurrents[qui]
+    """Ceux qui sont en concurrence avec l'auteur de `enr` sur sa tâche, en ce moment (commandement 3 : on ne juge pas
+    son concurrent). Tant qu'ils sont engagés dans la course, leurs votes et leurs avis défavorables sur cette
+    contribution ne comptent pas, quelle que soit leur date ; leurs avis favorables comptent."""
+    return participants_course(reg, enr.get("tache")) - {enr.get("auteur")}
 
 
 def avis_recevable(relecture, concurrents):
-    """Un concurrent ne peut que reconnaître la contribution d'un autre : depuis son engagement, seul son avis
-    favorable, sans défaut, compte. Un avis donné avant de s'engager compte comme celui de n'importe qui."""
-    qui = relecture.get("relecteur")
-    return qui not in concurrents or _avant_engagement(relecture, concurrents, qui) or (
+    """Un concurrent ne peut que reconnaître la contribution d'un autre : seul son avis favorable, sans défaut, compte."""
+    return relecture.get("relecteur") not in concurrents or (
         relecture.get("avis") == "favorable" and not relecture.get("defaut_signale") and not relecture.get("defaut_confirme"))
 
 
 def vote_recevable(vote, concurrents):
-    """Un concurrent ne vote pas sur une contribution concurrente ; un vote donné avant de s'engager compte."""
-    qui = vote.get("votant")
-    return qui not in concurrents or _avant_engagement(vote, concurrents, qui)
+    """Un concurrent ne vote pas sur une contribution concurrente : tant qu'il est en course, aucun de ses votes ne compte."""
+    return vote.get("votant") not in concurrents
 
 
 def vote_net(reg, enr, niveaux):
-    """Vote net pondéré d'une contribution : ni l'auteur, ni ses concurrents depuis leur engagement."""
+    """Vote net pondéré d'une contribution : ni l'auteur, ni ses concurrents actuels."""
     concurrents = concurrents_de(reg, enr)
     return sum(int(v.get("valeur", 0)) * POIDS_VOTE.get(niveau_de(niveaux, v.get("votant")), 0)
                for _, v in reg.votes if v.get("sujet") == enr.get("id") and v.get("votant") != enr.get("auteur")
                and vote_recevable(v, concurrents))
 
 
+def gain_mesure(reg, enr):
+    """Ce que la machine mesure d'une contribution : le terme de gain du score, G × P / (1 + L/100) (docs/evaluation.md),
+    sans la confiance (relectures) ni le vote. None sans verdict vert qui mesure un gain (tests, mesures, ruche…)."""
+    verdict = enr.get("verdict") or {}
+    if verdict.get("ci") != "verte" or not isinstance(verdict.get("gain"), (int, float)) or isinstance(verdict.get("gain"), bool):
+        return None
+    tache = reg.taches.get(enr.get("tache"), (None, {}))[1] or {}
+    try:
+        portee, lignes = float(tache.get("portee", 1.0)), int(verdict.get("lignes_modifiees", 0))
+    except (TypeError, ValueError):
+        return None
+    return float(verdict["gain"]) * portee / (1 + lignes / 100)
+
+
 def cle_classement(reg, enr, niveaux):
-    """Rang dans une course (R3), du meilleur au moins bon : score de bee classement (absent en dernier), puis vote
-    net pondéré, puis la soumission la plus ancienne, puis l'identifiant. Ordre total : le choix est déterministe."""
-    score = calculer_score(reg, enr, niveaux)
-    s = score["S"] if score else None
-    return (s is None, -(s or 0.0), -vote_net(reg, enr, niveaux),
+    """Rang dans une course (R3), du meilleur au moins bon. La machine juge ce qu'elle peut mesurer, l'essaim départage
+    le reste : une contribution au gain mesuré se classe sur ce gain seul (gain_mesure ; relectures et votes restent des
+    conditions de R3, pas des critères de classement), et passe devant celles qui n'en ont pas ; entre celles-ci (tests,
+    mesures, ruche, CI pas verte), le vote net pondéré. Puis la soumission la plus ancienne, puis l'identifiant : ordre
+    total, le choix est déterministe."""
+    gain = gain_mesure(reg, enr)
+    return (gain is None, -(gain or 0.0), -vote_net(reg, enr, niveaux) if gain is None else 0,
             _instant_ou_rien(enr.get("soumise_le")) or FUTUR_LOINTAIN, str(enr.get("id")))
 
 
@@ -505,7 +525,8 @@ def duree_course(reg):
 
 def cloture_course(reg, tid):
     """Clôture de la course d'une tâche : soumission la plus ancienne encore en relecture + duree_course. Une soumission
-    plus récente ne la repousse jamais : toute attente d'une contribution X finit au plus tard à soumise_le(X) + 96 h."""
+    plus récente ne la repousse jamais : F ≤ soumise_le(X) + 96 h, et toute attente de X finit au plus tard à F + 24 h,
+    soit soumise_le(X) + 120 h (raisons_course)."""
     instants = [i for i in (_instant_ou_rien(e.get("soumise_le")) for _, e in contributions_en_course(reg, tid)) if i]
     return min(instants) + duree_course(reg) if instants else None
 
@@ -642,16 +663,18 @@ def etat_course(reg, tid, niveaux, instant):
     cloture = cloture_course(reg, tid)
     contributions = []
     for rang, (cid, e) in enumerate(classement_course(reg, tid, niveaux), start=1):
-        score = calculer_score(reg, e, niveaux)
+        gain = gain_mesure(reg, e)
         contributions.append({"rang": rang, "contribution": cid, "auteur": e.get("auteur"), "soumise_le": e.get("soumise_le"),
-                              "score": round(score["S"], 6) if score else None, "vote_net": vote_net(reg, e, niveaux),
+                              "gain_mesure": round(gain, 6) if gain is not None else None, "vote_net": vote_net(reg, e, niveaux),
                               "ci": (e.get("verdict") or {}).get("ci")})
+    fenetre = dt.timedelta(hours=float(reg.config.get("fenetre_acceptation_heures", 24)))
     engages = []
     r = t.get("reservation") or {}
     if t.get("statut") == "reservee" and isinstance(r, dict) and r.get("utilisateur"):
         engages.append({"utilisateur": r.get("utilisateur"), "role": "titulaire", "depuis": r.get("depuis")})
     engages += [{"utilisateur": p.get("utilisateur"), "role": "en parallèle", "depuis": p.get("depuis")} for p in paralleles_de(t)]
     return {"tache": tid, "cloture": en_iso(cloture) if cloture else None, "close": bool(cloture and instant >= cloture),
+            "fin_des_attentes": en_iso(cloture + fenetre) if cloture else None,
             "contributions": contributions, "engages": engages}
 
 
@@ -723,8 +746,10 @@ def calculer_niveaux(reg):
         if not isinstance(enr, dict) or "auteur" not in enr:
             continue
         statut = enr.get("statut")
-        # « ecartee » (une concurrente a été retenue à sa place, R3) n'est pas un refus : rien ne compte, ni pour
-        # l'auteur, ni pour ses relecteurs (docs/reputation.md).
+        # « ecartee » (une concurrente a été retenue à sa place, R3) n'est pas un refus : elle vaut 0, pour l'auteur
+        # comme pour chacun de ses relecteurs, défaut confirmé compris (docs/reputation.md).
+        if statut == "ecartee":
+            continue
         if statut == "integree":
             stats[enr["auteur"]]["integrees"] += 1
         for r in enr.get("relectures") or []:
@@ -960,7 +985,9 @@ def verifier_registre(reg):
             if chemin.parent.name != tache[1].get("projet"):
                 ajouter(f"{lieu} : rangée dans contributions/{chemin.parent.name}/ au lieu de contributions/{tache[1].get('projet')}/")
             fork = reg.projets.get(tache[1].get("projet"), (None, {}))[1].get("fork")
-            if fork and not enr["pr"].lower().startswith(fork.lower().rstrip("/") + "/pull/"):
+            if not fork:
+                ajouter(f"{lieu} : le projet {tache[1].get('projet')} n'a pas de fork : aucune contribution n'y est possible")
+            elif not enr["pr"].lower().startswith(fork.lower().rstrip("/") + "/pull/"):
                 ajouter(f"{lieu} : la PR doit être ouverte sur le fork du projet ({fork})")
         if enr["auteur"] not in reg.membres and enr["auteur"] not in reg.conseil:
             ajouter(f"{lieu} : auteur « {enr['auteur']} » non inscrit")
@@ -1346,24 +1373,35 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None):
                     par_parallele = (t.get("statut") in ("reservee", "en_relecture") and t.get("statut") == t_base.get("statut")
                                      and any(p.get("utilisateur") == auteur for p in paralleles_de(t_base))
                                      and not any(p.get("utilisateur") == auteur for p in paralleles_de(t)))
-                    exiger(t.get("contribution") == cid and (par_titulaire or par_parallele),
+                    # Le conseil peut réserver et soumettre dans une même PR (tâche ouverte dans la base) ; la transition
+                    # de la tâche reste une « decision », jamais fusionnée automatiquement.
+                    par_conseil = est_conseil and t_base.get("statut") == "ouverte" and t.get("statut") == "en_relecture"
+                    exiger(t.get("contribution") == cid and (par_titulaire or par_parallele or par_conseil),
                            f"{chemin} : la PR doit aussi passer la tâche {nouveau.get('tache')} (réservée par {auteur}) "
                            f"en relecture avec la contribution {cid}, ou, pour un inscrit en parallèle, le retirer de la liste "
                            f"des inscrits et pointer la tâche sur {cid} : bee soumettre le fait")
+                    # Numérotation : le numéro suivant le plus grand déjà pris pour la tâche, jamais un trou (bee soumettre).
+                    m = ID_CONTRIBUTION.match(cid)
+                    attendu = 1 + max(numeros_contributions(reg, nouveau.get("tache"), sauf=cid), default=0)
+                    exiger(bool(m) and m["tache"] == nouveau.get("tache") and int(m["n"]) == attendu,
+                           f"{chemin} : la contribution suivante de {nouveau.get('tache')} est {nouveau.get('tache')}-c{attendu} : "
+                           "bee soumettre la numérote")
+                    projet = reg.projets.get(t.get("projet"), (None, {}))[1] or {}
+                    exiger(bool(projet.get("fork")), f"{chemin} : le projet {t.get('projet')} n'a pas de fork : aucune contribution n'y est possible")
                     # La fenêtre d'ouverture de R3 part de soumise_le : il doit être l'heure réelle.
                     try:
                         soumise = lire_instant(nouveau.get("soumise_le"), chemin)
                         exiger(instant - dt.timedelta(hours=2) <= soumise <= instant + dt.timedelta(minutes=10),
                                f"{chemin} : soumise_le doit être l'heure de la soumission (à 2 h près) ; relancez bee soumettre")
-                        # Course (R3) : l'ordre des soumissions et des engagements départage et borne les attentes ; une
-                        # soumission ne précède ni l'engagement de son auteur ni une soumission déjà en course.
-                        engagement = ((t_base.get("reservation") or {}).get("depuis") if par_titulaire else
-                                      next((p.get("depuis") for p in paralleles_de(t_base) if p.get("utilisateur") == auteur), None))
-                        anterieurs = [engagement] + [e.get("soumise_le") for c, e in contributions_en_course(reg, nouveau.get("tache"))
-                                                     if c != cid]
+                        # Course (R3) : l'ordre des soumissions et des engagements départage et borne les attentes. Une
+                        # soumission est postérieure à tout ce qui est déjà sur la tâche dans la base (réservation, toutes
+                        # les inscriptions en parallèle) et à toute soumission déjà en course : sinon, antidatée dans la
+                        # tolérance de 2 h, elle échapperait à l'attente des engagés d'avant elle (raisons_course, 1).
+                        anterieurs = ([(t_base.get("reservation") or {}).get("depuis")] + [p.get("depuis") for p in paralleles_de(t_base)]
+                                      + [e.get("soumise_le") for c, e in contributions_en_course(reg, nouveau.get("tache")) if c != cid])
                         exiger(all(soumise >= i for i in (_instant_ou_rien(x) for x in anterieurs) if i),
-                               f"{chemin} : soumise_le ne peut pas précéder l'engagement de {auteur} sur la tâche ni une soumission "
-                               "déjà en course ; relancez bee soumettre")
+                               f"{chemin} : soumise_le ne peut pas précéder l'engagement de {auteur} sur la tâche, ni aucun autre "
+                               "engagement (réservation, inscription en parallèle) ou soumission déjà présent ; relancez bee soumettre")
                     except ErreurBee as e:
                         problemes.append(str(e))
                     autres = [i for i, (_, e) in reg.enregistrements.items() if i != cid and e.get("pr") == nouveau.get("pr")]
@@ -1399,29 +1437,42 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None):
                 natures.append("decision")
                 exiger(est_conseil or est_robot, f"{chemin} : verdict, statut et confirmation de défaut sont écrits par la CI ou le conseil")
                 if nouveau.get("statut") == "ecartee" and ancien.get("statut") != "ecartee":
-                    # R3 : une concurrente n'est écartée que par le robot d'intégration, dans le même commit que
-                    # l'intégration de la contribution retenue ; jamais à la main.
+                    # R3 : une concurrente n'est écartée que dans le même commit que l'intégration de la contribution
+                    # retenue, par le robot d'intégration, ou par le conseil quand il intègre lui-même (tâches de la
+                    # ruche, jamais intégrées automatiquement) ; et alors toutes les concurrentes en course sont écartées
+                    # au profit de la même retenue. Jamais un écartement seul, à la main.
                     retenue = nouveau.get("retenue") or ""
                     chemin_retenue = modifiees.get(retenue)
                     avant_r = lire_yaml_ref(reg.racine, base, chemin_retenue) if chemin_retenue else None
                     apres_r = reg.enregistrements.get(retenue, (None, {}))[1] or {}
                     integree_ici = (isinstance(avant_r, dict) and avant_r.get("statut") == "en_relecture"
                                     and apres_r.get("statut") == "integree" and apres_r.get("tache") == nouveau.get("tache"))
-                    exiger(est_robot, f"{chemin} : seul le robot d'intégration écarte une contribution concurrente (R3), jamais à la main")
+                    restantes = [c for c, _ in contributions_en_course(reg, nouveau.get("tache"))]
+                    autres_retenues = sorted({str(e.get("retenue")) for c, (_, e) in reg.enregistrements.items()
+                                              if c in modifiees and isinstance(e, dict) and e.get("tache") == nouveau.get("tache")
+                                              and e.get("statut") == "ecartee" and e.get("retenue") != retenue})
+                    exiger(est_robot or est_conseil, f"{chemin} : seul le robot d'intégration écarte une contribution concurrente "
+                                                     "(R3), ou le conseil quand il intègre lui-même la retenue ; jamais un membre à la main")
                     exiger(integree_ici, f"{chemin} : une contribution n'est écartée que dans le même commit que l'intégration "
                                          f"de la contribution retenue ({retenue or 'non nommée'})")
+                    exiger(not restantes and not autres_retenues,
+                           f"{chemin} : l'intégration de {retenue or 'la retenue'} écarte toutes les concurrentes en course à son profit "
+                           f"(encore en relecture : {', '.join(restantes) or 'aucune'} ; écartées au profit d'une autre : "
+                           f"{', '.join(r or '?' for r in autres_retenues) or 'aucune'})")
             continue
 
         if partie[0] == "votes" and len(partie) == 3:
             natures.append("vote")
             exiger(pathlib.PurePosixPath(chemin).stem == auteur, f"{chemin} : on ne vote qu'en son nom ({auteur})")
+            # Course (R3) : un participant engagé ne vote pas sur une concurrente, ni ne modifie ou ne retire un vote
+            # qu'il y avait déposé (le dossier du vote nomme son sujet, même pour une suppression).
+            if partie[1] in reg.enregistrements:
+                exiger(auteur not in concurrents_de(reg, reg.enregistrements[partie[1]][1]),
+                       f"{chemin} : {auteur} est en course sur la même tâche que {partie[1]} : on ne vote pas sur une concurrente, "
+                       "et on ne change ni ne retire son vote tant qu'on est en course (commandement 3)")
             if statut_git != "D" and exiger(isinstance(nouveau, dict), f"{chemin} : fichier illisible"):
                 exiger(nouveau.get("votant") == auteur, f"{chemin} : votant déclaré différent de {auteur}")
                 sujet = nouveau.get("sujet", "")
-                if sujet in reg.enregistrements:
-                    exiger(auteur not in concurrents_de(reg, reg.enregistrements[sujet][1]),
-                           f"{chemin} : {auteur} est en course sur la même tâche que {sujet} : on ne vote pas sur une concurrente "
-                           "(commandement 3)")
                 if ID_PROPOSITION.match(sujet) and sujet in reg.propositions:
                     resultat = depouiller_proposition(reg, sujet, niveaux, instant)
                     exiger(not resultat["terminee"] and reg.propositions[sujet][1].get("statut") == "ouverte",
@@ -1722,14 +1773,15 @@ def cmd_essaim(args):
     else:
         print("  rien.")
     if tableau["courses"]:
-        print("\nCourses (R3 : une seule contribution par tâche est intégrée, la mieux classée) :")
+        print("\nCourses (R3 : une seule contribution par tâche est intégrée, la mieux classée : gain mesuré, sinon vote net) :")
         for c in tableau["courses"]:
-            rangs = " ; ".join(f"{x['rang']}. {x['contribution']} ({x['auteur']}, score "
-                               f"{'—' if x['score'] is None else format(x['score'], '.4f')}, vote {x['vote_net']:+d})"
+            rangs = " ; ".join(f"{x['rang']}. {x['contribution']} ({x['auteur']}, gain mesuré "
+                               f"{'—' if x['gain_mesure'] is None else format(x['gain_mesure'], '.4f')}, vote {x['vote_net']:+d})"
                                for x in c["contributions"])
             engages = ", ".join(f"{e['utilisateur']} ({e['role']})" for e in c["engages"])
             print(f"  - {c['tache']} : {rangs}" + (f" ; travaillent encore : {engages}" if engages else "")
-                  + f" ; clôture de la course : {c['cloture']}" + (" (passée)" if c["close"] else ""))
+                  + f" ; clôture de la course : {c['cloture']}" + (" (passée)" if c["close"] else "")
+                  + f" ; plus aucune attente après le {c['fin_des_attentes']}")
     if tableau["notes"]:
         print("\nNotes récentes (7 jours) :")
         for n in tableau["notes"]:
@@ -1766,10 +1818,10 @@ def cmd_voir(args):
         print(f"# {e['role']} : {e['utilisateur']}, depuis {e['depuis']} (échéance R7 : {echeance})")
     if course["contributions"]:
         print(f"# contributions en course (R3, de la mieux classée à la moins bien classée ; clôture de la course : "
-              f"{course['cloture']}{', passée' if course['close'] else ''}) :")
+              f"{course['cloture']}{', passée' if course['close'] else ''} ; plus aucune attente après le {course['fin_des_attentes']}) :")
         for c in course["contributions"]:
             print(f"#   {c['rang']}. {c['contribution']} par {c['auteur']}, soumise le {c['soumise_le']}, CI {c['ci'] or 'en attente'}, "
-                  f"score {'—' if c['score'] is None else format(c['score'], '.4f')}, vote net {c['vote_net']:+d}")
+                  f"gain mesuré {'—' if c['gain_mesure'] is None else format(c['gain_mesure'], '.4f')}, vote net {c['vote_net']:+d}")
     if t.get("statut") in ("reservee", "en_relecture"):
         print(f"# rejoindre en parallèle : bee prendre {t['id']} --utilisateur <pseudo> --en-parallele")
     return 0
@@ -2040,11 +2092,14 @@ def cmd_soumettre(args):
                         f"(statut : {t.get('statut')}, titulaire : {titulaire}). "
                         "Si votre PR de réservation est ouverte, attendez sa fusion puis : git switch main && git pull upstream main")
     fork = (reg.projets.get(t["projet"], (None, {}))[1].get("fork") or "").rstrip("/")
+    if not fork:
+        raise ErreurBee(f"le projet {t['projet']} n'a pas encore de fork : aucune contribution ne peut y être soumise")
     if not re.fullmatch(r"https://github\.com/[A-Za-z0-9-]+/[A-Za-z0-9_.-]+/pull/[0-9]+", args.pr):
         raise ErreurBee(f"adresse de PR invalide : {args.pr} (attendu : https://github.com/<organisation>/<dépôt>/pull/<numéro>)")
-    if fork and not args.pr.lower().startswith(fork.lower() + "/pull/"):
+    if not args.pr.lower().startswith(fork.lower() + "/pull/"):
         raise ErreurBee(f"la PR doit être ouverte sur le fork du projet : {fork}/pull/<numéro> (reçu : {args.pr})")
-    rang = 1 + sum(1 for cid in reg.enregistrements if cid.startswith(args.tache + "-c"))
+    # Numéro suivant le plus grand déjà pris (verifier_pr l'exige) : jamais un fichier existant écrasé.
+    rang = 1 + max(numeros_contributions(reg, args.tache), default=0)
     identifiant = f"{args.tache}-c{rang}"
     donnees = {"id": identifiant, "tache": args.tache, "auteur": args.utilisateur, "pr": args.pr}
     if args.resume:
@@ -2374,13 +2429,13 @@ def raisons_course(reg, cid, niveaux, instant):
       1. tout participant engagé sur la tâche AVANT la soumission de X (titulaire, inscrit en parallèle) qui n'a pas
          encore soumis, jusqu'à sa contribution, son retrait ou son expiration R7 ; un engagement postérieur à la
          soumission de X ne la retarde pas ;
-      2. toute concurrente pas encore départagée : sa fenêtre de R3 (24 h depuis sa soumission) n'est pas écoulée ;
-         après elle, on la classe telle quelle (sans verdict de CI, pas de score : en dernier) ;
-      3. toute concurrente mieux classée (cle_classement).
-    À partir de F, la course est close : X n'attend que les concurrentes intégrables (raisons_r3 vide) mieux classées
-    qu'elle ; une concurrente qui ne remplit pas R3 à F est hors course. Toute attente finit donc au plus tard à F,
-    qui ne dépasse jamais soumise_le(X) + 96 h : ni une inscription tardive, ni des soumissions répétées, ni une CI
-    qui ne conclut jamais ne retardent X au-delà ; une CI muette ne retarde X que pendant la fenêtre de sa concurrente.
+      2. toute concurrente pas encore départagée : sans verdict de CI, ou dans sa fenêtre de R3 (24 h depuis sa
+         soumission) ;
+      3. toute concurrente mieux classée (cle_classement : le gain mesuré, sinon le vote net, puis l'ancienneté).
+    De F à F + 24 h (la fenêtre de R3), X n'attend que les concurrentes intégrables (raisons_r3 vide) mieux classées
+    qu'elle : le workflow les intègre d'abord. À partir de F + 24 h, X n'attend plus personne : une concurrente mieux
+    classée qui ne s'est pas intégrée d'elle-même (PR en conflit, commit sans verdict…) ne retient plus X. Toute attente
+    finit donc au plus tard à F + 24 h, qui ne dépasse jamais soumise_le(X) + 72 h + 24 h + 24 h = 120 h.
     """
     _, enr = reg.enregistrement(cid)
     tid = enr.get("tache")
@@ -2390,11 +2445,13 @@ def raisons_course(reg, cid, niveaux, instant):
     cloture = cloture_course(reg, tid)
     if soumise is None or cloture is None:
         return []
+    fenetre = dt.timedelta(hours=float(reg.config.get("fenetre_acceptation_heures", 24)))
+    if instant >= cloture + fenetre:
+        return []  # borne dure : passé F + 24 h, personne ne retient plus X
     raisons = []
     ma_cle = cle_classement(reg, enr, niveaux)
-    fin = en_iso(cloture)
+    fin, ultime = en_iso(cloture), en_iso(cloture + fenetre)
     if instant < cloture:
-        fenetre = dt.timedelta(hours=float(reg.config.get("fenetre_acceptation_heures", 24)))
         duree_r7 = dt.timedelta(hours=float(reg.config.get("reservation_max_heures", 72)))
         engages = []
         r = t.get("reservation") or {}
@@ -2409,21 +2466,21 @@ def raisons_course(reg, cid, niveaux, instant):
                                f"au plus tard la clôture de la course ({fin})")
         for c, e in rivales:
             debut = _instant_ou_rien(e.get("soumise_le"))
-            if debut is None or instant - debut < fenetre:
-                # Pas encore départagée : sa fenêtre de R3 (le temps d'avoir un verdict, des relectures et des votes)
-                # n'est pas écoulée. Après elle, on la classe telle quelle : sans verdict, pas de score, donc en dernier.
-                attente = min(debut + fenetre, cloture) if debut else cloture
-                raisons.append(f"course (R3) : la concurrente {c} n'est pas encore départagée ("
-                               + ("verdict de sa CI en attente" if not e.get("verdict") else "relectures et votes ouverts")
-                               + f") et pourrait être mieux classée ; on l'attend au plus tard jusqu'au {en_iso(attente)} "
-                               "(fin de sa fenêtre de R3, sans dépasser la clôture de la course)")
+            if not e.get("verdict"):
+                # Une CI lente ne fait pas perdre la course : sans verdict, on l'attend jusqu'à la clôture.
+                raisons.append(f"course (R3) : la concurrente {c} attend le verdict de sa CI et pourrait être mieux classée ; "
+                               f"on l'attend au plus tard jusqu'à la clôture de la course ({fin})")
+            elif debut is None or instant - debut < fenetre:
+                raisons.append(f"course (R3) : la concurrente {c} est encore dans sa fenêtre de relecture et de vote (jusqu'au "
+                               f"{en_iso(min(debut + fenetre, cloture)) if debut else fin}) et pourrait être mieux classée")
             elif cle_classement(reg, e, niveaux) < ma_cle:
-                raisons.append(f"course (R3) : la concurrente {c} est mieux classée (score, puis vote net, puis ancienneté) ; "
-                               f"si elle n'est pas intégrable à la clôture de la course ({fin}), elle sera hors course")
+                raisons.append(f"course (R3) : la concurrente {c} est mieux classée (gain mesuré, sinon vote net, puis "
+                               f"ancienneté) ; si elle n'est pas intégrable à la clôture de la course ({fin}), elle sera hors course")
     else:
         for c, e in rivales:
             if cle_classement(reg, e, niveaux) < ma_cle and not raisons_r3(reg, c)[2]:
-                raisons.append(f"course (R3) : la concurrente {c}, intégrable, est mieux classée : c'est elle qui sera intégrée")
+                raisons.append(f"course (R3) : la concurrente {c}, intégrable, est mieux classée : c'est elle qui doit être "
+                               f"intégrée ; si elle ne l'est pas d'ici le {ultime}, plus rien ne retient celle-ci")
     return raisons
 
 
@@ -2686,8 +2743,9 @@ def cmd_integrer(args):
     print(f"✓ {args.contribution} intégrée automatiquement (R3).")
     print(f"  PR du projet à fusionner : {enr.get('pr', '(inconnue)')}")
     for c, e in rivales:
-        # Ligne lue par le workflow d'intégration, qui ferme la PR de chaque concurrente écartée.
-        print(f"ecartee: {c} {e.get('pr', '')}")
+        # La PR de chaque concurrente écartée est fermée par le workflow, après la publication du registre (bee ecartees),
+        # si elle est encore ouverte et que son auteur GitHub est bien celui de la contribution.
+        print(f"ecartee: {c} {e.get('pr', '')} {e.get('auteur', '')}")
     return 0
 
 
@@ -2701,6 +2759,19 @@ def cmd_cloturer(args):
     chemin, enr = reg.enregistrement(args.contribution)
     if enr.get("statut") != "en_relecture":
         print(f"{args.contribution} n'est pas en relecture (statut : {enr.get('statut')}) ; rien à clore.")
+        return 1
+    # R3 : si une concurrente de la même tâche est intégrée, ou si sa PR est fusionnée (le passage d'intégration va
+    # l'intégrer), cette contribution a perdu la course : elle sera écartée, pas annulée. On la laisse au passage
+    # d'intégration (idempotent : une publication manquée ne la fait jamais finir « annulee »).
+    fusionnees = set()
+    if args.fusionnees and pathlib.Path(args.fusionnees).exists():
+        fusionnees = {l.strip() for l in pathlib.Path(args.fusionnees).read_text(encoding="utf-8").splitlines() if l.strip()}
+    gagnantes = sorted(c for c, (_, e) in reg.enregistrements.items()
+                       if isinstance(e, dict) and c != args.contribution and e.get("tache") == enr.get("tache")
+                       and (e.get("statut") == "integree" or (c in fusionnees and e.get("statut") == "en_relecture")))
+    if gagnantes:
+        print(f"{args.contribution} n'est pas close : sa concurrente {', '.join(gagnantes)} est intégrée ou fusionnée ; "
+              "le passage d'intégration l'écartera (R3).")
         return 1
     enr = dict(enr)
     enr["statut"] = "annulee"
@@ -2735,11 +2806,28 @@ def cmd_cloturer(args):
 
 
 def cmd_en_attente(args):
+    """Contributions en relecture, par tâche et de la mieux classée à la moins bien classée (R3) : le workflow
+    d'intégration essaie d'abord la meilleure de chaque course."""
     reg = Registre(args.registre)
+    niveaux = calculer_niveaux(reg)
+    taches = sorted({e.get("tache") for _, (_, e) in reg.enregistrements.items() if isinstance(e, dict) and e.get("statut") == "en_relecture"})
     resultat = [{"id": cid, "pr": enr.get("pr"), "sha_verdict": (enr.get("verdict") or {}).get("sha"),
                  "ci_verdict": (enr.get("verdict") or {}).get("ci")}
-                for cid, (_, enr) in sorted(reg.enregistrements.items()) if enr.get("statut") == "en_relecture"]
+                for tid in taches for cid, enr in classement_course(reg, tid, niveaux)]
     print(json.dumps(resultat, ensure_ascii=False, indent=2))
+    return 0
+
+
+def cmd_ecartees(args):
+    """Contributions écartées récemment (R3), une par ligne : id, PR, auteur, retenue (séparés par des tabulations).
+    Lu par le workflow d'intégration, après la publication du registre, pour fermer leur PR si elle est encore ouverte
+    et appartient bien à l'auteur de la contribution."""
+    reg = Registre(args.registre)
+    limite = maintenant() - dt.timedelta(days=args.jours)
+    for cid, (_, e) in sorted(reg.enregistrements.items()):
+        decidee = _instant_ou_rien(e.get("decidee_le")) if isinstance(e, dict) else None
+        if isinstance(e, dict) and e.get("statut") == "ecartee" and decidee and decidee >= limite:
+            print("\t".join(str(e.get(k) or "-") for k in ("id", "pr", "auteur", "retenue")))
     return 0
 
 
@@ -2978,6 +3066,12 @@ def construire_analyseur():
     p.add_argument("contribution", help="id de la contribution (ex. miniz-0012-c1)")
     p.add_argument("--motif", required=True, help="raison de la clôture (ex. « PR fermée sans fusion »)")
     p.add_argument("--par", default="github-actions[bot]", help="signature de la note laissée sur la tâche")
+    p.add_argument("--fusionnees", help="fichier des contributions dont la PR est fusionnée (une par ligne) : une concurrente "
+                                        "fusionnée ou intégrée empêche la clôture, la contribution sera écartée (R3)")
+
+    p = ajouter("ecartees", cmd_ecartees,
+                "Liste les contributions écartées récemment (id, PR, auteur, retenue). Utilisé par le workflow d'intégration.")
+    p.add_argument("--jours", type=int, default=7, help="écartées depuis au plus ce nombre de jours (défaut : 7)")
 
     p = ajouter("verifier-pr", cmd_verifier_pr, "Vérifie une pull request sur le registre (utilisé par la CI).")
     p.add_argument("--base", required=True)

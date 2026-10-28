@@ -279,15 +279,15 @@ def course_html(bee, reg, tid, niveaux, instant, prefixe):
                         + "".join(f"<li>{e(x['utilisateur'])}, inscrit le {date_fr(x['depuis'])}</li>" for x in paralleles) + "</ul>")
     if course["contributions"]:
         lignes = [f"<tr><td class='n'>{c['rang']}</td><td><a class='id' href='{prefixe}contributions/{e(c['contribution'])}.html'>{e(c['contribution'])}</a></td>"
-                  f"<td>{e(c['auteur'] or '')}</td><td class='n'>{nombre(c['score'], 4) if c['score'] is not None else '—'}</td>"
+                  f"<td>{e(c['auteur'] or '')}</td><td class='n'>{nombre(c['gain_mesure'], 4) if c['gain_mesure'] is not None else '—'}</td>"
                   f"<td class='n'>{c['vote_net']:+d}</td><td class='nw'>{date_fr(c['soumise_le'] or '')}</td></tr>" for c in course["contributions"]]
         morceaux.append("<h2>Contributions en course</h2>"
                         + ("<p>Plusieurs contributions concourent pour cette tâche : la règle R3 n'intègre que la mieux classée "
-                           "(score, puis vote net, puis la plus ancienne) et écarte les autres. "
+                           "(le gain mesuré par la CI ; sans gain mesurable, le vote net ; puis la plus ancienne) et écarte les autres. "
                            if len(lignes) > 1 or course["engages"] else "<p>")
-                        + f"Clôture de la course : {date_fr(course['cloture'] or '')}"
+                        + f"Clôture de la course : {date_fr(course['cloture'] or '')} ; plus aucune attente après le {date_fr(course['fin_des_attentes'] or '')}"
                         + (" (passée : seules les contributions intégrables restent en course)." if course["close"] else ".") + "</p>"
-                        + tableau([("Rang", True), ("Contribution", False), ("Auteur", False), ("Score", True), ("Vote net", True), ("Soumise", False)], lignes))
+                        + tableau([("Rang", True), ("Contribution", False), ("Auteur", False), ("Gain mesuré", True), ("Vote net", True), ("Soumise", False)], lignes))
     return "".join(morceaux)
 
 

@@ -1699,22 +1699,26 @@ class TestCourse(BaseParallele):
         self.assertIn("chloe (en parallèle)", t["notes"][-1]["texte"], "l'engagement qui prend fin est dit")
         self.valide()
 
-    def test_une_ci_qui_ne_conclut_jamais_retarde_au_plus_pendant_la_fenetre_de_la_concurrente(self):
+    def test_une_ci_qui_ne_conclut_jamais_retarde_au_plus_jusqu_a_la_cloture(self):
+        # Revue adverse I4 : avant la clôture, une concurrente sans verdict est attendue (une CI lente ne fait pas perdre
+        # la course) ; à la clôture, sans verdict, elle n'est pas intégrable : hors course.
         self.fermer_porte()
-        c1 = self.soumettre_0099()  # alice, 27/10 12 h
+        c1 = self.soumettre_0099()  # alice, 27/10 12 h : clôture de la course le 31/10 à 12 h
         self.a("2026-10-27T13:00:00Z")
         self.parallele("miniz-0099", "chloe")
         c2 = self.soumettre("miniz-0099", "chloe", 99102)  # jamais de verdict
         self.verdict(c1, 0.05)
         self.relire(c1, "bruno", "bidji29")
-        self.a("2026-10-28T12:30:00Z")  # la fenêtre de c1 est écoulée, pas celle de c2
+        self.a("2026-10-29T12:00:00Z")  # les deux fenêtres sont écoulées
         code, texte = self.acceptation(c1)
         self.assertEqual(code, 1, texte)
-        self.assertIn(f"la concurrente {c2} n'est pas encore départagée (verdict de sa CI en attente)", texte)
-        self.assertIn("2026-10-28T13:00:00Z", texte)
-        self.a("2026-10-28T13:00:00Z")
+        self.assertIn(f"la concurrente {c2} attend le verdict de sa CI", texte)
+        self.assertIn("2026-10-31T12:00:00Z", texte)
+        self.a("2026-10-31T11:59:00Z")
+        self.assertEqual(self.acceptation(c1)[0], 1)
+        self.a("2026-10-31T12:00:00Z")
         code, texte = self.acceptation(c1)
-        self.assertEqual(code, 0, f"sans verdict au bout de sa fenêtre, c2 n'a pas de score : elle est classée dernière\n{texte}")
+        self.assertEqual(code, 0, f"course close : c2 n'est pas intégrable, elle est hors course\n{texte}")
         self.assertEqual(self.bee("integrer", c1)[0], 0)
         self.assertEqual((self.enr(c2)["statut"], self.enr(c2)["retenue"]), ("ecartee", c1))
         self.valide()
@@ -1805,20 +1809,23 @@ class TestCourse(BaseParallele):
         self.assertEqual(bee.vote_net(reg, reg.enregistrement(c1)[1], bee.calculer_niveaux(reg)), 0)
 
 
-    def test_un_avis_donne_avant_de_s_engager_reste_valable(self):
-        # Une gardienne trouve un défaut, puis s'inscrit pour faire mieux : son avis, désintéressé quand elle l'a donné,
-        # continue de bloquer ; seuls les avis donnés depuis l'engagement sont ignorés.
+    def test_un_avis_defavorable_ne_compte_pas_tant_que_son_auteur_est_en_course(self):
+        # Revue adverse I1 : l'avis défavorable d'un participant engagé est ignoré quelle que soit sa date ; il recompte
+        # dès qu'il quitte la course.
         (self.dossier / "gouvernance/gardiens.yaml").write_text("membres:\n  - pseudo: chloe\n", encoding="utf-8")
         c1, c2 = self.course_a_deux(0.03, 0.05)
         self.a("2026-10-27T18:00:00Z")
         code, texte = self.bee("relire", c1, "--utilisateur", "chloe", "--avis", "defavorable", "--motif", "Lecture hors limites avec une entrée vide.")
         self.assertEqual(code, 0, texte)
+        bloquee = lambda: [r for r in bee.raisons_r3(bee.Registre(self.dossier), c1)[2] if "défavorable de chloe" in r]  # noqa: E731
+        self.assertTrue(bloquee(), "pas encore engagée : son avis bloque")
         self.a("2026-10-27T19:00:00Z")
         self.parallele("miniz-0099", "chloe")
-        raisons = bee.raisons_r3(bee.Registre(self.dossier), c1)[2]
-        self.assertTrue([r for r in raisons if "défavorable de chloe" in r], raisons)
+        self.assertFalse(bloquee(), "engagée dans la course : son avis défavorable, même antérieur, ne compte plus")
         self.assertEqual(self.bee("relire", c2, "--utilisateur", "chloe", "--avis", "defavorable", "--motif", "Une autre à bloquer.")[0], 1,
                          "engagée, elle ne donne plus d'avis défavorable sur la course")
+        self.assertEqual(self.bee("liberer", "miniz-0099", "--utilisateur", "chloe")[0], 0)
+        self.assertTrue(bloquee(), "sortie de la course, son avis compte de nouveau")
 
 
 class TestPullRequestsEnParallele(BaseParallele):
@@ -2068,7 +2075,7 @@ class TestPullRequestsEnParallele(BaseParallele):
         bee.ecrire_yaml(chemin, enr)
         self.commit()
         self.refusee("alice", "écrits par la CI ou le conseil")
-        self.refusee("bidji29", "seul le robot d'intégration écarte une contribution concurrente")
+        self.refusee("alice", "seul le robot d'intégration écarte une contribution concurrente")
         self.refusee("bidji29", "dans le même commit que l'intégration")
         self.refusee("github-actions[bot]", "dans le même commit que l'intégration")
         # Écartée au profit d'une contribution qui n'est pas intégrée : le registre lui-même est invalide.
@@ -2092,7 +2099,463 @@ class TestPullRequestsEnParallele(BaseParallele):
         code, texte = self.verifier("github-actions[bot]")
         self.assertNotIn("seul le robot d'intégration", texte)
         self.assertNotIn("dans le même commit", texte)
-        self.refusee("bidji29", "seul le robot d'intégration écarte")
+        # Revue adverse I3 : le conseil, qui intègre lui-même (tâches de la ruche), écarte aussi, dans la même PR.
+        code, texte = self.verifier("bidji29")
+        self.assertEqual(code, 0, texte)
+        self.refusee("alice", "seul le robot d'intégration écarte")
+
+
+# Faux `gh` pour rejouer les étapes d'integration-auto.yml hors ligne : état des PR dans FAUX_GH_ETAT
+# ({url: {state, head, auteur, merge, conflit}}), chaque appel journalisé dans FAUX_GH_JOURNAL.
+FAUX_GH = r'''
+import json, os, sys
+etat_chemin, journal, args = os.environ["FAUX_GH_ETAT"], os.environ["FAUX_GH_JOURNAL"], sys.argv[1:]
+with open(journal, "a", encoding="utf-8") as f:
+    f.write(json.dumps({"args": args, "jeton": os.environ.get("GH_TOKEN")}) + "\n")
+with open(etat_chemin, encoding="utf-8") as f:
+    etat = json.load(f)
+def sauver():
+    with open(etat_chemin, "w", encoding="utf-8") as f:
+        json.dump(etat, f)
+if args[:2] == ["pr", "view"]:
+    pr = etat.get(args[2])
+    if pr is None:
+        sys.exit(1)
+    reponses = {"state,headRefOid,mergeCommit": f"{pr['state']} {pr['head']} {pr.get('merge') or '-'}",
+                "mergeCommit": pr.get("merge") or "-", "state,author": f"{pr['state']} {pr.get('auteur', '?')}"}
+    champs = args[args.index("--json") + 1]
+    if champs not in reponses:
+        sys.exit(2)
+    print(reponses[champs])
+    sys.exit(0)
+if args[:2] == ["pr", "merge"]:
+    pr, sha = etat.get(args[2]), args[args.index("--match-head-commit") + 1]
+    if pr is None or pr["state"] != "OPEN" or pr["head"] != sha or pr.get("conflit"):
+        sys.exit(1)
+    pr["state"], pr["merge"] = "MERGED", "f" * 40
+    sauver()
+    sys.exit(0)
+if args[:2] == ["pr", "close"]:
+    pr = etat.get(args[2])
+    if pr is None or pr["state"] != "OPEN":
+        sys.exit(1)
+    pr["state"] = "CLOSED"
+    sauver()
+    sys.exit(0)
+sys.exit(3)
+'''
+PR_MINIZ = "https://github.com/Bee-ruche/minizBee/pull/"
+
+
+class TestRevueAdverse(BaseParallele):
+    """Revue adverse indépendante de ruche-0001 : chaque constat est désormais refusé (ou borné)."""
+
+    def init_git(self):
+        git(self.dossier, "init", "-q", "-b", "main")
+        self.commit("base")
+
+    def commit(self, message="pr"):
+        git(self.dossier, "-c", "user.name=t", "-c", "user.email=t@t", "add", "-A")
+        git(self.dossier, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", message, "--allow-empty")
+
+    def branche(self, nom):
+        git(self.dossier, "switch", "-qc", nom)
+
+    def fusionner(self, nom):
+        git(self.dossier, "switch", "-q", "main")
+        git(self.dossier, "merge", "-q", "--ff-only", nom)
+
+    def verifier(self, auteur, *options):
+        return self.bee("verifier-pr", "--base", "main", "--tete", "HEAD", "--auteur", auteur, *options)
+
+    def etape(self, nom, etats=None):
+        """Rejoue une étape d'integration-auto.yml avec le faux gh : (sortie, état des PR, appels à gh)."""
+        import yaml
+        flux = yaml.safe_load((self.dossier / ".github/workflows/integration-auto.yml").read_text(encoding="utf-8"))
+        script = next(s["run"] for s in flux["jobs"]["integrer"]["steps"] if s.get("name", "").startswith(nom))
+        racine = self.dossier.parent
+        (racine / "bin").mkdir(exist_ok=True)
+        (racine / "runner").mkdir(exist_ok=True)
+        (racine / "faux_gh.py").write_text(FAUX_GH, encoding="utf-8")
+        gh = racine / "bin" / "gh"
+        gh.write_text(f"#!/bin/sh\nexec {sys.executable} {racine / 'faux_gh.py'} \"$@\"\n", encoding="utf-8")
+        gh.chmod(0o755)
+        etat, journal = racine / "etat_pr.json", racine / "journal_gh.jsonl"
+        if etats is not None:
+            etat.write_text(json.dumps(etats), encoding="utf-8")
+        if not journal.exists():
+            journal.write_text("", encoding="utf-8")
+        avant = len(journal.read_text(encoding="utf-8").splitlines())
+        env = dict(os.environ, PATH=f"{racine / 'bin'}{os.pathsep}{os.environ['PATH']}", FAUX_GH_ETAT=str(etat),
+                   FAUX_GH_JOURNAL=str(journal), GH_TOKEN="jeton-registre", BEE_INTEGRATION_TOKEN="jeton-forks",
+                   GITHUB_REPOSITORY="Bee-ruche/registre", RUNNER_TEMP=str(racine / "runner"))
+        env.pop("BEE_REGISTRE", None)
+        r = subprocess.run(["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", script], cwd=self.dossier, env=env,
+                           capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        appels = [json.loads(x) for x in journal.read_text(encoding="utf-8").splitlines()[avant:]]
+        return r.stdout, json.loads(etat.read_text(encoding="utf-8")), appels
+
+    @staticmethod
+    def appels_de(appels, *commande):
+        return [a for a in appels if a["args"][:len(commande)] == list(commande)]
+
+    def course_relue(self, gain_parallele=0.03, gain_titulaire=0.05):
+        c1, c2 = self.course_a_deux(gain_parallele, gain_titulaire)  # c1 bruno 14 h, c2 alice 17 h ; F = 31/10 14 h
+        self.relire(c1, "chloe", "bidji29")
+        self.relire(c2, "chloe", "bidji29")
+        return c1, c2
+
+    # --- B1 : borne dure, F + 24 h ---
+
+    def test_B1_une_concurrente_jamais_fusionnable_ne_retient_plus_apres_cloture_plus_24h(self):
+        c1, c2 = self.course_relue()  # c2 (alice) mieux classée
+        # L'auteur de c2 pousse un commit sans CI après son verdict : bee la croit intégrable, le workflow ne la fusionne pas.
+        etats = {PR_MINIZ + "99101": {"state": "OPEN", "head": "abc1234", "auteur": "bruno"},
+                 PR_MINIZ + "99102": {"state": "OPEN", "head": "0ddba11", "auteur": "alice"}}
+        self.a("2026-11-01T00:00:00Z")  # entre F et F + 24 h
+        _, etat, appels = self.etape("Intégrer", etats)
+        self.assertFalse(self.appels_de(appels, "pr", "merge"))
+        code, texte = self.acceptation(c1)
+        self.assertEqual(code, 1, texte)
+        self.assertIn(f"la concurrente {c2}, intégrable, est mieux classée", texte)
+        self.assertIn("2026-11-01T14:00:00Z", texte)
+        self.a("2026-11-01T14:00:00Z")  # F + 24 h : plus personne ne retient c1
+        self.assertEqual(self.acceptation(c1)[0], 0)
+        _, etat, appels = self.etape("Intégrer")
+        self.assertEqual([a["args"][2] for a in self.appels_de(appels, "pr", "merge")], [PR_MINIZ + "99101"])
+        self.assertEqual((self.enr(c1)["statut"], self.enr(c2)["statut"], self.enr(c2)["retenue"]), ("integree", "ecartee", c1))
+        self.assertLessEqual(bee.lire_instant("2026-11-01T14:00:00Z") - bee.lire_instant(self.enr(c1)["soumise_le"]),
+                             bee.dt.timedelta(hours=120))
+
+    def test_B1_une_concurrente_en_conflit_ne_retient_plus_apres_cloture_plus_24h(self):
+        c1, c2 = self.course_relue()
+        etats = {PR_MINIZ + "99101": {"state": "OPEN", "head": "abc1234", "auteur": "bruno"},
+                 PR_MINIZ + "99102": {"state": "OPEN", "head": "abc1234", "auteur": "alice", "conflit": True}}
+        self.a("2026-10-31T15:00:00Z")  # entre F et F + 24 h : la mieux classée est essayée d'abord, en vain
+        _, _, appels = self.etape("Intégrer", etats)
+        self.assertEqual([a["args"][2] for a in self.appels_de(appels, "pr", "merge")], [PR_MINIZ + "99102"])
+        self.assertEqual(self.enr(c1)["statut"], "en_relecture")
+        self.a("2026-11-01T14:00:00Z")
+        _, etat, _ = self.etape("Intégrer")
+        self.assertEqual(etat[PR_MINIZ + "99101"]["state"], "MERGED")
+        self.assertEqual((self.enr(c1)["statut"], self.enr(c2)["statut"]), ("integree", "ecartee"))
+
+    def test_B1_en_attente_liste_la_mieux_classee_d_abord(self):
+        c1, c2 = self.course_relue()
+        ordre = [c["id"] for c in json.loads(self.bee("en-attente")[1]) if c["id"].startswith("miniz-0099-")]
+        self.assertEqual(ordre, [c2, c1])
+
+    # --- B2 : jamais la PR d'un autre ; jamais de soumission sans fork ---
+
+    def test_B2_la_pr_d_un_autre_n_est_jamais_fermee(self):
+        self.fermer_porte()
+        c1 = self.soumettre_0099("alice")  # 27/10 12 h, PR 99007 ; clôture le 31/10 12 h
+        self.a("2026-10-27T13:00:00Z")
+        self.parallele("miniz-0099", "chloe")
+        victime = PR_MINIZ + "4242"  # PR ouverte sur le fork par quelqu'un d'autre
+        c2 = self.soumettre("miniz-0099", "chloe", 4242)
+        self.verdict(c1, 0.05)
+        self.relire(c1, "bruno", "bidji29")
+        etats = {PR_MINIZ + "99007": {"state": "OPEN", "head": "abc1234", "auteur": "alice"},
+                 victime: {"state": "OPEN", "head": "beefcafe", "auteur": "mallory"}}
+        self.a("2026-10-31T12:00:00Z")
+        _, etat, appels = self.etape("Intégrer", etats)
+        self.assertEqual((self.enr(c1)["statut"], self.enr(c2)["statut"]), ("integree", "ecartee"))
+        self.assertFalse(self.appels_de(appels, "pr", "close"), "aucune fermeture avant la publication du registre")
+        sortie, etat, appels = self.etape("Fermer")
+        self.assertFalse(self.appels_de(appels, "pr", "close"))
+        self.assertEqual(etat[victime]["state"], "OPEN")
+        self.assertIn("ouverte par mallory, pas par chloe", sortie)
+        # La même PR, si elle était bien celle de chloe, serait fermée (avec le jeton des forks).
+        etat[victime]["auteur"] = "chloe"
+        (self.dossier.parent / "etat_pr.json").write_text(json.dumps(etat), encoding="utf-8")
+        _, etat, appels = self.etape("Fermer")
+        self.assertEqual([(a["args"][2], a["jeton"]) for a in self.appels_de(appels, "pr", "close")], [(victime, "jeton-forks")])
+        _, _, appels = self.etape("Fermer")
+        self.assertFalse(self.appels_de(appels, "pr", "close"), "idempotent : une PR déjà fermée ne l'est pas deux fois")
+
+    def test_B2_pas_de_soumission_sur_un_projet_sans_fork(self):
+        (self.dossier / "taches/bzip2").mkdir(exist_ok=True)
+        (self.dossier / "taches/bzip2/bzip2-9001.yaml").write_text(
+            TACHE_OPTIMISATION.replace("miniz-0099", "bzip2-9001").replace("projet: miniz", "projet: bzip2")
+            .replace("type: optimisation", "type: test").replace("metrique: debit_compression_n6", "metrique: null")
+            .replace("sortie_compressee: identique\n", ""), encoding="utf-8")
+        self.valide()
+        self.assertEqual(self.bee("prendre", "bzip2-9001", "--utilisateur", "alice")[0], 0)
+        code, texte = self.bee("soumettre", "bzip2-9001", "--utilisateur", "alice", "--pr", "https://github.com/Bee-ruche/registre/pull/7")
+        self.assertEqual(code, 1, texte)
+        self.assertIn("n'a pas encore de fork", texte)
+        bee.ecrire_yaml(self.dossier / "contributions/bzip2/bzip2-9001-c1.yaml", {
+            "id": "bzip2-9001-c1", "tache": "bzip2-9001", "auteur": "alice", "pr": "https://github.com/Bee-ruche/registre/pull/7",
+            "statut": "en_relecture", "soumise_le": "2026-10-27T12:00:00Z", "relectures": []})
+        bee.modifier_tache(self.dossier / "taches/bzip2/bzip2-9001.yaml", statut="en_relecture", reservation=None,
+                           contribution="bzip2-9001-c1")
+        code, texte = self.bee("valider")
+        self.assertEqual(code, 1)
+        self.assertIn("n'a pas de fork", texte)
+
+    # --- I1 : un participant engagé ne juge pas, quelle que soit la date ---
+
+    def test_I1_se_retirer_juger_se_reinscrire_ne_bloque_pas_la_concurrente(self):
+        (self.dossier / "gouvernance/gardiens.yaml").write_text("membres:\n  - pseudo: bruno\n", encoding="utf-8")
+        self.fermer_porte()
+        self.assertEqual(self.bee("prendre", "miniz-0099", "--utilisateur", "alice")[0], 0)
+        self.a("2026-10-27T13:00:00Z")
+        self.parallele("miniz-0099", "bruno")
+        self.a("2026-10-27T14:00:00Z")
+        c1 = self.soumettre("miniz-0099", "alice", 99102)
+        self.verdict(c1, 0.05)
+        self.a("2026-10-27T15:00:00Z")
+        self.assertEqual(self.bee("liberer", "miniz-0099", "--utilisateur", "bruno")[0], 0)
+        self.assertEqual(self.bee("relire", c1, "--utilisateur", "bruno", "--avis", "defavorable", "--motif", "Je préfère la mienne.")[0], 0)
+        self.a("2026-10-27T15:05:00Z")
+        self.parallele("miniz-0099", "bruno")
+        self.relire(c1, "chloe", "bidji29")
+        self.a("2026-10-28T15:00:00Z")
+        raisons = bee.raisons_r3(bee.Registre(self.dossier), c1)[2]
+        self.assertFalse([r for r in raisons if "bruno" in r], raisons)
+
+    def test_I1_un_engage_ne_retire_ni_ne_change_son_vote_sur_une_concurrente(self):
+        self.fermer_porte()
+        c1 = self.soumettre_0099("alice")
+        self.assertEqual(self.bee("voter", c1, "--utilisateur", "bidji29", "--valeur", "1")[0], 0)  # avant tout engagement
+        self.init_git()
+        self.a("2026-10-27T13:00:00Z")
+        self.parallele("miniz-0099", "bidji29")
+        self.commit("bidji29 s'engage")
+        reg = bee.Registre(self.dossier)
+        self.assertEqual(bee.vote_net(reg, reg.enregistrement(c1)[1], bee.calculer_niveaux(reg)), 0, "son vote ne compte plus")
+        self.branche("retrait-vote")
+        (self.dossier / f"votes/{c1}/bidji29.yaml").unlink()
+        self.commit()
+        code, texte = self.verifier("bidji29")
+        self.assertEqual(code, 1, texte)
+        self.assertIn("on ne change ni ne retire son vote tant qu'on est en course", texte)
+
+    # --- I2 : fermer après publication ; jamais « annulee » quand une concurrente a gagné ---
+
+    def test_I2_une_publication_manquee_ne_rend_pas_une_ecartee_annulee(self):
+        c1, c2 = self.course_relue()  # c2 (alice) mieux classée
+        self.a("2026-10-28T18:00:00Z")
+        self.init_git()
+        etats = {PR_MINIZ + "99101": {"state": "OPEN", "head": "abc1234", "auteur": "bruno"},
+                 PR_MINIZ + "99102": {"state": "OPEN", "head": "abc1234", "auteur": "alice"}}
+        _, etat, appels = self.etape("Intégrer", etats)
+        self.assertEqual(etat[PR_MINIZ + "99102"]["state"], "MERGED")
+        self.assertEqual(etat[PR_MINIZ + "99101"]["state"], "OPEN", "rien n'est fermé avant la publication")
+        self.assertFalse(self.appels_de(appels, "pr", "close"))
+        # La publication échoue : le registre revient à main ; entre-temps, bruno ferme lui-même sa PR.
+        git(self.dossier, "checkout", "-q", "--", ".")
+        self.assertEqual((self.enr(c1)["statut"], self.enr(c2)["statut"]), ("en_relecture", "en_relecture"))
+        etat[PR_MINIZ + "99101"]["state"] = "CLOSED"
+        (self.dossier.parent / "etat_pr.json").write_text(json.dumps(etat), encoding="utf-8")
+        self.etape("Intégrer")
+        self.assertEqual(self.enr(c2)["statut"], "integree")
+        self.assertEqual((self.enr(c1)["statut"], self.enr(c1).get("retenue")), ("ecartee", c2), "écartée, pas annulée")
+        self.valide()
+        niveaux = bee.calculer_niveaux(bee.Registre(self.dossier))
+        self.assertEqual(niveaux["chloe"]["relectures"], 1, "+1 pour c2 intégrée, 0 pour c1 écartée")
+        # Un passage de plus ne change rien.
+        avant = (self.dossier / f"contributions/miniz/{c1}.yaml").read_text(encoding="utf-8")
+        self.etape("Intégrer")
+        self.assertEqual((self.dossier / f"contributions/miniz/{c1}.yaml").read_text(encoding="utf-8"), avant)
+
+    def test_I2_cloturer_ne_clot_pas_quand_une_concurrente_est_fusionnee(self):
+        c1, c2 = self.course_relue()
+        fusionnees = self.dossier / "fusionnees.txt"
+        fusionnees.write_text(f"{c2}\n", encoding="utf-8")
+        code, texte = self.bee("cloturer", c1, "--motif", "PR fermée sans fusion.", "--fusionnees", str(fusionnees))
+        self.assertEqual(code, 1, texte)
+        self.assertIn("l'écartera", texte)
+        self.assertEqual(self.enr(c1)["statut"], "en_relecture")
+        self.assertEqual(self.bee("cloturer", c1, "--motif", "PR fermée sans fusion.")[0], 0, "sans concurrente gagnante, on clôt")
+
+    # --- I3 : le conseil intègre lui-même une course de la ruche ---
+
+    def soumettre_ruche(self, qui, numero):
+        code, texte = self.bee("soumettre", "ruche-0001", "--utilisateur", qui, "--pr", f"https://github.com/Bee-ruche/registre/pull/{numero}")
+        self.assertEqual(code, 0, texte)
+        return texte.split("contribution ", 1)[1].split(" ", 1)[0]
+
+    def test_I3_le_conseil_integre_une_course_de_la_ruche(self):
+        self.init_git()
+        self.assertEqual(self.bee("prendre", "ruche-0001", "--utilisateur", "alice")[0], 0)
+        self.a("2026-10-27T13:00:00Z")
+        self.parallele("ruche-0001", "bruno")
+        self.parallele("ruche-0001", "chloe")
+        self.a("2026-10-27T14:00:00Z")
+        c1 = self.soumettre_ruche("bruno", 1)
+        c3 = self.soumettre_ruche("chloe", 3)
+        c2 = self.soumettre_ruche("alice", 2)
+        self.commit("course sur ruche-0001")
+        self.branche("integration-manuelle")
+
+        def ecrire(cid, **champs):
+            chemin = self.dossier / f"contributions/ruche/{cid}.yaml"
+            enr = bee.lire_yaml(chemin)
+            enr.update({"decidee_le": "2026-11-05T14:00:00Z", "motif_decision": "Relue par le conseil.", **champs})
+            bee.ecrire_yaml(chemin, enr)
+
+        ecrire(c2, statut="integree")
+        ecrire(c1, statut="ecartee", retenue=c2)
+        bee.modifier_tache(self.dossier / "taches/ruche/ruche-0001.yaml", statut="integree", contribution=c2)
+        self.commit("c3 oubliée")
+        code, texte = self.verifier("bidji29")
+        self.assertEqual(code, 1, texte)
+        self.assertIn("écarte toutes les concurrentes en course à son profit", texte)
+        ecrire(c3, statut="ecartee", retenue=c2)
+        self.commit("toutes écartées")
+        code, texte = self.verifier("bidji29")
+        self.assertEqual(code, 0, texte)
+        self.assertEqual(self.verifier("bidji29", "--fusion-auto")[0], 3, "une décision du conseil n'est jamais fusionnée seule")
+        code, texte = self.verifier("alice")
+        self.assertEqual(code, 1, "un membre n'écarte pas")
+
+    # --- I4 : une CI lente ne fait pas perdre la course ---
+
+    def test_I4_une_ci_lente_ne_fait_pas_perdre_la_course_avant_la_cloture(self):
+        self.fermer_porte()
+        c1 = self.soumettre_0099("alice")  # 27/10 12 h, F = 31/10 12 h
+        self.a("2026-10-27T13:00:00Z")
+        self.parallele("miniz-0099", "chloe")
+        c2 = self.soumettre("miniz-0099", "chloe", 99102)
+        self.verdict(c1, 0.03)
+        self.relire(c1, "bruno", "bidji29")
+        self.relire(c2, "bruno", "bidji29", voter=False)
+        self.a("2026-10-28T13:00:00Z")
+        code, texte = self.acceptation(c1)
+        self.assertEqual(code, 1, texte)
+        self.assertIn(f"la concurrente {c2} attend le verdict de sa CI", texte)
+        self.assertEqual(self.bee("integrer", c1)[0], 1)
+        self.a("2026-10-28T14:00:00Z")
+        self.verdict(c2, 0.10)
+        code, texte = self.acceptation(c1)
+        self.assertEqual(code, 1, texte)
+        self.assertIn(f"la concurrente {c2} est mieux classée", texte)
+
+    # --- I5 : le classement suit le gain mesuré, pas les relectures ni les votes ---
+
+    def test_I5_des_relectures_de_complaisance_n_achetent_pas_le_classement(self):
+        self.assertEqual(self.bee("inscrire", "--pseudo", "david", "--compte-cree-le", "2020-01-01")[0], 0)
+        c1, c2 = self.course_a_deux(0.07, 0.05)  # c1 (bruno) 7 %, c2 (alice) 5 %
+        self.relire(c1, "chloe", "bidji29")
+        self.relire(c2, "chloe", "bidji29", "david")
+        self.a("2026-10-28T18:00:00Z")
+        self.assertEqual(self.acceptation(c1)[0], 0)
+        code, texte = self.acceptation(c2)
+        self.assertEqual(code, 1, texte)
+        self.assertIn(f"la concurrente {c1} est mieux classée", texte)
+
+    def test_I5_un_vote_negatif_ne_change_pas_le_classement(self):
+        self.assertEqual(self.bee("inscrire", "--pseudo", "david", "--compte-cree-le", "2020-01-01")[0], 0)
+        c1, c2 = self.course_a_deux(0.07, 0.05)
+        bee.ecrire_yaml(self.dossier / f"votes/{c1}/david.yaml", {"votant": "david", "sujet": c1, "valeur": -1, "le": "2026-10-27T18:00:00Z"})
+        reg = bee.Registre(self.dossier)
+        niveaux = bee.calculer_niveaux(reg)
+        niveaux["david"] = {**niveaux["david"], "niveau": "Contributeur"}
+        self.assertEqual([c for c, _ in bee.classement_course(reg, "miniz-0099", niveaux)], [c1, c2])
+        self.assertAlmostEqual(bee.gain_mesure(reg, self.enr(c1)), 0.07 / 1.1)
+
+    # --- I6 : clé YAML en double ---
+
+    def test_I6_une_cle_en_double_est_refusee(self):
+        self.init_git()
+        self.assertEqual(self.bee("prendre", "miniz-0099", "--utilisateur", "alice")[0], 0)
+        self.commit("réservation d'alice")
+        self.a("2026-10-27T13:00:00Z")
+        self.branche("doublon")
+        chemin = self.dossier / "taches/miniz/miniz-0099.yaml"
+        texte = chemin.read_text(encoding="utf-8")
+        chemin.write_text(texte.replace("statut: reservee", "statut: reservee\nparalleles: []", 1).rstrip("\n")
+                          + '\nparalleles:\n  - utilisateur: "chloe"\n    depuis: "2026-10-27T13:00:00Z"\n', encoding="utf-8")
+        self.commit()
+        code, texte = self.bee("valider")
+        self.assertEqual(code, 1, texte)
+        self.assertIn("clé « paralleles » en double", texte)
+        code, texte = self.verifier("chloe", "--fusion-auto")
+        self.assertEqual(code, 1, texte)
+        with self.assertRaises(bee.ErreurBee):
+            bee.charger_texte_yaml("a: 1\nb: 2\na: 3\n")
+        # La même classe d'attaque existait avec la clé reservation (outil de base) : refusée aussi.
+        git(self.dossier, "switch", "-q", "main")
+        self.branche("doublon-reservation")
+        texte = TACHE_OPTIMISATION.replace("statut: ouverte", 'statut: reservee\nreservation:\n  utilisateur: "bruno"\n  depuis: "2020-01-01T00:00:00Z"')
+        chemin.write_text(texte.rstrip("\n") + '\nreservation:\n  utilisateur: "alice"\n  depuis: "2026-10-27T12:00:00Z"\n', encoding="utf-8")
+        self.commit()
+        code, texte = self.verifier("alice", "--fusion-auto")
+        self.assertEqual(code, 1, texte)
+        self.assertIn("clé « reservation » en double", texte)
+
+    # --- M1, M2, M3, m4 ---
+
+    def test_M1_le_numero_de_contribution_est_impose(self):
+        self.fermer_porte()
+        self.init_git()
+        self.assertEqual(self.bee("prendre", "miniz-0099", "--utilisateur", "alice")[0], 0)
+        self.a("2026-10-27T13:00:00Z")
+        self.parallele("miniz-0099", "bruno")
+        self.parallele("miniz-0099", "chloe")
+        self.a("2026-10-27T14:00:00Z")
+        self.soumettre("miniz-0099", "bruno", 99101)  # c1
+        self.commit("c1 de bruno")
+        self.branche("saut")
+        self.assertEqual(self.bee("soumettre", "miniz-0099", "--utilisateur", "chloe", "--pr", PR_MINIZ + "99103")[0], 0)
+        (self.dossier / "contributions/miniz/miniz-0099-c2.yaml").rename(self.dossier / "contributions/miniz/miniz-0099-c3.yaml")
+        chemin = self.dossier / "contributions/miniz/miniz-0099-c3.yaml"
+        chemin.write_text(chemin.read_text(encoding="utf-8").replace("miniz-0099-c2", "miniz-0099-c3"), encoding="utf-8")
+        bee.modifier_tache(self.dossier / "taches/miniz/miniz-0099.yaml", contribution="miniz-0099-c3")
+        self.commit()
+        code, texte = self.verifier("chloe")
+        self.assertEqual(code, 1, texte)
+        self.assertIn("la contribution suivante de miniz-0099 est miniz-0099-c2", texte)
+        # Même face à un trou, bee soumettre prend le numéro suivant le plus grand : il n'écrase jamais un fichier.
+        self.assertEqual(self.soumettre("miniz-0099", "alice", 99102), "miniz-0099-c4")
+
+    def test_M2_une_soumission_ne_se_date_pas_avant_l_inscription_d_un_autre(self):
+        self.fermer_porte()
+        self.init_git()
+        self.soumettre_0099("alice")  # 12 h
+        self.a("2026-10-27T12:30:00Z")
+        self.parallele("miniz-0099", "chloe")
+        self.a("2026-10-27T13:00:00Z")
+        self.parallele("miniz-0099", "bruno")
+        self.commit("c1, chloe et bruno inscrits")
+        self.a("2026-10-27T14:00:00Z")
+        self.branche("soumission")
+        c2 = self.soumettre("miniz-0099", "chloe", 99102)
+        chemin = self.dossier / f"contributions/miniz/{c2}.yaml"
+        chemin.write_text(chemin.read_text(encoding="utf-8").replace("2026-10-27T14:00:00Z", "2026-10-27T12:45:00Z"), encoding="utf-8")
+        self.commit()
+        code, texte = self.verifier("chloe")
+        self.assertEqual(code, 1, texte)
+        self.assertIn("ne peut pas précéder", texte)
+
+    def test_M3_le_conseil_reserve_et_soumet_dans_une_meme_pr(self):
+        self.init_git()
+        self.branche("conseil")
+        self.soumettre_0099("bidji29")
+        self.commit()
+        code, texte = self.verifier("bidji29")
+        self.assertEqual(code, 0, texte)
+        self.assertEqual(self.verifier("bidji29", "--fusion-auto")[0], 3, "décision du conseil : pas de fusion automatique")
+        self.assertEqual(self.verifier("alice")[0], 1)
+
+    def test_m4_une_ecartee_vaut_zero_meme_avec_un_defaut_confirme(self):
+        c1, c2 = self.course_a_deux(0.03, 0.05)
+        chemin = self.dossier / f"contributions/miniz/{c1}.yaml"
+        enr = bee.lire_yaml(chemin)
+        enr["relectures"] = [{"relecteur": "chloe", "avis": "defavorable", "motif": "Défaut confirmé.", "le": "2026-10-27T18:00:00Z",
+                              "defaut_signale": True, "defaut_confirme": True}]
+        enr.update({"statut": "ecartee", "retenue": c2, "decidee_le": "2026-10-29T00:00:00Z", "motif_decision": "x"})
+        bee.ecrire_yaml(chemin, enr)
+        chemin = self.dossier / f"contributions/miniz/{c2}.yaml"
+        enr = bee.lire_yaml(chemin)
+        enr.update({"statut": "integree", "decidee_le": "2026-10-29T00:00:00Z", "motif_decision": "x"})
+        bee.ecrire_yaml(chemin, enr)
+        niveaux = bee.calculer_niveaux(bee.Registre(self.dossier))
+        self.assertEqual(niveaux["chloe"]["relectures"], 0)
+        self.assertEqual(niveaux["bruno"]["integrees"], 0)
 
 
 MANIFESTE_REMPLI = """tache: miniz-0099

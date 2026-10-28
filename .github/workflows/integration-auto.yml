@@ -7,9 +7,15 @@
 #   - une PR déjà fusionnée à la main (par le conseil, pendant la porte humaine) est consignée si et
 #     seulement si elle l'a été sur ce même commit ;
 #   - puis bee integrer passe la contribution et sa tâche en « integree », et écarte dans le même commit les
-#     contributions concurrentes de la même tâche (R3 : seule la mieux classée s'intègre), dont la PR est fermée.
+#     contributions concurrentes de la même tâche (R3 : seule la mieux classée s'intègre ; bee en-attente
+#     liste chaque course de la mieux classée à la moins bien classée, qui est donc essayée d'abord).
 # Une PR fermée sans fusion fait clore la contribution (bee cloturer) et rouvrir sa tâche, sauf si la course
-# continue (autres contributions en relecture, titulaire ou inscrits en parallèle).
+# continue (autres contributions en relecture, titulaire ou inscrits en parallèle). Les clôtures passent APRÈS
+# les intégrations du passage, et jamais quand une concurrente est intégrée ou fusionnée : une contribution qui
+# a perdu la course est écartée, pas annulée.
+# Les PR des contributions écartées ne sont fermées qu'APRÈS la publication réussie du registre (étape « Fermer
+# les PR des contributions écartées »), et seulement si elles sont ouvertes et ouvertes par l'auteur de la
+# contribution. Si un passage échoue au milieu, le suivant refait tout : rien n'est perdu ni fait deux fois.
 #
 # Sécurité : seul l'outil bee de main s'exécute ; les fichiers des forks sont des données, et la
 # fusion se fait côté serveur (le code du fork n'est jamais exécuté ici).
@@ -57,18 +63,22 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           BEE_INTEGRATION_TOKEN: ${{ secrets.BEE_INTEGRATION_TOKEN }}
         run: |
+          tmp="${RUNNER_TEMP:-$(mktemp -d)}"
           python3 outils/bee.py en-attente \
             | python3 -c 'import json, sys; [print(c["id"], c["pr"], c.get("sha_verdict") or "-", sep="\t") for c in json.load(sys.stdin) if c.get("pr")]' \
-            > a_integrer.tsv
+            > "$tmp/a_integrer.tsv"
+          : > "$tmp/a_clore.txt"
+          : > "$tmp/fusionnees.txt"
           while IFS=$'\t' read -r id pr sha; do
             depot=$(printf '%s' "$pr" | sed -E 's#^https://github\.com/([A-Za-z0-9-]+/[A-Za-z0-9_.-]+)/pull/[0-9]+$#\1#')
             infos=$(gh pr view "$pr" --json state,headRefOid,mergeCommit \
               --jq '"\(.state) \(.headRefOid) \(.mergeCommit.oid // "-")"') || continue
             read -r etat tete fusion <<< "$infos"
             if [ "$etat" = "CLOSED" ]; then
-              python3 outils/bee.py cloturer "$id" --motif "PR fermée sans fusion." || true
-              continue
+              # Clôturée après les intégrations de ce passage (une concurrente intégrée l'écarte au lieu de l'annuler).
+              printf '%s\n' "$id" >> "$tmp/a_clore.txt"; continue
             fi
+            [ "$etat" = "MERGED" ] && printf '%s\n' "$id" >> "$tmp/fusionnees.txt"
             python3 outils/bee.py verifier-acceptation "$id" || continue
             if [ "$sha" = "-" ]; then
               echo "::notice::$id : verdict sans commit associé ; laissée en relecture."; continue
@@ -83,27 +93,19 @@ jobs:
               fi
               GH_TOKEN="$jeton" gh pr merge "$pr" --merge --match-head-commit "$sha" --delete-branch=false \
                 || { echo "::warning::$id : fusion refusée (conflit à rebaser, ou nouveau commit) ; laissée en relecture."; continue; }
+              printf '%s\n' "$id" >> "$tmp/fusionnees.txt"
               fusion=$(GH_TOKEN="$jeton" gh pr view "$pr" --json mergeCommit --jq '.mergeCommit.oid // "-"')
             fi
             if [ "$fusion" != "-" ]; then
-              python3 outils/bee.py integrer "$id" --fusion-sha "$fusion" > integration.txt || true
+              python3 outils/bee.py integrer "$id" --fusion-sha "$fusion" || true
             else
-              python3 outils/bee.py integrer "$id" > integration.txt || true
+              python3 outils/bee.py integrer "$id" || true
             fi
-            cat integration.txt
-            # R3, contributions concurrentes : bee integrer a écarté les autres contributions de la même tâche
-            # (statut « ecartee », dans ce même commit) ; on ferme leur PR avec un mot qui nomme la retenue.
-            sed -n 's/^ecartee: //p' integration.txt | while read -r ecartee pr_ecartee; do
-              depot_e=$(printf '%s' "$pr_ecartee" | sed -E 's#^https://github\.com/([A-Za-z0-9-]+/[A-Za-z0-9_.-]+)/pull/[0-9]+$#\1#')
-              if [ "$depot_e" = "$GITHUB_REPOSITORY" ]; then jeton="$GH_TOKEN"; else jeton="$BEE_INTEGRATION_TOKEN"; fi
-              [ -n "$jeton" ] || { echo "::notice::$ecartee écartée ; sa PR $pr_ecartee reste à fermer (pas de jeton)."; continue; }
-              GH_TOKEN="$jeton" gh pr close "$pr_ecartee" < /dev/null \
-                --comment "Écartée au profit de $id, retenue par la règle R3 (course entre contributions concurrentes de la même tâche). Ce n'est pas un refus : rien ne compte contre son auteur ni ses relecteurs." \
-                || echo "::warning::$ecartee : fermeture de $pr_ecartee impossible."
-            done
-            rm -f integration.txt
-          done < a_integrer.tsv
-          rm -f a_integrer.tsv
+          done < "$tmp/a_integrer.tsv"
+          while read -r id; do
+            python3 outils/bee.py cloturer "$id" --motif "PR fermée sans fusion." --fusionnees "$tmp/fusionnees.txt" || true
+          done < "$tmp/a_clore.txt"
+          rm -f "$tmp/a_integrer.tsv" "$tmp/a_clore.txt" "$tmp/fusionnees.txt"
       - name: Publier
         env:
           GH_TOKEN: ${{ github.token }}
@@ -124,3 +126,30 @@ jobs:
             echo "::error::publication impossible après 3 essais ; le prochain passage refera le travail (idempotent)."
             exit 1
           fi
+      - name: Fermer les PR des contributions écartées
+        # Seulement après une publication réussie (cette étape ne tourne pas si « Publier » a échoué) : une PR n'est
+        # fermée que si l'écartement est sur main. Idempotent : on repasse sur les écartées des 7 derniers jours et
+        # on ne ferme que les PR encore ouvertes, ouvertes par l'auteur de la contribution (le champ pr d'une
+        # contribution est déclaré par son auteur : il ne doit pas faire fermer la PR de quelqu'un d'autre).
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BEE_INTEGRATION_TOKEN: ${{ secrets.BEE_INTEGRATION_TOKEN }}
+        run: |
+          tmp="${RUNNER_TEMP:-$(mktemp -d)}"
+          python3 outils/bee.py ecartees --jours 7 > "$tmp/ecartees.tsv"
+          while IFS=$'\t' read -r id pr auteur retenue; do
+            depot=$(printf '%s' "$pr" | sed -E 's#^https://github\.com/([A-Za-z0-9-]+/[A-Za-z0-9_.-]+)/pull/[0-9]+$#\1#')
+            if [ "$depot" = "$GITHUB_REPOSITORY" ]; then jeton="$GH_TOKEN"; else jeton="$BEE_INTEGRATION_TOKEN"; fi
+            [ -n "$jeton" ] || { echo "::notice::$id écartée : sa PR $pr reste à fermer (pas de jeton d'intégration)."; continue; }
+            infos=$(GH_TOKEN="$jeton" gh pr view "$pr" --json state,author --jq '"\(.state) \(.author.login)"' < /dev/null) \
+              || { echo "::notice::$id écartée : PR $pr illisible, on ne la ferme pas."; continue; }
+            read -r etat_pr auteur_pr <<< "$infos"
+            [ "$etat_pr" = "OPEN" ] || continue
+            if [ "${auteur_pr,,}" != "${auteur,,}" ]; then
+              echo "::notice::$id écartée : la PR $pr a été ouverte par $auteur_pr, pas par $auteur ; on ne la ferme pas."; continue
+            fi
+            GH_TOKEN="$jeton" gh pr close "$pr" < /dev/null \
+              --comment "Écartée au profit de $retenue, retenue par la règle R3 (course entre contributions concurrentes de la même tâche). Ce n'est pas un refus : rien ne compte contre son auteur ni ses relecteurs." \
+              || echo "::warning::$id : fermeture de la PR $pr impossible ; le prochain passage réessaiera."
+          done < "$tmp/ecartees.tsv"
+          rm -f "$tmp/ecartees.tsv"
