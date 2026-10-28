@@ -1,7 +1,8 @@
 # Juge commun : un juge isolé pour tous les projets (spécification)
 
-Statut : spécification du 28 octobre 2026, à construire une fois le juge isolé de minizBee intégré
-(tâche miniz-0031). Contexte et raisons : [architecture.md](architecture.md), « La suite », chantier 2.
+Statut : première version construite le 28 octobre 2026 (`outils/juge/`, branche `juge-commun`),
+méta-tests verts sur le projet jouet ; l'étiquette `juge-v1` sera posée après la revue adverse et
+l'intégration du juge isolé de minizBee (tâche miniz-0031). Contexte et raisons : [architecture.md](architecture.md), « La suite », chantier 2.
 
 ## Le problème
 
@@ -29,31 +30,47 @@ adverse du 27/10 l'a montré : une faille du juge se corrige une fois, ou elle r
 
 ## Le greffon d'un projet (`bee/juge/projet.py`)
 
-Une classe sans état, lue par le juge commun **depuis la base de la PR** (jamais depuis la PR) :
+Une classe `Projet` sans état propre (elle reçoit les options `--option CLE=VALEUR` à sa création),
+lue par le juge commun **depuis la base de la PR** (jamais depuis la PR). Modèle complet et commenté :
+`outils/juge/jouet/bee/juge/projet.py` (projet jouet des méta-tests).
 
 | Élément | Rôle |
 | --- | --- |
-| `SOURCES` | motif des fichiers du projet copiés dans le conteneur (`miniz*.c`, `src/*.c`…) |
-| `construire(variante)` | commandes de compilation dans le conteneur ; les en-têtes du harnais viennent de la base |
-| `PERMIS` | fonctions externes permises au code du projet (mémoire, chaînes…), pour l'analyse des objets |
-| `SCENARIOS` | nom, côté (`f` fichiers bruts, `z` données dérivées, jamais montés ensemble), métrique de débit et métrique d'instructions associées |
-| `entrees(rng, corpus)` | entrées de vérification : corpus + données tirées au hasard + entrées invalides |
-| `derivees(fichiers)` | entrées du second côté, produites par l'hôte (pour miniz, les flux zlib ; pour libyaml, rien ou des documents émis par la base) |
-| `verifier(sorties_a, sorties_b, entrees)` | règle de justesse ; lève `Refus` au premier écart. Elle ne fait confiance qu'à la base (A) et à l'hôte |
+| `NOM`, `PAQUETS` | nom du projet ; paquets ajoutés à l'image commune (une ligne `RUN`, noms vérifiés) |
+| `SOURCES`, `SOURCES_REQUISES` | motifs glob des fichiers du projet copiés dans le conteneur (`miniz*.c`, `src/*.c`…) ; tout lien symbolique est refusé |
+| `DIFF` | motifs passés à `git diff` pour l'analyse des lignes ajoutées |
+| `OUTILLAGE`, `EN_TETES_BASE`, `CONSTRUIRE` | dossiers de la base montés sur `/outillage` ; en-têtes de la base copiés dans `/outillage/base/` (le harnais se compile avec eux) ; script de construction, qui doit produire `execution` et les relevés `symboles.txt`, `sections.txt`, `desassemblage.txt` |
+| `PREFIXES`, `PERMIS` | espace de noms du projet et fonctions externes permises en plus de la liste commune, pour l'analyse des objets |
+| `COTES` | côtés d'entrées (`f`, `z`…) : un conteneur par côté, jamais deux côtés montés ensemble |
+| `SCENARIOS`, `INSTRUCTIONS`, `METRIQUES`, `METHODE` | scénarios mesurés au chronomètre et leur côté ; ceux dont on compte les instructions ; métriques (nom, sens, unité) ; textes de méthode ajoutés au rapport |
+| `corpus(outillage)` | corpus de la base, `[(nom, octets)]` (aide : `entrees.charger_corpus`) |
+| `verification(rng, corpus)` | entrées de vérification (`entrees.Entree`) : corpus, données tirées au hasard, dérivées (flux produits par l'hôte), invalides |
+| `verifier(a, b, entrees)` | règle de justesse sur les sorties du mode `verifier` ; lève `Refus` au premier écart, `Erreur` si la base elle-même est fausse ; renvoie le nombre de sorties comparées |
+| `fixes(sorties, corpus)` | métriques qui ne dépendent pas du temps (ratio de compression…), lues sur les sorties de vérification |
+| `repetition(rng, corpus)`, `instructions(rng, corpus, prefixe)` | entrées des mesures, perturbées à chaque appel |
+| `scenario(s, a, b, entrees, mesure)` | vérifie les sorties d'un scénario mesuré et en tire les métriques (à partir de la mesure de chrono) ; renvoie `(valeurs, sorties comparées)` |
 
-Règle de sûreté : le greffon ne voit les sorties qu'à travers `lecture.py`, et n'exécute rien de ce
-que le conteneur a produit. Une PR qui modifie `bee/juge/` est une tâche d'outillage : le registre
+Le harnais (`execution`) est appelé `execution <mode> /entrees /sorties`, avec le mode `verifier` ou
+un nom de scénario ; `/entrees/liste` donne une ligne `<côté> <nom> <entier>` par entrée, dont les
+octets sont dans `/entrees/<côté>/<nom>`.
+
+Règle de sûreté : le greffon ne voit les sorties qu'à travers `lecture.Sorties`, et n'exécute rien de
+ce que le conteneur a produit. Une PR qui modifie `bee/juge/` est une tâche d'outillage : le registre
 le détecte et exige un gardien (R3).
 
 ## Versions
 
 - Le juge commun est versionné par étiquette (`juge-v1`, `juge-v2`…) dans le registre. Un changement
-  passe par une PR d'outillage sur le registre, avec les méta-tests communs et ceux de chaque projet
-  qui l'utilise, et la relecture de deux gardiens.
+  passe par une PR d'outillage sur le registre, avec les méta-tests communs (workflow
+  `juge-commun.yml`) et ceux de chaque projet qui l'utilise, et la relecture de deux gardiens.
+- Le workflow réutilisable `.github/workflows/juge.yml` lit le juge commun à sa propre étiquette
+  (`JUGE_COMMUN_REF`, vérifié par un test), jamais à la branche principale.
 - Chaque fork épingle une version dans son workflow ; il monte de version par une PR (tâche
   d'outillage du fork), jugée par l'ancienne version et par la nouvelle.
-- `verdict.json` porte `juge.version` (« commun-vN ») : le registre sait par quel juge chaque verdict
-  a été rendu, et peut exiger une version minimale (`bee.yaml`).
+- `verdict.json` porte `juge.version` (entier : 2 pour le juge de minizBee de miniz-0031, 3 pour le
+  juge commun v1), `juge.commun` (« juge-v1 »), `juge.projet` et `juge.greffon` (empreinte SHA-256 du
+  greffon) : le registre sait par quel juge chaque verdict a été rendu, et peut exiger une version
+  minimale (`bee.yaml`).
 
 ## Migration
 
