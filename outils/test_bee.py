@@ -1290,6 +1290,806 @@ class TestFork(BaseTest):
         self.assertIn("git fetch upstream", texte)
 
 
+class BaseParallele(BaseTest):
+    """Outils communs aux tests du travail en parallèle déclaré et de la course entre contributions (ruche-0001)."""
+
+    def a(self, instant):
+        os.environ["BEE_MAINTENANT"] = instant
+
+    def parallele(self, tache, qui, attendu=0):
+        code, texte = self.bee("prendre", tache, "--utilisateur", qui, "--en-parallele")
+        self.assertEqual(code, attendu, texte)
+        return texte
+
+    def soumettre(self, tache, qui, numero):
+        code, texte = self.bee("soumettre", tache, "--utilisateur", qui, "--pr", f"https://github.com/Bee-ruche/minizBee/pull/{numero}",
+                               "--resume", "Essai en parallèle.")
+        self.assertEqual(code, 0, texte)
+        return texte.split("contribution ", 1)[1].split(" ", 1)[0]
+
+    def enr(self, cid):
+        return bee.Registre(self.dossier).enregistrement(cid)[1]
+
+    def fermer_porte(self):
+        chemin = self.dossier / "bee.yaml"
+        chemin.write_text(chemin.read_text(encoding="utf-8").replace("relecture_gardien_requise: true", "relecture_gardien_requise: false"),
+                          encoding="utf-8")
+
+    def verdict(self, cid, gain):
+        verdict = self.dossier / "verdict.json"
+        verdict.write_text(json.dumps({"ci": "verte", "gain": gain, "au_dela_du_bruit": True, "lignes_modifiees": 10,
+                                       "instructions": {"instructions_n6": {"A": 1000000, "B": 1000000 * (1 - gain), "gain": gain}}}),
+                           encoding="utf-8")
+        self.assertEqual(self.bee("enregistrer-verdict", cid, "--verdict", str(verdict), "--sha", "abc1234", "--fichiers", self.fichiers_pr())[0], 0)
+
+    def relire(self, cid, *relecteurs, voter=True):
+        for relecteur in relecteurs:
+            code, texte = self.bee("relire", cid, "--utilisateur", relecteur, "--avis", "favorable", "--motif", "Relu en entier, banc rejoué.")
+            self.assertEqual(code, 0, texte)
+        if voter:
+            self.assertEqual(self.bee("voter", cid, "--utilisateur", "bidji29", "--valeur", "1")[0], 0)
+
+    def acceptation(self, cid):
+        return self.bee("verifier-acceptation", cid)
+
+    def course_a_deux(self, gain_parallele, gain_titulaire):
+        """alice réserve à 12 h ; bruno s'inscrit en parallèle à 13 h et soumet c1 à 14 h ; alice soumet c2 à 17 h.
+        Clôture de la course : 14 h + 96 h = 2026-10-31T14:00:00Z."""
+        self.fermer_porte()
+        self.assertEqual(self.bee("prendre", "miniz-0099", "--utilisateur", "alice")[0], 0)
+        self.a("2026-10-27T13:00:00Z")
+        self.parallele("miniz-0099", "bruno")
+        self.a("2026-10-27T14:00:00Z")
+        c1 = self.soumettre("miniz-0099", "bruno", 99101)
+        self.a("2026-10-27T17:00:00Z")
+        c2 = self.soumettre("miniz-0099", "alice", 99102)
+        self.verdict(c1, gain_parallele)
+        self.verdict(c2, gain_titulaire)
+        return c1, c2
+
+
+class TestTravailEnParallele(BaseParallele):
+    """ruche-0001 : s'inscrire en parallèle, se retirer, soumettre, promotion, expiration (R7, R8, R11)."""
+
+    def test_inscription_en_parallele_sur_une_tache_reservee(self):
+        self.assertEqual(self.bee("prendre", "miniz-0099", "--utilisateur", "alice")[0], 0)
+        self.a("2026-10-27T13:00:00Z")
+        texte = self.parallele("miniz-0099", "bruno")
+        self.assertIn("ne change pas", texte)
+        t = self.tache("miniz-0099")
+        self.assertEqual(t["statut"], "reservee")
+        self.assertEqual(t["reservation"], {"utilisateur": "alice", "depuis": "2026-10-27T12:00:00Z"})
+        self.assertEqual(t["paralleles"], [{"utilisateur": "bruno", "depuis": "2026-10-27T13:00:00Z"}])
+        self.assertIn("contexte: >\n  Tâche fictive", (self.dossier / "taches/miniz/miniz-0099.yaml").read_text(encoding="utf-8"))
+        self.valide()
+
+    def test_inscription_en_parallele_refusee(self):
+        self.assertIn("réservez-la normalement", self.parallele("miniz-0099", "bruno", attendu=1), "tâche ouverte")
+        self.assertEqual(self.bee("prendre", "miniz-0099", "--utilisateur", "alice")[0], 0)
+        self.assertIn("titulaire", self.parallele("miniz-0099", "alice", attendu=1))
+        self.parallele("miniz-0099", "bruno")
+        self.assertIn("déjà inscrit", self.parallele("miniz-0099", "bruno", attendu=1))
+        self.assertIn("attendez sa fusion", self.parallele("miniz-0099", "inconnu", attendu=1))
+        code, texte = self.bee("prendre", "miniz-0099", "--utilisateur", "chloe")
+        self.assertEqual(code, 1)
+        self.assertIn("--en-parallele", texte, "une réservation refusée indique comment travailler aussi sur la tâche")
+
+    def test_r8_compte_les_inscriptions_en_parallele(self):
+        for i in range(4):
+            (self.dossier / f"taches/miniz/miniz-009{i}.yaml").write_text(TACHE_OPTIMISATION.replace("miniz-0099", f"miniz-009{i}"), encoding="utf-8")
+        for t in ("miniz-0090", "miniz-0091", "miniz-0092", "miniz-0093"):
+            self.assertEqual(self.bee("prendre", t, "--utilisateur", "alice" if t != "miniz-0090" else "chloe")[0], 0, t)
+        self.assertEqual(self.bee("prendre", "miniz-0099", "--utilisateur", "bruno")[0], 0)
+        self.parallele("miniz-0090", "bruno")
+        self.parallele("miniz-0091", "bruno")  # 1 réservation + 2 inscriptions = 3
+        self.assertIn("R8", self.parallele("miniz-0092", "bruno", attendu=1))
+        code, texte = self.bee("prendre", "miniz-9001", "--utilisateur", "bruno")
+        self.assertEqual(code, 1, "une inscription en parallèle compte aussi contre une nouvelle réservation")
+        self.assertIn("R8", texte)
+        self.valide()
+        # Une inscription écrite à la main au-delà de R8 rend le registre invalide.
+        bee.modifier_tache(self.dossier / "taches/miniz/miniz-0092.yaml",
+                           paralleles=[{"utilisateur": "bruno", "depuis": "2026-10-27T12:00:00Z"}])
+        code, texte = self.bee("valider")
+        self.assertEqual(code, 1)
+        self.assertIn("R8", texte)
+
+    def test_retrait_en_parallele_de_soi_seulement(self):
+        self.assertEqual(self.bee("prendre", "miniz-0099", "--utilisateur", "alice")[0], 0)
+        self.parallele("miniz-0099", "bruno")
+        self.parallele("miniz-0099", "chloe")
+        code, texte = self.bee("liberer", "miniz-0099", "--utilisateur", "chloe", "--note", "Ma piste ne donne rien.")
+        self.assertEqual(code, 0, texte)
+        t = self.tache("miniz-0099")
+        self.assertEqual([p["utilisateur"] for p in t["paralleles"]], ["bruno"])
+        self.assertEqual(t["reservation"]["utilisateur"], "alice")
+        self.assertEqual(t["notes"][-1]["par"], "chloe")
+        self.assertEqual(self.bee("liberer", "miniz-0099", "--utilisateur", "chloe")[0], 1, "chloe n'est plus inscrite ni titulaire")
+        self.valide()
+
+    def test_promotion_du_plus_ancien_inscrit(self):
+        self.assertEqual(self.bee("prendre", "miniz-0099", "--utilisateur", "alice")[0], 0)
+        self.a("2026-10-27T13:00:00Z")
+        self.parallele("miniz-0099", "bruno")
+        self.a("2026-10-27T14:00:00Z")
+        self.parallele("miniz-0099", "chloe")
+        self.a("2026-10-27T15:00:00Z")
+        code, texte = self.bee("liberer", "miniz-0099", "--utilisateur", "alice")
+        self.assertEqual(code, 0, texte)
+        self.assertIn("bruno devient titulaire", texte)
+        t = self.tache("miniz-0099")
+        self.assertEqual(t["statut"], "reservee")
+        self.assertEqual(t["reservation"], {"utilisateur": "bruno", "depuis": "2026-10-27T13:00:00Z"}, "l'échéance ne s'allonge pas")
+        self.assertEqual(t["paralleles"], [{"utilisateur": "chloe", "depuis": "2026-10-27T14:00:00Z"}])
+        self.valide()
+        self.assertEqual(self.bee("liberer", "miniz-0099", "--utilisateur", "bruno")[0], 0)
+        t = self.tache("miniz-0099")
+        self.assertEqual(t["reservation"], {"utilisateur": "chloe", "depuis": "2026-10-27T14:00:00Z"})
+        self.assertNotIn("paralleles", t)
+        self.assertEqual(self.bee("liberer", "miniz-0099", "--utilisateur", "chloe")[0], 0)
+        self.assertEqual(self.tache("miniz-0099")["statut"], "ouverte")
+        self.valide()
+
+    def test_promotion_deterministe(self):
+        # À date égale, la première inscrite de la liste ; sinon la plus ancienne, où qu'elle soit dans la liste.
+        self.assertEqual(bee.plus_ancien([{"utilisateur": "b", "depuis": "2026-10-27T13:00:00Z"},
+                                          {"utilisateur": "c", "depuis": "2026-10-27T13:00:00Z"}])["utilisateur"], "b")
+        self.assertEqual(bee.plus_ancien([{"utilisateur": "b", "depuis": "2026-10-27T13:00:00Z"},
+                                          {"utilisateur": "c", "depuis": "2026-10-27T12:59:00Z"}])["utilisateur"], "c")
+        self.assertIsNone(bee.plus_ancien([]))
+
+    def test_expiration_r7_des_inscriptions_et_promotion(self):
+        self.assertEqual(self.bee("prendre", "miniz-0099", "--utilisateur", "alice")[0], 0)  # 27/10 12 h
+        self.a("2026-10-27T13:00:00Z")
+        self.parallele("miniz-0099", "chloe")
+        self.a("2026-10-27T22:00:00Z")
+        self.parallele("miniz-0099", "bruno")
+        self.a("2026-10-30T12:30:00Z")  # alice : 72,5 h ; chloe : 71,5 h
+        self.assertEqual(self.bee("liberer-expirees")[0], 0)
+        t = self.tache("miniz-0099")
+        self.assertEqual(t["reservation"], {"utilisateur": "chloe", "depuis": "2026-10-27T13:00:00Z"})
+        self.assertEqual([p["utilisateur"] for p in t["paralleles"]], ["bruno"])
+        self.assertIn("R7", t["notes"][-1]["texte"])
+        self.valide()
+        self.a("2026-10-30T13:30:00Z")  # chloe, titulaire à la date de son inscription, expire à 13 h
+        self.bee("liberer-expirees")
+        t = self.tache("miniz-0099")
+        self.assertEqual(t["reservation"], {"utilisateur": "bruno", "depuis": "2026-10-27T22:00:00Z"})
+        self.a("2026-10-30T22:30:00Z")
+        self.bee("liberer-expirees")
+        t = self.tache("miniz-0099")
+        self.assertEqual(t["statut"], "ouverte")
+        self.assertNotIn("paralleles", t)
+        self.valide()
+
+    def test_expiration_d_une_inscription_seule(self):
+        cid = self.soumettre_0099()  # alice ; la tâche passe en relecture
+        self.parallele("miniz-0099", "bruno")
+        self.a("2026-10-30T11:59:00Z")
+        self.bee("liberer-expirees")
+        self.assertEqual(len(self.tache("miniz-0099")["paralleles"]), 1, "71 h 59 : pas encore expirée")
+        self.a("2026-10-30T12:01:00Z")
+        self.bee("liberer-expirees")
+        t = self.tache("miniz-0099")
+        self.assertNotIn("paralleles", t)
+        self.assertEqual((t["statut"], t["contribution"]), ("en_relecture", cid))
+        self.assertIn("bruno", t["notes"][-1]["texte"])
+        self.valide()
+
+    def test_soumission_en_parallele(self):
+        self.assertEqual(self.bee("prendre", "miniz-0099", "--utilisateur", "alice")[0], 0)
+        self.parallele("miniz-0099", "bruno")
+        self.a("2026-10-27T14:00:00Z")
+        c1 = self.soumettre("miniz-0099", "bruno", 99101)
+        self.assertEqual(c1, "miniz-0099-c1")
+        self.assertEqual((self.enr(c1)["auteur"], self.enr(c1)["statut"]), ("bruno", "en_relecture"))
+        t = self.tache("miniz-0099")
+        self.assertEqual(t["statut"], "reservee", "le titulaire travaille encore : la tâche reste réservée")
+        self.assertEqual(t["reservation"], {"utilisateur": "alice", "depuis": "2026-10-27T12:00:00Z"}, "réservation intacte")
+        self.assertNotIn("paralleles", t)
+        self.assertEqual(t["contribution"], c1)
+        self.valide()
+        code, texte = self.bee("soumettre", "miniz-0099", "--utilisateur", "chloe", "--pr", "https://github.com/Bee-ruche/minizBee/pull/99103")
+        self.assertEqual(code, 1, "chloe n'est ni titulaire ni inscrite")
+        self.assertIn("en parallèle", texte)
+        c2 = self.soumettre("miniz-0099", "alice", 99102)
+        t = self.tache("miniz-0099")
+        self.assertEqual((t["statut"], t["contribution"]), ("en_relecture", c2))
+        self.assertEqual([c for c, _ in bee.contributions_en_course(bee.Registre(self.dossier), "miniz-0099")], [c1, c2])
+        self.valide()
+
+    def test_inscription_sur_une_tache_en_relecture_et_soumissions_repetees(self):
+        c1 = self.soumettre_0099()  # alice
+        self.assertIn("déjà une contribution en course", self.parallele("miniz-0099", "alice", attendu=1))
+        self.parallele("miniz-0099", "bruno")
+        c2 = self.soumettre("miniz-0099", "bruno", 99101)
+        t = self.tache("miniz-0099")
+        self.assertEqual((t["statut"], t["contribution"]), ("en_relecture", c2))
+        self.assertIn("déjà une contribution en course", self.parallele("miniz-0099", "bruno", attendu=1),
+                      "on améliore sa contribution, on n'en soumet pas une autre")
+        self.assertNotEqual(c1, c2)
+        self.valide()
+
+    def test_le_titulaire_libere_alors_qu_une_contribution_est_en_course(self):
+        self.assertEqual(self.bee("prendre", "miniz-0099", "--utilisateur", "alice")[0], 0)
+        self.parallele("miniz-0099", "bruno")
+        c1 = self.soumettre("miniz-0099", "bruno", 99101)
+        code, texte = self.bee("liberer", "miniz-0099", "--utilisateur", "alice")
+        self.assertEqual(code, 0, texte)
+        t = self.tache("miniz-0099")
+        self.assertEqual((t["statut"], t["contribution"]), ("en_relecture", c1))
+        self.assertNotIn("reservation", t)
+        self.valide()
+
+    def test_cloturer_pendant_la_course(self):
+        self.assertEqual(self.bee("prendre", "miniz-0099", "--utilisateur", "alice")[0], 0)
+        self.parallele("miniz-0099", "bruno")
+        c1 = self.soumettre("miniz-0099", "bruno", 99101)
+        # La PR de bruno est fermée pendant que le titulaire travaille : la tâche reste à alice.
+        self.assertEqual(self.bee("cloturer", c1, "--motif", "PR fermée sans fusion.")[0], 0)
+        t = self.tache("miniz-0099")
+        self.assertEqual((t["statut"], t["reservation"]["utilisateur"]), ("reservee", "alice"))
+        self.assertNotIn("contribution", t)
+        self.valide()
+        c2 = self.soumettre("miniz-0099", "alice", 99102)
+        self.parallele("miniz-0099", "chloe")
+        c3 = self.soumettre("miniz-0099", "chloe", 99103)
+        self.parallele("miniz-0099", "bruno")
+        self.assertEqual(self.bee("cloturer", c3, "--motif", "PR fermée sans fusion.")[0], 0)
+        t = self.tache("miniz-0099")
+        self.assertEqual((t["statut"], t["contribution"]), ("en_relecture", c2), "la course continue avec c2")
+        self.valide()
+        self.assertEqual(self.bee("cloturer", c2, "--motif", "PR fermée sans fusion.")[0], 0)
+        t = self.tache("miniz-0099")
+        self.assertEqual(t["statut"], "reservee", "plus de contribution en course : l'inscrit en parallèle devient titulaire")
+        self.assertEqual(t["reservation"]["utilisateur"], "bruno")
+        self.assertNotIn("contribution", t)
+        self.valide()
+
+    def test_essaim_voir_et_cap_montrent_le_travail_en_parallele(self):
+        os.environ["BEE_MAINTENANT"] = "2027-06-01T12:00:00Z"  # seule l'activité du test compte dans la fenêtre du cap
+        self.assertEqual(self.bee("prendre", "miniz-0099", "--utilisateur", "alice")[0], 0)
+        self.parallele("miniz-0099", "bruno")
+        tableau = json.loads(self.bee("essaim", "--json")[1])
+        ligne = {x["tache"]: x for x in tableau["en_cours"]}["miniz-0099"]
+        self.assertEqual(ligne["utilisateur"], "alice")
+        self.assertEqual([(p["utilisateur"], p["expire_dans_heures"]) for p in ligne["paralleles"]], [("bruno", 72)])
+        code, texte = self.bee("essaim")
+        self.assertEqual(code, 0, texte)
+        self.assertIn("bruno (72 h)", texte)
+        self.assertIn("--en-parallele", texte)
+        code, texte = self.bee("voir", "miniz-0099")
+        self.assertIn("# en parallèle : bruno", texte)
+        self.assertIn("# titulaire : alice", texte)
+        etat = json.loads(self.bee("cap", "--json")[1])
+        projets = {l["poste"]: l for l in etat["postes"]}["projets"]
+        self.assertEqual(projets["gestes"]["travail en cours"], 2.0, "une inscription en parallèle compte comme une réservation")
+        c1 = self.soumettre("miniz-0099", "bruno", 99101)
+        c2 = self.soumettre("miniz-0099", "alice", 99102)
+        tableau = json.loads(self.bee("essaim", "--json")[1])
+        course = {c["tache"]: c for c in tableau["courses"]}["miniz-0099"]
+        self.assertEqual({c["contribution"] for c in course["contributions"]}, {c1, c2})
+        self.assertEqual(course["cloture"], "2027-06-05T12:00:00Z")
+        relecture = {x["contribution"]: x for x in tableau["en_relecture"]}
+        self.assertEqual(relecture[c1]["concurrentes"], [c2])
+        self.assertIn("Courses", self.bee("essaim")[1])
+        code, texte = self.bee("voir", "miniz-0099")
+        self.assertIn("contributions en course", texte)
+        self.assertIn(c2, texte)
+
+    def test_site_montre_les_paralleles_et_la_course(self):
+        self.assertEqual(self.bee("prendre", "miniz-0099", "--utilisateur", "alice")[0], 0)
+        self.parallele("miniz-0099", "bruno")
+        c1 = self.soumettre("miniz-0099", "bruno", 99101)
+        self.parallele("miniz-0099", "chloe")
+        code, texte = self.bee("site", "--sortie", str(self.dossier / "_site"))
+        self.assertEqual(code, 0, texte)
+        accueil = (self.dossier / "_site/index.html").read_text(encoding="utf-8")
+        ligne = accueil[accueil.index("<tr><td><a class='id' href='taches/miniz-0099.html'>"):].split("</tr>", 1)[0]
+        self.assertIn("chloe", ligne, "la page d'accueil montre les inscrits en parallèle")
+        self.assertIn(c1, ligne, "et les contributions en course")
+        self.assertIn("En parallèle", accueil)
+        page = (self.dossier / "_site/taches/miniz-0099.html").read_text(encoding="utf-8")
+        self.assertIn("En parallèle", page)
+        self.assertIn("chloe", page)
+        self.assertIn("Contributions en course", page)
+        self.assertIn(c1, page)
+        self.assertIn("--en-parallele", page)
+        donnees = json.loads((self.dossier / "_site/api/registre.json").read_text(encoding="utf-8"))
+        self.assertIn("courses", donnees["essaim"])
+        tache = {t["id"]: t for t in donnees["taches"]}["miniz-0099"]
+        self.assertEqual([p["utilisateur"] for p in tache["paralleles"]], ["chloe"])
+
+    def test_valider_refuse_les_etats_incoherents(self):
+        chemin = self.dossier / "taches/miniz/miniz-0099.yaml"
+        bee.modifier_tache(chemin, paralleles=[{"utilisateur": "bruno", "depuis": "2026-10-27T12:00:00Z"}])
+        code, texte = self.bee("valider")
+        self.assertEqual(code, 1, "pas d'inscription en parallèle sur une tâche ouverte")
+        self.assertIn("champ non permis", texte)
+        bee.modifier_tache(chemin, statut="reservee", reservation={"utilisateur": "bruno", "depuis": "2026-10-27T12:00:00Z"})
+        code, texte = self.bee("valider")
+        self.assertEqual(code, 1)
+        self.assertIn("est le titulaire", texte)
+        bee.modifier_tache(chemin, paralleles=[{"utilisateur": "chloe", "depuis": "2026-10-27T12:00:00Z"},
+                                               {"utilisateur": "chloe", "depuis": "2026-10-27T12:30:00Z"}])
+        code, texte = self.bee("valider")
+        self.assertEqual(code, 1)
+        self.assertIn("déjà inscrit en parallèle", texte)
+
+
+class TestCourse(BaseParallele):
+    """R3, contributions concurrentes : la meilleure seulement, choix déterministe, attentes bornées, écartées non pénalisées."""
+
+    def test_la_mieux_classee_est_integree_et_l_autre_ecartee(self):
+        c1, c2 = self.course_a_deux(0.03, 0.05)
+        self.relire(c1, "chloe", "bidji29")
+        self.relire(c2, "chloe", "bidji29")
+        self.a("2026-10-28T18:00:00Z")  # les deux fenêtres sont écoulées
+        code, texte = self.acceptation(c1)
+        self.assertEqual(code, 1, texte)
+        self.assertIn(f"la concurrente {c2} est mieux classée", texte)
+        code, texte = self.acceptation(c2)
+        self.assertEqual(code, 0, texte)
+        # Faire intégrer la moins bonne : refusé, rien n'est écrit.
+        code, texte = self.bee("integrer", c1)
+        self.assertEqual(code, 1, texte)
+        self.assertEqual(self.enr(c1)["statut"], "en_relecture")
+        code, texte = self.bee("integrer", c2, "--fusion-sha", "deadbee")
+        self.assertEqual(code, 0, texte)
+        self.assertIn(f"ecartee: {c1} https://github.com/Bee-ruche/minizBee/pull/99101", texte)
+        ecartee = self.enr(c1)
+        self.assertEqual((ecartee["statut"], ecartee["retenue"]), ("ecartee", c2))
+        self.assertIn(c2, ecartee["motif_decision"])
+        t = self.tache("miniz-0099")
+        self.assertEqual((t["statut"], t["contribution"]), ("integree", c2))
+        self.assertIn(f"Contribution retenue : {c2}", t["notes"][-1]["texte"])
+        self.valide()
+        # Écartée n'est pas refusée : ni l'auteur ni ses relecteurs ne perdent quoi que ce soit.
+        niveaux = bee.calculer_niveaux(bee.Registre(self.dossier))
+        self.assertEqual(niveaux["chloe"]["relectures"], 1, "+1 pour c2 intégrée, 0 pour c1 écartée (une annulée aurait coûté 1)")
+        self.assertEqual(niveaux["bruno"]["integrees"], 0)
+        self.assertEqual(self.bee("classement", "--statut", "ecartee", "--json")[0], 0)
+        self.assertEqual(self.bee("site", "--sortie", str(self.dossier / "_site"))[0], 0)
+        page = (self.dossier / f"_site/contributions/{c1}.html").read_text(encoding="utf-8")
+        self.assertIn(f"Écartée au profit de <a class='id' href='{c2}.html'>{c2}</a>", page)
+        self.assertIn("Ce n'est pas un refus", page)
+
+    def test_un_engage_avant_la_soumission_retarde_jusqu_a_son_expiration(self):
+        self.fermer_porte()
+        self.assertEqual(self.bee("prendre", "miniz-0099", "--utilisateur", "alice")[0], 0)  # 27/10 12 h
+        self.a("2026-10-27T13:00:00Z")
+        self.parallele("miniz-0099", "bruno")
+        self.a("2026-10-27T14:00:00Z")
+        c1 = self.soumettre("miniz-0099", "bruno", 99101)
+        self.verdict(c1, 0.05)
+        self.relire(c1, "chloe", "bidji29")
+        self.a("2026-10-28T18:00:00Z")
+        code, texte = self.acceptation(c1)
+        self.assertEqual(code, 1, texte)
+        self.assertIn("alice (titulaire)", texte)
+        self.assertIn("avant cette soumission", texte)
+        self.a("2026-10-30T12:01:00Z")  # la réservation d'alice a expiré (R7), même avant le passage du robot
+        code, texte = self.acceptation(c1)
+        self.assertEqual(code, 0, texte)
+        self.bee("liberer-expirees")
+        t = self.tache("miniz-0099")
+        self.assertEqual((t["statut"], t["contribution"]), ("en_relecture", c1))
+        self.valide()
+
+    def test_une_inscription_apres_la_soumission_ne_retarde_pas(self):
+        self.fermer_porte()
+        c1 = self.soumettre_0099()  # alice, 27/10 12 h
+        self.a("2026-10-27T13:00:00Z")
+        self.parallele("miniz-0099", "chloe")
+        self.verdict(c1, 0.05)
+        self.relire(c1, "bruno", "bidji29")
+        self.a("2026-10-28T13:00:00Z")
+        code, texte = self.acceptation(c1)
+        self.assertEqual(code, 0, texte)
+        code, texte = self.bee("integrer", c1)
+        self.assertEqual(code, 0, texte)
+        t = self.tache("miniz-0099")
+        self.assertEqual(t["statut"], "integree")
+        self.assertNotIn("paralleles", t)
+        self.assertIn("chloe (en parallèle)", t["notes"][-1]["texte"], "l'engagement qui prend fin est dit")
+        self.valide()
+
+    def test_une_ci_qui_ne_conclut_jamais_retarde_au_plus_pendant_la_fenetre_de_la_concurrente(self):
+        self.fermer_porte()
+        c1 = self.soumettre_0099()  # alice, 27/10 12 h
+        self.a("2026-10-27T13:00:00Z")
+        self.parallele("miniz-0099", "chloe")
+        c2 = self.soumettre("miniz-0099", "chloe", 99102)  # jamais de verdict
+        self.verdict(c1, 0.05)
+        self.relire(c1, "bruno", "bidji29")
+        self.a("2026-10-28T12:30:00Z")  # la fenêtre de c1 est écoulée, pas celle de c2
+        code, texte = self.acceptation(c1)
+        self.assertEqual(code, 1, texte)
+        self.assertIn(f"la concurrente {c2} n'est pas encore départagée (verdict de sa CI en attente)", texte)
+        self.assertIn("2026-10-28T13:00:00Z", texte)
+        self.a("2026-10-28T13:00:00Z")
+        code, texte = self.acceptation(c1)
+        self.assertEqual(code, 0, f"sans verdict au bout de sa fenêtre, c2 n'a pas de score : elle est classée dernière\n{texte}")
+        self.assertEqual(self.bee("integrer", c1)[0], 0)
+        self.assertEqual((self.enr(c2)["statut"], self.enr(c2)["retenue"]), ("ecartee", c1))
+        self.valide()
+
+    def test_des_soumissions_repetees_ne_retardent_pas_au_dela_de_la_cloture(self):
+        self.fermer_porte()
+        c1 = self.soumettre_0099()  # alice, 27/10 12 h : clôture de la course le 31/10 à 12 h
+        self.verdict(c1, 0.05)
+        self.relire(c1, "bruno", "bidji29")
+        precedente = None
+        for numero, instant in enumerate(("2026-10-27T13:00:00Z", "2026-10-28T12:55:00Z", "2026-10-29T12:55:00Z",
+                                          "2026-10-30T12:55:00Z", "2026-10-31T11:00:00Z"), start=99200):
+            self.a(instant)
+            if precedente:  # chloe ferme sa PR (sans verdict), se réinscrit et soumet de nouveau
+                self.assertEqual(self.bee("cloturer", precedente, "--motif", "PR fermée sans fusion.")[0], 0)
+            self.parallele("miniz-0099", "chloe")
+            precedente = self.soumettre("miniz-0099", "chloe", numero)
+            self.assertEqual(self.acceptation(c1)[0], 1, instant)
+        self.assertEqual(bee.en_iso(bee.cloture_course(bee.Registre(self.dossier), "miniz-0099")), "2026-10-31T12:00:00Z")
+        self.a("2026-10-31T11:59:00Z")
+        self.assertEqual(self.acceptation(c1)[0], 1)
+        self.a("2026-10-31T12:00:00Z")
+        code, texte = self.acceptation(c1)
+        self.assertEqual(code, 0, f"course close à soumission de c1 + 96 h, quoi qu'il arrive\n{texte}")
+
+    def test_une_soumission_tardive_ne_repousse_pas_la_cloture(self):
+        c1, c2 = self.course_a_deux(0.03, 0.05)
+        reg = bee.Registre(self.dossier)
+        self.assertEqual(bee.en_iso(bee.cloture_course(reg, "miniz-0099")), "2026-10-31T14:00:00Z")
+        self.a("2026-10-30T10:00:00Z")
+        self.parallele("miniz-0099", "chloe")
+        self.soumettre("miniz-0099", "chloe", 99103)
+        self.assertEqual(bee.en_iso(bee.cloture_course(bee.Registre(self.dossier), "miniz-0099")), "2026-10-31T14:00:00Z")
+
+    def test_apres_la_cloture_seules_les_integrables_restent_en_course(self):
+        c1, c2 = self.course_a_deux(0.03, 0.20)
+        self.relire(c1, "chloe", "bidji29")
+        self.relire(c2, "chloe", voter=False)  # une seule relecture, pas de vote : c2 ne remplit pas R3
+        self.a("2026-10-28T18:00:00Z")
+        code, texte = self.acceptation(c1)
+        self.assertEqual(code, 1, texte)
+        self.assertIn(f"{c2} est mieux classée", texte)
+        self.a("2026-10-31T14:00:00Z")  # clôture de la course
+        code, texte = self.acceptation(c1)
+        self.assertEqual(code, 0, texte)
+        # Si c2 devient intégrable, c'est elle, mieux classée, qui passe.
+        self.relire(c2, "bidji29")
+        code, texte = self.acceptation(c1)
+        self.assertEqual(code, 1, texte)
+        self.assertIn(f"la concurrente {c2}, intégrable, est mieux classée", texte)
+        self.assertEqual(self.acceptation(c2)[0], 0)
+
+    def test_classement_deterministe_vote_puis_anciennete(self):
+        (self.dossier / "taches/miniz/miniz-9003.yaml").write_text(
+            TACHE_OPTIMISATION.replace("miniz-0099", "miniz-9003").replace("type: optimisation", "type: test")
+            .replace("metrique: debit_compression_n6", "metrique: null"), encoding="utf-8")
+        self.assertEqual(self.bee("prendre", "miniz-9003", "--utilisateur", "alice")[0], 0)
+        self.parallele("miniz-9003", "bruno")
+        self.a("2026-10-27T13:00:00Z")
+        c1 = self.soumettre("miniz-9003", "bruno", 99101)
+        self.a("2026-10-27T14:00:00Z")
+        c2 = self.soumettre("miniz-9003", "alice", 99102)
+        rang = lambda: [c for c, _ in bee.classement_course(bee.Registre(self.dossier), "miniz-9003",  # noqa: E731
+                                                              bee.calculer_niveaux(bee.Registre(self.dossier)))]
+        self.assertEqual(rang(), [c1, c2], "sans score ni vote : la plus ancienne d'abord")
+        self.assertEqual(self.bee("voter", c2, "--utilisateur", "bidji29", "--valeur", "1")[0], 0)
+        self.assertEqual(rang(), [c2, c1], "à score égal (absent), le vote net départage")
+        self.assertEqual(self.bee("voter", c1, "--utilisateur", "bidji29", "--valeur", "1")[0], 0)
+        self.assertEqual(rang(), [c1, c2], "à vote égal, la plus ancienne")
+
+    def test_un_concurrent_ne_juge_pas_sa_concurrente(self):
+        (self.dossier / "gouvernance/gardiens.yaml").write_text("membres:\n  - pseudo: alice\n  - pseudo: bruno\n", encoding="utf-8")
+        c1, c2 = self.course_a_deux(0.03, 0.05)
+        code, texte = self.bee("relire", c2, "--utilisateur", "bruno", "--avis", "defavorable", "--motif", "Elle est moins bonne que la mienne.")
+        self.assertEqual(code, 1, texte)
+        self.assertIn("en course", texte)
+        self.assertEqual(self.bee("voter", c2, "--utilisateur", "bruno", "--valeur", "-1")[0], 1)
+        self.assertEqual(self.bee("relire", c2, "--utilisateur", "bruno", "--avis", "favorable", "--motif", "Bonne approche, je la reconnais.")[0], 0)
+        # Écrits à la main, l'avis défavorable d'une gardienne concurrente et son vote ne comptent pas.
+        chemin = self.dossier / f"contributions/miniz/{c1}.yaml"
+        enr = bee.lire_yaml(chemin)
+        enr["relectures"].append({"relecteur": "alice", "avis": "defavorable", "motif": "Bloquée par la concurrente.", "le": "2026-10-27T18:00:00Z"})
+        bee.ecrire_yaml(chemin, enr)
+        bee.ecrire_yaml(self.dossier / f"votes/{c1}/alice.yaml", {"votant": "alice", "sujet": c1, "valeur": -1, "le": "2026-10-27T18:00:00Z"})
+        reg = bee.Registre(self.dossier)
+        raisons = bee.raisons_r3(reg, c1)[2]
+        self.assertFalse([r for r in raisons if "alice" in r or "défavorable" in r], raisons)
+        self.assertEqual(bee.vote_net(reg, reg.enregistrement(c1)[1], bee.calculer_niveaux(reg)), 0)
+
+
+    def test_un_avis_donne_avant_de_s_engager_reste_valable(self):
+        # Une gardienne trouve un défaut, puis s'inscrit pour faire mieux : son avis, désintéressé quand elle l'a donné,
+        # continue de bloquer ; seuls les avis donnés depuis l'engagement sont ignorés.
+        (self.dossier / "gouvernance/gardiens.yaml").write_text("membres:\n  - pseudo: chloe\n", encoding="utf-8")
+        c1, c2 = self.course_a_deux(0.03, 0.05)
+        self.a("2026-10-27T18:00:00Z")
+        code, texte = self.bee("relire", c1, "--utilisateur", "chloe", "--avis", "defavorable", "--motif", "Lecture hors limites avec une entrée vide.")
+        self.assertEqual(code, 0, texte)
+        self.a("2026-10-27T19:00:00Z")
+        self.parallele("miniz-0099", "chloe")
+        raisons = bee.raisons_r3(bee.Registre(self.dossier), c1)[2]
+        self.assertTrue([r for r in raisons if "défavorable de chloe" in r], raisons)
+        self.assertEqual(self.bee("relire", c2, "--utilisateur", "chloe", "--avis", "defavorable", "--motif", "Une autre à bloquer.")[0], 1,
+                         "engagée, elle ne donne plus d'avis défavorable sur la course")
+
+
+class TestPullRequestsEnParallele(BaseParallele):
+    """verifier_pr : chaque transition du travail en parallèle est en libre-service et contrôlée ; chaque attaque est refusée."""
+
+    def setUp(self):
+        super().setUp()
+        git(self.dossier, "init", "-q", "-b", "main")
+        self.commit("base")
+
+    def commit(self, message="pr"):
+        git(self.dossier, "-c", "user.name=t", "-c", "user.email=t@t", "add", "-A")
+        git(self.dossier, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", message)
+
+    def branche(self, nom="pr"):
+        git(self.dossier, "switch", "-qc", nom)
+
+    def verifier(self, auteur, *options):
+        return self.bee("verifier-pr", "--base", "main", "--tete", "HEAD", "--auteur", auteur, *options)
+
+    def libre_service(self, auteur, nature):
+        code, texte = self.verifier(auteur, "--fusion-auto")
+        self.assertEqual(code, 0, texte)
+        self.assertIn("FUSION_AUTO=oui", texte)
+        self.assertIn(nature, texte)
+
+    def refusee(self, auteur, morceau):
+        code, texte = self.verifier(auteur)
+        self.assertEqual(code, 1, texte)
+        self.assertIn(morceau, texte)
+
+    def chemin(self, tache="miniz-0099"):
+        return self.dossier / f"taches/miniz/{tache}.yaml"
+
+    def main_reservee_avec_inscrits(self, *inscrits):
+        """Sur main : alice titulaire depuis 12 h, puis chaque inscrit une heure après le précédent."""
+        self.assertEqual(self.bee("prendre", "miniz-0099", "--utilisateur", "alice")[0], 0)
+        for i, qui in enumerate(inscrits, start=1):
+            self.a(f"2026-10-27T{12 + i}:00:00Z")
+            self.parallele("miniz-0099", qui)
+        self.commit("état de départ")
+
+    # --- Transitions légitimes : fusion automatique ---
+
+    def test_inscription_en_parallele_libre_service_et_entree_forgee(self):
+        self.main_reservee_avec_inscrits()
+        self.branche()
+        self.parallele("miniz-0099", "bruno")
+        self.commit()
+        self.libre_service("bruno", "inscription_parallele")
+        self.refusee("chloe", "on ne s'inscrit en parallèle que soi-même")
+
+    def test_retrait_libre_service_et_retrait_d_un_autre(self):
+        self.main_reservee_avec_inscrits("bruno", "chloe")
+        self.branche()
+        self.assertEqual(self.bee("liberer", "miniz-0099", "--utilisateur", "chloe")[0], 0)
+        self.commit()
+        self.libre_service("chloe", "retrait_parallele")
+        self.refusee("bruno", "on ne retire que sa propre inscription")
+        self.refusee("alice", "on ne retire que sa propre inscription")
+
+    def test_soumission_en_parallele_libre_service(self):
+        self.main_reservee_avec_inscrits("bruno")
+        self.branche()
+        self.soumettre("miniz-0099", "bruno", 99101)
+        self.commit()
+        self.libre_service("bruno", "soumission_parallele")
+        self.refusee("chloe", "n'est pas inscrit en parallèle")  # soumettre au nom d'un autre
+
+    def test_promotion_libre_service(self):
+        self.main_reservee_avec_inscrits("bruno", "chloe")
+        self.branche()
+        self.a("2026-10-27T15:00:00Z")
+        self.assertEqual(self.bee("liberer", "miniz-0099", "--utilisateur", "alice")[0], 0)
+        self.commit()
+        self.libre_service("alice", "promotion")
+        self.refusee("bruno", "seul le titulaire (alice) libère sa réservation")  # se promouvoir soi-même
+
+    def test_promotion_par_le_robot_apres_expiration(self):
+        self.main_reservee_avec_inscrits("bruno")
+        self.branche()
+        self.a("2026-10-30T12:30:00Z")
+        self.bee("liberer-expirees")
+        self.commit()
+        self.assertEqual(self.tache("miniz-0099")["reservation"]["utilisateur"], "bruno")
+        self.assertEqual(self.verifier("github-actions[bot]")[0], 0)
+        self.refusee("bruno", "seul le titulaire (alice)")  # même après l'expiration, seul le robot la constate
+
+    def test_soumission_du_titulaire_et_liberation_vers_la_relecture(self):
+        self.main_reservee_avec_inscrits("bruno")
+        self.soumettre("miniz-0099", "bruno", 99101)
+        self.commit("bruno a soumis")
+        self.branche()
+        self.assertEqual(self.bee("liberer", "miniz-0099", "--utilisateur", "alice")[0], 0)
+        self.commit()
+        self.assertEqual(self.tache("miniz-0099")["statut"], "en_relecture")
+        self.libre_service("alice", "liberation")
+        self.refusee("bruno", "seul le titulaire")
+        git(self.dossier, "switch", "-q", "main")
+        self.parallele("miniz-0099", "chloe")
+        self.commit("chloe s'inscrit")
+        self.branche("titulaire")
+        self.soumettre("miniz-0099", "alice", 99102)
+        self.commit()
+        self.libre_service("alice", "soumission")
+        self.assertEqual([p["utilisateur"] for p in self.tache("miniz-0099")["paralleles"]], ["chloe"])
+
+    # --- Attaques ---
+
+    def test_attaque_antidater_son_inscription(self):
+        self.main_reservee_avec_inscrits("chloe")
+        self.branche()
+        bee.modifier_tache(self.chemin(), paralleles=[{"utilisateur": "chloe", "depuis": "2026-10-27T13:00:00Z"},
+                                                      {"utilisateur": "bruno", "depuis": "2026-10-27T09:00:00Z"}])
+        self.commit()
+        self.refusee("bruno", "datée de l'heure de la PR")
+
+    def test_attaque_s_inscrire_avant_la_reservation_dans_la_tolerance(self):
+        # Dans la tolérance de 2 h, mais avant la réservation d'alice : bruno paraîtrait engagé avant elle.
+        self.main_reservee_avec_inscrits()
+        self.branche()
+        self.a("2026-10-27T12:30:00Z")
+        bee.modifier_tache(self.chemin(), paralleles=[{"utilisateur": "bruno", "depuis": "2026-10-27T11:00:00Z"}])
+        self.commit()
+        self.refusee("bruno", "ne peut pas être antérieure à la réservation")
+
+    def test_attaque_soumission_anterieure_a_son_inscription(self):
+        self.main_reservee_avec_inscrits("bruno")  # bruno inscrit à 13 h
+        self.branche()
+        self.a("2026-10-27T13:30:00Z")
+        cid = self.soumettre("miniz-0099", "bruno", 99101)
+        chemin = self.dossier / f"contributions/miniz/{cid}.yaml"
+        enr = bee.lire_yaml(chemin)
+        enr["soumise_le"] = "2026-10-27T11:45:00Z"  # avant la réservation d'alice : pour ne pas l'attendre (R3)
+        bee.ecrire_yaml(chemin, enr)
+        self.commit()
+        self.refusee("bruno", "ne peut pas précéder l'engagement de bruno")
+
+    def test_attaque_vieillir_une_inscription_existante(self):
+        self.main_reservee_avec_inscrits("chloe", "bruno")
+        self.branche()
+        bee.modifier_tache(self.chemin(), paralleles=[{"utilisateur": "chloe", "depuis": "2026-10-27T13:00:00Z"},
+                                                      {"utilisateur": "bruno", "depuis": "2026-10-27T12:30:00Z"}])
+        self.commit()
+        self.refusee("bruno", "on ne modifie pas une inscription en parallèle existante")
+
+    def test_attaque_le_titulaire_s_inscrit_en_parallele(self):
+        self.main_reservee_avec_inscrits()
+        self.branche()
+        bee.modifier_tache(self.chemin(), paralleles=[{"utilisateur": "alice", "depuis": "2026-10-27T12:00:00Z"}])
+        self.commit()
+        self.refusee("alice", "est le titulaire")
+
+    def test_attaque_soumission_repetee(self):
+        self.main_reservee_avec_inscrits("bruno")
+        self.soumettre("miniz-0099", "bruno", 99101)
+        self.commit("bruno a soumis")
+        self.branche()
+        bee.modifier_tache(self.chemin(), paralleles=[{"utilisateur": "bruno", "depuis": "2026-10-27T12:00:00Z"}])
+        self.commit()
+        self.refusee("bruno", "a déjà une contribution en course")
+
+    def test_attaque_soumettre_au_nom_d_un_autre(self):
+        self.main_reservee_avec_inscrits("bruno")
+        self.branche()
+        cid = self.soumettre("miniz-0099", "bruno", 99101)
+        chemin = self.dossier / f"contributions/miniz/{cid}.yaml"
+        enr = bee.lire_yaml(chemin)
+        enr["auteur"] = "chloe"
+        bee.ecrire_yaml(chemin, enr)
+        self.commit()
+        self.refusee("bruno", "l'auteur déclaré doit être bruno")
+
+    def test_attaque_soumettre_sans_etre_inscrit(self):
+        self.main_reservee_avec_inscrits("bruno")
+        self.branche()
+        bee.ecrire_yaml(self.dossier / "contributions/miniz/miniz-0099-c1.yaml", {
+            "id": "miniz-0099-c1", "tache": "miniz-0099", "auteur": "chloe", "pr": "https://github.com/Bee-ruche/minizBee/pull/99103",
+            "statut": "en_relecture", "soumise_le": "2026-10-27T13:00:00Z", "relectures": []})
+        bee.modifier_tache(self.chemin(), contribution="miniz-0099-c1")
+        self.commit()
+        self.refusee("chloe", "n'est pas inscrit en parallèle")
+
+    def test_attaque_se_promouvoir_titulaire(self):
+        self.main_reservee_avec_inscrits("bruno")
+        self.branche()
+        bee.modifier_tache(self.chemin(), reservation={"utilisateur": "bruno", "depuis": "2026-10-27T13:00:00Z"}, paralleles=[])
+        self.commit()
+        self.refusee("bruno", "seul le titulaire (alice) libère sa réservation")
+
+    def test_attaque_promouvoir_un_autre_que_le_plus_ancien(self):
+        self.main_reservee_avec_inscrits("bruno", "chloe")
+        self.branche()
+        bee.modifier_tache(self.chemin(), reservation={"utilisateur": "chloe", "depuis": "2026-10-27T14:00:00Z"},
+                           paralleles=[{"utilisateur": "bruno", "depuis": "2026-10-27T13:00:00Z"}])
+        self.commit()
+        self.refusee("alice", "le plus ancien inscrit en parallèle, bruno")
+
+    def test_attaque_allonger_l_echeance_par_promotion(self):
+        self.main_reservee_avec_inscrits("bruno")
+        self.branche()
+        bee.modifier_tache(self.chemin(), reservation={"utilisateur": "bruno", "depuis": "2026-10-27T15:00:00Z"}, paralleles=[])
+        self.commit()
+        self.refusee("alice", "l'échéance R7 ne s'allonge pas")
+
+    def test_attaque_retirer_la_reservation_d_un_autre(self):
+        self.main_reservee_avec_inscrits("bruno")
+        self.branche()
+        bee.modifier_tache(self.chemin(), statut="ouverte", reservation=None, paralleles=[])
+        self.commit()
+        self.refusee("bruno", "seul le titulaire (alice) libère sa réservation")
+        # Même le titulaire ne libère pas en emportant les inscrits : le plus ancien prend sa place.
+        self.refusee("alice", "la plus ancienne devient titulaire")
+
+    def test_attaque_reserver_en_inscrivant_d_autres(self):
+        self.branche()
+        bee.modifier_tache(self.chemin(), statut="reservee", reservation={"utilisateur": "alice", "depuis": "2026-10-27T12:00:00Z"},
+                           paralleles=[{"utilisateur": "bruno", "depuis": "2026-10-27T12:00:00Z"}])
+        self.commit()
+        self.refusee("alice", "une réservation n'inscrit personne en parallèle")
+
+    def test_attaque_concurrent_qui_juge_sa_concurrente(self):
+        self.main_reservee_avec_inscrits("bruno")
+        c1 = self.soumettre("miniz-0099", "bruno", 99101)
+        c2 = self.soumettre("miniz-0099", "alice", 99102)
+        self.commit("deux contributions en course")
+        self.branche()
+        chemin = self.dossier / f"contributions/miniz/{c2}.yaml"
+        enr = bee.lire_yaml(chemin)
+        enr["relectures"] = [{"relecteur": "bruno", "avis": "defavorable", "motif": "La mienne est meilleure.", "le": "2026-10-27T18:00:00Z"}]
+        bee.ecrire_yaml(chemin, enr)
+        bee.ecrire_yaml(self.dossier / f"votes/{c2}/bruno.yaml", {"votant": "bruno", "sujet": c2, "valeur": -1, "le": "2026-10-27T18:00:00Z"})
+        self.commit()
+        self.refusee("bruno", "son avis défavorable sur une concurrente ne compterait pas")
+        self.refusee("bruno", "on ne vote pas sur une concurrente")
+        self.assertNotEqual(c1, c2)
+
+    def test_attaque_clore_une_concurrente_a_la_main(self):
+        self.main_reservee_avec_inscrits("bruno")
+        c1 = self.soumettre("miniz-0099", "bruno", 99101)
+        c2 = self.soumettre("miniz-0099", "alice", 99102)
+        self.commit("deux contributions en course")
+        self.branche()
+        chemin = self.dossier / f"contributions/miniz/{c1}.yaml"
+        enr = bee.lire_yaml(chemin)
+        enr.update({"statut": "ecartee", "retenue": c2, "decidee_le": "2026-10-27T18:00:00Z", "motif_decision": "Écartée à la main."})
+        bee.ecrire_yaml(chemin, enr)
+        self.commit()
+        self.refusee("alice", "écrits par la CI ou le conseil")
+        self.refusee("bidji29", "seul le robot d'intégration écarte une contribution concurrente")
+        self.refusee("bidji29", "dans le même commit que l'intégration")
+        self.refusee("github-actions[bot]", "dans le même commit que l'intégration")
+        # Écartée au profit d'une contribution qui n'est pas intégrée : le registre lui-même est invalide.
+        code, texte = self.bee("valider")
+        self.assertEqual(code, 1)
+        self.assertIn("qui n'est pas une contribution intégrée de la même tâche", texte)
+
+    def test_ecartement_dans_le_meme_commit_que_l_integration(self):
+        self.main_reservee_avec_inscrits("bruno")
+        c1 = self.soumettre("miniz-0099", "bruno", 99101)
+        c2 = self.soumettre("miniz-0099", "alice", 99102)
+        self.commit("deux contributions en course")
+        self.branche()
+        for cid, changement in ((c2, {"statut": "integree"}), (c1, {"statut": "ecartee", "retenue": c2, "motif_decision": "Écartée (R3)."})):
+            chemin = self.dossier / f"contributions/miniz/{cid}.yaml"
+            enr = bee.lire_yaml(chemin)
+            enr.update({"decidee_le": "2026-10-27T18:00:00Z", **changement})
+            bee.ecrire_yaml(chemin, enr)
+        bee.modifier_tache(self.chemin(), statut="integree", contribution=c2)
+        self.commit()
+        code, texte = self.verifier("github-actions[bot]")
+        self.assertNotIn("seul le robot d'intégration", texte)
+        self.assertNotIn("dans le même commit", texte)
+        self.refusee("bidji29", "seul le robot d'intégration écarte")
+
+
 MANIFESTE_REMPLI = """tache: miniz-0099
 utilisateur: alice
 agent:

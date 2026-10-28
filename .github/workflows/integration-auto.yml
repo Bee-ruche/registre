@@ -6,8 +6,10 @@
 #   - la PR n'est fusionnée QUE sur le commit que la CI a jugé (--match-head-commit) ;
 #   - une PR déjà fusionnée à la main (par le conseil, pendant la porte humaine) est consignée si et
 #     seulement si elle l'a été sur ce même commit ;
-#   - puis bee integrer passe la contribution et sa tâche en « integree ».
-# Une PR fermée sans fusion fait clore la contribution (bee cloturer) et rouvrir sa tâche.
+#   - puis bee integrer passe la contribution et sa tâche en « integree », et écarte dans le même commit les
+#     contributions concurrentes de la même tâche (R3 : seule la mieux classée s'intègre), dont la PR est fermée.
+# Une PR fermée sans fusion fait clore la contribution (bee cloturer) et rouvrir sa tâche, sauf si la course
+# continue (autres contributions en relecture, titulaire ou inscrits en parallèle).
 #
 # Sécurité : seul l'outil bee de main s'exécute ; les fichiers des forks sont des données, et la
 # fusion se fait côté serveur (le code du fork n'est jamais exécuté ici).
@@ -84,10 +86,22 @@ jobs:
               fusion=$(GH_TOKEN="$jeton" gh pr view "$pr" --json mergeCommit --jq '.mergeCommit.oid // "-"')
             fi
             if [ "$fusion" != "-" ]; then
-              python3 outils/bee.py integrer "$id" --fusion-sha "$fusion" || true
+              python3 outils/bee.py integrer "$id" --fusion-sha "$fusion" > integration.txt || true
             else
-              python3 outils/bee.py integrer "$id" || true
+              python3 outils/bee.py integrer "$id" > integration.txt || true
             fi
+            cat integration.txt
+            # R3, contributions concurrentes : bee integrer a écarté les autres contributions de la même tâche
+            # (statut « ecartee », dans ce même commit) ; on ferme leur PR avec un mot qui nomme la retenue.
+            sed -n 's/^ecartee: //p' integration.txt | while read -r ecartee pr_ecartee; do
+              depot_e=$(printf '%s' "$pr_ecartee" | sed -E 's#^https://github\.com/([A-Za-z0-9-]+/[A-Za-z0-9_.-]+)/pull/[0-9]+$#\1#')
+              if [ "$depot_e" = "$GITHUB_REPOSITORY" ]; then jeton="$GH_TOKEN"; else jeton="$BEE_INTEGRATION_TOKEN"; fi
+              [ -n "$jeton" ] || { echo "::notice::$ecartee écartée ; sa PR $pr_ecartee reste à fermer (pas de jeton)."; continue; }
+              GH_TOKEN="$jeton" gh pr close "$pr_ecartee" < /dev/null \
+                --comment "Écartée au profit de $id, retenue par la règle R3 (course entre contributions concurrentes de la même tâche). Ce n'est pas un refus : rien ne compte contre son auteur ni ses relecteurs." \
+                || echo "::warning::$ecartee : fermeture de $pr_ecartee impossible."
+            done
+            rm -f integration.txt
           done < a_integrer.tsv
           rm -f a_integrer.tsv
       - name: Publier

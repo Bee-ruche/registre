@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://bee.local/schemas/enregistrement.schema.json",
   "title": "Enregistrement d'une contribution dans le registre",
-  "description": "Fichier : contributions/<projet>/<tache>-c<n>.yaml. Créé par `bee soumettre`, complété par la CI (verdict), les relecteurs (relectures) et le workflow de confiance qui intègre automatiquement (R3, sans humain).",
+  "description": "Fichier : contributions/<projet>/<tache>-c<n>.yaml. Créé par `bee soumettre`, complété par la CI (verdict), les relecteurs (relectures) et le workflow de confiance qui intègre automatiquement (R3, sans humain) et écarte les contributions concurrentes de la même tâche (statut « ecartee »).",
   "type": "object",
   "additionalProperties": false,
   "required": ["id", "tache", "auteur", "pr", "statut", "soumise_le", "relectures"],
@@ -12,7 +12,7 @@
     "auteur": {"type": "string", "minLength": 1},
     "pr": {"type": "string", "pattern": "^https://github\\.com/[A-Za-z0-9-]+/[A-Za-z0-9_.-]+/pull/[0-9]+$"},
     "resume": {"type": "string"},
-    "statut": {"enum": ["en_relecture", "integree", "refusee", "annulee"]},
+    "statut": {"enum": ["en_relecture", "integree", "refusee", "annulee", "ecartee"]},
     "soumise_le": {"type": "string"},
     "verdict": {
       "type": "object",
@@ -65,6 +65,15 @@
     },
     "motif_decision": {"type": "string"},
     "decidee_le": {"type": "string"},
-    "fusion_sha": {"type": "string", "pattern": "^[0-9a-f]{7,40}$"}
-  }
+    "fusion_sha": {"type": "string", "pattern": "^[0-9a-f]{7,40}$"},
+    "retenue": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*-[0-9]{4}-c[0-9]+$",
+                "description": "Statut « ecartee » : la contribution concurrente de la même tâche retenue à sa place par R3"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"statut": {"const": "ecartee"}}, "required": ["statut"]},
+      "then": {"required": ["retenue", "decidee_le", "motif_decision"]},
+      "else": {"not": {"required": ["retenue"]}}
+    }
+  ]
 }

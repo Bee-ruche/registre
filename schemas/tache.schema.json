@@ -32,7 +32,21 @@
         "depuis": {"type": "string"}
       }
     },
-    "contribution": {"type": "string"},
+    "paralleles": {
+      "type": "array",
+      "minItems": 1,
+      "description": "R11 : inscriptions en parallèle (bee prendre --en-parallele) ; d'autres abeilles travaillent sur la tâche, au su de tous, sans toucher à la réservation du titulaire. Seulement si la tâche est réservée ou en relecture",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["utilisateur", "depuis"],
+        "properties": {
+          "utilisateur": {"type": "string", "minLength": 1},
+          "depuis": {"type": "string"}
+        }
+      }
+    },
+    "contribution": {"type": "string", "description": "Dernière contribution soumise ; une fois la tâche intégrée, la contribution retenue (R3)"},
     "notes": {
       "type": "array",
       "items": {
@@ -58,6 +72,11 @@
     {
       "if": {"properties": {"statut": {"enum": ["en_relecture", "integree"]}}, "required": ["statut"]},
       "then": {"required": ["contribution"]}
+    },
+    {
+      "if": {"properties": {"statut": {"enum": ["reservee", "en_relecture"]}}, "required": ["statut"]},
+      "then": true,
+      "else": {"not": {"required": ["paralleles"]}}
     },
     {
       "if": {"properties": {"type": {"const": "optimisation"}}, "required": ["type"]},
