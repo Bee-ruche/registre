@@ -703,6 +703,23 @@ class TestRegistre(BaseTest):
         self.assertIn("miniz-0001", page)
         self.assertIn("miniz-0099-c1", page)
         self.assertIn("Compression sans perte", page)
+        self.assertIn("id='c-pseudo'", page)  # consigne qui se remplit
+
+    def test_site_juge_isole_et_integration(self):
+        cid = self.soumettre_0099()
+        verdict = self.dossier / "verdict.json"
+        verdict.write_text(json.dumps({"ci": "verte", "gain": 0.05, "au_dela_du_bruit": True, "instructions": INSTRUCTIONS_N6,
+                                       "lignes_modifiees": 10, "juge": {"version": 2, "sorties_comparees": 7868,
+                                       "constructions_suspectes": [{"type": "instruction", "detail": "syscall : 1 <occurrence>"}]}}), encoding="utf-8")
+        self.assertEqual(self.bee("enregistrer-verdict", cid, "--verdict", str(verdict), "--sha", "abc1234", "--fichiers", self.fichiers_pr())[0], 0)
+        code, texte = self.bee("site", "--sortie", str(self.dossier / "_site"))
+        self.assertEqual(code, 0, texte)
+        page = (self.dossier / "_site/contributions" / f"{cid}.html").read_text(encoding="utf-8")
+        self.assertIn("7\u202f868 sorties", page)
+        self.assertIn("1 &lt;occurrence&gt;", page)  # échappé : donnée venue d'un fork
+        self.assertIn("hors du conteneur, sur le corpus", page)
+        self.assertIn("Ce qui manque encore", page)
+        self.assertIn("Décompte d'instructions", page)
 
     def test_proposition_et_depouillement(self):
         # bidji29 (conseil) peut proposer pendant l'amorçage

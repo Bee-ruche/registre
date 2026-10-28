@@ -459,7 +459,7 @@ def generer(bee, reg, sortie):
             suspects = juge.get("constructions_suspectes") or []
             if juge:
                 n = juge.get("sorties_comparees")
-                texte = (f"{n:,} sorties de la contribution vérifiées hors du conteneur, sur le corpus et des entrées tirées au hasard".replace(",", "\u202f")
+                texte = (f"{n:,}".replace(",", "\u202f") + " sorties de la contribution vérifiées hors du conteneur, sur le corpus et des entrées tirées au hasard"
                          if isinstance(n, int) else "verdict sans vérification de l'extérieur")
                 texte += (" ; aucune construction suspecte" if not suspects
                           else f" ; {len(suspects)} construction{'s' if len(suspects) > 1 else ''} suspecte{'s' if len(suspects) > 1 else ''} : relecture d'un gardien exigée")
