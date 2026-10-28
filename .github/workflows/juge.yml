@@ -1,0 +1,110 @@
+# Juge commun Bee, workflow réutilisable (docs/juge-commun.md).
+#
+# Un fork l'appelle depuis sa CI, en épinglant une étiquette du registre :
+#   juge:
+#     uses: Bee-ruche/registre/.github/workflows/juge.yml@juge-v1
+#     with: { base_sha: <base de la PR>, tete_sha: <tête de la PR>, options: "sortie_compressee=identique" }
+# Il juge la tête contre la base avec le greffon de la BASE (bee/juge/projet.py), jamais celui de la PR,
+# et publie un artefact « juge » : juge.json (rapport, section « juge » comprise) et code (0 juste,
+# 1 refusé, 2 environnement). Le job ne devient jamais rouge à cause de B : c'est le verdict du fork
+# qui lit le code et décide. Aucun secret, aucune écriture : permissions en lecture seule.
+#
+# JUGE_COMMUN_REF doit valoir l'étiquette de cette version (outils/juge/test_juge.py le vérifie) :
+# le juge commun est lu à cette étiquette, pas à la branche principale du registre.
+name: Juge commun
+
+on:
+  workflow_call:
+    inputs:
+      base_sha:
+        description: "commit de base (référence A ; son bee/juge/projet.py est le greffon)"
+        required: true
+        type: string
+      tete_sha:
+        description: "commit jugé (candidate B)"
+        required: true
+        type: string
+      options:
+        description: "options du greffon, CLE=VALEUR, une par ligne"
+        required: false
+        type: string
+        default: ""
+      repetitions:
+        required: false
+        type: number
+        default: 10
+      sans_instructions:
+        required: false
+        type: boolean
+        default: false
+    outputs:
+      code:
+        description: "0 si toutes les sorties de B sont justes, 1 si le juge refuse B, 2 si l'environnement ne convient pas"
+        value: ${{ jobs.juge.outputs.code }}
+
+permissions:
+  contents: read
+
+env:
+  JUGE_COMMUN_REF: juge-v1
+
+jobs:
+  juge:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    outputs:
+      code: ${{ steps.juge.outputs.code }}
+    steps:
+      - name: Juge commun (registre, à son étiquette)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: Bee-ruche/registre
+          ref: ${{ env.JUGE_COMMUN_REF }}
+          path: juge-commun
+          persist-credentials: false
+      - name: Base de la PR (greffon, harnais, corpus)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ inputs.base_sha }}
+          path: base
+          persist-credentials: false
+      - name: Image du juge (seule étape avec réseau, avant tout fichier de la PR)
+        run: python3 juge-commun/outils/juge/juge.py --outillage base --image-seulement
+      - name: Tête de la PR (données ; rien n'en est exécuté hors conteneur)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ inputs.tete_sha }}
+          path: pr
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Juger
+        id: juge
+        env:
+          BASE_SHA: ${{ inputs.base_sha }}
+          TETE_SHA: ${{ inputs.tete_sha }}
+          OPTIONS: ${{ inputs.options }}
+          REPETITIONS: ${{ inputs.repetitions }}
+          SANS_INSTRUCTIONS: ${{ inputs.sans_instructions }}
+        run: |
+          mkdir -p resultats
+          options=()
+          while IFS= read -r ligne; do
+            [ -n "$ligne" ] && options+=(--option "$ligne")
+          done <<< "$OPTIONS"
+          [ "$SANS_INSTRUCTIONS" = "true" ] && options+=(--sans-instructions)
+          set +e
+          python3 juge-commun/outils/juge/juge.py --outillage base --source-a base --source-b pr \
+            --repetitions "$REPETITIONS" --depot-diff pr --base "$BASE_SHA" --tete "$TETE_SHA" \
+            "${options[@]}" --json resultats/juge.json > /dev/null 2> resultats/journal.txt
+          code=$?
+          set -e
+          tail -n 40 resultats/journal.txt
+          echo "$code" > resultats/code
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+      - name: Conserver le rapport
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: juge
+          path: resultats/
+          if-no-files-found: warn
