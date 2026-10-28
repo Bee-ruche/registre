@@ -7,3 +7,32 @@ resume: 'Tests différentiels : niveau 10 (miniz→zlib, miniz→miniz, empreint
 statut: en_relecture
 soumise_le: '2026-10-28T06:06:56Z'
 relectures: []
+verdict:
+  ci: verte
+  gain: null
+  au_dela_du_bruit: false
+  instructions:
+    instructions_n1:
+      A: 187597150.0
+      B: 187597150.0
+      gain: 0.0
+    instructions_n6:
+      A: 357228867.0
+      B: 357228867.0
+      gain: 0.0
+    instructions_n9:
+      A: 510229776.0
+      B: 510229776.0
+      gain: 0.0
+    instructions_decompression:
+      A: 34164249.0
+      B: 34164249.0
+      gain: 0.0
+  degradations: {}
+  lignes_modifiees: 0
+  sha: dc3ce80de7d6b73b60a1c161655321b6a6a4eb56
+  fichiers_controles: true
+  juges_modifies:
+  - bee/tests/differentiel.c
+  - bee/tests/empreintes-reference.txt
+  execution: https://github.com/Bee-ruche/minizBee/actions/runs/40641767616
