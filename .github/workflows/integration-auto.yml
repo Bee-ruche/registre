@@ -97,8 +97,17 @@ jobs:
               if [ -z "$jeton" ]; then
                 echo "::notice::$id : intégrable ; la PR $pr attend sa fusion (pas de jeton d'intégration)."; continue
               fi
-              GH_TOKEN="$jeton" gh pr merge "$pr" --merge --match-head-commit "$sha" --delete-branch=false \
-                || { echo "::warning::$id : fusion refusée (conflit à rebaser, ou nouveau commit) ; laissée en relecture."; continue; }
+              # Le jeton d'intégration n'a pas le droit « workflow », par choix : une fusion automatique ne change jamais un
+              # workflow de CI (le juge d'un fork). Une PR qui en modifie un est fusionnée par le conseil, puis consignée ici.
+              if ! sortie=$(GH_TOKEN="$jeton" gh pr merge "$pr" --merge --match-head-commit "$sha" --delete-branch=false 2>&1); then
+                if printf '%s' "$sortie" | grep -q 'without `workflow` scope'; then
+                  echo "::notice::$id : intégrable, mais sa PR modifie un workflow de CI ; le jeton d'intégration n'a pas ce droit, par choix. Au conseil de la fusionner : elle sera consignée au passage suivant."
+                else
+                  echo "::warning::$id : fusion refusée (conflit à rebaser, nouveau commit ou droits) ; laissée en relecture. Réponse de GitHub :"
+                  printf '%s\n' "$sortie" | sed 's/::/: :/g; s/^/  /'
+                fi
+                continue
+              fi
               printf '%s\n' "$id" >> "$tmp/fusionnees.txt"
               fusion=$(GH_TOKEN="$jeton" gh pr view "$pr" --json mergeCommit --jq '.mergeCommit.oid // "-"')
             fi
