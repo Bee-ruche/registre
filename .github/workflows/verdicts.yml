@@ -20,8 +20,11 @@ permissions:
   contents: write
   actions: write
 
+# Groupe à part : dans un groupe partagé, GitHub ne garde qu'une exécution en attente et annule la précédente ;
+# l'intégration, déclenchée par les mêmes événements, annulait donc la collecte des verdicts. Les écritures
+# concurrentes sur main sont gérées par le rebasage et les essais de l'étape de publication (idempotente).
 concurrency:
-  group: ecriture-main
+  group: verdicts
   cancel-in-progress: false
 
 jobs:
