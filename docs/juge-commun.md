@@ -72,11 +72,26 @@ le détecte et exige un gardien (R3).
   greffon) : le registre sait par quel juge chaque verdict a été rendu, et peut exiger une version
   minimale (`bee.yaml`).
 
+## Trois greffons côte à côte
+
+Le contrat a été vérifié sur deux projets réels (miniz, avec un greffon d'essai rendant exactement les
+résultats du juge de miniz-0031) et sur le jouet ; pour libyaml (libyaml-0005), il se remplit ainsi :
+
+| Élément | jouet | miniz | libyaml (prévu) |
+| --- | --- | --- | --- |
+| `SOURCES` | `rle.c`, `rle.h` | `miniz*.c`, `miniz*.h` | `src/*.c`, `src/*.h`, `include/yaml.h` |
+| `EN_TETES_BASE` | `rle.h` | `miniz*.h` | `include/yaml.h` (harnais compilé avec `-I/outillage/base/include`) |
+| `COTES` | `f` bruts, `z` flux | `f` bruts, `z` flux zlib | `f` documents (aucune donnée dérivée) |
+| `SCENARIOS` | compression, décompression | n1, n6, n9, décompression, mémoire | analyse, chargement, émission, mémoire |
+| justesse | sortie identique à la base, codec de référence en Python | identique à la base, zlib de l'hôte | flux d'événements sérialisé et sortie de l'émetteur identiques à la base ; entrées invalides : même erreur, mêmes positions |
+| `PREFIXES` | `rle_` | `mz_`, `tdefl_`, `tinfl_`, `miniz_`, `MZ_` | `yaml_` |
+
 ## Migration
 
 1. Intégrer miniz-0031 (juge de minizBee, version 2).
 2. Extraire la partie commune dans le registre (`outils/juge/`, workflow `juge.yml`, étiquette
-   `juge-v1`), avec ses méta-tests sur un projet jouet ; minizBee passe à un greffon, ses méta-tests
-   doivent donner exactement les mêmes résultats.
-3. libyaml (tâche libyaml-0005) écrit son greffon et son harnais au lieu d'une copie.
-4. Les nouveaux projets (giflib, bzip2) arrivent directement avec un greffon.
+   `juge-v1`), avec ses méta-tests sur un projet jouet. *Fait le 28/10, en attente de l'étiquette.*
+3. minizBee passe à un greffon (miniz-0032) ; à graine égale, il doit rendre exactement les résultats
+   du juge de miniz-0031.
+4. libyaml (tâche libyaml-0005) écrit son greffon et son harnais au lieu d'une copie.
+5. Les nouveaux projets (giflib, bzip2) arrivent directement avec un greffon.
