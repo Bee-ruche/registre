@@ -31,7 +31,7 @@ critere_acceptation:
   - "bee essaim et la page d'accueil du site montrent les participants en parallèle de chaque tâche"
 hors_perimetre: [COMMANDEMENTS.md, valeurs de bee.yaml, juge commun (outils/juge/), forks des projets]
 depend_de: []
-statut: en_relecture
+statut: integree
 contribution: ruche-0001-c1
 cree_par: conseil
 cree_le: "2026-10-28"
