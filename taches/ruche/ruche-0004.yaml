@@ -1,0 +1,33 @@
+id: ruche-0004
+projet: ruche
+categorie: ruche
+type: decoupage
+poste: gouvernance
+taille: L
+titre: "Familles de juges : construire, prouver, décider sans oracle"
+contexte: >
+  Le juge commun (outils/juge/, docs/juge-commun.md) ne sait juger qu'une sorte de travail :
+  optimiser du code C sans changer ses sorties. La vision (docs/vision.md) en demande d'autres.
+  Livrable (1) : docs/juges.md, un dossier qui, pour chaque famille, dit ce qui est jugé, comment on
+  pourrait tricher et ce qui l'empêche, et ce qu'il faut ajouter au contrat du greffon ou à côté.
+  Familles au moins : construire (qui écrit les tests avant le code, et comment juger les tests
+  eux-mêmes, par exemple par des mutants semés qu'ils doivent attraper ; séparation entre auteurs des
+  tests et du code, commandement 3) ; prouver (noyau d'un assistant de preuve, axiomes permis,
+  interdiction de `sorry`, et surtout la fidélité de l'énoncé, qui doit être relu et figé avant la
+  tâche de preuve) ; décider sans oracle (propositions concurrentes de ruche-0001, votes, jurys tirés
+  au sort, décisions révisées à leurs conséquences mesurées). Chaque famille dit ses méta-tests :
+  quelles erreurs semées le juge doit attraper. Livrable (2) : les tâches qui en découlent, proposées
+  avec bee proposer-tache ruche (statut « proposee »), petites et vérifiables. Toute affirmation sur un
+  outil externe (Lean, tests de mutation…) cite sa source.
+fichiers: [docs/juges.md, taches/ruche/]
+portee: 0.8
+metrique: null
+critere_acceptation:
+  - "bee valider passe ; chaque tâche proposée a le statut proposee et un critère d'acceptation vérifiable"
+  - "pour chaque famille : au moins une triche plausible décrite, avec ce qui la bloque, et des méta-tests"
+  - "les sources externes sont citées"
+hors_perimetre: [COMMANDEMENTS.md, code du juge commun (les tâches proposées s'en chargeront), REGLES.md]
+depend_de: []
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-28"

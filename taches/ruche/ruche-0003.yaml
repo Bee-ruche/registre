@@ -1,0 +1,30 @@
+id: ruche-0003
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: L
+titre: "Types de projets : optimiser un fork, construire, prouver"
+contexte: >
+  La vision (docs/vision.md) prévoit des projets de toutes sortes : optimiser un fork (miniz,
+  libyaml), construire un logiciel ou un composant né dans la ruche, prouver ou explorer des
+  mathématiques. Aujourd'hui, schemas/projet.schema.json et outils/bee.py supposent un fork d'un dépôt
+  d'origine et des métriques à optimiser (seule exception : le projet ruche). À construire : un champ
+  `type` de projet (optimisation par défaut, construction, preuve), avec pour chacun les champs exigés
+  (dépôt d'origine et fork pour l'optimisation ; dépôt de la ruche pour un projet né dans la ruche ;
+  métriques seulement pour l'optimisation), les types de tâches permis (pas d'optimisation dans un
+  projet de preuve), la validation par bee valider, l'affichage sur le site et la mise à jour de
+  docs/nouveau-projet.md. Le projet ruche devient un cas de ce modèle plutôt qu'une exception. Les
+  projets et tâches existants doivent rester valides sans modification.
+fichiers: [schemas/projet.schema.json, outils/bee.py, outils/site_bee.py, outils/test_bee.py, docs/nouveau-projet.md, docs/vision.md]
+portee: 0.8
+metrique: null
+critere_acceptation:
+  - "tests de l'outil verts, avec un test par type de projet et par refus (champ manquant, type de tâche interdit)"
+  - "projets/*.yaml et taches/ existants valides sans aucune modification"
+  - "docs/nouveau-projet.md décrit l'ouverture d'un projet de chaque type"
+hors_perimetre: [COMMANDEMENTS.md, valeurs de bee.yaml, outils/juge/, création de projets réels]
+depend_de: [ruche-0001]
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-28"

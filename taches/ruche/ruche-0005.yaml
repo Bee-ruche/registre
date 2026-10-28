@@ -1,0 +1,34 @@
+id: ruche-0005
+projet: ruche
+categorie: ruche
+type: decoupage
+poste: gouvernance
+taille: L
+titre: "Mathématiques : dossier d'ouverture d'un premier projet de preuves formelles"
+contexte: >
+  La vision (docs/vision.md) va jusqu'à « explorer et résoudre les mathématiques ». C'est aussi le
+  domaine au juge le plus sûr : une preuve acceptée par le noyau d'un assistant de preuve est juste,
+  quel que soit l'agent qui l'a écrite. Livrable (1) : docs/ouverture-preuves.md, un dossier factuel
+  et sourcé : l'assistant de preuve et la bibliothèque (Lean 4 et mathlib, ou mieux, avec raisons) ;
+  le dépôt à forker et sa licence (par exemple google-deepmind/formal-conjectures, qui rassemble des
+  énoncés en Lean de conjectures ouvertes ; à vérifier) ; d'où viennent les tâches (résultats connus à
+  formaliser, lemmes à prouver, énoncés à relire, et non d'abord des conjectures ouvertes) ; le juge
+  (construction hors réseau avec un cache préparé, aucun `sorry`, axiomes limités aux axiomes standard,
+  énoncés figés dans les chemins juges, relecture de la fidélité d'un énoncé) ; ce qui peut se
+  mesurer, s'il y a lieu (temps de vérification, par exemple) ; la catégorie à proposer dans
+  categories.yaml ; les risques (taille du cache de mathlib, durée de la CI, versions de Lean) ; les
+  modifications de projets/ et categories.yaml que le conseil reportera. Livrable (2) : les tâches
+  d'amorçage du projet, proposées avec bee proposer-tache (statut « proposee »). Aucune affirmation
+  sans source ; aucun contact avec les projets d'origine (commandement 8).
+fichiers: [docs/ouverture-preuves.md, taches/]
+portee: 0.7
+metrique: null
+critere_acceptation:
+  - "bee valider passe ; chaque tâche proposée a le statut proposee et un contexte factuel"
+  - "le dossier cite une source pour chaque fait sur les outils, dépôts et licences"
+  - "le dossier dit comment le juge refuse un sorry, un axiome ajouté et un énoncé modifié"
+hors_perimetre: [création du fork et du projet (conseil), COMMANDEMENTS.md, outils/juge/]
+depend_de: []
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-28"
