@@ -9,3 +9,35 @@ statut: en_relecture
 soumise_le: '2026-10-28T22:39:34Z'
 engage_depuis: '2026-10-28T02:10:57Z'
 relectures: []
+verdict:
+  ci: verte
+  gain: -0.004023279987058759
+  au_dela_du_bruit: false
+  instructions:
+    instructions_n1:
+      A: 188281686.0
+      B: 188281686.0
+      gain: 0.0
+    instructions_n6:
+      A: 357960788.0
+      B: 357960788.0
+      gain: 0.0
+    instructions_n9:
+      A: 511230298.0
+      B: 511230298.0
+      gain: 0.0
+    instructions_decompression:
+      A: 34140617.0
+      B: 32821874.0
+      gain: 0.038626806305228745
+  degradations: {}
+  juge:
+    version: 2
+    commun: null
+    sorties_comparees: 7868
+    constructions_suspectes: []
+  lignes_modifiees: 27
+  ecart_declare: 0.0912
+  sha: a604e501785d6905ca54030b95e51663b56fc85d
+  fichiers_controles: true
+  execution: https://github.com/Bee-ruche/minizBee/actions/runs/40781636867
