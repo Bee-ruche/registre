@@ -10,23 +10,25 @@ texte_propose: 'Une proposition pour trois règles qui vont ensemble (travail en
   comme dans le score (G × P / (1 + L/100), sans la confiance des relectures ni le vote), et passe devant
   celles qui n''en ont pas ; entre celles-ci, le vote net pondéré ; puis la soumission la plus ancienne,
   puis l''identifiant. Relectures et votes restent des conditions d''intégration, pas des critères de
-  classement. **Clôture** : la course d''une tâche se clôt à F = la soumission la plus ancienne encore
-  en relecture + reservation_max_heures + fenetre_acceptation_heures (72 h + 24 h). En plus des conditions
-  ci-dessus, une contribution X n''est intégrée que si : **avant F**, (1) aucun participant engagé sur
-  la tâche avant la soumission de X (titulaire, inscrit en parallèle) n''a encore à soumettre, jusqu''à
-  sa contribution, son retrait ou son expiration (R7) ; (2) aucune concurrente n''attend le verdict de
-  sa CI ni n''est dans sa fenêtre (24 h depuis sa soumission) ; (3) aucune concurrente n''est mieux classée
-  ; **de F à F + fenetre_acceptation_heures**, aucune concurrente intégrable n''est mieux classée (une
-  concurrente qui ne remplit pas R3 est hors course) ; **ensuite**, plus rien ne retient X. Toute attente
-  finit donc au plus tard à la soumission de X + 120 h. L''intégration de X écarte ses concurrentes encore
-  en relecture (statut « ecartee », au profit de X, dans le même commit, avec une note qui la nomme),
-  par le workflow d''intégration, ou par le conseil quand il intègre lui-même ; une contribution écartée
-  vaut 0, pour son auteur comme pour chacun de ses relecteurs ; sa PR n''est fermée qu''après la publication
-  du registre, et seulement si elle a été ouverte par l''auteur de la contribution. Tant qu''il est engagé
-  dans la course (titulaire, inscrit en parallèle, auteur d''une concurrente en relecture), un participant
-  ne vote pas sur les autres contributions de la tâche, ne change ni ne retire un vote qu''il y avait
-  déposé, et seul son avis favorable y compte ; ses avis défavorables et ses votes, même antérieurs, ne
-  comptent pas tant qu''il est en course (commandement 3). »
+  classement. **Bornes** : chaque contribution X a les siennes, comptées depuis sa seule soumission S
+  : protection jusqu''à S + reservation_max_heures + fenetre_acceptation_heures (72 h + 24 h = 96 h),
+  fin de toute attente à S + 120 h ; aucune autre contribution de la tâche ne les déplace. En plus des
+  conditions ci-dessus, X n''est intégrée que si : **jusqu''à S + 96 h**, (1) aucun participant engagé
+  sur la tâche avant S (titulaire, inscrit en parallèle) n''a encore à soumettre, jusqu''à sa contribution,
+  son retrait ou son expiration (R7) ; (2) aucune concurrente n''est dans sa fenêtre (24 h depuis sa soumission),
+  ni n''attend le verdict de sa CI si son auteur était engagé sur la tâche avant S ; (3) aucune concurrente
+  n''est mieux classée ; **de S + 96 h à S + 120 h**, aucune concurrente intégrable n''est mieux classée
+  (une concurrente qui ne remplit pas R3 est hors course) ; **ensuite**, plus rien ne retient X. Une contribution
+  qui traîne n''est pas close d''office. L''intégration de X écarte ses concurrentes encore en relecture
+  (statut « ecartee », au profit de X, dans le même commit, avec une note qui la nomme), par le workflow
+  d''intégration, ou par le conseil quand il intègre lui-même ; une contribution écartée vaut 0, pour
+  son auteur comme pour chacun de ses relecteurs ; sa PR n''est fermée qu''après la publication du registre,
+  et seulement si elle a été ouverte par l''auteur de la contribution. Tant qu''il est engagé dans la
+  course (titulaire, inscrit en parallèle, auteur d''une concurrente en relecture), un participant ne
+  vote pas sur les autres contributions de la tâche, ne change ni ne retire un vote qu''il y avait déposé,
+  et seul son avis favorable y compte ; ses avis défavorables non confirmés et ses votes, même antérieurs,
+  ne comptent pas tant qu''il est en course (commandement 3) ; un défaut confirmé (par la CI, le conseil,
+  un gardien ou un Confirmé) compte toujours. »
 
   R7 : remplacer par : « Une réservation, ou une inscription en parallèle (R11), sans contribution prend
   fin après 72 h. Si le titulaire s''en va (libération ou expiration) alors que d''autres sont inscrits
@@ -43,10 +45,11 @@ motif: 'Tâche ruche-0001, corrigée après une revue adverse indépendante. R11
   entre concurrentes est déterministe, fondé sur ce que la CI mesure (pas sur des relectures ou des votes
   qu''on peut accumuler), et chaque attente est bornée : une inscription tardive, des soumissions répétées,
   une CI qui ne conclut jamais ou une concurrente intégrable jamais fusionnée ne retardent pas une intégration
-  au-delà de 120 h après sa soumission. L''outil applique déjà ces textes (outils/bee.py, workflow integration-auto.yml
-  ; règle détaillée et justification dans docs/contributions.md, « Travail en parallèle et contributions
-  concurrentes »). Une seule proposition, rattachée à R3, car les trois changements vont ensemble ; la
-  parenthèse de R11 « (une note sur la tâche) » pourra devenir « (une inscription en parallèle, bee prendre
-  --en-parallele) ».'
-ouverte_le: '2026-10-28T13:58:41Z'
+  au-delà de 120 h après sa soumission, et une vieille contribution oubliée ne retire à personne sa protection.
+  L''outil applique déjà ces textes (outils/bee.py, workflow integration-auto.yml ; règle détaillée et
+  justification dans docs/contributions.md, « Travail en parallèle et contributions concurrentes »). Une
+  seule proposition, rattachée à R3, car les trois changements vont ensemble ; la parenthèse de R11 «
+  (une note sur la tâche) » pourra devenir « (une inscription en parallèle, bee prendre --en-parallele)
+  ».'
+ouverte_le: '2026-10-28T14:58:09Z'
 statut: ouverte

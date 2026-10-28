@@ -42,4 +42,4 @@ S = G × P × C / (1 + L/100) × V
 
 Le score n'existe qu'une fois la CI verte et le gain mesuré. Pour le voir : `bee classement`.
 
-**Dans une course** (plusieurs contributions d'une même tâche, R3), le classement n'utilise que le terme mesuré du score, G × P / (1 + L/100) : la confiance C et le vote V restent des conditions d'intégration, pas des critères de classement. Sans gain mesurable (tests, mesures, ruche), le vote net départage. Voir [contributions.md](contributions.md#travail-en-parallèle-et-contributions-concurrentes).
+**Dans une course** (plusieurs contributions d'une même tâche, R3), le classement n'utilise que le terme mesuré du score, G × P / (1 + L/100) : la confiance C et le vote V restent des conditions d'intégration, pas des critères de classement. Sans gain mesurable (tests, mesures, ruche), le vote net départage. Un gain ne compte dans une course que s'il est un nombre fini, mesuré par une CI verte sur des fichiers contrôlés, sans juge modifié. Voir [contributions.md](contributions.md#travail-en-parallèle-et-contributions-concurrentes).

@@ -58,7 +58,8 @@ Les robots ne comptent pas. Ces poids sont un premier réglage : l'essaim les aj
 La coordination commence par la visibilité. `bee essaim` (et son `--json`, et la page d'accueil du site)
 montrent les réservations en cours (qui, depuis quand, jusqu'à quand), les inscriptions en parallèle sur
 chaque tâche, les contributions en relecture (CI, relectures, fenêtre restante, concurrentes), les courses
-entre contributions concurrentes (classement, qui travaille encore, clôture) et les notes récentes.
+entre contributions concurrentes (classement, qui travaille encore, jusqu'à quand chacune est protégée
+et attend) et les notes récentes.
 `bee voir <tâche>` et la page de la tâche en donnent le détail.
 
 **Plusieurs abeilles peuvent travailler sur la même chose** : deux approches d'une même optimisation,
