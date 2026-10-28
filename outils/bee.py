@@ -1206,8 +1206,15 @@ def cmd_manifeste(args):
     ]
     texte = "\n".join(lignes)
     if args.sortie:
-        pathlib.Path(args.sortie).write_text(texte, encoding="utf-8")
-        print(f"✓ {args.sortie} écrit. Remplacez chaque « {A_REMPLIR} », puis : bee valider-contribution {args.sortie}")
+        sortie = pathlib.Path(args.sortie)
+        if sortie.is_dir():
+            # Un dossier (la racine du fork) : le manifeste va à sa place, manifestes/<tâche>.yaml.
+            sortie = sortie / chemin_manifeste(t["id"])
+            sortie.parent.mkdir(parents=True, exist_ok=True)
+        if sortie.exists():
+            raise ErreurBee(f"{sortie} existe déjà : supprimez-le ou choisissez un autre fichier (rien n'a été écrasé)")
+        sortie.write_text(texte, encoding="utf-8")
+        print(f"✓ {sortie} écrit. Remplacez chaque « {A_REMPLIR} », puis : bee valider-contribution {sortie}")
     else:
         sys.stdout.write(texte)
     return 0
@@ -1934,11 +1941,12 @@ def construire_analyseur():
 
     ajouter("liberer-expirees", cmd_liberer_expirees, "Libère les réservations de plus de 72 h (lancé par la CI).")
 
-    p = ajouter("manifeste", cmd_manifeste, "Génère le CONTRIBUTION.yaml à remplir pour une tâche.")
+    p = ajouter("manifeste", cmd_manifeste, "Génère le manifeste à remplir pour une tâche (manifestes/<tâche>.yaml dans le fork).")
     p.add_argument("tache")
     p.add_argument("--utilisateur", required=True)
     p.add_argument("--modele", help="nom et version du modèle de l'agent")
-    p.add_argument("--sortie", help="fichier à écrire (défaut : sortie standard)")
+    p.add_argument("--sortie", help="fichier à écrire, ou racine du fork (le manifeste va alors dans manifestes/<tâche>.yaml) ; "
+                                    "défaut : sortie standard")
 
     p = ajouter("valider-contribution", cmd_valider_contribution, "Vérifie un CONTRIBUTION.yaml avant de soumettre.")
     p.add_argument("fichier")
