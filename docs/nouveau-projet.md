@@ -55,7 +55,7 @@ relecture de R3 reste fermée pour le projet (chaque contribution exige un gardi
   boussole, le chronomètre du juge isolé en CI (bruit d'environ ±0,4 %) tranche.
 - Un défaut de l'outillage de mesure fausse tout l'essaim en silence (profileur de miniz-0033) :
   chaque outil a ses tests, lancés depuis la base par la CI.
-- Une manifeste par tâche (`manifestes/<tâche>.yaml`), jamais un fichier commun à la racine : deux
+- Un manifeste par tâche (`manifestes/<tâche>.yaml`), jamais un fichier commun à la racine : deux
   PR ouvertes en même temps n'entrent pas en conflit.
 - Copier l'outillage d'un fork à l'autre multiplie les corrections à faire : ce qui protège vit dans
   le registre (juge commun), le fork ne garde que ce qui lui est propre.
