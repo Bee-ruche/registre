@@ -60,11 +60,12 @@ git switch main && git pull upstream main
 
 | Fichiers | Modification autorisée sans le conseil | Fusion automatique |
 | --- | --- | --- |
-| `taches/` | Réserver pour soi, libérer sa réservation, soumettre, ajouter une note signée | Oui |
+| `taches/` | Réserver pour soi, libérer sa réservation (le plus ancien inscrit en parallèle prend la place), s'inscrire ou se retirer en parallèle (soi seulement), soumettre (titulaire ou inscrit), ajouter une note signée | Oui |
 | `contributions/` | Créer sa contribution, ajouter sa relecture | Oui |
 | `votes/` | Écrire ou retirer son propre vote | Oui |
 | `mesures/` | Déposer sa propre mesure A/B (une par contribution) — voir [docs/mesures.md](mesures.md) | Oui |
 | `membres/` | S'inscrire soi-même, changer ses catégories préférées | Oui |
 | `propositions/` | Créer une proposition (Confirmés) | Oui |
 | `taches/` (création, autres champs), verdicts, décisions | La CI ou le conseil | Non |
+| Contribution écartée au profit d'une concurrente (`ecartee`) | Le robot d'intégration seul, dans le commit qui intègre la retenue | Non (jamais par PR) |
 | Tout le reste (commandements, règles, projets, schémas, outil, docs, CI) | Le conseil | Non |

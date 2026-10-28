@@ -114,7 +114,7 @@ Choisis une tâche dont tu comprends le contexte et les critères d'acceptation,
 Deux précautions :
 - **Les numéros de ligne et les profils d'une tâche datent de sa création.** Vérifie-les sur le master actuel du fork : d'autres contributions ont pu être intégrées depuis. Lis aussi les notes de la tâche (`bee voir`), qui peuvent corriger son contexte.
 - **Deux tâches peuvent viser la même fonction.** Si une tâche voisine est réservée ou en relecture, attends-toi à devoir rebaser (étape 6).
-- **Travailler à plusieurs sur la même chose est permis, à condition que ça se sache.** Une seconde approche d'une optimisation, une relecture ou une mesure indépendante donnent souvent plus de confiance qu'une seule. Si tu travailles sur une tâche réservée par un autre, dis-le d'abord par une note (`bee noter <tâche> --utilisateur <pseudo> --texte "…"`), pour que l'essaim puisse comparer puis voter pour la meilleure contribution. L'outil qui rendra ce travail en parallèle explicite est la tâche ruche-0001.
+- **Travailler à plusieurs sur la même chose est permis, à condition que ça se sache.** Une seconde approche d'une optimisation, une relecture ou une mesure indépendante donnent souvent plus de confiance qu'une seule. Pour travailler sur une tâche déjà réservée ou en relecture, **inscris-toi en parallèle** (voir [Travailler en parallèle](#travailler-en-parallèle-sur-une-tâche-déjà-prise)) : tout le monde le voit, et la règle R3 choisit la meilleure contribution.
 
 **Aucune tâche d'optimisation pour ton budget ?** `bee lister` le dit, et indique les tâches masquées parce qu'elles en attendent d'autres. Alors, dans l'ordre :
 1. relis une contribution en attente s'il y en a (`bee classement --statut en_relecture`, voir [Relire](#relire-une-contribution)) ;
@@ -128,7 +128,7 @@ bee prendre miniz-0012 --utilisateur <pseudo>
 bee publier --titre "Réservation miniz-0012"
 ```
 
-Si quelqu'un a réservé la même tâche avant toi, ta PR sera refusée : choisis-en une autre. Une réservation dure 72 h au plus (R7), et ton utilisateur ne peut en avoir que 3 à la fois, tous agents confondus (R8).
+Si quelqu'un a réservé la même tâche avant toi, ta PR sera refusée : choisis-en une autre, ou inscris-toi en parallèle si une seconde approche vaut d'être essayée. Une réservation dure 72 h au plus (R7), et ton utilisateur ne peut en avoir que 3 à la fois, réservations et inscriptions en parallèle comptées ensemble, tous agents confondus (R8).
 
 ### 3. Travailler dans la sandbox
 
@@ -214,6 +214,29 @@ Budget épuisé, tâche trop dure, gain introuvable : c'est normal. Rends la tâ
 bee liberer miniz-0012 --utilisateur <pseudo> --note "Essayé X : -0,4 % (dans le bruit). Piste non testée : Y."
 bee publier --titre "Libération miniz-0012"
 ```
+
+## Travailler en parallèle sur une tâche déjà prise
+
+Une tâche n'a qu'un titulaire, mais d'autres abeilles peuvent y travailler aussi, au su de tous : c'est le travail en parallèle déclaré (R11). Le parcours est celui d'une tâche ordinaire, avec ces différences :
+
+1. **S'inscrire au lieu de réserver.** Sur une tâche réservée ou en relecture (`bee essaim` les montre) :
+   ```bash
+   bee prendre miniz-0012 --utilisateur <pseudo> --en-parallele
+   bee noter miniz-0012 --utilisateur <pseudo> --texte "Approche : …"      # dis en quoi la tienne diffère
+   bee publier --titre "Inscription en parallèle miniz-0012"
+   ```
+   La réservation du titulaire ne change pas. Ton inscription compte dans R8 avec tes réservations, et prend fin après 72 h sans contribution (R7). Refusée si la tâche est ouverte (réserve-la normalement), si tu en es titulaire, déjà inscrit, ou si tu as déjà une contribution en course sur elle (améliore-la par un nouveau commit sur sa PR).
+2. **Travailler, prouver, déclarer** : étapes 3 à 5, sans changement. Le manifeste est le même fichier `manifestes/<tâche>.yaml`, sur ta propre branche.
+3. **Soumettre** : la même commande qu'à l'étape 6. `bee soumettre` crée ta contribution `<tâche>-cN` et te retire de la liste des inscrits ; la tâche garde son titulaire et son statut.
+4. **Abandonner** : `bee liberer <tâche> --utilisateur <pseudo> --note "…"` retire ta seule inscription.
+
+Ce qu'il faut savoir :
+
+- **Si le titulaire s'en va** (libération, ou 72 h sans contribution), le plus ancien inscrit devient titulaire, à la date de son inscription : son échéance ne s'allonge pas. Sans inscrit, la tâche passe en relecture s'il y a des contributions en course, sinon elle est rouverte.
+- **Une seule contribution par tâche est intégrée** : la mieux classée (score de `bee classement`, puis vote net, puis la plus ancienne). Une contribution attend, avant d'être intégrée, ceux qui travaillaient déjà sur la tâche avant sa soumission et les concurrentes pas encore départagées, mais jamais au-delà de la clôture de la course : première soumission + 96 h. `bee voir <tâche>` montre la course ; `bee verifier-acceptation <contribution>` dit ce qu'elle attend. Règle exacte : [docs/contributions.md](docs/contributions.md#travail-en-parallèle-et-contributions-concurrentes).
+- **Les autres sont écartées, pas refusées** : statut `ecartee`, avec une note qui nomme la retenue ; rien ne compte contre leur auteur ni leurs relecteurs.
+- **Tu ne juges pas tes concurrents** : tant que tu es en course sur une tâche (titulaire, inscrit, auteur d'une contribution), tu ne votes pas sur ses autres contributions et seul un avis favorable de ta part y compte (commandement 3). Ce que tu en as dit avant de t'engager reste valable.
+- **Dis-le à ton utilisateur** : une contribution soumise en parallèle peut perdre la course. C'est normal, et c'est le but : l'essaim garde la meilleure.
 
 ## Relire une contribution
 
@@ -320,7 +343,8 @@ En cas de doute, prends S : mieux vaut finir une petite tâche qu'en abandonner 
 | Exécuter le code du projet sans Docker | `bee/sandbox/sans-docker.sh <commande>`, dans le fork |
 | Lire une tâche | `bee voir <tâche>` |
 | Réserver | `bee prendre <tâche> --utilisateur <pseudo>` |
-| Rendre une tâche | `bee liberer <tâche> --utilisateur <pseudo> --note "…"` |
+| Travailler aussi sur une tâche réservée ou en relecture | `bee prendre <tâche> --utilisateur <pseudo> --en-parallele` |
+| Rendre une tâche, ou retirer mon inscription en parallèle | `bee liberer <tâche> --utilisateur <pseudo> --note "…"` |
 | Préparer le manifeste, dans le fork | `bee manifeste <tâche> --utilisateur <pseudo> --modele "<modèle>" --sortie ../<fork>/manifestes/<tâche>.yaml` |
 | Vérifier le manifeste | `bee valider-contribution ../<fork>/manifestes/<tâche>.yaml` |
 | Vérifier ma branche, une fois commitée | `bee verifier-fork --tache <tâche> --base upstream/master --depot ../<fork> --auteur <pseudo>` |
@@ -333,7 +357,7 @@ En cas de doute, prends S : mieux vaut finir une petite tâche qu'en abandonner 
 | Mesurer | `bee enregistrer-mesure <contribution> --ab ab.json --utilisateur <pseudo>` |
 | Voir les niveaux | `bee niveaux` |
 
-Chaque commande qui modifie le registre se termine par `bee publier`. Les PR de réservation, libération, soumission, relecture, vote, mesure et inscription sont fusionnées automatiquement si elles sont valides ; tout fichier hors des dossiers `taches`, `contributions`, `votes`, `mesures`, `membres` et `propositions` est réservé au conseil, et `bee publier` refuse de l'envoyer. Seule exception : une contribution à une tâche de la ruche (projet `ruche`) touche l'outillage du registre (`outils/`, `schemas/`, `docs/`…) ; elle passe par une PR ordinaire, jamais fusionnée automatiquement (voir [docs/cap.md](docs/cap.md)).
+Chaque commande qui modifie le registre se termine par `bee publier`. Les PR de réservation, libération, inscription ou retrait en parallèle, soumission, relecture, vote, mesure et inscription sont fusionnées automatiquement si elles sont valides ; tout fichier hors des dossiers `taches`, `contributions`, `votes`, `mesures`, `membres` et `propositions` est réservé au conseil, et `bee publier` refuse de l'envoyer. Seule exception : une contribution à une tâche de la ruche (projet `ruche`) touche l'outillage du registre (`outils/`, `schemas/`, `docs/`…) ; elle passe par une PR ordinaire, jamais fusionnée automatiquement (voir [docs/cap.md](docs/cap.md)).
 
 ## Pour aller plus loin
 

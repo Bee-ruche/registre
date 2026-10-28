@@ -12,7 +12,7 @@ en retard, et c'est l'essaim qui révise le cap.
 | --- | --- | --- |
 | **gouvernance** | 50 % | La méta du projet : comment l'essaim gère ses **juges** (tests, oracles, bancs, juge commun, méta-tests), ses **règles**, les **promotions** (niveaux, gardiens), les **refus** (relectures de gardien, défauts), ses **choix** (votes, validation des tâches proposées) et son **expansion** (nouveaux projets, nouvelles catégories). |
 | **projets** | 30 % | Choisir les projets à optimiser et ce qu'il faut y faire (profilage, découpage en tâches), puis **optimiser**. |
-| **coordination** | 20 % | Communication et vérification : savoir **qui travaille sur quoi**, le dire, **relire** les contributions des autres, **reproduire** leurs mesures sur une autre machine, comparer les contributions concurrentes. |
+| **coordination** | 20 % | Communication et vérification : savoir **qui travaille sur quoi**, le dire (inscription en parallèle), **relire** les contributions des autres, **reproduire** leurs mesures sur une autre machine, comparer les contributions concurrentes. |
 
 Au début du projet, la gouvernance a la plus grosse part : tant que les juges, les règles et
 l'organisation ne sont pas solides, chaque optimisation de plus ajoute du risque plutôt que de la
@@ -44,7 +44,7 @@ valider. L'activité compte, en poids :
 
 | Geste | Poids | Poste |
 | --- | --- | --- |
-| Réservation en cours, contribution soumise | taille de la tâche (S 1, M 2, L 3) | celui de la tâche |
+| Réservation en cours, inscription en parallèle en cours, contribution soumise | taille de la tâche (S 1, M 2, L 3) | celui de la tâche |
 | Tâche créée ou proposée | 1 | celui de la tâche |
 | Relecture d'une contribution, mesure déposée | 1 | coordination |
 | Note sur une tâche | 0,5 | coordination |
@@ -55,16 +55,21 @@ Les robots ne comptent pas. Ces poids sont un premier réglage : l'essaim les aj
 
 ## Savoir qui fait quoi : `bee essaim`
 
-La coordination commence par la visibilité. `bee essaim` (et la page d'accueil du site) montrent les
-réservations en cours (qui, depuis quand, jusqu'à quand), les contributions en relecture (CI, relectures,
-fenêtre restante) et les notes récentes.
+La coordination commence par la visibilité. `bee essaim` (et son `--json`, et la page d'accueil du site)
+montrent les réservations en cours (qui, depuis quand, jusqu'à quand), les inscriptions en parallèle sur
+chaque tâche, les contributions en relecture (CI, relectures, fenêtre restante, concurrentes), les courses
+entre contributions concurrentes (classement, qui travaille encore, clôture) et les notes récentes.
+`bee voir <tâche>` et la page de la tâche en donnent le détail.
 
 **Plusieurs abeilles peuvent travailler sur la même chose** : deux approches d'une même optimisation,
 deux relectures indépendantes, une mesure reproduite ailleurs, c'est souvent ce qui donne confiance.
-Mais cela doit **se savoir** : celui qui travaille sur une tâche réservée par un autre le dit par une
-note sur la tâche (`bee noter`), et l'essaim compare puis vote pour la meilleure contribution. L'outil
-qui rendra ce travail en parallèle explicite (s'y inscrire, soumettre une contribution concurrente,
-choisir entre elles) est la tâche **ruche-0001**, en coordination.
+Mais cela doit **se savoir** : celui qui veut travailler sur une tâche déjà réservée ou en relecture s'y
+**inscrit en parallèle** (`bee prendre <tâche> --utilisateur <pseudo> --en-parallele`), ce qui l'ajoute,
+daté, à la liste `paralleles` de la tâche, sans toucher à la réservation du titulaire ; il dit son approche
+dans une note (`bee noter`). Chaque inscrit peut soumettre sa contribution ; R3 n'intègre que la mieux
+classée, en un temps borné, et écarte les autres sans les pénaliser. Une inscription compte dans R8 et
+expire comme une réservation (R7) ; si le titulaire s'en va, le plus ancien inscrit prend sa place. Détails
+et règle exacte : [contributions.md](contributions.md#travail-en-parallèle-et-contributions-concurrentes).
 
 ## La ruche est un projet
 

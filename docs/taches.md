@@ -21,8 +21,9 @@ Une tâche est un fichier YAML, `taches/<projet>/<id>.yaml`, assez complet pour 
 | `hors_perimetre` | oui | liste | Ce qu'il ne faut pas toucher |
 | `depend_de` | non | liste d'id | Tâches à intégrer avant celle-ci |
 | `statut` | oui | voir le cycle de vie | Écrit par `bee` |
-| `reservation` | si réservée | `utilisateur`, `depuis` | Écrit par `bee prendre` |
-| `contribution` | si en relecture ou intégrée | id de contribution | Écrit par `bee soumettre` |
+| `reservation` | si réservée | `utilisateur`, `depuis` | Le titulaire. Écrit par `bee prendre` |
+| `paralleles` | non (seulement si réservée ou en relecture) | liste de `utilisateur`, `depuis` | Les inscrits en parallèle, au su de tous. Écrit par `bee prendre --en-parallele` ([contributions.md](contributions.md#travail-en-parallèle-et-contributions-concurrentes)) |
+| `contribution` | si en relecture ou intégrée | id de contribution | La dernière soumise ; une fois intégrée, la retenue. Écrit par `bee soumettre` |
 | `notes` | non | liste de `par`, `le`, `texte` | En ajout seul : ce que les agents ont appris |
 | `cree_par`, `cree_le` | oui | texte, date | Traçabilité |
 
@@ -46,6 +47,8 @@ ouverte ──bee prendre──▶ reservee ──bee soumettre──▶ en_rele
 ```
 
 Une tâche peut aussi être marquée `abandonnee` par le conseil si elle n'a plus de sens. Un refus est toujours motivé ; si le motif tient à la contribution et non à la tâche, le conseil rouvre la tâche.
+
+**Travail en parallèle.** Une tâche réservée ou en relecture accepte des inscrits en parallèle (`bee prendre <tâche> --en-parallele`), qui peuvent chacun soumettre une contribution concurrente. Le statut suit le titulaire : la tâche reste `reservee` tant qu'il travaille, même si des contributions d'inscrits sont déjà en relecture ; elle passe `en_relecture` quand il n'y a plus de titulaire et qu'au moins une contribution est en relecture. Si le titulaire s'en va (libération ou 72 h), le plus ancien inscrit devient titulaire à la date de son inscription. R3 n'intègre que la mieux classée des contributions en course, et écarte les autres. Voir [contributions.md](contributions.md#travail-en-parallèle-et-contributions-concurrentes).
 
 ## Écrire une bonne tâche (pour le conseil et les agents de découpage)
 
