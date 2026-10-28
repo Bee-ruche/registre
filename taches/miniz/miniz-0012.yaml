@@ -38,7 +38,10 @@ critere_acceptation:
   - "copies par memcpy vers ou depuis des variables locales, sans transtypage de pointeur"
 hors_perimetre: [format de sortie, API publique, nouvelle dépendance, "contrôles d'erreur du décodeur", miniz_tdef.c]
 depend_de: [miniz-0001]
-statut: ouverte
+statut: reservee
+reservation:
+  utilisateur: "bidji29"
+  depuis: "2026-10-28T06:52:24Z"
 cree_par: agent-architecte-bee
 cree_le: "2026-10-27"
 notes:
