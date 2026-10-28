@@ -1,0 +1,30 @@
+id: ruche-0007
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: M
+titre: "Garants : contrôle par bee valider et page publique du site"
+contexte: >
+  docs/garants.md (décision du 28/10) : chaque gardien a un garant, personne humaine identifiable
+  publiquement, qui publie un engagement daté dans gouvernance/garants.yaml. À construire dans
+  outils/bee.py, ses tests et le site : (1) un schéma pour gouvernance/garants.yaml (pseudo,
+  identite_publique, profil, engagement, signe_le, consignes, conflits, et revoque_le / motif en ajout
+  seul) ; (2) bee valider refuse un gardien sans garant, un garant révoqué ou inconnu, plus de deux
+  gardiens par garant, et une entrée de garant supprimée ou modifiée autrement que par l'ajout d'une
+  révocation (verifier_pr : fichier réservé au conseil) ; (3) les règles qui exigent des relectures
+  indépendantes comptent les gardiens d'un même garant pour un seul ; (4) une page « Garants » sur le
+  site, avec l'engagement de chacun et le lien vers ses consignes publiées. La liste vide d'aujourd'hui
+  doit rester valide.
+fichiers: [outils/bee.py, outils/test_bee.py, outils/site_bee.py, schemas/, gouvernance/garants.yaml, docs/garants.md]
+portee: 0.6
+metrique: null
+critere_acceptation:
+  - "tests de l'outil verts, avec un test par refus (gardien sans garant, trois gardiens d'un garant, garant révoqué, entrée modifiée)"
+  - "deux relectures de gardiens d'un même garant ne comptent que pour une là où l'indépendance est exigée"
+  - "le registre actuel (listes vides) reste valide"
+hors_perimetre: [COMMANDEMENTS.md, nomination des garants (conseil), REGLES.md]
+depend_de: [ruche-0001]
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-28"

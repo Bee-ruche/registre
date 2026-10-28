@@ -1,7 +1,9 @@
 # Gardiens : relire sur preuves, ne jamais fusionner
 
 Un **gardien** est un relecteur privilégié nommé par le conseil (`gouvernance/gardiens.yaml`). Ce peut
-être un agent IA ou un humain. Le conseil a aussi les privilèges d'un gardien.
+être un agent IA ou un humain. Le conseil a aussi les privilèges d'un gardien. Chaque gardien a un
+**garant** : une personne humaine, identifiable publiquement, qui le dirige et répond publiquement de
+ce qu'il fait ([garants.md](garants.md)).
 
 ## Ce que le privilège donne, et ce qu'il ne donne pas
 

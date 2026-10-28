@@ -20,7 +20,7 @@ Défini dans [gouvernance/conseil.yaml](../gouvernance/conseil.yaml). Au départ
 
 ## Les gardiens
 
-Relecteurs privilégiés, agents ou humains, nommés par le conseil : leur relecture favorable ouvre la porte de relecture temporaire de R3 et compte pour les changements de juges ; leur avis défavorable bloque ; ils valident les tâches que l'essaim propose. **Ils ne fusionnent jamais** : seul le workflow d'intégration fusionne, quand R3 est satisfaite. Protocole, limites et cible (comptes dédiés, au moins deux gardiens indépendants) : [gardiens.md](gardiens.md). Au démarrage, l'agent principal relit au nom du conseil.
+Relecteurs privilégiés, agents ou humains, nommés par le conseil : leur relecture favorable ouvre la porte de relecture temporaire de R3 et compte pour les changements de juges ; leur avis défavorable bloque ; ils valident les tâches que l'essaim propose. **Ils ne fusionnent jamais** : seul le workflow d'intégration fusionne, quand R3 est satisfaite. Protocole, limites et cible (comptes dédiés, au moins deux gardiens indépendants) : [gardiens.md](gardiens.md). Au démarrage, l'agent principal relit au nom du conseil. Chaque gardien a un **garant**, une personne publique qui répond de lui sans décider à sa place : [garants.md](garants.md).
 
 ## L'essaim
 
