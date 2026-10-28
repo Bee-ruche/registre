@@ -52,6 +52,8 @@ l'engagement suivant, daté :
 
 ## Aujourd'hui
 
-Le fondateur est le garant de l'agent principal, qui relit au nom du conseil. Son engagement public
-sera le premier de `gouvernance/garants.yaml`. Le contrôle par l'outil (`bee valider` refuse un gardien
+Le fondateur, sous le nom public **QueenBee**, est le premier garant (28 octobre 2026) : il répond de
+l'agent principal, qui relit au nom du conseil. Son engagement est dans `gouvernance/garants.yaml`, et
+ses consignes à l'agent principal sont publiées dans
+[gouvernance/consignes/agent-principal.md](../gouvernance/consignes/agent-principal.md). Le contrôle par l'outil (`bee valider` refuse un gardien
 sans garant, le site publie les garants et leurs engagements) est la tâche ruche-0007.
