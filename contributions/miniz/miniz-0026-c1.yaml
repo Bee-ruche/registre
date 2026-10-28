@@ -7,3 +7,33 @@ resume: 'Cas limites de l''API compatible zlib : 192 appels comparés à zlib, �
 statut: en_relecture
 soumise_le: '2026-10-28T06:50:11Z'
 relectures: []
+verdict:
+  ci: verte
+  gain: null
+  au_dela_du_bruit: false
+  instructions:
+    instructions_n1:
+      A: 187597150.0
+      B: 187597150.0
+      gain: 0.0
+    instructions_n6:
+      A: 357228867.0
+      B: 357228867.0
+      gain: 0.0
+    instructions_n9:
+      A: 510229776.0
+      B: 510229776.0
+      gain: 0.0
+    instructions_decompression:
+      A: 34164249.0
+      B: 34164249.0
+      gain: 0.0
+  degradations: {}
+  lignes_modifiees: 0
+  sha: 15865a2cd6a97f8575c29800efc9720aa88659ad
+  fichiers_controles: true
+  juges_modifies:
+  - bee/Makefile
+  - bee/tests/api.c
+  - bee/tests/lancer.sh
+  execution: https://github.com/Bee-ruche/minizBee/actions/runs/40646278045
