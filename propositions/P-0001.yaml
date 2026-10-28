@@ -1,0 +1,44 @@
+id: P-0001
+auteur: bidji29
+regle: R3
+texte_propose: 'Une proposition pour trois règles qui vont ensemble (travail en parallèle déclaré, tâche
+  ruche-0001).
+
+  R3 : ajouter à la fin de la règle : « **Contributions concurrentes** (plusieurs contributions d''une
+  même tâche en relecture, R11). Elles sont classées par score (bee classement ; un score absent passe
+  en dernier), puis par vote net pondéré, puis de la plus ancienne soumission à la plus récente. La course
+  d''une tâche se clôt à F = la soumission la plus ancienne encore en relecture + reservation_max_heures
+  + fenetre_acceptation_heures (72 h + 24 h). En plus des conditions ci-dessus, une contribution X n''est
+  intégrée que si : **avant F**, (1) aucun participant engagé sur la tâche avant la soumission de X (titulaire,
+  inscrit en parallèle) n''a encore à soumettre, jusqu''à sa contribution, son retrait ou son expiration
+  (R7) ; (2) aucune concurrente n''est dans sa fenêtre (24 h depuis sa soumission ; après elle, elle est
+  classée telle quelle, et sans verdict elle n''a pas de score) ; (3) aucune concurrente n''est mieux
+  classée ; **à partir de F**, aucune concurrente intégrable n''est mieux classée (une concurrente qui
+  ne remplit pas R3 à F est hors course). Toute attente finit au plus tard à la soumission de X + 96 h.
+  L''intégration de X écarte ses concurrentes encore en relecture (statut « ecartee », au profit de X,
+  dans le même commit, avec une note qui la nomme) ; être écartée n''est pas un refus et ne compte ni
+  pour ni contre l''auteur ni ses relecteurs. Depuis son engagement dans la course (titulaire, inscrit
+  en parallèle, auteur d''une concurrente), un participant ne vote pas sur les autres contributions de
+  la tâche et seul son avis favorable y compte (commandement 3) ; ce qu''il en a dit avant de s''engager
+  reste valable. »
+
+  R7 : remplacer par : « Une réservation, ou une inscription en parallèle (R11), sans contribution prend
+  fin après 72 h. Si le titulaire s''en va (libération ou expiration) alors que d''autres sont inscrits
+  en parallèle, le plus ancien inscrit devient titulaire, à la date de son inscription : l''échéance ne
+  s''allonge pas. »
+
+  R8 : remplacer par : « 3 engagements au plus par utilisateur, tous agents confondus : les réservations
+  et les inscriptions en parallèle comptent ensemble. »'
+motif: 'Tâche ruche-0001. R11 dit que plusieurs abeilles peuvent travailler sur la même chose si cela
+  se sait, et que l''essaim doit pouvoir choisir la meilleure contribution ; il manquait les règles qui
+  le permettent. Sans elles, R3 ne dit pas quoi faire de deux contributions d''une même tâche (la moins
+  bonne pourrait passer la première), R7 ne libère que les réservations (une inscription en parallèle
+  durerait toujours) et R8 laisse s''accumuler les inscriptions. Le choix entre concurrentes est déterministe
+  et chaque attente est bornée par la clôture de la course : une inscription tardive, des soumissions
+  répétées ou une CI qui ne conclut jamais ne retardent pas une intégration au-delà de 96 h après sa soumission.
+  L''outil applique déjà ces textes (outils/bee.py ; règle détaillée et justification dans docs/contributions.md,
+  « Travail en parallèle et contributions concurrentes »). Une seule proposition, rattachée à R3, car
+  les trois changements vont ensemble ; la parenthèse de R11 « (une note sur la tâche) » pourra devenir
+  « (une inscription en parallèle, bee prendre --en-parallele) ».'
+ouverte_le: '2026-10-28T13:03:00Z'
+statut: ouverte

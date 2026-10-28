@@ -77,6 +77,11 @@ class BaseTest(unittest.TestCase):
                 tache["statut"] = "ouverte"
                 tache.pop("reservation", None)
                 bee.ecrire_yaml(chemin, tache)
+        # Ni des propositions de règle en cours dans le vrai registre (leurs numéros et leurs dates de vote), ni des
+        # votes qui les concernent : les tests numérotent et datent les leurs.
+        shutil.rmtree(self.dossier / "propositions", ignore_errors=True)
+        for dossier_votes in (self.dossier / "votes").glob("P-*"):
+            shutil.rmtree(dossier_votes, ignore_errors=True)
         (self.dossier / "taches" / "miniz" / "miniz-0099.yaml").write_text(TACHE_OPTIMISATION, encoding="utf-8")
         # Tâches fictives indépendantes de l'état réel du registre : 9002 attend 9001.
         (self.dossier / "taches" / "miniz" / "miniz-9001.yaml").write_text(TACHE_OPTIMISATION.replace("miniz-0099", "miniz-9001"), encoding="utf-8")
