@@ -2359,7 +2359,10 @@ class TestRevueAdverse(BaseParallele):
         self.assertEqual(self.bee("liberer", "miniz-0099", "--utilisateur", "bruno")[0], 0)
         self.assertEqual(self.bee("relire", c1, "--utilisateur", "bruno", "--avis", "defavorable", "--motif", "Je préfère la mienne.")[0], 0)
         self.a("2026-10-27T15:05:00Z")
-        self.parallele("miniz-0099", "bruno")
+        self.parallele("miniz-0099", "bruno", attendu=1)  # qui a jugé la course n'y entre plus
+        # Réinscrit malgré tout (écrit hors de l'outil) : son avis défavorable ne bloque pas la concurrente.
+        bee.modifier_tache(self.dossier / "taches/miniz/miniz-0099.yaml",
+                           paralleles=[{"utilisateur": "bruno", "depuis": "2026-10-27T15:05:00Z"}])
         self.relire(c1, "chloe", "bidji29")
         self.a("2026-10-28T15:00:00Z")
         raisons = bee.raisons_r3(bee.Registre(self.dossier), c1)[2]
@@ -2749,7 +2752,9 @@ class TestRevueAdverse(BaseParallele):
         enr["relectures"][-1].update({"defaut_confirme": True, "confirme_par": "bidji29"})
         bee.ecrire_yaml(chemin, enr)
         self.a("2026-10-28T13:00:00Z")
-        self.parallele("miniz-0099", "bruno")  # bruno s'engage pour faire mieux
+        self.parallele("miniz-0099", "bruno", attendu=1)  # qui a jugé la course n'y entre plus
+        bee.modifier_tache(self.dossier / "taches/miniz/miniz-0099.yaml",  # engagé malgré tout, écrit hors de l'outil
+                           paralleles=[{"utilisateur": "bruno", "depuis": "2026-10-28T13:00:00Z"}])
         code, texte = self.acceptation(c1)
         self.assertEqual(code, 1, texte)
         self.assertIn("un défaut confirmé reste à résoudre", texte)
