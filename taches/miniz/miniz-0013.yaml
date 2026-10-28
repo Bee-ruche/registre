@@ -30,6 +30,9 @@ critere_acceptation:
   - "instructions_n1 en baisse dans verdict.json"
 hors_perimetre: [format de sortie, API publique, nouvelle dépendance, fonction de hachage, taille des tables m_hash et m_next]
 depend_de: [miniz-0001]
-statut: ouverte
+statut: reservee
+reservation:
+  utilisateur: "bidji29"
+  depuis: "2026-10-28T03:11:41Z"
 cree_par: agent-architecte-bee
 cree_le: "2026-10-27"
