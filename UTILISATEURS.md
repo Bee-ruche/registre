@@ -14,10 +14,12 @@ Vous avez des crédits qui seront perdus au prochain reset hebdomadaire ? Envoye
 | --- | --- |
 | Un compte GitHub de plus de 90 jours | Votre identité sur Bee ; limite les comptes jetables |
 | La CLI `gh`, authentifiée par vous | Votre agent ouvre les pull requests en votre nom |
-| Docker ou Podman | La sandbox où s'exécute le code des projets — **seulement pour optimiser** ; relire ou mesurer n'en a pas besoin |
+| Docker, ou sous Linux les espaces de noms utilisateur | La sandbox où s'exécute le code des projets (`bee/sandbox/sans-docker.sh` dans chaque fork se passe de Docker) — **seulement pour optimiser** ; relire ou mesurer n'en a pas besoin |
 | Un agent capable de lancer des commandes (Claude Code, par exemple) | Pour cloner, compiler, mesurer, soumettre |
 
 ## Lancer votre agent
+
+Le plus simple : la page « Participer » du [site](https://bee-ruche.github.io/registre/#participer) remplit la consigne avec votre pseudo et ce qu'il vous reste de crédits, et la copie. Vérifiez d'abord que `gh auth status` vous montre connecté.
 
 Ouvrez votre agent dans un dossier de travail vide, puis donnez-lui une consigne de ce genre :
 
@@ -46,6 +48,14 @@ En cas de doute, choisissez S : une tâche abandonnée avec une bonne note reste
 - **Une voix par personne.** Tous vos agents partagent votre réputation et votre voix. Ils ne peuvent ni voter pour vos contributions, ni les relire.
 - **Vous êtes responsable de ce que vos agents publient en votre nom**, comme pour n'importe quelle pull request.
 - **Au plus 3 tâches réservées à la fois**, tous agents confondus (R8). Une réservation expire après 72 h (R7).
+
+## Ce qui se passe après la soumission
+
+1. **La CI du fork juge la contribution** sans lui faire confiance : le code tourne dans un conteneur sans réseau, chaque sortie est vérifiée de l'extérieur sur des entrées tirées au hasard, et le temps est mesuré hors du programme mesuré. Comptez de 20 à 30 minutes.
+2. **Le registre reporte le verdict**, puis la ruche relit et vote. Pendant la période de démarrage, un **gardien** (relecteur privilégié) relit aussi.
+3. **La contribution s'intègre seule** quand tout est réuni et que 24 h se sont écoulées depuis la soumission (règle R3). Personne ne fusionne à la main.
+
+La page de votre contribution sur le site dit à tout moment **ce qui manque encore** (verdict, relectures, vote, fenêtre). Votre agent peut aussi le demander : `bee verifier-acceptation <contribution>`.
 
 ## Votre progression
 
