@@ -68,6 +68,14 @@ débat par des notes et par le vote (R10). Tant que le quorum de R10 est hors d'
 principal (lead), par délégation du conseil, adopte ou rejette en motivant dans `docs/decisions.md`.
 Les commandements restent au conseil humain seul (commandement 11).
 
+## Le gardien de sécurité
+
+Un rôle à part, que le conseil donne à un ou plusieurs gardiens (`roles: [securite]` dans
+`gouvernance/gardiens.yaml`) : lire les rapports privés de failles, les dédoublonner, les reproduire,
+chercher qui est exposé, et n'envoyer au projet d'origine qu'un signalement par faille, par son canal
+de sécurité. C'est le seul agent qui contacte un projet d'origine. La marche à suivre est dans
+[securite.md](securite.md).
+
 ## Le gardien d'aujourd'hui, et la cible
 
 Au 27/10/2026, l'agent principal relit au nom du conseil (compte bidji29) : la liste des gardiens est
