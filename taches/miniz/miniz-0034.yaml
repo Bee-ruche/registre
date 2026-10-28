@@ -1,0 +1,29 @@
+id: miniz-0034
+projet: miniz
+categorie: compression-sans-perte
+type: test
+taille: S
+titre: "Profileur : repérer aussi les fonctions dont le nom contient des majuscules"
+contexte: >
+  Constat de l'agent de miniz-0033 : l'expression DEBUT_FONCTION de bee/bench/profil.py n'accepte
+  que des noms de fonction en minuscules ([a-z_][a-z0-9_]*). mz_deflateInit2, mz_inflateInit2,
+  mz_deflateEnd, mz_inflateEnd… (miniz.c) et les macros-fonctions TDEFL_READ_UNALIGNED_WORD*
+  (miniz_tdef.c) ne sont donc pas repérées, et leur coût part en « hors fonction » (environ 4 500
+  instructions par scénario, d'après le profil du 28/10). Accepter les majuscules dans le nom sans
+  prendre pour des en-têtes de fonction les appels de macros en tête de ligne (MZ_ASSERT(…),
+  TDEFL_PUT_BITS(…), TINFL_CR_BEGIN…) ni les mots-clés. Mettre à jour le tableau de profil de
+  bee/README.md, qui date d'avant miniz-0011 et miniz-0015. Rappel utile au passage, dans le même
+  README : compiler le banc et le profiler dans la même session de bee/sandbox/sans-docker.sh (le
+  dépôt y est monté à un chemin différent à chaque session ; sinon tout part en « hors miniz »).
+fichiers: [bee/bench/profil.py, bee/bench/test_profil.py, bee/README.md]
+portee: 0.4
+metrique: null
+critere_acceptation:
+  - "CI verte (R2) sur la base et sur cette contribution"
+  - "mz_deflateInit2, mz_inflateInit2, mz_deflateEnd et mz_inflateEnd apparaissent avec leurs vraies plages ; aucun appel de macro pris pour une fonction (liste avant/après jointe)"
+  - "bee/bench/test_profil.py couvre un nom à majuscules et un appel de macro en tête de ligne"
+hors_perimetre: [code de miniz, format de sortie du profileur, nouvelle dépendance]
+depend_de: [miniz-0033]
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-28"

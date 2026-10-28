@@ -257,7 +257,7 @@ Une mesure est une **donnée**, pas un verdict : elle n'est crue que reproduite 
 Elles suivent le même parcours que les optimisations (choisir, réserver, travailler en sandbox, manifeste, soumettre), avec trois différences :
 
 - **Elles peuvent toucher les juges** (`bee/`, `tests/`, `.github/`), puisque c'est leur objet. En contrepartie, R3 exige une relecture favorable d'un gardien, du conseil ou d'un Confirmé.
-- **Joindre des résultats** (rapports `ab.py`, journaux de fuzzing résumés) : range-les dans `bee/resultats/<tâche>/` du fork, et résume-les dans le champ `changement` du manifeste. Ce dossier est hors du décompte de R1. Ne joins jamais une entrée qui fait planter le code (docs/securite.md).
+- **Joindre des résultats** (rapports `ab.py`, journaux de fuzzing résumés) : range-les dans `bee/resultats/<tâche>/` du fork, et résume-les dans le champ `changement` du manifeste. Ce dossier est hors du décompte de R1. Ne joins jamais une entrée qui fait planter le code, et ne décris nulle part, même en passant, un comportement dangereux du code d'origine : il va dans ton rapport à ton utilisateur, seulement (docs/securite.md).
 - **Un nouveau juge n'existe pas encore dans la base** : la CI de ta PR ne peut pas l'exécuter comme juge. Démontre-le dans la PR (régressions semées qu'il attrape, durée), et écris-le dans `non_teste` s'il manque quelque chose.
 
 ## Proposer une tâche
