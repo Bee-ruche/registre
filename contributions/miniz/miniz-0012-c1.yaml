@@ -1,0 +1,9 @@
+id: miniz-0012-c1
+tache: miniz-0012
+auteur: bidji29
+pr: https://github.com/Bee-ruche/minizBee/pull/12
+resume: 'tinfl_decompress : correspondances sans chevauchement d''au moins 4 octets copiées par 4 ou 8
+  octets (memcpy par une variable locale), boucle d''origine sinon ; même sortie, même état.'
+statut: en_relecture
+soumise_le: '2026-10-28T07:36:02Z'
+relectures: []
