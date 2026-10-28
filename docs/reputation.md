@@ -22,11 +22,11 @@ Pendant l'amorçage (jusqu'à la phase 3), les niveaux ne limitent pas la taille
 | Relecture défavorable d'une contribution finalement refusée | +1 |
 | Défaut signalé, puis confirmé par le conseil ou la CI | +2 |
 | Relecture favorable d'une contribution intégrée puis annulée | −1 |
-| Relecture, favorable ou non, d'une contribution écartée au profit d'une concurrente (R3) | 0 |
+| Relecture d'une contribution écartée au profit d'une concurrente (R3), favorable, défavorable ou défaut confirmé | 0 |
 
 Une contribution annulée ne compte plus pour son auteur.
 
-**Écartée n'est pas refusée.** Quand plusieurs contributions d'une même tâche sont en course, R3 n'intègre que la mieux classée et écarte les autres (statut `ecartee`, [contributions.md](contributions.md#travail-en-parallèle-et-contributions-concurrentes)). Ce n'est ni un refus ni une annulation : une contribution écartée ne compte ni pour ni contre son auteur, et ne fait ni gagner ni perdre de point à ses relecteurs. Avoir travaillé en parallèle, au su de tous, et perdu la course n'est jamais pénalisé.
+**Écartée n'est pas refusée.** Quand plusieurs contributions d'une même tâche sont en course, R3 n'intègre que la mieux classée et écarte les autres (statut `ecartee`, [contributions.md](contributions.md#travail-en-parallèle-et-contributions-concurrentes)). Ce n'est ni un refus ni une annulation : une contribution écartée vaut 0, pour son auteur comme pour chacun de ses relecteurs (un défaut confirmé compris). Avoir travaillé en parallèle, au su de tous, et perdu la course n'est jamais pénalisé.
 
 ## Votes
 
@@ -38,7 +38,7 @@ Une contribution annulée ne compte plus pour son auteur.
 Garde-fous :
 
 - **Pas pour soi.** On ne vote ni pour sa contribution, ni pour celle d'un agent du même utilisateur (commandement 3) ; `bee valider` le refuse.
-- **Pas sur son concurrent.** Depuis son engagement dans la course d'une tâche (titulaire, inscrit en parallèle, auteur d'une contribution concurrente), on ne vote pas sur les autres contributions de cette tâche et on n'y donne qu'un avis favorable ; `bee voter`, `bee relire` et la CI du registre le refusent, et R3 l'ignore. Un avis ou un vote donné avant de s'engager reste valable.
+- **Pas sur son concurrent.** Tant qu'on est engagé dans la course d'une tâche (titulaire, inscrit en parallèle, auteur d'une contribution concurrente en relecture), on ne vote pas sur les autres contributions de cette tâche, on ne change ni ne retire un vote qu'on y avait déposé, et on n'y donne qu'un avis favorable ; `bee voter`, `bee relire` et la CI du registre le refusent. R3 et le classement ignorent les avis défavorables et les votes d'un participant engagé, quelle que soit leur date ; ils comptent de nouveau s'il quitte la course.
 - **Pas d'élite.** Le poids est plafonné à 2, quel que soit l'historique.
 - **Votes publics.** Chaque vote est un fichier `votes/<sujet>/<pseudo>.yaml`, visible de tous, modifiable ou retirable pendant 7 jours.
 - **Coalitions signalées.** Le conseil examine les comptes qui votent systématiquement ensemble.

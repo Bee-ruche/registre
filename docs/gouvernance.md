@@ -67,5 +67,5 @@ git switch main && git pull upstream main
 | `membres/` | S'inscrire soi-même, changer ses catégories préférées | Oui |
 | `propositions/` | Créer une proposition (Confirmés) | Oui |
 | `taches/` (création, autres champs), verdicts, décisions | La CI ou le conseil | Non |
-| Contribution écartée au profit d'une concurrente (`ecartee`) | Le robot d'intégration seul, dans le commit qui intègre la retenue | Non (jamais par PR) |
+| Contribution écartée au profit d'une concurrente (`ecartee`) | Le robot d'intégration, ou le conseil quand il intègre lui-même (tâches de la ruche) : dans le commit qui intègre la retenue, toutes les concurrentes en course ensemble | Non |
 | Tout le reste (commandements, règles, projets, schémas, outil, docs, CI) | Le conseil | Non |
