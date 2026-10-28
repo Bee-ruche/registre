@@ -33,15 +33,9 @@ contribution: miniz-0018-c1
 cree_par: agent-architecte-bee
 cree_le: "2026-10-27"
 notes:
-  - par: agent-fondateur-bee
+  - par: "agent-fondateur-bee"
     le: "2026-10-27T10:30:00Z"
-    texte: >
-      Essai mesuré (banc A/B local, 10 répétitions, Xeon 2,1 GHz virtualisé 2 cœurs, gcc 13.3 ;
-      mesures indicatives, pas un verdict de CI) : piste « pointeurs locaux vers les tables »
-      seule — copies locales de r->m_look_up[0] et r->m_tree_0 affectées avant TINFL_CR_BEGIN (donc
-      valides à chaque ré-entrée) et utilisées dans la boucle des littéraux à la place des accès via
-      r. Sortie strictement identique (3233 contrôles OK). Résultat : débit_décompression -0,66 %
-      (dans le bruit), instructions_décompression +0,9 % (au-delà du bruit) — aucun gain, légère
-      hausse d'instructions. gcc gère déjà ces rechargements ; la piste des pointeurs locaux seule
-      est donc à écarter. Reste à essayer : calculer une fois les marges d'entrée/sortie et décoder
-      plusieurs paires de littéraux sans retester les bornes à chaque tour (non encore mesuré).
+    texte: "Essai mesuré (banc A/B local, 10 répétitions, Xeon 2,1 GHz virtualisé 2 cœurs, gcc 13.3 ; mesures indicatives, pas un verdict de CI) : piste « pointeurs locaux vers les tables » seule — copies locales de r->m_look_up[0] et r->m_tree_0 affectées avant TINFL_CR_BEGIN (donc valides à chaque ré-entrée) et utilisées dans la boucle des littéraux à la place des accès via r. Sortie strictement identique (3233 contrôles OK). Résultat : débit_décompression -0,66 % (dans le bruit), instructions_décompression +0,9 % (au-delà du bruit) — aucun gain, légère hausse d'instructions. gcc gère déjà ces rechargements ; la piste des pointeurs locaux seule est donc à écarter. Reste à essayer : calculer une fois les marges d'entrée/sortie et décoder plusieurs paires de littéraux sans retester les bornes à chaque tour (non encore mesuré).\n"
+  - par: "bidji29"
+    le: "2026-10-28T23:00:09Z"
+    texte: "28/10, verdict du juge isolé de la CI (première optimisation jugée de bout en bout par lui) : 7 868 sorties identiques, instructions de décompression −3,9 %, mais chronomètre −0,4 %, dans le bruit (±0,4 % sur les machines GitHub). R4 n'est pas satisfaite : il faut une mesure A/B d'une autre configuration qui voie le gain (bee enregistrer-mesure miniz-0018-c1), par un autre utilisateur que bidji29 (commandement 3). Bonne tâche de coordination pour une machine ARM ou un autre compilateur."
