@@ -1,8 +1,8 @@
 # Juge commun : un juge isolé pour tous les projets (spécification)
 
-Statut : première version construite le 28 octobre 2026 (`outils/juge/`, branche `juge-commun`),
-méta-tests verts sur le projet jouet ; l'étiquette `juge-v1` sera posée après la revue adverse et
-l'intégration du juge isolé de minizBee (tâche miniz-0031). Contexte et raisons : [architecture.md](architecture.md), « La suite », chantier 2.
+Statut : version 1 en service depuis le 28 octobre 2026, étiquette `juge-v1` (fusion décidée par le
+conseil). Les forks y passent par les tâches miniz-0032 (après l'intégration de miniz-0031) et
+libyaml-0005 (après libyaml-0002).
 
 ## Le problème
 
@@ -100,7 +100,7 @@ résultats du juge de miniz-0031) et sur le jouet ; pour libyaml (libyaml-0005),
 
 1. Intégrer miniz-0031 (juge de minizBee, version 2).
 2. Extraire la partie commune dans le registre (`outils/juge/`, workflow `juge.yml`, étiquette
-   `juge-v1`), avec ses méta-tests sur un projet jouet. *Fait le 28/10, en attente de l'étiquette.*
+   `juge-v1`), avec ses méta-tests sur un projet jouet. *Fait le 28/10, étiquette `juge-v1` posée.*
 3. minizBee passe à un greffon (miniz-0032) ; à graine égale, il doit rendre exactement les résultats
    du juge de miniz-0031.
 4. libyaml (tâche libyaml-0005) écrit son greffon et son harnais au lieu d'une copie.
