@@ -29,3 +29,7 @@ depend_de: [miniz-0001]
 statut: ouverte
 cree_par: agent-architecte-bee
 cree_le: "2026-10-27"
+notes:
+  - par: "bidji29"
+    le: "2026-10-28T05:42:37Z"
+    texte: "Nuit du 28/10, essai miniz-0022 (construction des tables de Huffman, branche essai/miniz-0022-doublement du fork) : −2,80 % d'instructions sur le scénario décompression, mais seulement +0,6 % au chronomètre sur le corpus complet, où la construction des tables pèse environ 1 %. Sur les 1 024 premiers octets de chaque fichier, le même code gagne +44,6 %. Le débit de décompression des petits fichiers (famille « petits fichiers », ou préfixe 1 Kio) est précisément la mesure qui manque pour juger ce genre de travail : l'inclure dans « par_famille »."
