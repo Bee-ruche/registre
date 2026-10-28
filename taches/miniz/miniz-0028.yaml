@@ -2,6 +2,7 @@ id: miniz-0028
 projet: miniz
 categorie: compression-sans-perte
 type: mesure
+poste: gouvernance
 taille: M
 titre: "Corpus : ajouter des familles réalistes absentes (HTML, journaux compressés, binaires exécutables)"
 contexte: >

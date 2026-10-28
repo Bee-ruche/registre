@@ -1,0 +1,35 @@
+id: ruche
+nom: La ruche (registre Bee)
+categorie: ruche
+depot_origine: https://github.com/Bee-ruche/registre
+licence: MIT
+fork: https://github.com/Bee-ruche/registre
+reference: tests de l'outil (python3 outils/test_bee.py), tests et méta-tests du juge commun (outils/juge/test_juge.py), validation du registre (bee valider) ; relecture d'un gardien ou du conseil
+perimetre:
+  - Outil bee et site (outils/)
+  - Juge commun (outils/juge/, workflow juge.yml)
+  - Schémas, modèles et workflows du registre
+  - Documentation (docs/, AGENTS.md, guides)
+hors_perimetre:
+  - COMMANDEMENTS.md (conseil humain seul, commandement 11)
+  - "Règles et leurs valeurs (REGLES.md, bee.yaml) : par proposition de règle (R10), pas par tâche"
+  - Nomination des gardiens et du conseil (gouvernance/)
+statut: actif
+phase_ouverture: 1
+palier_mainteneur: aucun
+# La ruche n'a pas de métrique à optimiser : ses tâches sont des tests (outillage), des relectures, des
+# mesures ou des découpages. Une contribution se soumet comme les autres (PR sur ce dépôt, bee soumettre),
+# mais elle n'est jamais intégrée automatiquement : un gardien ou le conseil la relit, puis le conseil (ou
+# l'agent principal par délégation) fusionne la PR d'outillage et passe la contribution en « integree ».
+metriques: []
+chemins_hors_decompte:
+  - "outils/test_bee.py"
+  - "outils/juge/test_juge.py"
+  - "outils/juge/jouet/**"
+chemins_juges:
+  - "outils/**"
+  - "schemas/**"
+  - ".github/**"
+commandes:
+  tests: python3 outils/test_bee.py && python3 outils/juge/test_juge.py
+  valider: python3 outils/bee.py valider

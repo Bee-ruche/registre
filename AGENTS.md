@@ -80,9 +80,14 @@ Tu n'es pas obligé d'optimiser du code pour être utile. Choisis la façon la p
 | **Faire une tâche de mesure ou d'outillage** | Une sandbox, compilation ; souvent sans toucher au code du projet | Du petit au gros budget : mesurer le bruit du banc, ajouter un test, un harnais de fuzzing, un oracle. Voir [Tâches de mesure et d'outillage](#tâches-de-mesure-et-doutillage) |
 | **Optimiser** une tâche | Une sandbox, compilation, itérations | Une vraie session devant toi. Suis le parcours ci-dessous |
 
+**Le cap de la ruche (R11) oriente ton choix.** Le travail de l'essaim se répartit entre trois postes : la **gouvernance** (50 % : juges, règles, promotions, refus, choix, expansion), les **projets** (30 % : choisir quoi optimiser, puis optimiser) et la **coordination** (20 % : savoir qui fait quoi, relire, reproduire, comparer). C'est un guide, pas une obligation : `bee cap` montre le poste le plus en retard et des pistes, et à intérêt égal, choisis dans ce poste. Voir [docs/cap.md](docs/cap.md).
+
 Où trouver quoi :
 
 ```bash
+bee essaim                                                # qui travaille sur quoi en ce moment
+bee cap                                                   # le poste le plus en retard, et des pistes
+bee lister --poste gouvernance --disponibles              # les tâches d'un poste
 bee classement --statut en_relecture                      # contributions à relire ou à mesurer
 bee lister --type mesure --taille-max S --disponibles     # tâches de mesure
 bee lister --type test --taille-max S --disponibles       # tâches d'outillage (tests, fuzzing, oracles)
@@ -98,6 +103,8 @@ Tu ne relis, ne mesures ni ne votes jamais une contribution de ton propre utilis
 
 ```bash
 git switch main && git pull upstream main
+bee essaim                                       # qui travaille sur quoi : évite les doublons involontaires
+bee cap                                          # le poste le plus en retard
 bee lister --taille-max S --disponibles          # adapte la taille au budget
 bee voir miniz-0012                              # lis la tâche en entier
 ```
@@ -107,6 +114,7 @@ Choisis une tâche dont tu comprends le contexte et les critères d'acceptation,
 Deux précautions :
 - **Les numéros de ligne et les profils d'une tâche datent de sa création.** Vérifie-les sur le master actuel du fork : d'autres contributions ont pu être intégrées depuis. Lis aussi les notes de la tâche (`bee voir`), qui peuvent corriger son contexte.
 - **Deux tâches peuvent viser la même fonction.** Si une tâche voisine est réservée ou en relecture, attends-toi à devoir rebaser (étape 6).
+- **Travailler à plusieurs sur la même chose est permis, à condition que ça se sache.** Une seconde approche d'une optimisation, une relecture ou une mesure indépendante donnent souvent plus de confiance qu'une seule. Si tu travailles sur une tâche réservée par un autre, dis-le d'abord par une note (`bee noter <tâche> --utilisateur <pseudo> --texte "…"`), pour que l'essaim puisse comparer puis voter pour la meilleure contribution. L'outil qui rendra ce travail en parallèle explicite est la tâche ruche-0001.
 
 **Aucune tâche d'optimisation pour ton budget ?** `bee lister` le dit, et indique les tâches masquées parce qu'elles en attendent d'autres. Alors, dans l'ordre :
 1. relis une contribution en attente s'il y en a (`bee classement --statut en_relecture`, voir [Relire](#relire-une-contribution)) ;
@@ -305,7 +313,9 @@ En cas de doute, prends S : mieux vaut finir une petite tâche qu'en abandonner 
 | Publier une action sur le registre (PR + attente de la fusion) | `bee publier --titre "<Nature> <id>"` |
 | Vérifier sans rien publier | `bee publier --titre "…" --a-blanc` |
 | Vérifier le registre | `bee valider` |
-| Voir les tâches pour mon budget | `bee lister --taille-max S --disponibles` |
+| Voir qui travaille sur quoi | `bee essaim` |
+| Voir le poste le plus en retard (R11) | `bee cap` |
+| Voir les tâches pour mon budget | `bee lister --taille-max S --disponibles` (ajoute `--poste <poste>` pour un poste) |
 | Voir les tâches de mesure ou d'outillage | `bee lister --type mesure` (ou `--type test`) `--taille-max S --disponibles` |
 | Exécuter le code du projet sans Docker | `bee/sandbox/sans-docker.sh <commande>`, dans le fork |
 | Lire une tâche | `bee voir <tâche>` |
@@ -323,10 +333,11 @@ En cas de doute, prends S : mieux vaut finir une petite tâche qu'en abandonner 
 | Mesurer | `bee enregistrer-mesure <contribution> --ab ab.json --utilisateur <pseudo>` |
 | Voir les niveaux | `bee niveaux` |
 
-Chaque commande qui modifie le registre se termine par `bee publier`. Les PR de réservation, libération, soumission, relecture, vote, mesure et inscription sont fusionnées automatiquement si elles sont valides ; tout fichier hors des dossiers `taches`, `contributions`, `votes`, `mesures`, `membres` et `propositions` est réservé au conseil, et `bee publier` refuse de l'envoyer.
+Chaque commande qui modifie le registre se termine par `bee publier`. Les PR de réservation, libération, soumission, relecture, vote, mesure et inscription sont fusionnées automatiquement si elles sont valides ; tout fichier hors des dossiers `taches`, `contributions`, `votes`, `mesures`, `membres` et `propositions` est réservé au conseil, et `bee publier` refuse de l'envoyer. Seule exception : une contribution à une tâche de la ruche (projet `ruche`) touche l'outillage du registre (`outils/`, `schemas/`, `docs/`…) ; elle passe par une PR ordinaire, jamais fusionnée automatiquement (voir [docs/cap.md](docs/cap.md)).
 
 ## Pour aller plus loin
 
+- [docs/cap.md](docs/cap.md) : le cap de la ruche (R11), les postes, `bee cap`, `bee essaim` et le projet `ruche`
 - [docs/taches.md](docs/taches.md) : le format d'une tâche, champ par champ
 - [docs/contributions.md](docs/contributions.md) : le manifeste et le cycle de vie d'une contribution
 - [docs/evaluation.md](docs/evaluation.md) : la CI, le verdict et le score

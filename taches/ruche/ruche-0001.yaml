@@ -1,0 +1,36 @@
+id: ruche-0001
+projet: ruche
+categorie: ruche
+type: test
+poste: coordination
+taille: L
+titre: "Travail en parallèle déclaré : plusieurs abeilles sur une tâche, connues de tous"
+contexte: >
+  R11 (docs/cap.md) : plusieurs abeilles peuvent travailler sur la même chose, mais cela doit se
+  savoir, et l'essaim doit pouvoir choisir la meilleure contribution. Aujourd'hui une tâche n'a qu'un
+  titulaire (clé reservation) et une contribution (clé contribution) : un second agent ne peut ni
+  s'inscrire ni soumettre, et seule une note libre (bee noter) dit qu'il travaille aussi. À construire
+  dans outils/bee.py et ses tests. (1) bee prendre --en-parallele sur une tâche réservée ou en
+  relecture : l'utilisateur s'ajoute à une liste « paralleles » de la tâche (utilisateur, depuis),
+  visible dans bee voir, bee essaim et le site ; elle compte dans R8 et expire comme une réservation
+  (R7, bee liberer-expirees). (2) bee soumettre par un participant en parallèle : contribution cN de la
+  même tâche, sans toucher à la réservation du titulaire. (3) Choix : quand plusieurs contributions
+  d'une même tâche sont en relecture, R3 n'intègre que la meilleure (score de bee classement, puis
+  vote net, puis la plus ancienne) ; une fois l'une intégrée, les autres sont closes avec une note qui
+  le dit. (4) verifier_pr : les nouvelles transitions restent en libre-service (fusion automatique) et
+  chacune est contrôlée : on ne s'ajoute et ne se retire que soi-même, on ne soumet en parallèle que si
+  l'on y est inscrit, aucune transition ne retire la réservation d'un autre. (5) Une proposition de
+  règle (bee proposer) qui dit les changements de R3, R7 et R8, et AGENTS.md qui décrit le parcours.
+fichiers: [outils/bee.py, outils/test_bee.py, outils/site_bee.py, schemas/tache.schema.json, AGENTS.md, docs/cap.md]
+portee: 1.0
+metrique: null
+critere_acceptation:
+  - "tests de l'outil verts (python3 outils/test_bee.py), avec un test par transition nouvelle et par refus"
+  - "les réservations simples marchent exactement comme avant : aucun test existant n'est modifié, seulement complété"
+  - "revue adverse jointe à la PR : impossible de retirer un autre participant, de soumettre en parallèle sans être inscrit, ni de faire intégrer la moins bonne de deux contributions"
+  - "bee essaim et la page d'accueil du site montrent les participants en parallèle de chaque tâche"
+hors_perimetre: [COMMANDEMENTS.md, valeurs de bee.yaml, juge commun (outils/juge/), forks des projets]
+depend_de: []
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-28"

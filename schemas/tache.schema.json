@@ -11,6 +11,7 @@
     "projet": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"},
     "categorie": {"type": "string"},
     "type": {"enum": ["optimisation", "relecture", "mesure", "test", "decoupage"]},
+    "poste": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$", "description": "R11 : poste du cap de la ruche (gouvernance, projets, coordination…) ; défaut d'après le type (docs/cap.md)"},
     "taille": {"enum": ["S", "M", "L"]},
     "titre": {"type": "string", "minLength": 5, "maxLength": 100},
     "contexte": {"type": "string", "minLength": 40},

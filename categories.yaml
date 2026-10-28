@@ -29,3 +29,8 @@
   nom: Réseau, noyau, pilotes
   statut: exclue
   preuve: Aucune en v0. Difficiles à isoler en sandbox et à mesurer de façon reproductible.
+
+- id: ruche
+  nom: La ruche elle-même
+  statut: ouverte
+  preuve: Tests de l'outil bee et méta-tests du juge commun ; relecture d'un gardien ou du conseil, puis fusion par le conseil (jamais d'intégration automatique de l'outillage du registre).

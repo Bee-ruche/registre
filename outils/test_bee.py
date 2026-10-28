@@ -740,6 +740,16 @@ class TestRegistre(BaseTest):
         self.assertIn("miniz-0099-c1", page)
         self.assertIn("Compression sans perte", page)
         self.assertIn("id='c-pseudo'", page)  # consigne qui se remplit
+        # R11 : le cap de la ruche (parts visées et réelles), le filtre par poste, et le projet « ruche »
+        self.assertIn("id='cap'", page)
+        self.assertIn("data-filtre='poste'", page)
+        self.assertIn("data-poste='gouvernance'", page)
+        donnees = json.loads((self.dossier / "_site/api/registre.json").read_text(encoding="utf-8"))
+        self.assertEqual({l["poste"] for l in donnees["cap"]["postes"]}, {"gouvernance", "projets", "coordination"})
+        self.assertIn("en_cours", donnees["essaim"])
+        ruche = (self.dossier / "_site/projets/ruche.html").read_text(encoding="utf-8")
+        self.assertNotIn("non affilié", ruche)
+        self.assertNotIn("Métriques suivies", ruche)
 
     def test_site_juge_isole_et_integration(self):
         cid = self.soumettre_0099()
@@ -778,6 +788,89 @@ class TestRegistre(BaseTest):
         self.assertEqual(self.bee("voter", "P-0001", "--utilisateur", "bruno", "--valeur", "1")[0], 1, "vote clos")
 
 
+class TestCapEtEssaim(BaseTest):
+    """R11 : cap de la ruche (postes et parts visées) et tableau de l'essaim (qui fait quoi)."""
+
+    def plus_tard(self):
+        # Une date où l'activité réelle du registre copié sort de la fenêtre : seule compte celle du test.
+        os.environ["BEE_MAINTENANT"] = "2027-06-01T12:00:00Z"
+
+    def test_cap_livre_valide_et_somme_a_100(self):
+        self.valide()
+        cible = bee.cap_cible(bee.Registre(self.dossier))
+        self.assertEqual(cible, {"gouvernance": 50.0, "projets": 30.0, "coordination": 20.0})
+
+    def test_cap_invalide_refuse(self):
+        chemin = self.dossier / "bee.yaml"
+        chemin.write_text(chemin.read_text(encoding="utf-8").replace("coordination: 20", "coordination: 25"), encoding="utf-8")
+        code, texte = self.bee("valider")
+        self.assertEqual(code, 1)
+        self.assertIn("105 %", texte)
+
+    def test_poste_inconnu_refuse(self):
+        chemin = self.dossier / "taches" / "miniz" / "miniz-0099.yaml"
+        chemin.write_text(chemin.read_text(encoding="utf-8").replace("type: optimisation", "type: optimisation\nposte: loisirs"), encoding="utf-8")
+        code, texte = self.bee("valider")
+        self.assertEqual(code, 1)
+        self.assertIn("loisirs", texte)
+
+    def test_poste_d_apres_le_type(self):
+        self.assertEqual(bee.poste_de({"type": "optimisation"}), "projets")
+        self.assertEqual(bee.poste_de({"type": "test"}), "gouvernance")
+        self.assertEqual(bee.poste_de({"type": "relecture"}), "coordination")
+        self.assertEqual(bee.poste_de({"type": "test", "poste": "coordination"}), "coordination")
+        self.assertEqual(bee.poste_de({"type": "relecture", "projet": "ruche"}), "gouvernance")
+
+    def test_cap_mesure_l_activite_et_designe_le_poste_en_retard(self):
+        self.plus_tard()
+        code, texte = self.bee("cap", "--json")
+        etat = json.loads(texte)
+        self.assertEqual(etat["total"], 0)
+        self.assertEqual(etat["en_retard"], "gouvernance")
+        self.assertTrue(all(bee.poste_de(self.tache(t["id"])) == "gouvernance" for t in etat["pistes"]["taches"]))
+        self.assertEqual(self.bee("prendre", "miniz-0099", "--utilisateur", "alice")[0], 0)  # optimisation S : projets, poids 1
+        self.assertEqual(self.bee("noter", "miniz-0099", "--utilisateur", "bruno", "--texte", "J'essaie une autre piste, je le dis.")[0], 0)
+        etat = json.loads(self.bee("cap", "--json")[1])
+        parts = {l["poste"]: l["reel"] for l in etat["postes"]}
+        self.assertAlmostEqual(parts["projets"], 100 * 1 / 1.5)
+        self.assertAlmostEqual(parts["coordination"], 100 * 0.5 / 1.5)
+        self.assertEqual(parts["gouvernance"], 0)
+        self.assertEqual(etat["en_retard"], "gouvernance")
+        code, texte = self.bee("cap")
+        self.assertEqual(code, 0, texte)
+        self.assertIn("Poste le plus en retard : gouvernance", texte)
+
+    def test_lister_par_poste(self):
+        code, texte = self.bee("lister", "--poste", "gouvernance", "--json")
+        self.assertEqual(code, 0, texte)
+        taches = json.loads(texte)
+        self.assertTrue(taches)
+        self.assertTrue(all(t["poste"] == "gouvernance" for t in taches))
+        self.assertIn("miniz-9002", [t["id"] for t in taches])
+
+    def test_essaim_montre_qui_fait_quoi(self):
+        self.assertEqual(self.bee("prendre", "miniz-0099", "--utilisateur", "alice")[0], 0)
+        tableau = json.loads(self.bee("essaim", "--json")[1])
+        en_cours = {x["tache"]: x for x in tableau["en_cours"]}
+        self.assertEqual(en_cours["miniz-0099"]["utilisateur"], "alice")
+        self.assertEqual(en_cours["miniz-0099"]["poste"], "projets")
+        self.assertEqual(en_cours["miniz-0099"]["expire_dans_heures"], 72)
+        code, texte = self.bee("essaim")
+        self.assertEqual(code, 0, texte)
+        self.assertIn("alice", texte)
+
+    def test_projet_sans_metrique_reserve_a_la_ruche(self):
+        self.valide()  # projets/ruche.yaml n'a pas de métrique
+        chemin = self.dossier / "projets" / "giflib.yaml"
+        texte = chemin.read_text(encoding="utf-8")
+        debut = texte.index("metriques:")
+        fin = texte.index("chemins_hors_decompte:")
+        chemin.write_text(texte[:debut] + "metriques: []\n" + texte[fin:], encoding="utf-8")
+        code, texte = self.bee("valider")
+        self.assertEqual(code, 1)
+        self.assertIn("au moins une métrique", texte)
+
+
 class TestPullRequests(BaseTest):
     def setUp(self):
         super().setUp()
@@ -811,6 +904,27 @@ class TestPullRequests(BaseTest):
         code, texte = self.verifier("bidji29", "--fusion-auto")
         self.assertEqual(code, 3, texte)
         self.assertIn("relecture humaine", texte)
+
+    def test_outillage_propose_par_un_membre_jamais_fusionne_seul(self):
+        """Tâches de la ruche : un membre peut proposer de l'outillage ; seule une relecture puis le conseil le fusionnent."""
+        git(self.dossier, "switch", "-qc", "outil")
+        chemin = self.dossier / "outils" / "site_bee.py"
+        chemin.write_text(chemin.read_text(encoding="utf-8") + "\n# amélioration proposée\n", encoding="utf-8")
+        self.commit()
+        code, texte = self.verifier("alice", "--fusion-auto")
+        self.assertEqual(code, 3, texte)
+        self.assertIn("outillage", texte)
+        self.assertIn("FUSION_AUTO=non", texte)
+        self.assertEqual(self.verifier("eve")[0], 1, "il faut être inscrit")
+
+    def test_regles_et_cap_restent_au_conseil(self):
+        git(self.dossier, "switch", "-qc", "cap")
+        chemin = self.dossier / "bee.yaml"
+        chemin.write_text(chemin.read_text(encoding="utf-8").replace("gouvernance: 50", "gouvernance: 40").replace("projets: 30", "projets: 40"),
+                          encoding="utf-8")
+        self.commit()
+        self.assertEqual(self.verifier("alice")[0], 1)
+        self.assertEqual(self.verifier("bidji29", "--fusion-auto")[0], 3)
 
     def test_commandements_reserves_au_conseil(self):
         git(self.dossier, "switch", "-qc", "c")

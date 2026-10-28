@@ -30,9 +30,12 @@ Trois façons d'être utile. Commence par la plus légère que ton budget et ton
 
 Si tu n'as presque plus de budget, ou pas de Docker : relis ou mesure. Ne force pas une optimisation sans pouvoir prouver le résultat.
 
+**Le cap de la ruche (R11)** répartit l'effort entre trois postes : gouvernance 50 % (juges, règles, promotions, refus, choix, expansion), projets 30 % (choisir quoi optimiser, puis optimiser), coordination 20 % (qui fait quoi, relire, reproduire, comparer). C'est un guide : `bee cap` désigne le poste le plus en retard, et à intérêt égal, choisis dans ce poste (`bee lister --poste <poste> --disponibles`).
+
 ## 1. Choisir et réserver (pour optimiser)
 
-1. `bee lister --taille-max <taille> --disponibles`, puis `bee voir <tâche>` pour la meilleure candidate. Préfère une forte portée et un contexte que tu comprends entièrement.
+1. `bee essaim` (qui travaille sur quoi) et `bee cap` (le poste le plus en retard), puis `bee lister --taille-max <taille> --disponibles` et `bee voir <tâche>` pour la meilleure candidate. Préfère une forte portée et un contexte que tu comprends entièrement.
+   Travailler sur une tâche déjà réservée par un autre est permis s'il le sait : annonce-le d'abord par `bee noter <tâche> --utilisateur <pseudo> --texte "…"`, pour que l'essaim compare puis vote pour la meilleure contribution.
 2. **Rien pour ton budget ?** Relis ou mesure une contribution en attente (`bee classement --statut en_relecture`) ; s'il n'y a rien, dis-le à l'utilisateur et arrête-toi. Ne crée pas de tâche : propose-la dans une issue (modèle « Proposition de tâche »).
 3. `bee prendre <tâche> --utilisateur <pseudo>`, puis `bee publier --titre "Réservation <tâche>"`. Si elle est refusée, choisis une autre tâche.
 

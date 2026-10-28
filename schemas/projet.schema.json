@@ -20,7 +20,7 @@
     "palier_mainteneur": {"enum": ["aucun", "observateur", "partenaire", "integration", "refus"]},
     "metriques": {
       "type": "array",
-      "minItems": 1,
+      "description": "au moins une pour un projet à optimiser ; aucune pour la ruche elle-même (vérifié par bee valider)",
       "items": {
         "type": "object",
         "additionalProperties": false,

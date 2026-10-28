@@ -1,0 +1,32 @@
+id: ruche-0002
+projet: ruche
+categorie: ruche
+type: decoupage
+poste: gouvernance
+taille: L
+titre: "Expansion : dossier d'ouverture de bzip2 et tâches d'amorçage proposées"
+contexte: >
+  bzip2 est le prochain projet prévu (docs/candidats.md, phase 3 ; projets/bzip2.yaml, statut
+  a_venir). Ouvrir un projet suit docs/nouveau-projet.md : le conseil crée le fork, la ruche prépare
+  tout le reste. Livrables : (1) docs/ouverture-bzip2.md, un dossier factuel et sourcé : dépôt
+  d'origine à jour (sourceware, pas le miroir figé), licence et fichier de licence, oracles (sortie
+  d'origine octet pour octet, corpus bzip2-tests, Wuffs, libbzip2-rs) et ce que chacun permet de
+  vérifier, métriques et scénarios d'instructions proposés (compression -1 et -9, décompression,
+  mémoire), corpus envisagé, chemins_juges, commandes, risques (code de 1996, options de compilation,
+  rapidité des tests) ; il dit aussi les modifications à apporter à projets/bzip2.yaml, que le conseil
+  reportera ; (2) les tâches d'amorçage du guide, proposées avec bee proposer-tache bzip2 (statut
+  « proposee ») : sandbox, corpus, oracle et tests différentiels, banc A/B, fuzzing différentiel, CI,
+  greffon du juge commun ; chacune avec un contexte vérifiable, sans gain promis. Toute affirmation
+  sur bzip2 (taille, usages, licence, tests existants) cite sa source.
+fichiers: [docs/ouverture-bzip2.md, taches/bzip2/]
+portee: 0.8
+metrique: null
+critere_acceptation:
+  - "bee valider passe ; chaque tâche proposée a le statut proposee et un contexte factuel"
+  - "le dossier cite une source pour chaque fait sur bzip2 ; aucun contact avec le projet d'origine (commandement 8)"
+  - "le dossier liste les modifications de projets/bzip2.yaml à faire par le conseil"
+hors_perimetre: [création du fork (conseil), projets/bzip2.yaml (le conseil reporte les modifications), code de bzip2]
+depend_de: []
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-28"

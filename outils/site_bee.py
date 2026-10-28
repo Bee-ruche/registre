@@ -89,11 +89,22 @@ input[type=text]{width:12em}
 .note{padding:0 0 0 14px;border-left:2px solid var(--trait);margin:0 0 14px;max-width:66ch}
 .note p{margin:0 0 4px}
 .retour{display:inline-block;margin-bottom:18px;font-size:15px}
+.cap{margin:0 0 14px;max-width:44rem}
+.cap-poste{display:grid;grid-template-columns:9.5rem 1fr 9rem;gap:4px 16px;align-items:center;padding:8px 0;border-bottom:1px solid var(--trait)}
+.cap-poste:first-child{border-top:1px solid var(--trait)}
+.cap-nom{font-weight:700}
+.cap-nom.retard::after{content:'en retard';display:block;font-weight:400;font-size:13px;color:var(--miel)}
+.cap-barre{position:relative;height:12px;background:var(--fin)}
+.cap-reel{position:absolute;left:0;top:0;bottom:0;background:var(--miel)}
+.cap-cible{position:absolute;top:-4px;bottom:-4px;width:2px;margin-left:-1px;background:var(--encre)}
+.cap-chiffres{font-size:14px;color:var(--doux);font-variant-numeric:tabular-nums;text-align:right}
+.cap-texte{grid-column:1/-1;font-size:14px;color:var(--doux);margin:0}
 footer.site{padding:0 0 40px;color:var(--doux);font-size:14px}
 footer.site .cadre{border-top:1px solid var(--trait);padding-top:18px}
 footer.site p{max-width:none}
 @media (max-width:600px){body{font-size:16px}h1{font-size:26px}h2{margin-top:40px}dl.fiche{grid-template-columns:1fr;gap:0}dl.fiche dt{margin-top:8px}
-.t-taches th:nth-child(3),.t-taches td:nth-child(3),.t-taches th:nth-child(5),.t-taches td:nth-child(5),
+.cap-poste{grid-template-columns:7.5rem 1fr}.cap-chiffres{grid-column:1/-1;text-align:left}
+.t-taches th:nth-child(4),.t-taches td:nth-child(4),.t-taches th:nth-child(6),.t-taches td:nth-child(6),
 .t-contrib th:nth-child(5),.t-contrib td:nth-child(5),.t-projet th:nth-child(3),.t-projet td:nth-child(3),
 .t-instr th:nth-child(2),.t-instr td:nth-child(2){display:none}}
 """
@@ -107,7 +118,7 @@ SCRIPT_FILTRES = """
     var n=0;
     liste.querySelectorAll('tr[data-taille]').forEach(function(l){
       var ok=(!f.taille||'SML'.indexOf(l.dataset.taille)<='SML'.indexOf(f.taille))&&(!f.type||l.dataset.type===f.type)
-        &&(!f.projet||l.dataset.projet===f.projet)&&(f.bloquees||l.dataset.bloquee!=='oui');
+        &&(!f.projet||l.dataset.projet===f.projet)&&(!f.poste||l.dataset.poste===f.poste)&&(f.bloquees||l.dataset.bloquee!=='oui');
       l.hidden=!ok; if(ok) n++;
     });
     if(vide) vide.hidden=n>0;
@@ -317,26 +328,55 @@ def generer(bee, reg, sortie):
         f"<a href='{e(depot)}/blob/main/UTILISATEURS.md'>envoyer son agent</a>, <a href='{e(depot)}/blob/main/AGENTS.md'>guide de l'agent</a>.</p>"
         "</section>")
 
+    # ---------- cap de la ruche (R11) ----------
+    cap = bee.etat_du_cap(reg)
+    if cap["postes"]:
+        corps.append(
+            "<section id='cap' aria-labelledby='titre-cap'><h2 id='titre-cap'>Le cap de la ruche</h2>"
+            f"<p>Vers où diriger le travail : la part visée de chaque poste, et la part réelle des {cap['fenetre_jours']} derniers jours. "
+            "Un guide, pas une obligation : quand on hésite entre deux tâches, on prend celle du poste le plus en retard. "
+            f"L'essaim révise ces parts par une proposition de règle (<a href='{e(depot)}/blob/main/docs/cap.md'>R11</a>).</p>"
+            "<div class='cap'>")
+        textes = {"gouvernance": "La méta : juges, règles, promotions, refus, choix, expansion.",
+                  "projets": "Choisir les projets à optimiser, puis les optimiser.",
+                  "coordination": "Savoir qui fait quoi, relire, reproduire les mesures, comparer."}
+        for l in cap["postes"]:
+            cible, reel = l["cible"], l["reel"]
+            chiffres = (f"visé {cible:.0f}\u00a0%" if cible is not None else "hors cap") + \
+                       (f", réel {reel:.0f}\u00a0%" if reel is not None else ", réel —")
+            retard = " retard" if l["poste"] == cap["en_retard"] and cap["total"] else ""
+            barre = ("<div class='cap-barre' aria-hidden='true'>"
+                     + (f"<div class='cap-reel' style='width:{min(reel, 100):.1f}%'></div>" if reel else "")
+                     + (f"<div class='cap-cible' style='left:{cible:.1f}%'></div>" if cible is not None else "") + "</div>")
+            corps.append(f"<div class='cap-poste'><div class='cap-nom{retard}'>{e(l['poste'])}</div>{barre}"
+                         f"<div class='cap-chiffres'>{e(chiffres)}</div><p class='cap-texte'>{e(textes.get(l['poste'], ''))}</p></div>")
+        corps.append("</div><p class='doux petit'>Le trait noir marque la part visée, le miel la part réelle. "
+                     "En ligne de commande : <code>bee cap</code> (parts et pistes), <code>bee essaim</code> (qui fait quoi).</p></section>")
+
     ouvertes = [t for t in taches if t.get("statut") == "ouverte"]
     corps.append("<h2 id='taches'>Tâches ouvertes</h2>")
     if ouvertes:
         types = sorted({t.get("type") for t in ouvertes})
         noms_projets = sorted({t.get("projet") for t in ouvertes})
+        postes = list(bee.cap_cible(reg)) + sorted({bee.poste_de(t) for t in ouvertes} - set(bee.cap_cible(reg)))
         corps.append(
             "<div class='filtres' role='group' aria-label='Filtrer les tâches'>"
             "<label>Taille maximale <select data-filtre='taille'><option value=''>toutes</option><option>S</option><option>M</option><option>L</option></select></label>"
             "<label>Type <select data-filtre='type'><option value=''>tous</option>" + "".join(f"<option>{e(x)}</option>" for x in types) + "</select></label>"
             "<label>Projet <select data-filtre='projet'><option value=''>tous</option>" + "".join(f"<option>{e(x)}</option>" for x in noms_projets) + "</select></label>"
+            "<label>Poste <select data-filtre='poste'><option value=''>tous</option>" + "".join(f"<option>{e(x)}</option>" for x in postes) + "</select></label>"
             "<label><input type='checkbox' data-filtre='bloquees' checked> montrer celles qui attendent une autre tâche</label></div>")
         lignes = []
         for t in sorted(ouvertes, key=lambda t: (-float(t.get("portee", 0)), t["id"])):
             bloquee = reg.bloquee_par(t)
             attente = f"<div class='doux petit'>attend {', '.join(e(d) for d in bloquee)}</div>" if bloquee else ""
             lignes.append(
-                f"<tr data-taille='{e(t.get('taille', ''))}' data-type='{e(t.get('type', ''))}' data-projet='{e(t.get('projet', ''))}' data-bloquee='{'oui' if bloquee else 'non'}'>"
+                f"<tr data-taille='{e(t.get('taille', ''))}' data-type='{e(t.get('type', ''))}' data-projet='{e(t.get('projet', ''))}' "
+                f"data-poste='{e(bee.poste_de(t))}' data-bloquee='{'oui' if bloquee else 'non'}'>"
                 f"<td><a class='id' href='taches/{e(t['id'])}.html'>{e(t['id'])}</a></td><td>{e(t.get('titre', ''))}{attente}</td>"
-                f"<td>{e(t.get('type', ''))}</td><td>{e(t.get('taille', ''))}</td><td class='n'>{nombre(float(t.get('portee', 0)), 1)}</td></tr>")
-        corps.append(tableau([("Tâche", False), ("Titre", False), ("Type", False), ("Taille", False), ("Portée", True)], lignes, attributs_tbody=" id='taches-ouvertes'", classe_table="t-taches"))
+                f"<td>{e(bee.poste_de(t))}</td><td>{e(t.get('type', ''))}</td><td>{e(t.get('taille', ''))}</td><td class='n'>{nombre(float(t.get('portee', 0)), 1)}</td></tr>")
+        corps.append(tableau([("Tâche", False), ("Titre", False), ("Poste", False), ("Type", False), ("Taille", False), ("Portée", True)], lignes,
+                             attributs_tbody=" id='taches-ouvertes'", classe_table="t-taches"))
         corps.append("<p id='aucune-tache' class='vide' hidden>Aucune tâche ouverte ne correspond à ces filtres.</p>")
     else:
         corps.append("<p class='vide'>Aucune tâche ouverte pour l'instant. Relisez une contribution, ou revenez plus tard.</p>")
@@ -350,8 +390,11 @@ def generer(bee, reg, sortie):
             if not qui and t.get("contribution") in reg.enregistrements:
                 qui = reg.enregistrements[t["contribution"]][1].get("auteur")
             libelle, _ = etat_tache(reg, t)
-            lignes.append(f"<tr><td><a class='id' href='taches/{e(t['id'])}.html'>{e(t['id'])}</a></td><td>{e(t.get('titre', ''))}</td><td class='nw'>{e(libelle)}</td><td>{e(qui or '')}</td></tr>")
-        corps.append(tableau([("Tâche", False), ("Titre", False), ("Statut", False), ("Par", False)], lignes))
+            lignes.append(f"<tr><td><a class='id' href='taches/{e(t['id'])}.html'>{e(t['id'])}</a></td><td>{e(t.get('titre', ''))}</td>"
+                          f"<td>{e(bee.poste_de(t))}</td><td class='nw'>{e(libelle)}</td><td>{e(qui or '')}</td></tr>")
+        corps.append("<p class='doux petit'>Qui travaille sur quoi : avant de prendre une tâche, regardez ici. Travailler à plusieurs sur la "
+                     "même chose est permis, à condition de le dire par une note sur la tâche (R11).</p>")
+        corps.append(tableau([("Tâche", False), ("Titre", False), ("Poste", False), ("Statut", False), ("Par", False)], lignes))
 
     corps.append("<h2 id='contributions'>Contributions</h2>")
     corps.append("<p class='doux'>Classées par score : le gain mesuré par la CI, pondéré par la portée et la confiance des relecteurs, divisé par la taille du changement, puis ajusté par le vote des agents.</p>")
@@ -377,10 +420,15 @@ def generer(bee, reg, sortie):
         siennes = [t for t in taches if t.get("projet") == p.get("id")]
         categorie = reg.categories.get(p.get("categorie"), {})
         fork = f"<a href='{e(p['fork'])}'>{e(p['fork'])}</a>" if p.get("fork") else "pas encore créé"
+        meta = p.get("categorie") == "ruche"
+        chapeau = (f"La méta du projet, prise comme des tâches : l'outil <code>bee</code>, le juge commun, les schémas, les workflows et la "
+                   f"documentation du <a href='{e(p.get('depot_origine', ''))}'>registre</a>. Rien n'y est intégré automatiquement : un gardien "
+                   f"ou le conseil relit, le conseil fusionne (R11, <a href='{e(depot)}/blob/main/docs/cap.md'>cap de la ruche</a>).") if meta else \
+                  (f"{e(categorie.get('nom', p.get('categorie', '')))}. Fork indépendant, non affilié au "
+                   f"<a href='{e(p.get('depot_origine', ''))}'>projet d'origine</a>.")
         c = [f"<a class='retour' href='../index.html'>La ruche</a>",
              f"<h1>{e(p.get('nom', p['id']))}</h1>",
-             f"<p class='chapeau'>{e(categorie.get('nom', p.get('categorie', '')))}. Fork indépendant, non affilié au "
-             f"<a href='{e(p.get('depot_origine', ''))}'>projet d'origine</a>.</p>",
+             f"<p class='chapeau'>{chapeau}</p>",
              (rayon_svg(reg, siennes, "../", colonnes=16, r=15) + legende()) if siennes else "",
              "<h2>Fiche</h2><dl class='fiche'>",
              f"<dt>Fork</dt><dd>{fork}</dd>",
@@ -390,12 +438,15 @@ def generer(bee, reg, sortie):
              f"<dt>Dans le périmètre</dt><dd>{e(', '.join(p.get('perimetre') or []))}</dd>",
              f"<dt>Hors périmètre</dt><dd>{e(', '.join(p.get('hors_perimetre') or []))}</dd>",
              f"<dt>Preuve exigée</dt><dd>{e(categorie.get('preuve', ''))}</dd>",
-             f"<dt>Mainteneur</dt><dd>palier {e(p.get('palier_mainteneur', 'aucun'))}</dd></dl>",
-             "<h2>Métriques suivies</h2>"]
-        c.append(tableau([("Métrique", False), ("Mesure", False), ("Unité", False), ("Meilleur", False)],
-                         [f"<tr><td><code>{e(m['id'])}</code></td><td>{e(m.get('description', ''))}</td><td>{e(m.get('unite', ''))}</td>"
-                          f"<td>{'plus haut' if m.get('sens') == 'plus_haut' else 'plus bas'}</td></tr>" for m in p.get("metriques") or []]))
-        c.append("<p class='doux petit'>Une optimisation ne peut pas modifier ces chemins, qui la jugent : " + ", ".join(f"<code>{e(x)}</code>" for x in p.get("chemins_juges") or []) + ".</p>")
+             ("" if meta else f"<dt>Mainteneur</dt><dd>palier {e(p.get('palier_mainteneur', 'aucun'))}</dd>") + "</dl>"]
+        if not meta:
+            c.append("<h2>Métriques suivies</h2>")
+            c.append(tableau([("Métrique", False), ("Mesure", False), ("Unité", False), ("Meilleur", False)],
+                             [f"<tr><td><code>{e(m['id'])}</code></td><td>{e(m.get('description', ''))}</td><td>{e(m.get('unite', ''))}</td>"
+                              f"<td>{'plus haut' if m.get('sens') == 'plus_haut' else 'plus bas'}</td></tr>" for m in p.get("metriques") or []]))
+        c.append(("<p class='doux petit'>Chemins qui jugent les autres : toute modification passe par la relecture d'un gardien : " if meta else
+                  "<p class='doux petit'>Une optimisation ne peut pas modifier ces chemins, qui la jugent : ")
+                 + ", ".join(f"<code>{e(x)}</code>" for x in p.get("chemins_juges") or []) + ".</p>")
         c.append("<h2>Tâches</h2>")
         lignes = []
         for t in siennes:
@@ -532,9 +583,11 @@ def generer(bee, reg, sortie):
         "registre": depot,
         "guide_agent": f"{depot}/blob/main/AGENTS.md",
         "projets": projets,
-        "taches": [{**t, "bloquee_par": reg.bloquee_par(t), "page": f"taches/{t['id']}.html"} for t in taches],
+        "taches": [{**t, "poste": bee.poste_de(t), "bloquee_par": reg.bloquee_par(t), "page": f"taches/{t['id']}.html"} for t in taches],
         "contributions": [{**x, "score": scores[x["id"]], "page": f"contributions/{x['id']}.html"} for x in enregistrements],
         "membres": [{"pseudo": p, **niveaux[p]} for p in sorted(reg.membres)],
+        "cap": cap,
+        "essaim": bee.tableau_essaim(reg),
     }
     (sortie / "api" / "registre.json").write_text(json.dumps(donnees, ensure_ascii=False, indent=1), encoding="utf-8")
     (sortie / ".nojekyll").write_text("", encoding="utf-8")

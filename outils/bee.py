@@ -41,6 +41,9 @@ ID_CONTRIBUTION = re.compile(r"^(?P<tache>[a-z0-9]+(?:-[a-z0-9]+)*-[0-9]{4})-c(?
 ID_PROPOSITION = re.compile(r"^P-[0-9]{4}$")
 A_REMPLIR = "À REMPLIR"
 CLES_LIBRE_SERVICE_TACHE = {"statut", "reservation", "contribution", "notes"}
+# Outillage du registre (tâches de la ruche) : un membre peut le modifier par PR, jamais fusionnée automatiquement.
+CHEMINS_OUTILLAGE = ("outils/*", "schemas/*", "modeles/*", "docs/*", ".github/*", ".claude/*",
+                     "AGENTS.md", "README.md", "UTILISATEURS.md", "MAINTENEURS.md")
 
 
 class ErreurBee(Exception):
@@ -345,6 +348,144 @@ class Registre:
 
 
 # --------------------------------------------------------------------------
+# Cap de la ruche (R11) et tableau de l'essaim : vers où diriger le travail, qui fait quoi
+# --------------------------------------------------------------------------
+
+# Poste d'une tâche qui n'en déclare pas (docs/cap.md) : les tests sont des juges, donc de la gouvernance ;
+# mesures et relectures vérifient le travail des autres (coordination) ; le reste est le travail sur les projets.
+POSTE_PAR_TYPE = {"optimisation": "projets", "decoupage": "projets", "test": "gouvernance",
+                  "mesure": "coordination", "relecture": "coordination"}
+POIDS_TAILLE = {"S": 1.0, "M": 2.0, "L": 3.0}
+# Poids des gestes qui ne sont pas des tâches (docs/cap.md) : ils comptent aussi comme du travail de la ruche.
+POIDS_GESTES = {"relecture": 1.0, "mesure": 1.0, "note": 0.5, "proposition": 2.0, "vote": 0.5, "creation_tache": 1.0}
+
+
+def poste_de(tache):
+    """Poste d'une tâche : celui qu'elle déclare, sinon celui de son type (la méta du projet « ruche » : gouvernance)."""
+    tache = tache or {}
+    if tache.get("poste"):
+        return tache["poste"]
+    if tache.get("projet") == "ruche":
+        return "gouvernance"
+    return POSTE_PAR_TYPE.get(tache.get("type"), "projets")
+
+
+def cap_cible(reg):
+    """Parts visées par poste, en pourcentage (bee.yaml, clé cap.postes)."""
+    postes = (reg.config.get("cap") or {}).get("postes") or {}
+    return {str(p): float(v) for p, v in postes.items() if isinstance(v, (int, float)) and not isinstance(v, bool)}
+
+
+def _instant_ou_rien(valeur):
+    if valeur is None:
+        return None
+    texte = str(valeur)
+    try:
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", texte):
+            return dt.datetime.combine(dt.date.fromisoformat(texte), dt.time(), dt.timezone.utc)
+        return lire_instant(texte)
+    except (ErreurBee, ValueError):
+        return None
+
+
+def activite_par_poste(reg, instant=None, jours=None):
+    """Travail de la ruche sur la fenêtre, par poste : ({poste: {"total": poids, "gestes": {genre: poids}}}, jours).
+
+    Compte les réservations en cours et les contributions (poids de la taille de la tâche), les tâches créées ou
+    proposées, les relectures, mesures et notes (coordination), les propositions de règle et les votes
+    (gouvernance). Les robots ne comptent pas."""
+    instant = instant or maintenant()
+    jours = int(jours or (reg.config.get("cap") or {}).get("fenetre_jours", 14))
+    debut, fin = instant - dt.timedelta(days=jours), instant + dt.timedelta(minutes=10)
+    activite = defaultdict(lambda: {"total": 0.0, "gestes": defaultdict(float)})
+
+    def compter(poste, poids, quand, genre, qui):
+        moment = _instant_ou_rien(quand)
+        if qui in reg.robots or moment is None or not debut <= moment <= fin:
+            return
+        activite[poste]["total"] += poids
+        activite[poste]["gestes"][genre] += poids
+
+    for _, t in reg.taches.values():
+        if not isinstance(t, dict):
+            continue
+        poste, poids = poste_de(t), POIDS_TAILLE.get(t.get("taille"), 1.0)
+        reservation = t.get("reservation") or {}
+        if t.get("statut") == "reservee" and isinstance(reservation, dict):
+            compter(poste, poids, reservation.get("depuis"), "travail en cours", reservation.get("utilisateur"))
+        compter(poste, POIDS_GESTES["creation_tache"], t.get("cree_le"), "tâches créées ou proposées", t.get("cree_par"))
+        for n in t.get("notes") or []:
+            if isinstance(n, dict):
+                compter("coordination", POIDS_GESTES["note"], n.get("le"), "notes", n.get("par"))
+    for _, e in reg.enregistrements.values():
+        if not isinstance(e, dict):
+            continue
+        t = reg.taches.get(e.get("tache"), (None, {}))[1] or {}
+        compter(poste_de(t), POIDS_TAILLE.get(t.get("taille"), 1.0), e.get("soumise_le"), "contributions", e.get("auteur"))
+        for r in e.get("relectures") or []:
+            if isinstance(r, dict):
+                compter("coordination", POIDS_GESTES["relecture"], r.get("le"), "relectures", r.get("relecteur"))
+    for _, m in reg.mesures:
+        compter("coordination", POIDS_GESTES["mesure"], m.get("le"), "mesures", m.get("soumise_par"))
+    for _, p in reg.propositions.values():
+        compter("gouvernance", POIDS_GESTES["proposition"], p.get("ouverte_le"), "propositions de règle", p.get("auteur"))
+    for _, v in reg.votes:
+        compter("gouvernance", POIDS_GESTES["vote"], v.get("le"), "votes", v.get("votant"))
+    return activite, jours
+
+
+def etat_du_cap(reg, instant=None, jours=None):
+    """Cible et part réelle de chaque poste, et le poste le plus en retard sur sa cible."""
+    cible = cap_cible(reg)
+    activite, jours = activite_par_poste(reg, instant, jours)
+    total = sum(a["total"] for a in activite.values())
+    lignes = []
+    for poste in list(cible) + sorted(p for p in activite if p not in cible):
+        poids = activite[poste]["total"] if poste in activite else 0.0
+        reel = 100.0 * poids / total if total else None
+        lignes.append({"poste": poste, "cible": cible.get(poste), "reel": reel, "poids": round(poids, 2),
+                       "ecart": None if reel is None or poste not in cible else reel - cible[poste],
+                       "gestes": {g: round(x, 2) for g, x in sorted(activite[poste]["gestes"].items())} if poste in activite else {}})
+    candidats = [l for l in lignes if l["cible"] is not None]
+    en_retard = max(candidats, key=lambda l: l["cible"] - (l["reel"] or 0.0))["poste"] if candidats else None
+    return {"fenetre_jours": jours, "total": round(total, 2), "postes": lignes, "en_retard": en_retard}
+
+
+def tableau_essaim(reg, instant=None, jours_notes=7):
+    """Qui fait quoi : réservations en cours, contributions en relecture, notes récentes (coordination, R11)."""
+    instant = instant or maintenant()
+    heures_max = float(reg.config.get("reservation_max_heures", 72))
+    fenetre = float(reg.config.get("fenetre_acceptation_heures", 24))
+    heures = lambda depuis: round((instant - depuis).total_seconds() / 3600, 1)  # noqa: E731
+    en_cours, relecture, notes = [], [], []
+    for tid, (_, t) in sorted(reg.taches.items()):
+        r = t.get("reservation") or {}
+        if t.get("statut") != "reservee" or not isinstance(r, dict):
+            continue
+        depuis = _instant_ou_rien(r.get("depuis"))
+        en_cours.append({"tache": tid, "titre": t.get("titre"), "poste": poste_de(t), "taille": t.get("taille"),
+                         "utilisateur": r.get("utilisateur"), "depuis": r.get("depuis"),
+                         "heures": heures(depuis) if depuis else None,
+                         "expire_dans_heures": round(heures_max - heures(depuis), 1) if depuis else None})
+    for cid, (_, e) in sorted(reg.enregistrements.items()):
+        if not isinstance(e, dict) or e.get("statut") != "en_relecture":
+            continue
+        soumise = _instant_ou_rien(e.get("soumise_le"))
+        t = reg.taches.get(e.get("tache"), (None, {}))[1] or {}
+        relecture.append({"contribution": cid, "tache": e.get("tache"), "poste": poste_de(t), "auteur": e.get("auteur"),
+                          "pr": e.get("pr"), "ci": (e.get("verdict") or {}).get("ci"), "relectures": len(e.get("relectures") or []),
+                          "fenetre_restante_heures": round(max(0.0, fenetre - heures(soumise)), 1) if soumise else None})
+    limite = instant - dt.timedelta(days=jours_notes)
+    for tid, (_, t) in reg.taches.items():
+        for n in t.get("notes") or []:
+            moment = _instant_ou_rien(n.get("le")) if isinstance(n, dict) else None
+            if moment and moment >= limite and n.get("par") not in reg.robots:
+                notes.append({"tache": tid, "par": n.get("par"), "le": n.get("le"), "texte": str(n.get("texte", ""))})
+    notes.sort(key=lambda n: str(n["le"]), reverse=True)
+    return {"en_cours": en_cours, "en_relecture": relecture, "notes": notes[:15]}
+
+
+# --------------------------------------------------------------------------
 # Réputation, score, votes
 # --------------------------------------------------------------------------
 
@@ -462,6 +603,26 @@ def verifier_registre(reg):
 
     regles = (reg.racine / "REGLES.md").read_text(encoding="utf-8") if (reg.racine / "REGLES.md").exists() else ""
 
+    # R11 : le cap de la ruche est un guide, mais il doit être lisible : des postes nommés, des parts qui font 100 %.
+    cap = reg.config.get("cap")
+    if cap is not None:
+        postes = cap.get("postes") if isinstance(cap, dict) else None
+        if not isinstance(postes, dict) or not postes:
+            ajouter("bee.yaml : cap.postes doit lister les postes et leur part en pourcentage (R11, docs/cap.md)")
+        else:
+            for nom, part in postes.items():
+                if not re.fullmatch(r"[a-z][a-z0-9_]*", str(nom)):
+                    ajouter(f"bee.yaml : cap.postes : nom de poste invalide « {nom} »")
+                if not isinstance(part, (int, float)) or isinstance(part, bool) or not 0 <= part <= 100:
+                    ajouter(f"bee.yaml : cap.postes.{nom} : part entre 0 et 100 attendue")
+            somme = sum(v for v in postes.values() if isinstance(v, (int, float)) and not isinstance(v, bool))
+            if abs(somme - 100) > 0.01:
+                ajouter(f"bee.yaml : cap.postes : les parts font {somme:g} %, pas 100 %")
+        fenetre = cap.get("fenetre_jours", 14) if isinstance(cap, dict) else 14
+        if not isinstance(fenetre, int) or isinstance(fenetre, bool) or not 1 <= fenetre <= 365:
+            ajouter("bee.yaml : cap.fenetre_jours : nombre de jours entre 1 et 365 attendu")
+    postes_connus = set(cap_cible(reg))
+
     for stem, (chemin, projet) in reg.projets.items():
         if not selon_schema("projet", chemin, projet):
             continue
@@ -475,6 +636,8 @@ def verifier_registre(reg):
         ids = [m["id"] for m in projet["metriques"]]
         if len(ids) != len(set(ids)):
             ajouter(f"{reg.rel(chemin)} : métriques en double")
+        if not ids and projet["categorie"] != "ruche":
+            ajouter(f"{reg.rel(chemin)} : un projet à optimiser déclare au moins une métrique (seule la ruche elle-même n'en a pas)")
 
     for stem, (chemin, membre) in reg.membres.items():
         if selon_schema("membre", chemin, membre) and membre["pseudo"] != stem:
@@ -499,6 +662,10 @@ def verifier_registre(reg):
                 ajouter(f"{lieu} : catégorie « {tache['categorie']} » différente de celle du projet « {projet[1].get('categorie')} »")
             if tache["metrique"] is not None and tache["metrique"] not in reg.metriques(tache["projet"]):
                 ajouter(f"{lieu} : métrique « {tache['metrique']} » absente de projets/{tache['projet']}.yaml")
+        if tache.get("poste") and postes_connus and tache["poste"] not in postes_connus:
+            ajouter(f"{lieu} : poste « {tache['poste']} » absent du cap de la ruche (bee.yaml, cap.postes : {', '.join(sorted(postes_connus))})")
+        if tache.get("projet") == "ruche" and tache.get("type") == "optimisation":
+            ajouter(f"{lieu} : la ruche n'a pas de métrique à optimiser : une tâche de la ruche est un test, une relecture, une mesure ou un découpage")
         if tache["categorie"] == "compression-sans-perte" and tache["type"] == "optimisation" and "sortie_compressee" not in tache:
             ajouter(f"{lieu} : une optimisation de compression doit préciser sortie_compressee (identique ou peut_changer)")
         for dep in tache.get("depend_de") or []:
@@ -876,6 +1043,13 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None):
                        f"{chemin} : une proposition naît ouverte, au nom de {auteur}")
             continue
 
+        if not est_conseil and correspond(chemin, CHEMINS_OUTILLAGE):
+            # Tâches de la ruche (projets/ruche.yaml) : tout membre peut proposer une PR d'outillage du registre.
+            # Elle n'est jamais fusionnée automatiquement (« outillage » n'est pas en libre-service) : un gardien
+            # ou le conseil la relit, le conseil la fusionne.
+            natures.append("outillage")
+            exiger(auteur in reg.membres, f"{chemin} : {auteur} doit d'abord s'inscrire (bee inscrire) pour proposer de l'outillage")
+            continue
         natures.append("gouvernance")
         exiger(est_conseil, f"{chemin} : modification réservée au conseil humain"
                + (" (et 30 jours de discussion publique : commandement 11)" if chemin == "COMMANDEMENTS.md"
@@ -1011,11 +1185,13 @@ def cmd_lister(args):
             continue
         if args.taille_max and ORDRE_TAILLES.index(t.get("taille", "L")) > ORDRE_TAILLES.index(args.taille_max):
             continue
+        if args.poste and poste_de(t) != args.poste:
+            continue
         bloquee = reg.bloquee_par(t)
         if args.disponibles and bloquee:
             masquees.append((t["id"], bloquee))
             continue
-        resultat.append({**t, "bloquee_par": bloquee})
+        resultat.append({**t, "poste": poste_de(t), "bloquee_par": bloquee})
     if args.json:
         print(json.dumps(resultat, ensure_ascii=False, indent=2))
         return 0
@@ -1030,10 +1206,100 @@ def cmd_lister(args):
         else:
             print("Rien à relire non plus : dites-le à votre utilisateur et arrêtez-vous (AGENTS.md, « Quand t'arrêter »).")
         return 0
-    afficher_tableau(["ID", "TYPE", "TAILLE", "PORTÉE", "STATUT", "TITRE"],
-                     [[t["id"], t["type"], t["taille"], f"{float(t['portee']):.1f}", t["statut"] + (" (bloquée)" if t["bloquee_par"] else ""), t["titre"]] for t in resultat])
+    afficher_tableau(["ID", "POSTE", "TYPE", "TAILLE", "PORTÉE", "STATUT", "TITRE"],
+                     [[t["id"], t["poste"], t["type"], t["taille"], f"{float(t['portee']):.1f}",
+                       t["statut"] + (" (bloquée)" if t["bloquee_par"] else ""), t["titre"]] for t in resultat])
     if masquees:
         print(f"\n{message_masquees}")
+    if not args.json and cap_cible(reg):
+        etat = etat_du_cap(reg)
+        if etat["en_retard"]:
+            print(f"\nCap de la ruche (R11) : le poste le plus en retard sur sa cible est « {etat['en_retard']} ». "
+                  "Un guide, pas une obligation : bee cap.")
+    return 0
+
+
+def _pct(x):
+    return "-" if x is None else f"{x:.0f} %"
+
+
+def cmd_cap(args):
+    """R11 : cible et part réelle de chaque poste sur la fenêtre, et des pistes pour le poste le plus en retard."""
+    reg = Registre(args.registre)
+    etat = etat_du_cap(reg, jours=args.jours)
+    pistes = {"taches": [], "a_relire": [], "propositions": [], "a_valider": []}
+    poste = args.poste or etat["en_retard"]
+    if poste:
+        ouvertes = [t for _, t in reg.taches.values() if isinstance(t, dict) and t.get("statut") == "ouverte"
+                    and poste_de(t) == poste and not reg.bloquee_par(t)]
+        ouvertes.sort(key=lambda t: (-float(t.get("portee", 0)), ORDRE_TAILLES.index(t.get("taille", "L")), t.get("id", "")))
+        pistes["taches"] = [{"id": t["id"], "taille": t.get("taille"), "titre": t.get("titre")} for t in ouvertes[:6]]
+        if poste == "coordination":
+            pistes["a_relire"] = [x["contribution"] for x in tableau_essaim(reg)["en_relecture"]]
+        if poste == "gouvernance":
+            pistes["propositions"] = sorted(pid for pid, (_, p) in reg.propositions.items() if p.get("statut") == "ouverte")
+            pistes["a_valider"] = sorted(tid for tid, (_, t) in reg.taches.items() if t.get("statut") == "proposee")
+    if args.json:
+        print(json.dumps({**etat, "poste_suggere": poste, "pistes": pistes}, ensure_ascii=False, indent=2))
+        return 0
+    if not etat["postes"]:
+        print("Aucun cap défini (bee.yaml, clé cap). Voir docs/cap.md.")
+        return 0
+    print(f"Cap de la ruche (R11), {etat['fenetre_jours']} derniers jours. Un guide, pas une obligation : docs/cap.md.")
+    lignes = []
+    for l in etat["postes"]:
+        ecart = "-" if l["ecart"] is None else f"{l['ecart']:+.0f} pts"
+        gestes = ", ".join(f"{g} {x:g}" for g, x in sorted(l["gestes"].items(), key=lambda kv: -kv[1])) or "rien"
+        lignes.append([l["poste"], _pct(l["cible"]), _pct(l["reel"]), ecart, gestes])
+    afficher_tableau(["POSTE", "CIBLE", "RÉEL", "ÉCART", "ACTIVITÉ (poids)"], lignes)
+    if not etat["total"]:
+        print("\nAucune activité sur la fenêtre : toute contribution aide ; commencez par le poste le plus en retard.")
+    if poste:
+        print(f"\n{'Poste demandé' if args.poste else 'Poste le plus en retard'} : {poste}. Pistes :")
+        for t in pistes["taches"]:
+            print(f"  - {t['id']} ({t['taille']}) : {t['titre']}")
+        if pistes["a_relire"]:
+            print(f"  - contributions à relire : {', '.join(pistes['a_relire'])} (bee classement --statut en_relecture)")
+        if pistes["propositions"]:
+            print(f"  - propositions de règle ouvertes, à débattre et voter : {', '.join(pistes['propositions'])}")
+        if pistes["a_valider"]:
+            print(f"  - tâches proposées, à valider ou écarter par un gardien ou un Confirmé : {', '.join(pistes['a_valider'])}")
+        if not any(pistes.values()):
+            print("  - aucune tâche ouverte dans ce poste : proposez-en une (bee proposer-tache), c'est déjà du travail utile.")
+    print("\nQui travaille sur quoi : bee essaim.")
+    return 0
+
+
+def cmd_essaim(args):
+    """Tableau de l'essaim (R11, coordination) : qui travaille sur quoi en ce moment."""
+    reg = Registre(args.registre)
+    tableau = tableau_essaim(reg)
+    if args.json:
+        print(json.dumps(tableau, ensure_ascii=False, indent=2))
+        return 0
+    print("En cours (réservations) :")
+    if tableau["en_cours"]:
+        afficher_tableau(["TÂCHE", "POSTE", "TAILLE", "QUI", "DEPUIS", "EXPIRE DANS"],
+                         [[x["tache"], x["poste"], x["taille"], x["utilisateur"],
+                           "-" if x["heures"] is None else f"{x['heures']:g} h",
+                           "-" if x["expire_dans_heures"] is None else f"{x['expire_dans_heures']:g} h"] for x in tableau["en_cours"]])
+    else:
+        print("  personne.")
+    print("\nEn relecture (contributions soumises) :")
+    if tableau["en_relecture"]:
+        afficher_tableau(["CONTRIBUTION", "POSTE", "AUTEUR", "CI", "RELECTURES", "FENÊTRE RESTANTE"],
+                         [[x["contribution"], x["poste"], x["auteur"], x["ci"] or "en attente", x["relectures"],
+                           "-" if x["fenetre_restante_heures"] is None else f"{x['fenetre_restante_heures']:g} h"]
+                          for x in tableau["en_relecture"]])
+    else:
+        print("  rien.")
+    if tableau["notes"]:
+        print("\nNotes récentes (7 jours) :")
+        for n in tableau["notes"]:
+            texte = n["texte"] if len(n["texte"]) <= 140 else n["texte"][:137] + "…"
+            print(f"  - {n['tache']}, {n['par']}, {n['le']} : {texte}")
+    print("\nAvant de choisir : évitez de reprendre seul ce qu'un autre fait déjà ; si deux approches valent d'être "
+          "comparées, dites-le dans une note de la tâche (bee noter). Cap de la ruche : bee cap.")
     return 0
 
 
@@ -1044,6 +1310,7 @@ def cmd_voir(args):
     print("\n# --- calculé par bee ---")
     bloquee = reg.bloquee_par(t)
     print(f"# bloquée par : {', '.join(bloquee) if bloquee else 'rien'}")
+    print(f"# poste du cap de la ruche (R11) : {poste_de(t)}" + ("" if t.get("poste") else " (d'après son type)"))
     print(f"# lignes modifiées autorisées (R1) : {LIGNES_MAX[t['taille']]}")
     niveau_requis = "Confirmé" if t["type"] == "decoupage" else {"S": "Nouveau", "M": "Contributeur", "L": "Confirmé"}[t["taille"]]
     print(f"# niveau requis : {niveau_requis}" + (" (non appliqué pendant l'amorçage)" if reg.config.get("amorcage") else ""))
@@ -1916,6 +2183,15 @@ def construire_analyseur():
     p.add_argument("--type", choices=["optimisation", "relecture", "mesure", "test", "decoupage"])
     p.add_argument("--taille-max", choices=ORDRE_TAILLES, help="taille maximale compatible avec votre budget")
     p.add_argument("--disponibles", action="store_true", help="masque les tâches qui attendent une autre tâche")
+    p.add_argument("--poste", help="poste du cap de la ruche (R11) : gouvernance, projets, coordination…")
+    p.add_argument("--json", action="store_true")
+
+    p = ajouter("cap", cmd_cap, "Cap de la ruche (R11) : cible et part réelle de chaque poste, et des pistes pour le plus en retard.")
+    p.add_argument("--jours", type=int, help="fenêtre en jours (défaut : cap.fenetre_jours de bee.yaml)")
+    p.add_argument("--poste", help="pistes pour ce poste plutôt que pour le plus en retard")
+    p.add_argument("--json", action="store_true")
+
+    p = ajouter("essaim", cmd_essaim, "Qui travaille sur quoi : réservations en cours, contributions en relecture, notes récentes.")
     p.add_argument("--json", action="store_true")
 
     p = ajouter("voir", cmd_voir, "Affiche une tâche complète et ce qu'il faut savoir pour la prendre.")

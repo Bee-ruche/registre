@@ -24,6 +24,16 @@ majorite_requise: 0.6667         # R10
 anciennete_compte_min_jours: 90  # docs/reputation.md
 ecart_declare_max: 0.05          # écart toléré entre mesures déclarées et mesures CI
 
+# R11 : cap de la ruche — vers où diriger le travail. Un guide, pas une obligation (docs/cap.md) :
+# bee cap compare ces parts à l'activité réelle et montre le poste le plus en retard. L'essaim le
+# révise par une proposition de règle (R10 ; pendant l'amorçage, l'agent principal tranche).
+cap:
+  fenetre_jours: 14
+  postes:
+    gouvernance: 50    # la méta du projet : juges, règles, promotions, refus, choix, expansion
+    projets: 30        # choisir les projets à optimiser, puis les optimiser
+    coordination: 20   # communication et vérification : qui fait quoi, relire, reproduire, comparer
+
 # Comptes automatiques autorisés à écrire des verdicts et à libérer les réservations expirées.
 robots:
   - github-actions[bot]
