@@ -1,7 +1,8 @@
 # Récupère les verdicts des CI des forks et les reporte dans le registre.
 #
 # Sécurité : seul l'outil bee de la branche principale s'exécute ici. verdict.json et
-# CONTRIBUTION.yaml viennent des forks et sont traités comme des données.
+# CONTRIBUTION.yaml viennent des forks et sont traités comme des données. Une contribution dont la PR
+# n'a pas été ouverte par son auteur ne reçoit aucun verdict (pas de crédit pour le travail d'un autre).
 name: Verdicts des forks
 
 on:
@@ -40,11 +41,17 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           python3 outils/bee.py en-attente \
-            | python3 -c 'import json, sys; [print(c["id"], c["pr"], c.get("sha_verdict") or "-", c.get("ci_verdict") or "-", sep="\t") for c in json.load(sys.stdin)]' \
+            | python3 -c 'import json, sys; [print(c["id"], c["pr"], c.get("sha_verdict") or "-", c.get("ci_verdict") or "-", c.get("auteur") or "-", sep="\t") for c in json.load(sys.stdin)]' \
             > a_traiter.tsv
-          while IFS=$'\t' read -r id pr sha_connu ci_connue; do
+          while IFS=$'\t' read -r id pr sha_connu ci_connue auteur; do
             depot=$(printf '%s' "$pr" | sed -E 's#^https://github\.com/([A-Za-z0-9-]+/[A-Za-z0-9_.-]+)/pull/[0-9]+$#\1#')
-            sha=$(gh pr view "$pr" --json headRefOid --jq .headRefOid) || continue
+            infos=$(gh pr view "$pr" --json headRefOid,author --jq '"\(.headRefOid) \(.author.login)"') || continue
+            read -r sha auteur_pr <<< "$infos"
+            # Le champ pr d'une contribution est déclaré par son auteur : la PR doit être la sienne (le pseudo d'un membre
+            # est son login GitHub). Sinon, aucun verdict : on ne juge pas le travail d'un autre sous son nom.
+            if [ "${auteur_pr,,}" != "${auteur,,}" ]; then
+              echo "::notice::$id : la PR $pr a été ouverte par $auteur_pr, pas par $auteur ; aucun verdict n'est enregistré."; continue
+            fi
             # Un verdict vert sur ce commit est définitif ; un rouge peut venir d'une panne passagère
             # (runner indisponible) : on relit la dernière exécution terminée, qui a pu être relancée.
             [ "$sha" = "$sha_connu" ] && [ "$ci_connue" = "verte" ] && continue

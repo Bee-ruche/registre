@@ -66,6 +66,8 @@
     "motif_decision": {"type": "string"},
     "decidee_le": {"type": "string"},
     "fusion_sha": {"type": "string", "pattern": "^[0-9a-f]{7,40}$"},
+    "jamais_integree": {"const": true,
+                        "description": "Statut « annulee » : close sans avoir jamais été intégrée (PR fermée sans fusion) ; ses relecteurs favorables ne perdent pas de point"},
     "retenue": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*-[0-9]{4}-c[0-9]+$",
                 "description": "Statut « ecartee » : la contribution concurrente de la même tâche retenue à sa place par R3"}
   },
@@ -74,6 +76,11 @@
       "if": {"properties": {"statut": {"const": "ecartee"}}, "required": ["statut"]},
       "then": {"required": ["retenue", "decidee_le", "motif_decision"]},
       "else": {"not": {"required": ["retenue"]}}
+    },
+    {
+      "if": {"properties": {"statut": {"const": "annulee"}}, "required": ["statut"]},
+      "then": true,
+      "else": {"not": {"required": ["jamais_integree"]}}
     }
   ]
 }

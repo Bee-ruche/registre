@@ -756,7 +756,9 @@ def calculer_niveaux(reg):
             s = stats[r.get("relecteur")]
             if r.get("defaut_confirme"):
                 s["relectures"] += 2
-            elif statut == "annulee" and r.get("avis") == "favorable":
+            elif statut == "annulee" and r.get("avis") == "favorable" and not enr.get("jamais_integree"):
+                # Seule une contribution intégrée puis annulée coûte un point à qui l'avait approuvée ; une contribution
+                # close sans avoir été intégrée (PR fermée sans fusion, bee cloturer) vaut 0 (docs/reputation.md).
                 s["relectures"] -= 1
             elif (statut == "integree" and r.get("avis") == "favorable") or (statut == "refusee" and r.get("avis") == "defavorable"):
                 s["relectures"] += 1
@@ -2775,6 +2777,7 @@ def cmd_cloturer(args):
         return 1
     enr = dict(enr)
     enr["statut"] = "annulee"
+    enr["jamais_integree"] = True  # close depuis la relecture : ses relecteurs ne perdent rien (docs/reputation.md)
     enr["decidee_le"] = en_iso(maintenant())
     enr["motif_decision"] = args.motif
     ecrire_yaml(chemin, enr)
@@ -2811,7 +2814,8 @@ def cmd_en_attente(args):
     reg = Registre(args.registre)
     niveaux = calculer_niveaux(reg)
     taches = sorted({e.get("tache") for _, (_, e) in reg.enregistrements.items() if isinstance(e, dict) and e.get("statut") == "en_relecture"})
-    resultat = [{"id": cid, "pr": enr.get("pr"), "sha_verdict": (enr.get("verdict") or {}).get("sha"),
+    # auteur : le pseudo d'un membre est son login GitHub ; les workflows vérifient que la PR est bien la sienne.
+    resultat = [{"id": cid, "pr": enr.get("pr"), "auteur": enr.get("auteur"), "sha_verdict": (enr.get("verdict") or {}).get("sha"),
                  "ci_verdict": (enr.get("verdict") or {}).get("ci")}
                 for tid in taches for cid, enr in classement_course(reg, tid, niveaux)]
     print(json.dumps(resultat, ensure_ascii=False, indent=2))

@@ -2105,8 +2105,9 @@ class TestPullRequestsEnParallele(BaseParallele):
         self.refusee("alice", "seul le robot d'intégration écarte")
 
 
-# Faux `gh` pour rejouer les étapes d'integration-auto.yml hors ligne : état des PR dans FAUX_GH_ETAT
-# ({url: {state, head, auteur, merge, conflit}}), chaque appel journalisé dans FAUX_GH_JOURNAL.
+# Faux `gh` pour rejouer les étapes d'integration-auto.yml et de verdicts.yml hors ligne : état des PR dans FAUX_GH_ETAT
+# ({url: {state, head, auteur, merge, conflit, verdict}}), chaque appel journalisé dans FAUX_GH_JOURNAL. Une PR qui porte
+# un « verdict » a une exécution de CI terminée sur sa tête (numéro de run = numéro de PR).
 FAUX_GH = r'''
 import json, os, sys
 etat_chemin, journal, args = os.environ["FAUX_GH_ETAT"], os.environ["FAUX_GH_JOURNAL"], sys.argv[1:]
@@ -2121,8 +2122,11 @@ if args[:2] == ["pr", "view"]:
     pr = etat.get(args[2])
     if pr is None:
         sys.exit(1)
+    auteur = pr.get("auteur", "?")
     reponses = {"state,headRefOid,mergeCommit": f"{pr['state']} {pr['head']} {pr.get('merge') or '-'}",
-                "mergeCommit": pr.get("merge") or "-", "state,author": f"{pr['state']} {pr.get('auteur', '?')}"}
+                "state,headRefOid,mergeCommit,author": f"{pr['state']} {pr['head']} {pr.get('merge') or '-'} {auteur}",
+                "headRefOid,author": f"{pr['head']} {auteur}",
+                "mergeCommit": pr.get("merge") or "-", "state,author": f"{pr['state']} {auteur}"}
     champs = args[args.index("--json") + 1]
     if champs not in reponses:
         sys.exit(2)
@@ -2142,6 +2146,28 @@ if args[:2] == ["pr", "close"]:
     pr["state"] = "CLOSED"
     sauver()
     sys.exit(0)
+if args[:2] == ["run", "list"]:
+    sha = args[args.index("--commit") + 1]
+    for url, pr in etat.items():
+        if pr.get("head") == sha and pr.get("verdict"):
+            numero = url.rsplit("/", 1)[1]
+            print(f"{numero} https://github.com/Bee-ruche/minizBee/actions/runs/{numero}")
+            break
+    sys.exit(0)
+if args[:2] == ["run", "download"]:
+    pr = next((p for u, p in etat.items() if u.endswith("/pull/" + args[2]) and p.get("verdict")), None)
+    if pr is None:
+        sys.exit(1)
+    dossier = args[args.index("-D") + 1]
+    os.makedirs(dossier, exist_ok=True)
+    with open(os.path.join(dossier, "verdict.json"), "w", encoding="utf-8") as f:
+        json.dump(pr["verdict"], f)
+    sys.exit(0)
+if args[:1] == ["api"] and "/pulls/" in args[1] and args[1].endswith("/files"):
+    print("miniz_tdef.c")
+    sys.exit(0)
+if args[:1] == ["api"]:
+    sys.exit(1)
 sys.exit(3)
 '''
 PR_MINIZ = "https://github.com/Bee-ruche/minizBee/pull/"
@@ -2168,11 +2194,12 @@ class TestRevueAdverse(BaseParallele):
     def verifier(self, auteur, *options):
         return self.bee("verifier-pr", "--base", "main", "--tete", "HEAD", "--auteur", auteur, *options)
 
-    def etape(self, nom, etats=None):
-        """Rejoue une étape d'integration-auto.yml avec le faux gh : (sortie, état des PR, appels à gh)."""
+    def etape(self, nom, etats=None, flux="integration-auto.yml"):
+        """Rejoue une étape d'un workflow (integration-auto.yml par défaut) avec le faux gh : (sortie, état des PR, appels)."""
         import yaml
-        flux = yaml.safe_load((self.dossier / ".github/workflows/integration-auto.yml").read_text(encoding="utf-8"))
-        script = next(s["run"] for s in flux["jobs"]["integrer"]["steps"] if s.get("name", "").startswith(nom))
+        donnees = yaml.safe_load((self.dossier / ".github/workflows" / flux).read_text(encoding="utf-8"))
+        etapes = [s for job in donnees["jobs"].values() for s in job["steps"]]
+        script = next(s["run"] for s in etapes if s.get("name", "").startswith(nom))
         racine = self.dossier.parent
         (racine / "bin").mkdir(exist_ok=True)
         (racine / "runner").mkdir(exist_ok=True)
@@ -2540,6 +2567,66 @@ class TestRevueAdverse(BaseParallele):
         self.assertEqual(code, 0, texte)
         self.assertEqual(self.verifier("bidji29", "--fusion-auto")[0], 3, "décision du conseil : pas de fusion automatique")
         self.assertEqual(self.verifier("alice")[0], 1)
+
+    # --- Vol de crédit : la PR d'une contribution doit être celle de son auteur ---
+
+    def test_vol_de_credit_aucun_verdict_pour_la_pr_d_un_autre(self):
+        c1 = self.soumettre_0099("alice")  # PR 99007, ouverte en réalité par mallory
+        verdict = {"ci": "verte", "gain": 0.05, "au_dela_du_bruit": True, "lignes_modifiees": 10, "instructions": INSTRUCTIONS_N6}
+        etats = {PR_MINIZ + "99007": {"state": "OPEN", "head": "abc1234", "auteur": "mallory", "verdict": verdict}}
+        sortie, _, appels = self.etape("Récupérer les verdicts", etats, flux="verdicts.yml")
+        self.assertIn(f"{c1} : la PR {PR_MINIZ}99007 a été ouverte par mallory, pas par alice ; aucun verdict", sortie)
+        self.assertNotIn("verdict", self.enr(c1))
+        self.assertFalse(self.appels_de(appels, "run"), "aucune exécution de CI n'est même lue")
+        etats[PR_MINIZ + "99007"]["auteur"] = "Alice"  # le login GitHub ne tient pas compte de la casse
+        self.etape("Récupérer les verdicts", etats, flux="verdicts.yml")
+        enr = self.enr(c1)
+        self.assertEqual((enr["verdict"]["ci"], enr["verdict"]["sha"], enr["verdict"]["fichiers_controles"]), ("verte", "abc1234", True))
+        self.valide()
+
+    def test_vol_de_credit_ni_fusion_ni_consignation(self):
+        self.fermer_porte()
+        c1 = self.soumettre_0099("alice")
+        self.verdict(c1, 0.05)
+        self.relire(c1, "bruno", "bidji29")
+        self.a("2026-10-28T13:00:00Z")
+        self.assertEqual(self.acceptation(c1)[0], 0, "intégrable pour bee : seul le workflow voit à qui est la PR")
+        etats = {PR_MINIZ + "99007": {"state": "OPEN", "head": "abc1234", "auteur": "mallory"}}
+        sortie, etat, appels = self.etape("Intégrer", etats)
+        self.assertIn("ouverte par mallory, pas par alice ; ni fusionnée ni consignée", sortie)
+        self.assertFalse(self.appels_de(appels, "pr", "merge"))
+        self.assertEqual((etat[PR_MINIZ + "99007"]["state"], self.enr(c1)["statut"]), ("OPEN", "en_relecture"))
+        # Déjà fusionnée à la main, elle n'est pas consignée non plus au nom d'alice.
+        etats[PR_MINIZ + "99007"].update({"state": "MERGED", "merge": "e" * 40})
+        sortie, _, _ = self.etape("Intégrer", etats)
+        self.assertIn("ni fusionnée ni consignée", sortie)
+        self.assertEqual(self.enr(c1)["statut"], "en_relecture")
+        # La même PR, ouverte par alice : consignée, avec le commit de fusion.
+        etats[PR_MINIZ + "99007"]["auteur"] = "alice"
+        self.etape("Intégrer", etats)
+        self.assertEqual((self.enr(c1)["statut"], self.enr(c1)["fusion_sha"]), ("integree", "e" * 40))
+        self.valide()
+
+    # --- annulee : seuls les relecteurs d'une contribution intégrée puis annulée perdent un point ---
+
+    def test_annulee_sans_avoir_ete_integree_ne_coute_rien_a_ses_relecteurs(self):
+        c1 = self.soumettre_0099("alice")
+        self.assertEqual(self.bee("relire", c1, "--utilisateur", "bruno", "--avis", "favorable", "--motif", "Relu en entier, banc rejoué.")[0], 0)
+        self.assertEqual(self.bee("cloturer", c1, "--motif", "PR fermée sans fusion.")[0], 0)
+        enr = self.enr(c1)
+        self.assertEqual((enr["statut"], enr["jamais_integree"]), ("annulee", True))
+        self.valide()
+        self.assertEqual(bee.calculer_niveaux(bee.Registre(self.dossier))["bruno"]["relectures"], 0)
+        # Intégrée puis annulée (par le conseil, sans la marque) : −1, comme le dit docs/reputation.md.
+        chemin = self.dossier / f"contributions/miniz/{c1}.yaml"
+        enr.pop("jamais_integree")
+        bee.ecrire_yaml(chemin, enr)
+        self.assertEqual(bee.calculer_niveaux(bee.Registre(self.dossier))["bruno"]["relectures"], -1)
+        # La marque n'a de sens que pour une contribution annulée.
+        enr.update({"statut": "en_relecture", "jamais_integree": True})
+        bee.ecrire_yaml(chemin, enr)
+        code, texte = self.bee("valider")
+        self.assertEqual(code, 1, texte)
 
     def test_m4_une_ecartee_vaut_zero_meme_avec_un_defaut_confirme(self):
         c1, c2 = self.course_a_deux(0.03, 0.05)

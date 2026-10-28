@@ -18,7 +18,8 @@
 # contribution. Si un passage échoue au milieu, le suivant refait tout : rien n'est perdu ni fait deux fois.
 #
 # Sécurité : seul l'outil bee de main s'exécute ; les fichiers des forks sont des données, et la
-# fusion se fait côté serveur (le code du fork n'est jamais exécuté ici).
+# fusion se fait côté serveur (le code du fork n'est jamais exécuté ici). Une PR qui n'a pas été ouverte
+# par l'auteur de la contribution n'est ni fusionnée ni consignée, ni fermée si la contribution est écartée.
 #
 # Jeton de fusion : PR dans ce dépôt → jeton par défaut ; PR sur un fork → secret
 # BEE_INTEGRATION_TOKEN (jeton à accès fin, écriture sur les forks). Sûr tant que la porte de relecture
@@ -65,18 +66,23 @@ jobs:
         run: |
           tmp="${RUNNER_TEMP:-$(mktemp -d)}"
           python3 outils/bee.py en-attente \
-            | python3 -c 'import json, sys; [print(c["id"], c["pr"], c.get("sha_verdict") or "-", sep="\t") for c in json.load(sys.stdin) if c.get("pr")]' \
+            | python3 -c 'import json, sys; [print(c["id"], c["pr"], c.get("sha_verdict") or "-", c.get("auteur") or "-", sep="\t") for c in json.load(sys.stdin) if c.get("pr")]' \
             > "$tmp/a_integrer.tsv"
           : > "$tmp/a_clore.txt"
           : > "$tmp/fusionnees.txt"
-          while IFS=$'\t' read -r id pr sha; do
+          while IFS=$'\t' read -r id pr sha auteur; do
             depot=$(printf '%s' "$pr" | sed -E 's#^https://github\.com/([A-Za-z0-9-]+/[A-Za-z0-9_.-]+)/pull/[0-9]+$#\1#')
-            infos=$(gh pr view "$pr" --json state,headRefOid,mergeCommit \
-              --jq '"\(.state) \(.headRefOid) \(.mergeCommit.oid // "-")"') || continue
-            read -r etat tete fusion <<< "$infos"
+            infos=$(gh pr view "$pr" --json state,headRefOid,mergeCommit,author \
+              --jq '"\(.state) \(.headRefOid) \(.mergeCommit.oid // "-") \(.author.login)"') || continue
+            read -r etat tete fusion auteur_pr <<< "$infos"
             if [ "$etat" = "CLOSED" ]; then
               # Clôturée après les intégrations de ce passage (une concurrente intégrée l'écarte au lieu de l'annuler).
               printf '%s\n' "$id" >> "$tmp/a_clore.txt"; continue
+            fi
+            # La PR doit être celle de l'auteur de la contribution (le pseudo d'un membre est son login GitHub) : sinon
+            # rien n'est fusionné ni consigné, on n'intègre pas le travail d'un autre sous son nom.
+            if [ "${auteur_pr,,}" != "${auteur,,}" ]; then
+              echo "::notice::$id : la PR $pr a été ouverte par $auteur_pr, pas par $auteur ; ni fusionnée ni consignée."; continue
             fi
             [ "$etat" = "MERGED" ] && printf '%s\n' "$id" >> "$tmp/fusionnees.txt"
             python3 outils/bee.py verifier-acceptation "$id" || continue

@@ -68,10 +68,12 @@ relectures:                 # ajoutées par bee relire, en ajout seul
 | `verdict` | La CI | `bee enregistrer-verdict` |
 | `relectures` | Chaque relecteur, une fois | `bee relire` |
 | `defaut_confirme` sur une relecture | Le conseil ou la CI | Après reproduction du défaut |
-| `statut` final, `motif_decision`, `decidee_le` | Le workflow d'intégration (bee integrer, bee cloturer) | Selon R3 ; « annulee » si la PR est fermée sans fusion |
+| `statut` final, `motif_decision`, `decidee_le` | Le workflow d'intégration (bee integrer, bee cloturer) | Selon R3 ; « annulee » si la PR est fermée sans fusion, avec la marque `jamais_integree` (ses relecteurs ne perdent rien) |
 | `statut: ecartee`, `retenue` | Le workflow d'intégration (bee integrer), ou le conseil quand il intègre lui-même | Dans le commit qui intègre la contribution retenue, toutes les concurrentes ensemble ; jamais un écartement seul |
 
-Une contribution intégrée puis découverte fautive passe en `annulee` : elle ne compte plus pour son auteur, et les relecteurs qui l'avaient approuvée perdent un point ([reputation.md](reputation.md)).
+Une contribution intégrée puis découverte fautive passe en `annulee` : elle ne compte plus pour son auteur, et les relecteurs qui l'avaient approuvée perdent un point ([reputation.md](reputation.md)). Une contribution close sans avoir été intégrée (PR fermée sans fusion) porte la marque `jamais_integree` : elle ne coûte rien à ses relecteurs.
+
+**La PR doit être celle de l'auteur.** Le champ `pr` est déclaré par l'auteur de la contribution ; le pseudo d'un membre est son login GitHub. Les workflows du registre le vérifient auprès de GitHub : une contribution dont la PR a été ouverte par quelqu'un d'autre ne reçoit aucun verdict (verdicts.yml), n'est ni fusionnée ni consignée comme intégrée, et sa PR n'est pas fermée si elle est écartée (integration-auto.yml) ; un avis le signale. On ne prend pas le crédit du travail d'un autre.
 
 ## Travail en parallèle et contributions concurrentes
 
