@@ -4,7 +4,7 @@ auteur: bidji29
 pr: https://github.com/Bee-ruche/minizBee/pull/8
 resume: 'tdefl_find_match (variante octet par octet) : chaque sonde compare les deux octets de fin de
   correspondance en une lecture 16 bits par memcpy, depuis un pointeur précalculé.'
-statut: en_relecture
+statut: integree
 soumise_le: '2026-10-28T03:07:25Z'
 relectures: []
 verdict:
@@ -33,3 +33,7 @@ verdict:
   sha: 16f8f51c4df5c56d50f3bab5672e7c919f687e8d
   fichiers_controles: true
   execution: https://github.com/Bee-ruche/minizBee/actions/runs/40624855078
+decidee_le: '2026-10-29T05:40:20Z'
+motif_decision: 'Intégration automatique (R3) : CI verte, relectures et vote suffisants, fenêtre écoulée
+  ; porte de relecture satisfaite.'
+fusion_sha: cc9b30e80d44a4dcb443e089d2c4528e220ef713

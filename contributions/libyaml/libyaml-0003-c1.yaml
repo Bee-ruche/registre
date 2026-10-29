@@ -4,7 +4,7 @@ auteur: bidji29
 pr: https://github.com/Bee-ruche/libyamlBee/pull/2
 resume: 'Oracle d''aller-retour de l''émetteur : chaque document est ré-émis puis ré-analysé, et doit
   redonner le même flux d''événements aux normalisations documentées près.'
-statut: en_relecture
+statut: integree
 soumise_le: '2026-10-28T03:17:08Z'
 relectures: []
 verdict:
@@ -34,3 +34,7 @@ verdict:
   - bee/tests/empreintes-aller-retour.txt
   - bee/tests/lancer.sh
   execution: https://github.com/Bee-ruche/libyamlBee/actions/runs/40625791846
+decidee_le: '2026-10-29T05:40:12Z'
+motif_decision: 'Intégration automatique (R3) : CI verte, relectures et vote suffisants, fenêtre écoulée
+  ; porte de relecture satisfaite.'
+fusion_sha: 6ca5a94979687bc2097d9ce2c587c1445bfb322a
