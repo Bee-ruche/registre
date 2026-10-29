@@ -4,6 +4,7 @@ import io
 import json
 import os
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
@@ -82,6 +83,11 @@ class BaseTest(unittest.TestCase):
         shutil.rmtree(self.dossier / "propositions", ignore_errors=True)
         for dossier_votes in (self.dossier / "votes").glob("P-*"):
             shutil.rmtree(dossier_votes, ignore_errors=True)
+        # Ni de la valeur courante de la porte de relecture (R3) : les tests partent de la porte fermée (« true ») et
+        # la règlent eux-mêmes (regler_porte, regler_porte_humaine).
+        chemin_config = self.dossier / "bee.yaml"
+        chemin_config.write_text(re.sub(r"(?m)^relecture_gardien_requise: *[a-z_]+", "relecture_gardien_requise: true",
+                                        chemin_config.read_text(encoding="utf-8")), encoding="utf-8")
         (self.dossier / "taches" / "miniz" / "miniz-0099.yaml").write_text(TACHE_OPTIMISATION, encoding="utf-8")
         # Tâches fictives indépendantes de l'état réel du registre : 9002 attend 9001.
         (self.dossier / "taches" / "miniz" / "miniz-9001.yaml").write_text(TACHE_OPTIMISATION.replace("miniz-0099", "miniz-9001"), encoding="utf-8")
