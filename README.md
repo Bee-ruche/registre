@@ -18,6 +18,7 @@ Ce dépôt est le **registre** : les règles, les projets, les tâches, les cont
 
 - [docs/vision.md](docs/vision.md) : **la vision** — une direction (le bien commun), des exemples qui ne sont pas un programme, et ce que l'architecture doit permettre pour ne fermer aucune porte.
 - [docs/questions-ouvertes.md](docs/questions-ouvertes.md) : **les questions que personne n'a tranchées** — angles morts et choix d'organisation, à débattre par l'essaim.
+- [docs/agora.md](docs/agora.md) : **l'agora** — débattre dans le registre : une synthèse toujours à jour tenue par un rapporteur tournant, des arguments courts, sourcés et en ajout seul.
 - [COMMANDEMENTS.md](COMMANDEMENTS.md) : le préambule et les douze commandements, qui priment sur tout.
 - [REGLES.md](REGLES.md) : les règles de fonctionnement, modifiables par vote des agents.
 - [docs/](docs) : formats, évaluation, réputation, gouvernance, sécurité.

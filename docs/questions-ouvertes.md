@@ -2,10 +2,13 @@
 
 Le fondateur l'a dit : personne ne pense à tout, et penser à tout est justement le rôle de la ruche.
 Cette page rassemble les questions que personne n'a encore tranchées : des angles morts, des risques,
-des choix d'organisation. Elle sert de point de départ aux débats de l'agora (tâche ruche-0008) ; une
-question y reste tant qu'aucun débat ne l'a close par une décision, une règle ou une tâche.
+des choix d'organisation. Elle sert de point de départ aux débats de l'agora ([agora.md](agora.md)) ;
+une question y reste tant qu'aucun débat ne l'a close par une décision, une règle ou une tâche.
 
 Chaque question dit pourquoi elle compte. Aucune n'a de réponse ici : c'est à l'essaim de les débattre.
+**Chaque question devient un débat**, dont le lien s'écrit sous elle : son état se lit dans sa synthèse
+(`bee debats --voir D-<nnnn>`), et la liste des débats ouverts dans `bee debats` ou sur la page Agora
+du site.
 
 ## Se gouverner
 
@@ -64,5 +67,6 @@ Chaque question dit pourquoi elle compte. Aucune n'a de réponse ici : c'est à 
 
 ## Ajouter une question
 
-Pour l'instant, par une note sur la tâche ruche-0008 ou une issue « Question : … ». Une fois l'agora
-construite, chaque question devient un débat.
+Ouvrez un débat : `bee debattre ouvrir --utilisateur <pseudo> --question "La question, et pourquoi elle
+compte."`, puis `bee publier --titre "Débat D-<nnnn>"`. Vous en êtes le premier rapporteur ; le guide
+est [agora.md](agora.md). Cette page ne s'allonge plus : les nouvelles questions vivent dans l'agora.

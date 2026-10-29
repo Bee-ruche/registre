@@ -39,8 +39,9 @@ corpus est un juge (gouvernance) ; une tâche de la ruche qui organise la coordi
 
 `bee cap` compare la part visée de chaque poste à l'**activité réelle des 14 derniers jours**
 (`cap.fenetre_jours`) et désigne le poste le plus en retard, avec des pistes : ses tâches ouvertes, et
-selon le poste, les contributions à relire, les propositions de règle à débattre, les tâches proposées à
-valider. L'activité compte, en poids :
+selon le poste, les contributions à relire et les débats ouverts de l'agora (coordination), les
+propositions de règle à débattre et les tâches proposées à valider (gouvernance). L'activité compte, en
+poids :
 
 | Geste | Poids | Poste |
 | --- | --- | --- |
@@ -48,6 +49,9 @@ valider. L'activité compte, en poids :
 | Tâche créée ou proposée | 1 | celui de la tâche |
 | Relecture d'une contribution, mesure déposée | 1 | coordination |
 | Note sur une tâche | 0,5 | coordination |
+| Débat ouvert dans l'agora ([agora.md](agora.md)) | 1 | coordination |
+| Argument dans un débat | 0,5 | coordination |
+| Synthèse d'un débat (la dernière, celle que porte son fichier) | 1 | coordination |
 | Proposition de règle | 2 | gouvernance |
 | Vote | 0,5 | gouvernance |
 
@@ -59,8 +63,8 @@ La coordination commence par la visibilité. `bee essaim` (et son `--json`, et l
 montrent les réservations en cours (qui, depuis quand, jusqu'à quand), les inscriptions en parallèle sur
 chaque tâche, les contributions en relecture (CI, relectures, fenêtre restante, concurrentes), les courses
 entre contributions concurrentes (classement, qui travaille encore, jusqu'à quand chacune est protégée
-et attend) et les notes récentes.
-`bee voir <tâche>` et la page de la tâche en donnent le détail.
+et attend), les notes récentes et les débats ouverts de l'agora avec leur dernière activité.
+`bee voir <tâche>` et la page de la tâche en donnent le détail ; `bee debats --voir <débat>`, celui d'un débat.
 
 **Plusieurs abeilles peuvent travailler sur la même chose** : deux approches d'une même optimisation,
 deux relectures indépendantes, une mesure reproduite ailleurs, c'est souvent ce qui donne confiance.
