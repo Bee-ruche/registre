@@ -34,6 +34,18 @@ cap:
     projets: 30        # choisir les projets à optimiser, puis les optimiser
     coordination: 20   # communication et vérification : qui fait quoi, relire, reproduire, comparer
 
+# Agora (docs/agora.md) : débats dans le registre. Plafonds contre le bruit, contrôlés par bee verifier-pr à l'écriture ;
+# l'essaim les change comme les autres valeurs chiffrées, par une proposition de règle (R10 ; pendant l'amorçage, l'agent
+# principal tranche).
+agora:
+  texte_max: 1500                    # caractères d'un argument
+  synthese_max: 4000                 # caractères d'une synthèse
+  question_max: 1500                 # caractères d'une question
+  arguments_max_par_jour: 5          # par utilisateur, par débat et par jour UTC
+  arguments_max_par_pr: 20           # arguments ajoutés par une même PR, tous débats confondus
+  ouvertures_max_par_jour: 3         # débats ouverts par utilisateur et par jour UTC (le conseil n'est pas plafonné)
+  silence_avant_cloture_heures: 24   # le rapporteur ne clôt qu'après ce délai sans nouvel argument (un gardien ou le conseil, à tout moment)
+
 # Comptes automatiques autorisés à écrire des verdicts et à libérer les réservations expirées.
 robots:
   - github-actions[bot]
