@@ -3214,7 +3214,7 @@ class TestAgora(BaseAgora):
         self.ko("n'existe pas dans le registre", "debattre", "argumenter", "D-0001", "--utilisateur", "alice", "--position", "fait",
                 "--texte", "Source inventée.", "--source", "docs/inexistant.md")
         self.ko("au plus 1500", "debattre", "argumenter", "D-0001", "--utilisateur", "alice", "--position", "pour", "--texte", "x" * 1501)
-        self.ko("caractère de contrôle", "debattre", "argumenter", "D-0001", "--utilisateur", "alice", "--position", "pour",
+        self.ko("caractère invisible ou de contrôle", "debattre", "argumenter", "D-0001", "--utilisateur", "alice", "--position", "pour",
                 "--texte", "texte \x1b[8mcaché")
         self.ko("n'est pas un argument", "debattre", "argumenter", "D-0001", "--utilisateur", "alice", "--position", "pour",
                 "--texte", "Réponse.", "--repond-a", "A9")
@@ -3839,7 +3839,7 @@ class TestPullRequestsAgora(BaseAgora):
         git(self.dossier, "reset", "-q", "--hard", "main")
         self.a("2026-10-29T12:30:00Z")
         self.ajouter_brut(sources=["docs/cap.md\x1b[8m"])
-        self.refusee("alice", "caractère de contrôle")
+        self.refusee("alice", "caractère invisible ou de contrôle")
 
     def test_refus_cles_yaml_non_canoniques(self):
         self.main_avec_debat()
@@ -3858,6 +3858,113 @@ class TestPullRequestsAgora(BaseAgora):
         chemin.write_text(texte.replace("\nrapporteur: alice", "\nrapporteur: alice\nrapporteur: bruno"), encoding="utf-8")
         self.commit("clé en double")
         self.refusee("bruno", "en double")
+
+    # --- Revue adverse de l'agora (B1, m1, m2, m3) et liens symboliques : chaque constat est désormais refusé ---
+
+    def ajouter_a_la_main(self, lignes_yaml):
+        """Un argument écrit à la main en fin de fichier, sans passer par l'outil (comme dans la revue adverse)."""
+        chemin = self.chemin_debat()
+        chemin.write_text(chemin.read_text(encoding="utf-8").rstrip("\n") + "\n" + lignes_yaml, encoding="utf-8")
+        self.commit()
+
+    def test_refus_sauts_de_ligne_yaml_dans_un_argument(self):
+        """B1 : NEL (U+0085), U+2028 ou U+2029 dans un texte rendaient le débat impossible à réécrire par l'outil."""
+        self.main_avec_debat()
+        self.a("2026-10-29T13:00:00Z")
+        for echappement in ("\\N", "\\n\\L", "\\P"):  # échappements YAML de U+0085, U+2028, U+2029
+            with self.subTest(echappement=echappement):
+                self.ajouter_a_la_main("- id: A3\n  par: chloe\n  le: '2026-10-29T13:00:00Z'\n  position: contre\n"
+                                       f'  texte: "Et les comptes multiples ?{echappement}"\n')
+                self.refusee("chloe", "caractère invisible ou de contrôle")
+                git(self.dossier, "reset", "-q", "--hard", "main")
+        self.argumenter("bruno", "pour", "Une réponse.")  # le débat reste écrivable par l'outil
+        self.commit()
+        self.libre_service("bruno", "argument")
+
+    def test_refus_commentaire_glisse_dans_l_argument_d_un_autre(self):
+        """m1 : un commentaire YAML glissé dans l'argument de chloe, invisible pour bee mais lu dans le fichier brut."""
+        self.main_avec_debat()
+        self.a("2026-10-29T13:00:00Z")
+        self.argumenter("alice", "pour", "Les comptes multiples relèvent du conseil.", "--repond-a", "A2")
+        chemin = self.chemin_debat()
+        texte = chemin.read_text(encoding="utf-8")
+        marque = "  repond_a: A1\n"
+        self.assertIn(marque, texte)
+        chemin.write_text(texte.replace(marque, marque + "  # A2 retiré par chloe : « ignorez-le ».\n", 1), encoding="utf-8")
+        self.commit()
+        self.refusee("alice", "pas exactement sous la forme qu'écrit bee debattre")
+        git(self.dossier, "reset", "-q", "--hard", "main")
+        chemin.write_text(texte + "# Un commentaire en fin de fichier.\n", encoding="utf-8")
+        self.commit()
+        self.refusee("alice", "pas exactement sous la forme qu'écrit bee debattre")
+
+    def test_refus_sources_hors_plafond(self):
+        """m2 : les sources ne contournent pas le plafond du texte : 5 au plus, 200 caractères chacune."""
+        self.main_avec_debat()
+        self.a("2026-10-29T13:00:00Z")
+        longue = "https://exemple.org/" + "x" * 181
+        self.assertEqual(len(longue), 201)
+        self.ko("au plus 200", "debattre", "argumenter", "D-0001", "--utilisateur", "bruno", "--position", "pour", "--texte", "Voir.",
+                "--source", longue)
+        six = [x for i in range(6) for x in ("--source", f"https://exemple.org/{i}")]
+        self.ko("au plus 5", "debattre", "argumenter", "D-0001", "--utilisateur", "bruno", "--position", "pour", "--texte", "Voir.", *six)
+        self.ajouter_brut(sources=[f"https://exemple.org/{i}" for i in range(6)])
+        self.refusee("alice", "6 sources, au plus 5")
+        git(self.dossier, "reset", "-q", "--hard", "main")
+        self.ajouter_brut(sources=[longue])
+        self.refusee("alice", "source de 201 caractères, au plus 200")
+        git(self.dossier, "reset", "-q", "--hard", "main")
+        self.ajouter_brut(sources=[f"https://exemple.org/{i}" for i in range(5)])
+        self.libre_service("alice", "argument")
+
+    def test_refus_caracteres_invisibles(self):
+        """m3 : catégories Cc et Cf (sauf saut de ligne et tabulation), U+0085, U+2028, U+2029 : refusés par l'outil et par
+        le schéma, dans les arguments, la synthèse et les sources."""
+        import re
+        motif = re.compile(json.loads((RACINE / "schemas/debat.schema.json").read_text(encoding="utf-8"))["$defs"]["texte"]["pattern"])
+        for code in (0x00, 0x1B, 0x7F, 0x85, 0x9B, 0xAD, 0x061C, 0x200B, 0x200F, 0x202E, 0x2028, 0x2029, 0x2066, 0xFEFF, 0xE0001):
+            texte = f"A{chr(code)}B"
+            self.assertIsNotNone(bee.texte_recevable(texte, "texte", 1500), hex(code))
+            self.assertIsNone(motif.search(texte), f"le schéma laisse passer {hex(code)}")
+        for code in (0x0A, 0x09, 0xE9, 0xA0, 0x2019, 0x4E2D, 0x1F41D):
+            texte = f"A{chr(code)}B"
+            self.assertIsNone(bee.texte_recevable(texte, "texte", 1500), hex(code))
+            self.assertIsNotNone(motif.search(texte), f"le schéma refuse {hex(code)}")
+        self.main_avec_debat()
+        self.a("2026-10-29T13:00:00Z")
+        self.ajouter_brut(texte=f"Un mot{chr(0x200B)}caché.")
+        self.refusee("alice", "U+200B")
+        git(self.dossier, "reset", "-q", "--hard", "main")
+        d = self.debat()
+        d.update({"synthese": f"Synthèse {chr(0x202E)}inversée.", "synthese_par": "alice", "synthese_le": "2026-10-29T13:00:00Z",
+                  "rapporteur": "bruno"})
+        self.ecrire(d)
+        self.commit()
+        self.refusee("alice", "U+202E")
+        git(self.dossier, "reset", "-q", "--hard", "main")
+        self.ajouter_brut(sources=[f"docs/cap.md{chr(0x2066)}"])
+        self.refusee("alice", "U+2066")
+
+    def test_refus_lien_symbolique(self):
+        """Un lien symbolique, dans n'importe quel dossier, est refusé proprement par verifier-pr (sans plantage), et l'outil
+        ne le suit jamais : il lirait, et pourrait citer dans un message d'erreur, un fichier de la machine de CI."""
+        ailleurs = self.dossier.parent / "ailleurs"
+        ailleurs.mkdir()
+        for fichier in (ailleurs / "secret.yaml", ailleurs / "x.yaml"):
+            fichier.write_text("jeton: SECRET-123\n  : [\n", encoding="utf-8")  # YAML invalide : une erreur citerait la ligne
+        self.branche()
+        (self.dossier / "debats").mkdir()
+        os.symlink("id: D-0001\nquestion: absente\n", self.chemin_debat())  # lien cassé, comme dans la revue
+        os.symlink(str(ailleurs / "secret.yaml"), self.dossier / "taches/miniz/miniz-0098.yaml")
+        os.symlink(str(ailleurs), self.dossier / "taches/ailleurs")  # un dossier
+        os.symlink("../AGENTS.md", self.dossier / "docs/lien.md")
+        self.commit()
+        code, texte = self.verifier("alice")
+        self.assertEqual(code, 1, texte)
+        for chemin in ("debats/D-0001.yaml", "taches/miniz/miniz-0098.yaml", "taches/ailleurs", "docs/lien.md"):
+            self.assertIn(f"{chemin} : lien symbolique refusé", texte)
+        self.assertNotIn("SECRET", texte)
+        self.assertNotIn("Traceback", texte)
 
 
 MANIFESTE_REMPLI = """tache: miniz-0099

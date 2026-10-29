@@ -24,6 +24,7 @@ import pathlib
 import re
 import subprocess
 import sys
+import unicodedata
 from collections import defaultdict
 
 try:
@@ -381,12 +382,38 @@ class Registre:
         """Conseil et gardiens : ceux dont la relecture ouvre la porte de R3."""
         return set(self.conseil) | set(self.gardiens)
 
+    def _lien_symbolique(self, chemin):
+        """Vrai si le fichier, ou un dossier entre lui et la racine du registre, est un lien symbolique."""
+        chemin = pathlib.Path(chemin)
+        try:
+            parties = chemin.relative_to(self.racine).parts
+        except ValueError:
+            return chemin.is_symlink()
+        courant = self.racine
+        for partie in parties:
+            courant = courant / partie
+            if courant.is_symlink():
+                return True
+        return False
+
     def _lire_fichier(self, chemin):
+        # Un lien symbolique n'est jamais suivi : il ferait lire un autre fichier que celui du registre (au pire un fichier
+        # de la machine, qu'un message d'erreur pourrait citer). verifier_pr le refuse aussi dans toute PR.
+        if self._lien_symbolique(chemin):
+            try:
+                lieu = str(pathlib.Path(chemin).relative_to(self.racine))
+            except ValueError:
+                lieu = str(chemin)
+            self.problemes_chargement.append(f"{lieu} : lien symbolique refusé (le registre ne contient que des fichiers ordinaires)")
+            return None
         try:
             texte = pathlib.Path(chemin).read_text(encoding="utf-8")
             donnees = charger_texte_yaml(texte, str(chemin))
         except ErreurBee as e:
             self.problemes_chargement.append(str(e))
+            return None
+        except (OSError, UnicodeDecodeError) as e:  # un dossier nommé x.yaml, un fichier qui n'est pas de l'UTF-8…
+            self.problemes_chargement.append(f"{self.rel(chemin)} : fichier illisible ({type(e).__name__})")
             return None
         self._formes_a_controler.append((chemin, texte, donnees))
         return donnees
@@ -1415,12 +1442,12 @@ CLES_CLOTURE = ("statut", "clos_le", "clos_par", "issue", "reference")
 # Valeurs par défaut de bee.yaml, clé agora (docs/agora.md, « Contre le bruit »).
 AGORA_DEFAUT = {"texte_max": 1500, "synthese_max": 4000, "question_max": 1500, "arguments_max_par_24h": 5,
                 "arguments_max_par_pr": 20, "ouvertures_max_par_24h": 3, "silence_avant_cloture_heures": 24,
-                "releve_rapporteur_heures": 72}
+                "releve_rapporteur_heures": 72, "sources_par_argument_max": 5, "source_max": 200}
 # Les plafonds « par jour » sont des fenêtres glissantes de 24 h, jamais le jour UTC (pas de pic à minuit).
 FENETRE_PLAFOND = dt.timedelta(hours=24)
-# Caractères de contrôle (hors saut de ligne et tabulation) et inversions du sens de lecture : ils peuvent cacher ou
-# maquiller un texte à l'affichage (terminal, site). Refusés dans tout texte de débat.
-CARACTERES_INTERDITS = re.compile("[\x00-\x08\x0b-\x1f\x7f‪-‮⁦-⁩]")
+# Sauts de ligne que YAML réinterprète (NEL, séparateurs de ligne et de paragraphe), refusés en plus des catégories Cc
+# et Cf : écrits dans un débat, ils rendraient le fichier impossible à réécrire fidèlement par l'outil.
+SAUTS_YAML = frozenset(map(chr, (0x85, 0x2028, 0x2029)))
 # Une date déclarée dans un débat est l'heure de la PR : au plus 2 h avant la vérification, jamais dans le futur.
 TOLERANCE_DATE = dt.timedelta(hours=2)
 
@@ -1492,13 +1519,27 @@ def resume_debat(debat):
             "issue": debat.get("issue"), "reference": debat.get("reference")}
 
 
+def caractere_interdit(c):
+    """Caractère refusé dans tout texte d'un débat (question, argument, synthèse, source) : les catégories Unicode Cc
+    (contrôle) et Cf (format : invisibles, inversions du sens de lecture), sauf le saut de ligne et la tabulation, et les
+    sauts de ligne que YAML réinterprète (SAUTS_YAML). Ils cacheraient ou maquilleraient un texte à l'affichage, ou
+    rendraient le fichier impossible à réécrire par l'outil. Le schéma (debat.schema.json) en porte la même liste."""
+    return c not in "\n\t" and (c in SAUTS_YAML or unicodedata.category(c) in ("Cc", "Cf"))
+
+
+def premier_caractere_interdit(texte):
+    return next((c for c in str(texte) if caractere_interdit(c)), None)
+
+
 def texte_recevable(texte, quoi, maximum):
-    """None si le texte d'utilisateur est recevable : non vide, au plus `maximum` caractères, sans caractère de contrôle
-    ni inversion du sens de lecture ; sinon la raison du refus."""
+    """None si le texte d'utilisateur est recevable : non vide, au plus `maximum` caractères, sans caractère invisible ni
+    de contrôle (caractere_interdit) ; sinon la raison du refus."""
     if not isinstance(texte, str) or not texte.strip():
         return f"{quoi} vide"
-    if CARACTERES_INTERDITS.search(texte):
-        return f"{quoi} : caractère de contrôle ou d'inversion du sens de lecture refusé (il maquillerait l'affichage)"
+    c = premier_caractere_interdit(texte)
+    if c is not None:
+        return (f"{quoi} : caractère invisible ou de contrôle refusé (U+{ord(c):04X}, catégorie {unicodedata.category(c)}) : "
+                "il cacherait ou maquillerait le texte, ou rendrait le débat impossible à réécrire")
     if len(texte) > maximum:
         return f"{quoi} de {len(texte)} caractères, au plus {maximum}"
     return None
@@ -1507,8 +1548,9 @@ def texte_recevable(texte, quoi, maximum):
 def forme_source(source):
     """None si la source a la forme d'une adresse https:// ou d'un chemin relatif du registre ; sinon la raison."""
     s = str(source)
-    if CARACTERES_INTERDITS.search(s):
-        return "caractère de contrôle ou d'inversion du sens de lecture refusé"
+    c = premier_caractere_interdit(s)
+    if c is not None:
+        return f"caractère invisible ou de contrôle refusé (U+{ord(c):04X})"
     if s.startswith("https://"):
         return None if re.fullmatch(r"https://[A-Za-z0-9.-]+\.[A-Za-z]{2,}(:[0-9]{1,5})?(/\S*)?", s) else "adresse https invalide"
     if "://" in s or s.startswith(("/", "~", "\\")) or re.search(r"\s", s):
@@ -1673,10 +1715,11 @@ def verifier_agora_registre(reg, ajouter, selon_schema, instant_valide):
                 ajouter(f"{lieu} : {probleme}")
 
 
-def verifier_debat(reg, chemin, statut_git, ancien, nouveau, auteur, *, est_conseil, instant, attendu=None):
+def verifier_debat(reg, chemin, statut_git, ancien, nouveau, auteur, *, est_conseil, instant, attendu=None, brut=None):
     """Transitions d'un débat de l'agora dans une PR (docs/agora.md) : toutes en libre-service, toutes contrôlées ici.
 
     attendu : le chemin que doit avoir un débat ajouté (numéro suivant le plus grand de la base, sans trou).
+    brut : les octets du fichier dans la tête de la PR, qui doivent être exactement le rendu canonique de ses données.
     Renvoie (natures, problèmes, nombre d'arguments ajoutés)."""
     natures, problemes = [], []
     conf = config_agora(reg)
@@ -1707,6 +1750,16 @@ def verifier_debat(reg, chemin, statut_git, ancien, nouveau, auteur, *, est_cons
         return natures, problemes, 0
     if not exiger(isinstance(nouveau, dict), "fichier illisible"):
         return natures, problemes, 0
+    if brut is not None:
+        # Forme canonique, octet pour octet : ce que la machine lit est exactement ce que voit un humain ou un agent qui
+        # lit le fichier brut (pas de commentaire glissé dans l'argument d'un autre, pas d'autre mise en forme), et
+        # l'outil saura toujours réécrire le débat.
+        try:
+            canonique = rendu_debat(nouveau, chemin).encode("utf-8")
+        except ErreurBee:
+            canonique = None
+        exiger(brut == canonique, "le fichier n'est pas exactement sous la forme qu'écrit bee debattre (commentaire, autre mise en "
+                                  "forme, ou contenu que l'outil ne sait pas réécrire) : écrivez-le avec bee debattre")
     membre = auteur in reg.membres or est_conseil
     privilegie = auteur in reg.privilegies()
 
@@ -1810,9 +1863,14 @@ def verifier_debat(reg, chemin, statut_git, ancien, nouveau, auteur, *, est_cons
         if arg.get("position") == "fait":
             exiger(bool(sources), f"{ident} : un fait cite ses sources (adresse https:// ou chemin du registre) : on argumente sur "
                                   "preuves (commandement 12)")
+        # Les sources ne sont pas un second texte : peu nombreuses et courtes (sinon le plafond du texte se contourne).
+        exiger(len(sources) <= conf["sources_par_argument_max"],
+               f"{ident} : {len(sources)} sources, au plus {conf['sources_par_argument_max']} (agora.sources_par_argument_max)")
         for s in sources:
+            exiger(len(str(s)) <= conf["source_max"],
+                   f"{ident} : source de {len(str(s))} caractères, au plus {conf['source_max']} (agora.source_max)")
             probleme = probleme_source(reg, s)
-            exiger(probleme is None, f"{ident} : source « {s} » : {probleme}")
+            exiger(probleme is None, f"{ident} : source « {_nettoyer(s)[:80]} » : {probleme}")
     dates = [m for a in ajoutes if isinstance(a, dict) and (m := _instant_ou_rien(a.get("le")))]
     if dates:
         # Fenêtre glissante de 24 h qui finit au plus tôt des arguments ajoutés et court jusqu'au dernier (les arguments
@@ -1899,7 +1957,15 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
     modifiees = {pathlib.PurePosixPath(c).stem: c for s, c in changements if s == "M" and c.startswith("contributions/")}
     # Agora : les débats ajoutés prennent les numéros qui suivent le plus grand de la base, sans trou ; les arguments
     # ajoutés par la PR, tous débats confondus, sont plafonnés (agora.arguments_max_par_pr).
-    debats_ajoutes = sorted(c for s, c in changements if s == "A" and CHEMIN_DEBAT.match(c))
+    # Liens symboliques : refusés partout. Un lien ferait lire à l'outil un autre fichier que celui que montre la PR (au
+    # pire, un fichier de la machine de CI, dont un message d'erreur pourrait citer le contenu).
+    liens = set()
+    for ligne in git(reg.racine, "diff", "--raw", "--no-renames", f"{base}...{tete}").splitlines():
+        meta, _, chemin = ligne.partition("\t")
+        champs = meta.split()
+        if len(champs) >= 2 and champs[1] == "120000":
+            liens.add(chemin)
+    debats_ajoutes = sorted(c for s, c in changements if s == "A" and CHEMIN_DEBAT.match(c) and c not in liens)
     debats_attendus = {}
     if debats_ajoutes:
         numeros = [int(m[1][2:]) for n in git(reg.racine, "ls-tree", "--name-only", base, "debats/").splitlines()
@@ -1913,6 +1979,11 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
         return condition
 
     for statut_git, chemin in changements:
+        if chemin in liens:
+            natures.append("gouvernance")
+            problemes.append(f"{chemin} : lien symbolique refusé : le registre ne contient que des fichiers ordinaires ; remplacez "
+                             "le lien par le fichier lui-même")
+            continue
         ancien = lire_yaml_ref(reg.racine, base, chemin) if statut_git != "A" and chemin.endswith(".yaml") else None
         nouveau = lire_yaml_ref(reg.racine, tete, chemin) if statut_git != "D" and chemin.endswith(".yaml") else None
         partie = chemin.split("/")
@@ -2249,8 +2320,12 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
             continue
 
         if partie[0] == "debats":
+            brut = None
+            if statut_git != "D":
+                sortie = subprocess.run(["git", "-C", str(reg.racine), "show", f"{tete}:{chemin}"], capture_output=True)
+                brut = sortie.stdout if sortie.returncode == 0 else b""
             natures_debat, refus, n = verifier_debat(reg, chemin, statut_git, ancien, nouveau, auteur, est_conseil=est_conseil,
-                                                     instant=instant, attendu=debats_attendus.get(chemin))
+                                                     instant=instant, attendu=debats_attendus.get(chemin), brut=brut)
             natures += natures_debat
             problemes += refus
             arguments_ajoutes += n
@@ -3003,15 +3078,23 @@ def _representer_texte(dumper, valeur):
 _DumperDebat.add_representer(str, _representer_texte)
 
 
-def ecrire_debat(chemin, debat):
-    """Écrit un débat, clés dans l'ordre canonique (arguments en dernier : un argument ajouté s'ajoute en fin de fichier)."""
+def rendu_debat(debat, origine="<débat>"):
+    """Le texte canonique d'un débat, celui qu'écrit bee debattre : clés dans l'ordre (arguments en dernier, pour qu'un
+    argument ajouté s'ajoute en fin de fichier), textes de plusieurs lignes en bloc littéral. verifier_pr exige qu'un
+    débat publié soit exactement ce rendu de ses propres données (aucun commentaire, aucune autre forme)."""
     ordonne = {c: debat[c] for c in CLES_DEBAT if c in debat}
     ordonne.update({c: v for c, v in debat.items() if c not in ordonne})
     ordonne["arguments"] = [{**{c: a[c] for c in CLES_ARGUMENT if c in a}, **{c: v for c, v in a.items() if c not in CLES_ARGUMENT}}
                             for a in arguments_de(debat)]
     texte = yaml.dump(ordonne, Dumper=_DumperDebat, allow_unicode=True, sort_keys=False, width=100)
-    if charger_texte_yaml(texte, str(chemin)) != ordonne:  # garde-fou : relu, le fichier dit exactement ce qu'on a écrit
-        raise ErreurBee(f"{chemin} : écriture YAML infidèle, rien n'a été écrit")
+    if charger_texte_yaml(texte, str(origine)) != ordonne:  # garde-fou : relu, le texte dit exactement ce qu'on a écrit
+        raise ErreurBee(f"{origine} : écriture YAML infidèle (contenu que l'outil ne sait pas réécrire), rien n'a été écrit")
+    return texte
+
+
+def ecrire_debat(chemin, debat):
+    """Écrit un débat sous sa forme canonique (rendu_debat)."""
+    texte = rendu_debat(debat, chemin)
     chemin = pathlib.Path(chemin)
     chemin.parent.mkdir(parents=True, exist_ok=True)
     chemin.write_text(texte, encoding="utf-8")
@@ -3104,10 +3187,16 @@ def debattre_argumenter(args):
     if args.position == "fait" and not sources:
         raise ErreurBee("un fait cite au moins une source (--source https://… ou un chemin du registre) : on argumente sur preuves "
                         "(commandement 12)")
+    if len(sources) > conf["sources_par_argument_max"]:
+        raise ErreurBee(f"{len(sources)} sources, au plus {conf['sources_par_argument_max']} par argument "
+                        "(agora.sources_par_argument_max) : gardez les meilleures")
     for s in sources:
+        if len(s) > conf["source_max"]:
+            raise ErreurBee(f"source de {len(s)} caractères, au plus {conf['source_max']} (agora.source_max) : une source est une "
+                            "adresse ou un chemin, pas un second texte")
         probleme = probleme_source(reg, s)
         if probleme:
-            raise ErreurBee(f"source « {s} » : {probleme}")
+            raise ErreurBee(f"source « {_nettoyer(s)} » : {probleme}")
     existants = d.get("arguments") if isinstance(d.get("arguments"), list) else []
     if args.repond_a and not any(isinstance(a, dict) and a.get("id") == args.repond_a for a in existants):
         raise ErreurBee(f"{args.repond_a} n'est pas un argument de {args.debat} (bee debats --voir {args.debat})")
@@ -3297,7 +3386,7 @@ def cmd_debattre(args):
 
 def _nettoyer(texte):
     """Texte d'utilisateur à l'affichage : les caractères qui maquilleraient le terminal sont remplacés."""
-    return CARACTERES_INTERDITS.sub("�", str(texte if texte is not None else ""))
+    return "".join(chr(0xFFFD) if caractere_interdit(c) else c for c in str(texte if texte is not None else ""))
 
 
 def _en_retrait(texte, marge="    "):

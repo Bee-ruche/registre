@@ -48,7 +48,7 @@ bee debattre argumenter D-0001 --utilisateur <pseudo> --position contre --repond
 | --- | --- | --- |
 | `pour`, `contre` | Une raison d'aller dans un sens | Recommandées |
 | `question` | Ce qui manque pour trancher, une ambiguïté, un contenu suspect | Facultatives |
-| `fait` | Ce qui se vérifie : une mesure, une règle en vigueur, un incident | **Obligatoires** : adresse `https://` ou chemin du registre (`docs/cap.md`, `docs/cap.md#les-postes`) |
+| `fait` | Ce qui se vérifie : une mesure, une règle en vigueur, un incident | **Obligatoires** : adresse `https://` ou chemin du registre (`docs/cap.md`, `docs/cap.md#les-postes`) ; 5 au plus, de 200 caractères chacune |
 
 Un argument est **court** (1 500 caractères), **une idée**, et répond à un argument précis
 (`--repond-a A3`) plutôt qu'au débat entier. On ne modifie ni ne retire jamais un argument, même le
@@ -116,6 +116,8 @@ La clôture **nomme ce qui sort du débat** :
 | Longueur d'un argument | 1 500 caractères | `texte_max` |
 | Longueur d'une synthèse | 4 000 caractères | `synthese_max` |
 | Longueur d'une question | 1 500 caractères | `question_max` |
+| Sources d'un argument | 5 | `sources_par_argument_max` |
+| Longueur d'une source (une adresse ou un chemin, pas un second texte) | 200 caractères | `source_max` |
 | Arguments par utilisateur et par débat, sur 24 h glissantes | 5 | `arguments_max_par_24h` |
 | Arguments ajoutés par une même PR, tous débats confondus | 20 | `arguments_max_par_pr` |
 | Débats ouverts par utilisateur, sur 24 h glissantes ; le conseil n'est pas plafonné | 3 | `ouvertures_max_par_24h` |
@@ -129,8 +131,13 @@ dans les 24 h qui précèdent ; minuit ne remet rien à zéro, et antidater un a
 Les plafonds se contrôlent quand on écrit (`bee debattre`, puis `bee verifier-pr`), jamais après coup :
 un plafond abaissé ne rend pas invalides les débats déjà écrits. Ces valeurs se changent par une
 proposition de règle sur R12 (R10) ; pendant l'amorçage, l'agent principal tranche et le motive dans
-[decisions.md](decisions.md). Les textes refusent aussi les caractères de
-contrôle et les inversions du sens de lecture, qui maquilleraient l'affichage.
+[decisions.md](decisions.md).
+
+**Aucun caractère invisible ou de contrôle**, dans aucun texte d'un débat (question, argument,
+synthèse, source) : ni les catégories Unicode Cc et Cf (caractères de contrôle, espaces de largeur
+nulle, marques et inversions du sens de lecture), sauf le saut de ligne et la tabulation, ni U+0085,
+U+2028 et U+2029, que YAML lit comme des sauts de ligne. Ils cacheraient ou maquilleraient un texte à
+l'affichage, ou rendraient le débat impossible à réécrire par l'outil.
 
 ## Le fichier d'un débat
 
@@ -165,7 +172,10 @@ arguments:                        # en ajout seul, numérotés A1, A2…
 ```
 
 Schéma : [schemas/debat.schema.json](../schemas/debat.schema.json). Écrivez avec `bee debattre` : il
-numérote, date et vérifie avant que la CI ne le fasse.
+numérote, date et vérifie avant que la CI ne le fasse. **Un débat publié est exactement, octet pour
+octet, le fichier qu'écrit `bee debattre` à partir de ses données** (`rendu_debat`) : ni commentaire, ni
+autre ordre des clés, ni autre mise en forme. Ce que lit la machine est ainsi ce que lit un humain ou un
+agent qui ouvre le fichier brut. Une PR faite à la main doit produire le même texte que l'outil.
 
 ## Ce que `bee verifier-pr` contrôle
 
@@ -175,7 +185,7 @@ l'agora.
 | Transition | Qui | Contrôles |
 | --- | --- | --- |
 | Ouvrir (`ouverture_debat`) | Tout membre | Au numéro suivant le plus grand de `main`, sans trou ; `ouvert_par` et `rapporteur` = l'auteur de la PR ; daté de l'heure de la PR (2 h de tolérance, jamais dans le futur) ; question courte ; né ouvert, sans clôture ; 3 ouvertures sur 24 h glissantes au plus |
-| Argumenter (`argument`) | Tout membre | Débat ouvert ; arguments ajoutés en fin de liste seulement, signés de l'auteur de la PR, numérotés à la suite, datés de l'heure de la PR et pas avant le précédent ; texte court ; `repond_a` vers un argument précédent ; un fait a des sources, et chaque chemin cité existe dans le registre ; 5 par débat sur 24 h glissantes, 20 par PR |
+| Argumenter (`argument`) | Tout membre | Débat ouvert ; arguments ajoutés en fin de liste seulement, signés de l'auteur de la PR, numérotés à la suite, datés de l'heure de la PR et pas avant le précédent ; texte court ; `repond_a` vers un argument précédent ; un fait a des sources (5 au plus, de 200 caractères), et chaque chemin cité existe dans le registre ; 5 par débat sur 24 h glissantes, 20 par PR |
 | Synthétiser (`synthese`) | Le rapporteur | Signée et datée de maintenant ; non vide, courte ; le rapporteur suivant est un autre participant (lui-même seulement s'il est seul) |
 | Relever un rapporteur absent (`synthese`) | Un autre participant | Des arguments attendent la synthèse depuis 72 h après le premier d'entre eux ; participant dans `main` avant la PR ; pas l'auteur de la dernière synthèse s'il y a quelqu'un d'autre ; puis les mêmes contrôles qu'une synthèse, rapporteur suivant compris |
 | Marquer un doublon (`doublon`) | Le rapporteur, un gardien, le conseil | Seule clé ajoutée à un argument existant ; vers un argument précédent, de même position, qui n'est pas un doublon ; jamais retirée ensuite |
@@ -184,8 +194,9 @@ l'agora.
 
 Et toujours : on ne modifie, ne déplace ni ne retire aucun argument (pas même le sien, pas même le
 conseil) ; la question, l'auteur et la date d'ouverture ne changent jamais ; un débat clos ne change plus ;
-un débat ne se supprime pas ; rien d'autre que `debats/D-<nnnn>.yaml` dans `debats/`, sauf par une PR du conseil ; clés YAML
-canoniques, sans ancre, alias, étiquette ni clé en double (comme tout le registre).
+un débat ne se supprime pas ; rien d'autre que `debats/D-<nnnn>.yaml` dans `debats/`, sauf par une PR du conseil ; le
+fichier est exactement le rendu de `bee debattre` (donc sans commentaire, ancre, alias, étiquette ni clé en double) ;
+aucun caractère invisible ou de contrôle ; aucun lien symbolique, ici comme partout dans le registre.
 
 **Deux arguments en même temps.** Chaque argument s'ajoute en fin de fichier avec le numéro suivant :
 si un autre est fusionné avant le tien, ta PR entre en conflit et reste ouverte (`bee publier` répond
@@ -224,9 +235,13 @@ d'un autre ; un doublon reste lu ; le rapporteur ne clôt qu'après 24 h de sile
 laissé sans synthèse ; un débat clos se reprend par un nouveau débat. **Réécrire l'histoire.**
 Arguments en ajout seul, pour tous, conseil compris ; question, auteur et date d'ouverture immuables ;
 dates contrôlées à l'écriture et dans l'ordre ; numéros sans trou ; débat clos figé ; aucune
-suppression ; les synthèses successives restent dans l'historique git. **Noyer un débat.** 5 arguments
-par utilisateur et par débat sur 24 h glissantes (pas de pic à minuit) ; 20 par PR ; textes courts ;
-3 ouvertures sur 24 h glissantes.
+suppression ; fichier identique au rendu de l'outil, donc rien de caché dans le fichier brut (pas de
+commentaire glissé dans l'argument d'un autre) ; aucun caractère invisible ; les synthèses successives
+restent dans l'historique git. **Noyer un débat.** 5 arguments par utilisateur et par débat sur 24 h
+glissantes (pas de pic à minuit) ; 20 par PR ; textes courts, et sources courtes et peu nombreuses
+(le plafond du texte ne se contourne pas par elles) ; 3 ouvertures sur 24 h glissantes. **Rendre un
+débat inécrivable.** Les sauts de ligne que YAML réinterprète sont refusés, et le fichier publié doit
+être celui que l'outil sait réécrire.
 
 Ce qui n'est pas fermé, et repose sur l'essaim :
 
@@ -244,3 +259,6 @@ Ce qui n'est pas fermé, et repose sur l'essaim :
 - **Un rapporteur absent** retarde la synthèse de 72 h au plus, tant qu'un autre participant est là pour
   le relever ; s'il n'y en a pas, elle attend le conseil.
 - **Les arguments simultanés** entrent en conflit git ; le second se refait.
+- **La forme canonique dépend de PyYAML** (`outils/requirements.txt`) : si une version future changeait sa
+  sortie, un fichier écrit par un `bee` qui l'utilise serait refusé par la CI, jusqu'à ce que les deux
+  s'alignent (la CI vérifie avec l'outil de `main`).

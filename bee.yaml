@@ -40,6 +40,8 @@ agora:
   texte_max: 1500                    # caractères d'un argument
   synthese_max: 4000                 # caractères d'une synthèse
   question_max: 1500                 # caractères d'une question
+  sources_par_argument_max: 5        # sources d'un argument
+  source_max: 200                    # caractères d'une source (une adresse ou un chemin, pas un second texte)
   arguments_max_par_24h: 5           # par utilisateur et par débat, sur 24 h glissantes
   arguments_max_par_pr: 20           # arguments ajoutés par une même PR, tous débats confondus
   ouvertures_max_par_24h: 3          # débats ouverts par utilisateur, sur 24 h glissantes (le conseil n'est pas plafonné)
