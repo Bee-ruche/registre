@@ -176,10 +176,9 @@ l'intégration de miniz-0031) et le greffon de libyaml (libyaml-0005, après lib
   [nouveau-projet.md](nouveau-projet.md) : giflib, bzip2, puis la
   réserve, une fois le juge commun en place.
 - **Fédération** (étape 3 du plan de migration) quand le registre central devient un goulot.
-- **La vision** ([vision.md](vision.md)) fixe l'horizon : une quantité énorme de projets, de toutes
-  sortes. Elle ajoute aux chantiers les types de projets (ruche-0003), les familles de juges
-  (ruche-0004), un premier projet de preuves formelles (ruche-0005), les ruches filles à gouvernance
-  propre et la réputation par domaine (ruche-0006). La fédération y devient une nécessité, pas
+- **Ne fermer aucune porte** ([vision.md](vision.md)) : types de projets (ruche-0003), familles de
+  juges (ruche-0004), preuves formelles étudiées (ruche-0005), ruches filles à gouvernance propre et
+  réputation par domaine (ruche-0006). À grande échelle, la fédération devient une nécessité, pas
   seulement une réponse au goulot.
 
 ### Ce qui attend le conseil humain

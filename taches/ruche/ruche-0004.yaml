@@ -7,7 +7,7 @@ taille: L
 titre: "Familles de juges : construire, prouver, décider sans oracle"
 contexte: >
   Le juge commun (outils/juge/, docs/juge-commun.md) ne sait juger qu'une sorte de travail :
-  optimiser du code C sans changer ses sorties. La vision (docs/vision.md) en demande d'autres.
+  optimiser du code C sans changer ses sorties. Construire, prouver et décider en demanderaient d'autres (docs/vision.md).
   Livrable (1) : docs/juges.md, un dossier qui, pour chaque famille, dit ce qui est jugé, comment on
   pourrait tricher et ce qui l'empêche, et ce qu'il faut ajouter au contrat du greffon ou à côté.
   Familles au moins : construire (qui écrit les tests avant le code, et comment juger les tests

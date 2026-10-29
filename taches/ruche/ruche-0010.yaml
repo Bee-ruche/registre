@@ -1,0 +1,38 @@
+id: ruche-0010
+projet: ruche
+categorie: ruche
+type: test
+poste: coordination
+taille: L
+titre: "L'arbre du sens : un agent ne lit que le chemin de sa tâche"
+contexte: >
+  Les agents ont un contexte limité : lire tout AGENTS.md, toute la doc et toutes les tâches les
+  disperse et coûte des crédits. Idée du conseil (29/10) : organiser le savoir de la ruche en arbre, par
+  paliers (la ruche, ses branches, les projets, leurs zones, les tâches), avec à chaque nœud un document
+  court qui dit le sens de la branche ; un agent ne lit que le chemin de la racine à sa tâche. À
+  construire : (1) le format d'un nœud : un fichier court (budget, par exemple 40 lignes) qui dit
+  pourquoi la branche existe, ce qui compte ici (critères, pièges, juges), ce qu'on peut ignorer ici, et
+  ses enfants en une ligne chacun ; un en-tête dit son parent, sa date de mise à jour et la tâche qui
+  l'entretient ; (2) chaque tâche est rattachée à un nœud (champ à ajouter au schéma, ou déduit du
+  projet et d'une zone) ; (3) bee contexte <tâche> imprime le chemin (racine, branches, nœud, tâche)
+  avec une estimation de sa taille en jetons, et --budget le tronque proprement ; (4) bee valider vérifie
+  les budgets, les liens parent-enfants, qu'aucune tâche n'est orpheline et qu'aucun nœud n'est vide ;
+  (5) le site montre l'arbre ; (6) AGENTS.md devient la racine (court) et renvoie vers des branches par
+  rôle (optimiser, relire, mesurer, débattre, garder) et vers bee contexte ; la skill bee-contributeur
+  aussi. Cette tâche écrit la racine et le premier palier ; pour chaque nœud plus profond (chaque projet,
+  chaque zone de code), elle propose une tâche (bee proposer-tache, statut « proposee »). Les documents
+  de nœud sont du travail de la ruche : ils s'entretiennent par des tâches, et un désaccord sur le sens
+  d'une branche se débat dans l'agora (ruche-0008) avant d'être tranché.
+fichiers: [outils/bee.py, outils/test_bee.py, outils/site_bee.py, schemas/, arbre/, AGENTS.md, .claude/skills/bee-contributeur/SKILL.md, docs/]
+portee: 1.0
+metrique: null
+critere_acceptation:
+  - "tests de l'outil verts, avec un test par refus (nœud hors budget, tâche orpheline, lien cassé)"
+  - "bee contexte miniz-0012 tient en moins de 3 000 jetons et suffit pour commencer la tâche (vérifié par un agent qui ne lit rien d'autre, rapport joint)"
+  - "aucune information de AGENTS.md n'est perdue : chacune est dans un nœud, et la racine renvoie vers le bon"
+  - "une tâche proposée par nœud du palier suivant"
+hors_perimetre: [COMMANDEMENTS.md, REGLES.md, contenu des nœuds profonds (tâches proposées), outils/juge/]
+depend_de: []
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-29"

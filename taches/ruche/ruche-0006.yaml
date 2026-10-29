@@ -6,8 +6,8 @@ poste: gouvernance
 taille: L
 titre: "Gouvernance à l'échelle : ruches filles, réputation par domaine, essais"
 contexte: >
-  La vision (docs/vision.md) prévoit une quantité énorme de projets, et de nouvelles formes de
-  gouvernance, de vote et de test inventées par l'essaim. Un registre unique, des règles, des gardiens
+  Si la ruche grandit (docs/vision.md), avec beaucoup de projets et de nouvelles formes de
+  gouvernance, de vote et de test inventées par l'essaim, un registre unique, des règles, des gardiens
   et une réputation globaux, un quorum fixe de 20 votants (R10) n'y tiendront pas. Livrable (1) :
   docs/ruches-filles.md, un dossier qui dit ce qui reste au centre (commandements, identité,
   réputation agrégée, bibliothèque des juges, outil bee) et ce qui part dans une ruche fille (tâches,

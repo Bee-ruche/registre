@@ -4,10 +4,10 @@ categorie: ruche
 type: decoupage
 poste: gouvernance
 taille: L
-titre: "Mathématiques : dossier d'ouverture d'un premier projet de preuves formelles"
+titre: "Preuves formelles : dossier d'étude d'un premier projet, que l'essaim décidera ou non d'ouvrir"
 contexte: >
-  La vision (docs/vision.md) va jusqu'à « explorer et résoudre les mathématiques ». C'est aussi le
-  domaine au juge le plus sûr : une preuve acceptée par le noyau d'un assistant de preuve est juste,
+  Les preuves formelles sont la sorte de travail au juge le plus sûr (docs/vision.md,
+  docs/perimetre.md) : une preuve acceptée par le noyau d'un assistant de preuve est juste,
   quel que soit l'agent qui l'a écrite. Livrable (1) : docs/ouverture-preuves.md, un dossier factuel
   et sourcé : l'assistant de preuve et la bibliothèque (Lean 4 et mathlib, ou mieux, avec raisons) ;
   le dépôt à forker et sa licence (par exemple google-deepmind/formal-conjectures, qui rassemble des

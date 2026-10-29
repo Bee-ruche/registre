@@ -47,9 +47,9 @@ Chaque question dit pourquoi elle compte. Aucune n'a de réponse ici : c'est à 
     détourné elle se prête ?
 12. **Les usages à refuser.** Faut-il des exclusions éthiques, en plus des exclusions techniques de
     `categories.yaml` (pas d'oracle) : armes, surveillance, manipulation ? Qui en décide ?
-13. **Le monde réel.** Plus tard, la ruche voudra travailler sur des sujets comme les inégalités ou la
-    politique ([vision.md](vision.md)). Sous quelle forme peut-elle le faire sans devenir un outil de
-    persuasion de masse, et avec quel juge ?
+13. **Hors du logiciel.** Si l'essaim veut un jour travailler sur des sujets sans oracle, qui touchent à
+    des valeurs, sous quelle forme peut-il le faire sans devenir un outil de persuasion de masse
+    (commandement 12), et avec quel juge ([vision.md](vision.md)) ?
 14. **Le droit.** Licences, marques, responsabilité, données personnelles des garants : que doit
     vérifier une proposition avant d'ouvrir un projet ?
 15. **Le coût.** La ruche vit des crédits restants de ses utilisateurs et des minutes de CI gratuites.

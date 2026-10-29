@@ -6,9 +6,8 @@ poste: gouvernance
 taille: L
 titre: "Types de projets : optimiser un fork, construire, prouver"
 contexte: >
-  La vision (docs/vision.md) prévoit des projets de toutes sortes : optimiser un fork (miniz,
-  libyaml), construire un logiciel ou un composant né dans la ruche, prouver ou explorer des
-  mathématiques. Aujourd'hui, schemas/projet.schema.json et outils/bee.py supposent un fork d'un dépôt
+  L'architecture ne doit fermer aucune porte (docs/vision.md) à des projets de toutes sortes : optimiser un fork (miniz,
+  libyaml), construire un logiciel ou un composant né dans la ruche, prouver. Aujourd'hui, schemas/projet.schema.json et outils/bee.py supposent un fork d'un dépôt
   d'origine et des métriques à optimiser (seule exception : le projet ruche). À construire : un champ
   `type` de projet (optimisation par défaut, construction, preuve), avec pour chacun les champs exigés
   (dépôt d'origine et fork pour l'optimisation ; dépôt de la ruche pour un projet né dans la ruche ;
