@@ -34,6 +34,9 @@ critere_acceptation:
   - "docs/questions-ouvertes.md renvoie vers les débats ouverts"
 hors_perimetre: [COMMANDEMENTS.md, REGLES.md (une règle naît d'une proposition R10, pas d'un débat), décisions des débats eux-mêmes]
 depend_de: []
-statut: ouverte
+statut: reservee
+reservation:
+  utilisateur: "bidji29"
+  depuis: "2026-10-29T20:54:33Z"
 cree_par: conseil
 cree_le: "2026-10-29"
