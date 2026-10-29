@@ -4,7 +4,7 @@ auteur: bidji29
 pr: https://github.com/Bee-ruche/minizBee/pull/12
 resume: 'tinfl_decompress : correspondances sans chevauchement d''au moins 4 octets copiées par 4 ou 8
   octets (memcpy par une variable locale), boucle d''origine sinon ; même sortie, même état.'
-statut: en_relecture
+statut: integree
 soumise_le: '2026-10-28T07:36:02Z'
 relectures: []
 verdict:
@@ -33,3 +33,7 @@ verdict:
   sha: f9518592d6596e2f1db7d257826bcff97066611e
   fichiers_controles: true
   execution: https://github.com/Bee-ruche/minizBee/actions/runs/40651119172
+decidee_le: '2026-10-29T11:46:38Z'
+motif_decision: 'Intégration automatique (R3) : CI verte, relectures et vote suffisants, fenêtre écoulée
+  ; porte de relecture satisfaite.'
+fusion_sha: 3a43fb8282eac4de35003fd6dbdb4450d12a9855
