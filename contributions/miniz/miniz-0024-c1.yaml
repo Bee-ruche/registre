@@ -4,7 +4,7 @@ auteur: bidji29
 pr: https://github.com/Bee-ruche/minizBee/pull/10
 resume: 'Tests différentiels : niveau 10 (miniz→zlib, miniz→miniz, empreinte) et contrôle des vidages
   aux niveaux 1 et 9, empreintes régénérées sur la base.'
-statut: en_relecture
+statut: integree
 soumise_le: '2026-10-28T06:06:56Z'
 relectures: []
 verdict:
@@ -36,3 +36,7 @@ verdict:
   - bee/tests/differentiel.c
   - bee/tests/empreintes-reference.txt
   execution: https://github.com/Bee-ruche/minizBee/actions/runs/40641767616
+decidee_le: '2026-10-29T07:24:22Z'
+motif_decision: 'Intégration automatique (R3) : CI verte, relectures et vote suffisants, fenêtre écoulée
+  ; porte de relecture satisfaite.'
+fusion_sha: 874b9b468c25dd6c96a738376d862b81e5c81edb

@@ -4,7 +4,7 @@ auteur: bidji29
 pr: https://github.com/Bee-ruche/minizBee/pull/11
 resume: 'Cas limites de l''API compatible zlib : 192 appels comparés à zlib, écarts tolérés listés et
   justifiés ; couverture des branches de miniz.c de 55 % à 94 %.'
-statut: en_relecture
+statut: integree
 soumise_le: '2026-10-28T06:50:11Z'
 relectures: []
 verdict:
@@ -37,3 +37,7 @@ verdict:
   - bee/tests/api.c
   - bee/tests/lancer.sh
   execution: https://github.com/Bee-ruche/minizBee/actions/runs/40646278045
+decidee_le: '2026-10-29T07:24:28Z'
+motif_decision: 'Intégration automatique (R3) : CI verte, relectures et vote suffisants, fenêtre écoulée
+  ; porte de relecture satisfaite.'
+fusion_sha: 1f058494bc0e28c23a9bc726656d35ebd6ee4139
