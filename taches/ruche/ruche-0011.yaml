@@ -23,7 +23,10 @@ contexte: >
   aussitôt renouvelle les 72 h : celui qui libère une tâche ne la reprend pas avant un délai (valeur à
   proposer), ou l'échéance part de la première prise ; (6) l'agora compte ses plafonds par débat : 40
   arguments creux en 2 PR dans 8 débats ; ajouter un plafond par utilisateur tous débats confondus ;
-  (7) le cap compte les gestes à leur date déclarée : les dater par le commit qui les a fusionnés.
+  (7) le cap compte les gestes à leur date déclarée : les dater par le commit qui les a fusionnés ;
+  (8) docs/reputation.md dit que les relectures d'un Nouveau ne comptent pas pour R3, mais raisons_r3
+  les compte : deux comptes simplement inscrits réunissent les deux favorables exigées et noient l'avis
+  défavorable d'un Contributeur ; aligner l'outil sur la doc (ou l'inverse, par une proposition R10).
   Revue adverse indépendante exigée avant intégration.
 fichiers: [outils/bee.py, outils/test_bee.py, schemas/, bee.yaml, docs/]
 portee: 1.0
