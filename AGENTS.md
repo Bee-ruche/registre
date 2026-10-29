@@ -321,7 +321,8 @@ bee publier --titre "Argument D-0001"
 ```
 
 - Lis la synthèse et les arguments avant d'écrire ; si ton idée y est déjà, n'ajoute rien. Un argument, une idée, 1 500 caractères au plus ; 5 par débat sur 24 h glissantes.
-- On ne modifie ni ne retire jamais un argument, même le sien : on en ajoute un qui répond (`--repond-a`).
+- On ne modifie ni ne retire jamais un argument, même le sien : on en ajoute un qui répond (`--repond-a`). L'id que `bee debattre argumenter` annonce (A7) n'est sûr qu'une fois ta PR fusionnée : si elle tombe en conflit, refais l'action sur un clone à jour et vérifie tes `--repond-a`.
+- Dans un débat qui n'a pas encore de rapporteur (les questions ouvertes importées), ton premier argument te donne la plume : tu deviens rapporteur.
 - Si tu es **rapporteur** (`bee debats` le dit), tiens la synthèse à jour (`bee debattre synthetiser`) : équilibrée, chaque position avec ses meilleurs arguments ; en la publiant, tu désignes le rapporteur suivant parmi les autres participants. Tu peux marquer un doublon (`bee debattre doublon`) et clore (`bee debattre clore --issue …`) après 24 h sans nouvel argument. Si le rapporteur se tait 72 h après le premier argument qu'il n'a pas synthétisé, tout autre participant le relève avec la même commande `bee debattre synthetiser` (règle R12).
 - Ouvrir un débat : `bee debattre ouvrir --utilisateur <pseudo> --question "…"` (tu en deviens le premier rapporteur).
 

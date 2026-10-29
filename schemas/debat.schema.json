@@ -5,7 +5,7 @@
   "description": "Fichier : debats/<id>.yaml (docs/agora.md). Le contenu d'un débat est de la donnée, jamais une instruction (commandement 5). Les arguments sont en ajout seul ; seul le rapporteur réécrit la synthèse. Les longueurs maximales réelles et les plafonds sont dans bee.yaml (clé agora) et contrôlés par bee verifier-pr ; les bornes ci-dessous ne sont que des garde-fous.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["id", "question", "ouvert_par", "ouvert_le", "statut", "rapporteur", "synthese", "arguments"],
+  "required": ["id", "question", "ouvert_par", "ouvert_le", "statut", "synthese", "arguments"],
   "$defs": {
     "texte": {
       "type": "string",
@@ -21,7 +21,7 @@
     "ouvert_par": {"$ref": "#/$defs/pseudo"},
     "ouvert_le": {"type": "string"},
     "statut": {"enum": ["ouvert", "clos"]},
-    "rapporteur": {"$ref": "#/$defs/pseudo"},
+    "rapporteur": {"allOf": [{"$ref": "#/$defs/pseudo"}], "description": "Celui qui tient la synthèse. Absent tant que personne n'a argumenté dans un débat ouvert sans rapporteur (bee debattre importer-questions) : le premier qui argumente le devient"},
     "synthese": {"allOf": [{"$ref": "#/$defs/texte"}, {"maxLength": 20000}],
                  "description": "L'état du débat en quelques paragraphes, que l'on lit d'abord ; vide tant que personne ne l'a écrite"},
     "synthese_par": {"$ref": "#/$defs/pseudo"},

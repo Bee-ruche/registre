@@ -332,7 +332,7 @@ def ligne_debat(bee, d, prefixe):
     else:
         etat = "synthèse à jour"
     return (f"<tr><td><a class='id' href='{prefixe}debats/{e(x['id'])}.html'>{e(x['id'])}</a></td><td>{e(x['question'])}</td>"
-            f"<td>{e(x['rapporteur'] or '')}</td><td class='n'>{x['arguments']}</td><td class='nw'>{date_fr(x['derniere_activite'] or '')}</td>"
+            f"<td>{e(x['rapporteur'] or 'aucun encore')}</td><td class='n'>{x['arguments']}</td><td class='nw'>{date_fr(x['derniere_activite'] or '')}</td>"
             f"<td>{e(etat)}</td></tr>")
 
 
@@ -365,7 +365,7 @@ def page_debat(bee, reg, d, depot):
          f"<p class='id doux'>{e(x['id'])} · {'ouvert' if x['statut'] == 'ouvert' else 'clos'}</p>",
          f"<h1 class='long'>{e(x['question'])}</h1>",
          f"<p class='doux'>Ouvert par {e(x['ouvert_par'] or '')} le {date_fr(x['ouvert_le'] or '')}. Rapporteur : "
-         f"{e(x['rapporteur'] or '')}. {x['arguments']} argument{'s' if x['arguments'] > 1 else ''}, "
+         f"{e(x['rapporteur'] or 'aucun encore (le premier qui argumente le devient)')}. {x['arguments']} argument{'s' if x['arguments'] > 1 else ''}, "
          f"{x['participants']} participant{'s' if x['participants'] > 1 else ''}.</p>",
          f"<p class='doux petit'>{e(AVERTISSEMENT_AGORA)}</p>"]
     if x["statut"] == "clos":

@@ -57,7 +57,10 @@ les arguments : si ton idée y est déjà, n'ajoute rien.
 
 ## Le rapporteur et la synthèse
 
-Chaque débat a un **rapporteur**, qui tient la synthèse. Au départ, c'est celui qui ouvre le débat.
+Chaque débat a un **rapporteur**, qui tient la synthèse. Au départ, c'est celui qui ouvre le débat
+(`bee debattre ouvrir`). Un débat ouvert par `bee debattre importer-questions` naît **sans
+rapporteur** : le premier qui y argumente le devient, dans la même PR que son argument, et pour
+lui-même seulement. Le conseil qui importe les questions ne garde donc pas la plume.
 
 ```bash
 bee debattre synthetiser D-0001 --utilisateur <pseudo> --fichier synthese.txt   # ou --texte "…"
@@ -184,8 +187,9 @@ l'agora.
 
 | Transition | Qui | Contrôles |
 | --- | --- | --- |
-| Ouvrir (`ouverture_debat`) | Tout membre | Au numéro suivant le plus grand de `main`, sans trou ; `ouvert_par` et `rapporteur` = l'auteur de la PR ; daté de l'heure de la PR (2 h de tolérance, jamais dans le futur) ; question courte ; né ouvert, sans clôture ; 3 ouvertures sur 24 h glissantes au plus |
+| Ouvrir (`ouverture_debat`) | Tout membre | Au numéro suivant le plus grand de `main`, sans trou ; `ouvert_par` = l'auteur de la PR, `rapporteur` = l'auteur ou personne (alors sans argument ni synthèse) ; daté de l'heure de la PR (2 h de tolérance, jamais dans le futur) ; question courte ; né ouvert, sans clôture ; 3 ouvertures sur 24 h glissantes au plus |
 | Argumenter (`argument`) | Tout membre | Débat ouvert ; arguments ajoutés en fin de liste seulement, signés de l'auteur de la PR, numérotés à la suite, datés de l'heure de la PR et pas avant le précédent ; texte court ; `repond_a` vers un argument précédent ; un fait a des sources (5 au plus, de 200 caractères), et chaque chemin cité existe dans le registre ; 5 par débat sur 24 h glissantes, 20 par PR |
+| Prendre la plume (`prise_de_plume`) | Le premier qui argumente dans un débat sans rapporteur | Dans la même PR que son argument, `rapporteur` = l'auteur de la PR, personne d'autre ; un débat sans rapporteur n'en reçoit un que par son premier argument ; la synthèse vient dans une PR suivante |
 | Synthétiser (`synthese`) | Le rapporteur | Signée et datée de maintenant ; non vide, courte ; le rapporteur suivant est un autre participant (lui-même seulement s'il est seul) |
 | Relever un rapporteur absent (`synthese`) | Un autre participant | Des arguments attendent la synthèse depuis 72 h après le premier d'entre eux ; participant dans `main` avant la PR ; pas l'auteur de la dernière synthèse s'il y a quelqu'un d'autre ; puis les mêmes contrôles qu'une synthèse, rapporteur suivant compris |
 | Marquer un doublon (`doublon`) | Le rapporteur, un gardien, le conseil | Seule clé ajoutée à un argument existant ; vers un argument précédent, de même position, qui n'est pas un doublon ; jamais retirée ensuite |
@@ -201,7 +205,10 @@ aucun caractère invisible ou de contrôle ; aucun lien symbolique, ici comme pa
 **Deux arguments en même temps.** Chaque argument s'ajoute en fin de fichier avec le numéro suivant :
 si un autre est fusionné avant le tien, ta PR entre en conflit et reste ouverte (`bee publier` répond
 « toujours ouverte »). Ferme-la, remets `main` à jour (`git switch main && git pull upstream main`) et
-relance `bee debattre argumenter` : ton argument prend le numéro suivant.
+relance `bee debattre argumenter` : ton argument prend le numéro suivant. `bee debattre argumenter`
+affiche l'id attribué (A7) et le rappelle : **il n'est sûr qu'une fois la PR fusionnée**. Si tu refais
+l'action, relis le débat (`bee debats --voir`) et vérifie que tes `--repond-a` visent toujours le bon
+argument.
 
 ## Le cap
 
@@ -220,7 +227,8 @@ bee debattre importer-questions --utilisateur <pseudo du conseil>
 ```
 
 La commande ouvre un débat par question qui n'en a pas encore (la question, suivie de sa section et de
-son numéro), et écrit sous chaque question le lien vers son débat. Rejouée, elle n'ouvre rien de plus.
+son numéro), **sans rapporteur** (le premier qui argumente le devient), et écrit sous chaque question
+le lien vers son débat. Rejouée, elle n'ouvre rien de plus.
 Comme elle touche `docs/`, sa PR n'est pas en libre-service : le conseil la publie.
 
 ## Ce que l'agora garantit, et ce qu'elle ne garantit pas

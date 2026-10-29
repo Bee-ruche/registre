@@ -3355,7 +3355,8 @@ class TestAgora(BaseAgora):
         premier = reg.debats["D-0001"][1]
         self.assertTrue(premier["question"].startswith("Si le conseil disparaît. Le fondateur est aujourd'hui le seul humain"))
         self.assertIn("« Se gouverner », question 1", premier["question"])
-        self.assertEqual((premier["ouvert_par"], premier["rapporteur"], premier["arguments"]), ("bidji29", "bidji29", []))
+        self.assertEqual((premier["ouvert_par"], premier["arguments"]), ("bidji29", []))
+        self.assertNotIn("rapporteur", premier, "un débat importé naît sans rapporteur : le premier qui argumente le devient")
         doc = (self.dossier / "docs/questions-ouvertes.md").read_text(encoding="utf-8")
         self.assertEqual(doc.count("Débat : [D-"), attendues)
         self.assertIn("absence longue ?\n   Débat : [D-0001](../debats/D-0001.yaml)", doc)
@@ -3364,6 +3365,35 @@ class TestAgora(BaseAgora):
         texte = self.ok("debattre", "importer-questions", "--utilisateur", "bidji29")
         self.assertIn("0 débat(s) ouvert(s)", texte, "rejouée, elle n'ouvre rien de plus")
         self.assertEqual(len(bee.Registre(self.dossier).debats), attendues)
+
+
+    def test_premier_argument_prend_la_plume(self):
+        """Un débat importé naît sans rapporteur ; le premier qui argumente le devient, pas le conseil qui l'a ouvert."""
+        self.a("2026-10-29T12:00:00Z")
+        self.ok("debattre", "importer-questions", "--utilisateur", "bidji29")
+        self.assertIn("aucun encore", self.ok("debats", "--voir", "D-0002"))
+        self.ko("pas encore de rapporteur", "debattre", "synthetiser", "D-0002", "--utilisateur", "bidji29", "--texte", "Synthèse.")
+        self.a("2026-10-29T12:10:00Z")
+        texte = self.argumenter("bruno", "contre", "Un conseil d'un seul humain est un point de défaillance unique.")
+        self.assertIn("vous devenez le rapporteur de D-0001", texte)
+        self.assertEqual(self.debat()["rapporteur"], "bruno")
+        self.a("2026-10-29T12:20:00Z")
+        self.assertNotIn("vous devenez le rapporteur", self.argumenter("chloe", "pour", "Un suppléant désigné à l'avance suffit."))
+        self.assertEqual(self.debat()["rapporteur"], "bruno", "la plume ne se prend qu'une fois")
+        self.a("2026-10-29T12:30:00Z")
+        self.assertIn("rapporteur suivant : ", self.ok("debattre", "synthetiser", "D-0001", "--utilisateur", "bruno", "--texte", "État."))
+        self.ouvrir("alice", "Un débat ouvert à la main garde son ouvreur comme rapporteur ?")
+        self.assertEqual(self.debat("D-0017")["rapporteur"], "alice")
+        self.valide()
+
+    def test_argumenter_annonce_l_id_et_le_risque_de_conflit(self):
+        self.debat_a_trois()
+        self.a("2026-10-29T12:30:00Z")
+        texte = self.argumenter("alice", "contre", "Réponse à bruno.", "--repond-a", "A1")
+        self.assertIn("son id est A3, en réponse à A1", texte)
+        self.assertIn("tombe en conflit", texte)
+        self.assertIn("l'id changera", texte)
+        self.assertIn("--repond-a", texte)
 
 
 class TestPullRequestsAgora(BaseAgora):
@@ -3944,6 +3974,68 @@ class TestPullRequestsAgora(BaseAgora):
         git(self.dossier, "reset", "-q", "--hard", "main")
         self.ajouter_brut(sources=[f"docs/cap.md{chr(0x2066)}"])
         self.refusee("alice", "U+2066")
+
+    # --- Débat né sans rapporteur : prise de plume par le premier qui argumente ---
+
+    def main_avec_debat_sans_rapporteur(self):
+        """Sur main : D-0001 ouvert par le conseil, sans rapporteur (comme bee debattre importer-questions)."""
+        self.a("2026-10-29T12:00:00Z")
+        self.ecrire({"id": "D-0001", "question": "Si le conseil disparaît, qui garde le dernier mot ?", "ouvert_par": "bidji29",
+                     "ouvert_le": "2026-10-29T12:00:00Z", "statut": "ouvert", "synthese": "", "arguments": []})
+        self.commit("débat importé")
+        self.branche()
+        self.a("2026-10-29T12:10:00Z")
+
+    def test_prise_de_plume_libre_service(self):
+        self.main_avec_debat_sans_rapporteur()
+        self.argumenter("bruno", "contre", "Un conseil d'un seul humain est un point de défaillance unique.")
+        self.commit()
+        self.libre_service("bruno", "prise_de_plume", "argument")
+
+    def test_refus_prise_de_plume_pour_un_autre_ou_sans_argument(self):
+        self.main_avec_debat_sans_rapporteur()
+        self.ajouter_brut(par="bruno")
+        d = self.debat()
+        d["rapporteur"] = "chloe"  # bruno argumente mais donne la plume à chloe
+        self.ecrire(d)
+        self.commit()
+        self.refusee("bruno", "personne d'autre ne peut l'être à sa place")
+        git(self.dossier, "reset", "-q", "--hard", "main")
+        self.ajouter_brut(par="bruno")  # bruno argumente sans prendre la plume
+        self.refusee("bruno", "bruno en devient le rapporteur, dans la même PR")
+        git(self.dossier, "reset", "-q", "--hard", "main")
+        d = self.debat()
+        d["rapporteur"] = "alice"  # se désigner sans argumenter
+        self.ecrire(d)
+        self.commit()
+        self.refusee("alice", "n'en reçoit un que par son premier argument")
+        self.refusee("bidji29", "n'en reçoit un que par son premier argument")
+        git(self.dossier, "reset", "-q", "--hard", "main")
+        self.argumenter("bruno", "contre", "Premier argument.")
+        d = self.debat()
+        d.update({"synthese": "Synthèse du premier argument.", "synthese_par": "bruno", "synthese_le": "2026-10-29T12:10:00Z"})
+        self.ecrire(d)
+        self.commit()
+        self.refusee("bruno", "la synthèse se publie dans une PR suivante")
+
+    def test_refus_prise_de_plume_dans_un_debat_qui_a_un_rapporteur(self):
+        self.main_avec_debat()  # alice, qui a ouvert, est rapporteure
+        self.a("2026-10-29T12:30:00Z")
+        self.ajouter_brut(par="bruno")
+        d = self.debat()
+        d["rapporteur"] = "bruno"
+        self.ecrire(d)
+        self.commit()
+        self.refusee("bruno", "seul le rapporteur (alice)")
+
+    def test_refus_debat_ne_sans_rapporteur_avec_un_argument(self):
+        self.branche()
+        self.a("2026-10-29T12:00:00Z")
+        self.ecrire({"id": "D-0001", "question": "Une question sans rapporteur ?", "ouvert_par": "alice", "ouvert_le": "2026-10-29T12:00:00Z",
+                     "statut": "ouvert", "synthese": "", "arguments": [
+                         {"id": "A1", "par": "alice", "le": "2026-10-29T12:00:00Z", "position": "pour", "texte": "Déjà un argument."}]})
+        self.commit()
+        self.refusee("alice", "naît sans argument ni synthèse")
 
     def test_refus_lien_symbolique(self):
         """Un lien symbolique, dans n'importe quel dossier, est refusé proprement par verifier-pr (sans plantage), et l'outil
