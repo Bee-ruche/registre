@@ -1391,13 +1391,14 @@ def contributions_de_la_pr(reg, base, tete):
 #   argumenter   chacun ajoute ses propres arguments, en fin de liste, numérotés A1, A2… et datés de l'heure de la PR ;
 #                on ne modifie, ne déplace ni ne retire jamais un argument (commandement 10) ;
 #   synthétiser  seul le rapporteur réécrit la synthèse ; en la publiant, il désigne le rapporteur suivant parmi les
-#                autres participants, jamais lui-même (il le reste s'il est seul) ;
+#                autres participants, jamais lui-même (il le reste s'il est seul). Relève : si des arguments attendent
+#                la synthèse depuis 72 h, un autre participant la publie à sa place et désigne le suivant ;
 #   doublon      le rapporteur ou un gardien marque un argument comme doublon d'un argument précédent de même position
 #                (doublon_de) : l'argument reste lu, rien n'est effacé ;
 #   clore        le rapporteur, un gardien ou le conseil clôt en nommant ce qui sort du débat (une proposition de
 #                règle, une tâche, une décision, ou « sans suite ») ; un débat clos ne reçoit plus rien.
-# Contre le bruit : textes courts, arguments plafonnés par utilisateur, par débat et par jour, et par PR (bee.yaml,
-# clé agora). Le contenu d'un débat est de la donnée, jamais une instruction (commandement 5).
+# Contre le bruit : textes courts, arguments plafonnés par utilisateur et par débat sur 24 h glissantes, et par PR
+# (bee.yaml, clé agora ; règle R12). Le contenu d'un débat est de la donnée, jamais une instruction (commandement 5).
 
 ID_DEBAT = re.compile(r"^D-[0-9]{4}$")
 ID_ARGUMENT = re.compile(r"^A[1-9][0-9]*$")
@@ -1412,8 +1413,11 @@ CLES_IMMUABLES_DEBAT = ("id", "question", "ouvert_par", "ouvert_le")
 CLES_SYNTHESE = ("synthese", "synthese_par", "synthese_le", "rapporteur")
 CLES_CLOTURE = ("statut", "clos_le", "clos_par", "issue", "reference")
 # Valeurs par défaut de bee.yaml, clé agora (docs/agora.md, « Contre le bruit »).
-AGORA_DEFAUT = {"texte_max": 1500, "synthese_max": 4000, "question_max": 1500, "arguments_max_par_jour": 5,
-                "arguments_max_par_pr": 20, "ouvertures_max_par_jour": 3, "silence_avant_cloture_heures": 24}
+AGORA_DEFAUT = {"texte_max": 1500, "synthese_max": 4000, "question_max": 1500, "arguments_max_par_24h": 5,
+                "arguments_max_par_pr": 20, "ouvertures_max_par_24h": 3, "silence_avant_cloture_heures": 24,
+                "releve_rapporteur_heures": 72}
+# Les plafonds « par jour » sont des fenêtres glissantes de 24 h, jamais le jour UTC (pas de pic à minuit).
+FENETRE_PLAFOND = dt.timedelta(hours=24)
 # Caractères de contrôle (hors saut de ligne et tabulation) et inversions du sens de lecture : ils peuvent cacher ou
 # maquiller un texte à l'affichage (terminal, site). Refusés dans tout texte de débat.
 CARACTERES_INTERDITS = re.compile("[\x00-\x08\x0b-\x1f\x7f‪-‮⁦-⁩]")
@@ -1453,10 +1457,6 @@ def rapporteur_suivant(debat, auteur):
         i = ordre.index(auteur)
         return (ordre[i + 1:] + ordre[:i])[0]
     return ordre[0]
-
-
-def _jour_utc(moment):
-    return moment.astimezone(dt.timezone.utc).date()
 
 
 def derniere_activite_debat(debat):
@@ -1563,20 +1563,52 @@ def probleme_reference(reg, issue, reference):
     return None
 
 
-def ouvertures_du_jour(reg, utilisateur, jour):
+def ouvertures_depuis(reg, utilisateur, debut):
+    """Débats ouverts par l'utilisateur après `debut` (fenêtre glissante des plafonds)."""
     return sum(1 for _, d in reg.debats.values() if isinstance(d, dict) and d.get("ouvert_par") == utilisateur
-               and (moment := _instant_ou_rien(d.get("ouvert_le"))) and _jour_utc(moment) == jour)
+               and (moment := _instant_ou_rien(d.get("ouvert_le"))) and moment > debut)
 
 
-def arguments_du_jour(debat, utilisateur, jour):
+def arguments_depuis(debat, utilisateur, debut):
+    """Arguments de l'utilisateur dans le débat après `debut` (fenêtre glissante des plafonds)."""
     return sum(1 for a in arguments_de(debat) if a.get("par") == utilisateur
-               and (moment := _instant_ou_rien(a.get("le"))) and _jour_utc(moment) == jour)
+               and (moment := _instant_ou_rien(a.get("le"))) and moment > debut)
+
+
+def prochaine_place(instants, maximum):
+    """Quand une place se libère dans une fenêtre glissante de 24 h pleine : le plus ancien des `maximum` derniers + 24 h."""
+    recents = sorted(instants)[-maximum:]
+    return en_iso(recents[0] + FENETRE_PLAFOND) if recents else "-"
+
+
+def releve_refusee(debat, utilisateur, instant, heures):
+    """Relève d'un rapporteur absent (docs/agora.md) : None si `utilisateur` peut publier la synthèse à sa place, sinon la
+    raison. Il faut des arguments arrivés depuis la dernière synthèse, dont le premier a plus de `heures` heures, et un
+    participant du débat autre que le rapporteur et, s'il y en a un autre, que l'auteur de la dernière synthèse (jamais
+    deux synthèses de suite par le même)."""
+    rapporteur = debat.get("rapporteur")
+    participants = participants_debat(debat)
+    candidats = [p for p in participants if p != rapporteur]
+    eligibles = [p for p in candidats if p != debat.get("synthese_par")] or candidats
+    if utilisateur not in participants:
+        return f"{utilisateur} n'est pas un participant du débat (ni son auteur, ni l'auteur d'un argument)"
+    if utilisateur not in eligibles:
+        return f"{utilisateur} a écrit la dernière synthèse : un autre participant relève le rapporteur"
+    attente = [m for a in arguments_de(debat) if a.get("id") in set(arguments_apres_synthese(debat))
+               and (m := _instant_ou_rien(a.get("le")))]
+    if not attente:
+        return "aucun argument n'attend la synthèse : le rapporteur n'est pas en retard"
+    echeance = min(attente) + dt.timedelta(hours=heures)
+    if instant < echeance:
+        return (f"le rapporteur ({rapporteur}) a jusqu'au {en_iso(echeance)} pour publier la synthèse ({heures} h après le premier "
+                "argument qu'elle ne couvre pas, agora.releve_rapporteur_heures)")
+    return None
 
 
 def verifier_agora_registre(reg, ajouter, selon_schema, instant_valide):
     """Cohérence de l'agora dans tout le registre (bee valider) : plafonds lisibles, débats conformes à leur schéma,
     arguments numérotés et datés dans l'ordre, renvois vers des arguments précédents, rapporteur participant. Les
-    plafonds eux-mêmes (longueurs, nombre par jour) se contrôlent à l'écriture, dans verifier_pr : un plafond abaissé
+    plafonds eux-mêmes (longueurs, nombre sur 24 h) se contrôlent à l'écriture, dans verifier_pr : un plafond abaissé
     par une règle ne rend pas invalides les débats déjà écrits."""
     agora = reg.config.get("agora")
     if agora is not None:
@@ -1703,10 +1735,12 @@ def verifier_debat(reg, chemin, statut_git, ancien, nouveau, auteur, *, est_cons
         exiger(probleme is None, f"{probleme} (agora.question_max)")
         ouvert = date_recente(nouveau.get("ouvert_le"), "ouvert_le")
         if ouvert and not est_conseil:
-            n = ouvertures_du_jour(reg, auteur, _jour_utc(ouvert))
-            exiger(n <= conf["ouvertures_max_par_jour"],
-                   f"plafond : {auteur} ouvre {n} débats le {_jour_utc(ouvert)}, au plus {conf['ouvertures_max_par_jour']} par jour "
-                   "(agora.ouvertures_max_par_jour)")
+            # Fenêtre glissante : tout ce que l'auteur a ouvert depuis 24 h avant cette ouverture, y compris après elle
+            # (une ouverture antidatée dans la tolérance ne fait pas sortir de la fenêtre une ouverture récente).
+            n = ouvertures_depuis(reg, auteur, ouvert - FENETRE_PLAFOND)
+            exiger(n <= conf["ouvertures_max_par_24h"],
+                   f"plafond : {auteur} aurait {n} débats ouverts en 24 h (depuis le {en_iso(ouvert - FENETRE_PLAFOND)}), au plus "
+                   f"{conf['ouvertures_max_par_24h']} sur 24 h glissantes (agora.ouvertures_max_par_24h)")
         if nouveau.get("synthese"):
             controler_synthese()
         base = {"arguments": [], "rapporteur": auteur, "ouvert_le": nouveau.get("ouvert_le")}
@@ -1779,19 +1813,26 @@ def verifier_debat(reg, chemin, statut_git, ancien, nouveau, auteur, *, est_cons
         for s in sources:
             probleme = probleme_source(reg, s)
             exiger(probleme is None, f"{ident} : source « {s} » : {probleme}")
-    jours = sorted({_jour_utc(m) for a in ajoutes if isinstance(a, dict) and (m := _instant_ou_rien(a.get("le")))})
-    for jour in jours:
-        n = arguments_du_jour(nouveau, auteur, jour)
-        exiger(n <= conf["arguments_max_par_jour"],
-               f"plafond : {auteur} aurait {n} arguments le {jour} dans ce débat, au plus {conf['arguments_max_par_jour']} par "
-               "utilisateur, par débat et par jour UTC (agora.arguments_max_par_jour) : laissez les autres répondre")
+    dates = [m for a in ajoutes if isinstance(a, dict) and (m := _instant_ou_rien(a.get("le")))]
+    if dates:
+        # Fenêtre glissante de 24 h qui finit au plus tôt des arguments ajoutés et court jusqu'au dernier (les arguments
+        # sont dans l'ordre : ceux d'avant sont déjà comptés, ceux d'après sont ceux de la PR).
+        debut = min(dates) - FENETRE_PLAFOND
+        n = arguments_depuis(nouveau, auteur, debut)
+        exiger(n <= conf["arguments_max_par_24h"],
+               f"plafond : {auteur} aurait {n} arguments en 24 h dans ce débat (depuis le {en_iso(debut)}), au plus "
+               f"{conf['arguments_max_par_24h']} par utilisateur et par débat sur 24 h glissantes (agora.arguments_max_par_24h) : "
+               "laissez les autres répondre")
 
     if statut_git == "M":
         # --- Synthèse : le rapporteur seul, qui désigne le suivant parmi les autres participants. ---
         changees = [c for c in CLES_SYNTHESE if ancien.get(c) != nouveau.get(c)]
         if changees:
             autres = [p for p in participants_debat(nouveau) if p != auteur]
-            if auteur == rapporteur:
+            # Relève d'un rapporteur absent : jugée sur la base (participants et arguments déjà publiés), jamais sur ce que
+            # la PR ajoute, pour qu'on ne devienne pas participant le temps de prendre la plume.
+            releve = None if auteur == rapporteur else releve_refusee(ancien, auteur, instant, conf["releve_rapporteur_heures"])
+            if auteur == rapporteur or (releve is None and "synthese_le" in changees):
                 natures.append("synthese")
                 controler_synthese(_instant_ou_rien(ancien.get("synthese_le")) if ancien.get("synthese") else None)
                 exiger("synthese_le" in changees, "désigner le rapporteur suivant se fait en publiant la synthèse (bee debattre synthetiser)")
@@ -1808,8 +1849,9 @@ def verifier_debat(reg, chemin, statut_git, ancien, nouveau, auteur, *, est_cons
                        "le nouveau rapporteur est un participant du débat (celui qui l'a ouvert ou l'auteur d'un argument)")
             else:
                 natures.append("synthese")
-                exiger(False, f"seul le rapporteur ({rapporteur}) publie la synthèse et désigne le suivant ; {auteur} peut "
-                              "ajouter un argument (bee debattre argumenter)")
+                exiger(False, f"seul le rapporteur ({rapporteur}) publie la synthèse et désigne le suivant ; relève impossible : "
+                              f"{releve or 'elle se fait en publiant la synthèse'} ; {auteur} peut ajouter un argument "
+                              "(bee debattre argumenter)")
 
         # --- Clôture : le rapporteur, un gardien ou le conseil, en nommant ce qui sort du débat. ---
         changees = [c for c in CLES_CLOTURE if ancien.get(c) != nouveau.get(c)]
@@ -3000,10 +3042,13 @@ def _publier(identifiant, nature):
 
 
 def _appliquer_synthese(reg, d, u, texte, suivant, instant):
-    """Publie la synthèse de u (rapporteur) et désigne le rapporteur suivant ; renvoie ce dernier."""
+    """Publie la synthèse de u (le rapporteur, ou un participant qui relève un rapporteur absent) et désigne le rapporteur
+    suivant ; renvoie ce dernier."""
     if d.get("rapporteur") != u:
-        raise ErreurBee(f"seul le rapporteur ({d.get('rapporteur')}) publie la synthèse de {d.get('id')} ; vous pouvez argumenter "
-                        "(bee debattre argumenter)")
+        raison = releve_refusee(d, u, instant, config_agora(reg)["releve_rapporteur_heures"])
+        if raison:
+            raise ErreurBee(f"seul le rapporteur ({d.get('rapporteur')}) publie la synthèse de {d.get('id')} ; relève impossible : "
+                            f"{raison}. Vous pouvez argumenter (bee debattre argumenter)")
     texte = texte.strip()
     _exiger_recevable(texte, "synthèse", config_agora(reg)["synthese_max"], "synthese_max")
     autres = [p for p in participants_debat(d) if p != u]
@@ -3029,9 +3074,12 @@ def debattre_ouvrir(args):
     question = args.question.strip()
     _exiger_recevable(question, "question", conf["question_max"], "question_max")
     instant = maintenant()
-    if u not in reg.conseil and ouvertures_du_jour(reg, u, _jour_utc(instant)) >= conf["ouvertures_max_par_jour"]:
-        raise ErreurBee(f"plafond : {u} a déjà ouvert {conf['ouvertures_max_par_jour']} débats aujourd'hui (UTC) "
-                        "(agora.ouvertures_max_par_jour) ; argumentez dans un débat existant (bee debats)")
+    if u not in reg.conseil and ouvertures_depuis(reg, u, instant - FENETRE_PLAFOND) >= conf["ouvertures_max_par_24h"]:
+        siens = [m for _, x in reg.debats.values() if isinstance(x, dict) and x.get("ouvert_par") == u
+                 and (m := _instant_ou_rien(x.get("ouvert_le")))]
+        raise ErreurBee(f"plafond : {u} a déjà ouvert {conf['ouvertures_max_par_24h']} débats en 24 h (agora.ouvertures_max_par_24h) ; "
+                        f"prochaine ouverture possible le {prochaine_place(siens, conf['ouvertures_max_par_24h'])}. D'ici là, "
+                        "argumentez dans un débat existant (bee debats)")
     identifiant = prochain_debat(reg)
     d = {"id": identifiant, "question": question, "ouvert_par": u, "ouvert_le": en_iso(instant), "statut": "ouvert",
          "rapporteur": u, "synthese": "", "arguments": []}
@@ -3064,9 +3112,11 @@ def debattre_argumenter(args):
     if args.repond_a and not any(isinstance(a, dict) and a.get("id") == args.repond_a for a in existants):
         raise ErreurBee(f"{args.repond_a} n'est pas un argument de {args.debat} (bee debats --voir {args.debat})")
     instant = maintenant()
-    if arguments_du_jour(d, u, _jour_utc(instant)) >= conf["arguments_max_par_jour"]:
-        raise ErreurBee(f"plafond : {u} a déjà {conf['arguments_max_par_jour']} arguments aujourd'hui (UTC) dans {args.debat} "
-                        "(agora.arguments_max_par_jour) : laissez les autres répondre, revenez demain")
+    if arguments_depuis(d, u, instant - FENETRE_PLAFOND) >= conf["arguments_max_par_24h"]:
+        siens = [m for a in arguments_de(d) if a.get("par") == u and (m := _instant_ou_rien(a.get("le")))]
+        raise ErreurBee(f"plafond : {u} a déjà {conf['arguments_max_par_24h']} arguments en 24 h dans {args.debat} "
+                        f"(agora.arguments_max_par_24h) : laissez les autres répondre ; prochain argument possible le "
+                        f"{prochaine_place(siens, conf['arguments_max_par_24h'])}")
     argument = {"id": f"A{len(existants) + 1}", "par": u, "le": en_iso(instant), "position": args.position}
     if args.repond_a:
         argument["repond_a"] = args.repond_a
@@ -3087,9 +3137,11 @@ def debattre_synthetiser(args):
     chemin, d = reg.debat(args.debat)
     _exiger_ouvert(args.debat, d)
     d = dict(d)
+    absent = d.get("rapporteur") if d.get("rapporteur") != u else None
     suivant = _appliquer_synthese(reg, d, u, _texte_ou_fichier(args, "synthèse"), args.suivant, maintenant())
     ecrire_debat(chemin, d)
-    print(f"✓ synthèse de {args.debat} publiée ; rapporteur suivant : {suivant}"
+    print(f"✓ synthèse de {args.debat} publiée" + (f" en relève de {absent} (rapporteur absent)" if absent else "")
+          + f" ; rapporteur suivant : {suivant}"
           + (" (vous restez seul participant)." if suivant == u else " (le rapporteur tourne : jamais deux fois de suite le même)."))
     print(f"  {_publier(args.debat, 'Synthèse')}")
     return 0
@@ -3214,9 +3266,9 @@ def debattre_importer_questions(args):
         identifiant = f"D-{numero:04d}"
         a_ouvrir.append((identifiant, question))
         liens[fin] = (identifiant, retrait)
-    if u not in reg.conseil and ouvertures_du_jour(reg, u, _jour_utc(instant)) + len(a_ouvrir) > conf["ouvertures_max_par_jour"]:
-        raise ErreurBee(f"plafond : {len(a_ouvrir)} débats à ouvrir, au plus {conf['ouvertures_max_par_jour']} par jour "
-                        "(agora.ouvertures_max_par_jour) ; le conseil n'est pas plafonné")
+    if u not in reg.conseil and ouvertures_depuis(reg, u, instant - FENETRE_PLAFOND) + len(a_ouvrir) > conf["ouvertures_max_par_24h"]:
+        raise ErreurBee(f"plafond : {len(a_ouvrir)} débats à ouvrir, au plus {conf['ouvertures_max_par_24h']} sur 24 h glissantes "
+                        "(agora.ouvertures_max_par_24h) ; le conseil n'est pas plafonné")
     if args.a_blanc:
         for identifiant, question in a_ouvrir:
             print(f"  {identifiant} : {question}")
@@ -4262,8 +4314,10 @@ def construire_analyseur():
     a.add_argument("--repond-a", help="argument auquel vous répondez (ex. A3)")
     a.add_argument("--source", action="append", help="adresse https:// ou chemin du registre ; répétable ; obligatoire pour un fait")
     a = actions.add_parser("synthetiser", help="Rapporteur : publie la synthèse et désigne le rapporteur suivant.",
-                           description="Réécrit la synthèse (rapporteur seul) et désigne le rapporteur suivant parmi les autres "
-                                       "participants, jamais vous-même (vous le restez si vous êtes seul).")
+                           description="Réécrit la synthèse (le rapporteur ; ou un autre participant qui relève un rapporteur "
+                                       "absent, 72 h après le premier argument que la synthèse ne couvre pas) et désigne le "
+                                       "rapporteur suivant parmi les autres participants, jamais vous-même (vous le restez si "
+                                       "vous êtes seul).")
     a.add_argument("debat")
     a.add_argument("--utilisateur", required=True)
     a.add_argument("--texte", help="la synthèse (bee.yaml, agora.synthese_max)")

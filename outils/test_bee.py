@@ -3236,8 +3236,34 @@ class TestAgora(BaseAgora):
         for i in range(3):
             self.assertEqual(self.ouvrir(question=f"Question numéro {i} de la journée ?"), f"D-000{i + 1}")
         self.ko("plafond", "debattre", "ouvrir", "--utilisateur", "alice", "--question", "Une question de trop ?")
-        self.a("2026-10-30T00:00:01Z")
-        self.assertEqual(self.ouvrir(question="Le lendemain, une autre question ?"), "D-0004")
+        self.a("2026-10-30T00:00:01Z")  # fenêtre glissante : minuit ne remet pas le compteur à zéro
+        self.ko("prochaine ouverture possible le 2026-10-30T12:00:00Z", "debattre", "ouvrir", "--utilisateur", "alice",
+                "--question", "Juste après minuit ?")
+        self.a("2026-10-30T12:00:01Z")
+        self.assertEqual(self.ouvrir(question="Vingt-quatre heures plus tard, une autre question ?"), "D-0004")
+
+    def test_pic_de_minuit_refuse_par_la_commande(self):
+        self.a("2026-10-29T23:58:00Z")
+        self.ouvrir()
+        for i in range(5):
+            self.argumenter("bruno", "pour", f"Argument {i} avant minuit.")
+        self.a("2026-10-30T00:01:00Z")
+        self.ko("prochain argument possible le 2026-10-30T23:58:00Z", "debattre", "argumenter", "D-0001", "--utilisateur", "bruno",
+                "--position", "pour", "--texte", "Juste après minuit.")
+        self.a("2026-10-30T23:58:01Z")
+        self.argumenter("bruno", "pour", "Vingt-quatre heures plus tard.")
+
+    def test_releve_du_rapporteur_absent(self):
+        self.debat_a_trois()  # alice rapporteur ; A1 (bruno) à 12 h 10, A2 (chloe) à 12 h 20 ; aucune synthèse
+        self.a("2026-11-01T12:09:00Z")
+        self.ko("a jusqu'au 2026-11-01T12:10:00Z", "debattre", "synthetiser", "D-0001", "--utilisateur", "bruno", "--texte", "Trop tôt.")
+        self.a("2026-11-01T12:10:00Z")
+        self.ko("n'est pas un participant", "debattre", "synthetiser", "D-0001", "--utilisateur", "bidji29", "--texte", "Pas participant.")
+        texte = self.ok("debattre", "synthetiser", "D-0001", "--utilisateur", "bruno", "--texte", "Synthèse de relève par bruno.")
+        self.assertIn("en relève de alice", texte)
+        d = self.debat()
+        self.assertEqual((d["synthese_par"], d["rapporteur"]), ("bruno", "chloe"), "le relayeur désigne le suivant, à tour de rôle")
+        self.valide()
 
     def test_cloture_par_le_rapporteur_apres_silence(self):
         self.debat_a_trois()
@@ -3587,7 +3613,83 @@ class TestPullRequestsAgora(BaseAgora):
         self.commit()
         self.libre_service("alice", "argument")
         self.ajouter_brut(texte="Le sixième du jour.")
-        self.refusee("alice", "au plus 5 par utilisateur, par débat et par jour")
+        self.refusee("alice", "au plus 5 par utilisateur et par débat sur 24 h glissantes")
+
+    def test_refus_pic_de_minuit(self):
+        self.a("2026-10-29T23:58:00Z")
+        self.ouvrir()
+        for i in range(5):
+            self.argumenter("alice", "pour", f"Argument {i} avant minuit.")
+        self.commit("cinq arguments à 23 h 58")
+        self.branche()
+        self.a("2026-10-30T00:01:00Z")
+        self.ajouter_brut(texte="Le sixième, juste après minuit.")
+        self.refusee("alice", "aurait 6 arguments en 24 h")
+        git(self.dossier, "reset", "-q", "--hard", "main")
+        self.a("2026-10-30T23:58:01Z")
+        self.ajouter_brut(texte="Vingt-quatre heures plus tard.")
+        self.libre_service("alice", "argument")
+        git(self.dossier, "reset", "-q", "--hard", "main")
+        self.a("2026-10-31T00:30:00Z")  # antidater dans la tolérance ne fait pas rentrer dans une fenêtre déjà pleine
+        self.ajouter_brut(texte="Antidaté de 2 h.", le="2026-10-30T22:30:00Z")
+        self.refusee("alice", "aurait 6 arguments en 24 h")
+
+    # --- Relève d'un rapporteur absent ---
+
+    def synthese_brute(self, qui, rapporteur_suivant):
+        d = self.debat()
+        d.update({"synthese": f"Synthèse publiée par {qui}.", "synthese_par": qui, "synthese_le": os.environ["BEE_MAINTENANT"],
+                  "rapporteur": rapporteur_suivant})
+        self.ecrire(d)
+        self.commit()
+
+    def test_releve_acceptee_apres_le_delai(self):
+        self.main_avec_debat()  # A1 à 12 h 10, sans synthèse : relève possible à partir du 01/11 12 h 10
+        self.a("2026-11-01T12:10:00Z")
+        self.synthese_brute("bruno", "chloe")
+        self.libre_service("bruno", "synthese")
+
+    def test_refus_releve_trop_tot(self):
+        self.main_avec_debat()
+        self.a("2026-11-01T12:09:59Z")
+        self.synthese_brute("bruno", "chloe")
+        self.refusee("bruno", "relève impossible : le rapporteur (alice) a jusqu'au 2026-11-01T12:10:00Z")
+
+    def test_refus_releve_par_un_non_participant(self):
+        self.ok("inscrire", "--pseudo", "david", "--compte-cree-le", "2020-01-01")  # membre, mais pas participant
+        self.main_avec_debat()
+        self.a("2026-11-02T12:00:00Z")
+        self.synthese_brute("david", "bruno")
+        texte = self.refusee("david", "david n'est pas un participant")
+        git(self.dossier, "reset", "-q", "--hard", "main")
+        d = self.debat()  # devenir participant dans la même PR ne suffit pas : la relève se juge sur la base
+        d["arguments"].append({"id": "A3", "par": "david", "le": "2026-11-02T12:00:00Z", "position": "pour", "texte": "J'arrive."})
+        d.update({"synthese": "Synthèse de david.", "synthese_par": "david", "synthese_le": "2026-11-02T12:00:00Z", "rapporteur": "bruno"})
+        self.ecrire(d)
+        self.commit()
+        self.refusee("david", "david n'est pas un participant")
+        self.assertIn("seul le rapporteur (alice)", texte)
+
+    def test_refus_releve_par_l_auteur_de_la_derniere_synthese_ou_sans_attente(self):
+        self.debat_a_trois()
+        self.a("2026-10-29T12:30:00Z")
+        self.ok("debattre", "synthetiser", "D-0001", "--utilisateur", "alice", "--texte", "Synthèse d'alice.", "--suivant", "bruno")
+        self.commit("synthèse d'alice ; bruno rapporteur")
+        self.branche()
+        self.a("2026-11-05T12:00:00Z")
+        self.synthese_brute("chloe", "alice")
+        self.refusee("chloe", "aucun argument n'attend la synthèse")  # rien de neuf depuis : bruno n'est pas en retard
+        git(self.dossier, "switch", "-q", "main")
+        self.a("2026-10-29T12:40:00Z")
+        self.argumenter("chloe", "contre", "Objection restée sans synthèse.")
+        self.commit("A3, sur main")
+        git(self.dossier, "switch", "-qC", "pr")
+        self.a("2026-11-05T12:00:00Z")
+        self.synthese_brute("alice", "chloe")
+        self.refusee("alice", "alice a écrit la dernière synthèse")  # jamais deux synthèses de suite par le même
+        git(self.dossier, "reset", "-q", "--hard", "main")
+        self.synthese_brute("chloe", "alice")
+        self.libre_service("chloe", "synthese")
 
     def test_refus_plafond_par_pr(self):
         self.a("2026-10-29T12:00:00Z")
@@ -3713,7 +3815,7 @@ class TestPullRequestsAgora(BaseAgora):
                          "ouvert_le": "2026-10-29T12:00:00Z", "statut": "ouvert", "rapporteur": "alice", "synthese": "",
                          "arguments": []}, f"D-000{i + 1}")
         self.commit()
-        self.refusee("alice", "au plus 3 par jour")
+        self.refusee("alice", "au plus 3 sur 24 h glissantes")
 
     def test_refus_suppression_et_fichier_hors_format(self):
         self.debat_a_trois()
