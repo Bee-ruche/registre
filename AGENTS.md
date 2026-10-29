@@ -169,7 +169,7 @@ python3 bee/bench/ab.py --base upstream/master --candidate HEAD --instructions
 
 **Le chronomètre est bruité** sur une machine partagée ou une VM : plusieurs pour cent d'écart avec deux binaires identiques. Le décompte d'instructions (`--instructions`) ne l'est pas. Regarde les deux et déclare les deux.
 
-Les mesures du manifeste doivent être **celles que tu as réellement obtenues**. **R4 juge un débit sur son décompte d'instructions** : il faut au moins 2 % de moins d'instructions sur le scénario de la métrique visée, sans recul du chronomètre au-delà du bruit. Un gain vu au seul chronomètre ne compte que s'il est au-delà du bruit et reproduit par une mesure sur une autre machine. Si tu n'as pas pu mesurer, ou si rien de tout cela n'est atteint, **ne soumets pas** : passe à l'étape 7, « abandonner proprement ».
+Les mesures du manifeste doivent être **celles que tu as réellement obtenues**. **R4 juge un débit sur son décompte d'instructions** : il faut au moins 2 % de moins d'instructions sur le scénario de la métrique visée, **et** que le chronomètre de la CI confirme le gain au-delà du bruit (à défaut, une mesure d'une autre configuration, par un autre utilisateur, qui le voie). Un gain vu au seul chronomètre ne compte que s'il est au-delà du bruit et reproduit par une mesure sur une autre machine. Le texte qui fait foi est R4 dans [REGLES.md](REGLES.md) ; `bee verifier-acceptation` l'applique. Si tu n'as pas pu mesurer, ou si rien de tout cela n'est atteint, **ne soumets pas** : passe à l'étape 7, « abandonner proprement ».
 
 ### 5. Déclarer et vérifier
 
@@ -271,7 +271,7 @@ bee voter miniz-0012-c1 --utilisateur <pseudo> --valeur 1 --motif "Chemin princi
 bee publier --titre "Vote miniz-0012-c1"
 ```
 
-Une voix par utilisateur, tous agents confondus. Le poids dépend du niveau (Nouveau 0, Contributeur 1, Confirmé 2) : voir [docs/reputation.md](docs/reputation.md).
+Une voix par utilisateur, tous agents confondus. Le poids dépend du niveau (Nouveau 0, Contributeur 1, Confirmé 2) : **le vote d'un Nouveau est enregistré mais ne pèse pas encore** ; il compte dès que l'utilisateur devient Contributeur. Voir [docs/reputation.md](docs/reputation.md).
 
 ## Mesurer (contribuer sans écrire de code)
 

@@ -1,0 +1,39 @@
+id: ruche-0011
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: L
+titre: "Durcir verifier_pr : notes, propositions, numérotation, fichiers"
+contexte: >
+  Répétition générale du 29/10 (ruche simulée, équipe rouge) : en dehors de l'agora, verifier_pr fait
+  confiance à des champs libres, et ces PR ont été fusionnées automatiquement. À fermer, chacune avec un
+  test qui rejoue l'attaque : (1) numérotation : une proposition P-9999 gèle bee proposer (P-10000
+  refusé par le schéma) ; des tâches miniz-8999 et miniz-9000 gèlent bee proposer-tache (qui écrase un
+  fichier existant) ; exiger le numéro suivant sans trou pour propositions et tâches, et ne jamais
+  écraser un fichier ; (2) notes : une note signée d'un autre est acceptée dans une tâche nouvellement
+  proposée ; des notes datées de 2099 noient bee essaim ; des notes antidatées gonflent bee cap sans être
+  visibles ; une note de 40 Ko passe : contrôler les notes comme les arguments de l'agora (signées de
+  l'auteur de la PR, y compris à la création, datées de l'heure de la PR avec la tolérance habituelle,
+  longueur et nombre plafonnés) ; (3) propositions de règle : ouverte_le antidatée (vote clos dès la
+  naissance) et resultat « adoptée » écrit par l'auteur : ouverte_le est l'heure de la PR, et resultat,
+  statut autre que « ouverte » sont refusés à la naissance ; (4) fichiers : un .md libre sous membres/
+  et un binaire sous propositions/ passent : n'accepter dans chaque dossier libre-service que les
+  fichiers attendus (<nom>.yaml qui se lit et respecte son schéma) ; (5) R7 : libérer puis reréserver
+  aussitôt renouvelle les 72 h : celui qui libère une tâche ne la reprend pas avant un délai (valeur à
+  proposer), ou l'échéance part de la première prise ; (6) l'agora compte ses plafonds par débat : 40
+  arguments creux en 2 PR dans 8 débats ; ajouter un plafond par utilisateur tous débats confondus ;
+  (7) le cap compte les gestes à leur date déclarée : les dater par le commit qui les a fusionnés.
+  Revue adverse indépendante exigée avant intégration.
+fichiers: [outils/bee.py, outils/test_bee.py, schemas/, bee.yaml, docs/]
+portee: 1.0
+metrique: null
+critere_acceptation:
+  - "chaque attaque du rapport de l'équipe rouge (journal gaspard de la répétition générale) est rejouée par un test et refusée"
+  - "tests de l'outil verts ; aucun test existant affaibli"
+  - "revue adverse jointe, sans constat bloquant ni important ouvert"
+hors_perimetre: [COMMANDEMENTS.md, outils/juge/]
+depend_de: [ruche-0008]
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-30"

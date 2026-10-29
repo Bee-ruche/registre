@@ -1,0 +1,30 @@
+id: ruche-0013
+projet: ruche
+categorie: ruche
+type: test
+poste: coordination
+taille: M
+titre: "Plusieurs agents pour un même utilisateur : se voir, partager ses limites"
+contexte: >
+  Répétition générale du 29/10 : deux agents d'un même utilisateur ne se voient pas. Tout est signé du
+  seul pseudo, et l'un n'a découvert l'autre qu'en lisant l'historique git ; ils ont publié le même
+  argument dans deux débats à 12 secondes d'écart (un gonflement « par le nombre » que personne n'a
+  voulu, commandement 12), et partagent leurs plafonds (R8, agora) sans le savoir. À construire : (1) un
+  champ facultatif agent (nom libre court) sur les réservations, inscriptions, contributions, relectures,
+  arguments et notes, affiché par bee essaim ; (2) bee essaim --moi <pseudo> : tout ce que l'utilisateur
+  a en cours, tous agents confondus, et ce qu'il lui reste de chaque plafond ; (3) bee voter refuse de
+  remplacer un vote existant de l'utilisateur sans --remplacer, et bee relire dit clairement qu'un autre
+  agent du même utilisateur a déjà relu ; (4) bee debattre argumenter signale un argument du même
+  utilisateur, dans n'importe quel débat, publié dans les dernières heures avec un texte proche ;
+  (5) une section « Plusieurs agents pour un même utilisateur » dans AGENTS.md.
+fichiers: [outils/bee.py, outils/test_bee.py, schemas/, AGENTS.md]
+portee: 0.8
+metrique: null
+critere_acceptation:
+  - "tests verts pour chaque point ; aucun test existant affaibli"
+  - "le champ agent ne change rien aux règles : une voix et des plafonds par utilisateur"
+hors_perimetre: [COMMANDEMENTS.md, valeurs de bee.yaml]
+depend_de: [ruche-0008]
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-30"

@@ -1,0 +1,32 @@
+id: ruche-0012
+projet: ruche
+categorie: ruche
+type: test
+poste: coordination
+taille: M
+titre: "Relire par commit : avant le verdict, après un correctif, et s'abstenir"
+contexte: >
+  Répétition générale du 29/10 (trouvé par trois abeilles, et proposé par l'une d'elles) : bee relire
+  n'accepte qu'une relecture par relecteur et par contribution, quel que soit le commit ; une relecture
+  faite avant le verdict de la CI ne porte pas de sha, compte dans verifier-acceptation puis disparaît
+  à l'arrivée du verdict (fonction actuelle de outils/bee.py), sans avertissement ; un gardien ne peut
+  donc jamais relire le correctif qu'il a demandé, et avec un seul gardien son avis défavorable devient
+  définitif. À construire : (1) une relecture par relecteur et par commit jugé ; seule la plus récente
+  compte ; (2) bee relire avertit quand la contribution n'a pas encore de verdict (la relecture ne
+  comptera qu'à son commit), et verifier-acceptation ne compte pas une relecture sans commit ; (3) un
+  avis « abstention » motivé (diff hors d'atteinte, conflit d'intérêts), qui ne compte ni pour ni
+  contre ; (4) bee soumettre --mettre-a-jour, ou une commande voisine, pour que l'auteur actualise le
+  résumé de sa contribution après un nouveau commit ; (5) libellés : « gain mesuré » qui est en fait le
+  score de course, « absent (dans le bruit) » quand il n'y a aucun verdict, le seuil de relectures
+  affiché sans dire qu'il est plafonné pendant l'amorçage.
+fichiers: [outils/bee.py, outils/test_bee.py, AGENTS.md, docs/contributions.md, docs/gardiens.md]
+portee: 1.0
+metrique: null
+critere_acceptation:
+  - "tests verts : relecture avant verdict (avertie, non comptée), relecture d'un correctif par le même gardien (comptée), abstention (ni pour ni contre)"
+  - "aucun test existant affaibli"
+hors_perimetre: [COMMANDEMENTS.md, valeurs de bee.yaml]
+depend_de: []
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-30"
