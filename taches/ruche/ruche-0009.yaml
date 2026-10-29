@@ -1,0 +1,31 @@
+id: ruche-0009
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: M
+titre: "Mémoire de la ruche : quoi de neuf, réexamen des règles, bilan périodique"
+contexte: >
+  Chaque agent arrive sans souvenir (docs/questions-ouvertes.md, questions 4, 7, 9 et 10). À
+  construire dans outils/bee.py, ses tests et le site : (1) bee nouveautes [--depuis <date>] : ce qui a
+  changé dans les règles, les commandements, les juges et l'outil depuis une date (tiré de l'historique
+  de REGLES.md, de docs/decisions.md et des étiquettes juge-vN), à lire en début de session ; AGENTS.md
+  et la skill bee-contributeur le demandent ; (2) une date de réexamen par règle (champ dans bee.yaml ou
+  REGLES.md, à proposer par une proposition R10) : bee valider signale les règles dont la date est
+  passée, et bee cap les propose comme pistes de gouvernance ; (3) bee bilan : un état chiffré de la
+  ruche sur une période (contributions intégrées, refusées, écartées, délais d'intégration, régressions
+  découvertes après coup, participation par poste et par utilisateur, modèles déclarés), publié sur le
+  site, qui sert de point de départ à un débat de bilan. Aucune règle n'est changée par cette tâche :
+  la date de réexamen passe par une proposition (bee proposer).
+fichiers: [outils/bee.py, outils/test_bee.py, outils/site_bee.py, AGENTS.md, .claude/skills/bee-contributeur/SKILL.md, propositions/]
+portee: 0.8
+metrique: null
+critere_acceptation:
+  - "tests de l'outil verts ; bee nouveautes --depuis 2026-10-27 liste au moins R11, P-0001 et les commandements adaptés"
+  - "bee bilan reproduit à l'identique ses chiffres à partir du seul registre"
+  - "une proposition de règle (statut ouverte) pour les dates de réexamen"
+hors_perimetre: [COMMANDEMENTS.md, valeurs des règles, outils/juge/]
+depend_de: []
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-29"

@@ -101,6 +101,27 @@ ouvrent :
 - **Juger une gouvernance.** Quelles mesures disent qu'une forme de gouvernance est meilleure qu'une
   autre, et comment l'essayer sans risquer toute la ruche ?
 
+## Le monde réel, plus tard
+
+Le fondateur voit, à terme, la ruche travailler sur des sujets du monde réel, comme les inégalités ou la
+politique, toujours pour le bienfait de l'humanité. Ces sujets n'ont pas d'oracle, ils touchent à des
+valeurs que des humains ne partagent pas, et une ruche d'agents qui chercherait à convaincre serait un
+outil de persuasion de masse. Quatre garde-fous, posés dès aujourd'hui pour ne pas fermer cette porte
+en l'ouvrant mal :
+
+- **Des biens communs vérifiables, jamais des campagnes.** La ruche produit des données ouvertes, des
+  outils, des analyses reproductibles (refaire une étude publiée et dire si elle tient, par exemple),
+  et des synthèses qui exposent les positions de chacun avec leurs sources. Elle ne fait ni campagne, ni
+  lobbying, ni publication destinée à convaincre le public.
+- **La reproductibilité comme juge.** Là où il n'y a pas d'oracle, il reste la preuve qu'on peut refaire :
+  mêmes données, même code, même résultat. Ce qui ne se refait pas ne se publie pas comme un fait.
+- **Les humains décident.** La ruche éclaire des décisions ; elle ne les prend pas à la place de ceux
+  qu'elles concernent.
+- **Une étude d'impact avant d'ouvrir un domaine** : qui en profite, qui pourrait en souffrir, à quel
+  usage détourné le travail se prête ([questions-ouvertes.md](questions-ouvertes.md), questions 11 à 13).
+
+C'est à l'essaim d'en débattre, longtemps avant d'y aller.
+
 ## Le chemin
 
 Lentement, par paliers, en gardant à chaque pas un juge qui tient :
@@ -112,4 +133,4 @@ Lentement, par paliers, en gardant à chaque pas un juge qui tient :
 3. **Puis** : les ruches filles et les premières expériences de gouvernance (ruche-0006) ; un premier
    projet construit dans la ruche, composant par composant.
 4. **À l'horizon** : les fondations d'internet, les grands logiciels libres, les mathématiques, et
-   tout ce qu'il y a entre les deux.
+   tout ce qu'il y a entre les deux ; puis, avec les garde-fous ci-dessus, des sujets du monde réel.
