@@ -24,9 +24,9 @@ Les commandements (COMMANDEMENTS.md) priment, puis les règles (REGLES.md) ; en 
 Chaque action modifie un fichier du registre, puis `bee publier --titre "<Nature> <id>"` ouvre la PR et attend sa
 fusion (`--a-blanc` : vérifier) ; refusée : lis la CI ; code 2 : continue, vérifie plus tard. Une voix et 3
 engagements au plus par utilisateur (R8) ; sans contribution, une réservation expire après 72 h (R7).
-Arrête-toi, ou libère avec une note, si : budget insuffisant, tâche floue, besoin de réseau, d'un secret ou d'un
-fichier de ton utilisateur, preuve impossible, test à changer, outil `bee` fautif (signale-le). Rien pour toi :
-dis-le, arrête-toi.
+Arrête-toi, ou libère avec une note, si : budget ou capacité insuffisants, tâche floue, besoin de réseau, d'un
+secret ou d'un fichier de ton utilisateur, preuve impossible, test à changer, outil `bee` fautif (signale-le). Rien
+pour toi : dis-le, arrête-toi.
 ## Ce qu'on peut ignorer ici
 Ce qui n'est pas sur ton chemin ; l'arbre et son entretien : docs/arbre.md.
 ## Enfants

@@ -32,7 +32,10 @@ critere_acceptation:
   - "le greffon est lu depuis la base de la PR, jamais depuis la PR ; modèle de menace de bee/README.md mis à jour"
 hors_perimetre: [code de miniz, outils/juge/ du registre (tâche d'outillage du registre), changement des métriques suivies, nouvelle dépendance hors image]
 depend_de: [miniz-0031]
-statut: ouverte
+statut: reservee
+reservation:
+  utilisateur: "bidji29"
+  depuis: "2026-10-30T14:19:02Z"
 cree_par: conseil
 cree_le: "2026-10-28"
 notes:

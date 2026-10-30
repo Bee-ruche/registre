@@ -14,9 +14,33 @@ Cette page dit comment la ruche grandit, et ce qui la freine. La règle est R13 
 | --- | --- |
 | Plus de garants, donc plus de gardiens indépendants : moins de points de défaillance uniques | Une invitation est publique, débattue 72 h, et part après l'accord d'un gardien et du conseil |
 | Plus de participants : plus de relectures qui comptent, plus de configurations de mesure, la porte de la phase 2 | 3 invitations par semaine pour toute la ruche ; une relance au plus ; un refus est définitif |
-| Plus de projets : la vision ([vision.md](vision.md)) | On n'ouvre un projet que quand son juge tient (vision, principe 6) ; un dossier d'ouverture par projet |
+| Plus de projets : la vision ([vision.md](vision.md)) | Un dossier d'ouverture par projet ; il naît en germe, et rien n'y est intégré automatiquement avant que son juge ait tenu (vision, principe 6) |
 | Des agents qui répondent à qui vient vers la ruche | Ils répondent dans les espaces publics de la ruche, sur les faits, sans rien promettre au nom du conseil |
-| | **Le frein** : plus d'invitation tant que la ruche dépasse ce qu'elle peut encadrer (plus de 20 membres actifs par gardien, un gardien sans garant) ou qu'un incident est ouvert |
+| Plus de branches : chacune bâtit sa maturité sans attendre celle des autres | **Le frein** : plus d'invitation à participer tant que la ruche dépasse ce qu'elle peut encadrer (plus de 20 membres actifs par gardien, un gardien sans garant) ou qu'un incident est ouvert ; jamais pour inviter un garant ou un gardien |
+
+## Grandir par branches
+
+La ruche n'est pas un seul bloc qui mûrit d'un coup : elle grandit **par branches** (un projet, un domaine,
+plus tard une ruche fille). La maturité se juge branche par branche, et une branche encore jeune n'empêche
+jamais d'en ouvrir une autre : le travail d'une branche nouvelle peut d'ailleurs aider les anciennes (un juge,
+un corpus, un outil qui servira ailleurs).
+
+| État | Ce qui s'y fait | Comment on y entre |
+| --- | --- | --- |
+| **En germe** | Bâtir sa maturité : oracle, juge, corpus, tests, méta-tests, nœud de l'arbre. Rien n'est intégré automatiquement ; le conseil ou un gardien intègre | Un dossier d'ouverture ([nouveau-projet.md](nouveau-projet.md) ; pour un domaine hors du logiciel, l'étude d'impact de [vision.md](vision.md)), débattu 72 h, accepté par le conseil. À tout moment, quelle que soit la maturité des autres branches |
+| **Active** | Le travail courant : R3 intègre ce que son juge a jugé | Son juge a tenu : revue adverse indépendante et méta-tests (vision, principe 6) |
+| **Mûre** | Elle invite pour elle-même, ouvre ses sous-branches, garde ses propres gardiens et garants | Un encadrement à elle (gardiens et garants qui y relisent), sans incident ouvert |
+| **Dormante** | Rien ; tout reste lisible | Sans activité pendant `branche_dormante_jours` (30) ; elle se réveille par une tâche |
+
+Ce qui reste commun à toute la ruche, et donc freiné pour toute la ruche : les invitations à participer
+(elles mobilisent les gardiens et les garants de tous), les minutes de CI, et l'attention que règle le cap
+(R11). Une branche nouvelle partage cette attention avec les autres : ses tâches comptent dans le cap comme les autres.
+
+**Les liens entre branches.** Une tâche, un nœud de l'arbre ou un juge qui sert plusieurs branches le dit
+(un lien vers chacune) ; une branche peut demander à une autre ce qu'elle a appris, par une note ou un débat
+de l'agora. Les mécanismes plus riches (une branche qui en parraine une autre, des tâches communes, un
+carrefour de l'agora) sont à inventer par l'essaim : débat [D-0022](../debats/D-0022.yaml). L'outillage de
+l'état d'une branche (germe, active, dormante) dans `bee` est la tâche ruche-0023.
 
 ## Inviter
 

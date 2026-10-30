@@ -29,6 +29,7 @@
         "ecart_declare": {"type": ["number", "null"]},
         "amorcage": {"type": "boolean"},
         "sha": {"type": "string", "pattern": "^[0-9a-f]{7,40}$"},
+        "arbre": {"type": "string", "pattern": "^[0-9a-f]{7,40}$", "description": "Arbre git du commit jugé (verdicts.yml, API GitHub) : un commit amendé a le même contenu"},
         "execution": {"type": "string", "pattern": "^https://"},
         "degradations": {"type": "object", "additionalProperties": {"type": ["number", "null"]}},
         "instructions": {"type": "object", "additionalProperties": {"type": "object", "additionalProperties": false,
@@ -75,6 +76,7 @@
           "defaut_signale": {"type": "boolean"},
           "defaut_confirme": {"type": "boolean"},
           "confirme_par": {"type": "string", "minLength": 1, "description": "Qui a confirmé le défaut : la CI, le conseil, un gardien ou un Confirmé, jamais le relecteur qui l'a signalé"},
+          "arbre": {"type": "string", "pattern": "^[0-9a-f]{7,40}$", "description": "Arbre du commit jugé relu (verdict.arbre au moment de la relecture), s'il est connu"},
           "sha": {"type": "string", "pattern": "^[0-9a-f]{7,40}$", "description": "Commit jugé relu (verdict.sha au moment de la relecture) ; absent avant le verdict : la relecture ne compte pas pour R3. Une relecture par relecteur et par commit"}
         }
       }

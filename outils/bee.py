@@ -520,15 +520,21 @@ def sans(paralleles, utilisateur):
     return [p for p in paralleles if p.get("utilisateur") != utilisateur]
 
 
+def meme_pseudo(a, b):
+    """Un login GitHub ne tient pas compte de la casse : « Alice » et « alice » sont le même compte (revue adverse de
+    ruche-0012). Partout où l'identité compte (fil, juges d'une course, R7, R8, auteur d'une PR, fiches membres/)."""
+    return isinstance(a, str) and isinstance(b, str) and a.casefold() == b.casefold()
+
+
 def engagements_de(reg, utilisateur):
     """R8 : réservations et inscriptions en parallèle de l'utilisateur, tous agents confondus : [(tâche, genre)]."""
     resultat = []
     for tid, (_, t) in sorted(reg.taches.items()):
         if not isinstance(t, dict):
             continue
-        if (t.get("reservation") or {}).get("utilisateur") == utilisateur:
+        if meme_pseudo((t.get("reservation") or {}).get("utilisateur"), utilisateur):
             resultat.append((tid, "réservation"))
-        if any(p.get("utilisateur") == utilisateur for p in paralleles_de(t)):
+        if any(meme_pseudo(p.get("utilisateur"), utilisateur) for p in paralleles_de(t)):
             resultat.append((tid, "en parallèle"))
     return resultat
 
@@ -594,8 +600,8 @@ def jugees_par(reg, tid, pseudo):
     (commandement 3) : ni inscription en parallèle, ni réservation, tant que ces contributions sont en course ; on ne se
     retire pas pour juger puis revenir concourir."""
     return [c for c, e in contributions_en_course(reg, tid)
-            if any(isinstance(r, dict) and ((r.get("relecteur") == pseudo and (r.get("avis") == "defavorable" or r.get("defaut_signale")))
-                                            or r.get("confirme_par") == pseudo)
+            if any(isinstance(r, dict) and ((meme_pseudo(r.get("relecteur"), pseudo) and (r.get("avis") == "defavorable" or r.get("defaut_signale")))
+                                            or meme_pseudo(r.get("confirme_par"), pseudo))
                    for r in e.get("relectures") or [])]
 
 
@@ -625,7 +631,7 @@ def relecture_refusee(precedentes, relecture, levee_de=lambda r: False):
     (X, Y, puis X redevient possible ; jamais deux de suite sur le même) ; sans commit, seulement en première. Une relecture
     levée par le conseil (levee_de) n'est plus « la plus récente » : après la levée, il peut relire le commit jugé. None si
     elle est recevable, sinon la raison."""
-    siennes = [r for r in precedentes if isinstance(r, dict) and r.get("relecteur") == relecture.get("relecteur") and not levee_de(r)]
+    siennes = [r for r in precedentes if isinstance(r, dict) and meme_pseudo(r.get("relecteur"), relecture.get("relecteur")) and not levee_de(r)]
     if not siennes:
         return None
     if not relecture.get("sha"):
@@ -646,7 +652,7 @@ def vote_net(reg, enr, niveaux):
     """Vote net pondéré d'une contribution : ni l'auteur, ni ses concurrents actuels."""
     concurrents = concurrents_de(reg, enr)
     return sum(int(v.get("valeur", 0)) * POIDS_VOTE.get(niveau_de(niveaux, v.get("votant")), 0)
-               for _, v in reg.votes if v.get("sujet") == enr.get("id") and v.get("votant") != enr.get("auteur")
+               for _, v in reg.votes if v.get("sujet") == enr.get("id") and not meme_pseudo(v.get("votant"), enr.get("auteur"))
                and vote_recevable(v, concurrents))
 
 
@@ -1296,7 +1302,7 @@ def fil_de(reg, enr):
     comprises, elle incluse. Un refus ou un défaut posé dans le fil le suit, quel que soit le commit : re-soumettre, ou
     amender (même arbre, autre sha), ne l'efface pas ; la copie d'un autre auteur n'a pas le même fil. [(id, enregistrement)]."""
     fil = [(c, e) for c, (_, e) in reg.enregistrements.items()
-           if isinstance(e, dict) and e.get("tache") == enr.get("tache") and e.get("auteur") == enr.get("auteur") and c != enr.get("id")]
+           if isinstance(e, dict) and e.get("tache") == enr.get("tache") and meme_pseudo(e.get("auteur"), enr.get("auteur")) and c != enr.get("id")]
     return fil + [(enr.get("id"), enr)]
 
 
@@ -1305,12 +1311,13 @@ def releve_relectures(reg, enr, niveaux):
     relecture la plus récente, dans le fil de la contribution (fil_de, ordonné par date `le`), une fois écartées celles de
     l'auteur et celles qu'une levée du conseil sur cette contribution neutralise. Une relecture la plus récente non recevable
     (avis qu'un concurrent ne peut pas donner) ne compte ni pour ni contre et ne fait jamais revenir une plus ancienne.
-    « Sur le commit jugé » : son sha est celui du verdict.
+    « Sur le commit jugé » : son sha est celui du verdict ; « du contenu jugé » : même arbre git (meme_contenu), un commit
+    amendé compris. Les levées du conseil de toutes les contributions du fil comptent.
     - favorable : sa plus récente est favorable, sur le commit jugé, et sur cette contribution même ;
-    - défavorable (balance de R3) : sa plus récente relecture du commit jugé, si elle est défavorable ;
+    - défavorable (balance de R3) : sa plus récente relecture du contenu jugé, si elle est défavorable ;
     - bloquante (gardien, conseil, Confirmé) : sa plus récente est défavorable, quel que soit son commit, ou sa plus récente
-      relecture du commit jugé l'est ; elle tient jusqu'à ce qu'il relise ;
-    - défaut confirmé : bloque tant qu'il est sur sa plus récente relecture, ou sur sa plus récente du commit jugé ;
+      relecture du contenu jugé l'est ; elle tient jusqu'à ce qu'il relise ;
+    - défaut confirmé : bloque tant qu'il est sur sa plus récente relecture, ou sur sa plus récente du contenu jugé ;
     - abstention : sa plus récente ne pèse rien, n'ouvre aucune porte, n'abaisse aucun seuil.
     Un Nouveau ne compte pas, sauf par un défaut confirmé. « fil » : [(relecteur, contribution, « refus » ou « défaut
     confirmé »)] quand ce qui bloque vient d'une autre contribution du fil."""
@@ -1319,22 +1326,24 @@ def releve_relectures(reg, enr, niveaux):
     concurrents, privilegies = concurrents_de(reg, enr), reg.privilegies()
     origine = {}
     toutes = []
-    for cid, e in fil_de(reg, enr):
+    fil = fil_de(reg, enr)
+    for cid, e in fil:
         for rang, r in enumerate(e.get("relectures") or []):
-            if isinstance(r, dict) and r.get("relecteur") != enr.get("auteur") and not levee(reg, enr, r):
+            if isinstance(r, dict) and not meme_pseudo(r.get("relecteur"), enr.get("auteur")) and not any(levee(reg, f, r) for _, f in fil):
                 origine[id(r)] = cid
                 toutes.append(((_instant_ou_rien(r.get("le")) or PASSE, cid == enr.get("id"), rang), r))
     par = defaultdict(list)
     for _, r in sorted(toutes, key=lambda x: x[0]):
-        par[r.get("relecteur")].append(r)
+        par[str(r.get("relecteur")).casefold()].append(r)  # un relecteur, quelle que soit la casse de son login
     sur = lambda r: bool(verdict) and r.get("sha") == sha  # noqa: E731
     ici = lambda r: origine.get(id(r)) == enr.get("id")  # noqa: E731
     recevable = lambda r: r if r and avis_recevable(r, concurrents) else None  # noqa: E731
     releve = {k: [] for k in ("favorables", "defavorables", "bloquantes", "defauts", "abstentions", "perimees", "sans_commit",
                               "de_nouveaux", "fil")}
-    for p, siennes in par.items():
+    for siennes in par.values():
+        p = siennes[-1].get("relecteur")
         derniere = recevable(siennes[-1])
-        du_commit = recevable(next((r for r in reversed(siennes) if sur(r)), None))
+        du_commit = recevable(next((r for r in reversed(siennes) if meme_contenu(r, verdict)), None))
         privilegie = p in privilegies or niveau_de(niveaux, p) == "Confirmé"
         for r in (derniere, du_commit):
             if r and (r.get("defaut_confirme") or (privilegie and r.get("avis") == "defavorable")) and not ici(r):
@@ -1361,6 +1370,49 @@ def releve_relectures(reg, enr, niveaux):
     return releve
 
 
+def meme_contenu(relecture, verdict):
+    """La relecture porte-t-elle sur le contenu jugé ? Même arbre git quand la relecture et le verdict le connaissent (un commit
+    amendé, autre sha, garde le même contenu), sinon même sha (revue adverse de ruche-0012)."""
+    if not verdict:
+        return False
+    if relecture.get("arbre") and verdict.get("arbre"):
+        return relecture.get("arbre") == verdict.get("arbre")
+    return relecture.get("sha") == verdict.get("sha")
+
+
+def refus_ailleurs(reg, enr, niveaux=None):
+    """Alerte pour les relecteurs (revue adverse de ruche-0012), jamais un blocage : le contenu jugé (même arbre, sinon même sha)
+    porte, dans une autre contribution de la tâche, un refus encore actif : la plus récente relecture de ce relecteur sur ce
+    contenu, dans toute la tâche, est un défavorable d'un gardien, du conseil ou d'un Confirmé, ou porte un défaut confirmé, et
+    aucune levée du conseil ne la neutralise. Un autre compte qui soumet un contenu refusé n'est pas bloqué automatiquement
+    (le contenu d'une contribution change à chaque commit poussé : un ordre entre contributions bloquerait l'original ou
+    libérerait la copie) ; le refus se repose sur la copie. [(relecteur, contribution)]."""
+    verdict = enr.get("verdict") if isinstance(enr.get("verdict"), dict) else {}
+    if not verdict.get("sha"):
+        return []
+    niveaux = niveaux if niveaux is not None else calculer_niveaux(reg)
+    privilegies = reg.privilegies()
+    plus_recentes = {}
+    for cid, (_, e) in reg.enregistrements.items():
+        if not isinstance(e, dict) or e.get("tache") != enr.get("tache"):
+            continue
+        for rang, r in enumerate(e.get("relectures") or []):
+            if not isinstance(r, dict) or not meme_contenu(r, verdict) or levee(reg, e, r):
+                continue
+            cle = (_instant_ou_rien(r.get("le")) or PASSE, cid == enr.get("id"), rang)
+            p = str(r.get("relecteur")).casefold()
+            if p not in plus_recentes or cle > plus_recentes[p][0]:
+                plus_recentes[p] = (cle, cid, r)
+    return [(r.get("relecteur"), cid) for _, (_, cid, r) in sorted(plus_recentes.items())
+            if cid != enr.get("id") and (r.get("defaut_confirme") or (r.get("avis") == "defavorable" and (
+                r.get("relecteur") in privilegies or niveau_de(niveaux, r.get("relecteur")) == "Confirmé")))]
+
+
+def leve_dans_le_fil(reg, enr, relecture):
+    """Une levée du conseil sur l'une des contributions du fil couvre-t-elle cette relecture (comme dans R3) ?"""
+    return any(levee(reg, e, relecture) for _, e in fil_de(reg, enr))
+
+
 def levee(reg, enr, relecture):
     """Recours du conseil (levees : relecteur, motif, par, le) : une relecture de ce relecteur publiée avant la levée ne pèse
     plus sur cette contribution (ni sur son fil, quand on la juge) ; ce qu'il relit ensuite compte de nouveau. Une levée qui
@@ -1368,7 +1420,7 @@ def levee(reg, enr, relecture):
     moment, limite = _instant_ou_rien(relecture.get("le")), maintenant() + AVANCE_MAX
     for l in enr.get("levees") or []:
         quand = _instant_ou_rien(l.get("le")) if isinstance(l, dict) else None
-        if (quand and moment and l.get("relecteur") == relecture.get("relecteur") and l.get("par") in reg.conseil
+        if (quand and moment and meme_pseudo(l.get("relecteur"), relecture.get("relecteur")) and l.get("par") in reg.conseil
                 and moment <= quand <= limite):
             return True
     return False
@@ -1453,11 +1505,11 @@ def verifier_registre(reg):
         except ErreurBee as e:
             ajouter(str(e))
 
-    def instant_passe(chemin, valeur, quoi):
-        """Un instant lisible, jamais dans le futur (revue adverse de ruche-0012 : une levée datée de 2099 neutralisait d'avance
-        toute relecture)."""
+    def instant_passe(chemin, valeur, quoi, tolerance=TOLERANCE_DATE):
+        """Un instant lisible, jamais dans le futur au-delà de 2 h, comme la tolérance de verifier-pr (revue adverse de ruche-0012 :
+        une levée datée de 2099 neutralisait d'avance toute relecture ; bee valider ne dépend pas de l'horloge à la seconde)."""
         try:
-            if lire_instant(valeur, f"{reg.rel(chemin)} ({quoi})") > maintenant() + AVANCE_MAX:
+            if lire_instant(valeur, f"{reg.rel(chemin)} ({quoi})") > maintenant() + tolerance:
                 ajouter(f"{reg.rel(chemin)} : {quoi} ({valeur}) est dans le futur")
         except ErreurBee as e:
             ajouter(str(e))
@@ -1520,9 +1572,14 @@ def verifier_registre(reg):
         if not ids and projet["categorie"] != "ruche":
             ajouter(f"{reg.rel(chemin)} : un projet à optimiser déclare au moins une métrique (seule la ruche elle-même n'en a pas)")
 
-    for stem, (chemin, membre) in reg.membres.items():
+    vus_pseudos = {}
+    for stem, (chemin, membre) in sorted(reg.membres.items()):
         if selon_schema("membre", chemin, membre) and membre["pseudo"] != stem:
             ajouter(f"{reg.rel(chemin)} : pseudo « {membre['pseudo']} » différent du nom de fichier")
+        if stem.casefold() in vus_pseudos:  # un login GitHub ne tient pas compte de la casse : un seul compte, une seule fiche
+            ajouter(f"{reg.rel(chemin)} : « {stem} » et « {vus_pseudos[stem.casefold()]} » sont le même login GitHub (la casse ne "
+                    "compte pas) : une seule fiche par compte")
+        vus_pseudos.setdefault(stem.casefold(), stem)
 
     reservations = defaultdict(list)
     for stem, (chemin, tache) in reg.taches.items():
@@ -1641,11 +1698,11 @@ def verifier_registre(reg):
         for i, l in enumerate(enr.get("levees") or []):
             if l["par"] not in reg.conseil:
                 ajouter(f"{lieu} : levees/{i} : une levée est écrite par le conseil, pas par « {l['par']} »")
-            instant_passe(chemin, l["le"], f"levees/{i}/le")
+            instant_passe(chemin, l["le"], f"levees/{i}/le", TOLERANCE_LEVEE)  # jamais en libre-service : 5 min suffisent
         for i, r in enumerate(enr["relectures"]):
             if r["relecteur"] == enr["auteur"]:
                 ajouter(f"{lieu} : relectures/{i} : l'auteur ne peut pas relire sa propre contribution (commandement 3)")
-            refus = relecture_refusee(enr["relectures"][:i], r, lambda x: levee(reg, enr, x))  # un autre commit que sa plus récente
+            refus = relecture_refusee(enr["relectures"][:i], r, lambda x: leve_dans_le_fil(reg, enr, x))  # un autre commit que sa plus récente
             if refus:
                 ajouter(f"{lieu} : relectures/{i} : {refus}")
             if r.get("defaut_signale") and r["avis"] == "abstention":  # sans commit : refusé à l'ajout (relire, verifier-pr)
@@ -1976,9 +2033,9 @@ def engagement_sur(tache, utilisateur):
     if not isinstance(tache, dict):
         return None
     reservation = tache.get("reservation") if isinstance(tache.get("reservation"), dict) else {}
-    if tache.get("statut") == "reservee" and reservation.get("utilisateur") == utilisateur:
+    if tache.get("statut") == "reservee" and meme_pseudo(reservation.get("utilisateur"), utilisateur):
         return str(reservation.get("depuis"))
-    return next((str(p.get("depuis")) for p in paralleles_de(tache) if p.get("utilisateur") == utilisateur), None)
+    return next((str(p.get("depuis")) for p in paralleles_de(tache) if meme_pseudo(p.get("utilisateur"), utilisateur)), None)
 
 
 def fins_d_engagement(reg, ref, relatif, utilisateur, depuis):
@@ -1998,8 +2055,8 @@ def fins_d_engagement(reg, ref, relatif, utilisateur, depuis):
         actuel = engagement_sur(tache, utilisateur)
         if engage is not None and actuel != engage:
             cid = tache.get("contribution") if isinstance(tache, dict) else None
-            soumise = (reg.enregistrements.get(str(cid), (None, {}))[1] or {}).get("auteur") == utilisateur
-            soumise = soumise or any(isinstance(e, dict) and e.get("auteur") == utilisateur and str(e.get("engage_depuis")) == engage
+            soumise = meme_pseudo((reg.enregistrements.get(str(cid), (None, {}))[1] or {}).get("auteur"), utilisateur)
+            soumise = soumise or any(isinstance(e, dict) and meme_pseudo(e.get("auteur"), utilisateur) and str(e.get("engage_depuis")) == engage
                                      for _, e in reg.enregistrements.values())
             if not soumise and not (isinstance(tache, dict) and tache.get("statut") == "integree"):
                 fins.append(moment)
@@ -2018,7 +2075,7 @@ def fermetures_sans_integration(reg, ref, tid, utilisateur, instant):
     encore dans `ref` (elle arrive avec la PR vérifiée)."""
     fermetures = []
     for chemin, e in reg.enregistrements.values():
-        if not (isinstance(e, dict) and e.get("tache") == tid and e.get("auteur") == utilisateur
+        if not (isinstance(e, dict) and e.get("tache") == tid and meme_pseudo(e.get("auteur"), utilisateur)
                 and e.get("statut") in STATUTS_CLOS_SANS_INTEGRATION):
             continue
         relatif = reg.rel(chemin)
@@ -2218,6 +2275,9 @@ FENETRE_PLAFOND = dt.timedelta(hours=24)
 SAUTS_YAML = frozenset(map(chr, (0x85, 0x2028, 0x2029)))
 # Une date déclarée dans un débat est l'heure de la PR : au plus 2 h avant la vérification, jamais dans le futur.
 TOLERANCE_DATE = dt.timedelta(hours=2)
+# Une levée (écrite par le conseil, jamais en libre-service) datée dans le futur neutraliserait d'avance les relectures publiées
+# avant sa date : bee valider ne lui laisse que 5 min d'avance (une relecture : 2 h, pour les horloges décalées).
+TOLERANCE_LEVEE = dt.timedelta(minutes=5)
 
 
 def config_agora(reg):
@@ -3103,7 +3163,7 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
                     # son login) : sinon on squatterait la PR d'un autre. fusion-auto fournit ces auteurs (--auteurs-pr) ;
                     # quand ils sont fournis, une PR absente de la liste est refusée (échec fermé).
                     if auteurs_pr is not None:
-                        exiger(str(auteurs_pr.get(nouveau.get("pr")) or "").lower() == str(nouveau.get("auteur") or "").lower() != "",
+                        exiger(meme_pseudo(str(auteurs_pr.get(nouveau.get("pr")) or ""), str(nouveau.get("auteur") or "")) and bool(nouveau.get("auteur")),
                                f"{chemin} : la PR {nouveau.get('pr')} doit avoir été ouverte par {nouveau.get('auteur')} sur GitHub "
                                f"(auteur relevé : {auteurs_pr.get(nouveau.get('pr')) or 'inconnu'})")
                     autres = [i for i, (_, e) in reg.enregistrements.items() if i != cid and e.get("pr") == nouveau.get("pr")]
@@ -3119,7 +3179,7 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
             # Une clé ajoutée ou retirée est une différence, même à null (revue adverse de ruche-0012, M2).
             differences = {k for k in set(ancien) | set(nouveau) if (k in ancien) != (k in nouveau) or ancien.get(k) != nouveau.get(k)}
             if auteurs_pr is not None:
-                exiger(str(auteurs_pr.get(nouveau.get("pr")) or "").lower() == str(nouveau.get("auteur") or "").lower() != "",
+                exiger(meme_pseudo(str(auteurs_pr.get(nouveau.get("pr")) or ""), str(nouveau.get("auteur") or "")) and bool(nouveau.get("auteur")),
                        f"{chemin} : la PR {nouveau.get('pr')} doit avoir été ouverte par {nouveau.get('auteur')} sur GitHub "
                        f"(auteur relevé : {auteurs_pr.get(nouveau.get('pr')) or 'inconnu'})")
             # Confirmation d'un défaut (N11) : toujours par un tiers, l'auteur de la PR, nommé dans confirme_par : la CI, le
@@ -3180,17 +3240,21 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
                     for k, r in enumerate(nouvelles[len(anciennes):]):
                         if not exiger(isinstance(r, dict), f"{chemin} : relecture illisible : bee relire l'écrit"):
                             continue
+                        arbre_base = verdict_base.get("arbre")
+                        exiger(r.get("arbre") == arbre_base if arbre_base else "arbre" not in r,
+                               f"{chemin} : une relecture ajoutée porte l'arbre du verdict de la base ({arbre_base or 'aucun'}) : "
+                               "bee relire l'écrit")
                         exiger(r.get("sha") == sha_base if sha_base else "sha" not in r,
                                f"{chemin} : une relecture ajoutée porte le commit du verdict ({sha_base}) : bee relire l'écrit" if sha_base
                                else f"{chemin} : pas de verdict ni de commit jugé : une relecture ajoutée ne porte pas de sha")
-                        refus = relecture_refusee(nouvelles[:len(anciennes) + k], r, lambda x: levee(reg, nouveau, x))
+                        refus = relecture_refusee(nouvelles[:len(anciennes) + k], r, lambda x: leve_dans_le_fil(reg, nouveau, x))
                         exiger(refus is None, f"{chemin} : {refus}")
                         exiger(not r.get("defaut_signale") or (r.get("avis") != "abstention" and sha_base),
                                f"{chemin} : un défaut se signale sur le commit jugé, jamais par une abstention")
                         exiger(r.get("relecteur") == auteur, f"{chemin} : une relecture ajoutée doit être celle de {auteur}")
                         probleme = probleme_date_pr(r.get("le") if isinstance(r, dict) else None, f"{chemin} : relecture de {auteur}, le", instant)
                         exiger(probleme is None, f"{probleme} : relancez bee relire")
-                        exiger(r.get("relecteur") != nouveau.get("auteur"), f"{chemin} : on ne relit pas sa propre contribution")
+                        exiger(not meme_pseudo(r.get("relecteur"), nouveau.get("auteur")), f"{chemin} : on ne relit pas sa propre contribution")
                         # Un motif est court, comme une note, et rien n'y est caché (tour 2 : aucun plafond jusque-là).
                         probleme = texte_recevable(r.get("motif") if isinstance(r, dict) else None,
                                                    f"{chemin} : motif de la relecture de {auteur}", config_notes(reg)["texte_max"])
@@ -3739,6 +3803,8 @@ def lignes_calculees_tache(reg, t):
                       "× portée / (1 + lignes/100), sinon vote net ; chacune est protégée 96 h après sa soumission, puis n'attend "
                       "plus, au plus 24 h, qu'une concurrente intégrable mieux classée) :")
         for c in course["contributions"]:
+            for alerte in alertes_relecteurs(reg, reg.enregistrements.get(c["contribution"], (None, {}))[1] or {}):
+                lignes.append(f"#   ⚠ {c['contribution']} : {alerte}")
             lignes.append(f"#   {c['rang']}. {c['contribution']} par {c['auteur']}, soumise le {c['soumise_le']}, CI {c['ci'] or 'en attente'}, "
                           f"score de course {'—' if c['gain_mesure'] is None else format(c['gain_mesure'], '.4f')}, vote net {c['vote_net']:+d}, "
                           f"protégée jusqu'au {c['protegee_jusqu_au']}, plus aucune attente après le {c['attentes_jusqu_au']}")
@@ -3763,9 +3829,13 @@ def cmd_voir(args):
 
 def cmd_inscrire(args):
     reg = Registre(args.registre)
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]{0,38}", args.pseudo):  # le motif du schéma membre, avant toute comparaison
+        raise ErreurBee(f"pseudo invalide : {args.pseudo!r} (un login GitHub : lettres ASCII, chiffres et tirets, 39 caractères au plus)")
     chemin = reg.racine / "membres" / f"{args.pseudo}.yaml"
-    if chemin.exists():
-        raise ErreurBee(f"{args.pseudo} est déjà inscrit")
+    deja = [p for p in reg.membres if meme_pseudo(p, args.pseudo)]
+    if chemin.exists() or deja:
+        raise ErreurBee(f"{args.pseudo} est déjà inscrit" + (f" (sous « {deja[0]} » : un login GitHub ne tient pas compte de la casse)"
+                                                              if deja and deja[0] != args.pseudo else ""))
     aujourd_hui = maintenant().date()
     cree = lire_date(args.compte_cree_le, "--compte-cree-le")
     minimum = int(reg.config.get("anciennete_compte_min_jours", 90))
@@ -4186,7 +4256,7 @@ def cmd_relire(args):
     reg = Registre(args.registre)
     reg.exiger_membre(args.utilisateur)
     chemin, enr = reg.enregistrement(args.contribution)
-    if enr.get("auteur") == args.utilisateur:
+    if meme_pseudo(enr.get("auteur"), args.utilisateur):
         raise ErreurBee("on ne relit pas sa propre contribution (commandement 3)")
     if enr.get("statut") != "en_relecture":
         raise ErreurBee(f"{args.contribution} n'est plus en relecture (statut : {enr.get('statut')})")
@@ -4194,7 +4264,7 @@ def cmd_relire(args):
     # autre commit que sa plus récente (X, Y, puis X redevient possible).
     sha = (enr.get("verdict") or {}).get("sha")
     siennes = [r for r in enr.get("relectures") or [] if isinstance(r, dict) and r.get("relecteur") == args.utilisateur]
-    if relecture_refusee(siennes, {"relecteur": args.utilisateur, "sha": sha}, lambda x: levee(reg, enr, x)):
+    if relecture_refusee(siennes, {"relecteur": args.utilisateur, "sha": sha}, lambda x: leve_dans_le_fil(reg, enr, x)):
         raise ErreurBee(f"{args.utilisateur} a déjà relu {args.contribution} " + (f"au commit {sha}, et c'est sa relecture la plus "
                         "récente : relisez au prochain commit jugé" if sha else "sans commit : une seule relecture avant le "
                         "verdict ; relisez quand il sera là (bee voir)"))
@@ -4210,6 +4280,8 @@ def cmd_relire(args):
     relecture = {"relecteur": args.utilisateur, "avis": args.avis, "motif": args.motif, "le": en_iso(maintenant())}
     if sha:
         relecture["sha"] = sha  # la relecture porte sur ce commit ; un nouveau commit jugé la rend caduque (R3)
+    if (enr.get("verdict") or {}).get("arbre"):
+        relecture["arbre"] = enr["verdict"]["arbre"]  # et sur ce contenu (même arbre : un commit amendé ne l'efface pas)
     if args.defaut:
         relecture["defaut_signale"] = True
     enr = dict(enr)
@@ -5023,6 +5095,15 @@ def cmd_enregistrer_verdict(args):
                 recopie = None
     if args.sha:
         verdict["sha"] = args.sha
+    arbre_ignore = False
+    if args.arbre:
+        # Même contenu (revue adverse de ruche-0012) : l'arbre git du commit jugé, lu par verdicts.yml auprès de l'API ; un
+        # commit amendé (même arbre, autre sha) reste le même contenu dans le fil. Mal formé, il est ignoré : jamais une erreur
+        # qui ferait perdre le verdict (bee compare alors les sha).
+        if re.fullmatch(r"[0-9a-f]{7,40}", args.arbre):
+            verdict["arbre"] = args.arbre
+        else:
+            arbre_ignore = True
     if args.fichiers:
         # Contrôle de confiance : la liste vient de l'API GitHub (workflow du registre), pas de la PR.
         # Une PR qui touche son workflow ou ses juges a pu fabriquer son propre verdict.
@@ -5045,7 +5126,8 @@ def cmd_enregistrer_verdict(args):
     alerte = verdict.get("ecart_declare") is not None and verdict["ecart_declare"] > seuil
     print(f"✓ verdict {verdict['ci']} enregistré pour {args.contribution}"
           + (f" ; ⚠ écart de {100 * verdict['ecart_declare']:.1f} points entre gain déclaré et mesuré" if alerte else "")
-          + (f" ; manifeste ignoré ({manifeste_ignore}) : aucun écart calculé, rien de recopié" if manifeste_ignore else "") + ".")
+          + (f" ; manifeste ignoré ({manifeste_ignore}) : aucun écart calculé, rien de recopié" if manifeste_ignore else "")
+          + (" ; arbre git mal formé, ignoré (comparaison par sha)" if arbre_ignore else "") + ".")
     return 0
 
 
@@ -5399,6 +5481,9 @@ def alertes_relecteurs(reg, enr):
                            f"la CI (tolérance : {100 * seuil:.0f}) : demandez d'où vient le chiffre déclaré")
     except (TypeError, ValueError):
         pass
+    for qui, cid in refus_ailleurs(reg, enr):
+        alertes.append(f"ce contenu a été refusé par {qui} dans {cid} (même arbre, autre contribution de la tâche) : ce refus ne "
+                       "bloque pas cette contribution ; relisez-la en le sachant")
     return alertes
 
 
@@ -6464,6 +6549,7 @@ def construire_analyseur():
     p.add_argument("--manifeste", help="CONTRIBUTION.yaml de la PR, pour calculer l'écart déclaré / mesuré")
     p.add_argument("--lignes", type=int, help="lignes modifiées hors tests, si le verdict ne les donne pas")
     p.add_argument("--sha", help="commit évalué")
+    p.add_argument("--arbre", help="sha de l'arbre git du commit évalué (même contenu qu'un commit amendé)")
     p.add_argument("--execution", help="adresse de l'exécution de CI")
     p.add_argument("--fichiers", help="liste des fichiers modifiés par la PR (un par ligne), lue par le workflow de confiance "
                                       "auprès de l'API GitHub ; sans elle, le verdict n'est pas intégrable")
