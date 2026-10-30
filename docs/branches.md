@@ -81,7 +81,7 @@ touchées. Une dérogation ne sert jamais à faire passer ailleurs ce que la bra
   l'accord explicite du conseil : l'agent principal ne l'adopte pas par délégation, contrairement aux autres règles.
 - **Outillage :**
   - la portée des privilèges dans `bee` (le champ `portee` des gardiens et des garants, et les contrôles de R3, de la
-    validation des tâches, de l'agora et des invitations) est la tâche ruche-0027 ;
-  - les règles locales lues et appliquées par `bee` sont la tâche ruche-0028, qui attend le débat.
+    validation des tâches, de l'agora et des invitations) est la tâche ruche-0026 ;
+  - les règles locales lues et appliquées par `bee` sont la tâche ruche-0027, qui attend le débat.
 - **À débattre** : [D-0023](../debats/D-0023.yaml). La liste du socle, les seuils, la durée de réexamen, qui vote, comment
   une branche se défait d'une dérogation, et la réputation par domaine (ruche-0006).

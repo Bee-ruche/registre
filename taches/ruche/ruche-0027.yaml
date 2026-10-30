@@ -4,32 +4,31 @@ categorie: ruche
 type: test
 poste: gouvernance
 taille: M
-titre: "La portée d'un privilège dans bee : un gardien ou un garant pour une branche seulement (R14)"
+titre: "Les règles locales d'une branche dans bee : dérogations écrites, imprimées, appliquées (R14)"
 contexte: >
-  Décision du 30/10 sur une idée du fondateur (R14, docs/branches.md) : un privilège (gardien, garant,
-  relecteur Confirmé, droit d'agir hors de la ruche) s'exerce sur toute la ruche ou sur une branche (un
-  nœud de l'arbre et ce qui est en dessous), et seulement sur ce qui relève entièrement de sa portée.
-  Aujourd'hui, gouvernance/gardiens.yaml et gouvernance/garants.yaml ne connaissent que des pseudos : tout
-  privilège vaut partout. À construire : (1) un champ portee facultatif (liste de nœuds de l'arbre ;
-  absent = toute la ruche) pour un gardien et un garant, contrôlé par bee valider (nœuds existants) ;
-  (2) bee compte un privilège seulement sur ce qui relève entièrement de sa portée : la porte de relecture
-  et le refus qui bloque (R3), la validation et la correction des tâches proposées, la clôture et les
-  doublons de l'agora, l'accord d'une invitation (R13, après ruche-0020) ; ce qui touche plusieurs branches
-  demande un privilégié de chacune ou de toute la ruche ; (3) les juges et l'outillage communs (outils/,
-  .github/, le juge commun) et les invitations à participer relèvent de toute la ruche ; (4) changer le
-  nœud d'une tâche existante est refusé à verifier-pr, sauf au conseil et à un gardien de toute la ruche ;
-  (5) bee essaim et le site montrent la portée de chaque privilégié.
-fichiers: [outils/bee.py, outils/test_bee.py, schemas/, gouvernance/gardiens.yaml, gouvernance/garants.yaml, docs/gardiens.md, docs/garants.md, docs/branches.md, outils/site_bee.py]
+  Décision du 30/10 sur une idée du fondateur (R14, docs/branches.md) : une branche peut préciser,
+  remplacer ou écarter une règle de la branche au-dessus, pour ce qui relève entièrement d'elle, jamais le
+  socle (commandements, R2, intégrité des verdicts et des juges de R3, R7, R8, R10 et niveaux, R12, R13,
+  R14), par une dérogation plus exigeante qu'une règle ordinaire (14 jours d'agora devant toute la ruche,
+  3/4 des voix de la branche sans opposition de la majorité de la ruche, accord d'un gardien de toute la
+  ruche et du conseil, date de réexamen de six mois au plus). Les détails attendent le débat D-0023 : ne
+  commencer qu'après sa clôture, en suivant son issue. À construire : (1) un format de dérogation
+  (proposition de règle avec branche, règle écartée, remplacement, date de réexamen) que bee valider
+  contrôle, socle refusé ; (2) bee depouiller applique les seuils de R14 ; (3) la dérogation adoptée est
+  écrite dans le nœud de sa branche et bee contexte l'imprime sur le chemin ; elle tombe à sa date de
+  réexamen ; (4) au moins une règle se lit par branche dans bee (par exemple le seuil de R4,
+  gain_min, pour une branche sans métrique de débit), la version la plus stricte s'appliquant à une
+  contribution qui touche plusieurs branches.
+fichiers: [outils/bee.py, outils/test_bee.py, schemas/, docs/branches.md, docs/arbre.md]
 portee: 0.6
 metrique: null
 critere_acceptation:
-  - "test : la relecture d'un gardien de la branche A ne compte pas (ni pour, ni pour bloquer) sur une contribution de la branche B ; un gardien de toute la ruche compte partout"
-  - "test : une contribution qui touche deux branches exige un privilégié de chacune ou de toute la ruche"
-  - "test : un changement du nœud d'une tâche par un membre ou un gardien de branche est refusé par verifier-pr"
-  - "test : sans champ portee, rien ne change (tous les tests existants passent)"
-  - "revue adverse indépendante jointe (R3 et l'intégration en dépendent)"
-hors_perimetre: [COMMANDEMENTS.md, les règles locales (ruche-0028), la réputation par domaine (ruche-0006)]
-depend_de: [ruche-0020]
+  - "test : une dérogation au socle est refusée par bee valider, quelle que soit sa forme"
+  - "test : une dérogation adoptée s'imprime dans bee contexte d'une tâche de sa branche, et seulement là"
+  - "test : une dérogation échue ne s'applique plus ; une contribution sur deux branches suit la règle la plus stricte"
+  - "revue adverse indépendante jointe"
+hors_perimetre: [COMMANDEMENTS.md, une dérogation réelle (elle passe par l'agora et le conseil)]
+depend_de: [ruche-0026]
 noeud: projets/ruche
 statut: ouverte
 cree_par: conseil
