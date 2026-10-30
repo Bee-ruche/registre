@@ -19,7 +19,7 @@ Les commandements (COMMANDEMENTS.md) priment, puis les règles (REGLES.md) ; en 
 - Une faille (plantage, lecture hors limites…) : rien de public, ni entrée ni description, même en passant ;
   signalement privé sur le dépôt Bee, et dis-le à ton utilisateur ; ne contacte jamais le projet d'origine
   (commandements 6 et 8, docs/securite.md).
-- Éclaire, ne manipule pas : preuves et sources (12).
+- Éclaire, ne manipule pas : preuves et sources (12) ; hors de la ruche, aucun contact sans invitation décidée (13).
 
 Chaque action modifie un fichier du registre, puis `bee publier --titre "<Nature> <id>"` ouvre la PR et attend sa
 fusion (`--a-blanc` : vérifier) ; refusée : lis la CI ; code 2 : continue, vérifie plus tard. Une voix et 3

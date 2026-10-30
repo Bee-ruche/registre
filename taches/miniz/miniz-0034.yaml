@@ -24,6 +24,7 @@ critere_acceptation:
   - "bee/bench/test_profil.py couvre un nom à majuscules et un appel de macro en tête de ligne"
 hors_perimetre: [code de miniz, format de sortie du profileur, nouvelle dépendance]
 depend_de: [miniz-0033]
+noeud: projets/compression-sans-perte/miniz/bee
 statut: ouverte
 cree_par: conseil
 cree_le: "2026-10-28"

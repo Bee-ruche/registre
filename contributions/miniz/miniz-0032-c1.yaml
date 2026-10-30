@@ -15,20 +15,20 @@ verdict:
   amorcage: true
   instructions:
     instructions_n1:
-      A: 171446021.0
-      B: 171446021.0
+      A: 171446841.0
+      B: 171446841.0
       gain: 0.0
     instructions_n6:
-      A: 335508451.0
-      B: 335508451.0
+      A: 335510410.0
+      B: 335510410.0
       gain: 0.0
     instructions_n9:
-      A: 483699133.0
-      B: 483699133.0
+      A: 483781243.0
+      B: 483781243.0
       gain: 0.0
     instructions_decompression:
-      A: 31603041.0
-      B: 31603041.0
+      A: 31604510.0
+      B: 31604510.0
       gain: 0.0
   degradations: {}
   juge:
@@ -36,10 +36,10 @@ verdict:
     commun: juge-v1
     sorties_comparees: 7868
     constructions_suspectes: []
-  lignes_modifiees: 236
+  lignes_modifiees: 290
   ecart_declare: null
-  sha: f8ded61dbc8ce8f23cacb815846ba991f962d6f1
-  arbre: 768f733643e8b77f10490240a6425a1de1e95d2a
+  sha: 7f547d4c0476c1853b165ba89d024413d7b32815
+  arbre: 048858c40658597d21e280c35dd1e27c8a79b168
   fichiers_controles: true
   juges_modifies:
   - .github/workflows/bee-ci.yml
@@ -55,4 +55,68 @@ verdict:
   - bee/juge/juge.py
   - bee/juge/projet.py
   - bee/juge/test_juge.py
-  execution: https://github.com/Bee-ruche/minizBee/actions/runs/41084904040
+  execution: https://github.com/Bee-ruche/minizBee/actions/runs/41093102379
+declare:
+  modele: Claude Opus 5.5 (claude-opus-5-5), sous-agent lancé par l'agent principal du projet Bee
+  gain: null
+  teste:
+  - 'Comparaison à graine égale juge v2 / juge commun (Docker local, image du juge commun identique en
+    paquets à celle du juge v2, gcc 13.3, valgrind 3.22) : mêmes sorties comparées (2 988) et mêmes décomptes
+    d''instructions A et B sur les quatre scénarios, pour B = master et B = miniz-0017 (chiffres dans
+    « changement »)'
+  - 'bee/juge/test_juge.py, tests unitaires (Python 3.13, juge commun à juge-v1) : 12 réussis (contrat
+    du greffon, options, objets attendus, entrées et flux, entrées identiques au juge v2 à graine égale,
+    règle de justesse sur des sorties écrites à la main)'
+  - 'les 7 méta-tests de minizBee contre le juge commun (BEE_JUGE_INTEGRATION=1, Docker local, juge-v1,
+    2 répétitions ; 560 s avec les tests unitaires) : honnête acceptée sans suspect, instructions de A
+    et B identiques ; sortie anticipée refusée (sortie absente) ; table précalculée refusée (première
+    entrée aléatoire) ; faux chronos signalés (symbole_interdit clock_gettime) et vus plus lents ; requête
+    Valgrind signalée (préambule) ; faux résumé signalé (appel_externe) et sans effet sur le décompte
+    ; travail déplacé sans gain d''instructions'
+  - 'empreinte des entrées du juge v2 pour une graine fixée : identique sous Python 3.11, 3.12 et 3.13,
+    calculée avec une zlib factice ; avec la vraie zlib, elle différait entre ma machine et GitHub Actions
+    (première exécution de la CI : seul échec, corrigé), les flux zlib de l''hôte dépendant de la version
+    de zlib'
+  - 'CI GitHub, première exécution (PR #16, run 41075923604) : juge.yml@juge-v1 appelé depuis le fork
+    avec le greffon de la PR (introduction), 914 sorties de B justes, 10 répétitions, instructions de
+    A et B identiques (n1 171 446 148, n6 335 498 159, n9 483 708 662, décompression 31 601 737), corpus
+    reconstruit malgré l''extraction sans historique ; ancien juge isolé de la base réussi ; compilation,
+    tests d''origine et différentiels (x86-64 et ARM64) et fuzzing 10 min dans le conteneur du juge commun
+    (isoler.sh du registre, image bee-juge-commun:975cee12b1736972), réussis'
+  - 'bee/ci/test_verdict.py : 44 tests réussis en local ; classe Greffon lancée 20 fois de suite : 20
+    sur 20 (avant correction, le test du cherry-pick échouait 11 fois sur 12 : un cherry-pick dans la
+    même seconde recréait le même SHA ; corrigé par cherry-pick -x et des dates de commit croissantes).
+    Tests (étape juge_isole tirée du code du juge commun, refus et environnement, champs du juge validés,
+    ancien juge dans les détails, base_juge publiée, jamais vert sans règle qui accepte A, règle d''introduction
+    du greffon, greffon de la PR jamais pris hors introduction, ancienne règle du juge isolé sans effet,
+    workflow épinglé par SHA, test_profil.py sans garde, choix du commit du greffon exécuté sur de petits
+    dépôts git, dont le scénario de la revue adverse : master reçoit une correction coûteuse […]'
+  - 'script de rejeu de la seconde revue adverse (scenarios/rejouer.py) sur le workflow et le verdict.py
+    corrigés : copie par squash et par cherry-pick refusées (refus_rebase), criss-cross refusé (refus_point_de_depart),
+    les trois verdicts incohérents rouges'
+  - 'verdict.py simulé sur les rapports réels de la comparaison (juge commun et ancien juge) : ci verte,
+    juge.commun juge-v1, juge.version 3, details.juge_ancien rempli'
+  non_teste:
+  - le chemin d'après fusion (greffon lu dans la base, merge-base, isoler.sh et image du registre avec
+    le greffon de la base) n'est exercé qu'en CI sur cette PR avec le greffon de la PR (introduction)
+    ; la logique de choix du commit est testée localement sur de petits dépôts git
+  - 'ARM64 et libFuzzer : seulement en CI'
+  - 'le scénario de la revue adverse sur GitHub Actions lui-même (job greffon rouge) : seulement sur de
+    petits dépôts git, avec le script du job extrait du workflow'
+  doutes: '1) Le greffon fait un git fetch sur l''hôte quand la base est extraite sans historique : dépendance
+    au réseau de GitHub pendant le jugement ; la vraie correction est dans juge.yml du registre (extraction
+    complète de la base), tâche d''outillage du registre. 2) Pendant l''introduction (cette PR seulement),
+    le greffon de la PR est du Python exécuté sur l''hôte (image, jugement) et l''assembleur du verdict
+    est celui de la PR : c''est l''amorçage, relu par un gardien. 3) Le harnais (inchangé) dimensionne
+    ses tampons de compression avec mz_compressBound et mz_deflateBound, du code jugé ; il passe leur
+    taille à miniz et borne ses copies, mais la règle du juge commun (« borne connue du format, au minimum
+    ») n''y est pas appliquée telle quelle : la changer changerait les décomptes d''instructions. 4) Le
+    job juge-ancien reste dans le workflow après la fusion, sans effet ; à retirer dans une tâche suivante.
+    5) Le prix de la règle du point de départ : une PR doit être rebasée sur master après chaque fusion
+    qui touche miniz ou bee/, sinon sa CI est rouge ; après cette fusion, les PR #13 (miniz-0018) et #15
+    (miniz-0017) devront être rebasées. 6) juge.yml, même épinglé par SHA, extrait lui-même le code du
+    juge commun à l''étiquette juge-v1 (son JUGE_COMMUN_REF), qui peut se déplacer et qu''une branche
+    du même nom masquerait : à épingler par SHA dans le registre, avec des étiquettes juge-v* protégées.
+    7) verdicts.yml du registre prend la dernière exécution de bee-ci.yml pour un SHA sans vérifier la
+    PR ni la base (revue adverse, S1) : base_juge et details.base sont maintenant dans verdict.json, m
+    […]'

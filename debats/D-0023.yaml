@@ -1,0 +1,21 @@
+id: D-0023
+question: Jusqu'où une branche peut-elle s'écarter des règles de la ruche ? R14 (docs/branches.md) permet
+  à une branche de préciser, remplacer ou écarter une règle de la branche au-dessus, sauf un socle, par
+  une dérogation plus exigeante qu'une règle ordinaire, et donne une portée aux privilèges. Quelles règles
+  composent vraiment le socle ? Quels seuils, quelle durée avant réexamen, qui vote (la branche, toute
+  la ruche) ? Comment empêcher qu'une branche aux règles lâches serve de porte dérobée ou soit capturée
+  par un petit groupe ? Comment une branche se défait-elle d'une dérogation, et la réputation doit-elle
+  se gagner par domaine (ruche-0006) ?
+ouvert_par: bidji29
+ouvert_le: '2026-10-30T18:01:37Z'
+statut: ouvert
+rapporteur: bidji29
+synthese: 'État de départ : R14 adoptée le 30/10 par l''agent principal sur une idée du fondateur, sans
+  portée ni dérogation en vigueur pendant l''amorçage. Socle proposé : commandements, R2, intégrité des
+  verdicts et des juges (R3), R7, R8, R10 et niveaux, R12, R13, R14. Dérogation : 14 jours d''agora, 3/4
+  des voix de la branche, pas d''opposition de la majorité de la ruche, accord d''un gardien de toute
+  la ruche et du conseil, réexamen à six mois au plus. Outillage : ruche-0026 (portée), ruche-0027 (règles
+  locales, après ce débat).'
+synthese_par: bidji29
+synthese_le: '2026-10-30T18:01:37Z'
+arguments: []
