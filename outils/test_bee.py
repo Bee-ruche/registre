@@ -2851,22 +2851,66 @@ if args[:2] == ["pr", "close"]:
     pr["state"] = "CLOSED"
     sauver()
     sys.exit(0)
-if args[:2] == ["run", "list"]:
-    sha = args[args.index("--commit") + 1]
-    for url, pr in etat.items():
-        if pr.get("head") == sha and pr.get("verdict"):
-            numero = url.rsplit("/", 1)[1]
-            print(f"{numero} https://github.com/Bee-ruche/minizBee/actions/runs/{numero}")
-            break
-    sys.exit(0)
+# verdicts.yml, ruche-0025 : réponses brutes de l'API (bee les juge). Par PR : « branche » (tache/<numéro>), « base » (master),
+# « depot_tete » (le dépôt de la PR), « evenements » (API des événements) et « chronologie » (API de la chronologie). Clés
+# globales : « defaut » (branche par défaut, master), « executions » (exécutions en plus de celle de chaque PR qui porte un
+# verdict) et « comparaisons » ({base: statut de compare}, ahead sinon ; None : 404). Les filtres head_sha, event et status
+# de l'API sont ignorés ici, comme si GitHub ne les appliquait pas : bee doit les refaire.
+import re
+prs = {u: p for u, p in etat.items() if u.startswith("https://")}
+def pr_json(url, pr):
+    proprietaire, depot, _, numero = url.split("/")[3:7]
+    depot_tete, branche = pr.get("depot_tete", f"{proprietaire}/{depot}"), pr.get("branche", f"tache/{numero}")
+    return {"number": int(numero), "state": "open" if pr["state"] == "OPEN" else "closed", "merged": pr["state"] == "MERGED",
+            "head": {"sha": pr["head"], "ref": branche, "label": depot_tete.split("/")[0] + ":" + branche,
+                     "repo": {"full_name": depot_tete}}, "base": {"ref": pr.get("base", "master")}}
+def execution(url, pr):
+    j = pr_json(url, pr)
+    lie = pr["state"] == "OPEN" and j["head"]["repo"]["full_name"] == "/".join(url.split("/")[3:5])
+    return {"id": j["number"], "event": "pull_request", "status": "completed", "head_sha": pr["head"], "head_branch": j["head"]["ref"],
+            "head_repository": j["head"]["repo"], "html_url": f"https://github.com/Bee-ruche/minizBee/actions/runs/{j['number']}",
+            "pull_requests": [{"number": j["number"], "base": j["base"]}] if lie else []}
+if args[:1] == ["api"]:
+    chemin, _, requete = args[1].partition("?")
+    m = re.fullmatch(r"repos/([^/]+/[^/]+)(/.*)?", chemin)
+    sous, base_url = (m[2] or "") if m else None, f"https://github.com/{m[1]}/pull/" if m else ""
+    reponse = None
+    if m and sous == "":
+        reponse = {"full_name": m[1], "default_branch": etat.get("defaut", "master")}
+    elif m and re.fullmatch(r"/pulls/[0-9]+", sous) and "--jq" not in args:
+        reponse = pr_json(base_url + sous[7:], prs[base_url + sous[7:]]) if base_url + sous[7:] in prs else None
+    elif m and sous == "/pulls":
+        tete = dict(x.split("=", 1) for x in requete.split("&"))["head"]
+        reponse = [pr_json(u, p) for u, p in prs.items() if u.startswith(base_url) and pr_json(u, p)["head"]["label"] == tete]
+    elif m and re.fullmatch(r"/commits/[^/]+/pulls", sous):  # documenté : PR ouvertes et fusionnées seulement
+        reponse = [pr_json(u, p) for u, p in prs.items() if u.startswith(base_url) and p["head"] == sous.split("/")[2]
+                   and p["state"] != "CLOSED"]
+    elif m and re.fullmatch(r"/issues/[0-9]+/(events|timeline)", sous):
+        pr = prs.get(base_url + sous.split("/")[2], {})
+        reponse = ([{"event": "committed"}] if sous.endswith("timeline") else []) + [
+            {"event": e} for e in pr.get("chronologie" if sous.endswith("timeline") else "evenements", [])]
+    elif m and sous == "/actions/workflows/bee-ci.yml/runs":
+        executions = [execution(u, p) for u, p in prs.items() if u.startswith(base_url) and p.get("verdict")]
+        reponse = {"workflow_runs": executions + etat.get("executions", [])}
+    elif m and sous.startswith("/compare/"):
+        statut = etat.get("comparaisons", {}).get(sous[9:].split("...")[0], "ahead")
+        if statut is None:
+            sys.exit(1)
+        print(statut)
+        sys.exit(0)
+    if reponse is not None:
+        print(json.dumps(reponse))
+        sys.exit(0)
 if args[:2] == ["run", "download"]:
-    pr = next((p for u, p in etat.items() if u.endswith("/pull/" + args[2]) and p.get("verdict")), None)
+    # verdict.json de la CI du fork : il porte toujours details.base (une base de master, sauf si le test en donne une autre).
+    pr = next((e for e in etat.get("executions", []) if str(e["id"]) == args[2] and e.get("verdict")), None) \
+        or next((p for u, p in prs.items() if u.endswith("/pull/" + args[2]) and p.get("verdict")), None)
     if pr is None:
         sys.exit(1)
     dossier = args[args.index("-D") + 1]
     os.makedirs(dossier, exist_ok=True)
     with open(os.path.join(dossier, "verdict.json"), "w", encoding="utf-8") as f:
-        json.dump(pr["verdict"], f)
+        json.dump({"details": {"base": "ba5e" * 10}, **pr["verdict"]}, f)
     sys.exit(0)
 if args[:1] == ["api"] and "/pulls/" in args[1] and args[1].endswith("/files"):
     proprietaire, depot, _, numero = args[1].split("/")[1:5]
@@ -3924,6 +3968,179 @@ class TestRevueAdverse(BaseParallele):
         self.assertIn("relectures/1", texte)
         self.assertIn("relectures/2", texte)
         self.assertNotIn("relectures/0 : un défaut", texte)
+
+
+class TestVerdictsDeLaPrEnregistree(BaseParallele):
+    """ruche-0025 (revues adverses de minizBee #16) : verdicts.yml ne croit que la CI de la PR enregistrée, par l'événement
+    pull_request, vers la branche par défaut du fork ; base changée ou autre PR de même tête : aucun verdict (échec fermé), et le
+    journal le dit ; la base que déclare verdict.json n'est jamais crue. Rejoué avec le faux gh, qui ignore les filtres head_sha,
+    event et status de l'API : bee doit les refaire."""
+
+    etape, appels_de = TestRevueAdverse.etape, staticmethod(TestRevueAdverse.appels_de)
+    PR, RUNS = PR_MINIZ + "99007", "https://github.com/Bee-ruche/minizBee/actions/runs/"
+    BON = {"ci": "verte", "gain": 0.05, "au_dela_du_bruit": True, "lignes_modifiees": 10, "instructions": INSTRUCTIONS_N6}
+    FAUX = {**BON, "gain": 0.5}  # ce que fabrique une CI qui n'est pas celle de master
+
+    def setUp(self):
+        super().setUp()
+        self.cid = self.soumettre_0099("alice")
+
+    def collecter(self, etats, **pr):
+        """Un passage de verdicts.yml, sans verdict connu : la PR 99007 (alice, tête abc1234, branche tache/99007, vers master,
+        sa CI terminée avec BON), modifiée par `pr` ; `etats` ajoute d'autres PR et les clés globales du faux gh."""
+        chemin = self.dossier / f"contributions/miniz/{self.cid}.yaml"
+        bee.ecrire_yaml(chemin, {k: v for k, v in bee.lire_yaml(chemin).items() if k not in ("verdict", "declare")})
+        etats = {self.PR: {"state": "OPEN", "head": "abc1234", "auteur": "alice", "verdict": self.BON, **pr}, **etats}
+        sortie, _, appels = self.etape("Récupérer les verdicts", etats, flux="verdicts.yml")
+        return sortie, self.enr(self.cid).get("verdict"), appels
+
+    @staticmethod
+    def execution(numero, verdict, **champs):
+        """Une exécution de bee-ci.yml sur abc1234 telle que l'API la décrit ; par défaut, comme celles de la PR 99007."""
+        return {"id": numero, "event": "pull_request", "status": "completed", "head_sha": "abc1234", "head_branch": "tache/99007",
+                "head_repository": {"full_name": "Bee-ruche/minizBee"}, "html_url": f"https://github.com/Bee-ruche/minizBee/actions/runs/{numero}",
+                "pull_requests": [{"number": 99007, "base": {"ref": "master"}}], "verdict": verdict, **champs}
+
+    def refus(self, sortie, motif):
+        self.assertIn(f"::notice::{self.cid} : PR #99007 : {motif} ; aucun verdict n'est enregistré.", sortie)
+
+    def test_critere_1_seule_l_execution_de_la_pr_enregistree_vers_la_branche_par_defaut_est_retenue(self):
+        """Pour le même commit, une exécution d'un autre événement, d'une autre PR, d'une autre base, d'une autre branche ou d'un
+        autre dépôt, ou pas terminée, n'est jamais retenue, même plus récente que celle de la PR."""
+        etrangeres = [self.execution(99901, self.FAUX, event="workflow_dispatch"),
+                      self.execution(99902, self.FAUX, event="pull_request_target"),
+                      self.execution(99903, self.FAUX, pull_requests=[{"number": 99008, "base": {"ref": "master"}}]),
+                      self.execution(99904, self.FAUX, pull_requests=[{"number": 99007, "base": {"ref": "tache/ancienne"}}]),
+                      self.execution(99905, self.FAUX, head_branch="tache/autre"),
+                      self.execution(99906, self.FAUX, head_repository={"full_name": "mallory/minizBee"}),
+                      self.execution(99907, self.FAUX, status="in_progress"),
+                      self.execution(99908, self.FAUX, pull_requests=[]),
+                      self.execution(99909, self.FAUX, head_sha="abc1235")]
+        sortie, verdict, appels = self.collecter({"executions": etrangeres})
+        self.assertEqual((verdict["gain"], verdict["execution"]), (0.05, self.RUNS + "99007"), sortie)
+        self.assertEqual([a["args"][2] for a in self.appels_de(appels, "run", "download")], ["99007"])
+        self.assertTrue([a for a in appels if a["args"][1].startswith("repos/Bee-ruche/minizBee/actions/workflows/bee-ci.yml/runs?"
+                                                                      "head_sha=abc1234&event=pull_request&status=completed")])
+        # Sans l'exécution de la PR : aucune n'est retenue, et le journal le dit ; sans aucune exécution, il ne dit rien.
+        sortie, verdict, appels = self.collecter({"executions": etrangeres}, verdict=None)
+        self.assertIsNone(verdict)
+        self.assertFalse(self.appels_de(appels, "run", "download"))
+        self.refus(sortie, "9 exécution(s) de bee-ci.yml sur ce commit, aucune de cette PR vers master (événement pull_request)")
+        sortie, verdict, _ = self.collecter({}, verdict=None)
+        self.assertEqual((verdict, sortie.strip()), (None, ""))
+
+    def test_critere_2_un_verdict_dont_la_base_n_est_pas_sur_la_branche_par_defaut_n_est_pas_enregistre(self):
+        """La base déclarée (details.base, base_juge.base) n'est jamais crue : l'API compare dit si elle est un ancêtre de la
+        branche par défaut, elle-même lue auprès de l'API (ici main) ; sinon aucun verdict, et la sortie le dit."""
+        vieille, master, autre, inconnue = "0bad" * 10, "ba5e" * 10, "c0de" * 10, "dead" * 10
+        comparaisons = {vieille: "diverged", master: "ahead", autre: "behind", inconnue: None}  # None : 404
+        for declaree, dite in (({"details": {"base": vieille}}, f"{vieille} (diverged)"),
+                               ({"details": {"base": autre}}, f"{autre} (behind)"),
+                               ({"base_juge": {"base": vieille, "commit": master}}, f"{master} (ahead), {vieille} (diverged)"),
+                               ({"details": {"base": inconnue}}, f"{inconnue} (non vérifiée)"),
+                               ({"details": {"base": "0bad;touch PIEGE ##[error]"}}, "illisible (non vérifiée)"),
+                               ({"details": {"base": ["0bad" * 10]}}, "illisible (non vérifiée)"),
+                               ({"details": {"tete": "abc1234"}}, "absente")):
+            with self.subTest(dite=dite):
+                sortie, verdict, appels = self.collecter({"defaut": "main", "comparaisons": comparaisons}, base="main",
+                                                         verdict={**self.BON, **declaree})
+                self.assertIsNone(verdict, sortie)
+                self.assertIn(f"bee : {self.cid} : verdict refusé, la base déclarée ({dite}) n'est pas un ancêtre de la branche par "
+                              "défaut du fork selon l'API GitHub ; aucun verdict n'est enregistré", sortie)
+                comparees = [a["args"][1] for a in appels if "/compare/" in a["args"][1]]
+                self.assertTrue(all(re.fullmatch(r"repos/Bee-ruche/minizBee/compare/[0-9a-f]{40}\.\.\.main", c) for c in comparees))
+                self.assertNotIn("##[", sortie)
+        for base, statut in ((master, "ahead"), ("1d" * 20, "identical")):
+            sortie, verdict, appels = self.collecter({"defaut": "main", "comparaisons": {base: statut}}, base="main",
+                                                     verdict={**self.BON, "details": {"base": base}, "base_juge": {"base": base}})
+            self.assertEqual(verdict["gain"], 0.05, sortie)
+            self.assertIn(["api", f"repos/Bee-ruche/minizBee/compare/{base}...main", "--jq", ".status"], [a["args"] for a in appels])
+        # bee seul : --bases est ce que le workflow a lu auprès de l'API ; sans lui (hors CI), rien ne change.
+        fichier, bases = self.dossier.parent / "v.json", self.dossier.parent / "bases.txt"
+        fichier.write_text(json.dumps({**self.BON, "details": {"base": vieille}}), encoding="utf-8")
+        for contenu, attendu in ((f"{vieille} behind\n", 1), (f"{vieille}\n{vieille} ahead extra\n", 1), (f"{vieille} identical\n", 0)):
+            bases.write_text(contenu, encoding="utf-8")
+            code, texte = self.bee("enregistrer-verdict", self.cid, "--verdict", str(fichier), "--sha", "abc1235", "--bases", str(bases))
+            self.assertEqual((code, self.enr(self.cid).get("verdict", {}).get("sha") == "abc1235"), (attendu, not attendu), texte)
+        self.assertEqual(self.bee("enregistrer-verdict", self.cid, "--verdict", str(fichier), "--sha", "abc1236")[0], 0)
+        self.assertEqual(lancer("bases-declarees", str(fichier)), (0, vieille + "\n"))
+
+    def test_critere_3_une_autre_pr_de_meme_tete_rend_le_cas_ambigu(self):
+        """Base forgée (seconde revue adverse) : une autre PR de la même branche, quels que soient sa base et son état (fermée, elle a
+        pu changer de base, et l'API commits/<sha>/pulls ne promet pas les PR fermées sans fusion), ou du même commit vers une autre
+        base : aucun verdict, et la sortie le dit. Une PR d'une autre branche vers master ne gêne pas : ses exécutions, d'une autre
+        branche, ne sont jamais retenues. L'exécution forgée, plus récente, liste la PR enregistrée vers master, comme sur GitHub."""
+        forgee = self.execution(99908, self.FAUX)
+        for nom, autre in (("même branche, ouverte, vers une base forgée", {"state": "OPEN", "branche": "tache/99007", "base": "forgee"}),
+                           ("même branche, fermée sans fusion", {"state": "CLOSED", "branche": "tache/99007", "base": "forgee"}),
+                           ("même branche, fermée, vers master", {"state": "CLOSED", "branche": "tache/99007"}),
+                           ("même commit, autre branche, vers une base forgée", {"state": "OPEN", "branche": "copie", "base": "forgee"})):
+            with self.subTest(nom):
+                sortie, verdict, appels = self.collecter({PR_MINIZ + "99008": {"head": "abc1234", "auteur": "mallory", **autre},
+                                                          "executions": [forgee]})
+                self.assertIsNone(verdict)
+                self.refus(sortie, "d'autres PR ont la même tête (#99008) : cas ambigu ; ouvrez une nouvelle PR depuis une nouvelle branche")
+                self.assertFalse(self.appels_de(appels, "run", "download"))
+        sortie, verdict, _ = self.collecter({PR_MINIZ + "99008": {"state": "OPEN", "head": "abc1234", "auteur": "mallory", "branche": "copie",
+                                                                  "verdict": self.FAUX}})
+        self.assertEqual((verdict["gain"], verdict["execution"]), (0.05, self.RUNS + "99007"), sortie)
+
+    def test_une_pr_dont_la_base_a_change_ne_recoit_aucun_verdict(self):
+        """Attaques 1 et 3 : PR ouverte vers une vieille branche (ou une base forgée, dont le workflow se déclenche sur edited), CI
+        terminée, base remise à master. L'API montre alors cette exécution liée à la PR vers master : seul l'historique de la PR la
+        trahit (base_ref_changed, dans l'API des événements ou de la chronologie ; ou changement automatique)."""
+        ancienne = self.execution(99908, self.FAUX)
+        for evenements, nom in (({"evenements": ["base_ref_changed"]}, "base_ref_changed"),
+                                ({"chronologie": ["base_ref_changed"]}, "base_ref_changed"),
+                                ({"evenements": ["automatic_base_change_succeeded", "base_ref_changed"]},
+                                 "automatic_base_change_succeeded, base_ref_changed")):
+            with self.subTest(evenements=evenements):
+                sortie, verdict, appels = self.collecter({"executions": [ancienne]}, **evenements)
+                self.assertIsNone(verdict)
+                self.refus(sortie, f"sa base a changé au moins une fois ({nom}) : ouvrez une nouvelle PR vers master")
+                self.assertFalse(self.appels_de(appels, "run", "download"))
+        sortie, verdict, _ = self.collecter({}, base="tache/ancienne")
+        self.assertIsNone(verdict)
+        self.refus(sortie, "elle vise la branche tache/ancienne, pas master")
+        # Sans changement de base, la plus récente exécution de la PR est retenue (une CI relancée, par exemple).
+        sortie, verdict, _ = self.collecter({"executions": [self.execution(99908, {**self.BON, "gain": 0.04})]},
+                                            evenements=["labeled", "head_ref_force_pushed"])
+        self.assertEqual((verdict["gain"], verdict["execution"]), (0.04, self.RUNS + "99908"), sortie)
+
+    def test_une_pr_venue_d_un_autre_depot_est_reconnue_par_sa_tete(self):
+        """GitHub laisse pull_requests vide pour une PR venue d'un autre dépôt (un fork du fork) : son exécution se reconnaît à
+        l'événement, au commit, à la branche et au dépôt de tête ; une exécution d'un autre dépôt, de même branche, jamais."""
+        etrangere = self.execution(99908, self.FAUX, head_repository={"full_name": "mallory/minizBee"}, pull_requests=[])
+        sortie, verdict, appels = self.collecter({"executions": [etrangere]}, depot_tete="alice/minizBee")
+        self.assertEqual((verdict["gain"], verdict["execution"]), (0.05, self.RUNS + "99007"), sortie)
+        self.assertIn(["api", "repos/Bee-ruche/minizBee/pulls?state=all&head=alice:tache/99007&per_page=100", "--paginate"],
+                      [a["args"] for a in appels])
+
+    def test_aucune_donnee_du_fork_n_entre_dans_une_commande_ni_dans_le_journal_sans_motif(self):
+        piege = '$(touch PIEGE)";\n::error::PIEGE ##[error]PIEGE'
+        sorties = []
+        sortie, verdict, appels = self.collecter({}, branche="x" + piege)
+        self.assertIsNone(verdict)
+        self.assertIn(f"::notice::{self.cid} : PR {self.PR} : branche de tête au nom inattendu ; aucun verdict n'est enregistré.", sortie)
+        self.assertFalse([a for a in appels if "PIEGE" in " ".join(a["args"])])
+        sorties.append(sortie)
+        sortie, _, _ = self.collecter({}, base="::error::PIEGE")
+        self.refus(sortie, "elle vise la branche illisible, pas master")
+        sorties.append(sortie)
+        sortie, _, _ = self.collecter({"defaut": "x\n::error::PIEGE"}, base="x\n::error::PIEGE")
+        self.refus(sortie, "branche par défaut illisible, ou PR changée pendant la collecte")
+        sorties.append(sortie)
+        mal_formee = {k: v for k, v in self.execution(99908, self.FAUX).items() if k != "pull_requests"}
+        sortie, verdict, _ = self.collecter({"executions": [mal_formee]})
+        self.assertIsNone(verdict)
+        self.refus(sortie, "PR ou réponse de l'API illisible")
+        for sortie in sorties:
+            self.assertNotIn("PIEGE", sortie)
+            self.assertFalse([l for l in sortie.splitlines() if "##[" in l or l.startswith("::") and not l.startswith("::notice::")])
+        self.assertFalse(list(self.dossier.parent.rglob("PIEGE")))
+        # gh api --paginate met les pages bout à bout : chacune est lue, les listes dépliées.
+        (self.dossier.parent / "pages.json").write_text('[{"event": "a"}][{"event": "b"}]\n{"x": 1}\n', encoding="utf-8")
+        self.assertEqual(bee.reponses_api(self.dossier.parent, "pages"), [{"event": "a"}, {"event": "b"}, {"x": 1}])
 
 
 class BaseAgora(BaseTest):

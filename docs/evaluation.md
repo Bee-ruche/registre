@@ -14,6 +14,8 @@ Chaque pull request sur un fork passe par sept étapes. La première qui échoue
 
 La CI n'exécute jamais le code d'une pull request avec un jeton en écriture : l'évaluation tourne en lecture seule, et seul un job de confiance, sans code de la PR, écrit le verdict dans le registre.
 
+**Quelle CI le registre croit** (ruche-0025). Le workflow d'une PR est celui de son commit de fusion : une PR vers une vieille branche du fork, ou vers une base forgée, fabrique son propre `verdict.json`. `verdicts.yml` ne retient donc qu'une exécution de `bee-ci.yml` de l'événement `pull_request`, sur la tête de la PR enregistrée (commit, branche et dépôt), liée à cette PR vers la branche par défaut du fork, lue auprès de l'API (GitHub ne lie aucune exécution à une PR venue d'un autre dépôt : elle se reconnaît alors à sa tête). Aucun verdict, et le journal le dit, si la PR vise une autre branche, si sa base a changé au moins une fois (`base_ref_changed` ou `automatic_base_change_succeeded`, dans l'API des événements ou de la chronologie : ouvrez une nouvelle PR), ou si une autre PR a la même tête : de la même branche, quels que soient sa base et son état, ou du même commit vers une autre base (ouvrez une nouvelle PR depuis une nouvelle branche). La base que déclare `verdict.json` (`details.base`, et `base_juge.base`) n'est jamais crue : `bee enregistrer-verdict --bases` refuse le verdict si l'API (`compare`) ne dit pas qu'elle est un ancêtre de la branche par défaut.
+
 ## Les seuils
 
 | Règle | Seuil | Effet |

@@ -5001,11 +5001,98 @@ def declaration_recopiee(manifeste, gain):
         gardes[plus_longue] -= 1
 
 
+# ruche-0025 (revues adverses de minizBee #16) : verdicts.yml ne croit que la CI de la PR enregistrée, ouverte vers la branche par
+# défaut du fork et jamais changée de base, quand aucune autre PR n'a la même tête ; la base que déclare verdict.json n'est jamais
+# crue, l'API dit si elle est un ancêtre de la branche par défaut. Les réponses de l'API sont des données : rien ne s'imprime
+# qui ne suive un motif.
+REF_MOTIF = r"[A-Za-z0-9._/-]{1,200}"
+CHANGEMENTS_DE_BASE = ("base_ref_changed", "automatic_base_change_succeeded")
+
+
+def bases_declarees(brut):
+    """Les bases que verdict.json déclare : details.base, et base_juge.base quand base_juge existe (miniz-0032) ; None si illisible."""
+    blocs = [brut.get(c) for c in ("details", "base_juge")] if isinstance(brut, dict) else []
+    return list(dict.fromkeys(b["base"] if isinstance(b["base"], str) and re.fullmatch(r"[0-9a-f]{40}", b["base"]) else None
+                              for b in blocs if isinstance(b, dict) and "base" in b))
+
+
+def reponses_api(dossier, nom):
+    """Les documents de <dossier>/<nom>.json, écrit par gh api (--paginate les met bout à bout), listes dépliées."""
+    texte, docs, i = pathlib.Path(dossier, nom + ".json").read_text(encoding="utf-8"), [], 0
+    while (i := re.compile(r"\s*").match(texte, i).end()) < len(texte):
+        doc, i = json.JSONDecoder().raw_decode(texte, i)
+        docs += doc if isinstance(doc, list) else [doc]
+    return docs
+
+
+def cmd_choisir_execution(args):
+    """Imprime « <numéro> <adresse> <branche par défaut> » de l'exécution à croire ; sinon pourquoi (rien s'il n'y a pas
+    encore d'exécution) et code 1. Lit les réponses de l'API que verdicts.yml a rangées dans --api."""
+    m = re.fullmatch(r"https://github\.com/([A-Za-z0-9-]+/[A-Za-z0-9_.-]+)/pull/([0-9]+)",
+                     str(Registre(args.registre).enregistrement(args.contribution)[1].get("pr")))
+    nom = f"{args.contribution} : PR #{m[2] if m else '?'}"
+    refus = lambda motif: print(f"{nom} : {motif} ; aucun verdict n'est enregistré.") or 1  # noqa: E731
+    lisible = lambda r: r if isinstance(r, str) and re.fullmatch(REF_MOTIF, r) else "illisible"  # noqa: E731
+    try:
+        lire, numero = (lambda n: reponses_api(args.api, n)), int(m[2])
+        defaut, pr, executions = lire("depot")[0]["default_branch"], lire("pr")[0], [e for p in lire("executions")
+                                                                                       for e in p["workflow_runs"]]
+        tete, base, depot_tete = pr["head"], pr["base"]["ref"], (pr["head"]["repo"] or {})["full_name"]
+        autres = {p["number"] for p in lire("meme_branche") + [p for p in lire("meme_commit") if p["base"]["ref"] != defaut]}
+        autres = sorted(autres - {numero}, key=str)
+        changee = sorted({e.get("event") for e in lire("evenements") + lire("chronologie")} & set(CHANGEMENTS_DE_BASE))
+
+        def de_cette_pr(e):  # pull_requests est vide pour une PR venue d'un autre dépôt : GitHub ne la relie pas à l'exécution
+            demandes = e["pull_requests"] or []
+            return (e["event"] == "pull_request" and e["status"] == "completed" and e["head_sha"] == args.sha
+                    and e["head_branch"] == tete["ref"] and (e["head_repository"] or {}).get("full_name") == depot_tete
+                    and (any(p["number"] == numero and p["base"]["ref"] == defaut for p in demandes)
+                         or (not demandes and depot_tete != m[1])))
+        retenues = sorted((e["id"], e["html_url"]) for e in executions if de_cette_pr(e))
+    except (OSError, ValueError, LookupError, TypeError, AttributeError):
+        return refus("PR ou réponse de l'API illisible")
+    if lisible(defaut) != defaut or pr.get("number") != numero or tete.get("sha") != args.sha:
+        return refus("branche par défaut illisible, ou PR changée pendant la collecte")
+    if base != defaut:
+        return refus(f"elle vise la branche {lisible(base)}, pas {defaut}")
+    if changee:
+        return refus(f"sa base a changé au moins une fois ({', '.join(changee)}) : ouvrez une nouvelle PR vers {defaut}")
+    if autres:
+        return refus(f"d'autres PR ont la même tête ({', '.join(f'#{a}' if isinstance(a, int) else '?' for a in autres)}) : "
+                     "cas ambigu ; ouvrez une nouvelle PR depuis une nouvelle branche")
+    if not retenues:
+        return refus(f"{len(executions)} exécution(s) de bee-ci.yml sur ce commit, aucune de cette PR vers {defaut} "
+                     "(événement pull_request)") if executions else 1
+    numero_execution, adresse = retenues[-1]
+    if not (isinstance(numero_execution, int) and re.fullmatch(r"https://github\.com/[A-Za-z0-9_./-]+", str(adresse))):
+        return refus("exécution illisible")
+    print(numero_execution, adresse, defaut)
+    return 0
+
+
+def cmd_bases_declarees(args):
+    try:
+        with open(args.verdict, encoding="utf-8") as f:
+            print(*[b for b in bases_declarees(json.load(f)) if b])
+    except (OSError, ValueError):
+        pass  # bee enregistrer-verdict refusera ce verdict
+    return 0
+
+
 def cmd_enregistrer_verdict(args):
     reg = Registre(args.registre)
     chemin, enr = reg.enregistrement(args.contribution)
     with open(args.verdict, encoding="utf-8") as f:
         brut = json.load(f)
+    if args.bases is not None:  # ruche-0025 : verdicts.yml passe toujours --bases ; « sha statut » de l'API compare, par ligne
+        with open(args.bases, encoding="utf-8") as f:
+            verifiees = {l.split()[0]: l.split()[1] for l in f if len(l.split()) == 2}
+        bases = bases_declarees(brut)
+        dites = [f"{b or 'illisible'} ({verifiees.get(b) if verifiees.get(b) in ('identical', 'ahead', 'behind', 'diverged') else 'non vérifiée'})"
+                 for b in bases]
+        if not bases or any(verifiees.get(b) not in ("identical", "ahead") for b in bases):
+            raise ErreurBee(f"{args.contribution} : verdict refusé, la base déclarée ({', '.join(dites) or 'absente'}) n'est pas un "
+                            "ancêtre de la branche par défaut du fork selon l'API GitHub ; aucun verdict n'est enregistré")
     # Aucun nombre non fini (NaN, ±Infinity : json les accepte) dans un verdict : il fausserait le classement (R3).
     def non_fini(valeur):
         if isinstance(valeur, float):
@@ -6553,6 +6640,16 @@ def construire_analyseur():
     p.add_argument("--execution", help="adresse de l'exécution de CI")
     p.add_argument("--fichiers", help="liste des fichiers modifiés par la PR (un par ligne), lue par le workflow de confiance "
                                       "auprès de l'API GitHub ; sans elle, le verdict n'est pas intégrable")
+    p.add_argument("--bases", help="« sha statut » par ligne : l'API compare de chaque base déclarée à la branche par défaut du "
+                                   "fork (verdicts.yml) ; refusé si une base déclarée n'en est pas un ancêtre (identical, ahead)")
+
+    p = ajouter("choisir-execution", cmd_choisir_execution, "L'exécution de bee-ci.yml à croire pour une contribution (utilisé par la CI).")
+    p.add_argument("contribution")
+    p.add_argument("--sha", required=True, help="tête de la PR")
+    p.add_argument("--api", required=True, help="dossier des réponses de l'API GitHub rangées par verdicts.yml")
+
+    p = ajouter("bases-declarees", cmd_bases_declarees, "Les bases que déclare un verdict.json, à vérifier (utilisé par la CI).")
+    p.add_argument("verdict")
 
     p = ajouter("publier", cmd_publier, "Publie vos changements du registre : branche, commit, push, PR, puis attente de la fusion.")
     p.add_argument("--titre", required=True, help="ex. « Réservation miniz-0012 », « Soumission miniz-0012-c1 »")
