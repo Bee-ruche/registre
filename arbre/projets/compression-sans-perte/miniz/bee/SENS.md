@@ -17,8 +17,9 @@ celle par défaut n'étant tirées que par le fuzzing (miniz-0023, avant miniz-0
 miniz-0026. Le contrôle `flux-1` n'exerce pas le chemin rapide de tinfl (zone `inflate`).
 Durée : `bee/tests/lancer.sh` sous 30 s sur la CI (critère de miniz-0023 et miniz-0024) ; avec `--sanitiseurs`, 34,6 s
 avant `api.c`, qui ajoute environ 5 s (manifeste de miniz-0026, machine partagée).
-Bruit : test A/A d'ab.py, gains de −1,4 % à +0,5 % sur la machine du banc (bee/README.md) ; ±0,4 % au juge isolé sur
-les machines de GitHub (note de miniz-0018) ; ailleurs, pas encore mesuré (miniz-0003).
+Bruit au chronomètre : test A/A d'ab.py, de −1,4 % à +0,5 % (bee/README.md : Xeon 2,1 GHz virtualisé, base
+2948eeb) ; environ ±0,4 % au juge isolé, sur les machines de GitHub (note de miniz-0018) ; ailleurs, à mesurer
+(miniz-0003).
 Profileur : depuis miniz-0033, un commentaire ne passe plus pour une fonction ; les noms à majuscules restent « hors
 fonction » (miniz-0034). Compile le banc et profile dans la même session de `bee/sandbox/sans-docker.sh`, qui monte le
 dépôt à un autre chemin à chaque fois, sinon tout part en « hors miniz » (miniz-0034). Le tableau de profil de

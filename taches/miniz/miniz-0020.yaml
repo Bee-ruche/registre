@@ -14,8 +14,11 @@ contexte: >
   83-87) avec un masque & 127 inutile si match_dist < 32768. Pistes : écrire l'octet de longueur
   et les 2 octets de distance en une fois (memcpy de 2 octets, comme le fait déjà
   tdefl_compress_fast l. 954-958) ; éviter de relire *m_pLZ_flags quand le drapeau est déjà connu.
-  Le contenu de m_lz_code_buf doit rester identique octet pour octet. Aucun essai exploratoire n'a
-  été fait pour cette piste : le gain n'est pas démontré, seule la part du coût l'est (profil
+  Le contenu de m_lz_code_buf doit rester identique octet pour octet. Un essai est mesuré dans la
+  note du 28/10 ci-dessous : plafond vers 1,5 % d'instructions en moins au niveau 1, sous le seuil
+  de R4 ; meilleure variante, 0,73 % d'instructions n1 en moins, mais un recul de 4 % au
+  chronomètre (10 paires sur 10) ; la note ne dit ni la métrique de ce recul, ni la machine, ni le
+  commit : à remesurer. Le gain n'est donc pas démontré ; seule la part du coût l'est (profil
   ci-dessus).
 fichiers: [miniz_tdef.c]
 portee: 1.0
@@ -23,7 +26,7 @@ metrique: debit_compression_n1
 sortie_compressee: identique
 critere_acceptation:
   - "CI verte (R2), x86-64 et ARM64 (R6)"
-  - "gain >= 2 % sur debit_compression_n1, au-delà du bruit (R4)"
+  - "R4 : au moins 2 % d'instructions en moins sur debit_compression_n1 (instructions_n1), que le chronomètre confirme au-delà du bruit (sinon une mesure d'une autre configuration)"
   - "aucune autre métrique dégradée de plus de 1 % (R5)"
   - "bee/tests/lancer.sh --sanitiseurs (ASan et UBSan) reste propre"
 hors_perimetre: [format de sortie, API publique, nouvelle dépendance, format de m_lz_code_buf]

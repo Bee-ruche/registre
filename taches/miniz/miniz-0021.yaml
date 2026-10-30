@@ -23,7 +23,7 @@ metrique: debit_compression_n1
 sortie_compressee: identique
 critere_acceptation:
   - "CI verte (R2), x86-64 et ARM64 (R6)"
-  - "gain >= 2 % sur debit_compression_n1, au-delà du bruit (R4)"
+  - "R4 : au moins 2 % d'instructions en moins sur debit_compression_n1 (instructions_n1), que le chronomètre confirme au-delà du bruit (sinon une mesure d'une autre configuration)"
   - "aucune autre métrique dégradée de plus de 1 % (R5)"
   - "gain mesuré aussi sur binaire/aleatoire.bin seul et rapporté dans le manifeste"
 hors_perimetre: [format de sortie, API publique, nouvelle dépendance, règle de choix du bloc brut]

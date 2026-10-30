@@ -19,7 +19,8 @@ vidages fréquents peuvent dépasser `mz_compressBound`, comme chez zlib (bee/RE
 `mz_inflate` passe l'entrée de l'appelant telle quelle à `tinfl_decompress`, mais décode dans son dictionnaire de
 32 Kio, sauf avec MZ_FINISH au premier appel (miniz.c l. 466-512 à 9977da4) : un petit tampon de sortie ne réduit
 pas la sortie que voit tinfl (zone `inflate`, bornes du chemin rapide).
-`mz_adler32` : 3,7 % des instructions en n1 sur la base 2948eeb, déjà au niveau de zlib 1.3 (miniz-0016).
+`mz_adler32` : 3,7 % des instructions en n1 sur la base 2948eeb (bee/README.md) ; miniz-0016 visait l'Adler-32 de
+tinfl, pas lui.
 Le juge isolé compte tout le processus : du travail déplacé dans `mz_compressBound` ne fait rien gagner (bee/README.md).
 `bee/bench/profil.py` ne repère pas encore les fonctions à majuscules (`mz_deflateInit2`…) : leur coût part en « hors
 fonction », environ 4 500 instructions par scénario (miniz-0034).

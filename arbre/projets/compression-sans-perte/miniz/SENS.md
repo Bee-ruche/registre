@@ -9,8 +9,8 @@ budget_lignes: 40
 Deflate et Inflate compatibles zlib, embarqués partout. Fork `Bee-ruche/minizBee`, branche `master` ; outillage :
 `bee/README.md` du fork.
 ## Ce qui compte ici
-Juge : ce que miniz compresse, zlib le décompresse, et inversement. Métriques : projets/miniz.yaml ; un débit se juge
-sur ses instructions.
+Juge : ce que miniz compresse, zlib le décompresse, et inversement. Métriques : projets/miniz.yaml. R4, pour un débit :
+au moins 2 % d'instructions en moins, que le chronomètre confirme au-delà du bruit (sinon une autre configuration).
 Juge isolé : la CI exécute ton code en conteneur sans réseau et vérifie chaque sortie avec une autre zlib ; chez toi :
 `python3 bee/juge/juge.py --source-a <base> --source-b <ta copie>` (Docker). Ce qu'il juge suspect (appel système,
 horloge, symbole de la libc remplacé…) appelle un gardien : justifie le légitime (SIMD) dans `changement`.

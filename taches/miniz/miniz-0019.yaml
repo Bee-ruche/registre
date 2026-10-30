@@ -15,15 +15,18 @@ contexte: >
   les recopie dans d qu'avant tdefl_flush_block. Piste : la même technique dans
   tdefl_compress_normal (lookahead_pos, lookahead_size, dict_size et total_lz_bytes en local),
   plus un seuil de vidage précalculé. Le moment exact de chaque vidage doit rester identique : il
-  fixe le découpage en blocs, donc la sortie. Aucun essai exploratoire n'a été fait pour cette
-  piste : le gain n'est pas démontré, seule la part du coût l'est (profil ci-dessus).
+  fixe le découpage en blocs, donc la sortie. Un essai de cette piste est mesuré dans la note du
+  28/10 de miniz-0020 : l'état LZ en locales dans tdefl_compress_normal y donne +0,22 %, avec des
+  débordements de registres ; la note ne dit ni la grandeur mesurée (instructions ou débit), ni la
+  machine, ni le commit : à remesurer. Le gain n'est donc pas démontré ; seule la part du coût l'est
+  (profil ci-dessus).
 fichiers: [miniz_tdef.c]
 portee: 1.0
 metrique: debit_compression_n1
 sortie_compressee: identique
 critere_acceptation:
   - "CI verte (R2), x86-64 et ARM64 (R6)"
-  - "gain >= 2 % sur debit_compression_n1, au-delà du bruit (R4)"
+  - "R4 : au moins 2 % d'instructions en moins sur debit_compression_n1 (instructions_n1), que le chronomètre confirme au-delà du bruit (sinon une mesure d'une autre configuration)"
   - "aucune autre métrique dégradée de plus de 1 % (R5)"
   - "empreintes identiques, y compris « 6v » (vidages SYNC et FULL)"
 hors_perimetre: [format de sortie, API publique, nouvelle dépendance, règle de découpage en blocs]
