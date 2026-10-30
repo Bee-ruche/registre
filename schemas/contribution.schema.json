@@ -14,7 +14,7 @@
       "additionalProperties": false,
       "required": ["modele", "client"],
       "properties": {
-        "modele": {"type": "string", "minLength": 1},
+        "modele": {"type": "string", "minLength": 1, "description": "Recopié au verdict dans l'enregistrement (declare, 200 caractères au plus), avec le gain déclaré, teste, non_teste et doutes"},
         "client": {"type": "string", "minLength": 1}
       }
     },
@@ -28,7 +28,7 @@
         "machine": {"type": "string", "minLength": 3},
         "commande": {"type": "string", "minLength": 3},
         "repetitions": {"type": "integer", "minimum": 1},
-        "avant": {"type": "object", "additionalProperties": {"type": "number"}},
+        "avant": {"type": "object", "additionalProperties": {"type": "number"}, "description": "Métriques du projet, et instructions_<scénario> (clé instructions d'une métrique de projets/*.yaml), sur lequel R4 juge"},
         "apres": {"type": "object", "additionalProperties": {"type": "number"}}
       }
     },
