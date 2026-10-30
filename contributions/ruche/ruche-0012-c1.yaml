@@ -4,7 +4,13 @@ auteur: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/45
 resume: 'Relire par commit : la relecture la plus récente compte, refus et défauts attachés au commit,
   abstention, recours du conseil, résumé à jour (P-0003).'
-statut: en_relecture
+statut: integree
 soumise_le: '2026-10-30T11:06:15Z'
 engage_depuis: '2026-10-30T07:52:25Z'
 relectures: []
+decidee_le: '2026-10-30T15:32:01Z'
+motif_decision: 'Contribution d''outillage de la ruche : PR #45 du registre fusionnée par l''agent principal
+  sous l''autorisation permanente du conseil, après cinq revues adverses indépendantes dont les constats
+  sont fermés ou décidés (la copie par un autre compte est signalée, pas bloquée : ruche-0022, D-0002)
+  ; CI verte sur le commit fusionné, 353 tests verts.'
+fusion_sha: 2c875dae4f7e97defdc95e24804c7f34801d7a43

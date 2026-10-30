@@ -1,0 +1,42 @@
+id: ruche-0025
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: S
+titre: "verdicts.yml : ne croire que la CI de la PR enregistrée, vers master, et vérifier sa base"
+contexte: >
+  Revue adverse de minizBee PR #16 (miniz-0032, 30/10), constat S1, vérifié dans le code :
+  .github/workflows/verdicts.yml retient la dernière exécution terminée de bee-ci.yml pour le commit de
+  la PR (gh run list --commit $sha --workflow bee-ci.yml --limit 1) sans filtrer ni le numéro de PR, ni
+  la branche de base, ni l'événement ; le registre ne compare pas non plus la base déclarée dans
+  verdict.json à celle de la PR. minizBee garde 18 branches en plus de master, dont 12 avec un ancien CI
+  qui exécute le code de la PR sur l'hôte et 4 avec le juge v2. Scénario : ouvrir une PR vers une vieille
+  branche, laisser tourner la CI, puis repasser sa base à master (bee-ci.yml ne se relance pas sur
+  l'événement edited) : le registre lirait un verdict qui mesure la PR contre un vieux commit, et
+  s'attribuerait des gains déjà dans master. À faire : retenir seulement une exécution de l'événement
+  pull_request dont la PR est celle enregistrée et dont la base est la branche par défaut du fork (API :
+  repos/<fork>/actions/runs/<id>, champ pull_requests) ; bee enregistrer-verdict refuse un verdict dont
+  la base déclarée (details.base, ou base_juge après miniz-0032) n'est pas un ancêtre de la branche par
+  défaut lue auprès de l'API ; tests avec le faux gh de outils/test_bee.py. Seconde revue adverse de la
+  PR #16 (constat S-2) : le workflow d'une PR est celui de son commit de fusion, donc une base forgée
+  (une branche poussée dans le fork avec son propre bee/ et son propre bee-ci.yml) fabrique un
+  verdict.json entier, base déclarée comprise ; et le champ pull_requests d'une exécution liste toutes
+  les PR ouvertes de même tête, si bien qu'une seconde PR de même tête vers la base forgée ne se
+  distingue pas de la première par ce champ. Ne jamais croire la base déclarée dans verdict.json :
+  la lire auprès de l'API ; et si une autre PR ouverte ou fermée a la même tête vers une autre base,
+  n'enregistrer aucun verdict (cas ambigu, échec fermé), en le disant.
+fichiers: [.github/workflows/verdicts.yml, outils/bee.py, outils/test_bee.py, docs/evaluation.md]
+portee: 0.8
+metrique: null
+critere_acceptation:
+  - "test : une exécution d'une autre PR, d'une autre base ou d'un autre événement pour le même commit n'est jamais retenue"
+  - "test : un verdict dont la base n'est pas sur la branche par défaut du fork n'est pas enregistré, et la sortie le dit"
+  - "test : quand une autre PR de même tête vise une autre base, aucun verdict n'est enregistré (échec fermé), et la sortie le dit"
+  - "revue adverse indépendante jointe (le verdict décide de l'intégration)"
+hors_perimetre: [les forks, COMMANDEMENTS.md]
+depend_de: [ruche-0017]
+noeud: projets/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-30"

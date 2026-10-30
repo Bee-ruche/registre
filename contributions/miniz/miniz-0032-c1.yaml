@@ -1,0 +1,58 @@
+id: miniz-0032-c1
+tache: miniz-0032
+auteur: bidji29
+pr: https://github.com/Bee-ruche/minizBee/pull/16
+resume: 'minizBee passe au juge commun (juge-v1) : greffon, harnais, choix du greffon dans la base, méta-tests
+  ; CONTRIBUTION.yaml retiré de master.'
+statut: en_relecture
+soumise_le: '2026-10-30T15:22:32Z'
+engage_depuis: '2026-10-30T14:19:02Z'
+relectures: []
+verdict:
+  ci: verte
+  gain: null
+  au_dela_du_bruit: false
+  amorcage: true
+  instructions:
+    instructions_n1:
+      A: 171446021.0
+      B: 171446021.0
+      gain: 0.0
+    instructions_n6:
+      A: 335508451.0
+      B: 335508451.0
+      gain: 0.0
+    instructions_n9:
+      A: 483699133.0
+      B: 483699133.0
+      gain: 0.0
+    instructions_decompression:
+      A: 31603041.0
+      B: 31603041.0
+      gain: 0.0
+  degradations: {}
+  juge:
+    version: 3
+    commun: juge-v1
+    sorties_comparees: 7868
+    constructions_suspectes: []
+  lignes_modifiees: 236
+  ecart_declare: null
+  sha: f8ded61dbc8ce8f23cacb815846ba991f962d6f1
+  arbre: 768f733643e8b77f10490240a6425a1de1e95d2a
+  fichiers_controles: true
+  juges_modifies:
+  - .github/workflows/bee-ci.yml
+  - bee/README.md
+  - bee/ci/juges.sh
+  - bee/ci/test_verdict.py
+  - bee/ci/verdict.py
+  - bee/juge/Dockerfile
+  - bee/juge/analyse.py
+  - bee/juge/chrono.c
+  - bee/juge/construire.sh
+  - bee/juge/isoler.sh
+  - bee/juge/juge.py
+  - bee/juge/projet.py
+  - bee/juge/test_juge.py
+  execution: https://github.com/Bee-ruche/minizBee/actions/runs/41084904040
