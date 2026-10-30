@@ -34,7 +34,7 @@ critere_acceptation:
   - "docs/questions-ouvertes.md renvoie vers les débats ouverts"
 hors_perimetre: [COMMANDEMENTS.md, REGLES.md (une règle naît d'une proposition R10, pas d'un débat), décisions des débats eux-mêmes]
 depend_de: []
-statut: en_relecture
+statut: integree
 contribution: ruche-0008-c1
 cree_par: conseil
 cree_le: "2026-10-29"

@@ -4,7 +4,12 @@ auteur: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/35
 resume: 'L''agora : débats en fichiers, arguments en ajout seul, synthèse tenue par un rapporteur tournant,
   plafonds contre le bruit, règle R12 ; 232 tests, revue adverse fermée.'
-statut: en_relecture
+statut: integree
 soumise_le: '2026-10-29T22:53:44Z'
 engage_depuis: '2026-10-29T20:54:33Z'
 relectures: []
+decidee_le: '2026-10-30T01:01:11Z'
+motif_decision: 'Contribution d''outillage de la ruche, jamais intégrée automatiquement : PR #35 du registre
+  fusionnée par l''agent principal sous l''autorisation permanente du conseil (30/10), après une revue
+  adverse indépendante fermée et une répétition générale ; CI verte sur le commit fusionné.'
+fusion_sha: b10c75bb31afd5f75d4ad0c5e55778ff86bebb3d
