@@ -370,6 +370,8 @@ class Registre:
             donnees = self._lire_fichier(chemin)
             if donnees is not None:
                 self.mesures.append((chemin, donnees))
+        self.conseil, self.gardiens, self.robots, self.membres = (Pseudos(self.conseil), Pseudos(self.gardiens),
+                                                                  Pseudos(self.robots), Fiches(self.membres))
 
     def _lire(self, relatif):
         chemin = self.racine / relatif
@@ -384,7 +386,7 @@ class Registre:
 
     def privilegies(self):
         """Conseil et gardiens : ceux dont la relecture ouvre la porte de R3."""
-        return set(self.conseil) | set(self.gardiens)
+        return Pseudos(self.conseil | self.gardiens)
 
     def _lien_symbolique(self, chemin):
         """Vrai si le fichier, ou un dossier entre lui et la racine du registre, est un lien symbolique."""
@@ -526,6 +528,23 @@ def meme_pseudo(a, b):
     return isinstance(a, str) and isinstance(b, str) and a.casefold() == b.casefold()
 
 
+class SansCasse:
+    """« pseudo in … » sans la casse (meme_pseudo), pour le conseil, les gardiens, les robots, les membres et les concurrents
+    (ruche-0028, répétition générale n° 3 : une levée « par: BIDJI29 » ne valait rien)."""
+    def __contains__(self, pseudo):
+        if "plis" not in vars(self):
+            self.plis = frozenset(p.casefold() for p in self if isinstance(p, str))
+        return isinstance(pseudo, str) and pseudo.casefold() in self.plis
+
+
+class Pseudos(SansCasse, frozenset):
+    pass
+
+
+class Fiches(SansCasse, dict):
+    pass
+
+
 def engagements_de(reg, utilisateur):
     """R8 : réservations et inscriptions en parallèle de l'utilisateur, tous agents confondus : [(tâche, genre)]."""
     resultat = []
@@ -567,14 +586,14 @@ def participants_course(reg, tid):
         qui.add((t.get("reservation") or {}).get("utilisateur"))
     qui |= {p.get("utilisateur") for p in paralleles_de(t)}
     qui |= {e.get("auteur") for _, e in contributions_en_course(reg, tid)}
-    return qui - {None}
+    return Pseudos(qui - {None})
 
 
 def concurrents_de(reg, enr):
     """Ceux qui sont en concurrence avec l'auteur de `enr` sur sa tâche, en ce moment (commandement 3 : on ne juge pas
     son concurrent). Tant qu'ils sont engagés dans la course, leurs votes et leurs avis défavorables sur cette
     contribution ne comptent pas, quelle que soit leur date ; leurs avis favorables comptent."""
-    return participants_course(reg, enr.get("tache")) - {enr.get("auteur")}
+    return Pseudos(p for p in participants_course(reg, enr.get("tache")) if not meme_pseudo(p, enr.get("auteur")))
 
 
 CLES_CONFIRMATION = ("defaut_confirme", "confirme_par")
@@ -584,7 +603,7 @@ def confirme_par_un_tiers(relecture):
     """Un défaut est confirmé par un tiers (confirme_par) : la CI, le conseil, un gardien ou un Confirmé autre que le
     relecteur qui l'a signalé. Seul un tel défaut rapporte (+2) à son relecteur."""
     par = relecture.get("confirme_par")
-    return bool(relecture.get("defaut_confirme")) and bool(par) and par != relecture.get("relecteur")
+    return bool(relecture.get("defaut_confirme")) and bool(par) and not meme_pseudo(par, relecture.get("relecteur"))
 
 
 def est_confirmation(ancienne, nouvelle):
@@ -671,7 +690,10 @@ def gain_mesure(reg, enr):
         portee, lignes = float(tache.get("portee", 1.0)), int(verdict.get("lignes_modifiees", 0))
     except (TypeError, ValueError):
         return None
-    valeur = float(gain) * portee / (1 + lignes / 100)
+    # ruche-0028 (1) : le gain le moins favorable des verdicts du même contenu (relancer la CI ne fait pas monter au classement).
+    gain = min([float(gain)] + [h["gain"] for h in verdicts_du_contenu(enr)[1:] if isinstance(h.get("gain"), (int, float))
+                                and not isinstance(h.get("gain"), bool) and math.isfinite(h["gain"])])
+    valeur = gain * portee / (1 + lignes / 100)
     return valeur if math.isfinite(valeur) else None
 
 
@@ -989,6 +1011,18 @@ def instant_du_geste(reg, dates, chemin, cle, declaree, instant):
     return moment if moment and moment <= instant + AVANCE_MAX else None
 
 
+def heure_de_fusion(reg, chemin):
+    """ruche-0028 (6) : quand le fichier d'une contribution est arrivé dans la branche (le commit, sur le premier parent, qui l'a
+    ajouté : la fusion de la PR de soumission) ; None sans historique complet, pas encore publié, ou daté dans le futur."""
+    cache = vars(reg).setdefault("_fusions", {})
+    if None not in cache:
+        cache[None] = historique_disponible(reg.racine)
+    if chemin not in cache:
+        ajouts = commits_premier_parent(reg.racine, "HEAD", reg.rel(chemin), filtre="A") if cache[None] else []
+        cache[chemin] = ajouts[-1][1] if ajouts and ajouts[-1][1] <= maintenant() + AVANCE_MAX else None
+    return cache[chemin]
+
+
 # --------------------------------------------------------------------------
 # Cap de la ruche (R11) et tableau de l'essaim : vers où diriger le travail, qui fait quoi
 # --------------------------------------------------------------------------
@@ -1198,10 +1232,11 @@ def tableau_essaim(reg, instant=None, jours_notes=7):
         # des abeilles qui travaillent encore sur la même tâche.
         if len(course["contributions"]) > 1 or course["engages"]:
             courses.append(course)
-    for cid, (_, e) in sorted(reg.enregistrements.items()):
+    for cid, (chemin, e) in sorted(reg.enregistrements.items()):
         if not isinstance(e, dict) or e.get("statut") != "en_relecture":
             continue
         soumise = _instant_ou_rien(e.get("soumise_le"))
+        soumise = soumise and max(soumise, heure_de_fusion(reg, chemin) or soumise)  # comme R3 (ruche-0028)
         t = reg.taches.get(e.get("tache"), (None, {}))[1] or {}
         rang, total = rangs.get(cid, (1, 1))
         relecture.append({"contribution": cid, "tache": e.get("tache"), "poste": poste_de(t), "auteur": e.get("auteur"),
@@ -1279,7 +1314,8 @@ def calculer_niveaux(reg):
 
 
 def niveau_de(niveaux, pseudo):
-    return niveaux.get(pseudo, {}).get("niveau", "Nouveau")
+    cle = pseudo if pseudo in niveaux else next((p for p in niveaux if meme_pseudo(p, pseudo)), None)
+    return niveaux.get(cle, {}).get("niveau", "Nouveau")
 
 
 def relecture_comptee(reg, niveaux, relecteur):
@@ -1380,22 +1416,46 @@ def meme_contenu(relecture, verdict):
     return relecture.get("sha") == verdict.get("sha")
 
 
+# ruche-0028 (1) : l'enregistrement garde la trace de ses VERDICTS_MAX derniers verdicts (verdicts ; au-delà, verdicts_oublies les
+# compte). Relancer la CI sur un contenu déjà mesuré ajoute une mesure, n'en efface aucune (répétition générale n° 3).
+VERDICTS_MAX = 20
+
+
+def trace_verdict(v):
+    """Ce que l'historique garde d'un verdict : de quoi reconnaître son contenu et rejuger R1, R4 et le classement."""
+    trace = {k: v[k] for k in ("sha", "arbre", "ci", "gain", "au_dela_du_bruit", "lignes_modifiees") if k in v}
+    if isinstance(v.get("instructions"), dict):
+        trace["instructions"] = {n: {"gain": i.get("gain")} for n, i in v["instructions"].items() if isinstance(i, dict)}
+    return trace
+
+
+def verdicts_du_contenu(enr):
+    """Le verdict courant, puis chaque autre verdict vert de l'historique sur le même contenu (même arbre, sinon même sha)."""
+    verdict = enr.get("verdict") if isinstance(enr.get("verdict"), dict) else {}
+    return [verdict] + [h for h in enr.get("verdicts") or [] if isinstance(h, dict) and h.get("ci") == "verte"
+                        and h != trace_verdict(verdict) and meme_contenu(h, verdict)]
+
+
 def refus_ailleurs(reg, enr, niveaux=None):
     """Alerte pour les relecteurs (revue adverse de ruche-0012), jamais un blocage : le contenu jugé (même arbre, sinon même sha)
-    porte, dans une autre contribution de la tâche, un refus encore actif : la plus récente relecture de ce relecteur sur ce
-    contenu, dans toute la tâche, est un défavorable d'un gardien, du conseil ou d'un Confirmé, ou porte un défaut confirmé, et
+    porte, dans une autre contribution, un refus encore actif : la plus récente relecture de ce relecteur sur ce contenu,
+    dans tout le registre, est un défavorable d'un gardien, du conseil ou d'un Confirmé, ou porte un défaut confirmé, et
     aucune levée du conseil ne la neutralise. Un autre compte qui soumet un contenu refusé n'est pas bloqué automatiquement
     (le contenu d'une contribution change à chaque commit poussé : un ordre entre contributions bloquerait l'original ou
-    libérerait la copie) ; le refus se repose sur la copie. [(relecteur, contribution)]."""
+    libérerait la copie) ; le refus se repose sur la copie. ruche-0028 (5) : toutes tâches confondues (un contenu refusé soumis sous
+    une autre tâche), et une contribution refusee (statut) dont un verdict portait ce contenu. [(relecteur ou None, contribution)]."""
     verdict = enr.get("verdict") if isinstance(enr.get("verdict"), dict) else {}
     if not verdict.get("sha"):
         return []
     niveaux = niveaux if niveaux is not None else calculer_niveaux(reg)
     privilegies = reg.privilegies()
-    plus_recentes = {}
+    plus_recentes, refusees = {}, []
     for cid, (_, e) in reg.enregistrements.items():
-        if not isinstance(e, dict) or e.get("tache") != enr.get("tache"):
+        if not isinstance(e, dict):
             continue
+        if cid != enr.get("id") and e.get("statut") == "refusee" and any(
+                isinstance(v, dict) and meme_contenu(v, verdict) for v in [e.get("verdict")] + list(e.get("verdicts") or [])):
+            refusees.append((None, cid))
         for rang, r in enumerate(e.get("relectures") or []):
             if not isinstance(r, dict) or not meme_contenu(r, verdict) or levee(reg, e, r):
                 continue
@@ -1405,7 +1465,7 @@ def refus_ailleurs(reg, enr, niveaux=None):
                 plus_recentes[p] = (cle, cid, r)
     return [(r.get("relecteur"), cid) for _, (_, cid, r) in sorted(plus_recentes.items())
             if cid != enr.get("id") and (r.get("defaut_confirme") or (r.get("avis") == "defavorable" and (
-                r.get("relecteur") in privilegies or niveau_de(niveaux, r.get("relecteur")) == "Confirmé")))]
+                r.get("relecteur") in privilegies or niveau_de(niveaux, r.get("relecteur")) == "Confirmé")))] + refusees
 
 
 def leve_dans_le_fil(reg, enr, relecture):
@@ -1505,8 +1565,8 @@ def verifier_registre(reg):
         except ErreurBee as e:
             ajouter(str(e))
 
-    def instant_passe(chemin, valeur, quoi, tolerance=TOLERANCE_DATE):
-        """Un instant lisible, jamais dans le futur au-delà de 2 h, comme la tolérance de verifier-pr (revue adverse de ruche-0012 :
+    def instant_passe(chemin, valeur, quoi, tolerance=TOLERANCE_HORLOGE):
+        """Un instant lisible, jamais dans le futur au-delà de 2 h, horloges décalées (revue adverse de ruche-0012 :
         une levée datée de 2099 neutralisait d'avance toute relecture ; bee valider ne dépend pas de l'horloge à la seconde)."""
         try:
             if lire_instant(valeur, f"{reg.rel(chemin)} ({quoi})") > maintenant() + tolerance:
@@ -1902,7 +1962,7 @@ def notes_depuis(reg, utilisateur, debut):
 
 def verifier_notes_ajoutees(reg, chemin, precedentes, ajoutees, auteur, instant):
     """Notes qu'une PR ajoute à une tâche, à sa création comme sur une tâche existante, contrôlées comme les arguments de
-    l'agora : signées de l'auteur de la PR ; datées de l'heure de la PR (2 h de tolérance, jamais dans le futur), pas d'avant
+    l'agora : signées de l'auteur de la PR ; datées de l'heure de la PR (15 min de tolérance, jamais dans le futur), pas d'avant
     la note précédente ; courtes (notes.texte_max), sans caractère invisible ni de contrôle. Renvoie (problèmes, instants
     des notes bien datées), pour les plafonds par PR et sur 24 h glissantes."""
     problemes, instants = [], []
@@ -1925,7 +1985,7 @@ def verifier_notes_ajoutees(reg, chemin, precedentes, ajoutees, auteur, instant)
             moment = None
         if moment is not None:
             if not instant - TOLERANCE_DATE <= moment <= instant + AVANCE_MAX:
-                problemes.append(f"{lieu} : datée du {note.get('le')} : une note est datée de l'heure de la PR (à 2 h près, jamais "
+                problemes.append(f"{lieu} : datée du {note.get('le')} : une note est datée de l'heure de la PR (à 15 min près, jamais "
                                  "dans le futur) ; relancez bee noter")
             else:
                 if precedent and moment < precedent:
@@ -1941,7 +2001,7 @@ def verifier_notes_ajoutees(reg, chemin, precedentes, ajoutees, auteur, instant)
 
 
 def probleme_date_pr(valeur, quoi, instant):
-    """None si `valeur` est l'heure de la PR (à 2 h près, jamais plus d'une minute dans le futur), comme les dates déclarées
+    """None si `valeur` est l'heure de la PR (à 15 min près, jamais plus d'une minute dans le futur), comme les dates déclarées
     de l'agora, des notes et des soumissions ; sinon la raison. Pour le `le` des votes, des relectures et des mesures (revue
     adverse de ruche-0011, m1 : un vote daté de 2099 passait)."""
     try:
@@ -1949,7 +2009,7 @@ def probleme_date_pr(valeur, quoi, instant):
     except ErreurBee as e:
         return str(e)
     if not instant - TOLERANCE_DATE <= moment <= instant + AVANCE_MAX:
-        return f"{quoi} ({valeur}) doit être l'heure de la PR (à 2 h près, jamais dans le futur)"
+        return f"{quoi} ({valeur}) doit être l'heure de la PR (à 15 min près, jamais dans le futur)"
     return None
 
 
@@ -2189,8 +2249,8 @@ def verifier_engagements(reg, chemin, ancien, nouveau, differences, auteur, *, e
             # elle doit être l'heure réelle, ni antidatée ni postdatée, et jamais antérieure à ce qui existe déjà sur
             # la tâche (on s'inscrit après la réservation, après les inscrits et après les soumissions en course).
             depuis = lire_instant(p.get("depuis"), chemin)
-            exiger(instant - dt.timedelta(hours=2) <= depuis <= instant + AVANCE_MAX,
-                   "l'inscription en parallèle doit être datée de l'heure de la PR (à 2 h près, jamais dans le futur) ; "
+            exiger(instant - TOLERANCE_DATE <= depuis <= instant + AVANCE_MAX,
+                   "l'inscription en parallèle doit être datée de l'heure de la PR (à 15 min près, jamais dans le futur) ; "
                    "relancez bee prendre --en-parallele")
             existants = [ra.get("depuis")] + [x.get("depuis") for x in pa] + [
                 e.get("soumise_le") for _, e in contributions_en_course(reg, nouveau.get("id"))]
@@ -2275,8 +2335,10 @@ FENETRE_PLAFOND = dt.timedelta(hours=24)
 # Sauts de ligne que YAML réinterprète (NEL, séparateurs de ligne et de paragraphe), refusés en plus des catégories Cc
 # et Cf : écrits dans un débat, ils rendraient le fichier impossible à réécrire fidèlement par l'outil.
 SAUTS_YAML = frozenset(map(chr, (0x85, 0x2028, 0x2029)))
-# Une date déclarée dans un débat est l'heure de la PR : au plus 2 h avant la vérification, jamais dans le futur.
-TOLERANCE_DATE = dt.timedelta(hours=2)
+# Une date déclarée (réservation, soumission, relecture, note, débat…) est l'heure de la PR : au plus 15 min avant la vérification,
+# jamais dans le futur (ruche-0028 : avec 2 h, réservation et soumission antidatées rognaient la fenêtre de R3 à 22,1 h).
+TOLERANCE_DATE = dt.timedelta(minutes=15)
+TOLERANCE_HORLOGE = dt.timedelta(hours=2)  # bee valider : une date à venir, horloges décalées
 # Une levée (écrite par le conseil, jamais en libre-service) datée dans le futur neutraliserait d'avance les relectures publiées
 # avant sa date : bee valider ne lui laisse que 5 min d'avance (une relecture : 2 h, pour les horloges décalées).
 TOLERANCE_LEVEE = dt.timedelta(minutes=5)
@@ -2616,14 +2678,14 @@ def verifier_debat(reg, chemin, statut_git, ancien, nouveau, auteur, *, est_cons
         return condition
 
     def date_recente(valeur, quoi):
-        """Une date déclarée est l'heure de la PR, à 2 h près, jamais dans le futur."""
+        """Une date déclarée est l'heure de la PR, à 15 min près, jamais dans le futur."""
         try:
             moment = lire_instant(valeur, f"{chemin} ({quoi})")
         except ErreurBee as e:
             problemes.append(str(e))
             return None
         exiger(instant - TOLERANCE_DATE <= moment <= instant + AVANCE_MAX,
-               f"{quoi} ({valeur}) doit être l'heure de la PR (à 2 h près, jamais dans le futur) : relancez la commande bee debattre")
+               f"{quoi} ({valeur}) doit être l'heure de la PR (à 15 min près, jamais dans le futur) : relancez la commande bee debattre")
         return moment
 
     if not CHEMIN_DEBAT.match(chemin):
@@ -2960,7 +3022,7 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
                     exiger(not nouveau.get("reservation") and not nouveau.get("contribution"),
                            f"{chemin} : une tâche proposée n'a ni réservation ni contribution")
                     numero_attendu(chemin, "la tâche proposée", "bee proposer-tache")
-                    # Une date déclarée qui pèse dans le cap est celle de la PR (UTC, à 2 h près autour de minuit).
+                    # Une date déclarée qui pèse dans le cap est celle de la PR (UTC, à 15 min près autour de minuit).
                     jours = sorted({instant.date().isoformat(), (instant - TOLERANCE_DATE).date().isoformat()})
                     exiger(str(nouveau.get("cree_le")) in jours,
                            f"{chemin} : cree_le ({nouveau.get('cree_le')}) est la date de la PR ({' ou '.join(jours)}) : bee proposer-tache l'écrit")
@@ -3032,7 +3094,8 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
                 exiger(refus is None, f"{chemin} : {refus}")
                 try:
                     depuis = lire_instant(reservation.get("depuis"), chemin)
-                    exiger(depuis <= instant + AVANCE_MAX, f"{chemin} : réservation datée dans le futur")
+                    exiger(instant - TOLERANCE_DATE <= depuis <= instant + AVANCE_MAX, f"{chemin} : une réservation est datée de "
+                           "l'heure de la PR (à 15 min près, jamais dans le futur) ; relancez bee prendre")
                 except ErreurBee as e:
                     problemes.append(str(e))
                 exiger(not reg.bloquee_par(nouveau), f"{chemin} : la tâche dépend de {', '.join(reg.bloquee_par(nouveau))}, pas encore intégrée(s)")
@@ -3134,13 +3197,13 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
                     # La fenêtre d'ouverture de R3 part de soumise_le : il doit être l'heure réelle.
                     try:
                         soumise = lire_instant(nouveau.get("soumise_le"), chemin)
-                        exiger(instant - dt.timedelta(hours=2) <= soumise <= instant + AVANCE_MAX,
-                               f"{chemin} : soumise_le doit être l'heure de la soumission (à 2 h près, jamais dans le futur) ; "
+                        exiger(instant - TOLERANCE_DATE <= soumise <= instant + AVANCE_MAX,
+                               f"{chemin} : soumise_le doit être l'heure de la soumission (à 15 min près, jamais dans le futur) ; "
                                "relancez bee soumettre")
                         # Course (R3) : l'ordre des soumissions et des engagements départage et borne les attentes. Une
                         # soumission est postérieure à tout ce qui est déjà sur la tâche dans la base (réservation, toutes
                         # les inscriptions en parallèle) et à toute soumission déjà en course : sinon, antidatée dans la
-                        # tolérance de 2 h, elle échapperait à l'attente des engagés d'avant elle (raisons_course, 1). On ne
+                        # tolérance des dates, elle échapperait à l'attente des engagés d'avant elle (raisons_course, 1). On ne
                         # compare qu'aux dates déjà passées : une inscription datée dans le futur ne bloque personne.
                         anterieurs = ([(t_base.get("reservation") or {}).get("depuis")] + [p.get("depuis") for p in paralleles_de(t_base)]
                                       + [e.get("soumise_le") for c, e in contributions_en_course(reg, nouveau.get("tache")) if c != cid])
@@ -3157,7 +3220,7 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
                                    f"{chemin} : engage_depuis doit être le début de l'engagement de {auteur} sur la tâche ({attendu}) ; "
                                    "bee soumettre l'écrit")
                         else:  # le conseil réserve et soumet dans la même PR
-                            exiger(engage is not None and soumise - dt.timedelta(hours=2) <= engage <= soumise,
+                            exiger(engage is not None and soumise - TOLERANCE_DATE <= engage <= soumise,
                                    f"{chemin} : engage_depuis doit être l'heure de la réservation, juste avant la soumission")
                     except ErreurBee as e:
                         problemes.append(str(e))
@@ -3202,10 +3265,10 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
                            f"{chemin} : un défaut se confirme sur la relecture d'un autre qui l'a signalé, sans rien y changer "
                            "d'autre (bee confirmer-defaut) ; une relecture ne confirme jamais son propre défaut")
                     exiger(r.get("confirme_par") == auteur, f"{chemin} : la confirmation porte le nom de l'auteur de la PR ({auteur})")
-                    exiger(auteur != r.get("relecteur"), f"{chemin} : {auteur} ne confirme pas son propre défaut : un tiers le confirme")
+                    exiger(not meme_pseudo(auteur, r.get("relecteur")), f"{chemin} : {auteur} ne confirme pas son propre défaut : un tiers le confirme")
                     exiger(est_robot or est_conseil or auteur in reg.gardiens or niveau == "Confirmé",
                            f"{chemin} : un défaut n'est confirmé que par la CI, le conseil, un gardien ou un Confirmé")
-                    exiger(auteur != nouveau.get("auteur") and auteur not in participants_course(reg, nouveau.get("tache"))
+                    exiger(not meme_pseudo(auteur, nouveau.get("auteur")) and auteur not in participants_course(reg, nouveau.get("tache"))
                            and auteur not in engages_base,
                            f"{chemin} : {auteur} est en course sur la tâche {nouveau.get('tache')} : il n'y confirme pas de défaut "
                            "(commandement 3)")
@@ -3218,7 +3281,7 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
                 if exiger(isinstance(anciennes_l, list) and isinstance(nouvelles_l, list) and nouvelles_l[:len(anciennes_l)] == anciennes_l,
                           f"{chemin} : les levées sont en ajout seul"):
                     for l in nouvelles_l[len(anciennes_l):]:
-                        exiger(isinstance(l, dict) and l.get("par") == auteur, f"{chemin} : une levée porte le nom de l'auteur de la PR ({auteur})")
+                        exiger(isinstance(l, dict) and meme_pseudo(l.get("par"), auteur), f"{chemin} : une levée porte le nom de l'auteur de la PR ({auteur})")
                         probleme = probleme_date_pr(l.get("le") if isinstance(l, dict) else None, f"{chemin} : levée, le", instant)
                         exiger(probleme is None, str(probleme))
                         probleme = texte_recevable(l.get("motif") if isinstance(l, dict) else None, f"{chemin} : motif de la levée",
@@ -3407,7 +3470,7 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
                 try:
                     ouverte = lire_instant(nouveau.get("ouverte_le"), chemin)
                     exiger(instant - TOLERANCE_DATE <= ouverte <= instant + AVANCE_MAX,
-                           f"{chemin} : ouverte_le ({nouveau.get('ouverte_le')}) doit être l'heure de la PR (à 2 h près, jamais dans le "
+                           f"{chemin} : ouverte_le ({nouveau.get('ouverte_le')}) doit être l'heure de la PR (à 15 min près, jamais dans le "
                            "futur) : le vote de R10 en part ; relancez bee proposer")
                 except ErreurBee as e:
                     problemes.append(str(e))
@@ -4265,7 +4328,15 @@ def cmd_relire(args):
     # Une relecture par relecteur et par commit jugé (ruche-0012) : relire le correctif, c'est en ajouter une nouvelle, sur un
     # autre commit que sa plus récente (X, Y, puis X redevient possible).
     sha = (enr.get("verdict") or {}).get("sha")
-    siennes = [r for r in enr.get("relectures") or [] if isinstance(r, dict) and r.get("relecteur") == args.utilisateur]
+    # ruche-0028 (3) : le commit que le relecteur a lu, jamais celui du verdict au moment d'écrire (l'auteur a pu pousser entre-temps).
+    if sha and not (args.commit and re.fullmatch(r"[0-9a-f]{7,40}", args.commit) and sha.startswith(args.commit)):
+        raise ErreurBee(f"le verdict courant de {args.contribution} porte sur le commit {sha} : " + (
+            f"vous avez lu {args.commit}, l'auteur a poussé depuis ; relisez le commit {sha} (son diff), puis --commit {sha}"
+            if args.commit else "dites quel commit vous avez lu (--commit <sha>) ; une relecture ne compte que sur ce commit"))
+    if args.commit and not sha:
+        raise ErreurBee(f"{args.contribution} n'a pas encore de verdict : la relecture s'enregistre sans commit (sans --commit), et une "
+                        "favorable ne comptera pas ; relisez quand le verdict sera là (bee voir)")
+    siennes = [r for r in enr.get("relectures") or [] if isinstance(r, dict) and meme_pseudo(r.get("relecteur"), args.utilisateur)]
     if relecture_refusee(siennes, {"relecteur": args.utilisateur, "sha": sha}, lambda x: leve_dans_le_fil(reg, enr, x)):
         raise ErreurBee(f"{args.utilisateur} a déjà relu {args.contribution} " + (f"au commit {sha}, et c'est sa relecture la plus "
                         "récente : relisez au prochain commit jugé" if sha else "sans commit : une seule relecture avant le "
@@ -4319,7 +4390,7 @@ def cmd_confirmer_defaut(args):
         raise ErreurBee("un défaut n'est confirmé que par la CI, le conseil, un gardien ou un Confirmé")
     if u == args.relecteur:
         raise ErreurBee("on ne confirme pas son propre défaut : un tiers le confirme")
-    if u == enr.get("auteur") or u in participants_course(reg, enr.get("tache")):
+    if meme_pseudo(u, enr.get("auteur")) or u in participants_course(reg, enr.get("tache")):
         raise ErreurBee(f"{u} est en course sur la tâche {enr.get('tache')} : il n'y confirme pas de défaut (commandement 3)")
     relectures = list(enr.get("relectures") or [])
     for i, r in reversed(list(enumerate(relectures))):  # son défaut le plus récent, attaché au commit où il l'a signalé
@@ -4338,7 +4409,7 @@ def cmd_voter(args):
     reg = Registre(args.registre)
     reg.exiger_membre(args.utilisateur)
     if args.sujet in reg.enregistrements:
-        if reg.enregistrements[args.sujet][1].get("auteur") == args.utilisateur:
+        if meme_pseudo(reg.enregistrements[args.sujet][1].get("auteur"), args.utilisateur):
             raise ErreurBee("on ne vote pas pour sa propre contribution (commandement 3)")
         if args.utilisateur in concurrents_de(reg, reg.enregistrements[args.sujet][1]):
             raise ErreurBee(f"{args.utilisateur} est en course sur la même tâche que {args.sujet} : on ne vote pas sur une "
@@ -4957,7 +5028,8 @@ def gain_declare(reg, manifeste, tache):
         return None
     sens = reg.metriques(tache.get("projet")).get(metrique, {}).get("sens", "plus_haut")
     gain = apres / avant - 1 if sens == "plus_haut" else 1 - apres / avant
-    return gain if math.isfinite(gain) else None
+    # Borné avant tout calcul (ruche-0028, tour 3 : un gain de 1e300 donnait un écart de 2,5e298, imprimé en 300 chiffres).
+    return gain if math.isfinite(gain) and abs(gain) <= 1e6 else None
 
 
 # Ce que le verdict recopie du manifeste (ruche-0017) : données du fork, bornées en caractères et en taille écrite (rendu :
@@ -5237,7 +5309,14 @@ def cmd_enregistrer_verdict(args):
     if args.execution:
         verdict["execution"] = args.execution
     enr = dict(enr)
-    enr["verdict"] = verdict
+    # ruche-0028 (1) : chaque verdict s'ajoute à l'historique (un passage qui relit le même verdict n'ajoute rien) ; au-delà de
+    # VERDICTS_MAX, les plus anciens sortent et verdicts_oublies les compte (R4 exige alors une mesure d'une autre configuration).
+    ancien = enr.get("verdict") if isinstance(enr.get("verdict"), dict) and enr["verdict"].get("ci") else None
+    historique = list(enr.get("verdicts") or ([trace_verdict(ancien)] if ancien else []))
+    historique += [trace_verdict(verdict)] if not historique or historique[-1] != trace_verdict(verdict) else []
+    if len(historique) > VERDICTS_MAX:
+        enr["verdicts_oublies"] = int(enr.get("verdicts_oublies") or 0) + len(historique) - VERDICTS_MAX
+    enr["verdict"], enr["verdicts"] = verdict, historique[-VERDICTS_MAX:]
     # La déclaration est celle du commit jugé : sans manifeste recopiable pour ce verdict, null (l'ancienne disparaît).
     enr["declare"] = recopie
     enr.pop("attente_verdict", None)
@@ -5357,7 +5436,7 @@ def raisons_course(reg, cid, niveaux, instant):
         engages += [(p.get("utilisateur"), "inscrit en parallèle", p.get("depuis")) for p in paralleles_de(t)]
         for qui, role, depuis in engages:
             debut = _instant_ou_rien(depuis)
-            if qui != enr.get("auteur") and debut is not None and debut <= soumise and not engagement_expire(reg, depuis, instant):
+            if not meme_pseudo(qui, enr.get("auteur")) and debut is not None and debut <= soumise and not engagement_expire(reg, depuis, instant):
                 raisons.append(f"course (R3) : {qui} ({role}) travaille sur la tâche depuis {depuis}, avant cette soumission : "
                                f"on attend sa contribution, son retrait ou son expiration (R7, {en_iso(debut + duree_r7)}), "
                                f"au plus tard jusqu'au {jusqu}")
@@ -5420,25 +5499,31 @@ def raisons_r3(reg, cid, bilan=None):
     tache = reg.taches.get(enr.get("tache"), (None, {}))[1]
     verdict = enr.get("verdict") or {}
     niveaux = calculer_niveaux(reg)
-    eligibles = [m for m in (set(reg.membres) | set(reg.conseil)) if m != auteur]
+    eligibles = [m for m in (set(reg.membres) | set(reg.conseil)) if not meme_pseudo(m, auteur)]
 
     def exiger(cond, msg):
         if not cond:
             raisons.append(msg)
 
     exiger(verdict.get("ci") == "verte", f"CI non verte (verdict : {verdict.get('ci', 'absent')})")
+    # R1 revérifiée par le registre (ruche-0028, tour 3 : 52 lignes pour une tâche S, CI du fork verte).
+    lignes, maximum = verdict.get("lignes_modifiees"), LIGNES_MAX.get(tache.get("taille"))
+    exiger(not (isinstance(lignes, int) and maximum and lignes > maximum),
+           f"R1 : {lignes} lignes modifiées au verdict, au plus {maximum} pour une tâche {tache.get('taille')}")
     metriques = reg.metriques(tache.get("projet"))
     proxies = {m: d.get("instructions") for m, d in metriques.items() if d.get("instructions")}
-    if tache.get("type") == "optimisation":
+    # ruche-0028 (1) : R4 juge chaque verdict vert du même contenu (verdicts_du_contenu) : relancer la CI ne peut que nuire.
+    for rang, v in enumerate(verdicts_du_contenu(enr) if tache.get("type") == "optimisation" else []):
+        avant = len(raisons)
         seuil = float(cfg.get("gain_minimal", 0.02))
         metrique = tache.get("metrique")
-        gain, bruit = verdict.get("gain"), bool(verdict.get("au_dela_du_bruit"))
+        gain, bruit = v.get("gain"), bool(v.get("au_dela_du_bruit"))
         proxy = proxies.get(metrique)
-        gain_inst = ((verdict.get("instructions") or {}).get(proxy) or {}).get("gain") if proxy else None
+        gain_inst = ((v.get("instructions") or {}).get(proxy) or {}).get("gain") if proxy else None
 
         def reproduit(minimum):
             """Mesures d'autres configurations (pas de l'auteur) qui voient le gain au chronomètre, au-delà du bruit."""
-            return [m for _, m in reg.mesures if m.get("contribution") == cid and m.get("soumise_par") != auteur
+            return [m for _, m in reg.mesures if m.get("contribution") == cid and not meme_pseudo(m.get("soumise_par"), auteur)
                     and ((m.get("metriques") or {}).get(metrique) or {}).get("au_dela_du_bruit")
                     and (((m.get("metriques") or {}).get(metrique) or {}).get("gain") or 0) > minimum]
 
@@ -5462,6 +5547,11 @@ def raisons_r3(reg, cid, bilan=None):
             if proxy:
                 exiger(reproduit(seuil - 1e-12), f"R4 : sans gain d'instructions sur {proxy}, le gain au chronomètre doit être "
                        "reproduit par une mesure d'une autre configuration (bee enregistrer-mesure)")
+        if rang:  # un verdict précédent du même contenu : la relance de la CI ne l'efface pas
+            raisons[avant:] = [f"{r} [verdict précédent du même contenu, commit {v.get('sha')}]" for r in raisons[avant:]]
+        elif enr.get("verdicts_oublies"):
+            exiger(reproduit(0.0), f"R4 : {enr['verdicts_oublies']} verdict(s) sorti(s) de l'historique (au plus {VERDICTS_MAX}) : une "
+                   "mesure d'une autre configuration doit confirmer le gain (bee enregistrer-mesure)")
     # R5. Le chronomètre seul d'une métrique de débit est trop bruité pour bloquer : on juge son décompte
     # d'instructions. Les autres métriques (ratio, mémoire) se jugent directement.
     tolerance = float(cfg.get("degradation_max_autres", 0.01))
@@ -5522,7 +5612,7 @@ def raisons_r3(reg, cid, bilan=None):
                "aucune relecture favorable d'un Confirmé (il en faut une quand un Confirmé est disponible)")
     # Un auteur privilégié ne se dispense de la porte que s'il n'existe aucun autre privilégié pour relire
     # (amorçage) : dès qu'un gardien est nommé, le conseil aussi est relu.
-    autres_privilegies = [m for m in privilegies if m != auteur]
+    autres_privilegies = [m for m in privilegies if not meme_pseudo(m, auteur)]
     if porte_exigee(reg, verdict) and (auteur not in privilegies or autres_privilegies):
         exiger(any(r.get("relecteur") in privilegies for r in favorables),
                "porte de relecture temporaire : une relecture favorable d'un gardien ou du conseil est exigée "
@@ -5546,9 +5636,12 @@ def raisons_r3(reg, cid, bilan=None):
                      cible_vote=int(cfg.get("vote_net_min", 2)), sha=sha_verdict)
 
     try:
-        heures = (maintenant() - lire_instant(enr.get("soumise_le"), reg.rel(chemin))).total_seconds() / 3600
+        # ruche-0028 (6) : depuis la fusion de la PR de soumission, quand l'historique la dit, et jamais avant soumise_le.
+        fusion = heure_de_fusion(reg, chemin)
+        heures = (maintenant() - max(lire_instant(enr.get("soumise_le"), reg.rel(chemin)), fusion or PASSE)).total_seconds() / 3600
         fenetre = float(cfg.get("fenetre_acceptation_heures", 24))
-        exiger(heures >= fenetre, f"fenêtre d'ouverture : {heures:.0f} h écoulées sur {fenetre:.0f} h")
+        exiger(heures >= fenetre, f"fenêtre d'ouverture : {int(heures)} h écoulées sur {fenetre:.0f} h"
+               + (f", depuis la fusion de la soumission ({en_iso(fusion)})" if fusion else ""))
     except ErreurBee:
         raisons.append("date de soumission illisible")
     return chemin, enr, raisons
@@ -5602,8 +5695,10 @@ def alertes_relecteurs(reg, enr):
     except (TypeError, ValueError):
         pass
     for qui, cid in refus_ailleurs(reg, enr):
-        alertes.append(f"ce contenu a été refusé par {qui} dans {cid} (même arbre, autre contribution de la tâche) : ce refus ne "
-                       "bloque pas cette contribution ; relisez-la en le sachant")
+        tache = reg.enregistrements[cid][1].get("tache")
+        alertes.append(f"ce contenu a été refusé {f'par {qui} ' if qui else ''}dans {cid} (même arbre, " + ("autre contribution de la "
+                       f"tâche" if tache == enr.get("tache") else f"autre tâche : {tache}") + ("" if qui else ", contribution refusée")
+                       + ") : ce refus ne bloque pas cette contribution ; relisez-la en le sachant")
     return alertes
 
 
@@ -6530,6 +6625,8 @@ def construire_analyseur():
     p.add_argument("--avis", required=True, choices=list(AVIS),
                    help="abstention : diff hors d'atteinte, conflit d'intérêts, approche seulement (dites-le dans le motif)")
     p.add_argument("--motif", required=True, help="ce que vous avez vérifié, ce que vous avez trouvé")
+    p.add_argument("--commit", help="le commit que vous avez lu (sha, 7 caractères au moins) : exigé après le verdict, refusé "
+                   "s'il n'est plus celui du verdict courant")
     p.add_argument("--defaut", action="store_true", help="vous signalez un défaut reproductible (décrit dans le motif)")
 
     p = ajouter("confirmer-defaut", cmd_confirmer_defaut,

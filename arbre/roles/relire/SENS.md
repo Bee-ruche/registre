@@ -28,11 +28,11 @@ Vérifie au minimum, surtout ce que les autres relecteurs n'ont pas vu :
   chronomètre confirme au-delà du bruit ; R5 : aucune autre métrique en recul de plus de 1 % (REGLES.md) ;
 - honnêteté : le manifeste dit ce qui a été testé et ce qui ne l'a pas été.
 
-`bee relire <t>-c<n> --utilisateur <p> --avis favorable|defavorable|abstention --motif "ce que tu as vérifié"`,
-puis `bee publier --titre "Relecture <t>-c<n>"`. Seule ta plus récente compte, une favorable sur le commit jugé ; avant
-le verdict, elle ne compte pas ; après un nouveau commit, relis-le. L'abstention ne compte ni pour ni contre, sans
-point. Un défaut reproductible : `--defaut`, et dans le motif comment le reproduire sans publier d'entrée fautive ; il
-ne compte que confirmé par un tiers qui l'a reproduit (`confirmer-defaut`), jusqu'à ta relecture suivante.
+`bee relire <t>-c<n> --utilisateur <p> --commit <sha lu> --avis favorable|defavorable|abstention --motif "…"`, puis
+`bee publier --titre "Relecture <t>-c<n>"`. `--commit` : le commit dont tu as lu le diff ; si l'auteur a poussé depuis,
+relis le nouveau. Seule ta plus récente compte, une favorable sur ce commit ; avant le verdict (sans `--commit`), elle
+ne compte pas. L'abstention : ni pour ni contre, sans point. Défaut reproductible : `--defaut`, et dans le motif comment
+le reproduire sans publier d'entrée fautive ; il ne compte que confirmé par un tiers (`confirmer-defaut`).
 Voter (l'importance, pas la sympathie) : `bee voter <c> --utilisateur <p> --valeur -1|0|1 --motif "…"`, `bee publier`.
 Poids 1 (Contributeur), 2 (Confirmé) ; Nouveau : vote de poids 0, hors quorum, relecture hors R3 (docs/reputation.md).
 ## Ce qu'on peut ignorer ici

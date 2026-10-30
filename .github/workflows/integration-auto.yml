@@ -54,6 +54,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: main
+          fetch-depth: 0   # ruche-0028 : la fenêtre de R3 part de l'heure de fusion de la soumission, lue dans l'historique
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -106,6 +107,15 @@ jobs:
               fi
               if printf '%s\n' "$fichiers" | grep -q '^\.github/workflows/'; then
                 echo "::notice::$id : intégrable, mais sa PR modifie un workflow de CI : jamais fusionnée automatiquement. Au conseil de la fusionner ; elle sera consignée au passage suivant."
+                continue
+              fi
+              # ruche-0028 : la base de la PR relue juste avant de fusionner, longtemps après tout retard de l'API (même lecture que
+              # verdicts.yml) ; une base changée n'est jamais fusionnée, une réponse illisible non plus (échec fermé).
+              api="$tmp/api"; rm -rf "$api" && mkdir -p "$api"
+              if ! { gh api "repos/${depot}/issues/${numero}/events?per_page=100" --paginate > "$api/evenements.json" \
+                     && gh api "repos/${depot}/issues/${numero}/timeline?per_page=100" --paginate > "$api/chronologie.json" \
+                     && PYTHONPATH=outils python3 -c 'import sys, bee; sys.exit(any(e.get("event") in bee.CHANGEMENTS_DE_BASE for n in ("evenements", "chronologie") for e in bee.reponses_api(sys.argv[1], n)))' "$api"; } < /dev/null; then
+                echo "::notice::$id : la base de la PR a changé, ou ses événements sont illisibles : jamais fusionnée ; ouvrez une nouvelle PR vers la branche par défaut du fork."
                 continue
               fi
               if ! sortie=$(GH_TOKEN="$jeton" gh pr merge "$pr" --merge --match-head-commit "$sha" --delete-branch=false 2>&1); then

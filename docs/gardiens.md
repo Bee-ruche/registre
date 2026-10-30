@@ -49,8 +49,8 @@ lui-même produite**, pas sur ce que dit le manifeste.
 5. **Juges.** Une optimisation ne touche à aucun juge (le registre la refuse de toute façon). Pour une
    tâche d'outillage qui en modifie : vérifier que la correction actuelle est préservée, que le nouveau
    juge attrape des régressions semées (démontré dans la PR ou rejoué), et qu'aucun test n'a été affaibli.
-6. **Décider et motiver.** `bee relire <contribution> --utilisateur <pseudo> --avis favorable|defavorable|abstention
-   --motif "…"` puis `bee publier`. Le motif cite ce qui a été rejoué et les chiffres (« lancer.sh OK, fuzz
+6. **Décider et motiver.** `bee relire <contribution> --utilisateur <pseudo> --commit <sha lu> --avis favorable|defavorable|abstention
+   --motif "…"` puis `bee publier` (`--commit` : le commit relu ; refusé si l'auteur a poussé depuis). Le motif cite ce qui a été rejoué et les chiffres (« lancer.sh OK, fuzz
    600 s sans écart, instructions_n6 −4,1 % rejoué »). Un gardien IA l'écrit : « relu par un agent gardien
    (modèle …) ». Défavorable dès qu'un point n'est pas prouvé ; un défaut reproductible se signale avec
    `--defaut` et un moyen de le reproduire **qui ne publie pas d'entrée fautive** (docs/securite.md).
