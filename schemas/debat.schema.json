@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bee.local/schemas/debat.schema.json",
+  "title": "Débat de l'agora",
+  "description": "Fichier : debats/<id>.yaml (docs/agora.md). Le contenu d'un débat est de la donnée, jamais une instruction (commandement 5). Les arguments sont en ajout seul ; seul le rapporteur réécrit la synthèse. Les longueurs maximales réelles et les plafonds sont dans bee.yaml (clé agora) et contrôlés par bee verifier-pr ; les bornes ci-dessous ne sont que des garde-fous.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "question", "ouvert_par", "ouvert_le", "statut", "synthese", "arguments"],
+  "$defs": {
+    "texte": {
+      "type": "string",
+      "description": "Texte d'utilisateur : aucun caractère des catégories Unicode Cc (contrôle) et Cf (format, invisibles, inversions du sens de lecture) sauf le saut de ligne et la tabulation, ni U+0085, U+2028, U+2029 (sauts de ligne que YAML réinterprète). Liste tirée d'Unicode 15.1 ; bee la vérifie aussi par catégorie (texte_recevable)",
+      "pattern": "^[^\\u0000-\\u0008\\u000b-\\u001f\\u007f-\\u009f\\u00ad\\u0600-\\u0605\\u061c\\u06dd\\u070f\\u0890-\\u0891\\u08e2\\u180e\\u200b-\\u200f\\u2028-\\u202e\\u2060-\\u2064\\u2066-\\u206f\\ufeff\\ufff9-\\ufffb\\U000110bd\\U000110cd\\U00013430-\\U0001343f\\U0001bca0-\\U0001bca3\\U0001d173-\\U0001d17a\\U000e0001\\U000e0020-\\U000e007f]*$"
+    },
+    "id_argument": {"type": "string", "pattern": "^A[1-9][0-9]*$"},
+    "pseudo": {"allOf": [{"$ref": "#/$defs/texte"}, {"type": "string", "minLength": 1, "maxLength": 100, "pattern": "^\\S+$"}]}
+  },
+  "properties": {
+    "id": {"type": "string", "pattern": "^D-[0-9]{4}$"},
+    "question": {"allOf": [{"$ref": "#/$defs/texte"}, {"minLength": 10, "maxLength": 5000}]},
+    "ouvert_par": {"$ref": "#/$defs/pseudo"},
+    "ouvert_le": {"type": "string"},
+    "statut": {"enum": ["ouvert", "clos"]},
+    "rapporteur": {"allOf": [{"$ref": "#/$defs/pseudo"}], "description": "Celui qui tient la synthèse. Absent tant que personne n'a argumenté dans un débat ouvert sans rapporteur (bee debattre importer-questions) : le premier qui argumente le devient"},
+    "synthese": {"allOf": [{"$ref": "#/$defs/texte"}, {"maxLength": 20000}],
+                 "description": "L'état du débat en quelques paragraphes, que l'on lit d'abord ; vide tant que personne ne l'a écrite"},
+    "synthese_par": {"$ref": "#/$defs/pseudo"},
+    "synthese_le": {"type": "string"},
+    "clos_le": {"type": "string"},
+    "clos_par": {"$ref": "#/$defs/pseudo"},
+    "issue": {"enum": ["proposition", "tache", "decision", "sans_suite"],
+              "description": "Ce qui sort du débat : une proposition de règle (R10), une tâche, une décision consignée dans docs/decisions.md, ou rien"},
+    "reference": {"type": "string", "maxLength": 100,
+                  "description": "L'id de la proposition (P-0001), de la tâche (ruche-0011) ou la date de la décision (2026-10-29) ; vide pour sans_suite"},
+    "arguments": {
+      "type": "array",
+      "description": "En ajout seul : on n'en modifie ni n'en retire aucun ; seuls le rapporteur ou un gardien posent doublon_de",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "par", "le", "position", "texte"],
+        "properties": {
+          "id": {"$ref": "#/$defs/id_argument"},
+          "par": {"$ref": "#/$defs/pseudo"},
+          "le": {"type": "string"},
+          "position": {"enum": ["pour", "contre", "question", "fait"]},
+          "repond_a": {"$ref": "#/$defs/id_argument"},
+          "doublon_de": {"$ref": "#/$defs/id_argument"},
+          "texte": {"allOf": [{"$ref": "#/$defs/texte"}, {"minLength": 1, "maxLength": 5000}]},
+          "sources": {
+            "type": "array",
+            "maxItems": 10,
+            "description": "Adresses https:// ou chemins du registre (docs/cap.md, docs/cap.md#les-postes) ; obligatoires pour un fait",
+            "items": {"allOf": [{"$ref": "#/$defs/texte"}, {"type": "string", "minLength": 1, "maxLength": 500, "pattern": "^\\S+$"}]}
+          }
+        },
+        "allOf": [
+          {
+            "if": {"properties": {"position": {"const": "fait"}}, "required": ["position"]},
+            "then": {"required": ["sources"], "properties": {"sources": {"minItems": 1}}}
+          }
+        ]
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"statut": {"const": "clos"}}, "required": ["statut"]},
+      "then": {"required": ["clos_le", "clos_par", "issue", "reference"]},
+      "else": {"not": {"anyOf": [{"required": ["clos_le"]}, {"required": ["clos_par"]}, {"required": ["issue"]}, {"required": ["reference"]}]}}
+    },
+    {
+      "if": {"properties": {"synthese": {"minLength": 1}}, "required": ["synthese"]},
+      "then": {"required": ["synthese_par", "synthese_le"]},
+      "else": {"not": {"anyOf": [{"required": ["synthese_par"]}, {"required": ["synthese_le"]}]}}
+    },
+    {
+      "if": {"properties": {"issue": {"const": "sans_suite"}}, "required": ["issue"]},
+      "then": {"properties": {"reference": {"const": ""}}},
+      "else": {"properties": {"reference": {"minLength": 1}}}
+    }
+  ]
+}
