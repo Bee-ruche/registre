@@ -126,11 +126,16 @@ jobs:
               printf '%s\n' "$id" >> "$tmp/fusionnees.txt"
               fusion=$(GH_TOKEN="$jeton" gh pr view "$pr" --json mergeCommit --jq '.mergeCommit.oid // "-"')
             fi
-            if [ "$fusion" != "-" ]; then
-              python3 outils/bee.py integrer "$id" --fusion-sha "$fusion" || true
-            else
-              python3 outils/bee.py integrer "$id" || true
+            # ruche-0028 (revue adverse, M3) : consignée seulement si la PR vise la branche par défaut du fork et que le commit de
+            # fusion en est un ancêtre ; sinon, ou si ce n'est pas vérifiable, rien n'est consigné.
+            numero="${pr##*/}"
+            if ! { [[ "$fusion" =~ ^[0-9a-f]{40}$ ]] && gh api "repos/${depot}/pulls/${numero}" > "$tmp/pr.json" && gh api "repos/${depot}" > "$tmp/depot.json" \
+                   && cible=$(python3 -c 'import json, sys; p, d = (json.load(open(f)) for f in sys.argv[1:]); print(d["default_branch"] if p["base"]["ref"] == d["default_branch"] else "")' "$tmp/pr.json" "$tmp/depot.json") \
+                   && [[ "$cible" =~ ^[A-Za-z0-9._/-]{1,200}$ ]] && statut=$(gh api "repos/${depot}/compare/${fusion}...${cible}" --jq .status) \
+                   && [[ "$statut" =~ ^(identical|ahead)$ ]]; } < /dev/null; then
+              echo "::notice::$id : PR fusionnée hors de la branche par défaut du fork, ou commit de fusion invérifiable : intégration non consignée."; continue
             fi
+            python3 outils/bee.py integrer "$id" --fusion-sha "$fusion" || true
           done < "$tmp/a_integrer.tsv"
           while read -r id; do
             python3 outils/bee.py cloturer "$id" --motif "PR fermée sans fusion." --fusionnees "$tmp/fusionnees.txt" || true

@@ -30,6 +30,7 @@
         "amorcage": {"type": "boolean"},
         "sha": {"type": "string", "pattern": "^[0-9a-f]{7,40}$"},
         "arbre": {"type": "string", "pattern": "^[0-9a-f]{7,40}$", "description": "Arbre git du commit jugé (verdicts.yml, API GitHub) : un commit amendé a le même contenu"},
+        "base": {"type": "string", "pattern": "^[0-9a-f]{40}$", "description": "Base vérifiée du verdict (ruche-0028) : le relecteur lit compare/<base>...<sha>"},
         "execution": {"type": "string", "pattern": "^https://"},
         "degradations": {"type": "object", "additionalProperties": {"type": ["number", "null"]}},
         "instructions": {"type": "object", "additionalProperties": {"type": "object", "additionalProperties": false,
@@ -57,7 +58,7 @@
         "ci": {"enum": ["verte", "rouge"]}, "gain": {"type": ["number", "null"]}, "au_dela_du_bruit": {"type": "boolean"},
         "lignes_modifiees": {"type": "integer", "minimum": 0},
         "instructions": {"type": "object", "additionalProperties": {"type": "object", "additionalProperties": false,
-          "properties": {"gain": {"type": ["number", "null"]}}}}}}
+          "properties": {"A": {"type": ["number", "null"]}, "B": {"type": ["number", "null"]}, "gain": {"type": ["number", "null"]}}}}}}
     },
     "verdicts_oublies": {"type": "integer", "minimum": 1, "description": "Verdicts sortis de l'historique (au-delà de 20) : R4 exige alors une mesure d'une autre configuration"},
     "declare": {
