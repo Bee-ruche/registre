@@ -30,3 +30,7 @@ noeud: projets/ruche
 statut: ouverte
 cree_par: conseil
 cree_le: "2026-10-30"
+notes:
+  - par: "bidji29"
+    le: "2026-10-30T18:11:25Z"
+    texte: "Répétition générale n° 3 (30/10, hugo, seul gardien) : un gardien ne peut corriger ni les fichiers ni les critères d'une tâche proposée (sa correction de ruche-0026 a été refusée ; il a laissé une note) ; il ne peut pas rendre un avis favorable sans sandbox ni diff ; les levées du conseil se font contribution par contribution, alors qu'un second compte avoué en touche plusieurs. Le commit à relire est traité par ruche-0029."

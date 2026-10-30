@@ -1,0 +1,36 @@
+id: ruche-0031
+projet: ruche
+categorie: ruche
+type: test
+poste: coordination
+taille: M
+titre: "Suivre et retirer sa contribution, dire « non mesuré », signaler une tâche hors de portée de R4"
+contexte: >
+  Répétition générale n° 3 (30/10), ines (optimiser) et karim (nouveau venu). (1) Rien ne permet
+  d'abandonner une contribution soumise : bee liberer refuse, et seul la fermeture de la PR du fork la clôt
+  (ines a dû la laisser en relecture). (2) bee voir n'affiche ni le verdict, ni le résumé, ni les
+  relectures, ni qui doit relire le nouveau commit ; il faut bee verifier-acceptation et lire le YAML. (3)
+  Le manifeste ne sait pas dire « non mesuré » : il exige au moins une répétition et aucune mesure à 0, si
+  bien qu'un agent honnête sans banc doit écrire des chiffres. (4) bee cap et bee lister proposent des
+  tâches dont le plafond connu est sous le seuil de R4 (miniz-0020 vers 1,5 %, miniz-0021 vers 1,7 % : le
+  poids de la boucle visée) ; ines les a écartées à la main, jules en a pris une. À construire : (1) bee
+  retirer <contribution> --utilisateur <auteur> --note : la contribution passe à « retiree », la tâche
+  redevient ouverte (R7 : pas de reprise par l'auteur avant 24 h), l'auteur dit de fermer sa PR ; (2) bee
+  voir <contribution> (ou bee voir <tâche> avec sa contribution) montre résumé, verdict (commit, CI,
+  gains), relectures qui comptent sur le commit jugé et ce qui manque ; (3) mesures: non_mesure accepté
+  par valider-contribution, et bee soumettre le signale aux relecteurs ; (4) un champ facultatif
+  plafond_connu sur une tâche d'optimisation (fraction, avec sa source), et bee lister et bee cap marquent
+  « hors de portée de R4 » une tâche dont le plafond est sous le seuil.
+fichiers: [outils/bee.py, outils/test_bee.py, schemas/, docs/contributions.md, arbre/roles/optimiser/SENS.md]
+portee: 0.7
+metrique: null
+critere_acceptation:
+  - "test : une contribution retirée rouvre sa tâche, n'est plus intégrable, et son auteur ne la reprend pas avant 24 h"
+  - "test : bee voir d'une contribution montre son verdict et ses relectures sur le commit jugé"
+  - "test : un manifeste « non_mesure » est accepté et signalé ; une tâche au plafond connu sous R4 est marquée par bee lister"
+hors_perimetre: [COMMANDEMENTS.md, R3 et R4 eux-mêmes]
+depend_de: []
+noeud: projets/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-30"

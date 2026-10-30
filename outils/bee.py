@@ -6431,7 +6431,7 @@ def construire_analyseur():
     p.add_argument("--valeur", required=True, type=int, choices=[-1, 0, 1])
     p.add_argument("--motif")
 
-    p = ajouter("proposer", cmd_proposer, "Propose un changement de règle (Confirmés).")
+    p = ajouter("proposer", cmd_proposer, "Propose un changement de règle (Confirmés ; tout membre pendant l'amorçage, R10).")
     p.add_argument("--utilisateur", required=True)
     p.add_argument("--regle", required=True, help="ex. R4")
     p.add_argument("--texte", required=True, help="nouveau texte de la règle")

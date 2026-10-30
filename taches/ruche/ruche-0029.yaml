@@ -1,0 +1,42 @@
+id: ruche-0029
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: L
+titre: "Juger sans se faire jouer : un verdict par contenu, R1 revérifiée, relire le commit lu (tour 3)"
+contexte: >
+  Répétition générale n° 3 (30/10 au soir, six membres simulés, 42 essais d'assurance qualité) : R3 par
+  commit a tenu (refus contre amend, nouveau commit, va-et-vient ; levées forgées refusées), mais
+  plusieurs failles restent, toutes confirmées sur le registre simulé. (1) Un nouveau verdict d'un même
+  contenu (même arbre git, ou même commit relancé) remplace l'ancien sans trace : le chronomètre étant
+  bruité, relancer la CI jusqu'à passer le seuil de R4 suffit (ines : +1,28 % puis −0,39 % au même
+  arbre). (2) Le registre ne revérifie pas R1 : un verdict de 52 lignes pour une tâche S (50) est
+  intégrable si la CI du fork est verte (ines, hugo). (3) bee relire inscrit le commit du verdict au
+  moment de l'écriture : si l'auteur pousse entre la lecture et l'écriture, une favorable compte sur un
+  commit jamais lu (jules, PR 54). (4) Un gain déclaré absurde est mis à null, mais l'écart se calcule
+  quand même (2,5e298, 300 chiffres). (5) L'alerte de copie ne voit que le même arbre sur la même tâche :
+  un contenu refusé soumis sous une autre tâche n'hérite ni du refus ni de l'alerte, et peut écarter une
+  contribution honnête en concurrence (jules, hugo). (6) La tolérance de 2 h sur les dates déclarées
+  permet d'antidater réservation et soumission et de rogner la fenêtre de 24 h (22,1 h). (7) Le champ par
+  d'une levée est comparé avec la casse. À construire : (1) l'enregistrement garde l'historique des
+  verdicts par arbre ; R4 exige que chaque verdict d'un même arbre confirme le gain (relancer ne peut que
+  nuire) ; (2) verifier-acceptation refuse lignes_modifiees au-delà de LIGNES_MAX de la taille ; (3) bee
+  relire exige --commit <sha lu> et refuse s'il n'est pas le commit du verdict courant ; (4) gain déclaré
+  borné avant tout calcul ; (5) l'alerte de copie compare l'arbre à toutes les contributions, toutes
+  tâches confondues, et signale celles refusées ou à défaut confirmé ; (6) tolérance des dates ramenée à
+  15 minutes, et la fenêtre de R3 comptée depuis l'heure de fusion de la PR de soumission ; (7) pseudos
+  comparés sans la casse partout (meme_pseudo).
+fichiers: [outils/bee.py, outils/test_bee.py, schemas/enregistrement.schema.json, .github/workflows/verdicts.yml, docs/contributions.md, arbre/roles/relire/SENS.md]
+portee: 0.9
+metrique: null
+critere_acceptation:
+  - "un test par point (1) à (7), avec un parcours honnête accepté et le détournement du tour 3 refusé ou signalé"
+  - "le journal du tour 3 (essais de jules) rejoué contre la branche : tableau joint"
+  - "revue adverse indépendante jointe (R3, R4 et l'intégration en dépendent)"
+hors_perimetre: [COMMANDEMENTS.md, les forks, les comptes multiples (ruche-0022, D-0002)]
+depend_de: [ruche-0025]
+noeud: projets/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-30"
