@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Outil bee de la ruche simulée : l'horloge simulée (etat/horloge) est appliquée à chaque appel.
+# À lancer depuis son propre clone du registre simulé.
+set -euo pipefail
+SIMU="${BEE_SIMU:?BEE_SIMU : dossier de la ruche simulée}"
+export BEE_MAINTENANT="$(python3 "$SIMU/outils/horloge.py")"
+racine="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+exec python3 "$racine/outils/bee.py" --registre "$racine" "$@"

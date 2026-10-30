@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Relance la CI simulée du fork sur le dernier commit d'une PR (après une soumission tardive).
+# Usage : ci-simulee <url_pr_fork>
+set -euo pipefail
+SIMU="${BEE_SIMU:?BEE_SIMU : dossier de la ruche simulée}"
+exec 9>"$SIMU/etat/verrou"; flock 9
+exec python3 "$SIMU/outils/ci_simulee.py" "$1"

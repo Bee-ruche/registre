@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Pousse un commit « sur papier » sur sa PR du fork simulé, puis la CI simulée du fork rend son verdict.
+# Usage : pousser-pr-fork <pseudo> <url_pr_fork> <manifeste.yaml> "<ce que contient ce commit>"
+# Le manifeste est celui que la CI lirait dans manifestes/<tâche>.yaml du fork, à ce commit.
+# Même description qu'un commit précédent = même contenu (comme un commit amendé sans changement).
+set -euo pipefail
+SIMU="${BEE_SIMU:?BEE_SIMU : dossier de la ruche simulée}"; pseudo="$1"; url="$2"; manifeste="$3"; desc="$4"
+if ! awk -F'\t' -v u="$url" -v p="$pseudo" '$1==u && $2==p {ok=1} END {exit !ok}' "$SIMU/etat/prs_fork.tsv"; then
+  echo "La PR $url n'est pas à vous (ouvrir-pr-fork d'abord)." >&2; exit 1
+fi
+[ -f "$manifeste" ] || { echo "manifeste introuvable : $manifeste" >&2; exit 1; }
+exec 9>"$SIMU/etat/verrou"; flock 9
+numero="${url##*/}"; mkdir -p "$SIMU/etat/manifestes/$numero"
+k=$(( $(ls "$SIMU/etat/manifestes/$numero" | wc -l) + 1 ))
+sha=$(printf '%s:%s' "$url" "$k" | sha1sum | cut -c1-40)
+arbre=$(printf '%s' "$desc" | sha1sum | cut -c1-40)
+cp "$manifeste" "$SIMU/etat/manifestes/$numero/$sha.yaml"
+printf '%s\t%s\t%s\t%s\t%s\n' "$(python3 "$SIMU/outils/horloge.py")" "$url" "$sha" "$arbre" "$desc" >> "$SIMU/etat/commits_fork.tsv"
+echo "Commit $sha poussé sur $url. CI du fork :"
+python3 "$SIMU/outils/ci_simulee.py" "$url"

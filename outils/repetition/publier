@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# Publie les changements du clone courant sur le registre simulé, comme bee publier + fusion-auto :
+# vérification par l'outil de main (code de confiance), fusion si le code est 0, file du conseil si 3.
+# Usage (depuis son clone) : publier <pseudo> "<titre>"
+set -euo pipefail
+SIMU="${BEE_SIMU:?BEE_SIMU : dossier de la ruche simulée}"; pseudo="$1"; titre="$2"
+clone="$(git rev-parse --show-toplevel)"
+export BEE_MAINTENANT="$(python3 "$SIMU/outils/horloge.py")"
+cd "$clone"
+git add -A
+if git diff --cached --quiet; then echo "rien à publier" >&2; exit 1; fi
+git -c user.name="$pseudo" -c user.email="$pseudo@simu.bee" commit -qm "$titre"
+exec 9>"$SIMU/etat/verrou"; flock 9
+n=$(( $(cat "$SIMU/etat/compteur_pr" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$SIMU/etat/compteur_pr"
+git push -q "$SIMU/central.git" "HEAD:refs/heads/pr/$n"
+conf="$SIMU/confiance"
+git -C "$conf" fetch -q origin && git -C "$conf" checkout -q --detach origin/main
+rm -rf "$SIMU/fusion"; git -C "$conf" worktree prune
+git -C "$conf" fetch -q origin "refs/heads/pr/$n:refs/remotes/origin/pr/$n"
+git -C "$conf" worktree add -q --detach "$SIMU/fusion" origin/main
+if ! git -C "$SIMU/fusion" -c user.name=robot -c user.email=robot@simu.bee merge -q --no-edit --no-ff "origin/pr/$n" >/dev/null 2>&1; then
+  echo "PR $n : conflit avec main (mettez votre clone à jour : git pull, puis refaites l'action)."
+  printf '%s\t%s\t%s\t%s\tconflit\n' "$BEE_MAINTENANT" "$n" "$pseudo" "$titre" >> "$SIMU/etat/prs.tsv"
+  git -C "$SIMU/fusion" merge --abort 2>/dev/null || true; exit 1
+fi
+awk -F'\t' '{print $1"\t"$2}' "$SIMU/etat/prs_fork.tsv" > "$SIMU/etat/auteurs_pr.tsv" 2>/dev/null || : > "$SIMU/etat/auteurs_pr.tsv"
+set +e
+sortie=$(python3 "$conf/outils/bee.py" --registre "$SIMU/fusion" verifier-pr --base origin/main --tete HEAD \
+  --auteur "$pseudo" --compte-cree-le 2024-01-01 --auteurs-pr "$SIMU/etat/auteurs_pr.tsv" --fusion-auto 2>&1)
+code=$?
+set -e
+echo "$sortie"
+case "$code" in
+  0) git -C "$SIMU/fusion" push -q origin HEAD:main; echo "PR $n fusionnée automatiquement."; etat=fusionnee;;
+  3) echo "PR $n valide, mais réservée au conseil : elle attend sa décision."; etat=conseil;;
+  *) echo "PR $n refusée."; etat=refusee;;
+esac
+printf '%s\t%s\t%s\t%s\t%s\n' "$BEE_MAINTENANT" "$n" "$pseudo" "$titre" "$etat" >> "$SIMU/etat/prs.tsv"
+git -C "$conf" worktree remove --force "$SIMU/fusion" 2>/dev/null || true
+cd "$clone"; git fetch -q origin
+if [ "$etat" = refusee ]; then
+  echo "Votre commit reste dans votre clone : corrigez puis republiez, ou abandonnez-le (git reset --hard origin/main)."
+  exit 1
+fi
+git reset -q --hard origin/main

@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Le conseil simulé décide d'une PR réservée au conseil (code 3 de verifier-pr) : il la fusionne ou la refuse.
+# Usage : decider-conseil <numéro> fusionner|refuser "<motif>"
+set -euo pipefail
+SIMU="${BEE_SIMU:?BEE_SIMU : dossier de la ruche simulée}"; n="$1"; decision="$2"; motif="${3:-}"
+export BEE_MAINTENANT="$(python3 "$SIMU/outils/horloge.py")"
+exec 9>"$SIMU/etat/verrou"; flock 9
+conf="$SIMU/confiance"
+git -C "$conf" fetch -q origin "refs/heads/pr/$n:refs/remotes/origin/pr/$n" 2>/dev/null || { echo "PR $n inconnue" >&2; exit 1; }
+git -C "$conf" fetch -q origin
+if [ "$decision" = refuser ]; then
+  printf '%s\t%s\t%s\t%s\t%s\n' "$BEE_MAINTENANT" "$n" "conseil" "décision : $motif" "refusee_conseil" >> "$SIMU/etat/prs.tsv"
+  echo "PR $n refusée par le conseil."; exit 0
+fi
+rm -rf "$SIMU/fusion"; git -C "$conf" worktree prune
+git -C "$conf" worktree add -q --detach "$SIMU/fusion" origin/main
+if ! git -C "$SIMU/fusion" -c user.name=conseil -c user.email=conseil@simu.bee merge -q --no-edit --no-ff "origin/pr/$n" >/dev/null 2>&1; then
+  echo "PR $n : conflit avec main ; l'auteur doit la refaire."; git -C "$SIMU/fusion" merge --abort 2>/dev/null || true
+  git -C "$conf" worktree remove --force "$SIMU/fusion"; exit 1
+fi
+if ! python3 "$SIMU/fusion/outils/bee.py" --registre "$SIMU/fusion" valider >/dev/null 2>&1; then
+  echo "PR $n : le registre ne serait plus valide ; refusée."; git -C "$conf" worktree remove --force "$SIMU/fusion"; exit 1
+fi
+git -C "$SIMU/fusion" push -q origin HEAD:main
+printf '%s\t%s\t%s\t%s\t%s\n' "$BEE_MAINTENANT" "$n" "conseil" "décision : $motif" "fusionnee_conseil" >> "$SIMU/etat/prs.tsv"
+git -C "$conf" worktree remove --force "$SIMU/fusion"
+echo "PR $n fusionnée par le conseil."

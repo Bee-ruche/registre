@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Ouvre une PR « sur papier » sur le fork simulé du projet : rend une adresse et enregistre son auteur.
+# Usage : ouvrir-pr-fork <pseudo> <projet> "<description courte de l'approche>"
+set -euo pipefail
+SIMU="${BEE_SIMU:?BEE_SIMU : dossier de la ruche simulée}"; pseudo="$1"; projet="$2"; desc="${3:-}"
+case "$projet" in miniz) depot=minizBee;; libyaml) depot=libyamlBee;; ruche) depot=registre;; *) echo "projet inconnu : $projet" >&2; exit 1;; esac
+exec 9>"$SIMU/etat/verrou"; flock 9
+n=$(( $(cat "$SIMU/etat/compteur_pr_fork" 2>/dev/null || echo 9000) + 1 )); echo "$n" > "$SIMU/etat/compteur_pr_fork"
+url="https://github.com/Bee-ruche/$depot/pull/$n"
+printf '%s\t%s\t%s\n' "$url" "$pseudo" "$desc" >> "$SIMU/etat/prs_fork.tsv"
+echo "$url"
