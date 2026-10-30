@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bee.local/schemas/incidents.schema.json",
+  "title": "Incidents (R13, frein)",
+  "description": "Fichier : gouvernance/incidents.yaml, écrit par le conseil (docs/croissance.md). Un incident est ouvert tant qu'il n'a pas de clos_le ; tant qu'un incident est ouvert, le frein de R13 est serré : ni accord, ni envoi, ni relance d'invitation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["incidents"],
+  "properties": {
+    "incidents": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "titre", "ouvert_le"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^INC-[0-9]{4}$"},
+          "titre": {"type": "string", "minLength": 1, "maxLength": 300},
+          "ouvert_le": {"type": "string"},
+          "clos_le": {"type": "string"},
+          "issue": {"type": "string", "maxLength": 1500, "description": "Ce qui a été fait, à la clôture"}
+        }
+      }
+    }
+  }
+}

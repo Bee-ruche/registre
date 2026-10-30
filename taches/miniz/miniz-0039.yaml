@@ -40,9 +40,11 @@ critere_acceptation:
 hors_perimetre: [format de sortie, API publique, nouvelle dépendance, mz_adler32 de miniz.c (miniz-0040), décodage Huffman]
 depend_de: [miniz-0001]
 noeud: projets/compression-sans-perte/miniz/inflate
-statut: reservee
-reservation:
-  utilisateur: "bidji29"
-  depuis: "2026-10-30T20:18:41Z"
+statut: en_relecture
+contribution: miniz-0039-c1
 cree_par: conseil
 cree_le: "2026-10-30"
+notes:
+  - par: "bidji29"
+    le: "2026-10-30T21:48:22Z"
+    texte: "30/10, relecture adverse indépendante de minizBee PR #19 (55ef68e), même utilisateur, donc hors R3 : preuve vérifiée à la main (octets impairs, voies sans débordement au pire cas 0xFF, formule de s2, réductions inchangées, boutisme, aucun comportement indéfini), test boîte noire indépendant (40 875 cas, 571 M de vérifications, 0 échec, gcc, clang, ASan+UBSan, chemin générique) et boîte blanche (1 039 375 cas, 0 écart), 4 mutants détectés. Deux précisions au manifeste, sans nouveau commit pour ne pas rejuger le chronomètre : 20 tours est le plus grand nombre pair de tours (21 tiendrait, 22 déborde) ; en gcc -O2, sans déroulage complet, la zone ne descend qu'à 1,62 instruction par octet (1,34 en -O3, 1,27 avec clang)."

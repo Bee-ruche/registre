@@ -68,20 +68,26 @@ creations:
   taches_max_par_24h: 5              # tâches proposées par utilisateur, sur 24 h glissantes
   propositions_max_par_pr: 3         # propositions de règle par une même PR
   propositions_max_par_24h: 5        # propositions de règle par utilisateur, sur 24 h glissantes
+  invitations_max_par_pr: 1          # invitations proposées par une même PR (bee inviter, R13)
+  invitations_max_par_24h: 2         # invitations proposées par utilisateur, sur 24 h glissantes
   contexte_max: 3000                 # caractères du contexte d'une tâche proposée
   elements_max: 10                   # critères d'acceptation, éléments hors périmètre, dépendances
   element_max: 300                   # caractères d'un critère ou d'un élément hors périmètre
   fichiers_max: 30                   # fichiers d'une tâche proposée
   chemin_max: 200                    # caractères d'un chemin de fichiers
 
-# Croissance et contacts extérieurs (R13, commandement 13). Outillage à venir : tâche ruche-0020 ; d'ici là, le conseil
-# applique ces valeurs à la main et envoie lui-même chaque message.
+# Croissance et contacts extérieurs (R13, commandement 13 ; docs/croissance.md). bee inviter et bee invitation les appliquent,
+# bee verifier-pr les contrôle ; aucun code n'envoie de message : un humain du conseil envoie lui-même chaque message.
 croissance:
-  invitations_par_semaine: 3        # pour toute la ruche
-  relances_max: 1                   # puis plus rien
-  delai_relance_jours: 14
-  debat_min_heures: 72              # dans l'agora, avant l'accord d'un gardien et du conseil
-  membres_actifs_par_gardien_max: 20  # au-delà, frein : plus d'invitation à participer (jamais pour garants et gardiens)
+  invitations_par_semaine: 3        # messages (envois, relances) et places réservées par les feux verts, sur 7 jours glissants
+  relances_max: 1                   # 0 ou 1 ; puis plus rien
+  delai_relance_jours: 14           # avant la relance ; et avant de consigner « sans réponse » après le dernier message
+  debat_min_heures: 72              # publique et débattue dans l'agora, avant l'accord d'un gardien puis du conseil
+  membres_actifs_par_gardien_max: 20  # au-delà, frein : ni accord, ni relance (sauf pour un garant ou un gardien)
+  message_max: 2000                 # caractères du message, mention de R13 comprise
+  encadrement_par_semaine_sous_frein: 1  # frein serré : feux verts d'invitations de garant ou de gardien sur 7 jours glissants
+  expiration_jours: 14              # une invitation non décidée expire ; elle ne retient plus la personne
+  membres_actifs_jours: 30          # membre actif (frein) : contribution soumise, relecture ou mesure sur ces jours
   branche_dormante_jours: 30        # sans activité, une branche dort (rien n'est supprimé)
 
 # Comptes automatiques autorisés à écrire des verdicts et à libérer les réservations expirées.

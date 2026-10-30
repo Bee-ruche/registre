@@ -33,9 +33,7 @@ critere_acceptation:
 hors_perimetre: [COMMANDEMENTS.md, l'envoi automatique de messages, les débats D-0019 et D-0020]
 depend_de: []
 noeud: projets/ruche
-statut: reservee
-reservation:
-  utilisateur: "bidji29"
-  depuis: "2026-10-30T12:37:04Z"
+statut: integree
+contribution: ruche-0020-c1
 cree_par: conseil
 cree_le: "2026-10-30"
