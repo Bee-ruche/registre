@@ -14,7 +14,7 @@ Commandes : relire, confirmer-defaut, lister --statut proposee, noter, debattre 
 Pas gardien ? Ce nœud dit ce qu'ils font ; rien ne se fait à leur place.
 Leur relecture favorable ouvre la porte de relecture de R3 et compte pour un changement de juge ; leur défavorable
 bloque, même si l'auteur pousse un commit, jusqu'à leur relecture suivante (seule la plus récente compte ; celle d'avant
-le verdict non) ; re-soumettre le commit ne l'efface pas ; recours d'un auteur bloqué par un gardien absent : le
+le verdict non) ; re-soumettre ou amender ne l'efface pas ; recours d'un auteur bloqué par un gardien absent : le
 conseil lève, en motivant (`levees`). Sans le diff ou en conflit d'intérêts : une abstention motivée, qui n'ouvre aucune
 porte. Chaque point coché s'appuie sur une preuve produite soi-même : verdict lu, diff du commit jugé relu en entier,
 tests, fuzzing et `ab.py --instructions` rejoués en sandbox (`bee/sandbox/sans-docker.sh` ou Docker ; une session cloud

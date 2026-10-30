@@ -57,7 +57,7 @@ En cas de doute, l'avis est défavorable, avec ce qu'il faudrait pour lever le d
 en conflit d'intérêts, une **abstention** motivée : elle ne compte ni pour ni contre et n'ouvre pas la porte.
 Seule sa relecture la plus récente compte : son défavorable tient même si l'auteur pousse un commit, et il relit le
 correctif par une nouvelle relecture (jamais deux de suite sur le même commit) ; une relecture faite avant le verdict
-ne compte pas ; son refus d'un commit tient aussi si l'auteur re-soumet ce commit sous une autre contribution.
+ne compte pas ; son refus tient aussi si l'auteur re-soumet ou amende sous une autre contribution (même auteur, même tâche).
 **Recours** contre un refus ou un défaut d'un relecteur qui ne revient pas : le relecteur relit, ou le conseil lève, en
 motivant, dans une PR relue (champ `levees` de la contribution, jamais fusionné automatiquement) ; la levée ne vaut que
 pour ce qu'il a publié avant elle ([contributions.md](contributions.md#relire-par-commit)).
