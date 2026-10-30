@@ -2836,8 +2836,22 @@ CROISSANCE_DEFAUT = {"invitations_par_semaine": 3, "relances_max": 1, "delai_rel
                      "branche_dormante_jours": 30}  # R13, par branches (outillé par ruche-0023)
 SEMAINE = dt.timedelta(days=7)
 ID_INVITATION = re.compile(r"^I-[0-9]{4}$")
-# <plateforme>:<nom>, en ASCII et sans espace (github:octocat, codeberg:x, mastodon:@x@exemple.org) : ni homoglyphe ni variante.
-IDENTIFIANT_PUBLIC = re.compile(r"^[a-z0-9][a-z0-9.-]{0,29}:[A-Za-z0-9@][A-Za-z0-9@._+/-]{0,99}$")
+# Identifiant public : <plateforme>:<nom>, d'une liste fermée (revue adverse de ruche-0020, A1 et A2 : github.com:x, gh:x, x/.,
+# x/repositories désignaient la même personne). Plateforme canonique -> (alias acceptés à l'écriture, adresse du profil, qui
+# est le canal). Le nom d'une forge est un seul segment (aucun /) ; « site » désigne un domaine, et son canal est une page de ce
+# domaine. Ni courriel, ni téléphone, ni messagerie : aucune de ces plateformes n'existe ici.
+PLATEFORMES = {"github": (("github", "github.com", "www.github.com", "gh"), "https://github.com/{}"),
+               "gitlab": (("gitlab", "gitlab.com", "www.gitlab.com", "gl"), "https://gitlab.com/{}"),
+               "codeberg": (("codeberg", "codeberg.org", "www.codeberg.org"), "https://codeberg.org/{}"),
+               "sourcehut": (("sourcehut", "sr.ht", "git.sr.ht", "srht"), "https://sr.ht/~{}"),
+               "site": (("site", "web"), None)}
+ALIAS_PLATEFORME = {alias: nom for nom, (alias, _) in PLATEFORMES.items() for alias in alias}
+NOM_FORGE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9_-]|\.(?=[A-Za-z0-9_-])){0,99}$")
+DOMAINE = re.compile(r"^(?=.{4,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$")
+DOMAINES_FORGES = ("github.com", "gitlab.com", "codeberg.org", "sr.ht")
+# Messageries et réseaux qui mènent à une personne privée (numéro, compte de messagerie) : ni canal, ni source, ni site.
+HOTES_PERSONNELS = ("wa.me", "whatsapp.com", "t.me", "telegram.me", "telegram.org", "signal.me", "signal.group", "m.me",
+                    "messenger.com", "line.me", "viber.com", "skype.com", "threema.id", "wechat.com")
 DEMANDES = ("garant", "gardien", "participer", "projet")
 # Ce qui renforce l'encadrement : le frein ne l'arrête jamais (sinon un gardien sans garant bloquerait l'invitation d'un garant).
 RENFORCENT_ENCADREMENT = ("garant", "gardien")
@@ -2848,9 +2862,21 @@ CLES_INVITATION = ("id", "statut", "personne", "demande", "pourquoi", "message",
 NATURES_INVITATION = {"accord_gardien": "accord_gardien", "accord_conseil": "accord_conseil", "envoi": "envoi_invitation",
                       "relance": "relance_invitation", "reponse": "reponse_invitation", "ecartee": "ecartement_invitation"}
 POURQUOI_MAX, FAIT_MAX, ADRESSE_MAX = 5, 300, 200
-# Aucune donnée personnelle au-delà de l'identifiant public et du canal publié : ni courriel ni téléphone dans les textes.
-COURRIEL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}")
-TELEPHONE = re.compile(r"(?<![\w/:.#=-])\+?\d(?:[ .-]?\d){8,}(?!\w)")
+# Aucune donnée personnelle au-delà de l'identifiant public et du canal publié (revue adverse, C1 à C3) : cherchée dans tout
+# texte qui sort de la ruche, après normalisation (NFKC : ＠ et chiffres pleine largeur, espaces insécables ; tirets unifiés).
+COURRIEL = re.compile(r"[A-Za-z0-9._%+-]+\s*@\s*[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}")
+COURRIEL_DEGUISE = re.compile(r"[\w.+-]+\s*[(\[{<]\s*(?:at|arobase)\s*[)\]}>]\s*[\w.-]+"
+                              r"|\b[\w.+-]+\s+(?:at|arobase)\s+[\w-]+\s+(?:dot|point)\s+[a-z]{2,}\b", re.I)
+# Un numéro : indicatif, préfixe entre parenthèses, puis des groupes de 1 à 4 chiffres séparés d'un espace, d'un point, d'un tiret
+# ou d'une barre oblique ; ou un bloc de 9 à 15 chiffres. Il compte au moins 9 chiffres (une date ISO en a 8).
+TELEPHONE = re.compile(r"(?<![\w/:.#=-])(?:\+\d{1,3}[ .\-/]?)?(?:\(\d{1,4}\)[ .\-/]?)?\d{1,4}(?:[ .\-/]\d{1,4}){2,}(?![\w-])"
+                       r"|(?<![\w/:.#=-])\+?\d{9,15}(?!\w)")
+ADRESSE_POSTALE = re.compile(r"(?i:\b\d{1,4}\s*(?:bis|ter)?\s*,?\s+(?:rue|avenue|av\.|boulevard|bd|chemin|all[ée]e|impasse|"
+                             r"place|quai|route|street|road|lane)\b)|\b\d{5}\s+[A-ZÀ-Ý][a-zà-ÿ-]{2,}")
+# Caractères refusés en plus de caractere_interdit dans ce qui sort de la ruche (revue adverse, B1 et B2) : sélecteurs de variante,
+# autres Default_Ignorable_Code_Point, remplissages et braille vide, qui ne s'affichent pas et portent une charge cachée.
+INVISIBLES_SORTANTS = ((0x034F, 0x034F), (0x115F, 0x1160), (0x17B4, 0x17B5), (0x180B, 0x180F), (0x2800, 0x2800), (0x3164, 0x3164),
+                       (0xFE00, 0xFE0F), (0xFFA0, 0xFFA0), (0xFFF0, 0xFFF8), (0x1D173, 0x1D17A), (0xE0000, 0xE0FFF))
 # La mention que porte tout message, mot pour mot (bee inviter l'ajoute) : la ruche, qui la mène, et comment refuser.
 MENTION_INVITATION = {
     "fr": ("Ce message vient de Bee ({adresse}), une ruche de logiciels libres menée par des agents d'IA sous un conseil "
@@ -2875,17 +2901,126 @@ def mentions_invitation(reg):
     return {langue: m.format(adresse=adresse) for langue, m in MENTION_INVITATION.items()}
 
 
+def caractere_sortant_interdit(c):
+    """Plus strict que caractere_interdit, pour ce qui sort de la ruche (message, faits, sources, motifs) : en plus des
+    catégories Cc et Cf, l'usage privé (Co), les non attribués (Cn) et les invisibles d'INVISIBLES_SORTANTS."""
+    return (caractere_interdit(c) or unicodedata.category(c) in ("Co", "Cn")
+            or any(debut <= ord(c) <= fin for debut, fin in INVISIBLES_SORTANTS))
+
+
+def donnee_personnelle(texte):
+    """Ce qui ressemble à une donnée personnelle dans un texte (courriel, même déguisé ; téléphone, même entre parenthèses ou
+    séparé d'espaces insécables, de / ou de tirets ; adresse postale), ou None."""
+    texte = re.sub(r"[\u2010-\u2015\u2212\ufe58\ufe63]", "-", unicodedata.normalize("NFKC", str(texte)))
+    texte = re.sub(r"%40", "@", re.sub(r"[^\S\n]", " ", texte), flags=re.I)
+    for nom, motif in (("une adresse de courriel", COURRIEL), ("une adresse de courriel déguisée", COURRIEL_DEGUISE),
+                       ("une adresse postale", ADRESSE_POSTALE)):
+        if motif.search(texte):
+            return nom
+    if any(sum(c.isdigit() for c in m.group()) >= 9 for m in TELEPHONE.finditer(texte)):
+        return "un numéro de téléphone"
+    return None
+
+
+def texte_sortant_refuse(texte, quoi, maximum):
+    """None si un texte qui sortira de la ruche est recevable : texte_recevable, sans caractère sortant interdit, sans donnée
+    personnelle ; sinon la raison."""
+    probleme = texte_recevable(texte, quoi, maximum)
+    if probleme:
+        return probleme
+    c = next((c for c in texte if caractere_sortant_interdit(c)), None)
+    if c is not None:
+        return (f"{quoi} : caractère invisible refusé (U+{ord(c):04X}, catégorie {unicodedata.category(c)}) : ce texte sort de la "
+                "ruche, il ne cache rien")
+    donnee = donnee_personnelle(texte)
+    return (f"{quoi} : {donnee} : aucune donnée personnelle au-delà de l'identifiant public et du canal (R13)" if donnee else None)
+
+
+def adresse_sortante_refusee(adresse, quoi):
+    """None si une adresse qui sortira de la ruche (canal, source) est recevable : https, ASCII imprimable, au plus
+    ADRESSE_MAX caractères, sans identifiant dans l'autorité, ni messagerie personnelle, ni donnée personnelle ; sinon la raison."""
+    if not (isinstance(adresse, str) and re.fullmatch(r"https://[\x21-\x7e]+", adresse)):
+        return f"{quoi} : une adresse https://, en ASCII imprimable"
+    hote = re.match(r"https://([^/?#]*)", adresse)[1].lower()
+    if len(adresse) > ADRESSE_MAX or "@" in hote or forme_source(adresse):
+        return f"{quoi} : adresse invalide ou trop longue ({ADRESSE_MAX} caractères au plus, sans identifiant avant l'hôte)"
+    hote = hote.split(":")[0].rstrip(".")
+    if any(hote == h or hote.endswith("." + h) for h in HOTES_PERSONNELS):
+        return f"{quoi} : {hote} mène à une messagerie personnelle (R13 : aucune donnée personnelle)"
+    donnee = donnee_personnelle(adresse.replace("/", " / "))
+    return f"{quoi} : {donnee} dans l'adresse (R13 : aucune donnée personnelle)" if donnee else None
+
+
+def forme_identifiant(identifiant):
+    """(forme canonique, None) d'un identifiant public bien écrit, alias de plateforme compris (gh:octocat -> github:octocat),
+    ou (None, raison)."""
+    if not (isinstance(identifiant, str) and re.fullmatch(r"[\x21-\x7e]+", identifiant)):
+        return None, "un identifiant public s'écrit <plateforme>:<nom>, en ASCII, sans espace (github:octocat)"
+    plateforme, _, nom = identifiant.partition(":")
+    canonique = ALIAS_PLATEFORME.get(plateforme.lower())
+    if canonique is None:
+        return None, (f"plateforme « {plateforme} » inconnue : {', '.join(PLATEFORMES)} (ni courriel, ni téléphone, ni messagerie : "
+                      "aucune donnée personnelle)")
+    if canonique != "site":
+        nom = nom.removeprefix("~") if canonique == "sourcehut" else nom
+        if not NOM_FORGE.match(nom):
+            return None, f"{canonique} : un nom d'un seul segment (lettres, chiffres, - _ .), sans / ni @ (github:octocat)"
+        return f"{canonique}:{nom}", None
+    nom = nom.lower().removeprefix("www.")
+    if not DOMAINE.match(nom) or any(nom == d or nom.endswith("." + d) for d in DOMAINES_FORGES + HOTES_PERSONNELS):
+        return None, ("site : un nom de domaine (site:exemple.org), ni celui d'une forge (github:, gitlab:, codeberg:, sourcehut:), "
+                      "ni celui d'une messagerie")
+    return f"site:{nom}", None
+
+
+def canal_refuse(identifiant, canal):
+    """None si le canal est celui de l'identifiant : l'adresse publique de son profil pour une forge (https://github.com/<nom>,
+    rien d'autre), une page de son domaine pour un site ; sinon la raison."""
+    canonique, _ = forme_identifiant(identifiant)
+    if canonique is None:
+        return None  # l'identifiant est déjà refusé
+    plateforme, _, nom = canonique.partition(":")
+    modele = PLATEFORMES[plateforme][1]
+    if modele:
+        return None if canal == modele.format(nom) else f"canal : {modele.format(nom)}, l'adresse publique de {canonique}, rien d'autre"
+    probleme = adresse_sortante_refusee(canal, "canal")
+    if probleme:
+        return probleme
+    hote = re.match(r"https://([^/?#:]*)", canal)[1].lower().removeprefix("www.")
+    return None if hote == nom else f"canal : une page de {nom}, le site de la personne"
+
+
 def cle_personne(identifiant):
-    """Clé de comparaison d'un identifiant public : une variante de casse, d'espaces, de forme Unicode, de caractère invisible,
-    d'@ initial ou de / final désigne la même personne (liste de non-contact, invitations déjà faites)."""
-    texte = "".join(c for c in unicodedata.normalize("NFKC", str(identifiant or "")).casefold() if not caractere_interdit(c))
+    """Clé de comparaison d'une personne : sa plateforme canonique (alias compris) et son nom, à la casse, aux espaces, à la
+    forme Unicode, aux caractères invisibles, à l'@ ou au ~ initial, au www. et à tout ce qui suit un / près. Elle range
+    ensemble les variantes, même mal écrites (liste de non-contact, invitations déjà faites)."""
+    texte = "".join(c for c in unicodedata.normalize("NFKC", str(identifiant or "")).casefold() if not caractere_sortant_interdit(c))
     plateforme, _, nom = "".join(texte.split()).partition(":")
-    return f"{plateforme}:{nom.lstrip('@').rstrip('/')}"
+    plateforme = ALIAS_PLATEFORME.get(plateforme, plateforme)
+    nom = nom.lstrip("@~").removeprefix("www.").split("/")[0].split("?")[0].rstrip(".")
+    return f"{plateforme}:{nom}"
 
 
 def non_contactes(reg):
     liste = reg.ne_plus_contacter.get("identifiants") if isinstance(reg.ne_plus_contacter, dict) else None
     return {cle_personne(i) for i in liste if isinstance(i, str)} if isinstance(liste, list) else set()
+
+
+def invitations_illisibles(reg):
+    """Échec fermé (revue adverse, G1) : les fichiers de invitations/ que le registre lu ne sait pas lire (liste de non-contact
+    présente mais illisible ou mal formée, invitation illisible). Tant qu'il y en a, aucun geste d'invitation ne passe."""
+    illisibles = [p for p in reg.problemes_chargement if "invitations/" in p]
+    if (reg.racine / CHEMIN_NON_CONTACT).exists():
+        liste = reg.ne_plus_contacter.get("identifiants") if isinstance(reg.ne_plus_contacter, dict) else None
+        if not (isinstance(liste, list) and all(isinstance(x, str) for x in liste)):
+            illisibles.append(CHEMIN_NON_CONTACT)
+    return illisibles
+
+
+def gardiens_en_fonction(reg):
+    """Les gardiens qui ont un garant non révoqué : seuls ils ont le privilège d'un gardien (docs/garants.md ; revue adverse, E1)."""
+    return {m["pseudo"] for m in reg.fiches_gardiens if isinstance(m.get("pseudo"), str) and isinstance(m.get("garant"), str)
+            and m["garant"] in reg.garants}
 
 
 def bloc_de(inv, geste):
@@ -2906,7 +3041,9 @@ def etat_invitation(inv):
     for geste, etat in (("ecartee", "ecartee"), ("relance", "relancee"), ("envoi", "envoyee")):
         if geste in inv:
             return etat
-    return "decidee" if "accord_gardien" in inv and "accord_conseil" in inv else "proposee"
+    # L'accord du conseil vient après celui d'un gardien, ou seul pendant l'amorçage (aucun gardien en fonction) pour une
+    # invitation qui renforce l'encadrement : verifier_pr l'a contrôlé au moment du geste.
+    return "decidee" if "accord_conseil" in inv else "proposee"
 
 
 def membres_actifs(reg, instant=None):
@@ -2920,13 +3057,15 @@ def membres_actifs(reg, instant=None):
     return (actifs & (set(reg.membres) | set(reg.conseil) | set(reg.gardiens))) - reg.robots
 
 
-def incidents_ouverts(reg):
-    """Incidents ouverts (R13, frein) : les entrées de gouvernance/incidents.yaml, que le conseil écrit, sans clos_le. Un
-    fichier présent mais illisible compte comme un incident ouvert (le frein ne se desserre pas par erreur)."""
+def incidents_ouverts(reg, instant=None):
+    """Incidents ouverts (R13, frein) : les entrées de gouvernance/incidents.yaml, que le conseil écrit, sans clos_le, ou dont le
+    clos_le n'est pas un instant passé. Un fichier présent mais illisible compte comme un incident ouvert (échec fermé)."""
+    limite = (instant or maintenant()) + AVANCE_MAX
     liste = reg.incidents.get("incidents") if isinstance(reg.incidents, dict) else None
     if not isinstance(liste, list):
         return [{"id": "gouvernance/incidents.yaml illisible"}] if (reg.racine / "gouvernance/incidents.yaml").exists() else []
-    return [i if isinstance(i, dict) else {"id": "entrée illisible"} for i in liste if not (isinstance(i, dict) and i.get("clos_le"))]
+    return [i if isinstance(i, dict) else {"id": "entrée illisible"} for i in liste
+            if not (isinstance(i, dict) and (clos := _instant_ou_rien(i.get("clos_le"))) and clos <= limite)]
 
 
 def envois_depuis(reg, debut):
@@ -2934,29 +3073,42 @@ def envois_depuis(reg, debut):
 
 
 def etat_frein(reg, instant=None):
-    """Le frein de R13 : serré tant que la ruche dépasse ce qu'elle peut encadrer (aucun gardien nommé, ou plus de
-    membres_actifs_par_gardien_max membres actifs par gardien ; un gardien sans garant non révoqué) ou qu'un incident est
-    ouvert. Avec les envois des 7 derniers jours, pour bee essaim et le site."""
+    """Le frein de R13 et ce qui peut passer aujourd'hui (bee essaim, site, verifier_pr).
+    - Raisons d'encadrement : aucun gardien en fonction (nommé, avec un garant non révoqué) ; plus de
+      membres_actifs_par_gardien_max membres actifs par gardien en fonction ; un gardien sans garant. Elles arrêtent les
+      invitations à participer ou à faire entrer un projet, jamais celles qui renforcent l'encadrement (garant, gardien).
+    - Un incident ouvert arrête tout, invitations d'encadrement comprises.
+    - Amorçage : sans gardien en fonction, une invitation d'encadrement se passe de l'accord d'un gardien (le conseil suffit)."""
     instant = instant or maintenant()
     conf = config_croissance(reg)
-    actifs, gardiens = membres_actifs(reg, instant), sorted(str(g) for g in reg.gardiens)
-    maximum = conf["membres_actifs_par_gardien_max"] * len(gardiens)
-    raisons = []
-    if not gardiens:
-        raisons.append("aucun gardien nommé (gouvernance/gardiens.yaml) : personne ne peut donner l'accord de gardien")
+    actifs, en_fonction = membres_actifs(reg, instant), gardiens_en_fonction(reg)
+    maximum = conf["membres_actifs_par_gardien_max"] * len(en_fonction)
+    encadrement = []
+    if not en_fonction:
+        encadrement.append("aucun gardien en fonction (nommé dans gouvernance/gardiens.yaml, avec un garant non révoqué)")
     elif len(actifs) > maximum:
-        raisons.append(f"{len(actifs)} membres actifs pour {len(gardiens)} gardien(s), au plus {conf['membres_actifs_par_gardien_max']} "
-                       "par gardien (croissance.membres_actifs_par_gardien_max)")
-    sans_garant = sorted(str(m.get("pseudo")) for m in reg.fiches_gardiens
-                         if not isinstance(m.get("garant"), str) or m["garant"] not in reg.garants)
+        encadrement.append(f"{len(actifs)} membres actifs pour {len(en_fonction)} gardien(s), au plus "
+                           f"{conf['membres_actifs_par_gardien_max']} par gardien (croissance.membres_actifs_par_gardien_max)")
+    sans_garant = sorted(str(m.get("pseudo")) for m in reg.fiches_gardiens if m.get("pseudo") not in en_fonction)
     if sans_garant:
-        raisons.append(f"gardien(s) sans garant : {', '.join(sans_garant)} (docs/garants.md)")
-    incidents = [str(i.get("id") or i.get("titre") or "?") for i in incidents_ouverts(reg)]
+        encadrement.append(f"gardien(s) sans garant : {', '.join(sans_garant)} (docs/garants.md)")
+    incidents = [str(i.get("id") or i.get("titre") or "?") for i in incidents_ouverts(reg, instant)]
+    raisons = encadrement + ([f"incident(s) ouvert(s) : {', '.join(incidents)} (gouvernance/incidents.yaml)"] if incidents else [])
+    envois = envois_depuis(reg, instant - SEMAINE)
     if incidents:
-        raisons.append(f"incident(s) ouvert(s) : {', '.join(incidents)} (gouvernance/incidents.yaml)")
-    return {"serre": bool(raisons), "raisons": raisons, "membres_actifs": len(actifs), "gardiens": len(gardiens),
-            "membres_actifs_max": maximum, "incidents_ouverts": incidents, "envois_7_jours": envois_depuis(reg, instant - SEMAINE),
-            "invitations_par_semaine": conf["invitations_par_semaine"]}
+        passe = "rien : un incident est ouvert, aucune invitation n'avance (ni accord, ni envoi, ni relance), pas même d'encadrement"
+    elif not en_fonction:
+        passe = ("seules les invitations de garant ou de gardien, sur le seul accord du conseil (amorçage : aucun gardien en "
+                 "fonction) ; aucune invitation à participer ni à faire entrer un projet")
+    elif encadrement:
+        passe = "seules les invitations de garant ou de gardien, après l'accord d'un gardien puis du conseil"
+    else:
+        passe = "toute invitation, après l'accord d'un gardien puis du conseil"
+    passe += f" ; envois encore possibles sur 7 jours glissants : {max(0, conf['invitations_par_semaine'] - envois)}"
+    return {"serre": bool(raisons), "raisons": raisons, "encadrement": encadrement, "incidents_ouverts": incidents,
+            "membres_actifs": len(actifs), "gardiens": len(reg.gardiens), "gardiens_en_fonction": len(en_fonction),
+            "membres_actifs_max": maximum, "envois_7_jours": envois, "invitations_par_semaine": conf["invitations_par_semaine"],
+            "ce_qui_passe": passe}
 
 
 def publiee_le(reg, ref, relatif, inv):
@@ -2979,28 +3131,26 @@ def refus_invitation(reg, inv):
     conf, refus = config_croissance(reg), []
     personne = inv.get("personne") if isinstance(inv.get("personne"), dict) else {}
     identifiant = personne.get("identifiant")
-    if not (isinstance(identifiant, str) and IDENTIFIANT_PUBLIC.match(identifiant)):
-        refus.append(f"identifiant « {_nettoyer(identifiant)} » : un identifiant public s'écrit <plateforme>:<nom>, en ASCII, sans "
-                     "espace (github:octocat)")
+    canonique, probleme = forme_identifiant(identifiant)
+    if probleme or canonique != identifiant:
+        refus.append(f"identifiant « {_nettoyer(identifiant)} » : {probleme or f'il s’écrit {canonique}'}")
     if set(personne) != {"identifiant", "canal"}:
         refus.append("personne : son identifiant public et le canal qu'elle publie elle-même, rien d'autre (R13)")
+    probleme = canal_refuse(identifiant, personne.get("canal"))
+    if probleme:
+        refus.append(probleme)
     pourquoi = inv.get("pourquoi") if isinstance(inv.get("pourquoi"), list) else []
     if not 1 <= len(pourquoi) <= POURQUOI_MAX:
         refus.append(f"pourquoi : de 1 à {POURQUOI_MAX} faits publics, chacun avec sa source")
-    adresses, textes = [("canal", personne.get("canal"))], [("message", inv.get("message"), conf["message_max"])]
+    textes = [("message", inv.get("message"), conf["message_max"])]
     for i, f in enumerate(pourquoi[:POURQUOI_MAX]):
         f = f if isinstance(f, dict) else {}
         textes.append((f"pourquoi/{i}/fait", f.get("fait"), FAIT_MAX))
-        adresses.append((f"pourquoi/{i}/source", f.get("source")))
-    for quoi, valeur in adresses:
-        probleme = (forme_source(valeur) if isinstance(valeur, str) and valeur.startswith("https://") else "une adresse https://")
-        if probleme or len(valeur) > ADRESSE_MAX:
-            refus.append(f"{quoi} : {probleme or f'au plus {ADRESSE_MAX} caractères'}")
+        probleme = adresse_sortante_refusee(f.get("source"), f"pourquoi/{i}/source")
+        if probleme:
+            refus.append(probleme)
     for quoi, texte, maximum in textes:
-        probleme = texte_recevable(texte, quoi, maximum)
-        if probleme is None and (COURRIEL.search(texte) or TELEPHONE.search(texte)):
-            probleme = (f"{quoi} : ni courriel ni numéro de téléphone, aucune donnée personnelle au-delà de l'identifiant public et "
-                        "du canal (R13)")
+        probleme = texte_sortant_refuse(texte, quoi, maximum)
         if probleme:
             refus.append(probleme)
     if isinstance(inv.get("message"), str) and not any(m in inv["message"] for m in mentions_invitation(reg).values()):
@@ -3011,6 +3161,9 @@ def refus_invitation(reg, inv):
     debat = reg.debats.get(str(inv.get("debat")), (None, None))[1]
     if not (isinstance(debat, dict) and debat.get("statut") == "ouvert"):
         refus.append(f"debat « {_nettoyer(inv.get('debat'))} » : une invitation se discute dans un débat ouvert de l'agora (bee debats)")
+    illisibles = invitations_illisibles(reg)
+    if illisibles:
+        refus.append(f"illisible(s) : {', '.join(illisibles)} : rien ne bouge dans invitations/ tant que le conseil ne l'a pas réparé")
     cle = cle_personne(identifiant)
     if cle in non_contactes(reg):
         refus.append(f"{_nettoyer(identifiant)} est sur la liste de non-contact ({CHEMIN_NON_CONTACT}) : un refus est définitif (R13)")
@@ -3031,25 +3184,38 @@ def refus_geste(reg, ancien, nouveau, geste, auteur, instant, publication=None, 
     bloc = bloc_de(nouveau, geste)
     moment = _instant_ou_rien(bloc.get("le")) or instant
     delai = dt.timedelta(days=conf["delai_relance_jours"])
+    encadrement = ancien.get("demande") in RENFORCENT_ENCADREMENT
+    illisibles = invitations_illisibles(reg)
+    exiger(not illisibles, f"illisible(s) : {', '.join(illisibles)} : aucun geste d'invitation tant que le conseil ne l'a pas réparé")
     if geste in VERS_LE_CONTACT:
-        exiger(not (frein or {}).get("serre") or ancien.get("demande") in RENFORCENT_ENCADREMENT,
-               "frein serré (R13) : " + " ; ".join((frein or {}).get("raisons") or ["état inconnu"])
+        frein = frein if isinstance(frein, dict) else {"serre": True, "raisons": ["état du frein inconnu"], "incidents_ouverts": ["?"]}
+        exiger(not frein.get("incidents_ouverts"), f"incident(s) ouvert(s) : {', '.join(frein.get('incidents_ouverts') or [])} : tout "
+                                                   "s'arrête, invitations d'encadrement comprises (R13)")
+        exiger(not frein.get("encadrement") or encadrement,
+               "frein serré (R13) : " + " ; ".join(frein.get("encadrement") or [])
                + f" ; il arrête les invitations à {ancien.get('demande')}, jamais celles qui renforcent l'encadrement (garant, gardien)")
         exiger(cle_personne(identifiant_de(ancien)) not in non_contactes(reg),
                f"{_nettoyer(identifiant_de(ancien))} est sur la liste de non-contact : plus rien ne part vers elle (R13)")
+    echeance = publication + dt.timedelta(hours=conf["debat_min_heures"]) if publication else None
+    debat_tenu = (echeance is not None and moment >= echeance,
+                  f"une invitation reste {conf['debat_min_heures']} h publique, débattue dans l'agora, avant tout accord "
+                  f"(croissance.debat_min_heures) : pas avant le {en_iso(echeance) if echeance else '(pas encore publiée)'}")
     if geste == "accord_gardien":
         exiger(avant == "proposee", f"un accord de gardien se donne à une invitation proposée (statut : {avant})")
-        exiger(auteur in reg.gardiens, f"{auteur} n'est pas gardien : seul un gardien nommé (gouvernance/gardiens.yaml) donne l'accord "
-                                       "de gardien")
+        exiger(auteur in gardiens_en_fonction(reg), f"{auteur} n'est pas un gardien en fonction : seul un gardien nommé "
+                                                    "(gouvernance/gardiens.yaml), dont le garant n'est pas révoqué, donne l'accord de gardien")
         exiger(auteur != ancien.get("propose_par"), "on ne donne pas son accord à sa propre invitation")
-        echeance = publication + dt.timedelta(hours=conf["debat_min_heures"]) if publication else None
-        exiger(echeance is not None and moment >= echeance,
-               f"une invitation reste {conf['debat_min_heures']} h publique, débattue dans l'agora, avant tout accord "
-               f"(croissance.debat_min_heures) : pas avant le {en_iso(echeance) if echeance else '(pas encore publiée)'}")
+        exiger(*debat_tenu)
     elif geste == "accord_conseil":
         exiger(conseil, f"{auteur} n'est pas du conseil : seul le conseil donne l'accord du conseil")
-        exiger(avant == "proposee" and "accord_gardien" in ancien, "l'accord du conseil suit celui d'un gardien")
+        # Amorçage : sans gardien en fonction, une invitation d'encadrement n'attend que le conseil (il n'y a personne d'autre).
+        amorcage = encadrement and not (frein or {}).get("gardiens_en_fonction", 1)
+        exiger(avant == "proposee" and ("accord_gardien" in ancien or amorcage),
+               "l'accord du conseil suit celui d'un gardien (sans gardien en fonction, seule une invitation de garant ou de gardien "
+               "s'en passe)")
         exiger(bloc_de(ancien, "accord_gardien").get("par") != auteur, "les deux accords viennent de deux personnes différentes")
+        if "accord_gardien" not in ancien:
+            exiger(*debat_tenu)
     elif geste == "envoi":
         exiger(conseil, f"{auteur} n'est pas du conseil : seul un humain du conseil envoie le message, lui-même, et le consigne")
         exiger(avant == "decidee", f"on ne consigne un envoi qu'après l'accord d'un gardien et du conseil (statut : {avant})")
@@ -3073,7 +3239,8 @@ def refus_geste(reg, ancien, nouveau, geste, auteur, instant, publication=None, 
         exiger(auteur == ancien.get("propose_par") or auteur in reg.gardiens or conseil,
                "seuls le proposant, un gardien ou le conseil écartent une invitation")
         exiger(avant in ("proposee", "decidee"), f"on n'écarte une invitation qu'avant son envoi (statut : {avant})")
-        probleme = texte_recevable(bloc.get("motif"), "motif", config_notes(reg)["texte_max"])
+        # Le motif est publié avec l'invitation : contrôlé comme un message (revue adverse, C3).
+        probleme = texte_sortant_refuse(bloc.get("motif"), "motif", config_notes(reg)["texte_max"])
         exiger(probleme is None, f"{probleme} : on écarte en motivant, court (notes.texte_max)")
     return refus
 
@@ -3121,7 +3288,7 @@ def verifier_invitation(reg, chemin, statut_git, ancien, nouveau, auteur, *, est
             exiger(est_conseil or nouveaux == anciens, "seul le conseil inscrit une personne sur la liste de non-contact")
             vus = {cle_personne(x) for x in anciens}
             for x in nouveaux[len(anciens):]:
-                exiger(isinstance(x, str) and IDENTIFIANT_PUBLIC.match(x), f"« {_nettoyer(x)} » n'est pas un identifiant public")
+                exiger(forme_identifiant(x)[0] == x, f"« {_nettoyer(x)} » n'est pas un identifiant public sous sa forme canonique")
                 exiger(cle_personne(x) not in vus, f"« {_nettoyer(x)} » est déjà sur la liste")
                 vus.add(cle_personne(x))
         return natures, problemes, envois
@@ -3161,7 +3328,7 @@ def verifier_invitation(reg, chemin, statut_git, ancien, nouveau, auteur, *, est
     exiger(probleme is None, f"{probleme} : relancez bee invitation")
     exiger(nouveau.get("statut") == etat_invitation(nouveau), f"statut « {nouveau.get('statut')} » au lieu de "
                                                               f"« {etat_invitation(nouveau)} »")
-    publication = publiee_le(reg, base, chemin, ancien) if geste == "accord_gardien" else None
+    publication = publiee_le(reg, base, chemin, ancien) if geste in ("accord_gardien", "accord_conseil") else None
     for refus in refus_geste(reg, ancien, nouveau, geste, auteur, instant, publication, frein() if geste in VERS_LE_CONTACT else None):
         exiger(False, refus)
     if geste == "reponse" and bloc.get("valeur") in ("refusee", "sans_reponse"):
@@ -3176,9 +3343,8 @@ def verifier_invitation(reg, chemin, statut_git, ancien, nouveau, auteur, *, est
 def verifier_invitations_registre(reg, ajouter, selon_schema, instant_valide):
     """Cohérence de R13 dans tout le registre (bee valider) : valeurs de la clé croissance, incidents, liste de non-contact
     sans doublon, invitations conformes à leur schéma, au statut que disent leurs gestes, gestes dans l'ordre et datés dans
-    l'ordre, signés de comptes connus ; une invitation refusée ou restée sans réponse a son identifiant sur la liste. Qui a le
-    droit de faire chaque geste, et quand, se contrôle à l'écriture (verifier_pr) : une nomination retirée plus tard ne rend
-    pas invalide un geste déjà fait."""
+    l'ordre ; une invitation refusée ou restée sans réponse a son identifiant sur la liste. Qui a le droit de faire chaque geste,
+    et quand, se contrôle à l'écriture (verifier_pr) : une nomination retirée plus tard ne rend pas invalide un geste déjà fait."""
     croissance = reg.config.get("croissance")
     if croissance is not None and not isinstance(croissance, dict):
         ajouter(f"bee.yaml : croissance doit lister les valeurs de R13 ({', '.join(CROISSANCE_DEFAUT)})")
@@ -3194,12 +3360,16 @@ def verifier_invitations_registre(reg, ajouter, selon_schema, instant_valide):
             for cle in ("ouvert_le", "clos_le"):
                 if cle in incident:
                     instant_valide(reg.racine / "gouvernance/incidents.yaml", incident[cle], f"incidents/{i}/{cle}")
+                    if (m := _instant_ou_rien(incident[cle])) and m > maintenant() + AVANCE_MAX:
+                        ajouter(f"gouvernance/incidents.yaml : incidents/{i}/{cle} ({incident[cle]}) est dans le futur")
     chemin_liste = reg.racine / CHEMIN_NON_CONTACT
     if reg.ne_plus_contacter is not None and selon_schema("ne-plus-contacter", chemin_liste, reg.ne_plus_contacter):
         cles = [cle_personne(x) for x in reg.ne_plus_contacter["identifiants"]]
         if len(cles) != len(set(cles)):
             ajouter(f"{CHEMIN_NON_CONTACT} : une personne y figure deux fois (à la casse ou aux espaces près)")
-    connus = set(reg.membres) | set(reg.conseil) | set(reg.gardiens)
+        for x in reg.ne_plus_contacter["identifiants"]:
+            if forme_identifiant(x)[0] != x:
+                ajouter(f"{CHEMIN_NON_CONTACT} : « {_nettoyer(x)} » n'est pas un identifiant public sous sa forme canonique")
     refus = non_contactes(reg)
     for stem, (chemin, inv) in reg.invitations.items():
         if not selon_schema("invitation", chemin, inv):
@@ -3212,17 +3382,16 @@ def verifier_invitations_registre(reg, ajouter, selon_schema, instant_valide):
         if "ecartee" in inv and ("envoi" in inv or "reponse" in inv) or (
                 (inv.get("reponse") or {}).get("valeur") in ("acceptee", "sans_reponse") and "envoi" not in inv):
             ajouter(f"{lieu} : gestes incohérents (on n'écarte qu'avant l'envoi ; acceptée ou sans réponse suppose un envoi)")
-        dates = [("propose_le", inv["propose_le"], inv["propose_par"])] + [
-            (f"{g}.le", inv[g]["le"], inv[g]["par"]) for g in GESTES_INVITATION if g in inv]
+        # Qui a fait chaque geste a été contrôlé à son ajout (verifier_pr) : son rôle actuel n'est pas revérifié ici, pour qu'un
+        # gardien révoqué ou un membre qui quitte le conseil ne rende jamais le registre invalide (revue adverse, F1).
+        dates = [("propose_le", inv["propose_le"])] + [(f"{g}.le", inv[g]["le"]) for g in GESTES_INVITATION if g in inv]
         precedent = None
-        for quoi, valeur, qui in dates:
+        for quoi, valeur in dates:
             instant_valide(chemin, valeur, quoi)
             moment = _instant_ou_rien(valeur)
             if moment and precedent and moment < precedent:
                 ajouter(f"{lieu} : {quoi} est antérieur au geste précédent (les gestes sont datés dans l'ordre)")
             precedent = moment or precedent
-            if qui not in connus:
-                ajouter(f"{lieu} : {quoi.split('.')[0]} : « {qui} » n'est ni inscrit, ni du conseil, ni gardien")
         if inv["statut"] in ("refusee", "sans_reponse") and cle_personne(inv["personne"]["identifiant"]) not in refus:
             ajouter(f"{lieu} : {inv['statut']}, mais {inv['personne']['identifiant']} n'est pas dans {CHEMIN_NON_CONTACT} (R13)")
 
@@ -3302,6 +3471,21 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
     dates_notes = []        # instants des notes ajoutées bien datées (plafond sur 24 h glissantes)
     dates_envois = []       # R13 : instants des envois d'invitation consignés par la PR (plafond par semaine, toute la ruche)
     frein_calcule = []
+    # R13, échec fermé (revue adverse, G1) : si la liste de non-contact ou une invitation est illisible sur la base, aucun geste
+    # d'invitation ne passe ; le conseil répare d'abord (hors du libre-service, en reprenant la dernière version lisible).
+    illisibles_base = []
+    if any(c.startswith("invitations/") for _, c in changements):
+        for nom in git(reg.racine, "ls-tree", "-r", "--name-only", base, "--", "invitations/").splitlines():
+            if not (CHEMIN_INVITATION.match(nom) or nom == CHEMIN_NON_CONTACT):
+                continue
+            try:
+                donnees = lire_yaml_ref(reg.racine, base, nom)
+            except ErreurBee:
+                donnees = None
+            liste = donnees.get("identifiants") if isinstance(donnees, dict) else None
+            if not isinstance(donnees, dict) or (nom == CHEMIN_NON_CONTACT and not (
+                    isinstance(liste, list) and all(isinstance(x, str) for x in liste))):
+                illisibles_base.append(nom)
 
     def frein():
         """L'état du frein de R13 (etat_frein), calculé une fois, et seulement si un geste vers le contact le demande."""
@@ -3836,6 +4020,11 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
             continue
 
         if partie[0] == "invitations":  # R13 : seuls I-<nnnn>.yaml et la liste de non-contact arrivent ici
+            if illisibles_base:
+                natures.append("gouvernance")
+                problemes.append(f"{chemin} : illisible(s) sur main : {', '.join(illisibles_base)} : aucun geste d'invitation tant "
+                                 "que le conseil ne l'a pas réparé (hors du libre-service, en reprenant sa dernière version lisible)")
+                continue
             if statut_git == "A" and chemin != CHEMIN_NON_CONTACT:
                 creations["invitations"] += 1
                 numero_attendu(chemin, "l'invitation", "bee inviter")
@@ -4210,14 +4399,15 @@ def cmd_essaim(args):
                   f"{x['derniere_activite']}, {etat}) : {question if len(question) <= 90 else question[:89] + '…'}")
     frein = tableau["frein"]
     print(f"\nGrandir (R13, docs/croissance.md) : frein {'SERRÉ' if frein['serre'] else 'desserré'}"
-          + (f" ({' ; '.join(frein['raisons'])} ; il n'arrête pas les invitations de garant ou de gardien)" if frein["serre"] else "")
-          + f". Membres actifs : {frein['membres_actifs']} pour {frein['gardiens']} gardien(s) ; invitations envoyées sur 7 jours : "
-          f"{frein['envois_7_jours']} sur {frein['invitations_par_semaine']}.")
+          + (f" ({' ; '.join(frein['raisons'])})" if frein["serre"] else "")
+          + f". Membres actifs : {frein['membres_actifs']} pour {frein['gardiens_en_fonction']} gardien(s) en fonction ; invitations "
+          f"envoyées sur 7 jours : {frein['envois_7_jours']} sur {frein['invitations_par_semaine']}.\n  Ce qui peut passer "
+          f"aujourd'hui : {frein['ce_qui_passe']}.")
     for x in tableau["invitations"]:
         print(f"  - {_nettoyer(x['id'])} ({_nettoyer(x['demande'])}, {_nettoyer(x['identifiant'])}, proposée par "
               f"{_nettoyer(x['propose_par'])}, débat {_nettoyer(x['debat'])}) : {_nettoyer(x['statut'])}, attend {x['attend']}")
     if not tableau["invitations"]:
-        print("  Aucune invitation en cours (bee inviter en propose une ; rien ne part sans un gardien et le conseil).")
+        print("  Aucune invitation en cours (bee inviter en propose une ; rien ne part sans les accords que demande R13).")
     print("\nAvant de choisir : évitez de reprendre seul ce qu'un autre fait déjà. Pour travailler sur une tâche déjà "
           "réservée ou en relecture, inscrivez-vous en parallèle (bee prendre <tâche> --utilisateur <pseudo> --en-parallele) : "
           "tout le monde le voit, et R3 choisit la meilleure contribution. Cap de la ruche : bee cap.")
@@ -5296,7 +5486,13 @@ def cmd_inviter(args):
     exiger_creation_permise(reg, "invitations", u)
     mention = mentions_invitation(reg)[args.langue]
     texte = texte.strip()
-    inv = {"id": chemin.stem, "statut": "proposee", "personne": {"identifiant": args.identifiant, "canal": args.canal},
+    # L'identifiant s'écrit sous sa forme canonique (gh:octocat -> github:octocat) ; le canal d'une forge en découle.
+    identifiant = forme_identifiant(args.identifiant)[0] or args.identifiant
+    modele = PLATEFORMES.get(identifiant.partition(":")[0], (None, None))[1]
+    canal = args.canal or (modele.format(identifiant.partition(":")[2]) if modele else None)
+    if canal is None:
+        raise ErreurBee("--canal : pour un site, la page de ce site où la personne publie comment la contacter")
+    inv = {"id": chemin.stem, "statut": "proposee", "personne": {"identifiant": identifiant, "canal": canal},
            "demande": args.demande, "pourquoi": [{"fait": f, "source": s} for f, s in zip(faits, sources)],
            "message": texte if mention in texte else f"{texte}\n\n{mention}", "debat": args.debat, "propose_par": u,
            "propose_le": en_iso(maintenant())}
@@ -5325,6 +5521,9 @@ def cmd_invitation(args):
         reg.exiger_membre(u)
     chemin, inv = reg.invitation(args.invitation)
     geste = ACTIONS_INVITATION[args.action]
+    if invitations_illisibles(reg):
+        raise ErreurBee(f"illisible(s) : {', '.join(invitations_illisibles(reg))} : aucun geste d'invitation tant que le conseil ne "
+                        "l'a pas réparé")
     if geste in inv:
         raise ErreurBee(f"{args.invitation} : {geste} est déjà consigné ; un geste ne se refait ni ne se modifie")
     instant = maintenant()
@@ -5335,7 +5534,7 @@ def cmd_invitation(args):
         bloc["motif"] = args.motif.strip()
     nouveau = {**inv, geste: bloc}
     nouveau["statut"] = etat_invitation(nouveau)
-    publication = publiee_le(reg, "HEAD", reg.rel(chemin), inv) if geste == "accord_gardien" else None
+    publication = publiee_le(reg, "HEAD", reg.rel(chemin), inv) if geste in ("accord_gardien", "accord_conseil") else None
     refus = refus_geste(reg, inv, nouveau, geste, u, instant, publication, etat_frein(reg, instant) if geste in VERS_LE_CONTACT else None)
     if refus:
         raise ErreurBee(f"{args.invitation} : " + " ; ".join(refus))
@@ -6932,8 +7131,10 @@ def construire_analyseur():
                 "R13 : propose une invitation (devenir garant, participer, faire entrer un projet) au numéro suivant. N'envoie rien : "
                 "un gardien puis le conseil décident, un humain du conseil envoie lui-même le message (docs/croissance.md).")
     p.add_argument("--utilisateur", required=True)
-    p.add_argument("--identifiant", required=True, help="identifiant public de la personne : <plateforme>:<nom> (github:octocat)")
-    p.add_argument("--canal", required=True, help="adresse https:// où la personne publie elle-même comment la contacter")
+    p.add_argument("--identifiant", required=True, help="identifiant public : <plateforme>:<nom>, plateforme parmi "
+                                                        f"{', '.join(PLATEFORMES)} (github:octocat, site:exemple.org)")
+    p.add_argument("--canal", help="pour une forge, déduit de l'identifiant (https://github.com/<nom>) ; pour un site, la page de ce "
+                                   "site où la personne publie comment la contacter")
     p.add_argument("--demande", required=True, choices=DEMANDES)
     p.add_argument("--fait", action="append", help=f"un fait public qui dit pourquoi elle ({POURQUOI_MAX} au plus), suivi de sa --source")
     p.add_argument("--source", action="append", help="adresse https:// publique du fait qui précède")
