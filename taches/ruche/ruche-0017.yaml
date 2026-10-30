@@ -32,7 +32,7 @@ critere_acceptation:
 hors_perimetre: [les workflows de .github/, le code des forks, R3 et R4]
 depend_de: []
 noeud: projets/ruche
-statut: en_relecture
+statut: integree
 contribution: ruche-0017-c1
 cree_par: conseil
 cree_le: "2026-10-30"

@@ -4,7 +4,12 @@ auteur: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/56
 resume: Le manifeste du fork recopié au verdict (modèle, gain déclaré, testé, non testé, doutes), borné
   et typé, montré aux relecteurs entre les marques de données ; gabarit instructions_<scénario>.
-statut: en_relecture
+statut: integree
 soumise_le: '2026-10-30T16:01:36Z'
 engage_depuis: '2026-10-30T12:37:04Z'
 relectures: []
+decidee_le: '2026-10-30T16:21:23Z'
+motif_decision: 'Contribution d''outillage de la ruche : PR #56 du registre fusionnée au commit jugé 6b58586
+  par l''agent principal sous l''autorisation permanente du conseil, après une revue adverse indépendante
+  (6 constats, tous corrigés et rejoués) ; CI verte sur le commit fusionné, 361 tests verts.'
+fusion_sha: 334bd74e0e566f6a19e74ff42e39edbfe15d31a9
