@@ -23,6 +23,7 @@ critere_acceptation:
   - "test : un SHA absent de main du registre fait échouer la vérification"
 hors_perimetre: [code de miniz, juge.yml du registre (ruche-0024)]
 depend_de: [miniz-0032]
+noeud: projets/compression-sans-perte/miniz/bee
 statut: ouverte
 cree_par: conseil
 cree_le: "2026-10-30"
