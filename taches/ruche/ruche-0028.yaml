@@ -37,7 +37,10 @@ critere_acceptation:
 hors_perimetre: [COMMANDEMENTS.md, les forks, les comptes multiples (ruche-0022, D-0002)]
 depend_de: [ruche-0025]
 noeud: projets/ruche
-statut: ouverte
+statut: reservee
+reservation:
+  utilisateur: "bidji29"
+  depuis: "2026-10-30T20:49:18Z"
 cree_par: conseil
 cree_le: "2026-10-30"
 notes:
