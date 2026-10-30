@@ -1,0 +1,24 @@
+id: P-0003
+auteur: bidji29
+regle: R3
+texte_propose: 'R3 : à la condition « au moins relectures_requises relectures favorables d''autres utilisateurs
+  portant sur le commit jugé, dont une Confirmé quand il y en a », ajouter : « (une relecture par relecteur
+  et par commit jugé, en ajout seul : ne compte, pour chacun, que sa relecture du commit jugé ; faite
+  avant le verdict, sans commit, elle ne compte pas ; une abstention motivée ne compte ni pour ni contre,
+  n''ouvre aucune porte et n''abaisse aucun seuil) » ; et préciser « aucun défaut confirmé sur le commit
+  jugé ». Une abstention (diff hors d''atteinte, conflit d''intérêts, approche seulement) ne rapporte
+  aucun point ; sur une contribution, un relecteur gagne ou perd au plus une fois, d''après sa relecture
+  la plus récente, ou +2 une fois si l''un de ses défauts est confirmé (docs/reputation.md).'
+motif: 'Deux répétitions générales de suite ont buté sur le même défaut. Le 29/10 (trouvé par trois abeilles)
+  : bee relire refusait une seconde relecture du même relecteur quel que soit le commit, et une relecture
+  faite avant le verdict de la CI, sans sha, comptait dans verifier-acceptation puis disparaissait à l''arrivée
+  du verdict, sans avertissement ; un gardien ne pouvait donc jamais relire le correctif qu''il avait
+  demandé et, seul gardien, son avis défavorable devenait définitif. Le 30/10 (tour 2), le défaut est
+  revenu, et un gardien a conclu « défavorable » et une relectrice « favorable » sur la même analyse,
+  faute d''avis intermédiaire ou de portée déclarée. R3 disait déjà que les relectures portent sur le
+  commit jugé ; la proposition dit ce qu''il advient d''une relecture d''avant le verdict et d''un correctif,
+  et ajoute l''abstention. Tâche ruche-0012 : bee relire, verifier-acceptation et verifier-pr l''appliquent
+  (sha exactement celui du verdict de la base, une relecture par commit, défaut confirmé attaché à son
+  commit).'
+ouverte_le: '2026-10-30T08:25:45Z'
+statut: ouverte
