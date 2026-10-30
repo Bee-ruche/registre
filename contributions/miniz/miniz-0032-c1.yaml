@@ -15,32 +15,31 @@ verdict:
   amorcage: true
   instructions:
     instructions_n1:
-      A: 171453314.0
-      B: 171453314.0
+      A: 171446021.0
+      B: 171446021.0
       gain: 0.0
     instructions_n6:
-      A: 335509769.0
-      B: 335509769.0
+      A: 335508451.0
+      B: 335508451.0
       gain: 0.0
     instructions_n9:
-      A: 483719269.0
-      B: 483719269.0
+      A: 483699133.0
+      B: 483699133.0
       gain: 0.0
     instructions_decompression:
-      A: 31602541.0
-      B: 31602541.0
+      A: 31603041.0
+      B: 31603041.0
       gain: 0.0
-  degradations:
-    debit_compression_n6: -0.0032680681891380514
+  degradations: {}
   juge:
     version: 3
     commun: juge-v1
     sorties_comparees: 7868
     constructions_suspectes: []
-  lignes_modifiees: 218
+  lignes_modifiees: 236
   ecart_declare: null
-  sha: 32fea0bf777b7ca228588c926a1516964098384d
-  arbre: 21a0e658d2900d95fbf401f6fea47bc2ccbc8494
+  sha: f8ded61dbc8ce8f23cacb815846ba991f962d6f1
+  arbre: 768f733643e8b77f10490240a6425a1de1e95d2a
   fichiers_controles: true
   juges_modifies:
   - .github/workflows/bee-ci.yml
@@ -56,4 +55,4 @@ verdict:
   - bee/juge/juge.py
   - bee/juge/projet.py
   - bee/juge/test_juge.py
-  execution: https://github.com/Bee-ruche/minizBee/actions/runs/41078017862
+  execution: https://github.com/Bee-ruche/minizBee/actions/runs/41084904040
