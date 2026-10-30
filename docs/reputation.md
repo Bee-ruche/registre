@@ -33,8 +33,9 @@ combien de relectures de Nouveaux il a laissées de côté.
 | Relecture d'une contribution écartée au profit d'une concurrente (R3), favorable, défavorable ou défaut confirmé | 0 |
 | Abstention (diff hors d'atteinte, conflit d'intérêts) | 0 |
 
-Une relecture par commit jugé ([contributions.md](contributions.md#relire-par-commit)) : sur une contribution, un relecteur
-gagne ou perd au plus une fois, d'après sa relecture la plus récente, ou +2 une fois si l'un de ses défauts est confirmé.
+Sur une contribution, un relecteur gagne ou perd au plus une fois, d'après sa relecture la plus récente, et seulement si
+elle porte sur le commit où la contribution a été décidée (celui du verdict) : sans commit, ou sur un autre commit, R3 ne
+l'a pas comptée, elle vaut 0 ; +2 une fois si l'un de ses défauts est confirmé ([contributions.md](contributions.md#relire-par-commit)).
 
 Une contribution annulée ne compte plus pour son auteur.
 

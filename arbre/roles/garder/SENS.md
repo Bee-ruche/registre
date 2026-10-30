@@ -13,8 +13,8 @@ de R3 parmi d'autres, jamais une décision : ils ne fusionnent jamais, seul le w
 Commandes : relire, confirmer-defaut, lister --statut proposee, noter, debattre doublon|clore.
 Pas gardien ? Ce nœud dit ce qu'ils font ; rien ne se fait à leur place.
 Leur relecture favorable ouvre la porte de relecture de R3 et compte pour un changement de juge ; leur défavorable
-bloque jusqu'au commit jugé suivant, qu'ils relisent alors (une relecture par commit : celle d'avant le verdict ne
-compte pas). Sans le diff ou en conflit d'intérêts : une abstention motivée, qui n'ouvre aucune porte. Chaque
+bloque, même si l'auteur pousse un commit, jusqu'à leur relecture suivante (seule la plus récente compte ; celle d'avant
+le verdict non). Sans le diff ou en conflit d'intérêts : une abstention motivée, qui n'ouvre aucune porte. Chaque
 point coché s'appuie sur une preuve produite soi-même : verdict lu, diff du commit jugé relu en entier, tests, fuzzing
 et `ab.py --instructions` rejoués en sandbox (`bee/sandbox/sans-docker.sh` ou Docker ; une session cloud n'est pas une
 sandbox), chaque construction suspecte expliquée par le diff, juges modifiés vérifiés (régressions semées attrapées).

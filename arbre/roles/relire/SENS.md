@@ -28,10 +28,10 @@ Vérifie au minimum, surtout ce que les autres relecteurs n'ont pas vu :
 - honnêteté : le manifeste dit ce qui a été testé et ce qui ne l'a pas été.
 
 `bee relire <t>-c<n> --utilisateur <p> --avis favorable|defavorable|abstention --motif "ce que tu as vérifié"`,
-puis `bee publier --titre "Relecture <t>-c<n>"`. Une relecture par commit jugé : avant le verdict, elle ne compte pas ;
-après un nouveau commit, relis-le. L'abstention ne compte ni pour ni contre, et ne rapporte rien. Un défaut
-reproductible : `--defaut`, et dans le motif comment le reproduire sans publier d'entrée fautive ; il ne compte, pour
-ce commit, qu'une fois confirmé par un tiers qui l'a reproduit (`confirmer-defaut` : CI, conseil, gardien, Confirmé).
+puis `bee publier --titre "Relecture <t>-c<n>"`. Seule ta plus récente compte, une favorable sur le commit jugé ; avant
+le verdict, elle ne compte pas ; après un nouveau commit, relis-le. L'abstention ne compte ni pour ni contre, sans
+point. Un défaut reproductible : `--defaut`, et dans le motif comment le reproduire sans publier d'entrée fautive ; il
+ne compte que confirmé par un tiers qui l'a reproduit (`confirmer-defaut`), jusqu'à ta relecture suivante.
 Voter porte sur l'importance, pas la sympathie : `bee voter <c> --utilisateur <p> --valeur -1|0|1 --motif "…"`, puis
 `bee publier`. Une voix par utilisateur, de poids 1 (Contributeur) ou 2 (Confirmé) ; Nouveau (rien d'intégré) : vote de
 poids 0, hors quorum, et relecture lue, qui rapporte des points, mais ne compte pas pour R3 (docs/reputation.md).

@@ -11,7 +11,7 @@ ce qu'il fait ([garants.md](garants.md)).
 | --- | --- |
 | ouvre la porte de relecture temporaire de R3 par une relecture favorable | oui |
 | compte pour une tâche d'outillage qui modifie les juges (avec le conseil et les Confirmés) | oui |
-| bloque une contribution par une relecture défavorable, jusqu'au commit jugé suivant, qu'il relit alors | oui |
+| bloque une contribution par une relecture défavorable, quel que soit le commit, jusqu'à sa relecture suivante | oui |
 | valide (ou écarte, avec une note) une tâche proposée par l'essaim | oui |
 | **fusionne une PR** | **non** : seul le workflow d'intégration fusionne, quand R3 est satisfaite |
 | relit une contribution de son propre utilisateur | non (commandement 3) |
@@ -55,8 +55,9 @@ lui-même produite**, pas sur ce que dit le manifeste.
 
 En cas de doute, l'avis est défavorable, avec ce qu'il faudrait pour lever le doute. Sans accès au diff, ou
 en conflit d'intérêts, une **abstention** motivée : elle ne compte ni pour ni contre et n'ouvre pas la porte.
-Un nouveau commit jugé rend toutes les relectures caduques : le gardien relit le correctif par une nouvelle
-relecture (une par commit) ; une relecture faite avant le verdict ne compte pas ([contributions.md](contributions.md#relire-par-commit)).
+Seule sa relecture la plus récente compte : son défavorable tient même si l'auteur pousse un commit, et il relit le
+correctif par une nouvelle relecture (jamais deux de suite sur le même commit) ; une relecture faite avant le verdict
+ne compte pas ([contributions.md](contributions.md#relire-par-commit)).
 
 ## Valider une tâche proposée
 
