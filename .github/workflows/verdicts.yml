@@ -43,10 +43,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          journal() { sed -e 's/##\[/# #[/g' -e 's/^/  | /'; }  # ruche-0025 : ce que bee imprime, jamais en tête de ligne du journal
           python3 outils/bee.py en-attente \
-            | python3 -c 'import json, sys; [print(c["id"], c["pr"], c.get("sha_verdict") or "-", c.get("ci_verdict") or "-", c.get("auteur") or "-", sep="\t") for c in json.load(sys.stdin)]' \
+            | python3 -c 'import json, sys; [print(c["id"], c["pr"], c.get("sha_verdict") or "-", c.get("ci_verdict") or "-", c.get("auteur") or "-", c.get("sha_attente") or "-", sep="\t") for c in json.load(sys.stdin)]' \
             > a_traiter.tsv
-          while IFS=$'\t' read -r id pr sha_connu ci_connue auteur; do
+          while IFS=$'\t' read -r id pr sha_connu ci_connue auteur sha_attente; do
             depot=$(printf '%s' "$pr" | sed -E 's#^https://github\.com/([A-Za-z0-9-]+/[A-Za-z0-9_.-]+)/pull/[0-9]+$#\1#')
             # Contribution de la ruche (PR sur le registre lui-même) : pas de CI de fork ni de verdict à collecter ; elle
             # est relue et fusionnée par le conseil. Ne jamais arrêter la collecte des autres pour elle.
@@ -62,23 +63,20 @@ jobs:
             # (runner indisponible) : on relit la dernière exécution terminée, qui a pu être relancée.
             [ "$sha" = "$sha_connu" ] && [ "$ci_connue" = "verte" ] && continue
             # ruche-0025 (revues adverses de minizBee #16) : seulement la CI de CETTE PR, par l'événement pull_request, vers la
-            # branche par défaut du fork, jamais changée de base, sans autre PR de même tête (même branche, toute base et tout
-            # état ; ou même commit vers une autre base) : sinon aucun verdict, et le journal le dit. bee juge les réponses de l'API.
+            # branche par défaut du fork, jamais changée de base, sans autre PR de la même tête (dépôt et branche) qui la précède :
+            # sinon aucun verdict, et la contribution le dit (attente_verdict) ; pas rejugée avant une autre tête (1 000 requêtes
+            # par heure). bee juge les réponses de l'API.
+            [ "$sha" = "$sha_attente" ] && continue
             n=${pr##*/}; api="$RUNNER_TEMP/api"; rm -rf "$api" && mkdir -p "$api"
-            [[ "$sha" =~ ^[0-9a-f]{7,40}$ && "$n" =~ ^[0-9]+$ ]] && gh api "repos/$depot/pulls/$n" > "$api/pr.json" || continue
-            etiquette=$(python3 -c 'import json, sys; print(json.load(sys.stdin)["head"]["label"])' < "$api/pr.json") || continue
-            if [[ ! "$etiquette" =~ ^[A-Za-z0-9-]+:[A-Za-z0-9._/-]+$ ]]; then
-              echo "::notice::$id : PR $pr : branche de tête au nom inattendu ; aucun verdict n'est enregistré."; continue
-            fi
-            gh api "repos/$depot" > "$api/depot.json" \
-              && gh api "repos/$depot/pulls?state=all&head=$etiquette&per_page=100" --paginate > "$api/meme_branche.json" \
-              && gh api "repos/$depot/commits/$sha/pulls?per_page=100" --paginate > "$api/meme_commit.json" \
+            [[ "$sha" =~ ^[0-9a-f]{7,40}$ && "$n" =~ ^[0-9]+$ ]] && gh api "repos/$depot/pulls/$n" > "$api/pr.json" \
+              && gh api "repos/$depot" > "$api/depot.json" \
+              && gh api "repos/$depot/pulls?state=all&per_page=100" --paginate > "$api/pulls.json" \
               && gh api "repos/$depot/issues/$n/events?per_page=100" --paginate > "$api/evenements.json" \
               && gh api "repos/$depot/issues/$n/timeline?per_page=100" --paginate > "$api/chronologie.json" \
               && gh api "repos/$depot/actions/workflows/bee-ci.yml/runs?head_sha=$sha&event=pull_request&status=completed&per_page=100" \
                    --paginate > "$api/executions.json" || continue
             if ! execution=$(python3 outils/bee.py choisir-execution "$id" --sha "$sha" --api "$api"); then
-              [ -n "$execution" ] && echo "::notice::$execution"; continue
+              [ -n "$execution" ] && printf '%s\n' "$execution" | journal; continue
             fi
             read -r numero adresse defaut <<< "$execution"
             rm -rf "$RUNNER_TEMP/verdict" && mkdir -p "$RUNNER_TEMP/verdict"
@@ -117,7 +115,7 @@ jobs:
               options+=(--arbre "$arbre")
             fi
             python3 outils/bee.py enregistrer-verdict "$id" --verdict "$RUNNER_TEMP/verdict/verdict.json" \
-              --sha "$sha" --execution "$adresse" "${options[@]}" 2>&1 | sed -E 's/##\[/# #[/g; s/^[[:space:]]*::/: :/' || true
+              --sha "$sha" --execution "$adresse" "${options[@]}" 2>&1 | journal || true
           done < a_traiter.tsv
           rm -f a_traiter.tsv
       - name: Publier
