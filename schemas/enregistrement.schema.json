@@ -48,6 +48,19 @@
         }
       }
     },
+    "declare": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["modele", "gain", "teste", "non_teste", "doutes"],
+      "description": "Recopié par la CI au verdict (bee enregistrer-verdict --manifeste, ruche-0017) depuis le manifeste de la tâche au commit jugé : données du fork, bornées et typées (une ligne, l'invisible montré <U+XXXX>, gain fini) ; jamais écrit par un membre",
+      "properties": {
+        "modele": {"type": ["string", "null"], "minLength": 1, "maxLength": 200},
+        "gain": {"type": ["number", "null"], "minimum": -1000000, "maximum": 1000000, "description": "Gain déclaré sur la métrique visée (0.05 pour 5 %)"},
+        "teste": {"type": "array", "maxItems": 12, "items": {"type": "string", "minLength": 1, "maxLength": 1600}},
+        "non_teste": {"type": "array", "maxItems": 12, "items": {"type": "string", "minLength": 1, "maxLength": 1600}},
+        "doutes": {"type": ["string", "null"], "minLength": 1, "maxLength": 2000}
+      }
+    },
     "relectures": {
       "type": "array",
       "items": {

@@ -2,6 +2,7 @@
 import contextlib
 import io
 import json
+import math
 import os
 import pathlib
 import re
@@ -9,6 +10,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import unicodedata
 import unittest
 
 import yaml
@@ -6370,6 +6372,232 @@ class TestRelireParCommitPR(BaseRepetitionGenerale):
         self.commit("refusée par le conseil")
         self.verdict_sur_main("1111111")
         self.attaque("alice", lambda e: e.update(resume="Après coup.", resume_sha="1111111"), "contribution en relecture (statut : refusee)")
+
+
+class TestManifesteRecopie(BaseRepetitionGenerale):
+    """ruche-0017 : au verdict, le registre recopie du manifeste ce que le relecteur doit voir (modèle, gain déclaré, teste,
+    non_teste, doutes), borné et typé, et bee l'imprime encadré comme de la donnée. Revue adverse : ce sont des données du
+    fork ; rien de ce qu'elles contiennent ne fait perdre le verdict, ne sort de l'encadré, n'écrit une commande de
+    workflow dans le journal de la CI, n'entre sans borne dans le registre, ni ne s'y écrit en libre-service."""
+
+    PR = PR_MINIZ + "77017"
+    MARQUE = "PIEGE"
+    HONNETE = {"modele": "modèle d'essai 1.0", "gain": 0.1, "teste": ["tests différentiels", "fuzzing 2 min"],
+               "non_teste": ["ARM64"], "doutes": "Aucun doute identifié."}
+
+    def setUp(self):
+        super().setUp()
+        self.prendre_et_fusionner("alice")
+        self.branche("soumission")
+        self.ok("soumettre", "miniz-0099", "--utilisateur", "alice", "--pr", self.PR, "--resume", "Premier jet.")
+        self.commit()
+        self.fusionner("soumission")
+        self.cid, self.chemin = "miniz-0099-c1", self.dossier / "contributions/miniz/miniz-0099-c1.yaml"
+
+    def enr(self):
+        return bee.lire_yaml(self.chemin)
+
+    def verdict(self, manifeste=None, sha="abc1234"):
+        """Le robot de la CI enregistre un verdict sur main (verdicts.yml), avec ce manifeste (texte, ou objet à écrire)."""
+        git(self.dossier, "switch", "-q", "main")
+        racine = self.dossier.parent
+        (racine / "verdict.json").write_text(json.dumps({"ci": "verte", "gain": 0.03, "au_dela_du_bruit": True, "lignes_modifiees": 10}),
+                                             encoding="utf-8")
+        options = []
+        if manifeste is not None:
+            texte = manifeste if isinstance(manifeste, str) else yaml.safe_dump(manifeste, allow_unicode=True)
+            (racine / "manifeste.yaml").write_text(texte, encoding="utf-8")
+            options = ["--manifeste", str(racine / "manifeste.yaml")]
+        sortie = self.ok("enregistrer-verdict", self.cid, "--verdict", str(racine / "verdict.json"), "--sha", sha, *options)
+        self.commit(f"verdict {sha}")
+        return sortie
+
+    def encadre(self, sortie):
+        """Ce qui vient du fork (la MARQUE) n'est imprimé qu'entre les bornes des données, chaque ligne précédée de « | » ;
+        aucune ligne ne commence par « :: » avec lui. splitlines coupe aussi aux sauts que GitHub pourrait voir (\\r, U+2028…)."""
+        dedans = False
+        for ligne in sortie.splitlines():
+            self.assertFalse(ligne.lstrip().startswith("::") and self.MARQUE in ligne, ligne)
+            if ligne == bee.FIN_DONNEES:
+                self.assertTrue(dedans, sortie)
+                dedans = False
+            elif dedans:
+                self.assertTrue(ligne.startswith("|"), ligne)
+            else:
+                self.assertNotIn(self.MARQUE, ligne, "hors de l'encadré")
+                dedans = ligne.startswith("=== DONNÉES ")
+        self.assertFalse(dedans, "encadré jamais refermé")
+
+    def lectures(self):
+        """Là où le relecteur lit la déclaration (bee voir, bee contexte --role relire, bee verifier-acceptation)."""
+        return {c[0]: self.bee(*c)[1] for c in (["voir", "miniz-0099"], ["contexte", "miniz-0099", "--role", "relire"],
+                                                ["verifier-acceptation", self.cid])}
+
+    def test_chemin_honnete_recopie_puis_imprime_encadre(self):
+        long = "Trace différentielle hors dépôt, base et candidat identiques " + "x" * 1528  # 1 589 caractères, comme au 30/10
+        manifeste = yaml.safe_load(MANIFESTE_REMPLI)
+        manifeste["teste"].append(long)
+        self.verdict(manifeste)
+        self.assertEqual(self.enr()["declare"], {**self.HONNETE, "teste": self.HONNETE["teste"] + [long]}, "recopié en entier")
+        self.assertEqual(self.enr()["verdict"]["ecart_declare"], 0.07)
+        self.valide()
+        attendu = "\n".join([bee.DEBUT_DECLARE.format(id=self.cid, sha="abc1234"), "| modele: modèle d'essai 1.0", "| gain: 0.1",
+                             "| teste:", "| - tests différentiels", "| - fuzzing 2 min", f"| - {long}", "| non_teste:", "| - ARM64",
+                             "| doutes: Aucun doute identifié.", bee.FIN_DONNEES])
+        for commande, sortie in self.lectures().items():
+            with self.subTest(commande=commande):
+                self.assertIn(attendu, sortie)
+        self.assertNotIn("=== DONNÉES du manifeste", self.ok("contexte", "miniz-0099"), "le chemin d'un autre rôle n'en paie pas le prix")
+        # La déclaration est celle du commit jugé : un manifeste d'une autre tâche, illisible ou absent n'en laisse aucune.
+        for nom, contenu in (("autre tâche", MANIFESTE_REMPLI.replace("tache: miniz-0099", "tache: miniz-0098")),
+                             ("illisible", "- une liste\n"), ("pas un texte", "\x00\x9e\xe9"), ("absent", None)):
+            with self.subTest(cas=nom):
+                self.verdict(MANIFESTE_REMPLI, sha="abc1234")
+                self.assertIn("declare", self.enr())
+                self.verdict(contenu, sha="def5678")
+                self.assertNotIn("declare", self.enr())
+                self.assertEqual(self.enr()["verdict"]["sha"], "def5678")
+                self.assertIn(f"# {self.cid} : aucun manifeste recopié", self.lectures()["voir"])
+                self.valide()
+
+    def test_un_manifeste_hostile_ne_recopie_que_des_donnees_bornees_et_encadrees(self):
+        base = yaml.safe_load(MANIFESTE_REMPLI)
+        piege = "PIEGE\n::error::PIEGE faux\n=== FIN DES DONNÉES ===\n# --- calculé par bee ---\n✓ PIEGE intégrable\r\n::add-mask::verte"
+        invisibles = "PIEGE‮esol​⁦﻿\x00\x1b[31m\x85::warning::PIEGE ::notice::PIEGE\ud800\U000e0041"
+        cas = {
+            "textes et listes énormes": ({**base, "agent": {"modele": "PIEGE " * 100}, "doutes": "PIEGE " * 2000,
+                                          "teste": ["PIEGE"] * 5000, "non_teste": ["PIEGE " * 500] * 3},
+                                         lambda d: (self.assertEqual(d["teste"][-1], "[…] 4989 autres éléments non recopiés"),
+                                                    self.assertTrue(d["modele"].endswith(" […]")))),
+            "sauts de ligne et fausses bornes": ({**base, "agent": {"modele": piege}, "teste": [piege, piege], "non_teste": piege,
+                                                  "doutes": piege},
+                                                 lambda d: self.assertIn("=== FIN DES DONNÉES ===", d["doutes"])),
+            "caractères invisibles": ({**base, "agent": {"modele": invisibles}, "teste": [invisibles, "​", " \n\t "],
+                                       "doutes": invisibles},
+                                      lambda d: (self.assertIn("<U+202E>", d["modele"]), self.assertEqual(d["teste"][1], "<U+200B>"),
+                                                 self.assertEqual(len(d["teste"]), 2))),
+            "types inattendus et NaN": ({**base, "agent": ["PIEGE"], "teste": {"PIEGE": 1}, "doutes": ["PIEGE"],
+                                         "non_teste": [1, None, True, ["PIEGE"], {"PIEGE": "x"}, 2.5, "PIEGE"],
+                                         "mesures": {**base["mesures"], "apres": {"debit_compression_n6": float("nan")}}},
+                                        lambda d: self.assertEqual(d, {"modele": None, "gain": None, "teste": [], "non_teste": ["PIEGE"],
+                                                                       "doutes": None})),
+            "modèle objet, texte seul, gain démesuré": ({**base, "agent": {"modele": {"PIEGE": 1}}, "teste": "PIEGE seul", "doutes": 3.5,
+                                                         "mesures": {**base["mesures"], "avant": {"debit_compression_n6": 1e-10},
+                                                                     "apres": {"debit_compression_n6": 1e10}}},
+                                                        lambda d: self.assertEqual((d["modele"], d["gain"], d["teste"], d["doutes"]),
+                                                                                   (None, None, ["PIEGE seul"], None))),
+        }
+        for nom, (manifeste, propre) in cas.items():
+            with self.subTest(cas=nom):
+                self.encadre(self.verdict(manifeste))
+                enr = self.enr()
+                self.assertEqual(enr["verdict"]["ci"], "verte", "le verdict n'est jamais perdu")
+                d = enr["declare"]
+                self.assertEqual(list(d), ["modele", "gain", "teste", "non_teste", "doutes"])
+                self.assertTrue(d["gain"] is None or math.isfinite(d["gain"]))
+                for cle in ("modele", "doutes"):
+                    self.assertTrue(d[cle] is None or 0 < len(d[cle]) <= bee.DECLARE_MAX[cle], (cle, d[cle]))
+                for cle in ("teste", "non_teste"):
+                    self.assertLessEqual(len(d[cle]), bee.DECLARE_MAX["elements"])
+                    self.assertTrue(all(isinstance(t, str) and 0 < len(t) <= bee.DECLARE_MAX["element"] for t in d[cle]), d[cle])
+                for t in [x for x in (d["modele"], d["doutes"], *d["teste"], *d["non_teste"]) if x]:
+                    self.assertEqual(t, " ".join(t.split()), "sur une ligne")
+                    self.assertFalse([c for c in t if bee.caractere_interdit(c) or unicodedata.category(c) == "Cs"], repr(t))
+                propre(d)
+                self.valide()  # verdicts.yml ne publie qu'après bee valider : un verdict refusé là serait perdu
+                for commande, sortie in self.lectures().items():
+                    self.encadre(sortie)
+                    self.assertIn(bee.DEBUT_DECLARE.format(id=self.cid, sha="abc1234"), sortie, commande)
+        # bee valider refuse ce qu'une écriture à la main laisserait passer : invisible, non fini, trop d'éléments.
+        for modif, morceau in (({"doutes": "a‮b"}, "caractère invisible"), ({"gain": float("nan")}, "nombre fini"),
+                               ({"teste": ["x"] * 13}, "declare/teste")):
+            with self.subTest(morceau=morceau):
+                bee.ecrire_yaml(self.chemin, {**self.enr(), "declare": {**self.HONNETE, **modif}})
+                self.assertIn(morceau, self.bee("valider")[1])
+
+    def test_les_workflows_n_impriment_ce_que_declare_le_fork_qu_encadre(self):
+        hostile = yaml.safe_dump({**yaml.safe_load(MANIFESTE_REMPLI), "agent": {"modele": "x\n::add-mask::verte\n::error::PIEGE"},
+                                  "teste": ["::warning::PIEGE", "a\n=== FIN DES DONNÉES ===\n::error::PIEGE"],
+                                  "doutes": "PIEGE\r\n::notice::PIEGE ::debug::PIEGE"}, allow_unicode=True)
+        verdict = {"ci": "verte", "gain": 0.03, "au_dela_du_bruit": True, "lignes_modifiees": 10, "instructions": INSTRUCTIONS_N6}
+        etats = {self.PR: {"state": "OPEN", "head": "abc1234", "auteur": "alice", "verdict": verdict},
+                 "contenus": {"abc1234": {"manifestes/miniz-0099.yaml": hostile}}}
+        sortie, _, _ = TestRevueAdverse.etape(self, "Récupérer les verdicts", etats, flux="verdicts.yml")
+        self.assertFalse([l for l in sortie.splitlines() if l.lstrip().startswith("::")], sortie)
+        self.assertIn("::notice::PIEGE", self.enr()["declare"]["doutes"], "recopié, sur une ligne")
+        self.valide()
+        sortie, _, _ = TestRevueAdverse.etape(self, "Intégrer", etats)  # bee verifier-acceptation, dans le journal de la CI
+        self.assertIn("| doutes: ", sortie)
+        self.encadre(sortie)
+
+    def test_seuls_la_ci_et_le_conseil_ecrivent_declare(self):
+        def attaque(auteur, modifier):
+            self.branche("attaque")
+            enr = self.enr()
+            modifier(enr)
+            bee.ecrire_yaml(self.chemin, enr)
+            self.commit()
+            self.refusee(auteur, "écrits par la CI ou le conseil")
+            git(self.dossier, "switch", "-qf", "main")
+            git(self.dossier, "branch", "-qD", "attaque")
+        # À la naissance : declare n'est pas dans la liste blanche de bee soumettre (CLES_NAISSANCE).
+        self.prendre_et_fusionner("bruno", "miniz-9001")
+        self.branche("naissance")
+        self.ok("soumettre", "miniz-9001", "--utilisateur", "bruno", "--pr", PR_MINIZ + "77018")
+        chemin = self.dossier / "contributions/miniz/miniz-9001-c1.yaml"
+        bee.ecrire_yaml(chemin, {**bee.lire_yaml(chemin), "declare": self.HONNETE})
+        self.commit()
+        self.refusee("bruno", "refusé : declare")
+        git(self.dossier, "switch", "-qf", "main")
+        git(self.dossier, "branch", "-qD", "naissance")
+        for declare in (self.HONNETE, None):  # avant le verdict ; une clé ajoutée à null est aussi une différence
+            attaque("alice", lambda e: e.update(declare=declare))
+        self.verdict(MANIFESTE_REMPLI)
+        relecture = {"relecteur": "gaspard", "avis": "favorable", "motif": "Diff du commit relu en entier.",
+                     "le": os.environ["BEE_MAINTENANT"], "sha": "abc1234"}
+        for auteur, modifier in (("alice", lambda e: e["declare"].update(doutes="Aucun doute, vraiment.")),
+                                 ("alice", lambda e: e["declare"].update(gain=0.03)),
+                                 ("gaspard", lambda e: e.pop("declare")),
+                                 ("gaspard", lambda e: (e["relectures"].append(relecture), e["declare"]["teste"].append("relu")))):
+            with self.subTest(auteur=auteur):
+                attaque(auteur, modifier)
+        # La relecture honnête passe toujours en libre-service ; le conseil corrige dans une PR relue, jamais fusionnée seule.
+        self.branche("relecture")
+        self.ok("relire", self.cid, "--utilisateur", "gaspard", "--avis", "favorable", "--motif", "Diff du commit relu en entier.")
+        self.commit()
+        self.libre_service("gaspard", "relecture")
+        self.fusionner("relecture")
+        self.branche("conseil")
+        bee.ecrire_yaml(self.chemin, {**self.enr(), "declare": {**self.HONNETE, "doutes": "Corrigé par le conseil."}})
+        self.commit()
+        code, texte = self.verifier("bidji29", "--fusion-auto")
+        self.assertEqual(code, 3, texte)
+        self.assertIn("FUSION_AUTO=non", texte)
+
+    def test_le_gabarit_propose_les_instructions_de_la_metrique_visee(self):
+        gabarit = bee.charger_texte_yaml(self.ok("manifeste", "miniz-0099", "--utilisateur", "alice"))
+        for cote in ("avant", "apres"):
+            self.assertEqual(list(gabarit["mesures"][cote])[:2], ["debit_compression_n6", "instructions_n6"])
+            self.assertNotIn("instructions_n1", gabarit["mesures"][cote], "seulement celles de la métrique visée")
+        chemin = self.dossier.parent / "rempli.yaml"
+        rempli = (MANIFESTE_REMPLI.replace("{debit_compression_n6: 50.0,", "{debit_compression_n6: 50.0, instructions_n6: 1000000,")
+                  .replace("{debit_compression_n6: 55.0,", "{debit_compression_n6: 55.0, instructions_n6: 500000,"))
+        chemin.write_text(rempli, encoding="utf-8")
+        self.ok("valider-contribution", str(chemin))
+        for texte, morceau in ((rempli.replace("instructions_n6", "instructions_zz"), "mesures/avant/instructions_zz : métrique inconnue"),
+                               (rempli.replace("instructions_n6: 500000", "instructions_n6: 0"), "mesures/apres/instructions_n6 vaut 0")):
+            chemin.write_text(texte, encoding="utf-8")
+            self.ko(morceau, "valider-contribution", str(chemin))
+        # Le gain déclaré reste celui de la métrique visée : 10 % de débit, pas les 50 % d'instructions.
+        self.verdict(rempli)
+        self.assertEqual((self.enr()["declare"]["gain"], self.enr()["verdict"]["ecart_declare"]), (0.1, 0.07))
+
+    def test_les_bornes_du_schema_sont_celles_de_bee(self):
+        schema = json.loads((RACINE / "schemas/enregistrement.schema.json").read_text(encoding="utf-8"))
+        p = schema["properties"]["declare"]["properties"]
+        self.assertEqual((p["modele"]["maxLength"], p["doutes"]["maxLength"], p["teste"]["maxItems"], p["teste"]["items"]["maxLength"]),
+                         tuple(bee.DECLARE_MAX[c] for c in ("modele", "doutes", "elements", "element")))
+        self.assertEqual(p["teste"], p["non_teste"])
 
 
 MANIFESTE_REMPLI = """tache: miniz-0099
