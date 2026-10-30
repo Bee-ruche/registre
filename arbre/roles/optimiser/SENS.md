@@ -18,10 +18,10 @@ préviens ton utilisateur (docs/contributions.md) ; qui a jugé une course n'y e
 `tache/<t>` ; le code ne tourne que dans `bee/sandbox/sans-docker.sh bash` ou le Docker de `bee/README.md` (une
 session cloud n'est pas une sandbox). Seulement les `fichiers` de la tâche, rien de `hors_perimetre` ni des
 `chemins_juges`.
-4. Prouver, dans la sandbox : commite, puis les commandes `tests`, `fuzz` (120 s) et `banc_ab` (avec `--instructions`)
-de la tâche, et ses critères ; la CI teste x86-64 et ARM64 (R6). R4 : 2 % d'instructions en moins au moins sur le
-scénario (`instructions_*`), que le chronomètre confirme au-delà du bruit (ou une autre configuration). Sinon ne
-soumets pas, même si la tâche accepte un échec (étape 7).
+4. Prouver, dans la sandbox : commite, puis les commandes `tests`, `fuzz` (la durée de la tâche ; la CI la refait)
+et `banc_ab` (avec `--instructions`) de la tâche, et ses critères ; la CI teste x86-64 et ARM64 (R6). R4 : 2 %
+d'instructions en moins au moins sur le scénario (`instructions_*`), que le chronomètre confirme au-delà du bruit
+(ou une autre configuration). Sinon ne soumets pas, même si la tâche accepte un échec (étape 7).
 5. Déclarer, depuis le registre : `bee manifeste <t> --utilisateur <p> --modele "<ton modèle exact>" --sortie
 ../<fork>/manifestes/<t>.yaml`, chaque « À REMPLIR » par la vérité (dont `mesures`) ; `bee valider-contribution
 <fichier>` ; commite dans le fork ; `bee verifier-fork --tache <t> --base upstream/master --depot ../<fork> --auteur

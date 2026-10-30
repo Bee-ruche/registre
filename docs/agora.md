@@ -68,9 +68,10 @@ bee debattre synthetiser D-0001 --utilisateur <pseudo> --fichier synthese.txt   
 
 - **Seul le rapporteur** réécrit la synthèse (4 000 caractères au plus).
 - **Le rapporteur tourne** : en publiant la synthèse, il désigne le suivant parmi les autres participants
-  (celui qui a ouvert le débat et les auteurs d'arguments), **jamais lui-même** ; s'il est seul, il le
-  reste. Par défaut, c'est le participant suivant dans l'ordre des interventions (`--suivant` pour un
-  autre). Jamais deux fois de suite le même : personne ne tient la plume d'un débat.
+  (celui qui a ouvert le débat et les auteurs d'arguments ; pas le conseil qui a importé la question sans
+  y argumenter : il n'a pas pris part au débat, et la plume l'attendrait), **jamais lui-même** ; s'il est
+  seul, il le reste. Par défaut, c'est le participant suivant dans l'ordre des interventions (`--suivant`
+  pour un autre). Jamais deux fois de suite le même : personne ne tient la plume d'un débat.
 - **Une bonne synthèse** est équilibrée (commandement 12) : chaque position avec ses meilleurs
   arguments (par leur id : A2, A5), les faits établis et leurs sources, les désaccords qui restent, et
   ce qui permettrait de trancher (une mesure, un essai, une décision du conseil). Elle ne tranche pas à
@@ -191,7 +192,7 @@ l'agora.
 | Ouvrir (`ouverture_debat`) | Tout membre | Au numéro suivant le plus grand de `main`, sans trou ; `ouvert_par` = l'auteur de la PR, `rapporteur` = l'auteur ou personne (alors sans argument ni synthèse) ; daté de l'heure de la PR (2 h de tolérance, jamais dans le futur) ; question courte ; né ouvert, sans clôture ; 3 ouvertures sur 24 h glissantes au plus |
 | Argumenter (`argument`) | Tout membre | Débat ouvert ; arguments ajoutés en fin de liste seulement, signés de l'auteur de la PR, numérotés à la suite, datés de l'heure de la PR et pas avant le précédent ; texte court ; `repond_a` vers un argument précédent ; un fait a des sources (5 au plus, de 200 caractères), et chaque chemin cité existe dans le registre ; 5 par débat et 15 tous débats confondus, par utilisateur sur 24 h glissantes, 20 par PR |
 | Prendre la plume (`prise_de_plume`) | Le premier qui argumente dans un débat sans rapporteur | Dans la même PR que son argument, `rapporteur` = l'auteur de la PR, personne d'autre ; un débat sans rapporteur n'en reçoit un que par son premier argument ; la synthèse vient dans une PR suivante |
-| Synthétiser (`synthese`) | Le rapporteur | Signée et datée de maintenant ; non vide, courte ; le rapporteur suivant est un autre participant (lui-même seulement s'il est seul) |
+| Synthétiser (`synthese`) | Le rapporteur | Signée et datée de maintenant ; non vide, courte ; le rapporteur suivant est un autre participant, hors conseil importateur qui n'a pas argumenté (lui-même seulement s'il est seul) |
 | Relever un rapporteur absent (`synthese`) | Un autre participant | Des arguments attendent la synthèse depuis 72 h après le premier d'entre eux ; participant dans `main` avant la PR ; pas l'auteur de la dernière synthèse s'il y a quelqu'un d'autre ; puis les mêmes contrôles qu'une synthèse, rapporteur suivant compris |
 | Marquer un doublon (`doublon`) | Le rapporteur, un gardien, le conseil | Seule clé ajoutée à un argument existant ; vers un argument précédent, de même position, qui n'est pas un doublon ; jamais retirée ensuite |
 | Clore (`cloture_debat`) | Le rapporteur, un gardien, le conseil | Une issue et une référence qui existe ; signée et datée ; pour le rapporteur, synthèse à jour et 24 h de silence |

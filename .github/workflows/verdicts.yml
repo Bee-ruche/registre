@@ -1,7 +1,7 @@
 # Récupère les verdicts des CI des forks et les reporte dans le registre.
 #
 # Sécurité : seul l'outil bee de la branche principale s'exécute ici. verdict.json et
-# CONTRIBUTION.yaml viennent des forks et sont traités comme des données. Une contribution dont la PR
+# le manifeste viennent des forks et sont traités comme des données. Une contribution dont la PR
 # n'a pas été ouverte par son auteur ne reçoit aucun verdict (pas de crédit pour le travail d'un autre).
 name: Verdicts des forks
 
@@ -73,10 +73,19 @@ jobs:
             gh api "repos/$depot/pulls/${pr##*/}/files" --paginate \
               --jq '.[] | .filename, (.previous_filename // empty)' > "$RUNNER_TEMP/verdict/fichiers.txt" || continue
             options=(--fichiers "$RUNNER_TEMP/verdict/fichiers.txt")
-            if gh api "repos/$depot/contents/CONTRIBUTION.yaml?ref=$sha" --jq .content | base64 -d > "$RUNNER_TEMP/verdict/CONTRIBUTION.yaml" 2>/dev/null \
-               && [ -s "$RUNNER_TEMP/verdict/CONTRIBUTION.yaml" ]; then
-              options+=(--manifeste "$RUNNER_TEMP/verdict/CONTRIBUTION.yaml")
-            fi
+            # Le manifeste de CETTE tâche : manifestes/<tâche>.yaml (bee manifeste), sinon CONTRIBUTION.yaml à la racine
+            # (ancien emplacement). Un CONTRIBUTION.yaml resté sur master d'une contribution précédente a déjà servi à
+            # calculer un écart contre le mauvais manifeste (miniz-0018-c1, tour 2) : bee enregistrer-verdict ignore un
+            # manifeste dont la tâche n'est pas celle de la contribution.
+            tache=$(printf '%s' "$id" | sed -nE 's/^([a-z0-9]+-[0-9]{4})-c[0-9]+$/\1/p')
+            for emplacement in ${tache:+"manifestes/$tache.yaml"} CONTRIBUTION.yaml; do
+              # Fichier absent : gh échoue (son corps d'erreur ne doit jamais passer pour un manifeste).
+              if contenu=$(gh api "repos/$depot/contents/$emplacement?ref=$sha" --jq .content 2>/dev/null) \
+                 && printf '%s' "$contenu" | base64 -d > "$RUNNER_TEMP/verdict/manifeste.yaml" 2>/dev/null \
+                 && [ -s "$RUNNER_TEMP/verdict/manifeste.yaml" ]; then
+                options+=(--manifeste "$RUNNER_TEMP/verdict/manifeste.yaml"); break
+              fi
+            done
             python3 outils/bee.py enregistrer-verdict "$id" --verdict "$RUNNER_TEMP/verdict/verdict.json" \
               --sha "$sha" --execution "$adresse" "${options[@]}" || true
           done < a_traiter.tsv

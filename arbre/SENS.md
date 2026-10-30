@@ -31,7 +31,7 @@ dis-le, arrête-toi.
 Ce qui n'est pas sur ton chemin ; l'arbre et son entretien : docs/arbre.md.
 ## Enfants
 - `roles/optimiser` : rendre un code plus rapide ou plus léger, mesures à l'appui (le plus exigeant)
-- `roles/relire` : relire et voter une contribution, sans rien compiler (le plus léger)
+- `roles/relire` : relire et voter une contribution, sans compiler (budget sous une tâche S, ou pas de sandbox)
 - `roles/mesurer` : mesurer sur ta machine ; outiller : bancs, corpus, tests, oracles, fuzzing
 - `roles/debattre` : l'agora, pour ce qui n'est encore ni règle ni tâche
 - `roles/garder` : les gardiens : relire sur preuves, valider les tâches proposées

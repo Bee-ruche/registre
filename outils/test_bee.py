@@ -260,6 +260,26 @@ class TestRegistre(BaseTest):
         self.assertEqual(enr["verdict"]["ecart_declare"], 0.07)
         self.assertTrue(enr["verdict"]["amorcage"])
         self.valide()
+        # L'alerte se lit aussi là où le relecteur regarde, pas seulement dans le journal de la CI (tour 2).
+        for commande in (["verifier-acceptation", cid], ["classement"]):
+            self.assertIn(f"⚠ {cid} : écart de 7.0 points", self.bee(*commande)[1], commande[0])
+        # Le manifeste d'une autre tâche (CONTRIBUTION.yaml resté sur master) n'est jamais comparé : pas d'écart inventé.
+        manifeste.write_text(MANIFESTE_REMPLI.replace("tache: miniz-0099", "tache: miniz-0098"), encoding="utf-8")
+        self.assertIn("tache: miniz-0098", manifeste.read_text(encoding="utf-8"))
+        code, texte = self.bee("enregistrer-verdict", cid, "--verdict", str(verdict), "--manifeste", str(manifeste), "--sha", "abc1235")
+        self.assertEqual(code, 0, texte)
+        self.assertIn("manifeste ignoré (tâche miniz-0098, pas miniz-0099)", texte)
+        self.assertNotIn("ecart_declare", bee.lire_yaml(self.dossier / f"contributions/miniz/{cid}.yaml")["verdict"])
+        for illisible in ("- une liste\n", "\x00\x9e\xe9"):
+            manifeste.write_text(illisible, encoding="utf-8")
+            code, texte = self.bee("enregistrer-verdict", cid, "--verdict", str(verdict), "--manifeste", str(manifeste), "--sha", "abc1236")
+            self.assertEqual(code, 0, texte)
+            self.assertIn("manifeste ignoré (tâche illisible", texte)
+        code, texte = self.bee("enregistrer-verdict", cid, "--verdict", str(verdict), "--manifeste", str(self.dossier / "MANIFESTE_ABSENT.yaml"), "--sha", "abc1237")
+        self.assertEqual(code, 0, texte)
+        manifeste.write_text(MANIFESTE_REMPLI, encoding="utf-8")
+        self.bee("enregistrer-verdict", cid, "--verdict", str(verdict), "--manifeste", str(manifeste), "--sha", "abc1234")
+        enr = bee.lire_yaml(self.dossier / f"contributions/miniz/{cid}.yaml")
         reg = bee.Registre(self.dossier)
         score = bee.calculer_score(reg, enr, bee.calculer_niveaux(reg))
         # G 0,03 × P 1 × C 1/3 / (1 + 10/100) × V 1 (chloé est Nouvelle : poids 0)
@@ -1194,10 +1214,31 @@ class TestArbre(BaseTest):
             for projet in ("miniz", "libyaml", "ruche"):
                 tache = next(t for _, t in sorted(reg.taches.items()) if t[1].get("projet") == projet)[1]
                 for budget in (None, 1):
-                    with self.subTest(role=role, projet=projet, budget=budget):
-                        texte, _ = bee.texte_contexte(reg, tache["id"], role, budget, registre=str(self.dossier))
-                        self.assertIn(self.CONSIGNE_FAILLE, self.plat(texte))
+                    for deja_lu in (False, True):
+                        with self.subTest(role=role, projet=projet, budget=budget, deja_lu=deja_lu):
+                            texte, _ = bee.texte_contexte(reg, tache["id"], role, budget, registre=str(self.dossier),
+                                                          deja_lu=deja_lu)
+                            self.assertIn(self.CONSIGNE_FAILLE, self.plat(texte.replace("\n# ", "\n")))
         self.assertIn(self.CONSIGNE_FAILLE, self.plat((self.dossier / "AGENTS.md").read_text(encoding="utf-8")))
+
+    def test_deja_lu_ne_reimprime_ni_la_racine_ni_le_role(self):
+        """Tour 2 : après bee contexte --role, bee contexte <tâche> réimprimait 61 lignes déjà lues."""
+        _, complet = self.bee("contexte", "miniz-0099")
+        code, abrege = self.bee("contexte", "miniz-0099", "--deja-lu")
+        self.assertEqual(code, 0, abrege)
+        self.assertIn("=== nœud racine ===", complet)
+        self.assertNotIn("=== nœud racine ===", abrege)
+        self.assertNotIn("=== nœud roles/", abrege)
+        self.assertIn("Déjà lus (--deja-lu), non réimprimés : racine, roles/", abrege)
+        self.assertIn("=== DONNÉES de la tâche miniz-0099", abrege, "la tâche reste entière")
+        self.assertIn("=== nœud projets/compression-sans-perte/miniz ===", abrege, "les paliers de projet restent")
+        self.assertLess(len(abrege), len(complet))
+        self.assertIn("--deja-lu va avec une tâche", self.bee("contexte", "--deja-lu")[1])
+        # Une racine sans la consigne des failles (réécrite par la ruche) s'imprime en entier : rien ne la perd en silence.
+        racine = self.dossier / "arbre/SENS.md"
+        racine.write_text(racine.read_text(encoding="utf-8").replace("Une faille (plantage", "Un défaut (plantage"),
+                          encoding="utf-8")
+        self.assertIn("=== nœud racine ===", self.bee("contexte", "miniz-0099", "--deja-lu")[1])
 
     def test_I1_voir_et_contexte_impriment_les_donnees_relues(self):
         """Ni commentaire YAML, ni mise en forme du fichier : la tâche relue, encadrée, chaque ligne précédée de « | »."""
@@ -1347,6 +1388,21 @@ class TestPullRequestsArbre(BaseTest):
         self.assertEqual(code, 3, texte)
         self.assertIn("outillage", texte)
         self.assertIn("FUSION_AUTO=non", texte)
+
+    def test_une_tache_de_la_ruche_ne_nait_pas_optimisation(self):
+        """Tour 2 : bee proposer-tache ruche sortait un gabarit d'optimisation (métrique, critères R4 et R5)."""
+        code, texte = self.bee("proposer-tache", "ruche", "--utilisateur", "alice")
+        self.assertEqual(code, 0, texte)
+        tache = bee.lire_yaml(max(self.dossier.glob("taches/ruche/ruche-0*.yaml")))
+        self.assertEqual((tache["type"], tache["metrique"]), ("test", None))
+        self.assertNotIn("sortie_compressee", tache)
+        self.assertEqual(tache["critere_acceptation"], ["Critère vérifiable : une commande, un test ou un fichier attendu"])
+        self.assertIn("n'a pas de métrique", self.bee("proposer-tache", "ruche", "--utilisateur", "alice", "--type", "optimisation")[1])
+        code, texte = self.bee("proposer-tache", "miniz", "--utilisateur", "alice")
+        self.assertEqual(code, 0, texte)
+        tache = bee.lire_yaml(max(self.dossier.glob("taches/miniz/miniz-0*.yaml")))
+        self.assertEqual(tache["type"], "optimisation", "là où il y a des métriques, l'optimisation reste le défaut")
+        self.assertTrue(any("R4" in c for c in tache["critere_acceptation"]))
 
     def test_une_tache_proposee_vers_un_noeud_inconnu_est_refusee(self):
         git(self.dossier, "switch", "-qc", "proposition")
@@ -2739,6 +2795,16 @@ if args[:1] == ["api"] and "/pulls/" in args[1] and args[1].endswith("/files"):
         sys.exit(1)
     print("\n".join(pr.get("fichiers") or ["miniz_tdef.c"]))
     sys.exit(0)
+if args[:1] == ["api"] and "/contents/" in args[1]:
+    # Fichiers du dépôt de la PR à un commit : {"depot": {"<sha>": {"<chemin>": "<texte>"}}} (FAUX_GH_ETAT, clé "contenus").
+    import base64
+    chemin, _, requete = args[1].split("/contents/", 1)[1].partition("?ref=")
+    texte = (etat.get("contenus") or {}).get(requete, {}).get(chemin)
+    if texte is None:
+        print('{"message":"Not Found","status":"404"}')
+        sys.exit(1)
+    print(base64.b64encode(texte.encode("utf-8")).decode("ascii"))
+    sys.exit(0)
 if args[:1] == ["api"] and args[1].startswith("users/"):
     print("2020-01-01")
     sys.exit(0)
@@ -3202,6 +3268,25 @@ class TestRevueAdverse(BaseParallele):
         self.etape("Récupérer les verdicts", etats, flux="verdicts.yml")
         enr = self.enr(c1)
         self.assertEqual((enr["verdict"]["ci"], enr["verdict"]["sha"], enr["verdict"]["fichiers_controles"]), ("verte", "abc1234", True))
+        self.valide()
+
+    def test_le_verdict_compare_au_manifeste_de_la_tache_jamais_a_un_ancien(self):
+        """Tour 2 : un CONTRIBUTION.yaml resté sur master (miniz-0016) avait servi d'étalon à miniz-0018-c1 (9,1 points
+        d'écart inventés). Le workflow lit d'abord manifestes/<tâche>.yaml ; bee ignore un manifeste d'une autre tâche."""
+        c1 = self.soumettre_0099("alice")
+        verdict = {"ci": "verte", "gain": 0.03, "au_dela_du_bruit": True, "lignes_modifiees": 10, "instructions": INSTRUCTIONS_N6}
+        ancien = MANIFESTE_REMPLI.replace("tache: miniz-0099", "tache: miniz-0016")
+        etats = {PR_MINIZ + "99007": {"state": "OPEN", "head": "abc1234", "auteur": "alice", "verdict": verdict},
+                 "contenus": {"abc1234": {"CONTRIBUTION.yaml": ancien}}}
+        sortie, _, _ = self.etape("Récupérer les verdicts", etats, flux="verdicts.yml")
+        self.assertIn("manifeste ignoré (tâche miniz-0016, pas miniz-0099)", sortie)
+        self.assertNotIn("ecart_declare", self.enr(c1)["verdict"])
+        # Le manifeste de la tâche, à sa place, est celui qui compte (gain déclaré 10 %, mesuré 3 %).
+        etats[PR_MINIZ + "99007"]["head"] = "abc1235"
+        etats["contenus"] = {"abc1235": {"CONTRIBUTION.yaml": ancien, "manifestes/miniz-0099.yaml": MANIFESTE_REMPLI}}
+        sortie, _, _ = self.etape("Récupérer les verdicts", etats, flux="verdicts.yml")
+        self.assertIn("écart de 7.0 points", sortie)
+        self.assertEqual(self.enr(c1)["verdict"]["ecart_declare"], 0.07)
         self.valide()
 
     def test_une_contribution_de_la_ruche_n_arrete_pas_la_collecte_des_verdicts(self):
@@ -3781,7 +3866,15 @@ class TestAgora(BaseAgora):
         # bee essaim montre les débats ouverts et leur dernière activité.
         essaim = json.loads(self.ok("essaim", "--json"))
         self.assertEqual(essaim["debats"][0]["derniere_activite"], "2026-10-29T12:40:00Z")
-        self.assertIn("Débats ouverts de l'agora", self.ok("essaim"))
+        texte = self.ok("essaim")
+        self.assertIn("Débats ouverts de l'agora", texte)
+        self.assertIn("  - D-0001 (rapporteur", texte, "un débat qui vit a sa ligne")
+        # Tour 2 : les débats encore sans argument tiennent sur une seule ligne.
+        self.ouvrir("bruno", "Une deuxième question, encore sans argument ?")
+        self.ouvrir("chloe", "Une troisième question, encore sans argument ?")
+        texte = self.ok("essaim")
+        self.assertIn("2 débat(s) attendent un premier argument : D-0002, D-0003 ; leurs questions : bee debats", texte)
+        self.assertNotIn("  - D-0002 (rapporteur", texte)
 
     def test_refus_des_commandes(self):
         self.debat_a_trois()
@@ -3957,7 +4050,11 @@ class TestAgora(BaseAgora):
         self.assertNotIn("vous devenez le rapporteur", self.argumenter("chloe", "pour", "Un suppléant désigné à l'avance suffit."))
         self.assertEqual(self.debat()["rapporteur"], "bruno", "la plume ne se prend qu'une fois")
         self.a("2026-10-29T12:30:00Z")
-        self.assertIn("rapporteur suivant : ", self.ok("debattre", "synthetiser", "D-0001", "--utilisateur", "bruno", "--texte", "État."))
+        texte = self.ok("debattre", "synthetiser", "D-0001", "--utilisateur", "bruno", "--texte", "État.")
+        self.assertIn("rapporteur suivant : chloe", texte, "le tour de rôle passe par ceux qui ont pris part, pas par l'importateur")
+        self.a("2026-10-29T12:40:00Z")
+        texte = self.ok("debattre", "synthetiser", "D-0001", "--utilisateur", "chloe", "--texte", "État 2.")
+        self.assertIn("rapporteur suivant : bruno", texte, "le conseil importateur, qui n'a pas argumenté, n'est pas proposé")
         self.ouvrir("alice", "Un débat ouvert à la main garde son ouvreur comme rapporteur ?")
         dernier = max(bee.Registre(self.dossier).debats)  # après les débats importés, quel que soit leur nombre
         self.assertEqual(self.debat(dernier)["rapporteur"], "alice")
@@ -4598,6 +4695,24 @@ class TestPullRequestsAgora(BaseAgora):
         self.ecrire(d)
         self.commit()
         self.refusee("bruno", "la synthèse se publie dans une PR suivante")
+
+    def test_un_argumenteur_seul_dans_un_debat_importe_garde_la_plume(self):
+        """Tour 2 : le conseil qui importe une question sans y argumenter n'est pas dans le tour de rôle ; un argumenteur
+        seul garde la plume en publiant sa synthèse, au lieu de devoir la passer au conseil."""
+        self.main_avec_debat_sans_rapporteur()
+        self.argumenter("bruno", "contre", "Un conseil d'un seul humain est un point de défaillance unique.")
+        self.commit()
+        git(self.dossier, "switch", "-q", "main")
+        git(self.dossier, "merge", "-q", "--ff-only", "pr")
+        self.branche("suivante")
+        self.a("2026-10-29T12:30:00Z")
+        self.synthese_brute("bruno", "bidji29")
+        self.refusee("bruno", "seul participant, le rapporteur le reste")
+        git(self.dossier, "reset", "-q", "--hard", "main")
+        texte = self.ok("debattre", "synthetiser", "D-0001", "--utilisateur", "bruno", "--texte", "Un seul argument pour l'instant.")
+        self.assertIn("rapporteur suivant : bruno", texte)
+        self.commit()
+        self.libre_service("bruno", "synthese")
 
     def test_refus_prise_de_plume_dans_un_debat_qui_a_un_rapporteur(self):
         self.main_avec_debat()  # alice, qui a ouvert, est rapporteure
