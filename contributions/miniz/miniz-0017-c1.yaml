@@ -10,33 +10,94 @@ engage_depuis: '2026-10-30T12:37:04Z'
 relectures: []
 verdict:
   ci: verte
-  gain: 0.0017641432597204076
+  gain: -9.887218429871503e-05
   au_dela_du_bruit: false
   instructions:
     instructions_n1:
-      A: 171444409.0
-      B: 171444409.0
+      A: 171454411.0
+      B: 171454411.0
       gain: 0.0
     instructions_n6:
-      A: 335519075.0
-      B: 335519075.0
+      A: 335500393.0
+      B: 335500393.0
       gain: 0.0
     instructions_n9:
-      A: 483698428.0
-      B: 483698428.0
+      A: 483711759.0
+      B: 483711759.0
       gain: 0.0
     instructions_decompression:
-      A: 31602616.0
-      B: 29980547.0
-      gain: 0.05132704836840085
+      A: 31602211.0
+      B: 29979507.0
+      gain: 0.051347799684015816
   degradations: {}
   juge:
-    version: 2
-    commun: null
+    version: 3
+    commun: juge-v1
     sorties_comparees: 7868
     constructions_suspectes: []
   lignes_modifiees: 92
-  ecart_declare: 0.0252
-  sha: e4184c75e1795afe7bf07e5b726aea9427998857
+  ecart_declare: 0.0271
+  sha: 430695c677df1038871d2df8e0b09bf0947fba06
+  arbre: e7919d74d5bc39000d269834192a64c640245245
   fichiers_controles: true
-  execution: https://github.com/Bee-ruche/minizBee/actions/runs/41069235168
+  execution: https://github.com/Bee-ruche/minizBee/actions/runs/41096019268
+declare:
+  modele: Claude Opus 5.5 (claude-opus-5-5)
+  gain: 0.027
+  teste:
+  - 'Instructions (ab.py --instructions, cachegrind, 128 Kio par fichier, passes mesurées seulement),
+    deux passages identiques : décompression 29 954 575 -> 28 312 841 (-5,481 %) ; n1 170 765 561, n6
+    334 757 696, n9 482 752 478, identiques entre base et candidat'
+  - 'Chronomètre, ab.py : 20 répétitions, décompression +1,26 % (B gagne 11/20) ; 30 répétitions (chiffres
+    déclarés), +2,70 % (17/30) ; les deux « dans le bruit ». Dans les mêmes passages, la compression,
+    au code inchangé, varie de -6,3 % à +12,3 % : la charge de la machine domine, ces chiffres ne mesurent
+    pas le changement'
+  - 'Chronomètre, configuration moins sensible à la charge : banc officiel compilé par bee/Makefile pour
+    la base et pour HEAD (sources extraites hors dépôt), lancé en alternance stricte A, B avec --scenario
+    decompression --passes-decompression 50 --sans-memoire, une exécution de chauffe chacun, test du signe
+    unilatéral à 0,02 comme ab.py. Série 1 : 30 paires, médianes 536,8 -> 540,5 Mo/s (+0,69 %), B gagne
+    21/30 (p = 0,021). Série 2 : 60 paires, médianes 539,5 -> 544,5 Mo/s (+0,92 %, médiane des écarts
+    par paire +0,87 %), B gagne 39/60 (seuil 39, p = 0,0137) : gain au-delà du bruit. Les deux séries
+    ensemble : 60 victoires sur 90 paires'
+  - 'Prédictions de branchement simulées (cachegrind --branch-sim, scénario décompression, 128 Kio par
+    fichier) : 314 368 (base) contre 315 792 (candidat)'
+  - 'bee/tests/lancer.sh (sandbox) sur le commit 8839681 : 3843 contrôles, 0 écart, 488 empreintes identiques
+    à la référence ; cas limites de l''API : 192 cas, 0 échec'
+  - 'bee/tests/lancer.sh --sanitiseurs (gcc, ASan + UBSan) : 3843 contrôles, 0 écart ; cas limites de
+    l''API, 0 échec'
+  - 'bee/ci/tests_origine.sh (CMake + ctest) : 1/1 test passé ; miniz_tinfl.c compilé sans avertissement
+    par gcc -std=gnu90 -pedantic -Wall -Wextra, g++ en C++ (le goto ne franchit aucune initialisation)
+    et clang -Wall -Wextra'
+  - 'bee/fuzz/lancer.sh 150 --reference <extraction de origin/master> (libFuzzer) : fuzz_inflate 24 934
+    entrées, fuzz_compression 17 743, aucun écart ; puis fuzz_inflate seul 300 s, avec en graines les
+    1 636 variantes des flux aux bornes décrits ci-dessous : 6 391 entrées (grosses), aucun écart'
+  - 'Différentiel aux bornes, hors dépôt et non commité : 904 flux, dont des blocs dynamiques écrits par
+    un encodeur Deflate fait pour l''occasion (codes de distance de 1 à 15 bits, 15 bits sur le symbole
+    29 à 13 bits supplémentaires, longueurs 131 à 258, jusqu''à 33 bits par correspondance, codes de longueur
+    de 13 et 14 bits pour abaisser num_bits à la sortie de la boucle des littéraux, distances 1 à 32768,
+    arbre de distance dégénéré à un seul code d''un bit avec emploi du code non attribué, arbre de distance
+    vide, symboles invalides 30, 31, 286 et 287 en bloc fixe), des flux de zlib (niveaux 1, 6, 9, quatre
+    stratégies, fenêtres 2^9 et 2^15) et des mutations (23 troncatures en fin, 12 bits inversés, données
+    après la fin). Chaque flux est décodé par la base et par le candidat : tinfl en une fo […]'
+  - 'Chemin à tampon de bits de 32 bits : TINFL_USE_64BIT_BITBUF forcé à 0 dans des copies hors dépôt
+    de la base et du candidat, même trace sur 208 flux : 41 724 lignes identiques'
+  non_teste:
+  - ARM64 (pas de machine ; la CI le fait) et toute autre architecture que x86-64, dont les machines gros-boutistes
+    (le chemin rapide n'y fait que des décalages sur bit_buf, aucune lecture mémoire multi-octets)
+  - 'Vraie machine 32 bits, MSVC, compilateurs autres que gcc 13.3 et clang 18 : le chemin 32 bits n''est
+    essayé qu''en forçant la macro sur x86-64'
+  - 'Juge isolé (bee/juge/juge.py, Docker) : non lancé localement'
+  - Fuzzing local court (150 s par harnais puis 300 s pour fuzz_inflate) et peu d'entrées, sur machine
+    chargée ; la CI en fait 600 s
+  - 'Combinaison avec miniz-0018 (tests code_len de la boucle des littéraux) : git merge-tree fusionne
+    sans conflit, ni testée ni mesurée ensemble'
+  doutes: 'Le gain au chronomètre est petit (+0,7 à +0,9 % ici) au regard des 5,5 % d''instructions :
+    les instructions retirées sont surtout des tests bien prédits et des calculs hors du chemin critique.
+    Il n''est confirmé localement que par les séries décompression seule à 50 passes, pas par ab.py, que
+    la charge de la machine rendait inutilisable ; si le chronomètre du juge isolé ne le voit pas, R4
+    n''est pas rempli. La part du chemin rapide dépend du rechargement de 32 bits de la boucle des littéraux
+    (98,5 % des correspondances sur le corpus) : une autre boucle des littéraux changerait le gain, pas
+    la sortie. État interne : r->m_num_extra peut différer de la base après une correspondance décodée
+    par le chemin rapide (variable morte, voir changement). Taille (gcc 13.3 -O3, x86-64) : tinfl_decompress
+    passe de 9 904 à 10 091 octets (+187), plus 384 octets de tables ; section text de miniz_tinfl.o +576
+    octets.'
