@@ -2876,8 +2876,9 @@ if args[:2] == ["pr", "close"]:
     sauver()
     sys.exit(0)
 # verdicts.yml, ruche-0025 : réponses brutes de l'API (bee les juge). Par PR : « branche » (tache/<numéro>), « base » (master),
-# « depot_tete » (le dépôt de la PR ; id : crc32 du nom, ou « id_tete »), « maj » (updated_at), « fermee_le » (closed_at),
-# « cree_le » (created_at de son exécution), « evenements » (API des événements), « chronologie » (API de la chronologie).
+# « depot_tete » (le dépôt de la PR ; id : crc32 du nom, ou « id_tete »), « maj » (updated_at), « ouverte_le » (created_at),
+# « fermee_le » (closed_at), « cree_le » (created_at de son exécution), « evenements » (API des événements) et « chronologie »
+# (API de la chronologie ; un nom d'événement, ou l'objet entier, daté).
 # Clés globales : « defaut » (branche par défaut, master), « executions » (exécutions en plus de celle de chaque PR qui porte
 # un verdict) et « comparaisons » ({base: statut de compare}, ahead sinon ; None : 404). Les filtres head_sha, event et status
 # de l'API sont ignorés ici, comme si GitHub ne les appliquait pas : bee doit les refaire.
@@ -2889,7 +2890,7 @@ def pr_json(url, pr):
     proprietaire, depot, _, numero = url.split("/")[3:7]
     tete = depot_json(pr.get("depot_tete", f"{proprietaire}/{depot}"), pr.get("id_tete"))
     return {"number": int(numero), "state": "open" if pr["state"] == "OPEN" else "closed", "merged": pr["state"] == "MERGED",
-            "updated_at": pr.get("maj", "2026-10-27T11:00:00Z"),
+            "updated_at": pr.get("maj", "2026-10-27T11:00:00Z"), "created_at": pr.get("ouverte_le", "2026-10-25T00:00:00Z"),
             "closed_at": None if pr["state"] == "OPEN" else pr.get("fermee_le", "2026-10-26T00:00:00Z"),
             "head": {"sha": pr["head"], "ref": pr.get("branche", f"tache/{numero}"), "repo": tete}, "base": {"ref": pr.get("base", "master")}}
 def execution(url, pr):
@@ -2912,7 +2913,7 @@ if args[:1] == ["api"]:
     elif m and re.fullmatch(r"/issues/[0-9]+/(events|timeline)", sous):
         pr = prs.get(base_url + sous.split("/")[2], {})
         reponse = ([{"event": "committed"}] if sous.endswith("timeline") else []) + [
-            {"event": e} for e in pr.get("chronologie" if sous.endswith("timeline") else "evenements", [])]
+            e if isinstance(e, dict) else {"event": e} for e in pr.get("chronologie" if sous.endswith("timeline") else "evenements", [])]
     elif m and sous == "/actions/workflows/bee-ci.yml/runs":
         executions = [execution(u, p) for u, p in prs.items() if u.startswith(base_url) and p.get("verdict")]
         reponse = {"workflow_runs": executions + etat.get("executions", [])}
@@ -4041,7 +4042,7 @@ class TestVerdictsDeLaPrEnregistree(BaseParallele):
     def attente(self, sortie, code, prs="", sha="abc1234"):
         """Refus pour raison de sécurité : dit dans le journal et écrit dans la contribution (phrase fixe, tête)."""
         self.refus(sortie, bee.ATTENTE_VERDICT[code], prs)
-        self.assertEqual(self.enr(self.cid).get("attente_verdict"), {"motif": bee.ATTENTE_VERDICT[code], "sha": sha})
+        self.assertEqual(self.enr(self.cid).get("attente_verdict"), {"motif": code, "sha": sha})
 
     def test_critere_1_seule_l_execution_de_la_pr_enregistree_vers_la_branche_par_defaut_est_retenue(self):
         """Pour le même commit, une exécution d'un autre événement, d'une autre PR, d'une autre base, d'une autre branche, d'un
@@ -4086,9 +4087,10 @@ class TestVerdictsDeLaPrEnregistree(BaseParallele):
                 sortie, verdict, appels = self.collecter({"defaut": "main", "comparaisons": comparaisons}, base="main",
                                                          verdict={**self.BON, **declaree})
                 self.assertIsNone(verdict, sortie)
+                certain = "diverged" in dite or "behind" in dite or "illisible" in dite
                 self.assertIn(f"  | bee : {self.cid} : verdict refusé, {bee.ATTENTE_VERDICT['base']} (base déclarée : {dite}) ; "
-                              "aucun verdict n'est enregistré", sortie)
-                self.assertEqual(self.enr(self.cid)["attente_verdict"], {"motif": bee.ATTENTE_VERDICT["base"], "sha": "abc1234"})
+                              "aucun verdict n'est enregistré" + ("\n" if certain else ", rejugé au passage suivant\n"), sortie)
+                self.assertEqual(self.enr(self.cid).get("attente_verdict"), {"motif": "base", "sha": "abc1234"} if certain else None)
                 comparees = [a["args"][1] for a in appels if "/compare/" in a["args"][1]]
                 self.assertTrue(all(re.fullmatch(r"repos/Bee-ruche/minizBee/compare/[0-9a-f]{40}\.\.\.main", c) for c in comparees))
                 self.assertNotIn("##[", sortie)
@@ -4122,7 +4124,7 @@ class TestVerdictsDeLaPrEnregistree(BaseParallele):
                 sortie, verdict, _ = self.collecter({"comparaisons": {tete_vieille: "ahead"}}, verdict={**self.FAUX, **declaree})
                 self.assertIsNone(verdict, sortie)
                 self.assertIn(f"  | bee : {self.cid} : verdict refusé, {bee.ATTENTE_VERDICT['base_juge']}", sortie)
-                self.assertEqual(self.enr(self.cid)["attente_verdict"]["motif"], bee.ATTENTE_VERDICT["base_juge"])
+                self.assertEqual(self.enr(self.cid)["attente_verdict"]["motif"], "base_juge")
         chemin = self.dossier / "projets/miniz.yaml"
         chemin.write_text(chemin.read_text(encoding="utf-8").replace("verdict_exige_base_juge: true\n", ""), encoding="utf-8")
         sortie, verdict, _ = self.collecter({}, verdict={**self.BON, "base_juge": None})
@@ -4152,7 +4154,8 @@ class TestVerdictsDeLaPrEnregistree(BaseParallele):
                 self.assertIsNone(verdict)
                 self.attente(sortie, "pr_ouverte", " (#99008)")
                 self.assertFalse(self.appels_de(appels, "run", "download"))
-        fermee = {**autre, "state": "CLOSED", "branche": "tache/99007", "base": "forgee", "fermee_le": "2026-10-27T09:30:00Z"}
+        fermee = {**autre, "state": "CLOSED", "branche": "tache/99007", "base": "forgee", "ouverte_le": "2026-10-27T08:30:00Z",
+                  "fermee_le": "2026-10-27T09:30:00Z"}
         forgee = self.execution(99908, self.FAUX, created_at="2026-10-27T09:00:00Z", run_started_at="2026-10-27T11:50:00Z")  # relancée
         for nom, etats, pr in (("exécution forgée, relancée après la fermeture", {"executions": [forgee]}, {}),
                                ("exécution de la PR moins d'une heure après la fermeture", {}, {"cree_le": "2026-10-27T10:20:00Z"})):
@@ -4240,13 +4243,67 @@ class TestVerdictsDeLaPrEnregistree(BaseParallele):
         self.assertNotIn("attente_verdict", self.enr(self.cid))
         chemin = self.dossier / f"contributions/miniz/{self.cid}.yaml"
         bee.ecrire_yaml(chemin, {**bee.lire_yaml(chemin), "attente_verdict": {"motif": "::error::écrit à la main", "sha": "abc1235"}})
-        self.assertIn("attente_verdict/motif n'est pas une phrase de bee", self.bee("valider")[1])
+        self.assertIn("attente_verdict/motif n'est pas un code de bee", self.bee("valider")[1])
         self.assertNotIn("écrit à la main", self.ok_voir())
 
     def ok_voir(self):
         code, texte = self.bee("voir", "miniz-0099")
         self.assertEqual(code, 0, texte)
         return texte
+
+    def test_b1_une_panne_de_compare_n_ecrit_aucune_attente(self):
+        """B1 : compare en panne (5xx, quota) : verdict refusé, sans attente ; au passage suivant, l'API répond et le verdict
+        s'enregistre. Seul un statut certain (behind, diverged, base absente ou illisible, base_juge absent) écrit l'attente."""
+        sortie, verdict, _ = self.collecter({"comparaisons": {self.MASTER: None}})
+        self.assertIsNone(verdict, sortie)
+        self.assertIn(f"(base déclarée : {self.MASTER} (non vérifiée)) ; aucun verdict n'est enregistré, rejugé au passage suivant", sortie)
+        self.assertNotIn("attente_verdict", self.enr(self.cid))
+        sortie, verdict, _ = self.collecter({}, garder_attente=True)
+        self.assertEqual(verdict["gain"], 0.05, sortie)
+
+    def test_b2_b3_une_autre_pr_ne_bloque_que_si_la_ci_a_pu_venir_d_elle(self):
+        """B2 : une autre PR P de la même tête ne bloque que si l'exécution retenue R a pu venir d'elle : R créée après P - 1 min,
+        et, P fermée, avant sa fermeture + 1 h. Un tiers qui ouvre (et ferme) une PR après la CI ne bloque donc rien. B3 : la
+        phrase demande au conseil de fermer une PR ouverte, et dit le délai d'une heure."""
+        self.assertIn("demandez au conseil de la fermer", bee.ATTENTE_VERDICT["pr_ouverte"])
+        self.assertIn("une heure après sa fermeture", bee.ATTENTE_VERDICT["pr_ouverte"])
+        tiers = {"head": "abc1234", "auteur": "mallory", "branche": "tache/99007", "ouverte_le": "2026-10-27T11:00:00Z"}
+        for depot_tete in ("Bee-ruche/minizBee", "alice/minizBee"):
+            for etat in ({"state": "OPEN"}, {"state": "CLOSED", "fermee_le": "2026-10-27T11:05:00Z"}):
+                with self.subTest(depot_tete=depot_tete, **etat):
+                    sortie, verdict, _ = self.collecter({PR_MINIZ + "99008": {**tiers, **etat, "depot_tete": depot_tete}},
+                                                        depot_tete=depot_tete)
+                    self.assertEqual(verdict["gain"], 0.05, sortie)
+        # Ouverte une minute au plus après la CI (horloges), ou avant : elle a pu la produire.
+        for ouverte, code in (("2026-10-27T10:00:30Z", "pr_ouverte"), ("2026-10-27T09:00:00Z", "pr_ouverte")):
+            sortie, verdict, _ = self.collecter({PR_MINIZ + "99008": {**tiers, "state": "OPEN", "ouverte_le": ouverte}})
+            self.assertIsNone(verdict, sortie)
+            self.attente(sortie, code, " (#99008)")
+        sortie, verdict, _ = self.collecter({PR_MINIZ + "99008": {**tiers, "state": "OPEN", "ouverte_le": "2026-10-27T10:01:01Z"}})
+        self.assertEqual(verdict["gain"], 0.05, sortie)
+
+    def test_b5_la_fraicheur_ne_tient_pas_compte_d_un_evenement_date_par_github(self):
+        """B5 : une PR modifiée il y a moins de 5 minutes n'attend que si aucun événement daté par GitHub (commentaire, revue,
+        changement de base…) n'explique cette modification : un commentaire répété ne repousse pas le verdict. Les dates des
+        commits, que leur auteur choisit, ne comptent pas."""
+        commentaire = {"event": "commented", "created_at": "2026-10-27T11:57:00Z"}
+        for chronologie, attend in (([commentaire], False), ([{**commentaire, "created_at": "2026-10-27T11:50:00Z"}], True),
+                                    ([{"event": "reviewed", "submitted_at": "2026-10-27T11:57:03Z"}], False),
+                                    ([{"event": "committed", "committer": {"date": "2099-01-01T00:00:00Z"}}], True)):
+            with self.subTest(chronologie=chronologie):
+                sortie, verdict, _ = self.collecter({}, maj="2026-10-27T11:57:00Z", chronologie=chronologie)
+                self.assertEqual(verdict is None, attend, sortie)
+                self.assertEqual("jugée au passage suivant" in sortie, attend, sortie)
+
+    def test_b6_l_attente_porte_un_code_et_la_phrase_se_rend_a_l_affichage(self):
+        """B6 : attente_verdict stocke le code du motif ; reformuler une phrase demain n'invalide aucune contribution."""
+        chemin = self.dossier / f"contributions/miniz/{self.cid}.yaml"
+        bee.ecrire_yaml(chemin, {**bee.lire_yaml(chemin), "attente_verdict": {"motif": "pr_fermee", "sha": "abc1234"}})
+        self.valide()
+        self.assertIn(f"# {self.cid} : aucun verdict pour la tête abc1234 : {bee.ATTENTE_VERDICT['pr_fermee']}", self.ok_voir())
+        bee.ecrire_yaml(chemin, {**bee.lire_yaml(chemin), "attente_verdict": {"motif": bee.ATTENTE_VERDICT["pr_fermee"], "sha": "abc1234"}})
+        self.assertIn("attente_verdict/motif n'est pas un code de bee", self.bee("valider")[1])
+        self.assertNotIn("aucun verdict pour la tête", self.ok_voir())
 
     def test_fraicheur_une_pr_modifiee_il_y_a_moins_de_5_minutes_est_jugee_au_passage_suivant(self):
         sortie, verdict, _ = self.collecter({}, maj="2026-10-27T11:56:00Z")

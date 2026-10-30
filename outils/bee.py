@@ -1684,8 +1684,8 @@ def verifier_registre(reg):
         if enr.get("jamais_integree") and enr.get("fusion_sha"):
             ajouter(f"{lieu} : jamais_integree contredit fusion_sha : une contribution fusionnée a été intégrée, "
                     "ses relecteurs en répondent si elle est annulée")
-        if isinstance(a := enr.get("attente_verdict"), dict) and a.get("motif") not in ATTENTE_VERDICT.values():  # ruche-0025
-            ajouter(f"{lieu} : attente_verdict/motif n'est pas une phrase de bee (ATTENTE_VERDICT)")
+        if isinstance(a := enr.get("attente_verdict"), dict) and a.get("motif") not in ATTENTE_VERDICT:  # ruche-0025
+            ajouter(f"{lieu} : attente_verdict/motif n'est pas un code de bee ({', '.join(ATTENTE_VERDICT)})")
         if isinstance(d := enr.get("declare"), dict):  # recopié au verdict (ruche-0017) : le reste des bornes au schéma
             if any(texte_declare(t, len(t)) != t for t in [d["modele"], d["doutes"], *d["teste"], *d["non_teste"]] if t) or (
                     not math.isfinite(d["gain"] or 0) or len(yaml.safe_dump({"declare": d}, allow_unicode=True, width=100)) > DECLARE_MAX["rendu"]):
@@ -5012,17 +5012,19 @@ CHANGEMENTS_DE_BASE = ("base_ref_changed", "automatic_base_change_succeeded")
 ATTENTE_VERDICT = {
     "autre_base": "la PR vise une autre branche que la branche par défaut du fork : ouvrez une nouvelle PR vers celle-ci",
     "base_changee": "la base de la PR a changé au moins une fois : ouvrez une nouvelle PR vers la branche par défaut du fork",
-    "pr_ouverte": "une autre PR ouverte part de la même branche : fermez-la, puis poussez un nouveau commit",
-    "pr_fermee": "une PR fermée de la même branche précède la CI jugée : poussez un nouveau commit, une heure après sa fermeture",
+    "pr_ouverte": "une autre PR ouverte de la même branche a pu produire la CI jugée : demandez au conseil de la fermer, puis "
+                  "poussez un nouveau commit une heure après sa fermeture",
+    "pr_fermee": "une PR fermée de la même branche a pu produire la CI jugée : poussez un nouveau commit, une heure après sa fermeture",
     "base": "la base déclarée par la CI n'est pas un ancêtre de la branche par défaut du fork : poussez un nouveau commit",
     "base_juge": "le verdict n'a pas de base_juge lisible, exigée pour ce projet : poussez un nouveau commit"}
 
 
 def noter_attente(reg, cid, code, sha):
-    """Écrit dans la contribution ce qu'elle attend pour recevoir un verdict (verdicts.yml ne la rejuge qu'à une autre tête)."""
+    """Écrit dans la contribution ce qu'elle attend pour recevoir un verdict (verdicts.yml ne la rejuge qu'à une autre tête) :
+    le code du motif, dont la phrase se rend à l'affichage (elle peut changer sans invalider le registre)."""
     chemin, enr = reg.enregistrement(cid)
     if re.fullmatch(r"[0-9a-f]{7,40}", str(sha)):
-        ecrire_yaml(chemin, {**enr, "attente_verdict": {"motif": ATTENTE_VERDICT[code], "sha": sha}})
+        ecrire_yaml(chemin, {**enr, "attente_verdict": {"motif": code, "sha": sha}})
     return ATTENTE_VERDICT[code]
 
 
@@ -5056,11 +5058,17 @@ def cmd_choisir_execution(args):
         depot, pr, executions = lire("depot")[0], lire("pr")[0], [e for p in lire("executions") for e in p["workflow_runs"]]
         defaut, tete, base, id_tete, branche = depot["default_branch"], pr["head"], pr["base"]["ref"], pr["head"]["repo"]["id"], str(pr["head"]["ref"]).lower()
         repli = id_tete != depot["id"] or pr["state"] != "open"  # GitHub ne lie une exécution qu'à une PR ouverte du fork même
-        autres = [p for p in lire("pulls") if p["number"] != numero and (p["head"]["repo"] or {}).get("id") == id_tete
-                  and str(p["head"]["ref"]).lower() == branche]
-        changee = sorted({e.get("event") for e in lire("evenements") + lire("chronologie")} & set(CHANGEMENTS_DE_BASE))
-        fraiche = maintenant() - lire_instant(pr["updated_at"]) < dt.timedelta(minutes=5)
-        fermees = [lire_instant(p["closed_at"]) + dt.timedelta(hours=1) for p in autres if p["state"] != "open"]
+        # Les autres PR de la même tête, et quand elles ont pu produire une exécution : de leur création (- 1 min) à leur
+        # fermeture (+ 1 h : l'événement closed déclenche encore une exécution).
+        autres = [(p["number"], p["state"] == "open", lire_instant(p["created_at"]) - dt.timedelta(minutes=1),
+                   None if p["state"] == "open" else lire_instant(p["closed_at"]) + dt.timedelta(hours=1)) for p in lire("pulls")
+                  if p["number"] != numero and (p["head"]["repo"] or {}).get("id") == id_tete and str(p["head"]["ref"]).lower() == branche]
+        chronologie, maj = lire("chronologie"), lire_instant(pr["updated_at"])
+        changee = sorted({e.get("event") for e in lire("evenements") + chronologie} & set(CHANGEMENTS_DE_BASE))
+        # Modifiée il y a moins de 5 minutes sans qu'un événement daté par GitHub l'explique (pas les commits, datés par
+        # leur auteur) : une base changée à l'instant pourrait manquer aux événements. Un commentaire ne repousse rien.
+        dates = [lire_instant(e.get("created_at") or e["submitted_at"]) for e in chronologie if e.get("created_at") or e.get("submitted_at")]
+        fraiche = maintenant() - maj < dt.timedelta(minutes=5) and maj > max(dates, default=maj - dt.timedelta(days=1)) + dt.timedelta(seconds=5)
 
         def de_cette_pr(e):  # pull_requests est vide pour une PR d'un autre dépôt ou fermée : elle se reconnaît alors à sa tête
             liees = [p for p in e["pull_requests"] or [] if p["number"] == numero]
@@ -5072,18 +5080,16 @@ def cmd_choisir_execution(args):
         return refus("PR ou réponse de l'API illisible")
     if not (isinstance(defaut, str) and re.fullmatch(REF_MOTIF, defaut)) or pr.get("number") != numero or tete.get("sha") != args.sha:
         return refus("branche par défaut illisible, ou PR changée pendant la collecte")
-    if fraiche:  # une base changée à l'instant pourrait manquer aux événements : au passage suivant
+    if fraiche:
         return print(f"{nom} : PR modifiée il y a moins de 5 minutes, jugée au passage suivant.") or 1
     if base != defaut or changee:
         return attente("base_changee" if changee else "autre_base")
-    if ouvertes := sorted(p["number"] for p in autres if p["state"] == "open"):
-        return attente("pr_ouverte", ouvertes)
     if not retenues:
         return refus(f"{len(executions)} exécution(s) de bee-ci.yml sur ce commit, aucune de cette PR vers {defaut} "
                      "(événement pull_request)") if executions else 1
-    numero_execution, adresse, creee = retenues[-1]
-    if any(creee < f for f in fermees):  # une relance garde created_at (vérifié sur l'API)
-        return attente("pr_fermee", sorted(p["number"] for p in autres))
+    numero_execution, adresse, creee = retenues[-1]  # une relance garde created_at (vérifié sur l'API)
+    if bloquantes := [(n, ouverte) for n, ouverte, debut, fin in autres if debut <= creee and (ouverte or creee < fin)]:
+        return attente("pr_ouverte" if any(o for _, o in bloquantes) else "pr_fermee", sorted(n for n, _ in bloquantes))
     if not (isinstance(numero_execution, int) and re.fullmatch(r"https://github\.com/[A-Za-z0-9_./-]+", str(adresse))):
         return refus("exécution illisible")
     print(numero_execution, adresse, defaut)
@@ -5129,8 +5135,12 @@ def cmd_enregistrer_verdict(args):
         sans_juge = reg.projets.get(reg.tache(enr["tache"])[1].get("projet"), (None, {}))[1].get("verdict_exige_base_juge") and not (
             isinstance(juge, dict) and all(re.fullmatch(r"[0-9a-f]{40}", str(juge.get(c))) for c in ("base", "commit")))
         if sans_juge or not bases or any(verifiees.get(b) not in ("identical", "ahead") for b in bases):
-            raise ErreurBee(f"{args.contribution} : verdict refusé, {noter_attente(reg, args.contribution, 'base_juge' if sans_juge else 'base', args.sha)}"
-                            f" (base déclarée : {', '.join(dites) or 'absente'}) ; aucun verdict n'est enregistré")
+            # Attente seulement pour un refus certain ; une base non vérifiée (panne de l'API, quota) est rejugée au passage suivant.
+            certain = sans_juge or not bases or any(b is None or verifiees.get(b) in ("behind", "diverged") for b in bases)
+            code = "base_juge" if sans_juge else "base"
+            raise ErreurBee(f"{args.contribution} : verdict refusé, {noter_attente(reg, args.contribution, code, args.sha) if certain else ATTENTE_VERDICT[code]}"
+                            f" (base déclarée : {', '.join(dites) or 'absente'}) ; aucun verdict n'est enregistré"
+                            + ("" if certain else ", rejugé au passage suivant"))
     gain = brut.get("gain")
     verdict["gain"] = float(gain) if gain is not None else None
     if "au_dela_du_bruit" in brut:
@@ -6248,7 +6258,7 @@ def cadre_declare(cid, enr, abrege=False):
     m = ID_CONTRIBUTION.fullmatch(str(cid))
     ident, tache = (cid, m["tache"]) if m else ("?", "<tâche>")
     a = enr.get("attente_verdict") if isinstance(enr.get("attente_verdict"), dict) else {}  # ruche-0025 : écrit par la CI
-    attente = (f"# {ident} : aucun verdict pour la tête {a['sha']} : {a['motif']}\n" if a.get("motif") in ATTENTE_VERDICT.values()
+    attente = (f"# {ident} : aucun verdict pour la tête {a['sha']} : {ATTENTE_VERDICT[a['motif']]}\n" if a.get("motif") in ATTENTE_VERDICT
                and re.fullmatch(r"[0-9a-f]{7,40}", str(a.get("sha"))) else "")
     if not isinstance(enr.get("declare"), dict):
         pourquoi = ("pas encore de verdict" if not verdict else "verdict antérieur à la recopie (ruche-0017)" if "declare" not in enr

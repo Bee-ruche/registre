@@ -100,7 +100,7 @@
     "decidee_le": {"type": "string"},
     "fusion_sha": {"type": "string", "pattern": "^[0-9a-f]{7,40}$"},
     "attente_verdict": {"type": "object", "additionalProperties": false, "required": ["motif", "sha"],
-                        "description": "Écrit par verdicts.yml (ruche-0025) : pourquoi la tête sha n'a reçu aucun verdict (phrase fixe de bee, ATTENTE_VERDICT) ; pas rejugée avant une autre tête",
+                        "description": "Écrit par verdicts.yml (ruche-0025) : pourquoi la tête sha n'a reçu aucun verdict (code d'ATTENTE_VERDICT de bee, dont la phrase se rend à l'affichage) ; pas rejugée avant une autre tête",
                         "properties": {"motif": {"type": "string"}, "sha": {"type": "string", "pattern": "^[0-9a-f]{7,40}$"}}},
     "jamais_integree": {"const": true,
                         "description": "Statut « annulee » : close sans avoir jamais été intégrée (PR fermée sans fusion) ; ses relecteurs favorables ne perdent pas de point"},
