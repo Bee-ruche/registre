@@ -1,0 +1,20 @@
+id: P-0002
+auteur: bidji29
+regle: R7
+texte_propose: 'Une réservation, ou une inscription en parallèle (R11), sans contribution prend fin après
+  72 h. Si le titulaire s''en va (libération ou expiration) alors que d''autres sont inscrits en parallèle,
+  le plus ancien inscrit devient titulaire, à la date de son inscription : l''échéance ne s''allonge pas.
+  Qui quitte une tâche sans contribution (libération, retrait de son inscription en parallèle, expiration),
+  ou dont la contribution sur la tâche est close sans intégration (annulée, PR fermée sans fusion comprise,
+  ou écartée), ne la reprend pas, ni en parallèle, avant 24 h (reprise_apres_liberation_heures), comptées
+  depuis la libération ou la clôture : rendre puis reprendre une tâche, ou laisser fermer une soumission
+  puis la reprendre, ne renouvelle pas les 72 h.'
+motif: 'Répétition générale du 29/10, attaque T13 de l''équipe rouge : libérer puis reprendre aussitôt
+  une tâche remettait son échéance de 72 h à zéro, indéfiniment, tant que personne n''était inscrit en
+  parallèle. La revue adverse de ruche-0011 (I1) a montré le même contournement par une soumission bidon
+  dont la PR est fermée. Le délai se contrôle sans date déclarée : bee verifier-pr lit dans l''historique
+  de main l''instant où la libération ou la clôture a été fusionnée (et refuse sans historique complet),
+  et bee prendre prévient avant d''écrire (tâche ruche-0011). 24 h laisse aux autres le temps de voir
+  la tâche libre (bee essaim) sans gêner celui qui revient le lendemain avec une autre approche.'
+ouverte_le: '2026-10-30T03:46:20Z'
+statut: ouverte
