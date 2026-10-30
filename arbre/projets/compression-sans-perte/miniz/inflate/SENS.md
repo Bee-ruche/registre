@@ -18,7 +18,7 @@ Intégrées (verdicts de la CI, machines de GitHub ; commit jugé : `verdict.sha
 sans chevauchement par 4 ou 8 octets, instructions −7,4 %, débit +17,2 % (miniz-0012) ; Adler-32 par blocs de 16
 octets, instructions −4,9 %, débit +9,5 % (miniz-0016).
 Instructions et chronomètre divergent souvent. En relecture, miniz-0017-c1 (instructions −5,1 %) et miniz-0018-c1
-(−3,9 %) restent dans le bruit au chronomètre (leurs verdicts). La copie par 8 octets d'origine, activée : instructions
+(−3,7 %) restent dans le bruit au chronomètre (leurs verdicts). La copie par 8 octets d'origine, activée : instructions
 −1,9 %, débit −2,2 % (contexte de miniz-0012 : Xeon 2,1 GHz virtualisé, gcc 13.3, base 2948eeb). Pointeurs locaux vers
 les tables : instructions +0,9 % (note de miniz-0018). Tables à la libdeflate (manifeste de la branche
 essai/miniz-0022-doublement : af45a86 contre 1c625c3, Xeon 2,1 GHz virtualisé, gcc 13.3) : instructions −2,8 % ; débit
