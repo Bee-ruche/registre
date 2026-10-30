@@ -81,7 +81,8 @@ croissance:
   relances_max: 1                   # puis plus rien
   delai_relance_jours: 14
   debat_min_heures: 72              # dans l'agora, avant l'accord d'un gardien et du conseil
-  membres_actifs_par_gardien_max: 20  # au-delà, frein : plus d'invitation
+  membres_actifs_par_gardien_max: 20  # au-delà, frein : plus d'invitation à participer (jamais pour garants et gardiens)
+  branche_dormante_jours: 30        # sans activité, une branche dort (rien n'est supprimé)
 
 # Comptes automatiques autorisés à écrire des verdicts et à libérer les réservations expirées.
 robots:

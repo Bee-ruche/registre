@@ -1210,7 +1210,10 @@ class TestArbre(BaseTest):
 
     def test_chemins_livres_tiennent_dans_un_budget_court(self):
         # Garde-fou de la taille des nœuds (docs/arbre.md) : sans la tâche, le chemin d'un rôle et d'un projet tient en
-        # 1 900 jetons ; et bee contexte miniz-0012, avec ses notes du 30/10, en 2 700 (10 % de marge sous 3 000).
+        # 1 900 jetons ; et, zone comprise, le chemin de chaque tâche encore vivante tient en 2 600. Ce que la tâche
+        # apporte (son contexte, ses notes) n'entre pas dans ce garde-fou : il dépend de la tâche, et --budget le
+        # resserre (décision du 30/10 : l'ancien garde-fou mesurait miniz-0012 avec ses notes, et la moindre ligne
+        # ajoutée à un nœud le cassait, ce qui bloquait l'écriture des zones, ruche-0014 à ruche-0016).
         reg = bee.Registre(self.dossier)
         for role in ("optimiser", "relire", "mesurer", "debattre", "garder", "proposer"):
             for projet in ("miniz", "libyaml", "ruche"):
@@ -1219,14 +1222,12 @@ class TestArbre(BaseTest):
                 sans_tache = bee.estimer_jetons(texte.split("=== tâche ")[0])
                 with self.subTest(role=role, projet=projet):
                     self.assertLess(sans_tache, 1900)
-        chemin = self.dossier / "taches/miniz/miniz-0012.yaml"
-        tache = bee.lire_yaml(chemin)
-        tache["notes"] = [n for n in tache.get("notes") or [] if str(n.get("le")) <= "2026-10-30T23:59:59Z"]
-        if not tache["notes"]:
-            del tache["notes"]
-        bee.ecrire_yaml(chemin, tache)
-        _, texte = self.bee("contexte", "miniz-0012")
-        self.assertLess(int(re.search(r"Environ (\d+) jetons", texte).group(1)), 2700)
+        for tid, (_, tache) in sorted(reg.taches.items()):
+            if tache.get("statut") not in ("proposee", "ouverte", "reservee", "en_relecture"):
+                continue
+            texte, _ = bee.texte_contexte(reg, tid, None, registre=str(self.dossier))
+            with self.subTest(tache=tid):
+                self.assertLess(bee.estimer_jetons(texte.split("=== tâche ")[0]), 2600)
 
     # --- Revue adverse de ruche-0010 (B1, I1, I2, I3, m1, m2, m4) : un test par constat ---
 

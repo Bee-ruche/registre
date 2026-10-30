@@ -1,0 +1,33 @@
+id: ruche-0022
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: M
+titre: "L'identité d'un membre : son numéro de compte GitHub, pas seulement son login"
+contexte: >
+  Revue adverse de ruche-0012 (30/10, quatrième passe) : la ruche identifie un membre par son login GitHub
+  (membres/<pseudo>.yaml) ; un compte renommé obtient un nouveau pseudo, donc un nouveau fil de contributions
+  et une nouvelle fiche, et échappe aux refus d'un gardien, à R7 (pas de reprise avant 24 h) et à R8 (3
+  engagements). Le compte garde pourtant son ancienneté et son numéro (champ id de l'API users). ruche-0012
+  compare déjà les logins sans la casse ; reste le renommage complet. À construire : (1) à l'inscription,
+  fusion-auto relève le numéro du compte auprès de l'API (gh api users/<login> --jq .id, comme il relève déjà
+  sa date de création) et bee verifier-pr exige que la fiche le porte (champ github_id), unique dans
+  membres/ ; (2) partout où l'identité compte (fil d'une contribution, R7, R8, jugees_par, vote, relecture,
+  auteur d'une PR), bee compare les numéros quand ils existent ; (3) un compte renommé met à jour son login
+  dans sa fiche par un geste en libre-service contrôlé (même numéro, nouveau login, relevé auprès de l'API),
+  et l'historique garde l'ancien login ; (4) les fiches existantes sans numéro restent valides, et le conseil
+  les complète.
+fichiers: [outils/bee.py, outils/test_bee.py, schemas/membre.schema.json, .github/workflows/fusion-auto.yml, docs/gouvernance.md, docs/reputation.md]
+portee: 0.7
+metrique: null
+critere_acceptation:
+  - "tests : un compte renommé garde son fil, ses refus, R7 et R8 ; une fiche à un numéro déjà pris est refusée ; le numéro vient de l'API, jamais de la PR"
+  - "les fiches et les contributions existantes restent valides (bee valider)"
+  - "revue adverse indépendante jointe (identité et workflow de fusion automatique)"
+hors_perimetre: [COMMANDEMENTS.md, l'ancienneté minimale du compte, les comptes multiples d'une même personne]
+depend_de: [ruche-0012]
+noeud: projets/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-30"
