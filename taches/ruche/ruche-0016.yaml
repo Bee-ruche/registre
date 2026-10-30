@@ -4,31 +4,48 @@ categorie: ruche
 type: test
 poste: coordination
 taille: M
-titre: "L'arbre de la ruche : écrire les nœuds de ses zones (outil, verifier_pr, agora, site, juge commun)"
-contexte: >
-  ruche-0010 a écrit la racine de l'arbre du sens et son premier palier ; le nœud du registre
-  (arbre/projets/ruche/ruche/SENS.md) nomme ses zones sans les décrire. Faits : outils/bee.py fait 4 911
-  lignes, outils/test_bee.py 4 097 et outils/site_bee.py 911 (30/10) ; 9 des 13 tâches de la ruche
-  d'avant l'arbre touchent outils/bee.py, et deux le modifiaient en même temps la nuit du 30/10
-  (ruche-0010 et ruche-0011). Un agent qui arrive sur une tâche de la ruche n'a aucun moyen de savoir quelles parties de
-  ces fichiers comptent pour elle, quels tests les gardent, ni quels pièges ont déjà coûté (forme stricte
-  des YAML réécrits par les robots, libre-service fusionné sans humain, tests qui dépendaient de l'état
-  réel du registre). À faire : un nœud par zone sous arbre/projets/ruche/ruche/ (par exemple : chargement
-  et validation du registre ; verifier_pr et le libre-service ; engagements et courses, R3 R7 R8 R11 ;
-  l'agora, R12 ; l'arbre ; le site et l'API ; le juge commun, outils/juge/), au format de docs/arbre.md
-  (40 lignes au plus) : pourquoi la zone existe ; ce qui y compte (fonctions et classes de tests qui la
-  gardent, règles appliquées, pièges, revues adverses passées) ; ce qu'on peut y ignorer. Puis lister les
-  zones dans le nœud du registre et y rattacher les tâches de la ruche ouvertes (champ noeud).
-fichiers: [arbre/projets/ruche/ruche/, taches/ruche/]
+titre: 'L''arbre de la ruche : écrire les nœuds de ses zones (outil, verifier_pr, agora, site, juge commun)'
+contexte: 'ruche-0010 a écrit la racine et les paliers des rôles, des catégories et des projets de l''arbre
+  du sens ; le nœud du registre (arbre/projets/ruche/ruche/SENS.md) nomme ses zones sans les décrire.
+  Faits : outils/bee.py fait 6 130 lignes, outils/test_bee.py 5 664 et outils/site_bee.py 912 (main 1bef64a,
+  30/10) ; 9 des 13 tâches de la ruche d''avant l''arbre touchent outils/bee.py (comme ruche-0017 à ruche-0022,
+  venues depuis), et deux le modifiaient en même temps la nuit du 30/10 (ruche-0010 et ruche-0011). Un
+  agent qui arrive sur une tâche de la ruche n''a aucun moyen de savoir quelles parties de ces fichiers
+  comptent pour elle, quels tests les gardent, ni quels pièges ont déjà coûté (forme stricte des YAML
+  réécrits par les robots, libre-service fusionné sans humain, tests qui dépendaient de l''état réel du
+  registre). À faire : un nœud par zone sous arbre/projets/ruche/ruche/ (par exemple : chargement et validation
+  du registre ; verifier_pr et le libre-service ; engagements et courses, R3 R7 R8 R11 ; l''agora, R12
+  ; l''arbre ; le site et l''API ; le juge commun, outils/juge/), au format de docs/arbre.md (40 lignes
+  au plus) : pourquoi la zone existe ; ce qui y compte (fonctions et classes de tests qui la gardent,
+  règles appliquées, pièges, revues adverses passées) ; ce qu''on peut y ignorer. Puis lister les zones
+  dans le nœud du registre et y rattacher les tâches de la ruche ouvertes qui visent une zone (champ noeud)
+  ; ruche-0017 à ruche-0022 portent noeud: projets/ruche, à repointer ; les zones à venir comprennent
+  les invitations (R13, ruche-0020) et les capacités (ruche-0021). Garde-fou de taille (docs/arbre.md,
+  test test_chemins_livres_tiennent_dans_un_budget_court, qui lit le vrai registre) : sans la tâche, le
+  chemin d''un rôle et d''un projet tient en 1 900 jetons, et, zone comprise, celui de chaque tâche vivante
+  en 2 600 ; une zone reste donc courte. Le test ne se change pas dans cette tâche (commandement 3).
+
+  '
+fichiers:
+- arbre/projets/ruche/ruche/
+- taches/ruche/
 portee: 0.8
 metrique: null
 critere_acceptation:
-  - "bee valider passe : chaque nœud tient dans son budget, avec ses quatre sections, et le nœud du registre le liste"
-  - "chaque zone nomme les fonctions et les classes de tests qui la gardent, vérifiées sur main"
-  - "chaque tâche de la ruche ouverte est rattachée à sa zone ; bee contexte de chacune tient en moins de 3 000 jetons"
-  - "vérifié par un agent sans mémoire qui ne lit que bee contexte d'une tâche de la ruche (rapport joint)"
-hors_perimetre: [COMMANDEMENTS.md, REGLES.md, outils/ (les nœuds décrivent le code, ils ne le changent pas), les autres branches de l'arbre]
-depend_de: [ruche-0010]
-statut: proposee
+- 'bee valider passe : chaque nœud tient dans son budget, avec ses quatre sections, et le nœud du registre
+  le liste'
+- chaque zone nomme les fonctions et les classes de tests qui la gardent, vérifiées sur main
+- chaque tâche de la ruche ouverte qui vise une zone y est rattachée
+- vérifié par un agent sans mémoire qui ne lit que bee contexte d'une tâche de la ruche (rapport joint)
+- python3 -m unittest outils.test_bee passe sans modification, garde-fou de taille compris
+hors_perimetre:
+- COMMANDEMENTS.md
+- REGLES.md
+- outils/ (les nœuds décrivent le code
+- ils ne le changent pas)
+- les autres branches de l'arbre
+depend_de:
+- ruche-0010
+statut: ouverte
 cree_par: bidji29
-cree_le: "2026-10-30"
+cree_le: '2026-10-30'
