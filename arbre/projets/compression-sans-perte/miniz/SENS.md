@@ -16,8 +16,10 @@ Juge isolé : la CI exécute ton code en conteneur sans réseau et vérifie chaq
 horloge, symbole de la libc remplacé…) appelle un gardien : justifie le légitime (SIMD) dans `changement`.
 Pièges : lectures non alignées par memcpy vers une variable locale, jamais par transtypage de pointeur ; chemin
 générique gardé (R6) ; la décompression bute sur la mémoire plus que sur les instructions.
-Zones : compression `miniz_tdef.c`, décompression `miniz_tinfl.c`, API zlib (`mz_*`).
 ## Ce qu'on peut ignorer ici
 ZIP (`miniz_zip.c`) et PNG, hors périmètre.
 ## Enfants
-Aucun pour l'instant : zones à écrire (tâche proposée ruche-0014).
+- `projets/compression-sans-perte/miniz/deflate` : compression, `miniz_tdef.c` (`tdefl_*`)
+- `projets/compression-sans-perte/miniz/inflate` : décompression, `miniz_tinfl.c` (`tinfl_decompress`)
+- `projets/compression-sans-perte/miniz/api` : API compatible zlib et sommes, `miniz.c` (`mz_*`)
+- `projets/compression-sans-perte/miniz/bee` : outillage du fork, `bee/` (tests, fuzzing, banc, juge)

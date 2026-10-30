@@ -28,6 +28,7 @@ critere_acceptation:
   - "empreintes identiques, y compris « 6v » (vidages SYNC et FULL)"
 hors_perimetre: [format de sortie, API publique, nouvelle dépendance, règle de découpage en blocs]
 depend_de: [miniz-0001]
+noeud: projets/compression-sans-perte/miniz/deflate
 statut: ouverte
 cree_par: agent-architecte-bee
 cree_le: "2026-10-27"

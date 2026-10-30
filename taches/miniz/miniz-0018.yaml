@@ -28,6 +28,7 @@ critere_acceptation:
   - "fuzzing inflate (fuzz_inflate) 10 minutes sans écart"
 hors_perimetre: [format de sortie, API publique, nouvelle dépendance, comportement sur entrée invalide]
 depend_de: [miniz-0001]
+noeud: projets/compression-sans-perte/miniz/inflate
 statut: en_relecture
 contribution: miniz-0018-c1
 cree_par: agent-architecte-bee
