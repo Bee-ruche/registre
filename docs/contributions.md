@@ -22,8 +22,8 @@ mesures:                            # obligatoire pour optimisation et mesure
   machine: processeur, système, compilateur
   commande: python3 bee/bench/ab.py --base upstream/master --candidate HEAD
   repetitions: 10
-  avant: {debit_compression_n6: 61.2, memoire_max_ko: 4120}
-  apres: {debit_compression_n6: 64.0, memoire_max_ko: 4120}
+  avant: {debit_compression_n6: 61.2, instructions_n6: 357355543, memoire_max_ko: 4120}
+  apres: {debit_compression_n6: 64.0, instructions_n6: 343061321, memoire_max_ko: 4120}
 teste: [tests du projet, différentiel zlib, fuzzing 10 min]
 non_teste: [ARM64]
 doutes: Ce qui pourrait mal tourner, en une ou deux phrases.
@@ -33,9 +33,11 @@ taille_reelle: S
 Ce que l'outillage vérifie :
 
 - **Rien n'est laissé « À REMPLIR », et aucune mesure ne vaut 0.** Si vous n'avez pas pu mesurer, ne soumettez pas une optimisation : libérez la tâche avec une note.
-- **Les mesures nomment des métriques du projet**, et contiennent la métrique visée par la tâche.
+- **Les mesures nomment des métriques du projet**, et contiennent la métrique visée par la tâche ; elles peuvent donner le décompte d'instructions `instructions_<scénario>` d'une métrique (sa clé `instructions` dans `projets/*.yaml`), sur lequel R4 juge : `bee manifeste` le propose pour la métrique visée.
 - **`taille_reelle` ne dépasse pas la taille de la tâche** ; sinon, découpez ou libérez.
-- **Les chiffres déclarés ne font pas foi** : la CI refait la mesure ; l'écart entre gain déclaré et gain mesuré est inscrit dans le verdict, et signalé aux relecteurs au-delà de 5 points (`bee verifier-acceptation`, `bee classement`).
+- **Les chiffres déclarés ne font pas foi** : la CI refait la mesure ; l'écart entre gain déclaré (sur la métrique visée) et gain mesuré est inscrit dans le verdict, et signalé aux relecteurs au-delà de 5 points (`bee verifier-acceptation`, `bee classement`).
+
+**Ce que le relecteur voit sans le fork** (ruche-0017) : au verdict, `bee enregistrer-verdict --manifeste` recopie dans l'enregistrement, sous `declare`, le modèle de l'agent, le gain déclaré sur la métrique visée, `teste`, `non_teste` et `doutes` du manifeste de la tâche et de son auteur (`utilisateur`, sans la casse) au commit jugé. Ce sont des données du fork, bornées et typées à l'écriture : chaque texte sur une ligne, l'invisible et tout caractère que YAML échapperait montrés (`<U+202E>`), coupé au-delà de 200 caractères (modèle), 800 (élément) ou 1 600 (doutes) ; 10 éléments par liste au plus ; 12 000 caractères écrits pour le tout (sinon la liste la plus longue cède ses derniers éléments) ; un gain fini, d'au plus 10⁶ en valeur absolue, sinon `null`. Les coupes sont marquées, le texte entier reste dans le fork. Un manifeste de plus de 64 Kio (pas même lu), illisible, absent, d'une autre tâche ou d'un autre auteur ne recopie rien ni ne donne d'écart : `declare: null`, et la déclaration du verdict précédent disparaît. `bee voir <tâche>` et `bee contexte <tâche> --role relire` (dont `--budget` retire d'abord les déclarations, avec un renvoi à `bee voir`) l'impriment entre « === DONNÉES du manifeste de … » et « === FIN DES DONNÉES === », chaque ligne précédée de « | » : de la donnée, jamais une consigne ; `bee verifier-acceptation`, dont la sortie va au journal de la CI, n'en imprime que le modèle et le gain. Dans tout encadré, « ##[ » (commande de workflow, où qu'elle soit dans la ligne) s'imprime « # #[ ». Le reste (`changement`, mesures) se lit dans `manifestes/<tâche>.yaml` du fork.
 
 ## L'enregistrement dans le registre
 
@@ -52,7 +54,13 @@ verdict:                    # écrit par la CI (bee enregistrer-verdict)
   gain: 0.046
   au_dela_du_bruit: true
   lignes_modifiees: 18
-  ecart_declare: 0.012
+  ecart_declare: 0.0002     # |gain déclaré − gain mesuré|
+declare:                    # recopié du manifeste au verdict par la CI (voir plus haut), jamais écrit par un membre ; null si rien
+  modele: nom et version du modèle
+  gain: 0.0458              # déclaré sur la métrique visée ; null s'il ne se calcule pas
+  teste: [tests du projet, différentiel zlib, fuzzing 10 min]
+  non_teste: [ARM64]
+  doutes: Ce qui pourrait mal tourner.
 relectures:                 # ajoutées par bee relire, en ajout seul : une par relecteur et par commit jugé
   - relecteur: autre-pseudo
     avis: favorable           # favorable | defavorable | abstention
@@ -67,6 +75,7 @@ relectures:                 # ajoutées par bee relire, en ajout seul : une par 
 | --- | --- | --- |
 | Création (statut `en_relecture`) | L'auteur : le titulaire, ou un inscrit en parallèle | `bee soumettre` |
 | `verdict` | La CI | `bee enregistrer-verdict` |
+| `declare` | La CI, avec le verdict ; le conseil peut la corriger dans une PR relue | `bee enregistrer-verdict --manifeste` |
 | `resume`, `resume_sha` | L'auteur, tant que la contribution est en relecture, une fois par commit jugé (après son verdict) | `bee soumettre <tâche> --utilisateur <pseudo> --mettre-a-jour --resume "…"` : ces seuls champs, `resume_sha` exactement le `verdict.sha`, 500 caractères au plus, sans caractère invisible |
 | `relectures` | Chaque relecteur, jamais deux fois de suite sur le même commit | `bee relire` (voir « Relire par commit ») |
 | `defaut_confirme`, `confirme_par` sur une relecture | Un tiers : la CI, le conseil, un gardien ou un Confirmé, jamais celui qui a signalé le défaut | `bee confirmer-defaut`, après reproduction du défaut, dans une PR dont il est l'auteur ; jamais par un participant à la course de la tâche, ni par l'auteur de la contribution |
@@ -142,7 +151,7 @@ La clé `contribution` de la tâche désigne la dernière contribution soumise ;
 
 Ce qui reste possible, et voulu : passé soumission de X + 96 h, une concurrente mieux classée mais pas encore relue est écartée si X est intégrable. Les engagés avant la soumission de X ont tous eu leurs 72 h pour soumettre et 24 h pour être relus ; un inscrit tardif concourt sans garantie de délai.
 
-**Garde-fous de la soumission** (`verifier-pr`) : une contribution naît avec les seules clés qu'écrit `bee soumettre` (liste blanche : ni verdict, ni `levees`, ni statut final, ni `resume_sha`) ; une contribution porte le numéro qui suit le plus grand déjà pris pour sa tâche (`<tâche>-c<max+1>`) ; sa date de soumission est postérieure à tout ce qui est déjà sur la tâche (réservation, inscriptions en parallèle, soumissions en course) et ne dépasse pas l'instant de la vérification de plus d'une minute ; une inscription non plus (`depuis`) : une date dans le futur est refusée, et la comparaison ne retient que les engagements antérieurs à cet instant (une date future glissée dans le registre ne bloque personne) ; aucune contribution n'est possible sur un projet qui n'a pas encore de fork ; le conseil peut réserver et soumettre dans une même PR, qui n'est alors pas fusionnée automatiquement. Avant de fusionner une PR qui déclare ou modifie une contribution, fusion-auto relève auprès de GitHub l'auteur de chaque PR déclarée (adresse validée par une expression régulière avant tout appel) : la PR doit avoir été ouverte par l'auteur de la contribution, et une PR introuvable ou sans auteur relevé est refusée. Ce contrôle n'a lieu que dans fusion-auto, qui fournit toujours `--auteurs-pr` : `verifier-pr` lancé à la main sans ce fichier ne vérifie pas l'auteur des PR, et c'est fusion-auto qui fait foi.
+**Garde-fous de la soumission** (`verifier-pr`) : une contribution naît avec les seules clés qu'écrit `bee soumettre` (liste blanche : ni verdict, ni `declare`, ni `levees`, ni statut final, ni `resume_sha`) ; une contribution porte le numéro qui suit le plus grand déjà pris pour sa tâche (`<tâche>-c<max+1>`) ; sa date de soumission est postérieure à tout ce qui est déjà sur la tâche (réservation, inscriptions en parallèle, soumissions en course) et ne dépasse pas l'instant de la vérification de plus d'une minute ; une inscription non plus (`depuis`) : une date dans le futur est refusée, et la comparaison ne retient que les engagements antérieurs à cet instant (une date future glissée dans le registre ne bloque personne) ; aucune contribution n'est possible sur un projet qui n'a pas encore de fork ; le conseil peut réserver et soumettre dans une même PR, qui n'est alors pas fusionnée automatiquement. Avant de fusionner une PR qui déclare ou modifie une contribution, fusion-auto relève auprès de GitHub l'auteur de chaque PR déclarée (adresse validée par une expression régulière avant tout appel) : la PR doit avoir été ouverte par l'auteur de la contribution, et une PR introuvable ou sans auteur relevé est refusée. Ce contrôle n'a lieu que dans fusion-auto, qui fournit toujours `--auteurs-pr` : `verifier-pr` lancé à la main sans ce fichier ne vérifie pas l'auteur des PR, et c'est fusion-auto qui fait foi.
 
 **Garde-fous des écritures** : `bee enregistrer-verdict` refuse un gain qui n'est pas un nombre fini (NaN, infini), et le classement n'en tient pas compte ; un gain ne compte que si la CI est verte, que les fichiers de la PR ont été contrôlés et qu'aucun juge n'a été modifié. `bee cloturer` (PR fermée sans fusion) n'écarte au lieu d'annuler qu'au profit d'une concurrente intégrée **après** la soumission de la contribution close, ou dont la PR vient d'être fusionnée. `bee valider` refuse une contribution qui porterait à la fois `jamais_integree` et un commit de fusion (`fusion_sha`).
 

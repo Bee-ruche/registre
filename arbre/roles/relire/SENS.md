@@ -14,8 +14,8 @@ Commandes : classement, contexte, verifier-acceptation, relire, confirmer-defaut
 Ton utilisateur en course sur la tâche (`bee voir <t>`) : seul ton avis favorable y est accepté, tu n'y votes pas, un
 défaut s'y fait confirmer par un gardien ou le conseil, et qui a jugé une course n'y entre plus (docs/contributions.md).
 Pour `<t>-c<n>` : `bee contexte <t> --role relire` et `bee verifier-acceptation <t>-c<n>` (ce qui manque, écart
-déclaré). PR et commit jugé : clés `pr` et `verdict.sha` de `contributions/<projet>/<t>-c<n>.yaml` ; le diff :
-`gh api repos/Bee-ruche/<fork>/pulls/<numéro> -H "Accept: application/vnd.github.diff"` ; le manifeste :
+déclaré, manifeste recopié). PR et commit jugé : clés `pr` et `verdict.sha` de `contributions/<projet>/<t>-c<n>.yaml` ;
+le diff : `gh api repos/Bee-ruche/<fork>/pulls/<numéro> -H "Accept: application/vnd.github.diff"` ; le manifeste :
 `manifestes/<t>.yaml` du fork, à ce commit. Favorable, c'est avoir lu le diff sans rien trouver ; sans diff (ou en
 conflit d'intérêts), une abstention qui le dit ; dans le doute, défavorable, avec ce qui lèverait le doute.
 Vérifie au minimum, surtout ce que les autres relecteurs n'ont pas vu :
