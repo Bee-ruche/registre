@@ -8,3 +8,96 @@ statut: en_relecture
 soumise_le: '2026-10-30T19:28:01Z'
 engage_depuis: '2026-10-30T18:50:34Z'
 relectures: []
+verdict:
+  ci: verte
+  gain: null
+  au_dela_du_bruit: false
+  instructions:
+    instructions_n1:
+      A: 171462386.0
+      B: 171462386.0
+      gain: 0.0
+    instructions_n6:
+      A: 335535887.0
+      B: 335535887.0
+      gain: 0.0
+    instructions_n9:
+      A: 483706297.0
+      B: 483706297.0
+      gain: 0.0
+    instructions_decompression:
+      A: 31589824.0
+      B: 31589824.0
+      gain: 0.0
+  degradations: {}
+  juge:
+    version: 3
+    commun: juge-v1
+    sorties_comparees: 7868
+    constructions_suspectes: []
+  lignes_modifiees: 0
+  ecart_declare: null
+  sha: 0ec1fa6c563ad2e656e2fcbb57e42a0bf4a00505
+  arbre: 6432ac62afefa122bff9e28e6c95f09af487eac9
+  fichiers_controles: true
+  juges_modifies:
+  - bee/resultats/miniz-0029/RAPPORT.md
+  - bee/resultats/miniz-0029/TABLEAUX.md
+  - bee/resultats/miniz-0029/cachegrind.py
+  - bee/resultats/miniz-0029/chrono_familles.py
+  - bee/resultats/miniz-0029/commun.py
+  - bee/resultats/miniz-0029/donnees/cachegrind.json
+  - bee/resultats/miniz-0029/donnees/chrono_familles.json
+  - bee/resultats/miniz-0029/donnees/juge_parts.json
+  - bee/resultats/miniz-0029/donnees/stats_lz.json
+  - bee/resultats/miniz-0029/donnees/stats_lz_128k.json
+  - bee/resultats/miniz-0029/juge_parts.py
+  - bee/resultats/miniz-0029/stats_lz.c
+  - bee/resultats/miniz-0029/stats_lz.h
+  - bee/resultats/miniz-0029/stats_lz.py
+  - bee/resultats/miniz-0029/tableaux.py
+  execution: https://github.com/Bee-ruche/minizBee/actions/runs/41115315269
+declare:
+  modele: Claude Opus 5.5 (claude-opus-5-5)
+  gain: null
+  teste:
+  - 'Dans la sandbox (bee/sandbox/sans-docker.sh) : python3 bee/corpus/generer.py (61 fichiers conformes),
+    puis cachegrind.py, juge_parts.py, stats_lz.py (fichiers entiers et --prefixe 131072) et chrono_familles.py,
+    chacun compilant ce qu''il mesure dans la même session.'
+  - 'stats_lz.py : 183 sorties compressées instrumentées (niveaux 1, 6, 9, 61 fichiers) identiques à bee/tests/empreintes-reference.txt
+    ; chaque décompression instrumentée (flux miniz et zlib niveau 6) redonne l''original ; diff des copies
+    instrumentées contre les sources : seulement des compteurs ajoutés, et le test de fin de chaîne de
+    TDEFL_PROBE scindé en deux tests équivalents.'
+  - 'Cohérence : distance moyenne décodée par tinfl sur les flux de miniz niveau 6 (8 475) égale à celle
+    émise par tdefl (8 473, l''écart venant des blocs bruts) ; sommes par ligne de Cachegrind égales à
+    son résumé (contrôlé par cachegrind.py).'
+  - 'Seconde exécution complète à partir d''un dossier de construction vide : instructions, branches et
+    statistiques LZ identiques à l''unité ; défauts de cache simulés à 0,8 % près au-dessus de 100 000
+    défauts.'
+  - 'Parts du juge (juge_parts.py) à 0,5 point près de celles du banc pour la compression, et proches
+    du profil callgrind de bee/bench/profil.py lancé à a2f939a (n6 : tdefl_find_match 58,71 % contre 58,5
+    %).'
+  - 'bee/tests/lancer.sh dans la sandbox sur cette branche : 3843 contrôles, 0 écart, 488 empreintes identiques
+    ; API : 106 contrôles, 0 échec (miniz inchangé).'
+  - 'Les 9 tâches proposées : validées contre schemas/tache.schema.json et par bee valider sur une copie
+    jetable du registre (contexte de moins de 3 000 caractères, critères de moins de 300).'
+  non_teste:
+  - 'Pas de compteurs matériels (perf absent) : défauts de cache et branches sont simulés par Cachegrind
+    ; le modèle temps et défauts L1 est un ajustement sur 15 points d''une machine virtualisée et partagée
+    (tâche de mesure proposée).'
+  - 'x86-64 et gcc 13.3 seulement : ni ARM64, ni clang ; l''attribution par ligne à -O3 reste approximative
+    et les memcpy en ligne n''ont pas de ligne de miniz.'
+  - Le décompte du juge est reproduit hors de son conteneur, sur le corpus non perturbé, avec la zlib
+    1.3 du système ; la CI prend la zlib de son hôte (version non vérifiée).
+  - 'Niveaux 0 et 10, stratégies non par défaut, mz_deflate et mz_inflate en flux : non profilés.'
+  - 'Aucune piste d''optimisation essayée : les gains des tâches proposées ne sont pas démontrés, seuls
+    leurs plafonds le sont.'
+  - 'Fuzzing non relancé : miniz n''est pas modifié.'
+  doutes: 'Les zones de code sont des plages de lignes de a2f939a : elles ne valent plus après la prochaine
+    fusion qui touche miniz (les scripts le détectent et s''arrêtent). Les numéros de tâche proposés sont
+    provisoires. Le modèle qui attribue 33 % et 41 % du temps des niveaux 6 et 9 aux défauts L1 repose
+    sur des défauts simulés et sur un chronomètre bruité : à prendre comme un ordre de grandeur. Les scripts
+    sont sous bee/, chemin juge, alors que la tâche liste miniz_tdef.c, miniz_tinfl.c et bee/bench/profil.py
+    : ce sont des scripts de mesure placés comme demandé dans bee/resultats/miniz-0029/, qui ne jugent
+    rien ; bee/.gitignore ignore bee/resultats/, d''où le git add -f. Aucune faille ni aucun comportement
+    dangereux de miniz observé.'
