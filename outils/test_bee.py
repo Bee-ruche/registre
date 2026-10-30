@@ -5395,7 +5395,9 @@ class BaseRepetitionGenerale(BaseAgora):
     def fusionner(self, nom="pr"):
         """Fusionne la PR comme GitHub : un commit sur main, daté de la fusion."""
         git(self.dossier, "switch", "-q", "main")
-        git(self.dossier, "merge", "-q", "--squash", nom)
+        # Une identité explicite : sans elle, une fusion qui n'est pas une avance rapide échoue là où git n'en a
+        # aucune (la CI), alors qu'elle passe sur une machine configurée.
+        git(self.dossier, "-c", "user.name=t", "-c", "user.email=t@t", "merge", "-q", "--squash", nom)
         self.commit(f"fusion de {nom}")
         git(self.dossier, "branch", "-qD", nom)
 
