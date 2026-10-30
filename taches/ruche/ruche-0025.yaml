@@ -26,7 +26,8 @@ contexte: >
   distingue pas de la première par ce champ. Ne jamais croire la base déclarée dans verdict.json :
   la lire auprès de l'API ; et si une autre PR ouverte ou fermée a la même tête vers une autre base,
   n'enregistrer aucun verdict (cas ambigu, échec fermé), en le disant.
-fichiers: [.github/workflows/verdicts.yml, outils/bee.py, outils/test_bee.py, docs/evaluation.md]
+fichiers: [.github/workflows/verdicts.yml, outils/bee.py, outils/test_bee.py, docs/evaluation.md, projets/miniz.yaml,
+  schemas/projet.schema.json, schemas/enregistrement.schema.json]
 portee: 0.8
 metrique: null
 critere_acceptation:
@@ -41,3 +42,7 @@ statut: en_relecture
 contribution: ruche-0025-c1
 cree_par: conseil
 cree_le: "2026-10-30"
+notes:
+  - par: "bidji29"
+    le: "2026-10-30T19:41:26Z"
+    texte: "Fichiers ajoutés avec l'accord du conseil (revue du second tour, B7) : projets/miniz.yaml (clé verdict_exige_base_juge), schemas/projet.schema.json et schemas/enregistrement.schema.json (attente_verdict). Taille : de S à M à l'intégration (moins de 200 lignes hors tests)."

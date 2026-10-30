@@ -43,10 +43,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          journal() { sed -e 's/##\[/# #[/g' -e 's/^/  | /'; }  # ruche-0025 : ce que bee imprime, jamais en tête de ligne du journal
           python3 outils/bee.py en-attente \
-            | python3 -c 'import json, sys; [print(c["id"], c["pr"], c.get("sha_verdict") or "-", c.get("ci_verdict") or "-", c.get("auteur") or "-", sep="\t") for c in json.load(sys.stdin)]' \
+            | python3 -c 'import json, sys; [print(c["id"], c["pr"], c.get("sha_verdict") or "-", c.get("ci_verdict") or "-", c.get("auteur") or "-", c.get("sha_attente") or "-", sep="\t") for c in json.load(sys.stdin)]' \
             > a_traiter.tsv
-          while IFS=$'\t' read -r id pr sha_connu ci_connue auteur; do
+          while IFS=$'\t' read -r id pr sha_connu ci_connue auteur sha_attente; do
             depot=$(printf '%s' "$pr" | sed -E 's#^https://github\.com/([A-Za-z0-9-]+/[A-Za-z0-9_.-]+)/pull/[0-9]+$#\1#')
             # Contribution de la ruche (PR sur le registre lui-même) : pas de CI de fork ni de verdict à collecter ; elle
             # est relue et fusionnée par le conseil. Ne jamais arrêter la collecte des autres pour elle.
@@ -61,18 +62,38 @@ jobs:
             # Un verdict vert sur ce commit est définitif ; un rouge peut venir d'une panne passagère
             # (runner indisponible) : on relit la dernière exécution terminée, qui a pu être relancée.
             [ "$sha" = "$sha_connu" ] && [ "$ci_connue" = "verte" ] && continue
-            execution=$(gh run list -R "$depot" --commit "$sha" --workflow bee-ci.yml --status completed --limit 1 \
-              --json databaseId,url --jq '.[0] | "\(.databaseId) \(.url)"') || continue
-            [ -z "$execution" ] && continue
-            numero=${execution%% *}; adresse=${execution#* }
+            # ruche-0025 (revues adverses de minizBee #16) : seulement la CI de CETTE PR, par l'événement pull_request, vers la
+            # branche par défaut du fork, jamais changée de base, sans autre PR de la même tête (dépôt et branche) qui la précède :
+            # sinon aucun verdict, et la contribution le dit (attente_verdict) ; pas rejugée avant une autre tête (1 000 requêtes
+            # par heure). bee juge les réponses de l'API.
+            [ "$sha" = "$sha_attente" ] && continue
+            n=${pr##*/}; api="$RUNNER_TEMP/api"; rm -rf "$api" && mkdir -p "$api"
+            [[ "$sha" =~ ^[0-9a-f]{7,40}$ && "$n" =~ ^[0-9]+$ ]] && gh api "repos/$depot/pulls/$n" > "$api/pr.json" \
+              && gh api "repos/$depot" > "$api/depot.json" \
+              && gh api "repos/$depot/pulls?state=all&per_page=100" --paginate > "$api/pulls.json" \
+              && gh api "repos/$depot/issues/$n/events?per_page=100" --paginate > "$api/evenements.json" \
+              && gh api "repos/$depot/issues/$n/timeline?per_page=100" --paginate > "$api/chronologie.json" \
+              && gh api "repos/$depot/actions/workflows/bee-ci.yml/runs?head_sha=$sha&event=pull_request&status=completed&per_page=100" \
+                   --paginate > "$api/executions.json" || continue
+            if ! execution=$(python3 outils/bee.py choisir-execution "$id" --sha "$sha" --api "$api"); then
+              [ -n "$execution" ] && printf '%s\n' "$execution" | journal; continue
+            fi
+            read -r numero adresse defaut <<< "$execution"
             rm -rf "$RUNNER_TEMP/verdict" && mkdir -p "$RUNNER_TEMP/verdict"
             gh run download "$numero" -R "$depot" -n verdict -D "$RUNNER_TEMP/verdict" || continue
+            # La base que déclare verdict.json (donnée du fork) n'est jamais crue : l'API dit si elle est un ancêtre de la branche
+            # par défaut (compare : identical ou ahead) ; bee enregistrer-verdict refuse sinon.
+            : > "$RUNNER_TEMP/verdict/bases.txt"
+            for base in $(python3 outils/bee.py bases-declarees "$RUNNER_TEMP/verdict/verdict.json"); do
+              statut=$(gh api "repos/$depot/compare/$base...$defaut" --jq .status) \
+                && printf '%s %s\n' "$base" "$statut" >> "$RUNNER_TEMP/verdict/bases.txt" || true
+            done
             # Contrôle de confiance : les fichiers modifiés par la PR, lus auprès de l'API GitHub. Une PR qui
             # touche son workflow ou ses juges a pu fabriquer son verdict ; R3 la refuse (optimisation) ou
             # exige une relecture du conseil ou d'un Confirmé (tâche d'outillage).
             gh api "repos/$depot/pulls/${pr##*/}/files" --paginate \
               --jq '.[] | .filename, (.previous_filename // empty)' > "$RUNNER_TEMP/verdict/fichiers.txt" || continue
-            options=(--fichiers "$RUNNER_TEMP/verdict/fichiers.txt")
+            options=(--fichiers "$RUNNER_TEMP/verdict/fichiers.txt" --bases "$RUNNER_TEMP/verdict/bases.txt")
             # Le manifeste de CETTE tâche : manifestes/<tâche>.yaml (bee manifeste), sinon CONTRIBUTION.yaml à la racine
             # (ancien emplacement). Un CONTRIBUTION.yaml resté sur master d'une contribution précédente a déjà servi à
             # calculer un écart contre le mauvais manifeste (miniz-0018-c1, tour 2) : bee enregistrer-verdict ignore un
@@ -94,7 +115,7 @@ jobs:
               options+=(--arbre "$arbre")
             fi
             python3 outils/bee.py enregistrer-verdict "$id" --verdict "$RUNNER_TEMP/verdict/verdict.json" \
-              --sha "$sha" --execution "$adresse" "${options[@]}" || true
+              --sha "$sha" --execution "$adresse" "${options[@]}" 2>&1 | journal || true
           done < a_traiter.tsv
           rm -f a_traiter.tsv
       - name: Publier

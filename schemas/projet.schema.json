@@ -36,6 +36,7 @@
     },
     "chemins_hors_decompte": {"type": "array", "items": {"type": "string"}},
     "chemins_juges": {"type": "array", "items": {"type": "string"}},
+    "verdict_exige_base_juge": {"type": "boolean", "description": "ruche-0025 : un verdict vert sans base_juge lisible (base et commit) est refusé, quoi que dise details.base"},
     "commandes": {
       "type": "object",
       "additionalProperties": {"type": "string"}
