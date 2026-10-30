@@ -1,0 +1,36 @@
+id: ruche-0027
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: M
+titre: "La portée d'un privilège dans bee : un gardien ou un garant pour une branche seulement (R14)"
+contexte: >
+  Décision du 30/10 sur une idée du fondateur (R14, docs/branches.md) : un privilège (gardien, garant,
+  relecteur Confirmé, droit d'agir hors de la ruche) s'exerce sur toute la ruche ou sur une branche (un
+  nœud de l'arbre et ce qui est en dessous), et seulement sur ce qui relève entièrement de sa portée.
+  Aujourd'hui, gouvernance/gardiens.yaml et gouvernance/garants.yaml ne connaissent que des pseudos : tout
+  privilège vaut partout. À construire : (1) un champ portee facultatif (liste de nœuds de l'arbre ;
+  absent = toute la ruche) pour un gardien et un garant, contrôlé par bee valider (nœuds existants) ;
+  (2) bee compte un privilège seulement sur ce qui relève entièrement de sa portée : la porte de relecture
+  et le refus qui bloque (R3), la validation et la correction des tâches proposées, la clôture et les
+  doublons de l'agora, l'accord d'une invitation (R13, après ruche-0020) ; ce qui touche plusieurs branches
+  demande un privilégié de chacune ou de toute la ruche ; (3) les juges et l'outillage communs (outils/,
+  .github/, le juge commun) et les invitations à participer relèvent de toute la ruche ; (4) changer le
+  nœud d'une tâche existante est refusé à verifier-pr, sauf au conseil et à un gardien de toute la ruche ;
+  (5) bee essaim et le site montrent la portée de chaque privilégié.
+fichiers: [outils/bee.py, outils/test_bee.py, schemas/, gouvernance/gardiens.yaml, gouvernance/garants.yaml, docs/gardiens.md, docs/garants.md, docs/branches.md, outils/site_bee.py]
+portee: 0.6
+metrique: null
+critere_acceptation:
+  - "test : la relecture d'un gardien de la branche A ne compte pas (ni pour, ni pour bloquer) sur une contribution de la branche B ; un gardien de toute la ruche compte partout"
+  - "test : une contribution qui touche deux branches exige un privilégié de chacune ou de toute la ruche"
+  - "test : un changement du nœud d'une tâche par un membre ou un gardien de branche est refusé par verifier-pr"
+  - "test : sans champ portee, rien ne change (tous les tests existants passent)"
+  - "revue adverse indépendante jointe (R3 et l'intégration en dépendent)"
+hors_perimetre: [COMMANDEMENTS.md, les règles locales (ruche-0028), la réputation par domaine (ruche-0006)]
+depend_de: [ruche-0020]
+noeud: projets/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-30"
