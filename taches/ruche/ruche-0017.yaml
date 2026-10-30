@@ -32,9 +32,7 @@ critere_acceptation:
 hors_perimetre: [les workflows de .github/, le code des forks, R3 et R4]
 depend_de: []
 noeud: projets/ruche
-statut: reservee
-reservation:
-  utilisateur: "bidji29"
-  depuis: "2026-10-30T12:37:04Z"
+statut: en_relecture
+contribution: ruche-0017-c1
 cree_par: conseil
 cree_le: "2026-10-30"
