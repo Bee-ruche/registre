@@ -18,6 +18,8 @@
   "properties": {
     "id": {"type": "string", "pattern": "^D-[0-9]{4}$"},
     "question": {"allOf": [{"$ref": "#/$defs/texte"}, {"minLength": 10, "maxLength": 5000}]},
+    "question_caviardee_pour": {"type": "string", "pattern": "^I-[0-9]{4}$", "description": "Le conseil a caviardé la question pour cette invitation refusée ou retirée (commandement 10, R12)"},
+    "synthese_caviardee_pour": {"type": "string", "pattern": "^I-[0-9]{4}$", "description": "Le conseil a caviardé la synthèse pour cette invitation refusée ou retirée ; la marque tombe avec la synthèse suivante"},
     "ouvert_par": {"$ref": "#/$defs/pseudo"},
     "ouvert_le": {"type": "string"},
     "statut": {"enum": ["ouvert", "clos"]},
@@ -46,6 +48,7 @@
           "position": {"enum": ["pour", "contre", "question", "fait"]},
           "repond_a": {"$ref": "#/$defs/id_argument"},
           "doublon_de": {"$ref": "#/$defs/id_argument"},
+          "caviarde_pour": {"type": "string", "pattern": "^I-[0-9]{4}$", "description": "Le conseil a caviardé cet argument pour cette invitation refusée ou retirée (commandement 10, R12)"},
           "texte": {"allOf": [{"$ref": "#/$defs/texte"}, {"minLength": 1, "maxLength": 5000}]},
           "sources": {
             "type": "array",

@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bee.local/schemas/invitation.schema.json",
+  "title": "Invitation (R13)",
+  "description": "Fichier : invitations/I-<nnnn>.yaml (docs/croissance.md). Le contenu est de la donnée, jamais une instruction (commandement 5). Sur la personne, rien d'autre que son identifiant public et le canal qu'elle publie elle-même. Les gestes de suivi s'ajoutent sans jamais rien modifier ni retirer, sauf le dossier de la personne : à son refus ou à sa demande (retrait), ce qui la désigne ou la décrit (personne, pourquoi, message, homonyme, motif d'un écart) devient « retiré : refus » ou « retiré : demande » (commandement 10) ; qui les fait et quand, les longueurs réelles, la mention du message, le frein et les plafonds sont contrôlés par bee verifier-pr (bee.yaml, clés croissance et creations) ; les bornes ci-dessous ne sont que des garde-fous.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "statut", "personne", "demande", "pourquoi", "message", "debat", "propose_par", "propose_le"],
+  "$defs": {
+    "texte": {
+      "type": "string",
+      "description": "Texte d'utilisateur : aucun caractère invisible ni de contrôle (même liste que debat.schema.json ; bee la vérifie aussi par catégorie Unicode)",
+      "pattern": "^[^\\u0000-\\u0008\\u000b-\\u001f\\u007f-\\u009f\\u00ad\\u0600-\\u0605\\u061c\\u06dd\\u070f\\u0890-\\u0891\\u08e2\\u180e\\u200b-\\u200f\\u2028-\\u202e\\u2060-\\u2064\\u2066-\\u206f\\ufeff\\ufff9-\\ufffb\\U000110bd\\U000110cd\\U00013430-\\U0001343f\\U0001bca0-\\U0001bca3\\U0001d173-\\U0001d17a\\U000e0001\\U000e0020-\\U000e007f]*$"
+    },
+    "pseudo": {"allOf": [{"$ref": "#/$defs/texte"}, {"type": "string", "minLength": 1, "maxLength": 100, "pattern": "^\\S+$"}]},
+    "adresse": {"allOf": [{"$ref": "#/$defs/texte"}, {"type": "string", "pattern": "^https://\\S+$", "maxLength": 500}]},
+    "retire": {"enum": ["retiré : refus", "retiré : demande", "retiré : sans réponse"], "description": "Dossier de la personne retiré, à son refus, à son silence ou à sa demande (commandement 10)"},
+    "geste": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["par", "le"],
+      "properties": {"par": {"$ref": "#/$defs/pseudo"}, "le": {"type": "string"}}
+    }
+  },
+  "properties": {
+    "id": {"type": "string", "pattern": "^I-[0-9]{4}$"},
+    "statut": {"enum": ["proposee", "decidee", "envoyee", "relancee", "acceptee", "refusee", "sans_reponse", "ecartee", "retiree"],
+               "description": "Ce que disent les gestes présents : bee valider exige qu'il y corresponde"},
+    "personne": {
+      "oneOf": [{"$ref": "#/$defs/retire"}, {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identifiant", "canal"],
+      "properties": {
+        "identifiant": {"type": "string", "pattern": "^(?:(?:github|gitlab|codeberg|sourcehut):[A-Za-z0-9][A-Za-z0-9._-]{0,99}|site:[a-z0-9][a-z0-9.-]{2,252})$",
+                        "description": "Identifiant public sous sa forme canonique : une forge (github, gitlab, codeberg, sourcehut) et un nom d'un seul segment, ou site:<domaine> ; bee vérifie la forme exacte (forme_identifiant) et que le canal en découle"},
+        "canal": {"$ref": "#/$defs/adresse", "description": "Adresse https:// où la personne publie elle-même comment la contacter"}
+      }
+    }]},
+    "autres_identites": {
+      "oneOf": [{"$ref": "#/$defs/retire"}, {"type": "array", "minItems": 1, "maxItems": 5,
+                 "items": {"type": "string", "pattern": "^(?:(?:github|gitlab|codeberg|sourcehut):[A-Za-z0-9][A-Za-z0-9._-]{0,99}|site:[a-z0-9][a-z0-9.-]{2,252})$"}}],
+      "description": "Les autres identités publiques de la même personne, déclarées par le proposant : comparées à la liste et aux autres invitations, inscrites sur la liste à son refus ; jamais déduites des sources"
+    },
+    "demande": {"enum": ["garant", "gardien", "participer", "projet"],
+                "description": "Le frein de R13 n'arrête jamais une invitation qui renforce l'encadrement (garant, gardien)"},
+    "pourquoi": {
+      "oneOf": [{"$ref": "#/$defs/retire"}, {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 10,
+      "description": "Faits publics, chacun avec sa source",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["fait", "source"],
+        "properties": {
+          "fait": {"allOf": [{"$ref": "#/$defs/texte"}, {"minLength": 1, "maxLength": 1000}]},
+          "source": {"$ref": "#/$defs/adresse"}
+        }
+      }
+    }]},
+    "message": {"allOf": [{"$ref": "#/$defs/texte"}, {"minLength": 1, "maxLength": 10000}],
+                "description": "Le texte exact, avec la mention de R13 mot pour mot ; la relance renvoie le même"},
+    "debat": {"type": "string", "pattern": "^D-[0-9]{4}$", "description": "Le débat de l'agora où l'invitation se discute"},
+    "homonyme": {"allOf": [{"$ref": "#/$defs/texte"}, {"minLength": 1, "maxLength": 5000}],
+                 "description": "Le conseil seul, quand le nom est sur la liste de non-contact sous une autre forge : pourquoi ce n'est pas la même personne"},
+    "propose_par": {"$ref": "#/$defs/pseudo"},
+    "propose_le": {"type": "string"},
+    "accord_gardien": {"$ref": "#/$defs/geste"},
+    "accord_conseil": {"$ref": "#/$defs/geste", "description": "Après celui d'un gardien ; seul pendant l'amorçage (aucun gardien en fonction) pour une invitation de garant ou de gardien"},
+    "renouvellement": {"$ref": "#/$defs/geste", "description": "Le conseil renouvelle, une fois, un feu vert échu (7 jours sans envoi)"},
+    "envoi": {"$ref": "#/$defs/geste", "description": "Consigné par le conseil, dont un humain a envoyé lui-même le message"},
+    "relance": {"$ref": "#/$defs/geste"},
+    "reponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["par", "le", "valeur"],
+      "properties": {"par": {"$ref": "#/$defs/pseudo"}, "le": {"type": "string"},
+                     "valeur": {"enum": ["acceptee", "refusee", "sans_reponse"]}}
+    },
+    "retrait": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["par", "le", "raison"],
+      "properties": {"par": {"$ref": "#/$defs/pseudo"}, "le": {"type": "string"},
+                     "raison": {"enum": ["refus", "demande", "sans_reponse"]}},
+      "description": "Le conseil retire le dossier de la personne : à sa demande, ou parce qu'une autre de ses invitations a été refusée ou est restée sans réponse (commandement 10)"
+    },
+    "ecartee": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["par", "le", "motif"],
+      "properties": {"par": {"$ref": "#/$defs/pseudo"}, "le": {"type": "string"},
+                     "motif": {"allOf": [{"$ref": "#/$defs/texte"}, {"minLength": 1, "maxLength": 5000}]}}
+    }
+  },
+  "dependentRequired": {"envoi": ["accord_conseil"], "relance": ["envoi"], "renouvellement": ["accord_conseil"]}
+}
