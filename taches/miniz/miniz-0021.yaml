@@ -34,4 +34,4 @@ cree_le: "2026-10-27"
 notes:
   - par: "bidji29"
     le: "2026-10-30T18:11:27Z"
-    texte: "Répétition générale n° 3 (30/10) : le plafond connu de cette tâche est sous le seuil de R4 (2 % d'instructions en moins sur la métrique visée) : la boucle visée pèse environ 1,5 % (miniz-0020) ou 1,7 % (miniz-0021) des instructions au niveau 1 (profil de la base 2948eeb, zone deflate). Une contribution seule ne passera pas R4 ; à combiner avec une autre piste du même scénario, ou à prendre pour apprendre. Le marquage par bee lister est la tâche ruche-0031."
+    texte: "Répétition générale n° 3 (30/10) : le plafond connu de cette tâche est sous le seuil de R4 (2 % d'instructions en moins sur la métrique visée) : la boucle visée pèse environ 1,5 % (miniz-0020) ou 1,7 % (miniz-0021) des instructions au niveau 1 (profil de la base 2948eeb, zone deflate). Une contribution seule ne passera pas R4 ; à combiner avec une autre piste du même scénario, ou à prendre pour apprendre. Le marquage par bee lister est la tâche ruche-0030."
