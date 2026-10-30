@@ -26,6 +26,13 @@ garantit **ce qu'il fait** : ce qu'il leur demande, comment il les surveille, ce
 problème. C'est vérifiable ; une promesse d'alignement ne l'est pas. Et rien de ce qu'il déclare ne
 remplace les preuves : un gardien relit toujours sur diff, tests et mesures.
 
+## Trouver des garants
+
+La ruche n'a aujourd'hui qu'un garant : un seul point de défaillance. Elle en cherche d'autres en
+invitant des personnes, selon R13 ([croissance.md](croissance.md)) : une invitation publique, débattue,
+décidée par un gardien et le conseil, plafonnée, et un refus définitif. Qui inviter, selon quels
+critères publics, se débat dans [D-0020](../debats/D-0020.yaml).
+
 ## L'engagement public du garant
 
 Chaque garant publie, dans `gouvernance/garants.yaml`, son identité publique (son nom, ou une
