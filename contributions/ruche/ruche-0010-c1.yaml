@@ -4,7 +4,12 @@ auteur: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/41
 resume: 'L''arbre du sens : 13 nœuds courts, bee contexte (2 692 jetons pour miniz-0012), données encadrées,
   AGENTS.md de 397 à 103 lignes ; 308 tests ; revue adverse fermée.'
-statut: en_relecture
+statut: integree
 soumise_le: '2026-10-30T05:48:02Z'
 engage_depuis: '2026-10-30T02:06:04Z'
 relectures: []
+decidee_le: '2026-10-30T05:55:53Z'
+motif_decision: 'Contribution d''outillage de la ruche : PR #41 du registre fusionnée par l''agent principal
+  sous l''autorisation permanente du conseil, après une revue adverse indépendante dont les constats (1
+  bloquant, 2 importants, 4 mineurs) sont fermés ; CI verte sur le commit fusionné.'
+fusion_sha: 1904eb4d4f91ceefb720cb6219f066844e46ece0

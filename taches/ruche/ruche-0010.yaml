@@ -33,7 +33,7 @@ critere_acceptation:
   - "une tâche proposée par nœud du palier suivant"
 hors_perimetre: [COMMANDEMENTS.md, REGLES.md, contenu des nœuds profonds (tâches proposées), outils/juge/]
 depend_de: []
-statut: en_relecture
+statut: integree
 contribution: ruche-0010-c1
 cree_par: conseil
 cree_le: "2026-10-29"
