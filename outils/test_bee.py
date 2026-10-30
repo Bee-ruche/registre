@@ -5898,6 +5898,122 @@ class TestRelireParCommit(BaseParallele):
         self.ok_("site", "--sortie", str(site))
         self.assertIn(">1 (3)</td>", (site / "index.html").read_text(encoding="utf-8"))
 
+    # --- Deuxième revue adverse (R1 à R5, D2, V1) : un test par constat ---
+
+    def quatre_contributeurs(self):
+        for pseudo in ("david", "eve", "farid"):
+            self.ok_("inscrire", "--pseudo", pseudo, "--compte-cree-le", "2020-01-01")
+        self.contributeurs("chloe", "david", "eve", "farid")
+
+    def test_balance_au_retour_a_un_commit_refuse(self):
+        """R1 : X, chloe et david pour, eve et farid contre ; eve et farid approuvent le correctif Y ; l'auteur revient à X : leurs
+        refus de X comptent encore dans la balance, jusqu'à ce qu'ils relisent X."""
+        self.quatre_contributeurs()
+        self.fermer_porte()
+        self.verdict_au("aaaaaaa")
+        for qui, avis in (("chloe", "favorable"), ("david", "favorable"), ("eve", "defavorable"), ("farid", "defavorable")):
+            self.relire_(qui, avis)
+        for votant in ("chloe", "david", "bidji29"):
+            self.ok_("voter", self.cid, "--utilisateur", votant, "--valeur", "1")
+        self.a("2026-10-29T12:00:00Z")
+        self.assertIn("2 relecture(s) défavorable(s) contre 2 favorable(s)", self.acceptation(self.cid)[1])
+        self.verdict_au("bbbbbbb")
+        self.relire_("eve", "favorable")
+        self.relire_("farid", "favorable")
+        self.verdict_au("aaaaaaa")
+        code, texte = self.acceptation(self.cid)
+        self.assertEqual(code, 1, texte)
+        self.assertIn("2 relecture(s) défavorable(s) contre 2 favorable(s)", texte)
+        self.relire_("eve", "favorable")  # elle relit X : son refus de X est levé, par elle
+        self.relire_("farid", "favorable")
+        code, texte = self.acceptation(self.cid)
+        self.assertEqual(code, 0, texte)
+
+    def test_un_avis_non_recevable_ne_fait_rien_revenir(self):
+        """R3, R5 : la plus récente relecture d'un concurrent, si elle n'est pas recevable (abstention), ne compte pas, et ne fait
+        pas revenir une plus ancienne (ni une favorable, ni un défaut levé). Et qui a signalé un défaut n'entre plus en course."""
+        self.quatre_contributeurs()
+        self.fermer_porte()
+        self.verdict_au("aaaaaaa")
+        self.relire_("chloe", "favorable")
+        self.relire_("david", "favorable", "--defaut")
+        self.ok_("confirmer-defaut", self.cid, "--relecteur", "david", "--utilisateur", "bruno")
+        self.verdict_au("bbbbbbb")
+        self.relire_("chloe", "abstention")
+        self.relire_("david", "abstention")
+        for qui in ("eve", "farid"):
+            self.relire_(qui, "favorable")
+        for votant in ("eve", "farid", "bidji29"):
+            self.ok_("voter", self.cid, "--utilisateur", votant, "--valeur", "1")
+        self.a("2026-10-29T12:00:00Z")
+        self.assertEqual(self.acceptation(self.cid)[0], 0)
+        self.parallele("miniz-0099", "chloe")
+        self.assertIn("signalé ou confirmé un défaut", self.parallele("miniz-0099", "david", attendu=1), "signaler est juger")
+        # Écrit hors de l'outil : david en course malgré tout. Son abstention n'est pas recevable ; son défaut de X ne revient pas.
+        chemin_tache = self.dossier / "taches/miniz/miniz-0099.yaml"
+        bee.modifier_tache(chemin_tache, paralleles=self.tache("miniz-0099")["paralleles"]
+                           + [{"utilisateur": "david", "depuis": "2026-10-29T12:00:00Z"}])
+        code, texte = self.acceptation(self.cid)
+        self.assertNotIn("défaut confirmé", texte)
+        self.verdict_au("aaaaaaa")
+        reg = bee.Registre(self.dossier)
+        releve = bee.releve_relectures(reg, self.enr(self.cid), bee.calculer_niveaux(reg))
+        self.assertEqual(([r["relecteur"] for r in releve["favorables"]], releve["defauts"]), ([], ["david"]),
+                         "en course, l'abstention de chloe ne rend pas sa favorable de X ; le défaut de X, lui, est sur X")
+
+    def test_resoumettre_le_meme_commit_n_efface_ni_refus_ni_defaut(self):
+        """R2 : le gardien refuse X, avec un défaut confirmé, sur c1 ; l'auteur ferme sa PR et soumet X sous c2."""
+        self.contributeurs_chloe_et_david()
+        self.fermer_porte()
+        self.verdict_au("aaaaaaa")
+        self.relire_("bruno", "defavorable", "--defaut")
+        self.ok_("confirmer-defaut", self.cid, "--relecteur", "bruno", "--utilisateur", "bidji29")
+        self.ok_("cloturer", self.cid, "--motif", "PR fermée sans fusion.")
+        self.ok_("prendre", "miniz-0099", "--utilisateur", "alice")
+        premiere, self.cid = self.cid, self.soumettre("miniz-0099", "alice", 99302)
+        self.verdict_au("aaaaaaa")
+        self.relire_("chloe", "favorable")
+        self.relire_("david", "favorable")
+        for votant in ("chloe", "david", "bidji29"):
+            self.ok_("voter", self.cid, "--utilisateur", votant, "--valeur", "1")
+        self.a("2026-10-29T12:00:00Z")
+        code, texte = self.acceptation(self.cid)
+        self.assertEqual(code, 1, texte)
+        self.assertIn(f"défaut confirmé de bruno sur ce commit dans {premiere}", texte)
+        self.verdict_au("ccccccc")  # un autre commit : le refus de X ne le vise pas (les relectures de X, elles, sont périmées)
+        self.assertNotIn("sur ce commit dans", self.acceptation(self.cid)[1])
+        self.verdict_au("aaaaaaa")
+        self.relire_("bruno", "favorable")  # le gardien relit X sous c2 : son refus est levé, par lui
+        code, texte = self.acceptation(self.cid)
+        self.assertEqual(code, 0, texte)
+
+    def test_levee_du_conseil(self):
+        """D2 : le gardien dit non avant le verdict puis disparaît. Recours : le conseil lève, en motivant (levees), dans une PR
+        relue ; si le gardien relit ensuite, sa relecture compte de nouveau."""
+        self.contributeurs_chloe_et_david()
+        self.fermer_porte()
+        self.relire_("bruno", "defavorable")
+        self.verdict_au("bbbbbbb")
+        for qui in ("chloe", "david"):
+            self.relire_(qui, "favorable")
+        for votant in ("chloe", "david", "bidji29"):
+            self.ok_("voter", self.cid, "--utilisateur", votant, "--valeur", "1")
+        self.a("2026-11-10T12:00:00Z")
+        self.assertIn("relecture défavorable de bruno", self.acceptation(self.cid)[1])
+        chemin = self.dossier / f"contributions/miniz/{self.cid}.yaml"
+        enr = self.enr(self.cid)
+        levee = {"relecteur": "bruno", "motif": "Gardien absent depuis deux semaines, correctif relu par deux Contributeurs.",
+                 "par": "bidji29", "le": "2026-11-10T12:00:00Z"}
+        bee.ecrire_yaml(chemin, {**enr, "levees": [{**levee, "par": "chloe"}]})
+        self.assertIn("une levée est écrite par le conseil", self.bee("valider")[1])
+        bee.ecrire_yaml(chemin, {**enr, "levees": [levee]})
+        self.valide()
+        code, texte = self.acceptation(self.cid)
+        self.assertEqual(code, 0, texte)
+        self.a("2026-11-10T13:00:00Z")
+        self.relire_("bruno", "defavorable")  # il revient et relit : son avis compte de nouveau
+        self.assertIn("relecture défavorable de bruno", self.acceptation(self.cid)[1])
+
     def test_valider_garde_une_relecture_par_commit(self):
         """Poussé sans PR (bee valider, sur main et dans chaque PR) : deux relectures de suite d'un relecteur au même commit, deux
         sans commit ou une sans commit après une autre, et une abstention qui signale un défaut, sont refusées ; X, Y, X passe."""
@@ -6077,6 +6193,47 @@ class TestRelireParCommitPR(BaseRepetitionGenerale):
             with self.subTest(avis=avis, **champs):
                 self.attaque("farid", self.ajout(self.relecture("farid", avis, sha="def5678", **champs)), "farid est en course")
         self.relire("farid")
+
+    def test_levees_et_comptes_inscrits(self):
+        """Deuxième revue adverse : une levée est écrite par le conseil seul, en ajout seul, datée de la PR, jamais en libre-service
+        (D2) ; une relecture ou un vote d'un compte non inscrit est refusé (V1) ; qui a signalé un défaut n'entre plus en course."""
+        self.verdict_sur_main("abc1234")
+        self.relire("gaspard", "favorable", "--defaut")
+        levee = {"relecteur": "gaspard", "motif": "Défaut corrigé, relecteur absent : levée motivée par le conseil.",
+                 "par": "bidji29", "le": os.environ["BEE_MAINTENANT"]}
+        self.branche("levee")
+        enr = bee.lire_yaml(self.chemin)
+        bee.ecrire_yaml(self.chemin, {**enr, "levees": [levee]})
+        self.commit()
+        code, texte = self.verifier("bidji29", "--fusion-auto")
+        self.assertEqual(code, 3, texte)
+        self.assertIn("FUSION_AUTO=non", texte)
+        self.fusionner("levee")
+        for auteur, modifier, morceau in (
+                ("gaspard", lambda e: e.update(levees=e["levees"] + [{**levee, "par": "gaspard"}]), "par le conseil seul"),
+                ("github-actions[bot]", lambda e: e.update(levees=e["levees"] + [{**levee, "par": "github-actions[bot]"}]),
+                 "par le conseil seul"),
+                ("bidji29", lambda e: e.update(levees=[{**levee, "motif": "Motif réécrit après coup."}]), "en ajout seul"),
+                ("bidji29", lambda e: e.update(levees=e["levees"] + [{**levee, "le": "2026-10-01T00:00:00Z"}]), "doit être l'heure de la PR"),
+                ("zorro", self.ajout(self.relecture("zorro", "defavorable", sha="abc1234", defaut_signale=True)), "zorro doit d'abord s'inscrire")):
+            with self.subTest(auteur=auteur, morceau=morceau):
+                self.attaque(auteur, modifier, morceau)
+        self.branche("vote")
+        bee.ecrire_yaml(self.dossier / "votes" / self.cid / "zorro.yaml",
+                        {"votant": "zorro", "sujet": self.cid, "valeur": 1, "le": os.environ["BEE_MAINTENANT"]})
+        self.commit()
+        self.refusee("zorro", "zorro doit d'abord s'inscrire")
+        git(self.dossier, "switch", "-qf", "main")
+        self.branche("parallele")
+        self.ok("prendre", "miniz-0099", "--utilisateur", "farid", "--en-parallele")
+        self.commit()
+        self.libre_service("farid")
+        git(self.dossier, "switch", "-qf", "main")
+        self.branche("juge")
+        bee.modifier_tache(self.chemin_tache(), paralleles=[{"utilisateur": "gaspard", "depuis": os.environ["BEE_MAINTENANT"]}])
+        self.commit()
+        self.refusee("gaspard", "signalé ou confirmé un défaut")
+        git(self.dossier, "switch", "-qf", "main")
 
     def test_mise_a_jour_du_resume(self):
         # Une mise à jour par commit jugé (revue adverse, M4) : resume_sha est exactement le verdict.sha de la base.

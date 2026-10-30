@@ -66,6 +66,21 @@
         }
       }
     },
+    "levees": {
+      "type": "array",
+      "description": "Recours du conseil (ruche-0012) : les relectures de ce relecteur publiées avant la levée ne pèsent plus sur cette contribution, jusqu'à ce qu'il relise. Écrit par le conseil seul, dans une PR relue",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["relecteur", "motif", "par", "le"],
+        "properties": {
+          "relecteur": {"type": "string", "minLength": 1},
+          "motif": {"type": "string", "minLength": 10},
+          "par": {"type": "string", "minLength": 1},
+          "le": {"type": "string"}
+        }
+      }
+    },
     "motif_decision": {"type": "string"},
     "decidee_le": {"type": "string"},
     "fusion_sha": {"type": "string", "pattern": "^[0-9a-f]{7,40}$"},

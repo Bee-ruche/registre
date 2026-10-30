@@ -589,17 +589,18 @@ def est_confirmation(ancienne, nouvelle):
 
 
 def jugees_par(reg, tid, pseudo):
-    """Contributions encore en course de la tâche sur lesquelles `pseudo` a donné un avis défavorable ou confirmé un
-    défaut. Qui a jugé une course n'y entre plus (commandement 3) : ni inscription en parallèle, ni réservation, tant
-    que ces contributions sont en course ; on ne se retire pas pour juger puis revenir concourir."""
+    """Contributions encore en course de la tâche sur lesquelles `pseudo` a donné un avis défavorable, signalé un défaut
+    (signaler est juger, revue adverse de ruche-0012) ou confirmé un défaut. Qui a jugé une course n'y entre plus
+    (commandement 3) : ni inscription en parallèle, ni réservation, tant que ces contributions sont en course ; on ne se
+    retire pas pour juger puis revenir concourir."""
     return [c for c, e in contributions_en_course(reg, tid)
-            if any(isinstance(r, dict) and ((r.get("relecteur") == pseudo and r.get("avis") == "defavorable")
+            if any(isinstance(r, dict) and ((r.get("relecteur") == pseudo and (r.get("avis") == "defavorable" or r.get("defaut_signale")))
                                             or r.get("confirme_par") == pseudo)
                    for r in e.get("relectures") or [])]
 
 
 def message_juge(tid, pseudo, jugees):
-    return (f"{pseudo} a jugé défavorablement ou confirmé un défaut sur {', '.join(jugees)}, encore en course sur {tid} : "
+    return (f"{pseudo} a jugé défavorablement, signalé ou confirmé un défaut sur {', '.join(jugees)}, encore en course sur {tid} : "
             "qui a jugé une course n'y entre plus tant que ces contributions sont en course (commandement 3)")
 
 
@@ -1307,30 +1308,76 @@ def releve_relectures(reg, enr, niveaux):
     concurrents, privilegies = concurrents_de(reg, enr), reg.privilegies()
     par = defaultdict(list)
     for r in enr.get("relectures") or []:
-        if isinstance(r, dict) and r.get("relecteur") != enr.get("auteur") and avis_recevable(r, concurrents):
+        if isinstance(r, dict) and r.get("relecteur") != enr.get("auteur") and not levee(enr, r):
             par[r.get("relecteur")].append(r)
     sur = lambda r: bool(verdict) and r.get("sha") == sha  # noqa: E731
+    recevable = lambda r: r if r and avis_recevable(r, concurrents) else None  # noqa: E731
     releve = {k: [] for k in ("favorables", "defavorables", "bloquantes", "defauts", "abstentions", "perimees", "sans_commit",
                               "de_nouveaux")}
     for p, siennes in par.items():
-        derniere = siennes[-1]
-        du_commit = next((r for r in reversed(siennes) if sur(r)), None)
+        # La plus récente d'abord, puis sa recevabilité : non recevable (avis qu'un concurrent ne peut pas donner), elle ne
+        # compte ni pour ni contre et ne fait jamais revenir une plus ancienne (revue adverse, R3 et R5) ; de même pour la
+        # plus récente relecture du commit jugé.
+        derniere = recevable(siennes[-1])
+        du_commit = recevable(next((r for r in reversed(siennes) if sur(r)), None))
         if any(r.get("defaut_confirme") for r in (derniere, du_commit) if r):
             releve["defauts"].append(p)
         if not relecture_comptee(reg, niveaux, p):
-            if sur(derniere) and derniere.get("avis") != "abstention":
+            if derniere and sur(derniere) and derniere.get("avis") != "abstention":
                 releve["de_nouveaux"].append(derniere)
             continue
         if ((p in privilegies or niveau_de(niveaux, p) == "Confirmé")
                 and any(r.get("avis") == "defavorable" for r in (derniere, du_commit) if r)):
             releve["bloquantes"].append(p)
-        elif derniere.get("avis") == "abstention":
+        elif derniere and derniere.get("avis") == "abstention":
             releve["abstentions"].append(derniere)
-        elif not sur(derniere):
+        elif derniere and not sur(derniere):
             releve["perimees" if derniere.get("sha") else "sans_commit"].append(derniere)
-        if derniere.get("avis") in ("favorable", "defavorable") and sur(derniere):
-            releve[derniere["avis"] + "s"].append(derniere)
+        if derniere and sur(derniere) and derniere.get("avis") == "favorable":
+            releve["favorables"].append(derniere)
+        # Balance de R3 : sa plus récente relecture du commit jugé, si elle est défavorable, même si une plus récente porte
+        # sur un autre commit (retour à un commit qu'il a refusé, revue adverse R1).
+        if du_commit and du_commit.get("avis") == "defavorable":
+            releve["defavorables"].append(du_commit)
     return releve
+
+
+def levee(enr, relecture):
+    """Recours du conseil (levees : relecteur, motif, par, le) : une relecture de ce relecteur publiée avant la levée ne pèse
+    plus sur cette contribution ; ce qu'il relit ensuite compte de nouveau."""
+    moment = _instant_ou_rien(relecture.get("le"))
+    return any(isinstance(l, dict) and l.get("relecteur") == relecture.get("relecteur") and moment is not None
+               and (_instant_ou_rien(l.get("le")) or PASSE) >= moment for l in enr.get("levees") or [])
+
+
+def refus_sur_ce_commit(reg, enr, niveaux):
+    """R3 (revue adverse, R2) : un refus (défavorable d'un gardien, du conseil ou d'un Confirmé) et un défaut confirmé sont
+    attachés à un commit d'une tâche. Re-soumettre ce commit sous une autre contribution ne les efface pas : pour chaque
+    relecteur, sa plus récente relecture (par date) du commit jugé, dans toutes les contributions de la tâche (closes
+    comprises), si elle est dans une autre contribution, recevable et bloquante, bloque celle-ci. Il la lève en relisant ce
+    commit, ou le conseil par une levée sur cette contribution. [(relecteur, contribution, « refus » ou « défaut confirmé »)]."""
+    verdict = enr.get("verdict") if isinstance(enr.get("verdict"), dict) else {}
+    sha = verdict.get("sha")
+    if not sha:
+        return []
+    concurrents, privilegies = concurrents_de(reg, enr), reg.privilegies()
+    bloquant = lambda r: bool(r.get("defaut_confirme")) or (  # noqa: E731
+        r.get("avis") == "defavorable" and (r.get("relecteur") in privilegies or niveau_de(niveaux, r.get("relecteur")) == "Confirmé"))
+    plus_recentes = {}
+    for cid, (_, e) in reg.enregistrements.items():
+        if not isinstance(e, dict) or e.get("tache") != enr.get("tache"):
+            continue
+        for rang, r in enumerate(e.get("relectures") or []):
+            if not isinstance(r, dict) or r.get("sha") != sha or r.get("relecteur") == enr.get("auteur"):
+                continue
+            cle = (_instant_ou_rien(r.get("le")) or PASSE, cid == enr.get("id"), rang, bloquant(r))
+            if r.get("relecteur") not in plus_recentes or cle > plus_recentes[r.get("relecteur")][0]:
+                plus_recentes[r.get("relecteur")] = (cle, cid, r)
+    resultat = []
+    for p, (_, cid, r) in sorted(plus_recentes.items()):
+        if cid != enr.get("id") and avis_recevable(r, concurrents) and bloquant(r) and not levee(enr, r):
+            resultat.append((p, cid, "défaut confirmé" if r.get("defaut_confirme") else "refus"))
+    return resultat
 
 
 def calculer_score(reg, enr, niveaux):
@@ -1583,6 +1630,10 @@ def verifier_registre(reg):
             debut, soumise = _instant_ou_rien(enr["engage_depuis"]), _instant_ou_rien(enr["soumise_le"])
             if debut and soumise and debut > soumise:
                 ajouter(f"{lieu} : engage_depuis ({enr['engage_depuis']}) est postérieur à la soumission")
+        for i, l in enumerate(enr.get("levees") or []):
+            if l["par"] not in reg.conseil:
+                ajouter(f"{lieu} : levees/{i} : une levée est écrite par le conseil, pas par « {l['par']} »")
+            instant_valide(chemin, l["le"], f"levees/{i}/le")
         for i, r in enumerate(enr["relectures"]):
             if r["relecteur"] == enr["auteur"]:
                 ajouter(f"{lieu} : relectures/{i} : l'auteur ne peut pas relire sa propre contribution (commandement 3)")
@@ -3081,10 +3132,27 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
                            and auteur not in engages_base,
                            f"{chemin} : {auteur} est en course sur la tâche {nouveau.get('tache')} : il n'y confirme pas de défaut "
                            "(commandement 3)")
+            if "levees" in differences:
+                # Recours (ruche-0012, revue adverse) : le conseil seul lève, en motivant, les relectures bloquantes d'un relecteur
+                # sur cette contribution (jusqu'à ce qu'il relise) ; jamais un robot ni un membre, jamais en libre-service.
+                natures.append("decision")
+                anciennes_l, nouvelles_l = ancien.get("levees") or [], nouveau.get("levees") or []
+                exiger(est_conseil, f"{chemin} : une levée (levees) est écrite par le conseil seul, en motivant, dans une PR relue")
+                if exiger(isinstance(anciennes_l, list) and isinstance(nouvelles_l, list) and nouvelles_l[:len(anciennes_l)] == anciennes_l,
+                          f"{chemin} : les levées sont en ajout seul"):
+                    for l in nouvelles_l[len(anciennes_l):]:
+                        exiger(isinstance(l, dict) and l.get("par") == auteur, f"{chemin} : une levée porte le nom de l'auteur de la PR ({auteur})")
+                        probleme = probleme_date_pr(l.get("le") if isinstance(l, dict) else None, f"{chemin} : levée, le", instant)
+                        exiger(probleme is None, str(probleme))
+                        probleme = texte_recevable(l.get("motif") if isinstance(l, dict) else None, f"{chemin} : motif de la levée",
+                                                   config_notes(reg)["texte_max"])
+                        exiger(probleme is None, str(probleme))
             if differences == {"relectures"}:
                 natures.append("relecture")
                 exiger(ancien.get("statut") == "en_relecture",
                        f"{chemin} : on ne relit qu'une contribution en relecture (statut : {ancien.get('statut')})")
+                if nouvelles[len(anciennes):]:  # comme une mesure : un compte inscrit (revue adverse, V1)
+                    exiger(auteur in reg.membres or est_conseil, f"{chemin} : {auteur} doit d'abord s'inscrire (bee inscrire)")
                 changees = [i for i in range(min(len(anciennes), len(nouvelles))) if nouvelles[i] != anciennes[i]]
                 if exiger(len(nouvelles) >= len(anciennes) and all(est_confirmation(anciennes[i], nouvelles[i]) for i in changees),
                           f"{chemin} : les relectures sont en ajout seul ; on n'en change aucune, sauf pour confirmer le défaut "
@@ -3171,6 +3239,7 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
         if partie[0] == "votes" and len(partie) == 3:
             natures.append("vote")
             exiger(pathlib.PurePosixPath(chemin).stem == auteur, f"{chemin} : on ne vote qu'en son nom ({auteur})")
+            exiger(auteur in reg.membres or est_conseil, f"{chemin} : {auteur} doit d'abord s'inscrire (bee inscrire)")
             # Course (R3) : un participant engagé ne vote pas sur une concurrente, ni ne modifie ou ne retire un vote
             # qu'il y avait déposé (le dossier du vote nomme son sujet, même pour une suppression).
             if partie[1] in reg.enregistrements:
@@ -5167,6 +5236,9 @@ def raisons_r3(reg, cid, bilan=None):
     bloquantes = sorted(releve["bloquantes"])
     exiger(not bloquantes, f"relecture défavorable de {', '.join(bloquantes)} (gardien, conseil ou Confirmé) : elle bloque, quel "
            "que soit le commit, jusqu'à ce que ce relecteur relise le commit jugé")
+    for qui, cid_refus, quoi in refus_sur_ce_commit(reg, enr, niveaux):
+        exiger(False, f"{quoi} de {qui} sur ce commit dans {cid_refus} : re-soumettre un commit n'efface ni un refus ni un défaut ; "
+                      f"{qui} relit ce commit, ou le conseil lève (levees, motivée, dans une PR relue)")
     if [m for m in eligibles if niveau_de(niveaux, m) == "Confirmé"]:
         exiger(any(niveau_de(niveaux, r.get("relecteur")) == "Confirmé" for r in favorables),
                "aucune relecture favorable d'un Confirmé (il en faut une quand un Confirmé est disponible)")
