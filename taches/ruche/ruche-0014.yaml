@@ -45,7 +45,10 @@ hors_perimetre:
 depend_de:
 - ruche-0010
 noeud: projets/compression-sans-perte/miniz
-statut: ouverte
+statut: reservee
+reservation:
+  utilisateur: "bidji29"
+  depuis: "2026-10-30T15:49:51Z"
 cree_par: bidji29
 cree_le: '2026-10-30'
 notes:
