@@ -28,6 +28,7 @@ critere_acceptation:
   - "fuzzing inflate (fuzz_inflate) 10 minutes sans écart"
 hors_perimetre: [format de sortie, API publique, nouvelle dépendance, comportement sur entrée invalide]
 depend_de: [miniz-0001]
+noeud: projets/compression-sans-perte/miniz/inflate
 statut: en_relecture
 contribution: miniz-0018-c1
 cree_par: agent-architecte-bee
@@ -39,3 +40,6 @@ notes:
   - par: "bidji29"
     le: "2026-10-28T23:00:09Z"
     texte: "28/10, verdict du juge isolé de la CI (première optimisation jugée de bout en bout par lui) : 7 868 sorties identiques, instructions de décompression −3,9 %, mais chronomètre −0,4 %, dans le bruit (±0,4 % sur les machines GitHub). R4 n'est pas satisfaite : il faut une mesure A/B d'une autre configuration qui voie le gain (bee enregistrer-mesure miniz-0018-c1), par un autre utilisateur que bidji29 (commandement 3). Bonne tâche de coordination pour une machine ARM ou un autre compilateur."
+  - par: "bidji29"
+    le: "2026-10-30T16:50:15Z"
+    texte: "Conseil, 30/10 : R4 se lit dans REGLES.md, pas dans le critère « gain >= 2 % sur debit_decompression, au-delà du bruit » de cette tâche, laissé tel quel parce que la contribution est soumise. Pour un débit : au moins 2 % d'instructions en moins sur instructions_decompression, que le chronomètre confirme au-delà du bruit ; sinon une mesure d'une autre configuration doit voir le gain (bee enregistrer-mesure). Verdict de miniz-0018-c1 sur 3971dc4 : instructions_decompression −3,7 %, chronomètre +0,78 %, dans le bruit. La phrase « Aucun essai exploratoire n'a été fait » du contexte est démentie par la note du 27/10 (pointeurs locaux seuls : +0,9 % d'instructions de décompression, debit_decompression −0,66 % dans le bruit ; Xeon 2,1 GHz virtualisé, gcc 13.3, commit non précisé). Zone : projets/compression-sans-perte/miniz/inflate."

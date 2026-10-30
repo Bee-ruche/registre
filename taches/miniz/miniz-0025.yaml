@@ -7,7 +7,8 @@ titre: "Fuzzing de l'état de flux : changer de vidage et de tampons en cours de
 contexte: >
   Le harnais bee/fuzz/fuzz_compression.c garde la même taille de tampon et la même politique de
   vidage pour toute une entrée. Or l'état de tdefl (m_output_flush_remaining, m_lookahead_size,
-  m_saved_match_len, miniz_tdef.c l. 1266-1332 et 1185-1222) dépend de la suite exacte des appels.
+  m_saved_match_len ; miniz_tdef.c l. 1370-1436, tdefl_compress, et l. 1289-1326, correspondance en
+  attente de tdefl_compress_normal, à 9977da4 du fork) dépend de la suite exacte des appels.
   Écrire un troisième harnais, bee/fuzz/fuzz_flux.c : les octets de l'entrée pilotent une suite
   d'appels mz_deflate (taille d'entrée, taille de sortie au moins 8 octets avec MZ_SYNC_FLUSH,
   comme l'exige le manuel de zlib, choix entre MZ_NO_FLUSH, MZ_SYNC_FLUSH, MZ_FULL_FLUSH et
@@ -24,6 +25,7 @@ critere_acceptation:
   - "aucune entrée fautive publiée (procédure de docs/securite.md du registre en cas de défaut)"
 hors_perimetre: [code de miniz, harnais existants, nouvelle dépendance]
 depend_de: [miniz-0001]
+noeud: projets/compression-sans-perte/miniz/api
 statut: ouverte
 cree_par: agent-architecte-bee
 cree_le: "2026-10-27"
