@@ -4,7 +4,7 @@ categorie: ruche
 type: test
 poste: gouvernance
 taille: S
-titre: "verdicts.yml : ne croire que l'exécution de la CI de la PR enregistrée, vers master, et vérifier sa base"
+titre: "verdicts.yml : ne croire que la CI de la PR enregistrée, vers master, et vérifier sa base"
 contexte: >
   Revue adverse de minizBee PR #16 (miniz-0032, 30/10), constat S1, vérifié dans le code :
   .github/workflows/verdicts.yml retient la dernière exécution terminée de bee-ci.yml pour le commit de
