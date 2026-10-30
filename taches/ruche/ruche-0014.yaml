@@ -1,0 +1,37 @@
+id: ruche-0014
+projet: ruche
+categorie: ruche
+type: test
+poste: coordination
+taille: M
+titre: "L'arbre de miniz : écrire les nœuds de ses zones (compression, décompression, API zlib)"
+contexte: >
+  ruche-0010 a écrit la racine de l'arbre du sens et son premier palier ; le nœud de miniz
+  (arbre/projets/compression-sans-perte/miniz/SENS.md) nomme ses zones sans les décrire. Faits : sur les
+  28 tâches miniz, 8 visent miniz_tdef.c (tdefl_find_match, tdefl_compress_normal,
+  tdefl_compress_lz_codes…), 5 miniz_tinfl.c (tinfl_decompress), 1 les deux (profilage, miniz-0029), et 14
+  l'outillage bee/ du fork, dont les tests de l'API compatible zlib (miniz-0026). Ce qui compte dans une
+  zone n'est aujourd'hui écrit que dans les tâches et leurs notes : à la répétition générale du 29/10, la
+  note de miniz-0020 (état LZ en locales : +0,22 % d'instructions, débordements de registres) concernait
+  miniz-0019, qui n'en disait rien, et le contexte de miniz-0010 citait une comparaison que miniz-0015
+  avait déjà remplacée (journaux emma et alice). À faire : un nœud par zone sous
+  arbre/projets/compression-sans-perte/miniz/ (par exemple tdef, tinfl, api, et bee si c'est utile), au
+  format de docs/arbre.md (40 lignes au plus) : pourquoi la zone existe ; ce qui y compte (fonctions
+  chaudes et leur part des instructions d'après bee/bench/profil.py, invariants des champs que les tâches
+  touchent, pistes déjà mesurées et leur résultat, tâches intégrées qui ont changé le code) ; ce qu'on
+  peut y ignorer. Puis lister les zones dans le nœud de miniz, et rattacher chaque tâche miniz ouverte à
+  sa zone (champ noeud).
+fichiers: [arbre/projets/compression-sans-perte/miniz/, taches/miniz/]
+portee: 0.8
+metrique: null
+critere_acceptation:
+  - "bee valider passe : chaque nœud tient dans son budget, avec ses quatre sections, et le nœud de miniz le liste"
+  - "chaque fait chiffré d'un nœud cite sa source (tâche, note, profil) ; aucune intuition présentée comme un fait"
+  - "chaque tâche miniz ouverte qui vise une zone y est rattachée ; bee contexte de chacune tient en moins de 3 000 jetons"
+  - "vérifié par un agent sans mémoire qui ne lit que bee contexte d'une tâche de chaque zone (rapport joint)"
+hors_perimetre: [le code de minizBee, les autres branches de l'arbre, outils/]
+depend_de: [ruche-0010]
+noeud: projets/compression-sans-perte/miniz
+statut: proposee
+cree_par: bidji29
+cree_le: "2026-10-30"
