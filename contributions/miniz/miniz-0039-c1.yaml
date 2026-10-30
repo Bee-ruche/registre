@@ -1,0 +1,10 @@
+id: miniz-0039-c1
+tache: miniz-0039
+auteur: bidji29
+pr: https://github.com/Bee-ruche/minizBee/pull/19
+resume: 'Adler-32 de tinfl par groupes de 160 octets en voies de 16 bits, sans produit dans la boucle
+  : 2,63 → 1,22 instruction par octet ; mêmes entiers avant chaque réduction modulo 65521.'
+statut: en_relecture
+soumise_le: '2026-10-30T21:11:48Z'
+engage_depuis: '2026-10-30T20:18:41Z'
+relectures: []

@@ -40,9 +40,7 @@ critere_acceptation:
 hors_perimetre: [format de sortie, API publique, nouvelle dépendance, mz_adler32 de miniz.c (miniz-0040), décodage Huffman]
 depend_de: [miniz-0001]
 noeud: projets/compression-sans-perte/miniz/inflate
-statut: reservee
-reservation:
-  utilisateur: "bidji29"
-  depuis: "2026-10-30T20:18:41Z"
+statut: en_relecture
+contribution: miniz-0039-c1
 cree_par: conseil
 cree_le: "2026-10-30"
