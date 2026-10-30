@@ -41,4 +41,7 @@ motif: 'Deux répétitions générales de suite ont buté sur le même défaut. 
   relecteurs, et une limite écrite, laissée à la tâche ruche-0022 et au débat D-0002. bee relire, verifier-acceptation,
   verifier-pr, bee valider et verdicts.yml l''appliquent (tâche ruche-0012).'
 ouverte_le: '2026-10-30T14:20:47Z'
-statut: ouverte
+statut: adoptee
+resultat: 'Adoptée le 30/10/2026 par l''agent principal, par délégation du conseil, pendant l''amorçage
+  (quorum de R10 hors d''atteinte), avec la tâche ruche-0012 (PR #45) et ses cinq revues adverses. Reportée
+  dans REGLES.md.'
