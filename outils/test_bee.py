@@ -136,6 +136,22 @@ class BaseTest(unittest.TestCase):
         self.assertEqual(code, 0, texte)
         return "miniz-0099-c1"
 
+    def contributeurs(self, *pseudos):
+        """Fait de chacun un Contributeur : une contribution intégrée à son nom, sur une tâche fictive (miniz-91NN). La relecture
+        d'un Nouveau ne compte pas pour R3 (docs/reputation.md, ruche-0011) : un test qui veut des relectures qui comptent les
+        fait faire par des Contributeurs, dont le vote pèse alors 1 (le seuil de vote suit)."""
+        for pseudo in pseudos:
+            numero = 9100 + len(list((self.dossier / "taches/miniz").glob("miniz-91*.yaml")))
+            tid = f"miniz-{numero}"
+            (self.dossier / f"taches/miniz/{tid}.yaml").write_text(
+                TACHE_OPTIMISATION.replace("miniz-0099", tid).replace("statut: ouverte", f"statut: integree\ncontribution: {tid}-c1"),
+                encoding="utf-8")
+            bee.ecrire_yaml(self.dossier / f"contributions/miniz/{tid}-c1.yaml", {
+                "id": f"{tid}-c1", "tache": tid, "auteur": pseudo, "pr": f"https://github.com/Bee-ruche/minizBee/pull/{numero}",
+                "statut": "integree", "soumise_le": "2026-10-20T12:00:00Z", "relectures": []})
+        niveaux = bee.calculer_niveaux(bee.Registre(self.dossier))
+        self.assertEqual({bee.niveau_de(niveaux, p) for p in pseudos}, {"Contributeur"})
+
 
 class TestRegistre(BaseTest):
     def test_le_registre_livre_est_valide(self):
@@ -221,6 +237,7 @@ class TestRegistre(BaseTest):
         self.assertIn("commandement 2", texte)
 
     def test_soumission_relecture_vote_verdict_score(self):
+        self.contributeurs("bruno")  # sa relecture compte pour la confiance C (pas celle d'un Nouveau)
         cid = self.soumettre_0099()
         t = self.tache("miniz-0099")
         self.assertEqual(t["statut"], "en_relecture")
@@ -326,8 +343,10 @@ class TestRegistre(BaseTest):
 
     def test_porte_humaine_fermee(self):
         self.regler_porte_humaine(False)
+        self.contributeurs("bruno", "chloe")  # leurs relectures comptent pour R3 ; leur vote pèse
         cid = self.preparer_contribution_verte("alice", ("bruno", "chloe"))
         self.assertEqual(self.bee("voter", cid, "--utilisateur", "bidji29", "--valeur", "1")[0], 0)
+        self.assertEqual(self.bee("voter", cid, "--utilisateur", "bruno", "--valeur", "1")[0], 0)
         code, texte = self.bee("verifier-acceptation", cid)
         self.assertEqual(code, 0, texte)
         self.assertIn("Aucune relecture privilégiée requise", texte)
@@ -344,6 +363,7 @@ class TestRegistre(BaseTest):
 
     def test_adverse_r3_defavorables_non_ignores(self):
         self.regler_porte_humaine(False)
+        self.contributeurs("bruno", "chloe")  # des avis qui comptent pour R3
         cid = self.preparer_contribution_verte("alice", ("bruno",))
         self.assertEqual(self.bee("relire", cid, "--utilisateur", "chloe", "--avis", "defavorable",
                                   "--motif", "Le gain disparaît sur ARM64.")[0], 0)
@@ -454,12 +474,14 @@ class TestRegistre(BaseTest):
 
     def contribution_relue(self, *verdict):
         self.regler_porte_humaine(False)
+        self.contributeurs("bruno", "chloe")  # leurs relectures comptent pour R3 ; leur vote pèse
         cid = self.soumettre_0099()
         self.verdict_r4(cid, *verdict)
         for relecteur in ("bruno", "chloe"):
             self.assertEqual(self.bee("relire", cid, "--utilisateur", relecteur, "--avis", "favorable",
                                       "--motif", "Relu, rien à signaler ici.")[0], 0)
         self.assertEqual(self.bee("voter", cid, "--utilisateur", "bidji29", "--valeur", "1")[0], 0)
+        self.assertEqual(self.bee("voter", cid, "--utilisateur", "bruno", "--valeur", "1")[0], 0)
         os.environ["BEE_MAINTENANT"] = "2026-10-29T12:00:00Z"
         return cid
 
@@ -514,8 +536,10 @@ class TestRegistre(BaseTest):
 
     def test_gardien_ouvre_la_porte_de_relecture(self):
         (self.dossier / "gouvernance/gardiens.yaml").write_text("membres:\n  - pseudo: bruno\n", encoding="utf-8")
+        self.contributeurs("chloe")  # sa relecture compte pour R3 ; son vote pèse
         cid = self.preparer_contribution_verte("alice", ("chloe",))
         self.assertEqual(self.bee("voter", cid, "--utilisateur", "bidji29", "--valeur", "1")[0], 0)
+        self.assertEqual(self.bee("voter", cid, "--utilisateur", "chloe", "--valeur", "1")[0], 0)
         code, texte = self.bee("verifier-acceptation", cid)
         self.assertEqual(code, 1, texte)
         self.assertIn("gardien", texte)
@@ -588,7 +612,9 @@ class TestRegistre(BaseTest):
 
     def test_porte_si_juge_incomplet(self):
         self.regler_porte("si_juge_incomplet")
+        self.contributeurs("bruno", "chloe")  # leurs relectures comptent pour R3 ; leur vote pèse
         complet = self.contribution_jugee()
+        self.assertEqual(self.bee("voter", complet, "--utilisateur", "bruno", "--valeur", "1")[0], 0)
         code, texte = self.bee("verifier-acceptation", complet)
         self.assertEqual(code, 0, texte)  # juge isolé complet, rien de suspect : pas de gardien requis
 
@@ -675,9 +701,10 @@ class TestRegistre(BaseTest):
         reg = bee.Registre(self.dossier)
         enr = {"id": "x-0001-c1", "tache": "miniz-0099", "verdict": {"ci": "verte", "gain": 0.03, "lignes_modifiees": 10},
                "relectures": [{"relecteur": r, "avis": "favorable"} for r in ("a", "b", "c")]}
-        self.assertAlmostEqual(bee.calculer_score(reg, enr, {})["S"], 0.0272727, places=6)
+        niveaux = {r: {"niveau": "Contributeur"} for r in ("a", "b", "c")}  # la confiance ne compte pas les Nouveaux
+        self.assertAlmostEqual(bee.calculer_score(reg, enr, niveaux)["S"], 0.0272727, places=6)
         enr["verdict"] = {"ci": "verte", "gain": 0.05, "lignes_modifiees": 300}
-        self.assertAlmostEqual(bee.calculer_score(reg, enr, {})["S"], 0.0125)
+        self.assertAlmostEqual(bee.calculer_score(reg, enr, niveaux)["S"], 0.0125)
 
     def test_niveaux(self):
         cid = self.soumettre_0099()
@@ -3065,8 +3092,10 @@ class TestRevueAdverse(BaseParallele):
 
     def test_N11b_un_defaut_confirme_perime_avec_un_nouveau_commit_juge(self):
         c1, chemin = self.preparer_defaut()
+        self.contributeurs("chloe")  # sa relecture compte pour R3 ; son vote pèse
         self.assertEqual(self.bee("liberer", "miniz-0099", "--utilisateur", "bruno")[0], 0)
         self.relire(c1, "chloe", "bruno")
+        self.assertEqual(self.bee("voter", c1, "--utilisateur", "chloe", "--valeur", "1")[0], 0)
         self.assertEqual(self.bee("confirmer-defaut", c1, "--relecteur", "david", "--utilisateur", "bidji29")[0], 0)
         self.a("2026-10-29T15:00:00Z")
         code, texte = self.acceptation(c1)
@@ -3734,6 +3763,10 @@ class TestPullRequestsAgora(BaseAgora):
         self.libre_service("chloe", "synthese")
 
     def test_refus_plafond_par_pr(self):
+        # Le plafond par PR se teste seul : celui tous débats confondus (15 sur 24 h, ruche-0011) est relevé ici.
+        chemin = self.dossier / "bee.yaml"
+        chemin.write_text(chemin.read_text(encoding="utf-8").replace("arguments_max_par_24h_tous_debats: 15",
+                                                                     "arguments_max_par_24h_tous_debats: 30"), encoding="utf-8")
         self.a("2026-10-29T12:00:00Z")
         for i in range(5):
             self.ouvrir(qui="bidji29", question=f"Question {i} ouverte par le conseil ?")  # le conseil n'est pas plafonné
@@ -4069,6 +4102,702 @@ class TestPullRequestsAgora(BaseAgora):
             self.assertIn(f"{chemin} : lien symbolique refusé", texte)
         self.assertNotIn("SECRET", texte)
         self.assertNotIn("Traceback", texte)
+
+
+class BaseRepetitionGenerale(BaseAgora):
+    """ruche-0011 : l'équipe rouge de la répétition générale du 29/10 (journal de gaspard, attaques T1 à T15). Chaque attaque
+    est rejouée par une PR et refusée ; le parcours honnête qui lui correspond passe toujours.
+
+    Les commits sont datés (auteur et commit) de l'heure de l'outil, comme sur main, où GitHub date chaque fusion ; main
+    reçoit les PR par fusion « squash » (un commit par PR, daté de la fusion). Le registre copié est publié bien avant la
+    fenêtre du cap : seuls les gestes du test y comptent."""
+
+    BASE = "2026-09-01T00:00:00Z"
+
+    def setUp(self):
+        super().setUp()
+        self.a("2026-10-29T22:00:00Z")
+        for pseudo in ("gaspard", "farid"):
+            self.ok("inscrire", "--pseudo", pseudo, "--compte-cree-le", "2020-01-01")
+        git(self.dossier, "init", "-q", "-b", "main")
+        self.commit("base", quand=self.BASE)
+
+    def commit(self, message="pr", quand=None):
+        quand = quand or os.environ["BEE_MAINTENANT"]
+        env = {**os.environ, "GIT_AUTHOR_DATE": quand, "GIT_COMMITTER_DATE": quand}
+        for arguments in (["add", "-A"], ["commit", "-qm", message, "--allow-empty"]):
+            subprocess.run(["git", "-C", str(self.dossier), "-c", "user.name=t", "-c", "user.email=t@t", *arguments],
+                           check=True, capture_output=True, env=env)
+
+    def branche(self, nom="pr"):
+        """Une branche de PR, partie de main."""
+        git(self.dossier, "switch", "-q", "main")
+        git(self.dossier, "switch", "-qc", nom)
+
+    def fusionner(self, nom="pr"):
+        """Fusionne la PR comme GitHub : un commit sur main, daté de la fusion."""
+        git(self.dossier, "switch", "-q", "main")
+        git(self.dossier, "merge", "-q", "--squash", nom)
+        self.commit(f"fusion de {nom}")
+        git(self.dossier, "branch", "-qD", nom)
+
+    def verifier(self, auteur, *options):
+        return self.bee("verifier-pr", "--base", "main", "--tete", "HEAD", "--auteur", auteur, *options)
+
+    def libre_service(self, auteur, *natures):
+        code, texte = self.verifier(auteur, "--fusion-auto")
+        self.assertEqual(code, 0, texte)
+        self.assertIn("FUSION_AUTO=oui", texte)
+        for nature in natures:
+            self.assertIn(nature, texte)
+        return texte
+
+    def refusee(self, auteur, *morceaux):
+        code, texte = self.verifier(auteur)
+        self.assertEqual(code, 1, texte)
+        for morceau in morceaux:
+            self.assertIn(morceau, texte)
+        self.assertNotIn("Traceback", texte)
+        return texte
+
+    def chemin_tache(self, identifiant="miniz-0099"):
+        return self.dossier / "taches" / identifiant.rsplit("-", 1)[0] / f"{identifiant}.yaml"
+
+    def noter_a_la_main(self, *notes, tache="miniz-0099"):
+        """Ajoute des notes écrites à la main (sans bee noter), signées et datées comme on veut."""
+        for note in notes:
+            bee.modifier_tache(self.chemin_tache(tache), note={"par": "gaspard", "le": os.environ["BEE_MAINTENANT"],
+                                                               "texte": "[essai équipe rouge] note.", **note})
+
+    def proposer_tache(self, qui="gaspard", projet="miniz"):
+        texte = self.ok("proposer-tache", projet, "--utilisateur", qui, "--type", "test")
+        return self.dossier / texte.split("✓ ", 1)[1].split(" ", 1)[0]
+
+    def proposition(self, identifiant="P-0001", **champs):
+        donnees = {"id": identifiant, "auteur": "gaspard", "regle": "R8", "texte_propose": "[essai équipe rouge] Quatre engagements.",
+                   "motif": "Essai de l'équipe rouge (répétition générale du 29/10).", "ouverte_le": os.environ["BEE_MAINTENANT"],
+                   "statut": "ouverte", **champs}
+        bee.ecrire_yaml(self.dossier / "propositions" / f"{identifiant}.yaml", donnees)
+        return self.dossier / "propositions" / f"{identifiant}.yaml"
+
+    def ouvrir_debats(self, nombre):
+        """Le conseil (pas plafonné) ouvre des débats sur main."""
+        for i in range(nombre):
+            self.ok("debattre", "ouvrir", "--utilisateur", "bidji29", "--question", f"Question ouverte numéro {i + 1} : qu'en dit l'essaim ?")
+        self.commit("débats ouverts")
+
+    def prendre_et_fusionner(self, qui, tache="miniz-0099", *options):
+        self.branche("prise")
+        self.ok("prendre", tache, "--utilisateur", qui, *options)
+        self.commit()
+        self.libre_service(qui)
+        self.fusionner("prise")
+
+    def liberer_et_fusionner(self, qui, tache="miniz-0099"):
+        self.branche("liberation")
+        self.ok("liberer", tache, "--utilisateur", qui)
+        self.commit()
+        self.libre_service(qui)
+        self.fusionner("liberation")
+
+    def arguments_a_la_main(self, debat, nombre, qui="gaspard"):
+        """Ajoute des arguments écrits à la main, sous la forme canonique (comme le ferait bee debattre)."""
+        d = self.debat(debat)
+        for _ in range(nombre):
+            d["arguments"].append({"id": f"A{len(d['arguments']) + 1}", "par": qui, "le": os.environ["BEE_MAINTENANT"],
+                                   "position": "question", "texte": f"[essai équipe rouge] noyade {len(d['arguments']) + 1}."})
+        self.ecrire(d, debat)
+
+
+class TestRepetitionGenerale(BaseRepetitionGenerale):
+    """Chaque attaque de l'équipe rouge (T1 à T10, T13, T15) est refusée ; les parcours honnêtes passent."""
+
+    # --- (1) Numérotation : T5, T6 ---
+
+    def test_T5_proposition_P_9999_refusee_et_ne_gele_plus_bee_proposer(self):
+        self.branche("t5")
+        self.proposition("P-9999")
+        self.commit()
+        self.refusee("gaspard", "propositions/P-9999.yaml : les numéros 9000 et plus sont réservés aux tests")
+        (self.dossier / "propositions/P-9999.yaml").unlink()
+        self.proposition("P-0005")
+        self.commit("numéro qui saute")
+        self.refusee("gaspard", "propositions/P-0005.yaml : la proposition suivante est P-0001")
+        # Un P-9999 déjà sur main (publié avant ce contrôle) ne gèle plus bee proposer : la suivante est P-0001, pas P-10000.
+        git(self.dossier, "switch", "-q", "main")
+        self.proposition("P-9999")
+        self.commit("P-9999 sur main")
+        self.branche("honnete")
+        self.ok("proposer", "--utilisateur", "alice", "--regle", "R7", "--texte", "Réservation de 48 h au plus.",
+                "--motif", "Les tâches S se finissent en une session.")
+        self.assertTrue((self.dossier / "propositions/P-0001.yaml").exists())
+        self.valide()
+        self.commit()
+        self.libre_service("alice", "proposition")
+
+    def test_T6_taches_miniz_8999_et_9000_refusees_et_jamais_ecrasees(self):
+        self.branche("t6")
+        chemin = self.proposer_tache()
+        self.assertEqual(chemin.name, "miniz-0100.yaml", "miniz-0099 est la plus grande hors des numéros réservés")
+        texte = chemin.read_text(encoding="utf-8")
+        chemin.unlink()
+        for tid in ("miniz-8999", "miniz-9000"):
+            self.chemin_tache(tid).write_text(texte.replace("miniz-0100", tid), encoding="utf-8")
+        self.commit()
+        self.refusee("gaspard", "taches/miniz/miniz-8999.yaml : la tâche proposée suivante est miniz-0100",
+                     "taches/miniz/miniz-9000.yaml : les numéros 9000 et plus sont réservés aux tests")
+        # Déjà sur main (publiées avant ce contrôle), elles bloquent bee proposer-tache miniz, qui le dit sans rien écraser ;
+        # les autres projets n'en souffrent pas.
+        self.fusionner("t6")
+        avant = self.chemin_tache("miniz-9000").read_bytes()
+        self.ko("plus de numéro libre pour miniz", "proposer-tache", "miniz", "--utilisateur", "alice")
+        self.assertEqual(self.chemin_tache("miniz-9000").read_bytes(), avant, "rien n'est écrasé")
+        self.assertFalse(git(self.dossier, "status", "--porcelain").strip())
+        self.branche("honnete")
+        chemin = self.proposer_tache("alice", "libyaml")
+        self.commit()
+        self.libre_service("alice", "proposition_tache")
+        self.assertRegex(chemin.name, r"^libyaml-0\d{3}\.yaml$")
+
+    # --- (2) Notes : T1, T2, T3, T15 ---
+
+    def test_T1_tache_proposee_avec_une_note_signee_du_conseil(self):
+        self.branche("t1")
+        chemin = self.proposer_tache()
+        bee.modifier_tache(chemin, note={"par": "bidji29", "le": os.environ["BEE_MAINTENANT"], "texte": "Avis du conseil : prioritaire."})
+        self.commit()
+        self.refusee("gaspard", "une note ajoutée est signée de l'auteur de la PR (gaspard), pas de « bidji29 »")
+        chemin.write_text(chemin.read_text(encoding="utf-8").replace('par: "bidji29"', 'par: "gaspard"'), encoding="utf-8")
+        self.commit("signée de son auteur")
+        self.libre_service("gaspard", "proposition_tache")
+
+    def test_tache_proposee_datee_du_jour_et_notes_datees_de_la_pr(self):
+        self.branche("cree-le")
+        chemin = self.proposer_tache()
+        texte = chemin.read_text(encoding="utf-8")
+        chemin.write_text(texte.replace('cree_le: "2026-10-29"', 'cree_le: "2026-10-15"'), encoding="utf-8")
+        bee.modifier_tache(chemin, note={"par": "gaspard", "le": "2026-10-15T00:00:00Z", "texte": "Antidatée à la création."})
+        self.commit()
+        self.refusee("gaspard", "cree_le (2026-10-15) est la date de la PR", "datée du 2026-10-15T00:00:00Z")
+
+    def test_T2_quinze_notes_datees_de_2099(self):
+        self.branche("t2")
+        self.noter_a_la_main(*({"le": f"2099-01-01T00:{n:02d}:00Z", "texte": f"[essai équipe rouge] noyade {n + 1}/15."} for n in range(15)))
+        self.commit()
+        self.refusee("gaspard", "datée du 2099-01-01T00:00:00Z : une note est datée de l'heure de la PR",
+                     "plafond : 15 notes ajoutées par cette PR, au plus 10 (notes.max_par_pr)")
+
+    def test_T3_quarante_notes_antidatees(self):
+        self.branche("t3")
+        self.noter_a_la_main(*({"le": f"2026-10-19T22:{n:02d}:00Z"} for n in range(40)))
+        self.commit()
+        self.refusee("gaspard", "datée du 2026-10-19T22:00:00Z", "plafond : 40 notes ajoutées par cette PR")
+
+    def test_T15_note_de_40_ko(self):
+        texte = "[essai équipe rouge] " + "x" * 40000
+        self.ko("note de 40021 caractères, au plus 1500", "noter", "miniz-0099", "--utilisateur", "gaspard", "--texte", texte)
+        self.branche("t15")
+        self.noter_a_la_main({"texte": texte})
+        self.commit()
+        self.refusee("gaspard", "texte de 40021 caractères, au plus 1500 (notes.texte_max)")
+
+    def test_notes_plafonnees_sur_24_h_et_ajoutees_dans_l_ordre(self):
+        # Deux PR de 10 notes, fusionnées : 20 notes en 24 h, le plafond ; la 21e est refusée, par l'outil comme par verifier-pr.
+        for lot in range(2):
+            self.branche(f"lot{lot}")
+            for n in range(10):
+                self.a(f"2026-10-29T{22 + lot}:{n:02d}:00Z")
+                self.ok("noter", "miniz-0099", "--utilisateur", "gaspard", "--texte", f"Note {lot}-{n} : une piste.")
+            self.commit()
+            self.libre_service("gaspard", "note")
+            self.fusionner(f"lot{lot}")
+        self.a("2026-10-30T00:30:00Z")
+        self.ko("plafond : gaspard a déjà 20 notes en 24 h", "noter", "miniz-0099", "--utilisateur", "gaspard", "--texte", "De trop.")
+        self.branche("trop")
+        self.noter_a_la_main({"texte": "De trop."})
+        self.commit()
+        self.refusee("gaspard", "plafond : gaspard aurait 21 notes en 24 h toutes tâches confondues")
+        # Une note antidatée dans la tolérance de 2 h, mais d'avant la note précédente : refusée.
+        self.branche("avant")
+        self.noter_a_la_main({"le": "2026-10-29T23:05:00Z"}, tache="miniz-0099")
+        self.commit()
+        self.refusee("gaspard", "datée d'avant la note précédente (2026-10-29T23:09:00Z)")
+        # Le conseil n'est pas plafonné en nombre ; 24 h après les premières notes, une place se libère.
+        self.branche("conseil")
+        self.ok("noter", "miniz-0099", "--utilisateur", "bidji29", "--texte", "Le conseil note aussi.")
+        self.commit()
+        self.libre_service("bidji29", "note")
+        self.a("2026-10-30T22:05:00Z")
+        self.branche("plus-tard")
+        self.ok("noter", "miniz-0099", "--utilisateur", "gaspard", "--texte", "Le lendemain.")
+        self.commit()
+        self.libre_service("gaspard", "note")
+
+    # --- (3) Propositions de règle : T4 ---
+
+    def test_T4_proposition_antidatee_et_resultat_prerempli(self):
+        self.branche("t4")
+        self.ok("proposer", "--utilisateur", "gaspard", "--regle", "R8", "--texte", "[essai équipe rouge] Quatre engagements au plus.",
+                "--motif", "Essai de l'équipe rouge : un vote clos à la naissance.")
+        chemin = self.dossier / "propositions/P-0001.yaml"
+        honnete = bee.lire_yaml(chemin)
+        bee.ecrire_yaml(chemin, {**honnete, "ouverte_le": "2026-10-21T00:00:00Z", "statut": "adoptee", "resultat": "adoptée (essai)"})
+        self.commit()
+        self.refusee("gaspard", "ouverte_le (2026-10-21T00:00:00Z) doit être l'heure de la PR", "une proposition naît ouverte",
+                     "une proposition naît sans resultat")
+        bee.ecrire_yaml(chemin, honnete)
+        self.commit("telle que l'écrit bee proposer")
+        self.libre_service("gaspard", "proposition")
+        self.fusionner("t4")
+        self.ok("voter", "P-0001", "--utilisateur", "alice", "--valeur", "1")  # le vote est ouvert
+        git(self.dossier, "checkout", "-q", "--", ".")
+        git(self.dossier, "clean", "-qfd")
+        # Ensuite, seul le conseil écrit son issue.
+        self.branche("issue")
+        bee.ecrire_yaml(chemin, {**honnete, "statut": "adoptee", "resultat": "adoptée"})
+        self.commit()
+        self.refusee("gaspard", "seul le conseil écrit son issue")
+        code, texte = self.verifier("bidji29", "--fusion-auto")
+        self.assertEqual(code, 3, texte)
+
+    # --- (4) Fichiers du libre-service : T7, T8 ---
+
+    def test_T7_fichier_libre_sous_membres(self):
+        self.branche("t7")
+        for nom in ("gaspard.md", "gaspard.html", "gaspard", "gaspard.yml", "sous/gaspard.yaml"):
+            chemin = self.dossier / "membres" / nom
+            chemin.parent.mkdir(exist_ok=True)
+            chemin.write_text("# Avis du conseil\n\n[essai équipe rouge] Texte libre.\n", encoding="utf-8")
+        self.commit()
+        texte = self.refusee("gaspard", "membres/gaspard.md : fichier inattendu dans membres/ : seuls les fichiers membres/<pseudo>.yaml")
+        for nom in ("gaspard.html", "gaspard ", "gaspard.yml", "sous/gaspard.yaml"):
+            self.assertIn(f"membres/{nom}", texte)
+        # Le bon nom, mais pas un objet YAML : refusé aussi.
+        self.branche("liste")
+        (self.dossier / "membres/zoe.yaml").write_text("- pseudo: zoe\n", encoding="utf-8")
+        self.commit()
+        self.refusee("zoe", "membres/zoe.yaml : le fichier doit être un objet YAML")
+
+    def test_T8_binaire_sous_propositions(self):
+        self.branche("t8")
+        (self.dossier / "propositions").mkdir(exist_ok=True)
+        (self.dossier / "propositions/essai-equipe-rouge.bin").write_bytes(bytes(range(256))[::4])
+        (self.dossier / "propositions/P-0001.yaml").write_bytes(b"\xff\xfe\x00\x01 binaire")
+        (self.dossier / "votes/miniz-0099-c1").mkdir(parents=True)
+        (self.dossier / "votes/miniz-0099-c1/gaspard.txt").write_text("valeur: 1\n", encoding="utf-8")
+        self.commit()
+        self.refusee("gaspard", "propositions/essai-equipe-rouge.bin : fichier inattendu dans propositions/",
+                     "propositions/P-0001.yaml : fichier illisible", "votes/miniz-0099-c1/gaspard.txt : fichier inattendu dans votes/")
+
+    # --- (6) Agora : T9, T10 ---
+
+    def test_T9_noyade_de_l_agora_dans_plusieurs_debats(self):
+        self.ouvrir_debats(8)
+        self.branche("t9")
+        self.a("2026-10-29T22:10:00Z")
+        for numero in range(1, 5):  # 5 arguments dans chacun de 4 débats : 20, sous le plafond par débat et par PR
+            self.arguments_a_la_main(f"D-{numero:04d}", 5)
+        self.commit()
+        self.refusee("gaspard", "plafond : gaspard aurait 20 arguments en 24 h tous débats confondus",
+                     "au plus 15 par utilisateur sur 24 h glissantes (agora.arguments_max_par_24h_tous_debats)")
+        # Honnête : 15 arguments, 3 dans chacun de 5 débats ; le 16e est refusé, par l'outil comme par verifier-pr.
+        self.branche("quinze")
+        for numero in range(1, 6):
+            for k in range(3):
+                self.argumenter("gaspard", "question", f"Question {k + 1} sur ce débat.", debat=f"D-{numero:04d}")
+        self.commit()
+        self.libre_service("gaspard", "argument")
+        self.fusionner("quinze")
+        self.ko("tous débats confondus", "debattre", "argumenter", "D-0006", "--utilisateur", "gaspard", "--position", "pour",
+                "--texte", "Un de trop.")
+        self.branche("seize")
+        self.arguments_a_la_main("D-0006", 1)
+        self.commit()
+        self.refusee("gaspard", "plafond : gaspard aurait 16 arguments en 24 h tous débats confondus")
+        self.a("2026-10-30T22:11:00Z")
+        self.argumenter("gaspard", "pour", "Le lendemain.", debat="D-0007")
+
+    def test_T10_sixieme_argument_dans_un_debat_ecrit_a_la_main(self):
+        self.ouvrir_debats(1)
+        self.branche("cinq")
+        for k in range(5):
+            self.argumenter("gaspard", "question", f"Question {k + 1}.")
+        self.commit()
+        self.libre_service("gaspard", "argument")
+        self.fusionner("cinq")
+        self.ko("a déjà 5 arguments en 24 h dans D-0001", "debattre", "argumenter", "D-0001", "--utilisateur", "gaspard",
+                "--position", "pour", "--texte", "Un sixième.")
+        self.branche("t10")
+        self.arguments_a_la_main("D-0001", 1)
+        self.commit()
+        self.refusee("gaspard", "plafond : gaspard aurait 6 arguments en 24 h dans ce débat")
+
+    # --- (5) R7 : T13 ---
+
+    def test_T13_liberer_puis_reprendre_ne_renouvelle_pas_la_reservation(self):
+        self.a("2026-10-29T23:06:33Z")
+        self.prendre_et_fusionner("gaspard")
+        self.a("2026-10-29T23:06:45Z")
+        self.liberer_et_fusionner("gaspard")
+        self.a("2026-10-29T23:06:54Z")
+        self.ko("R7 : gaspard a quitté cette tâche sans contribution le 2026-10-29T23:06:45Z", "prendre", "miniz-0099",
+                "--utilisateur", "gaspard")
+        # Écrite à la main, la reprise est refusée par verifier-pr, qui lit la libération dans l'historique de main.
+        self.branche("t13")
+        bee.modifier_tache(self.chemin_tache(), statut="reservee", reservation={"utilisateur": "gaspard", "depuis": "2026-10-29T23:06:54Z"})
+        self.commit()
+        self.refusee("gaspard", "R7 : gaspard a quitté cette tâche sans contribution le 2026-10-29T23:06:45Z",
+                     "il ne la reprend pas avant le 2026-10-30T23:06:45Z")
+        # Un autre la prend aussitôt ; gaspard, 24 h après sa libération.
+        self.branche("bruno")
+        self.ok("prendre", "miniz-0099", "--utilisateur", "bruno")
+        self.commit()
+        self.libre_service("bruno", "reservation")
+        self.a("2026-10-30T23:07:00Z")
+        self.prendre_et_fusionner("gaspard")
+
+    def test_R7_expiration_retrait_en_parallele_et_soumission(self):
+        # Expiration constatée par le robot : pas de reprise avant 24 h.
+        self.a("2026-10-26T10:00:00Z")
+        self.prendre_et_fusionner("gaspard")
+        self.a("2026-10-29T11:00:00Z")
+        self.ok("liberer-expirees")
+        self.commit("expirations (robot)")
+        self.a("2026-10-29T12:00:00Z")
+        self.ko("R7 : gaspard a quitté cette tâche sans contribution le 2026-10-29T11:00:00Z", "prendre", "miniz-0099",
+                "--utilisateur", "gaspard")
+        # Retrait d'une inscription en parallèle : pas de réinscription avant 24 h.
+        self.prendre_et_fusionner("alice", "miniz-9001")
+        self.prendre_et_fusionner("gaspard", "miniz-9001", "--en-parallele")
+        self.a("2026-10-29T12:30:00Z")
+        self.liberer_et_fusionner("gaspard", "miniz-9001")
+        self.ko("R7 : gaspard a quitté", "prendre", "miniz-9001", "--utilisateur", "gaspard", "--en-parallele")
+        self.branche("reinscription")
+        t = self.tache("miniz-9001")
+        bee.modifier_tache(self.chemin_tache("miniz-9001"), paralleles=[{"utilisateur": "gaspard", "depuis": "2026-10-29T12:30:00Z"}])
+        self.assertEqual(t.get("paralleles"), None)
+        self.commit()
+        self.refusee("gaspard", "R7 : gaspard a quitté cette tâche sans contribution le 2026-10-29T12:30:00Z")
+        # Une réservation finie par une soumission n'est pas une libération ; mais si la contribution est close sans
+        # intégration, c'en est une (revue adverse, I1) : l'auteur ne reprend la tâche rouverte que 24 h après la clôture.
+        self.prendre_et_fusionner("bruno", "miniz-0099")
+        self.branche("soumission")
+        self.ok("soumettre", "miniz-0099", "--utilisateur", "bruno", "--pr", "https://github.com/Bee-ruche/minizBee/pull/99301")
+        self.commit()
+        self.libre_service("bruno", "soumission")
+        self.fusionner("soumission")
+        self.ok("cloturer", "miniz-0099-c1", "--motif", "PR fermée sans fusion.")
+        self.commit("clôture (robot)")
+        self.a("2026-10-29T12:40:00Z")
+        self.ko("la contribution miniz-0099-c1 de bruno sur cette tâche a été close sans intégration le 2026-10-29T12:30:00Z",
+                "prendre", "miniz-0099", "--utilisateur", "bruno")
+        self.a("2026-10-30T12:31:00Z")
+        self.prendre_et_fusionner("bruno", "miniz-0099")
+
+    # --- (7) Cap et essaim : un geste compte à la date de sa fusion (T3, T2) ---
+
+    def test_cap_et_essaim_datent_les_gestes_par_leur_fusion(self):
+        # Publiées sur main avant ces contrôles : 40 notes antidatées de 10 jours (T3), puis 3 datées de 2099 (T2), puis une
+        # vraie note d'alice.
+        self.noter_a_la_main(*({"le": f"2026-10-19T22:{n:02d}:00Z"} for n in range(40)))
+        self.commit("T3", quand="2026-10-29T22:00:00Z")
+        self.noter_a_la_main(*({"le": f"2099-01-01T00:{n:02d}:00Z"} for n in range(3)))
+        self.commit("T2", quand="2026-10-29T22:30:00Z")
+        bee.modifier_tache(self.chemin_tache(), note={"par": "alice", "le": "2026-10-29T23:00:00Z", "texte": "Une vraie note."})
+        self.commit("note d'alice", quand="2026-10-29T23:00:00Z")
+        self.a("2026-10-30T00:00:00Z")
+        notes = lambda etat: {l["poste"]: l["gestes"] for l in etat["postes"]}["coordination"].get("notes", 0)  # noqa: E731
+        # gaspard pèse au plus 6 en coordination ce jour-là (cap.poids_max_par_utilisateur_et_jour) ; alice, 0,5.
+        self.assertEqual(notes(json.loads(self.ok("cap", "--json"))), 6 + 0.5)
+        essaim = json.loads(self.ok("essaim", "--json"))["notes"]
+        self.assertEqual((essaim[0]["par"], essaim[0]["fusionnee_le"]), ("alice", "2026-10-29T23:00:00Z"),
+                         "la note fusionnée la dernière d'abord, pas celles datées de 2099")
+        self.assertEqual([n["fusionnee_le"] for n in essaim[1:4]], ["2026-10-29T22:30:00Z"] * 3)
+        self.assertTrue(all(n["le"].startswith("2026-10-19") for n in essaim[4:]), "les notes antidatées se voient dans l'essaim")
+        # Dix jours après leur fusion, elles sortent de l'essaim (7 jours) et comptent encore au cap (14 jours) ; quinze jours
+        # après, plus du tout, même datées de 2099.
+        self.a("2026-11-08T00:00:00Z")
+        self.assertEqual(json.loads(self.ok("essaim", "--json"))["notes"], [])
+        self.assertEqual(notes(json.loads(self.ok("cap", "--json"))), 6 + 0.5)
+        self.a("2026-11-14T00:00:00Z")
+        self.assertEqual(notes(json.loads(self.ok("cap", "--json"))), 0)
+        # Un geste pas encore publié (dans le clone) compte à sa date déclarée.
+        self.ok("noter", "miniz-0099", "--utilisateur", "alice", "--texte", "Pas encore publiée.")
+        self.assertEqual(notes(json.loads(self.ok("cap", "--json"))), 0.5)
+
+    def test_cap_compte_reservations_et_propositions_a_leur_fusion(self):
+        self.a("2026-10-29T22:00:00Z")
+        self.prendre_et_fusionner("alice")
+        self.proposition("P-0001", auteur="alice", ouverte_le="2026-10-01T00:00:00Z")
+        self.commit("proposition antidatée sur main")
+        self.a("2026-10-30T00:00:00Z")
+        etat = {l["poste"]: l["gestes"] for l in json.loads(self.ok("cap", "--json"))["postes"]}
+        self.assertEqual(etat["projets"].get("travail en cours"), 1.0)
+        self.assertEqual(etat["gouvernance"].get("propositions de règle"), 2.0, "comptée à sa fusion, pas au 1er octobre")
+
+
+class TestRevueAdverseRuche0011(BaseRepetitionGenerale):
+    """Revue adverse de ruche-0011 (B1, I1, I2, m1, m2, m4) : chaque constat est rejoué et refusé."""
+
+    def taches_brutes(self, nombre, qui="gaspard"):
+        """Des tâches proposées écrites à la main, aux numéros qui suivent, comme le ferait bee proposer-tache."""
+        numero = bee.numero_suivant([int(p.stem.split("-")[1]) for p in (self.dossier / "taches/miniz").glob("miniz-*.yaml")])
+        for n in range(numero, numero + nombre):
+            tid = f"miniz-{n:04d}"
+            texte = (TACHE_OPTIMISATION.replace("miniz-0099", tid).replace("type: optimisation", "type: test")
+                     .replace("metrique: debit_compression_n6", "metrique: null").replace("sortie_compressee: identique\n", "")
+                     .replace("statut: ouverte", "statut: proposee").replace("cree_par: tests", f"cree_par: {qui}")
+                     .replace('cree_le: "2026-10-27"', f'cree_le: "{os.environ["BEE_MAINTENANT"][:10]}"'))
+            self.chemin_tache(tid).write_text(texte, encoding="utf-8")
+
+    # --- B1 : une seule PR, ou un seul utilisateur, ne prend plus tous les numéros ni ne fait basculer le cap ---
+
+    def test_B1_propositions_plafonnees_par_pr_et_sur_24_h(self):
+        self.branche("remplissage")
+        for n in range(1, 21):
+            self.proposition(f"P-{n:04d}")
+        self.commit()
+        self.refusee("gaspard", "plafond : 20 propositions de règle ajoutées par cette PR, au plus 3 (creations.propositions_max_par_pr)")
+        # Honnête : 3 puis 2, fusionnées ; la 6e en 24 h est refusée, par l'outil comme par verifier-pr.
+        for lot, numeros in (("trois", range(1, 4)), ("deux", range(4, 6))):
+            self.branche(lot)
+            for n in numeros:
+                self.proposition(f"P-{n:04d}")
+            self.commit()
+            self.libre_service("gaspard", "proposition")
+            self.fusionner(lot)
+        self.ko("plafond : gaspard a déjà 5 propositions de règle sur 24 h glissantes", "proposer", "--utilisateur", "gaspard",
+                "--regle", "R7", "--texte", "Une de trop, ce jour.", "--motif", "Essai du plafond sur 24 h.")
+        self.branche("sixieme")
+        self.proposition("P-0006")
+        self.commit()
+        self.refusee("gaspard", "plafond : gaspard aurait 6 propositions de règle en 24 h glissantes, au plus 5")
+        self.a("2026-10-30T22:01:00Z")  # 24 h après les cinq premières, une place se libère
+        self.proposition("P-0006")
+        self.commit("le lendemain")
+        self.libre_service("gaspard", "proposition")
+        # Le conseil n'est pas plafonné.
+        self.branche("conseil")
+        for n in range(6, 10):
+            self.proposition(f"P-{n:04d}", auteur="bidji29")
+        self.commit()
+        self.libre_service("bidji29", "proposition")
+
+    def test_B1_taches_proposees_plafonnees_par_pr_et_sur_24_h(self):
+        self.branche("masse")
+        self.taches_brutes(4)
+        self.commit()
+        self.refusee("gaspard", "plafond : 4 tâches proposées ajoutées par cette PR, au plus 3 (creations.taches_max_par_pr)")
+        for lot, nombre in (("trois", 3), ("deux", 2)):
+            self.branche(lot)
+            for _ in range(nombre):
+                self.proposer_tache()
+            self.commit()
+            self.libre_service("gaspard", "proposition_tache")
+            self.fusionner(lot)
+        self.ko("plafond : gaspard a déjà 5 tâches proposées sur 24 h glissantes", "proposer-tache", "miniz", "--utilisateur",
+                "gaspard")
+        self.branche("sixieme")
+        self.taches_brutes(1)
+        self.commit()
+        self.refusee("gaspard", "plafond : gaspard aurait 6 tâches proposées en 24 h glissantes, au plus 5")
+
+    def test_B1_un_utilisateur_ne_fait_pas_basculer_le_cap(self):
+        # 30 tâches proposées par gaspard, publiées sur main avant ces plafonds, et une seule d'alice, le même jour.
+        self.taches_brutes(30)
+        self.taches_brutes(1, qui="alice")
+        self.commit("tâches en masse", quand="2026-10-29T22:00:00Z")
+        self.a("2026-10-29T23:00:00Z")
+        etat = {l["poste"]: l["gestes"] for l in json.loads(self.ok("cap", "--json"))["postes"]}
+        self.assertEqual(etat["gouvernance"].get("tâches créées ou proposées"), 6 + 1,
+                         "gaspard pèse au plus 6 dans le poste ce jour-là (cap.poids_max_par_utilisateur_et_jour), alice 1")
+
+    # --- I1 : une soumission close sans intégration est une fin d'engagement pour R7 ---
+
+    def test_I1_soumission_close_ne_renouvelle_pas_la_reservation(self):
+        self.a("2026-10-29T23:00:00Z")
+        self.prendre_et_fusionner("gaspard")
+        self.a("2026-10-29T23:05:00Z")
+        self.branche("soumission")
+        self.ok("soumettre", "miniz-0099", "--utilisateur", "gaspard", "--pr", "https://github.com/Bee-ruche/minizBee/pull/77001")
+        self.commit()
+        self.libre_service("gaspard", "soumission")
+        self.fusionner("soumission")
+        self.a("2026-10-29T23:40:00Z")  # passage d'integration-auto : PR fermée sans fusion
+        self.ok("cloturer", "miniz-0099-c1", "--motif", "PR fermée sans fusion.")
+        self.commit("Intégrations et clôtures automatiques (R3)")
+        self.a("2026-10-29T23:41:00Z")
+        motif = "R7 : la contribution miniz-0099-c1 de gaspard sur cette tâche a été close sans intégration le 2026-10-29T23:40:00Z"
+        self.ko(motif, "prendre", "miniz-0099", "--utilisateur", "gaspard")
+        self.branche("reprise")
+        bee.modifier_tache(self.chemin_tache(), statut="reservee", reservation={"utilisateur": "gaspard", "depuis": "2026-10-29T23:41:00Z"})
+        self.commit()
+        self.refusee("gaspard", motif, "il ne la reprend pas avant le 2026-10-30T23:40:00Z")
+        self.a("2026-10-30T23:41:00Z")
+        self.prendre_et_fusionner("gaspard")
+
+    # --- I2 : les champs libres d'une tâche proposée sont courts ---
+
+    def test_I2_champs_d_une_tache_proposee_plafonnes(self):
+        self.branche("gros")
+        chemin = self.proposer_tache()
+        t = bee.lire_yaml(chemin)
+        t.update(titre="Titre​ maquillé", contexte="x" * 200_000, critere_acceptation=[f"Critère {i}." for i in range(11)],
+                 hors_perimetre=["y" * 301], fichiers=[f"f{i}.c" for i in range(31)], depend_de=["miniz-0099"] * 11)
+        bee.ecrire_yaml(chemin, t)
+        self.commit()
+        self.refusee("gaspard", "titre : caractère invisible ou de contrôle refusé (U+200B",
+                     "contexte de 200000 caractères, au plus 3000 (creations.contexte_max)",
+                     "critere_acceptation : 11 éléments, au plus 10 (creations.elements_max)",
+                     "hors_perimetre/0 de 301 caractères, au plus 300 (creations.element_max)",
+                     "fichiers : 31 éléments, au plus 30 (creations.fichiers_max)",
+                     "depend_de : 11 tâches, au plus 10")
+
+    # --- m1 : votes, relectures et mesures datés de l'heure de la PR ; sans historique, une date future ne compte pas ---
+
+    def contribution_d_alice_sur_main(self):
+        self.prendre_et_fusionner("alice")
+        self.branche("soumission")
+        self.ok("soumettre", "miniz-0099", "--utilisateur", "alice", "--pr", "https://github.com/Bee-ruche/minizBee/pull/77002")
+        self.commit()
+        self.fusionner("soumission")
+        return "miniz-0099-c1"
+
+    def test_m1_vote_relecture_et_mesure_dates_de_la_pr(self):
+        cid = self.contribution_d_alice_sur_main()
+        self.branche("vote")
+        bee.ecrire_yaml(self.dossier / f"votes/{cid}/gaspard.yaml", {"votant": "gaspard", "sujet": cid, "valeur": 1, "le": "2099-01-01T00:00:00Z"})
+        chemin = self.dossier / f"contributions/miniz/{cid}.yaml"
+        enr = bee.lire_yaml(chemin)
+        enr["relectures"] = [{"relecteur": "gaspard", "avis": "favorable", "motif": "Relue « en 2099 ».", "le": "2099-01-01T00:00:00Z"}]
+        bee.ecrire_yaml(chemin, enr)
+        bee.ecrire_yaml(self.dossier / f"mesures/{cid}/gaspard.yaml", {
+            "contribution": cid, "soumise_par": "gaspard", "le": "2026-10-01T00:00:00Z", "base": "2948eeb", "candidat": "839b676",
+            "config": {"architecture": "arm64"}, "metriques": {"debit_compression_n6": {"gain": 0.05, "au_dela_du_bruit": True}}})
+        self.commit()
+        self.refusee("gaspard", f"votes/{cid}/gaspard.yaml : le (2099-01-01T00:00:00Z) doit être l'heure de la PR",
+                     f"relecture de gaspard, le (2099-01-01T00:00:00Z) doit être l'heure de la PR",
+                     f"mesures/{cid}/gaspard.yaml : le (2026-10-01T00:00:00Z) doit être l'heure de la PR")
+        # Les mêmes gestes, écrits par l'outil : en libre-service.
+        self.branche("honnete")
+        self.ok("voter", cid, "--utilisateur", "gaspard", "--valeur", "1")
+        self.ok("relire", cid, "--utilisateur", "gaspard", "--avis", "favorable", "--motif", "Relue aujourd'hui.")
+        self.commit()
+        self.libre_service("gaspard", "vote", "relecture")
+
+    def test_m1_clone_superficiel_ignore_une_date_future(self):
+        cid = self.contribution_d_alice_sur_main()
+        # Publié sur main avant ce contrôle : un vote daté de 2099.
+        bee.ecrire_yaml(self.dossier / f"votes/{cid}/gaspard.yaml", {"votant": "gaspard", "sujet": cid, "valeur": 1, "le": "2099-01-01T00:00:00Z"})
+        self.commit("vote de 2099 sur main")
+        self.a("2026-12-31T12:00:00Z")
+        clone = self.dossier.parent / "superficiel"
+        subprocess.run(["git", "clone", "-q", "--depth", "1", f"file://{self.dossier}", str(clone)], check=True, capture_output=True)
+        votes = lambda racine: next(l for l in bee.etat_du_cap(bee.Registre(racine))["postes"]  # noqa: E731
+                                    if l["poste"] == "gouvernance")["gestes"].get("votes", 0)
+        self.assertEqual((votes(self.dossier), votes(clone)), (0, 0), "ni le clone complet, ni le clone superficiel ne le comptent")
+
+    def test_m1_le_site_se_construit_sur_un_clone_complet(self):
+        import yaml
+        flux = yaml.safe_load((self.dossier / ".github/workflows/site.yml").read_text(encoding="utf-8"))
+        etape = next(s for s in flux["jobs"]["construire"]["steps"] if str(s.get("uses", "")).startswith("actions/checkout"))
+        self.assertEqual((etape.get("with") or {}).get("fetch-depth"), 0)
+
+    # --- m2 : sans historique, verifier-pr refuse une réservation ou une inscription en parallèle (échec fermé) ---
+
+    def test_m2_sans_historique_reservation_refusee(self):
+        clone = self.dossier.parent / "superficiel"
+        subprocess.run(["git", "clone", "-q", "--depth", "1", f"file://{self.dossier}", str(clone)], check=True, capture_output=True)
+        git(clone, "switch", "-qc", "prise")
+        self.assertEqual(lancer("--registre", str(clone), "prendre", "miniz-0099", "--utilisateur", "gaspard")[0], 0)
+        git(clone, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qam", "prise")
+        code, texte = lancer("--registre", str(clone), "verifier-pr", "--base", "main", "--tete", "HEAD", "--auteur", "gaspard",
+                             "--fusion-auto")
+        self.assertEqual(code, 1, texte)
+        self.assertIn("l'historique git de main est indisponible", texte)
+        self.assertIn("échec fermé", texte)
+
+    # --- m4 : la confiance C du score ne compte pas les relectures des Nouveaux ---
+
+    def test_m4_la_confiance_ne_compte_pas_les_nouveaux(self):
+        reg = bee.Registre(self.dossier)
+        enr = {"id": "x-0001-c1", "tache": "miniz-0099", "verdict": {"ci": "verte", "gain": 0.03, "lignes_modifiees": 10},
+               "relectures": [{"relecteur": r, "avis": "favorable"} for r in ("alice", "bruno", "bidji29")]}
+        niveaux = bee.calculer_niveaux(reg)
+        self.assertEqual(bee.niveau_de(niveaux, "alice"), "Nouveau")
+        self.assertAlmostEqual(bee.calculer_score(reg, enr, niveaux)["C"], 1 / 3, msg="seul le conseil compte : alice et bruno sont Nouveaux")
+
+
+class TestCapSansHistorique(BaseTest):
+    """Sans historique git, un geste compte à sa date déclarée, et pas du tout si elle est dans le futur (revue adverse, m1) ;
+    l'essaim ignore de même une date future."""
+
+    def test_date_future_ignoree(self):
+        os.environ["BEE_MAINTENANT"] = "2027-06-01T12:00:00Z"
+        chemin = self.dossier / "taches/miniz/miniz-0099.yaml"
+        bee.modifier_tache(chemin, note={"par": "alice", "le": "2099-01-01T00:00:00Z", "texte": "Datée de 2099."})
+        etat = json.loads(self.bee("cap", "--json")[1])
+        self.assertEqual({l["poste"]: l["gestes"] for l in etat["postes"]}["coordination"], {})
+        self.assertEqual(json.loads(self.bee("essaim", "--json")[1])["notes"], [])
+        bee.modifier_tache(chemin, note={"par": "alice", "le": "2027-06-01T11:00:00Z", "texte": "Datée d'il y a une heure."})
+        etat = json.loads(self.bee("cap", "--json")[1])
+        self.assertEqual({l["poste"]: l["gestes"] for l in etat["postes"]}["coordination"], {"notes": 0.5})
+
+
+class TestRelecturesDesNouveaux(BaseParallele):
+    """docs/reputation.md : la relecture d'un Nouveau est enregistrée mais ne compte pas pour R3 (répétition générale, F12)."""
+
+    def contribution_de_chloe(self):
+        self.fermer_porte()
+        self.assertEqual(self.bee("inscrire", "--pseudo", "david", "--compte-cree-le", "2020-01-01")[0], 0)
+        self.contributeurs("david")
+        self.valide()
+        self.assertEqual(self.bee("prendre", "miniz-0099", "--utilisateur", "chloe")[0], 0)
+        cid = self.soumettre("miniz-0099", "chloe", 99201)
+        self.verdict(cid, 0.05)
+        return cid
+
+    def avis(self, cid, qui, avis):
+        code, texte = self.bee("relire", cid, "--utilisateur", qui, "--avis", avis, "--motif", "Diff relu en entier.")
+        self.assertEqual(code, 0, texte)
+        return texte
+
+    def test_deux_nouveaux_ne_noient_pas_l_avis_d_un_contributeur(self):
+        cid = self.contribution_de_chloe()
+        self.assertIn("ne compte pas pour R3", self.avis(cid, "alice", "favorable"))
+        self.avis(cid, "bruno", "favorable")
+        self.assertNotIn("ne compte pas pour R3", self.avis(cid, "david", "defavorable"))
+        for votant in ("bidji29", "alice", "bruno"):
+            self.assertEqual(self.bee("voter", cid, "--utilisateur", votant, "--valeur", "1")[0], 0)
+        self.a("2026-10-29T12:00:00Z")
+        code, texte = self.acceptation(cid)
+        self.assertEqual(code, 1, texte)
+        self.assertIn("0 relecture(s) favorable(s) sur 2 requise(s)", texte)
+        self.assertIn("2 relecture(s) de Nouveau, enregistrée(s) mais non comptée(s) pour R3", texte)
+        self.assertIn("1 relecture(s) défavorable(s) contre 0 favorable(s)", texte)
+        self.valide()
+
+    def test_relectures_comptees_d_un_contributeur_et_du_conseil(self):
+        cid = self.contribution_de_chloe()
+        self.avis(cid, "alice", "favorable")
+        self.avis(cid, "david", "favorable")
+        self.avis(cid, "bidji29", "favorable")
+        for votant in ("bidji29", "david"):
+            self.assertEqual(self.bee("voter", cid, "--utilisateur", votant, "--valeur", "1")[0], 0)
+        self.a("2026-10-29T12:00:00Z")
+        code, texte = self.acceptation(cid)
+        self.assertEqual(code, 0, texte)
+
+    def test_contribution_du_conseil_quand_les_autres_sont_nouveaux(self):
+        """Amorçage : le seuil se plafonne aux relecteurs dont l'avis compte ; si les autres membres sont tous Nouveaux, une
+        contribution du conseil n'attend aucune relecture, comme aujourd'hui (leurs relectures restent enregistrées)."""
+        self.assertEqual(self.bee("prendre", "miniz-0099", "--utilisateur", "bidji29")[0], 0)
+        cid = self.soumettre("miniz-0099", "bidji29", 99202)
+        self.verdict(cid, 0.05)
+        self.avis(cid, "alice", "defavorable")
+        self.a("2026-10-29T12:00:00Z")
+        code, texte = self.acceptation(cid)
+        self.assertEqual(code, 0, texte)
 
 
 MANIFESTE_REMPLI = """tache: miniz-0099

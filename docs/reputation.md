@@ -14,6 +14,13 @@ Le niveau n'est stocké nulle part : `bee niveaux` le recalcule à partir des co
 
 Pendant l'amorçage (jusqu'à la phase 3), les niveaux ne limitent pas la taille des tâches : voir [REGLES.md](../REGLES.md).
 
+**Relectures d'un Nouveau.** Elles sont enregistrées, publiques et lues, et rapportent des points de relecture, mais ne
+comptent pas pour R3 : ni parmi les relectures favorables exigées (`relectures_requises`), ni contre un avis
+défavorable. Le nombre exigé se plafonne aux relecteurs dont l'avis compte (Contributeurs, Confirmés, gardiens,
+conseil), autres que l'auteur : deux comptes simplement inscrits ne réunissent pas les favorables exigées et ne noient
+pas l'avis défavorable d'un Contributeur. `bee relire` le rappelle à un Nouveau, et `bee verifier-acceptation` dit
+combien de relectures de Nouveaux il a laissées de côté.
+
 ## Points de relecture
 
 | Situation | Points |

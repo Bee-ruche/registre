@@ -122,6 +122,7 @@ La clôture **nomme ce qui sort du débat** :
 | Sources d'un argument | 5 | `sources_par_argument_max` |
 | Longueur d'une source (une adresse ou un chemin, pas un second texte) | 200 caractères | `source_max` |
 | Arguments par utilisateur et par débat, sur 24 h glissantes | 5 | `arguments_max_par_24h` |
+| Arguments par utilisateur, tous débats confondus, sur 24 h glissantes | 15 | `arguments_max_par_24h_tous_debats` |
 | Arguments ajoutés par une même PR, tous débats confondus | 20 | `arguments_max_par_pr` |
 | Débats ouverts par utilisateur, sur 24 h glissantes ; le conseil n'est pas plafonné | 3 | `ouvertures_max_par_24h` |
 | Silence avant que le rapporteur puisse clore | 24 h | `silence_avant_cloture_heures` |
@@ -188,7 +189,7 @@ l'agora.
 | Transition | Qui | Contrôles |
 | --- | --- | --- |
 | Ouvrir (`ouverture_debat`) | Tout membre | Au numéro suivant le plus grand de `main`, sans trou ; `ouvert_par` = l'auteur de la PR, `rapporteur` = l'auteur ou personne (alors sans argument ni synthèse) ; daté de l'heure de la PR (2 h de tolérance, jamais dans le futur) ; question courte ; né ouvert, sans clôture ; 3 ouvertures sur 24 h glissantes au plus |
-| Argumenter (`argument`) | Tout membre | Débat ouvert ; arguments ajoutés en fin de liste seulement, signés de l'auteur de la PR, numérotés à la suite, datés de l'heure de la PR et pas avant le précédent ; texte court ; `repond_a` vers un argument précédent ; un fait a des sources (5 au plus, de 200 caractères), et chaque chemin cité existe dans le registre ; 5 par débat sur 24 h glissantes, 20 par PR |
+| Argumenter (`argument`) | Tout membre | Débat ouvert ; arguments ajoutés en fin de liste seulement, signés de l'auteur de la PR, numérotés à la suite, datés de l'heure de la PR et pas avant le précédent ; texte court ; `repond_a` vers un argument précédent ; un fait a des sources (5 au plus, de 200 caractères), et chaque chemin cité existe dans le registre ; 5 par débat et 15 tous débats confondus, par utilisateur sur 24 h glissantes, 20 par PR |
 | Prendre la plume (`prise_de_plume`) | Le premier qui argumente dans un débat sans rapporteur | Dans la même PR que son argument, `rapporteur` = l'auteur de la PR, personne d'autre ; un débat sans rapporteur n'en reçoit un que par son premier argument ; la synthèse vient dans une PR suivante |
 | Synthétiser (`synthese`) | Le rapporteur | Signée et datée de maintenant ; non vide, courte ; le rapporteur suivant est un autre participant (lui-même seulement s'il est seul) |
 | Relever un rapporteur absent (`synthese`) | Un autre participant | Des arguments attendent la synthèse depuis 72 h après le premier d'entre eux ; participant dans `main` avant la PR ; pas l'auteur de la dernière synthèse s'il y a quelqu'un d'autre ; puis les mêmes contrôles qu'une synthèse, rapporteur suivant compris |
@@ -246,7 +247,8 @@ dates contrôlées à l'écriture et dans l'ordre ; numéros sans trou ; débat 
 suppression ; fichier identique au rendu de l'outil, donc rien de caché dans le fichier brut (pas de
 commentaire glissé dans l'argument d'un autre) ; aucun caractère invisible ; les synthèses successives
 restent dans l'historique git. **Noyer un débat.** 5 arguments par utilisateur et par débat sur 24 h
-glissantes (pas de pic à minuit) ; 20 par PR ; textes courts, et sources courtes et peu nombreuses
+glissantes (pas de pic à minuit), et 15 tous débats confondus (sinon 5 dans chacun des débats ouverts : la
+répétition générale du 29/10 en a mis 40 en deux PR) ; 20 par PR ; textes courts, et sources courtes et peu nombreuses
 (le plafond du texte ne se contourne pas par elles) ; 3 ouvertures sur 24 h glissantes. **Rendre un
 débat inécrivable.** Les sauts de ligne que YAML réinterprète sont refusés, et le fichier publié doit
 être celui que l'outil sait réécrire.
