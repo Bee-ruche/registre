@@ -83,6 +83,11 @@ class BaseTest(unittest.TestCase):
         shutil.rmtree(self.dossier / "propositions", ignore_errors=True)
         for dossier_votes in (self.dossier / "votes").glob("P-*"):
             shutil.rmtree(dossier_votes, ignore_errors=True)
+        # Ni des débats réels de l'agora (leurs numéros, rapporteurs et dates) : les tests ouvrent les leurs.
+        shutil.rmtree(self.dossier / "debats", ignore_errors=True)
+        questions = self.dossier / "docs" / "questions-ouvertes.md"
+        questions.write_text(re.sub(r"(?m)^ *Débat : \[D-\d{4}\]\(\.\./debats/D-\d{4}\.yaml\) \(`bee debats --voir D-\d{4}`\)\.\n", "",
+                                    questions.read_text(encoding="utf-8")), encoding="utf-8")
         # Ni de la valeur courante de la porte de relecture (R3) : les tests partent de la porte fermée (« true ») et
         # la règlent eux-mêmes (regler_porte, regler_porte_humaine).
         chemin_config = self.dossier / "bee.yaml"
@@ -3389,7 +3394,8 @@ class TestAgora(BaseAgora):
         self.a("2026-10-29T12:30:00Z")
         self.assertIn("rapporteur suivant : ", self.ok("debattre", "synthetiser", "D-0001", "--utilisateur", "bruno", "--texte", "État."))
         self.ouvrir("alice", "Un débat ouvert à la main garde son ouvreur comme rapporteur ?")
-        self.assertEqual(self.debat("D-0017")["rapporteur"], "alice")
+        dernier = max(bee.Registre(self.dossier).debats)  # après les débats importés, quel que soit leur nombre
+        self.assertEqual(self.debat(dernier)["rapporteur"], "alice")
         self.valide()
 
     def test_argumenter_annonce_l_id_et_le_risque_de_conflit(self):
