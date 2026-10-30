@@ -16,26 +16,29 @@ texte_propose: 'R3 : à la condition « au moins relectures_requises relectures 
   ; aucun défaut confirmé sur la relecture la plus récente de son relecteur, ou sur sa plus récente relecture
   du contenu jugé ; un refus ou un défaut confirmé posé dans une autre contribution du même auteur sur
   la même tâche (close comprise ; un pseudo est un login GitHub, sans la casse) bloque aussi, quel que
-  soit le commit, jusqu''à ce que son relecteur relise, et, posé sur un contenu, il bloque aussi toute
-  contribution de la tâche soumise après et jugée sur le même arbre, quel que soit son auteur ; recours
-  : le relecteur relit, ou le conseil lève, en motivant, dans une PR relue (levees) ». Réputation : une
-  abstention ne rapporte rien ; sur une contribution, un relecteur gagne ou perd au plus une fois, d''après
-  sa relecture la plus récente et seulement si elle porte sur le commit où la contribution a été décidée
-  ; +2 une fois si l''un de ses défauts est confirmé (docs/reputation.md). Signaler un défaut, c''est
-  juger : qui l''a fait n''entre plus dans la course (docs/contributions.md).'
+  soit le commit, jusqu''à ce que son relecteur relise ; un autre compte qui soumet un contenu refusé
+  n''est pas bloqué automatiquement : une alerte le signale aux relecteurs, le refus se repose sur la
+  copie (comptes multiples : tâche ruche-0022, débat D-0002) ; recours : le relecteur relit, ou le conseil
+  lève, en motivant, dans une PR relue (levees) ». Réputation : une abstention ne rapporte rien ; sur
+  une contribution, un relecteur gagne ou perd au plus une fois, d''après sa relecture la plus récente
+  et seulement si elle porte sur le commit où la contribution a été décidée ; +2 une fois si l''un de
+  ses défauts est confirmé (docs/reputation.md). Signaler un défaut, c''est juger : qui l''a fait n''entre
+  plus dans la course (docs/contributions.md).'
 motif: 'Deux répétitions générales de suite ont buté sur le même défaut. Le 29/10 (trouvé par trois abeilles)
   : bee relire refusait une seconde relecture du même relecteur quel que soit le commit, et une relecture
   faite avant le verdict de la CI, sans sha, comptait dans verifier-acceptation puis disparaissait à l''arrivée
   du verdict, sans avertissement ; un gardien ne pouvait donc jamais relire le correctif qu''il avait
   demandé et, seul gardien, son avis défavorable devenait définitif. Le 30/10 (tour 2), le défaut est
   revenu, et un gardien a conclu « défavorable » et une relectrice « favorable » sur la même analyse,
-  faute d''avis intermédiaire ou de portée déclarée. Quatre revues adverses de la tâche ruche-0012 ont
-  montré qu''une relecture par commit ne suffit pas : en revenant à un ancien commit, en poussant un commit
-  vide, en re-soumettant ou en amendant le même travail, en changeant la casse de son pseudo, ou en le
-  faisant soumettre par un autre compte, l''auteur effaçait le défaut confirmé, le refus du gardien ou
-  les défavorables posés depuis ; d''où la règle de la relecture la plus récente, le contenu jugé par
-  l''arbre git, les refus qui suivent le fil (même auteur, même tâche) et les copies soumises après, et
-  un recours écrit du conseil contre un relecteur qui ne revient pas. bee relire, verifier-acceptation,
+  faute d''avis intermédiaire ou de portée déclarée. Cinq revues adverses de la tâche ruche-0012 ont montré
+  qu''une relecture par commit ne suffit pas : en revenant à un ancien commit, en poussant un commit vide,
+  en re-soumettant ou en amendant le même travail, ou en changeant la casse de son pseudo, l''auteur effaçait
+  le défaut confirmé, le refus du gardien ou les défavorables posés depuis ; d''où la règle de la relecture
+  la plus récente, le contenu jugé par l''arbre git, les refus qui suivent le fil (même auteur, même tâche),
+  et un recours écrit du conseil contre un relecteur qui ne revient pas. Bloquer la copie soumise par
+  un autre compte s''est révélé faux par construction (le contenu d''une contribution change à chaque
+  commit poussé : l''original honnête était bloqué, ou la copie libérée) : c''est une alerte pour les
+  relecteurs, et une limite écrite, laissée à la tâche ruche-0022 et au débat D-0002. bee relire, verifier-acceptation,
   verifier-pr, bee valider et verdicts.yml l''appliquent (tâche ruche-0012).'
-ouverte_le: '2026-10-30T12:51:19Z'
+ouverte_le: '2026-10-30T14:20:47Z'
 statut: ouverte
