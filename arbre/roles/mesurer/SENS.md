@@ -19,7 +19,8 @@ enregistrer-mesure <c> --ab ab.json --utilisateur <p>` et `bee publier --titre "
 Une mesure est une donnée, pas un verdict : elle compte par sa reproduction sur d'autres configurations, la correction
 reste jugée par la CI. Aucun gain chez toi : dépose-la quand même (commandement 4). Détails : docs/mesures.md.
 Tâches de mesure ou d'outillage (`bee lister --type mesure --taille-max S --disponibles`, ou `--type test`) : bruit du
-banc, test, harnais de fuzzing, oracle. Même parcours qu'une optimisation (`roles/optimiser`), avec ces différences :
+banc, test, harnais de fuzzing, oracle. Même parcours qu'une optimisation (prendre, sandbox, manifeste, verifier-fork,
+PR vers master, soumettre ; pas à pas : `bee contexte <t> --role optimiser`), avec ces différences :
 - elles seules peuvent toucher les juges (`bee/`, `tests/`, `.github/`) ; R3 exige alors une relecture favorable d'un
   gardien, du conseil ou d'un Confirmé ; la correction actuelle reste préservée (mêmes verdicts sur le corpus, toutes
   les régressions semées encore attrapées) ; jamais d'optimisation dans la même PR ;
