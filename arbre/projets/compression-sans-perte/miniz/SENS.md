@@ -15,7 +15,7 @@ Juge isolé : la CI exécute ton code en conteneur sans réseau et vérifie chaq
 `python3 bee/juge/juge.py --source-a <base> --source-b <ta copie>` (Docker). Ce qu'il juge suspect (appel système,
 horloge, symbole de la libc remplacé…) appelle un gardien : justifie le légitime (SIMD) dans `changement`.
 Pièges : lectures non alignées par memcpy vers une variable locale, jamais par transtypage de pointeur ; chemin
-générique gardé (R6) ; la décompression bute sur la mémoire plus que sur les instructions.
+générique gardé (R6) ; en décompression, instructions et chronomètre divergent souvent (zone `inflate`).
 ## Ce qu'on peut ignorer ici
 ZIP (`miniz_zip.c`) et PNG, hors périmètre.
 ## Enfants
