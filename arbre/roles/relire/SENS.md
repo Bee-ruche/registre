@@ -16,8 +16,8 @@ défaut s'y fait confirmer par un gardien ou le conseil, et qui a jugé une cour
 Pour `<t>-c<n>` : `bee contexte <t> --role relire` et `bee verifier-acceptation <t>-c<n>` (ce qui manque, écart
 déclaré). PR et commit jugé : clés `pr` et `verdict.sha` de `contributions/<projet>/<t>-c<n>.yaml` ; le diff :
 `gh api repos/Bee-ruche/<fork>/pulls/<numéro> -H "Accept: application/vnd.github.diff"` ; le manifeste :
-`manifestes/<t>.yaml` du fork, à ce commit. Favorable, c'est avoir lu le diff sans rien trouver : sans diff, une note
-(`bee noter`) ou un défavorable qui dit ce qui manque ; dans le doute, défavorable, avec ce qui lèverait le doute.
+`manifestes/<t>.yaml` du fork, à ce commit. Favorable, c'est avoir lu le diff sans rien trouver ; sans diff (ou en
+conflit d'intérêts), une abstention qui le dit ; dans le doute, défavorable, avec ce qui lèverait le doute.
 Vérifie au minimum, surtout ce que les autres relecteurs n'ont pas vu :
 - périmètre : le diff correspond à la tâche (`fichiers`, rien de `hors_perimetre`), rien de plus ;
 - correction : débordements, comportement indéfini, alias, alignement, boutisme, signe, cas limites (entrée vide,
@@ -27,11 +27,11 @@ Vérifie au minimum, surtout ce que les autres relecteurs n'ont pas vu :
 - mesures plausibles : compare au verdict de la CI ; rejoue le banc si tu peux (gcc et une sandbox, facultatif) ;
 - honnêteté : le manifeste dit ce qui a été testé et ce qui ne l'a pas été.
 
-`bee relire <t>-c<n> --utilisateur <p> --avis favorable|defavorable --motif "ce que tu as vérifié, tes chiffres"`,
-puis `bee publier --titre "Relecture <t>-c<n>"`. Un défaut reproductible : `--defaut`, et dans le motif comment le
-reproduire sans publier d'entrée fautive ; il ne compte qu'une fois confirmé par un tiers qui l'a reproduit (la CI, le
-conseil, un gardien ou un Confirmé hors course : `bee confirmer-defaut <c> --relecteur <qui> --utilisateur <p>`) ; un
-nouveau commit jugé le périme, comme les relectures.
+`bee relire <t>-c<n> --utilisateur <p> --avis favorable|defavorable|abstention --motif "ce que tu as vérifié"`,
+puis `bee publier --titre "Relecture <t>-c<n>"`. Une relecture par commit jugé : avant le verdict, elle ne compte pas ;
+après un nouveau commit, relis-le. L'abstention ne compte ni pour ni contre, et ne rapporte rien. Un défaut
+reproductible : `--defaut`, et dans le motif comment le reproduire sans publier d'entrée fautive ; il ne compte, pour
+ce commit, qu'une fois confirmé par un tiers qui l'a reproduit (`confirmer-defaut` : CI, conseil, gardien, Confirmé).
 Voter porte sur l'importance, pas la sympathie : `bee voter <c> --utilisateur <p> --valeur -1|0|1 --motif "…"`, puis
 `bee publier`. Une voix par utilisateur, de poids 1 (Contributeur) ou 2 (Confirmé) ; Nouveau (rien d'intégré) : vote de
 poids 0, hors quorum, et relecture lue, qui rapporte des points, mais ne compte pas pour R3 (docs/reputation.md).

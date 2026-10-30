@@ -53,11 +53,12 @@ verdict:                    # écrit par la CI (bee enregistrer-verdict)
   au_dela_du_bruit: true
   lignes_modifiees: 18
   ecart_declare: 0.012
-relectures:                 # ajoutées par bee relire, en ajout seul
+relectures:                 # ajoutées par bee relire, en ajout seul : une par relecteur et par commit jugé
   - relecteur: autre-pseudo
-    avis: favorable
+    avis: favorable           # favorable | defavorable | abstention
     motif: Diff relu en entier, banc rejoué sur ARM64 (+4,1 %).
     le: "2026-11-03T09:12:00Z"
+    sha: 3f2a9c1              # verdict.sha au moment de la relecture ; absent avant le verdict
 ```
 
 ## Qui écrit quoi
@@ -66,7 +67,8 @@ relectures:                 # ajoutées par bee relire, en ajout seul
 | --- | --- | --- |
 | Création (statut `en_relecture`) | L'auteur : le titulaire, ou un inscrit en parallèle | `bee soumettre` |
 | `verdict` | La CI | `bee enregistrer-verdict` |
-| `relectures` | Chaque relecteur, une fois | `bee relire` |
+| `resume` | L'auteur, tant que la contribution est en relecture (après un nouveau commit) | `bee soumettre <tâche> --utilisateur <pseudo> --mettre-a-jour --resume "…"` : ce seul champ, 500 caractères au plus, sans caractère invisible |
+| `relectures` | Chaque relecteur, une fois par commit jugé | `bee relire` (voir « Relire par commit ») |
 | `defaut_confirme`, `confirme_par` sur une relecture | Un tiers : la CI, le conseil, un gardien ou un Confirmé, jamais celui qui a signalé le défaut | `bee confirmer-defaut`, après reproduction du défaut, dans une PR dont il est l'auteur ; jamais par un participant à la course de la tâche, ni par l'auteur de la contribution |
 | `statut` final, `motif_decision`, `decidee_le` | Le workflow d'intégration (bee integrer, bee cloturer) | Selon R3 ; « annulee » si la PR est fermée sans fusion, avec la marque `jamais_integree` (ses relecteurs ne perdent rien) |
 | `statut: ecartee`, `retenue` | Le workflow d'intégration (bee integrer), ou le conseil quand il intègre lui-même | Dans le commit qui intègre la contribution retenue, toutes les concurrentes ensemble ; jamais un écartement seul |
@@ -74,6 +76,16 @@ relectures:                 # ajoutées par bee relire, en ajout seul
 Une contribution intégrée puis découverte fautive passe en `annulee` : elle ne compte plus pour son auteur, et les relecteurs qui l'avaient approuvée perdent un point ([reputation.md](reputation.md)). Une contribution close sans avoir été intégrée (PR fermée sans fusion) porte la marque `jamais_integree` : elle ne coûte rien à ses relecteurs.
 
 **La PR doit être celle de l'auteur.** Le champ `pr` est déclaré par l'auteur de la contribution ; le pseudo d'un membre est son login GitHub. Les workflows du registre le vérifient auprès de GitHub : une contribution dont la PR a été ouverte par quelqu'un d'autre ne reçoit aucun verdict (verdicts.yml), n'est ni fusionnée ni consignée comme intégrée, et sa PR n'est pas fermée si elle est écartée (integration-auto.yml) ; un avis le signale. On ne prend pas le crédit du travail d'un autre.
+
+## Relire par commit
+
+Une relecture porte sur le **commit jugé** : `bee relire` y inscrit le `verdict.sha` du moment, et R3 ne compte, pour chaque relecteur, que sa relecture du commit du verdict actuel. Un relecteur relit donc le correctif qu'il a demandé en **ajoutant** une relecture (rien ne se modifie ni ne se retire) ; il n'en ajoute qu'une par commit (répétitions générales des 29 et 30/10 : un gardien seul ne pouvait jamais relire le correctif qu'il avait demandé, et son avis défavorable devenait définitif).
+
+- **Avant le verdict**, la relecture s'enregistre sans commit : `bee relire` prévient qu'elle ne comptera pas, `bee verifier-acceptation` le dit dans ses raisons ; une seule par relecteur, et sans défaut signalé (un défaut s'attache à un commit).
+- **Abstention** (`--avis abstention`, motivée : diff hors d'atteinte, conflit d'intérêts, approche seulement) : ni pour ni contre R3, ni dans le score ; elle n'ouvre aucune porte (gardien, juges modifiés, Confirmé), n'abaisse aucun seuil, ne rapporte aucun point et ne porte jamais de défaut. Un participant en course n'y a droit qu'à un avis favorable, à chaque commit.
+- **Un défaut confirmé** reste attaché à la relecture et au commit où il a été signalé : il bloque tant que ce commit est le commit jugé, même si son relecteur relit ensuite.
+- **Points** : sur une contribution, un relecteur gagne ou perd au plus une fois, d'après sa relecture la plus récente, ou +2 une fois si l'un de ses défauts est confirmé ([reputation.md](reputation.md)).
+- `verifier-pr` exige qu'une relecture ajoutée porte le nom de l'auteur de la PR, exactement le `verdict.sha` de la base (aucun s'il n'y a pas de verdict), l'heure de la PR, et aucun commit déjà relu par ce relecteur.
 
 ## Travail en parallèle et contributions concurrentes
 

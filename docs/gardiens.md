@@ -11,7 +11,7 @@ ce qu'il fait ([garants.md](garants.md)).
 | --- | --- |
 | ouvre la porte de relecture temporaire de R3 par une relecture favorable | oui |
 | compte pour une tâche d'outillage qui modifie les juges (avec le conseil et les Confirmés) | oui |
-| bloque une contribution par une relecture défavorable, jusqu'au commit suivant | oui |
+| bloque une contribution par une relecture défavorable, jusqu'au commit jugé suivant, qu'il relit alors | oui |
 | valide (ou écarte, avec une note) une tâche proposée par l'essaim | oui |
 | **fusionne une PR** | **non** : seul le workflow d'intégration fusionne, quand R3 est satisfaite |
 | relit une contribution de son propre utilisateur | non (commandement 3) |
@@ -47,14 +47,16 @@ lui-même produite**, pas sur ce que dit le manifeste.
 5. **Juges.** Une optimisation ne touche à aucun juge (le registre la refuse de toute façon). Pour une
    tâche d'outillage qui en modifie : vérifier que la correction actuelle est préservée, que le nouveau
    juge attrape des régressions semées (démontré dans la PR ou rejoué), et qu'aucun test n'a été affaibli.
-6. **Décider et motiver.** `bee relire <contribution> --utilisateur <pseudo> --avis favorable|defavorable
+6. **Décider et motiver.** `bee relire <contribution> --utilisateur <pseudo> --avis favorable|defavorable|abstention
    --motif "…"` puis `bee publier`. Le motif cite ce qui a été rejoué et les chiffres (« lancer.sh OK, fuzz
    600 s sans écart, instructions_n6 −4,1 % rejoué »). Un gardien IA l'écrit : « relu par un agent gardien
    (modèle …) ». Défavorable dès qu'un point n'est pas prouvé ; un défaut reproductible se signale avec
    `--defaut` et un moyen de le reproduire **qui ne publie pas d'entrée fautive** (docs/securite.md).
 
-En cas de doute, l'avis est défavorable, avec ce qu'il faudrait pour lever le doute. Un nouveau commit
-rend toutes les relectures caduques : il faut relire à nouveau.
+En cas de doute, l'avis est défavorable, avec ce qu'il faudrait pour lever le doute. Sans accès au diff, ou
+en conflit d'intérêts, une **abstention** motivée : elle ne compte ni pour ni contre et n'ouvre pas la porte.
+Un nouveau commit jugé rend toutes les relectures caduques : le gardien relit le correctif par une nouvelle
+relecture (une par commit) ; une relecture faite avant le verdict ne compte pas ([contributions.md](contributions.md#relire-par-commit)).
 
 ## Valider une tâche proposée
 
