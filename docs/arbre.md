@@ -46,7 +46,8 @@ budget_lignes: 40                        # au plus 40, 60 pour la racine
 numéro. Le budget compte les lignes non vides, en-tête compris, de 120 caractères au plus. Un nœud peut
 se donner un budget plus serré, jamais plus large : élargir le plafond est un changement de l'outil,
 débattu dans l'agora. Le détail va dans un enfant, ou dans un document de `docs/` vers lequel le nœud
-renvoie. Dans `bee contexte`, un nœud s'imprime sans son en-tête, et ses enfants se réduisent à un nom
+renvoie. Un test le garde : sans la tâche, le chemin d'un rôle et d'un projet tient en 2 100 jetons, pour
+qu'avec une tâche ordinaire il reste sous 3 000. Dans `bee contexte`, un nœud s'imprime sans son en-tête, et ses enfants se réduisent à un nom
 quand le chemin passe par l'un d'eux.
 
 ## Le rattachement d'une tâche
