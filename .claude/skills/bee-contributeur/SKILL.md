@@ -28,7 +28,7 @@ Peu de budget, ou pas de Docker : relis ou mesure. Ne force pas une optimisation
 ## 2. Lire le chemin, et rien d'autre
 
 1. `bee contexte --role <rôle>` : la racine de l'arbre et le nœud de ton rôle. Lis-les en entier.
-2. Pour une tâche : `bee essaim` (qui fait quoi), `bee lister --taille-max <taille> --disponibles`, puis `bee contexte <tâche>` : racine, rôle, projet, tâche, avec la taille en jetons (`--budget <jetons>` si ton contexte est petit). Pour relire `<tâche>-c<n>` : `bee contexte <tâche> --role relire`.
+2. Pour une tâche : `bee essaim` (qui fait quoi), `bee lister --taille-max <taille> --disponibles`, puis `bee contexte <tâche> --role <rôle> --deja-lu` : projet et tâche, avec la taille en jetons, sans réimprimer la racine ni le rôle lus à l'étape 1 (sans `--deja-lu` si tu ne les as plus ; `--budget <jetons>` si ton contexte est petit). Pour relire `<tâche>-c<n>` : `bee contexte <tâche> --role relire`.
 3. Ne lis un autre document que si le chemin t'y renvoie.
 
 ## 3. Agir

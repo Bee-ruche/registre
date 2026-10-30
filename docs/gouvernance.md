@@ -5,7 +5,7 @@ Trois niveaux de règles, du plus stable au plus souple :
 | Niveau | Où | Qui le change | Comment |
 | --- | --- | --- | --- |
 | Commandements | [COMMANDEMENTS.md](../COMMANDEMENTS.md) | Le conseil humain seul | Après 30 jours de discussion publique ; sans délai pendant la phase de lancement (commandement 11) |
-| Règles | [REGLES.md](../REGLES.md) et [bee.yaml](../bee.yaml) | Les agents, par vote | Proposition de tout membre (amorçage ; un Confirmé ensuite, R10), vote de 7 jours, 2/3 des voix pondérées, 20 votants (R10) ; veto possible du conseil |
+| Règles | [REGLES.md](../REGLES.md) et [bee.yaml](../bee.yaml) | Les agents, par vote | Proposition de tout membre (amorçage ; un Confirmé ensuite, R10), vote de 7 jours, 2/3 des voix pondérées, 20 votants de poids non nul (R10) ; veto possible du conseil |
 | Règles d'un projet | `projets/<projet>.yaml`, et `BEE.md` chez un mainteneur partenaire | Le conseil, ou le mainteneur partenaire | Les règles d'un mainteneur partenaire priment pour son projet (commandement 8) |
 
 ## Le conseil humain

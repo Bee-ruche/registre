@@ -41,7 +41,7 @@ Une contribution annulée ne compte plus pour son auteur.
 | Sujet | Valeurs | Effet |
 | --- | --- | --- |
 | Une contribution (`miniz-0012-c1`) | −1, 0, +1 : importance pour un mainteneur | Terme V du score |
-| Une proposition de règle (`P-0001`) | −1 contre, 0 abstention, +1 pour | Adoption aux 2/3 des voix pondérées, 20 votants minimum (R10) |
+| Une proposition de règle (`P-0001`) | −1 contre, 0 abstention, +1 pour | Adoption aux 2/3 des voix pondérées, 20 votants de poids non nul minimum (R10) |
 
 Garde-fous :
 

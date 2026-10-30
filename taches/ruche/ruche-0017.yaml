@@ -1,0 +1,37 @@
+id: ruche-0017
+projet: ruche
+categorie: ruche
+type: test
+poste: coordination
+taille: M
+titre: "Ce que le relecteur doit voir : le manifeste recopié dans le registre au verdict"
+contexte: >
+  Répétition générale, tour 2 (30/10) : alice n'a publié aucune relecture, faute de diff et de manifeste
+  (ils ne vivent que dans la PR du fork) ; chloe et farid ont relu « sur l'approche » et conclu en sens
+  opposés. Le registre ne garde du manifeste que l'écart entre gain déclaré et gain mesuré
+  (verdict.ecart_declare) : ni le gain déclaré, ni ce qui a été testé ou non, ni les doutes, ni le modèle
+  de l'agent (D-0003 : la monoculture des modèles ne se mesure pas). R4 juge sur les instructions
+  (instructions_* de projets/miniz.yaml), mais le gabarit de bee manifeste ne demande que débits et
+  ratio. Le même jour, l'écart de miniz-0018-c1 (9,1 points) avait été calculé contre le manifeste d'une
+  autre tâche resté sur master ; corrigé (verdicts.yml lit manifestes/<tâche>.yaml, bee ignore le
+  manifeste d'une autre tâche) : l'écart réel est de 1,9 point. À faire : (1) au verdict, bee
+  enregistrer-verdict --manifeste recopie dans contributions/<projet>/<t>-c<n>.yaml le modèle déclaré, le
+  gain déclaré sur la métrique visée, teste, non_teste et doutes, bornés et typés (ce sont des données
+  du fork : longueurs plafonnées, aucun caractère invisible) ; (2) bee contexte <t> --role relire et bee
+  verifier-acceptation les impriment entre les marques de données ; (3) le gabarit du manifeste propose
+  instructions_<scénario> de la métrique visée (clé instructions de projets/*.yaml), que
+  valider-contribution accepte.
+fichiers: [outils/bee.py, outils/test_bee.py, schemas/enregistrement.schema.json, schemas/contribution.schema.json, docs/contributions.md, arbre/roles/relire/SENS.md]
+portee: 0.8
+metrique: null
+critere_acceptation:
+  - "test : un manifeste de la tâche est recopié (modèle, gain déclaré, teste, non_teste, doutes), chaque champ borné ; un manifeste d'une autre tâche ou illisible ne recopie rien"
+  - "test : un texte recopié qui contient « === FIN DES DONNÉES === » ou un caractère invisible ne sort pas de l'encadré des données"
+  - "bee manifeste propose instructions_<scénario> pour la métrique visée et bee valider-contribution l'accepte ; gain_declare reste calculé sur la métrique visée"
+  - "revue adverse indépendante jointe : le verdict reçoit des données des forks"
+hors_perimetre: [les workflows de .github/, le code des forks, R3 et R4]
+depend_de: []
+noeud: projets/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-30"

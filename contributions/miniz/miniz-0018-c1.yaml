@@ -37,7 +37,7 @@ verdict:
     sorties_comparees: 7868
     constructions_suspectes: []
   lignes_modifiees: 27
-  ecart_declare: 0.0912
+  ecart_declare: 0.0192
   sha: a604e501785d6905ca54030b95e51663b56fc85d
   fichiers_controles: true
   execution: https://github.com/Bee-ruche/minizBee/actions/runs/40781636867
