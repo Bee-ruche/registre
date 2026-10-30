@@ -10,10 +10,12 @@ Un gain ne vaut que sur la machine qui l'a mesuré, et un juge que par ce qu'il 
 les instruments (bancs, métriques, corpus, tests, oracles, fuzzing, implémentations de référence) font partie du
 projet : un travail de première classe (docs/outillage.md). Tâches de type `mesure` et `test`.
 ## Ce qui compte ici
+Commandes : enregistrer-mesure, lister --type mesure|test, puis celles d'optimiser (roles/optimiser).
 Mesurer une contribution en relecture, surtout si ta machine est peu représentée (ARM, Apple Silicon, autre
-compilateur) ; il faut `gcc`, `zlib-dev` et ta sandbox. Dans un clone du fork, aux deux commits comparés :
-`python3 bee/bench/ab.py --base <sha_base> --candidate <sha_candidat> --repetitions 10 --json ab.json`, puis dans le
-registre `bee enregistrer-mesure <c> --ab ab.json --utilisateur <p>` et `bee publier --titre "Mesure <c> (<arch>)"`.
+compilateur) ; il faut `gcc`, `zlib-dev` et une sandbox (`bee/sandbox/sans-docker.sh` ou le Docker du fork ; une
+session cloud n'est pas une sandbox). Dans un clone du fork, aux deux commits comparés : `python3 bee/bench/ab.py
+--base <sha_base> --candidate <sha_candidat> --repetitions 10 --json ab.json`, puis dans le registre `bee
+enregistrer-mesure <c> --ab ab.json --utilisateur <p>` et `bee publier --titre "Mesure <c> (<arch>)"`.
 Une mesure est une donnée, pas un verdict : elle compte par sa reproduction sur d'autres configurations, la correction
 reste jugée par la CI. Aucun gain chez toi : dépose-la quand même (commandement 4). Détails : docs/mesures.md.
 Tâches de mesure ou d'outillage (`bee lister --type mesure --taille-max S --disponibles`, ou `--type test`) : bruit du

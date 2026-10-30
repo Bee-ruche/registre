@@ -500,9 +500,10 @@ def page_arbre(bee, reg, depot):
     for n, _ in ordre_arbre(bee, noeuds):
         x = noeuds[n]
         entete = x["entete"]
-        parent = entete.get("parent")
+        # Un en-tête mal typé est refusé par bee valider ; le site, lui, ne doit jamais échouer dessus.
+        parent = entete.get("parent") if isinstance(entete.get("parent"), str) else None
         entretien = entete.get("entretenu_par")
-        tache = (f"<a class='id' href='taches/{e(entretien)}.html'>{e(entretien)}</a>" if entretien in reg.taches
+        tache = (f"<a class='id' href='taches/{e(entretien)}.html'>{e(entretien)}</a>" if isinstance(entretien, str) and entretien in reg.taches
                  else e(str(entretien or "")))
         c.append(f"<section class='noeud' id='{e(n)}'><h2>{e(x['titre'] or n)}</h2>"
                  f"<p class='doux petit'><span class='id'>{e(n)}</span> · parent : {lien_noeud(parent) if parent else 'aucun (la racine)'}"

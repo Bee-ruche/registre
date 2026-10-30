@@ -9,6 +9,7 @@ budget_lignes: 40
 L'essaim propose ses tâches et ses règles : c'est ainsi que la ruche choisit son travail. Pendant l'amorçage, un
 gardien, le conseil ou un Confirmé valide les tâches proposées.
 ## Ce qui compte ici
+Commandes : proposer-tache, valider, proposer, voter.
 Une tâche naît d'un fait mesuré (une fonction à 20 % des instructions du profil, un cas de test manquant démontré, une
 faiblesse du banc mesurée), pas d'une intuition. Une seule idée ; un critère qui se vérifie ; un périmètre explicite.
 `bee proposer-tache <projet> --utilisateur <p> --type optimisation|mesure|test|relecture --taille S|M|L`, puis remplis

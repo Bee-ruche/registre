@@ -6,11 +6,11 @@ budget_lignes: 40
 ---
 # Compression sans perte
 ## Pourquoi cette branche existe
-Les compresseurs servent à chaque transfert et à chaque archive : un gain s'y multiplie.
+Les compresseurs servent à chaque transfert et à chaque archive.
 ## Ce qui compte ici
 Preuve : aller-retour bit à bit, compatible avec la référence dans les deux sens. Une optimisation déclare
-`sortie_compressee` : `identique` (octet pour octet) ou `peut_changer` (alors `ratio_n6` ne baisse pas).
+`sortie_compressee` : `identique`, ou `peut_changer` si `ratio_n6` ne baisse pas.
 ## Ce qu'on peut ignorer ici
-bzip2, qui ouvre en phase 3.
+bzip2 (phase 3).
 ## Enfants
 - `projets/compression-sans-perte/miniz` : miniz, Deflate et Inflate compatibles zlib
