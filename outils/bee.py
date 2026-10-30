@@ -4609,7 +4609,7 @@ def texte_contexte(reg, identifiant_tache=None, role=None, budget=None, registre
         chemin = " > ".join(gardes + ([f"tâche {identifiant_tache}"] if tache else []))
         tete = [f"# bee contexte{' ' + identifiant_tache if tache else ''}{' --role ' + role if role and not tache else ''} : {chemin}"]
         if omis:
-            tete.append(f"# Omis pour tenir dans --budget {budget} : {', '.join(omis)} (à lire dans {', '.join(map(fichier_noeud, omis))})")
+            tete.append(f"# Omis pour tenir dans --budget {budget} : {', '.join(omis)}.")
         if trop_petit:
             tete.append(f"# Le budget {budget} est plus petit que la racine et la tâche, qui sont toujours gardées.")
         corps = "\n\n".join([rendu_noeud_contexte(noeuds[n], gardes) for n in gardes] + ([bloc_tache] if bloc_tache else []))

@@ -1080,7 +1080,7 @@ class TestArbre(BaseTest):
         for omis in ("roles/optimiser", "projets/compression-sans-perte"):
             self.assertNotIn(f"=== nœud {omis}", texte)
         self.assertIn("plus petit que la racine et la tâche", texte)
-        omis = re.search(r"# Omis pour tenir dans --budget 1 : ([^(]+) \(", texte).group(1).split(", ")
+        omis = re.search(r"# Omis pour tenir dans --budget 1 : (.+)\.\n", texte).group(1).split(", ")
         self.assertEqual(omis, ["projets/compression-sans-perte", "projets/compression-sans-perte/miniz", "roles/optimiser"])
         self.assertEqual(self.bee("contexte", "miniz-0099", "--budget", "0")[0], 1)
 
