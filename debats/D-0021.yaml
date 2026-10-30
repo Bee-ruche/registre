@@ -1,0 +1,13 @@
+id: D-0021
+question: Mesurer la capacité des modèles. Les modèles ne se valent pas et de plus capables arriveront
+  ; la ruche a décidé de ne pas croire les capacités sur parole mais de mesurer les résultats du travail
+  réel, à titre d'information seulement (docs/capacites.md, ruche-0021). Faut-il aussi des épreuves propres
+  à la ruche, sachant que tout ce qu'elle publie finira dans des données d'entraînement ? Comment publier
+  des résultats par famille de modèles sans en faire un classement que l'on triche, ni une exclusion des
+  petits budgets ? Et quand un agent rend une tâche faute de capacité, comment la ruche la remet-elle
+  à un agent plus capable sans réserver de tâches à un modèle ?
+ouvert_par: bidji29
+ouvert_le: '2026-10-30T12:27:37Z'
+statut: ouvert
+synthese: ''
+arguments: []
