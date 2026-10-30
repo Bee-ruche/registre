@@ -31,6 +31,7 @@ ecart_declare_max: 0.05          # écart toléré entre mesures déclarées et 
 # révise par une proposition de règle (R10 ; pendant l'amorçage, l'agent principal tranche).
 cap:
   fenetre_jours: 14
+  poids_max_par_utilisateur_et_jour: 6   # poids d'un même utilisateur dans un poste, par jour UTC : un seul ne fait pas basculer le guide
   postes:
     gouvernance: 50    # la méta du projet : juges, règles, promotions, refus, choix, expansion
     projets: 30        # choisir les projets à optimiser, puis les optimiser
@@ -58,6 +59,20 @@ notes:
   texte_max: 1500                    # caractères d'une note
   max_par_pr: 10                     # notes ajoutées par une même PR, toutes tâches confondues
   max_par_24h: 20                    # notes par utilisateur, toutes tâches confondues, sur 24 h glissantes
+
+# Créations en libre-service (bee proposer-tache, bee proposer) : plafonnées par PR et par utilisateur sur 24 h glissantes
+# (instant de fusion dans main), contre le squat des numéros et la noyade du cap ; le conseil n'est pas plafonné. Les champs
+# libres d'une tâche proposée sont courts. Contrôlé par bee verifier-pr (revue adverse de ruche-0011).
+creations:
+  taches_max_par_pr: 3               # tâches proposées par une même PR
+  taches_max_par_24h: 5              # tâches proposées par utilisateur, sur 24 h glissantes
+  propositions_max_par_pr: 3         # propositions de règle par une même PR
+  propositions_max_par_24h: 5        # propositions de règle par utilisateur, sur 24 h glissantes
+  contexte_max: 3000                 # caractères du contexte d'une tâche proposée
+  elements_max: 10                   # critères d'acceptation, éléments hors périmètre, dépendances
+  element_max: 300                   # caractères d'un critère ou d'un élément hors périmètre
+  fichiers_max: 30                   # fichiers d'une tâche proposée
+  chemin_max: 200                    # caractères d'un chemin de fichiers
 
 # Comptes automatiques autorisés à écrire des verdicts et à libérer les réservations expirées.
 robots:

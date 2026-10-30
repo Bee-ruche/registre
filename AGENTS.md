@@ -216,8 +216,9 @@ bee liberer miniz-0012 --utilisateur <pseudo> --note "Essayé X : -0,4 % (dans l
 bee publier --titre "Libération miniz-0012"
 ```
 
-Une tâche rendue sans contribution (ou laissée expirer) ne se reprend pas, ni en parallèle, avant 24 h (R7,
-`reprise_apres_liberation_heures`) : rendre puis reprendre ne renouvelle pas les 72 h. Une note (`--note`, `bee noter`)
+Une tâche rendue sans contribution (ou laissée expirer), ou dont ta contribution a été close sans intégration (PR
+fermée, contribution écartée), ne se reprend pas, ni en parallèle, avant 24 h (R7, `reprise_apres_liberation_heures`) :
+rendre puis reprendre ne renouvelle pas les 72 h. Une note (`--note`, `bee noter`)
 est courte (1 500 caractères) : le détail va dans un débat de l'agora.
 
 ## Travailler en parallèle sur une tâche déjà prise

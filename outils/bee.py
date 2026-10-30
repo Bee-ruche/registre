@@ -750,11 +750,12 @@ def historique_disponible(racine):
         return False
 
 
-def commits_premier_parent(racine, ref, *chemins):
+def commits_premier_parent(racine, ref, *chemins, filtre=None):
     """Commits de `ref` qui touchent ces chemins, sur le premier parent (les fusions dans la branche), du plus récent au plus
-    ancien : [(sha, instant du commit, [chemins touchés])]. Vide si l'historique est illisible."""
+    ancien : [(sha, instant du commit, [chemins touchés])]. `filtre` : celui de git diff (« A » : les fichiers ajoutés).
+    Vide si l'historique est illisible."""
     code, sortie = _git_brut(racine, "-c", "core.quotepath=off", "log", "--first-parent", "--no-renames", "--format=%x00%H %ct",
-                             "--name-only", ref, "--", *chemins)
+                             "--name-only", *([f"--diff-filter={filtre}"] if filtre else []), ref, "--", *chemins)
     if code:
         return []
     commits = []
@@ -945,13 +946,15 @@ def dates_de_fusion(reg, debut):
 
 def instant_du_geste(reg, dates, chemin, cle, declaree, instant):
     """Quand un geste compte (cap, essaim) : à l'instant du commit qui l'a fusionné (DatesDeFusion), jamais à sa date
-    déclarée ; sans historique git, ou pour un geste pas encore publié, à sa date déclarée, plafonnée à maintenant."""
+    déclarée ; sans historique git, ou pour un geste pas encore publié, à sa date déclarée, et pas du tout si elle est dans
+    le futur."""
     if dates is not None and dates.disponible and chemin is not None:
         moment = dates.date(reg.rel(chemin), cle)
         if moment is not None:
             return moment
+    # Sans historique, une date future est ignorée (et non ramenée à maintenant : elle compterait à chaque passage).
     moment = _instant_ou_rien(declaree)
-    return min(moment, instant) if moment else None
+    return moment if moment and moment <= instant + AVANCE_MAX else None
 
 
 # --------------------------------------------------------------------------
@@ -1007,12 +1010,16 @@ def activite_par_poste(reg, instant=None, jours=None):
 
     Un geste compte à l'instant du commit qui l'a fusionné dans la branche (DatesDeFusion), pas à sa date déclarée : une
     date antidatée ou postdatée ne le fait ni entrer dans la fenêtre, ni y rester. Sans historique git (copie sans .git,
-    clone superficiel), il compte à sa date déclarée, plafonnée à maintenant (instant_du_geste)."""
+    clone superficiel), il compte à sa date déclarée, et pas du tout si elle est dans le futur (instant_du_geste).
+
+    Un même utilisateur ne pèse pas plus de cap.poids_max_par_utilisateur_et_jour dans un poste, par jour UTC : ses gestes
+    comptent dans l'ordre où ils sont arrivés, jusqu'à ce plafond ; un seul ne fait pas basculer le guide."""
     instant = instant or maintenant()
     jours = int(jours or (reg.config.get("cap") or {}).get("fenetre_jours", 14))
     debut, fin = instant - dt.timedelta(days=jours), instant + dt.timedelta(minutes=10)
     activite = defaultdict(lambda: {"total": 0.0, "gestes": defaultdict(float)})
     dates = dates_de_fusion(reg, debut)
+    gestes = []  # (instant, poste, poids, genre, qui) : plafonnés ensuite par utilisateur, poste et jour
 
     def compter(poste, poids, quand, genre, qui, chemin, cle):
         if qui in reg.robots:
@@ -1020,8 +1027,7 @@ def activite_par_poste(reg, instant=None, jours=None):
         moment = instant_du_geste(reg, dates, chemin, cle, quand, instant)
         if moment is None or not debut <= moment <= fin:
             return
-        activite[poste]["total"] += poids
-        activite[poste]["gestes"][genre] += poids
+        gestes.append((moment, poste, poids, genre, qui))
 
     for chemin, t in reg.taches.values():
         if not isinstance(t, dict):
@@ -1066,7 +1072,24 @@ def activite_par_poste(reg, instant=None, jours=None):
                     cle_synthese(d))
         for a in arguments_de(d):
             compter("coordination", POIDS_GESTES["argument"], a.get("le"), "arguments", a.get("par"), chemin, cle_argument(a))
+    plafond = poids_max_par_jour(reg)
+    pris = defaultdict(float)  # (utilisateur, poste, jour UTC) -> poids déjà compté
+    for moment, poste, poids, genre, qui in sorted(gestes, key=lambda g: g[0]):
+        cle = (qui, poste, moment.astimezone(dt.timezone.utc).date())
+        compte = min(poids, max(0.0, plafond - pris[cle]))
+        if compte > 0:
+            pris[cle] += compte
+            activite[poste]["total"] += compte
+            activite[poste]["gestes"][genre] += compte
     return activite, jours
+
+
+def poids_max_par_jour(reg):
+    """Poids d'un même utilisateur dans un poste, par jour UTC, au-delà duquel ses gestes ne comptent plus dans le cap
+    (bee.yaml : cap.poids_max_par_utilisateur_et_jour)."""
+    cap = reg.config.get("cap") if isinstance(reg.config.get("cap"), dict) else {}
+    valeur = cap.get("poids_max_par_utilisateur_et_jour", 6)
+    return float(valeur) if isinstance(valeur, (int, float)) and not isinstance(valeur, bool) and valeur > 0 else 6.0
 
 
 def etat_du_cap(reg, instant=None, jours=None):
@@ -1233,7 +1256,9 @@ def calculer_score(reg, enr, niveaux):
     portee = float(tache[1].get("portee", 1.0)) if tache else 1.0
     gain = float(verdict["gain"])
     lignes = int(verdict.get("lignes_modifiees", 0))
-    favorables = {r["relecteur"] for r in enr.get("relectures") or [] if r.get("avis") == "favorable"}
+    # Comme R3, la confiance ne compte pas les relectures des Nouveaux (docs/reputation.md, docs/evaluation.md).
+    favorables = {r["relecteur"] for r in enr.get("relectures") or []
+                  if r.get("avis") == "favorable" and relecture_comptee(reg, niveaux, r.get("relecteur"))}
     confiance = min(1.0, len(favorables) / 3)
     numerateur = denominateur = 0
     concurrents = concurrents_de(reg, enr)  # course entre contributions d'une même tâche : on ne vote pas sur son concurrent
@@ -1323,19 +1348,24 @@ def verifier_registre(reg):
         fenetre = cap.get("fenetre_jours", 14) if isinstance(cap, dict) else 14
         if not isinstance(fenetre, int) or isinstance(fenetre, bool) or not 1 <= fenetre <= 365:
             ajouter("bee.yaml : cap.fenetre_jours : nombre de jours entre 1 et 365 attendu")
+        plafond = cap.get("poids_max_par_utilisateur_et_jour", 6) if isinstance(cap, dict) else 6
+        if not isinstance(plafond, (int, float)) or isinstance(plafond, bool) or plafond <= 0:
+            ajouter("bee.yaml : cap.poids_max_par_utilisateur_et_jour : nombre positif attendu")
     postes_connus = set(cap_cible(reg))
 
     # Plafonds des notes (bee noter, docs/taches.md) et délai de reprise de R7 : lisibles, sinon signalés.
-    notes = reg.config.get("notes")
-    if notes is not None:
-        if not isinstance(notes, dict):
-            ajouter("bee.yaml : notes doit lister les plafonds des notes (texte_max, max_par_pr, max_par_24h)")
-        else:
-            for cle, valeur in notes.items():
-                if cle not in NOTES_DEFAUT:
-                    ajouter(f"bee.yaml : notes.{cle} : clé inconnue ({', '.join(NOTES_DEFAUT)})")
-                elif not isinstance(valeur, int) or isinstance(valeur, bool) or valeur <= 0:
-                    ajouter(f"bee.yaml : notes.{cle} : entier positif attendu")
+    for nom_cle, defauts in (("notes", NOTES_DEFAUT), ("creations", CREATIONS_DEFAUT)):
+        plafonds = reg.config.get(nom_cle)
+        if plafonds is None:
+            continue
+        if not isinstance(plafonds, dict):
+            ajouter(f"bee.yaml : {nom_cle} doit lister ses plafonds ({', '.join(defauts)})")
+            continue
+        for cle, valeur in plafonds.items():
+            if cle not in defauts:
+                ajouter(f"bee.yaml : {nom_cle}.{cle} : clé inconnue ({', '.join(defauts)})")
+            elif not isinstance(valeur, int) or isinstance(valeur, bool) or valeur <= 0:
+                ajouter(f"bee.yaml : {nom_cle}.{cle} : entier positif attendu")
     reprise = reg.config.get("reprise_apres_liberation_heures")
     if reprise is not None and (not isinstance(reprise, (int, float)) or isinstance(reprise, bool) or reprise < 0):
         ajouter("bee.yaml : reprise_apres_liberation_heures : nombre d'heures positif ou nul attendu (R7)")
@@ -1704,6 +1734,87 @@ def verifier_notes_ajoutees(reg, chemin, precedentes, ajoutees, auteur, instant)
     return problemes, instants
 
 
+def probleme_date_pr(valeur, quoi, instant):
+    """None si `valeur` est l'heure de la PR (à 2 h près, jamais plus d'une minute dans le futur), comme les dates déclarées
+    de l'agora, des notes et des soumissions ; sinon la raison. Pour le `le` des votes, des relectures et des mesures (revue
+    adverse de ruche-0011, m1 : un vote daté de 2099 passait)."""
+    try:
+        moment = lire_instant(valeur, quoi)
+    except ErreurBee as e:
+        return str(e)
+    if not instant - TOLERANCE_DATE <= moment <= instant + AVANCE_MAX:
+        return f"{quoi} ({valeur}) doit être l'heure de la PR (à 2 h près, jamais dans le futur)"
+    return None
+
+
+# --- Créations en libre-service : tâches proposées, propositions de règle (revue adverse de ruche-0011, B1 et I2) ---
+#
+# Une seule PR pouvait prendre tous les numéros (P-0001 à P-8999, ou 8 965 tâches) et faire basculer le cap ; un contexte de
+# 200 Ko passait. Créations plafonnées par PR et par utilisateur sur 24 h glissantes (le conseil ne l'est pas), champs courts.
+
+CREATIONS_DEFAUT = {"taches_max_par_pr": 3, "taches_max_par_24h": 5, "propositions_max_par_pr": 3, "propositions_max_par_24h": 5,
+                    "contexte_max": 3000, "elements_max": 10, "element_max": 300, "fichiers_max": 30, "chemin_max": 200}
+
+
+def config_creations(reg):
+    """Plafonds des créations : bee.yaml (clé creations), sinon les valeurs par défaut ; une valeur invalide est signalée par
+    bee valider et remplacée ici par la valeur par défaut."""
+    conf = reg.config.get("creations") if isinstance(reg.config.get("creations"), dict) else {}
+    return {cle: (v if isinstance(v := conf.get(cle), int) and not isinstance(v, bool) and v > 0 else defaut)
+            for cle, defaut in CREATIONS_DEFAUT.items()}
+
+
+def creations_recentes(reg, ref, dossier, utilisateur, instant):
+    """Tâches (`dossier` « taches », clé cree_par) ou propositions de règle (« propositions », clé auteur) créées par
+    `utilisateur` sur les 24 h glissantes : arrivées dans `ref` depuis 24 h (instant de leur fusion, historique git), plus
+    celles que porte le registre lu et que `ref` n'a pas encore (la PR vérifiée, ou le clone de l'agent). Sans historique
+    git, d'après leur date déclarée (cree_le au jour près, ouverte_le)."""
+    debut = instant - FENETRE_PLAFOND
+    elements, cle = (reg.taches, "cree_par") if dossier == "taches" else (reg.propositions, "auteur")
+    siens = {reg.rel(c): d for c, d in elements.values() if isinstance(d, dict) and d.get(cle) == utilisateur}
+    if not siens:
+        return 0
+    if historique_disponible(reg.racine):
+        code, sortie = _git_brut(reg.racine, "-c", "core.quotepath=off", "ls-tree", "-r", "--name-only", ref, dossier + "/")
+        if not code:
+            publies = set(sortie.decode("utf-8", "replace").splitlines())
+            recents = {c for _, moment, chemins in commits_premier_parent(reg.racine, ref, dossier, filtre="A")
+                       if moment > debut for c in chemins}
+            return sum(1 for c in siens if c in recents or c not in publies)
+    if dossier == "taches":
+        return sum(1 for d in siens.values() if str(d.get("cree_le")) >= debut.date().isoformat())
+    return sum(1 for d in siens.values() if (m := _instant_ou_rien(d.get("ouverte_le"))) and m > debut)
+
+
+def verifier_tache_proposee(reg, chemin, tache):
+    """Les champs libres d'une tâche proposée sont courts et lisibles (I2) : titre, contexte, critères d'acceptation,
+    hors-périmètre, fichiers et dépendances, en longueur et en nombre (bee.yaml, clé creations), non vides, sans caractère
+    invisible ni de contrôle. Renvoie les problèmes."""
+    conf = config_creations(reg)
+    problemes = []
+
+    def texte(valeur, quoi, maximum, cle):
+        probleme = texte_recevable(valeur, quoi, maximum)
+        if probleme:
+            problemes.append(f"{chemin} : {probleme} ({cle}) : une tâche proposée est courte ; le détail va dans un débat de "
+                             "l'agora ou un document")
+
+    texte(tache.get("titre"), "titre", 100, "100 caractères au plus")
+    texte(tache.get("contexte"), "contexte", conf["contexte_max"], "creations.contexte_max")
+    for cle, nombre, longueur, noms in (("critere_acceptation", conf["elements_max"], conf["element_max"], ("elements_max", "element_max")),
+                                        ("hors_perimetre", conf["elements_max"], conf["element_max"], ("elements_max", "element_max")),
+                                        ("fichiers", conf["fichiers_max"], conf["chemin_max"], ("fichiers_max", "chemin_max"))):
+        valeurs = tache.get(cle) if isinstance(tache.get(cle), list) else []
+        if len(valeurs) > nombre:
+            problemes.append(f"{chemin} : {cle} : {len(valeurs)} éléments, au plus {nombre} (creations.{noms[0]})")
+        for i, valeur in enumerate(valeurs[:nombre]):
+            texte(valeur, f"{cle}/{i}", longueur, f"creations.{noms[1]}")
+    dependances = tache.get("depend_de") if isinstance(tache.get("depend_de"), list) else []
+    if len(dependances) > conf["elements_max"]:
+        problemes.append(f"{chemin} : depend_de : {len(dependances)} tâches, au plus {conf['elements_max']} (creations.elements_max)")
+    return problemes
+
+
 # --- R7 : qui quitte une tâche sans contribution ne la reprend pas aussitôt (T13) ---
 
 def delai_reprise(reg):
@@ -1749,22 +1860,54 @@ def fins_d_engagement(reg, ref, relatif, utilisateur, depuis):
     return fins
 
 
-def reprise_refusee(reg, ref, relatif, utilisateur, instant, fin_locale=None):
-    """R7 : None si `utilisateur` peut réserver la tâche ou s'y inscrire en parallèle ; sinon la raison (il l'a quittée sans
-    contribution il y a moins de reprise_apres_liberation_heures). `fin_locale` : une libération faite dans le clone, pas
-    encore publiée."""
+STATUTS_CLOS_SANS_INTEGRATION = ("annulee", "ecartee")
+
+
+def fermetures_sans_integration(reg, ref, tid, utilisateur, instant):
+    """Instants où une contribution de `utilisateur` sur la tâche `tid` a été close sans intégration : annulée (PR fermée
+    sans fusion, jamais_integree, comprise) ou écartée. Revue adverse de ruche-0011, I1 : une soumission bidon, puis sa PR
+    fermée, rouvrait la tâche à son auteur avec 72 h neuves ; une telle clôture est une fin d'engagement comme une
+    libération. L'instant est celui du commit (premier parent de `ref`) qui l'a close ; maintenant si la clôture n'est pas
+    encore dans `ref` (elle arrive avec la PR vérifiée)."""
+    fermetures = []
+    for chemin, e in reg.enregistrements.values():
+        if not (isinstance(e, dict) and e.get("tache") == tid and e.get("auteur") == utilisateur
+                and e.get("statut") in STATUTS_CLOS_SANS_INTEGRATION):
+            continue
+        relatif = reg.rel(chemin)
+        commits = list(reversed(commits_premier_parent(reg.racine, ref, relatif)))
+        versions = lire_versions(reg.racine, [(sha, relatif) for sha, _, _ in commits])
+        fermeture = next((moment for sha, moment, _ in commits
+                          if ((_lire_version(versions.get((sha, relatif))) or {}).get("statut") in STATUTS_CLOS_SANS_INTEGRATION)), None)
+        fermetures.append((fermeture or instant, e.get("id")))
+    return fermetures
+
+
+def reprise_refusee(reg, ref, relatif, utilisateur, instant, fin_locale=None, historique_requis=False):
+    """R7 : None si `utilisateur` peut réserver la tâche ou s'y inscrire en parallèle ; sinon la raison : il l'a quittée sans
+    contribution (libération, retrait, expiration), ou sa contribution y a été close sans intégration, il y a moins de
+    reprise_apres_liberation_heures. `fin_locale` : une libération faite dans le clone, pas encore publiée.
+    `historique_requis` (verifier-pr) : sans historique git complet, la reprise ne se vérifie pas, elle est refusée."""
     heures = delai_reprise(reg)
     if not heures:
         return None
+    if historique_requis and not historique_disponible(reg.racine):
+        return ("R7 : l'historique git de main est indisponible (clone superficiel, ou pas de dépôt git) : impossible de vérifier "
+                f"que {utilisateur} n'a pas quitté cette tâche depuis moins de {heures:g} h ; verifier-pr refuse une réservation "
+                "ou une inscription en parallèle sans lui (échec fermé) et se lance sur un clone complet (fetch-depth: 0)")
     delai = dt.timedelta(hours=heures)
-    fins = fins_d_engagement(reg, ref, relatif, utilisateur, instant - delai) + ([fin_locale] if fin_locale else [])
-    recentes = [f for f in fins if instant - f < delai]
+    fins = [(f, None) for f in fins_d_engagement(reg, ref, relatif, utilisateur, instant - delai) + ([fin_locale] if fin_locale else [])]
+    fins += fermetures_sans_integration(reg, ref, pathlib.PurePosixPath(relatif).stem, utilisateur, instant)
+    recentes = [(f, cid) for f, cid in fins if instant - f < delai]
     if not recentes:
         return None
-    fin = max(recentes)
-    return (f"R7 : {utilisateur} a quitté cette tâche sans contribution le {en_iso(fin)} (libération, retrait ou expiration) ; "
-            f"il ne la reprend pas avant le {en_iso(fin + delai)} ({heures:g} h, reprise_apres_liberation_heures) : une "
-            "réservation ne se renouvelle pas en la rendant puis en la reprenant ; un autre peut la prendre")
+    fin, cid = max(recentes, key=lambda x: x[0])
+    comment = (f"la contribution {cid} de {utilisateur} sur cette tâche a été close sans intégration le {en_iso(fin)} (PR fermée, "
+               "contribution annulée ou écartée)" if cid else
+               f"{utilisateur} a quitté cette tâche sans contribution le {en_iso(fin)} (libération, retrait ou expiration)")
+    return (f"R7 : {comment} ; il ne la reprend pas avant le {en_iso(fin + delai)} ({heures:g} h, reprise_apres_liberation_heures) : "
+            "une réservation ne se renouvelle pas en la rendant, ou en laissant fermer une soumission, puis en la reprenant ; un "
+            "autre peut la prendre")
 
 
 def verifier_engagements(reg, chemin, ancien, nouveau, differences, auteur, *, est_conseil, est_robot, instant, ajoutees,
@@ -1833,7 +1976,7 @@ def verifier_engagements(reg, chemin, ancien, nouveau, differences, auteur, *, e
         jugees = jugees_par(reg, nouveau.get("id"), qui)
         exiger(not jugees, message_juge(nouveau.get("id"), qui, jugees))
         if base is not None:
-            refus = reprise_refusee(reg, base, chemin, qui, instant)
+            refus = reprise_refusee(reg, base, chemin, qui, instant, historique_requis=True)
             exiger(refus is None, refus or "")
         try:
             # La date d'inscription fixe le rang de promotion et dit si l'inscription précède une soumission (R3) :
@@ -2500,6 +2643,7 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
     arguments_ajoutes = 0
     dates_arguments = []    # instants des arguments ajoutés (plafond tous débats confondus, R12)
     notes_ajoutees = 0      # notes ajoutées par la PR, toutes tâches confondues
+    creations = {"taches": 0, "propositions": 0}  # tâches proposées et propositions de règle ajoutées par la PR (B1)
     dates_notes = []        # instants des notes ajoutées bien datées (plafond sur 24 h glissantes)
 
     def exiger(condition, message):
@@ -2566,6 +2710,9 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
                     jours = sorted({instant.date().isoformat(), (instant - TOLERANCE_DATE).date().isoformat()})
                     exiger(str(nouveau.get("cree_le")) in jours,
                            f"{chemin} : cree_le ({nouveau.get('cree_le')}) est la date de la PR ({' ou '.join(jours)}) : bee proposer-tache l'écrit")
+                    # I2 : des champs courts et lisibles ; B1 : des créations plafonnées (après la boucle).
+                    problemes.extend(verifier_tache_proposee(reg, chemin, nouveau))
+                    creations["taches"] += 1
                     # T1 : les notes d'une tâche proposée sont contrôlées comme celles d'une tâche existante.
                     notes = nouveau.get("notes") or []
                     if exiger(isinstance(notes, list), f"{chemin} : notes illisibles (une liste de par, le, texte)"):
@@ -2627,7 +2774,7 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
                 jugees = jugees_par(reg, nouveau.get("id"), auteur)
                 exiger(not jugees, f"{chemin} : {message_juge(nouveau.get('id'), auteur, jugees)}")
                 # R7 (T13) : rendre puis reprendre une tâche ne renouvelle pas la réservation.
-                refus = reprise_refusee(reg, base, chemin, auteur, instant)
+                refus = reprise_refusee(reg, base, chemin, auteur, instant, historique_requis=True)
                 exiger(refus is None, f"{chemin} : {refus}")
                 try:
                     depuis = lire_instant(reservation.get("depuis"), chemin)
@@ -2810,6 +2957,8 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
                     concurrents = concurrents_de(reg, nouveau)
                     for r in nouvelles[len(anciennes):]:
                         exiger(r.get("relecteur") == auteur, f"{chemin} : une relecture ajoutée doit être celle de {auteur}")
+                        probleme = probleme_date_pr(r.get("le") if isinstance(r, dict) else None, f"{chemin} : relecture de {auteur}, le", instant)
+                        exiger(probleme is None, f"{probleme} : relancez bee relire")
                         exiger(r.get("relecteur") != nouveau.get("auteur"), f"{chemin} : on ne relit pas sa propre contribution")
                         exiger(not any(k in r for k in CLES_CONFIRMATION),
                                f"{chemin} : une relecture ne confirme pas son propre défaut : la confirmation vient d'un tiers "
@@ -2859,6 +3008,8 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
                        "et on ne change ni ne retire son vote tant qu'on est en course (commandement 3)")
             if statut_git != "D" and exiger(isinstance(nouveau, dict), f"{chemin} : fichier illisible"):
                 exiger(nouveau.get("votant") == auteur, f"{chemin} : votant déclaré différent de {auteur}")
+                probleme = probleme_date_pr(nouveau.get("le"), f"{chemin} : le", instant)
+                exiger(probleme is None, f"{probleme} : relancez bee voter")
                 sujet = nouveau.get("sujet", "")
                 if ID_PROPOSITION.match(sujet) and sujet in reg.propositions:
                     resultat = depouiller_proposition(reg, sujet, niveaux, instant)
@@ -2874,6 +3025,8 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
                 exiger(nouveau.get("soumise_par") == auteur, f"{chemin} : soumise_par déclaré différent de {auteur}")
                 exiger(nouveau.get("contribution") == partie[1], f"{chemin} : la mesure doit être rangée sous sa contribution")
                 exiger(nouveau.get("contribution") in reg.enregistrements, f"{chemin} : contribution « {nouveau.get('contribution')} » inconnue")
+                probleme = probleme_date_pr(nouveau.get("le"), f"{chemin} : le", instant)
+                exiger(probleme is None, f"{probleme} : relancez bee enregistrer-mesure")
             continue
 
         if partie[0] == "membres" and len(partie) == 2:
@@ -2902,6 +3055,7 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
                 continue
             if statut_git == "A":
                 natures.append("proposition")
+                creations["propositions"] += 1
                 exiger(est_conseil or niveau == "Confirmé" or (amorcage and auteur in reg.membres),
                        f"{chemin} : proposer une règle est réservé aux Confirmés (R10)" + ("" if amorcage else " hors amorçage"))
                 numero_attendu(chemin, "la proposition", "bee proposer")
@@ -2966,6 +3120,21 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
                f"plafond : {auteur} aurait {n} arguments en 24 h tous débats confondus (depuis le {en_iso(debut)}), au plus "
                f"{conf['arguments_max_par_24h_tous_debats']} par utilisateur sur 24 h glissantes "
                "(agora.arguments_max_par_24h_tous_debats) : laissez les autres répondre")
+    if not (est_conseil or est_robot):
+        # B1 : une seule PR ne prend plus tous les numéros, ni ne fait basculer le cap ; plafonds par PR et par utilisateur
+        # sur 24 h glissantes, d'après l'instant de fusion dans main (le conseil et les robots ne sont pas plafonnés).
+        conf_creations = config_creations(reg)
+        for dossier, quoi, commande in (("taches", "tâches proposées", "bee proposer-tache"), ("propositions", "propositions de règle",
+                                                                                               "bee proposer")):
+            if not creations[dossier]:
+                continue
+            exiger(creations[dossier] <= conf_creations[f"{dossier}_max_par_pr"],
+                   f"plafond : {creations[dossier]} {quoi} ajoutées par cette PR, au plus {conf_creations[f'{dossier}_max_par_pr']} "
+                   f"(creations.{dossier}_max_par_pr) : {commande} en crée une à la fois")
+            n = creations_recentes(reg, base, dossier, auteur, instant)
+            exiger(n <= conf_creations[f"{dossier}_max_par_24h"],
+                   f"plafond : {auteur} aurait {n} {quoi} en 24 h glissantes, au plus {conf_creations[f'{dossier}_max_par_24h']} "
+                   f"(creations.{dossier}_max_par_24h)")
     if notes_ajoutees and not (est_conseil or est_robot):
         # T2, T3 : des notes en nombre noient l'essaim et faussent le cap ; plafonds par PR et sur 24 h glissantes, toutes
         # tâches confondues (le conseil et les robots ne sont pas plafonnés en nombre).
@@ -3404,6 +3573,17 @@ def cmd_prendre(args):
     return 0
 
 
+def exiger_creation_permise(reg, dossier, utilisateur):
+    """Plafond des créations sur 24 h glissantes (bee.yaml, creations), dit avant d'écrire ; le conseil n'est pas plafonné."""
+    if utilisateur in reg.conseil:
+        return
+    maximum = config_creations(reg)[f"{dossier}_max_par_24h"]
+    if creations_recentes(reg, "HEAD", dossier, utilisateur, maintenant()) >= maximum:
+        quoi = "tâches proposées" if dossier == "taches" else "propositions de règle"
+        raise ErreurBee(f"plafond : {utilisateur} a déjà {maximum} {quoi} sur 24 h glissantes (creations.{dossier}_max_par_24h) ; "
+                        "réessayez plus tard, ou rejoignez une tâche ou une proposition existante")
+
+
 def cmd_proposer_tache(args):
     """Prépare une proposition de tâche (statut « proposee ») à partir de modeles/tache.yaml."""
     reg = Registre(args.registre)
@@ -3424,6 +3604,7 @@ def cmd_proposer_tache(args):
     chemin = dossier / f"{identifiant}.yaml"
     if chemin.exists():
         raise ErreurBee(f"{reg.rel(chemin)} existe déjà : rien n'a été écrasé")
+    exiger_creation_permise(reg, "taches", args.utilisateur)
     metriques = [m["id"] for m in projet.get("metriques") or [] if isinstance(m, dict)]
     metrique = (args.metrique or (metriques[0] if metriques else None)) if args.type == "optimisation" else None
     if metrique and metrique not in metriques:
@@ -3755,6 +3936,7 @@ def cmd_proposer(args):
     chemin = dossier / f"{identifiant}.yaml"
     if chemin.exists():
         raise ErreurBee(f"{reg.rel(chemin)} existe déjà : rien n'a été écrasé")
+    exiger_creation_permise(reg, "propositions", args.utilisateur)
     donnees = {"id": identifiant, "auteur": args.utilisateur, "regle": args.regle, "texte_propose": args.texte,
                "motif": args.motif, "ouverte_le": en_iso(maintenant()), "statut": "ouverte"}
     ecrire_yaml(chemin, donnees)

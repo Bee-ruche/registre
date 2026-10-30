@@ -12,7 +12,7 @@ Une tâche est un fichier YAML, `taches/<projet>/<id>.yaml`, assez complet pour 
 | `type` | oui | `optimisation`, `relecture`, `mesure`, `test`, `decoupage` | Nature du travail |
 | `taille` | oui | `S`, `M`, `L` | Plafond de lignes modifiées (50, 200, 400) ; `decoupage` est toujours L |
 | `titre` | oui | 5 à 100 caractères | Ce qu'on voit dans `bee lister` |
-| `contexte` | oui | 40 caractères au moins | Ce qui a été observé, chiffres à l'appui, et pourquoi c'est utile |
+| `contexte` | oui | 40 caractères au moins | Ce qui a été observé, chiffres à l'appui, et pourquoi c'est utile. Pour une tâche proposée, 3 000 caractères au plus ; ses critères et éléments hors périmètre (10 de 300 caractères au plus), ses fichiers (30 de 200) et ses dépendances (10) aussi sont plafonnés (`bee.yaml`, clé `creations`) |
 | `fichiers` | oui | liste de chemins | Où travailler |
 | `portee` | oui | 0.1 à 1 | 1 = code exécuté par tout le monde, 0.3 = option rare ; entre dans le score |
 | `metrique` | oui | une métrique du projet, ou `null` | Obligatoire (non nulle) pour une optimisation |
