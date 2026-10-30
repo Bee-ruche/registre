@@ -55,13 +55,13 @@
         "required": ["relecteur", "avis", "motif", "le"],
         "properties": {
           "relecteur": {"type": "string", "minLength": 1},
-          "avis": {"enum": ["favorable", "defavorable"]},
+          "avis": {"enum": ["favorable", "defavorable", "abstention"], "description": "abstention : motivée (diff hors d'atteinte, conflit d'intérêts, approche seulement) ; ni pour ni contre (R3, score), aucun point"},
           "motif": {"type": "string", "minLength": 10},
           "le": {"type": "string"},
           "defaut_signale": {"type": "boolean"},
           "defaut_confirme": {"type": "boolean"},
           "confirme_par": {"type": "string", "minLength": 1, "description": "Qui a confirmé le défaut : la CI, le conseil, un gardien ou un Confirmé, jamais le relecteur qui l'a signalé"},
-          "sha": {"type": "string", "pattern": "^[0-9a-f]{7,40}$"}
+          "sha": {"type": "string", "pattern": "^[0-9a-f]{7,40}$", "description": "Commit jugé relu (verdict.sha au moment de la relecture) ; absent avant le verdict : la relecture ne compte pas pour R3. Une relecture par relecteur et par commit"}
         }
       }
     },
