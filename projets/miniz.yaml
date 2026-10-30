@@ -54,6 +54,8 @@ chemins_juges:
   - "bee/**"
   - "tests/**"
   - ".github/**"
+# ruche-0025 : les vieilles branches de minizBee déclarent details.base (ancêtre de master) mais jamais base_juge (miniz-0032).
+verdict_exige_base_juge: true
 commandes:
   corpus: python3 bee/corpus/generer.py
   tests: bee/tests/lancer.sh

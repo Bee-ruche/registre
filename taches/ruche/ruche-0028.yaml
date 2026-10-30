@@ -37,6 +37,13 @@ critere_acceptation:
 hors_perimetre: [COMMANDEMENTS.md, les forks, les comptes multiples (ruche-0022, D-0002)]
 depend_de: [ruche-0025]
 noeud: projets/ruche
-statut: ouverte
+statut: reservee
+reservation:
+  utilisateur: "bidji29"
+  depuis: "2026-10-30T20:49:18Z"
 cree_par: conseil
 cree_le: "2026-10-30"
+notes:
+  - par: "bidji29"
+    le: "2026-10-30T20:49:03Z"
+    texte: "30/10, troisième revue de ruche-0025 (intégrée) : l'attente de fraîcheur de verdicts.yml s'explique par les événements datés de GitHub ; si l'API servait base_ref_changed en retard, un commentaire posté juste après un changement de base « expliquerait » la modification et le verdict de l'ancienne base serait enregistré (retard jamais observé). À faire ici : relire base_ref_changed au moment de l'intégration (integration-auto.yml), longtemps après tout retard, et refuser d'intégrer si la base a changé."
