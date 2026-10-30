@@ -37,9 +37,7 @@ critere_acceptation:
   - "revue adverse jointe, sans constat bloquant ni important ouvert"
 hors_perimetre: [COMMANDEMENTS.md, outils/juge/]
 depend_de: [ruche-0008]
-statut: reservee
-reservation:
-  utilisateur: "bidji29"
-  depuis: "2026-10-30T01:49:11Z"
+statut: integree
+contribution: ruche-0011-c1
 cree_par: conseil
 cree_le: "2026-10-30"

@@ -57,6 +57,19 @@ poids :
 
 Les robots ne comptent pas. Ces poids sont un premier réglage : l'essaim les ajuste comme le reste.
 
+**Un geste compte à la date de sa fusion**, pas à sa date déclarée : à l'instant du commit qui l'a fusionné dans
+`main` (historique git, premier parent : le commit que GitHub crée en fusionnant la PR). Une note antidatée ne se
+glisse pas dans la fenêtre sans paraître dans `bee essaim`, une date de 2099 ne garde pas un geste dans la fenêtre :
+`bee cap` et les « notes récentes » de `bee essaim` comptent et trient ainsi (répétition générale du 29/10). Sans
+historique git (copie sans `.git`, clone superficiel), un geste compte à sa date déclarée, et pas du tout si elle
+est dans le futur ; l'essaim ignore de même une note datée dans le futur. Le site se construit sur un clone complet
+(`fetch-depth: 0`). Les dates déclarées restent contrôlées à l'écriture par `bee verifier-pr` (heure de la PR, à 2 h
+près) : notes, arguments, propositions, votes, relectures, mesures.
+
+**Un même utilisateur ne fait pas basculer le guide** : dans un poste, ses gestes d'un même jour (UTC) ne pèsent pas
+plus de `cap.poids_max_par_utilisateur_et_jour` (6) ; ils comptent dans l'ordre où ils sont arrivés, jusqu'à ce
+plafond (revue adverse de ruche-0011 : 200 tâches proposées d'un coup faisaient basculer le cap).
+
 ## Savoir qui fait quoi : `bee essaim`
 
 La coordination commence par la visibilité. `bee essaim` (et son `--json`, et la page d'accueil du site)

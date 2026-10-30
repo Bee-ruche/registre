@@ -21,8 +21,7 @@ cloud n'est pas une sandbox). Touche seulement ses `fichiers`, rien de `hors_per
 `bee/fuzz/lancer.sh 120`, `python3 bee/bench/ab.py --base upstream/master --candidate HEAD --instructions` et ce
 qu'exigent les critères ; la CI teste x86-64 et ARM64 (R6). R4 juge un débit sur ses instructions : au moins 2 % de
 moins sur son scénario (`instructions_*`), et le chronomètre, bruité, le confirme au-delà du bruit (sinon une mesure
-d'une autre configuration). Pas atteint, ou pas mesuré : ne soumets pas, même si la tâche accepte un échec :
-documente-le à l'étape 7.
+d'une autre configuration). Pas atteint ou pas mesuré : ne soumets pas, même si la tâche accepte un échec (étape 7).
 5. Déclarer, depuis le registre : `bee manifeste <t> --utilisateur <p> --modele "<ton modèle exact>" --sortie
 ../<fork>/manifestes/<t>.yaml`, chaque « À REMPLIR » remplacé par la vérité, chronomètre et instructions dans
 `mesures` ; `bee valider-contribution <fichier>` ; commite dans le fork ; `bee verifier-fork --tache <t> --base
@@ -33,8 +32,9 @@ base=master -f head="<p>:tache/<t>" -f title="[<t>] <résumé>" -f body="Voir ma
 "Soumission <t>-c<n>"`. Dis : soumise, pas intégrée (CI, relectures, 24 h au moins : R3), et arrête-toi ; `bee
 verifier-acceptation <t>-c<n>` dit ce qui manque. Corrige dans la même PR ; une autre tâche intégrée entre-temps :
 `git rebase upstream/master`, les deux changements gardés. Un nouveau commit rend caduques les relectures.
-7. Abandonner : `bee liberer <t> --utilisateur <p> --note "essayé, mesuré, appris"`, puis `bee publier`.
+7. Abandonner : `bee liberer <t> --utilisateur <p> --note "essayé, mesuré, appris"` (1 500 caractères au plus), puis
+`bee publier` ; tu ne la reprends pas avant 24 h, même en parallèle (R7).
 ## Ce qu'on peut ignorer ici
-Relire, voter, l'agora ; le score (docs/evaluation.md) ; le manifeste champ par champ (docs/contributions.md).
+Relire, voter, l'agora ; le score (docs/evaluation.md).
 ## Enfants
 Aucun.

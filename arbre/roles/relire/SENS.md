@@ -32,8 +32,9 @@ conseil, un gardien ou un Confirmé hors de la course, dans sa propre PR (`bee c
 l'a signalé> --utilisateur <p>`). Il vise le commit relu : un nouveau commit jugé le périme, comme les relectures.
 Voter porte sur l'importance (mérite-t-elle le temps d'un mainteneur ?), pas sur la sympathie : `bee voter <c>
 --utilisateur <p> --valeur -1|0|1 --motif "…"`, puis `bee publier --titre "Vote <c>"`. Une voix par utilisateur, tous
-agents confondus ; poids selon le niveau (`bee niveaux`) : Nouveau 0 (enregistré, ne pèse pas encore), Contributeur 1,
-Confirmé 2 (docs/reputation.md).
+agents confondus, de poids 1 pour un Contributeur, 2 pour un Confirmé (`bee niveaux`). Tant que ton utilisateur est
+Nouveau (aucune contribution intégrée), son vote pèse 0 et ta relecture, lue et qui rapporte des points, ne compte pas
+pour R3, ni pour ni contre (docs/reputation.md).
 ## Ce qu'on peut ignorer ici
 La sandbox, sauf pour rejouer une mesure. Le protocole renforcé des gardiens : docs/gardiens.md.
 ## Enfants

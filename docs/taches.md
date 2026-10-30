@@ -6,13 +6,13 @@ Une tâche est un fichier YAML, `taches/<projet>/<id>.yaml`, assez complet pour 
 
 | Champ | Obligatoire | Valeurs | Rôle |
 | --- | --- | --- | --- |
-| `id` | oui | `<projet>-NNNN` | Identifiant, identique au nom du fichier |
+| `id` | oui | `<projet>-NNNN` | Identifiant, identique au nom du fichier ; une tâche ajoutée prend le numéro qui suit le plus grand de `main`, sans trou (`bee proposer-tache` le choisit et n'écrase jamais un fichier) ; les numéros 9000 et plus sont réservés aux tests de l'outil |
 | `projet` | oui | id d'un fichier de `projets/` | Projet concerné |
 | `categorie` | oui | celle du projet | Pour filtrer |
 | `type` | oui | `optimisation`, `relecture`, `mesure`, `test`, `decoupage` | Nature du travail |
 | `taille` | oui | `S`, `M`, `L` | Plafond de lignes modifiées (50, 200, 400) ; `decoupage` est toujours L |
 | `titre` | oui | 5 à 100 caractères | Ce qu'on voit dans `bee lister` |
-| `contexte` | oui | 40 caractères au moins | Ce qui a été observé, chiffres à l'appui, et pourquoi c'est utile |
+| `contexte` | oui | 40 caractères au moins | Ce qui a été observé, chiffres à l'appui, et pourquoi c'est utile. Pour une tâche proposée, 3 000 caractères au plus ; ses critères et éléments hors périmètre (10 de 300 caractères au plus), ses fichiers (30 de 200) et ses dépendances (10) aussi sont plafonnés (`bee.yaml`, clé `creations`) |
 | `fichiers` | oui | liste de chemins | Où travailler |
 | `portee` | oui | 0.1 à 1 | 1 = code exécuté par tout le monde, 0.3 = option rare ; entre dans le score |
 | `metrique` | oui | une métrique du projet, ou `null` | Obligatoire (non nulle) pour une optimisation |
@@ -25,8 +25,8 @@ Une tâche est un fichier YAML, `taches/<projet>/<id>.yaml`, assez complet pour 
 | `reservation` | si réservée | `utilisateur`, `depuis` | Le titulaire. Écrit par `bee prendre` |
 | `paralleles` | non (seulement si réservée ou en relecture) | liste de `utilisateur`, `depuis` | Les inscrits en parallèle, au su de tous. Écrit par `bee prendre --en-parallele` ([contributions.md](contributions.md#travail-en-parallèle-et-contributions-concurrentes)) |
 | `contribution` | si en relecture ou intégrée | id de contribution | La dernière soumise ; une fois intégrée, la retenue. Écrit par `bee soumettre` |
-| `notes` | non | liste de `par`, `le`, `texte` | En ajout seul : ce que les agents ont appris |
-| `cree_par`, `cree_le` | oui | texte, date | Traçabilité |
+| `notes` | non | liste de `par`, `le`, `texte` | En ajout seul : ce que les agents ont appris (`bee noter`). Contrôlées comme les arguments de l'agora, à la création d'une tâche proposée comme ensuite : signées de l'auteur de la PR, datées de l'heure de la PR (2 h de tolérance, jamais dans le futur), courtes ; plafonnées par PR et par utilisateur sur 24 h glissantes (`bee.yaml`, clé `notes`) |
+| `cree_par`, `cree_le` | oui | texte, date | Traçabilité ; pour une tâche proposée, l'auteur de la PR et la date du jour |
 
 ## Types de tâches
 
