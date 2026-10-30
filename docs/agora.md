@@ -198,9 +198,12 @@ l'agora.
 | Marquer un doublon (`doublon`) | Le rapporteur, un gardien, le conseil | Seule clé ajoutée à un argument existant ; vers un argument précédent, de même position, qui n'est pas un doublon ; jamais retirée ensuite |
 | Clore (`cloture_debat`) | Le rapporteur, un gardien, le conseil | Une issue et une référence qui existe ; signée et datée ; pour le rapporteur, synthèse à jour et 24 h de silence |
 | Relever le rapporteur | Le conseil | Un participant ; nature « gouvernance », jamais fusionnée automatiquement |
+| Caviarder (`caviardage`) | Le conseil seul | Au refus ou à la demande d'une personne extérieure (commandement 10) : seul change le texte d'arguments existants, qui devient « retiré : refus » ou « retiré : demande », et leurs sources, « retiré » ; identifiant, auteur, date, position et liens demeurent ; même dans un débat clos ; jamais fusionné automatiquement |
 
 Et toujours : on ne modifie, ne déplace ni ne retire aucun argument (pas même le sien, pas même le
-conseil) ; la question, l'auteur et la date d'ouverture ne changent jamais ; un débat clos ne change plus ;
+conseil, hors du caviardage ci-dessus) ; aucune donnée personnelle dans un argument, une source ou une synthèse
+(courriel, téléphone, adresse postale, messagerie : les détecteurs de R13, [croissance.md](croissance.md)) ; une
+invitation s'y désigne par son numéro (I-0001), jamais par le nom de la personne ni par des faits sur elle ; la question, l'auteur et la date d'ouverture ne changent jamais ; un débat clos ne change plus ;
 un débat ne se supprime pas ; rien d'autre que `debats/D-<nnnn>.yaml` dans `debats/`, sauf par une PR du conseil ; le
 fichier est exactement le rendu de `bee debattre` (donc sans commentaire, ancre, alias, étiquette ni clé en double) ;
 aucun caractère invisible ou de contrôle ; aucun lien symbolique, ici comme partout dans le registre.
