@@ -6372,6 +6372,613 @@ class TestRelireParCommitPR(BaseRepetitionGenerale):
         self.attaque("alice", lambda e: e.update(resume="Après coup.", resume_sha="1111111"), "contribution en relecture (statut : refusee)")
 
 
+MESSAGE_INVITATION = ("Bonjour, la ruche Bee cherche des garants : des personnes qui répondent publiquement des agents gardiens "
+                      "qu'elles dirigent. Ce que cela engage est décrit ici : https://github.com/Bee-ruche/registre/blob/main/docs/garants.md")
+
+
+class BaseInvitations(BaseRepetitionGenerale):
+    """ruche-0020 : R13 outillé. Un gardien nommé (gina, dont hector est le garant), un débat ouvert par le conseil (D-0001) ;
+    les gestes se publient par des PR fusionnées sur main, datées de l'heure de l'outil."""
+
+    def setUp(self):
+        super().setUp()
+        (self.dossier / "gouvernance/gardiens.yaml").write_text("membres:\n  - pseudo: gina\n    garant: hector\n", encoding="utf-8")
+        (self.dossier / "gouvernance/garants.yaml").write_text("membres:\n  - pseudo: hector\n    identite_publique: Hector\n",
+                                                               encoding="utf-8")
+        self.ok("debattre", "ouvrir", "--utilisateur", "bidji29", "--question", "Qui inviter comme garant, selon quels critères publics ?")
+        self.commit("gardien, garant et débat")
+
+    def chemin_invitation(self, identifiant="I-0001"):
+        return self.dossier / "invitations" / f"{identifiant}.yaml"
+
+    def invitation(self, identifiant="I-0001"):
+        return bee.lire_yaml(self.chemin_invitation(identifiant))
+
+    def ecrire_invitation(self, donnees, identifiant="I-0001"):
+        """Écrit une invitation telle quelle, sous la forme canonique, comme un agent qui contourne bee invitation."""
+        bee.ecrire_invitation(self.chemin_invitation(identifiant), donnees)
+
+    def inviter(self, qui="alice", identifiant="github:octocat", *options, message=MESSAGE_INVITATION):
+        return self.ok("inviter", "--utilisateur", qui, "--identifiant", identifiant, "--canal", "https://github.com/octocat",
+                       "--demande", "garant", "--fait", "Maintient un logiciel libre de compression depuis dix ans.",
+                       "--source", "https://github.com/octocat", "--message", message, "--debat", "D-0001", *options)
+
+    def geste(self, action, qui, *options, invitation="I-0001"):
+        return self.ok("invitation", action, invitation, "--utilisateur", qui, *options)
+
+    def publier(self, auteur, *natures, libre=True, nom="pr"):
+        """La PR passe verifier-pr (fusion automatique, ou par le conseil), puis elle est fusionnée sur main."""
+        self.commit()
+        if libre:
+            self.libre_service(auteur, *natures)
+        else:
+            code, texte = self.verifier(auteur, "--fusion-auto")
+            self.assertEqual(code, 3, texte)
+            self.assertIn("FUSION_AUTO=non", texte)
+            for nature in natures:
+                self.assertIn(nature, texte)
+        self.fusionner(nom)
+
+    ETAPES = (("2026-10-30T10:00:00Z", "proposee"), ("2026-11-02T11:00:00Z", "accord-gardien"),
+              ("2026-11-02T12:00:00Z", "accord-conseil"), ("2026-11-02T13:00:00Z", "consigner-envoi"),
+              ("2026-11-16T14:00:00Z", "consigner-relance"))
+
+    def jusqu_a(self, derniere):
+        """Mène I-0001 (alice invite github:octocat) honnêtement jusqu'à l'étape voulue, un geste par PR fusionnée."""
+        for quand, etape in self.ETAPES:
+            self.a(quand)
+            self.branche()
+            if etape == "proposee":
+                self.inviter()
+                self.publier("alice", "invitation")
+            elif etape == "accord-gardien":
+                self.geste(etape, "gina")
+                self.publier("gina", "accord_gardien")
+            else:
+                self.geste(etape, "bidji29")
+                self.publier("bidji29", {"accord-conseil": "accord_conseil", "consigner-envoi": "envoi_invitation",
+                                         "consigner-relance": "relance_invitation"}[etape], libre=False)
+            if etape == derniere:
+                return
+
+    def main_avec_liste(self, *identifiants):
+        """Le conseil a déjà inscrit ces personnes sur la liste de non-contact (sur main)."""
+        bee.ecrire_invitation(self.dossier / bee.CHEMIN_NON_CONTACT, {"identifiants": list(identifiants)})
+        self.commit("liste de non-contact")
+
+    def decidees(self, nombre, quand="2026-10-20T10:00:00Z"):
+        """Le conseil a sur main `nombre` invitations décidées (accords d'un gardien et du conseil), de personnes différentes."""
+        for n in range(1, nombre + 1):
+            self.ecrire_invitation({
+                "id": f"I-{n:04d}", "statut": "decidee",
+                "personne": {"identifiant": f"github:personne{n}", "canal": f"https://github.com/personne{n}"},
+                "demande": "garant", "pourquoi": [{"fait": "Un fait public.", "source": "https://github.com/Bee-ruche"}],
+                "message": MESSAGE_INVITATION + "\n\n" + bee.mentions_invitation(bee.Registre(self.dossier))["fr"],
+                "debat": "D-0001", "propose_par": "alice", "propose_le": quand,
+                "accord_gardien": {"par": "gina", "le": quand}, "accord_conseil": {"par": "bidji29", "le": quand}}, f"I-{n:04d}")
+        self.commit("invitations décidées")
+
+
+class TestInvitations(BaseInvitations):
+    """Les parcours honnêtes de R13 : chaque geste, fait par sa commande, passe verifier-pr ; bee essaim et le site les montrent."""
+
+    def test_parcours_complet_jusqu_au_refus_definitif(self):
+        self.jusqu_a("consigner-relance")
+        inv = self.invitation()
+        self.assertEqual(inv["statut"], "relancee")
+        self.assertEqual([g for g in bee.GESTES_INVITATION if g in inv], ["accord_gardien", "accord_conseil", "envoi", "relance"])
+        self.assertIn(bee.mentions_invitation(bee.Registre(self.dossier))["fr"], inv["message"], "bee inviter ajoute la mention de R13")
+        self.a("2026-11-17T09:00:00Z")
+        self.branche()
+        texte = self.geste("consigner-reponse", "bidji29", "--valeur", "refusee")
+        self.assertIn("ne sera plus jamais contacté(e)", texte)
+        self.assertEqual(bee.lire_yaml(self.dossier / bee.CHEMIN_NON_CONTACT), {"identifiants": ["github:octocat"]})
+        self.publier("bidji29", "reponse_invitation", "non_contact", libre=False)
+        self.valide()
+        # Un refus est définitif, quelle que soit la casse ou la forme de l'identifiant.
+        self.branche()
+        self.ko("est sur la liste de non-contact", "inviter", "--utilisateur", "bruno", "--identifiant", "github:OctoCat",
+                "--canal", "https://github.com/octocat", "--demande", "participer", "--fait", "Un fait.", "--source",
+                "https://github.com/octocat", "--message", MESSAGE_INVITATION, "--debat", "D-0001")
+        self.assertEqual(json.loads(self.ok("essaim", "--json"))["invitations"], [], "une invitation close n'est plus en cours")
+
+    def test_reponses_acceptee_et_sans_reponse(self):
+        self.jusqu_a("consigner-envoi")
+        self.a("2026-11-03T09:00:00Z")
+        self.ko("se consigne 14 jours après le dernier message", "invitation", "consigner-reponse", "I-0001", "--utilisateur",
+                "bidji29", "--valeur", "sans_reponse")
+        self.branche()
+        self.geste("consigner-reponse", "bidji29", "--valeur", "acceptee")
+        self.publier("bidji29", "reponse_invitation", libre=False)
+        self.assertEqual(self.invitation()["statut"], "acceptee")
+        self.assertFalse((self.dossier / bee.CHEMIN_NON_CONTACT).exists(), "une acceptation n'inscrit personne sur la liste")
+
+    def test_sans_reponse_apres_la_relance(self):
+        self.jusqu_a("consigner-relance")
+        self.a("2026-11-20T09:00:00Z")
+        self.ko("se consigne 14 jours après le dernier message", "invitation", "consigner-reponse", "I-0001", "--utilisateur",
+                "bidji29", "--valeur", "sans_reponse")
+        self.a("2026-11-30T15:00:00Z")
+        self.branche()
+        self.geste("consigner-reponse", "bidji29", "--valeur", "sans_reponse")
+        self.publier("bidji29", "reponse_invitation", libre=False)
+        self.assertEqual(self.invitation()["statut"], "sans_reponse")
+        self.assertIn("github:octocat", bee.lire_yaml(self.dossier / bee.CHEMIN_NON_CONTACT)["identifiants"])
+
+    def test_ecarter_par_le_proposant_ou_un_gardien(self):
+        self.jusqu_a("proposee")
+        self.a("2026-10-30T12:00:00Z")
+        self.ko("seuls le proposant, un gardien ou le conseil", "invitation", "ecarter", "I-0001", "--utilisateur", "bruno",
+                "--motif", "Je ne suis pas d'accord.")
+        self.branche()
+        self.geste("ecarter", "gina", "--motif", "Les faits cités ne disent pas pourquoi cette personne.")
+        self.publier("gina", "ecartement_invitation")
+        self.assertEqual(self.invitation()["statut"], "ecartee")
+        # Une invitation écartée ne retient pas la personne : on peut l'inviter de nouveau, par une autre invitation.
+        self.a("2026-10-31T12:00:00Z")
+        self.branche()
+        self.inviter("bruno")
+        self.publier("bruno", "invitation")
+        self.assertEqual(self.invitation("I-0002")["propose_par"], "bruno")
+
+    def test_essaim_et_site_montrent_les_invitations_et_le_frein(self):
+        self.jusqu_a("accord-gardien")
+        essaim = json.loads(self.ok("essaim", "--json"))
+        self.assertEqual([(x["id"], x["statut"], x["attend"]) for x in essaim["invitations"]],
+                         [("I-0001", "proposee", "l'accord du conseil")])
+        self.assertFalse(essaim["frein"]["serre"], essaim["frein"])
+        self.assertEqual((essaim["frein"]["gardiens"], essaim["frein"]["invitations_par_semaine"]), (1, 3))
+        texte = self.ok("essaim")
+        self.assertIn("frein desserré", texte)
+        self.assertIn("I-0001 (garant, github:octocat, proposée par alice, débat D-0001) : proposee, attend l'accord du conseil", texte)
+        self.ok("site", "--sortie", str(self.dossier / "_site"))
+        page = (self.dossier / "_site/index.html").read_text(encoding="utf-8")
+        self.assertIn("Grandir sans se perdre", page)
+        self.assertIn("Frein desserré", page)
+        self.assertIn("github:octocat", page)
+        api = json.loads((self.dossier / "_site/api/registre.json").read_text(encoding="utf-8"))
+        self.assertEqual(api["invitations"][0]["etat"]["statut"], "proposee")
+        self.assertEqual(api["essaim"]["frein"]["serre"], False)
+        # Un incident ouvert serre le frein : l'essaim et le site le disent.
+        (self.dossier / "gouvernance/incidents.yaml").write_text(
+            'incidents:\n  - id: INC-0001\n    titre: Messages en nombre\n    ouvert_le: "2026-11-02T11:30:00Z"\n', encoding="utf-8")
+        self.valide()
+        self.assertIn("frein SERRÉ (incident(s) ouvert(s) : INC-0001", self.ok("essaim"))
+        self.ok("site", "--sortie", str(self.dossier / "_site"))
+        self.assertIn("Frein serré", (self.dossier / "_site/index.html").read_text(encoding="utf-8"))
+
+    def test_aucun_code_n_envoie_de_message(self):
+        """Commandement 13 : l'envoi reste au conseil. L'outil n'importe aucun module de réseau ni de courriel, et le code de R13
+        n'appelle ni gh ni aucun programme : il lit et écrit le registre (et l'historique git local, par publiee_le)."""
+        import inspect
+        source = inspect.getsource(bee)
+        for module in ("socket", "urllib", "http.client", "requests", "smtplib", "email"):
+            self.assertNotRegex(source, rf"(?m)^\s*(?:import|from)\s+{re.escape(module)}\b", module)
+        for fonction in (bee.cmd_inviter, bee.cmd_invitation, bee.refus_invitation, bee.refus_geste, bee.verifier_invitation,
+                         bee.etat_frein, bee.ecrire_invitation):
+            corps = inspect.getsource(fonction)
+            for appel in ("subprocess", "executer(", "_git_brut(", '"gh"', "'gh'"):
+                self.assertNotIn(appel, corps, f"{fonction.__name__} : {appel}")
+
+
+class TestPullRequestsInvitations(BaseInvitations):
+    """verifier_pr est la barrière du libre-service de R13 : chaque détournement est refusé."""
+
+    def a_la_main(self, **gestes):
+        """Ajoute des gestes écrits à la main à I-0001 (statut recalculé, forme canonique), puis commite."""
+        inv = {**self.invitation(), **gestes}
+        inv["statut"] = bee.etat_invitation(inv)
+        self.ecrire_invitation(inv)
+        self.commit()
+
+    def maintenant(self):
+        return os.environ["BEE_MAINTENANT"]
+
+    def abandonner(self, nom="pr"):
+        """La PR refusée est abandonnée : retour sur main, sa branche est supprimée."""
+        git(self.dossier, "switch", "-qf", "main")
+        git(self.dossier, "branch", "-qD", nom)
+
+    # --- Proposer ---
+
+    def test_proposition_en_libre_service_et_numerotee(self):
+        self.a("2026-10-30T10:00:00Z")
+        self.branche()
+        self.inviter()
+        self.commit()
+        self.libre_service("alice", "invitation")
+        # Numéro sauté : I-0002 sans I-0001.
+        self.chemin_invitation().rename(self.chemin_invitation("I-0002"))
+        inv = self.invitation("I-0002")
+        self.ecrire_invitation({**inv, "id": "I-0002"}, "I-0002")
+        self.commit()
+        self.refusee("alice", "l'invitation suivante est I-0001")
+
+    def test_numero_reserve_aux_tests(self):
+        """I-9000 et plus : hors du libre-service ; même le conseil y est contrôlé (mention, données personnelles…)."""
+        self.a("2026-10-30T10:00:00Z")
+        self.branche()
+        self.inviter()
+        inv = self.invitation()
+        self.chemin_invitation().unlink()
+        self.ecrire_invitation({**inv, "id": "I-9000"}, "I-9000")
+        self.commit()
+        self.refusee("alice", "les numéros 9000 et plus sont réservés aux tests")
+        self.ecrire_invitation({**inv, "id": "I-9000", "propose_par": "bidji29", "message": MESSAGE_INVITATION}, "I-9000")
+        self.commit()
+        self.refusee("bidji29", "mot pour mot, la mention de R13")
+
+    def test_proposition_au_nom_d_un_autre_ou_qui_nait_decidee(self):
+        self.a("2026-10-30T10:00:00Z")
+        self.branche()
+        self.inviter()
+        self.commit()
+        self.refusee("bruno", "on ne propose une invitation qu'en son nom (bruno)")
+        inv = self.invitation()
+        self.ecrire_invitation({**inv, "statut": "decidee", "accord_gardien": {"par": "gina", "le": self.maintenant()},
+                                "accord_conseil": {"par": "bidji29", "le": self.maintenant()}})
+        self.commit()
+        self.refusee("alice", "une invitation naît proposée, sans accord, envoi ni réponse")
+
+    def test_plusieurs_invitations_dans_une_pr_et_sur_24_h(self):
+        self.a("2026-10-30T10:00:00Z")
+        self.branche()
+        self.inviter()
+        self.inviter("alice", "github:hubot")
+        self.commit()
+        self.refusee("alice", "plafond : 2 invitations proposées ajoutées par cette PR, au plus 1")
+        self.abandonner()
+        for n, (identifiant, quand) in enumerate((("github:octocat", "2026-10-30T10:00:00Z"), ("github:hubot", "2026-10-30T11:00:00Z")), 1):
+            self.a(quand)
+            self.branche(f"pr{n}")
+            self.inviter("alice", identifiant)
+            self.publier("alice", "invitation", nom=f"pr{n}")
+        self.a("2026-10-30T12:00:00Z")
+        self.ko("plafond : alice a déjà 2 invitations proposées", "inviter", "--utilisateur", "alice", "--identifiant", "github:x",
+                "--canal", "https://github.com/x", "--demande", "garant", "--fait", "Un fait.", "--source", "https://github.com/x",
+                "--message", MESSAGE_INVITATION, "--debat", "D-0001")
+        self.branche()
+        inv = self.invitation("I-0002")
+        self.ecrire_invitation({**inv, "id": "I-0003", "personne": {"identifiant": "github:x", "canal": "https://github.com/x"},
+                                "propose_le": self.maintenant()}, "I-0003")
+        self.commit()
+        self.refusee("alice", "plafond : alice aurait 3 invitations proposées en 24 h glissantes, au plus 2")
+
+    def test_texte_maquille_ou_sans_mention(self):
+        self.a("2026-10-30T10:00:00Z")
+        mention = bee.mentions_invitation(bee.Registre(self.dossier))["fr"]
+        cas = {
+            "caractère invisible ou de contrôle refusé (U+202E": MESSAGE_INVITATION + "‮" + "\n\n" + mention,
+            "il porte, mot pour mot, la mention de R13": MESSAGE_INVITATION,
+            # La mention maquillée : un espace de largeur nulle, ou un « а » cyrillique dans « agents ».
+            "caractère invisible ou de contrôle refusé (U+200B": MESSAGE_INVITATION + "\n\n" + mention.replace("agents", "agen​ts"),
+            "mot pour mot, la mention de R13": MESSAGE_INVITATION + "\n\n" + mention.replace("agents", "аgents"),
+            "ni courriel ni numéro de téléphone": "Écrivez-moi à jean.dupont@example.org.\n\n" + mention,
+            "ni courriel ni numéro de téléphone ": "Son numéro : +33 6 12 34 56 78.\n\n" + mention,
+            "message de 2": "x" * 2000 + "\n\n" + mention,
+        }
+        for morceau, message in cas.items():
+            with self.subTest(morceau=morceau):
+                self.branche()
+                self.inviter()
+                self.ecrire_invitation({**self.invitation(), "message": message})
+                self.commit()
+                self.refusee("alice", morceau.strip())
+                self.abandonner()
+                shutil.rmtree(self.dossier / "invitations", ignore_errors=True)
+        # bee inviter les refuse aussi, avant d'écrire.
+        self.ko("ni courriel ni numéro de téléphone", "inviter", "--utilisateur", "alice", "--identifiant", "github:octocat",
+                "--canal", "https://github.com/octocat", "--demande", "garant", "--fait", "Joignable au 06 12 34 56 78.",
+                "--source", "https://github.com/octocat", "--message", MESSAGE_INVITATION, "--debat", "D-0001")
+        self.assertFalse(self.chemin_invitation().exists())
+
+    def test_rien_d_autre_sur_la_personne(self):
+        self.a("2026-10-30T10:00:00Z")
+        self.branche()
+        self.inviter()
+        inv = self.invitation()
+        inv["personne"]["nom"] = "Jean Dupont"
+        self.ecrire_invitation(inv)
+        self.commit()
+        self.refusee("alice", "son identifiant public et le canal qu'elle publie elle-même, rien d'autre")
+
+    def test_non_contact_par_variante_de_casse_ou_d_espaces(self):
+        self.main_avec_liste("github:octocat")
+        self.a("2026-10-30T10:00:00Z")
+        for identifiant in ("github:OctoCat", "GitHub:octocat", "github:@octocat/"):
+            with self.subTest(identifiant=identifiant):
+                self.ko("est sur la liste de non-contact", "inviter", "--utilisateur", "alice", "--identifiant", identifiant,
+                        "--canal", "https://github.com/octocat", "--demande", "garant", "--fait", "Un fait.", "--source",
+                        "https://github.com/octocat", "--message", MESSAGE_INVITATION, "--debat", "D-0001")
+        # Écrites à la main, en contournant bee inviter : refusées par verifier-pr, avec ou sans espaces.
+        for identifiant in ("github:OctoCat", " github:octocat", "github: octocat", "github:octo​cat"):
+            with self.subTest(identifiant=identifiant):
+                self.branche()
+                self.inviter("alice", "github:autre")
+                inv = self.invitation()
+                inv["personne"]["identifiant"] = identifiant
+                self.ecrire_invitation(inv)
+                self.commit()
+                self.refusee("alice", "est sur la liste de non-contact")
+                self.abandonner()
+                self.chemin_invitation().unlink(missing_ok=True)
+
+    def test_liste_de_non_contact_en_ajout_seul_par_le_conseil(self):
+        self.main_avec_liste("github:octocat", "github:hubot")
+        self.a("2026-10-30T10:00:00Z")
+        chemin = self.dossier / bee.CHEMIN_NON_CONTACT
+        for qui, liste, morceau in (
+                ("bidji29", ["github:hubot"], "en ajout seul"),
+                ("alice", ["github:hubot"], "en ajout seul"),
+                ("bidji29", ["github:OctoCat", "github:hubot"], "en ajout seul"),
+                ("alice", ["github:octocat", "github:hubot", "github:x"], "seul le conseil inscrit une personne"),
+                ("bidji29", ["github:octocat", "github:hubot", "github:Hubot"], "est déjà sur la liste")):
+            with self.subTest(qui=qui, liste=liste):
+                self.branche()
+                bee.ecrire_invitation(chemin, {"identifiants": liste})
+                self.commit()
+                self.refusee(qui, morceau)
+                self.abandonner()
+        self.branche()
+        chemin.unlink()
+        self.commit()
+        self.refusee("bidji29", "la liste de non-contact ne se supprime jamais")
+        self.abandonner()
+        self.branche()
+        bee.ecrire_invitation(chemin, {"identifiants": ["github:octocat", "github:hubot", "github:x"]})
+        self.publier("bidji29", "non_contact", libre=False)
+
+    def test_fichier_inattendu_ou_forme_non_canonique(self):
+        self.a("2026-10-30T10:00:00Z")
+        for chemin in ("invitations/brouillon.yaml", "invitations/I-0001.yml", "invitations/2026/I-0001.yaml"):
+            with self.subTest(chemin=chemin):
+                self.branche()
+                (self.dossier / chemin).parent.mkdir(parents=True, exist_ok=True)
+                (self.dossier / chemin).write_text("id: I-0001\n", encoding="utf-8")
+                self.commit()
+                self.refusee("alice", "fichier inattendu dans invitations/")
+                self.abandonner()
+        self.branche()
+        self.inviter()
+        with self.chemin_invitation().open("a", encoding="utf-8") as f:
+            f.write("# accord_gardien: gina\n")
+        self.commit()
+        self.refusee("alice", "pas exactement sous la forme qu'écrivent bee inviter et bee invitation")
+
+    # --- Accords ---
+
+    def test_accord_forge_par_un_non_gardien(self):
+        self.jusqu_a("proposee")
+        self.a("2026-11-02T11:00:00Z")
+        self.ko("bruno n'est pas gardien", "invitation", "accord-gardien", "I-0001", "--utilisateur", "bruno")
+        self.branche()
+        self.a_la_main(accord_gardien={"par": "bruno", "le": self.maintenant()})
+        self.refusee("bruno", "bruno n'est pas gardien : seul un gardien nommé")
+        self.refusee("bidji29", "accord_gardien : un geste est signé de l'auteur de la PR (bidji29)", "bidji29 n'est pas gardien")
+        git(self.dossier, "reset", "-q", "--hard", "main")
+        self.a_la_main(accord_gardien={"par": "gina", "le": self.maintenant()})
+        self.refusee("bruno", "un geste est signé de l'auteur de la PR (bruno), pas de « gina »")
+        self.libre_service("gina", "accord_gardien")
+
+    def test_accord_du_gardien_avant_72_h_ou_sur_sa_propre_invitation(self):
+        self.ok("inscrire", "--pseudo", "gina", "--compte-cree-le", "2020-01-01")
+        self.commit("gina s'inscrit")
+        self.jusqu_a("proposee")
+        self.a("2026-11-01T09:00:00Z")
+        self.ko("pas avant le 2026-11-02T10:00:00Z", "invitation", "accord-gardien", "I-0001", "--utilisateur", "gina")
+        self.branche()
+        self.a_la_main(accord_gardien={"par": "gina", "le": self.maintenant()})
+        self.refusee("gina", "reste 72 h publique")
+        self.abandonner()
+        self.a("2026-11-01T10:00:00Z")
+        self.branche()
+        self.inviter("gina", "github:hubot")
+        self.publier("gina", "invitation")
+        self.a("2026-11-05T10:00:00Z")
+        self.ko("on ne donne pas son accord à sa propre invitation", "invitation", "accord-gardien", "I-0002", "--utilisateur", "gina")
+
+    def test_accord_du_conseil_par_un_membre_ou_par_le_gardien(self):
+        self.jusqu_a("proposee")
+        self.a("2026-11-02T11:00:00Z")
+        self.ko("l'accord du conseil suit celui d'un gardien", "invitation", "accord-conseil", "I-0001", "--utilisateur", "bidji29")
+        self.branche()
+        self.geste("accord-gardien", "gina")
+        self.publier("gina", "accord_gardien")
+        self.branche()
+        for qui in ("alice", "gina"):
+            with self.subTest(qui=qui):
+                self.a_la_main(accord_conseil={"par": qui, "le": self.maintenant()})
+                self.refusee(qui, f"{qui} n'est pas du conseil : seul le conseil donne l'accord du conseil")
+                git(self.dossier, "reset", "-q", "--hard", "main")
+        # Le conseil ne fait pas les deux accords : nommé aussi gardien, il ne donne que l'un des deux.
+        self.abandonner()
+        (self.dossier / "gouvernance/gardiens.yaml").write_text(
+            "membres:\n  - pseudo: gina\n    garant: hector\n  - pseudo: bidji29\n    garant: hector\n", encoding="utf-8")
+        inv = self.invitation()
+        inv["accord_gardien"]["par"] = "bidji29"
+        self.ecrire_invitation(inv)
+        self.commit("sur main : le conseil, nommé gardien, a donné l'accord de gardien")
+        self.branche()
+        self.a_la_main(accord_conseil={"par": "bidji29", "le": self.maintenant()})
+        self.refusee("bidji29", "les deux accords viennent de deux personnes différentes")
+
+    # --- Envoi, plafond, relance ---
+
+    def test_envoi_consigne_par_un_non_conseil_ou_avant_les_accords(self):
+        self.jusqu_a("accord-gardien")
+        self.a("2026-11-02T11:30:00Z")
+        self.branche()
+        self.a_la_main(envoi={"par": "bidji29", "le": self.maintenant()})
+        self.refusee("bidji29", "on ne consigne un envoi qu'après l'accord d'un gardien et du conseil")
+        git(self.dossier, "reset", "-q", "--hard", "main")
+        self.a("2026-11-02T12:00:00Z")
+        self.geste("accord-conseil", "bidji29")
+        self.publier("bidji29", "accord_conseil", libre=False)
+        self.a("2026-11-02T13:00:00Z")
+        self.ko("gina n'est pas du conseil", "invitation", "consigner-envoi", "I-0001", "--utilisateur", "gina")
+        self.branche()
+        for qui in ("gina", "alice"):
+            with self.subTest(qui=qui):
+                self.a_la_main(envoi={"par": qui, "le": self.maintenant()})
+                self.refusee(qui, f"{qui} n'est pas du conseil : seul un humain du conseil envoie le message")
+                git(self.dossier, "reset", "-q", "--hard", "main")
+
+    def test_plafond_d_envois_par_semaine(self):
+        self.decidees(5)
+        self.a("2026-10-30T10:00:00Z")
+        # Quatre envois dans une même PR : refusés (3 par semaine pour toute la ruche, conseil compris). La commande refuse le
+        # quatrième ; il est écrit à la main.
+        self.branche()
+        for n in range(1, 4):
+            self.geste("consigner-envoi", "bidji29", invitation=f"I-{n:04d}")
+        self.ko("déjà 3 invitations envoyées", "invitation", "consigner-envoi", "I-0004", "--utilisateur", "bidji29")
+        self.ecrire_invitation({**self.invitation("I-0004"), "statut": "envoyee",
+                                "envoi": {"par": "bidji29", "le": self.maintenant()}}, "I-0004")
+        self.commit()
+        self.refusee("bidji29", "plafond : 4 invitations envoyées en 7 jours glissants", "au plus 3 pour toute la ruche")
+        self.abandonner()
+        # Trois envois, en trois PR : acceptés (le conseil les fusionne).
+        for n in range(1, 4):
+            self.a(f"2026-10-3{n - 1}T10:00:00Z" if n < 3 else "2026-11-01T10:00:00Z")
+            self.branche()
+            self.geste("consigner-envoi", "bidji29", invitation=f"I-{n:04d}")
+            self.publier("bidji29", "envoi_invitation", libre=False)
+        self.a("2026-11-02T10:00:00Z")
+        self.ko("déjà 3 invitations envoyées", "invitation", "consigner-envoi", "I-0004", "--utilisateur", "bidji29")
+        # Écrit à la main : refusé ; antidaté pour sortir de la fenêtre : refusé aussi.
+        self.branche()
+        self.ecrire_invitation({**self.invitation("I-0004"), "statut": "envoyee",
+                                "envoi": {"par": "bidji29", "le": self.maintenant()}}, "I-0004")
+        self.commit()
+        self.refusee("bidji29", "plafond : 4 invitations envoyées en 7 jours glissants")
+        self.ecrire_invitation({**self.invitation("I-0004"), "envoi": {"par": "bidji29", "le": "2026-10-20T10:00:00Z"}}, "I-0004")
+        self.commit()
+        self.refusee("bidji29", "envoi.le (2026-10-20T10:00:00Z) doit être l'heure de la PR")
+        self.abandonner()
+        # Sept jours après le premier envoi, une place se libère.
+        self.a("2026-11-06T10:00:01Z")
+        self.branche()
+        self.geste("consigner-envoi", "bidji29", invitation="I-0004")
+        self.publier("bidji29", "envoi_invitation", libre=False)
+
+    def test_relance_une_seule_pas_avant_14_jours_par_le_conseil(self):
+        self.jusqu_a("consigner-envoi")
+        self.a("2026-11-10T10:00:00Z")
+        self.ko("pas avant le 2026-11-16T13:00:00Z", "invitation", "consigner-relance", "I-0001", "--utilisateur", "bidji29")
+        self.branche()
+        self.a_la_main(relance={"par": "bidji29", "le": self.maintenant()})
+        self.refusee("bidji29", "une relance pas avant 14 jours après l'envoi")
+        git(self.dossier, "reset", "-q", "--hard", "main")
+        self.a("2026-11-16T14:00:00Z")
+        self.a_la_main(relance={"par": "alice", "le": self.maintenant()})
+        self.refusee("alice", "alice n'est pas du conseil : seul le conseil relance")
+        git(self.dossier, "reset", "-q", "--hard", "main")
+        self.geste("consigner-relance", "bidji29")
+        self.publier("bidji29", "relance_invitation", libre=False)
+        # Une seconde relance : le geste existe déjà ; le réécrire est refusé.
+        self.ko("relance est déjà consigné", "invitation", "consigner-relance", "I-0001", "--utilisateur", "bidji29")
+        self.a("2026-12-01T10:00:00Z")
+        self.branche()
+        self.a_la_main(relance={"par": "bidji29", "le": self.maintenant()})
+        self.refusee("bidji29", "relance : les gestes sont en ajout seul")
+
+    def test_message_et_gestes_immuables(self):
+        self.jusqu_a("accord-gardien")
+        self.a("2026-11-02T11:30:00Z")
+        self.branche()
+        self.a_la_main(message=self.invitation()["message"] + " Répondez vite !")
+        self.refusee("bidji29", "message ne change jamais")
+        git(self.dossier, "reset", "-q", "--hard", "main")
+        inv = self.invitation()
+        inv.pop("accord_gardien")
+        inv["statut"] = "proposee"
+        self.ecrire_invitation(inv)
+        self.commit()
+        self.refusee("gina", "accord_gardien : les gestes sont en ajout seul")
+        git(self.dossier, "reset", "-q", "--hard", "main")
+        self.chemin_invitation().unlink()
+        self.commit()
+        self.refusee("alice", "une invitation ne se supprime pas")
+
+    def test_refus_consigne_par_le_conseil_avec_la_liste(self):
+        self.jusqu_a("proposee")
+        self.a("2026-10-30T12:00:00Z")
+        self.branche()
+        self.a_la_main(reponse={"par": "bidji29", "le": self.maintenant(), "valeur": "refusee"})
+        self.refusee("bidji29", "s'inscrit dans invitations/ne-plus-contacter.yaml dans la même PR")
+        git(self.dossier, "reset", "-q", "--hard", "main")
+        self.a_la_main(reponse={"par": "alice", "le": self.maintenant(), "valeur": "refusee"})
+        self.refusee("alice", "seul le conseil, qui a envoyé le message, consigne la réponse")
+        git(self.dossier, "reset", "-q", "--hard", "main")
+        # Une personne qui dit non avant tout envoi (l'invitation est publique) : le conseil le consigne.
+        self.geste("consigner-reponse", "bidji29", "--valeur", "refusee")
+        self.publier("bidji29", "reponse_invitation", "non_contact", libre=False)
+
+    # --- Le frein ---
+
+    def frein_serre(self, preparer, morceau):
+        """Avec le frein serré par `preparer` (sur main), l'accord du gardien est refusé, par la commande et par verifier-pr ; une
+        proposition reste possible."""
+        self.jusqu_a("proposee")
+        preparer()
+        self.commit("frein")
+        self.a("2026-11-02T11:00:00Z")
+        self.ko(morceau, "invitation", "accord-gardien", "I-0001", "--utilisateur", "gina")
+        self.branche()
+        self.a_la_main(accord_gardien={"par": "gina", "le": self.maintenant()})
+        self.refusee("gina", "frein serré (R13)", morceau)
+        git(self.dossier, "reset", "-q", "--hard", "main")
+        self.inviter("bruno", "github:hubot")
+        self.commit()
+        self.libre_service("bruno", "invitation")
+
+    def test_frein_incident_ouvert(self):
+        self.frein_serre(lambda: (self.dossier / "gouvernance/incidents.yaml").write_text(
+            'incidents:\n  - id: INC-0001\n    titre: Un agent a écrit hors de la ruche\n    ouvert_le: "2026-10-31T10:00:00Z"\n',
+            encoding="utf-8"), "incident(s) ouvert(s) : INC-0001")
+
+    def test_frein_gardien_sans_garant(self):
+        self.frein_serre(lambda: (self.dossier / "gouvernance/gardiens.yaml").write_text(
+            "membres:\n  - pseudo: gina\n    garant: hector\n  - pseudo: ivan\n", encoding="utf-8"), "gardien(s) sans garant : ivan")
+
+    def test_frein_trop_de_membres_actifs_par_gardien(self):
+        def preparer():
+            chemin = self.dossier / "bee.yaml"
+            chemin.write_text(chemin.read_text(encoding="utf-8").replace("membres_actifs_par_gardien_max: 20",
+                                                                          "membres_actifs_par_gardien_max: 2"), encoding="utf-8")
+        self.frein_serre(preparer, "membres actifs pour 1 gardien(s), au plus 2 par gardien")
+
+    def test_frein_aucun_gardien(self):
+        def preparer():
+            (self.dossier / "gouvernance/gardiens.yaml").write_text("membres: []\n", encoding="utf-8")
+            self.ok("inscrire", "--pseudo", "gina", "--compte-cree-le", "2020-01-01")
+        self.frein_serre(preparer, "aucun gardien nommé")
+
+    def test_un_incident_clos_desserre_le_frein(self):
+        (self.dossier / "gouvernance/incidents.yaml").write_text(
+            'incidents:\n  - id: INC-0001\n    titre: Clos\n    ouvert_le: "2026-10-20T10:00:00Z"\n    clos_le: "2026-10-21T10:00:00Z"\n',
+            encoding="utf-8")
+        self.commit("incident clos")
+        self.jusqu_a("accord-gardien")
+        self.assertEqual(self.invitation()["statut"], "proposee")
+        self.assertIn("accord_gardien", self.invitation())
+
+    # --- bee valider ---
+
+    def test_valider_refuse_un_statut_ou_des_gestes_incoherents(self):
+        self.jusqu_a("accord-gardien")
+        inv = self.invitation()
+        self.ecrire_invitation({**inv, "statut": "decidee"})
+        self.assertIn("alors que ses gestes disent « proposee »", self.bee("valider")[1])
+        self.ecrire_invitation({**inv, "envoi": {"par": "bidji29", "le": "2026-11-03T10:00:00Z"}, "statut": "envoyee"})
+        self.assertIn("accord_conseil", self.bee("valider")[1])
+        self.ecrire_invitation({**inv, "accord_gardien": {"par": "gina", "le": "2026-10-29T10:00:00Z"}})
+        self.assertIn("accord_gardien.le est antérieur au geste précédent", self.bee("valider")[1])
+        self.ecrire_invitation(inv)
+        bee.ecrire_invitation(self.dossier / bee.CHEMIN_NON_CONTACT, {"identifiants": ["github:x", "github:X"]})
+        self.assertIn("y figure deux fois", self.bee("valider")[1])
+
+
 MANIFESTE_REMPLI = """tache: miniz-0099
 utilisateur: alice
 agent:

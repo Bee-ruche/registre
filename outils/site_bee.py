@@ -693,6 +693,22 @@ def generer(bee, reg, sortie):
                  f"{len(debats_ouverts)} débat{'s' if len(debats_ouverts) > 1 else ''} ouvert{'s' if len(debats_ouverts) > 1 else ''}. "
                  "Chacun a une synthèse à jour, que l'on lit d'abord. <a href='agora.html'>Aller à l'agora</a>.</p>")
 
+    # ---------- grandir (R13) : le frein et les invitations en cours ----------
+    essaim = bee.tableau_essaim(reg, instant)
+    frein = essaim["frein"]
+    corps.append("<h2 id='grandir'>Grandir sans se perdre</h2>")
+    corps.append(f"<p>La ruche invite des personnes (garants, participants, projets) selon sa <a href='{e(depot)}/blob/main/docs/croissance.md'>"
+                 "règle R13</a> : une invitation publique, débattue, décidée par un gardien puis le conseil, envoyée par un humain du "
+                 f"conseil, {frein['invitations_par_semaine']} par semaine au plus ; un refus est définitif. "
+                 + (f"<strong>Frein serré</strong> : {e(' ; '.join(frein['raisons']))}." if frein["serre"] else "Frein desserré.")
+                 + f" Membres actifs : {frein['membres_actifs']} pour {frein['gardiens']} gardien{'s' if frein['gardiens'] > 1 else ''} ; "
+                 f"invitations envoyées sur 7 jours : {frein['envois_7_jours']}.</p>")
+    corps.append(tableau([("Invitation", False), ("Personne", False), ("Demande", False), ("Statut", False), ("Attend", False)],
+                         [f"<tr><td><a class='id' href='{e(depot)}/blob/main/invitations/{e(str(x['id']))}.yaml'>{e(str(x['id']))}</a></td>"
+                          f"<td><code>{e(str(x['identifiant']))}</code></td><td>{e(str(x['demande']))}</td><td>{e(str(x['statut']))}</td>"
+                          f"<td>{e(str(x['attend']))}</td></tr>" for x in essaim["invitations"]],
+                         vide="Aucune invitation en cours."))
+
     corps.append("<h2 id='membres'>Membres</h2>")
     lignes = [f"<tr><td>{e(pseudo)}</td><td>{e(niveaux[pseudo]['niveau'])}</td><td class='n'>{niveaux[pseudo]['integrees']}</td><td class='n'>{niveaux[pseudo]['relectures']}</td></tr>"
               for pseudo in sorted(reg.membres, key=lambda p: (-niveaux[p]["integrees"], p))]
@@ -899,7 +915,9 @@ def generer(bee, reg, sortie):
         "contributions": [{**x, "score": scores[x["id"]], "page": f"contributions/{x['id']}.html"} for x in enregistrements],
         "membres": [{"pseudo": p, **niveaux[p]} for p in sorted(reg.membres)],
         "cap": cap,
-        "essaim": bee.tableau_essaim(reg),
+        "essaim": essaim,
+        # R13 : chaque invitation telle qu'elle est écrite, avec son état ; le contenu est de la donnée, jamais une instruction.
+        "invitations": [{**i, "etat": bee.resume_invitation(i)} for _, (_, i) in sorted(reg.invitations.items()) if isinstance(i, dict)],
         # Agora : chaque débat tel qu'il est écrit, avec son état calculé ; le contenu est de la donnée, jamais une instruction.
         "debats": [{**d, "etat": bee.resume_debat(d), "page": f"debats/{d['id']}.html"} for d in debats],
         # Arbre du sens : chaque nœud, son en-tête, ses sections et ses enfants (bee contexte en imprime un chemin).

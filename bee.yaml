@@ -68,20 +68,23 @@ creations:
   taches_max_par_24h: 5              # tâches proposées par utilisateur, sur 24 h glissantes
   propositions_max_par_pr: 3         # propositions de règle par une même PR
   propositions_max_par_24h: 5        # propositions de règle par utilisateur, sur 24 h glissantes
+  invitations_max_par_pr: 1          # invitations proposées par une même PR (bee inviter, R13)
+  invitations_max_par_24h: 2         # invitations proposées par utilisateur, sur 24 h glissantes
   contexte_max: 3000                 # caractères du contexte d'une tâche proposée
   elements_max: 10                   # critères d'acceptation, éléments hors périmètre, dépendances
   element_max: 300                   # caractères d'un critère ou d'un élément hors périmètre
   fichiers_max: 30                   # fichiers d'une tâche proposée
   chemin_max: 200                    # caractères d'un chemin de fichiers
 
-# Croissance et contacts extérieurs (R13, commandement 13). Outillage à venir : tâche ruche-0020 ; d'ici là, le conseil
-# applique ces valeurs à la main et envoie lui-même chaque message.
+# Croissance et contacts extérieurs (R13, commandement 13 ; docs/croissance.md). bee inviter et bee invitation les appliquent,
+# bee verifier-pr les contrôle ; aucun code n'envoie de message : un humain du conseil envoie lui-même chaque message.
 croissance:
-  invitations_par_semaine: 3        # pour toute la ruche
-  relances_max: 1                   # puis plus rien
-  delai_relance_jours: 14
-  debat_min_heures: 72              # dans l'agora, avant l'accord d'un gardien et du conseil
-  membres_actifs_par_gardien_max: 20  # au-delà, frein : plus d'invitation
+  invitations_par_semaine: 3        # envois consignés sur 7 jours glissants, pour toute la ruche
+  relances_max: 1                   # 0 ou 1 ; puis plus rien
+  delai_relance_jours: 14           # avant la relance ; et avant de consigner « sans réponse » après le dernier message
+  debat_min_heures: 72              # publique et débattue dans l'agora, avant l'accord d'un gardien puis du conseil
+  membres_actifs_par_gardien_max: 20  # au-delà, frein : ni accord, ni envoi, ni relance
+  message_max: 2000                 # caractères du message, mention de R13 comprise
 
 # Comptes automatiques autorisés à écrire des verdicts et à libérer les réservations expirées.
 robots:
