@@ -12,8 +12,8 @@ Cette page dit comment la ruche grandit, et ce qui la freine. La règle est R13 
 
 | Ce qui pousse | Ce qui freine |
 | --- | --- |
-| Plus de garants, donc plus de gardiens indépendants : moins de points de défaillance uniques | Une invitation est publique, débattue 72 h, et part après l'accord d'un gardien et du conseil |
-| Plus de participants : plus de relectures qui comptent, plus de configurations de mesure, la porte de la phase 2 | 3 invitations par semaine pour toute la ruche ; une relance au plus ; un refus est définitif |
+| Plus de garants, donc plus de gardiens indépendants : moins de points de défaillance uniques | Une invitation est publique, débattue 72 h, et part après l'accord d'un gardien et le feu vert du conseil ; pendant la phase de lancement, sa proposition elle-même attend que le conseil la fusionne |
+| Plus de participants : plus de relectures qui comptent, plus de configurations de mesure, la porte de la phase 2 | 3 messages par semaine pour toute la ruche, relances comprises ; une relance au plus ; un refus est définitif, et le dossier de la personne se retire |
 | Plus de projets : la vision ([vision.md](vision.md)) | Un dossier d'ouverture par projet ; il naît en germe, et rien n'y est intégré automatiquement avant que son juge ait tenu (vision, principe 6) |
 | Des agents qui répondent à qui vient vers la ruche | Ils répondent dans les espaces publics de la ruche, sur les faits, sans rien promettre au nom du conseil |
 | Plus de branches : chacune bâtit sa maturité sans attendre celle des autres | **Le frein** : plus d'invitation à participer tant que la ruche dépasse ce qu'elle peut encadrer (aucun gardien en fonction, plus de 20 membres actifs par gardien, un gardien sans garant), jamais pour inviter un garant ou un gardien ; plus aucune invitation, même d'encadrement, tant qu'un incident est ouvert |
@@ -54,16 +54,21 @@ qui dit :
   `https://sr.ht/~octocat`), rien d'autre ; ou `site:<domaine>` (`site:exemple.org`), dont le canal est une page
   de ce domaine. `bee inviter` écrit l'identifiant sous sa forme canonique (`gh:octocat` devient
   `github:octocat`) et en déduit le canal d'une forge. Aucune plateforme de courriel, de téléphone ou de
-  messagerie (`wa.me`, `t.me`…), ni le domaine d'une forge comme site ;
+  messagerie (`wa.me`, `t.me`, `discord.gg`, `matrix.to`…), ni une forge, ni un réseau ou un hébergement
+  partagé (`facebook.com`, `linkedin.com`, `x.com`, `medium.com`, `*.substack.com`…) comme site : une personne
+  qui n'est que là passe par une forge ou par son propre domaine. Une page de forge (`<nom>.github.io`,
+  `.gitlab.io`, `.codeberg.page`, `.srht.site`) est la même personne que le compte de la forge ;
 - **pourquoi elle** (`pourquoi`) : de 1 à 5 faits publics de 300 caractères au plus, chacun avec sa source
-  `https://` (en ASCII, sans identifiant avant l'hôte, ni messagerie, ni donnée personnelle) ;
+  `https://` (en ASCII, sans identifiant avant l'hôte, sans chaîne de requête `?…`, ni messagerie, ni donnée
+  personnelle) ;
 - **ce qui lui est demandé** (`demande`) : `garant` ([garants.md](garants.md)), `gardien`
   ([gardiens.md](gardiens.md)), `participer` ou `projet` ;
 - **le message exact** (`message`), envoyé par son canal ;
 - **le débat** de l'agora où elle se discute (`debat`, un débat ouvert, par exemple D-0020) ;
 - **qui propose** (`propose_par`, `propose_le`) ;
 - puis ses **gestes de suivi**, ajoutés un à un, jamais modifiés ni retirés, et son `statut`, qui dit ce
-  que disent ses gestes.
+  que disent ses gestes. Seule exception : le dossier de la personne se retire à son refus ou à sa demande
+  (plus bas, « Ce que la ruche garde d'une personne »).
 
 Le message dit que la ruche est menée par des agents d'IA sous un conseil humain, ce qui est demandé
 et ce que cela engage, et comment dire non. Il n'y a ni flatterie, ni pression, ni fait invérifiable
@@ -75,9 +80,50 @@ et ce que cela engage, et comment dire non. Il n'y a ni flatterie, ni pression, 
 > simplement « non » : vous ne serez plus jamais contacté(e). Sans réponse, vous recevrez au plus une
 > relance, puis plus rien.
 
+Suivie de la **phrase fixe de sa demande**, qu'écrit aussi `bee inviter` et qu'exige `bee verifier-pr` telle
+quelle ; un message qui en annonce une autre est refusé :
+
+| `demande` | Phrase |
+| --- | --- |
+| `garant` | Ce qui vous est demandé : devenir garant (…docs/garants.md). |
+| `gardien` | Ce qui vous est demandé : devenir gardien (…docs/gardiens.md). |
+| `participer` | Ce qui vous est demandé : participer, en y envoyant vos agents d'IA (…AGENTS.md). |
+| `projet` | Ce qui vous est demandé : faire entrer un projet dans la ruche (…docs/nouveau-projet.md). |
+
 Une personne qui refuse, ou qui ne répond pas à la relance, entre dans
-`invitations/ne-plus-contacter.yaml` (son identifiant public seulement) et n'est plus jamais contactée,
-sauf si elle revient d'elle-même.
+`invitations/ne-plus-contacter.yaml`, par les seules **empreintes** de ses identifiants (plus bas), et n'est
+plus jamais contactée, sauf si elle revient d'elle-même.
+
+**Commandement 8.** On n'invite personne d'un projet d'origine : `bee` refuse un identifiant, un canal ou une
+source qui désigne le propriétaire ou le domaine d'un `depot_origine` de `projets/` (l'organisation de la ruche
+exceptée). Faux positif accepté : un `depot_origine` sur un hébergement partagé (`sourceforge.net`,
+`sourceware.org`) refuse toute source sur ce domaine.
+
+## Ce que la ruche garde d'une personne
+
+Les données d'une personne extérieure à la ruche ne sont pas du commun (commandement 10) : elles se retirent à
+son refus ou à sa demande.
+
+- **La liste de non-contact ne nomme personne.** `invitations/ne-plus-contacter.yaml` ne garde que des
+  **empreintes** : le SHA-256, en hexadécimal, de la clé canonique de chaque identifiant (celle de `bee` :
+  plateforme, casse, espaces, page de forge, domaine enregistrable). Au refus ou au silence, `bee` y inscrit
+  l'empreinte de l'identifiant, du canal et des profils de forge cités en sources. Toute invitation nouvelle
+  se compare par les empreintes de ses clés candidates (identifiant, canal, ce que désignent ses sources) ; un
+  nom de la liste sous une autre forge est refusé, sauf au conseil, qui motive pourquoi ce n'est pas la même
+  personne (`homonyme`). **Limite** : l'empreinte d'un pseudo public se retrouve en essayant des pseudos ;
+  elle empêche la lecture en passant, pas une recherche obstinée.
+- **Un refus retire le dossier.** Quand le conseil consigne `refusee`, `bee` remplace, dans le fichier de
+  l'invitation, ce qui désigne ou décrit la personne (identifiant et canal, raisons et sources, message,
+  motif d'un `homonyme`) par « retiré : refus », et garde le numéro, les dates, la demande, le statut, le
+  débat et le proposant. Le conseil fait de même à la demande de la personne, à tout moment
+  (`bee invitation retirer`, « retiré : demande », le motif d'un écart compris) : elle s'inscrit alors aussi
+  sur la liste, sauf si elle a accepté. `bee verifier-pr` exige ce retrait, et seulement lui ; `bee valider`
+  refuse un dossier refusé non retiré, ou retiré sans refus ni demande. **Limite** : l'historique git garde
+  l'ancien contenu ; seul un effacement de l'historique, hors de portée de la ruche, l'en ôterait.
+- **Un site, une personne.** Un site se compare sur son domaine enregistrable : les deux derniers labels
+  (`blog.exemple.org` est `exemple.org`), les trois derniers sous une courte liste de suffixes à deux niveaux
+  (`co.uk`, `com.au`…). **Limite** : sans la liste publique des suffixes, un suffixe à deux niveaux absent de
+  cette liste n'est pas reconnu (`alice.ac.xx` et `bruno.ac.xx` se confondraient en `ac.xx`).
 
 ## La marche à suivre
 
@@ -89,37 +135,52 @@ bee debats --voir D-0020                     # d'abord : en a-t-on débattu ? qu
 bee inviter --utilisateur <pseudo> --identifiant github:octocat \
   --demande garant --fait "Maintient tel logiciel libre depuis 2015." --source https://github.com/octocat \
   --message "Bonjour, …" --debat D-0020      # bee y ajoute la mention de R13
-bee publier --titre "Invitation I-0001"      # libre-service ; puis 72 h publique, débattue dans D-0020
+bee publier --titre "Invitation I-0001"      # le conseil la fusionne ; puis 72 h publique, débattue dans D-0020
 bee invitation accord-gardien I-0001 --utilisateur <gardien>        # un gardien ; libre-service
-bee invitation accord-conseil I-0001 --utilisateur <conseil>        # le conseil fusionne lui-même
-# un humain du conseil envoie lui-même le message exact par le canal, puis :
-bee invitation consigner-envoi I-0001 --utilisateur <conseil>
+bee invitation accord-conseil I-0001 --utilisateur <conseil>        # le feu vert ; le conseil fusionne lui-même
+# (1) le conseil fusionne le feu vert ; (2) un humain du conseil envoie lui-même le message exact par le canal ;
+# (3) puis il le consigne :
+bee invitation consigner-envoi I-0001 --utilisateur <conseil>       # jamais refusé : c'est un fait
 bee invitation consigner-relance I-0001 --utilisateur <conseil>     # une fois, 14 jours après : le même message
 bee invitation consigner-reponse I-0001 --utilisateur <conseil> --valeur acceptee|refusee|sans_reponse
 bee invitation ecarter I-0001 --utilisateur <pseudo> --motif "…"    # avant l'envoi
+bee invitation retirer I-0001 --utilisateur <conseil>               # à la demande de la personne
 ```
+
+**La proposition n'est jamais fusionnée automatiquement** : pendant la phase de lancement, le conseil fusionne
+lui-même chaque invitation proposée (règle que le débat D-0019 pourra assouplir). Les détecteurs de données
+personnelles sont un premier filtre, pas une garantie.
 
 | Geste | Qui | Quand | Fusion |
 | --- | --- | --- | --- |
-| Proposer (`bee inviter`) | Tout membre, en son nom | Numéro suivant, sans trou ; 1 par PR et 2 par utilisateur sur 24 h glissantes (`creations` de `bee.yaml` ; le conseil n'est pas plafonné) | Automatique |
-| Accord d'un gardien | Un gardien **en fonction** (nommé dans `gouvernance/gardiens.yaml`, avec un garant non révoqué), autre que le proposant | `debat_min_heures` (72 h) après la fusion de l'invitation dans `main` ; frein desserré (sauf garant ou gardien) ; aucun incident ouvert | Automatique |
-| Accord du conseil | Le conseil, autre que le gardien qui a donné le sien | Après l'accord d'un gardien ; **amorçage** : tant qu'aucun gardien n'est en fonction, une invitation de garant ou de gardien n'attend que le conseil (72 h après sa publication) ; frein desserré (sauf garant ou gardien) ; aucun incident ouvert | Le conseil |
-| Envoi consigné | Le conseil, dont un humain a envoyé lui-même le message | Après les deux accords ; frein desserré (sauf garant ou gardien) ; `invitations_par_semaine` (3) envois sur 7 jours glissants pour toute la ruche, toutes demandes confondues | Le conseil |
-| Relance consignée | Le conseil : le même message, une fois (`relances_max`) | `delai_relance_jours` (14) après l'envoi ; frein desserré (sauf garant ou gardien) | Le conseil |
-| Réponse consignée | Le conseil | `acceptee` après l'envoi ; `refusee` à tout moment avant la fin ; `sans_reponse` 14 jours après le dernier message. `refusee` et `sans_reponse` inscrivent l'identifiant sur la liste de non-contact dans la même PR | Le conseil |
-| Écarter | Le proposant, un gardien ou le conseil, avec un motif | Avant l'envoi | Automatique |
-| Liste de non-contact | Le conseil, en ajout seul (avec une réponse, ou à la demande de la personne) | Jamais une entrée retirée ni modifiée ; la liste ne se supprime pas | Le conseil |
+| Proposer (`bee inviter`) | Tout membre, en son nom | Numéro suivant, sans trou ; 1 par PR et 2 par utilisateur sur 24 h glissantes (`creations` de `bee.yaml` ; le conseil n'est pas plafonné). Non décidée (sans feu vert) `expiration_jours` (14) après sa proposition, elle **expire** : elle ne retient plus la personne et ne reçoit plus d'accord | Le conseil (phase de lancement) |
+| Accord d'un gardien | Un gardien **en fonction** (nommé dans `gouvernance/gardiens.yaml`, avec un garant non révoqué), autre que le proposant, dont le garant n'est pas le proposant, et qui n'a pas le même garant qu'un proposant gardien | `debat_min_heures` (72 h) après la fusion de l'invitation dans `main` ; frein desserré (sauf garant ou gardien) ; aucun incident ouvert | Automatique |
+| Accord du conseil : **le feu vert** | Le conseil, autre que le gardien qui a donné le sien | Après l'accord d'un gardien ; **amorçage** : tant qu'aucun gardien n'est en fonction, une invitation de garant ou de gardien n'attend que le conseil (72 h après sa publication). Il contrôle tout ce qui précède le contact : frein (sauf garant ou gardien, alors `encadrement_par_semaine_sous_frein`, 1 feu vert d'encadrement par semaine), incident, liste de non-contact, plafond ; il **réserve une place** dans le plafond pour 7 jours | Le conseil |
+| Envoi consigné | Le conseil, dont un humain a envoyé lui-même le message | Après le feu vert. **Jamais refusé** : c'est un fait ; un envoi qui porte les messages de 7 jours glissants au-delà du plafond (envoi tardif, envois concurrents) est consigné et **signalé** (`bee valider` en ⚠, `bee essaim`, le site) | Le conseil |
+| Relance consignée | Le conseil : le même message, une fois (`relances_max`) | `delai_relance_jours` (14) après l'envoi ; frein desserré (sauf garant ou gardien) ; aucun incident ; une place dans le plafond | Le conseil |
+| Réponse consignée | Le conseil | `acceptee` après l'envoi ; `refusee` à tout moment avant la fin ; `sans_reponse` 14 jours après le dernier message. `refusee` et `sans_reponse` inscrivent les empreintes de la personne sur la liste de non-contact dans la même PR ; `refusee` retire son dossier | Le conseil |
+| Écarter | Avant le feu vert : le proposant, un gardien en fonction ou le conseil ; après : le conseil seul ; avec un motif | Avant l'envoi. Une invitation écartée après le feu vert retient la personne (elle est « déjà invitée ») | Automatique |
+| Retirer le dossier | Le conseil, à la demande de la personne | À tout moment, frein et incident compris ; la personne s'inscrit sur la liste (sauf si elle a accepté) | Le conseil |
+| Liste de non-contact | Le conseil, en ajout seul, par empreintes (avec une réponse ou un retrait) | Jamais une entrée retirée ni modifiée, jamais un nom en clair ; la liste ne se supprime pas | Le conseil |
+
+**Le plafond** (`invitations_par_semaine`, 3) compte, sur 7 jours glissants et pour toute la ruche, chaque
+message consigné (envois et relances) et chaque place réservée par un feu vert sans envoi encore consigné.
+L'ordre est donc : le feu vert (contrôlé), l'envoi (par un humain), la consignation (jamais refusée).
 
 Ce que `bee verifier-pr` refuse en plus : un geste signé d'un autre que l'auteur de la PR, ou daté d'une autre
 heure que celle de la PR (2 h de tolérance) ; deux gestes sur une invitation dans une même PR ; tout changement
-de la personne, des faits, du message ou du débat (pour un autre message, on écarte et on propose de nouveau) ;
-une invitation vers une personne de la liste de non-contact, ou déjà invitée (sauf invitation acceptée ou
-écartée), comparée sur sa **clé canonique** (plateforme et alias, casse, espaces, forme Unicode, `@`, `~` ou
-`www.` initial, tout ce qui suit un `/`) ; un message sans la mention mot pour mot, de plus de `message_max`
-caractères (2 000) ; dans tout ce qui sort de la ruche (message, faits, sources, motif d'écart), un caractère
-invisible (catégories Cc, Cf, Co et Cn, sélecteurs de variante, remplissages, braille vide et autres
-caractères ignorables) ou une donnée personnelle (courriel, même déguisé en « (at) » ou « ＠ » ; téléphone,
-même entre parenthèses ou séparé d'espaces insécables, de `/` ou de tirets ; adresse postale) ; un fichier qui
+de la personne, des faits, du message ou du débat (pour un autre message, on écarte et on propose de nouveau),
+hors du retrait de son dossier ; une invitation vers une personne de la liste de non-contact (par son
+identifiant, son canal ou une source), ou déjà invitée (sauf invitation acceptée, expirée, ou écartée avant
+le feu vert), comparée sur sa **clé canonique** (plateforme et alias, casse, espaces, forme Unicode, `@`, `~`
+ou `www.` initial, tout ce qui suit un `/`, page de forge, domaine enregistrable) ; un message sans la mention
+et la phrase de sa demande mot pour mot, de plus de `message_max` caractères (2 000) ; dans tout ce qui sort
+de la ruche (message, faits, sources, motif d'écart), un caractère invisible (catégories Cc, Cf, Co et Cn,
+sélecteurs de variante, remplissages, braille vide et autres caractères ignorables) ou une donnée personnelle
+(courriel, même déguisé en « (at) », « (dot) », « ＠ » ou « 。 » ; téléphone, 9 chiffres au moins, séparés
+ou non de 3 caractères non alphabétiques au plus, `O` pris pour un zéro, après `tel:` ; adresse postale,
+« numéro + type de voie » en français ou en anglais, code postal devant ou après une ville), cherchée aussi
+dans l'adresse entièrement décodée ; les faux positifs sont acceptés ; un fichier qui
 n'est pas exactement celui qu'écrit `bee` ; tout autre fichier dans `invitations/`. **Échec fermé** : si la
 liste de non-contact ou une invitation est illisible sur `main`, aucun geste d'invitation ne passe tant que le
 conseil ne l'a pas réparée (hors du libre-service, en reprenant sa dernière version lisible). Une invitation
@@ -128,12 +189,13 @@ ne se supprime que par le conseil. `bee valider` ne revérifie pas le rôle actu
 
 ## Le frein
 
-Le frein est **serré** dès qu'une de ces conditions tient ; alors aucun accord, aucun envoi, aucune relance
-ne passe pour une invitation à participer ou à faire entrer un projet. **Le frein n'arrête jamais une
+Le frein est **serré** dès qu'une de ces conditions tient ; alors aucun accord ni aucune relance ne passe
+pour une invitation à participer ou à faire entrer un projet (un envoi déjà fait se consigne toujours). **Le frein n'arrête jamais une
 invitation qui renforce l'encadrement** (`demande` : `garant` ou `gardien`) pour une raison d'encadrement
 (pas assez de gardiens ou de garants) : sinon, un gardien sans garant bloquerait précisément l'invitation d'un
 garant. **Un incident ouvert arrête tout**, invitations d'encadrement comprises. Une invitation d'encadrement
-reste soumise à tout le reste (72 h, accords, plafond par semaine, liste de non-contact) ; la demande ne change
+reste soumise à tout le reste (72 h, accords, plafond par semaine, liste de non-contact), et le frein serré
+lui donne un plafond propre : `encadrement_par_semaine_sous_frein` (1) feu vert d'encadrement par semaine ; la demande ne change
 jamais après la proposition, et le gardien et le conseil vérifient que le message demande bien ce que dit
 `demande`. Une proposition reste toujours possible, et une réponse ou un écart se consignent toujours.
 `bee essaim` et le site disent l'état du frein, pourquoi, et **ce qui peut passer aujourd'hui**.
@@ -155,8 +217,8 @@ jamais après la proposition, et le gardien et le conseil vérifient que le mess
   écart (message non décidé, plainte, abus) le lui signale. Un fichier illisible compte comme un incident
   ouvert.
 
-Le conseil fusionne les PR d'envoi une à une, chacune à jour de `main` : la CI revalide alors le plafond par
-semaine sur l'état réel.
+Le conseil fusionne les feux verts un à un, chacun à jour de `main` : la CI revalide alors le plafond sur
+l'état réel. Deux envois concurrents qui le dépassent quand même sont consignés et signalés, jamais refusés.
 
 ## Qui a le droit d'agir hors de la ruche
 

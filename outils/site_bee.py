@@ -702,8 +702,10 @@ def generer(bee, reg, sortie):
                  f"conseil, {frein['invitations_par_semaine']} par semaine au plus ; un refus est définitif. "
                  + (f"<strong>Frein serré</strong> : {e(' ; '.join(frein['raisons']))}." if frein["serre"] else "Frein desserré.")
                  + f" Membres actifs : {frein['membres_actifs']} pour {frein['gardiens_en_fonction']} gardien(s) en fonction ; "
-                 f"invitations envoyées sur 7 jours : {frein['envois_7_jours']}.</p>"
-                 f"<p><strong>Ce qui peut passer aujourd'hui</strong> : {e(frein['ce_qui_passe'])}.</p>")
+                 f"messages consignés sur 7 jours : {frein['envois_7_jours']} ; places prises (messages et feux verts) : "
+                 f"{frein['places_prises_7_jours']} sur {frein['invitations_par_semaine']}.</p>"
+                 f"<p><strong>Ce qui peut passer aujourd'hui</strong> : {e(frein['ce_qui_passe'])}.</p>"
+                 + "".join(f"<p class='doux petit'>⚠ {e(a)}</p>" for a in frein["alertes"]))
     corps.append(tableau([("Invitation", False), ("Personne", False), ("Demande", False), ("Statut", False), ("Attend", False)],
                          [f"<tr><td><a class='id' href='{e(depot)}/blob/main/invitations/{e(str(x['id']))}.yaml'>{e(str(x['id']))}</a></td>"
                           f"<td><code>{e(str(x['identifiant']))}</code></td><td>{e(str(x['demande']))}</td><td>{e(str(x['statut']))}</td>"

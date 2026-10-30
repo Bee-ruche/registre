@@ -79,12 +79,14 @@ creations:
 # Croissance et contacts extérieurs (R13, commandement 13 ; docs/croissance.md). bee inviter et bee invitation les appliquent,
 # bee verifier-pr les contrôle ; aucun code n'envoie de message : un humain du conseil envoie lui-même chaque message.
 croissance:
-  invitations_par_semaine: 3        # envois consignés sur 7 jours glissants, pour toute la ruche
+  invitations_par_semaine: 3        # messages (envois, relances) et places réservées par les feux verts, sur 7 jours glissants
   relances_max: 1                   # 0 ou 1 ; puis plus rien
   delai_relance_jours: 14           # avant la relance ; et avant de consigner « sans réponse » après le dernier message
   debat_min_heures: 72              # publique et débattue dans l'agora, avant l'accord d'un gardien puis du conseil
   membres_actifs_par_gardien_max: 20  # au-delà, frein : ni accord, ni envoi, ni relance (sauf pour un garant ou un gardien)
   message_max: 2000                 # caractères du message, mention de R13 comprise
+  encadrement_par_semaine_sous_frein: 1  # frein serré : feux verts d'invitations de garant ou de gardien sur 7 jours glissants
+  expiration_jours: 14              # une invitation non décidée expire ; elle ne retient plus la personne
   branche_dormante_jours: 30        # sans activité, une branche dort (rien n'est supprimé)
 
 # Comptes automatiques autorisés à écrire des verdicts et à libérer les réservations expirées.
