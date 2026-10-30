@@ -12,6 +12,7 @@
     "auteur": {"type": "string", "minLength": 1},
     "pr": {"type": "string", "pattern": "^https://github\\.com/[A-Za-z0-9-]+/[A-Za-z0-9_.-]+/pull/[0-9]+$"},
     "resume": {"type": "string"},
+    "resume_sha": {"type": "string", "pattern": "^[0-9a-f]{7,40}$", "description": "Commit jugé (verdict.sha) pour lequel l'auteur a actualisé son résumé (bee soumettre --mettre-a-jour) : une mise à jour par commit jugé"},
     "statut": {"enum": ["en_relecture", "integree", "refusee", "annulee", "ecartee"]},
     "soumise_le": {"type": "string"},
     "engage_depuis": {"type": "string", "description": "Début de l'engagement de l'auteur sur la tâche (sa réservation ou son inscription en parallèle), contrôlé à la soumission ; R3 s'en sert dans les courses"},
@@ -28,6 +29,7 @@
         "ecart_declare": {"type": ["number", "null"]},
         "amorcage": {"type": "boolean"},
         "sha": {"type": "string", "pattern": "^[0-9a-f]{7,40}$"},
+        "arbre": {"type": "string", "pattern": "^[0-9a-f]{7,40}$", "description": "Arbre git du commit jugé (verdicts.yml, API GitHub) : un commit amendé a le même contenu"},
         "execution": {"type": "string", "pattern": "^https://"},
         "degradations": {"type": "object", "additionalProperties": {"type": ["number", "null"]}},
         "instructions": {"type": "object", "additionalProperties": {"type": "object", "additionalProperties": false,
@@ -55,13 +57,29 @@
         "required": ["relecteur", "avis", "motif", "le"],
         "properties": {
           "relecteur": {"type": "string", "minLength": 1},
-          "avis": {"enum": ["favorable", "defavorable"]},
+          "avis": {"enum": ["favorable", "defavorable", "abstention"], "description": "abstention : motivée (diff hors d'atteinte, conflit d'intérêts, approche seulement) ; ni pour ni contre (R3, score), aucun point"},
           "motif": {"type": "string", "minLength": 10},
           "le": {"type": "string"},
           "defaut_signale": {"type": "boolean"},
           "defaut_confirme": {"type": "boolean"},
           "confirme_par": {"type": "string", "minLength": 1, "description": "Qui a confirmé le défaut : la CI, le conseil, un gardien ou un Confirmé, jamais le relecteur qui l'a signalé"},
-          "sha": {"type": "string", "pattern": "^[0-9a-f]{7,40}$"}
+          "arbre": {"type": "string", "pattern": "^[0-9a-f]{7,40}$", "description": "Arbre du commit jugé relu (verdict.arbre au moment de la relecture), s'il est connu"},
+          "sha": {"type": "string", "pattern": "^[0-9a-f]{7,40}$", "description": "Commit jugé relu (verdict.sha au moment de la relecture) ; absent avant le verdict : la relecture ne compte pas pour R3. Une relecture par relecteur et par commit"}
+        }
+      }
+    },
+    "levees": {
+      "type": "array",
+      "description": "Recours du conseil (ruche-0012) : les relectures de ce relecteur publiées avant la levée ne pèsent plus sur cette contribution, jusqu'à ce qu'il relise. Écrit par le conseil seul, dans une PR relue",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["relecteur", "motif", "par", "le"],
+        "properties": {
+          "relecteur": {"type": "string", "minLength": 1},
+          "motif": {"type": "string", "minLength": 10},
+          "par": {"type": "string", "minLength": 1},
+          "le": {"type": "string"}
         }
       }
     },

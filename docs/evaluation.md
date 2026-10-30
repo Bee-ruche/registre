@@ -34,7 +34,7 @@ S = G × P × C / (1 + L/100) × V
 | --- | --- | --- |
 | G | Gain relatif mesuré par la CI (0,03 pour 3 %) | `verdict.gain` |
 | P | Portée : 1 pour le chemin principal, 0,3 pour une option rare | `portee` de la tâche |
-| C | Confiance : relectures favorables ÷ 3, plafonnée à 1 ; comme pour R3, celles d'un Nouveau ne comptent pas ([reputation.md](reputation.md)) | `relectures` |
+| C | Confiance : relectures favorables qui comptent pour R3 (la plus récente de chaque relecteur, sur le commit jugé, ni Nouveau ni abstention) ÷ 3, plafonnée à 1 ([contributions.md](contributions.md#relire-par-commit)) | `relectures` |
 | L | Lignes modifiées, hors tests et bancs | `verdict.lignes_modifiees` |
 | V | Vote : 1 + 0,5 × moyenne pondérée des votes (−1, 0, +1), donc entre 0,5 et 1,5 ; 1 sans vote | `votes/<contribution>/` |
 

@@ -31,6 +31,11 @@ combien de relectures de Nouveaux il a laissées de côté.
 | Relecture favorable d'une contribution intégrée puis annulée | −1 |
 | Relecture d'une contribution annulée sans avoir été intégrée (PR fermée sans fusion, marque `jamais_integree`) | 0 |
 | Relecture d'une contribution écartée au profit d'une concurrente (R3), favorable, défavorable ou défaut confirmé | 0 |
+| Abstention (diff hors d'atteinte, conflit d'intérêts) | 0 |
+
+Sur une contribution, un relecteur gagne ou perd au plus une fois, d'après sa relecture la plus récente, et seulement si
+elle porte sur le commit où la contribution a été décidée (celui du verdict) : sans commit, ou sur un autre commit, R3 ne
+l'a pas comptée, elle vaut 0 ; +2 une fois si l'un de ses défauts est confirmé ([contributions.md](contributions.md#relire-par-commit)).
 
 Une contribution annulée ne compte plus pour son auteur.
 
