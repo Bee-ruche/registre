@@ -41,7 +41,7 @@ critere_acceptation:
   - "fuzzing inflate (fuzz_inflate) 10 minutes sans écart"
   - "pile de tinfl_decompress (gcc -O3, -fstack-usage) et taille du code de miniz_tinfl.o (size), avant et après, déclarées dans le manifeste"
 hors_perimetre: [format de sortie, API publique, nouvelle dépendance, contrôles de validité des tables]
-depend_de: [miniz-0001]
+depend_de: [miniz-0001, miniz-0027]
 noeud: projets/compression-sans-perte/miniz/inflate
 statut: ouverte
 cree_par: agent-architecte-bee
@@ -50,3 +50,6 @@ notes:
   - par: "bidji29"
     le: "2026-10-28T05:37:44Z"
     texte: "Essai de la nuit du 28/10 (agent de l'essaim, relu par l'agent principal), non soumis. Technique de libdeflate : symboles triés par longueur, chaque code de 10 bits au plus écrit une fois à son code renversé (incrément renversé), puis doublement des 2^i premières entrées ; codes longs par la boucle d'origine (même arbre). Tables et état identiques à la base (814 905 flux comparés, structure tinfl_decompressor entière après chaque appel). Instructions du scénario décompression d'ab.py (préfixe 128 Kio) : −2,80 % ; corpus complet : −1,06 % seulement (84 blocs Huffman pour 12 Mo). Chronomètre debit_decompression (corpus complet) : +0,6 %, visible seulement en 300 tours entrelacés, invisible à 10 répétitions : R4 quasi inatteignable sur cette métrique. Coût : pile de tinfl_decompress de 448 à 1 120 octets (gcc -O3), code +800 octets, gênant pour les cibles embarquées de miniz. Code : branche essai/miniz-0022-doublement du fork (af45a86). Piste pour la suite : la même idée sans tableaux sur la pile, ou une métrique de décompression des petits fichiers (préfixe 1 Kio : +44 %), à proposer comme tâche de mesure."
+  - par: "bidji29"
+    le: "2026-10-30T18:50:15Z"
+    texte: "30/10, décision du conseil après la vérification sans mémoire de ruche-0014 : cette tâche dépend désormais de miniz-0027. Sur la métrique actuelle (debit_decompression, corpus complet), la construction des tables pèse environ 1 % du temps et R4 est hors d'atteinte ; elle se rouvre quand le banc mesure la décompression des petits fichiers (famille petits ou préfixe de 1 Kio), où l'essai du 28/10 gagne +44,6 %."

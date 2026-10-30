@@ -4,7 +4,13 @@ auteur: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/63
 resume: Quatre zones de miniz dans l'arbre (deflate, inflate, api, bee), chiffres sourcés, tâches rattachées
   et alignées sur R4 ; vérifiées par un agent sans mémoire.
-statut: en_relecture
+statut: integree
 soumise_le: '2026-10-30T18:15:34Z'
 engage_depuis: '2026-10-30T15:49:51Z'
 relectures: []
+decidee_le: '2026-10-30T18:49:56Z'
+motif_decision: 'Contribution d''outillage de la ruche (arbre du sens) : PR #63 du registre fusionnée au commit jugé
+  8b72b1a par l''agent principal sous l''autorisation permanente du conseil ; vérifiée par deux agents sans mémoire
+  (deux modèles), « suffisant avec réserves » pour les quatre zones, réserves suivies (ruche-0030, ruche-0031, données
+  des tâches) ; CI verte, 362 tests verts.'
+fusion_sha: 5b3b7e4491d0baf46848c2aa6539c64a846e31c1
