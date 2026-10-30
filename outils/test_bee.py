@@ -11,6 +11,8 @@ import sys
 import tempfile
 import unittest
 
+import yaml
+
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import bee  # noqa: E402
 
@@ -287,6 +289,30 @@ class TestRegistre(BaseTest):
         # G 0,03 × P 1 × C 1/3 / (1 + 10/100) × V 1 (chloé est Nouvelle : poids 0)
         self.assertAlmostEqual(score["S"], 0.03 / 3 / 1.1)
         self.assertEqual(score["V"], 1.0)
+
+    def test_un_manifeste_mal_forme_ne_fait_ni_perdre_le_verdict_ni_un_ecart_non_fini(self):
+        """Revue adverse du tour 2 : mesures en liste, valeur en texte, nombre démesuré ou NaN faisaient planter
+        enregistrer-verdict (verdict perdu) ou inscrivaient un écart NaN qu'aucune alerte ne voyait."""
+        cid = self.soumettre_0099()
+        verdict = self.dossier / "verdict.json"
+        verdict.write_text(json.dumps({"ci": "verte", "gain": 0.03, "au_dela_du_bruit": True, "lignes_modifiees": 10}), encoding="utf-8")
+        base = yaml.safe_load(MANIFESTE_REMPLI)
+        cas = {"mesures en liste": {**base, "mesures": [1, 2]},
+               "avant en texte": {**base, "mesures": {"avant": {"debit_compression_n6": "abc"}, "apres": {"debit_compression_n6": 55.0}}},
+               "après démesuré": {**base, "mesures": {"avant": {"debit_compression_n6": 1}, "apres": {"debit_compression_n6": 10 ** 400}}},
+               "après NaN": {**base, "mesures": {"avant": {"debit_compression_n6": 50.0}, "apres": {"debit_compression_n6": float("nan")}}},
+               "avant nul": {**base, "mesures": {"avant": {"debit_compression_n6": 0}, "apres": {"debit_compression_n6": 55.0}}}}
+        manifeste = self.dossier / "manifeste.yaml"
+        for nom, contenu in cas.items():
+            with self.subTest(cas=nom):
+                manifeste.write_text(yaml.safe_dump(contenu, allow_unicode=True), encoding="utf-8")
+                code, texte = self.bee("enregistrer-verdict", cid, "--verdict", str(verdict), "--manifeste", str(manifeste),
+                                       "--sha", "abc1234")
+                self.assertEqual(code, 0, texte)
+                enr = bee.lire_yaml(self.dossier / f"contributions/miniz/{cid}.yaml")
+                self.assertEqual(enr["verdict"]["ci"], "verte")
+                self.assertIsNone(enr["verdict"].get("ecart_declare"))
+        self.valide()
 
     def regler_porte_humaine(self, active):
         chemin = self.dossier / "bee.yaml"
@@ -1226,7 +1252,7 @@ class TestArbre(BaseTest):
     def test_deja_lu_ne_reimprime_ni_la_racine_ni_le_role(self):
         """Tour 2 : après bee contexte --role, bee contexte <tâche> réimprimait 61 lignes déjà lues."""
         _, complet = self.bee("contexte", "miniz-0099")
-        code, abrege = self.bee("contexte", "miniz-0099", "--deja-lu")
+        code, abrege = self.bee("contexte", "miniz-0099", "--role", "optimiser", "--deja-lu")
         self.assertEqual(code, 0, abrege)
         self.assertIn("=== nœud racine ===", complet)
         self.assertNotIn("=== nœud racine ===", abrege)
@@ -1237,11 +1263,28 @@ class TestArbre(BaseTest):
         self.assertIn("=== nœud projets/compression-sans-perte/miniz ===", abrege, "les paliers de projet restent")
         self.assertLess(len(abrege), len(complet))
         self.assertIn("--deja-lu va avec une tâche", self.bee("contexte", "--deja-lu")[1])
-        # Une racine sans la consigne des failles (réécrite par la ruche) s'imprime en entier : rien ne la perd en silence.
+        # Sans --role, le rôle déduit du type de la tâche n'a peut-être jamais été lu : seule la racine est sautée (revue
+        # adverse du tour 2, E4).
+        sans_role = self.bee("contexte", "miniz-0099", "--deja-lu")[1]
+        self.assertIn("=== nœud roles/optimiser ===", sans_role)
+        self.assertIn("Déjà lus (--deja-lu), non réimprimés : racine ;", sans_role)
+        # Une racine dont la consigne des failles est réécrite (suite non indentée, E1) garde le rappel entier ; coupée en
+        # deux puces (E2) ou absente, elle s'imprime en entier : rien ne la perd en silence.
         racine = self.dossier / "arbre/SENS.md"
-        racine.write_text(racine.read_text(encoding="utf-8").replace("Une faille (plantage", "Un défaut (plantage"),
-                          encoding="utf-8")
-        self.assertIn("=== nœud racine ===", self.bee("contexte", "miniz-0099", "--deja-lu")[1])
+        origine = racine.read_text(encoding="utf-8")
+        suite = "même en passant ;\n  signalement privé"
+        self.assertIn(suite, origine)
+        for nom, texte, entiere in (
+                ("suite non indentée", origine.replace(suite, "même en passant ;\nsignalement privé"), False),
+                ("deux puces", origine.replace(suite, "même en passant.\n- Signalement privé"), True),
+                ("absente", origine.replace("Une faille (plantage", "Un défaut (plantage"), True)):
+            with self.subTest(racine=nom):
+                racine.write_text(texte, encoding="utf-8")
+                sortie = self.bee("contexte", "miniz-0099", "--deja-lu")[1]
+                self.assertEqual("=== nœud racine ===" in sortie, entiere, sortie[:600])
+                if not entiere:
+                    self.assertIn("ne contacte jamais le projet d'origine", " ".join(sortie.replace("\n# ", "\n").split()))
+        racine.write_text(origine, encoding="utf-8")
 
     def test_I1_voir_et_contexte_impriment_les_donnees_relues(self):
         """Ni commentaire YAML, ni mise en forme du fichier : la tâche relue, encadrée, chaque ligne précédée de « | »."""
@@ -3321,6 +3364,29 @@ class TestRevueAdverse(BaseParallele):
         self.assertEqual(self.enr(c1)["verdict"]["ecart_declare"], 0.07)
         self.valide()
 
+    def test_un_manifeste_hostile_n_ecrit_aucune_commande_de_workflow(self):
+        """Revue adverse du tour 2 : la tâche déclarée par le manifeste (donnée du fork) était imprimée telle quelle ; un
+        saut de ligne suivi de « :: » devenait une commande de workflow GitHub (::add-mask::, ::error::…)."""
+        c1 = self.soumettre_0099("alice")
+        verdict = {"ci": "verte", "gain": 0.03, "au_dela_du_bruit": True, "lignes_modifiees": 10, "instructions": INSTRUCTIONS_N6}
+        hostile = MANIFESTE_REMPLI.replace("tache: miniz-0099", 'tache: "x\\n::add-mask::verte\\n::error::faux"')
+        etats = {PR_MINIZ + "99007": {"state": "OPEN", "head": "abc1234", "auteur": "alice", "verdict": verdict},
+                 "contenus": {"abc1234": {"manifestes/miniz-0099.yaml": hostile}}}
+        sortie, _, _ = self.etape("Récupérer les verdicts", etats, flux="verdicts.yml")
+        self.assertFalse([l for l in sortie.splitlines() if l.lstrip().startswith("::")], sortie)
+        self.assertIn("manifeste ignoré (tâche illisible, pas miniz-0099)", sortie)
+        self.assertEqual(self.enr(c1)["verdict"]["ci"], "verte", "le verdict, lui, est enregistré")
+
+    def test_le_workflow_derive_la_tache_comme_bee(self):
+        """Revue adverse du tour 2 : le sed de verdicts.yml doit reconnaître les projets à tiret, comme ID_CONTRIBUTION."""
+        flux = (RACINE / ".github/workflows/verdicts.yml").read_text(encoding="utf-8")
+        ligne = next(l for l in flux.splitlines() if "tache=$(printf" in l)
+        commande = ligne.split("tache=", 1)[1].split("  #")[0].strip()[2:-1]  # le contenu de $( … )
+        for cid in ("miniz-0018-c1", "zlib-ng-0001-c12", "a-0001-c1;id", "../miniz-0018-c1", "miniz-0018"):
+            attendu = bee.ID_CONTRIBUTION.match(cid)
+            sortie = subprocess.run(["bash", "-c", commande], env={**os.environ, "id": cid}, capture_output=True, text=True).stdout
+            self.assertEqual(sortie, attendu["tache"] if attendu else "", cid)
+
     def test_une_contribution_de_la_ruche_n_arrete_pas_la_collecte_des_verdicts(self):
         """Une contribution dont la PR est sur le registre lui-même (projet ruche) n'a pas de CI de fork : la collecte la
         passe, sans appel à GitHub, et continue pour les autres (incident du 30/10 : HTTP 404 sur bee-ci.yml)."""
@@ -4746,6 +4812,53 @@ class TestPullRequestsAgora(BaseAgora):
         self.commit()
         self.libre_service("bruno", "synthese")
 
+    def fusionner_dans_main(self, nom):
+        git(self.dossier, "switch", "-q", "main")
+        git(self.dossier, "merge", "-q", "--ff-only", nom)
+
+    def test_seconde_releve_dans_un_debat_importe(self):
+        """Revue adverse du tour 2 : le conseil importateur, hors du tour de rôle, comptait encore comme « un autre
+        participant » pour la relève ; chloe ne pouvait relever bruno qu'une fois."""
+        self.main_avec_debat_sans_rapporteur()
+        self.argumenter("bruno", "contre", "Un conseil d'un seul humain est un point de défaillance unique.")
+        self.commit()
+        self.fusionner_dans_main("pr")
+        self.branche("arg1")
+        self.a("2026-10-29T12:20:00Z")
+        self.argumenter("chloe", "pour", "Un suppléant désigné à l'avance suffit.")
+        self.commit()
+        self.fusionner_dans_main("arg1")
+        self.branche("releve1")
+        self.a("2026-11-01T12:30:00Z")
+        self.ok("debattre", "synthetiser", "D-0001", "--utilisateur", "chloe", "--texte", "Relève : deux positions.")
+        self.commit()
+        self.libre_service("chloe", "synthese")
+        self.fusionner_dans_main("releve1")
+        self.assertEqual(self.debat()["rapporteur"], "bruno")
+        self.branche("arg2")
+        self.a("2026-11-01T13:00:00Z")
+        self.argumenter("chloe", "fait", "R12 prévoit la relève.", "--source", "REGLES.md")
+        self.commit()
+        self.fusionner_dans_main("arg2")
+        self.branche("releve2")
+        self.a("2026-11-04T13:30:00Z")
+        self.ok("debattre", "synthetiser", "D-0001", "--utilisateur", "chloe", "--texte", "Relève 2 : rien de neuf de bruno.")
+        self.commit()
+        self.libre_service("chloe", "synthese")
+
+    def test_un_conseil_qui_a_tenu_la_plume_reste_dans_le_tour(self):
+        """Revue adverse du tour 2 : un conseil qui ouvre un débat à la main et en publie la synthèse y a pris part."""
+        self.branche()
+        self.a("2026-10-29T12:00:00Z")
+        self.ok("debattre", "ouvrir", "--utilisateur", "bidji29", "--question", "Une question ouverte à la main par le conseil ?")
+        self.a("2026-10-29T12:10:00Z")
+        self.argumenter("alice", "pour", "Un premier argument.")
+        self.a("2026-10-29T12:20:00Z")
+        self.ok("debattre", "synthetiser", "D-0001", "--utilisateur", "bidji29", "--texte", "Synthèse du conseil.")
+        self.a("2026-10-29T12:30:00Z")
+        texte = self.ok("debattre", "synthetiser", "D-0001", "--utilisateur", "alice", "--texte", "Synthèse 2.")
+        self.assertIn("rapporteur suivant : bidji29", texte)
+
     def test_refus_prise_de_plume_dans_un_debat_qui_a_un_rapporteur(self):
         self.main_avec_debat()  # alice, qui a ouvert, est rapporteure
         self.a("2026-10-29T12:30:00Z")
@@ -5345,6 +5458,48 @@ class TestRevueAdverseRuche0011(BaseRepetitionGenerale):
         self.commit()
         self.fusionner("soumission")
         return "miniz-0099-c1"
+
+    def test_tour2_champs_libres_bornes_resume_mesure_profil(self):
+        """Revue adverse du tour 2 : le résumé d'une soumission, la description de la machine d'une mesure et les catégories
+        d'un profil passaient en libre-service, longs de milliers de caractères et avec U+202E."""
+        cid = self.contribution_d_alice_sur_main()
+        maintenant = os.environ["BEE_MAINTENANT"]
+        mesure = {"contribution": cid, "soumise_par": "gaspard", "le": maintenant, "base": "2948eeb", "candidat": "839b676",
+                  "config": {"architecture": "arm64"}, "metriques": {"debit_compression_n6": {"gain": 0.05, "au_dela_du_bruit": True}}}
+        for nom, hostile, attendu in (("outil", {"outil": "bee " + "x" * 300}, "au plus 200"),
+                                      ("processeur", {"config": {"architecture": "arm64", "processeur": "Xeon\u200b"}}, "U+200B"),
+                                      ("motif", {"motif": "Mesure.\u202e"}, "caractère invisible")):
+            with self.subTest(champ=nom):
+                self.branche(f"mesure-{nom}")
+                bee.ecrire_yaml(self.dossier / f"mesures/{cid}/gaspard.yaml", {**mesure, **hostile})
+                self.commit()
+                self.refusee("gaspard", attendu)
+        self.branche("mesure-honnete")
+        bee.ecrire_yaml(self.dossier / f"mesures/{cid}/gaspard.yaml", {**mesure, "outil": "bee 0.1.0"})
+        self.commit()
+        self.libre_service("gaspard", "mesure")
+        for nom, categories, attendu in (("trop", [f"c{i}" for i in range(21)], "20 catégories préférées au plus"),
+                                         ("longue", ["x" * 300], "au plus 200"), ("cachée", ["miniz\u202e"], "U+202E")):
+            with self.subTest(profil=nom):
+                self.branche(f"profil-{nom}")
+                chemin = self.dossier / "membres/gaspard.yaml"
+                fiche = bee.lire_yaml(chemin)
+                bee.ecrire_yaml(chemin, {**fiche, "categories_preferees": categories})
+                self.commit()
+                self.refusee("gaspard", attendu)
+        # Le résumé d'une soumission : refusé par bee soumettre, et par verifier-pr s'il est écrit à la main.
+        self.branche("resume")
+        self.ok("prendre", "miniz-9001", "--utilisateur", "gaspard")
+        self.commit()
+        self.fusionner("resume")
+        self.branche("resume-hostile")
+        self.assertIn("caractère invisible", self.bee("soumettre", "miniz-9001", "--utilisateur", "gaspard", "--pr",
+                                                      "https://github.com/Bee-ruche/minizBee/pull/77003", "--resume", "Essai.\u202e")[1])
+        self.ok("soumettre", "miniz-9001", "--utilisateur", "gaspard", "--pr", "https://github.com/Bee-ruche/minizBee/pull/77003")
+        chemin = self.dossier / "contributions/miniz/miniz-9001-c1.yaml"
+        bee.ecrire_yaml(chemin, {**bee.lire_yaml(chemin), "resume": "Essai. " + "w" * 600})
+        self.commit()
+        self.refusee("gaspard", "resume : 607 caractères, au plus 500")
 
     def test_m1_vote_relecture_et_mesure_dates_de_la_pr(self):
         cid = self.contribution_d_alice_sur_main()
