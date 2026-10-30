@@ -620,11 +620,12 @@ def dernieres_relectures(enr):
     return {r.get("relecteur"): r for r in enr.get("relectures") or [] if isinstance(r, dict)}
 
 
-def relecture_refusee(precedentes, relecture):
+def relecture_refusee(precedentes, relecture, levee_de=lambda r: False):
     """Une relecture de plus (ruche-0012, revue adverse) : elle porte sur un autre commit que la plus récente de son relecteur
-    (X, Y, puis X redevient possible ; jamais deux de suite sur le même) ; sans commit, seulement en première. None si elle
-    est recevable, sinon la raison."""
-    siennes = [r for r in precedentes if isinstance(r, dict) and r.get("relecteur") == relecture.get("relecteur")]
+    (X, Y, puis X redevient possible ; jamais deux de suite sur le même) ; sans commit, seulement en première. Une relecture
+    levée par le conseil (levee_de) n'est plus « la plus récente » : après la levée, il peut relire le commit jugé. None si
+    elle est recevable, sinon la raison."""
+    siennes = [r for r in precedentes if isinstance(r, dict) and r.get("relecteur") == relecture.get("relecteur") and not levee_de(r)]
     if not siennes:
         return None
     if not relecture.get("sha"):
@@ -1290,94 +1291,87 @@ def relectures_qui_comptent(reg, enr, niveaux):
     return len(releve["favorables"]) + len(releve["defavorables"])
 
 
+def fil_de(reg, enr):
+    """Le fil d'une contribution (revue adverse de ruche-0012) : les contributions du même auteur sur la même tâche, closes
+    comprises, elle incluse. Un refus ou un défaut posé dans le fil le suit, quel que soit le commit : re-soumettre, ou
+    amender (même arbre, autre sha), ne l'efface pas ; la copie d'un autre auteur n'a pas le même fil. [(id, enregistrement)]."""
+    fil = [(c, e) for c, (_, e) in reg.enregistrements.items()
+           if isinstance(e, dict) and e.get("tache") == enr.get("tache") and e.get("auteur") == enr.get("auteur") and c != enr.get("id")]
+    return fil + [(enr.get("id"), enr)]
+
+
 def releve_relectures(reg, enr, niveaux):
-    """Ce que pèsent les relectures (R3, score, essaim ; ruche-0012 après revue adverse), relecteur par relecteur, d'après sa
-    relecture la plus récente (ajout seul : l'ordre de la liste), une fois écartés les avis qu'un concurrent ne peut pas donner
-    (avis_recevable) et ceux de l'auteur. « Sur le commit jugé » : son sha est celui du verdict.
-    - favorable : sa plus récente est favorable, sur le commit jugé ;
-    - défavorable (balance de R3) : sa plus récente est défavorable, sur le commit jugé ;
-    - bloquante (gardien, conseil, Confirmé) : sa plus récente est défavorable, quel que soit son commit (pousser un commit ne
-      la fait pas tomber), ou sa plus récente relecture du commit jugé l'est (retour à un commit qu'il a refusé) ; elle tient
-      jusqu'à ce qu'il relise ;
-    - défaut confirmé : bloque tant qu'il est sur la plus récente relecture de son relecteur, ou sur sa plus récente relecture
-      du commit jugé ; une relecture plus récente du même relecteur (favorable ou abstention) le lève ;
+    """Ce que pèsent les relectures (R3, score, essaim ; ruche-0012 après revues adverses), relecteur par relecteur, d'après sa
+    relecture la plus récente, dans le fil de la contribution (fil_de, ordonné par date `le`), une fois écartées celles de
+    l'auteur et celles qu'une levée du conseil sur cette contribution neutralise. Une relecture la plus récente non recevable
+    (avis qu'un concurrent ne peut pas donner) ne compte ni pour ni contre et ne fait jamais revenir une plus ancienne.
+    « Sur le commit jugé » : son sha est celui du verdict.
+    - favorable : sa plus récente est favorable, sur le commit jugé, et sur cette contribution même ;
+    - défavorable (balance de R3) : sa plus récente relecture du commit jugé, si elle est défavorable ;
+    - bloquante (gardien, conseil, Confirmé) : sa plus récente est défavorable, quel que soit son commit, ou sa plus récente
+      relecture du commit jugé l'est ; elle tient jusqu'à ce qu'il relise ;
+    - défaut confirmé : bloque tant qu'il est sur sa plus récente relecture, ou sur sa plus récente du commit jugé ;
     - abstention : sa plus récente ne pèse rien, n'ouvre aucune porte, n'abaisse aucun seuil.
-    Un Nouveau ne compte pas, sauf par un défaut confirmé."""
+    Un Nouveau ne compte pas, sauf par un défaut confirmé. « fil » : [(relecteur, contribution, « refus » ou « défaut
+    confirmé »)] quand ce qui bloque vient d'une autre contribution du fil."""
     verdict = enr.get("verdict") if isinstance(enr.get("verdict"), dict) else {}
     sha = verdict.get("sha")
     concurrents, privilegies = concurrents_de(reg, enr), reg.privilegies()
+    origine = {}
+    toutes = []
+    for cid, e in fil_de(reg, enr):
+        for rang, r in enumerate(e.get("relectures") or []):
+            if isinstance(r, dict) and r.get("relecteur") != enr.get("auteur") and not levee(reg, enr, r):
+                origine[id(r)] = cid
+                toutes.append(((_instant_ou_rien(r.get("le")) or PASSE, cid == enr.get("id"), rang), r))
     par = defaultdict(list)
-    for r in enr.get("relectures") or []:
-        if isinstance(r, dict) and r.get("relecteur") != enr.get("auteur") and not levee(enr, r):
-            par[r.get("relecteur")].append(r)
+    for _, r in sorted(toutes, key=lambda x: x[0]):
+        par[r.get("relecteur")].append(r)
     sur = lambda r: bool(verdict) and r.get("sha") == sha  # noqa: E731
+    ici = lambda r: origine.get(id(r)) == enr.get("id")  # noqa: E731
     recevable = lambda r: r if r and avis_recevable(r, concurrents) else None  # noqa: E731
     releve = {k: [] for k in ("favorables", "defavorables", "bloquantes", "defauts", "abstentions", "perimees", "sans_commit",
-                              "de_nouveaux")}
+                              "de_nouveaux", "fil")}
     for p, siennes in par.items():
-        # La plus récente d'abord, puis sa recevabilité : non recevable (avis qu'un concurrent ne peut pas donner), elle ne
-        # compte ni pour ni contre et ne fait jamais revenir une plus ancienne (revue adverse, R3 et R5) ; de même pour la
-        # plus récente relecture du commit jugé.
         derniere = recevable(siennes[-1])
         du_commit = recevable(next((r for r in reversed(siennes) if sur(r)), None))
-        if any(r.get("defaut_confirme") for r in (derniere, du_commit) if r):
+        privilegie = p in privilegies or niveau_de(niveaux, p) == "Confirmé"
+        for r in (derniere, du_commit):
+            if r and (r.get("defaut_confirme") or (privilegie and r.get("avis") == "defavorable")) and not ici(r):
+                releve["fil"].append((p, origine[id(r)], "défaut confirmé" if r.get("defaut_confirme") else "refus"))
+                break
+        if any(r.get("defaut_confirme") and ici(r) for r in (derniere, du_commit) if r):
             releve["defauts"].append(p)
         if not relecture_comptee(reg, niveaux, p):
-            if derniere and sur(derniere) and derniere.get("avis") != "abstention":
+            if derniere and ici(derniere) and sur(derniere) and derniere.get("avis") != "abstention":
                 releve["de_nouveaux"].append(derniere)
             continue
-        if ((p in privilegies or niveau_de(niveaux, p) == "Confirmé")
-                and any(r.get("avis") == "defavorable" for r in (derniere, du_commit) if r)):
+        if privilegie and any(r.get("avis") == "defavorable" and ici(r) for r in (derniere, du_commit) if r):
             releve["bloquantes"].append(p)
         elif derniere and derniere.get("avis") == "abstention":
             releve["abstentions"].append(derniere)
-        elif derniere and not sur(derniere):
+        elif derniere and not (sur(derniere) and ici(derniere)):
             releve["perimees" if derniere.get("sha") else "sans_commit"].append(derniere)
-        if derniere and sur(derniere) and derniere.get("avis") == "favorable":
+        if derniere and sur(derniere) and ici(derniere) and derniere.get("avis") == "favorable":
             releve["favorables"].append(derniere)
-        # Balance de R3 : sa plus récente relecture du commit jugé, si elle est défavorable, même si une plus récente porte
-        # sur un autre commit (retour à un commit qu'il a refusé, revue adverse R1).
+        # Balance de R3 : sa plus récente relecture du commit jugé, si elle est défavorable, même s'il a relu depuis un autre
+        # commit (retour à un commit qu'il a refusé).
         if du_commit and du_commit.get("avis") == "defavorable":
             releve["defavorables"].append(du_commit)
     return releve
 
 
-def levee(enr, relecture):
+def levee(reg, enr, relecture):
     """Recours du conseil (levees : relecteur, motif, par, le) : une relecture de ce relecteur publiée avant la levée ne pèse
-    plus sur cette contribution ; ce qu'il relit ensuite compte de nouveau."""
-    moment = _instant_ou_rien(relecture.get("le"))
-    return any(isinstance(l, dict) and l.get("relecteur") == relecture.get("relecteur") and moment is not None
-               and (_instant_ou_rien(l.get("le")) or PASSE) >= moment for l in enr.get("levees") or [])
-
-
-def refus_sur_ce_commit(reg, enr, niveaux):
-    """R3 (revue adverse, R2) : un refus (défavorable d'un gardien, du conseil ou d'un Confirmé) et un défaut confirmé sont
-    attachés à un commit d'une tâche. Re-soumettre ce commit sous une autre contribution ne les efface pas : pour chaque
-    relecteur, sa plus récente relecture (par date) du commit jugé, dans toutes les contributions de la tâche (closes
-    comprises), si elle est dans une autre contribution, recevable et bloquante, bloque celle-ci. Il la lève en relisant ce
-    commit, ou le conseil par une levée sur cette contribution. [(relecteur, contribution, « refus » ou « défaut confirmé »)]."""
-    verdict = enr.get("verdict") if isinstance(enr.get("verdict"), dict) else {}
-    sha = verdict.get("sha")
-    if not sha:
-        return []
-    concurrents, privilegies = concurrents_de(reg, enr), reg.privilegies()
-    bloquant = lambda r: bool(r.get("defaut_confirme")) or (  # noqa: E731
-        r.get("avis") == "defavorable" and (r.get("relecteur") in privilegies or niveau_de(niveaux, r.get("relecteur")) == "Confirmé"))
-    plus_recentes = {}
-    for cid, (_, e) in reg.enregistrements.items():
-        if not isinstance(e, dict) or e.get("tache") != enr.get("tache"):
-            continue
-        for rang, r in enumerate(e.get("relectures") or []):
-            if not isinstance(r, dict) or r.get("sha") != sha or r.get("relecteur") == enr.get("auteur"):
-                continue
-            cle = (_instant_ou_rien(r.get("le")) or PASSE, cid == enr.get("id"), rang, bloquant(r))
-            if r.get("relecteur") not in plus_recentes or cle > plus_recentes[r.get("relecteur")][0]:
-                plus_recentes[r.get("relecteur")] = (cle, cid, r)
-    resultat = []
-    for p, (_, cid, r) in sorted(plus_recentes.items()):
-        if cid != enr.get("id") and avis_recevable(r, concurrents) and bloquant(r) and not levee(enr, r):
-            resultat.append((p, cid, "défaut confirmé" if r.get("defaut_confirme") else "refus"))
-    return resultat
+    plus sur cette contribution (ni sur son fil, quand on la juge) ; ce qu'il relit ensuite compte de nouveau. Une levée qui
+    n'est pas du conseil, ou datée dans le futur, ne vaut rien (bee valider la refuse aussi)."""
+    moment, limite = _instant_ou_rien(relecture.get("le")), maintenant() + AVANCE_MAX
+    for l in enr.get("levees") or []:
+        quand = _instant_ou_rien(l.get("le")) if isinstance(l, dict) else None
+        if (quand and moment and l.get("relecteur") == relecture.get("relecteur") and l.get("par") in reg.conseil
+                and moment <= quand <= limite):
+            return True
+    return False
 
 
 def calculer_score(reg, enr, niveaux):
@@ -1456,6 +1450,15 @@ def verifier_registre(reg):
     def instant_valide(chemin, valeur, quoi):
         try:
             lire_instant(valeur, f"{reg.rel(chemin)} ({quoi})")
+        except ErreurBee as e:
+            ajouter(str(e))
+
+    def instant_passe(chemin, valeur, quoi):
+        """Un instant lisible, jamais dans le futur (revue adverse de ruche-0012 : une levée datée de 2099 neutralisait d'avance
+        toute relecture)."""
+        try:
+            if lire_instant(valeur, f"{reg.rel(chemin)} ({quoi})") > maintenant() + AVANCE_MAX:
+                ajouter(f"{reg.rel(chemin)} : {quoi} ({valeur}) est dans le futur")
         except ErreurBee as e:
             ajouter(str(e))
 
@@ -1633,16 +1636,16 @@ def verifier_registre(reg):
         for i, l in enumerate(enr.get("levees") or []):
             if l["par"] not in reg.conseil:
                 ajouter(f"{lieu} : levees/{i} : une levée est écrite par le conseil, pas par « {l['par']} »")
-            instant_valide(chemin, l["le"], f"levees/{i}/le")
+            instant_passe(chemin, l["le"], f"levees/{i}/le")
         for i, r in enumerate(enr["relectures"]):
             if r["relecteur"] == enr["auteur"]:
                 ajouter(f"{lieu} : relectures/{i} : l'auteur ne peut pas relire sa propre contribution (commandement 3)")
-            refus = relecture_refusee(enr["relectures"][:i], r)  # un autre commit que sa plus récente ; sans commit, en premier
+            refus = relecture_refusee(enr["relectures"][:i], r, lambda x: levee(reg, enr, x))  # un autre commit que sa plus récente
             if refus:
                 ajouter(f"{lieu} : relectures/{i} : {refus}")
             if r.get("defaut_signale") and r["avis"] == "abstention":  # sans commit : refusé à l'ajout (relire, verifier-pr)
                 ajouter(f"{lieu} : relectures/{i} : une abstention ne signale pas de défaut")
-            instant_valide(chemin, r["le"], f"relectures/{i}/le")
+            instant_passe(chemin, r["le"], f"relectures/{i}/le")
             if (r.get("defaut_confirme") or "confirme_par" in r) and not (r.get("defaut_signale") and confirme_par_un_tiers(r)):
                 ajouter(f"{lieu} : relectures/{i} : un défaut confirmé est un défaut signalé, confirmé par un tiers nommé dans "
                         "confirme_par (la CI, le conseil, un gardien ou un Confirmé), jamais par son relecteur")
@@ -3026,8 +3029,13 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
                     if "resume" in nouveau:
                         probleme = probleme_textes_libres(nouveau.get("resume"), f"{chemin} : resume", RESUME_MAX)
                         exiger(probleme is None, f"{probleme} : un résumé tient en une phrase")
-                    exiger(nouveau.get("statut") == "en_relecture" and not nouveau.get("relectures") and "verdict" not in nouveau
-                           and "resume_sha" not in nouveau, f"{chemin} : une contribution naît en_relecture, sans relecture ni verdict")
+                    exiger(nouveau.get("statut") == "en_relecture" and not nouveau.get("relectures") and "verdict" not in nouveau,
+                           f"{chemin} : une contribution naît en_relecture, sans relecture ni verdict")
+                    # Liste blanche (revue adverse de ruche-0012, L1) : rien de ce que seuls la CI ou le conseil écrivent (verdict,
+                    # levees, statut final, fusion…) ne naît avec la contribution ; bee soumettre écrit exactement ces clés.
+                    en_trop = sorted(set(nouveau) - CLES_NAISSANCE)
+                    exiger(not en_trop, f"{chemin} : une contribution naît avec les seules clés qu'écrit bee soumettre ; refusé : "
+                                        f"{', '.join(en_trop)}")
                     # Pas de soumission sans engagement : la même PR fait passer la tâche, réservée par l'auteur, en
                     # relecture avec cette contribution ; ou, pour un inscrit en parallèle, le retire de la liste et
                     # pointe la tâche sur cette contribution (contrôlé aussi côté tâche).
@@ -3168,7 +3176,7 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
                         exiger(r.get("sha") == sha_base if sha_base else "sha" not in r,
                                f"{chemin} : une relecture ajoutée porte le commit du verdict ({sha_base}) : bee relire l'écrit" if sha_base
                                else f"{chemin} : pas de verdict ni de commit jugé : une relecture ajoutée ne porte pas de sha")
-                        refus = relecture_refusee(nouvelles[:len(anciennes) + k], r)
+                        refus = relecture_refusee(nouvelles[:len(anciennes) + k], r, lambda x: levee(reg, nouveau, x))
                         exiger(refus is None, f"{chemin} : {refus}")
                         exiger(not r.get("defaut_signale") or (r.get("avis") != "abstention" and sha_base),
                                f"{chemin} : un défaut se signale sur le commit jugé, jamais par une abstention")
@@ -3408,6 +3416,8 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
     natures += natures_arbre
     return problemes, natures
 
+
+CLES_NAISSANCE = frozenset({"id", "tache", "auteur", "pr", "resume", "statut", "soumise_le", "engage_depuis", "relectures"})
 
 LIBRE_SERVICE = {"reservation", "liberation", "soumission", "mise_a_jour", "note", "relecture", "vote", "mesure", "inscription", "profil", "proposition",
                  "proposition_tache", "validation_tache",
@@ -4173,7 +4183,7 @@ def cmd_relire(args):
     # autre commit que sa plus récente (X, Y, puis X redevient possible).
     sha = (enr.get("verdict") or {}).get("sha")
     siennes = [r for r in enr.get("relectures") or [] if isinstance(r, dict) and r.get("relecteur") == args.utilisateur]
-    if relecture_refusee(siennes, {"relecteur": args.utilisateur, "sha": sha}):
+    if relecture_refusee(siennes, {"relecteur": args.utilisateur, "sha": sha}, lambda x: levee(reg, enr, x)):
         raise ErreurBee(f"{args.utilisateur} a déjà relu {args.contribution} " + (f"au commit {sha}, et c'est sa relecture la plus "
                         "récente : relisez au prochain commit jugé" if sha else "sans commit : une seule relecture avant le "
                         "verdict ; relisez quand il sera là (bee voir)"))
@@ -5236,9 +5246,9 @@ def raisons_r3(reg, cid, bilan=None):
     bloquantes = sorted(releve["bloquantes"])
     exiger(not bloquantes, f"relecture défavorable de {', '.join(bloquantes)} (gardien, conseil ou Confirmé) : elle bloque, quel "
            "que soit le commit, jusqu'à ce que ce relecteur relise le commit jugé")
-    for qui, cid_refus, quoi in refus_sur_ce_commit(reg, enr, niveaux):
-        exiger(False, f"{quoi} de {qui} sur ce commit dans {cid_refus} : re-soumettre un commit n'efface ni un refus ni un défaut ; "
-                      f"{qui} relit ce commit, ou le conseil lève (levees, motivée, dans une PR relue)")
+    for qui, cid_refus, quoi in releve["fil"]:
+        exiger(False, f"{quoi} de {qui} dans {cid_refus} (même auteur, même tâche) : re-soumettre ou amender n'efface ni un refus "
+                      f"ni un défaut ; {qui} relit cette contribution, ou le conseil lève (levees, motivée, dans une PR relue)")
     if [m for m in eligibles if niveau_de(niveaux, m) == "Confirmé"]:
         exiger(any(niveau_de(niveaux, r.get("relecteur")) == "Confirmé" for r in favorables),
                "aucune relecture favorable d'un Confirmé (il en faut une quand un Confirmé est disponible)")
