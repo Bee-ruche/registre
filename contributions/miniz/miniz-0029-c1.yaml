@@ -1,0 +1,10 @@
+id: miniz-0029-c1
+tache: miniz-0029
+auteur: bidji29
+pr: https://github.com/Bee-ruche/minizBee/pull/18
+resume: Profil cachegrind (caches, branches) de tdefl_find_match et tinfl_decompress par famille du corpus,
+  statistiques LZ, 9 tâches proposées avec leur plafond connu face à R4 ; miniz inchangé.
+statut: en_relecture
+soumise_le: '2026-10-30T19:28:01Z'
+engage_depuis: '2026-10-30T18:50:34Z'
+relectures: []
