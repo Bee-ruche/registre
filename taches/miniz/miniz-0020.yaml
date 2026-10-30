@@ -39,3 +39,6 @@ notes:
   - par: "bidji29"
     le: "2026-10-28T02:46:30Z"
     texte: "Essai de l'essaim de nuit (28/10, agent Claude Opus 5.5) : au niveau 1, tdefl_record_literal et tdefl_record_match pèsent environ 5,3 % des instructions ; même tout l'évitable retiré, le plafond est vers 1,5 % d'instructions, sous le seuil de R4. Meilleure variante (correspondance en locales, branchement sur la distance) : -0,73 % d'instructions n1 mais -4 % au chronomètre (10 paires sur 10, R5) ; le cmov d'origine était le bon choix. État LZ en locales dans tdefl_compress_normal : +0,22 % (débordements de registres). À fusionner avec miniz-0019 ou à fermer."
+  - par: "bidji29"
+    le: "2026-10-30T18:11:26Z"
+    texte: "Répétition générale n° 3 (30/10) : le plafond connu de cette tâche est sous le seuil de R4 (2 % d'instructions en moins sur la métrique visée) : la boucle visée pèse environ 1,5 % (miniz-0020) ou 1,7 % (miniz-0021) des instructions au niveau 1 (profil de la base 2948eeb, zone deflate). Une contribution seule ne passera pas R4 ; à combiner avec une autre piste du même scénario, ou à prendre pour apprendre. Le marquage par bee lister est la tâche ruche-0030."

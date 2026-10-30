@@ -1,0 +1,45 @@
+id: miniz-0038
+projet: miniz
+categorie: compression-sans-perte
+type: optimisation
+taille: S
+titre: "tdefl_find_match : réduire le coût fixe de chaque appel au niveau 1"
+contexte: >
+  Source : rapport de miniz-0029 (bee/resultats/miniz-0029/RAPPORT.md et TABLEAUX.md du fork, branche
+  tache/miniz-0029, PR #18 ; sources de master a2f939a ; Cachegrind, 128 premiers Kio de chaque fichier).
+  Au niveau 1 (analyse gloutonne, m_max_probes[0] = 2, donc 3 sondes au plus), tdefl_find_match est
+  appelée 521 383 fois sur le sous-corpus et ne fait que 1,41 sonde par appel en moyenne
+  (stats_lz.py) : le coût fixe de chaque appel l'emporte. L'entrée de la fonction (miniz_tdef.c
+  l. 862-877 à a2f939a) coûte 24,0 instructions par appel, contre 14,8 par sonde budget compris
+  (11,9 sans) ; elle pèse 7,29 % du décompte d'instructions du juge au niveau 1 (juge_parts.py),
+  plus 1,26 % pour le budget (l. 880). La seule l. 870 (pointeurs s et pTail) compte 15
+  instructions par appel, dont les bornes de la comparaison par mots de 64 bits que gcc y remonte :
+  dans le désassemblage (gcc 13.3 -O3, objet du banc), tdefl_find_match incorporée dans
+  tdefl_compress_normal écrit six valeurs sur la pile à chaque appel (0x40, 0x34, 0x28, 0x20, 0x18
+  et 0x14(%rsp)) et relit lookahead_pos sur la pile dans la troisième sonde (movzwl 0xc(%rsp)).
+  Plafond connu : 7,29 % de instructions_n1 (8,55 % avec le budget), au-dessus
+  du seuil de 2 % de R4. Pistes non essayées : une recherche courte pour les petits budgets
+  (m_max_probes[0] <= 2) qui ne déborde pas de registres ; sortir de l'appel les calculs qui ne
+  dépendent que de d ; aider gcc (variables locales de portée courte, ordre des tests). Invariants :
+  exactement les mêmes sondes et les mêmes correspondances, à tous les niveaux ; les niveaux 6 et 9
+  ne doivent pas reculer (R5). Risque connu : le coût de tdefl_find_match incorporée varie avec
+  l'allocation de registres de gcc (bee/README.md, nœud deflate ; notes de miniz-0019 et
+  miniz-0020) : comparer le désassemblage avant et après, et mesurer aussi les niveaux 6 et 9.
+  Touche la même fonction que miniz-0036 (boucle des sondes) : la seconde intégrée se rebase.
+  miniz-0037 ajoute une variable vivante dans la même fonction : même pression sur les registres.
+fichiers: [miniz_tdef.c]
+portee: 1.0
+metrique: debit_compression_n1
+sortie_compressee: identique
+critere_acceptation:
+  - "CI verte (R2), x86-64 et ARM64 (R6)"
+  - "R4 : au moins 2 % d'instructions en moins sur debit_compression_n1 (instructions_n1), que le chronomètre confirme au-delà du bruit (sinon une mesure d'une autre configuration)"
+  - "aucune autre métrique dégradée de plus de 1 % (R5), instructions_n6 et instructions_n9 comprises"
+  - "empreintes identiques, niveaux 1, 6, 9, 10 et vidages compris"
+  - "manifeste : instructions par appel à l'entrée de tdefl_find_match avant et après (Cachegrind ou désassemblage)"
+hors_perimetre: [format de sortie, API publique, nouvelle dépendance, fonction de hachage et nombre de sondes, tdefl_compress_fast]
+depend_de: [miniz-0001]
+noeud: projets/compression-sans-perte/miniz/deflate
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-30"

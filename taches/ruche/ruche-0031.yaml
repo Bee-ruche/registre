@@ -1,0 +1,34 @@
+id: ruche-0031
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: M
+titre: "R4 : le chronomètre ARM64 du juge commun compte comme mesure d'une autre configuration"
+contexte: >
+  Répétition générale n° 3 (30/10), constat du conseil : R4 exige, quand le chronomètre ne confirme pas un
+  gain d'instructions au-delà du bruit, qu'une mesure d'une autre configuration voie le gain (bee
+  enregistrer-mesure), mais personne n'est chargé de la faire, et un utilisateur ne mesure pas ses propres
+  contributions (commandement 3). miniz-0017-c1 et miniz-0018-c1 attendent depuis le 28/10. ruche-0024
+  ajoute au juge commun un chronomètre ARM64 (runner GitHub, même juge, même graine), publié dans
+  juge.json par architecture. À construire : (1) bee enregistrer-verdict recopie le chronomètre de chaque
+  architecture, borné et typé ; (2) R4 : pour un gain d'instructions au-dessus du seuil, la confirmation
+  vient du chronomètre x86-64 ou de celui d'ARM64 au-delà du bruit, à condition qu'aucune des deux
+  architectures ne recule au-delà du bruit (un recul est un refus) ; (3) avec ruche-0028, chaque verdict
+  d'un même contenu doit confirmer, sur la même architecture ; (4) verifier-acceptation et le site disent
+  quelle architecture a confirmé ; (5) REGLES.md (R4) et docs/evaluation.md le disent. Une mesure d'un
+  autre utilisateur (bee enregistrer-mesure) reste une autre configuration, comme aujourd'hui.
+fichiers: [outils/bee.py, outils/test_bee.py, schemas/enregistrement.schema.json, REGLES.md, docs/evaluation.md]
+portee: 0.9
+metrique: null
+critere_acceptation:
+  - "test : instructions −3 %, chronomètre x86-64 dans le bruit, ARM64 +1,5 % au-delà : R4 satisfaite, et la sortie dit ARM64"
+  - "test : ARM64 recule au-delà du bruit : refus, même si x86-64 confirme"
+  - "test : un verdict sans chronomètre ARM64 se juge comme aujourd'hui"
+  - "revue adverse indépendante jointe (R4 décide de l'intégration)"
+hors_perimetre: [COMMANDEMENTS.md, juge.yml et outils/juge/ (ruche-0024), les forks]
+depend_de: [ruche-0024]
+noeud: projets/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-30"

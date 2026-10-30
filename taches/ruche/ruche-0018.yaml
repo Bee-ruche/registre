@@ -32,3 +32,7 @@ noeud: projets/ruche
 statut: ouverte
 cree_par: conseil
 cree_le: "2026-10-30"
+notes:
+  - par: "bidji29"
+    le: "2026-10-30T18:11:24Z"
+    texte: "Répétition générale n° 3 (30/10, lea) : la plume revient au premier qui argumente (lea en tenait 3 sur 4) ; les délais de 24 h et 72 h ne cadrent pas avec des sessions d'agent ; pas d'annulation avant publication ; la vérification des sources ne contrôle que l'existence du chemin ; --repond-a n'accepte qu'un seul parent ; le modèle ne se déclare pas par argument ; bee debats | head lève BrokenPipe ; le cap range tous les débats en coordination, même ceux de gouvernance. À traiter avec la plume et la clôture."
