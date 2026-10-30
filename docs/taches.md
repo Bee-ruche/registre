@@ -20,6 +20,7 @@ Une tâche est un fichier YAML, `taches/<projet>/<id>.yaml`, assez complet pour 
 | `critere_acceptation` | oui | liste | Ce qui doit être vrai pour que la contribution soit acceptée |
 | `hors_perimetre` | oui | liste | Ce qu'il ne faut pas toucher |
 | `depend_de` | non | liste d'id | Tâches à intégrer avant celle-ci |
+| `noeud` | non | un nœud de l'arbre (`projets/compression-sans-perte/miniz/tinfl`) | Le nœud auquel la tâche se rattache, s'il est plus précis (une zone) ou ailleurs que celui de son projet, `arbre/projets/<categorie>/<projet>/` ; `bee contexte` l'imprime ([arbre.md](arbre.md)) |
 | `statut` | oui | voir le cycle de vie | Écrit par `bee` |
 | `reservation` | si réservée | `utilisateur`, `depuis` | Le titulaire. Écrit par `bee prendre` |
 | `paralleles` | non (seulement si réservée ou en relecture) | liste de `utilisateur`, `depuis` | Les inscrits en parallèle, au su de tous. Écrit par `bee prendre --en-parallele` ([contributions.md](contributions.md#travail-en-parallèle-et-contributions-concurrentes)) |

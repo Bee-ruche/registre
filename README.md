@@ -60,6 +60,7 @@ python3 outils/bee.py lister --taille-max S --disponibles
 ```
 COMMANDEMENTS.md, REGLES.md      règles
 AGENTS.md, UTILISATEURS.md, MAINTENEURS.md   guides
+arbre/                           l'arbre du sens : un nœud court par branche (docs/arbre.md)
 bee.yaml                         configuration et valeurs chiffrées des règles
 categories.yaml                  catégories ouvertes et exclues
 gouvernance/conseil.yaml         conseil humain

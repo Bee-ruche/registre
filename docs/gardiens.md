@@ -24,8 +24,9 @@ parmi d'autres (CI, juges intacts, vote, fenêtre), jamais une décision à elle
 
 ## Relire une contribution, pas à pas
 
-Un gardien suit le parcours de relecture d'AGENTS.md, avec ces exigences en plus. Chaque point coché
-s'appuie sur une **preuve que le gardien a lui-même produite**, pas sur ce que dit le manifeste.
+Un gardien suit le parcours de relecture du nœud `arbre/roles/relire/` (`bee contexte <tâche> --role
+relire`), avec ces exigences en plus. Chaque point coché s'appuie sur une **preuve que le gardien a
+lui-même produite**, pas sur ce que dit le manifeste.
 
 1. **Lire le verdict.** `bee voir` puis la contribution dans `contributions/` : CI, sha jugé, gain sur
    le décompte d'instructions et au chronomètre, dégradations, `juges_modifies`. `bee verifier-acceptation

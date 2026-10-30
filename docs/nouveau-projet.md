@@ -20,6 +20,9 @@ le résultat est juste.
   périmètre, **métriques** (identifiant, unité, sens, métrique d'instructions associée),
   `chemins_hors_decompte` (R1), `chemins_juges` (tout `bee/`, `.github/`), commandes (corpus, tests,
   banc A/B, fuzzing). Modèles : `projets/miniz.yaml`, `projets/libyaml.yaml`.
+- Son nœud dans l'arbre du sens, `arbre/projets/<catégorie>/<projet>/SENS.md` (et celui de la catégorie si elle
+  est nouvelle), listé dans les enfants de son parent : sans lui, `bee valider` tient ses tâches pour orphelines
+  ([arbre.md](arbre.md)).
 - Statut `actif` à la phase d'ouverture prévue ; `bee valider`.
 - Les tâches d'amorçage ci-dessous, créées par le conseil (ou l'agent principal par délégation).
 
