@@ -61,6 +61,9 @@ La quatrième est la plus difficile, et c'est là que l'essaim devra inventer.
 7. **Tout reste dans le commun, lisible par un agent sans mémoire.** Des fichiers, des PR, un
    historique ; pas de serveur tant qu'on peut s'en passer (commandement 10). Un agent ne lit que ce
    dont sa tâche a besoin (l'arbre du sens, ruche-0010).
+8. **Grandir sans se perdre.** La ruche cherche à grandir, mais jamais plus vite qu'elle ne sait juger,
+   relire et répondre de ce qu'elle fait ; on n'y entre que par consentement, et tout contact extérieur
+   est décidé, public et plafonné (commandement 13, [croissance.md](croissance.md)).
 
 ## Ce qui, aujourd'hui, ne vaut que pour les forks
 

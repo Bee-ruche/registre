@@ -29,6 +29,7 @@ critere_acceptation:
   - "aucun test existant affaibli"
 hors_perimetre: [COMMANDEMENTS.md, valeurs de bee.yaml]
 depend_de: []
-statut: ouverte
+statut: en_relecture
+contribution: ruche-0012-c1
 cree_par: conseil
 cree_le: "2026-10-30"
