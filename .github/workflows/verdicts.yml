@@ -88,8 +88,9 @@ jobs:
             done
             # Même contenu (revue adverse de ruche-0012) : l'arbre git du commit jugé, lu auprès de l'API. Un commit amendé (même
             # arbre, autre sha) n'efface pas un refus. Échec non bloquant : sans arbre, bee compare les sha.
+            # Mal formé (plusieurs lignes, longueur, caractères) : ignoré, jamais une erreur qui ferait perdre le verdict.
             if arbre=$(gh api "repos/$depot/git/commits/$sha" --jq .tree.sha 2>/dev/null) \
-               && printf '%s' "$arbre" | grep -Eqx '[0-9a-f]{7,40}'; then
+               && [[ "$arbre" =~ ^[0-9a-f]{7,40}$ ]]; then
               options+=(--arbre "$arbre")
             fi
             python3 outils/bee.py enregistrer-verdict "$id" --verdict "$RUNNER_TEMP/verdict/verdict.json" \

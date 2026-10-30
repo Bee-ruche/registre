@@ -3367,10 +3367,13 @@ class TestRevueAdverse(BaseParallele):
         _, _, appels = self.etape("Récupérer les verdicts", etats, flux="verdicts.yml")
         self.assertTrue([a for a in appels if a["args"][:2] == ["api", "repos/Bee-ruche/minizBee/git/commits/abc1235"]])
         self.assertEqual((self.enr(c1)["verdict"]["sha"], self.enr(c1)["verdict"]["arbre"]), ("abc1235", "7ee0001"))
-        etats[PR_MINIZ + "99007"]["head"] = "abc1236"
-        etats["arbres"] = {"abc1236": "pas-un-sha;id"}  # réponse hostile : ignorée
-        self.etape("Récupérer les verdicts", etats, flux="verdicts.yml")
-        self.assertEqual((self.enr(c1)["verdict"]["sha"], self.enr(c1)["verdict"].get("arbre")), ("abc1236", None))
+        # Réponses mal formées (hostile, plusieurs lignes, trop longue) : arbre ignoré, le verdict s'écrit quand même.
+        for numero, mal_forme in enumerate(("pas-un-sha;id", "7ee0003\nabc1234", "7ee0" + "0" * 40)):
+            sha = f"abc124{numero}"
+            etats[PR_MINIZ + "99007"]["head"] = sha
+            etats["arbres"] = {sha: mal_forme}
+            self.etape("Récupérer les verdicts", etats, flux="verdicts.yml")
+            self.assertEqual((self.enr(c1)["verdict"]["sha"], self.enr(c1)["verdict"].get("arbre")), (sha, None), repr(mal_forme))
         self.valide()
 
     def test_le_verdict_compare_au_manifeste_de_la_tache_jamais_a_un_ancien(self):
@@ -6079,6 +6082,9 @@ class TestRelireParCommit(BaseParallele):
         """F1, P1 : « Alice » est le login d'alice ; elle ne s'inscrit pas une seconde fois, et si la fiche existe malgré tout, son
         fil, ses engagements (R8) et ses jugements (qui a jugé une course) sont ceux d'alice."""
         self.assertIn("déjà inscrit (sous « alice »", self.bee("inscrire", "--pseudo", "Alice", "--compte-cree-le", "2020-01-01")[1])
+        for pseudo in ("ſam", "\u212aim", "a" * 40, "-alice"):  # s long, signe Kelvin : le motif d'un login, avant toute comparaison
+            self.assertIn("pseudo invalide", self.bee("inscrire", f"--pseudo={pseudo}", "--compte-cree-le", "2020-01-01")[1], pseudo)
+        self.assertFalse(bee.meme_pseudo(None, None))
         self.refus_confirme_de_x()
         premiere = self.cid
         self.ok_("cloturer", self.cid, "--motif", "PR fermée sans fusion.")
@@ -6097,9 +6103,11 @@ class TestRelireParCommit(BaseParallele):
         self.assertEqual(code, 1, texte)
         self.assertIn(f"défaut confirmé de bruno dans {premiere} (même auteur, même tâche)", texte)
 
-    def test_un_refus_bloque_les_copies_soumises_apres(self):
-        """F1b, F1c, C2 : farid soumet après alice le même contenu, que le gardien a refusé chez alice : bloqué jusqu'à ce que le
-        gardien relise ce contenu ; le refus d'une copie, lui, ne remonte jamais vers l'original."""
+    def test_un_contenu_refuse_ailleurs_est_signale_sans_bloquer(self):
+        """Cinquième revue adverse (B1, B1b, B2, E1, E2) : un refus posé sur un contenu dans une autre contribution de la tâche
+        n'est pas un blocage (le contenu d'une contribution change à chaque commit poussé : tout ordre entre contributions
+        bloquait l'original ou libérait la copie) ; c'est une alerte, là où ce contenu est jugé ailleurs : verifier-acceptation,
+        classement et bee voir. Levée par une relecture plus récente du même relecteur sur ce contenu."""
         self.refus_confirme_de_x(arbre="7ee0001")
         self.ok_("inscrire", "--pseudo", "farid", "--compte-cree-le", "2020-01-01")
         original = self.cid
@@ -6110,15 +6118,24 @@ class TestRelireParCommit(BaseParallele):
         self.verdict_au("aaaaaab", "7ee0001")  # même arbre, autre sha
         self.faire_relire_et_voter()
         self.a("2026-11-01T15:00:00Z")
+        alerte = f"ce contenu a été refusé par bruno dans {original} (même arbre, autre contribution de la tâche)"
         code, texte = self.acceptation(self.cid)
-        self.assertEqual(code, 1, texte)
-        self.assertIn(f"défaut confirmé de bruno sur ce contenu dans {original} (soumise avant, même tâche, même arbre)", texte)
-        self.verdict_au("ccccccc", "7ee0002")  # un autre contenu : ce refus ne le vise pas
-        self.assertNotIn("sur ce contenu", self.acceptation(self.cid)[1])
+        self.assertEqual(code, 0, f"pas un blocage : {texte}")
+        self.assertIn(alerte, texte)
+        self.assertIn(alerte, self.ok_("classement"))
+        self.assertIn(f"⚠ {self.cid} : {alerte}", self.ok_("voir", "miniz-0099"))
+        self.verdict_au("ccccccc", "7ee0002")  # un autre contenu : pas d'alerte
+        self.assertNotIn("ce contenu a été refusé", self.acceptation(self.cid)[1])
         self.verdict_au("aaaaaab", "7ee0001")
-        self.relire_("bruno", "favorable")  # le gardien relit ce contenu chez farid : le refus est levé, par lui
-        self.assertNotIn("sur ce contenu", self.acceptation(self.cid)[1])
-        self.assertNotIn(self.cid, self.acceptation(original)[1], "le jugement de la copie ne remonte pas vers l'original")
+        self.relire_("bruno", "defavorable")  # le refus se repose sur la copie : il la bloque, elle
+        self.assertIn("relecture défavorable de bruno", self.acceptation(self.cid)[1])
+        raisons = [l for l in self.acceptation(original)[1].splitlines() if l.startswith("  - ")]
+        self.assertFalse([l for l in raisons if self.cid in l], "le refus de la copie ne bloque jamais l'original (au plus, une alerte)")
+        self.relire_("bruno", "favorable", attendu=1)  # pas deux de suite sur le même commit
+        self.verdict_au("ddddddd", "7ee0003")
+        self.relire_("bruno", "favorable")
+        self.verdict_au("aaaaaab", "7ee0001")
+        self.assertIn("relecture défavorable de bruno", self.acceptation(self.cid)[1], "retour au contenu qu'il a refusé ici")
 
     def test_un_commit_amende_reste_le_contenu_refuse(self):
         """F2, F2b : le gardien refuse X (défaut confirmé), approuve Y ; l'auteur revient au contenu de X, amendé (X' : même
@@ -6174,6 +6191,37 @@ class TestRelireParCommit(BaseParallele):
             self.valide()
         self.a("2026-10-28T09:00:00Z")
         self.assertIn("est dans le futur", self.bee("valider")[1])
+        # Une levée (jamais en libre-service) n'a que 5 min d'avance : datée dans le futur, elle neutraliserait d'avance.
+        self.a("2026-10-28T13:00:00Z")
+        chemin = self.dossier / f"contributions/miniz/{self.cid}.yaml"
+        for le, attendu in (("2026-10-28T13:04:00Z", 0), ("2026-10-28T13:30:00Z", 1)):
+            bee.ecrire_yaml(chemin, {**self.enr(self.cid), "levees": [{"relecteur": "bruno", "motif": "Levée motivée par le conseil.",
+                                                                       "par": "bidji29", "le": le}]})
+            self.assertEqual(self.bee("valider")[0], attendu, le)
+
+    def test_une_levee_du_fil_permet_de_relire(self):
+        """La levée posée sur une autre contribution du fil couvre aussi, pour l'unicité, les relectures levées de celle-ci (comme
+        dans R3) : le gardien peut relire le commit jugé."""
+        self.contributeurs_chloe_et_david()
+        self.fermer_porte()
+        self.verdict_au("aaaaaaa")
+        self.ok_("cloturer", self.cid, "--motif", "PR fermée sans fusion.")
+        premiere = self.cid
+        self.ok_("prendre", "miniz-0099", "--utilisateur", "alice")
+        self.cid = self.soumettre("miniz-0099", "alice", 99309)
+        self.verdict_au("aaaaaaa")
+        self.relire_("bruno", "defavorable")
+        self.faire_relire_et_voter()
+        self.a("2026-10-29T12:00:00Z")
+        self.assertIn("au commit aaaaaaa", self.relire_("bruno", "defavorable", attendu=1))
+        chemin = self.dossier / f"contributions/miniz/{premiere}.yaml"
+        bee.ecrire_yaml(chemin, {**self.enr(premiere), "levees": [{"relecteur": "bruno", "motif": "Gardien absent, levée motivée.",
+                                                                   "par": "bidji29", "le": "2026-10-29T12:00:00Z"}]})
+        self.valide()
+        self.assertEqual(self.acceptation(self.cid)[0], 0, "la levée du fil vaut dans R3")
+        self.a("2026-10-29T13:00:00Z")
+        self.relire_("bruno", "defavorable")  # et pour l'unicité : il peut relire le commit jugé
+        self.assertIn("relecture défavorable de bruno", self.acceptation(self.cid)[1])
 
     def test_levees_forgees_ou_futures_ne_valent_rien(self):
         """L1b, L1c : une levée datée du futur, ou écrite par un autre que le conseil, est refusée par bee valider et ne neutralise
@@ -6463,8 +6511,10 @@ class TestRelireParCommitPR(BaseRepetitionGenerale):
         verdict.write_text(json.dumps({"ci": "verte", "gain": 0.05, "au_dela_du_bruit": True, "lignes_modifiees": 10}), encoding="utf-8")
         fichiers.write_text("miniz_tdef.c\n", encoding="utf-8")
         self.ok("enregistrer-verdict", self.cid, "--verdict", str(verdict), "--sha", "abc1234", "--arbre", "7ee0001", "--fichiers", str(fichiers))
-        self.assertIn("sha d'arbre git invalide", self.bee("enregistrer-verdict", self.cid, "--verdict", str(verdict), "--sha", "abc1234",
-                                                          "--arbre", "7ee;id")[1])
+        self.assertIn("arbre git mal formé, ignoré", self.bee("enregistrer-verdict", self.cid, "--verdict", str(verdict), "--sha", "abc1234",
+                                                             "--arbre", "7ee;id")[1])
+        self.assertNotIn("arbre", bee.lire_yaml(self.chemin)["verdict"])
+        self.ok("enregistrer-verdict", self.cid, "--verdict", str(verdict), "--sha", "abc1234", "--arbre", "7ee0001", "--fichiers", str(fichiers))
         self.commit("verdict avec arbre")
         for arbre, morceau in ((None, "porte l'arbre du verdict de la base (7ee0001)"), ("7ee0002", "porte l'arbre du verdict de la base")):
             with self.subTest(arbre=arbre):

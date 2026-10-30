@@ -631,7 +631,7 @@ def relecture_refusee(precedentes, relecture, levee_de=lambda r: False):
     (X, Y, puis X redevient possible ; jamais deux de suite sur le même) ; sans commit, seulement en première. Une relecture
     levée par le conseil (levee_de) n'est plus « la plus récente » : après la levée, il peut relire le commit jugé. None si
     elle est recevable, sinon la raison."""
-    siennes = [r for r in precedentes if isinstance(r, dict) and r.get("relecteur") == relecture.get("relecteur") and not levee_de(r)]
+    siennes = [r for r in precedentes if isinstance(r, dict) and meme_pseudo(r.get("relecteur"), relecture.get("relecteur")) and not levee_de(r)]
     if not siennes:
         return None
     if not relecture.get("sha"):
@@ -652,7 +652,7 @@ def vote_net(reg, enr, niveaux):
     """Vote net pondéré d'une contribution : ni l'auteur, ni ses concurrents actuels."""
     concurrents = concurrents_de(reg, enr)
     return sum(int(v.get("valeur", 0)) * POIDS_VOTE.get(niveau_de(niveaux, v.get("votant")), 0)
-               for _, v in reg.votes if v.get("sujet") == enr.get("id") and v.get("votant") != enr.get("auteur")
+               for _, v in reg.votes if v.get("sujet") == enr.get("id") and not meme_pseudo(v.get("votant"), enr.get("auteur"))
                and vote_recevable(v, concurrents))
 
 
@@ -1329,18 +1329,19 @@ def releve_relectures(reg, enr, niveaux):
     fil = fil_de(reg, enr)
     for cid, e in fil:
         for rang, r in enumerate(e.get("relectures") or []):
-            if isinstance(r, dict) and r.get("relecteur") != enr.get("auteur") and not any(levee(reg, f, r) for _, f in fil):
+            if isinstance(r, dict) and not meme_pseudo(r.get("relecteur"), enr.get("auteur")) and not any(levee(reg, f, r) for _, f in fil):
                 origine[id(r)] = cid
                 toutes.append(((_instant_ou_rien(r.get("le")) or PASSE, cid == enr.get("id"), rang), r))
     par = defaultdict(list)
     for _, r in sorted(toutes, key=lambda x: x[0]):
-        par[r.get("relecteur")].append(r)
+        par[str(r.get("relecteur")).casefold()].append(r)  # un relecteur, quelle que soit la casse de son login
     sur = lambda r: bool(verdict) and r.get("sha") == sha  # noqa: E731
     ici = lambda r: origine.get(id(r)) == enr.get("id")  # noqa: E731
     recevable = lambda r: r if r and avis_recevable(r, concurrents) else None  # noqa: E731
     releve = {k: [] for k in ("favorables", "defavorables", "bloquantes", "defauts", "abstentions", "perimees", "sans_commit",
                               "de_nouveaux", "fil")}
-    for p, siennes in par.items():
+    for siennes in par.values():
+        p = siennes[-1].get("relecteur")
         derniere = recevable(siennes[-1])
         du_commit = recevable(next((r for r in reversed(siennes) if meme_contenu(r, verdict)), None))
         privilegie = p in privilegies or niveau_de(niveaux, p) == "Confirmé"
@@ -1379,43 +1380,37 @@ def meme_contenu(relecture, verdict):
     return relecture.get("sha") == verdict.get("sha")
 
 
-def refus_sur_ce_contenu(reg, enr, niveaux):
-    """Défense en profondeur (revue adverse de ruche-0012) : un refus bloquant (défavorable d'un gardien, du conseil ou d'un
-    Confirmé ; défaut confirmé) posé sur un contenu dans une contribution de la tâche bloque aussi toute contribution de la
-    tâche soumise après elle et jugée sur le même contenu (même arbre, sinon même sha), quel que soit son auteur, jusqu'à une
-    relecture plus récente du même relecteur sur ce contenu. Seulement vers les contributions soumises après : le refus d'une
-    copie ne bloque jamais l'original. Le fil (même auteur) est jugé par releve_relectures. [(relecteur, contribution, quoi)]."""
+def refus_ailleurs(reg, enr, niveaux=None):
+    """Alerte pour les relecteurs (revue adverse de ruche-0012), jamais un blocage : le contenu jugé (même arbre, sinon même sha)
+    porte, dans une autre contribution de la tâche, un refus encore actif : la plus récente relecture de ce relecteur sur ce
+    contenu, dans toute la tâche, est un défavorable d'un gardien, du conseil ou d'un Confirmé, ou porte un défaut confirmé, et
+    aucune levée du conseil ne la neutralise. Un autre compte qui soumet un contenu refusé n'est pas bloqué automatiquement
+    (le contenu d'une contribution change à chaque commit poussé : un ordre entre contributions bloquerait l'original ou
+    libérerait la copie) ; le refus se repose sur la copie. [(relecteur, contribution)]."""
     verdict = enr.get("verdict") if isinstance(enr.get("verdict"), dict) else {}
-    # « Soumise avant » : le numéro de la contribution sur la tâche (<tâche>-c<n>), qui suit l'ordre des soumissions
-    # (verifier-pr l'exige) et départage deux soumissions du même instant.
-    rang_de = lambda cid: int(m["n"]) if (m := ID_CONTRIBUTION.match(str(cid))) else None  # noqa: E731
-    numero = rang_de(enr.get("id"))
-    if not verdict.get("sha") or numero is None:
+    if not verdict.get("sha"):
         return []
-    concurrents, privilegies = concurrents_de(reg, enr), reg.privilegies()
-    fil = fil_de(reg, enr)
-    bloquant = lambda r: bool(r.get("defaut_confirme")) or (  # noqa: E731
-        r.get("avis") == "defavorable" and (r.get("relecteur") in privilegies or niveau_de(niveaux, r.get("relecteur")) == "Confirmé"))
+    niveaux = niveaux if niveaux is not None else calculer_niveaux(reg)
+    privilegies = reg.privilegies()
     plus_recentes = {}
     for cid, (_, e) in reg.enregistrements.items():
         if not isinstance(e, dict) or e.get("tache") != enr.get("tache"):
             continue
-        avant = (rang_de(cid) or numero) < numero
         for rang, r in enumerate(e.get("relectures") or []):
-            if (not isinstance(r, dict) or meme_pseudo(r.get("relecteur"), enr.get("auteur")) or not meme_contenu(r, verdict)
-                    or levee(reg, e, r) or any(levee(reg, f, r) for _, f in fil)):
+            if not isinstance(r, dict) or not meme_contenu(r, verdict) or levee(reg, e, r):
                 continue
-            cle = (_instant_ou_rien(r.get("le")) or PASSE, rang)
-            p = r.get("relecteur")
+            cle = (_instant_ou_rien(r.get("le")) or PASSE, cid == enr.get("id"), rang)
+            p = str(r.get("relecteur")).casefold()
             if p not in plus_recentes or cle > plus_recentes[p][0]:
-                plus_recentes[p] = (cle, cid, r, avant)
-    return [(p, cid, "défaut confirmé" if r.get("defaut_confirme") else "refus")
-            for p, (_, cid, r, avant) in sorted(plus_recentes.items())
-            if avant and not meme_pseudo(e_auteur(reg, cid), enr.get("auteur")) and bloquant(r) and avis_recevable(r, concurrents)]
+                plus_recentes[p] = (cle, cid, r)
+    return [(r.get("relecteur"), cid) for _, (_, cid, r) in sorted(plus_recentes.items())
+            if cid != enr.get("id") and (r.get("defaut_confirme") or (r.get("avis") == "defavorable" and (
+                r.get("relecteur") in privilegies or niveau_de(niveaux, r.get("relecteur")) == "Confirmé")))]
 
 
-def e_auteur(reg, cid):
-    return (reg.enregistrements.get(cid, (None, {}))[1] or {}).get("auteur")
+def leve_dans_le_fil(reg, enr, relecture):
+    """Une levée du conseil sur l'une des contributions du fil couvre-t-elle cette relecture (comme dans R3) ?"""
+    return any(levee(reg, e, relecture) for _, e in fil_de(reg, enr))
 
 
 def levee(reg, enr, relecture):
@@ -1425,7 +1420,7 @@ def levee(reg, enr, relecture):
     moment, limite = _instant_ou_rien(relecture.get("le")), maintenant() + AVANCE_MAX
     for l in enr.get("levees") or []:
         quand = _instant_ou_rien(l.get("le")) if isinstance(l, dict) else None
-        if (quand and moment and l.get("relecteur") == relecture.get("relecteur") and l.get("par") in reg.conseil
+        if (quand and moment and meme_pseudo(l.get("relecteur"), relecture.get("relecteur")) and l.get("par") in reg.conseil
                 and moment <= quand <= limite):
             return True
     return False
@@ -1510,11 +1505,11 @@ def verifier_registre(reg):
         except ErreurBee as e:
             ajouter(str(e))
 
-    def instant_passe(chemin, valeur, quoi):
+    def instant_passe(chemin, valeur, quoi, tolerance=TOLERANCE_DATE):
         """Un instant lisible, jamais dans le futur au-delà de 2 h, comme la tolérance de verifier-pr (revue adverse de ruche-0012 :
         une levée datée de 2099 neutralisait d'avance toute relecture ; bee valider ne dépend pas de l'horloge à la seconde)."""
         try:
-            if lire_instant(valeur, f"{reg.rel(chemin)} ({quoi})") > maintenant() + TOLERANCE_DATE:
+            if lire_instant(valeur, f"{reg.rel(chemin)} ({quoi})") > maintenant() + tolerance:
                 ajouter(f"{reg.rel(chemin)} : {quoi} ({valeur}) est dans le futur")
         except ErreurBee as e:
             ajouter(str(e))
@@ -1698,11 +1693,11 @@ def verifier_registre(reg):
         for i, l in enumerate(enr.get("levees") or []):
             if l["par"] not in reg.conseil:
                 ajouter(f"{lieu} : levees/{i} : une levée est écrite par le conseil, pas par « {l['par']} »")
-            instant_passe(chemin, l["le"], f"levees/{i}/le")
+            instant_passe(chemin, l["le"], f"levees/{i}/le", TOLERANCE_LEVEE)  # jamais en libre-service : 5 min suffisent
         for i, r in enumerate(enr["relectures"]):
             if r["relecteur"] == enr["auteur"]:
                 ajouter(f"{lieu} : relectures/{i} : l'auteur ne peut pas relire sa propre contribution (commandement 3)")
-            refus = relecture_refusee(enr["relectures"][:i], r, lambda x: levee(reg, enr, x))  # un autre commit que sa plus récente
+            refus = relecture_refusee(enr["relectures"][:i], r, lambda x: leve_dans_le_fil(reg, enr, x))  # un autre commit que sa plus récente
             if refus:
                 ajouter(f"{lieu} : relectures/{i} : {refus}")
             if r.get("defaut_signale") and r["avis"] == "abstention":  # sans commit : refusé à l'ajout (relire, verifier-pr)
@@ -2273,6 +2268,9 @@ FENETRE_PLAFOND = dt.timedelta(hours=24)
 SAUTS_YAML = frozenset(map(chr, (0x85, 0x2028, 0x2029)))
 # Une date déclarée dans un débat est l'heure de la PR : au plus 2 h avant la vérification, jamais dans le futur.
 TOLERANCE_DATE = dt.timedelta(hours=2)
+# Une levée (écrite par le conseil, jamais en libre-service) datée dans le futur neutraliserait d'avance les relectures publiées
+# avant sa date : bee valider ne lui laisse que 5 min d'avance (une relecture : 2 h, pour les horloges décalées).
+TOLERANCE_LEVEE = dt.timedelta(minutes=5)
 
 
 def config_agora(reg):
@@ -3242,14 +3240,14 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
                         exiger(r.get("sha") == sha_base if sha_base else "sha" not in r,
                                f"{chemin} : une relecture ajoutée porte le commit du verdict ({sha_base}) : bee relire l'écrit" if sha_base
                                else f"{chemin} : pas de verdict ni de commit jugé : une relecture ajoutée ne porte pas de sha")
-                        refus = relecture_refusee(nouvelles[:len(anciennes) + k], r, lambda x: levee(reg, nouveau, x))
+                        refus = relecture_refusee(nouvelles[:len(anciennes) + k], r, lambda x: leve_dans_le_fil(reg, nouveau, x))
                         exiger(refus is None, f"{chemin} : {refus}")
                         exiger(not r.get("defaut_signale") or (r.get("avis") != "abstention" and sha_base),
                                f"{chemin} : un défaut se signale sur le commit jugé, jamais par une abstention")
                         exiger(r.get("relecteur") == auteur, f"{chemin} : une relecture ajoutée doit être celle de {auteur}")
                         probleme = probleme_date_pr(r.get("le") if isinstance(r, dict) else None, f"{chemin} : relecture de {auteur}, le", instant)
                         exiger(probleme is None, f"{probleme} : relancez bee relire")
-                        exiger(r.get("relecteur") != nouveau.get("auteur"), f"{chemin} : on ne relit pas sa propre contribution")
+                        exiger(not meme_pseudo(r.get("relecteur"), nouveau.get("auteur")), f"{chemin} : on ne relit pas sa propre contribution")
                         # Un motif est court, comme une note, et rien n'y est caché (tour 2 : aucun plafond jusque-là).
                         probleme = texte_recevable(r.get("motif") if isinstance(r, dict) else None,
                                                    f"{chemin} : motif de la relecture de {auteur}", config_notes(reg)["texte_max"])
@@ -3798,6 +3796,8 @@ def lignes_calculees_tache(reg, t):
                       "× portée / (1 + lignes/100), sinon vote net ; chacune est protégée 96 h après sa soumission, puis n'attend "
                       "plus, au plus 24 h, qu'une concurrente intégrable mieux classée) :")
         for c in course["contributions"]:
+            for alerte in alertes_relecteurs(reg, reg.enregistrements.get(c["contribution"], (None, {}))[1] or {}):
+                lignes.append(f"#   ⚠ {c['contribution']} : {alerte}")
             lignes.append(f"#   {c['rang']}. {c['contribution']} par {c['auteur']}, soumise le {c['soumise_le']}, CI {c['ci'] or 'en attente'}, "
                           f"score de course {'—' if c['gain_mesure'] is None else format(c['gain_mesure'], '.4f')}, vote net {c['vote_net']:+d}, "
                           f"protégée jusqu'au {c['protegee_jusqu_au']}, plus aucune attente après le {c['attentes_jusqu_au']}")
@@ -3822,6 +3822,8 @@ def cmd_voir(args):
 
 def cmd_inscrire(args):
     reg = Registre(args.registre)
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]{0,38}", args.pseudo):  # le motif du schéma membre, avant toute comparaison
+        raise ErreurBee(f"pseudo invalide : {args.pseudo!r} (un login GitHub : lettres ASCII, chiffres et tirets, 39 caractères au plus)")
     chemin = reg.racine / "membres" / f"{args.pseudo}.yaml"
     deja = [p for p in reg.membres if meme_pseudo(p, args.pseudo)]
     if chemin.exists() or deja:
@@ -4243,7 +4245,7 @@ def cmd_relire(args):
     reg = Registre(args.registre)
     reg.exiger_membre(args.utilisateur)
     chemin, enr = reg.enregistrement(args.contribution)
-    if enr.get("auteur") == args.utilisateur:
+    if meme_pseudo(enr.get("auteur"), args.utilisateur):
         raise ErreurBee("on ne relit pas sa propre contribution (commandement 3)")
     if enr.get("statut") != "en_relecture":
         raise ErreurBee(f"{args.contribution} n'est plus en relecture (statut : {enr.get('statut')})")
@@ -4251,7 +4253,7 @@ def cmd_relire(args):
     # autre commit que sa plus récente (X, Y, puis X redevient possible).
     sha = (enr.get("verdict") or {}).get("sha")
     siennes = [r for r in enr.get("relectures") or [] if isinstance(r, dict) and r.get("relecteur") == args.utilisateur]
-    if relecture_refusee(siennes, {"relecteur": args.utilisateur, "sha": sha}, lambda x: levee(reg, enr, x)):
+    if relecture_refusee(siennes, {"relecteur": args.utilisateur, "sha": sha}, lambda x: leve_dans_le_fil(reg, enr, x)):
         raise ErreurBee(f"{args.utilisateur} a déjà relu {args.contribution} " + (f"au commit {sha}, et c'est sa relecture la plus "
                         "récente : relisez au prochain commit jugé" if sha else "sans commit : une seule relecture avant le "
                         "verdict ; relisez quand il sera là (bee voir)"))
@@ -5028,12 +5030,15 @@ def cmd_enregistrer_verdict(args):
                                         if declare is not None and verdict["gain"] is not None else None)
     if args.sha:
         verdict["sha"] = args.sha
+    arbre_ignore = False
     if args.arbre:
         # Même contenu (revue adverse de ruche-0012) : l'arbre git du commit jugé, lu par verdicts.yml auprès de l'API ; un
-        # commit amendé (même arbre, autre sha) reste le même contenu pour les refus de R3.
-        if not re.fullmatch(r"[0-9a-f]{7,40}", args.arbre):
-            raise ErreurBee(f"--arbre : sha d'arbre git invalide : {args.arbre!r}")
-        verdict["arbre"] = args.arbre
+        # commit amendé (même arbre, autre sha) reste le même contenu dans le fil. Mal formé, il est ignoré : jamais une erreur
+        # qui ferait perdre le verdict (bee compare alors les sha).
+        if re.fullmatch(r"[0-9a-f]{7,40}", args.arbre):
+            verdict["arbre"] = args.arbre
+        else:
+            arbre_ignore = True
     if args.fichiers:
         # Contrôle de confiance : la liste vient de l'API GitHub (workflow du registre), pas de la PR.
         # Une PR qui touche son workflow ou ses juges a pu fabriquer son propre verdict.
@@ -5055,7 +5060,7 @@ def cmd_enregistrer_verdict(args):
     print(f"✓ verdict {verdict['ci']} enregistré pour {args.contribution}"
           + (f" ; ⚠ écart de {100 * verdict['ecart_declare']:.1f} points entre gain déclaré et mesuré" if alerte else "")
           + (f" ; manifeste ignoré (tâche {manifeste_ignore}, pas {enr.get('tache')}) : aucun écart calculé"
-             if manifeste_ignore else "") + ".")
+             if manifeste_ignore else "") + (" ; arbre git mal formé, ignoré (comparaison par sha)" if arbre_ignore else "") + ".")
     return 0
 
 
@@ -5325,9 +5330,6 @@ def raisons_r3(reg, cid, bilan=None):
     for qui, cid_refus, quoi in releve["fil"]:
         exiger(False, f"{quoi} de {qui} dans {cid_refus} (même auteur, même tâche) : re-soumettre ou amender n'efface ni un refus "
                       f"ni un défaut ; {qui} relit cette contribution, ou le conseil lève (levees, motivée, dans une PR relue)")
-    for qui, cid_refus, quoi in refus_sur_ce_contenu(reg, enr, niveaux):
-        exiger(False, f"{quoi} de {qui} sur ce contenu dans {cid_refus} (soumise avant, même tâche, même arbre) : une copie n'efface "
-                      f"ni un refus ni un défaut ; {qui} relit ce contenu, ou le conseil lève (levees, motivée, dans une PR relue)")
     if [m for m in eligibles if niveau_de(niveaux, m) == "Confirmé"]:
         exiger(any(niveau_de(niveaux, r.get("relecteur")) == "Confirmé" for r in favorables),
                "aucune relecture favorable d'un Confirmé (il en faut une quand un Confirmé est disponible)")
@@ -5412,6 +5414,9 @@ def alertes_relecteurs(reg, enr):
                            f"la CI (tolérance : {100 * seuil:.0f}) : demandez d'où vient le chiffre déclaré")
     except (TypeError, ValueError):
         pass
+    for qui, cid in refus_ailleurs(reg, enr):
+        alertes.append(f"ce contenu a été refusé par {qui} dans {cid} (même arbre, autre contribution de la tâche) : ce refus ne "
+                       "bloque pas cette contribution ; relisez-la en le sachant")
     return alertes
 
 
