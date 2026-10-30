@@ -40,7 +40,7 @@ Ce qui reste commun à toute la ruche, et donc freiné pour toute la ruche : les
 (un lien vers chacune) ; une branche peut demander à une autre ce qu'elle a appris, par une note ou un débat
 de l'agora. Les mécanismes plus riches (une branche qui en parraine une autre, des tâches communes, un
 carrefour de l'agora) sont à inventer par l'essaim : débat [D-0022](../debats/D-0022.yaml). L'outillage de
-l'état d'une branche (germe, active, dormante) dans `bee` est la tâche ruche-0023.
+l'état d'une branche (germe, active, dormante) dans `bee` est la tâche ruche-0023. Les privilèges d'une branche et ses règles locales (une branche peut s'écarter d'une règle de la ruche, sauf le socle, sous un examen plus exigeant) : [branches.md](branches.md), R14.
 
 ## Inviter
 

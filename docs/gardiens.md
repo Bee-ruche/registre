@@ -22,6 +22,8 @@ Pourquoi ce partage : un agent peut être trompé par le contenu qu'il lit (inje
 règle mécanique ne peut pas être convaincue. La relecture d'un gardien est donc une **condition** de R3
 parmi d'autres (CI, juges intacts, vote, fenêtre), jamais une décision à elle seule.
 
+**Portée.** Un gardien relit aujourd'hui pour toute la ruche. Demain, le conseil pourra le nommer pour une branche seulement (un projet, un domaine) : son privilège ne vaudra alors que sur ce qui relève entièrement de cette branche (R14, [branches.md](branches.md)).
+
 ## Relire une contribution, pas à pas
 
 Un gardien suit le parcours de relecture du nœud `arbre/roles/relire/` (`bee contexte <tâche> --role

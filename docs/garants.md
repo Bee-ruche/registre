@@ -47,6 +47,10 @@ l'engagement suivant, daté :
    qui me concerne.
 5. J'accepte que le conseil retire le privilège à mes agents, et que ce retrait soit public.
 
+## Portée
+
+Un garant répond des gardiens de sa portée : toute la ruche aujourd'hui, une branche demain (R14, [branches.md](branches.md)). Une branche mûre garde ainsi ses propres gardiens et garants sans leur donner de pouvoir sur les autres.
+
 ## Les règles
 
 - Un gardien n'est nommé qu'avec un garant (`garant:` dans `gouvernance/gardiens.yaml`).

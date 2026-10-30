@@ -11,33 +11,88 @@ engage_depuis: '2026-10-28T02:10:57Z'
 relectures: []
 verdict:
   ci: verte
-  gain: -0.004023279987058759
+  gain: 0.00782970319353038
   au_dela_du_bruit: false
   instructions:
     instructions_n1:
-      A: 188281686.0
-      B: 188281686.0
+      A: 171455811.0
+      B: 171455811.0
       gain: 0.0
     instructions_n6:
-      A: 357960788.0
-      B: 357960788.0
+      A: 335505702.0
+      B: 335505702.0
       gain: 0.0
     instructions_n9:
-      A: 511230298.0
-      B: 511230298.0
+      A: 483741127.0
+      B: 483741127.0
       gain: 0.0
     instructions_decompression:
-      A: 34140617.0
-      B: 32821874.0
-      gain: 0.038626806305228745
+      A: 31602410.0
+      B: 30434479.0
+      gain: 0.03695702321436878
   degradations: {}
   juge:
-    version: 2
-    commun: null
+    version: 3
+    commun: juge-v1
     sorties_comparees: 7868
     constructions_suspectes: []
   lignes_modifiees: 27
-  ecart_declare: 0.0192
-  sha: a604e501785d6905ca54030b95e51663b56fc85d
+  ecart_declare: 0.0073
+  sha: 3971dc4bc71534d154897423a904d819dd9c76e0
+  arbre: e96a9f8ab1ce3632c0c974d721cccb873cfcad26
   fichiers_controles: true
-  execution: https://github.com/Bee-ruche/minizBee/actions/runs/40781636867
+  execution: https://github.com/Bee-ruche/minizBee/actions/runs/41095986934
+declare:
+  modele: Claude Opus 5.5 (claude-opus-5-5)
+  gain: 0.0151
+  teste:
+  - 'Décompte d''instructions (ab.py --instructions, Cachegrind, 131072 premiers octets par fichier) :
+    instructions_decompression 34 164 249 -> 32 880 282 (-3,758 %, identique sur les deux passages à 10
+    répétitions) ; instructions n1, n6 et n9 strictement identiques'
+  - 'ab.py --repetitions 10 --instructions, premier passage (chiffres ci-dessus) : debit_decompression
+    +1,51 % (7 paires sur 10, dans le bruit) ; second passage : +3,85 % (8 sur 10, dans le bruit) ; ab.py
+    --repetitions 20 --cpu 1 : +1,01 % (12 sur 20, dans le bruit). Aucun des trois n''atteint le seuil
+    du test du signe'
+  - 'Chronomètre plus long, hors dépôt : programme qui chronomètre seulement mz_uncompress de la sortie
+    niveau 6 de tout le corpus (meilleure de 15 passes, temps mural), compilé comme le banc (-O3 -DNDEBUG,
+    gnu90) contre la base, une copie identique de la base (contrôle A/A) et le candidat, exécutés en ordre
+    tournant sur 120 tours, cœur 1 : candidat contre base +1,15 % (72 paires sur 120, p unilatéral 0,018),
+    contre la copie +0,86 % (p 0,018), contrôle A/A +0,44 % (62 sur 120, p 0,39) ; réplication : +1,66
+    % (79 sur 120, p 0,0003), contre la copie +2,21 % (83 sur 120, p < 0,0001), contrôle A/A -0,67 % (52
+    sur 120)'
+  - 'bee/tests/lancer.sh : 3233 contrôles, 0 écart, 305 empreintes identiques à la référence'
+  - 'bee/tests/lancer.sh --sanitiseurs (ASan + UBSan) : 3233 contrôles, 0 écart'
+  - 'bee/ci/tests_origine.sh (CMake + ctest) : 1/1 réussi ; aucun avertissement dans miniz_tinfl.c avec
+    gcc -std=c89/gnu90/c99/c11 -pedantic -Wall -Wextra -Wdeclaration-after-statement, clang -std=c89 -pedantic,
+    g++'
+  - 'bee/fuzz/lancer.sh 120 --reference <worktree de upstream/master> (libFuzzer) : fuzz_inflate 59 208
+    et fuzz_compression 62 841 exécutions, aucun écart ; puis bee/fuzz/lancer.sh 600 --harnais fuzz_inflate
+    --reference <base> : 163 901 exécutions, aucun écart'
+  - 'Trace différentielle hors dépôt (comportement sur entrée invalide) : 15 440 cas (flux valides du
+    corpus en zlib et brut aux niveaux 0, 1, 6, 9, mutations et troncatures, blocs dynamiques fabriqués
+    avec un arbre littéraux/longueurs vide ou à un seul symbole, entrées aléatoires), chacun en une fois,
+    en flux avec dictionnaire circulaire de 1 octet à 32 Kio et en flux à sortie linéaire, morceaux d''entrée
+    et de sortie de 1 à 4096 octets ; après chaque appel sont hachés le statut, les octets consommés et
+    produits, les octets écrits et tout l''état scalaire du décompresseur (m_state, m_bit_buf, m_num_bits,
+    m_counter, m_dist…) : base et candidat identiques sur les 15 440 cas ; les états d''échec 40 (2769
+    cas) et 54 (43 cas) du chemin rapide sont atteints. Trois régressions semées sont attrapées […]'
+  - 'Même trace avec MINIZ_HAS_64BIT_REGISTERS forcé à 0 dans une copie de miniz.h (tampon de bits 32
+    bits, chemin #if !TINFL_USE_64BIT_BITBUF) : base et candidat identiques sur les 15 440 cas'
+  non_teste:
+  - 'ARM64 : aucune machine ; ni tests ni mesure (la CI le fera)'
+  - 'Tampon de bits 32 bits sur une vraie cible 32 bits : seulement simulé sur x86-64 en forçant MINIZ_HAS_64BIT_REGISTERS
+    à 0, et seulement avec la trace différentielle (pas bee/tests/lancer.sh)'
+  - 'Grand-boutiste : non testé (le changement ne lit ni n''écrit rien de plus en mémoire)'
+  - 'Autres compilateurs que gcc 13.3 pour le banc : le gain d''instructions dépend de l''allocation de
+    registres de gcc (voir doutes)'
+  - 'Juge isolé (bee/juge/juge.py) : pas de Docker ici'
+  doutes: 'Le gain au chronomètre est petit (environ 1 à 2 %) : les instructions retirées sont des tests
+    bien prédits, hors de la chaîne de dépendances du décodage (lecture de table, décalage de bit_buf).
+    ab.py à 10 ou 20 répétitions ne le montre pas au-delà du bruit sur cette machine ; seule la mesure
+    entrelacée sur 120 tours, avec contrôle A/A, le voit (deux fois, p 0,018 puis 0,0003). La confirmation
+    de R4 au chronomètre reste donc à faire par la CI ou une autre configuration. Le premier passage d''ab.py
+    signale une « dégradation au-delà du bruit » de debit_compression_n1 (-1,84 %, 1 paire sur 10) alors
+    que le code de compression compilé est identique octet pour octet, aux mêmes adresses, et que ses
+    instructions sont identiques : c''est du bruit (le second passage donne +2,91 %, le passage à 20 répétitions
+    -0,22 %). Le gain d''instructions dépend de l''allocation de registres de gcc 13.3 : précalculer aussi
+    la borne d''entrée le réduisait, un autre compilateur peut donner un autre chiffre.'

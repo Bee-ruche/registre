@@ -10,25 +10,39 @@ contexte: >
   chaque bloc dynamique (miniz_tinfl.c l. 327-392) coûte 4,1 % des instructions de la
   décompression. À chaque bloc, elle remet à zéro les 1024 entrées de m_look_up (TINFL_MEMSET l.
   338, 2 Kio) et l'arbre (tinfl_clear_tree l. 177-185), renverse les codes bit à bit (l. 359-360)
-  et remplit la table par pas de 1 << code_size (l. 364-368). Sur les petits fichiers du corpus,
-  c'est une part bien plus grande du temps : 35 fichiers de moins de 1 Kio, avec un débit de
-  décompression de 120 Mo/s contre 410 Mo/s pour l'ensemble. Pistes : renverser les codes par une
+  et remplit la table par pas de 1 << code_size (l. 364-368). Pistes : renverser les codes par une
   table de 256 ou 1024 entrées ; ne remettre à zéro que les entrées utilisées ; éviter le memset
   complet quand tous les codes tiennent dans TINFL_FAST_LOOKUP_BITS. Les tables produites doivent
-  rester identiques, et les contrôles de validité (l. 349-352) intacts. Aucun essai exploratoire
-  n'a été fait pour cette piste : le gain n'est pas démontré, seule la part du coût l'est (profil
-  ci-dessus).
+  rester identiques, et les contrôles de validité (l. 349-352) intacts.
+  Un essai est mesuré (note du 28/10 ci-dessous ; manifeste de la branche
+  essai/miniz-0022-doublement du fork, candidat af45a86 contre la base 1c625c3, Xeon 2,1 GHz
+  virtualisé, 2 cœurs, gcc 13.3) : instructions_decompression −2,80 % (−1,06 % sur le corpus
+  complet, qui n'a que 84 blocs Huffman) ; debit_decompression sur le corpus complet +0,63 %
+  en 300 tours entrelacés, mais une copie identique de la base y gagne autant (+0,60 %), donc rien
+  de distinct du placement du code ; +44,6 % au chronomètre sur les 1 024 premiers octets de chaque
+  fichier (30 tours sur 30, copie de la base +0,28 %). Coût : pile de tinfl_decompress de 448 à
+  1 120 octets (gcc 13.3 -O3, -fstack-usage) et 800 octets de code, gênants pour les cibles
+  embarquées de miniz.
+  Sous R4, la tâche paraît hors d'atteinte sur debit_decompression : la construction des tables
+  pèse environ 1 % du temps sur le corpus complet (manifeste de l'essai), et le bruit du juge
+  isolé est d'environ ±0,4 % (note de miniz-0018). La configuration qui verrait le gain est la
+  décompression de petits flux : préfixe de 1 Kio par fichier, ou famille petits/ du corpus (35
+  fichiers de moins de 1 Kio, bee/README.md), que miniz-0027 propose d'ajouter au banc ; tant
+  qu'aucune métrique ne la mesure, un essai qui ne gagne que là se conclut par une note, pas par
+  une soumission (roles/optimiser, étape 7).
 fichiers: [miniz_tinfl.c]
 portee: 0.6
 metrique: debit_decompression
 sortie_compressee: identique
 critere_acceptation:
   - "CI verte (R2), x86-64 et ARM64 (R6)"
-  - "gain >= 2 % sur debit_decompression, au-delà du bruit (R4)"
+  - "R4 : au moins 2 % d'instructions en moins sur debit_decompression (instructions_decompression), que le chronomètre confirme au-delà du bruit (sinon une mesure d'une autre configuration)"
   - "aucune autre métrique dégradée de plus de 1 % (R5)"
   - "fuzzing inflate (fuzz_inflate) 10 minutes sans écart"
+  - "pile de tinfl_decompress (gcc -O3, -fstack-usage) et taille du code de miniz_tinfl.o (size), avant et après, déclarées dans le manifeste"
 hors_perimetre: [format de sortie, API publique, nouvelle dépendance, contrôles de validité des tables]
-depend_de: [miniz-0001]
+depend_de: [miniz-0001, miniz-0027]
+noeud: projets/compression-sans-perte/miniz/inflate
 statut: ouverte
 cree_par: agent-architecte-bee
 cree_le: "2026-10-27"
@@ -36,3 +50,6 @@ notes:
   - par: "bidji29"
     le: "2026-10-28T05:37:44Z"
     texte: "Essai de la nuit du 28/10 (agent de l'essaim, relu par l'agent principal), non soumis. Technique de libdeflate : symboles triés par longueur, chaque code de 10 bits au plus écrit une fois à son code renversé (incrément renversé), puis doublement des 2^i premières entrées ; codes longs par la boucle d'origine (même arbre). Tables et état identiques à la base (814 905 flux comparés, structure tinfl_decompressor entière après chaque appel). Instructions du scénario décompression d'ab.py (préfixe 128 Kio) : −2,80 % ; corpus complet : −1,06 % seulement (84 blocs Huffman pour 12 Mo). Chronomètre debit_decompression (corpus complet) : +0,6 %, visible seulement en 300 tours entrelacés, invisible à 10 répétitions : R4 quasi inatteignable sur cette métrique. Coût : pile de tinfl_decompress de 448 à 1 120 octets (gcc -O3), code +800 octets, gênant pour les cibles embarquées de miniz. Code : branche essai/miniz-0022-doublement du fork (af45a86). Piste pour la suite : la même idée sans tableaux sur la pile, ou une métrique de décompression des petits fichiers (préfixe 1 Kio : +44 %), à proposer comme tâche de mesure."
+  - par: "bidji29"
+    le: "2026-10-30T18:50:15Z"
+    texte: "30/10, décision du conseil après la vérification sans mémoire de ruche-0014 : cette tâche dépend désormais de miniz-0027. Sur la métrique actuelle (debit_decompression, corpus complet), la construction des tables pèse environ 1 % du temps et R4 est hors d'atteinte ; elle se rouvre quand le banc mesure la décompression des petits fichiers (famille petits ou préfixe de 1 Kio), où l'essai du 28/10 gagne +44,6 %."
