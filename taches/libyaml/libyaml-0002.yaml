@@ -24,7 +24,7 @@ critere_acceptation:
   - "mode discret en CI : aucune entrée fautive ni trace publiée (empreinte seulement)"
   - "repli gcc + pilote aléatoire quand libFuzzer est absent"
 hors_perimetre: [sources de libyaml]
-statut: en_relecture
+statut: integree
 contribution: libyaml-0002-c1
 cree_par: conseil
 cree_le: "2026-10-27"

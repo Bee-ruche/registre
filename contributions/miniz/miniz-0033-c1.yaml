@@ -4,7 +4,7 @@ auteur: bidji29
 pr: https://github.com/Bee-ruche/minizBee/pull/9
 resume: 'Profileur : repérer les fonctions hors commentaires et chaînes ; une ligne de commentaire ne
   passe plus pour une fonction.'
-statut: en_relecture
+statut: integree
 soumise_le: '2026-10-28T03:38:12Z'
 relectures: []
 verdict:
@@ -37,3 +37,7 @@ verdict:
   - bee/bench/profil.py
   - bee/bench/test_profil.py
   execution: https://github.com/Bee-ruche/minizBee/actions/runs/40627819004
+decidee_le: '2026-10-30T02:05:28Z'
+motif_decision: 'Intégration automatique (R3) : CI verte, relectures et vote suffisants, fenêtre écoulée
+  ; porte de relecture satisfaite.'
+fusion_sha: 9977da4591caac1f5df53341118fd33800e09e2e

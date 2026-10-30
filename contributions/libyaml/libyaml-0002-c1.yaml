@@ -4,7 +4,7 @@ auteur: bidji29
 pr: https://github.com/Bee-ruche/libyamlBee/pull/1
 resume: Harnais de fuzzing différentiel de l'analyseur (base contre candidat, ASan/UBSan) et job fuzzing
   dans la CI.
-statut: en_relecture
+statut: integree
 soumise_le: '2026-10-27T20:01:37Z'
 relectures: []
 verdict:
@@ -35,3 +35,7 @@ verdict:
   - bee/fuzz/fuzz_parse.c
   - bee/fuzz/lancer.sh
   execution: https://github.com/Bee-ruche/libyamlBee/actions/runs/40576504694
+decidee_le: '2026-10-30T02:05:26Z'
+motif_decision: 'Intégration automatique (R3) : CI verte, relectures et vote suffisants, fenêtre écoulée
+  ; porte de relecture satisfaite.'
+fusion_sha: 01cac4b64dd78d5bdf918124a128a5b17531abff
