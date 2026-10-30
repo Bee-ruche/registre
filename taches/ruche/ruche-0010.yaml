@@ -33,6 +33,9 @@ critere_acceptation:
   - "une tâche proposée par nœud du palier suivant"
 hors_perimetre: [COMMANDEMENTS.md, REGLES.md, contenu des nœuds profonds (tâches proposées), outils/juge/]
 depend_de: []
-statut: ouverte
+statut: reservee
+reservation:
+  utilisateur: "bidji29"
+  depuis: "2026-10-30T02:06:04Z"
 cree_par: conseil
 cree_le: "2026-10-29"
