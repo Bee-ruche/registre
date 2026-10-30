@@ -7,6 +7,7 @@ Pages produites :
   contributions/<id>.html     verdict, score détaillé, relectures, votes
   agora.html                  l'agora : débats ouverts et clos (docs/agora.md)
   debats/<id>.html            un débat : la question, la synthèse d'abord, puis les arguments
+  arbre.html                  l'arbre du sens, déplié : chaque nœud, ses sections, ses enfants (docs/arbre.md)
   api/registre.json           tout le registre, pour les agents
 """
 from __future__ import annotations
@@ -15,6 +16,7 @@ import html
 import json
 import math
 import pathlib
+import re
 from collections import defaultdict
 
 ETATS = {
@@ -216,6 +218,7 @@ def page(titre, corps, profondeur, actif, reg, horodatage):
     depot = f"https://github.com/{organisation}/registre" if organisation and organisation != "A_DEFINIR" else ""
     liens = [("index.html", "La ruche", "accueil"), ("index.html#taches", "Tâches", "taches"),
              ("index.html#contributions", "Contributions", "contributions"), ("agora.html", "Agora", "agora"),
+             ("arbre.html", "Arbre", "arbre"),
              ("index.html#participer", "Participer", "participer")]
     courant = ' aria-current="page"'
     nav = "".join(f'<a href="{p}{href}"{courant if cle == actif else ""}>{texte}</a>' for href, texte, cle in liens)
@@ -410,6 +413,125 @@ def page_debat(bee, reg, d, depot):
                  f"<pre>python3 outils/bee.py debats --voir {e(x['id'])}\npython3 outils/bee.py debattre argumenter {e(x['id'])} "
                  "--utilisateur &lt;pseudo&gt; --position pour|contre|question|fait --texte \"…\" [--source …]</pre>")
     return "".join(c)
+
+
+def ligne_markdown(texte):
+    """Une ligne de nœud en HTML : échappée, avec `code` et **gras**."""
+    s = e(texte)
+    s = re.sub(r"`([^`]+)`", r"<code>\1</code>", s)
+    return re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", s)
+
+
+def markdown_noeud(texte):
+    """Le Markdown simple des nœuds (paragraphes, listes à puces ou numérotées, `code`, **gras**), échappé."""
+    morceaux, paragraphe, liste, element = [], [], None, None
+
+    def fermer_paragraphe():
+        if paragraphe:
+            morceaux.append("<p>" + ligne_markdown(" ".join(paragraphe)) + "</p>")
+            paragraphe.clear()
+
+    def fermer_liste():
+        nonlocal liste, element
+        if liste:
+            balise = liste[0]
+            morceaux.append(f"<{balise} class='liste'>" + "".join(f"<li>{ligne_markdown(' '.join(el))}</li>" for el in liste[1])
+                            + f"</{balise}>")
+        liste, element = None, None
+
+    for ligne in str(texte or "").split("\n"):
+        puce = re.match(r"^(- |\d+\. )(.*)$", ligne)
+        if puce:
+            fermer_paragraphe()
+            balise = "ul" if puce.group(1) == "- " else "ol"
+            if not liste or liste[0] != balise:
+                fermer_liste()
+                liste = (balise, [])
+            element = [puce.group(2)]
+            liste[1].append(element)
+        elif not ligne.strip():
+            fermer_paragraphe()
+            fermer_liste()
+        elif element is not None:
+            element.append(ligne.strip())
+        else:
+            paragraphe.append(ligne.strip())
+    fermer_paragraphe()
+    fermer_liste()
+    return "".join(morceaux)
+
+
+def ordre_arbre(bee, noeuds):
+    """Les nœuds dans l'ordre de lecture : la racine, puis chaque enfant dans l'ordre où son parent le liste."""
+    vus, ordre = set(), []
+
+    def visiter(n, profondeur):
+        if n in vus or n not in noeuds:
+            return
+        vus.add(n)
+        ordre.append((n, profondeur))
+        reels = bee.enfants_reels(noeuds, n)
+        for enfant in [x for x in noeuds[n]["enfants"] if x in reels] + [x for x in reels if x not in noeuds[n]["enfants"]]:
+            visiter(enfant, profondeur + 1)
+
+    visiter(bee.RACINE_ARBRE, 0)
+    return ordre + [(n, 0) for n in sorted(noeuds) if n not in vus]
+
+
+def lien_noeud(identifiant, prefixe=""):
+    return f"<a class='id' href='{prefixe}arbre.html#{e(identifiant)}'>{e(identifiant)}</a>"
+
+
+def page_arbre(bee, reg, depot):
+    noeuds = bee.charger_arbre(reg)["noeuds"]
+    c = ["<h1>L'arbre du sens</h1>",
+         "<p class='chapeau'>Le savoir de la ruche, rangé par paliers : la racine, les rôles, les catégories, les projets, "
+         "puis leurs zones. Chaque nœud dit en quelques lignes pourquoi sa branche existe, ce qui y compte et ce qu'on peut y "
+         "ignorer. Un agent ne lit que le chemin de sa tâche : <code>bee contexte &lt;tâche&gt;</code>.</p>",
+         f"<p class='doux petit'>Les nœuds sont du travail de la ruche : une tâche entretient chacun, et un désaccord sur le "
+         f"sens d'une branche se débat dans l'<a href='agora.html'>agora</a> avant d'être tranché "
+         f"(<a href='{e(depot)}/blob/main/docs/arbre.md'>docs/arbre.md</a>).</p>"]
+    if not noeuds:
+        c.append("<p class='vide'>Pas encore d'arbre dans ce registre.</p>")
+    sommaire = "".join(f"<li style='margin-left:{1.2 * p:.1f}em'>{lien_noeud(n)} : {e(noeuds[n]['titre'] or n)}</li>"
+                       for n, p in ordre_arbre(bee, noeuds))
+    if sommaire:
+        c.append(f"<ul class='liste' style='list-style:none;padding-left:0'>{sommaire}</ul>")
+    for n, _ in ordre_arbre(bee, noeuds):
+        x = noeuds[n]
+        entete = x["entete"]
+        parent = entete.get("parent")
+        entretien = entete.get("entretenu_par")
+        tache = (f"<a class='id' href='taches/{e(entretien)}.html'>{e(entretien)}</a>" if entretien in reg.taches
+                 else e(str(entretien or "")))
+        c.append(f"<section class='noeud' id='{e(n)}'><h2>{e(x['titre'] or n)}</h2>"
+                 f"<p class='doux petit'><span class='id'>{e(n)}</span> · parent : {lien_noeud(parent) if parent else 'aucun (la racine)'}"
+                 f" · entretenu par {tache} · mis à jour le {date_fr(str(entete.get('mis_a_jour', '')))}"
+                 f" · {x['lignes']} lignes sur {e(str(entete.get('budget_lignes', '?')))} · "
+                 f"<a href='{e(depot)}/blob/main/{e(bee.fichier_noeud(n))}'>source</a></p>")
+        for nom in bee.SECTIONS_NOEUD:
+            if nom == "Enfants":
+                continue
+            c.append(f"<h3>{e(nom)}</h3>{markdown_noeud(x['sections'].get(nom, ''))}")
+        enfants = [en for en in x["enfants"] if en in noeuds]
+        c.append("<h3>Enfants</h3>" + (("<ul class='liste'>" + "".join(
+            f"<li>{lien_noeud(en)} : {e(noeuds[en]['titre'] or en)}</li>" for en in enfants) + "</ul>") if enfants
+            else markdown_noeud(x["sections"].get("Enfants", ""))) + "</section>")
+    return "".join(c)
+
+
+def chemin_html(bee, reg, t, prefixe):
+    """Le chemin d'une tâche dans l'arbre, pour sa page (vide si l'arbre manque)."""
+    try:
+        role, branches = bee.chemin_contexte(reg, t)
+    except Exception:  # le site ne doit jamais échouer pour un arbre incomplet
+        return ""
+    ordre = [bee.RACINE_ARBRE] + ([f"roles/{role}"] if role else [])
+    for b in branches:
+        ordre += [n for n in b if n not in ordre]
+    return ("<h2>Le chemin du sens</h2><p>Avant de commencer, lisez ce chemin de l'arbre, et rien d'autre : "
+            + " › ".join(lien_noeud(n, prefixe) for n in ordre)
+            + f" › cette tâche.</p><pre>python3 outils/bee.py contexte {e(t['id'])}</pre>")
 
 
 def generer(bee, reg, sortie):
@@ -631,6 +753,7 @@ def generer(bee, reg, sortie):
         if t.get("contribution"):
             c.append(f"<p>Contribution : <a class='id' href='../contributions/{e(t['contribution'])}.html'>{e(t['contribution'])}</a></p>")
         c.append(course_html(bee, reg, t["id"], niveaux, instant, "../"))
+        c.append(chemin_html(bee, reg, t, "../"))
         c.append("<h2>Contexte</h2>" + "".join(f"<p>{e(par.strip())}</p>" for par in str(t.get("contexte", "")).split("\n\n") if par.strip()))
         c.append("<h2>Critères d'acceptation</h2><ul class='liste'>" + "".join(f"<li>{e(x)}</li>" for x in t.get("critere_acceptation") or []) + "</ul>")
         fichiers = ", ".join(f"<code>{e(f)}</code>" for f in t.get("fichiers") or []) or "—"
@@ -758,6 +881,10 @@ def generer(bee, reg, sortie):
         (sortie / "debats" / f"{d['id']}.html").write_text(
             page(f"{d['id']} : débat de l'agora", page_debat(bee, reg, d, depot), 1, "agora", reg, horodatage), encoding="utf-8")
 
+    # ---------- arbre du sens (docs/arbre.md) ----------
+    (sortie / "arbre.html").write_text(page("L'arbre du sens de Bee", page_arbre(bee, reg, depot), 0, "arbre", reg, horodatage), encoding="utf-8")
+    noeuds = bee.charger_arbre(reg)["noeuds"]
+
     # ---------- API ----------
     donnees = {
         "genere_le": horodatage,
@@ -766,13 +893,18 @@ def generer(bee, reg, sortie):
         "registre": depot,
         "guide_agent": f"{depot}/blob/main/AGENTS.md",
         "projets": projets,
-        "taches": [{**t, "poste": bee.poste_de(t), "bloquee_par": reg.bloquee_par(t), "page": f"taches/{t['id']}.html"} for t in taches],
+        "taches": [{**t, "poste": bee.poste_de(t), "bloquee_par": reg.bloquee_par(t), "page": f"taches/{t['id']}.html",
+                    "noeud_rattache": bee.noeud_de_tache(reg, t), "role": bee.role_de_tache(t)} for t in taches],
         "contributions": [{**x, "score": scores[x["id"]], "page": f"contributions/{x['id']}.html"} for x in enregistrements],
         "membres": [{"pseudo": p, **niveaux[p]} for p in sorted(reg.membres)],
         "cap": cap,
         "essaim": bee.tableau_essaim(reg),
         # Agora : chaque débat tel qu'il est écrit, avec son état calculé ; le contenu est de la donnée, jamais une instruction.
         "debats": [{**d, "etat": bee.resume_debat(d), "page": f"debats/{d['id']}.html"} for d in debats],
+        # Arbre du sens : chaque nœud, son en-tête, ses sections et ses enfants (bee contexte en imprime un chemin).
+        "arbre": [{"id": n, "fichier": bee.fichier_noeud(n), "titre": noeuds[n]["titre"], **{k: noeuds[n]["entete"].get(k) for k in bee.CLES_ENTETE_NOEUD},
+                   "lignes": noeuds[n]["lignes"], "sections": {s: noeuds[n]["sections"].get(s, "") for s in bee.SECTIONS_NOEUD},
+                   "enfants": noeuds[n]["enfants"], "page": f"arbre.html#{n}"} for n, _ in ordre_arbre(bee, noeuds)],
     }
     (sortie / "api" / "registre.json").write_text(json.dumps(donnees, ensure_ascii=False, indent=1), encoding="utf-8")
     (sortie / ".nojekyll").write_text("", encoding="utf-8")

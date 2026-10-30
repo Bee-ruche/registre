@@ -887,6 +887,276 @@ class TestCapEtEssaim(BaseTest):
         self.assertIn("au moins une métrique", texte)
 
 
+NOEUD_ZONE = """---
+parent: projets/compression-sans-perte/miniz
+mis_a_jour: "2026-10-30"
+entretenu_par: ruche-0010
+budget_lignes: 40
+---
+# Décompression (tinfl)
+## Pourquoi cette branche existe
+tinfl_decompress fait l'essentiel de la décompression.
+## Ce qui compte ici
+La sortie reste identique ; les lectures non alignées passent par memcpy.
+## Ce qu'on peut ignorer ici
+La compression.
+## Enfants
+Aucun.
+"""
+
+
+class TestArbre(BaseTest):
+    """L'arbre du sens (docs/arbre.md) : bee valider tient les nœuds et le rattachement des tâches ; bee contexte imprime
+    le chemin d'une tâche."""
+
+    def noeud(self, identifiant):
+        return self.dossier / bee.fichier_noeud(identifiant)
+
+    def remplacer(self, identifiant, avant, apres):
+        chemin = self.noeud(identifiant)
+        texte = chemin.read_text(encoding="utf-8")
+        self.assertIn(avant, texte)
+        chemin.write_text(texte.replace(avant, apres, 1), encoding="utf-8")
+
+    def refuse(self, *morceaux):
+        code, texte = self.bee("valider")
+        self.assertEqual(code, 1, texte)
+        for m in morceaux:
+            self.assertIn(m, texte)
+        return texte
+
+    def ajouter_zone(self):
+        dossier = self.noeud("projets/compression-sans-perte/miniz").parent / "tinfl"
+        dossier.mkdir()
+        (dossier / "SENS.md").write_text(NOEUD_ZONE, encoding="utf-8")
+        self.remplacer("projets/compression-sans-perte/miniz", "## Enfants\n",
+                       "## Enfants\n- `projets/compression-sans-perte/miniz/tinfl` : la décompression\n")
+
+    def test_arbre_livre_valide_et_taches_rattachees(self):
+        self.valide()
+        reg = bee.Registre(self.dossier)
+        self.assertEqual(bee.noeud_de_tache(reg, reg.tache("miniz-0012")[1]), "projets/compression-sans-perte/miniz")
+        self.assertEqual(bee.noeud_de_tache(reg, reg.tache("libyaml-0010")[1]), "projets/parsing-serialisation/libyaml")
+        self.assertEqual(bee.role_de_tache(reg.tache("miniz-0012")[1]), "optimiser")
+        self.assertEqual(bee.role_de_tache(reg.tache("miniz-0002")[1]), "relire")
+        self.assertEqual(bee.role_de_tache(reg.tache("miniz-0003")[1]), "mesurer")
+        noeuds = bee.charger_arbre(reg)["noeuds"]
+        self.assertEqual({n for n in noeuds if n.startswith("roles/")},
+                         {f"roles/{r}" for r in ("optimiser", "relire", "mesurer", "debattre", "garder", "proposer")})
+        self.assertTrue(bee.correspond("arbre/roles/relire/SENS.md", bee.CHEMINS_OUTILLAGE),
+                        "l'arbre est de l'outillage : PR ordinaire, jamais fusionnée automatiquement")
+
+    def test_noeud_hors_budget(self):
+        self.remplacer("roles/relire", "## Enfants\n", "## Enfants\n" + "".join(f"- ligne {i}\n" for i in range(10)))
+        self.refuse("arbre/roles/relire/SENS.md : hors budget")
+
+    def test_budget_plus_large_que_le_plafond(self):
+        self.remplacer("roles/relire", "budget_lignes: 40", "budget_lignes: 80")
+        self.refuse("budget_lignes « 80 »")
+        self.remplacer("roles/relire", "budget_lignes: 80", "budget_lignes: 10")
+        self.refuse("hors budget", "budget de 10")
+
+    def test_caractere_invisible_refuse(self):
+        self.remplacer("roles/relire", "## Enfants\nAucun.", "## Enfants\nAucun.\u200b")
+        self.refuse("caractère invisible ou de contrôle refusé (U+200B)")
+
+    def test_ligne_trop_large(self):
+        self.remplacer("roles/relire", "## Enfants\nAucun.", "## Enfants\nAucun. " + "x" * 130)
+        self.refuse("de plus de 120 caractères")
+
+    def test_section_manquante_ou_vide(self):
+        self.remplacer("roles/relire", "## Ce qu'on peut ignorer ici\n", "")
+        self.refuse("section manquante : « ## Ce qu'on peut ignorer ici »")
+
+    def test_section_vide(self):
+        texte = self.noeud("projets/ruche").read_text(encoding="utf-8")
+        debut = texte.index("## Pourquoi cette branche existe\n") + len("## Pourquoi cette branche existe\n")
+        fin = texte.index("## Ce qui compte ici")
+        self.noeud("projets/ruche").write_text(texte[:debut] + texte[fin:], encoding="utf-8")
+        self.refuse("nœud vide : la section « Pourquoi cette branche existe » n'a rien")
+
+    def test_sections_dans_le_desordre_ou_inattendues(self):
+        self.remplacer("roles/relire", "## Ce qui compte ici", "## Ce qui compte, en vrai")
+        self.refuse("section(s) inattendue(s)")
+
+    def test_en_tete_manquant_ou_incomplet(self):
+        self.remplacer("roles/relire", "entretenu_par: ruche-0010\n", "")
+        self.refuse("champ(s) manquant(s) : entretenu_par")
+        self.remplacer("roles/relire", "mis_a_jour:", "entretenu_par: ruche-9999\nmis_a_jour:")
+        self.refuse("ruche-9999", "un nœud s'entretient par une tâche")
+
+    def test_lien_casse_enfant_inexistant(self):
+        self.remplacer("racine", "## Enfants\n", "## Enfants\n- `roles/voter` : voter\n")
+        self.refuse("lien cassé : l'enfant « roles/voter » est listé")
+
+    def test_lien_casse_parent_declare(self):
+        self.remplacer("projets/compression-sans-perte/miniz", "parent: projets/compression-sans-perte", "parent: racine")
+        self.refuse("lien cassé : parent déclaré « racine »")
+
+    def test_noeud_orphelin(self):
+        dossier = self.noeud("roles/relire").parent.parent / "voter"
+        dossier.mkdir()
+        (dossier / "SENS.md").write_text(NOEUD_ZONE.replace("parent: projets/compression-sans-perte/miniz", "parent: racine"),
+                                         encoding="utf-8")
+        self.refuse("arbre/roles/voter/SENS.md : nœud orphelin")
+
+    def test_dossier_sans_noeud_et_fichier_etranger(self):
+        dossier = self.noeud("projets/compression-sans-perte/miniz").parent / "tdef"
+        dossier.mkdir()
+        (dossier / "notes.md").write_text("brouillon\n", encoding="utf-8")
+        self.refuse("arbre/projets/compression-sans-perte/miniz/tdef/ : nœud vide", "tdef/notes.md : un nœud ne contient que")
+
+    def test_noeud_d_un_projet_inconnu(self):
+        self.ajouter_zone()
+        self.valide()
+        dossier = self.dossier / "arbre/projets/compression-sans-perte/zstd"
+        dossier.mkdir()
+        (dossier / "SENS.md").write_text(NOEUD_ZONE.replace("parent: projets/compression-sans-perte/miniz",
+                                                            "parent: projets/compression-sans-perte"), encoding="utf-8")
+        self.remplacer("projets/compression-sans-perte", "## Enfants\n", "## Enfants\n- `projets/compression-sans-perte/zstd` : zstd\n")
+        self.refuse("« zstd » n'est pas un projet de la catégorie compression-sans-perte")
+
+    def test_lien_symbolique_refuse(self):
+        os.symlink("../roles", self.dossier / "arbre/projets/lien")
+        self.refuse("arbre/projets/lien : lien symbolique refusé")
+
+    def test_tache_orpheline(self):
+        (self.dossier / "taches/bzip2").mkdir(exist_ok=True)
+        chemin = self.dossier / "taches/bzip2/bzip2-9001.yaml"
+        chemin.write_text(TACHE_OPTIMISATION.replace("miniz-0099", "bzip2-9001").replace("projet: miniz", "projet: bzip2")
+                          .replace("type: optimisation", "type: test").replace("metrique: debit_compression_n6", "metrique: null")
+                          .replace("sortie_compressee: identique\n", ""), encoding="utf-8")
+        self.refuse("taches/bzip2/bzip2-9001.yaml : tâche orpheline : aucun nœud arbre/projets/compression-sans-perte/bzip2/SENS.md")
+        chemin.write_text(chemin.read_text(encoding="utf-8").replace("statut: ouverte", "noeud: projets/compression-sans-perte/bzip2\nstatut: ouverte"),
+                          encoding="utf-8")
+        self.refuse("noeud « projets/compression-sans-perte/bzip2 » introuvable")
+        chemin.write_text(chemin.read_text(encoding="utf-8").replace("noeud: projets/compression-sans-perte/bzip2",
+                                                                    "noeud: projets/compression-sans-perte"), encoding="utf-8")
+        self.valide()  # rattachée à la catégorie, faute de nœud pour son projet
+        code, texte = self.bee("contexte", "bzip2-9001")
+        self.assertEqual(code, 0, texte)
+        self.assertIn("=== nœud projets/compression-sans-perte ===", texte)
+
+    def test_projet_sans_noeud_rend_ses_taches_orphelines(self):
+        shutil.rmtree(self.noeud("projets/parsing-serialisation/libyaml").parent)
+        self.remplacer("projets/parsing-serialisation", "- `projets/parsing-serialisation/libyaml` : libyaml, analyseur et émetteur YAML\n",
+                       "Aucun.\n")
+        texte = self.refuse("taches/libyaml/libyaml-0010.yaml : tâche orpheline")
+        self.assertNotIn("miniz-0012", texte)
+
+    def test_contexte_imprime_le_chemin_dans_l_ordre(self):
+        code, texte = self.bee("contexte", "miniz-0099")
+        self.assertEqual(code, 0, texte)
+        reperes = ["=== nœud racine ===", "=== nœud roles/optimiser ===", "=== nœud projets/compression-sans-perte ===",
+                   "=== nœud projets/compression-sans-perte/miniz ===", "=== tâche miniz-0099 (bee voir miniz-0099) ==="]
+        positions = [texte.index(r) for r in reperes]
+        self.assertEqual(positions, sorted(positions))
+        self.assertIn("Tâche fictive utilisée uniquement par les tests", texte)  # la tâche, telle que bee voir l'affiche
+        self.assertIn("# --- calculé par bee ---", texte)
+        self.assertNotIn("entretenu_par", texte, "l'en-tête des nœuds n'est pas imprimé")
+        self.assertNotIn("=== nœud roles/relire", texte)
+        self.assertNotIn("=== nœud projets/ruche", texte)
+        jetons = int(re.search(r"Environ (\d+) jetons", texte).group(1))
+        self.assertLessEqual(abs(jetons - bee.estimer_jetons(texte)), 2)
+        # La racine réduit ses enfants à ceux qui ne sont pas sur le chemin ; le rôle garde les siens.
+        racine = texte[positions[0]:positions[1]]
+        self.assertIn("Celui de ton chemin suit. Tous : `bee contexte` sans argument.", racine)
+        self.assertNotIn("- `roles/relire`", racine)
+
+    def test_contexte_budget_garde_la_racine_et_la_tache(self):
+        _, complet = self.bee("contexte", "miniz-0099")
+        jetons = int(re.search(r"Environ (\d+) jetons", complet).group(1))
+        code, texte = self.bee("contexte", "miniz-0099", "--budget", str(jetons - 1))
+        self.assertEqual(code, 0, texte)
+        self.assertIn("Omis pour tenir dans --budget", texte)
+        self.assertNotIn("=== nœud projets/compression-sans-perte ===", texte, "le palier le plus général part d'abord")
+        for gardé in ("=== nœud racine ===", "=== nœud roles/optimiser ===", "=== nœud projets/compression-sans-perte/miniz ===",
+                      "=== tâche miniz-0099"):
+            self.assertIn(gardé, texte)
+        self.assertLessEqual(int(re.search(r"Environ (\d+) jetons", texte).group(1)), jetons - 1)
+        _, texte = self.bee("contexte", "miniz-0099", "--budget", "1")
+        self.assertIn("=== nœud racine ===", texte)
+        self.assertIn("=== tâche miniz-0099", texte)
+        for omis in ("roles/optimiser", "projets/compression-sans-perte"):
+            self.assertNotIn(f"=== nœud {omis}", texte)
+        self.assertIn("plus petit que la racine et la tâche", texte)
+        omis = re.search(r"# Omis pour tenir dans --budget 1 : ([^(]+) \(", texte).group(1).split(", ")
+        self.assertEqual(omis, ["projets/compression-sans-perte", "projets/compression-sans-perte/miniz", "roles/optimiser"])
+        self.assertEqual(self.bee("contexte", "miniz-0099", "--budget", "0")[0], 1)
+
+    def test_contexte_role(self):
+        code, texte = self.bee("contexte", "miniz-0099", "--role", "relire")
+        self.assertEqual(code, 0, texte)
+        self.assertIn("=== nœud roles/relire ===", texte)
+        self.assertNotIn("=== nœud roles/optimiser ===", texte)
+        self.assertIn("=== nœud projets/compression-sans-perte/miniz ===", texte)
+        code, texte = self.bee("contexte", "--role", "relire")
+        self.assertEqual(code, 0, texte)
+        self.assertIn("# bee contexte --role relire : racine > roles/relire", texte)
+        self.assertNotIn("=== tâche", texte)
+        self.assertNotIn("=== nœud projets", texte)
+        code, texte = self.bee("contexte")
+        self.assertEqual(code, 0, texte)
+        self.assertIn("- `roles/relire`", texte, "seule, la racine liste tous ses enfants")
+        code, texte = self.bee("contexte", "--role", "voter")
+        self.assertEqual(code, 1)
+        self.assertIn("rôle inconnu : voter", texte)
+        self.assertEqual(self.bee("contexte", "miniz-9999")[0], 1)
+
+    def test_contexte_zone_et_noeud_ailleurs(self):
+        self.ajouter_zone()
+        chemin = self.dossier / "taches/miniz/miniz-0099.yaml"
+        chemin.write_text(chemin.read_text(encoding="utf-8").replace("statut: ouverte", "noeud: projets/compression-sans-perte/miniz/tinfl\nstatut: ouverte"),
+                          encoding="utf-8")
+        self.valide()
+        _, texte = self.bee("contexte", "miniz-0099")
+        positions = [texte.index(r) for r in ("=== nœud projets/compression-sans-perte/miniz ===",
+                                               "=== nœud projets/compression-sans-perte/miniz/tinfl ===", "=== tâche miniz-0099")]
+        self.assertEqual(positions, sorted(positions))
+        self.assertIn("Celui de ton chemin suit.", texte[positions[0]:positions[1]])
+        # Une tâche de la ruche qui vise le nœud d'un autre projet : sa branche, puis celle du nœud visé.
+        (self.dossier / "taches/ruche/ruche-9001.yaml").write_text(
+            TACHE_OPTIMISATION.replace("miniz-0099", "ruche-9001").replace("projet: miniz", "projet: ruche")
+            .replace("categorie: compression-sans-perte", "categorie: ruche").replace("type: optimisation", "type: test")
+            .replace("metrique: debit_compression_n6", "metrique: null").replace("sortie_compressee: identique\n", "")
+            .replace("statut: ouverte", "noeud: projets/compression-sans-perte/miniz\nstatut: ouverte"), encoding="utf-8")
+        self.valide()
+        _, texte = self.bee("contexte", "ruche-9001")
+        positions = [texte.index(f"=== nœud {n} ===") for n in ("racine", "roles/mesurer", "projets/ruche", "projets/ruche/ruche",
+                                                               "projets/compression-sans-perte", "projets/compression-sans-perte/miniz")]
+        self.assertEqual(positions, sorted(positions))
+
+    def test_chemins_livres_tiennent_dans_un_budget_court(self):
+        # Garde-fou de la taille des nœuds : sans la tâche, le chemin d'un rôle et d'un projet tient en 2 000 jetons.
+        reg = bee.Registre(self.dossier)
+        for role in ("optimiser", "relire", "mesurer", "debattre", "garder", "proposer"):
+            for projet in ("miniz", "libyaml", "ruche"):
+                tache = next(t for _, t in reg.taches.values() if t.get("projet") == projet)
+                texte, jetons = bee.texte_contexte(reg, tache["id"], role, registre=str(self.dossier))
+                sans_tache = bee.estimer_jetons(texte.split("=== tâche ")[0])
+                with self.subTest(role=role, projet=projet):
+                    self.assertLess(sans_tache, 2000)
+
+    def test_site_et_api_montrent_l_arbre(self):
+        code, texte = self.bee("site", "--sortie", str(self.dossier / "_site"))
+        self.assertEqual(code, 0, texte)
+        page = (self.dossier / "_site/arbre.html").read_text(encoding="utf-8")
+        for n in ("racine", "roles/relire", "projets/compression-sans-perte/miniz"):
+            self.assertIn(f"id='{n}'", page)
+        self.assertIn("<code>bee contexte &lt;tâche&gt;</code>", page)
+        tache = (self.dossier / "_site/taches/miniz-0012.html").read_text(encoding="utf-8")
+        self.assertIn("Le chemin du sens", tache)
+        self.assertIn("arbre.html#projets/compression-sans-perte/miniz", tache)
+        donnees = json.loads((self.dossier / "_site/api/registre.json").read_text(encoding="utf-8"))
+        arbre = {n["id"]: n for n in donnees["arbre"]}
+        self.assertEqual(arbre["racine"]["parent"], None)
+        self.assertEqual(arbre["projets/compression-sans-perte/miniz"]["parent"], "projets/compression-sans-perte")
+        self.assertIn("Ce qui compte ici", arbre["roles/relire"]["sections"])
+        taches = {t["id"]: t for t in donnees["taches"]}
+        self.assertEqual(taches["miniz-0012"]["noeud_rattache"], "projets/compression-sans-perte/miniz")
+        self.assertEqual(taches["miniz-0012"]["role"], "optimiser")
+
+
 class TestPullRequests(BaseTest):
     def setUp(self):
         super().setUp()
@@ -2362,7 +2632,9 @@ class TestRevueAdverse(BaseParallele):
         (self.dossier / "taches/bzip2/bzip2-9001.yaml").write_text(
             TACHE_OPTIMISATION.replace("miniz-0099", "bzip2-9001").replace("projet: miniz", "projet: bzip2")
             .replace("type: optimisation", "type: test").replace("metrique: debit_compression_n6", "metrique: null")
-            .replace("sortie_compressee: identique\n", ""), encoding="utf-8")
+            .replace("sortie_compressee: identique\n", "")
+            # bzip2 n'a pas encore de nœud dans l'arbre du sens : la tâche se rattache à sa catégorie (docs/arbre.md).
+            .replace("statut: ouverte", "noeud: projets/compression-sans-perte\nstatut: ouverte"), encoding="utf-8")
         self.valide()
         self.assertEqual(self.bee("prendre", "bzip2-9001", "--utilisateur", "alice")[0], 0)
         code, texte = self.bee("soumettre", "bzip2-9001", "--utilisateur", "alice", "--pr", "https://github.com/Bee-ruche/registre/pull/7")

@@ -44,7 +44,7 @@ ID_PROPOSITION = re.compile(r"^P-[0-9]{4}$")
 A_REMPLIR = "À REMPLIR"
 CLES_LIBRE_SERVICE_TACHE = {"statut", "reservation", "paralleles", "contribution", "notes"}
 # Outillage du registre (tâches de la ruche) : un membre peut le modifier par PR, jamais fusionnée automatiquement.
-CHEMINS_OUTILLAGE = ("outils/*", "schemas/*", "modeles/*", "docs/*", ".github/*", ".claude/*",
+CHEMINS_OUTILLAGE = ("outils/*", "schemas/*", "modeles/*", "docs/*", ".github/*", ".claude/*", "arbre/*",
                      "AGENTS.md", "README.md", "UTILISATEURS.md", "MAINTENEURS.md")
 
 
@@ -1219,6 +1219,7 @@ def verifier_registre(reg):
         instant_valide(chemin, mesure["le"], "le")
 
     verifier_agora_registre(reg, ajouter, selon_schema, instant_valide)
+    verifier_arbre(reg, ajouter)  # l'arbre du sens (docs/arbre.md)
     return problemes
 
 
@@ -2528,7 +2529,7 @@ def cmd_lister(args):
         if en_relecture:
             print(f"Il y a {en_relecture} contribution(s) à relire : bee classement --statut en_relecture")
         else:
-            print("Rien à relire non plus : dites-le à votre utilisateur et arrêtez-vous (AGENTS.md, « Quand t'arrêter »).")
+            print("Rien à relire non plus : dites-le à votre utilisateur et arrêtez-vous (la racine de l'arbre : bee contexte).")
         return 0
     afficher_tableau(["ID", "POSTE", "TYPE", "TAILLE", "PORTÉE", "STATUT", "TITRE"],
                      [[t["id"], t["poste"], t["type"], t["taille"], f"{float(t['portee']):.1f}",
@@ -4303,6 +4304,340 @@ def cmd_site(args):
     return 0
 
 
+# --------------------------------------------------------------------------
+# L'arbre du sens (docs/arbre.md, tâche ruche-0010)
+# --------------------------------------------------------------------------
+#
+# Le savoir de la ruche est rangé en arbre, par paliers : arbre/SENS.md (la racine), arbre/roles/<rôle>/SENS.md, puis
+# arbre/projets/<catégorie>/SENS.md, arbre/projets/<catégorie>/<projet>/SENS.md et, plus bas, les zones d'un projet.
+# Chaque nœud est un fichier court : un en-tête YAML (parent, mis_a_jour, entretenu_par, budget_lignes), un titre, puis
+# quatre sections fixes. Un agent ne lit que le chemin de sa tâche (bee contexte) ; bee valider tient l'arbre (budgets,
+# sections, liens parent-enfants, aucun nœud vide ou orphelin, aucune tâche orpheline).
+
+FICHIER_NOEUD = "SENS.md"
+RACINE_ARBRE = "racine"                    # identifiant du nœud arbre/SENS.md
+RANGEMENTS_ARBRE = ("roles", "projets")    # dossiers qui rangent des nœuds sans en être un
+SECTIONS_NOEUD = ("Pourquoi cette branche existe", "Ce qui compte ici", "Ce qu'on peut ignorer ici", "Enfants")
+CLES_ENTETE_NOEUD = ("parent", "mis_a_jour", "entretenu_par", "budget_lignes")
+BUDGET_NOEUD, BUDGET_RACINE = 40, 60       # lignes non vides au plus, en-tête compris ; un nœud peut se donner moins
+LARGEUR_NOEUD = 120                        # caractères par ligne au plus : un budget ne se contourne pas par des lignes sans fin
+# Rôle d'une tâche d'après son type (bee contexte --role le remplace) : les tests et les mesures outillent la ruche.
+ROLE_PAR_TYPE = {"optimisation": "optimiser", "relecture": "relire", "mesure": "mesurer", "test": "mesurer",
+                 "decoupage": "proposer"}
+CARACTERES_PAR_JETON = 4                   # estimation grossière de la taille d'un texte en jetons
+SEGMENT_NOEUD = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+ENFANT_NOEUD = re.compile(r"^- `([^`]+)`\s*:\s*\S")
+
+
+def estimer_jetons(texte):
+    return math.ceil(len(texte) / CARACTERES_PAR_JETON)
+
+
+def fichier_noeud(identifiant):
+    """Chemin relatif au registre du fichier d'un nœud."""
+    return f"arbre/{FICHIER_NOEUD}" if identifiant == RACINE_ARBRE else f"arbre/{identifiant}/{FICHIER_NOEUD}"
+
+
+def parent_attendu(identifiant):
+    """Le parent d'un nœud se lit dans son chemin : le dossier au-dessus, sauf les dossiers de rangement (la racine)."""
+    if identifiant == RACINE_ARBRE:
+        return None
+    dessus = identifiant.rpartition("/")[0]
+    return RACINE_ARBRE if dessus in ("",) + RANGEMENTS_ARBRE else dessus
+
+
+def lire_noeud(texte, lieu):
+    """Découpe un SENS.md : en-tête YAML, titre, sections. Renvoie (nœud, problèmes de forme)."""
+    problemes = []
+    lignes = texte.split("\n")
+    if lignes and lignes[-1] == "":
+        lignes = lignes[:-1]
+    entete, debut = {}, 0
+    fin = lignes.index("---", 1) if lignes[:1] == ["---"] and "---" in lignes[1:] else None
+    if fin is None:
+        problemes.append(f"{lieu} : en-tête manquant : la première ligne est ---, puis {', '.join(CLES_ENTETE_NOEUD)}, puis ---")
+    else:
+        try:
+            entete = charger_texte_yaml("\n".join(lignes[1:fin]) + "\n", lieu)
+        except ErreurBee as e:
+            problemes.append(str(e))
+        if not isinstance(entete, dict):
+            problemes.append(f"{lieu} : l'en-tête doit être un objet YAML (clé: valeur)")
+            entete = {}
+        debut = fin + 1
+    titre, sections, ordre, hors_section, courante = None, {}, [], [], None
+    for ligne in lignes[debut:]:
+        if ligne.startswith("## "):
+            courante = ligne[3:].strip()
+            ordre.append(courante)
+            sections.setdefault(courante, [])
+        elif courante is None and ligne.startswith("# ") and titre is None:
+            titre = ligne[2:].strip()
+        elif courante is None:
+            if ligne.strip():
+                hors_section.append(ligne)
+        else:
+            sections[courante].append(ligne)
+    sections = {nom: "\n".join(contenu).strip("\n") for nom, contenu in sections.items()}
+    enfants = [m.group(1) for ligne in sections.get("Enfants", "").split("\n") if (m := ENFANT_NOEUD.match(ligne))]
+    return {"entete": entete, "titre": titre, "sections": sections, "ordre": ordre, "hors_section": hors_section,
+            "enfants": enfants, "lignes": sum(1 for ligne in lignes if ligne.strip()),
+            "trop_larges": [i + 1 for i, ligne in enumerate(lignes) if len(ligne) > LARGEUR_NOEUD]}, problemes
+
+
+def charger_arbre(reg):
+    """Les nœuds de arbre/ ({identifiant: nœud}) et les problèmes de structure ; gardé en cache sur le registre."""
+    if getattr(reg, "_arbre", None) is not None:
+        return reg._arbre
+    noeuds, problemes = {}, []
+    dossier = reg.racine / "arbre"
+    if dossier.is_dir() and not reg._lien_symbolique(dossier):
+        for courant, sous_dossiers, fichiers in os.walk(dossier):
+            courant = pathlib.Path(courant)
+            relatif = courant.relative_to(dossier).as_posix()
+            identifiant = RACINE_ARBRE if relatif == "." else relatif
+            lieu = f"arbre/{'' if relatif == '.' else relatif + '/'}"
+            for nom in sorted(sous_dossiers):
+                if (courant / nom).is_symlink():
+                    problemes.append(f"{lieu}{nom} : lien symbolique refusé (l'arbre ne contient que des fichiers ordinaires)")
+            sous_dossiers[:] = sorted(n for n in sous_dossiers if not (courant / n).is_symlink())
+            if identifiant != RACINE_ARBRE and not all(SEGMENT_NOEUD.match(p) for p in identifiant.split("/")):
+                problemes.append(f"{lieu} : nom de dossier invalide (minuscules, chiffres et tirets : projets/compression-sans-perte)")
+                sous_dossiers[:] = []
+                continue
+            if identifiant in RANGEMENTS_ARBRE:
+                for nom in sorted(fichiers):
+                    problemes.append(f"{lieu}{nom} : arbre/{identifiant}/ range des nœuds sans en être un : rien d'autre que "
+                                     "des dossiers de nœuds ici")
+                continue
+            for nom in sorted(fichiers):
+                if nom != FICHIER_NOEUD:
+                    problemes.append(f"{lieu}{nom} : un nœud ne contient que son {FICHIER_NOEUD} (et ses enfants, en dossiers)")
+            chemin = courant / FICHIER_NOEUD
+            if FICHIER_NOEUD not in fichiers:
+                problemes.append(f"{lieu} : nœud vide : pas de {FICHIER_NOEUD} (écrivez-le, docs/arbre.md, ou retirez le dossier)")
+                continue
+            if chemin.is_symlink():
+                problemes.append(f"{fichier_noeud(identifiant)} : lien symbolique refusé")
+                continue
+            try:
+                texte = chemin.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError) as e:
+                problemes.append(f"{fichier_noeud(identifiant)} : fichier illisible ({type(e).__name__})")
+                continue
+            noeud, refus = lire_noeud(texte, fichier_noeud(identifiant))
+            noeud["id"], noeud["texte"] = identifiant, texte
+            noeuds[identifiant] = noeud
+            problemes += refus
+    reg._arbre = {"noeuds": noeuds, "problemes": problemes}
+    return reg._arbre
+
+
+def enfants_reels(noeuds, identifiant):
+    return sorted(n for n in noeuds if parent_attendu(n) == identifiant)
+
+
+def noeud_du_projet(tache):
+    return f"projets/{tache.get('categorie')}/{tache.get('projet')}"
+
+
+def noeud_de_tache(reg, tache):
+    """Le nœud auquel une tâche se rattache : son champ noeud, sinon le nœud de son projet ; None si orpheline."""
+    noeuds = charger_arbre(reg)["noeuds"]
+    cible = tache.get("noeud") or noeud_du_projet(tache)
+    return cible if isinstance(cible, str) and cible in noeuds else None
+
+
+def role_de_tache(tache):
+    return ROLE_PAR_TYPE.get((tache or {}).get("type"))
+
+
+def verifier_arbre(reg, ajouter):
+    """Budgets, sections, liens parent-enfants, nœuds vides ou orphelins, rattachement de chaque tâche (docs/arbre.md)."""
+    arbre = charger_arbre(reg)
+    noeuds = arbre["noeuds"]
+    for p in arbre["problemes"]:
+        ajouter(p)
+    if RACINE_ARBRE not in noeuds:
+        ajouter(f"{fichier_noeud(RACINE_ARBRE)} : la racine de l'arbre du sens manque (docs/arbre.md)")
+    for identifiant, n in sorted(noeuds.items()):
+        lieu, entete = fichier_noeud(identifiant), n["entete"]
+        manquantes = [c for c in CLES_ENTETE_NOEUD if c not in entete]
+        inconnues = sorted(str(c) for c in entete if c not in CLES_ENTETE_NOEUD)
+        if manquantes and entete:
+            ajouter(f"{lieu} : en-tête : champ(s) manquant(s) : {', '.join(manquantes)}")
+        if inconnues:
+            ajouter(f"{lieu} : en-tête : champ(s) inconnu(s) : {', '.join(inconnues)} (attendus : {', '.join(CLES_ENTETE_NOEUD)})")
+        attendu = parent_attendu(identifiant)
+        if "parent" in entete and entete["parent"] != attendu:
+            ajouter(f"{lieu} : lien cassé : parent déclaré « {entete['parent']} », mais le nœud est rangé sous "
+                    f"« {attendu or 'rien (c’est la racine : parent: null)'} »")
+        if "mis_a_jour" in entete:
+            try:
+                lire_date(entete["mis_a_jour"], f"{lieu} (mis_a_jour)")
+            except ErreurBee as e:
+                ajouter(str(e))
+        if "entretenu_par" in entete and entete["entretenu_par"] not in reg.taches:
+            ajouter(f"{lieu} : entretenu_par « {entete['entretenu_par']} » n'est pas une tâche du registre : un nœud "
+                    "s'entretient par une tâche")
+        maximum = BUDGET_RACINE if identifiant == RACINE_ARBRE else BUDGET_NOEUD
+        budget = entete.get("budget_lignes")
+        if "budget_lignes" in entete and (not isinstance(budget, int) or isinstance(budget, bool) or not 1 <= budget <= maximum):
+            ajouter(f"{lieu} : budget_lignes « {budget} » : un entier de 1 à {maximum} (élargir le plafond est un changement "
+                    "de l'outil, débattu dans l'agora)")
+            budget = maximum
+        budget = budget if isinstance(budget, int) and not isinstance(budget, bool) else maximum
+        if n["lignes"] > budget:
+            ajouter(f"{lieu} : hors budget : {n['lignes']} lignes non vides pour un budget de {budget} : resserrez, ou "
+                    "renvoyez le détail vers un enfant ou un document")
+        if n["trop_larges"]:
+            ajouter(f"{lieu} : ligne(s) {', '.join(map(str, n['trop_larges'][:5]))} de plus de {LARGEUR_NOEUD} caractères")
+        interdit = premier_caractere_interdit(n["texte"])
+        if interdit:
+            # Chaque agent lit ces nœuds : rien n'y est caché à l'affichage (comme dans l'agora).
+            ajouter(f"{lieu} : caractère invisible ou de contrôle refusé (U+{ord(interdit):04X})")
+        if not n["titre"]:
+            ajouter(f"{lieu} : titre manquant (« # Titre » avant la première section)")
+        if n["hors_section"]:
+            ajouter(f"{lieu} : texte hors section après le titre : « {n['hors_section'][0][:60]} »")
+        for nom in SECTIONS_NOEUD:
+            if nom not in n["sections"]:
+                ajouter(f"{lieu} : section manquante : « ## {nom} »")
+            elif not n["sections"][nom].strip():
+                ajouter(f"{lieu} : nœud vide : la section « {nom} » n'a rien")
+        inattendues = [s for s in n["ordre"] if s not in SECTIONS_NOEUD]
+        if inattendues:
+            ajouter(f"{lieu} : section(s) inattendue(s) : {', '.join(inattendues)} (les quatre sections fixes : "
+                    f"{' ; '.join(SECTIONS_NOEUD)})")
+        elif set(n["ordre"]) == set(SECTIONS_NOEUD) and n["ordre"] != list(SECTIONS_NOEUD):
+            ajouter(f"{lieu} : les quatre sections, une fois chacune, dans cet ordre : {' ; '.join(SECTIONS_NOEUD)}")
+        listes, reels = n["enfants"], enfants_reels(noeuds, identifiant)
+        for e in sorted(set(listes) - set(reels)):
+            ajouter(f"{lieu} : lien cassé : l'enfant « {e} » est listé, mais {fichier_noeud(e)} n'existe pas sous ce nœud")
+        for e in sorted(set(reels) - set(listes)):
+            ajouter(f"{fichier_noeud(e)} : nœud orphelin : son parent ({lieu}) ne le liste pas dans ses enfants "
+                    f"(une ligne « - `{e}` : … »)")
+        if len(listes) != len(set(listes)):
+            ajouter(f"{lieu} : un enfant est listé deux fois")
+        parties = identifiant.split("/")
+        if parties[0] == "projets" and len(parties) >= 2:
+            if parties[1] not in reg.categories:
+                ajouter(f"{lieu} : catégorie inconnue « {parties[1]} » (categories.yaml)")
+            elif len(parties) >= 3 and (reg.projets.get(parties[2], (None, {}))[1] or {}).get("categorie") != parties[1]:
+                ajouter(f"{lieu} : « {parties[2]} » n'est pas un projet de la catégorie {parties[1]} (projets/)")
+    for role in sorted(set(ROLE_PAR_TYPE.values())):
+        if f"roles/{role}" not in noeuds:
+            types = ", ".join(t for t, r in ROLE_PAR_TYPE.items() if r == role)
+            ajouter(f"{fichier_noeud('roles/' + role)} : manquant : les tâches de type {types} s'y rattachent")
+    for tid, (chemin, t) in sorted(reg.taches.items()):
+        if not isinstance(t, dict):
+            continue
+        if t.get("noeud"):
+            if not isinstance(t["noeud"], str) or t["noeud"] not in noeuds:
+                ajouter(f"{reg.rel(chemin)} : noeud « {t['noeud']} » introuvable ({fichier_noeud(str(t['noeud']))})")
+        elif noeud_du_projet(t) not in noeuds:
+            ajouter(f"{reg.rel(chemin)} : tâche orpheline : aucun nœud {fichier_noeud(noeud_du_projet(t))} ; écrivez-le "
+                    "(docs/arbre.md), ou rattachez la tâche à un nœud existant par son champ noeud")
+
+
+def branche_projets(noeuds, identifiant):
+    """Les nœuds existants de la branche d'un nœud, du palier sous le rangement jusqu'à lui (projets/x, projets/x/y…)."""
+    parties = identifiant.split("/")
+    if parties[0] not in RANGEMENTS_ARBRE:
+        return [identifiant] if identifiant in noeuds else []
+    return [c for k in range(2, len(parties) + 1) if (c := "/".join(parties[:k])) in noeuds]
+
+
+def chemin_contexte(reg, tache=None, role=None):
+    """Le chemin d'une tâche dans l'arbre : (rôle, [branches de nœuds]). La racine le précède toujours, la tâche le suit."""
+    noeuds = charger_arbre(reg)["noeuds"]
+    if RACINE_ARBRE not in noeuds:
+        raise ErreurBee("arbre/SENS.md introuvable : ce registre n'a pas encore d'arbre du sens (docs/arbre.md)")
+    role = role or role_de_tache(tache)
+    if role and f"roles/{role}" not in noeuds:
+        connus = ", ".join(n.split("/", 1)[1] for n in sorted(noeuds) if n.startswith("roles/") and n.count("/") == 1)
+        raise ErreurBee(f"rôle inconnu : {role} (rôles : {connus})")
+    branches = []
+    if tache:
+        projet = branche_projets(noeuds, noeud_du_projet(tache))
+        cible = branche_projets(noeuds, tache["noeud"]) if isinstance(tache.get("noeud"), str) else []
+        if cible[:len(projet)] == projet:
+            branches = [cible or projet]
+        elif projet[:len(cible)] == cible:
+            branches = [projet]
+        else:
+            branches = [projet, cible]
+    return role, [b for b in branches if b]
+
+
+def rendu_noeud_contexte(noeud, chemin=None):
+    """Un nœud tel que bee contexte l'imprime : sans son en-tête ; si le chemin passe par l'un de ses enfants (chemin :
+    les nœuds imprimés), ses enfants se réduisent aux noms de ceux qui ne sont pas sur le chemin."""
+    lignes = [f"=== nœud {noeud['id']} ===", f"# {noeud['titre'] or noeud['id']}"]
+    for nom in SECTIONS_NOEUD:
+        contenu = noeud["sections"].get(nom, "")
+        if nom == "Enfants" and chemin and set(noeud["enfants"]) & set(chemin):
+            autres = [e for e in noeud["enfants"] if e not in chemin]
+            contenu = "Celui de ton chemin suit." + (" Tous : `bee contexte` sans argument." if autres else "")
+        lignes += [f"## {nom}", contenu]
+    return "\n".join(lignes)
+
+
+def texte_contexte(reg, identifiant_tache=None, role=None, budget=None, registre=None):
+    """Le texte de bee contexte : racine, nœud du rôle, nœuds du projet (de la catégorie au plus précis), puis la tâche."""
+    tache = reg.tache(identifiant_tache)[1] if identifiant_tache else None
+    role, branches = chemin_contexte(reg, tache, role)
+    noeuds = charger_arbre(reg)["noeuds"]
+    ordre = [RACINE_ARBRE] + ([f"roles/{role}"] if role else [])
+    for b in branches:
+        ordre += [n for n in b if n not in ordre]
+    bloc_tache = ""
+    if tache:
+        import contextlib
+        import io
+        tampon = io.StringIO()
+        with contextlib.redirect_stdout(tampon):
+            cmd_voir(argparse.Namespace(registre=registre, tache=identifiant_tache))
+        bloc_tache = f"=== tâche {identifiant_tache} (bee voir {identifiant_tache}) ===\n" + tampon.getvalue().rstrip("\n")
+    # --budget : on retire d'abord les paliers les plus généraux des projets, puis le nœud le plus précis, puis le rôle ;
+    # la racine et la tâche restent toujours.
+    candidats = [n for b in branches for n in b[:-1]] + [b[-1] for b in branches] + ([f"roles/{role}"] if role else [])
+    omis = []
+
+    def assembler(trop_petit=False):
+        gardes = [n for n in ordre if n not in omis]
+        chemin = " > ".join(gardes + ([f"tâche {identifiant_tache}"] if tache else []))
+        tete = [f"# bee contexte{' ' + identifiant_tache if tache else ''}{' --role ' + role if role and not tache else ''} : {chemin}"]
+        if omis:
+            tete.append(f"# Omis pour tenir dans --budget {budget} : {', '.join(omis)} (à lire dans {', '.join(map(fichier_noeud, omis))})")
+        if trop_petit:
+            tete.append(f"# Le budget {budget} est plus petit que la racine et la tâche, qui sont toujours gardées.")
+        corps = "\n\n".join([rendu_noeud_contexte(noeuds[n], gardes) for n in gardes] + ([bloc_tache] if bloc_tache else []))
+
+        def taille(jetons):
+            return (f"# Environ {jetons} jetons ({CARACTERES_PAR_JETON} caractères par jeton). Rien d'autre à lire sans renvoi ; "
+                    "un nœud <n> : arbre/<n>/SENS.md.")
+        jetons = estimer_jetons("\n".join(tete + [taille(0)]) + "\n\n" + corps + "\n")
+        return "\n".join(tete + [taille(jetons)]) + "\n\n" + corps + "\n", jetons
+
+    texte, jetons = assembler()
+    while budget is not None and jetons > budget and candidats:
+        omis.append(candidats.pop(0))
+        texte, jetons = assembler()
+    if budget is not None and jetons > budget:
+        texte, jetons = assembler(trop_petit=True)
+    return texte, jetons
+
+
+def cmd_contexte(args):
+    reg = Registre(args.registre)
+    if args.budget is not None and args.budget < 1:
+        raise ErreurBee("--budget : un nombre de jetons, au moins 1")
+    texte, _ = texte_contexte(reg, args.tache, args.role, args.budget, registre=args.registre)
+    sys.stdout.write(texte)
+    return 0
+
+
 def construire_analyseur():
     analyseur = argparse.ArgumentParser(
         prog="bee",
@@ -4339,6 +4674,15 @@ def construire_analyseur():
 
     p = ajouter("voir", cmd_voir, "Affiche une tâche complète et ce qu'il faut savoir pour la prendre.")
     p.add_argument("tache")
+
+    p = ajouter("contexte", cmd_contexte,
+                "L'arbre du sens (docs/arbre.md) : imprime le chemin d'une tâche (racine, rôle, projet, tâche) et sa taille en "
+                "jetons ; sans tâche, la racine et le nœud d'un rôle. Lisez-le avant de commencer, et rien d'autre.")
+    p.add_argument("tache", nargs="?", help="ex. miniz-0012 ; sans tâche : la racine (et --role)")
+    p.add_argument("--role", help="rôle dont lire le nœud (optimiser, relire, mesurer, debattre, garder, proposer) ; "
+                                  "défaut : d'après le type de la tâche")
+    p.add_argument("--budget", type=int, help="jetons au plus : retire d'abord les nœuds les plus généraux, garde toujours "
+                                              "la racine et la tâche")
 
     p = ajouter("inscrire", cmd_inscrire, "Crée votre fiche membre (un compte humain, une voix, tous agents confondus).")
     p.add_argument("--pseudo", required=True, help="votre identifiant GitHub")
