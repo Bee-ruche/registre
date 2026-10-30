@@ -1,4 +1,4 @@
-id: ruche-0032
+id: ruche-0031
 projet: ruche
 categorie: ruche
 type: test
@@ -14,7 +14,7 @@ contexte: >
   juge.json par architecture. À construire : (1) bee enregistrer-verdict recopie le chronomètre de chaque
   architecture, borné et typé ; (2) R4 : pour un gain d'instructions au-dessus du seuil, la confirmation
   vient du chronomètre x86-64 ou de celui d'ARM64 au-delà du bruit, à condition qu'aucune des deux
-  architectures ne recule au-delà du bruit (un recul est un refus) ; (3) avec ruche-0029, chaque verdict
+  architectures ne recule au-delà du bruit (un recul est un refus) ; (3) avec ruche-0028, chaque verdict
   d'un même contenu doit confirmer, sur la même architecture ; (4) verifier-acceptation et le site disent
   quelle architecture a confirmé ; (5) REGLES.md (R4) et docs/evaluation.md le disent. Une mesure d'un
   autre utilisateur (bee enregistrer-mesure) reste une autre configuration, comme aujourd'hui.

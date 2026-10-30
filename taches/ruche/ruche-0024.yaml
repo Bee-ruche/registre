@@ -27,7 +27,7 @@ contexte: >
   contributions). Le juge commun peut mesurer lui-même sur une autre configuration : un second job de
   jugement, sur un runner ARM64 de GitHub (ubuntu-24.04-arm), même juge, même graine, publie son propre
   chronomètre (gain, au-delà du bruit) dans juge.json, sous une clé par architecture. Les instructions
-  restent celles de x86-64 (Cachegrind). Ce que le registre en fait est la tâche ruche-0032.
+  restent celles de x86-64 (Cachegrind). Ce que le registre en fait est la tâche ruche-0031.
 fichiers: [.github/workflows/juge.yml, outils/juge/, docs/juge-commun.md]
 portee: 0.6
 metrique: null
