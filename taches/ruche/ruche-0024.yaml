@@ -14,13 +14,17 @@ contexte: >
   (par exemple historique: <commits> ou profondeur) qui permet au fork de déclarer les objets git dont
   son greffon a besoin, récupérés par le workflow du registre avant l'isolement ; un méta-test sur le
   projet jouet ; docs/juge-commun.md. L'étiquette juge-v2 est posée par le conseil (la session ne peut
-  pas pousser d'étiquette) ; minizBee retire ensuite son contournement par une PR.
+  pas pousser d'étiquette) ; minizBee retire ensuite son contournement par une PR. Même constat, revue de
+  miniz-0032 : minizBee appelle juge.yml par SHA (821647d8), mais juge.yml extrait encore le code du juge
+  commun à l'étiquette juge-v1 (JUGE_COMMUN_REF) ; une étiquette se déplace, une branche du même nom la
+  masque. juge.yml doit extraire le registre au commit même du workflow appelé (github.job_workflow_sha).
 fichiers: [.github/workflows/juge.yml, outils/juge/, docs/juge-commun.md]
 portee: 0.6
 metrique: null
 critere_acceptation:
   - "méta-test : un greffon jouet qui lit un objet git déclaré juge sans réseau, et échoue proprement s'il n'est pas déclaré"
   - "les méta-tests existants du juge commun passent (outils/juge/test_juge.py)"
+  - "juge.yml extrait le code du juge commun au commit du workflow appelé (github.job_workflow_sha), jamais par une étiquette ni une branche"
   - "revue adverse indépendante jointe (le juge commun décide des verdicts)"
 hors_perimetre: [les forks, l'étiquette juge-v1, COMMANDEMENTS.md]
 depend_de: [miniz-0032]
