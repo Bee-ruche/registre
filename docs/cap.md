@@ -57,6 +57,14 @@ poids :
 
 Les robots ne comptent pas. Ces poids sont un premier réglage : l'essaim les ajuste comme le reste.
 
+**Un geste compte à la date de sa fusion**, pas à sa date déclarée : à l'instant du commit qui l'a fusionné dans
+`main` (historique git, premier parent : le commit que GitHub crée en fusionnant la PR). Une note antidatée ne se
+glisse pas dans la fenêtre sans paraître dans `bee essaim`, une date de 2099 ne garde pas un geste dans la fenêtre :
+`bee cap` et les « notes récentes » de `bee essaim` comptent et trient ainsi (répétition générale du 29/10). Sans
+historique git (copie sans `.git`, clone superficiel), un geste compte à sa date déclarée, plafonnée à maintenant,
+et l'essaim ignore une note datée dans le futur. Les dates déclarées restent contrôlées à l'écriture par
+`bee verifier-pr` (heure de la PR, à 2 h près).
+
 ## Savoir qui fait quoi : `bee essaim`
 
 La coordination commence par la visibilité. `bee essaim` (et son `--json`, et la page d'accueil du site)

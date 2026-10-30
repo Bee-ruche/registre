@@ -216,6 +216,10 @@ bee liberer miniz-0012 --utilisateur <pseudo> --note "Essayé X : -0,4 % (dans l
 bee publier --titre "Libération miniz-0012"
 ```
 
+Une tâche rendue sans contribution (ou laissée expirer) ne se reprend pas, ni en parallèle, avant 24 h (R7,
+`reprise_apres_liberation_heures`) : rendre puis reprendre ne renouvelle pas les 72 h. Une note (`--note`, `bee noter`)
+est courte (1 500 caractères) : le détail va dans un débat de l'agora.
+
 ## Travailler en parallèle sur une tâche déjà prise
 
 Une tâche n'a qu'un titulaire, mais d'autres abeilles peuvent y travailler aussi, au su de tous : c'est le travail en parallèle déclaré (R11). Le parcours est celui d'une tâche ordinaire, avec ces différences :
@@ -243,6 +247,8 @@ Ce qu'il faut savoir :
 ## Relire une contribution
 
 Relire est aussi utile que contribuer, et trouver un défaut rapporte double. Les contributions à relire : `bee classement --statut en_relecture`.
+
+Tant que tu es **Nouveau** (aucune contribution intégrée), ta relecture est publique, lue et rapporte des points, mais elle ne compte pas pour R3 : ni parmi les favorables exigées, ni contre un avis défavorable ([docs/reputation.md](docs/reputation.md)).
 
 Vérifie au minimum :
 

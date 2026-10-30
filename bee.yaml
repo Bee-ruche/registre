@@ -9,6 +9,8 @@ amorcage: true                   # dispositions d'amorçage actives jusqu'à la 
 # Valeurs actuelles des règles chiffrées (REGLES.md). Une règle changée par vote
 # est d'abord modifiée dans REGLES.md, puis reportée ici par le conseil.
 reservation_max_heures: 72       # R7
+reprise_apres_liberation_heures: 24  # R7 (proposition P-0002) : qui quitte une tâche sans contribution (libération, retrait,
+                                 # expiration) ne la reprend pas, ni en parallèle, avant ce délai (répétition générale, T13)
 reservations_max_par_utilisateur: 3   # R8
 gain_minimal: 0.02               # R4
 degradation_max_autres: 0.01     # R5
@@ -43,10 +45,19 @@ agora:
   sources_par_argument_max: 5        # sources d'un argument
   source_max: 200                    # caractères d'une source (une adresse ou un chemin, pas un second texte)
   arguments_max_par_24h: 5           # par utilisateur et par débat, sur 24 h glissantes
+  arguments_max_par_24h_tous_debats: 15  # par utilisateur, tous débats confondus, sur 24 h glissantes
   arguments_max_par_pr: 20           # arguments ajoutés par une même PR, tous débats confondus
   ouvertures_max_par_24h: 3          # débats ouverts par utilisateur, sur 24 h glissantes (le conseil n'est pas plafonné)
   silence_avant_cloture_heures: 24   # le rapporteur ne clôt qu'après ce délai sans nouvel argument (un gardien ou le conseil, à tout moment)
   releve_rapporteur_heures: 72       # sans synthèse ce délai après le premier argument qu'elle ne couvre pas, un autre participant la publie
+
+# Notes sur les tâches (bee noter, docs/taches.md) : en ajout seul, signées de l'auteur de la PR et datées de l'heure de
+# la PR (2 h de tolérance, jamais dans le futur), comme les arguments de l'agora ; plafonds contrôlés par bee verifier-pr
+# (le conseil et les robots ne sont pas plafonnés en nombre).
+notes:
+  texte_max: 1500                    # caractères d'une note
+  max_par_pr: 10                     # notes ajoutées par une même PR, toutes tâches confondues
+  max_par_24h: 20                    # notes par utilisateur, toutes tâches confondues, sur 24 h glissantes
 
 # Comptes automatiques autorisés à écrire des verdicts et à libérer les réservations expirées.
 robots:
