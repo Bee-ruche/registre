@@ -2970,6 +2970,10 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
                         probleme = probleme_date_pr(r.get("le") if isinstance(r, dict) else None, f"{chemin} : relecture de {auteur}, le", instant)
                         exiger(probleme is None, f"{probleme} : relancez bee relire")
                         exiger(r.get("relecteur") != nouveau.get("auteur"), f"{chemin} : on ne relit pas sa propre contribution")
+                        # Un motif est court, comme une note, et rien n'y est caché (tour 2 : aucun plafond jusque-là).
+                        probleme = texte_recevable(r.get("motif") if isinstance(r, dict) else None,
+                                                   f"{chemin} : motif de la relecture de {auteur}", config_notes(reg)["texte_max"])
+                        exiger(probleme is None, f"{probleme} (notes.texte_max) : le détail va dans une note ou un débat")
                         exiger(not any(k in r for k in CLES_CONFIRMATION),
                                f"{chemin} : une relecture ne confirme pas son propre défaut : la confirmation vient d'un tiers "
                                "(la CI, le conseil, un gardien ou un Confirmé, bee confirmer-defaut)")
@@ -3018,6 +3022,9 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
                        "et on ne change ni ne retire son vote tant qu'on est en course (commandement 3)")
             if statut_git != "D" and exiger(isinstance(nouveau, dict), f"{chemin} : fichier illisible"):
                 exiger(nouveau.get("votant") == auteur, f"{chemin} : votant déclaré différent de {auteur}")
+                if "motif" in nouveau:
+                    probleme = texte_recevable(nouveau.get("motif"), f"{chemin} : motif du vote", config_notes(reg)["texte_max"])
+                    exiger(probleme is None, f"{probleme} (notes.texte_max)")
                 probleme = probleme_date_pr(nouveau.get("le"), f"{chemin} : le", instant)
                 exiger(probleme is None, f"{probleme} : relancez bee voter")
                 sujet = nouveau.get("sujet", "")
@@ -3033,6 +3040,9 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
             exiger(auteur in reg.membres or est_conseil, f"{chemin} : {auteur} doit d'abord s'inscrire (bee inscrire)")
             if statut_git != "D" and exiger(isinstance(nouveau, dict), f"{chemin} : fichier illisible"):
                 exiger(nouveau.get("soumise_par") == auteur, f"{chemin} : soumise_par déclaré différent de {auteur}")
+                if "motif" in nouveau:
+                    probleme = texte_recevable(nouveau.get("motif"), f"{chemin} : motif de la mesure", config_notes(reg)["texte_max"])
+                    exiger(probleme is None, f"{probleme} (notes.texte_max)")
                 exiger(nouveau.get("contribution") == partie[1], f"{chemin} : la mesure doit être rangée sous sa contribution")
                 exiger(nouveau.get("contribution") in reg.enregistrements, f"{chemin} : contribution « {nouveau.get('contribution')} » inconnue")
                 probleme = probleme_date_pr(nouveau.get("le"), f"{chemin} : le", instant)
@@ -3480,6 +3490,9 @@ def lignes_calculees_tache(reg, t):
                           f"protégée jusqu'au {c['protegee_jusqu_au']}, plus aucune attente après le {c['attentes_jusqu_au']}")
     if t.get("statut") in ("reservee", "en_relecture"):
         lignes.append(f"# rejoindre en parallèle : bee prendre {t['id']} --utilisateur <pseudo> --en-parallele")
+    # Le nombre de notes, dit hors des données : « aucune » se distingue d'une liste omise (tour 2).
+    notes = t.get("notes") if isinstance(t.get("notes"), list) else []
+    lignes.append(f"# notes : {len(notes) or 'aucune'}")
     return lignes
 
 
@@ -3888,6 +3901,9 @@ def cmd_relire(args):
         raise ErreurBee(f"{args.contribution} n'est plus en relecture (statut : {enr.get('statut')})")
     if any(r.get("relecteur") == args.utilisateur for r in enr.get("relectures") or []):
         raise ErreurBee(f"{args.utilisateur} a déjà relu {args.contribution}")
+    probleme = texte_recevable(args.motif, "motif", config_notes(reg)["texte_max"])
+    if probleme:
+        raise ErreurBee(f"{probleme} (bee.yaml, notes.texte_max) : un motif est court ; le détail va dans une note ou un débat")
     if args.utilisateur in concurrents_de(reg, enr) and (args.avis != "favorable" or args.defaut):
         raise ErreurBee(f"{args.utilisateur} est en course sur la même tâche ({enr.get('tache')}) : un avis défavorable sur une "
                         "concurrente ne compterait pas (commandement 3). Laissez un autre relire, ou retirez-vous de la course.")
@@ -3953,10 +3969,18 @@ def cmd_voter(args):
         raise ErreurBee(f"sujet de vote inconnu : {args.sujet}")
     donnees = {"votant": args.utilisateur, "sujet": args.sujet, "valeur": args.valeur, "le": en_iso(maintenant())}
     if args.motif:
+        probleme = texte_recevable(args.motif, "motif", config_notes(reg)["texte_max"])
+        if probleme:
+            raise ErreurBee(f"{probleme} (bee.yaml, notes.texte_max)")
         donnees["motif"] = args.motif
     chemin = reg.racine / "votes" / args.sujet / f"{args.utilisateur}.yaml"
     ecrire_yaml(chemin, donnees)
     print(f"✓ vote {args.valeur:+d} enregistré ({reg.rel(chemin)}). Publiez : bee publier --titre 'Vote {args.sujet}'")
+    niveau = calculer_niveaux(reg).get(args.utilisateur, {}).get("niveau", "Nouveau")
+    if POIDS_VOTE.get(niveau, 0) == 0:
+        # Comme bee relire (tour 2 : une Nouvelle croyait avoir pesé, dans le classement comme dans le quorum de R10).
+        print(f"  Niveau {niveau} : votre vote est public, mais il pèse 0 (ni dans le classement, ni dans le quorum de R10) tant "
+              "que vous n'avez pas une contribution intégrée (docs/reputation.md).")
     return 0
 
 

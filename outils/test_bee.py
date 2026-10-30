@@ -247,7 +247,9 @@ class TestRegistre(BaseTest):
         self.assertEqual(self.bee("relire", cid, "--utilisateur", "bruno", "--avis", "favorable", "--motif", "Diff relu en entier.")[0], 0)
         self.assertEqual(self.bee("relire", cid, "--utilisateur", "bruno", "--avis", "favorable", "--motif", "Encore une fois.")[0], 1)
         self.assertEqual(self.bee("voter", cid, "--utilisateur", "alice", "--valeur", "1")[0], 1)
-        self.assertEqual(self.bee("voter", cid, "--utilisateur", "chloe", "--valeur", "1")[0], 0)
+        code, texte = self.bee("voter", cid, "--utilisateur", "chloe", "--valeur", "1")
+        self.assertEqual(code, 0, texte)
+        self.assertIn("Niveau Nouveau : votre vote est public, mais il pèse 0", texte, "tour 2 : la Nouvelle le sait")
         self.valide()
         verdict = self.dossier / "verdict.json"
         verdict.write_text(json.dumps({"ci": "verte", "gain": 0.03, "au_dela_du_bruit": True, "lignes_modifiees": 10, "amorcage": True}), encoding="utf-8")
@@ -1231,6 +1233,7 @@ class TestArbre(BaseTest):
         self.assertNotIn("=== nœud roles/", abrege)
         self.assertIn("Déjà lus (--deja-lu), non réimprimés : racine, roles/", abrege)
         self.assertIn("=== DONNÉES de la tâche miniz-0099", abrege, "la tâche reste entière")
+        self.assertRegex(abrege, r"\n# notes : (aucune|\d+)\n", "tour 2 : « aucune note » se dit, hors des données")
         self.assertIn("=== nœud projets/compression-sans-perte/miniz ===", abrege, "les paliers de projet restent")
         self.assertLess(len(abrege), len(complet))
         self.assertIn("--deja-lu va avec une tâche", self.bee("contexte", "--deja-lu")[1])
@@ -1573,6 +1576,35 @@ class TestPullRequests(BaseTest):
         self.assertEqual(self.verifier("bruno")[0], 1)
         code, texte = self.verifier("chloe", "--fusion-auto")
         self.assertEqual(code, 0, texte)
+
+    def test_motifs_courts_et_sans_caractere_cache(self):
+        """Tour 2 (farid) : le motif d'une relecture n'avait aucun plafond, contrairement aux notes ; ni ceux d'un vote ou
+        d'une mesure. Ils suivent maintenant notes.texte_max, et rien n'y est caché."""
+        cid = self.soumettre_0099()
+        self.commit("soumission")
+        long = "Relu en entier. " + "x" * 1500
+        self.assertIn("motif de 1516 caractères, au plus 1500", self.bee("relire", cid, "--utilisateur", "chloe", "--avis",
+                                                                           "favorable", "--motif", long)[1])
+        self.assertIn("caractère invisible", self.bee("voter", cid, "--utilisateur", "chloe", "--valeur", "1", "--motif",
+                                                      "Utile.‮")[1])
+        for motif, attendu in ((long, "au plus 1500"), ("Relu en entier.​", "caractère invisible")):
+            git(self.dossier, "switch", "-qC", "relecture", "main")
+            chemin = self.dossier / f"contributions/miniz/{cid}.yaml"
+            enr = bee.lire_yaml(chemin)
+            enr["relectures"] = [{"relecteur": "chloe", "avis": "favorable", "motif": motif, "le": os.environ["BEE_MAINTENANT"]}]
+            bee.ecrire_yaml(chemin, enr)
+            self.commit()
+            code, texte = self.verifier("chloe", "--fusion-auto")
+            self.assertEqual(code, 1, texte)
+            self.assertIn(attendu, texte)
+            git(self.dossier, "switch", "-qC", "vote", "main")
+            bee.ecrire_yaml(self.dossier / "votes" / cid / "chloe.yaml",
+                            {"votant": "chloe", "sujet": cid, "valeur": 1, "motif": motif, "le": os.environ["BEE_MAINTENANT"]})
+            self.commit()
+            code, texte = self.verifier("chloe", "--fusion-auto")
+            self.assertEqual(code, 1, texte)
+            self.assertIn(attendu, texte)
+        git(self.dossier, "switch", "-q", "main")
 
     # --- Tests adverses (revue du 27/10) : chaque contournement connu doit être refusé. ---
 

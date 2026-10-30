@@ -35,3 +35,7 @@ noeud: projets/compression-sans-perte/miniz
 statut: proposee
 cree_par: bidji29
 cree_le: "2026-10-30"
+notes:
+  - par: "bidji29"
+    le: "2026-10-30T06:47:42Z"
+    texte: "Répétition générale, tour 2 (30/10), pour la zone tinfl : alice note que le nœud de miniz ne dit ni le format des entrées de m_look_up, (longueur du code << 9) | symbole, que tout chemin rapide doit respecter, ni qu'un chemin rapide se prouve aussi à ses bornes ; farid a relevé que le corpus flux-1 n'exerce pas le chemin rapide de miniz-0017-c1. Deux faits à porter dans le nœud tinfl, avec leur source."

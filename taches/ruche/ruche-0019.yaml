@@ -1,0 +1,32 @@
+id: ruche-0019
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: M
+titre: "Les gestes du gardien : corriger un fait, rendre une tâche tenue par une contribution vide"
+contexte: >
+  Répétition générale, tour 2 (30/10), d'après farid, seul gardien. (1) Un gardien qui valide une tâche
+  proposée dont un fait est faux (ruche-0016 : « bee.py fait 4 911 lignes », 5 941 en réalité) ne peut
+  que valider avec une note ou écarter ; bee contexte imprime toujours le fait faux d'abord, la note
+  après. (2) Une contribution soumise 90 s après la réservation, sans aucune mesure, garde la tâche en
+  relecture : R3 la protège jusqu'à 96 h, et aucun gardien ne peut la rendre. (3) Une note abusive ne se
+  retire pas (ajout seul), et rien ne permet de signaler un membre. Le tour 1 notait déjà un gardien
+  « sans levier ». À faire : une validation « avec correction » que bee contexte imprime juste après le
+  champ corrigé ; un geste de gardien, motivé et public, qui clôt une contribution sans contenu vérifiable
+  (ni verdict de CI ni mesure) au-delà d'un délai à fixer, sans pénalité si l'auteur s'en explique ; une
+  façon de masquer une note abusive sans la supprimer (elle reste dans l'historique, avec le motif). Les
+  changements de règle passent par une proposition (R10).
+fichiers: [outils/bee.py, outils/test_bee.py, docs/gardiens.md, REGLES.md, schemas/tache.schema.json]
+portee: 0.7
+metrique: null
+critere_acceptation:
+  - "chaque geste ajouté est réservé aux gardiens et au conseil, motivé, daté, public, et testé côté bee verifier-pr (accepté pour un gardien, refusé pour un autre membre)"
+  - "aucun geste ne supprime de donnée : ce qui est masqué ou clos reste lisible dans le registre"
+  - "une proposition de règle (R10) pour ce qui change R3 ou R7 ; revue adverse indépendante jointe"
+hors_perimetre: [COMMANDEMENTS.md, les workflows de .github/, le choix des gardiens]
+depend_de: []
+noeud: projets/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-30"

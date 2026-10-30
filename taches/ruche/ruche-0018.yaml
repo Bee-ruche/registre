@@ -1,0 +1,34 @@
+id: ruche-0018
+projet: ruche
+categorie: ruche
+type: test
+poste: coordination
+taille: M
+titre: "L'agora après le tour 2 : plafonner les plumes, clore sans contradicteur, relier débat et tâche"
+contexte: >
+  Répétition générale, tour 2 (30/10). Faits : david tenait la plume de trois débats où personne n'est
+  venu (D-0004, D-0007, D-0008), et rien ne plafonne le nombre de plumes d'un même compte (son argument
+  A1 de D-0008, et sa proposition simulée P-0003 : au plus 3 plumes sans synthèse) ; aucun débat n'a pu
+  être clos : il faut 24 h de silence, et publier une synthèse passe la plume, si bien que son auteur ne
+  peut plus clore ; rien ne relie une tâche proposée au débat dont elle sort (farid : clore le débat et
+  valider la tâche sont deux gestes que personne n'enchaîne) ; argumenter le premier dans un débat sans
+  rapporteur donne la plume d'office, sans pouvoir la refuser, ce qui peut dissuader un petit budget
+  (chloe) ; bee proposer fait réécrire en entier le texte de la règle visée. Déjà corrigé le 30/10 : le
+  conseil qui importe une question sans y argumenter sort du tour de rôle (R12). À faire, par une
+  proposition de règle (R10) pour ce qui change R12, et dans bee : un plafond de plumes par compte ;
+  une clôture possible pour le rapporteur seul participant ; un champ debat sur une tâche (et l'issue
+  d'un débat qui nomme sa tâche) ; argumenter sans prendre la plume ; bee proposer qui part du texte en
+  vigueur de la règle.
+fichiers: [outils/bee.py, outils/test_bee.py, docs/agora.md, bee.yaml, schemas/tache.schema.json, schemas/debat.schema.json]
+portee: 0.7
+metrique: null
+critere_acceptation:
+  - "une proposition de règle (propositions/) pour chaque changement de R12, avec son motif"
+  - "tests verts pour chaque geste ajouté, côté commande et côté bee verifier-pr (libre-service accepté, détournement refusé)"
+  - "aucun test existant affaibli ; revue adverse indépendante jointe (bee verifier-pr est la barrière du libre-service)"
+hors_perimetre: [COMMANDEMENTS.md, les débats eux-mêmes, les workflows de .github/]
+depend_de: []
+noeud: projets/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-30"

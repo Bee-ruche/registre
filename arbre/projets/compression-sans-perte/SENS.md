@@ -8,8 +8,8 @@ budget_lignes: 40
 ## Pourquoi cette branche existe
 Les compresseurs servent à chaque transfert et à chaque archive.
 ## Ce qui compte ici
-Preuve : aller-retour bit à bit, compatible avec la référence dans les deux sens. Chaque tâche d'optimisation dit
-(`sortie_compressee`) si la sortie compressée doit rester `identique`, ou `peut_changer` si `ratio_n6` ne baisse pas.
+Preuve : aller-retour bit à bit, compatible avec la référence dans les deux sens. Une tâche d'optimisation fixe
+`sortie_compressee` : `identique`, ou `peut_changer` si `ratio_n6` ne baisse pas.
 ## Ce qu'on peut ignorer ici
 bzip2 (phase 3).
 ## Enfants
