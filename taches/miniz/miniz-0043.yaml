@@ -1,0 +1,44 @@
+id: miniz-0043
+projet: miniz
+categorie: compression-sans-perte
+type: mesure
+taille: S
+titre: "Défauts de cache et branches mal prédites : compteurs matériels contre la simulation de Cachegrind"
+contexte: >
+  Source : rapport de miniz-0029 (bee/resultats/miniz-0029/RAPPORT.md et TABLEAUX.md du fork, branche
+  tache/miniz-0029, PR #18 ; sources de master a2f939a). La machine de référence (Xeon 2,1 GHz virtualisé)
+  n'a pas perf : miniz-0029 n'a pu que simuler les caches et les branches avec Cachegrind (L1d de
+  48 Kio, LL de 2 Mio). Résultats simulés, 128 premiers Kio de chaque fichier : la boucle des sondes
+  de tdefl_find_match fait 0,55 défaut L1 par sonde au niveau 6 et 0,64 au niveau 9, soit 84 % et
+  90 % des défauts L1 de ces scénarios (m_next 64 Kio, m_dict 33 Kio et m_hash 64 Kio ne tiennent
+  pas dans le L1) ; tinfl_decompress a 8,8 % de branches mal prédites, dont la recharge de bit_buf
+  (miniz_tinfl.c l. 443, 47,5 %), le choix 4 ou 8 octets (l. 590, 36 %) et la fin de la copie par
+  mots (l. 607, 32 %). Un modèle linéaire ajusté sur le chronomètre du banc (15 points : niveaux 1,
+  6, 9 × 5 familles) donne 0,138 ns par instruction plus 2,84 ns par défaut L1 simulé (R² 0,989,
+  contre 0,913 avec les seules instructions), et attribue aux défauts L1 environ 10 %, 33 % et 41 %
+  du temps des niveaux 1, 6 et 9 ; il ne voit pas les branches (coefficient instable). Ces ordres de
+  grandeur décident si des tâches de cache ou de branches, dont le gain ne se voit qu'au chronomètre
+  (seconde voie de R4), valent d'être ouvertes, et pourquoi les gains d'instructions de tinfl
+  (miniz-0017, miniz-0018) restent dans le bruit. Tâche de mesure, sans plafond d'instructions :
+  sur une machine qui a des compteurs matériels (perf, idéalement non virtualisée ; x86-64 ou
+  ARM64), mesurer pour les scénarios n1, n6, n9 et décompression du banc (128 premiers Kio de chaque
+  fichier, mêmes commandes que bee/resultats/miniz-0029/cachegrind.py) : cycles, instructions,
+  défauts L1d et LLC, branches mal prédites, par scénario et par famille (perf stat), puis par
+  fonction et par ligne pour la boucle des sondes et tinfl_decompress (perf record et perf annotate,
+  avec ou sans échantillonnage précis). Comparer aux valeurs simulées de
+  bee/resultats/miniz-0029/donnees/cachegrind.json et au modèle ci-dessus. Aucune modification de
+  miniz.
+fichiers: [bee/resultats/miniz-0043/]
+portee: 0.8
+metrique: null
+critere_acceptation:
+  - "rapport chiffré dans bee/resultats/miniz-0043/ : machine (processeur, virtualisée ou non, système, compilateur), commandes exactes, sorties de perf jointes"
+  - "pour n1, n6, n9 et décompression : cycles, instructions, défauts L1d, branches mal prédites, mesurés et non estimés, à côté des valeurs simulées de miniz-0029"
+  - "part des cycles de la boucle des sondes (n6, n9) et des branches de tinfl_decompress, avec la méthode d'attribution"
+  - "aucune modification de miniz ni des juges dans cette contribution"
+hors_perimetre: [modifier miniz, modifier le banc ou le juge, optimiser]
+depend_de: [miniz-0001, miniz-0029]
+noeud: projets/compression-sans-perte/miniz/bee
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-30"

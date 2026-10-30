@@ -1,0 +1,54 @@
+id: miniz-0037
+projet: miniz
+categorie: compression-sans-perte
+type: optimisation
+taille: S
+titre: "tdefl_compress_normal : garder le hachage glissant d'un tour à l'autre au lieu de le recalculer"
+contexte: >
+  Source : rapport de miniz-0029 (bee/resultats/miniz-0029/RAPPORT.md et TABLEAUX.md du fork, branche
+  tache/miniz-0029, PR #18 ; sources de master a2f939a ; Cachegrind, 128 premiers Kio de chaque fichier).
+  Avant d'insérer les nouveaux octets dans les chaînes, chaque tour de tdefl_compress_normal
+  recalcule le hachage des deux derniers octets de la fenêtre (miniz_tdef.c l. 1181-1188 à a2f939a :
+  test l. 1181, dst_pos et ins_pos l. 1183, hash à partir de deux lectures masquées de m_dict
+  l. 1184, num_bytes_to_process l. 1185, test du cas courant l. 1188). Au niveau 1, il y a 521 383
+  tours sur le sous-corpus (0,235 par octet) et les l. 1181-1188 pèsent 9,73 % du décompte
+  d'instructions du juge (juge_parts.py ; 10,35 % avec l'entrée et le test de boucle l. 1177) :
+  l. 1184 2,73 %, l. 1181 1,83 %, l. 1183 et l. 1185 1,52 % chacune, l. 1188 1,51 %, l. 1186-1187
+  0,61 %. Les l. 1183, 1185-1188 restent nécessaires : plafond de la piste, 4,56 % de
+  instructions_n1 (l. 1184 et le test l. 1181), 2,73 % pour la seule l. 1184 ; au-dessus du seuil
+  de 2 % de R4, de peu. Fait vérifiable :
+  TDEFL_LZ_HASH_SHIFT vaut ceil(TDEFL_LZ_HASH_BITS / 3) (5 pour 15 bits, 4 pour 12 avec
+  TDEFL_LESS_MEMORY), donc l'octet le plus ancien sort du masque : la valeur de hash laissée par la
+  boucle d'insertion, une fois mise à jour par ((hash << SHIFT) ^ c) & (TDEFL_LZ_HASH_SIZE - 1),
+  donne exactement la même valeur que le hachage recalculé (m_dict[ins_pos] << SHIFT) ^
+  m_dict[ins_pos + 1] puis mis à jour de même. Piste : garder hash dans une variable de la
+  fonction d'un tour à l'autre, le recalculer seulement à l'entrée de tdefl_compress_normal (appel
+  en flux) et après le chemin de début de flux (l. 1235-1253) ; alléger au passage le test l. 1181,
+  toujours vrai après les deux premiers octets jusqu'au prochain vidage complet (MZ_FULL_FLUSH
+  remet m_dict_size à 0). Déjà essayé, sur la boucle d'avant miniz-0013 (manifeste de miniz-0013
+  du fork) : −7,8 % d'instructions n1 contre −8,3 % pour la version retenue, mais une variable
+  vivante de plus prenait un registre à tdefl_find_match incorporée (lookahead_pos relu sur la pile
+  dans la troisième sonde) et le niveau 9 reculait au chronomètre (B gagne 1 paire sur 10) ;
+  abandonné. Non mesuré sur la boucle actuelle. Invariants : mêmes écritures dans m_hash et m_next,
+  dans le même ordre (miniz-0013) ; mêmes vidages. Ne recouvre ni miniz-0019 (avancement et vidage,
+  l. 1327-1341) ni miniz-0020 (tdefl_record_*). Attention : leurs notes montrent aussi qu'un état
+  gardé en variables locales peut faire déborder les registres de gcc (+0,22 %) ; même pression que
+  miniz-0038 : vérifier le désassemblage de la boucle des sondes avant de conclure. Au niveau 1, le temps suit les instructions (0,117 ns par
+  instruction, TABLEAUX.md section 4).
+fichiers: [miniz_tdef.c]
+portee: 1.0
+metrique: debit_compression_n1
+sortie_compressee: identique
+critere_acceptation:
+  - "CI verte (R2), x86-64 et ARM64 (R6)"
+  - "R4 : au moins 2 % d'instructions en moins sur debit_compression_n1 (instructions_n1), que le chronomètre confirme au-delà du bruit (sinon une mesure d'une autre configuration)"
+  - "aucune autre métrique dégradée de plus de 1 % (R5), debit_compression_n9 comprise (recul de l'essai de miniz-0013)"
+  - "manifeste : désassemblage de la boucle des sondes avant et après (aucun nouveau débordement sur la pile), instructions_n6 et instructions_n9 déclarées"
+  - "empreintes identiques, y compris les vidages « 1v », « 6v » et « 9v » et l'appel en flux (flux-1, flux-4096)"
+  - "le cas TDEFL_LESS_MEMORY (hachage sur 12 bits) reste juste : argument ou essai déclaré dans le manifeste"
+hors_perimetre: [format de sortie, API publique, nouvelle dépendance, fonction de hachage, avancement et décision de vidage (miniz-0019)]
+depend_de: [miniz-0001]
+noeud: projets/compression-sans-perte/miniz/deflate
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-30"

@@ -1,0 +1,56 @@
+id: miniz-0041
+projet: miniz
+categorie: compression-sans-perte
+type: optimisation
+taille: S
+titre: "tinfl_decompress : copier les correspondances chevauchantes par mots plutôt qu'octet par octet"
+contexte: >
+  Source : rapport de miniz-0029 (bee/resultats/miniz-0029/RAPPORT.md et TABLEAUX.md du fork, branche
+  tache/miniz-0029, PR #18 ; sources de master a2f939a ; Cachegrind, 128 premiers Kio de chaque fichier).
+  Depuis miniz-0012, les correspondances sans chevauchement de 4 octets ou plus se copient par mots
+  (miniz_tinfl.c l. 587-613 à a2f939a) ; les autres passent par la boucle octet par octet, 3 octets
+  par tour (l. 615-630) : les longueurs 3, et les correspondances chevauchantes (distance D plus
+  petite que la longueur L). Cette boucle pèse 5,22 % du décompte d'instructions du juge en
+  décompression (juge_parts.py, flux zlib niveau 6), à 8,1 instructions par tour de 3 octets
+  (l. 617-622 : 4,27 %). Sur ces flux (stats_lz.py), elle copie 22,6 % des octets produits
+  (501 901 sur 2 221 670) ; les 2 382 correspondances chevauchantes (1,8 % des correspondances) en
+  apportent environ 409 000, presque toutes dans la famille repetitif (75 % de ses octets), et les
+  30 880 longueurs 3 (23,7 %) le reste, surtout dans binaire. Parmi les chevauchantes : D = 1 pour
+  41 %, D de 2 à 7 pour 37 %, D de 8 ou plus pour 22 %. Sur le banc, 61,6 % des instructions de la
+  boucle viennent de repetitif, 19,9 % de binaire. Plafond connu : 5,22 % de
+  instructions_decompression pour la boucle, environ 3,5 % pour les seules chevauchantes (part de
+  leurs octets) ; au-dessus du seuil de 2 % de R4, de peu. Déjà essayé : D = 1 par memset (note du
+  27/10 de miniz-0012, base 2948eeb) : instructions −0,75 %, chronomètre dans le bruit ; copie par
+  8 octets acceptant le chevauchement dès D = 8 (manifeste de miniz-0012 du fork) : débit −38 % sur
+  des données périodiques de période 9 à 15, −7 à −11 % de 48 à 127, par échec du transfert
+  mémoire vers registre (store-to-load forwarding, commentaire des l. 582-586) ; écartée. Piste non
+  essayée : pour D < 8, former une fois un mot de 8 octets qui répète le motif des D octets
+  précédents et l'écrire par pas de 8 (motif décalé de 8 mod D quand D ne divise pas 8), sans
+  relire les octets tout juste écrits ; D >= 8 ne passe par mots que si les mesures périodiques
+  ci-dessus ne reculent pas. C'est au chronomètre de trancher, famille repetitif comprise
+  (décompression 2,4 Go/s, TABLEAUX.md section 4). Touche le test l. 587, comme miniz-0042 : la
+  seconde intégrée se rebase. Invariants : jamais d'écriture au-delà de la fin
+  de la correspondance ni de pOut_buf_end ; même valeur résiduelle de counter que la boucle
+  d'origine (commentaire l. 612) ; chemins lents (fin de tampon, tampon circulaire de mz_inflate
+  en flux) intacts.
+fichiers: [miniz_tinfl.c]
+portee: 0.8
+metrique: debit_decompression
+sortie_compressee: identique
+critere_acceptation:
+  - "CI verte (R2), x86-64 et ARM64 (R6)"
+  - "R4 : au moins 2 % d'instructions en moins sur debit_decompression (instructions_decompression), que le chronomètre confirme au-delà du bruit (sinon une mesure d'une autre configuration)"
+  - "aucune autre métrique dégradée de plus de 1 % (R5)"
+  - "fuzzing inflate (fuzz_inflate) 10 minutes sans écart ; flux-1 et flux-4096 sans écart"
+  - "manifeste : débit de décompression de la famille repetitif avant et après (ab.py --corpus bee/corpus/donnees/repetitif)"
+  - "manifeste : chronomètre avant et après sur des données périodiques synthétiques (périodes 1 à 15 et 48 à 127, comme miniz-0012), sans recul au-delà du bruit"
+hors_perimetre: [format de sortie, API publique, nouvelle dépendance, copie sans chevauchement (miniz-0012), décodage Huffman]
+depend_de: [miniz-0001]
+noeud: projets/compression-sans-perte/miniz/inflate
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-30"
+notes:
+  - par: "bidji29"
+    le: "2026-10-30T19:43:12Z"
+    texte: "30/10, vérification par un gardien : les parts de la décompression dépendent de la zlib qui produit les flux du juge. Avec zlib 1.3 (rapport de miniz-0029) la copie octet par octet pèse 5,22 % ; avec zlib-ng 1.3.1 (celle du Python de la session de vérification), 4,1 %. Vérifier quelle zlib produit les flux dans l'image du juge commun avant de compter sur le plafond (environ 3,5 % pour les seules copies chevauchantes)."
