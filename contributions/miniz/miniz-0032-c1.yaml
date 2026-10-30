@@ -8,3 +8,52 @@ statut: en_relecture
 soumise_le: '2026-10-30T15:22:32Z'
 engage_depuis: '2026-10-30T14:19:02Z'
 relectures: []
+verdict:
+  ci: verte
+  gain: null
+  au_dela_du_bruit: false
+  amorcage: true
+  instructions:
+    instructions_n1:
+      A: 171453314.0
+      B: 171453314.0
+      gain: 0.0
+    instructions_n6:
+      A: 335509769.0
+      B: 335509769.0
+      gain: 0.0
+    instructions_n9:
+      A: 483719269.0
+      B: 483719269.0
+      gain: 0.0
+    instructions_decompression:
+      A: 31602541.0
+      B: 31602541.0
+      gain: 0.0
+  degradations:
+    debit_compression_n6: -0.0032680681891380514
+  juge:
+    version: 3
+    commun: juge-v1
+    sorties_comparees: 7868
+    constructions_suspectes: []
+  lignes_modifiees: 218
+  ecart_declare: null
+  sha: 32fea0bf777b7ca228588c926a1516964098384d
+  arbre: 21a0e658d2900d95fbf401f6fea47bc2ccbc8494
+  fichiers_controles: true
+  juges_modifies:
+  - .github/workflows/bee-ci.yml
+  - bee/README.md
+  - bee/ci/juges.sh
+  - bee/ci/test_verdict.py
+  - bee/ci/verdict.py
+  - bee/juge/Dockerfile
+  - bee/juge/analyse.py
+  - bee/juge/chrono.c
+  - bee/juge/construire.sh
+  - bee/juge/isoler.sh
+  - bee/juge/juge.py
+  - bee/juge/projet.py
+  - bee/juge/test_juge.py
+  execution: https://github.com/Bee-ruche/minizBee/actions/runs/41078017862
