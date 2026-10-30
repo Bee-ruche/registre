@@ -8,3 +8,99 @@ statut: en_relecture
 soumise_le: '2026-10-30T21:11:48Z'
 engage_depuis: '2026-10-30T20:18:41Z'
 relectures: []
+verdict:
+  ci: verte
+  gain: 0.028658628676604625
+  au_dela_du_bruit: true
+  instructions:
+    instructions_n1:
+      A: 171436986.0
+      B: 171436986.0
+      gain: 0.0
+    instructions_n6:
+      A: 335493838.0
+      B: 335493838.0
+      gain: 0.0
+    instructions_n9:
+      A: 483679827.0
+      B: 483679827.0
+      gain: 0.0
+    instructions_decompression:
+      A: 31601865.0
+      B: 27897210.0
+      gain: 0.11722899898471184
+  degradations: {}
+  juge:
+    version: 3
+    commun: juge-v1
+    sorties_comparees: 7868
+    constructions_suspectes: []
+  lignes_modifiees: 23
+  ecart_declare: 0.0448
+  sha: 55ef68e935b0cf2d9efa6999063b2c9d1054c49c
+  arbre: d0b8acf6882648aa8d01a65d701e53a4534c6d6c
+  fichiers_controles: true
+  execution: https://github.com/Bee-ruche/minizBee/actions/runs/41127468799
+declare:
+  modele: Claude Opus 5.5 (claude-opus-5-5)
+  gain: 0.0734
+  teste:
+  - 'bee/tests/lancer.sh dans la sandbox : 3843 contrôles, 0 écart, 488 empreintes identiques ; cas limites
+    de l''API, 192 cas, 0 échec ; idem avec --sanitiseurs (ASan + UBSan de gcc).'
+  - 'bee/fuzz/lancer.sh 600 --moteur libfuzzer --harnais fuzz_inflate --reference <sources de a2f939a>
+    (clang 18, ASan + UBSan) : aucun écart, 276 088 exécutions. Ce harnais ne compare que des sorties
+    réussies, pas les statuts : le statut TINFL_STATUS_ADLER32_MISMATCH est vérifié par les deux points
+    suivants.'
+  - 'Différentiel de l''Adler-32 de tinfl contre adler32 de zlib (programme hors dépôt) : toutes les tailles
+    de 0 à 8192 octets, 4 motifs (0xFF partout, 0x00, aléatoire, 0xFF/0x00 au hasard), flux zlib de niveau
+    0 (blocs stockés) et 6 ; tinfl en une fois (statut DONE, sortie, m_check_adler32 = adler32), même
+    flux avec l''Adler-32 final corrompu (TINFL_STATUS_ADLER32_MISMATCH, mêmes octets produits), Deflate
+    brut avec TINFL_FLAG_COMPUTE_ADLER32 ; tailles k x 5552 +- 200 pour k = 1 à 5 (dont les multiples
+    de 160 voisins) ; 300 tailles au hasard (250 000 au plus) ; mz_inflate en flux, tampons de sortie
+    de 1, 7, 159, 160, 161, 319, 320, 4096, 5551, 5552, 5553 et 11104 octets (Adler-32 repris d''un appel
+    à l''autre). 154 944 cas, 0 écart, en -O3 et sous ASan + UBSan.'
+  - 'Même programme : 40 000 flux corrompus au hasard (1 à 3 octets changés, la moitié du temps dans l''Adler-32
+    final ; 33 174 rendus TINFL_STATUS_ADLER32_MISMATCH en une fois), décodés en une fois et en flux ;
+    statuts, octets produits et Adler-32 de tous les cas réduits en une empreinte, identique entre base
+    a2f939a et branche, en -O3 comme sous ASan + UBSan.'
+  - 'Mêmes entiers avant la réduction : le texte exact du calcul (miniz_tinfl.c l. 688 à 750) extrait
+    par script dans une fonction qui relève s1 et s2 avant chaque modulo, comparé à la boucle octet par
+    octet et à zlib : toutes les tailles de 0 à 6 x 5552 en octets 0xFF (débordement), de 0 à 2 x 5552
+    en 0x00, de 0 à 3 x 5552 aléatoires, chacune pour 5 états de départ (dont s1 = s2 = 65520), plus 20
+    000 cas 0xFF/0x00 au hasard ; 325 375 cas, 902 862 réductions comparées, 0 écart, en -O3 et sous ASan
+    + UBSan.'
+  - 'Chemin générique : les deux programmes compilés avec -DMINIZ_LITTLE_ENDIAN=0 (ni les groupes ni la
+    boucle de 16 octets) : 0 écart, même empreinte.'
+  - 'ab.py --instructions, deux exécutions de 10 paires (la seconde dans mesures) : instructions_decompression
+    29 954 575 -> 26 160 282 (-12,67 %) les deux fois ; débit de décompression +7,00 % puis +7,34 %, B
+    gagne 10 paires sur 10 les deux fois ; compression : instructions identiques à l''unité, débits dans
+    le bruit (-0,30, -1,75, -2,11 % puis +0,13, +0,90, +1,57 %) ; mémoire 1764 -> 1766 puis 1768 Ko, dans
+    le bruit.'
+  - 'Décompte par ligne de la zone (Cachegrind, banc en -O3 -DNDEBUG -g, totaux identiques à ceux d''ab.py)
+    : 2,634 -> 1,222 instructions par octet ; prototype (tampons de 128 Kio) : 2,63 -> 1,33 par octet
+    avec l''appel de fonction.'
+  - 'Juge commun en local (registre 821647d, juge-v1, image construite ici, 10 répétitions, sortie_compressee=identique)
+    : code 0, 914 sorties de B justes pour 129 entrées (7868 sorties comparées), aucune construction suspecte
+    ; instructions_decompression 30 466 620 -> 26 922 611 (-11,63 %), instructions de compression identiques
+    à l''unité ; débit de décompression médian +13,84 %, mais B ne gagne que 6 paires sur 10 : dans le
+    bruit (sur cette VM, A varie de 166 à 316 Mo/s d''une répétition à l''autre).'
+  non_teste:
+  - 'ARM64 : pas de machine ; la CI le compile et le teste, je n''ai ni décompte ni chronomètre ARM64.'
+  - 'Autres compilateurs en performance (clang, MSVC) : clang 18 n''a servi qu''au fuzzing ; le déroulage
+    complet de la boucle n''est vérifié que pour gcc 13.3.'
+  - 'Plateformes 32 bits et gros-boutistes réelles : le chemin générique n''est exercé que par -DMINIZ_LITTLE_ENDIAN=0
+    sur x86-64.'
+  - Compteurs matériels (pas de perf dans la VM) ; débit sur un autre processeur que ce Xeon virtualisé.
+  - mz_adler32 de miniz.c (hors périmètre, miniz-0040).
+  doutes: 'Environ 2,2 points des 12,67 % d''instructions en moins ne viennent pas de l''Adler-32 mais
+    d''un autre ordonnancement par gcc 13.3 du reste de tinfl_decompress : ils peuvent disparaître ou
+    s''inverser avec un autre compilateur, une autre version de gcc ou ARM64 ; le gain propre à la zone
+    est de -10,5 % du total, et je ne sais pas quelle part du +7 % de débit vient de cet effet de bord.
+    La performance suppose que le compilateur déroule les 10 itérations ; sinon il paie environ deux instructions
+    de plus par 16 octets (prototype : 1,52 contre 1,33 par octet), sans effet sur la justesse. Les sorties
+    de moins de 160 octets par appel (flux à petits tampons) et le reste de chaque bloc gardent la boucle
+    de miniz-0016 : aucun gain là. Les bornes ne valent que pour 20 tours par groupe : changer 160 sans
+    refaire le calcul ferait déborder une voie. Le code déroulé ajoute quelques centaines d''octets dans
+    tinfl_decompress. Chronomètre mesuré sur une seule machine virtualisée et partagée : ab.py voit le
+    gain au-delà du bruit (10 paires sur 10, deux fois), mais le juge commun en local ne le confirme pas
+    (6 sur 10, débit très dispersé) ; c''est son verdict en CI qui dira si R4 tient au chronomètre.'
