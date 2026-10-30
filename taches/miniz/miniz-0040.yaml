@@ -1,0 +1,40 @@
+id: miniz-0040
+projet: miniz
+categorie: compression-sans-perte
+type: optimisation
+taille: S
+titre: "mz_adler32 : reprendre pour la compression le calcul par blocs de tinfl"
+contexte: >
+  Source : rapport de miniz-0029 (bee/resultats/miniz-0029/RAPPORT.md et TABLEAUX.md du fork, branche
+  tache/miniz-0029, PR #18 ; sources de master a2f939a ; Cachegrind, 128 premiers Kio de chaque fichier).
+  La compression zlib calcule l'Adler-32 de l'entrée avec mz_adler32 (miniz.c l. 40-66 à a2f939a),
+  restée à la boucle d'origine déroulée par 8 octets : miniz-0016 n'a changé que la copie de
+  tinfl_decompress. mz_adler32 pèse 4,38 % du décompte d'instructions du juge au niveau 1, 2,24 % au
+  niveau 6 et 1,55 % au niveau 9 (juge_parts.py). Elle coûte 3,38 instructions par octet
+  (7 510 775 pour 2 221 670 octets), contre 2,64 pour la version de tinfl (2,51 dans la zone, plus
+  ses lectures par memcpy). Plafond connu : 4,38 % de instructions_n1, au-dessus du seuil de 2 % de
+  R4 ; mais recopier la version actuelle de tinfl ne retirerait que 0,74 instruction par octet,
+  environ 0,97 % de instructions_n1 : sous le seuil. Pour atteindre 2 %, il faut descendre sous
+  1,8 instruction par octet, d'où la dépendance à miniz-0039 (Adler-32 de tinfl, objectif 1,5) :
+  reprendre ici sa méthode une fois intégrée. miniz_tinfl.c doit rester compilable seul, sans
+  miniz.c : la routine est dupliquée, pas partagée. Invariants : mêmes valeurs pour tout découpage
+  en appels (adler initial quelconque, ptr nul renvoie MZ_ADLER32_INIT), réduction modulo 65521 au
+  plus tous les 5552 octets ; les contrôles « sommes » de bee/tests (mz_adler32 contre zlib, en une
+  fois et par morceaux) et l'API (bee/tests/api.c) la vérifient. Au niveau 1, le temps suit les
+  instructions (0,117 ns par instruction, TABLEAUX.md section 4).
+fichiers: [miniz.c]
+portee: 1.0
+metrique: debit_compression_n1
+sortie_compressee: identique
+critere_acceptation:
+  - "CI verte (R2), x86-64 et ARM64 (R6)"
+  - "R4 : au moins 2 % d'instructions en moins sur debit_compression_n1 (instructions_n1), que le chronomètre confirme au-delà du bruit (sinon une mesure d'une autre configuration)"
+  - "aucune autre métrique dégradée de plus de 1 % (R5)"
+  - "contrôles « sommes » de bee/tests/lancer.sh et tests d'API sans écart ; empreintes identiques"
+  - "manifeste : instructions par octet de mz_adler32 avant et après"
+hors_perimetre: [format de sortie, API publique, nouvelle dépendance, mz_crc32, miniz_tinfl.c]
+depend_de: [miniz-0001, miniz-0039]
+noeud: projets/compression-sans-perte/miniz/api
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-30"

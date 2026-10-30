@@ -1,0 +1,45 @@
+id: miniz-0039
+projet: miniz
+categorie: compression-sans-perte
+type: optimisation
+taille: S
+titre: "tinfl_decompress : Adler-32 de la sortie avec moins d'instructions par octet"
+contexte: >
+  Source : rapport de miniz-0029 (bee/resultats/miniz-0029/RAPPORT.md et TABLEAUX.md du fork, branche
+  tache/miniz-0029, PR #18 ; sources de master a2f939a ; Cachegrind, 128 premiers Kio de chaque fichier).
+  Après miniz-0016 (Adler-32 par blocs de 16 octets, intégrée), le calcul de l'Adler-32 de la
+  sortie (miniz_tinfl.c l. 682-731 à a2f939a) pèse encore 17,56 % du décompte d'instructions du juge
+  en décompression (juge_parts.py : tout le processus, flux zlib niveau 6), plus environ 0,9 % pour
+  ses deux lectures par memcpy, que Cachegrind range dans « memcpy en ligne ». Plafond connu : 17,6 %
+  de instructions_decompression, très au-dessus du seuil de 2 % de R4. Le tour de 16 octets
+  (l. 697-708, 138 898 tours) coûte 40 instructions, soit 2,5 par octet : l. 705 et 706 (a0, a1 :
+  addition, produit par 0x0001000100010001, décalage) 3,50 % chacune, l. 707 (s2 : quatre produits)
+  4,82 %, l. 703-704 (masques) 3,50 %, boucle 1,32 %. Piste non essayée : accumuler les sommes par
+  voie dans des registres de 64 bits sur plusieurs tours (s1 par voie, et la somme des s1 successifs
+  pour la part 16 × s1 de s2), et ne faire les sommes horizontales et les produits qu'une fois par
+  groupe de tours, en bornant le nombre de tours pour qu'aucune voie ne déborde ; une voie de 16
+  bits déborde vite, la somme des sommes demande des voies de 32 bits. Objectif indicatif : 1,5
+  instruction par octet, soit environ −7 % d'instructions de décompression. Invariants (miniz-0016) :
+  exactement les mêmes entiers avant la réduction modulo 65521, faite au plus tous les 5552 octets ;
+  C portable, lectures par memcpy ; un éventuel chemin SIMD garde le chemin générique (R6) et
+  ajoute un en-tête système, ce que le juge signale comme construction suspecte (relecture d'un
+  gardien). Chronomètre : hors des lectures de la sortie (leurs défauts L1 sont comptés avec les memcpy en
+  ligne), c'est une boucle de calcul pur, presque sans branche mal prédite (615 dans la zone) ;
+  miniz-0016 y avait gagné −4,9 % d'instructions et +9,5 % de débit.
+  La même routine profitera ensuite à mz_adler32 (miniz-0040).
+fichiers: [miniz_tinfl.c]
+portee: 1.0
+metrique: debit_decompression
+sortie_compressee: identique
+critere_acceptation:
+  - "CI verte (R2), x86-64 et ARM64 (R6)"
+  - "R4 : au moins 2 % d'instructions en moins sur debit_decompression (instructions_decompression), que le chronomètre confirme au-delà du bruit (sinon une mesure d'une autre configuration)"
+  - "aucune autre métrique dégradée de plus de 1 % (R5)"
+  - "fuzzing inflate (fuzz_inflate) 10 minutes sans écart, dont le statut TINFL_STATUS_ADLER32_MISMATCH sur flux corrompus"
+  - "manifeste : instructions par octet de la zone avant et après, et borne de débordement des voies démontrée"
+hors_perimetre: [format de sortie, API publique, nouvelle dépendance, mz_adler32 de miniz.c (miniz-0040), décodage Huffman]
+depend_de: [miniz-0001]
+noeud: projets/compression-sans-perte/miniz/inflate
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-30"

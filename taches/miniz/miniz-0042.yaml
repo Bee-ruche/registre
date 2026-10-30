@@ -1,0 +1,47 @@
+id: miniz-0042
+projet: miniz
+categorie: compression-sans-perte
+type: optimisation
+taille: S
+titre: "tinfl_decompress : moins de contrôles par correspondance entre la distance et la copie"
+contexte: >
+  Source : rapport de miniz-0029 (bee/resultats/miniz-0029/RAPPORT.md et TABLEAUX.md du fork, branche
+  tache/miniz-0029, PR #18 ; sources de master a2f939a ; Cachegrind, 128 premiers Kio de chaque fichier).
+  Entre le décodage de la distance et la copie, chaque correspondance passe par des calculs et des
+  tests fixes (miniz_tinfl.c à a2f939a) : dist_from_out_buf_start l. 535 (1,64 % du décompte
+  d'instructions du juge en décompression), le contrôle de distance l. 536 (2,05 %, avec le test de
+  TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF à chaque correspondance), pSrc avec le masque
+  out_buf_size_mask l. 541 (2,05 %), le test de fin de tampon l. 543 avec MZ_MAX (2,87 %), puis le
+  test de chevauchement l. 587 (2,42 %), le choix 4 ou 8 octets l. 590 (0,61 %) et counter %= 3
+  après la copie par mots l. 612 (1,52 %). Soit 13,2 % de instructions_decompression pour 130 049
+  correspondances (juge_parts.py, flux zlib niveau 6), dont 8,61 % (21 instructions par
+  correspondance) pour les l. 535-543. Plafond connu : 13,2 %, au-dessus du seuil de 2 % de R4.
+  Pistes non essayées : en mode non circulaire (TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF, celui de
+  mz_uncompress et du juge), out_buf_size_mask vaut (size_t)-1 et pSrc = pOut_buf_cur - dist ;
+  tester le drapeau une fois hors de la boucle (deux versions du passage) ; partager les calculs des
+  l. 543 et 587. Le résidu de counter (l. 612) ne sert qu'à l'état sauvé (r->m_counter) si la
+  coroutine s'arrête avant le symbole suivant : le garder identique, ou montrer qu'il est réécrit
+  avant toute lecture. Invariants : sur entrée invalide, mêmes statuts et mêmes octets produits avant
+  l'arrêt (dist nulle ou plus grande que la sortie déjà produite : TINFL_STATUS_FAILED) ; chemin
+  circulaire de mz_inflate en flux intact. miniz-0017 (en relecture) réécrit les l. 513-534 juste
+  avant, sans toucher les l. 535-613 (diff de a2f939a à 430695c) : si elle est intégrée avant, se
+  rebaser. Touche le test l. 587, comme miniz-0041 : la seconde intégrée se rebase. Chronomètre :
+  miniz-0017-c1 (−5,1 % d'instructions) et miniz-0018-c1 (−3,7 %) sont restés dans le bruit ;
+  tinfl_decompress a 8,8 % de branches mal prédites (TABLEAUX.md section 1), qui pèsent sur le temps sans compter dans les instructions : prévoir une
+  mesure d'une autre configuration (R4).
+fichiers: [miniz_tinfl.c]
+portee: 1.0
+metrique: debit_decompression
+sortie_compressee: identique
+critere_acceptation:
+  - "CI verte (R2), x86-64 et ARM64 (R6)"
+  - "R4 : au moins 2 % d'instructions en moins sur debit_decompression (instructions_decompression), que le chronomètre confirme au-delà du bruit (sinon une mesure d'une autre configuration)"
+  - "aucune autre métrique dégradée de plus de 1 % (R5)"
+  - "fuzzing inflate (fuzz_inflate) 10 minutes sans écart ; flux-1 et flux-4096 sans écart"
+  - "manifeste : instructions par correspondance des l. 535-613 avant et après"
+hors_perimetre: [format de sortie, API publique, nouvelle dépendance, messages et codes d'erreur, comportement sur entrée invalide, décodage de la longueur et de la distance (miniz-0017)]
+depend_de: [miniz-0001]
+noeud: projets/compression-sans-perte/miniz/inflate
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-30"
