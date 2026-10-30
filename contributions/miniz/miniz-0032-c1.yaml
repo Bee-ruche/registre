@@ -15,20 +15,20 @@ verdict:
   amorcage: true
   instructions:
     instructions_n1:
-      A: 171435219.0
-      B: 171435219.0
+      A: 171446841.0
+      B: 171446841.0
       gain: 0.0
     instructions_n6:
-      A: 335491103.0
-      B: 335491103.0
+      A: 335510410.0
+      B: 335510410.0
       gain: 0.0
     instructions_n9:
-      A: 483628564.0
-      B: 483628564.0
+      A: 483781243.0
+      B: 483781243.0
       gain: 0.0
     instructions_decompression:
-      A: 31585236.0
-      B: 31585236.0
+      A: 31604510.0
+      B: 31604510.0
       gain: 0.0
   degradations: {}
   juge:
@@ -36,10 +36,10 @@ verdict:
     commun: juge-v1
     sorties_comparees: 7868
     constructions_suspectes: []
-  lignes_modifiees: 249
+  lignes_modifiees: 290
   ecart_declare: null
-  sha: 86ba53e30ff66cade6d381cd614c466bda957316
-  arbre: 11109eda9197c6dd4a13e0b3a2cf62c034195cc1
+  sha: 7f547d4c0476c1853b165ba89d024413d7b32815
+  arbre: 048858c40658597d21e280c35dd1e27c8a79b168
   fichiers_controles: true
   juges_modifies:
   - .github/workflows/bee-ci.yml
@@ -55,7 +55,7 @@ verdict:
   - bee/juge/juge.py
   - bee/juge/projet.py
   - bee/juge/test_juge.py
-  execution: https://github.com/Bee-ruche/minizBee/actions/runs/41089403161
+  execution: https://github.com/Bee-ruche/minizBee/actions/runs/41093102379
 declare:
   modele: Claude Opus 5.5 (claude-opus-5-5), sous-agent lancé par l'agent principal du projet Bee
   gain: null
@@ -83,14 +83,14 @@ declare:
     reconstruit malgré l''extraction sans historique ; ancien juge isolé de la base réussi ; compilation,
     tests d''origine et différentiels (x86-64 et ARM64) et fuzzing 10 min dans le conteneur du juge commun
     (isoler.sh du registre, image bee-juge-commun:975cee12b1736972), réussis'
-  - 'bee/ci/test_verdict.py : 39 tests réussis en local (étape juge_isole tirée du code du juge commun,
-    refus et environnement, champs du juge validés, ancien juge dans les détails, base_juge publiée, jamais
-    vert sans règle qui accepte A, règle d''introduction du greffon, greffon de la PR jamais pris hors
-    introduction, ancienne règle du juge isolé sans effet, workflow épinglé par SHA, test_profil.py sans
-    garde, choix du commit du greffon exécuté sur de petits dépôts git, dont le scénario de la revue adverse
-    : master reçoit une correction coûteuse de miniz et un changement de bee/, la PR ne change qu''un
-    commentaire, CI rouge « rebasez », puis verte une fois rebasée ; et ceux de la seconde revue : optimisation
-    de master recopiée par squash ou par cherry-pick, historique croisé à deux points de […]'
+  - 'bee/ci/test_verdict.py : 44 tests réussis en local ; classe Greffon lancée 20 fois de suite : 20
+    sur 20 (avant correction, le test du cherry-pick échouait 11 fois sur 12 : un cherry-pick dans la
+    même seconde recréait le même SHA ; corrigé par cherry-pick -x et des dates de commit croissantes).
+    Tests (étape juge_isole tirée du code du juge commun, refus et environnement, champs du juge validés,
+    ancien juge dans les détails, base_juge publiée, jamais vert sans règle qui accepte A, règle d''introduction
+    du greffon, greffon de la PR jamais pris hors introduction, ancienne règle du juge isolé sans effet,
+    workflow épinglé par SHA, test_profil.py sans garde, choix du commit du greffon exécuté sur de petits
+    dépôts git, dont le scénario de la revue adverse : master reçoit une correction coûteuse […]'
   - 'script de rejeu de la seconde revue adverse (scenarios/rejouer.py) sur le workflow et le verdict.py
     corrigés : copie par squash et par cherry-pick refusées (refus_rebase), criss-cross refusé (refus_point_de_depart),
     les trois verdicts incohérents rouges'
