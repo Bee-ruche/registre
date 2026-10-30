@@ -2826,8 +2826,9 @@ def verifier_debat(reg, chemin, statut_git, ancien, nouveau, auteur, *, est_cons
 #   reponse         le conseil : acceptee, refusee (à tout moment avant la fin) ou sans_reponse (delai_relance_jours après
 #                   le dernier message) ; refusee et sans_reponse inscrivent l'identifiant dans ne-plus-contacter.yaml (idem) ;
 #   ecartee         le proposant, un gardien ou le conseil, avant l'envoi, avec un motif (libre-service).
-# Ce qui mène au contact (accords, envoi, relance) s'arrête quand le frein est serré (etat_frein) ou que la personne est sur
-# la liste de non-contact, et les envois sont plafonnés par semaine pour toute la ruche. Aucun code n'envoie de message :
+# Ce qui mène au contact (accords, envoi, relance) s'arrête quand la personne est sur la liste de non-contact, ou quand le frein
+# est serré (etat_frein), sauf pour une invitation qui renforce l'encadrement (devenir garant ou gardien) ; les envois sont
+# plafonnés par semaine pour toute la ruche. Aucun code n'envoie de message :
 # l'outil ne fait aucune requête réseau et n'appelle jamais gh pour contacter quelqu'un ; il lit et écrit le registre.
 
 CROISSANCE_DEFAUT = {"invitations_par_semaine": 3, "relances_max": 1, "delai_relance_jours": 14, "debat_min_heures": 72,
@@ -2836,7 +2837,9 @@ SEMAINE = dt.timedelta(days=7)
 ID_INVITATION = re.compile(r"^I-[0-9]{4}$")
 # <plateforme>:<nom>, en ASCII et sans espace (github:octocat, codeberg:x, mastodon:@x@exemple.org) : ni homoglyphe ni variante.
 IDENTIFIANT_PUBLIC = re.compile(r"^[a-z0-9][a-z0-9.-]{0,29}:[A-Za-z0-9@][A-Za-z0-9@._+/-]{0,99}$")
-DEMANDES = ("garant", "participer", "projet")
+DEMANDES = ("garant", "gardien", "participer", "projet")
+# Ce qui renforce l'encadrement : le frein ne l'arrête jamais (sinon un gardien sans garant bloquerait l'invitation d'un garant).
+RENFORCENT_ENCADREMENT = ("garant", "gardien")
 GESTES_INVITATION = ("accord_gardien", "accord_conseil", "envoi", "relance", "reponse", "ecartee")
 VERS_LE_CONTACT = ("accord_gardien", "accord_conseil", "envoi", "relance")
 REPONSES = ("acceptee", "refusee", "sans_reponse")
@@ -3028,7 +3031,9 @@ def refus_geste(reg, ancien, nouveau, geste, auteur, instant, publication=None, 
     moment = _instant_ou_rien(bloc.get("le")) or instant
     delai = dt.timedelta(days=conf["delai_relance_jours"])
     if geste in VERS_LE_CONTACT:
-        exiger(not (frein or {}).get("serre"), "frein serré (R13) : " + " ; ".join((frein or {}).get("raisons") or ["état inconnu"]))
+        exiger(not (frein or {}).get("serre") or ancien.get("demande") in RENFORCENT_ENCADREMENT,
+               "frein serré (R13) : " + " ; ".join((frein or {}).get("raisons") or ["état inconnu"])
+               + f" ; il arrête les invitations à {ancien.get('demande')}, jamais celles qui renforcent l'encadrement (garant, gardien)")
         exiger(cle_personne(identifiant_de(ancien)) not in non_contactes(reg),
                f"{_nettoyer(identifiant_de(ancien))} est sur la liste de non-contact : plus rien ne part vers elle (R13)")
     if geste == "accord_gardien":
@@ -4204,7 +4209,7 @@ def cmd_essaim(args):
                   f"{x['derniere_activite']}, {etat}) : {question if len(question) <= 90 else question[:89] + '…'}")
     frein = tableau["frein"]
     print(f"\nGrandir (R13, docs/croissance.md) : frein {'SERRÉ' if frein['serre'] else 'desserré'}"
-          + (f" ({' ; '.join(frein['raisons'])})" if frein["serre"] else "")
+          + (f" ({' ; '.join(frein['raisons'])} ; il n'arrête pas les invitations de garant ou de gardien)" if frein["serre"] else "")
           + f". Membres actifs : {frein['membres_actifs']} pour {frein['gardiens']} gardien(s) ; invitations envoyées sur 7 jours : "
           f"{frein['envois_7_jours']} sur {frein['invitations_par_semaine']}.")
     for x in tableau["invitations"]:
@@ -5302,8 +5307,10 @@ def cmd_inviter(args):
     print(f"✓ {reg.rel(chemin)} proposée : {inv['statut']}. Rien n'est envoyé : elle reste au moins "
           f"{config_croissance(reg)['debat_min_heures']} h publique (débat {args.debat}), puis un gardien et le conseil décident, et un "
           "humain du conseil envoie lui-même le message (R13).")
-    if frein["serre"]:
+    if frein["serre"] and args.demande not in RENFORCENT_ENCADREMENT:
         print("  ⚠ frein serré aujourd'hui : aucun accord ni envoi ne passera tant qu'il l'est (" + " ; ".join(frein["raisons"]) + ").")
+    elif frein["serre"]:
+        print("  Frein serré aujourd'hui, mais il n'arrête pas une invitation qui renforce l'encadrement (garant, gardien).")
     print(f"  {_publier(chemin.stem, 'Invitation')}")
     return 0
 

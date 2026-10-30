@@ -700,7 +700,8 @@ def generer(bee, reg, sortie):
     corps.append(f"<p>La ruche invite des personnes (garants, participants, projets) selon sa <a href='{e(depot)}/blob/main/docs/croissance.md'>"
                  "règle R13</a> : une invitation publique, débattue, décidée par un gardien puis le conseil, envoyée par un humain du "
                  f"conseil, {frein['invitations_par_semaine']} par semaine au plus ; un refus est définitif. "
-                 + (f"<strong>Frein serré</strong> : {e(' ; '.join(frein['raisons']))}." if frein["serre"] else "Frein desserré.")
+                 + (f"<strong>Frein serré</strong> : {e(' ; '.join(frein['raisons']))} ; il n'arrête pas les invitations de garant ou de "
+                    "gardien, qui renforcent l'encadrement." if frein["serre"] else "Frein desserré.")
                  + f" Membres actifs : {frein['membres_actifs']} pour {frein['gardiens']} gardien{'s' if frein['gardiens'] > 1 else ''} ; "
                  f"invitations envoyées sur 7 jours : {frein['envois_7_jours']}.</p>")
     corps.append(tableau([("Invitation", False), ("Personne", False), ("Demande", False), ("Statut", False), ("Attend", False)],

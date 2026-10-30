@@ -28,7 +28,8 @@ qui dit :
   l'adresse `https://` où elle publie comment la contacter (`canal`), rien d'autre ;
 - **pourquoi elle** (`pourquoi`) : de 1 à 5 faits publics de 300 caractères au plus, chacun avec sa source
   `https://` ;
-- **ce qui lui est demandé** (`demande`) : `garant` ([garants.md](garants.md)), `participer` ou `projet` ;
+- **ce qui lui est demandé** (`demande`) : `garant` ([garants.md](garants.md)), `gardien`
+  ([gardiens.md](gardiens.md)), `participer` ou `projet` ;
 - **le message exact** (`message`), envoyé par son canal ;
 - **le débat** de l'agora où elle se discute (`debat`, un débat ouvert, par exemple D-0020) ;
 - **qui propose** (`propose_par`, `propose_le`) ;
@@ -72,10 +73,10 @@ bee invitation ecarter I-0001 --utilisateur <pseudo> --motif "…"    # avant l'
 | Geste | Qui | Quand | Fusion |
 | --- | --- | --- | --- |
 | Proposer (`bee inviter`) | Tout membre, en son nom | Numéro suivant, sans trou ; 1 par PR et 2 par utilisateur sur 24 h glissantes (`creations` de `bee.yaml` ; le conseil n'est pas plafonné) | Automatique |
-| Accord d'un gardien | Un gardien nommé (`gouvernance/gardiens.yaml`), autre que le proposant | `debat_min_heures` (72 h) après la fusion de l'invitation dans `main` ; frein desserré | Automatique |
-| Accord du conseil | Le conseil, autre que le gardien qui a donné le sien | Après l'accord d'un gardien ; frein desserré | Le conseil |
-| Envoi consigné | Le conseil, dont un humain a envoyé lui-même le message | Après les deux accords ; frein desserré ; `invitations_par_semaine` (3) envois sur 7 jours glissants pour toute la ruche | Le conseil |
-| Relance consignée | Le conseil : le même message, une fois (`relances_max`) | `delai_relance_jours` (14) après l'envoi ; frein desserré | Le conseil |
+| Accord d'un gardien | Un gardien nommé (`gouvernance/gardiens.yaml`), autre que le proposant | `debat_min_heures` (72 h) après la fusion de l'invitation dans `main` ; frein desserré (sauf garant ou gardien) | Automatique |
+| Accord du conseil | Le conseil, autre que le gardien qui a donné le sien | Après l'accord d'un gardien ; frein desserré (sauf garant ou gardien) | Le conseil |
+| Envoi consigné | Le conseil, dont un humain a envoyé lui-même le message | Après les deux accords ; frein desserré (sauf garant ou gardien) ; `invitations_par_semaine` (3) envois sur 7 jours glissants pour toute la ruche, toutes demandes confondues | Le conseil |
+| Relance consignée | Le conseil : le même message, une fois (`relances_max`) | `delai_relance_jours` (14) après l'envoi ; frein desserré (sauf garant ou gardien) | Le conseil |
 | Réponse consignée | Le conseil | `acceptee` après l'envoi ; `refusee` à tout moment avant la fin ; `sans_reponse` 14 jours après le dernier message. `refusee` et `sans_reponse` inscrivent l'identifiant sur la liste de non-contact dans la même PR | Le conseil |
 | Écarter | Le proposant, un gardien ou le conseil, avec un motif | Avant l'envoi | Automatique |
 | Liste de non-contact | Le conseil, en ajout seul (avec une réponse, ou à la demande de la personne) | Jamais une entrée retirée ni modifiée ; la liste ne se supprime pas | Le conseil |
@@ -93,10 +94,16 @@ Une invitation ne se supprime que par le conseil.
 ## Le frein
 
 Le frein est **serré** dès qu'une de ces conditions tient ; alors aucun accord, aucun envoi, aucune relance
-ne passe (une proposition reste possible : on peut encore débattre de qui inviter, et une réponse ou un écart
-se consignent toujours). `bee essaim` et le site disent son état et pourquoi.
+ne passe pour une invitation à participer ou à faire entrer un projet. **Le frein n'arrête jamais une
+invitation qui renforce l'encadrement** (`demande` : `garant` ou `gardien`) : sinon, un gardien sans garant
+bloquerait précisément l'invitation d'un garant. Elle reste soumise à tout le reste (72 h, accord d'un gardien
+puis du conseil, plafond par semaine, liste de non-contact) ; la demande ne change jamais après la proposition,
+et le gardien et le conseil vérifient que le message demande bien ce que dit `demande`. Une proposition reste
+toujours possible, et une réponse ou un écart se consignent toujours. `bee essaim` et le site disent l'état
+du frein et pourquoi.
 
-- **Aucun gardien nommé** (`gouvernance/gardiens.yaml` vide) : personne ne peut donner l'accord de gardien.
+- **Aucun gardien nommé** (`gouvernance/gardiens.yaml` vide) : personne ne peut donner l'accord de gardien,
+  pour aucune invitation ; le conseil nomme d'abord un gardien.
 - **Trop de membres actifs** : plus de `membres_actifs_par_gardien_max` (20) par gardien nommé. Un **membre
   actif** est un compte connu (inscrit, du conseil ou gardien ; jamais un robot) qui a fait au moins un geste
   du registre sur les 14 derniers jours (`cap.fenetre_jours`, datés comme dans le cap : réservation,

@@ -35,7 +35,8 @@
         "canal": {"$ref": "#/$defs/adresse", "description": "Adresse https:// où la personne publie elle-même comment la contacter"}
       }
     },
-    "demande": {"enum": ["garant", "participer", "projet"]},
+    "demande": {"enum": ["garant", "gardien", "participer", "projet"],
+                "description": "Le frein de R13 n'arrête jamais une invitation qui renforce l'encadrement (garant, gardien)"},
     "pourquoi": {
       "type": "array",
       "minItems": 1,

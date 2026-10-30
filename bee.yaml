@@ -83,7 +83,7 @@ croissance:
   relances_max: 1                   # 0 ou 1 ; puis plus rien
   delai_relance_jours: 14           # avant la relance ; et avant de consigner « sans réponse » après le dernier message
   debat_min_heures: 72              # publique et débattue dans l'agora, avant l'accord d'un gardien puis du conseil
-  membres_actifs_par_gardien_max: 20  # au-delà, frein : ni accord, ni envoi, ni relance
+  membres_actifs_par_gardien_max: 20  # au-delà, frein : ni accord, ni envoi, ni relance (sauf pour un garant ou un gardien)
   message_max: 2000                 # caractères du message, mention de R13 comprise
 
 # Comptes automatiques autorisés à écrire des verdicts et à libérer les réservations expirées.

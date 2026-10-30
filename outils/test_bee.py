@@ -6398,9 +6398,9 @@ class BaseInvitations(BaseRepetitionGenerale):
         """Écrit une invitation telle quelle, sous la forme canonique, comme un agent qui contourne bee invitation."""
         bee.ecrire_invitation(self.chemin_invitation(identifiant), donnees)
 
-    def inviter(self, qui="alice", identifiant="github:octocat", *options, message=MESSAGE_INVITATION):
+    def inviter(self, qui="alice", identifiant="github:octocat", *options, message=MESSAGE_INVITATION, demande="garant"):
         return self.ok("inviter", "--utilisateur", qui, "--identifiant", identifiant, "--canal", "https://github.com/octocat",
-                       "--demande", "garant", "--fait", "Maintient un logiciel libre de compression depuis dix ans.",
+                       "--demande", demande, "--fait", "Maintient un logiciel libre de compression depuis dix ans.",
                        "--source", "https://github.com/octocat", "--message", message, "--debat", "D-0001", *options)
 
     def geste(self, action, qui, *options, invitation="I-0001"):
@@ -6916,21 +6916,41 @@ class TestPullRequestsInvitations(BaseInvitations):
 
     # --- Le frein ---
 
-    def frein_serre(self, preparer, morceau):
-        """Avec le frein serré par `preparer` (sur main), l'accord du gardien est refusé, par la commande et par verifier-pr ; une
-        proposition reste possible."""
-        self.jusqu_a("proposee")
+    def frein_serre(self, preparer, morceau, gardien=True):
+        """Le frein serré par `preparer` (sur main) arrête une invitation à participer (I-0001) : l'accord du gardien est refusé,
+        par la commande et par verifier-pr. Il n'arrête jamais une invitation qui renforce l'encadrement (I-0002, devenir garant) :
+        elle va jusqu'à l'envoi (s'il reste un gardien pour donner son accord). Une proposition reste toujours possible."""
+        for n, (qui, identifiant, demande, quand) in enumerate((("alice", "github:octocat", "participer", "2026-10-30T10:00:00Z"),
+                                                                ("bruno", "github:hubot", "garant", "2026-10-30T11:00:00Z")), 1):
+            self.a(quand)
+            self.branche(f"pr{n}")
+            self.inviter(qui, identifiant, demande=demande)
+            self.publier(qui, "invitation", nom=f"pr{n}")
         preparer()
         self.commit("frein")
-        self.a("2026-11-02T11:00:00Z")
+        self.a("2026-11-02T12:00:00Z")
         self.ko(morceau, "invitation", "accord-gardien", "I-0001", "--utilisateur", "gina")
         self.branche()
         self.a_la_main(accord_gardien={"par": "gina", "le": self.maintenant()})
-        self.refusee("gina", "frein serré (R13)", morceau)
-        git(self.dossier, "reset", "-q", "--hard", "main")
-        self.inviter("bruno", "github:hubot")
+        self.refusee("gina", "frein serré (R13)", morceau, "il arrête les invitations à participer")
+        self.abandonner()
+        self.branche()
+        self.inviter("chloe", "github:x", demande="participer")
         self.commit()
-        self.libre_service("bruno", "invitation")
+        self.libre_service("chloe", "invitation")
+        self.abandonner()
+        if not gardien:  # sans gardien nommé, personne ne peut donner l'accord de gardien, quelle que soit la demande
+            self.ko("gina n'est pas gardien", "invitation", "accord-gardien", "I-0002", "--utilisateur", "gina")
+            return
+        for etape, quand, qui, nature, libre in (("accord-gardien", "2026-11-02T12:00:00Z", "gina", "accord_gardien", True),
+                                                 ("accord-conseil", "2026-11-02T13:00:00Z", "bidji29", "accord_conseil", False),
+                                                 ("consigner-envoi", "2026-11-02T14:00:00Z", "bidji29", "envoi_invitation", False)):
+            self.a(quand)
+            self.branche()
+            self.assertIn("✓ I-0002", self.geste(etape, qui, invitation="I-0002"))
+            self.publier(qui, nature, libre=libre)
+        self.assertEqual(self.invitation("I-0002")["statut"], "envoyee")
+        self.assertIn("il n'arrête pas les invitations de garant ou de gardien", self.ok("essaim"))
 
     def test_frein_incident_ouvert(self):
         self.frein_serre(lambda: (self.dossier / "gouvernance/incidents.yaml").write_text(
@@ -6952,7 +6972,7 @@ class TestPullRequestsInvitations(BaseInvitations):
         def preparer():
             (self.dossier / "gouvernance/gardiens.yaml").write_text("membres: []\n", encoding="utf-8")
             self.ok("inscrire", "--pseudo", "gina", "--compte-cree-le", "2020-01-01")
-        self.frein_serre(preparer, "aucun gardien nommé")
+        self.frein_serre(preparer, "aucun gardien nommé", gardien=False)
 
     def test_un_incident_clos_desserre_le_frein(self):
         (self.dossier / "gouvernance/incidents.yaml").write_text(
