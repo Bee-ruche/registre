@@ -1,0 +1,10 @@
+id: miniz-0017-c1
+tache: miniz-0017
+auteur: bidji29
+pr: https://github.com/Bee-ruche/minizBee/pull/15
+resume: 'tinfl_decompress : longueur et distance décodées sans les macros quand bit_buf a 20 bits ; -5,5
+  % d''instructions en décompression, chronomètre à confirmer par la CI.'
+statut: en_relecture
+soumise_le: '2026-10-30T14:09:37Z'
+engage_depuis: '2026-10-30T12:37:04Z'
+relectures: []
