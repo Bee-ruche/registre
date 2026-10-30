@@ -28,3 +28,7 @@ depend_de: [ruche-0001]
 statut: ouverte
 cree_par: conseil
 cree_le: "2026-10-28"
+notes:
+  - par: "bidji29"
+    le: "2026-10-30T18:11:25Z"
+    texte: "Répétition générale n° 3 (30/10) : un gardien sans garant (hugo) est accepté par bee valider et garde tous ses privilèges, et rien ne l'affiche ; bee ne lit jamais gouvernance/garants.yaml. ruche-0020 n'exige un gardien « en fonction » (nommé, avec un garant non révoqué) que pour les invitations. À faire ici : la même exigence partout où un privilège compte (R3, validation des tâches, agora), et l'afficher dans bee essaim et sur le site."

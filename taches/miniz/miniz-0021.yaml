@@ -23,11 +23,16 @@ metrique: debit_compression_n1
 sortie_compressee: identique
 critere_acceptation:
   - "CI verte (R2), x86-64 et ARM64 (R6)"
-  - "gain >= 2 % sur debit_compression_n1, au-delà du bruit (R4)"
+  - "R4 : au moins 2 % d'instructions en moins sur debit_compression_n1 (instructions_n1), que le chronomètre confirme au-delà du bruit (sinon une mesure d'une autre configuration)"
   - "aucune autre métrique dégradée de plus de 1 % (R5)"
   - "gain mesuré aussi sur binaire/aleatoire.bin seul et rapporté dans le manifeste"
 hors_perimetre: [format de sortie, API publique, nouvelle dépendance, règle de choix du bloc brut]
 depend_de: [miniz-0001]
+noeud: projets/compression-sans-perte/miniz/deflate
 statut: ouverte
 cree_par: agent-architecte-bee
 cree_le: "2026-10-27"
+notes:
+  - par: "bidji29"
+    le: "2026-10-30T18:11:27Z"
+    texte: "Répétition générale n° 3 (30/10) : le plafond connu de cette tâche est sous le seuil de R4 (2 % d'instructions en moins sur la métrique visée) : la boucle visée pèse environ 1,5 % (miniz-0020) ou 1,7 % (miniz-0021) des instructions au niveau 1 (profil de la base 2948eeb, zone deflate). Une contribution seule ne passera pas R4 ; à combiner avec une autre piste du même scénario, ou à prendre pour apprendre. Le marquage par bee lister est la tâche ruche-0030."

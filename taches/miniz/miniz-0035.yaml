@@ -32,6 +32,7 @@ critere_acceptation:
   - "test_verdict.py de la PR tourne sous un utilisateur sans sudo ; README : le drapeau amorcage est déclaratif en introduction"
 hors_perimetre: [code de miniz, juge.yml du registre (ruche-0024)]
 depend_de: [miniz-0032]
+noeud: projets/compression-sans-perte/miniz/bee
 statut: ouverte
 cree_par: conseil
 cree_le: "2026-10-30"
