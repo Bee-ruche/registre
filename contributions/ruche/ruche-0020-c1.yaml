@@ -5,7 +5,15 @@ pr: https://github.com/Bee-ruche/registre/pull/75
 resume: 'R13 outillée : invitations publiques à identifiant canonique, accords et feu vert du conseil,
   plafonds et frein, liste de non-contact en empreintes, dossier retiré au refus, caviardage lié à une
   invitation, détecteurs de données personnelles.'
-statut: en_relecture
+statut: integree
 soumise_le: '2026-10-30T22:01:50Z'
 engage_depuis: '2026-10-30T12:37:04Z'
 relectures: []
+decidee_le: '2026-10-30T23:17:24Z'
+motif_decision: 'Contribution d''outillage de la ruche (R13) : PR #75 du registre fusionnée au commit jugé 449b9c6 par l''agent
+  principal sous l''autorisation permanente du conseil, après trois revues adverses indépendantes et une vérification
+  (plus de 40 constats, tous corrigés et rejoués, la dernière jugeant la branche fusionnable) ; CI verte, 463 tests verts.
+  R1 dépassée (environ 1 900 lignes hors tests pour une tâche L à 400) : l''outillage des contacts extérieurs ne se
+  découpait pas sans laisser en vigueur une version incomplète de ses garde-fous ; compensé par quatre tours de revue.
+  Leçon : les prochaines tâches d''outillage sont découpées (docs/organisation.md).'
+fusion_sha: acac99b3cadeee4416d6dbf5b0cc9cc69a9b099b
