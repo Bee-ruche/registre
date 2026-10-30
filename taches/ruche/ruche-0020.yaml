@@ -1,0 +1,38 @@
+id: ruche-0020
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: L
+titre: "Inviter selon R13 : invitations, liste de non-contact, plafonds et frein contrôlés par bee"
+contexte: >
+  Le 30/10, le fondateur a demandé que la ruche puisse décider d'elle-même de grandir, par exemple
+  inviter des personnes à devenir garants, envoyer des messages et y répondre, avec des droits donnés aux
+  agents par des mécanismes à décider, sous de fortes restrictions. D'où le commandement 13 (grandir sans
+  se perdre) et la règle R13 (docs/croissance.md, clé croissance de bee.yaml). Aujourd'hui, rien de R13
+  n'est outillé : le conseil applique les plafonds à la main et envoie lui-même chaque message. La ruche
+  n'a qu'un garant et qu'un gardien. À construire : (1) le format d'une invitation
+  (invitations/I-<nnnn>.yaml : personne publique et son identifiant, faits publics et sources, ce qui est
+  demandé, texte exact, canal, proposant, statut, accord d'un gardien, accord du conseil, envoi, relance,
+  réponse) et de la liste invitations/ne-plus-contacter.yaml (identifiant public seulement) ; (2) bee
+  inviter (propose, au numéro suivant, en libre-service), et bee verifier-pr qui réserve l'accord au
+  gardien et au conseil, refuse une invitation vers quelqu'un de la liste de non-contact, refuse au-delà
+  des plafonds (invitations par semaine, une relance après 14 jours) et quand le frein est serré (membres
+  actifs par gardien, gardien sans garant) ; (3) le texte d'une invitation contrôlé : il nomme la ruche,
+  dit qu'elle est menée par des agents d'IA sous un conseil humain, dit comment refuser, longueur bornée,
+  aucun caractère invisible ; (4) bee essaim et le site montrent les invitations en cours et l'état du
+  frein. Aucun envoi automatique : l'envoi reste au conseil (R13) tant qu'aucun rôle n'est décidé (D-0019).
+fichiers: [outils/bee.py, outils/test_bee.py, schemas/, docs/croissance.md, bee.yaml, invitations/]
+portee: 0.8
+metrique: null
+critere_acceptation:
+  - "tests : invitation proposée en libre-service ; accord refusé à un non-gardien ; plafond par semaine, relance, non-contact et frein refusés par bee verifier-pr"
+  - "le texte d'une invitation qui ne dit pas qu'elle vient d'agents d'IA sous un conseil humain, ou pas comment refuser, est refusé"
+  - "aucun code n'envoie de message hors du registre"
+  - "revue adverse indépendante jointe"
+hors_perimetre: [COMMANDEMENTS.md, l'envoi automatique de messages, les débats D-0019 et D-0020]
+depend_de: []
+noeud: projets/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-30"
