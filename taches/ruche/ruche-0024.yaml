@@ -3,8 +3,8 @@ projet: ruche
 categorie: ruche
 type: test
 poste: gouvernance
-taille: S
-titre: "juge.yml : extraire la base avec l'historique dont un greffon a besoin, puis étiquette juge-v2"
+taille: M
+titre: "juge-v2 : juge.yml épinglé, historique déclaré, journal sûr, et un chronomètre ARM64"
 contexte: >
   miniz-0032 (minizBee PR #16, 30/10) : le workflow réutilisable .github/workflows/juge.yml@juge-v1 extrait
   la base de la PR sans historique (fetch-depth 1), alors que bee/corpus/generer.py de minizBee lit des
@@ -20,7 +20,14 @@ contexte: >
   masque. juge.yml doit extraire le registre au commit même du workflow appelé (github.job_workflow_sha).
   Même revue (M-4) : juge.yml imprime tail -n 40 resultats/journal.txt, que la PR jugée peut remplir ;
   une ligne « ::error:: », « ::add-mask:: » ou « ::stop-commands:: » y devient une commande de workflow.
-  Entourer cette sortie de ::stop-commands::<jeton aléatoire>.
+  Entourer cette sortie de ::stop-commands::<jeton aléatoire>. Répétition générale n° 3 (30/10) : R4 exige,
+  quand le chronomètre ne confirme pas un gain d'instructions au-delà du bruit, la mesure d'une autre
+  configuration ; personne n'en est chargé, et miniz-0017-c1 (−5,1 % d'instructions) et miniz-0018-c1
+  (−3,7 %) attendent depuis le 28/10 (une seule utilisatrice, qui ne mesure pas ses propres
+  contributions). Le juge commun peut mesurer lui-même sur une autre configuration : un second job de
+  jugement, sur un runner ARM64 de GitHub (ubuntu-24.04-arm), même juge, même graine, publie son propre
+  chronomètre (gain, au-delà du bruit) dans juge.json, sous une clé par architecture. Les instructions
+  restent celles de x86-64 (Cachegrind). Ce que le registre en fait est la tâche ruche-0031.
 fichiers: [.github/workflows/juge.yml, outils/juge/, docs/juge-commun.md]
 portee: 0.6
 metrique: null
@@ -29,6 +36,7 @@ critere_acceptation:
   - "les méta-tests existants du juge commun passent (outils/juge/test_juge.py)"
   - "juge.yml extrait le code du juge commun au commit du workflow appelé (github.job_workflow_sha), jamais par une étiquette ni une branche"
   - "le journal imprimé par juge.yml ne peut émettre aucune commande de workflow (test : une ligne ::error:: dans le journal du jouet)"
+  - "juge.json donne le chronomètre de chaque architecture (x86_64, arm64) ; méta-test sur le projet jouet : un faux gain sur une seule architecture n'est vu que là"
   - "revue adverse indépendante jointe (le juge commun décide des verdicts)"
 hors_perimetre: [les forks, l'étiquette juge-v1, COMMANDEMENTS.md]
 depend_de: [miniz-0032]
