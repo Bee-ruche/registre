@@ -12,6 +12,7 @@
     "auteur": {"type": "string", "minLength": 1},
     "pr": {"type": "string", "pattern": "^https://github\\.com/[A-Za-z0-9-]+/[A-Za-z0-9_.-]+/pull/[0-9]+$"},
     "resume": {"type": "string"},
+    "resume_sha": {"type": "string", "pattern": "^[0-9a-f]{7,40}$", "description": "Commit jugé (verdict.sha) pour lequel l'auteur a actualisé son résumé (bee soumettre --mettre-a-jour) : une mise à jour par commit jugé"},
     "statut": {"enum": ["en_relecture", "integree", "refusee", "annulee", "ecartee"]},
     "soumise_le": {"type": "string"},
     "engage_depuis": {"type": "string", "description": "Début de l'engagement de l'auteur sur la tâche (sa réservation ou son inscription en parallèle), contrôlé à la soumission ; R3 s'en sert dans les courses"},

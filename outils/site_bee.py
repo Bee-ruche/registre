@@ -683,7 +683,7 @@ def generer(bee, reg, sortie):
         lignes.append(
             f"<tr><td class='n'>{nombre(s['S'], 4) if s else '—'}</td><td><a class='id' href='contributions/{e(x['id'])}.html'>{e(x['id'])}</a>"
             f"<div class='doux petit'>{e(x.get('resume', ''))}</div></td><td>{e(x.get('auteur', ''))}</td>"
-            f"<td class='n'>{pourcent(s['G']) if s else '—'}</td><td class='n'>{len(x.get('relectures') or [])}</td><td class='nw'>{e(STATUTS_CONTRIBUTION.get(x.get('statut', ''), x.get('statut', '')))}</td></tr>")
+            f"<td class='n'>{pourcent(s['G']) if s else '—'}</td><td class='n'>{bee.relectures_qui_comptent(reg, x, niveaux)} ({len(x.get('relectures') or [])})</td><td class='nw'>{e(STATUTS_CONTRIBUTION.get(x.get('statut', ''), x.get('statut', '')))}</td></tr>")
     corps.append(tableau([("Score", True), ("Contribution", False), ("Auteur", False), ("Gain", True), ("Relectures", True), ("Statut", False)], lignes,
                          vide="Aucune contribution pour l'instant : la première sera l'outillage d'évaluation de miniz.", classe_table="t-contrib"))
 
