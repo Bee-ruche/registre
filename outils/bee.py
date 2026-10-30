@@ -2303,10 +2303,10 @@ CHEMIN_DEBAT = re.compile(r"^debats/(D-[0-9]{4})\.yaml$")
 POSITIONS = ("pour", "contre", "question", "fait")
 ISSUES = ("proposition", "tache", "decision", "sans_suite")
 # Ordre des clés à l'écriture : les arguments en dernier, pour qu'un argument ajouté soit un ajout en fin de fichier.
-CLES_DEBAT = ("id", "question", "ouvert_par", "ouvert_le", "statut", "rapporteur", "synthese", "synthese_par", "synthese_le",
-              "clos_le", "clos_par", "issue", "reference", "arguments")
-CLES_ARGUMENT = ("id", "par", "le", "position", "repond_a", "doublon_de", "texte", "sources")
-CLES_IMMUABLES_DEBAT = ("id", "question", "ouvert_par", "ouvert_le")
+CLES_DEBAT = ("id", "question", "question_caviardee_pour", "ouvert_par", "ouvert_le", "statut", "rapporteur", "synthese",
+              "synthese_caviardee_pour", "synthese_par", "synthese_le", "clos_le", "clos_par", "issue", "reference", "arguments")
+CLES_ARGUMENT = ("id", "par", "le", "position", "repond_a", "doublon_de", "caviarde_pour", "texte", "sources")
+CLES_IMMUABLES_DEBAT = ("id", "question", "question_caviardee_pour", "ouvert_par", "ouvert_le")
 CLES_SYNTHESE = ("synthese", "synthese_par", "synthese_le", "rapporteur")
 CLES_CLOTURE = ("statut", "clos_le", "clos_par", "issue", "reference")
 # Valeurs par défaut de bee.yaml, clé agora (docs/agora.md, « Contre le bruit »).
@@ -2506,33 +2506,61 @@ def donnee_agora(texte, quoi):
             "jamais par le nom de la personne ni par des faits sur elle (R13)" if donnee else None)
 
 
-MOTIFS_CAVIARDAGE = ("refus", "demande")
+MOTIFS_CAVIARDAGE = ("refus", "demande", "sans_reponse")
+# Ce qui se caviarde dans un débat, hors des arguments : le texte, et la clé qui dit pour quelle invitation (vérification de
+# cdbcf36, D1b).
+CAVIARDABLES = {"question": "question_caviardee_pour", "synthese": "synthese_caviardee_pour"}
 
 
-def caviarde(argument, motif):
-    """Un argument caviardé (commandement 10, phrase ajoutée ; R12) : son texte devient « retiré : <motif> », ses sources
-    « retiré » ; son identifiant, son auteur, sa date, sa position et ses liens demeurent."""
-    return {**argument, "texte": RETIRE[motif], **({"sources": ["retiré"]} if "sources" in argument else {})}
+def caviarde(argument, motif, invitation):
+    """Un argument caviardé (commandement 10, phrase ajoutée ; R12) pour une invitation refusée ou retirée : son texte devient
+    « retiré : <motif> », ses sources « retiré », et caviarde_pour nomme l'invitation ; son identifiant, son auteur, sa date, sa
+    position et ses liens demeurent."""
+    return {**argument, "caviarde_pour": invitation, "texte": RETIRE[motif],
+            **({"sources": ["retiré"]} if "sources" in argument else {})}
 
 
 def caviardages(ancien, nouveau):
-    """Les arguments caviardés si la seule différence entre deux états d'un débat est le caviardage d'arguments, sinon None."""
-    if not (isinstance(ancien, dict) and isinstance(nouveau, dict)) or set(ancien) != set(nouveau):
+    """[(ce qui est caviardé, invitation, motif)] si la seule différence entre deux états d'un débat est le caviardage
+    d'arguments, de la question ou de la synthèse (sous la forme qu'écrit bee debattre caviarder), sinon None."""
+    if not (isinstance(ancien, dict) and isinstance(nouveau, dict)):
         return None
-    if any(ancien[k] != nouveau[k] for k in ancien if k != "arguments"):
-        return None
-    anciens, nouveaux = ancien.get("arguments"), nouveau.get("arguments")
-    if not (isinstance(anciens, list) and isinstance(nouveaux, list) and len(anciens) == len(nouveaux)):
+    libres = {"arguments", *CAVIARDABLES, *CAVIARDABLES.values()}
+    if any(ancien.get(k) != nouveau.get(k) for k in (set(ancien) | set(nouveau)) - libres):
         return None
     changes = []
+    for champ, marque in CAVIARDABLES.items():
+        if ancien.get(champ) == nouveau.get(champ) and ancien.get(marque) == nouveau.get(marque):
+            continue
+        motif = next((m for m in MOTIFS_CAVIARDAGE if nouveau.get(champ) == RETIRE[m]), None)
+        if not (motif and isinstance(ancien.get(champ), str) and ancien.get(champ) not in RETIRE.values()
+                and marque not in ancien and ID_INVITATION.match(str(nouveau.get(marque) or ""))):
+            return None
+        changes.append((champ, nouveau[marque], motif))
+    anciens, nouveaux = ancien.get("arguments") or [], nouveau.get("arguments") or []
+    if not (isinstance(anciens, list) and isinstance(nouveaux, list) and len(anciens) == len(nouveaux)):
+        return None
     for a, n in zip(anciens, nouveaux):
         if a == n:
             continue
-        if not (isinstance(a, dict) and a.get("texte") not in RETIRE.values()
-                and any(n == caviarde(a, m) for m in MOTIFS_CAVIARDAGE)):
+        pour = n.get("caviarde_pour") if isinstance(n, dict) else None
+        motif = next((m for m in MOTIFS_CAVIARDAGE if isinstance(n, dict) and n.get("texte") == RETIRE[m]), None)
+        if not (isinstance(a, dict) and "caviarde_pour" not in a and a.get("texte") not in RETIRE.values() and motif
+                and ID_INVITATION.match(str(pour or "")) and n == caviarde(a, motif, pour)):
             return None
-        changes.append(a.get("id"))
+        changes.append((a.get("id"), pour, motif))
     return changes or None
+
+
+def refus_caviardage(reg, invitation, motif):
+    """None si l'on peut caviarder pour `invitation` avec ce motif : une invitation refusée, restée sans réponse ou retirée, et
+    le motif de son retrait (vérification de cdbcf36, D1 : sans invitation retirée, le conseil ne fait taire personne)."""
+    inv = reg.invitations.get(str(invitation), (None, None))[1]
+    if not retiree(inv):
+        return (f"caviarde_pour « {_nettoyer(invitation)} » : une invitation refusée, restée sans réponse ou retirée ; sans elle, "
+                "rien ne se caviarde (commandement 10)")
+    attendu = raison_du_retrait(inv)
+    return None if motif == attendu else f"motif « {motif} » : celui du retrait de {invitation} est « {attendu} »"
 
 
 def forme_reference(issue, reference):
@@ -2647,6 +2675,13 @@ def verifier_agora_registre(reg, ajouter, selon_schema, instant_valide):
             ajouter(f"{lieu} : le rapporteur « {d['rapporteur']} » doit être un participant du débat (celui qui l'a ouvert ou "
                     "l'auteur d'un argument)")
         instant_valide(chemin, d["ouvert_le"], "ouvert_le")
+        # Un caviardage dit pour quelle invitation, et le texte est « retiré : <motif> » (commandement 10, R12).
+        for champ, marque in CAVIARDABLES.items():
+            if marque in d and d.get(champ) not in RETIRE.values():
+                ajouter(f"{lieu} : {marque}, mais {champ} n'est pas caviardée (« retiré : … »)")
+        for a in d["arguments"]:
+            if "caviarde_pour" in a and a.get("texte") not in RETIRE.values():
+                ajouter(f"{lieu} : {a['id']} : caviarde_pour, mais son texte n'est pas caviardé (« retiré : … »)")
         precedent = _instant_ou_rien(d["ouvert_le"])
         vus = {}
         for i, a in enumerate(d["arguments"]):
@@ -2750,8 +2785,11 @@ def verifier_debat(reg, chemin, statut_git, ancien, nouveau, auteur, *, est_cons
     # qui désigne ou décrit une personne extérieure, à son refus ou à sa demande ; c'est la seule modification d'un argument.
     if statut_git == "M" and caviardages(ancien, nouveau):
         natures.append("caviardage")
-        exiger(est_conseil, f"{', '.join(caviardages(ancien, nouveau))} : seul le conseil caviarde un argument, au refus ou à la "
-                            "demande d'une personne extérieure (bee debattre caviarder)")
+        for quoi, pour, motif in caviardages(ancien, nouveau):
+            exiger(est_conseil, f"{quoi} : seul le conseil caviarde, au refus ou à la demande d'une personne extérieure (bee debattre "
+                                "caviarder)")
+            probleme = refus_caviardage(reg, pour, motif)
+            exiger(probleme is None, f"{quoi} : {probleme}")
         return natures, problemes, 0
 
     if statut_git == "A":
@@ -2773,6 +2811,9 @@ def verifier_debat(reg, chemin, statut_git, ancien, nouveau, auteur, *, est_cons
         exiger(not any(c in nouveau for c in CLES_CLOTURE if c != "statut"), "un débat naît sans clôture")
         probleme = texte_recevable(nouveau.get("question"), "question", conf["question_max"])
         exiger(probleme is None, f"{probleme} (agora.question_max)")
+        probleme = donnee_agora(nouveau.get("question"), "question")
+        exiger(probleme is None, probleme)
+        exiger(not any(c in nouveau for c in CAVIARDABLES.values()), "un débat naît sans caviardage")
         ouvert = date_recente(nouveau.get("ouvert_le"), "ouvert_le")
         if ouvert and not est_conseil:
             # Fenêtre glissante : tout ce que l'auteur a ouvert depuis 24 h avant cette ouverture, y compris après elle
@@ -2798,6 +2839,11 @@ def verifier_debat(reg, chemin, statut_git, ancien, nouveau, auteur, *, est_cons
             return natures, problemes, 0
         for cle in CLES_IMMUABLES_DEBAT:
             exiger(ancien.get(cle) == nouveau.get(cle), f"{cle} ne change jamais : un débat garde sa question, son auteur et sa date")
+        # La marque d'une synthèse caviardée ne s'ajoute que par un caviardage ; elle tombe avec la synthèse suivante.
+        marque = "synthese_caviardee_pour"
+        exiger(nouveau.get(marque) in (None, ancien.get(marque)) and (nouveau.get(marque) is None
+                                                                     or nouveau.get("synthese") == ancien.get("synthese")),
+               f"{marque} : seul le conseil la pose, en caviardant (bee debattre caviarder) ; elle tombe avec la synthèse suivante")
         base = ancien
 
     # --- Arguments : ajout seul ; seul doublon_de peut être posé sur un argument existant. ---
@@ -2810,9 +2856,9 @@ def verifier_debat(reg, chemin, statut_git, ancien, nouveau, auteur, *, est_cons
             if a == n:
                 continue
             ident = a.get("id") if isinstance(a, dict) else f"arguments/{i}"
-            marque = (isinstance(a, dict) and isinstance(n, dict) and "doublon_de" not in a
+            marque_doublon = (isinstance(a, dict) and isinstance(n, dict) and "doublon_de" not in a
                       and set(n) == set(a) | {"doublon_de"} and all(n[k] == a[k] for k in a))
-            if not exiger(marque, f"{ident} modifié, déplacé ou remplacé : les arguments sont en ajout seul, on n'en modifie aucun "
+            if not exiger(marque_doublon, f"{ident} modifié, déplacé ou remplacé : les arguments sont en ajout seul, on n'en modifie aucun "
                                   "(pour répondre ou corriger, ajoutez-en un avec repond_a)"):
                 continue
             natures.append("doublon")
@@ -2845,6 +2891,7 @@ def verifier_debat(reg, chemin, statut_git, ancien, nouveau, auteur, *, est_cons
         probleme = donnee_agora(arg.get("texte"), f"{ident} : texte")
         exiger(probleme is None, probleme)
         exiger("doublon_de" not in arg, f"{ident} : un argument naît sans doublon_de (le rapporteur ou un gardien le pose ensuite)")
+        exiger("caviarde_pour" not in arg, f"{ident} : un argument naît sans caviardage")
         if arg.get("repond_a") is not None:
             exiger(any(isinstance(x, dict) and x.get("id") == arg.get("repond_a") for x in nouveaux[:rang]),
                    f"{ident} : repond_a « {arg.get('repond_a')} » ne désigne pas un argument précédent de ce débat")
@@ -3018,8 +3065,10 @@ GESTES_INVITATION = ("accord_gardien", "accord_conseil", "renouvellement", "envo
 # Gestes contrôlés avant le contact (frein, incident, liste, plafond). L'envoi n'y est pas : c'est un fait, consigné après coup
 # (seconde revue adverse, B1 et B2) ; l'accord du conseil est le feu vert qui le précède.
 VERS_LE_CONTACT = ("accord_gardien", "accord_conseil", "renouvellement", "relance")
-# Ce qui fait d'un membre un membre actif pour le frein (troisième revue adverse, C9) : un travail publié ; jamais une inscription.
-GENRES_ACTIFS = ("contributions", "relectures", "mesures", "arguments")
+# Ce qui fait d'un membre un membre actif pour le frein (troisième revue adverse, C9 ; vérification de cdbcf36, D5) : une
+# contribution soumise, une relecture ou une mesure ; jamais une inscription, ni un argument, trop bon marché pour mesurer ce
+# qu'il faut encadrer.
+GENRES_ACTIFS = ("contributions", "relectures", "mesures")
 REPONSES = ("acceptee", "refusee", "sans_reponse")
 CLES_INVITATION = ("id", "statut", "personne", "autres_identites", "demande", "pourquoi", "message", "debat", "homonyme",
                    "propose_par", "propose_le") + GESTES_INVITATION
@@ -3415,9 +3464,9 @@ def etat_invitation(inv):
 
 def membres_actifs(reg, instant=None):
     """Membres actifs (R13, frein ; troisième revue adverse, C9) : les comptes connus (membres, conseil, gardiens ; jamais un
-    robot) qui ont publié sur les membres_actifs_jours (30) derniers jours une contribution, une relecture, une mesure ou un
-    argument (datés comme dans le cap). Une inscription seule ne compte pas : des inscriptions en libre-service ne serrent pas
-    le frein."""
+    robot) qui ont, sur les membres_actifs_jours (30) derniers jours, une contribution soumise, une relecture ou une mesure
+    (datées comme dans le cap). Ni une inscription ni un argument ne comptent : des comptes en libre-service ne serrent pas le
+    frein."""
     instant = instant or maintenant()
     gestes, _ = gestes_recents(reg, instant, jours=config_croissance(reg)["membres_actifs_jours"])
     actifs = {g[4] for g in gestes if isinstance(g[4], str) and g[3] in GENRES_ACTIFS}
@@ -3678,7 +3727,7 @@ def refus_invitation(reg, inv, conseil=False, instant=None):
     return refus
 
 
-def refus_geste(reg, ancien, nouveau, geste, auteur, instant, publication=None, frein=None):
+def refus_geste(reg, ancien, nouveau, geste, auteur, instant, publication=None, frein=None, refus_lie=False):
     """Ce que verifier_pr refuse d'un geste de suivi ajouté à une invitation (bee invitation le dit avant d'écrire) : qui a le
     droit de le faire, dans quel état, à quel moment, sous quel frein et quel plafond. L'envoi est un fait, consigné après
     coup : seuls son auteur (le conseil) et le feu vert qui l'a précédé sont exigés. [] si le geste est permis."""
@@ -3783,6 +3832,11 @@ def refus_geste(reg, ancien, nouveau, geste, auteur, instant, publication=None, 
         exiger(bloc.get("raison") in RETIRE, f"retrait : raison {', '.join(RETIRE)} (bee invitation retirer l'écrit)")
         exiger(bloc.get("raison") == "demande" or avant != "acceptee",
                "une invitation acceptée ne se retire qu'à la demande de la personne")
+        # Vérification de cdbcf36, D4 : « refus » ou « sans réponse » suit un refus ou un silence réel de la même personne, sur
+        # cette invitation ou une autre (dans la même PR, ou déjà sur la liste) ; sinon, le seul motif est « demande ».
+        exiger(bloc.get("raison") not in ("refus", "sans_reponse") or refus_lie,
+               f"retrait « {bloc.get('raison')} » : seulement quand cette personne a refusé ou n'a pas répondu, sur cette invitation ou "
+               "une autre (la même PR, ou la liste de non-contact) ; sinon, le seul motif est « demande »")
     return refus
 
 
@@ -3801,7 +3855,8 @@ def rendu_invitation(inv, origine="<invitation>"):
     return _rendu_fidele({**{c: inv[c] for c in CLES_INVITATION if c in inv}, **inv}, origine)
 
 
-def verifier_invitation(reg, chemin, statut_git, ancien, nouveau, auteur, *, est_conseil, instant, brut, base, frein):
+def verifier_invitation(reg, chemin, statut_git, ancien, nouveau, auteur, *, est_conseil, instant, brut, base, frein,
+                        refus_lie=False):
     """Une invitation (ou la liste de non-contact) ajoutée, modifiée ou supprimée par une PR (R13) : chaque geste est contrôlé
     ici (qui, quand, dans quel état, sous quel frein), le reste est refusé. `frein` : fonction qui renvoie etat_frein (calculé
     seulement s'il le faut). Renvoie (natures, problèmes, [] : le plafond se juge dans refus_geste)."""
@@ -3884,7 +3939,8 @@ def verifier_invitation(reg, chemin, statut_git, ancien, nouveau, auteur, *, est
     exiger(nouveau.get("statut") == etat_invitation(nouveau), f"statut « {nouveau.get('statut')} » au lieu de "
                                                               f"« {etat_invitation(nouveau)} »")
     publication = publiee_le(reg, base, chemin, ancien) if geste in ("accord_gardien", "accord_conseil") else None
-    for refus in refus_geste(reg, ancien, nouveau, geste, auteur, instant, publication, frein() if geste in VERS_LE_CONTACT else None):
+    for refus in refus_geste(reg, ancien, nouveau, geste, auteur, instant, publication, frein() if geste in VERS_LE_CONTACT else None,
+                             refus_lie=refus_lie):
         exiger(False, refus)
     if (geste == "reponse" and bloc.get("valeur") in ("refusee", "sans_reponse")) or (
             geste == "retrait" and etat_invitation(ancien) != "acceptee"):
@@ -3895,6 +3951,39 @@ def verifier_invitation(reg, chemin, statut_git, ancien, nouveau, auteur, *, est
                              f"identités déclarées) manquent dans {CHEMIN_NON_CONTACT} : elles s'y inscrivent dans la même PR (bee invitation "
                              f"{'retirer' if geste == 'retrait' else 'consigner-reponse'} le fait) : on ne la contactera plus jamais")
     return natures, problemes, envois
+
+
+def retraits_justifies(reg, base, tete, changements):
+    """Les invitations qu'une PR retire au motif « refus » ou « sans réponse » à bon droit (vérification de cdbcf36, D4) : leur
+    personne (une identité déclarée commune) refuse ou se tait dans la même PR, ou figure déjà sur la liste de la base ; de proche
+    en proche, sans que deux retraits se justifient l'un l'autre."""
+    try:
+        liste = set(empreintes_de(lire_yaml_ref(reg.racine, base, CHEMIN_NON_CONTACT)) or [])
+    except ErreurBee:
+        liste = set()
+    refusees, retraits = set(), {}
+    for statut_git, chemin in changements:
+        if statut_git != "M" or not CHEMIN_INVITATION.match(chemin):
+            continue
+        try:
+            ancien, nouveau = lire_yaml_ref(reg.racine, base, chemin), lire_yaml_ref(reg.racine, tete, chemin)
+        except ErreurBee:
+            continue
+        if not (isinstance(ancien, dict) and isinstance(nouveau, dict)):
+            continue
+        if "reponse" not in ancien and bloc_de(nouveau, "reponse").get("valeur") in ("refusee", "sans_reponse"):
+            refusees |= identites_propres(ancien)
+        elif "retrait" not in ancien and bloc_de(nouveau, "retrait").get("raison") in ("refus", "sans_reponse"):
+            retraits[chemin] = identites_propres(ancien)
+    justifies, change = set(), True
+    while change:
+        change = False
+        for chemin, cles in retraits.items():
+            if chemin not in justifies and (cles & refusees or sur_la_liste(cles, liste)):
+                justifies.add(chemin)
+                refusees |= cles
+                change = True
+    return justifies
 
 
 def verifier_invitations_registre(reg, ajouter, selon_schema, instant_valide):
@@ -4063,6 +4152,8 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
                 donnees = None
             if not isinstance(donnees, dict) or (nom == CHEMIN_NON_CONTACT and empreintes_de(donnees) is None):
                 illisibles_base.append(nom)
+
+    retraits_lies = retraits_justifies(reg, base, tete, changements) if any(c.startswith("invitations/") for _, c in changements) else set()
 
     def frein():
         """L'état du frein de R13 (etat_frein), calculé une fois, et seulement si un geste vers le contact le demande."""
@@ -4617,7 +4708,7 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
                 brut = sortie.stdout if sortie.returncode == 0 else b""
             natures_invitation, refus, _ = verifier_invitation(reg, chemin, statut_git, ancien, nouveau, auteur,
                                                                     est_conseil=est_conseil, instant=instant, brut=brut, base=base,
-                                                                    frein=frein)
+                                                                    frein=frein, refus_lie=chemin in retraits_lies)
             natures += natures_invitation
             problemes += refus
             continue
@@ -5033,6 +5124,15 @@ def cmd_voir(args):
     # Ce que bee calcule d'abord, puis la tâche telle que bee l'a relue (jamais le fichier brut : ni commentaire, ni mise en
     # forme qui imite une ligne de bee), encadrée comme de la donnée (commandement 5, docs/arbre.md).
     reg = Registre(args.registre)
+    if ID_INVITATION.match(str(args.tache)):
+        # Une invitation (R13) : son état calculé, ses identités déclarées et la consigne d'accord, puis ses données.
+        _, inv = reg.invitation(args.tache)
+        resume = resume_invitation(inv, frein=etat_frein(reg))
+        print(f"{resume['id']} : {resume['statut']} ; demande : {resume['demande']} ; attend : {resume['attend']}")
+        print("\n".join(lignes_identites(inv)))
+        print()
+        print(cadre_donnees(inv, DEBUT_DONNEES.format(id=inv.get("id"))))
+        return 0
     _, t = reg.tache(args.tache)
     print("\n".join(lignes_calculees_tache(reg, t)))
     print()
@@ -5687,6 +5787,7 @@ def _appliquer_synthese(reg, d, u, texte, suivant, instant):
     if not autres and suivant != u:
         raise ErreurBee("vous êtes le seul participant du tour de rôle : vous restez rapporteur")
     d.update({"synthese": texte, "synthese_par": u, "synthese_le": en_iso(instant), "rapporteur": suivant})
+    d.pop("synthese_caviardee_pour", None)
     return suivant
 
 
@@ -5702,6 +5803,8 @@ def debattre_ouvrir(args):
     conf = config_agora(reg)
     question = args.question.strip()
     _exiger_recevable(question, "question", conf["question_max"], "question_max")
+    if donnee_agora(question, "question"):
+        raise ErreurBee(donnee_agora(question, "question"))
     instant = maintenant()
     if u not in reg.conseil and ouvertures_depuis(reg, u, instant - FENETRE_PLAFOND) >= conf["ouvertures_max_par_24h"]:
         siens = [m for _, x in reg.debats.values() if isinstance(x, dict) and x.get("ouvert_par") == u
@@ -5836,16 +5939,26 @@ def debattre_caviarder(args):
     if u not in reg.conseil:
         raise ErreurBee(f"{u} n'est pas du conseil : seul le conseil caviarde un argument, au refus ou à la demande d'une personne")
     chemin, d = reg.debat(args.debat)
-    arguments = [dict(a) for a in arguments_de(d)]
-    rang = next((i for i, a in enumerate(arguments) if a.get("id") == args.argument), None)
-    if rang is None:
-        raise ErreurBee(f"argument inconnu dans {args.debat} : {args.argument}")
-    if arguments[rang].get("texte") in RETIRE.values():
-        raise ErreurBee(f"{args.argument} est déjà caviardé")
-    arguments[rang] = caviarde(arguments[rang], args.motif)
-    ecrire_debat(chemin, {**d, "arguments": arguments})
-    print(f"✓ {args.argument} caviardé dans {args.debat} (« {RETIRE[args.motif]} ») ; son auteur, sa date et son identifiant "
-          "demeurent. L'historique git garde l'ancien texte : seul un effacement de l'historique, hors de portée de la ruche, l'en "
+    probleme = refus_caviardage(reg, args.invitation, args.motif)
+    if probleme:
+        raise ErreurBee(probleme)
+    if args.argument in CAVIARDABLES:
+        champ = args.argument
+        if not isinstance(d.get(champ), str) or not d.get(champ) or d.get(champ) in RETIRE.values() or CAVIARDABLES[champ] in d:
+            raise ErreurBee(f"{champ} de {args.debat} : rien à caviarder (vide ou déjà caviardé)")
+        d = {**d, champ: RETIRE[args.motif], CAVIARDABLES[champ]: args.invitation}
+    else:
+        arguments = [dict(a) for a in arguments_de(d)]
+        rang = next((i for i, a in enumerate(arguments) if a.get("id") == args.argument), None)
+        if rang is None:
+            raise ErreurBee(f"argument inconnu dans {args.debat} : {args.argument} (ou question, synthese)")
+        if arguments[rang].get("texte") in RETIRE.values() or "caviarde_pour" in arguments[rang]:
+            raise ErreurBee(f"{args.argument} est déjà caviardé")
+        arguments[rang] = caviarde(arguments[rang], args.motif, args.invitation)
+        d = {**d, "arguments": arguments}
+    ecrire_debat(chemin, d)
+    print(f"✓ {args.argument} caviardé dans {args.debat} pour {args.invitation} (« {RETIRE[args.motif]} ») ; le reste du débat "
+          "demeure. L'historique git garde l'ancien texte : seul un effacement de l'historique, hors de portée de la ruche, l'en "
           "ôterait.")
     print(f"  Publiez : bee publier --titre 'Caviardage {args.debat} {args.argument}' ; le conseil la fusionne lui-même.")
     return 0
@@ -6135,6 +6248,20 @@ def cmd_inviter(args):
     return 0
 
 
+CONSIGNE_IDENTITES = ("Avant tout accord, vérifiez sur les sources que chaque autre identité déclarée est bien celle de la même "
+                      "personne : à son refus, elle s'inscrit sur la liste de non-contact, et une identité d'un tiers l'y inscrirait "
+                      "à sa place (vérification de cdbcf36, D3).")
+
+
+def lignes_identites(inv):
+    """Les identités déclarées d'une invitation, et la consigne d'accord (bee invitation, bee voir)."""
+    personne = inv.get("personne") if isinstance(inv.get("personne"), dict) else {}
+    autres = inv.get("autres_identites") if isinstance(inv.get("autres_identites"), list) else []
+    return [f"Identifiant : {_nettoyer(personne.get('identifiant', inv.get('personne')))} ; canal : {_nettoyer(personne.get('canal', '-'))}",
+            "Autres identités déclarées : " + (", ".join(_nettoyer(x) for x in autres) if autres else "aucune"),
+            CONSIGNE_IDENTITES]
+
+
 def bloc_retrait(utilisateur, instant):
     return {"par": utilisateur, "le": en_iso(instant)}
 
@@ -6169,7 +6296,8 @@ def cmd_invitation(args):
     if raison:
         nouveau = retirer(nouveau, raison)
     publication = publiee_le(reg, "HEAD", reg.rel(chemin), inv) if geste in ("accord_gardien", "accord_conseil") else None
-    refus = refus_geste(reg, inv, nouveau, geste, u, instant, publication, etat_frein(reg, instant) if geste in VERS_LE_CONTACT else None)
+    refus = refus_geste(reg, inv, nouveau, geste, u, instant, publication, etat_frein(reg, instant) if geste in VERS_LE_CONTACT else None,
+                        refus_lie=bool(sur_la_liste(identites_propres(inv), non_contactes(reg))))
     if refus:
         raise ErreurBee(f"{args.invitation} : " + " ; ".join(refus))
     identifiant = identifiant_de(inv)
@@ -6188,7 +6316,7 @@ def cmd_invitation(args):
             for iid in suivants:
                 x = reg.invitations[iid][1]
                 retiree_aussi = retirer({**x, "retrait": {**bloc_retrait(u, instant), "raison": raison}, "statut": "retiree"}, raison)
-                probleme = refus_geste(reg, x, retiree_aussi, "retrait", u, instant)
+                probleme = refus_geste(reg, x, retiree_aussi, "retrait", u, instant, refus_lie=True)
                 if probleme:
                     raise ErreurBee(f"{iid} : " + " ; ".join(probleme))
                 aussi[iid] = retiree_aussi
@@ -6218,6 +6346,8 @@ def cmd_invitation(args):
                         + ". L'historique git garde l'ancien contenu : seul un effacement de l'historique, hors de portée de la "
                           "ruche, l'en ôterait."}[geste]
     print(f"✓ {args.invitation} : {geste} consigné (statut : {nouveau['statut']}). Suite : {suite}")
+    if geste in ("accord_gardien", "accord_conseil"):
+        print("  " + "\n  ".join(lignes_identites(inv)))
     if aussi:
         print(f"  Retirées aussi, car une identité de la même personne y figure : {', '.join(aussi)} (« {RETIRE[raison]} »).")
     if geste in NATURES_INVITATION and NATURES_INVITATION[geste] not in LIBRE_SERVICE:
@@ -7733,8 +7863,9 @@ def construire_analyseur():
     p = ajouter("essaim", cmd_essaim, "Qui travaille sur quoi : réservations en cours, contributions en relecture, notes récentes.")
     p.add_argument("--json", action="store_true")
 
-    p = ajouter("voir", cmd_voir, "Affiche une tâche complète et ce qu'il faut savoir pour la prendre.")
-    p.add_argument("tache")
+    p = ajouter("voir", cmd_voir, "Affiche une tâche complète et ce qu'il faut savoir pour la prendre ; ou une invitation (I-0001) : "
+                                  "son état, ses identités déclarées et la consigne d'accord.")
+    p.add_argument("tache", help="une tâche (miniz-0012) ou une invitation (I-0001)")
 
     p = ajouter("contexte", cmd_contexte,
                 "L'arbre du sens (docs/arbre.md) : imprime le chemin d'une tâche (racine, rôle, projet, tâche) et sa taille en "
@@ -7872,11 +8003,12 @@ def construire_analyseur():
     a.add_argument("--argument", required=True, help="le doublon (ex. A7)")
     a.add_argument("--de", required=True, help="l'argument précédent qu'il répète (ex. A2)")
     a.add_argument("--utilisateur", required=True)
-    a = actions.add_parser("caviarder", help="Conseil : au refus ou à la demande d'une personne extérieure, remplace le texte "
-                                             "d'un argument par « retiré : refus » ou « retiré : demande » (commandement 10).")
+    a = actions.add_parser("caviarder", help="Conseil : pour une invitation refusée ou retirée, remplace le texte d'un argument, "
+                                             "de la question ou de la synthèse par « retiré : <motif> » (commandement 10).")
     a.add_argument("debat")
-    a.add_argument("argument", help="l'argument (ex. A3)")
-    a.add_argument("--motif", required=True, choices=MOTIFS_CAVIARDAGE)
+    a.add_argument("argument", help="l'argument (ex. A3), ou question, ou synthese")
+    a.add_argument("--invitation", required=True, help="l'invitation refusée ou retirée pour laquelle on caviarde (ex. I-0007)")
+    a.add_argument("--motif", required=True, choices=MOTIFS_CAVIARDAGE, help="celui du retrait de l'invitation")
     a.add_argument("--utilisateur", required=True)
     a = actions.add_parser("clore", help="Rapporteur, gardien ou conseil : clôt le débat en nommant ce qui en sort.")
     a.add_argument("debat")
@@ -7923,9 +8055,12 @@ def construire_analyseur():
                 "R13 : un geste de suivi d'une invitation (accords, envoi consigné, relance, réponse, écart, retrait). bee n'envoie jamais "
                 "rien : un humain du conseil envoie lui-même chaque message, puis le consigne.")
     actions = p.add_subparsers(dest="action", required=True, metavar="action")
-    for nom, aide in (("accord-gardien", "Un gardien nommé, autre que le proposant, après 72 h de publication (libre-service)."),
+    for nom, aide in (("accord-gardien", "Un gardien nommé, autre que le proposant, après 72 h de publication (libre-service). "
+                                         "Vérifiez d'abord que les autres identités déclarées sont celles de la même personne "
+                                         "(bee voir I-<nnnn>)."),
                       ("accord-conseil", "Le conseil, après le gardien : le feu vert, qui réserve une place dans le plafond (le conseil "
-                                         "fusionne la PR). Puis l'envoi, puis la consignation."),
+                                         "fusionne la PR). Puis l'envoi, puis la consignation. Vérifiez d'abord les autres identités "
+                                         "déclarées (bee voir I-<nnnn>)."),
                       ("consigner-envoi", "Le conseil consigne le message qu'un de ses humains a envoyé lui-même, après le feu vert ; "
                                           "jamais refusé : c'est un fait."),
                       ("consigner-relance", "Le conseil consigne l'unique relance, 14 jours après l'envoi au plus tôt : le même message."),

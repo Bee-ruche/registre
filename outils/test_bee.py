@@ -6652,13 +6652,22 @@ class BaseInvitations(BaseRepetitionGenerale):
         return self.ok("invitation", action, invitation, "--utilisateur", qui, *options)
 
     def actifs(self, *pseudos):
-        """Ces membres publient chacun un argument dans D-0001 (fusionné) : des membres actifs pour le frein (troisième revue
-        adverse, C9 : une inscription seule ne compte pas)."""
-        for qui in pseudos:
-            self.branche()
-            self.ok("debattre", "argumenter", "D-0001", "--utilisateur", qui, "--position", "pour", "--texte",
-                    f"Avis de {qui} sur les critères des invitations.")
-            self.publier(qui, "argument")
+        """Des membres actifs pour le frein (vérification de cdbcf36, D5 : une contribution soumise, une relecture ou une mesure ;
+        ni une inscription ni un argument) : le premier soumet une contribution à miniz-0099, les autres la mesurent (sur main)."""
+        premier, *autres = pseudos
+        for nom, commande in (("prise", ["prendre", "miniz-0099", "--utilisateur", premier]),
+                              ("soumission", ["soumettre", "miniz-0099", "--utilisateur", premier, "--pr",
+                                              "https://github.com/Bee-ruche/minizBee/pull/77002"])):
+            self.branche(nom)
+            self.ok(*commande)
+            self.commit()
+            self.fusionner(nom)
+        for qui in autres:
+            bee.ecrire_yaml(self.dossier / f"mesures/miniz-0099-c1/{qui}.yaml", {
+                "contribution": "miniz-0099-c1", "soumise_par": qui, "le": os.environ["BEE_MAINTENANT"], "base": "2948eeb",
+                "candidat": "839b676", "config": {"architecture": "arm64"},
+                "metriques": {"debit_compression_n6": {"gain": 0.05, "au_dela_du_bruit": True}}})
+        self.commit("mesures")
 
     def attend_le_conseil(self, auteur, *natures):
         """verifier-pr accepte la PR, mais elle n'est pas fusionnée automatiquement : le conseil la fusionne lui-même."""
@@ -8050,7 +8059,8 @@ class TestTroisiemeRevueRuche0020(BaseRevueRuche0020):
                      if "Commandement 10 complété" in l)
         for morceau in ("Les données d'une personne extérieure à la ruche ne sont pas du commun : elles se retirent à son refus ou "
                         "à sa demande.", "vie privée", "Répétition générale n° 3", "recherche obstinée",
-                        "effacement de l'historique", "Agent principal, par délégation du conseil (commandement 11, phase de lancement)"):
+                        "effacement de l'historique", "Agent principal, sur autorisation du conseil (28/10 : changer les commandements "
+                        "pendant la phase de lancement, commandement 11)"):
             self.assertIn(morceau, ligne)
 
     # --- 2. C1 : un refus retire toutes les invitations de la personne ---
@@ -8135,37 +8145,42 @@ class TestTroisiemeRevueRuche0020(BaseRevueRuche0020):
                 "Une candidate fictive, joignable au 06 00 00 00 00.")
 
     def test_3_caviarder_un_argument(self):
-        self.a("2026-10-30T09:00:00Z")
+        self.jusqu_a("proposee")
+        self.a("2026-10-30T11:00:00Z")
         self.branche()
         self.ok("debattre", "argumenter", "D-0001", "--utilisateur", "alice", "--position", "fait", "--texte",
-                "Je propose github:fictif-cible : mainteneuse fictive de fictif-lib.", "--source", "https://github.com/fictif-cible")
+                "Je propose github:octocat : mainteneuse fictive de fictif-lib.", "--source", "https://github.com/octocat")
         self.publier("alice", "argument")
-        self.a("2026-10-30T10:00:00Z")
-        self.ko("seul le conseil caviarde", "debattre", "caviarder", "D-0001", "A1", "--motif", "refus", "--utilisateur", "alice")
+        self.refuser(quand="2026-10-30T12:00:00Z")
+        self.ko("seul le conseil caviarde", "debattre", "caviarder", "D-0001", "A1", "--invitation", "I-0001", "--motif", "refus",
+                "--utilisateur", "alice")
         # Détournements : un non-conseil qui caviarde ; le conseil qui réécrit le texte autrement.
-        for qui, texte, morceau in (("alice", "retiré : refus", "seul le conseil caviarde un argument"),
+        for qui, cible, morceau in (("alice", "caviarde", "seul le conseil caviarde"),
                                     ("bidji29", "Texte réécrit par le conseil.", "les arguments sont en ajout seul")):
-            with self.subTest(qui=qui, texte=texte):
+            with self.subTest(qui=qui, cible=cible):
                 self.branche()
                 d = self.debat()
-                d["arguments"][0] = {**d["arguments"][0], "texte": texte, "sources": ["retiré"]}
+                d["arguments"][0] = (bee.caviarde(d["arguments"][0], "refus", "I-0001") if cible == "caviarde" else
+                                     {**d["arguments"][0], "texte": cible, "sources": ["retiré"]})
                 self.ecrire(d)
                 self.commit()
                 self.refusee(qui, morceau)
                 self.abandonner()
-        # Parcours honnête : le conseil caviarde, même un débat clos ; l'auteur, la date et l'identifiant demeurent.
+        # Parcours honnête : le conseil caviarde pour I-0001, même un débat clos ; l'auteur, la date et l'identifiant demeurent.
         self.ok("debattre", "clore", "D-0001", "--utilisateur", "gina", "--issue", "sans_suite")
         self.commit("débat clos")
         self.branche()
-        texte = self.ok("debattre", "caviarder", "D-0001", "A1", "--motif", "refus", "--utilisateur", "bidji29")
+        texte = self.ok("debattre", "caviarder", "D-0001", "A1", "--invitation", "I-0001", "--motif", "refus", "--utilisateur",
+                        "bidji29")
         self.assertIn("seul un effacement de l'historique", texte)
         self.publier("bidji29", "caviardage", libre=False)
         a1 = self.debat()["arguments"][0]
-        self.assertEqual((a1["id"], a1["par"], a1["le"], a1["texte"], a1["sources"]),
-                         ("A1", "alice", "2026-10-30T09:00:00Z", "retiré : refus", ["retiré"]))
-        self.assertNotIn("fictif-cible", self.chemin_debat().read_text(encoding="utf-8"))
+        self.assertEqual((a1["id"], a1["par"], a1["le"], a1["caviarde_pour"], a1["texte"], a1["sources"]),
+                         ("A1", "alice", "2026-10-30T11:00:00Z", "I-0001", "retiré : refus", ["retiré"]))
+        self.assertNotIn("octocat", self.chemin_debat().read_text(encoding="utf-8"))
         self.valide()
-        self.ko("déjà caviardé", "debattre", "caviarder", "D-0001", "A1", "--motif", "demande", "--utilisateur", "bidji29")
+        self.ko("déjà caviardé", "debattre", "caviarder", "D-0001", "A1", "--invitation", "I-0001", "--motif", "refus",
+                "--utilisateur", "bidji29")
 
     def test_3_regle_ecrite(self):
         r12, r13 = (next(l for l in (RACINE / "REGLES.md").read_text(encoding="utf-8").splitlines() if l.startswith(f"| {r} |"))
@@ -8344,6 +8359,13 @@ class TestTroisiemeRevueRuche0020(BaseRevueRuche0020):
         self.fusionner()
         frein = bee.etat_frein(bee.Registre(self.dossier))
         self.assertEqual((frein["membres_actifs"], frein["encadrement"]), (0, []))
+        # Des arguments ne comptent pas non plus (vérification de cdbcf36, D5).
+        for qui in ("chloe", "gaspard", "farid"):
+            self.branche()
+            self.ok("debattre", "argumenter", "D-0001", "--utilisateur", qui, "--position", "question", "--texte",
+                    f"Question de {qui} sur les critères publics ?")
+            self.publier(qui, "argument")
+        self.assertEqual(bee.etat_frein(bee.Registre(self.dossier))["membres_actifs"], 0)
         self.actifs("alice", "bruno")
         frein = bee.etat_frein(bee.Registre(self.dossier))
         self.assertEqual(frein["membres_actifs"], 2)
@@ -8385,6 +8407,193 @@ class TestTroisiemeRevueRuche0020(BaseRevueRuche0020):
         self.assertEqual(self.essayer(["honnête"], lambda _: self.proposer_brut(
             qui="bidji29", homonyme="Une autre personne : profil créé en 2019, autre nom complet.", **homonyme),
             auteur="bidji29"), ["honnête"])
+
+
+class TestVerificationRuche0020(BaseRevueRuche0020):
+    """Vérification de cdbcf36 (D1 à D5, et la ligne du commandement 10) : un test par point, parcours honnête accepté,
+    détournement refusé. Données fictives."""
+
+    CIBLE = "github:fictif-cible"
+
+    def proposee_et_refusee(self, refuser=True):
+        """I-0001 (alice invite github:fictif-cible) proposée à 10 h et fusionnée ; refusée à midi si `refuser`."""
+        self.a("2026-10-30T10:00:00Z")
+        self.branche()
+        self.inviter("alice", self.CIBLE)
+        self.publier("alice", "invitation", libre=False)
+        if refuser:
+            self.a("2026-10-30T12:00:00Z")
+            self.branche()
+            self.geste("consigner-reponse", "bidji29", "--valeur", "refusee")
+            self.publier("bidji29", "reponse_invitation", "non_contact", libre=False)
+
+    def argument(self, qui, texte, debat="D-0001"):
+        self.branche()
+        self.ok("debattre", "argumenter", debat, "--utilisateur", qui, "--position", "pour", "--texte", texte)
+        self.publier(qui, "argument")
+
+    # --- D1 : le caviardage nomme une invitation refusée ou retirée ---
+
+    def test_D1_caviarder_exige_une_invitation_retiree(self):
+        self.a("2026-10-30T09:00:00Z")
+        self.argument("alice", "Le conseil devrait publier ses critères de choix des garants avant toute invitation.")
+        self.proposee_et_refusee(refuser=False)
+        # Une critique, sans invitation retirée : la commande et une PR à la main sont refusées, même du conseil.
+        for invitation, morceau in (("I-0009", "une invitation refusée, restée sans réponse ou retirée"),
+                                    ("I-0001", "une invitation refusée, restée sans réponse ou retirée")):
+            with self.subTest(invitation=invitation):
+                self.ko(morceau, "debattre", "caviarder", "D-0001", "A1", "--invitation", invitation, "--motif", "refus",
+                        "--utilisateur", "bidji29")
+                self.branche()
+                d = self.debat()
+                d["arguments"][0] = bee.caviarde(d["arguments"][0], "refus", invitation)
+                self.ecrire(d)
+                self.commit()
+                self.refusee("bidji29", f"caviarde_pour « {invitation} »")
+                self.abandonner()
+        # L'ancienne forme, sans caviarde_pour : refusée (ajout seul).
+        self.branche()
+        d = self.debat()
+        d["arguments"][0] = {**d["arguments"][0], "texte": "retiré : refus"}
+        self.ecrire(d)
+        self.commit()
+        self.refusee("bidji29", "les arguments sont en ajout seul")
+        self.abandonner()
+        # Après le refus : le motif doit être celui du retrait ; le conseil caviarde alors (il fusionne lui-même).
+        self.a("2026-10-30T12:00:00Z")
+        self.branche()
+        self.geste("consigner-reponse", "bidji29", "--valeur", "refusee")
+        self.publier("bidji29", "reponse_invitation", "non_contact", libre=False)
+        self.ko("celui du retrait de I-0001 est « refus »", "debattre", "caviarder", "D-0001", "A1", "--invitation", "I-0001",
+                "--motif", "demande", "--utilisateur", "bidji29")
+        self.branche()
+        self.ok("debattre", "caviarder", "D-0001", "A1", "--invitation", "I-0001", "--motif", "refus", "--utilisateur", "bidji29")
+        self.publier("bidji29", "caviardage", libre=False)
+        self.assertEqual(self.debat()["arguments"][0]["caviarde_pour"], "I-0001")
+        self.valide()
+        texte = " ".join(l for l in (RACINE / "REGLES.md").read_text(encoding="utf-8").splitlines() if l.startswith("| R12 |"))
+        self.assertIn("caviarde_pour", texte)
+        self.assertIn("rien ne se caviarde", (RACINE / "docs/agora.md").read_text(encoding="utf-8"))
+
+    # --- D1b : la question et la synthèse ---
+
+    def test_D1b_question_controlee_et_caviardable(self):
+        self.a("2026-10-30T09:00:00Z")
+        question = "Faut-il inviter github:fictif-cible, joignable à fictif-cible@exemple.example, comme garante ?"
+        self.ko("question : une adresse de courriel", "debattre", "ouvrir", "--utilisateur", "alice", "--question", question)
+        self.branche()
+        self.ecrire({"id": "D-0002", "question": question, "ouvert_par": "alice", "ouvert_le": self.maintenant(), "statut": "ouvert",
+                     "rapporteur": "alice", "arguments": []}, "D-0002")
+        self.commit()
+        self.refusee("alice", "question : une adresse de courriel")
+        self.abandonner()
+        # Une question qui nomme la personne (sans donnée détectable), une synthèse qui la décrit : caviardables au refus.
+        self.branche()
+        self.ok("debattre", "ouvrir", "--utilisateur", "alice", "--question", "Faut-il inviter github:fictif-cible comme garante ?")
+        self.publier("alice", "ouverture_debat")
+        self.argument("bruno", "I-0001 : ses faits publics suffisent.", debat="D-0002")
+        self.branche()
+        self.ok("debattre", "synthetiser", "D-0002", "--utilisateur", "alice", "--texte",
+                "github:fictif-cible maintient fictif-lib depuis 2015 ; un avis pour.")
+        self.publier("alice", "synthese")
+        self.proposee_et_refusee()
+        self.a("2026-10-30T13:00:00Z")
+        self.ko("seul le conseil caviarde", "debattre", "caviarder", "D-0002", "question", "--invitation", "I-0001", "--motif",
+                "refus", "--utilisateur", "alice")
+        self.branche()
+        d = self.debat("D-0002")
+        self.ecrire({**d, "question": "retiré : refus", "question_caviardee_pour": "I-0001"}, "D-0002")
+        self.commit()
+        self.refusee("alice", "seul le conseil caviarde")
+        self.abandonner()
+        self.branche()
+        for champ in ("question", "synthese"):
+            self.ok("debattre", "caviarder", "D-0002", champ, "--invitation", "I-0001", "--motif", "refus", "--utilisateur", "bidji29")
+        self.publier("bidji29", "caviardage", libre=False)
+        d = self.debat("D-0002")
+        self.assertEqual((d["question"], d["question_caviardee_pour"], d["synthese"], d["synthese_caviardee_pour"]),
+                         ("retiré : refus", "I-0001", "retiré : refus", "I-0001"))
+        self.assertEqual(d["arguments"][0]["texte"], "I-0001 : ses faits publics suffisent.")
+        self.assertNotIn("fictif-cible", self.chemin_debat("D-0002").read_text(encoding="utf-8"))
+        self.valide()
+        # La marque ne se pose pas seule ; elle tombe avec la synthèse suivante, que publie le rapporteur.
+        self.branche()
+        self.ok("debattre", "synthetiser", "D-0002", "--utilisateur", "bruno", "--texte", "Un avis pour, sur les faits publics de I-0001.")
+        self.publier("bruno", "synthese")
+        self.assertNotIn("synthese_caviardee_pour", self.debat("D-0002"))
+        self.branche()
+        self.ecrire({**self.debat("D-0002"), "synthese_caviardee_pour": "I-0001"}, "D-0002")
+        self.commit()
+        self.refusee("alice", "synthese_caviardee_pour : seul le conseil la pose")
+
+    # --- D3 : les autres identités s'affichent aux accords et dans bee voir ---
+
+    def test_D3_autres_identites_affichees(self):
+        self.a("2026-10-30T10:00:00Z")
+        self.branche()
+        self.inviter("alice", self.CIBLE, "--autre-identite", "gitlab:fictif-tiers")
+        self.publier("alice", "invitation", libre=False)
+        texte = self.ok("voir", "I-0001")
+        self.assertIn("Autres identités déclarées : gitlab:fictif-tiers", texte)
+        self.assertIn("vérifiez sur les sources que chaque autre identité déclarée est bien celle de la même personne", texte)
+        self.assertIn("I-0001 : proposee", texte)
+        self.a("2026-11-02T11:00:00Z")
+        self.branche()
+        texte = self.geste("accord-gardien", "gina")
+        self.assertIn("Autres identités déclarées : gitlab:fictif-tiers", texte)
+        self.assertIn("vérifiez sur les sources", texte)
+        self.assertIn("Vérifiez d'abord que les autres identités", (RACINE / "outils/bee.py").read_text(encoding="utf-8"))
+        # Sans autre identité : « aucune ».
+        self.assertIn("Autres identités déclarées : aucune", "\n".join(bee.lignes_identites(
+            {"personne": {"identifiant": "github:hubot", "canal": "https://github.com/hubot"}})))
+
+    # --- D4 : un retrait « refus » suit un refus réel ---
+
+    def test_D4_retrait_refus_sans_refus_refuse(self):
+        self.proposee_et_refusee(refuser=False)
+        self.a("2026-10-30T12:00:00Z")
+        self.ko("seulement quand cette personne a refusé ou n'a pas répondu", "invitation", "retirer", "I-0001", "--utilisateur",
+                "bidji29", "--raison", "refus")
+        self.branche()
+        self.ecrire_invitation(bee.retirer({**self.invitation(), "statut": "retiree",
+                                            "retrait": {"par": "bidji29", "le": self.maintenant(), "raison": "refus"}}, "refus"))
+        bee.ecrire_invitation(self.dossier / bee.CHEMIN_NON_CONTACT, {"empreintes": [bee.empreinte(self.CIBLE)]})
+        self.commit()
+        self.refusee("bidji29", "seulement quand cette personne a refusé ou n'a pas répondu")
+        self.abandonner()
+        # « demande » passe toujours ; et « refus » passe quand la personne est déjà sur la liste (un refus antérieur).
+        self.branche()
+        self.geste("retirer", "bidji29", "--raison", "demande")
+        self.commit()
+        self.attend_le_conseil("bidji29", "retrait_invitation")
+        self.abandonner()
+        self.main_avec_liste(self.CIBLE)
+        self.branche()
+        self.geste("retirer", "bidji29", "--raison", "refus")
+        self.publier("bidji29", "retrait_invitation", libre=False)
+        self.assertEqual(self.invitation()["retrait"]["raison"], "refus")
+        self.valide()
+
+    # --- D5 : un argument ne fait pas un membre actif ---
+
+    def test_D5_arguments_hors_du_frein(self):
+        self.a("2026-10-30T09:00:00Z")
+        for qui in ("alice", "bruno", "chloe"):
+            self.argument(qui, f"Question de {qui} sur les critères publics ?")
+        self.assertEqual(bee.etat_frein(bee.Registre(self.dossier))["membres_actifs"], 0)
+        self.actifs("alice", "bruno")
+        self.assertEqual(bee.etat_frein(bee.Registre(self.dossier))["membres_actifs"], 2)
+        r13 = next(l for l in (RACINE / "REGLES.md").read_text(encoding="utf-8").splitlines() if l.startswith("| R13 |"))
+        for texte in (r13, (RACINE / "docs/croissance.md").read_text(encoding="utf-8")):
+            self.assertIn("ni un argument", texte)
+
+    # --- Ligne du commandement 10 ---
+
+    def test_decide_par_sur_autorisation_du_conseil(self):
+        ligne = next(l for l in (RACINE / "docs/decisions.md").read_text(encoding="utf-8").splitlines()
+                     if "Commandement 10 complété" in l)
+        self.assertTrue(ligne.rstrip().endswith("| Agent principal, sur autorisation du conseil (28/10 : changer les commandements "
+                                                "pendant la phase de lancement, commandement 11) |"))
 
 
 class TestManifesteRecopie(BaseRepetitionGenerale):

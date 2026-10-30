@@ -87,7 +87,7 @@ croissance:
   message_max: 2000                 # caractères du message, mention de R13 comprise
   encadrement_par_semaine_sous_frein: 1  # frein serré : feux verts d'invitations de garant ou de gardien sur 7 jours glissants
   expiration_jours: 14              # une invitation non décidée expire ; elle ne retient plus la personne
-  membres_actifs_jours: 30          # membre actif (frein) : contribution, relecture, mesure ou argument publié sur ces jours
+  membres_actifs_jours: 30          # membre actif (frein) : contribution soumise, relecture ou mesure sur ces jours
   branche_dormante_jours: 30        # sans activité, une branche dort (rien n'est supprimé)
 
 # Comptes automatiques autorisés à écrire des verdicts et à libérer les réservations expirées.

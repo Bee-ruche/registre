@@ -61,7 +61,9 @@ qui dit :
 - **ses autres identités** (`autres_identites`, facultatif ; `bee inviter --autre-identite gitlab:octocat`) : au
   plus 5 identifiants publics de la même personne, sous la même forme, que le proposant déclare explicitement.
   Ils comptent comme l'identifiant : comparés à la liste et aux autres invitations, inscrits sur la liste à son
-  refus. Rien n'est jamais déduit des sources, qui peuvent citer un tiers ;
+  refus. Rien n'est jamais déduit des sources, qui peuvent citer un tiers. `bee voir I-0001` et la sortie des
+  accords les montrent : le gardien et le conseil vérifient, sources à l'appui, que ce sont bien les identités
+  de la même personne (une identité d'un tiers l'inscrirait sur la liste à ce refus) ;
 - **pourquoi elle** (`pourquoi`) : de 1 à 5 faits publics de 300 caractères au plus, chacun avec sa source
   `https://` (en ASCII, sans identifiant avant l'hôte, sans chaîne de requête `?…`, ni messagerie, ni donnée
   personnelle) ;
@@ -127,15 +129,19 @@ son refus ou à sa demande.
   le statut, le débat et le proposant ; au silence (`sans_reponse`), de même, « retiré : sans réponse ». Le
   conseil fait de même à la demande de la personne, à tout moment (`bee invitation retirer`, « retiré :
   demande », le motif d'un écart compris) : elle s'inscrit alors aussi sur la liste, sauf si elle a accepté.
+  Un retrait au motif « refus » ou « sans réponse » suit un refus ou un silence réel de la même personne (dans
+  la même PR, ou déjà sur la liste) ; sinon, le seul motif est « demande ».
   **Toutes ses invitations** se retirent en même temps, quel que soit leur statut (expirée, écartée, en
   cours…), sauf une invitation acceptée : `bee` retire toute invitation dont une identité déclarée est alors
   sur la liste (`retrait`, avec la même raison). `bee verifier-pr` exige ces retraits, et seulement eux ;
   `bee valider` refuse un dossier refusé ou silencieux non retiré, un dossier retiré sans refus, silence ni
   demande, et toute invitation non retirée, sauf acceptée, dont une identité est sur la liste.
-- **Dans l'agora.** Le conseil caviarde un argument qui désigne la personne (`bee debattre caviarder D-0020 A3
-  --motif refus|demande`) : son texte devient « retiré : refus » ou « retiré : demande », ses sources
-  « retiré » ; son auteur, sa date et son identifiant demeurent (R12). C'est la seule modification d'un
-  argument, réservée au conseil, même dans un débat clos. **Limite** : l'historique git garde
+- **Dans l'agora.** Pour une invitation refusée, restée sans réponse ou retirée, le conseil caviarde un argument,
+  la question ou la synthèse qui désigne la personne (`bee debattre caviarder D-0020 A3 --invitation I-0007
+  --motif refus`, le motif de son retrait) : le texte devient « retiré : <motif> », les sources d'un argument
+  « retiré » ; son auteur, sa date, son identifiant et le reste du débat demeurent (R12). C'est la seule
+  modification d'un débat de ce genre, réservée au conseil, même dans un débat clos, et elle nomme
+  l'invitation (`caviarde_pour`) : sans invitation retirée, rien ne se caviarde. **Limite** : l'historique git garde
   l'ancien contenu ; seul un effacement de l'historique, hors de portée de la ruche, l'en ôterait.
 - **Un site, une personne.** Un site se compare sur son domaine enregistrable : les deux derniers labels
   (`blog.exemple.org` est `exemple.org`), les trois derniers sous une courte liste de suffixes à deux niveaux
@@ -228,10 +234,10 @@ jamais après la proposition, et le gardien et le conseil vérifient que le mess
   d'autre), 72 h après sa publication ; une invitation à participer ou à faire entrer un projet reste
   impossible.
 - **Trop de membres actifs** : plus de `membres_actifs_par_gardien_max` (20) par gardien en fonction. Un **membre
-  actif** est un compte connu (inscrit, du conseil ou gardien ; jamais un robot) qui a publié sur les
-  `membres_actifs_jours` (30) derniers jours une contribution, une relecture, une mesure ou un argument (datés
-  comme dans le cap). Une inscription seule ne compte pas : des inscriptions en libre-service ne serrent pas le
-  frein.
+  actif** est un compte connu (inscrit, du conseil ou gardien ; jamais un robot) qui a, sur les
+  `membres_actifs_jours` (30) derniers jours, une contribution soumise, une relecture ou une mesure (datées comme
+  dans le cap). Une inscription seule ne compte pas, ni un argument (trop bon marché pour mesurer ce qu'il faut
+  encadrer) : des comptes ouverts en libre-service ne serrent pas le frein.
 - **Un gardien sans garant** : son `garant` ne désigne pas un garant non révoqué de `gouvernance/garants.yaml`.
   Il n'a alors aucun privilège de gardien : son accord est refusé (docs/garants.md).
 - **Un incident ouvert** : une entrée de `gouvernance/incidents.yaml` (schéma `schemas/incidents.schema.json` :
