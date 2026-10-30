@@ -2992,6 +2992,20 @@ class TestRevueAdverse(BaseParallele):
         self.assertEqual((enr["verdict"]["ci"], enr["verdict"]["sha"], enr["verdict"]["fichiers_controles"]), ("verte", "abc1234", True))
         self.valide()
 
+    def test_une_contribution_de_la_ruche_n_arrete_pas_la_collecte_des_verdicts(self):
+        """Une contribution dont la PR est sur le registre lui-même (projet ruche) n'a pas de CI de fork : la collecte la
+        passe, sans appel à GitHub, et continue pour les autres (incident du 30/10 : HTTP 404 sur bee-ci.yml)."""
+        c1 = self.soumettre_0099("alice")
+        chemin = self.dossier / f"contributions/miniz/{c1}.yaml"
+        enr = bee.lire_yaml(chemin)
+        enr["pr"] = "https://github.com/Bee-ruche/registre/pull/99"
+        bee.ecrire_yaml(chemin, enr)
+        etats = {"https://github.com/Bee-ruche/registre/pull/99": {"state": "OPEN", "head": "abc1234", "auteur": "alice"}}
+        sortie, _, appels = self.etape("Récupérer les verdicts", etats, flux="verdicts.yml")
+        self.assertFalse([a for a in appels if "https://github.com/Bee-ruche/registre/pull/99" in a["args"]],
+                         "aucune requête pour une PR du registre")
+        self.assertFalse(self.appels_de(appels, "run"))
+
     def test_vol_de_credit_ni_fusion_ni_consignation(self):
         self.fermer_porte()
         c1 = self.soumettre_0099("alice")

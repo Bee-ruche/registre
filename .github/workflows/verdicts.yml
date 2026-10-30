@@ -48,6 +48,9 @@ jobs:
             > a_traiter.tsv
           while IFS=$'\t' read -r id pr sha_connu ci_connue auteur; do
             depot=$(printf '%s' "$pr" | sed -E 's#^https://github\.com/([A-Za-z0-9-]+/[A-Za-z0-9_.-]+)/pull/[0-9]+$#\1#')
+            # Contribution de la ruche (PR sur le registre lui-même) : pas de CI de fork ni de verdict à collecter ; elle
+            # est relue et fusionnée par le conseil. Ne jamais arrêter la collecte des autres pour elle.
+            [ "$depot" = "$GITHUB_REPOSITORY" ] && continue
             infos=$(gh pr view "$pr" --json headRefOid,author --jq '"\(.headRefOid) \(.author.login)"') || continue
             read -r sha auteur_pr <<< "$infos"
             # Le champ pr d'une contribution est déclaré par son auteur : la PR doit être la sienne (le pseudo d'un membre
@@ -59,7 +62,7 @@ jobs:
             # (runner indisponible) : on relit la dernière exécution terminée, qui a pu être relancée.
             [ "$sha" = "$sha_connu" ] && [ "$ci_connue" = "verte" ] && continue
             execution=$(gh run list -R "$depot" --commit "$sha" --workflow bee-ci.yml --status completed --limit 1 \
-              --json databaseId,url --jq '.[0] | "\(.databaseId) \(.url)"')
+              --json databaseId,url --jq '.[0] | "\(.databaseId) \(.url)"') || continue
             [ -z "$execution" ] && continue
             numero=${execution%% *}; adresse=${execution#* }
             rm -rf "$RUNNER_TEMP/verdict" && mkdir -p "$RUNNER_TEMP/verdict"
