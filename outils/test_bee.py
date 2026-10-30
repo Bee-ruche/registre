@@ -1197,7 +1197,9 @@ class TestArbre(BaseTest):
         positions = [texte.index(r) for r in ("=== nœud projets/compression-sans-perte/miniz ===",
                                                "=== nœud projets/compression-sans-perte/miniz/tinfl ===", "=== tâche miniz-0099")]
         self.assertEqual(positions, sorted(positions))
-        self.assertNotIn("## Enfants", texte[positions[0]:positions[1]], "son seul enfant est la suite du chemin")
+        # Le nœud traversé ne relist jamais ses enfants en entier, qu'il en ait d'autres (zones réelles du registre) ou
+        # non ; le détail de ce rendu est testé à part, sans dépendre de l'état du registre (test_rendu_enfants_sur_le_chemin).
+        self.assertNotIn("- `projets/compression-sans-perte/miniz/", texte[positions[0]:positions[1]])
         # Une tâche de la ruche qui vise le nœud d'un autre projet : sa branche, puis celle du nœud visé.
         (self.dossier / "taches/ruche/ruche-9001.yaml").write_text(
             TACHE_OPTIMISATION.replace("miniz-0099", "ruche-9001").replace("projet: miniz", "projet: ruche")
@@ -1209,6 +1211,27 @@ class TestArbre(BaseTest):
         positions = [texte.index(f"=== nœud {n} ===") for n in ("racine", "roles/mesurer", "projets/ruche", "projets/ruche/ruche",
                                                                "projets/compression-sans-perte", "projets/compression-sans-perte/miniz")]
         self.assertEqual(positions, sorted(positions))
+
+    def test_rendu_enfants_sur_le_chemin(self):
+        # Sans dépendre des nœuds réels : un nœud dont le seul enfant est la suite du chemin n'imprime pas « Enfants » ;
+        # avec d'autres enfants, une ligne « Le tien suit » ; hors du chemin, la liste entière.
+        def noeud(ident, enfants):
+            liste = "\n".join(f"- `{e}` : {e.rsplit('/', 1)[-1]}" for e in enfants)
+            return {"id": ident, "titre": ident, "enfants": enfants,
+                    "sections": {"Pourquoi cette branche existe": "p", "Ce qui compte ici": "c",
+                                 "Ce qu'on peut ignorer ici": "i", "Enfants": liste}}
+        seul = noeud("projets/x/p", ["projets/x/p/a"])
+        noeuds = {"projets/x/p": seul, "projets/x/p/a": noeud("projets/x/p/a", [])}
+        texte = bee.rendu_noeud_contexte(seul, chemin=["projets/x/p", "projets/x/p/a"], noeuds=noeuds)
+        self.assertNotIn("## Enfants", texte)
+        deux = noeud("projets/x/p", ["projets/x/p/a", "projets/x/p/b"])
+        noeuds = {"projets/x/p": deux, "projets/x/p/a": noeud("projets/x/p/a", []), "projets/x/p/b": noeud("projets/x/p/b", [])}
+        texte = bee.rendu_noeud_contexte(deux, chemin=["projets/x/p", "projets/x/p/a"], noeuds=noeuds)
+        self.assertIn("## Enfants\nLe tien suit", texte)
+        self.assertNotIn("projets/x/p/b", texte)
+        texte = bee.rendu_noeud_contexte(deux, chemin=["projets/x/p"], noeuds=noeuds)
+        self.assertIn("- `projets/x/p/a`", texte)
+        self.assertIn("- `projets/x/p/b`", texte)
 
     def test_chemins_livres_tiennent_dans_un_budget_court(self):
         # Garde-fou de la taille des nœuds (docs/arbre.md) : sans la tâche, le chemin d'un rôle et d'un projet tient en
