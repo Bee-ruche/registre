@@ -1,0 +1,30 @@
+id: ruche-0024
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: S
+titre: "juge.yml : extraire la base avec l'historique dont un greffon a besoin, puis étiquette juge-v2"
+contexte: >
+  miniz-0032 (minizBee PR #16, 30/10) : le workflow réutilisable .github/workflows/juge.yml@juge-v1 extrait
+  la base de la PR sans historique (fetch-depth 1), alors que bee/corpus/generer.py de minizBee lit des
+  objets git d'un commit fixe (2948eeb) ; le juge s'arrêtait (code 2). Contournement dans le greffon de
+  minizBee : un git fetch --depth=1 origin 2948eeb sur l'hôte du runner, pendant le jugement, donc une
+  dépendance au réseau de GitHub et une étape hors du conteneur. À faire : dans juge.yml, une entrée
+  (par exemple historique: <commits> ou profondeur) qui permet au fork de déclarer les objets git dont
+  son greffon a besoin, récupérés par le workflow du registre avant l'isolement ; un méta-test sur le
+  projet jouet ; docs/juge-commun.md. L'étiquette juge-v2 est posée par le conseil (la session ne peut
+  pas pousser d'étiquette) ; minizBee retire ensuite son contournement par une PR.
+fichiers: [.github/workflows/juge.yml, outils/juge/, docs/juge-commun.md]
+portee: 0.6
+metrique: null
+critere_acceptation:
+  - "méta-test : un greffon jouet qui lit un objet git déclaré juge sans réseau, et échoue proprement s'il n'est pas déclaré"
+  - "les méta-tests existants du juge commun passent (outils/juge/test_juge.py)"
+  - "revue adverse indépendante jointe (le juge commun décide des verdicts)"
+hors_perimetre: [les forks, l'étiquette juge-v1, COMMANDEMENTS.md]
+depend_de: [miniz-0032]
+noeud: projets/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-30"

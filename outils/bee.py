@@ -2832,7 +2832,8 @@ def verifier_debat(reg, chemin, statut_git, ancien, nouveau, auteur, *, est_cons
 # l'outil ne fait aucune requête réseau et n'appelle jamais gh pour contacter quelqu'un ; il lit et écrit le registre.
 
 CROISSANCE_DEFAUT = {"invitations_par_semaine": 3, "relances_max": 1, "delai_relance_jours": 14, "debat_min_heures": 72,
-                     "membres_actifs_par_gardien_max": 20, "message_max": 2000}
+                     "membres_actifs_par_gardien_max": 20, "message_max": 2000,
+                     "branche_dormante_jours": 30}  # R13, par branches (outillé par ruche-0023)
 SEMAINE = dt.timedelta(days=7)
 ID_INVITATION = re.compile(r"^I-[0-9]{4}$")
 # <plateforme>:<nom>, en ASCII et sans espace (github:octocat, codeberg:x, mastodon:@x@exemple.org) : ni homoglyphe ni variante.

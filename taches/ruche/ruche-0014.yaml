@@ -4,38 +4,54 @@ categorie: ruche
 type: test
 poste: coordination
 taille: M
-titre: "L'arbre de miniz : écrire les nœuds de ses zones (compression, décompression, API zlib)"
-contexte: >
-  ruche-0010 a écrit la racine de l'arbre du sens et son premier palier ; le nœud de miniz
-  (arbre/projets/compression-sans-perte/miniz/SENS.md) nomme ses zones sans les décrire. Faits : sur les
-  28 tâches miniz, 8 visent miniz_tdef.c (tdefl_find_match, tdefl_compress_normal,
-  tdefl_compress_lz_codes…), 5 miniz_tinfl.c (tinfl_decompress), 1 les deux (profilage, miniz-0029), et 14
-  l'outillage bee/ du fork, dont les tests de l'API compatible zlib (miniz-0026). Ce qui compte dans une
-  zone n'est aujourd'hui écrit que dans les tâches et leurs notes : à la répétition générale du 29/10, la
-  note de miniz-0020 (état LZ en locales : +0,22 % d'instructions, débordements de registres) concernait
-  miniz-0019, qui n'en disait rien, et le contexte de miniz-0010 citait une comparaison que miniz-0015
-  avait déjà remplacée (journaux emma et alice). À faire : un nœud par zone sous
-  arbre/projets/compression-sans-perte/miniz/ (par exemple tdef, tinfl, api, et bee si c'est utile), au
-  format de docs/arbre.md (40 lignes au plus) : pourquoi la zone existe ; ce qui y compte (fonctions
-  chaudes et leur part des instructions d'après bee/bench/profil.py, invariants des champs que les tâches
-  touchent, pistes déjà mesurées et leur résultat, tâches intégrées qui ont changé le code) ; ce qu'on
-  peut y ignorer. Puis lister les zones dans le nœud de miniz, et rattacher chaque tâche miniz ouverte à
-  sa zone (champ noeud).
-fichiers: [arbre/projets/compression-sans-perte/miniz/, taches/miniz/]
+titre: 'L''arbre de miniz : écrire les nœuds de ses zones (compression, décompression, API zlib)'
+contexte: 'ruche-0010 a écrit la racine et les paliers des rôles, des catégories et des projets de l''arbre
+  du sens ; le nœud de miniz (arbre/projets/compression-sans-perte/miniz/SENS.md) nomme ses zones sans
+  les décrire. Faits : sur les 28 tâches miniz, 8 visent miniz_tdef.c (tdefl_find_match, tdefl_compress_normal,
+  tdefl_compress_lz_codes…), 5 miniz_tinfl.c (tinfl_decompress), 1 les deux (profilage, miniz-0029), et
+  14 l''outillage bee/ du fork, dont les tests de l''API compatible zlib (miniz-0026). Ce qui compte dans
+  une zone n''est aujourd''hui écrit que dans les tâches et leurs notes : à la répétition générale du
+  29/10, la note de miniz-0020 (état LZ en locales dans tdefl_compress_normal : +0,22 %, débordements
+  de registres ; la note ne précise pas l''unité) concernait miniz-0019, qui n''en disait rien, et le
+  contexte de miniz-0010 citait une comparaison que miniz-0015 avait déjà remplacée (journaux emma et
+  alice). À faire : un nœud par zone sous arbre/projets/compression-sans-perte/miniz/ (par exemple tdef,
+  tinfl, api, et bee si c''est utile), au format de docs/arbre.md (40 lignes au plus) : pourquoi la zone
+  existe ; ce qui y compte (fonctions chaudes et leur part des instructions d''après bee/bench/profil.py,
+  invariants des champs que les tâches touchent, pistes déjà mesurées et leur résultat, tâches intégrées
+  qui ont changé le code) ; ce qu''on peut y ignorer. Puis lister les zones dans le nœud de miniz, et
+  rattacher chaque tâche miniz ouverte à sa zone (champ noeud). Garde-fou de taille (docs/arbre.md, test
+  test_chemins_livres_tiennent_dans_un_budget_court, qui lit le vrai registre) : sans la tâche, le chemin
+  d''un rôle et d''un projet tient en 1 900 jetons, et, zone comprise, celui de chaque tâche vivante en
+  2 600 ; une zone reste donc courte. Le test ne se change pas dans cette tâche (commandement 3).
+
+  '
+fichiers:
+- arbre/projets/compression-sans-perte/miniz/
+- taches/miniz/
 portee: 0.8
 metrique: null
 critere_acceptation:
-  - "bee valider passe : chaque nœud tient dans son budget, avec ses quatre sections, et le nœud de miniz le liste"
-  - "chaque fait chiffré d'un nœud cite sa source (tâche, note, profil) ; aucune intuition présentée comme un fait"
-  - "chaque tâche miniz ouverte qui vise une zone y est rattachée ; bee contexte de chacune tient en moins de 3 000 jetons"
-  - "vérifié par un agent sans mémoire qui ne lit que bee contexte d'une tâche de chaque zone (rapport joint)"
-hors_perimetre: [le code de minizBee, les autres branches de l'arbre, outils/]
-depend_de: [ruche-0010]
+- 'bee valider passe : chaque nœud tient dans son budget, avec ses quatre sections, et le nœud de miniz
+  le liste'
+- chaque fait chiffré d'un nœud cite sa source (tâche, note, profil) ; aucune intuition présentée comme
+  un fait
+- chaque tâche miniz ouverte qui vise une zone y est rattachée
+- vérifié par un agent sans mémoire qui ne lit que bee contexte d'une tâche de chaque zone (rapport joint)
+- python3 -m unittest outils.test_bee passe sans modification, garde-fou de taille compris
+hors_perimetre:
+- le code de minizBee
+- les autres branches de l'arbre
+- outils/
+depend_de:
+- ruche-0010
 noeud: projets/compression-sans-perte/miniz
-statut: proposee
+statut: ouverte
 cree_par: bidji29
-cree_le: "2026-10-30"
+cree_le: '2026-10-30'
 notes:
   - par: "bidji29"
     le: "2026-10-30T06:47:42Z"
     texte: "Répétition générale, tour 2 (30/10), pour la zone tinfl : alice note que le nœud de miniz ne dit ni le format des entrées de m_look_up, (longueur du code << 9) | symbole, que tout chemin rapide doit respecter, ni qu'un chemin rapide se prouve aussi à ses bornes ; farid a relevé que le corpus flux-1 n'exerce pas le chemin rapide de miniz-0017-c1. Deux faits à porter dans le nœud tinfl, avec leur source."
+  - par: "bidji29"
+    le: "2026-10-30T12:48:03Z"
+    texte: "Correction de la note précédente (vérification indépendante du 30/10) : flux-1 n'est pas un corpus mais un test (tampons de 1 octet, bee/tests/differentiel.c l. 7) ; il n'exerce pas le chemin rapide de tinfl_decompress, qui exige 4 octets d'entrée et 2 de sortie (miniz_tinfl.c l. 427) ; m_look_up : miniz_tinfl.c l. 363. miniz-0017-c1 n'existe qu'à la répétition générale, pas dans ce registre."

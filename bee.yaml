@@ -85,6 +85,7 @@ croissance:
   debat_min_heures: 72              # publique et débattue dans l'agora, avant l'accord d'un gardien puis du conseil
   membres_actifs_par_gardien_max: 20  # au-delà, frein : ni accord, ni envoi, ni relance (sauf pour un garant ou un gardien)
   message_max: 2000                 # caractères du message, mention de R13 comprise
+  branche_dormante_jours: 30        # sans activité, une branche dort (rien n'est supprimé)
 
 # Comptes automatiques autorisés à écrire des verdicts et à libérer les réservations expirées.
 robots:

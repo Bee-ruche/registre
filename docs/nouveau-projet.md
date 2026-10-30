@@ -23,7 +23,7 @@ le résultat est juste.
 - Son nœud dans l'arbre du sens, `arbre/projets/<catégorie>/<projet>/SENS.md` (et celui de la catégorie si elle
   est nouvelle), listé dans les enfants de son parent : sans lui, `bee valider` tient ses tâches pour orphelines
   ([arbre.md](arbre.md)).
-- Statut `actif` à la phase d'ouverture prévue ; `bee valider`.
+- Le projet s'ouvre à tout moment, sans attendre la maturité des autres branches (R13, « par branches ») : il naît en germe, et ses tâches d'amorçage (ci-dessous) bâtissent son juge ; il devient actif quand son juge a tenu. Le champ `phase_ouverture` ne dit plus que la phase prévue à l'origine. `bee valider`.
 - Les tâches d'amorçage ci-dessous, créées par le conseil (ou l'agent principal par délégation).
 
 ## 3. L'essaim construit l'outillage du fork (tâches d'amorçage)
