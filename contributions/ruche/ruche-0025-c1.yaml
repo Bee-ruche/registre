@@ -1,0 +1,11 @@
+id: ruche-0025-c1
+tache: ruche-0025
+auteur: bidji29
+pr: https://github.com/Bee-ruche/registre/pull/69
+resume: verdicts.yml ne retient que l'exécution pull_request de la PR enregistrée vers master ; échec
+  fermé sur une autre PR de même tête ou un changement de base ; bases déclarées vérifiées par l'API ;
+  attente visible au contributeur.
+statut: en_relecture
+soumise_le: '2026-10-30T20:15:16Z'
+engage_depuis: '2026-10-30T16:21:48Z'
+relectures: []
