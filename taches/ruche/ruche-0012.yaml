@@ -29,9 +29,7 @@ critere_acceptation:
   - "aucun test existant affaibli"
 hors_perimetre: [COMMANDEMENTS.md, valeurs de bee.yaml]
 depend_de: []
-statut: reservee
-reservation:
-  utilisateur: "bidji29"
-  depuis: "2026-10-30T07:52:25Z"
+statut: en_relecture
+contribution: ruche-0012-c1
 cree_par: conseil
 cree_le: "2026-10-30"
