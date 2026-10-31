@@ -46,6 +46,7 @@ Les forks qui adhèrent au projet vont plus loin : leur projet d'origine fixe se
 - L'équité entre membres : identité, réservations et engagements (R7, R8), votes et poids (R10, niveaux).
 - L'agora et ses plafonds contre le bruit (R12).
 - Les contacts hors de la ruche (R13), dont toute la ruche répond.
+- La passation (R15) : les pouvoirs de l'amorçage expirent pour toute la ruche ; une branche ne garde pas un pouvoir nommé au-delà de son terme.
 - R14 elle-même.
 
 **Une dérogation demande plus qu'une règle ordinaire.** C'est une proposition de règle (R10) qui dit :

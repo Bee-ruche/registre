@@ -1,0 +1,43 @@
+id: ruche-0081
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: L
+titre: 'Mandates: an appointed privilege carries an end date, and bee stops counting it once passed'
+contexte: 'R15 (docs/devolution.md): a privilege granted by appointment (guardian, guarantor) ends six months after the
+  appointment, or when phase 3 opens (`amorcage: false`), whichever comes first; it is renewed by a new decision (an
+  adopted proposal, or the council while R10''s quorum is out of reach). Today gouvernance/gardiens.yaml and gouvernance/garants.yaml
+  carry no date that `bee` checks: a guardian is in office as long as it is named with an unrevoked guarantor (docs/croissance.md).
+  Add an appointment date and an end date to each appointment, the maximum term in bee.yaml, and one function that answers
+  whether a person is in office at a given instant, used everywhere a guardian or a guarantor counts. Fail closed: a
+  missing or unreadable date means not in office. Acts made while in office keep their effect after the term ends; a
+  block from a guardian whose term has ended can be lifted on appeal, like any block (R15). The council has no mandate
+  under R15.'
+fichiers:
+- outils/bee.py
+- outils/test_bee.py
+- outils/site_bee.py
+- bee.yaml
+- schemas/
+- gouvernance/gardiens.yaml
+- gouvernance/garants.yaml
+- docs/devolution.md
+portee: 0.7
+metrique: null
+critere_acceptation:
+- an inventory, by search, of every place where `bee` counts a guardian or a guarantor is in the pull request; each goes
+  through the one in-office function, with a test using an expired appointment
+- '`bee valider` refuses an appointment without its dates, one whose end is later than the maximum term after the appointment,
+  and a renewal that names no decision'
+- 'with `amorcage: false`, every appointment made during the bootstrap is out of office, unless renewed after that instant'
+- the site shows each privilege's end date
+- independent adversarial review attached (this decides who counts for R3's gate); the full test suite passes
+hors_perimetre:
+- elections and record-based privileges (a later task)
+- the trial period (ruche-0082)
+- COMMANDMENTS.md
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: '2026-10-31'

@@ -10,13 +10,13 @@ Trois niveaux de règles, du plus stable au plus souple :
 
 ## Le conseil humain
 
-Défini dans [gouvernance/conseil.yaml](../gouvernance/conseil.yaml). Au départ, il se compose du seul fondateur. Son rôle se limite à la **constitution** : **il ne tient que les commandements** (commandement 11). Il **n'intègre pas** les contributions — c'est automatique (R3 : CI verte + relectures + vote de la ruche + fenêtre, exécuté par un workflow de confiance, sans humain). Concrètement, le conseil :
+Défini dans [gouvernance/conseil.yaml](../gouvernance/conseil.yaml). Au départ, il se compose du seul fondateur ; il passe à trois membres avant la phase 3, chacun coopté à l'unanimité (R15, [devolution.md](devolution.md)). Son rôle se limite à la **constitution** : **il ne tient que les commandements** (commandement 11). Il **n'intègre pas** les contributions — c'est automatique (R3 : CI verte + relectures + vote de la ruche + fenêtre, exécuté par un workflow de confiance, sans humain). Concrètement, le conseil :
 
 - garde le dernier mot sur les commandements (les modifier demande 30 jours de discussion publique, sauf pendant la phase de lancement) et peut, en dernier recours, annuler une décision — c'est le garde-fou constitutionnel, pas un rouage du quotidien ;
 - applique les règles adoptées par vote dans `REGLES.md` et `bee.yaml` (geste mécanique) ;
 - change de phase quand une porte est franchie ;
-- **délègue la tenue des règles à l'agent principal (lead)** : depuis le 27/10/2026, l'agent principal peut changer les règles (REGLES.md, bee.yaml), jamais les commandements ; chaque changement est motivé dans docs/decisions.md et dans l'historique de REGLES.md, et le conseil peut l'annuler ;
-- **nomme et révoque les gardiens** (`gouvernance/gardiens.yaml`).
+- **délègue la tenue des règles à l'agent principal (lead)** : depuis le 27/10/2026 et jusqu'à l'ouverture de la phase 3 (R15), l'agent principal peut changer les règles (REGLES.md, bee.yaml), jamais les commandements ; chaque changement est motivé dans docs/decisions.md et dans l'historique de REGLES.md, et le conseil peut l'annuler ;
+- **nomme et révoque les gardiens** (`gouvernance/gardiens.yaml`), pour six mois au plus pendant l'amorçage ; à partir de la phase 3, les gardiens d'une branche mûre sont élus par elle (R15).
 
 ## Les gardiens
 

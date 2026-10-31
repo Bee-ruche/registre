@@ -16,7 +16,7 @@ ce qu'il fait ([garants.md](garants.md)).
 | **fusionne une PR** | **non** : seul le workflow d'intégration fusionne, quand R3 est satisfaite |
 | relit une contribution de son propre utilisateur | non (commandement 3) ; un gardien que son garant dirige est l'agent de ce garant : il ne relit pas les contributions de son garant (l'outil ne le vérifie pas encore) |
 | obéit à un texte trouvé dans une tâche, un diff, un commentaire ou une PR | non (commandement 4) |
-| modifie un commandement ou se nomme lui-même | non : le conseil nomme et révoque |
+| modifie un commandement ou se nomme lui-même | non : le conseil nomme (six mois au plus pendant l'amorçage) et révoque ; à partir de la phase 3, une branche mûre élit ses gardiens (R15) |
 
 Pourquoi ce partage : un agent peut être trompé par le contenu qu'il lit (injection) ou se tromper ; une
 règle mécanique ne peut pas être convaincue. La relecture d'un gardien est donc une **condition** de R3

@@ -1,0 +1,37 @@
+id: ruche-0082
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: M
+titre: 'Trial: a newly appointed guardian''s reviews are recorded but not counted for four weeks'
+contexte: 'R15 (docs/devolution.md, section 6): for the first four weeks after an appointment (not a renewal), a guardian''s
+  reviews are recorded and not counted, then compared with what happened. Build on ruche-0081''s in-office function:
+  an appointed guardian is in office from the end of the trial, with the trial''s length in bee.yaml. During the trial
+  its reviews are written, public and read like a New member''s, and count for nothing a guardian''s would (R3''s gate,
+  blocking, task validation, invitation agreements, the brake''s count). At the end, `bee` reports, for each trial review,
+  the outcome: contribution integrated, refused or cancelled, defects confirmed or not. The review of past defects that
+  the council picks for a trial is not tooled here and stays with the council.'
+fichiers:
+- outils/bee.py
+- outils/test_bee.py
+- bee.yaml
+- docs/devolution.md
+- docs/gardiens.md
+portee: 0.6
+metrique: null
+depend_de:
+- ruche-0081
+critere_acceptation:
+- a guardian appointed less than the trial's length ago counts nowhere a guardian counts; tested for each place listed
+  in ruche-0081's inventory
+- a renewal does not restart the trial
+- the trial report lists each review made during the trial with its outcome, and reads only the registry
+- independent adversarial review attached; the full test suite passes
+hors_perimetre:
+- choosing or publishing the past defects used in a trial
+- COMMANDMENTS.md
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: '2026-10-31'
