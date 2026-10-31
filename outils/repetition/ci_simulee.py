@@ -1,8 +1,12 @@
 """CI simulée d'un fork : rend le verdict du dernier commit poussé sur une PR « sur papier » et l'enregistre dans le
 registre simulé, comme le fait le workflow des verdicts (bee enregistrer-verdict, poussé sur main par le robot).
 
-Les chiffres sont tirés au hasard, de façon reproductible à partir du commit : l'auteur ne choisit pas son verdict.
-Usage : python3 ci_simulee.py <url_pr_fork>
+Les chiffres sont tirés au hasard, l'auteur ne choisit pas son verdict. Comme dans un vrai fork, ce qui dépend du code
+(CI verte ou rouge, lignes, décomptes d'instructions, constructions suspectes) est tiré de l'arbre du commit (sa
+description et son manifeste) : le même contenu, repoussé ou relancé, donne les mêmes décomptes. Seul le chronomètre est
+tiré à nouveau à chaque exécution : relancer la CI jusqu'à passer le seuil de R4 est donc possible ici comme en vrai, et
+c'est à la ruche de ne pas s'y laisser prendre (ruche-0028).
+Usage : python3 ci_simulee.py <url_pr_fork> [--relance]
 """
 import json, os, pathlib, random, subprocess, sys, tempfile
 
@@ -18,6 +22,9 @@ def sh(*cmd, cwd=None, env=None, check=True):
 
 def main():
     url = sys.argv[1]
+    if not url.startswith("https://github.com/Bee-ruche/"):
+        print(f"adresse de PR invalide : {url}")
+        return 2
     commits = [l.rstrip("\n").split("\t") for l in (SIMU / "etat/commits_fork.tsv").read_text(encoding="utf-8").splitlines() if l.strip()]
     commits = [c for c in commits if c[1] == url]
     if not commits:
@@ -48,7 +55,13 @@ def main():
         tache_id = contribution["tache"]
         projet = tache_id.rsplit("-", 1)[0]
         tache = yaml.safe_load((travail / f"taches/{projet}/{tache_id}.yaml").read_text(encoding="utf-8"))
-        hasard = random.Random(sha)
+        # Une exécution de plus pour ce commit : le chronomètre est tiré à nouveau, le reste suit le contenu.
+        executions = SIMU / "etat/executions_fork.tsv"
+        rang = sum(1 for l in executions.read_text(encoding="utf-8").splitlines() if l == sha) if executions.exists() else 0
+        with executions.open("a", encoding="utf-8") as f:
+            f.write(sha + "\n")
+        hasard = random.Random(f"contenu:{arbre}")
+        chrono_hasard = random.Random(f"execution:{sha}:{rang}")
         verdict = {"ci": "verte" if hasard.random() < 0.9 else "rouge", "lignes_modifiees": hasard.randint(12, 60),
                    "juge": {"version": 3, "commun": "juge-v1", "sorties_comparees": 7868, "constructions_suspectes": []}}
         if verdict["ci"] == "rouge":
@@ -62,12 +75,12 @@ def main():
                     scenario = m.get("instructions")
         if metrique and scenario:
             gain_instr = hasard.uniform(-0.01, 0.05)
-            chrono = gain_instr * hasard.uniform(0.2, 1.2) + hasard.gauss(0, 0.003)
+            chrono = gain_instr * hasard.uniform(0.2, 1.2) + chrono_hasard.gauss(0, 0.003)
             a = 1.0e8 * hasard.uniform(1, 5)
             verdict["instructions"] = {scenario: {"A": round(a), "B": round(a * (1 - gain_instr)), "gain": round(gain_instr, 4)}}
             verdict["gain"] = round(chrono, 4)
             verdict["au_dela_du_bruit"] = abs(chrono) > 0.004
-            verdict["degradations"] = {"debit_decompression": -0.012} if hasard.random() < 0.05 else {}
+            verdict["degradations"] = {"debit_decompression": -0.012} if chrono_hasard.random() < 0.05 else {}
         else:
             verdict["gain"] = None
         if hasard.random() < 0.1:
@@ -79,7 +92,7 @@ def main():
             pf = pathlib.Path(tmp) / "fichiers.txt"
             pf.write_text("\n".join(fichiers) + "\n", encoding="utf-8")
             args = ["python3", "outils/bee.py", "--registre", str(travail), "enregistrer-verdict", contribution["id"],
-                    "--verdict", str(pv), "--sha", sha, "--arbre", arbre, "--execution", f"{url}/checks", "--fichiers", str(pf)]
+                    "--verdict", str(pv), "--sha", sha, "--arbre", arbre, "--execution", f"{url}/checks/{rang + 1}", "--fichiers", str(pf)]
             if manifeste.exists():
                 args += ["--manifeste", str(manifeste)]
             r = subprocess.run(args, cwd=travail, env=env, text=True, capture_output=True)
@@ -89,7 +102,8 @@ def main():
         sh("git", "add", "-A", cwd=travail)
         sh("git", "-c", "user.name=robot", "-c", "user.email=robot@simu.bee", "commit", "-qm",
            f"Verdict simulé de {contribution['id']} ({sha[:7]})", cwd=travail)
-        r = sh("git", "push", "-q", "origin", "HEAD:main", cwd=travail, check=False)
+        r = subprocess.run(["git", "push", "-q", "origin", "HEAD:main"], cwd=travail, text=True, capture_output=True,
+                           env=dict(os.environ, BEE_SIMU_ROBOT="1"))
         if r.returncode != 0:
             print("main a avancé pendant la CI : relancez ci-simulee.")
             return 1

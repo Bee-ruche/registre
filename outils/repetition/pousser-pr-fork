@@ -1,19 +1,25 @@
 #!/usr/bin/env bash
 # Pousse un commit « sur papier » sur sa PR du fork simulé, puis la CI simulée du fork rend son verdict.
-# Usage : pousser-pr-fork <pseudo> <url_pr_fork> <manifeste.yaml> "<ce que contient ce commit>"
+# Usage (depuis son clone de la simulation) : pousser-pr-fork <pseudo> <url_pr_fork> <manifeste.yaml> "<ce que contient ce commit>"
 # Le manifeste est celui que la CI lirait dans manifestes/<tâche>.yaml du fork, à ce commit.
-# Même description qu'un commit précédent = même contenu (comme un commit amendé sans changement).
+# Le contenu d'un commit, c'est sa description et son manifeste : les mêmes qu'un commit précédent donnent le même arbre
+# (comme un commit amendé sans changement), donc les mêmes décomptes d'instructions ; seul le chronomètre varie.
 set -euo pipefail
-SIMU="${BEE_SIMU:?BEE_SIMU : dossier de la ruche simulée}"; pseudo="$1"; url="$2"; manifeste="$3"; desc="$4"
+source "$(dirname "$(realpath "$0")")/commun.sh"
+pseudo="${1:?pseudo}"; url="${2:?url}"; manifeste="${3:?manifeste}"; desc="${4:-}"
+dans_son_clone "$pseudo"; texte_valide "$desc"
+[[ "$url" =~ ^https://github\.com/Bee-ruche/[A-Za-z]+/pull/[0-9]+$ ]] || { echo "adresse de PR invalide : $url" >&2; exit 2; }
 if ! awk -F'\t' -v u="$url" -v p="$pseudo" '$1==u && $2==p {ok=1} END {exit !ok}' "$SIMU/etat/prs_fork.tsv"; then
   echo "La PR $url n'est pas à vous (ouvrir-pr-fork d'abord)." >&2; exit 1
 fi
 [ -f "$manifeste" ] || { echo "manifeste introuvable : $manifeste" >&2; exit 1; }
+python3 -c 'import sys, yaml; m = yaml.safe_load(open(sys.argv[1], encoding="utf-8")); sys.exit(0 if isinstance(m, dict) and isinstance(m.get("tache"), str) else 1)' "$manifeste" \
+  || { echo "manifeste refusé : un fichier YAML avec au moins un champ tache (voir docs/contributions.md)" >&2; exit 1; }
 exec 9>"$SIMU/etat/verrou"; flock 9
 numero="${url##*/}"; mkdir -p "$SIMU/etat/manifestes/$numero"
 k=$(( $(ls "$SIMU/etat/manifestes/$numero" | wc -l) + 1 ))
 sha=$(printf '%s:%s' "$url" "$k" | sha1sum | cut -c1-40)
-arbre=$(printf '%s' "$desc" | sha1sum | cut -c1-40)
+arbre=$( { printf '%s\n' "$desc"; cat "$manifeste"; } | sha1sum | cut -c1-40)
 cp "$manifeste" "$SIMU/etat/manifestes/$numero/$sha.yaml"
 printf '%s\t%s\t%s\t%s\t%s\n' "$(python3 "$SIMU/outils/horloge.py")" "$url" "$sha" "$arbre" "$desc" >> "$SIMU/etat/commits_fork.tsv"
 echo "Commit $sha poussé sur $url. CI du fork :"

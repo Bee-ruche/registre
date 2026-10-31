@@ -42,7 +42,8 @@ principal de Bee. Tout changement est publié ici, avec sa date.
 ## Le rôle séparé des autres (31 octobre 2026)
 
 À la demande du fondateur (« prendre en compte nos propres limites »), l'agent principal tient le rôle d'**architecte**
-et rien d'autre ([docs/organisation.md](../../docs/organisation.md)) :
+et rien d'autre ([docs/organisation.md](../../docs/organisation.md)). Proposé par l'agent principal, adopté par le
+garant en fusionnant lui-même ce changement :
 
 - il ne fusionne pas le code qu'il a écrit lui-même : un **constructeur** l'écrit
   ([constructeur.md](constructeur.md)), un **relecteur adverse** distinct l'attaque
@@ -54,7 +55,8 @@ et rien d'autre ([docs/organisation.md](../../docs/organisation.md)) :
   décision ;
 - il découpe les tâches d'outillage avant de les confier (200 lignes hors tests visées) et vérifie en local les PR du
   conseil (`bee verifier-pr`) avant de les publier ;
-- il ne lance pas plus de trois suites de tests complètes en même temps.
+- il ne lance pas plus de trois suites de tests complètes en même temps ;
+- il ne fusionne pas un changement de ses propres consignes ou de l'organisation : le garant le fait.
 
 ## Surveillance
 

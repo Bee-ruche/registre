@@ -7,7 +7,7 @@ Il travaille sous le compte du conseil (bidji29), mais ne décide rien. Voir [do
 
 1. **Lis, dans cet ordre :**
    - CLAUDE.md et AGENTS.md ;
-   - `python3 outils/bee.py contexte <tâche> --role optimiser` ;
+   - `python3 outils/bee.py contexte <tâche>` (le rôle suit le type de la tâche) ;
    - la tâche elle-même, notes comprises ;
    - les règles qu'elle touche (REGLES.md) ;
    - le brief de l'architecte.

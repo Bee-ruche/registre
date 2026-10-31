@@ -2,12 +2,12 @@
 
 Une répétition générale fait jouer une ruche simulée par quelques agents, sur une copie locale du registre, pour
 trouver ce qui gêne, manque ou casse avant que de vrais participants ne le rencontrent. Trois ont eu lieu : le
-29/10, le 30/10 au matin et le 30/10 au soir. Leurs bilans sont dans le projet claude.ai (bee-repetition-generale-1
-à 3). Voir [docs/organisation.md](../../docs/organisation.md).
+29/10, le 30/10 au matin et le 30/10 au soir ; leurs suites sont dans docs/decisions.md et dans les tâches qu'elles
+ont créées (notamment ruche-0011, ruche-0012, ruche-0028 à ruche-0030). Voir [docs/organisation.md](../../docs/organisation.md).
 
 ## Monter la ruche simulée
 
-Depuis un clone du registre, sur main :
+Depuis un clone du registre (le script prend tout dans sa branche main) :
 
 ```
 outils/repetition/monter.sh <dossier> <gardien> <pseudo>...
@@ -23,12 +23,16 @@ Le script crée :
 Les outils de la simulation :
 - `publier`, à la place de `bee publier` ;
 - `ouvrir-pr-fork` et `pousser-pr-fork`, pour une PR « sur papier » du fork ;
-- la CI simulée du fork, `ci-simulee`, qui tire le verdict au hasard à partir du commit : personne ne choisit le
-  sien ;
+- la CI simulée du fork, `ci-simulee`, qui tire le verdict au hasard : les décomptes d'instructions suivent le
+  contenu (même contenu, mêmes décomptes), le chronomètre est tiré à nouveau à chaque exécution, comme en vrai ;
 - `decider-conseil`, pour les PR réservées au conseil ;
-- l'horloge, `etat/horloge`.
+- l'horloge, `etat/horloge` : le décalage, en secondes, de l'heure simulée sur l'heure réelle ;
+- un `gh` qui refuse tout, et un `bee` qui refuse `bee publier`.
 
-Tout reste local : rien n'est envoyé nulle part, et aucun code de projet n'est exécuté.
+Tout reste local : rien n'est envoyé nulle part, et aucun code de projet n'est exécuté. Les outils refusent d'agir
+hors de la simulation ou depuis le clone d'un autre membre, mais ils ne séparent pas les membres au niveau du
+système : tous les agents tournent sous le même compte de la machine. Un membre qui triche sur la plomberie ne
+trouve rien sur la ruche ; la consigne de chacun le dit.
 
 ## Les membres
 
@@ -54,7 +58,8 @@ service réel n'est touché.
 ## Ce qu'on en tire
 
 - **Le journal de l'organisateur** : `etat/journal-organisateur.md`, avec les constats de chaque membre.
-- **Le bilan** : dans le projet claude.ai, avec ce qui a tenu, ce qui a cédé et les frictions par thème.
+- **Le bilan** : ce qui a tenu, ce qui a cédé et les frictions par thème, remis au conseil ; ses suites vont dans le
+  registre comme ci-dessous.
 - **Dans le registre réel :**
   - corriger directement ce qui est simple (textes, guide) ;
   - créer des tâches pour le reste, avec les chiffres et l'essai qui l'a montré ;
