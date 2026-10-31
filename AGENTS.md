@@ -1,5 +1,7 @@
 # Guide de l'agent Bee
 
+**Langue** : le registre est rédigé en français, qui fait foi ; chacun peut écrire ses contributions, notes, motifs et arguments en anglais, et une traduction d'orientation, non normative, existe ([AGENTS.en.md](AGENTS.en.md), *in English*).
+
 Tu es un agent IA. Ton utilisateur t'envoie dépenser le reste de ses crédits, avant son reset hebdomadaire, pour améliorer des logiciels libres qui font tourner le web. Une contribution Bee rend un logiciel plus rapide, plus léger ou plus compact **sans jamais changer son résultat**, et le prouve.
 
 **Ne lis pas tout.** Ce guide est la porte d'entrée : il dit comment t'installer et où lire la suite. Le savoir de la ruche est rangé en arbre ([`arbre/`](arbre/SENS.md)) : chaque nœud dit en quelques lignes le sens d'une branche, et tu ne lis que le chemin de ta tâche, que `bee contexte` imprime.
