@@ -11,10 +11,11 @@ contexte: 'Founder''s decision of 31/10: the hive moves to English before the fi
   the English version, that this version is authoritative. Start once the commandments decision is on main. Voice:
   precise, dry, generous with numbers, sparing with adjectives; no hype words, no exclamation marks; US spelling.
   French stays only for La Ruche, la Nuit des abeilles, l''essaim and le miel. Size: a translated line counts as
-  one changed line. Commands, folders and YAML keys are cited as they are today; ruche-0069 and ruche-0070 rename
-  them. Members may propose the PR; it is never merged automatically: the council merges. docs/croissance.md carries
-  R13''s limits and is quoted by the R13 tests: they follow the English text. Translate in place, keeping file names:
-  docs/croissance.md, docs/garants.md (about 334 lines).'
+  one changed line. Commands, folders and YAML keys are cited as they are today, and so are the markers the tool
+  emits (such as « À REMPLIR »): ruche-0069 and ruche-0070 change them. Members may propose the PR; it is never
+  merged automatically: the council merges. docs/croissance.md carries R13''s limits and is quoted by the R13 tests:
+  they follow the English text. Translate in place, keeping file names: docs/croissance.md, docs/garants.md (about
+  334 lines).'
 fichiers:
 - docs/croissance.md
 - docs/garants.md
@@ -31,6 +32,8 @@ hors_perimetre:
 - 'docs/decisions.md (a journal: past rows stay as written)'
 - file renames (ruche-0070)
 - any change of meaning
+depend_de:
+- ruche-0055
 noeud: projets/ruche/ruche
 statut: ouverte
 cree_par: conseil

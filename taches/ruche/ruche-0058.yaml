@@ -15,7 +15,8 @@ contexte: 'Founder''s decision of 31/10: the hive moves to English before the fi
   RULES.md commit. No rule changes: this changes which text is law. The tool reads REGLES.md (for example outils/bee.py
   around l. 1671): it reads RULES.md instead, and what it looks for must be found in the English text. bee.yaml
   keeps every value; only its comments that cite REGLES.md may change. The schema descriptions and projets/ruche.yaml
-  (out of scope: « REGLES.md … par R10 ») follow. Only links change in AGENTS.md and README.md, after ruche-0056.'
+  (out of scope: « REGLES.md … par R10 ») follow. Only links change in AGENTS.md, README.md and the ten or so links
+  to REGLES.md in docs/ and arbre/, after ruche-0056.'
 fichiers:
 - RULES.md
 - REGLES.md
@@ -26,6 +27,8 @@ fichiers:
 - projets/ruche.yaml
 - AGENTS.md
 - README.md
+- docs/
+- arbre/
 portee: 0.6
 metrique: null
 critere_acceptation:
@@ -33,7 +36,8 @@ critere_acceptation:
   on the PR: no condition, threshold or obligation changed'
 - 'a test: for a member, RULES.md, REGLES.md, COMMANDMENTS.md, COMMANDEMENTS.md, AGENTS.fr.md, CLAUDE.md and bee.yaml
   are all governance (refused), and CHEMINS_OUTILLAGE is unchanged'
-- a check (test or `bee valider`) flags REGLES.md when RULES.md has changed since the commit its header names
+- a warning, never an error (the robots run `bee valider` before they push), flags REGLES.md when RULES.md has changed
+  since the commit its header names
 - 'every rule value unchanged (bee.yaml diff: comments only); the full test suite passes'
 - on merge, the council records in docs/decisions.md that these files are now authoritative in English
 hors_perimetre:
@@ -41,6 +45,7 @@ hors_perimetre:
 - COMMANDMENTS.md
 - docs/
 depend_de:
+- ruche-0055
 - ruche-0056
 noeud: projets/ruche/ruche
 statut: ouverte

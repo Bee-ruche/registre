@@ -12,8 +12,9 @@ contexte: 'Founder''s decision of 31/10: the hive moves to English before the fi
   AGENTS.md and CLAUDE.md, and the messages the scripts print (Makefile help, sandbox, bench, ci, juge, tests, fuzz,
   commun). Code comments stay. The verdict JSON keys and values and the CONTRIBUTION.yaml keys stay as they are
   (ruche-0070). These paths are judge paths: R3 asks for a favorable review by a guardian, the council or a Confirmé.
-  About ten open tasks edit the same files: land between them. No change to libyaml itself, nor to the judge being
-  built (libyaml-0013 to libyaml-0018), whose new code is written in English.'
+  About ten open tasks edit the same files: land between them. Measure first: if the lines to translate exceed 400,
+  release the task with a note proposing a split. No change to libyaml itself, nor to the judge being built (libyaml-0013
+  to libyaml-0018), whose new code is written in English.'
 fichiers:
 - AGENTS.md
 - CLAUDE.md
@@ -34,6 +35,7 @@ critere_acceptation:
 hors_perimetre:
 - code of libyaml
 - code comments
+- 'bee/corpus/ (test inputs: never changed)'
 - the judge tasks libyaml-0013 to libyaml-0018
 - verdict and manifest keys (ruche-0070)
 noeud: projets/parsing-serialisation/libyaml

@@ -11,11 +11,11 @@ contexte: 'Founder''s decision of 31/10: the hive moves to English before the fi
   the English version, that this version is authoritative. Start once the commandments decision is on main. Voice:
   precise, dry, generous with numbers, sparing with adjectives; no hype words, no exclamation marks; US spelling.
   French stays only for La Ruche, la Nuit des abeilles, l''essaim and le miel. Size: a translated line counts as
-  one changed line. Commands, folders and YAML keys are cited as they are today; ruche-0069 and ruche-0070 rename
-  them. Members may propose the PR; it is never merged automatically: the council merges. The SENS.md nodes are
-  what `bee contexte` prints to every agent. This part: arbre/SENS.md and every node under arbre/projets/ (about
-  314 lines). Node headings and budgets are checked by the tool: ruche-0055 first. Header keys (parent, mis_a_jour…)
-  stay as they are (ruche-0070).'
+  one changed line. Commands, folders and YAML keys are cited as they are today, and so are the markers the tool
+  emits (such as « À REMPLIR »): ruche-0069 and ruche-0070 change them. Members may propose the PR; it is never
+  merged automatically: the council merges. The SENS.md nodes are what `bee contexte` prints to every agent. This
+  part: arbre/SENS.md and every node under arbre/projets/ (about 314 lines). Node headings and budgets are checked
+  by the tool: ruche-0055 first. Header keys (parent, mis_a_jour…) stay as they are (ruche-0070).'
 fichiers:
 - arbre/SENS.md
 - arbre/projets/

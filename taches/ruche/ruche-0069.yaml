@@ -17,10 +17,11 @@ contexte: 'Founder''s decision of 31/10: the hive moves to English before the fi
   notice goes to stderr and exit codes stay (fusion-auto reads 0 and 3); workflow `name:` values are referenced
   by workflow_run: renamed atomically with a test, or not at all; the test_bee.py diff changes string literals only
   and the number of assertions does not drop; parts that touch the gate (verifier_*), the rehearsal guards, fusion-auto
-  or verdicts get an independent adversarial review; no change of behavior. A last task sweeps the French command
-  names cited in docs/ and arbre/. Code comments and identifiers stay out of scope: new code is written in English.
-  Security first: the hardening tasks (ruche-0035 to ruche-0052) do not wait for this plan; the execution tasks
-  are scheduled around open branches of outils/bee.py.'
+  or verdicts get an independent adversarial review; no change of behavior. One task changes the markers the tool
+  emits (« À REMPLIR »…) together with the docs that quote them; a last task sweeps the French command names cited
+  in docs/ and arbre/. Code comments and identifiers stay out of scope: new code is written in English. Security
+  first: the hardening tasks (ruche-0035 to ruche-0052) do not wait for this plan; the execution tasks are scheduled
+  around open branches of outils/bee.py.'
 fichiers:
 - docs/english-tool.md
 portee: 0.6

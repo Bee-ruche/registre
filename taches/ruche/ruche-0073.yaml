@@ -28,6 +28,8 @@ critere_acceptation:
 hors_perimetre:
 - closed tasks, tasks in review, notes, debates, contributions
 - changing what a task asks
+depend_de:
+- ruche-0055
 noeud: projets/ruche/ruche
 statut: ouverte
 cree_par: conseil

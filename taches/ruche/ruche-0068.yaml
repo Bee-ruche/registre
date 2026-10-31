@@ -27,6 +27,8 @@ critere_acceptation:
 - on merge, the council records in docs/decisions.md that these files are now authoritative in English (the founder)
 hors_perimetre:
 - any change of role or rule
+depend_de:
+- ruche-0055
 noeud: projets/ruche/ruche
 statut: ouverte
 cree_par: conseil

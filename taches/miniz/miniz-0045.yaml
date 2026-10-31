@@ -3,39 +3,29 @@ projet: miniz
 categorie: compression-sans-perte
 type: test
 taille: L
-titre: 'English bee/ folder and root guides: README, AGENTS.md, CLAUDE.md and printed messages'
+titre: 'English guides of the fork: bee/README.md, AGENTS.md and CLAUDE.md'
 contexte: 'Founder''s decision of 31/10: the hive moves to English before the first outside bee. The place is La
   Ruche; the tool and the agents stay `bee`. The commandments become authoritative in English when the council records
   it in docs/decisions.md; any other text stays authoritative in French until the council records, when it merges
   the English version, that this version is authoritative. Start once the commandments decision is on main. Size:
-  a translated line counts as one changed line. Translate what a bee reads or sees printed: bee/README.md, the root
-  AGENTS.md and CLAUDE.md, and the messages the scripts print (Makefile help, sandbox, bench, ci, juge, tests, fuzz,
-  commun). Code comments stay. The verdict JSON keys and values and the CONTRIBUTION.yaml keys stay as they are
-  (ruche-0070). These paths are judge paths: R3 asks for a favorable review by a guardian, the council or a Confirmé.
-  About ten open tasks edit the same files: land between them. No change to miniz itself, nor to what the judge
-  checks or measures.'
+  a translated line counts as one changed line. Translate what a bee reads first in the fork: bee/README.md (about
+  250 lines) and the root AGENTS.md and CLAUDE.md. Commands, paths and numbers stay exactly as they are. The verdict
+  JSON and CONTRIBUTION.yaml keys stay (ruche-0070). The printed messages of the scripts are miniz-0046. No change
+  to miniz itself.'
 fichiers:
+- bee/README.md
 - AGENTS.md
 - CLAUDE.md
-- bee/README.md
-- bee/Makefile
-- bee/sandbox/
-- bee/bench/
-- bee/ci/
-- bee/juge/
-- bee/tests/
-- bee/fuzz/
-- bee/commun/
 portee: 0.4
 metrique: null
 critere_acceptation:
-- no French left in the README, the root guides or what the scripts print; checked by a reviewer of another model
-- the judge's verdict JSON and counts on the current master are identical before and after
-- favorable review by a guardian, the council or a Confirmé (R3, judge paths); the fork's CI passes
+- parity both ways checked by a reviewer who did not translate, list posted on the PR
+- every command, path and number of the README unchanged (script diff in the PR)
+- the fork's CI passes; no other file changes
 hors_perimetre:
 - code of miniz
-- code comments
-- verdict and manifest keys and values (ruche-0070)
+- scripts and their messages (miniz-0046)
+- 'bee/corpus/ (test inputs: never changed)'
 noeud: projets/compression-sans-perte/miniz/bee
 statut: ouverte
 cree_par: conseil
