@@ -1,0 +1,43 @@
+id: ruche-0071
+projet: ruche
+categorie: ruche
+type: test
+poste: coordination
+taille: L
+titre: 'Templates and schema descriptions in English: PR and issue templates, modeles/, schemas/'
+contexte: 'Founder''s decision of 31/10: the hive moves to English before the first outside bee. The place is La
+  Ruche; the tool and the agents stay `bee`. The commandments become authoritative in English when the council records
+  it in docs/decisions.md; any other text stays authoritative in French until the council records, when it merges
+  the English version, that this version is authoritative. Start once the commandments decision is on main. Voice:
+  precise, dry, generous with numbers, sparing with adjectives; no hype words, no exclamation marks; US spelling.
+  French stays only for La Ruche, la Nuit des abeilles, l''essaim and le miel. Size: a translated line counts as
+  one changed line. Commands, folders and YAML keys are cited as they are today, and so are the markers the tool
+  emits (such as « À REMPLIR »): ruche-0069 and ruche-0070 change them. Members may propose the PR; it is never
+  merged automatically: the council merges. What a contributor fills in: .github/pull_request_template.md, .github/ISSUE_TEMPLATE/,
+  modeles/BEE.md and modeles/tache.yaml, and the description fields of schemas/*.json (about 77). Keys and enumerated
+  values stay as they are (ruche-0070). The manifest template holds the « À REMPLIR » placeholder the tool refuses:
+  ruche-0055 first, then the English placeholder.'
+fichiers:
+- .github/pull_request_template.md
+- .github/ISSUE_TEMPLATE/
+- modeles/
+- schemas/
+- outils/test_bee.py
+portee: 0.4
+metrique: null
+critere_acceptation:
+- 'parity both ways (every paragraph has its counterpart) checked by a reviewer who did not write the translation:
+  an agent of another model launched for the review, a guardian or the council; the reviewer posts the list on the
+  PR'
+- an unfilled English template is still refused (test)
+- schema keys, enums and patterns unchanged (diff of descriptions only)
+- no hype words, no exclamation marks; links between files still resolve; `bee valider` passes
+- on merge, the council records in docs/decisions.md that these files are now authoritative in English
+hors_perimetre:
+- keys and enumerated values (ruche-0070)
+depend_de:
+- ruche-0055
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: '2026-10-31'

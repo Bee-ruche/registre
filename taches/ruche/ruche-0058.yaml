@@ -1,0 +1,53 @@
+id: ruche-0058
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: L
+titre: 'Rules in English: RULES.md authoritative, REGLES.md kept as the French translation'
+contexte: 'Founder''s decision of 31/10: the hive moves to English before the first outside bee. The place is La
+  Ruche; the tool and the agents stay `bee`. The commandments become authoritative in English when the council records
+  it in docs/decisions.md; any other text stays authoritative in French until the council records, when it merges
+  the English version, that this version is authoritative. Start once the commandments decision is on main. Size:
+  a translated line counts as one changed line. These files are council-only (the gate refuses them from a member):
+  the work is prepared under the council''s account by a builder it launches, and the council merges. REGLES.md
+  (R1 to R14) becomes RULES.md in English; REGLES.md keeps the French text, headed as the translation of a named
+  RULES.md commit. No rule changes: this changes which text is law. The tool reads REGLES.md (for example outils/bee.py
+  around l. 1671): it reads RULES.md instead, and what it looks for must be found in the English text. bee.yaml
+  keeps every value; only its comments that cite REGLES.md may change. The schema descriptions and projets/ruche.yaml
+  (out of scope: « REGLES.md … par R10 ») follow. Only links change in AGENTS.md, README.md and the ten or so links
+  to REGLES.md in docs/ and arbre/, after ruche-0056.'
+fichiers:
+- RULES.md
+- REGLES.md
+- outils/bee.py
+- outils/test_bee.py
+- bee.yaml
+- schemas/
+- projets/ruche.yaml
+- AGENTS.md
+- README.md
+- docs/
+- arbre/
+portee: 0.6
+metrique: null
+critere_acceptation:
+- 'R1 to R14: fidelity checked sentence by sentence by a guardian or the council (not the author), report posted
+  on the PR: no condition, threshold or obligation changed'
+- 'a test: for a member, RULES.md, REGLES.md, COMMANDMENTS.md, COMMANDEMENTS.md, AGENTS.fr.md, CLAUDE.md and bee.yaml
+  are all governance (refused), and CHEMINS_OUTILLAGE is unchanged'
+- a warning, never an error (the robots run `bee valider` before they push), flags REGLES.md when RULES.md has changed
+  since the commit its header names
+- 'every rule value unchanged (bee.yaml diff: comments only); the full test suite passes'
+- on merge, the council records in docs/decisions.md that these files are now authoritative in English
+hors_perimetre:
+- any change of rule (R10)
+- COMMANDMENTS.md
+- docs/
+depend_de:
+- ruche-0055
+- ruche-0056
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: '2026-10-31'

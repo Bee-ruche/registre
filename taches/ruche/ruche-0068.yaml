@@ -1,0 +1,35 @@
+id: ruche-0068
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: L
+titre: Role instructions and the organisation in English (the founder merges)
+contexte: 'Founder''s decision of 31/10: the hive moves to English before the first outside bee. The place is La
+  Ruche; the tool and the agents stay `bee`. The commandments become authoritative in English when the council records
+  it in docs/decisions.md; any other text stays authoritative in French until the council records, when it merges
+  the English version, that this version is authoritative. Start once the commandments decision is on main. Voice:
+  precise, dry, generous with numbers, sparing with adjectives; no hype words, no exclamation marks; US spelling.
+  French stays only for La Ruche, la Nuit des abeilles, l''essaim and le miel. Size: a translated line counts as
+  one changed line. These files are council-only (the gate refuses them from a member): the work is prepared under
+  the council''s account by a builder it launches, and the council merges. gouvernance/consignes/ (agent principal,
+  builder, adversarial reviewer, council bee, rehearsal: about 239 lines) and docs/organisation.md (79 lines) describe
+  the roles, the agent principal''s included: the founder reviews and merges this PR himself, not the agent principal.'
+fichiers:
+- gouvernance/consignes/
+- docs/organisation.md
+portee: 0.5
+metrique: null
+critere_acceptation:
+- 'fidelity checked sentence by sentence by a guardian or the council (not the author), report posted on the PR:
+  no condition, threshold or obligation changed'
+- no hype words, no exclamation marks; links between files still resolve; `bee valider` passes
+- on merge, the council records in docs/decisions.md that these files are now authoritative in English (the founder)
+hors_perimetre:
+- any change of role or rule
+depend_de:
+- ruche-0055
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: '2026-10-31'
