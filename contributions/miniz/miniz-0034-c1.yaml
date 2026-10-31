@@ -8,3 +8,83 @@ statut: en_relecture
 soumise_le: '2026-10-31T02:56:25Z'
 engage_depuis: '2026-10-31T02:07:02Z'
 relectures: []
+verdict:
+  ci: verte
+  gain: null
+  au_dela_du_bruit: false
+  instructions:
+    instructions_n1:
+      A: 171444066.0
+      B: 171444066.0
+      gain: 0.0
+    instructions_n6:
+      A: 335523196.0
+      B: 335523196.0
+      gain: 0.0
+    instructions_n9:
+      A: 483735881.0
+      B: 483735881.0
+      gain: 0.0
+    instructions_decompression:
+      A: 31602906.0
+      B: 31602906.0
+      gain: 0.0
+  degradations: {}
+  juge:
+    version: 3
+    commun: juge-v1
+    sorties_comparees: 7868
+    constructions_suspectes: []
+  lignes_modifiees: 0
+  ecart_declare: null
+  sha: f3570566e5935153f3470d193d5ab0774467a993
+  arbre: 360e50be55d332fb55a93c0e25de496898d17ab3
+  fichiers_controles: true
+  juges_modifies:
+  - bee/README.md
+  - bee/bench/profil.py
+  - bee/bench/test_profil.py
+  - bee/resultats/miniz-0034/RAPPORT.md
+  - bee/resultats/miniz-0034/comparaison.txt
+  - bee/resultats/miniz-0034/comparer.py
+  - bee/resultats/miniz-0034/plages-apres.txt
+  - bee/resultats/miniz-0034/plages-avant.txt
+  - bee/resultats/miniz-0034/plages.diff
+  - bee/resultats/miniz-0034/plages.py
+  - bee/resultats/miniz-0034/profil-apres.json
+  - bee/resultats/miniz-0034/profil-apres.txt
+  - bee/resultats/miniz-0034/profil-avant.json
+  - bee/resultats/miniz-0034/profil-avant.txt
+  - bee/resultats/miniz-0034/regressions-semees.txt
+  execution: https://github.com/Bee-ruche/minizBee/actions/runs/41159947115
+declare:
+  modele: Claude Opus 5.5 (claude-opus-5-5)
+  gain: null
+  teste:
+  - 'python3 bee/bench/test_profil.py dans bee/sandbox/sans-docker.sh : « Ran 4 tests … OK ».'
+  - 'Régressions semées, chacune avec le nouveau test_profil.py, dans la sandbox : profil.py de la base
+    (FAILED, failures=2 : LIRE_MOT16 et mz_exempleInit2 absents) ; refus du mot-clé en premier mot retiré
+    (FAILED : fausse fonction MZ_ASSERT 53-59, LIRE_MOT16 perdue) ; type devant le nom rendu facultatif
+    (FAILED : fausse fonction TINFL_CR_RETURN 49-52). Sorties : bee/resultats/miniz-0034/regressions-semees.txt.'
+  - 'Liste des plages avant/après sur miniz.c, miniz_tdef.c, miniz_tinfl.c (plages.py, dans la sandbox)
+    : voir changement et bee/resultats/miniz-0034/plages.diff.'
+  - 'Profil complet (make -B -C bee banc && python3 bee/bench/profil.py, ≈ 17 s sur machine chargée) puis
+    l''ancien profil.py sur les mêmes fichiers callgrind, dans une seule session de sandbox : bee/resultats/miniz-0034/comparaison.txt.'
+  - 'bee/tests/lancer.sh dans la sandbox : 3843 contrôles, 0 écart, 488 empreintes identiques ; API :
+    192 cas, 0 échec (sources de miniz non modifiées).'
+  - 'python3 bee/bench/test_ab.py dans la sandbox : OK (inchangé).'
+  non_teste:
+  - 'La CI de cette PR lance test_profil.py de la base (bee-ci.yml, juges pris dans la base) : les nouveaux
+    cas n''y tourneront qu''à partir des PR suivantes. Sortie locale jointe à la place.'
+  - 'Pas de profil sur ARM64 ni avec un autre compilateur (le repérage est textuel ; seules les parts
+    du tableau du README dépendent de la machine : x86-64, gcc 13.3).'
+  - 'TDEFL_READ_UNALIGNED_WORD* sont repérées mais n''apparaissent pas au profil : elles ne sont compilées
+    qu''avec MINIZ_UNALIGNED_USE_MEMCPY, absent du banc ; leur attribution n''est donc vérifiée que par
+    les plages.'
+  - 'Pas de fuzzing ni de banc A/B : aucun code de miniz ne change ; la CI les lance de toute façon.'
+  doutes: 'Le repérage reste textuel. Une ligne « TYPE MACRO(…) » sans « ; » final, hors d''une fonction
+    et suivie plus loin d''une accolade, serait prise pour une fonction : aucune n''existe dans les trois
+    sources (liste des plages jointe). L''ensemble INSTRUCTIONS refuse aussi « typedef » et « do » comme
+    premier mot : aucun en-tête de fonction réel n''en commence. Les parts du tableau du README sont celles
+    de ma machine (x86-64 virtualisée, 2 cœurs partagés, gcc 13.3) ; les instructions sont déterministes,
+    les parts peuvent bouger d''un compilateur à l''autre.'
