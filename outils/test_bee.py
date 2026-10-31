@@ -7835,7 +7835,8 @@ class TestRevueAdverseRuche0020(BaseRevueRuche0020):
         # Honnête : accents, guillemets, tiret, émoji sans sélecteur de variante.
         message = "Bonjour, « la ruche » cherche des garants — des personnes engagées 🙂. Voyez docs/garants.md."
         self.assertEqual(self.essayer(["honnête"], lambda _: self.proposer_brut(message=message + "\n\n" + self.mention())), ["honnête"])
-        # caractere_interdit ne change pas pour le reste du registre (un débat garde ses règles).
+        # caractere_interdit ne change pas (le schéma de l'agora en porte la liste) ; depuis ruche-0029, tout texte libre du
+        # registre passe aussi par caractere_sortant_interdit (probleme_texte_libre).
         self.assertFalse(bee.caractere_interdit("️"))
         self.assertTrue(bee.caractere_sortant_interdit("️"))
 
@@ -9308,6 +9309,28 @@ class TestManifesteRecopie(BaseRepetitionGenerale):
         self.assertEqual(p["teste"], p["non_teste"])
 
 
+MANIFESTE_REMPLI = """tache: miniz-0099
+utilisateur: alice
+agent:
+  modele: modèle d'essai 1.0
+  client: bee 0.1.0
+resume: Remplace une division par un décalage dans la boucle chaude.
+changement: >
+  La division par une puissance de deux est remplacée par un décalage, ce qui
+  supprime une instruction lente dans la boucle principale.
+mesures:
+  machine: x86-64, Linux, gcc 13
+  commande: python3 bee/bench/ab.py --base upstream/master --candidate HEAD
+  repetitions: 10
+  avant: {debit_compression_n6: 50.0, memoire_max_ko: 4000}
+  apres: {debit_compression_n6: 55.0, memoire_max_ko: 4000}
+teste: [tests différentiels, fuzzing 2 min]
+non_teste: [ARM64]
+doutes: Aucun doute identifié.
+taille_reelle: S
+"""
+
+
 FAMILLES_CACHEES = {  # ruche-0029 (tour 3) : chaque famille de caractère caché, par un ou plusieurs représentants
     "Cc": "\x1b", "Cf": "⁦", "Co": "", "Cn": "͸", "Zl": " ", "Zp": " ", "sélecteur U+FE00": "︀",
     "sélecteur U+FE0F": "️", "sélecteur U+E0100": "\U000e0100", "sélecteur U+E01EF": "\U000e01ef", "hangul U+115F": "ᅟ",
@@ -9505,28 +9528,6 @@ class TestTextesLibresRuche0029(BaseRevueRuche0020):
         for commande, lecture in TestManifesteRecopie.lectures(self).items():
             TestManifesteRecopie.encadre(self, lecture)
             self.assertEqual(lecture.count(bee.FIN_DONNEES), lecture.count("=== DONNÉES "), commande)
-
-
-MANIFESTE_REMPLI = """tache: miniz-0099
-utilisateur: alice
-agent:
-  modele: modèle d'essai 1.0
-  client: bee 0.1.0
-resume: Remplace une division par un décalage dans la boucle chaude.
-changement: >
-  La division par une puissance de deux est remplacée par un décalage, ce qui
-  supprime une instruction lente dans la boucle principale.
-mesures:
-  machine: x86-64, Linux, gcc 13
-  commande: python3 bee/bench/ab.py --base upstream/master --candidate HEAD
-  repetitions: 10
-  avant: {debit_compression_n6: 50.0, memoire_max_ko: 4000}
-  apres: {debit_compression_n6: 55.0, memoire_max_ko: 4000}
-teste: [tests différentiels, fuzzing 2 min]
-non_teste: [ARM64]
-doutes: Aucun doute identifié.
-taille_reelle: S
-"""
 
 
 if __name__ == "__main__":
