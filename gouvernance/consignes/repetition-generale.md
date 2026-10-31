@@ -45,7 +45,9 @@ Choisis des rôles qui mettent à l'épreuve ce qui vient de changer. Un bon mé
 - le conseil : il décide des PR qui lui reviennent, avance l'horloge une fois pour que les fenêtres s'écoulent, et
   n'intègre rien.
 
-Varie les modèles : un seul modèle ne voit pas ses propres angles morts.
+Varie les modèles : un seul modèle ne voit pas ses propres angles morts. Donne au gardien simulé un garant distinct du conseil
+simulé, pour jouer deux mains. Avance l'horloge au-delà des délais à éprouver (au moins 72 h pour un débat d'invitation) :
+à la répétition n° 4, 26 h ne suffisaient pas à jouer le parcours jusqu'au bout.
 
 Chaque membre :
 - lit `LISEZMOI.md`, puis le guide comme un vrai participant ;
@@ -57,6 +59,8 @@ service réel n'est touché.
 
 ## Ce qu'on en tire
 
+- **Le rendement, mesuré à chaque fois** : trouvailles confirmées dans le registre réel, fausses pistes, coût en jetons ; et, pour chaque trouvaille, si une revue de code l'aurait vue. C'est ce qui dira si les répétitions valent leur coût face aux revues adverses.
+- **Les attaques gardées** : chaque attaque qui a réussi devient un test de l'outil (puis un cas du rejeu, ruche-0053).
 - **Le journal de l'organisateur** : `etat/journal-organisateur.md`, avec les constats de chaque membre.
 - **Le bilan** : ce qui a tenu, ce qui a cédé et les frictions par thème, remis au conseil ; ses suites vont dans le
   registre comme ci-dessous.
