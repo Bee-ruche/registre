@@ -3,7 +3,7 @@
 # Usage (depuis son clone de la simulation) : ouvrir-pr-fork <pseudo> <projet> "<description courte de l'approche>"
 set -euo pipefail
 source "$(dirname "$(realpath "$0")")/commun.sh"
-case "${1:-}" in -h|--help|"") echo "usage : ouvrir-pr-fork <pseudo> <projet> "<description>"" >&2; exit 2;; esac
+case "${1:-}" in -h|--help|"") echo 'usage : ouvrir-pr-fork <pseudo> <projet> "<description>"' >&2; exit 2;; esac
 pseudo="${1:?pseudo}"; projet="${2:?projet}"; desc="${3:-}"
 dans_son_clone "$pseudo"; texte_valide "$desc"
 case "$projet" in miniz) depot=minizBee;; libyaml) depot=libyamlBee;; ruche) depot=registre;; *) echo "projet inconnu : $projet" >&2; exit 1;; esac
