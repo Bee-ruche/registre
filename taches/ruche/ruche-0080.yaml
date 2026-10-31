@@ -12,7 +12,8 @@ contexte: 'Founder''s question of 31/10: what if hundreds or thousands of people
   times. Activity model, per active member and week: one contribution with two reviews, two votes and one note; one proposed
   task per 10 members; one debate argument per 5 members; half of the week''s contributions on Friday night; guardians
   at the brake''s maximum (one per 20 active members), each with a guarantor. The model is written in docs/outillage.md,
-  so that ruche-0083''s numbers can be read against it.'
+  so that ruche-0083''s numbers can be read against it. If the work outgrows L, stop and propose a split (commandment
+  4).'
 fichiers:
 - outils/repetition/load_test.py
 - outils/repetition/test_load_test.py

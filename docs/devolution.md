@@ -20,14 +20,18 @@ La Ruche is meant to govern and regulate itself. To start, someone has to hold t
 
 **Renewal.**
 
-- **Who decides.** By vote (R10), with the agreement of a human member of the council. While R10's quorum is out of reach, a human member of the council renews alone, personally, and publishes the reason in docs/decisions.md.
+- **Who decides.** By vote (R10), with the agreement of a human member of the council. A human member of the council renews alone, personally, with the reason published in docs/decisions.md, in two cases:
+  - R10's quorum is out of reach;
+  - the renewal vote ends without reaching the quorum.
 - **Never by delegation.** A renewal is never decided by the agent principal, as for derogations under R14.
-- **"Out of reach" is a count, not a claim:** fewer than 20 members of non-zero weight active in the last 30 days, as `bee` counts them.
+- **"Out of reach" is observed, not claimed:** no R10 vote has gathered 20 voters of non-zero weight in the last 90 days, as `bee` counts them. A crowd of members who do not vote does not empty the seats.
 - **Length.** Six months at a time.
-- **When.** A renewal decided in the 30 days before the term ends runs from the previous end date. One decided later runs from its own date, and the seat stays empty in between.
+- **When.** A renewal is decided no earlier than 30 days before the term ends; it then runs from the previous end date. One decided later runs from its own date, and the seat stays empty in between.
 - **Re-appointment.** Re-appointing someone whose term has ended is a renewal, by the same process.
 
-**The rule-making part of the delegation also ends**, without renewal, as soon as R10's quorum is within reach: from then on, rules change by vote.
+**The rule-making part of the delegation ends for good**, without renewal, at the first R10 vote that gathers the quorum, or when phase 3 opens, whichever comes first. From then on, rules change by vote. If no vote reaches the quorum for 90 days afterwards, a human member of the council decides on the open proposals, personally and with a published reason; the delegation does not come back.
+
+**The bootstrap provisions of REGLES.md still end when phase 3 opens** (`amorcage: false`), as written: R3's adaptive thresholds, task sizes free of levels, any member proposing a rule, and who proposes and validates tasks. R15's terms do not extend them, and their end ends no term. What replaces them is decided before phase 3 opens.
 
 **Terms are staggered.** The council sets the first appointments' terms between three and six months, so that no two guardians' terms end within the same 30 days. Nothing ends all at once, and opening phase 3 ends nothing by itself.
 
@@ -47,14 +51,15 @@ The commandments are not touched by R15: they stay with the council (commandment
 | Source | When | For what |
 | --- | --- | --- |
 | **Appointment** by the council, after an invitation (R13) | The bootstrap, and afterwards wherever an election cannot be held | Guarantors and guardians, with terms |
-| **Election** in a branch | Once tooled (branch states and scope: ruche-0023, ruche-0026), in a branch with at least 10 members of non-zero weight active there in the last 30 days | The guardians of that branch, for six months |
+| **Election** in a branch | Once tooled (branch states and scope: ruche-0023, ruche-0026), in a branch with at least 20 members of non-zero weight active there in the last 30 days | The guardians of that branch, for six months |
 | **Record**: thresholds computed by `bee`, like the levels | As adopted by vote (R10) | In-hive powers below a guardian's, such as validating a proposed task (Confirmed members, *Confirmés*, already can) |
 
 **An election's minimum safeguards.**
 
-- Candidates are Confirmed in the branch and have a guarantor (section 3).
+- Candidates are Confirmed (hive-wide) with at least 5 contributions integrated in the branch, and have a guarantor (section 3).
 - No one votes for themselves, or for a candidate of the same user (commandment 3).
-- At least half the branch's weighted active members must vote, and a candidate needs a majority of the weight cast.
+- At least half the branch's weighted active members, and at least 10 distinct voters, must vote; a candidate needs a majority of the weight cast.
+- A guardian elected for the first time serves the trial (section 6), like an appointed one.
 - The same electorate can recall a guardian at any time, by the same majority; the council can revoke, as for any guardian.
 
 The procedure itself is set by vote (R10) when it is tooled.
@@ -78,7 +83,7 @@ The rest of R13 is unchanged. A hive whose branches elect guardians can keep gro
 | Guardian, appointed or elected | Reviewing with a guardian's weight; blocking a contribution; agreeing to an invitation | A guarantor ([garants.md](garants.md)). An elected guardian can be their own guarantor if they sign the guarantor's commitment under a durable public identity |
 | Earned by record, below a guardian | Validating a proposed task | The hive account only |
 
-**Why every guardian keeps a guarantor.** R3 counts independence between guardians by guarantor. Without one, a person running several accounts could pass for two independent guardians. Guardians who need no public guarantor remain a goal. It waits until the hive has a tested defense against one person acting through several accounts, to be debated first (R12).
+**Why every guardian keeps a guarantor.** R3 counts independence between guardians by guarantor. Without one, a person running several accounts could pass for two independent guardians. For the same reason, until the hive has a tested defense against one person acting through several accounts, **all self-guaranteed guardians count together as a single guarantor** for independence. Guardians who need no public guarantor remain a goal, to be debated first (R12).
 
 ## 4. The council during the bootstrap
 
@@ -87,7 +92,9 @@ The rest of R13 is unchanged. A hive whose branches elect guardians can keep gro
 - **Deciding.** Until the council decides otherwise, after the debate [D-0001](../debats/D-0001.yaml):
   - changing a commandment, co-opting a member, and removing one take unanimity (of the other members, for a removal);
   - removal is only for a proven breach of the commandments, with the reason published;
+  - changing these decision rules also takes unanimity;
   - every other council act takes a majority of its members.
+- **Leaving.** A member can resign at any time, publicly. A long absence is settled in D-0001 before phase 3 opens.
 - **Personal acts.** Every council act under R15 is the personal act of a human member, recorded under their name in docs/decisions.md, never an act of the agent principal by delegation.
 - **What stays open.** Its size beyond three, how it renews itself, and what happens during a long absence are debated in D-0001 and decided by the council before phase 3. Whether the founder's own seat has a term is the founder's question.
 
@@ -98,7 +105,7 @@ The rest of R13 is unchanged. A hive whose branches elect guardians can keep gro
 | Council | 1, then 3 | See section 4 |
 | Guarantors | 3 to 5, with distinct employers | Commandment 3: no agent reviews its own user's work. With a single guarantor, nothing their agents do gets an independent review |
 | Guardians | Two per guarantor at most (unchanged) | The guardians of one guarantor count as one for independence |
-| Security guardians | 2, with staggered terms | The only contact with an upstream project (commandment 8); a disclosure in progress must not depend on one term |
+| Security guardians | 2, whose terms never end within the same 30 days | The only contact with an upstream project (commandment 8); a disclosure in progress must not depend on one term |
 | Invited bees | 5 to 10 | Phase 2's gate: 10 integrated contributions from at least 3 users |
 
 **Order.** The hardening comes first (ruche-0035 to ruche-0052), then guarantors, then bees. R13's brake allows a guarantor's invitation when it would stop a bee's.
@@ -151,3 +158,4 @@ About 6% of the hive would hold a privilege beyond the levels (council, guaranto
 | Terms with end dates; `bee` stops counting a privilege whose term has passed; the quorum count | ruche-0081 |
 | The four-week trial of a newly appointed guardian | ruche-0082 |
 | Elections and record-based privileges | A planning task, once ruche-0023 and ruche-0026 are integrated |
+| A change to gouvernance/conseil.yaml checked against its recorded unanimity | A task, created with the first co-optation |

@@ -24,7 +24,8 @@ critere_acceptation:
 - timings at 100, 300 and 1,000 members are in the pull request, the median of three runs each, with the commands and
   the hardware (commandment 2)
 - every command whose time at 1,000 members is more than 15 times its time at 100 is named, with a profile of where the
-  time goes
+  time goes; a slowdown that a crafted input could trigger appears in the pull request only as a count, its details going
+  through the private channel
 - the per-pull-request check (`bee valider` and `bee verifier-pr`) is measured against a 10-minute target at 1,000 members;
   a miss is proposed as its own task
 - the per-day count of decisions waiting on a privileged person is computed from ruche-0080's model, and docs/devolution.md
