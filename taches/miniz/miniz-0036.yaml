@@ -46,6 +46,9 @@ critere_acceptation:
 hors_perimetre: [format de sortie, API publique, nouvelle dépendance, fonction de hachage et nombre de sondes, variante MINIZ_USE_UNALIGNED_LOADS_AND_STORES]
 depend_de: [miniz-0001]
 noeud: projets/compression-sans-perte/miniz/deflate
-statut: ouverte
+statut: reservee
+reservation:
+  utilisateur: "bidji29"
+  depuis: "2026-10-31T01:09:57Z"
 cree_par: conseil
 cree_le: "2026-10-30"
