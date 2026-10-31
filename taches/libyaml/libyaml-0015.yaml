@@ -1,0 +1,34 @@
+id: libyaml-0015
+projet: libyaml
+categorie: parsing-serialisation
+type: test
+taille: M
+titre: "Juge isolé de libyaml, étape 3/6 : entrées tirées au hasard"
+contexte: >
+  Découpage de libyaml-0005 (juge isolé pour libyaml), étape 3 sur 6 ; utile seule : on ne passe plus le
+  juge en apprenant le corpus par cœur. Le greffon de libyaml-0014 ne compare les sorties que sur le corpus :
+  une variante qui reconnaît les fichiers du corpus (table de réponses précalculées) y passerait. La méthode
+  verification du greffon tire donc, d'une graine, des entrées que la base et la PR analysent toutes deux :
+  documents YAML générés, mutations du corpus, entrées invalides. Le premier octet donné à bee_flux
+  (bee/fuzz/fuzz_parse.c, libyaml-0002) choisit la lecture : 0 tout d'un coup, k > 0 par morceaux de k
+  octets (limites de tampon du lecteur). Modèle : la méthode verification du greffon de minizBee
+  (bee/juge/projet.py, entrees_aleatoires). Jusqu'à libyaml-0018, la CI n'appelle pas bee/juge/ : cette
+  étape ne change aucun verdict. Elle touche les juges : relue par un gardien ou par le conseil.
+fichiers: [bee/juge/projet.py, bee/juge/test_juge.py]
+portee: 0.8
+metrique: null
+critere_acceptation:
+  - "à graine égale, mêmes entrées : documents générés (imbrication, ancres et alias, styles de scalaires, flux et blocs, directives, UTF-8 et UTF-16), mutations du corpus, entrées invalides, et lecture par morceaux grâce au premier octet de bee_flux"
+  - "méta-test « table précalculée » : une variante qui reconnaît les fichiers du corpus est refusée"
+  - "sur une entrée invalide, la base et la PR doivent rendre la même erreur aux mêmes positions"
+hors_perimetre:
+  - "sources de libyaml"
+  - "outils/juge/ du registre"
+  - "changement des métriques suivies"
+  - "nouvelle dépendance hors image"
+  - ".github/workflows/bee-ci.yml (le branchement à la CI est libyaml-0018)"
+depend_de: [libyaml-0014]
+noeud: projets/parsing-serialisation/libyaml
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-31"

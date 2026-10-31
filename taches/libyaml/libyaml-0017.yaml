@@ -1,0 +1,36 @@
+id: libyaml-0017
+projet: libyaml
+categorie: parsing-serialisation
+type: test
+taille: M
+titre: "Juge isolé de libyaml, étape 5/6 : scénarios et mesures"
+contexte: >
+  Découpage de libyaml-0005 (juge isolé pour libyaml), étape 5 sur 6 ; utile seule : un banc isolé, au bruit
+  du juge commun (environ ±0,4 %), qu'on peut lancer à la main avant même qu'il soit branché à la CI.
+  Jusqu'ici (libyaml-0013 à libyaml-0016) le greffon vérifie sans mesurer (SCENARIOS vide). Cette étape
+  ajoute au harnais les modes analyse, chargement, emission et memoire, et au greffon SCENARIOS,
+  INSTRUCTIONS, METRIQUES et les méthodes repetition, instructions et scenario, avec les identifiants de
+  métriques de projets/libyaml.yaml (debit_analyse, debit_chargement, debit_emission, memoire_max_ko, et
+  instructions_analyse, instructions_chargement, instructions_emission pour R4). Le juge commun mesure par
+  wait4 dans son propre lanceur, compte les instructions de tout le processus et analyse les objets
+  (constructions suspectes). Modèles : le greffon jouet du registre et celui de minizBee. Jusqu'à
+  libyaml-0018, la CI n'appelle pas bee/juge/ : cette étape ne change aucun verdict. Elle touche les juges :
+  relue par un gardien ou par le conseil.
+fichiers: [bee/juge/execution.c, bee/juge/projet.py, bee/juge/test_juge.py]
+portee: 0.8
+metrique: null
+critere_acceptation:
+  - "les métriques portent les identifiants de projets/libyaml.yaml (debit_analyse, debit_chargement, debit_emission, memoire_max_ko, et instructions_* pour R4)"
+  - "sur une PR honnête, les décomptes d'instructions de A et de B sont identiques et aucune construction suspecte n'est relevée"
+  - "méta-tests : faux chronos, requête client Valgrind et faux résumé sont signalés"
+hors_perimetre:
+  - "sources de libyaml"
+  - "outils/juge/ du registre"
+  - "changement des métriques suivies"
+  - "nouvelle dépendance hors image"
+  - ".github/workflows/bee-ci.yml (le branchement à la CI est libyaml-0018)"
+depend_de: [libyaml-0015, libyaml-0016]
+noeud: projets/parsing-serialisation/libyaml
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-31"
