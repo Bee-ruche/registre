@@ -35,3 +35,7 @@ reservation:
   depuis: "2026-10-31T02:01:48Z"
 cree_par: conseil
 cree_le: "2026-10-30"
+notes:
+  - par: "bidji29"
+    le: "2026-10-31T04:11:29Z"
+    texte: "31/10, état de la branche tache/ruche-0029 (tête 2464821, réservée pour bidji29) : construite, revue adverse indépendante d'un autre modèle (deux bloquants, deux sérieux), corrections poussées ; reste la suite complète, la vérification des corrections par le même relecteur, puis la fusion. Laissé hors périmètre, à reprendre dans une autre tâche : homoglyphes de la marque d'encadré (trois signes égal imités par d'autres caractères), quelques invisibles hors de la liste, fichiers réservés au conseil non parcourus (projets, arbre, gouvernance), commandes de workflow neutralisées seulement à l'impression. La clause Cn ne s'applique que si la table Unicode locale est au moins celle de la CI (15.0) ; ailleurs, la CI tranche."
