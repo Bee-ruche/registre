@@ -96,7 +96,11 @@ The rest of R13 is unchanged. A hive whose branches elect guardians can keep gro
   - every other council act takes a majority of its members.
 - **Leaving.** A member can resign at any time, publicly. A long absence is settled in D-0001 before phase 3 opens.
 - **Personal acts.** Every council act under R15 is the personal act of a human member, recorded under their name in docs/decisions.md, never an act of the agent principal by delegation.
-- **What stays open.** Its size beyond three, how it renews itself, and what happens during a long absence are debated in D-0001 and decided by the council before phase 3. Whether the founder's own seat has a term is the founder's question.
+- **The founder's seat** has a one-year term, from 31 October 2026 (the founder's decision). Until D-0001 settles how the council renews itself, the seat is renewed in one of three ways:
+  - by vote (R10: a proposal on R15), with the agreement of another human member of the council;
+  - while R10's quorum is out of reach, by the other human members of the council, unanimously, with a published reason;
+  - if the founder is still the council's only member, by the founder himself, publicly, with a reason, for one year at most.
+- **What stays open.** Its size beyond three, how it renews itself, and what happens during a long absence are debated in D-0001 and decided by the council before phase 3.
 
 ## 5. The bootstrap, in numbers (phase 2)
 
