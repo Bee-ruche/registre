@@ -125,6 +125,12 @@ class BaseTest(unittest.TestCase):
         code, texte = self.bee("valider")
         self.assertEqual(code, 0, texte)
 
+    def lu(self, cid):
+        """--commit d'un relecteur qui a lu le commit du verdict courant (bee relire, ruche-0028) ; rien avant le verdict."""
+        enr = bee.lire_yaml(self.dossier / "contributions" / cid.split("-")[0] / f"{cid}.yaml")
+        sha = (enr.get("verdict") or {}).get("sha") if isinstance(enr, dict) else None
+        return ["--commit", sha] if sha else []
+
     def tache(self, identifiant):
         projet = identifiant.rsplit("-", 1)[0]
         return bee.lire_yaml(self.dossier / "taches" / projet / f"{identifiant}.yaml")
@@ -249,9 +255,9 @@ class TestRegistre(BaseTest):
         self.assertEqual(t["statut"], "en_relecture")
         self.assertEqual(t["contribution"], cid)
         self.valide()
-        self.assertEqual(self.bee("relire", cid, "--utilisateur", "alice", "--avis", "favorable", "--motif", "Ma propre contribution.")[0], 1)
-        self.assertEqual(self.bee("relire", cid, "--utilisateur", "bruno", "--avis", "favorable", "--motif", "Diff relu en entier.")[0], 0)
-        self.assertEqual(self.bee("relire", cid, "--utilisateur", "bruno", "--avis", "favorable", "--motif", "Encore une fois.")[0], 1)
+        self.assertEqual(self.bee("relire", cid, *self.lu(cid), "--utilisateur", "alice", "--avis", "favorable", "--motif", "Ma propre contribution.")[0], 1)
+        self.assertEqual(self.bee("relire", cid, *self.lu(cid), "--utilisateur", "bruno", "--avis", "favorable", "--motif", "Diff relu en entier.")[0], 0)
+        self.assertEqual(self.bee("relire", cid, *self.lu(cid), "--utilisateur", "bruno", "--avis", "favorable", "--motif", "Encore une fois.")[0], 1)
         self.assertEqual(self.bee("voter", cid, "--utilisateur", "alice", "--valeur", "1")[0], 1)
         code, texte = self.bee("voter", cid, "--utilisateur", "chloe", "--valeur", "1")
         self.assertEqual(code, 0, texte)
@@ -265,7 +271,7 @@ class TestRegistre(BaseTest):
         self.assertEqual(code, 0, texte)
         self.assertIn("écart", texte, "gain déclaré 10 % contre 3 % mesuré : alerte")
         # ruche-0012 : la relecture d'avant le verdict ne compte ni pour R3 ni pour la confiance C ; bruno relit le commit jugé.
-        self.assertEqual(self.bee("relire", cid, "--utilisateur", "bruno", "--avis", "favorable", "--motif", "Commit jugé relu.")[0], 0)
+        self.assertEqual(self.bee("relire", cid, *self.lu(cid), "--utilisateur", "bruno", "--avis", "favorable", "--motif", "Commit jugé relu.")[0], 0)
         enr = bee.lire_yaml(self.dossier / f"contributions/miniz/{cid}.yaml")
         self.assertEqual(enr["verdict"]["ecart_declare"], 0.07)
         self.assertTrue(enr["verdict"]["amorcage"])
@@ -338,8 +344,8 @@ class TestRegistre(BaseTest):
         self.assertEqual(code, 1, texte)
         self.assertIn("relecture", texte + " fenêtre")
         # Deux relectures favorables d'autres utilisateurs, et un vote net suffisant.
-        self.assertEqual(self.bee("relire", cid, "--utilisateur", "bruno", "--avis", "favorable", "--motif", "Relu, le diff est net et sûr.")[0], 0)
-        self.assertEqual(self.bee("relire", cid, "--utilisateur", "chloe", "--avis", "favorable", "--motif", "Relu aussi, rien à redire.")[0], 0)
+        self.assertEqual(self.bee("relire", cid, *self.lu(cid), "--utilisateur", "bruno", "--avis", "favorable", "--motif", "Relu, le diff est net et sûr.")[0], 0)
+        self.assertEqual(self.bee("relire", cid, *self.lu(cid), "--utilisateur", "chloe", "--avis", "favorable", "--motif", "Relu aussi, rien à redire.")[0], 0)
         self.assertEqual(self.bee("voter", cid, "--utilisateur", "bidji29", "--valeur", "1")[0], 0)
         # Toujours pas : la fenêtre d'ouverture n'est pas écoulée.
         self.assertEqual(self.bee("verifier-acceptation", cid)[0], 1)
@@ -349,7 +355,7 @@ class TestRegistre(BaseTest):
         code, texte = self.bee("verifier-acceptation", cid)
         self.assertEqual(code, 1, texte)
         self.assertIn("porte de relecture", texte)
-        self.assertEqual(self.bee("relire", cid, "--utilisateur", "bidji29", "--avis", "favorable",
+        self.assertEqual(self.bee("relire", cid, *self.lu(cid), "--utilisateur", "bidji29", "--avis", "favorable",
                                   "--motif", "Relu par le conseil, diff conforme.")[0], 0)
         code, texte = self.bee("verifier-acceptation", cid)
         self.assertEqual(code, 0, texte)
@@ -374,7 +380,7 @@ class TestRegistre(BaseTest):
                                        "lignes_modifiees": 10}), encoding="utf-8")
         self.assertEqual(self.bee("enregistrer-verdict", cid, "--verdict", str(verdict), "--sha", "abc1234", "--fichiers", self.fichiers_pr())[0], 0)
         for relecteur in relecteurs:
-            self.assertEqual(self.bee("relire", cid, "--utilisateur", relecteur, "--avis", "favorable",
+            self.assertEqual(self.bee("relire", cid, *self.lu(cid), "--utilisateur", relecteur, "--avis", "favorable",
                                       "--motif", "Relu, rien à signaler ici.")[0], 0)
         os.environ["BEE_MAINTENANT"] = "2026-10-29T12:00:00Z"
         return cid
@@ -390,7 +396,7 @@ class TestRegistre(BaseTest):
         code, texte = self.bee("verifier-acceptation", cid)
         self.assertEqual(code, 1, texte)
         self.assertIn("porte de relecture", texte)
-        self.assertEqual(self.bee("relire", cid, "--utilisateur", "bruno", "--avis", "favorable",
+        self.assertEqual(self.bee("relire", cid, *self.lu(cid), "--utilisateur", "bruno", "--avis", "favorable",
                                   "--motif", "Relu par le gardien : diff et tests rejoués.")[0], 0)
         code, texte = self.bee("verifier-acceptation", cid)
         self.assertEqual(code, 0, texte)
@@ -409,7 +415,7 @@ class TestRegistre(BaseTest):
 
     def test_adverse_r3_defavorable_du_conseil_bloque(self):
         cid = self.preparer_contribution_verte("alice", ("bruno", "chloe"))
-        self.assertEqual(self.bee("relire", cid, "--utilisateur", "bidji29", "--avis", "defavorable",
+        self.assertEqual(self.bee("relire", cid, *self.lu(cid), "--utilisateur", "bidji29", "--avis", "defavorable",
                                   "--motif", "Lecture hors limites possible ligne 120.")[0], 0)
         code, texte = self.bee("verifier-acceptation", cid)
         self.assertEqual(code, 1, texte)
@@ -419,7 +425,7 @@ class TestRegistre(BaseTest):
         self.regler_porte_humaine(False)
         self.contributeurs("bruno", "chloe")  # des avis qui comptent pour R3
         cid = self.preparer_contribution_verte("alice", ("bruno",))
-        self.assertEqual(self.bee("relire", cid, "--utilisateur", "chloe", "--avis", "defavorable",
+        self.assertEqual(self.bee("relire", cid, *self.lu(cid), "--utilisateur", "chloe", "--avis", "defavorable",
                                   "--motif", "Le gain disparaît sur ARM64.")[0], 0)
         code, texte = self.bee("verifier-acceptation", cid)
         self.assertEqual(code, 1, texte)
@@ -488,14 +494,14 @@ class TestRegistre(BaseTest):
         cid = "miniz-9003-c1"
         self.enregistrer_verdict_vert(cid, "bee/tests/nouveau_test.c")
         for relecteur in ("bruno", "chloe"):
-            self.assertEqual(self.bee("relire", cid, "--utilisateur", relecteur, "--avis", "favorable",
+            self.assertEqual(self.bee("relire", cid, *self.lu(cid), "--utilisateur", relecteur, "--avis", "favorable",
                                       "--motif", "Relu, le test est pertinent.")[0], 0)
         self.assertEqual(self.bee("voter", cid, "--utilisateur", "bidji29", "--valeur", "1")[0], 0)
         os.environ["BEE_MAINTENANT"] = "2026-10-29T12:00:00Z"
         code, texte = self.bee("verifier-acceptation", cid)
         self.assertEqual(code, 1, texte)
         self.assertIn("conseil ou d'un Confirmé", texte)
-        self.assertEqual(self.bee("relire", cid, "--utilisateur", "bidji29", "--avis", "favorable",
+        self.assertEqual(self.bee("relire", cid, *self.lu(cid), "--utilisateur", "bidji29", "--avis", "favorable",
                                   "--motif", "Juge renforcé, relu par le conseil.")[0], 0)
         code, texte = self.bee("verifier-acceptation", cid)
         self.assertEqual(code, 0, texte)
@@ -508,7 +514,7 @@ class TestRegistre(BaseTest):
         chemin.write_text(chemin.read_text(encoding="utf-8").replace("type: optimisation", "type: test"), encoding="utf-8")
         self.enregistrer_verdict_vert(cid, "bee/tests/nouveau_test.c")
         for relecteur in ("bruno", "chloe"):
-            self.assertEqual(self.bee("relire", cid, "--utilisateur", relecteur, "--avis", "favorable",
+            self.assertEqual(self.bee("relire", cid, *self.lu(cid), "--utilisateur", relecteur, "--avis", "favorable",
                                       "--motif", "Relu, le test est pertinent.")[0], 0)
         os.environ["BEE_MAINTENANT"] = "2026-10-29T12:00:00Z"
         code, texte = self.bee("verifier-acceptation", cid)
@@ -532,7 +538,7 @@ class TestRegistre(BaseTest):
         cid = self.soumettre_0099()
         self.verdict_r4(cid, *verdict)
         for relecteur in ("bruno", "chloe"):
-            self.assertEqual(self.bee("relire", cid, "--utilisateur", relecteur, "--avis", "favorable",
+            self.assertEqual(self.bee("relire", cid, *self.lu(cid), "--utilisateur", relecteur, "--avis", "favorable",
                                       "--motif", "Relu, rien à signaler ici.")[0], 0)
         self.assertEqual(self.bee("voter", cid, "--utilisateur", "bidji29", "--valeur", "1")[0], 0)
         self.assertEqual(self.bee("voter", cid, "--utilisateur", "bruno", "--valeur", "1")[0], 0)
@@ -597,7 +603,7 @@ class TestRegistre(BaseTest):
         code, texte = self.bee("verifier-acceptation", cid)
         self.assertEqual(code, 1, texte)
         self.assertIn("gardien", texte)
-        self.assertEqual(self.bee("relire", cid, "--utilisateur", "bruno", "--avis", "favorable",
+        self.assertEqual(self.bee("relire", cid, *self.lu(cid), "--utilisateur", "bruno", "--avis", "favorable",
                                   "--motif", "Relu par le gardien : diff et tests rejoués.")[0], 0)
         code, texte = self.bee("verifier-acceptation", cid)
         self.assertEqual(code, 0, texte)
@@ -615,7 +621,7 @@ class TestRegistre(BaseTest):
                                   "--fichiers", self.fichiers_pr())[0], 0)
         for relecteur in ("bruno", "chloe"):
             if relecteur != auteur:
-                self.assertEqual(self.bee("relire", cid, "--utilisateur", relecteur, "--avis", "favorable",
+                self.assertEqual(self.bee("relire", cid, *self.lu(cid), "--utilisateur", relecteur, "--avis", "favorable",
                                           "--motif", "Relu, rien à signaler ici.")[0], 0)
         if auteur != "bidji29":
             self.assertEqual(self.bee("voter", cid, "--utilisateur", "bidji29", "--valeur", "1")[0], 0)
@@ -653,7 +659,7 @@ class TestRegistre(BaseTest):
         code, texte = self.bee("verifier-acceptation", cid)
         self.assertEqual(code, 1, texte)
         self.assertIn("construction(s) suspecte(s)", texte)
-        self.assertEqual(self.bee("relire", cid, "--utilisateur", "bidji29", "--avis", "favorable",
+        self.assertEqual(self.bee("relire", cid, *self.lu(cid), "--utilisateur", "bidji29", "--avis", "favorable",
                                   "--motif", "Relu : la détection SIMD est légitime, mesures rejouées.")[0], 0)
         code, texte = self.bee("verifier-acceptation", cid)
         self.assertEqual(code, 0, texte)
@@ -1656,7 +1662,7 @@ class TestPullRequests(BaseTest):
         cid = self.soumettre_0099()
         self.commit("soumission")
         long = "Relu en entier. " + "x" * 1500
-        self.assertIn("motif de 1516 caractères, au plus 1500", self.bee("relire", cid, "--utilisateur", "chloe", "--avis",
+        self.assertIn("motif de 1516 caractères, au plus 1500", self.bee("relire", cid, *self.lu(cid), "--utilisateur", "chloe", "--avis",
                                                                            "favorable", "--motif", long)[1])
         self.assertIn("caractère invisible", self.bee("voter", cid, "--utilisateur", "chloe", "--valeur", "1", "--motif",
                                                       "Utile.‮")[1])
@@ -2048,7 +2054,7 @@ class BaseParallele(BaseTest):
 
     def relire(self, cid, *relecteurs, voter=True):
         for relecteur in relecteurs:
-            code, texte = self.bee("relire", cid, "--utilisateur", relecteur, "--avis", "favorable", "--motif", "Relu en entier, banc rejoué.")
+            code, texte = self.bee("relire", cid, *self.lu(cid), "--utilisateur", relecteur, "--avis", "favorable", "--motif", "Relu en entier, banc rejoué.")
             self.assertEqual(code, 0, texte)
         if voter:
             self.assertEqual(self.bee("voter", cid, "--utilisateur", "bidji29", "--valeur", "1")[0], 0)
@@ -2518,11 +2524,11 @@ class TestCourse(BaseParallele):
     def test_un_concurrent_ne_juge_pas_sa_concurrente(self):
         (self.dossier / "gouvernance/gardiens.yaml").write_text("membres:\n  - pseudo: alice\n  - pseudo: bruno\n", encoding="utf-8")
         c1, c2 = self.course_a_deux(0.03, 0.05)
-        code, texte = self.bee("relire", c2, "--utilisateur", "bruno", "--avis", "defavorable", "--motif", "Elle est moins bonne que la mienne.")
+        code, texte = self.bee("relire", c2, *self.lu(c2), "--utilisateur", "bruno", "--avis", "defavorable", "--motif", "Elle est moins bonne que la mienne.")
         self.assertEqual(code, 1, texte)
         self.assertIn("en course", texte)
         self.assertEqual(self.bee("voter", c2, "--utilisateur", "bruno", "--valeur", "-1")[0], 1)
-        self.assertEqual(self.bee("relire", c2, "--utilisateur", "bruno", "--avis", "favorable", "--motif", "Bonne approche, je la reconnais.")[0], 0)
+        self.assertEqual(self.bee("relire", c2, *self.lu(c2), "--utilisateur", "bruno", "--avis", "favorable", "--motif", "Bonne approche, je la reconnais.")[0], 0)
         # Écrits à la main, l'avis défavorable d'une gardienne concurrente et son vote ne comptent pas.
         chemin = self.dossier / f"contributions/miniz/{c1}.yaml"
         enr = bee.lire_yaml(chemin)
@@ -2541,7 +2547,7 @@ class TestCourse(BaseParallele):
         (self.dossier / "gouvernance/gardiens.yaml").write_text("membres:\n  - pseudo: chloe\n", encoding="utf-8")
         c1, c2 = self.course_a_deux(0.03, 0.05)
         self.a("2026-10-27T18:00:00Z")
-        code, texte = self.bee("relire", c1, "--utilisateur", "chloe", "--avis", "defavorable", "--motif", "Lecture hors limites avec une entrée vide.")
+        code, texte = self.bee("relire", c1, *self.lu(c1), "--utilisateur", "chloe", "--avis", "defavorable", "--motif", "Lecture hors limites avec une entrée vide.")
         self.assertEqual(code, 0, texte)
         bloquee = lambda: [r for r in bee.raisons_r3(bee.Registre(self.dossier), c1)[2] if "défavorable de chloe" in r]  # noqa: E731
         self.assertTrue(bloquee(), "pas encore engagée : son avis bloque")
@@ -2552,7 +2558,7 @@ class TestCourse(BaseParallele):
         bee.modifier_tache(self.dossier / "taches/miniz/miniz-0099.yaml",
                            paralleles=[{"utilisateur": "chloe", "depuis": "2026-10-27T19:00:00Z"}])
         self.assertFalse(bloquee(), "engagée dans la course : son avis défavorable, même antérieur, ne compte plus")
-        self.assertEqual(self.bee("relire", c2, "--utilisateur", "chloe", "--avis", "defavorable", "--motif", "Une autre à bloquer.")[0], 1,
+        self.assertEqual(self.bee("relire", c2, *self.lu(c2), "--utilisateur", "chloe", "--avis", "defavorable", "--motif", "Une autre à bloquer.")[0], 1,
                          "engagée, elle ne donne plus d'avis défavorable sur la course")
         self.assertEqual(self.bee("liberer", "miniz-0099", "--utilisateur", "chloe")[0], 0)
         self.assertTrue(bloquee(), "sortie de la course, son avis compte de nouveau")
@@ -2957,8 +2963,10 @@ if args[:1] == ["api"] and "/contents/" in args[1]:
     print(base64.b64encode(texte.encode("utf-8")).decode("ascii"))
     sys.exit(0)
 if args[:1] == ["api"] and "/git/commits/" in args[1]:
-    # Arbre git d'un commit (verdicts.yml, ruche-0012) : FAUX_GH_ETAT, clé "arbres" : {"<sha>": "<sha de l'arbre>"}.
-    arbre = (etat.get("arbres") or {}).get(args[1].rsplit("/", 1)[1])
+    # Arbre git d'un commit (verdicts.yml, ruche-0012) : FAUX_GH_ETAT, clé "arbres" : {"<sha>": "<sha de l'arbre>"} ; par défaut un
+    # arbre par commit (ruche-0028 : sans arbre, aucun verdict) ; None : l'API ne répond pas.
+    sha, arbres = args[1].rsplit("/", 1)[1], etat.get("arbres") or {}
+    arbre = arbres[sha] if sha in arbres else f"{zlib.crc32(sha.encode()):08x}"
     if arbre is None:
         sys.exit(1)
     print(arbre)
@@ -3163,7 +3171,7 @@ class TestRevueAdverse(BaseParallele):
         self.verdict(c1, 0.05)
         self.a("2026-10-27T15:00:00Z")
         self.assertEqual(self.bee("liberer", "miniz-0099", "--utilisateur", "bruno")[0], 0)
-        self.assertEqual(self.bee("relire", c1, "--utilisateur", "bruno", "--avis", "defavorable", "--motif", "Je préfère la mienne.")[0], 0)
+        self.assertEqual(self.bee("relire", c1, *self.lu(c1), "--utilisateur", "bruno", "--avis", "defavorable", "--motif", "Je préfère la mienne.")[0], 0)
         self.a("2026-10-27T15:05:00Z")
         self.parallele("miniz-0099", "bruno", attendu=1)  # qui a jugé la course n'y entre plus
         # Réinscrit malgré tout (écrit hors de l'outil) : son avis défavorable ne bloque pas la concurrente.
@@ -3429,25 +3437,26 @@ class TestRevueAdverse(BaseParallele):
         self.valide()
 
     def test_le_verdict_porte_l_arbre_du_commit_juge(self):
-        """ruche-0012 (revue adverse) : verdicts.yml lit l'arbre git du commit jugé auprès de l'API et l'écrit au verdict ; sans
-        réponse, le verdict s'écrit quand même, sans arbre (bee compare alors les sha)."""
+        """ruche-0012 (revue adverse) : verdicts.yml lit l'arbre git du commit jugé auprès de l'API et l'écrit au verdict.
+        ruche-0028 (revue adverse, M1) : sans réponse lisible, aucun verdict ; il est rejugé au passage suivant."""
         c1 = self.soumettre_0099("alice")
         verdict = {"ci": "verte", "gain": 0.05, "au_dela_du_bruit": True, "lignes_modifiees": 10, "instructions": INSTRUCTIONS_N6}
-        etats = {PR_MINIZ + "99007": {"state": "OPEN", "head": "abc1234", "auteur": "alice", "verdict": verdict}}
-        self.etape("Récupérer les verdicts", etats, flux="verdicts.yml")
-        self.assertEqual((self.enr(c1)["verdict"]["sha"], self.enr(c1)["verdict"].get("arbre")), ("abc1234", None))
-        etats[PR_MINIZ + "99007"]["head"] = "abc1235"
-        etats["arbres"] = {"abc1235": "7ee0001"}
+        etats = {PR_MINIZ + "99007": {"state": "OPEN", "head": "abc1234", "auteur": "alice", "verdict": verdict},
+                 "arbres": {"abc1234": None}}
+        sortie, _, _ = self.etape("Récupérer les verdicts", etats, flux="verdicts.yml")
+        self.assertNotIn("verdict", self.enr(c1), "l'API n'a pas dit l'arbre : rien n'est enregistré")
+        self.assertIn(f"::notice::{c1} : arbre git du commit abc1234 illisible auprès de l'API ; aucun verdict", sortie)
+        etats["arbres"] = {"abc1234": "7ee0001"}  # le passage suivant
         _, _, appels = self.etape("Récupérer les verdicts", etats, flux="verdicts.yml")
-        self.assertTrue([a for a in appels if a["args"][:2] == ["api", "repos/Bee-ruche/minizBee/git/commits/abc1235"]])
-        self.assertEqual((self.enr(c1)["verdict"]["sha"], self.enr(c1)["verdict"]["arbre"]), ("abc1235", "7ee0001"))
-        # Réponses mal formées (hostile, plusieurs lignes, trop longue) : arbre ignoré, le verdict s'écrit quand même.
+        self.assertTrue([a for a in appels if a["args"][:2] == ["api", "repos/Bee-ruche/minizBee/git/commits/abc1234"]])
+        self.assertEqual((self.enr(c1)["verdict"]["sha"], self.enr(c1)["verdict"]["arbre"]), ("abc1234", "7ee0001"))
+        # Réponses mal formées (hostile, plusieurs lignes, trop longue) : aucun verdict, le précédent reste.
         for numero, mal_forme in enumerate(("pas-un-sha;id", "7ee0003\nabc1234", "7ee0" + "0" * 40)):
             sha = f"abc124{numero}"
             etats[PR_MINIZ + "99007"]["head"] = sha
             etats["arbres"] = {sha: mal_forme}
             self.etape("Récupérer les verdicts", etats, flux="verdicts.yml")
-            self.assertEqual((self.enr(c1)["verdict"]["sha"], self.enr(c1)["verdict"].get("arbre")), (sha, None), repr(mal_forme))
+            self.assertEqual((self.enr(c1)["verdict"]["sha"], self.enr(c1)["verdict"]["arbre"]), ("abc1234", "7ee0001"), repr(mal_forme))
         self.valide()
 
     def test_le_verdict_compare_au_manifeste_de_la_tache_jamais_a_un_ancien(self):
@@ -3533,7 +3542,7 @@ class TestRevueAdverse(BaseParallele):
 
     def test_annulee_sans_avoir_ete_integree_ne_coute_rien_a_ses_relecteurs(self):
         c1 = self.soumettre_0099("alice")
-        self.assertEqual(self.bee("relire", c1, "--utilisateur", "bruno", "--avis", "favorable", "--motif", "Relu en entier, banc rejoué.")[0], 0)
+        self.assertEqual(self.bee("relire", c1, *self.lu(c1), "--utilisateur", "bruno", "--avis", "favorable", "--motif", "Relu en entier, banc rejoué.")[0], 0)
         self.assertEqual(self.bee("cloturer", c1, "--motif", "PR fermée sans fusion.")[0], 0)
         enr = self.enr(c1)
         self.assertEqual((enr["statut"], enr["jamais_integree"]), ("annulee", True))
@@ -3637,7 +3646,7 @@ class TestRevueAdverse(BaseParallele):
         self.verdict(c1, 0.05)
         self.relire(c1, "chloe", "bidji29")
         self.a("2026-10-27T13:00:00Z")
-        code, texte = self.bee("relire", c1, "--utilisateur", "bruno", "--avis", "defavorable", "--motif",
+        code, texte = self.bee("relire", c1, *self.lu(c1), "--utilisateur", "bruno", "--avis", "defavorable", "--motif",
                                "Lecture hors limites sur une entrée vide.", "--defaut")
         self.assertEqual(code, 0, texte)
         chemin = self.dossier / f"contributions/miniz/{c1}.yaml"  # le conseil confirme le défaut
@@ -3857,7 +3866,7 @@ class TestRevueAdverse(BaseParallele):
         self.a("2026-10-27T14:00:00Z")
         c1 = self.soumettre("miniz-0099", "alice", 99102)
         self.verdict(c1, 0.05)
-        code, texte = self.bee("relire", c1, "--utilisateur", "david", "--avis", "defavorable", "--defaut",
+        code, texte = self.bee("relire", c1, *self.lu(c1), "--utilisateur", "david", "--avis", "defavorable", "--defaut",
                                "--motif", "Lecture hors limites sur une entrée vide (reproduit).")
         self.assertEqual(code, 0, texte)
         self.init_git()
@@ -3939,7 +3948,7 @@ class TestRevueAdverse(BaseParallele):
         code, texte = self.acceptation(c1)
         self.assertEqual(code, 1, texte)
         self.assertIn("un défaut confirmé reste à résoudre (signalé par david", texte)
-        self.assertEqual(self.bee("relire", c1, "--utilisateur", "david", "--avis", "favorable", "--motif",
+        self.assertEqual(self.bee("relire", c1, *self.lu(c1), "--utilisateur", "david", "--avis", "favorable", "--motif",
                                   "Correctif relu : le défaut est corrigé.")[0], 0)
         code, texte = self.acceptation(c1)
         self.assertEqual(code, 0, texte)
@@ -5983,7 +5992,7 @@ class TestRevueAdverseRuche0011(BaseRepetitionGenerale):
         # Les mêmes gestes, écrits par l'outil : en libre-service.
         self.branche("honnete")
         self.ok("voter", cid, "--utilisateur", "gaspard", "--valeur", "1")
-        self.ok("relire", cid, "--utilisateur", "gaspard", "--avis", "favorable", "--motif", "Relue aujourd'hui.")
+        self.ok("relire", cid, *self.lu(cid), "--utilisateur", "gaspard", "--avis", "favorable", "--motif", "Relue aujourd'hui.")
         self.commit()
         self.libre_service("gaspard", "vote", "relecture")
 
@@ -6060,7 +6069,7 @@ class TestRelecturesDesNouveaux(BaseParallele):
         return cid
 
     def avis(self, cid, qui, avis):
-        code, texte = self.bee("relire", cid, "--utilisateur", qui, "--avis", avis, "--motif", "Diff relu en entier.")
+        code, texte = self.bee("relire", cid, *self.lu(cid), "--utilisateur", qui, "--avis", avis, "--motif", "Diff relu en entier.")
         self.assertEqual(code, 0, texte)
         return texte
 
@@ -6126,7 +6135,7 @@ class TestRelireParCommit(BaseParallele):
                  *(["--arbre", arbre] if arbre else []))
 
     def relire_(self, qui, avis, *options, attendu=0):
-        code, texte = self.bee("relire", self.cid, "--utilisateur", qui, "--avis", avis, "--motif", "Diff du commit relu en entier.",
+        code, texte = self.bee("relire", self.cid, *self.lu(self.cid), "--utilisateur", qui, "--avis", avis, "--motif", "Diff du commit relu en entier.",
                                *options)
         self.assertEqual(code, attendu, texte)
         return texte
@@ -6790,7 +6799,7 @@ class TestRelireParCommitPR(BaseRepetitionGenerale):
         self.fusionner("geste")
 
     def relire(self, qui, avis="favorable", *options):
-        self.geste(qui, "relire", self.cid, "--utilisateur", qui, "--avis", avis, "--motif", "Diff du commit relu en entier.", *options)
+        self.geste(qui, "relire", self.cid, *self.lu(self.cid), "--utilisateur", qui, "--avis", avis, "--motif", "Diff du commit relu en entier.", *options)
 
     def relecture(self, qui, avis="favorable", **champs):
         return {"relecteur": qui, "avis": avis, "motif": "Diff du commit relu en entier.", "le": os.environ["BEE_MAINTENANT"], **champs}
@@ -9267,7 +9276,7 @@ class TestManifesteRecopie(BaseRepetitionGenerale):
                 attaque(auteur, modifier)
         # La relecture honnête passe toujours en libre-service ; le conseil corrige dans une PR relue, jamais fusionnée seule.
         self.branche("relecture")
-        self.ok("relire", self.cid, "--utilisateur", "gaspard", "--avis", "favorable", "--motif", "Diff du commit relu en entier.")
+        self.ok("relire", self.cid, *self.lu(self.cid), "--utilisateur", "gaspard", "--avis", "favorable", "--motif", "Diff du commit relu en entier.")
         self.commit()
         self.libre_service("gaspard", "relecture")
         self.fusionner("relecture")
@@ -9304,6 +9313,616 @@ class TestManifesteRecopie(BaseRepetitionGenerale):
         # Revue adverse (A) : plafonds resserrés ; le texte entier reste dans le fork.
         self.assertEqual(bee.DECLARE_MAX, {"modele": 200, "element": 800, "elements": 10, "doutes": 1600, "rendu": 12000})
         self.assertEqual(p["teste"], p["non_teste"])
+
+
+class TestTour3(BaseParallele):
+    """ruche-0028 : la répétition générale n° 3 (30/10 ; journaux de jules, ines et hugo) a confirmé des failles du jugement.
+    Pour chacune, le parcours honnête passe et le détournement du tour 3 est refusé, ou signalé aux relecteurs."""
+
+    MOTIF = "Diff du commit relu en entier."
+
+    def ok_(self, *arguments):
+        code, texte = self.bee(*arguments)
+        self.assertEqual(code, 0, texte)
+        return texte
+
+    def soumettre_(self):
+        """bruno est gardien ; alice réserve et soumet miniz-0099 (27/10 12 h)."""
+        (self.dossier / "gouvernance/gardiens.yaml").write_text("membres:\n  - pseudo: bruno\n", encoding="utf-8")
+        self.fermer_porte()
+        self.ok_("prendre", "miniz-0099", "--utilisateur", "alice")
+        self.cid = self.soumettre("miniz-0099", "alice", 99328)
+
+    def verdict_(self, sha, arbre, chrono=0.012, bruit=True, instructions=0.05, lignes=10, cid=None):
+        """Un verdict de la CI (verdicts.yml) sur le commit sha, d'arbre git arbre."""
+        verdict = self.dossier.parent / "verdict.json"
+        verdict.write_text(json.dumps({"ci": "verte", "gain": chrono, "au_dela_du_bruit": bruit, "lignes_modifiees": lignes,
+                                       "instructions": {"instructions_n6": {"A": 1000000, "B": 1000000 * (1 - instructions),
+                                                                            "gain": instructions}}}), encoding="utf-8")
+        self.ok_("enregistrer-verdict", cid or self.cid, "--verdict", str(verdict), "--sha", sha, "--arbre", arbre,
+                 "--fichiers", self.fichiers_pr())
+
+    def relire_tous(self, voter=False):
+        """Le gardien et le conseil relisent favorablement le commit jugé, qu'ils ont lu ; la fenêtre de R3 est écoulée."""
+        self.a("2026-10-29T12:00:00Z")
+        for qui in ("bruno", "bidji29"):
+            self.ok_("relire", self.cid, *self.lu(self.cid), "--utilisateur", qui, "--avis", "favorable", "--motif", self.MOTIF)
+        if voter:
+            self.ok_("voter", self.cid, "--utilisateur", "bidji29", "--valeur", "1")
+
+    def test_1_relancer_la_ci_sur_le_meme_contenu_ne_peut_que_nuire(self):
+        """(1) ines : chronomètre −0,39 % puis +1,28 % au même arbre, et seul le dernier verdict restait : on relançait la CI
+        jusqu'à passer R4. Chaque verdict s'ajoute à l'historique, et R4 juge chacun de ceux du même contenu."""
+        self.soumettre_()
+        self.verdict_("aaa0001", "7ee0001", chrono=-0.0039, bruit=False)
+        self.verdict_("aaa0002", "7ee0001", chrono=0.0128)  # commit amendé, même arbre : cette fois le chronomètre passe
+        self.assertEqual([(h["sha"], h["arbre"], h["gain"]) for h in self.enr(self.cid)["verdicts"]],
+                         [("aaa0001", "7ee0001", -0.0039), ("aaa0002", "7ee0001", 0.0128)])
+        self.relire_tous(voter=True)
+        code, texte = self.acceptation(self.cid)
+        self.assertEqual(code, 1, texte)
+        self.assertIn("R4 : instructions_n6 +5.0 %, mais le chronomètre ne le confirme pas au-delà du bruit (-0.4 %) : il faut une "
+                      "mesure d'une autre configuration qui voie le gain (bee enregistrer-mesure) [verdict précédent du même contenu "
+                      "mesuré, commit aaa0001]", texte)
+        self.assertEqual(texte.count("R4 :"), 1, "le verdict courant, lui, confirme le gain")
+        # Un recul au-delà du bruit, dans n'importe lequel des verdicts du même contenu, est un refus.
+        self.verdict_("aaa0003", "7ee0001", chrono=-0.02)
+        self.assertIn("le chronomètre recule au-delà du bruit (-2.0 %)", self.acceptation(self.cid)[1])
+        # Parcours honnête : un autre code (autres décomptes), mesuré une fois et confirmé ; un autre contenu ne compte pas.
+        self.verdict_("bbb0001", "7ee0002", chrono=0.0128, instructions=0.06)
+        self.verdict_("bbb0001", "7ee0002", chrono=0.0128, instructions=0.06)  # relu au passage suivant : rien de plus
+        self.assertEqual(len(self.enr(self.cid)["verdicts"]), 4)
+        for qui in ("bruno", "bidji29"):
+            self.ok_("relire", self.cid, *self.lu(self.cid), "--utilisateur", qui, "--avis", "favorable", "--motif", self.MOTIF)
+        code, texte = self.acceptation(self.cid)
+        self.assertEqual(code, 0, texte)
+        self.valide()
+        # Le classement d'une course garde le gain le moins favorable du même contenu : relancer ne fait pas monter.
+        self.assertAlmostEqual(bee.gain_mesure(bee.Registre(self.dossier), self.enr(self.cid)), 0.0128 / 1.1)
+        self.verdict_("bbb0002", "7ee0002", chrono=0.04, instructions=0.06)
+        self.assertAlmostEqual(bee.gain_mesure(bee.Registre(self.dossier), self.enr(self.cid)), 0.0128 / 1.1)
+
+    def test_1_l_historique_est_borne_et_un_oubli_exige_une_autre_configuration(self):
+        self.soumettre_()
+        for i in range(bee.VERDICTS_MAX + 1):
+            self.verdict_(f"ccc{i:04d}", f"7ee{i:04d}")
+        enr = self.enr(self.cid)
+        self.assertEqual((len(enr["verdicts"]), enr["verdicts_oublies"], enr["verdicts"][0]["sha"]), (20, 1, "ccc0001"))
+        self.valide()
+        self.relire_tous(voter=True)
+        code, texte = self.acceptation(self.cid)
+        self.assertEqual(code, 1, texte)
+        self.assertIn("R4 : 1 verdict(s) sorti(s) de l'historique (au plus 20) : une mesure d'une autre configuration doit "
+                      "confirmer le gain", texte)
+        rapport = self.dossier / "ab.json"
+        rapport.write_text(json.dumps({"base": {"commit": "2948eeb"}, "candidat": {"commit": "ccc0020"},
+                                       "machine": {"architecture": "arm64", "compilateur": "clang 17"},
+                                       "metriques": {"debit_compression_n6": {"gain": 0.011, "au_dela_du_bruit": True}}}), encoding="utf-8")
+        self.ok_("enregistrer-mesure", self.cid, "--ab", str(rapport), "--utilisateur", "chloe")
+        code, texte = self.acceptation(self.cid)
+        self.assertEqual(code, 0, texte)
+
+    def test_2_r1_est_reverifiee_par_le_registre(self):
+        """(2) ines et hugo : un verdict de 52 lignes pour une tâche S (50 au plus) était intégrable, la CI du fork étant verte."""
+        self.soumettre_()
+        self.verdict_("aaa0001", "7ee0001", lignes=52)
+        self.relire_tous(voter=True)
+        code, texte = self.acceptation(self.cid)
+        self.assertEqual(code, 1, texte)
+        self.assertIn("R1 : 52 lignes modifiées au verdict, au plus 50 pour une tâche S", texte)
+        self.verdict_("aaa0002", "7ee0002", lignes=50)
+        for qui in ("bruno", "bidji29"):
+            self.ok_("relire", self.cid, *self.lu(self.cid), "--utilisateur", qui, "--avis", "favorable", "--motif", self.MOTIF)
+        code, texte = self.acceptation(self.cid)
+        self.assertEqual(code, 0, texte)
+
+    def test_3_une_relecture_porte_sur_le_commit_lu(self):
+        """(3) jules, PR 54 : il lit ca78d1a, l'auteur pousse 76a34cf, et bee relire inscrivait 76a34cf : une favorable comptait sur
+        un commit jamais lu. bee relire exige --commit <sha lu> et refuse s'il n'est plus le commit du verdict courant."""
+        self.soumettre_()
+        relire = lambda *options: self.bee("relire", self.cid, "--utilisateur", "chloe", "--avis", "favorable",  # noqa: E731
+                                           "--motif", self.MOTIF, *options)
+        code, texte = relire("--commit", "ca78d1a")
+        self.assertEqual(code, 1, texte)
+        self.assertIn("n'a pas encore de verdict : la relecture s'enregistre sans commit (sans --commit)", texte)
+        self.verdict_("ca78d1a", "7ee0001")
+        nouveau = "76a34cf" + "0" * 33
+        self.verdict_(nouveau, "7ee0002")  # l'auteur pousse entre la lecture et l'écriture
+        code, texte = relire("--commit", "ca78d1a")
+        self.assertEqual(code, 1, texte)
+        self.assertIn(f"vous avez lu ca78d1a, l'auteur a poussé depuis ; relisez le diff de {nouveau}", texte)
+        for options in ([], ["--commit", "76a34c"], ["--commit", "76A34CF"], ["--commit", "76a34cf1"], ["--commit", "76a34cf"]):
+            code, texte = relire(*options)
+            self.assertEqual(code, 1, (options, texte))
+        self.assertIn("dites quel commit vous avez lu (--commit <sha>)", relire()[1])
+        self.assertEqual(self.enr(self.cid)["relectures"], [])
+        self.assertEqual(relire("--commit", nouveau)[0], 0)
+        self.assertEqual(self.enr(self.cid)["relectures"][0]["sha"], nouveau, "le commit lu, en entier")
+        self.valide()
+
+    def test_4_le_gain_declare_est_borne_avant_tout_calcul(self):
+        """(4) jules, manifeste b7 : un gain déclaré de 1e300 était mis à null, mais l'écart se calculait (2,5e298, imprimé en
+        300 chiffres)."""
+        self.soumettre_()
+        verdict, manifeste = self.dossier / "verdict.json", self.dossier / "manifeste.yaml"
+        verdict.write_text(json.dumps({"ci": "verte", "gain": 0.03, "au_dela_du_bruit": True, "lignes_modifiees": 10}), encoding="utf-8")
+        base = yaml.safe_load(MANIFESTE_REMPLI)
+        for apres, gain, ecart in ((55.0, 0.1, 0.07), (50.0 * 1000001, 1000000.0, 999999.97), (50.0 * 1000002, None, None),
+                                   (1e300, None, None)):
+            with self.subTest(apres=apres):
+                manifeste.write_text(yaml.safe_dump({**base, "mesures": {**base["mesures"], "apres": {"debit_compression_n6": apres}}}),
+                                     encoding="utf-8")
+                self.ok_("enregistrer-verdict", self.cid, "--verdict", str(verdict), "--manifeste", str(manifeste), "--sha", "abc1234")
+                enr = self.enr(self.cid)
+                self.assertEqual((enr["declare"]["gain"], enr["verdict"]["ecart_declare"]), (gain, ecart))
+                self.assertEqual("écart de" in self.acceptation(self.cid)[1], ecart is not None)
+        self.valide()
+
+    def test_5_un_contenu_refuse_est_signale_toutes_taches_confondues(self):
+        """(5) jules soumet sous miniz-0019 l'arbre que hugo avait refusé sous miniz-0021 : ni refus ni alerte, et la copie se
+        classait devant le travail honnête d'ines. L'alerte compare l'arbre à toutes les contributions du registre."""
+        self.soumettre_()
+        self.verdict_("aaa0001", "7ee0001")
+        self.ok_("relire", self.cid, *self.lu(self.cid), "--utilisateur", "bruno", "--avis", "defavorable", "--motif",
+                 "Change la sortie compressée, hors périmètre.")
+        self.verdict_("aaa0002", "7ee0003")  # un autre contenu, que personne ne relit
+        self.ok_("prendre", "miniz-9001", "--utilisateur", "chloe")
+        copie = self.soumettre("miniz-9001", "chloe", 99329)
+        self.verdict_("bbb0001", "7ee0001", cid=copie)
+        alerte = f"ce contenu a été refusé par bruno dans {self.cid} (même arbre, autre tâche : miniz-0099)"
+        code, texte = self.acceptation(copie)
+        self.assertIn(alerte, texte)
+        self.assertIn(alerte, self.ok_("classement"))
+        self.assertIn(f"⚠ {copie} : {alerte}", self.ok_("voir", "miniz-9001"))
+        # Parcours honnête : un autre contenu, jamais refusé, n'est pas signalé.
+        self.verdict_("bbb0002", "7ee0002", cid=copie)
+        self.assertNotIn("ce contenu a été refusé", self.acceptation(copie)[1])
+        # Une contribution refusée (statut posé par le conseil) dont un verdict a porté ce contenu est signalée aussi.
+        self.verdict_("bbb0003", "7ee0003", cid=copie)
+        self.assertNotIn("ce contenu a été refusé", self.acceptation(copie)[1])
+        chemin = self.dossier / f"contributions/miniz/{self.cid}.yaml"
+        bee.ecrire_yaml(chemin, {**bee.lire_yaml(chemin), "statut": "refusee"})
+        self.assertIn(f"ce contenu a été refusé dans {self.cid} (même arbre, autre tâche : miniz-0099, contribution refusée)",
+                      self.acceptation(copie)[1])
+
+    def test_7_les_pseudos_se_comparent_sans_la_casse(self):
+        """(7) jules : une levée « par: BIDJI29 » ne valait rien, alors qu'un pseudo est un login GitHub, sans la casse."""
+        self.soumettre_()
+        reg = bee.Registre(self.dossier)
+        self.assertTrue("BIDJI29" in reg.conseil and "Bruno" in reg.gardiens and "Bruno" in reg.privilegies())
+        self.assertFalse("bidji" in reg.conseil or None in reg.conseil or "chloe" in reg.privilegies() or "ALICE" in reg.membres)
+        self.assertEqual((bee.autre_orthographe(reg, "ALICE"), bee.autre_orthographe(reg, "alice")), ("alice", None))
+        self.verdict_("aaa0001", "7ee0001")
+        self.ok_("relire", self.cid, *self.lu(self.cid), "--utilisateur", "bruno", "--avis", "defavorable", "--motif", "Refus motivé.")
+        bloque = "relecture défavorable de bruno (gardien, conseil ou Confirmé) : elle bloque"
+        self.assertIn(bloque, self.acceptation(self.cid)[1])
+        self.a("2026-10-27T13:00:00Z")
+        chemin = self.dossier / f"contributions/miniz/{self.cid}.yaml"
+        for par, levee in (("BRUNO", False), ("chloe", False), ("BIDJI29", True)):  # le conseil seul lève, quelle que soit la casse
+            bee.ecrire_yaml(chemin, {**bee.lire_yaml(chemin), "levees": [{"relecteur": "Bruno", "motif": "Levée motivée par le conseil.",
+                                                                        "par": par, "le": "2026-10-27T13:00:00Z"}]})
+            self.assertEqual(bloque not in self.acceptation(self.cid)[1], levee, par)
+        self.valide()
+        # Un participant en course ne juge pas une concurrente, quelle que soit la casse de son nom.
+        self.parallele("miniz-0099", "chloe")
+        concurrents = bee.concurrents_de(bee.Registre(self.dossier), self.enr(self.cid))
+        self.assertFalse(bee.avis_recevable({"relecteur": "CHLOE", "avis": "defavorable"}, concurrents))
+        self.assertTrue(bee.avis_recevable({"relecteur": "CHLOE", "avis": "favorable"}, concurrents))
+        self.assertNotIn("Alice", concurrents, "l'auteur n'est pas son propre concurrent")
+
+    def test_8_l_integration_relit_la_base_de_la_pr_avant_de_fusionner(self):
+        """(8) note du 30/10 : si l'API servait base_ref_changed en retard, le verdict de l'ancienne base serait enregistré ;
+        integration-auto.yml relit les événements de la PR du fork juste avant de fusionner, et ne fusionne pas si la base a
+        changé (même lecture que verdicts.yml : issues/<n>/events et timeline)."""
+        c1, c2 = TestRevueAdverse.course_relue(self)
+        self.a("2026-11-02T00:00:00Z")  # au-delà de 120 h : chacune est intégrable seule
+        etats = {PR_MINIZ + "99101": {"state": "OPEN", "head": "abc1234", "auteur": "bruno",
+                                      "evenements": ["automatic_base_change_succeeded"]},
+                 PR_MINIZ + "99102": {"state": "OPEN", "head": "abc1234", "auteur": "alice",
+                                      "chronologie": [{"event": "base_ref_changed", "created_at": "2026-10-28T10:00:00Z"}]}}
+        sortie, etat, appels = TestRevueAdverse.etape(self, "Intégrer", etats)
+        self.assertFalse(TestRevueAdverse.appels_de(appels, "pr", "merge"), sortie)
+        self.assertEqual(sortie.count("la base de la PR a changé"), 2, sortie)
+        self.assertIn("repos/Bee-ruche/minizBee/issues/99102/timeline?per_page=100", [a["args"][1] for a in appels])
+        self.assertEqual((self.enr(c1)["statut"], self.enr(c2)["statut"]), ("en_relecture", "en_relecture"))
+        del etats[PR_MINIZ + "99101"]["evenements"]  # parcours honnête : une base jamais changée
+        sortie, etat, appels = TestRevueAdverse.etape(self, "Intégrer", etats)
+        self.assertEqual([a["args"][2] for a in TestRevueAdverse.appels_de(appels, "pr", "merge")], [PR_MINIZ + "99101"], sortie)
+        self.assertEqual((self.enr(c1)["statut"], self.enr(c2)["statut"]), ("integree", "ecartee"))
+
+    # --- Revue adverse de e0eb641 ---
+
+    def test_s1_le_meme_contenu_mesure_se_reconnait_a_ses_decomptes_dans_tout_le_fil(self):
+        """S1 : retoucher le manifeste (un octet hors du code mesuré) changeait l'arbre et redonnait un tirage du chronomètre ;
+        re-soumettre le même commit repartait d'un historique vierge. Le contenu mesuré se reconnaît aux décomptes B, exacts,
+        dans la contribution et son fil (même auteur, même tâche)."""
+        self.soumettre_()
+        self.verdict_("aaa0001", "7ee0001", chrono=-0.02)  # recul au-delà du bruit
+        self.verdict_("aaa0002", "7ee0002", chrono=0.0128)  # manifeste retouché : autre arbre, mêmes décomptes
+        self.relire_tous(voter=True)
+        code, texte = self.acceptation(self.cid)
+        self.assertEqual(code, 1, texte)
+        self.assertIn("le chronomètre recule au-delà du bruit (-2.0 %) [verdict précédent du même contenu mesuré, commit aaa0001]", texte)
+        self.assertAlmostEqual(bee.gain_mesure(bee.Registre(self.dossier), self.enr(self.cid)), -0.02 / 1.1)
+        # Un verdict sans décompte se reconnaît à l'arbre.
+        sans = self.dossier.parent / "sans.json"
+        sans.write_text(json.dumps({"ci": "verte", "gain": 0.05, "au_dela_du_bruit": True, "lignes_modifiees": 10}), encoding="utf-8")
+        self.ok_("enregistrer-verdict", self.cid, "--verdict", str(sans), "--sha", "aaa0003", "--arbre", "7ee0001", "--fichiers", self.fichiers_pr())
+        self.assertEqual([v.get("sha") for v, _ in bee.verdicts_du_contenu(bee.Registre(self.dossier), self.enr(self.cid))], ["aaa0003", "aaa0001"])
+        # Parcours honnête : un autre code, d'autres décomptes ; ses verdicts seuls comptent.
+        self.verdict_("bbb0001", "7ee0004", chrono=0.0128, instructions=0.06)
+        for qui in ("bruno", "bidji29"):
+            self.ok_("relire", self.cid, *self.lu(self.cid), "--utilisateur", qui, "--avis", "favorable", "--motif", self.MOTIF)
+        self.assertEqual(self.acceptation(self.cid)[0], 0)
+        # Re-soumettre le contenu refusé : la PR est fermée, alice reprend la tâche, mêmes décomptes que aaa0001.
+        self.a("2026-10-29T13:00:00Z")
+        self.ok_("cloturer", self.cid, "--motif", "PR fermée sans fusion.")
+        self.a("2026-10-30T14:00:00Z")
+        self.ok_("prendre", "miniz-0099", "--utilisateur", "alice")
+        premiere, self.cid = self.cid, self.soumettre("miniz-0099", "alice", 99329)
+        self.verdict_("ccc0001", "7ee0005", chrono=0.0128)
+        self.a("2026-11-01T14:00:00Z")
+        for qui in ("bruno", "bidji29"):
+            self.ok_("relire", self.cid, *self.lu(self.cid), "--utilisateur", qui, "--avis", "favorable", "--motif", self.MOTIF)
+        code, texte = self.acceptation(self.cid)
+        self.assertEqual(code, 1, texte)
+        self.assertIn(f"recule au-delà du bruit (-2.0 %) [verdict précédent du même contenu mesuré, commit aaa0001, dans {premiere}]", texte)
+
+    def test_s2_le_commit_lu_se_donne_en_entier(self):
+        """S2 : une collision sur les 7 premiers caractères se fabrique en deux minutes ; --commit exige le sha entier, égal."""
+        self.soumettre_()
+        lu, pousse = "abcdef1" + "0" * 33, "abcdef1" + "9" * 33
+        self.verdict_(lu, "7ee0001")
+        self.verdict_(pousse, "7ee0002")  # fabriqué pour commencer comme le commit lu
+        relire = lambda commit: self.bee("relire", self.cid, "--commit", commit, "--utilisateur", "bruno", "--avis",  # noqa: E731
+                                         "favorable", "--motif", self.MOTIF)
+        code, texte = relire("abcdef1")
+        self.assertEqual(code, 1, texte)
+        self.assertIn("donnez le sha entier du commit lu (40 caractères)", texte)
+        self.assertEqual(relire(lu)[0], 1, "le commit lu n'est plus celui du verdict")
+        self.assertEqual(self.enr(self.cid)["relectures"], [])
+        self.assertEqual(relire(pousse)[0], 0, "parcours honnête : il relit le commit jugé, en entier")
+
+    def test_s3_le_relecteur_lit_le_diff_du_commit_juge(self):
+        """S3 : le nœud relire faisait lire la tête de la PR, qui a pu bouger. verifier-acceptation et contexte --role relire
+        impriment le diff du commit jugé contre la base vérifiée du verdict, et --commit <ce sha>."""
+        self.soumettre_()
+        self.assertIn(f"# {self.cid} : pas encore de commit jugé à relire", self.acceptation(self.cid)[1])
+        sha, base = "abcdef1" + "2" * 33, "ba5e" * 10
+        verdict, bases = self.dossier.parent / "verdict.json", self.dossier.parent / "bases.txt"
+        verdict.write_text(json.dumps({"ci": "verte", "gain": 0.03, "au_dela_du_bruit": True, "lignes_modifiees": 10,
+                                       "details": {"base": base}, "base_juge": {"base": base, "commit": "c" * 40}}), encoding="utf-8")
+        bases.write_text(f"{base} ahead\n", encoding="utf-8")
+        self.ok_("enregistrer-verdict", self.cid, "--verdict", str(verdict), "--sha", sha, "--arbre", "7ee0001", "--bases", str(bases),
+                 "--fichiers", self.fichiers_pr())
+        self.assertEqual(self.enr(self.cid)["verdict"]["base"], base)
+        ligne = (f"# Relire {self.cid} : le diff du commit jugé, gh api repos/Bee-ruche/minizBee/compare/{base}...{sha} -H \"Accept: "
+                 f"application/vnd.github.diff\" ; puis bee relire {self.cid} --commit {sha} …")
+        self.assertIn(ligne, self.acceptation(self.cid)[1])
+        self.assertIn(ligne, self.ok_("contexte", "miniz-0099", "--role", "relire"))
+        self.assertIn(ligne, self.ok_("contexte", "miniz-0099", "--role", "relire", "--budget", "1"), "jamais retirée par --budget")
+        noeud = (RACINE / "arbre/roles/relire/SENS.md").read_text(encoding="utf-8")
+        self.assertIn("`gh api …/compare/<base>...<sha>`, jamais la tête de\nla PR", noeud)
+        self.assertIn("le sha entier lu, celui du verdict (vérifie-le)", noeud)
+        self.valide()
+
+    def test_s4_un_votant_n_a_qu_une_voix_quelle_que_soit_la_casse(self):
+        """S4 : GitHub laisse changer la seule casse d'un login ; « Alice » votait une seconde fois après « alice ». vote_net et le
+        dépouillement de R10 (quorum compris) comptent un vote par votant, sans la casse : son plus récent."""
+        self.contributeurs("alice", "chloe")
+        self.soumettre_()
+        self.ok_("voter", self.cid, "--utilisateur", "chloe", "--valeur", "1")
+        self.a("2026-10-27T13:00:00Z")
+        self.assertIn("Chloe : votre fiche est chloe", self.bee("voter", self.cid, "--utilisateur", "Chloe", "--valeur", "-1")[1])
+        self.assertEqual([c.name for c in (self.dossier / f"votes/{self.cid}").glob("*.yaml")], ["chloe.yaml"])
+        bee.ecrire_yaml(self.dossier / f"votes/{self.cid}/CHLOE.yaml", {"sujet": self.cid, "votant": "CHLOE", "valeur": -1,
+                                                                        "le": "2026-10-27T12:30:00Z"})  # écrit à la main
+        reg = bee.Registre(self.dossier)
+        self.assertEqual(bee.vote_net(reg, self.enr(self.cid), bee.calculer_niveaux(reg)), -1, "une voix, la plus récente")
+        bee.ecrire_yaml(self.dossier / "propositions/P-0001.yaml", {"id": "P-0001", "auteur": "alice", "regle": "R8",
+                        "texte_propose": "Quatre engagements.", "motif": "Essai.", "ouverte_le": "2026-10-27T12:00:00Z", "statut": "ouverte"})
+        for votant in ("chloe", "Chloe", "CHLOE", "alice"):
+            bee.ecrire_yaml(self.dossier / f"votes/P-0001/{votant}.yaml", {"sujet": "P-0001", "votant": votant, "valeur": 1,
+                                                                            "le": "2026-10-27T12:30:00Z"})
+        reg = bee.Registre(self.dossier)
+        resultat = bee.depouiller_proposition(reg, "P-0001", bee.calculer_niveaux(reg), bee.maintenant())
+        self.assertEqual((resultat["votants_ponderes"], resultat["pour"]), (2, 2))
+
+    def test_m3_une_fusion_hors_de_la_branche_par_defaut_n_est_pas_consignee(self):
+        """M3 : après gh pr merge, l'intégration n'est consignée que si la PR vise la branche par défaut du fork et que le commit
+        de fusion en est un ancêtre."""
+        c1, c2 = TestRevueAdverse.course_relue(self)
+        self.a("2026-11-02T00:00:00Z")
+        etats = {PR_MINIZ + "99101": {"state": "OPEN", "head": "abc1234", "auteur": "bruno", "base": "autre"},
+                 PR_MINIZ + "99102": {"state": "OPEN", "head": "abc1234", "auteur": "alice", "base": "autre"}}
+        sortie, etats, _ = TestRevueAdverse.etape(self, "Intégrer", etats)
+        self.assertEqual(sortie.count("hors de la branche par défaut du fork"), 2, sortie)
+        etats[PR_MINIZ + "99102"]["base"] = etats[PR_MINIZ + "99101"]["base"] = "master"
+        etats["comparaisons"] = {"f" * 40: "diverged"}  # le commit de fusion n'est pas dans master
+        sortie, etats, _ = TestRevueAdverse.etape(self, "Intégrer", etats)
+        self.assertEqual(sortie.count("hors de la branche par défaut du fork"), 2, sortie)
+        self.assertEqual((self.enr(c1)["statut"], self.enr(c2)["statut"]), ("en_relecture", "en_relecture"))
+        del etats["comparaisons"]  # parcours honnête
+        TestRevueAdverse.etape(self, "Intégrer", etats)
+        self.assertEqual((self.enr(c2)["statut"], self.enr(c2)["fusion_sha"], self.enr(c1)["statut"]), ("integree", "f" * 40, "ecartee"))
+
+
+    def test_s1_une_instruction_de_plus_ne_redonne_pas_de_tirage(self):
+        """Vérification de 3ea3a71 (S1) : B 950000 et recul du chronomètre, puis B 950001 et +1,28 % : la retouche d'une instruction
+        redonnait un tirage. Dans le fil, des décomptes à moins de 1 % sont le même contenu mesuré."""
+        self.soumettre_()
+        self.verdict_("aaa0001", "7ee0001", chrono=-0.02, instructions=0.05)  # B = 950000
+        self.verdict_("aaa0002", "7ee0002", chrono=0.0128, instructions=0.049999)  # B = 950001
+        self.relire_tous(voter=True)
+        code, texte = self.acceptation(self.cid)
+        self.assertEqual(code, 1, texte)
+        self.assertIn("recule au-delà du bruit (-2.0 %) [verdict précédent du même contenu mesuré, commit aaa0001]", texte)
+        # Parcours honnête : un code qui s'éloigne d'au moins 1 % (B = 940000) est un autre contenu mesuré.
+        self.verdict_("bbb0001", "7ee0003", chrono=0.0128, instructions=0.06)
+        for qui in ("bruno", "bidji29"):
+            self.ok_("relire", self.cid, *self.lu(self.cid), "--utilisateur", qui, "--avis", "favorable", "--motif", self.MOTIF)
+        self.assertEqual(self.acceptation(self.cid)[0], 0)
+
+
+class TestTour3PR(BaseRepetitionGenerale):
+    """ruche-0028, côté historique de main et verifier-pr : fenêtre de R3 et bornes de course depuis la fusion de la soumission,
+    historique des verdicts et levées écrits par la CI ou le conseil seuls, fiches sans double par la casse."""
+
+    def setUp(self):
+        super().setUp()
+        (self.dossier / "gouvernance/gardiens.yaml").write_text("membres:\n  - pseudo: farid\n", encoding="utf-8")
+        self.commit("gardien")
+
+    def soumission(self, a_soumettre="2026-10-30T01:46:00Z", reserver=True):
+        """alice réserve le 29/10 à 22 h ; sa soumission, datée de a_soumettre, est vérifiée le 30/10 à 2 h."""
+        if reserver:
+            self.a("2026-10-29T22:00:00Z")
+            self.prendre_et_fusionner("alice")
+        self.branche("soumission")
+        self.a(a_soumettre)
+        self.ok("soumettre", "miniz-0099", "--utilisateur", "alice", "--pr", PR_MINIZ + "77028", "--resume", "Premier jet.")
+        self.commit()
+        self.a("2026-10-30T02:00:00Z")
+
+    def verdict_sur_main(self, sha, arbre):
+        git(self.dossier, "switch", "-q", "main")
+        verdict = self.dossier.parent / "verdict.json"
+        verdict.write_text(json.dumps({"ci": "verte", "gain": 0.03, "au_dela_du_bruit": True, "lignes_modifiees": 10}), encoding="utf-8")
+        self.ok("enregistrer-verdict", "miniz-0099-c1", "--verdict", str(verdict), "--sha", sha, "--arbre", arbre)
+        self.commit(f"verdict {sha}")
+
+    def pr_a_la_main(self, auteur, modifier, *morceaux, attendu=1):
+        self.branche("main_a_la_main")
+        chemin = self.dossier / "contributions/miniz/miniz-0099-c1.yaml"
+        enr = bee.lire_yaml(chemin)
+        modifier(enr)
+        bee.ecrire_yaml(chemin, enr)
+        self.commit()
+        code, texte = self.verifier(auteur)
+        self.assertEqual(code, attendu, texte)
+        for morceau in morceaux:
+            self.assertIn(morceau, texte)
+        git(self.dossier, "switch", "-qf", "main")
+        git(self.dossier, "branch", "-qD", "main_a_la_main")
+
+    def geste_verifie(self, qui, date, verifie, *commande, nature):
+        """Un geste fait à `date`, vérifié par verifier-pr à `verifie` (Validation du registre, puis fusion-auto), fusionné."""
+        self.branche("geste")
+        self.a(date)
+        self.ok(*commande)
+        self.commit()
+        self.a(verifie)
+        self.libre_service(qui, nature)
+        self.fusionner("geste")
+
+    def test_b1_un_geste_verifie_30_minutes_apres_sa_date_passe(self):
+        """B1 (revue adverse) : « Validation du registre » prend 12 à 34 min avant verifier-pr ; à 15 min de tolérance, presque
+        tout le libre-service était refusé. La tolérance reste de 2 h ; la fenêtre de R3 et les bornes de course partent de la
+        fusion de la soumission : antidater (bruno, PR 49 et 50, 1 h 55) n'y rogne plus rien."""
+        self.contributeurs("chloe")
+        self.commit("chloe contributrice")
+        cid = "miniz-0099-c1"
+        self.geste_verifie("alice", "2026-10-29T22:00:00Z", "2026-10-29T22:30:00Z", "prendre", "miniz-0099", "--utilisateur", "alice",
+                           nature="reservation")
+        self.geste_verifie("alice", "2026-10-30T01:30:00Z", "2026-10-30T02:00:00Z", "soumettre", "miniz-0099", "--utilisateur", "alice",
+                           "--pr", PR_MINIZ + "77028", "--resume", "Premier jet.", nature="soumission")
+        self.verdict_sur_main("abc1234", "7ee0001")
+        self.geste_verifie("chloe", "2026-10-30T02:10:00Z", "2026-10-30T02:40:00Z", "relire", cid, "--commit", "abc1234", "--utilisateur",
+                           "chloe", "--avis", "favorable", "--motif", "Diff du commit relu en entier.", nature="relecture")
+        self.geste_verifie("chloe", "2026-10-30T02:45:00Z", "2026-10-30T03:15:00Z", "voter", cid, "--utilisateur", "chloe", "--valeur", "1",
+                           nature="vote")
+        # Le détournement du tour 3 : réservation et soumission antidatées de 1 h 55, acceptées, mais fusionnées à 7 h et 7 h 01.
+        self.geste_verifie("bruno", "2026-10-30T05:05:00Z", "2026-10-30T07:00:00Z", "prendre", "miniz-9001", "--utilisateur", "bruno",
+                           nature="reservation")
+        self.geste_verifie("bruno", "2026-10-30T05:06:00Z", "2026-10-30T07:01:00Z", "soumettre", "miniz-9001", "--utilisateur", "bruno",
+                           "--pr", PR_MINIZ + "77029", "--resume", "Antidatée.", nature="soumission")
+        reg = bee.Registre(self.dossier)
+        fusion = bee.lire_instant("2026-10-30T07:01:00Z")
+        enr = reg.enregistrement("miniz-9001-c1")[1]
+        self.assertEqual(enr["soumise_le"], "2026-10-30T05:06:00Z")
+        self.assertEqual(bee.bornes_attente(reg, enr), (fusion + bee.dt.timedelta(hours=96), fusion + bee.dt.timedelta(hours=120)))
+        self.a("2026-10-31T06:00:00Z")  # 24 h 54 après soumise_le, 22 h 59 après la fusion
+        texte = self.bee("verifier-acceptation", "miniz-9001-c1")[1]
+        self.assertIn("fenêtre d'ouverture : 22 h écoulées sur 24 h, depuis la fusion de la soumission (2026-10-30T07:01:00Z)", texte)
+        essaim = json.loads(self.ok("essaim", "--json"))["en_relecture"]
+        self.assertEqual(next(c["fenetre_restante_heures"] for c in essaim if c["contribution"] == "miniz-9001-c1"), 1.0)
+
+    def test_s4_une_fiche_ne_double_pas_un_pseudo_par_la_casse(self):
+        """S4 : « Chloe » (le même compte GitHub, casse changée) déposait un second vote à côté de celui de « chloe »."""
+        self.contributeurs("chloe")
+        self.commit("chloe contributrice")
+        self.soumission()
+        self.libre_service("alice", "soumission")
+        self.fusionner("soumission")
+        cid = "miniz-0099-c1"
+        self.geste_verifie("chloe", "2026-10-30T02:00:00Z", "2026-10-30T02:00:00Z", "voter", cid, "--utilisateur", "chloe", "--valeur", "1",
+                           nature="vote")
+        self.branche("double")
+        bee.ecrire_yaml(self.dossier / f"votes/{cid}/Chloe.yaml", {"sujet": cid, "votant": "Chloe", "valeur": 1,
+                                                                    "le": os.environ["BEE_MAINTENANT"]})
+        self.commit()
+        self.refusee("Chloe", f"votes/{cid}/Chloe.yaml : chloe existe déjà : un pseudo est un login GitHub, sans la casse",
+                     "auteur de la PR « Chloe » : sa fiche est chloe", "votant « Chloe » s'écrit chloe (sa fiche)")
+        git(self.dossier, "switch", "-qf", "main")
+        git(self.dossier, "branch", "-qD", "double")
+        # Parcours honnête : chloe change son vote, dans sa fiche.
+        self.geste_verifie("chloe", "2026-10-30T02:10:00Z", "2026-10-30T02:10:00Z", "voter", cid, "--utilisateur", "chloe", "--valeur", "-1",
+                           nature="vote")
+        self.assertEqual(sorted(c.name for c in (self.dossier / f"votes/{cid}").glob("*.yaml")), ["chloe.yaml"])
+
+    def test_b1_un_engagement_se_compare_a_la_soumission_declaree(self):
+        """Vérification de 3ea3a71 (B1) : X était daté par sa fusion, les engagements des autres par leur déclaration ; une
+        inscription datée entre soumise_le(X) et sa fusion retenait X jusqu'à l'expiration R7. Les engagements se comparent à
+        soumise_le(X) ; un engagement d'avant la soumission retient toujours X."""
+        self.geste_verifie("alice", "2026-10-29T22:00:00Z", "2026-10-29T22:30:00Z", "prendre", "miniz-0099", "--utilisateur", "alice",
+                           nature="reservation")
+        self.geste_verifie("bruno", "2026-10-30T01:00:00Z", "2026-10-30T01:00:00Z", "prendre", "miniz-0099", "--utilisateur", "bruno",
+                           "--en-parallele", nature="inscription_parallele")
+        self.geste_verifie("alice", "2026-10-30T01:30:00Z", "2026-10-30T02:00:00Z", "soumettre", "miniz-0099", "--utilisateur", "alice",
+                           "--pr", PR_MINIZ + "77028", "--resume", "Premier jet.", nature="soumission")
+        self.geste_verifie("chloe", "2026-10-30T01:45:00Z", "2026-10-30T02:05:00Z", "prendre", "miniz-0099", "--utilisateur", "chloe",
+                           "--en-parallele", nature="inscription_parallele")
+        texte = self.bee("verifier-acceptation", "miniz-0099-c1")[1]
+        self.assertIn("bruno (inscrit en parallèle) travaille sur la tâche depuis 2026-10-30T01:00:00Z", texte)
+        self.assertNotIn("chloe (inscrit en parallèle)", texte)
+
+
+    def test_m2_la_fusion_est_le_dernier_ajout_de_la_contribution(self):
+        """M2 : un identifiant réutilisé (fichier retiré puis rajouté) retombait sur son premier ajout, donc sur soumise_le."""
+        self.soumission()
+        self.libre_service("alice", "soumission")
+        self.fusionner("soumission")  # premier ajout, à 2 h
+        chemin = self.dossier / "contributions/miniz/miniz-0099-c1.yaml"
+        texte = chemin.read_text(encoding="utf-8")
+        self.a("2026-10-30T03:00:00Z")
+        chemin.unlink()
+        self.commit("retrait")
+        self.a("2026-10-30T04:00:00Z")
+        chemin.write_text(texte, encoding="utf-8")
+        self.commit("de nouveau")
+        reg = bee.Registre(self.dossier)
+        self.assertEqual(bee.soumission_effective(reg, reg.enregistrement("miniz-0099-c1")[1]), bee.lire_instant("2026-10-30T04:00:00Z"))
+
+    def test_6_la_fenetre_de_r3_part_de_la_fusion_de_la_soumission(self):
+        self.soumission()  # soumise_le 1 h 46, dans la tolérance ; fusionnée à 2 h
+        self.libre_service("alice", "soumission")
+        self.fusionner("soumission")
+        self.verdict_sur_main("abc1234", "7ee0001")
+        fenetre = "depuis la fusion de la soumission (2026-10-30T02:00:00Z)"
+        for instant, ouverte in (("2026-10-31T01:50:00Z", True), ("2026-10-31T02:00:00Z", False)):
+            self.a(instant)  # 24 h 04 après soumise_le, mais 23 h 50 après la fusion ; puis 24 h après la fusion
+            code, texte = self.bee("verifier-acceptation", "miniz-0099-c1")
+            self.assertEqual(fenetre in texte, ouverte, texte)
+            self.assertEqual("fenêtre d'ouverture" in texte, ouverte, texte)
+
+    def test_1_7_historique_et_levees_ne_s_ecrivent_ni_par_l_auteur_ni_par_un_membre(self):
+        self.soumission()
+        self.libre_service("alice", "soumission")
+        self.fusionner("soumission")
+        self.verdict_sur_main("aaa0001", "7ee0001")
+        self.verdict_sur_main("aaa0002", "7ee0001")
+        self.valide()
+        # (1) L'auteur efface le verdict qui le gêne de l'historique : refusé.
+        self.pr_a_la_main("alice", lambda enr: enr.update(verdicts=enr["verdicts"][1:]),
+                          "verdict, statut et confirmation de défaut sont écrits par la CI ou le conseil")
+        # (3) Une relecture du commit lu, par la commande, passe en libre-service.
+        self.branche("relecture")
+        self.ok("relire", "miniz-0099-c1", "--commit", "aaa0002", "--utilisateur", "farid", "--avis", "defavorable", "--motif", "Refus motivé.")
+        self.commit()
+        self.libre_service("farid", "relecture")
+        self.fusionner("relecture")
+        # (7) Une levée : écrite par un membre, refusée ; par le conseil, recevable, écrite comme sa fiche (revue de 3ea3a71, N1).
+        levee = lambda par: lambda enr: enr.update(levees=[{"relecteur": "farid", "motif": "Levée motivée par le conseil.",  # noqa: E731
+                                                            "par": par, "le": os.environ["BEE_MAINTENANT"]}])
+        self.pr_a_la_main("bruno", levee("bidji29"), "une levée (levees) est écrite par le conseil seul")
+        self.pr_a_la_main("bidji29", levee("BIDJI29"), "par « BIDJI29 » s'écrit bidji29 (sa fiche)")
+        self.pr_a_la_main("bidji29", levee("bidji29"), attendu=0)
+
+
+class TestOrthographe(BaseInvitations):
+    """Vérification de 3ea3a71 (N1) : ruche-0028 avait rendu les fiches membres/ sans la casse, alors que R13 et les plafonds
+    comparent les pseudos avec elle ; « Gina » proposait une invitation, puis gina y donnait l'accord de gardien. Une seule
+    orthographe, dès l'entrée : un pseudo qui ne suit sa fiche qu'à la casse près est refusé (--utilisateur, auteur de la PR,
+    champs d'identité d'un fichier), avec l'orthographe de la fiche ; jamais ramené en silence."""
+
+    def setUp(self):
+        super().setUp()
+        self.ok("inscrire", "--pseudo", "gina", "--compte-cree-le", "2020-01-01")
+        self.commit("gina inscrite")
+        self.a("2026-10-30T10:00:00Z")
+
+    def abandonner(self, nom="pr"):
+        git(self.dossier, "switch", "-qf", "main")
+        git(self.dossier, "branch", "-qD", nom)
+
+    def test_n1_une_invitation_se_propose_sous_l_orthographe_de_sa_fiche(self):
+        source = "https://github.com/octocat"
+        self.ko("Gina : votre fiche est gina", "inviter", "--utilisateur", "Gina", "--identifiant", "github:octocat", "--demande",
+                "garant", "--fait", "Maintient un logiciel libre de compression depuis dix ans.", "--source", source,
+                "--message", MESSAGE_INVITATION, "--debat", "D-0001")
+        self.branche()
+        self.inviter("gina")
+        bee.ecrire_invitation(self.chemin_invitation(), {**self.invitation(), "propose_par": "Gina"})  # écrite à la main
+        self.commit()
+        self.refusee("Gina", "auteur de la PR « Gina » : sa fiche est gina", "propose_par « Gina » s'écrit gina (sa fiche)")
+        self.abandonner()
+        self.branche()  # témoin honnête
+        self.inviter("gina")
+        self.commit()
+        self.attend_le_conseil("gina", "invitation")
+
+    def test_n1_l_accord_de_gardien_ne_contourne_pas_sa_propre_invitation(self):
+        """Le détournement : l'invitation de gina porterait « Gina », et gina y donnerait l'accord de gardien (comparaison exacte
+        en aval). Ni « Gina », ni le conseil n'écrivent ce propose_par ; écrite gina, l'accord de gina est refusé."""
+        self.branche()
+        self.inviter("gina")
+        bee.ecrire_invitation(self.chemin_invitation(), {**self.invitation(), "propose_par": "Gina"})
+        self.commit()
+        for auteur in ("Gina", "bidji29"):
+            self.refusee(auteur, "propose_par « Gina » s'écrit gina (sa fiche)")
+        self.abandonner()
+        self.branche()
+        self.inviter("gina")
+        self.publier("gina", "invitation", libre=False)
+        self.a("2026-11-02T11:00:00Z")
+        self.ko("on ne donne pas son accord à sa propre invitation", "invitation", "accord-gardien", "I-0001", "--utilisateur", "gina")
+        self.ko("GINA : votre fiche est gina", "invitation", "accord-gardien", "I-0001", "--utilisateur", "GINA")
+
+    def test_n1_le_plafond_de_creations_ne_se_contourne_pas_par_la_casse(self):
+        dernier = None
+        for _ in range(bee.config_creations(bee.Registre(self.dossier))["taches_max_par_24h"]):
+            self.branche()
+            dernier = self.proposer_tache("alice")
+            self.commit()
+            self.fusionner()
+        self.ko("Alice : votre fiche est alice", "proposer-tache", "miniz", "--utilisateur", "Alice", "--type", "test")
+        suivante = dernier.with_name(f"miniz-{int(dernier.stem.rsplit('-', 1)[1]) + 1:04d}.yaml")
+        for auteur, morceaux in (("Alice", ["auteur de la PR « Alice » : sa fiche est alice", "cree_par « Alice » s'écrit alice"]),
+                                 ("alice", ["plafond : alice aurait 6"])):  # témoin honnête : le plafond d'alice tient
+            self.branche()
+            bee.ecrire_yaml(suivante, {**bee.lire_yaml(dernier), "id": suivante.stem, "cree_par": auteur})
+            self.commit()
+            self.refusee(auteur, *morceaux)
+            self.abandonner()
+
+    def test_n1_le_plafond_de_notes_ne_se_contourne_pas_par_la_casse(self):
+        for lot in range(2):
+            self.branche(f"lot{lot}")
+            for n in range(10):
+                self.a(f"2026-10-30T{10 + lot}:{n:02d}:00Z")
+                self.ok("noter", "miniz-0099", "--utilisateur", "gaspard", "--texte", f"Note {lot}-{n} : une piste.")
+            self.commit()
+            self.libre_service("gaspard", "note")
+            self.fusionner(f"lot{lot}")
+        self.a("2026-10-30T11:30:00Z")
+        self.ko("Gaspard : votre fiche est gaspard", "noter", "miniz-0099", "--utilisateur", "Gaspard", "--texte", "De trop.")
+        for auteur, morceaux in (("Gaspard", ["auteur de la PR « Gaspard » : sa fiche est gaspard", "par « Gaspard » s'écrit gaspard"]),
+                                 ("gaspard", ["plafond : gaspard aurait 21 notes en 24 h"])):  # témoin honnête
+            self.branche("trop")
+            self.noter_a_la_main({"par": auteur, "texte": "De trop."})
+            self.commit()
+            self.refusee(auteur, *morceaux)
+            self.abandonner("trop")
 
 
 MANIFESTE_REMPLI = """tache: miniz-0099
