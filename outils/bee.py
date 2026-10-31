@@ -1796,7 +1796,7 @@ def verifier_registre(reg):
                             *reg.invitations.values(), *reg.membres.values(), *reg.votes, *reg.mesures]:
         donnees = {k: v for k, v in donnees.items() if k != "verdict"} if isinstance(donnees, dict) else donnees
         for lieu, texte in textes_de(donnees):
-            probleme = probleme_texte_libre(texte, f"{reg.rel(chemin)} : {lieu}", lieu not in ("titre", "resume"))
+            probleme = probleme_texte_libre(texte, f"{reg.rel(chemin)} : {lieu}", {"titre": "le titre", "resume": "le résumé"}.get(lieu))
             if probleme:
                 ajouter(probleme)
 
@@ -2472,16 +2472,19 @@ def neutraliser_marques(texte):
     return texte
 
 
-def probleme_texte_libre(texte, quoi, multiligne=True):
-    """Le contrôle commun de tout texte libre du registre (ruche-0029) : aucun caractère que caractere_sortant_interdit refuse
-    (ni saut de ligne ni tabulation hors d'un texte multiligne), aucune marque d'encadré ; None, ou la raison, qui nomme le
-    point de code, jamais le caractère."""
+def probleme_texte_libre(texte, quoi, une_ligne=None):
+    """Le contrôle commun de tout texte libre du registre (ruche-0029) : sur une ligne si `une_ligne` le nomme (« le résumé »),
+    aucun caractère que caractere_sortant_interdit refuse, aucune marque d'encadré ; None, ou la raison, qui nomme le point
+    de code, jamais le caractère."""
     texte = str(texte)
-    refuses = {c for c in set(texte) if caractere_sortant_interdit(c) or (not multiligne and c in "\n\t")}  # chacun une fois
+    if une_ligne and ("\n" in texte or "\t" in texte):
+        return f"{quoi} : {une_ligne} tient sur une ligne (ni saut de ligne ni tabulation)"
+    refuses = {c for c in set(texte) if caractere_sortant_interdit(c)}  # chacun une fois
     c = next((c for c in texte if c in refuses), None) if refuses else None
     if c is not None:
         return (f"{quoi} : caractère invisible refusé (U+{ord(c):04X}, catégorie {unicodedata.category(c)}) : "
-                + ("il cacherait ou maquillerait le texte à l'affichage" if multiligne else "ce texte tient sur une ligne"))
+                + ("retirez U+FE0F, le sélecteur de variante d'émoji (l'émoji reste lisible sans lui)" if c == "\ufe0f"
+                   else "il cacherait ou maquillerait le texte à l'affichage"))
     if marques_encadre(texte):
         return (f"{quoi} : fausse marque d'encadré refusée (« === DONNÉES », « === FIN DES DONNÉES ») : seul bee encadre les "
                 "données qu'il imprime")
@@ -2505,7 +2508,27 @@ def textes_de(valeur, lieu="", profondeur=0):
 def montrer(texte):
     """Un message tel qu'on peut l'imprimer (bee valider, verifier-pr) : chaque caractère que refuse caractere_sortant_interdit
     écrit « <U+XXXX> », même cité par le message d'un schéma."""
-    return "".join(f"<U+{ord(c):04X}>" if caractere_sortant_interdit(c) else c for c in str(texte))
+    return "".join(f"<U+{ord(c):04X}>" if caractere_sortant_interdit(c) else c for c in str(texte)).replace("##[", "# #[")
+
+
+CLE_VERDICT = re.compile(r"[A-Za-z0-9_.-]{1,80}")
+
+
+def verdict_montrable(verdict):
+    """Les chaînes que enregistrer-verdict recopie du verdict.json, données du fork (ruche-0029, S2) : chaque texte sur une ligne,
+    borné, l'invisible montré, la marque cassée (texte_declare) ; une clé de scénario ou de métrique hors de CLE_VERDICT est
+    remplacée (cle_refusee_<n>), jamais le verdict perdu. Renvoie le nombre de clés remplacées."""
+    remplacees = 0
+    if "etape_en_echec" in verdict:
+        verdict["etape_en_echec"] = texte_declare(verdict["etape_en_echec"], 200) or "inconnue"
+    for champ in ("instructions", "degradations"):
+        if isinstance(verdict.get(champ), dict):
+            remplacees += sum(not CLE_VERDICT.fullmatch(c) for c in verdict[champ])
+            verdict[champ] = {c if CLE_VERDICT.fullmatch(c) else f"cle_refusee_{i}": v for i, (c, v) in enumerate(verdict[champ].items())}
+    if isinstance(verdict.get("juge"), dict):
+        verdict["juge"]["constructions_suspectes"] = [{k: texte_declare(s[k], 300) or "" for k in ("type", "detail")}
+                                                      for s in verdict["juge"]["constructions_suspectes"]]
+    return remplacees
 
 
 def probleme_textes_libres(valeur, lieu, maximum, profondeur=0):
@@ -3225,11 +3248,25 @@ DEBUTS_DEMANDE = tuple(sorted({forme_comparee(phrase.split(":")[0]).strip() for 
                                for phrase in langue.values()}))
 
 
+UNICODE_CI = "15.0.0"  # la table Unicode de Python 3.12, celui de la CI (.github/workflows)
+
+
+def table_unicode_suffit(version=unicodedata.unidata_version):
+    """Vrai si cette table Unicode connaît tout ce que connaît celle de la CI : un caractère non attribué (Cn) ici l'est aussi en
+    CI (un caractère attribué ne l'est jamais plus). Sinon la clause Cn est sautée et la CI tranche (ruche-0029, B2)."""
+    return tuple(map(int, version.split("."))) >= tuple(map(int, UNICODE_CI.split(".")))
+
+
+CN_REFUSE = table_unicode_suffit()
+
+
 def caractere_sortant_interdit(c):
     """Plus strict que caractere_interdit, pour ce qui sort de la ruche (message, faits, sources, motifs) et pour tout texte
-    libre du registre (probleme_texte_libre, ruche-0029) : en plus des catégories Cc et Cf, l'usage privé (Co), les non
-    attribués (Cn), les séparateurs de ligne et de paragraphe (Zl, Zp) et les invisibles d'INVISIBLES_SORTANTS."""
-    return (caractere_interdit(c) or unicodedata.category(c) in ("Co", "Cn", "Zl", "Zp")
+    libre du registre (probleme_texte_libre, ruche-0029) : en plus des catégories Cc et Cf, l'usage privé (Co), les substituts
+    isolés (Cs), les séparateurs de ligne et de paragraphe (Zl, Zp), les non attribués (Cn, si la table Unicode suffit) et les
+    invisibles d'INVISIBLES_SORTANTS."""
+    categorie = unicodedata.category(c)
+    return (caractere_interdit(c) or categorie in ("Co", "Cs", "Zl", "Zp") or (CN_REFUSE and categorie == "Cn")
             or any(debut <= ord(c) <= fin for debut, fin in INVISIBLES_SORTANTS))
 
 
@@ -5584,6 +5621,8 @@ def mettre_a_jour_resume(reg, args):
 def cmd_soumettre(args):
     reg = Registre(args.registre)
     reg.exiger_membre(args.utilisateur)
+    if args.resume and (probleme := probleme_texte_libre(args.resume, "--resume", "le résumé")):  # avant d'écrire (ruche-0029)
+        raise ErreurBee(probleme)
     if args.mettre_a_jour:
         return mettre_a_jour_resume(reg, args)
     if not args.pr:
@@ -6789,6 +6828,8 @@ def cmd_enregistrer_verdict(args):
     if lignes < 0:
         raise ErreurBee(f"lignes_modifiees négatif ({lignes}) : verdict refusé")
     verdict["lignes_modifiees"] = lignes
+    if remplacees := verdict_montrable(verdict):
+        print(f"⚠ {remplacees} clé(s) de scénario ou de métrique illisible(s) dans le verdict : remplacée(s) par cle_refusee_<n>")
     manifeste_ignore, recopie = None, None
     if args.manifeste:
         try:  # donnée venue du fork : illisible ou trop grosse (pas même lue), elle n'empêche pas d'enregistrer le verdict
@@ -6838,7 +6879,7 @@ def cmd_enregistrer_verdict(args):
         juges = [c for c in fichiers if correspond(c, motifs)]
         verdict["fichiers_controles"] = True
         if juges:
-            verdict["juges_modifies"] = juges[:50]
+            verdict["juges_modifies"] = [neutraliser_marques(montrer(j)) for j in juges[:50]]  # noms venus de la PR (ruche-0029)
     if args.execution:
         verdict["execution"] = args.execution
     enr = dict(enr)
@@ -7237,7 +7278,7 @@ def cmd_verifier_acceptation(args):
     if raisons:
         print(f"✗ {args.contribution} : pas encore intégrable.")
         for r in raisons:
-            print("  - " + r)
+            print("  - " + montrer(r))
         return 1
     print(f"✓ {args.contribution} est intégrable automatiquement (R3) : {resume_r3(reg, bilan)}."
           + ("" if porte_humaine(reg) else " Aucune relecture privilégiée requise."))
@@ -7257,7 +7298,7 @@ def cmd_integrer(args):
     if raisons:
         print(f"✗ {args.contribution} n'est pas intégrable automatiquement :")
         for r in raisons:
-            print("  - " + r)
+            print("  - " + montrer(r))
         return 1
     instant = en_iso(maintenant())
     tid = enr["tache"]
