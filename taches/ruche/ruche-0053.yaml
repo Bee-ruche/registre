@@ -1,0 +1,32 @@
+id: ruche-0053
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: M
+titre: "Le rejeu : chaque changement de l'outil rejoué sur l'histoire du registre et les attaques archivées"
+contexte: >
+  Décision du fondateur du 31/10 (analyse « la ruche de test », claude/bee-ruche-de-test.md côté conseil) : la
+  ruche teste ses règles sans seconde ruche permanente, par « un seul état, deux versions de la loi ». Le
+  registre est un dépôt git : son histoire est rejouable. À construire : un rejeu, lancé par la CI de l'outil
+  quand outils/bee.py change, qui (1) refait passer à la nouvelle version de verifier-pr les PR honnêtes déjà
+  fusionnées sur main (base, tête, auteur et heure de chacune, BEE_MAINTENANT fixé à l'heure de la PR) et
+  exige le même code qu'à l'époque, sauf exception déclarée dans un fichier de la PR avec sa raison ; (2)
+  refait passer les attaques archivées (celles des revues adverses et des répétitions générales, gardées
+  comme tests) et exige qu'elles restent refusées. Le premier point attrape les règles devenues trop strictes
+  pour un geste honnête (exemple du 31/10 : un émoji courant refusé) ; le second, les failles rouvertes.
+fichiers: [outils/rejeu.py, outils/test_rejeu.py, .github/workflows/validation.yml, docs/outillage.md]
+portee: 0.8
+metrique: null
+critere_acceptation:
+  - "le rejeu parcourt toutes les PR fusionnées sur main depuis le 27/10 et rend, pour chacune, le code d'origine ; une divergence fait échouer la CI de l'outil, sauf exception déclarée et motivée"
+  - "une régression semée (une règle rendue plus stricte sur un geste honnête passé) est attrapée par le rejeu ; une faille rouverte (un test d'attaque archivé qui passe) aussi"
+  - "le rejeu ne lit que le registre (aucun appel réseau) et tient en moins de 10 minutes en CI ; la durée est donnée dans la PR"
+  - "revue adverse indépendante jointe"
+hors_perimetre:
+  - "COMMANDEMENTS.md"
+  - "les règles elles-mêmes (le rejeu ne change aucune décision)"
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-31"
