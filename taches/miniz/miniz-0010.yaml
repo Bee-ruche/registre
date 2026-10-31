@@ -32,7 +32,7 @@ contexte: >
   fin de comparaison lit un octet de p et q pour le dernier caractère ; vérifier qu'elle ne
   dépasse jamais m_dict (TDEFL_LZ_DICT_SIZE + TDEFL_MAX_MATCH_LEN - 1 octets).
 fichiers: [miniz_tdef.c]
-portee: 1.0
+portee: 0.3
 metrique: debit_compression_n6
 sortie_compressee: identique
 critere_acceptation:
@@ -55,3 +55,6 @@ notes:
   - par: "bidji29"
     le: "2026-10-30T19:43:11Z"
     texte: "30/10, vérification des tâches issues de miniz-0029 (gardien, au nom du conseil) : cette tâche semble périmée depuis miniz-0015 (la comparaison des correspondances, l. 896-932, a déjà été réécrite). À revoir avant de la prendre ; la boucle des sondes (l. 878-893) est l'objet de miniz-0036."
+  - par: "bidji29"
+    le: "2026-10-31T02:17:16Z"
+    texte: "31/10, santé du registre : portée ramenée à 0.3. La note du 30/10 dit que cette tâche semble périmée depuis miniz-0015 ; elle passait en tête pour un petit budget. À confirmer ou écarter par un gardien (ruche-0030 outillera le retrait)."
