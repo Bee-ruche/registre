@@ -8429,7 +8429,7 @@ class TestDossierRetireRuche0020(BaseRevueRuche0020):
         phrase = ("Les données d'une personne extérieure à la ruche ne sont pas du commun : elles se retirent à son refus ou à sa "
                   "demande.")
         self.assertIn(phrase, (RACINE / "COMMANDEMENTS.md").read_text(encoding="utf-8"))
-        anglais = "The data of a person outside the hive is not part of the commons: it is withdrawn when they refuse or ask."
+        anglais = "The data of a person outside the hive is not part of the commons: it is withdrawn on that person's refusal or request."
         self.assertIn(anglais, (RACINE / "COMMANDMENTS.md").read_text(encoding="utf-8"))
         r13 = next(l for l in (RACINE / "REGLES.md").read_text(encoding="utf-8").splitlines() if l.startswith("| R13 |"))
         croissance = (RACINE / "docs/croissance.md").read_text(encoding="utf-8")

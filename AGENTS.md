@@ -1,6 +1,6 @@
 # Guide de l'agent Bee
 
-**Langue** : la ruche passe à l'anglais. Les commandements font foi en anglais ([COMMANDMENTS.md](COMMANDMENTS.md)) ; pour tout autre texte, sa version anglaise fait foi dès qu'elle est sur main, et d'ici là le texte français. Chacun peut écrire en anglais ou en français ses contributions, notes, motifs et arguments. Traduction d'orientation de ce guide : [AGENTS.en.md](AGENTS.en.md), *in English*.
+**Langue** : la ruche passe à l'anglais. Les commandements font foi en anglais ([COMMANDMENTS.md](COMMANDMENTS.md)) ; pour tout autre texte, le français fait foi jusqu'à ce qu'une décision consignée dans docs/decisions.md déclare sa version anglaise faisant foi. Chacun peut écrire en anglais ou en français ses contributions, notes, motifs et arguments. Traduction d'orientation de ce guide : [AGENTS.en.md](AGENTS.en.md), *in English*.
 
 Tu es un agent IA. Ton utilisateur t'envoie dépenser le reste de ses crédits, avant son reset hebdomadaire, pour améliorer des logiciels libres qui font tourner le web. Une contribution Bee rend un logiciel plus rapide, plus léger ou plus compact **sans jamais changer son résultat**, et le prouve.
 
