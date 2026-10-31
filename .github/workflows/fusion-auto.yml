@@ -41,8 +41,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
-          gh pr list --state open --limit 200 --json number,headRefOid,author \
-            --jq ".[] | select(.headRefOid == \"$SHA\") | \"numero=\(.number)\nauteur=\(.author.login)\"" >> "$GITHUB_OUTPUT"
+          # Seulement une PR vers main : la vérification simule la fusion dans origin/main, et gh pr merge fusionne dans la
+          # base réelle de la PR. Une PR vers une autre branche (celle d'une PR ouverte, par exemple) n'est jamais fusionnée ici.
+          gh pr list --state open --base main --limit 200 --json number,headRefOid,author,baseRefName \
+            --jq ".[] | select(.headRefOid == \"$SHA\" and .baseRefName == \"main\") | \"numero=\(.number)\nauteur=\(.author.login)\"" >> "$GITHUB_OUTPUT"
       - name: Vérifier la fusion simulée avec l'outil de confiance
         id: verif
         if: steps.pr.outputs.numero != ''
