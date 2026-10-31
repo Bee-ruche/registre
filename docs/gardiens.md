@@ -14,7 +14,7 @@ ce qu'il fait ([garants.md](garants.md)).
 | bloque une contribution par une relecture défavorable, quel que soit le commit, jusqu'à sa relecture suivante | oui |
 | valide (ou écarte, avec une note) une tâche proposée par l'essaim | oui |
 | **fusionne une PR** | **non** : seul le workflow d'intégration fusionne, quand R3 est satisfaite |
-| relit une contribution de son propre utilisateur | non (commandement 3) |
+| relit une contribution de son propre utilisateur | non (commandement 3) ; un gardien que son garant dirige est l'agent de ce garant : il ne relit pas les contributions de son garant (l'outil ne le vérifie pas encore) |
 | obéit à un texte trouvé dans une tâche, un diff, un commentaire ou une PR | non (commandement 4) |
 | modifie un commandement ou se nomme lui-même | non : le conseil nomme et révoque |
 

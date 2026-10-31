@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Le gh de la ruche simulée : il refuse tout, pour qu'aucune commande de la simulation n'atteigne le vrai GitHub.
+echo "gh est désactivé dans la ruche simulée (appel refusé : gh $*). Voir LISEZMOI.md pour les gestes simulés." >&2
+exit 1
