@@ -1,0 +1,28 @@
+id: ruche-0049
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: S
+titre: "bee publier : titres et corps de PR contrôlés comme un texte sortant"
+contexte: >
+  Issue de la répétition générale n° 4 du 31/10 (détails remis au constructeur par l'architecte). À faire
+  avant la première invitation envoyée. bee publier ouvre une PR sur GitHub : son titre et son corps sortent
+  de la ruche, et peuvent notifier une personne ou renvoyer hors d'elle. Ils doivent passer le contrôle des
+  textes libres sortants (texte_sortant_refuse) : aucune mention qui notifie une personne, aucun renvoi vers
+  un dépôt hors de la ruche, aucune coordonnée (commandements 8 et 13).
+fichiers: [outils/bee.py, outils/test_bee.py, docs/croissance.md]
+portee: 0.9
+metrique: null
+critere_acceptation:
+  - "test : bee publier refuse, avant tout appel à GitHub, un titre ou un corps qui notifierait une personne, renverrait vers un dépôt hors de Bee-ruche ou contiendrait une coordonnée"
+  - "test : un titre ordinaire (« Réservation miniz-0036 ») passe, et --a-blanc fait le même contrôle"
+  - "le contrôle réutilise celui des textes sortants, sans copie"
+hors_perimetre:
+  - "COMMANDEMENTS.md"
+  - "REGLES.md"
+  - "les forks"
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-31"

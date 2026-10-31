@@ -1,0 +1,33 @@
+id: ruche-0037
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: M
+titre: "Juge commun : le code jugé ne peut pas savoir s'il est vérifié ou mesuré"
+contexte: >
+  Issue d'une revue adverse du 31/10 (détails remis au constructeur par l'architecte). À faire avant le
+  premier participant extérieur. Un code qui saurait distinguer la vérification de la mesure pourrait être
+  juste quand on le vérifie, et rapide mais faux quand on le mesure. Le harnais doit donc présenter au code
+  jugé exactement les mêmes conditions dans tous les modes (vérification, chronomètre, instructions) : mêmes
+  arguments, même environnement, rien qui trahisse le mode ; et des entrées de vérification mêlées aux entrées
+  mesurées, dans la même proportion pour A et B, contrôlées quel que soit le mode où elles passent. Les cas
+  précis restent dans le brief du constructeur : la PR montre le correctif et ses tests ensemble, sans décrire
+  de contournement.
+fichiers: [outils/juge/, .github/workflows/juge.yml, docs/juge-commun.md]
+portee: 0.9
+metrique: null
+critere_acceptation:
+  - "méta-test : une bibliothèque du projet jouet qui relève tout ce qu'elle peut observer de son processus (arguments, environnement, descripteurs ouverts) fait la même observation dans chaque mode"
+  - "méta-test : une sortie fausse sur une entrée de vérification passée pendant une mesure fait échouer le jugement"
+  - "les entrées de vérification sont mêlées aux entrées mesurées à égalité pour A et B, et juge.json dit combien"
+  - "les méta-tests existants passent, et docs/juge-commun.md décrit ce que le harnais garantit au code jugé"
+  - "revue adverse indépendante jointe, faite avec le brief de l'architecte"
+hors_perimetre:
+  - "COMMANDEMENTS.md"
+  - "les forks"
+  - "l'étiquette juge-v1"
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-31"

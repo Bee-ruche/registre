@@ -1,0 +1,33 @@
+id: ruche-0051
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: M
+titre: "Plusieurs comptes d'une même personne : R7, R8, le frein de R13 et les gardiens"
+contexte: >
+  Issue de la répétition générale n° 4 du 31/10 (détails remis au constructeur par l'architecte). À faire
+  avant la première invitation envoyée. Demande une décision de conception du conseil avant de commencer.
+  Plusieurs règles supposent un compte par personne : R7, R8, le frein de R13 (nombre de membres actifs) et la
+  nomination des gardiens. Des comptes liés à une même personne peuvent fausser ces comptes. À trancher par le
+  conseil : comment une personne déclare ses comptes liés, comment un membre signale des comptes qu'il croit
+  liés, et sur quelles participations se comptent les membres actifs (une abstention de poids nul ne compte
+  pas). À ordonner après ruche-0022 (identité par le numéro de compte GitHub) ; voir aussi le débat D-0002.
+fichiers: [outils/bee.py, outils/test_bee.py, docs/croissance.md]
+portee: 0.7
+metrique: null
+critere_acceptation:
+  - "décision du conseil consignée dans docs/decisions.md avant tout code"
+  - "test : des comptes déclarés liés comptent pour un dans R7, R8, le frein de R13 et la nomination des gardiens"
+  - "test : un signalement de comptes liés est enregistré pour le conseil, sans rien publier sur la personne au-delà des pseudos"
+  - "test : le nombre de membres actifs du frein ne compte pas une abstention de poids nul"
+  - "revue adverse indépendante jointe"
+hors_perimetre:
+  - "COMMANDEMENTS.md"
+  - "REGLES.md"
+  - "les forks"
+depend_de: [ruche-0022]
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-31"

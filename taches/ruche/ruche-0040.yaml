@@ -1,0 +1,34 @@
+id: ruche-0040
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: M
+titre: "Porte du libre-service : tailles bornées et contrôle commun des caractères pour tout fichier"
+contexte: >
+  Issue d'une revue adverse du 31/10 (détails remis au constructeur par l'architecte). À faire avant le
+  premier participant extérieur. Chaque fichier qu'accepte le libre-service est relu par bee valider à chaque
+  CI, et chacun de ses textes libres est montré aux agents. Un fichier démesuré coûte à chaque CI tant qu'il
+  reste dans l'arbre, et un texte qui échappe au contrôle des caractères peut tromper l'œil d'un relecteur. À
+  construire : (1) une borne de taille par fichier et par champ pour chaque sorte de fichier du libre-service
+  (docs/gouvernance.md, « Dossiers du libre-service »), vérifiée avant toute analyse coûteuse ; (2) le
+  contrôle commun des caractères appliqué à chaque champ texte de chacune ; (3) docs/gouvernance.md donne les
+  bornes. À faire après ruche-0029, qui crée ce contrôle commun. Les cas précis restent dans le brief du
+  constructeur : la PR montre le correctif et ses tests ensemble, sans décrire de contournement.
+fichiers: [outils/bee.py, outils/test_bee.py, docs/gouvernance.md]
+portee: 0.9
+metrique: null
+critere_acceptation:
+  - "test : pour chaque sorte de fichier du libre-service, un fichier au-delà de sa borne, puis un champ au-delà de la sienne, sont refusés par verifier-pr et bee valider, sans charger le fichier entier"
+  - "test : un test parcourt les champs texte de chaque schéma du libre-service et échoue si l'un d'eux échappe au contrôle commun des caractères"
+  - "la durée de bee valider sur le registre actuel est donnée avant et après dans la PR ; aucun fichier existant ne devient invalide (sinon, le dire et le corriger)"
+  - "revue adverse indépendante jointe, faite avec le brief de l'architecte"
+hors_perimetre:
+  - "COMMANDEMENTS.md"
+  - "REGLES.md"
+  - "les forks"
+depend_de: [ruche-0029]
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-31"

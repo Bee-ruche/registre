@@ -1,0 +1,32 @@
+id: ruche-0043
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: S
+titre: "Porte du libre-service : dates de réservation bornées des deux côtés, mode des fichiers inchangé"
+contexte: >
+  Issue d'une revue adverse du 31/10 (détails remis au constructeur par l'architecte). À faire avant le
+  premier participant extérieur. La date d'une réservation fixe l'ordre de la course de R3 et le délai de 72 h
+  ; AGENTS.md la promet à l'heure de la PR, à 2 h près. bee verifier-pr doit vérifier chaque date déclarée
+  d'une réservation ou d'une inscription en parallèle contre l'heure de la PR, ni trop tôt ni trop tard. Un
+  fichier du registre ne doit pas non plus changer de mode (exécutable ou non) par le libre-service, même sans
+  autre changement. ruche-0028 (en relecture) resserre la tolérance des dates déclarées : partir de sa version
+  fusionnée et dire ce qu'elle couvre déjà. Les cas précis restent dans le brief du constructeur : la PR
+  montre le correctif et ses tests ensemble, sans décrire de contournement.
+fichiers: [outils/bee.py, outils/test_bee.py, docs/gouvernance.md]
+portee: 0.7
+metrique: null
+critere_acceptation:
+  - "test : une réservation ou une inscription en parallèle datée hors de la tolérance, avant comme après l'heure de la PR, est refusée ; celle qu'écrit bee prendre est acceptée"
+  - "test : une PR du libre-service qui ne change que le mode d'un fichier du registre est refusée"
+  - "aucun fichier existant ne devient invalide (sinon, le dire et le corriger dans la même PR)"
+  - "revue adverse indépendante jointe, faite avec le brief de l'architecte"
+hors_perimetre:
+  - "COMMANDEMENTS.md"
+  - "REGLES.md"
+  - "les forks"
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-31"

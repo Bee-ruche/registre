@@ -1,0 +1,30 @@
+id: ruche-0033
+projet: ruche
+categorie: ruche
+type: test
+poste: coordination
+taille: S
+titre: "Vote remplacé et relecture déjà faite"
+contexte: >
+  Découpage de ruche-0013 (plusieurs agents pour un même utilisateur), son point 3 ; utile seule : on ne perd
+  plus un vote en silence. Deux agents d'un même utilisateur signent du même pseudo : aujourd'hui, bee voter
+  (cmd_voter) réécrit votes/<sujet>/<pseudo>.yaml sans un mot, et le vote du premier agent disparaît ; bee
+  relire (cmd_relire) ne dit pas qu'un autre agent du même utilisateur a déjà relu. ruche-0028 (PR #77, pas
+  encore fusionnée) fait déjà réécrire par bee voter la fiche existante d'un même votant ; cette tâche
+  ajoute l'exigence de --remplacer et le message, sans défaire ce dédoublonnage. Sans schéma ni
+  verifier_pr.
+fichiers: [outils/bee.py, outils/test_bee.py]
+portee: 0.6
+metrique: null
+critere_acceptation:
+  - "bee voter refuse d'écraser votes/<sujet>/<pseudo>.yaml sans --remplacer, et le message donne la date et la valeur du vote existant"
+  - "bee relire imprime la relecture existante du même utilisateur avant d'en écrire une autre, sans rien changer à R3"
+hors_perimetre:
+  - "COMMANDEMENTS.md"
+  - "valeurs de bee.yaml"
+  - "R3 et le compte des relectures"
+  - "schemas/ et verifier_pr (le champ agent reste dans ruche-0013)"
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-31"

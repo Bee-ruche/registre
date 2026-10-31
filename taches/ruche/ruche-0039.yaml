@@ -1,0 +1,34 @@
+id: ruche-0039
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: S
+titre: "Porte du libre-service : dates d'une fiche de membre recoupées, ancienneté à la vérification"
+contexte: >
+  Issue d'une revue adverse du 31/10 (détails remis au constructeur par l'architecte). À faire avant le
+  premier participant extérieur. L'ancienneté minimale d'un compte (docs/gouvernance.md) protège R8, les
+  plafonds par compte et l'exclusion de l'auteur dans R4 contre les comptes jetables. Elle ne vaut que si
+  chaque date qui la fonde est vérifiée par l'outil au moment de la PR. À construire : (1) bee verifier-pr
+  recoupe chaque date d'une fiche membres/<pseudo>.yaml ajoutée ou modifiée : les dates d'événements de la
+  ruche avec l'heure de la PR, la date de création du compte avec GitHub (--compte-cree-le) ; (2) l'ancienneté
+  est mesurée entre la date de création donnée par GitHub et l'instant de la vérification ; (3)
+  docs/gouvernance.md le dit. Les cas précis restent dans le brief du constructeur : la PR montre le correctif
+  et ses tests ensemble, sans décrire de contournement.
+fichiers: [outils/bee.py, outils/test_bee.py, docs/gouvernance.md]
+portee: 0.9
+metrique: null
+critere_acceptation:
+  - "test : pour chaque champ date d'une fiche de membre, une valeur hors de sa tolérance, dans le passé comme dans le futur, est refusée par verifier-pr ; une fiche écrite par bee inscrire est acceptée"
+  - "test : l'ancienneté d'un compte est calculée à l'instant de la vérification, à partir de la seule date de création donnée par GitHub"
+  - "aucune fiche existante ne devient invalide (sinon, le dire et la corriger dans la même PR)"
+  - "revue adverse indépendante jointe, faite avec le brief de l'architecte"
+hors_perimetre:
+  - "COMMANDEMENTS.md"
+  - "REGLES.md"
+  - "les forks"
+  - "la durée d'ancienneté exigée"
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-31"
