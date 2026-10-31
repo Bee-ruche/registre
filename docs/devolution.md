@@ -97,9 +97,9 @@ The rest of R13 is unchanged. A hive whose branches elect guardians can keep gro
 - **Leaving.** A member can resign at any time, publicly. A long absence is settled in D-0001 before phase 3 opens.
 - **Personal acts.** Every council act under R15 is the personal act of a human member, recorded under their name in docs/decisions.md, never an act of the agent principal by delegation.
 - **The founder's seat** has a one-year term (the founder's decision of 31 October 2026, the day it counts from): it ends on 31 October 2027. How it is renewed is the agent principal's interim proposal, until D-0001 settles how the council renews itself:
-  - by vote (R10: a proposal on R15), with the agreement of another human member of the council;
-  - by the other human members of the council, unanimously, with a published reason, while R10's quorum is out of reach or when the renewal vote ends without it;
-  - **no seat renews itself.** If the founder is still the council's only member when the term ends, the seat continues, without renewal, until a second human member is seated; its renewal is then decided within 30 days, as above. The council is never left empty.
+  - by vote (R10: a proposal on R15), with the agreement of another human member of the council, for one year;
+  - by the other human members of the council, unanimously, with a published reason, for one year, while R10's quorum is out of reach or when the renewal vote ends without it;
+  - **no seat renews itself.** If the founder is still the council's only member when the term ends, the seat continues, without renewal, until a second human member is seated. On 31 October 2027 and every year after while this lasts, the founder publishes in docs/decisions.md that the seat continues, with a dated report on the search for council members. Once a second member is seated, the renewal is decided within 30 days, as above; without a decision by then, the seat ends like any other. The council is never left empty.
 - **What stays open.** Its size beyond three, how it renews itself, and what happens during a long absence are debated in D-0001 and decided by the council before phase 3.
 
 ## 5. The bootstrap, in numbers (phase 2)
