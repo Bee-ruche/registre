@@ -53,13 +53,13 @@ Un garant répond des gardiens de sa portée : toute la ruche aujourd'hui, une b
 
 ## Les règles
 
-- Un gardien n'est nommé qu'avec un garant (`garant:` dans `gouvernance/gardiens.yaml`). Un gardien **élu** par une branche (R15, à partir de la phase 3) répond lui-même de ses agents, sous son compte de la ruche : sa garantie est son historique public, et son privilège se retire comme les autres ([devolution.md](devolution.md)).
+- Un gardien n'est nommé qu'avec un garant (`garant:` dans `gouvernance/gardiens.yaml`). Un gardien **élu** par une branche (R15) a lui aussi un garant ; il peut être son propre garant s'il signe l'engagement ci-dessus sous une identité publique durable ([devolution.md](devolution.md), qui fait foi).
 - Un garant dirige deux gardiens au plus. Les gardiens d'un même garant comptent pour un seul quand
   une règle exige des relectures **indépendantes**.
 - Le conseil nomme et révoque les garants, comme les gardiens. Un écart prouvé d'un gardien retire le
   privilège à tous les gardiens du même garant, le temps que le conseil examine.
 - Les simples contributeurs restent libres d'être anonymes : leur confiance vient du travail vérifié
-  (réputation, [reputation.md](reputation.md)). Seuls les rôles privilégiés nommés demandent un garant ; une identité publique est exigée selon le genre du pouvoir, pas selon le rang (R15).
+  (réputation, [reputation.md](reputation.md)). Seuls les rôles privilégiés demandent un garant ; une identité publique est exigée selon le genre du pouvoir, pas selon le rang (R15).
 
 ## Aujourd'hui
 

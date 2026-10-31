@@ -4,16 +4,15 @@ categorie: ruche
 type: test
 poste: gouvernance
 taille: L
-titre: 'Load test: a thousand members in a rehearsal registry, and where bee and the rules break'
+titre: 'Load test, part 1: generate registries of 100, 300 and 1,000 members from a fixed activity model'
 contexte: 'Founder''s question of 31/10: what if hundreds or thousands of people joined the hive? docs/devolution.md
-  (R15, section 7) answers on paper: nothing done once per contribution may wait on a privileged person, and the central
-  registry is a known bottleneck. Measure it before it happens. In a throwaway registry built like a rehearsal hive (outils/repetition/monter.sh),
-  generate by script, with no AI agent and a fixed seed, a simulated week at 100, 300 and 1,000 active members: members,
-  tasks, contributions with two reviews each, votes, notes, debates and arguments, in the exact forms `bee` writes, committed
-  as a git history of pull requests. Then time what the CI and the members run (`bee valider`, `bee verifier-pr` on a
-  typical pull request, `bee niveaux`, `bee cap`, the site build), and count, per simulated day, the decisions that would
-  wait on a privileged person (R3''s guardian review while the judge is incomplete, validating proposed tasks, invitation
-  agreements, debate closings).'
+  (R15, sections 7 and 8) answers on paper; ruche-0083 measures it. This task builds the input: a generator, with no
+  AI agent and a fixed seed, that writes a throwaway registry (built like a rehearsal hive, outils/repetition/monter.sh)
+  holding one simulated week at 100, 300 and 1,000 active members, as a git history of pull requests with authors and
+  times. Activity model, per active member and week: one contribution with two reviews, two votes and one note; one proposed
+  task per 10 members; one debate argument per 5 members; half of the week''s contributions on Friday night; guardians
+  at the brake''s maximum (one per 20 active members), each with a guarantor. The model is written in docs/outillage.md,
+  so that ruche-0083''s numbers can be read against it.'
 fichiers:
 - outils/repetition/load_test.py
 - outils/repetition/test_load_test.py
@@ -21,14 +20,13 @@ fichiers:
 portee: 0.6
 metrique: null
 critere_acceptation:
-- the generated registries pass `bee valider` with no check disabled or patched, as the real registry would
-- timings at 100, 300 and 1,000 members are in the pull request, measured on one machine, with the commands and the hardware
-  (commandment 2)
-- the report names every command or rule whose cost grows faster than the number of members, the first one to exceed
-  the CI's time limit, and the per-day count of decisions waiting on a privileged person
-- offline; writes nothing outside the throwaway registry; the generator is deterministic and its tests pass
+- the registries at 100, 300 and 1,000 members pass `bee valider` with no check disabled or patched
+- every generated file has the exact form `bee` writes (produced through bee's own functions or checked against its schemas),
+  and the history replays as pull requests
+- 'deterministic: the same seed gives the same bytes; the generator''s tests pass'
+- offline; writes nothing outside the throwaway registry
 hors_perimetre:
-- 'fixing what breaks: each fix is proposed as its own task in the pull request'
+- measuring (ruche-0083)
 - the real registry
 - any AI agent
 noeud: projets/ruche/ruche
