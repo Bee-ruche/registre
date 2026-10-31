@@ -16,7 +16,7 @@ mkdir -p "$S/outils" "$S/etat/journaux" "$S/etat/manifestes" "$S/abeilles"
 # Une copie entière, sans liens durs vers les objets du clone réel.
 git clone -q --bare --no-hardlinks "$registre" "$S/central.git"
 git -C "$S/central.git" symbolic-ref HEAD refs/heads/main
-git -C "$S/central.git" for-each-ref --format='%(refname:short)' refs/heads | grep -vx main | while read -r b; do
+git -C "$S/central.git" for-each-ref --format='%(refname:short)' refs/heads | { grep -vx main || true; } | while read -r b; do
   git -C "$S/central.git" branch -q -D "$b"; done
 git -C "$S/central.git" remote remove origin 2>/dev/null || true
 # Le dépôt simulé ne bouge que par les outils de la simulation (publier, decider-conseil, la CI simulée), et une PR
