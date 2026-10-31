@@ -1,0 +1,30 @@
+id: ruche-0041
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: S
+titre: "Porte du libre-service : une même PR de fork ne sert qu'une contribution"
+contexte: >
+  Issue d'une revue adverse du 31/10 (détails remis au constructeur par l'architecte). À faire avant le
+  premier participant extérieur. Une contribution déclare l'adresse de la PR de son fork ; une même PR ne doit
+  servir qu'une contribution, sans quoi un même travail compterait deux fois. À construire : l'adresse est
+  ramenée à sa forme canonique (propriétaire, dépôt, numéro) avant toute comparaison, par bee soumettre comme
+  par bee verifier-pr et bee valider. Les cas précis restent dans le brief du constructeur : la PR montre le
+  correctif et ses tests ensemble, sans décrire de contournement.
+fichiers: [outils/bee.py, outils/test_bee.py, docs/gouvernance.md]
+portee: 0.9
+metrique: null
+critere_acceptation:
+  - "test : toutes les écritures d'une même PR que GitHub accepte sont reconnues comme une seule, et la seconde contribution qui la déclare est refusée"
+  - "test : deux PR différentes restent deux"
+  - "aucune contribution existante ne devient invalide (sinon, le dire et la corriger dans la même PR)"
+  - "revue adverse indépendante jointe, faite avec le brief de l'architecte"
+hors_perimetre:
+  - "COMMANDEMENTS.md"
+  - "REGLES.md"
+  - "les forks"
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-31"

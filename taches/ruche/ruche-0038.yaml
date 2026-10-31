@@ -1,0 +1,38 @@
+id: ruche-0038
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: M
+titre: "Juge commun : sorties liées au verdict, entrées de l'appelant bornées, disque et lectures bornés"
+contexte: >
+  Issue d'une revue adverse du 31/10 (détails remis au constructeur par l'architecte). À faire avant le
+  premier participant extérieur. Le verdict d'un fork doit reposer sur ce que le juge a produit dans son
+  propre job, et juge.yml ne doit accepter de l'appelant que des réglages qui laissent un jugement complet. À
+  construire : (1) juge.yml publie en sorties de job l'empreinte du rapport (juge.json) et ses chiffres clés
+  (constructions suspectes, sorties comparées, greffon, graine, base, tête) ; le job de verdict recalcule
+  l'empreinte du rapport qu'il lit et refuse au moindre écart ; (2) les entrées de l'appelant sont bornées et
+  vérifiées avant tout usage : un nombre de répétitions minimal, la mesure des instructions obligatoire pour
+  un verdict, les SHA de base et de tête au bon format et comparés à l'événement ; (3) disque et lectures
+  bornés : dossier de sorties de taille bornée, taille des fichiers écrits plafonnée, toute lecture d'une
+  sortie ou d'un journal bornée, nombre de constructions suspectes plafonné dans juge.json ; (4) juge.json
+  consigne l'identifiant de l'image du conteneur. ruche-0024 touche aussi juge.yml (épinglage par
+  github.job_workflow_sha) : rebaser l'une sur l'autre. Les cas précis restent dans le brief du constructeur :
+  la PR montre le correctif et ses tests ensemble, sans décrire de contournement.
+fichiers: [outils/juge/, .github/workflows/juge.yml, docs/juge-commun.md]
+portee: 0.9
+metrique: null
+critere_acceptation:
+  - "méta-test : un rapport modifié entre le job de jugement et le job de verdict est refusé (empreinte différente)"
+  - "méta-test en workflow_call : un appel sous le nombre minimal de répétitions, sans mesure des instructions, ou avec un SHA mal formé ou différent de l'événement échoue avant tout jugement"
+  - "méta-test : un code jugé qui écrit sans fin ou remplit le disque fait échouer le jugement proprement, en temps borné"
+  - "juge.json consigne l'identifiant de l'image et plafonne la liste des constructions suspectes ; docs/juge-commun.md documente les sorties de job"
+  - "revue adverse indépendante jointe, faite avec le brief de l'architecte"
+hors_perimetre:
+  - "COMMANDEMENTS.md"
+  - "les forks"
+  - "l'étiquette juge-v1"
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-31"
