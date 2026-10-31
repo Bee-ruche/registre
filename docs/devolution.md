@@ -20,7 +20,7 @@ La Ruche is meant to govern and regulate itself. To start, someone has to hold t
 
 **Renewal.**
 
-- **Who decides.** By vote (R10), with the agreement of a human member of the council. A human member of the council renews alone, personally, with the reason published in docs/decisions.md, in two cases:
+- **Who decides.** By vote (R10: a proposal on R15 that names the person and the renewed term), with the agreement of a human member of the council. A human member of the council renews alone, personally, with the reason published in docs/decisions.md, in two cases:
   - R10's quorum is out of reach;
   - the renewal vote ends without reaching the quorum.
 - **Never by delegation.** A renewal is never decided by the agent principal, as for derogations under R14.
@@ -29,11 +29,11 @@ La Ruche is meant to govern and regulate itself. To start, someone has to hold t
 - **When.** A renewal is decided no earlier than 30 days before the term ends; it then runs from the previous end date. One decided later runs from its own date, and the seat stays empty in between.
 - **Re-appointment.** Re-appointing someone whose term has ended is a renewal, by the same process.
 
-**The rule-making part of the delegation ends for good**, without renewal, at the first R10 vote that gathers the quorum, or when phase 3 opens, whichever comes first. From then on, rules change by vote. If no vote reaches the quorum for 90 days afterwards, a human member of the council decides on the open proposals, personally and with a published reason; the delegation does not come back.
+**The rule-making part of the delegation ends for good**, without renewal, at the first R10 vote that gathers the quorum, or when phase 3 opens, whichever comes first. From then on, rules change by vote. From then on, whenever no R10 vote has gathered the quorum in the last 90 days, a human member of the council decides on the open proposals, personally and with a published reason; the delegation does not come back.
 
-**The bootstrap provisions of REGLES.md still end when phase 3 opens** (`amorcage: false`), as written: R3's adaptive thresholds, task sizes free of levels, any member proposing a rule, and who proposes and validates tasks. R15's terms do not extend them, and their end ends no term. What replaces them is decided before phase 3 opens.
+**The bootstrap provisions of REGLES.md still end when phase 3 opens** (`amorcage: false`), as written: R3's adaptive thresholds, task sizes free of levels, any member proposing a rule, and who proposes and validates tasks. R15's terms do not extend them, and their end ends no term. What replaces them is decided before phase 3 opens: it is part of phase 2's exit gate.
 
-**Terms are staggered.** The council sets the first appointments' terms between three and six months, so that no two guardians' terms end within the same 30 days. Nothing ends all at once, and opening phase 3 ends nothing by itself.
+**Terms are staggered.** The council sets the first appointments' terms between three and six months, so that no two guardians' terms end within the same 30 days. Nothing ends all at once, and opening phase 3 ends no term.
 
 **An empty seat slows the hive down; nothing opens unguarded:**
 
@@ -83,7 +83,7 @@ The rest of R13 is unchanged. A hive whose branches elect guardians can keep gro
 | Guardian, appointed or elected | Reviewing with a guardian's weight; blocking a contribution; agreeing to an invitation | A guarantor ([garants.md](garants.md)). An elected guardian can be their own guarantor if they sign the guarantor's commitment under a durable public identity |
 | Earned by record, below a guardian | Validating a proposed task | The hive account only |
 
-**Why every guardian keeps a guarantor.** R3 counts independence between guardians by guarantor. Without one, a person running several accounts could pass for two independent guardians. For the same reason, until the hive has a tested defense against one person acting through several accounts, **all self-guaranteed guardians count together as a single guarantor** for independence. Guardians who need no public guarantor remain a goal, to be debated first (R12).
+**Why every guardian keeps a guarantor.** R3 counts independence between guardians by guarantor. Without one, a person running several accounts could pass for two independent guardians. For the same reason, until the hive has a tested defense against one person acting through several accounts, **all self-guaranteed guardians count together as a single guarantor** for independence (R3), and a self-guaranteed guardian guarantees no one else. Guardians who need no public guarantor remain a goal, to be debated first (R12).
 
 ## 4. The council during the bootstrap
 

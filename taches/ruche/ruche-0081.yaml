@@ -6,17 +6,18 @@ poste: gouvernance
 taille: L
 titre: 'Terms: an appointed privilege carries an end date, and bee stops counting it once passed'
 contexte: 'R15 (docs/devolution.md, section 1): every appointed privilege (guarantor, guardian, security guardian) lasts
-  six months from the appointment, staggered; it is renewed by vote with a human council member''s agreement, or by a
-  human council member with a reason published in docs/decisions.md while R10''s quorum is out of reach (no R10 vote
-  gathered 20 voters of non-zero weight in the last 90 days) or when the renewal vote ends without the quorum; a renewal
-  is decided no earlier than 30 days before the end and then runs from the previous end date, a later one from its own
-  date; re-appointing someone whose term ended is a renewal. A guardian is in office (R13, completed by R15) when named,
-  with a guarantor not revoked and within term, and within their own term. Today gouvernance/gardiens.yaml and gouvernance/garants.yaml
-  carry no date that `bee` checks. Add an appointment date and an end date to each entry, the term in bee.yaml, and one
-  function that answers whether a person is in office at a given instant, used everywhere a guardian or a guarantor counts;
-  ruche-0082 adds the trial to that same function. Fail closed: a missing or unreadable date means not in office. Acts
-  made in office keep their effect after the term (R15). ruche-0026 touches the same places: whichever is integrated
-  second rebases on the other. If the work outgrows L, stop and propose a split (commandment 4).'
+  six months from the appointment, staggered; it is renewed by vote (an R10 proposal on R15 that names the person and
+  the renewed term) with a human council member''s agreement, or by a human council member with a reason published in
+  docs/decisions.md while R10''s quorum is out of reach (no R10 vote gathered 20 voters of non-zero weight in the last
+  90 days) or when the renewal vote ends without the quorum; a renewal is decided no earlier than 30 days before the
+  end and then runs from the previous end date, a later one from its own date; re-appointing someone whose term ended
+  is a renewal. A guardian is in office (R13, completed by R15) when named, with a guarantor not revoked and within term,
+  and within their own term. Today gouvernance/gardiens.yaml and gouvernance/garants.yaml carry no date that `bee` checks.
+  Add an appointment date and an end date to each entry, the term in bee.yaml, and one function that answers whether
+  a person is in office at a given instant, used everywhere a guardian or a guarantor counts; ruche-0082 adds the trial
+  to that same function. Fail closed: a missing or unreadable date means not in office. Acts made in office keep their
+  effect after the term (R15). ruche-0026 touches the same places: whichever is integrated second rebases on the other.
+  If the work outgrows L, stop and propose a split (commandment 4).'
 fichiers:
 - outils/bee.py
 - outils/test_bee.py
@@ -36,7 +37,8 @@ critere_acceptation:
 - '`bee valider` refuses an entry without its dates, an end later than the term after the appointment, a renewal decided
   more than 30 days before the end, and a new entry for a person whose earlier term ended unless its decision resolves
   to an adopted proposal (R10) or to a dated docs/decisions.md row inside the window; a council-alone renewal is refused
-  on a date when R10''s quorum was within reach, unless the renewal vote failed it'
+  on a date when R10''s quorum was within reach, unless a renewal proposal on R15 naming that person ended without the
+  quorum'
 - '`bee` prints whether R10''s quorum is within reach: the latest R10 vote, within 90 days, that gathered 20 voters of
   non-zero weight, or none'
 - '`bee valider` refuses `amorcage: false` while the council has fewer than three members'
