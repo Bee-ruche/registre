@@ -386,6 +386,8 @@ class Registre:
             donnees = self._lire_fichier(chemin)
             if donnees is not None:
                 self.mesures.append((chemin, donnees))
+        self.conseil, self.gardiens, self.garants, self.robots = (Pseudos(self.conseil), Pseudos(self.gardiens), Pseudos(self.garants),
+                                                                  Pseudos(self.robots))
 
     def _lire(self, relatif):
         chemin = self.racine / relatif
@@ -400,7 +402,7 @@ class Registre:
 
     def privilegies(self):
         """Conseil et gardiens : ceux dont la relecture ouvre la porte de R3."""
-        return set(self.conseil) | set(self.gardiens)
+        return Pseudos(self.conseil | self.gardiens)
 
     def _lien_symbolique(self, chemin):
         """Vrai si le fichier, ou un dossier entre lui et la racine du registre, est un lien symbolique."""
@@ -482,7 +484,12 @@ class Registre:
             raise ErreurBee(f"invitation inconnue : {identifiant} (bee essaim les liste)")
         return self.invitations[identifiant]
 
+    def exiger_orthographe(self, pseudo):
+        if bonne := autre_orthographe(self, pseudo):  # ruche-0028 (revue, N1) : une seule orthographe, dès l'entrée
+            raise ErreurBee(f"{pseudo} : votre fiche est {bonne} ; un pseudo s'écrit comme sa fiche, casse comprise")
+
     def exiger_membre(self, pseudo):
+        self.exiger_orthographe(pseudo)
         if pseudo not in self.membres and pseudo not in self.conseil:
             raise ErreurBee(f"{pseudo} n'est pas inscrit dans ce registre. Si votre PR d'inscription est ouverte, attendez sa fusion, "
                             f"puis : git switch main && git pull upstream main. Sinon : bee inscrire --pseudo {pseudo} --compte-cree-le AAAA-MM-JJ")
@@ -547,6 +554,40 @@ def meme_pseudo(a, b):
     return isinstance(a, str) and isinstance(b, str) and a.casefold() == b.casefold()
 
 
+class Pseudos(frozenset):
+    """« pseudo in … » sans la casse (meme_pseudo), pour le conseil, les gardiens, les garants, les robots et les concurrents
+    (ruche-0028, répétition générale n° 3 : une levée « par: BIDJI29 » ne valait rien)."""
+    def __contains__(self, pseudo):
+        if "plis" not in vars(self):
+            self.plis = frozenset(p.casefold() for p in self if isinstance(p, str))
+        return isinstance(pseudo, str) and pseudo.casefold() in self.plis
+
+
+# Revue adverse de 3ea3a71 (N1) : une seule orthographe par pseudo, dès l'entrée. Un pseudo qui ne suit une fiche (membres/,
+# conseil, gardiens, garants, robots) qu'à la casse près est refusé, avec l'orthographe de la fiche, jamais ramené en silence :
+# les comparaisons exactes en aval (R13, plafonds, signatures) restent justes.
+CHAMPS_PSEUDO = frozenset({"auteur", "utilisateur", "par", "relecteur", "votant", "soumise_par", "confirme_par", "cree_par",
+                           "propose_par", "ouvert_par", "clos_par", "synthese_par", "rapporteur", "pseudo", "garant"})
+
+
+def autre_orthographe(reg, pseudo):
+    """L'orthographe de la fiche d'un pseudo qui ne la suit qu'à la casse près ; None s'il est écrit comme elle, ou inconnu."""
+    connus = vars(reg).setdefault("_orthographes", {})
+    if not connus:
+        for p in [*reg.membres, *reg.conseil, *reg.gardiens, *reg.garants, *reg.robots]:
+            connus.setdefault(p.casefold(), set()).add(p) if isinstance(p, str) else None
+    bonnes = connus.get(pseudo.casefold(), set()) if isinstance(pseudo, str) else set()
+    return None if not bonnes or pseudo in bonnes else sorted(bonnes)[0]
+
+
+def pseudos_mal_ecrits(reg, donnees, profondeur=0):
+    """Les (champ, pseudo, orthographe de sa fiche) des champs d'identité d'un fichier qui ne suivent leur fiche qu'à la casse près."""
+    if isinstance(donnees, dict) and profondeur < 20:
+        return [(k, v, b) for k, v in donnees.items() if k in CHAMPS_PSEUDO and (b := autre_orthographe(reg, v))] + [
+            x for v in donnees.values() for x in pseudos_mal_ecrits(reg, v, profondeur + 1)]
+    return [x for v in donnees for x in pseudos_mal_ecrits(reg, v, profondeur + 1)] if isinstance(donnees, list) and profondeur < 20 else []
+
+
 def engagements_de(reg, utilisateur):
     """R8 : réservations et inscriptions en parallèle de l'utilisateur, tous agents confondus : [(tâche, genre)]."""
     resultat = []
@@ -588,14 +629,14 @@ def participants_course(reg, tid):
         qui.add((t.get("reservation") or {}).get("utilisateur"))
     qui |= {p.get("utilisateur") for p in paralleles_de(t)}
     qui |= {e.get("auteur") for _, e in contributions_en_course(reg, tid)}
-    return qui - {None}
+    return Pseudos(qui - {None})
 
 
 def concurrents_de(reg, enr):
     """Ceux qui sont en concurrence avec l'auteur de `enr` sur sa tâche, en ce moment (commandement 3 : on ne juge pas
     son concurrent). Tant qu'ils sont engagés dans la course, leurs votes et leurs avis défavorables sur cette
     contribution ne comptent pas, quelle que soit leur date ; leurs avis favorables comptent."""
-    return participants_course(reg, enr.get("tache")) - {enr.get("auteur")}
+    return Pseudos(p for p in participants_course(reg, enr.get("tache")) if not meme_pseudo(p, enr.get("auteur")))
 
 
 CLES_CONFIRMATION = ("defaut_confirme", "confirme_par")
@@ -605,7 +646,7 @@ def confirme_par_un_tiers(relecture):
     """Un défaut est confirmé par un tiers (confirme_par) : la CI, le conseil, un gardien ou un Confirmé autre que le
     relecteur qui l'a signalé. Seul un tel défaut rapporte (+2) à son relecteur."""
     par = relecture.get("confirme_par")
-    return bool(relecture.get("defaut_confirme")) and bool(par) and par != relecture.get("relecteur")
+    return bool(relecture.get("defaut_confirme")) and bool(par) and not meme_pseudo(par, relecture.get("relecteur"))
 
 
 def est_confirmation(ancienne, nouvelle):
@@ -664,6 +705,16 @@ def relecture_refusee(precedentes, relecture, levee_de=lambda r: False):
     return None
 
 
+def votes_de(reg, sujet):
+    """Les votes d'un sujet, un par votant sans la casse (revue adverse de ruche-0028, S4 : « Alice » votait une seconde fois après
+    « alice ») : son plus récent (le), puis son dernier fichier."""
+    par = {}
+    for chemin, v in sorted(reg.votes, key=lambda cv: (_instant_ou_rien(cv[1].get("le")) or PASSE, str(cv[0]))):
+        if v.get("sujet") == sujet and isinstance(v.get("votant"), str):
+            par[v["votant"].casefold()] = v
+    return list(par.values())
+
+
 def vote_recevable(vote, concurrents):
     """Un concurrent ne vote pas sur une contribution concurrente : tant qu'il est en course, aucun de ses votes ne compte."""
     return vote.get("votant") not in concurrents
@@ -673,7 +724,7 @@ def vote_net(reg, enr, niveaux):
     """Vote net pondéré d'une contribution : ni l'auteur, ni ses concurrents actuels."""
     concurrents = concurrents_de(reg, enr)
     return sum(int(v.get("valeur", 0)) * POIDS_VOTE.get(niveau_de(niveaux, v.get("votant")), 0)
-               for _, v in reg.votes if v.get("sujet") == enr.get("id") and not meme_pseudo(v.get("votant"), enr.get("auteur"))
+               for v in votes_de(reg, enr.get("id")) if not meme_pseudo(v.get("votant"), enr.get("auteur"))
                and vote_recevable(v, concurrents))
 
 
@@ -692,7 +743,10 @@ def gain_mesure(reg, enr):
         portee, lignes = float(tache.get("portee", 1.0)), int(verdict.get("lignes_modifiees", 0))
     except (TypeError, ValueError):
         return None
-    valeur = float(gain) * portee / (1 + lignes / 100)
+    # ruche-0028 (1) : le gain le moins favorable des verdicts du même contenu mesuré (relancer la CI ne fait pas monter).
+    gain = min([float(gain)] + [h["gain"] for h, _ in verdicts_du_contenu(reg, enr)[1:] if isinstance(h.get("gain"), (int, float))
+                                and not isinstance(h.get("gain"), bool) and math.isfinite(h["gain"])])
+    valeur = gain * portee / (1 + lignes / 100)
     return valeur if math.isfinite(valeur) else None
 
 
@@ -704,7 +758,7 @@ def cle_classement(reg, enr, niveaux):
     total, le choix est déterministe."""
     gain = gain_mesure(reg, enr)
     return (gain is None, -(gain or 0.0), -vote_net(reg, enr, niveaux) if gain is None else 0,
-            _instant_ou_rien(enr.get("soumise_le")) or FUTUR_LOINTAIN, str(enr.get("id")))
+            soumission_effective(reg, enr) or FUTUR_LOINTAIN, str(enr.get("id")))
 
 
 def classement_course(reg, tid, niveaux):
@@ -722,8 +776,9 @@ def bornes_attente(reg, enr):
     """Bornes propres à une contribution X (R3, course) : (fin de sa protection, fin de toute attente).
     Jusqu'à soumise_le(X) + 72 h (R7) + 24 h (fenêtre de R3) = 96 h, X attend ce qui pourrait la battre ; jusqu'à
     + 24 h encore (120 h), une concurrente intégrable mieux classée ; ensuite, plus rien. Ces bornes ne dépendent que
-    de X : ni une contribution ancienne qui traîne, ni une soumission plus récente ne les déplacent."""
-    soumise = _instant_ou_rien(enr.get("soumise_le"))
+    de X : ni une contribution ancienne qui traîne, ni une soumission plus récente ne les déplacent. soumise_le(X) se lit
+    soumission_effective (ruche-0028 : la fusion de la PR de soumission)."""
+    soumise = soumission_effective(reg, enr)
     if soumise is None:
         return None, None
     duree_r7 = dt.timedelta(hours=float(reg.config.get("reservation_max_heures", 72)))
@@ -1010,6 +1065,28 @@ def instant_du_geste(reg, dates, chemin, cle, declaree, instant):
     return moment if moment and moment <= instant + AVANCE_MAX else None
 
 
+def heure_de_fusion(reg, chemin):
+    """ruche-0028 (6) : quand le fichier d'une contribution est arrivé dans la branche (le dernier commit, sur le premier parent,
+    qui l'a ajouté : la fusion de la PR de soumission, même si l'identifiant a déjà servi) ; None sans historique complet, pas
+    encore publié, ou daté dans le futur."""
+    cache = vars(reg).setdefault("_fusions", {})
+    if None not in cache:
+        cache[None] = historique_disponible(reg.racine)
+    if chemin not in cache:
+        ajouts = commits_premier_parent(reg.racine, "HEAD", reg.rel(chemin), filtre="A") if cache[None] else []
+        cache[chemin] = ajouts[0][1] if ajouts and ajouts[0][1] <= maintenant() + AVANCE_MAX else None  # du plus récent au plus ancien
+    return cache[chemin]
+
+
+def soumission_effective(reg, enr):
+    """D'où partent la fenêtre de R3, les bornes de course et l'ancienneté (ruche-0028) : la fusion de la PR de soumission quand
+    l'historique la dit, jamais avant soumise_le ; sinon soumise_le. Antidater soumise_le (2 h de tolérance) ne rogne rien."""
+    soumise = _instant_ou_rien(enr.get("soumise_le"))
+    chemin = (reg.enregistrements.get(enr.get("id")) or (None,))[0]
+    fusion = heure_de_fusion(reg, chemin) if soumise and chemin else None
+    return max(soumise, fusion) if fusion else soumise
+
+
 # --------------------------------------------------------------------------
 # Cap de la ruche (R11) et tableau de l'essaim : vers où diriger le travail, qui fait quoi
 # --------------------------------------------------------------------------
@@ -1229,7 +1306,7 @@ def tableau_essaim(reg, instant=None, jours_notes=7):
     for cid, (_, e) in sorted(reg.enregistrements.items()):
         if not isinstance(e, dict) or e.get("statut") != "en_relecture":
             continue
-        soumise = _instant_ou_rien(e.get("soumise_le"))
+        soumise = soumission_effective(reg, e)  # comme R3 (ruche-0028)
         t = reg.taches.get(e.get("tache"), (None, {}))[1] or {}
         rang, total = rangs.get(cid, (1, 1))
         relecture.append({"contribution": cid, "tache": e.get("tache"), "poste": poste_de(t), "auteur": e.get("auteur"),
@@ -1313,7 +1390,8 @@ def calculer_niveaux(reg):
 
 
 def niveau_de(niveaux, pseudo):
-    return niveaux.get(pseudo, {}).get("niveau", "Nouveau")
+    cle = pseudo if pseudo in niveaux else next((p for p in niveaux if meme_pseudo(p, pseudo)), None)
+    return niveaux.get(cle, {}).get("niveau", "Nouveau")
 
 
 def relecture_comptee(reg, niveaux, relecteur):
@@ -1414,22 +1492,66 @@ def meme_contenu(relecture, verdict):
     return relecture.get("sha") == verdict.get("sha")
 
 
+# ruche-0028 (1) : l'enregistrement garde la trace de ses VERDICTS_MAX derniers verdicts (verdicts ; au-delà, verdicts_oublies les
+# compte). Relancer la CI sur un contenu déjà mesuré ajoute une mesure, n'en efface aucune (répétition générale n° 3).
+VERDICTS_MAX = 20
+
+
+def trace_verdict(v):
+    """Ce que l'historique garde d'un verdict : de quoi reconnaître son contenu mesuré et rejuger R1, R4 et le classement."""
+    trace = {k: v[k] for k in ("sha", "arbre", "ci", "gain", "au_dela_du_bruit", "lignes_modifiees") if k in v}
+    if isinstance(v.get("instructions"), dict):
+        trace["instructions"] = {n: {k: i.get(k) for k in ("A", "B", "gain")} for n, i in v["instructions"].items() if isinstance(i, dict)}
+    return trace
+
+
+def decomptes(v):
+    """Les décomptes d'instructions B (exacts) de chaque scénario d'un verdict : ils reconnaissent le contenu mesuré ; None sans."""
+    i = v.get("instructions") if isinstance(v.get("instructions"), dict) else {}
+    return tuple(sorted((str(n), x["B"]) for n, x in i.items() if isinstance(x, dict) and isinstance(x.get("B"), (int, float))
+                        and not isinstance(x.get("B"), bool))) or None
+
+
+def meme_mesure(h, v):
+    """Même contenu mesuré (revue adverse de ruche-0028, S1 : retoucher le manifeste changeait l'arbre et redonnait un tirage du
+    chronomètre) : mêmes scénarios, décomptes B à moins de 1 % les uns des autres (vérification de 3ea3a71 : une instruction de
+    plus redonnait un tirage ; R4 exige 2 %, moins de 1 % ne porte pas un gain), sinon même arbre (sinon même sha). Le fil seul
+    est comparé (verdicts_du_contenu). Ceci borne les tirages ; le vrai remède reste une autre configuration (ruche-0031)."""
+    a, b = decomptes(h), decomptes(v)
+    if not (a and b):
+        return meme_contenu(h, v)
+    return [n for n, _ in a] == [n for n, _ in b] and all(abs(x - y) < 0.01 * abs(y) for (_, x), (_, y) in zip(a, b))
+
+
+def verdicts_du_contenu(reg, enr):
+    """Le verdict courant, puis chaque autre verdict vert du même contenu mesuré gardé par la contribution ou par son fil (même
+    auteur, même tâche, closes comprises : re-soumettre ne repart pas de zéro) : [(verdict, contribution)]."""
+    verdict = enr.get("verdict") if isinstance(enr.get("verdict"), dict) else {}
+    ici, trace = enr.get("id"), trace_verdict(verdict)
+    return [(verdict, ici)] + [(h, c) for c, e in fil_de(reg, enr) for h in e.get("verdicts") or ([e.get("verdict")] if c != ici else [])
+                               if isinstance(h, dict) and h.get("ci") == "verte" and not (c == ici and h == trace) and meme_mesure(h, verdict)]
+
+
 def refus_ailleurs(reg, enr, niveaux=None):
     """Alerte pour les relecteurs (revue adverse de ruche-0012), jamais un blocage : le contenu jugé (même arbre, sinon même sha)
-    porte, dans une autre contribution de la tâche, un refus encore actif : la plus récente relecture de ce relecteur sur ce
-    contenu, dans toute la tâche, est un défavorable d'un gardien, du conseil ou d'un Confirmé, ou porte un défaut confirmé, et
+    porte, dans une autre contribution, un refus encore actif : la plus récente relecture de ce relecteur sur ce contenu,
+    dans tout le registre, est un défavorable d'un gardien, du conseil ou d'un Confirmé, ou porte un défaut confirmé, et
     aucune levée du conseil ne la neutralise. Un autre compte qui soumet un contenu refusé n'est pas bloqué automatiquement
     (le contenu d'une contribution change à chaque commit poussé : un ordre entre contributions bloquerait l'original ou
-    libérerait la copie) ; le refus se repose sur la copie. [(relecteur, contribution)]."""
+    libérerait la copie) ; le refus se repose sur la copie. ruche-0028 (5) : toutes tâches confondues (un contenu refusé soumis sous
+    une autre tâche), et une contribution refusee (statut) dont un verdict portait ce contenu. [(relecteur ou None, contribution)]."""
     verdict = enr.get("verdict") if isinstance(enr.get("verdict"), dict) else {}
     if not verdict.get("sha"):
         return []
     niveaux = niveaux if niveaux is not None else calculer_niveaux(reg)
     privilegies = reg.privilegies()
-    plus_recentes = {}
+    plus_recentes, refusees = {}, []
     for cid, (_, e) in reg.enregistrements.items():
-        if not isinstance(e, dict) or e.get("tache") != enr.get("tache"):
+        if not isinstance(e, dict):
             continue
+        if cid != enr.get("id") and e.get("statut") == "refusee" and any(
+                isinstance(v, dict) and meme_contenu(v, verdict) for v in [e.get("verdict")] + list(e.get("verdicts") or [])):
+            refusees.append((None, cid))
         for rang, r in enumerate(e.get("relectures") or []):
             if not isinstance(r, dict) or not meme_contenu(r, verdict) or levee(reg, e, r):
                 continue
@@ -1439,7 +1561,7 @@ def refus_ailleurs(reg, enr, niveaux=None):
                 plus_recentes[p] = (cle, cid, r)
     return [(r.get("relecteur"), cid) for _, (_, cid, r) in sorted(plus_recentes.items())
             if cid != enr.get("id") and (r.get("defaut_confirme") or (r.get("avis") == "defavorable" and (
-                r.get("relecteur") in privilegies or niveau_de(niveaux, r.get("relecteur")) == "Confirmé")))]
+                r.get("relecteur") in privilegies or niveau_de(niveaux, r.get("relecteur")) == "Confirmé")))] + refusees
 
 
 def leve_dans_le_fil(reg, enr, relecture):
@@ -1473,8 +1595,8 @@ def calculer_score(reg, enr, niveaux):
     confiance = min(1.0, len(releve_relectures(reg, enr, niveaux)["favorables"]) / 3)
     numerateur = denominateur = 0
     concurrents = concurrents_de(reg, enr)  # course entre contributions d'une même tâche : on ne vote pas sur son concurrent
-    for _, vote in reg.votes:
-        if vote.get("sujet") == enr.get("id") and vote_recevable(vote, concurrents):
+    for vote in votes_de(reg, enr.get("id")):
+        if vote_recevable(vote, concurrents):
             poids = POIDS_VOTE[niveau_de(niveaux, vote.get("votant"))]
             numerateur += poids * vote.get("valeur", 0)
             denominateur += poids
@@ -1490,13 +1612,11 @@ def depouiller_proposition(reg, identifiant, niveaux, instant):
     cloture = ouverture + dt.timedelta(days=int(reg.config.get("duree_vote_jours", 7)))
     pour = contre = 0
     votants = set()
-    for _, vote in reg.votes:
-        if vote.get("sujet") != identifiant:
-            continue
+    for vote in votes_de(reg, identifiant):  # un votant, une voix, quorum compris (sans la casse)
         poids = POIDS_VOTE[niveau_de(niveaux, vote.get("votant"))]
         if poids == 0:
             continue
-        votants.add(vote["votant"])
+        votants.add(vote["votant"].casefold())
         if vote["valeur"] == 1:
             pour += poids
         elif vote["valeur"] == -1:
@@ -4096,6 +4216,8 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
     niveaux = calculer_niveaux(reg)
     niveau = niveau_de(niveaux, auteur)
     problemes, natures = [], []
+    if bonne := autre_orthographe(reg, auteur):  # ruche-0028 (revue, N1)
+        problemes.append(f"auteur de la PR « {auteur} » : sa fiche est {bonne} ; un pseudo s'écrit comme sa fiche, casse comprise")
     # Contributions créées par la PR : une soumission (du titulaire ou d'un inscrit en parallèle) en crée une, et une seule.
     ajoutees = {pathlib.PurePosixPath(c).stem for s, c in changements if s == "A" and c.startswith("contributions/")}
     modifiees = {pathlib.PurePosixPath(c).stem: c for s, c in changements if s == "M" and c.startswith("contributions/")}
@@ -4208,6 +4330,9 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
             natures.append("gouvernance")
             problemes.append(f"{chemin} : le fichier doit être un objet YAML (clé: valeur), tel que l'écrit bee")
             continue
+        deja = pseudos_mal_ecrits(reg, ancien)  # ruche-0028 (revue, N1) : aucun pseudo nouvellement écrit hors de son orthographe
+        problemes += [f"{chemin} : {k} « {v} » s'écrit {b} (sa fiche) : un pseudo s'écrit comme sa fiche, casse comprise"
+                      for k, v, b in pseudos_mal_ecrits(reg, nouveau) if (k, v, b) not in deja]
 
         if partie[0] == "taches" and len(partie) == 3:
             if statut_git == "A":
@@ -4295,7 +4420,8 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
                 exiger(refus is None, f"{chemin} : {refus}")
                 try:
                     depuis = lire_instant(reservation.get("depuis"), chemin)
-                    exiger(depuis <= instant + AVANCE_MAX, f"{chemin} : réservation datée dans le futur")
+                    exiger(instant - TOLERANCE_DATE <= depuis <= instant + AVANCE_MAX, f"{chemin} : une réservation est datée de "
+                           "l'heure de la PR (à 2 h près, jamais dans le futur) ; relancez bee prendre")
                 except ErreurBee as e:
                     problemes.append(str(e))
                 exiger(not reg.bloquee_par(nouveau), f"{chemin} : la tâche dépend de {', '.join(reg.bloquee_par(nouveau))}, pas encore intégrée(s)")
@@ -4465,10 +4591,10 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
                            f"{chemin} : un défaut se confirme sur la relecture d'un autre qui l'a signalé, sans rien y changer "
                            "d'autre (bee confirmer-defaut) ; une relecture ne confirme jamais son propre défaut")
                     exiger(r.get("confirme_par") == auteur, f"{chemin} : la confirmation porte le nom de l'auteur de la PR ({auteur})")
-                    exiger(auteur != r.get("relecteur"), f"{chemin} : {auteur} ne confirme pas son propre défaut : un tiers le confirme")
+                    exiger(not meme_pseudo(auteur, r.get("relecteur")), f"{chemin} : {auteur} ne confirme pas son propre défaut : un tiers le confirme")
                     exiger(est_robot or est_conseil or auteur in reg.gardiens or niveau == "Confirmé",
                            f"{chemin} : un défaut n'est confirmé que par la CI, le conseil, un gardien ou un Confirmé")
-                    exiger(auteur != nouveau.get("auteur") and auteur not in participants_course(reg, nouveau.get("tache"))
+                    exiger(not meme_pseudo(auteur, nouveau.get("auteur")) and auteur not in participants_course(reg, nouveau.get("tache"))
                            and auteur not in engages_base,
                            f"{chemin} : {auteur} est en course sur la tâche {nouveau.get('tache')} : il n'y confirme pas de défaut "
                            "(commandement 3)")
@@ -4481,7 +4607,7 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
                 if exiger(isinstance(anciennes_l, list) and isinstance(nouvelles_l, list) and nouvelles_l[:len(anciennes_l)] == anciennes_l,
                           f"{chemin} : les levées sont en ajout seul"):
                     for l in nouvelles_l[len(anciennes_l):]:
-                        exiger(isinstance(l, dict) and l.get("par") == auteur, f"{chemin} : une levée porte le nom de l'auteur de la PR ({auteur})")
+                        exiger(isinstance(l, dict) and meme_pseudo(l.get("par"), auteur), f"{chemin} : une levée porte le nom de l'auteur de la PR ({auteur})")
                         probleme = probleme_date_pr(l.get("le") if isinstance(l, dict) else None, f"{chemin} : levée, le", instant)
                         exiger(probleme is None, str(probleme))
                         probleme = texte_recevable(l.get("motif") if isinstance(l, dict) else None, f"{chemin} : motif de la levée",
@@ -4580,6 +4706,11 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
                            f"{', '.join(r or '?' for r in autres_retenues) or 'aucune'})")
             continue
 
+        if statut_git == "A" and len(partie) == (2 if partie[0] == "membres" else 3) and partie[0] in ("votes", "mesures", "membres"):
+            # Revue adverse de ruche-0028 (S4) : une fiche nommée par un pseudo n'a pas de double qui n'en diffère que par la casse.
+            nom = pathlib.PurePosixPath(chemin).stem
+            doubles = sorted(c.stem for c in (reg.racine / pathlib.PurePosixPath(chemin).parent).glob("*.yaml") if c.stem != nom and meme_pseudo(c.stem, nom))
+            exiger(not doubles, f"{chemin} : {', '.join(doubles)} existe déjà : un pseudo est un login GitHub, sans la casse ; modifiez cette fiche")
         if partie[0] == "votes" and len(partie) == 3:
             natures.append("vote")
             exiger(pathlib.PurePosixPath(chemin).stem == auteur, f"{chemin} : on ne vote qu'en son nom ({auteur})")
@@ -5326,6 +5457,7 @@ def cmd_proposer_tache(args):
 
 def cmd_liberer(args):
     reg = Registre(args.registre)
+    reg.exiger_orthographe(args.utilisateur)
     chemin, t = reg.tache(args.tache)
     titulaire = (t.get("reservation") or {}).get("utilisateur")
     paralleles = paralleles_de(t)
@@ -5578,7 +5710,18 @@ def cmd_relire(args):
     # Une relecture par relecteur et par commit jugé (ruche-0012) : relire le correctif, c'est en ajouter une nouvelle, sur un
     # autre commit que sa plus récente (X, Y, puis X redevient possible).
     sha = (enr.get("verdict") or {}).get("sha")
-    siennes = [r for r in enr.get("relectures") or [] if isinstance(r, dict) and r.get("relecteur") == args.utilisateur]
+    # ruche-0028 (3) : le commit que le relecteur a lu, jamais celui du verdict au moment d'écrire (l'auteur a pu pousser entre-temps).
+    # Le sha entier, égal (revue adverse, S2 : une collision sur 7 caractères se fabrique en deux minutes).
+    if sha and args.commit != sha:
+        raise ErreurBee(f"le verdict courant de {args.contribution} porte sur le commit {sha} : " + (
+            "donnez le sha entier du commit lu (40 caractères) : un préfixe peut désigner un autre commit" if args.commit
+            and sha.startswith(args.commit) else f"vous avez lu {args.commit}, l'auteur a poussé depuis ; relisez le diff de {sha} "
+            "(bee verifier-acceptation imprime la commande)" if args.commit else "dites quel commit vous avez lu (--commit <sha>) ; "
+            "une relecture ne compte que sur ce commit"))
+    if args.commit and not sha:
+        raise ErreurBee(f"{args.contribution} n'a pas encore de verdict : la relecture s'enregistre sans commit (sans --commit), et une "
+                        "favorable ne comptera pas ; relisez quand le verdict sera là (bee voir)")
+    siennes = [r for r in enr.get("relectures") or [] if isinstance(r, dict) and meme_pseudo(r.get("relecteur"), args.utilisateur)]
     if relecture_refusee(siennes, {"relecteur": args.utilisateur, "sha": sha}, lambda x: leve_dans_le_fil(reg, enr, x)):
         raise ErreurBee(f"{args.utilisateur} a déjà relu {args.contribution} " + (f"au commit {sha}, et c'est sa relecture la plus "
                         "récente : relisez au prochain commit jugé" if sha else "sans commit : une seule relecture avant le "
@@ -5632,7 +5775,7 @@ def cmd_confirmer_defaut(args):
         raise ErreurBee("un défaut n'est confirmé que par la CI, le conseil, un gardien ou un Confirmé")
     if u == args.relecteur:
         raise ErreurBee("on ne confirme pas son propre défaut : un tiers le confirme")
-    if u == enr.get("auteur") or u in participants_course(reg, enr.get("tache")):
+    if meme_pseudo(u, enr.get("auteur")) or u in participants_course(reg, enr.get("tache")):
         raise ErreurBee(f"{u} est en course sur la tâche {enr.get('tache')} : il n'y confirme pas de défaut (commandement 3)")
     relectures = list(enr.get("relectures") or [])
     for i, r in reversed(list(enumerate(relectures))):  # son défaut le plus récent, attaché au commit où il l'a signalé
@@ -5651,7 +5794,7 @@ def cmd_voter(args):
     reg = Registre(args.registre)
     reg.exiger_membre(args.utilisateur)
     if args.sujet in reg.enregistrements:
-        if reg.enregistrements[args.sujet][1].get("auteur") == args.utilisateur:
+        if meme_pseudo(reg.enregistrements[args.sujet][1].get("auteur"), args.utilisateur):
             raise ErreurBee("on ne vote pas pour sa propre contribution (commandement 3)")
         if args.utilisateur in concurrents_de(reg, reg.enregistrements[args.sujet][1]):
             raise ErreurBee(f"{args.utilisateur} est en course sur la même tâche que {args.sujet} : on ne vote pas sur une "
@@ -5911,6 +6054,7 @@ def debattre_synthetiser(args):
 def debattre_doublon(args):
     reg = Registre(args.registre)
     u = args.utilisateur
+    reg.exiger_orthographe(u)
     chemin, d = reg.debat(args.debat)
     _exiger_ouvert(args.debat, d)
     if u != d.get("rapporteur") and u not in reg.privilegies():
@@ -5938,6 +6082,7 @@ def debattre_caviarder(args):
     et la date demeurent. Même dans un débat clos."""
     reg = Registre(args.registre)
     u = args.utilisateur
+    reg.exiger_orthographe(u)
     if u not in reg.conseil:
         raise ErreurBee(f"{u} n'est pas du conseil : seul le conseil caviarde un argument, au refus ou à la demande d'une personne")
     chemin, d = reg.debat(args.debat)
@@ -6273,6 +6418,7 @@ def cmd_invitation(args):
     N'envoie rien : un humain du conseil envoie lui-même chaque message, hors de l'outil, puis le consigne ici."""
     reg = Registre(args.registre)
     u = args.utilisateur
+    reg.exiger_orthographe(u)
     if u not in reg.conseil and u not in reg.gardiens:
         reg.exiger_membre(u)
     chemin, inv = reg.invitation(args.invitation)
@@ -6487,7 +6633,8 @@ def gain_declare(reg, manifeste, tache):
         return None
     sens = reg.metriques(tache.get("projet")).get(metrique, {}).get("sens", "plus_haut")
     gain = apres / avant - 1 if sens == "plus_haut" else 1 - apres / avant
-    return gain if math.isfinite(gain) else None
+    # Borné avant tout calcul (ruche-0028, tour 3 : un gain de 1e300 donnait un écart de 2,5e298, imprimé en 300 chiffres).
+    return gain if math.isfinite(gain) and abs(gain) <= 1e6 else None
 
 
 # Ce que le verdict recopie du manifeste (ruche-0017) : données du fork, bornées en caractères et en taille écrite (rendu :
@@ -6671,6 +6818,7 @@ def cmd_enregistrer_verdict(args):
             raise ErreurBee(f"{args.contribution} : verdict refusé, {noter_attente(reg, args.contribution, code, args.sha) if certain else ATTENTE_VERDICT[code]}"
                             f" (base déclarée : {', '.join(dites) or 'absente'}) ; aucun verdict n'est enregistré"
                             + ("" if certain else ", rejugé au passage suivant"))
+        verdict["base"] = bases[0]  # vérifiée (ancêtre de la branche par défaut) : le relecteur lit compare/<base>...<sha> (ruche-0028)
     gain = brut.get("gain")
     verdict["gain"] = float(gain) if gain is not None else None
     if "au_dela_du_bruit" in brut:
@@ -6767,7 +6915,14 @@ def cmd_enregistrer_verdict(args):
     if args.execution:
         verdict["execution"] = args.execution
     enr = dict(enr)
-    enr["verdict"] = verdict
+    # ruche-0028 (1) : chaque verdict s'ajoute à l'historique (un passage qui relit le même verdict n'ajoute rien) ; au-delà de
+    # VERDICTS_MAX, les plus anciens sortent et verdicts_oublies les compte (R4 exige alors une mesure d'une autre configuration).
+    ancien = enr.get("verdict") if isinstance(enr.get("verdict"), dict) and enr["verdict"].get("ci") else None
+    historique = list(enr.get("verdicts") or ([trace_verdict(ancien)] if ancien else []))
+    historique += [trace_verdict(verdict)] if not historique or historique[-1] != trace_verdict(verdict) else []
+    if len(historique) > VERDICTS_MAX:
+        enr["verdicts_oublies"] = int(enr.get("verdicts_oublies") or 0) + len(historique) - VERDICTS_MAX
+    enr["verdict"], enr["verdicts"] = verdict, historique[-VERDICTS_MAX:]
     # La déclaration est celle du commit jugé : sans manifeste recopiable pour ce verdict, null (l'ancienne disparaît).
     enr["declare"] = recopie
     enr.pop("attente_verdict", None)
@@ -6870,10 +7025,11 @@ def raisons_course(reg, cid, niveaux, instant):
     tid = enr.get("tache")
     t = reg.taches.get(tid, (None, {}))[1] or {}
     rivales = [(c, e) for c, e in contributions_en_course(reg, tid) if c != cid]
-    soumise = _instant_ou_rien(enr.get("soumise_le"))
+    soumise = soumission_effective(reg, enr)
     protection, fin_attentes = bornes_attente(reg, enr)
     if soumise is None or instant >= fin_attentes:
         return []  # borne dure : passé soumise_le(X) + 120 h, personne ne retient plus X
+    declaree = _instant_ou_rien(enr.get("soumise_le"))  # les engagements, datés par déclaration, se comparent à la sienne (ruche-0028)
     fenetre = dt.timedelta(hours=float(reg.config.get("fenetre_acceptation_heures", 24)))
     raisons = []
     ma_cle = cle_classement(reg, enr, niveaux)
@@ -6887,14 +7043,14 @@ def raisons_course(reg, cid, niveaux, instant):
         engages += [(p.get("utilisateur"), "inscrit en parallèle", p.get("depuis")) for p in paralleles_de(t)]
         for qui, role, depuis in engages:
             debut = _instant_ou_rien(depuis)
-            if qui != enr.get("auteur") and debut is not None and debut <= soumise and not engagement_expire(reg, depuis, instant):
+            if not meme_pseudo(qui, enr.get("auteur")) and debut is not None and debut <= declaree and not engagement_expire(reg, depuis, instant):
                 raisons.append(f"course (R3) : {qui} ({role}) travaille sur la tâche depuis {depuis}, avant cette soumission : "
                                f"on attend sa contribution, son retrait ou son expiration (R7, {en_iso(debut + duree_r7)}), "
                                f"au plus tard jusqu'au {jusqu}")
         for c, e in rivales:
-            debut = _instant_ou_rien(e.get("soumise_le"))
+            debut = soumission_effective(reg, e)
             dans_sa_fenetre = debut is None or instant - debut < fenetre
-            engagee_avant = (debut_engagement(e) or FUTUR_LOINTAIN) <= soumise
+            engagee_avant = (debut_engagement(e) or FUTUR_LOINTAIN) <= declaree
             # Sans verdict, une concurrente d'un auteur engagé avant X n'est attendue que jusqu'à la fin de SA protection
             # (et jamais au-delà de celle de X) : une vieille contribution sans verdict ne retarde pas chaque nouvelle.
             limite_engagee = min(bornes_attente(reg, e)[0], protection) if debut is not None else protection
@@ -6950,25 +7106,32 @@ def raisons_r3(reg, cid, bilan=None):
     tache = reg.taches.get(enr.get("tache"), (None, {}))[1]
     verdict = enr.get("verdict") or {}
     niveaux = calculer_niveaux(reg)
-    eligibles = [m for m in (set(reg.membres) | set(reg.conseil)) if m != auteur]
+    eligibles = [m for m in (set(reg.membres) | set(reg.conseil)) if not meme_pseudo(m, auteur)]
 
     def exiger(cond, msg):
         if not cond:
             raisons.append(msg)
 
     exiger(verdict.get("ci") == "verte", f"CI non verte (verdict : {verdict.get('ci', 'absent')})")
+    # R1 revérifiée par le registre (ruche-0028, tour 3 : 52 lignes pour une tâche S, CI du fork verte).
+    lignes, maximum = verdict.get("lignes_modifiees"), LIGNES_MAX.get(tache.get("taille"))
+    exiger(not (isinstance(lignes, int) and maximum and lignes > maximum),
+           f"R1 : {lignes} lignes modifiées au verdict, au plus {maximum} pour une tâche {tache.get('taille')}")
     metriques = reg.metriques(tache.get("projet"))
     proxies = {m: d.get("instructions") for m, d in metriques.items() if d.get("instructions")}
-    if tache.get("type") == "optimisation":
+    # ruche-0028 (1) : R4 juge chaque verdict vert du même contenu mesuré, dans le fil (verdicts_du_contenu) : relancer ne peut que nuire.
+    oublies = sum(int(e.get("verdicts_oublies") or 0) for _, e in fil_de(reg, enr))
+    for rang, (v, ou) in enumerate(verdicts_du_contenu(reg, enr) if tache.get("type") == "optimisation" else []):
+        avant = len(raisons)
         seuil = float(cfg.get("gain_minimal", 0.02))
         metrique = tache.get("metrique")
-        gain, bruit = verdict.get("gain"), bool(verdict.get("au_dela_du_bruit"))
+        gain, bruit = v.get("gain"), bool(v.get("au_dela_du_bruit"))
         proxy = proxies.get(metrique)
-        gain_inst = ((verdict.get("instructions") or {}).get(proxy) or {}).get("gain") if proxy else None
+        gain_inst = ((v.get("instructions") or {}).get(proxy) or {}).get("gain") if proxy else None
 
         def reproduit(minimum):
             """Mesures d'autres configurations (pas de l'auteur) qui voient le gain au chronomètre, au-delà du bruit."""
-            return [m for _, m in reg.mesures if m.get("contribution") == cid and m.get("soumise_par") != auteur
+            return [m for _, m in reg.mesures if m.get("contribution") == cid and not meme_pseudo(m.get("soumise_par"), auteur)
                     and ((m.get("metriques") or {}).get(metrique) or {}).get("au_dela_du_bruit")
                     and (((m.get("metriques") or {}).get(metrique) or {}).get("gain") or 0) > minimum]
 
@@ -6992,6 +7155,12 @@ def raisons_r3(reg, cid, bilan=None):
             if proxy:
                 exiger(reproduit(seuil - 1e-12), f"R4 : sans gain d'instructions sur {proxy}, le gain au chronomètre doit être "
                        "reproduit par une mesure d'une autre configuration (bee enregistrer-mesure)")
+        if rang:  # un verdict précédent du même contenu mesuré : la relance de la CI ne l'efface pas
+            raisons[avant:] = [f"{r} [verdict précédent du même contenu mesuré, commit {v.get('sha')}" + (f", dans {ou}" if ou != cid else "")
+                               + "]" for r in raisons[avant:]]
+        elif oublies:
+            exiger(reproduit(0.0), f"R4 : {oublies} verdict(s) sorti(s) de l'historique (au plus {VERDICTS_MAX}) : une "
+                   "mesure d'une autre configuration doit confirmer le gain (bee enregistrer-mesure)")
     # R5. Le chronomètre seul d'une métrique de débit est trop bruité pour bloquer : on juge son décompte
     # d'instructions. Les autres métriques (ratio, mémoire) se jugent directement.
     tolerance = float(cfg.get("degradation_max_autres", 0.01))
@@ -7052,7 +7221,7 @@ def raisons_r3(reg, cid, bilan=None):
                "aucune relecture favorable d'un Confirmé (il en faut une quand un Confirmé est disponible)")
     # Un auteur privilégié ne se dispense de la porte que s'il n'existe aucun autre privilégié pour relire
     # (amorçage) : dès qu'un gardien est nommé, le conseil aussi est relu.
-    autres_privilegies = [m for m in privilegies if m != auteur]
+    autres_privilegies = [m for m in privilegies if not meme_pseudo(m, auteur)]
     if porte_exigee(reg, verdict) and (auteur not in privilegies or autres_privilegies):
         exiger(any(r.get("relecteur") in privilegies for r in favorables),
                "porte de relecture temporaire : une relecture favorable d'un gardien ou du conseil est exigée "
@@ -7076,9 +7245,13 @@ def raisons_r3(reg, cid, bilan=None):
                      cible_vote=int(cfg.get("vote_net_min", 2)), sha=sha_verdict)
 
     try:
-        heures = (maintenant() - lire_instant(enr.get("soumise_le"), reg.rel(chemin))).total_seconds() / 3600
+        # ruche-0028 (6) : depuis la fusion de la PR de soumission, quand l'historique la dit, et jamais avant soumise_le.
+        lire_instant(enr.get("soumise_le"), reg.rel(chemin))
+        fusion = heure_de_fusion(reg, chemin)
+        heures = (maintenant() - soumission_effective(reg, enr)).total_seconds() / 3600
         fenetre = float(cfg.get("fenetre_acceptation_heures", 24))
-        exiger(heures >= fenetre, f"fenêtre d'ouverture : {heures:.0f} h écoulées sur {fenetre:.0f} h")
+        exiger(heures >= fenetre, f"fenêtre d'ouverture : {int(heures)} h écoulées sur {fenetre:.0f} h"
+               + (f", depuis la fusion de la soumission ({en_iso(fusion)})" if fusion else ""))
     except ErreurBee:
         raisons.append("date de soumission illisible")
     return chemin, enr, raisons
@@ -7132,8 +7305,10 @@ def alertes_relecteurs(reg, enr):
     except (TypeError, ValueError):
         pass
     for qui, cid in refus_ailleurs(reg, enr):
-        alertes.append(f"ce contenu a été refusé par {qui} dans {cid} (même arbre, autre contribution de la tâche) : ce refus ne "
-                       "bloque pas cette contribution ; relisez-la en le sachant")
+        tache = reg.enregistrements[cid][1].get("tache")
+        alertes.append(f"ce contenu a été refusé {f'par {qui} ' if qui else ''}dans {cid} (même arbre, " + ("autre contribution de la "
+                       f"tâche" if tache == enr.get("tache") else f"autre tâche : {tache}") + ("" if qui else ", contribution refusée")
+                       + ") : ce refus ne bloque pas cette contribution ; relisez-la en le sachant")
     return alertes
 
 
@@ -7159,6 +7334,7 @@ def cmd_verifier_acceptation(args):
     for a in alertes_relecteurs(reg, enr or {}):
         print(f"⚠ {args.contribution} : {a}.")
     print(cadre_declare(args.contribution, enr or {}, abrege=True))
+    print(commande_diff(args.contribution, enr or {}))
     if raisons:
         print(f"✗ {args.contribution} : pas encore intégrable.")
         for r in raisons:
@@ -7800,6 +7976,18 @@ def cadre_declare(cid, enr, abrege=False):
             + (f"\n# teste, non_teste et doutes déclarés : bee voir {tache}" if abrege else ""))
 
 
+def commande_diff(cid, enr):
+    """Ce que lit le relecteur (revue adverse de ruche-0028, S3) : le diff du commit jugé contre la base du verdict, jamais la tête
+    actuelle de la PR, puis bee relire --commit <ce sha>. Seules des valeurs qui suivent un motif s'impriment."""
+    verdict = enr.get("verdict") if isinstance(enr.get("verdict"), dict) else {}
+    m, sha, cid = ADRESSE_PR.fullmatch(str(enr.get("pr"))), str(verdict.get("sha")), cid if ID_CONTRIBUTION.fullmatch(str(cid)) else "?"
+    if not (m and re.fullmatch(r"[0-9a-f]{7,40}", sha)):
+        return f"# {cid} : pas encore de commit jugé à relire"
+    base = verdict["base"] if re.fullmatch(r"[0-9a-f]{40}", str(verdict.get("base"))) else "master"  # verdict d'avant ruche-0028
+    return (f"# Relire {cid} : le diff du commit jugé, gh api repos/{m[1]}/{m[2]}/compare/{base}...{sha} -H \"Accept: "
+            f"application/vnd.github.diff\" ; puis bee relire {cid} --commit {sha} …")
+
+
 def cadres_declares(reg, tid):
     """Les déclarations des contributions en course de la tâche, pour qui relit (bee voir, bee contexte --role relire)."""
     return [cadre_declare(cid, enr) for cid, enr in contributions_en_course(reg, tid)]
@@ -7828,6 +8016,7 @@ def texte_contexte(reg, identifiant_tache=None, role=None, budget=None, registre
     nb_notes = len(tache.get("notes") or []) if tache and isinstance(tache.get("notes"), list) else 0
     longueur_contexte = len(tache["contexte"]) if tache and isinstance(tache.get("contexte"), str) else 0
     etat = {"omis": [], "notes": 0, "contexte": None, "declares": cadres_declares(reg, tache["id"]) if tache and role == "relire" else []}
+    diffs = [commande_diff(c, e) for c, e in contributions_en_course(reg, tache["id"])] if tache and role == "relire" else []
 
     def assembler(trop_petit=False):
         gardes = [n for n in ordre if n not in etat["omis"]]
@@ -7860,7 +8049,7 @@ def texte_contexte(reg, identifiant_tache=None, role=None, budget=None, registre
             if etat["declares"] is None:
                 reduit.append(f"# déclarations des contributions en course omises pour tenir dans --budget : bee voir {identifiant_tache}")
             blocs.append(f"=== tâche {identifiant_tache} ===\n{calcule}\n"
-                         + cadre_donnees_tache(tache, etat["notes"], etat["contexte"]) + "".join("\n" + r for r in reduit + (etat["declares"] or [])))
+                         + cadre_donnees_tache(tache, etat["notes"], etat["contexte"]) + "".join("\n" + r for r in reduit + (etat["declares"] or []) + diffs))
         corps = "\n\n".join(blocs)
 
         def taille(jetons):
@@ -8061,6 +8250,8 @@ def construire_analyseur():
     p.add_argument("--avis", required=True, choices=list(AVIS),
                    help="abstention : diff hors d'atteinte, conflit d'intérêts, approche seulement (dites-le dans le motif)")
     p.add_argument("--motif", required=True, help="ce que vous avez vérifié, ce que vous avez trouvé")
+    p.add_argument("--commit", help="le commit dont vous avez lu le diff (sha entier, 40 caractères) : exigé après le verdict, "
+                   "refusé s'il n'est pas celui du verdict courant")
     p.add_argument("--defaut", action="store_true", help="vous signalez un défaut reproductible (décrit dans le motif)")
 
     p = ajouter("confirmer-defaut", cmd_confirmer_defaut,

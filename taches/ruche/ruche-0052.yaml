@@ -1,0 +1,32 @@
+id: ruche-0052
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: S
+titre: "R13 trouvable et suivable : rôle pour inviter, dates, identifiant de site, incidents"
+contexte: >
+  Issue de la répétition générale n° 4 du 31/10 (détails remis au constructeur par l'architecte). À faire
+  avant la première invitation envoyée. Un membre qui veut inviter, ou suivre une invitation, doit trouver R13
+  sans connaître la ruche par cœur. À construire : (1) bee contexte connaît un rôle pour inviter ; (2)
+  AGENTS.md renvoie à docs/croissance.md là où il parle d'inviter ; (3) bee voir I-nnnn donne les dates de
+  l'invitation et son échéance ; (4) l'identifiant site: distingue une page personnelle d'un domaine partagé
+  (une université n'est pas une seule personne) ; (5) un gardien a un geste pour signaler un incident (R13,
+  frein).
+fichiers: [outils/bee.py, outils/test_bee.py, docs/croissance.md, AGENTS.md, arbre/roles/]
+portee: 0.7
+metrique: null
+critere_acceptation:
+  - "bee contexte --role inviter imprime le chemin de R13 (docs/croissance.md) dans le budget de jetons des rôles"
+  - "AGENTS.md renvoie à docs/croissance.md là où il parle d'inviter"
+  - "test : bee voir I-nnnn affiche les dates de proposition, d'accord et de feu vert, et l'échéance"
+  - "test : deux pages personnelles d'un même domaine partagé sont deux identités, et le domaine partagé seul n'en désigne aucune"
+  - "test : un gardien en fonction signale un incident par une commande de bee, et le frein en tient compte"
+hors_perimetre:
+  - "COMMANDEMENTS.md"
+  - "REGLES.md"
+  - "les forks"
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-31"
