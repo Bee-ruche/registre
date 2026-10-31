@@ -110,7 +110,9 @@ jobs:
             # Même contenu (revue adverse de ruche-0012) : l'arbre git du commit jugé, lu auprès de l'API. Un commit amendé (même
             # arbre, autre sha) n'efface pas un refus. ruche-0028 (revue adverse, M1) : sans arbre lisible (une ligne, 7 à 40
             # caractères hexadécimaux), aucun verdict ; il est rejugé au passage suivant.
-            arbre=$(gh api "repos/$depot/git/commits/$sha" --jq .tree.sha 2>/dev/null) && [[ "$arbre" =~ ^[0-9a-f]{7,40}$ ]] || continue
+            if ! { arbre=$(gh api "repos/$depot/git/commits/$sha" --jq .tree.sha 2>/dev/null) && [[ "$arbre" =~ ^[0-9a-f]{7,40}$ ]]; }; then
+              echo "::notice::$id : arbre git du commit $sha illisible auprès de l'API ; aucun verdict, rejugé au passage suivant."; continue
+            fi
             options+=(--arbre "$arbre")
             python3 outils/bee.py enregistrer-verdict "$id" --verdict "$RUNNER_TEMP/verdict/verdict.json" \
               --sha "$sha" --execution "$adresse" "${options[@]}" 2>&1 | journal || true

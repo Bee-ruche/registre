@@ -386,8 +386,8 @@ class Registre:
             donnees = self._lire_fichier(chemin)
             if donnees is not None:
                 self.mesures.append((chemin, donnees))
-        self.conseil, self.gardiens, self.garants, self.robots, self.membres = (
-            Pseudos(self.conseil), Pseudos(self.gardiens), Pseudos(self.garants), Pseudos(self.robots), Fiches(self.membres))
+        self.conseil, self.gardiens, self.garants, self.robots = (Pseudos(self.conseil), Pseudos(self.gardiens), Pseudos(self.garants),
+                                                                  Pseudos(self.robots))
 
     def _lire(self, relatif):
         chemin = self.racine / relatif
@@ -484,7 +484,12 @@ class Registre:
             raise ErreurBee(f"invitation inconnue : {identifiant} (bee essaim les liste)")
         return self.invitations[identifiant]
 
+    def exiger_orthographe(self, pseudo):
+        if bonne := autre_orthographe(self, pseudo):  # ruche-0028 (revue, N1) : une seule orthographe, dès l'entrée
+            raise ErreurBee(f"{pseudo} : votre fiche est {bonne} ; un pseudo s'écrit comme sa fiche, casse comprise")
+
     def exiger_membre(self, pseudo):
+        self.exiger_orthographe(pseudo)
         if pseudo not in self.membres and pseudo not in self.conseil:
             raise ErreurBee(f"{pseudo} n'est pas inscrit dans ce registre. Si votre PR d'inscription est ouverte, attendez sa fusion, "
                             f"puis : git switch main && git pull upstream main. Sinon : bee inscrire --pseudo {pseudo} --compte-cree-le AAAA-MM-JJ")
@@ -549,8 +554,8 @@ def meme_pseudo(a, b):
     return isinstance(a, str) and isinstance(b, str) and a.casefold() == b.casefold()
 
 
-class SansCasse:
-    """« pseudo in … » sans la casse (meme_pseudo), pour le conseil, les gardiens, les robots, les membres et les concurrents
+class Pseudos(frozenset):
+    """« pseudo in … » sans la casse (meme_pseudo), pour le conseil, les gardiens, les garants, les robots et les concurrents
     (ruche-0028, répétition générale n° 3 : une levée « par: BIDJI29 » ne valait rien)."""
     def __contains__(self, pseudo):
         if "plis" not in vars(self):
@@ -558,12 +563,29 @@ class SansCasse:
         return isinstance(pseudo, str) and pseudo.casefold() in self.plis
 
 
-class Pseudos(SansCasse, frozenset):
-    pass
+# Revue adverse de 3ea3a71 (N1) : une seule orthographe par pseudo, dès l'entrée. Un pseudo qui ne suit une fiche (membres/,
+# conseil, gardiens, garants, robots) qu'à la casse près est refusé, avec l'orthographe de la fiche, jamais ramené en silence :
+# les comparaisons exactes en aval (R13, plafonds, signatures) restent justes.
+CHAMPS_PSEUDO = frozenset({"auteur", "utilisateur", "par", "relecteur", "votant", "soumise_par", "confirme_par", "cree_par",
+                           "propose_par", "ouvert_par", "clos_par", "synthese_par", "rapporteur", "pseudo", "garant"})
 
 
-class Fiches(SansCasse, dict):
-    pass
+def autre_orthographe(reg, pseudo):
+    """L'orthographe de la fiche d'un pseudo qui ne la suit qu'à la casse près ; None s'il est écrit comme elle, ou inconnu."""
+    connus = vars(reg).setdefault("_orthographes", {})
+    if not connus:
+        for p in [*reg.membres, *reg.conseil, *reg.gardiens, *reg.garants, *reg.robots]:
+            connus.setdefault(p.casefold(), set()).add(p) if isinstance(p, str) else None
+    bonnes = connus.get(pseudo.casefold(), set()) if isinstance(pseudo, str) else set()
+    return None if not bonnes or pseudo in bonnes else sorted(bonnes)[0]
+
+
+def pseudos_mal_ecrits(reg, donnees, profondeur=0):
+    """Les (champ, pseudo, orthographe de sa fiche) des champs d'identité d'un fichier qui ne suivent leur fiche qu'à la casse près."""
+    if isinstance(donnees, dict) and profondeur < 20:
+        return [(k, v, b) for k, v in donnees.items() if k in CHAMPS_PSEUDO and (b := autre_orthographe(reg, v))] + [
+            x for v in donnees.values() for x in pseudos_mal_ecrits(reg, v, profondeur + 1)]
+    return [x for v in donnees for x in pseudos_mal_ecrits(reg, v, profondeur + 1)] if isinstance(donnees, list) and profondeur < 20 else []
 
 
 def engagements_de(reg, utilisateur):
@@ -1492,8 +1514,13 @@ def decomptes(v):
 
 def meme_mesure(h, v):
     """Même contenu mesuré (revue adverse de ruche-0028, S1 : retoucher le manifeste changeait l'arbre et redonnait un tirage du
-    chronomètre) : mêmes décomptes B quand les deux en ont, sinon même arbre (sinon même sha)."""
-    return decomptes(h) == decomptes(v) if decomptes(h) and decomptes(v) else meme_contenu(h, v)
+    chronomètre) : mêmes scénarios, décomptes B à moins de 1 % les uns des autres (vérification de 3ea3a71 : une instruction de
+    plus redonnait un tirage ; R4 exige 2 %, moins de 1 % ne porte pas un gain), sinon même arbre (sinon même sha). Le fil seul
+    est comparé (verdicts_du_contenu). Ceci borne les tirages ; le vrai remède reste une autre configuration (ruche-0031)."""
+    a, b = decomptes(h), decomptes(v)
+    if not (a and b):
+        return meme_contenu(h, v)
+    return [n for n, _ in a] == [n for n, _ in b] and all(abs(x - y) < 0.01 * abs(y) for (_, x), (_, y) in zip(a, b))
 
 
 def verdicts_du_contenu(reg, enr):
@@ -4189,6 +4216,8 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
     niveaux = calculer_niveaux(reg)
     niveau = niveau_de(niveaux, auteur)
     problemes, natures = [], []
+    if bonne := autre_orthographe(reg, auteur):  # ruche-0028 (revue, N1)
+        problemes.append(f"auteur de la PR « {auteur} » : sa fiche est {bonne} ; un pseudo s'écrit comme sa fiche, casse comprise")
     # Contributions créées par la PR : une soumission (du titulaire ou d'un inscrit en parallèle) en crée une, et une seule.
     ajoutees = {pathlib.PurePosixPath(c).stem for s, c in changements if s == "A" and c.startswith("contributions/")}
     modifiees = {pathlib.PurePosixPath(c).stem: c for s, c in changements if s == "M" and c.startswith("contributions/")}
@@ -4301,6 +4330,9 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
             natures.append("gouvernance")
             problemes.append(f"{chemin} : le fichier doit être un objet YAML (clé: valeur), tel que l'écrit bee")
             continue
+        deja = pseudos_mal_ecrits(reg, ancien)  # ruche-0028 (revue, N1) : aucun pseudo nouvellement écrit hors de son orthographe
+        problemes += [f"{chemin} : {k} « {v} » s'écrit {b} (sa fiche) : un pseudo s'écrit comme sa fiche, casse comprise"
+                      for k, v, b in pseudos_mal_ecrits(reg, nouveau) if (k, v, b) not in deja]
 
         if partie[0] == "taches" and len(partie) == 3:
             if statut_git == "A":
@@ -4681,7 +4713,7 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
             exiger(not doubles, f"{chemin} : {', '.join(doubles)} existe déjà : un pseudo est un login GitHub, sans la casse ; modifiez cette fiche")
         if partie[0] == "votes" and len(partie) == 3:
             natures.append("vote")
-            exiger(meme_pseudo(pathlib.PurePosixPath(chemin).stem, auteur), f"{chemin} : on ne vote qu'en son nom ({auteur})")
+            exiger(pathlib.PurePosixPath(chemin).stem == auteur, f"{chemin} : on ne vote qu'en son nom ({auteur})")
             exiger(auteur in reg.membres or est_conseil, f"{chemin} : {auteur} doit d'abord s'inscrire (bee inscrire)")
             # Course (R3) : un participant engagé ne vote pas sur une concurrente, ni ne modifie ou ne retire un vote
             # qu'il y avait déposé (le dossier du vote nomme son sujet, même pour une suppression).
@@ -4690,7 +4722,7 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
                        f"{chemin} : {auteur} est en course sur la même tâche que {partie[1]} : on ne vote pas sur une concurrente, "
                        "et on ne change ni ne retire son vote tant qu'on est en course (commandement 3)")
             if statut_git != "D" and exiger(isinstance(nouveau, dict), f"{chemin} : fichier illisible"):
-                exiger(meme_pseudo(nouveau.get("votant"), auteur), f"{chemin} : votant déclaré différent de {auteur}")
+                exiger(nouveau.get("votant") == auteur, f"{chemin} : votant déclaré différent de {auteur}")
                 if "motif" in nouveau:
                     probleme = texte_recevable(nouveau.get("motif"), f"{chemin} : motif du vote", config_notes(reg)["texte_max"])
                     exiger(probleme is None, f"{probleme} (notes.texte_max)")
@@ -4705,10 +4737,10 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
 
         if partie[0] == "mesures" and len(partie) == 3:
             natures.append("mesure")
-            exiger(meme_pseudo(pathlib.PurePosixPath(chemin).stem, auteur), f"{chemin} : on ne dépose une mesure qu'en son nom ({auteur})")
+            exiger(pathlib.PurePosixPath(chemin).stem == auteur, f"{chemin} : on ne dépose une mesure qu'en son nom ({auteur})")
             exiger(auteur in reg.membres or est_conseil, f"{chemin} : {auteur} doit d'abord s'inscrire (bee inscrire)")
             if statut_git != "D" and exiger(isinstance(nouveau, dict), f"{chemin} : fichier illisible"):
-                exiger(meme_pseudo(nouveau.get("soumise_par"), auteur), f"{chemin} : soumise_par déclaré différent de {auteur}")
+                exiger(nouveau.get("soumise_par") == auteur, f"{chemin} : soumise_par déclaré différent de {auteur}")
                 probleme = probleme_textes_libres({k: v for k, v in nouveau.items() if k != "motif"}, chemin, TEXTE_COURT_MAX)
                 exiger(probleme is None, f"{probleme} (champs descriptifs d'une mesure)")
                 if "motif" in nouveau:
@@ -5425,6 +5457,7 @@ def cmd_proposer_tache(args):
 
 def cmd_liberer(args):
     reg = Registre(args.registre)
+    reg.exiger_orthographe(args.utilisateur)
     chemin, t = reg.tache(args.tache)
     titulaire = (t.get("reservation") or {}).get("utilisateur")
     paralleles = paralleles_de(t)
@@ -5778,9 +5811,8 @@ def cmd_voter(args):
         if probleme:
             raise ErreurBee(f"{probleme} (bee.yaml, notes.texte_max)")
         donnees["motif"] = args.motif
-    dossier = reg.racine / "votes" / args.sujet  # son vote déjà déposé, quelle que soit la casse du pseudo (ruche-0028, S4)
-    chemin = next((c for c in sorted(dossier.glob("*.yaml")) if meme_pseudo(c.stem, args.utilisateur)), dossier / f"{args.utilisateur}.yaml")
-    ecrire_yaml(chemin, {**donnees, "votant": chemin.stem})
+    chemin = reg.racine / "votes" / args.sujet / f"{args.utilisateur}.yaml"
+    ecrire_yaml(chemin, donnees)
     print(f"✓ vote {args.valeur:+d} enregistré ({reg.rel(chemin)}). Publiez : bee publier --titre 'Vote {args.sujet}'")
     niveau = calculer_niveaux(reg).get(args.utilisateur, {}).get("niveau", "Nouveau")
     if POIDS_VOTE.get(niveau, 0) == 0:
@@ -6022,6 +6054,7 @@ def debattre_synthetiser(args):
 def debattre_doublon(args):
     reg = Registre(args.registre)
     u = args.utilisateur
+    reg.exiger_orthographe(u)
     chemin, d = reg.debat(args.debat)
     _exiger_ouvert(args.debat, d)
     if u != d.get("rapporteur") and u not in reg.privilegies():
@@ -6049,6 +6082,7 @@ def debattre_caviarder(args):
     et la date demeurent. Même dans un débat clos."""
     reg = Registre(args.registre)
     u = args.utilisateur
+    reg.exiger_orthographe(u)
     if u not in reg.conseil:
         raise ErreurBee(f"{u} n'est pas du conseil : seul le conseil caviarde un argument, au refus ou à la demande d'une personne")
     chemin, d = reg.debat(args.debat)
@@ -6384,6 +6418,7 @@ def cmd_invitation(args):
     N'envoie rien : un humain du conseil envoie lui-même chaque message, hors de l'outil, puis le consigne ici."""
     reg = Registre(args.registre)
     u = args.utilisateur
+    reg.exiger_orthographe(u)
     if u not in reg.conseil and u not in reg.gardiens:
         reg.exiger_membre(u)
     chemin, inv = reg.invitation(args.invitation)
@@ -6994,6 +7029,7 @@ def raisons_course(reg, cid, niveaux, instant):
     protection, fin_attentes = bornes_attente(reg, enr)
     if soumise is None or instant >= fin_attentes:
         return []  # borne dure : passé soumise_le(X) + 120 h, personne ne retient plus X
+    declaree = _instant_ou_rien(enr.get("soumise_le"))  # les engagements, datés par déclaration, se comparent à la sienne (ruche-0028)
     fenetre = dt.timedelta(hours=float(reg.config.get("fenetre_acceptation_heures", 24)))
     raisons = []
     ma_cle = cle_classement(reg, enr, niveaux)
@@ -7007,14 +7043,14 @@ def raisons_course(reg, cid, niveaux, instant):
         engages += [(p.get("utilisateur"), "inscrit en parallèle", p.get("depuis")) for p in paralleles_de(t)]
         for qui, role, depuis in engages:
             debut = _instant_ou_rien(depuis)
-            if not meme_pseudo(qui, enr.get("auteur")) and debut is not None and debut <= soumise and not engagement_expire(reg, depuis, instant):
+            if not meme_pseudo(qui, enr.get("auteur")) and debut is not None and debut <= declaree and not engagement_expire(reg, depuis, instant):
                 raisons.append(f"course (R3) : {qui} ({role}) travaille sur la tâche depuis {depuis}, avant cette soumission : "
                                f"on attend sa contribution, son retrait ou son expiration (R7, {en_iso(debut + duree_r7)}), "
                                f"au plus tard jusqu'au {jusqu}")
         for c, e in rivales:
             debut = soumission_effective(reg, e)
             dans_sa_fenetre = debut is None or instant - debut < fenetre
-            engagee_avant = (debut_engagement(e) or FUTUR_LOINTAIN) <= soumise
+            engagee_avant = (debut_engagement(e) or FUTUR_LOINTAIN) <= declaree
             # Sans verdict, une concurrente d'un auteur engagé avant X n'est attendue que jusqu'à la fin de SA protection
             # (et jamais au-delà de celle de X) : une vieille contribution sans verdict ne retarde pas chaque nouvelle.
             limite_engagee = min(bornes_attente(reg, e)[0], protection) if debut is not None else protection

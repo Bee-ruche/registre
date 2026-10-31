@@ -3443,8 +3443,9 @@ class TestRevueAdverse(BaseParallele):
         verdict = {"ci": "verte", "gain": 0.05, "au_dela_du_bruit": True, "lignes_modifiees": 10, "instructions": INSTRUCTIONS_N6}
         etats = {PR_MINIZ + "99007": {"state": "OPEN", "head": "abc1234", "auteur": "alice", "verdict": verdict},
                  "arbres": {"abc1234": None}}
-        self.etape("Récupérer les verdicts", etats, flux="verdicts.yml")
+        sortie, _, _ = self.etape("Récupérer les verdicts", etats, flux="verdicts.yml")
         self.assertNotIn("verdict", self.enr(c1), "l'API n'a pas dit l'arbre : rien n'est enregistré")
+        self.assertIn(f"::notice::{c1} : arbre git du commit abc1234 illisible auprès de l'API ; aucun verdict", sortie)
         etats["arbres"] = {"abc1234": "7ee0001"}  # le passage suivant
         _, _, appels = self.etape("Récupérer les verdicts", etats, flux="verdicts.yml")
         self.assertTrue([a for a in appels if a["args"][:2] == ["api", "repos/Bee-ruche/minizBee/git/commits/abc1234"]])
@@ -9488,8 +9489,9 @@ class TestTour3(BaseParallele):
         """(7) jules : une levée « par: BIDJI29 » ne valait rien, alors qu'un pseudo est un login GitHub, sans la casse."""
         self.soumettre_()
         reg = bee.Registre(self.dossier)
-        self.assertTrue("BIDJI29" in reg.conseil and "Bruno" in reg.gardiens and "Bruno" in reg.privilegies() and "ALICE" in reg.membres)
-        self.assertFalse("bidji" in reg.conseil or None in reg.conseil or "chloe" in reg.privilegies())
+        self.assertTrue("BIDJI29" in reg.conseil and "Bruno" in reg.gardiens and "Bruno" in reg.privilegies())
+        self.assertFalse("bidji" in reg.conseil or None in reg.conseil or "chloe" in reg.privilegies() or "ALICE" in reg.membres)
+        self.assertEqual((bee.autre_orthographe(reg, "ALICE"), bee.autre_orthographe(reg, "alice")), ("alice", None))
         self.verdict_("aaa0001", "7ee0001")
         self.ok_("relire", self.cid, *self.lu(self.cid), "--utilisateur", "bruno", "--avis", "defavorable", "--motif", "Refus motivé.")
         bloque = "relecture défavorable de bruno (gardien, conseil ou Confirmé) : elle bloque"
@@ -9611,7 +9613,7 @@ class TestTour3(BaseParallele):
         self.soumettre_()
         self.ok_("voter", self.cid, "--utilisateur", "chloe", "--valeur", "1")
         self.a("2026-10-27T13:00:00Z")
-        self.ok_("voter", self.cid, "--utilisateur", "Chloe", "--valeur", "-1")  # son vote, réécrit (même fichier)
+        self.assertIn("Chloe : votre fiche est chloe", self.bee("voter", self.cid, "--utilisateur", "Chloe", "--valeur", "-1")[1])
         self.assertEqual([c.name for c in (self.dossier / f"votes/{self.cid}").glob("*.yaml")], ["chloe.yaml"])
         bee.ecrire_yaml(self.dossier / f"votes/{self.cid}/CHLOE.yaml", {"sujet": self.cid, "votant": "CHLOE", "valeur": -1,
                                                                         "le": "2026-10-27T12:30:00Z"})  # écrit à la main
@@ -9643,6 +9645,23 @@ class TestTour3(BaseParallele):
         del etats["comparaisons"]  # parcours honnête
         TestRevueAdverse.etape(self, "Intégrer", etats)
         self.assertEqual((self.enr(c2)["statut"], self.enr(c2)["fusion_sha"], self.enr(c1)["statut"]), ("integree", "f" * 40, "ecartee"))
+
+
+    def test_s1_une_instruction_de_plus_ne_redonne_pas_de_tirage(self):
+        """Vérification de 3ea3a71 (S1) : B 950000 et recul du chronomètre, puis B 950001 et +1,28 % : la retouche d'une instruction
+        redonnait un tirage. Dans le fil, des décomptes à moins de 1 % sont le même contenu mesuré."""
+        self.soumettre_()
+        self.verdict_("aaa0001", "7ee0001", chrono=-0.02, instructions=0.05)  # B = 950000
+        self.verdict_("aaa0002", "7ee0002", chrono=0.0128, instructions=0.049999)  # B = 950001
+        self.relire_tous(voter=True)
+        code, texte = self.acceptation(self.cid)
+        self.assertEqual(code, 1, texte)
+        self.assertIn("recule au-delà du bruit (-2.0 %) [verdict précédent du même contenu mesuré, commit aaa0001]", texte)
+        # Parcours honnête : un code qui s'éloigne d'au moins 1 % (B = 940000) est un autre contenu mesuré.
+        self.verdict_("bbb0001", "7ee0003", chrono=0.0128, instructions=0.06)
+        for qui in ("bruno", "bidji29"):
+            self.ok_("relire", self.cid, *self.lu(self.cid), "--utilisateur", qui, "--avis", "favorable", "--motif", self.MOTIF)
+        self.assertEqual(self.acceptation(self.cid)[0], 0)
 
 
 class TestTour3PR(BaseRepetitionGenerale):
@@ -9742,13 +9761,31 @@ class TestTour3PR(BaseRepetitionGenerale):
         bee.ecrire_yaml(self.dossier / f"votes/{cid}/Chloe.yaml", {"sujet": cid, "votant": "Chloe", "valeur": 1,
                                                                     "le": os.environ["BEE_MAINTENANT"]})
         self.commit()
-        self.refusee("Chloe", f"votes/{cid}/Chloe.yaml : chloe existe déjà : un pseudo est un login GitHub, sans la casse")
+        self.refusee("Chloe", f"votes/{cid}/Chloe.yaml : chloe existe déjà : un pseudo est un login GitHub, sans la casse",
+                     "auteur de la PR « Chloe » : sa fiche est chloe", "votant « Chloe » s'écrit chloe (sa fiche)")
         git(self.dossier, "switch", "-qf", "main")
         git(self.dossier, "branch", "-qD", "double")
-        # Parcours honnête : « Chloe » change son vote, dans sa fiche (bee voter réécrit chloe.yaml).
-        self.geste_verifie("Chloe", "2026-10-30T02:10:00Z", "2026-10-30T02:10:00Z", "voter", cid, "--utilisateur", "Chloe", "--valeur", "-1",
+        # Parcours honnête : chloe change son vote, dans sa fiche.
+        self.geste_verifie("chloe", "2026-10-30T02:10:00Z", "2026-10-30T02:10:00Z", "voter", cid, "--utilisateur", "chloe", "--valeur", "-1",
                            nature="vote")
         self.assertEqual(sorted(c.name for c in (self.dossier / f"votes/{cid}").glob("*.yaml")), ["chloe.yaml"])
+
+    def test_b1_un_engagement_se_compare_a_la_soumission_declaree(self):
+        """Vérification de 3ea3a71 (B1) : X était daté par sa fusion, les engagements des autres par leur déclaration ; une
+        inscription datée entre soumise_le(X) et sa fusion retenait X jusqu'à l'expiration R7. Les engagements se comparent à
+        soumise_le(X) ; un engagement d'avant la soumission retient toujours X."""
+        self.geste_verifie("alice", "2026-10-29T22:00:00Z", "2026-10-29T22:30:00Z", "prendre", "miniz-0099", "--utilisateur", "alice",
+                           nature="reservation")
+        self.geste_verifie("bruno", "2026-10-30T01:00:00Z", "2026-10-30T01:00:00Z", "prendre", "miniz-0099", "--utilisateur", "bruno",
+                           "--en-parallele", nature="inscription_parallele")
+        self.geste_verifie("alice", "2026-10-30T01:30:00Z", "2026-10-30T02:00:00Z", "soumettre", "miniz-0099", "--utilisateur", "alice",
+                           "--pr", PR_MINIZ + "77028", "--resume", "Premier jet.", nature="soumission")
+        self.geste_verifie("chloe", "2026-10-30T01:45:00Z", "2026-10-30T02:05:00Z", "prendre", "miniz-0099", "--utilisateur", "chloe",
+                           "--en-parallele", nature="inscription_parallele")
+        texte = self.bee("verifier-acceptation", "miniz-0099-c1")[1]
+        self.assertIn("bruno (inscrit en parallèle) travaille sur la tâche depuis 2026-10-30T01:00:00Z", texte)
+        self.assertNotIn("chloe (inscrit en parallèle)", texte)
+
 
     def test_m2_la_fusion_est_le_dernier_ajout_de_la_contribution(self):
         """M2 : un identifiant réutilisé (fichier retiré puis rajouté) retombait sur son premier ajout, donc sur soumise_le."""
@@ -9794,11 +9831,98 @@ class TestTour3PR(BaseRepetitionGenerale):
         self.commit()
         self.libre_service("farid", "relecture")
         self.fusionner("relecture")
-        # (7) Une levée « par: BIDJI29 » : écrite par un membre, refusée ; par le conseil, quelle que soit la casse, recevable.
-        levee = lambda enr: enr.update(levees=[{"relecteur": "farid", "motif": "Levée motivée par le conseil.",  # noqa: E731
-                                                "par": "BIDJI29", "le": os.environ["BEE_MAINTENANT"]}])
-        self.pr_a_la_main("bruno", levee, "une levée (levees) est écrite par le conseil seul")
-        self.pr_a_la_main("bidji29", levee, attendu=0)
+        # (7) Une levée : écrite par un membre, refusée ; par le conseil, recevable, écrite comme sa fiche (revue de 3ea3a71, N1).
+        levee = lambda par: lambda enr: enr.update(levees=[{"relecteur": "farid", "motif": "Levée motivée par le conseil.",  # noqa: E731
+                                                            "par": par, "le": os.environ["BEE_MAINTENANT"]}])
+        self.pr_a_la_main("bruno", levee("bidji29"), "une levée (levees) est écrite par le conseil seul")
+        self.pr_a_la_main("bidji29", levee("BIDJI29"), "par « BIDJI29 » s'écrit bidji29 (sa fiche)")
+        self.pr_a_la_main("bidji29", levee("bidji29"), attendu=0)
+
+
+class TestOrthographe(BaseInvitations):
+    """Vérification de 3ea3a71 (N1) : ruche-0028 avait rendu les fiches membres/ sans la casse, alors que R13 et les plafonds
+    comparent les pseudos avec elle ; « Gina » proposait une invitation, puis gina y donnait l'accord de gardien. Une seule
+    orthographe, dès l'entrée : un pseudo qui ne suit sa fiche qu'à la casse près est refusé (--utilisateur, auteur de la PR,
+    champs d'identité d'un fichier), avec l'orthographe de la fiche ; jamais ramené en silence."""
+
+    def setUp(self):
+        super().setUp()
+        self.ok("inscrire", "--pseudo", "gina", "--compte-cree-le", "2020-01-01")
+        self.commit("gina inscrite")
+        self.a("2026-10-30T10:00:00Z")
+
+    def abandonner(self, nom="pr"):
+        git(self.dossier, "switch", "-qf", "main")
+        git(self.dossier, "branch", "-qD", nom)
+
+    def test_n1_une_invitation_se_propose_sous_l_orthographe_de_sa_fiche(self):
+        source = "https://github.com/octocat"
+        self.ko("Gina : votre fiche est gina", "inviter", "--utilisateur", "Gina", "--identifiant", "github:octocat", "--demande",
+                "garant", "--fait", "Maintient un logiciel libre de compression depuis dix ans.", "--source", source,
+                "--message", MESSAGE_INVITATION, "--debat", "D-0001")
+        self.branche()
+        self.inviter("gina")
+        bee.ecrire_invitation(self.chemin_invitation(), {**self.invitation(), "propose_par": "Gina"})  # écrite à la main
+        self.commit()
+        self.refusee("Gina", "auteur de la PR « Gina » : sa fiche est gina", "propose_par « Gina » s'écrit gina (sa fiche)")
+        self.abandonner()
+        self.branche()  # témoin honnête
+        self.inviter("gina")
+        self.commit()
+        self.attend_le_conseil("gina", "invitation")
+
+    def test_n1_l_accord_de_gardien_ne_contourne_pas_sa_propre_invitation(self):
+        """Le détournement : l'invitation de gina porterait « Gina », et gina y donnerait l'accord de gardien (comparaison exacte
+        en aval). Ni « Gina », ni le conseil n'écrivent ce propose_par ; écrite gina, l'accord de gina est refusé."""
+        self.branche()
+        self.inviter("gina")
+        bee.ecrire_invitation(self.chemin_invitation(), {**self.invitation(), "propose_par": "Gina"})
+        self.commit()
+        for auteur in ("Gina", "bidji29"):
+            self.refusee(auteur, "propose_par « Gina » s'écrit gina (sa fiche)")
+        self.abandonner()
+        self.branche()
+        self.inviter("gina")
+        self.publier("gina", "invitation", libre=False)
+        self.a("2026-11-02T11:00:00Z")
+        self.ko("on ne donne pas son accord à sa propre invitation", "invitation", "accord-gardien", "I-0001", "--utilisateur", "gina")
+        self.ko("GINA : votre fiche est gina", "invitation", "accord-gardien", "I-0001", "--utilisateur", "GINA")
+
+    def test_n1_le_plafond_de_creations_ne_se_contourne_pas_par_la_casse(self):
+        dernier = None
+        for _ in range(bee.config_creations(bee.Registre(self.dossier))["taches_max_par_24h"]):
+            self.branche()
+            dernier = self.proposer_tache("alice")
+            self.commit()
+            self.fusionner()
+        self.ko("Alice : votre fiche est alice", "proposer-tache", "miniz", "--utilisateur", "Alice", "--type", "test")
+        suivante = dernier.with_name(f"miniz-{int(dernier.stem.rsplit('-', 1)[1]) + 1:04d}.yaml")
+        for auteur, morceaux in (("Alice", ["auteur de la PR « Alice » : sa fiche est alice", "cree_par « Alice » s'écrit alice"]),
+                                 ("alice", ["plafond : alice aurait 6"])):  # témoin honnête : le plafond d'alice tient
+            self.branche()
+            bee.ecrire_yaml(suivante, {**bee.lire_yaml(dernier), "id": suivante.stem, "cree_par": auteur})
+            self.commit()
+            self.refusee(auteur, *morceaux)
+            self.abandonner()
+
+    def test_n1_le_plafond_de_notes_ne_se_contourne_pas_par_la_casse(self):
+        for lot in range(2):
+            self.branche(f"lot{lot}")
+            for n in range(10):
+                self.a(f"2026-10-30T{10 + lot}:{n:02d}:00Z")
+                self.ok("noter", "miniz-0099", "--utilisateur", "gaspard", "--texte", f"Note {lot}-{n} : une piste.")
+            self.commit()
+            self.libre_service("gaspard", "note")
+            self.fusionner(f"lot{lot}")
+        self.a("2026-10-30T11:30:00Z")
+        self.ko("Gaspard : votre fiche est gaspard", "noter", "miniz-0099", "--utilisateur", "Gaspard", "--texte", "De trop.")
+        for auteur, morceaux in (("Gaspard", ["auteur de la PR « Gaspard » : sa fiche est gaspard", "par « Gaspard » s'écrit gaspard"]),
+                                 ("gaspard", ["plafond : gaspard aurait 21 notes en 24 h"])):  # témoin honnête
+            self.branche("trop")
+            self.noter_a_la_main({"par": auteur, "texte": "De trop."})
+            self.commit()
+            self.refusee(auteur, *morceaux)
+            self.abandonner("trop")
 
 
 MANIFESTE_REMPLI = """tache: miniz-0099
