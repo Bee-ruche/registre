@@ -1790,6 +1790,16 @@ def verifier_registre(reg):
             ajouter(f"{lieu} : soumise par « {mesure['soumise_par']} », qui n'est pas inscrit")
         instant_valide(chemin, mesure["le"], "le")
 
+    # ruche-0029 : le contrôle commun de tout texte libre, dans chaque valeur et chaque clé des données que bee imprime, même
+    # échappé en YAML ; un titre et un résumé tiennent sur une ligne. Le verdict, écrit par la CI, a ses propres bornes.
+    for chemin, donnees in [*reg.taches.values(), *reg.enregistrements.values(), *reg.propositions.values(), *reg.debats.values(),
+                            *reg.invitations.values(), *reg.membres.values(), *reg.votes, *reg.mesures]:
+        donnees = {k: v for k, v in donnees.items() if k != "verdict"} if isinstance(donnees, dict) else donnees
+        for lieu, texte in textes_de(donnees):
+            probleme = probleme_texte_libre(texte, f"{reg.rel(chemin)} : {lieu}", lieu not in ("titre", "resume"))
+            if probleme:
+                ajouter(probleme)
+
     verifier_agora_registre(reg, ajouter, selon_schema, instant_valide)
     verifier_invitations_registre(reg, ajouter, selon_schema, instant_valide)  # R13 (docs/croissance.md)
     verifier_arbre(reg, ajouter)  # l'arbre du sens (docs/arbre.md)
@@ -2432,7 +2442,70 @@ def texte_recevable(texte, quoi, maximum):
                 "il cacherait ou maquillerait le texte, ou rendrait le débat impossible à réécrire")
     if len(texte) > maximum:
         return f"{quoi} de {len(texte)} caractères, au plus {maximum}"
+    return probleme_texte_libre(texte, quoi)
+
+
+# Les marques qu'imprime bee autour des données (DEBUT_DONNEES, FIN_DONNEES, DEBUT_DECLARE), sous leur forme comparée.
+MARQUE_ENCADRE = re.compile(r"===\s*(?:fin\s+des\s+)?donnees")
+MARQUE_NEUTRALISEE = "[marque d'encadré neutralisée]"
+
+
+def marques_encadre(texte):
+    """Les étendues [début, fin) de `texte` où se lit une marque d'encadré (« === DONNÉES », « === FIN DES DONNÉES ») : sans
+    casse ni accent, espaces tolérées, chaque caractère lu après NFKC (« ＝ » pleine chasse est « = »)."""
+    texte = str(texte)
+    if "=" not in unicodedata.normalize("NFKD", unicodedata.normalize("NFKC", texte)):
+        return []
+    forme, origine = [], []
+    for i, c in enumerate(texte):
+        for x in unicodedata.normalize("NFKD", unicodedata.normalize("NFKC", c)).casefold():
+            if not unicodedata.combining(x):
+                forme.append(x)
+                origine.append(i)
+    return [(origine[m.start()], origine[m.end() - 1] + 1) for m in MARQUE_ENCADRE.finditer("".join(forme))]
+
+
+def neutraliser_marques(texte):
+    """Chaque marque d'encadré cassée de façon visible (MARQUE_NEUTRALISEE) ; point fixe."""
+    for debut, fin in reversed(marques_encadre(texte)):
+        texte = texte[:debut] + MARQUE_NEUTRALISEE + texte[fin:]
+    return texte
+
+
+def probleme_texte_libre(texte, quoi, multiligne=True):
+    """Le contrôle commun de tout texte libre du registre (ruche-0029) : aucun caractère que caractere_sortant_interdit refuse
+    (ni saut de ligne ni tabulation hors d'un texte multiligne), aucune marque d'encadré ; None, ou la raison, qui nomme le
+    point de code, jamais le caractère."""
+    texte = str(texte)
+    refuses = {c for c in set(texte) if caractere_sortant_interdit(c) or (not multiligne and c in "\n\t")}  # chacun une fois
+    c = next((c for c in texte if c in refuses), None) if refuses else None
+    if c is not None:
+        return (f"{quoi} : caractère invisible refusé (U+{ord(c):04X}, catégorie {unicodedata.category(c)}) : "
+                + ("il cacherait ou maquillerait le texte à l'affichage" if multiligne else "ce texte tient sur une ligne"))
+    if marques_encadre(texte):
+        return (f"{quoi} : fausse marque d'encadré refusée (« === DONNÉES », « === FIN DES DONNÉES ») : seul bee encadre les "
+                "données qu'il imprime")
     return None
+
+
+def textes_de(valeur, lieu="", profondeur=0):
+    """(lieu, texte) pour chaque texte d'une donnée lue, valeurs et clés, récursivement ; une clé refusée n'est pas recopiée."""
+    if isinstance(valeur, str):
+        yield lieu or "(racine)", valeur
+    elif isinstance(valeur, list) and profondeur < 20:
+        for i, sous in enumerate(valeur):
+            yield from textes_de(sous, f"{lieu}[{i}]", profondeur + 1)
+    elif isinstance(valeur, dict) and profondeur < 20:
+        for cle, sous in valeur.items():
+            nom = f"{lieu}/{cle if probleme_texte_libre(cle, '') is None else '(clé refusée)'}".lstrip("/")
+            yield f"{nom} (clé)", str(cle)
+            yield from textes_de(sous, nom, profondeur + 1)
+
+
+def montrer(texte):
+    """Un message tel qu'on peut l'imprimer (bee valider, verifier-pr) : chaque caractère que refuse caractere_sortant_interdit
+    écrit « <U+XXXX> », même cité par le message d'un schéma."""
+    return "".join(f"<U+{ord(c):04X}>" if caractere_sortant_interdit(c) else c for c in str(texte))
 
 
 def probleme_textes_libres(valeur, lieu, maximum, profondeur=0):
@@ -2445,7 +2518,7 @@ def probleme_textes_libres(valeur, lieu, maximum, profondeur=0):
         c = premier_caractere_interdit(valeur)
         if c is not None:
             return f"{lieu} : caractère invisible ou de contrôle refusé (U+{ord(c):04X})"
-        return f"{lieu} : {len(valeur)} caractères, au plus {maximum}" if len(valeur) > maximum else None
+        return f"{lieu} : {len(valeur)} caractères, au plus {maximum}" if len(valeur) > maximum else probleme_texte_libre(valeur, lieu)
     if isinstance(valeur, dict):
         for cle, sous in valeur.items():
             probleme = (probleme_textes_libres(str(cle), f"{lieu} (clé)", maximum, profondeur + 1)
@@ -3153,9 +3226,10 @@ DEBUTS_DEMANDE = tuple(sorted({forme_comparee(phrase.split(":")[0]).strip() for 
 
 
 def caractere_sortant_interdit(c):
-    """Plus strict que caractere_interdit, pour ce qui sort de la ruche (message, faits, sources, motifs) : en plus des
-    catégories Cc et Cf, l'usage privé (Co), les non attribués (Cn) et les invisibles d'INVISIBLES_SORTANTS."""
-    return (caractere_interdit(c) or unicodedata.category(c) in ("Co", "Cn")
+    """Plus strict que caractere_interdit, pour ce qui sort de la ruche (message, faits, sources, motifs) et pour tout texte
+    libre du registre (probleme_texte_libre, ruche-0029) : en plus des catégories Cc et Cf, l'usage privé (Co), les non
+    attribués (Cn), les séparateurs de ligne et de paragraphe (Zl, Zp) et les invisibles d'INVISIBLES_SORTANTS."""
+    return (caractere_interdit(c) or unicodedata.category(c) in ("Co", "Cn", "Zl", "Zp")
             or any(debut <= ord(c) <= fin for debut, fin in INVISIBLES_SORTANTS))
 
 
@@ -4888,7 +4962,7 @@ def cmd_valider(args):
     reg = Registre(args.registre)
     problemes = verifier_registre(reg)
     for p in problemes:
-        print(f"✗ {p}")
+        print(f"✗ {montrer(p)}")
     for a in avertissements_arbre(reg) + alertes_croissance(reg):
         print(f"⚠ {a}")
     if problemes:
@@ -5477,7 +5551,7 @@ def cmd_valider_contribution(args):
     donnees = lire_yaml(args.fichier)
     problemes = verifier_manifeste(reg, donnees, args.fichier)
     for p in problemes:
-        print(f"✗ {p}")
+        print(f"✗ {montrer(p)}")
     if problemes:
         return 1
     print(f"✓ {args.fichier} est valide.")
@@ -6436,7 +6510,7 @@ def cmd_verifier_pr(args):
     problemes, natures = verifier_pr(reg, args.base, args.tete, args.auteur, args.compte_cree_le, auteurs_pr=auteurs_pr)
     problemes = verifier_registre(reg) + problemes
     for p in problemes:
-        print(f"✗ {p}")
+        print(f"✗ {montrer(p)}")
     resume = ", ".join(sorted(set(natures))) or "aucun changement"
     if problemes:
         print(f"\nPR refusée ({len(problemes)} problème(s)). Nature : {resume}.")
@@ -6457,7 +6531,7 @@ def cmd_verifier_fork(args):
     for a in avertissements:
         print(f"⚠ {a}")
     for p in problemes:
-        print(f"✗ {p}")
+        print(f"✗ {montrer(p)}")
     if problemes:
         return 1
     print(f"✓ branche conforme : {total} lignes modifiées (hors tests et bancs), manifeste valide.")
@@ -6506,8 +6580,9 @@ def texte_declare(valeur, maximum):
     YAML échapperait montrés (<U+202E>), coupé à `maximum` (« […] ») ; point fixe : texte_declare(t, len(t)) == t."""
     if not isinstance(valeur, str):
         return None
-    texte = " ".join("".join(c if c in "\n\t" or (ecrit_tel_quel(c) and not caractere_interdit(c)) else f"<U+{ord(c):04X}>"
+    texte = " ".join("".join(c if c in "\n\t" or (ecrit_tel_quel(c) and not caractere_sortant_interdit(c)) else f"<U+{ord(c):04X}>"
                              for c in valeur[:8 * maximum]).split())
+    texte = neutraliser_marques(texte)  # ruche-0029 : le manifeste vient du fork ; il ne bloque pas le verdict, il est montré
     return (texte if len(texte) <= maximum else texte[:maximum - 4].rstrip() + " […]") or None
 
 
@@ -7771,7 +7846,7 @@ def cadre_donnees_tache(tache, notes_omises=0, contexte_max=None):
 def cadre_donnees(donnees, debut):
     """`donnees` relues par bee, entre `debut` et FIN_DONNEES, chaque ligne précédée de « | », l'invisible montré."""
     texte = yaml.dump(donnees, Dumper=_DumperDebat, allow_unicode=True, sort_keys=False, width=10 ** 6)
-    texte = "".join(f"<U+{ord(c):04X}>" if caractere_interdit(c) else c for c in texte)
+    texte = "".join(f"<U+{ord(c):04X}>" if caractere_sortant_interdit(c) else c for c in texte)
     # « ##[ » est une commande de workflow (ancienne syntaxe) où qu'il soit dans une ligne du journal de la CI.
     lignes = ["|" + (" " + ligne if ligne else "") for ligne in texte.replace("##[", "# #[").rstrip("\n").split("\n")]
     return "\n".join([debut] + lignes + [FIN_DONNEES])

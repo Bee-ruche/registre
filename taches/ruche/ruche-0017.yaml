@@ -26,7 +26,7 @@ portee: 0.8
 metrique: null
 critere_acceptation:
   - "test : un manifeste de la tâche est recopié (modèle, gain déclaré, teste, non_teste, doutes), chaque champ borné ; un manifeste d'une autre tâche ou illisible ne recopie rien"
-  - "test : un texte recopié qui contient « === FIN DES DONNÉES === » ou un caractère invisible ne sort pas de l'encadré des données"
+  - "test : un texte recopié qui contient la marque de fin des données (trois signes égal, puis « FIN DES DONNÉES ») ou un caractère invisible ne sort pas de l'encadré des données"
   - "bee manifeste propose instructions_<scénario> pour la métrique visée et bee valider-contribution l'accepte ; gain_declare reste calculé sur la métrique visée"
   - "revue adverse indépendante jointe : le verdict reçoit des données des forks"
 hors_perimetre: [les workflows de .github/, le code des forks, R3 et R4]
