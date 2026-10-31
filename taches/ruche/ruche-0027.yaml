@@ -33,3 +33,7 @@ noeud: projets/ruche
 statut: ouverte
 cree_par: conseil
 cree_le: "2026-10-30"
+notes:
+  - par: "bidji29"
+    le: "2026-10-31T02:17:17Z"
+    texte: "31/10, revue adverse de R14 (lecture seule, aucune dérogation en vigueur) : à régler avant de commencer, et D-0023 doit d'abord être débattu par d'autres que celui qui l'a ouvert. (1) L'accord du conseil doit être vérifiable par l'outil et impossible à produire pour un agent : tant que l'agent principal agit sous le compte du conseil, l'outil ne distingue pas les deux. (2) Pas de règles locales pour une zone qui partage le binaire de son projet ; électorat figé à l'ouverture, minimum de votants, quorum de R10 côté ruche. (3) Nommer une à une les clauses de R3 qui sont au socle, et y ajouter R9. (4) Dérogation dans un fichier structuré contrôlé par bee valider, jamais dans le texte d'un nœud. (5) Le commandement 8 (règles d'un projet qui adhère) ne doit pas contourner le socle."
