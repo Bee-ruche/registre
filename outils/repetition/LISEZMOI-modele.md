@@ -13,8 +13,8 @@ servant pour de vrai.
   - `ouvrir-pr-fork <pseudo> <projet> "<l'approche, précise>"` rend l'adresse d'une PR fictive ;
   - `pousser-pr-fork <pseudo> <url> <manifeste.yaml> "<ce que contient ce commit>"` pousse un commit sur cette PR,
     puis la CI simulée du fork rend son verdict et l'enregistre dans le registre. Ses chiffres sont tirés au hasard à
-    partir du contenu : on ne choisit pas son verdict. Même description et même manifeste qu'un commit précédent : même
-    contenu (comme un commit amendé sans changement), donc mêmes décomptes d'instructions ; seul le chronomètre change ;
+    partir du code : on ne choisit pas son verdict. La description est le code du commit : la même qu'un commit
+    précédent donne les mêmes décomptes d'instructions, même avec un manifeste corrigé ; seul le chronomètre change ;
   - `ci-simulee <url>` relance la CI du dernier commit, si vous avez soumis après avoir poussé.
 - **Pas de GitHub** : `bee publier` est remplacé par `publier`, et `gh` refuse tout. Chaque commande se lance depuis
   votre clone, sous votre pseudo ; main n'avance que par `publier`, le conseil simulé et la CI simulée.

@@ -4,7 +4,7 @@
 # `publier`, et le `gh` de la simulation refuse tout.
 set -euo pipefail
 source "$(dirname "$(realpath "$0")")/commun.sh"
-if [ "${1:-}" = publier ]; then
+if printf '%s\n' "$@" | grep -qx publier; then
   echo "Dans la ruche simulée, publiez avec : publier <votre pseudo> \"<titre>\" (voir LISEZMOI.md)." >&2; exit 2
 fi
 export BEE_MAINTENANT="$(python3 "$SIMU/outils/horloge.py")"

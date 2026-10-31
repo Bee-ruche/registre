@@ -2,8 +2,8 @@
 registre simulé, comme le fait le workflow des verdicts (bee enregistrer-verdict, poussé sur main par le robot).
 
 Les chiffres sont tirés au hasard, l'auteur ne choisit pas son verdict. Comme dans un vrai fork, ce qui dépend du code
-(CI verte ou rouge, lignes, décomptes d'instructions, constructions suspectes) est tiré de l'arbre du commit (sa
-description et son manifeste) : le même contenu, repoussé ou relancé, donne les mêmes décomptes. Seul le chronomètre est
+(CI verte ou rouge, lignes, décomptes d'instructions, constructions suspectes) est tiré du code du commit, c'est-à-dire
+de sa description : le même code, repoussé ou relancé, avec ou sans manifeste corrigé, donne les mêmes décomptes. Seul le chronomètre est
 tiré à nouveau à chaque exécution : relancer la CI jusqu'à passer le seuil de R4 est donc possible ici comme en vrai, et
 c'est à la ruche de ne pas s'y laisser prendre (ruche-0028).
 Usage : python3 ci_simulee.py <url_pr_fork> [--relance]
@@ -26,11 +26,11 @@ def main():
         print(f"adresse de PR invalide : {url}")
         return 2
     commits = [l.rstrip("\n").split("\t") for l in (SIMU / "etat/commits_fork.tsv").read_text(encoding="utf-8").splitlines() if l.strip()]
-    commits = [c for c in commits if c[1] == url]
+    commits = [c for c in commits if len(c) == 5 and c[1] == url]   # une ligne abîmée n'arrête pas la CI des autres
     if not commits:
         print(f"Aucun commit poussé sur {url} : pousser-pr-fork d'abord.")
         return 1
-    _, _, sha, arbre, _ = commits[-1]
+    _, _, sha, arbre, code = commits[-1]
     numero = url.rsplit("/", 1)[1]
     manifeste = SIMU / "etat/manifestes" / numero / f"{sha}.yaml"
     maintenant = sh("python3", str(SIMU / "outils/horloge.py")).stdout.strip()
@@ -60,7 +60,9 @@ def main():
         rang = sum(1 for l in executions.read_text(encoding="utf-8").splitlines() if l == sha) if executions.exists() else 0
         with executions.open("a", encoding="utf-8") as f:
             f.write(sha + "\n")
-        hasard = random.Random(f"contenu:{arbre}")
+        # Le « code » du commit est sa description : le manifeste fait partie de l'arbre, mais le corriger ne change pas
+        # ce que la CI mesure.
+        hasard = random.Random(f"code:{code}")
         chrono_hasard = random.Random(f"execution:{sha}:{rang}")
         verdict = {"ci": "verte" if hasard.random() < 0.9 else "rouge", "lignes_modifiees": hasard.randint(12, 60),
                    "juge": {"version": 3, "commun": "juge-v1", "sorties_comparees": 7868, "constructions_suspectes": []}}

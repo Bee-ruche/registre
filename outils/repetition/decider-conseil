@@ -13,6 +13,9 @@ exec 9>"$SIMU/etat/verrou"; flock 9
 conf="$SIMU/confiance"
 git -C "$conf" fetch -q origin "refs/heads/pr/$n:refs/remotes/origin/pr/$n" 2>/dev/null || { echo "PR $n inconnue" >&2; exit 1; }
 git -C "$conf" fetch -q origin && git -C "$conf" checkout -q --detach origin/main
+# Le conseil ne décide que des PR que l'outil de main a jugées valides et réservées au conseil (état « conseil »).
+dernier=$(awk -F'\t' -v n="$n" '$2==n {e=$5} END {print e}' "$SIMU/etat/prs.tsv")
+[ "$dernier" = conseil ] || { echo "PR $n : état « ${dernier:-inconnu} », pas en attente du conseil ; rien à décider." >&2; exit 1; }
 if [ "$decision" = refuser ]; then
   printf '%s\t%s\t%s\t%s\t%s\n' "$BEE_MAINTENANT" "$n" "conseil" "décision : $motif" "refusee_conseil" >> "$SIMU/etat/prs.tsv"
   echo "PR $n refusée par le conseil."; exit 0

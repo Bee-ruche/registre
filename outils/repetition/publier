@@ -10,11 +10,14 @@ clone="$(git rev-parse --show-toplevel)"
 export BEE_MAINTENANT="$(python3 "$SIMU/outils/horloge.py")"
 cd "$clone"
 git add -A
-if git diff --cached --quiet; then echo "rien à publier" >&2; exit 1; fi
-git -c user.name="$pseudo" -c user.email="$pseudo@simu.bee" commit -qm "$titre"
+if ! git diff --cached --quiet; then
+  git -c user.name="$pseudo" -c user.email="$pseudo@simu.bee" commit -qm "$titre"
+elif [ "$(git rev-list --count origin/main..HEAD)" = 0 ]; then
+  echo "rien à publier" >&2; exit 1
+fi   # sinon : republier le commit gardé après un refus (ou corrigé depuis)
 exec 9>"$SIMU/etat/verrou"; flock 9
 n=$(( $(cat "$SIMU/etat/compteur_pr" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$SIMU/etat/compteur_pr"
-git push -q "$SIMU/central.git" "HEAD:refs/heads/pr/$n"
+BEE_SIMU_ROBOT=1 git push -q "$SIMU/central.git" "HEAD:refs/heads/pr/$n"
 conf="$SIMU/confiance"
 git -C "$conf" fetch -q origin && git -C "$conf" checkout -q --detach origin/main
 rm -rf "$SIMU/fusion"; git -C "$conf" worktree prune

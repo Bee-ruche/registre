@@ -14,7 +14,7 @@ pseudo_valide() {
 
 # Un texte qui part dans les journaux tabulés de l'état : ni tabulation, ni saut de ligne, ni autre caractère de contrôle.
 texte_valide() {
-  if printf '%s' "$1" | LC_ALL=C grep -q '[[:cntrl:]]'; then echo "texte refusé (caractère de contrôle) : utilisez une seule ligne" >&2; exit 2; fi
+  if [[ "$1" == *[[:cntrl:]]* ]]; then echo "texte refusé (caractère de contrôle) : utilisez une seule ligne" >&2; exit 2; fi
   [ -n "$1" ] || { echo "texte vide" >&2; exit 2; }
 }
 

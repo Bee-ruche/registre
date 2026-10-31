@@ -24,7 +24,7 @@ Les outils de la simulation :
 - `publier`, à la place de `bee publier` ;
 - `ouvrir-pr-fork` et `pousser-pr-fork`, pour une PR « sur papier » du fork ;
 - la CI simulée du fork, `ci-simulee`, qui tire le verdict au hasard : les décomptes d'instructions suivent le
-  contenu (même contenu, mêmes décomptes), le chronomètre est tiré à nouveau à chaque exécution, comme en vrai ;
+  code (même description, mêmes décomptes), le chronomètre est tiré à nouveau à chaque exécution, comme en vrai ;
 - `decider-conseil`, pour les PR réservées au conseil ;
 - l'horloge, `etat/horloge` : le décalage, en secondes, de l'heure simulée sur l'heure réelle ;
 - un `gh` qui refuse tout, et un `bee` qui refuse `bee publier`.

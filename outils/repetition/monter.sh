@@ -19,14 +19,16 @@ git -C "$S/central.git" symbolic-ref HEAD refs/heads/main
 git -C "$S/central.git" for-each-ref --format='%(refname:short)' refs/heads | grep -vx main | while read -r b; do
   git -C "$S/central.git" branch -q -D "$b"; done
 git -C "$S/central.git" remote remove origin 2>/dev/null || true
-# main n'avance que par les outils de la simulation (publier, decider-conseil, la CI simulée) : un membre qui pousse
-# directement sur main est refusé. Garde-fou contre l'erreur honnête, pas contre un tricheur (voir commun.sh).
+# Le dépôt simulé ne bouge que par les outils de la simulation (publier, decider-conseil, la CI simulée), et une PR
+# poussée ne se réécrit pas. Garde-fou contre l'erreur honnête, pas contre un tricheur (voir commun.sh).
 cat > "$S/central.git/hooks/pre-receive" <<'EOF'
 #!/usr/bin/env bash
+zero=0000000000000000000000000000000000000000
 while read -r ancien nouveau ref; do
-  if [ "$ref" = refs/heads/main ] && [ "${BEE_SIMU_ROBOT:-}" != 1 ]; then
-    echo "main n'avance que par publier, decider-conseil ou la CI simulée (voir LISEZMOI.md)." >&2; exit 1
+  if [ "${BEE_SIMU_ROBOT:-}" != 1 ]; then
+    echo "Le dépôt simulé ne bouge que par publier, decider-conseil ou la CI simulée (voir LISEZMOI.md)." >&2; exit 1
   fi
+  case "$ref" in refs/heads/pr/*) [ "$ancien" = "$zero" ] || { echo "$ref existe déjà : une PR ne se réécrit pas." >&2; exit 1; };; esac
 done
 EOF
 chmod +x "$S/central.git/hooks/pre-receive"

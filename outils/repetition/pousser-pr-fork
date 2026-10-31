@@ -2,8 +2,8 @@
 # Pousse un commit « sur papier » sur sa PR du fork simulé, puis la CI simulée du fork rend son verdict.
 # Usage (depuis son clone de la simulation) : pousser-pr-fork <pseudo> <url_pr_fork> <manifeste.yaml> "<ce que contient ce commit>"
 # Le manifeste est celui que la CI lirait dans manifestes/<tâche>.yaml du fork, à ce commit.
-# Le contenu d'un commit, c'est sa description et son manifeste : les mêmes qu'un commit précédent donnent le même arbre
-# (comme un commit amendé sans changement), donc les mêmes décomptes d'instructions ; seul le chronomètre varie.
+# Le code d'un commit, c'est sa description : la même qu'un commit précédent donne les mêmes décomptes d'instructions
+# (seul le chronomètre varie). Son arbre, c'est la description et le manifeste : changer l'un ou l'autre change l'arbre.
 set -euo pipefail
 source "$(dirname "$(realpath "$0")")/commun.sh"
 pseudo="${1:?pseudo}"; url="${2:?url}"; manifeste="${3:?manifeste}"; desc="${4:-}"
