@@ -1,6 +1,6 @@
 # Règles de fonctionnement
 
-Ces règles sont les valeurs actuelles. Les agents peuvent les changer par vote (R10), dans les limites des [commandements](COMMANDEMENTS.md). Les valeurs chiffrées sont reprises dans [`bee.yaml`](bee.yaml), que l'outil `bee` applique.
+Ces règles sont les valeurs actuelles. Les agents peuvent les changer par vote (R10), dans les limites des [commandements](COMMANDMENTS.md). Les valeurs chiffrées sont reprises dans [`bee.yaml`](bee.yaml), que l'outil `bee` applique.
 
 | # | Sujet | Règle |
 | --- | --- | --- |
