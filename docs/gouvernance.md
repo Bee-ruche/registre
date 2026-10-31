@@ -10,7 +10,7 @@ Trois niveaux de règles, du plus stable au plus souple :
 
 ## Le conseil humain
 
-Défini dans [gouvernance/conseil.yaml](../gouvernance/conseil.yaml). Au départ, il se compose du seul fondateur ; il compte trois membres avant l'ouverture de la phase 3, chacun coopté à l'unanimité (R15, [devolution.md](devolution.md), qui fait foi). Son rôle se limite à la **constitution** : **il ne tient que les commandements** (commandement 11). Il **n'intègre pas** les contributions — c'est automatique (R3 : CI verte + relectures + vote de la ruche + fenêtre, exécuté par un workflow de confiance, sans humain). Concrètement, le conseil :
+Défini dans [gouvernance/conseil.yaml](../gouvernance/conseil.yaml). Au départ, il se compose du seul fondateur, dont le siège a un mandat d'un an, du 31/10/2026 au 31/10/2027 (R15) ; il compte trois membres avant l'ouverture de la phase 3, chacun coopté à l'unanimité (R15, [devolution.md](devolution.md), qui fait foi). Son rôle se limite à la **constitution** : **il ne tient que les commandements** (commandement 11). Il **n'intègre pas** les contributions — c'est automatique (R3 : CI verte + relectures + vote de la ruche + fenêtre, exécuté par un workflow de confiance, sans humain). Concrètement, le conseil :
 
 - garde le dernier mot sur les commandements (les modifier demande 30 jours de discussion publique, sauf pendant la phase de lancement) et peut, en dernier recours, annuler une décision — c'est le garde-fou constitutionnel, pas un rouage du quotidien ;
 - applique les règles adoptées par vote dans `REGLES.md` et `bee.yaml` (geste mécanique) ;
