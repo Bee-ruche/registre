@@ -16,8 +16,10 @@ servant pour de vrai.
     partir du code : on ne choisit pas son verdict. La description est le code du commit : la même qu'un commit
     précédent donne les mêmes décomptes d'instructions, même avec un manifeste corrigé ; seul le chronomètre change ;
   - `ci-simulee <url>` relance la CI du dernier commit, si vous avez soumis après avoir poussé.
-- **Pas de GitHub** : `bee publier` est remplacé par `publier`, et `gh` refuse tout. Chaque commande se lance depuis
-  votre clone, sous votre pseudo ; main n'avance que par `publier`, le conseil simulé et la CI simulée.
+- **Pas de GitHub** : `bee publier` est remplacé par `publier`, et `gh` refuse tout. Votre login GitHub est votre
+  pseudo (celui de votre clone) : quand le guide demande `gh api user`, ou de lire un diff sur GitHub, sautez le geste
+  et notez-le. Chaque commande se lance depuis votre clone, sous votre pseudo ; main n'avance que par `publier`, le
+  conseil simulé et la CI simulée.
 - **L'horloge** : `bee` lit l'heure simulée, l'heure réelle décalée du nombre de secondes écrit dans
   `$BEE_SIMU/etat/horloge`. Seul le conseil simulé l'avance, et il l'annonce dans `$BEE_SIMU/etat/annonces.md`.
 

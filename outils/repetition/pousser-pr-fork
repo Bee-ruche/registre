@@ -6,6 +6,7 @@
 # (seul le chronomètre varie). Son arbre, c'est la description et le manifeste : changer l'un ou l'autre change l'arbre.
 set -euo pipefail
 source "$(dirname "$(realpath "$0")")/commun.sh"
+case "${1:-}" in -h|--help|"") echo "usage : pousser-pr-fork <pseudo> <url_pr_fork> <manifeste.yaml> "<ce que contient ce commit>"" >&2; exit 2;; esac
 pseudo="${1:?pseudo}"; url="${2:?url}"; manifeste="${3:?manifeste}"; desc="${4:-}"
 dans_son_clone "$pseudo"; texte_valide "$desc"
 [[ "$url" =~ ^https://github\.com/Bee-ruche/[A-Za-z]+/pull/[0-9]+$ ]] || { echo "adresse de PR invalide : $url" >&2; exit 2; }

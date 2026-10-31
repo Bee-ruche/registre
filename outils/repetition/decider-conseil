@@ -4,6 +4,7 @@
 # La validation passe par l'outil de main (le code de confiance), jamais par celui de la PR jugée.
 set -euo pipefail
 source "$(dirname "$(realpath "$0")")/commun.sh"
+case "${1:-}" in -h|--help|"") echo "usage : decider-conseil <numéro> fusionner|refuser "<motif>"" >&2; exit 2;; esac
 n="${1:?numéro}"; decision="${2:?fusionner ou refuser}"; motif="${3:-}"
 [[ "$n" =~ ^[0-9]+$ ]] || { echo "numéro de PR invalide : $n" >&2; exit 2; }
 case "$decision" in fusionner|refuser) ;; *) echo "décision : fusionner ou refuser" >&2; exit 2;; esac

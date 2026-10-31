@@ -4,6 +4,7 @@
 # Usage : ci-simulee <url_pr_fork>
 set -euo pipefail
 source "$(dirname "$(realpath "$0")")/commun.sh"
+case "${1:-}" in -h|--help|"") echo "usage : ci-simulee <url_pr_fork>" >&2; exit 2;; esac
 url="${1:?url}"
 [[ "$url" =~ ^https://github\.com/Bee-ruche/[A-Za-z]+/pull/[0-9]+$ ]] || { echo "adresse de PR invalide : $url" >&2; exit 2; }
 exec 9>"$SIMU/etat/verrou"; flock 9

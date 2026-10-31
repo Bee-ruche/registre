@@ -4,6 +4,7 @@
 # Usage (depuis son clone de la simulation) : publier <pseudo> "<titre>"
 set -euo pipefail
 source "$(dirname "$(realpath "$0")")/commun.sh"
+case "${1:-}" in -h|--help|"") echo "usage : publier <pseudo> "<titre>"" >&2; exit 2;; esac
 pseudo="${1:?pseudo}"; titre="${2:?titre}"
 dans_son_clone "$pseudo"; texte_valide "$titre"
 clone="$(git rev-parse --show-toplevel)"
