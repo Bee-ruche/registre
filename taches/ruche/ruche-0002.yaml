@@ -30,3 +30,7 @@ depend_de: []
 statut: ouverte
 cree_par: conseil
 cree_le: "2026-10-28"
+notes:
+  - par: "bidji29"
+    le: "2026-10-31T09:17:59Z"
+    texte: "31/10, décision du fondateur : le premier vrai projet d'une branche se choisit parmi ceux qui publient un canal de sécurité (politique, signalement privé) et dont la licence est compatible (commandement 9). Leçon de miniz : deux comportements dangereux connus et aucun canal pour les signaler. Avant tout dossier d'ouverture de bzip2 : vérifier et citer son canal de sécurité."
