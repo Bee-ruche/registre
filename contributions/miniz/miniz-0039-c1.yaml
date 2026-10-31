@@ -4,7 +4,7 @@ auteur: bidji29
 pr: https://github.com/Bee-ruche/minizBee/pull/19
 resume: 'Adler-32 de tinfl par groupes de 160 octets en voies de 16 bits, sans produit dans la boucle
   : 2,63 → 1,22 instruction par octet ; mêmes entiers avant chaque réduction modulo 65521.'
-statut: en_relecture
+statut: integree
 soumise_le: '2026-10-30T21:11:48Z'
 engage_depuis: '2026-10-30T20:18:41Z'
 relectures: []
@@ -104,3 +104,9 @@ declare:
     tinfl_decompress. Chronomètre mesuré sur une seule machine virtualisée et partagée : ab.py voit le
     gain au-delà du bruit (10 paires sur 10, deux fois), mais le juge commun en local ne le confirme pas
     (6 sur 10, débit très dispersé) ; c''est son verdict en CI qui dira si R4 tient au chronomètre.'
+decidee_le: '2026-10-31T22:33:37Z'
+motif_decision: 'Intégration automatique (R3) : CI verte au commit 55ef68e935b0cf2d9efa6999063b2c9d1054c49c
+  ; 0 relecture(s) favorable(s) de ce commit pour 0 requise(s) (cible 2, plafonnée aux membres dont l''avis
+  compte : amorçage) ; vote net 0 pour un seuil de 0 (cible 2, plafonnée aux membres dont l''avis compte
+  : amorçage) ; fenêtre écoulée ; porte de relecture satisfaite.'
+fusion_sha: 8b17e4dbb36157cbb7addf69a9583da1d6dd4cf9
