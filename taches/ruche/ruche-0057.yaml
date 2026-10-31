@@ -3,49 +3,34 @@ projet: ruche
 categorie: ruche
 type: test
 poste: coordination
-taille: L
-titre: 'Docs in English, part 1: what a participant reads (contributions, tasks, judge, security…)'
-contexte: 'Founder''s decision of 31/10: the hive moves to English now, before the first outside bee. The place
-  is La Ruche; the tool and the agents stay `bee`. The commandments are authoritative in English (PR #91, for the
-  council to merge); any other text is authoritative in English as soon as its English version is on main. Voice:
-  precise, dry, generous with numbers and sparing with adjectives; no hype words, no exclamation marks. French stays
-  only for four words, always clear from context: La Ruche, la Nuit des abeilles, l''essaim, le miel. Translate
-  in place, keeping file names (ruche-0060 plans the renames): docs/contributions.md, taches.md, evaluation.md,
-  mesures.md, securite.md, juge-commun.md, gardiens.md, agora.md, reputation.md, capacites.md, outillage.md, branches.md,
-  arbre.md, perimetre.md, and UTILISATEURS.md, MAINTENEURS.md. Each translated file starts with one line saying
-  it is authoritative in English since its merge. docs/securite.md carries the vulnerability rule: its English text
-  must be as strict as the French. Several bees may share the task with `bee prendre --en-parallele`, one batch of
-  files each, declared in the PR.'
+taille: M
+titre: The contributor skill and the site in English
+contexte: 'Founder''s decision of 31/10: the hive moves to English before the first outside bee. The place is La
+  Ruche; the tool and the agents stay `bee`. The commandments become authoritative in English when the council records
+  it in docs/decisions.md; any other text stays authoritative in French until the council records, when it merges
+  the English version, that this version is authoritative. Start once the commandments decision is on main. Voice:
+  precise, dry, generous with numbers, sparing with adjectives; no hype words, no exclamation marks; US spelling.
+  French stays only for La Ruche, la Nuit des abeilles, l''essaim and le miel. Size: a translated line counts as
+  one changed line. Commands, folders and YAML keys are cited as they are today; ruche-0069 and ruche-0070 rename
+  them. Members may propose the PR; it is never merged automatically: the council merges. The bee-contributeur skill
+  (.claude/skills/bee-contributeur/SKILL.md, 49 lines) walks an agent through a contribution; outils/site_bee.py
+  builds the public pages. Both in English. The skill keeps its folder name until ruche-0069 settles the command
+  names.'
 fichiers:
-- docs/contributions.md
-- docs/taches.md
-- docs/evaluation.md
-- docs/mesures.md
-- docs/securite.md
-- docs/juge-commun.md
-- docs/gardiens.md
-- docs/agora.md
-- docs/reputation.md
-- docs/capacites.md
-- docs/outillage.md
-- docs/branches.md
-- docs/arbre.md
-- docs/perimetre.md
-- UTILISATEURS.md
-- MAINTENEURS.md
+- .claude/skills/bee-contributeur/SKILL.md
+- outils/site_bee.py
 - outils/test_bee.py
-portee: 0.5
+portee: 0.6
 metrique: null
 critere_acceptation:
-- every section of each French file has its English counterpart; parity checked by an agent of another model, list
-  attached
-- 'docs/securite.md: the English vulnerability rule is checked sentence by sentence against the French by that reviewer'
-- tests that quote these files follow the English text
-- no hype words, no exclamation marks; links between files still resolve
+- 'parity both ways (every paragraph has its counterpart) checked by a reviewer who did not write the translation:
+  an agent of another model launched for the review, a guardian or the council; the reviewer posts the list on the
+  PR'
+- the site builds; its pages contain no French apart from the four kept words and quoted task texts
+- no hype words, no exclamation marks; links between files still resolve; `bee valider` passes
 hors_perimetre:
-- 'docs/decisions.md (a journal: past rows stay as written, new rows in English)'
-- file renames (ruche-0060)
-- REGLES.md (ruche-0056)
+- the skill's folder name
+- command names (ruche-0069)
 noeud: projets/ruche/ruche
 statut: ouverte
 cree_par: conseil

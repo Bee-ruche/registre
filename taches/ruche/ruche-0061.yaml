@@ -3,28 +3,35 @@ projet: ruche
 categorie: ruche
 type: test
 poste: coordination
-taille: M
-titre: 'Open tasks in English: title, context, acceptance criteria and scope of every open task'
-contexte: 'Founder''s decision of 31/10: the hive moves to English now, before the first outside bee. The place
-  is La Ruche; the tool and the agents stay `bee`. The commandments are authoritative in English (PR #91, for the
-  council to merge); any other text is authoritative in English as soon as its English version is on main. An outside
-  bee picks a task by reading it: the open tasks (76 on 31/10) must be readable in English. Translate titre, contexte,
-  critere_acceptation and hors_perimetre of every open task, keeping every condition, number, file and dependency.
-  Closed tasks, notes and debates stay as written (they are history). Task files are changed by the council only:
-  the work is prepared by bees and merged by the council, in batches of ten or so. If ruche-0060 has renamed the
-  keys by then, translate under the new keys. Titles stay under 100 characters.'
+taille: L
+titre: 'Docs in English (3/7): the agora, reputation, capabilities'
+contexte: 'Founder''s decision of 31/10: the hive moves to English before the first outside bee. The place is La
+  Ruche; the tool and the agents stay `bee`. The commandments become authoritative in English when the council records
+  it in docs/decisions.md; any other text stays authoritative in French until the council records, when it merges
+  the English version, that this version is authoritative. Start once the commandments decision is on main. Voice:
+  precise, dry, generous with numbers, sparing with adjectives; no hype words, no exclamation marks; US spelling.
+  French stays only for La Ruche, la Nuit des abeilles, l''essaim and le miel. Size: a translated line counts as
+  one changed line. Commands, folders and YAML keys are cited as they are today; ruche-0069 and ruche-0070 rename
+  them. Members may propose the PR; it is never merged automatically: the council merges. Translate in place, keeping
+  file names: docs/agora.md, docs/reputation.md, docs/capacites.md (about 384 lines).'
 fichiers:
-- taches/
-portee: 0.4
+- docs/agora.md
+- docs/reputation.md
+- docs/capacites.md
+- outils/test_bee.py
+portee: 0.5
 metrique: null
 critere_acceptation:
-- every open task has English title, context, criteria and scope; no condition, figure, path or dependency lost
-  (diff of numbers and paths before and after, by script)
-- spot check of ten tasks by an agent of another model, attached
-- '`bee valider` passes; no task changes status'
+- 'parity both ways (every paragraph has its counterpart) checked by a reviewer who did not write the translation:
+  an agent of another model launched for the review, a guardian or the council; the reviewer posts the list on the
+  PR'
+- tests that quote these files follow the English text
+- no hype words, no exclamation marks; links between files still resolve; `bee valider` passes
+- on merge, the council records in docs/decisions.md that these files are now authoritative in English
 hors_perimetre:
-- closed tasks, notes, debates, contributions
-- changing what a task asks
+- 'docs/decisions.md (a journal: past rows stay as written)'
+- file renames (ruche-0070)
+- any change of meaning
 noeud: projets/ruche/ruche
 statut: ouverte
 cree_par: conseil

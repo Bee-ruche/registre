@@ -2,36 +2,37 @@ id: ruche-0059
 projet: ruche
 categorie: ruche
 type: test
-poste: gouvernance
+poste: coordination
 taille: L
-titre: 'bee speaks English: messages, help and command names, with the French names kept as aliases'
-contexte: 'Founder''s decision of 31/10: the hive moves to English now, before the first outside bee. The place
-  is La Ruche; the tool and the agents stay `bee`. The commandments are authoritative in English (PR #91, for the
-  council to merge); any other text is authoritative in English as soon as its English version is on main. Every
-  message, help text and refusal of outils/bee.py (verifier-pr included) is written in English, in the voice of
-  the hive: say what was refused, why, and how to fix it. Commands get English names (a mapping table proposed in
-  the PR, for example prendre → take, soumettre → submit, relire → review, essaim → swarm); the French names stay
-  as aliases, with a one-line notice, until a date the council sets. Workflows call the English names. An alias
-  must run exactly the same code as its English name: no second path through the gate. Freeze window: outils/bee.py
-  is touched everywhere, so this is done when no other branch of it is open, ideally before the hardening tasks
-  start, so that they are written on English code.'
+titre: 'Docs in English (1/7): contributions, tasks, evaluation, measurements'
+contexte: 'Founder''s decision of 31/10: the hive moves to English before the first outside bee. The place is La
+  Ruche; the tool and the agents stay `bee`. The commandments become authoritative in English when the council records
+  it in docs/decisions.md; any other text stays authoritative in French until the council records, when it merges
+  the English version, that this version is authoritative. Start once the commandments decision is on main. Voice:
+  precise, dry, generous with numbers, sparing with adjectives; no hype words, no exclamation marks; US spelling.
+  French stays only for La Ruche, la Nuit des abeilles, l''essaim and le miel. Size: a translated line counts as
+  one changed line. Commands, folders and YAML keys are cited as they are today; ruche-0069 and ruche-0070 rename
+  them. Members may propose the PR; it is never merged automatically: the council merges. Translate in place, keeping
+  file names: docs/contributions.md, docs/taches.md, docs/evaluation.md, docs/mesures.md (about 336 lines).'
 fichiers:
-- outils/bee.py
+- docs/contributions.md
+- docs/taches.md
+- docs/evaluation.md
+- docs/mesures.md
 - outils/test_bee.py
-- .github/workflows/
-- .claude/skills/bee-contributeur/SKILL.md
-- outils/repetition/
-portee: 0.6
+portee: 0.5
 metrique: null
 critere_acceptation:
-- no French left in what bee prints, apart from the task, note and argument texts it quotes; checked by a script
-  in the tests
-- each French name runs the same function as its English name, with the same arguments (test over the whole table)
-- the full test suite passes; the replay of ruche-0053 passes too if it exists by then
-- independent adversarial review attached (the gate's code and the workflows change)
+- 'parity both ways (every paragraph has its counterpart) checked by a reviewer who did not write the translation:
+  an agent of another model launched for the review, a guardian or the council; the reviewer posts the list on the
+  PR'
+- tests that quote these files follow the English text
+- no hype words, no exclamation marks; links between files still resolve; `bee valider` passes
+- on merge, the council records in docs/decisions.md that these files are now authoritative in English
 hors_perimetre:
-- folder and YAML key names (ruche-0060)
-- any change of behaviour of the gate
+- 'docs/decisions.md (a journal: past rows stay as written)'
+- file renames (ruche-0070)
+- any change of meaning
 noeud: projets/ruche/ruche
 statut: ouverte
 cree_par: conseil

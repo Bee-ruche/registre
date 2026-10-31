@@ -1,0 +1,39 @@
+id: ruche-0069
+projet: ruche
+categorie: ruche
+type: decoupage
+poste: gouvernance
+taille: L
+titre: 'bee in English: plan the messages, help and command names, then split them into tasks'
+contexte: 'Founder''s decision of 31/10: the hive moves to English before the first outside bee. The place is La
+  Ruche; the tool and the agents stay `bee`. The commandments become authoritative in English when the council records
+  it in docs/decisions.md; any other text stays authoritative in French until the council records, when it merges
+  the English version, that this version is authoritative. Start once the commandments decision is on main. The
+  tool speaks French: about 1,930 French lines in outils/bee.py and 1,560 in outils/test_bee.py, 54 subcommands,
+  plus outils/juge/, outils/repetition/ and the workflows. Far beyond one session. To deliver: docs/english-tool.md
+  with the command table (English name, French alias, generated from the argument parser, not typed by hand), the
+  order, and execution tasks of at most 400 changed lines each, proposed to the council. Each execution task carries
+  these criteria: aliases run exactly the same code as their English names (a test over the whole table); the alias
+  notice goes to stderr and exit codes stay (fusion-auto reads 0 and 3); workflow `name:` values are referenced
+  by workflow_run: renamed atomically with a test, or not at all; the test_bee.py diff changes string literals only
+  and the number of assertions does not drop; parts that touch the gate (verifier_*), the rehearsal guards, fusion-auto
+  or verdicts get an independent adversarial review; no change of behavior. A last task sweeps the French command
+  names cited in docs/ and arbre/. Code comments and identifiers stay out of scope: new code is written in English.
+  Security first: the hardening tasks (ruche-0035 to ruche-0052) do not wait for this plan; the execution tasks
+  are scheduled around open branches of outils/bee.py.'
+fichiers:
+- docs/english-tool.md
+portee: 0.6
+metrique: null
+critere_acceptation:
+- the command table is generated from the parser by a script attached to the PR, and covers every subcommand and
+  option
+- every execution task is at most 400 changed lines, with the criteria above and its dependencies
+- an inventory of French output by file (bee.py, juge, repetition, workflows), with line counts
+hors_perimetre:
+- doing the translation itself
+- folder and key names (ruche-0070)
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: '2026-10-31'

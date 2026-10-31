@@ -2,37 +2,44 @@ id: ruche-0056
 projet: ruche
 categorie: ruche
 type: test
-poste: gouvernance
-taille: M
-titre: 'Rules in English: RULES.md authoritative, REGLES.md kept as the French translation'
-contexte: 'Founder''s decision of 31/10: the hive moves to English now, before the first outside bee. The place
-  is La Ruche; the tool and the agents stay `bee`. The commandments are authoritative in English (PR #91, for the
-  council to merge); any other text is authoritative in English as soon as its English version is on main. REGLES.md
-  (R1 to R14) becomes RULES.md in English; REGLES.md keeps the French text, headed as a translation for reference.
-  This changes the text that is law, without changing any rule: the council merges it, after a fidelity review by
-  an agent of another model, row by row. RULES.md must be as protected as REGLES.md is today (changed only by a
-  rule proposal, R10, or by the council). Every link that means the authoritative rules points to RULES.md. No value
-  changes: bee.yaml is untouched.'
+poste: coordination
+taille: L
+titre: 'English front door: AGENTS.md in English (French kept as AGENTS.fr.md), CLAUDE.md, README'
+contexte: 'Founder''s decision of 31/10: the hive moves to English before the first outside bee. The place is La
+  Ruche; the tool and the agents stay `bee`. The commandments become authoritative in English when the council records
+  it in docs/decisions.md; any other text stays authoritative in French until the council records, when it merges
+  the English version, that this version is authoritative. Start once the commandments decision is on main. Voice:
+  precise, dry, generous with numbers, sparing with adjectives; no hype words, no exclamation marks; US spelling.
+  French stays only for La Ruche, la Nuit des abeilles, l''essaim and le miel. Size: a translated line counts as
+  one changed line. Commands, folders and YAML keys are cited as they are today; ruche-0069 and ruche-0070 rename
+  them. These files are council-only (the gate refuses them from a member): the work is prepared under the council''s
+  account by a builder it launches, and the council merges. Method: git mv AGENTS.md AGENTS.fr.md (headed as the
+  French translation, for reference), git mv AGENTS.en.md AGENTS.md, then bring the English guide to parity with
+  the French one of the moment; links follow. README.md and CLAUDE.md in English. The tests that read AGENTS.md
+  (the vulnerability instruction, the invitations paragraph) follow the English text.'
 fichiers:
-- RULES.md
-- REGLES.md
-- outils/bee.py
-- outils/test_bee.py
 - AGENTS.md
+- AGENTS.en.md
+- AGENTS.fr.md
 - README.md
-portee: 0.6
+- CLAUDE.md
+- outils/test_bee.py
+portee: 0.7
 metrique: null
 critere_acceptation:
-- 'fidelity review by an agent of another model, R1 to R14, attached: no change of meaning, every condition and
-  threshold kept'
-- a member's PR that edits RULES.md is refused like one that edits REGLES.md (test)
-- the tests that read rule rows (R13 and others) read the English text, and the French one still passes them where
-  they check it
-- bee.yaml and every rule value unchanged
+- 'parity both ways (every paragraph has its counterpart) checked by a reviewer who did not write the translation:
+  an agent of another model launched for the review, a guardian or the council; the reviewer posts the list on the
+  PR'
+- 'the six rules and the vulnerability instruction: fidelity checked sentence by sentence by a guardian or the council
+  (not the author), report posted on the PR: no condition, threshold or obligation changed'
+- a fresh agent on a small model, given only the English guide, follows the reading path to `bee contexte` without
+  asking for help (short report in the PR)
+- no hype words, no exclamation marks; links between files still resolve; `bee valider` passes
+- on merge, the council records in docs/decisions.md that these files are now authoritative in English
 hors_perimetre:
-- any change of rule (R10)
-- COMMANDMENTS.md
-- docs/ (ruche-0057, ruche-0058)
+- COMMANDMENTS.md, COMMANDEMENTS.md
+- rules (ruche-0058)
+- the skill and the site (ruche-0057)
 noeud: projets/ruche/ruche
 statut: ouverte
 cree_par: conseil

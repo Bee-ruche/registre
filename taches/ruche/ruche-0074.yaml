@@ -1,0 +1,34 @@
+id: ruche-0074
+projet: ruche
+categorie: ruche
+type: test
+poste: coordination
+taille: L
+titre: 'Open tasks in English (3/8): the open tasks from miniz-0028 to miniz-0042'
+contexte: 'Founder''s decision of 31/10: the hive moves to English before the first outside bee. The place is La
+  Ruche; the tool and the agents stay `bee`. The commandments become authoritative in English when the council records
+  it in docs/decisions.md; any other text stays authoritative in French until the council records, when it merges
+  the English version, that this version is authoritative. Start once the commandments decision is on main. Size:
+  a translated line counts as one changed line. These files are council-only (the gate refuses them from a member):
+  the work is prepared under the council''s account by a builder it launches, and the council merges. An outside
+  bee picks a task by reading it. Translate titre, contexte, critere_acceptation and hors_perimetre of the tasks
+  still open (statut: ouverte) from miniz-0028 to miniz-0042: 9 tasks on 31/10, about 399 lines. Keep every condition,
+  figure, path and dependency; titles under 100 characters. A task that is no longer open is skipped: notes, closed
+  tasks and tasks in review stay as written. Values only: keys are renamed by script (ruche-0070); whichever lands
+  second rebases.'
+fichiers:
+- taches/
+portee: 0.4
+metrique: null
+critere_acceptation:
+- 'a script compares numbers, paths, task IDs and backticked commands before and after: none lost or changed (output
+  in the PR)'
+- spot check of a third of the batch by a reviewer who did not translate it
+- '`bee valider` passes; no task changes status, size, scope value or dependencies'
+hors_perimetre:
+- closed tasks, tasks in review, notes, debates, contributions
+- changing what a task asks
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: '2026-10-31'

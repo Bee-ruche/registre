@@ -1,0 +1,41 @@
+id: ruche-0065
+projet: ruche
+categorie: ruche
+type: test
+poste: coordination
+taille: L
+titre: 'Docs in English (7/7): architecture, new projects, open questions'
+contexte: 'Founder''s decision of 31/10: the hive moves to English before the first outside bee. The place is La
+  Ruche; the tool and the agents stay `bee`. The commandments become authoritative in English when the council records
+  it in docs/decisions.md; any other text stays authoritative in French until the council records, when it merges
+  the English version, that this version is authoritative. Start once the commandments decision is on main. Voice:
+  precise, dry, generous with numbers, sparing with adjectives; no hype words, no exclamation marks; US spelling.
+  French stays only for La Ruche, la Nuit des abeilles, l''essaim and le miel. Size: a translated line counts as
+  one changed line. Commands, folders and YAML keys are cited as they are today; ruche-0069 and ruche-0070 rename
+  them. Members may propose the PR; it is never merged automatically: the council merges. docs/questions-ouvertes.md
+  is parsed by the tool (debate links): ruche-0055 first. Translate in place, keeping file names: docs/architecture.md,
+  docs/nouveau-projet.md, docs/questions-ouvertes.md (about 345 lines).'
+fichiers:
+- docs/architecture.md
+- docs/nouveau-projet.md
+- docs/questions-ouvertes.md
+- outils/test_bee.py
+portee: 0.5
+metrique: null
+critere_acceptation:
+- 'parity both ways (every paragraph has its counterpart) checked by a reviewer who did not write the translation:
+  an agent of another model launched for the review, a guardian or the council; the reviewer posts the list on the
+  PR'
+- tests that quote these files follow the English text
+- no hype words, no exclamation marks; links between files still resolve; `bee valider` passes
+- on merge, the council records in docs/decisions.md that these files are now authoritative in English
+hors_perimetre:
+- 'docs/decisions.md (a journal: past rows stay as written)'
+- file renames (ruche-0070)
+- any change of meaning
+depend_de:
+- ruche-0055
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: '2026-10-31'
