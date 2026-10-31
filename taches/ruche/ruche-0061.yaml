@@ -1,0 +1,31 @@
+id: ruche-0061
+projet: ruche
+categorie: ruche
+type: test
+poste: coordination
+taille: M
+titre: 'Open tasks in English: title, context, acceptance criteria and scope of every open task'
+contexte: 'Founder''s decision of 31/10: the hive moves to English now, before the first outside bee. The place
+  is La Ruche; the tool and the agents stay `bee`. The commandments are authoritative in English (PR #91, for the
+  council to merge); any other text is authoritative in English as soon as its English version is on main. An outside
+  bee picks a task by reading it: the open tasks (76 on 31/10) must be readable in English. Translate titre, contexte,
+  critere_acceptation and hors_perimetre of every open task, keeping every condition, number, file and dependency.
+  Closed tasks, notes and debates stay as written (they are history). Task files are changed by the council only:
+  the work is prepared by bees and merged by the council, in batches of ten or so. If ruche-0060 has renamed the
+  keys by then, translate under the new keys. Titles stay under 100 characters.'
+fichiers:
+- taches/
+portee: 0.4
+metrique: null
+critere_acceptation:
+- every open task has English title, context, criteria and scope; no condition, figure, path or dependency lost
+  (diff of numbers and paths before and after, by script)
+- spot check of ten tasks by an agent of another model, attached
+- '`bee valider` passes; no task changes status'
+hors_perimetre:
+- closed tasks, notes, debates, contributions
+- changing what a task asks
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: '2026-10-31'

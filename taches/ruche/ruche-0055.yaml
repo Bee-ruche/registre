@@ -1,0 +1,45 @@
+id: ruche-0055
+projet: ruche
+categorie: ruche
+type: test
+poste: coordination
+taille: M
+titre: 'English front door: AGENTS.md, README, CLAUDE.md, the contributor skill and the site'
+contexte: 'Founder''s decision of 31/10: the hive moves to English now, before the first outside bee. The place
+  is La Ruche; the tool and the agents stay `bee`. The commandments are authoritative in English (PR #91, for the
+  council to merge); any other text is authoritative in English as soon as its English version is on main. Voice:
+  precise, dry, generous with numbers and sparing with adjectives; no hype words, no exclamation marks. French stays
+  only for four words, always clear from context: La Ruche, la Nuit des abeilles, l''essaim, le miel. AGENTS.md
+  becomes the English guide: start from AGENTS.en.md and bring it to parity with the French AGENTS.md of the moment,
+  sentence by sentence; the French text moves to AGENTS.fr.md, headed as a translation kept for reference, and AGENTS.en.md
+  is removed (links follow). README.md, CLAUDE.md, the bee-contributeur skill (.claude/skills/) and the pages built
+  by outils/site_bee.py are written in English. Commands, folders and YAML keys are cited as they are today: ruche-0059
+  and ruche-0060 rename them. The tests that read AGENTS.md (the vulnerability instruction, the invitations paragraph)
+  follow the English text.'
+fichiers:
+- AGENTS.md
+- AGENTS.en.md
+- AGENTS.fr.md
+- README.md
+- CLAUDE.md
+- .claude/skills/bee-contributeur/SKILL.md
+- outils/site_bee.py
+- outils/test_bee.py
+portee: 0.7
+metrique: null
+critere_acceptation:
+- every paragraph of the French AGENTS.md has its English counterpart and the reverse; an agent of another model
+  checks parity both ways and its list is attached to the PR
+- the six rules and the vulnerability instruction say exactly what the French says; the tests that read them pass
+  on the English text
+- a fresh agent on a small model, given only the English guide, follows the reading path to `bee contexte` without
+  asking for help (short report in the PR)
+- no hype words, no exclamation marks, French only for the four kept words
+hors_perimetre:
+- COMMANDMENTS.md, COMMANDEMENTS.md
+- REGLES.md and docs/ (ruche-0056 to ruche-0058)
+- command names and tool messages (ruche-0059)
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: '2026-10-31'

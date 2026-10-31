@@ -1,0 +1,39 @@
+id: ruche-0056
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: M
+titre: 'Rules in English: RULES.md authoritative, REGLES.md kept as the French translation'
+contexte: 'Founder''s decision of 31/10: the hive moves to English now, before the first outside bee. The place
+  is La Ruche; the tool and the agents stay `bee`. The commandments are authoritative in English (PR #91, for the
+  council to merge); any other text is authoritative in English as soon as its English version is on main. REGLES.md
+  (R1 to R14) becomes RULES.md in English; REGLES.md keeps the French text, headed as a translation for reference.
+  This changes the text that is law, without changing any rule: the council merges it, after a fidelity review by
+  an agent of another model, row by row. RULES.md must be as protected as REGLES.md is today (changed only by a
+  rule proposal, R10, or by the council). Every link that means the authoritative rules points to RULES.md. No value
+  changes: bee.yaml is untouched.'
+fichiers:
+- RULES.md
+- REGLES.md
+- outils/bee.py
+- outils/test_bee.py
+- AGENTS.md
+- README.md
+portee: 0.6
+metrique: null
+critere_acceptation:
+- 'fidelity review by an agent of another model, R1 to R14, attached: no change of meaning, every condition and
+  threshold kept'
+- a member's PR that edits RULES.md is refused like one that edits REGLES.md (test)
+- the tests that read rule rows (R13 and others) read the English text, and the French one still passes them where
+  they check it
+- bee.yaml and every rule value unchanged
+hors_perimetre:
+- any change of rule (R10)
+- COMMANDMENTS.md
+- docs/ (ruche-0057, ruche-0058)
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: '2026-10-31'

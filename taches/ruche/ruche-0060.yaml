@@ -1,0 +1,35 @@
+id: ruche-0060
+projet: ruche
+categorie: ruche
+type: decoupage
+poste: gouvernance
+taille: L
+titre: 'English data names: plan the renaming of folders, YAML keys and values, then split it into tasks'
+contexte: 'Founder''s decision of 31/10: the hive moves to English now, before the first outside bee. The place
+  is La Ruche; the tool and the agents stay `bee`. The commandments are authoritative in English (PR #91, for the
+  council to merge); any other text is authoritative in English as soon as its English version is on main. The registry''s
+  folders (taches, debats, membres, gouvernance, propositions, arbre, projets, modeles, outils), its YAML keys and
+  values (statut: ouverte, titre, contexte, portee, critere_acceptation, hors_perimetre, depend_de, cree_par…),
+  the schemas, the contribution manifests in the forks (teste, non_teste, doutes) and some file names in docs/ are
+  French. Renaming them touches the gate''s path rules, the workflows, the site, the judge, the forks'' CI and the
+  contributions in review. To deliver: docs/english-names.md with the full mapping table; the migration method (one
+  script, one atomic commit, a dual-read window for manifests already in flight, what happens to old links); the
+  risks for the gate (every path rule moved, nothing left to the default by accident); and the execution split into
+  tasks, proposed to the council.'
+fichiers:
+- docs/english-names.md
+portee: 0.6
+metrique: null
+critere_acceptation:
+- the table covers every folder, file name, key and enumerated value in the registry and the two forks (generated
+  by a script, the script attached)
+- for each path rule of verifier-pr, the table says its new form, and the plan says how a test proves none was lost
+- a dual-read plan for manifests and records written before the migration, with its end date
+- execution tasks proposed, each with its acceptance criteria and dependencies
+hors_perimetre:
+- doing the migration itself
+- command names (ruche-0059)
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: '2026-10-31'

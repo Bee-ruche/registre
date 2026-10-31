@@ -1,0 +1,38 @@
+id: ruche-0059
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: L
+titre: 'bee speaks English: messages, help and command names, with the French names kept as aliases'
+contexte: 'Founder''s decision of 31/10: the hive moves to English now, before the first outside bee. The place
+  is La Ruche; the tool and the agents stay `bee`. The commandments are authoritative in English (PR #91, for the
+  council to merge); any other text is authoritative in English as soon as its English version is on main. Every
+  message, help text and refusal of outils/bee.py (verifier-pr included) is written in English, in the voice of
+  the hive: say what was refused, why, and how to fix it. Commands get English names (a mapping table proposed in
+  the PR, for example prendre → take, soumettre → submit, relire → review, essaim → swarm); the French names stay
+  as aliases, with a one-line notice, until a date the council sets. Workflows call the English names. An alias
+  must run exactly the same code as its English name: no second path through the gate. Freeze window: outils/bee.py
+  is touched everywhere, so this is done when no other branch of it is open, ideally before the hardening tasks
+  start, so that they are written on English code.'
+fichiers:
+- outils/bee.py
+- outils/test_bee.py
+- .github/workflows/
+- .claude/skills/bee-contributeur/SKILL.md
+- outils/repetition/
+portee: 0.6
+metrique: null
+critere_acceptation:
+- no French left in what bee prints, apart from the task, note and argument texts it quotes; checked by a script
+  in the tests
+- each French name runs the same function as its English name, with the same arguments (test over the whole table)
+- the full test suite passes; the replay of ruche-0053 passes too if it exists by then
+- independent adversarial review attached (the gate's code and the workflows change)
+hors_perimetre:
+- folder and YAML key names (ruche-0060)
+- any change of behaviour of the gate
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: '2026-10-31'

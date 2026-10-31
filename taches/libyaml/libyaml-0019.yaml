@@ -1,0 +1,33 @@
+id: libyaml-0019
+projet: libyaml
+categorie: parsing-serialisation
+type: test
+taille: S
+titre: 'English bee/ folder: README, sandbox, bench and test messages'
+contexte: 'Founder''s decision of 31/10: the hive moves to English now, before the first outside bee. The place
+  is La Ruche; the tool and the agents stay `bee`. The commandments are authoritative in English (PR #91, for the
+  council to merge); any other text is authoritative in English as soon as its English version is on main. The fork''s
+  bee/ folder (README.md, Makefile help, sandbox, bench, tests and CI scripts) speaks French. Translate what a bee
+  reads or sees printed into English, keeping every command, path and number. The CONTRIBUTION.yaml keys stay as
+  they are: their renaming is planned by ruche-0060. No change to libyaml itself, and none to the judge being built
+  (libyaml-0013 to libyaml-0018), which is written in English from the start where it is still to be written.'
+fichiers:
+- bee/README.md
+- bee/Makefile
+- bee/sandbox/
+- bee/bench/
+- bee/tests/
+- bee/ci/
+portee: 0.4
+metrique: null
+critere_acceptation:
+- no French left in bee/README.md or in what the scripts print; checked by a reviewer of another model
+- the fork's CI passes with the same results; no file outside bee/ changes
+hors_perimetre:
+- code of libyaml
+- manifest keys (ruche-0060)
+- the judge tasks libyaml-0013 to libyaml-0018
+noeud: projets/parsing-serialisation/libyaml
+statut: ouverte
+cree_par: conseil
+cree_le: '2026-10-31'

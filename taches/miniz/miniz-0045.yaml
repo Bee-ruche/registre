@@ -1,0 +1,34 @@
+id: miniz-0045
+projet: miniz
+categorie: compression-sans-perte
+type: test
+taille: S
+titre: 'English bee/ folder: README, sandbox, bench and judge messages'
+contexte: 'Founder''s decision of 31/10: the hive moves to English now, before the first outside bee. The place
+  is La Ruche; the tool and the agents stay `bee`. The commandments are authoritative in English (PR #91, for the
+  council to merge); any other text is authoritative in English as soon as its English version is on main. The fork''s
+  bee/ folder (README.md, Makefile help, sandbox, bench, judge harness and CI scripts) speaks French. Translate
+  what a bee reads or sees printed into English, keeping every command, path and number. The CONTRIBUTION.yaml keys
+  stay as they are: their renaming is planned by ruche-0060. No change to miniz itself and no change of what the
+  judge checks or measures.'
+fichiers:
+- bee/README.md
+- bee/Makefile
+- bee/sandbox/
+- bee/bench/
+- bee/ci/
+- bee/juge/
+portee: 0.4
+metrique: null
+critere_acceptation:
+- no French left in bee/README.md or in what the scripts print; checked by a reviewer of another model
+- the judge's verdict on the current master is identical before and after (same counts, same outputs compared)
+- the fork's CI passes; no file outside bee/ changes
+hors_perimetre:
+- code of miniz
+- manifest keys (ruche-0060)
+- what the judge checks or measures
+noeud: projets/compression-sans-perte/miniz/bee
+statut: ouverte
+cree_par: conseil
+cree_le: '2026-10-31'
