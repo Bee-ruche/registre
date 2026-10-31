@@ -33,7 +33,7 @@ critere_acceptation:
 hors_perimetre: [code de miniz, outils/juge/ du registre (tâche d'outillage du registre), changement des métriques suivies, nouvelle dépendance hors image]
 depend_de: [miniz-0031]
 noeud: projets/compression-sans-perte/miniz/bee
-statut: en_relecture
+statut: integree
 contribution: miniz-0032-c1
 cree_par: conseil
 cree_le: "2026-10-28"
