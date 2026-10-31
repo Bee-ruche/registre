@@ -31,6 +31,10 @@ critere_acceptation:
   - "modèle de menace dans bee/README.md, avec ce qui reste hors de portée ; verdict.json porte la section « juge » (version, commun, sorties_comparees, constructions_suspectes) lue par le registre"
 hors_perimetre: [sources de libyaml, outils/juge/ du registre, changement des métriques suivies, nouvelle dépendance hors image]
 depend_de: [libyaml-0002]
-statut: ouverte
+statut: abandonnee
 cree_par: conseil
 cree_le: "2026-10-27"
+notes:
+  - par: "bidji29"
+    le: "2026-10-31T02:28:04Z"
+    texte: "Conseil, 31/10 : remplacée par six tâches qui la découpent, chacune utile seule et ses critères répartis entre elles : libyaml-0013 (harnais de vérification et script de construction), libyaml-0014 (greffon de vérification sans mesure, premiers méta-tests), libyaml-0015 (entrées tirées au hasard), libyaml-0016 (sortie de l'émetteur), libyaml-0017 (scénarios et mesures), libyaml-0018 (branchement à la CI et modèle de menace). Raison : environ 800 lignes hors tests, au-delà des 200 visées pour une tâche d'outillage. libyaml-0010 et libyaml-0011 dépendent désormais de libyaml-0018."

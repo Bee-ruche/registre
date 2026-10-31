@@ -1,0 +1,34 @@
+id: ruche-0036
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: M
+titre: "Juge commun : un conteneur par scénario, sorties figées, ordre tiré à chaque répétition"
+contexte: >
+  Issue d'une revue adverse du 31/10 (détails remis au constructeur par l'architecte). À faire avant le
+  premier participant extérieur. Les scénarios d'un même côté doivent être étanches entre eux : aucun ne doit
+  pouvoir lire ni modifier ce qu'un autre a produit, ni tirer parti de son ordre de passage. Les méta-tests
+  l'éprouvent avec plusieurs scénarios par côté. À construire : (1) chaque scénario tourne dans son propre
+  conteneur, avec un /tmp et un dossier de sorties neufs, et ne voit que son dossier de sorties ; (2) les
+  sorties d'un scénario sont figées (empreinte) dès la fin de son conteneur, et la comparaison porte sur ce
+  qui a été figé ; (3) l'ordre des scénarios est tiré à chaque répétition et consigné dans juge.json ; (4)
+  chaque scénario a son temps processeur dans juge.json. Les cas précis restent dans le brief du constructeur
+  : la PR montre le correctif et ses tests ensemble, sans décrire de contournement.
+fichiers: [outils/juge/, .github/workflows/juge.yml, docs/juge-commun.md]
+portee: 0.9
+metrique: null
+critere_acceptation:
+  - "méta-test : un projet jouet à plusieurs scénarios par côté, dont un qui tente de lire ou de modifier les sorties d'un autre, sans effet sur la comparaison ni sur le verdict"
+  - "méta-test : l'ordre des scénarios change d'une répétition à l'autre et figure dans juge.json"
+  - "juge.json donne le temps processeur de chaque scénario"
+  - "les méta-tests existants passent (outils/juge/test_juge.py), et docs/juge-commun.md décrit l'isolement par scénario"
+  - "revue adverse indépendante jointe, faite avec le brief de l'architecte"
+hors_perimetre:
+  - "COMMANDEMENTS.md"
+  - "les forks"
+  - "l'étiquette juge-v1"
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-31"

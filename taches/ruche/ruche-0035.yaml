@@ -1,0 +1,37 @@
+id: ruche-0035
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: M
+titre: "Juge commun : relever les constructions suspectes dans les objets et les fichiers jugés entiers"
+contexte: >
+  Issue d'une revue adverse du 31/10 (détails remis au constructeur par l'architecte). À faire avant le
+  premier participant extérieur. Le juge commun relève les constructions suspectes du code jugé (appels
+  système, lecture des compteurs du processeur, requêtes au client de Valgrind, etc.) ; quand il n'en relève
+  aucune, la porte de relecture si_juge_incomplet (bee.yaml) n'exige pas de gardien, et le site affiche «
+  aucune construction suspecte ». Cette détection doit donc être complète, et ne pas reposer sur une seule
+  lecture du code. À construire : (1) dans les objets, relever chaque construction suspecte à partir des
+  octets des sections exécutables, en plus du désassemblage, et relever aussi ce que le désassembleur ne sait
+  pas décoder ; comparer les comptes de B à ceux de A ; (2) dans le texte, balayer les fichiers jugés entiers
+  (chaque fichier de B comparé à celui de A) plutôt que les lignes du diff ; (3) échouer fermé dès qu'un outil
+  appelé par l'analyse (git, désassembleur) ne rend pas 0. Des méta-tests sèment sur le projet jouet les cas
+  que l'analyse doit voir. Les cas précis restent dans le brief du constructeur : la PR montre le correctif et
+  ses tests ensemble, sans décrire de contournement.
+fichiers: [outils/juge/, .github/workflows/juge.yml, docs/juge-commun.md]
+portee: 0.9
+metrique: null
+critere_acceptation:
+  - "méta-test : pour chaque famille de construction suspecte, les variantes semées dans un objet du projet jouet sont toutes relevées, y compris celles que le désassembleur ne décode pas"
+  - "méta-test : une construction suspecte ajoutée n'importe où dans un fichier jugé est relevée, l'analyse portant sur le fichier entier"
+  - "méta-test : le juge se déclare incomplet (jamais complet) quand git ou le désassembleur rend un code non nul"
+  - "les méta-tests existants passent (outils/juge/test_juge.py), et docs/juge-commun.md décrit ce que l'analyse couvre"
+  - "revue adverse indépendante jointe, faite avec le brief de l'architecte"
+hors_perimetre:
+  - "COMMANDEMENTS.md"
+  - "les forks"
+  - "l'étiquette juge-v1"
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-31"

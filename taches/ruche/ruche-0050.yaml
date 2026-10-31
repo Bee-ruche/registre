@@ -1,0 +1,33 @@
+id: ruche-0050
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: M
+titre: "Le débat d'une invitation : le sien, un rapporteur distinct, un doublon contestable"
+contexte: >
+  Issue de la répétition générale n° 4 du 31/10 (détails remis au constructeur par l'architecte). À faire
+  avant la première invitation envoyée. R13 fait débattre chaque invitation avant l'accord du gardien et le
+  feu vert du conseil ; ce débat doit être celui de l'invitation et refléter l'avis de la ruche. À construire
+  : (1) un débat propre à l'invitation, ouvert pour elle ; (2) le proposant n'en est pas le rapporteur ; (3)
+  un marquage « doublon » d'une invitation peut être contesté, et la contestation est visible de tous ; (4)
+  l'accord du gardien et le feu vert vérifient que le débat est ouvert et que sa synthèse est à jour (aucun
+  argument plus récent qu'elle). Les cas précis restent dans le brief du constructeur : la PR montre le
+  correctif et ses tests ensemble, sans décrire de contournement.
+fichiers: [outils/bee.py, outils/test_bee.py, docs/croissance.md]
+portee: 0.9
+metrique: null
+critere_acceptation:
+  - "test : une invitation liée à un débat qui n'a pas été ouvert pour elle est refusée"
+  - "test : un débat d'invitation dont le rapporteur est le proposant est refusé"
+  - "test : un marquage « doublon » peut être contesté, et la contestation paraît dans bee voir I-nnnn et au feu vert"
+  - "test : l'accord du gardien et le feu vert sont refusés si le débat est fermé ou si un argument est plus récent que sa synthèse"
+  - "revue adverse indépendante jointe, faite avec le brief de l'architecte"
+hors_perimetre:
+  - "COMMANDEMENTS.md"
+  - "REGLES.md"
+  - "les forks"
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-31"

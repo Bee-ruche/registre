@@ -1,0 +1,33 @@
+id: ruche-0042
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: M
+titre: "Porte du libre-service : votes et mesures en ajout seul, mesure de R4 par un autre utilisateur"
+contexte: >
+  Issue d'une revue adverse du 31/10 (détails remis au constructeur par l'architecte). À faire avant le
+  premier participant extérieur. Commandement 10 : rien de publié ne peut être retiré. Votes et mesures
+  doivent le respecter sans exception : un vote ne se retire jamais et ne change plus après la clôture ; une
+  mesure ne se retire ni ne se modifie. Une mesure qui compte pour R4 (autre configuration) doit venir d'un
+  autre utilisateur que l'auteur de la contribution et dire sa configuration, pour que la reproduction soit
+  vérifiable. À ordonner avec ruche-0033 (vote remplacé avant la clôture, au su de tous) : si le conseil veut
+  supprimer ce remplacement aussi, il le dit avant le début du travail. Les cas précis restent dans le brief
+  du constructeur : la PR montre le correctif et ses tests ensemble, sans décrire de contournement.
+fichiers: [outils/bee.py, outils/test_bee.py, docs/gouvernance.md]
+portee: 0.9
+metrique: null
+critere_acceptation:
+  - "test : retirer un vote est refusé, avant comme après la clôture ; le modifier après la clôture est refusé"
+  - "test : retirer ou modifier une mesure est refusé"
+  - "test : une mesure de l'auteur de la contribution, ou sans configuration, ne compte pas pour R4 ; celle d'un autre utilisateur qui dit sa configuration compte"
+  - "docs/gouvernance.md le dit ; aucun vote ni aucune mesure existants ne deviennent invalides"
+  - "revue adverse indépendante jointe, faite avec le brief de l'architecte"
+hors_perimetre:
+  - "COMMANDEMENTS.md"
+  - "REGLES.md"
+  - "les forks"
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-31"

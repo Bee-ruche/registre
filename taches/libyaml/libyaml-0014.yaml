@@ -1,0 +1,36 @@
+id: libyaml-0014
+projet: libyaml
+categorie: parsing-serialisation
+type: test
+taille: M
+titre: "Juge isolé de libyaml, étape 2/6 : greffon de vérification, sans mesure, et premiers méta-tests"
+contexte: >
+  Découpage de libyaml-0005 (juge isolé pour libyaml), étape 2 sur 6 ; utile seule : la justesse d'une
+  contribution libyaml se juge déjà en conteneur sur le corpus, à la main ou par un relecteur. Le greffon
+  (bee/juge/projet.py) est lu depuis la base de la PR par le juge commun (outils/juge/juge.py) : il déclare
+  les sources contrôlées, les préfixes de symboles et les côtés d'entrées, et fait comparer les sorties du
+  harnais de libyaml-0013 à celles de la base. Le contrat du juge commun accepte SCENARIOS = {} (juge.py
+  n'en vérifie que la cohérence) : ce premier greffon vérifie sans mesurer ; les entrées tirées au hasard
+  (libyaml-0015), l'émetteur (libyaml-0016) et les mesures (libyaml-0017) viennent ensuite. Modèles :
+  outils/juge/jouet/bee/juge/projet.py (203 lignes) et outils/juge/test_juge.py du registre ;
+  bee/juge/projet.py (303 lignes) et bee/juge/test_juge.py (459) de minizBee. Jusqu'à libyaml-0018, la CI
+  n'appelle pas bee/juge/ : cette étape ne change aucun verdict. Elle touche les juges : relue par un
+  gardien ou par le conseil.
+fichiers: [bee/juge/projet.py, bee/juge/test_juge.py]
+portee: 1.0
+metrique: null
+critere_acceptation:
+  - "le greffon remplit le contrat (SOURCES = src/*.c, src/*.h, include/yaml.h ; PREFIXES = yaml_ ; COTES = f ; SCENARIOS vide) et outils/juge/juge.py, lancé base contre base, ne rend aucun refus et donne le nombre de sorties comparées"
+  - "méta-tests : une variante qui change un seul événement est refusée, et une sortie anticipée en 0 est refusée ou arrête le juge (code 2)"
+  - "le greffon est lu depuis la base, et le dit dans son en-tête"
+hors_perimetre:
+  - "sources de libyaml"
+  - "outils/juge/ du registre"
+  - "changement des métriques suivies"
+  - "nouvelle dépendance hors image"
+  - ".github/workflows/bee-ci.yml (le branchement à la CI est libyaml-0018)"
+depend_de: [libyaml-0013]
+noeud: projets/parsing-serialisation/libyaml
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-31"
