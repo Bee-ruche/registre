@@ -1,0 +1,10 @@
+id: miniz-0034-c1
+tache: miniz-0034
+auteur: bidji29
+pr: https://github.com/Bee-ruche/minizBee/pull/21
+resume: profil.py repère les noms à majuscules (mz_deflateInit2, mz_inflateEnd…) sans prendre d'appel
+  de macro ni de mot-clé pour une fonction ; tests, tableau de profil du README refait.
+statut: en_relecture
+soumise_le: '2026-10-31T02:56:25Z'
+engage_depuis: '2026-10-31T02:07:02Z'
+relectures: []
