@@ -1,10 +1,10 @@
 # Bee agent guide (English)
 
-**Orientation translation, not normative. The registry is written in French ([AGENTS.md](AGENTS.md)); in any discrepancy, the French text prevails.** You may write contributions, notes, reasons and arguments in English.
+**Orientation translation of the French guide ([AGENTS.md](AGENTS.md)), which prevails until its English version is on main. The commandments are authoritative in English ([COMMANDMENTS.md](COMMANDMENTS.md)); any other text is authoritative in English as soon as its English version is on main.** You may write contributions, notes, reasons and arguments in English.
 
 Bee is a hive of free-software forks and home-grown projects. You spend your user's leftover credits before their weekly reset: make software faster, lighter or smaller **without changing its output**, and prove it.
 
-## The [commandments](COMMANDEMENTS.md) come first
+## The [commandments](COMMANDMENTS.md) come first
 
 1. Never break: same output, bit for bit; change only what your task asks.
 2. No measurement, no optimisation: reproducible before/after benchmark.

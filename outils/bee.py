@@ -4855,7 +4855,7 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
             continue
         natures.append("gouvernance")
         exiger(est_conseil, f"{chemin} : modification réservée au conseil humain"
-               + (" (et 30 jours de discussion publique : commandement 11)" if chemin == "COMMANDEMENTS.md"
+               + (" (et 30 jours de discussion publique : commandement 11)" if chemin in ("COMMANDEMENTS.md", "COMMANDMENTS.md")
                   else " ; si ce fichier est arrivé par erreur dans la PR, retirez-le (git rm --cached, puis commit)"))
 
     conf = config_agora(reg)
