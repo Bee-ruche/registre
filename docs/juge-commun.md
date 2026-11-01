@@ -78,8 +78,9 @@ Règles de sûreté, vérifiées par le juge commun (revue adverse du 28/10) :
   passe par une PR d'outillage sur le registre, avec les méta-tests communs (workflow
   `juge-commun.yml`) et ceux de chaque projet qui l'utilise, et la relecture de deux gardiens.
 - Le workflow réutilisable `.github/workflows/juge.yml` lit le juge commun au commit même du workflow
-  appelé (`job.workflow_repository`, `job.workflow_sha`), jamais à une étiquette ni à une branche (vérifié
-  par un test) ; `juge.json` le nomme (`juge.source`, « dépôt@commit »), à côté de `juge.commun`.
+  appelé (`job.workflow_sha`), jamais à une étiquette ni à une branche : le workflow doit être celui de
+  `Bee-ruche/registre` (`job.workflow_repository`) et ce commit être sur sa branche principale (API compare :
+  `identical` ou `behind`), sinon le juge s'arrête (vérifié par un test) ; `juge.json` le nomme (`juge.source`).
 - Chaque fork épingle une version dans son workflow ; il monte de version par une PR (tâche
   d'outillage du fork), jugée par l'ancienne version et par la nouvelle.
 - `verdict.json` porte `juge.version` (entier : 2 pour le juge de minizBee de miniz-0031, 3 pour le
@@ -90,17 +91,14 @@ Règles de sûreté, vérifiées par le juge commun (revue adverse du 28/10) :
 ## Le workflow `juge.yml`, version 2 (ruche-0024)
 
 - **Historique déclaré** : l'entrée `historique` (16 commits complets au plus, séparés par des blancs) nomme les
-  commits dont le greffon lit les objets git ; le workflow les récupère dans la copie de la base, chacun avec son
-  arbre et sans son historique, avec l'image, avant tout fichier de la PR. Le jugement refuse ensuite tout
-  transport git (`GIT_ALLOW_PROTOCOL`) : un objet non déclaré est une erreur (code 2).
+  commits dont le greffon lit les objets git. Chacun doit être un ancêtre de la base (API compare du dépôt
+  appelant : `identical` ou `behind`), vérifié avant toute récupération et avant de charger le greffon ; le
+  workflow les récupère ensuite dans la copie de la base, chacun avec son arbre et sans son historique, avec
+  l'image, avant tout fichier de la PR, en 10 minutes au plus en tout (sinon erreur, code 2). Le jugement refuse
+  ensuite tout transport git (`GIT_ALLOW_PROTOCOL`) : un objet non déclaré est une erreur (code 2).
 - **Journal sûr** : les 40 dernières lignes du journal, que la PR peut remplir, s'impriment entre
-  `::stop-commands::<jeton>` et `::<jeton>::`, jeton tiré après le jugement : aucune ne devient une commande de workflow.
-- **Deux architectures** : deux jobs de jugement, x86-64 (`ubuntu-24.04`) et ARM64 (`ubuntu-24.04-arm`, dépôts
-  publics), même juge et même graine, tirée une fois par le workflow (jamais dans un conteneur). Les instructions
-  restent celles de x86-64 (Cachegrind). Un dernier job garde le rapport x86-64 et y range le chronomètre de chaque
-  architecture, `chronometres.x86_64` et `chronometres.arm64` (`code`, `machine`, `metriques`), chacun lu dans le
-  rapport de son seul job ; un refus sur ARM64 refuse B, une erreur d'environnement n'y est que notée (`code` 2).
-  Ce que le registre fait du chronomètre ARM64 : ruche-0031.
+  `::stop-commands::<jeton>` et `::<jeton>::`, jeton tiré après le jugement, et `##[` y devient `# #[`
+  (ruche-0025) : aucune ne devient une commande de workflow.
 
 ## Trois greffons côte à côte
 
