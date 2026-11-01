@@ -9117,24 +9117,34 @@ class TestTroisiemeRevueRuche0020(BaseRevueRuche0020):
 
 
 # ruche-0044: honest English and French, written in the style of PR descriptions, code reviews and optimisation reports; the
-# Catch2 and miniz comments are real (minizBee's tests/catch_amalgamated.cpp and tests/large_fuzzer.c). The first fourteen were
-# refused before ruche-0044 (taken for "<name> at <domain> point <tld>"); the others guard what was already accepted.
+# Catch2 and miniz comments are real (minizBee's tests/catch_amalgamated.cpp and tests/large_fuzzer.c). The first twenty-four
+# were refused before ruche-0044 (taken for "<name> at <domain> point <tld>"); the others guard what was already accepted.
 PHRASES_HONNETES_0044 = (
     "The loop stalls at the point where the window slides past the end of the buffer.",
     "We stop at the point where the gain drops below 2 percent.",
-    "The decoder bails out at that point in the stream, which is fine.",
-    "Nothing is allocated at this point in the parse, so the early return is safe.",
+    "The decoder bails out at the point of the error, which is fine.",
+    "Nothing is allocated at this point of the parse, so the early return is safe.",
     "It is worth profiling again at some point later this week.",
     "Both runs diverge at a point where the hash chain wraps around.",
     "Reviewers can stop at any point during the rehearsal.",
     "It never reads past the input, and at no point does it write to the table.",
     "Measure each scenario at every point where the output could change.",
     "The window fills up at which point the encoder flushes the block.",
-    "We are at another point in the design space now.",
+    "The second run failed at another point during the parse.",
     "Let us find out at what point the CI starts timing.",
     "Under CATCH_CONFIG_FAST_COMPILE, unexpected exceptions under REQUIRE assertions are reported without translation at the "
     "point of origin.",
     "En anglais, on écrirait : it stalls at the point where the window ends.",
+    "We will revisit this at some point soon.",
+    "It breaks at that point again, so the guard stays.",
+    "I would merge it at this point though.",
+    "That was fixed at some point earlier (see #12).",
+    "The flush happens at that point anyway; nothing to do.",
+    "Is it safe at this point yet?",
+    "The tests stopped at which point we reverted the commit.",
+    "The checksum held at every point after the rebase.",
+    "The leak shows up at some point before the second flush.",
+    "Nothing changes at that point until the window is full.",
     "At this point, uncompr is still mostly zeroes, so it should compress very well.",
     "I would merge it at this point, the remaining comments are cosmetic.",
     "Thanks @bidji29, good point.",
@@ -9157,8 +9167,14 @@ PHRASES_HONNETES_0044 = (
     "Le caractère arobase est réservé aux adresses ; ici, il n'y en a aucune.",
     "Point par point, la revue tient : rien ne change en sortie.",
 )
-# Addresses next to what ruche-0044 lets through, all caught before it: "dot", a domain that is not a determiner, the address
-# going on after the would-be tld (spelled, written or bracketed), a tld at the end or before a sign, a written or bracketed @.
+# Honest, and refused on purpose (accepted false positives): the word after "point" is a top-level domain (in: India), or a
+# dot followed by a word on the same line could carry the address further.
+REFUSEES_EXPRES_0044 = ("The decoder bails out at that point in the stream, which is fine.",
+                        "We will revisit this at some point soon. The rest is fine.")
+# Addresses next to what ruche-0044 lets through, all caught before it: "dot", a domain that is not a determiner, a word after
+# "point" that is not an allowed continuation, the address going on after one (spelled, written or bracketed dot), "arobase",
+# a written or bracketed @; then every string of the adversarial review (B1): determiner domains followed by a word, Title
+# Case, line breaks, Unicode spaces, "co uk", "example org" as a subdomain, arobase forms.
 COORDONNEES_VOISINES_0044 = (
     "alice at the dot org", "Write to alice at the dot org for details", "alice at exemple point org",
     "alice arobase exemple point fr", "alice at the point gmail dot com", "alice at the point gmail.com",
@@ -9167,8 +9183,62 @@ COORDONNEES_VOISINES_0044 = (
     "alice at my point com for details", "alice at 163 point com for details", "alice (at) the point org for details",
     "alice [at] this point com for details", "alice@the point org for details", "alice @ the point org for details",
     "alice＠the point org for details", "jean.dupont at example dot org", "jean at exemple dot co dot uk",
-    "Merci @alice. Écrivez à bob@exemple.org.",
+    "Merci @alice. Écrivez à bob@exemple.org.", "alice at the point in for details", "alice at the point where dot com",
+    "alice at the point where.com", "alice at the point where (dot) com", "alice at the point where . com",
+    "alice at the point where. com", "alice at the point where·com", "alice at the point soon\ndot com",
+    "alice at the point where\n.com", "alice arobase the point where", "alice arobase the point where the window",
+    "alice at the point com for details", "alice at the point com for details",
+    "alice at this point com for details", "alice at the point com for details", "alice at a point com for details",
+    "alice at no point com for details", "alice at any point com or call", "Alice At The Point Com For Details",
+    "ALICE AT THE POINT COM FOR DETAILS", "alice at the point co point uk for details",
+    "alice at the point co dot uk for details", "alice at the point co uk for details",
+    "alice at the point co. uk for details", "alice at the point co  point  uk for details",
+    "mail at the point example point com", "mail at the point example dot com for details",
+    "mail at the point example point com for details", "mail at the point example org for details",
+    "mail at the point example.org for details", "alice at the point com\nfor details",
+    "alice at the point com \nfor details", "alice at\nthe point com for details", "alice at the\npoint com for details",
+    "alice at the point\ncom for details", "alice at the point\ncom\nfor details", "alice at this point com\rfor details",
+    "alice at this point com\u2028for details", "alice at this point com\u2029for details",
+    "alice at this point com\x85for details", "alice at this point com\x0bfor details",
+    "alice at the point com, for details", "alice at the point com - for details", "alice at the point com: for details",
+    "alice at the point com (for details)", "alice at the point com for details.",
+    "alice at the point com, bob at the point org, etc", "alice at the point com and bob at the point org",
+    "alice at\xa0the\xa0point\xa0com\xa0for details", "alice at\u2003the point com for\u2003details",
+    "alice at the point com\u200bfor details", "alice at the point com\u3000for details",
+    "alice at the point\xa0com\xa0for", "alice arobase this point com for details", "alice arobase the point org pour toi",
+    "alice arobase the point fr pour toi", "alice at the point com 2", "alice at the point com 2fa",
+    "alice at the point com-x for", "alice at the point com for", "alice at the point com.", "alice at the point com.uk",
+    "alice at the point com foo@bar",
 )
+# Top-level domains for the allow-list test: every two-letter one (country codes, plus the ISO 3166 codes reserved or retired),
+# and the generic ones that are English words (Public Suffix List of 28/12/2025, the words of Python's own documentation).
+TLD_DEUX_LETTRES_0044 = set((
+    "ac ad ae af ag ai al am an ao aq ar as at au aw ax az ba bb bd be bf bg bh bi bj bl bm bn bo bq br bs bt bu bv bw by "
+    "bz ca cc cd cf cg ch ci ck cl cm cn co cp cr cs cu cv cw cx cy cz de dg dj dk dm do dz ea ec ee eg eh er es et eu ez "
+    "fi fj fk fm fo fr fx ga gb gd ge gf gg gh gi gl gm gn gp gq gr gs gt gu gw gy hk hm hn hr ht hu ic id ie il im in io "
+    "iq ir is it je jm jo jp ke kg kh ki km kn kp kr kw ky kz la lb lc li lk lr ls lt lu lv ly ma mc md me mf mg mh mk ml "
+    "mm mn mo mp mq mr ms mt mu mv mw mx my mz na nc ne nf ng ni nl no np nr nt nu nz om pa pe pf pg ph pk pl pm pn pr ps "
+    "pt pw py qa re ro rs ru rw sa sb sc sd se sf sg sh si sj sk sl sm sn so sr ss st su sv sx sy sz ta tc td tf tg th tj "
+    "tk tl tm tn to tp tr tt tv tw tz ua ug uk um un us uy uz va vc ve vg vi vn vu wf ws ye yt yu za zm zr zw "
+).split())
+TLD_GENERIQUES_0044 = set((
+    "aaa abc able adult aero android app apple arpa art asia audio author auto azure baby band bar beer best bid bio biz "
+    "black blog blue bom boo book bot box build builders business cab cal call camera capital car cards care case cat "
+    "center channel cheap chrome circle city claims cleaning click cloud club codes coffee com community company compare "
+    "computer contact cooking cool coop country courses dad data date day deal deals degree delivery delta design dev "
+    "digital direct directory discover docs dog domains dot download drive eat edu education email energy events exchange "
+    "exposed express fail family fan fashion fast feedback final fire fish fit fitness fly foo food ford free frontier fun "
+    "gallery gap gives giving global gmail gold google got gov graphics green group guide guru hair health help here "
+    "holiday horse host hot house how ice ieee inc info ing ink institute int ist java jobs kids land lat law legal life "
+    "like limited link live love man mango map med media meet men menu microsoft mil mini mit mlb mobi mobile mom movie "
+    "museum music name navy net network new news next now observer office omega one online open oracle orange org origins "
+    "ott page parts party pay pet phone photo pictures pid pin ping pink pizza place play plus post press prime pro prod "
+    "prof property pub racing radio read recipes red repair report rest review rich room run safe safety sale sas save "
+    "school science search secure security seek select services seven sharp shell show site ski skin sky smart social "
+    "software solutions space star storage store stream study style supplies supply support swatch systems tab talk target "
+    "team tel tips today tools top total trade training travel trust uno video vision vote voting watch website wiki win "
+    "windows work works world xbox xin xxx xyz you zero zip zone "
+).split())
 
 
 class TestPersonalDataDetectorsPlainEnglish(unittest.TestCase):
@@ -9184,11 +9254,33 @@ class TestPersonalDataDetectorsPlainEnglish(unittest.TestCase):
                 self.assertIsNone(bee.ADRESSE_POSTALE.search(phrase))
                 self.assertFalse(bee.numero_de_telephone(phrase))
                 self.assertIsNone(bee.donnee_personnelle(phrase))
+        for phrase in REFUSEES_EXPRES_0044:
+            with self.subTest(refusee=phrase):
+                self.assertEqual(bee.donnee_personnelle(phrase), "une adresse de courriel")
 
     def test_neighbouring_addresses_still_caught(self):
         for texte in COORDONNEES_VOISINES_0044:
             with self.subTest(texte=texte):
                 self.assertEqual(bee.donnee_personnelle(texte), "une adresse de courriel")
+        for texte in ("alice at this point com for details", "mail at the point example org for details",
+                      "alice arobase the point org pour toi"):
+            with self.subTest(flux=texte):
+                self.assertIn("une adresse de courriel", bee.donnee_agora(texte, "argument"))
+                self.assertIn("une adresse de courriel", bee.texte_sortant_refuse(texte, "message", 2000))
+        for source in ("https://example.org/p/alice%20at%20this%20point%20com%20x",
+                       "https://example.org/p/alice%20at%20the%20point%20where%20dot%20com"):
+            with self.subTest(source=source):
+                self.assertIn("une adresse de courriel", bee.adresse_sortante_refusee(source, "source"))
+                self.assertIn("une adresse de courriel", bee.probleme_source(None, source))
+
+    def test_continuations_are_no_top_level_domain(self):
+        """A determiner, "point", then an allowed word is let through: that word must never be a top-level domain."""
+        self.assertTrue({"in", "it", "is", "to", "be", "me", "no", "io", "co"} <= TLD_DEUX_LETTRES_0044)
+        self.assertTrue({"com", "org", "net", "info", "biz", "app", "dev", "page", "now", "how", "one", "new", "xyz", "top",
+                         "site", "online", "here", "you"} <= TLD_GENERIQUES_0044)
+        mots = bee.CONTINUATIONS_EN.split("|")
+        self.assertGreaterEqual(len(mots), 10)
+        self.assertEqual([m for m in mots if m in TLD_DEUX_LETTRES_0044 | TLD_GENERIQUES_0044], [])
 
 
 class TestPersonalDataDetectorsPlainEnglishFlows(BaseRevueRuche0020):

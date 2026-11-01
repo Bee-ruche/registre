@@ -3402,13 +3402,17 @@ POURQUOI_MAX, FAIT_MAX, ADRESSE_MAX = 5, 300, 200
 # normalisation (NFKC : ＠ et chiffres pleine largeur, espaces insécables ; tirets unifiés ; URL décodée). Les faux positifs
 # sont acceptés : la relecture humaine reste le vrai contrôle.
 COURRIEL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}")
-# ruche-0044: "at the point where", "at this point in time" are English prose, not "<name> at <domain> point <tld>". Let
-# them through only if the would-be domain is a determiner (a fact of the address, not of the words around it: no other
-# address can borrow this), the separator is "point" and a word follows the would-be tld on its line. "at the dot org",
-# "at the point gmail.com", "at the point gmail dot com", a tld that ends the text or meets a sign: still caught.
+# ruche-0044: "at the point where", "at some point soon" are English prose, not "<name> at <domain> point <tld>". Fail-closed,
+# such a match is skipped only if all hold: the word is "at" (never "arobase"), the would-be domain is a determiner, the
+# separator is "point", the word after it is in CONTINUATIONS_EN (honest continuations, none a top-level domain: a test
+# checks them, so x@the.where cannot exist), and no dot (written, spelled or in brackets) carries the address further.
+# Still refused on purpose: "at that point in", "at this point it"..., since in, it, is, to, now, how... are top-level domains.
 DETERMINANTS_EN = r"the|a|an|another|this|that|which|what|some|any|each|every|no"
+CONTINUATIONS_EN = (r"where|which|when|that|of|after|before|during|until|again|already|anyway|earlier|however|later|soon|"
+                    r"though|yet|the|we|they|did|does|has|had|was|were|and|but")
 COURRIEL_DEGUISE = re.compile(r"\b[\w.+-]+\s+(?:at|arobase)"
-                              rf"(?!\s+(?:{DETERMINANTS_EN})\s+point\s+[\w-]+[^\S\n]+(?!(?:dot|point)\b)[^\W\d_])"
+                              rf"(?!(?<=at)\s+(?:{DETERMINANTS_EN})\s+point\s+(?:{CONTINUATIONS_EN})\b(?!\s*(?:dot|point)\b"
+                              r"|\s*[(\[{<]\s*(?:dot|point)\b|\s*[.。｡·][^\S\n]*[^\W_]))"
                               r"\s+[\w-]+\s+(?:dot|point)\s+[a-z]{2,}\b", re.I)
 VOIES_FR = r"rue|r\.|avenue|av\.|boulevard|bd|chemin|ch\.|all[ée]e|impasse|imp\.|place|pl\.|quai|route|rte|cours|voie|passage|square|faubourg|fbg|chauss[ée]e"
 VOIES_EN = r"Street|St|Road|Rd|Avenue|Ave|Lane|Ln|Boulevard|Blvd|Drive|Dr|Court|Ct|Way|Place|Pl|Square|Sq|Terrace|Close|Crescent|Strasse|Straße|Weg|Gasse|Platz"
