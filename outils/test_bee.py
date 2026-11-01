@@ -1857,13 +1857,89 @@ class TestPullRequests(BaseTest):
     def test_adverse_pr_deja_liee(self):
         self.reserver_sur_main("miniz-0099", "miniz-9001")
         git(self.dossier, "switch", "-qc", "doublon")
-        for t in ("miniz-0099", "miniz-9001"):
-            self.assertEqual(self.bee("soumettre", t, "--utilisateur", "alice",
-                                      "--pr", "https://github.com/Bee-ruche/minizBee/pull/99007")[0], 0)
+        self.assertEqual(self.bee("soumettre", "miniz-0099", "--utilisateur", "alice",
+                                  "--pr", "https://github.com/Bee-ruche/minizBee/pull/99007")[0], 0)
+        # bee soumettre refuses the second one (ruche-0041): the file is written by hand.
+        self.soumettre_avec_pr("miniz-9001", "https://github.com/Bee-ruche/minizBee/pull/99007")
         self.commit()
         code, texte = self.verifier("alice", "--fusion-auto")
         self.assertEqual(code, 1, texte)
         self.assertIn("déjà liée", texte)
+
+    # --- ruche-0041: a fork PR serves one contribution, in whatever form its address is written ---
+
+    MEME_PR = ("https://github.com/Bee-ruche/minizBee/pull/99041", "https://github.com/bee-ruche/minizbee/pull/99041",
+               "https://github.com/BEE-RUCHE/MINIZBEE/pull/99041", "https://github.com/bEE-rUCHE/MinizBEE/pull/099041",
+               "https://github.com/Bee-ruche/minizBee/pull/0000099041")
+    AUTRES_PR = ("https://github.com/Bee-ruche/minizBee/pull/99042", "https://github.com/Bee-ruche/minizBee/pull/9904",
+                 "https://github.com/Bee-ruche/minizBee/pull/990410", "https://github.com/Bee-ruche/minizBee/pull/990041")
+
+    def soumettre_avec_pr(self, tache, adresse):
+        """bee soumettre on `tache` with an unused PR, then `adresse` written in place of it, the rest of the file unchanged."""
+        code, texte = self.bee("soumettre", tache, "--utilisateur", "alice", "--pr", "https://github.com/Bee-ruche/minizBee/pull/99049")
+        self.assertEqual(code, 0, texte)
+        chemin = self.dossier / f"contributions/miniz/{tache}-c1.yaml"
+        bee.ecrire_yaml(chemin, {**bee.lire_yaml(chemin), "pr": adresse})
+
+    def test_pr_canonique(self):
+        """Owner and repository in lower case, the number as an integer; a value that is not entirely a PR address has none."""
+        self.assertEqual({bee.pr_canonique(a) for a in self.MEME_PR}, {("bee-ruche", "minizbee", 99041)})
+        autres = [self.MEME_PR[0], *self.AUTRES_PR, "https://github.com/Bee-ruche/libyamlBee/pull/99041",
+                  "https://github.com/Bee-ruche2/minizBee/pull/99041"]
+        self.assertEqual(len({bee.pr_canonique(a) for a in autres}), len(autres))
+        pr = self.MEME_PR[0]
+        for adresse in (pr + "\n", pr + "/", pr + "/files", pr + "#a", " " + pr, pr.replace("https:", "http:"),
+                        pr.replace("github.com", "www.github.com"), pr.replace("github.com", "GitHub.com"),
+                        pr.replace("/pull/", "/pulls/"), pr.replace("99041", "٩٩٠٤١"), pr.replace("99041", ""), None, 99041, [pr]):
+            with self.subTest(adresse=adresse):
+                self.assertIsNone(bee.pr_canonique(adresse))
+
+    def test_soumettre_refuse_une_pr_deja_declaree(self):
+        """bee soumettre refuses a PR that another contribution declares, in each written form; a different PR is accepted."""
+        self.reserver_sur_main("miniz-0099", "miniz-9001")
+        self.assertEqual(self.bee("soumettre", "miniz-0099", "--utilisateur", "alice", "--pr", self.MEME_PR[0])[0], 0)
+        self.commit("c1")
+        for adresse in self.MEME_PR + self.AUTRES_PR:
+            with self.subTest(adresse=adresse):
+                git(self.dossier, "reset", "-q", "--hard")
+                git(self.dossier, "clean", "-fdq")
+                code, texte = self.bee("soumettre", "miniz-9001", "--utilisateur", "alice", "--pr", adresse)
+                if adresse in self.MEME_PR:
+                    self.assertEqual(code, 1, texte)
+                    self.assertIn("la PR " + adresse + " est déjà liée à miniz-0099-c1", texte)
+                    self.assertFalse((self.dossier / "contributions/miniz/miniz-9001-c1.yaml").exists())
+                else:
+                    self.assertEqual(code, 0, texte)
+                    self.valide()
+
+    def test_verifier_pr_et_valider_une_pr_par_contribution(self):
+        """bee verifier-pr and bee valider refuse a second contribution declaring the same PR, in each written form, whether
+        the first is on main or in the same PR; a different PR passes; a value that is not a PR address is refused."""
+        self.reserver_sur_main("miniz-0099", "miniz-9001")
+        git(self.dossier, "switch", "-qc", "c1")
+        self.assertEqual(self.bee("soumettre", "miniz-0099", "--utilisateur", "alice", "--pr", self.MEME_PR[0])[0], 0)
+        self.commit("c1")
+        for base, adresse in [(b, a) for b in ("main", "c1") for a in self.MEME_PR + self.AUTRES_PR + (self.MEME_PR[1] + "\n",)]:
+            with self.subTest(base=base, adresse=adresse):
+                git(self.dossier, "switch", "-qfC", "seconde", "c1")
+                git(self.dossier, "clean", "-fdq")
+                if base == "main":  # both contributions in the PR
+                    git(self.dossier, "reset", "-q", "--soft", "main")
+                self.soumettre_avec_pr("miniz-9001", adresse)
+                self.commit()
+                code, texte = self.bee("verifier-pr", "--base", base, "--tete", "HEAD", "--auteur", "alice", "--fusion-auto")
+                code_v, texte_v = self.bee("valider")
+                if adresse in self.AUTRES_PR:
+                    self.assertEqual((code, code_v), (0, 0), texte + texte_v)
+                    self.assertIn("FUSION_AUTO=oui", texte)
+                elif adresse in self.MEME_PR:
+                    self.assertEqual((code, code_v), (1, 1), texte + texte_v)
+                    self.assertIn("est déjà liée à miniz-0099-c1", texte)
+                    self.assertIn("est déjà liée à miniz-0099-c1", texte_v)
+                else:
+                    self.assertEqual((code, code_v), (1, 1), texte + texte_v)
+                    self.assertIn("adresse de PR invalide", texte)
+                    self.assertIn("la PR doit être ouverte sur le fork du projet", texte_v)
 
     def test_adverse_relecture_retroactive(self):
         cid = self.soumettre_0099()
