@@ -39,3 +39,7 @@ noeud: projets/ruche/ruche
 statut: ouverte
 cree_par: conseil
 cree_le: '2026-10-31'
+notes:
+  - par: "bidji29"
+    le: "2026-11-01T13:48:41Z"
+    texte: "1 Nov, from ruche-0055's review: bee now reads the root's vulnerability bullet in English too. When translating arbre/SENS.md, keep the whole vulnerability instruction, including telling your user, in one bullet that starts with \"- Vulnerability\", so that bee keeps printing all of it."
