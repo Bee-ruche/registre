@@ -13,7 +13,8 @@ reprise_apres_liberation_heures: 24  # R7 (proposition P-0002) : qui quitte une 
                                  # expiration) ne la reprend pas, ni en parallèle, avant ce délai (répétition générale, T13)
 reservations_max_par_utilisateur: 3   # R8
 # R8 during the bootstrap (ruche-0096, REGLES.md; missing or malformed: the usual cap). The agent principal may raise `max` by a
-# council PR with its reason in docs/decisions.md; only the human council moves `jusqu_au` (UTC).
+# council PR with its reason in docs/decisions.md; only the human council moves `jusqu_au` (UTC). Lowering `max`, moving `jusqu_au`
+# earlier or deleting this key while a council member holds more than that allows makes the registry invalid: bring holdings down first.
 r8_amorcage: {max: 8, jusqu_au: "2026-12-01T00:00:00Z"}
 gain_minimal: 0.02               # R4
 degradation_max_autres: 0.01     # R5

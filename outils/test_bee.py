@@ -11581,15 +11581,15 @@ class TestR8Bootstrap(BaseRepetitionGenerale):
         (self.dossier / "taches/miniz/miniz-9003.yaml").write_text(  # created by the council, in another category
             TACHE_OPTIMISATION.replace("miniz-0099", "miniz-9003").replace("cree_par: tests", "cree_par: conseil"), encoding="utf-8")
         self.commit("tasks of the test")
+        self.reglage(R8_AMORCAGE)  # the test's own setting, never the live one (a council PR may change it)
 
     def reglage(self, ligne):
         """bee.yaml with `ligne` as its r8_amorcage setting (None: none), committed on main as the council would."""
         git(self.dossier, "switch", "-q", "main")
         chemin = self.dossier / "bee.yaml"
-        texte = re.sub(r"(?m)^r8_amorcage:.*\n", "", chemin.read_text(encoding="utf-8"))
-        r8 = "reservations_max_par_utilisateur: 3   # R8\n"
-        self.assertIn(r8, texte)
-        chemin.write_text(texte.replace(r8, r8 + (f"{ligne}\n" if ligne else "")), encoding="utf-8")
+        texte = re.sub(r"(?m)^r8_amorcage:.*\n(?:[ \t]+.*\n)*", "", chemin.read_text(encoding="utf-8"))  # flow or block style
+        chemin.write_text(texte.rstrip("\n") + "\n" + (f"{ligne}\n" if ligne else ""), encoding="utf-8")
+        self.assertEqual(bee.lire_yaml(chemin)["reservations_max_par_utilisateur"], 3)
         self.commit("the council's setting")
 
     def a_la_main(self, qui, tache):
@@ -11600,11 +11600,35 @@ class TestR8Bootstrap(BaseRepetitionGenerale):
         git(self.dossier, "switch", "-qf", "main")
         git(self.dossier, "branch", "-qD", nom)
 
-    def test_the_registry_s_setting(self):
-        self.assertIn(f"\n{R8_AMORCAGE}\n", (RACINE / "bee.yaml").read_text(encoding="utf-8"))
-        reg = bee.Registre(RACINE)
+    def test_the_live_setting_is_well_formed(self):
+        """Only its form, so that a council PR raising the number or moving the date stays green; without it, the usual cap."""
+        config = yaml.safe_load((RACINE / "bee.yaml").read_text(encoding="utf-8"))
+        reglage = config.get("r8_amorcage")
+        if reglage is not None:
+            self.assertEqual(set(reglage), {"max", "jusqu_au"})
+            self.assertIs(type(reglage["max"]), int)
+            self.assertGreaterEqual(reglage["max"], config["reservations_max_par_utilisateur"])
+            self.assertIsNotNone(bee.lire_instant(reglage["jusqu_au"], "r8_amorcage").tzinfo)
+
+    def test_the_end_instant_is_excluded_and_a_member_named_conseil_turns_the_exception_off(self):
+        """`cree_par: conseil` names the council only while no member is named conseil, whatever the case (adversarial review, S1)."""
         avant, fin = bee.lire_instant("2026-11-30T23:59:59Z"), bee.lire_instant("2026-12-01T00:00:00Z")
-        self.assertEqual([bee.r8_maximum(reg, "bidji29", [], i) for i in (avant, fin)], [8, 3], "until 1 Dec 2026 (UTC), excluded")
+        self.assertEqual([bee.r8_maximum(bee.Registre(self.dossier), "bidji29", ["ruche-9001"], i) for i in (avant, fin)], [8, 3])
+        for n in range(9001, 9004):
+            self.ok("prendre", f"ruche-{n}", "--utilisateur", "bidji29")
+        self.commit("three tooling tasks of bidji29")
+        for pseudo in ("conseil", "Conseil"):
+            with self.subTest(pseudo=pseudo):
+                fiche = self.dossier / f"membres/{pseudo}.yaml"
+                bee.ecrire_yaml(fiche, {**bee.lire_yaml(self.dossier / "membres/alice.yaml"), "pseudo": pseudo})
+                self.assertEqual(bee.r8_maximum(bee.Registre(self.dossier), "bidji29", ["ruche-9001"], avant), 3)
+                self.ko("règle R8 : bidji29 a déjà 3 réservations ou inscriptions en parallèle (ruche-9001, ruche-9002, ruche-9003), maximum 3",
+                        "prendre", "ruche-9004", "--utilisateur", "bidji29")
+                self.a_la_main("bidji29", "ruche-9004")
+                self.ko("règle R8 : bidji29 a 4 réservations ou inscriptions en parallèle", "valider")
+                fiche.unlink()
+                git(self.dossier, "checkout", "-q", "--", "taches/ruche/ruche-9004.yaml")
+        self.ok("prendre", "ruche-9004", "--utilisateur", "bidji29")  # the witness: without such a member, the exception holds
 
     def test_eight_tooling_engagements_for_the_council_a_ninth_refused(self):
         for n in range(9001, 9008):
@@ -11647,7 +11671,7 @@ class TestR8Bootstrap(BaseRepetitionGenerale):
         for ligne, instant in [(l, None) for l in R8_SANS_EXCEPTION] + [(R8_AMORCAGE, "2026-12-01T00:00:00Z")]:
             with self.subTest(reglage=ligne, instant=instant):
                 if instant:
-                    self.a(instant)  # after the end date: the registry's own setting
+                    self.a(instant)  # after the end date of the test's setting
                 self.reglage(ligne)
                 self.ko(f"règle R8 : bidji29 a déjà 3 réservations ou inscriptions en parallèle ({trois}), maximum 3",
                         "prendre", "ruche-9004", "--utilisateur", "bidji29")

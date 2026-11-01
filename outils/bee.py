@@ -665,10 +665,9 @@ def engagements_de(reg, utilisateur):
 
 
 def r8_maximum(reg, utilisateur, taches, instant):
-    """R8, one rule for bee prendre, bee valider and the gate: the most engagements `utilisateur` may hold with `taches` (ids), all
-    counted. ruche-0096: if `instant` (a new engagement's; in bee valider, the latest engagement's) is before r8_amorcage.jusqu_au (UTC),
-    a council member whose engagements are ALL on ruche tasks created by the council may hold r8_amorcage.max; else, or with a
-    missing or malformed setting, the usual cap (fails closed)."""
+    """R8, one rule for bee prendre, bee valider and the gate: the most engagements `utilisateur` may hold with `taches` (ids), all counted.
+    ruche-0096: if `instant` (a new engagement's; in bee valider, the latest one's) is before r8_amorcage.jusqu_au (UTC), a council member
+    whose engagements are ALL on ruche tasks created by the council (while no member is named conseil) may hold r8_amorcage.max."""
     usuel = int(reg.config.get("reservations_max_par_utilisateur", 3))
     reglage = reg.config.get("r8_amorcage")
     try:
@@ -676,7 +675,7 @@ def r8_maximum(reg, utilisateur, taches, instant):
     except (ErreurBee, KeyError, TypeError):
         return usuel  # fails closed
     outillage = [reg.taches.get(tid, (None, None))[1] for tid in taches]
-    if type(maximum) is int and instant < fin and utilisateur in reg.conseil and all(
+    if type(maximum) is int and instant < fin and utilisateur in reg.conseil and "conseil" not in Pseudos(reg.membres) and all(
             isinstance(t, dict) and t.get("categorie") == "ruche" and t.get("cree_par") == "conseil" for t in outillage):
         return max(maximum, usuel)
     return usuel
