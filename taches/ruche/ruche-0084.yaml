@@ -30,13 +30,17 @@ metrique: null
 depend_de:
 - ruche-0081
 critere_acceptation:
-- 'the rules version is one function: a content hash over the values named in bee.yaml; a named file or value that is
-  missing fails closed; the source of the idea is cited in the docs (commandment 9)'
+- 'the rules version is one function: a content hash over the values named in bee.yaml and over that list itself; a named
+  file or value that is missing fails closed; `bee` prints the current version; the source of the idea is cited in the
+  docs (commandment 9)'
 - the gate computes the version from the pull request's base and requires `reservation.rules_version` (and the same key
   on a parallel enrolment, a promotion and a new or changed appointment entry) to be equal to it; absent, malformed,
   stale or future values are refused, each with a test
-- 'entries written before this task: reservations age out (72 h); appointment entries are stamped in one council pull
-  request that lists them; after that, an entry without a version is refused'
+- 'a stamp never changes once written: a pull request that alters an existing `rules_version` is refused, and a promotion
+  carries its enrolment''s stamp unchanged; tested, including a rewritten stamp in the same pull request as a submission'
+- 'cut-over: the field is optional until the council''s stamp pull request merges (it stamps the existing appointment
+  entries, such as the founder''s guarantor entry, with the version `bee` prints, and lists them); from that merge on,
+  an entry without a version is refused; reservations written before it age out (72 h)'
 - '`bee` lists every grant whose version differs from the current one, with its holder and date; the listing writes nothing'
 - independent adversarial review attached (this touches the gate); the full test suite passes
 hors_perimetre:

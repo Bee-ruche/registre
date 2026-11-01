@@ -33,7 +33,8 @@ critere_acceptation:
 - an inventory of French output by file (bee.py, juge, repetition, workflows), with line counts
 - 'attention: the inventory classifies each message the tool prints as asking for an action, giving a result, or
   neither; the plan proposes what to do with the third kind as separate tasks, so that the translation tasks keep
-  the behavior unchanged (the attention test, docs/decisions.md, 01/11/2026)'
+  the behavior unchanged; a message that a tool or a workflow reads, or that a rule requires, is never a candidate
+  (the alias notice on stderr, « À REMPLIR », the outputs `bee verifier-pr --fusion-auto` relies on) (the attention test, docs/decisions.md, 01/11/2026)'
 hors_perimetre:
 - doing the translation itself
 - folder and key names (ruche-0070)

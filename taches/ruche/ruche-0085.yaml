@@ -23,11 +23,12 @@ metrique: null
 depend_de:
 - ruche-0084
 critere_acceptation:
-- 'refused under a grant that no longer holds, with the reason: submitting a contribution under the reservation; a favorable
-  review, a task validation or an invitation agreement under the privilege'
+- 'refused under a grant that no longer holds, or whose version cannot be read, with the reason: submitting a contribution
+  under the reservation; a favorable review, an abstention (it removes the weight of the reviewer''s earlier review under
+  R3), a task validation or an invitation agreement under the privilege'
 - an unfavorable review keeps its blocking effect, and acts made earlier keep theirs (R15); tested
-- a grant that still holds is checked without any write and without any step from its holder; a grant made again follows
-  the ordinary rules and is never a renewal (R15)
+- a grant that still holds is checked without any write and without any step from its holder; a grant made again does
+  not move a term's end or restart a trial, and if the term had ended, R15's renewal rules apply
 - for a per-user maximum that a rules change lowers, the PR states which reservation stops holding (the most recent first)
   and tests it
 - independent adversarial review attached (this touches the gate); the full test suite passes

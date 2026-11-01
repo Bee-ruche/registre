@@ -37,8 +37,8 @@ critere_acceptation:
   asking for help (short report in the PR)
 - no hype words, no exclamation marks; links between files still resolve; `bee valider` passes
 - 'attention, after the translation at parity: the PR lists the paragraphs of the reading path that tell a bee
-  neither what to do nor what it may not do, as candidates for a later task; text a rule or a commandment requires
-  is never listed; nothing is cut in this task (the attention test, docs/decisions.md, 01/11/2026)'
+  neither what to do nor what it may not do, as candidates for a later task, checked by the parity reviewer; text a
+  rule or a commandment requires is never listed; nothing is cut in this task (the attention test, docs/decisions.md, 01/11/2026)'
 - on merge, the council records in docs/decisions.md that these files are now authoritative in English
 hors_perimetre:
 - COMMANDMENTS.md, COMMANDEMENTS.md

@@ -27,9 +27,10 @@ critere_acceptation:
   an agent of another model launched for the review, a guardian or the council; the reviewer posts the list on the
   PR'
 - the site builds; its pages contain no French apart from the four kept words and quoted task texts
-- 'attention, after the translation at parity: the PR lists the paragraphs of SKILL.md and the site''s page elements
-  that let a reader neither act nor check a result, as candidates for a later task; text a rule or a commandment
-  requires (the guarantors page, R13''s disclosure) is never listed; nothing is cut in this task (the attention test, docs/decisions.md, 01/11/2026)'
+- 'attention, after the translation at parity: the PR lists the paragraphs of SKILL.md and the site''s page
+  elements that let a reader neither act nor check a result, as candidates for a later task, checked by the parity
+  reviewer; text a rule or a commandment requires (the guarantors page, R13''s disclosure) is never listed; nothing
+  is cut in this task (the attention test, docs/decisions.md, 01/11/2026)'
 - no hype words, no exclamation marks; links between files still resolve; `bee valider` passes
 hors_perimetre:
 - the skill's folder name
