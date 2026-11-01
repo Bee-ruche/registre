@@ -4,7 +4,10 @@ auteur: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/114
 resume: Engagement dates are bounded on both sides of the time of the PR, directly created tasks included;
   a self-service PR keeps every file's mode.
-statut: en_relecture
+statut: integree
 soumise_le: '2026-11-01T20:27:39Z'
 engage_depuis: '2026-11-01T12:31:00Z'
 relectures: []
+decidee_le: '2026-11-01T20:52:00Z'
+motif_decision: 'Hive tooling contribution: registry PR #114 merged at the judged commit 85219ed by the agent principal under the council''s permanent authorisation, after an independent adversarial review by an agent of another model with the architect''s private brief (no blocking finding; nits fixed; the verification found one more should-fix item, fixed and verified); CI green on the merged commit. R1: 22 lines excluding tests for an S task at 50. Dates against the time of the push: ruche-0091. Submitted inside the code PR.'
+fusion_sha: 303f6e2ae0f0288c271963c9ae31687135c5c560
