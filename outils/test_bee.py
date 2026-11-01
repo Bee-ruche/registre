@@ -19,6 +19,7 @@ import yaml
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import bee  # noqa: E402
+import inventaire_marqueurs  # noqa: E402
 
 RACINE = pathlib.Path(__file__).resolve().parent.parent
 # Décompte d'instructions d'un candidat qui gagne 5 % sur le scénario n6 (R4 se juge dessus).
@@ -92,7 +93,7 @@ class BaseTest(unittest.TestCase):
         # Ni des débats réels de l'agora (leurs numéros, rapporteurs et dates) : les tests ouvrent les leurs.
         shutil.rmtree(self.dossier / "debats", ignore_errors=True)
         questions = self.dossier / "docs" / "questions-ouvertes.md"
-        questions.write_text(re.sub(r"(?m)^ *Débat : \[D-\d{4}\]\(\.\./debats/D-\d{4}\.yaml\) \(`bee debats --voir D-\d{4}`\)\.\n", "",
+        questions.write_text(re.sub(r"(?m)^ *(?:Débat :|Debate:) \[D-\d{4}\]\(\.\./debats/D-\d{4}\.yaml\) \(`bee debats --voir D-\d{4}`\)\.\n", "",
                                     questions.read_text(encoding="utf-8")), encoding="utf-8")
         # Ni de la valeur courante de la porte de relecture (R3) : les tests partent de la porte fermée (« true ») et
         # la règlent eux-mêmes (regler_porte, regler_porte_humaine).
@@ -9933,6 +9934,218 @@ class TestOrthographe(BaseInvitations):
             self.commit()
             self.refusee(auteur, *morceaux)
             self.abandonner("trop")
+
+
+def titres_en_anglais(texte):
+    """A node's four headings rewritten in English; its text stays as it is."""
+    for fr, en in zip(bee.SECTIONS_NOEUD, bee.SECTIONS_NOEUD_EN):
+        texte = texte.replace(f"\n## {fr}\n", f"\n## {en}\n")
+    return texte
+
+
+class TestLecteursBilingues(BaseAgora):
+    """ruche-0055: bee reads the English form of every French marker it finds in human-written text (the inventory is
+    outils/inventaire_marqueurs.py), and refuses the same faulty input in both languages: no widening."""
+
+    ZONE = "arbre/projets/compression-sans-perte/miniz/tinfl/SENS.md"
+
+    def problemes_arbre(self):
+        problemes = []
+        bee.verifier_arbre(bee.Registre(self.dossier), problemes.append)
+        return problemes
+
+    # --- The inventory ---
+
+    def test_inventaire_complet(self):
+        lignes, noms, inconnus, manquants, _ = inventaire_marqueurs.inventaire(RACINE)
+        self.assertEqual((inconnus, manquants), ([], []), "a French literal is unclassified, or an English form is gone")
+        bilingues = {texte: anglais for texte, classe, anglais, _ in lignes if classe == "bilingual"}
+        self.assertEqual(bilingues, {bee.A_REMPLIR: bee.A_REMPLIR_EN, bee.LIEN_DEBAT.pattern: "Debate:",
+                                     **dict(zip(bee.SECTIONS_NOEUD, bee.SECTIONS_NOEUD_EN)), "Une faille": "A vulnerability"})
+        classes = {texte: classe for texte, classe, _, _ in lignes}
+        self.assertEqual({classes[v] for v in bee.RETIRE.values()}, {"data"}, "written by the tool itself: ruche-0070")
+        self.assertIn("en_relecture", noms)
+        with contextlib.redirect_stdout(io.StringIO()) as sortie:
+            self.assertEqual(inventaire_marqueurs.principal([]), 0)
+        self.assertIn("'À REMPLIR' -> 'TO FILL IN'", sortie.getvalue())
+
+    def test_inventaire_signale_un_marqueur_oublie(self):
+        """The script fails on a French literal compared with text and not classified, and on a missing English form."""
+        faux = pathlib.Path(self.temp.name) / "faux"
+        (faux / "outils/juge").mkdir(parents=True)
+        (faux / "outils/site_bee.py").write_text("", encoding="utf-8")
+        (faux / "outils/bee.py").write_text('A_REMPLIR = "À REMPLIR"\n\n\ndef f(ligne):\n'
+                                            '    return A_REMPLIR in ligne or ligne.startswith("Résumé :")\n', encoding="utf-8")
+        lignes, _, inconnus, manquants, _ = inventaire_marqueurs.inventaire(faux)
+        self.assertEqual([(t, c) for t, c, _, _ in lignes], [("À REMPLIR", "bilingual")])
+        self.assertEqual([t for t, _ in inconnus], ["Résumé :"])
+        self.assertIn("TO FILL IN", manquants)
+
+    # --- « À REMPLIR » / « TO FILL IN » ---
+
+    def test_a_remplir_anglais_refuse_comme_le_francais(self):
+        chemin = self.dossier / "CONTRIBUTION.yaml"
+        self.ok("manifeste", "miniz-0099", "--utilisateur", "alice", "--sortie", str(chemin))
+        modele = chemin.read_text(encoding="utf-8")
+        sorties = {}
+        for marque in bee.MARQUES_A_REMPLIR:
+            chemin.write_text(modele.replace(bee.A_REMPLIR, marque), encoding="utf-8")
+            code, sorties[marque] = self.bee("valider-contribution", str(chemin))
+            self.assertEqual(code, 1, sorties[marque])
+        self.assertIn("il reste des champs", sorties[bee.A_REMPLIR_EN])
+        self.assertIn("doutes", sorties[bee.A_REMPLIR_EN])
+        self.assertEqual(sorties[bee.A_REMPLIR_EN], sorties[bee.A_REMPLIR], "the same refusal, field for field")
+        chemin.write_text(MANIFESTE_REMPLI, encoding="utf-8")
+        self.ok("valider-contribution", str(chemin))
+
+    def test_a_remplir_memes_variantes_dans_les_deux_langues(self):
+        """Exact or embedded, the marker is refused and hides its field's schema error; lowercase or split by a no-break
+        space, it is no marker, in either language."""
+        reg = bee.Registre(self.dossier)
+        for fr, en, refuse in (("À REMPLIR", "TO FILL IN", True), ("xÀ REMPLIRx", "xTO FILL INx", True),
+                               ("à remplir", "to fill in", False), ("À REMPLIR", "TO FILL IN", False)):
+            resultats = []
+            for marque in (fr, en):
+                donnees = yaml.safe_load(MANIFESTE_REMPLI)
+                donnees["doutes"] = donnees["mesures"]["repetitions"] = f"{marque} : x"
+                resultats.append([p.replace(f"{marque} : x", "<valeur>") for p in bee.verifier_manifeste(reg, donnees)])
+            with self.subTest(fr=fr, en=en):
+                self.assertEqual(resultats[1], resultats[0])
+                self.assertEqual(any("il reste des champs" in p for p in resultats[0]), refuse, resultats[0])
+                self.assertEqual(any("repetitions : « <valeur> » devrait être" in p for p in resultats[0]), not refuse)
+
+    # --- Debate links in docs/questions-ouvertes.md ---
+
+    def test_lien_debat_anglais_lu_comme_le_francais(self):
+        modele = "## Se gouverner\n\n1. **Une question.** Sa suite,\n   sur deux lignes.\n   {lien}(../debats/D-0007.yaml).\n"
+        for fr, en, lie in (("Débat : [D-0007]", "Debate: [D-0007]", "D-0007"), ("Débat : [D-07]", "Debate: [D-07]", None),
+                            ("Débat: [D-0007]", "Debate : [D-0007]", None), ("débat : [D-0007]", "debate: [D-0007]", None),
+                            ("Débat :[D-0007]", "Debate:[D-0007]", None), ("Voir Débat : [D-0007]", "See Debate: [D-0007]", None)):
+            questions = [bee.questions_ouvertes(modele.format(lien=lien)) for lien in (fr, en)]
+            with self.subTest(fr=fr, en=en):
+                self.assertEqual([q[3] for q in questions[0]], [lie])
+                self.assertEqual([q[3] for q in questions[1]], [lie])
+                self.assertEqual(questions[0][0][4:], questions[1][0][4:])
+                self.assertEqual(lie is None, fr in questions[0][0][2])
+                self.assertEqual(lie is None, en in questions[1][0][2], "not a link: it stays in the question")
+
+    def test_importer_saute_les_questions_liees_en_anglais(self):
+        self.a("2026-10-29T12:00:00Z")
+        doc = self.dossier / "docs/questions-ouvertes.md"
+        texte = doc.read_text(encoding="utf-8")
+        attendues = len(bee.questions_ouvertes(texte))
+        for lien in ("Débat :", "Debate:"):
+            lignes = texte.split("\n")
+            for n, _, _, _, fin, retrait in reversed(bee.questions_ouvertes(texte)[:2]):
+                lignes.insert(fin + 1, f"{' ' * retrait}{lien} [D-{n:04d}](../debats/D-{n:04d}.yaml) (`bee debats --voir D-{n:04d}`).")
+            doc.write_text("\n".join(lignes), encoding="utf-8")
+            with self.subTest(lien=lien):
+                self.assertIn(f"{attendues - 2} débat(s) à ouvrir",
+                              self.ok("debattre", "importer-questions", "--utilisateur", "bidji29", "--a-blanc"))
+
+    # --- Node headings ---
+
+    def test_noeuds_en_anglais_lus_comme_en_francais(self):
+        """The root and a whole path in English: bee valider accepts them; children, bee contexte and the site read them
+        as before."""
+        chemin = ("racine", "roles/optimiser", "projets/compression-sans-perte", "projets/compression-sans-perte/miniz")
+        avant = bee.charger_arbre(bee.Registre(self.dossier))["noeuds"]
+        contexte = self.ok("contexte", "miniz-0099")
+        for n in chemin:
+            fichier = self.dossier / bee.fichier_noeud(n)
+            texte = fichier.read_text(encoding="utf-8")
+            self.assertNotEqual(titres_en_anglais(texte), texte)
+            fichier.write_text(titres_en_anglais(texte), encoding="utf-8")
+        self.valide()
+        apres = bee.charger_arbre(bee.Registre(self.dossier))["noeuds"]
+        for n in chemin:
+            with self.subTest(noeud=n):
+                self.assertEqual((apres[n]["langues"], avant[n]["langues"]), (["en"], ["fr"]))
+                self.assertEqual([apres[n][k] for k in ("sections", "ordre", "enfants")],
+                                 [avant[n][k] for k in ("sections", "ordre", "enfants")])
+        self.assertTrue(apres["racine"]["enfants"])
+        self.assertEqual(self.ok("contexte", "miniz-0099"), contexte)
+        self.ok("site", "--sortie", str(self.dossier / "_site"))
+        donnees = json.loads((self.dossier / "_site/api/registre.json").read_text(encoding="utf-8"))
+        self.assertEqual({n["id"]: n["enfants"] for n in donnees["arbre"]}["racine"], avant["racine"]["enfants"])
+
+    def ecrire_zone(self, texte):
+        """A child of the miniz node (projets/compression-sans-perte/miniz/tinfl), listed by its parent."""
+        parent = self.dossier / bee.fichier_noeud("projets/compression-sans-perte/miniz")
+        if "miniz/tinfl`" not in parent.read_text(encoding="utf-8"):
+            parent.write_text(parent.read_text(encoding="utf-8").replace(
+                "## Enfants\n", "## Enfants\n- `projets/compression-sans-perte/miniz/tinfl` : la décompression\n", 1), encoding="utf-8")
+        (self.dossier / self.ZONE).parent.mkdir(exist_ok=True)
+        (self.dossier / self.ZONE).write_text(texte, encoding="utf-8")
+
+    def test_memes_refus_en_francais_et_en_anglais(self):
+        """Each faulty node is refused alike in both languages: the same problems, headings named in the node's language."""
+        cas = {
+            "sound": lambda t, s: t,
+            "missing": lambda t, s: t.replace(f"## {s[2]}\n", ""),
+            "empty": lambda t, s: t.replace("tinfl_decompress fait l'essentiel de la décompression.\n", ""),
+            "unexpected": lambda t, s: t.replace(f"## {s[1]}\n", f"## {s[1]}, really\n"),
+            "order": lambda t, s: t.replace(f"## {s[0]}\n", "## @\n").replace(f"## {s[1]}\n", f"## {s[0]}\n").replace("## @\n", f"## {s[1]}\n"),
+            "twice": lambda t, s: t + f"## {s[3]}\nAucun.\n",
+            "no title": lambda t, s: t.replace("# Décompression (tinfl)\n", ""),
+        }
+        for nom, changer in cas.items():
+            resultats = []
+            for titres in (bee.SECTIONS_NOEUD, bee.SECTIONS_NOEUD_EN):
+                texte = NOEUD_ZONE if titres == bee.SECTIONS_NOEUD else titres_en_anglais(NOEUD_ZONE)
+                self.ecrire_zone(changer(texte, titres))
+                problemes = self.problemes_arbre()
+                for fr, propre in zip(bee.SECTIONS_NOEUD, titres):
+                    problemes = [p.replace(propre, fr) for p in problemes]
+                resultats.append(problemes)
+            with self.subTest(cas=nom):
+                self.assertEqual(resultats[1], resultats[0])
+                self.assertEqual(bool(resultats[0]), nom != "sound", resultats[0])
+
+    def test_un_noeud_ne_melange_pas_les_langues(self):
+        """One language per node: a half-translated node is refused, even when each heading is known in one language."""
+        fr, en = bee.SECTIONS_NOEUD, bee.SECTIONS_NOEUD_EN
+        anglais = titres_en_anglais(NOEUD_ZONE)
+        for nom, texte, seul in (("one French heading", anglais.replace(f"## {en[3]}\n", f"## {fr[3]}\n"), True),
+                                 ("one English heading", NOEUD_ZONE.replace(f"## {fr[1]}\n", f"## {en[1]}\n"), True),
+                                 ("both for one section", anglais + f"## {fr[0]}\nEncore.\n", False)):
+            self.ecrire_zone(texte)
+            problemes = self.problemes_arbre()
+            with self.subTest(cas=nom):
+                self.assertTrue(any("one language per node" in p for p in problemes), problemes)
+                if seul:
+                    self.assertEqual(len(problemes), 1, problemes)
+        self.ecrire_zone(anglais)
+        self.assertEqual(self.problemes_arbre(), [])
+        self.valide()
+
+    def test_consigne_des_failles_en_anglais(self):
+        """--deja-lu keeps the vulnerability bullet of an English root as it keeps the French one; cut in two or reworded,
+        the root is printed whole, in both languages."""
+        racine = self.dossier / "arbre/SENS.md"
+        origine = racine.read_text(encoding="utf-8")
+        debut = origine.index("- Une faille")
+        fin = origine.index("docs/securite.md).", debut) + len("docs/securite.md).")
+        anglaise = titres_en_anglais(
+            origine[:debut] + "- A vulnerability (crash, out-of-bounds read…): nothing public, neither the input nor a "
+            "description,\n  not even in passing; private report on the Bee repo, and tell your user; never contact the\n"
+            "  upstream project (commandments 6 and 8, docs/securite.md)." + origine[fin:])
+        racine.write_text(anglaise, encoding="utf-8")
+        self.valide()
+        langues = {"fr": (origine, "même en passant ;\n  signalement",
+                          ("même en passant ;\n  signalement privé", "même en passant.\n- Signalement privé"),
+                          ("Une faille (plantage", "Un défaut (plantage"), "ne contacte jamais le projet d'origine"),
+                   "en": (anglaise, "description,\n  not even", ("in passing; private report", "in passing.\n- Private report"),
+                          ("A vulnerability (crash", "A defect (crash"), "never contact the upstream project")}
+        for langue, (texte, indentee, coupee, reecrite, fin_puce) in langues.items():
+            for nom, version, entiere in (("whole", texte, False), ("unindented", texte.replace(indentee, indentee.replace("\n  ", "\n")), False),
+                                          ("cut in two", texte.replace(*coupee), True), ("reworded", texte.replace(*reecrite), True)):
+                self.assertTrue(nom == "whole" or version != texte, nom)
+                racine.write_text(version, encoding="utf-8")
+                sortie = self.ok("contexte", "miniz-0099", "--deja-lu")
+                with self.subTest(langue=langue, racine=nom):
+                    self.assertEqual("=== nœud racine ===" in sortie, entiere, sortie[:600])
+                    self.assertIn(fin_puce, " ".join(sortie.replace("\n# ", "\n").split()))
 
 
 MANIFESTE_REMPLI = """tache: miniz-0099
