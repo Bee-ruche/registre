@@ -2115,6 +2115,13 @@ def probleme_date_pr(valeur, quoi, instant):
     return None
 
 
+def jours_de_la_pr(instant):
+    """The UTC dates a day-granular date written at the time of the PR may carry: the PR's day, or the day before within
+    TOLERANCE_DATE of midnight; never a later day. For cree_le of a proposed task and inscrit_le of a member file."""
+    instant = instant.astimezone(dt.timezone.utc)
+    return sorted({instant.date().isoformat(), (instant - TOLERANCE_DATE).date().isoformat()})
+
+
 # --- Créations en libre-service : tâches proposées, propositions de règle (revue adverse de ruche-0011, B1 et I2) ---
 #
 # Une seule PR pouvait prendre tous les numéros (P-0001 à P-8999, ou 8 965 tâches) et faire basculer le cap ; un contexte de
@@ -4352,7 +4359,7 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
                            f"{chemin} : une tâche proposée n'a ni réservation ni contribution")
                     numero_attendu(chemin, "la tâche proposée", "bee proposer-tache")
                     # Une date déclarée qui pèse dans le cap est celle de la PR (UTC, à 2 h près autour de minuit).
-                    jours = sorted({instant.date().isoformat(), (instant - TOLERANCE_DATE).date().isoformat()})
+                    jours = jours_de_la_pr(instant)
                     exiger(str(nouveau.get("cree_le")) in jours,
                            f"{chemin} : cree_le ({nouveau.get('cree_le')}) est la date de la PR ({' ou '.join(jours)}) : bee proposer-tache l'écrit")
                     # I2 : des champs courts et lisibles ; B1 : des créations plafonnées (après la boucle).
@@ -4769,15 +4776,21 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
                 exiger(differences <= {"categories_preferees"} or est_conseil, f"{chemin} : seules les catégories préférées sont modifiables")
             if statut_git == "A" and isinstance(nouveau, dict):
                 minimum = int(reg.config.get("anciennete_compte_min_jours", 90))
-                try:
-                    cree = lire_date(nouveau.get("compte_cree_le"), chemin)
-                    inscrit = lire_date(nouveau.get("inscrit_le"), chemin)
-                    exiger((inscrit - cree).days >= minimum, f"{chemin} : le compte GitHub doit avoir au moins {minimum} jours")
-                    if compte_cree_le:
-                        exiger(cree == lire_date(compte_cree_le, "--compte-cree-le"),
+                # Each date of the file is checked at the time of the PR: inscrit_le is the PR's day (jours_de_la_pr), and
+                # compte_cree_le is GitHub's date. The account's age runs from GitHub's date to the instant of the check.
+                jours = jours_de_la_pr(instant)
+                exiger(str(nouveau.get("inscrit_le")) in jours, f"{chemin} : inscrit_le ({nouveau.get('inscrit_le')}) must be the "
+                                                                 f"date of the PR ({' or '.join(jours)}) : delete {chemin}, then rerun bee inscrire")
+                if exiger(bool(compte_cree_le), f"{chemin} : registering requires the account creation date given by GitHub "
+                                                "(--compte-cree-le)"):
+                    try:
+                        github = lire_date(compte_cree_le, "--compte-cree-le")
+                        exiger(str(nouveau.get("compte_cree_le")) == github.isoformat(),
                                f"{chemin} : compte_cree_le ne correspond pas à la date fournie par GitHub ({compte_cree_le})")
-                except ErreurBee as e:
-                    problemes.append(str(e))
+                        age = (instant.astimezone(dt.timezone.utc).date() - github).days
+                        exiger(age >= minimum, f"{chemin} : le compte GitHub doit avoir au moins {minimum} jours")
+                    except ErreurBee as e:
+                        problemes.append(str(e))
             continue
 
         if partie[0] == "propositions":

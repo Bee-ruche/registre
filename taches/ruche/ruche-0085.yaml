@@ -1,0 +1,41 @@
+id: ruche-0085
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: M
+titre: 'Rules version, part 2: refuse permissive acts under a grant that no longer holds'
+contexte: 'Adapted from DeepSeek''s dsh-superagent prototype (https://github.com/deepseek-ai/dsh-superagent-prototype,
+  MIT): docs/002-authorization.md ("Policy version", "Revalidation before resume") and docs/001-domain.md (a rules change
+  is delivered rather than cancelling running work, which would leave it half-finished). The source notifies live holders
+  and revalidates on resume; La Ruche is stricter, because its contributors are not one trusted team. Part 2, on ruche-0084''s
+  version: before an act made under a grant from an older rules version, `bee` checks whether the grant still holds under
+  the current rules, with the same function the gate uses at grant time for a reservation, and ruche-0081''s in-office
+  function for a privilege (one implementation each, no copy). The check is a computation at the act: it writes nothing,
+  and never touches `reservation.depuis` (R7), a term''s end (ruche-0081) or a trial''s start (ruche-0082).'
+fichiers:
+- outils/bee.py
+- outils/test_bee.py
+- docs/taches.md
+- docs/devolution.md
+portee: 0.6
+metrique: null
+depend_de:
+- ruche-0084
+critere_acceptation:
+- 'refused under a grant that no longer holds, or whose version cannot be read, with the reason: submitting a contribution
+  under the reservation; a favorable review, an abstention (it removes the weight of the reviewer''s earlier review under
+  R3), a task validation or an invitation agreement under the privilege'
+- an unfavorable review keeps its blocking effect, and acts made earlier keep theirs (R15); tested
+- a grant that still holds is checked without any write and without any step from its holder; a grant made again does
+  not move a term's end or restart a trial, and if the term had ended, R15's renewal rules apply
+- for a per-user maximum that a rules change lowers, the PR states which reservation stops holding (the most recent first)
+  and tests it
+- independent adversarial review attached (this touches the gate); the full test suite passes
+hors_perimetre:
+- changing any rule
+- COMMANDMENTS.md
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: '2026-11-01'

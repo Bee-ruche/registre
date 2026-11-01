@@ -1,0 +1,10 @@
+id: ruche-0029-c1
+tache: ruche-0029
+auteur: bidji29
+pr: https://github.com/Bee-ruche/registre/pull/100
+resume: One check for hidden characters and the fake end-of-data marker in every self-service file, at
+  write time and in bee valider; workflow commands neutralised in printed output.
+statut: en_relecture
+soumise_le: '2026-11-01T04:45:34Z'
+engage_depuis: '2026-10-31T02:01:48Z'
+relectures: []

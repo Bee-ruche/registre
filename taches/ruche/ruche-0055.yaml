@@ -36,6 +36,9 @@ hors_perimetre:
 - data values in records (ruche-0070)
 - messages the tool prints (ruche-0069)
 noeud: projets/ruche/ruche
-statut: ouverte
+statut: reservee
+reservation:
+  utilisateur: "bidji29"
+  depuis: "2026-11-01T01:37:00Z"
 cree_par: conseil
 cree_le: '2026-10-31'
