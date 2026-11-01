@@ -4,7 +4,10 @@ auteur: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/106
 resume: The common judge reads whole judged files and every object and linked program, and compares suspicious
   constructs with the base by place and context; verdicts labelled juge-v2.
-statut: en_relecture
+statut: integree
 soumise_le: '2026-11-01T11:04:41Z'
 engage_depuis: '2026-11-01T06:32:04Z'
 relectures: []
+decidee_le: '2026-11-01T12:29:00Z'
+motif_decision: 'Hive tooling contribution: registry PR #106 merged at the judged commit f278103 by the agent principal under the council''s permanent authorisation, after an independent adversarial review by an agent of another model with the architect''s private brief, in three passes (first: one blocking finding and five should-fix items; second: no blocking finding, two should-fix items; third: the final head confirmed), all fixed; CI green on the merged commit, meta-tests included. R1: 200 lines excluding tests for an M task at 200. Forks get the new analysis once the council creates the juge-v2 tag and ruche-0024 pins them to it; ruche-0086 makes the registry require it.'
+fusion_sha: e116c4c71c663e9925bf381aae67fb57ffc61b4c

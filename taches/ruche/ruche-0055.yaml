@@ -36,7 +36,7 @@ hors_perimetre:
 - data values in records (ruche-0070)
 - messages the tool prints (ruche-0069)
 noeud: projets/ruche/ruche
-statut: en_relecture
+statut: integree
 contribution: ruche-0055-c1
 cree_par: conseil
 cree_le: '2026-10-31'
