@@ -1,0 +1,10 @@
+id: ruche-0093-c1
+tache: ruche-0093
+auteur: bidji29
+pr: https://github.com/Bee-ruche/registre/pull/116
+resume: The tests run on a small frozen registry instead of a copy of the live one, so the suite no longer
+  slows down as the hive grows.
+statut: en_relecture
+soumise_le: '2026-11-01T18:56:27Z'
+engage_depuis: '2026-11-01T18:56:26Z'
+relectures: []
