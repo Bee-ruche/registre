@@ -4417,7 +4417,7 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
         agents = {}  # unreadable in the base: no agent account (fail closed)
     if (personne := agents.get(auteur)) is None:
         return verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr, agents)
-    if touchees := {c for c in git(reg.racine, "diff", "--name-only", "--no-renames", f"{base}...{tete}").splitlines()
+    if touchees := {c for c in git(reg.racine, "diff", "-z", "--name-only", "--no-renames", f"{base}...{tete}").split("\0")
                     if c.casefold().startswith(tuple(a.casefold() for a in AUTHORITY_FILES))}:
         return [f"{c} : changed only by a PR from the council's own account (ruche-0089)" for c in sorted(touchees)], ["gouvernance"]
     problemes, natures = verifier_pr_de(reg, base, tete, personne, compte_cree_le, instant, auteurs_pr, agents, auteur, status=False)

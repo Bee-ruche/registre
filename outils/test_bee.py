@@ -11137,7 +11137,9 @@ class TestAgentAccounts(BaseRepetitionGenerale):
                 ("nouvelle-consigne", lambda: (self.dossier / "gouvernance/consignes/autre.md").write_text("x\n", encoding="utf-8"),
                  "gouvernance/consignes/autre.md"),
                 ("casse", lambda: (self.dossier / "gouvernance/Conseil.yaml").write_text("x: 1\n", encoding="utf-8"),
-                 "gouvernance/Conseil.yaml")):
+                 "gouvernance/Conseil.yaml"),
+                ("nom-cite", lambda: (self.dossier / "gouvernance/consignes/é.md").write_text("x\n", encoding="utf-8"),
+                 "gouvernance/consignes/é.md")):
             with self.subTest(geste=nom):
                 self.branche(nom)
                 geste()
