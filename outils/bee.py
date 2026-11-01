@@ -3836,9 +3836,14 @@ def expiree(inv, instant, conf=None):
     plus la personne et ne reçoit plus d'accord ; on en propose une nouvelle."""
     if not isinstance(inv, dict) or etat_invitation(inv) != "proposee":
         return False
+    return bool(fin := expiration(inv, conf)) and instant > fin
+
+
+def expiration(inv, conf=None):
+    """L'échéance d'une invitation non décidée, l'instant où elle expire (expiree ; bee voir) ; None sans date de proposition."""
     jours = (conf or {}).get("expiration_jours", CROISSANCE_DEFAUT["expiration_jours"])
     propose = _instant_ou_rien(inv.get("propose_le"))
-    return bool(propose) and instant > propose + dt.timedelta(days=jours)
+    return propose + dt.timedelta(days=jours) if propose else None
 
 
 def feu_vert(inv):
@@ -5126,6 +5131,12 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
             problemes += refus
             continue
 
+        if chemin == "gouvernance/incidents.yaml" and not est_conseil and status and auteur in gardiens_en_fonction(reg):
+            natures.append("incident")  # R13, frein : un gardien en fonction à l'heure de la PR signale (bee incident) ; le conseil fusionne
+            avant, apres = ((x or {}).get("incidents") if isinstance(x or {}, dict) else None for x in (ancien, nouveau))
+            exiger(isinstance(apres, list) and apres and apres[:-1] == (avant or []) and isinstance(apres[-1], dict) and "clos_le" not in apres[-1],
+                   f"{chemin} : un gardien n'y ajoute qu'un incident ouvert, en fin de liste (bee incident)")
+            continue
         if not est_conseil and correspond(chemin, CHEMINS_OUTILLAGE):
             # Tâches de la ruche (projets/ruche.yaml) : tout membre peut proposer une PR d'outillage du registre.
             # Elle n'est jamais fusionnée automatiquement (« outillage » n'est pas en libre-service) : un gardien
@@ -5547,6 +5558,8 @@ def cmd_voir(args):
         resume = resume_invitation(inv, frein=etat_frein(reg))
         print(f"{resume['id']} : {resume['statut']} ; demande : {resume['demande']} ; attend : {resume['attend']}")
         print("\n".join(lignes_identites(inv)))
+        print(f"proposée le {inv.get('propose_le')} (échéance sans décision : {en_iso(fin) if (fin := expiration(inv, config_croissance(reg))) else '?'}) ; "
+              f"accord du gardien : {bloc_de(inv, 'accord_gardien').get('le') or 'aucun'} ; feu vert du conseil : {en_iso(v) if (v := feu_vert(inv)) else 'aucun'}")
         print()
         print(cadre_donnees(inv, DEBUT_DONNEES.format(id=inv.get("id"))))
         return 0
@@ -6794,6 +6807,18 @@ def cmd_invitation(args):
               "fusionne lui-même.")
     else:
         print(f"  {_publier(args.invitation, geste)}")
+    return 0
+
+
+def cmd_incident(args):
+    reg, chemin, u = Registre(args.registre), "gouvernance/incidents.yaml", args.utilisateur
+    liste = reg.incidents.get("incidents") if isinstance(reg.incidents, dict) else None if (reg.racine / chemin).exists() else []
+    if probleme := (f"{u} n'est ni un gardien en fonction ni du conseil : signalez-leur l'écart (R13)" if u not in gardiens_en_fonction(reg) | reg.conseil
+                    else texte_sortant_refuse(args.titre, "titre", 300) or (None if isinstance(liste, list) else f"{chemin} illisible : le conseil le répare")):
+        raise ErreurBee(probleme)
+    ident = f"INC-{max(map(int, re.findall('INC-([0-9]{4})', str(liste))), default=0) + 1:04d}"  # après tout numéro déjà écrit
+    ecrire_invitation(reg.racine / chemin, {"incidents": liste + [{"id": ident, "titre": args.titre, "ouvert_le": en_iso(maintenant())}]})
+    print(f"✓ {ident} : {etat_frein(Registre(args.registre))['ce_qui_passe']}. Publiez par une PR ordinaire, que le conseil fusionne.")
     return 0
 
 
@@ -8754,6 +8779,10 @@ def construire_analyseur():
             a.add_argument("--raison", choices=sorted(RETIRE), default="demande",
                            help="demande (défaut) : la personne le demande ; refus ou sans_reponse : une autre invitation de la même "
                                 "personne a été refusée ou est restée sans réponse")
+
+    p = ajouter("incident", cmd_incident, "R13, frein : un gardien en fonction ou le conseil signale un incident ; toute invitation s'arrête dès que le conseil fusionne sa PR.")
+    p.add_argument("--utilisateur", required=True)
+    p.add_argument("--titre", required=True, help="ce qui s'est passé, court, sans donnée personnelle (une invitation : son numéro)")
 
     p = ajouter("niveaux", cmd_niveaux, "Affiche le niveau et le poids de vote de chaque membre.")
     p.add_argument("--json", action="store_true")

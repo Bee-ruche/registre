@@ -243,7 +243,7 @@ jamais après la proposition, et le gardien et le conseil vérifient que le mess
 - **Un incident ouvert** : une entrée de `gouvernance/incidents.yaml` (schéma `schemas/incidents.schema.json` :
   `id` INC-<nnnn>, `titre`, `ouvert_le`, puis `clos_le` et `issue`) sans `clos_le`, ou dont le `clos_le` n'est
   pas passé (`bee valider` refuse une date future). Le conseil l'ouvre et le clôt ; un gardien qui constate un
-  écart (message non décidé, plainte, abus) le lui signale. Un fichier illisible compte comme un incident
+  écart (message non décidé, plainte, abus) le lui signale par `bee incident` (gardien en fonction ; une PR que le conseil fusionne). Un fichier illisible compte comme un incident
   ouvert.
 
 Le conseil fusionne les feux verts un à un, chacun à jour de `main` : la CI revalide alors le plafond sur
