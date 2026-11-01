@@ -24,6 +24,9 @@ hors_perimetre:
   - "REGLES.md"
   - "les forks"
 noeud: projets/ruche/ruche
-statut: ouverte
+statut: reservee
+reservation:
+  utilisateur: "bidji29"
+  depuis: "2026-11-01T19:59:02Z"
 cree_par: conseil
 cree_le: "2026-10-31"
