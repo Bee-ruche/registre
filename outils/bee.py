@@ -3549,45 +3549,50 @@ def donnee_personnelle(texte):
     return "un numéro de téléphone" if numero_de_telephone(texte) else None
 
 
-def texte_sortant_refuse(texte, quoi, maximum, organisation=None, code=False):
+def texte_sortant_refuse(texte, quoi, maximum, organisation=None):
     """None si un texte qui sortira de la ruche est recevable : texte_recevable, sans caractère sortant interdit, sans donnée
-    personnelle ; sinon la raison. With `organisation` (a text GitHub shows: PR title or body, ruche-0049), nothing GitHub
-    turns into a notification or a link outside it either (renvoi_hors_ruche; code spans skipped if `code`)."""
+    personnelle ; sinon la raison. With `organisation` (PR title or body, ruche-0049): entities decoded to a fixed point (&#1;,
+    which Python drops, as U+FFFD) and as GitHub decodes them, then renvoi_hors_ruche."""
     probleme = texte_recevable(texte, quoi, maximum)
     if probleme:
         return probleme
+    brut = html.unescape(texte.replace("\\&", "&amp;"))  # as GitHub decodes it: once, an escaped & kept
+    while organisation is not None and texte != (decode := html.unescape(re.sub(r"&#(?:\d+|[xX][0-9a-fA-F]+);?",
+            lambda m: html.unescape(m[0]) or "\ufffd", texte))):
+        texte = decode
     c = next((c for c in texte if caractere_sortant_interdit(c)), None)
     if c is not None:
         return (f"{quoi} : caractère invisible refusé (U+{ord(c):04X}, catégorie {unicodedata.category(c)}) : ce texte sort de la "
                 "ruche, il ne cache rien")
     donnee = donnee_personnelle(texte)
-    if donnee:
-        return f"{quoi} : {donnee} : aucune donnée personnelle au-delà de l'identifiant public et du canal (R13)"
-    renvoi = renvoi_hors_ruche(texte, organisation, code) if organisation is not None else None
-    return f"{quoi} : {renvoi} : ce texte sort de la ruche (commandements 8 et 13)" if renvoi else None
+    renvoi = renvoi_hors_ruche(f"{brut}\n{texte}", organisation) if organisation is not None and not donnee else None
+    return (f"{quoi} : {donnee} : aucune donnée personnelle au-delà de l'identifiant public et du canal (R13)" if donnee
+            else f"{quoi} : {renvoi} : ce texte sort de la ruche (commandements 8 et 13)" if renvoi else None)
 
 
-# What GitHub turns into a notification or a cross-reference (ruche-0049): a mention (@user, @org/team), an issue or a commit
-# qualified by an owner (owner/repo#12, owner@sha, owner/repo@sha), a link to a forge path or page (github.com/<owner>/…).
-MENTION_GITHUB = re.compile(r"(?<![A-Za-z0-9_])@[A-Za-z0-9][A-Za-z0-9/-]*")
+MENTION_GITHUB = re.compile(r"(?<![A-Za-z0-9])@[A-Za-z0-9][A-Za-z0-9/-]*|@[\w.+-]*@[A-Za-z0-9][A-Za-z0-9/-]*")
 REFERENCE_GITHUB = re.compile(r"(?i)(?<![\w.-])([\w.-]+)(?:/[\w.-]+#\d+|(?:/[\w.-]+)?@[0-9a-f]{7,})")
-LIEN_OU_HOTE = re.compile(r"(?i)(?<![\w.-])(?:https?://)?(?:[\w-]+\.)+[a-z]{2,}(?::\d+)?(?:/[^\s<>()\[\]{}`'\"]*)?")
-# A code span or fenced block (same backtick run on both sides, not escaped, no blank line inside: else it is read).
-CODE_MARKDOWN = re.compile(r"(?<![`\\])(`+)(?!`)(?:(?!\n[^\S\n]*\n)[\s\S])+?(?<!`)\1(?!`)")
+LIEN_OU_HOTE = re.compile(r"(?i)(?<![\w.-])(?:https?://)?(?:[\w-]+\.)+[a-z]{2,}([^\s<>()\[\]{}`'\"]*)")
+LIEN_RELATIF = re.compile(r"(?:\][(:]|=)\s*[\"'<]?\s*(?=([^\s\"'<>()=]*?(?:\.\.(?![^/\\\s\"'<>()])|%|\])"  # ](…), =…:
+                          r"|[/\\]+[^/\\\s\"'<>()\]=]*))?(?:\1)?")  # a ../, % or ], else the owner of a root-relative link
+LIEN_MASQUE = re.compile(r"(?i)(?:(https?:|//)(?=[^\s<>()\[\]{}`'\"]*[%\\])|https?:|//)[^\s<>()\[\]{}`'\"]*")
+LIEN_SUSPECT = re.compile(r"[%\\]|/\.\.(?:/|$)|^\.(?=.)|:(?!\d|$)")  # after a host: %, \, /../, host., host:x
 
 
-def renvoi_hors_ruche(texte, organisation, code=False):
-    """None, or what GitHub would turn into a mention or a reference outside `organisation` in a PR title or body. Read after
-    NFKC (fail closed); with `code`, code spans are skipped first, as GitHub sees neither mention nor reference there."""
-    texte = unicodedata.normalize("NFKC", CODE_MARKDOWN.sub(" ", texte) if code else texte)
-    hors = lambda nom: nom.casefold() != organisation.casefold()  # noqa: E731
-    mention = MENTION_GITHUB.search(texte)
-    if mention:
-        return f"la mention « {mention[0]} » notifierait quelqu'un sur GitHub (écrivez le nom sans @)"
-    renvoi = next((m[0] for m in REFERENCE_GITHUB.finditer(texte) if hors(m[1])), None) or next(
-        (m[0] for m in LIEN_OU_HOTE.finditer(texte) for cle in cles_d_adresse(re.sub(r"(?i)^(?!https?://)", "https://", m[0]))
-         if not cle.startswith("site:") and hors(cle.partition(":")[2])), None)
-    return f"« {renvoi} » renvoie vers un dépôt hors de {organisation}" if renvoi else None
+def renvoi_hors_ruche(texte, organisation):
+    """What GitHub would turn into a notification or a link outside `organisation`, the hive's GitHub owner, in a PR title or
+    body, else None; read as is and after NFKC, code included (GitHub's rendering is not modelled: _ may be emphasis)."""
+    for forme in (texte, nfkc := unicodedata.normalize("NFKC", texte).replace("\u3002", "."),  # then with no blank in a
+                  re.sub(r"=\s*(\"[^\"]*\"|'[^']*')", lambda m: re.sub(r"\s", "", m[0]), nfkc)):  # quoted attribute value
+        if mention := MENTION_GITHUB.search(forme):
+            return f"la mention « {mention[0][:80]} » notifierait quelqu'un sur GitHub (écrivez le nom sans @)"
+        renvoi = next((m[0] for r in (REFERENCE_GITHUB, LIEN_RELATIF, LIEN_MASQUE) for m in r.finditer(forme)
+                       if (m[1] or organisation).strip("/\\").casefold() != organisation.casefold()), None) or next(
+            (m[0] for m in LIEN_OU_HOTE.finditer(forme) if LIEN_SUSPECT.search(m[1]) or any(
+                c != f"github:{organisation.casefold()}" for c in cles_d_adresse(re.sub(r"(?i)^(?!https?://)", "https://", m[0]))
+                if not c.startswith("site:"))), None)
+        if renvoi:
+            return f"« {renvoi[:80]} » mène hors de {organisation} ou cache où il mène"
 
 
 def hote_de(adresse):
@@ -7866,7 +7871,6 @@ def cmd_ecartees(args):
 
 
 DOSSIERS_LIBRE_SERVICE = ("taches/", "contributions/", "votes/", "mesures/", "membres/", "propositions/", "debats/", "invitations/")
-TITRE_PR_MAX, CORPS_PR_MAX = 256, 65536  # GitHub's own limits for a pull request's title and body
 
 
 def executer(commande, depot=None, verifier=True):
@@ -7889,11 +7893,9 @@ def cmd_publier(args):
     organisation = reg.config.get("organisation", "")
     amont = args.amont or f"{organisation}/registre"
     corps = args.corps or f"Publié avec `bee publier`.\n\nNature : {args.titre}."
-    # Both leave the hive, checked before any git or gh call; the title is also the commit message: no code span skipped.
-    for quoi, texte, maximum in (("titre", args.titre, TITRE_PR_MAX), ("corps", corps, CORPS_PR_MAX)):
-        probleme = texte_sortant_refuse(texte, quoi, maximum, organisation, code=quoi == "corps")
-        if probleme:
-            raise ErreurBee(probleme)
+    if probleme := (texte_sortant_refuse(args.titre, "titre", 256, organisation)  # both leave the hive: refused before any
+                    or texte_sortant_refuse(corps, "corps", 8000, organisation)):  # git or gh call; 256: GitHub's, 8000: fast
+        raise ErreurBee(probleme)
     changements = [l[3:].strip().strip('"') for l in executer(["git", "status", "--porcelain", "--untracked-files=all"], depot).stdout.splitlines() if l.strip()]
     if not changements:
         raise ErreurBee("aucun changement à publier (avez-vous lancé bee prendre, soumettre, relire, voter… ?)")
