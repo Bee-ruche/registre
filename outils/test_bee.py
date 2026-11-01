@@ -27,7 +27,9 @@ RACINE = pathlib.Path(__file__).resolve().parent.parent
 # gouvernance, les docs, les workflows et l'outil ; à la place des données du registre réel (tâches, contributions, débats…,
 # qui grossissent à chaque PR et que chaque commande bee charge et valide), un jeu figé : les tâches et contributions réelles
 # que nomment les tests, avec ce dont elles dépendent, copiées le 1/11 (8e0fb0c). La durée de la suite ne dépend plus de
-# l'activité de la ruche ; test_le_registre_livre_est_valide valide le registre réel tel qu'il est.
+# l'activité de la ruche ; test_le_registre_livre_est_valide valide le registre réel tel qu'il est. Un nouveau test écrit
+# ses propres tâches fictives (TACHE_OPTIMISATION) ; s'il lui faut une donnée réelle, il en ajoute la copie au jeu figé, avec
+# ce dont elle dépend.
 JEU_FIGE = pathlib.Path(__file__).resolve().parent / "tests" / "registre"
 DONNEES_REGISTRE = tuple(d.rstrip("/") for d in bee.DOSSIERS_LIBRE_SERVICE)
 
