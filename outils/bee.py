@@ -665,10 +665,10 @@ def engagements_de(reg, utilisateur):
 
 
 def r8_maximum(reg, utilisateur, taches, instant):
-    """R8, the one rule of bee prendre, bee valider and the gate: the most engagements `utilisateur` may hold, all counted
-    together, when `taches` are their tasks (ids), at `instant`. The usual cap; ruche-0096: until bee.yaml's r8_amorcage.jusqu_au
-    (UTC), a council member whose engagements are ALL on tasks of the ruche category created by the council may hold up to
-    r8_amorcage.max; one engagement on any other task brings back the usual cap for all. Missing, malformed or past: the usual cap."""
+    """R8, one rule for bee prendre, bee valider and the gate: the most engagements `utilisateur` may hold with `taches` (ids), all
+    counted. ruche-0096: if `instant` (a new engagement's; in bee valider, the latest engagement's) is before r8_amorcage.jusqu_au (UTC),
+    a council member whose engagements are ALL on ruche tasks created by the council may hold r8_amorcage.max; else, or with a
+    missing or malformed setting, the usual cap (fails closed)."""
     usuel = int(reg.config.get("reservations_max_par_utilisateur", 3))
     reglage = reg.config.get("r8_amorcage")
     try:
@@ -1848,7 +1848,7 @@ def verifier_registre(reg):
                 ajouter(f"{lieu} : dépend de la tâche inconnue « {dep} »")
         if "reservation" in tache:
             instant_valide(chemin, tache["reservation"]["depuis"], "reservation.depuis")
-            reservations[tache["reservation"]["utilisateur"]].append((tache["id"], ""))
+            reservations[tache["reservation"]["utilisateur"]].append((tache["id"], "", tache["reservation"]["depuis"]))
             if tache["reservation"]["utilisateur"] not in reg.membres and tache["reservation"]["utilisateur"] not in reg.conseil:
                 ajouter(f"{lieu} : réservée par « {tache['reservation']['utilisateur']} », qui n'est pas inscrit")
         # Travail en parallèle (R11) : chacun une fois, jamais le titulaire, jamais l'auteur d'une contribution en course.
@@ -1857,7 +1857,7 @@ def verifier_registre(reg):
         for i, p in enumerate(tache.get("paralleles") or []):
             qui = p["utilisateur"]
             instant_valide(chemin, p["depuis"], f"paralleles/{i}/depuis")
-            reservations[qui].append((tache["id"], " (en parallèle)"))
+            reservations[qui].append((tache["id"], " (en parallèle)", p["depuis"]))
             if qui not in reg.membres and qui not in reg.conseil:
                 ajouter(f"{lieu} : paralleles/{i} : « {qui} » n'est pas inscrit")
             if qui in vus_paralleles:
@@ -1884,9 +1884,9 @@ def verifier_registre(reg):
             instant_valide(chemin, note["le"], f"notes/{i}/le")
 
     for pseudo, ids in sorted(reservations.items()):
-        if len(ids) > (maximum := r8_maximum(reg, pseudo, [tid for tid, _ in ids], maintenant())):
-            ajouter(f"règle R8 : {pseudo} a {len(ids)} réservations ou inscriptions en parallèle "
-                    f"({', '.join(tid + genre for tid, genre in ids)}), maximum {maximum}")
+        quand = max(_instant_ou_rien(d) or FUTUR_LOINTAIN for _, _, d in ids)  # ruche-0096: the latest engagement's, never the clock
+        if len(ids) > (maximum := r8_maximum(reg, pseudo, [tid for tid, _, _ in ids], quand)):
+            ajouter(f"règle R8 : {pseudo} a {len(ids)} réservations ou inscriptions en parallèle ({', '.join(t + g for t, g, _ in ids)}), maximum {maximum}")
 
     prs = {}  # ruche-0041: canonical PR -> the first contribution that declares it
     for stem, (chemin, enr) in reg.enregistrements.items():
@@ -5165,6 +5165,10 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
             exiger(n <= conf_notes["max_par_24h"],
                    f"plafond : {auteur} aurait {n} notes en 24 h toutes tâches confondues (depuis le {en_iso(debut)}), au plus "
                    f"{conf_notes['max_par_24h']} sur 24 h glissantes (notes.max_par_24h)")
+    if {"reservation", "inscription_parallele"} & set(natures):  # ruche-0096: a new engagement takes the cap at the PR's instant;
+        m = r8_maximum(reg, auteur, tids := [tid for tid, _ in engagements_de(reg, auteur)], instant)  # said here when only the end refuses
+        exiger(not m < len(tids) <= r8_maximum(reg, auteur, tids, PASSE), f"règle R8 : {auteur} prend un engagement après la fin de "
+               f"r8_amorcage : {len(tids)} réservations ou inscriptions en parallèle, maximum {m} (un nouvel engagement se juge à l'heure de la PR)")
     # L'arbre du sens (ruche-0010) : aucun commentaire YAML ajouté au libre-service, et un noeud introduit qui existe.
     refus_arbre, natures_arbre = verifier_pr_arbre(reg, base, tete, changements, liens, est_conseil)
     problemes += refus_arbre
@@ -5575,7 +5579,7 @@ def exiger_reprise_permise(reg, chemin, tache, utilisateur):
 
 
 def exiger_r8(reg, utilisateur, tache):
-    """R8 : réservations et inscriptions en parallèle comptent ensemble, tous agents confondus ; `tache` s'y ajouterait."""
+    """R8 : réservations et inscriptions en parallèle comptent ensemble, tous agents confondus."""
     deja = engagements_de(reg, utilisateur)
     maximum = r8_maximum(reg, utilisateur, [tid for tid, _ in deja] + [tache], maintenant())
     if len(deja) >= maximum:
