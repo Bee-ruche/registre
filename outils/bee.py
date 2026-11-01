@@ -2115,6 +2115,7 @@ def probleme_date_pr(valeur, quoi, instant):
 def jours_de_la_pr(instant):
     """The UTC dates a day-granular date written at the time of the PR may carry: the PR's day, or the day before within
     TOLERANCE_DATE of midnight; never a later day. For cree_le of a proposed task and inscrit_le of a member file."""
+    instant = instant.astimezone(dt.timezone.utc)
     return sorted({instant.date().isoformat(), (instant - TOLERANCE_DATE).date().isoformat()})
 
 
@@ -4775,15 +4776,16 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
                 # Each date of the file is checked at the time of the PR: inscrit_le is the PR's day (jours_de_la_pr), and
                 # compte_cree_le is GitHub's date. The account's age runs from GitHub's date to the instant of the check.
                 jours = jours_de_la_pr(instant)
-                exiger(str(nouveau.get("inscrit_le")) in jours, f"{chemin}: inscrit_le ({nouveau.get('inscrit_le')}) must be the "
-                                                                 f"date of the PR ({' or '.join(jours)}): bee inscrire writes it")
-                if exiger(bool(compte_cree_le), f"{chemin}: registering requires the account creation date given by GitHub "
+                exiger(str(nouveau.get("inscrit_le")) in jours, f"{chemin} : inscrit_le ({nouveau.get('inscrit_le')}) must be the "
+                                                                 f"date of the PR ({' or '.join(jours)}) : delete {chemin}, then rerun bee inscrire")
+                if exiger(bool(compte_cree_le), f"{chemin} : registering requires the account creation date given by GitHub "
                                                 "(--compte-cree-le)"):
                     try:
                         github = lire_date(compte_cree_le, "--compte-cree-le")
                         exiger(str(nouveau.get("compte_cree_le")) == github.isoformat(),
                                f"{chemin} : compte_cree_le ne correspond pas à la date fournie par GitHub ({compte_cree_le})")
-                        exiger((instant.date() - github).days >= minimum, f"{chemin} : le compte GitHub doit avoir au moins {minimum} jours")
+                        age = (instant.astimezone(dt.timezone.utc).date() - github).days
+                        exiger(age >= minimum, f"{chemin} : le compte GitHub doit avoir au moins {minimum} jours")
                     except ErreurBee as e:
                         problemes.append(str(e))
             continue

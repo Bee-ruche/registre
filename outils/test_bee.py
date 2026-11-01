@@ -1702,8 +1702,8 @@ class TestPullRequests(BaseTest):
         self.assertIn("inscrit_le (2026-10-27) must be the date of the PR (2026-10-28)", texte)
 
     def test_account_age_is_measured_at_the_check_from_github(self):
-        """The age runs from GitHub's creation date to the instant of the check, never from a date written in the file;
-        without GitHub's date, a registration is refused."""
+        """The age depends only on GitHub's creation date and the instant of the check; without GitHub's date, a registration
+        is refused."""
         age_89, age_90 = "2026-07-30", "2026-07-29"  # on 2026-10-27
         self.member_pr("age-90", compte_cree_le=age_90)
         code, texte = self.verifier("david", "--compte-cree-le", age_90)
@@ -1712,7 +1712,7 @@ class TestPullRequests(BaseTest):
         code, texte = self.verifier("david", "--compte-cree-le", age_89)
         self.assertEqual(code, 1, texte)
         self.assertIn("le compte GitHub doit avoir au moins 90 jours", texte)
-        # 90 days at the check, though only 89 between the two dates of the file (inscrit_le, the day before, within 2 h).
+        # The next day, within 2 h of midnight: 90 days at the check, so the same file passes.
         os.environ["BEE_MAINTENANT"] = "2026-10-28T01:00:00Z"
         code, texte = self.verifier("david", "--compte-cree-le", age_89)
         self.assertEqual(code, 0, texte)
@@ -1730,6 +1730,26 @@ class TestPullRequests(BaseTest):
                 self.assertEqual(code, 1, texte)
                 self.assertNotIn("Traceback", texte)
         self.assertIn("registering requires the account creation date given by GitHub", self.verifier("david")[1])
+
+    def test_member_dates_are_taken_in_utc(self):
+        """The PR's day and the account's age are taken in UTC, whatever the offset of the instant of the check."""
+        os.environ["BEE_MAINTENANT"] = "2026-10-28T01:30:00+02:00"  # 2026-10-27T23:30Z
+        self.member_pr("utc")
+        code, texte = self.verifier("david", "--compte-cree-le", "2021-05-05")
+        self.assertEqual(code, 0, texte)
+        self.member_pr("utc-next-day", inscrit_le="2026-10-28")
+        code, texte = self.verifier("david", "--compte-cree-le", "2021-05-05")
+        self.assertEqual(code, 1, texte)
+        self.assertIn("inscrit_le (2026-10-28) must be the date of the PR (2026-10-27) : delete membres/david.yaml, then rerun "
+                      "bee inscrire", texte)
+        self.member_pr("utc-age", compte_cree_le="2026-07-30")  # 89 days on 2026-10-27
+        code, texte = self.verifier("david", "--compte-cree-le", "2026-07-30")
+        self.assertEqual(code, 1, texte)
+        self.assertIn("le compte GitHub doit avoir au moins 90 jours", texte)
+        os.environ["BEE_MAINTENANT"] = "2026-10-27T20:00:00-05:00"  # 2026-10-28T01:00Z
+        self.member_pr("utc-west", inscrit_le="2026-10-28")
+        code, texte = self.verifier("david", "--compte-cree-le", "2021-05-05")
+        self.assertEqual(code, 0, texte)
 
     def test_an_existing_member_file_keeps_its_dates(self):
         """The dates of a registered member are not checked again against a later PR: a profile change passes, without
