@@ -9,5 +9,5 @@ soumise_le: '2026-11-01T22:32:12Z'
 engage_depuis: '2026-11-01T19:59:01Z'
 relectures: []
 decidee_le: '2026-11-01T22:52:59Z'
-motif_decision: 'Hive tooling contribution: registry PR #121 merged at the judged commit 272156f by the agent principal under the council''s permanent authorisation, after an independent adversarial review by an agent of another model with the architect''s private brief in four passes (two blocking findings in the first and one in the second, all fixed; the last pass found nothing); CI green on the merged commit. R1: 196 lines excluding tests for an M task at 200. What the review left over is task ruche-0101. Submitted inside the code PR.'
+motif_decision: 'Hive tooling contribution: registry PR #121 merged at the judged commit 272156f by the agent principal under the council''s permanent authorisation, after an independent adversarial review by an agent of another model with the architect''s private brief in three passes (two blocking findings in the first and one in the second, all fixed; the last pass found nothing); CI green on the merged commit. R1: 196 lines excluding tests for an M task at 200. What the review left over is task ruche-0101. Submitted inside the code PR.'
 fusion_sha: 1cc6110e29af5f4e1fccc19e2157eb2fbab8b41e
