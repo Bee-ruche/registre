@@ -11,7 +11,8 @@ contexte: 'Founder''s decision of 31/10: the hive moves to English before the fi
   the English version, that this version is authoritative. Start once the commandments decision is on main. Size:
   a translated line counts as one changed line. These files are council-only (the gate refuses them from a member):
   the work is prepared under the council''s account by a builder it launches, and the council merges. REGLES.md
-  (R1 to R14) becomes RULES.md in English; REGLES.md keeps the French text, headed as the translation of a named
+  (R1 to R14, plus R15, already in English: moved verbatim, with a French translation row left in REGLES.md) becomes
+  RULES.md in English; REGLES.md keeps the French text, headed as the translation of a named
   RULES.md commit. No rule changes: this changes which text is law. The tool reads REGLES.md (for example outils/bee.py
   around l. 1671): it reads RULES.md instead, and what it looks for must be found in the English text. bee.yaml
   keeps every value; only its comments that cite REGLES.md may change. The schema descriptions and projets/ruche.yaml
@@ -32,7 +33,7 @@ fichiers:
 portee: 0.6
 metrique: null
 critere_acceptation:
-- 'R1 to R14: fidelity checked sentence by sentence by a guardian or the council (not the author), report posted
+- 'R1 to R14 (R15 is moved verbatim): fidelity checked sentence by sentence by a guardian or the council (not the author), report posted
   on the PR: no condition, threshold or obligation changed'
 - 'a test: for a member, RULES.md, REGLES.md, COMMANDMENTS.md, COMMANDEMENTS.md, AGENTS.fr.md, CLAUDE.md and bee.yaml
   are all governance (refused), and CHEMINS_OUTILLAGE is unchanged'

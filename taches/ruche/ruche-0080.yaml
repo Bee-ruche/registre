@@ -1,0 +1,36 @@
+id: ruche-0080
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: L
+titre: 'Load test, part 1: generate registries of 100, 300 and 1,000 members from a fixed activity model'
+contexte: 'Founder''s question of 31/10: what if hundreds or thousands of people joined the hive? docs/devolution.md
+  (R15, sections 7 and 8) answers on paper; ruche-0083 measures it. This task builds the input: a generator, with no
+  AI agent and a fixed seed, that writes a throwaway registry (built like a rehearsal hive, outils/repetition/monter.sh)
+  holding one simulated week at 100, 300 and 1,000 active members, as a git history of pull requests with authors and
+  times. Activity model, per active member and week: one contribution with two reviews, two votes and one note; one proposed
+  task per 10 members; one debate argument per 5 members; half of the week''s contributions on Friday night; guardians
+  at the brake''s maximum (one per 20 active members), each with a guarantor. The model is written in docs/outillage.md,
+  so that ruche-0083''s numbers can be read against it. If the work outgrows L, stop and propose a split (commandment
+  4).'
+fichiers:
+- outils/repetition/load_test.py
+- outils/repetition/test_load_test.py
+- docs/outillage.md
+portee: 0.6
+metrique: null
+critere_acceptation:
+- the registries at 100, 300 and 1,000 members pass `bee valider` with no check disabled or patched
+- every generated file has the exact form `bee` writes (produced through bee's own functions or checked against its schemas),
+  and the history replays as pull requests
+- 'deterministic: the same seed gives the same bytes; the generator''s tests pass'
+- offline; writes nothing outside the throwaway registry
+hors_perimetre:
+- measuring (ruche-0083)
+- the real registry
+- any AI agent
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: '2026-10-31'
