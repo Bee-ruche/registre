@@ -1833,8 +1833,13 @@ def verifier_registre(reg):
             fork = reg.projets.get(tache[1].get("projet"), (None, {}))[1].get("fork")
             if not fork:
                 ajouter(f"{lieu} : le projet {tache[1].get('projet')} n'a pas de fork : aucune contribution n'y est possible")
-            elif cle is None or not enr["pr"].lower().startswith(fork.lower().rstrip("/") + "/pull/"):
+            elif cle is None:
+                ajouter(f"{lieu} : adresse de PR invalide : {enr['pr']} (attendu : {fork.rstrip('/')}/pull/<numéro>)")
+            elif not enr["pr"].lower().startswith(fork.lower().rstrip("/") + "/pull/"):
                 ajouter(f"{lieu} : la PR doit être ouverte sur le fork du projet ({fork})")
+            elif enr["pr"] != f"{fork.rstrip('/')}/pull/{cle[2]}":
+                ajouter(f"{lieu} : the PR address is written {fork.rstrip('/')}/pull/{cle[2]} (the project's fork as written, then "
+                        "the number without leading zeros) : bee soumettre writes it")
         if enr["auteur"] not in reg.membres and enr["auteur"] not in reg.conseil:
             ajouter(f"{lieu} : auteur « {enr['auteur']} » non inscrit")
         if enr["statut"] == "ecartee":
@@ -5817,7 +5822,7 @@ def cmd_soumettre(args):
     # Numéro suivant le plus grand déjà pris (verifier_pr l'exige) : jamais un fichier existant écrasé.
     rang = 1 + max(numeros_contributions(reg, args.tache), default=0)
     identifiant = f"{args.tache}-c{rang}"
-    donnees = {"id": identifiant, "tache": args.tache, "auteur": args.utilisateur, "pr": args.pr}
+    donnees = {"id": identifiant, "tache": args.tache, "auteur": args.utilisateur, "pr": f"{fork}/pull/{pr_canonique(args.pr)[2]}"}
     if args.resume:
         probleme = probleme_textes_libres(args.resume, "--resume", RESUME_MAX)
         if probleme:
@@ -6705,15 +6710,15 @@ def cmd_classement(args):
     return 0
 
 
-ADRESSE_PR = re.compile(r"^https://github\.com/([A-Za-z0-9-]+)/([A-Za-z0-9_][A-Za-z0-9_.-]*)/pull/([0-9]+)$")
+ADRESSE_PR = re.compile(r"^https://github\.com/([A-Za-z0-9-]+)/([A-Za-z0-9_][A-Za-z0-9_.-]*)/pull/([0-9]{1,9})$")
 
 
 def pr_canonique(adresse):
     """Canonical form of a fork PR address, as GitHub resolves it: (owner, repository, number), owner and repository in
-    lower case, number as an integer; None if the whole value is not a PR address. PR addresses are compared only in this
-    form (ruche-0041)."""
+    lower case, the number without leading zeros; None if the whole value is not a PR address. PR addresses are compared
+    only in this form; a contribution stores <the project's fork as written>/pull/<that number> (ruche-0041)."""
     m = ADRESSE_PR.fullmatch(adresse) if isinstance(adresse, str) else None
-    return (m[1].lower(), m[2].lower(), int(m[3])) if m else None
+    return (m[1].lower(), m[2].lower(), m[3].lstrip("0") or "0") if m else None
 
 
 def lire_auteurs_pr(chemin):
