@@ -363,6 +363,9 @@ class Registre:
                         if isinstance(m, dict) and isinstance(m.get("pseudo"), str) and not m.get("revoque_le")}
         self.incidents = self._lire_facultatif("gouvernance/incidents.yaml")
         self.robots = set(self.config.get("robots") or [])
+        self.fiches_agents = self._lire_facultatif(AGENT_ACCOUNTS)  # ruche-0089: {account: person}, council only
+        self.comptes_agents = agent_accounts(self.fiches_agents)
+        self.agents = Pseudos(self.comptes_agents)
         self.categories = {c["id"]: c for c in (self._lire("categories.yaml") or []) if isinstance(c, dict) and "id" in c}
         self.projets = self._dossier("projets/*.yaml")
         self.taches = self._dossier("taches/*/*.yaml")
@@ -577,7 +580,7 @@ def autre_orthographe(reg, pseudo):
     """L'orthographe de la fiche d'un pseudo qui ne la suit qu'à la casse près ; None s'il est écrit comme elle, ou inconnu."""
     connus = vars(reg).setdefault("_orthographes", {})
     if not connus:
-        for p in [*reg.membres, *reg.conseil, *reg.gardiens, *reg.garants, *reg.robots]:
+        for p in [*reg.membres, *reg.conseil, *reg.gardiens, *reg.garants, *reg.robots, *reg.agents]:
             connus.setdefault(p.casefold(), set()).add(p) if isinstance(p, str) else None
     bonnes = connus.get(pseudo.casefold(), set()) if isinstance(pseudo, str) else set()
     return None if not bonnes or pseudo in bonnes else sorted(bonnes)[0]
@@ -589,6 +592,63 @@ def pseudos_mal_ecrits(reg, donnees, profondeur=0):
         return [(k, v, b) for k, v in donnees.items() if k in CHAMPS_PSEUDO and (b := autre_orthographe(reg, v))] + [
             x for v in donnees.values() for x in pseudos_mal_ecrits(reg, v, profondeur + 1)]
     return [x for v in donnees for x in pseudos_mal_ecrits(reg, v, profondeur + 1)] if isinstance(donnees, list) and profondeur < 20 else []
+
+
+# ruche-0089: declared agent accounts. An agent account acts as its person (the gate checks its PRs under the person's name,
+# without the person's council or guardian status), and only the person's own pseudo is ever written in the registry.
+AGENT_ACCOUNTS = "gouvernance/comptes-agents.yaml"
+AUTHORITY_FILES = ("COMMANDMENTS.md", "COMMANDEMENTS.md", "gouvernance/conseil.yaml", AGENT_ACCOUNTS, "gouvernance/gardiens.yaml",  # path prefixes, any case
+                   "gouvernance/garants.yaml", "gouvernance/consignes/", "docs/organisation.md", "docs/garants.md", "docs/devolution.md")
+
+
+def agent_accounts(donnees):
+    """{agent account: the person it acts for}, from the entries of comptes-agents.yaml that name both as texts."""
+    entrees = donnees.get("accounts") if isinstance(donnees, dict) else None
+    return {e["account"]: e["acts_for"] for e in entrees if isinstance(e, dict) and isinstance(e.get("account"), str)
+            and isinstance(e.get("acts_for"), str)} if isinstance(entrees, list) else {}
+
+
+def identity_values(donnees, profondeur=0):
+    """The values of a file's identity fields (CHAMPS_PSEUDO), at any depth."""
+    if isinstance(donnees, dict) and profondeur < 20:
+        return [v for k, v in donnees.items() if k in CHAMPS_PSEUDO] + [x for v in donnees.values() for x in identity_values(v, profondeur + 1)]
+    return [x for v in donnees for x in identity_values(v, profondeur + 1)] if isinstance(donnees, list) and profondeur < 20 else []
+
+
+def check_agent_accounts(reg, ajouter):
+    """bee valider: each agent account acts for a known person and is no one else; no chain, no duplicate, no case variant."""
+    entrees = reg.fiches_agents.get("accounts") if isinstance(reg.fiches_agents, dict) else None
+    if reg.fiches_agents is not None and not isinstance(entrees, list):
+        ajouter(f"{AGENT_ACCOUNTS} : accounts must list the agent accounts (account, acts_for, declared_on, purpose)")
+    vus = set()
+    for i, e in enumerate(entrees if isinstance(entrees, list) else []):
+        lieu = f"{AGENT_ACCOUNTS} : accounts/{i}"
+        if not (isinstance(e, dict) and set(e) == {"account", "acts_for", "declared_on", "purpose"} and all(isinstance(v, str) for v in e.values())):
+            ajouter(f"{lieu} : an entry has exactly account, acts_for, declared_on and purpose, each a text")
+            continue
+        compte, personne = e["account"], e["acts_for"]
+        roles = [nom for nom, qui in (("a member", Pseudos(reg.membres)), ("a council member", reg.conseil), ("a guardian", reg.gardiens),
+                                      ("a guarantor", reg.garants), ("a robot", reg.robots)) if compte in qui]
+        for condition, probleme in (
+                (not re.fullmatch(PSEUDO_MOTIF, compte), f"account « {compte} » is not a GitHub login"),
+                (compte.casefold() in vus, f"{compte} is declared twice (a login does not depend on case)"),
+                (roles, f"{compte} is also {' and '.join(roles)} : an agent account is no one else"),
+                (personne in reg.agents, f"acts_for « {personne} » is an agent account : an agent acts for a person, never through another"),
+                (personne not in reg.membres and personne not in reg.conseil, f"acts_for « {personne} » is not a known person (a member or the council)"),
+                (bonne := autre_orthographe(reg, personne), f"acts_for « {personne} » is written {bonne} (its file)"),
+                (but := texte_recevable(e["purpose"], "purpose", 300), but)):
+            if condition:
+                ajouter(f"{lieu} : {probleme}")
+        vus.add(compte.casefold())
+        try:
+            lire_date(e["declared_on"], f"{lieu} : declared_on")
+        except ErreurBee as ex:
+            ajouter(str(ex))
+
+
+def person_of(agents, login):
+    """The person a GitHub login acts for: the person of a declared agent account ({account: person}), else the login."""
+    return agents.get(login, login) if isinstance(login, str) else login
 
 
 def engagements_de(reg, utilisateur):
@@ -1930,7 +1990,10 @@ def verifier_registre(reg):
         donnees = {k: v for k, v in donnees.items() if k != "verdict"} if isinstance(donnees, dict) else donnees
         for probleme in problemes_textes(donnees, reg.rel(chemin)):
             ajouter(probleme)
+        for p in sorted({p for p in identity_values(donnees) if p in reg.agents}):  # ruche-0089: never a second person
+            ajouter(f"{reg.rel(chemin)} : {p} is an agent account ({AGENT_ACCOUNTS}) : a person is written by their own pseudo")
 
+    check_agent_accounts(reg, ajouter)
     verifier_agora_registre(reg, ajouter, selon_schema, instant_valide)
     verifier_invitations_registre(reg, ajouter, selon_schema, instant_valide)  # R13 (docs/croissance.md)
     verifier_arbre(reg, ajouter)  # l'arbre du sens (docs/arbre.md)
@@ -2366,7 +2429,7 @@ def verifier_engagements(reg, chemin, ancien, nouveau, differences, auteur, *, e
         p = ajouts[0]
         qui = p.get("utilisateur")
         exiger(qui == auteur, f"on ne s'inscrit en parallèle que soi-même ({auteur}), pas {qui}")
-        exiger(auteur in reg.membres or est_conseil, f"{auteur} doit d'abord s'inscrire (bee inscrire)")
+        exiger(auteur in reg.membres or auteur in reg.conseil, f"{auteur} doit d'abord s'inscrire (bee inscrire)")
         exiger(qui != titulaire, f"{qui} est le titulaire : il ne s'inscrit pas en parallèle sur sa propre tâche")
         exiger(len({x.get("utilisateur") for x in pn}) == len(pn), f"{qui} est déjà inscrit en parallèle")
         en_course = [c for c, e in contributions_en_course(reg, nouveau.get("id")) if e.get("auteur") == qui]
@@ -2973,7 +3036,7 @@ def verifier_agora_registre(reg, ajouter, selon_schema, instant_valide):
 
 
 def verifier_debat(reg, chemin, statut_git, ancien, nouveau, auteur, *, est_conseil, instant, attendu=None, brut=None,
-                   dates_ajoutees=None):
+                   dates_ajoutees=None, status=True):
     """Transitions d'un débat de l'agora dans une PR (docs/agora.md) : toutes en libre-service, toutes contrôlées ici.
 
     attendu : le chemin que doit avoir un débat ajouté (numéro suivant le plus grand de la base, sans trou).
@@ -3019,8 +3082,8 @@ def verifier_debat(reg, chemin, statut_git, ancien, nouveau, auteur, *, est_cons
             canonique = None
         exiger(brut == canonique, "le fichier n'est pas exactement sous la forme qu'écrit bee debattre (commentaire, autre mise en "
                                   "forme, ou contenu que l'outil ne sait pas réécrire) : écrivez-le avec bee debattre")
-    membre = auteur in reg.membres or est_conseil
-    privilegie = auteur in reg.privilegies()
+    membre = auteur in reg.membres or auteur in reg.conseil
+    privilegie = status and auteur in reg.privilegies()  # status: see verifier_pr (ruche-0089)
 
     def controler_synthese(precedente=None):
         texte = nouveau.get("synthese")
@@ -3994,13 +4057,13 @@ def refus_invitation(reg, inv, conseil=False, instant=None):
     return refus
 
 
-def refus_geste(reg, ancien, nouveau, geste, auteur, instant, publication=None, frein=None, refus_lie=False):
+def refus_geste(reg, ancien, nouveau, geste, auteur, instant, publication=None, frein=None, refus_lie=False, status=True):
     """Ce que verifier_pr refuse d'un geste de suivi ajouté à une invitation (bee invitation le dit avant d'écrire) : qui a le
     droit de le faire, dans quel état, à quel moment, sous quel frein et quel plafond. L'envoi est un fait, consigné après
     coup : seuls son auteur (le conseil) et le feu vert qui l'a précédé sont exigés. [] si le geste est permis."""
     conf, refus = config_croissance(reg), []
     exiger = lambda condition, message: condition or refus.append(message)  # noqa: E731
-    avant, conseil, proposant = etat_invitation(ancien), auteur in reg.conseil, ancien.get("propose_par")
+    avant, conseil, proposant = etat_invitation(ancien), status and auteur in reg.conseil, ancien.get("propose_par")
     bloc = bloc_de(nouveau, geste)
     moment = _instant_ou_rien(bloc.get("le")) or instant
     delai = dt.timedelta(days=conf["delai_relance_jours"])
@@ -4041,7 +4104,7 @@ def refus_geste(reg, ancien, nouveau, geste, auteur, instant, publication=None, 
                   f"(croissance.debat_min_heures) : pas avant le {en_iso(echeance) if echeance else '(pas encore publiée)'}")
     if geste == "accord_gardien":
         exiger(avant == "proposee", f"un accord de gardien se donne à une invitation proposée (statut : {avant})")
-        exiger(auteur in en_fonction, f"{auteur} n'est pas un gardien en fonction : seul un gardien nommé (gouvernance/gardiens.yaml), "
+        exiger(status and auteur in en_fonction, f"{auteur} n'est pas un gardien en fonction : seul un gardien nommé (gouvernance/gardiens.yaml), "
                                       "dont le garant n'est pas révoqué, donne l'accord de gardien")
         exiger(auteur != proposant, "on ne donne pas son accord à sa propre invitation")
         garants = {m["pseudo"]: m.get("garant") for m in reg.fiches_gardiens if isinstance(m.get("pseudo"), str)}
@@ -4087,7 +4150,7 @@ def refus_geste(reg, ancien, nouveau, geste, auteur, instant, publication=None, 
         if avant == "decidee":
             exiger(conseil, "une invitation décidée (feu vert donné) ne s'écarte que par le conseil")
         else:
-            exiger(auteur == proposant or auteur in en_fonction or conseil,
+            exiger(auteur == proposant or (status and auteur in en_fonction) or conseil,
                    "seuls le proposant, un gardien en fonction ou le conseil écartent une invitation")
         exiger(avant in ("proposee", "decidee"), f"on n'écarte une invitation qu'avant son envoi (statut : {avant})")
         # Le motif est publié avec l'invitation : contrôlé comme un message (revue adverse, C3).
@@ -4123,7 +4186,7 @@ def rendu_invitation(inv, origine="<invitation>"):
 
 
 def verifier_invitation(reg, chemin, statut_git, ancien, nouveau, auteur, *, est_conseil, instant, brut, base, frein,
-                        refus_lie=False):
+                        refus_lie=False, status=True):
     """Une invitation (ou la liste de non-contact) ajoutée, modifiée ou supprimée par une PR (R13) : chaque geste est contrôlé
     ici (qui, quand, dans quel état, sous quel frein), le reste est refusé. `frein` : fonction qui renvoie etat_frein (calculé
     seulement s'il le faut). Renvoie (natures, problèmes, [] : le plafond se juge dans refus_geste)."""
@@ -4160,7 +4223,7 @@ def verifier_invitation(reg, chemin, statut_git, ancien, nouveau, auteur, *, est
         return natures, problemes, envois
     if statut_git == "A":
         natures.append("invitation")
-        exiger(auteur in reg.membres or est_conseil, f"{auteur} doit d'abord s'inscrire (bee inscrire)")
+        exiger(auteur in reg.membres or auteur in reg.conseil, f"{auteur} doit d'abord s'inscrire (bee inscrire)")
         exiger(nouveau.get("propose_par") == auteur, f"on ne propose une invitation qu'en son nom ({auteur})")
         exiger(nouveau.get("id") == pathlib.PurePosixPath(chemin).stem, "id différent du nom de fichier")
         exiger(nouveau.get("statut") == "proposee" and not any(g in nouveau for g in GESTES_INVITATION),
@@ -4207,7 +4270,7 @@ def verifier_invitation(reg, chemin, statut_git, ancien, nouveau, auteur, *, est
                                                               f"« {etat_invitation(nouveau)} »")
     publication = publiee_le(reg, base, chemin, ancien) if geste in ("accord_gardien", "accord_conseil") else None
     for refus in refus_geste(reg, ancien, nouveau, geste, auteur, instant, publication, frein() if geste in VERS_LE_CONTACT else None,
-                             refus_lie=refus_lie):
+                             refus_lie=refus_lie, status=status):
         exiger(False, refus)
     if (geste == "reponse" and bloc.get("valeur") in ("refusee", "sans_reponse")) or (
             geste == "retrait" and etat_invitation(ancien) != "acceptee"):
@@ -4351,12 +4414,38 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
 
     auteurs_pr : {adresse de PR: login GitHub de son auteur}, relevé par fusion-auto auprès de l'API pour chaque PR
     déclarée dans une contribution ajoutée ou modifiée ; s'il est fourni, chacune doit appartenir à l'auteur de la
-    contribution, et une PR absente de la liste est refusée (échec fermé)."""
+    contribution (ou à son compte d'agent déclaré), et une PR absente de la liste est refusée (échec fermé).
+
+    ruche-0089: a declared agent account (AGENT_ACCOUNTS, read in the base: a PR never declares its own author) is checked
+    as its person, without the person's council, guardian or robot status. If that fails or is not all self-service, it is
+    checked as its person with that status: what passes then is never merged automatically (nature agent_account, a human
+    must look); what still fails is refused."""
     instant = instant or maintenant()
+    try:
+        agents = agent_accounts(lire_yaml_ref(reg.racine, base, AGENT_ACCOUNTS))
+    except ErreurBee:
+        agents = {}  # unreadable in the base: no agent account (fail closed)
+    if (personne := agents.get(auteur)) is None:
+        return verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr, agents)
+    if touchees := {c for c in git(reg.racine, "diff", "-z", "--name-only", "--no-renames", f"{base}...{tete}").split("\0")
+                    if c.casefold().startswith(tuple(a.casefold() for a in AUTHORITY_FILES))}:
+        return [f"{c} : changed only by a PR from the council's own account (ruche-0089)" for c in sorted(touchees)], ["gouvernance"]
+    problemes, natures = verifier_pr_de(reg, base, tete, personne, compte_cree_le, instant, auteurs_pr, agents, auteur, status=False)
+    if problemes or not set(natures) <= LIBRE_SERVICE:
+        problemes, natures = verifier_pr_de(reg, base, tete, personne, compte_cree_le, instant, auteurs_pr, agents, auteur)
+        natures.append("agent_account")
+    return problemes, natures
+
+
+def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr, agents, agent=None, status=True):
+    """verifier_pr for `auteur`, who is the person of the agent account `agent` if there is one. `status`: whether the
+    author's council, guardian and robot status count."""
     sorties = git(reg.racine, "diff", "--name-status", "--no-renames", f"{base}...{tete}")
     changements = [ligne.split("\t", 1) for ligne in sorties.splitlines() if ligne.strip()]
-    est_conseil = auteur in reg.conseil
-    est_robot = auteur in reg.robots
+    est_conseil = status and auteur in reg.conseil
+    est_robot = status and auteur in reg.robots
+    is_guardian = status and auteur in reg.gardiens
+    known = auteur in reg.membres or auteur in reg.conseil  # a known person (bee valider: an agent's person is one)
     amorcage = bool(reg.config.get("amorcage"))
     niveaux = calculer_niveaux(reg)
     niveau = niveau_de(niveaux, auteur)
@@ -4488,7 +4577,7 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
                 if nouveau.get("statut") == "proposee":
                     # L'essaim propose ; un gardien, le conseil ou un Confirmé valide (proposee → ouverte).
                     natures.append("proposition_tache")
-                    exiger(auteur in reg.membres or est_conseil, f"{chemin} : {auteur} doit d'abord s'inscrire (bee inscrire)")
+                    exiger(known, f"{chemin} : {auteur} doit d'abord s'inscrire (bee inscrire)")
                     exiger(nouveau.get("cree_par") == auteur, f"{chemin} : cree_par doit être l'auteur de la PR ({auteur})")
                     exiger(not nouveau.get("reservation") and not nouveau.get("contribution"),
                            f"{chemin} : une tâche proposée n'a ni réservation ni contribution")
@@ -4557,7 +4646,7 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
                 reservation = nouveau.get("reservation") or {}
                 exiger(not pn, f"{chemin} : une réservation n'inscrit personne en parallèle (bee prendre --en-parallele, chacun pour soi)")
                 exiger(reservation.get("utilisateur") == auteur, f"{chemin} : on ne réserve que pour soi ({auteur})")
-                exiger(auteur in reg.membres or est_conseil, f"{chemin} : {auteur} doit d'abord s'inscrire (bee inscrire)")
+                exiger(known, f"{chemin} : {auteur} doit d'abord s'inscrire (bee inscrire)")
                 jugees = jugees_par(reg, nouveau.get("id"), auteur)
                 exiger(not jugees, f"{chemin} : {message_juge(nouveau.get('id'), auteur, jugees)}")
                 # R7 (T13) : rendre puis reprendre une tâche ne renouvelle pas la réservation.
@@ -4610,7 +4699,7 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
                 exiger(pa == pn, f"{chemin} : la soumission du titulaire ne touche pas aux inscriptions en parallèle")
             elif avant == "proposee" and apres in ("ouverte", "abandonnee"):
                 natures.append("validation_tache")
-                exiger(auteur in reg.privilegies() or niveau == "Confirmé",
+                exiger(est_conseil or is_guardian or niveau == "Confirmé",
                        f"{chemin} : valider ou écarter une tâche proposée revient à un gardien, au conseil ou à un Confirmé")
                 exiger(nouveau.get("cree_par") != auteur, f"{chemin} : on ne valide pas sa propre proposition")
                 if apres == "abandonnee":
@@ -4699,7 +4788,7 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
                     # son login) : sinon on squatterait la PR d'un autre. fusion-auto fournit ces auteurs (--auteurs-pr) ;
                     # quand ils sont fournis, une PR absente de la liste est refusée (échec fermé).
                     if auteurs_pr is not None:
-                        exiger(meme_pseudo(str(auteurs_pr.get(nouveau.get("pr")) or ""), str(nouveau.get("auteur") or "")) and bool(nouveau.get("auteur")),
+                        exiger(meme_pseudo(person_of(agents, str(auteurs_pr.get(nouveau.get("pr")) or "")), str(nouveau.get("auteur") or "")) and bool(nouveau.get("auteur")),
                                f"{chemin} : la PR {nouveau.get('pr')} doit avoir été ouverte par {nouveau.get('auteur')} sur GitHub "
                                f"(auteur relevé : {auteurs_pr.get(nouveau.get('pr')) or 'inconnu'})")
                     cle = pr_canonique(nouveau.get("pr"))  # ruche-0041: compared in canonical form
@@ -4718,7 +4807,7 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
             # Une clé ajoutée ou retirée est une différence, même à null (revue adverse de ruche-0012, M2).
             differences = {k for k in set(ancien) | set(nouveau) if (k in ancien) != (k in nouveau) or ancien.get(k) != nouveau.get(k)}
             if auteurs_pr is not None:
-                exiger(meme_pseudo(str(auteurs_pr.get(nouveau.get("pr")) or ""), str(nouveau.get("auteur") or "")) and bool(nouveau.get("auteur")),
+                exiger(meme_pseudo(person_of(agents, str(auteurs_pr.get(nouveau.get("pr")) or "")), str(nouveau.get("auteur") or "")) and bool(nouveau.get("auteur")),
                        f"{chemin} : la PR {nouveau.get('pr')} doit avoir été ouverte par {nouveau.get('auteur')} sur GitHub "
                        f"(auteur relevé : {auteurs_pr.get(nouveau.get('pr')) or 'inconnu'})")
             # Confirmation d'un défaut (N11) : toujours par un tiers, l'auteur de la PR, nommé dans confirme_par : la CI, le
@@ -4740,7 +4829,7 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
                            "d'autre (bee confirmer-defaut) ; une relecture ne confirme jamais son propre défaut")
                     exiger(r.get("confirme_par") == auteur, f"{chemin} : la confirmation porte le nom de l'auteur de la PR ({auteur})")
                     exiger(not meme_pseudo(auteur, r.get("relecteur")), f"{chemin} : {auteur} ne confirme pas son propre défaut : un tiers le confirme")
-                    exiger(est_robot or est_conseil or auteur in reg.gardiens or niveau == "Confirmé",
+                    exiger(est_robot or est_conseil or is_guardian or niveau == "Confirmé",
                            f"{chemin} : un défaut n'est confirmé que par la CI, le conseil, un gardien ou un Confirmé")
                     exiger(not meme_pseudo(auteur, nouveau.get("auteur")) and auteur not in participants_course(reg, nouveau.get("tache"))
                            and auteur not in engages_base,
@@ -4766,7 +4855,9 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
                 exiger(ancien.get("statut") == "en_relecture",
                        f"{chemin} : on ne relit qu'une contribution en relecture (statut : {ancien.get('statut')})")
                 if nouvelles[len(anciennes):]:  # comme une mesure : un compte inscrit (revue adverse, V1)
-                    exiger(auteur in reg.membres or est_conseil, f"{chemin} : {auteur} doit d'abord s'inscrire (bee inscrire)")
+                    exiger(known, f"{chemin} : {auteur} doit d'abord s'inscrire (bee inscrire)")
+                    exiger(status or auteur not in reg.privilegies(), f"{chemin} : {agent} acts for {auteur}, whose review weighs as "
+                                                                      "the council's or a guardian's (R3) : their own account publishes it")
                 changees = [i for i in range(min(len(anciennes), len(nouvelles))) if nouvelles[i] != anciennes[i]]
                 if exiger(len(nouvelles) >= len(anciennes) and all(est_confirmation(anciennes[i], nouvelles[i]) for i in changees),
                           f"{chemin} : les relectures sont en ajout seul ; on n'en change aucune, sauf pour confirmer le défaut "
@@ -4862,7 +4953,7 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
         if partie[0] == "votes" and len(partie) == 3:
             natures.append("vote")
             exiger(pathlib.PurePosixPath(chemin).stem == auteur, f"{chemin} : on ne vote qu'en son nom ({auteur})")
-            exiger(auteur in reg.membres or est_conseil, f"{chemin} : {auteur} doit d'abord s'inscrire (bee inscrire)")
+            exiger(known, f"{chemin} : {auteur} doit d'abord s'inscrire (bee inscrire)")
             # Course (R3) : un participant engagé ne vote pas sur une concurrente, ni ne modifie ou ne retire un vote
             # qu'il y avait déposé (le dossier du vote nomme son sujet, même pour une suppression).
             if partie[1] in reg.enregistrements:
@@ -4886,7 +4977,7 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
         if partie[0] == "mesures" and len(partie) == 3:
             natures.append("mesure")
             exiger(pathlib.PurePosixPath(chemin).stem == auteur, f"{chemin} : on ne dépose une mesure qu'en son nom ({auteur})")
-            exiger(auteur in reg.membres or est_conseil, f"{chemin} : {auteur} doit d'abord s'inscrire (bee inscrire)")
+            exiger(known, f"{chemin} : {auteur} doit d'abord s'inscrire (bee inscrire)")
             if statut_git != "D" and exiger(isinstance(nouveau, dict), f"{chemin} : fichier illisible"):
                 exiger(nouveau.get("soumise_par") == auteur, f"{chemin} : soumise_par déclaré différent de {auteur}")
                 probleme = probleme_textes_libres({k: v for k, v in nouveau.items() if k != "motif"}, chemin, TEXTE_COURT_MAX)
@@ -4919,6 +5010,8 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
                 jours = jours_de_la_pr(instant)
                 exiger(str(nouveau.get("inscrit_le")) in jours, f"{chemin} : inscrit_le ({nouveau.get('inscrit_le')}) must be the "
                                                                  f"date of the PR ({' or '.join(jours)}) : delete {chemin}, then rerun bee inscrire")
+                exiger(not agent, f"{chemin} : {agent} is an agent account : it registers no one (a member file is created from the "
+                                  "account it names, whose GitHub date is checked)")
                 if exiger(bool(compte_cree_le), f"{chemin} : registering requires the account creation date given by GitHub "
                                                 "(--compte-cree-le)"):
                     try:
@@ -4972,7 +5065,7 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
                 brut = sortie.stdout if sortie.returncode == 0 else b""
             natures_debat, refus, n = verifier_debat(reg, chemin, statut_git, ancien, nouveau, auteur, est_conseil=est_conseil,
                                                      instant=instant, attendu=debats_attendus.get(chemin), brut=brut,
-                                                     dates_ajoutees=dates_arguments)
+                                                     dates_ajoutees=dates_arguments, status=status)
             natures += natures_debat
             problemes += refus
             arguments_ajoutes += n
@@ -4995,7 +5088,7 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
                 brut = sortie.stdout if sortie.returncode == 0 else b""
             natures_invitation, refus, _ = verifier_invitation(reg, chemin, statut_git, ancien, nouveau, auteur,
                                                                     est_conseil=est_conseil, instant=instant, brut=brut, base=base,
-                                                                    frein=frein, refus_lie=chemin in retraits_lies)
+                                                                    frein=frein, refus_lie=chemin in retraits_lies, status=status)
             natures += natures_invitation
             problemes += refus
             continue
@@ -5136,7 +5229,7 @@ def verifier_fork(reg, depot, base, tete, identifiant_tache, auteur=None):
         else:
             problemes.append(f"{nom_manifeste} absent de la branche (bee manifeste {identifiant_tache} … --sortie <fork>/{nom_manifeste})")
     else:
-        problemes += verifier_manifeste(reg, manifeste, nom_manifeste, auteur)
+        problemes += verifier_manifeste(reg, manifeste, nom_manifeste, person_of(reg.comptes_agents, auteur))  # ruche-0089
         if isinstance(manifeste, dict) and manifeste.get("tache") != identifiant_tache:
             problemes.append(f"{nom_manifeste} : tâche « {manifeste.get('tache')} » au lieu de « {identifiant_tache} »")
     autres = [c for c in git(depot, "diff", "--name-only", "--no-renames", f"{base}...{tete}").splitlines()
@@ -6729,6 +6822,13 @@ def lire_auteurs_pr(chemin):
         if ADRESSE_PR.match(adresse.strip()):
             auteurs[adresse.strip()] = login.strip()
     return auteurs
+
+
+def cmd_acts_for(args):
+    """ruche-0089: the person a GitHub login acts for in the registry read (the person of a declared agent account, else the
+    login itself), for integration-auto, which reads main. An unreadable declaration maps no one (fail closed)."""
+    print(person_of(Registre(args.registre).comptes_agents, args.login))
+    return 0
 
 
 def cmd_prs_declarees(args):
@@ -8667,6 +8767,10 @@ def construire_analyseur():
                                           "else 'full' (the full test suite runs; used by validation.yml).")
     p.add_argument("--base", required=True)
     p.add_argument("--tete", default="HEAD")
+
+    p = ajouter("acts-for", cmd_acts_for, "Prints the person a GitHub login acts for: the person of its declared agent account "
+                                          "(gouvernance/comptes-agents.yaml), or the login itself (used by integration-auto).")
+    p.add_argument("login")
 
     p = ajouter("verifier-fork", cmd_verifier_fork, "Vérifie une branche de contribution sur un fork (R1, commandement 3, manifeste).")
     p.add_argument("--tache", required=True)
