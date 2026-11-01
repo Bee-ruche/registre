@@ -4,7 +4,7 @@ auteur: bidji29
 pr: https://github.com/Bee-ruche/minizBee/pull/21
 resume: profil.py repère les noms à majuscules (mz_deflateInit2, mz_inflateEnd…) sans prendre d'appel
   de macro ni de mot-clé pour une fonction ; tests, tableau de profil du README refait.
-statut: en_relecture
+statut: integree
 soumise_le: '2026-10-31T02:56:25Z'
 engage_depuis: '2026-10-31T02:07:02Z'
 relectures: []
@@ -88,3 +88,9 @@ declare:
     premier mot : aucun en-tête de fonction réel n''en commence. Les parts du tableau du README sont celles
     de ma machine (x86-64 virtualisée, 2 cœurs partagés, gcc 13.3) ; les instructions sont déterministes,
     les parts peuvent bouger d''un compilateur à l''autre.'
+decidee_le: '2026-11-01T03:57:23Z'
+motif_decision: 'Intégration automatique (R3) : CI verte au commit f3570566e5935153f3470d193d5ab0774467a993
+  ; 0 relecture(s) favorable(s) de ce commit pour 0 requise(s) (cible 2, plafonnée aux membres dont l''avis
+  compte : amorçage) ; vote net 0 pour un seuil de 0 (cible 2, plafonnée aux membres dont l''avis compte
+  : amorçage) ; fenêtre écoulée ; porte de relecture satisfaite.'
+fusion_sha: 0b54a170cb905a92ef97119223762ac1c0495e50
