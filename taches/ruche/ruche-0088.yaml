@@ -1,0 +1,34 @@
+id: ruche-0088
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: M
+titre: 'Free texts, round 4: every printed quote neutralised, and council-only files checked too'
+contexte: 'Follow-up of ruche-0029''s review (details in the architect''s brief). ruche-0029 checks every self-service
+  file, values and keys, and neutralises what bee prints. Left over: two messages that quote a key as written (unknown
+  fields, top-level keys), `verifier-fork`''s warning lines, the name given to a refused key (it can collide with an
+  honest key), a check made unreachable by ruche-0029, `_nettoyer` still using the older character test, the judge label
+  accepting non-ASCII digits, imitations of the end-of-data marker by look-alike characters, and the council-only files
+  (arbre/, projets/, categories.yaml, bee.yaml, gouvernance/), which do not yet get the strict check. The repository
+  is clean under the strict check today, so extending it costs nothing.'
+fichiers:
+- outils/bee.py
+- outils/test_bee.py
+- docs/securite.md
+portee: 0.6
+metrique: null
+depend_de:
+- ruche-0029
+critere_acceptation:
+- every message that quotes a member's or a fork's text goes through the same neutralisation; tested on each
+- the council-only files get the strict check in bee valider; the repository stays valid
+- look-alike imitations of the end-of-data marker named in the brief are refused; tested
+- independent adversarial review attached; the full test suite passes
+hors_perimetre:
+- COMMANDMENTS.md
+- translating bee's frame (ruche-0069)
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: '2026-11-01'
