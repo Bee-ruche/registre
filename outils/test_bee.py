@@ -23,6 +23,29 @@ import bee  # noqa: E402
 import inventaire_marqueurs  # noqa: E402
 
 RACINE = pathlib.Path(__file__).resolve().parent.parent
+# Le registre des tests (ruche-0093) : du dépôt, tels quels, les règles, les schémas, bee.yaml, les projets, l'arbre, la
+# gouvernance, les docs, les workflows et l'outil ; à la place des données du registre réel (tâches, contributions, débats…,
+# qui grossissent à chaque PR et que chaque commande bee charge et valide), un jeu figé : les tâches et contributions réelles
+# que nomment les tests, avec ce dont elles dépendent, copiées le 1/11 (8e0fb0c). La durée de la suite ne dépend plus de
+# l'activité de la ruche ; test_le_registre_livre_est_valide valide le registre réel tel qu'il est. Un nouveau test écrit
+# ses propres tâches fictives (TACHE_OPTIMISATION) ; s'il lui faut une donnée réelle, il en ajoute la copie au jeu figé, avec
+# ce dont elle dépend. Un test qui doit valoir pour chaque tâche réelle lit RACINE (comme le budget des chemins), jamais le
+# jeu figé. Le jeu figé ne suit pas l'arbre : si un nœud est renommé, mettre à jour le `noeud` de ses tâches.
+JEU_FIGE = pathlib.Path(__file__).resolve().parent / "tests" / "registre"
+DONNEES_REGISTRE = tuple(d.rstrip("/") for d in bee.DOSSIERS_LIBRE_SERVICE)
+
+
+def sans_donnees_reelles(dossier, noms):
+    """Filtre de copie du dépôt : ni .git, ni le site, ni les caches ; à la racine, aucun dossier de données du registre
+    réel ; dans outils/tests/, pas le jeu figé (copié à part, à sa place)."""
+    ignores = {n for n in noms if n in (".git", "_site", "__pycache__")}
+    if pathlib.Path(dossier) == RACINE:
+        ignores |= {n for n in noms if n in DONNEES_REGISTRE}
+    elif pathlib.Path(dossier) == JEU_FIGE.parent:
+        ignores |= {n for n in noms if n == JEU_FIGE.name}
+    return ignores
+
+
 # Décompte d'instructions d'un candidat qui gagne 5 % sur le scénario n6 (R4 se juge dessus).
 INSTRUCTIONS_N6 = {"instructions_n6": {"A": 1000000, "B": 950000, "gain": 0.05}}
 
@@ -59,6 +82,37 @@ def git(depot, *arguments):
     return subprocess.run(["git", "-C", str(depot), *arguments], check=True, capture_output=True, text=True).stdout
 
 
+class TestRegistreReel(unittest.TestCase):
+    """ruche-0093 : les commandes de lecture tiennent sur le registre réel, tel qu'il est (les autres tests lisent le jeu figé)."""
+
+    def test_les_commandes_de_lecture_tiennent_sur_le_registre_reel(self):
+        with tempfile.TemporaryDirectory() as sortie:
+            for arguments in (("site", "--sortie", sortie), ("cap", "--json"), ("essaim", "--json"),
+                              ("classement", "--json"), ("lister", "--json"), ("niveaux",), ("debats",)):
+                with self.subTest(commande=arguments[0]):
+                    code, texte = lancer("--registre", str(RACINE), *arguments)
+                    self.assertEqual(code, 0, texte)
+
+
+class TestJeuFige(unittest.TestCase):
+    """ruche-0093 : le jeu figé n'est que des données YAML, et rien hors des tests ne l'importe ni ne l'exécute."""
+
+    def test_que_des_donnees_yaml(self):
+        dossier = RACINE / "outils" / "tests"
+        intrus = sorted(p.relative_to(RACINE).as_posix() for p in dossier.rglob("*")
+                        if "__pycache__" not in p.parts and (p.is_symlink() or (p.is_file() and p.suffix != ".yaml")))
+        self.assertEqual(intrus, [])
+
+    def test_rien_ne_l_importe_ni_ne_l_execute(self):
+        codes = [RACINE / "outils" / n for n in ("bee.py", "site_bee.py", "inventaire_marqueurs.py")]
+        codes += [p for p in (RACINE / "outils" / "juge").rglob("*.py") if not p.name.startswith("test_")]
+        codes += list((RACINE / "outils" / "repetition").rglob("*")) + list((RACINE / ".github").rglob("*.yml"))
+        for chemin in sorted(c for c in codes if c.is_file() and "__pycache__" not in c.parts):
+            with self.subTest(fichier=chemin.relative_to(RACINE).as_posix()):
+                self.assertNotRegex(chemin.read_text(encoding="utf-8", errors="replace"),
+                                    r"outils[/.]tests|\bfrom tests\b|\bimport tests\b|tests/registre")
+
+
 class TestWorkflows(unittest.TestCase):
     """Un workflow illisible ne tourne pas du tout, sans prévenir : chaque fichier doit être du YAML valide."""
 
@@ -78,21 +132,25 @@ class BaseTest(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.dossier = pathlib.Path(self.temp.name) / "registre"
-        shutil.copytree(RACINE, self.dossier, ignore=shutil.ignore_patterns(".git", "_site", "__pycache__"))
-        # Les tests ne dépendent pas des réservations en cours dans le vrai registre (règle R8 : 3 au plus).
-        for chemin in (self.dossier / "taches").glob("*/*.yaml"):
-            tache = bee.lire_yaml(chemin)
-            if isinstance(tache, dict) and tache.get("statut") == "reservee":
-                tache["statut"] = "ouverte"
-                tache.pop("reservation", None)
-                bee.ecrire_yaml(chemin, tache)
-        # Ni des propositions de règle en cours dans le vrai registre (leurs numéros et leurs dates de vote), ni des
-        # votes qui les concernent : les tests numérotent et datent les leurs.
-        shutil.rmtree(self.dossier / "propositions", ignore_errors=True)
-        for dossier_votes in (self.dossier / "votes").glob("P-*"):
-            shutil.rmtree(dossier_votes, ignore_errors=True)
-        # Ni des débats réels de l'agora (leurs numéros, rapporteurs et dates) : les tests ouvrent les leurs.
-        shutil.rmtree(self.dossier / "debats", ignore_errors=True)
+        # Le dépôt sans les données du registre réel, puis le jeu figé (JEU_FIGE) : les tests ne dépendent ni des réservations
+        # en cours (R8 : 3 au plus), ni des propositions de règle, des votes et des débats réels (leurs numéros, rapporteurs et
+        # dates : les tests numérotent et datent les leurs), ni du nombre de tâches.
+        shutil.copytree(RACINE, self.dossier, ignore=sans_donnees_reelles)
+        shutil.copytree(JEU_FIGE, self.dossier, dirs_exist_ok=True)
+        # L'arbre est le vrai : un nœud confié depuis le gel à une tâche absente du jeu figé (entretenu_par) l'y trouve, en
+        # tâche fictive, pour que le registre des tests reste valide.
+        for sens in sorted((self.dossier / "arbre").rglob(bee.FICHIER_NOEUD)):
+            tid = bee.lire_noeud(sens.read_text(encoding="utf-8"), str(sens))[0]["entete"].get("entretenu_par")
+            projet = tid.rsplit("-", 1)[0] if isinstance(tid, str) and re.fullmatch(r"[a-z0-9-]+-\d{4}", tid) else None
+            fiche_projet = self.dossier / "projets" / f"{projet}.yaml"
+            chemin = self.dossier / "taches" / str(projet) / f"{tid}.yaml"
+            if projet and fiche_projet.exists() and not chemin.exists():
+                chemin.parent.mkdir(exist_ok=True)
+                categorie = bee.lire_yaml(fiche_projet)["categorie"]
+                chemin.write_text(TACHE_OPTIMISATION.replace("miniz-0099", tid).replace("projet: miniz", f"projet: {projet}")
+                                  .replace("categorie: compression-sans-perte", f"categorie: {categorie}")
+                                  .replace("type: optimisation", "type: test").replace("metrique: debit_compression_n6", "metrique: null")
+                                  .replace("sortie_compressee: identique\n", ""), encoding="utf-8")
         questions = self.dossier / "docs" / "questions-ouvertes.md"
         questions.write_text(re.sub(r"(?m)^ *(?:Débat :|Debate:) \[D-\d{4}\]\(\.\./debats/D-\d{4}\.yaml\) \(`bee debats --voir D-\d{4}`\)\.\n", "",
                                     questions.read_text(encoding="utf-8")), encoding="utf-8")
@@ -897,7 +955,7 @@ class TestCapEtEssaim(BaseTest):
     """R11 : cap de la ruche (postes et parts visées) et tableau de l'essaim (qui fait quoi)."""
 
     def plus_tard(self):
-        # Une date où l'activité réelle du registre copié sort de la fenêtre : seule compte celle du test.
+        # Une date où l'activité du jeu figé (JEU_FIGE) sort de la fenêtre : seule compte celle du test.
         os.environ["BEE_MAINTENANT"] = "2027-06-01T12:00:00Z"
 
     def test_cap_livre_valide_et_somme_a_100(self):
@@ -1257,10 +1315,12 @@ class TestArbre(BaseTest):
                 sans_tache = bee.estimer_jetons(texte.split("=== tâche ")[0])
                 with self.subTest(role=role, projet=projet):
                     self.assertLess(sans_tache, 1900)
-        for tid, (_, tache) in sorted(reg.taches.items()):
+        # Les tâches vivantes du registre réel (ruche-0093 : le registre des tests n'en garde qu'un jeu figé), sur l'arbre réel.
+        reel = bee.Registre(RACINE)
+        for tid, (_, tache) in sorted(reel.taches.items()):
             if tache.get("statut") not in ("proposee", "ouverte", "reservee", "en_relecture"):
                 continue
-            texte, _ = bee.texte_contexte(reg, tid, None, registre=str(self.dossier))
+            texte, _ = bee.texte_contexte(reel, tid, None, registre=str(RACINE))
             with self.subTest(tache=tid):
                 self.assertLess(bee.estimer_jetons(texte.split("=== tâche ")[0]), 2600)
 
@@ -1857,13 +1917,113 @@ class TestPullRequests(BaseTest):
     def test_adverse_pr_deja_liee(self):
         self.reserver_sur_main("miniz-0099", "miniz-9001")
         git(self.dossier, "switch", "-qc", "doublon")
-        for t in ("miniz-0099", "miniz-9001"):
-            self.assertEqual(self.bee("soumettre", t, "--utilisateur", "alice",
-                                      "--pr", "https://github.com/Bee-ruche/minizBee/pull/99007")[0], 0)
+        self.assertEqual(self.bee("soumettre", "miniz-0099", "--utilisateur", "alice",
+                                  "--pr", "https://github.com/Bee-ruche/minizBee/pull/99007")[0], 0)
+        # bee soumettre refuses the second one (ruche-0041): the file is written by hand.
+        self.soumettre_avec_pr("miniz-9001", "https://github.com/Bee-ruche/minizBee/pull/99007")
         self.commit()
         code, texte = self.verifier("alice", "--fusion-auto")
         self.assertEqual(code, 1, texte)
         self.assertIn("déjà liée", texte)
+
+    # --- ruche-0041: a fork PR serves one contribution, in whatever form its address is written ---
+
+    MEME_PR = ("https://github.com/Bee-ruche/minizBee/pull/99041", "https://github.com/bee-ruche/minizbee/pull/99041",
+               "https://github.com/BEE-RUCHE/MINIZBEE/pull/99041", "https://github.com/bEE-rUCHE/MinizBEE/pull/099041",
+               "https://github.com/Bee-ruche/minizBee/pull/000099041")
+    AUTRES_PR = ("https://github.com/Bee-ruche/minizBee/pull/99042", "https://github.com/Bee-ruche/minizBee/pull/9904",
+                 "https://github.com/Bee-ruche/minizBee/pull/990410", "https://github.com/Bee-ruche/minizBee/pull/990041")
+    TROP_LONGUES = ("https://github.com/Bee-ruche/minizBee/pull/" + "9" * 10, "https://github.com/Bee-ruche/minizBee/pull/" + "9" * 5000)
+
+    def soumettre_avec_pr(self, tache, adresse):
+        """bee soumettre on `tache` with an unused PR, then `adresse` written in place of it, the rest of the file unchanged."""
+        code, texte = self.bee("soumettre", tache, "--utilisateur", "alice", "--pr", "https://github.com/Bee-ruche/minizBee/pull/99049")
+        self.assertEqual(code, 0, texte)
+        chemin = self.dossier / f"contributions/miniz/{tache}-c1.yaml"
+        bee.ecrire_yaml(chemin, {**bee.lire_yaml(chemin), "pr": adresse})
+
+    def test_pr_canonique(self):
+        """Owner and repository in lower case, the number (1 to 9 digits) without leading zeros; a value that is not entirely
+        a PR address has none."""
+        self.assertEqual({bee.pr_canonique(a) for a in self.MEME_PR}, {("bee-ruche", "minizbee", "99041")})
+        self.assertEqual(bee.pr_canonique(PR_MINIZ + "0" * 9), ("bee-ruche", "minizbee", "0"))
+        self.assertEqual(bee.pr_canonique(PR_MINIZ + "9" * 9), ("bee-ruche", "minizbee", "9" * 9))
+        autres = [self.MEME_PR[0], *self.AUTRES_PR, "https://github.com/Bee-ruche/libyamlBee/pull/99041",
+                  "https://github.com/Bee-ruche2/minizBee/pull/99041"]
+        self.assertEqual(len({bee.pr_canonique(a) for a in autres}), len(autres))
+        pr = self.MEME_PR[0]
+        for adresse in (pr + "\n", pr + "/", pr + "/files", pr + "#a", " " + pr, pr.replace("https:", "http:"),
+                        pr.replace("github.com", "www.github.com"), pr.replace("github.com", "GitHub.com"),
+                        pr.replace("/pull/", "/pulls/"), pr.replace("99041", "٩٩٠٤١"), pr.replace("99041", ""), *self.TROP_LONGUES,
+                        None, 99041, [pr]):
+            with self.subTest(adresse=adresse):
+                self.assertIsNone(bee.pr_canonique(adresse))
+
+    def test_soumettre_refuse_une_pr_deja_declaree(self):
+        """bee soumettre refuses a PR that another contribution declares, in each written form, and a value that is not a PR
+        address; it stores another PR in canonical form: the project's fork as written, /pull/, the number without leading
+        zeros."""
+        self.reserver_sur_main("miniz-0099", "miniz-9001")
+        self.assertEqual(self.bee("soumettre", "miniz-0099", "--utilisateur", "alice", "--pr", self.MEME_PR[0])[0], 0)
+        self.commit("c1")
+        cas = ([(a, 1, "la PR " + a + " est déjà liée à miniz-0099-c1") for a in self.MEME_PR] + [(a, 0, a) for a in self.AUTRES_PR]
+               + [("https://github.com/bee-ruche/MINIZBEE/pull/0099043", 0, "https://github.com/Bee-ruche/minizBee/pull/99043")]
+               + [(a, 1, "adresse de PR invalide") for a in self.TROP_LONGUES])
+        for adresse, attendu, morceau in cas:
+            with self.subTest(adresse=adresse):
+                git(self.dossier, "reset", "-q", "--hard")
+                git(self.dossier, "clean", "-fdq")
+                code, texte = self.bee("soumettre", "miniz-9001", "--utilisateur", "alice", "--pr", adresse)
+                self.assertEqual(code, attendu, texte)
+                self.assertNotIn("Traceback", texte)
+                chemin = self.dossier / "contributions/miniz/miniz-9001-c1.yaml"
+                if attendu:
+                    self.assertIn(morceau, texte)
+                    self.assertFalse(chemin.exists())
+                else:
+                    self.assertEqual(bee.lire_yaml(chemin)["pr"], morceau)
+                    self.valide()
+
+    def test_verifier_pr_et_valider_une_pr_par_contribution(self):
+        """bee verifier-pr and bee valider refuse a second contribution declaring the same PR, in each written form, whether
+        the first is on main (in canonical form or not) or in the same PR, and verifier_pr finds it by itself; a different PR
+        passes; an address not in canonical form, or a value that is not a PR address, is refused."""
+        self.reserver_sur_main("miniz-0099", "miniz-9001")
+        git(self.dossier, "switch", "-qc", "c1")
+        self.assertEqual(self.bee("soumettre", "miniz-0099", "--utilisateur", "alice", "--pr", self.MEME_PR[0])[0], 0)
+        self.commit("c1")
+        git(self.dossier, "switch", "-qc", "c1-autre")
+        chemin = self.dossier / "contributions/miniz/miniz-0099-c1.yaml"
+        bee.ecrire_yaml(chemin, {**bee.lire_yaml(chemin), "pr": self.MEME_PR[3]})
+        self.commit("c1, another form")
+        cas = ([("main", a) for a in self.MEME_PR + self.AUTRES_PR] + [("c1-autre", a) for a in self.MEME_PR[:3]]
+               + [("c1", a) for a in self.MEME_PR + self.AUTRES_PR + (self.MEME_PR[1] + "\n", *self.TROP_LONGUES)])
+        ecrite = "the PR address is written https://github.com/Bee-ruche/minizBee/pull/99041"
+        for base, adresse in cas:
+            with self.subTest(base=base, adresse=adresse):
+                git(self.dossier, "switch", "-qfC", "seconde", "c1-autre" if base == "c1-autre" else "c1")
+                git(self.dossier, "clean", "-fdq")
+                if base == "main":  # both contributions in the PR
+                    git(self.dossier, "reset", "-q", "--soft", "main")
+                self.soumettre_avec_pr("miniz-9001", adresse)
+                self.commit()
+                code, texte = self.bee("verifier-pr", "--base", base, "--tete", "HEAD", "--auteur", "alice", "--fusion-auto")
+                code_v, texte_v = self.bee("valider")
+                propres = bee.verifier_pr(bee.Registre(self.dossier), base, "HEAD", "alice")[0]  # without bee valider's checks
+                self.assertNotIn("Traceback", texte + texte_v)
+                if adresse in self.AUTRES_PR:
+                    self.assertEqual((code, code_v, propres), (0, 0, []), texte + texte_v)
+                    self.assertIn("FUSION_AUTO=oui", texte)
+                elif adresse in self.MEME_PR:
+                    self.assertEqual((code, code_v), (1, 1), texte + texte_v)
+                    self.assertEqual(len([p for p in propres if "est déjà liée à miniz-0099-c1" in p]), 1, propres)
+                    self.assertIn("est déjà liée à miniz-0099-c1", texte_v)
+                    self.assertEqual(f"miniz-9001-c1.yaml : {ecrite}" in texte_v, adresse != self.MEME_PR[0], texte_v)
+                    self.assertEqual(f"miniz-0099-c1.yaml : {ecrite}" in texte_v, base == "c1-autre", texte_v)
+                else:
+                    self.assertEqual((code, code_v), (1, 1), texte + texte_v)
+                    self.assertTrue(any("adresse de PR invalide" in p for p in propres), propres)
+                    self.assertIn("miniz-9001-c1.yaml : pr : format incorrect", texte_v)
 
     def test_adverse_relecture_retroactive(self):
         cid = self.soumettre_0099()
@@ -3494,7 +3654,7 @@ class TestRevueAdverse(BaseParallele):
         return texte.split("contribution ", 1)[1].split(" ", 1)[0]
 
     def test_I3_le_conseil_integre_une_course_de_la_ruche(self):
-        # La copie du registre réel peut avoir ruche-0001 en relecture : on repart d'une tâche ouverte, sans contribution.
+        # ruche-0001 (jeu figé) est intégrée : on repart d'une tâche ouverte, sans contribution.
         chemin_tache = self.dossier / "taches/ruche/ruche-0001.yaml"
         tache = bee.lire_yaml(chemin_tache)
         for cle in ("reservation", "contribution", "paralleles"):
@@ -4373,7 +4533,7 @@ class TestVerdictsDeLaPrEnregistree(BaseParallele):
         """C1 : 13 des 18 vieilles branches de minizBee ont une tête ancêtre de master, et leur verdict.py déclare details.base égal
         à cette tête (compare : ahead) sans jamais émettre base_juge. Pour miniz (verdict_exige_base_juge), un verdict vert sans
         base_juge lisible (base et commit) est refusé, quoi que dise details.base ; libyaml n'a pas la clé."""
-        projets = bee.Registre(RACINE).projets
+        projets = bee.Registre(self.dossier).projets  # les projets réels, copiés tels quels
         self.assertEqual((projets["miniz"][1].get("verdict_exige_base_juge"), "verdict_exige_base_juge" in projets["libyaml"][1]),
                          (True, False))
         tete_vieille = "0ld0" * 10

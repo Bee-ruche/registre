@@ -1810,10 +1810,15 @@ def verifier_registre(reg):
         if len(ids) > maximum:
             ajouter(f"règle R8 : {pseudo} a {len(ids)} réservations ou inscriptions en parallèle ({', '.join(ids)}), maximum {maximum}")
 
+    prs = {}  # ruche-0041: canonical PR -> the first contribution that declares it
     for stem, (chemin, enr) in reg.enregistrements.items():
         if not selon_schema("enregistrement", chemin, enr):
             continue
-        lieu = reg.rel(chemin)
+        lieu, cle = reg.rel(chemin), pr_canonique(enr["pr"])
+        if cle in prs:
+            ajouter(f"{lieu} : la PR {enr['pr']} est déjà liée à {prs[cle]}")
+        elif cle is not None:
+            prs[cle] = enr["id"]
         if enr["id"] != stem:
             ajouter(f"{lieu} : id « {enr['id']} » différent du nom de fichier")
         correspondance = ID_CONTRIBUTION.match(enr["id"])
@@ -1828,8 +1833,13 @@ def verifier_registre(reg):
             fork = reg.projets.get(tache[1].get("projet"), (None, {}))[1].get("fork")
             if not fork:
                 ajouter(f"{lieu} : le projet {tache[1].get('projet')} n'a pas de fork : aucune contribution n'y est possible")
+            elif cle is None:
+                ajouter(f"{lieu} : adresse de PR invalide : {enr['pr']} (attendu : {fork.rstrip('/')}/pull/<numéro>)")
             elif not enr["pr"].lower().startswith(fork.lower().rstrip("/") + "/pull/"):
                 ajouter(f"{lieu} : la PR doit être ouverte sur le fork du projet ({fork})")
+            elif enr["pr"] != f"{fork.rstrip('/')}/pull/{cle[2]}":
+                ajouter(f"{lieu} : the PR address is written {fork.rstrip('/')}/pull/{cle[2]} (the project's fork as written, then "
+                        "the number without leading zeros) : bee soumettre writes it")
         if enr["auteur"] not in reg.membres and enr["auteur"] not in reg.conseil:
             ajouter(f"{lieu} : auteur « {enr['auteur']} » non inscrit")
         if enr["statut"] == "ecartee":
@@ -4708,8 +4718,11 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
                         exiger(meme_pseudo(str(auteurs_pr.get(nouveau.get("pr")) or ""), str(nouveau.get("auteur") or "")) and bool(nouveau.get("auteur")),
                                f"{chemin} : la PR {nouveau.get('pr')} doit avoir été ouverte par {nouveau.get('auteur')} sur GitHub "
                                f"(auteur relevé : {auteurs_pr.get(nouveau.get('pr')) or 'inconnu'})")
-                    autres = [i for i, (_, e) in reg.enregistrements.items() if i != cid and e.get("pr") == nouveau.get("pr")]
-                    exiger(not autres, f"{chemin} : la PR {nouveau.get('pr')} est déjà liée à {', '.join(autres)}")
+                    cle = pr_canonique(nouveau.get("pr"))  # ruche-0041: compared in canonical form
+                    autres = [i for i, (_, e) in reg.enregistrements.items() if i != cid and pr_canonique(e.get("pr")) == cle]
+                    exiger(cle is not None, f"{chemin} : adresse de PR invalide : {nouveau.get('pr')} (attendu : "
+                                            "https://github.com/<organisation>/<dépôt>/pull/<numéro>)")
+                    exiger(cle is None or not autres, f"{chemin} : la PR {nouveau.get('pr')} est déjà liée à {', '.join(autres)}")
                 continue
             if statut_git == "D":
                 natures.append("gouvernance")
@@ -5816,14 +5829,16 @@ def cmd_soumettre(args):
     fork = (reg.projets.get(t["projet"], (None, {}))[1].get("fork") or "").rstrip("/")
     if not fork:
         raise ErreurBee(f"le projet {t['projet']} n'a pas encore de fork : aucune contribution ne peut y être soumise")
-    if not re.fullmatch(r"https://github\.com/[A-Za-z0-9-]+/[A-Za-z0-9_.-]+/pull/[0-9]+", args.pr):
+    if pr_canonique(args.pr) is None:
         raise ErreurBee(f"adresse de PR invalide : {args.pr} (attendu : https://github.com/<organisation>/<dépôt>/pull/<numéro>)")
     if not args.pr.lower().startswith(fork.lower() + "/pull/"):
         raise ErreurBee(f"la PR doit être ouverte sur le fork du projet : {fork}/pull/<numéro> (reçu : {args.pr})")
+    if deja := [c for c, (_, e) in reg.enregistrements.items() if pr_canonique(e.get("pr")) == pr_canonique(args.pr)]:
+        raise ErreurBee(f"la PR {args.pr} est déjà liée à {', '.join(deja)}")  # ruche-0041: one PR, one contribution
     # Numéro suivant le plus grand déjà pris (verifier_pr l'exige) : jamais un fichier existant écrasé.
     rang = 1 + max(numeros_contributions(reg, args.tache), default=0)
     identifiant = f"{args.tache}-c{rang}"
-    donnees = {"id": identifiant, "tache": args.tache, "auteur": args.utilisateur, "pr": args.pr}
+    donnees = {"id": identifiant, "tache": args.tache, "auteur": args.utilisateur, "pr": f"{fork}/pull/{pr_canonique(args.pr)[2]}"}
     if args.resume:
         probleme = probleme_textes_libres(args.resume, "--resume", RESUME_MAX)
         if probleme:
@@ -6711,7 +6726,15 @@ def cmd_classement(args):
     return 0
 
 
-ADRESSE_PR = re.compile(r"^https://github\.com/([A-Za-z0-9-]+)/([A-Za-z0-9_][A-Za-z0-9_.-]*)/pull/([0-9]+)$")
+ADRESSE_PR = re.compile(r"^https://github\.com/([A-Za-z0-9-]+)/([A-Za-z0-9_][A-Za-z0-9_.-]*)/pull/([0-9]{1,9})$")
+
+
+def pr_canonique(adresse):
+    """Canonical form of a fork PR address, as GitHub resolves it: (owner, repository, number), owner and repository in
+    lower case, the number without leading zeros; None if the whole value is not a PR address. PR addresses are compared
+    only in this form; a contribution stores <the project's fork as written>/pull/<that number> (ruche-0041)."""
+    m = ADRESSE_PR.fullmatch(adresse) if isinstance(adresse, str) else None
+    return (m[1].lower(), m[2].lower(), m[3].lstrip("0") or "0") if m else None
 
 
 def lire_auteurs_pr(chemin):
