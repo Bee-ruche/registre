@@ -1,0 +1,45 @@
+id: ruche-0084
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: L
+titre: 'Rules version: each reservation and privilege records the rules it was granted under; bee rechecks'
+contexte: 'Idea borrowed from DeepSeek''s dsh-superagent prototype (https://github.com/deepseek-ai/dsh-superagent-prototype,
+  MIT), docs/002-authorization.md: every grant of work records the version of the rules it was accepted under; a change
+  of rules is delivered to the work it affects and checked again before that work goes on, instead of cancelling it (a
+  cancelled change leaves half-finished work). In La Ruche, a reservation (`bee prendre`) and an appointed privilege
+  (ruche-0081''s entries) are granted under the rules of the day; when REGLES.md, bee.yaml or COMMANDMENTS.md change,
+  nothing says whether they still hold. Define the rules version once (for example the commit of the last change to those
+  three files on main), have `bee` write it on every new reservation and appointment, and recheck before the next act
+  made under a grant from an older version. R3 already binds a verdict to the commit it judged: this extends the same
+  idea to grants.'
+fichiers:
+- outils/bee.py
+- outils/test_bee.py
+- schemas/
+- docs/taches.md
+- docs/devolution.md
+portee: 0.6
+metrique: null
+depend_de:
+- ruche-0081
+critere_acceptation:
+- the rules version is defined in one place (which files, how it is computed) and documented, with the source of the
+  idea cited (commandment 9)
+- '`bee` writes the rules version on every new reservation and appointment; the gate accepts it only in the exact form
+  `bee` writes'
+- after a rules change, `bee` lists every reservation and privilege granted under an older version and, for each, whether
+  it still holds under the current rules, with the reason
+- an act under a grant that no longer holds (submitting a contribution, a guardian's review) is refused until it is granted
+  again; one that still holds is rechecked without any step from its holder; nothing running is cancelled
+- 'entries written before this task carry no version: they are rechecked at their next act, never refused for that reason
+  alone'
+- independent adversarial review attached (this touches the gate); the full test suite passes
+hors_perimetre:
+- changing any rule
+- COMMANDMENTS.md
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: '2026-11-01'

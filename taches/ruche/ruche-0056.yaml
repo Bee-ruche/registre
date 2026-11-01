@@ -5,19 +5,18 @@ type: test
 poste: coordination
 taille: L
 titre: 'English front door: AGENTS.md in English (French kept as AGENTS.fr.md), CLAUDE.md, README'
-contexte: 'Founder''s decision of 31/10: the hive moves to English before the first outside bee. The place is La
-  Ruche; the tool and the agents stay `bee`. The commandments become authoritative in English when the council records
-  it in docs/decisions.md; any other text stays authoritative in French until the council records, when it merges
-  the English version, that this version is authoritative. Start once the commandments decision is on main. Voice:
-  precise, dry, generous with numbers, sparing with adjectives; no hype words, no exclamation marks; US spelling.
-  French stays only for La Ruche, la Nuit des abeilles, l''essaim and le miel. Size: a translated line counts as
-  one changed line. Commands, folders and YAML keys are cited as they are today, and so are the markers the tool
-  emits (such as « À REMPLIR »): ruche-0069 and ruche-0070 change them. These files are council-only (the gate refuses
-  them from a member): the work is prepared under the council''s account by a builder it launches, and the council
-  merges. Method: git mv AGENTS.md AGENTS.fr.md (headed as the French translation, for reference), git mv AGENTS.en.md
-  AGENTS.md, then bring the English guide to parity with the French one of the moment; links follow. README.md and
-  CLAUDE.md in English. The tests that read AGENTS.md (the vulnerability instruction, the invitations paragraph)
-  follow the English text.'
+contexte: 'Founder''s decision of 31/10: the hive moves to English before the first outside bee. The place is La Ruche;
+  the tool and the agents stay `bee`. The commandments become authoritative in English when the council records it in
+  docs/decisions.md; any other text stays authoritative in French until the council records, when it merges the English
+  version, that this version is authoritative. Start once the commandments decision is on main. Voice: precise, dry,
+  generous with numbers, sparing with adjectives; no hype words, no exclamation marks; US spelling. French stays only
+  for La Ruche, la Nuit des abeilles, l''essaim and le miel. Size: a translated line counts as one changed line. Commands,
+  folders and YAML keys are cited as they are today, and so are the markers the tool emits (such as « À REMPLIR »): ruche-0069
+  and ruche-0070 change them. These files are council-only (the gate refuses them from a member): the work is prepared
+  under the council''s account by a builder it launches, and the council merges. Method: git mv AGENTS.md AGENTS.fr.md
+  (headed as the French translation, for reference), git mv AGENTS.en.md AGENTS.md, then bring the English guide to parity
+  with the French one of the moment; links follow. README.md and CLAUDE.md in English. The tests that read AGENTS.md
+  (the vulnerability instruction, the invitations paragraph) follow the English text.'
 fichiers:
 - AGENTS.md
 - AGENTS.en.md
@@ -28,14 +27,16 @@ fichiers:
 portee: 0.7
 metrique: null
 critere_acceptation:
-- 'parity both ways (every paragraph has its counterpart) checked by a reviewer who did not write the translation:
-  an agent of another model launched for the review, a guardian or the council; the reviewer posts the list on the
-  PR'
+- 'parity both ways (every paragraph has its counterpart) checked by a reviewer who did not write the translation: an
+  agent of another model launched for the review, a guardian or the council; the reviewer posts the list on the PR'
 - 'the six rules and the vulnerability instruction: fidelity checked sentence by sentence by a guardian or the council
   (not the author), report posted on the PR: no condition, threshold or obligation changed'
-- a fresh agent on a small model, given only the English guide, follows the reading path to `bee contexte` without
-  asking for help (short report in the PR)
+- a fresh agent on a small model, given only the English guide, follows the reading path to `bee contexte` without asking
+  for help (short report in the PR)
 - no hype words, no exclamation marks; links between files still resolve; `bee valider` passes
+- 'attention: the words a new bee reads before `bee contexte` are counted before and after, in the PR; every paragraph
+  of the reading path either tells a bee what to do or what it may not do, or it is cut (the attention test (docs/decisions.md,
+  1 Nov 2026))'
 - on merge, the council records in docs/decisions.md that these files are now authoritative in English
 hors_perimetre:
 - COMMANDMENTS.md, COMMANDEMENTS.md
