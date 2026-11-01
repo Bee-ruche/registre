@@ -10501,5 +10501,104 @@ class TestTextesLibresRevue2Ruche0029(BaseTest):
         self.valide()
 
 
+
+# --- ruche-0089: declared agent accounts (gouvernance/comptes-agents.yaml: laruche-architect acts for bidji29) ---
+
+AGENT = "laruche-architect"
+
+
+def declarer_agents(dossier, *entrees):
+    """Rewrites gouvernance/comptes-agents.yaml with these (account, acts_for) entries, in the council's form."""
+    bee.ecrire_yaml(pathlib.Path(dossier) / bee.AGENT_ACCOUNTS, {"accounts": [
+        {"account": a, "acts_for": p, "declared_on": "2026-11-01", "purpose": "An agent of the test."} for a, p in entrees]})
+
+
+class TestAgentAccountsValider(BaseTest):
+    """ruche-0089: bee valider accepts the council's declaration, and refuses an agent account that is anyone else, a person
+    that is not a known person, a chain, a duplicate, a case variant, an ill-formed entry, and an agent account named as a
+    person anywhere in the registry."""
+
+    def refuse(self, *morceaux):
+        code, texte = self.bee("valider")
+        self.assertEqual(code, 1, texte)
+        for morceau in morceaux:
+            self.assertIn(morceau, texte)
+
+    def test_the_declaration_of_the_registry(self):
+        self.valide()
+        reg = bee.Registre(self.dossier)
+        self.assertEqual(reg.comptes_agents, {AGENT: "bidji29"})
+        self.assertTrue("LaRuche-Architect" in reg.agents and "bidji29" not in reg.agents)
+        self.assertEqual(bee.autre_orthographe(reg, "LaRuche-Architect"), AGENT)
+        self.assertEqual(self.bee("acts-for", AGENT), (0, "bidji29\n"))
+        for login in ("LaRuche-Architect", "bidji29", "alice", "mallory"):
+            self.assertEqual(self.bee("acts-for", login), (0, f"{login}\n"), "a case variant, a person or a stranger acts for itself")
+
+    def test_an_agent_account_is_no_one_else(self):
+        for role, chemin, avant, apres in (
+                ("a member", "membres/alice.yaml", None, None),
+                ("a council member", "gouvernance/conseil.yaml", "    role: fondateur\n", f"    role: fondateur\n  - pseudo: {AGENT}\n"),
+                ("a guardian", "gouvernance/gardiens.yaml", "membres: []", "membres:\n  - pseudo: LaRuche-Architect\n    garant: bidji29"),
+                ("a guarantor", "gouvernance/garants.yaml", "    conflits: []\n", f"    conflits: []\n  - pseudo: {AGENT}\n"),
+                ("a robot", "bee.yaml", "  - github-actions[bot]\n", f"  - github-actions[bot]\n  - {AGENT}\n")):
+            with self.subTest(role=role):
+                fichier = self.dossier / chemin
+                texte = fichier.read_text(encoding="utf-8")
+                if avant is None:
+                    shutil.copy(fichier, self.dossier / f"membres/{AGENT}.yaml")
+                    bee.ecrire_yaml(self.dossier / f"membres/{AGENT}.yaml", {**bee.lire_yaml(fichier), "pseudo": AGENT})
+                else:
+                    self.assertIn(avant, texte)
+                    fichier.write_text(texte.replace(avant, apres), encoding="utf-8")
+                self.refuse(f"accounts/0 : {AGENT} is also {role} : an agent account is no one else")
+                fichier.write_text(texte, encoding="utf-8")
+                (self.dossier / f"membres/{AGENT}.yaml").unlink(missing_ok=True)
+                self.valide()
+
+    def test_the_person_the_chain_and_the_spelling(self):
+        for entrees, morceau in (
+                ([("alice-bot", "mallory")], "accounts/0 : acts_for « mallory » is not a known person (a member or the council)"),
+                ([("alice-bot", "Alice")], "accounts/0 : acts_for « Alice » is written alice (its file)"),
+                ([(AGENT, "BIDJI29")], "accounts/0 : acts_for « BIDJI29 » is written bidji29 (its file)"),
+                ([(AGENT, "bidji29"), ("LaRuche-ARCHITECT", "bidji29")], "accounts/1 : LaRuche-ARCHITECT is declared twice"),
+                ([(AGENT, "bidji29"), ("relais-bot", AGENT)], "accounts/1 : acts_for « laruche-architect » is an agent account"),
+                ([("relais-bot", "autre-bot"), ("autre-bot", "relais-bot")], "accounts/1 : acts_for « relais-bot » is an agent account"),
+                ([("soi-bot", "soi-bot")], "accounts/0 : acts_for « soi-bot » is an agent account"),
+                ([("pas un login!", "bidji29")], "accounts/0 : account « pas un login! » is not a GitHub login")):
+            with self.subTest(entrees=entrees):
+                declarer_agents(self.dossier, *entrees)
+                self.refuse(morceau)
+        declarer_agents(self.dossier, (AGENT, "bidji29"), ("alice-bot", "alice"))
+        self.valide()
+
+    def test_ill_formed_declarations(self):
+        chemin = self.dossier / bee.AGENT_ACCOUNTS
+        entree = {"account": "alice-bot", "acts_for": "alice", "declared_on": "2026-11-01", "purpose": "An agent of alice."}
+        for donnees, morceau in (
+                ({"accounts": "alice-bot"}, "accounts must list the agent accounts"),
+                ({"comptes": [entree]}, "accounts must list the agent accounts"),
+                ({"accounts": [{k: v for k, v in entree.items() if k != "purpose"}]}, "an entry has exactly account, acts_for"),
+                ({"accounts": [{**entree, "council": True}]}, "an entry has exactly account, acts_for"),
+                ({"accounts": [{**entree, "acts_for": ["alice"]}]}, "an entry has exactly account, acts_for"),
+                ({"accounts": [{**entree, "declared_on": "hier"}]}, "accounts/0 : declared_on : date invalide « hier »"),
+                ({"accounts": [{**entree, "purpose": "Agent‮ caché."}]}, "accounts/0 : purpose : caractère invisible"),
+                ({"accounts": [{**entree, "purpose": " "}]}, "accounts/0 : purpose vide")):
+            with self.subTest(donnees=donnees):
+                bee.ecrire_yaml(chemin, donnees)
+                self.refuse(morceau)
+                self.assertEqual(bee.Registre(self.dossier).comptes_agents.get("alice-bot"),
+                                 "alice" if isinstance(donnees.get("accounts"), list) and isinstance(donnees["accounts"][0].get("acts_for"), str) else None)
+
+    def test_an_agent_account_never_names_a_person(self):
+        """Its person's pseudo is the only one written: an agent account named in an identity field anywhere is refused, so
+        that nothing counts it as a second person (R8, votes, reviews, active members)."""
+        self.assertEqual(self.bee("prendre", "miniz-0099", "--utilisateur", "alice")[0], 0)
+        chemin = self.dossier / "taches/miniz/miniz-0099.yaml"
+        bee.modifier_tache(chemin, reservation={"utilisateur": AGENT, "depuis": "2026-10-27T12:00:00Z"},
+                           note={"par": "LaRuche-Architect", "le": "2026-10-27T12:00:00Z", "texte": "Une note."})
+        self.refuse(f"taches/miniz/miniz-0099.yaml : {AGENT} is an agent account", "taches/miniz/miniz-0099.yaml : LaRuche-Architect is an "
+                    "agent account", f"réservée par « {AGENT} », qui n'est pas inscrit")
+
+
 if __name__ == "__main__":
     unittest.main()

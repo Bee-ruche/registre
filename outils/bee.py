@@ -360,6 +360,9 @@ class Registre:
                         if isinstance(m, dict) and isinstance(m.get("pseudo"), str) and not m.get("revoque_le")}
         self.incidents = self._lire_facultatif("gouvernance/incidents.yaml")
         self.robots = set(self.config.get("robots") or [])
+        self.fiches_agents = self._lire_facultatif(AGENT_ACCOUNTS)  # ruche-0089: {account: person}, council only
+        self.comptes_agents = agent_accounts(self.fiches_agents)
+        self.agents = Pseudos(self.comptes_agents)
         self.categories = {c["id"]: c for c in (self._lire("categories.yaml") or []) if isinstance(c, dict) and "id" in c}
         self.projets = self._dossier("projets/*.yaml")
         self.taches = self._dossier("taches/*/*.yaml")
@@ -574,7 +577,7 @@ def autre_orthographe(reg, pseudo):
     """L'orthographe de la fiche d'un pseudo qui ne la suit qu'à la casse près ; None s'il est écrit comme elle, ou inconnu."""
     connus = vars(reg).setdefault("_orthographes", {})
     if not connus:
-        for p in [*reg.membres, *reg.conseil, *reg.gardiens, *reg.garants, *reg.robots]:
+        for p in [*reg.membres, *reg.conseil, *reg.gardiens, *reg.garants, *reg.robots, *reg.agents]:
             connus.setdefault(p.casefold(), set()).add(p) if isinstance(p, str) else None
     bonnes = connus.get(pseudo.casefold(), set()) if isinstance(pseudo, str) else set()
     return None if not bonnes or pseudo in bonnes else sorted(bonnes)[0]
@@ -586,6 +589,61 @@ def pseudos_mal_ecrits(reg, donnees, profondeur=0):
         return [(k, v, b) for k, v in donnees.items() if k in CHAMPS_PSEUDO and (b := autre_orthographe(reg, v))] + [
             x for v in donnees.values() for x in pseudos_mal_ecrits(reg, v, profondeur + 1)]
     return [x for v in donnees for x in pseudos_mal_ecrits(reg, v, profondeur + 1)] if isinstance(donnees, list) and profondeur < 20 else []
+
+
+# ruche-0089: declared agent accounts. An agent account acts as its person (the gate checks its PRs under the person's name,
+# without the person's council or guardian status), and only the person's own pseudo is ever written in the registry.
+AGENT_ACCOUNTS = "gouvernance/comptes-agents.yaml"
+
+
+def agent_accounts(donnees):
+    """{agent account: the person it acts for}, from the entries of comptes-agents.yaml that name both as texts."""
+    entrees = donnees.get("accounts") if isinstance(donnees, dict) else None
+    return {e["account"]: e["acts_for"] for e in entrees if isinstance(e, dict) and isinstance(e.get("account"), str)
+            and isinstance(e.get("acts_for"), str)} if isinstance(entrees, list) else {}
+
+
+def identity_values(donnees, profondeur=0):
+    """The values of a file's identity fields (CHAMPS_PSEUDO), at any depth."""
+    if isinstance(donnees, dict) and profondeur < 20:
+        return [v for k, v in donnees.items() if k in CHAMPS_PSEUDO] + [x for v in donnees.values() for x in identity_values(v, profondeur + 1)]
+    return [x for v in donnees for x in identity_values(v, profondeur + 1)] if isinstance(donnees, list) and profondeur < 20 else []
+
+
+def check_agent_accounts(reg, ajouter):
+    """bee valider: each agent account acts for a known person and is no one else; no chain, no duplicate, no case variant."""
+    entrees = reg.fiches_agents.get("accounts") if isinstance(reg.fiches_agents, dict) else None
+    if reg.fiches_agents is not None and not isinstance(entrees, list):
+        ajouter(f"{AGENT_ACCOUNTS} : accounts must list the agent accounts (account, acts_for, declared_on, purpose)")
+    vus = set()
+    for i, e in enumerate(entrees if isinstance(entrees, list) else []):
+        lieu = f"{AGENT_ACCOUNTS} : accounts/{i}"
+        if not (isinstance(e, dict) and set(e) == {"account", "acts_for", "declared_on", "purpose"} and all(isinstance(v, str) for v in e.values())):
+            ajouter(f"{lieu} : an entry has exactly account, acts_for, declared_on and purpose, each a text")
+            continue
+        compte, personne = e["account"], e["acts_for"]
+        roles = [nom for nom, qui in (("a member", Pseudos(reg.membres)), ("a council member", reg.conseil), ("a guardian", reg.gardiens),
+                                      ("a guarantor", reg.garants), ("a robot", reg.robots)) if compte in qui]
+        for condition, probleme in (
+                (not re.fullmatch(PSEUDO_MOTIF, compte), f"account « {compte} » is not a GitHub login"),
+                (compte.casefold() in vus, f"{compte} is declared twice (a login does not depend on case)"),
+                (roles, f"{compte} is also {' and '.join(roles)} : an agent account is no one else"),
+                (personne in reg.agents, f"acts_for « {personne} » is an agent account : an agent acts for a person, never through another"),
+                (personne not in reg.membres and personne not in reg.conseil, f"acts_for « {personne} » is not a known person (a member or the council)"),
+                (bonne := autre_orthographe(reg, personne), f"acts_for « {personne} » is written {bonne} (its file)"),
+                (but := texte_recevable(e["purpose"], "purpose", 300), but)):
+            if condition:
+                ajouter(f"{lieu} : {probleme}")
+        vus.add(compte.casefold())
+        try:
+            lire_date(e["declared_on"], f"{lieu} : declared_on")
+        except ErreurBee as ex:
+            ajouter(str(ex))
+
+
+def person_of(agents, login):
+    """The person a GitHub login acts for: the person of a declared agent account ({account: person}), else the login."""
+    return agents.get(login, login) if isinstance(login, str) else login
 
 
 def engagements_de(reg, utilisateur):
@@ -1917,7 +1975,10 @@ def verifier_registre(reg):
         donnees = {k: v for k, v in donnees.items() if k != "verdict"} if isinstance(donnees, dict) else donnees
         for probleme in problemes_textes(donnees, reg.rel(chemin)):
             ajouter(probleme)
+        for p in sorted({p for p in identity_values(donnees) if p in reg.agents}):  # ruche-0089: never a second person
+            ajouter(f"{reg.rel(chemin)} : {p} is an agent account ({AGENT_ACCOUNTS}) : a person is written by their own pseudo")
 
+    check_agent_accounts(reg, ajouter)
     verifier_agora_registre(reg, ajouter, selon_schema, instant_valide)
     verifier_invitations_registre(reg, ajouter, selon_schema, instant_valide)  # R13 (docs/croissance.md)
     verifier_arbre(reg, ajouter)  # l'arbre du sens (docs/arbre.md)
@@ -6704,6 +6765,13 @@ def lire_auteurs_pr(chemin):
     return auteurs
 
 
+def cmd_acts_for(args):
+    """ruche-0089: the person a GitHub login acts for in the registry read (the person of a declared agent account, else the
+    login itself), for integration-auto, which reads main. An unreadable declaration maps no one (fail closed)."""
+    print(person_of(Registre(args.registre).comptes_agents, args.login))
+    return 0
+
+
 def cmd_prs_declarees(args):
     """Adresses de PR déclarées par les contributions ajoutées ou modifiées entre base et tête (une par ligne, déjà
     validées par expression régulière) : fusion-auto relève l'auteur GitHub de chacune avant verifier-pr."""
@@ -8590,6 +8658,10 @@ def construire_analyseur():
                 "Liste les PR déclarées par les contributions ajoutées ou modifiées d'une PR du registre (utilisé par fusion-auto).")
     p.add_argument("--base", required=True)
     p.add_argument("--tete", default="HEAD")
+
+    p = ajouter("acts-for", cmd_acts_for, "Prints the person a GitHub login acts for: the person of its declared agent account "
+                                          "(gouvernance/comptes-agents.yaml), or the login itself (used by integration-auto).")
+    p.add_argument("login")
 
     p = ajouter("verifier-fork", cmd_verifier_fork, "Vérifie une branche de contribution sur un fork (R1, commandement 3, manifeste).")
     p.add_argument("--tache", required=True)
