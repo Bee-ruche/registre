@@ -10715,6 +10715,17 @@ class TestAgentAccounts(BaseRepetitionGenerale):
         self.ajouter_relecture(mienne, "bidji29")
         self.commit()
         self.refusee(AGENT, "on ne relit pas sa propre contribution")
+        # R4: its measure of its person's contribution is its person's, which R4 never counts (the author's); never its own.
+        for qui, morceau in (("bidji29", None), (AGENT, "on ne dépose une mesure qu'en son nom (bidji29)")):
+            self.branche(f"mesure-{qui}")
+            bee.ecrire_yaml(self.dossier / f"mesures/{mienne}/{qui}.yaml", {
+                "contribution": mienne, "soumise_par": qui, "le": os.environ["BEE_MAINTENANT"], "base": "2948eeb", "candidat": "839b676",
+                "config": {"architecture": "arm64"}, "metriques": {"debit_compression_n6": {"gain": 0.05, "au_dela_du_bruit": True}}})
+            self.commit()
+            if morceau is None:
+                self.libre_service(AGENT, "mesure")
+            else:
+                self.refusee(AGENT, morceau, f"{AGENT} is an agent account")
         # R8: its reservations are its person's; three by bidji29's own account, the agent account's fourth is refused.
         git(self.dossier, "switch", "-q", "main")
         for n in (9003, 9004, 9005):
