@@ -1,6 +1,6 @@
 # Juge commun : un juge isolé pour tous les projets (spécification)
 
-Statut : version 1 en service depuis le 28 octobre 2026, étiquette `juge-v1` (fusion décidée par le
+Statut : version 2 (next tag `juge-v2`, created by the council) ; version 1 en service depuis le 28 octobre 2026, étiquette `juge-v1` (fusion décidée par le
 conseil). Les forks y passent par les tâches miniz-0032 (après l'intégration de miniz-0031) et
 libyaml-0005 (après libyaml-0002).
 
@@ -37,7 +37,7 @@ lue par le juge commun **depuis la base de la PR** (jamais depuis la PR). Modèl
 | Élément | Rôle |
 | --- | --- |
 | `NOM`, `PAQUETS` | nom du projet ; paquets ajoutés à l'image commune (une ligne `RUN`, noms vérifiés) |
-| `SOURCES`, `SOURCES_REQUISES` | motifs glob des fichiers du projet copiés dans le conteneur et compilés (`miniz.c`, `src/*.c`…) ; tout lien symbolique est refusé ; le diff analysé est celui de ces mêmes motifs |
+| `SOURCES`, `SOURCES_REQUISES` | motifs glob des fichiers du projet copiés dans le conteneur et compilés (`miniz.c`, `src/*.c`…) ; tout lien symbolique est refusé ; the text analysis reads these same files, whole |
 | `OUTILLAGE`, `EN_TETES_BASE`, `CONSTRUIRE` | dossiers de la base montés sur `/outillage` ; en-têtes de la base copiés dans `/outillage/base/` (le harnais se compile avec eux) ; script de construction, qui doit produire `execution` et laisser **chaque objet du projet dans `obj/`**, un `obj/<nom>.o` par unité de traduction des `SOURCES` (`.c`, `.S`, `.cc`…), deux unités homonymes étant refusées (le juge s'arrête sinon) |
 | `PREFIXES`, `PERMIS` | espace de noms du projet (au moins un préfixe, chacun un mot terminé par `_` : `mz_`, `yaml_`) et fonctions externes permises en plus de la liste commune (64 au plus). Les fonctions qui servent à tromper la mesure (horloge, processus, environnement, signaux, appels système : `analyse.JAMAIS_PERMIS`) ne sont jamais permises et sont signalées par leur nom exact, avant toute exemption |
 | `COTES` | côtés d'entrées (`f`, `z`…) : un conteneur par côté, jamais deux côtés montés ensemble |
@@ -63,10 +63,14 @@ Règles de sûreté, vérifiées par le juge commun (revue adverse du 28/10) :
 - un harnais ne dimensionne jamais un tampon d'après le seul code jugé (borne connue du format, au minimum) ;
 - l'analyse des instructions ne couvre que x86-64 : sur une autre architecture, le juge le signale comme
   construction suspecte (un gardien relit) ;
-- le balayage du texte du diff (assembleur, en-têtes système, concaténation de jetons, lignes
-  recollées après `\`…) n'est qu'un filet : c'est l'analyse des objets qui voit le code réellement
-  produit. Une PR qui modifie `bee/juge/` est une tâche d'outillage : le registre
-le détecte et exige un gardien (R3).
+- what the object analysis covers: suspicious instructions (system calls, counter reads, processor identification,
+  Valgrind client requests…) are counted in the disassembly and, independently, in the executable bytes of every
+  object and of the linked program, read from the files at every offset, each hit compared with A's by its object
+  and surrounding bytes; undecodable bytes and writable and executable memory count too. A failure of `nm` or of
+  the disassembler stops the judge (refusal or error), and unreadable bytes make it incomplete: never complete;
+- the judged files (`SOURCES`) are scanned whole, each file of B against A's, line splices joined, without
+  git: only a net, the objects show the code produced. Une PR qui modifie `bee/juge/` est une tâche
+  d'outillage : le registre le détecte et exige un gardien (R3).
 
 ## Versions
 
@@ -78,7 +82,7 @@ le détecte et exige un gardien (R3).
 - Chaque fork épingle une version dans son workflow ; il monte de version par une PR (tâche
   d'outillage du fork), jugée par l'ancienne version et par la nouvelle.
 - `verdict.json` porte `juge.version` (entier : 2 pour le juge de minizBee de miniz-0031, 3 pour le
-  juge commun v1), `juge.commun` (« juge-v1 »), `juge.projet` et `juge.greffon` (empreinte SHA-256 du
+  juge commun v1 et v2), `juge.commun` (« juge-v1 », « juge-v2 »), `juge.projet` et `juge.greffon` (empreinte SHA-256 du
   greffon) : le registre sait par quel juge chaque verdict a été rendu, et peut exiger une version
   minimale (`bee.yaml`).
 

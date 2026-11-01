@@ -23,7 +23,7 @@ Usage :
   python3 outils/juge/juge.py --outillage BASE --image-seulement
   python3 outils/juge/juge.py --outillage BASE --source-a DOSSIER --source-b DOSSIER [--option CLE=VALEUR]…
                               [--repetitions 10] [--chauffe 1] [--sans-instructions] [--prefixe-instructions 131072]
-                              [--json juge.json] [--depot-diff DOSSIER --base REV --tete REV] [--graine HEX]
+                              [--json juge.json] [--graine HEX]
                               [--reseau-construction host]
   --outillage : copie de la BASE de la PR (son bee/juge/projet.py est le greffon)
   --source-a / --source-b : dépôts de la référence (A, la base) et de la candidate (B, la PR)
@@ -44,7 +44,6 @@ import re
 import secrets
 import shutil
 import stat
-import subprocess
 import sys
 import tempfile
 import time
@@ -58,8 +57,8 @@ import entrees as module_entrees  # noqa: E402
 import stats  # noqa: E402
 from lecture import Erreur, Refus, Sorties, exiger, journal, propre  # noqa: E402,F401
 
-VERSION_COMMUNE = 1   # étiquette juge-v1 du registre
-VERSION_JUGE = 3      # numérotation de verdict.json : 2 = juge de minizBee (miniz-0031), 3 = juge commun v1
+VERSION_COMMUNE = 2   # étiquette juge-v2 du registre
+VERSION_JUGE = 3      # numérotation de verdict.json : 2 = juge de minizBee (miniz-0031), 3 = juge commun (its tag in « commun »)
 CHEMIN_GREFFON = os.path.join("bee", "juge", "projet.py")
 ATTRIBUTS_REQUIS = ("NOM", "SOURCES", "SOURCES_REQUISES", "OUTILLAGE", "EN_TETES_BASE", "CONSTRUIRE",
                     "PREFIXES", "COTES", "SCENARIOS", "INSTRUCTIONS", "METRIQUES")
@@ -237,7 +236,19 @@ def construire(docker, projet, sources, outillage, sortie, etiquette, travail):
         if not any(ligne.startswith(o + ":") for ligne in releves["desassemblage"].splitlines()) or \
            not any(ligne.startswith(o + ":") for ligne in releves["sections"].splitlines()):
             raise Erreur(f"{etiquette} : {o} absent des relevés d'analyse : juge mal monté")
+    releves["objets"] = [(o, exiger(dossier_obj, o)) for o in objets]
+    releves["programme"] = [("execution", exiger(sortie, "execution"))]
     return releves
+
+
+def textes(dossier):
+    """The judged files of a variant (those copied from SOURCES), whole: {relative path: text} (latin-1 keeps every byte)."""
+    resultat = {}
+    for racine, _, noms in os.walk(dossier):
+        for n in noms:
+            with open(os.path.join(racine, n), encoding="latin-1") as f:
+                resultat[os.path.relpath(os.path.join(racine, n), dossier)] = f.read()
+    return resultat
 
 
 # ------------------------------------------------------------------ exécution
@@ -313,9 +324,6 @@ def main(argv=None):
     analyseur.add_argument("--prefixe-instructions", type=int, default=131072)
     analyseur.add_argument("--seuil-instructions", type=float, default=0.002)
     analyseur.add_argument("--json")
-    analyseur.add_argument("--depot-diff", help="clone git qui contient --base et --tete (diff des sources pour l'analyse)")
-    analyseur.add_argument("--base")
-    analyseur.add_argument("--tete")
     analyseur.add_argument("--graine", help="graine hexadécimale (reproduction locale) ; défaut : tirée au hasard")
     analyseur.add_argument("--reseau-construction", help="réseau de docker build (« host » sans pont Docker)")
     analyseur.add_argument("--memoire", default="4g")
@@ -347,12 +355,8 @@ def main(argv=None):
                    "B": construire(docker, projet, source_b, outils, constructions["B"], "B", travail)}
         journal("A et B compilés dans le conteneur")
 
-        diff = ""
-        if args.depot_diff and args.base and args.tete:
-            diff = subprocess.run(["git", "-C", args.depot_diff, "diff", "--no-color", "--no-ext-diff", "--no-textconv", "--unified=0",
-                                   f"{args.base}...{args.tete}", "--"] + list(projet.SOURCES),
-                                  capture_output=True, text=True, errors="replace").stdout
-        suspects = analyse.analyser(releves["A"], releves["B"], diff, prefixes=projet.PREFIXES, permis=getattr(projet, "PERMIS", ()))
+        suspects = analyse.analyser(releves["A"], releves["B"], textes(source_a), textes(source_b),
+                                    prefixes=projet.PREFIXES, permis=getattr(projet, "PERMIS", ()))
         architecture = platform.machine().lower()
         if architecture not in ARCHITECTURES_ANALYSEES:
             # analyse.py ne connaît que les instructions x86-64 : ailleurs, le désassemblage n'est pas analysé.
