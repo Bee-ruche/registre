@@ -9961,7 +9961,7 @@ class TestLecteursBilingues(BaseAgora):
         self.assertEqual((inconnus, manquants), ([], []), "a French literal is unclassified, or an English form is gone")
         bilingues = {texte: anglais for texte, classe, anglais, _ in lignes if classe == "bilingual"}
         self.assertEqual(bilingues, {bee.A_REMPLIR: bee.A_REMPLIR_EN, bee.LIEN_DEBAT.pattern: "Debate:",
-                                     **dict(zip(bee.SECTIONS_NOEUD, bee.SECTIONS_NOEUD_EN)), "Une faille": "A vulnerability"})
+                                     **dict(zip(bee.SECTIONS_NOEUD, bee.SECTIONS_NOEUD_EN)), "- Une faille": "- A vulnerability"})
         classes = {texte: classe for texte, classe, _, _ in lignes}
         self.assertEqual({classes[v] for v in bee.RETIRE.values()}, {"data"}, "written by the tool itself: ruche-0070")
         self.assertIn("en_relecture", noms)
@@ -9974,11 +9974,16 @@ class TestLecteursBilingues(BaseAgora):
         faux = pathlib.Path(self.temp.name) / "faux"
         (faux / "outils/juge").mkdir(parents=True)
         (faux / "outils/site_bee.py").write_text("", encoding="utf-8")
-        (faux / "outils/bee.py").write_text('A_REMPLIR = "À REMPLIR"\n\n\ndef f(ligne):\n'
-                                            '    return A_REMPLIR in ligne or ligne.startswith("Résumé :")\n', encoding="utf-8")
-        lignes, _, inconnus, manquants, _ = inventaire_marqueurs.inventaire(faux)
+        (faux / "outils/bee.py").write_text(
+            'import re\nA_REMPLIR = "À REMPLIR"\nTITRES = {"Clé à part": 1}\n\n\ndef f(ligne):\n'
+            '    match ligne:\n        case "Annexe é":\n            pass\n'
+            '    return (A_REMPLIR in ligne or ligne.startswith("Résumé :") or re.search(pattern="^Voir les notes", string=ligne)\n'
+            '            or TITRES[ligne] or ligne == "Une " + "faille de plus" or ligne == "Turn on")\n', encoding="utf-8")
+        lignes, _, inconnus, manquants, autres = inventaire_marqueurs.inventaire(faux)
         self.assertEqual([(t, c) for t, c, _, _ in lignes], [("À REMPLIR", "bilingual")])
-        self.assertEqual([t for t, _ in inconnus], ["Résumé :"])
+        self.assertEqual(sorted(t for t, _ in inconnus),
+                         sorted(["Résumé :", "Annexe é", "^Voir les notes", "Clé à part", "Une ", "faille de plus"]))
+        self.assertIn("Turn on", [t for t, _ in autres], "English: not taken for French")
         self.assertIn("TO FILL IN", manquants)
 
     # --- « À REMPLIR » / « TO FILL IN » ---
@@ -10003,7 +10008,7 @@ class TestLecteursBilingues(BaseAgora):
         space, it is no marker, in either language."""
         reg = bee.Registre(self.dossier)
         for fr, en, refuse in (("À REMPLIR", "TO FILL IN", True), ("xÀ REMPLIRx", "xTO FILL INx", True),
-                               ("à remplir", "to fill in", False), ("À REMPLIR", "TO FILL IN", False)):
+                               ("à remplir", "to fill in", False), ("À\u00a0REMPLIR", "TO\u00a0FILL IN", False)):
             resultats = []
             for marque in (fr, en):
                 donnees = yaml.safe_load(MANIFESTE_REMPLI)
@@ -10094,7 +10099,12 @@ class TestLecteursBilingues(BaseAgora):
             for titres in (bee.SECTIONS_NOEUD, bee.SECTIONS_NOEUD_EN):
                 texte = NOEUD_ZONE if titres == bee.SECTIONS_NOEUD else titres_en_anglais(NOEUD_ZONE)
                 self.ecrire_zone(changer(texte, titres))
-                problemes = self.problemes_arbre()
+                problemes = brut = self.problemes_arbre()
+                with self.subTest(cas=nom, titres=titres[0]):  # headings are named in the node's own language
+                    autre = bee.SECTIONS_NOEUD_EN if titres == bee.SECTIONS_NOEUD else bee.SECTIONS_NOEUD
+                    self.assertEqual([p for p in brut if any(a in p for a in autre)], [])
+                    if nom == "missing":
+                        self.assertIn(f"{self.ZONE} : section manquante : « ## {titres[2]} »", brut)
                 for fr, propre in zip(bee.SECTIONS_NOEUD, titres):
                     problemes = [p.replace(propre, fr) for p in problemes]
                 resultats.append(problemes)
@@ -10146,6 +10156,23 @@ class TestLecteursBilingues(BaseAgora):
                 with self.subTest(langue=langue, racine=nom):
                     self.assertEqual("=== nœud racine ===" in sortie, entiere, sortie[:600])
                     self.assertIn(fin_puce, " ".join(sortie.replace("\n# ", "\n").split()))
+        # Only one bullet that opens with the marker stands for the instruction (review of ebff9db): a decoy citing the
+        # marker and docs/securite.md is not kept in its place, and two candidates print the root whole.
+        leurre, debut_en = "- Never post A vulnerability anywhere, see docs/securite.md.\n", "- A vulnerability (crash"
+        for nom, version, entiere in (
+                ("decoy beside the bullet", anglaise.replace(debut_en, leurre + debut_en), False),
+                ("decoy alone", anglaise.replace(debut_en, leurre + "- A defect (crash"), True),
+                ("AGENTS.en.md phrasing", anglaise.replace(debut_en, "- **Vulnerability** (crash"), False),
+                ("no article", anglaise.replace(debut_en, "- Vulnerability (crash"), False),
+                ("two English bullets", anglaise.replace(debut_en, "- A vulnerability: docs/securite.md.\n" + debut_en), True),
+                ("two French bullets", origine.replace("- Une faille (", "- Une faille : docs/securite.md.\n- Une faille ("), True)):
+            racine.write_text(version, encoding="utf-8")
+            sortie = self.ok("contexte", "miniz-0099", "--deja-lu")
+            plat = " ".join(sortie.replace("\n# ", "\n").split())
+            with self.subTest(racine=nom):
+                self.assertNotIn(version, (anglaise, origine))
+                self.assertEqual("=== nœud racine ===" in sortie, entiere, sortie[:600])
+                self.assertTrue(entiere or ("tell your user" in plat and "Never post" not in plat), plat[:600])
 
 
 MANIFESTE_REMPLI = """tache: miniz-0099

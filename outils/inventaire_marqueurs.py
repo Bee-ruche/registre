@@ -5,12 +5,16 @@
 
 Reads outils/bee.py, outils/site_bee.py and outils/juge/*.py (tests excluded) with the ast module, and collects every
 string literal that text is compared against: operands of ==, !=, in and not in; the first argument of (or the literal
-calling) startswith, endswith, find, split, partition, replace, get…; patterns given to re; indexes; the iterable of a
-loop; and the literals of every module constant used there. Identifiers, paths and options (keys, statuses, values, file,
-folder and attribute names; subcommands) are names: ruche-0070 (ruche-0069 for commands). Every other literal that
-looks French (an accented letter or a French function word) must be classified below; exit code 1 if one is not, or if
-the English form of a bilingual marker is missing from the code. Limit: a French word with neither (« Enfants »,
-« Contre ») is not detected; those were found by reading the --all list and are classified by hand.
+calling) startswith, endswith, find, split, partition, replace, get…; patterns given to re.<function>, pattern= included;
+indexes, the constant indexed or the keys of a dict literal indexed; match/case values; the iterable of a loop; literals
+joined by +; and the literals of every module constant used there. Identifiers, paths and options (keys, statuses,
+values, file, folder and attribute names; subcommands) are names: ruche-0070 (ruche-0069 for commands). Every other
+literal that looks French (an accented letter or a French function word) must be classified below; exit code 1 if one
+is not, or if the English form of a bilingual marker is missing from the code.
+Limits: do not rely on it for what it cannot see. It misses a marker held in a local variable or a default parameter,
+built from variables, or given to a function imported from re (from re import search). It takes a lowercase single word
+or a token with a dot for a name. A literal with no accent and no French function word (« Enfants », « Contre ») goes
+unchecked into the --all list: those two were found there by hand.
 """
 import ast
 import pathlib
@@ -23,8 +27,8 @@ METHODES = {"startswith", "endswith", "find", "rfind", "index", "count", "split"
 FONCTIONS_RE = {"compile", "match", "search", "fullmatch", "findall", "finditer", "sub", "split"}
 # Identifiers, and paths, domains or options with no space: names (folder and file names are ruche-0070's too).
 NOM = re.compile(r"^(?:[a-z_][a-z0-9_-]*|[A-Z][A-Z0-9_]*|-[-a-z]+|[\w*<>{}~:@+-]*[./][\w./*<>{}~:@+-]*)$", re.ASCII)
-FRANCAIS = re.compile(r"[À-ÖØ-öø-ÿŒœ]|\b(?:le|la|les|de|des|du|une?|et|ou|ce|cette|qui|que|qu|ici|on|pour|par|sur|avec|"
-                      r"sans|dans|est|aux?|ne|pas|en|vous|son|sa|ses)\b", re.I)
+FRANCAIS = re.compile(r"[À-ÖØ-öø-ÿŒœ]|\b(?:le|la|les|de|des|du|une?|et|ou|ce|cette|qui|que|qu|ici|pour|sur|avec|"
+                      r"sans|dans|est|aux?|ne|pas|vous|son|sa|ses)\b", re.I)
 CLASSES = {
     "bilingual": "read in human-written text: the English form is now accepted beside the French one",
     "already": "already bilingual: the check holds a French and an English form",
@@ -37,7 +41,7 @@ PAR_TEXTE = {
     "Pourquoi cette branche existe": ("bilingual", "Why this branch exists"),
     "Ce qui compte ici": ("bilingual", "What matters here"),
     "Ce qu'on peut ignorer ici": ("bilingual", "What you can ignore here"),
-    "Enfants": ("bilingual", "Children"), "Une faille": ("bilingual", "A vulnerability"),
+    "Enfants": ("bilingual", "Children"), "- Une faille": ("bilingual", "- A vulnerability"),
     # Personal-data detectors (R13): French and English forms side by side.
     r"\b[\w.+-]+\s+(?:at|arobase)": "already", r"(?i)\s*[(\[{<]\s*(?:at|arobase)": "already",
     r"(?i)\s*[(\[{<]\s*(?:dot|point)": "already", r"(?i)(@[\w-]+(?:\.[\w-]+)*)\s*(?:\.|\bdot": "already",
@@ -54,14 +58,14 @@ PAR_CONSTANTE = {
     "RETIRE": "data", "POIDS_VOTE": "data", "TAILLES_PAR_NIVEAU": "data",
     "TYPES_JSON": "message", "FICHIERS_LIBRE_SERVICE": "message", "SUITE_INVITATION": "message", "ATTENTE_VERDICT": "message",
     "MNEMONIQUES_SUSPECTS": "message", "MOTS_SOURCE": "message", "ETATS": "message", "STATUTS_CONTRIBUTION": "message",
-    "POSITIONS_DEBAT": "message", "ISSUES_DEBAT": "message",
+    "POSITIONS_DEBAT": "message", "ISSUES_DEBAT": "message", "SECTIONS_COURTES": "message", "MOIS": "message",
 }
 
 
 def litteraux(n):
     if isinstance(n, ast.Constant) and isinstance(n.value, str):
         yield n
-    elif isinstance(n, (ast.Tuple, ast.List, ast.Set, ast.Dict, ast.JoinedStr, ast.FormattedValue, ast.Call)):
+    elif isinstance(n, (ast.Tuple, ast.List, ast.Set, ast.Dict, ast.JoinedStr, ast.FormattedValue, ast.Call, ast.BinOp)):
         for e in ast.iter_child_nodes(n):
             if not isinstance(e, (ast.Name, ast.Attribute)):
                 yield from litteraux(e)
@@ -73,9 +77,11 @@ def operandes(n):
         return [n.left] + n.comparators
     if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute):
         if isinstance(n.func.value, ast.Name) and n.func.value.id == "re" and n.func.attr in FONCTIONS_RE:
-            return n.args[:1]
+            return n.args[:1] + [k.value for k in n.keywords if k.arg == "pattern"]
         return n.args[:1] + [n.func.value] if n.func.attr in METHODES else []
-    return [n.slice] if isinstance(n, ast.Subscript) else [n.iter] if isinstance(n, (ast.For, ast.comprehension)) else []
+    if isinstance(n, ast.Subscript):  # an indexed dict literal compares its keys; an indexed constant, all of it
+        return [n.slice] + ([k for k in n.value.keys if k] if isinstance(n.value, ast.Dict) else [n.value])
+    return [n.iter] if isinstance(n, (ast.For, ast.comprehension)) else [n.value] if isinstance(n, ast.MatchValue) else []
 
 
 def inventaire(racine=RACINE):
