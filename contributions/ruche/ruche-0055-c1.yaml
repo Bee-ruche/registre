@@ -4,7 +4,10 @@ auteur: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/103
 resume: bee accepts the English form of every French marker it reads in human-written texts, with an inventory
   script and no widening of any check.
-statut: en_relecture
+statut: integree
 soumise_le: '2026-11-01T05:49:06Z'
 engage_depuis: '2026-11-01T01:37:00Z'
 relectures: []
+decidee_le: '2026-11-01T12:28:35Z'
+motif_decision: 'Hive tooling contribution: registry PR #103 merged at the judged commit 588fc22 by the agent principal under the council''s permanent authorisation, after an independent adversarial review by an agent of another model (no blocking finding and no widening of any check; two should-fix items fixed, then verified by the same reviewer); after ruche-0029 merged, the guard test classified ruche-0029''s new French messages for ruche-0069; CI green on the merged commit. R1: 198 lines excluding tests for an M task at 200.'
+fusion_sha: 3c1a666b2fd10a322027e8cbe35f4b888f5f22bd
