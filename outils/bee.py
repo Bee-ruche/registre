@@ -664,6 +664,23 @@ def engagements_de(reg, utilisateur):
     return resultat
 
 
+def r8_maximum(reg, utilisateur, taches, instant):
+    """R8, one rule for bee prendre, bee valider and the gate: the most engagements `utilisateur` may hold with `taches` (ids), all counted.
+    ruche-0096: if `instant` (a new engagement's; in bee valider, the latest one's) is before r8_amorcage.jusqu_au (UTC), a council member
+    whose engagements are ALL on ruche tasks created by the council (while no member is named conseil) may hold r8_amorcage.max."""
+    usuel = int(reg.config.get("reservations_max_par_utilisateur", 3))
+    reglage = reg.config.get("r8_amorcage")
+    try:
+        maximum, fin = reglage["max"], lire_instant(reglage["jusqu_au"], "r8_amorcage")
+    except (ErreurBee, KeyError, TypeError):
+        return usuel  # fails closed
+    outillage = [reg.taches.get(tid, (None, None))[1] for tid in taches]
+    if type(maximum) is int and instant < fin and utilisateur in reg.conseil and "conseil" not in Pseudos(reg.membres) and all(
+            isinstance(t, dict) and t.get("categorie") == "ruche" and t.get("cree_par") == "conseil" for t in outillage):
+        return max(maximum, usuel)
+    return usuel
+
+
 def engagement_expire(reg, depuis, instant):
     """R7 : une réservation ou une inscription en parallèle sans contribution prend fin après reservation_max_heures."""
     debut = _instant_ou_rien(depuis)
@@ -1830,7 +1847,7 @@ def verifier_registre(reg):
                 ajouter(f"{lieu} : dépend de la tâche inconnue « {dep} »")
         if "reservation" in tache:
             instant_valide(chemin, tache["reservation"]["depuis"], "reservation.depuis")
-            reservations[tache["reservation"]["utilisateur"]].append(tache["id"])
+            reservations[tache["reservation"]["utilisateur"]].append((tache["id"], "", tache["reservation"]["depuis"]))
             if tache["reservation"]["utilisateur"] not in reg.membres and tache["reservation"]["utilisateur"] not in reg.conseil:
                 ajouter(f"{lieu} : réservée par « {tache['reservation']['utilisateur']} », qui n'est pas inscrit")
         # Travail en parallèle (R11) : chacun une fois, jamais le titulaire, jamais l'auteur d'une contribution en course.
@@ -1839,7 +1856,7 @@ def verifier_registre(reg):
         for i, p in enumerate(tache.get("paralleles") or []):
             qui = p["utilisateur"]
             instant_valide(chemin, p["depuis"], f"paralleles/{i}/depuis")
-            reservations[qui].append(f"{tache['id']} (en parallèle)")
+            reservations[qui].append((tache["id"], " (en parallèle)", p["depuis"]))
             if qui not in reg.membres and qui not in reg.conseil:
                 ajouter(f"{lieu} : paralleles/{i} : « {qui} » n'est pas inscrit")
             if qui in vus_paralleles:
@@ -1865,10 +1882,10 @@ def verifier_registre(reg):
         for i, note in enumerate(tache.get("notes") or []):
             instant_valide(chemin, note["le"], f"notes/{i}/le")
 
-    maximum = int(reg.config.get("reservations_max_par_utilisateur", 3))
     for pseudo, ids in sorted(reservations.items()):
-        if len(ids) > maximum:
-            ajouter(f"règle R8 : {pseudo} a {len(ids)} réservations ou inscriptions en parallèle ({', '.join(ids)}), maximum {maximum}")
+        quand = max(_instant_ou_rien(d) or FUTUR_LOINTAIN for _, _, d in ids)  # ruche-0096: the latest engagement's, never the clock
+        if len(ids) > (maximum := r8_maximum(reg, pseudo, [tid for tid, _, _ in ids], quand)):
+            ajouter(f"règle R8 : {pseudo} a {len(ids)} réservations ou inscriptions en parallèle ({', '.join(t + g for t, g, _ in ids)}), maximum {maximum}")
 
     prs = {}  # ruche-0041: canonical PR -> the first contribution that declares it
     for stem, (chemin, enr) in reg.enregistrements.items():
@@ -5180,6 +5197,10 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
             exiger(n <= conf_notes["max_par_24h"],
                    f"plafond : {auteur} aurait {n} notes en 24 h toutes tâches confondues (depuis le {en_iso(debut)}), au plus "
                    f"{conf_notes['max_par_24h']} sur 24 h glissantes (notes.max_par_24h)")
+    if {"reservation", "inscription_parallele"} & set(natures):  # ruche-0096: a new engagement takes the cap at the PR's instant;
+        m = r8_maximum(reg, auteur, tids := [tid for tid, _ in engagements_de(reg, auteur)], instant)  # said here when only the end refuses
+        exiger(not m < len(tids) <= r8_maximum(reg, auteur, tids, PASSE), f"règle R8 : {auteur} prend un engagement après la fin de "
+               f"r8_amorcage : {len(tids)} réservations ou inscriptions en parallèle, maximum {m} (un nouvel engagement se juge à l'heure de la PR)")
     # L'arbre du sens (ruche-0010) : aucun commentaire YAML ajouté au libre-service, et un noeud introduit qui existe.
     refus_arbre, natures_arbre = verifier_pr_arbre(reg, base, tete, changements, liens, est_conseil)
     problemes += refus_arbre
@@ -5589,10 +5610,10 @@ def exiger_reprise_permise(reg, chemin, tache, utilisateur):
         raise ErreurBee(refus)
 
 
-def exiger_r8(reg, utilisateur):
+def exiger_r8(reg, utilisateur, tache):
     """R8 : réservations et inscriptions en parallèle comptent ensemble, tous agents confondus."""
     deja = engagements_de(reg, utilisateur)
-    maximum = int(reg.config.get("reservations_max_par_utilisateur", 3))
+    maximum = r8_maximum(reg, utilisateur, [tid for tid, _ in deja] + [tache], maintenant())
     if len(deja) >= maximum:
         liste = ", ".join(tid + (" (en parallèle)" if genre == "en parallèle" else "") for tid, genre in deja)
         raise ErreurBee(f"règle R8 : {utilisateur} a déjà {len(deja)} réservations ou inscriptions en parallèle ({liste}), maximum {maximum}")
@@ -5626,7 +5647,7 @@ def prendre_en_parallele(reg, args, chemin, t):
         niveau = niveau_de(calculer_niveaux(reg), u)
         if t["taille"] not in TAILLES_PAR_NIVEAU[niveau] or (t["type"] == "decoupage" and niveau != "Confirmé"):
             raise ErreurBee(f"{args.tache} ({t['type']}, {t['taille']}) n'est pas accessible au niveau {niveau} (docs/reputation.md)")
-    exiger_r8(reg, u)
+    exiger_r8(reg, u, args.tache)
     modifier_tache(chemin, paralleles=paralleles + [{"utilisateur": u, "depuis": en_iso(maintenant())}])
     heures = reg.config.get("reservation_max_heures", 72)
     print(f"✓ {u} inscrit en parallèle sur {args.tache}" + (f" (titulaire : {titulaire}, dont la réservation ne change pas)." if titulaire else "."))
@@ -5661,7 +5682,7 @@ def cmd_prendre(args):
         niveau = niveau_de(calculer_niveaux(reg), args.utilisateur)
         if t["taille"] not in TAILLES_PAR_NIVEAU[niveau] or (t["type"] == "decoupage" and niveau != "Confirmé"):
             raise ErreurBee(f"{args.tache} ({t['type']}, {t['taille']}) n'est pas accessible au niveau {niveau} (docs/reputation.md)")
-    exiger_r8(reg, args.utilisateur)
+    exiger_r8(reg, args.utilisateur, args.tache)
     modifier_tache(chemin, statut="reservee", reservation={"utilisateur": args.utilisateur, "depuis": en_iso(maintenant())})
     heures = reg.config.get("reservation_max_heures", 72)
     print(f"✓ {args.tache} réservée pour {args.utilisateur} ({heures} h maximum, règle R7).")
@@ -6896,6 +6917,37 @@ def cmd_verifier_pr(args):
             return 0
         print("FUSION_AUTO=non (relecture humaine requise)")
         return 3
+    return 0
+
+
+def ci_scope(racine, base, tete):
+    """What the registry CI runs for a PR (validation.yml, ruche-0090): ("data", None) if base...tete only adds or modifies
+    regular files that the self-service gate accepts, each in its place (FICHIERS_LIBRE_SERVICE, CHEMIN_DEBAT), else
+    ("full", reason). Fails closed: any other path, status or mode (deletion, rename, symlink, executable), an empty or
+    unexpected diff, any error."""
+    try:
+        sortie = subprocess.run(["git", "-C", str(racine), "diff", "--raw", "-z", "--no-renames", "--no-abbrev", f"{base}...{tete}"],
+                                capture_output=True, check=True).stdout.decode("utf-8")
+        champs = sortie.split("\0")
+        if champs.pop() != "" or not champs or len(champs) % 2:
+            return "full", "no change, or a diff git did not write as expected"
+        for meta, chemin in zip(champs[::2], champs[1::2]):
+            ancien, nouveau, _, _, statut = meta.removeprefix(":").split(" ") if meta.startswith(":") else [None] * 5
+            dossier = chemin.split("/")[0]
+            motif = CHEMIN_DEBAT if dossier == "debats" else FICHIERS_LIBRE_SERVICE.get(dossier, ("", None))[1]
+            if (statut, ancien, nouveau) not in (("A", "000000", "100644"), ("M", "100644", "100644")) \
+                    or not (motif and motif.fullmatch(chemin)):
+                return "full", f"{statut} {ancien} {nouveau} {chemin!r}"
+        return "data", None
+    except Exception as e:  # noqa: BLE001 - whatever goes wrong, the full suite runs
+        return "full", f"{type(e).__name__}: {e}"
+
+
+def cmd_ci_scope(args):
+    portee, raison = ci_scope(args.registre or os.environ.get("BEE_REGISTRE") or RACINE_OUTIL, args.base, args.tete)
+    print(portee)
+    if raison:
+        print(f"full suite: {raison}", file=sys.stderr)
     return 0
 
 
@@ -8762,6 +8814,11 @@ def construire_analyseur():
 
     p = ajouter("prs-declarees", cmd_prs_declarees,
                 "Liste les PR déclarées par les contributions ajoutées ou modifiées d'une PR du registre (utilisé par fusion-auto).")
+    p.add_argument("--base", required=True)
+    p.add_argument("--tete", default="HEAD")
+
+    p = ajouter("ci-scope", cmd_ci_scope, "Prints 'data' if a registry PR only adds or modifies self-service data files, "
+                                          "else 'full' (the full test suite runs; used by validation.yml).")
     p.add_argument("--base", required=True)
     p.add_argument("--tete", default="HEAD")
 

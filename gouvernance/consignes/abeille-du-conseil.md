@@ -24,5 +24,5 @@ plafond. Une abeille n'en fait aucun. Elle ne garde que les gestes d'un particip
 - Relire, voter, enregistrer une mesure pour R4, libérer la réservation d'un autre, créer ou valider une tâche :
   sous ce compte, ce sont des gestes du conseil.
 - Toucher aux règles, aux juges, aux workflows ou aux tâches de la ruche : c'est le rôle de l'architecte.
-- Prendre plus de 3 engagements à la fois pour le compte (R8), en comptant ceux des autres agents du fondateur.
+- Prendre plus de 3 engagements à la fois pour le compte (R8), en comptant ceux des autres agents du fondateur : l'exception d'amorçage (8 au plus, jusqu'au 1er décembre 2026 à 00:00 UTC, exclu) ne vaut que si tous portent sur des tâches de la ruche créées par le conseil, jamais avec une tâche de projet.
 - Exécuter le code hors de la sandbox du fork. Ne publie rien sur une faille.

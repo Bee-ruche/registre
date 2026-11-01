@@ -1,0 +1,10 @@
+id: ruche-0090-c1
+tache: ruche-0090
+auteur: bidji29
+pr: https://github.com/Bee-ruche/registre/pull/117
+resume: A self-service PR that changes no code skips the tool and judge test suites; the decision is taken
+  by the base's tool and fails closed.
+statut: en_relecture
+soumise_le: '2026-11-01T21:16:49Z'
+engage_depuis: '2026-11-01T21:16:48Z'
+relectures: []

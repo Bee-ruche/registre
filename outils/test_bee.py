@@ -82,6 +82,72 @@ def git(depot, *arguments):
     return subprocess.run(["git", "-C", str(depot), *arguments], check=True, capture_output=True, text=True).stdout
 
 
+# ruche-0090: the only tests that may read the live registry's data (its self-service folders). validation.yml runs exactly
+# these on a data-only PR, and skips the rest of the suite (TestCiScope checks the workflow against this list).
+TESTS_REGISTRE_REEL = ("TestRegistreReel", "TestRegistre.test_le_registre_livre_est_valide",
+                       "TestArbre.test_chemins_livres_tiennent_dans_un_budget_court")
+DOSSIERS_REELS = tuple(os.path.join(str(RACINE), d) + os.sep for d in DONNEES_REGISTRE)
+
+
+def chemins_lus(evenement, arguments):
+    """Absolute paths an audit event reads: an opened or listed path; for a subprocess, its working directory and its
+    arguments as paths (relative ones from that directory, after git's -C). None when the event cannot be resolved."""
+    if evenement == "subprocess.Popen":
+        _, argv, cwd, _ = arguments
+        argv = [argv] if isinstance(argv, (str, bytes, os.PathLike)) else list(argv or ())
+        ici = os.path.join(os.getcwd(), os.fsdecode(cwd)) if cwd is not None else os.getcwd()
+        chemins, mots = [ici], iter([os.fsdecode(a) for a in argv[1:] if isinstance(a, (str, bytes, os.PathLike))])
+        est_git = bool(argv) and os.path.basename(os.fsdecode(argv[0])) == "git"
+        for mot in mots:
+            if mot == "-C" and est_git:
+                ici = os.path.join(ici, next(mots, ""))
+                chemins.append(ici)
+            elif not mot.startswith("-"):
+                chemins.append(os.path.join(ici, mot))
+        return [os.path.normpath(c) for c in chemins]
+    if evenement not in ("open", "os.scandir", "os.listdir") or not arguments:
+        return None
+    chemin = os.fsdecode(arguments[0])
+    if evenement == "open" and arguments[1:2] == (None,) and not os.path.isabs(chemin) and os.sep not in chemin:
+        return None  # os.open of a bare name: maybe relative to a dir_fd the event does not give (shutil.rmtree)
+    return [os.path.normpath(chemin if os.path.isabs(chemin) else os.path.join(os.getcwd(), chemin))]
+
+
+def garde_donnees_reelles(evenement, arguments):
+    """Audit hook, installed once below: a test outside TESTS_REGISTRE_REEL that opens or lists a path in the live
+    registry's data folders, or starts a subprocess there or naming such a path, fails, however the path was built (bee
+    run without --registre, an alias of RACINE, rglob, a copy, cat, git -C). Not seen: a read outside a test's frames
+    (setUpClass, import time, another thread), through a symlink to the repository, by a bare stat (exists, is_file) or
+    a bare-named os.open, or by a subprocess that does not name the path (a shell script's text, bee run from the
+    repository without --registre, an environment variable)."""
+    if evenement not in ("open", "os.scandir", "os.listdir", "subprocess.Popen"):
+        return
+    try:
+        chemins = chemins_lus(evenement, arguments) or ()
+    except (TypeError, ValueError, OSError):  # a file descriptor, None, a deleted working directory
+        return
+    chemin = next((c for c in chemins if (c + os.sep).startswith(DOSSIERS_REELS)), None)
+    if chemin is None:
+        return
+    cadre = sys._getframe(1)
+    while cadre is not None and not isinstance(cadre.f_locals.get("self"), unittest.TestCase):
+        cadre = cadre.f_back
+    if cadre is None:
+        return  # outside a test (test discovery, another thread)
+    test = cadre.f_locals["self"]
+    permis = {(globals().get(c), m) for c, _, m in (n.partition(".") for n in TESTS_REGISTRE_REEL)}
+    if (type(test), "") in permis or (type(test), test._testMethodName) in permis:
+        return
+    lectures = test.__dict__.setdefault("_lectures_reelles", [])
+    if not lectures:
+        test.addCleanup(lambda: test.fail(f"reads the live registry's data ({', '.join(lectures[:3])}): only TESTS_REGISTRE_REEL "
+                                          "may, the tests validation.yml still runs on a data-only PR; use the frozen fixture"))
+    lectures.append(os.path.relpath(chemin, RACINE))
+
+
+sys.addaudithook(garde_donnees_reelles)
+
+
 class TestRegistreReel(unittest.TestCase):
     """ruche-0093 : les commandes de lecture tiennent sur le registre réel, tel qu'il est (les autres tests lisent le jeu figé)."""
 
@@ -126,6 +192,278 @@ class TestWorkflows(unittest.TestCase):
                 donnees = yaml.safe_load(f.read_text(encoding="utf-8"))
                 self.assertIsInstance(donnees, dict)
                 self.assertIn("jobs", donnees)
+
+
+class TestCiScope(unittest.TestCase):
+    """ruche-0090: a registry PR that only adds or modifies self-service data files skips the tool and judge test suites
+    (bee ci-scope, decided by the base's tool in validation.yml); anything else runs the full suite (fails closed)."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.depot = pathlib.Path(self.temp.name) / "depot"
+        self.depot.mkdir()
+        git(self.depot, "init", "-q", "-b", "main")
+        self.ecrire("outils/bee.py", (RACINE / "outils" / "bee.py").read_text(encoding="utf-8"))
+        self.ecrire("taches/miniz/miniz-0001.yaml")
+        self.ecrire("README.md")
+        self.base = self.commit()
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def ecrire(self, chemin, texte="id: x\n"):
+        fichier = self.depot / chemin
+        fichier.parent.mkdir(parents=True, exist_ok=True)
+        fichier.write_text(texte, encoding="utf-8")
+
+    def commit(self):
+        git(self.depot, "add", "-A")
+        git(self.depot, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "c", "--allow-empty")
+        return git(self.depot, "rev-parse", "HEAD").strip()
+
+    def portee(self):
+        return bee.ci_scope(self.depot, self.base, self.commit())
+
+    def test_data_only(self):
+        for chemin in ("membres/alice.yaml", "taches/miniz/miniz-0001.yaml", "taches/miniz/miniz-0002.yaml",
+                       "contributions/miniz/miniz-0001-c1.yaml", "votes/miniz-0001-c1/bruno.yaml", "votes/P-0001/bruno.yaml",
+                       "mesures/miniz-0001-c1/chloe.yaml", "propositions/P-0001.yaml", "debats/D-0001.yaml",
+                       "invitations/I-0001.yaml", "invitations/ne-plus-contacter.yaml"):
+            self.ecrire(chemin, "id: y\n")
+        self.assertEqual(self.portee(), ("data", None))
+        self.assertEqual(lancer("--registre", str(self.depot), "ci-scope", "--base", self.base), (0, "data\n"))
+
+    def test_anything_else_runs_the_full_suite(self):
+        lien = lambda chemin: os.symlink("../README.md", self.depot / chemin)  # noqa: E731
+        sha = git(self.depot, "rev-parse", "HEAD").strip()
+        cas = {
+            "code": lambda: self.ecrire("outils/bee.py", "print('data')\n"),
+            "workflow": lambda: self.ecrire(".github/workflows/x.yml"),
+            "root file": lambda: self.ecrire("README.md", "y\n"),
+            "frozen fixture": lambda: self.ecrire("outils/tests/registre/taches/miniz/miniz-0001.yaml"),
+            "unknown top-level folder": lambda: self.ecrire("Taches/miniz/miniz-0001.yaml"),
+            "data and code": lambda: (self.ecrire("membres/alice.yaml"), self.ecrire("bee.yaml")),
+            "deletion": lambda: git(self.depot, "rm", "-q", "taches/miniz/miniz-0001.yaml"),
+            "rename": lambda: git(self.depot, "mv", "taches/miniz/miniz-0001.yaml", "taches/miniz/miniz-0002.yaml"),
+            "mode change": lambda: (self.depot / "taches/miniz/miniz-0001.yaml").chmod(0o755),
+            "executable added": lambda: (self.ecrire("membres/alice.yaml"), (self.depot / "membres/alice.yaml").chmod(0o755)),
+            "symlink": lambda: ((self.depot / "membres").mkdir(), lien("membres/alice.yaml")),
+            "typechange": lambda: ((self.depot / "taches/miniz/miniz-0001.yaml").unlink(), lien("taches/miniz/miniz-0001.yaml")),
+            "gitlink": lambda: git(self.depot, "update-index", "--add", "--cacheinfo", f"160000,{sha},membres/alice.yaml"),
+            "other extension": lambda: self.ecrire("taches/miniz/notes.txt"),
+            "subfolder": lambda: self.ecrire("membres/sous/alice.yaml"),
+            "suffix": lambda: self.ecrire("debats/D-0001.yaml.py"),
+            "newline in the name": lambda: self.ecrire("membres/alice.yaml\n"),
+            "not UTF-8": lambda: self.ecrire(os.fsdecode(b"membres/\xff.yaml")),
+            "no change": lambda: None,
+        }
+        for nom, changer in cas.items():
+            with self.subTest(cas=nom):
+                git(self.depot, "reset", "-q", "--hard", self.base)
+                git(self.depot, "clean", "-qfdx")
+                changer()
+                if nom != "gitlink":
+                    git(self.depot, "add", "-A")
+                git(self.depot, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "c", "--allow-empty")
+                portee, raison = bee.ci_scope(self.depot, self.base, "HEAD")
+                self.assertEqual(portee, "full")
+                self.assertTrue(raison)
+        self.assertEqual(bee.ci_scope(self.depot, "0" * 40, "HEAD")[0], "full", "unknown base")
+        self.assertEqual(bee.ci_scope(self.temp.name, self.base, "HEAD")[0], "full", "not a repository")
+        code, sortie = lancer("--registre", str(self.depot), "ci-scope", "--base", "0" * 40)
+        self.assertEqual((code, sortie.splitlines()[0]), (0, "full"))
+
+    @staticmethod
+    def etapes():
+        """validation.yml's steps, and those this test names by role (a renamed step fails here: follow it)."""
+        etapes = yaml.safe_load((RACINE / ".github/workflows/validation.yml").read_text(encoding="utf-8"))["jobs"]["valider"]["steps"]
+        nom = lambda debut: next(s for s in etapes if s.get("name", "").startswith(debut))  # noqa: E731
+        return etapes, {"portee": nom("Scope of the PR"), "outil": nom("Tests de l'outil"), "juge": nom("Tests unitaires du juge"),
+                        "reel": nom("Tests that read the live registry"), "valider": nom("Validation complète"),
+                        "regles": nom("Règles de la pull request")}
+
+    def rejouer(self, script, env, cwd=None):
+        """Runs a step's script as Actions does by default (bash -e), with this interpreter as python3 and a stub gh that
+        logs its arguments and prints $FAUX_GH (fails if it is « error »)."""
+        dossier = pathlib.Path(tempfile.mkdtemp(dir=self.temp.name))
+        (dossier / "bin").mkdir()
+        (dossier / "bin/python3").write_text(f'#!/bin/sh\nexec "{sys.executable}" "$@"\n', encoding="utf-8")
+        (dossier / "bin/gh").write_text('#!/bin/sh\necho "$@" >> "$RUNNER_TEMP/gh.log"\n[ "$FAUX_GH" != error ] || exit 1\n'
+                                        'echo "$FAUX_GH"\n', encoding="utf-8")
+        for f in (dossier / "bin").iterdir():
+            f.chmod(0o755)
+        (dossier / "etape.sh").write_text(script, encoding="utf-8")
+        tout = {k: v for k, v in os.environ.items() if k != "BEE_REGISTRE"}
+        tout.update(PATH=f"{dossier / 'bin'}{os.pathsep}{os.environ['PATH']}", RUNNER_TEMP=str(dossier),
+                    GITHUB_OUTPUT=str(dossier / "sortie"), GITHUB_REPOSITORY="Bee-ruche/registre", GH_TOKEN="x", **env)
+        r = subprocess.run(["bash", "-e", str(dossier / "etape.sh")], cwd=cwd or self.depot, env=tout, capture_output=True, text=True)
+        lire = lambda nom: (dossier / nom).read_text(encoding="utf-8") if (dossier / nom).exists() else ""  # noqa: E731
+        return r, dict(l.split("=", 1) for l in lire("sortie").splitlines()), lire("gh.log")
+
+    def test_workflow_step_asks_the_base_tool_and_main_and_fails_closed(self):
+        """Replays validation.yml's scope step on a merge commit like GitHub's (first parent: the base)."""
+        script = self.etapes()[1]["portee"]["run"]
+
+        def etape(pr, outil_base=None, main="success"):
+            git(self.depot, "checkout", "-q", "main")
+            if outil_base == "absent":
+                git(self.depot, "rm", "-q", "outils/bee.py")
+            elif outil_base:
+                self.ecrire("outils/bee.py", outil_base)
+            base = self.commit()
+            git(self.depot, "checkout", "-q", "-b", f"pr-{len(etapes)}")
+            pr()
+            self.commit()
+            git(self.depot, "checkout", "-q", "--detach", base)
+            git(self.depot, "-c", "user.name=t", "-c", "user.email=t@t", "merge", "-q", "--no-ff", "--no-edit", f"pr-{len(etapes)}")
+            r, sorties, appels = self.rejouer(script, {"BASE_EVENEMENT": "0" * 40, "FAUX_GH": main})
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertEqual(sorties["base"], base)
+            self.assertIn(sorties["portee"], ("data", "full"))
+            etapes.append(sorties["portee"])
+            return appels
+
+        etapes = []
+        appels = etape(lambda: self.ecrire("membres/alice.yaml"))
+        requete = appels.split()[1]
+        self.assertTrue(requete.startswith("repos/Bee-ruche/registre/actions/workflows/validation.yml/runs?"), appels)
+        self.assertLessEqual({"branch=main", "event=push", "status=completed"}, set(requete.split("?", 1)[1].split("&")))
+        etape(lambda: self.ecrire("outils/bee.py", "print('data')\n"))  # the PR's own tool never decides
+        etape(lambda: self.ecrire("membres/bruno.yaml"), main="failure")  # a red main: every PR runs the full suite
+        etape(lambda: self.ecrire("membres/bruno.yaml"), main="error")  # main's last run unreadable
+        etape(lambda: self.ecrire("membres/bruno.yaml"), main="")
+        etape(lambda: self.ecrire("membres/bruno.yaml"), outil_base="print('data')\nraise SystemExit(2)\n")
+        etape(lambda: self.ecrire("membres/chloe.yaml"), outil_base="print('data ')\n")
+        etape(lambda: self.ecrire("membres/chloe.yaml"), outil_base="absent")
+        self.assertEqual(etapes, ["data"] + ["full"] * 7)
+        # No merge commit and no event base: the step fails before any tool runs (git show ":path" would read the index).
+        git(self.depot, "checkout", "-q", "main")
+        r, sorties, appels = self.rejouer(script, {"BASE_EVENEMENT": "", "FAUX_GH": "success"})
+        self.assertNotEqual(r.returncode, 0)
+        self.assertEqual((sorties, appels), ({}, ""))
+
+    @staticmethod
+    def tourne(etape, evenement, portee):
+        """Whether a step runs: evaluates only the `if:` shapes validation.yml uses (GitHub compares strings ignoring case);
+        any other shape fails the test, to be added here knowingly."""
+        condition = etape.get("if")
+        if condition is None:
+            return True
+        forme = re.fullmatch(r"(github\.event_name|steps\.portee\.outputs\.portee) (==|!=) '([a-z_]+)'", str(condition).strip())
+        if not isinstance(condition, str) or not forme:
+            raise AssertionError(f"{etape.get('name')}: unknown if: {condition!r}")
+        valeur = evenement if forme[1] == "github.event_name" else (portee or "")
+        return (valeur.lower() == forme[3]) == (forme[2] == "==")
+
+    def test_wiring_of_each_step(self):
+        """S1 (review): which steps run, for each event and each output of the scope step; the PR rules take the scope
+        step's base, and stop on an empty one."""
+        etapes, roles = self.etapes()
+        for evenement in ("push", "pull_request"):
+            for sortie in (None, "", "full", "data", "garbage", "DATA"):
+                portee = sortie if self.tourne(roles["portee"], evenement, None) else None
+                donnees = evenement == "pull_request" and str(portee).lower() == "data"
+                attendu = {id(roles["portee"]): evenement == "pull_request", id(roles["regles"]): evenement == "pull_request",
+                           id(roles["outil"]): not donnees, id(roles["juge"]): not donnees, id(roles["reel"]): donnees}
+                for etape in etapes:  # every other step, « Validation complète » included, always runs
+                    with self.subTest(evenement=evenement, portee=sortie, etape=etape.get("name") or etape.get("uses")):
+                        self.assertEqual(self.tourne(etape, evenement, portee), attendu.get(id(etape), True))
+        flux = yaml.safe_load((RACINE / ".github/workflows/validation.yml").read_text(encoding="utf-8"))
+        self.assertEqual(flux["permissions"], {"contents": "read", "actions": "read"})
+        self.assertEqual(roles["portee"]["env"]["GH_TOKEN"], "${{ github.token }}")
+        self.assertIn("main=$(timeout 60 gh api ", roles["portee"]["run"])  # the stub gh ignores --jq: the expression is read here
+        self.assertIn("--jq '.workflow_runs[0].conclusion') || main=unknown", roles["portee"]["run"])
+        self.assertEqual(roles["regles"]["env"]["BASE"], "${{ steps.portee.outputs.base }}")
+        self.assertNotRegex(roles["regles"]["run"], r"(?m)^\s*BASE=")
+        r, _, appels = self.rejouer(roles["regles"]["run"], {"BASE": "", "AUTEUR": "alice", "FAUX_GH": "2020-01-01"})
+        self.assertNotEqual(r.returncode, 0, "an empty base compares HEAD with itself and passes")
+        self.assertEqual(appels, "")
+
+    def test_the_data_only_step_runs_exactly_the_tests_allowed_to_read_live_data(self):
+        """One list: on a data-only PR, validation.yml runs TESTS_REGISTRE_REEL, the tests the audit hook lets read the live
+        registry's data; each exists."""
+        commande = self.etapes()[1]["reel"]["run"].split()
+        self.assertEqual(commande[:3], ["python3", "-m", "unittest"])
+        self.assertEqual(sorted(commande[3:]), sorted(f"outils.test_bee.{n}" for n in TESTS_REGISTRE_REEL))
+        for nom in TESTS_REGISTRE_REEL:
+            classe, _, methode = nom.partition(".")
+            self.assertTrue(issubclass(globals()[classe], unittest.TestCase), nom)
+            self.assertTrue(not methode or callable(getattr(globals()[classe], methode, None)), nom)
+
+    def test_the_audit_hook_fails_a_test_that_reads_live_data(self):
+        """S2 (review): however the path is built, in this process or in a subprocess, a test outside TESTS_REGISTRE_REEL
+        that reads a live data folder fails; the controls (reading elsewhere, rmtree and git -C elsewhere from the repository
+        root) do not."""
+        racine, copie, ailleurs = RACINE, pathlib.Path(self.temp.name) / "copie", pathlib.Path(self.temp.name) / "ailleurs"
+        tache = "taches/ruche/ruche-0090.yaml"
+
+        class Lecteur(unittest.TestCase):
+            def depuis_la_racine(self):
+                self.addCleanup(os.chdir, os.getcwd())
+                os.chdir(RACINE)
+
+            def test_bee_without_registre(self):
+                lancer("lister", "--json")
+
+            def test_registre_of_the_repository(self):
+                bee.Registre(pathlib.Path(bee.__file__).resolve().parent.parent)
+
+            def test_joinpath(self):
+                list(RACINE.joinpath("taches").glob("*/*.yaml"))
+
+            def test_alias(self):
+                next((racine / "taches").iterdir())
+
+            def test_rglob(self):
+                list(RACINE.rglob("D-0001.yaml"))
+
+            def test_copy(self):
+                shutil.copytree(RACINE / "debats", copie)
+
+            def test_relative_open(self):
+                self.depuis_la_racine()
+                with contextlib.suppress(OSError):
+                    open(tache, encoding="utf-8").close()
+
+            def test_relative_os_open(self):
+                self.depuis_la_racine()
+                with contextlib.suppress(OSError):
+                    os.close(os.open(tache, os.O_RDONLY))
+
+            def test_registre_dot(self):
+                self.depuis_la_racine()
+                bee.Registre(".")
+
+            def test_cat(self):
+                subprocess.run(["cat", RACINE / tache], capture_output=True)
+
+            def test_git_ls_files(self):
+                git(RACINE, "ls-files", "taches")
+
+            def test_bee_in_a_data_folder(self):
+                subprocess.run([sys.executable, str(RACINE / "outils/bee.py"), "--version"], cwd=RACINE / "taches", capture_output=True)
+
+            def test_control_outside_the_data_folders(self):
+                (RACINE / "bee.yaml").read_text(encoding="utf-8")
+                list((RACINE / "outils").glob("*.py"))
+                git(RACINE, "rev-parse", "HEAD")
+                subprocess.run(["cat", RACINE / "bee.yaml"], capture_output=True)
+
+            def test_control_rmtree_and_git_elsewhere_from_the_repository_root(self):
+                (ailleurs / "taches/ruche").mkdir(parents=True)
+                (ailleurs / tache).write_text("id: x\n", encoding="utf-8")
+                self.depuis_la_racine()
+                subprocess.run(["git", "-C", str(ailleurs), "ls-files", "taches"], capture_output=True)
+                subprocess.run(["ls", "taches"], cwd=ailleurs, capture_output=True)
+                shutil.rmtree(ailleurs)  # os.open of bare names relative to directory descriptors
+
+        resultat = unittest.TestResult()
+        unittest.defaultTestLoader.loadTestsFromTestCase(Lecteur).run(resultat)
+        self.assertEqual(resultat.errors, [])
+        echecs = {t._testMethodName: texte for t, texte in resultat.failures}
+        self.assertEqual(sorted(echecs), sorted(n for n in dir(Lecteur) if n.startswith("test_") and not n.startswith("test_control_")))
+        for texte in echecs.values():
+            self.assertIn("reads the live registry's data", texte)
 
 
 class BaseTest(unittest.TestCase):
@@ -11920,6 +12258,234 @@ class TestAgentAccountsWorkflows(BaseParallele):
                 code, texte = self.bee("verifier-fork", "--tache", "miniz-0099", "--base", "master", "--depot", str(fork), "--auteur", auteur)
                 self.assertEqual(code, attendu, texte)
         self.assertIn("utilisateur « bidji29 » différent de l'auteur de la PR « LaRuche-Architect »", texte)
+
+
+R8_AMORCAGE = 'r8_amorcage: {max: 8, jusqu_au: "2026-12-01T00:00:00Z"}'
+# ruche-0096: settings that leave only the usual cap (fails closed); the last one ends at the instant of BaseRepetitionGenerale.
+R8_SANS_EXCEPTION = (None, "r8_amorcage: 8", "r8_amorcage: [8, '2026-12-01T00:00:00Z']", "r8_amorcage: {max: 8}",
+                     "r8_amorcage: {jusqu_au: '2026-12-01T00:00:00Z'}", "r8_amorcage: {max: '8', jusqu_au: '2026-12-01T00:00:00Z'}",
+                     "r8_amorcage: {max: true, jusqu_au: '2026-12-01T00:00:00Z'}", "r8_amorcage: {max: 8.5, jusqu_au: '2026-12-01T00:00:00Z'}",
+                     "r8_amorcage: {max: 8, jusqu_au: '2026-12-01T00:00:00'}", "r8_amorcage: {max: 8, jusqu_au: 2026-12-01}",
+                     "r8_amorcage: {max: 8, jusqu_au: 'décembre'}", "r8_amorcage: {max: 8, jusqu_au: 2026-12-01T00:00:00}",  # unquoted, no zone
+                     "r8_amorcage: {max: 8, jusqu_au: '2026-10-29T22:00:00Z'}")
+
+
+class TestR8Bootstrap(BaseRepetitionGenerale):
+    """ruche-0096: until 1 Dec 2026, a council member whose engagements are ALL on tasks of the ruche category created by the
+    council may hold 8 of them; one engagement on any other task, an ordinary member, or a past, missing or malformed setting:
+    the usual 3, all engagements counted, in bee prendre, bee valider and the gate. A declared agent account counts as its person.
+    bee valider judges at the latest engagement's instant, never the clock's: after the end date, the engagements taken before it
+    stay valid until they end, and a new one, judged at the instant it is taken, needs fewer than 3."""
+
+    def setUp(self):
+        super().setUp()
+        for n, cree_par in [(n, "conseil") for n in range(9001, 9013)] + [(9013, "bidji29")]:  # 9013: ruche, not the council's
+            (self.dossier / f"taches/ruche/ruche-{n}.yaml").write_text(
+                TACHE_OPTIMISATION.replace("miniz-0099", f"ruche-{n}").replace("projet: miniz", "projet: ruche")
+                .replace("categorie: compression-sans-perte", "categorie: ruche").replace("type: optimisation", "type: test")
+                .replace("metrique: debit_compression_n6", "metrique: null").replace("sortie_compressee: identique\n", "")
+                .replace("cree_par: tests", f"cree_par: {cree_par}"), encoding="utf-8")
+        (self.dossier / "taches/miniz/miniz-9003.yaml").write_text(  # created by the council, in another category
+            TACHE_OPTIMISATION.replace("miniz-0099", "miniz-9003").replace("cree_par: tests", "cree_par: conseil"), encoding="utf-8")
+        self.commit("tasks of the test")
+        self.reglage(R8_AMORCAGE)  # the test's own setting, never the live one (a council PR may change it)
+
+    def reglage(self, ligne):
+        """bee.yaml with `ligne` as its r8_amorcage setting (None: none), committed on main as the council would."""
+        git(self.dossier, "switch", "-q", "main")
+        chemin = self.dossier / "bee.yaml"
+        texte = re.sub(r"(?m)^r8_amorcage:.*\n(?:[ \t]+.*\n)*", "", chemin.read_text(encoding="utf-8"))  # flow or block style
+        chemin.write_text(texte.rstrip("\n") + "\n" + (f"{ligne}\n" if ligne else ""), encoding="utf-8")
+        self.assertEqual(bee.lire_yaml(chemin)["reservations_max_par_utilisateur"], 3)
+        self.commit("the council's setting")
+
+    def a_la_main(self, qui, tache):
+        """A reservation written by hand, without bee prendre, dated now."""
+        bee.modifier_tache(self.chemin_tache(tache), statut="reservee", reservation={"utilisateur": qui, "depuis": os.environ["BEE_MAINTENANT"]})
+
+    def abandonner(self, nom):
+        git(self.dossier, "switch", "-qf", "main")
+        git(self.dossier, "branch", "-qD", nom)
+
+    def test_the_live_setting_is_well_formed(self):
+        """Only its form, so that a council PR raising the number or moving the date stays green; without it, the usual cap."""
+        config = yaml.safe_load((RACINE / "bee.yaml").read_text(encoding="utf-8"))
+        reglage = config.get("r8_amorcage")
+        if reglage is not None:
+            self.assertEqual(set(reglage), {"max", "jusqu_au"})
+            self.assertIs(type(reglage["max"]), int)
+            self.assertGreaterEqual(reglage["max"], config["reservations_max_par_utilisateur"])
+            self.assertIsNotNone(bee.lire_instant(reglage["jusqu_au"], "r8_amorcage").tzinfo)
+
+    def test_the_end_instant_is_excluded_and_a_member_named_conseil_turns_the_exception_off(self):
+        """`cree_par: conseil` names the council only while no member is named conseil, whatever the case (adversarial review, S1)."""
+        avant, fin = bee.lire_instant("2026-11-30T23:59:59Z"), bee.lire_instant("2026-12-01T00:00:00Z")
+        self.assertEqual([bee.r8_maximum(bee.Registre(self.dossier), "bidji29", ["ruche-9001"], i) for i in (avant, fin)], [8, 3])
+        for n in range(9001, 9004):
+            self.ok("prendre", f"ruche-{n}", "--utilisateur", "bidji29")
+        self.commit("three tooling tasks of bidji29")
+        for pseudo in ("conseil", "Conseil"):
+            with self.subTest(pseudo=pseudo):
+                fiche = self.dossier / f"membres/{pseudo}.yaml"
+                bee.ecrire_yaml(fiche, {**bee.lire_yaml(self.dossier / "membres/alice.yaml"), "pseudo": pseudo})
+                self.assertEqual(bee.r8_maximum(bee.Registre(self.dossier), "bidji29", ["ruche-9001"], avant), 3)
+                self.ko("règle R8 : bidji29 a déjà 3 réservations ou inscriptions en parallèle (ruche-9001, ruche-9002, ruche-9003), maximum 3",
+                        "prendre", "ruche-9004", "--utilisateur", "bidji29")
+                self.a_la_main("bidji29", "ruche-9004")
+                self.ko("règle R8 : bidji29 a 4 réservations ou inscriptions en parallèle", "valider")
+                fiche.unlink()
+                git(self.dossier, "checkout", "-q", "--", "taches/ruche/ruche-9004.yaml")
+        self.ok("prendre", "ruche-9004", "--utilisateur", "bidji29")  # the witness: without such a member, the exception holds
+
+    def test_eight_tooling_engagements_for_the_council_a_ninth_refused(self):
+        for n in range(9001, 9008):
+            self.ok("prendre", f"ruche-{n}", "--utilisateur", "bidji29")
+        self.ok("prendre", "ruche-9008", "--utilisateur", "alice")
+        self.ok("prendre", "ruche-9008", "--utilisateur", "bidji29", "--en-parallele")  # a registration in parallel counts
+        self.valide()
+        huit = ", ".join(f"ruche-900{n}" for n in range(1, 8)) + ", ruche-9008 (en parallèle)"
+        self.ko(f"règle R8 : bidji29 a déjà 8 réservations ou inscriptions en parallèle ({huit}), maximum 8",
+                "prendre", "ruche-9009", "--utilisateur", "bidji29")
+        for autre in ("miniz-9001", "miniz-9003", "ruche-9013"):  # another category, or not created by the council
+            self.ko("maximum 3", "prendre", autre, "--utilisateur", "bidji29")
+        self.a_la_main("bidji29", "ruche-9009")
+        self.ko(f"règle R8 : bidji29 a 9 réservations ou inscriptions en parallèle ({huit}, ruche-9009), maximum 8", "valider")
+
+    def test_one_other_engagement_brings_back_the_usual_cap_and_an_ordinary_member_keeps_three(self):
+        for qui, taches in (("bidji29", ("ruche-9001", "ruche-9002", "ruche-9003")), ("alice", ("ruche-9005", "ruche-9006", "ruche-9007"))):
+            for t in taches:
+                self.ok("prendre", t, "--utilisateur", qui)
+            for autre in (("miniz-9001", "miniz-9003", "ruche-9013") if qui == "bidji29" else ("ruche-9004",)):
+                self.ko(f"règle R8 : {qui} a déjà 3 réservations ou inscriptions en parallèle ({', '.join(taches)}), maximum 3",
+                        "prendre", autre, "--utilisateur", qui)
+        # All engagements are counted: holding one on another task, bidji29 is refused a 4th even on a tooling task.
+        self.ok("liberer", "ruche-9003", "--utilisateur", "bidji29")
+        self.ok("prendre", "miniz-9001", "--utilisateur", "bidji29")
+        self.ko("règle R8 : bidji29 a déjà 3 réservations ou inscriptions en parallèle (miniz-9001, ruche-9001, ruche-9002), maximum 3",
+                "prendre", "ruche-9004", "--utilisateur", "bidji29")
+        self.valide()
+        self.a_la_main("bidji29", "ruche-9004")
+        self.a_la_main("alice", "ruche-9008")
+        texte = self.ko("règle R8 : bidji29 a 4 réservations ou inscriptions en parallèle", "valider")
+        self.assertIn("règle R8 : alice a 4 réservations ou inscriptions en parallèle (ruche-9005, ruche-9006, ruche-9007, ruche-9008), "
+                      "maximum 3", texte)
+
+    def test_past_missing_or_malformed_setting_gives_the_usual_cap_in_prendre_valider_and_the_gate(self):
+        for t in ("ruche-9001", "ruche-9002", "ruche-9003"):
+            self.ok("prendre", t, "--utilisateur", "bidji29")
+        self.commit("three tooling tasks of bidji29")
+        trois = "ruche-9001, ruche-9002, ruche-9003"
+        for ligne, instant in [(l, None) for l in R8_SANS_EXCEPTION] + [(R8_AMORCAGE, "2026-12-01T00:00:00Z")]:
+            with self.subTest(reglage=ligne, instant=instant):
+                if instant:
+                    self.a(instant)  # after the end date of the test's setting
+                self.reglage(ligne)
+                self.ko(f"règle R8 : bidji29 a déjà 3 réservations ou inscriptions en parallèle ({trois}), maximum 3",
+                        "prendre", "ruche-9004", "--utilisateur", "bidji29")
+                self.branche("quatrieme")
+                self.a_la_main("bidji29", "ruche-9004")
+                self.commit()
+                refus = f"règle R8 : bidji29 a 4 réservations ou inscriptions en parallèle ({trois}, ruche-9004), maximum 3"
+                self.ko(refus, "valider")
+                self.refusee("bidji29", refus)
+                self.refusee(AGENT, refus)
+                self.abandonner("quatrieme")
+        # The witness: with the setting in force, here unquoted (a YAML timestamp with its zone), the same reservation passes.
+        self.a("2026-11-30T23:00:00Z")
+        self.reglage(R8_AMORCAGE.replace('"', ""))
+        self.branche("quatrieme")
+        self.ok("prendre", "ruche-9004", "--utilisateur", "bidji29")
+        self.commit()
+        self.libre_service("bidji29", "reservation")
+
+    def test_after_the_end_date_engagements_taken_before_stay_valid_and_a_new_one_needs_fewer_than_three(self):
+        self.a("2026-11-30T20:00:00Z")
+        for n in range(9001, 9009):
+            self.ok("prendre", f"ruche-{n}", "--utilisateur", "bidji29")
+        self.commit("eight tooling tasks of bidji29, before the end date")
+        self.a("2026-12-01T00:00:01Z")
+        self.valide()  # the clock alone never makes the registry invalid: everyone's PRs still pass the gate
+        self.prendre_et_fusionner("alice", "miniz-9001")
+        # No 9th and no new engagement of any kind for bidji29, by bee prendre or through the gate.
+        for commande in (("ruche-9009",), ("miniz-9003",), ("ruche-9013",), ("miniz-9001", "--en-parallele")):
+            texte = self.ko("règle R8 : bidji29 a déjà 8 réservations ou inscriptions en parallèle", "prendre", *commande, "--utilisateur", "bidji29")
+            self.assertIn("maximum 3", texte)
+        self.branche("neuvieme")
+        self.a_la_main("bidji29", "ruche-9009")
+        self.commit()
+        self.refusee(AGENT, "règle R8 : bidji29 a 9 réservations ou inscriptions en parallèle", "maximum 3")
+        self.abandonner("neuvieme")
+        # Releases still pass, from bidji29's own PR as from bee liberer.
+        self.branche("liberation")
+        self.ok("liberer", "ruche-9008", "--utilisateur", "bidji29")
+        self.commit()
+        self.libre_service("bidji29", "liberation")
+        self.fusionner("liberation")
+        for n in range(9004, 9008):
+            self.ok("liberer", f"ruche-{n}", "--utilisateur", "bidji29")
+        self.commit("bidji29 keeps three")
+        # A new engagement dated before the end date (within the gate's 2 h) is still judged at the PR's instant.
+        self.branche("antidatee")
+        bee.modifier_tache(self.chemin_tache("ruche-9009"), statut="reservee", reservation={"utilisateur": "bidji29", "depuis": "2026-11-30T23:00:00Z"})
+        self.commit()
+        self.valide()  # the state alone accepts it: the latest engagement predates the end date
+        for auteur in (AGENT, "bidji29"):
+            texte = self.refusee(auteur, "règle R8 : bidji29 prend un engagement après la fin de r8_amorcage : 4 réservations ou inscriptions "
+                                         "en parallèle, maximum 3 (un nouvel engagement se juge à l'heure de la PR)")
+            self.assertNotIn("règle R8 : bidji29 a 4", texte)
+        self.abandonner("antidatee")
+        self.ko("règle R8 : bidji29 a déjà 3 réservations ou inscriptions en parallèle (ruche-9001, ruche-9002, ruche-9003), maximum 3",
+                "prendre", "ruche-9009", "--utilisateur", "bidji29")
+        # Under 3, bidji29 takes a new engagement again, up to the usual cap.
+        self.ok("liberer", "ruche-9003", "--utilisateur", "bidji29")
+        self.commit("bidji29 under three")
+        self.branche("nouvelle")
+        self.ok("prendre", "ruche-9009", "--utilisateur", "bidji29")
+        self.commit()
+        self.libre_service(AGENT, "reservation")
+        self.fusionner("nouvelle")
+        self.valide()
+        self.ko("maximum 3", "prendre", "ruche-9010", "--utilisateur", "bidji29")
+
+    def test_an_unreadable_engagement_date_gives_the_usual_cap(self):
+        for n in range(9001, 9005):
+            self.ok("prendre", f"ruche-{n}", "--utilisateur", "bidji29")
+        self.valide()
+        for depuis in ("hier", "2026-10-29T22:00:00"):  # unreadable, or without a zone: fails closed
+            with self.subTest(depuis=depuis):
+                bee.modifier_tache(self.chemin_tache("ruche-9004"), reservation={"utilisateur": "bidji29", "depuis": depuis})
+                self.ko("règle R8 : bidji29 a 4 réservations ou inscriptions en parallèle (ruche-9001, ruche-9002, ruche-9003, ruche-9004), "
+                        "maximum 3", "valider")
+
+    def test_in_the_gate_an_agent_account_counts_as_its_person(self):
+        for qui, taches in (("bidji29", range(9001, 9004)), ("alice", range(9010, 9013))):
+            for n in taches:
+                self.ok("prendre", f"ruche-{n}", "--utilisateur", qui)
+        self.commit("three tooling tasks each for bidji29 and alice")
+        # A 4th engagement on another task, from either of bidji29's accounts; an ordinary member: 3 everywhere.
+        for qui, tache, auteurs in (("bidji29", "miniz-9001", ("bidji29", AGENT)), ("bidji29", "ruche-9013", (AGENT,)),
+                                    ("alice", "ruche-9004", ("alice",))):
+            self.branche("quatrieme")
+            self.a_la_main(qui, tache)
+            self.commit()
+            for auteur in auteurs:
+                texte = self.refusee(auteur, f"règle R8 : {qui} a 4 réservations ou inscriptions en parallèle", "maximum 3")
+                self.assertNotIn("après la fin de r8_amorcage", texte, "the end date is not what refuses it: one refusal")
+            self.abandonner("quatrieme")
+        # Tooling tasks created by the council: the agent account reserves them for bidji29, as self-service, up to the 8th.
+        for n in range(9004, 9008):
+            self.ok("prendre", f"ruche-{n}", "--utilisateur", "bidji29")
+        self.commit("seven tooling tasks of bidji29")
+        self.branche("huitieme")
+        self.ok("prendre", "ruche-9008", "--utilisateur", "bidji29")
+        self.commit()
+        self.libre_service(AGENT, "reservation")
+        self.fusionner("huitieme")
+        self.branche("neuvieme")
+        self.a_la_main("bidji29", "ruche-9009")
+        self.commit()
+        for auteur in (AGENT, "bidji29"):
+            self.refusee(auteur, "règle R8 : bidji29 a 9 réservations ou inscriptions en parallèle", "maximum 8")
 
 
 if __name__ == "__main__":
