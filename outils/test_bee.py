@@ -11674,7 +11674,8 @@ SCHEMAS_LIBRE_SERVICE = {"taches": "tache", "contributions": "enregistrement", "
                          "propositions": "proposition", "debats": "debat", "invitations": "invitation",
                          bee.CHEMIN_NON_CONTACT: "ne-plus-contacter"}
 # The only texts of a self-service schema that the common check does not read: the verdict of a contribution, written by the
-# CI under its own bounds (verdict_montrable, texte_declare) and refused by verifier-pr from anyone else.
+# CI under its own bounds (VERDICT_MAX, verdict_montrable; enregistrer-verdict never writes a contribution past its bound or off
+# its schema: TestBornesVerdictEtMarque) and refused by verifier-pr from anyone else.
 HORS_CONTROLE_COMMUN = {("contributions", "verdict")}
 
 
@@ -11721,7 +11722,8 @@ class TestBornesLibreService(unittest.TestCase):
             relatif = sorte if sorte == bee.CHEMIN_NON_CONTACT else f"{sorte}/x.yaml"
             self.assertEqual(bee.sorte_libre_service(relatif), sorte)
             # Each long field the tool names is a text field of the schema (no typo, no field gone).
-            self.assertLessEqual(set(bee.CHAMPS_LONGS.get(sorte, ())), {re.sub(r"\[\d+\]", "", lieu_de(c)) for c in champs}, nom)
+            noms = {re.sub(r"\[\d+\]", "", lieu_de(c)) for c in champs}
+            self.assertLessEqual(set(bee.CHAMPS_LONGS.get(sorte, ())) | {c for s, c in bee.TEXTES_PROPRES if s == sorte}, noms, nom)
             for chemin in champs:
                 if (sorte, chemin[0]) in HORS_CONTROLE_COMMUN:
                     continue
@@ -11736,6 +11738,20 @@ class TestBornesLibreService(unittest.TestCase):
                         self.assertTrue([p for p in problemes if p.startswith(attendu)], (attendu, problemes))
                     for honnete in ("a" * borne, "Honnête" + TEMOIN_HONNETE):
                         self.assertEqual(list(bee.problemes_textes_libre_service(imbriquer(chemin, honnete), relatif)), [])
+
+    def test_au_dela_de_64_cles_de_premier_niveau_un_seul_refus_tout_de_suite(self):
+        donnees = {f"k{i}": i for i in range(20000)}
+        texte = "".join(f"k{i}: {i}\n" for i in range(20000))
+        self.assertEqual(bee.problemes_de_forme(texte, donnees), ["20000 clés de premier niveau, au plus 64 : ce n'est pas un fichier qu'écrit bee"])
+        self.assertEqual(bee.problemes_de_forme("".join(f"k{i}: {i}\n" for i in range(64)), {f"k{i}": i for i in range(64)}), [])
+
+    def test_les_cles_libres_des_metriques_d_une_mesure(self):
+        for cle, attendu in (("a" * 301, f"metriques/{'a' * 301} (clé) : 301 caractères, au plus 300 "),
+                             ("débit\u202e", "metriques/(clé refusée) (clé) : caractère invisible refusé (U+202E")):
+            mesure = {"metriques": {cle: {"gain": 0.05, "au_dela_du_bruit": True}}}
+            problemes = list(bee.problemes_textes_libre_service(mesure, "mesures/x-0001-c1/alice.yaml"))
+            self.assertTrue([p for p in problemes if p.startswith(f"mesures/x-0001-c1/alice.yaml : {attendu}")], problemes)
+        self.assertEqual(list(bee.problemes_textes_libre_service({"metriques": {"a" * 300: {}}}, "mesures/x-0001-c1/alice.yaml")), [])
 
     def test_les_bornes_d_ecriture_de_bee_yaml_restent_sous_celles_des_fichiers(self):
         reg = mock.Mock(config=bee.lire_yaml(RACINE / "bee.yaml"))
@@ -11756,6 +11772,24 @@ class TestBornesLibreService(unittest.TestCase):
                     ("invitations", "autres_identites[0]"): len("site:") + 253}  # a domain name: 253 characters at most
         for (sorte, lieu), borne in ecriture.items():
             self.assertLessEqual(borne, bee.borne_texte(sorte, lieu), (sorte, lieu))
+
+
+def remplir(test, chemin, cle, element, ecrire):
+    """Appends `element(i)` (1,400 characters of text) to the list `cle` of the file, as close under its mark as one fits: one more
+    item of 1,500 characters takes it past the mark."""
+    marque = bee.borne_octets(str(chemin.relative_to(test.dossier))) - bee.MARGE_OCTETS
+    donnees = bee.lire_yaml(chemin)
+    avant, tailles = list(donnees.get(cle) or []), []
+    for n in (0, 1):
+        ecrire(chemin, {**donnees, cle: avant + [element(len(avant) + i) for i in range(n)]})
+        tailles.append(chemin.stat().st_size)
+    n = (marque - tailles[0]) // (tailles[1] - tailles[0]) + 1
+    while True:
+        ecrire(chemin, {**donnees, cle: avant + [element(len(avant) + i) for i in range(n)]})
+        if chemin.stat().st_size <= marque:
+            break
+        n -= 1
+    test.assertGreater(chemin.stat().st_size, marque - (tailles[1] - tailles[0]) - 50)
 
 
 class TestBornesLibreServiceRegistre(BaseRevueRuche0020):
@@ -11829,6 +11863,9 @@ class TestBornesLibreServiceRegistre(BaseRevueRuche0020):
             taille = (self.dossier / relatif).stat().st_size
             self.assertGreater(taille, borne)
             attendus.append(f"{relatif} : {taille} octets, au plus {borne} pour ce fichier (docs/gouvernance.md")
+        projet = self.dossier / "projets/zz.yaml"  # any other file bee reads or the gate parses: the largest bound
+        projet.write_text("nom: " + " ".join(["ENORME"] * (bee.OCTETS_LECTURE_MAX // 7 + 1)) + "\n", encoding="utf-8")
+        attendus.append(f"projets/zz.yaml : {projet.stat().st_size} octets, au plus {bee.OCTETS_LECTURE_MAX} pour ce fichier")
         self.commit()
         with self.lectures() as lus:
             code, sortie = self.bee("valider")
@@ -11862,11 +11899,90 @@ class TestBornesLibreServiceRegistre(BaseRevueRuche0020):
                 self.assertNotIn("Traceback", sortie + texte)
                 self.abandonner()
 
+    def test_un_nom_de_traverse_au_dela_de_la_borne_de_son_dossier_n_est_pas_lu(self):
+        """Any name under a self-service folder has that folder's bound: an extension, a case, a suffix or a non-ASCII name."""
+        self.branche()
+        attendus = []
+        for dossier, borne in (("taches/miniz", bee.OCTETS_MAX["taches"]), ("debats", bee.OCTETS_MAX["debats"])):
+            for nom in ("x.txt", "D-0001.YAML", "miniz-0099.yaml.bak", "é.yaml"):
+                chemin = self.dossier / dossier / nom
+                chemin.write_text("texte: " + " ".join(["ENORME"] * (borne // 7 + 1)) + "\n", encoding="utf-8")
+                if nom.isascii():
+                    attendus.append(f"{dossier}/{nom} : {chemin.stat().st_size} octets, au plus {borne} pour ce fichier")
+        self.commit()
+        with self.lectures() as lus:
+            code, sortie = self.bee("valider")
+            texte = self.refusee("gaspard", *attendus)
+        self.assertEqual(code, 1, sortie)
+        for nom in ("taches/miniz/é.yaml", "debats/é.yaml"):  # globbed from the filesystem: bounded by its folder too
+            self.assertIn(f"{nom} : ", sortie)
+        self.assertNotIn("Traceback", sortie + texte)
+        self.assertEqual([t[:100] for t in lus if "ENORME" in t], [], "read whole, or parsed")
+        self.abandonner()
+
+    def test_a_sa_marque_un_fichier_ne_recoit_plus_d_ajout_mais_se_clot(self):
+        tache, debat = self.chemin_tache("miniz-9001"), self.dossier / "debats/D-0001.yaml"
+        maintenant = self.maintenant()
+        remplir(self, tache, "notes", lambda i: {"par": "farid", "le": maintenant, "texte": "x" * 1400}, bee.ecrire_yaml)
+        remplir(self, debat, "arguments", lambda i: {"id": f"A{i + 1}", "par": ("alice", "bruno", "chloe")[i % 3], "le": maintenant,
+                                                     "position": "pour", "texte": "x" * 1400}, bee.ecrire_debat)
+        self.commit("à la marque")
+        self.valide()
+        marque_tache, marque_debat = bee.probleme_marque("taches/miniz/miniz-9001.yaml"), bee.probleme_marque("debats/D-0001.yaml")
+        avant = (tache.read_bytes(), debat.read_bytes())
+        self.ko(marque_tache, "noter", "miniz-9001", "--utilisateur", "gaspard", "--texte", "y" * 1500)  # refused before writing
+        self.ko(marque_debat, "debattre", "argumenter", "D-0001", "--utilisateur", "gaspard", "--position", "pour", "--texte", "y" * 1500)
+        self.assertEqual((tache.read_bytes(), debat.read_bytes()), avant, "nothing written")
+        for ajout in ("note", "argument"):  # and by the gate, written by hand
+            self.branche()
+            if ajout == "note":
+                self.noter_a_la_main({"texte": "y" * 1500}, tache="miniz-9001")
+            else:
+                d = self.debat("D-0001")
+                d["arguments"].append({"id": f"A{len(d['arguments']) + 1}", "par": "gaspard", "le": maintenant, "position": "pour",
+                                       "texte": "y" * 1500})
+                self.ecrire(d, "D-0001")
+            self.commit()
+            self.refusee("gaspard", marque_tache if ajout == "note" else marque_debat)
+            self.abandonner()
+        self.branche()  # a reservation still fits
+        self.ok("prendre", "miniz-9001", "--utilisateur", "gaspard")
+        self.commit()
+        self.libre_service("gaspard", "reservation")
+        self.abandonner()
+        self.branche()  # and a close with a synthesis of 4,000 characters of 4 bytes each
+        self.ok("debattre", "clore", "D-0001", "--utilisateur", "bidji29", "--issue", "sans_suite", "--synthese", "🐝" * 4000)
+        self.assertLessEqual(debat.stat().st_size, bee.OCTETS_MAX["debats"])
+        self.commit()
+        code, texte = self.verifier("bidji29")
+        self.assertEqual(code, 0, texte)
+        self.valide()
+        self.abandonner()
+
+    def test_yaml_trop_profond_ou_entier_demesure_refuse_sans_trace(self):
+        self.branche()
+        (self.dossier / "votes/miniz-0099-c1/chloe.yaml").write_text("motif: " + "[" * 5000 + "]" * 5000 + "\n", encoding="utf-8")
+        entiers_bornes = hasattr(sys, "set_int_max_str_digits")  # Python 3.11 and later (CI: 3.12)
+        (self.dossier / "mesures/miniz-0099-c1/farid.yaml").write_text("motif: " + "9" * 5000 + "\n", encoding="utf-8")
+        self.commit()
+        code, sortie = self.bee("valider")
+        texte = self.refusee("gaspard", "votes/miniz-0099-c1/chloe.yaml")
+        self.assertEqual(code, 1, sortie)
+        self.assertIn("chloe.yaml : YAML invalide (maximum recursion depth", sortie)
+        if entiers_bornes:
+            self.assertIn("farid.yaml : YAML invalide (Exceeds the limit", sortie)
+        self.assertNotIn("Traceback", sortie + texte)
+        versions = bee.lire_versions(self.dossier, [("HEAD", c) for c in ("votes/miniz-0099-c1/chloe.yaml", "mesures/miniz-0099-c1/farid.yaml")])
+        lues = [bee._lire_version(v) for v in versions.values()]  # history: never a traceback (libyaml, if there, reads the depth)
+        if entiers_bornes:
+            self.assertIsNone(lues[1])
+        self.abandonner()
+
     def test_une_proposition_porte_des_textes_recevables(self):
         """The gate reads texte_propose and motif of a new proposition like every free text: not blank, nothing hidden, bounded."""
         for champs, attendu in (({"texte_propose": " " * 12}, "texte_propose vide"),
                                 ({"motif": "Un motif​ assez long pour le schéma."}, "motif : caractère invisible"),
-                                ({"texte_propose": "a" * (bee.TEXTE_LONG_MAX + 1)}, f"texte_propose de {bee.TEXTE_LONG_MAX + 1} caractères")):
+                                ({"texte_propose": "a" * 8001}, "texte_propose de 8001 caractères, au plus 8000")):
             with self.subTest(champs=champs):
                 self.branche()
                 self.proposition("P-0002", **champs)
@@ -11874,11 +11990,102 @@ class TestBornesLibreServiceRegistre(BaseRevueRuche0020):
                 self.refusee("gaspard", f"propositions/P-0002.yaml : {attendu}")
                 self.abandonner()
         self.branche()
-        self.proposition("P-0002")
+        self.proposition("P-0002", texte_propose="🐝" * 8000, motif="🐝" * 8000)  # at the bound, 4 bytes each: the file fits too
         self.commit()
         self.libre_service("gaspard", "proposition")
         self.abandonner()
 
+
+
+class TestBornesVerdictEtMarque(BaseTest):
+    """ruche-0040: the robot never writes a contribution bee valider would refuse, and the largest verdict fits one; a task at its
+    mark refuses an append before writing, and still takes a reservation, a submission and an integration."""
+
+    ENORME = -1.7976931348623157e+308
+
+    def verdict_maximal(self, n):
+        """A fork's verdict.json under its bound that makes enregistrer-verdict write as much as it can (4-byte characters)."""
+        cle = lambda quoi, i: (f"{quoi}{n:02d}{i:03d}" + "x" * 80)[:80]  # noqa: E731
+        verdict = {"ci": "rouge", "etape_en_echec": "🐝" * 300, "lignes_modifiees": 10 ** 9, "gain": self.ENORME,
+                   "instructions": {cle("i", i): {"A": self.ENORME, "B": self.ENORME, "gain": self.ENORME} for i in range(60)},
+                   "degradations": {cle("d", i): self.ENORME for i in range(60)},
+                   "juge": {"version": 10 ** 9, "sorties_comparees": 10 ** 9, "constructions_suspectes": []}}
+        while len(json.dumps(verdict, ensure_ascii=False).encode()) < bee.VERDICT_MAX["octets"] - 1500:  # as many as its bound holds
+            verdict["juge"]["constructions_suspectes"].append({"type": "🐝" * 40, "detail": "🐝" * 300})
+        return verdict
+
+    def enregistrer(self, cid, verdict, *options):
+        chemin = self.dossier / "verdict.json"
+        chemin.write_text(json.dumps(verdict, ensure_ascii=False), encoding="utf-8")
+        return self.bee("enregistrer-verdict", cid, "--verdict", str(chemin), *options)
+
+    def test_le_plus_grand_verdict_tient_dans_sa_contribution(self):
+        cid = self.soumettre_0099()
+        fichiers = self.dossier / "fichiers.txt"
+        fichiers.write_text("".join(f".github/{i}" + "🐝" * 300 + "\n" for i in range(30)), encoding="utf-8")
+        for n in range(bee.VERDICTS_MAX + 1):  # each one in the history, and the last one in full
+            self.assertLess(len(json.dumps(self.verdict_maximal(n), ensure_ascii=False).encode()), bee.VERDICT_MAX["octets"])
+            code, texte = self.enregistrer(cid, self.verdict_maximal(n), "--sha", f"{n:040x}", "--arbre", f"{n + 1:040x}",
+                                           "--fichiers", str(fichiers), "--execution", "https://github.com/Bee-ruche/minizBee/actions/runs/1")
+            self.assertEqual(code, 0, texte)
+        self.assertIn("ignoré(s) : 40 de instructions, 40 de degradations", texte)
+        enr = bee.lire_yaml(self.dossier / "contributions/miniz/miniz-0099-c1.yaml")
+        self.assertEqual((len(enr["verdicts"]), len(enr["verdict"]["instructions"]), len(enr["verdict"]["juges_modifies"])),
+                         (bee.VERDICTS_MAX, bee.VERDICT_MAX["cles"], bee.VERDICT_MAX["juges"]))
+        taille = (self.dossier / "contributions/miniz/miniz-0099-c1.yaml").stat().st_size
+        # and the largest declaration (12,000 characters written, 4 bytes each) beside it
+        self.assertLessEqual(taille + 4 * bee.DECLARE_MAX["rendu"], bee.OCTETS_MAX["contributions"], taille)
+        self.valide()
+
+    def test_un_verdict_json_au_dela_de_sa_borne_n_est_pas_lu(self):
+        cid = self.soumettre_0099()
+        chemin = self.dossier / "contributions/miniz/miniz-0099-c1.yaml"
+        avant = chemin.read_bytes()
+        gros = {**self.verdict_maximal(0), "remplissage": "x" * bee.VERDICT_MAX["octets"]}
+        with mock.patch.object(bee.json, "load", side_effect=AssertionError("loaded")):
+            code, texte = self.enregistrer(cid, gros, "--sha", "abc1234")
+            self.assertEqual(code, 1, texte)
+            self.assertIn("plus de 64 Kio : verdict refusé, non lu", texte)
+            self.assertEqual(self.bee("bases-declarees", str(self.dossier / "verdict.json")), (0, ""))
+        self.assertEqual(chemin.read_bytes(), avant)
+
+    def test_le_robot_n_ecrit_jamais_une_contribution_que_valider_refuserait(self):
+        cid = self.soumettre_0099()
+        chemin = self.dossier / "contributions/miniz/miniz-0099-c1.yaml"
+        enr = bee.lire_yaml(chemin)
+        verdict = {"ci": "verte", "gain": 0.05, "au_dela_du_bruit": True, "instructions": INSTRUCTIONS_N6, "lignes_modifiees": 10}
+        relecture = {"relecteur": "bruno", "avis": "favorable", "motif": "x" * 4000, "le": "2026-10-27T12:00:00Z"}
+        # Off its schema; then still under its bound (it is read), but past it with the largest verdict.
+        for donnees, brut, attendu in (({**enr, "intrus": 1}, verdict, "champ(s) inconnu(s) : intrus"),
+                                       ({**enr, "relectures": [dict(relecture) for _ in range(56)]}, self.verdict_maximal(0),
+                                        f"au plus {bee.OCTETS_MAX['contributions']})")):
+            with self.subTest(attendu=attendu):
+                bee.ecrire_yaml(chemin, donnees)
+                avant = chemin.read_bytes()
+                self.assertLess(len(avant), bee.OCTETS_MAX["contributions"])
+                code, texte = self.enregistrer(cid, brut, "--sha", "abc1234")
+                self.assertEqual(code, 1, texte)
+                self.assertIn(f"{cid} : verdict refusé, rien n'est écrit : la contribution ne serait plus valide (", texte)
+                self.assertIn(attendu, texte)
+                self.assertEqual(chemin.read_bytes(), avant)
+
+    def test_une_tache_a_sa_marque_se_reserve_se_soumet_et_s_integre(self):
+        chemin = self.dossier / "taches/miniz/miniz-0099.yaml"
+        remplir(self, chemin, "notes", lambda i: {"par": "alice", "le": "2026-10-27T12:00:00Z", "texte": "x" * 1400}, bee.ecrire_yaml)
+        self.valide()
+        avant = chemin.read_bytes()
+        self.assertIn(bee.probleme_marque("taches/miniz/miniz-0099.yaml"),
+                      self.bee("noter", "miniz-0099", "--utilisateur", "bruno", "--texte", "y" * 1500)[1])
+        self.assertEqual(chemin.read_bytes(), avant, "nothing written")
+        cid = TestRegistre.preparer_contribution_verte(self, "bidji29", ("bruno", "chloe"))  # reservation, submission, verdict, reviews
+        code, texte = self.bee("prendre", "miniz-0099", "--utilisateur", "alice", "--en-parallele")
+        self.assertIn(bee.probleme_marque("taches/miniz/miniz-0099.yaml"), texte)
+        self.assertEqual(self.bee("verifier-acceptation", cid)[0], 0)
+        code, texte = self.bee("integrer", cid, "--fusion-sha", "deadbee")
+        self.assertEqual(code, 0, texte)
+        self.assertEqual(self.tache("miniz-0099")["statut"], "integree")
+        self.assertLessEqual(chemin.stat().st_size, bee.OCTETS_MAX["taches"])
+        self.valide()
 
 if __name__ == "__main__":
     unittest.main()
