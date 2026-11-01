@@ -12006,5 +12006,233 @@ class TestAgentAccountsWorkflows(BaseParallele):
         self.assertIn("utilisateur « bidji29 » différent de l'auteur de la PR « LaRuche-Architect »", texte)
 
 
+R8_AMORCAGE = 'r8_amorcage: {max: 8, jusqu_au: "2026-12-01T00:00:00Z"}'
+# ruche-0096: settings that leave only the usual cap (fails closed); the last one ends at the instant of BaseRepetitionGenerale.
+R8_SANS_EXCEPTION = (None, "r8_amorcage: 8", "r8_amorcage: [8, '2026-12-01T00:00:00Z']", "r8_amorcage: {max: 8}",
+                     "r8_amorcage: {jusqu_au: '2026-12-01T00:00:00Z'}", "r8_amorcage: {max: '8', jusqu_au: '2026-12-01T00:00:00Z'}",
+                     "r8_amorcage: {max: true, jusqu_au: '2026-12-01T00:00:00Z'}", "r8_amorcage: {max: 8.5, jusqu_au: '2026-12-01T00:00:00Z'}",
+                     "r8_amorcage: {max: 8, jusqu_au: '2026-12-01T00:00:00'}", "r8_amorcage: {max: 8, jusqu_au: 2026-12-01}",
+                     "r8_amorcage: {max: 8, jusqu_au: 'décembre'}", "r8_amorcage: {max: 8, jusqu_au: 2026-12-01T00:00:00}",  # unquoted, no zone
+                     "r8_amorcage: {max: 8, jusqu_au: '2026-10-29T22:00:00Z'}")
+
+
+class TestR8Bootstrap(BaseRepetitionGenerale):
+    """ruche-0096: until 1 Dec 2026, a council member whose engagements are ALL on tasks of the ruche category created by the
+    council may hold 8 of them; one engagement on any other task, an ordinary member, or a past, missing or malformed setting:
+    the usual 3, all engagements counted, in bee prendre, bee valider and the gate. A declared agent account counts as its person.
+    bee valider judges at the latest engagement's instant, never the clock's: after the end date, the engagements taken before it
+    stay valid until they end, and a new one, judged at the instant it is taken, needs fewer than 3."""
+
+    def setUp(self):
+        super().setUp()
+        for n, cree_par in [(n, "conseil") for n in range(9001, 9013)] + [(9013, "bidji29")]:  # 9013: ruche, not the council's
+            (self.dossier / f"taches/ruche/ruche-{n}.yaml").write_text(
+                TACHE_OPTIMISATION.replace("miniz-0099", f"ruche-{n}").replace("projet: miniz", "projet: ruche")
+                .replace("categorie: compression-sans-perte", "categorie: ruche").replace("type: optimisation", "type: test")
+                .replace("metrique: debit_compression_n6", "metrique: null").replace("sortie_compressee: identique\n", "")
+                .replace("cree_par: tests", f"cree_par: {cree_par}"), encoding="utf-8")
+        (self.dossier / "taches/miniz/miniz-9003.yaml").write_text(  # created by the council, in another category
+            TACHE_OPTIMISATION.replace("miniz-0099", "miniz-9003").replace("cree_par: tests", "cree_par: conseil"), encoding="utf-8")
+        self.commit("tasks of the test")
+        self.reglage(R8_AMORCAGE)  # the test's own setting, never the live one (a council PR may change it)
+
+    def reglage(self, ligne):
+        """bee.yaml with `ligne` as its r8_amorcage setting (None: none), committed on main as the council would."""
+        git(self.dossier, "switch", "-q", "main")
+        chemin = self.dossier / "bee.yaml"
+        texte = re.sub(r"(?m)^r8_amorcage:.*\n(?:[ \t]+.*\n)*", "", chemin.read_text(encoding="utf-8"))  # flow or block style
+        chemin.write_text(texte.rstrip("\n") + "\n" + (f"{ligne}\n" if ligne else ""), encoding="utf-8")
+        self.assertEqual(bee.lire_yaml(chemin)["reservations_max_par_utilisateur"], 3)
+        self.commit("the council's setting")
+
+    def a_la_main(self, qui, tache):
+        """A reservation written by hand, without bee prendre, dated now."""
+        bee.modifier_tache(self.chemin_tache(tache), statut="reservee", reservation={"utilisateur": qui, "depuis": os.environ["BEE_MAINTENANT"]})
+
+    def abandonner(self, nom):
+        git(self.dossier, "switch", "-qf", "main")
+        git(self.dossier, "branch", "-qD", nom)
+
+    def test_the_live_setting_is_well_formed(self):
+        """Only its form, so that a council PR raising the number or moving the date stays green; without it, the usual cap."""
+        config = yaml.safe_load((RACINE / "bee.yaml").read_text(encoding="utf-8"))
+        reglage = config.get("r8_amorcage")
+        if reglage is not None:
+            self.assertEqual(set(reglage), {"max", "jusqu_au"})
+            self.assertIs(type(reglage["max"]), int)
+            self.assertGreaterEqual(reglage["max"], config["reservations_max_par_utilisateur"])
+            self.assertIsNotNone(bee.lire_instant(reglage["jusqu_au"], "r8_amorcage").tzinfo)
+
+    def test_the_end_instant_is_excluded_and_a_member_named_conseil_turns_the_exception_off(self):
+        """`cree_par: conseil` names the council only while no member is named conseil, whatever the case (adversarial review, S1)."""
+        avant, fin = bee.lire_instant("2026-11-30T23:59:59Z"), bee.lire_instant("2026-12-01T00:00:00Z")
+        self.assertEqual([bee.r8_maximum(bee.Registre(self.dossier), "bidji29", ["ruche-9001"], i) for i in (avant, fin)], [8, 3])
+        for n in range(9001, 9004):
+            self.ok("prendre", f"ruche-{n}", "--utilisateur", "bidji29")
+        self.commit("three tooling tasks of bidji29")
+        for pseudo in ("conseil", "Conseil"):
+            with self.subTest(pseudo=pseudo):
+                fiche = self.dossier / f"membres/{pseudo}.yaml"
+                bee.ecrire_yaml(fiche, {**bee.lire_yaml(self.dossier / "membres/alice.yaml"), "pseudo": pseudo})
+                self.assertEqual(bee.r8_maximum(bee.Registre(self.dossier), "bidji29", ["ruche-9001"], avant), 3)
+                self.ko("règle R8 : bidji29 a déjà 3 réservations ou inscriptions en parallèle (ruche-9001, ruche-9002, ruche-9003), maximum 3",
+                        "prendre", "ruche-9004", "--utilisateur", "bidji29")
+                self.a_la_main("bidji29", "ruche-9004")
+                self.ko("règle R8 : bidji29 a 4 réservations ou inscriptions en parallèle", "valider")
+                fiche.unlink()
+                git(self.dossier, "checkout", "-q", "--", "taches/ruche/ruche-9004.yaml")
+        self.ok("prendre", "ruche-9004", "--utilisateur", "bidji29")  # the witness: without such a member, the exception holds
+
+    def test_eight_tooling_engagements_for_the_council_a_ninth_refused(self):
+        for n in range(9001, 9008):
+            self.ok("prendre", f"ruche-{n}", "--utilisateur", "bidji29")
+        self.ok("prendre", "ruche-9008", "--utilisateur", "alice")
+        self.ok("prendre", "ruche-9008", "--utilisateur", "bidji29", "--en-parallele")  # a registration in parallel counts
+        self.valide()
+        huit = ", ".join(f"ruche-900{n}" for n in range(1, 8)) + ", ruche-9008 (en parallèle)"
+        self.ko(f"règle R8 : bidji29 a déjà 8 réservations ou inscriptions en parallèle ({huit}), maximum 8",
+                "prendre", "ruche-9009", "--utilisateur", "bidji29")
+        for autre in ("miniz-9001", "miniz-9003", "ruche-9013"):  # another category, or not created by the council
+            self.ko("maximum 3", "prendre", autre, "--utilisateur", "bidji29")
+        self.a_la_main("bidji29", "ruche-9009")
+        self.ko(f"règle R8 : bidji29 a 9 réservations ou inscriptions en parallèle ({huit}, ruche-9009), maximum 8", "valider")
+
+    def test_one_other_engagement_brings_back_the_usual_cap_and_an_ordinary_member_keeps_three(self):
+        for qui, taches in (("bidji29", ("ruche-9001", "ruche-9002", "ruche-9003")), ("alice", ("ruche-9005", "ruche-9006", "ruche-9007"))):
+            for t in taches:
+                self.ok("prendre", t, "--utilisateur", qui)
+            for autre in (("miniz-9001", "miniz-9003", "ruche-9013") if qui == "bidji29" else ("ruche-9004",)):
+                self.ko(f"règle R8 : {qui} a déjà 3 réservations ou inscriptions en parallèle ({', '.join(taches)}), maximum 3",
+                        "prendre", autre, "--utilisateur", qui)
+        # All engagements are counted: holding one on another task, bidji29 is refused a 4th even on a tooling task.
+        self.ok("liberer", "ruche-9003", "--utilisateur", "bidji29")
+        self.ok("prendre", "miniz-9001", "--utilisateur", "bidji29")
+        self.ko("règle R8 : bidji29 a déjà 3 réservations ou inscriptions en parallèle (miniz-9001, ruche-9001, ruche-9002), maximum 3",
+                "prendre", "ruche-9004", "--utilisateur", "bidji29")
+        self.valide()
+        self.a_la_main("bidji29", "ruche-9004")
+        self.a_la_main("alice", "ruche-9008")
+        texte = self.ko("règle R8 : bidji29 a 4 réservations ou inscriptions en parallèle", "valider")
+        self.assertIn("règle R8 : alice a 4 réservations ou inscriptions en parallèle (ruche-9005, ruche-9006, ruche-9007, ruche-9008), "
+                      "maximum 3", texte)
+
+    def test_past_missing_or_malformed_setting_gives_the_usual_cap_in_prendre_valider_and_the_gate(self):
+        for t in ("ruche-9001", "ruche-9002", "ruche-9003"):
+            self.ok("prendre", t, "--utilisateur", "bidji29")
+        self.commit("three tooling tasks of bidji29")
+        trois = "ruche-9001, ruche-9002, ruche-9003"
+        for ligne, instant in [(l, None) for l in R8_SANS_EXCEPTION] + [(R8_AMORCAGE, "2026-12-01T00:00:00Z")]:
+            with self.subTest(reglage=ligne, instant=instant):
+                if instant:
+                    self.a(instant)  # after the end date of the test's setting
+                self.reglage(ligne)
+                self.ko(f"règle R8 : bidji29 a déjà 3 réservations ou inscriptions en parallèle ({trois}), maximum 3",
+                        "prendre", "ruche-9004", "--utilisateur", "bidji29")
+                self.branche("quatrieme")
+                self.a_la_main("bidji29", "ruche-9004")
+                self.commit()
+                refus = f"règle R8 : bidji29 a 4 réservations ou inscriptions en parallèle ({trois}, ruche-9004), maximum 3"
+                self.ko(refus, "valider")
+                self.refusee("bidji29", refus)
+                self.refusee(AGENT, refus)
+                self.abandonner("quatrieme")
+        # The witness: with the setting in force, here unquoted (a YAML timestamp with its zone), the same reservation passes.
+        self.a("2026-11-30T23:00:00Z")
+        self.reglage(R8_AMORCAGE.replace('"', ""))
+        self.branche("quatrieme")
+        self.ok("prendre", "ruche-9004", "--utilisateur", "bidji29")
+        self.commit()
+        self.libre_service("bidji29", "reservation")
+
+    def test_after_the_end_date_engagements_taken_before_stay_valid_and_a_new_one_needs_fewer_than_three(self):
+        self.a("2026-11-30T20:00:00Z")
+        for n in range(9001, 9009):
+            self.ok("prendre", f"ruche-{n}", "--utilisateur", "bidji29")
+        self.commit("eight tooling tasks of bidji29, before the end date")
+        self.a("2026-12-01T00:00:01Z")
+        self.valide()  # the clock alone never makes the registry invalid: everyone's PRs still pass the gate
+        self.prendre_et_fusionner("alice", "miniz-9001")
+        # No 9th and no new engagement of any kind for bidji29, by bee prendre or through the gate.
+        for commande in (("ruche-9009",), ("miniz-9003",), ("ruche-9013",), ("miniz-9001", "--en-parallele")):
+            texte = self.ko("règle R8 : bidji29 a déjà 8 réservations ou inscriptions en parallèle", "prendre", *commande, "--utilisateur", "bidji29")
+            self.assertIn("maximum 3", texte)
+        self.branche("neuvieme")
+        self.a_la_main("bidji29", "ruche-9009")
+        self.commit()
+        self.refusee(AGENT, "règle R8 : bidji29 a 9 réservations ou inscriptions en parallèle", "maximum 3")
+        self.abandonner("neuvieme")
+        # Releases still pass, from bidji29's own PR as from bee liberer.
+        self.branche("liberation")
+        self.ok("liberer", "ruche-9008", "--utilisateur", "bidji29")
+        self.commit()
+        self.libre_service("bidji29", "liberation")
+        self.fusionner("liberation")
+        for n in range(9004, 9008):
+            self.ok("liberer", f"ruche-{n}", "--utilisateur", "bidji29")
+        self.commit("bidji29 keeps three")
+        # A new engagement dated before the end date (within the gate's 2 h) is still judged at the PR's instant.
+        self.branche("antidatee")
+        bee.modifier_tache(self.chemin_tache("ruche-9009"), statut="reservee", reservation={"utilisateur": "bidji29", "depuis": "2026-11-30T23:00:00Z"})
+        self.commit()
+        self.valide()  # the state alone accepts it: the latest engagement predates the end date
+        for auteur in (AGENT, "bidji29"):
+            texte = self.refusee(auteur, "règle R8 : bidji29 prend un engagement après la fin de r8_amorcage : 4 réservations ou inscriptions "
+                                         "en parallèle, maximum 3 (un nouvel engagement se juge à l'heure de la PR)")
+            self.assertNotIn("règle R8 : bidji29 a 4", texte)
+        self.abandonner("antidatee")
+        self.ko("règle R8 : bidji29 a déjà 3 réservations ou inscriptions en parallèle (ruche-9001, ruche-9002, ruche-9003), maximum 3",
+                "prendre", "ruche-9009", "--utilisateur", "bidji29")
+        # Under 3, bidji29 takes a new engagement again, up to the usual cap.
+        self.ok("liberer", "ruche-9003", "--utilisateur", "bidji29")
+        self.commit("bidji29 under three")
+        self.branche("nouvelle")
+        self.ok("prendre", "ruche-9009", "--utilisateur", "bidji29")
+        self.commit()
+        self.libre_service(AGENT, "reservation")
+        self.fusionner("nouvelle")
+        self.valide()
+        self.ko("maximum 3", "prendre", "ruche-9010", "--utilisateur", "bidji29")
+
+    def test_an_unreadable_engagement_date_gives_the_usual_cap(self):
+        for n in range(9001, 9005):
+            self.ok("prendre", f"ruche-{n}", "--utilisateur", "bidji29")
+        self.valide()
+        for depuis in ("hier", "2026-10-29T22:00:00"):  # unreadable, or without a zone: fails closed
+            with self.subTest(depuis=depuis):
+                bee.modifier_tache(self.chemin_tache("ruche-9004"), reservation={"utilisateur": "bidji29", "depuis": depuis})
+                self.ko("règle R8 : bidji29 a 4 réservations ou inscriptions en parallèle (ruche-9001, ruche-9002, ruche-9003, ruche-9004), "
+                        "maximum 3", "valider")
+
+    def test_in_the_gate_an_agent_account_counts_as_its_person(self):
+        for qui, taches in (("bidji29", range(9001, 9004)), ("alice", range(9010, 9013))):
+            for n in taches:
+                self.ok("prendre", f"ruche-{n}", "--utilisateur", qui)
+        self.commit("three tooling tasks each for bidji29 and alice")
+        # A 4th engagement on another task, from either of bidji29's accounts; an ordinary member: 3 everywhere.
+        for qui, tache, auteurs in (("bidji29", "miniz-9001", ("bidji29", AGENT)), ("bidji29", "ruche-9013", (AGENT,)),
+                                    ("alice", "ruche-9004", ("alice",))):
+            self.branche("quatrieme")
+            self.a_la_main(qui, tache)
+            self.commit()
+            for auteur in auteurs:
+                texte = self.refusee(auteur, f"règle R8 : {qui} a 4 réservations ou inscriptions en parallèle", "maximum 3")
+                self.assertNotIn("après la fin de r8_amorcage", texte, "the end date is not what refuses it: one refusal")
+            self.abandonner("quatrieme")
+        # Tooling tasks created by the council: the agent account reserves them for bidji29, as self-service, up to the 8th.
+        for n in range(9004, 9008):
+            self.ok("prendre", f"ruche-{n}", "--utilisateur", "bidji29")
+        self.commit("seven tooling tasks of bidji29")
+        self.branche("huitieme")
+        self.ok("prendre", "ruche-9008", "--utilisateur", "bidji29")
+        self.commit()
+        self.libre_service(AGENT, "reservation")
+        self.fusionner("huitieme")
+        self.branche("neuvieme")
+        self.a_la_main("bidji29", "ruche-9009")
+        self.commit()
+        for auteur in (AGENT, "bidji29"):
+            self.refusee(auteur, "règle R8 : bidji29 a 9 réservations ou inscriptions en parallèle", "maximum 8")
+
+
 if __name__ == "__main__":
     unittest.main()
