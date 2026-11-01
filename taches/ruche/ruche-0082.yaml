@@ -1,0 +1,38 @@
+id: ruche-0082
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: M
+titre: 'Trial: a newly appointed guardian''s reviews are recorded but not counted for four weeks'
+contexte: 'R15 (docs/devolution.md, sections 2 and 6): for the first four weeks after an appointment (not a renewal),
+  a guardian is not yet in office: their reviews are written, public and read like a New member''s (Nouveau), and count
+  for nothing a guardian''s would (R3''s gate, blocking, task validation, invitation agreements, the brake''s count).
+  Add the trial to ruche-0081''s in-office function, with its length in bee.yaml. At the end, `bee` reports each review
+  made during the trial with its outcome: contribution integrated, refused or cancelled, defects confirmed or not. While
+  the first guardian''s trial runs, no guardian is in office, so R13''s bootstrap provisions keep applying. The seeded
+  defects the council uses in a trial are not tooled here and stay with the council.'
+fichiers:
+- outils/bee.py
+- outils/test_bee.py
+- bee.yaml
+- docs/devolution.md
+- docs/gardiens.md
+portee: 0.6
+metrique: null
+depend_de:
+- ruche-0081
+critere_acceptation:
+- a guardian appointed less than the trial's length ago counts nowhere a guardian counts; tested for each place in ruche-0081's
+  inventory
+- a renewal does not restart the trial; a re-appointment after an empty seat does not either
+- with the only guardian in trial, R13's bootstrap provisions apply (tested)
+- the trial report lists each review made during the trial with its outcome, reading only the registry
+- independent adversarial review attached; the full test suite passes
+hors_perimetre:
+- choosing or publishing the seeded defects used in a trial
+- COMMANDMENTS.md
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: '2026-10-31'

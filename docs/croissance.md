@@ -178,7 +178,7 @@ personnelles sont un premier filtre, pas une garantie.
 | Geste | Qui | Quand | Fusion |
 | --- | --- | --- | --- |
 | Proposer (`bee inviter`) | Tout membre, en son nom | Numéro suivant, sans trou ; 1 par PR et 2 par utilisateur sur 24 h glissantes (`creations` de `bee.yaml` ; le conseil n'est pas plafonné). Non décidée (sans feu vert) `expiration_jours` (14) après sa proposition, elle **expire** : elle ne retient plus la personne et ne reçoit plus d'accord | Le conseil (phase de lancement) |
-| Accord d'un gardien | Un gardien **en fonction** (nommé dans `gouvernance/gardiens.yaml`, avec un garant non révoqué), autre que le proposant, dont le garant n'est pas le proposant, et qui n'a pas le même garant qu'un proposant gardien | `debat_min_heures` (72 h) après la fusion de l'invitation dans `main` ; frein desserré (sauf garant ou gardien) ; aucun incident ouvert | Automatique |
+| Accord d'un gardien | Un gardien **en fonction** (nommé ou élu dans `gouvernance/gardiens.yaml`, avec un garant non révoqué et dans son mandat, lui-même dans son mandat et après son essai : R15), autre que le proposant, dont le garant n'est pas le proposant, et qui n'a pas le même garant qu'un proposant gardien | `debat_min_heures` (72 h) après la fusion de l'invitation dans `main` ; frein desserré (sauf garant ou gardien) ; aucun incident ouvert | Automatique |
 | Accord du conseil : **le feu vert** | Le conseil, autre que le gardien qui a donné le sien | Après l'accord d'un gardien ; **amorçage** : tant qu'aucun gardien n'est en fonction, une invitation de garant ou de gardien n'attend que le conseil (72 h après sa publication). Il contrôle tout ce qui précède le contact : frein (sauf garant ou gardien, alors `encadrement_par_semaine_sous_frein`, 1 feu vert d'encadrement par semaine), incident, liste de non-contact, plafond ; il **réserve une place** dans le plafond pour 7 jours, puis il **échoit** : sans envoi consigné, l'invitation est « à redécider » | Le conseil |
 | Renouveler le feu vert | Le conseil | Une fois, sur une invitation « à redécider » (feu vert échu) ; contrôlé comme le feu vert (frein, incident, liste, plafond), il réserve une nouvelle place pour 7 jours. S'il échoit encore, le conseil écarte l'invitation | Le conseil |
 | Envoi consigné | Le conseil, dont un humain a envoyé lui-même le message | Après le feu vert, avant son échéance. **Jamais refusé** : c'est un fait ; un envoi qui porte les messages et les places de 7 jours glissants au-delà du plafond (envoi tardif, envois concurrents), ou consigné après l'échéance de son feu vert, est consigné et **signalé** (`bee valider` en ⚠, `bee essaim`, le site) | Le conseil |
@@ -229,7 +229,7 @@ jamais après la proposition, et le gardien et le conseil vérifient que le mess
 `demande`. Une proposition reste toujours possible, et une réponse ou un écart se consignent toujours.
 `bee essaim` et le site disent l'état du frein, pourquoi, et **ce qui peut passer aujourd'hui**.
 
-- **Aucun gardien en fonction** (nommé, avec un garant non révoqué) : c'est l'**amorçage**. Une invitation de
+- **Aucun gardien en fonction** (nommé ou élu, avec un garant non révoqué et dans son mandat, lui-même dans son mandat et après son essai : R15) : c'est l'**amorçage**. Une invitation de
   garant ou de gardien n'exige alors pas d'accord de gardien : l'accord du conseil suffit (il n'y a personne
   d'autre), 72 h après sa publication ; une invitation à participer ou à faire entrer un projet reste
   impossible.

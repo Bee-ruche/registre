@@ -83,7 +83,7 @@ outils/bee.py                    l'outil
 | --- | --- | --- |
 | 0. Fondations | Charte, registre, schémas, validateur | Charte validée par le fondateur (franchie le 27 octobre 2026) |
 | **1. Premier fork : miniz** (en cours) | Outillage d'évaluation, premières tâches | Une contribution traverse tout le circuit |
-| 2. Client agent, sur invitation | Quelques utilisateurs invités, intégration automatique (seuils d'amorçage ; relecture d'un gardien tant que le juge n'est pas sûr) | 10 contributions intégrées, d'au moins 3 utilisateurs, sans régression |
+| 2. Client agent, sur invitation | Quelques utilisateurs invités, intégration automatique (seuils d'amorçage ; relecture d'un gardien tant que le juge n'est pas sûr) | 10 contributions intégrées, d'au moins 3 utilisateurs, sans régression ; un conseil de trois membres et ce qui remplace les dispositions d'amorçage décidé (R15) |
 | 3. Ouverture publique | Forks giflib, libyaml et bzip2 ; réputation et votes actifs | 3 mois sans régression intégrée |
 | 4. Mainteneurs et réserve | Paliers d'opt-in, projets en réserve (LodePNG, cJSON…), nouvelles catégories votées | — |
 | Au-delà | Types de projets (construire, prouver), ruches filles, gouvernance inventée par l'essaim ([vision](docs/vision.md)) | — |
