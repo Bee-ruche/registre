@@ -128,6 +128,135 @@ class TestWorkflows(unittest.TestCase):
                 self.assertIn("jobs", donnees)
 
 
+class TestCiScope(unittest.TestCase):
+    """ruche-0090: a registry PR that only adds or modifies self-service data files skips the tool and judge test suites
+    (bee ci-scope, decided by the base's tool in validation.yml); anything else runs the full suite (fails closed)."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.depot = pathlib.Path(self.temp.name) / "depot"
+        self.depot.mkdir()
+        git(self.depot, "init", "-q", "-b", "main")
+        self.ecrire("outils/bee.py", (RACINE / "outils" / "bee.py").read_text(encoding="utf-8"))
+        self.ecrire("taches/miniz/miniz-0001.yaml")
+        self.ecrire("README.md")
+        self.base = self.commit()
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def ecrire(self, chemin, texte="id: x\n"):
+        fichier = self.depot / chemin
+        fichier.parent.mkdir(parents=True, exist_ok=True)
+        fichier.write_text(texte, encoding="utf-8")
+
+    def commit(self):
+        git(self.depot, "add", "-A")
+        git(self.depot, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "c", "--allow-empty")
+        return git(self.depot, "rev-parse", "HEAD").strip()
+
+    def portee(self):
+        return bee.ci_scope(self.depot, self.base, self.commit())
+
+    def test_data_only(self):
+        for chemin in ("membres/alice.yaml", "taches/miniz/miniz-0001.yaml", "taches/miniz/miniz-0002.yaml",
+                       "contributions/miniz/miniz-0001-c1.yaml", "votes/miniz-0001-c1/bruno.yaml", "votes/P-0001/bruno.yaml",
+                       "mesures/miniz-0001-c1/chloe.yaml", "propositions/P-0001.yaml", "debats/D-0001.yaml",
+                       "invitations/I-0001.yaml", "invitations/ne-plus-contacter.yaml"):
+            self.ecrire(chemin, "id: y\n")
+        self.assertEqual(self.portee(), ("data", None))
+        self.assertEqual(lancer("--registre", str(self.depot), "ci-scope", "--base", self.base), (0, "data\n"))
+
+    def test_anything_else_runs_the_full_suite(self):
+        lien = lambda: os.symlink("../README.md", self.depot / "membres/alice.yaml")  # noqa: E731
+        cas = {
+            "code": lambda: self.ecrire("outils/bee.py", "print('data')\n"),
+            "workflow": lambda: self.ecrire(".github/workflows/x.yml"),
+            "root file": lambda: self.ecrire("README.md", "y\n"),
+            "frozen fixture": lambda: self.ecrire("outils/tests/registre/taches/miniz/miniz-0001.yaml"),
+            "data and code": lambda: (self.ecrire("membres/alice.yaml"), self.ecrire("bee.yaml")),
+            "deletion": lambda: git(self.depot, "rm", "-q", "taches/miniz/miniz-0001.yaml"),
+            "rename": lambda: git(self.depot, "mv", "taches/miniz/miniz-0001.yaml", "taches/miniz/miniz-0002.yaml"),
+            "mode change": lambda: (self.depot / "taches/miniz/miniz-0001.yaml").chmod(0o755),
+            "executable added": lambda: (self.ecrire("membres/alice.yaml"), (self.depot / "membres/alice.yaml").chmod(0o755)),
+            "symlink": lambda: ((self.depot / "membres").mkdir(), lien()),
+            "other extension": lambda: self.ecrire("taches/miniz/notes.txt"),
+            "subfolder": lambda: self.ecrire("membres/sous/alice.yaml"),
+            "suffix": lambda: self.ecrire("debats/D-0001.yaml.py"),
+            "newline in the name": lambda: self.ecrire("membres/alice.yaml\n"),
+            "not UTF-8": lambda: self.ecrire(os.fsdecode(b"membres/\xff.yaml")),
+            "no change": lambda: None,
+        }
+        for nom, changer in cas.items():
+            with self.subTest(cas=nom):
+                git(self.depot, "reset", "-q", "--hard", self.base)
+                git(self.depot, "clean", "-qfdx")
+                changer()
+                portee, raison = self.portee()
+                self.assertEqual(portee, "full")
+                self.assertTrue(raison)
+        self.assertEqual(bee.ci_scope(self.depot, "0" * 40, "HEAD")[0], "full", "unknown base")
+        self.assertEqual(bee.ci_scope(self.temp.name, self.base, "HEAD")[0], "full", "not a repository")
+        code, sortie = lancer("--registre", str(self.depot), "ci-scope", "--base", "0" * 40)
+        self.assertEqual((code, sortie.splitlines()[0]), (0, "full"))
+
+    def test_workflow_step_asks_the_base_tool_and_fails_closed(self):
+        """Replays validation.yml's decision step on a merge commit like GitHub's (first parent: the base)."""
+        flux = yaml.safe_load((RACINE / ".github/workflows/validation.yml").read_text(encoding="utf-8"))
+        script = next(s for s in flux["jobs"]["valider"]["steps"] if s.get("id") == "portee")["run"]
+
+        def etape(pr, outil_base=None):
+            git(self.depot, "checkout", "-q", "main")
+            if outil_base:
+                self.ecrire("outils/bee.py", outil_base)
+            base = self.commit()
+            git(self.depot, "checkout", "-q", "-b", f"pr-{len(etapes)}")
+            pr()
+            self.commit()
+            git(self.depot, "checkout", "-q", "--detach", base)
+            git(self.depot, "-c", "user.name=t", "-c", "user.email=t@t", "merge", "-q", "--no-ff", "--no-edit", f"pr-{len(etapes)}")
+            runner = pathlib.Path(self.temp.name) / f"runner-{len(etapes)}"
+            runner.mkdir()
+            env = {k: v for k, v in os.environ.items() if k != "BEE_REGISTRE"}
+            env.update(GITHUB_OUTPUT=str(runner / "sortie"), RUNNER_TEMP=str(runner), BASE_EVENEMENT="0" * 40)
+            r = subprocess.run(["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", script], cwd=self.depot, env=env,
+                               capture_output=True, text=True)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            sorties = dict(l.split("=", 1) for l in (runner / "sortie").read_text(encoding="utf-8").splitlines())
+            self.assertEqual(sorties["base"], base)
+            etapes.append(sorties["portee"])
+
+        etapes = []
+        etape(lambda: self.ecrire("membres/alice.yaml"))
+        etape(lambda: self.ecrire("outils/bee.py", "print('data')\n"))  # the PR's own tool never decides
+        etape(lambda: self.ecrire("membres/bruno.yaml"), outil_base="print('data')\nraise SystemExit(2)\n")
+        etape(lambda: self.ecrire("membres/chloe.yaml"), outil_base="print('data ')\n")
+        self.assertEqual(etapes, ["data", "full", "full", "full"])
+
+    def test_the_data_only_step_runs_every_test_that_reads_the_live_registry(self):
+        """The data-only step's list names real tests, and covers each test that reads the live registry through the tool
+        (RACINE as a registry, a Registre of RACINE or of the default path, RACINE joined with a self-service folder): a
+        static check, which cannot see a live-registry read hidden elsewhere (another helper, a command run without
+        --registre)."""
+        import ast
+        flux = (RACINE / ".github/workflows/validation.yml").read_text(encoding="utf-8")
+        liste = set(re.findall(r"outils\.test_bee\.(\w+)(?:\.(\w+))?", flux))
+        self.assertTrue(liste)
+        for classe, methode in liste:
+            with self.subTest(test=f"{classe}.{methode}"):
+                self.assertTrue(issubclass(globals()[classe], unittest.TestCase))
+                self.assertTrue(not methode or callable(getattr(globals()[classe], methode, None)))
+        lecture = re.compile(r"str\(RACINE\)|Registre\((?:RACINE)?\)|RACINE\s*/\s*\"(?:%s)\b" % "|".join(DONNEES_REGISTRE))
+        source = pathlib.Path(__file__).read_text(encoding="utf-8")
+        lecteurs = set()
+        for noeud in ast.parse(source).body:
+            fonctions = [(noeud.name, f) for f in noeud.body] if isinstance(noeud, ast.ClassDef) else [("", noeud)]
+            lecteurs |= {(c, f.name) for c, f in fonctions
+                         if isinstance(f, ast.FunctionDef) and lecture.search(ast.get_source_segment(source, f))}
+        self.assertTrue(lecteurs)
+        self.assertEqual({(c, f) for c, f in lecteurs if (c, "") not in liste and (c, f) not in liste}, set())
+
+
 class BaseTest(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()

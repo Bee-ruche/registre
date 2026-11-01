@@ -24,17 +24,10 @@ jobs:
           python-version: "3.12"
       - name: Dépendances
         run: pip install -r outils/requirements.txt
-      - name: Tests de l'outil
-        run: python3 -m unittest outils/test_bee.py
-      - name: "Tests unitaires du juge commun (sans Docker ; méta-tests dans juge-commun.yml)"
-        run: python3 outils/juge/test_juge.py
-      - name: Validation complète du registre
-        run: python3 outils/bee.py valider
-      - name: Règles de la pull request
+      - name: Scope of the PR (data only, or the full suite)
+        id: portee
         if: github.event_name == 'pull_request'
         env:
-          GH_TOKEN: ${{ github.token }}
-          AUTEUR: ${{ github.event.pull_request.user.login }}
           BASE_EVENEMENT: ${{ github.event.pull_request.base.sha }}
         run: |
           # La base de l'événement est celle de l'ouverture de la PR, jamais rafraîchie : comparée au commit de fusion
@@ -42,5 +35,39 @@ jobs:
           # depuis. La vraie base est le premier parent du commit de fusion que GitHub a construit, c'est-à-dire main au
           # moment de l'exécution ; à défaut (pas de commit de fusion), la base de l'événement.
           if [ "$(git rev-list --parents -n 1 HEAD | wc -w)" = 3 ]; then BASE=$(git rev-parse HEAD^1); else BASE="$BASE_EVENEMENT"; fi
+          echo "base=$BASE" >> "$GITHUB_OUTPUT"
+          # ruche-0090: the base's tool (never the PR's own) says whether the PR only adds or modifies self-service data
+          # files. Fails closed: any output but "data", or any error (a base without ci-scope included), runs the full suite.
+          mkdir -p "$RUNNER_TEMP/outil-base"
+          portee=$(git show "$BASE:outils/bee.py" > "$RUNNER_TEMP/outil-base/bee.py" &&
+                   python3 "$RUNNER_TEMP/outil-base/bee.py" --registre . ci-scope --base "$BASE" --tete HEAD) || portee=full
+          [ "$portee" = data ] || portee=full
+          echo "portee=$portee" >> "$GITHUB_OUTPUT"
+          echo "Scope: $portee"
+      - name: Tests de l'outil
+        if: steps.portee.outputs.portee != 'data'
+        run: python3 -m unittest outils/test_bee.py
+      - name: "Tests unitaires du juge commun (sans Docker ; méta-tests dans juge-commun.yml)"
+        if: steps.portee.outputs.portee != 'data'
+        run: python3 outils/juge/test_juge.py
+      - name: Tests that read the live registry (data-only PR)
+        # A data-only PR changes no code: of the tool's tests, only these read the live registry's data (the others read
+        # the frozen fixture of ruche-0093). TestCiScope checks this list against outils/test_bee.py.
+        if: steps.portee.outputs.portee == 'data'
+        run: >-
+          python3 -m unittest outils.test_bee.TestRegistreReel outils.test_bee.TestRegistre.test_le_registre_livre_est_valide
+          outils.test_bee.TestArbre.test_chemins_livres_tiennent_dans_un_budget_court
+      - name: Validation complète du registre
+        run: python3 outils/bee.py valider
+      - name: Règles de la pull request
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AUTEUR: ${{ github.event.pull_request.user.login }}
+          BASE: ${{ steps.portee.outputs.base }}
+        run: |
+          # BASE: the PR's real base, computed by the "Scope of the PR" step (never empty: an empty base would compare HEAD
+          # with itself and pass).
+          [ -n "$BASE" ]
           cree=$(gh api "users/$AUTEUR" --jq '.created_at[:10]')
           python3 outils/bee.py verifier-pr --base "$BASE" --tete HEAD --auteur "$AUTEUR" --compte-cree-le "$cree"
