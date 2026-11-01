@@ -1,0 +1,40 @@
+id: ruche-0090
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: M
+titre: 'Registry CI: a self-service PR that changes no code merges in minutes, not after the full test suite'
+contexte: 'Every PR to the registry runs the whole tool test suite (validation.yml), 60 to 80 minutes on the runners,
+  before fusion-auto can merge it. A reservation, a submission, a vote or a member file changes no code: the tests test
+  the tool, which that PR does not touch, and the merge decision is already made by main''s tool (fusion-auto.yml). A
+  bee that reserves then submits waits close to three hours of CI for two data files, and every self-service merge forces
+  open code PRs to re-run their suite (only the tested combination is merged). Run the tool and judge tests only when
+  the PR changes something other than self-service data, decided from the PR''s real diff against main; always run `bee
+  valider` and the PR rules; keep the full suite on every push to main. Many tests copy the live registry as their fixture
+  (outils/test_bee.py, RACINE): first show that no test outcome depends on self-service data, or make those tests use
+  fixed data, so that a data PR can never leave main''s suite red.'
+fichiers:
+- .github/workflows/validation.yml
+- outils/bee.py
+- outils/test_bee.py
+- docs/contributions.md
+portee: 0.7
+metrique: null
+depend_de: []
+critere_acceptation:
+- a PR that only adds or changes self-service files (the paths the gate lets merge automatically) skips the tool and
+  judge tests and finishes in under 5 minutes; measured on a real reservation PR, timings in the PR
+- any other path, a rename, a deletion outside self-service, or a diff that cannot be computed runs the full suite (fails
+  closed); tested
+- the list of self-service paths comes from the tool itself, not a second copy in the workflow
+- every push to main still runs the full suite; a test shows no test reads self-service data of the live registry, or
+  those tests use fixed data
+- independent adversarial review attached (fusion-auto relies on this workflow); the full test suite passes
+hors_perimetre:
+- the judge workflows (juge.yml, juge-commun.yml)
+- fusion-auto.yml's merge decision
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: '2026-11-01'
