@@ -4,7 +4,10 @@ auteur: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/100
 resume: One check for hidden characters and the fake end-of-data marker in every self-service file, at
   write time and in bee valider; workflow commands neutralised in printed output.
-statut: en_relecture
+statut: integree
 soumise_le: '2026-11-01T04:45:34Z'
 engage_depuis: '2026-10-31T02:01:48Z'
 relectures: []
+decidee_le: '2026-11-01T09:32:24Z'
+motif_decision: 'Hive tooling contribution: registry PR #100 merged at the judged commit b3b9bbb by the agent principal under the council''s permanent authorisation, after an independent adversarial review by an agent of another model in three passes (first: two blocking and two serious findings; second: four should-fix items; third: nothing blocking or should-fix), each round of fixes verified by the same reviewer; CI green on the merged commit. R1: 171 lines excluding tests for an M task at 200. The items left out of scope go to ruche-0088.'
+fusion_sha: 36004ed8e4407cc8face30a5417ab31ac5b3e61c
