@@ -2,7 +2,7 @@
 #
 # Un fork l'appelle depuis sa CI, en épinglant une étiquette du registre :
 #   juge:
-#     uses: Bee-ruche/registre/.github/workflows/juge.yml@juge-v1
+#     uses: Bee-ruche/registre/.github/workflows/juge.yml@juge-v2
 #     with: { base_sha: <base de la PR>, tete_sha: <tête de la PR>, options: "sortie_compressee=identique" }
 # Il juge la tête contre la base avec le greffon de la BASE (bee/juge/projet.py), jamais celui de la PR,
 # et publie un artefact « juge » : juge.json (rapport, section « juge » comprise) et code (0 juste,
@@ -46,7 +46,7 @@ permissions:
   contents: read
 
 env:
-  JUGE_COMMUN_REF: juge-v1
+  JUGE_COMMUN_REF: juge-v2
 
 jobs:
   juge:
@@ -80,8 +80,6 @@ jobs:
       - name: Juger
         id: juge
         env:
-          BASE_SHA: ${{ inputs.base_sha }}
-          TETE_SHA: ${{ inputs.tete_sha }}
           OPTIONS: ${{ inputs.options }}
           REPETITIONS: ${{ inputs.repetitions }}
           SANS_INSTRUCTIONS: ${{ inputs.sans_instructions }}
@@ -94,7 +92,7 @@ jobs:
           [ "$SANS_INSTRUCTIONS" = "true" ] && options+=(--sans-instructions)
           set +e
           python3 juge-commun/outils/juge/juge.py --outillage base --source-a base --source-b pr \
-            --repetitions "$REPETITIONS" --depot-diff pr --base "$BASE_SHA" --tete "$TETE_SHA" \
+            --repetitions "$REPETITIONS" \
             "${options[@]}" --json resultats/juge.json > /dev/null 2> resultats/journal.txt
           code=$?
           set -e

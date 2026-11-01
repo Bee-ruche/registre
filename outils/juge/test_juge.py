@@ -24,16 +24,25 @@ et, depuis la revue adverse du 28/10 (défauts de contrat d'un greffon) :
   objet_oublie       le script de construction ne laisse pas l'objet du projet dans obj/ : erreur
   jetons_scindes     l'assembleur est formé par concaténation de jetons (a##sm) : vu dans les objets
   greffon_distrait   un greffon qui ne lit pas les sorties de B d'un scénario : erreur, pas d'acceptation
+
+Without Docker, the analysis is also tested on objects of the toy project built on the host as the judge
+builds them (DockerLocal; built, surveyed and analysed, never run): seeded constructs in every family and
+variant (TestSeededObjects), constructs added anywhere in a judged file (TestSeededText), failing tools
+(TestFailClosed).
 """
 
+import concurrent.futures
 import json
 import os
 import random
+import re
 import shutil
+import struct
 import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 ICI = os.path.dirname(os.path.abspath(__file__))
 JOUET = os.path.join(ICI, "jouet")
@@ -62,49 +71,146 @@ Idx Name          Size      VMA               LMA               File off  Algn
 DESASSEMBLAGE_A = "0000000000000000 <rle_compresser>:\n   0:\tendbr64\n   4:\tpush   %rbp\n"
 
 
-def releves(nm=NM_A, sections=SECTIONS_A, desassemblage=DESASSEMBLAGE_A):
-    return {"symboles": nm, "sections": sections, "desassemblage": desassemblage}
+def releves(nm=NM_A, sections=SECTIONS_A, desassemblage=DESASSEMBLAGE_A, objets=(), programme=()):
+    return {"symboles": nm, "sections": sections, "desassemblage": desassemblage, "objets": list(objets),
+            "programme": list(programme)}
 
 
 class TestAnalyse(unittest.TestCase):
     def test_base_contre_elle_meme(self):
-        self.assertEqual(analyse.analyser(releves(), releves(), prefixes=("rle_",)), [])
+        self.assertEqual(analyse.analyser(releves(), releves(), {}, {}, prefixes=("rle_",)), [])
 
     def test_prefixes_et_permis_du_greffon(self):
         b = releves(nm=NM_A + "/s/obj/rle.o: rle_aide T 0000000000000300 0000000000000010\n/s/obj/rle.o: qsort U\n")
-        self.assertEqual([s["type"] for s in analyse.analyser(releves(), b, prefixes=("rle_",))], ["appel_externe"])
-        self.assertEqual(analyse.analyser(releves(), b, prefixes=("rle_",), permis=("qsort",)), [])
+        self.assertEqual([s["type"] for s in analyse.analyser(releves(), b, {}, {}, prefixes=("rle_",))], ["appel_externe"])
+        self.assertEqual(analyse.analyser(releves(), b, {}, {}, prefixes=("rle_",), permis=("qsort",)), [])
         # Sans espace de noms, une nouvelle fonction globale est suspecte (elle pourrait en remplacer une autre).
-        self.assertEqual(sorted(s["type"] for s in analyse.analyser(releves(), b, permis=("qsort",))), ["symbole_defini"])
+        self.assertEqual(sorted(s["type"] for s in analyse.analyser(releves(), b, {}, {}, permis=("qsort",))), ["symbole_defini"])
 
     def test_symbole_qui_remplace_la_libc(self):
         b = releves(nm=NM_A + "/s/obj/rle.o: clock_gettime T 0000000000000300 0000000000000010\n"
                              "/s/obj/rle.o: memcmp T 0000000000000400 0000000000000010\n")
-        self.assertEqual(sorted(s["type"] for s in analyse.analyser(releves(), b, prefixes=("rle_",))),
+        self.assertEqual(sorted(s["type"] for s in analyse.analyser(releves(), b, {}, {}, prefixes=("rle_",))),
                          ["symbole_defini", "symbole_interdit"])
 
     def test_jamais_permis_malgre_prefixe_ou_permis(self):
         """Revue adverse n° 2 : un préfixe « ge » ou une entrée PERMIS ne blanchit pas getenv."""
         b = releves(nm=NM_A + "/s/obj/rle.o: getenv U\n/s/obj/rle.o: syscall U\n")
-        types = [s["type"] for s in analyse.analyser(releves(), b, prefixes=("rle_", "ge", "sy"), permis=("getenv",))]
+        types = [s["type"] for s in analyse.analyser(releves(), b, {}, {}, prefixes=("rle_", "ge", "sy"), permis=("getenv",))]
         self.assertEqual(types, ["appel_interdit", "appel_interdit"])
         a = releves(nm=NM_A + "/s/obj/rle.o: getenv U\n")
-        self.assertEqual([s["type"] for s in analyse.analyser(a, b, prefixes=("rle_",))], ["appel_interdit"])  # syscall seul
+        self.assertEqual([s["type"] for s in analyse.analyser(a, b, {}, {}, prefixes=("rle_",))], ["appel_interdit"])  # syscall seul
 
     def test_continuation_de_ligne(self):
-        diff = "+++ b/rle.c\n+    __as\\\n+m volatile(\"\");\n+    int x = 1;\n"
-        self.assertEqual(analyse.lignes_ajoutees(diff), ["    __as" + "m volatile(\"\");", "    int x = 1;"])
-        self.assertEqual(len(analyse.analyser(releves(), releves(), diff, prefixes=("rle_",))), 1)
+        b = {"rle.c": "    __as\\\nm volatile(\"\");\n    int x = 1;\n"}
+        self.assertEqual(list(analyse.constructions_du_texte(b)), [("rle.c", "assembleur en ligne", "__as" + "m volatile(\"\");")])
+        self.assertEqual(len(analyse.analyser(releves(), releves(), {}, b, prefixes=("rle_",))), 1)
 
     def test_constructeur_et_instructions(self):
         b = releves(sections=SECTIONS_A + "  1 .init_array   00000008  0000000000000000  0000000000000000  00001140  2**3\n",
                     desassemblage=DESASSEMBLAGE_A + "   9:\tsyscall\n  10:\trol    $0x3,%rdi\n")
-        self.assertEqual(sorted(s["type"] for s in analyse.analyser(releves(), b, prefixes=("rle_",))),
+        self.assertEqual(sorted(s["type"] for s in analyse.analyser(releves(), b, {}, {}, prefixes=("rle_",))),
                          ["instruction", "instruction", "section"])
 
     def test_source(self):
-        diff = "+++ b/rle.c\n+    __asm__ volatile(\"\");\n+#include <time.h>\n+    int ordinaire = 1;\n"
-        self.assertEqual(len(analyse.analyser(releves(), releves(), diff, prefixes=("rle_",))), 2)
+        b = {"rle.c": "    __asm__ volatile(\"\");\n#include <time.h>\n    int ordinaire = 1;\n"}
+        self.assertEqual(len(analyse.analyser(releves(), releves(), {}, b, prefixes=("rle_",))), 2)
+
+    def test_mnemonics_any_word(self):
+        instructions = {m: m for m in analyse.MNEMONIQUES_SUSPECTS if m[0].isalpha() and m not in NON_INSTRUCTIONS}
+        instructions.update({"int": "int $0x80", "(bad)": "(bad)", ".byte": ".byte 0xf", "preambule_valgrind": "rol $0x3,%rdi"})
+        suites = [()] + [(p,) for p in PREFIXES_X86] + [(p, q) for p in PREFIXES_X86 for q in PREFIXES_X86]
+        lignes = [f"  1f:\t{' '.join(suite + (texte,))}" for texte in instructions.values() for suite in suites]
+        lignes += ["   e:\tcall   13 <syscall+0x3>", "  13:\tlea    0x0(%rip),%rax        # 1a <int>"]
+        self.assertEqual(analyse.mnemoniques("\n".join(lignes)), {m: len(suites) for m in instructions})
+
+    def test_unreadable_bytes_make_the_analysis_incomplete(self):
+        for donnees in (b"", b"\x7fELF", b"MZ" + bytes(100), b"\x7fELF\x02\x01\x01" + bytes(57)):
+            b = releves(objets=[("rle.o", donnees)])
+            self.assertEqual([s["type"] for s in analyse.analyser(releves(), b, {}, {}, prefixes=("rle_",))], ["analyse_incomplete"])
+
+    def test_unreadable_a_object(self):
+        a, b = releves(objets=[("rle.o", b"\x7fELF")]), releves(objets=[("rle.o", elf(1, [(".text", 6, b"\x90")]))])
+        self.assertEqual([s["type"] for s in analyse.analyser(a, b, {}, {})], ["analyse_incomplete"])
+
+    def test_texts_required(self):
+        with self.assertRaises(TypeError):
+            analyse.analyser(releves(), releves(), prefixes=("rle_",))
+
+    def test_whole_files_compared(self):
+        a = {"x.c": "#pragma once\nint a;\n", "y.c": "int b;\n"}
+        self.assertEqual(analyse.analyser(releves(), releves(), a, {"x.c": "int c;\n  #pragma   once\n", "y.c": "int b;\n"}), [])
+        b = {"x.c": "int a;\n", "y.c": "#pragma once\nint b;\n"}
+        self.assertEqual([s["detail"][-5:] for s in analyse.analyser(releves(), releves(), a, b)], ["(y.c)"])
+        b = {"x.c": "#pragma once\nint a;\n#pragma once\n", "y.c": "int b;\n"}
+        self.assertEqual(len(analyse.analyser(releves(), releves(), a, b)), 1)
+
+
+# Every prefix word objdump prints before an x86-64 instruction.
+PREFIXES_X86 = ["es", "cs", "ss", "ds", "fs", "gs", "data16", "addr32", "lock", "rep", "repz", "repnz", "notrack", "bnd",
+                "xacquire", "xrelease"] + ["rex" + ("." + "".join(c for c, bit in zip("WRXB", (8, 4, 2, 1)) if m & bit) if m else "")
+                                           for m in range(16)]
+NON_INSTRUCTIONS = ("preambule_valgrind", "segment_wx", "pile_executable")
+GNU_STACK = 0x6474E551
+
+
+def elf(genre, sections=(), segments=(), shstrndx=None, queue=b""):
+    """Minimal x86-64 ELF file: an object (genre 1) with sections [(name, flags, bytes)] and its name table, or a program
+    (genre 3) with segments [(type, flags, bytes)]; `queue` is appended after everything."""
+    noms = b"\0" + b"".join(n.encode() + b"\0" for n, _, _ in sections) + b".shstrtab\0"
+    debut = 64 + 56 * len(segments)
+    corps, ph, sh, position = b"", b"", bytes(64), 1
+    for type_, drapeaux, donnees in segments:
+        ph += struct.pack("<IIQQQQQQ", type_, drapeaux, debut + len(corps), 0, 0, len(donnees), len(donnees), 0)
+        corps += donnees
+    for nom, drapeaux, donnees in sections:
+        sh += struct.pack("<IIQQQQIIQQ", position, 1, drapeaux, 0, debut + len(corps), len(donnees), 0, 0, 1, 0)
+        position, corps = position + len(nom) + 1, corps + donnees
+    sh += struct.pack("<IIQQQQIIQQ", position, 3, 0, 0, debut + len(corps), len(noms), 0, 0, 1, 0)
+    corps += noms
+    nombre = len(sections) + 2 if sections else 0
+    tete = b"\x7fELF\x02\x01\x01" + bytes(9) + struct.pack(
+        "<HHIQQQIHHHHHH", genre, 62, 1, 0, 64 if segments else 0, debut + len(corps) if sections else 0, 0, 64, 56,
+        len(segments), 64, nombre, max(nombre - 1, 0) if shstrndx is None else shstrndx)
+    return tete + ph + corps + (sh if sections else b"") + queue
+
+
+class TestExecutableBytes(unittest.TestCase):
+    """Executable bytes read from hand-built ELF files."""
+
+    def test_object_sections(self):
+        objet = elf(1, [(".text", 6, b"\x90\xc3"), (".data.x", 6, b"\x90\x0f\x05\x90"), (".data", 3, b"\x0f\x05"),
+                        (".text.y", 2, b"\x0f\x31")])
+        self.assertEqual(analyse.octets_executables(objet), ([b"\x90\xc3", b"\x90\x0f\x05\x90", b"\x0f\x31"], []))
+        b = releves(objets=[("rle.o", objet)])
+        self.assertEqual(sorted(s["detail"].split(":")[0] for s in analyse.analyser(releves(), b, {}, {})), ["rdtsc", "syscall"])
+
+    def test_hit_context_and_object(self):
+        def objets(nom, octets):
+            return releves(objets=[(nom, elf(1, [(".text", 6, octets)]))])
+        a = objets("rle.o", b"\x90" * 8 + b"\x0f\x05" + b"\xc3" * 8)
+        self.assertEqual(analyse.analyser(a, objets("rle.o", b"\x90" * 8 + b"\x0f\x05" + b"\xc3" * 8), {}, {}), [])
+        for b in (objets("rle.o", b"\x90" * 8 + b"\x0f\x05" + b"\xc3\xcc" * 4), objets("rle.o", b"\x90\xcc" * 4 + b"\x0f\x05" + b"\xc3" * 8),
+                  objets("rle2.o", b"\x90" * 8 + b"\x0f\x05" + b"\xc3" * 8)):
+            with self.subTest(b=b["objets"][0][0]):
+                self.assertEqual([s["detail"].split(":")[0] for s in analyse.analyser(a, b, {}, {})], ["syscall"])
+
+    def test_compressed_executable_section(self):
+        with self.assertRaises(ValueError):
+            analyse.octets_executables(elf(1, [(".text.z", 0x806, b"\x0f\x05")]))
+
+    def test_section_name_table_index(self):
+        analyse.octets_executables(elf(1, [(".text", 6, b"\x90")], queue=bytes(256)))
+        for indice in (3, 4):
+            with self.assertRaises(ValueError):
+                analyse.octets_executables(elf(1, [(".text", 6, b"\x90")], shstrndx=indice, queue=bytes(256)))
+
+    def test_program_segments_and_stack(self):
+        code, pile = (1, 5, b"\x90\xc3"), (GNU_STACK, 6, b"")
+        self.assertEqual(analyse.octets_executables(elf(3, segments=[code, pile])), ([b"\x90\xc3"], []))
+        self.assertEqual(analyse.octets_executables(elf(3, segments=[code]))[1], ["pile_executable"])
+        self.assertEqual(analyse.octets_executables(elf(3, segments=[code, (GNU_STACK, 7, b"")]))[1], ["pile_executable"])
+        self.assertEqual(analyse.octets_executables(elf(3, segments=[(1, 7, b"\x90"), pile]))[1], ["segment_wx"])
 
 
 class TestLectureSure(unittest.TestCase):
@@ -350,6 +456,221 @@ class TestImage(unittest.TestCase):
         self.assertIn(f"JUGE_COMMUN_REF: juge-v{juge.VERSION_COMMUNE}\n", texte)
 
 
+# ------------------------------------------------------------------ meta-tests of the analysis (built on the host, no Docker)
+
+OUTILS_LOCAUX = all(shutil.which(o) for o in ("sh", "cc", "nm", "objdump"))
+
+
+class DockerLocal:
+    """Stand-in for conteneur.Docker: runs the judge's build and analysis commands on the host, each mount target
+    replaced by its host path. Only the toy project and the fixtures below are built this way; nothing built is run."""
+
+    def __init__(self, outils=None):
+        self.outils = outils
+
+    def lancer(self, commande, montages, pids=2, entree=None, delai=3600):
+        cibles = {cible: hote for hote, cible, _ in montages}
+        motif = re.compile("|".join(re.escape(c) for c in sorted(cibles, key=len, reverse=True)))
+        env = dict(os.environ)
+        if self.outils:
+            env["PATH"] = self.outils + os.pathsep + env["PATH"]
+        return subprocess.run([motif.sub(lambda m: cibles[m.group(0)], c) for c in commande], capture_output=True,
+                              env=env, timeout=delai)
+
+
+def construire_jouet(travail, etiquette="B", ajout="", docker=None):
+    """The toy project, `ajout` appended to rle.c, built and surveyed as the judge does; returns (releves, sources)."""
+    projet = greffon_jouet.Projet({})
+    os.makedirs(travail)
+    depot = os.path.join(travail, "depot")
+    shutil.copytree(JOUET, depot, ignore=shutil.ignore_patterns("bee", "__pycache__"))
+    with open(os.path.join(depot, "rle.c"), "a", encoding="utf-8") as f:
+        f.write(ajout)
+    sources = juge.copier_sources(depot, os.path.join(travail, "sources"), projet.SOURCES, projet.SOURCES_REQUISES)
+    outils = juge.copier_outillage(JOUET, JOUET, os.path.join(travail, "outillage"), projet)
+    releves = juge.construire(docker or DockerLocal(), projet, sources, outils, os.path.join(travail, "construction"),
+                              etiquette, travail)
+    return releves, sources
+
+
+def octets_asm(hexa, section=".text", fin="ret"):
+    return '__asm__("%s\\n.p2align 4\\nrle_seeded_%s:\\n.byte %s\\n%s\\n.previous\\n");\n' % (
+        section, hexa, ", ".join("0x" + hexa[i:i + 2] for i in range(0, len(hexa), 2)), fin)
+
+
+SEEDED_CONSTRUCTS = {
+    "syscall": "0f05", "sysenter": "0f34", "int": "cd80", "rdtsc": "0f31", "rdtscp": "0f01f9", "rdpmc": "0f33",
+    "cpuid": "0fa2", "xgetbv": "0f01d0", "rdrand": "0fc7f0", "rdseed": "0fc7f8", "rdpid": "f30fc7f8",
+    "preambule_valgrind": "48c1c70348c1c70d48c1c73d48c1c733",
+}
+# Every x86-64 prefix byte: legacy prefixes, then REX.
+PREFIXES_OCTETS = ["26", "2e", "36", "3e", "64", "65", "66", "67", "f0", "f2", "f3"] + [f"{r:02x}" for r in range(0x40, 0x50)]
+# variant: (bytes before the construct, length it is padded to, bytes after it, ending its own section)
+VARIANTS = {"variant_a": ("", 0, None), "variant_b": ("06", 0, None), "variant_c": ("48b8", 8, None),
+            "variant_d": ("b8", 4, None), "variant_e": ("", 0, "0f")}
+VARIANTS.update({f"variant_{i:02d}": (p, 0, None) for i, p in enumerate(PREFIXES_OCTETS)})
+# f2 and f3 select other instructions for some of these opcodes.
+SHOWN_BY_DISASSEMBLY = ["variant_a"] + [f"variant_{i:02d}" for i, p in enumerate(PREFIXES_OCTETS) if p not in ("f2", "f3")]
+
+
+@unittest.skipUnless(OUTILS_LOCAUX, "sh, cc, nm and objdump required")
+class TestSeededObjects(unittest.TestCase):
+    """Constructs seeded into the object of the toy project, built and surveyed as the judge does; analysed, never run."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.travail = tempfile.mkdtemp(prefix="bee-seeded-")
+        cls.a, cls.sources_a = construire_jouet(os.path.join(cls.travail, "A"), "A")
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.travail, ignore_errors=True)
+
+    def analyse_de(self, nom, ajout):
+        b, sources_b = construire_jouet(os.path.join(self.travail, nom), "B", ajout)
+        return analyse.analyser(self.a, b, juge.textes(self.sources_a), juge.textes(sources_b), prefixes=("rle_",))
+
+    def test_honest(self):
+        self.assertEqual(self.analyse_de("honest", ""), [])
+
+    def test_every_family_seeded(self):
+        self.assertEqual(set(SEEDED_CONSTRUCTS), set(analyse.SEQUENCES))
+
+    def test_seeded_constructs_found(self):
+        def cas(c, v):
+            avant, longueur, apres = VARIANTS[v]
+            hexa = avant + SEEDED_CONSTRUCTS[c] + "90" * max(0, longueur - len(SEEDED_CONSTRUCTS[c]) // 2)
+            if apres is None:
+                return self.analyse_de(f"{c}-{v}", octets_asm(hexa))
+            return self.analyse_de(f"{c}-{v}", octets_asm(hexa + apres, '.section .text.rle_e,\\"ax\\",@progbits', ""))
+        liste = [(c, v) for c in SEEDED_CONSTRUCTS for v in VARIANTS]
+        with concurrent.futures.ThreadPoolExecutor(max(2, os.cpu_count() or 2)) as pool:
+            resultats = dict(zip(liste, pool.map(lambda cv: cas(*cv), liste)))
+        for (c, v), suspects in resultats.items():
+            with self.subTest(construct=c, variant=v):
+                octets = [s["detail"] for s in suspects if s["type"] == "octets"]
+                self.assertTrue(any(d.startswith(c + ":") and "objects'" in d for d in octets), octets)
+                self.assertTrue(any(d.startswith(c + ":") and "program's" in d for d in octets), octets)
+                instructions = [s["detail"].split(" ")[0] for s in suspects if s["type"] == "instruction"]
+                if v in SHOWN_BY_DISASSEMBLY:
+                    self.assertIn(c, instructions)
+                if v == "variant_b":
+                    self.assertIn("(bad)", instructions)
+                if v == "variant_e":
+                    self.assertIn(".byte", instructions)
+                self.assertEqual({s["type"] for s in suspects} - {"octets", "instruction", "source"}, set())
+
+    def test_seeded_construct_int3(self):
+        self.assertIn("int3", [s["detail"].split(" ")[0] for s in self.analyse_de("int3", octets_asm("cc"))
+                               if s["type"] == "instruction"])
+
+    def test_bytes_read_independently(self):
+        b, _ = construire_jouet(os.path.join(self.travail, "independent"), "B", octets_asm("0f05"))
+        b["desassemblage"] = self.a["desassemblage"]
+        self.assertEqual({s["type"] for s in analyse.analyser(self.a, b, {}, {}, prefixes=("rle_",))}, {"octets"})
+
+    def test_variant_f(self):
+        suspects = self.analyse_de("variant_f", octets_asm("900f0590", '.section .data.rle_x,\\"ax\\",@progbits'))
+        self.assertTrue(any(s["detail"].startswith("syscall:") and "objects'" in s["detail"] for s in suspects), suspects)
+
+    def test_variant_t(self):
+        """Each new hit is reported by its place and context."""
+        travail = os.path.join(self.travail, "variant_t")
+        a, sources_a = construire_jouet(os.path.join(travail, "A"), "A", octets_asm("48b80f31909090909090"))
+        for nom, ajout in (("same", octets_asm("48b80f31909090909090")), ("other", octets_asm("b80f319090"))):
+            b, sources_b = construire_jouet(os.path.join(travail, nom), "B", ajout)
+            suspects = analyse.analyser(a, b, juge.textes(sources_a), juge.textes(sources_b), prefixes=("rle_",))
+            octets = [s["detail"] for s in suspects if s["type"] == "octets"]
+            if nom == "same":
+                self.assertEqual(suspects, [])
+            else:
+                self.assertTrue(any(d.startswith("rdtsc:") and "objects'" in d for d in octets), octets)
+                self.assertTrue(any(d.startswith("rdtsc:") and "program's" in d for d in octets), octets)
+
+    def test_memory_flags(self):
+        for nom, ajout, drapeau in (
+                ("variant_r", '__asm__(".section .note.GNU-stack,\\"x\\",@progbits\\n.previous\\n");\n', "pile_executable"),
+                ("variant_s", '__asm__(".section .data.rle_x,\\"awx\\",@progbits\\n.byte 0\\n.previous\\n");\n', "segment_wx")):
+            with self.subTest(variant=nom):
+                octets = [s["detail"] for s in self.analyse_de(nom, ajout) if s["type"] == "octets"]
+                self.assertTrue(any(d.startswith(drapeau + ":") for d in octets), octets)
+
+    def test_unreadable_object(self):
+        b, _ = construire_jouet(os.path.join(self.travail, "unreadable"), "B")
+        b["objets"] = [(nom, donnees[:len(donnees) // 2]) for nom, donnees in b["objets"]]
+        self.assertIn("analyse_incomplete", {s["type"] for s in analyse.analyser(self.a, b, {}, {}, prefixes=("rle_",))})
+
+
+SEEDED_LINES = [
+    '__asm__ volatile("");', 'static void rle_h(void) { asm(""); }',
+    '#include <time.h>', '%:include <sys/syscall.h>', '#include "time.h"', '#  include_next <unistd.h>',
+    '__attribute__((used, constructor)) static void rle_f(void) {}', '__as\\\nm volatile("");', '__as\\  \r\nm("");',
+    '__attribute__ ((\nconstructor)) static void rle_g(void) {}', 'static unsigned long rle_t(void) { return __rdtsc(); }',
+    '#define RLE_C(a, b) a %:%: b', '_Pragma("GCC optimize(0)")',
+]
+
+
+class TestSeededText(unittest.TestCase):
+    """A construct added anywhere in a judged file is found: each file of B is read whole, against A's."""
+
+    def test_seeded_line_found_anywhere(self):
+        a = {}
+        for nom in ("rle.c", "rle.h"):
+            with open(os.path.join(JOUET, nom), encoding="latin-1") as f:
+                a[nom] = f.read()
+        self.assertEqual(analyse.analyser(releves(), releves(), a, dict(a)), [])
+        for nom, texte in a.items():
+            lignes = texte.split("\n")
+            for seeded in SEEDED_LINES:
+                for i in range(len(lignes) + 1):
+                    b = dict(a, **{nom: "\n".join(lignes[:i] + [seeded] + lignes[i:])})
+                    types = [s["type"] for s in analyse.analyser(releves(), releves(), a, b)]
+                    if "source" not in types:
+                        self.fail(f"{nom}, line {i + 1}: {seeded!r} not found")
+
+
+@unittest.skipUnless(OUTILS_LOCAUX, "sh, cc, nm and objdump required")
+class TestFailClosed(unittest.TestCase):
+    """A failing tool never leaves the judge complete."""
+
+    def setUp(self):
+        self.travail = tempfile.mkdtemp(prefix="bee-tools-")
+        self.outils = os.path.join(self.travail, "outils")
+        os.makedirs(self.outils)
+
+    def tearDown(self):
+        shutil.rmtree(self.travail, ignore_errors=True)
+
+    def outil(self, nom, script):
+        chemin = os.path.join(self.outils, nom)
+        with open(chemin, "w", encoding="utf-8") as f:
+            f.write("#!/bin/sh\n" + script + "\n")
+        os.chmod(chemin, 0o755)
+
+    def test_disassembler_or_nm_failure(self):
+        objdump, nm = shutil.which("objdump"), shutil.which("nm")
+        scenarios = [("objdump", "exit 1"), ("objdump", f'"{objdump}" "$@"; exit 1'), ("objdump", "exit 0"),
+                     ("objdump", f'case "$1" in -d) exit 2;; esac; exec "{objdump}" "$@"'), ("nm", f'"{nm}" "$@"; exit 1')]
+        for i, (nom, script) in enumerate(scenarios):
+            for f in os.listdir(self.outils):
+                os.remove(os.path.join(self.outils, f))
+            self.outil(nom, script)
+            for etiquette in "AB":
+                with self.subTest(outil=nom, script=script, etiquette=etiquette):
+                    with self.assertRaises((lecture.Refus, lecture.Erreur)):
+                        construire_jouet(os.path.join(self.travail, f"{i}{etiquette}"), etiquette, docker=DockerLocal(self.outils))
+
+    def test_git_failure(self):
+        marque = os.path.join(self.travail, "git-called")
+        self.outil("git", f'touch "{marque}"; exit 1')
+        with mock.patch.dict(os.environ, {"PATH": self.outils + os.pathsep + os.environ["PATH"]}):
+            a, sources_a = construire_jouet(os.path.join(self.travail, "A"), "A")
+            b, sources_b = construire_jouet(os.path.join(self.travail, "B"), "B", "#include <time.h>\n")
+            suspects = analyse.analyser(a, b, juge.textes(sources_a), juge.textes(sources_b), prefixes=("rle_",))
+        self.assertEqual([s["type"] for s in suspects], ["source"])
+        self.assertFalse(os.path.exists(marque))
+
+
 # ------------------------------------------------------------------ méta-tests (Docker)
 
 DEBUT_COMPRESSER = """size_t rle_compresser(const unsigned char *src, size_t n, unsigned char *dst)
@@ -582,6 +903,11 @@ class TestJugeContreVariantes(unittest.TestCase):
         code, rapport, _ = self.juger("appel_interdit", self.preparer("appel_interdit", appel_blanchi_par_prefixe), True)
         self.assertEqual(code, 0)
         self.assertIn("getenv", " ".join(s["detail"] for s in rapport["juge"]["constructions_suspectes"]))
+
+    def test_seeded_bytes(self):
+        code, rapport, _ = self.juger("seeded_bytes", self.preparer("seeded_bytes", lambda t, c: t + octets_asm("48b80f05909090909090")), True)
+        self.assertEqual(code, 0)
+        self.assertIn("octets", self.types_suspects(rapport))
 
     def test_lien_symbolique(self):
         source_b = self.preparer("lien_symbolique")
