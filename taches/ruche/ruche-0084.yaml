@@ -1,0 +1,55 @@
+id: ruche-0084
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: L
+titre: 'Rules version, part 1: a version computed from the rules, stamped on every grant by the gate'
+contexte: 'Adapted from DeepSeek''s dsh-superagent prototype (https://github.com/deepseek-ai/dsh-superagent-prototype,
+  MIT): docs/002-authorization.md ("Policy version", "Revalidation before resume") and docs/001-domain.md (a rules change
+  is delivered rather than cancelling running work, which would leave it half-finished). The source notifies live holders
+  and revalidates on resume; La Ruche is stricter, because its contributors are not one trusted team. A reservation (`bee
+  prendre`), a parallel enrolment, a promotion and an appointed privilege (ruche-0081''s entries, which the council writes
+  by hand) are granted under the rules of the day; nothing records which. Part 1: define the rules version as a content
+  hash over the values that decide grants, named in bee.yaml (so a typo or a translation does not change it; ruche-0058
+  and ruche-0070 rename files and keys: the list follows them), and have the gate require it on every new grant, computed
+  from the pull request''s base, never trusted from the pull request. Part 2 (ruche-0085) refuses acts under grants that
+  no longer hold. R3 already binds a verdict to the commit it judged: this extends the idea to grants. Rebase on ruche-0082
+  and ruche-0026 if they are integrated first. If the work outgrows L, stop and propose a split (commandment 4).'
+fichiers:
+- outils/bee.py
+- outils/test_bee.py
+- schemas/
+- bee.yaml
+- gouvernance/gardiens.yaml
+- gouvernance/garants.yaml
+- docs/taches.md
+- docs/devolution.md
+portee: 0.6
+metrique: null
+depend_de:
+- ruche-0081
+critere_acceptation:
+- 'the rules version is one function: a content hash over the values named in bee.yaml and over that list itself; a named
+  file or value that is missing fails closed; `bee` prints the current version; the source of the idea is cited in the
+  docs (commandment 9)'
+- 'the gate computes the version from the pull request''s base and requires a stamp equal to it only where a stamp is
+  first written: `reservation.rules_version` on a new reservation, and the same key on a new parallel enrolment and a
+  new appointment entry; absent, malformed, stale or future values are refused there, each with a test'
+- 'a stamp never changes once written: a pull request that alters an existing `rules_version` is refused; a promotion,
+  a revocation and a note carry the existing stamp unchanged and are never refused for staleness; tested, including a
+  rewritten stamp in the same pull request as a submission, the promotion of a stale enrolment and the revocation of
+  a stale appointment entry'
+- 'cut-over: the field is optional until the council''s stamp pull request merges (it stamps the existing appointment
+  entries, such as the founder''s guarantor entry, with the version `bee` prints, and lists them); from that merge on,
+  an entry without a version is refused; reservations written before it age out (72 h)'
+- '`bee` lists every grant whose version differs from the current one, with its holder and date; the listing writes nothing'
+- independent adversarial review attached (this touches the gate); the full test suite passes
+hors_perimetre:
+- refusing acts (ruche-0085)
+- changing any rule
+- COMMANDMENTS.md
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: '2026-11-01'
