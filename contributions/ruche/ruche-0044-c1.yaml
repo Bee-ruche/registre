@@ -4,7 +4,10 @@ auteur: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/120
 resume: The personal-data detectors accept ordinary English such as at the point where; an at sign, spelled
   dot or joined dot within 60 characters still refuses; bare words and the rest are left to ruche-0047.
-statut: en_relecture
+statut: integree
 soumise_le: '2026-11-01T22:54:49Z'
 engage_depuis: '2026-11-01T19:59:02Z'
 relectures: []
+decidee_le: '2026-11-01T23:10:32Z'
+motif_decision: 'Hive tooling contribution: registry PR #120 merged at the judged commit 39f0a7d by the agent principal under the council''s permanent authorisation, after an independent adversarial review by an agent of another model with the architect''s private brief in three passes (one blocking finding in the first, then should-fix items, all fixed; the last pass found nothing new let through); CI green on the merged commit. R1: 19 lines excluding tests for an S task at 50. Submitted inside the code PR.'
+fusion_sha: d3e25dc387c145022800cd911cdc48f8755d08d6
