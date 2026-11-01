@@ -5,6 +5,6 @@ pr: https://github.com/Bee-ruche/registre/pull/121
 resume: Every self-service file and text field has a size bound checked before parsing, and every text
   field goes through the common character check.
 statut: en_relecture
-soumise_le: '2026-11-01T20:37:41Z'
+soumise_le: '2026-11-01T21:56:40Z'
 engage_depuis: '2026-11-01T19:59:01Z'
 relectures: []
