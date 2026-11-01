@@ -7,5 +7,22 @@ question: 'Trouver des garants. La ruche n''a qu''un garant et qu''un gardien : 
 ouvert_par: bidji29
 ouvert_le: '2026-10-30T12:09:28Z'
 statut: ouvert
+rapporteur: bidji29
 synthese: ''
-arguments: []
+arguments:
+- id: A1
+  par: bidji29
+  le: '2026-11-01T00:31:24Z'
+  position: fait
+  texte: 'R15 (merged 1 Nov 2026, docs/devolution.md sections 5 and 6) now sets the public criteria. Numbers
+    for phase 2: 3 to 5 guarantors with distinct employers, 2 security guardians, a council of three before
+    phase 3. Filter 1, pass/fail on public evidence, not a score: a durable public identity; evidence
+    in the role''s field (merged work in projects the person does not own, software others depend on,
+    credited security reports, reviews of others'' code; stars, followers and activity graphs prove little);
+    independence (no employer shared with another privileged person, never a maintainer of a project the
+    hive forks, commandment 8); public acceptance of the commandments and of the guarantor''s commitment;
+    about an hour a week, declared. Filter 2: this R13 process. Filter 3: a four-week trial, reviews recorded
+    and not counted, plus seeded defects. Still open here: who to invite first, and the text of the first
+    invitation.'
+  sources:
+  - docs/devolution.md
