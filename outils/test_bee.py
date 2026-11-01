@@ -10799,12 +10799,14 @@ class TestAgentAccounts(BaseRepetitionGenerale):
         self.commit()
         self.refusee("alice", "gouvernance/comptes-agents.yaml : modification réservée au conseil humain")
         self.refusee("alice-bot", "on ne réserve que pour soi (alice-bot)")
-        # The agent account repoints itself to another person in its own PR: the base still says bidji29.
+        # The agent account repoints itself to another person in its own PR: refused (an authority file), and the base,
+        # which still says bidji29, is what the gate reads.
         self.branche("repointer")
         declarer_agents(self.dossier, (AGENT, "alice"))
         self.ok("prendre", "miniz-0099", "--utilisateur", "alice")
         self.commit()
-        self.refusee(AGENT, "on ne réserve que pour soi (bidji29)")
+        self.refusee(AGENT, "gouvernance/comptes-agents.yaml : changed only by a PR from the council's own account (ruche-0089)")
+        self.assertEqual(self.verifier(AGENT, "--fusion-auto")[0], 1)
         # An undeclared account using the person's name, and case variants of the agent account.
         self.branche("usurpation")
         self.ok("prendre", "miniz-0099", "--utilisateur", "bidji29")
@@ -10850,6 +10852,81 @@ class TestAgentAccounts(BaseRepetitionGenerale):
         self.publie("alice-agent", "relire", cid, "--utilisateur", "alice", "--avis", "favorable", "--motif", "Relu en entier.",
                     natures=("relecture",))
         self.assertEqual([r["relecteur"] for r in bee.lire_yaml(self.dossier / f"contributions/miniz/{cid}.yaml")["relectures"]], ["alice"])
+
+    def test_authority_files_only_from_the_councils_own_account(self):
+        """Commandments, council, agent accounts, guardians, guarantors, the agent principal's instructions and the
+        organisation: an agent account's PR changing one is refused (code 1, also with --fusion-auto), whether it edits,
+        deletes, renames from or to, or changes the mode of the file; the council's own account is unchanged (0, then 3)."""
+        def attendu(chemin, *options):
+            code, texte = self.verifier(AGENT, *options)
+            self.assertEqual(code, 1, texte)
+            self.assertIn(f"{chemin} : changed only by a PR from the council's own account (ruche-0089)", texte)
+            self.assertNotIn("FUSION_AUTO=", texte)
+        self.assertEqual(len(bee.AUTHORITY_FILES), 8)
+        for i, chemin in enumerate(sorted(bee.AUTHORITY_FILES)):
+            with self.subTest(chemin=chemin):
+                self.branche(f"autorite-{i}")
+                fichier = self.dossier / chemin
+                fichier.write_text(fichier.read_text(encoding="utf-8") + ("# test\n" if chemin.endswith(".yaml") else "\nTest.\n"),
+                                   encoding="utf-8")
+                self.commit()
+                attendu(chemin)
+                attendu(chemin, "--fusion-auto")
+                self.assertEqual(self.verifier("bidji29")[0], 0)
+                self.assertEqual(self.verifier("bidji29", "--fusion-auto")[0], 3)
+        git(self.dossier, "switch", "-q", "main")
+        (self.dossier / "gouvernance/consignes/brouillon.md").write_text("Brouillon.\n", encoding="utf-8")
+        self.commit("a draft of the council")
+        for nom, geste, chemin in (
+                ("suppression", lambda: git(self.dossier, "rm", "-q", "docs/organisation.md"), "docs/organisation.md"),
+                ("renommage-depuis", lambda: git(self.dossier, "mv", "gouvernance/garants.yaml", "gouvernance/autres.yaml"),
+                 "gouvernance/garants.yaml"),
+                ("renommage-vers", lambda: git(self.dossier, "mv", "-f", "gouvernance/consignes/brouillon.md",
+                                               "gouvernance/consignes/agent-principal.md"), "gouvernance/consignes/agent-principal.md"),
+                ("mode", lambda: (self.dossier / "COMMANDEMENTS.md").chmod(0o755), "COMMANDEMENTS.md")):
+            with self.subTest(geste=nom):
+                self.branche(nom)
+                geste()
+                self.commit()
+                attendu(chemin)
+                attendu(chemin, "--fusion-auto")
+
+    def test_the_council_agents_creation_and_debate_caps(self):
+        """The council is not capped in tasks proposed per PR nor in debates opened per 24 h; its agent account is: what
+        passes only by that exemption waits for a human."""
+        self.branche("propositions")
+        for _ in range(4):
+            self.ok("proposer-tache", "miniz", "--utilisateur", "bidji29", "--type", "test")
+        self.commit()
+        self.libre_service("bidji29", "proposition_tache")
+        self.humain(AGENT, "proposition_tache", "agent_account")
+        self.assertEqual(self.verifier("alice")[0], 1)
+        git(self.dossier, "switch", "-q", "main")
+        self.ouvrir_debats(3)
+        self.branche("debat")
+        self.ok("debattre", "ouvrir", "--utilisateur", "bidji29", "--question", "Une quatrième question du conseil en 24 h ?")
+        self.commit()
+        self.libre_service("bidji29", "ouverture_debat")
+        self.humain(AGENT, "ouverture_debat", "agent_account")
+
+    def test_a_base_declaration_absent_or_malformed_maps_no_one(self):
+        """The gate reads the declarations of the base: absent, unreadable or not a list, they map no one, and the agent
+        account is refused as itself (fail closed)."""
+        for i, ecrire in enumerate((lambda f: f.unlink(), lambda f: f.write_text("accounts: [\n", encoding="utf-8"),
+                                    lambda f: bee.ecrire_yaml(f, {"accounts": {AGENT: "bidji29"}}))):
+            with self.subTest(base=i):
+                git(self.dossier, "switch", "-q", "main")
+                git(self.dossier, "switch", "-qc", f"base-{i}")
+                ecrire(self.dossier / bee.AGENT_ACCOUNTS)
+                self.commit("the base")
+                git(self.dossier, "switch", "-qc", f"prise-{i}")
+                self.ok("prendre", "miniz-0099", "--utilisateur", "bidji29")
+                self.commit()
+                for options in ((), ("--fusion-auto",)):
+                    code, texte = self.bee("verifier-pr", "--base", f"base-{i}", "--tete", "HEAD", "--auteur", AGENT, *options)
+                    self.assertEqual(code, 1, texte)
+                    self.assertIn("on ne réserve que pour soi (laruche-architect)", texte)
+                    self.assertNotIn("Traceback", texte)
 
     def test_account_age(self):
         """The agent account's own GitHub date blocks nothing it does as its person (no gesture but a registration checks
