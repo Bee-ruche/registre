@@ -32,7 +32,7 @@ hors_perimetre:
 - splitting the suite into parallel jobs (ruche-0092)
 - skipping the tests for PRs without code (ruche-0090)
 noeud: projets/ruche/ruche
-statut: en_relecture
+statut: integree
 contribution: ruche-0093-c1
 cree_par: conseil
 cree_le: '2026-11-01'
