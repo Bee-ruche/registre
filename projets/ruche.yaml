@@ -26,6 +26,7 @@ chemins_hors_decompte:
   - "outils/test_bee.py"
   - "outils/juge/test_juge.py"
   - "outils/juge/jouet/**"
+  - "outils/tests/**"
 chemins_juges:
   - "outils/**"
   - "schemas/**"
