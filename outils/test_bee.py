@@ -82,6 +82,72 @@ def git(depot, *arguments):
     return subprocess.run(["git", "-C", str(depot), *arguments], check=True, capture_output=True, text=True).stdout
 
 
+# ruche-0090: the only tests that may read the live registry's data (its self-service folders). validation.yml runs exactly
+# these on a data-only PR, and skips the rest of the suite (TestCiScope checks the workflow against this list).
+TESTS_REGISTRE_REEL = ("TestRegistreReel", "TestRegistre.test_le_registre_livre_est_valide",
+                       "TestArbre.test_chemins_livres_tiennent_dans_un_budget_court")
+DOSSIERS_REELS = tuple(os.path.join(str(RACINE), d) + os.sep for d in DONNEES_REGISTRE)
+
+
+def chemins_lus(evenement, arguments):
+    """Absolute paths an audit event reads: an opened or listed path; for a subprocess, its working directory and its
+    arguments as paths (relative ones from that directory, after git's -C). None when the event cannot be resolved."""
+    if evenement == "subprocess.Popen":
+        _, argv, cwd, _ = arguments
+        argv = [argv] if isinstance(argv, (str, bytes, os.PathLike)) else list(argv or ())
+        ici = os.path.join(os.getcwd(), os.fsdecode(cwd)) if cwd is not None else os.getcwd()
+        chemins, mots = [ici], iter([os.fsdecode(a) for a in argv[1:] if isinstance(a, (str, bytes, os.PathLike))])
+        est_git = bool(argv) and os.path.basename(os.fsdecode(argv[0])) == "git"
+        for mot in mots:
+            if mot == "-C" and est_git:
+                ici = os.path.join(ici, next(mots, ""))
+                chemins.append(ici)
+            elif not mot.startswith("-"):
+                chemins.append(os.path.join(ici, mot))
+        return [os.path.normpath(c) for c in chemins]
+    if evenement not in ("open", "os.scandir", "os.listdir") or not arguments:
+        return None
+    chemin = os.fsdecode(arguments[0])
+    if evenement == "open" and arguments[1:2] == (None,) and not os.path.isabs(chemin) and os.sep not in chemin:
+        return None  # os.open of a bare name: maybe relative to a dir_fd the event does not give (shutil.rmtree)
+    return [os.path.normpath(chemin if os.path.isabs(chemin) else os.path.join(os.getcwd(), chemin))]
+
+
+def garde_donnees_reelles(evenement, arguments):
+    """Audit hook, installed once below: a test outside TESTS_REGISTRE_REEL that opens or lists a path in the live
+    registry's data folders, or starts a subprocess there or naming such a path, fails, however the path was built (bee
+    run without --registre, an alias of RACINE, rglob, a copy, cat, git -C). Not seen: a read outside a test's frames
+    (setUpClass, import time, another thread), through a symlink to the repository, by a bare stat (exists, is_file) or
+    a bare-named os.open, or by a subprocess that does not name the path (a shell script's text, bee run from the
+    repository without --registre, an environment variable)."""
+    if evenement not in ("open", "os.scandir", "os.listdir", "subprocess.Popen"):
+        return
+    try:
+        chemins = chemins_lus(evenement, arguments) or ()
+    except (TypeError, ValueError, OSError):  # a file descriptor, None, a deleted working directory
+        return
+    chemin = next((c for c in chemins if (c + os.sep).startswith(DOSSIERS_REELS)), None)
+    if chemin is None:
+        return
+    cadre = sys._getframe(1)
+    while cadre is not None and not isinstance(cadre.f_locals.get("self"), unittest.TestCase):
+        cadre = cadre.f_back
+    if cadre is None:
+        return  # outside a test (test discovery, another thread)
+    test = cadre.f_locals["self"]
+    permis = {(globals().get(c), m) for c, _, m in (n.partition(".") for n in TESTS_REGISTRE_REEL)}
+    if (type(test), "") in permis or (type(test), test._testMethodName) in permis:
+        return
+    lectures = test.__dict__.setdefault("_lectures_reelles", [])
+    if not lectures:
+        test.addCleanup(lambda: test.fail(f"reads the live registry's data ({', '.join(lectures[:3])}): only TESTS_REGISTRE_REEL "
+                                          "may, the tests validation.yml still runs on a data-only PR; use the frozen fixture"))
+    lectures.append(os.path.relpath(chemin, RACINE))
+
+
+sys.addaudithook(garde_donnees_reelles)
+
+
 class TestRegistreReel(unittest.TestCase):
     """ruche-0093 : les commandes de lecture tiennent sur le registre réel, tel qu'il est (les autres tests lisent le jeu figé)."""
 
@@ -126,6 +192,278 @@ class TestWorkflows(unittest.TestCase):
                 donnees = yaml.safe_load(f.read_text(encoding="utf-8"))
                 self.assertIsInstance(donnees, dict)
                 self.assertIn("jobs", donnees)
+
+
+class TestCiScope(unittest.TestCase):
+    """ruche-0090: a registry PR that only adds or modifies self-service data files skips the tool and judge test suites
+    (bee ci-scope, decided by the base's tool in validation.yml); anything else runs the full suite (fails closed)."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.depot = pathlib.Path(self.temp.name) / "depot"
+        self.depot.mkdir()
+        git(self.depot, "init", "-q", "-b", "main")
+        self.ecrire("outils/bee.py", (RACINE / "outils" / "bee.py").read_text(encoding="utf-8"))
+        self.ecrire("taches/miniz/miniz-0001.yaml")
+        self.ecrire("README.md")
+        self.base = self.commit()
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def ecrire(self, chemin, texte="id: x\n"):
+        fichier = self.depot / chemin
+        fichier.parent.mkdir(parents=True, exist_ok=True)
+        fichier.write_text(texte, encoding="utf-8")
+
+    def commit(self):
+        git(self.depot, "add", "-A")
+        git(self.depot, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "c", "--allow-empty")
+        return git(self.depot, "rev-parse", "HEAD").strip()
+
+    def portee(self):
+        return bee.ci_scope(self.depot, self.base, self.commit())
+
+    def test_data_only(self):
+        for chemin in ("membres/alice.yaml", "taches/miniz/miniz-0001.yaml", "taches/miniz/miniz-0002.yaml",
+                       "contributions/miniz/miniz-0001-c1.yaml", "votes/miniz-0001-c1/bruno.yaml", "votes/P-0001/bruno.yaml",
+                       "mesures/miniz-0001-c1/chloe.yaml", "propositions/P-0001.yaml", "debats/D-0001.yaml",
+                       "invitations/I-0001.yaml", "invitations/ne-plus-contacter.yaml"):
+            self.ecrire(chemin, "id: y\n")
+        self.assertEqual(self.portee(), ("data", None))
+        self.assertEqual(lancer("--registre", str(self.depot), "ci-scope", "--base", self.base), (0, "data\n"))
+
+    def test_anything_else_runs_the_full_suite(self):
+        lien = lambda chemin: os.symlink("../README.md", self.depot / chemin)  # noqa: E731
+        sha = git(self.depot, "rev-parse", "HEAD").strip()
+        cas = {
+            "code": lambda: self.ecrire("outils/bee.py", "print('data')\n"),
+            "workflow": lambda: self.ecrire(".github/workflows/x.yml"),
+            "root file": lambda: self.ecrire("README.md", "y\n"),
+            "frozen fixture": lambda: self.ecrire("outils/tests/registre/taches/miniz/miniz-0001.yaml"),
+            "unknown top-level folder": lambda: self.ecrire("Taches/miniz/miniz-0001.yaml"),
+            "data and code": lambda: (self.ecrire("membres/alice.yaml"), self.ecrire("bee.yaml")),
+            "deletion": lambda: git(self.depot, "rm", "-q", "taches/miniz/miniz-0001.yaml"),
+            "rename": lambda: git(self.depot, "mv", "taches/miniz/miniz-0001.yaml", "taches/miniz/miniz-0002.yaml"),
+            "mode change": lambda: (self.depot / "taches/miniz/miniz-0001.yaml").chmod(0o755),
+            "executable added": lambda: (self.ecrire("membres/alice.yaml"), (self.depot / "membres/alice.yaml").chmod(0o755)),
+            "symlink": lambda: ((self.depot / "membres").mkdir(), lien("membres/alice.yaml")),
+            "typechange": lambda: ((self.depot / "taches/miniz/miniz-0001.yaml").unlink(), lien("taches/miniz/miniz-0001.yaml")),
+            "gitlink": lambda: git(self.depot, "update-index", "--add", "--cacheinfo", f"160000,{sha},membres/alice.yaml"),
+            "other extension": lambda: self.ecrire("taches/miniz/notes.txt"),
+            "subfolder": lambda: self.ecrire("membres/sous/alice.yaml"),
+            "suffix": lambda: self.ecrire("debats/D-0001.yaml.py"),
+            "newline in the name": lambda: self.ecrire("membres/alice.yaml\n"),
+            "not UTF-8": lambda: self.ecrire(os.fsdecode(b"membres/\xff.yaml")),
+            "no change": lambda: None,
+        }
+        for nom, changer in cas.items():
+            with self.subTest(cas=nom):
+                git(self.depot, "reset", "-q", "--hard", self.base)
+                git(self.depot, "clean", "-qfdx")
+                changer()
+                if nom != "gitlink":
+                    git(self.depot, "add", "-A")
+                git(self.depot, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "c", "--allow-empty")
+                portee, raison = bee.ci_scope(self.depot, self.base, "HEAD")
+                self.assertEqual(portee, "full")
+                self.assertTrue(raison)
+        self.assertEqual(bee.ci_scope(self.depot, "0" * 40, "HEAD")[0], "full", "unknown base")
+        self.assertEqual(bee.ci_scope(self.temp.name, self.base, "HEAD")[0], "full", "not a repository")
+        code, sortie = lancer("--registre", str(self.depot), "ci-scope", "--base", "0" * 40)
+        self.assertEqual((code, sortie.splitlines()[0]), (0, "full"))
+
+    @staticmethod
+    def etapes():
+        """validation.yml's steps, and those this test names by role (a renamed step fails here: follow it)."""
+        etapes = yaml.safe_load((RACINE / ".github/workflows/validation.yml").read_text(encoding="utf-8"))["jobs"]["valider"]["steps"]
+        nom = lambda debut: next(s for s in etapes if s.get("name", "").startswith(debut))  # noqa: E731
+        return etapes, {"portee": nom("Scope of the PR"), "outil": nom("Tests de l'outil"), "juge": nom("Tests unitaires du juge"),
+                        "reel": nom("Tests that read the live registry"), "valider": nom("Validation complète"),
+                        "regles": nom("Règles de la pull request")}
+
+    def rejouer(self, script, env, cwd=None):
+        """Runs a step's script as Actions does by default (bash -e), with this interpreter as python3 and a stub gh that
+        logs its arguments and prints $FAUX_GH (fails if it is « error »)."""
+        dossier = pathlib.Path(tempfile.mkdtemp(dir=self.temp.name))
+        (dossier / "bin").mkdir()
+        (dossier / "bin/python3").write_text(f'#!/bin/sh\nexec "{sys.executable}" "$@"\n', encoding="utf-8")
+        (dossier / "bin/gh").write_text('#!/bin/sh\necho "$@" >> "$RUNNER_TEMP/gh.log"\n[ "$FAUX_GH" != error ] || exit 1\n'
+                                        'echo "$FAUX_GH"\n', encoding="utf-8")
+        for f in (dossier / "bin").iterdir():
+            f.chmod(0o755)
+        (dossier / "etape.sh").write_text(script, encoding="utf-8")
+        tout = {k: v for k, v in os.environ.items() if k != "BEE_REGISTRE"}
+        tout.update(PATH=f"{dossier / 'bin'}{os.pathsep}{os.environ['PATH']}", RUNNER_TEMP=str(dossier),
+                    GITHUB_OUTPUT=str(dossier / "sortie"), GITHUB_REPOSITORY="Bee-ruche/registre", GH_TOKEN="x", **env)
+        r = subprocess.run(["bash", "-e", str(dossier / "etape.sh")], cwd=cwd or self.depot, env=tout, capture_output=True, text=True)
+        lire = lambda nom: (dossier / nom).read_text(encoding="utf-8") if (dossier / nom).exists() else ""  # noqa: E731
+        return r, dict(l.split("=", 1) for l in lire("sortie").splitlines()), lire("gh.log")
+
+    def test_workflow_step_asks_the_base_tool_and_main_and_fails_closed(self):
+        """Replays validation.yml's scope step on a merge commit like GitHub's (first parent: the base)."""
+        script = self.etapes()[1]["portee"]["run"]
+
+        def etape(pr, outil_base=None, main="success"):
+            git(self.depot, "checkout", "-q", "main")
+            if outil_base == "absent":
+                git(self.depot, "rm", "-q", "outils/bee.py")
+            elif outil_base:
+                self.ecrire("outils/bee.py", outil_base)
+            base = self.commit()
+            git(self.depot, "checkout", "-q", "-b", f"pr-{len(etapes)}")
+            pr()
+            self.commit()
+            git(self.depot, "checkout", "-q", "--detach", base)
+            git(self.depot, "-c", "user.name=t", "-c", "user.email=t@t", "merge", "-q", "--no-ff", "--no-edit", f"pr-{len(etapes)}")
+            r, sorties, appels = self.rejouer(script, {"BASE_EVENEMENT": "0" * 40, "FAUX_GH": main})
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertEqual(sorties["base"], base)
+            self.assertIn(sorties["portee"], ("data", "full"))
+            etapes.append(sorties["portee"])
+            return appels
+
+        etapes = []
+        appels = etape(lambda: self.ecrire("membres/alice.yaml"))
+        requete = appels.split()[1]
+        self.assertTrue(requete.startswith("repos/Bee-ruche/registre/actions/workflows/validation.yml/runs?"), appels)
+        self.assertLessEqual({"branch=main", "event=push", "status=completed"}, set(requete.split("?", 1)[1].split("&")))
+        etape(lambda: self.ecrire("outils/bee.py", "print('data')\n"))  # the PR's own tool never decides
+        etape(lambda: self.ecrire("membres/bruno.yaml"), main="failure")  # a red main: every PR runs the full suite
+        etape(lambda: self.ecrire("membres/bruno.yaml"), main="error")  # main's last run unreadable
+        etape(lambda: self.ecrire("membres/bruno.yaml"), main="")
+        etape(lambda: self.ecrire("membres/bruno.yaml"), outil_base="print('data')\nraise SystemExit(2)\n")
+        etape(lambda: self.ecrire("membres/chloe.yaml"), outil_base="print('data ')\n")
+        etape(lambda: self.ecrire("membres/chloe.yaml"), outil_base="absent")
+        self.assertEqual(etapes, ["data"] + ["full"] * 7)
+        # No merge commit and no event base: the step fails before any tool runs (git show ":path" would read the index).
+        git(self.depot, "checkout", "-q", "main")
+        r, sorties, appels = self.rejouer(script, {"BASE_EVENEMENT": "", "FAUX_GH": "success"})
+        self.assertNotEqual(r.returncode, 0)
+        self.assertEqual((sorties, appels), ({}, ""))
+
+    @staticmethod
+    def tourne(etape, evenement, portee):
+        """Whether a step runs: evaluates only the `if:` shapes validation.yml uses (GitHub compares strings ignoring case);
+        any other shape fails the test, to be added here knowingly."""
+        condition = etape.get("if")
+        if condition is None:
+            return True
+        forme = re.fullmatch(r"(github\.event_name|steps\.portee\.outputs\.portee) (==|!=) '([a-z_]+)'", str(condition).strip())
+        if not isinstance(condition, str) or not forme:
+            raise AssertionError(f"{etape.get('name')}: unknown if: {condition!r}")
+        valeur = evenement if forme[1] == "github.event_name" else (portee or "")
+        return (valeur.lower() == forme[3]) == (forme[2] == "==")
+
+    def test_wiring_of_each_step(self):
+        """S1 (review): which steps run, for each event and each output of the scope step; the PR rules take the scope
+        step's base, and stop on an empty one."""
+        etapes, roles = self.etapes()
+        for evenement in ("push", "pull_request"):
+            for sortie in (None, "", "full", "data", "garbage", "DATA"):
+                portee = sortie if self.tourne(roles["portee"], evenement, None) else None
+                donnees = evenement == "pull_request" and str(portee).lower() == "data"
+                attendu = {id(roles["portee"]): evenement == "pull_request", id(roles["regles"]): evenement == "pull_request",
+                           id(roles["outil"]): not donnees, id(roles["juge"]): not donnees, id(roles["reel"]): donnees}
+                for etape in etapes:  # every other step, « Validation complète » included, always runs
+                    with self.subTest(evenement=evenement, portee=sortie, etape=etape.get("name") or etape.get("uses")):
+                        self.assertEqual(self.tourne(etape, evenement, portee), attendu.get(id(etape), True))
+        flux = yaml.safe_load((RACINE / ".github/workflows/validation.yml").read_text(encoding="utf-8"))
+        self.assertEqual(flux["permissions"], {"contents": "read", "actions": "read"})
+        self.assertEqual(roles["portee"]["env"]["GH_TOKEN"], "${{ github.token }}")
+        self.assertIn("main=$(timeout 60 gh api ", roles["portee"]["run"])  # the stub gh ignores --jq: the expression is read here
+        self.assertIn("--jq '.workflow_runs[0].conclusion') || main=unknown", roles["portee"]["run"])
+        self.assertEqual(roles["regles"]["env"]["BASE"], "${{ steps.portee.outputs.base }}")
+        self.assertNotRegex(roles["regles"]["run"], r"(?m)^\s*BASE=")
+        r, _, appels = self.rejouer(roles["regles"]["run"], {"BASE": "", "AUTEUR": "alice", "FAUX_GH": "2020-01-01"})
+        self.assertNotEqual(r.returncode, 0, "an empty base compares HEAD with itself and passes")
+        self.assertEqual(appels, "")
+
+    def test_the_data_only_step_runs_exactly_the_tests_allowed_to_read_live_data(self):
+        """One list: on a data-only PR, validation.yml runs TESTS_REGISTRE_REEL, the tests the audit hook lets read the live
+        registry's data; each exists."""
+        commande = self.etapes()[1]["reel"]["run"].split()
+        self.assertEqual(commande[:3], ["python3", "-m", "unittest"])
+        self.assertEqual(sorted(commande[3:]), sorted(f"outils.test_bee.{n}" for n in TESTS_REGISTRE_REEL))
+        for nom in TESTS_REGISTRE_REEL:
+            classe, _, methode = nom.partition(".")
+            self.assertTrue(issubclass(globals()[classe], unittest.TestCase), nom)
+            self.assertTrue(not methode or callable(getattr(globals()[classe], methode, None)), nom)
+
+    def test_the_audit_hook_fails_a_test_that_reads_live_data(self):
+        """S2 (review): however the path is built, in this process or in a subprocess, a test outside TESTS_REGISTRE_REEL
+        that reads a live data folder fails; the controls (reading elsewhere, rmtree and git -C elsewhere from the repository
+        root) do not."""
+        racine, copie, ailleurs = RACINE, pathlib.Path(self.temp.name) / "copie", pathlib.Path(self.temp.name) / "ailleurs"
+        tache = "taches/ruche/ruche-0090.yaml"
+
+        class Lecteur(unittest.TestCase):
+            def depuis_la_racine(self):
+                self.addCleanup(os.chdir, os.getcwd())
+                os.chdir(RACINE)
+
+            def test_bee_without_registre(self):
+                lancer("lister", "--json")
+
+            def test_registre_of_the_repository(self):
+                bee.Registre(pathlib.Path(bee.__file__).resolve().parent.parent)
+
+            def test_joinpath(self):
+                list(RACINE.joinpath("taches").glob("*/*.yaml"))
+
+            def test_alias(self):
+                next((racine / "taches").iterdir())
+
+            def test_rglob(self):
+                list(RACINE.rglob("D-0001.yaml"))
+
+            def test_copy(self):
+                shutil.copytree(RACINE / "debats", copie)
+
+            def test_relative_open(self):
+                self.depuis_la_racine()
+                with contextlib.suppress(OSError):
+                    open(tache, encoding="utf-8").close()
+
+            def test_relative_os_open(self):
+                self.depuis_la_racine()
+                with contextlib.suppress(OSError):
+                    os.close(os.open(tache, os.O_RDONLY))
+
+            def test_registre_dot(self):
+                self.depuis_la_racine()
+                bee.Registre(".")
+
+            def test_cat(self):
+                subprocess.run(["cat", RACINE / tache], capture_output=True)
+
+            def test_git_ls_files(self):
+                git(RACINE, "ls-files", "taches")
+
+            def test_bee_in_a_data_folder(self):
+                subprocess.run([sys.executable, str(RACINE / "outils/bee.py"), "--version"], cwd=RACINE / "taches", capture_output=True)
+
+            def test_control_outside_the_data_folders(self):
+                (RACINE / "bee.yaml").read_text(encoding="utf-8")
+                list((RACINE / "outils").glob("*.py"))
+                git(RACINE, "rev-parse", "HEAD")
+                subprocess.run(["cat", RACINE / "bee.yaml"], capture_output=True)
+
+            def test_control_rmtree_and_git_elsewhere_from_the_repository_root(self):
+                (ailleurs / "taches/ruche").mkdir(parents=True)
+                (ailleurs / tache).write_text("id: x\n", encoding="utf-8")
+                self.depuis_la_racine()
+                subprocess.run(["git", "-C", str(ailleurs), "ls-files", "taches"], capture_output=True)
+                subprocess.run(["ls", "taches"], cwd=ailleurs, capture_output=True)
+                shutil.rmtree(ailleurs)  # os.open of bare names relative to directory descriptors
+
+        resultat = unittest.TestResult()
+        unittest.defaultTestLoader.loadTestsFromTestCase(Lecteur).run(resultat)
+        self.assertEqual(resultat.errors, [])
+        echecs = {t._testMethodName: texte for t, texte in resultat.failures}
+        self.assertEqual(sorted(echecs), sorted(n for n in dir(Lecteur) if n.startswith("test_") and not n.startswith("test_control_")))
+        for texte in echecs.values():
+            self.assertIn("reads the live registry's data", texte)
 
 
 class BaseTest(unittest.TestCase):

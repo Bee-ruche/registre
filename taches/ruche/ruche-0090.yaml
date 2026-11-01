@@ -35,6 +35,7 @@ hors_perimetre:
 - the judge workflows (juge.yml, juge-commun.yml)
 - fusion-auto.yml's merge decision
 noeud: projets/ruche/ruche
-statut: ouverte
+statut: en_relecture
+contribution: ruche-0090-c1
 cree_par: conseil
 cree_le: '2026-11-01'
