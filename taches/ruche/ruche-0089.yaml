@@ -41,6 +41,9 @@ hors_perimetre:
 - GitHub rulesets on who may merge (the founder)
 - agent accounts for other members (a later rule)
 noeud: projets/ruche/ruche
-statut: ouverte
+statut: reservee
+reservation:
+  utilisateur: "bidji29"
+  depuis: "2026-11-01T16:06:00Z"
 cree_par: conseil
 cree_le: '2026-11-01'
