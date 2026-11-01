@@ -4360,12 +4360,16 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
     # ajoutés par la PR, tous débats confondus, sont plafonnés (agora.arguments_max_par_pr).
     # Liens symboliques : refusés partout. Un lien ferait lire à l'outil un autre fichier que celui que montre la PR (au
     # pire, un fichier de la machine de CI, dont un message d'erreur pourrait citer le contenu).
-    liens = set()
+    liens, modes = set(), {}
     for ligne in git(reg.racine, "diff", "--raw", "--no-renames", f"{base}...{tete}").splitlines():
         meta, _, chemin = ligne.partition("\t")
         champs = meta.split()
         if len(champs) >= 2 and champs[1] == "120000":
             liens.add(chemin)
+        # ruche-0043: in the self-service folders, a file added or modified is a regular file (100644) and keeps its mode.
+        elif len(champs) >= 2 and chemin.startswith(DOSSIERS_LIBRE_SERVICE) and champs[1] != "000000" and (
+                champs[1] != "100644" or champs[0] not in (":000000", ":100644")):
+            modes[chemin] = f"{champs[0].lstrip(':')} → {champs[1]}"
     debats_ajoutes = sorted(c for s, c in changements if s == "A" and CHEMIN_DEBAT.match(c) and c not in liens)
     debats_attendus = {}
     if debats_ajoutes:
@@ -4441,6 +4445,10 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
             problemes.append(f"{chemin} : lien symbolique refusé : le registre ne contient que des fichiers ordinaires ; remplacez "
                              "le lien par le fichier lui-même")
             continue
+        if chemin in modes:
+            natures.append("gouvernance")
+            exiger(est_conseil, f"{chemin} : mode {modes[chemin]} : a file of the self-service folders is a regular file (100644), as "
+                                "bee writes it, and keeps that mode ; only the council changes it")
         partie = chemin.split("/")
         attendu_ici = FICHIERS_LIBRE_SERVICE.get(partie[0])
         if attendu_ici and not attendu_ici[1].match(chemin):
@@ -4504,6 +4512,10 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
                        + (" pendant l'amorçage" if amorcage else " et aux Confirmés")
                        + " ; proposez-la avec bee proposer-tache (statut « proposee »)")
                 numero_attendu(chemin, "la tâche", "bee proposer-tache")
+                # ruche-0043: a reservation or a parallel registration written in a created task is dated at the time of the PR.
+                for e in ([nouveau.get("reservation")] if "reservation" in nouveau else []) + paralleles_de(nouveau):
+                    probleme = probleme_date_pr(e.get("depuis") if isinstance(e, dict) else None, f"{chemin} : depuis", instant)
+                    exiger(probleme is None, f"{probleme} ; bee prendre writes it")
                 continue
             if statut_git == "D":
                 exiger(est_conseil, f"{chemin} : seule le conseil peut supprimer une tâche")
