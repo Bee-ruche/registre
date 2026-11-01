@@ -6996,6 +6996,37 @@ def cmd_verifier_pr(args):
     return 0
 
 
+def ci_scope(racine, base, tete):
+    """What the registry CI runs for a PR (validation.yml, ruche-0090): ("data", None) if base...tete only adds or modifies
+    regular files that the self-service gate accepts, each in its place (FICHIERS_LIBRE_SERVICE, CHEMIN_DEBAT), else
+    ("full", reason). Fails closed: any other path, status or mode (deletion, rename, symlink, executable), an empty or
+    unexpected diff, any error."""
+    try:
+        sortie = subprocess.run(["git", "-C", str(racine), "diff", "--raw", "-z", "--no-renames", "--no-abbrev", f"{base}...{tete}"],
+                                capture_output=True, check=True).stdout.decode("utf-8")
+        champs = sortie.split("\0")
+        if champs.pop() != "" or not champs or len(champs) % 2:
+            return "full", "no change, or a diff git did not write as expected"
+        for meta, chemin in zip(champs[::2], champs[1::2]):
+            ancien, nouveau, _, _, statut = meta.removeprefix(":").split(" ") if meta.startswith(":") else [None] * 5
+            dossier = chemin.split("/")[0]
+            motif = CHEMIN_DEBAT if dossier == "debats" else FICHIERS_LIBRE_SERVICE.get(dossier, ("", None))[1]
+            if (statut, ancien, nouveau) not in (("A", "000000", "100644"), ("M", "100644", "100644")) \
+                    or not (motif and motif.fullmatch(chemin)):
+                return "full", f"{statut} {ancien} {nouveau} {chemin!r}"
+        return "data", None
+    except Exception as e:  # noqa: BLE001 - whatever goes wrong, the full suite runs
+        return "full", f"{type(e).__name__}: {e}"
+
+
+def cmd_ci_scope(args):
+    portee, raison = ci_scope(args.registre or os.environ.get("BEE_REGISTRE") or RACINE_OUTIL, args.base, args.tete)
+    print(portee)
+    if raison:
+        print(f"full suite: {raison}", file=sys.stderr)
+    return 0
+
+
 def cmd_verifier_fork(args):
     reg = Registre(args.registre)
     problemes, total, avertissements = verifier_fork(reg, args.depot, args.base, args.tete, args.tache, args.auteur)
@@ -8887,6 +8918,11 @@ def construire_analyseur():
 
     p = ajouter("prs-declarees", cmd_prs_declarees,
                 "Liste les PR déclarées par les contributions ajoutées ou modifiées d'une PR du registre (utilisé par fusion-auto).")
+    p.add_argument("--base", required=True)
+    p.add_argument("--tete", default="HEAD")
+
+    p = ajouter("ci-scope", cmd_ci_scope, "Prints 'data' if a registry PR only adds or modifies self-service data files, "
+                                          "else 'full' (the full test suite runs; used by validation.yml).")
     p.add_argument("--base", required=True)
     p.add_argument("--tete", default="HEAD")
 

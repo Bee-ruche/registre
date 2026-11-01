@@ -2,6 +2,7 @@
 # Ce job exécute la version de l'outil contenue dans la PR, mais en lecture seule et
 # sans secret : il ne peut rien écrire. La décision de fusion est prise ailleurs
 # (fusion-auto.yml), par l'outil de la branche principale.
+# Its token is read-only (contents: read; actions: read, for the scope step to read main's last push run).
 name: Validation du registre
 
 on:
@@ -11,6 +12,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   valider:
@@ -24,10 +26,45 @@ jobs:
           python-version: "3.12"
       - name: Dépendances
         run: pip install -r outils/requirements.txt
+      - name: Scope of the PR (data only, or the full suite)
+        id: portee
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_EVENEMENT: ${{ github.event.pull_request.base.sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # La base de l'événement est celle de l'ouverture de la PR, jamais rafraîchie : comparée au commit de fusion
+          # (la PR fusionnée avec main d'aujourd'hui), elle compterait comme changements de la PR tout ce que main a reçu
+          # depuis. La vraie base est le premier parent du commit de fusion que GitHub a construit, c'est-à-dire main au
+          # moment de l'exécution ; à défaut (pas de commit de fusion), la base de l'événement.
+          if [ "$(git rev-list --parents -n 1 HEAD | wc -w)" = 3 ]; then BASE=$(git rev-parse HEAD^1); else BASE="$BASE_EVENEMENT"; fi
+          [ -n "$BASE" ]
+          echo "base=$BASE" >> "$GITHUB_OUTPUT"
+          # ruche-0090: the base's tool (never the PR's own) says whether the PR only adds or modifies self-service data
+          # files; and a red main sends every PR back to the full suite (main's last completed push run must be a success).
+          # Fails closed: any output but "data", or any error (a base without ci-scope, an unreadable run), runs the full suite.
+          mkdir -p "$RUNNER_TEMP/outil-base"
+          portee=$(git show "$BASE:outils/bee.py" > "$RUNNER_TEMP/outil-base/bee.py" &&
+                   python3 "$RUNNER_TEMP/outil-base/bee.py" --registre . ci-scope --base "$BASE" --tete HEAD) || portee=full
+          main=$(timeout 60 gh api "repos/$GITHUB_REPOSITORY/actions/workflows/validation.yml/runs?branch=main&event=push&status=completed&per_page=1" \
+                 --jq '.workflow_runs[0].conclusion') || main=unknown  # an error or a timeout: the full suite
+          [ "$portee" = data ] && [ "$main" = success ] || portee=full
+          echo "portee=$portee" >> "$GITHUB_OUTPUT"
+          echo "Scope: $portee (main's last push run: $main)"
       - name: Tests de l'outil
+        if: steps.portee.outputs.portee != 'data'
         run: python3 -m unittest outils/test_bee.py
       - name: "Tests unitaires du juge commun (sans Docker ; méta-tests dans juge-commun.yml)"
+        if: steps.portee.outputs.portee != 'data'
         run: python3 outils/juge/test_juge.py
+      - name: Tests that read the live registry (data-only PR)
+        # A data-only PR changes no code: of the tool's tests, only these may read the live registry's data (the others read
+        # the frozen fixture of ruche-0093). This list is TESTS_REGISTRE_REEL in outils/test_bee.py (TestCiScope checks it),
+        # whose audit hook fails any other test that reads the live data.
+        if: steps.portee.outputs.portee == 'data'
+        run: >-
+          python3 -m unittest outils.test_bee.TestRegistreReel outils.test_bee.TestRegistre.test_le_registre_livre_est_valide
+          outils.test_bee.TestArbre.test_chemins_livres_tiennent_dans_un_budget_court
       - name: Validation complète du registre
         run: python3 outils/bee.py valider
       - name: Règles de la pull request
@@ -35,12 +72,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           AUTEUR: ${{ github.event.pull_request.user.login }}
-          BASE_EVENEMENT: ${{ github.event.pull_request.base.sha }}
+          BASE: ${{ steps.portee.outputs.base }}
         run: |
-          # La base de l'événement est celle de l'ouverture de la PR, jamais rafraîchie : comparée au commit de fusion
-          # (la PR fusionnée avec main d'aujourd'hui), elle compterait comme changements de la PR tout ce que main a reçu
-          # depuis. La vraie base est le premier parent du commit de fusion que GitHub a construit, c'est-à-dire main au
-          # moment de l'exécution ; à défaut (pas de commit de fusion), la base de l'événement.
-          if [ "$(git rev-list --parents -n 1 HEAD | wc -w)" = 3 ]; then BASE=$(git rev-parse HEAD^1); else BASE="$BASE_EVENEMENT"; fi
+          # BASE: the PR's real base, computed by the "Scope of the PR" step (never empty: an empty base would compare HEAD
+          # with itself and pass).
+          [ -n "$BASE" ]
           cree=$(gh api "users/$AUTEUR" --jq '.created_at[:10]')
           python3 outils/bee.py verifier-pr --base "$BASE" --tete HEAD --auteur "$AUTEUR" --compte-cree-le "$cree"
