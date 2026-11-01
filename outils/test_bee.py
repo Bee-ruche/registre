@@ -1651,6 +1651,109 @@ class TestPullRequests(BaseTest):
         self.assertEqual(self.verifier("david", "--compte-cree-le", "2026-10-20")[0], 1, "date déclarée ≠ date GitHub")
         self.assertEqual(self.verifier("eve")[0], 1, "on ne s'inscrit qu'en son nom")
 
+    # --- ruche-0039: the dates of a member file are checked at the time of the PR (BEE_MAINTENANT: 2026-10-27T12:00Z) ---
+
+    def member_pr(self, branch, pseudo="david", **dates):
+        """A PR adding membres/<pseudo>.yaml in bee inscrire's form, with the given dates (by default, honest ones)."""
+        git(self.dossier, "switch", "-qf", "main")
+        git(self.dossier, "switch", "-qc", branch)
+        bee.ecrire_yaml(self.dossier / f"membres/{pseudo}.yaml",
+                        {"pseudo": pseudo, "inscrit_le": "2026-10-27", "compte_cree_le": "2021-05-05", **dates})
+        self.commit()
+
+    def test_each_member_date_outside_its_tolerance_is_refused(self):
+        """inscrit_le is the PR's day; compte_cree_le is GitHub's date. Earlier or later than that, each one is refused."""
+        self.member_pr("honest")
+        code, texte = self.verifier("david", "--compte-cree-le", "2021-05-05", "--fusion-auto")
+        self.assertEqual(code, 0, texte)
+        self.assertIn("FUSION_AUTO=oui", texte)
+        for champ, valeur, morceau in (
+                ("inscrit_le", "2026-10-26", "inscrit_le (2026-10-26) must be the date of the PR (2026-10-27)"),
+                ("inscrit_le", "2020-01-01", "inscrit_le (2020-01-01) must be the date of the PR"),
+                ("inscrit_le", "2026-10-28", "inscrit_le (2026-10-28) must be the date of the PR"),
+                ("inscrit_le", "2099-01-01", "inscrit_le (2099-01-01) must be the date of the PR"),
+                ("compte_cree_le", "2021-05-04", "compte_cree_le ne correspond pas à la date fournie par GitHub (2021-05-05)"),
+                ("compte_cree_le", "2015-01-01", "compte_cree_le ne correspond pas à la date fournie par GitHub (2021-05-05)"),
+                ("compte_cree_le", "2021-05-06", "compte_cree_le ne correspond pas à la date fournie par GitHub (2021-05-05)"),
+                ("compte_cree_le", "2026-10-27", "compte_cree_le ne correspond pas à la date fournie par GitHub (2021-05-05)")):
+            with self.subTest(champ=champ, valeur=valeur):
+                self.member_pr(f"{champ}-{valeur}", **{champ: valeur})
+                code, texte = self.verifier("david", "--compte-cree-le", "2021-05-05")
+                self.assertEqual(code, 1, texte)
+                self.assertIn(morceau, texte)
+
+    def test_a_file_written_by_bee_inscrire_is_accepted(self):
+        """Written at 23:30 UTC, the file passes on its day and within 2 h after midnight (TOLERANCE_DATE), as cree_le does."""
+        os.environ["BEE_MAINTENANT"] = "2026-10-27T23:30:00Z"
+        git(self.dossier, "switch", "-qc", "inscription")
+        code, texte = self.bee("inscrire", "--pseudo", "david", "--compte-cree-le", "2021-05-05")
+        self.assertEqual(code, 0, texte)
+        self.commit()
+        for instant in ("2026-10-27T23:30:00Z", "2026-10-28T01:30:00Z"):
+            with self.subTest(instant=instant):
+                os.environ["BEE_MAINTENANT"] = instant
+                code, texte = self.verifier("david", "--compte-cree-le", "2021-05-05", "--fusion-auto")
+                self.assertEqual(code, 0, texte)
+                self.assertIn("FUSION_AUTO=oui", texte)
+                self.assertIn("inscription", texte)
+        os.environ["BEE_MAINTENANT"] = "2026-10-28T02:30:00Z"
+        code, texte = self.verifier("david", "--compte-cree-le", "2021-05-05")
+        self.assertEqual(code, 1, texte)
+        self.assertIn("inscrit_le (2026-10-27) must be the date of the PR (2026-10-28)", texte)
+
+    def test_account_age_is_measured_at_the_check_from_github(self):
+        """The age runs from GitHub's creation date to the instant of the check, never from a date written in the file;
+        without GitHub's date, a registration is refused."""
+        age_89, age_90 = "2026-07-30", "2026-07-29"  # on 2026-10-27
+        self.member_pr("age-90", compte_cree_le=age_90)
+        code, texte = self.verifier("david", "--compte-cree-le", age_90)
+        self.assertEqual(code, 0, texte)
+        self.member_pr("age-89", compte_cree_le=age_89)
+        code, texte = self.verifier("david", "--compte-cree-le", age_89)
+        self.assertEqual(code, 1, texte)
+        self.assertIn("le compte GitHub doit avoir au moins 90 jours", texte)
+        # 90 days at the check, though only 89 between the two dates of the file (inscrit_le, the day before, within 2 h).
+        os.environ["BEE_MAINTENANT"] = "2026-10-28T01:00:00Z"
+        code, texte = self.verifier("david", "--compte-cree-le", age_89)
+        self.assertEqual(code, 0, texte)
+        os.environ["BEE_MAINTENANT"] = "2026-10-27T12:00:00Z"
+        for inscrit_le in ("2026-12-01", "2027-10-27"):
+            with self.subTest(inscrit_le=inscrit_le):
+                self.member_pr(f"age-{inscrit_le}", compte_cree_le=age_89, inscrit_le=inscrit_le)
+                code, texte = self.verifier("david", "--compte-cree-le", age_89)
+                self.assertEqual(code, 1, texte)
+                self.assertIn("le compte GitHub doit avoir au moins 90 jours", texte)
+        self.member_pr("sans-github")
+        for options in ((), ("--compte-cree-le", ""), ("--compte-cree-le", "inconnue")):
+            with self.subTest(options=options):
+                code, texte = self.verifier("david", *options)
+                self.assertEqual(code, 1, texte)
+                self.assertNotIn("Traceback", texte)
+        self.assertIn("registering requires the account creation date given by GitHub", self.verifier("david")[1])
+
+    def test_an_existing_member_file_keeps_its_dates(self):
+        """The dates of a registered member are not checked again against a later PR: a profile change passes, without
+        GitHub's date; changing a date stays refused (only the preferred categories change)."""
+        os.environ["BEE_MAINTENANT"] = "2026-12-15T12:00:00Z"
+        chemin = self.dossier / "membres/alice.yaml"
+        fiche = bee.lire_yaml(chemin)
+        git(self.dossier, "switch", "-qc", "profil")
+        bee.ecrire_yaml(chemin, {**fiche, "categories_preferees": ["compression-sans-perte"]})
+        self.commit()
+        code, texte = self.verifier("alice", "--fusion-auto")
+        self.assertEqual(code, 0, texte)
+        self.assertIn("FUSION_AUTO=oui", texte)
+        self.assertIn("profil", texte)
+        for champ in ("inscrit_le", "compte_cree_le"):
+            with self.subTest(champ=champ):
+                git(self.dossier, "switch", "-qf", "main")
+                git(self.dossier, "switch", "-qc", f"profil-{champ}")
+                bee.ecrire_yaml(chemin, {**fiche, champ: "2026-12-15"})
+                self.commit()
+                code, texte = self.verifier("alice", "--compte-cree-le", "2020-01-01")
+                self.assertEqual(code, 1, texte)
+                self.assertIn("seules les catégories préférées sont modifiables", texte)
+
     def test_relecture_et_note_falsifiees(self):
         cid = self.soumettre_0099()
         self.commit("soumission")
