@@ -41,7 +41,7 @@ hors_perimetre:
 - GitHub rulesets on who may merge (the founder)
 - agent accounts for other members (a later rule)
 noeud: projets/ruche/ruche
-statut: en_relecture
+statut: integree
 contribution: ruche-0089-c1
 cree_par: conseil
 cree_le: '2026-11-01'
