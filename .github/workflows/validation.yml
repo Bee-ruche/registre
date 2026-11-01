@@ -53,7 +53,10 @@ jobs:
           echo "Scope: $portee (main's last push run: $main)"
       - name: Tests de l'outil
         if: steps.portee.outputs.portee != 'data'
-        run: python3 -m unittest outils/test_bee.py
+        # ruche-0092: in parallel processes inside this job, not in more jobs (the organisation's concurrent jobs are the scarce
+        # resource); the number is set here only: GitHub's hosted runners for public repositories have 4 vCPUs (the log
+        # prints the count). Every test runs exactly once, or the step fails; the steps below run once, after it passes.
+        run: python3 outils/test_bee.py --processus 4
       - name: "Tests unitaires du juge commun (sans Docker ; méta-tests dans juge-commun.yml)"
         if: steps.portee.outputs.portee != 'data'
         run: python3 outils/juge/test_juge.py

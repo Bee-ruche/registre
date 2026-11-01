@@ -1,4 +1,5 @@
-"""Tests de l'outil bee : python3 -m unittest outils/test_bee.py"""
+"""Tests de l'outil bee : python3 -m unittest outils/test_bee.py ; en N processus : python3 outils/test_bee.py --processus N"""
+import collections
 import contextlib
 import hashlib
 import io
@@ -12,6 +13,7 @@ import subprocess
 import sys
 import zlib
 import tempfile
+import time
 import unicodedata
 import unittest
 from unittest import mock
@@ -12684,5 +12686,193 @@ class TestR8Bootstrap(BaseRepetitionGenerale):
             self.refusee(auteur, "règle R8 : bidji29 a 9 réservations ou inscriptions en parallèle", "maximum 8")
 
 
+# ruche-0092: the suite in parallel processes, inside validation.yml's single « valider » job (`python3 outils/test_bee.py
+# --processus N`; without options: unittest.main, serial). At thousands of bees the scarce resource is the organisation's
+# concurrent jobs, not minutes: processes, not jobs. No test is lost: each process reports the suite it loaded and the tests
+# it ran, and a test missing, run twice, added or removed after the split, an empty shard or a failed process fails the run.
+# Each process is a fresh interpreter: environment variables, the working directory and the audit hook stay its own.
+
+def nom_du_test(test):
+    return f"{type(test).__qualname__}.{test._testMethodName}"
+
+
+def ids_des_tests(module):
+    """A module's tests, « Class.method », in the order unittest runs them."""
+    def aplatir(suite):
+        for t in suite:
+            yield from aplatir(t) if isinstance(t, unittest.TestSuite) else [nom_du_test(t)]
+    return list(aplatir(unittest.defaultTestLoader.loadTestsFromModule(module)))
+
+
+def repartir(tests, n):
+    """n shards, one test in n each, in the suite's order: every class is shared among all shards (similar durations, with no
+    recorded durations to keep up to date), and keeps its order within each."""
+    return [tests[i::n] for i in range(n)]
+
+
+def controler(tests, tranches, rapports=None):
+    """[] if each test is in exactly one shard and no shard is empty; with the processes' reports (None: no report), also if
+    each process loaded the very suite that was split and ran at least one test, and each test ran exactly once."""
+    n = len(tranches)
+    erreurs = [f"shard {i + 1}/{n}: no test" for i, t in enumerate(tranches) if not t]
+    listes = {"in the shards": [t for tranche in tranches for t in tranche]}
+    for i, r in enumerate(rapports or ()):
+        if r is None or not r["lances"]:
+            erreurs.append(f"shard {i + 1}/{n}: " + ("no report" if r is None else "ran no test"))
+        elif collections.Counter(r["vus"]) != collections.Counter(tests):
+            erreurs.append(f"shard {i + 1}/{n}: the suite changed after the split (added: {sorted(set(r['vus']) - set(tests))}, "
+                           f"removed: {sorted(set(tests) - set(r['vus']))})")
+    if rapports is not None:
+        listes["run"] = [t for r in rapports if r for t in r["lances"]]
+    attendu = collections.Counter(tests)
+    for quoi, liste in listes.items():
+        compte = collections.Counter(liste)
+        erreurs += [f"{t}: {quoi} {compte[t]} times, expected {attendu[t]}" for t in sorted(attendu | compte) if compte[t] != attendu[t]]
+    return erreurs
+
+
+def en_parallele(commande, tests, processus):
+    """Runs `tests` in `processus` processes, one shard each; 0 if every process passed and every test ran exactly once."""
+    tranches = repartir(tests, processus)
+    erreurs = controler(tests, tranches) or lancer_tranches(commande, tests, tranches)
+    print(f"{len(tests)} tests in {processus} processes ({os.cpu_count()} CPUs): "
+          + ("FAILED\n" + "\n".join(erreurs) if erreurs else "each ran exactly once, all passed."))
+    return 1 if erreurs else 0
+
+
+def lancer_tranches(commande, tests, tranches):
+    """Starts `commande --tranche <plan> <i>` for each shard at once, prints their logs once all have ended, then returns the
+    errors of controler on their reports and of their exit codes."""
+    n, enfants = len(tranches), []
+    print(f"{len(tests)} tests in {n} shards of {', '.join(str(len(t)) for t in tranches)}", flush=True)
+    with tempfile.TemporaryDirectory() as dossier:
+        plan = pathlib.Path(dossier) / "plan.json"
+        plan.write_text(json.dumps({"tests": tests, "tranches": tranches}), encoding="utf-8")
+        try:
+            for i in range(n):
+                with open(plan.with_name(f"journal-{i}.txt"), "w", encoding="utf-8") as journal:
+                    enfants.append(subprocess.Popen([*commande, "--tranche", str(plan), str(i)], stdin=subprocess.DEVNULL, stdout=journal,
+                                                    stderr=subprocess.STDOUT))
+            codes = [e.wait() for e in enfants]
+        finally:
+            for e in enfants:
+                e.kill()  # only those still running: an interruption
+        rapports = [json.loads(r.read_text(encoding="utf-8")) if r.exists() else None
+                    for r in (plan.with_name(f"rapport-{i}.json") for i in range(n))]
+        for i, (code, rapport) in enumerate(zip(codes, rapports)):
+            print(f"=== shard {i + 1}/{n}: {len(tranches[i])} tests, exit code {code}, {rapport['duree'] if rapport else '?'} s ===\n"
+                  + plan.with_name(f"journal-{i}.txt").read_text(encoding="utf-8", errors="replace"))
+    return controler(tests, tranches, rapports) + [f"shard {i + 1}/{n}: exit code {c}" for i, c in enumerate(codes) if c]
+
+
+class Lances(unittest.TextTestResult):
+    """A result that keeps the name of each test it starts."""
+
+    def __init__(self, *arguments, **options):
+        super().__init__(*arguments, **options)
+        self.lances = []
+
+    def startTest(self, test):
+        self.lances.append(nom_du_test(test))
+        super().startTest(test)
+
+
+def tranche(module, plan, i):
+    """One process of en_parallele: runs shard i of the plan, then writes its report (the suite it loaded, the tests it ran)."""
+    debut, plan = time.monotonic(), pathlib.Path(plan)
+    vus, tests = ids_des_tests(module), json.loads(plan.read_text(encoding="utf-8"))["tranches"][i]
+    resultat = unittest.TextTestRunner(verbosity=2, resultclass=Lances).run(unittest.defaultTestLoader.loadTestsFromNames(tests, module))
+    plan.with_name(f"rapport-{i}.json").write_text(json.dumps({"vus": vus, "lances": resultat.lances,
+                                                               "duree": round(time.monotonic() - debut)}), encoding="utf-8")
+    return 0 if resultat.wasSuccessful() else 1
+
+
+def principal_tests(module, fichier, arguments):
+    """`python3 <fichier>`: the suite, serial (unittest.main and its options); `--processus N`: in N processes;
+    `--tranche <plan> <i>`: one of them."""
+    if len(arguments) == 2 and arguments[0] == "--processus" and re.fullmatch(r"[1-9][0-9]*", arguments[1]):
+        return en_parallele([sys.executable, os.path.abspath(fichier)], ids_des_tests(module), int(arguments[1]))
+    if len(arguments) == 3 and arguments[0] == "--tranche":
+        return tranche(module, arguments[1], int(arguments[2]))
+    unittest.main(module=module, argv=[fichier, *arguments])
+
+
+class TestSuiteEnParallele(unittest.TestCase):
+    """ruche-0092: the suite in parallel processes loses no test: each runs exactly once, or the whole run fails (a test added
+    or removed after the split, a split that drops or doubles one, an empty shard, a shard that ran nothing, a failed one)."""
+
+    TESTS = ["A.test_1", "A.test_2", "B.test_3", "B.test_4", "B.test_5"]
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.module = pathlib.Path(self.temp.name) / "essai.py"
+        self.module.write_text(f"import os, sys, unittest\nsys.path.insert(0, {str(RACINE / 'outils')!r})\nimport test_bee\n"
+                               "class A(unittest.TestCase):\n    def test_1(self): pass\n    def test_2(self): pass\n"
+                               "class B(unittest.TestCase):\n    def test_3(self): pass\n    def test_4(self): pass\n"
+                               "    def test_5(self): self.assertNotIn('ECHEC', os.environ)\n"
+                               "sys.exit(test_bee.principal_tests(sys.modules[__name__], __file__, sys.argv[1:]))\n", encoding="utf-8")
+
+    def lancer(self, tests, processus=2):
+        sortie = io.StringIO()
+        with contextlib.redirect_stdout(sortie):
+            code = en_parallele([sys.executable, str(self.module)], tests, processus)
+        return code, sortie.getvalue()
+
+    def test_each_test_runs_exactly_once(self):
+        for processus in (1, 2, 5):
+            with self.subTest(processus=processus):
+                code, sortie = self.lancer(self.TESTS, processus)
+                self.assertEqual(code, 0, sortie)
+                self.assertEqual(sortie.count("=== shard "), processus)
+                self.assertTrue(sortie.endswith(f"5 tests in {processus} processes ({os.cpu_count()} CPUs): each ran exactly once, all passed.\n"))
+        self.assertEqual(ids_des_tests(sys.modules[__name__]).count("TestSuiteEnParallele.test_each_test_runs_exactly_once"), 1)
+
+    def test_a_test_added_or_removed_after_the_split_fails_the_run(self):
+        code, sortie = self.lancer([t for t in self.TESTS if t != "B.test_4"])  # in no shard: no process runs it
+        self.assertEqual(code, 1, sortie)
+        self.assertIn("the suite changed after the split (added: ['B.test_4'], removed: [])", sortie)
+        self.assertNotIn("B.test_4: run", sortie)
+        code, sortie = self.lancer(self.TESTS + ["B.test_6"])
+        self.assertEqual(code, 1, sortie)
+        self.assertIn("the suite changed after the split (added: [], removed: ['B.test_6'])", sortie)
+        self.assertIn("B.test_6: run 0 times, expected 1", sortie)
+
+    def test_a_split_that_drops_or_doubles_a_test_or_leaves_a_shard_empty_runs_nothing_and_fails(self):
+        for fautive, erreur in ((lambda t, n: [t[:2], t[3:]], "B.test_3: in the shards 0 times, expected 1"),
+                                (lambda t, n: [t[:3], t[2:]], "B.test_3: in the shards 2 times, expected 1"),
+                                (lambda t, n: [t, []], "shard 2/2: no test")):
+            with self.subTest(erreur=erreur), mock.patch.dict(globals(), repartir=fautive):
+                code, sortie = self.lancer(self.TESTS)
+                self.assertEqual(code, 1, sortie)
+                self.assertIn(erreur, sortie)
+                self.assertNotIn("=== shard", sortie)
+        code, sortie = self.lancer(self.TESTS, 6)
+        self.assertEqual((code, sortie.count("=== shard")), (1, 0), sortie)
+        self.assertIn("shard 6/6: no test", sortie)
+
+    def test_a_shard_that_ran_nothing_or_reported_nothing_fails_the_run(self):
+        tranches = repartir(self.TESTS, 2)
+        self.assertEqual(controler(self.TESTS, tranches, [{"vus": self.TESTS, "lances": t} for t in tranches]), [])
+        self.assertEqual(controler(self.TESTS, tranches, [{"vus": self.TESTS, "lances": tranches[0]}, {"vus": self.TESTS, "lances": []}]),
+                         ["shard 2/2: ran no test", "A.test_2: run 0 times, expected 1", "B.test_4: run 0 times, expected 1"])
+        self.assertIn("shard 2/2: no report", controler(self.TESTS, tranches, [{"vus": self.TESTS, "lances": tranches[0]}, None]))
+
+    def test_a_failed_shard_fails_the_run(self):
+        with mock.patch.dict(os.environ, ECHEC="1"):
+            code, sortie = self.lancer(self.TESTS)
+        self.assertEqual(code, 1, sortie)
+        self.assertIn("shard 1/2: exit code 1", sortie)  # B.test_5, the 5th test, is in the 1st shard
+
+    def test_a_bad_number_of_processes_runs_nothing(self):
+        for nombre in ("0", "-1", "deux", "²"):
+            with self.subTest(nombre=nombre), self.assertRaises(SystemExit) as fin, contextlib.redirect_stderr(io.StringIO()):
+                principal_tests(sys.modules[__name__], __file__, ["--processus", nombre])  # unittest.main: unknown option
+            self.assertEqual(fin.exception.code, 2)
+
+    def test_validation_yml_runs_the_suite_in_processes_inside_its_job(self):
+        self.assertRegex(TestCiScope.etapes()[1]["outil"]["run"], r"^python3 outils/test_bee\.py --processus [1-9][0-9]*\n?$")
+
+
 if __name__ == "__main__":
-    unittest.main()
+    sys.exit(principal_tests(sys.modules[__name__], __file__, sys.argv[1:]))
