@@ -3404,15 +3404,21 @@ POURQUOI_MAX, FAIT_MAX, ADRESSE_MAX = 5, 300, 200
 COURRIEL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}")
 # ruche-0044: "at the point where", "at some point soon" are English prose, not "<name> at <domain> point <tld>". Fail-closed,
 # such a match is skipped only if all hold: the word is "at" (never "arobase"), the would-be domain is a determiner, the
-# separator is "point", the word after it is in CONTINUATIONS_EN (honest continuations, none a top-level domain: a test
-# checks them, so x@the.where cannot exist), and no dot (written, spelled or in brackets) carries the address further.
-# Still refused on purpose: "at that point in", "at this point it"..., since in, it, is, to, now, how... are top-level domains.
+# separator is "point", the word after it is in CONTINUATIONS_EN (honest continuations; a test checks that none is a
+# top-level domain of a dated Public Suffix List snapshot), and nothing carries an address on (SUITE_D_ADRESSE): dots right
+# after that word, or within 60 characters a spelled or bracketed dot, an @, words joined by odd signs (example‧com), a spaced
+# dot before a letter or a dot then a lowercase word (example. com). Left to ruche-0047: bare words with no dot ("at the point
+# where example org") and capitalised words after a dot ("Example. Com"), which read as sentences. Refused on purpose: "at
+# that point in", "at this point it"..., as in, it, is, to, now, how... are top-level domains.
 DETERMINANTS_EN = r"the|a|an|another|this|that|which|what|some|any|each|every|no"
 CONTINUATIONS_EN = (r"where|which|when|that|of|after|before|during|until|again|already|anyway|earlier|however|later|soon|"
-                    r"though|yet|the|we|they|did|does|has|had|was|were|and|but")
+                    r"though|yet|the|we|they|does|has|had|was|were|and|but|relative|for|there|without|if|on|with|outside|"
+                    r"due|from|than|then")
+POINTS = "[.。｡·‧•∙⋅・։،۔।።]"  # a dot or a sign used as one, after NFKC (… is ..., ｡ is 。)
+SUITE_D_ADRESSE = (r"\s*" + POINTS + r"+[^\S\n]*[^\W_]|[\s\S]{0,60}?(?:\b(?:dot|point)\b|[(\[{<]\s*(?:dot|point)|@"
+                   r"|[^\W_][^\w\s'’-]+[^\W\d_]{2,}|\s" + POINTS + r"+\s*[a-z]|[^\W_]" + POINTS + r"+[^\S\n]+(?-i:[a-z]))")
 COURRIEL_DEGUISE = re.compile(r"\b[\w.+-]+\s+(?:at|arobase)"
-                              rf"(?!(?<=at)\s+(?:{DETERMINANTS_EN})\s+point\s+(?:{CONTINUATIONS_EN})\b(?!\s*(?:dot|point)\b"
-                              r"|\s*[(\[{<]\s*(?:dot|point)\b|\s*[.。｡·][^\S\n]*[^\W_]))"
+                              rf"(?!(?<=at)\s+(?:{DETERMINANTS_EN})\s+point\s+(?:{CONTINUATIONS_EN})\b(?!{SUITE_D_ADRESSE}))"
                               r"\s+[\w-]+\s+(?:dot|point)\s+[a-z]{2,}\b", re.I)
 VOIES_FR = r"rue|r\.|avenue|av\.|boulevard|bd|chemin|ch\.|all[ée]e|impasse|imp\.|place|pl\.|quai|route|rte|cours|voie|passage|square|faubourg|fbg|chauss[ée]e"
 VOIES_EN = r"Street|St|Road|Rd|Avenue|Ave|Lane|Ln|Boulevard|Blvd|Drive|Dr|Court|Ct|Way|Place|Pl|Square|Sq|Terrace|Close|Crescent|Strasse|Straße|Weg|Gasse|Platz"
