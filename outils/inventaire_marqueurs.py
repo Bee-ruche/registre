@@ -48,10 +48,12 @@ PAR_TEXTE = {
     r"(?i:\b\d{1,5}\s*(?:bis|ter": "already",
     "succès": "already",  # CI verdict written by the forks' CI: verte, vert, green, success, succes or succès
     "Confirmé": "data", "Contributeur": "data", "Nouveau": "data", "compression-sans-perte": "data", "en parallèle": "data",
-    "caractères": "message", "propositions de règle": "message", "tâches proposées": "message",
+    "caractères": "message", "propositions de règle": "message", "tâches proposées": "message", "la clé": "message",
     "invitations proposées": "message", " Elle passe en relecture": "message", "Un gardien nommé": "message",
     "Le conseil, après le gardien": "message", "Le conseil consigne": "message", "Le proposant, un gardien": "message",
-    "Le conseil, à la demande": "message", "Le conseil renouvelle": "message",
+    "Le conseil, à la demande": "message", "Le conseil renouvelle": "message", " (clé)": "message", "le titre": "message",
+    # Refuses text that imitates bee's own frame (FIN_DONNEES): when ruche-0069 translates the frame, refuse both forms.
+    "le résumé": "message", r"===\s*(?:fin\s+des": "message",
 }
 PAR_CONSTANTE = {
     "MENTION_INVITATION": "already", "PHRASE_DEMANDE": "already", "VOIES_FR": "already", "VOIES_EN": "already",
