@@ -33,11 +33,13 @@ critere_acceptation:
 - 'the rules version is one function: a content hash over the values named in bee.yaml and over that list itself; a named
   file or value that is missing fails closed; `bee` prints the current version; the source of the idea is cited in the
   docs (commandment 9)'
-- the gate computes the version from the pull request's base and requires `reservation.rules_version` (and the same key
-  on a parallel enrolment, a promotion and a new or changed appointment entry) to be equal to it; absent, malformed,
-  stale or future values are refused, each with a test
-- 'a stamp never changes once written: a pull request that alters an existing `rules_version` is refused, and a promotion
-  carries its enrolment''s stamp unchanged; tested, including a rewritten stamp in the same pull request as a submission'
+- 'the gate computes the version from the pull request''s base and requires a stamp equal to it only where a stamp is
+  first written: `reservation.rules_version` on a new reservation, and the same key on a new parallel enrolment and a
+  new appointment entry; absent, malformed, stale or future values are refused there, each with a test'
+- 'a stamp never changes once written: a pull request that alters an existing `rules_version` is refused; a promotion,
+  a revocation and a note carry the existing stamp unchanged and are never refused for staleness; tested, including a
+  rewritten stamp in the same pull request as a submission, the promotion of a stale enrolment and the revocation of
+  a stale appointment entry'
 - 'cut-over: the field is optional until the council''s stamp pull request merges (it stamps the existing appointment
   entries, such as the founder''s guarantor entry, with the version `bee` prints, and lists them); from that merge on,
   an entry without a version is refused; reservations written before it age out (72 h)'
