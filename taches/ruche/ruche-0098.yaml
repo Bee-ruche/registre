@@ -1,0 +1,31 @@
+id: ruche-0098
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: S
+titre: 'Judge capacity: measure what one judgment costs and how many fit in a night'
+contexte: 'Founder''s goal (1 Nov 2026): thousands of bees within weeks, so up to a thousand judgments a night. Every
+  contribution to a fork runs the common judge on GitHub''s runners, sharing the organisation''s concurrent jobs with
+  the registry''s CI (20 on the free plan, 60 on Team, 500 on Enterprise). Measure, from real runs on minizBee and libyamlBee:
+  the jobs and minutes per judgment, the time a judgment waits in the queue, what the registry''s own workflows take;
+  then compute how many judgments fit in a night at 20, 60 and 500 jobs, and what would raise the ceiling (fewer repetitions
+  where noise allows, splitting x86 and ARM, caching builds, larger runners).'
+fichiers:
+- docs/juge-commun.md
+- docs/architecture.md
+portee: 0.8
+metrique: null
+depend_de: []
+critere_acceptation:
+- numbers from real runs (run ids cited), not estimates; the ceiling per night for each plan
+- each proposal to raise the ceiling says what it costs in confidence (noise, repetitions) and is left to a follow-up
+  task
+- independent review attached
+hors_perimetre:
+- changing the judge (follow-up tasks)
+- runners outside GitHub
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: '2026-11-01'
