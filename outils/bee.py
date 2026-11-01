@@ -2120,7 +2120,7 @@ FICHIERS_LIBRE_SERVICE = {
 OCTETS_MAX = {"taches": 256 * 1024, "contributions": 256 * 1024, "votes": 32 * 1024, "mesures": 32 * 1024, "membres": 32 * 1024,
               "propositions": 128 * 1024, "debats": 512 * 1024, "invitations": 64 * 1024, CHEMIN_NON_CONTACT: 1024 * 1024}
 OCTETS_LECTURE_MAX = max(OCTETS_MAX.values())
-# An append (AJOUTS) stops at the bound minus MARGE_OCTETS: closes, syntheses (16,000 bytes at most), reservations and robots fit.
+# An append (AJOUTS) stops at the bound minus MARGE_OCTETS: a reserve for closes, syntheses, reservations and robot writes.
 MARGE_OCTETS, AJOUTS = 20 * 1024, frozenset({"note", "argument", "relecture", "inscription_parallele"})
 # Each text (value or key), in characters: its own bound, else TEXTE_LONG_MAX for its kind's long fields ("notes/texte": each note's),
 # else TEXTE_CHAMP_MAX; the write-time bounds stay under them (test_bee.py checks it); the verdict has its own (VERDICT_MAX).
@@ -4642,7 +4642,7 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
         return exiger(attendu == chemin, f"{chemin} : {quoi} suivante est {pathlib.PurePosixPath(attendu).stem} (le plus grand "
                                          f"numéro de main + 1, sans trou, hors des numéros réservés aux tests) : {commande} la numérote")
 
-    debuts = []  # (path, index of its first nature): an append past the high-water mark is refused (ruche-0040)
+    debuts, ajouts = [], set()  # (path, its first nature), paths given notes: an append past the high-water mark is refused (ruche-0040)
     for statut_git, chemin in changements:
         debuts.append((chemin, len(natures)))
         if chemin in liens:
@@ -4750,6 +4750,7 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
                         problemes.extend(refus)
                         notes_ajoutees += len(ajoutees_ici)
                         dates_notes.extend(instants)
+                        ajouts.add(chemin)  # whatever the transition (reservation, release, submission…)
             avant, apres = ancien.get("statut"), nouveau.get("statut")
             pa, pn = paralleles_de(ancien), paralleles_de(nouveau)
             tid = nouveau.get("id")
@@ -5231,7 +5232,7 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
                   else " ; si ce fichier est arrivé par erreur dans la PR, retirez-le (git rm --cached, puis commit)"))
 
     for (chemin, debut), (_, fin) in zip(debuts, debuts[1:] + [(None, len(natures))]):
-        if AJOUTS & set(natures[debut:fin]) and tailles.get(chemin, 0) > borne_octets(chemin) - MARGE_OCTETS:
+        if (AJOUTS & set(natures[debut:fin]) or chemin in ajouts) and tailles.get(chemin, 0) > borne_octets(chemin) - MARGE_OCTETS:
             problemes.append(probleme_marque(chemin))
     conf = config_agora(reg)
     maximum = conf["arguments_max_par_pr"]
@@ -8177,6 +8178,9 @@ def charger_arbre(reg):
                 problemes.append(f"{fichier_noeud(identifiant)} : lien symbolique refusé")
                 continue
             try:
+                if (taille := chemin.stat().st_size) > 64 * 1024:  # ruche-0040: a node is read under 64 KiB only (largest: 3.4 KB)
+                    problemes.append(f"{fichier_noeud(identifiant)} : {taille} octets, au plus 65536 pour un nœud : il n'est pas lu")
+                    continue
                 texte = chemin.read_text(encoding="utf-8")
             except (OSError, UnicodeDecodeError) as e:
                 problemes.append(f"{fichier_noeud(identifiant)} : fichier illisible ({type(e).__name__})")

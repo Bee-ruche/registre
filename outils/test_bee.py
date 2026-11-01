@@ -12176,8 +12176,8 @@ class TestBornesLibreServiceRegistre(BaseRevueRuche0020):
 
     @contextlib.contextmanager
     def lectures(self):
-        """Every text bee parses as YAML, now or from history, and every output of a git command, while inside."""
-        lus, charger, lire_version, run = [], bee.charger_texte_yaml, bee._lire_version, subprocess.run
+        """Every text bee parses as YAML, now or from history, every file read whole, and every output of a git command."""
+        lus, charger, lire_version, run, lire = [], bee.charger_texte_yaml, bee._lire_version, subprocess.run, pathlib.Path.read_text
 
         def espion(fonction):
             def lit(texte, *args, **kwargs):
@@ -12189,8 +12189,11 @@ class TestBornesLibreServiceRegistre(BaseRevueRuche0020):
             resultat = run(*args, **kwargs)
             lus.append(resultat.stdout.decode("utf-8", "replace") if isinstance(resultat.stdout, bytes) else str(resultat.stdout))
             return resultat
+        def lit(chemin, *args, **kwargs):
+            lus.append(lire(chemin, *args, **kwargs))
+            return lus[-1]
         with mock.patch.object(bee, "charger_texte_yaml", espion(charger)), mock.patch.object(bee, "_lire_version", espion(lire_version)), \
-                mock.patch.object(subprocess, "run", lancer):
+                mock.patch.object(subprocess, "run", lancer), mock.patch.object(pathlib.Path, "read_text", lit):
             yield lus
 
     def test_un_fichier_au_dela_de_sa_borne_est_refuse_sans_etre_lu(self):
@@ -12258,6 +12261,23 @@ class TestBornesLibreServiceRegistre(BaseRevueRuche0020):
         self.assertEqual([t[:100] for t in lus if "ENORME" in t], [], "read whole, or parsed")
         self.abandonner()
 
+    def test_un_noeud_de_l_arbre_au_dela_de_sa_borne_n_est_pas_lu(self):
+        self.branche()
+        sens = self.dossier / "arbre/SENS.md"
+        entete, corps = sens.read_text(encoding="utf-8").split("---\n", 2)[1:]
+        sens.write_text("---\n" + entete + "".join(f"cle{i}: ENORME\n" for i in range(5000)) + "---\n" + corps + "ENORME " * 10000,
+                        encoding="utf-8")
+        attendu = f"arbre/SENS.md : {sens.stat().st_size} octets, au plus 65536 pour un nœud : il n'est pas lu"
+        self.commit()
+        with self.lectures() as lus:
+            code, sortie = self.bee("valider")
+            texte = self.refusee("gaspard", attendu)
+        self.assertEqual(code, 1, sortie)
+        self.assertIn(attendu, sortie)
+        self.assertNotIn("Traceback", sortie + texte)
+        self.assertEqual([t[:100] for t in lus if "ENORME" in t], [], "read whole, or parsed")
+        self.abandonner()
+
     def test_a_sa_marque_un_fichier_ne_recoit_plus_d_ajout_mais_se_clot(self):
         tache, debat = self.chemin_tache("miniz-9001"), self.dossier / "debats/D-0001.yaml"
         maintenant = self.maintenant()
@@ -12283,10 +12303,13 @@ class TestBornesLibreServiceRegistre(BaseRevueRuche0020):
             self.commit()
             self.refusee("gaspard", marque_tache if ajout == "note" else marque_debat)
             self.abandonner()
-        self.branche()  # a reservation still fits
+        self.branche()  # a reservation still fits; notes riding on it are an append
         self.ok("prendre", "miniz-9001", "--utilisateur", "gaspard")
         self.commit()
         self.libre_service("gaspard", "reservation")
+        self.noter_a_la_main({"texte": "y" * 1500}, tache="miniz-9001")
+        self.commit()
+        self.refusee("gaspard", marque_tache)
         self.abandonner()
         self.branche()  # and a close with a synthesis of 4,000 characters of 4 bytes each
         self.ok("debattre", "clore", "D-0001", "--utilisateur", "bidji29", "--issue", "sans_suite", "--synthese", "🐝" * 4000)
@@ -12295,6 +12318,12 @@ class TestBornesLibreServiceRegistre(BaseRevueRuche0020):
         code, texte = self.verifier("bidji29")
         self.assertEqual(code, 0, texte)
         self.valide()
+        self.abandonner()
+        self.prendre_et_fusionner("gaspard", "miniz-9001")  # a release with a note: an append too
+        self.branche()
+        self.ok("liberer", "miniz-9001", "--utilisateur", "gaspard", "--note", "y" * 1500)
+        self.commit()
+        self.refusee("gaspard", marque_tache)
         self.abandonner()
 
     def test_yaml_trop_profond_ou_entier_demesure_refuse_sans_trace(self):
