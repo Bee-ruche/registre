@@ -664,6 +664,24 @@ def engagements_de(reg, utilisateur):
     return resultat
 
 
+def r8_maximum(reg, utilisateur, taches, instant):
+    """R8, the one rule of bee prendre, bee valider and the gate: the most engagements `utilisateur` may hold, all counted
+    together, when `taches` are their tasks (ids), at `instant`. The usual cap; ruche-0096: until bee.yaml's r8_amorcage.jusqu_au
+    (UTC), a council member whose engagements are ALL on tasks of the ruche category created by the council may hold up to
+    r8_amorcage.max; one engagement on any other task brings back the usual cap for all. Missing, malformed or past: the usual cap."""
+    usuel = int(reg.config.get("reservations_max_par_utilisateur", 3))
+    reglage = reg.config.get("r8_amorcage")
+    try:
+        maximum, fin = reglage["max"], lire_instant(reglage["jusqu_au"], "r8_amorcage")
+    except (ErreurBee, KeyError, TypeError):
+        return usuel  # fails closed
+    outillage = [reg.taches.get(tid, (None, None))[1] for tid in taches]
+    if type(maximum) is int and instant < fin and utilisateur in reg.conseil and all(
+            isinstance(t, dict) and t.get("categorie") == "ruche" and t.get("cree_par") == "conseil" for t in outillage):
+        return max(maximum, usuel)
+    return usuel
+
+
 def engagement_expire(reg, depuis, instant):
     """R7 : une réservation ou une inscription en parallèle sans contribution prend fin après reservation_max_heures."""
     debut = _instant_ou_rien(depuis)
@@ -1830,7 +1848,7 @@ def verifier_registre(reg):
                 ajouter(f"{lieu} : dépend de la tâche inconnue « {dep} »")
         if "reservation" in tache:
             instant_valide(chemin, tache["reservation"]["depuis"], "reservation.depuis")
-            reservations[tache["reservation"]["utilisateur"]].append(tache["id"])
+            reservations[tache["reservation"]["utilisateur"]].append((tache["id"], ""))
             if tache["reservation"]["utilisateur"] not in reg.membres and tache["reservation"]["utilisateur"] not in reg.conseil:
                 ajouter(f"{lieu} : réservée par « {tache['reservation']['utilisateur']} », qui n'est pas inscrit")
         # Travail en parallèle (R11) : chacun une fois, jamais le titulaire, jamais l'auteur d'une contribution en course.
@@ -1839,7 +1857,7 @@ def verifier_registre(reg):
         for i, p in enumerate(tache.get("paralleles") or []):
             qui = p["utilisateur"]
             instant_valide(chemin, p["depuis"], f"paralleles/{i}/depuis")
-            reservations[qui].append(f"{tache['id']} (en parallèle)")
+            reservations[qui].append((tache["id"], " (en parallèle)"))
             if qui not in reg.membres and qui not in reg.conseil:
                 ajouter(f"{lieu} : paralleles/{i} : « {qui} » n'est pas inscrit")
             if qui in vus_paralleles:
@@ -1865,10 +1883,10 @@ def verifier_registre(reg):
         for i, note in enumerate(tache.get("notes") or []):
             instant_valide(chemin, note["le"], f"notes/{i}/le")
 
-    maximum = int(reg.config.get("reservations_max_par_utilisateur", 3))
     for pseudo, ids in sorted(reservations.items()):
-        if len(ids) > maximum:
-            ajouter(f"règle R8 : {pseudo} a {len(ids)} réservations ou inscriptions en parallèle ({', '.join(ids)}), maximum {maximum}")
+        if len(ids) > (maximum := r8_maximum(reg, pseudo, [tid for tid, _ in ids], maintenant())):
+            ajouter(f"règle R8 : {pseudo} a {len(ids)} réservations ou inscriptions en parallèle "
+                    f"({', '.join(tid + genre for tid, genre in ids)}), maximum {maximum}")
 
     prs = {}  # ruche-0041: canonical PR -> the first contribution that declares it
     for stem, (chemin, enr) in reg.enregistrements.items():
@@ -5556,10 +5574,10 @@ def exiger_reprise_permise(reg, chemin, tache, utilisateur):
         raise ErreurBee(refus)
 
 
-def exiger_r8(reg, utilisateur):
-    """R8 : réservations et inscriptions en parallèle comptent ensemble, tous agents confondus."""
+def exiger_r8(reg, utilisateur, tache):
+    """R8 : réservations et inscriptions en parallèle comptent ensemble, tous agents confondus ; `tache` s'y ajouterait."""
     deja = engagements_de(reg, utilisateur)
-    maximum = int(reg.config.get("reservations_max_par_utilisateur", 3))
+    maximum = r8_maximum(reg, utilisateur, [tid for tid, _ in deja] + [tache], maintenant())
     if len(deja) >= maximum:
         liste = ", ".join(tid + (" (en parallèle)" if genre == "en parallèle" else "") for tid, genre in deja)
         raise ErreurBee(f"règle R8 : {utilisateur} a déjà {len(deja)} réservations ou inscriptions en parallèle ({liste}), maximum {maximum}")
@@ -5593,7 +5611,7 @@ def prendre_en_parallele(reg, args, chemin, t):
         niveau = niveau_de(calculer_niveaux(reg), u)
         if t["taille"] not in TAILLES_PAR_NIVEAU[niveau] or (t["type"] == "decoupage" and niveau != "Confirmé"):
             raise ErreurBee(f"{args.tache} ({t['type']}, {t['taille']}) n'est pas accessible au niveau {niveau} (docs/reputation.md)")
-    exiger_r8(reg, u)
+    exiger_r8(reg, u, args.tache)
     modifier_tache(chemin, paralleles=paralleles + [{"utilisateur": u, "depuis": en_iso(maintenant())}])
     heures = reg.config.get("reservation_max_heures", 72)
     print(f"✓ {u} inscrit en parallèle sur {args.tache}" + (f" (titulaire : {titulaire}, dont la réservation ne change pas)." if titulaire else "."))
@@ -5628,7 +5646,7 @@ def cmd_prendre(args):
         niveau = niveau_de(calculer_niveaux(reg), args.utilisateur)
         if t["taille"] not in TAILLES_PAR_NIVEAU[niveau] or (t["type"] == "decoupage" and niveau != "Confirmé"):
             raise ErreurBee(f"{args.tache} ({t['type']}, {t['taille']}) n'est pas accessible au niveau {niveau} (docs/reputation.md)")
-    exiger_r8(reg, args.utilisateur)
+    exiger_r8(reg, args.utilisateur, args.tache)
     modifier_tache(chemin, statut="reservee", reservation={"utilisateur": args.utilisateur, "depuis": en_iso(maintenant())})
     heures = reg.config.get("reservation_max_heures", 72)
     print(f"✓ {args.tache} réservée pour {args.utilisateur} ({heures} h maximum, règle R7).")

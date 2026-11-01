@@ -12,6 +12,10 @@ reservation_max_heures: 72       # R7
 reprise_apres_liberation_heures: 24  # R7 (proposition P-0002) : qui quitte une tâche sans contribution (libération, retrait,
                                  # expiration) ne la reprend pas, ni en parallèle, avant ce délai (répétition générale, T13)
 reservations_max_par_utilisateur: 3   # R8
+# R8 during the bootstrap (ruche-0096, REGLES.md): a council member whose engagements are ALL on tasks of the ruche category
+# created by the council may hold up to `max` of them, until `jusqu_au` (UTC); missing, malformed or past: the usual cap.
+# The agent principal may raise `max` by a council PR with its reason in docs/decisions.md; only the human council moves the date.
+r8_amorcage: {max: 8, jusqu_au: "2026-12-01T00:00:00Z"}
 gain_minimal: 0.02               # R4
 degradation_max_autres: 0.01     # R5
 relectures_requises: 2           # R3 (cible ; plafonnée aux relecteurs éligibles pendant l'amorçage)
