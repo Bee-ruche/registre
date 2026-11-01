@@ -3009,8 +3009,9 @@ class TestPullRequestsEnParallele(BaseParallele):
                 with self.subTest(qui=qui, instant=instant):
                     self.a(instant)
                     self.libre_service(qui, nature)
-            self.a("2026-10-27T14:00:01Z")
-            self.refusee(qui, refus)
+            with self.subTest(qui=qui, instant="2026-10-27T14:00:01Z"):
+                self.a("2026-10-27T14:00:01Z")
+                self.refusee(qui, refus)
             self.a("2026-10-27T12:00:00Z")
             for depuis, acceptee in self.DATES:
                 with self.subTest(qui=qui, depuis=depuis):
@@ -3051,7 +3052,13 @@ class TestPullRequestsEnParallele(BaseParallele):
                ("nouveau", lambda: (self.bee("inscrire", "--pseudo", "david", "--compte-cree-le", "2020-01-01"),
                                     executable(self.dossier / "membres/david.yaml")), "david", "000000 → 100755", "-x membres/david.yaml"),
                ("ordinaire", lambda: executable(self.chemin("miniz-9001"), False), "alice", "100755 → 100644",
-                "+x taches/miniz/miniz-9001.yaml"))
+                "+x taches/miniz/miniz-9001.yaml"),
+               # No command is offered for a name that is not plain, nor where a mode change cannot restore the file.
+               ("nom", lambda: ((self.dossier / "votes").mkdir(exist_ok=True), (self.dossier / "votes/a;touch X;.sh").write_text(
+                    "x\n", encoding="utf-8"), executable(self.dossier / "votes/a;touch X;.sh")), "alice", "000000 → 100755", None),
+               ("contenu", lambda: self.chemin("miniz-9001").write_text(self.chemin("miniz-9001").read_text(encoding="utf-8")
+                                                                        + "# x\n", encoding="utf-8"),
+                "alice", "100755 → 100755", None))
         for nom, changer, auteur, morceau, remede in cas:
             with self.subTest(cas=nom):
                 git(self.dossier, "switch", "-qfC", "pr", "main")
@@ -3061,7 +3068,11 @@ class TestPullRequestsEnParallele(BaseParallele):
                 code, texte = self.verifier(auteur, "--compte-cree-le", "2020-01-01")
                 self.assertEqual(code, 1, texte)
                 self.assertIn(f"mode {morceau} : a file of the self-service folders is a regular file (100644)", texte)
-                self.assertIn(f"restore its mode : git update-index --chmod={remede}, then commit", texte)
+                if remede:
+                    self.assertIn(f"restore its mode : git update-index --chmod={remede}, then commit", texte)
+                else:
+                    self.assertIn("only the council changes it ; restore the file as bee wrote it", texte)
+                    self.assertNotIn("git update-index", texte)
                 code, texte = self.verifier("bidji29", "--fusion-auto")
                 self.assertNotIn("a file of the self-service folders", texte)
                 self.assertNotIn("FUSION_AUTO=oui", texte)

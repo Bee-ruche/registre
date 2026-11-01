@@ -4448,9 +4448,11 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
         if chemin in modes:
             natures.append("gouvernance")
             avant, apres = modes[chemin]
+            bit = ("+x" if apres == "100644" else None) if avant == "100755" else ("-x" if apres == "100755" else None)
+            remede = (f"restore its mode : git update-index --chmod={bit} {chemin}, then commit"  # a command only for a plain name
+                      if bit and re.fullmatch(r"[A-Za-z0-9._/-]+", chemin) else "restore the file as bee wrote it")
             exiger(est_conseil, f"{chemin} : mode {avant} → {apres} : a file of the self-service folders is a regular file (100644), as "
-                                "bee writes it, and keeps that mode ; only the council changes it ; restore its mode : git update-index "
-                                f"--chmod={'+x' if avant == '100755' else '-x'} {chemin}, then commit")
+                                f"bee writes it, and keeps that mode ; only the council changes it ; {remede}")
         partie = chemin.split("/")
         attendu_ici = FICHIERS_LIBRE_SERVICE.get(partie[0])
         if attendu_ici and not attendu_ici[1].match(chemin):
