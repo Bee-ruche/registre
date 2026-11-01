@@ -10534,6 +10534,14 @@ class TestAgentAccountsValider(BaseTest):
         for login in ("LaRuche-Architect", "bidji29", "alice", "mallory"):
             self.assertEqual(self.bee("acts-for", login), (0, f"{login}\n"), "a case variant, a person or a stranger acts for itself")
 
+    def test_acts_for_takes_any_login_as_data(self):
+        """As integration-auto and verdicts.yml call it (acts-for -- "$login"): an option-like, empty or odd login is printed
+        back as itself, never read as an option and never mapped."""
+        for login in ("--", "--help", "-h", "--registre", "", " ", "-", "laruche-architect ", AGENT.upper()):
+            with self.subTest(login=login):
+                self.assertEqual(self.bee("acts-for", "--", login), (0, f"{login}\n"))
+        self.assertEqual(self.bee("acts-for", "--", AGENT), (0, "bidji29\n"))
+
     def test_an_agent_account_is_no_one_else(self):
         for role, chemin, avant, apres in (
                 ("a member", "membres/alice.yaml", None, None),
@@ -10963,6 +10971,68 @@ class TestAgentAccountInvitations(BaseInvitations):
         self.commit()
         self.libre_service("bidji29", "ecartement_invitation")
         self.attend_le_conseil(AGENT, "ecartement_invitation", "agent_account")
+
+    def gina_agent(self):
+        """gina, a guardian in office, is also a member; the council declares gina-agent for her (in this test only)."""
+        self.ok("inscrire", "--pseudo", "gina", "--compte-cree-le", "2020-01-01")
+        declarer_agents(self.dossier, (AGENT, "bidji29"), ("gina-agent", "gina"))
+        self.commit("gina is a member, and her agent account is declared")
+        self.valide()
+
+    def test_a_guardians_agent_account_does_not_validate_a_proposed_task(self):
+        self.gina_agent()
+        self.branche()
+        self.ok("proposer-tache", "miniz", "--utilisateur", "alice", "--type", "test")
+        self.publier("alice", "proposition_tache")
+        tid = next(i for i, (_, t) in bee.Registre(self.dossier).taches.items() if t.get("statut") == "proposee")
+        self.branche()
+        bee.modifier_tache(self.chemin_tache(tid), statut="ouverte")
+        self.commit()
+        self.libre_service("gina", "validation_tache")
+        self.attend_le_conseil("gina-agent", "validation_tache", "agent_account")
+
+    def test_a_guardians_agent_account_does_not_confirm_a_defect(self):
+        self.gina_agent()
+        for qui, commande in (("alice", ["prendre", "miniz-0099", "--utilisateur", "alice"]),
+                              ("alice", ["soumettre", "miniz-0099", "--utilisateur", "alice", "--pr", f"{PR_MINIZ}77089"])):
+            self.branche()
+            self.ok(*commande)
+            self.publier(qui)
+        verdict, fichiers = self.dossier.parent / "verdict.json", self.dossier.parent / "fichiers.txt"
+        verdict.write_text(json.dumps({"ci": "verte", "gain": 0.05, "au_dela_du_bruit": True, "lignes_modifiees": 10}), encoding="utf-8")
+        fichiers.write_text("miniz_tdef.c\n", encoding="utf-8")
+        self.ok("enregistrer-verdict", "miniz-0099-c1", "--verdict", str(verdict), "--sha", "a" * 40, "--fichiers", str(fichiers))
+        self.commit("verdict")
+        self.branche()
+        self.ok("relire", "miniz-0099-c1", *self.lu("miniz-0099-c1"), "--utilisateur", "bruno", "--avis", "defavorable", "--defaut",
+                "--motif", "Lecture hors limites sur une entrée vide, reproduite.")
+        self.publier("bruno", "relecture")
+        self.branche()
+        self.ok("confirmer-defaut", "miniz-0099-c1", "--relecteur", "bruno", "--utilisateur", "gina")
+        self.commit()
+        self.libre_service("gina", "relecture")
+        self.attend_le_conseil("gina-agent", "relecture", "agent_account")
+
+    def test_a_guardians_agent_account_does_not_set_aside_a_proposed_invitation(self):
+        self.gina_agent()
+        self.jusqu_a("proposee")
+        self.a("2026-10-30T12:00:00Z")
+        self.branche()
+        self.geste("ecarter", "gina", "--motif", "Les faits cités ne disent pas pourquoi cette personne.")
+        self.commit()
+        self.libre_service("gina", "ecartement_invitation")
+        self.attend_le_conseil("gina-agent", "ecartement_invitation", "agent_account")
+
+    def test_a_guardians_agent_account_does_not_close_a_debate_it_does_not_report(self):
+        self.gina_agent()
+        self.branche()
+        self.ok("debattre", "ouvrir", "--utilisateur", "alice", "--question", "Faut-il un compte d'agent par gardien ?")
+        self.publier("alice", "ouverture_debat")
+        self.branche()
+        self.ok("debattre", "clore", "D-0002", "--utilisateur", "gina", "--issue", "sans_suite")
+        self.commit()
+        self.libre_service("gina", "cloture_debat")
+        self.attend_le_conseil("gina-agent", "cloture_debat", "agent_account")
 
     def test_a_guardians_agent_account_gives_no_guardian_agreement(self):
         self.ok("inscrire", "--pseudo", "gina", "--compte-cree-le", "2020-01-01")
