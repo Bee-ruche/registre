@@ -89,20 +89,45 @@ TESTS_REGISTRE_REEL = ("TestRegistreReel", "TestRegistre.test_le_registre_livre_
 DOSSIERS_REELS = tuple(os.path.join(str(RACINE), d) + os.sep for d in DONNEES_REGISTRE)
 
 
+def chemins_lus(evenement, arguments):
+    """Absolute paths an audit event reads: an opened or listed path; for a subprocess, its working directory and its
+    arguments as paths (relative ones from that directory, after git's -C). None when the event cannot be resolved."""
+    if evenement == "subprocess.Popen":
+        _, argv, cwd, _ = arguments
+        argv = [argv] if isinstance(argv, (str, bytes, os.PathLike)) else list(argv or ())
+        ici = os.path.join(os.getcwd(), os.fsdecode(cwd)) if cwd is not None else os.getcwd()
+        chemins, mots = [ici], iter([os.fsdecode(a) for a in argv[1:] if isinstance(a, (str, bytes, os.PathLike))])
+        est_git = bool(argv) and os.path.basename(os.fsdecode(argv[0])) == "git"
+        for mot in mots:
+            if mot == "-C" and est_git:
+                ici = os.path.join(ici, next(mots, ""))
+                chemins.append(ici)
+            elif not mot.startswith("-"):
+                chemins.append(os.path.join(ici, mot))
+        return [os.path.normpath(c) for c in chemins]
+    if evenement not in ("open", "os.scandir", "os.listdir") or not arguments:
+        return None
+    chemin = os.fsdecode(arguments[0])
+    if evenement == "open" and arguments[1:2] == (None,) and not os.path.isabs(chemin) and os.sep not in chemin:
+        return None  # os.open of a bare name: maybe relative to a dir_fd the event does not give (shutil.rmtree)
+    return [os.path.normpath(chemin if os.path.isabs(chemin) else os.path.join(os.getcwd(), chemin))]
+
+
 def garde_donnees_reelles(evenement, arguments):
     """Audit hook, installed once below: a test outside TESTS_REGISTRE_REEL that opens or lists a path in the live
-    registry's data folders fails, however the path was built (bee run without --registre, an alias of RACINE, rglob, a
-    copy). Not seen: a read in a subprocess or a thread, a bare stat (exists, is_file), a relative os.open."""
-    if evenement not in ("open", "os.scandir", "os.listdir") or not arguments:
+    registry's data folders, or starts a subprocess there or naming such a path, fails, however the path was built (bee
+    run without --registre, an alias of RACINE, rglob, a copy, cat, git -C). Not seen: a read outside a test's frames
+    (setUpClass, import time, another thread), through a symlink to the repository, by a bare stat (exists, is_file) or
+    a bare-named os.open, or by a subprocess that does not name the path (a shell script's text, bee run from the
+    repository without --registre, an environment variable)."""
+    if evenement not in ("open", "os.scandir", "os.listdir", "subprocess.Popen"):
         return
     try:
-        chemin = os.fsdecode(arguments[0])
-        if not os.path.isabs(chemin) and evenement == "open" and arguments[1:2] == (None,):
-            return  # os.open, maybe relative to a dir_fd the event does not give (shutil.rmtree)
-        chemin = os.path.normpath(chemin if os.path.isabs(chemin) else os.path.join(os.getcwd(), chemin))
+        chemins = chemins_lus(evenement, arguments) or ()
     except (TypeError, ValueError, OSError):  # a file descriptor, None, a deleted working directory
         return
-    if not (chemin + os.sep).startswith(DOSSIERS_REELS):
+    chemin = next((c for c in chemins if (c + os.sep).startswith(DOSSIERS_REELS)), None)
+    if chemin is None:
         return
     cadre = sys._getframe(1)
     while cadre is not None and not isinstance(cadre.f_locals.get("self"), unittest.TestCase):
@@ -343,6 +368,11 @@ class TestCiScope(unittest.TestCase):
                 for etape in etapes:  # every other step, « Validation complète » included, always runs
                     with self.subTest(evenement=evenement, portee=sortie, etape=etape.get("name") or etape.get("uses")):
                         self.assertEqual(self.tourne(etape, evenement, portee), attendu.get(id(etape), True))
+        flux = yaml.safe_load((RACINE / ".github/workflows/validation.yml").read_text(encoding="utf-8"))
+        self.assertEqual(flux["permissions"], {"contents": "read", "actions": "read"})
+        self.assertEqual(roles["portee"]["env"]["GH_TOKEN"], "${{ github.token }}")
+        self.assertIn("main=$(timeout 60 gh api ", roles["portee"]["run"])  # the stub gh ignores --jq: the expression is read here
+        self.assertIn("--jq '.workflow_runs[0].conclusion') || main=unknown", roles["portee"]["run"])
         self.assertEqual(roles["regles"]["env"]["BASE"], "${{ steps.portee.outputs.base }}")
         self.assertNotRegex(roles["regles"]["run"], r"(?m)^\s*BASE=")
         r, _, appels = self.rejouer(roles["regles"]["run"], {"BASE": "", "AUTEUR": "alice", "FAUX_GH": "2020-01-01"})
@@ -361,11 +391,17 @@ class TestCiScope(unittest.TestCase):
             self.assertTrue(not methode or callable(getattr(globals()[classe], methode, None)), nom)
 
     def test_the_audit_hook_fails_a_test_that_reads_live_data(self):
-        """S2 (review): however the path is built, a test outside TESTS_REGISTRE_REEL that reads a live data folder fails;
-        reading elsewhere in the repository does not."""
-        racine, copie = RACINE, pathlib.Path(self.temp.name) / "copie"
+        """S2 (review): however the path is built, in this process or in a subprocess, a test outside TESTS_REGISTRE_REEL
+        that reads a live data folder fails; the controls (reading elsewhere, rmtree and git -C elsewhere from the repository
+        root) do not."""
+        racine, copie, ailleurs = RACINE, pathlib.Path(self.temp.name) / "copie", pathlib.Path(self.temp.name) / "ailleurs"
+        tache = "taches/ruche/ruche-0090.yaml"
 
         class Lecteur(unittest.TestCase):
+            def depuis_la_racine(self):
+                self.addCleanup(os.chdir, os.getcwd())
+                os.chdir(RACINE)
+
             def test_bee_without_registre(self):
                 lancer("lister", "--json")
 
@@ -384,15 +420,48 @@ class TestCiScope(unittest.TestCase):
             def test_copy(self):
                 shutil.copytree(RACINE / "debats", copie)
 
-            def test_outside_the_data_folders(self):
+            def test_relative_open(self):
+                self.depuis_la_racine()
+                with contextlib.suppress(OSError):
+                    open(tache, encoding="utf-8").close()
+
+            def test_relative_os_open(self):
+                self.depuis_la_racine()
+                with contextlib.suppress(OSError):
+                    os.close(os.open(tache, os.O_RDONLY))
+
+            def test_registre_dot(self):
+                self.depuis_la_racine()
+                bee.Registre(".")
+
+            def test_cat(self):
+                subprocess.run(["cat", RACINE / tache], capture_output=True)
+
+            def test_git_ls_files(self):
+                git(RACINE, "ls-files", "taches")
+
+            def test_bee_in_a_data_folder(self):
+                subprocess.run([sys.executable, str(RACINE / "outils/bee.py"), "--version"], cwd=RACINE / "taches", capture_output=True)
+
+            def test_control_outside_the_data_folders(self):
                 (RACINE / "bee.yaml").read_text(encoding="utf-8")
                 list((RACINE / "outils").glob("*.py"))
+                git(RACINE, "rev-parse", "HEAD")
+                subprocess.run(["cat", RACINE / "bee.yaml"], capture_output=True)
+
+            def test_control_rmtree_and_git_elsewhere_from_the_repository_root(self):
+                (ailleurs / "taches/ruche").mkdir(parents=True)
+                (ailleurs / tache).write_text("id: x\n", encoding="utf-8")
+                self.depuis_la_racine()
+                subprocess.run(["git", "-C", str(ailleurs), "ls-files", "taches"], capture_output=True)
+                subprocess.run(["ls", "taches"], cwd=ailleurs, capture_output=True)
+                shutil.rmtree(ailleurs)  # os.open of bare names relative to directory descriptors
 
         resultat = unittest.TestResult()
         unittest.defaultTestLoader.loadTestsFromTestCase(Lecteur).run(resultat)
         self.assertEqual(resultat.errors, [])
         echecs = {t._testMethodName: texte for t, texte in resultat.failures}
-        self.assertEqual(sorted(echecs), sorted(n for n in dir(Lecteur) if n.startswith("test_") and n != "test_outside_the_data_folders"))
+        self.assertEqual(sorted(echecs), sorted(n for n in dir(Lecteur) if n.startswith("test_") and not n.startswith("test_control_")))
         for texte in echecs.values():
             self.assertIn("reads the live registry's data", texte)
 

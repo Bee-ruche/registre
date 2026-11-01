@@ -2,6 +2,7 @@
 # Ce job exécute la version de l'outil contenue dans la PR, mais en lecture seule et
 # sans secret : il ne peut rien écrire. La décision de fusion est prise ailleurs
 # (fusion-auto.yml), par l'outil de la branche principale.
+# Its token is read-only (contents: read; actions: read, for the scope step to read main's last push run).
 name: Validation du registre
 
 on:
@@ -11,7 +12,7 @@ on:
 
 permissions:
   contents: read
-  actions: read  # the scope step reads the conclusion of main's last push run
+  actions: read
 
 jobs:
   valider:
@@ -45,8 +46,8 @@ jobs:
           mkdir -p "$RUNNER_TEMP/outil-base"
           portee=$(git show "$BASE:outils/bee.py" > "$RUNNER_TEMP/outil-base/bee.py" &&
                    python3 "$RUNNER_TEMP/outil-base/bee.py" --registre . ci-scope --base "$BASE" --tete HEAD) || portee=full
-          main=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/validation.yml/runs?branch=main&event=push&status=completed&per_page=1" \
-                 --jq '.workflow_runs[0].conclusion') || main=unknown
+          main=$(timeout 60 gh api "repos/$GITHUB_REPOSITORY/actions/workflows/validation.yml/runs?branch=main&event=push&status=completed&per_page=1" \
+                 --jq '.workflow_runs[0].conclusion') || main=unknown  # an error or a timeout: the full suite
           [ "$portee" = data ] && [ "$main" = success ] || portee=full
           echo "portee=$portee" >> "$GITHUB_OUTPUT"
           echo "Scope: $portee (main's last push run: $main)"
