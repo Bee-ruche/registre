@@ -28,6 +28,9 @@ hors_perimetre:
 - REGLES.md
 - the workflows' shell code
 noeud: projets/ruche/ruche
-statut: ouverte
+statut: reservee
+reservation:
+  utilisateur: "bidji29"
+  depuis: "2026-11-01T22:00:50Z"
 cree_par: conseil
 cree_le: '2026-11-01'
