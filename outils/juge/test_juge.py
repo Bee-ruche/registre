@@ -29,11 +29,17 @@ Without Docker, the analysis is also tested on objects of the toy project built 
 builds them (DockerLocal; built, surveyed and analysed, never run): seeded constructs in every family and
 variant (TestSeededObjects), constructs added anywhere in a judged file (TestSeededText), failing tools
 (TestFailClosed).
+
+ruche-0024 (juge-v2): juge.yml's scripts are run as the runner would (TestWorkflowJuge: judge code at the workflow's
+own commit, preparation failing closed, a hostile journal that issues no workflow command), the architectures'
+reports merged (TestFusion), the declared history fetched then read without git transport (TestHistorique); with
+Docker, historique_declare, historique_non_declare and faux_gain_sur_une_architecture (also run on ARM64).
 """
 
 import concurrent.futures
 import json
 import os
+import platform
 import random
 import re
 import shutil
@@ -56,6 +62,12 @@ import stats  # noqa: E402
 
 sys.path.insert(0, os.path.join(JOUET, "bee", "juge"))
 import projet as greffon_jouet  # noqa: E402
+
+
+def architecture_ici():
+    """This machine's key in juge.json's « chronometres » (x86_64, arm64)."""
+    a = platform.machine().lower()
+    return {"amd64": "x86_64", "aarch64": "arm64"}.get(a, a)
 
 
 # ------------------------------------------------------------------ tests unitaires
@@ -448,12 +460,357 @@ class TestImage(unittest.TestCase):
             with self.assertRaises(lecture.Erreur):
                 conteneur.dockerfile([mauvais])
 
-    def test_workflow_epingle_sa_version(self):
-        """Le workflow réutilisable lit le juge commun à sa propre étiquette, juge-v<VERSION_COMMUNE>."""
-        chemin = os.path.join(os.path.dirname(os.path.dirname(ICI)), ".github", "workflows", "juge.yml")
-        with open(chemin, encoding="utf-8") as f:
-            texte = f.read()
-        self.assertIn(f"JUGE_COMMUN_REF: juge-v{juge.VERSION_COMMUNE}\n", texte)
+
+
+# ------------------------------------------------------------------ juge.yml (ruche-0024): read and run its scripts
+
+JUGE_YML = os.path.join(os.path.dirname(os.path.dirname(ICI)), ".github", "workflows", "juge.yml")
+try:
+    import yaml
+except ImportError:  # the registry's CI (validation.yml) installs PyYAML; the Docker meta-test job may not have it
+    yaml = None
+
+
+def workflow_juge():
+    with open(JUGE_YML, encoding="utf-8") as f:
+        texte = f.read()
+    donnees = yaml.safe_load(texte)
+    donnees["on"] = donnees.pop(True)  # YAML 1.1: the key « on » reads as true
+    return texte, donnees
+
+
+def etape(donnees, job, nom):
+    trouvees = [e for e in donnees["jobs"][job]["steps"] if e.get("name") == nom]
+    if len(trouvees) != 1:
+        raise AssertionError(f"step {nom!r} of job {job!r} not found exactly once in juge.yml")
+    return trouvees[0]
+
+
+def commandes_du_runner(sortie):
+    """Workflow commands the GitHub Actions runner would act on in a step's output (actions/runner,
+    ActionCommandManager): « ::name properties::data » at the start of a line (leading blanks ignored) and
+    « ##[name properties]data » anywhere in it; lines split at \\n, \\r\\n and lone \\r. After
+    « ::stop-commands::TOKEN », none until a command named TOKEN, which resumes them."""
+    vues, jeton = [], None
+    for ligne in re.split(r"\r\n|\r|\n", sortie):
+        ligne = ligne.lstrip()
+        m = re.match(r"::([^\s:]+)[^:]*::(.*)", ligne) or re.search(r"##\[([^\s\]]+)[^\]]*\](.*)", ligne)
+        if not m:
+            continue
+        nom, donnees = m.group(1), m.group(2)
+        if jeton is not None:
+            if nom.lower() == jeton.lower():
+                jeton = None
+                vues.append("<resume>")
+            continue
+        if nom == "stop-commands":
+            jeton = donnees
+        vues.append(nom)
+    return vues
+
+
+@unittest.skipUnless(yaml, "PyYAML required (pip install -r outils/requirements.txt)")
+class TestWorkflowJuge(unittest.TestCase):
+    """juge.yml reads the judge at its own commit, prints the journal without workflow commands, judges on two
+    architectures with one seed and merges their reports (ruche-0024)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.texte, cls.wf = workflow_juge()
+
+    def lancer(self, script, env, dossier):
+        environnement = {"PATH": os.environ["PATH"], "HOME": dossier, **env}
+        return subprocess.run(["bash", "-e", "-c", script], cwd=dossier, env=environnement, capture_output=True, text=True,
+                              timeout=120)
+
+    def test_judge_code_read_at_the_workflow_commit(self):
+        """No tag, no branch: the registry is checked out at job.workflow_repository@job.workflow_sha, validated first."""
+        self.assertNotIn("JUGE_COMMUN_REF", self.texte)
+        self.assertIn(f"juge-v{juge.VERSION_COMMUNE}", self.texte)  # the version label stays named in the usage comment
+        prep = etape(self.wf, "preparation", "Commit de ce workflow (code du juge) et graine commune aux architectures")
+        self.assertEqual(prep["env"], {"DEPOT": "${{ job.workflow_repository }}", "COMMIT": "${{ job.workflow_sha }}"})
+        extractions = 0
+        for job, contenu in self.wf["jobs"].items():
+            for e in contenu["steps"]:
+                if str(e.get("uses", "")).startswith("actions/checkout@") and e["with"].get("path") == "juge-commun":
+                    extractions += 1
+                    self.assertIn("preparation", contenu["needs"])
+                    self.assertEqual(e["with"]["repository"], "${{ needs.preparation.outputs.depot }}")
+                    self.assertEqual(e["with"]["ref"], "${{ needs.preparation.outputs.commit }}")
+                elif str(e.get("uses", "")).startswith("actions/checkout@"):
+                    self.assertNotIn("repository", e["with"], f"{job}: only the judge comes from another repository")
+        self.assertEqual(extractions, 2)
+        self.assertEqual(self.wf["jobs"]["rapport"]["if"], "always() && needs.preparation.result == 'success'")
+
+    def test_preparation_fails_closed(self):
+        script = etape(self.wf, "preparation", "Commit de ce workflow (code du juge) et graine commune aux architectures")["run"]
+        bon = "0123456789abcdef0123456789abcdef01234567"
+        with tempfile.TemporaryDirectory() as d:
+            sortie = os.path.join(d, "sortie")
+            for depot, commit in (("", ""), ("Bee-ruche/registre", ""), ("Bee-ruche/registre", "juge-v2"),
+                                  ("Bee-ruche/registre", "main"), ("Bee-ruche/registre", bon[:39]), ("", bon),
+                                  ("Bee-ruche/registre", bon + "\nx"), ("a/b;c", bon)):
+                with self.subTest(depot=depot, commit=commit):
+                    open(sortie, "w").close()
+                    r = self.lancer(script, {"DEPOT": depot, "COMMIT": commit, "GITHUB_OUTPUT": sortie}, d)
+                    self.assertNotEqual(r.returncode, 0)
+                    with open(sortie) as f:
+                        self.assertEqual(f.read(), "")
+            open(sortie, "w").close()
+            r = self.lancer(script, {"DEPOT": "Bee-ruche/registre", "COMMIT": bon, "GITHUB_OUTPUT": sortie}, d)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            with open(sortie) as f:
+                lignes = f.read().splitlines()
+        self.assertEqual(lignes[:2], ["depot=Bee-ruche/registre", f"commit={bon}"])
+        self.assertRegex(lignes[2], r"^graine=[0-9a-f]{32}$")
+
+    def test_two_architectures_one_seed(self):
+        juge_job = self.wf["jobs"]["juge"]
+        self.assertFalse(juge_job["strategy"]["fail-fast"])  # an ARM64 failure never cancels the x86-64 judgment
+        self.assertEqual(juge_job["strategy"]["matrix"], {"architecture": list(juge.ARCHITECTURES_JUGEES)})
+        self.assertEqual(juge_job["runs-on"], "${{ matrix.architecture == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}")
+        envoi = etape(self.wf, "juge", "Conserver le rapport")
+        self.assertEqual((envoi["if"], envoi["with"]["name"]), ("always()", "juge-${{ matrix.architecture }}"))
+        env = etape(self.wf, "juge", "Juger")["env"]
+        self.assertEqual(env["GRAINE"], "${{ needs.preparation.outputs.graine }}")
+        self.assertEqual(env["SANS_INSTRUCTIONS"], "${{ inputs.sans_instructions || matrix.architecture != 'x86_64' }}")
+        self.assertIn('--graine "$GRAINE"', etape(self.wf, "juge", "Juger")["run"])
+        self.assertEqual(self.wf["on"]["workflow_call"]["outputs"]["code"]["value"], "${{ jobs.rapport.outputs.code }}")
+
+    def test_history_input_reaches_the_judge_through_the_environment(self):
+        """The declared history is never interpolated into a script, and is fetched in the network step, before the PR."""
+        self.assertEqual(self.wf["on"]["workflow_call"]["inputs"]["historique"]["type"], "string")
+        noms = [e.get("name") for e in self.wf["jobs"]["juge"]["steps"]]
+        image = etape(self.wf, "juge", "Image du juge et historique déclaré (seule étape avec réseau, avant tout fichier de la PR)")
+        self.assertEqual(image["env"], {"HISTORIQUE": "${{ inputs.historique }}"})
+        self.assertIn('--historique "$HISTORIQUE"', image["run"])
+        self.assertLess(noms.index(image["name"]), noms.index("Tête de la PR (données ; rien n'en est exécuté hors conteneur)"))
+        for job in self.wf["jobs"].values():
+            for e in job["steps"]:
+                self.assertNotIn("${{ inputs.", e.get("run", ""), "inputs reach scripts through env only")
+
+    def test_journal_cannot_issue_workflow_commands(self):
+        """The judged PR fills the journal; printed between ::stop-commands::<token> and ::<token>::, none of its lines
+        is a workflow command for the runner (a line ::error:: in the journal, among others)."""
+        script = etape(self.wf, "juge", "Juger")["run"]
+        hostile = ("juge : début\n::error::injected annotation\n  ::add-mask::abc\n::stop-commands::faux\n::faux::\n"
+                   "::error::after a forged resume\n##[error]old syntax\nx\r::warning::after a carriage return\n"
+                   "::set-output name=code::0\n::warning file=rle.c,line=1::props")
+        with tempfile.TemporaryDirectory() as d:
+            os.makedirs(os.path.join(d, "juge-commun", "outils", "juge"))
+            with open(os.path.join(d, "juge-commun", "outils", "juge", "juge.py"), "w", encoding="utf-8") as f:
+                f.write(f"import sys\nsys.stderr.write({hostile!r})\nsys.exit(1)\n")
+            r = self.lancer(script, {"OPTIONS": "sortie_compressee=identique", "REPETITIONS": "2", "SANS_INSTRUCTIONS": "false",
+                                     "GRAINE": "00" * 16, "SOURCE": "Bee-ruche/registre@" + "0" * 40}, d)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            with open(os.path.join(d, "resultats", "code")) as f:
+                self.assertEqual(f.read().strip(), "1")
+            with open(os.path.join(d, "resultats", "journal.txt"), newline="") as f:
+                journal = f.read()
+        self.assertEqual(journal, hostile)
+        self.assertGreaterEqual(len([c for c in commandes_du_runner(journal) if c != "<resume>"]), 6)  # the simulator sees them
+        lignes = r.stdout.splitlines()
+        jeton = re.fullmatch(r"::stop-commands::([0-9a-f]{64})", lignes[0]).group(1)
+        self.assertEqual(lignes[-1], f"::{jeton}::")
+        self.assertNotIn(jeton, journal)
+        self.assertEqual(r.stdout.count(jeton), 2)
+        self.assertEqual(commandes_du_runner(r.stdout), ["stop-commands", "<resume>"])
+
+    def test_merge_step(self):
+        script = etape(self.wf, "rapport", "Un rapport pour toutes les architectures (sans rapport x86-64 lisible, code 2)")["run"]
+        self.assertIn('--fusionner architectures >> "$GITHUB_OUTPUT"', script)
+        envoi = etape(self.wf, "rapport", "Conserver le rapport")
+        self.assertEqual((envoi["with"]["name"], envoi["with"]["path"]), ("juge", "architectures/"))
+
+
+def rapport_simule(arch, gain, au_dela, autres=()):
+    """A juge.json as one judging job writes it: its metrics, and its timer under its architecture's key."""
+    m = {"debit_compression": {"sens": "plus_haut", "gain": gain, "au_dela_du_bruit": au_dela}}
+    chronos = {a: {"machine": {"architecture": a}, "metriques": m} for a in (arch,) + tuple(autres)}
+    return {"metriques": m, "juge": {"commun": f"juge-v{juge.VERSION_COMMUNE}", "projet": "jouet"}, "chronometres": chronos}
+
+
+class TestFusion(unittest.TestCase):
+    """juge.yml's last job: the x86-64 report gathers every architecture's timer, each from its own job."""
+
+    def setUp(self):
+        self.dossier = tempfile.mkdtemp(prefix="bee-fusion-")
+
+    def tearDown(self):
+        shutil.rmtree(self.dossier, ignore_errors=True)
+
+    def deposer(self, arch, code, rapport=None, brut=None):
+        d = os.path.join(self.dossier, f"juge-{arch}")
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, "code"), "w") as f:
+            f.write(f"{code}\n")
+        if rapport is not None or brut is not None:
+            with open(os.path.join(d, "juge.json"), "w") as f:
+                f.write(brut if brut is not None else json.dumps(rapport))
+
+    def fusion(self):
+        code = juge.fusionner(self.dossier)
+        with open(os.path.join(self.dossier, "code")) as f:
+            self.assertEqual(f.read(), f"{code}\n")
+        chemin = os.path.join(self.dossier, "juge.json")
+        if not os.path.exists(chemin):
+            return code, None
+        with open(chemin) as f:
+            return code, json.load(f)
+
+    def test_gain_on_one_architecture_is_seen_only_there(self):
+        self.deposer("x86_64", 0, rapport_simule("x86_64", 0.001, False))
+        self.deposer("arm64", 0, rapport_simule("arm64", 0.40, True))
+        code, r = self.fusion()
+        self.assertEqual(code, 0)
+        self.assertEqual(set(r["chronometres"]), {"x86_64", "arm64"})
+        self.assertTrue(r["chronometres"]["arm64"]["metriques"]["debit_compression"]["au_dela_du_bruit"])
+        self.assertFalse(r["chronometres"]["x86_64"]["metriques"]["debit_compression"]["au_dela_du_bruit"])
+        self.assertFalse(r["metriques"]["debit_compression"]["au_dela_du_bruit"])  # the report's own metrics stay x86-64's
+        self.assertEqual((r["chronometres"]["x86_64"]["code"], r["chronometres"]["arm64"]["code"]), (0, 0))
+
+    def test_each_timer_comes_from_its_own_job(self):
+        """The ARM64 job's report cannot write the x86-64 timer, and a job that ran elsewhere publishes nothing."""
+        self.deposer("x86_64", 0, rapport_simule("x86_64", 0.0, False))
+        self.deposer("arm64", 0, rapport_simule("arm64", 0.0, False, autres=("x86_64",)))
+        faux = rapport_simule("arm64", 9.0, True)["chronometres"]["arm64"]
+        with open(os.path.join(self.dossier, "juge-arm64", "juge.json")) as f:
+            arm = json.load(f)
+        arm["chronometres"]["x86_64"] = faux
+        self.deposer("arm64", 0, arm)
+        code, r = self.fusion()
+        self.assertEqual(r["chronometres"]["x86_64"]["metriques"]["debit_compression"]["gain"], 0.0)
+        self.deposer("arm64", 0, rapport_simule("x86_64", 9.0, True))  # the "arm64" job ran on x86-64
+        code, r = self.fusion()
+        self.assertEqual((code, r["chronometres"]["arm64"]), (0, {"code": 2}))
+
+    def test_codes(self):
+        cas = [  # (x86-64 code, x86-64 report, arm64 code, arm64 report) -> (code, juge.json written, arm64 entry)
+            ((0, True), (1, False), 1, True, {"code": 1}),
+            ((0, True), (2, False), 0, True, {"code": 2}),
+            ((0, True), None, 0, True, {"code": 2}),
+            ((1, False), (0, True), 1, False, None),
+            ((2, False), (0, True), 2, False, None),
+            ((2, False), (1, False), 2, False, None),
+            (None, (0, True), 2, False, None),
+            ((0, False), (0, True), 2, False, None),
+        ]
+        for x86, arm, attendu, ecrit, entree in cas:
+            with self.subTest(x86=x86, arm=arm):
+                shutil.rmtree(self.dossier)
+                os.makedirs(self.dossier)
+                if x86:
+                    self.deposer("x86_64", x86[0], rapport_simule("x86_64", 0.0, False) if x86[1] else None)
+                if arm:
+                    self.deposer("arm64", arm[0], rapport_simule("arm64", 0.0, False) if arm[1] else None)
+                code, r = self.fusion()
+                self.assertEqual(code, attendu)
+                self.assertEqual(r is not None, ecrit)
+                if entree:
+                    self.assertEqual(r["chronometres"]["arm64"], entree)
+
+    def test_unreadable_reports(self):
+        for code, brut in (("0", "{"), ("0", "[]"), ("0", '{"chronometres": {"x86_64": 3}}'), ("7", None),
+                           ("0; echo", '{}'), ("", None)):
+            with self.subTest(code=code, brut=brut):
+                shutil.rmtree(self.dossier)
+                os.makedirs(os.path.join(self.dossier, "juge-x86_64"))
+                with open(os.path.join(self.dossier, "juge-x86_64", "code"), "w") as f:
+                    f.write(code)
+                if brut is not None:
+                    with open(os.path.join(self.dossier, "juge-x86_64", "juge.json"), "w") as f:
+                        f.write(brut)
+                self.deposer("arm64", 0, rapport_simule("arm64", 0.0, False))
+                self.assertEqual(self.fusion(), (2, None))
+
+    def test_command_line(self):
+        self.deposer("x86_64", 0, rapport_simule("x86_64", 0.0, False))
+        self.deposer("arm64", 1)
+        r = subprocess.run([sys.executable, os.path.join(ICI, "juge.py"), "--fusionner", self.dossier],
+                           capture_output=True, text=True, timeout=60)
+        self.assertEqual((r.returncode, r.stdout), (0, "code=1\n"))
+
+
+def git_test(depot, *args):
+    return subprocess.run(["git", "-C", depot, "-c", "user.name=t", "-c", "user.email=t@t", "-c", "protocol.file.allow=always"]
+                          + list(args), capture_output=True, text=True, check=True).stdout.strip()
+
+
+def depot_jouet_avec_historique(travail):
+    """An origin whose older commit X has another rle.c, and a base cloned from it without history (as actions/checkout
+    does): X's objects are not in the base. Returns (origin, base, X, rle.c at X)."""
+    source, origine, base = (os.path.join(travail, n) for n in ("source", "origine.git", "base"))
+    shutil.copytree(JOUET, source, ignore=shutil.ignore_patterns("__pycache__"))
+    with open(os.path.join(source, "rle.c"), "a", encoding="utf-8") as f:
+        f.write("/* rle.c as it was at the corpus commit */\n")
+    subprocess.run(["git", "init", "-q", "-b", "main", source], check=True)
+    git_test(source, "add", "-A")
+    git_test(source, "commit", "-qm", "X")
+    commit = git_test(source, "rev-parse", "HEAD")
+    with open(os.path.join(source, "rle.c"), "rb") as f:
+        ancien = f.read()
+    shutil.copyfile(os.path.join(JOUET, "rle.c"), os.path.join(source, "rle.c"))
+    git_test(source, "commit", "-qam", "Y")
+    subprocess.run(["git", "clone", "-q", "--bare", source, origine], check=True)
+    subprocess.run(["git", "clone", "-q", "--depth", "1", "file://" + origine, base], check=True)
+    return origine, base, commit, ancien
+
+
+@unittest.skipUnless(shutil.which("git"), "git required")
+class TestHistorique(unittest.TestCase):
+    """juge.yml's `historique` input: the commits a plugin reads are fetched into the base before the PR, then judging
+    runs without any git transport (ruche-0024)."""
+
+    def setUp(self):
+        self.travail = tempfile.mkdtemp(prefix="bee-historique-")
+        self.origine, self.base, self.commit, self.ancien = depot_jouet_avec_historique(self.travail)
+
+    def tearDown(self):
+        shutil.rmtree(self.travail, ignore_errors=True)
+
+    def test_declared_commit_is_read_without_network(self):
+        self.assertEqual(juge.recuperer_historique(self.base, f" {self.commit}\n{self.commit} "), [self.commit])
+        os.rename(self.origine, self.origine + ".parti")  # from now on, no origin to fetch from
+        projet = greffon_jouet.Projet({"commit_corpus": self.commit})
+        with mock.patch.dict(os.environ, {"GIT_ALLOW_PROTOCOL": "none"}):
+            corpus = projet.corpus(self.base)
+        self.assertEqual(corpus[-1][1], self.ancien)
+        self.assertEqual(projet.VERIFICATION["historique"], f"{self.commit}:rle.c ({len(self.ancien)} octets)")
+
+    def test_undeclared_commit_fails_cleanly(self):
+        with self.assertRaises(lecture.Erreur) as e:
+            greffon_jouet.Projet({"commit_corpus": self.commit}).corpus(self.base)
+        self.assertIn("historique", str(e.exception))
+        with self.assertRaises(lecture.Erreur):
+            greffon_jouet.Projet({"commit_corpus": "HEAD"})
+
+    def test_declared_history_is_checked(self):
+        for texte in ("abc", self.commit[:39], self.commit.upper(), "--upload-pack=touch /tmp/x", f"{self.commit}:refs/x",
+                      " ".join(f"{i:040x}" for i in range(juge.HISTORIQUE_MAX + 1))):
+            with self.subTest(texte=texte):
+                with mock.patch.object(juge.subprocess, "run") as run, self.assertRaises(lecture.Erreur):
+                    juge.recuperer_historique(self.base, texte)
+                run.assert_not_called()
+        self.assertEqual(juge.recuperer_historique(self.base, ""), [])
+        with self.assertRaises(lecture.Erreur) as e:
+            juge.recuperer_historique(self.base, "0123456789abcdef0123456789abcdef01234567")
+        self.assertIn("not fetched", str(e.exception))
+
+    def test_judging_refuses_every_git_transport(self):
+        """In judging mode the judge sets GIT_ALLOW_PROTOCOL before loading the plugin; a plugin's own fetch then fails."""
+        vus = {}
+
+        def charger(outillage, options):
+            vus["GIT_ALLOW_PROTOCOL"] = os.environ.get("GIT_ALLOW_PROTOCOL")
+            raise lecture.Erreur("stop")
+        for image, attendu in ((False, "none"), (True, None)):
+            with mock.patch.dict(os.environ), mock.patch.object(juge.shutil, "which", return_value="/usr/bin/docker"), \
+                    mock.patch.object(juge, "charger_greffon", side_effect=charger), self.assertRaises(lecture.Erreur):
+                os.environ.pop("GIT_ALLOW_PROTOCOL", None)
+                juge.main(["--outillage", self.base] + (["--image-seulement"] if image else ["--source-a", "a", "--source-b", "b"]))
+            self.assertEqual(vus["GIT_ALLOW_PROTOCOL"], attendu)
+        with mock.patch.dict(os.environ, {"GIT_ALLOW_PROTOCOL": "none"}), self.assertRaises(lecture.Erreur):
+            juge.recuperer_historique(self.base, self.commit)
 
 
 # ------------------------------------------------------------------ meta-tests of the analysis (built on the host, no Docker)
@@ -800,9 +1157,11 @@ class TestJugeContreVariantes(unittest.TestCase):
             f.write(texte.replace(ancien, nouveau) if texte.count(ancien) >= 1 else remplacer(texte, ancien, nouveau))
         return base
 
-    def juger(self, nom, source_b, sans_instructions=False, base=JOUET):
+    def juger(self, nom, source_b, sans_instructions=False, base=JOUET, repetitions=2, options=()):
         commande = [sys.executable, os.path.join(ICI, "juge.py"), "--outillage", base, "--source-a", base,
-                    "--source-b", source_b, "--repetitions", "2", "--chauffe", "0"]
+                    "--source-b", source_b, "--repetitions", str(repetitions), "--chauffe", "0"]
+        for o in options:
+            commande += ["--option", o]
         if sans_instructions:
             commande.append("--sans-instructions")
         if os.environ.get("BEE_JUGE_RESEAU"):
@@ -824,6 +1183,60 @@ class TestJugeContreVariantes(unittest.TestCase):
         for m in rapport["instructions"].values():
             self.assertEqual(m["A"], m["B"])
         self.assertEqual(set(rapport["metriques"]), {"debit_compression", "debit_decompression", "ratio", "memoire_max_ko"})
+        self.assertEqual(rapport["chronometres"], {architecture_ici(): {"machine": rapport["machine"], "metriques": rapport["metriques"]}})
+        self.assertIsNone(rapport["juge"]["source"])  # named by juge.yml (--source-juge), not by a local run
+
+    def test_historique_declare(self):
+        """ruche-0024: the toy plugin reads rle.c at a commit the base does not have; declared, it is fetched with the
+        image (before the PR), then the judge runs with the origin gone and every git transport refused."""
+        origine, base, commit, ancien = depot_jouet_avec_historique(os.path.join(self.travail, "historique-declare"))
+        r = subprocess.run([sys.executable, os.path.join(ICI, "juge.py"), "--outillage", base, "--image-seulement",
+                            "--historique", commit] + (["--reseau-construction", os.environ["BEE_JUGE_RESEAU"]]
+                                                       if os.environ.get("BEE_JUGE_RESEAU") else []),
+                           capture_output=True, text=True, timeout=1800)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        shutil.rmtree(origine)
+        code, rapport, sortie = self.juger("historique_declare", self.preparer("historique_declare"), True, base=base,
+                                          options=[f"commit_corpus={commit}"])
+        self.assertEqual(code, 0, sortie)
+        self.assertEqual(rapport["juge"]["verification"]["historique"], f"{commit}:rle.c ({len(ancien)} octets)")
+
+    def test_historique_non_declare(self):
+        """Not declared: a clean environment error (code 2), even for a plugin that tries to fetch it itself from an
+        origin that is still there (minizBee's former workaround): judging has no git transport."""
+        _, base, commit, _ = depot_jouet_avec_historique(os.path.join(self.travail, "historique-non-declare"))
+        chemin = os.path.join(base, "bee", "juge", "projet.py")
+        with open(chemin, encoding="utf-8") as f:
+            texte = f.read()
+        with open(chemin, "w", encoding="utf-8") as f:
+            f.write(remplacer(texte, '        r = subprocess.run(["git", "-C", outillage, "cat-file"',
+                              '        subprocess.run(["git", "-C", outillage, "fetch", "-q", "--depth=1", "origin", '
+                              'self.commit_corpus], capture_output=True, timeout=60)\n'
+                              '        r = subprocess.run(["git", "-C", outillage, "cat-file"'))
+        code, _, sortie = self.juger("historique_non_declare", self.preparer("historique_non_declare"), True, base=base,
+                                     options=[f"commit_corpus={commit}"])
+        self.assertEqual(code, 2)
+        self.assertIn("historique", sortie)
+
+    def test_faux_gain_sur_une_architecture(self):
+        """ruche-0024: A is slowed down on one architecture only (a busy loop under #if): B's fake gain shows in that
+        architecture's timer and not in the other's. Run on x86-64 and on ARM64 (juge-commun.yml)."""
+        ici = architecture_ici()
+        for cible, macro in (("x86_64", "__x86_64__"), ("arm64", "__aarch64__")):
+            with self.subTest(lente=cible, ici=ici):
+                base = self.base_modifiee("lente-" + cible, "rle.c", DEBUT_COMPRESSER, DEBUT_COMPRESSER +
+                                          f"#if defined({macro})\n    {{ volatile unsigned long rle_k;\n"
+                                          "      for (rle_k = 0; rle_k < (unsigned long)n * 2000; rle_k++) ; }\n#endif\n")
+                code, rapport, sortie = self.juger("lente-" + cible, self.preparer("rapide-" + cible), True, base=base,
+                                                   repetitions=6)
+                self.assertEqual(code, 0, sortie)
+                self.assertEqual(set(rapport["chronometres"]), {ici})
+                m = rapport["chronometres"][ici]["metriques"]["debit_compression"]
+                if cible == ici:
+                    self.assertTrue(m["au_dela_du_bruit"])
+                    self.assertGreater(m["gain"], 2.0)
+                else:
+                    self.assertLess(m["gain"], 1.0)
 
     def test_sortie_anticipee(self):
         code, _, sortie = self.juger("sortie_anticipee", self.preparer("sortie_anticipee", sortie_anticipee), True)

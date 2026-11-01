@@ -5,6 +5,8 @@ sorties du conteneur qu'à travers lecture.Sorties et n'exécute rien de ce que 
 Il ne fait confiance qu'à la base (A) et à lui-même (ici, un codec de référence écrit en Python).
 """
 
+import re
+import subprocess
 import zlib
 
 from entrees import Entree, perturber
@@ -86,6 +88,11 @@ class Projet:
 
     def __init__(self, options):
         self.identique = options.pop("sortie_compressee", "identique") == "identique"
+        # A commit of the base whose rle.c joins the corpus, read from its git objects: juge.yml fetches them when
+        # the fork declares the commit (input `historique`), before the PR; judging itself has no git transport.
+        self.commit_corpus = options.pop("commit_corpus", None)
+        if self.commit_corpus is not None and not re.fullmatch(r"[0-9a-f]{40}", self.commit_corpus):
+            raise Erreur("commit_corpus : un commit complet (40 chiffres hexadécimaux)")
         if options:
             raise Erreur("options inconnues : " + ", ".join(sorted(options)))
         self.VERIFICATION = {"sortie_compressee": "identique" if self.identique else "peut_changer"}
@@ -97,7 +104,18 @@ class Projet:
         texte = ("le juge commun lit les sorties sans les croire ; " * 40).encode()
         fichiers = [texte, bytes(range(256)) * 16, b"\x00" * 5000 + b"\x01" * 3, b"ab" * 3000, bytes(300) + texte]
         fichiers += [bytes((i * 7) % 251 for i in range(n)) for n in (1, 2, 127, 128, 129, 130, 131, 4096)]
+        if self.commit_corpus:
+            fichiers.append(self.objet_git(outillage, f"{self.commit_corpus}:rle.c"))
         return [(f"k{i:03d}", d) for i, d in enumerate(fichiers)]
+
+    def objet_git(self, outillage, objet):
+        """A git object of the base, read on the host (never fetched here): absent, a clean environment error."""
+        r = subprocess.run(["git", "-C", outillage, "cat-file", "blob", objet], capture_output=True, timeout=60)
+        if r.returncode != 0:
+            raise Erreur(f"corpus : objet git {objet} absent de la base ; déclarez son commit dans l'entrée "
+                         "« historique » de juge.yml")
+        self.VERIFICATION["historique"] = f"{objet} ({len(r.stdout)} octets)"
+        return r.stdout
 
     def aleatoires(self, rng):
         e = [b"", rng.randbytes(1), rng.randbytes(rng.randint(2, 300))]

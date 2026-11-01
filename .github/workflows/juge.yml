@@ -1,16 +1,17 @@
 # Juge commun Bee, workflow réutilisable (docs/juge-commun.md).
 #
-# Un fork l'appelle depuis sa CI, en épinglant une étiquette du registre :
+# Un fork l'appelle depuis sa CI, en épinglant le commit d'une étiquette du registre :
 #   juge:
-#     uses: Bee-ruche/registre/.github/workflows/juge.yml@juge-v2
+#     uses: Bee-ruche/registre/.github/workflows/juge.yml@<commit de juge-v2> # juge-v2
 #     with: { base_sha: <base de la PR>, tete_sha: <tête de la PR>, options: "sortie_compressee=identique" }
 # Il juge la tête contre la base avec le greffon de la BASE (bee/juge/projet.py), jamais celui de la PR,
 # et publie un artefact « juge » : juge.json (rapport, section « juge » comprise) et code (0 juste,
 # 1 refusé, 2 environnement). Le job ne devient jamais rouge à cause de B : c'est le verdict du fork
 # qui lit le code et décide. Aucun secret, aucune écriture : permissions en lecture seule.
 #
-# JUGE_COMMUN_REF doit valoir l'étiquette de cette version (outils/juge/test_juge.py le vérifie) :
-# le juge commun est lu à cette étiquette, pas à la branche principale du registre.
+# The judge's code is read at this workflow's own commit (job.workflow_repository@job.workflow_sha, named in juge.json
+# as juge.source next to the label juge.commun = juge-v<VERSION_COMMUNE>), never at a tag or a branch (test_juge.py).
+# Two judging jobs, same judge and seed: x86-64 (the report, Cachegrind instructions) and ARM64 (its own timer).
 name: Juge commun
 
 on:
@@ -29,6 +30,10 @@ on:
         required: false
         type: string
         default: ""
+      historique:
+        description: "commits whose git objects the plugin reads (full SHAs, blank-separated), fetched into the base before the PR"
+        type: string
+        default: ""
       repetitions:
         required: false
         type: number
@@ -40,26 +45,25 @@ on:
     outputs:
       code:
         description: "0 si toutes les sorties de B sont justes, 1 si le juge refuse B, 2 si l'environnement ne convient pas"
-        value: ${{ jobs.juge.outputs.code }}
+        value: ${{ jobs.rapport.outputs.code }}
 
 permissions:
   contents: read
 
-env:
-  JUGE_COMMUN_REF: juge-v2
-
 jobs:
   juge:
-    runs-on: ubuntu-24.04
+    needs: preparation
+    strategy:
+      fail-fast: false
+      matrix: { architecture: [x86_64, arm64] }
+    runs-on: ${{ matrix.architecture == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
     timeout-minutes: 150
-    outputs:
-      code: ${{ steps.juge.outputs.code }}
     steps:
-      - name: Juge commun (registre, à son étiquette)
+      - name: Juge commun (registre, au commit de ce workflow)
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
-          repository: Bee-ruche/registre
-          ref: ${{ env.JUGE_COMMUN_REF }}
+          repository: ${{ needs.preparation.outputs.depot }}
+          ref: ${{ needs.preparation.outputs.commit }}
           path: juge-commun
           persist-credentials: false
       - name: Base de la PR (greffon, harnais, corpus)
@@ -68,8 +72,10 @@ jobs:
           ref: ${{ inputs.base_sha }}
           path: base
           persist-credentials: false
-      - name: Image du juge (seule étape avec réseau, avant tout fichier de la PR)
-        run: python3 juge-commun/outils/juge/juge.py --outillage base --image-seulement
+      - name: Image du juge et historique déclaré (seule étape avec réseau, avant tout fichier de la PR)
+        env:
+          HISTORIQUE: ${{ inputs.historique }}
+        run: python3 juge-commun/outils/juge/juge.py --outillage base --image-seulement --historique "$HISTORIQUE"
       - name: Tête de la PR (données ; rien n'en est exécuté hors conteneur)
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -82,7 +88,9 @@ jobs:
         env:
           OPTIONS: ${{ inputs.options }}
           REPETITIONS: ${{ inputs.repetitions }}
-          SANS_INSTRUCTIONS: ${{ inputs.sans_instructions }}
+          SANS_INSTRUCTIONS: ${{ inputs.sans_instructions || matrix.architecture != 'x86_64' }}
+          GRAINE: ${{ needs.preparation.outputs.graine }}
+          SOURCE: ${{ needs.preparation.outputs.depot }}@${{ needs.preparation.outputs.commit }}
         run: |
           mkdir -p resultats
           options=()
@@ -92,17 +100,68 @@ jobs:
           [ "$SANS_INSTRUCTIONS" = "true" ] && options+=(--sans-instructions)
           set +e
           python3 juge-commun/outils/juge/juge.py --outillage base --source-a base --source-b pr \
-            --repetitions "$REPETITIONS" \
+            --repetitions "$REPETITIONS" --graine "$GRAINE" --source-juge "$SOURCE" \
             "${options[@]}" --json resultats/juge.json > /dev/null 2> resultats/journal.txt
           code=$?
           set -e
+          # The judged PR can fill the journal: none of its lines may become a workflow command (token drawn after it).
+          jeton="$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
+          echo "::stop-commands::$jeton"
           tail -n 40 resultats/journal.txt
+          printf '\n::%s::\n' "$jeton"
           echo "$code" > resultats/code
-          echo "code=$code" >> "$GITHUB_OUTPUT"
+      - name: Conserver le rapport
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: juge-${{ matrix.architecture }}
+          path: resultats/
+          if-no-files-found: warn
+
+  preparation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      depot: ${{ steps.preparation.outputs.depot }}
+      commit: ${{ steps.preparation.outputs.commit }}
+      graine: ${{ steps.preparation.outputs.graine }}
+    steps:
+      - name: Commit de ce workflow (code du juge) et graine commune aux architectures
+        id: preparation
+        env:
+          DEPOT: ${{ job.workflow_repository }}
+          COMMIT: ${{ job.workflow_sha }}
+        run: |
+          [[ "$DEPOT" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ && "$COMMIT" =~ ^[0-9a-f]{40}$ ]] || { echo "workflow commit unknown: no tag, no branch" >&2; exit 1; }
+          { echo "depot=$DEPOT"; echo "commit=$COMMIT"; echo "graine=$(python3 -c 'import secrets; print(secrets.token_hex(16))')"; } >> "$GITHUB_OUTPUT"
+
+  rapport:
+    needs: [preparation, juge]
+    if: always() && needs.preparation.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      code: ${{ steps.rapport.outputs.code }}
+    steps:
+      - name: Juge commun (registre, au commit de ce workflow)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: ${{ needs.preparation.outputs.depot }}
+          ref: ${{ needs.preparation.outputs.commit }}
+          path: juge-commun
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        continue-on-error: true
+        with:
+          pattern: juge-*
+          path: architectures
+      - name: Un rapport pour toutes les architectures (sans rapport x86-64 lisible, code 2)
+        id: rapport
+        run: python3 juge-commun/outils/juge/juge.py --fusionner architectures >> "$GITHUB_OUTPUT"
       - name: Conserver le rapport
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: juge
-          path: resultats/
+          path: architectures/
           if-no-files-found: warn

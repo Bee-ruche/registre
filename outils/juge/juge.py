@@ -11,7 +11,8 @@ Ce que garantit le juge commun, quel que soit le greffon :
   deux processus pour l'exécution, qui ne voient que leurs entrées et un dossier de sorties ;
 - chaque côté d'entrées (« f », « z »…) a son propre conteneur : un harnais ne voit jamais les entrées
   d'un autre côté ;
-- la graine des entrées tirées au hasard est choisie ici, APRÈS la compilation ; le greffon perturbe les
+- la graine des entrées tirées au hasard est choisie ici, APRÈS la compilation (in CI juge.yml draws it once for
+  every architecture, the judged head already fixed; it never enters a container) ; le greffon perturbe les
   entrées des mesures à chaque répétition ;
 - le temps processeur et la mémoire sont mesurés par le noyau (wait4) dans le lanceur chrono du juge
   commun, compilé à part ; le décompte d'instructions couvre tout le processus du harnais et se lit sur
@@ -25,9 +26,10 @@ Usage :
                               [--repetitions 10] [--chauffe 1] [--sans-instructions] [--prefixe-instructions 131072]
                               [--json juge.json] [--graine HEX]
                               [--reseau-construction host]
+  python3 outils/juge/juge.py --fusionner DOSSIER   (juge.yml's last job: one report for every architecture)
   --outillage : copie de la BASE de la PR (son bee/juge/projet.py est le greffon)
   --source-a / --source-b : dépôts de la référence (A, la base) et de la candidate (B, la PR)
-Sortie : rapport JSON au format d'ab.py (mesures, metriques, instructions) plus une section « juge ».
+Sortie : rapport JSON au format d'ab.py (mesures, metriques, instructions), une section « juge » et « chronometres ».
 Code de sortie : 0 si toutes les sorties de B sont justes, 1 si le juge refuse B, 2 si l'environnement
 ne convient pas (Docker absent, base qui ne compile pas, greffon invalide, juge mal monté).
 """
@@ -44,6 +46,7 @@ import re
 import secrets
 import shutil
 import stat
+import subprocess
 import sys
 import tempfile
 import time
@@ -72,6 +75,8 @@ JAMAIS_PERMIS = analyse.JAMAIS_PERMIS
 UNITES = (".c", ".S", ".s", ".cc", ".cpp", ".cxx")  # unités de traduction : chacune doit laisser son objet
 ARCHITECTURES_ANALYSEES = ("x86_64", "amd64")  # mnémoniques et préambule de Valgrind connus d'analyse.py
 VALGRIND = ["/usr/bin/valgrind", "--tool=cachegrind", "--cache-sim=no", "--vgdb=no", "--cachegrind-out-file=/dev/null"]
+ARCHITECTURES_JUGEES = ("x86_64", "arm64")  # juge.yml's judging jobs; x86-64 decides (analysis, instructions)
+COMMIT, HISTORIQUE_MAX = re.compile(r"[0-9a-f]{40}"), 16
 
 
 # ------------------------------------------------------------------ greffon
@@ -298,6 +303,50 @@ def exiger_couverture(sorties_b, entrees, etape):
                      f"({', '.join(oubliees[:5])}) : juge mal monté")
 
 
+# ------------------------------------------------------------------ declared history, one report for all architectures
+
+def recuperer_historique(outillage, texte):
+    """Fetches into the base's repository the commits its plugin reads (juge.yml's `historique`), with their trees
+    and blobs but no history: network step, with the image, before the PR; judging then refuses every git transport."""
+    commits = sorted(set(texte.split()))
+    if len(commits) > HISTORIQUE_MAX or not all(COMMIT.fullmatch(c) for c in commits):
+        raise Erreur(f"historique : at most {HISTORIQUE_MAX} full commit SHAs (40 hexadecimal digits), separated by blanks")
+    for c in commits:
+        r = subprocess.run(["git", "-C", outillage, "fetch", "--quiet", "--no-tags", "--depth=1", "origin",
+                            f"{c}:refs/bee/historique/{c}"], capture_output=True, text=True, timeout=600)
+        if r.returncode != 0:
+            raise Erreur(f"historique : commit {c} not fetched from the base's origin : " + propre(r.stderr, 500))
+    return commits
+
+
+def fusionner(dossier):
+    """juge.yml's last job: dossier/juge-<architecture>/ holds each judging job's code and juge.json. The x86-64 report
+    stays the report and gets every architecture's timer (« chronometres »), each from its own job only; a refusal on
+    any architecture refuses B, an environment failure on another is only recorded. Writes juge.json and code."""
+    os.makedirs(dossier, exist_ok=True)
+    lus = {}
+    for arch in ARCHITECTURES_JUGEES:
+        try:
+            with open(os.path.join(dossier, f"juge-{arch}", "code"), encoding="ascii") as f:
+                code = {"0": 0, "1": 1}.get(f.read().strip(), 2)
+            lus[arch] = (code, None, {"code": code})
+            if code == 0:
+                with open(os.path.join(dossier, f"juge-{arch}", "juge.json"), encoding="utf-8") as f:
+                    rapport = json.load(f)
+                lus[arch] = (0, rapport, dict(rapport["chronometres"][arch], code=0))
+        except (OSError, ValueError, KeyError, TypeError):
+            lus[arch] = (2, None, {"code": 2})
+    code, rapport, _ = lus["x86_64"]
+    if code == 0:
+        rapport["chronometres"] = {arch: chrono for arch, (_, _, chrono) in lus.items()}
+        code = 1 if any(c == 1 for c, _, _ in lus.values()) else 0
+        with open(os.path.join(dossier, "juge.json"), "w", encoding="utf-8") as f:
+            json.dump(rapport, f, ensure_ascii=False, indent=2)
+    with open(os.path.join(dossier, "code"), "w", encoding="ascii") as f:
+        f.write(f"{code}\n")
+    return code
+
+
 # ------------------------------------------------------------------ programme
 
 def options_de(liste):
@@ -312,11 +361,14 @@ def options_de(liste):
 
 def main(argv=None):
     analyseur = argparse.ArgumentParser(description="Juge commun Bee (voir l'aide du module).")
-    analyseur.add_argument("--outillage", required=True, help="copie de la BASE de la PR (greffon bee/juge/projet.py)")
+    analyseur.add_argument("--outillage", help="copie de la BASE de la PR (greffon bee/juge/projet.py)")
     analyseur.add_argument("--source-a")
     analyseur.add_argument("--source-b")
     analyseur.add_argument("--image-seulement", action="store_true",
                            help="construit l'image du conteneur (seule étape avec réseau) et affiche son étiquette")
+    analyseur.add_argument("--historique", default="", help="with --image-seulement: commits fetched into the base")
+    analyseur.add_argument("--source-juge", help="DEPOT@COMMIT of this judge's code (juge.yml: the workflow's own commit)")
+    analyseur.add_argument("--fusionner", help="folder of the judging jobs' reports (juge.yml); prints code=N")
     analyseur.add_argument("--option", action="append", default=[], help="option du greffon, CLE=VALEUR (répétable)")
     analyseur.add_argument("--repetitions", type=int, default=10)
     analyseur.add_argument("--chauffe", type=int, default=1)
@@ -329,13 +381,21 @@ def main(argv=None):
     analyseur.add_argument("--memoire", default="4g")
     analyseur.add_argument("--garder", action="store_true")
     args = analyseur.parse_args(argv)
+    if args.fusionner:
+        print(f"code={fusionner(args.fusionner)}")
+        return 0
+    if not args.outillage:
+        analyseur.error("--outillage est requis")
 
     debut = time.time()
     if shutil.which("docker") is None:
         raise Erreur("docker introuvable")
     outillage = os.path.abspath(args.outillage)
+    if not args.image_seulement:
+        os.environ["GIT_ALLOW_PROTOCOL"] = "none"  # judging: no git transport at all, the declared history is already here
     projet, empreinte_greffon = charger_greffon(outillage, options_de(args.option))
     if args.image_seulement:
+        recuperer_historique(outillage, args.historique)
         print(conteneur.construire_image(getattr(projet, "PAQUETS", ()), args.reseau_construction))
         return 0
     if not (args.source_a and args.source_b):
@@ -476,6 +536,7 @@ def main(argv=None):
         rapport["juge"] = {
             "version": VERSION_JUGE,
             "commun": f"juge-v{VERSION_COMMUNE}",
+            "source": args.source_juge,
             "projet": projet.NOM,
             "greffon": empreinte_greffon,
             "graine": graine.hex(),
@@ -486,6 +547,8 @@ def main(argv=None):
                         "permis": list(getattr(projet, "PERMIS", ()))},
             "constructions_suspectes": suspects,
         }
+        rapport["chronometres"] = {{"amd64": "x86_64", "aarch64": "arm64"}.get(architecture, architecture):  # this machine's
+                                   {"machine": rapport["machine"], "metriques": rapport["metriques"]}}
         rapport["duree_s"] = round(time.time() - debut, 1)
     finally:
         if args.garder:
