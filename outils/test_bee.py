@@ -3134,6 +3134,121 @@ class TestPullRequestsEnParallele(BaseParallele):
         self.assertEqual(code, 0, texte)
         self.refusee("alice", "seul le robot d'intégration écarte")
 
+    # --- ruche-0043: each declared date of a reservation or a parallel registration is the time of the PR (2 h tolerance,
+    # never in the future); in the self-service folders, a file keeps the mode bee writes ---
+
+    DATES = (("2026-10-27T10:00:00Z", True), ("2026-10-27T12:01:00Z", True), ("2026-10-27T11:00:00-01:00", True),
+             ("2026-10-27T09:59:59Z", False), ("2026-10-27T12:01:01Z", False), ("2026-10-27T12:00:00-03:00", False),
+             ("2020-01-01T00:00:00Z", False), ("2099-01-01T00:00:00Z", False))
+
+    def dater(self, qui, depuis, tache="miniz-0099"):
+        """In the working tree, the reservation or the parallel registration of `qui` on `tache` dated `depuis`."""
+        t = bee.lire_yaml(self.chemin(tache))
+        for e in [t.get("reservation") or {}, *(t.get("paralleles") or [])]:
+            if e.get("utilisateur") == qui:
+                e["depuis"] = depuis
+        bee.ecrire_yaml(self.chemin(tache), t)
+
+    def test_engagements_dates_de_l_heure_de_la_pr(self):
+        """The reservation bee prendre writes, then the parallel registration bee prendre --en-parallele writes, pass until
+        2 h after they are written; dated outside the tolerance, before or after the time of the PR, each is refused."""
+        for qui, nature, refus in (("alice", "reservation", "une réservation est datée de l'heure de la PR"),
+                                   ("bruno", "inscription_parallele", "doit être datée de l'heure de la PR")):
+            if qui == "alice":
+                self.branche()
+                self.assertEqual(self.bee("prendre", "miniz-0099", "--utilisateur", "alice")[0], 0)  # 12:00
+            else:
+                git(self.dossier, "switch", "-qf", "main")
+                self.a("2026-10-27T09:00:00Z")
+                self.main_reservee_avec_inscrits()  # alice since 09:00
+                self.a("2026-10-27T12:00:00Z")
+                self.branche("pr-parallele")
+                self.parallele("miniz-0099", "bruno")
+            self.commit()
+            for instant in ("2026-10-27T12:00:00Z", "2026-10-27T14:00:00Z"):
+                with self.subTest(qui=qui, instant=instant):
+                    self.a(instant)
+                    self.libre_service(qui, nature)
+            with self.subTest(qui=qui, instant="2026-10-27T14:00:01Z"):
+                self.a("2026-10-27T14:00:01Z")
+                self.refusee(qui, refus)
+            self.a("2026-10-27T12:00:00Z")
+            for depuis, acceptee in self.DATES:
+                with self.subTest(qui=qui, depuis=depuis):
+                    self.dater(qui, depuis)
+                    self.commit()
+                    if acceptee:
+                        self.libre_service(qui, nature)
+                    else:
+                        self.refusee(qui, refus)
+
+    def test_tache_creee_avec_engagements_dates_de_l_heure_de_la_pr(self):
+        """A task created directly with a reservation and a parallel registration: each date is checked like the others."""
+        numero = 1 + max(n for p in self.chemin().parent.glob("miniz-*.yaml") if (n := int(p.stem.split("-")[1])) < 9000)
+        tid = f"miniz-{numero:04d}"
+        for qui, depuis, acceptee in [("alice", "2026-10-27T12:00:00Z", True)] + [(q, d, a) for q in ("alice", "bruno") for d, a in self.DATES]:
+            with self.subTest(qui=qui, depuis=depuis):
+                git(self.dossier, "switch", "-qfC", "pr", "main")
+                git(self.dossier, "clean", "-fdq")
+                bee.ecrire_yaml(self.chemin(tid), {**bee.lire_yaml(self.chemin()), "id": tid, "statut": "reservee",
+                                                   "reservation": {"utilisateur": "alice", "depuis": "2026-10-27T12:00:00Z"},
+                                                   "paralleles": [{"utilisateur": "bruno", "depuis": "2026-10-27T12:00:00Z"}]})
+                self.dater(qui, depuis, tid)
+                self.commit()
+                code, texte = self.verifier("bidji29")
+                self.assertEqual(code, 0 if acceptee else 1, texte)
+                if not acceptee:
+                    self.assertIn(f"taches/miniz/{tid}.yaml : depuis ({depuis}) doit être l'heure de la PR", texte)
+
+    def test_un_fichier_du_libre_service_garde_son_mode(self):
+        """In the self-service folders, a file added or modified by a member is a regular file and keeps its mode, with or
+        without other changes; the council's PR leaves the self-service. Elsewhere, nothing changes."""
+        os.chmod(self.chemin("miniz-9001"), 0o755)
+        self.main_reservee_avec_inscrits()
+        executable = lambda chemin, oui=True: os.chmod(chemin, 0o755 if oui else 0o644)  # noqa: E731
+        cas = (("mode", lambda: executable(self.chemin()), "alice", "100644 → 100755", "-x taches/miniz/miniz-0099.yaml"),
+               ("inscription", lambda: (self.parallele("miniz-0099", "bruno"), executable(self.chemin())), "bruno", "100644 → 100755",
+                "-x taches/miniz/miniz-0099.yaml"),
+               ("nouveau", lambda: (self.bee("inscrire", "--pseudo", "david", "--compte-cree-le", "2020-01-01"),
+                                    executable(self.dossier / "membres/david.yaml")), "david", "000000 → 100755", "-x membres/david.yaml"),
+               ("ordinaire", lambda: executable(self.chemin("miniz-9001"), False), "alice", "100755 → 100644",
+                "+x taches/miniz/miniz-9001.yaml"),
+               # No command is offered for a name that is not plain, nor where a mode change cannot restore the file.
+               ("nom", lambda: ((self.dossier / "votes").mkdir(exist_ok=True), (self.dossier / "votes/a;touch X;.sh").write_text(
+                    "x\n", encoding="utf-8"), executable(self.dossier / "votes/a;touch X;.sh")), "alice", "000000 → 100755", None),
+               ("contenu", lambda: self.chemin("miniz-9001").write_text(self.chemin("miniz-9001").read_text(encoding="utf-8")
+                                                                        + "# x\n", encoding="utf-8"),
+                "alice", "100755 → 100755", None))
+        for nom, changer, auteur, morceau, remede in cas:
+            with self.subTest(cas=nom):
+                git(self.dossier, "switch", "-qfC", "pr", "main")
+                git(self.dossier, "clean", "-fdq")
+                changer()
+                self.commit()
+                code, texte = self.verifier(auteur, "--compte-cree-le", "2020-01-01")
+                self.assertEqual(code, 1, texte)
+                self.assertIn(f"mode {morceau} : a file of the self-service folders is a regular file (100644)", texte)
+                if remede:
+                    self.assertIn(f"restore its mode : git update-index --chmod={remede}, then commit", texte)
+                else:
+                    self.assertIn("only the council changes it ; restore the file as bee wrote it", texte)
+                    self.assertNotIn("git update-index", texte)
+                code, texte = self.verifier("bidji29", "--fusion-auto")
+                self.assertNotIn("a file of the self-service folders", texte)
+                self.assertNotIn("FUSION_AUTO=oui", texte)
+                if nom in ("mode", "ordinaire"):
+                    self.assertEqual(code, 3, texte)
+        git(self.dossier, "switch", "-qfC", "pr", "main")
+        self.parallele("miniz-0099", "bruno")
+        self.commit()
+        self.libre_service("bruno", "inscription_parallele")
+        git(self.dossier, "switch", "-qfC", "outil", "main")
+        executable(self.dossier / "outils/site_bee.py")
+        self.commit()
+        code, texte = self.verifier("alice", "--fusion-auto")
+        self.assertEqual(code, 3, texte)
+        self.assertIn("outillage", texte)
+
 
 # Faux `gh` pour rejouer les étapes d'integration-auto.yml et de verdicts.yml hors ligne : état des PR dans FAUX_GH_ETAT
 # ({url: {state, head, auteur, merge, conflit, verdict}}), chaque appel journalisé dans FAUX_GH_JOURNAL. Une PR qui porte
