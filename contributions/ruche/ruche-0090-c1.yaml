@@ -4,7 +4,10 @@ auteur: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/117
 resume: A self-service PR that changes no code skips the tool and judge test suites; the decision is taken
   by the base's tool and fails closed.
-statut: en_relecture
+statut: integree
 soumise_le: '2026-11-01T21:16:49Z'
 engage_depuis: '2026-11-01T21:16:48Z'
 relectures: []
+decidee_le: '2026-11-01T21:42:51Z'
+motif_decision: 'Hive tooling contribution: registry PR #117 merged at the judged commit 6b264c1 by the agent principal under the council''s permanent authorisation, after an independent adversarial review by an agent of another model in three passes (no blocking finding; three should-fix items, one of them decided by the architect: a self-service PR takes the fast path only while main''s last push run is green; then residual items, all fixed and verified); CI green on the merged commit. Measured on the first data-only PR after the merge (#123): 44 seconds from opening to merge. R1: 84 lines excluding tests for an M task at 200. Reserved and submitted inside the code PR.'
+fusion_sha: c33bed2d880ff582c1901441fc9170cd49eb6766
