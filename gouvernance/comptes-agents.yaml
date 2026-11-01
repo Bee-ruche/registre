@@ -1,0 +1,12 @@
+# Declared agent accounts (ruche-0089): a GitHub account through which an agent acts for a person of the hive (a member
+# or the council). Declared and withdrawn by the council only (gouvernance/ is outside self-service).
+#
+# An agent account is its person wherever a person is counted (caps, R8, votes, reviews, commandment 3, R4, conflicts of
+# interest): it never adds a second person, and it never names a person in the registry. It never has its person's
+# council or guardian status: what only that status allows waits for the person's own account (a human must look).
+# Each entry: account (GitHub login), acts_for (the person), declared_on (date), purpose (short).
+accounts:
+  - account: laruche-architect
+    acts_for: bidji29
+    declared_on: "2026-11-01"
+    purpose: the agent principal (architect) of La Ruche, which the founder runs

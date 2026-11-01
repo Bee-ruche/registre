@@ -11016,5 +11016,657 @@ class TestTextesLibresRevue2Ruche0029(BaseTest):
         self.valide()
 
 
+
+# --- ruche-0089: declared agent accounts (gouvernance/comptes-agents.yaml: laruche-architect acts for bidji29) ---
+
+AGENT = "laruche-architect"
+
+
+def declarer_agents(dossier, *entrees):
+    """Rewrites gouvernance/comptes-agents.yaml with these (account, acts_for) entries, in the council's form."""
+    bee.ecrire_yaml(pathlib.Path(dossier) / bee.AGENT_ACCOUNTS, {"accounts": [
+        {"account": a, "acts_for": p, "declared_on": "2026-11-01", "purpose": "An agent of the test."} for a, p in entrees]})
+
+
+class TestAgentAccountsValider(BaseTest):
+    """ruche-0089: bee valider accepts the council's declaration, and refuses an agent account that is anyone else, a person
+    that is not a known person, a chain, a duplicate, a case variant, an ill-formed entry, and an agent account named as a
+    person anywhere in the registry."""
+
+    def refuse(self, *morceaux):
+        code, texte = self.bee("valider")
+        self.assertEqual(code, 1, texte)
+        for morceau in morceaux:
+            self.assertIn(morceau, texte)
+
+    def test_the_declaration_of_the_registry(self):
+        self.valide()
+        reg = bee.Registre(self.dossier)
+        self.assertEqual(reg.comptes_agents, {AGENT: "bidji29"})
+        self.assertTrue("LaRuche-Architect" in reg.agents and "bidji29" not in reg.agents)
+        self.assertEqual(bee.autre_orthographe(reg, "LaRuche-Architect"), AGENT)
+        self.assertEqual(self.bee("acts-for", AGENT), (0, "bidji29\n"))
+        for login in ("LaRuche-Architect", "bidji29", "alice", "mallory"):
+            self.assertEqual(self.bee("acts-for", login), (0, f"{login}\n"), "a case variant, a person or a stranger acts for itself")
+
+    def test_acts_for_takes_any_login_as_data(self):
+        """As integration-auto and verdicts.yml call it (acts-for -- "$login"): an option-like, empty or odd login is printed
+        back as itself, never read as an option and never mapped."""
+        for login in ("--", "--help", "-h", "--registre", "", " ", "-", "laruche-architect ", AGENT.upper()):
+            with self.subTest(login=login):
+                self.assertEqual(self.bee("acts-for", "--", login), (0, f"{login}\n"))
+        self.assertEqual(self.bee("acts-for", "--", AGENT), (0, "bidji29\n"))
+
+    def test_an_agent_account_is_no_one_else(self):
+        for role, chemin, avant, apres in (
+                ("a member", "membres/alice.yaml", None, None),
+                ("a council member", "gouvernance/conseil.yaml", "    role: fondateur\n", f"    role: fondateur\n  - pseudo: {AGENT}\n"),
+                ("a guardian", "gouvernance/gardiens.yaml", "membres: []", "membres:\n  - pseudo: LaRuche-Architect\n    garant: bidji29"),
+                ("a guarantor", "gouvernance/garants.yaml", "    conflits: []\n", f"    conflits: []\n  - pseudo: {AGENT}\n"),
+                ("a robot", "bee.yaml", "  - github-actions[bot]\n", f"  - github-actions[bot]\n  - {AGENT}\n")):
+            with self.subTest(role=role):
+                fichier = self.dossier / chemin
+                texte = fichier.read_text(encoding="utf-8")
+                if avant is None:
+                    shutil.copy(fichier, self.dossier / f"membres/{AGENT}.yaml")
+                    bee.ecrire_yaml(self.dossier / f"membres/{AGENT}.yaml", {**bee.lire_yaml(fichier), "pseudo": AGENT})
+                else:
+                    self.assertIn(avant, texte)
+                    fichier.write_text(texte.replace(avant, apres), encoding="utf-8")
+                self.refuse(f"accounts/0 : {AGENT} is also {role} : an agent account is no one else")
+                fichier.write_text(texte, encoding="utf-8")
+                (self.dossier / f"membres/{AGENT}.yaml").unlink(missing_ok=True)
+                self.valide()
+
+    def test_the_person_the_chain_and_the_spelling(self):
+        for entrees, morceau in (
+                ([("alice-bot", "mallory")], "accounts/0 : acts_for « mallory » is not a known person (a member or the council)"),
+                ([("alice-bot", "Alice")], "accounts/0 : acts_for « Alice » is written alice (its file)"),
+                ([(AGENT, "BIDJI29")], "accounts/0 : acts_for « BIDJI29 » is written bidji29 (its file)"),
+                ([(AGENT, "bidji29"), ("LaRuche-ARCHITECT", "bidji29")], "accounts/1 : LaRuche-ARCHITECT is declared twice"),
+                ([(AGENT, "bidji29"), ("relais-bot", AGENT)], "accounts/1 : acts_for « laruche-architect » is an agent account"),
+                ([("relais-bot", "autre-bot"), ("autre-bot", "relais-bot")], "accounts/1 : acts_for « relais-bot » is an agent account"),
+                ([("soi-bot", "soi-bot")], "accounts/0 : acts_for « soi-bot » is an agent account"),
+                ([("pas un login!", "bidji29")], "accounts/0 : account « pas un login! » is not a GitHub login")):
+            with self.subTest(entrees=entrees):
+                declarer_agents(self.dossier, *entrees)
+                self.refuse(morceau)
+        declarer_agents(self.dossier, (AGENT, "bidji29"), ("alice-bot", "alice"))
+        self.valide()
+
+    def test_ill_formed_declarations(self):
+        chemin = self.dossier / bee.AGENT_ACCOUNTS
+        entree = {"account": "alice-bot", "acts_for": "alice", "declared_on": "2026-11-01", "purpose": "An agent of alice."}
+        for donnees, morceau in (
+                ({"accounts": "alice-bot"}, "accounts must list the agent accounts"),
+                ({"comptes": [entree]}, "accounts must list the agent accounts"),
+                ({"accounts": [{k: v for k, v in entree.items() if k != "purpose"}]}, "an entry has exactly account, acts_for"),
+                ({"accounts": [{**entree, "council": True}]}, "an entry has exactly account, acts_for"),
+                ({"accounts": [{**entree, "acts_for": ["alice"]}]}, "an entry has exactly account, acts_for"),
+                ({"accounts": [{**entree, "declared_on": "hier"}]}, "accounts/0 : declared_on : date invalide « hier »"),
+                ({"accounts": [{**entree, "purpose": "Agent‮ caché."}]}, "accounts/0 : purpose : caractère invisible"),
+                ({"accounts": [{**entree, "purpose": " "}]}, "accounts/0 : purpose vide")):
+            with self.subTest(donnees=donnees):
+                bee.ecrire_yaml(chemin, donnees)
+                self.refuse(morceau)
+                self.assertEqual(bee.Registre(self.dossier).comptes_agents.get("alice-bot"),
+                                 "alice" if isinstance(donnees.get("accounts"), list) and isinstance(donnees["accounts"][0].get("acts_for"), str) else None)
+
+    def test_an_agent_account_never_names_a_person(self):
+        """Its person's pseudo is the only one written: an agent account named in an identity field anywhere is refused, so
+        that nothing counts it as a second person (R8, votes, reviews, active members)."""
+        self.assertEqual(self.bee("prendre", "miniz-0099", "--utilisateur", "alice")[0], 0)
+        chemin = self.dossier / "taches/miniz/miniz-0099.yaml"
+        bee.modifier_tache(chemin, reservation={"utilisateur": AGENT, "depuis": "2026-10-27T12:00:00Z"},
+                           note={"par": "LaRuche-Architect", "le": "2026-10-27T12:00:00Z", "texte": "Une note."})
+        self.refuse(f"taches/miniz/miniz-0099.yaml : {AGENT} is an agent account", "taches/miniz/miniz-0099.yaml : LaRuche-Architect is an "
+                    "agent account", f"réservée par « {AGENT} », qui n'est pas inscrit")
+
+
+class TestAgentAccounts(BaseRepetitionGenerale):
+    """ruche-0089, in the gate: a PR opened by laruche-architect is checked as bidji29's, never as a second person, and never
+    as the council's: where bidji29's own PR would pass by the council's status or exemption, it waits for a human (code 3)."""
+
+    def setUp(self):
+        super().setUp()
+        for n in range(9003, 9007):  # open tasks of the test, independent of the real registry
+            (self.dossier / f"taches/miniz/miniz-{n}.yaml").write_text(TACHE_OPTIMISATION.replace("miniz-0099", f"miniz-{n}"),
+                                                                        encoding="utf-8")
+        self.commit("tasks of the test")
+
+    def publie(self, auteur, *commande, natures=()):
+        """A gesture made by its bee command, published from `auteur`'s account as self-service, then merged."""
+        self.branche("geste")
+        self.ok(*commande)
+        self.commit()
+        self.libre_service(auteur, *natures)
+        self.fusionner("geste")
+
+    def contribution(self, qui, tache, numero):
+        self.publie(qui, "prendre", tache, "--utilisateur", qui)
+        self.publie(qui, "soumettre", tache, "--utilisateur", qui, "--pr", f"{PR_MINIZ}{numero}", "--resume", "Essai.")
+        return f"{tache}-c1"
+
+    def humain(self, auteur, *natures):
+        """verifier-pr accepts the PR, but never merges it automatically: a human must look."""
+        code, texte = self.verifier(auteur, "--fusion-auto")
+        self.assertEqual(code, 3, texte)
+        self.assertIn("FUSION_AUTO=non", texte)
+        for nature in natures:
+            self.assertIn(nature, texte)
+        return texte
+
+    def ajouter_relecture(self, cid, relecteur, avis="favorable"):
+        chemin = self.dossier / f"contributions/miniz/{cid}.yaml"
+        enr = bee.lire_yaml(chemin)
+        enr["relectures"].append({"relecteur": relecteur, "avis": avis, "motif": "Relu en entier.", "le": os.environ["BEE_MAINTENANT"]})
+        bee.ecrire_yaml(chemin, enr)
+
+    def test_reservation_submission_and_vote_are_checked_as_its_person(self):
+        cid = self.contribution("alice", "miniz-9001", 89101)
+        # Reservation: from the agent account, for bidji29, exactly as bidji29's own PR; never for anyone else.
+        self.branche("pour-alice")
+        self.ok("prendre", "miniz-9003", "--utilisateur", "alice")
+        self.commit()
+        self.refusee(AGENT, "on ne réserve que pour soi (bidji29)")
+        self.branche("prise")
+        self.ok("prendre", "miniz-0099", "--utilisateur", "bidji29")
+        self.commit()
+        self.libre_service("bidji29", "reservation")
+        self.libre_service(AGENT, "reservation")
+        self.refusee("alice", "on ne réserve que pour soi (alice)")
+        self.fusionner("prise")
+        # Submission: bidji29's contribution; its fork PR counts as bidji29's when the agent account opened it (fusion-auto
+        # relays the fork PR's author with --auteurs-pr), and when bidji29 did; for no one else.
+        self.branche("soumission")
+        self.ok("soumettre", "miniz-0099", "--utilisateur", "bidji29", "--pr", f"{PR_MINIZ}89001", "--resume", "Essai.")
+        self.commit()
+        auteurs = self.dossier.parent / "auteurs.tsv"
+        for login, attendu in ((AGENT, 0), ("bidji29", 0), ("mallory", 1), ("LaRuche-Architect", 1), ("alice", 1)):
+            with self.subTest(fork_pr_by=login):
+                auteurs.write_text(f"{PR_MINIZ}89001\t{login}\n", encoding="utf-8")
+                code, texte = self.verifier(AGENT, "--fusion-auto", "--auteurs-pr", str(auteurs))
+                self.assertEqual(code, attendu, texte)
+                self.assertIn("soumission", texte)
+        self.assertIn("doit avoir été ouverte par bidji29 sur GitHub (auteur relevé : alice)", texte)
+        self.fusionner("soumission")
+        self.assertEqual(self.enr_auteur("miniz-0099-c1"), "bidji29")
+        # Vote: on alice's contribution, in bidji29's name, as bidji29's own vote would be; never under its own login.
+        self.branche("vote")
+        self.ok("voter", cid, "--utilisateur", "bidji29", "--valeur", "1")
+        self.commit()
+        self.libre_service(AGENT, "vote")
+        self.libre_service("bidji29", "vote")
+        (self.dossier / f"votes/{cid}/bidji29.yaml").unlink()
+        bee.ecrire_yaml(self.dossier / f"votes/{cid}/{AGENT}.yaml",
+                        {"votant": AGENT, "sujet": cid, "valeur": 1, "le": os.environ["BEE_MAINTENANT"]})
+        self.commit("the agent's own vote")
+        self.refusee(AGENT, "on ne vote qu'en son nom (bidji29)", "votant déclaré différent de bidji29")
+        code, texte = self.bee("valider")
+        self.assertEqual(code, 1, texte)
+        self.assertIn(f"votes/{cid}/{AGENT}.yaml : {AGENT} is an agent account (gouvernance/comptes-agents.yaml) : a person is "
+                      "written by their own pseudo", texte)
+
+    def enr_auteur(self, cid):
+        return bee.lire_yaml(self.dossier / f"contributions/miniz/{cid}.yaml")["auteur"]
+
+    def test_it_never_counts_as_a_second_person(self):
+        cid = self.contribution("alice", "miniz-9001", 89101)
+        # A review: bidji29's own account reviews alice's contribution; its agent account adds no second review by bidji29,
+        # and none under its own login.
+        self.publie("bidji29", "relire", cid, "--utilisateur", "bidji29", "--avis", "favorable", "--motif", "Relu en entier.")
+        self.branche("seconde-relecture")
+        self.ajouter_relecture(cid, "bidji29", "defavorable")
+        self.commit()
+        self.refusee(AGENT, "bidji29 a déjà relu cette contribution")
+        self.branche("relecture-sous-son-login")
+        self.ajouter_relecture(cid, AGENT)
+        self.commit()
+        self.refusee(AGENT, "une relecture ajoutée doit être celle de bidji29", f"{AGENT} is an agent account")
+        # A vote: bidji29's vote, then the agent account's, are one file, one vote: the second only changes the first.
+        self.publie("bidji29", "voter", cid, "--utilisateur", "bidji29", "--valeur", "1")
+        self.publie(AGENT, "voter", cid, "--utilisateur", "bidji29", "--valeur", "-1", natures=("vote",))
+        self.assertEqual([(v["votant"], v["valeur"]) for v in bee.votes_de(bee.Registre(self.dossier), cid)], [("bidji29", -1)])
+        # Commandment 3: no vote and no review on its person's own contribution.
+        mienne = self.contribution("bidji29", "miniz-0099", 89001)
+        self.branche("vote-pour-soi")
+        bee.ecrire_yaml(self.dossier / f"votes/{mienne}/bidji29.yaml",
+                        {"votant": "bidji29", "sujet": mienne, "valeur": 1, "le": os.environ["BEE_MAINTENANT"]})
+        self.commit()
+        self.refusee(AGENT, "on ne vote pas pour sa propre contribution (commandement 3)")
+        self.branche("relecture-de-soi")
+        self.ajouter_relecture(mienne, "bidji29")
+        self.commit()
+        self.refusee(AGENT, "on ne relit pas sa propre contribution")
+        # R4: its measure of its person's contribution is its person's, which R4 never counts (the author's); never its own.
+        for qui, morceau in (("bidji29", None), (AGENT, "on ne dépose une mesure qu'en son nom (bidji29)")):
+            self.branche(f"mesure-{qui}")
+            bee.ecrire_yaml(self.dossier / f"mesures/{mienne}/{qui}.yaml", {
+                "contribution": mienne, "soumise_par": qui, "le": os.environ["BEE_MAINTENANT"], "base": "2948eeb", "candidat": "839b676",
+                "config": {"architecture": "arm64"}, "metriques": {"debit_compression_n6": {"gain": 0.05, "au_dela_du_bruit": True}}})
+            self.commit()
+            if morceau is None:
+                self.libre_service(AGENT, "mesure")
+            else:
+                self.refusee(AGENT, morceau, f"{AGENT} is an agent account")
+        # R8: its reservations are its person's; three by bidji29's own account, the agent account's fourth is refused.
+        git(self.dossier, "switch", "-q", "main")
+        for n in (9003, 9004, 9005):
+            self.ok("prendre", f"miniz-{n}", "--utilisateur", "bidji29")
+        self.commit("three reservations of bidji29")
+        self.branche("quatrieme")
+        bee.modifier_tache(self.chemin_tache("miniz-9006"), statut="reservee",
+                           reservation={"utilisateur": "bidji29", "depuis": os.environ["BEE_MAINTENANT"]})
+        self.commit()
+        self.refusee(AGENT, "règle R8 : bidji29 a 4 réservations ou inscriptions en parallèle")
+
+    def test_no_council_path_and_no_council_exemption(self):
+        # A council file: refused to a member, valid for the council, and for the council's agent account a human must look.
+        self.branche("cap")
+        chemin = self.dossier / "bee.yaml"
+        chemin.write_text(chemin.read_text(encoding="utf-8").replace("gouvernance: 50", "gouvernance: 40")
+                          .replace("projets: 30", "projets: 40"), encoding="utf-8")
+        self.commit()
+        self.refusee("alice", "modification réservée au conseil humain")
+        self.humain("bidji29", "gouvernance")
+        texte = self.humain(AGENT, "gouvernance", "agent_account")
+        self.assertNotIn("FUSION_AUTO=oui", texte)
+        # The council's exemption from the caps: 11 notes in one PR pass for bidji29's own account (self-service), never
+        # automatically for its agent account.
+        self.branche("notes")
+        self.noter_a_la_main(*[{"par": "bidji29", "texte": f"Note {i} du conseil."} for i in range(11)])
+        self.commit()
+        self.libre_service("bidji29", "note")
+        self.humain(AGENT, "note", "agent_account")
+        self.assertEqual(self.verifier("alice")[0], 1)
+        # A review that would weigh as the council's (R3): self-service for bidji29's own account only.
+        cid = self.contribution("alice", "miniz-9001", 89101)
+        self.branche("relecture")
+        self.ok("relire", cid, "--utilisateur", "bidji29", "--avis", "favorable", "--motif", "Relu en entier.")
+        self.commit()
+        self.libre_service("bidji29", "relecture")
+        self.humain(AGENT, "relecture", "agent_account")
+        # Validating a proposed task (a guardian, the council or a Confirmé): the same.
+        self.publie("alice", "proposer-tache", "miniz", "--utilisateur", "alice", "--type", "test", natures=("proposition_tache",))
+        tid = next(i for i, (_, t) in bee.Registre(self.dossier).taches.items() if t.get("statut") == "proposee")
+        self.branche("validation")
+        bee.modifier_tache(self.chemin_tache(tid), statut="ouverte")
+        self.commit()
+        self.libre_service("bidji29", "validation_tache")
+        self.humain(AGENT, "validation_tache", "agent_account")
+        # Closing early a debate it does not report (the rapporteur, a guardian or the council): the same.
+        self.branche("debat")
+        self.ok("debattre", "ouvrir", "--utilisateur", "alice", "--question", "Faut-il un second compte d'agent pour le conseil ?")
+        self.commit()
+        self.libre_service("alice", "ouverture_debat")
+        self.fusionner("debat")
+        self.branche("cloture")
+        self.ok("debattre", "clore", "D-0001", "--utilisateur", "bidji29", "--issue", "sans_suite")
+        self.commit()
+        self.libre_service("bidji29", "cloture_debat")
+        self.humain(AGENT, "cloture_debat", "agent_account")
+        # What even the council's own PR could not do stays refused.
+        self.branche("pour-alice")
+        self.ok("prendre", "miniz-9003", "--utilisateur", "alice")
+        chemin.write_text(chemin.read_text(encoding="utf-8").replace("gouvernance: 50", "gouvernance: 40")
+                          .replace("projets: 30", "projets: 40"), encoding="utf-8")
+        self.commit()
+        self.refusee(AGENT, "on ne réserve que pour soi (bidji29)")
+
+    def test_attacks_on_the_declaration(self):
+        # A member declares an agent account in a self-service PR: the file is the council's; and the account it declares
+        # acts for no one in that PR, since the gate reads the declarations of the base, never of the PR.
+        self.branche("declaration")
+        declarer_agents(self.dossier, (AGENT, "bidji29"), ("alice-bot", "alice"))
+        self.ok("prendre", "miniz-0099", "--utilisateur", "alice")
+        self.commit()
+        self.refusee("alice", "gouvernance/comptes-agents.yaml : modification réservée au conseil humain")
+        self.refusee("alice-bot", "on ne réserve que pour soi (alice-bot)")
+        # The agent account repoints itself to another person in its own PR: refused (an authority file), and the base,
+        # which still says bidji29, is what the gate reads.
+        self.branche("repointer")
+        declarer_agents(self.dossier, (AGENT, "alice"))
+        self.ok("prendre", "miniz-0099", "--utilisateur", "alice")
+        self.commit()
+        self.refusee(AGENT, "gouvernance/comptes-agents.yaml : changed only by a PR from the council's own account (ruche-0089)")
+        self.assertEqual(self.verifier(AGENT, "--fusion-auto")[0], 1)
+        # An undeclared account using the person's name, and case variants of the agent account.
+        self.branche("usurpation")
+        self.ok("prendre", "miniz-0099", "--utilisateur", "bidji29")
+        self.commit()
+        self.refusee("bidji29-bot", "on ne réserve que pour soi (bidji29-bot)", "bidji29-bot doit d'abord s'inscrire")
+        for variante in ("LaRuche-Architect", "LARUCHE-ARCHITECT"):
+            with self.subTest(variante=variante):
+                self.refusee(variante, f"auteur de la PR « {variante} » : sa fiche est {AGENT}")
+        self.libre_service(AGENT, "reservation")
+        # A chain, even merged by the council: bee valider refuses it, and the gate never follows it to bidji29.
+        git(self.dossier, "switch", "-q", "main")
+        declarer_agents(self.dossier, (AGENT, "bidji29"), ("chaine-bot", AGENT))
+        self.commit("the council declares a chain")
+        code, texte = self.bee("valider")
+        self.assertEqual(code, 1, texte)
+        self.assertIn("accounts/1 : acts_for « laruche-architect » is an agent account : an agent acts for a person, never "
+                      "through another", texte)
+        self.branche("par-la-chaine")
+        self.ok("prendre", "miniz-9003", "--utilisateur", "bidji29")
+        self.commit()
+        self.refusee("chaine-bot", "on ne réserve que pour soi (laruche-architect)")
+
+    def test_own_member_file_parallel_enrolment_and_review_of_a_members_agent_account(self):
+        """The same rules for an agent account declared (by the council, in this test) for a member, alice, whose review
+        weighs as hers: no status to withhold, so its self-service gestures are merged as hers."""
+        declarer_agents(self.dossier, (AGENT, "bidji29"), ("alice-agent", "alice"))
+        self.commit("the council declares alice-agent")
+        self.valide()
+        self.branche("profil")
+        fiche = bee.lire_yaml(self.dossier / "membres/alice.yaml")
+        bee.ecrire_yaml(self.dossier / "membres/alice.yaml", {**fiche, "categories_preferees": ["compression-sans-perte"]})
+        self.commit()
+        self.libre_service("alice-agent", "profil")
+        self.humain(AGENT, "profil", "agent_account")  # only the council edits another's file: a human must look
+        self.branche("profil-de-bruno")
+        fiche = bee.lire_yaml(self.dossier / "membres/bruno.yaml")
+        bee.ecrire_yaml(self.dossier / "membres/bruno.yaml", {**fiche, "categories_preferees": ["compression-sans-perte"]})
+        self.commit()
+        self.refusee("alice-agent", "on ne s'inscrit qu'en son nom (alice)")
+        cid = self.contribution("bruno", "miniz-9001", 89101)
+        self.publie("bidji29", "prendre", "miniz-0099", "--utilisateur", "bidji29")
+        self.publie("alice-agent", "prendre", "miniz-0099", "--utilisateur", "alice", "--en-parallele", natures=("inscription_parallele",))
+        self.publie("alice-agent", "relire", cid, "--utilisateur", "alice", "--avis", "favorable", "--motif", "Relu en entier.",
+                    natures=("relecture",))
+        self.assertEqual([r["relecteur"] for r in bee.lire_yaml(self.dossier / f"contributions/miniz/{cid}.yaml")["relectures"]], ["alice"])
+
+    def test_authority_files_only_from_the_councils_own_account(self):
+        """Commandments, council, agent accounts, guardians, guarantors, every instruction file, the organisation, guarantors'
+        and devolution docs (any case): an agent account's PR changing one is refused (code 1, also with --fusion-auto), whether it edits,
+        deletes, renames from or to, or changes the mode of the file; the council's own account is unchanged (0, then 3)."""
+        def attendu(chemin, *options):
+            code, texte = self.verifier(AGENT, *options)
+            self.assertEqual(code, 1, texte)
+            self.assertIn(f"{chemin} : changed only by a PR from the council's own account (ruche-0089)", texte)
+            self.assertNotIn("FUSION_AUTO=", texte)
+        self.assertEqual(len(bee.AUTHORITY_FILES), 10)
+        fichiers = [a for a in bee.AUTHORITY_FILES if not a.endswith("/")] + [f"gouvernance/consignes/{n}.md" for n in (
+            "agent-principal", "relecteur-adverse", "constructeur")]
+        for i, chemin in enumerate(sorted(fichiers)):
+            with self.subTest(chemin=chemin):
+                self.branche(f"autorite-{i}")
+                fichier = self.dossier / chemin
+                fichier.write_text(fichier.read_text(encoding="utf-8") + ("# test\n" if chemin.endswith(".yaml") else "\nTest.\n"),
+                                   encoding="utf-8")
+                self.commit()
+                attendu(chemin)
+                attendu(chemin, "--fusion-auto")
+                self.assertEqual(self.verifier("bidji29")[0], 0)
+                self.assertEqual(self.verifier("bidji29", "--fusion-auto")[0], 3)
+        git(self.dossier, "switch", "-q", "main")
+        (self.dossier / "gouvernance/consignes/brouillon.md").write_text("Brouillon.\n", encoding="utf-8")
+        self.commit("a draft of the council")
+        for nom, geste, chemin in (
+                ("suppression", lambda: git(self.dossier, "rm", "-q", "docs/organisation.md"), "docs/organisation.md"),
+                ("renommage-depuis", lambda: git(self.dossier, "mv", "gouvernance/garants.yaml", "gouvernance/autres.yaml"),
+                 "gouvernance/garants.yaml"),
+                ("renommage-vers", lambda: git(self.dossier, "mv", "-f", "gouvernance/consignes/brouillon.md",
+                                               "gouvernance/consignes/agent-principal.md"), "gouvernance/consignes/agent-principal.md"),
+                ("mode", lambda: (self.dossier / "COMMANDEMENTS.md").chmod(0o755), "COMMANDEMENTS.md"),
+                ("nouvelle-consigne", lambda: (self.dossier / "gouvernance/consignes/autre.md").write_text("x\n", encoding="utf-8"),
+                 "gouvernance/consignes/autre.md"),
+                ("casse", lambda: (self.dossier / "gouvernance/Conseil.yaml").write_text("x: 1\n", encoding="utf-8"),
+                 "gouvernance/Conseil.yaml"),
+                ("nom-cite", lambda: (self.dossier / "gouvernance/consignes/é.md").write_text("x\n", encoding="utf-8"),
+                 "gouvernance/consignes/é.md")):
+            with self.subTest(geste=nom):
+                self.branche(nom)
+                geste()
+                self.commit()
+                attendu(chemin)
+                attendu(chemin, "--fusion-auto")
+
+    def test_the_council_agents_creation_and_debate_caps(self):
+        """The council is not capped in tasks proposed per PR nor in debates opened per 24 h; its agent account is: what
+        passes only by that exemption waits for a human."""
+        self.branche("propositions")
+        for _ in range(4):
+            self.ok("proposer-tache", "miniz", "--utilisateur", "bidji29", "--type", "test")
+        self.commit()
+        self.libre_service("bidji29", "proposition_tache")
+        self.humain(AGENT, "proposition_tache", "agent_account")
+        self.assertEqual(self.verifier("alice")[0], 1)
+        git(self.dossier, "switch", "-q", "main")
+        self.ouvrir_debats(3)
+        self.branche("debat")
+        self.ok("debattre", "ouvrir", "--utilisateur", "bidji29", "--question", "Une quatrième question du conseil en 24 h ?")
+        self.commit()
+        self.libre_service("bidji29", "ouverture_debat")
+        self.humain(AGENT, "ouverture_debat", "agent_account")
+
+    def test_a_base_declaration_absent_or_malformed_maps_no_one(self):
+        """The gate reads the declarations of the base: absent, unreadable or not a list, they map no one, and the agent
+        account is refused as itself (fail closed)."""
+        for i, ecrire in enumerate((lambda f: f.unlink(), lambda f: f.write_text("accounts: [\n", encoding="utf-8"),
+                                    lambda f: bee.ecrire_yaml(f, {"accounts": {AGENT: "bidji29"}}))):
+            with self.subTest(base=i):
+                git(self.dossier, "switch", "-q", "main")
+                git(self.dossier, "switch", "-qc", f"base-{i}")
+                ecrire(self.dossier / bee.AGENT_ACCOUNTS)
+                self.commit("the base")
+                git(self.dossier, "switch", "-qc", f"prise-{i}")
+                self.ok("prendre", "miniz-0099", "--utilisateur", "bidji29")
+                self.commit()
+                for options in ((), ("--fusion-auto",)):
+                    code, texte = self.bee("verifier-pr", "--base", f"base-{i}", "--tete", "HEAD", "--auteur", AGENT, *options)
+                    self.assertEqual(code, 1, texte)
+                    self.assertIn("on ne réserve que pour soi (laruche-architect)", texte)
+                    self.assertNotIn("Traceback", texte)
+
+    def test_account_age(self):
+        """The agent account's own GitHub date blocks nothing it does as its person (no gesture but a registration checks
+        an age); it registers no one, not even its person; and the mapping lends no one an older account."""
+        self.branche("prise")
+        self.ok("prendre", "miniz-0099", "--utilisateur", "bidji29")
+        self.commit()
+        code, texte = self.verifier(AGENT, "--fusion-auto", "--compte-cree-le", "2026-11-01")
+        self.assertEqual(code, 0, texte)
+        for pseudo, date in (("bidji29", "2015-01-01"), ("bidji29", "2026-11-01"), (AGENT, "2026-11-01")):
+            with self.subTest(fiche=pseudo, date=date):
+                self.branche(f"inscription-{pseudo}-{date}")
+                bee.ecrire_yaml(self.dossier / f"membres/{pseudo}.yaml",
+                                {"pseudo": pseudo, "inscrit_le": "2026-10-29", "compte_cree_le": date})
+                self.commit()
+                self.refusee(AGENT, f"membres/{pseudo}.yaml : {AGENT} is an agent account : it registers no one")
+        # Accounts that are not declared keep the 90 days: a young one is refused, whatever date its file claims.
+        self.branche("jeune")
+        bee.ecrire_yaml(self.dossier / "membres/mallory.yaml", {"pseudo": "mallory", "inscrit_le": "2026-10-29", "compte_cree_le": "2026-10-01"})
+        self.commit()
+        code, texte = self.verifier("mallory", "--compte-cree-le", "2026-10-01")
+        self.assertEqual(code, 1, texte)
+        self.assertIn("le compte GitHub doit avoir au moins 90 jours", texte)
+
+
+class TestAgentAccountInvitations(BaseInvitations):
+    """ruche-0089, R13: an agent account never has its person's council or guardian status in invitation gestures."""
+
+    def test_the_councils_agent_does_not_set_aside_a_decided_invitation(self):
+        self.decidees(1)
+        self.a("2026-10-30T10:00:00Z")
+        self.branche()
+        self.geste("ecarter", "bidji29", "--motif", "Le message n'est finalement pas parti.")
+        self.commit()
+        self.libre_service("bidji29", "ecartement_invitation")
+        self.attend_le_conseil(AGENT, "ecartement_invitation", "agent_account")
+
+    def gina_agent(self):
+        """gina, a guardian in office, is also a member; the council declares gina-agent for her (in this test only)."""
+        self.ok("inscrire", "--pseudo", "gina", "--compte-cree-le", "2020-01-01")
+        declarer_agents(self.dossier, (AGENT, "bidji29"), ("gina-agent", "gina"))
+        self.commit("gina is a member, and her agent account is declared")
+        self.valide()
+
+    def test_a_guardians_agent_account_does_not_validate_a_proposed_task(self):
+        self.gina_agent()
+        self.branche()
+        self.ok("proposer-tache", "miniz", "--utilisateur", "alice", "--type", "test")
+        self.publier("alice", "proposition_tache")
+        tid = next(i for i, (_, t) in bee.Registre(self.dossier).taches.items() if t.get("statut") == "proposee")
+        self.branche()
+        bee.modifier_tache(self.chemin_tache(tid), statut="ouverte")
+        self.commit()
+        self.libre_service("gina", "validation_tache")
+        self.attend_le_conseil("gina-agent", "validation_tache", "agent_account")
+
+    def test_a_guardians_agent_account_does_not_confirm_a_defect(self):
+        self.gina_agent()
+        for qui, commande in (("alice", ["prendre", "miniz-0099", "--utilisateur", "alice"]),
+                              ("alice", ["soumettre", "miniz-0099", "--utilisateur", "alice", "--pr", f"{PR_MINIZ}77089"])):
+            self.branche()
+            self.ok(*commande)
+            self.publier(qui)
+        verdict, fichiers = self.dossier.parent / "verdict.json", self.dossier.parent / "fichiers.txt"
+        verdict.write_text(json.dumps({"ci": "verte", "gain": 0.05, "au_dela_du_bruit": True, "lignes_modifiees": 10}), encoding="utf-8")
+        fichiers.write_text("miniz_tdef.c\n", encoding="utf-8")
+        self.ok("enregistrer-verdict", "miniz-0099-c1", "--verdict", str(verdict), "--sha", "a" * 40, "--fichiers", str(fichiers))
+        self.commit("verdict")
+        self.branche()
+        self.ok("relire", "miniz-0099-c1", *self.lu("miniz-0099-c1"), "--utilisateur", "bruno", "--avis", "defavorable", "--defaut",
+                "--motif", "Lecture hors limites sur une entrée vide, reproduite.")
+        self.publier("bruno", "relecture")
+        self.branche()
+        self.ok("confirmer-defaut", "miniz-0099-c1", "--relecteur", "bruno", "--utilisateur", "gina")
+        self.commit()
+        self.libre_service("gina", "relecture")
+        self.attend_le_conseil("gina-agent", "relecture", "agent_account")
+
+    def test_a_guardians_agent_account_does_not_set_aside_a_proposed_invitation(self):
+        self.gina_agent()
+        self.jusqu_a("proposee")
+        self.a("2026-10-30T12:00:00Z")
+        self.branche()
+        self.geste("ecarter", "gina", "--motif", "Les faits cités ne disent pas pourquoi cette personne.")
+        self.commit()
+        self.libre_service("gina", "ecartement_invitation")
+        self.attend_le_conseil("gina-agent", "ecartement_invitation", "agent_account")
+
+    def test_a_guardians_agent_account_does_not_close_a_debate_it_does_not_report(self):
+        self.gina_agent()
+        self.branche()
+        self.ok("debattre", "ouvrir", "--utilisateur", "alice", "--question", "Faut-il un compte d'agent par gardien ?")
+        self.publier("alice", "ouverture_debat")
+        self.branche()
+        self.ok("debattre", "clore", "D-0002", "--utilisateur", "gina", "--issue", "sans_suite")
+        self.commit()
+        self.libre_service("gina", "cloture_debat")
+        self.attend_le_conseil("gina-agent", "cloture_debat", "agent_account")
+
+    def test_a_guardians_agent_account_gives_no_guardian_agreement(self):
+        self.ok("inscrire", "--pseudo", "gina", "--compte-cree-le", "2020-01-01")
+        declarer_agents(self.dossier, (AGENT, "bidji29"), ("gina-agent", "gina"))
+        self.commit("gina is a member, and her agent account is declared")
+        self.valide()
+        self.jusqu_a("proposee")
+        self.a("2026-11-02T11:00:00Z")
+        self.branche()
+        self.geste("accord-gardien", "gina")
+        self.commit()
+        self.libre_service("gina", "accord_gardien")
+        self.attend_le_conseil("gina-agent", "accord_gardien", "agent_account")
+
+
+class TestAgentAccountsWorkflows(BaseParallele):
+    """ruche-0089: integration-auto takes a PR opened by the contribution's author's declared agent account as the author's,
+    and nothing else (bee acts-for, fail closed); verifier-fork reads the manifest of the person."""
+
+    etape = TestRevueAdverse.etape
+    appels_de = staticmethod(TestRevueAdverse.appels_de)
+
+    def test_integration_takes_the_pr_of_the_authors_agent_account_and_nothing_else(self):
+        declarer_agents(self.dossier, (AGENT, "bidji29"), ("alice-agent", "alice"))
+        self.fermer_porte()
+        c1 = self.soumettre_0099("alice")
+        self.verdict(c1, 0.05)
+        self.relire(c1, "bruno", "bidji29")
+        self.a("2026-10-28T13:00:00Z")
+        self.assertEqual(self.acceptation(c1)[0], 0)
+        for login in (AGENT, "Alice-Agent2", "mallory", "alice-agent-x"):
+            with self.subTest(pr_by=login):
+                etats = {PR_MINIZ + "99007": {"state": "OPEN", "head": "abc1234", "auteur": login}}
+                sortie, etat, appels = self.etape("Intégrer", etats)
+                self.assertIn(f"ouverte par {login}, pas par alice ; ni fusionnée ni consignée", sortie)
+                self.assertFalse(self.appels_de(appels, "pr", "merge"))
+                self.assertEqual(self.enr(c1)["statut"], "en_relecture")
+        # An unreadable declaration maps no one: the agent account's PR is then not the author's (fail closed).
+        declaration = (self.dossier / bee.AGENT_ACCOUNTS).read_text(encoding="utf-8")
+        (self.dossier / bee.AGENT_ACCOUNTS).write_text("accounts: [\n", encoding="utf-8")
+        sortie, _, appels = self.etape("Intégrer", {PR_MINIZ + "99007": {"state": "OPEN", "head": "abc1234", "auteur": "alice-agent"}})
+        self.assertIn("ouverte par alice-agent, pas par alice ; ni fusionnée ni consignée", sortie)
+        self.assertFalse(self.appels_de(appels, "pr", "merge"))
+        (self.dossier / bee.AGENT_ACCOUNTS).write_text(declaration, encoding="utf-8")
+        _, etat, appels = self.etape("Intégrer", {PR_MINIZ + "99007": {"state": "OPEN", "head": "abc1234", "auteur": "alice-agent"}})
+        self.assertEqual([a["args"][2] for a in self.appels_de(appels, "pr", "merge")], [PR_MINIZ + "99007"])
+        self.assertEqual(self.enr(c1)["statut"], "integree")
+        self.valide()
+
+    def test_verdicts_take_the_pr_of_the_authors_agent_account_and_nothing_else(self):
+        declarer_agents(self.dossier, (AGENT, "bidji29"), ("alice-agent", "alice"))
+        c1 = self.soumettre_0099("alice")
+        verdict = {"ci": "verte", "gain": 0.05, "au_dela_du_bruit": True, "lignes_modifiees": 10, "instructions": INSTRUCTIONS_N6}
+        for login in (AGENT, "Alice-Agent2", "mallory", "alice-agent-x"):
+            with self.subTest(pr_by=login):
+                etats = {PR_MINIZ + "99007": {"state": "OPEN", "head": "abc1234", "auteur": login, "verdict": verdict}}
+                sortie, _, appels = self.etape("Récupérer les verdicts", etats, flux="verdicts.yml")
+                self.assertIn(f"la PR {PR_MINIZ}99007 a été ouverte par {login}, pas par alice ; aucun verdict", sortie)
+                self.assertNotIn("verdict", self.enr(c1))
+                self.assertFalse(self.appels_de(appels, "run"))
+        # An unreadable declaration maps no one (fail closed).
+        declaration = (self.dossier / bee.AGENT_ACCOUNTS).read_text(encoding="utf-8")
+        (self.dossier / bee.AGENT_ACCOUNTS).write_text("accounts: [\n", encoding="utf-8")
+        etats = {PR_MINIZ + "99007": {"state": "OPEN", "head": "abc1234", "auteur": "alice-agent", "verdict": verdict}}
+        sortie, _, _ = self.etape("Récupérer les verdicts", etats, flux="verdicts.yml")
+        self.assertIn("ouverte par alice-agent, pas par alice ; aucun verdict", sortie)
+        self.assertNotIn("verdict", self.enr(c1))
+        (self.dossier / bee.AGENT_ACCOUNTS).write_text(declaration, encoding="utf-8")
+        self.etape("Récupérer les verdicts", etats, flux="verdicts.yml")
+        self.assertEqual((self.enr(c1)["verdict"]["ci"], self.enr(c1)["verdict"]["sha"]), ("verte", "abc1234"))
+        self.valide()
+
+    def test_closing_the_pr_of_a_set_aside_contribution(self):
+        declarer_agents(self.dossier, (AGENT, "bidji29"), ("chloe-agent", "chloe"))
+        self.fermer_porte()
+        c1 = self.soumettre_0099("alice")
+        self.a("2026-10-27T13:00:00Z")
+        self.parallele("miniz-0099", "chloe")
+        c2 = self.soumettre("miniz-0099", "chloe", 4242)
+        self.verdict(c1, 0.05)
+        self.relire(c1, "bruno", "bidji29")
+        self.a("2026-10-31T12:00:00Z")
+        self.etape("Intégrer", {PR_MINIZ + "99007": {"state": "OPEN", "head": "abc1234", "auteur": "alice"},
+                                PR_MINIZ + "4242": {"state": "OPEN", "head": "beefcafe", "auteur": AGENT}})
+        self.assertEqual((self.enr(c1)["statut"], self.enr(c2)["statut"]), ("integree", "ecartee"))
+        sortie, etat, appels = self.etape("Fermer")
+        self.assertIn(f"ouverte par {AGENT}, pas par chloe ; on ne la ferme pas", sortie)
+        self.assertFalse(self.appels_de(appels, "pr", "close"))
+        etat[PR_MINIZ + "4242"]["auteur"] = "chloe-agent"
+        (self.dossier.parent / "etat_pr.json").write_text(json.dumps(etat), encoding="utf-8")
+        _, _, appels = self.etape("Fermer")
+        self.assertEqual([a["args"][2] for a in self.appels_de(appels, "pr", "close")], [PR_MINIZ + "4242"])
+
+    def test_verifier_fork_reads_the_manifest_of_the_person(self):
+        fork = pathlib.Path(self.temp.name) / "fork"
+        fork.mkdir()
+        (fork / "miniz_tdef.c").write_text("".join(f"ligne {i}\n" for i in range(100)), encoding="utf-8")
+        git(fork, "init", "-q", "-b", "master")
+        git(fork, "-c", "user.name=t", "-c", "user.email=t@t", "add", "-A")
+        git(fork, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "base")
+        git(fork, "switch", "-qc", "tache/miniz-0099")
+        (fork / "miniz_tdef.c").write_text("".join(f"ligne {i}\n" for i in range(99)) + "ligne cent\n", encoding="utf-8")
+        (fork / "CONTRIBUTION.yaml").write_text(MANIFESTE_REMPLI.replace("utilisateur: alice", "utilisateur: bidji29"), encoding="utf-8")
+        git(fork, "-c", "user.name=t", "-c", "user.email=t@t", "add", "-A")
+        git(fork, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "travail")
+        for auteur, attendu in ((AGENT, 0), ("bidji29", 0), ("alice", 1), ("LaRuche-Architect", 1)):
+            with self.subTest(auteur=auteur):
+                code, texte = self.bee("verifier-fork", "--tache", "miniz-0099", "--base", "master", "--depot", str(fork), "--auteur", auteur)
+                self.assertEqual(code, attendu, texte)
+        self.assertIn("utilisateur « bidji29 » différent de l'auteur de la PR « LaRuche-Architect »", texte)
+
+
 if __name__ == "__main__":
     unittest.main()
