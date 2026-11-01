@@ -37,6 +37,8 @@ git transport (TestHistorique); with Docker, historique_declare and historique_n
 """
 
 import concurrent.futures
+import contextlib
+import io
 import json
 import os
 import random
@@ -473,6 +475,9 @@ with open(os.environ["FAUX_GH_JOURNAL"], "a") as f:
 time.sleep(float(os.environ.get("FAUX_GH_DELAI", "0")))
 if os.environ.get("FAUX_GH_CODE", "0") != "0":
     sys.exit(int(os.environ["FAUX_GH_CODE"]))
+if "FAUX_GH_OCTETS" in os.environ:  # bytes that are not UTF-8
+    sys.stdout.buffer.write(b"\xff\xfebehind\n")
+    sys.exit(0)
 if "FAUX_GH_ETAT" in os.environ:
     print(os.environ["FAUX_GH_ETAT"])
     sys.exit(0)
@@ -514,7 +519,8 @@ def etape(donnees, nom):
 
 
 PREPARATION = "Commit de ce workflow, sur la branche principale du registre (le code du juge y est lu)"
-IMAGE = "Image du juge et historique déclaré (seule étape avec réseau, avant tout fichier de la PR)"
+HISTORIQUE = "Historique déclaré (ancêtres de la base ; seul appel de juge.py avec le jeton, avant le greffon et la PR)"
+IMAGE = "Image du juge (avec réseau, avant tout fichier de la PR)"
 
 
 def commandes_du_runner(sortie):
@@ -595,6 +601,7 @@ class TestWorkflowJuge(unittest.TestCase):
         """S2: the workflow must be Bee-ruche/registre's (owner/name compared without case) at a full commit that the
         compare API puts on main (identical or behind); anything else, an API error included, stops the judge."""
         script = etape(self.wf, PREPARATION)["run"]
+        self.assertIn('etat="$(timeout 60 gh api "repos/Bee-ruche/registre/compare/main...$COMMIT" --jq .status)"', script)
         bon = "0123456789abcdef0123456789abcdef01234567"
         refuses = [("", "", None), ("Bee-ruche/registre", "", None), ("Bee-ruche/registre", "juge-v2", None),
                    ("Bee-ruche/registre", "main", None), ("Bee-ruche/registre", bon[:39], None), ("", bon, None),
@@ -618,16 +625,25 @@ class TestWorkflowJuge(unittest.TestCase):
                 with open(self.journal_gh) as f:  # the canonical name, whatever the case it came in
                     self.assertEqual(f.read(), f"api repos/Bee-ruche/registre/compare/main...{bon} --jq .status +jeton\n")
 
-    def test_history_input_reaches_the_judge_through_the_environment(self):
-        """The declared history is never interpolated into a script, and is checked and fetched in the network step,
-        before the PR."""
+    def test_history_in_its_own_step_the_only_judge_call_with_the_token(self):
+        """The declared history is checked and fetched in its own step, the only call of juge.py given GH_TOKEN, before
+        the image (which loads the plugin) and before the PR; it is never interpolated into a script."""
         self.assertEqual(self.wf["on"]["workflow_call"]["inputs"]["historique"]["type"], "string")
-        noms = [e.get("name") for e in self.wf["jobs"]["juge"]["steps"]]
-        image = etape(self.wf, IMAGE)
-        self.assertEqual(image["env"], {"HISTORIQUE": "${{ inputs.historique }}", "GH_TOKEN": "${{ github.token }}"})
-        self.assertIn('--historique "$HISTORIQUE"', image["run"])
+        etapes = self.wf["jobs"]["juge"]["steps"]
+        noms = [e.get("name") for e in etapes]
+        historique, image = etape(self.wf, HISTORIQUE), etape(self.wf, IMAGE)
+        self.assertEqual(historique["env"], {"HISTORIQUE": "${{ inputs.historique }}", "GH_TOKEN": "${{ github.token }}"})
+        self.assertEqual(historique["run"], "python3 juge-commun/outils/juge/juge.py --outillage base --historique-seulement "
+                                            '--historique "$HISTORIQUE"')
+        self.assertNotIn("env", image)
+        self.assertEqual(image["run"], "python3 juge-commun/outils/juge/juge.py --outillage base --image-seulement")
+        self.assertLess(noms.index("Base de la PR (greffon, harnais, corpus)"), noms.index(HISTORIQUE))
+        self.assertLess(noms.index(HISTORIQUE), noms.index(IMAGE))
         self.assertLess(noms.index(IMAGE), noms.index("Tête de la PR (données ; rien n'en est exécuté hors conteneur)"))
-        for e in self.wf["jobs"]["juge"]["steps"]:
+        avec_jeton = [e["name"] for e in etapes if "GH_TOKEN" in (e.get("env") or {}) or "github.token" in str(e.get("with"))]
+        self.assertEqual(avec_jeton, [PREPARATION, HISTORIQUE])  # the pin step runs gh alone, before the base exists
+        self.assertNotIn("github.token", self.texte.replace("GH_TOKEN: ${{ github.token }}", ""))
+        for e in etapes:
             self.assertNotIn("${{ inputs.", e.get("run", ""), "inputs reach scripts through env only")
 
     def test_journal_cannot_issue_workflow_commands(self):
@@ -754,6 +770,13 @@ class TestHistorique(unittest.TestCase):
             self.assertEqual(juge.recuperer_historique(self.base, ""), [])
         run.assert_not_called()
 
+    def test_output_that_is_not_utf8(self):
+        """A byte that is not UTF-8 from gh (or git) gives a clean judge error, not a decoding traceback."""
+        with mock.patch.dict(os.environ, {"FAUX_GH_OCTETS": "1"}), self.assertRaises(lecture.Erreur) as e:
+            juge.recuperer_historique(self.base, self.commit)
+        self.assertIn("not in the ancestry", str(e.exception))
+        self.assertFalse(self.present(self.commit))
+
     def test_time_budget(self):
         """One budget for every check and fetch: exceeded, a clean judge error, nothing fetched."""
         with mock.patch.dict(os.environ, {"FAUX_GH_DELAI": "5"}), self.assertRaises(lecture.Erreur) as e:
@@ -763,36 +786,60 @@ class TestHistorique(unittest.TestCase):
         with mock.patch.object(juge.subprocess, "run", side_effect=FileNotFoundError("gh")), self.assertRaises(lecture.Erreur):
             juge.recuperer_historique(self.base, self.commit)
 
-    @unittest.skipUnless(shutil.which("docker"), "the docker command must exist (the judge checks it first)")
-    def test_refusal_is_a_judge_error_without_traceback(self):
-        r = subprocess.run([sys.executable, os.path.join(ICI, "juge.py"), "--outillage", self.base, "--image-seulement",
-                            "--historique", self.ailleurs], capture_output=True, text=True, timeout=120)
+    def test_history_step_from_the_command_line(self):
+        """--historique-seulement checks and fetches, without Docker and without loading the plugin; a refusal is a
+        judge error (code 2) without traceback."""
+        juge_py = [sys.executable, os.path.join(ICI, "juge.py"), "--outillage", self.base, "--historique-seulement"]
+        r = subprocess.run(juge_py + ["--historique", self.ailleurs], capture_output=True, text=True, timeout=120)
         self.assertEqual(r.returncode, 2)
         self.assertTrue(r.stderr.startswith("juge : erreur : historique : "), r.stderr)
         self.assertNotIn("Traceback", r.stderr)
+        with open(os.path.join(self.base, "bee", "juge", "projet.py"), "a", encoding="utf-8") as f:
+            f.write("\nraise SystemExit('the plugin was loaded')\n")
+        r = subprocess.run(juge_py + ["--historique", self.commit], capture_output=True, text=True, timeout=120)
+        self.assertEqual((r.returncode, r.stdout, r.stderr), (0, self.commit + "\n", ""))
+        self.assertTrue(self.present(self.commit))
 
-    def test_history_before_the_plugin_and_token_kept_from_it(self):
-        """In image mode the history is checked and fetched before the plugin is loaded, and GH_TOKEN reaches gh only;
-        in judging mode GIT_ALLOW_PROTOCOL refuses every git transport before the plugin is loaded."""
+    def test_modes_history_image_judging(self):
+        """--historique-seulement checks and fetches the history with the token and never loads the plugin;
+        --image-seulement neither reads the history nor needs a token, and refuses --historique; judging refuses every
+        git transport before the plugin is loaded. GH_TOKEN is out of os.environ before any plugin load (defence in
+        depth: juge.yml gives the token to the history step alone)."""
         vus = []
 
         def charger(outillage, options):
             vus.append(("greffon", os.environ.get("GIT_ALLOW_PROTOCOL"), os.environ.get("GH_TOKEN")))
-            raise lecture.Erreur("stop")
+            return greffon_jouet.Projet({}), "empreinte"
 
         def historique(outillage, texte, jeton=None):
             vus.append(("historique", texte, jeton))
-        for image, attendu in ((False, [("greffon", "none", None)]),
-                               (True, [("historique", self.commit, "secret"), ("greffon", None, None)])):
-            vus.clear()
-            with mock.patch.dict(os.environ, {"GH_TOKEN": "secret"}), \
-                    mock.patch.object(juge.shutil, "which", return_value="/usr/bin/docker"), \
-                    mock.patch.object(juge, "charger_greffon", side_effect=charger), \
-                    mock.patch.object(juge, "recuperer_historique", side_effect=historique), self.assertRaises(lecture.Erreur):
-                os.environ.pop("GIT_ALLOW_PROTOCOL", None)
-                juge.main(["--outillage", self.base, "--historique", self.commit] +
-                          (["--image-seulement"] if image else ["--source-a", "a", "--source-b", "b"]))
-            self.assertEqual(vus, attendu)
+            return texte.split()
+        cas = [(["--historique-seulement", "--historique", self.commit], {"GH_TOKEN": "secret"},
+                [("historique", self.commit, "secret")]),
+               (["--image-seulement"], {}, [("greffon", None, None), ("image",)]),
+               (["--image-seulement"], {"GH_TOKEN": "secret"}, [("greffon", None, None), ("image",)]),
+               (["--source-a", "a", "--source-b", "b"], {"GH_TOKEN": "secret"}, [("greffon", "none", None)])]
+        for options, env, attendu in cas:
+            with self.subTest(options=options, env=env):
+                vus.clear()
+                with mock.patch.dict(os.environ, env), mock.patch.object(juge.shutil, "which", return_value="/usr/bin/docker"), \
+                        mock.patch.object(juge, "charger_greffon", side_effect=charger), \
+                        mock.patch.object(juge, "recuperer_historique", side_effect=historique), \
+                        mock.patch.object(juge.conteneur, "construire_image", side_effect=lambda *a: vus.append(("image",)) or "i"), \
+                        mock.patch.object(juge.tempfile, "mkdtemp", side_effect=lecture.Erreur("stop")), \
+                        contextlib.redirect_stdout(io.StringIO()):
+                    os.environ.pop("GIT_ALLOW_PROTOCOL", None)
+                    try:
+                        juge.main(["--outillage", self.base] + options)
+                    except lecture.Erreur:
+                        pass
+                self.assertEqual(vus, attendu)
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            juge.main(["--outillage", self.base, "--image-seulement", "--historique", self.commit])
+        with mock.patch.object(juge.shutil, "which", return_value=None), contextlib.redirect_stdout(io.StringIO()), \
+                mock.patch.object(juge, "recuperer_historique", return_value=[]) as appel:  # no Docker needed for it
+            self.assertEqual(juge.main(["--outillage", self.base, "--historique-seulement"]), 0)
+        appel.assert_called_once()
         with mock.patch.dict(os.environ, {"GIT_ALLOW_PROTOCOL": "none"}), self.assertRaises(lecture.Erreur):
             juge.recuperer_historique(self.base, self.commit)
 
@@ -1170,17 +1217,19 @@ class TestJugeContreVariantes(unittest.TestCase):
         self.assertIsNone(rapport["juge"]["source"])  # named by juge.yml (--source-juge), not by a local run
 
     def test_historique_declare(self):
-        """ruche-0024: the toy plugin reads rle.c at a commit the base does not have; declared, it is fetched with the
-        image (before the PR), once the compare API (a stand-in for gh here) puts it in the base's ancestry; then the
+        """ruche-0024: the toy plugin reads rle.c at a commit the base does not have; declared, it is fetched in its own
+        step (before the plugin and the PR), once the compare API (a stand-in for gh here) puts it in the base's ancestry; then the
         judge runs with the origin gone and every git transport refused."""
         travail = os.path.join(self.travail, "historique-declare")
         origine, base, commit, ancien, source, _ = depot_jouet_avec_historique(travail)
         chemin, journal_gh = faux_gh(travail)
         env = dict(os.environ, PATH=chemin, FAUX_GH_JOURNAL=journal_gh, FAUX_GH_DEPOT=source, GITHUB_REPOSITORY="Bee-ruche/jouetBee")
-        r = subprocess.run([sys.executable, os.path.join(ICI, "juge.py"), "--outillage", base, "--image-seulement",
-                            "--historique", commit] + (["--reseau-construction", os.environ["BEE_JUGE_RESEAU"]]
-                                                       if os.environ.get("BEE_JUGE_RESEAU") else []),
-                           capture_output=True, text=True, timeout=1800, env=env)
+        r = subprocess.run([sys.executable, os.path.join(ICI, "juge.py"), "--outillage", base, "--historique-seulement",
+                            "--historique", commit], capture_output=True, text=True, timeout=600, env=env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        r = subprocess.run([sys.executable, os.path.join(ICI, "juge.py"), "--outillage", base, "--image-seulement"]
+                           + (["--reseau-construction", os.environ["BEE_JUGE_RESEAU"]] if os.environ.get("BEE_JUGE_RESEAU") else []),
+                           capture_output=True, text=True, timeout=1800)
         self.assertEqual(r.returncode, 0, r.stderr)
         shutil.rmtree(origine)
         code, rapport, sortie = self.juger("historique_declare", self.preparer("historique_declare"), True, base=base,

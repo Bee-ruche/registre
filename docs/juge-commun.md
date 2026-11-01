@@ -92,9 +92,9 @@ Règles de sûreté, vérifiées par le juge commun (revue adverse du 28/10) :
 
 - **Historique déclaré** : l'entrée `historique` (16 commits complets au plus, séparés par des blancs) nomme les
   commits dont le greffon lit les objets git. Chacun doit être un ancêtre de la base (API compare du dépôt
-  appelant : `identical` ou `behind`), vérifié avant toute récupération et avant de charger le greffon ; le
-  workflow les récupère ensuite dans la copie de la base, chacun avec son arbre et sans son historique, avec
-  l'image, avant tout fichier de la PR, en 10 minutes au plus en tout (sinon erreur, code 2). Le jugement refuse
+  appelant : `identical` ou `behind`), vérifié avant toute récupération ; le workflow les récupère ensuite dans la
+  copie de la base, chacun avec son arbre et sans son historique, dans une étape à part, seule à recevoir le jeton,
+  avant de charger le greffon et avant tout fichier de la PR, en 10 minutes au plus en tout (sinon erreur, code 2). Le jugement refuse
   ensuite tout transport git (`GIT_ALLOW_PROTOCOL`) : un objet non déclaré est une erreur (code 2).
 - **Journal sûr** : les 40 dernières lignes du journal, que la PR peut remplir, s'impriment entre
   `::stop-commands::<jeton>` et `::<jeton>::`, jeton tiré après le jugement, et `##[` y devient `# #[`

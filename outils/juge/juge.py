@@ -306,7 +306,8 @@ def recuperer_historique(outillage, texte, jeton=None, budget=600):
     """Fetches into the base's repository the commits its plugin reads (juge.yml's `historique`), with their trees
     and blobs but no history. Each must be in the base's ancestry, as GitHub's compare API on the calling repository
     (GITHUB_REPOSITORY) says (identical or behind), all checked before any fetch; checks and fetches share one time
-    budget. Run before the plugin is loaded and before the PR; the token (GH_TOKEN) reaches gh only."""
+    budget. juge.yml runs it in its own step (--historique-seulement), the only call of juge.py given a token
+    (GH_TOKEN, passed to gh alone), before anything loads the plugin and before the PR."""
     commits, depot = sorted(set(texte.split())), os.environ.get("GITHUB_REPOSITORY", "")
     if len(commits) > HISTORIQUE_MAX or not all(COMMIT.fullmatch(c) for c in commits):
         raise Erreur(f"historique : at most {HISTORIQUE_MAX} full commit SHAs (40 hexadecimal digits), separated by blanks")
@@ -316,7 +317,8 @@ def recuperer_historique(outillage, texte, jeton=None, budget=600):
 
     def lancer(commande, env=None):
         try:
-            return subprocess.run(commande, capture_output=True, text=True, env=env, timeout=max(0.01, fin - time.monotonic()))
+            return subprocess.run(commande, capture_output=True, text=True, errors="replace", env=env,
+                                  timeout=max(0.01, fin - time.monotonic()))
         except subprocess.TimeoutExpired:
             raise Erreur(f"historique : checks and fetches exceeded their budget of {budget} s")
         except OSError as e:
@@ -354,8 +356,10 @@ def main(argv=None):
     analyseur.add_argument("--source-a")
     analyseur.add_argument("--source-b")
     analyseur.add_argument("--image-seulement", action="store_true",
-                           help="construit l'image du conteneur (seule étape avec réseau) et affiche son étiquette")
-    analyseur.add_argument("--historique", default="", help="with --image-seulement: commits fetched into the base")
+                           help="construit l'image du conteneur (avec réseau, avant la PR) et affiche son étiquette")
+    analyseur.add_argument("--historique-seulement", action="store_true",
+                           help="checks and fetches the declared history (--historique) into the base, without loading the plugin")
+    analyseur.add_argument("--historique", default="", help="with --historique-seulement: commits fetched into the base")
     analyseur.add_argument("--source-juge", help="DEPOT@COMMIT of this judge's code (juge.yml: the workflow's own commit)")
     analyseur.add_argument("--option", action="append", default=[], help="option du greffon, CLE=VALEUR (répétable)")
     analyseur.add_argument("--repetitions", type=int, default=10)
@@ -369,15 +373,20 @@ def main(argv=None):
     analyseur.add_argument("--memoire", default="4g")
     analyseur.add_argument("--garder", action="store_true")
     args = analyseur.parse_args(argv)
+    if args.historique and not args.historique_seulement:
+        analyseur.error("--historique va avec --historique-seulement")
+    # Defence in depth: the plugin, loaded later in this process, does not find GH_TOKEN in os.environ (the value
+    # stays in /proc/<pid>/environ: juge.yml gives the token to the --historique-seulement call alone).
+    jeton = os.environ.pop("GH_TOKEN", None)
+    if args.historique_seulement:
+        print(" ".join(recuperer_historique(os.path.abspath(args.outillage), args.historique, jeton)))
+        return 0
 
     debut = time.time()
     if shutil.which("docker") is None:
         raise Erreur("docker introuvable")
     outillage = os.path.abspath(args.outillage)
-    jeton = os.environ.pop("GH_TOKEN", None)  # for gh alone (declared history): the plugin never sees a token
-    if args.image_seulement:  # the declared history first: checked, then fetched, before the plugin is loaded
-        recuperer_historique(outillage, args.historique, jeton)
-    else:
+    if not args.image_seulement:
         os.environ["GIT_ALLOW_PROTOCOL"] = "none"  # judging: no git transport at all, the declared history is already here
     projet, empreinte_greffon = charger_greffon(outillage, options_de(args.option))
     if args.image_seulement:

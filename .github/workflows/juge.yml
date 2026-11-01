@@ -64,7 +64,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           [[ "${DEPOT,,}" == bee-ruche/registre && "$COMMIT" =~ ^[0-9a-f]{40}$ ]] || { echo "this workflow is not Bee-ruche/registre's at a full commit" >&2; exit 1; }
-          etat="$(gh api "repos/Bee-ruche/registre/compare/main...$COMMIT" --jq .status)" || etat="API error"
+          etat="$(timeout 60 gh api "repos/Bee-ruche/registre/compare/main...$COMMIT" --jq .status)" || etat="API error or timeout"
           [[ "$etat" == identical || "$etat" == behind ]] || { echo "workflow commit $COMMIT is not on the registry's main ($etat)" >&2; exit 1; }
           echo "commit=$COMMIT" >> "$GITHUB_OUTPUT"
       - name: Juge commun (registre, au commit de ce workflow)
@@ -80,11 +80,13 @@ jobs:
           ref: ${{ inputs.base_sha }}
           path: base
           persist-credentials: false
-      - name: Image du juge et historique déclaré (seule étape avec réseau, avant tout fichier de la PR)
+      - name: Historique déclaré (ancêtres de la base ; seul appel de juge.py avec le jeton, avant le greffon et la PR)
         env:
           HISTORIQUE: ${{ inputs.historique }}
           GH_TOKEN: ${{ github.token }}
-        run: python3 juge-commun/outils/juge/juge.py --outillage base --image-seulement --historique "$HISTORIQUE"
+        run: python3 juge-commun/outils/juge/juge.py --outillage base --historique-seulement --historique "$HISTORIQUE"
+      - name: Image du juge (avec réseau, avant tout fichier de la PR)
+        run: python3 juge-commun/outils/juge/juge.py --outillage base --image-seulement
       - name: Tête de la PR (données ; rien n'en est exécuté hors conteneur)
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
