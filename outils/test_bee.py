@@ -2989,51 +2989,37 @@ class TestPullRequestsEnParallele(BaseParallele):
                 e["depuis"] = depuis
         bee.ecrire_yaml(self.chemin(tache), t)
 
-    def test_reservation_datee_de_l_heure_de_la_pr(self):
-        """The reservation bee prendre writes passes until 2 h after it; a reservation dated outside the tolerance, before or
-        after the time of the PR, is refused."""
-        self.branche()
-        self.assertEqual(self.bee("prendre", "miniz-0099", "--utilisateur", "alice")[0], 0)  # 12:00
-        self.commit()
-        for instant in ("2026-10-27T12:00:00Z", "2026-10-27T14:00:00Z"):
-            with self.subTest(instant=instant):
-                self.a(instant)
-                self.libre_service("alice", "reservation")
-        self.a("2026-10-27T14:00:01Z")
-        self.refusee("alice", "une réservation est datée de l'heure de la PR")
-        self.a("2026-10-27T12:00:00Z")
-        for depuis, acceptee in self.DATES:
-            with self.subTest(depuis=depuis):
-                self.dater("alice", depuis)
-                self.commit()
-                if acceptee:
-                    self.libre_service("alice", "reservation")
-                else:
-                    self.refusee("alice", "une réservation est datée de l'heure de la PR")
-
-    def test_inscription_en_parallele_datee_de_l_heure_de_la_pr(self):
-        """Likewise for the parallel registration bee prendre --en-parallele writes."""
-        self.a("2026-10-27T09:00:00Z")
-        self.main_reservee_avec_inscrits()  # alice since 09:00
-        self.a("2026-10-27T12:00:00Z")
-        self.branche()
-        self.parallele("miniz-0099", "bruno")
-        self.commit()
-        for instant in ("2026-10-27T12:00:00Z", "2026-10-27T14:00:00Z"):
-            with self.subTest(instant=instant):
-                self.a(instant)
-                self.libre_service("bruno", "inscription_parallele")
-        self.a("2026-10-27T14:00:01Z")
-        self.refusee("bruno", "doit être datée de l'heure de la PR")
-        self.a("2026-10-27T12:00:00Z")
-        for depuis, acceptee in self.DATES:
-            with self.subTest(depuis=depuis):
-                self.dater("bruno", depuis)
-                self.commit()
-                if acceptee:
-                    self.libre_service("bruno", "inscription_parallele")
-                else:
-                    self.refusee("bruno", "doit être datée de l'heure de la PR")
+    def test_engagements_dates_de_l_heure_de_la_pr(self):
+        """The reservation bee prendre writes, then the parallel registration bee prendre --en-parallele writes, pass until
+        2 h after they are written; dated outside the tolerance, before or after the time of the PR, each is refused."""
+        for qui, nature, refus in (("alice", "reservation", "une réservation est datée de l'heure de la PR"),
+                                   ("bruno", "inscription_parallele", "doit être datée de l'heure de la PR")):
+            if qui == "alice":
+                self.branche()
+                self.assertEqual(self.bee("prendre", "miniz-0099", "--utilisateur", "alice")[0], 0)  # 12:00
+            else:
+                git(self.dossier, "switch", "-qf", "main")
+                self.a("2026-10-27T09:00:00Z")
+                self.main_reservee_avec_inscrits()  # alice since 09:00
+                self.a("2026-10-27T12:00:00Z")
+                self.branche("pr-parallele")
+                self.parallele("miniz-0099", "bruno")
+            self.commit()
+            for instant in ("2026-10-27T12:00:00Z", "2026-10-27T14:00:00Z"):
+                with self.subTest(qui=qui, instant=instant):
+                    self.a(instant)
+                    self.libre_service(qui, nature)
+            self.a("2026-10-27T14:00:01Z")
+            self.refusee(qui, refus)
+            self.a("2026-10-27T12:00:00Z")
+            for depuis, acceptee in self.DATES:
+                with self.subTest(qui=qui, depuis=depuis):
+                    self.dater(qui, depuis)
+                    self.commit()
+                    if acceptee:
+                        self.libre_service(qui, nature)
+                    else:
+                        self.refusee(qui, refus)
 
     def test_tache_creee_avec_engagements_dates_de_l_heure_de_la_pr(self):
         """A task created directly with a reservation and a parallel registration: each date is checked like the others."""
@@ -3059,12 +3045,14 @@ class TestPullRequestsEnParallele(BaseParallele):
         os.chmod(self.chemin("miniz-9001"), 0o755)
         self.main_reservee_avec_inscrits()
         executable = lambda chemin, oui=True: os.chmod(chemin, 0o755 if oui else 0o644)  # noqa: E731
-        cas = (("mode", lambda: executable(self.chemin()), "alice", "100644 → 100755"),
-               ("inscription", lambda: (self.parallele("miniz-0099", "bruno"), executable(self.chemin())), "bruno", "100644 → 100755"),
+        cas = (("mode", lambda: executable(self.chemin()), "alice", "100644 → 100755", "-x taches/miniz/miniz-0099.yaml"),
+               ("inscription", lambda: (self.parallele("miniz-0099", "bruno"), executable(self.chemin())), "bruno", "100644 → 100755",
+                "-x taches/miniz/miniz-0099.yaml"),
                ("nouveau", lambda: (self.bee("inscrire", "--pseudo", "david", "--compte-cree-le", "2020-01-01"),
-                                    executable(self.dossier / "membres/david.yaml")), "david", "000000 → 100755"),
-               ("ordinaire", lambda: executable(self.chemin("miniz-9001"), False), "alice", "100755 → 100644"))
-        for nom, changer, auteur, morceau in cas:
+                                    executable(self.dossier / "membres/david.yaml")), "david", "000000 → 100755", "-x membres/david.yaml"),
+               ("ordinaire", lambda: executable(self.chemin("miniz-9001"), False), "alice", "100755 → 100644",
+                "+x taches/miniz/miniz-9001.yaml"))
+        for nom, changer, auteur, morceau, remede in cas:
             with self.subTest(cas=nom):
                 git(self.dossier, "switch", "-qfC", "pr", "main")
                 git(self.dossier, "clean", "-fdq")
@@ -3073,6 +3061,7 @@ class TestPullRequestsEnParallele(BaseParallele):
                 code, texte = self.verifier(auteur, "--compte-cree-le", "2020-01-01")
                 self.assertEqual(code, 1, texte)
                 self.assertIn(f"mode {morceau} : a file of the self-service folders is a regular file (100644)", texte)
+                self.assertIn(f"restore its mode : git update-index --chmod={remede}, then commit", texte)
                 code, texte = self.verifier("bidji29", "--fusion-auto")
                 self.assertNotIn("a file of the self-service folders", texte)
                 self.assertNotIn("FUSION_AUTO=oui", texte)
