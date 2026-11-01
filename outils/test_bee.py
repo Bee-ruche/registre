@@ -110,13 +110,15 @@ class BaseTest(unittest.TestCase):
         for sens in sorted((self.dossier / "arbre").rglob(bee.FICHIER_NOEUD)):
             tid = bee.lire_noeud(sens.read_text(encoding="utf-8"), str(sens))[0]["entete"].get("entretenu_par")
             projet = tid.rsplit("-", 1)[0] if isinstance(tid, str) and re.fullmatch(r"[a-z0-9-]+-\d{4}", tid) else None
-            if projet and (self.dossier / "projets" / f"{projet}.yaml").exists() and not (self.dossier / f"taches/{projet}/{tid}.yaml").exists():
-                (self.dossier / "taches" / projet).mkdir(exist_ok=True)
-                (self.dossier / f"taches/{projet}/{tid}.yaml").write_text(
-                    TACHE_OPTIMISATION.replace("miniz-0099", tid).replace("projet: miniz", f"projet: {projet}")
-                    .replace("categorie: compression-sans-perte", f"categorie: {bee.lire_yaml(self.dossier / 'projets' / f'{projet}.yaml')['categorie']}")
-                    .replace("type: optimisation", "type: test").replace("metrique: debit_compression_n6", "metrique: null")
-                    .replace("sortie_compressee: identique\n", ""), encoding="utf-8")
+            fiche_projet = self.dossier / "projets" / f"{projet}.yaml"
+            chemin = self.dossier / "taches" / str(projet) / f"{tid}.yaml"
+            if projet and fiche_projet.exists() and not chemin.exists():
+                chemin.parent.mkdir(exist_ok=True)
+                categorie = bee.lire_yaml(fiche_projet)["categorie"]
+                chemin.write_text(TACHE_OPTIMISATION.replace("miniz-0099", tid).replace("projet: miniz", f"projet: {projet}")
+                                  .replace("categorie: compression-sans-perte", f"categorie: {categorie}")
+                                  .replace("type: optimisation", "type: test").replace("metrique: debit_compression_n6", "metrique: null")
+                                  .replace("sortie_compressee: identique\n", ""), encoding="utf-8")
         questions = self.dossier / "docs" / "questions-ouvertes.md"
         questions.write_text(re.sub(r"(?m)^ *(?:Débat :|Debate:) \[D-\d{4}\]\(\.\./debats/D-\d{4}\.yaml\) \(`bee debats --voir D-\d{4}`\)\.\n", "",
                                     questions.read_text(encoding="utf-8")), encoding="utf-8")
