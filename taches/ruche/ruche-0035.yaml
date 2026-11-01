@@ -32,7 +32,7 @@ hors_perimetre:
   - "les forks"
   - "l'étiquette juge-v1"
 noeud: projets/ruche/ruche
-statut: en_relecture
+statut: integree
 contribution: ruche-0035-c1
 cree_par: conseil
 cree_le: "2026-10-31"
