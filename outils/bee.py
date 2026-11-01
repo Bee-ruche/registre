@@ -435,7 +435,12 @@ class Registre:
             self.problemes_chargement.append(f"{lieu} : lien symbolique refusé (le registre ne contient que des fichiers ordinaires)")
             return None
         try:
-            texte = pathlib.Path(chemin).read_text(encoding="utf-8")
+            with open(chemin, encoding="utf-8") as fichier:  # ruche-0040: a self-service file's size first, its content only under it
+                sorte = sorte_libre_service(relatif := self.rel(chemin))
+                if sorte and (taille := os.fstat(fichier.fileno()).st_size) > OCTETS_MAX[sorte]:
+                    self.problemes_chargement.append(probleme_octets(relatif, taille))
+                    return None
+                texte = fichier.read()
             donnees = charger_texte_yaml(texte, str(chemin))
         except ErreurBee as e:
             self.problemes_chargement.append(str(e))
@@ -964,7 +969,7 @@ def lire_versions(racine, demandes):
             taille = int(entete[2])
             contenu = sortie[position:position + taille]
             position += taille + 1
-            if entete[1] == b"blob":
+            if entete[1] == b"blob" and taille <= OCTETS_MAX.get(sorte_libre_service(demande[1]), taille):  # ruche-0040
                 try:
                     resultat[demande] = contenu.decode("utf-8")
                 except UnicodeDecodeError:
@@ -1985,10 +1990,12 @@ def verifier_registre(reg):
 
     # ruche-0029 : le contrôle commun de tout texte libre, dans chaque valeur et chaque clé des données que bee imprime, même
     # échappé en YAML ; un titre et un résumé tiennent sur une ligne. Le verdict, écrit par la CI, a ses propres bornes.
+    # ruche-0040: and each text under its bound (borne_texte), in every self-service file, the do-not-contact list included.
+    liste = [(reg.racine / CHEMIN_NON_CONTACT, reg.ne_plus_contacter)] if reg.ne_plus_contacter is not None else []
     for chemin, donnees in [*reg.taches.values(), *reg.enregistrements.values(), *reg.propositions.values(), *reg.debats.values(),
-                            *reg.invitations.values(), *reg.membres.values(), *reg.votes, *reg.mesures]:
+                            *reg.invitations.values(), *reg.membres.values(), *reg.votes, *reg.mesures, *liste]:
         donnees = {k: v for k, v in donnees.items() if k != "verdict"} if isinstance(donnees, dict) else donnees
-        for probleme in problemes_textes(donnees, reg.rel(chemin)):
+        for probleme in problemes_textes_libre_service(donnees, reg.rel(chemin)):
             ajouter(probleme)
         for p in sorted({p for p in identity_values(donnees) if p in reg.agents}):  # ruche-0089: never a second person
             ajouter(f"{reg.rel(chemin)} : {p} is an agent account ({AGENT_ACCOUNTS}) : a person is written by their own pseudo")
@@ -2097,6 +2104,54 @@ FICHIERS_LIBRE_SERVICE = {
     "invitations": (f"invitations/I-<nnnn>.yaml et {CHEMIN_NON_CONTACT}",
                     re.compile(rf"^(?:{CHEMIN_INVITATION.pattern[1:-1]}|{re.escape(CHEMIN_NON_CONTACT)})$")),
 }
+
+# ruche-0040: each self-service file has a size bound in bytes, checked before any YAML parsing: from the filesystem
+# (Registre) or from git (verifier-pr, history), so a file over its bound is never parsed. Constants of the tool, like the
+# schemas: the data under check (a bee.yaml in the PR) cannot loosen them. A full debate is closed and continued in a new one.
+OCTETS_MAX = {"taches": 256 * 1024, "contributions": 256 * 1024, "votes": 32 * 1024, "mesures": 32 * 1024, "membres": 32 * 1024,
+              "propositions": 64 * 1024, "debats": 512 * 1024, "invitations": 64 * 1024, CHEMIN_NON_CONTACT: 1024 * 1024}
+# Then each text (value or key) has a bound in characters: TEXTE_LONG_MAX for the long fields of its kind ("notes/texte":
+# the texte of each note), TEXTE_CHAMP_MAX for any other. The write-time bounds (bee.yaml: notes, agora, creations,
+# croissance; and the tool's) stay under them (test_bee.py checks it); the verdict, written by the CI, has its own.
+TEXTE_LONG_MAX, TEXTE_CHAMP_MAX = 4000, 300
+CHAMPS_LONGS = {"taches": ("contexte", "critere_acceptation", "hors_perimetre", "notes/texte"),
+                "contributions": ("resume", "motif_decision", "relectures/motif", "levees/motif", "declare/doutes", "declare/teste",
+                                  "declare/non_teste"),
+                "votes": ("motif",), "mesures": ("motif",), "propositions": ("texte_propose", "motif", "resultat"),
+                "debats": ("question", "synthese", "arguments/texte"),
+                "invitations": ("message", "homonyme", "pourquoi/fait", "ecartee/motif")}
+
+
+def sorte_libre_service(relatif):
+    """The self-service kind of a registry path (a key of OCTETS_MAX), or None."""
+    relatif = str(relatif)
+    sorte = relatif if relatif == CHEMIN_NON_CONTACT else relatif.split("/", 1)[0]
+    return sorte if sorte in OCTETS_MAX and relatif.endswith(".yaml") else None
+
+
+def probleme_octets(relatif, taille):
+    """The refusal of a self-service file over its bound in bytes, the same from bee valider and verifier-pr."""
+    return (f"{relatif} : {taille} octets, au plus {OCTETS_MAX[sorte_libre_service(relatif)]} pour ce fichier (docs/gouvernance.md, "
+            "« Dossiers du libre-service ») : il n'est pas lu")
+
+
+def trop_gros_a(depot, ref, chemins):
+    """{path: size in bytes} of the self-service files among `chemins` that are over their bound at `ref`: the sizes come from
+    git (one call), no content is read. A path absent at `ref` is not counted; if git cannot tell, an error (fail closed)."""
+    chemins = [c for c in chemins if sorte_libre_service(c)]
+    if not chemins:
+        return {}
+    code, sortie = _git_brut(depot, "cat-file", "--batch-check=%(objectsize)",
+                             entree="".join(f"{ref}:{c}\n" for c in chemins).encode("utf-8"))
+    lignes = sortie.decode("utf-8", "replace").splitlines()
+    if code or len(lignes) != len(chemins):
+        raise ErreurBee(f"git cat-file : taille des fichiers de {ref} illisible ; rien n'est lu")
+    return {c: int(t) for c, t in zip(chemins, lignes) if t.isdigit() and int(t) > OCTETS_MAX[sorte_libre_service(c)]}
+
+
+def borne_texte(sorte, lieu):
+    """The bound in characters of the text at `lieu` (as textes_de names it: « notes[0]/texte ») in a file of kind `sorte`."""
+    return TEXTE_LONG_MAX if re.sub(r"\[\d+\]", "", lieu) in CHAMPS_LONGS.get(sorte, ()) else TEXTE_CHAMP_MAX
 
 
 def numero_suivant(numeros):
@@ -2476,11 +2531,13 @@ def verifier_engagements(reg, chemin, ancien, nouveau, differences, auteur, *, e
 def contributions_de_la_pr(reg, base, tete):
     """Contributions ajoutées ou modifiées par la PR : [(chemin, contribution lue dans la tête)]."""
     sorties = git(reg.racine, "diff", "--name-status", "--no-renames", f"{base}...{tete}")
+    changements = [ligne.partition("\t")[::2] for ligne in sorties.splitlines()]
+    trop_gros = trop_gros_a(reg.racine, tete, [c for s, c in changements if s in ("A", "M")])  # ruche-0040: never read
     resultat = []
-    for ligne in sorties.splitlines():
-        statut_git, _, chemin = ligne.partition("\t")
+    for statut_git, chemin in changements:
         partie = chemin.split("/")
-        if statut_git in ("A", "M") and partie[0] == "contributions" and len(partie) == 3 and chemin.endswith(".yaml"):
+        if (statut_git in ("A", "M") and partie[0] == "contributions" and len(partie) == 3 and chemin.endswith(".yaml")
+                and chemin not in trop_gros):
             try:
                 nouveau = lire_yaml_ref(reg.racine, tete, chemin)
             except ErreurBee:
@@ -2709,15 +2766,28 @@ def textes_de(valeur, lieu="", profondeur=0):
             yield from textes_de(sous, nom, profondeur + 1)
 
 
-def problemes_textes(donnees, prefixe):
+def problemes_textes(donnees, prefixe, sorte=None):
     """Each refusal of the common check in `donnees` (values and keys), as bee valider reports it, so that a command can refuse
-    before writing what bee valider would refuse after: a title, a summary and a key fit on one line."""
+    before writing what bee valider would refuse after: a title, a summary and a key fit on one line. With the self-service
+    kind `sorte`, each text over its bound too (borne_texte, ruche-0040)."""
     for lieu, texte in textes_de(donnees):
         une_ligne = "la clé" if lieu.endswith(" (clé)") else {"titre": "le titre", "resume": "le résumé"}.get(lieu)
+        borne = borne_texte(sorte, lieu) if sorte and texte is not None and len(texte) > TEXTE_CHAMP_MAX else None  # the least bound
         probleme = (f"{prefixe} : {lieu} : nested deeper than 20 levels, refused" if texte is None
+                    else f"{prefixe} : {lieu} : {len(texte)} caractères, au plus {borne} (docs/gouvernance.md, « Dossiers du "
+                         "libre-service »)" if borne is not None and len(texte) > borne
                     else probleme_texte_libre(texte, f"{prefixe} : {lieu}", une_ligne))
         if probleme:
             yield probleme
+
+
+def problemes_textes_libre_service(donnees, relatif):
+    """bee valider on the texts of a self-service file: problemes_textes with the bounds of its kind (ruche-0029, ruche-0040).
+    The verdict of a contribution, written by the CI, has its own bounds (verdict_montrable)."""
+    sorte = sorte_libre_service(relatif)
+    if sorte == "contributions" and isinstance(donnees, dict):
+        donnees = {k: v for k, v in donnees.items() if k != "verdict"}
+    return problemes_textes(donnees, relatif, sorte)
 
 
 def montrer(texte):
@@ -4442,6 +4512,9 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
     author's council, guardian and robot status count."""
     sorties = git(reg.racine, "diff", "--name-status", "--no-renames", f"{base}...{tete}")
     changements = [ligne.split("\t", 1) for ligne in sorties.splitlines() if ligne.strip()]
+    # ruche-0040: a self-service file over its bound is refused here, from its size in git, and nothing below reads it.
+    trop_gros = trop_gros_a(reg.racine, tete, [c for s, c in changements if s != "D"])
+    changements = [(s, c) for s, c in changements if c not in trop_gros]
     est_conseil = status and auteur in reg.conseil
     est_robot = status and auteur in reg.robots
     is_guardian = status and auteur in reg.gardiens
@@ -4449,7 +4522,7 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
     amorcage = bool(reg.config.get("amorcage"))
     niveaux = calculer_niveaux(reg)
     niveau = niveau_de(niveaux, auteur)
-    problemes, natures = [], []
+    problemes, natures = [probleme_octets(c, t) for c, t in trop_gros.items()], []
     if bonne := autre_orthographe(reg, auteur):  # ruche-0028 (revue, N1)
         problemes.append(f"auteur de la PR « {auteur} » : sa fiche est {bonne} ; un pseudo s'écrit comme sa fiche, casse comprise")
     # Contributions créées par la PR : une soumission (du titulaire ou d'un inscrit en parallèle) en crée une, et une seule.
@@ -5039,6 +5112,9 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
                        f"{chemin} : id « {nouveau.get('id')} » différent du nom de fichier")
                 exiger(nouveau.get("auteur") == auteur, f"{chemin} : une proposition naît au nom de l'auteur de la PR ({auteur}), "
                                                         f"pas de « {nouveau.get('auteur')} »")
+                for champ in ("texte_propose", "motif"):  # ruche-0040: like every free text the gate reads
+                    probleme = texte_recevable(nouveau.get(champ), f"{chemin} : {champ}", TEXTE_LONG_MAX)
+                    exiger(probleme is None, str(probleme))
                 # T4 : à la naissance, le vote s'ouvre (R10 : 7 jours depuis ouverte_le) et personne n'en écrit l'issue ;
                 # seul le conseil change ensuite statut et resultat.
                 exiger(nouveau.get("statut") == "ouverte", f"{chemin} : une proposition naît ouverte (statut « ouverte », pas "
@@ -6094,7 +6170,7 @@ def cmd_proposer(args):
     exiger_creation_permise(reg, "propositions", args.utilisateur)
     donnees = {"id": identifiant, "auteur": args.utilisateur, "regle": args.regle, "texte_propose": args.texte,
                "motif": args.motif, "ouverte_le": en_iso(maintenant()), "statut": "ouverte"}
-    if probleme := next(problemes_textes(donnees, reg.rel(chemin)), None):  # what bee valider would refuse, before writing
+    if probleme := next(problemes_textes(donnees, reg.rel(chemin), "propositions"), None):  # what bee valider would refuse, before writing
         raise ErreurBee(probleme)
     ecrire_yaml(chemin, donnees)
     print(f"✓ proposition {identifiant} créée. Publiez : bee publier --titre 'Proposition {identifiant}' ; le vote dure {reg.config.get('duree_vote_jours', 7)} jours.")
@@ -6849,7 +6925,7 @@ def cmd_verifier_pr(args):
     reg = Registre(args.registre)
     auteurs_pr = lire_auteurs_pr(args.auteurs_pr) if args.auteurs_pr else None
     problemes, natures = verifier_pr(reg, args.base, args.tete, args.auteur, args.compte_cree_le, auteurs_pr=auteurs_pr)
-    problemes = verifier_registre(reg) + problemes
+    problemes = list(dict.fromkeys(verifier_registre(reg) + problemes))  # once each (a file over its bound: ruche-0040)
     for p in problemes:
         print(f"✗ {montrer(p)}")
     resume = ", ".join(sorted(set(natures))) or "aucun changement"
@@ -7253,7 +7329,7 @@ def cmd_enregistrer_mesure(args):
     if len(fiche["base"]) < 7 or len(fiche["candidat"]) < 7:
         raise ErreurBee("sha base/candidat absents du rapport ; précisez --base et --candidat (les commits comparés)")
     chemin = reg.racine / "mesures" / args.contribution / f"{args.utilisateur}.yaml"
-    if probleme := next(problemes_textes(fiche, reg.rel(chemin)), None):  # --outil, and what ab.json gave, before writing
+    if probleme := next(problemes_textes(fiche, reg.rel(chemin), "mesures"), None):  # --outil, and what ab.json gave, before writing
         raise ErreurBee(probleme)
     ecrire_yaml(chemin, fiche)
     visee = ", ".join(f"{n} {100 * e['gain']:+.1f}%{'*' if e['au_dela_du_bruit'] else ''}" for n, e in metriques.items())
