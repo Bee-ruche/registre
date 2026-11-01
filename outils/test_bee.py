@@ -2538,6 +2538,74 @@ class TestPublier(BaseTest):
         self.assertEqual(code, 1)
         self.assertIn("aucun changement", texte)
 
+    # --- ruche-0049: the title and body leave the hive, checked like any outgoing text ---
+
+    SORTANTS_REFUSES = {
+        "mention": ("Merci @octocat", "la mention « @octocat » notifierait"),
+        "mention d'équipe": ("cc @Bee-ruche/conseil", "la mention « @Bee-ruche/conseil »"),
+        "mention entre parenthèses": ("Relu (@octocat).", "la mention « @octocat »"),
+        "mention pleine chasse": ("Merci ＠octocat", "la mention « @octocat »"),
+        "issue d'un autre dépôt": ("Voir amont-fictif/miniz#12", "« amont-fictif/miniz#12 » renvoie vers un dépôt hors de Bee-ruche"),
+        "commit d'un autre dépôt": ("Voir amont-fictif/miniz@a5c3785", "« amont-fictif/miniz@a5c3785 » renvoie"),
+        "commit d'un fork": ("Voir amont-fictif@a5c37851d", "« amont-fictif@a5c37851d » renvoie"),
+        "adresse d'une issue": ("Voir https://github.com/amont-fictif/miniz/issues/12", "« https://github.com/amont-fictif/miniz/issues/12 »"),
+        "adresse d'une PR, en lien": ("[ici](https://github.com/amont-fictif/miniz/pull/3)", "« https://github.com/amont-fictif/miniz/pull/3 »"),
+        "adresse d'un commit": ("https://github.com/amont-fictif/miniz/commit/a5c3785", "renvoie vers un dépôt hors de Bee-ruche"),
+        "adresse sans schéma": ("Voir github.com/amont-fictif/miniz", "« github.com/amont-fictif/miniz »"),
+        "autre forge": ("Voir https://gitlab.com/amont-fictif/miniz", "« https://gitlab.com/amont-fictif/miniz »"),
+        "page de forge": ("Voir https://amont-fictif.github.io/miniz", "renvoie vers un dépôt hors de Bee-ruche"),
+        "courriel": ("Écrire à jean.dupont@example.org", "une adresse de courriel"),
+        "téléphone": ("Au 06 12 34 56 78", "un numéro de téléphone"),
+        "caractère invisible": ("Réservation\u2060 miniz-0099", "(U+2060, catégorie Cf)"),
+    }
+
+    def test_titre_ou_corps_sortant_refuse_avant_tout_appel(self):
+        """Refused before any git or gh call, --a-blanc included, with the reason of the outgoing-text check."""
+        self.bee("prendre", "miniz-0099", "--utilisateur", "alice")
+        avant = git(self.dossier, "rev-parse", "HEAD")
+        with mock.patch.object(bee, "executer", side_effect=AssertionError("git or gh called")):
+            for nom, (texte, raison) in self.SORTANTS_REFUSES.items():
+                for options in (["--titre", texte], ["--titre", "Réservation miniz-0099", "--corps", texte]):
+                    for a_blanc in ([], ["--a-blanc"]):
+                        with self.subTest(nom=nom, options=options[::2], a_blanc=a_blanc):
+                            code, sortie = self.bee("publier", *options, *a_blanc)
+                            self.assertEqual(code, 1, sortie)
+                            self.assertIn(f"{'corps' if '--corps' in options else 'titre'} : ", sortie)
+                            self.assertIn(raison, sortie)
+        code, sortie = self.bee("publier", "--titre", "Merci @octocat", "--intervalle", "0")  # the real thing, real git
+        self.assertEqual(code, 1, sortie)
+        self.assertIn("commandements 8 et 13", sortie)
+        self.assertFalse(self.journal.exists(), "aucun appel à gh")
+        self.assertEqual((git(self.dossier, "rev-parse", "HEAD"), git(self.dossier, "branch").split()), (avant, ["*", "main"]))
+        self.assertNotIn("bee/", git(self.dossier, "ls-remote", "--heads", "origin"))
+
+    def test_titre_et_corps_honnetes_passent(self):
+        corps = ("Réservation de miniz-0099 (registre #12, GH-12, Bee-ruche/minizBee#3, Bee-ruche/minizBee@a5c3785, "
+                 "https://github.com/Bee-ruche/registre/pull/53, https://bee-ruche.github.io/registre/).\n\n"
+                 "Lu dans outils/bee.py et docs/croissance.md ; en code, GitHub ne lit rien : `@octocat`, `amont-fictif/miniz#12`.\n"
+                 "```\ngh api user --jq .login  # @octocat\n```")
+        self.bee("prendre", "miniz-0099", "--utilisateur", "alice")
+        with mock.patch.object(bee, "texte_sortant_refuse", wraps=bee.texte_sortant_refuse) as controle:
+            code, texte = self.bee("publier", "--titre", "Réservation miniz-0099", "--corps", corps, "--a-blanc")
+            self.assertEqual(code, 0, texte)
+            code, texte = self.bee("publier", "--titre", "Réservation miniz-0099", "--corps", corps, "--intervalle", "0")
+            self.assertEqual(code, 0, texte)
+        # The outgoing-text check itself, reused (no copy): once for the title, once for the body, under the hive's organisation.
+        appels = [(c.args, c.kwargs) for c in controle.call_args_list if len(c.args) == 4]
+        self.assertEqual(appels, [(("Réservation miniz-0099", "titre", bee.TITRE_PR_MAX, "Bee-ruche"), {"code": False}),
+                                  ((corps, "corps", bee.CORPS_PR_MAX, "Bee-ruche"), {"code": True})] * 2)
+        self.assertIn(f"body={corps}", self.journal.read_text(encoding="utf-8"))
+
+    def test_code_ignore_dans_le_corps_seulement(self):
+        """Code spans are skipped only where GitHub skips them: in a body, closed, not escaped, without a blank line; the
+        title, also the commit message, is read whole. Invitations and other outgoing texts keep their check (no organisation)."""
+        refuse = lambda texte, quoi="corps": bee.texte_sortant_refuse(texte, quoi, 1000, "Bee-ruche", code=quoi == "corps")  # noqa: E731
+        self.assertIsNone(refuse("Voir `@octocat` et ``amont-fictif/miniz#12``."))
+        for texte in ("`@octocat`", "Voir `a` @octocat `b`.", "Voir \\`@octocat\\`.", "`a\n\n@octocat\n\nb`", "Voir `@octocat"):
+            with self.subTest(texte=texte):
+                self.assertIn("la mention « @octocat »", refuse(texte, "titre" if texte == "`@octocat`" else "corps"))
+        self.assertIsNone(bee.texte_sortant_refuse("Bonjour @octocat, voir amont-fictif/miniz#12.", "message", 1000))
+
 
 class TestFork(BaseTest):
     def setUp(self):

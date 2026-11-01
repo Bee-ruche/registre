@@ -3549,9 +3549,10 @@ def donnee_personnelle(texte):
     return "un numéro de téléphone" if numero_de_telephone(texte) else None
 
 
-def texte_sortant_refuse(texte, quoi, maximum):
+def texte_sortant_refuse(texte, quoi, maximum, organisation=None, code=False):
     """None si un texte qui sortira de la ruche est recevable : texte_recevable, sans caractère sortant interdit, sans donnée
-    personnelle ; sinon la raison."""
+    personnelle ; sinon la raison. With `organisation` (a text GitHub shows: PR title or body, ruche-0049), nothing GitHub
+    turns into a notification or a link outside it either (renvoi_hors_ruche; code spans skipped if `code`)."""
     probleme = texte_recevable(texte, quoi, maximum)
     if probleme:
         return probleme
@@ -3560,7 +3561,33 @@ def texte_sortant_refuse(texte, quoi, maximum):
         return (f"{quoi} : caractère invisible refusé (U+{ord(c):04X}, catégorie {unicodedata.category(c)}) : ce texte sort de la "
                 "ruche, il ne cache rien")
     donnee = donnee_personnelle(texte)
-    return (f"{quoi} : {donnee} : aucune donnée personnelle au-delà de l'identifiant public et du canal (R13)" if donnee else None)
+    if donnee:
+        return f"{quoi} : {donnee} : aucune donnée personnelle au-delà de l'identifiant public et du canal (R13)"
+    renvoi = renvoi_hors_ruche(texte, organisation, code) if organisation is not None else None
+    return f"{quoi} : {renvoi} : ce texte sort de la ruche (commandements 8 et 13)" if renvoi else None
+
+
+# What GitHub turns into a notification or a cross-reference (ruche-0049): a mention (@user, @org/team), an issue or a commit
+# qualified by an owner (owner/repo#12, owner@sha, owner/repo@sha), a link to a forge path or page (github.com/<owner>/…).
+MENTION_GITHUB = re.compile(r"(?<![A-Za-z0-9_])@[A-Za-z0-9][A-Za-z0-9/-]*")
+REFERENCE_GITHUB = re.compile(r"(?i)(?<![\w.-])([\w.-]+)(?:/[\w.-]+#\d+|(?:/[\w.-]+)?@[0-9a-f]{7,})")
+LIEN_OU_HOTE = re.compile(r"(?i)(?<![\w.-])(?:https?://)?(?:[\w-]+\.)+[a-z]{2,}(?::\d+)?(?:/[^\s<>()\[\]{}`'\"]*)?")
+# A code span or fenced block (same backtick run on both sides, not escaped, no blank line inside: else it is read).
+CODE_MARKDOWN = re.compile(r"(?<![`\\])(`+)(?!`)(?:(?!\n[^\S\n]*\n)[\s\S])+?(?<!`)\1(?!`)")
+
+
+def renvoi_hors_ruche(texte, organisation, code=False):
+    """None, or what GitHub would turn into a mention or a reference outside `organisation` in a PR title or body. Read after
+    NFKC (fail closed); with `code`, code spans are skipped first, as GitHub sees neither mention nor reference there."""
+    texte = unicodedata.normalize("NFKC", CODE_MARKDOWN.sub(" ", texte) if code else texte)
+    hors = lambda nom: nom.casefold() != organisation.casefold()  # noqa: E731
+    mention = MENTION_GITHUB.search(texte)
+    if mention:
+        return f"la mention « {mention[0]} » notifierait quelqu'un sur GitHub (écrivez le nom sans @)"
+    renvoi = next((m[0] for m in REFERENCE_GITHUB.finditer(texte) if hors(m[1])), None) or next(
+        (m[0] for m in LIEN_OU_HOTE.finditer(texte) for cle in cles_d_adresse(re.sub(r"(?i)^(?!https?://)", "https://", m[0]))
+         if not cle.startswith("site:") and hors(cle.partition(":")[2])), None)
+    return f"« {renvoi} » renvoie vers un dépôt hors de {organisation}" if renvoi else None
 
 
 def hote_de(adresse):
@@ -7839,6 +7866,7 @@ def cmd_ecartees(args):
 
 
 DOSSIERS_LIBRE_SERVICE = ("taches/", "contributions/", "votes/", "mesures/", "membres/", "propositions/", "debats/", "invitations/")
+TITRE_PR_MAX, CORPS_PR_MAX = 256, 65536  # GitHub's own limits for a pull request's title and body
 
 
 def executer(commande, depot=None, verifier=True):
@@ -7860,6 +7888,12 @@ def cmd_publier(args):
     depot = reg.racine
     organisation = reg.config.get("organisation", "")
     amont = args.amont or f"{organisation}/registre"
+    corps = args.corps or f"Publié avec `bee publier`.\n\nNature : {args.titre}."
+    # Both leave the hive, checked before any git or gh call; the title is also the commit message: no code span skipped.
+    for quoi, texte, maximum in (("titre", args.titre, TITRE_PR_MAX), ("corps", corps, CORPS_PR_MAX)):
+        probleme = texte_sortant_refuse(texte, quoi, maximum, organisation, code=quoi == "corps")
+        if probleme:
+            raise ErreurBee(probleme)
     changements = [l[3:].strip().strip('"') for l in executer(["git", "status", "--porcelain", "--untracked-files=all"], depot).stdout.splitlines() if l.strip()]
     if not changements:
         raise ErreurBee("aucun changement à publier (avez-vous lancé bee prendre, soumettre, relire, voter… ?)")
@@ -7892,7 +7926,6 @@ def cmd_publier(args):
         proprietaire, _ = proprietaire_depot(executer(["git", "remote", "get-url", "origin"], depot).stdout.strip())
         proprietaire_amont, _ = proprietaire_depot(f"https://github.com/{amont}")
         tete = branche if proprietaire in (None, proprietaire_amont) else f"{proprietaire}:{branche}"
-        corps = args.corps or f"Publié avec `bee publier`.\n\nNature : {args.titre}."
         # API REST plutôt que `gh pr create` (GraphQL) : elle fonctionne aussi dans les environnements restreints.
         pr = json.loads(executer(["gh", "api", f"repos/{amont}/pulls", "-X", "POST", "-f", f"title={args.titre}",
                                   "-f", f"head={tete}", "-f", "base=main", "-f", f"body={corps}"], depot).stdout)
