@@ -1915,10 +1915,8 @@ def verifier_registre(reg):
     for chemin, donnees in [*reg.taches.values(), *reg.enregistrements.values(), *reg.propositions.values(), *reg.debats.values(),
                             *reg.invitations.values(), *reg.membres.values(), *reg.votes, *reg.mesures]:
         donnees = {k: v for k, v in donnees.items() if k != "verdict"} if isinstance(donnees, dict) else donnees
-        for lieu, texte in textes_de(donnees):
-            probleme = probleme_texte_libre(texte, f"{reg.rel(chemin)} : {lieu}", {"titre": "le titre", "resume": "le résumé"}.get(lieu))
-            if probleme:
-                ajouter(probleme)
+        for probleme in problemes_textes(donnees, reg.rel(chemin)):
+            ajouter(probleme)
 
     verifier_agora_registre(reg, ajouter, selon_schema, instant_valide)
     verifier_invitations_registre(reg, ajouter, selon_schema, instant_valide)  # R13 (docs/croissance.md)
@@ -2607,28 +2605,44 @@ def probleme_texte_libre(texte, quoi, une_ligne=None):
                    else "il cacherait ou maquillerait le texte à l'affichage"))
     if marques_encadre(texte):
         return (f"{quoi} : fausse marque d'encadré refusée (« === DONNÉES », « === FIN DES DONNÉES ») : seul bee encadre les "
-                "données qu'il imprime")
+                "données qu'il imprime ; to mention it, write it without three consecutive equals signs")
     return None
 
 
 def textes_de(valeur, lieu="", profondeur=0):
-    """(lieu, texte) pour chaque texte d'une donnée lue, valeurs et clés, récursivement ; une clé refusée n'est pas recopiée."""
+    """(lieu, texte) pour chaque texte d'une donnée lue, valeurs et clés, récursivement ; une clé refusée n'est pas recopiée.
+    Past 20 levels, (lieu, None): the caller refuses it (fail closed), nothing is skipped silently."""
     if isinstance(valeur, str):
         yield lieu or "(racine)", valeur
-    elif isinstance(valeur, list) and profondeur < 20:
+    elif isinstance(valeur, (list, dict)) and profondeur >= 20:
+        yield lieu or "(racine)", None
+    elif isinstance(valeur, list):
         for i, sous in enumerate(valeur):
             yield from textes_de(sous, f"{lieu}[{i}]", profondeur + 1)
-    elif isinstance(valeur, dict) and profondeur < 20:
+    elif isinstance(valeur, dict):
         for cle, sous in valeur.items():
-            nom = f"{lieu}/{cle if probleme_texte_libre(cle, '') is None else '(clé refusée)'}".lstrip("/")
+            nom = f"{lieu}/{cle if probleme_texte_libre(cle, '', 'la clé') is None else '(clé refusée)'}".lstrip("/")
             yield f"{nom} (clé)", str(cle)
             yield from textes_de(sous, nom, profondeur + 1)
 
 
+def problemes_textes(donnees, prefixe):
+    """Each refusal of the common check in `donnees` (values and keys), as bee valider reports it, so that a command can refuse
+    before writing what bee valider would refuse after: a title, a summary and a key fit on one line."""
+    for lieu, texte in textes_de(donnees):
+        une_ligne = "la clé" if lieu.endswith(" (clé)") else {"titre": "le titre", "resume": "le résumé"}.get(lieu)
+        probleme = (f"{prefixe} : {lieu} : nested deeper than 20 levels, refused" if texte is None
+                    else probleme_texte_libre(texte, f"{prefixe} : {lieu}", une_ligne))
+        if probleme:
+            yield probleme
+
+
 def montrer(texte):
     """Un message tel qu'on peut l'imprimer (bee valider, verifier-pr) : chaque caractère que refuse caractere_sortant_interdit
-    écrit « <U+XXXX> », même cité par le message d'un schéma."""
-    return "".join(f"<U+{ord(c):04X}>" if caractere_sortant_interdit(c) else c for c in str(texte)).replace("##[", "# #[")
+    écrit « <U+XXXX> », même cité par le message d'un schéma. No GitHub Actions workflow command survives: « ##[ » anywhere,
+    « :: » at the start of a line, after any spaces (the runner trims them)."""
+    texte = "".join(f"<U+{ord(c):04X}>" if caractere_sortant_interdit(c) else c for c in str(texte)).replace("##[", "# #[")
+    return re.sub(r"(?m)^(\s*)::", r"\1: :", texte)
 
 
 CLE_VERDICT = re.compile(r"[A-Za-z0-9_.-]{1,80}")
@@ -3368,7 +3382,7 @@ DEBUTS_DEMANDE = tuple(sorted({forme_comparee(phrase.split(":")[0]).strip() for 
                                for phrase in langue.values()}))
 
 
-UNICODE_CI = "15.0.0"  # la table Unicode de Python 3.12, celui de la CI (.github/workflows)
+UNICODE_CI = "15.0.0"  # the Unicode table of the workflows' python-version (3.12); a test ties the two
 
 
 def table_unicode_suffit(version=unicodedata.unidata_version):
@@ -5132,7 +5146,7 @@ def cmd_valider(args):
     for p in problemes:
         print(f"✗ {montrer(p)}")
     for a in avertissements_arbre(reg) + alertes_croissance(reg):
-        print(f"⚠ {a}")
+        print(f"⚠ {montrer(a)}")
     if problemes:
         print(f"\n{len(problemes)} problème(s). Le registre n'est pas valide.")
         return 1
@@ -5956,6 +5970,8 @@ def cmd_proposer(args):
     exiger_creation_permise(reg, "propositions", args.utilisateur)
     donnees = {"id": identifiant, "auteur": args.utilisateur, "regle": args.regle, "texte_propose": args.texte,
                "motif": args.motif, "ouverte_le": en_iso(maintenant()), "statut": "ouverte"}
+    if probleme := next(problemes_textes(donnees, reg.rel(chemin)), None):  # what bee valider would refuse, before writing
+        raise ErreurBee(probleme)
     ecrire_yaml(chemin, donnees)
     print(f"✓ proposition {identifiant} créée. Publiez : bee publier --titre 'Proposition {identifiant}' ; le vote dure {reg.config.get('duree_vote_jours', 7)} jours.")
     return 0
@@ -7097,6 +7113,8 @@ def cmd_enregistrer_mesure(args):
     if len(fiche["base"]) < 7 or len(fiche["candidat"]) < 7:
         raise ErreurBee("sha base/candidat absents du rapport ; précisez --base et --candidat (les commits comparés)")
     chemin = reg.racine / "mesures" / args.contribution / f"{args.utilisateur}.yaml"
+    if probleme := next(problemes_textes(fiche, reg.rel(chemin)), None):  # --outil, and what ab.json gave, before writing
+        raise ErreurBee(probleme)
     ecrire_yaml(chemin, fiche)
     visee = ", ".join(f"{n} {100 * e['gain']:+.1f}%{'*' if e['au_dela_du_bruit'] else ''}" for n, e in metriques.items())
     print(f"✓ mesure enregistrée ({reg.rel(chemin)}) sur {config.get('architecture')} / {config.get('compilateur', '?')}.")
@@ -8610,7 +8628,7 @@ def principal(argv=None):
     try:
         return args.fonction(args)
     except ErreurBee as e:
-        print(f"bee : {e}", file=sys.stderr)
+        print(f"bee : {montrer(e)}", file=sys.stderr)
         return 1
 
 

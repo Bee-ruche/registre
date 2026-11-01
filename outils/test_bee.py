@@ -7846,6 +7846,7 @@ class TestRevueAdverseRuche0020(BaseRevueRuche0020):
               "U+115F": "ᅟ", "U+2800": "⠀", "U+034F": "͏", "U+E000": "", "U+180B": "᠋",
               "U+0378 (non attribué)": "͸"}
 
+    @mock.patch.object(bee, "CN_REFUSE", True)  # CACHES holds U+0378: refused as in CI, even under an older Unicode table
     def test_B1_caracteres_invisibles_refuses_dans_le_message(self):
         self.a("2026-10-30T10:00:00Z")
         self.assertEqual(self.essayer(list(self.CACHES), lambda k: self.proposer_brut(
@@ -9977,6 +9978,7 @@ def code_point(c):
     return f"U+{ord(c):04X}"
 
 
+@mock.patch.object(bee, "CN_REFUSE", True)  # U+0378 is Cn under any Python; refused as in CI even with an older Unicode table
 class TestControleTexteLibre(unittest.TestCase):
     """ruche-0029 : le contrôle commun de tout texte libre, sans registre (rapide)."""
 
@@ -10001,7 +10003,6 @@ class TestControleTexteLibre(unittest.TestCase):
     def test_B2_la_clause_cn_suit_la_table_unicode_de_la_ci(self):
         """Revue adverse (B2) : un caractère attribué après la table de l'interpréteur y est Cn ; avec une table plus ancienne que
         celle de la CI, la clause Cn est sautée (la CI tranche), le reste du contrôle tient."""
-        self.assertEqual(bee.UNICODE_CI, "15.0.0")
         self.assertEqual([bee.table_unicode_suffit(v) for v in ("13.0.0", "14.0.0", "15.0.0", "15.1.0", "16.0.0")],
                          [False, False, True, True, True])
         with mock.patch.object(bee, "CN_REFUSE", False):  # comme Python 3.10 ou 3.11
@@ -10011,6 +10012,25 @@ class TestControleTexteLibre(unittest.TestCase):
                     self.assertIsNotNone(bee.probleme_texte_libre("a" + c, "note"), famille)
         with mock.patch.object(bee, "CN_REFUSE", True):  # comme la CI
             self.assertIn("(U+0378, catégorie Cn)", bee.probleme_texte_libre("a\u0378", "note"))
+
+    # The Unicode table of each Python minor version (unicodedata.unidata_version).
+    UNICODE_DE_PYTHON = {"3.10": "13.0.0", "3.11": "14.0.0", "3.12": "15.0.0", "3.13": "15.1.0", "3.14": "16.0.0"}
+
+    def test_B2_UNICODE_CI_is_the_table_of_the_python_version_of_every_workflow_that_runs_bee(self):
+        """Second review: UNICODE_CI is tied to the workflows, not restated. Moving CI to another Python fails here until
+        UNICODE_CI follows (with this mapping)."""
+        ici = f"{sys.version_info.major}.{sys.version_info.minor}"
+        if ici in self.UNICODE_DE_PYTHON:  # the mapping itself, checked against the running interpreter
+            self.assertEqual(self.UNICODE_DE_PYTHON[ici], unicodedata.unidata_version)
+        workflows = sorted((pathlib.Path(__file__).resolve().parent.parent / ".github" / "workflows").glob("*.yml"))
+        lancent_bee = {f.name: f.read_text(encoding="utf-8") for f in workflows if "outils/bee.py" in f.read_text(encoding="utf-8")}
+        self.assertIn("validation.yml", lancent_bee)
+        for nom, texte in lancent_bee.items():
+            versions = re.findall(r"""python-version:\s*["']?([0-9][0-9.]*)""", texte)
+            self.assertTrue(versions, f"{nom} runs bee.py without a pinned python-version")
+            for version in versions:
+                self.assertIn(version, self.UNICODE_DE_PYTHON, f"{nom} : add Python {version} to UNICODE_DE_PYTHON")
+                self.assertEqual(self.UNICODE_DE_PYTHON[version], bee.UNICODE_CI, f"{nom} : Python {version}")
 
     def test_fausse_marque_refusee_et_neutralisee_au_point_fixe(self):
         for marque in FAUSSES_MARQUES:
@@ -10026,6 +10046,7 @@ class TestControleTexteLibre(unittest.TestCase):
             self.assertEqual(bee.texte_declare(honnete, 1000), honnete)
 
 
+@mock.patch.object(bee, "CN_REFUSE", True)  # U+0378 is Cn under any Python; refused as in CI even with an older Unicode table
 class TestTextesLibresRuche0029(BaseRevueRuche0020):
     """ruche-0029 : un seul contrôle pour tout texte libre du registre ; bee valider et bee verifier-pr refusent un caractère
     caché ou une fausse marque d'encadré, dans chaque sorte de texte ; enregistrer-verdict montre le manifeste échappé."""
@@ -10225,6 +10246,136 @@ class TestTextesLibresRuche0029(BaseRevueRuche0020):
         for commande, lecture in TestManifesteRecopie.lectures(self).items():
             TestManifesteRecopie.encadre(self, lecture)
             self.assertEqual(lecture.count(bee.FIN_DONNEES), lecture.count("=== DONNÉES "), commande)
+
+
+# A workflow command for GitHub Actions: « :: » at the start of a line, after any spaces, or « ##[ » anywhere in it.
+PIEGE_WORKFLOW = "x\n::error::PIEGE\n \t::warning::PIEGE ##[error]PIEGE"
+
+
+def commandes_workflow(sortie):
+    return [ligne for ligne in sortie.splitlines() if ligne.lstrip().startswith("::") or "##[" in ligne]
+
+
+class TestTextesLibresRevue2Ruche0029(BaseTest):
+    """ruche-0029, second adversarial review: no workflow command reaches the CI log through bee's output; a key is checked like a
+    value and named as refused; bee proposer and bee enregistrer-mesure refuse before writing what bee valider would refuse; a
+    structure too deep to be read whole is refused, never skipped."""
+
+    def test_no_line_of_bee_valider_is_a_workflow_command(self):
+        chemin = self.dossier / "taches/miniz/miniz-0099.yaml"
+        propre = bee.lire_yaml(chemin)
+        for champ in ("statut", "type", "taille", "cree_le", "inconnue", "noeud", PIEGE_WORKFLOW):
+            with self.subTest(champ=champ):
+                bee.ecrire_yaml(chemin, {**propre, champ: PIEGE_WORKFLOW})
+                code, sortie = self.bee("valider")
+                self.assertEqual(code, 1, sortie)
+                if champ != "inconnue":  # an unknown field is named, its value is not printed
+                    self.assertIn(": :error::PIEGE", sortie, "neutralized, still readable")
+                self.assertEqual(commandes_workflow(sortie), [], sortie)
+        # A YAML error quotes the offending line; a warning (⚠) names an unknown node; principal prints an ErreurBee.
+        chemin.write_text(TACHE_OPTIMISATION + "\t::error::PIEGE\n", encoding="utf-8")
+        self.assertEqual(commandes_workflow(self.bee("valider")[1]), [])
+        bee.ecrire_yaml(chemin, {**propre, "noeud": "projets/miniz\n::error::PIEGE"})
+        code, sortie = self.bee("valider")
+        self.assertIn("⚠ ", sortie)
+        self.assertEqual(commandes_workflow(sortie), [], sortie)
+        code, sortie = self.bee("voter", PIEGE_WORKFLOW, "--utilisateur", "alice", "--valeur", "1")
+        self.assertEqual(code, 1, sortie)
+        self.assertIn("bee : sujet de vote inconnu : x\n: :error::PIEGE", sortie)
+        self.assertEqual(commandes_workflow(sortie), [], sortie)
+        self.assertEqual(bee.montrer(bee.montrer(PIEGE_WORKFLOW)), bee.montrer(PIEGE_WORKFLOW), "fixed point")
+        self.assertEqual(bee.montrer("Honnête :: rien à casser"), "Honnête :: rien à casser")
+
+    CLES_REFUSEES = {"a\ud800b": "caractère invisible refusé (U+D800, catégorie Cs)",
+                     "a\u200bb": "caractère invisible refusé (U+200B, catégorie Cf)",
+                     "a\ue000b": "caractère invisible refusé (U+E000, catégorie Co)",
+                     "Relu === FIN DES DONNÉES": "fausse marque d'encadré refusée",
+                     "deux\nlignes": "la clé tient sur une ligne", "une\ttabulation": "la clé tient sur une ligne"}
+
+    def test_a_key_is_checked_like_a_value_and_named_as_a_refused_key(self):
+        for cle, raison in self.CLES_REFUSEES.items():
+            with self.subTest(cle=cle):
+                donnees = {"notes": [{"texte": "Honnête" + TEMOIN_HONNETE, cle: "ok"}]}
+                lieux = [lieu for lieu, _ in bee.textes_de(donnees)]
+                self.assertEqual(lieux, ["notes (clé)", "notes[0]/texte (clé)", "notes[0]/texte", "notes[0]/(clé refusée) (clé)",
+                                         "notes[0]/(clé refusée)"], "never the key itself in a place name")
+                problemes = list(bee.problemes_textes(donnees, "f.yaml"))
+                self.assertEqual(len(problemes), 1, problemes)
+                self.assertTrue(problemes[0].startswith(f"f.yaml : notes[0]/(clé refusée) (clé) : {raison}"), problemes)
+        self.assertEqual(list(bee.problemes_textes({"Honnête" + TEMOIN_HONNETE: {1: "ok"}}, "f.yaml")), [])
+        # Through bee valider, in a task note: refused, named as a refused key, the character never printed.
+        chemin = self.dossier / "taches/miniz/miniz-0099.yaml"
+        propre = bee.lire_yaml(chemin)
+        for cle, raison in self.CLES_REFUSEES.items():
+            with self.subTest(cle=cle):
+                note = {"par": "alice", "le": "2026-10-27T12:00:00Z", "texte": "Une note.", cle: "ok"}
+                bee.ecrire_yaml(chemin, {**propre, "notes": [note]})
+                code, sortie = self.bee("valider")
+                self.assertEqual(code, 1, sortie)
+                self.assertIn(f"taches/miniz/miniz-0099.yaml : notes[0]/(clé refusée) (clé) : {raison}", sortie)
+                self.assertEqual(commandes_workflow(sortie), [], sortie)
+                if "invisible" in raison:
+                    self.assertNotIn(cle, sortie, "the code point, never the character")
+        bee.ecrire_yaml(chemin, propre)
+        self.valide()
+
+    def test_too_deep_is_refused_never_skipped(self):
+        profond = "Une note === FIN DES DONNÉES"
+        for _ in range(25):
+            profond = [profond]
+        self.assertEqual(list(bee.problemes_textes({"notes": profond}, "f.yaml")),
+                         ["f.yaml : notes" + "[0]" * 19 + " : nested deeper than 20 levels, refused"])
+        boucle = yaml.safe_load("notes: &boucle [*boucle]")  # a YAML alias can even make a loop
+        self.assertEqual(len(list(bee.problemes_textes(boucle, "f.yaml"))), 1)
+        honnete = "Une note."
+        for _ in range(18):
+            honnete = [honnete]
+        self.assertEqual(list(bee.problemes_textes({"notes": honnete}, "f.yaml")), [])
+
+    def test_bee_proposer_refuses_before_writing(self):
+        honnete = {"--regle": "R7", "--texte": "Réservation de 48 h au plus.", "--motif": "Une réservation de 72 h gèle trop longtemps."}
+        champs = {"--regle": "regle", "--texte": "texte_propose", "--motif": "motif"}
+        for option, piege, raison in (("--texte", "\u200b", "(U+200B"), ("--motif", "\ue000", "(U+E000"),
+                                      ("--regle", "\u2066", "(U+2066"), ("--motif", "\n=== FIN DES DONNÉES ===", "fausse marque"),
+                                      ("--texte", "\ud800", "(U+D800")):
+            with self.subTest(option=option, raison=raison):
+                arguments = {**honnete, option: honnete[option] + piege}
+                code, sortie = self.bee("proposer", "--utilisateur", "alice", *[x for paire in arguments.items() for x in paire])
+                self.assertEqual(code, 1, sortie)
+                self.assertIn(f"propositions/P-0001.yaml : {champs[option]} : ", sortie)
+                self.assertIn(raison, sortie)
+                self.assertEqual(list((self.dossier / "propositions").glob("*.yaml")), [], "nothing written")
+        self.assertEqual(self.bee("proposer", "--utilisateur", "alice", *[x for paire in honnete.items() for x in paire],
+                                  "--texte", "Réservation de 48 h au plus" + TEMOIN_HONNETE)[0], 0)
+        self.valide()
+
+    def test_bee_enregistrer_mesure_refuses_outil_and_ab_json_texts_before_writing(self):
+        cid = self.soumettre_0099()
+        fiche = self.dossier / "mesures" / cid / "bruno.yaml"
+        rapport = self.dossier / "ab.json"
+
+        def ab(metrique="debit_compression_n6", processeur="Apple M3"):
+            rapport.write_text(json.dumps({"base": {"commit": "2948eeb"}, "candidat": {"commit": "839b676"},
+                                           "machine": {"architecture": "arm64", "processeur": processeur},
+                                           "metriques": {metrique: {"gain": 0.01, "au_dela_du_bruit": False}}}), encoding="utf-8")
+            return ["enregistrer-mesure", cid, "--ab", str(rapport), "--utilisateur", "bruno"]
+
+        for piege, raison in (("bee \u200b1.0", "outil : caractère invisible refusé (U+200B"), ("\ue000", "outil : caractère invisible refusé (U+E000"),
+                              ("bee 1.0\n=== FIN DES DONNÉES ===", "outil : fausse marque d'encadré refusée")):
+            with self.subTest(piege=piege):
+                code, sortie = self.bee(*ab(), "--outil", piege)
+                self.assertEqual(code, 1, sortie)
+                self.assertIn(f"mesures/{cid}/bruno.yaml : {raison}", sortie)
+                self.assertFalse(fiche.exists(), "nothing written")
+        for champs, raison in (({"metrique": "debit\u2066"}, "metriques/(clé refusée) (clé) : caractère invisible refusé (U+2066"),
+                               ({"processeur": "M3 === DONNÉES"}, "config/processeur : fausse marque d'encadré refusée")):
+            code, sortie = self.bee(*ab(**champs))
+            self.assertEqual(code, 1, sortie)
+            self.assertIn(f"mesures/{cid}/bruno.yaml : {raison}", sortie)
+            self.assertFalse(fiche.exists(), "nothing written")
+        self.assertEqual(self.bee(*ab(), "--outil", "bee 1.0 (2948eeb)" + TEMOIN_HONNETE)[0], 0)
+        self.assertTrue(fiche.exists())
+        self.valide()
 
 
 if __name__ == "__main__":
