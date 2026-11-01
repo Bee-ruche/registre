@@ -41,10 +41,8 @@ critere_acceptation:
 hors_perimetre: [les forks, l'étiquette juge-v1, COMMANDEMENTS.md]
 depend_de: [miniz-0032]
 noeud: projets/ruche
-statut: reservee
-reservation:
-  utilisateur: "bidji29"
-  depuis: "2026-11-01T22:00:48Z"
+statut: en_relecture
+contribution: ruche-0024-c1
 cree_par: conseil
 cree_le: "2026-10-30"
 notes:
