@@ -35,3 +35,6 @@ notes:
   - par: "bidji29"
     le: "2026-10-31T02:51:18Z"
     texte: "31/10, revue adverse de la porte du libre-service : l'identité doit suivre le compte, pas le login, dans les deux sens. Un compte renommé garde ce qui est à lui (ce que dit cette tâche), et un login repris par un autre compte n'hérite de rien, partout où bee lit un pseudo (fiches, listes de gouvernance comprises). Avant de commencer, faire confirmer par le conseil les choix de conception (champ du numéro, listes de gouvernance, login renommé ou repris, migration des fiches). Plusieurs comptes d'une même personne : ruche-0051, à faire après celle-ci."
+  - par: "bidji29"
+    le: "2026-11-01T16:58:51Z"
+    texte: "1 Nov, from ruche-0089's review: declared agent accounts (gouvernance/comptes-agents.yaml) bind a login too. When identity moves to the numeric id, bind each agent account by its numeric id as well, and until then withdraw a declaration before its account is renamed or deleted."
