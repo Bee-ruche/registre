@@ -29,7 +29,7 @@ hors_perimetre:
   - "les forks"
   - "la durée d'ancienneté exigée"
 noeud: projets/ruche/ruche
-statut: en_relecture
+statut: integree
 contribution: ruche-0039-c1
 cree_par: conseil
 cree_le: "2026-10-31"
