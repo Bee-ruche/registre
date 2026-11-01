@@ -379,6 +379,32 @@ class TestCiScope(unittest.TestCase):
         self.assertNotEqual(r.returncode, 0, "an empty base compares HEAD with itself and passes")
         self.assertEqual(appels, "")
 
+    def test_both_workflows_give_the_gate_github_s_record_of_the_push(self):
+        """ruche-0091: the PR rules take the time of the PR from this run's creation (the API, read with the run's id), and
+        stop if it is unreadable; fusion-auto takes the creation of the validation run that the push triggered."""
+        regles = self.etapes()[1]["regles"]["run"]
+        self.assertIn('instant=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq .created_at)', regles)
+        faux_bee = pathlib.Path(tempfile.mkdtemp(dir=self.temp.name))
+        (faux_bee / "outils").mkdir()
+        (faux_bee / "outils/bee.py").write_text("import sys\nprint('BEE', *sys.argv[1:])\n", encoding="utf-8")
+        env = {"BASE": "abc", "AUTEUR": "alice", "GITHUB_RUN_ID": "4242"}
+        r, _, appels = self.rejouer(regles, {**env, "FAUX_GH": "2026-10-27T12:00:00Z"}, cwd=faux_bee)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("api repos/Bee-ruche/registre/actions/runs/4242 --jq .created_at", appels)
+        self.assertTrue(r.stdout.rstrip().endswith("--instant-pr 2026-10-27T12:00:00Z"), r.stdout)
+        (faux_bee / "bin").mkdir()  # a gh that answers for the account, not for the run
+        (faux_bee / "bin/gh").write_text('#!/bin/sh\ncase "$*" in *actions/runs/*) exit 1;; esac\necho 2020-01-01\n', encoding="utf-8")
+        (faux_bee / "bin/gh").chmod(0o755)
+        r = subprocess.run(["bash", "-e", "-c", regles], cwd=faux_bee, capture_output=True, text=True,
+                           env={**os.environ, **env, "PATH": f"{faux_bee / 'bin'}{os.pathsep}{os.environ['PATH']}",
+                                "GITHUB_REPOSITORY": "Bee-ruche/registre"})
+        self.assertNotEqual(r.returncode, 0)
+        self.assertNotIn("BEE", r.stdout, "the gate never runs without GitHub's record")
+        etape = next(s for s in yaml.safe_load((RACINE / ".github/workflows/fusion-auto.yml").read_text(encoding="utf-8"))["jobs"]
+                     ["fusionner"]["steps"] if s.get("name", "").startswith("Vérifier la fusion simulée"))
+        self.assertEqual(etape["env"]["INSTANT_PR"], "${{ github.event.workflow_run.created_at }}")
+        self.assertRegex(etape["run"], r'verifier-pr [^\n]*\\\n[^\n]*--instant-pr "\$INSTANT_PR"\n')
+
     def test_the_data_only_step_runs_exactly_the_tests_allowed_to_read_live_data(self):
         """One list: on a data-only PR, validation.yml runs TESTS_REGISTRE_REEL, the tests the audit hook lets read the live
         registry's data; each exists."""
@@ -2152,6 +2178,44 @@ class TestPullRequests(BaseTest):
         code, texte = self.verifier("david", "--compte-cree-le", "2021-05-05")
         self.assertEqual(code, 0, texte)
 
+    # --- ruche-0091: the time of the PR is the time GitHub recorded for the push (--instant-pr), not the time of the check ---
+
+    def test_member_file_is_dated_at_the_push_and_the_account_age_runs_to_the_check(self):
+        """inscrit_le is the day of the push, even when the check runs the next day, and a later day is refused whenever the
+        check runs; the account's age still runs to the check (as before), and a local run still takes the current time."""
+        age_89, push = "2026-07-30", ("--instant-pr", "2026-10-27T12:00:00Z")  # 89 days old on 2026-10-27, 90 on 2026-10-28
+        self.member_pr("late-check", compte_cree_le=age_89)  # inscrit_le 2026-10-27, as bee inscrire writes it at the push
+        os.environ["BEE_MAINTENANT"] = "2026-10-28T09:00:00Z"
+        code, texte = self.verifier("david", "--compte-cree-le", age_89, *push, "--fusion-auto")
+        self.assertEqual(code, 0, texte)
+        self.assertIn("FUSION_AUTO=oui", texte)
+        code, texte = self.verifier("david", "--compte-cree-le", age_89)
+        self.assertEqual(code, 1, texte)
+        self.assertIn("inscrit_le (2026-10-27) must be the date of the PR (2026-10-28)", texte)
+        os.environ["BEE_MAINTENANT"] = "2026-10-27T13:00:00Z"
+        code, texte = self.verifier("david", "--compte-cree-le", age_89, *push)
+        self.assertEqual(code, 1, texte)
+        self.assertIn("le compte GitHub doit avoir au moins 90 jours", texte)
+        self.member_pr("dated-after-the-push", inscrit_le="2026-10-28")
+        os.environ["BEE_MAINTENANT"] = "2026-10-28T09:00:00Z"
+        code, texte = self.verifier("david", "--compte-cree-le", "2021-05-05", *push)
+        self.assertEqual(code, 1, texte)
+        self.assertIn("inscrit_le (2026-10-28) must be the date of the PR (2026-10-27)", texte)
+
+    def test_a_missing_or_malformed_time_of_the_push_is_refused(self):
+        """In CI the time of the push comes from GitHub: empty, unreadable, without a time zone, or after the check, the PR
+        is refused (fails closed), never checked at the current time instead."""
+        git(self.dossier, "switch", "-qc", "reservation")
+        self.assertEqual(self.bee("prendre", "miniz-0099", "--utilisateur", "alice")[0], 0)
+        self.commit()
+        self.assertEqual(self.verifier("alice", "--instant-pr", "2026-10-27T12:01:00Z")[0], 0)
+        for valeur in ("", "null", "garbage", "2026-10-27T12:00:00", "2026-10-27", "2026-10-27T12:01:01Z", "2099-01-01T00:00:00Z"):
+            with self.subTest(valeur=valeur):
+                code, texte = self.verifier("alice", "--instant-pr", valeur, "--fusion-auto")
+                self.assertEqual(code, 1, texte)
+                self.assertIn("--instant-pr", texte)
+                self.assertNotIn("FUSION_AUTO", texte)
+
     def test_an_existing_member_file_keeps_its_dates(self):
         """The dates of a registered member are not checked again against a later PR: a profile change passes, without
         GitHub's date; changing a date stays refused (only the preferred categories change)."""
@@ -3214,14 +3278,14 @@ class TestPullRequestsEnParallele(BaseParallele):
     def verifier(self, auteur, *options):
         return self.bee("verifier-pr", "--base", "main", "--tete", "HEAD", "--auteur", auteur, *options)
 
-    def libre_service(self, auteur, nature):
-        code, texte = self.verifier(auteur, "--fusion-auto")
+    def libre_service(self, auteur, nature, *options):
+        code, texte = self.verifier(auteur, "--fusion-auto", *options)
         self.assertEqual(code, 0, texte)
         self.assertIn("FUSION_AUTO=oui", texte)
         self.assertIn(nature, texte)
 
-    def refusee(self, auteur, morceau):
-        code, texte = self.verifier(auteur)
+    def refusee(self, auteur, morceau, *options):
+        code, texte = self.verifier(auteur, *options)
         self.assertEqual(code, 1, texte)
         self.assertIn(morceau, texte)
 
@@ -3537,6 +3601,41 @@ class TestPullRequestsEnParallele(BaseParallele):
                 self.assertEqual(code, 0 if acceptee else 1, texte)
                 if not acceptee:
                     self.assertIn(f"taches/miniz/{tid}.yaml : depuis ({depuis}) doit être l'heure de la PR", texte)
+
+    def test_engagement_dates_are_checked_at_the_push_whenever_the_check_runs(self):
+        """ruche-0091: the reservation, then the parallel registration, written by bee at the push (12:00, --instant-pr) pass
+        when the check runs hours later; dated outside the tolerance around the push, each is refused, even where it would
+        fit the time of the check. A local run, without --instant-pr, still takes the current time."""
+        push = ("--instant-pr", "2026-10-27T12:00:00Z")
+        for qui, nature, refus in (("alice", "reservation", "une réservation est datée de l'heure de la PR"),
+                                   ("bruno", "inscription_parallele", "doit être datée de l'heure de la PR")):
+            if qui == "alice":
+                self.branche()
+                self.assertEqual(self.bee("prendre", "miniz-0099", "--utilisateur", "alice")[0], 0)  # 12:00
+            else:
+                git(self.dossier, "switch", "-qf", "main")
+                self.a("2026-10-27T09:00:00Z")
+                self.main_reservee_avec_inscrits()  # alice since 09:00
+                self.a("2026-10-27T12:00:00Z")
+                self.branche("pr-parallele")
+                self.parallele("miniz-0099", "bruno")
+            self.commit()
+            for instant in ("2026-10-27T12:00:00Z", "2026-10-27T14:00:01Z", "2026-10-28T11:00:00Z"):
+                with self.subTest(qui=qui, instant=instant):
+                    self.a(instant)
+                    self.libre_service(qui, nature, *push)
+            with self.subTest(qui=qui, local=True):
+                self.a("2026-10-27T14:00:01Z")
+                self.refusee(qui, refus)
+            self.a("2026-10-27T18:00:00Z")  # the check runs 6 h after the push
+            for depuis, acceptee in self.DATES + (("2026-10-27T17:00:00Z", False), ("2026-10-27T18:00:00Z", False)):
+                with self.subTest(qui=qui, depuis=depuis):
+                    self.dater(qui, depuis)
+                    self.commit()
+                    if acceptee:
+                        self.libre_service(qui, nature, *push)
+                    else:
+                        self.refusee(qui, refus, *push)
 
     def test_un_fichier_du_libre_service_garde_son_mode(self):
         """In the self-service folders, a file added or modified by a member is a regular file and keeps its mode, with or
@@ -4518,7 +4617,8 @@ class TestRevueAdverse(BaseParallele):
         git(self.dossier, "switch", "-q", "main")
         (racine / "home").mkdir()
         sortie_gh = racine / "github_output"
-        env = {"NUMERO": "1", "AUTEUR": "chloe", "SHA": sha, "HOME": str(racine / "home"), "GITHUB_OUTPUT": str(sortie_gh)}
+        env = {"NUMERO": "1", "AUTEUR": "chloe", "SHA": sha, "HOME": str(racine / "home"), "GITHUB_OUTPUT": str(sortie_gh),
+               "INSTANT_PR": "2026-10-27T13:00:05Z"}  # ruche-0091: workflow_run.created_at, the validation run of the push
         # La PR 5555 a été ouverte par david : la soumission de chloe est refusée par l'étape de fusion-auto.
         sortie, _, appels = self.etape("Vérifier la fusion simulée", {PR_MINIZ + "5555": {"state": "OPEN", "head": "x", "auteur": "david"}},
                                        flux="fusion-auto.yml", env_en_plus=env, reussite=False)
@@ -4540,6 +4640,42 @@ class TestRevueAdverse(BaseParallele):
         code, texte = self.bee("verifier-pr", "--base", "main", "--tete", "HEAD", "--auteur", "chloe", "--auteurs-pr", str(vide))
         self.assertEqual(code, 1, texte)
         self.assertIn("auteur relevé : inconnu", texte)
+
+    def test_fusion_auto_checks_the_declared_dates_at_the_push(self):
+        """ruche-0091: fusion-auto's step gives verifier-pr the creation of the validation run that the push triggered. A
+        submission written at the push merges when the step runs hours later; one dated after the push is refused, and so is
+        the PR when that record is missing or malformed (fails closed)."""
+        self.fermer_porte()
+        self.assertEqual(self.bee("prendre", "miniz-0099", "--utilisateur", "alice")[0], 0)
+        self.init_git()
+        racine = self.dossier.parent
+        subprocess.run(["git", "clone", "-q", "--bare", str(self.dossier), str(racine / "origine.git")], check=True)
+        git(self.dossier, "remote", "add", "origin", str(racine / "origine.git"))
+        git(self.dossier, "fetch", "-q", "origin")
+        self.a("2026-10-27T13:00:00Z")
+        self.branche("soumission")
+        self.assertEqual(self.bee("soumettre", "miniz-0099", "--utilisateur", "alice", "--pr", PR_MINIZ + "5555")[0], 0)
+        self.commit()
+        git(self.dossier, "push", "-q", "origin", "soumission:refs/pull/1/head")
+        sha = git(self.dossier, "rev-parse", "soumission").strip()
+        git(self.dossier, "switch", "-q", "main")
+        (racine / "home").mkdir()
+        sortie_gh = racine / "github_output"
+        self.a("2026-10-27T17:30:00Z")  # the step runs 4 h 30 after the push
+        for instant_pr, code in (("2026-10-27T13:00:05Z", "0"), ("2026-10-27T12:58:00Z", "1"), ("", "1"), ("null", "1"),
+                                 ("2026-10-27 13:00:05", "1")):
+            with self.subTest(instant_pr=instant_pr):
+                if (racine / "fusion").exists():
+                    git(self.dossier, "worktree", "remove", "--force", "../fusion")
+                    git(self.dossier, "branch", "-D", "pr-1")
+                sortie_gh.write_text("", encoding="utf-8")
+                env = {"NUMERO": "1", "AUTEUR": "alice", "SHA": sha, "HOME": str(racine / "home"), "GITHUB_OUTPUT": str(sortie_gh),
+                       "INSTANT_PR": instant_pr}
+                sortie, _, _ = self.etape("Vérifier la fusion simulée", {PR_MINIZ + "5555": {"state": "OPEN", "head": "x", "auteur": "alice"}},
+                                          flux="fusion-auto.yml", env_en_plus=env, reussite=code == "0")
+                self.assertIn(f"code={code}", sortie_gh.read_text(encoding="utf-8"), sortie)
+                if instant_pr == "2026-10-27T12:58:00Z":
+                    self.assertIn("soumise_le doit être l'heure de la soumission", sortie)
 
     def test_N8_une_integration_d_une_manche_anterieure_n_empeche_pas_de_clore(self):
         self.fermer_porte()
