@@ -29,7 +29,8 @@ RACINE = pathlib.Path(__file__).resolve().parent.parent
 # que nomment les tests, avec ce dont elles dépendent, copiées le 1/11 (8e0fb0c). La durée de la suite ne dépend plus de
 # l'activité de la ruche ; test_le_registre_livre_est_valide valide le registre réel tel qu'il est. Un nouveau test écrit
 # ses propres tâches fictives (TACHE_OPTIMISATION) ; s'il lui faut une donnée réelle, il en ajoute la copie au jeu figé, avec
-# ce dont elle dépend.
+# ce dont elle dépend. Un test qui doit valoir pour chaque tâche réelle lit RACINE (comme le budget des chemins), jamais le
+# jeu figé. Le jeu figé ne suit pas l'arbre : si un nœud est renommé, mettre à jour le `noeud` de ses tâches.
 JEU_FIGE = pathlib.Path(__file__).resolve().parent / "tests" / "registre"
 DONNEES_REGISTRE = tuple(d.rstrip("/") for d in bee.DOSSIERS_LIBRE_SERVICE)
 
@@ -79,6 +80,37 @@ def lancer(*arguments):
 
 def git(depot, *arguments):
     return subprocess.run(["git", "-C", str(depot), *arguments], check=True, capture_output=True, text=True).stdout
+
+
+class TestRegistreReel(unittest.TestCase):
+    """ruche-0093 : les commandes de lecture tiennent sur le registre réel, tel qu'il est (les autres tests lisent le jeu figé)."""
+
+    def test_les_commandes_de_lecture_tiennent_sur_le_registre_reel(self):
+        with tempfile.TemporaryDirectory() as sortie:
+            for arguments in (("site", "--sortie", sortie), ("cap", "--json"), ("essaim", "--json"),
+                              ("classement", "--json"), ("lister", "--json"), ("niveaux",), ("debats",)):
+                with self.subTest(commande=arguments[0]):
+                    code, texte = lancer("--registre", str(RACINE), *arguments)
+                    self.assertEqual(code, 0, texte)
+
+
+class TestJeuFige(unittest.TestCase):
+    """ruche-0093 : le jeu figé n'est que des données YAML, et rien hors des tests ne l'importe ni ne l'exécute."""
+
+    def test_que_des_donnees_yaml(self):
+        dossier = RACINE / "outils" / "tests"
+        intrus = sorted(p.relative_to(RACINE).as_posix() for p in dossier.rglob("*")
+                        if "__pycache__" not in p.parts and (p.is_symlink() or (p.is_file() and p.suffix != ".yaml")))
+        self.assertEqual(intrus, [])
+
+    def test_rien_ne_l_importe_ni_ne_l_execute(self):
+        codes = [RACINE / "outils" / n for n in ("bee.py", "site_bee.py", "inventaire_marqueurs.py")]
+        codes += [p for p in (RACINE / "outils" / "juge").rglob("*.py") if not p.name.startswith("test_")]
+        codes += list((RACINE / "outils" / "repetition").rglob("*")) + list((RACINE / ".github").rglob("*.yml"))
+        for chemin in sorted(c for c in codes if c.is_file() and "__pycache__" not in c.parts):
+            with self.subTest(fichier=chemin.relative_to(RACINE).as_posix()):
+                self.assertNotRegex(chemin.read_text(encoding="utf-8", errors="replace"),
+                                    r"outils[/.]tests|\bfrom tests\b|\bimport tests\b|tests/registre")
 
 
 class TestWorkflows(unittest.TestCase):
