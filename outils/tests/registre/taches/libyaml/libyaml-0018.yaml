@@ -1,0 +1,33 @@
+id: libyaml-0018
+projet: libyaml
+categorie: parsing-serialisation
+type: test
+taille: M
+titre: "Juge isolé de libyaml, étape 6/6 : branchement à la CI et modèle de menace"
+contexte: >
+  Découpage de libyaml-0005 (juge isolé pour libyaml), dernière étape sur 6 ; utile seule : c'est elle qui
+  permet de lever la porte de relecture de R3 pour libyaml (REGLES.md, valeur si_juge_incomplet), que le
+  greffon et le harnais de libyaml-0013 à libyaml-0017 ne lèvent pas tant que la CI ne les appelle pas.
+  bee-ci.yml appelle alors le juge commun (Bee-ruche/registre/.github/workflows/juge.yml) à une version
+  épinglée par étiquette ou par SHA, comme minizBee depuis sa PR #16, et verdict.json porte la section juge
+  que lit bee enregistrer-verdict. Les optimisations libyaml-0010 et libyaml-0011 dépendent de cette tâche.
+  La porte ne tombe vraiment que lorsqu'une optimisation réelle a été jugée de bout en bout, comme
+  miniz-0013-c1 l'a été pour miniz le 29/10. Cette étape touche la CI du fork : revue adverse, et fusion par
+  le conseil ou par l'architecte, jamais automatique.
+fichiers: [.github/workflows/bee-ci.yml, bee/README.md]
+portee: 0.8
+metrique: null
+critere_acceptation:
+  - "la CI est verte sur la base et sur la PR, et le juge commun est appelé à une version épinglée (par étiquette ou par SHA, comme minizBee depuis sa PR #16)"
+  - "verdict.json contient la section juge (version, commun, sorties_comparees, constructions_suspectes) et bee enregistrer-verdict la lit"
+  - "le modèle de menace de bee/README.md dit aussi ce qui reste hors de portée"
+hors_perimetre:
+  - "sources de libyaml"
+  - "outils/juge/ du registre"
+  - "changement des métriques suivies"
+  - "nouvelle dépendance hors image"
+depend_de: [libyaml-0017]
+noeud: projets/parsing-serialisation/libyaml
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-31"

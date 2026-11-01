@@ -1,0 +1,36 @@
+id: libyaml-0013
+projet: libyaml
+categorie: parsing-serialisation
+type: test
+taille: M
+titre: "Juge isolé de libyaml, étape 1/6 : harnais de vérification et script de construction"
+contexte: >
+  Découpage de libyaml-0005 (juge isolé pour libyaml, environ 800 lignes hors tests en tout), étape 1 sur 6 ;
+  utile seule : un harnais isolé qu'on peut lancer à la main, sur lequel reposent toutes les étapes suivantes.
+  Le juge commun du registre (outils/juge/, docs/juge-commun.md, étiquette juge-v1) exécute le code C de la
+  PR en conteneur sans réseau, en lecture seule, sans privilège ; le projet lui fournit un harnais
+  (bee/juge/execution.c), un script de construction (bee/juge/construire.sh) et un greffon
+  (bee/juge/projet.py, libyaml-0014). Modèles : le projet jouet du registre (outils/juge/jouet/bee/juge/ :
+  execution.c 137 lignes, construire.sh 17) et minizBee (bee/juge/execution.c 510 lignes, construire.sh 32).
+  Le sérialiseur bee_flux de bee/fuzz/fuzz_parse.c (libyaml-0002, intégrée) écrit déjà le flux d'événements
+  strict, erreurs et positions comprises ; compilé avec -DBEE_FLUX_SEUL, il ne définit que bee_flux : à
+  vérifier, puis à réutiliser plutôt qu'à copier. Le mode verifier écrit, pour chaque entrée, le flux
+  sérialisé et le statut (ok ou err). Jusqu'à libyaml-0018, la CI n'appelle pas bee/juge/ : cette étape ne
+  change aucun verdict. Elle touche les juges : relue par un gardien ou par le conseil.
+fichiers: [bee/juge/execution.c, bee/juge/construire.sh]
+portee: 1.0
+metrique: null
+critere_acceptation:
+  - "compilé dans la sandbox sur la base, deux exécutions de execution verifier sur le corpus écrivent des sorties identiques octet pour octet, et le statut de chaque fichier (ok ou err) est celui de bee/tests/empreintes-reference.txt"
+  - "construire.sh laisse un obj/<nom>.o par fichier de src/*.c, sans homonyme"
+  - "aucun tampon n'est dimensionné d'après le seul code jugé"
+hors_perimetre:
+  - "sources de libyaml"
+  - "outils/juge/ du registre"
+  - "changement des métriques suivies"
+  - "nouvelle dépendance hors image"
+  - ".github/workflows/bee-ci.yml (le branchement à la CI est libyaml-0018)"
+noeud: projets/parsing-serialisation/libyaml
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-31"
