@@ -10935,6 +10935,29 @@ class TestAgentAccountsWorkflows(BaseParallele):
         self.assertEqual(self.enr(c1)["statut"], "integree")
         self.valide()
 
+    def test_verdicts_take_the_pr_of_the_authors_agent_account_and_nothing_else(self):
+        declarer_agents(self.dossier, (AGENT, "bidji29"), ("alice-agent", "alice"))
+        c1 = self.soumettre_0099("alice")
+        verdict = {"ci": "verte", "gain": 0.05, "au_dela_du_bruit": True, "lignes_modifiees": 10, "instructions": INSTRUCTIONS_N6}
+        for login in (AGENT, "Alice-Agent2", "mallory", "alice-agent-x"):
+            with self.subTest(pr_by=login):
+                etats = {PR_MINIZ + "99007": {"state": "OPEN", "head": "abc1234", "auteur": login, "verdict": verdict}}
+                sortie, _, appels = self.etape("Récupérer les verdicts", etats, flux="verdicts.yml")
+                self.assertIn(f"la PR {PR_MINIZ}99007 a été ouverte par {login}, pas par alice ; aucun verdict", sortie)
+                self.assertNotIn("verdict", self.enr(c1))
+                self.assertFalse(self.appels_de(appels, "run"))
+        # An unreadable declaration maps no one (fail closed).
+        declaration = (self.dossier / bee.AGENT_ACCOUNTS).read_text(encoding="utf-8")
+        (self.dossier / bee.AGENT_ACCOUNTS).write_text("accounts: [\n", encoding="utf-8")
+        etats = {PR_MINIZ + "99007": {"state": "OPEN", "head": "abc1234", "auteur": "alice-agent", "verdict": verdict}}
+        sortie, _, _ = self.etape("Récupérer les verdicts", etats, flux="verdicts.yml")
+        self.assertIn("ouverte par alice-agent, pas par alice ; aucun verdict", sortie)
+        self.assertNotIn("verdict", self.enr(c1))
+        (self.dossier / bee.AGENT_ACCOUNTS).write_text(declaration, encoding="utf-8")
+        self.etape("Récupérer les verdicts", etats, flux="verdicts.yml")
+        self.assertEqual((self.enr(c1)["verdict"]["ci"], self.enr(c1)["verdict"]["sha"]), ("verte", "abc1234"))
+        self.valide()
+
     def test_closing_the_pr_of_a_set_aside_contribution(self):
         declarer_agents(self.dossier, (AGENT, "bidji29"), ("chloe-agent", "chloe"))
         self.fermer_porte()

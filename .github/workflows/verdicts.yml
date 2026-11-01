@@ -56,7 +56,9 @@ jobs:
             read -r sha auteur_pr <<< "$infos"
             # Le champ pr d'une contribution est déclaré par son auteur : la PR doit être la sienne (le pseudo d'un membre
             # est son login GitHub). Sinon, aucun verdict : on ne juge pas le travail d'un autre sous son nom.
-            if [ "${auteur_pr,,}" != "${auteur,,}" ]; then
+            # ruche-0089 : une PR ouverte par son compte d'agent déclaré compte comme la sienne (bee acts-for lit main).
+            personne=$(python3 outils/bee.py acts-for -- "$auteur_pr" < /dev/null) || personne=""
+            if [ "${personne,,}" != "${auteur,,}" ]; then
               echo "::notice::$id : la PR $pr a été ouverte par $auteur_pr, pas par $auteur ; aucun verdict n'est enregistré."; continue
             fi
             # Un verdict vert sur ce commit est définitif ; un rouge peut venir d'une panne passagère
