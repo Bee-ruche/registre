@@ -3402,7 +3402,14 @@ POURQUOI_MAX, FAIT_MAX, ADRESSE_MAX = 5, 300, 200
 # normalisation (NFKC : ＠ et chiffres pleine largeur, espaces insécables ; tirets unifiés ; URL décodée). Les faux positifs
 # sont acceptés : la relecture humaine reste le vrai contrôle.
 COURRIEL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}")
-COURRIEL_DEGUISE = re.compile(r"\b[\w.+-]+\s+(?:at|arobase)\s+[\w-]+\s+(?:dot|point)\s+[a-z]{2,}\b", re.I)
+# ruche-0044: "at the point where", "at this point in time" are English prose, not "<name> at <domain> point <tld>". Let
+# them through only if the would-be domain is a determiner (a fact of the address, not of the words around it: no other
+# address can borrow this), the separator is "point" and a word follows the would-be tld on its line. "at the dot org",
+# "at the point gmail.com", "at the point gmail dot com", a tld that ends the text or meets a sign: still caught.
+DETERMINANTS_EN = r"the|a|an|another|this|that|which|what|some|any|each|every|no"
+COURRIEL_DEGUISE = re.compile(r"\b[\w.+-]+\s+(?:at|arobase)"
+                              rf"(?!\s+(?:{DETERMINANTS_EN})\s+point\s+[\w-]+[^\S\n]+(?!(?:dot|point)\b)[^\W\d_])"
+                              r"\s+[\w-]+\s+(?:dot|point)\s+[a-z]{2,}\b", re.I)
 VOIES_FR = r"rue|r\.|avenue|av\.|boulevard|bd|chemin|ch\.|all[ée]e|impasse|imp\.|place|pl\.|quai|route|rte|cours|voie|passage|square|faubourg|fbg|chauss[ée]e"
 VOIES_EN = r"Street|St|Road|Rd|Avenue|Ave|Lane|Ln|Boulevard|Blvd|Drive|Dr|Court|Ct|Way|Place|Pl|Square|Sq|Terrace|Close|Crescent|Strasse|Straße|Weg|Gasse|Platz"
 ADRESSE_POSTALE = re.compile(rf"(?i:\b\d{{1,5}}\s*(?:bis|ter|[a-z])?\s*,?\s+(?:{VOIES_FR})(?=[\s.,]|$))"

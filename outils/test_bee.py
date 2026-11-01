@@ -9116,6 +9116,94 @@ class TestTroisiemeRevueRuche0020(BaseRevueRuche0020):
             auteur="bidji29"), ["honnête"])
 
 
+# ruche-0044: honest English and French, written in the style of PR descriptions, code reviews and optimisation reports; the
+# Catch2 and miniz comments are real (minizBee's tests/catch_amalgamated.cpp and tests/large_fuzzer.c). The first fourteen were
+# refused before ruche-0044 (taken for "<name> at <domain> point <tld>"); the others guard what was already accepted.
+PHRASES_HONNETES_0044 = (
+    "The loop stalls at the point where the window slides past the end of the buffer.",
+    "We stop at the point where the gain drops below 2 percent.",
+    "The decoder bails out at that point in the stream, which is fine.",
+    "Nothing is allocated at this point in the parse, so the early return is safe.",
+    "It is worth profiling again at some point later this week.",
+    "Both runs diverge at a point where the hash chain wraps around.",
+    "Reviewers can stop at any point during the rehearsal.",
+    "It never reads past the input, and at no point does it write to the table.",
+    "Measure each scenario at every point where the output could change.",
+    "The window fills up at which point the encoder flushes the block.",
+    "We are at another point in the design space now.",
+    "Let us find out at what point the CI starts timing.",
+    "Under CATCH_CONFIG_FAST_COMPILE, unexpected exceptions under REQUIRE assertions are reported without translation at the "
+    "point of origin.",
+    "En anglais, on écrirait : it stalls at the point where the window ends.",
+    "At this point, uncompr is still mostly zeroes, so it should compress very well.",
+    "I would merge it at this point, the remaining comments are cosmetic.",
+    "Thanks @bidji29, good point.",
+    "cc @alice: can you take a look at section 4?",
+    "The hot path is at deflate.c, line 812.",
+    "Benchmarked on 4 cores at 3.2 GHz, median of 9 runs.",
+    "The gain is at 2 point 5 percent, within the noise.",
+    "Reviewed at 10:30, the tests pass on x86-64 and ARM64.",
+    "Rebased on main at 7f547d4, no conflicts.",
+    "It shifts by 2 places to the left on every round.",
+    "The struct is 48 bytes, down from 64, and the output is identical bit for bit.",
+    "Good catch at line 42, point taken.",
+    "On arrive au point où la fenêtre déborde du tampon.",
+    "Le gain passe à 2 point 5 pour cent sur le scénario n6.",
+    "Voir la ligne 812, point 3 de la revue.",
+    "Le correctif est au point 2 de la PR.",
+    "Le décodeur s'arrête à ce point du flux, sans perte.",
+    "Mesuré sur 9 exécutions, médiane de 2,1 % de gain.",
+    "Lu à 10 h, les tests passent sur x86-64 et ARM64.",
+    "Le caractère arobase est réservé aux adresses ; ici, il n'y en a aucune.",
+    "Point par point, la revue tient : rien ne change en sortie.",
+)
+# Addresses next to what ruche-0044 lets through, all caught before it: "dot", a domain that is not a determiner, the address
+# going on after the would-be tld (spelled, written or bracketed), a tld at the end or before a sign, a written or bracketed @.
+COORDONNEES_VOISINES_0044 = (
+    "alice at the dot org", "Write to alice at the dot org for details", "alice at exemple point org",
+    "alice arobase exemple point fr", "alice at the point gmail dot com", "alice at the point gmail.com",
+    "alice at the point gmail (dot) com", "alice at the point gmail·com", "alice at the point gmail point com for details",
+    "alice at this point com.", "Write to alice at the point org", "alice at one point com for details",
+    "alice at my point com for details", "alice at 163 point com for details", "alice (at) the point org for details",
+    "alice [at] this point com for details", "alice@the point org for details", "alice @ the point org for details",
+    "alice＠the point org for details", "jean.dupont at example dot org", "jean at exemple dot co dot uk",
+    "Merci @alice. Écrivez à bob@exemple.org.",
+)
+
+
+class TestPersonalDataDetectorsPlainEnglish(unittest.TestCase):
+    """ruche-0044: the R13 detectors accept ordinary English (« at the point where ») and still catch the addresses next to
+    it. No registry: fast."""
+
+    def test_honest_sentences_pass_every_detector(self):
+        self.assertGreaterEqual(len(PHRASES_HONNETES_0044), 30)
+        self.assertIn("at the point where", PHRASES_HONNETES_0044[0])
+        for phrase in PHRASES_HONNETES_0044:
+            with self.subTest(phrase=phrase):
+                self.assertFalse(bee.courriel(phrase))
+                self.assertIsNone(bee.ADRESSE_POSTALE.search(phrase))
+                self.assertFalse(bee.numero_de_telephone(phrase))
+                self.assertIsNone(bee.donnee_personnelle(phrase))
+
+    def test_neighbouring_addresses_still_caught(self):
+        for texte in COORDONNEES_VOISINES_0044:
+            with self.subTest(texte=texte):
+                self.assertEqual(bee.donnee_personnelle(texte), "une adresse de courriel")
+
+
+class TestPersonalDataDetectorsPlainEnglishFlows(BaseRevueRuche0020):
+    """ruche-0044: the same English passes in an invitation's message (verifier-pr) and in an agora argument."""
+
+    def test_english_in_an_invitation_and_in_the_agora(self):
+        phrase = PHRASES_HONNETES_0044[0]
+        self.a("2026-10-30T10:00:00Z")
+        self.assertEqual(self.essayer(["en"], lambda _: self.proposer_brut(
+            message=MESSAGE_INVITATION + " " + phrase + "\n\n" + self.mention())), ["en"])
+        self.branche()
+        self.argumenter("alice", "pour", phrase)
+        self.publier("alice", "argument")
+
+
 class TestVerificationRuche0020(BaseRevueRuche0020):
     """Vérification de cdbcf36 (D1 à D5, et la ligne du commandement 10) : un test par point, parcours honnête accepté,
     détournement refusé. Données fictives."""
