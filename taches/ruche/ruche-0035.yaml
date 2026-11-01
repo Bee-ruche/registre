@@ -32,6 +32,9 @@ hors_perimetre:
   - "les forks"
   - "l'étiquette juge-v1"
 noeud: projets/ruche/ruche
-statut: ouverte
+statut: reservee
+reservation:
+  utilisateur: "bidji29"
+  depuis: "2026-11-01T06:32:04Z"
 cree_par: conseil
 cree_le: "2026-10-31"
