@@ -1,0 +1,32 @@
+id: libyaml-0016
+projet: libyaml
+categorie: parsing-serialisation
+type: test
+taille: M
+titre: "Juge isolé de libyaml, étape 4/6 : sortie de l'émetteur"
+contexte: >
+  Découpage de libyaml-0005 (juge isolé pour libyaml), étape 4 sur 6 ; utile seule : l'émetteur, cible de la
+  métrique debit_emission, est jugé de l'extérieur. Les greffon et harnais de libyaml-0013 et libyaml-0014
+  ne comparent que le flux d'événements de l'analyseur ; un changement de l'émetteur (style d'un scalaire,
+  indentation, guillemets) n'y serait pas vu. Pour chaque entrée valide, le harnais ré-émet les événements
+  avec l'émetteur de libyaml, et le greffon compare les octets produits à ceux de la base. Indépendante de
+  libyaml-0015 (entrées tirées au hasard) : les deux partent de libyaml-0014. Jusqu'à libyaml-0018, la CI
+  n'appelle pas bee/juge/ : cette étape ne change aucun verdict. Elle touche les juges : relue par un
+  gardien ou par le conseil.
+fichiers: [bee/juge/execution.c, bee/juge/projet.py, bee/juge/test_juge.py]
+portee: 0.6
+metrique: null
+critere_acceptation:
+  - "pour chaque entrée valide, le harnais ré-émet les événements avec l'émetteur, et le greffon compare les octets à ceux de la base"
+  - "méta-test : une variante de l'émetteur qui change un style est refusée"
+hors_perimetre:
+  - "sources de libyaml"
+  - "outils/juge/ du registre"
+  - "changement des métriques suivies"
+  - "nouvelle dépendance hors image"
+  - ".github/workflows/bee-ci.yml (le branchement à la CI est libyaml-0018)"
+depend_de: [libyaml-0014]
+noeud: projets/parsing-serialisation/libyaml
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-31"
