@@ -942,13 +942,13 @@ def commits_premier_parent(racine, ref, *chemins, filtre=None):
     """Commits de `ref` qui touchent ces chemins, sur le premier parent (les fusions dans la branche), du plus récent au plus
     ancien : [(sha, instant du commit, [chemins touchés])]. `filtre` : celui de git diff (« A » : les fichiers ajoutés).
     Vide si l'historique est illisible."""
-    code, sortie = _git_brut(racine, "-c", "core.quotepath=off", "log", "--first-parent", "--no-renames", "--format=%x00%H %ct",
+    code, sortie = _git_brut(racine, "log", "-z", "--first-parent", "--no-renames", "--format=%x00%H %ct",
                              "--name-only", *([f"--diff-filter={filtre}"] if filtre else []), ref, "--", *chemins)
     if code:
         return []
     commits = []
-    for bloc in sortie.decode("utf-8", "replace").split("\x00")[1:]:
-        lignes = [ligne for ligne in bloc.split("\n") if ligne.strip()]
+    for bloc in sortie.decode("utf-8").strip("\0").split("\0\0"):  # -z: "\0<sha> <instant>\0\n<path>\0<path>\0" per commit
+        lignes = bloc.replace("\0\n", "\0", 1).split("\0")
         if not lignes:
             continue
         sha, _, horodatage = lignes[0].partition(" ")
@@ -1082,12 +1082,12 @@ class DatesDeFusion:
             self._charger(reg.racine)
 
     def _charger(self, racine):
-        code, sortie = _git_brut(racine, "-c", "core.quotepath=off", "status", "--porcelain", "--untracked-files=all",
+        code, sortie = _git_brut(racine, "status", "-z", "--porcelain", "--untracked-files=all",
                                  "--no-renames", "--", *DOSSIERS_GESTES)
         if code:
             self.disponible = False
             return
-        modifies = {ligne[3:] for ligne in sortie.decode("utf-8", "replace").splitlines() if len(ligne) > 3}
+        modifies = {ligne[3:] for ligne in sortie.decode("utf-8").split("\0")[:-1]}
         par_fichier = defaultdict(list)
         for sha, moment, chemins in commits_premier_parent(racine, "HEAD", *DOSSIERS_GESTES):
             for chemin in chemins:
@@ -2072,10 +2072,10 @@ def verifier_manifeste(reg, donnees, origine="CONTRIBUTION.yaml", utilisateur=No
 # --------------------------------------------------------------------------
 
 def git(depot, *arguments):
-    resultat = subprocess.run(["git", "-C", str(depot), *arguments], capture_output=True, text=True)
-    if resultat.returncode != 0:
-        raise ErreurBee(f"git {' '.join(arguments)} : {resultat.stderr.strip()}")
-    return resultat.stdout
+    resultat = subprocess.run(["git", "-C", str(depot), *arguments], capture_output=True)  # only a -z listing, read as bytes
+    if resultat.returncode != 0 or (champs := resultat.stdout.decode("utf-8").split("\0")).pop():  # a path not UTF-8 raises
+        raise ErreurBee(f"git {' '.join(arguments)} : {os.fsdecode(resultat.stderr).strip() or 'not a -z listing'}")
+    return list(zip(champs[::2], champs[1::2], strict=True)) if {"--name-status", "--raw"} & set(arguments) else champs
 
 
 def lire_yaml_ref(depot, ref, chemin):
@@ -2124,7 +2124,7 @@ def numero_suivant(numeros):
 
 def numeros_dans(reg, ref, dossier, motif):
     """Numéros (groupe « n » de `motif`) des fichiers de `dossier` à la révision `ref`."""
-    return [int(m["n"]) for nom in git(reg.racine, "ls-tree", "--name-only", ref, dossier.rstrip("/") + "/").splitlines()
+    return [int(m["n"]) for nom in git(reg.racine, "ls-tree", "-z", "--name-only", ref, dossier.rstrip("/") + "/")
             if (m := motif.match(nom))]
 
 
@@ -2254,9 +2254,9 @@ def creations_recentes(reg, ref, dossier, utilisateur, instant):
     if not siens:
         return 0
     if historique_disponible(reg.racine):
-        code, sortie = _git_brut(reg.racine, "-c", "core.quotepath=off", "ls-tree", "-r", "--name-only", ref, dossier + "/")
+        code, sortie = _git_brut(reg.racine, "ls-tree", "-z", "-r", "--name-only", ref, dossier + "/")
         if not code:
-            publies = set(sortie.decode("utf-8", "replace").splitlines())
+            publies = set(sortie.decode("utf-8").split("\0")[:-1])
             recents = {c for _, moment, chemins in commits_premier_parent(reg.racine, ref, dossier, filtre="A")
                        if moment > debut for c in chemins}
             return sum(1 for c in siens if c in recents or c not in publies)
@@ -2492,10 +2492,8 @@ def verifier_engagements(reg, chemin, ancien, nouveau, differences, auteur, *, e
 
 def contributions_de_la_pr(reg, base, tete):
     """Contributions ajoutées ou modifiées par la PR : [(chemin, contribution lue dans la tête)]."""
-    sorties = git(reg.racine, "diff", "--name-status", "--no-renames", f"{base}...{tete}")
     resultat = []
-    for ligne in sorties.splitlines():
-        statut_git, _, chemin = ligne.partition("\t")
+    for statut_git, chemin in git(reg.racine, "diff", "-z", "--name-status", "--no-renames", f"{base}...{tete}"):
         partie = chemin.split("/")
         if statut_git in ("A", "M") and partie[0] == "contributions" and len(partie) == 3 and chemin.endswith(".yaml"):
             try:
@@ -4444,7 +4442,7 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
         agents = {}  # unreadable in the base: no agent account (fail closed)
     if (personne := agents.get(auteur)) is None:
         return verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr, agents)
-    if touchees := {c for c in git(reg.racine, "diff", "-z", "--name-only", "--no-renames", f"{base}...{tete}").split("\0")
+    if touchees := {c for c in git(reg.racine, "diff", "-z", "--name-only", "--no-renames", f"{base}...{tete}")
                     if c.casefold().startswith(tuple(a.casefold() for a in AUTHORITY_FILES))}:
         return [f"{c} : changed only by a PR from the council's own account (ruche-0089)" for c in sorted(touchees)], ["gouvernance"]
     problemes, natures = verifier_pr_de(reg, base, tete, personne, compte_cree_le, instant, auteurs_pr, agents, auteur, status=False)
@@ -4457,8 +4455,7 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
 def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr, agents, agent=None, status=True):
     """verifier_pr for `auteur`, who is the person of the agent account `agent` if there is one. `status`: whether the
     author's council, guardian and robot status count."""
-    sorties = git(reg.racine, "diff", "--name-status", "--no-renames", f"{base}...{tete}")
-    changements = [ligne.split("\t", 1) for ligne in sorties.splitlines() if ligne.strip()]
+    changements = git(reg.racine, "diff", "-z", "--name-status", "--no-renames", f"{base}...{tete}")
     est_conseil = status and auteur in reg.conseil
     est_robot = status and auteur in reg.robots
     is_guardian = status and auteur in reg.gardiens
@@ -4477,8 +4474,7 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
     # Liens symboliques : refusés partout. Un lien ferait lire à l'outil un autre fichier que celui que montre la PR (au
     # pire, un fichier de la machine de CI, dont un message d'erreur pourrait citer le contenu).
     liens, modes = set(), {}
-    for ligne in git(reg.racine, "diff", "--raw", "--no-renames", f"{base}...{tete}").splitlines():
-        meta, _, chemin = ligne.partition("\t")
+    for meta, chemin in git(reg.racine, "diff", "-z", "--raw", "--no-renames", f"{base}...{tete}"):
         champs = meta.split()
         if len(champs) >= 2 and champs[1] == "120000":
             liens.add(chemin)
@@ -4489,7 +4485,7 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
     debats_ajoutes = sorted(c for s, c in changements if s == "A" and CHEMIN_DEBAT.match(c) and c not in liens)
     debats_attendus = {}
     if debats_ajoutes:
-        numeros = [int(m[1][2:]) for n in git(reg.racine, "ls-tree", "--name-only", base, "debats/").splitlines()
+        numeros = [int(m[1][2:]) for n in git(reg.racine, "ls-tree", "-z", "--name-only", base, "debats/")
                    if (m := CHEMIN_DEBAT.match(n))]
         debats_attendus = {c: f"debats/D-{max(numeros, default=0) + 1 + k:04d}.yaml" for k, c in enumerate(debats_ajoutes)}
     # Numérotation (T5, T6) : une tâche ou une proposition de règle ajoutée porte le numéro qui suit le plus grand de la
@@ -4522,7 +4518,7 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
     # d'invitation ne passe ; le conseil répare d'abord (hors du libre-service, en reprenant la dernière version lisible).
     illisibles_base = []
     if any(c.startswith("invitations/") for _, c in changements):
-        for nom in git(reg.racine, "ls-tree", "-r", "--name-only", base, "--", "invitations/").splitlines():
+        for nom in git(reg.racine, "ls-tree", "-z", "-r", "--name-only", base, "--", "invitations/"):
             if not (CHEMIN_INVITATION.match(nom) or nom == CHEMIN_NON_CONTACT):
                 continue
             try:
@@ -5227,12 +5223,12 @@ def verifier_fork(reg, depot, base, tete, identifiant_tache, auteur=None):
             conseil = " Lancez d'abord : git fetch upstream" if "upstream" in ref else ""
             raise ErreurBee(f"révision « {ref} » introuvable dans {depot}.{conseil}")
     if tete == "HEAD":
-        en_attente = [l[3:] for l in git(depot, "status", "--porcelain", "--untracked-files=no").splitlines() if l.strip()]
+        en_attente = [l[3:] for l in git(depot, "status", "-z", "--porcelain", "--no-renames", "--untracked-files=no")]
         if en_attente:
             problemes.append(f"{len(en_attente)} fichier(s) modifié(s) mais non commité(s) ({', '.join(en_attente[:5])}"
                              f"{'…' if len(en_attente) > 5 else ''}) : l'outil vérifie le dernier commit, pas le disque. Commitez d'abord.")
     fichiers_tache = [f.rstrip("/") for f in tache.get("fichiers") or []]
-    for ligne in git(depot, "diff", "--numstat", "--no-renames", f"{base}...{tete}").splitlines():
+    for ligne in git(depot, "diff", "-z", "--numstat", "--no-renames", f"{base}...{tete}"):
         ajoutees, retirees, chemin = ligne.split("\t", 2)
         if correspond(chemin, exclus):
             continue
@@ -5246,7 +5242,7 @@ def verifier_fork(reg, depot, base, tete, identifiant_tache, auteur=None):
     if total > maximum:
         problemes.append(f"R1 : {total} lignes modifiées, maximum {maximum} pour une tâche {tache['taille']}")
     if tache["type"] in ("optimisation", "relecture"):
-        for chemin in git(depot, "diff", "--name-only", "--no-renames", f"{base}...{tete}").splitlines():
+        for chemin in git(depot, "diff", "-z", "--name-only", "--no-renames", f"{base}...{tete}"):
             if correspond(chemin, juges):
                 problemes.append(f"{chemin} : une tâche {tache['type']} ne peut pas modifier ce qui la juge (commandement 3)")
     # Manifeste : manifestes/<tâche>.yaml (un fichier par tâche, donc pas de conflit entre deux PR), sinon
@@ -5269,7 +5265,7 @@ def verifier_fork(reg, depot, base, tete, identifiant_tache, auteur=None):
         problemes += verifier_manifeste(reg, manifeste, nom_manifeste, person_of(reg.comptes_agents, auteur))  # ruche-0089
         if isinstance(manifeste, dict) and manifeste.get("tache") != identifiant_tache:
             problemes.append(f"{nom_manifeste} : tâche « {manifeste.get('tache')} » au lieu de « {identifiant_tache} »")
-    autres = [c for c in git(depot, "diff", "--name-only", "--no-renames", f"{base}...{tete}").splitlines()
+    autres = [c for c in git(depot, "diff", "-z", "--name-only", "--no-renames", f"{base}...{tete}")
               if correspond(c, ["manifestes/**"]) and c != chemin_manifeste(identifiant_tache)]
     if autres:
         problemes.append(f"la branche modifie le manifeste d'une autre tâche ({', '.join(autres[:3])}) : une PR, une tâche")
@@ -7860,7 +7856,7 @@ def cmd_publier(args):
     depot = reg.racine
     organisation = reg.config.get("organisation", "")
     amont = args.amont or f"{organisation}/registre"
-    changements = [l[3:].strip().strip('"') for l in executer(["git", "status", "--porcelain", "--untracked-files=all"], depot).stdout.splitlines() if l.strip()]
+    changements = [l[3:] for l in git(depot, "status", "-z", "--porcelain", "--no-renames", "--untracked-files=all")]
     if not changements:
         raise ErreurBee("aucun changement à publier (avez-vous lancé bee prendre, soumettre, relire, voter… ?)")
     interdits = [c for c in changements if not c.startswith(DOSSIERS_LIBRE_SERVICE)]

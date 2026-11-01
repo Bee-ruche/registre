@@ -1,4 +1,5 @@
 """Tests de l'outil bee : python3 -m unittest outils/test_bee.py"""
+import ast
 import contextlib
 import hashlib
 import io
@@ -12232,6 +12233,253 @@ class TestR8Bootstrap(BaseRepetitionGenerale):
         self.commit()
         for auteur in (AGENT, "bidji29"):
             self.refusee(auteur, "règle R8 : bidji29 a 9 réservations ou inscriptions en parallèle", "maximum 8")
+
+
+# --- ruche-0095: every list of paths read from git is NUL-separated (-z), never compared in git's quoted form ---
+
+# Unless asked for -z, git quotes a path that holds one of these (core.quotepath=off spares only the non-ASCII ones). Each test
+# below names a file with one of them where its plain-ASCII equivalent has "_", and expects the same outcome, the name aside.
+QUOTED_CHARACTERS = {"non-ASCII": "é", "quote": '"', "backslash": "\\", "tab": "\t", "newline inside": "\n", "control": "\x01"}
+GIT_LISTING_COMMANDS = {"diff", "diff-tree", "diff-index", "diff-files", "ls-tree", "ls-files", "status", "grep", "whatchanged",
+                        "check-ignore", "check-attr"}
+GIT_LISTING_OPTIONS = {"--name-only", "--name-status", "--numstat", "--raw", "--stat", "--porcelain", "--summary"}
+
+
+def git_listings(source):
+    """The git invocations of a Python source that list paths: ([(line, enclosing function, string arguments)], wrappers, lines
+    the scan cannot read). An invocation is an argv literal that starts with "git" (subprocess.run, executer...), or a call to
+    a wrapper: a function that passes its own *arguments on to an invocation, before any "--" (git, _git_brut, and any new
+    one, found as a fixed point). It lists paths if one of its string arguments is a listing command or option. Unreadable:
+    an invocation whose git command (after -C and -c) is not a literal, and a "git" literal that starts no invocation."""
+    arbre = ast.parse(source)
+    fonctions = {}
+    for fonction in ast.walk(arbre):  # outer functions come first: the innermost one wins
+        if isinstance(fonction, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            fonctions.update((noeud, fonction) for noeud in ast.walk(fonction))
+
+    def est_argv(noeud):
+        return isinstance(noeud, (ast.List, ast.Tuple)) and noeud.elts[:1] and isinstance(noeud.elts[0], ast.Constant) \
+            and noeud.elts[0].value == "git"
+
+    def litteral(e, *valeurs):
+        return isinstance(e, ast.Constant) and isinstance(e.value, str) and (not valeurs or e.value in valeurs)
+
+    def arguments(noeud, wrappers):  # git's arguments, up to "--" (what follows are pathspecs)
+        if est_argv(noeud):
+            elements = noeud.elts[1:]
+        elif isinstance(noeud, ast.Call) and (getattr(noeud.func, "id", None) or getattr(noeud.func, "attr", None)) in wrappers:
+            elements = noeud.args[1:]
+        else:
+            return None
+        return next((elements[:i] for i, e in enumerate(elements) if litteral(e, "--")), elements)
+
+    def relaie(noeud, wrappers):  # passes its function's own *arguments on
+        f = fonctions.get(noeud)
+        return f is not None and f.args.vararg is not None and any(
+            isinstance(a, ast.Starred) and isinstance(a.value, ast.Name) and a.value.id == f.args.vararg.arg
+            for a in arguments(noeud, wrappers) or ())
+
+    wrappers = set()
+    while nouveaux := {fonctions[n].name for n in ast.walk(arbre) if relaie(n, wrappers)} - wrappers:
+        wrappers |= nouveaux
+    listings, inconnus = [], []
+    for noeud in ast.walk(arbre):
+        if (elements := arguments(noeud, wrappers)) is None or relaie(noeud, wrappers):
+            continue
+        mots = [e.value for e in elements if litteral(e)]
+        if set(mots) & (GIT_LISTING_COMMANDS | GIT_LISTING_OPTIONS):
+            listings.append((noeud.lineno, getattr(fonctions.get(noeud), "name", None), mots))
+        i = 0
+        while i + 1 < len(elements) and litteral(elements[i], "-C", "-c"):
+            i += 2
+        if not (i < len(elements) and litteral(elements[i])):
+            inconnus.append(noeud.lineno)
+    tetes = {id(n.elts[0]) for n in ast.walk(arbre) if est_argv(n)}
+    inconnus += [n.lineno for n in ast.walk(arbre) if isinstance(n, ast.Constant) and n.value == "git" and id(n) not in tetes]
+    return sorted(listings, key=lambda x: x[0]), wrappers, sorted(inconnus)
+
+
+class TestGitListings(unittest.TestCase):
+    """ruche-0095: every git invocation of outils/bee.py that lists paths asks for NUL-separated output (-z), so that each path
+    is read as it is in the repository, never in git's quoted form; a new one without it fails here."""
+
+    def test_every_listing_of_paths_is_nul_separated(self):
+        listings, wrappers, inconnus = git_listings((RACINE / "outils" / "bee.py").read_text(encoding="utf-8"))
+        self.assertLessEqual({"git", "_git_brut"}, wrappers)
+        self.assertNotIn("commits_premier_parent", wrappers, "it passes on pathspecs only, after --")
+        self.assertEqual(inconnus, [], "a git invocation that this scan cannot read")
+        self.assertEqual([x for x in listings if "-z" not in x[2]], [])
+        # The scan does see them: each function that lists paths today (a new one adds to this set, never removes from it).
+        self.assertLessEqual({"commits_premier_parent", "_charger", "numeros_dans", "creations_recentes", "contributions_de_la_pr",
+                              "verifier_pr", "verifier_pr_de", "verifier_fork", "cmd_publier", "ci_scope"}, {x[1] for x in listings})
+
+    def test_the_scan_finds_a_new_listing_without_nul(self):
+        source = "\n".join([
+            "import subprocess",
+            "def outil(depot, *arguments):",
+            "    return subprocess.run(['git', '-C', depot, *arguments])",
+            "def relai(depot, *mots):",
+            "    return outil(depot, *mots)",
+            "def historique(depot, *chemins):",
+            "    return relai(depot, 'log', '-z', '--name-only', '--', *chemins)",  # 7: passes on pathspecs: not a wrapper
+            "def f(depot, fichiers, commande):",
+            "    outil(depot, 'ls-tree', '-z', '--name-only', 'HEAD')",
+            "    relai(depot, '-c', 'core.quotepath=off', 'diff', '--name-only')",  # 10: a new listing without -z
+            "    subprocess.run(['git', 'status', '--porcelain'])",  # 11: another one, as an argv literal
+            "    subprocess.run(['git', 'add', '--', *fichiers])",
+            "    historique(depot, 'taches')",
+            "    outil(depot, *fichiers)",  # 14: unreadable command
+            "    relai(depot, commande, '--name-only')",  # 15: unreadable command, and a listing without -z
+            "    programme = 'git'",  # 16: a "git" that starts no invocation
+        ])
+        listings, wrappers, inconnus = git_listings(source)
+        self.assertEqual(wrappers, {"outil", "relai"})
+        self.assertEqual(listings, [(7, "historique", ["log", "-z", "--name-only"]), (9, "f", ["ls-tree", "-z", "--name-only", "HEAD"]),
+                                    (10, "f", ["-c", "core.quotepath=off", "diff", "--name-only"]), (11, "f", ["status", "--porcelain"]),
+                                    (15, "f", ["--name-only"])])
+        self.assertEqual([x[0] for x in listings if "-z" not in x[2]], [10, 11, 15])
+        self.assertEqual(inconnus, [14, 15, 16])
+
+
+class TestQuotedPathsFork(BaseTest):
+    """ruche-0095, bee verifier-fork: a path that git would quote is compared as it is in the repository. The judged paths
+    (commandment 3), R1's exclusions and count, the task's files, the other tasks' manifests and uncommitted work treat it as
+    its plain-ASCII equivalent; one that is not UTF-8 text is refused, never skipped."""
+
+    def setUp(self):
+        super().setUp()
+        chemin = self.dossier / "taches/miniz/miniz-0099.yaml"
+        chemin.write_text(chemin.read_text(encoding="utf-8").replace("fichiers: [miniz_tdef.c]", "fichiers: [miniz_tdef.c, src/]"),
+                          encoding="utf-8")
+        self.fork = pathlib.Path(self.temp.name) / "fork"
+        self.fork.mkdir()
+        (self.fork / "miniz_tdef.c").write_text("base\n", encoding="utf-8")
+        git(self.fork, "init", "-q", "-b", "master")
+        self.commit("base")
+
+    def commit(self, message="work"):
+        git(self.fork, "add", "-A")
+        git(self.fork, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", message)
+
+    def verifier(self, nom):
+        """verifier_fork on a branch that adds, each named after `nom`: a judged file (60 lines, out of R1's count), a file of
+        the task (3 lines), a file outside the task's files (2 lines) and another task's manifest; the task's file is then
+        changed again, but not committed. The result, with `nom` written <name>."""
+        git(self.fork, "switch", "-qf", "master")
+        git(self.fork, "clean", "-qfd")
+        git(self.fork, "switch", "-qC", "tache/miniz-0099")
+        for chemin, texte in ((f"bee/tests/{nom}.sh", "x\n" * 60), (f"src/{nom}.c", "x\n" * 3), (f"{nom}.c", "x\n" * 2),
+                              (f"manifestes/{nom}.yaml", "tache: miniz-0011\n"), ("manifestes/miniz-0099.yaml", MANIFESTE_REMPLI)):
+            (self.fork / chemin).parent.mkdir(parents=True, exist_ok=True)
+            (self.fork / chemin).write_text(texte, encoding="utf-8")
+        self.commit()
+        (self.fork / f"src/{nom}.c").write_text("y\n", encoding="utf-8")
+        problemes, total, avertissements = bee.verifier_fork(bee.Registre(self.dossier), self.fork, "master", "HEAD", "miniz-0099")
+        return sorted(p.replace(nom, "<name>") for p in problemes), total, sorted(a.replace(nom, "<name>") for a in avertissements)
+
+    def test_a_quoted_name_is_treated_as_its_plain_equivalent(self):
+        attendu = self.verifier("a_b")
+        self.assertEqual(attendu[0], [
+            "1 fichier(s) modifié(s) mais non commité(s) (src/<name>.c) : l'outil vérifie le dernier commit, pas le disque. Commitez d'abord.",
+            "bee/tests/<name>.sh : une tâche optimisation ne peut pas modifier ce qui la juge (commandement 3)",
+            "la branche modifie le manifeste d'une autre tâche (manifestes/<name>.yaml) : une PR, une tâche"])
+        self.assertEqual(attendu[1], 5, "the judged file and the manifests are out of R1's count")
+        self.assertEqual(len(attendu[2]), 1)
+        self.assertTrue(attendu[2][0].startswith("<name>.c : hors des fichiers de la tâche (miniz_tdef.c, src)"), attendu[2])
+        for nom, caractere in QUOTED_CHARACTERS.items():
+            with self.subTest(character=nom):
+                self.assertEqual(self.verifier(f"a{caractere}b"), attendu)
+
+    def test_a_name_that_is_not_utf8_text_is_refused(self):
+        with self.assertRaises(UnicodeDecodeError):
+            self.verifier(os.fsdecode(b"a\xffb"))
+
+
+class TestQuotedPathsGate(BaseRepetitionGenerale):
+    """ruche-0095, bee verifier-pr and bee publier: a path that git would quote is compared as it is in the repository, in the
+    self-service folders, outside them and in the authority files; one that is not UTF-8 text, or whose name ends with a
+    newline (git cannot address it), is refused, never skipped."""
+
+    def pr(self, auteur, *fichiers, reserver=False, lien=None):
+        """verifier_pr on a PR from main that adds these files (and a symbolic link, and alice's reservation, if asked):
+        (problems, natures)."""
+        git(self.dossier, "switch", "-qf", "main")
+        git(self.dossier, "clean", "-qfd")
+        git(self.dossier, "switch", "-qC", "pr")
+        if reserver:
+            self.ok("prendre", "miniz-0099", "--utilisateur", "alice")
+        for chemin in fichiers:
+            (self.dossier / chemin).parent.mkdir(parents=True, exist_ok=True)
+            (self.dossier / chemin).write_text("id: x\n", encoding="utf-8")
+        if lien:
+            os.symlink("../README.md", self.dossier / lien)
+        self.commit()
+        return bee.verifier_pr(bee.Registre(self.dossier), "main", "HEAD", auteur)
+
+    def test_a_quoted_name_is_treated_as_its_plain_equivalent(self):
+        cas = {  # (author, files, options): what the plain name gives
+            "self-service": ("alice", ("taches/miniz/{}.yaml", "votes/{}.yaml", "outils/{}.py"), {"reserver": True, "lien": "membres/{}.yaml"}),
+            "authority file": (AGENT, ("gouvernance/consignes/{}.md",), {}),
+        }
+        for quoi, (auteur, fichiers, options) in cas.items():
+            def lancer_pr(nom):
+                problemes, natures = self.pr(auteur, *(f.format(nom) for f in fichiers),
+                                             **{k: v.format(nom) if isinstance(v, str) else v for k, v in options.items()})
+                return sorted(p.replace(nom, "<name>") for p in problemes), sorted(set(natures))
+            attendu = lancer_pr("a_b")
+            with self.subTest(cas=quoi):
+                if quoi == "self-service":
+                    self.assertIn("taches/miniz/<name>.yaml : fichier inattendu dans taches/ : seuls les fichiers "
+                                  "taches/<projet>/<projet>-<nnnn>.yaml y sont en libre-service (pas d'autre nom ni extension, pas de "
+                                  "binaire, pas de sous-dossier) ; le reste revient au conseil", attendu[0])
+                    self.assertIn("membres/<name>.yaml : lien symbolique refusé : le registre ne contient que des fichiers ordinaires ; "
+                                  "remplacez le lien par le fichier lui-même", attendu[0])
+                    self.assertTrue({"reservation", "gouvernance", "outillage"} <= set(attendu[1]), attendu[1])
+                else:
+                    self.assertEqual(attendu, (["gouvernance/consignes/<name>.md : changed only by a PR from the council's own "
+                                                "account (ruche-0089)"], ["gouvernance"]))
+            for nom, caractere in QUOTED_CHARACTERS.items():
+                with self.subTest(cas=quoi, character=nom):
+                    self.assertEqual(lancer_pr(f"a{caractere}b"), attendu)
+
+    def test_a_name_that_is_not_utf8_text_or_ends_with_a_newline_is_refused(self):
+        for auteur in ("alice", AGENT):
+            with self.subTest(auteur=auteur), self.assertRaises(UnicodeDecodeError):
+                self.pr(auteur, os.fsdecode(b"membres/a\xffb.yaml"))
+        self.assertEqual(bee.ci_scope(self.dossier, "main", "HEAD")[0], "full")
+        # Python's "$" also matches before a final newline: such a name looks like a file in its place, but git cannot read it.
+        for chemin in ("membres/alice.yaml\n", "debats/D-0001.yaml\n", "votes/P-0001/alice.yaml\n"):
+            with self.subTest(chemin=chemin):
+                problemes, natures = self.pr("alice", chemin)
+                self.assertTrue(problemes, natures)
+
+    def test_publier_names_a_path_as_it_is(self):
+        def publier(nom):
+            git(self.dossier, "switch", "-qf", "main")
+            git(self.dossier, "clean", "-qfd")
+            (self.dossier / f"{nom}.bak").write_text("égaré\n", encoding="utf-8")
+            code, texte = self.bee("publier", "--titre", "Essai", "--a-blanc")
+            return code, texte.replace(bee.montrer(nom), "<name>")
+        attendu = publier("a_b")
+        self.assertEqual(attendu[0], 1)
+        self.assertIn("ces fichiers ne relèvent pas du libre-service et feraient refuser la PR : <name>.bak.", attendu[1])
+        for nom, caractere in QUOTED_CHARACTERS.items():
+            with self.subTest(character=nom):
+                self.assertEqual(publier(f"a{caractere}b"), attendu)
+
+    def test_history_lists_each_path_as_it_is(self):
+        """commits_premier_parent reads git log -z: per commit, the paths it touched, the first one included, exactly."""
+        noms = [f"taches/miniz/a{c}b.yaml" for c in QUOTED_CHARACTERS.values()] + ["taches/miniz/a_b.yaml"]
+        for chemin in noms:
+            (self.dossier / chemin).write_text("id: x\n", encoding="utf-8")
+        self.commit("names")
+        git(self.dossier, "rm", "-q", "taches/miniz/a_b.yaml")
+        self.commit("one removed")
+        historique = bee.commits_premier_parent(self.dossier, "HEAD", "taches/miniz")
+        self.assertEqual([sorted(chemins) for _, _, chemins in historique[:2]], [["taches/miniz/a_b.yaml"], sorted(noms)])
+        ajouts = bee.commits_premier_parent(self.dossier, "HEAD", "taches/miniz", filtre="A")
+        self.assertEqual(sorted(ajouts[0][2]), sorted(noms))
+        self.assertEqual(bee.commits_premier_parent(self.dossier, "HEAD", "absent"), [])
 
 
 if __name__ == "__main__":
