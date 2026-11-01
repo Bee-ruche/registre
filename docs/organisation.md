@@ -68,8 +68,8 @@ Une même session ne cumule jamais écrire, relire et fusionner la même chose.
   commandement 3), sans jamais en faire une seconde personne, mais ne lui donne jamais le statut du conseil : ce qui est
   réservé au conseil (ses fichiers, ses exemptions de plafonds, une relecture qui pèse comme la sienne), seul le compte
   du conseil lui-même le décide. Une telle PR de l'agent principal attend toujours un humain.
-  Les fichiers d'autorité (commandements, conseil, comptes d'agents, gardiens, garants, consignes de l'agent principal,
-  cette page) ne changent que par une PR du compte du conseil lui-même. Être du conseil vaut inscription : le compte
+  Un compte d'agent ne change jamais les fichiers d'autorité (commandements, conseil, comptes d'agents, gardiens, garants,
+  consignes, cette page, docs/garants.md, docs/devolution.md) : seul le compte du conseil. Être du conseil vaut inscription : le compte
   d'agent hérite de l'identité de sa personne, jamais de son statut. Avant de renommer ou de supprimer ce compte, le
   conseil retire sa déclaration : un login libéré peut être repris.
 - **Les limites de la session se signalent, elles ne se contournent pas.** Une session ne peut pas poser

@@ -597,8 +597,8 @@ def pseudos_mal_ecrits(reg, donnees, profondeur=0):
 # ruche-0089: declared agent accounts. An agent account acts as its person (the gate checks its PRs under the person's name,
 # without the person's council or guardian status), and only the person's own pseudo is ever written in the registry.
 AGENT_ACCOUNTS = "gouvernance/comptes-agents.yaml"
-AUTHORITY_FILES = frozenset({"COMMANDMENTS.md", "COMMANDEMENTS.md", "gouvernance/conseil.yaml", AGENT_ACCOUNTS, "gouvernance/gardiens.yaml",
-                             "gouvernance/garants.yaml", "gouvernance/consignes/agent-principal.md", "docs/organisation.md"})
+AUTHORITY_FILES = ("COMMANDMENTS.md", "COMMANDEMENTS.md", "gouvernance/conseil.yaml", AGENT_ACCOUNTS, "gouvernance/gardiens.yaml",  # path prefixes, any case
+                   "gouvernance/garants.yaml", "gouvernance/consignes/", "docs/organisation.md", "docs/garants.md", "docs/devolution.md")
 
 
 def agent_accounts(donnees):
@@ -4417,7 +4417,8 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
         agents = {}  # unreadable in the base: no agent account (fail closed)
     if (personne := agents.get(auteur)) is None:
         return verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr, agents)
-    if touchees := AUTHORITY_FILES & set(git(reg.racine, "diff", "--name-only", "--no-renames", f"{base}...{tete}").splitlines()):
+    if touchees := {c for c in git(reg.racine, "diff", "--name-only", "--no-renames", f"{base}...{tete}").splitlines()
+                    if c.casefold().startswith(tuple(a.casefold() for a in AUTHORITY_FILES))}:
         return [f"{c} : changed only by a PR from the council's own account (ruche-0089)" for c in sorted(touchees)], ["gouvernance"]
     problemes, natures = verifier_pr_de(reg, base, tete, personne, compte_cree_le, instant, auteurs_pr, agents, auteur, status=False)
     if problemes or not set(natures) <= LIBRE_SERVICE:

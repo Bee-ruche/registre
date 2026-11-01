@@ -11102,16 +11102,18 @@ class TestAgentAccounts(BaseRepetitionGenerale):
         self.assertEqual([r["relecteur"] for r in bee.lire_yaml(self.dossier / f"contributions/miniz/{cid}.yaml")["relectures"]], ["alice"])
 
     def test_authority_files_only_from_the_councils_own_account(self):
-        """Commandments, council, agent accounts, guardians, guarantors, the agent principal's instructions and the
-        organisation: an agent account's PR changing one is refused (code 1, also with --fusion-auto), whether it edits,
+        """Commandments, council, agent accounts, guardians, guarantors, every instruction file, the organisation, guarantors'
+        and devolution docs (any case): an agent account's PR changing one is refused (code 1, also with --fusion-auto), whether it edits,
         deletes, renames from or to, or changes the mode of the file; the council's own account is unchanged (0, then 3)."""
         def attendu(chemin, *options):
             code, texte = self.verifier(AGENT, *options)
             self.assertEqual(code, 1, texte)
             self.assertIn(f"{chemin} : changed only by a PR from the council's own account (ruche-0089)", texte)
             self.assertNotIn("FUSION_AUTO=", texte)
-        self.assertEqual(len(bee.AUTHORITY_FILES), 8)
-        for i, chemin in enumerate(sorted(bee.AUTHORITY_FILES)):
+        self.assertEqual(len(bee.AUTHORITY_FILES), 10)
+        fichiers = [a for a in bee.AUTHORITY_FILES if not a.endswith("/")] + [f"gouvernance/consignes/{n}.md" for n in (
+            "agent-principal", "relecteur-adverse", "constructeur")]
+        for i, chemin in enumerate(sorted(fichiers)):
             with self.subTest(chemin=chemin):
                 self.branche(f"autorite-{i}")
                 fichier = self.dossier / chemin
@@ -11131,7 +11133,11 @@ class TestAgentAccounts(BaseRepetitionGenerale):
                  "gouvernance/garants.yaml"),
                 ("renommage-vers", lambda: git(self.dossier, "mv", "-f", "gouvernance/consignes/brouillon.md",
                                                "gouvernance/consignes/agent-principal.md"), "gouvernance/consignes/agent-principal.md"),
-                ("mode", lambda: (self.dossier / "COMMANDEMENTS.md").chmod(0o755), "COMMANDEMENTS.md")):
+                ("mode", lambda: (self.dossier / "COMMANDEMENTS.md").chmod(0o755), "COMMANDEMENTS.md"),
+                ("nouvelle-consigne", lambda: (self.dossier / "gouvernance/consignes/autre.md").write_text("x\n", encoding="utf-8"),
+                 "gouvernance/consignes/autre.md"),
+                ("casse", lambda: (self.dossier / "gouvernance/Conseil.yaml").write_text("x: 1\n", encoding="utf-8"),
+                 "gouvernance/Conseil.yaml")):
             with self.subTest(geste=nom):
                 self.branche(nom)
                 geste()
