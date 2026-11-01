@@ -29,7 +29,7 @@ hors_perimetre:
   - "les forks"
 depend_de: [ruche-0029]
 noeud: projets/ruche/ruche
-statut: en_relecture
+statut: integree
 contribution: ruche-0040-c1
 cree_par: conseil
 cree_le: "2026-10-31"
