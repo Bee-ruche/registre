@@ -20,6 +20,8 @@
 # Sécurité : seul l'outil bee de main s'exécute ; les fichiers des forks sont des données, et la
 # fusion se fait côté serveur (le code du fork n'est jamais exécuté ici). Une PR qui n'a pas été ouverte
 # par l'auteur de la contribution n'est ni fusionnée ni consignée, ni fermée si la contribution est écartée.
+# ruche-0089 : une PR ouverte par son compte d'agent déclaré compte comme la sienne (bee acts-for, qui lit
+# gouvernance/comptes-agents.yaml sur main) ; rien d'autre. Si bee échoue, personne n'est reconnu (échec fermé).
 #
 # Jeton de fusion : PR dans ce dépôt → jeton par défaut ; PR sur un fork → secret
 # BEE_INTEGRATION_TOKEN (jeton à accès fin, écriture sur les forks). Sûr tant que la porte de relecture
@@ -82,7 +84,8 @@ jobs:
             fi
             # La PR doit être celle de l'auteur de la contribution (le pseudo d'un membre est son login GitHub) : sinon
             # rien n'est fusionné ni consigné, on n'intègre pas le travail d'un autre sous son nom.
-            if [ "${auteur_pr,,}" != "${auteur,,}" ]; then
+            personne=$(python3 outils/bee.py acts-for -- "$auteur_pr" < /dev/null) || personne=""
+            if [ "${personne,,}" != "${auteur,,}" ]; then
               echo "::notice::$id : la PR $pr a été ouverte par $auteur_pr, pas par $auteur ; ni fusionnée ni consignée."; continue
             fi
             [ "$etat" = "MERGED" ] && printf '%s\n' "$id" >> "$tmp/fusionnees.txt"
@@ -180,7 +183,8 @@ jobs:
               || { echo "::notice::$id écartée : PR $pr illisible, on ne la ferme pas."; continue; }
             read -r etat_pr auteur_pr <<< "$infos"
             [ "$etat_pr" = "OPEN" ] || continue
-            if [ "${auteur_pr,,}" != "${auteur,,}" ]; then
+            personne=$(python3 outils/bee.py acts-for -- "$auteur_pr" < /dev/null) || personne=""
+            if [ "${personne,,}" != "${auteur,,}" ]; then
               echo "::notice::$id écartée : la PR $pr a été ouverte par $auteur_pr, pas par $auteur ; on ne la ferme pas."; continue
             fi
             GH_TOKEN="$jeton" gh pr close "$pr" < /dev/null \

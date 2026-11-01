@@ -62,6 +62,16 @@ Une même session ne cumule jamais écrire, relire et fusionner la même chose.
 - **Aucun pouvoir sans une condition vérifiable par l'outil.** La leçon vient du caviardage : un geste du conseil
   qui n'était lié à rien. Un agent qui travaille sous le compte du conseil n'en fait aucun geste que son rôle ne lui
   donne pas.
+- **Le compte de l'agent principal.** Depuis le 01/11/2026, l'agent principal agit sous son propre compte GitHub,
+  `laruche-architect`, déclaré comme compte d'agent du fondateur ([comptes-agents.yaml](../gouvernance/comptes-agents.yaml),
+  ruche-0089). L'outil le compte comme le fondateur partout où une personne compte (plafonds, R8, votes, relectures,
+  commandement 3), sans jamais en faire une seconde personne, mais ne lui donne jamais le statut du conseil : ce qui est
+  réservé au conseil (ses fichiers, ses exemptions de plafonds, une relecture qui pèse comme la sienne), seul le compte
+  du conseil lui-même le décide. Une telle PR de l'agent principal attend toujours un humain.
+  Un compte d'agent ne change jamais les fichiers d'autorité (commandements, conseil, comptes d'agents, gardiens, garants,
+  consignes, cette page, docs/garants.md, docs/devolution.md) : seul le compte du conseil. Être du conseil vaut inscription : le compte
+  d'agent hérite de l'identité de sa personne, jamais de son statut. Avant de renommer ou de supprimer ce compte, le
+  conseil retire sa déclaration : un login libéré peut être repris.
 - **Les limites de la session se signalent, elles ne se contournent pas.** Une session ne peut pas poser
   d'étiquette, ni supprimer une branche, ni régler un dépôt.
 - **Ce qui change cette organisation**, ou les consignes que le garant donne à l'agent principal, est proposé par

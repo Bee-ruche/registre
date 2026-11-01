@@ -13,6 +13,7 @@ principal de Bee. Tout changement est publié ici, avec sa date.
   phase de lancement, rédaction et application des changements de commandements que le conseil
   autorise (commandement 11), chaque changement consigné dans le journal des décisions.
 - **Relecture** : tant qu'aucun gardien n'est nommé, l'agent principal relit au nom du conseil.
+  Depuis son compte d'agent (1er novembre 2026, ruche-0089), une telle relecture attend que le fondateur la fusionne.
 - **Mandat (R15)** : toute cette délégation (règles, propositions, relecture au nom du conseil, création de tâches, fusions) dure six mois et se renouvelle par vote, ou personnellement par un membre humain du conseil tant qu'aucun vote de R10 n'a atteint le quorum depuis 90 jours, ou quand le vote de renouvellement ne l'atteint pas ; jamais par l'agent principal lui-même. La tenue des règles s'arrête pour de bon au premier vote de R10 qui atteint le quorum, ou à l'ouverture de la phase 3.
 - **Travail continu** : faire avancer le projet ; quand une décision revient au conseil, travailler sur
   ce qui n'en dépend pas.

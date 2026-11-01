@@ -69,6 +69,8 @@ jobs:
           # l'auteur de la contribution (pas de squat de la PR d'un autre), et refuse une PR dont l'auteur n'a pas pu être
           # relevé (échec fermé). Les adresses viennent du contenu de la PR : on les revalide ici par expression
           # régulière et on n'appelle l'API qu'avec leurs composants validés.
+          # ruche-0089 : verifier-pr lit les comptes d'agents déclarés sur origin/main (--base), jamais dans la PR. Un compte
+          # d'agent est vérifié comme sa personne, sans son statut ; ce que seul ce statut permet n'est jamais fusionné ici.
           : > "$RUNNER_TEMP/auteurs_pr.tsv"
           python3 outils/bee.py --registre ../fusion prs-declarees --base origin/main --tete HEAD > "$RUNNER_TEMP/prs.txt"
           while IFS= read -r adresse; do
