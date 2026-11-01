@@ -10,7 +10,7 @@
     "id": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*-[0-9]{4}-c[0-9]+$"},
     "tache": {"type": "string"},
     "auteur": {"type": "string", "minLength": 1},
-    "pr": {"type": "string", "pattern": "^https://github\\.com/[A-Za-z0-9-]+/[A-Za-z0-9_.-]+/pull/[0-9]+$"},
+    "pr": {"type": "string", "pattern": "^https://github\\.com/[A-Za-z0-9-]+/[A-Za-z0-9_][A-Za-z0-9_.-]*/pull/[0-9]{1,9}$(?!\\n)"},
     "resume": {"type": "string"},
     "resume_sha": {"type": "string", "pattern": "^[0-9a-f]{7,40}$", "description": "Commit jugé (verdict.sha) pour lequel l'auteur a actualisé son résumé (bee soumettre --mettre-a-jour) : une mise à jour par commit jugé"},
     "statut": {"enum": ["en_relecture", "integree", "refusee", "annulee", "ecartee"]},
