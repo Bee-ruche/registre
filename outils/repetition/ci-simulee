@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Relance la CI simulée du fork sur le dernier commit d'une PR (après une soumission tardive). Une relance donne les
+# mêmes décomptes d'instructions (même contenu) et un nouveau tirage du chronomètre, comme une vraie relance.
+# Usage : ci-simulee <url_pr_fork>
+set -euo pipefail
+source "$(dirname "$(realpath "$0")")/commun.sh"
+case "${1:-}" in -h|--help|"") echo 'usage : ci-simulee <url_pr_fork>' >&2; exit 2;; esac
+url="${1:?url}"
+[[ "$url" =~ ^https://github\.com/Bee-ruche/[A-Za-z]+/pull/[0-9]+$ ]] || { echo "adresse de PR invalide : $url" >&2; exit 2; }
+exec 9>"$SIMU/etat/verrou"; flock 9
+exec python3 "$SIMU/outils/ci_simulee.py" "$url" --relance

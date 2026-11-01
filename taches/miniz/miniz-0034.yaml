@@ -25,6 +25,7 @@ critere_acceptation:
 hors_perimetre: [code de miniz, format de sortie du profileur, nouvelle dépendance]
 depend_de: [miniz-0033]
 noeud: projets/compression-sans-perte/miniz/bee
-statut: ouverte
+statut: en_relecture
+contribution: miniz-0034-c1
 cree_par: conseil
 cree_le: "2026-10-28"

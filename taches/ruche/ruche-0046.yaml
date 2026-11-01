@@ -1,0 +1,32 @@
+id: ruche-0046
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: M
+titre: "Après ruche-0028 : pseudos uniques en gouvernance, recul voisin mesuré plutôt que refusé"
+contexte: >
+  Issue de la répétition générale n° 4 du 31/10 (détails remis au constructeur par l'architecte). À faire
+  avant le premier participant extérieur. À faire après ruche-0028 (pseudos comparés sans la casse, alerte de
+  copie toutes tâches confondues). (1) Les listes de gouvernance (gouvernance/conseil.yaml, gardiens.yaml,
+  garants.yaml) ne doivent pas porter deux orthographes d'un même pseudo : bee valider et bee verifier-pr les
+  refusent, avec la même comparaison que le reste de l'outil. (2) Un recul passé, mesuré sur un autre arbre
+  voisin dans le même fil de contributions, ne doit pas valoir refus définitif : il devient une exigence de
+  mesure d'une autre configuration (R4), que la contribution peut satisfaire.
+fichiers: [outils/bee.py, outils/test_bee.py, docs/contributions.md]
+portee: 0.9
+metrique: null
+critere_acceptation:
+  - "test : une liste de gouvernance qui porte deux orthographes d'un même pseudo est refusée par bee valider et bee verifier-pr"
+  - "test : une contribution dont le fil porte un recul passé sur un autre arbre voisin n'est pas refusée d'office ; verifier-acceptation exige la mesure d'une autre configuration, et l'accepte une fois fournie"
+  - "test : un recul sur le même arbre reste traité comme le fait ruche-0028"
+  - "revue adverse indépendante jointe"
+hors_perimetre:
+  - "COMMANDEMENTS.md"
+  - "REGLES.md"
+  - "les forks"
+depend_de: [ruche-0028]
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-31"

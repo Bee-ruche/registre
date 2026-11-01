@@ -34,3 +34,7 @@ noeud: projets/ruche
 statut: ouverte
 cree_par: conseil
 cree_le: "2026-10-30"
+notes:
+  - par: "bidji29"
+    le: "2026-10-31T02:17:17Z"
+    texte: "31/10, revue adverse de R14 (lecture seule, aucune portée en vigueur) : à régler avant de commencer. (1) Bloquer vaut dès qu'une contribution touche la portée ; approuver exige que tout y soit (sinon un refus s'évite en touchant une autre branche). (2) La branche se juge aux fichiers de la PR, pas au nœud déclaré : chaque nœud déclare ses chemins, un fichier hors de toute branche relève de toute la ruche. (3) Le juge d'une branche (greffon, harnais, bee-ci.yml, chemins_juges) demande aussi un privilégié de toute la ruche. (4) Le frein de R13 ne compte que les gardiens de toute la ruche."

@@ -1,0 +1,32 @@
+id: miniz-0045
+projet: miniz
+categorie: compression-sans-perte
+type: test
+taille: L
+titre: 'English guides of the fork: bee/README.md, AGENTS.md and CLAUDE.md'
+contexte: 'Founder''s decision of 31/10: the hive moves to English before the first outside bee. The place is La
+  Ruche; the tool and the agents stay `bee`. The commandments become authoritative in English when the council records
+  it in docs/decisions.md; any other text stays authoritative in French until the council records, when it merges
+  the English version, that this version is authoritative. Start once the commandments decision is on main. Size:
+  a translated line counts as one changed line. Translate what a bee reads first in the fork: bee/README.md (about
+  250 lines) and the root AGENTS.md and CLAUDE.md. Commands, paths and numbers stay exactly as they are. The verdict
+  JSON and CONTRIBUTION.yaml keys stay (ruche-0070). The printed messages of the scripts are miniz-0046. No change
+  to miniz itself.'
+fichiers:
+- bee/README.md
+- AGENTS.md
+- CLAUDE.md
+portee: 0.4
+metrique: null
+critere_acceptation:
+- parity both ways checked by a reviewer who did not translate, list posted on the PR
+- every command, path and number of the README unchanged (script diff in the PR)
+- the fork's CI passes; no other file changes
+hors_perimetre:
+- code of miniz
+- scripts and their messages (miniz-0046)
+- 'bee/corpus/ (test inputs: never changed)'
+noeud: projets/compression-sans-perte/miniz/bee
+statut: ouverte
+cree_par: conseil
+cree_le: '2026-10-31'

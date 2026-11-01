@@ -44,3 +44,7 @@ noeud: projets/ruche
 statut: ouverte
 cree_par: conseil
 cree_le: "2026-10-30"
+notes:
+  - par: "bidji29"
+    le: "2026-10-31T02:51:18Z"
+    texte: "31/10 : les entrées que juge.yml reçoit de l'appelant (nombre de répétitions, mesure des instructions, SHA de base et de tête) sont bornées et vérifiées par ruche-0038, issue d'une revue adverse ; ne pas les traiter ici. Les deux tâches touchent juge.yml : rebaser l'une sur l'autre."

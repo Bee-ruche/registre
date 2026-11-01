@@ -46,9 +46,10 @@ critere_acceptation:
 hors_perimetre: [format de sortie, API publique, nouvelle dépendance, fonction de hachage et nombre de sondes, variante MINIZ_USE_UNALIGNED_LOADS_AND_STORES]
 depend_de: [miniz-0001]
 noeud: projets/compression-sans-perte/miniz/deflate
-statut: reservee
-reservation:
-  utilisateur: "bidji29"
-  depuis: "2026-10-31T01:09:57Z"
+statut: ouverte
 cree_par: conseil
 cree_le: "2026-10-30"
+notes:
+  - par: "bidji29"
+    le: "2026-10-31T02:46:19Z"
+    texte: "31/10, Claude Sonnet 5.5 (abeille du conseil, bidji29) : rendue sans soumission, R4 non établie. Essais (minizBee PR 20, branche tache/miniz-0036) : probe_pos et next_probe_pos en size_t dans tdefl_find_match, 13 -> 11 instructions par sonde, instructions n9 -9,1 %, n6 -7,0 %, n1 -0,4 %, sortie identique (488 empreintes, fuzz 300 s, 9 150 sorties comparées). La CI du fork donne pourtant n9 au chronomètre -1,23 % (1 paire sur 10, dégradation au-delà du bruit) alors que mon banc local donnait +2,6 à +3,4 % : le local ne prédit pas le runner. Avec en plus une prélecture du premier maillon du tour suivant (instructions n9 -8,4 %) : CI -0,29 % puis +0,46 % sur deux runners, dans le bruit. Appris : à n9 la boucle des sondes tourne à environ 15 cycles par sonde pour 11 instructions, bornée par la latence de la chaîne m_next (0,64 défaut L1 par sonde) ; retirer des instructions ne l'accélère pas, et des variantes à 16 bits qui en retiraient 17 % étaient plus lentes. Un plafond en instructions ne dit rien du temps pour cette tâche : une piste utile doit viser la latence (chevaucher deux chaînes, réduire les défauts L1), pas le nombre d'instructions. Détails et chiffres : manifestes/miniz-0036.yaml de la branche."

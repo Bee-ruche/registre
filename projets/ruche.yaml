@@ -11,7 +11,7 @@ perimetre:
   - Schémas, modèles et workflows du registre
   - Documentation (docs/, AGENTS.md, guides)
 hors_perimetre:
-  - COMMANDEMENTS.md (conseil humain seul, commandement 11)
+  - COMMANDMENTS.md et sa traduction COMMANDEMENTS.md (conseil humain seul, commandement 11)
   - "Règles et leurs valeurs (REGLES.md, bee.yaml) : par proposition de règle (R10), pas par tâche"
   - Nomination des gardiens et du conseil (gouvernance/)
 statut: actif

@@ -35,7 +35,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           AUTEUR: ${{ github.event.pull_request.user.login }}
-          BASE: ${{ github.event.pull_request.base.sha }}
+          BASE_EVENEMENT: ${{ github.event.pull_request.base.sha }}
         run: |
+          # La base de l'événement est celle de l'ouverture de la PR, jamais rafraîchie : comparée au commit de fusion
+          # (la PR fusionnée avec main d'aujourd'hui), elle compterait comme changements de la PR tout ce que main a reçu
+          # depuis. La vraie base est le premier parent du commit de fusion que GitHub a construit, c'est-à-dire main au
+          # moment de l'exécution ; à défaut (pas de commit de fusion), la base de l'événement.
+          if [ "$(git rev-list --parents -n 1 HEAD | wc -w)" = 3 ]; then BASE=$(git rev-parse HEAD^1); else BASE="$BASE_EVENEMENT"; fi
           cree=$(gh api "users/$AUTEUR" --jq '.created_at[:10]')
           python3 outils/bee.py verifier-pr --base "$BASE" --tete HEAD --auteur "$AUTEUR" --compte-cree-le "$cree"

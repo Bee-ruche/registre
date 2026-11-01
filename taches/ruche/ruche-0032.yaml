@@ -1,0 +1,32 @@
+id: ruche-0032
+projet: ruche
+categorie: ruche
+type: test
+poste: coordination
+taille: M
+titre: "bee essaim --moi <pseudo> : mes engagements et ce qu'il me reste"
+contexte: >
+  Découpage de ruche-0013 (plusieurs agents pour un même utilisateur), son point 2 ; utile seule : dès la
+  prochaine nuit, deux agents d'un même utilisateur voient leurs limites communes. Répétition générale du
+  29/10 : deux agents de bidji29 partageaient R8 et les plafonds de l'agora sans le savoir ; l'un n'a
+  découvert l'autre qu'en lisant l'historique git. bee essaim (cmd_essaim, tableau_essaim dans
+  outils/bee.py) montre qui travaille sur quoi, mais rien ne dit à un utilisateur ce qu'il a en cours, tous
+  agents confondus, ni ce qu'il lui reste de chaque plafond. À construire : l'option --moi <pseudo>, en
+  lecture seule. Sans schéma ni verifier_pr : le champ agent (point 1 de ruche-0013) attend un choix de
+  conception commun avec ruche-0021. outils/bee.py est modifié en même temps par d'autres tâches
+  (ruche-0028 en relecture, ruche-0029) : rebaser avant de soumettre.
+fichiers: [outils/bee.py, outils/test_bee.py]
+portee: 0.8
+metrique: null
+critere_acceptation:
+  - "sur un registre d'essai avec 2 réservations et 1 inscription en parallèle, la commande affiche « R8 : 3/3 » et ne propose plus rien à prendre"
+  - "elle affiche, consommé et restant, chaque plafond sur 24 h (notes, arguments par débat et tous débats, tâches proposées, débats ouverts), avec des valeurs lues dans bee.yaml, jamais écrites en dur"
+  - "elle n'écrit aucun fichier"
+hors_perimetre:
+  - "COMMANDEMENTS.md"
+  - "valeurs de bee.yaml"
+  - "schemas/ et verifier_pr (le champ agent reste dans ruche-0013)"
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-31"

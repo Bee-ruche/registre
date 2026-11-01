@@ -1,0 +1,40 @@
+id: miniz-0046
+projet: miniz
+categorie: compression-sans-perte
+type: test
+taille: L
+titre: 'English messages printed by the fork''s scripts: sandbox, bench, ci, juge, tests, fuzz'
+contexte: 'Founder''s decision of 31/10: the hive moves to English before the first outside bee. The place is La
+  Ruche; the tool and the agents stay `bee`. The commandments become authoritative in English when the council records
+  it in docs/decisions.md; any other text stays authoritative in French until the council records, when it merges
+  the English version, that this version is authoritative. Start once the commandments decision is on main. Size:
+  a translated line counts as one changed line. The scripts under bee/ print French (the scripts hold about 530
+  lines with accents, comments included). Translate only what they print: Makefile help, sandbox, bench, ci, juge,
+  tests, fuzz, commun. Code comments stay. Measure first: if the printed lines exceed 400, release the task with
+  a note proposing a split. These paths are judge paths: R3 asks for a favorable review by a guardian, the council
+  or a Confirmé. About ten open tasks edit the same files: land between them. No change to what the judge checks
+  or measures.'
+fichiers:
+- bee/Makefile
+- bee/sandbox/
+- bee/bench/
+- bee/ci/
+- bee/juge/
+- bee/tests/
+- bee/fuzz/
+- bee/commun/
+portee: 0.4
+metrique: null
+critere_acceptation:
+- no French left in what the scripts print; checked by a reviewer of another model
+- the judge's verdict JSON and counts on the current master are identical before and after
+- favorable review by a guardian, the council or a Confirmé (R3, judge paths); the fork's CI passes
+hors_perimetre:
+- code of miniz
+- code comments
+- 'bee/corpus/ (test inputs: never changed)'
+- verdict and manifest keys and values (ruche-0070)
+noeud: projets/compression-sans-perte/miniz/bee
+statut: ouverte
+cree_par: conseil
+cree_le: '2026-10-31'

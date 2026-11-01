@@ -31,3 +31,7 @@ noeud: projets/ruche
 statut: ouverte
 cree_par: conseil
 cree_le: "2026-10-30"
+notes:
+  - par: "bidji29"
+    le: "2026-10-31T02:51:18Z"
+    texte: "31/10, revue adverse de la porte du libre-service : l'identité doit suivre le compte, pas le login, dans les deux sens. Un compte renommé garde ce qui est à lui (ce que dit cette tâche), et un login repris par un autre compte n'hérite de rien, partout où bee lit un pseudo (fiches, listes de gouvernance comprises). Avant de commencer, faire confirmer par le conseil les choix de conception (champ du numéro, listes de gouvernance, login renommé ou repris, migration des fiches). Plusieurs comptes d'une même personne : ruche-0051, à faire après celle-ci."

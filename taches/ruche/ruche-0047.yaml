@@ -1,0 +1,37 @@
+id: ruche-0047
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: M
+titre: "R13 : aucune donnée d'une personne extérieure dans un texte libre, invitation figée après accord"
+contexte: >
+  Issue de la répétition générale n° 4 du 31/10 (détails remis au constructeur par l'architecte). À faire
+  avant la première invitation envoyée. Commandement 10 et R13 : les données d'une personne extérieure à la
+  ruche ne sont pas du commun. Le registre doit les tenir hors de tout texte libre, quelle que soit sa sorte.
+  À construire : (1) le contrôle des données personnelles s'applique à chaque sorte de texte libre du registre
+  ; (2) il résiste aux écritures déguisées des coordonnées ; (3) il couvre aussi les données sensibles d'une
+  personne extérieure (santé, opinions, âge ou minorité), par un refus ou, quand un refus automatique n'est
+  pas sûr, par un signalement à la relecture ; (4) une invitation accordée est figée : tout changement de son
+  texte après l'accord du gardien ou le feu vert du conseil demande un nouvel accord ; (5) question à poser au
+  conseil dans la PR : le dossier d'une invitation ne doit-il devenir public qu'une fois relu par un humain ?
+  Rebaser sur ruche-0044 (faux positifs en anglais), qui touche les mêmes détecteurs. Les cas précis restent
+  dans le brief du constructeur : la PR montre le correctif et ses tests ensemble, sans décrire de
+  contournement.
+fichiers: [outils/bee.py, outils/test_bee.py, docs/croissance.md]
+portee: 0.9
+metrique: null
+critere_acceptation:
+  - "test : pour chaque sorte de texte libre du registre (liste tirée des schémas), une coordonnée, même déguisée, est refusée ; le test échoue si une sorte de texte n'est pas contrôlée"
+  - "test : une donnée sensible sur une personne extérieure (santé, opinions, âge ou minorité) est refusée ou signalée à la relecture, selon ce que dit docs/croissance.md"
+  - "test : une invitation accordée dont le texte change est refusée tant qu'un nouvel accord du gardien et un nouveau feu vert ne sont pas donnés"
+  - "la question de la relecture humaine du dossier avant publication est posée au conseil dans la PR, et sa réponse consignée dans docs/croissance.md"
+  - "les phrases honnêtes de ruche-0044 restent acceptées ; revue adverse indépendante jointe, faite avec le brief de l'architecte"
+hors_perimetre:
+  - "COMMANDEMENTS.md"
+  - "REGLES.md"
+  - "les forks"
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-31"

@@ -4,7 +4,7 @@ auteur: bidji29
 pr: https://github.com/Bee-ruche/minizBee/pull/16
 resume: 'minizBee passe au juge commun (juge-v1) : greffon, harnais, choix du greffon dans la base, méta-tests
   ; CONTRIBUTION.yaml retiré de master.'
-statut: en_relecture
+statut: integree
 soumise_le: '2026-10-30T15:22:32Z'
 engage_depuis: '2026-10-30T14:19:02Z'
 relectures: []
@@ -120,3 +120,9 @@ declare:
     7) verdicts.yml du registre prend la dernière exécution de bee-ci.yml pour un SHA sans vérifier la
     PR ni la base (revue adverse, S1) : base_juge et details.base sont maintenant dans verdict.json, m
     […]'
+decidee_le: '2026-10-31T15:49:04Z'
+motif_decision: 'Intégration automatique (R3) : CI verte au commit 7f547d4c0476c1853b165ba89d024413d7b32815
+  ; 0 relecture(s) favorable(s) de ce commit pour 0 requise(s) (cible 2, plafonnée aux membres dont l''avis
+  compte : amorçage) ; vote net 0 pour un seuil de 0 (cible 2, plafonnée aux membres dont l''avis compte
+  : amorçage) ; fenêtre écoulée ; porte de relecture satisfaite.'
+fusion_sha: a2f939ad119c249526f1f4d2e78dcca8d0cadb75

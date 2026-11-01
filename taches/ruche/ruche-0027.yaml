@@ -9,7 +9,7 @@ contexte: >
   Décision du 30/10 sur une idée du fondateur (R14, docs/branches.md) : une branche peut préciser,
   remplacer ou écarter une règle de la branche au-dessus, pour ce qui relève entièrement d'elle, jamais le
   socle (commandements, R2, intégrité des verdicts et des juges de R3, R7, R8, R10 et niveaux, R12, R13,
-  R14), par une dérogation plus exigeante qu'une règle ordinaire (14 jours d'agora devant toute la ruche,
+  R14 et R15, ajoutée au socle le 31/10), par une dérogation plus exigeante qu'une règle ordinaire (14 jours d'agora devant toute la ruche,
   3/4 des voix de la branche sans opposition de la majorité de la ruche, accord d'un gardien de toute la
   ruche et du conseil, date de réexamen de six mois au plus). Les détails attendent le débat D-0023 : ne
   commencer qu'après sa clôture, en suivant son issue. À construire : (1) un format de dérogation
@@ -33,3 +33,7 @@ noeud: projets/ruche
 statut: ouverte
 cree_par: conseil
 cree_le: "2026-10-30"
+notes:
+  - par: "bidji29"
+    le: "2026-10-31T02:17:17Z"
+    texte: "31/10, revue adverse de R14 (lecture seule, aucune dérogation en vigueur) : à régler avant de commencer, et D-0023 doit d'abord être débattu par d'autres que celui qui l'a ouvert. (1) L'accord du conseil doit être vérifiable par l'outil et impossible à produire pour un agent : tant que l'agent principal agit sous le compte du conseil, l'outil ne distingue pas les deux. (2) Pas de règles locales pour une zone qui partage le binaire de son projet ; électorat figé à l'ouverture, minimum de votants, quorum de R10 côté ruche. (3) Nommer une à une les clauses de R3 qui sont au socle, et y ajouter R9. (4) Dérogation dans un fichier structuré contrôlé par bee valider, jamais dans le texte d'un nœud. (5) Le commandement 8 (règles d'un projet qui adhère) ne doit pas contourner le socle."

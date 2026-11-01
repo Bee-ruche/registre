@@ -1,0 +1,34 @@
+id: ruche-0054
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: M
+titre: "L'ombre : une règle proposée tourne à côté de celle en vigueur, sur l'activité réelle"
+contexte: >
+  Décision du fondateur du 31/10 (« un seul état, deux versions de la loi ») : avant d'être adoptée, une règle
+  proposée (R10) qui change l'outil tourne « dans l'ombre » sur l'activité réelle pendant une durée fixée ;
+  on publie ce qu'elle aurait décidé autrement que la règle en vigueur. Les preuves viennent du vrai flux, pas
+  de personnages simulés. Limite connue : les participants s'adaptent aux règles, et l'ombre ne voit que des
+  comportements façonnés par l'ancienne ; les répétitions générales restent pour les stratégies. À
+  construire : une proposition peut nommer une branche de l'outil candidat ; un workflow l'exécute à côté de
+  l'outil de main sur chaque PR du registre, sans jamais décider, et consigne les différences dans un
+  rapport lié à la proposition ; le dépouillement (R10) montre ce rapport. À ne commencer qu'après le
+  durcissement de la porte (ruche-0039, ruche-0040) : l'outil candidat est du code non adopté, il tourne
+  sans jeton d'écriture et son résultat n'est jamais lu comme une décision.
+fichiers: [outils/bee.py, outils/test_bee.py, .github/workflows/, docs/gouvernance.md]
+portee: 0.7
+metrique: null
+critere_acceptation:
+  - "une proposition qui nomme un outil candidat obtient, pour chaque PR pendant sa durée, la décision de l'outil en vigueur et celle du candidat, côte à côte, dans un rapport public"
+  - "le candidat n'a aucun jeton d'écriture et ne peut changer aucune décision ; un candidat qui plante ou boucle n'arrête pas la CI réelle"
+  - "le dépouillement de la proposition affiche le nombre de décisions différentes et des exemples"
+  - "revue adverse indépendante jointe"
+hors_perimetre:
+  - "COMMANDEMENTS.md"
+  - "adoption automatique d'une règle (l'ombre informe, R10 décide)"
+depend_de: [ruche-0039, ruche-0040]
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-31"

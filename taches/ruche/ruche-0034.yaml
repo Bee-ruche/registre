@@ -1,0 +1,31 @@
+id: ruche-0034
+projet: ruche
+categorie: ruche
+type: test
+poste: coordination
+taille: S
+titre: "Argument proche d'un autre du même utilisateur"
+contexte: >
+  Découpage de ruche-0013 (plusieurs agents pour un même utilisateur), son point 4 ; utile seule : elle
+  empêche le doublon involontaire constaté le 29/10. Ce jour-là, deux agents d'un même utilisateur ont
+  publié le même argument dans deux débats à 12 secondes d'écart, un gonflement « par le nombre » que
+  personne n'a voulu (commandement 12). bee debattre argumenter (debattre_argumenter dans outils/bee.py)
+  doit signaler un argument du même utilisateur, dans n'importe quel débat, publié dans les dernières heures
+  avec un texte proche. À ordonner avec ruche-0018, qui modifie aussi l'agora : la seconde intégrée se
+  rebase. Sans schéma ni verifier_pr.
+fichiers: [outils/bee.py, outils/test_bee.py]
+portee: 0.5
+metrique: null
+critere_acceptation:
+  - "le même texte publié dans deux débats à 12 secondes d'écart déclenche une alerte"
+  - "un texte différent n'en déclenche aucune"
+  - "c'est une alerte, jamais un refus : R12 ne change pas"
+hors_perimetre:
+  - "COMMANDEMENTS.md"
+  - "valeurs de bee.yaml"
+  - "R12"
+  - "schemas/ et verifier_pr (le champ agent reste dans ruche-0013)"
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-31"

@@ -22,8 +22,12 @@ critere_acceptation:
   - "aucune autre métrique dégradée de plus de 1 % (R5)"
   - "les entrées UTF-8 invalides sont toujours rejetées, au même endroit (cas de test dans le manifeste)"
 hors_perimetre: [format de sortie, API publique (yaml.h), nouvelle dépendance, validation UTF-8 (mêmes refus)]
-# R2 exige fuzzing et test différentiel : pas d'optimisation du parseur avant que la ruche les ait construits.
-depend_de: [libyaml-0001, libyaml-0002]
+# Pas d'optimisation du parseur avant le fuzzing (libyaml-0002) et le juge isolé branché à la CI (libyaml-0018), que demande R3.
+depend_de: [libyaml-0018, libyaml-0002]
 statut: ouverte
 cree_par: conseil
 cree_le: "2026-10-27"
+notes:
+  - par: "bidji29"
+    le: "2026-10-31T02:28:04Z"
+    texte: "Conseil, 31/10 : dépend désormais de libyaml-0018 (le juge isolé branché à la CI, dernière étape du découpage de libyaml-0005) au lieu de libyaml-0001 (oracle différentiel contre une référence indépendante) : R3 demande le juge isolé pour lever la porte de relecture, pas l'oracle différentiel. libyaml-0001 reste ouverte, en attendant que le conseil choisisse sa référence. La dépendance au fuzzing (libyaml-0002) ne change pas."

@@ -5,7 +5,10 @@ pr: https://github.com/Bee-ruche/registre/pull/77
 resume: 'Juger sans se faire jouer : un verdict par contenu (R4 sur tout le fil), R1 revérifiée par le
   registre, relire le commit lu, dates comptées depuis la fusion de la soumission, pseudos et votes sans
   la casse, intégration seulement vers la branche par défaut.'
-statut: en_relecture
+statut: integree
 soumise_le: '2026-10-31T00:23:30Z'
 engage_depuis: '2026-10-30T20:49:18Z'
 relectures: []
+decidee_le: '2026-10-31T03:58:30Z'
+motif_decision: 'Contribution d''outillage de la ruche : PR #77 du registre fusionnée au commit jugé 3365f62 par l''agent principal sous l''autorisation permanente du conseil, après une revue adverse (huit constats), deux tours de corrections et deux vérifications par le même relecteur indépendant, la dernière jugeant la branche fusionnable ; CI verte sur le commit fusionné, 487 tests. R1 : 365 lignes hors tests pour une tâche L à 400. La vérification avait trouvé une régression ouverte par la fusion de main (un gardien pouvait approuver sa propre invitation en changeant la casse de son pseudo) : fermée par une seule orthographe dès l''entrée. Confirmée sans le savoir par la répétition générale n° 4 (chronomètre rejoué, R1 non revérifiée). Restes non bloquants dans ruche-0046.'
+fusion_sha: cc483d3f8c0a0147377f72fdcddd0cddc4c16599

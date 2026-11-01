@@ -1,0 +1,41 @@
+id: ruche-0055
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: M
+titre: 'Bilingual readers: bee accepts the English form of every French marker it reads in our texts'
+contexte: 'Founder''s decision of 31/10: the hive moves to English before the first outside bee. The place is La
+  Ruche; the tool and the agents stay `bee`. The commandments become authoritative in English when the council records
+  it in docs/decisions.md; any other text stays authoritative in French until the council records, when it merges
+  the English version, that this version is authoritative. Start once the commandments decision is on main. The
+  tool reads some French words in human-written files and checks them: the headings of a tree node (SECTIONS_NOEUD:
+  « Pourquoi cette branche existe »…), the debate link in docs/questions-ouvertes.md (LIEN_DEBAT: « Débat : [D-…]
+  »), the « À REMPLIR » placeholder that refuses an unfilled manifest (A_REMPLIR), and others. Translate one of
+  those files and a check goes silent. Before any translation of these files: inventory, by a script, every French
+  string the tool (outils/bee.py, outils/site_bee.py, outils/juge/) compares human-written text against; accept
+  the English form of each, beside the French one. Values written into records by the tool itself (verdicts, statuses,
+  invitation states) are data: ruche-0070 plans them.'
+fichiers:
+- outils/bee.py
+- outils/test_bee.py
+- outils/site_bee.py
+- outils/juge/
+portee: 0.7
+metrique: null
+critere_acceptation:
+- the inventory and the script that produced it are in the PR; every marker found is either made bilingual or listed
+  as data for ruche-0070, with the reason
+- for each bilingual marker, a test with an English fixture (an English node, an English debate link, an English
+  placeholder) passes
+- 'no widening: for each check, the same faulty input is refused in French and in English (e.g. an unfilled English
+  placeholder is refused like the French one)'
+- independent adversarial review attached (the gate reads some of these markers); the full test suite passes
+hors_perimetre:
+- translating any document
+- data values in records (ruche-0070)
+- messages the tool prints (ruche-0069)
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: '2026-10-31'

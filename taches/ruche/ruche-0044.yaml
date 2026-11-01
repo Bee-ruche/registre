@@ -1,0 +1,29 @@
+id: ruche-0044
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: S
+titre: "Détecteurs de données personnelles : ne pas refuser l'anglais courant"
+contexte: >
+  Issue de la répétition générale n° 4 du 31/10 (détails remis au constructeur par l'architecte). À faire
+  avant le premier participant extérieur. Les détecteurs de données personnelles de R13 (donnee_personnelle
+  dans outils/bee.py, appliqué aux invitations et à l'agora) refusent des tournures anglaises ordinaires,
+  prises pour une adresse de courriel ou une adresse postale ; par exemple « at the point where ». Un
+  participant extérieur écrira souvent en anglais : un refus sur une phrase honnête le bloque sans raison. À
+  construire : des détecteurs qui acceptent ces tournures et gardent tout ce qu'ils refusent à raison.
+fichiers: [outils/bee.py, outils/test_bee.py]
+portee: 0.9
+metrique: null
+critere_acceptation:
+  - "test : au moins 30 phrases anglaises et françaises honnêtes, dont « at the point where », sont acceptées par chaque détecteur"
+  - "les tests existants des détecteurs (vraies coordonnées, même déguisées) passent encore"
+  - "revue adverse indépendante jointe : elle cherche une vraie coordonnée que le changement laisserait passer"
+hors_perimetre:
+  - "COMMANDEMENTS.md"
+  - "REGLES.md"
+  - "les forks"
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: "2026-10-31"

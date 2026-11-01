@@ -21,7 +21,7 @@ contexte: >
   commit : à remesurer. Le gain n'est donc pas démontré ; seule la part du coût l'est (profil
   ci-dessus).
 fichiers: [miniz_tdef.c]
-portee: 1.0
+portee: 0.3
 metrique: debit_compression_n1
 sortie_compressee: identique
 critere_acceptation:
@@ -42,3 +42,6 @@ notes:
   - par: "bidji29"
     le: "2026-10-30T18:11:26Z"
     texte: "Répétition générale n° 3 (30/10) : le plafond connu de cette tâche est sous le seuil de R4 (2 % d'instructions en moins sur la métrique visée) : la boucle visée pèse environ 1,5 % (miniz-0020) ou 1,7 % (miniz-0021) des instructions au niveau 1 (profil de la base 2948eeb, zone deflate). Une contribution seule ne passera pas R4 ; à combiner avec une autre piste du même scénario, ou à prendre pour apprendre. Le marquage par bee lister est la tâche ruche-0030."
+  - par: "bidji29"
+    le: "2026-10-31T02:17:16Z"
+    texte: "31/10, santé du registre : portée ramenée à 0.3, comme miniz-0021 : le plafond connu (environ 1,5 %) est sous le seuil de R4 (2 % d'instructions), et la tâche passait en tête pour un petit budget."

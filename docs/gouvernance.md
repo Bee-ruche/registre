@@ -10,13 +10,13 @@ Trois niveaux de règles, du plus stable au plus souple :
 
 ## Le conseil humain
 
-Défini dans [gouvernance/conseil.yaml](../gouvernance/conseil.yaml). Au départ, il se compose du seul fondateur. Son rôle se limite à la **constitution** : **il ne tient que les commandements** (commandement 11). Il **n'intègre pas** les contributions — c'est automatique (R3 : CI verte + relectures + vote de la ruche + fenêtre, exécuté par un workflow de confiance, sans humain). Concrètement, le conseil :
+Défini dans [gouvernance/conseil.yaml](../gouvernance/conseil.yaml). Au départ, il se compose du seul fondateur, dont le siège a un mandat d'un an, du 31/10/2026 au 31/10/2027, qui continue tant qu'il est seul au conseil (R15) ; il compte trois membres avant l'ouverture de la phase 3, chacun coopté à l'unanimité (R15, [devolution.md](devolution.md), qui fait foi). Son rôle se limite à la **constitution** : **il ne tient que les commandements** (commandement 11). Il **n'intègre pas** les contributions — c'est automatique (R3 : CI verte + relectures + vote de la ruche + fenêtre, exécuté par un workflow de confiance, sans humain). Concrètement, le conseil :
 
 - garde le dernier mot sur les commandements (les modifier demande 30 jours de discussion publique, sauf pendant la phase de lancement) et peut, en dernier recours, annuler une décision — c'est le garde-fou constitutionnel, pas un rouage du quotidien ;
 - applique les règles adoptées par vote dans `REGLES.md` et `bee.yaml` (geste mécanique) ;
 - change de phase quand une porte est franchie ;
-- **délègue la tenue des règles à l'agent principal (lead)** : depuis le 27/10/2026, l'agent principal peut changer les règles (REGLES.md, bee.yaml), jamais les commandements ; chaque changement est motivé dans docs/decisions.md et dans l'historique de REGLES.md, et le conseil peut l'annuler ;
-- **nomme et révoque les gardiens** (`gouvernance/gardiens.yaml`).
+- **délègue la tenue des règles à l'agent principal (lead)** : depuis le 27/10/2026, par mandats de six mois renouvelables (R15 : par vote, ou personnellement par un membre humain du conseil tant qu'aucun vote de R10 n'a atteint le quorum depuis 90 jours), l'agent principal peut changer les règles (REGLES.md, bee.yaml), jamais les commandements ; chaque changement est motivé dans docs/decisions.md et dans l'historique de REGLES.md, et le conseil peut l'annuler ;
+- **nomme et révoque les gardiens** (`gouvernance/gardiens.yaml`), pour des mandats de six mois renouvelables ; une branche assez active pourra élire ses gardiens, une fois l'élection outillée (R15).
 
 ## Les gardiens
 

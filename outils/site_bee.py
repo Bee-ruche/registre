@@ -225,7 +225,7 @@ def page(titre, corps, profondeur, actif, reg, horodatage):
     if depot:
         nav += f'<a href="{e(depot)}">Registre sur GitHub</a>'
     pied = (f'<p>Bee est un espace de forks indépendant : aucun projet d\'origine n\'est affilié ni contacté. '
-            f'Règles : <a href="{e(depot)}/blob/main/COMMANDEMENTS.md">commandements</a>, <a href="{e(depot)}/blob/main/REGLES.md">règles</a>. '
+            f'Règles : <a href="{e(depot)}/blob/main/COMMANDMENTS.md">commandements</a>, <a href="{e(depot)}/blob/main/REGLES.md">règles</a>. '
             f'Données brutes : <a href="{p}api/registre.json">registre.json</a>. Page générée le {date_fr(horodatage)}.</p>') if depot else ""
     return (
         "<!doctype html><html lang='fr'><head><meta charset='utf-8'>"

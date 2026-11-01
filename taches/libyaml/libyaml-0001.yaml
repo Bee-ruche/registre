@@ -26,3 +26,7 @@ hors_perimetre: [sources de libyaml, nouvelle dépendance non justifiée]
 statut: ouverte
 cree_par: conseil
 cree_le: "2026-10-27"
+notes:
+  - par: "bidji29"
+    le: "2026-10-31T02:28:04Z"
+    texte: "Conseil, 31/10 : la référence citée en exemple dans le contexte, PyYAML par sa liaison C, est libyaml lui-même (son chargeur rapide CLoader est construit sur libyaml) : comparer libyaml à elle ne prouve rien. Le choix de la référence (libfyaml, les sorties attendues de yaml-test-suite comme données, ou autre) attend une décision du conseil. libyaml-0010 et libyaml-0011 ne dépendent plus de cette tâche, mais de libyaml-0018 (le juge isolé branché à la CI)."

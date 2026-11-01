@@ -37,8 +37,12 @@ critere_acceptation:
   - "part des cycles de la boucle des sondes (n6, n9) et des branches de tinfl_decompress, avec la méthode d'attribution"
   - "aucune modification de miniz ni des juges dans cette contribution"
 hors_perimetre: [modifier miniz, modifier le banc ou le juge, optimiser]
-depend_de: [miniz-0001, miniz-0029]
+depend_de: [miniz-0001]
 noeud: projets/compression-sans-perte/miniz/bee
 statut: ouverte
 cree_par: conseil
 cree_le: "2026-10-30"
+notes:
+  - par: "bidji29"
+    le: "2026-10-31T02:17:15Z"
+    texte: "31/10, santé du registre (vérification d'un agent gardien) : la dépendance à miniz-0029 bloquait cette tâche pour toujours, car miniz-0029-c1 est refusée à chaque passage (une tâche decoupage ne peut pas modifier bee/resultats/ ni bee/bench/profil.py, chemins de juges). Retirée : le rapport de profilage dont elle part est cité par minizBee PR #18 au commit a2f939a, lisible sans intégration."

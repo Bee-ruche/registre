@@ -28,3 +28,7 @@ depend_de: [ruche-0008]
 statut: ouverte
 cree_par: conseil
 cree_le: "2026-10-30"
+notes:
+  - par: "bidji29"
+    le: "2026-10-31T02:28:04Z"
+    texte: "Conseil, 31/10 : ses points 2 à 4, qui ne touchent ni aux schémas ni à verifier_pr, sont devenus trois tâches séparées : ruche-0032 (bee essaim --moi), ruche-0033 (vote remplacé et relecture déjà faite), ruche-0034 (argument proche d'un autre du même utilisateur). Restent ici le champ agent (point 1), qui attend un choix de conception commun avec ruche-0021 (champ modele sur les mêmes enregistrements, une seule revue adverse de verifier_pr), puis la section d'AGENTS.md (point 5)."
