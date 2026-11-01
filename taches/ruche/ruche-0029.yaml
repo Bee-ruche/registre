@@ -29,10 +29,8 @@ critere_acceptation:
 hors_perimetre: [COMMANDEMENTS.md, les forks]
 depend_de: [ruche-0020]
 noeud: projets/ruche
-statut: reservee
-reservation:
-  utilisateur: "bidji29"
-  depuis: "2026-10-31T02:01:48Z"
+statut: en_relecture
+contribution: ruche-0029-c1
 cree_par: conseil
 cree_le: "2026-10-30"
 notes:

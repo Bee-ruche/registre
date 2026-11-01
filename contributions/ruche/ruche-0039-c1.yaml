@@ -4,7 +4,10 @@ auteur: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/98
 resume: Member file dates checked by the gate against the PR's time and GitHub's date; account age measured
   at the check, in UTC.
-statut: en_relecture
+statut: integree
 soumise_le: '2026-11-01T03:49:24Z'
 engage_depuis: '2026-11-01T01:36:59Z'
 relectures: []
+decidee_le: '2026-11-01T05:25:59Z'
+motif_decision: 'Hive tooling contribution: registry PR #98 merged at the judged commit 704b6e2 by the agent principal under the council''s permanent authorisation, after an independent adversarial review by an agent of another model with the architect''s private brief (no blocking finding; two should-fix items and two nits fixed, then verified by the same reviewer); CI green on the merged commit. R1: 33 lines excluding tests for an S task at 50.'
+fusion_sha: b19312b2e7e9e391bfac8c77662019a27cd1a0f3
