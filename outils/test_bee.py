@@ -9665,6 +9665,260 @@ class TestTroisiemeRevueRuche0020(BaseRevueRuche0020):
             auteur="bidji29"), ["honnête"])
 
 
+# ruche-0044: honest English and French, written in the style of PR descriptions, code reviews and optimisation reports; the
+# Catch2 and miniz comments are real (minizBee's tests/catch_amalgamated.cpp and tests/large_fuzzer.c). The first thirty-six
+# were refused before ruche-0044 (taken for "<name> at <domain> point <tld>"); the others guard what was already accepted.
+PHRASES_HONNETES_0044 = (
+    "The loop stalls at the point where the window slides past the end of the buffer.",
+    "We stop at the point where the gain drops below 2 percent.",
+    "The decoder bails out at the point of the error, which is fine.",
+    "Nothing is allocated at this point of the parse, so the early return is safe.",
+    "It is worth profiling again at some point later this week.",
+    "Both runs diverge at a point where the hash chain wraps around.",
+    "Reviewers can stop at any point during the rehearsal.",
+    "It never reads past the input, and at no point does it write to the table.",
+    "Measure each scenario at every point where the output could change.",
+    "The window fills up at which point the encoder flushes the block.",
+    "The second run failed at another point during the parse.",
+    "Let us find out at what point the CI starts timing.",
+    "Under CATCH_CONFIG_FAST_COMPILE, unexpected exceptions under REQUIRE assertions are reported without translation at the "
+    "point of origin.",
+    "En anglais, on écrirait : it stalls at the point where the window ends.",
+    "We will revisit this at some point soon.",
+    "It breaks at that point again, so the guard stays.",
+    "I would merge it at this point though.",
+    "That was fixed at some point earlier (see #12).",
+    "The flush happens at that point anyway; nothing to do.",
+    "Is it safe at this point yet?",
+    "The tests stopped at which point we reverted the commit.",
+    "The checksum held at every point after the rebase.",
+    "The leak shows up at some point before the second flush.",
+    "Nothing changes at that point until the window is full.",
+    "The table is rebuilt at that point for every block.",
+    "It keeps working at that point without the cache.",
+    "We pick it up at that point from the log.",
+    "The pointer is reset at that point on every call.",
+    "Rates differ at this point relative to the baseline.",
+    "It slows down at that point due to the extra copy.",
+    "We merge at that point if the CI is green.",
+    "The loop exits at this point with an error code.",
+    "The buffer lives at that point outside the arena.",
+    "It is faster at that point than the old path.",
+    "We flush at that point then start the next block.",
+    "Something goes wrong at some point there, we think.",
+    "At this point, uncompr is still mostly zeroes, so it should compress very well.",
+    "I would merge it at this point, the remaining comments are cosmetic.",
+    "Thanks @bidji29, good point.",
+    "cc @alice: can you take a look at section 4?",
+    "The hot path is at deflate.c, line 812.",
+    "Benchmarked on 4 cores at 3.2 GHz, median of 9 runs.",
+    "The gain is at 2 point 5 percent, within the noise.",
+    "Reviewed at 10:30, the tests pass on x86-64 and ARM64.",
+    "Rebased on main at 7f547d4, no conflicts.",
+    "It shifts by 2 places to the left on every round.",
+    "The struct is 48 bytes, down from 64, and the output is identical bit for bit.",
+    "Good catch at line 42, point taken.",
+    "On arrive au point où la fenêtre déborde du tampon.",
+    "Le gain passe à 2 point 5 pour cent sur le scénario n6.",
+    "Voir la ligne 812, point 3 de la revue.",
+    "Le correctif est au point 2 de la PR.",
+    "Le décodeur s'arrête à ce point du flux, sans perte.",
+    "Mesuré sur 9 exécutions, médiane de 2,1 % de gain.",
+    "Lu à 10 h, les tests passent sur x86-64 et ARM64.",
+    "Le caractère arobase est réservé aux adresses ; ici, il n'y en a aucune.",
+    "Point par point, la revue tient : rien ne change en sortie.",
+)
+# Honest, and refused on purpose (accepted false positives): the word after "point" is a top-level domain (in: India); a
+# dot followed by a word on the same line, or within 60 characters a spelled dot (a second "point") or words joined by a
+# sign (bee.py), could carry the address further.
+REFUSEES_EXPRES_0044 = ("The decoder bails out at that point in the stream, which is fine.",
+                        "We will revisit this at some point soon. The rest is fine.",
+                        "We stop at the point where the point estimate drops.",
+                        "It fails at the point where bee.py reads the file.")
+# Addresses next to what ruche-0044 lets through, all caught before it: "dot", a domain that is not a determiner, a word after
+# "point" that is not an allowed continuation, the address going on after one (spelled, written or bracketed dot), "arobase",
+# a written or bracketed @; then every string of the adversarial review (B1): determiner domains followed by a word, Title
+# Case, line breaks, Unicode spaces, "co uk", "example org" as a subdomain, arobase forms; then the second review's
+# strings, where an allowed word is followed by an address with a dot (spelled, bracketed or another sign).
+COORDONNEES_VOISINES_0044 = (
+    "alice at the dot org", "Write to alice at the dot org for details", "alice at exemple point org",
+    "alice arobase exemple point fr", "alice at the point gmail dot com", "alice at the point gmail.com",
+    "alice at the point gmail (dot) com", "alice at the point gmail·com", "alice at the point gmail point com for details",
+    "alice at this point com.", "Write to alice at the point org", "alice at one point com for details",
+    "alice at my point com for details", "alice at 163 point com for details", "alice (at) the point org for details",
+    "alice [at] this point com for details", "alice@the point org for details", "alice @ the point org for details",
+    "alice＠the point org for details", "jean.dupont at example dot org", "jean at exemple dot co dot uk",
+    "Merci @alice. Écrivez à bob@exemple.org.", "alice at the point in for details", "alice at the point where dot com",
+    "alice at the point where.com", "alice at the point where (dot) com", "alice at the point where . com",
+    "alice at the point where. com", "alice at the point where·com", "alice at the point soon\ndot com",
+    "alice at the point where\n.com", "alice arobase the point where", "alice arobase the point where the window",
+    "alice at the point com for details", "alice at the point com for details",
+    "alice at this point com for details", "alice at the point com for details", "alice at a point com for details",
+    "alice at no point com for details", "alice at any point com or call", "Alice At The Point Com For Details",
+    "ALICE AT THE POINT COM FOR DETAILS", "alice at the point co point uk for details",
+    "alice at the point co dot uk for details", "alice at the point co uk for details",
+    "alice at the point co. uk for details", "alice at the point co  point  uk for details",
+    "mail at the point example point com", "mail at the point example dot com for details",
+    "mail at the point example point com for details", "mail at the point example org for details",
+    "mail at the point example.org for details", "alice at the point com\nfor details",
+    "alice at the point com \nfor details", "alice at\nthe point com for details", "alice at the\npoint com for details",
+    "alice at the point\ncom for details", "alice at the point\ncom\nfor details", "alice at this point com\rfor details",
+    "alice at this point com\u2028for details", "alice at this point com\u2029for details",
+    "alice at this point com\x85for details", "alice at this point com\x0bfor details",
+    "alice at the point com, for details", "alice at the point com - for details", "alice at the point com: for details",
+    "alice at the point com (for details)", "alice at the point com for details.",
+    "alice at the point com, bob at the point org, etc", "alice at the point com and bob at the point org",
+    "alice at\xa0the\xa0point\xa0com\xa0for details", "alice at\u2003the point com for\u2003details",
+    "alice at the point com\u200bfor details", "alice at the point com\u3000for details",
+    "alice at the point\xa0com\xa0for", "alice arobase this point com for details", "alice arobase the point org pour toi",
+    "alice arobase the point fr pour toi", "alice at the point com 2", "alice at the point com 2fa",
+    "alice at the point com-x for", "alice at the point com for", "alice at the point com.", "alice at the point com.uk",
+    "alice at the point com foo@bar",
+    "alice at the point where gmail dot com", "alice at the point where example (dot) com",
+    "alice at the point where mail.example.org", "alice at the point where, example.com",
+    "alice at the point soon example dot org", "alice at the point where\ngmail dot com",
+    "alice at the point where\u2027example\u2027com", "alice at the point where\u2022example\u2022com",
+    "alice at the point where\u2219example\u2219com", "alice at the point where\u22c5example\u22c5com",
+    "alice at the point where\u30fbexample\u30fbcom", "alice at the point where\u0589example\u0589com",
+    "alice at the point where\u2026example\u2026com", "alice at the point where\u2025example\u2025com",
+    "alice at the point where\u060cexample\u060ccom", "alice at the point where\u06d4example\u06d4com",
+    "alice at the point where\u0964example\u0964com", "alice at the point where\u1362example\u1362com",
+    "alice at the point where mail. example. com", "alice at the point where example. com",
+    "alice at the point where example\u2027 com for details",
+)
+# The ASCII top-level domains of the Public Suffix List, snapshot of 2025-12-28 (nixpkgs package
+# publicsuffix-list-0-unstable-2025-12-28; the list of 2026-10-31 adds web and drops goo, helsinki, juniper and
+# wolterskluwer). Two-letter ISO 3166 codes reserved or assigned without a domain may become top-level domains: refused too.
+TLD_PSL_2025_12_28 = set((
+    "aaa aarp abb abbott abbvie abc able abogado abudhabi ac academy accenture accountant accountants aco actor ad ads "
+    "adult ae aeg aero aetna af afl africa ag agakhan agency ai aig airbus airforce airtel akdn al alibaba alipay allfinanz "
+    "allstate ally alsace alstom am amazon americanexpress americanfamily amex amfam amica amsterdam analytics android "
+    "anquan anz ao aol apartments app apple aq aquarelle ar arab aramco archi army arpa art arte as asda asia associates at "
+    "athleta attorney au auction audi audible audio auspost author auto autos aw aws ax axa az azure ba baby baidu banamex "
+    "band bank bar barcelona barclaycard barclays barefoot bargains baseball basketball bauhaus bayern bb bbc bbt bbva bcg "
+    "bcn bd be beats beauty beer berlin best bestbuy bet bf bg bh bharti bi bible bid bike bing bingo bio biz bj black "
+    "blackfriday blockbuster blog bloomberg blue bm bms bmw bn bnpparibas bo boats boehringer bofa bom bond boo book "
+    "booking bosch bostik boston bot boutique box br bradesco bridgestone broadway broker brother brussels bs bt build "
+    "builders business buy buzz bv bw by bz bzh ca cab cafe cal call calvinklein cam camera camp canon capetown capital "
+    "capitalone car caravan cards care career careers cars casa case cash casino cat catering catholic cba cbn cbre cc cd "
+    "center ceo cern cf cfa cfd cg ch chanel channel charity chase chat cheap chintai christmas chrome church ci cipriani "
+    "circle cisco citadel citi citic city ck cl claims cleaning click clinic clinique clothing cloud club clubmed cm cn co "
+    "coach codes coffee college cologne com commbank community company compare computer comsec condos construction "
+    "consulting contact contractors cooking cool coop corsica country coupon coupons courses cpa cr credit creditcard "
+    "creditunion cricket crown crs cruise cruises cu cuisinella cv cw cx cy cymru cyou cz dad dance data date dating datsun "
+    "day dclk dds de deal dealer deals degree delivery dell deloitte delta democrat dental dentist desi design dev dhl "
+    "diamonds diet digital direct directory discount discover dish diy dj dk dm dnp do docs doctor dog domains dot download "
+    "drive dtv dubai dupont durban dvag dvr dz earth eat ec eco edeka edu education ee eg email emerck energy engineer "
+    "engineering enterprises epson equipment er ericsson erni es esq estate et eu eurovision eus events exchange expert "
+    "exposed express extraspace fage fail fairwinds faith family fan fans farm farmers fashion fast fedex feedback ferrari "
+    "ferrero fi fidelity fido film final finance financial fire firestone firmdale fish fishing fit fitness fj fk flickr "
+    "flights flir florist flowers fly fm fo foo food football ford forex forsale forum foundation fox fr free fresenius frl "
+    "frogans frontier ftr fujitsu fun fund furniture futbol fyi ga gal gallery gallo gallup game games gap garden gay gb "
+    "gbiz gd gdn ge gea gent genting george gf gg ggee gh gi gift gifts gives giving gl glass gle global globo gm gmail "
+    "gmbh gmo gmx gn godaddy gold goldpoint golf goo goodyear goog google gop got gov gp gq gr grainger graphics gratis "
+    "green gripe grocery group gs gt gu gucci guge guide guitars guru gw gy hair hamburg hangout haus hbo hdfc hdfcbank "
+    "health healthcare help helsinki here hermes hiphop hisamitsu hitachi hiv hk hkt hm hn hockey holdings holiday "
+    "homedepot homegoods homes homesense honda horse hospital host hosting hot hotel hotels hotmail house how hr hsbc ht hu "
+    "hughes hyatt hyundai ibm icbc ice icu id ie ieee ifm ikano il im imamat imdb immo immobilien in inc industries "
+    "infiniti info ing ink institute insurance insure int international intuit investments io ipiranga iq ir irish is "
+    "ismaili ist istanbul it itau itv jaguar java jcb je jeep jetzt jewelry jio jll jm jmp jnj jo jobs joburg jot joy jp "
+    "jpmorgan jprs juegos juniper kaufen kddi ke kerryhotels kerryproperties kfh kg kh ki kia kids kim kindle kitchen kiwi "
+    "km kn koeln komatsu kosher kp kpmg kpn kr krd kred kuokgroup kw ky kyoto kz la lacaixa lamborghini lamer land "
+    "landrover lanxess lasalle lat latino latrobe law lawyer lb lc lds lease leclerc lefrak legal lego lexus lgbt li lidl "
+    "life lifeinsurance lifestyle lighting like lilly limited limo lincoln link live living lk llc llp loan loans locker "
+    "locus lol london lotte lotto love lpl lplfinancial lr ls lt ltd ltda lu lundbeck luxe luxury lv ly ma madrid maif "
+    "maison makeup man management mango map market marketing markets marriott marshalls mattel mba mc mckinsey md me med "
+    "media meet melbourne meme memorial men menu merck merckmsd mg mh miami microsoft mil mini mint mit mitsubishi mk ml "
+    "mlb mls mm mma mn mo mobi mobile moda moe moi mom monash money monster mormon mortgage moscow moto motorcycles mov "
+    "movie mp mq mr ms msd mt mtn mtr mu museum music mv mw mx my mz na nab nagoya name navy nba nc ne nec net netbank "
+    "netflix network neustar new news next nextdirect nexus nf nfl ng ngo nhk ni nico nike nikon ninja nissan nissay nl no "
+    "nokia norton now nowruz nowtv np nr nra nrw ntt nu nyc nz obi observer office okinawa olayan olayangroup ollo om omega "
+    "one ong onion onl online ooo open oracle orange org organic origins osaka otsuka ott ovh pa page panasonic paris pars "
+    "partners parts party pay pccw pe pet pf pfizer pg ph pharmacy phd philips phone photo photography photos physio pics "
+    "pictet pictures pid pin ping pink pioneer pizza pk pl place play playstation plumbing plus pm pn pnc pohl poker "
+    "politie porn post pr praxi press prime pro prod productions prof progressive promo properties property protection pru "
+    "prudential ps pt pub pw pwc py qa qpon quebec quest racing radio re read realestate realtor realty recipes red "
+    "redumbrella rehab reise reisen reit reliance ren rent rentals repair report republican rest restaurant review reviews "
+    "rexroth rich richardli ricoh ril rio rip ro rocks rodeo rogers room rs rsvp ru rugby ruhr run rw rwe ryukyu sa "
+    "saarland safe safety sakura sale salon samsclub samsung sandvik sandvikcoromant sanofi sap sarl sas save saxo sb sbi "
+    "sbs sc scb schaeffler schmidt scholarships school schule schwarz science scot sd se search seat secure security seek "
+    "select sener services seven sew sex sexy sfr sg sh shangrila sharp shell shia shiksha shoes shop shopping shouji show "
+    "si silk sina singles site sj sk ski skin sky skype sl sling sm smart smile sn sncf so soccer social softbank software "
+    "sohu solar solutions song sony soy spa space sport spot sr srl ss st stada staples star statebank statefarm stc "
+    "stcgroup stockholm storage store stream studio study style su sucks supplies supply support surf surgery suzuki sv "
+    "swatch swiss sx sy sydney systems sz tab taipei talk taobao target tatamotors tatar tattoo tax taxi tc tci td tdk team "
+    "tech technology tel temasek tennis teva tf tg th thd theater theatre tiaa tickets tienda tips tires tirol tj tjmaxx "
+    "tjx tk tkmaxx tl tm tmall tn to today tokyo tools top toray toshiba total tours town toyota toys tr trade trading "
+    "training travel travelers travelersinsurance trust trv tt tube tui tunes tushu tv tvs tw tz ua ubank ubs ug uk unicom "
+    "university uno uol ups us uy uz va vacations vana vanguard vc ve vegas ventures verisign versicherung vet vg vi viajes "
+    "video vig viking villas vin vip virgin visa vision viva vivo vlaanderen vn vodka volvo vote voting voto voyage vu "
+    "wales walmart walter wang wanggou watch watches weather weatherchannel webcam weber website wed wedding weibo weir wf "
+    "whoswho wien wiki williamhill win windows wine winners wme wolterskluwer woodside work works world wow ws wtc wtf xbox "
+    "xerox xihuan xin xxx xyz yachts yahoo yamaxun yandex ye yodobashi yoga yokohama you youtube yt yun za zappos zara zero "
+    "zip zm zone zuerich zw "
+).split())
+ISO_3166_SANS_DOMAINE = set(("ac cp cq dg ea eu ez fx ic su ta uk un an bu cs nt sf tp yu zr dy ew fl ja lf pi ra rb "
+                             "rc rh ri rl rm rn rp wg wl wv yv bl bq eh mf um").split())
+
+
+class TestPersonalDataDetectorsPlainEnglish(unittest.TestCase):
+    """ruche-0044: the R13 detectors accept ordinary English (« at the point where ») and still catch the addresses next to
+    it. No registry: fast."""
+
+    def test_honest_sentences_pass_every_detector(self):
+        self.assertGreaterEqual(len(PHRASES_HONNETES_0044), 30)
+        self.assertIn("at the point where", PHRASES_HONNETES_0044[0])
+        for phrase in PHRASES_HONNETES_0044:
+            with self.subTest(phrase=phrase):
+                self.assertFalse(bee.courriel(phrase))
+                self.assertIsNone(bee.ADRESSE_POSTALE.search(phrase))
+                self.assertFalse(bee.numero_de_telephone(phrase))
+                self.assertIsNone(bee.donnee_personnelle(phrase))
+        for phrase in REFUSEES_EXPRES_0044:
+            with self.subTest(refusee=phrase):
+                self.assertEqual(bee.donnee_personnelle(phrase), "une adresse de courriel")
+
+    def test_neighbouring_addresses_still_caught(self):
+        for texte in COORDONNEES_VOISINES_0044:
+            with self.subTest(texte=texte):
+                self.assertEqual(bee.donnee_personnelle(texte), "une adresse de courriel")
+        for texte in ("alice at this point com for details", "mail at the point example org for details",
+                      "alice arobase the point org pour toi"):
+            with self.subTest(flux=texte):
+                self.assertIn("une adresse de courriel", bee.donnee_agora(texte, "argument"))
+                self.assertIn("une adresse de courriel", bee.texte_sortant_refuse(texte, "message", 2000))
+        for source in ("https://example.org/p/alice%20at%20this%20point%20com%20x",
+                       "https://example.org/p/alice%20at%20the%20point%20where%20dot%20com"):
+            with self.subTest(source=source):
+                self.assertIn("une adresse de courriel", bee.adresse_sortante_refusee(source, "source"))
+                self.assertIn("une adresse de courriel", bee.probleme_source(None, source))
+
+    def test_continuations_are_no_top_level_domain(self):
+        """A determiner, "point", then an allowed word is let through: that word is no top-level domain of the snapshot."""
+        self.assertGreater(len(TLD_PSL_2025_12_28), 1200)
+        self.assertTrue({"com", "org", "in", "it", "is", "to", "now", "how", "one", "new", "app", "dev", "page", "you"}
+                        <= TLD_PSL_2025_12_28)
+        mots = bee.CONTINUATIONS_EN.split("|")
+        self.assertGreaterEqual(len(mots), 10)
+        self.assertNotIn("did", mots, "applied for in ICANN's 2026 round")
+        self.assertEqual([m for m in mots if m in TLD_PSL_2025_12_28 or m in ISO_3166_SANS_DOMAINE], [])
+        # A determiner is the would-be domain, not the tld: being one is harmless there; pinned so a change is seen.
+        self.assertEqual({m for m in bee.DETERMINANTS_EN.split("|") if m in TLD_PSL_2025_12_28}, {"no"})
+
+
+class TestPersonalDataDetectorsPlainEnglishFlows(BaseRevueRuche0020):
+    """ruche-0044: the same English passes in an invitation's message (verifier-pr) and in an agora argument."""
+
+    def test_english_in_an_invitation_and_in_the_agora(self):
+        phrase = PHRASES_HONNETES_0044[0]
+        self.a("2026-10-30T10:00:00Z")
+        self.assertEqual(self.essayer(["en"], lambda _: self.proposer_brut(
+            message=MESSAGE_INVITATION + " " + phrase + "\n\n" + self.mention())), ["en"])
+        self.branche()
+        self.argumenter("alice", "pour", phrase)
+        self.publier("alice", "argument")
+
+
 class TestVerificationRuche0020(BaseRevueRuche0020):
     """Vérification de cdbcf36 (D1 à D5, et la ligne du commandement 10) : un test par point, parcours honnête accepté,
     détournement refusé. Données fictives."""
@@ -12100,6 +12354,456 @@ class TestAgentAccountsWorkflows(BaseParallele):
                 code, texte = self.bee("verifier-fork", "--tache", "miniz-0099", "--base", "master", "--depot", str(fork), "--auteur", auteur)
                 self.assertEqual(code, attendu, texte)
         self.assertIn("utilisateur « bidji29 » différent de l'auteur de la PR « LaRuche-Architect »", texte)
+
+
+# --- ruche-0040: each self-service file has a size bound, and each of its texts too, checked before any parsing ---
+
+SCHEMAS_LIBRE_SERVICE = {"taches": "tache", "contributions": "enregistrement", "votes": "vote", "mesures": "mesure", "membres": "membre",
+                         "propositions": "proposition", "debats": "debat", "invitations": "invitation",
+                         bee.CHEMIN_NON_CONTACT: "ne-plus-contacter"}
+# The only texts of a self-service schema that the common check does not read: the verdict of a contribution, written by the
+# CI under its own bounds (VERDICT_MAX, verdict_montrable; enregistrer-verdict never writes a contribution past its bound or off
+# its schema: TestBornesVerdictEtMarque) and refused by verifier-pr from anyone else.
+HORS_CONTROLE_COMMUN = {("contributions", "verdict")}
+
+
+def champs_texte(schema, noeud=None, chemin=()):
+    """Each path to a text a JSON schema allows, at any depth: ("notes", 0, "texte"), 0 for a list item, "x" for a free key."""
+    noeud = schema if noeud is None else noeud
+    if "$ref" in noeud:
+        yield from champs_texte(schema, schema["$defs"][noeud["$ref"].rsplit("/", 1)[1]], chemin)
+    for sous in [*(s for cle in ("allOf", "oneOf", "anyOf") for s in noeud.get(cle, [])),
+                 *(noeud[cle] for cle in ("if", "then", "else", "not") if isinstance(noeud.get(cle), dict))]:
+        yield from champs_texte(schema, sous, chemin)
+    types = noeud.get("type") if isinstance(noeud.get("type"), list) else [noeud.get("type")]
+    if "string" in types or any(isinstance(v, str) for v in noeud.get("enum", [])) or isinstance(noeud.get("const"), str):
+        yield chemin
+    for cle, sous in noeud.get("properties", {}).items():
+        yield from champs_texte(schema, sous, chemin + (cle,))
+    for cle, suite in (("items", 0), ("additionalProperties", "x")):
+        if isinstance(noeud.get(cle), dict):
+            yield from champs_texte(schema, noeud[cle], chemin + (suite,))
+
+
+def lieu_de(chemin):
+    """The place bee names (textes_de) for a path: ("notes", 0, "texte") -> notes[0]/texte."""
+    return "".join(f"[{c}]" if isinstance(c, int) else f"/{c}" for c in chemin).lstrip("/")
+
+
+def imbriquer(chemin, valeur):
+    for cle in reversed(chemin):
+        valeur = [valeur] if isinstance(cle, int) else {cle: valeur}
+    return valeur
+
+
+class TestBornesLibreService(unittest.TestCase):
+    """ruche-0040, without a registry (fast): every text field of every self-service schema goes through the common check and
+    has a bound, and the write-time bounds of bee.yaml stay under those of the files."""
+
+    @mock.patch.object(bee, "CN_REFUSE", True)  # as in CI, whatever the Unicode table of this Python
+    def test_chaque_champ_texte_de_chaque_schema_passe_le_controle_commun_et_sa_borne(self):
+        self.assertEqual(set(SCHEMAS_LIBRE_SERVICE), set(bee.OCTETS_MAX), "a self-service kind without a schema here, or the reverse")
+        for sorte, nom in SCHEMAS_LIBRE_SERVICE.items():
+            schema = json.loads((RACINE / "schemas" / f"{nom}.schema.json").read_text(encoding="utf-8"))
+            champs = sorted(set(champs_texte(schema)), key=str)
+            self.assertGreater(len(champs), 0, nom)
+            relatif = sorte if sorte == bee.CHEMIN_NON_CONTACT else f"{sorte}/x.yaml"
+            self.assertEqual(bee.sorte_libre_service(relatif), sorte)
+            # Each long field the tool names is a text field of the schema (no typo, no field gone).
+            noms = {re.sub(r"\[\d+\]", "", lieu_de(c)) for c in champs}
+            self.assertLessEqual(set(bee.CHAMPS_LONGS.get(sorte, ())) | {c for s, c in bee.TEXTES_PROPRES if s == sorte}, noms, nom)
+            for chemin in champs:
+                if (sorte, chemin[0]) in HORS_CONTROLE_COMMUN:
+                    continue
+                lieu, borne = lieu_de(chemin), bee.borne_texte(sorte, lieu_de(chemin))
+                with self.subTest(sorte=sorte, champ=lieu):
+                    refus = [(f"a{c}b", f"{relatif} : {lieu} : caractère invisible refusé ({code_point(c)}, ")
+                             for c in FAMILLES_CACHEES.values()]
+                    refus += [(f"a {FAUSSES_MARQUES[0]}", f"{relatif} : {lieu} : fausse marque d'encadré refusée"),
+                              ("a" * (borne + 1), f"{relatif} : {lieu} : {borne + 1} caractères, au plus {borne} ")]
+                    for valeur, attendu in refus:
+                        problemes = list(bee.problemes_textes_libre_service(imbriquer(chemin, valeur), relatif))
+                        self.assertTrue([p for p in problemes if p.startswith(attendu)], (attendu, problemes))
+                    for honnete in ("a" * borne, "Honnête" + TEMOIN_HONNETE):
+                        self.assertEqual(list(bee.problemes_textes_libre_service(imbriquer(chemin, honnete), relatif)), [])
+
+    def test_au_dela_de_64_cles_de_premier_niveau_un_seul_refus_tout_de_suite(self):
+        donnees = {f"k{i}": i for i in range(20000)}
+        texte = "".join(f"k{i}: {i}\n" for i in range(20000))
+        self.assertEqual(bee.problemes_de_forme(texte, donnees), ["20000 clés de premier niveau, au plus 64 : ce n'est pas un fichier qu'écrit bee"])
+        self.assertEqual(bee.problemes_de_forme("".join(f"k{i}: {i}\n" for i in range(64)), {f"k{i}": i for i in range(64)}), [])
+
+    def test_les_cles_libres_des_metriques_d_une_mesure(self):
+        for cle, attendu in (("a" * 301, f"metriques/{'a' * 301} (clé) : 301 caractères, au plus 300 "),
+                             ("débit\u202e", "metriques/(clé refusée) (clé) : caractère invisible refusé (U+202E")):
+            mesure = {"metriques": {cle: {"gain": 0.05, "au_dela_du_bruit": True}}}
+            problemes = list(bee.problemes_textes_libre_service(mesure, "mesures/x-0001-c1/alice.yaml"))
+            self.assertTrue([p for p in problemes if p.startswith(f"mesures/x-0001-c1/alice.yaml : {attendu}")], problemes)
+        self.assertEqual(list(bee.problemes_textes_libre_service({"metriques": {"a" * 300: {}}}, "mesures/x-0001-c1/alice.yaml")), [])
+
+    def test_les_bornes_d_ecriture_de_bee_yaml_restent_sous_celles_des_fichiers(self):
+        reg = mock.Mock(config=bee.lire_yaml(RACINE / "bee.yaml"))
+        note, agora, creations = bee.config_notes(reg)["texte_max"], bee.config_agora(reg), bee.config_creations(reg)
+        ecriture = {("taches", "notes[0]/texte"): note, ("taches", "contexte"): creations["contexte_max"],
+                    ("taches", "critere_acceptation[0]"): creations["element_max"], ("taches", "hors_perimetre[0]"): creations["element_max"],
+                    ("taches", "fichiers[0]"): creations["chemin_max"], ("taches", "titre"): 100,
+                    ("contributions", "resume"): bee.RESUME_MAX, ("contributions", "relectures[0]/motif"): note,
+                    ("contributions", "levees[0]/motif"): note, ("contributions", "declare/doutes"): bee.DECLARE_MAX["doutes"],
+                    ("contributions", "declare/teste[0]"): bee.DECLARE_MAX["element"], ("contributions", "declare/modele"): bee.DECLARE_MAX["modele"],
+                    ("votes", "motif"): note, ("mesures", "motif"): note, ("mesures", "config/processeur"): bee.TEXTE_COURT_MAX,
+                    ("membres", "categories_preferees[0]"): bee.TEXTE_COURT_MAX, ("propositions", "texte_propose"): bee.TEXTE_LONG_MAX,
+                    ("debats", "question"): agora["question_max"], ("debats", "synthese"): agora["synthese_max"],
+                    ("debats", "arguments[0]/texte"): agora["texte_max"], ("debats", "arguments[0]/sources[0]"): agora["source_max"],
+                    ("invitations", "message"): bee.config_croissance(reg)["message_max"], ("invitations", "pourquoi[0]/fait"): bee.FAIT_MAX,
+                    ("invitations", "pourquoi[0]/source"): bee.ADRESSE_MAX, ("invitations", "homonyme"): note,
+                    ("invitations", "ecartee/motif"): note,
+                    ("invitations", "autres_identites[0]"): len("site:") + 253}  # a domain name: 253 characters at most
+        for (sorte, lieu), borne in ecriture.items():
+            self.assertLessEqual(borne, bee.borne_texte(sorte, lieu), (sorte, lieu))
+
+
+def remplir(test, chemin, cle, element, ecrire):
+    """Appends `element(i)` (1,400 characters of text) to the list `cle` of the file, as close under its mark as one fits: one more
+    item of 1,500 characters takes it past the mark."""
+    marque = bee.borne_octets(str(chemin.relative_to(test.dossier))) - bee.MARGE_OCTETS
+    donnees = bee.lire_yaml(chemin)
+    avant, tailles = list(donnees.get(cle) or []), []
+    for n in (0, 1):
+        ecrire(chemin, {**donnees, cle: avant + [element(len(avant) + i) for i in range(n)]})
+        tailles.append(chemin.stat().st_size)
+    n = (marque - tailles[0]) // (tailles[1] - tailles[0]) + 1
+    while True:
+        ecrire(chemin, {**donnees, cle: avant + [element(len(avant) + i) for i in range(n)]})
+        if chemin.stat().st_size <= marque:
+            break
+        n -= 1
+    test.assertGreater(chemin.stat().st_size, marque - (tailles[1] - tailles[0]) - 50)
+
+
+class TestBornesLibreServiceRegistre(BaseRevueRuche0020):
+    """ruche-0040: for each self-service kind, a file over its bound in bytes, then a text over its bound in characters, are
+    refused by bee valider and verifier-pr; the file is never parsed, nor read whole."""
+
+    PR = PR_MINIZ + "77040"
+    # A file of each kind (setUp), and the text that grows in it.
+    FICHIERS = {"taches": ("taches/miniz/miniz-0099.yaml", ("contexte",)),
+                "contributions": ("contributions/miniz/miniz-0099-c1.yaml", ("resume",)),
+                "votes": ("votes/miniz-0099-c1/chloe.yaml", ("motif",)), "mesures": ("mesures/miniz-0099-c1/farid.yaml", ("motif",)),
+                "membres": ("membres/gaspard.yaml", ("categories_preferees", 0)), "propositions": ("propositions/P-0001.yaml", ("texte_propose",)),
+                "debats": ("debats/D-0001.yaml", ("question",)), "invitations": ("invitations/I-0001.yaml", ("message",)),
+                bee.CHEMIN_NON_CONTACT: (bee.CHEMIN_NON_CONTACT, ("empreintes", 0))}
+
+    def setUp(self):
+        super().setUp()
+        self.a("2026-10-30T10:00:00Z")
+        self.prendre_et_fusionner("alice")
+        self.ok("soumettre", "miniz-0099", "--utilisateur", "alice", "--pr", self.PR, "--resume", "Premier jet.")
+        self.ok("voter", "miniz-0099-c1", "--utilisateur", "chloe", "--valeur", "1", "--motif", "Pour.")
+        bee.ecrire_yaml(self.dossier / "mesures/miniz-0099-c1/farid.yaml", {
+            "contribution": "miniz-0099-c1", "soumise_par": "farid", "le": self.maintenant(), "base": "2948eeb", "candidat": "839b676",
+            "config": {"architecture": "arm64"}, "metriques": {"debit_compression_n6": {"gain": 0.05, "au_dela_du_bruit": True}},
+            "motif": "Mesuré."})
+        gaspard = self.dossier / "membres/gaspard.yaml"
+        bee.ecrire_yaml(gaspard, {**bee.lire_yaml(gaspard), "categories_preferees": ["compression-sans-perte"]})
+        self.proposition()
+        self.proposer_brut()
+        bee.ecrire_invitation(self.dossier / bee.CHEMIN_NON_CONTACT, {"empreintes": [bee.empreinte("github:x")]})
+        self.commit("un fichier de chaque sorte")
+        self.valide()
+        self.assertEqual(set(self.FICHIERS), set(bee.OCTETS_MAX))
+
+    def poser(self, sorte, valeur):
+        """Writes `valeur` as the growing text of the file of kind `sorte`, as bee writes the file; returns its path."""
+        relatif, cles = self.FICHIERS[sorte]
+        chemin = self.dossier / relatif
+        donnees = bee.lire_yaml(chemin)
+        parent = donnees
+        for cle in cles[:-1]:
+            parent = parent[cle]
+        parent[cles[-1]] = valeur
+        {"debats": bee.ecrire_debat, "invitations": bee.ecrire_invitation}.get(chemin.parent.name, bee.ecrire_yaml)(chemin, donnees)
+        return relatif
+
+    @contextlib.contextmanager
+    def lectures(self):
+        """Every text bee parses as YAML, now or from history, every file read whole, and every output of a git command."""
+        lus, charger, lire_version, run, lire = [], bee.charger_texte_yaml, bee._lire_version, subprocess.run, pathlib.Path.read_text
+
+        def espion(fonction):
+            def lit(texte, *args, **kwargs):
+                lus.append(str(texte))
+                return fonction(texte, *args, **kwargs)
+            return lit
+
+        def lancer(*args, **kwargs):
+            resultat = run(*args, **kwargs)
+            lus.append(resultat.stdout.decode("utf-8", "replace") if isinstance(resultat.stdout, bytes) else str(resultat.stdout))
+            return resultat
+        def lit(chemin, *args, **kwargs):
+            lus.append(lire(chemin, *args, **kwargs))
+            return lus[-1]
+        with mock.patch.object(bee, "charger_texte_yaml", espion(charger)), mock.patch.object(bee, "_lire_version", espion(lire_version)), \
+                mock.patch.object(subprocess, "run", lancer), mock.patch.object(pathlib.Path, "read_text", lit):
+            yield lus
+
+    def test_un_fichier_au_dela_de_sa_borne_est_refuse_sans_etre_lu(self):
+        self.branche()
+        attendus = []
+        for sorte, borne in bee.OCTETS_MAX.items():
+            relatif = self.poser(sorte, " ".join(["ENORME"] * (borne // 7 + 1)))
+            taille = (self.dossier / relatif).stat().st_size
+            self.assertGreater(taille, borne)
+            attendus.append(f"{relatif} : {taille} octets, au plus {borne} pour ce fichier (docs/gouvernance.md")
+        projet = self.dossier / "projets/zz.yaml"  # any other file bee reads or the gate parses: the largest bound
+        projet.write_text("nom: " + " ".join(["ENORME"] * (bee.OCTETS_LECTURE_MAX // 7 + 1)) + "\n", encoding="utf-8")
+        attendus.append(f"projets/zz.yaml : {projet.stat().st_size} octets, au plus {bee.OCTETS_LECTURE_MAX} pour ce fichier")
+        self.commit()
+        with self.lectures() as lus:
+            code, sortie = self.bee("valider")
+            self.assertEqual(code, 1, sortie)
+            self.refusee("gaspard", *attendus)
+            self.ok("prs-declarees", "--base", "main", "--tete", "HEAD")
+        relatif = self.FICHIERS["taches"][0]
+        self.assertEqual(bee.lire_versions(self.dossier, [("HEAD", relatif)]), {("HEAD", relatif): None}, "history: never decoded")
+        for attendu in attendus:
+            self.assertIn(attendu, sortie)
+        self.assertNotIn("Traceback", sortie)
+        self.assertEqual([t[:100] for t in lus if "ENORME" in t], [], "read whole, or parsed")
+        self.abandonner()
+        self.valide()
+
+    def test_un_texte_au_dela_de_sa_borne_est_refuse(self):
+        for depasse in (1, 0):  # one character over its bound, then exactly at it (honest witness)
+            with self.subTest(depasse=depasse):
+                self.branche()
+                attendus = []
+                for sorte in bee.OCTETS_MAX:
+                    lieu = lieu_de(self.FICHIERS[sorte][1])
+                    borne = bee.borne_texte(sorte, lieu)
+                    attendus.append(f"{self.poser(sorte, 'a' * (borne + depasse))} : {lieu} : {borne + 1} caractères, au plus {borne} ")
+                self.commit()
+                code, sortie = self.bee("valider")
+                texte = self.verifier("gaspard")[1]
+                for attendu in attendus:
+                    self.assertEqual((attendu in sortie, attendu in texte), (bool(depasse), bool(depasse)), (attendu, sortie, texte))
+                self.assertEqual(code, 1, sortie)  # at the bound, other checks still refuse (a long hash, gaspard's PR…)
+                self.assertNotIn("Traceback", sortie + texte)
+                self.abandonner()
+
+    def test_un_nom_de_traverse_au_dela_de_la_borne_de_son_dossier_n_est_pas_lu(self):
+        """Any name under a self-service folder has that folder's bound: an extension, a case, a suffix or a non-ASCII name."""
+        self.branche()
+        attendus = []
+        for dossier, borne in (("taches/miniz", bee.OCTETS_MAX["taches"]), ("debats", bee.OCTETS_MAX["debats"])):
+            for nom in ("x.txt", "D-0001.YAML", "miniz-0099.yaml.bak", "é.yaml"):
+                chemin = self.dossier / dossier / nom
+                chemin.write_text("texte: " + " ".join(["ENORME"] * (borne // 7 + 1)) + "\n", encoding="utf-8")
+                if nom.isascii():
+                    attendus.append(f"{dossier}/{nom} : {chemin.stat().st_size} octets, au plus {borne} pour ce fichier")
+        self.commit()
+        with self.lectures() as lus:
+            code, sortie = self.bee("valider")
+            texte = self.refusee("gaspard", *attendus)
+        self.assertEqual(code, 1, sortie)
+        for nom in ("taches/miniz/é.yaml", "debats/é.yaml"):  # globbed from the filesystem: bounded by its folder too
+            self.assertIn(f"{nom} : ", sortie)
+        self.assertNotIn("Traceback", sortie + texte)
+        self.assertEqual([t[:100] for t in lus if "ENORME" in t], [], "read whole, or parsed")
+        self.abandonner()
+
+    def test_un_noeud_de_l_arbre_au_dela_de_sa_borne_n_est_pas_lu(self):
+        self.branche()
+        sens = self.dossier / "arbre/SENS.md"
+        entete, corps = sens.read_text(encoding="utf-8").split("---\n", 2)[1:]
+        sens.write_text("---\n" + entete + "".join(f"cle{i}: ENORME\n" for i in range(5000)) + "---\n" + corps + "ENORME " * 10000,
+                        encoding="utf-8")
+        attendu = f"arbre/SENS.md : {sens.stat().st_size} octets, au plus 65536 pour un nœud : il n'est pas lu"
+        self.commit()
+        with self.lectures() as lus:
+            code, sortie = self.bee("valider")
+            texte = self.refusee("gaspard", attendu)
+        self.assertEqual(code, 1, sortie)
+        self.assertIn(attendu, sortie)
+        self.assertNotIn("Traceback", sortie + texte)
+        self.assertEqual([t[:100] for t in lus if "ENORME" in t], [], "read whole, or parsed")
+        self.abandonner()
+
+    def test_a_sa_marque_un_fichier_ne_recoit_plus_d_ajout_mais_se_clot(self):
+        tache, debat = self.chemin_tache("miniz-9001"), self.dossier / "debats/D-0001.yaml"
+        maintenant = self.maintenant()
+        remplir(self, tache, "notes", lambda i: {"par": "farid", "le": maintenant, "texte": "x" * 1400}, bee.ecrire_yaml)
+        remplir(self, debat, "arguments", lambda i: {"id": f"A{i + 1}", "par": ("alice", "bruno", "chloe")[i % 3], "le": maintenant,
+                                                     "position": "pour", "texte": "x" * 1400}, bee.ecrire_debat)
+        self.commit("à la marque")
+        self.valide()
+        marque_tache, marque_debat = bee.probleme_marque("taches/miniz/miniz-9001.yaml"), bee.probleme_marque("debats/D-0001.yaml")
+        avant = (tache.read_bytes(), debat.read_bytes())
+        self.ko(marque_tache, "noter", "miniz-9001", "--utilisateur", "gaspard", "--texte", "y" * 1500)  # refused before writing
+        self.ko(marque_debat, "debattre", "argumenter", "D-0001", "--utilisateur", "gaspard", "--position", "pour", "--texte", "y" * 1500)
+        self.assertEqual((tache.read_bytes(), debat.read_bytes()), avant, "nothing written")
+        for ajout in ("note", "argument"):  # and by the gate, written by hand
+            self.branche()
+            if ajout == "note":
+                self.noter_a_la_main({"texte": "y" * 1500}, tache="miniz-9001")
+            else:
+                d = self.debat("D-0001")
+                d["arguments"].append({"id": f"A{len(d['arguments']) + 1}", "par": "gaspard", "le": maintenant, "position": "pour",
+                                       "texte": "y" * 1500})
+                self.ecrire(d, "D-0001")
+            self.commit()
+            self.refusee("gaspard", marque_tache if ajout == "note" else marque_debat)
+            self.abandonner()
+        self.branche()  # a reservation still fits; notes riding on it are an append
+        self.ok("prendre", "miniz-9001", "--utilisateur", "gaspard")
+        self.commit()
+        self.libre_service("gaspard", "reservation")
+        self.noter_a_la_main({"texte": "y" * 1500}, tache="miniz-9001")
+        self.commit()
+        self.refusee("gaspard", marque_tache)
+        self.abandonner()
+        self.branche()  # and a close with a synthesis of 4,000 characters of 4 bytes each
+        self.ok("debattre", "clore", "D-0001", "--utilisateur", "bidji29", "--issue", "sans_suite", "--synthese", "🐝" * 4000)
+        self.assertLessEqual(debat.stat().st_size, bee.OCTETS_MAX["debats"])
+        self.commit()
+        code, texte = self.verifier("bidji29")
+        self.assertEqual(code, 0, texte)
+        self.valide()
+        self.abandonner()
+        self.prendre_et_fusionner("gaspard", "miniz-9001")  # a release with a note: an append too
+        self.branche()
+        self.ok("liberer", "miniz-9001", "--utilisateur", "gaspard", "--note", "y" * 1500)
+        self.commit()
+        self.refusee("gaspard", marque_tache)
+        self.abandonner()
+
+    def test_yaml_trop_profond_ou_entier_demesure_refuse_sans_trace(self):
+        self.branche()
+        (self.dossier / "votes/miniz-0099-c1/chloe.yaml").write_text("motif: " + "[" * 5000 + "]" * 5000 + "\n", encoding="utf-8")
+        entiers_bornes = hasattr(sys, "set_int_max_str_digits")  # Python 3.11 and later (CI: 3.12)
+        (self.dossier / "mesures/miniz-0099-c1/farid.yaml").write_text("motif: " + "9" * 5000 + "\n", encoding="utf-8")
+        self.commit()
+        code, sortie = self.bee("valider")
+        texte = self.refusee("gaspard", "votes/miniz-0099-c1/chloe.yaml")
+        self.assertEqual(code, 1, sortie)
+        self.assertIn("chloe.yaml : YAML invalide (maximum recursion depth", sortie)
+        if entiers_bornes:
+            self.assertIn("farid.yaml : YAML invalide (Exceeds the limit", sortie)
+        self.assertNotIn("Traceback", sortie + texte)
+        versions = bee.lire_versions(self.dossier, [("HEAD", c) for c in ("votes/miniz-0099-c1/chloe.yaml", "mesures/miniz-0099-c1/farid.yaml")])
+        lues = [bee._lire_version(v) for v in versions.values()]  # history: never a traceback (libyaml, if there, reads the depth)
+        if entiers_bornes:
+            self.assertIsNone(lues[1])
+        self.abandonner()
+
+    def test_une_proposition_porte_des_textes_recevables(self):
+        """The gate reads texte_propose and motif of a new proposition like every free text: not blank, nothing hidden, bounded."""
+        for champs, attendu in (({"texte_propose": " " * 12}, "texte_propose vide"),
+                                ({"motif": "Un motif​ assez long pour le schéma."}, "motif : caractère invisible"),
+                                ({"texte_propose": "a" * 8001}, "texte_propose de 8001 caractères, au plus 8000")):
+            with self.subTest(champs=champs):
+                self.branche()
+                self.proposition("P-0002", **champs)
+                self.commit()
+                self.refusee("gaspard", f"propositions/P-0002.yaml : {attendu}")
+                self.abandonner()
+        self.branche()
+        self.proposition("P-0002", texte_propose="🐝" * 8000, motif="🐝" * 8000)  # at the bound, 4 bytes each: the file fits too
+        self.commit()
+        self.libre_service("gaspard", "proposition")
+        self.abandonner()
+
+
+
+class TestBornesVerdictEtMarque(BaseTest):
+    """ruche-0040: the robot never writes a contribution bee valider would refuse, and the largest verdict fits one; a task at its
+    mark refuses an append before writing, and still takes a reservation, a submission and an integration."""
+
+    ENORME = -1.7976931348623157e+308
+
+    def verdict_maximal(self, n):
+        """A fork's verdict.json under its bound that makes enregistrer-verdict write as much as it can (4-byte characters)."""
+        cle = lambda quoi, i: (f"{quoi}{n:02d}{i:03d}" + "x" * 80)[:80]  # noqa: E731
+        verdict = {"ci": "rouge", "etape_en_echec": "🐝" * 300, "lignes_modifiees": 10 ** 9, "gain": self.ENORME,
+                   "instructions": {cle("i", i): {"A": self.ENORME, "B": self.ENORME, "gain": self.ENORME} for i in range(60)},
+                   "degradations": {cle("d", i): self.ENORME for i in range(60)},
+                   "juge": {"version": 10 ** 9, "sorties_comparees": 10 ** 9, "constructions_suspectes": []}}
+        while len(json.dumps(verdict, ensure_ascii=False).encode()) < bee.VERDICT_MAX["octets"] - 1500:  # as many as its bound holds
+            verdict["juge"]["constructions_suspectes"].append({"type": "🐝" * 40, "detail": "🐝" * 300})
+        return verdict
+
+    def enregistrer(self, cid, verdict, *options):
+        chemin = self.dossier / "verdict.json"
+        chemin.write_text(json.dumps(verdict, ensure_ascii=False), encoding="utf-8")
+        return self.bee("enregistrer-verdict", cid, "--verdict", str(chemin), *options)
+
+    def test_le_plus_grand_verdict_tient_dans_sa_contribution(self):
+        cid = self.soumettre_0099()
+        fichiers = self.dossier / "fichiers.txt"
+        fichiers.write_text("".join(f".github/{i}" + "🐝" * 300 + "\n" for i in range(30)), encoding="utf-8")
+        for n in range(bee.VERDICTS_MAX + 1):  # each one in the history, and the last one in full
+            self.assertLess(len(json.dumps(self.verdict_maximal(n), ensure_ascii=False).encode()), bee.VERDICT_MAX["octets"])
+            code, texte = self.enregistrer(cid, self.verdict_maximal(n), "--sha", f"{n:040x}", "--arbre", f"{n + 1:040x}",
+                                           "--fichiers", str(fichiers), "--execution", "https://github.com/Bee-ruche/minizBee/actions/runs/1")
+            self.assertEqual(code, 0, texte)
+        self.assertIn("ignoré(s) : 40 de instructions, 40 de degradations", texte)
+        enr = bee.lire_yaml(self.dossier / "contributions/miniz/miniz-0099-c1.yaml")
+        self.assertEqual((len(enr["verdicts"]), len(enr["verdict"]["instructions"]), len(enr["verdict"]["juges_modifies"])),
+                         (bee.VERDICTS_MAX, bee.VERDICT_MAX["cles"], bee.VERDICT_MAX["juges"]))
+        taille = (self.dossier / "contributions/miniz/miniz-0099-c1.yaml").stat().st_size
+        # and the largest declaration (12,000 characters written, 4 bytes each) beside it
+        self.assertLessEqual(taille + 4 * bee.DECLARE_MAX["rendu"], bee.OCTETS_MAX["contributions"], taille)
+        self.valide()
+
+    def test_un_verdict_json_au_dela_de_sa_borne_n_est_pas_lu(self):
+        cid = self.soumettre_0099()
+        chemin = self.dossier / "contributions/miniz/miniz-0099-c1.yaml"
+        avant = chemin.read_bytes()
+        gros = {**self.verdict_maximal(0), "remplissage": "x" * bee.VERDICT_MAX["octets"]}
+        with mock.patch.object(bee.json, "load", side_effect=AssertionError("loaded")):
+            code, texte = self.enregistrer(cid, gros, "--sha", "abc1234")
+            self.assertEqual(code, 1, texte)
+            self.assertIn("plus de 64 Kio : verdict refusé, non lu", texte)
+            self.assertEqual(self.bee("bases-declarees", str(self.dossier / "verdict.json")), (0, ""))
+        self.assertEqual(chemin.read_bytes(), avant)
+
+    def test_le_robot_n_ecrit_jamais_une_contribution_que_valider_refuserait(self):
+        cid = self.soumettre_0099()
+        chemin = self.dossier / "contributions/miniz/miniz-0099-c1.yaml"
+        enr = bee.lire_yaml(chemin)
+        verdict = {"ci": "verte", "gain": 0.05, "au_dela_du_bruit": True, "instructions": INSTRUCTIONS_N6, "lignes_modifiees": 10}
+        relecture = {"relecteur": "bruno", "avis": "favorable", "motif": "x" * 4000, "le": "2026-10-27T12:00:00Z"}
+        # Off its schema; then still under its bound (it is read), but past it with the largest verdict.
+        for donnees, brut, attendu in (({**enr, "intrus": 1}, verdict, "champ(s) inconnu(s) : intrus"),
+                                       ({**enr, "relectures": [dict(relecture) for _ in range(56)]}, self.verdict_maximal(0),
+                                        f"au plus {bee.OCTETS_MAX['contributions']})")):
+            with self.subTest(attendu=attendu):
+                bee.ecrire_yaml(chemin, donnees)
+                avant = chemin.read_bytes()
+                self.assertLess(len(avant), bee.OCTETS_MAX["contributions"])
+                code, texte = self.enregistrer(cid, brut, "--sha", "abc1234")
+                self.assertEqual(code, 1, texte)
+                self.assertIn(f"{cid} : verdict refusé, rien n'est écrit : la contribution ne serait plus valide (", texte)
+                self.assertIn(attendu, texte)
+                self.assertEqual(chemin.read_bytes(), avant)
+
+    def test_une_tache_a_sa_marque_se_reserve_se_soumet_et_s_integre(self):
+        chemin = self.dossier / "taches/miniz/miniz-0099.yaml"
+        remplir(self, chemin, "notes", lambda i: {"par": "alice", "le": "2026-10-27T12:00:00Z", "texte": "x" * 1400}, bee.ecrire_yaml)
+        self.valide()
+        avant = chemin.read_bytes()
+        self.assertIn(bee.probleme_marque("taches/miniz/miniz-0099.yaml"),
+                      self.bee("noter", "miniz-0099", "--utilisateur", "bruno", "--texte", "y" * 1500)[1])
+        self.assertEqual(chemin.read_bytes(), avant, "nothing written")
+        cid = TestRegistre.preparer_contribution_verte(self, "bidji29", ("bruno", "chloe"))  # reservation, submission, verdict, reviews
+        code, texte = self.bee("prendre", "miniz-0099", "--utilisateur", "alice", "--en-parallele")
+        self.assertIn(bee.probleme_marque("taches/miniz/miniz-0099.yaml"), texte)
+        self.assertEqual(self.bee("verifier-acceptation", cid)[0], 0)
+        code, texte = self.bee("integrer", cid, "--fusion-sha", "deadbee")
+        self.assertEqual(code, 0, texte)
+        self.assertEqual(self.tache("miniz-0099")["statut"], "integree")
+        self.assertLessEqual(chemin.stat().st_size, bee.OCTETS_MAX["taches"])
+        self.valide()
+
 
 
 R8_AMORCAGE = 'r8_amorcage: {max: 8, jusqu_au: "2026-12-01T00:00:00Z"}'
