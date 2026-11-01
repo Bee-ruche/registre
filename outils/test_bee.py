@@ -12006,6 +12006,456 @@ class TestAgentAccountsWorkflows(BaseParallele):
         self.assertIn("utilisateur « bidji29 » différent de l'auteur de la PR « LaRuche-Architect »", texte)
 
 
+# --- ruche-0040: each self-service file has a size bound, and each of its texts too, checked before any parsing ---
+
+SCHEMAS_LIBRE_SERVICE = {"taches": "tache", "contributions": "enregistrement", "votes": "vote", "mesures": "mesure", "membres": "membre",
+                         "propositions": "proposition", "debats": "debat", "invitations": "invitation",
+                         bee.CHEMIN_NON_CONTACT: "ne-plus-contacter"}
+# The only texts of a self-service schema that the common check does not read: the verdict of a contribution, written by the
+# CI under its own bounds (VERDICT_MAX, verdict_montrable; enregistrer-verdict never writes a contribution past its bound or off
+# its schema: TestBornesVerdictEtMarque) and refused by verifier-pr from anyone else.
+HORS_CONTROLE_COMMUN = {("contributions", "verdict")}
+
+
+def champs_texte(schema, noeud=None, chemin=()):
+    """Each path to a text a JSON schema allows, at any depth: ("notes", 0, "texte"), 0 for a list item, "x" for a free key."""
+    noeud = schema if noeud is None else noeud
+    if "$ref" in noeud:
+        yield from champs_texte(schema, schema["$defs"][noeud["$ref"].rsplit("/", 1)[1]], chemin)
+    for sous in [*(s for cle in ("allOf", "oneOf", "anyOf") for s in noeud.get(cle, [])),
+                 *(noeud[cle] for cle in ("if", "then", "else", "not") if isinstance(noeud.get(cle), dict))]:
+        yield from champs_texte(schema, sous, chemin)
+    types = noeud.get("type") if isinstance(noeud.get("type"), list) else [noeud.get("type")]
+    if "string" in types or any(isinstance(v, str) for v in noeud.get("enum", [])) or isinstance(noeud.get("const"), str):
+        yield chemin
+    for cle, sous in noeud.get("properties", {}).items():
+        yield from champs_texte(schema, sous, chemin + (cle,))
+    for cle, suite in (("items", 0), ("additionalProperties", "x")):
+        if isinstance(noeud.get(cle), dict):
+            yield from champs_texte(schema, noeud[cle], chemin + (suite,))
+
+
+def lieu_de(chemin):
+    """The place bee names (textes_de) for a path: ("notes", 0, "texte") -> notes[0]/texte."""
+    return "".join(f"[{c}]" if isinstance(c, int) else f"/{c}" for c in chemin).lstrip("/")
+
+
+def imbriquer(chemin, valeur):
+    for cle in reversed(chemin):
+        valeur = [valeur] if isinstance(cle, int) else {cle: valeur}
+    return valeur
+
+
+class TestBornesLibreService(unittest.TestCase):
+    """ruche-0040, without a registry (fast): every text field of every self-service schema goes through the common check and
+    has a bound, and the write-time bounds of bee.yaml stay under those of the files."""
+
+    @mock.patch.object(bee, "CN_REFUSE", True)  # as in CI, whatever the Unicode table of this Python
+    def test_chaque_champ_texte_de_chaque_schema_passe_le_controle_commun_et_sa_borne(self):
+        self.assertEqual(set(SCHEMAS_LIBRE_SERVICE), set(bee.OCTETS_MAX), "a self-service kind without a schema here, or the reverse")
+        for sorte, nom in SCHEMAS_LIBRE_SERVICE.items():
+            schema = json.loads((RACINE / "schemas" / f"{nom}.schema.json").read_text(encoding="utf-8"))
+            champs = sorted(set(champs_texte(schema)), key=str)
+            self.assertGreater(len(champs), 0, nom)
+            relatif = sorte if sorte == bee.CHEMIN_NON_CONTACT else f"{sorte}/x.yaml"
+            self.assertEqual(bee.sorte_libre_service(relatif), sorte)
+            # Each long field the tool names is a text field of the schema (no typo, no field gone).
+            noms = {re.sub(r"\[\d+\]", "", lieu_de(c)) for c in champs}
+            self.assertLessEqual(set(bee.CHAMPS_LONGS.get(sorte, ())) | {c for s, c in bee.TEXTES_PROPRES if s == sorte}, noms, nom)
+            for chemin in champs:
+                if (sorte, chemin[0]) in HORS_CONTROLE_COMMUN:
+                    continue
+                lieu, borne = lieu_de(chemin), bee.borne_texte(sorte, lieu_de(chemin))
+                with self.subTest(sorte=sorte, champ=lieu):
+                    refus = [(f"a{c}b", f"{relatif} : {lieu} : caractère invisible refusé ({code_point(c)}, ")
+                             for c in FAMILLES_CACHEES.values()]
+                    refus += [(f"a {FAUSSES_MARQUES[0]}", f"{relatif} : {lieu} : fausse marque d'encadré refusée"),
+                              ("a" * (borne + 1), f"{relatif} : {lieu} : {borne + 1} caractères, au plus {borne} ")]
+                    for valeur, attendu in refus:
+                        problemes = list(bee.problemes_textes_libre_service(imbriquer(chemin, valeur), relatif))
+                        self.assertTrue([p for p in problemes if p.startswith(attendu)], (attendu, problemes))
+                    for honnete in ("a" * borne, "Honnête" + TEMOIN_HONNETE):
+                        self.assertEqual(list(bee.problemes_textes_libre_service(imbriquer(chemin, honnete), relatif)), [])
+
+    def test_au_dela_de_64_cles_de_premier_niveau_un_seul_refus_tout_de_suite(self):
+        donnees = {f"k{i}": i for i in range(20000)}
+        texte = "".join(f"k{i}: {i}\n" for i in range(20000))
+        self.assertEqual(bee.problemes_de_forme(texte, donnees), ["20000 clés de premier niveau, au plus 64 : ce n'est pas un fichier qu'écrit bee"])
+        self.assertEqual(bee.problemes_de_forme("".join(f"k{i}: {i}\n" for i in range(64)), {f"k{i}": i for i in range(64)}), [])
+
+    def test_les_cles_libres_des_metriques_d_une_mesure(self):
+        for cle, attendu in (("a" * 301, f"metriques/{'a' * 301} (clé) : 301 caractères, au plus 300 "),
+                             ("débit\u202e", "metriques/(clé refusée) (clé) : caractère invisible refusé (U+202E")):
+            mesure = {"metriques": {cle: {"gain": 0.05, "au_dela_du_bruit": True}}}
+            problemes = list(bee.problemes_textes_libre_service(mesure, "mesures/x-0001-c1/alice.yaml"))
+            self.assertTrue([p for p in problemes if p.startswith(f"mesures/x-0001-c1/alice.yaml : {attendu}")], problemes)
+        self.assertEqual(list(bee.problemes_textes_libre_service({"metriques": {"a" * 300: {}}}, "mesures/x-0001-c1/alice.yaml")), [])
+
+    def test_les_bornes_d_ecriture_de_bee_yaml_restent_sous_celles_des_fichiers(self):
+        reg = mock.Mock(config=bee.lire_yaml(RACINE / "bee.yaml"))
+        note, agora, creations = bee.config_notes(reg)["texte_max"], bee.config_agora(reg), bee.config_creations(reg)
+        ecriture = {("taches", "notes[0]/texte"): note, ("taches", "contexte"): creations["contexte_max"],
+                    ("taches", "critere_acceptation[0]"): creations["element_max"], ("taches", "hors_perimetre[0]"): creations["element_max"],
+                    ("taches", "fichiers[0]"): creations["chemin_max"], ("taches", "titre"): 100,
+                    ("contributions", "resume"): bee.RESUME_MAX, ("contributions", "relectures[0]/motif"): note,
+                    ("contributions", "levees[0]/motif"): note, ("contributions", "declare/doutes"): bee.DECLARE_MAX["doutes"],
+                    ("contributions", "declare/teste[0]"): bee.DECLARE_MAX["element"], ("contributions", "declare/modele"): bee.DECLARE_MAX["modele"],
+                    ("votes", "motif"): note, ("mesures", "motif"): note, ("mesures", "config/processeur"): bee.TEXTE_COURT_MAX,
+                    ("membres", "categories_preferees[0]"): bee.TEXTE_COURT_MAX, ("propositions", "texte_propose"): bee.TEXTE_LONG_MAX,
+                    ("debats", "question"): agora["question_max"], ("debats", "synthese"): agora["synthese_max"],
+                    ("debats", "arguments[0]/texte"): agora["texte_max"], ("debats", "arguments[0]/sources[0]"): agora["source_max"],
+                    ("invitations", "message"): bee.config_croissance(reg)["message_max"], ("invitations", "pourquoi[0]/fait"): bee.FAIT_MAX,
+                    ("invitations", "pourquoi[0]/source"): bee.ADRESSE_MAX, ("invitations", "homonyme"): note,
+                    ("invitations", "ecartee/motif"): note,
+                    ("invitations", "autres_identites[0]"): len("site:") + 253}  # a domain name: 253 characters at most
+        for (sorte, lieu), borne in ecriture.items():
+            self.assertLessEqual(borne, bee.borne_texte(sorte, lieu), (sorte, lieu))
+
+
+def remplir(test, chemin, cle, element, ecrire):
+    """Appends `element(i)` (1,400 characters of text) to the list `cle` of the file, as close under its mark as one fits: one more
+    item of 1,500 characters takes it past the mark."""
+    marque = bee.borne_octets(str(chemin.relative_to(test.dossier))) - bee.MARGE_OCTETS
+    donnees = bee.lire_yaml(chemin)
+    avant, tailles = list(donnees.get(cle) or []), []
+    for n in (0, 1):
+        ecrire(chemin, {**donnees, cle: avant + [element(len(avant) + i) for i in range(n)]})
+        tailles.append(chemin.stat().st_size)
+    n = (marque - tailles[0]) // (tailles[1] - tailles[0]) + 1
+    while True:
+        ecrire(chemin, {**donnees, cle: avant + [element(len(avant) + i) for i in range(n)]})
+        if chemin.stat().st_size <= marque:
+            break
+        n -= 1
+    test.assertGreater(chemin.stat().st_size, marque - (tailles[1] - tailles[0]) - 50)
+
+
+class TestBornesLibreServiceRegistre(BaseRevueRuche0020):
+    """ruche-0040: for each self-service kind, a file over its bound in bytes, then a text over its bound in characters, are
+    refused by bee valider and verifier-pr; the file is never parsed, nor read whole."""
+
+    PR = PR_MINIZ + "77040"
+    # A file of each kind (setUp), and the text that grows in it.
+    FICHIERS = {"taches": ("taches/miniz/miniz-0099.yaml", ("contexte",)),
+                "contributions": ("contributions/miniz/miniz-0099-c1.yaml", ("resume",)),
+                "votes": ("votes/miniz-0099-c1/chloe.yaml", ("motif",)), "mesures": ("mesures/miniz-0099-c1/farid.yaml", ("motif",)),
+                "membres": ("membres/gaspard.yaml", ("categories_preferees", 0)), "propositions": ("propositions/P-0001.yaml", ("texte_propose",)),
+                "debats": ("debats/D-0001.yaml", ("question",)), "invitations": ("invitations/I-0001.yaml", ("message",)),
+                bee.CHEMIN_NON_CONTACT: (bee.CHEMIN_NON_CONTACT, ("empreintes", 0))}
+
+    def setUp(self):
+        super().setUp()
+        self.a("2026-10-30T10:00:00Z")
+        self.prendre_et_fusionner("alice")
+        self.ok("soumettre", "miniz-0099", "--utilisateur", "alice", "--pr", self.PR, "--resume", "Premier jet.")
+        self.ok("voter", "miniz-0099-c1", "--utilisateur", "chloe", "--valeur", "1", "--motif", "Pour.")
+        bee.ecrire_yaml(self.dossier / "mesures/miniz-0099-c1/farid.yaml", {
+            "contribution": "miniz-0099-c1", "soumise_par": "farid", "le": self.maintenant(), "base": "2948eeb", "candidat": "839b676",
+            "config": {"architecture": "arm64"}, "metriques": {"debit_compression_n6": {"gain": 0.05, "au_dela_du_bruit": True}},
+            "motif": "Mesuré."})
+        gaspard = self.dossier / "membres/gaspard.yaml"
+        bee.ecrire_yaml(gaspard, {**bee.lire_yaml(gaspard), "categories_preferees": ["compression-sans-perte"]})
+        self.proposition()
+        self.proposer_brut()
+        bee.ecrire_invitation(self.dossier / bee.CHEMIN_NON_CONTACT, {"empreintes": [bee.empreinte("github:x")]})
+        self.commit("un fichier de chaque sorte")
+        self.valide()
+        self.assertEqual(set(self.FICHIERS), set(bee.OCTETS_MAX))
+
+    def poser(self, sorte, valeur):
+        """Writes `valeur` as the growing text of the file of kind `sorte`, as bee writes the file; returns its path."""
+        relatif, cles = self.FICHIERS[sorte]
+        chemin = self.dossier / relatif
+        donnees = bee.lire_yaml(chemin)
+        parent = donnees
+        for cle in cles[:-1]:
+            parent = parent[cle]
+        parent[cles[-1]] = valeur
+        {"debats": bee.ecrire_debat, "invitations": bee.ecrire_invitation}.get(chemin.parent.name, bee.ecrire_yaml)(chemin, donnees)
+        return relatif
+
+    @contextlib.contextmanager
+    def lectures(self):
+        """Every text bee parses as YAML, now or from history, every file read whole, and every output of a git command."""
+        lus, charger, lire_version, run, lire = [], bee.charger_texte_yaml, bee._lire_version, subprocess.run, pathlib.Path.read_text
+
+        def espion(fonction):
+            def lit(texte, *args, **kwargs):
+                lus.append(str(texte))
+                return fonction(texte, *args, **kwargs)
+            return lit
+
+        def lancer(*args, **kwargs):
+            resultat = run(*args, **kwargs)
+            lus.append(resultat.stdout.decode("utf-8", "replace") if isinstance(resultat.stdout, bytes) else str(resultat.stdout))
+            return resultat
+        def lit(chemin, *args, **kwargs):
+            lus.append(lire(chemin, *args, **kwargs))
+            return lus[-1]
+        with mock.patch.object(bee, "charger_texte_yaml", espion(charger)), mock.patch.object(bee, "_lire_version", espion(lire_version)), \
+                mock.patch.object(subprocess, "run", lancer), mock.patch.object(pathlib.Path, "read_text", lit):
+            yield lus
+
+    def test_un_fichier_au_dela_de_sa_borne_est_refuse_sans_etre_lu(self):
+        self.branche()
+        attendus = []
+        for sorte, borne in bee.OCTETS_MAX.items():
+            relatif = self.poser(sorte, " ".join(["ENORME"] * (borne // 7 + 1)))
+            taille = (self.dossier / relatif).stat().st_size
+            self.assertGreater(taille, borne)
+            attendus.append(f"{relatif} : {taille} octets, au plus {borne} pour ce fichier (docs/gouvernance.md")
+        projet = self.dossier / "projets/zz.yaml"  # any other file bee reads or the gate parses: the largest bound
+        projet.write_text("nom: " + " ".join(["ENORME"] * (bee.OCTETS_LECTURE_MAX // 7 + 1)) + "\n", encoding="utf-8")
+        attendus.append(f"projets/zz.yaml : {projet.stat().st_size} octets, au plus {bee.OCTETS_LECTURE_MAX} pour ce fichier")
+        self.commit()
+        with self.lectures() as lus:
+            code, sortie = self.bee("valider")
+            self.assertEqual(code, 1, sortie)
+            self.refusee("gaspard", *attendus)
+            self.ok("prs-declarees", "--base", "main", "--tete", "HEAD")
+        relatif = self.FICHIERS["taches"][0]
+        self.assertEqual(bee.lire_versions(self.dossier, [("HEAD", relatif)]), {("HEAD", relatif): None}, "history: never decoded")
+        for attendu in attendus:
+            self.assertIn(attendu, sortie)
+        self.assertNotIn("Traceback", sortie)
+        self.assertEqual([t[:100] for t in lus if "ENORME" in t], [], "read whole, or parsed")
+        self.abandonner()
+        self.valide()
+
+    def test_un_texte_au_dela_de_sa_borne_est_refuse(self):
+        for depasse in (1, 0):  # one character over its bound, then exactly at it (honest witness)
+            with self.subTest(depasse=depasse):
+                self.branche()
+                attendus = []
+                for sorte in bee.OCTETS_MAX:
+                    lieu = lieu_de(self.FICHIERS[sorte][1])
+                    borne = bee.borne_texte(sorte, lieu)
+                    attendus.append(f"{self.poser(sorte, 'a' * (borne + depasse))} : {lieu} : {borne + 1} caractères, au plus {borne} ")
+                self.commit()
+                code, sortie = self.bee("valider")
+                texte = self.verifier("gaspard")[1]
+                for attendu in attendus:
+                    self.assertEqual((attendu in sortie, attendu in texte), (bool(depasse), bool(depasse)), (attendu, sortie, texte))
+                self.assertEqual(code, 1, sortie)  # at the bound, other checks still refuse (a long hash, gaspard's PR…)
+                self.assertNotIn("Traceback", sortie + texte)
+                self.abandonner()
+
+    def test_un_nom_de_traverse_au_dela_de_la_borne_de_son_dossier_n_est_pas_lu(self):
+        """Any name under a self-service folder has that folder's bound: an extension, a case, a suffix or a non-ASCII name."""
+        self.branche()
+        attendus = []
+        for dossier, borne in (("taches/miniz", bee.OCTETS_MAX["taches"]), ("debats", bee.OCTETS_MAX["debats"])):
+            for nom in ("x.txt", "D-0001.YAML", "miniz-0099.yaml.bak", "é.yaml"):
+                chemin = self.dossier / dossier / nom
+                chemin.write_text("texte: " + " ".join(["ENORME"] * (borne // 7 + 1)) + "\n", encoding="utf-8")
+                if nom.isascii():
+                    attendus.append(f"{dossier}/{nom} : {chemin.stat().st_size} octets, au plus {borne} pour ce fichier")
+        self.commit()
+        with self.lectures() as lus:
+            code, sortie = self.bee("valider")
+            texte = self.refusee("gaspard", *attendus)
+        self.assertEqual(code, 1, sortie)
+        for nom in ("taches/miniz/é.yaml", "debats/é.yaml"):  # globbed from the filesystem: bounded by its folder too
+            self.assertIn(f"{nom} : ", sortie)
+        self.assertNotIn("Traceback", sortie + texte)
+        self.assertEqual([t[:100] for t in lus if "ENORME" in t], [], "read whole, or parsed")
+        self.abandonner()
+
+    def test_un_noeud_de_l_arbre_au_dela_de_sa_borne_n_est_pas_lu(self):
+        self.branche()
+        sens = self.dossier / "arbre/SENS.md"
+        entete, corps = sens.read_text(encoding="utf-8").split("---\n", 2)[1:]
+        sens.write_text("---\n" + entete + "".join(f"cle{i}: ENORME\n" for i in range(5000)) + "---\n" + corps + "ENORME " * 10000,
+                        encoding="utf-8")
+        attendu = f"arbre/SENS.md : {sens.stat().st_size} octets, au plus 65536 pour un nœud : il n'est pas lu"
+        self.commit()
+        with self.lectures() as lus:
+            code, sortie = self.bee("valider")
+            texte = self.refusee("gaspard", attendu)
+        self.assertEqual(code, 1, sortie)
+        self.assertIn(attendu, sortie)
+        self.assertNotIn("Traceback", sortie + texte)
+        self.assertEqual([t[:100] for t in lus if "ENORME" in t], [], "read whole, or parsed")
+        self.abandonner()
+
+    def test_a_sa_marque_un_fichier_ne_recoit_plus_d_ajout_mais_se_clot(self):
+        tache, debat = self.chemin_tache("miniz-9001"), self.dossier / "debats/D-0001.yaml"
+        maintenant = self.maintenant()
+        remplir(self, tache, "notes", lambda i: {"par": "farid", "le": maintenant, "texte": "x" * 1400}, bee.ecrire_yaml)
+        remplir(self, debat, "arguments", lambda i: {"id": f"A{i + 1}", "par": ("alice", "bruno", "chloe")[i % 3], "le": maintenant,
+                                                     "position": "pour", "texte": "x" * 1400}, bee.ecrire_debat)
+        self.commit("à la marque")
+        self.valide()
+        marque_tache, marque_debat = bee.probleme_marque("taches/miniz/miniz-9001.yaml"), bee.probleme_marque("debats/D-0001.yaml")
+        avant = (tache.read_bytes(), debat.read_bytes())
+        self.ko(marque_tache, "noter", "miniz-9001", "--utilisateur", "gaspard", "--texte", "y" * 1500)  # refused before writing
+        self.ko(marque_debat, "debattre", "argumenter", "D-0001", "--utilisateur", "gaspard", "--position", "pour", "--texte", "y" * 1500)
+        self.assertEqual((tache.read_bytes(), debat.read_bytes()), avant, "nothing written")
+        for ajout in ("note", "argument"):  # and by the gate, written by hand
+            self.branche()
+            if ajout == "note":
+                self.noter_a_la_main({"texte": "y" * 1500}, tache="miniz-9001")
+            else:
+                d = self.debat("D-0001")
+                d["arguments"].append({"id": f"A{len(d['arguments']) + 1}", "par": "gaspard", "le": maintenant, "position": "pour",
+                                       "texte": "y" * 1500})
+                self.ecrire(d, "D-0001")
+            self.commit()
+            self.refusee("gaspard", marque_tache if ajout == "note" else marque_debat)
+            self.abandonner()
+        self.branche()  # a reservation still fits; notes riding on it are an append
+        self.ok("prendre", "miniz-9001", "--utilisateur", "gaspard")
+        self.commit()
+        self.libre_service("gaspard", "reservation")
+        self.noter_a_la_main({"texte": "y" * 1500}, tache="miniz-9001")
+        self.commit()
+        self.refusee("gaspard", marque_tache)
+        self.abandonner()
+        self.branche()  # and a close with a synthesis of 4,000 characters of 4 bytes each
+        self.ok("debattre", "clore", "D-0001", "--utilisateur", "bidji29", "--issue", "sans_suite", "--synthese", "🐝" * 4000)
+        self.assertLessEqual(debat.stat().st_size, bee.OCTETS_MAX["debats"])
+        self.commit()
+        code, texte = self.verifier("bidji29")
+        self.assertEqual(code, 0, texte)
+        self.valide()
+        self.abandonner()
+        self.prendre_et_fusionner("gaspard", "miniz-9001")  # a release with a note: an append too
+        self.branche()
+        self.ok("liberer", "miniz-9001", "--utilisateur", "gaspard", "--note", "y" * 1500)
+        self.commit()
+        self.refusee("gaspard", marque_tache)
+        self.abandonner()
+
+    def test_yaml_trop_profond_ou_entier_demesure_refuse_sans_trace(self):
+        self.branche()
+        (self.dossier / "votes/miniz-0099-c1/chloe.yaml").write_text("motif: " + "[" * 5000 + "]" * 5000 + "\n", encoding="utf-8")
+        entiers_bornes = hasattr(sys, "set_int_max_str_digits")  # Python 3.11 and later (CI: 3.12)
+        (self.dossier / "mesures/miniz-0099-c1/farid.yaml").write_text("motif: " + "9" * 5000 + "\n", encoding="utf-8")
+        self.commit()
+        code, sortie = self.bee("valider")
+        texte = self.refusee("gaspard", "votes/miniz-0099-c1/chloe.yaml")
+        self.assertEqual(code, 1, sortie)
+        self.assertIn("chloe.yaml : YAML invalide (maximum recursion depth", sortie)
+        if entiers_bornes:
+            self.assertIn("farid.yaml : YAML invalide (Exceeds the limit", sortie)
+        self.assertNotIn("Traceback", sortie + texte)
+        versions = bee.lire_versions(self.dossier, [("HEAD", c) for c in ("votes/miniz-0099-c1/chloe.yaml", "mesures/miniz-0099-c1/farid.yaml")])
+        lues = [bee._lire_version(v) for v in versions.values()]  # history: never a traceback (libyaml, if there, reads the depth)
+        if entiers_bornes:
+            self.assertIsNone(lues[1])
+        self.abandonner()
+
+    def test_une_proposition_porte_des_textes_recevables(self):
+        """The gate reads texte_propose and motif of a new proposition like every free text: not blank, nothing hidden, bounded."""
+        for champs, attendu in (({"texte_propose": " " * 12}, "texte_propose vide"),
+                                ({"motif": "Un motif​ assez long pour le schéma."}, "motif : caractère invisible"),
+                                ({"texte_propose": "a" * 8001}, "texte_propose de 8001 caractères, au plus 8000")):
+            with self.subTest(champs=champs):
+                self.branche()
+                self.proposition("P-0002", **champs)
+                self.commit()
+                self.refusee("gaspard", f"propositions/P-0002.yaml : {attendu}")
+                self.abandonner()
+        self.branche()
+        self.proposition("P-0002", texte_propose="🐝" * 8000, motif="🐝" * 8000)  # at the bound, 4 bytes each: the file fits too
+        self.commit()
+        self.libre_service("gaspard", "proposition")
+        self.abandonner()
+
+
+
+class TestBornesVerdictEtMarque(BaseTest):
+    """ruche-0040: the robot never writes a contribution bee valider would refuse, and the largest verdict fits one; a task at its
+    mark refuses an append before writing, and still takes a reservation, a submission and an integration."""
+
+    ENORME = -1.7976931348623157e+308
+
+    def verdict_maximal(self, n):
+        """A fork's verdict.json under its bound that makes enregistrer-verdict write as much as it can (4-byte characters)."""
+        cle = lambda quoi, i: (f"{quoi}{n:02d}{i:03d}" + "x" * 80)[:80]  # noqa: E731
+        verdict = {"ci": "rouge", "etape_en_echec": "🐝" * 300, "lignes_modifiees": 10 ** 9, "gain": self.ENORME,
+                   "instructions": {cle("i", i): {"A": self.ENORME, "B": self.ENORME, "gain": self.ENORME} for i in range(60)},
+                   "degradations": {cle("d", i): self.ENORME for i in range(60)},
+                   "juge": {"version": 10 ** 9, "sorties_comparees": 10 ** 9, "constructions_suspectes": []}}
+        while len(json.dumps(verdict, ensure_ascii=False).encode()) < bee.VERDICT_MAX["octets"] - 1500:  # as many as its bound holds
+            verdict["juge"]["constructions_suspectes"].append({"type": "🐝" * 40, "detail": "🐝" * 300})
+        return verdict
+
+    def enregistrer(self, cid, verdict, *options):
+        chemin = self.dossier / "verdict.json"
+        chemin.write_text(json.dumps(verdict, ensure_ascii=False), encoding="utf-8")
+        return self.bee("enregistrer-verdict", cid, "--verdict", str(chemin), *options)
+
+    def test_le_plus_grand_verdict_tient_dans_sa_contribution(self):
+        cid = self.soumettre_0099()
+        fichiers = self.dossier / "fichiers.txt"
+        fichiers.write_text("".join(f".github/{i}" + "🐝" * 300 + "\n" for i in range(30)), encoding="utf-8")
+        for n in range(bee.VERDICTS_MAX + 1):  # each one in the history, and the last one in full
+            self.assertLess(len(json.dumps(self.verdict_maximal(n), ensure_ascii=False).encode()), bee.VERDICT_MAX["octets"])
+            code, texte = self.enregistrer(cid, self.verdict_maximal(n), "--sha", f"{n:040x}", "--arbre", f"{n + 1:040x}",
+                                           "--fichiers", str(fichiers), "--execution", "https://github.com/Bee-ruche/minizBee/actions/runs/1")
+            self.assertEqual(code, 0, texte)
+        self.assertIn("ignoré(s) : 40 de instructions, 40 de degradations", texte)
+        enr = bee.lire_yaml(self.dossier / "contributions/miniz/miniz-0099-c1.yaml")
+        self.assertEqual((len(enr["verdicts"]), len(enr["verdict"]["instructions"]), len(enr["verdict"]["juges_modifies"])),
+                         (bee.VERDICTS_MAX, bee.VERDICT_MAX["cles"], bee.VERDICT_MAX["juges"]))
+        taille = (self.dossier / "contributions/miniz/miniz-0099-c1.yaml").stat().st_size
+        # and the largest declaration (12,000 characters written, 4 bytes each) beside it
+        self.assertLessEqual(taille + 4 * bee.DECLARE_MAX["rendu"], bee.OCTETS_MAX["contributions"], taille)
+        self.valide()
+
+    def test_un_verdict_json_au_dela_de_sa_borne_n_est_pas_lu(self):
+        cid = self.soumettre_0099()
+        chemin = self.dossier / "contributions/miniz/miniz-0099-c1.yaml"
+        avant = chemin.read_bytes()
+        gros = {**self.verdict_maximal(0), "remplissage": "x" * bee.VERDICT_MAX["octets"]}
+        with mock.patch.object(bee.json, "load", side_effect=AssertionError("loaded")):
+            code, texte = self.enregistrer(cid, gros, "--sha", "abc1234")
+            self.assertEqual(code, 1, texte)
+            self.assertIn("plus de 64 Kio : verdict refusé, non lu", texte)
+            self.assertEqual(self.bee("bases-declarees", str(self.dossier / "verdict.json")), (0, ""))
+        self.assertEqual(chemin.read_bytes(), avant)
+
+    def test_le_robot_n_ecrit_jamais_une_contribution_que_valider_refuserait(self):
+        cid = self.soumettre_0099()
+        chemin = self.dossier / "contributions/miniz/miniz-0099-c1.yaml"
+        enr = bee.lire_yaml(chemin)
+        verdict = {"ci": "verte", "gain": 0.05, "au_dela_du_bruit": True, "instructions": INSTRUCTIONS_N6, "lignes_modifiees": 10}
+        relecture = {"relecteur": "bruno", "avis": "favorable", "motif": "x" * 4000, "le": "2026-10-27T12:00:00Z"}
+        # Off its schema; then still under its bound (it is read), but past it with the largest verdict.
+        for donnees, brut, attendu in (({**enr, "intrus": 1}, verdict, "champ(s) inconnu(s) : intrus"),
+                                       ({**enr, "relectures": [dict(relecture) for _ in range(56)]}, self.verdict_maximal(0),
+                                        f"au plus {bee.OCTETS_MAX['contributions']})")):
+            with self.subTest(attendu=attendu):
+                bee.ecrire_yaml(chemin, donnees)
+                avant = chemin.read_bytes()
+                self.assertLess(len(avant), bee.OCTETS_MAX["contributions"])
+                code, texte = self.enregistrer(cid, brut, "--sha", "abc1234")
+                self.assertEqual(code, 1, texte)
+                self.assertIn(f"{cid} : verdict refusé, rien n'est écrit : la contribution ne serait plus valide (", texte)
+                self.assertIn(attendu, texte)
+                self.assertEqual(chemin.read_bytes(), avant)
+
+    def test_une_tache_a_sa_marque_se_reserve_se_soumet_et_s_integre(self):
+        chemin = self.dossier / "taches/miniz/miniz-0099.yaml"
+        remplir(self, chemin, "notes", lambda i: {"par": "alice", "le": "2026-10-27T12:00:00Z", "texte": "x" * 1400}, bee.ecrire_yaml)
+        self.valide()
+        avant = chemin.read_bytes()
+        self.assertIn(bee.probleme_marque("taches/miniz/miniz-0099.yaml"),
+                      self.bee("noter", "miniz-0099", "--utilisateur", "bruno", "--texte", "y" * 1500)[1])
+        self.assertEqual(chemin.read_bytes(), avant, "nothing written")
+        cid = TestRegistre.preparer_contribution_verte(self, "bidji29", ("bruno", "chloe"))  # reservation, submission, verdict, reviews
+        code, texte = self.bee("prendre", "miniz-0099", "--utilisateur", "alice", "--en-parallele")
+        self.assertIn(bee.probleme_marque("taches/miniz/miniz-0099.yaml"), texte)
+        self.assertEqual(self.bee("verifier-acceptation", cid)[0], 0)
+        code, texte = self.bee("integrer", cid, "--fusion-sha", "deadbee")
+        self.assertEqual(code, 0, texte)
+        self.assertEqual(self.tache("miniz-0099")["statut"], "integree")
+        self.assertLessEqual(chemin.stat().st_size, bee.OCTETS_MAX["taches"])
+        self.valide()
+
+
+
 R8_AMORCAGE = 'r8_amorcage: {max: 8, jusqu_au: "2026-12-01T00:00:00Z"}'
 # ruche-0096: settings that leave only the usual cap (fails closed); the last one ends at the instant of BaseRepetitionGenerale.
 R8_SANS_EXCEPTION = (None, "r8_amorcage: 8", "r8_amorcage: [8, '2026-12-01T00:00:00Z']", "r8_amorcage: {max: 8}",

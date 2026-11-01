@@ -1,0 +1,10 @@
+id: ruche-0040-c1
+tache: ruche-0040
+auteur: bidji29
+pr: https://github.com/Bee-ruche/registre/pull/121
+resume: Every self-service file and text field has a size bound checked before parsing, and every text
+  field goes through the common character check.
+statut: en_relecture
+soumise_le: '2026-11-01T22:32:12Z'
+engage_depuis: '2026-11-01T19:59:01Z'
+relectures: []
