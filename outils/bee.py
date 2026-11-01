@@ -5208,7 +5208,7 @@ def verifier_fork(reg, depot, base, tete, identifiant_tache, auteur=None):
         else:
             problemes.append(f"{nom_manifeste} absent de la branche (bee manifeste {identifiant_tache} … --sortie <fork>/{nom_manifeste})")
     else:
-        problemes += verifier_manifeste(reg, manifeste, nom_manifeste, auteur)
+        problemes += verifier_manifeste(reg, manifeste, nom_manifeste, person_of(reg.comptes_agents, auteur))  # ruche-0089
         if isinstance(manifeste, dict) and manifeste.get("tache") != identifiant_tache:
             problemes.append(f"{nom_manifeste} : tâche « {manifeste.get('tache')} » au lieu de « {identifiant_tache} »")
     autres = [c for c in git(depot, "diff", "--name-only", "--no-renames", f"{base}...{tete}").splitlines()

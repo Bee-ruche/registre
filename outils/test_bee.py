@@ -10890,5 +10890,79 @@ class TestAgentAccountInvitations(BaseInvitations):
         self.attend_le_conseil("gina-agent", "accord_gardien", "agent_account")
 
 
+class TestAgentAccountsWorkflows(BaseParallele):
+    """ruche-0089: integration-auto takes a PR opened by the contribution's author's declared agent account as the author's,
+    and nothing else (bee acts-for, fail closed); verifier-fork reads the manifest of the person."""
+
+    etape = TestRevueAdverse.etape
+    appels_de = staticmethod(TestRevueAdverse.appels_de)
+
+    def test_integration_takes_the_pr_of_the_authors_agent_account_and_nothing_else(self):
+        declarer_agents(self.dossier, (AGENT, "bidji29"), ("alice-agent", "alice"))
+        self.fermer_porte()
+        c1 = self.soumettre_0099("alice")
+        self.verdict(c1, 0.05)
+        self.relire(c1, "bruno", "bidji29")
+        self.a("2026-10-28T13:00:00Z")
+        self.assertEqual(self.acceptation(c1)[0], 0)
+        for login in (AGENT, "Alice-Agent2", "mallory", "alice-agent-x"):
+            with self.subTest(pr_by=login):
+                etats = {PR_MINIZ + "99007": {"state": "OPEN", "head": "abc1234", "auteur": login}}
+                sortie, etat, appels = self.etape("Intégrer", etats)
+                self.assertIn(f"ouverte par {login}, pas par alice ; ni fusionnée ni consignée", sortie)
+                self.assertFalse(self.appels_de(appels, "pr", "merge"))
+                self.assertEqual(self.enr(c1)["statut"], "en_relecture")
+        # An unreadable declaration maps no one: the agent account's PR is then not the author's (fail closed).
+        declaration = (self.dossier / bee.AGENT_ACCOUNTS).read_text(encoding="utf-8")
+        (self.dossier / bee.AGENT_ACCOUNTS).write_text("accounts: [\n", encoding="utf-8")
+        sortie, _, appels = self.etape("Intégrer", {PR_MINIZ + "99007": {"state": "OPEN", "head": "abc1234", "auteur": "alice-agent"}})
+        self.assertIn("ouverte par alice-agent, pas par alice ; ni fusionnée ni consignée", sortie)
+        self.assertFalse(self.appels_de(appels, "pr", "merge"))
+        (self.dossier / bee.AGENT_ACCOUNTS).write_text(declaration, encoding="utf-8")
+        _, etat, appels = self.etape("Intégrer", {PR_MINIZ + "99007": {"state": "OPEN", "head": "abc1234", "auteur": "alice-agent"}})
+        self.assertEqual([a["args"][2] for a in self.appels_de(appels, "pr", "merge")], [PR_MINIZ + "99007"])
+        self.assertEqual(self.enr(c1)["statut"], "integree")
+        self.valide()
+
+    def test_closing_the_pr_of_a_set_aside_contribution(self):
+        declarer_agents(self.dossier, (AGENT, "bidji29"), ("chloe-agent", "chloe"))
+        self.fermer_porte()
+        c1 = self.soumettre_0099("alice")
+        self.a("2026-10-27T13:00:00Z")
+        self.parallele("miniz-0099", "chloe")
+        c2 = self.soumettre("miniz-0099", "chloe", 4242)
+        self.verdict(c1, 0.05)
+        self.relire(c1, "bruno", "bidji29")
+        self.a("2026-10-31T12:00:00Z")
+        self.etape("Intégrer", {PR_MINIZ + "99007": {"state": "OPEN", "head": "abc1234", "auteur": "alice"},
+                                PR_MINIZ + "4242": {"state": "OPEN", "head": "beefcafe", "auteur": AGENT}})
+        self.assertEqual((self.enr(c1)["statut"], self.enr(c2)["statut"]), ("integree", "ecartee"))
+        sortie, etat, appels = self.etape("Fermer")
+        self.assertIn(f"ouverte par {AGENT}, pas par chloe ; on ne la ferme pas", sortie)
+        self.assertFalse(self.appels_de(appels, "pr", "close"))
+        etat[PR_MINIZ + "4242"]["auteur"] = "chloe-agent"
+        (self.dossier.parent / "etat_pr.json").write_text(json.dumps(etat), encoding="utf-8")
+        _, _, appels = self.etape("Fermer")
+        self.assertEqual([a["args"][2] for a in self.appels_de(appels, "pr", "close")], [PR_MINIZ + "4242"])
+
+    def test_verifier_fork_reads_the_manifest_of_the_person(self):
+        fork = pathlib.Path(self.temp.name) / "fork"
+        fork.mkdir()
+        (fork / "miniz_tdef.c").write_text("".join(f"ligne {i}\n" for i in range(100)), encoding="utf-8")
+        git(fork, "init", "-q", "-b", "master")
+        git(fork, "-c", "user.name=t", "-c", "user.email=t@t", "add", "-A")
+        git(fork, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "base")
+        git(fork, "switch", "-qc", "tache/miniz-0099")
+        (fork / "miniz_tdef.c").write_text("".join(f"ligne {i}\n" for i in range(99)) + "ligne cent\n", encoding="utf-8")
+        (fork / "CONTRIBUTION.yaml").write_text(MANIFESTE_REMPLI.replace("utilisateur: alice", "utilisateur: bidji29"), encoding="utf-8")
+        git(fork, "-c", "user.name=t", "-c", "user.email=t@t", "add", "-A")
+        git(fork, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "travail")
+        for auteur, attendu in ((AGENT, 0), ("bidji29", 0), ("alice", 1), ("LaRuche-Architect", 1)):
+            with self.subTest(auteur=auteur):
+                code, texte = self.bee("verifier-fork", "--tache", "miniz-0099", "--base", "master", "--depot", str(fork), "--auteur", auteur)
+                self.assertEqual(code, attendu, texte)
+        self.assertIn("utilisateur « bidji29 » différent de l'auteur de la PR « LaRuche-Architect »", texte)
+
+
 if __name__ == "__main__":
     unittest.main()
