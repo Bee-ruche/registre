@@ -4,6 +4,7 @@ import collections
 import contextlib
 import hashlib
 import io
+import itertools
 import json
 import math
 import os
@@ -291,6 +292,7 @@ class TestCiScope(unittest.TestCase):
             self.ecrire(chemin, "id: y\n")
         self.assertEqual(self.portee(), ("data", None))
         self.assertEqual(lancer("--registre", str(self.depot), "ci-scope", "--base", self.base), (0, "data\n"))
+        self.assertEqual(bee.dernier_commit_de_code(self.depot, "HEAD"), self.base, "ruche-0132: the same rules on main")
 
     def test_anything_else_runs_the_full_suite(self):
         lien = lambda chemin: os.symlink("../README.md", self.depot / chemin)  # noqa: E731
@@ -327,6 +329,12 @@ class TestCiScope(unittest.TestCase):
                 portee, raison = bee.ci_scope(self.depot, self.base, "HEAD")
                 self.assertEqual(portee, "full")
                 self.assertTrue(raison)
+                # ruche-0132: main's last code commit is judged by the same rules: under a data commit, this one is code.
+                sha = git(self.depot, "rev-parse", "HEAD").strip()
+                self.ecrire("propositions/P-0009.yaml")
+                git(self.depot, "add", "propositions/P-0009.yaml")
+                git(self.depot, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "c")
+                self.assertEqual(bee.dernier_commit_de_code(self.depot, "HEAD"), sha)
         self.assertEqual(bee.ci_scope(self.depot, "0" * 40, "HEAD")[0], "full", "unknown base")
         self.assertEqual(bee.ci_scope(self.temp.name, self.base, "HEAD")[0], "full", "not a repository")
         code, sortie = lancer("--registre", str(self.depot), "ci-scope", "--base", "0" * 40)
@@ -334,10 +342,12 @@ class TestCiScope(unittest.TestCase):
 
     @staticmethod
     def etapes():
-        """validation.yml's steps, and those this test names by role (a renamed step fails here: follow it)."""
-        etapes = yaml.safe_load((RACINE / ".github/workflows/validation.yml").read_text(encoding="utf-8"))["jobs"]["valider"]["steps"]
-        nom = lambda debut: next(s for s in etapes if s.get("name", "").startswith(debut))  # noqa: E731
-        return etapes, {"portee": nom("Scope of the PR"), "outil": nom("Tests de l'outil"), "juge": nom("Tests unitaires du juge"),
+        """The steps of validation.yml's checks job and of suite.yml's job, and those this test names by role (a renamed step
+        fails here: follow it)."""
+        etapes = yaml.safe_load((RACINE / ".github/workflows/validation.yml").read_text(encoding="utf-8"))["jobs"]["controles"]["steps"]
+        suite = yaml.safe_load((RACINE / ".github/workflows/suite.yml").read_text(encoding="utf-8"))["jobs"]["tests"]["steps"]
+        nom = lambda debut, dans=etapes: next(s for s in dans if s.get("name", "").startswith(debut))  # noqa: E731
+        return etapes, {"portee": nom("Scope of the PR"), "outil": nom("Tests de l'outil", suite), "juge": nom("Tests unitaires du juge", suite),
                         "reel": nom("Tests that read the live registry"), "valider": nom("Validation complète"),
                         "regles": nom("Règles de la pull request")}
 
@@ -363,7 +373,7 @@ class TestCiScope(unittest.TestCase):
         """Replays validation.yml's scope step on a merge commit like GitHub's (first parent: the base)."""
         script = self.etapes()[1]["portee"]["run"]
 
-        def etape(pr, outil_base=None, main="success"):
+        def etape(pr, outil_base=None, main=lambda base: self.executions((base, "completed", "success"))):
             git(self.depot, "checkout", "-q", "main")
             if outil_base == "absent":
                 git(self.depot, "rm", "-q", "outils/bee.py")
@@ -375,7 +385,7 @@ class TestCiScope(unittest.TestCase):
             self.commit()
             git(self.depot, "checkout", "-q", "--detach", base)
             git(self.depot, "-c", "user.name=t", "-c", "user.email=t@t", "merge", "-q", "--no-ff", "--no-edit", f"pr-{len(etapes)}")
-            r, sorties, appels = self.rejouer(script, {"BASE_EVENEMENT": "0" * 40, "FAUX_GH": main})
+            r, sorties, appels = self.rejouer(script, {"BASE_EVENEMENT": "0" * 40, "FAUX_GH": main(base) if callable(main) else main})
             self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
             self.assertEqual(sorties["base"], base)
             self.assertIn(sorties["portee"], ("data", "full"))
@@ -385,21 +395,33 @@ class TestCiScope(unittest.TestCase):
         etapes = []
         appels = etape(lambda: self.ecrire("membres/alice.yaml"))
         requete = appels.split()[1]
-        self.assertTrue(requete.startswith("repos/Bee-ruche/registre/actions/workflows/validation.yml/runs?"), appels)
-        self.assertLessEqual({"branch=main", "event=push", "status=completed"}, set(requete.split("?", 1)[1].split("&")))
+        self.assertTrue(requete.startswith("repos/Bee-ruche/registre/actions/workflows/suite.yml/runs?"), appels)
+        self.assertLessEqual({"branch=main", "event=workflow_dispatch"}, set(requete.split("?", 1)[1].split("&")))
+        self.assertEqual(len(appels.splitlines()), 1, "one call")
         etape(lambda: self.ecrire("outils/bee.py", "print('data')\n"))  # the PR's own tool never decides
-        etape(lambda: self.ecrire("membres/bruno.yaml"), main="failure")  # a red main: every PR runs the full suite
-        etape(lambda: self.ecrire("membres/bruno.yaml"), main="error")  # main's last run unreadable
+        etape(lambda: self.ecrire("membres/bruno.yaml"), main=lambda b: self.executions((b, "completed", "failure")))  # a red main
+        etape(lambda: self.ecrire("membres/bruno.yaml"), main=lambda b: self.executions(("0" * 40, "completed", "success")))  # not main's code
+        etape(lambda: self.ecrire("membres/bruno.yaml"), main="error")  # the call fails
         etape(lambda: self.ecrire("membres/bruno.yaml"), main="")
         etape(lambda: self.ecrire("membres/bruno.yaml"), outil_base="print('data')\nraise SystemExit(2)\n")
         etape(lambda: self.ecrire("membres/chloe.yaml"), outil_base="print('data ')\n")
         etape(lambda: self.ecrire("membres/chloe.yaml"), outil_base="absent")
-        self.assertEqual(etapes, ["data"] + ["full"] * 7)
+        self.assertEqual(etapes, ["data"] + ["full"] * 8)
         # No merge commit and no event base: the step fails before any tool runs (git show ":path" would read the index).
         git(self.depot, "checkout", "-q", "main")
         r, sorties, appels = self.rejouer(script, {"BASE_EVENEMENT": "", "FAUX_GH": "success"})
         self.assertNotEqual(r.returncode, 0)
         self.assertEqual((sorties, appels), ({}, ""))
+
+    @staticmethod
+    def executions(*runs, **champs):
+        """A response of actions/workflows/suite.yml/runs, newest first: one dispatched run on main per (commit, status,
+        conclusion[, run_attempt, 1 by default]); `champs` replace fields of every run."""
+        return json.dumps({"workflow_runs": [{"id": 100 - k, "path": ".github/workflows/suite.yml", "head_branch": "main",
+                                              "event": "workflow_dispatch", "display_title": f"Full suite on {commit}",
+                                              "head_sha": commit, "status": statut, "conclusion": conclusion,
+                                              "run_attempt": (essai or [1])[0], **champs}
+                                             for k, (commit, statut, conclusion, *essai) in enumerate(runs)]})
 
     @staticmethod
     def tourne(etape, evenement, portee):
@@ -423,20 +445,57 @@ class TestCiScope(unittest.TestCase):
                 portee = sortie if self.tourne(roles["portee"], evenement, None) else None
                 donnees = evenement == "pull_request" and str(portee).lower() == "data"
                 attendu = {id(roles["portee"]): evenement == "pull_request", id(roles["regles"]): evenement == "pull_request",
-                           id(roles["outil"]): not donnees, id(roles["juge"]): not donnees, id(roles["reel"]): donnees}
+                           id(roles["reel"]): donnees}
                 for etape in etapes:  # every other step, « Validation complète » included, always runs
                     with self.subTest(evenement=evenement, portee=sortie, etape=etape.get("name") or etape.get("uses")):
                         self.assertEqual(self.tourne(etape, evenement, portee), attendu.get(id(etape), True))
         flux = yaml.safe_load((RACINE / ".github/workflows/validation.yml").read_text(encoding="utf-8"))
         self.assertEqual(flux["permissions"], {"contents": "read", "actions": "read"})
         self.assertEqual(roles["portee"]["env"]["GH_TOKEN"], "${{ github.token }}")
-        self.assertIn("main=$(timeout 60 gh api ", roles["portee"]["run"])  # the stub gh ignores --jq: the expression is read here
-        self.assertIn("--jq '.workflow_runs[0].conclusion') || main=unknown", roles["portee"]["run"])
+        self.assertIn("main=$(timeout 60 gh api ", roles["portee"]["run"])
+        self.assertIn('main-green --base "$BASE" --runs "$RUNNER_TEMP/suite.json") || main=unknown', roles["portee"]["run"])
         self.assertEqual(roles["regles"]["env"]["BASE"], "${{ steps.portee.outputs.base }}")
         self.assertNotRegex(roles["regles"]["run"], r"(?m)^\s*BASE=")
         r, _, appels = self.rejouer(roles["regles"]["run"], {"BASE": "", "AUTEUR": "alice", "FAUX_GH": "2020-01-01"})
         self.assertNotEqual(r.returncode, 0, "an empty base compares HEAD with itself and passes")
         self.assertEqual(appels, "")
+
+    def test_wiring_of_the_jobs(self):
+        """ruche-0132: the full suite is suite.yml, called after the checks unless the scope is data; the required check
+        `valider` always runs and passes only if the checks passed and the suite did, or was skipped for a data-only PR;
+        suite.yml keeps the suite's steps, a read-only token and no PR text in a script."""
+        lire = lambda nom: yaml.safe_load((RACINE / ".github/workflows" / nom).read_text(encoding="utf-8"))  # noqa: E731
+        flux, suite = lire("validation.yml"), lire("suite.yml")
+        self.assertEqual(list(flux["jobs"]), ["controles", "suite", "valider"])
+        self.assertEqual(flux["jobs"]["controles"]["outputs"], {"portee": "${{ steps.portee.outputs.portee }}"})
+        self.assertEqual(flux["jobs"]["suite"], {"needs": "controles", "if": "needs.controles.outputs.portee != 'data'",
+                                                 "uses": "./.github/workflows/suite.yml"})
+        porte = flux["jobs"]["valider"]
+        self.assertEqual((porte["needs"], porte["if"], len(porte["steps"])), (["controles", "suite"], "always()", 1))
+        self.assertEqual(porte["steps"][0]["env"], {"CONTROLES": "${{ needs.controles.result }}", "SUITE": "${{ needs.suite.result }}",
+                                                    "PORTEE": "${{ needs.controles.outputs.portee }}"})
+        resultats = ("success", "failure", "cancelled", "skipped")
+        for controles, sous, portee in itertools.product(resultats, resultats, ("data", "full", "", "DATA")):
+            with self.subTest(controles=controles, suite=sous, portee=portee):
+                r, _, _ = self.rejouer(porte["steps"][0]["run"], {"CONTROLES": controles, "SUITE": sous, "PORTEE": portee})
+                attendu = controles == "success" and (sous == "success" or (sous == "skipped" and portee == "data"))
+                self.assertEqual(r.returncode == 0, attendu, r.stdout + r.stderr)
+        self.assertEqual(suite["permissions"], {"contents": "read"})
+        self.assertEqual(set(suite[True]), {"workflow_call", "workflow_dispatch"})  # PyYAML reads the key « on » as True
+        self.assertEqual([list(suite[True][e]["inputs"]) for e in ("workflow_call", "workflow_dispatch")], [["commit"], ["commit"]])
+        self.assertEqual(suite["run-name"], bee.TITRE_SUITE + "${{ inputs.commit || github.sha }}")
+        self.assertEqual(list(suite["jobs"]), ["tests"])
+        etapes = suite["jobs"]["tests"]["steps"]
+        self.assertEqual(etapes[0], {"uses": "actions/checkout@v4", "with": {"ref": "${{ inputs.commit }}", "fetch-depth": 0}})
+        self.assertEqual([e.get("run") for e in etapes[2:]], ["pip install -r outils/requirements.txt",
+                                                             "python3 outils/test_bee.py --processus 4", "python3 outils/juge/test_juge.py"])
+        self.assertFalse([e for e in etapes if "if" in e or "env" in e or "${{" in str(e.get("run", ""))])
+        for nom in ("validation.yml", "suite.yml"):
+            texte = (RACINE / ".github/workflows" / nom).read_text(encoding="utf-8")
+            self.assertNotIn("pull_request_target", texte)
+            self.assertNotIn("secrets", json.dumps(lire(nom)))  # neither `secrets: inherit` nor ${{ secrets.X }} (comments aside)
+            for job in lire(nom)["jobs"].values():
+                self.assertFalse([e["run"] for e in job.get("steps", []) if "${{" in str(e.get("run", ""))], nom)
 
     def test_both_workflows_give_the_gate_github_s_record_of_the_push(self):
         """ruche-0091: the PR rules take the time of the PR from this run's creation (the API, read with the run's id), and
@@ -550,6 +609,181 @@ class TestCiScope(unittest.TestCase):
         for texte in echecs.values():
             self.assertIn("reads the live registry's data", texte)
 
+
+
+class TestMainVert(unittest.TestCase):
+    """ruche-0132: the PR fast path's « main is green », one read of suite.yml's runs on main (bee main-green): the newest run
+    must test main's last commit that changes anything but data (found with git), the newest completed one must have
+    succeeded; anything else (a call that failed, an unexpected response) sends the PR to the full suite."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.depot = pathlib.Path(self.temp.name)
+        git(self.depot, "init", "-q", "-b", "main")
+        self.code = self.commit("outils/bee.py")
+        self.donnees = [self.commit("membres/alice.yaml"), self.commit("taches/miniz/miniz-0001.yaml")]
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def commit(self, chemin, texte="id: x\n"):
+        (self.depot / chemin).parent.mkdir(parents=True, exist_ok=True)
+        (self.depot / chemin).write_text(texte, encoding="utf-8")
+        git(self.depot, "add", "-A")
+        git(self.depot, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "c", "--allow-empty")
+        return git(self.depot, "rev-parse", "HEAD").strip()
+
+    def vert(self, *runs, **champs):
+        return bee.main_vert(self.depot, "HEAD", json.loads(TestCiScope.executions(*runs, **champs)))
+
+    def test_last_code_commit(self):
+        self.assertEqual(bee.dernier_commit_de_code(self.depot, "HEAD"), self.code, "data commits on top are skipped")
+        self.assertEqual(bee.dernier_commit_de_code(self.depot, self.code), self.code, "a root commit is code")
+        self.assertIsNone(bee.dernier_commit_de_code(self.depot, "HEAD", limite=2), "past the limit: none")
+        self.assertIsNone(bee.dernier_commit_de_code(self.depot, "0" * 40), "an unknown base")
+        changements = {"root file": lambda: self.commit("README.md"), "other extension": lambda: self.commit("taches/miniz/notes.txt"),
+                       "deletion": lambda: (git(self.depot, "rm", "-q", "membres/alice.yaml"), self.commit("membres/bruno.yaml"))[1],
+                       "empty commit": lambda: self.commit("membres/bruno.yaml")}  # unchanged: no change at all
+        for nom, changer in changements.items():
+            with self.subTest(cas=nom):
+                sha = changer()
+                self.commit("membres/chloe.yaml", nom)  # a data commit on top
+                self.assertEqual(bee.dernier_commit_de_code(self.depot, "HEAD"), sha)
+        git(self.depot, "checkout", "-q", "-b", "pr")  # a merge commit on main's first-parent line: its change against main
+        branche = self.commit("outils/autre.py")
+        git(self.depot, "checkout", "-q", "main")
+        self.commit("membres/david.yaml")
+        git(self.depot, "-c", "user.name=t", "-c", "user.email=t@t", "merge", "-q", "--no-ff", "--no-edit", "pr")
+        fusion = git(self.depot, "rev-parse", "HEAD").strip()
+        self.commit("membres/emma.yaml")
+        self.assertEqual(bee.dernier_commit_de_code(self.depot, "HEAD"), fusion)
+        self.assertNotEqual(fusion, branche)
+
+    def test_green(self):
+        self.assertEqual(self.vert((self.code, "completed", "success")), (True, None))
+        self.assertEqual(self.vert((self.code, "completed", "success"), ("0" * 40, "completed", "failure")), (True, None))
+        # The newest run is for main's code and still running: the newest completed one decides (as for ruche-0090).
+        self.assertEqual(self.vert((self.code, "in_progress", None), ("0" * 40, "completed", "success")), (True, None))
+
+    def test_the_newest_run_is_not_for_main_s_last_code_commit(self):
+        for runs in ([(self.donnees[-1], "completed", "success")], [("0" * 40, "completed", "success"), (self.code, "completed", "success")],
+                     [(self.code[:7], "completed", "success")], [(self.code.upper(), "completed", "success")]):
+            with self.subTest(runs=runs):
+                vert, raison = self.vert(*runs)
+                self.assertFalse(vert)
+                self.assertIn("not for main's last code commit", raison)
+        # The newest by id, whatever the order of the page.
+        reponse = json.loads(TestCiScope.executions((self.code, "completed", "success"), ("0" * 40, "completed", "success")))
+        reponse["workflow_runs"][1]["id"] = 1000
+        self.assertFalse(bee.main_vert(self.depot, "HEAD", reponse)[0])
+
+    def test_the_newest_completed_run_failed(self):
+        for conclusion in ("failure", "cancelled", "timed_out", "skipped", None):
+            with self.subTest(conclusion=conclusion):
+                self.assertFalse(self.vert((self.code, "completed", conclusion))[0])
+                self.assertFalse(self.vert((self.code, "queued", None), (self.code, "completed", conclusion),
+                                           (self.code, "completed", "success"))[0])
+        self.assertEqual(self.vert((self.code, "in_progress", None)), (False, "no completed run of suite.yml in the page"))
+
+    def test_other_runs_and_unexpected_responses(self):
+        succes = (self.code, "completed", "success")
+        for nom, champs in (("another branch", {"head_branch": "autre"}), ("another event", {"event": "push"}),
+                            ("another workflow", {"path": ".github/workflows/validation.yml"})):
+            with self.subTest(cas=nom):
+                self.assertEqual(self.vert(succes, **champs), (False, "no run of suite.yml on main"))
+        for reponse in ({}, {"workflow_runs": []}, {"workflow_runs": None}, [], None, "error", {"workflow_runs": [{"id": 1}]}):
+            with self.subTest(reponse=reponse):
+                self.assertFalse(bee.main_vert(self.depot, "HEAD", reponse)[0])
+        self.assertFalse(bee.main_vert(self.depot, "0" * 40, json.loads(TestCiScope.executions(succes)))[0], "main's code not found")
+
+    def test_one_git_process_and_no_ceiling_at_a_thousand_data_commits(self):
+        """Review of ruche-0132: the search is one `git log` (not one git process per data commit), and finds main's last
+        code commit under 1,500 data commits (an hour and a half at the target pace; it stopped at 1,000)."""
+        flux = "".join(f"commit refs/heads/main\ncommitter t <t@t> {1700000000 + k} +0000\ndata 1\nc\n"
+                       f"{'from refs/heads/main^0' + chr(10) if k == 0 else ''}M 100644 inline membres/m{k}.yaml\ndata 6\nid: x\n\n"
+                       for k in range(1500))
+        subprocess.run(["git", "-C", str(self.depot), "fast-import", "--quiet"], input=flux, text=True, check=True)
+        self.assertGreaterEqual(bee.LIMITE_COMMITS_DONNEES, 100_000)
+        with mock.patch.object(subprocess, "Popen", wraps=subprocess.Popen) as processus:
+            self.assertEqual(bee.dernier_commit_de_code(self.depot, "HEAD"), self.code)
+        self.assertEqual(processus.call_count, 1, "one git process")
+        self.assertEqual(bee.dernier_commit_de_code(self.depot, "HEAD", limite=1503), self.code)
+        self.assertIsNone(bee.dernier_commit_de_code(self.depot, "HEAD", limite=1502), "past the ceiling: none")
+        self.assertEqual(self.vert((self.code, "completed", "success")), (True, None))
+
+    def test_rows_added_to_docs_decisions_count_as_data(self):
+        """Review of ruche-0132, the architect's decision: to find main's last code commit (not for a PR's scope), a commit
+        that changes only self-service data and docs/decisions.md, with lines added only (the integration workflow's
+        « Intégrations et clôtures automatiques », a council row), counts as data; any other change to it is code."""
+        tableau = "| Date | Décision |\n| --- | --- |\n| 2026-11-01 | a |\n"
+        (self.depot / "docs").mkdir()
+        (self.depot / "docs/autre.md").write_text(tableau, encoding="utf-8")
+        code = self.commit("docs/decisions.md", tableau)
+        base = self.commit("membres/bruno.yaml")
+        decisions = self.depot / "docs/decisions.md"
+        ecrire = lambda chemin, texte="id: x\n": ((self.depot / chemin).parent.mkdir(parents=True, exist_ok=True),  # noqa: E731
+                                                   (self.depot / chemin).write_text(texte, encoding="utf-8"))
+        ligne = lambda chemin=decisions: chemin.write_text(tableau.replace("| --- |\n", "| --- |\n| 2026-11-02 | b |\n"), encoding="utf-8")  # noqa: E731
+        honnetes = {
+            "the integration workflow's commit": lambda: (ligne(), ecrire("taches/miniz/miniz-0001.yaml", "id: y\n"),
+                                                          ecrire("contributions/miniz/miniz-0001-c1.yaml")),
+            "a council row at the end": lambda: decisions.write_text(tableau + "| 2026-11-02 | c |\n", encoding="utf-8"),
+        }
+        detours = {
+            "a row changed": lambda: decisions.write_text(tableau.replace("| a |", "| A |"), encoding="utf-8"),
+            "a row removed": lambda: decisions.write_text(tableau.rsplit("| 2026", 1)[0], encoding="utf-8"),
+            "a row added, another changed": lambda: decisions.write_text(tableau.replace("| a |", "| A |") + "| x | y |\n", encoding="utf-8"),
+            "and code": lambda: (ligne(), ecrire("outils/bee.py", "print('data')\n")),
+            "executable": lambda: (ligne(), decisions.chmod(0o755)),
+            "another document": lambda: ligne(self.depot / "docs/autre.md"),
+            "deleted": lambda: decisions.unlink(),
+            "symlink": lambda: (decisions.unlink(), os.symlink("autre.md", decisions)),
+            "binary": lambda: decisions.write_bytes(tableau.encode() + b"| \0 |\n"),
+        }
+        for nom, changer in {**honnetes, **detours}.items():
+            with self.subTest(cas=nom):
+                git(self.depot, "reset", "-q", "--hard", base)
+                changer()
+                sha = self.commit("membres/chloe.yaml", nom)  # the change, with data
+                self.commit("membres/david.yaml")  # a data commit on top
+                self.assertEqual(bee.dernier_commit_de_code(self.depot, "HEAD"), code if nom in honnetes else sha)
+                self.assertEqual(bee.ci_scope(self.depot, base, sha)[0], "full", "a PR's scope is unchanged")
+        git(self.depot, "reset", "-q", "--hard", base)
+        self.commit("docs/decisions.md", tableau + "| 2026-11-02 | c |\n")  # a council row, alone
+        self.assertEqual(bee.dernier_commit_de_code(self.depot, "HEAD"), code)
+
+    def test_a_re_run_in_progress_counts_as_red(self):
+        """Review of ruche-0132: re-running a failed run of main's last code commit puts it back in progress, and the newest
+        completed run is then an older success; a run not completed with run_attempt > 1 counts as red."""
+        autre = "0" * 40
+        for statut in ("queued", "in_progress", "waiting", "requested", "pending"):
+            with self.subTest(statut=statut):
+                vert, raison = self.vert((self.code, statut, None, 2), (autre, "completed", "success"))
+                self.assertFalse(vert)
+                self.assertIn("100", raison)
+        self.assertFalse(self.vert((self.code, "in_progress", None, 3), (self.code, "completed", "success"))[0])
+        reponse = json.loads(TestCiScope.executions((self.code, "in_progress", None), (autre, "completed", "success")))
+        del reponse["workflow_runs"][0]["run_attempt"]
+        self.assertFalse(bee.main_vert(self.depot, "HEAD", reponse)[0], "not completed, attempt unknown")
+        # A first attempt in progress: the newest completed run decides, as before; a re-run that completed: its conclusion.
+        self.assertEqual(self.vert((self.code, "in_progress", None, 1), (autre, "completed", "success")), (True, None))
+        self.assertEqual(self.vert((self.code, "completed", "success", 2), (autre, "completed", "failure")), (True, None))
+        self.assertFalse(self.vert((self.code, "completed", "failure", 2))[0])
+        # An older run re-run while the newest one, for main's last code commit, succeeded: green.
+        self.assertEqual(self.vert((self.code, "completed", "success"), (autre, "in_progress", None, 2)), (True, None))
+
+    def test_command(self):
+        fichier = self.depot.parent / f"{self.depot.name}.json"
+        self.addCleanup(lambda: fichier.unlink(missing_ok=True))
+        for contenu, attendu in ((TestCiScope.executions((self.code, "completed", "success")), "green\n"),
+                                 (TestCiScope.executions((self.code, "completed", "failure")), "red\n"), ("", "red\n"),
+                                 ("not json", "red\n"), (None, "red\n")):
+            with self.subTest(contenu=contenu):
+                fichier.unlink(missing_ok=True)
+                if contenu is not None:
+                    fichier.write_text(contenu, encoding="utf-8")
+                code, sortie = lancer("--registre", str(self.depot), "main-green", "--base", "HEAD", "--runs", str(fichier))
+                self.assertEqual((code, sortie.splitlines(True)[:1]), (0, [attendu]))
 
 class BaseTest(unittest.TestCase):
     def setUp(self):
@@ -17301,47 +17535,54 @@ class TestSuiteEnParallele(unittest.TestCase):
         self.assertIn("shard 1000/1000: no test", r.stdout)
         self.assertNotIn("=== shard", r.stdout)  # a split that fails runs nothing
 
-    def test_validation_yml_runs_the_suite_in_processes_inside_its_job(self):
+    def test_suite_yml_runs_the_suite_in_processes_inside_its_job(self):
         etape = TestCiScope.etapes()[1]["outil"]
         self.assertRegex(etape["run"], r"^python3 outils/test_bee\.py --processus [1-9][0-9]*\n?$")
         self.assertIsInstance(etape.get("timeout-minutes"), int)  # a hang stops the job, not after GitHub's 360 minutes
 
     def test_validation_yml_runs_each_check_once_in_order_and_none_fails_silently(self):
-        """The tool's tests, then the judge's, then bee valider, then bee verifier-pr, each once in the « valider » job, and no
-        continue-on-error (job or step): a failed step stops the job. Checked on the file and on altered copies of it."""
-        texte = (RACINE / ".github/workflows/validation.yml").read_text(encoding="utf-8")
-        commandes = ("python3 outils/test_bee.py --processus", "python3 outils/juge/test_juge.py", "python3 outils/bee.py valider",
-                     "python3 outils/bee.py verifier-pr")
+        """ruche-0132: bee valider, then bee verifier-pr, each once in validation.yml's checks job; the tool's tests, then the
+        judge's, each once in suite.yml's job (called after the checks: TestCiScope.test_wiring_of_the_jobs); no
+        continue-on-error (job or step) in either: a failed step stops its job, and fails the required check. Checked on the
+        files and on altered copies of them."""
+        lire = lambda nom: yaml.safe_load((RACINE / ".github/workflows" / nom).read_text(encoding="utf-8"))  # noqa: E731
+        par_job = {"controles": ("python3 outils/bee.py valider", "python3 outils/bee.py verifier-pr"),
+                   "tests": ("python3 outils/test_bee.py --processus", "python3 outils/juge/test_juge.py")}
 
-        def ecarts(flux):
-            job = flux["jobs"]["valider"]
-            places = [[k for k, e in enumerate(job["steps"]) for _ in range(str(e.get("run", "")).count(c))] for c in commandes]
-            return ([f"{c}: {len(p)} times" for c, p in zip(commandes, places) if len(p) != 1]
-                    + ["out of order"] * (sorted(p[0] for p in places if p) != [p[0] for p in places if p])
-                    + [f"continue-on-error: {e.get('name', 'job')}" for e in (job, *job["steps"]) if "continue-on-error" in e])
+        def ecarts(flux, suite):
+            jobs = {**flux["jobs"], **suite["jobs"]}
+            resultat = [f"continue-on-error: {e.get('name', nom)}" for nom, job in jobs.items()
+                        for e in (job, *job.get("steps", [])) if "continue-on-error" in e]
+            for nom, commandes in par_job.items():
+                tous = [k for j in jobs.values() for k, e in enumerate(j.get("steps", [])) for c in commandes if c in str(e.get("run", ""))]
+                places = [[k for k, e in enumerate(jobs[nom]["steps"]) for _ in range(str(e.get("run", "")).count(c))] for c in commandes]
+                resultat += ([f"{c}: {len(p)} times" for c, p in zip(commandes, places) if len(p) != 1] + ["elsewhere"] * (len(tous) != 2)
+                             + ["out of order"] * (sorted(p[0] for p in places if p) != [p[0] for p in places if p]))
+            return resultat
 
-        def place(flux, nom):
-            return next(k for k, e in enumerate(flux["jobs"]["valider"]["steps"]) if e.get("name", "").startswith(nom))
+        def place(job, nom):
+            return next(k for k, e in enumerate(job["steps"]) if e.get("name", "").startswith(nom))
 
-        def deplacer(flux, nom, avant):
-            etape = flux["jobs"]["valider"]["steps"].pop(place(flux, nom))
-            flux["jobs"]["valider"]["steps"].insert(place(flux, avant), etape)
+        def deplacer(job, nom, avant):
+            job["steps"].insert(place(job, avant), job["steps"].pop(place(job, nom)))
 
-        self.assertEqual(ecarts(yaml.safe_load(texte)), [])
-        etapes = lambda f: f["jobs"]["valider"]["steps"]  # noqa: E731
+        self.assertEqual(ecarts(lire("validation.yml"), lire("suite.yml")), [])
+        c, t = (lambda f, s: f["jobs"]["controles"]), (lambda f, s: s["jobs"]["tests"])  # noqa: E731
         alterations = {
-            "continue-on-error on the tests": lambda f: etapes(f)[place(f, "Tests de l'outil")].update({"continue-on-error": True}),
-            "continue-on-error on the job": lambda f: f["jobs"]["valider"].update({"continue-on-error": True}),
-            "Validation complète above the tests": lambda f: deplacer(f, "Validation complète", "Tests de l'outil"),
-            "the PR rules above bee valider": lambda f: deplacer(f, "Règles de la pull request", "Validation complète"),
-            "bee valider twice": lambda f: etapes(f).append(etapes(f)[place(f, "Validation complète")]),
-            "no judge tests": lambda f: etapes(f).pop(place(f, "Tests unitaires du juge")),
+            "continue-on-error on the tests": lambda f, s: t(f, s)["steps"][place(t(f, s), "Tests de l'outil")].update({"continue-on-error": True}),
+            "continue-on-error on the suite's job": lambda f, s: t(f, s).update({"continue-on-error": True}),
+            "continue-on-error on the checks job": lambda f, s: c(f, s).update({"continue-on-error": True}),
+            "the judge's tests above the tool's": lambda f, s: deplacer(t(f, s), "Tests unitaires du juge", "Tests de l'outil"),
+            "the PR rules above bee valider": lambda f, s: deplacer(c(f, s), "Règles de la pull request", "Validation complète"),
+            "bee valider twice": lambda f, s: c(f, s)["steps"].append(c(f, s)["steps"][place(c(f, s), "Validation complète")]),
+            "the tests in the checks job too": lambda f, s: c(f, s)["steps"].append(t(f, s)["steps"][place(t(f, s), "Tests de l'outil")]),
+            "no judge tests": lambda f, s: t(f, s)["steps"].pop(place(t(f, s), "Tests unitaires du juge")),
         }
         for nom, alterer in alterations.items():
             with self.subTest(alteration=nom):
-                flux = yaml.safe_load(texte)
-                alterer(flux)
-                self.assertTrue(ecarts(flux), nom)
+                flux, suite = lire("validation.yml"), lire("suite.yml")
+                alterer(flux, suite)
+                self.assertTrue(ecarts(flux, suite), nom)
 
 
 class TestIdentiteParNumeroFil(BaseParallele):
@@ -17615,7 +17856,7 @@ class TestIdentiteParNumero(BaseRepetitionGenerale):
         for flux, etape in (("fusion-auto.yml", "Vérifier la fusion simulée"), ("validation.yml", "Règles de la pull request")):
             with self.subTest(flux=flux):
                 etapes = [s for job in yaml.safe_load((RACINE / ".github/workflows" / flux).read_text(encoding="utf-8"))["jobs"].values()
-                          for s in job["steps"]]
+                          for s in job.get("steps", [])]  # ruche-0132: validation.yml's suite job calls suite.yml (no steps)
                 script = next(s["run"] for s in etapes if s.get("name", "").startswith(etape))
                 self.assertIn('''compte=$(gh api "users/$AUTEUR" --jq '"\\(.created_at[:10]) \\(.id)"')''', script)
                 self.assertRegex(script, r'--github-id "\$(\{compte#\* \}|numero_compte)"')
