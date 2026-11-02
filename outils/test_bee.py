@@ -8168,6 +8168,17 @@ class BaseInvitations(BaseRepetitionGenerale):
               ("2026-11-02T12:00:00Z", "accord-conseil"), ("2026-11-02T13:00:00Z", "consigner-envoi"),
               ("2026-11-16T14:00:00Z", "consigner-relance"))
 
+    def debat_a_la_main(self, invitation, qui, quand):
+        """ruche-0050 : le débat propre d'une invitation écrite à la main (au numéro suivant, ouvert par son proposant, sans
+        rapporteur) ; renvoie son numéro. Le même s'il existe déjà pour ce numéro d'invitation."""
+        reg = bee.Registre(self.dossier)
+        debat = next((i for i, (_, d) in reg.debats.items() if d.get("invitation") == invitation), None)
+        if debat is None:
+            debat = bee.prochain_debat(reg)
+            self.ecrire({"id": debat, "invitation": invitation, "question": f"Invitation {invitation} : faut-il l'envoyer ?",
+                         "ouvert_par": qui, "ouvert_le": quand, "statut": "ouvert", "synthese": "", "arguments": []}, debat)
+        return debat
+
     def debattre_invitation(self, debat="D-0002", qui="bruno", quand="2026-10-30T10:20:00Z", apres="2026-10-30T10:40:00Z"):
         """ruche-0050 : dans le débat propre d'une invitation, `qui` (pas le proposant) argumente et prend la plume, puis publie
         une synthèse à jour, chaque geste par une PR fusionnée."""
@@ -8844,14 +8855,7 @@ class BaseRevueRuche0020(BaseInvitations):
         """Une invitation écrite à la main, sous la forme canonique (rien de maquillé dans le YAML) ; le message porte la mention
         de sa demande."""
         demande = champs.get("demande", "garant")
-        # ruche-0050 : son débat propre, ouvert avec elle (le même s'il existe déjà pour ce numéro).
-        reg = bee.Registre(self.dossier)
-        debat = next((i for i, (_, d) in reg.debats.items() if d.get("invitation") == identifiant), None)
-        if debat is None:
-            debat = bee.prochain_debat(reg)
-            self.ecrire({"id": debat, "invitation": identifiant, "question": f"Invitation {identifiant} : faut-il l'envoyer ?",
-                         "ouvert_par": qui, "ouvert_le": os.environ["BEE_MAINTENANT"], "statut": "ouvert", "synthese": "",
-                         "arguments": []}, debat)
+        debat = self.debat_a_la_main(identifiant, qui, os.environ["BEE_MAINTENANT"])  # ruche-0050 : son débat propre
         self.ecrire_invitation({
             "id": identifiant, "statut": "proposee",
             "personne": {"identifiant": "github:octocat", "canal": "https://github.com/octocat"},
@@ -9327,7 +9331,8 @@ class TestSecondeRevueRuche0020(BaseRevueRuche0020):
             self.ecrire_invitation({**self.invitation(f"I-{n:04d}"), "statut": "envoyee",
                                     "envoi": {"par": "bidji29", "le": "2026-10-05T10:00:00Z"}}, f"I-{n:04d}")
         quatre = {**self.invitation("I-0003"), "id": "I-0004", "statut": "proposee", "propose_le": "2026-10-28T10:00:00Z",
-                  "personne": {"identifiant": "github:personne4", "canal": "https://github.com/personne4"}}
+                  "personne": {"identifiant": "github:personne4", "canal": "https://github.com/personne4"},
+                  "debat": self.debat_a_la_main("I-0004", "alice", "2026-10-28T10:00:00Z")}
         for cle in ("accord_conseil", "envoi"):
             quatre.pop(cle)
         quatre["accord_gardien"] = {"par": "gina", "le": "2026-10-28T10:00:00Z"}
@@ -9576,7 +9581,8 @@ class TestTroisiemeRevueRuche0020(BaseRevueRuche0020):
         # I-0001 : la même personne, proposée le 10/10, jamais décidée (expirée) ; I-0003 : une autre personne, acceptée plus tôt,
         # qui déclare la même identité (elle reste : une invitation acceptée ne se retire qu'à la demande).
         self.a("2026-10-30T09:00:00Z")
-        base = {"statut": "proposee", "demande": "garant", "debat": "D-0001", "propose_par": "alice",
+        base = {"statut": "proposee", "demande": "garant", "debat": self.debat_a_la_main("I-0001", "alice", "2026-10-10T10:00:00Z"),
+                "propose_par": "alice",
                 "pourquoi": [{"fait": "Fait fictif : maintient fictif-lib depuis 2015.", "source": "https://exemple-source.org/lib"}],
                 "message": MESSAGE_INVITATION + "\n\n" + self.mention()}
         self.ecrire_invitation({"id": "I-0001", **base, "personne": {"identifiant": self.CIBLE, "canal": "https://github.com/fictif-cible"},
@@ -10403,6 +10409,7 @@ class TestDebatInvitationRuche0050(BaseRevueRuche0020):
         self.proposer_brut("I-0002", "bruno", debat="D-0001")
         self.chemin_debat("D-0003").unlink()
         self.commit("sur main : une invitation qui nomme le débat général")
+        self.assertIn("I-0002.yaml : debat « D-0001 » : not the debate opened for it", self.bee("valider")[1], "bee valider le refuse")
         self.a("2026-11-02T12:00:00Z")
         self.ko("debat « D-0001 » : not the debate opened for I-0002", "invitation", "accord-gardien", "I-0002", "--utilisateur", "gina")
         self.branche()
@@ -10588,6 +10595,33 @@ class TestDebatInvitationRuche0050(BaseRevueRuche0020):
         self.branche()
         self.accord_a_la_main("accord_conseil", "bidji29")
         self.refusee("bidji29", "D-0002 is closed")
+
+    def test_le_rapporteur_clot_selon_la_meme_regle_que_les_accords(self):
+        """Une seule règle (synthese_a_jour) : un argument de l'instant de la synthèse n'est pas couvert, pour clore comme pour
+        les accords ; une synthèse postérieure, publiée dans la même PR que la clôture, l'est."""
+        self.a("2026-10-30T10:00:00Z")
+        self.ouvrir("alice", "Faut-il un modèle de message pour les invitations de garant ?")  # D-0002, alice rapporteuse
+        self.commit("débat ouvert")
+        self.a("2026-10-30T11:00:00Z")
+        for qui, commande, nature in (("bruno", ["argumenter", "--position", "pour", "--texte", "Un modèle évite les oublis."], "argument"),
+                                      ("alice", ["synthetiser", "--texte", "Un avis pour (A1)."], "synthese")):
+            self.branche()
+            self.ok("debattre", commande[0], "D-0002", "--utilisateur", qui, *commande[1:])
+            self.publier(qui, nature)
+        d = self.debat("D-0002")
+        self.assertEqual((d["rapporteur"], d["arguments"][0]["le"]), ("bruno", d["synthese_le"]))
+        self.a("2026-10-31T12:00:00Z")
+        self.ko("postérieure à tout argument qu'elle doit couvrir", "debattre", "clore", "D-0002", "--utilisateur", "bruno", "--issue",
+                "sans_suite")
+        self.branche()
+        self.ecrire({**d, "statut": "clos", "clos_le": self.maintenant(), "clos_par": "bruno", "issue": "sans_suite", "reference": ""},
+                    "D-0002")
+        self.commit()
+        self.refusee("bruno", "le rapporteur clôt sur une synthèse à jour, postérieure à tout argument qu'elle doit couvrir")
+        self.abandonner()
+        self.branche()
+        self.ok("debattre", "clore", "D-0002", "--utilisateur", "bruno", "--issue", "sans_suite", "--synthese", "Un avis pour (A1), seul.")
+        self.publier("bruno", "cloture_debat", "synthese")
 
     def test_un_argument_publie_a_l_instant_de_la_synthese_compte_comme_plus_recent(self):
         """Même instant : la synthèse a pu ne pas le lire ; il compte donc comme plus récent, et l'accord attend une synthèse

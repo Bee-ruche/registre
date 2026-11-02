@@ -109,10 +109,11 @@ La clôture **nomme ce qui sort du débat** :
 | `sans_suite` | Aucune |
 
 - **Qui clôt** : le rapporteur, un gardien ou le conseil.
-- **Le rapporteur ne clôt pas en hâte** : il lui faut une synthèse à jour (postérieure au dernier
-  argument ; `--synthese` la publie dans la même PR) et 24 h sans nouvel argument, pour que chacun ait
-  pu répondre. Un gardien ou le conseil peut clore à tout moment (débat hors sujet, doublon d'un autre
-  débat, contenu à écarter).
+- **Le rapporteur ne clôt pas en hâte** : il lui faut une synthèse à jour (postérieure à tout argument
+  qu'elle doit couvrir : un argument de son instant ne l'est pas, un doublon non contesté n'y compte pas, la
+  règle des accords d'une invitation ; `--synthese` la publie dans la même PR) et 24 h sans nouvel
+  argument, pour que chacun ait pu répondre. Un gardien ou le conseil peut clore à tout moment (débat
+  hors sujet, doublon d'un autre débat, contenu à écarter).
 - **Un débat clos ne reçoit plus rien** : ni argument, ni synthèse, ni changement d'issue. Pour le
   reprendre, on ouvre un nouveau débat dont la question cite l'ancien (« suite de D-0001 : … »).
 - **Un débat ne se supprime jamais** (commandement 10). Tout son historique, synthèses successives

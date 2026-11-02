@@ -173,6 +173,8 @@ bee invitation retirer I-0001 --utilisateur <conseil>               # à la dema
 bee invitation renouveler I-0001 --utilisateur <conseil>            # un feu vert échu (7 jours sans envoi), une fois
 ```
 
+`bee inviter` ouvre lui-même le débat propre de l'invitation, dans la même PR (il n'a pas d'option `--debat`).
+
 **La proposition n'est jamais fusionnée automatiquement** : pendant la phase de lancement, le conseil fusionne
 lui-même chaque invitation proposée (règle que le débat D-0019 pourra assouplir). Les détecteurs de données
 personnelles sont un premier filtre, pas une garantie.

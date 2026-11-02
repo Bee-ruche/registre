@@ -2776,6 +2776,12 @@ def arguments_a_couvrir(debat):
             and not (a.get("doublon_de") and a.get("id") not in contestes)]
 
 
+def synthese_a_jour(debat):
+    """ruche-0050: one rule for the accords on an invitation and for the rapporteur's closure: a dated synthesis that covers
+    every argument it must (arguments_a_couvrir)."""
+    return bool(debat.get("synthese") and _instant_ou_rien(debat.get("synthese_le"))) and not arguments_a_couvrir(debat)
+
+
 # Affichage d'un débat né sans rapporteur (bee debattre importer-questions).
 RAPPORTEUR_ABSENT = "aucun encore (le premier qui argumente le devient)"
 
@@ -3508,10 +3514,8 @@ def verifier_debat(reg, chemin, statut_git, ancien, nouveau, auteur, *, est_cons
             if auteur == rapporteur and not privilegie:
                 # Le rapporteur ne clôt pas en hâte pour couper court : synthèse à jour, et un temps de silence.
                 derniere = precedent
-                synthese = _instant_ou_rien(nouveau.get("synthese_le")) if nouveau.get("synthese") else None
-                exiger(synthese is not None and derniere is not None and synthese >= derniere,
-                       "le rapporteur clôt sur une synthèse à jour, postérieure au dernier argument : publiez-la d'abord, ou dans la "
-                       "même PR (bee debattre clore --synthese)")
+                exiger(synthese_a_jour(nouveau), "le rapporteur clôt sur une synthèse à jour, postérieure à tout argument qu'elle doit "
+                       "couvrir (synthese_a_jour) : publiez-la d'abord, ou dans la même PR (bee debattre clore --synthese)")
                 silence = conf["silence_avant_cloture_heures"]
                 exiger(derniere is not None and instant - derniere >= dt.timedelta(hours=silence),
                        f"le rapporteur ne clôt qu'après {silence} h sans nouvel argument (agora.silence_avant_cloture_heures), pour "
@@ -4455,18 +4459,23 @@ def refus_invitation(reg, inv, conseil=False, instant=None):
     return refus
 
 
+def debat_propre(reg, inv):
+    """ruche-0050: the invitation's own debate (opened with it, by its proposer, naming it back), or None."""
+    d = reg.debats.get(str(inv.get("debat")), (None, None))[1]
+    return d if isinstance(d, dict) and d.get("invitation") == inv.get("id") and d.get("ouvert_par") == inv.get("propose_par") else None
+
+
 def refus_debat_invitation(reg, inv, accord=True):
-    """ruche-0050: [] if the invitation's debate is its own (opened with it, by its proposer, naming it) and open, and, for an
-    accord (the guardian's, the green light), if its synthesis covers every argument it must (arguments_a_couvrir); else why."""
-    did = str(inv.get("debat"))
-    d = reg.debats.get(did, (None, None))[1]
-    if not (isinstance(d, dict) and d.get("invitation") == inv.get("id") and d.get("ouvert_par") == inv.get("propose_par")):
-        return [f"debat « {_nettoyer(did)} » : not the debate opened for {inv.get('id')} with it, by its proposer (bee inviter opens it)"]
+    """ruche-0050: [] if the invitation's debate is its own (debat_propre) and open, and, for an accord (the guardian's, the green
+    light and its renewal), if its synthesis is up to date (synthese_a_jour); else why."""
+    did, d = _nettoyer(inv.get("debat")), debat_propre(reg, inv)
+    if d is None:
+        return [f"debat « {did} » : not the debate opened for {inv.get('id')} with it, by its proposer (bee inviter opens it)"]
     if d.get("statut") != "ouvert":
         return [f"{did} is closed : an invitation is proposed and decided while its own debate is open"]
     attente, datee = arguments_a_couvrir(d), d.get("synthese") and _instant_ou_rien(d.get("synthese_le"))  # undated: none
     return [f"{did} : its synthesis is out of date ({'it does not cover ' + ', '.join(attente) if datee else 'none yet'}) ; the "
-            "rapporteur publishes one first (bee debattre synthetiser)"] if accord and (attente or not datee) else []
+            "rapporteur publishes one first (bee debattre synthetiser)"] if accord and not synthese_a_jour(d) else []
 
 
 def refus_geste(reg, ancien, nouveau, geste, auteur, instant, publication=None, frein=None, refus_lie=False, status=True):
@@ -4766,6 +4775,8 @@ def verifier_invitations_registre(reg, ajouter, selon_schema, instant_valide):
             ajouter(f"{lieu} : id « {inv['id']} » différent du nom de fichier « {stem} »")
         if inv["statut"] != etat_invitation(inv):
             ajouter(f"{lieu} : statut « {inv['statut']} » alors que ses gestes disent « {etat_invitation(inv)} »")
+        if debat_propre(reg, inv) is None:  # ruche-0050
+            ajouter(f"{lieu} : debat « {inv['debat']} » : not the debate opened for it, with it, by its proposer (bee inviter opens it)")
         if "ecartee" in inv and ("envoi" in inv or "reponse" in inv) or (
                 (inv.get("reponse") or {}).get("valeur") in ("acceptee", "sans_reponse") and "envoi" not in inv):
             ajouter(f"{lieu} : gestes incohérents (on n'écarte qu'avant l'envoi ; acceptée ou sans réponse suppose un envoi)")
@@ -6888,9 +6899,9 @@ def debattre_clore(args):
         for a in arguments_de(d):
             moment = _instant_ou_rien(a.get("le"))
             precedent = max(precedent, moment) if moment and precedent else (moment or precedent)
-        synthese = _instant_ou_rien(d.get("synthese_le")) if d.get("synthese") else None
-        if synthese is None or (precedent and synthese < precedent):
-            raise ErreurBee("le rapporteur clôt sur une synthèse à jour, postérieure au dernier argument : ajoutez --synthese \"…\"")
+        if not synthese_a_jour(d):
+            raise ErreurBee("le rapporteur clôt sur une synthèse à jour, postérieure à tout argument qu'elle doit couvrir : ajoutez "
+                            "--synthese \"…\"")
         silence = config_agora(reg)["silence_avant_cloture_heures"]
         if precedent and instant - precedent < dt.timedelta(hours=silence):
             raise ErreurBee(f"le rapporteur ne clôt qu'après {silence} h sans nouvel argument (dernier : {en_iso(precedent)}) : chacun "
