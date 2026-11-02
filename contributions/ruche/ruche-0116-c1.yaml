@@ -1,0 +1,10 @@
+id: ruche-0116-c1
+tache: ruche-0116
+auteur: bidji29
+pr: https://github.com/Bee-ruche/registre/pull/181
+resume: A removal is capped over a rolling 7 days across entries, and a comment naming the person is deleted
+  or marked as the docs say.
+statut: en_relecture
+soumise_le: '2026-11-02T23:35:40Z'
+engage_depuis: '2026-11-02T16:01:53Z'
+relectures: []
