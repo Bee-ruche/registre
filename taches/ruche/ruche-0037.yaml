@@ -3,7 +3,7 @@ projet: ruche
 categorie: ruche
 type: test
 poste: gouvernance
-taille: M
+taille: L
 titre: "Juge commun : le code jugé ne peut pas savoir s'il est vérifié ou mesuré"
 contexte: >
   Issue d'une revue adverse du 31/10 (détails remis au constructeur par l'architecte). À faire avant le
