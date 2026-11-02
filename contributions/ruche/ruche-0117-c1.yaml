@@ -5,7 +5,10 @@ pr: https://github.com/Bee-ruche/registre/pull/183
 resume: 'The common judge before juge-v3: suspicious constructs ranked, code published only with a checked
   report, fresh inputs per container, flagged verification-only metrics, per-scenario identity, a tmpfs
   per execution, and nothing in the setup tied to the run''s progress.'
-statut: en_relecture
+statut: integree
 soumise_le: '2026-11-02T21:51:27Z'
 engage_depuis: '2026-11-02T16:01:44Z'
 relectures: []
+decidee_le: '2026-11-02T22:07:21Z'
+motif_decision: 'Hive tooling contribution: registry PR #183 merged at the judged commit 40627b4 under the council''s permanent authorisation, after an independent adversarial review made with the architect''s brief in a separate session (nothing blocking; one fix, verified by the same reviewer, whose run of the judge''s 129 tests with Docker passed); CI green on the judged commit (valider, suite / tests, meta-tests with Docker). R1: 190 lines changed outside tests, for an M task at 200. Recorded by hand: it changes a workflow. Submitted inside the code PR.'
+fusion_sha: b70d94b57553976b2e85ae9c9166e35eb83a765c

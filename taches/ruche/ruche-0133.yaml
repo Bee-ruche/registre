@@ -33,3 +33,7 @@ noeud: projets/ruche/ruche
 statut: ouverte
 cree_par: conseil
 cree_le: '2026-11-02'
+notes:
+  - par: "bidji29"
+    le: "2026-11-02T23:43:12Z"
+    texte: "Council's note (2 Nov 2026), from the review of ruche-0132: two tests of the full suite read docs/decisions.md as it stands (TestTroisiemeRevueRuche0020.test_1_decision_du_commandement_10 and TestVerificationRuche0020.test_decide_par_sur_autorisation_du_conseil). Since ruche-0132, a commit that only adds rows at the top of that file counts as data and skips the full suite, so such a row could turn these tests red on main without anyone seeing it. E25b keeps the full suite's verdict true for those commits: these tests read a fixed copy, or such a commit runs them. Also from that review: suite.yml's workflow_call input 'commit' is never passed; use it or remove it."
