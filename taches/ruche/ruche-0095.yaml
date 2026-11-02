@@ -28,7 +28,7 @@ hors_perimetre:
 - REGLES.md
 - the workflows' shell code
 noeud: projets/ruche/ruche
-statut: en_relecture
+statut: integree
 contribution: ruche-0095-c1
 cree_par: conseil
 cree_le: '2026-11-01'
