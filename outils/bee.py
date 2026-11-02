@@ -2212,11 +2212,12 @@ def probleme_marque(relatif):
 
 def tailles_objets(depot, noms):
     """The size in bytes of each git object `ref:path` (None: absent, not a file), in one call; None if git fails."""
-    if any("\n" in n for n in noms):  # one name per line (ruche-0095): a newline would shift every answer; nothing is read
+    code, sortie = _git_brut(depot, "cat-file", "-Z", "--batch-check=%(objecttype) %(objectsize)",  # NUL-separated (ruche-0095)
+                             entree="".join(f"{n}\0" for n in noms).encode("utf-8"))
+    lignes = sortie.decode("utf-8", "replace").split("\0")
+    if lignes[-1] != "":
         return None
-    code, sortie = _git_brut(depot, "cat-file", "--batch-check=%(objecttype) %(objectsize)",
-                             entree="".join(f"{n}\n" for n in noms).encode("utf-8"))
-    lignes = sortie.decode("utf-8", "replace").splitlines()
+    lignes.pop()
     return None if code or len(lignes) != len(noms) else [int(l[5:]) if l.startswith("blob ") else None for l in lignes]
 
 
