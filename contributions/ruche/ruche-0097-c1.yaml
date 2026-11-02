@@ -4,7 +4,11 @@ auteur: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/147
 resume: 'Writing at scale: keep PRs and make them cheaper now, build a gesture inbox for thousands of
   bees, with every guarantee listed and the council''s decisions named.'
-statut: en_relecture
+statut: integree
 soumise_le: '2026-11-02T09:36:58Z'
 engage_depuis: '2026-11-02T03:44:47Z'
 relectures: []
+decidee_le: '2026-11-02T10:10:01Z'
+motif_decision: 'Hive tooling contribution: registry PR #147 merged at commit 9e5f374 by bidji29, the
+  account of a council member, CI green on the merged commit.'
+fusion_sha: b58410d4e5e1cbb0a627ddf63f0adce830b6f08b
