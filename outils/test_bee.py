@@ -17893,6 +17893,31 @@ class TestSignalementsRuche0118(BaseInvitations):
     def lire(self, chemin):
         return bee.lire_yaml(self.dossier / chemin)
 
+    def lier(self, a, b):
+        """a lists b, b confirms (ruche-0051), on main : one person."""
+        bee.ecrire_yaml(self.dossier / f"membres/{a}.yaml", {**self.lire(f"membres/{a}.yaml"), "autres_comptes": [numero_de(b)]})
+        bee.ecrire_yaml(self.dossier / f"membres/{b}.yaml", {**self.lire(f"membres/{b}.yaml"), "compte_de": numero_de(a)})
+        self.commit(f"{a} et {b} liés")
+
+    def inscrire(self, *pseudos):
+        for pseudo in pseudos:
+            self.ok("inscrire", "--pseudo", pseudo, "--compte-cree-le", "2020-01-01")
+        self.commit("inscriptions")
+
+    def soumettre_et_fusionner(self, qui, tache, numero):
+        self.branche("soumission")
+        texte = self.ok("soumettre", tache, "--utilisateur", qui, "--pr", f"https://github.com/Bee-ruche/minizBee/pull/{numero}")
+        self.publier(qui, "soumission", nom="soumission")
+        return texte.split("contribution ", 1)[1].split(" ", 1)[0]
+
+    def refusee_a_la_main(self, qui, nom, morceau, auteur=None, **champs):
+        """The report written by hand in a PR of `auteur` (else `qui`), refused by the gate with `morceau`."""
+        self.branche()
+        self.a_la_main(nom, par=qui, **champs)
+        self.commit()
+        self.assertNotIn("FUSION_AUTO=oui", self.refusee(auteur or qui, f"signalements/{nom}.yaml : {morceau}"))
+        self.abandonner()
+
     def test_un_signalement_ne_tient_que_deux_comptes_membres_et_un_motif(self):
         self.a("2026-10-30T10:00:00Z")
         self.assertEqual(self.signaler("gaspard", "alice", "bruno"), "S-0001")
@@ -17962,14 +17987,14 @@ class TestSignalementsRuche0118(BaseInvitations):
         self.assertNotIn("S-0001", self.ok("essaim"))
         self.assertIn("S-0001 : décidé", self.ok("voir", "S-0001"))
         self.ko("S-0001 : the council alone decides an open report", "signalement", "S-0001", "--utilisateur", "bidji29", "--ecarter", "doublon")
-        # A dismissal with a code blocks the same pair for 30 days, by account numbers: renamed, in the other order, by another.
+        # A dismissal with a code blocks the same pair for 30 days, by person: renamed, in the other order, by another.
         self.signaler("gaspard", "chloe", "farid")
         self.decider("S-0002", "--ecarter", "personnes_distinctes")
         self.assertEqual(self.lire("signalements/S-0002.yaml")["decision"]["issue"], "personnes_distinctes")
         self.a("2026-11-29T11:59:00Z")
         self.ok("renommer", "--ancien", "chloe", "--pseudo", "chloe-b")
         self.commit("chloe renommée")
-        bloque = "S-0002 was dismissed on 2026-10-30T12:00:00Z : this pair is not reported again for 30 days after (by account numbers)"
+        bloque = "S-0002 was dismissed on 2026-10-30T12:00:00Z : this pair is not reported again for 30 days after (by person"
         self.ko(bloque, "signaler", "--utilisateur", "alice", "--comptes", "farid", "chloe-b", "--motif", "relectures_croisees")
         self.branche()
         self.a_la_main("S-0003", par="alice", comptes=["farid", "chloe-b"], motif="relectures_croisees")
@@ -18001,9 +18026,9 @@ class TestSignalementsRuche0118(BaseInvitations):
                 self.commit()
                 self.refusee("gaspard", f"signalements/S-0001.yaml : {lui}")
                 self.abandonner()
-        # One open report per pair, by account numbers: whoever files it, in whatever order.
+        # One open report per pair, by person: whoever files it, in whatever order.
         self.signaler("chloe", "alice", "bruno")
-        ouvert = "S-0001 already reports these two accounts, and is open : one open report per pair (by account numbers)"
+        ouvert = "S-0001 already reports these two persons, and is open : one open report per pair (by person"
         self.ko(ouvert, "signaler", "--utilisateur", "gaspard", "--comptes", "bruno", "alice", "--motif", "relectures_croisees")
         self.branche()
         self.a_la_main("S-0002", comptes=["bruno", "alice"])
@@ -18027,16 +18052,197 @@ class TestSignalementsRuche0118(BaseInvitations):
         self.commit()
         self.refusee("chloe", "plafond : chloe aurait 3 signalements en 24 h glissantes, au plus 2 (creations.signalements_max_par_24h)")
         self.abandonner()
-        # The cap is bee.yaml's setting: raised by the council, the third passes and the fourth is refused.
+        # The cap is bee.yaml's setting: raised by the council, the third passes and the fourth is refused (with the cap of open
+        # reports per person who reports raised too; gaspard and farid are one person, so dora is the fourth person).
         config = self.dossier / "bee.yaml"
-        config.write_text(config.read_text(encoding="utf-8").replace("\ncreations:\n", "\ncreations:\n  signalements_max_par_24h: 3\n"), encoding="utf-8")
-        self.commit("le conseil règle le plafond des signalements")
+        texte = re.sub(r"(?m)^  signalements_max_par_24h: *2\b", "  signalements_max_par_24h: 3", config.read_text(encoding="utf-8"))
+        config.write_text(re.sub(r"(?m)^  signalements_ouverts_max: *2\b", "  signalements_ouverts_max: 4", texte), encoding="utf-8")
+        self.inscrire("dora")
         self.signaler("chloe", "bruno", "farid")
         self.ko("plafond : chloe a déjà 3 signalements sur 24 h glissantes", "signaler", "--utilisateur", "chloe", "--comptes", "bruno",
-                "gaspard", "--motif", "votes_croises")
+                "dora", "--motif", "votes_croises")
         # 24 hours after the first, the window has moved on.
         self.a("2026-10-31T10:01:00Z")
-        self.signaler("chloe", "bruno", "gaspard")
+        self.signaler("chloe", "bruno", "dora")
+        self.valide()
+
+    def test_une_paire_se_compare_par_personnes_et_une_paire_liee_ne_se_signale_pas(self):
+        """Review of ruche-0118, (1) and (2): one open report per pair and the 30 days after a dismissal compare persons
+        (identites.cle), so the linked account of either side changes nothing ; a pair already linked is not reported."""
+        self.a("2026-10-30T10:00:00Z")
+        self.lier("gaspard", "farid")
+        deja = "comptes : these two accounts are already linked (one person) : nothing to report"
+        self.ko(deja, "signaler", "--utilisateur", "alice", "--comptes", "farid", "gaspard", "--motif", "votes_croises")
+        self.refusee_a_la_main("alice", "S-0001", deja, comptes=["gaspard", "farid"])
+        self.signaler("chloe", "alice", "farid")
+        ouvert = "S-0001 already reports these two persons, and is open : one open report per pair (by person"
+        self.ko(ouvert, "signaler", "--utilisateur", "bruno", "--comptes", "gaspard", "alice", "--motif", "votes_croises")
+        self.refusee_a_la_main("bruno", "S-0002", ouvert, comptes=["gaspard", "alice"])
+        self.decider("S-0001", "--ecarter", "sans_indice")
+        bloque = "S-0001 was dismissed on 2026-10-30T10:00:00Z : this pair is not reported again for 30 days after (by person"
+        self.ko(bloque, "signaler", "--utilisateur", "bruno", "--comptes", "alice", "gaspard", "--motif", "votes_croises")
+        self.refusee_a_la_main("bruno", "S-0002", bloque, comptes=["alice", "gaspard"])
+        self.a("2026-11-29T10:01:00Z")
+        self.assertEqual(self.signaler("bruno", "gaspard", "alice"), "S-0002")
+        self.valide()
+
+    def test_au_plus_deux_ouverts_par_personne_qui_signale_et_trois_nommant_une_personne(self):
+        """Review of ruche-0118, (2): open reports are capped per person who reports, from any of their accounts (a linked account, an
+        agent account), and per person named ; the four caps are bee.yaml's (creations)."""
+        self.assertLessEqual({"signalements_max_par_pr", "signalements_max_par_24h", "signalements_ouverts_max",
+                              "signalements_nommant_max"}, set(self.lire("bee.yaml")["creations"]))
+        self.a("2026-10-30T10:00:00Z")
+        self.lier("gaspard", "farid")
+        declarer_agents(self.dossier, (AGENT, "bidji29"), ("agent-de-gaspard", "gaspard"))
+        self.inscrire("dora")
+        self.signaler("gaspard", "alice", "bruno")
+        self.signaler("farid", "alice", "chloe")
+        # Within the 24 hours, the person's cap counts both accounts, and the agent account too.
+        self.ko("plafond : farid a déjà 2 signalements sur 24 h glissantes (creations.signalements_max_par_24h)", "signaler", "--utilisateur",
+                "farid", "--comptes", "bruno", "chloe", "--motif", "votes_croises")
+        self.branche()
+        self.a_la_main("S-0003", par="gaspard", comptes=["bruno", "chloe"])
+        self.commit()
+        self.refusee("agent-de-gaspard", "plafond : gaspard aurait 3 signalements en 24 h glissantes, au plus 2 (creations.signalements_max_par_24h)")
+        self.abandonner()
+        self.a("2026-10-31T10:01:00Z")  # past the 24 hours: the cap of open reports remains
+        signaleur = "gaspard already has 2 open reports, at most 2 per person who reports (creations.signalements_ouverts_max)"
+        self.ko(signaleur, "signaler", "--utilisateur", "farid", "--comptes", "bruno", "chloe", "--motif", "votes_croises")
+        self.refusee_a_la_main("farid", "S-0003", signaleur, comptes=["bruno", "chloe"])
+        self.refusee_a_la_main("gaspard", "S-0003", signaleur, auteur="agent-de-gaspard", comptes=["bruno", "chloe"])
+        # bee.yaml's setting: raised by the council, the third passes.
+        config = self.dossier / "bee.yaml"
+        config.write_text(re.sub(r"(?m)^  signalements_ouverts_max: *2\b", "  signalements_ouverts_max: 3",
+                                 config.read_text(encoding="utf-8")), encoding="utf-8")
+        self.commit("le conseil relève le plafond")
+        self.assertEqual(self.signaler("farid", "bruno", "chloe"), "S-0003")
+        # Per person named: alice is named in three open reports (one from farid, gaspard's account) ; a fourth is refused, whoever
+        # files it, until the council decides one.
+        self.signaler("chloe", "alice", "farid")
+        nommee = "alice is already named in 3 open reports, at most 3 per person (creations.signalements_nommant_max)"
+        self.ko(nommee, "signaler", "--utilisateur", "bruno", "--comptes", "dora", "alice", "--motif", "votes_croises")
+        self.refusee_a_la_main("bruno", "S-0005", nommee, comptes=["dora", "alice"])
+        self.decider("S-0001", "--ecarter", "sans_indice")
+        self.assertEqual(self.signaler("bruno", "dora", "alice"), "S-0005")
+        self.valide()
+
+    def test_bee_essaim_montre_le_nombre_et_les_dix_premiers(self):
+        self.a("2026-10-30T10:00:00Z")
+        for n in range(1, 13):
+            self.a_la_main(f"S-{n:04d}", par="chloe")
+        self.commit("douze signalements ouverts")
+        essaim = self.ok("essaim")
+        self.assertIn("Signalements ouverts, pour le conseil : 12, les 10 premiers", essaim)
+        self.assertIn("S-0010 : alice et bruno", essaim)
+        self.assertNotIn("S-0011", essaim)
+        tableau = json.loads(self.ok("essaim", "--json"))
+        self.assertEqual(([x["id"] for x in tableau["signalements"]], tableau["signalements_ouverts"]),
+                         ([f"S-{n:04d}" for n in range(1, 11)], 12))
+
+    def test_le_fichier_est_exactement_celui_qu_ecrit_bee_signaler(self):
+        """Review of ruche-0118, (3): the gate takes the file bee signaler writes, byte for byte, dated as bee writes it ; the schema
+        refuses a compact date and a login with a final line break."""
+        self.a("2026-10-30T10:00:00Z")
+        honnete = {"par": "chloe", "le": "2026-10-30T10:00:00Z", "comptes": ["alice", "bruno"], "motif": "votes_croises"}
+        texte = bee.texte_yaml(honnete)
+        for nom, autre in (("espaces finaux", texte.replace("chloe\n", "chloe  \n")), ("CRLF", texte.replace("\n", "\r\n")),
+                           ("U+2028", texte.replace("\n", " ", 1)), ("U+0085", texte.replace("\n", "\x85", 1)),
+                           ("autre ordre", bee.texte_yaml({"le": honnete["le"], **honnete})), ("commentaire", texte + "# vu\n"),
+                           ("guillemets", texte.replace("par: chloe", 'par: "chloe"'))):
+            with self.subTest(nom=nom):
+                self.branche()
+                (self.dossier / "signalements").mkdir(exist_ok=True)
+                (self.dossier / "signalements/S-0001.yaml").write_bytes(autre.encode("utf-8"))
+                self.commit()
+                self.assertEqual(self.lire("signalements/S-0001.yaml"), honnete)  # the same data, other bytes
+                self.refusee("chloe", "signalements/S-0001.yaml : not exactly the file bee signaler writes")
+                self.abandonner()
+        for le in ("20261030T100000Z", "2026-10-30 10:00:00Z", "2026-10-30T10:00:00+00:00", "2026-10-30T10:00Z", "2026-10-30T10:00:00.0Z"):
+            with self.subTest(le=le):
+                self.refusee_a_la_main("chloe", "S-0001", f"le ({le}) : the time of the PR as bee writes it (2026-10-30T10:00:00Z)", le=le)
+        self.branche()
+        self.a_la_main("S-0001", par="chloe")
+        self.publier("chloe", "signalement")
+        schema = bee.Registre(self.dossier).schema("signalement")
+        decision = {"par": "bidji29", "le": "2026-10-30T12:00:00Z", "issue": "doublon"}
+        self.assertTrue(schema.is_valid({**honnete, "decision": decision}))
+        for champs in ({"par": "chloe\n"}, {"comptes": ["alice", "bruno\n"]}, {"le": "20261030T100000Z"}, {"le": "2026-10-30T10:00:00Z\n"},
+                       {"decision": {**decision, "par": "bidji29\n"}}, {"decision": {**decision, "le": "20261030T120000Z"}}):
+            with self.subTest(champs=champs):
+                self.assertFalse(schema.is_valid({**honnete, **champs}))
+
+    def test_la_decision_est_d_un_tiers_du_conseil_a_l_heure_de_la_pr_et_lie_dans_la_meme_pr(self):
+        """Review of ruche-0118, (4): a council member who is one of the two accounts, or linked to one, does not decide ; the gate
+        refuses a decision not signed by the council member who authors the PR, not dated at the time of the PR, or « lies » without
+        the two member files linked in the same PR."""
+        self.a("2026-10-30T10:00:00Z")
+        conseil = self.dossier / "gouvernance/conseil.yaml"
+        conseil.write_text(conseil.read_text(encoding="utf-8") + "  - pseudo: alice\n    role: membre\n", encoding="utf-8")
+        self.lier("alice", "farid")
+        self.signaler("chloe", "alice", "bruno")  # S-0001 : alice is one of the two accounts
+        self.signaler("bruno", "farid", "chloe")  # S-0002 : alice is linked to farid
+        partie = "decision/par : the council member who authors this PR, neither of the two accounts nor linked to one"
+        for nom in ("S-0001", "S-0002"):
+            with self.subTest(signalement=nom):
+                self.ko(f"{nom} : the council alone decides an open report, never one naming its own account or a linked one",
+                        "signalement", nom, "--utilisateur", "alice", "--ecarter", "sans_indice")
+                self.assertNotIn("decision", self.lire(f"signalements/{nom}.yaml"))
+                s = self.lire(f"signalements/{nom}.yaml")
+                self.branche("decision")
+                bee.ecrire_yaml(self.dossier / f"signalements/{nom}.yaml", {**s, "decision": {"par": "alice", "le": s["le"], "issue": "sans_indice"}})
+                self.commit()
+                self.refusee("alice", f"signalements/{nom}.yaml : {partie}")
+                self.abandonner("decision")
+        # The other council member: signed by the PR's author, at the time of the PR, as bee writes it ; « lies » only with both files.
+        self.a("2026-10-30T12:00:00Z")
+        s = self.lire("signalements/S-0001.yaml")
+        alice = self.lire("membres/alice.yaml")
+        for decision, membres, morceau in (
+                ({"par": "gaspard"}, {}, partie),
+                ({"le": "2026-10-30T09:00:00Z"}, {}, "decision/le (2026-10-30T09:00:00Z) doit être l'heure de la PR"),
+                ({"le": "20261030T120000Z"}, {}, "decision/le (20261030T120000Z) : the time of the PR as bee writes it (2026-10-30T12:00:00Z)"),
+                ({"issue": "lies"}, {}, "decision lies : this PR links the two member files"),
+                ({"issue": "lies"}, {"alice": {**alice, "autres_comptes": [*alice["autres_comptes"], numero_de("bruno")]}},
+                 "decision lies : this PR links the two member files")):
+            with self.subTest(decision=decision, membres=list(membres)):
+                self.branche("decision")
+                bee.ecrire_yaml(self.dossier / "signalements/S-0001.yaml",
+                                {**s, "decision": {"par": "bidji29", "le": "2026-10-30T12:00:00Z", "issue": "sans_indice", **decision}})
+                for qui, fiche in membres.items():
+                    bee.ecrire_yaml(self.dossier / f"membres/{qui}.yaml", fiche)
+                self.commit()
+                self.refusee("bidji29", f"signalements/S-0001.yaml : {morceau}")
+                self.abandonner("decision")
+        # Honest: bee signalement writes the decision and, to link, both member files in the same PR.
+        self.decider("S-0001", "--lier", "alice")
+        self.decider("S-0002", "--ecarter", "personnes_distinctes")
+        self.assertTrue(bee.Registre(self.dossier).identites.meme("bruno", "farid"))
+        self.valide()
+
+    def test_lier_attend_la_fin_des_engagements_communs(self):
+        """Review of ruche-0118, (5): --lier waits, as bee lier does, until the two accounts no longer hold the same task : a shared
+        engagement (relais_d_engagements), contributions in the same race (copie_de_contribution) ; nothing is written before."""
+        self.a("2026-10-30T10:00:00Z")
+        self.prendre_et_fusionner("alice")
+        self.prendre_et_fusionner("bruno", "miniz-0099", "--en-parallele")
+        self.prendre_et_fusionner("gaspard", "miniz-0099", "--en-parallele")
+        self.signaler("chloe", "alice", "bruno", "relais_d_engagements")
+        tiennent = "the two accounts both hold miniz-0099 (an engagement or a contribution in the race)"
+        self.ko(f"S-0001 : {tiennent}", "signalement", "S-0001", "--utilisateur", "bidji29", "--lier", "alice")
+        self.assertNotIn("decision", self.lire("signalements/S-0001.yaml"))
+        self.assertNotIn("autres_comptes", self.lire("membres/alice.yaml"))
+        self.soumettre_et_fusionner("gaspard", "miniz-0099", 77010)
+        c_alice = self.soumettre_et_fusionner("alice", "miniz-0099", 77011)
+        self.signaler("chloe", "alice", "gaspard", "copie_de_contribution")
+        self.ko(f"S-0002 : {tiennent}", "signalement", "S-0002", "--utilisateur", "bidji29", "--lier", "alice")
+        # bruno leaves the task: the first link is written ; once alice's contribution has left the race, the second.
+        self.liberer_et_fusionner("bruno")
+        self.decider("S-0001", "--lier", "alice")
+        self.ko(f"S-0002 : {tiennent}", "signalement", "S-0002", "--utilisateur", "bidji29", "--lier", "alice")
+        self.ok("cloturer", c_alice, "--motif", "PR fermée sans fusion.")
+        self.commit("la PR d'alice est fermée")
+        self.decider("S-0002", "--lier", "alice")
+        self.assertTrue(bee.Registre(self.dossier).identites.meme("bruno", "gaspard"))
         self.valide()
 
 if __name__ == "__main__":
