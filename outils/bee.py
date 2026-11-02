@@ -8282,6 +8282,20 @@ def cmd_verifier_pr(args):
     return 0
 
 
+def portee_du_diff(champs):
+    """ci_scope's verdict on one diff, its fields as git --raw -z writes them (meta, path, meta, path…)."""
+    if not champs or len(champs) % 2:
+        return "full", "no change, or a diff git did not write as expected"
+    for meta, chemin in zip(champs[::2], champs[1::2]):
+        ancien, nouveau, _, _, statut = meta.removeprefix(":").split(" ") if meta.startswith(":") else [None] * 5
+        dossier = chemin.split("/")[0]
+        motif = CHEMIN_DEBAT if dossier == "debats" else FICHIERS_LIBRE_SERVICE.get(dossier, ("", None))[1]
+        if (statut, ancien, nouveau) not in (("A", "000000", "100644"), ("M", "100644", "100644")) \
+                or not (motif and motif.fullmatch(chemin)):
+            return "full", f"{statut} {ancien} {nouveau} {chemin!r}"
+    return "data", None
+
+
 def ci_scope(racine, base, tete):
     """What the registry CI runs for a PR (validation.yml, ruche-0090): ("data", None) if base...tete only adds or modifies
     regular files that the self-service gate accepts, each in its place (FICHIERS_LIBRE_SERVICE, CHEMIN_DEBAT), else
@@ -8291,22 +8305,79 @@ def ci_scope(racine, base, tete):
         sortie = subprocess.run(["git", "-C", str(racine), "diff", "--raw", "-z", "--no-renames", "--no-abbrev", f"{base}...{tete}"],
                                 capture_output=True, check=True).stdout.decode("utf-8")
         champs = sortie.split("\0")
-        if champs.pop() != "" or not champs or len(champs) % 2:
-            return "full", "no change, or a diff git did not write as expected"
-        for meta, chemin in zip(champs[::2], champs[1::2]):
-            ancien, nouveau, _, _, statut = meta.removeprefix(":").split(" ") if meta.startswith(":") else [None] * 5
-            dossier = chemin.split("/")[0]
-            motif = CHEMIN_DEBAT if dossier == "debats" else FICHIERS_LIBRE_SERVICE.get(dossier, ("", None))[1]
-            if (statut, ancien, nouveau) not in (("A", "000000", "100644"), ("M", "100644", "100644")) \
-                    or not (motif and motif.fullmatch(chemin)):
-                return "full", f"{statut} {ancien} {nouveau} {chemin!r}"
-        return "data", None
+        return portee_du_diff(champs) if champs.pop() == "" else ("full", "a diff git did not write as expected")
     except Exception as e:  # noqa: BLE001 - whatever goes wrong, the full suite runs
         return "full", f"{type(e).__name__}: {e}"
 
 
+SUITE, HISTORIQUE_SUITE = ".github/workflows/suite.yml", 20000
+
+
+def jusqu_au_code(racine, base, cible=None, limite=None):
+    """ruche-0132: main's first-parent history from base, newest first, down to cible or to its last commit that changes anything
+    but data (that commit included), each judged as ci_scope judges a diff, against its first parent (a root or empty commit is
+    code). One git log, read as it streams and stopped there. ErreurBee if git fails, or if neither is among the newest
+    `limite` (HISTORIQUE_SUITE)."""
+    commits, entete, champs, reste, limite = [], None, [], b"", limite or HISTORIQUE_SUITE
+
+    def fin():  # the commit just read: is it cible, or main's last code commit?
+        commits.append(entete[0])
+        return entete[0] == cible or not any(entete[1:]) or portee_du_diff(champs)[0] != "data"
+
+    with subprocess.Popen(["git", "-C", str(racine), "log", "--first-parent", "--diff-merges=first-parent", "--raw", "-z", "--no-renames",
+                           "--no-abbrev", "--no-show-signature", "--format=%x01%H %P", f"-n{limite}", base, "--"],
+                          stdout=subprocess.PIPE, stderr=subprocess.DEVNULL) as git_log:
+        try:
+            for bloc in iter(lambda: git_log.stdout.read(1 << 16), b""):
+                *jetons, reste = (reste + bloc).split(b"\0")
+                for jeton in jetons:
+                    if jeton.startswith(b"\x01") and len(champs) % 2 == 0:  # a header (a path, even one like it, follows its meta)
+                        if entete and fin():
+                            return commits
+                        entete, champs = jeton[1:].decode("ascii").split(" "), []
+                    elif entete is None:
+                        raise ErreurBee(f"git log {base}: an entry before any commit")
+                    else:  # a path not in UTF-8 matches no data pattern: code
+                        texte = jeton.decode("utf-8", "surrogateescape")
+                        champs.append(texte[1:] if not champs and texte.startswith("\n:") else texte)
+            if git_log.wait() != 0 or reste or not entete:
+                raise ErreurBee(f"git log {base}: no history, or one git did not write as expected")
+            if fin():
+                return commits
+            raise ErreurBee(f"neither the run's commit nor one changing anything but data among the {limite} newest of main")
+        finally:
+            git_log.kill()
+
+
+def suite_verte(racine, base, reponse):
+    """ruche-0132: whether main is green for the PR fast path, from one answer of GitHub's REST API (reponse: a file), the latest
+    runs of suite.yml dispatched on main: (True, None) or (False, reason). The newest run must be for main's last commit that
+    changes anything but data (jusqu_au_code, from base) or a later one of main (the same code: a dispatch runs on the head of
+    main), and the newest completed one must have succeeded (a run still going leaves the previous verdict, as ruche-0090).
+    Fails closed: a failed call (no file), an unreadable answer, a run of anything else, no run, an unreadable history."""
+    try:
+        executions = json.loads(pathlib.Path(reponse).read_text(encoding="utf-8"))["workflow_runs"]
+        autres = [r for r in executions if (r["path"], r["event"], r["head_branch"]) != (SUITE, "workflow_dispatch", "main")]
+        if not executions or autres:
+            return False, f"run {autres[0]['id']} is not a dispatch of {SUITE} on main" if autres else f"no run of {SUITE} on main"
+        executions.sort(key=lambda r: int(r["id"]), reverse=True)
+        if (commits := jusqu_au_code(racine, base, executions[0]["head_sha"]))[-1] != executions[0]["head_sha"]:
+            return False, (f"the newest run of {SUITE} ({executions[0]['id']}) is for {executions[0]['head_sha']}, neither main's last "
+                           f"code commit {commits[-1]} nor a later one")
+        termine = next((r for r in executions if r["status"] == "completed"), None)
+        if termine is None or termine["conclusion"] != "success":
+            return False, (f"no completed run of {SUITE}" if termine is None
+                           else f"run {termine['id']}, the newest completed, {termine['conclusion']}")
+        return True, None
+    except Exception as e:  # noqa: BLE001 - whatever goes wrong, the full suite runs
+        return False, f"{type(e).__name__}: {e}"
+
+
 def cmd_ci_scope(args):
-    portee, raison = ci_scope(args.registre or os.environ.get("BEE_REGISTRE") or RACINE_OUTIL, args.base, args.tete)
+    racine = args.registre or os.environ.get("BEE_REGISTRE") or RACINE_OUTIL
+    portee, raison = ci_scope(racine, args.base, args.tete)
+    if portee == "data" and args.suite_runs is not None:  # ruche-0132: and main is green
+        portee, raison = ("data", None) if (vert := suite_verte(racine, args.base, args.suite_runs))[0] else ("full", vert[1])
     print(portee)
     if raison:
         print(f"full suite: {raison}", file=sys.stderr)
@@ -10374,6 +10445,8 @@ def construire_analyseur():
                                           "else 'full' (the full test suite runs; used by validation.yml).")
     p.add_argument("--base", required=True)
     p.add_argument("--tete", default="HEAD")
+    p.add_argument("--suite-runs", help="GitHub's answer for the latest runs of suite.yml dispatched on main (a JSON file): 'data' "
+                                        "also needs main green (ruche-0132); a missing or unreadable file gives 'full'")
 
     p = ajouter("acts-for", cmd_acts_for, "Prints the person a GitHub login acts for: the person of its declared agent account "
                                           "(gouvernance/comptes-agents.yaml), or the login itself (used by integration-auto).")

@@ -1,0 +1,33 @@
+# ruche-0132: the full suite (the tool's tests, the judge's unit tests) in its own workflow. validation.yml calls it for a push to
+# main and for any PR that is not data-only; it can also be dispatched, on the head of a branch: the PR fast path reads its
+# latest runs dispatched on main (bee ci-scope --suite-runs). It runs the code it checks out, read-only and without a secret.
+name: Suite complète
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  suite:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Dépendances
+        run: pip install -r outils/requirements.txt
+      - name: Tests de l'outil
+        # ruche-0092: in parallel processes inside this job, not in more jobs (the organisation's concurrent jobs are the scarce
+        # resource); the number is set here only: GitHub's hosted runners for public repositories have 4 vCPUs (the log
+        # prints the count). Every test runs exactly once, or the step fails; the step below runs once, after it passes.
+        # Timeout: about 3 times the step's time on CI on 2 Nov 2026 (about 10 minutes); a hang stops here, not after 360.
+        timeout-minutes: 30
+        run: python3 outils/test_bee.py --processus 4
+      - name: "Tests unitaires du juge commun (sans Docker ; méta-tests dans juge-commun.yml)"
+        run: python3 outils/juge/test_juge.py
