@@ -1,0 +1,27 @@
+id: ruche-0110
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: S
+titre: 'Verdicts: a PR''s list of changed files is read whole, or the PR counts as touching its judges'
+contexte: Follow-up of ruche-0086's review (details in the architect's brief). verdicts.yml reads a fork PR's changed
+  files from GitHub's API to decide whether the PR touches its judges (bee enregistrer-verdict --fichiers). GitHub's
+  list of a PR's files has a maximum length. Compare the list with the PR's own count of changed files, and treat a PR
+  whose list may be incomplete as touching its judges.
+fichiers:
+- .github/workflows/verdicts.yml
+- outils/bee.py
+- outils/test_bee.py
+portee: 0.6
+metrique: null
+depend_de: []
+critere_acceptation:
+- 'test: a list shorter than the PR''s changed-file count makes the judges count as modified'
+- independent adversarial review attached, made with the architect's brief
+hors_perimetre:
+- COMMANDMENTS.md
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: '2026-11-02'

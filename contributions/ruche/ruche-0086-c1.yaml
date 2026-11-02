@@ -1,0 +1,13 @@
+id: ruche-0086-c1
+tache: ruche-0086
+auteur: bidji29
+pr: https://github.com/Bee-ruche/registre/pull/135
+resume: 'The registry requires a minimum common-judge version: a verdict from an older judge is incomplete
+  for R3''s review gate; a malformed minimum fails closed.'
+statut: integree
+soumise_le: '2026-11-02T02:37:44Z'
+engage_depuis: '2026-11-02T00:14:49Z'
+relectures: []
+decidee_le: '2026-11-02T03:01:12Z'
+motif_decision: 'Hive tooling contribution: registry PR #135 merged at the judged commit 9d0b41e by the agent principal under the council''s permanent authorisation, after an independent adversarial review by an agent of another model (no blocking finding; four should-fix items fixed and verified); CI green on the merged commit. R1: 45 lines excluding tests and records, for an S task at 50. Submitted inside the code PR.'
+fusion_sha: 96d86ef198db50cc69ebffa66fcf3a9a317aa69c
