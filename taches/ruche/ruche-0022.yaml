@@ -28,7 +28,10 @@ critere_acceptation:
 hors_perimetre: [COMMANDEMENTS.md, l'ancienneté minimale du compte, les comptes multiples d'une même personne]
 depend_de: [ruche-0012]
 noeud: projets/ruche
-statut: ouverte
+statut: reservee
+reservation:
+  utilisateur: "bidji29"
+  depuis: "2026-11-02T05:20:12Z"
 cree_par: conseil
 cree_le: "2026-10-30"
 notes:

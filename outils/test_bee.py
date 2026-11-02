@@ -1,5 +1,6 @@
-"""Tests de l'outil bee : python3 -m unittest outils/test_bee.py"""
+"""Tests de l'outil bee : python3 -m unittest outils/test_bee.py ; en N processus : python3 outils/test_bee.py --processus N"""
 import ast
+import collections
 import contextlib
 import hashlib
 import io
@@ -13,6 +14,7 @@ import subprocess
 import sys
 import zlib
 import tempfile
+import time
 import types
 import unicodedata
 import unittest
@@ -401,6 +403,32 @@ class TestCiScope(unittest.TestCase):
         r, _, appels = self.rejouer(roles["regles"]["run"], {"BASE": "", "AUTEUR": "alice", "FAUX_GH": "2020-01-01"})
         self.assertNotEqual(r.returncode, 0, "an empty base compares HEAD with itself and passes")
         self.assertEqual(appels, "")
+
+    def test_both_workflows_give_the_gate_github_s_record_of_the_push(self):
+        """ruche-0091: the PR rules take the time of the PR from this run's creation (the API, read with the run's id), and
+        stop if it is unreadable; fusion-auto takes the creation of the validation run that the push triggered."""
+        regles = self.etapes()[1]["regles"]["run"]
+        self.assertIn('instant=$(timeout 60 gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq .created_at)', regles)
+        faux_bee = pathlib.Path(tempfile.mkdtemp(dir=self.temp.name))
+        (faux_bee / "outils").mkdir()
+        (faux_bee / "outils/bee.py").write_text("import sys\nprint('BEE', *sys.argv[1:])\n", encoding="utf-8")
+        env = {"BASE": "abc", "AUTEUR": "alice", "GITHUB_RUN_ID": "4242"}
+        r, _, appels = self.rejouer(regles, {**env, "FAUX_GH": "2026-10-27T12:00:00Z"}, cwd=faux_bee)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("api repos/Bee-ruche/registre/actions/runs/4242 --jq .created_at", appels)
+        self.assertTrue(r.stdout.rstrip().endswith("--instant-pr 2026-10-27T12:00:00Z"), r.stdout)
+        (faux_bee / "bin").mkdir()  # a gh that answers for the account, not for the run
+        (faux_bee / "bin/gh").write_text('#!/bin/sh\ncase "$*" in *actions/runs/*) exit 1;; esac\necho 2020-01-01\n', encoding="utf-8")
+        (faux_bee / "bin/gh").chmod(0o755)
+        r = subprocess.run(["bash", "-e", "-c", regles], cwd=faux_bee, capture_output=True, text=True,
+                           env={**os.environ, **env, "PATH": f"{faux_bee / 'bin'}{os.pathsep}{os.environ['PATH']}",
+                                "GITHUB_REPOSITORY": "Bee-ruche/registre"})
+        self.assertNotEqual(r.returncode, 0)
+        self.assertNotIn("BEE", r.stdout, "the gate never runs without GitHub's record")
+        etape = next(s for s in yaml.safe_load((RACINE / ".github/workflows/fusion-auto.yml").read_text(encoding="utf-8"))["jobs"]
+                     ["fusionner"]["steps"] if s.get("name", "").startswith("Vérifier la fusion simulée"))
+        self.assertEqual(etape["env"]["INSTANT_PR"], "${{ github.event.workflow_run.created_at }}")
+        self.assertRegex(etape["run"], r'verifier-pr [^\n]*\\\n[^\n]*--instant-pr "\$INSTANT_PR"\n')
 
     def test_the_data_only_step_runs_exactly_the_tests_allowed_to_read_live_data(self):
         """One list: on a data-only PR, validation.yml runs TESTS_REGISTRE_REEL, the tests the audit hook lets read the live
@@ -1571,7 +1599,7 @@ class TestArbre(BaseTest):
         self.assertEqual(bee.role_de_tache(reg.tache("miniz-0003")[1]), "mesurer")
         noeuds = bee.charger_arbre(reg)["noeuds"]
         self.assertEqual({n for n in noeuds if n.startswith("roles/")},
-                         {f"roles/{r}" for r in ("optimiser", "relire", "mesurer", "debattre", "garder", "proposer")})
+                         {f"roles/{r}" for r in ("optimiser", "relire", "mesurer", "debattre", "garder", "proposer", "inviter")})
         self.assertTrue(bee.correspond("arbre/roles/relire/SENS.md", bee.CHEMINS_OUTILLAGE),
                         "l'arbre est de l'outillage : PR ordinaire, jamais fusionnée automatiquement")
 
@@ -1737,6 +1765,22 @@ class TestArbre(BaseTest):
         self.assertIn("rôle inconnu : voter", texte)
         self.assertEqual(self.bee("contexte", "miniz-9999")[0], 1)
 
+    def test_ruche_0052_role_inviter_imprime_le_chemin_de_r13(self):
+        # ruche-0052 (1) : qui veut inviter trouve R13 sans connaître la ruche, dans le budget de jetons des rôles (1 900).
+        code, texte = self.bee("contexte", "--role", "inviter")
+        self.assertEqual(code, 0, texte)
+        self.assertIn("# bee contexte --role inviter : racine > roles/inviter", texte)
+        role = texte[texte.index("=== nœud roles/inviter ==="):]
+        self.assertIn("docs/croissance.md", role)
+        for commande in ("inviter", "voir I-<nnnn>", "invitation", "essaim", "incident"):
+            self.assertIn(commande, role)
+        self.assertLess(int(re.search(r"Environ (\d+) jetons", texte).group(1)), 1900)
+        self.assertLess(bee.estimer_jetons(texte), 1900)
+        self.assertIn("- `roles/inviter` : inviter une personne hors de la ruche (R13, docs/croissance.md)", self.bee("contexte")[1])
+        code, texte = self.bee("contexte", "miniz-0099", "--role", "inviter")
+        self.assertEqual(code, 0, texte)
+        self.assertIn("=== nœud roles/inviter ===", texte)
+
     def test_contexte_zone_et_noeud_ailleurs(self):
         self.ajouter_zone()
         chemin = self.dossier / "taches/miniz/miniz-0099.yaml"
@@ -1790,7 +1834,7 @@ class TestArbre(BaseTest):
         # resserre (décision du 30/10 : l'ancien garde-fou mesurait miniz-0012 avec ses notes, et la moindre ligne
         # ajoutée à un nœud le cassait, ce qui bloquait l'écriture des zones, ruche-0014 à ruche-0016).
         reg = bee.Registre(self.dossier)
-        for role in ("optimiser", "relire", "mesurer", "debattre", "garder", "proposer"):
+        for role in ("optimiser", "relire", "mesurer", "debattre", "garder", "proposer", "inviter"):
             for projet in ("miniz", "libyaml", "ruche"):
                 tache = next(t for _, t in reg.taches.values() if t.get("projet") == projet)
                 texte, jetons = bee.texte_contexte(reg, tache["id"], role, registre=str(self.dossier))
@@ -1818,7 +1862,7 @@ class TestArbre(BaseTest):
 
     def test_B1_la_consigne_des_failles_est_sur_chaque_chemin(self):
         reg = bee.Registre(self.dossier)
-        for role in ("optimiser", "relire", "mesurer", "debattre", "garder", "proposer"):
+        for role in ("optimiser", "relire", "mesurer", "debattre", "garder", "proposer", "inviter"):
             for projet in ("miniz", "libyaml", "ruche"):
                 tache = next(t for _, t in sorted(reg.taches.items()) if t[1].get("projet") == projet)[1]
                 for budget in (None, 1):
@@ -1966,7 +2010,7 @@ class TestArbre(BaseTest):
     def test_m4_courses_juge_isole_et_commandes_dans_les_noeuds(self):
         for role in ("relire", "optimiser"):
             self.assertIn("qui a jugé une course n'y entre plus", self.plat(self.noeud(f"roles/{role}").read_text(encoding="utf-8")))
-        for role in ("optimiser", "relire", "mesurer", "debattre", "garder", "proposer"):
+        for role in ("optimiser", "relire", "mesurer", "debattre", "garder", "proposer", "inviter"):
             with self.subTest(role=role):
                 self.assertRegex(self.noeud(f"roles/{role}").read_text(encoding="utf-8"), r"(?m)^Commandes : ")
         self.assertIn("python3 bee/juge/juge.py --source-a <base> --source-b <ta copie>",
@@ -2295,6 +2339,52 @@ class TestPullRequests(BaseTest):
         self.member_pr("utc-west", inscrit_le="2026-10-28")
         code, texte = self.verifier("david", "--compte-cree-le", "2021-05-05")
         self.assertEqual(code, 0, texte)
+
+    # --- ruche-0091: the time of the PR is the time GitHub recorded for the push (--instant-pr), not the time of the check ---
+
+    def test_member_file_is_dated_at_the_push_and_the_account_age_runs_to_the_check(self):
+        """inscrit_le is the day of the push, even when the check runs the next day, and a later day is refused whenever the
+        check runs; the account's age still runs to the check (as before), and a local run still takes the current time."""
+        age_89, push = "2026-07-30", ("--instant-pr", "2026-10-27T12:00:00Z")  # 89 days old on 2026-10-27, 90 on 2026-10-28
+        self.member_pr("late-check", compte_cree_le=age_89)  # inscrit_le 2026-10-27, as bee inscrire writes it at the push
+        os.environ["BEE_MAINTENANT"] = "2026-10-28T09:00:00Z"
+        code, texte = self.verifier("david", "--compte-cree-le", age_89, *push, "--fusion-auto")
+        self.assertEqual(code, 0, texte)
+        self.assertIn("FUSION_AUTO=oui", texte)
+        code, texte = self.verifier("david", "--compte-cree-le", age_89)
+        self.assertEqual(code, 1, texte)
+        self.assertIn("inscrit_le (2026-10-27) must be the date of the PR (2026-10-28)", texte)
+        os.environ["BEE_MAINTENANT"] = "2026-10-27T13:00:00Z"
+        code, texte = self.verifier("david", "--compte-cree-le", age_89, *push)
+        self.assertEqual(code, 1, texte)
+        self.assertIn("le compte GitHub doit avoir au moins 90 jours", texte)
+        self.member_pr("dated-after-the-push", inscrit_le="2026-10-28")
+        os.environ["BEE_MAINTENANT"] = "2026-10-28T09:00:00Z"
+        code, texte = self.verifier("david", "--compte-cree-le", "2021-05-05", *push)
+        self.assertEqual(code, 1, texte)
+        self.assertIn("inscrit_le (2026-10-28) must be the date of the PR (2026-10-27)", texte)
+
+    def test_a_missing_or_malformed_time_of_the_push_is_refused(self):
+        """In CI the time of the push comes from GitHub: empty, unreadable, without a time zone, or after the check, the PR
+        is refused (fails closed), never checked at the current time instead."""
+        git(self.dossier, "switch", "-qc", "reservation")
+        self.assertEqual(self.bee("prendre", "miniz-0099", "--utilisateur", "alice")[0], 0)
+        self.commit()
+        self.assertEqual(self.verifier("alice", "--instant-pr", "2026-10-27T12:01:00Z")[0], 0)
+        for valeur in ("", "null", "garbage", "2026-10-27T12:00:00", "2026-10-27", "2026-10-27T12:01:01Z", "2099-01-01T00:00:00Z"):
+            with self.subTest(valeur=valeur):
+                code, texte = self.verifier("alice", "--instant-pr", valeur, "--fusion-auto")
+                self.assertEqual(code, 1, texte)
+                self.assertIn("--instant-pr", texte)
+                self.assertNotIn("FUSION_AUTO", texte)
+        # Review S1: a re-run keeps its run's creation time; older than 24 h at the check, it is refused.
+        for maintenant, code in (("2026-10-28T11:00:00Z", 0), ("2026-10-28T12:00:00Z", 0), ("2026-10-28T12:00:01Z", 1),
+                                 ("2026-10-28T13:00:00Z", 1)):
+            with self.subTest(maintenant=maintenant):
+                os.environ["BEE_MAINTENANT"] = maintenant
+                code_lu, texte = self.verifier("alice", "--instant-pr", "2026-10-27T12:00:00Z")
+                self.assertEqual(code_lu, code, texte)
+                self.assertEqual("outside [the check - 24 h, the check + 1 min] : push again" in texte, bool(code))
 
     def test_an_existing_member_file_keeps_its_dates(self):
         """The dates of a registered member are not checked again against a later PR: a profile change passes, without
@@ -2681,6 +2771,184 @@ class TestPublier(BaseTest):
         code, texte = self.bee("publier", "--titre", "Rien")
         self.assertEqual(code, 1)
         self.assertIn("aucun changement", texte)
+
+    # --- ruche-0049: the title and body leave the hive, checked like any outgoing text ---
+
+    SORTANTS_REFUSES = {
+        "mention": ("Merci @octocat", "la mention « @octocat » notifierait"),
+        "mention d'équipe": ("cc @Bee-ruche/conseil", "la mention « @Bee-ruche/conseil »"),
+        "mention entre parenthèses": ("Relu (@octocat).", "la mention « @octocat »"),
+        "mention pleine chasse": ("Merci ＠octocat", "la mention « @octocat »"),
+        "issue d'un autre dépôt": ("Voir amont-fictif/miniz#12", "« amont-fictif/miniz#12 » renvoie à un dépôt hors de Bee-ruche"),
+        "commit d'un autre dépôt": ("Voir amont-fictif/miniz@a5c3785", "« amont-fictif/miniz@a5c3785 » renvoie"),
+        "commit d'un fork": ("Voir amont-fictif@a5c37851d", "« amont-fictif@a5c37851d » renvoie"),
+        "adresse d'une issue": ("Voir https://github.com/amont-fictif/miniz/issues/12", "« https://github.com/amont-fictif/miniz/issues/12 »"),
+        "adresse d'une PR, en lien": ("[ici](https://github.com/amont-fictif/miniz/pull/3)", "« https://github.com/amont-fictif/miniz/pull/3 »"),
+        "adresse d'un commit": ("https://github.com/amont-fictif/miniz/commit/a5c3785", "mène hors de Bee-ruche"),
+        "adresse sans schéma": ("Voir github.com/amont-fictif/miniz", "« github.com/amont-fictif/miniz »"),
+        "autre forge": ("Voir https://gitlab.com/amont-fictif/miniz", "« https://gitlab.com/amont-fictif/miniz »"),
+        "page de forge": ("Voir https://amont-fictif.github.io/miniz", "mène hors de Bee-ruche"),
+        "courriel": ("Écrire à jean.dupont@example.org", "une adresse de courriel"),
+        "téléphone": ("Au 06 12 34 56 78", "un numéro de téléphone"),
+        "caractère invisible": ("Réservation\u2060 miniz-0099", "(U+2060, catégorie Cf)"),
+    }
+    # The adversarial review's texts (31/10 fix round): read in code too (B1), entities decoded (B2), raw and NFKC forms (B3), only
+    # the GitHub owner Bee-ruche is inside (S1), no link that hides where it leads and no relative link outside (S2).
+    REVUE_REFUSES = {
+        "B1": ["`@upstream`", "```\n@upstream\n```", "`\n# h\n@upstream `", '<b title="`">@upstream</b> `', "<http://x.example/`>@upstream `",
+               "| a |\n|---|\n| ` |\n| @upstream ` |", "    @upstream", "<code>@upstream</code>", "`upstream/repo#12`",
+               "`https://github.com/upstream/repo`"],
+        "B2": ["&#64;upstream", "&commat;upstream", "@&#117;pstream", "upstream/repo&#35;12", "upstream&#47;repo#12",
+               "https://&#103;ithub.com/upstream/repo", "&amp;#64;upstream", "x&#1;@upstream", "\\&#117;&#64;upstream"],
+        "B3": ["ª@upstream", "ａ@upstream", "ⓐ@upstream", "²@upstream", "①@upstream", "＿@upstream", "™@upstream", "ﬁ@upstream",
+               "_x_@upstream", "x@y.z1@upstream"],
+        "S1": ["https://gitlab.com/Bee-ruche/x", "https://codeberg.org/Bee-ruche/x", "https://bee-ruche.gitlab.io/x", "https://sr.ht/~Bee-ruche/x"],
+        "S2": ["https://github.com/Bee-ruche/../upstream/repo", "https://github.com/Bee-ruche/%2e%2e/upstream/repo", "https://%67ithub.com/upstream/repo",
+               "https://github%2Ecom/upstream/repo", "https://github.com./upstream/repo", "https://github.com:/upstream/repo",
+               "https://github.com\\upstream/repo", "github.com:upstream/repo", "https://github\u3002com/upstream/repo",
+               "[x](/upstream/repo/issues/1)", "[x](../../../upstream/repo)", '<a href="/upstream/repo">x</a>', "<a href=/upstream/repo>x</a>",
+               "[x][1]\n\n[1]: /upstream/repo", "[x](/Bee-ruche/../upstream/repo)", '<a href=" /upstream/repo">x</a>',
+               '<a href="https://github.com\n/upstream/repo">x</a>'],
+        # Round 3 (F1): an address right after another host or address is read from its own start.
+        "F1": ["example.com,https://github.com/upstream/repo/issues/1", "README.md;https://github.com/upstream/repo/issues/1",
+               "https://github.com/Bee-ruche/registre|https://github.com/upstream/repo/issues/1",
+               "https://example.org/a|https://github.com/upstream/repo/issues/1", "example.com.https://github.com/upstream/repo"],
+        # (F2): a /../ after a quote, a parenthesis, a bracket, a brace or a backtick in a forge address.
+        "F2": ["https://github.com/Bee-ruche/x'/../../upstream/repo", "https://github.com/Bee-ruche/x)/../../upstream/repo",
+               "https://github.com/Bee-ruche/x]/%2e%2e/upstream/repo", "https://github.com/Bee-ruche/x}/..%2fupstream/repo",
+               "https://github.com/Bee-ruche/x`/../../upstream/repo"],
+        # Round 4: an embedded www. or https:// in a forge path must not hide a later /../ (its run is read whole).
+        "F3": ["https://github.com/Bee-ruche/www.x.org/../../upstream/repo", "https://github.com/Bee-ruche/https://x.org/../../../upstream/repo",
+               "https://github.com/Bee-ruche/a?www.x/../../../upstream/repo", "https://github.com/Bee-ruche/www.%2e%2e/%2e%2e/upstream/repo",
+               "https://bee-ruche.github.io/www.x.org/../../upstream", "[a](https://github.com/Bee-ruche/www.x.org/../../upstream/repo)",
+               "<https://github.com/Bee-ruche/www.x.org/../../upstream/repo>",
+               "example.com,https://github.com/Bee-ruche/www.x.org/../../upstream/repo"],
+        # Round 5: a link's run goes on past <, a Unicode space or (in an angle destination) a blank; a hidden owner still has a run.
+        "F4": ["[x](https://github.com/Bee-ruche/a<b/../../upstream/repo)", "[x](<https://github.com/Bee-ruche/a b/../../upstream/repo>)",
+               "[x](<https://github.com/Bee-ruche/a\tb/../../upstream/repo>)", "[x](https://github.com/Bee-ruche/a\u00a0b/../../upstream/repo)",
+               "[x](https://github.com/Bee-ruche/a\u3000b/../../upstream/repo)", '<a href="https://github.com/Bee-ruche/a<b/../../upstream/repo">x</a>',
+               "[x][1]\n\n[1]: <https://github.com/Bee-ruche/a b/../../upstream/repo>", "![x](https://github.com/Bee-ruche/a<b/../../upstream/repo)",
+               "[x](https://bee-ruche.github.io/a<b/../../upstream/repo)", "[x](https://github.com/<x/../upstream/repo)",
+               "[x](<https://github.com/ /../upstream/repo>)"],
+        # GitHub-owned hosts: github.dev reads like github.com; a shortener or an editor does not say where it leads.
+        "hôtes": ["https://github.dev/upstream/repo", "https://vscode.dev/github/upstream/repo", "https://vscode.dev/github/Bee-ruche/registre",
+                  "https://git.io/abc", "https://git.io/Bee-ruche"],
+    }
+    # The second review (2 Nov): CommonMark escapes (N1), a scheme with one slash (N2), tag-split text (N5), srcset (N6), a
+    # root-relative link to another host (N7); and what bees write every night must pass (N4).
+    SECONDE_REVUE_REFUSES = {
+        "N1": ["upstream/repo\\#12", "upstream\\/repo#12", "upstream/re\\_po#12", "\\@upstream", "github\\.com/upstream/repo",
+               "[x](\\/upstream/repo)"],
+        "N2": ["[x](https:/upstream/repo)", '<a href="https:/upstream/repo">x</a>', "![i](https:/upstream/a.png)", "[x]: https:/upstream/repo",
+               "[x](HTTPS:/upstream/repo)", "<https:/upstream/repo>", "<HTTPS:/upstream/repo>"],
+        "N5": ["@<foo>upstream</foo>", "upstream/repo<foo>#12</foo>", "@<b></b>upstream", "up<b></b>stream/repo#12", "@<!-- c -->upstream"],
+        "N6": ['<img srcset="/Bee-ruche/a.png 1x, /upstream/b.png 2x">', '<img SRCSET="https://github.com/Bee-ruche/a.png">'],
+        "N7": ["[x](//Bee-ruche/x)", "[x](/\\Bee-ruche/x)", "[x](///Bee-ruche/x)", '<a href="//Bee-ruche/x">x</a>'],
+        "used definition": ["[x][1]\n\n[1]: /upstream/repo", "voir [OK]\n\n[ok]: /upstream/x", "[x][1]&colon;\n\n[1]: /upstream/repo"],
+    }
+    SECONDE_REVUE_HONNETES = ["PREFIX=/usr/local", "TMPDIR=/tmp", "PATH=/usr/bin:$PATH", "--prefix=/usr", "--output=/dev/null", 'path = "/tmp/x"',
+                              "BEE_REGISTRE=/home/claude/registre", "x=[1,2,3]", "a[i]==b[j]", "gain=12%", "width=50%",
+                              "https://example.org/a%20b", "tests/test_bee.py::TestPublier::test_x", "file.py:func", "[ok]: /tmp/x",
+                              "https://github.com/Bee-ruche/registre", "https://example.org/a", "[doc](https://example.org/a%20b)",
+                              "[x](/Bee-ruche/registre/pull/3)", "x == y", "50 % plus rapide", "https://github.com/Bee-ruche/registre/www.x.org",
+                              "ids 1234&#10;56789", "a&#9;b"]
+    SORTANTS_HONNETES = ["Réservation miniz-0036", "Soumission miniz-0012-c1", "Réservation ruche-0024, ruche-0042", "x@upstream",
+                         "uses actions/checkout@v4", "pkg@1.2.3", "#12, GH-12, D-0019", "Bee-ruche/registre#12", "Bee-ruche/minizBee@a5c3785",
+                         "https://github.com/Bee-ruche/registre/pull/53.", "github.com/Bee-ruche/minizBee", "https://bee-ruche.github.io/registre/",
+                         "https://github.com/Bee-ruche/registre/compare/main...tache/ruche-0049", "[croissance](docs/croissance.md), [ici](#publier)",
+                         "Voir AGENTS.md. Puis bee.py: la fonction.", "outils/bee.py:3550", "&lt;b&gt; &amp; ok", "https://zlib.net",
+                         "Publié avec `bee publier`.\n\nNature : Réservation miniz-0036."]
+
+    def test_titre_ou_corps_sortant_refuse_avant_tout_appel(self):
+        """Refused before any git or gh call, --a-blanc included, with the reason of the outgoing-text check."""
+        self.bee("prendre", "miniz-0099", "--utilisateur", "alice")
+        avant = git(self.dossier, "rev-parse", "HEAD")
+        with mock.patch.object(bee, "executer", side_effect=AssertionError("git or gh called")):
+            for nom, (texte, raison) in self.SORTANTS_REFUSES.items():
+                for options in (["--titre", texte], ["--titre", "Réservation miniz-0099", "--corps", texte]):
+                    for a_blanc in ([], ["--a-blanc"]):
+                        with self.subTest(nom=nom, options=options[::2], a_blanc=a_blanc):
+                            code, sortie = self.bee("publier", *options, *a_blanc)
+                            self.assertEqual(code, 1, sortie)
+                            self.assertIn(f"{'corps' if '--corps' in options else 'titre'} : ", sortie)
+                            self.assertIn(raison, sortie)
+        code, sortie = self.bee("publier", "--titre", "Merci @octocat", "--intervalle", "0")  # the real thing, real git
+        self.assertEqual(code, 1, sortie)
+        self.assertIn("commandements 8 et 13", sortie)
+        self.assertFalse(self.journal.exists(), "aucun appel à gh")
+        self.assertEqual((git(self.dossier, "rev-parse", "HEAD"), git(self.dossier, "branch").split()), (avant, ["*", "main"]))
+        self.assertNotIn("bee/", git(self.dossier, "ls-remote", "--heads", "origin"))
+
+    def test_titre_et_corps_honnetes_passent(self):
+        corps = ("Réservation de miniz-0099 (registre #12, GH-12, Bee-ruche/minizBee#3, Bee-ruche/minizBee@a5c3785, "
+                 "https://github.com/Bee-ruche/registre/pull/53, https://bee-ruche.github.io/registre/).\n\n"
+                 "Lu dans outils/bee.py et docs/croissance.md ; `gh api user --jq .login`.\n```\ngh repo fork Bee-ruche/registre\n```")
+        self.bee("prendre", "miniz-0099", "--utilisateur", "alice")
+        with mock.patch.object(bee, "texte_sortant_refuse", wraps=bee.texte_sortant_refuse) as controle:
+            code, texte = self.bee("publier", "--titre", "Réservation miniz-0099", "--corps", corps, "--a-blanc")
+            self.assertEqual(code, 0, texte)
+            code, texte = self.bee("publier", "--titre", "Réservation miniz-0099", "--corps", corps, "--intervalle", "0")
+            self.assertEqual(code, 0, texte)
+        # The outgoing-text check itself, reused (no copy): once for the title, once for the body, under the hive's organisation.
+        appels = [c.args for c in controle.call_args_list if len(c.args) == 4]
+        self.assertEqual(appels, [("Réservation miniz-0099", "titre", 256, "Bee-ruche"), (corps, "corps", 8000, "Bee-ruche")] * 2)
+        self.assertIn(f"body={corps}", self.journal.read_text(encoding="utf-8"))
+
+    def test_textes_de_la_revue_refuses_dans_le_titre_et_le_corps(self):
+        """No code skipping, entities decoded, raw and NFKC forms read, only the GitHub owner Bee-ruche inside; honest texts pass.
+        Invitations and other outgoing texts keep their check (no organisation)."""
+        for quoi, maximum in (("titre", 256), ("corps", 8000)):
+            for groupe, textes in {**self.REVUE_REFUSES, **self.SECONDE_REVUE_REFUSES}.items():
+                for texte in textes:
+                    with self.subTest(quoi=quoi, groupe=groupe, texte=texte):
+                        self.assertIn("ce texte sort de la ruche",  # (commandements 8 et 13), or a hidden character
+                                      bee.texte_sortant_refuse(texte, quoi, maximum, "Bee-ruche") or "accepté")
+            for texte in self.SORTANTS_HONNETES + self.SECONDE_REVUE_HONNETES:
+                with self.subTest(quoi=quoi, honnete=texte):
+                    self.assertIsNone(bee.texte_sortant_refuse(texte, quoi, maximum, "Bee-ruche"))
+        self.assertNotIn("a" * 81, bee.texte_sortant_refuse("@" + "a" * 200, "corps", 8000, "Bee-ruche"), "the echo is cut at 80")
+        self.assertIn("corps de 8001 caractères, au plus 8000", bee.texte_sortant_refuse("a" * 8001, "corps", 8000, "Bee-ruche"))
+        self.assertIsNone(bee.texte_sortant_refuse("Bonjour @octocat, voir amont-fictif/miniz#12.", "message", 1000))
+
+    def test_refus_nomme_le_mot_et_reference_demesuree(self):
+        """The refusal names the offending word and says why; a numeric reference too long for int() is refused, not a crash
+        (N3), and only a text that GitHub renders is decoded."""
+        refuse = lambda texte: bee.texte_sortant_refuse(texte, "corps", 8000, "Bee-ruche")  # noqa: E731
+        for texte, attendu in (("Voir upstream/repo\\#12.", "« upstream/repo#12 » renvoie à un dépôt hors de Bee-ruche"),
+                               ("[x](https:/upstream/repo)", "« https:/upstream/repo » n'a qu'une barre"),
+                               ("[x](//Bee-ruche/x)", "« ](//Bee-ruche/x » est un lien relatif"),
+                               ('<img srcset="/Bee-ruche/a.png">', "« srcset=\"/Bee-ruche/a.png » liste plusieurs adresses"),
+                               ("https://github.com/Bee-ruche/%2e%2e/upstream", "cache où il mène"),
+                               ("[ici](https://github.com/upstream/repo).", "« https://github.com/upstream/repo » mène hors de Bee-ruche")):
+            with self.subTest(texte=texte):
+                self.assertIn(attendu, refuse(texte))
+        self.assertIn("« /upstream/repo » est un lien relatif", refuse("[x][1]\n\n[1]: /upstream/repo"), "a definition names its target")
+        demesure = "&#" + "0" * 4400 + "64;upstream"
+        self.assertIn("référence de caractère démesurée", refuse(demesure))
+        self.assertNotIn("démesurée", bee.texte_sortant_refuse(demesure, "message", 8000) or "")  # not decoded: no crash
+
+    def test_donnee_personnelle_dans_chaque_lecture(self):
+        """An address split by a reference that a renderer shows as nothing, or as a hidden character, is refused: a hidden
+        character as when typed, a reference past U+10FFFF as personal data in the reading where it is dropped."""
+        for reference in ("&#1;", "&#0;", "&#127;", "&#128;", "&#xD800;", "&#x110000;"):
+            for texte in (f"bob@exa{reference}mple.com", f"bob@example{reference}.com", f"bob@{reference}example.com"):
+                with self.subTest(texte=texte):
+                    attendu = "une adresse de courriel" if reference == "&#x110000;" else "caractère invisible refusé"
+                    self.assertIn(attendu, bee.texte_sortant_refuse(texte, "corps", 8000, "Bee-ruche"))
+        self.assertIsNone(bee.texte_sortant_refuse("https://github.dev/Bee-ruche/registre, &#233;t&#233;", "corps", 8000, "Bee-ruche"))
+
+    def test_controle_encode_refuse_comme_le_caractere(self):
+        """An encoded control is refused as the typed one is (texte_recevable): a tab and a newline pass, a form feed, a carriage
+        return or any other control does not."""
+        for code in (0, 1, 8, 11, 12, 13, 27, 127, 128, 159):
+            for reference in (f"&#{code};", f"&#x{code:x};"):
+                with self.subTest(reference=reference):
+                    self.assertIn(f"caractère invisible refusé (U+{code:04X}",
+                                  bee.texte_sortant_refuse(f"bonjour{reference}monde", "corps", 8000, "Bee-ruche"))
+                    self.assertIsNotNone(bee.texte_recevable(f"bonjour{chr(code)}monde", "corps", 8000), "the typed one is refused too")
+        for reference in ("&#9;", "&#10;", "&#x9;", "&#xA;"):
+            with self.subTest(reference=reference):
+                self.assertIsNone(bee.texte_sortant_refuse(f"ids 1234{reference}5678", "corps", 8000, "Bee-ruche"))
 
 
 class TestFork(BaseTest):
@@ -3358,14 +3626,14 @@ class TestPullRequestsEnParallele(BaseParallele):
     def verifier(self, auteur, *options):
         return self.bee("verifier-pr", "--base", "main", "--tete", "HEAD", "--auteur", auteur, *options)
 
-    def libre_service(self, auteur, nature):
-        code, texte = self.verifier(auteur, "--fusion-auto")
+    def libre_service(self, auteur, nature, *options):
+        code, texte = self.verifier(auteur, "--fusion-auto", *options)
         self.assertEqual(code, 0, texte)
         self.assertIn("FUSION_AUTO=oui", texte)
         self.assertIn(nature, texte)
 
-    def refusee(self, auteur, morceau):
-        code, texte = self.verifier(auteur)
+    def refusee(self, auteur, morceau, *options):
+        code, texte = self.verifier(auteur, *options)
         self.assertEqual(code, 1, texte)
         self.assertIn(morceau, texte)
 
@@ -3681,6 +3949,80 @@ class TestPullRequestsEnParallele(BaseParallele):
                 self.assertEqual(code, 0 if acceptee else 1, texte)
                 if not acceptee:
                     self.assertIn(f"taches/miniz/{tid}.yaml : depuis ({depuis}) doit être l'heure de la PR", texte)
+
+    def test_engagement_dates_are_checked_at_the_push_whenever_the_check_runs(self):
+        """ruche-0091: the reservation, then the parallel registration, written by bee at the push (12:00, --instant-pr) pass
+        when the check runs hours later; dated outside the tolerance around the push, each is refused, even where it would
+        fit the time of the check. A local run, without --instant-pr, still takes the current time."""
+        push = ("--instant-pr", "2026-10-27T12:00:00Z")
+        for qui, nature, refus in (("alice", "reservation", "une réservation est datée de l'heure de la PR"),
+                                   ("bruno", "inscription_parallele", "doit être datée de l'heure de la PR")):
+            if qui == "alice":
+                self.branche()
+                self.assertEqual(self.bee("prendre", "miniz-0099", "--utilisateur", "alice")[0], 0)  # 12:00
+            else:
+                git(self.dossier, "switch", "-qf", "main")
+                self.a("2026-10-27T09:00:00Z")
+                self.main_reservee_avec_inscrits()  # alice since 09:00
+                self.a("2026-10-27T12:00:00Z")
+                self.branche("pr-parallele")
+                self.parallele("miniz-0099", "bruno")
+            self.commit()
+            for instant in ("2026-10-27T12:00:00Z", "2026-10-27T14:00:01Z", "2026-10-28T11:00:00Z"):
+                with self.subTest(qui=qui, instant=instant):
+                    self.a(instant)
+                    self.libre_service(qui, nature, *push)
+            with self.subTest(qui=qui, local=True):
+                self.a("2026-10-27T14:00:01Z")
+                self.refusee(qui, refus)
+            self.a("2026-10-27T18:00:00Z")  # the check runs 6 h after the push
+            for depuis, acceptee in self.DATES + (("2026-10-27T17:00:00Z", False), ("2026-10-27T18:00:00Z", False)):
+                with self.subTest(qui=qui, depuis=depuis):
+                    self.dater(qui, depuis)
+                    self.commit()
+                    if acceptee:
+                        self.libre_service(qui, nature, *push)
+                    else:
+                        self.refusee(qui, refus, *push)
+
+    def test_in_flight_prs_on_one_task_follow_the_order_of_their_merges(self):
+        """ruche-0091 (N2): bruno's parallel registration is pushed at 13:00, alice's submission at 13:05, and alice's PR merges
+        first. Both change the task's file: bruno's PR no longer merges with main (fusion-auto leaves it to a human). Resolved
+        by hand with its 13:00 date and pushed again at 13:20, it is judged at that push, and a registration earlier than the
+        submission main now holds is refused; bee prendre --en-parallele again, at 13:20, passes. So the dates on a task follow
+        the order of its merges, whatever the order of the pushes."""
+        self.main_reservee_avec_inscrits()  # alice since 12:00
+        self.a("2026-10-27T13:00:00Z")
+        self.branche("inscription")
+        self.parallele("miniz-0099", "bruno")
+        self.commit()
+        git(self.dossier, "switch", "-q", "main")
+        self.a("2026-10-27T13:05:00Z")
+        self.branche("soumission")
+        self.soumettre("miniz-0099", "alice", 99103)
+        self.commit()
+        self.libre_service("alice", "soumission", "--instant-pr", "2026-10-27T13:05:00Z")
+        git(self.dossier, "switch", "-q", "main")
+        git(self.dossier, "merge", "-q", "--ff-only", "soumission")
+        git(self.dossier, "switch", "-q", "inscription")
+        fusion = subprocess.run(["git", "-C", str(self.dossier), "-c", "user.name=t", "-c", "user.email=t@t", "merge", "-q", "--no-edit",
+                                 "main"], capture_output=True, text=True)
+        self.assertNotEqual(fusion.returncode, 0, "the two PRs change the same lines of the task")
+        git(self.dossier, "merge", "--abort")
+        git(self.dossier, "switch", "-qc", "resolue", "main")  # resolved by hand, keeping the 13:00 date
+        bee.modifier_tache(self.chemin(), paralleles=[{"utilisateur": "bruno", "depuis": "2026-10-27T13:00:00Z"}])
+        self.commit()
+        self.a("2026-10-27T13:25:00Z")
+        self.refusee("bruno", "ne peut pas être antérieure à la réservation, aux inscriptions ni aux soumissions",
+                     "--instant-pr", "2026-10-27T13:20:00Z")
+        git(self.dossier, "switch", "-qf", "main")
+        self.a("2026-10-27T13:20:00Z")
+        self.branche("a-nouveau")
+        self.parallele("miniz-0099", "bruno")
+        self.commit()
+        self.a("2026-10-27T13:25:00Z")
+        self.libre_service("bruno", "inscription_parallele", "--instant-pr", "2026-10-27T13:20:00Z")
+        self.assertEqual(bee.paralleles_de(self.tache("miniz-0099")), [{"utilisateur": "bruno", "depuis": "2026-10-27T13:20:00Z"}])
 
     def test_un_fichier_du_libre_service_garde_son_mode(self):
         """In the self-service folders, a file added or modified by a member is a regular file and keeps its mode, with or
@@ -4662,7 +5004,8 @@ class TestRevueAdverse(BaseParallele):
         git(self.dossier, "switch", "-q", "main")
         (racine / "home").mkdir()
         sortie_gh = racine / "github_output"
-        env = {"NUMERO": "1", "AUTEUR": "chloe", "SHA": sha, "HOME": str(racine / "home"), "GITHUB_OUTPUT": str(sortie_gh)}
+        env = {"NUMERO": "1", "AUTEUR": "chloe", "SHA": sha, "HOME": str(racine / "home"), "GITHUB_OUTPUT": str(sortie_gh),
+               "INSTANT_PR": "2026-10-27T13:00:05Z"}  # ruche-0091: workflow_run.created_at, the validation run of the push
         # La PR 5555 a été ouverte par david : la soumission de chloe est refusée par l'étape de fusion-auto.
         sortie, _, appels = self.etape("Vérifier la fusion simulée", {PR_MINIZ + "5555": {"state": "OPEN", "head": "x", "auteur": "david"}},
                                        flux="fusion-auto.yml", env_en_plus=env, reussite=False)
@@ -4684,6 +5027,42 @@ class TestRevueAdverse(BaseParallele):
         code, texte = self.bee("verifier-pr", "--base", "main", "--tete", "HEAD", "--auteur", "chloe", "--auteurs-pr", str(vide))
         self.assertEqual(code, 1, texte)
         self.assertIn("auteur relevé : inconnu", texte)
+
+    def test_fusion_auto_checks_the_declared_dates_at_the_push(self):
+        """ruche-0091: fusion-auto's step gives verifier-pr the creation of the validation run that the push triggered. A
+        submission written at the push merges when the step runs hours later; one dated after the push is refused, and so is
+        the PR when that record is missing or malformed (fails closed)."""
+        self.fermer_porte()
+        self.assertEqual(self.bee("prendre", "miniz-0099", "--utilisateur", "alice")[0], 0)
+        self.init_git()
+        racine = self.dossier.parent
+        subprocess.run(["git", "clone", "-q", "--bare", str(self.dossier), str(racine / "origine.git")], check=True)
+        git(self.dossier, "remote", "add", "origin", str(racine / "origine.git"))
+        git(self.dossier, "fetch", "-q", "origin")
+        self.a("2026-10-27T13:00:00Z")
+        self.branche("soumission")
+        self.assertEqual(self.bee("soumettre", "miniz-0099", "--utilisateur", "alice", "--pr", PR_MINIZ + "5555")[0], 0)
+        self.commit()
+        git(self.dossier, "push", "-q", "origin", "soumission:refs/pull/1/head")
+        sha = git(self.dossier, "rev-parse", "soumission").strip()
+        git(self.dossier, "switch", "-q", "main")
+        (racine / "home").mkdir()
+        sortie_gh = racine / "github_output"
+        self.a("2026-10-27T17:30:00Z")  # the step runs 4 h 30 after the push
+        for instant_pr, code in (("2026-10-27T13:00:05Z", "0"), ("2026-10-27T12:58:00Z", "1"), ("", "1"), ("null", "1"),
+                                 ("2026-10-27 13:00:05", "1")):
+            with self.subTest(instant_pr=instant_pr):
+                if (racine / "fusion").exists():
+                    git(self.dossier, "worktree", "remove", "--force", "../fusion")
+                    git(self.dossier, "branch", "-D", "pr-1")
+                sortie_gh.write_text("", encoding="utf-8")
+                env = {"NUMERO": "1", "AUTEUR": "alice", "SHA": sha, "HOME": str(racine / "home"), "GITHUB_OUTPUT": str(sortie_gh),
+                       "INSTANT_PR": instant_pr}
+                sortie, _, _ = self.etape("Vérifier la fusion simulée", {PR_MINIZ + "5555": {"state": "OPEN", "head": "x", "auteur": "alice"}},
+                                          flux="fusion-auto.yml", env_en_plus=env, reussite=code == "0")
+                self.assertIn(f"code={code}", sortie_gh.read_text(encoding="utf-8"), sortie)
+                if instant_pr == "2026-10-27T12:58:00Z":
+                    self.assertIn("soumise_le doit être l'heure de la soumission", sortie)
 
     def test_N8_une_integration_d_une_manche_anterieure_n_empeche_pas_de_clore(self):
         self.fermer_porte()
@@ -10154,6 +10533,270 @@ class TestVerificationRuche0020(BaseRevueRuche0020):
                                                 "pendant la phase de lancement, commandement 11) |"))
 
 
+class TestR13SuivableRuche0052(BaseInvitations):
+    """ruche-0052 (répétition générale n° 4) : R13 trouvable et suivable. AGENTS.md renvoie à docs/croissance.md là où il parle
+    d'inviter ; bee voir I-<nnnn> donne les dates de l'invitation et son échéance, calculée comme la porte ; un gardien en fonction
+    signale un incident par bee incident, et le frein en tient compte. Le rôle inviter : TestArbre."""
+
+    INCIDENTS = "gouvernance/incidents.yaml"
+
+    def abandonner(self, nom="pr"):
+        git(self.dossier, "switch", "-qf", "main")
+        git(self.dossier, "branch", "-qD", nom)
+
+    def test_2_agents_md_renvoie_a_croissance_la_ou_il_parle_d_inviter(self):
+        texte = (self.dossier / "AGENTS.md").read_text(encoding="utf-8")
+        roles = texte[texte.index("## Ton rôle"):texte.index("**Avant de réserver**")]
+        ligne = next(l for l in roles.splitlines() if l.startswith("| **Inviter**"))
+        self.assertIn("[docs/croissance.md](docs/croissance.md)", ligne)
+        self.assertIn("[`inviter`](arbre/roles/inviter/SENS.md)", ligne)
+        self.assertTrue((self.dossier / "arbre/roles/inviter/SENS.md").is_file())
+
+    def test_3_voir_donne_les_dates_et_l_echeance(self):
+        self.jusqu_a("accord-conseil")
+        texte = self.ok("voir", "I-0001")
+        self.assertIn("proposée le 2026-10-30T10:00:00Z ; accord du gardien : 2026-11-02T11:00:00Z ; feu vert du conseil : "
+                      "2026-11-02T12:00:00Z", texte)
+        self.assertNotIn("échéance sans décision", texte, "une invitation décidée n'expire plus : l'échéance est celle du feu vert")
+        self.assertIn("avant le 2026-11-09T12:00:00Z (échéance du feu vert)", texte)
+
+    def test_C_voir_imprime_les_dates_relues_jamais_brutes(self):
+        """Revue de ruche-0052, C : une date du fichier est relue par bee et réécrite (en_iso), sinon « ? » ; jamais sa valeur
+        brute, qui pourrait porter une séquence d'échappement du terminal."""
+        self.jusqu_a("accord-gardien")
+        piege = "2026-11-02T11:00:00Z\x1b]0;titre\x07\x1b[2J"
+        inv = self.invitation()
+        self.ecrire_invitation({**inv, "propose_le": "2026-10-30T11:00:00+01:00", "accord_gardien": {**inv["accord_gardien"], "le": piege}})
+        texte = self.ok("voir", "I-0001")
+        ligne = next(l for l in texte.splitlines() if l.startswith("proposée le "))
+        self.assertEqual(ligne, "proposée le 2026-10-30T10:00:00Z (échéance sans décision : 2026-11-13T10:00:00Z) ; accord du gardien : ? "
+                                "; feu vert du conseil : aucun")
+        self.assertNotIn("\x1b", ligne)
+
+    def test_3_l_echeance_est_celle_de_la_porte(self):
+        # bee.yaml fixe l'échéance (croissance.expiration_jours) : bee voir la lit comme la porte (refus_geste) et bee valider.
+        chemin = self.dossier / "bee.yaml"
+        chemin.write_text(re.sub(r"(?m)^  expiration_jours: *\d+", "  expiration_jours: 3", chemin.read_text(encoding="utf-8")),
+                          encoding="utf-8")
+        self.commit("expiration en 3 jours")
+        self.jusqu_a("proposee")
+        self.assertIn("proposée le 2026-10-30T10:00:00Z (échéance sans décision : 2026-11-02T10:00:00Z) ; accord du gardien : aucun ; "
+                      "feu vert du conseil : aucun", self.ok("voir", "I-0001"))
+        reg = bee.Registre(self.dossier)
+        inv, conf, fin = reg.invitation("I-0001")[1], bee.config_croissance(reg), bee.lire_instant("2026-11-02T10:00:00Z", "test")
+        self.assertEqual(bee.expiration(inv, conf), fin)
+        self.assertEqual((bee.expiree(inv, fin, conf), bee.expiree(inv, fin + bee.dt.timedelta(seconds=1), conf)), (False, True))
+        self.a("2026-11-02T10:00:01Z")
+        self.ko("invitation expirée (3 jours sans décision", "invitation", "accord-gardien", "I-0001", "--utilisateur", "gina")
+        self.a("2026-11-02T10:00:00Z")  # à l'échéance même : 72 h de débat tenues, pas encore expirée
+        self.branche()
+        self.geste("accord-gardien", "gina")
+        self.publier("gina", "accord_gardien")
+
+    def regler_expiration(self, jours):
+        chemin = self.dossier / "bee.yaml"
+        chemin.write_text(re.sub(r"(?m)^  expiration_jours: *\d+", f"  expiration_jours: {jours}", chemin.read_text(encoding="utf-8")),
+                          encoding="utf-8")
+        self.commit(f"expiration en {jours} jours")
+
+    def statuts_affiches(self):
+        """Le statut que montrent bee essaim (absent : expirée), bee voir et l'API du site pour I-0001."""
+        essaim = [x["statut"] for x in json.loads(self.ok("essaim", "--json"))["invitations"] if x["id"] == "I-0001"]
+        voir = self.ok("voir", "I-0001").splitlines()[0].split(" : ")[1].split(" ;")[0]
+        self.ok("site", "--sortie", str(self.dossier / "_site"))
+        api = json.loads((self.dossier / "_site/api/registre.json").read_text(encoding="utf-8"))
+        return essaim, voir, next(i["etat"]["statut"] for i in api["invitations"] if i["id"] == "I-0001")
+
+    def test_A_l_echeance_de_bee_yaml_partout_comme_a_la_porte(self):
+        """Revue de ruche-0052, A : bee essaim, bee voir et le site lisaient l'échéance par défaut (14 jours), la porte celle de
+        bee.yaml. Les deux reproductions du relecteur : à 30 jours, une invitation de 17 jours vit encore partout et la porte
+        accepte l'accord ; à 3 jours, une invitation de 3 jours et 1 h a expiré partout et la porte refuse l'accord."""
+        self.regler_expiration(30)
+        self.jusqu_a("proposee")
+        self.a("2026-11-16T10:00:00Z")
+        self.assertEqual(self.statuts_affiches(), (["proposee"], "proposee", "proposee"))
+        self.assertIn("(échéance sans décision : 2026-11-29T10:00:00Z)", self.ok("voir", "I-0001"))
+        self.branche()
+        self.geste("accord-gardien", "gina")
+        self.publier("gina", "accord_gardien")
+
+    def test_A_a_trois_jours_l_invitation_a_expire_partout(self):
+        self.regler_expiration(3)
+        self.jusqu_a("proposee")
+        self.a("2026-11-02T11:00:00Z")
+        self.assertEqual(self.statuts_affiches(), ([], "expiree", "expiree"))
+        self.ko("invitation expirée (3 jours sans décision", "invitation", "accord-gardien", "I-0001", "--utilisateur", "gina")
+
+    def test_5_un_gardien_en_fonction_signale_un_incident_et_le_frein_le_compte(self):
+        self.jusqu_a("proposee")
+        self.a("2026-11-02T11:00:00Z")
+        self.assertEqual(bee.etat_frein(bee.Registre(self.dossier))["incidents_ouverts"], [])
+        self.branche()
+        texte = self.ok("incident", "--utilisateur", "gina", "--titre", "Un message est parti sans feu vert (I-0001).")
+        self.assertIn("✓ INC-0001 inscrit dans gouvernance/incidents.yaml", texte)
+        self.assertIn("PR ordinaire", texte)
+        self.assertIn("le frein s'applique dès que le conseil l'a fusionnée ; alors, ce qui passe : rien : un incident est ouvert", texte)
+        self.assertEqual(bee.lire_yaml(self.dossier / self.INCIDENTS), {"incidents": [
+            {"id": "INC-0001", "titre": "Un message est parti sans feu vert (I-0001).", "ouvert_le": "2026-11-02T11:00:00Z"}]})
+        self.valide()
+        frein = bee.etat_frein(bee.Registre(self.dossier))
+        self.assertEqual((frein["serre"], frein["incidents_ouverts"]), (True, ["INC-0001"]))
+        self.assertIn("frein SERRÉ (incident(s) ouvert(s) : INC-0001", self.ok("essaim"))
+        # La porte : gina, gardienne en fonction à l'heure de la PR, passe, et le conseil fusionne ; un membre est refusé.
+        self.commit()
+        self.attend_le_conseil("gina", "incident")
+        self.refusee("alice", f"{self.INCIDENTS} : modification réservée au conseil humain")
+        self.fusionner()
+        # Le frein en tient compte sur main : plus aucun accord, même d'encadrement (I-0001 demande un garant).
+        self.ko("incident(s) ouvert(s) : INC-0001", "invitation", "accord-gardien", "I-0001", "--utilisateur", "gina")
+        # Le conseil peut aussi l'inscrire : au numéro qui suit tout numéro déjà écrit.
+        self.assertIn("✓ INC-0002 inscrit", self.ok("incident", "--utilisateur", "bidji29", "--titre", "Plainte reçue sur I-0001."))
+
+    def test_voir_echappe_chaque_champ(self):
+        """Dernière revue de ruche-0052 (2) : la première ligne et les identités de bee voir passent par montrer, sur une ligne :
+        ni commande de workflow (« :: » en début de ligne, « ##[ »), ni échappement du terminal, ni fausse ligne de bee."""
+        self.jusqu_a("proposee")
+        inv = self.invitation()
+        self.ecrire_invitation({**inv, "demande": "garant\n::warning::demande", "autres_identites": ["gitlab:y\x1b]0;titre\x07"],
+                                "personne": {"identifiant": "github:x\n::error::identifiant",
+                                             "canal": "https://github.com/x\n##[error]canal\x1b[2J\nIdentifiant : github:leurre"}})
+        texte = self.ok("voir", "I-0001")
+        avant_donnees = texte[:texte.index("=== DONNÉES")]
+        for ligne in texte.splitlines():
+            self.assertNotRegex(ligne, r"^\s*::", ligne)
+        self.assertNotIn("##[", texte)
+        self.assertNotIn("\x1b", texte)
+        self.assertEqual([l for l in avant_donnees.splitlines() if l.startswith("Identifiant : ")],
+                         ["Identifiant : github:x\\n: :error::identifiant ; canal : https://github.com/x\\n# #[error]canal<U+001B>[2J"
+                          "\\nIdentifiant : github:leurre"], "une seule ligne d'identités, le leurre y reste visible")
+        self.assertIn("demande : garant\\n: :warning::demande ; attend", avant_donnees)
+        self.assertIn("Autres identités déclarées : gitlab:y<U+001B>]0;titre<U+0007>", avant_donnees)
+
+    def test_la_porte_refuse_un_fichier_d_incidents_illisible_sur_main(self):
+        """Dernière revue de ruche-0052 (1) : illisible ou vide sur main, le fichier ne se remplace pas par un seul incident ;
+        la porte le refuse à un gardien, comme bee incident : le conseil le répare d'abord."""
+        self.a("2026-11-02T11:00:00Z")
+        un = {"id": "INC-0001", "titre": "Un écart.", "ouvert_le": "2026-11-02T11:00:00Z"}
+        for nom, base in (("illisible", "incidents: [\n"), ("vide", "incidents:\n")):
+            with self.subTest(nom):
+                (self.dossier / self.INCIDENTS).write_text(base, encoding="utf-8")
+                self.commit(f"incidents {nom}, sur main")
+                self.ko("illisible : le conseil le répare d'abord", "incident", "--utilisateur", "gina", "--titre", "Un écart.")
+                self.branche()
+                bee.ecrire_invitation(self.dossier / self.INCIDENTS, {"incidents": [un]})
+                self.commit()
+                self.refusee("gina", f"{self.INCIDENTS} illisible sur main : le conseil le répare d'abord")
+                self.abandonner()
+
+    def test_bee_incident_dit_que_les_commentaires_sont_perdus(self):
+        """Dernière revue de ruche-0052 (3) : la réécriture canonique perd les commentaires du conseil ; bee incident le dit."""
+        self.a("2026-11-02T11:00:00Z")
+        un = {"id": "INC-0001", "titre": "Un écart.", "ouvert_le": "2026-11-02T11:00:00Z"}
+        (self.dossier / self.INCIDENTS).write_text("# Tenu par le conseil.\n" + bee.rendu_invitation({"incidents": [un]}), encoding="utf-8")
+        self.commit("incidents commentés, sur main")
+        texte = self.ok("incident", "--utilisateur", "gina", "--titre", "Un second écart (I-0001).")
+        self.assertIn("⚠ Les commentaires de gouvernance/incidents.yaml sont perdus", texte)
+        self.assertNotIn("# Tenu par le conseil", (self.dossier / self.INCIDENTS).read_text(encoding="utf-8"))
+        # Un fichier sans commentaire : aucun avertissement, même quand un titre porte « # ».
+        for titre in ("Suite du ticket #12 (I-0001).", "Encore une suite (I-0001)."):
+            with self.subTest(titre):
+                self.assertNotIn("commentaires", self.ok("incident", "--utilisateur", "gina", "--titre", titre))
+        self.assertEqual([i["id"] for i in bee.lire_yaml(self.dossier / self.INCIDENTS)["incidents"]],
+                         ["INC-0001", "INC-0002", "INC-0003", "INC-0004"])
+
+    def test_5_qui_ne_peut_pas_signaler_et_ce_que_la_porte_refuse(self):
+        self.a("2026-11-02T11:00:00Z")
+        self.ko("alice n'est ni un gardien en fonction ni du conseil", "incident", "--utilisateur", "alice", "--titre", "Un écart.")
+        self.ko("adresse de courriel", "incident", "--utilisateur", "gina", "--titre", "Plainte de fictif@exemple.org.")
+        self.assertFalse((self.dossier / self.INCIDENTS).exists())
+        (self.dossier / self.INCIDENTS).write_text("incidents: [\n", encoding="utf-8")
+        self.ko("illisible", "incident", "--utilisateur", "gina", "--titre", "Un écart.")
+        self.assertEqual((self.dossier / self.INCIDENTS).read_text(encoding="utf-8"), "incidents: [\n", "rien n'est réécrit")
+        (self.dossier / self.INCIDENTS).unlink()
+        # Un gardien sans garant (ivan), ou dont le garant est révoqué, n'est pas en fonction.
+        (self.dossier / "gouvernance/gardiens.yaml").write_text("membres:\n  - pseudo: gina\n    garant: hector\n  - pseudo: ivan\n",
+                                                               encoding="utf-8")
+        self.commit("ivan, gardien sans garant")
+        self.ko("ivan n'est ni un gardien en fonction", "incident", "--utilisateur", "ivan", "--titre", "Un écart.")
+        un = {"id": "INC-0001", "titre": "Un écart.", "ouvert_le": "2026-11-02T11:00:00Z"}
+        self.branche("ivan")
+        bee.ecrire_invitation(self.dossier / self.INCIDENTS, {"incidents": [un]})
+        self.commit()
+        self.refusee("ivan", "modification réservée au conseil humain")
+        self.abandonner("ivan")
+        bee.ecrire_invitation(self.dossier / self.INCIDENTS, {"incidents": [un]})
+        self.commit("INC-0001, par le conseil")
+        # Un gardien en fonction n'y fait rien d'autre qu'ajouter un incident ouvert, en fin de liste.
+        deux = {**un, "id": "INC-0002"}
+        cas = {"clore": [{**un, "clos_le": "2026-11-02T11:00:00Z", "issue": "Réglé."}], "modifier": [{**un, "titre": "Autre."}],
+               "retirer": [], "clos d'emblée": [un, {**deux, "clos_le": "2026-11-02T11:00:00Z"}],
+               "deux d'un coup": [un, deux, {**deux, "id": "INC-0003"}], "devant": [deux, un]}
+        for nom, liste in cas.items():
+            with self.subTest(nom):
+                self.branche()
+                bee.ecrire_invitation(self.dossier / self.INCIDENTS, {"incidents": liste})
+                self.commit()
+                self.refusee("gina", "un gardien n'y ajoute qu'un incident ouvert, en fin de liste")
+                self.abandonner()
+        self.branche()
+        (self.dossier / self.INCIDENTS).unlink()
+        self.commit()
+        self.refusee("gina", "un gardien n'y ajoute qu'un incident ouvert, en fin de liste")
+        self.abandonner()
+        # Revue de ruche-0052, B : ce qu'ajoute un gardien est ce qu'écrit bee incident, et rien d'autre.
+        canonique = bee.rendu_invitation({"incidents": [un, deux]})
+        brut = {"titre : courriel": (bee.rendu_invitation({"incidents": [un, {**deux, "titre": "Plainte de fictif@exemple.org."}]}),
+                                     "adresse de courriel"),
+                "titre : U+202E": (bee.rendu_invitation({"incidents": [un, {**deux, "titre": "Un \u202eécart."}]}), "U+202E"),
+                "titre : ESC": (bee.rendu_invitation({"incidents": [un, {**deux, "titre": "Un \x1b[2Jécart."}]}), "U+001B"),
+                "titre sur deux lignes": (bee.rendu_invitation({"incidents": [un, {**deux, "titre": "Un écart.\nSuite."}]}),
+                                          "titre : une seule ligne"),
+                "commentaire et remplissage": ("# Ajouté à la main\n" + canonique + "\n\n\n", "pas exactement sous la forme"),
+                "issue sur un incident ouvert": (bee.rendu_invitation({"incidents": [un, {**deux, "issue": "Rien à faire."}]}),
+                                                 "avec id, titre et ouvert_le seulement"),
+                "numéro en double": (bee.rendu_invitation({"incidents": [un, {**deux, "id": "INC-0001"}]}), "au numéro suivant (INC-0002)"),
+                "numéro sauté": (bee.rendu_invitation({"incidents": [un, {**deux, "id": "INC-0007"}]}), "au numéro suivant (INC-0002)"),
+                "date d'hier": (bee.rendu_invitation({"incidents": [un, {**deux, "ouvert_le": "2026-11-01T11:00:00Z"}]}),
+                                "doit être l'heure de la PR")}
+        for nom, (texte, message) in brut.items():
+            with self.subTest(nom):
+                self.branche()
+                (self.dossier / self.INCIDENTS).write_text(texte, encoding="utf-8")
+                self.commit()
+                self.refusee("gina", message)
+                self.abandonner()
+        for titre, message in (("Un écart.\nSuite.", "titre : une seule ligne"), ("Un \u202eécart.", "U+202E"),
+                               ("Un \x1b[2Jécart.", "U+001B"), ("Plainte de fictif@exemple.org.", "adresse de courriel")):
+            self.ko(message, "incident", "--utilisateur", "gina", "--titre", titre)
+        self.branche()
+        (self.dossier / self.INCIDENTS).write_text(canonique, encoding="utf-8")
+        self.commit()
+        self.attend_le_conseil("gina", "incident")  # ce que bee incident écrirait : accepté, le conseil fusionne
+        self.abandonner()
+        # INC-9999 est le dernier numéro : bee incident s'arrête là, et la porte refuse INC-10000.
+        dernier = {**un, "id": "INC-9999"}
+        bee.ecrire_invitation(self.dossier / self.INCIDENTS, {"incidents": [un, dernier]})
+        self.commit("INC-9999, par le conseil")
+        self.ko("INC-9999 est le dernier numéro", "incident", "--utilisateur", "gina", "--titre", "Un écart.")
+        self.assertEqual(bee.lire_yaml(self.dossier / self.INCIDENTS), {"incidents": [un, dernier]}, "rien n'est écrit")
+        self.branche()
+        bee.ecrire_invitation(self.dossier / self.INCIDENTS, {"incidents": [un, dernier, {**deux, "id": "INC-10000"}]})
+        self.commit()
+        self.refusee("gina", "un gardien n'y ajoute qu'un incident ouvert, en fin de liste, au numéro suivant")
+        self.abandonner()
+        bee.ecrire_invitation(self.dossier / self.INCIDENTS, {"incidents": [un]})
+        self.commit("retour à INC-0001, par le conseil")
+        # Révoqué sur main, le garant de gina ne la tient plus en fonction : sa PR va au conseil seul, refusée par la porte.
+        (self.dossier / "gouvernance/garants.yaml").write_text(
+            "membres:\n  - pseudo: hector\n    identite_publique: Hector\n    revoque_le: \"2026-11-02\"\n", encoding="utf-8")
+        self.commit("garant révoqué")
+        self.branche()
+        self.ko("gina n'est ni un gardien en fonction", "incident", "--utilisateur", "gina", "--titre", "Un écart.")
+        bee.ecrire_invitation(self.dossier / self.INCIDENTS, {"incidents": [un, deux]})
+        self.commit()
+        self.refusee("gina", "modification réservée au conseil humain")
+
+
 class TestManifesteRecopie(BaseRepetitionGenerale):
     """ruche-0017 : au verdict, le registre recopie du manifeste ce que le relecteur doit voir (modèle, gain déclaré, teste,
     non_teste, doutes), borné et typé, et bee l'imprime encadré comme de la donnée. Revue adverse : ce sont des données du
@@ -13060,6 +13703,28 @@ class TestR8Bootstrap(BaseRepetitionGenerale):
         self.valide()
         self.ko("maximum 3", "prendre", "ruche-9010", "--utilisateur", "bidji29")
 
+    def test_a_stale_time_of_the_push_does_not_extend_the_bootstrap(self):
+        """ruche-0091 (review, S1): within 24 h, the time of the push decides, even after the end date; a re-run keeps its run's
+        creation time, and older than 24 h at the check it is refused, so an engagement pushed before the end date is never judged
+        there days later."""
+        self.a("2026-11-30T20:00:00Z")
+        for n in range(9001, 9008):
+            self.ok("prendre", f"ruche-{n}", "--utilisateur", "bidji29")
+        self.commit("seven tooling tasks of bidji29, before the end date")
+        self.branche("huitieme")
+        self.a("2026-11-30T23:30:00Z")
+        self.ok("prendre", "ruche-9008", "--utilisateur", "bidji29")
+        self.commit()
+        push = ("--instant-pr", "2026-11-30T23:30:00Z")
+        self.a("2026-12-01T01:00:00Z")
+        code, texte = self.verifier("bidji29", *push)
+        self.assertEqual(code, 0, texte)
+        self.a("2026-12-02T00:00:00Z")
+        code, texte = self.verifier("bidji29", *push)
+        self.assertEqual(code, 1, texte)
+        self.assertIn("--instant-pr (2026-11-30T23:30:00Z) : outside [the check - 24 h, the check + 1 min]", texte)
+        self.refusee("bidji29", "règle R8 : bidji29 prend un engagement après la fin de r8_amorcage")  # a local run: the check's time
+
     def test_an_unreadable_engagement_date_gives_the_usual_cap(self):
         for n in range(9001, 9005):
             self.ok("prendre", f"ruche-{n}", "--utilisateur", "bidji29")
@@ -13099,6 +13764,269 @@ class TestR8Bootstrap(BaseRepetitionGenerale):
         self.commit()
         for auteur in (AGENT, "bidji29"):
             self.refusee(auteur, "règle R8 : bidji29 a 9 réservations ou inscriptions en parallèle", "maximum 8")
+
+
+class TestClocksRuche0091(BaseInvitations):
+    """ruche-0091 (review, S2): each rule of the gate is judged on its documented clock. For each, a PR whose verdict at the time
+    of the push differs from its verdict at the time of the check (both shown), then the check as the CI runs it (--instant-pr:
+    the push; BEE_MAINTENANT: the check) gives the documented one. To the push: the declared dates and what is judged at the
+    time of the act; at the check: engagement expiries, the brake, the end of a vote and the account's age."""
+
+    def repartir(self):
+        git(self.dossier, "switch", "-qf", "main")
+        git(self.dossier, "reset", "-q", "--hard", self.depart)
+        git(self.dossier, "clean", "-qfd")
+        for branche in git(self.dossier, "branch", "--format=%(refname:short)").split():
+            if branche != "main":
+                git(self.dossier, "branch", "-qD", branche)
+
+    def verdict(self, auteur, options, poussee, verification):
+        self.a(verification)
+        code, texte = self.verifier(auteur, *options, "--instant-pr", poussee)
+        self.assertIn(code, (0, 1), texte)
+        self.assertNotIn("Traceback", texte)
+        return code, texte
+
+    def pr(self, quand, ecrire):
+        """A PR branch from main whose changes `ecrire` makes at `quand`, the time of its push."""
+        self.a(quand)
+        self.branche()
+        ecrire()
+        self.commit(quand=quand)
+
+    def modifier(self, tache="miniz-0099", **champs):
+        bee.modifier_tache(self.chemin_tache(tache), **champs)
+
+    # --- To the push ---
+
+    def r7_reservation(self):
+        self.a("2026-10-30T09:00:00Z")
+        self.prendre_et_fusionner("alice")
+        self.a("2026-10-30T10:00:00Z")
+        self.liberer_et_fusionner("alice")  # alice may take it again from 2026-10-31T10:00
+        poussee = "2026-10-31T09:30:00Z"
+        self.pr(poussee, lambda: self.modifier(statut="reservee", reservation={"utilisateur": "alice", "depuis": poussee}))
+        return "alice", poussee, "2026-10-31T10:30:00Z", (), "R7 : alice a quitté cette tâche sans contribution"
+
+    def r7_parallele(self):
+        self.a("2026-10-30T09:00:00Z")
+        self.prendre_et_fusionner("alice")
+        self.a("2026-10-30T10:00:00Z")
+        self.liberer_et_fusionner("alice")
+        self.a("2026-10-30T10:10:00Z")
+        self.prendre_et_fusionner("bruno")
+        poussee = "2026-10-31T09:30:00Z"
+        self.pr(poussee, lambda: self.modifier(paralleles=[{"utilisateur": "alice", "depuis": poussee}]))
+        return "alice", poussee, "2026-10-31T10:30:00Z", (), "R7 : alice a quitté cette tâche sans contribution"
+
+    def plafond_24h(self):
+        self.a("2026-10-30T09:00:00Z")
+        for _ in range(5):
+            self.proposer_tache("gaspard")
+        self.commit("five proposed tasks of gaspard")
+        self.pr("2026-10-31T09:30:00Z", lambda: self.proposer_tache("gaspard"))  # bee checks the cap at 09:30 too
+        return "gaspard", "2026-10-31T08:30:00Z", "2026-10-31T09:30:00Z", (), "plafond : gaspard aurait 6 tâches proposées en 24 h"
+
+    def r8_fin(self):
+        for n in range(9001, 9009):
+            (self.dossier / f"taches/ruche/ruche-{n}.yaml").write_text(
+                TACHE_OPTIMISATION.replace("miniz-0099", f"ruche-{n}").replace("projet: miniz", "projet: ruche")
+                .replace("categorie: compression-sans-perte", "categorie: ruche").replace("type: optimisation", "type: test")
+                .replace("metrique: debit_compression_n6", "metrique: null").replace("sortie_compressee: identique\n", "")
+                .replace("cree_par: tests", "cree_par: conseil"), encoding="utf-8")
+        TestR8Bootstrap.reglage(self, R8_AMORCAGE)
+        self.a("2026-11-30T20:00:00Z")
+        for n in range(9001, 9008):
+            self.ok("prendre", f"ruche-{n}", "--utilisateur", "bidji29")
+        self.commit("seven tooling tasks of bidji29")
+        poussee = "2026-11-30T23:30:00Z"
+        self.pr(poussee, lambda: self.modifier("ruche-9008", statut="reservee", reservation={"utilisateur": "bidji29", "depuis": poussee}))
+        return "bidji29", poussee, "2026-12-01T00:30:00Z", (), "règle R8 : bidji29 prend un engagement après la fin de r8_amorcage"
+
+    def silence_agora(self):
+        self.a("2026-10-30T12:00:00Z")
+        debat = self.ouvrir("alice")
+        self.a("2026-10-30T12:10:00Z")
+        self.argumenter("bruno", "fait", "R8 plafonne déjà les engagements à 3 par utilisateur.", "--source", "REGLES.md", debat=debat)
+        self.commit("a debate")
+        poussee, verification = "2026-10-31T11:40:00Z", "2026-10-31T12:40:00Z"  # 24 h of silence from 2026-10-31T12:10
+
+        def clore():
+            self.a(verification)
+            self.ok("debattre", "clore", debat, "--utilisateur", "alice", "--issue", "sans_suite", "--synthese", "Rien n'en sort.")
+            self.ecrire({**self.debat(debat), "synthese_le": poussee, "clos_le": poussee}, debat)
+        self.pr(poussee, clore)
+        return "alice", poussee, verification, (), "le rapporteur ne clôt qu'après 24 h sans nouvel argument"
+
+    def note(self):
+        poussee = "2026-10-30T10:00:00Z"
+        self.pr(poussee, lambda: self.noter_a_la_main({"le": poussee}))
+        return "gaspard", poussee, "2026-10-30T13:00:00Z", (), "une note est datée de l'heure de la PR"
+
+    def releve_agora(self):
+        self.a("2026-10-30T12:00:00Z")
+        debat = self.ouvrir("alice")
+        self.a("2026-10-30T12:10:00Z")
+        self.argumenter("bruno", "fait", "R8 plafonne déjà les engagements à 3 par utilisateur.", "--source", "REGLES.md", debat=debat)
+        self.commit("a debate")
+        poussee, verification = "2026-11-02T11:40:00Z", "2026-11-02T12:40:00Z"  # alice, the rapporteur, has 72 h: until 12:10
+
+        def synthetiser():
+            self.a(verification)
+            self.ok("debattre", "synthetiser", debat, "--utilisateur", "bruno", "--texte", "Synthèse de relève par bruno.")
+            self.ecrire({**self.debat(debat), "synthese_le": poussee}, debat)
+        self.pr(poussee, synthetiser)
+        return "bruno", poussee, verification, (), "le rapporteur (alice) a jusqu'au 2026-11-02T12:10:00Z"
+
+    def note_de_tache_proposee(self):
+        poussee = "2026-10-30T10:00:00Z"
+        self.pr(poussee, lambda: bee.modifier_tache(self.proposer_tache("gaspard"), note={
+            "par": "gaspard", "le": poussee, "texte": "Une note dès la proposition."}))
+        return "gaspard", poussee, "2026-10-30T13:00:00Z", (), "une note est datée de l'heure de la PR"
+
+    def soumise_sur_main(self):
+        """On main: alice takes miniz-0099 and submits miniz-0099-c1 at 2026-10-30T09:00."""
+        self.a("2026-10-30T09:00:00Z")
+        for nom, commande in (("prise", ["prendre", "miniz-0099", "--utilisateur", "alice"]),
+                              ("soumission", ["soumettre", "miniz-0099", "--utilisateur", "alice", "--pr", PR_MINIZ + "77004"])):
+            self.branche(nom)
+            self.ok(*commande)
+            self.commit()
+            self.fusionner(nom)
+
+    def date_d_argument(self):
+        self.a("2026-10-30T12:00:00Z")
+        debat = self.ouvrir("alice")
+        self.commit("a debate")
+        poussee = "2026-10-30T13:00:00Z"
+        self.pr(poussee, lambda: self.argumenter("bruno", "fait", "R8 plafonne déjà les engagements à 3 par utilisateur.", "--source",
+                                                 "REGLES.md", debat=debat))
+        return "bruno", poussee, "2026-10-30T16:00:00Z", (), "relancez la commande bee debattre"
+
+    def date_d_accord(self):
+        self.jusqu_a("proposee")  # I-0001, published 2026-10-30T10:00: a guardian may agree from 2026-11-02T10:00
+        poussee = "2026-11-02T11:00:00Z"
+        self.pr(poussee, lambda: self.geste("accord-gardien", "gina"))
+        return "gina", poussee, "2026-11-02T14:00:00Z", (), "accord_gardien.le (2026-11-02T11:00:00Z) doit être l'heure de la PR"
+
+    def date_de_relecture(self):
+        self.soumise_sur_main()
+        poussee = "2026-10-30T10:00:00Z"
+        self.pr(poussee, lambda: self.ok("relire", "miniz-0099-c1", "--utilisateur", "bruno", "--avis", "favorable", "--motif",
+                                         "Relu en entier, banc rejoué."))
+        return "bruno", poussee, "2026-10-30T13:00:00Z", (), "relecture de bruno, le (2026-10-30T10:00:00Z) doit être l'heure de la PR"
+
+    def date_de_proposition(self):
+        poussee = "2026-10-30T10:00:00Z"
+        self.pr(poussee, lambda: self.ok("proposer", "--utilisateur", "gaspard", "--regle", "R4", "--texte", "Au moins 1,5 % sur la "
+                                         "métrique visée.", "--motif", "Le bruit mesuré est plus faible que prévu."))
+        return "gaspard", poussee, "2026-10-30T13:00:00Z", (), "ouverte_le (2026-10-30T10:00:00Z) doit être l'heure de la PR"
+
+    def date_d_invitation(self):
+        poussee = "2026-10-30T10:00:00Z"
+        self.pr(poussee, lambda: self.inviter("alice"))
+        return "alice", poussee, "2026-10-30T13:00:00Z", (), "propose_le (2026-10-30T10:00:00Z) doit être l'heure de la PR"
+
+    def date_de_mesure(self):
+        self.soumise_sur_main()
+        poussee = "2026-10-30T10:00:00Z"
+        self.pr(poussee, lambda: bee.ecrire_yaml(self.dossier / "mesures/miniz-0099-c1/bruno.yaml", {
+            "contribution": "miniz-0099-c1", "soumise_par": "bruno", "le": poussee, "base": "2948eeb", "candidat": "839b676",
+            "config": {"architecture": "arm64"}, "metriques": {"debit_compression_n6": {"gain": 0.05, "au_dela_du_bruit": True}}}))
+        return "bruno", poussee, "2026-10-30T13:00:00Z", (), "mesures/miniz-0099-c1/bruno.yaml : le (2026-10-30T10:00:00Z) doit être"
+
+    def date_de_vote(self):
+        self.a("2026-10-30T10:00:00Z")
+        self.proposition()
+        self.commit("P-0001, open until 2026-11-06T10:00")
+        poussee = "2026-10-31T10:00:00Z"
+        self.pr(poussee, lambda: self.ok("voter", "P-0001", "--utilisateur", "alice", "--valeur", "1"))
+        return "alice", poussee, "2026-10-31T13:00:00Z", (), "votes/P-0001/alice.yaml : le (2026-10-31T10:00:00Z) doit être l'heure de la PR"
+
+    def cree_le(self):
+        poussee = "2026-10-30T23:30:00Z"
+        self.pr(poussee, lambda: self.proposer_tache("gaspard"))
+        return "gaspard", poussee, "2026-10-31T02:00:00Z", (), "cree_le (2026-10-30) est la date de la PR (2026-10-31)"
+
+    def invitation_expiree(self):
+        self.jusqu_a("proposee")  # I-0001 of github:octocat, proposed 2026-10-30T10:00, expires 14 days later
+        poussee, verification = "2026-11-13T09:30:00Z", "2026-11-13T10:30:00Z"
+
+        def inviter():
+            self.a(verification)
+            self.inviter("alice")
+            self.ecrire_invitation({**self.invitation("I-0002"), "propose_le": poussee}, "I-0002")
+        self.pr(poussee, inviter)
+        return "alice", poussee, verification, (), "est déjà invité(e) (I-0001)"
+
+    # --- At the check ---
+
+    def expiration_robot(self, geste):
+        self.a("2026-10-30T09:00:00Z")
+        self.prendre_et_fusionner("alice")
+        if geste == "retrait":  # alice submits: her reservation ends; bruno's registration then expires alone
+            self.branche("soumission")
+            self.ok("soumettre", "miniz-0099", "--utilisateur", "alice", "--pr", PR_MINIZ + "77003")
+            self.commit()
+            self.fusionner("soumission")
+        if geste in ("promotion", "retrait"):
+            self.a("2026-10-30T10:00:00Z")
+            self.prendre_et_fusionner("bruno", "miniz-0099", "--en-parallele")
+        verification = "2026-11-02T09:30:00Z" if geste != "retrait" else "2026-11-02T10:30:00Z"
+        self.pr(verification, lambda: self.ok("liberer-expirees"))
+        refus = ("on ne retire que sa propre inscription en parallèle (bruno" if geste == "retrait" else
+                 "seul le titulaire (alice) libère sa réservation avant expiration")
+        return "github-actions[bot]", "2026-11-02T08:30:00Z" if geste != "retrait" else "2026-11-02T09:30:00Z", verification, (), refus
+
+    def frein(self):
+        self.jusqu_a("proposee")  # I-0001, published 2026-10-30T10:00: a guardian may agree from 2026-11-02T10:00
+        (self.dossier / "gouvernance/incidents.yaml").write_text(
+            'incidents:\n  - id: INC-0001\n    titre: Messages en nombre\n    ouvert_le: "2026-10-31T10:00:00Z"\n'
+            '    clos_le: "2026-11-02T11:30:00Z"\n', encoding="utf-8")
+        self.commit("an incident, closed at 11:30")
+        poussee = "2026-11-02T11:00:00Z"
+        self.pr(poussee, lambda: self.ecrire_invitation({**self.invitation(), "accord_gardien": {"par": "gina", "le": poussee}}))
+        return "gina", poussee, "2026-11-02T12:00:00Z", (), "incident(s) ouvert(s) : INC-0001"
+
+    def fin_du_vote(self):
+        self.a("2026-10-30T10:00:00Z")
+        self.proposition()
+        self.commit("P-0001, open until 2026-11-06T10:00")
+        poussee = "2026-11-06T09:30:00Z"
+        self.pr(poussee, lambda: self.ok("voter", "P-0001", "--utilisateur", "alice", "--valeur", "1"))
+        return "alice", poussee, "2026-11-06T10:30:00Z", (), "le vote sur P-0001 est clos"
+
+    def anciennete(self):
+        poussee = "2026-10-31T23:30:00Z"  # an account created on 2026-08-03 is 89 days old, 90 on 2026-11-01
+        self.pr(poussee, lambda: bee.ecrire_yaml(self.dossier / "membres/david.yaml", {
+            "pseudo": "david", "inscrit_le": "2026-10-31", "compte_cree_le": "2026-08-03"}))
+        return "david", poussee, "2026-11-01T00:30:00Z", ("--compte-cree-le", "2026-08-03"), "le compte GitHub doit avoir au moins 90 jours"
+
+    def test_each_rule_is_judged_on_its_documented_clock(self):
+        self.depart = git(self.dossier, "rev-parse", "HEAD").strip()
+        cas = {"R7, reservation": (self.r7_reservation, "push"), "R7, parallel registration": (self.r7_parallele, "push"),
+               "24 h creation cap": (self.plafond_24h, "push"), "R8 end": (self.r8_fin, "push"),
+               "agora silence before closing": (self.silence_agora, "push"), "agora relief": (self.releve_agora, "push"),
+               "note date": (self.note, "push"), "proposed task's note date": (self.note_de_tache_proposee, "push"),
+               "measure date": (self.date_de_mesure, "push"), "agora argument date": (self.date_d_argument, "push"),
+               "guardian's agreement date": (self.date_d_accord, "push"), "review date": (self.date_de_relecture, "push"),
+               "proposition ouverte_le": (self.date_de_proposition, "push"), "invitation propose_le": (self.date_d_invitation, "push"),
+               "vote date": (self.date_de_vote, "push"), "task cree_le": (self.cree_le, "push"),
+               "earlier invitation's expiry": (self.invitation_expiree, "push"),
+               "robot expiry, promotion": (lambda: self.expiration_robot("promotion"), "check"),
+               "robot expiry, withdrawal": (lambda: self.expiration_robot("retrait"), "check"),
+               "robot expiry, release": (lambda: self.expiration_robot("liberation"), "check"),
+               "brake": (self.frein, "check"), "end of a vote": (self.fin_du_vote, "check"), "account age": (self.anciennete, "check")}
+        for regle, (preparer, horloge) in cas.items():
+            with self.subTest(regle=regle):
+                self.repartir()
+                auteur, poussee, verification, options, refus = preparer()
+                a_la_poussee = self.verdict(auteur, options, poussee, poussee)
+                a_la_verification = self.verdict(auteur, options, verification, verification)
+                self.assertNotEqual(a_la_poussee[0], a_la_verification[0], a_la_poussee[1] + a_la_verification[1])
+                self.assertIn(refus, (a_la_poussee if a_la_poussee[0] else a_la_verification)[1])
+                code, texte = self.verdict(auteur, options, poussee, verification)
+                self.assertEqual(code, (a_la_poussee if horloge == "push" else a_la_verification)[0], texte)
 
 
 class TestAjoutSeulRuche0042(BaseRepetitionGenerale):
@@ -13828,5 +14756,278 @@ class TestGitHelper(unittest.TestCase):
         self.assertIsNone(dates.date("taches/miniz/miniz-0100.yaml\n", bee.cle_creation({"id": "miniz-0100", "cree_par": "mallory"})))
 
 
+# ruche-0092: the suite in parallel processes, inside validation.yml's single « valider » job (`python3 outils/test_bee.py
+# --processus N`; without options: unittest.main, serial). At thousands of bees the scarce resource is the organisation's
+# concurrent jobs, not minutes: processes, not jobs. No test is lost: each process reports the suite it loaded and the tests
+# it ran, and a test missing, run twice, added or removed after the split, skipped, an expected failure or an unexpected success,
+# an empty shard or a failed process fails the run.
+# Each process is a fresh interpreter: environment variables, the working directory and the audit hook stay its own.
+
+def nom_du_test(test):
+    return f"{type(test).__qualname__}.{test._testMethodName}"
+
+
+def ids_des_tests(module):
+    """A module's tests, « Class.method », in the order unittest runs them."""
+    def aplatir(suite):
+        for t in suite:
+            yield from aplatir(t) if isinstance(t, unittest.TestSuite) else [nom_du_test(t)]
+    return list(aplatir(unittest.defaultTestLoader.loadTestsFromModule(module)))
+
+
+def repartir(tests, n):
+    """n shards, one test in n each, in the suite's order: every class is shared among all shards (similar durations, with no
+    recorded durations to keep up to date), and keeps its order within each."""
+    return [tests[i::n] for i in range(n)]
+
+
+def controler(tests, tranches, rapports=None):
+    """[] if each test is in exactly one shard and no shard is empty; with the processes' reports (None: no report), also if
+    each process loaded the very suite that was split and ran at least one test, each test ran exactly once, and none was
+    skipped, an expected failure or an unexpected success."""
+    n = len(tranches)
+    erreurs = [f"shard {i + 1}/{n}: no test" for i, t in enumerate(tranches) if not t]
+    listes = {"in the shards": [t for tranche in tranches for t in tranche]}
+    for i, r in enumerate(rapports or ()):
+        if r is None or not r["lances"]:
+            erreurs.append(f"shard {i + 1}/{n}: " + ("no report" if r is None else "ran no test"))
+        erreurs += [f"shard {i + 1}/{n}: {ecart} (the parallel run accepts no skip, expected failure or unexpected success)"
+                    for ecart in (r or {}).get("ecarts", [])]
+        if r and r["lances"] and collections.Counter(r["vus"]) != collections.Counter(tests):
+            erreurs.append(f"shard {i + 1}/{n}: the suite changed after the split (added: {sorted(set(r['vus']) - set(tests))}, "
+                           f"removed: {sorted(set(tests) - set(r['vus']))})")
+    if rapports is not None:
+        listes["run"] = [t for r in rapports if r for t in r["lances"]]
+    attendu = collections.Counter(tests)
+    for quoi, liste in listes.items():
+        compte = collections.Counter(liste)
+        erreurs += [f"{t}: {quoi} {compte[t]} times, expected {attendu[t]}" for t in sorted(attendu | compte) if compte[t] != attendu[t]]
+    return erreurs
+
+
+def en_parallele(commande, tests, processus):
+    """Runs `tests` in `processus` processes, one shard each; 0 if every process passed and every test ran exactly once."""
+    tranches = repartir(tests, processus)
+    erreurs = controler(tests, tranches) or lancer_tranches(commande, tests, tranches)
+    print(f"{len(tests)} tests in {processus} processes ({os.cpu_count()} CPUs): "
+          + ("FAILED\n" + "\n".join(erreurs) if erreurs else "each ran exactly once, all passed."))
+    return 1 if erreurs else 0
+
+
+def lancer_tranches(commande, tests, tranches):
+    """Starts `commande --tranche <plan> <i>` for each shard at once, prints each shard's log as soon as it ends, then returns
+    the errors of controler on their reports and of their exit codes."""
+    n, enfants, codes, rapports = len(tranches), [], {}, {}
+    print(f"{len(tests)} tests in {n} shards of {', '.join(str(len(t)) for t in tranches)}", flush=True)
+    with tempfile.TemporaryDirectory() as dossier:
+        plan = pathlib.Path(dossier) / "plan.json"
+        plan.write_text(json.dumps({"tests": tests, "tranches": tranches}), encoding="utf-8")
+        try:
+            for i in range(n):
+                with open(plan.with_name(f"journal-{i}.txt"), "w", encoding="utf-8") as journal:
+                    enfants.append(subprocess.Popen([*commande, "--tranche", str(plan), str(i)], stdin=subprocess.DEVNULL, stdout=journal,
+                                                    stderr=subprocess.STDOUT))
+            while len(codes) < n:  # a live log: each shard's journal as soon as it ends
+                for i, e in enumerate(enfants):
+                    if i not in codes and e.poll() is not None:
+                        codes[i], rapport = e.returncode, plan.with_name(f"rapport-{i}.json")
+                        rapports[i] = json.loads(rapport.read_text(encoding="utf-8")) if rapport.exists() else None
+                        print(f"=== shard {i + 1}/{n}: {len(tranches[i])} tests, exit code {codes[i]}, "
+                              f"{rapports[i]['duree'] if rapports[i] else '?'} s ===\n"
+                              + plan.with_name(f"journal-{i}.txt").read_text(encoding="utf-8", errors="replace"), flush=True)
+                time.sleep(0.2)
+        finally:
+            for e in enfants:
+                e.kill()  # only those still running: an interruption
+    return (controler(tests, tranches, [rapports[i] for i in range(n)])
+            + [f"shard {i + 1}/{n}: exit code {codes[i]}" for i in range(n) if codes[i]])
+
+
+class Lances(unittest.TextTestResult):
+    """A result that keeps the name of each test it starts."""
+
+    def __init__(self, *arguments, **options):
+        super().__init__(*arguments, **options)
+        self.lances = []
+
+    def startTest(self, test):
+        self.lances.append(nom_du_test(test))
+        super().startTest(test)
+
+
+def tranche(module, plan, i):
+    """One process of en_parallele: runs shard i of the plan, then writes its report (the suite it loaded, the tests it ran)."""
+    debut, plan = time.monotonic(), pathlib.Path(plan)
+    vus, tests = ids_des_tests(module), json.loads(plan.read_text(encoding="utf-8"))["tranches"][i]
+    resultat = unittest.TextTestRunner(verbosity=2, resultclass=Lances).run(unittest.defaultTestLoader.loadTestsFromNames(tests, module))
+    nom = lambda t: nom_du_test(getattr(t, "test_case", t))  # noqa: E731 (a subtest: its test)
+    ecarts = ([f"{nom(t)}: skipped ({raison})" for t, raison in resultat.skipped] + [f"{nom(t)}: expected failure" for t, _ in
+              resultat.expectedFailures] + [f"{nom(t)}: unexpected success" for t in resultat.unexpectedSuccesses])
+    plan.with_name(f"rapport-{i}.json").write_text(json.dumps({"vus": vus, "lances": resultat.lances, "ecarts": ecarts,
+                                                               "duree": round(time.monotonic() - debut)}), encoding="utf-8")
+    return 0 if resultat.wasSuccessful() and not ecarts else 1
+
+
+def principal_tests(module, fichier, arguments):
+    """`python3 <fichier>`: the suite, serial (unittest.main and its options); `--processus N`: in N processes;
+    `--tranche <plan> <i>`: one of them."""
+    if len(arguments) == 2 and arguments[0] == "--processus" and re.fullmatch(r"[1-9][0-9]*", arguments[1]):
+        return en_parallele([sys.executable, os.path.abspath(fichier)], ids_des_tests(module), int(arguments[1]))
+    if len(arguments) == 3 and arguments[0] == "--tranche":
+        return tranche(module, arguments[1], int(arguments[2]))
+    unittest.main(module=module, argv=[fichier, *arguments])
+
+
+class TestSuiteEnParallele(unittest.TestCase):
+    """ruche-0092: the suite in parallel processes loses no test: each runs exactly once, or the whole run fails (a test added
+    or removed after the split, a split that drops or doubles one, an empty shard, a shard that ran nothing, a failed one, a
+    skip, an expected failure, an unexpected success). The module essai.py: ECART sets B.test_4's deviation, LENT slows B.test_5."""
+
+    TESTS = ["A.test_1", "A.test_2", "B.test_3", "B.test_4", "B.test_5"]
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.module = pathlib.Path(self.temp.name) / "essai.py"
+        self.module.write_text(f"import os, sys, time, unittest\nsys.path.insert(0, {str(RACINE / 'outils')!r})\nimport test_bee\n"
+                               "ECART = os.environ.get('ECART')\n"
+                               "class A(unittest.TestCase):\n    def test_1(self): pass\n    def test_2(self): pass\n"
+                               "class B(unittest.TestCase):\n    def test_3(self): pass\n"
+                               "    def test_4(self):\n"
+                               "        if ECART == 'skip': self.skipTest('a reason')\n"
+                               "        with self.subTest(n=1):\n"
+                               "            if ECART == 'skipped subtest': self.skipTest('in a subtest')\n"
+                               "        self.assertNotEqual(ECART, 'expected failure')\n"
+                               "    if ECART in ('expected failure', 'unexpected success'): test_4 = unittest.expectedFailure(test_4)\n"
+                               "    def test_5(self):\n"
+                               "        self.assertNotIn('ECHEC', os.environ)\n"
+                               "        time.sleep(float(os.environ.get('LENT', 0)))\n"
+                               "sys.exit(test_bee.principal_tests(sys.modules[__name__], __file__, sys.argv[1:]))\n", encoding="utf-8")
+
+    def lancer(self, tests, processus=2):
+        sortie = io.StringIO()
+        with contextlib.redirect_stdout(sortie):
+            code = en_parallele([sys.executable, str(self.module)], tests, processus)
+        return code, sortie.getvalue()
+
+    def test_each_test_runs_exactly_once(self):
+        for processus in (1, 2, 5):
+            with self.subTest(processus=processus):
+                code, sortie = self.lancer(self.TESTS, processus)
+                self.assertEqual(code, 0, sortie)
+                self.assertEqual(sortie.count("=== shard "), processus)
+                self.assertTrue(sortie.endswith(f"5 tests in {processus} processes ({os.cpu_count()} CPUs): each ran exactly once, all passed.\n"))
+        self.assertEqual(ids_des_tests(sys.modules[__name__]).count("TestSuiteEnParallele.test_each_test_runs_exactly_once"), 1)
+
+    def test_a_test_added_or_removed_after_the_split_fails_the_run(self):
+        code, sortie = self.lancer([t for t in self.TESTS if t != "B.test_4"])  # in no shard: no process runs it
+        self.assertEqual(code, 1, sortie)
+        self.assertIn("the suite changed after the split (added: ['B.test_4'], removed: [])", sortie)
+        self.assertNotIn("B.test_4: run", sortie)
+        code, sortie = self.lancer(self.TESTS + ["B.test_6"])
+        self.assertEqual(code, 1, sortie)
+        self.assertIn("the suite changed after the split (added: [], removed: ['B.test_6'])", sortie)
+        self.assertIn("B.test_6: run 0 times, expected 1", sortie)
+
+    def test_a_split_that_drops_or_doubles_a_test_or_leaves_a_shard_empty_runs_nothing_and_fails(self):
+        for fautive, erreur in ((lambda t, n: [t[:2], t[3:]], "B.test_3: in the shards 0 times, expected 1"),
+                                (lambda t, n: [t[:3], t[2:]], "B.test_3: in the shards 2 times, expected 1"),
+                                (lambda t, n: [t, []], "shard 2/2: no test")):
+            with self.subTest(erreur=erreur), mock.patch.dict(globals(), repartir=fautive):
+                code, sortie = self.lancer(self.TESTS)
+                self.assertEqual(code, 1, sortie)
+                self.assertIn(erreur, sortie)
+                self.assertNotIn("=== shard", sortie)
+        code, sortie = self.lancer(self.TESTS, 6)
+        self.assertEqual((code, sortie.count("=== shard")), (1, 0), sortie)
+        self.assertIn("shard 6/6: no test", sortie)
+
+    def test_a_shard_that_ran_nothing_or_reported_nothing_fails_the_run(self):
+        tranches = repartir(self.TESTS, 2)
+        self.assertEqual(controler(self.TESTS, tranches, [{"vus": self.TESTS, "lances": t} for t in tranches]), [])
+        self.assertEqual(controler(self.TESTS, tranches, [{"vus": self.TESTS, "lances": tranches[0]}, {"vus": self.TESTS, "lances": []}]),
+                         ["shard 2/2: ran no test", "A.test_2: run 0 times, expected 1", "B.test_4: run 0 times, expected 1"])
+        self.assertIn("shard 2/2: no report", controler(self.TESTS, tranches, [{"vus": self.TESTS, "lances": tranches[0]}, None]))
+
+    def test_a_failed_shard_fails_the_run(self):
+        with mock.patch.dict(os.environ, ECHEC="1"):
+            code, sortie = self.lancer(self.TESTS)
+        self.assertEqual(code, 1, sortie)
+        self.assertIn("shard 1/2: exit code 1", sortie)  # B.test_5, the 5th test, is in the 1st shard
+
+    def test_a_bad_number_of_processes_runs_nothing(self):
+        for nombre in ("0", "-1", "deux", "²"):
+            with self.subTest(nombre=nombre), self.assertRaises(SystemExit) as fin, contextlib.redirect_stderr(io.StringIO()):
+                principal_tests(sys.modules[__name__], __file__, ["--processus", nombre])  # unittest.main: unknown option
+            self.assertEqual(fin.exception.code, 2)
+
+    def test_a_skip_an_expected_failure_or_an_unexpected_success_fails_the_run(self):
+        for ecart, attendu in (("skip", "skipped (a reason)"), ("skipped subtest", "skipped (in a subtest)"),
+                               ("expected failure", "expected failure"), ("unexpected success", "unexpected success")):
+            with self.subTest(ecart=ecart), mock.patch.dict(os.environ, ECART=ecart):
+                code, sortie = self.lancer(self.TESTS)
+                self.assertEqual(code, 1, sortie)
+                self.assertIn(f"shard 2/2: B.test_4: {attendu} (the parallel run accepts no skip, expected failure or unexpected "
+                              "success)", sortie)
+                self.assertIn("shard 2/2: exit code 1", sortie)
+                self.assertNotIn("all passed", sortie)
+
+    def test_each_shards_log_prints_as_soon_as_it_ends(self):
+        with mock.patch.dict(os.environ, LENT="3"):  # B.test_5, in shard 1, ends 3 s after shard 2
+            code, sortie = self.lancer(self.TESTS)
+        self.assertEqual(code, 0, sortie)
+        self.assertLess(sortie.index("=== shard 2/2: 2 tests, exit code 0"), sortie.index("=== shard 1/2: 3 tests, exit code 0"))
+
+    def test_the_real_file_exits_with_the_runners_code(self):
+        """The entry line of outils/test_bee.py itself: without sys.exit, a failed parallel run would exit 0 and pass the step."""
+        r = subprocess.run([sys.executable, str(RACINE / "outils" / "test_bee.py"), "--processus", "1000"], capture_output=True,
+                           text=True, stdin=subprocess.DEVNULL)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("shard 1000/1000: no test", r.stdout)
+        self.assertNotIn("=== shard", r.stdout)  # a split that fails runs nothing
+
+    def test_validation_yml_runs_the_suite_in_processes_inside_its_job(self):
+        etape = TestCiScope.etapes()[1]["outil"]
+        self.assertRegex(etape["run"], r"^python3 outils/test_bee\.py --processus [1-9][0-9]*\n?$")
+        self.assertIsInstance(etape.get("timeout-minutes"), int)  # a hang stops the job, not after GitHub's 360 minutes
+
+    def test_validation_yml_runs_each_check_once_in_order_and_none_fails_silently(self):
+        """The tool's tests, then the judge's, then bee valider, then bee verifier-pr, each once in the « valider » job, and no
+        continue-on-error (job or step): a failed step stops the job. Checked on the file and on altered copies of it."""
+        texte = (RACINE / ".github/workflows/validation.yml").read_text(encoding="utf-8")
+        commandes = ("python3 outils/test_bee.py --processus", "python3 outils/juge/test_juge.py", "python3 outils/bee.py valider",
+                     "python3 outils/bee.py verifier-pr")
+
+        def ecarts(flux):
+            job = flux["jobs"]["valider"]
+            places = [[k for k, e in enumerate(job["steps"]) for _ in range(str(e.get("run", "")).count(c))] for c in commandes]
+            return ([f"{c}: {len(p)} times" for c, p in zip(commandes, places) if len(p) != 1]
+                    + ["out of order"] * (sorted(p[0] for p in places if p) != [p[0] for p in places if p])
+                    + [f"continue-on-error: {e.get('name', 'job')}" for e in (job, *job["steps"]) if "continue-on-error" in e])
+
+        def place(flux, nom):
+            return next(k for k, e in enumerate(flux["jobs"]["valider"]["steps"]) if e.get("name", "").startswith(nom))
+
+        def deplacer(flux, nom, avant):
+            etape = flux["jobs"]["valider"]["steps"].pop(place(flux, nom))
+            flux["jobs"]["valider"]["steps"].insert(place(flux, avant), etape)
+
+        self.assertEqual(ecarts(yaml.safe_load(texte)), [])
+        etapes = lambda f: f["jobs"]["valider"]["steps"]  # noqa: E731
+        alterations = {
+            "continue-on-error on the tests": lambda f: etapes(f)[place(f, "Tests de l'outil")].update({"continue-on-error": True}),
+            "continue-on-error on the job": lambda f: f["jobs"]["valider"].update({"continue-on-error": True}),
+            "Validation complète above the tests": lambda f: deplacer(f, "Validation complète", "Tests de l'outil"),
+            "the PR rules above bee valider": lambda f: deplacer(f, "Règles de la pull request", "Validation complète"),
+            "bee valider twice": lambda f: etapes(f).append(etapes(f)[place(f, "Validation complète")]),
+            "no judge tests": lambda f: etapes(f).pop(place(f, "Tests unitaires du juge")),
+        }
+        for nom, alterer in alterations.items():
+            with self.subTest(alteration=nom):
+                flux = yaml.safe_load(texte)
+                alterer(flux)
+                self.assertTrue(ecarts(flux), nom)
+
+
 if __name__ == "__main__":
-    unittest.main()
+    sys.exit(principal_tests(sys.modules[__name__], __file__, sys.argv[1:]))

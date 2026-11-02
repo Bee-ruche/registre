@@ -543,8 +543,10 @@ class Registre:
 
 FUTUR_LOINTAIN = dt.datetime.max.replace(tzinfo=dt.timezone.utc)
 PASSE = dt.datetime.min.replace(tzinfo=dt.timezone.utc)
-# Une date déclarée (réservation, inscription, soumission) ne dépasse jamais l'instant de vérification de plus d'une minute.
+# A declared date (reservation, registration, submission...) is never more than a minute after the time of the PR (ruche-0091:
+# in CI, the push's) or of the check that reads it.
 AVANCE_MAX = dt.timedelta(minutes=1)
+INSTANT_PR_AGE_MAX = dt.timedelta(hours=24)  # ruche-0091: --instant-pr is refused outside [the check - this, the check + AVANCE_MAX]
 
 
 def paralleles_de(tache):
@@ -1463,10 +1465,10 @@ def tableau_essaim(reg, instant=None, jours_notes=7):
     debats = [resume_debat(d) for _, d in reg.debats.values() if isinstance(d, dict) and d.get("statut") == "ouvert"]
     debats.sort(key=lambda x: (str(x["derniere_activite"] or ""), x["id"] or ""), reverse=True)
     # R13 : les invitations en cours (ni acceptées, ni refusées, ni sans réponse, ni écartées) et l'état du frein.
-    frein = etat_frein(reg, instant)
-    invitations = [resume_invitation(i, instant, frein) for _, (_, i) in sorted(reg.invitations.items())
+    frein, conf = etat_frein(reg, instant), config_croissance(reg)
+    invitations = [resume_invitation(i, conf, instant, frein) for _, (_, i) in sorted(reg.invitations.items())
                    if isinstance(i, dict) and etat_invitation(i) in ("proposee", "decidee", "envoyee", "relancee")
-                   and not expiree(i, instant)]
+                   and not expiree(i, instant, conf)]
     return {"en_cours": en_cours, "en_relecture": relecture, "courses": courses, "notes": notes[:15], "debats": debats,
             "invitations": invitations, "frein": frein}
 
@@ -2566,7 +2568,7 @@ def verifier_engagements(reg, chemin, ancien, nouveau, differences, auteur, *, e
                    f"le nouveau titulaire doit être le plus ancien inscrit en parallèle, {elu.get('utilisateur')}, à la date de "
                    f"son inscription ({elu.get('depuis')}) : l'échéance R7 ne s'allonge pas")
             exiger(pn == sans(pa, elu.get("utilisateur")), "seul le nouveau titulaire quitte la liste des inscrits en parallèle")
-        exiger(titulaire == auteur or est_conseil or (est_robot and engagement_expire(reg, ra.get("depuis"), instant)),
+        exiger(titulaire == auteur or est_conseil or (est_robot and engagement_expire(reg, ra.get("depuis"), maintenant())),
                f"seul le titulaire ({titulaire}) libère sa réservation avant expiration")
         return "promotion", problemes
 
@@ -2627,7 +2629,7 @@ def verifier_engagements(reg, chemin, ancien, nouveau, differences, auteur, *, e
                "une PR ne retire qu'une inscription en parallèle, la sienne, sans réordonner les autres")
         p = retraits[0]
         qui = p.get("utilisateur")
-        exiger(qui == auteur or est_conseil or (est_robot and engagement_expire(reg, p.get("depuis"), instant)),
+        exiger(qui == auteur or est_conseil or (est_robot and engagement_expire(reg, p.get("depuis"), maintenant())),
                f"on ne retire que sa propre inscription en parallèle ({qui} n'est pas {auteur})")
         return "retrait_parallele", problemes
     if pa != pn:
@@ -2901,6 +2903,12 @@ def montrer(texte):
     « :: » at the start of a line, after any spaces (the runner trims them)."""
     texte = "".join(f"<U+{ord(c):04X}>" if caractere_sortant_interdit(c) else c for c in str(texte)).replace("##[", "# #[")
     return re.sub(r"(?m)^(\s*)::", r"\1: :", texte)
+
+
+def montrer_ligne(texte):
+    """montrer, sur une seule ligne : un saut de ligne s'écrit « \\n » ; un champ d'une ligne (identifiant, canal, demande) ne
+    fabrique pas une ligne qui imiterait bee (revue de ruche-0052)."""
+    return montrer(texte).replace("\n", "\\n")
 
 
 CLE_VERDICT = re.compile(r"[A-Za-z0-9_.-]{1,80}")
@@ -3529,8 +3537,10 @@ HOTES_FORGES = {"github.com": "github", "gitlab.com": "gitlab", "codeberg.org": 
                 "git.sr.ht": "sourcehut"}
 # Tout sous-domaine d'une forge (gist.github.com, raw.githubusercontent.com, todo.sr.ht…) se ramène au profil du premier
 # segment du chemin (troisième revue adverse, C5) ; l'API désigne le profil après users/, repos/ ou orgs/.
-DOMAINES_FORGES = {"github.com": "github", "githubusercontent.com": "github", "gitlab.com": "gitlab", "codeberg.org": "codeberg",
-                   "sr.ht": "sourcehut"}
+DOMAINES_FORGES = {"github.com": "github", "githubusercontent.com": "github", "github.dev": "github", "gitlab.com": "gitlab",
+                   "codeberg.org": "codeberg", "sr.ht": "sourcehut"}
+# GitHub-owned hosts whose path does not name the owner (ruche-0049): a shortener, an editor (vscode.dev/github/<owner>/…).
+HOTES_GITHUB_OPAQUES = ("git.io", "vscode.dev")
 PAGES_FORGES = {"github.io": "github", "gitlab.io": "gitlab", "codeberg.page": "codeberg", "srht.site": "sourcehut"}
 # Un site se compare sur son domaine enregistrable : les deux derniers labels, trois sous ces suffixes à deux niveaux courants.
 # Limite (docs/croissance.md) : sans la liste publique des suffixes, un suffixe à deux niveaux absent d'ici n'est pas reconnu.
@@ -3724,18 +3734,164 @@ def donnee_personnelle(texte):
     return "un numéro de téléphone" if numero_de_telephone(texte) else None
 
 
-def texte_sortant_refuse(texte, quoi, maximum):
+def texte_sortant_refuse(texte, quoi, maximum, organisation=None):
     """None si un texte qui sortira de la ruche est recevable : texte_recevable, sans caractère sortant interdit, sans donnée
-    personnelle ; sinon la raison."""
+    personnelle ; sinon la raison. With `organisation` (PR title or body, ruche-0049): the entities decoded first, and
+    renvoi_hors_ruche on every way the text may be read (as typed, as GitHub decodes it, decoded to a fixed point)."""
     probleme = texte_recevable(texte, quoi, maximum)
     if probleme:
         return probleme
+    lus = [texte]  # as typed, as GitHub decodes it, decoded to a fixed point with a reference past U+10FFFF dropped or U+FFFD
+    if organisation is not None:
+        try:
+            lus += [html.unescape(texte.replace("\\&", "&amp;")), entites_decodees(texte, "")]  # once, an escaped & kept
+            texte = entites_decodees(texte, "\ufffd")
+        except ValueError:  # a numeric reference longer than int() reads (&#000…64;)
+            return f"{quoi} : référence de caractère démesurée (&#…;) : écrivez le caractère lui-même"
     c = next((c for c in texte if caractere_sortant_interdit(c)), None)
     if c is not None:
         return (f"{quoi} : caractère invisible refusé (U+{ord(c):04X}, catégorie {unicodedata.category(c)}) : ce texte sort de la "
                 "ruche, il ne cache rien")
-    donnee = donnee_personnelle(texte)
-    return (f"{quoi} : {donnee} : aucune donnée personnelle au-delà de l'identifiant public et du canal (R13)" if donnee else None)
+    donnee = next(filter(None, map(donnee_personnelle, dict.fromkeys([texte] + lus[2:]))), None)  # U+FFFD, or dropped
+    renvoi = (next(filter(None, (renvoi_hors_ruche(lu, organisation) for lu in lus + [texte])), None)
+              if organisation is not None and not donnee else None)
+    return (f"{quoi} : {donnee} : aucune donnée personnelle au-delà de l'identifiant public et du canal (R13)" if donnee
+            else f"{quoi} : {renvoi} : ce texte sort de la ruche (commandements 8 et 13)" if renvoi else None)
+
+
+def entites_decodees(texte, abandon):
+    """`texte` with its HTML entities decoded to a fixed point, each numeric reference by reference_decodee."""
+    while texte != (decode := html.unescape(re.sub(r"&#(?:[0-9]+|[xX][0-9a-fA-F]+);?", lambda m: reference_decodee(m[0], abandon),
+                                                   texte))):
+        texte = decode
+    return texte
+
+
+def reference_decodee(reference, abandon):
+    """A numeric character reference (&#64;, &#x40;) decoded as html does, except a character the check of hidden characters
+    refuses when typed (&#0;, &#1;, &#12;, &#13;, &#128;, &#xD800;, &#xFDD0;) or a tab or a newline (&#9;, &#10;), kept as
+    itself: that check then treats it as the character typed. `abandon` past U+10FFFF or where html gives nothing. ValueError
+    if the number is longer than int() reads."""
+    hexa = reference[2] in "xX"
+    n = int(reference[3 if hexa else 2:].rstrip(";"), 16 if hexa else 10)
+    if n > 0x10FFFF:
+        return abandon
+    c = chr(n)
+    return c if c in "\t\n" or caractere_sortant_interdit(c) else html.unescape(reference) or abandon
+
+
+# What GitHub would turn into a notification or a link outside the hive (ruche-0049). Fail closed: each is searched in several
+# forms of the text (renvoi_hors_ruche), and refusing an honest text is the accepted cost.
+MENTION_GITHUB = re.compile(r"(?<![A-Za-z0-9])@[A-Za-z0-9][A-Za-z0-9/-]*|@[\w.+-]*@[A-Za-z0-9][A-Za-z0-9/-]*")
+REFERENCE_GITHUB = re.compile(r"(?i)(?<![\w.-])([\w.-]+)(?:/[\w.-]+#\d+|(?:/[\w.-]+)?@[0-9a-f]{7,})")
+LIEN_OU_HOTE = re.compile(r"(?i)(?<![\w.-])(?:https?://)?(?:[\w-]+\.)+[a-z]{2,}([^\s<]*)")  # as far as a GFM autolink goes
+# Where a link destination starts: ](…), ]: … (a reference definition), a URL attribute (href=…), <https:… (an autolink).
+ATTRIBUT_URL = (r"\b(?:href|src|srcset|action|formaction|data|poster|cite|background|ping|longdesc|usemap|manifest|content"
+                r"|imagesrcset|xlink:href)\s*=")
+# Group 1: what follows a destination's start up to a .., a %xx or a ] (never the owner), else a root-relative /owner.
+LIEN_RELATIF = re.compile(r"(?i)(?:\][(:]|" + ATTRIBUT_URL + r"|<(?=https?:))\s*[\"'<]?\s*(?![a-z][a-z0-9+.-]*://)"
+                          r"(?=([^\s\"'<>()=]*?(?:\.\.(?![^/\\\s\"'<>()])|%[0-9a-f]{2}|\])|[/\\]+[^/\\\s\"'<>()\]=]*))?")
+UNE_BARRE = re.compile(r"^[/\\]")  # a root-relative link: its first segment is its owner (//x, /\x: another host)
+# % or \ in a host.
+LIEN_MASQUE = re.compile(r"(?i)(?:(https?:/*|//)(?=[^\s/<>()\[\]{}`'\"]*(?:%[0-9a-f]{2}|\\))|https?:|//)[^\s<>()\[\]{}`'\"]*")
+UNE_SEULE_BARRE = re.compile(r"(?i)(?<![\w.+-])(https?:)[/\\](?![/\\])")  # a browser reads https:/x as github.com/x
+SRCSET = re.compile(r"(?i)(srcset)")  # every candidate of a srcset is a link
+RENVOIS = (REFERENCE_GITHUB, LIEN_RELATIF, LIEN_MASQUE, UNE_SEULE_BARRE, SRCSET)  # group 1: an owner, or what is never one
+LIEN_SUSPECT = re.compile(r"%[0-9A-Fa-f]{2}|\\|/\.\.(?:/|$)|^\.(?=.)")  # after a forge host: %xx, \, /../, host.
+ECHAPPEMENT = re.compile(r"\\([!-/:-@\[-`{-~])")  # a CommonMark backslash escape
+BALISE = re.compile(r"<!--[\s\S]*?(?:-->|$)|</?[A-Za-z][^<>]*>")  # an HTML comment or tag
+
+
+def renvoi_hors_ruche(texte, organisation):
+    """What GitHub would turn into a notification or a link outside `organisation`, the hive's GitHub owner, in a PR title or
+    body, else None. GitHub's rendering is not modelled: the text is read as is, without its backslash escapes, then without its
+    HTML tags too, each as is, after NFKC, and with no blank in a quoted attribute value; code included, _ may be emphasis."""
+    sans_echappements = ECHAPPEMENT.sub(r"\1", texte)
+    for base in (texte, sans_echappements, BALISE.sub("", sans_echappements)):
+        nfkc = unicodedata.normalize("NFKC", base).replace("\u3002", ".")
+        for forme in (base, nfkc, re.sub(r"=\s*(\"[^\"]*\"|'[^']*')|(?<=\]\()\s*<[^<>\n]*>|(?<=\]:)\s*<[^<>\n]*>",
+                                         lambda m: re.sub(r"\s", "", m[0]), nfkc)):  # no blank in a quoted value, <destination>
+            renvoi = premier_renvoi(forme, organisation)
+            if renvoi:
+                return renvoi
+    return None
+
+
+def premier_renvoi(forme, organisation):
+    """The first thing in `forme` that renvoi_hors_ruche refuses, named, or None."""
+    jeton = lambda m: next((mot for mot in (w.rstrip(")]>\"'.,;:!?") for w in forme[m.start():].split(maxsplit=2)[:2]) if mot),
+                           "")[:80]  # noqa: E731  the word it starts, or the next one (a definition's target after ]:)
+    if mention := MENTION_GITHUB.search(forme):
+        return f"la mention « {mention[0][:80]} » notifierait quelqu'un sur GitHub (écrivez le nom sans @)"
+    etiquettes = None
+    for motif in RENVOIS:
+        for m in motif.finditer(forme):
+            if UNE_BARRE.sub("", m[1] or organisation, count=1).casefold() == organisation.casefold():
+                continue
+            if m[0].startswith("]:"):
+                etiquettes = etiquettes_de(forme) if etiquettes is None else etiquettes
+                if definition_inutile(forme, m.start(), etiquettes):
+                    continue
+            return f"« {jeton(m)} » {raison_du_renvoi(motif, organisation)}"
+    # Each address read from its own start; \x0b marks the cuts (no accepted text has one), removed for a run's dot segments.
+    forme = re.sub(r"(?i)(?=https?://|www\.)", "\x0b", forme)
+    vus = set()
+    for m in LIEN_OU_HOTE.finditer(forme):
+        adresse = decoder_url(re.sub(r"(?i)^(?!https?://)", "https://", m[0])).replace("\\", "/")  # as a browser reads it
+        if sur_hotes(hote_de(adresse), HOTES_GITHUB_OPAQUES):
+            return f"« {jeton(m)} » mène vers GitHub sans dire où (raccourci ou éditeur) : donnez l'adresse github.com/…"
+        forges = {c for c in cles_d_adresse(adresse) if not c.startswith("site:")}
+        if forges - {f"github:{organisation.casefold()}"}:
+            return f"« {jeton(m)} » mène hors de {organisation} (seul son propriétaire GitHub est dans la ruche)"
+        forge = forges or sur_hotes(hote_de(adresse), tuple(DOMAINES_FORGES))  # even if a < or a blank hides the owner
+        if forge and LIEN_SUSPECT.search(m[1]):
+            return f"« {jeton(m)} » cache où il mène (%xx, \\, /../ ou hôte suivi d'un point)"
+        if forge and (fin := fin_de_suite(forme, m.start(1), vus)) is not None:  # the rest of its run, once
+            if LIEN_SUSPECT.search(forme[m.start(1):fin].replace("\x0b", "")):
+                return f"« {jeton(m)} » cache où il mène (%xx, \\, /../ ou hôte suivi d'un point)"
+    return None
+
+
+def fin_de_suite(forme, debut, vus):
+    """Where the whitespace-delimited run holding `debut` ends in `forme`, or None if a scan from an earlier start reached it."""
+    fin = re.compile(r"[^ \t\n\r\f]*").match(forme, debut).end()  # up to ASCII whitespace: a destination may hold <, NBSP, U+3000
+    if fin in vus:
+        return None
+    vus.add(fin)
+    return fin
+
+
+def raison_du_renvoi(motif, organisation):
+    """Why a pattern of RENVOIS refuses what it found, said to the bee."""
+    if motif is REFERENCE_GITHUB:
+        return f"renvoie à un dépôt hors de {organisation}"
+    if motif is LIEN_RELATIF:
+        return f"est un lien relatif qui mène hors de {organisation} ou cache où il mène (.., %xx, ])"
+    if motif is LIEN_MASQUE:
+        return "cache son hôte (%xx ou \\)"
+    if motif is UNE_SEULE_BARRE:
+        return "n'a qu'une barre : un navigateur y lit github.com/…"
+    return "liste plusieurs adresses : une image par src"
+
+
+def cle_etiquette(etiquette):
+    return " ".join(etiquette.split()).casefold()  # labels match regardless of case and blanks, as in CommonMark
+
+
+def etiquettes_de(forme):
+    """How many times each [label] appears in `forme` (a definition's own included)."""
+    compte = defaultdict(int)
+    for etiquette in re.findall(r"\[([^\[\]]*)\]", forme):
+        compte[cle_etiquette(etiquette)] += 1
+    return compte
+
+
+def definition_inutile(forme, fin, etiquettes):
+    """True if the reference definition whose label ends at `fin` ([label]: target) makes no link: its label appears nowhere
+    else (any other [label] counts as a use). An odd label (no [ within 1,000 characters, or ] or \\ in it) never does."""
+    debut = forme.rfind("[", max(0, fin - 1000), fin)
+    etiquette = forme[debut + 1:fin]
+    return debut >= 0 and not re.search(r"[\]\\]", etiquette) and etiquettes[cle_etiquette(etiquette)] < 2
 
 
 def hote_de(adresse):
@@ -4006,14 +4162,35 @@ def incidents_ouverts(reg, instant=None):
             if not (isinstance(i, dict) and (clos := _instant_ou_rien(i.get("clos_le"))) and clos <= limite)]
 
 
+def incident_suivant(liste):
+    """L'identifiant du prochain incident (bee incident, et la porte pour un gardien) : celui qui suit le plus grand déjà écrit,
+    sous la forme INC-<nnnn> ; None au-delà d'INC-9999 (le conseil décide alors de la suite)."""
+    n = 1 + max((int(i["id"][4:]) for i in liste if isinstance(i, dict) and re.fullmatch(r"INC-[0-9]{4}", str(i.get("id")))), default=0)
+    return f"INC-{n:04d}" if n <= 9999 else None
+
+
+def titre_incident_refuse(titre):
+    """None si le titre d'un incident signalé est recevable (bee incident, et la porte pour un gardien : revue de ruche-0052, B) :
+    une seule ligne, 300 caractères au plus, rien de caché ni de personnel, contrôlé comme ce qui sort de la ruche ; sinon la
+    raison. Limite : un nom de personne n'est pas reconnu ; une invitation se désigne par son numéro."""
+    if isinstance(titre, str) and re.search(r"[\r\n]", titre):
+        return "titre : une seule ligne"
+    return texte_sortant_refuse(titre, "titre", 300)
+
+
 def expiree(inv, instant, conf=None):
     """Une invitation non décidée expire (seconde revue adverse, G1) : expiration_jours après sa proposition, elle ne retient
     plus la personne et ne reçoit plus d'accord ; on en propose une nouvelle."""
     if not isinstance(inv, dict) or etat_invitation(inv) != "proposee":
         return False
+    return bool(fin := expiration(inv, conf)) and instant > fin
+
+
+def expiration(inv, conf=None):
+    """L'échéance d'une invitation non décidée, l'instant où elle expire (expiree ; bee voir) ; None sans date de proposition."""
     jours = (conf or {}).get("expiration_jours", CROISSANCE_DEFAUT["expiration_jours"])
     propose = _instant_ou_rien(inv.get("propose_le"))
-    return bool(propose) and instant > propose + dt.timedelta(days=jours)
+    return propose + dt.timedelta(days=jours) if propose else None
 
 
 def feu_vert(inv):
@@ -4575,17 +4752,18 @@ SUITE_INVITATION = {"decidee": "l'envoi (feu vert donné), par un humain du cons
                     "relancee": "une réponse ; sinon, sans réponse et la liste de non-contact"}
 
 
-def resume_invitation(inv, instant=None, frein=None):
-    """L'état d'une invitation en une ligne de données (bee essaim, site, API) ; « expiree » : non décidée à temps ;
-    « a_redecider » : feu vert échu sans envoi (troisième revue adverse, C8). `frein` (etat_frein) : sous un incident ou un
-    frein qui l'arrête, une invitation décidée n'attend rien, pas même l'envoi."""
+def resume_invitation(inv, conf, instant=None, frein=None):
+    """L'état d'une invitation en une ligne de données (bee essaim, bee voir, site, API) ; « expiree » : non décidée à temps ;
+    « a_redecider » : feu vert échu sans envoi (troisième revue adverse, C8). `conf` (config_croissance) : l'échéance est
+    celle de bee.yaml, comme à la porte (revue de ruche-0052, A). `frein` (etat_frein) : sous un incident ou un frein qui
+    l'arrête, une invitation décidée n'attend rien, pas même l'envoi."""
     instant = instant or maintenant()
     etat = etat_invitation(inv)
     attend = (("l'accord du conseil" if "accord_gardien" in inv else "l'accord d'un gardien") if etat == "proposee"
               else SUITE_INVITATION.get(etat))
     if etat == "decidee" and feu_vert(inv):
         attend = f"{attend}, avant le {en_iso(feu_vert(inv) + SEMAINE)} (échéance du feu vert)"
-    if expiree(inv, instant):
+    if expiree(inv, instant, conf):
         etat, attend = "expiree", "rien : non décidée à temps, elle ne retient plus la personne"
     elif feu_vert_echu(inv, instant):
         etat = "a_redecider"
@@ -4611,7 +4789,11 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
     ruche-0089: a declared agent account (AGENT_ACCOUNTS, read in the base: a PR never declares its own author) is checked
     as its person, without the person's council, guardian or robot status. If that fails or is not all self-service, it is
     checked as its person with that status: what passes then is never merged automatically (nature agent_account, a human
-    must look); what still fails is refused."""
+    must look); what still fails is refused.
+
+    ruche-0091: `instant` is the time of the PR: in CI, the time GitHub recorded for the push (--instant-pr), else now. Every
+    declared date is checked against it, and so is what is judged at the time of the act (R7, R8, the 24 h caps, the agora's
+    delays, an earlier invitation's expiry); engagement expiries, the end of a vote, the brake and the account's age: now."""
     instant = instant or maintenant()
     try:
         agents = agent_accounts(lire_yaml_ref(reg.racine, base, AGENT_ACCOUNTS))
@@ -4714,7 +4896,7 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
     def frein():
         """L'état du frein de R13 (etat_frein), calculé une fois, et seulement si un geste vers le contact le demande."""
         if not frein_calcule:
-            frein_calcule.append(etat_frein(reg, instant))
+            frein_calcule.append(etat_frein(reg, maintenant()))  # ruche-0091: the brake as it is at the check
         return frein_calcule[0]
 
     def exiger(condition, message):
@@ -4886,7 +5068,7 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
                 expiree = False
                 try:
                     depuis = lire_instant((ancien.get("reservation") or {}).get("depuis"), chemin)
-                    expiree = instant - depuis > dt.timedelta(hours=int(reg.config.get("reservation_max_heures", 72)))
+                    expiree = maintenant() - depuis > dt.timedelta(hours=int(reg.config.get("reservation_max_heures", 72)))
                 except ErreurBee:
                     pass
                 exiger(titulaire == auteur or est_conseil or (est_robot and expiree),
@@ -5185,7 +5367,7 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
                 exiger(probleme is None, f"{probleme} : relancez bee voter")
                 sujet = str(nouveau.get("sujet", ""))
                 if ID_PROPOSITION.match(sujet) and sujet in reg.propositions:
-                    resultat = depouiller_proposition(reg, sujet, niveaux, instant)
+                    resultat = depouiller_proposition(reg, sujet, niveaux, maintenant())  # closed at the check (ruche-0091)
                     exiger(not resultat["terminee"] and reg.propositions[sujet][1].get("statut") == "ouverte",
                            f"{chemin} : le vote sur {sujet} est clos")
                 # ruche-0042: a contribution's vote closes when it leaves review, for everyone; the folder's and the file's subject.
@@ -5243,7 +5425,7 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
                         github = lire_date(compte_cree_le, "--compte-cree-le")
                         exiger(str(nouveau.get("compte_cree_le")) == github.isoformat(),
                                f"{chemin} : compte_cree_le ne correspond pas à la date fournie par GitHub ({compte_cree_le})")
-                        age = (instant.astimezone(dt.timezone.utc).date() - github).days
+                        age = (maintenant().astimezone(dt.timezone.utc).date() - github).days
                         exiger(age >= minimum, f"{chemin} : le compte GitHub doit avoir au moins {minimum} jours")
                     except ErreurBee as e:
                         problemes.append(str(e))
@@ -5321,6 +5503,34 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
             problemes += refus
             continue
 
+        if chemin == "gouvernance/incidents.yaml" and not est_conseil and status and auteur in gardiens_en_fonction(reg):
+            # R13, frein : un gardien en fonction à l'heure de la PR ajoute un incident ouvert, tel que l'écrit bee incident (revue
+            # de ruche-0052, B) : en fin de liste, au numéro suivant, id, titre et ouvert_le seulement, un titre d'une ligne ni
+            # caché ni personnel, daté de l'heure de la PR, le fichier sous sa forme canonique (ni commentaire ni remplissage).
+            # Le conseil fusionne.
+            natures.append("incident")
+            avant, apres = ((x or {}).get("incidents") if isinstance(x or {}, dict) else None for x in (ancien, nouveau))
+            # Sur la base, le fichier est absent, ou lisible et tient une liste (revue de ruche-0052) : sinon le conseil le répare
+            # d'abord, comme bee incident le dit ; « incidents: » vide ou illisible ne se remplace pas par un seul incident.
+            exiger(statut_git == "A" or isinstance(avant, list), f"{chemin} illisible sur main : le conseil le répare d'abord (bee incident)")
+            ajout = apres[-1] if isinstance(apres, list) and apres and isinstance(apres[-1], dict) else {}
+            suivant = incident_suivant(avant if isinstance(avant, list) else [])
+            exiger(isinstance(apres, list) and apres[:-1] == (avant or []) and set(ajout) == {"id", "titre", "ouvert_le"}
+                   and ajout["id"] == suivant,
+                   f"{chemin} : un gardien n'y ajoute qu'un incident ouvert, en fin de liste, au numéro suivant "
+                   f"({suivant or 'aucun : INC-9999 est le dernier, le conseil décide'}), avec id, titre et ouvert_le seulement (bee incident)")
+            for probleme in ((titre_incident_refuse(ajout.get("titre")), probleme_date_pr(ajout.get("ouvert_le"), "ouvert_le", instant))
+                             if ajout else ()):
+                exiger(probleme is None, f"{chemin} : {probleme} (bee incident)")
+            sortie = subprocess.run(["git", "-C", str(reg.racine), "cat-file", "blob", f"{tete}:{chemin}"], capture_output=True)
+            try:
+                canonique = rendu_invitation(nouveau, chemin).encode("utf-8") if isinstance(nouveau, dict) else None
+            except ErreurBee:
+                canonique = None
+            exiger(sortie.returncode == 0 and sortie.stdout == canonique,
+                   f"{chemin} : le fichier n'est pas exactement sous la forme qu'écrit bee incident (commentaire, autre mise en forme) : "
+                   "écrivez-le avec bee incident")
+            continue
         if not est_conseil and correspond(chemin, CHEMINS_OUTILLAGE):
             # Tâches de la ruche (projets/ruche.yaml) : tout membre peut proposer une PR d'outillage du registre.
             # Elle n'est jamais fusionnée automatiquement (« outillage » n'est pas en libre-service) : un gardien
@@ -5742,9 +5952,16 @@ def cmd_voir(args):
     if ID_INVITATION.match(str(args.tache)):
         # Une invitation (R13) : son état calculé, ses identités déclarées et la consigne d'accord, puis ses données.
         _, inv = reg.invitation(args.tache)
-        resume = resume_invitation(inv, frein=etat_frein(reg))
-        print(f"{resume['id']} : {resume['statut']} ; demande : {resume['demande']} ; attend : {resume['attend']}")
+        conf = config_croissance(reg)
+        resume = resume_invitation(inv, conf, frein=etat_frein(reg))
+        print(montrer_ligne(f"{resume['id']} : {resume['statut']} ; demande : {resume['demande']} ; attend : {resume['attend']}"))
         print("\n".join(lignes_identites(inv)))
+        # Les dates relues par bee (jamais la valeur brute du fichier : revue de ruche-0052, C) ; l'échéance de la porte.
+        date = lambda m: en_iso(m) if m else "?"  # noqa: E731
+        print(f"proposée le {date(_instant_ou_rien(inv.get('propose_le')))}"
+              + (f" (échéance sans décision : {date(expiration(inv, conf))})" if etat_invitation(inv) == "proposee" else "")
+              + " ; accord du gardien : " + (date(_instant_ou_rien(bloc_de(inv, "accord_gardien").get("le"))) if "accord_gardien" in inv else "aucun")
+              + f" ; feu vert du conseil : {date(v) if (v := feu_vert(inv)) else 'aucun'}")
         print()
         print(cadre_donnees(inv, DEBUT_DONNEES.format(id=inv.get("id"))))
         return 0
@@ -6897,8 +7114,9 @@ def lignes_identites(inv):
     """Les identités déclarées d'une invitation, et la consigne d'accord (bee invitation, bee voir)."""
     personne = inv.get("personne") if isinstance(inv.get("personne"), dict) else {}
     autres = inv.get("autres_identites") if isinstance(inv.get("autres_identites"), list) else []
-    return [f"Identifiant : {_nettoyer(personne.get('identifiant', inv.get('personne')))} ; canal : {_nettoyer(personne.get('canal', '-'))}",
-            "Autres identités déclarées : " + (", ".join(_nettoyer(x) for x in autres) if autres else "aucune"),
+    # Par montrer (revue de ruche-0052) : ni commande de workflow (« :: » en début de ligne, « ##[ »), ni échappement du terminal.
+    return [montrer_ligne(f"Identifiant : {personne.get('identifiant', inv.get('personne'))} ; canal : {personne.get('canal', '-')}"),
+            montrer_ligne("Autres identités déclarées : " + (", ".join(str(x) for x in autres) if autres else "aucune")),
             CONSIGNE_IDENTITES]
 
 
@@ -6999,6 +7217,31 @@ def cmd_invitation(args):
     return 0
 
 
+def cmd_incident(args):
+    # R13, frein : un gardien en fonction ou le conseil inscrit un incident ouvert, tel que la porte l'accepte d'un gardien
+    # (verifier_pr) ; le frein le compte dès que le conseil a fusionné la PR.
+    reg, chemin, u = Registre(args.registre), "gouvernance/incidents.yaml", args.utilisateur
+    liste = reg.incidents.get("incidents") if isinstance(reg.incidents, dict) else None if (reg.racine / chemin).exists() else []
+    if u not in gardiens_en_fonction(reg) | reg.conseil:
+        raise ErreurBee(f"{u} n'est ni un gardien en fonction ni du conseil : signalez-leur l'écart (R13)")
+    if not isinstance(liste, list):
+        raise ErreurBee(f"{chemin} illisible : le conseil le répare d'abord")
+    ident = incident_suivant(liste)
+    if probleme := titre_incident_refuse(args.titre) or (None if ident else "INC-9999 est le dernier numéro : le conseil décide de la suite"):
+        raise ErreurBee(probleme)
+    # La réécriture canonique (la seule forme que la porte accepte d'un gardien) perd les commentaires du fichier : on le dit.
+    texte = (reg.racine / chemin).read_text(encoding="utf-8") if (reg.racine / chemin).exists() else ""
+    commentaires = texte != rendu_invitation({"incidents": liste}, chemin) and any(
+        l.lstrip().startswith("#") or " #" in l for l in texte.splitlines())
+    ecrire_invitation(reg.racine / chemin, {"incidents": liste + [{"id": ident, "titre": args.titre, "ouvert_le": en_iso(maintenant())}]})
+    print(f"✓ {ident} inscrit dans {chemin}. Publiez-le par une PR ordinaire (bee publier ne l'envoie pas) : le frein s'applique dès que "
+          f"le conseil l'a fusionnée ; alors, ce qui passe : {etat_frein(Registre(args.registre))['ce_qui_passe']}.")
+    if commentaires:
+        print(f"⚠ Les commentaires de {chemin} sont perdus : bee le réécrit sous sa forme canonique. Dites-le au conseil dans la PR ; "
+              "ses notes se gardent dans les champs des incidents (titre, issue), pas en commentaire.")
+    return 0
+
+
 def cmd_niveaux(args):
     reg = Registre(args.registre)
     niveaux = calculer_niveaux(reg)
@@ -7087,7 +7330,10 @@ def cmd_prs_declarees(args):
 def cmd_verifier_pr(args):
     reg = Registre(args.registre)
     auteurs_pr = lire_auteurs_pr(args.auteurs_pr) if args.auteurs_pr else None
-    problemes, natures = verifier_pr(reg, args.base, args.tete, args.auteur, args.compte_cree_le, auteurs_pr=auteurs_pr)
+    instant = None if args.instant_pr is None else lire_instant(args.instant_pr, "--instant-pr")  # empty or malformed: refused
+    if instant and not (m := maintenant()) - INSTANT_PR_AGE_MAX <= instant <= m + AVANCE_MAX:
+        raise ErreurBee(f"--instant-pr ({args.instant_pr}) : outside [the check - 24 h, the check + 1 min] : push again")
+    problemes, natures = verifier_pr(reg, args.base, args.tete, args.auteur, args.compte_cree_le, instant, auteurs_pr)
     problemes = list(dict.fromkeys(verifier_registre(reg) + problemes))  # once each (a file over its bound: ruche-0040)
     for p in problemes:
         print(f"✗ {montrer(p)}")
@@ -8105,6 +8351,10 @@ def cmd_publier(args):
     depot = reg.racine
     organisation = reg.config.get("organisation", "")
     amont = args.amont or f"{organisation}/registre"
+    corps = args.corps or f"Publié avec `bee publier`.\n\nNature : {args.titre}."
+    if probleme := (texte_sortant_refuse(args.titre, "titre", 256, organisation)  # both leave the hive: refused before any
+                    or texte_sortant_refuse(corps, "corps", 8000, organisation)):  # git or gh call; 256: GitHub's, 8000: fast
+        raise ErreurBee(probleme)
     changements = [l[3:] for l in git(depot, "status", "-z", "--porcelain", "--no-renames", "--untracked-files=all")]
     if not changements:
         raise ErreurBee("aucun changement à publier (avez-vous lancé bee prendre, soumettre, relire, voter… ?)")
@@ -8137,7 +8387,6 @@ def cmd_publier(args):
         proprietaire, _ = proprietaire_depot(executer(["git", "remote", "get-url", "origin"], depot).stdout.strip())
         proprietaire_amont, _ = proprietaire_depot(f"https://github.com/{amont}")
         tete = branche if proprietaire in (None, proprietaire_amont) else f"{proprietaire}:{branche}"
-        corps = args.corps or f"Publié avec `bee publier`.\n\nNature : {args.titre}."
         # API REST plutôt que `gh pr create` (GraphQL) : elle fonctionne aussi dans les environnements restreints.
         pr = json.loads(executer(["gh", "api", f"repos/{amont}/pulls", "-X", "POST", "-f", f"title={args.titre}",
                                   "-f", f"head={tete}", "-f", "base=main", "-f", f"body={corps}"], depot).stdout)
@@ -9003,6 +9252,12 @@ def construire_analyseur():
                            help="demande (défaut) : la personne le demande ; refus ou sans_reponse : une autre invitation de la même "
                                 "personne a été refusée ou est restée sans réponse")
 
+    p = ajouter("incident", cmd_incident, "R13, frein : un gardien en fonction ou le conseil inscrit un incident (écart, plainte, abus) "
+                "dans gouvernance/incidents.yaml ; PR ordinaire : toute invitation s'arrête dès que le conseil l'a fusionnée.")
+    p.add_argument("--utilisateur", required=True)
+    p.add_argument("--titre", required=True, help="ce qui s'est passé, en une ligne de 300 caractères au plus, sans donnée personnelle "
+                                                  "(une invitation : son numéro, jamais le nom de la personne)")
+
     p = ajouter("niveaux", cmd_niveaux, "Affiche le niveau et le poids de vote de chaque membre.")
     p.add_argument("--json", action="store_true")
 
@@ -9042,6 +9297,8 @@ def construire_analyseur():
     p.add_argument("--auteurs-pr", help="fichier « adresse<TAB>login » : auteur GitHub de chaque PR déclarée dans une contribution "
                                         "ajoutée ou modifiée (relevé par fusion-auto) ; chacune doit être celle de l'auteur de la "
                                         "contribution, et une PR absente est refusée")
+    p.add_argument("--instant-pr", help="time GitHub recorded for the push being checked (the CI gives it): every declared date "
+                                        "is checked against it; without it, the current time")
 
     p = ajouter("prs-declarees", cmd_prs_declarees,
                 "Liste les PR déclarées par les contributions ajoutées ou modifiées d'une PR du registre (utilisé par fusion-auto).")
