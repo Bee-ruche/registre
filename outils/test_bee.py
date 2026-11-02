@@ -3182,7 +3182,7 @@ class TestPublierParSession(BasePublier):
         git(self.dossier, "fetch", "-q", "origin")
         note_de_bruno, reservation, soumission = self.fusions(base)
         branche = (self.racine / "pr-1").read_text(encoding="utf-8").strip()
-        self.assertEqual(git(self.dossier, "show", f"{branche}:{self.TACHE}"), reservee, "la réservation telle que bee prendre l'écrit")
+        self.assertEqual(git(self.dossier, "show", f"origin/{branche}:{self.TACHE}"), reservee, "la réservation telle que bee prendre l'écrit")
         self.assertEqual(self.fichiers(reservation), [self.TACHE])
         self.assertEqual(self.fichiers(soumission), [self.SOUMISSION, self.TACHE, "taches/miniz/miniz-9002.yaml"])
         self.accepte(reservation, "alice", "reservation")
@@ -3234,23 +3234,194 @@ class TestPublierParSession(BasePublier):
         self.assertIn("Rien d'autre n'est publié : vos changements sont revenus sur le disque.", texte)
         self.assertEqual((self.prs(), sur_le_disque()), (["Réservation miniz-0099"], avant))
         self.mode.write_text("ouverte", encoding="utf-8")
-        code, texte = self.bee("publier", "--titre", "Soumission miniz-0099-c1", "--delai", "0", "--intervalle", "0")
-        self.assertEqual(code, 2, texte)
-        self.assertIn(f"git stash push -- {self.TACHE} ; git pull --ff-only upstream main ; git checkout 'stash@{{0}}' -- {self.TACHE} "
-                      "; git stash drop ; puis relancez bee publier.", texte)
-        self.assertEqual((self.prs(), sur_le_disque()), (["Réservation miniz-0099"] * 2, avant))
+        for _ in range(2):  # run again while it waits: the same PR is followed, a second one is never opened
+            code, texte = self.bee("publier", "--titre", "Soumission miniz-0099-c1", "--delai", "0", "--intervalle", "0")
+            self.assertEqual(code, 2, texte)
+            self.assertIn("rien d'autre n'est publié, vos changements sont sur le disque. Relancez bee publier une fois cette PR "
+                          "fusionnée : il la suit, sans en ouvrir une seconde.", texte)
+            self.assertNotIn("git stash", texte)
+            self.assertEqual((self.prs(), sur_le_disque()), (["Réservation miniz-0099"] * 2, avant))
+        self.assertIn("« Réservation miniz-0099 » attend déjà (https://github.com/Bee-ruche/registre/pull/2)", texte)
         self.assertEqual(git(self.dossier, "rev-parse", "--abbrev-ref", "HEAD").strip(), "main")
-        # The reservation merges; the recipe (this test's remote is origin) leads to the submission alone.
+        # The reservation merges; run once more, bee publier follows it, then sends the submission alone.
         self.mode.write_text("fusion", encoding="utf-8")
-        subprocess.run(["gh", "api", "repos/Bee-ruche/registre/pulls/2"], check=True, capture_output=True)
-        for commande in (["stash", "push", "-q", "--", self.TACHE], ["pull", "-q", "--ff-only", "origin", "main"],
-                         ["checkout", "stash@{0}", "--", self.TACHE], ["stash", "drop", "-q"]):
-            git(self.dossier, *commande)
         base = git(self.dossier, "rev-parse", "HEAD").strip()
         self.ok("publier", "--titre", "Soumission miniz-0099-c1", "--intervalle", "0")
         self.assertEqual(self.prs(), ["Réservation miniz-0099"] * 2 + ["Soumission miniz-0099-c1"])
-        (soumission,) = self.fusions(base)
+        reservation, soumission = self.fusions(base)
+        self.accepte(reservation, "alice", "reservation")
         self.accepte(soumission, "alice", "soumission")
+        self.assertEqual(git(self.dossier, "status", "--porcelain"), "")
+
+    # --- Revue de ruche-0129 : rien ne reste caché sur une branche locale ; une date hors de la fenêtre ; les plafonds ---
+
+    def disque(self, *autres):
+        """Les changements de la session sur le disque : le contenu des fichiers (None : absent), et git status."""
+        chemins = (self.SOUMISSION, self.TACHE, *autres)
+        return ({c: (self.dossier / c).read_bytes() if (self.dossier / c).exists() else None for c in chemins},
+                git(self.dossier, "status", "--porcelain"))
+
+    def test_interrompue_pendant_l_attente_rien_n_est_cache_et_la_relance_suit_la_meme_pr(self):
+        """Bloquant : interrompu pendant l'attente de l'engagement, bee publier laisse les changements de la session sur le disque,
+        pas sur une branche locale ; relancé pendant que la PR attend, il la suit sans en ouvrir une seconde ; elle fusionnée, il
+        publie le reste, que la porte accepte."""
+        self.preparer_reservation_et_soumission()
+        avant = self.disque()
+        self.mode.write_text("ouverte", encoding="utf-8")
+        with mock.patch("time.sleep", side_effect=KeyboardInterrupt), self.assertRaises(KeyboardInterrupt):
+            self.bee("publier", "--titre", "Soumission miniz-0099-c1", "--intervalle", "0")
+        self.assertEqual((self.prs(), self.disque()), (["Réservation miniz-0099"], avant))
+        code, texte = self.bee("publier", "--titre", "Soumission miniz-0099-c1", "--delai", "0", "--intervalle", "0")
+        self.assertEqual(code, 2, texte)
+        self.assertIn("« Réservation miniz-0099 » attend déjà (https://github.com/Bee-ruche/registre/pull/1) : bee publier la suit, "
+                      "sans en ouvrir une seconde.", texte)
+        self.assertIn(f"Remis sur le disque : {self.SOUMISSION}, {self.TACHE}", texte)
+        self.assertEqual((self.prs(), self.disque()), (["Réservation miniz-0099"], avant))
+        self.mode.write_text("fusion", encoding="utf-8")
+        base = git(self.dossier, "rev-parse", "HEAD").strip()
+        self.ok("publier", "--titre", "Soumission miniz-0099-c1", "--intervalle", "0")
+        self.assertEqual(self.prs(), ["Réservation miniz-0099", "Soumission miniz-0099-c1"])
+        reservation, soumission = self.fusions(base)
+        self.accepte(reservation, "alice", "reservation")
+        self.accepte(soumission, "alice", "soumission")
+        self.assertEqual((git(self.dossier, "status", "--porcelain"), self.tache("miniz-0099")["statut"]), ("", "en_relecture"))
+
+    def test_conflit_apres_l_engagement_les_changements_reviennent_sur_le_disque(self):
+        """Bloquant : l'engagement fusionné, le reste ne s'applique plus sur main (une note de bruno, fusionnée ailleurs, au même
+        endroit que celle de la session) : rien d'autre ne part, les changements de la session reviennent sur le disque, tels
+        quels, et bee publier dit lesquels ; main est à jour, avec l'engagement."""
+        note = "taches/miniz/miniz-9002.yaml"
+        ailleurs = self.racine / "ailleurs"
+        subprocess.run(["git", "clone", "-q", str(self.racine / "distant.git"), str(ailleurs)], check=True)
+        self.a("2026-10-27T11:50:00Z")
+        self.assertEqual(lancer("--registre", str(ailleurs), "noter", "miniz-9002", "--utilisateur", "bruno", "--texte",
+                                "Piste : regarder la table de hachage.")[0], 0)
+        for commande in (["add", "-A"], ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "note de bruno"],
+                         ["push", "-q", "origin", "main"]):
+            git(ailleurs, *commande)
+        self.preparer_reservation_et_soumission()
+        self.ok("noter", "miniz-9002", "--utilisateur", "alice", "--texte", "Approche : une table plus petite, même sortie.")
+        avant = self.disque(note)
+        code, texte = self.bee("publier", "--titre", "Soumission miniz-0099-c1", "--intervalle", "0")
+        self.assertEqual(code, 1, texte)
+        self.assertIn("« Réservation miniz-0099 » est fusionnée, mais « Soumission miniz-0099-c1 » ne s'applique plus sur main", texte)
+        self.assertIn(f"Remis sur le disque : {self.SOUMISSION}, {self.TACHE}, {note}", texte.rsplit("✓ PR fusionnée", 1)[1])
+        self.assertEqual((self.prs(), self.disque(note)[0]), (["Réservation miniz-0099"], avant[0]))
+        self.assertEqual(git(self.dossier, "rev-parse", "--abbrev-ref", "HEAD").strip(), "main")
+        git(self.dossier, "fetch", "-q", "origin")
+        self.assertEqual(git(self.dossier, "rev-parse", "HEAD"), git(self.dossier, "rev-parse", "origin/main"))
+        self.assertIn("statut: reservee", git(self.dossier, "show", f"HEAD:{self.TACHE}"))
+        self.assertIn("bruno", git(self.dossier, "show", f"HEAD:{note}"))
+
+    def test_poussee_refusee_les_changements_reviennent_sur_le_disque(self):
+        """À chaque échec, pas seulement pendant l'attente : une poussée refusée laisse la session sur le disque, listée, et non sur
+        la branche locale de la PR, une seule PR comme deux."""
+        for prendre in (False, True):
+            with self.subTest(engagement=prendre):
+                git(self.dossier, "switch", "-qf", "main")
+                git(self.dossier, "clean", "-qfd")
+                if prendre:
+                    self.preparer_reservation_et_soumission()
+                else:
+                    self.soumettre_0099()
+                avant = self.disque()
+                git(self.dossier, "remote", "set-url", "origin", str(self.racine / "absent.git"))
+                try:
+                    code, texte = self.bee("publier", "--titre", "Soumission miniz-0099-c1", "--intervalle", "0")
+                finally:
+                    git(self.dossier, "remote", "set-url", "origin", str(self.racine / "distant.git"))
+                self.assertEqual(code, 1, texte)
+                self.assertIn("git push", texte)
+                self.assertIn(f"Remis sur le disque : {self.SOUMISSION}, {self.TACHE}", texte)
+                self.assertEqual((self.prs(), self.disque(), git(self.dossier, "rev-parse", "--abbrev-ref", "HEAD").strip()),
+                                 ([], avant, "main"))
+
+    def test_un_changement_fait_pendant_l_attente_n_est_pas_perdu(self):
+        """Pendant que l'engagement attend, la session est sur le disque : un geste ajouté là (une note) n'est pas écrasé quand
+        main se met à jour ; bee publier s'arrête, le laisse sur le disque, et relancé, publie la session avec lui."""
+        note = "taches/miniz/miniz-9002.yaml"
+        self.preparer_reservation_et_soumission()
+        self.mode.write_text("ouverte", encoding="utf-8")
+
+        def pendant_l_attente(_):
+            self.mode.write_text("fusion", encoding="utf-8")
+            self.assertEqual(lancer("--registre", str(self.dossier), "noter", "miniz-9002", "--utilisateur", "alice", "--texte",
+                                    "Ajoutée pendant l'attente.")[0], 0)
+
+        base = git(self.dossier, "rev-parse", "HEAD").strip()
+        with mock.patch("time.sleep", side_effect=pendant_l_attente):
+            code, texte = self.bee("publier", "--titre", "Soumission miniz-0099-c1", "--intervalle", "0")
+        self.assertEqual(code, 1, texte)
+        self.assertIn("ont changé sur le disque pendant l'attente : ils y restent", texte)
+        self.assertIn("Ajoutée pendant l'attente.", (self.dossier / note).read_text(encoding="utf-8"))
+        self.ok("publier", "--titre", "Soumission miniz-0099-c1", "--intervalle", "0")
+        self.assertEqual(self.prs(), ["Réservation miniz-0099", "Soumission miniz-0099-c1"])
+        reservation, soumission = self.fusions(base)
+        self.assertEqual(self.fichiers(soumission), [self.SOUMISSION, self.TACHE, note])
+        self.accepte(soumission, "alice", "soumission", "note")
+
+    def test_une_date_hors_de_la_fenetre_de_la_porte_est_refusee_avec_la_commande_pour_la_redater(self):
+        """Chaque date déclarée est l'heure de la PR, à 2 h près, jamais dans le futur : une session plus vieille est refusée avant
+        toute PR, avec la commande qui la redate ; la seconde PR d'un engagement compte avec l'attente (--delai). Redatées, les
+        dates de la session suivent ensemble (engage_depuis avec sa réservation) et la porte accepte les deux PR."""
+        self.preparer_reservation_et_soumission()  # réservée à 12 h, soumise à 12 h 30
+        avant = self.disque()
+        self.a("2026-10-27T13:55:00Z")
+        for options in ([], ["--redater"]):
+            code, texte = self.bee("publier", "--titre", "Soumission miniz-0099-c1", "--a-blanc", *options)
+            self.assertEqual(code, 1, texte)
+            self.assertIn("2026-10-27T12:00:00Z : hors de la fenêtre de la porte (chaque date déclarée est l'heure de la PR, à 2 h près, "
+                          "jamais dans le futur ; pour la seconde PR, --delai minutes plus tard)", texte)
+            self.assertIn('bee publier --titre "Soumission miniz-0099-c1" --redater', texte)
+        self.assertEqual((self.prs(), self.disque()), ([], avant))
+        self.ok("publier", "--titre", "Soumission miniz-0099-c1", "--a-blanc", "--delai", "4")  # 13 h 59 - 2 h <= 12 h
+        self.a("2026-10-27T14:30:00Z")
+        base = git(self.dossier, "rev-parse", "HEAD").strip()
+        texte = self.ok("publier", "--titre", "Soumission miniz-0099-c1", "--redater", "--intervalle", "0")
+        self.assertIn("Redaté à 2026-10-27T14:30:00Z : 2026-10-27T12:00:00Z, 2026-10-27T12:30:00Z", texte)
+        self.assertEqual(self.prs(), ["Réservation miniz-0099", "Soumission miniz-0099-c1"])
+        reservation, soumission = self.fusions(base)
+        self.accepte(reservation, "alice", "reservation")
+        self.accepte(soumission, "alice", "soumission")
+        self.assertIn('depuis: "2026-10-27T14:30:00Z"', git(self.dossier, "show", f"{reservation}:{self.TACHE}"))
+        contribution = bee.lire_yaml(self.dossier / self.SOUMISSION)
+        self.assertEqual((contribution["engage_depuis"], contribution["soumise_le"]), ("2026-10-27T14:30:00Z",) * 2)
+
+    def test_plafonds_d_arguments_et_de_creations_comme_a_la_porte(self):
+        """bee publier compte les plafonds par PR comme la porte : les arguments, pour tous, le conseil compris
+        (agora.arguments_max_par_pr, ramené ici à 3 : à 20, les plafonds sur 24 h d'un auteur mordent avant) ; les tâches
+        proposées, pour chacun sauf le conseil. Au-delà, bee publier refuse avant toute PR, comme la porte ; au plafond, les deux
+        acceptent."""
+        config = self.dossier / "bee.yaml"
+        config.write_text(config.read_text(encoding="utf-8").replace("arguments_max_par_pr: 20", "arguments_max_par_pr: 3"),
+                          encoding="utf-8")
+        self.sur_main("plafond d'arguments par PR ramené à 3")
+        for qui, arguments, taches, refus in (
+                ("bidji29", 4, 0, ("4 arguments ajoutés, au plus 3 (agora.arguments_max_par_pr)",
+                                   "plafond : 4 arguments ajoutés par cette PR, au plus 3")),
+                ("bidji29", 3, 0, None),
+                ("alice", 0, 4, ("4 taches ajoutés, au plus 3 (creations.taches_max_par_pr)",
+                                 "plafond : 4 tâches proposées ajoutées par cette PR, au plus 3")),
+                ("alice", 0, 3, None), ("bidji29", 0, 4, None)):
+            with self.subTest(qui=qui, arguments=arguments, taches=taches):
+                git(self.dossier, "switch", "-qf", "main")
+                git(self.dossier, "clean", "-qfd")
+                if arguments:
+                    self.ok("debattre", "ouvrir", "--utilisateur", qui, "--question", "Faut-il regrouper les gestes d'une session ?")
+                for i in range(arguments):
+                    self.ok("debattre", "argumenter", "D-0001", "--utilisateur", qui, "--position", "pour", "--texte", f"Argument {i + 1}.")
+                for _ in range(taches):
+                    self.ok("proposer-tache", "miniz", "--utilisateur", qui, "--type", "test")
+                code, texte = self.bee("publier", "--titre", f"Session {qui}", "--a-blanc")
+                git(self.dossier, "switch", "-qc", f"session-{qui}-{arguments}-{taches}")
+                git(self.dossier, "add", "-A")
+                git(self.dossier, "commit", "-qm", "session")
+                porte = self.bee("verifier-pr", "--base", "main", "--tete", "HEAD", "--auteur", qui)
+                self.assertEqual((code, porte[0]), (1, 1) if refus else (0, 0), texte + porte[1])
+                if refus:
+                    self.assertIn(refus[0], texte)
+                    self.assertIn(refus[1], porte[1])
+        self.assertFalse(self.journal.exists(), "aucun appel à gh")
 
 
 class TestFork(BaseTest):
