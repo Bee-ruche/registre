@@ -17,3 +17,6 @@ RUN apt-get update -q \
  && DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends \
       gcc make binutils libc6-dev valgrind python3-minimal \
  && rm -rf /var/lib/apt/lists/*
+
+# Lien vers la racine : chaque dossier du juge y est monté à sa propre profondeur, au même rang partout (conteneur.LIEN).
+RUN ln -s / /.racine

@@ -77,7 +77,9 @@ a fixed metric that no scenario returns, read on verification alone, is named in
 (`conteneur.TMPFS`: 4 GiB, 262,144 files; as root or through `sudo -n`, as on juge.yml's runner, an error otherwise) and creates
 there anew, in a fixed order with fixed access and modification times, all the container sees of it: `chrono`, the harness,
 the inputs, `/etc/hostname`, `/etc/hosts`, `/etc/resolv.conf` (which Docker would write on the host's disk) and the outputs
-folder; once the container ends, the outputs are copied out and the tmpfs unmounted. Identical scenarios thus find the same
+folder; once the container ends, the outputs are copied out and the tmpfs unmounted. Docker (up to 29.0) mounts folders of equal
+depth in an order drawn for each container: each of the judge's is given at its own depth, through the image's link to its root
+(`/.racine/variante` is `/variante`), so all are mounted in one order. Identical scenarios thus find the same
 inodes, devices, links, sizes, directory order, free space and mount lines, change and birth times as old (`f_fsid` is drawn by
 the kernel at each mount), and no container's outputs share space with another's while it runs (test_memes_montures). What
 still follows the progress, as the clock does: the container's root, Docker's overlay on the host's disk (its inode, free
