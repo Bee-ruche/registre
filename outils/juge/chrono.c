@@ -13,7 +13,7 @@
    - forger une ligne de mesure : chaque ligne porte un jeton lu sur l'entrée standard avant le premier
      fork, que le fils ne voit jamais ;
    - savoir dans quel mode il tourne (ruche-0037) : quel que soit le mode, mêmes arguments, environnement fixe,
-     dossier courant « / », 0 = un tube portant ses paramètres ; chrono n'a ni argument ni fichier.
+     dossier courant « / », 0 = un tube portant ses paramètres (taille fixe) ; chrono n'a ni argument ni fichier.
 
    Décompte d'instructions (valgrind à 1) : la commande est valgrind --tool=cachegrind, dont le résumé
    (« I refs: N ») est la DERNIÈRE ligne écrite sur la sortie d'erreur du fils. chrono lit cette sortie
@@ -49,6 +49,7 @@
 #define CHAMPS_MAX 32
 #define LIGNE_MAX 4096
 #define QUEUE_MAX 65536
+#define PARAMETRES 256 /* les paramètres du fils : un enregistrement de taille fixe, quel que soit le mode */
 
 static char *const ENVIRONNEMENT[] = {"HOME=/tmp", "LC_ALL=C", "PATH=/usr/bin:/bin", NULL}; /* le même pour chaque fils */
 static volatile pid_t fils_courant = 0;
@@ -175,7 +176,7 @@ int main(int argc, char **argv)
 
     for (i = 0; i < nombre; i++)
     {
-        char *champs[CHAMPS_MAX + 1], *sauvegarde = NULL, *morceau;
+        char *champs[CHAMPS_MAX + 1], *sauvegarde = NULL, *morceau, parametres[PARAMETRES];
         int nchamps = 0, statut = 0, tube[2] = {-1, -1}, entree[2] = {-1, -1};
         size_t remplissage = 0;
         long long instructions = -1;
@@ -190,9 +191,16 @@ int main(int argc, char **argv)
         if (nchamps < 3 || !etiquette_valide(champs[0]))
             mourir("ligne de plan invalide");
 
-        n = strlen(champs[1]); /* les paramètres (le mode compris) : un tube que le fils lit puis ferme */
-        if (pipe2(tube, O_CLOEXEC) != 0 || pipe2(entree, O_CLOEXEC) != 0 || write(entree[1], champs[1], n) != (ssize_t)n
-            || write(entree[1], "\n", 1) != 1 || close(entree[1]) != 0)
+        /* Les paramètres (le mode compris) : PARAMETRES octets, la ligne complétée d'espaces et finie par une fin de
+           ligne, dans un tube que le fils lit puis ferme. */
+        n = strlen(champs[1]);
+        if (n >= PARAMETRES)
+            mourir("paramètres trop longs");
+        memset(parametres, ' ', PARAMETRES - 1);
+        memcpy(parametres, champs[1], n);
+        parametres[PARAMETRES - 1] = '\n';
+        if (pipe2(tube, O_CLOEXEC) != 0 || pipe2(entree, O_CLOEXEC) != 0 || write(entree[1], parametres, PARAMETRES) != PARAMETRES
+            || close(entree[1]) != 0)
             mourir("tubes impossibles");
         fflush(stdout);
         debut = maintenant();

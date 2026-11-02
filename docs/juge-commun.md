@@ -49,18 +49,26 @@ lue par le juge commun **depuis la base de la PR** (jamais depuis la PR). Modèl
 | `repetition(rng, corpus)`, `instructions(rng, corpus, prefixe)` | entrées des mesures, perturbées à chaque appel (le juge commun y mêle des entrées de vérification, puis renomme le tout) |
 | `scenario(s, a, b, entrees, mesure)` | vérifie **chaque** sortie d'un scénario mesuré par la règle de `verifier`, entrées de vérification mêlées comprises (invalides aussi), et en tire les métriques (à partir de la mesure de chrono) ; renvoie `(valeurs, sorties comparées)` |
 
-Le harnais (`execution`) est appelé sans argument ; son descripteur 0 porte une ligne `<mode> /entrees /sorties`, avec le
-mode `verifier` ou un nom de scénario ; `/entrees/liste` donne une ligne `<côté> <nom> <entier>` par entrée, dont les octets
-sont dans `/entrees/<côté>/<nom>`. Dans un scénario, il traite toute entrée de son côté comme en vérification.
+Le harnais (`execution`) est appelé sans argument ; son descripteur 0 porte 256 octets : la ligne `<mode> /entrees /sorties`
+(mode `verifier` ou nom de scénario), complétée d'espaces et finie par une fin de ligne ; `/entrees/liste` donne une ligne
+`<côté> <nom> <entier>` par entrée, dont les octets sont dans `/entrees/<côté>/<nom>`. Dans un scénario, il traite toute
+entrée de son côté comme en vérification.
 
 **What the harness guarantees the judged code (ruche-0037).** The same arguments, environment, descriptors, working directory
 and mounts in every mode (verification, timer, instruction count), one container per scenario; the mode reaches the harness on
-its descriptor 0. The harness reads its parameters to the end of the pipe, copies them, then erases their text, its arguments
-and its environment before any call to the judged code, and does the same work in every mode where it can. Verification inputs
-are mixed into the measured ones: at each repetition (warm-up included), ⌈n/r⌉ of each measured side (n of them on that side, r
-repetitions), taken in turn in an order drawn from the judge's seed, so each is timed at least once; as many in the instruction
-count (within its prefix). All are shuffled and renamed (`e0000`…), the same for A and B; a wrong output fails the judgement
-whatever the mode. `juge.json`: `juge.verification.entrees_melees` (total), `melees_par_repetition` (per side).
+its descriptor 0, in a record of fixed length. The harness reads that record to its end, copies it, then erases it, its
+arguments and its environment before any call to the judged code, and does the same work and writes the same outputs in every
+mode. `/variante` holds the harness alone; inputs, harness, `chrono` and the output folder carry fixed times. Inputs are
+shuffled and renamed (`e0000`…) in every mode; the plugin keeps its own names, translated by `Sorties`. These conditions do not
+hide everything about the run: the wall clock stays readable, and the instruction count runs under Valgrind, which the judged
+code can detect. Mixing is the backstop. Every verification input is verified; the verification inputs of each measured side are
+also mixed into the measured ones and spread over the repetitions (⌈n/r⌉ per repetition, warm-up included, taken in turn in an
+order drawn from the judge's seed; as many in the instruction count, within its prefix), the same for A and B. A wrong output
+fails the judgement whatever the mode, and B's output of a mixed-in input must be, byte for byte, its own output in
+verification. A measured side without verification inputs is an error. A scenario may return a fixed metric computed on its
+timed outputs (the toy's ratio); it replaces the value `fixes()` reads on verification. `juge.json`:
+`juge.verification.entrees_melees` (total), `melees_par_repetition` (per side), `instructions_sans_melange` (instruction-count
+scenarios that got none).
 
 Règles de sûreté, vérifiées par le juge commun (revue adverse du 28/10) :
 - les relevés d'analyse (`nm`, `objdump`) sont produits par le juge commun lui-même, dans un conteneur, sur

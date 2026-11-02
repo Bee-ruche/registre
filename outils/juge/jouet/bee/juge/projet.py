@@ -207,10 +207,12 @@ class Projet:
         return {"ratio": total / compresse if compresse else None}
 
     def scenario(self, s, a, b, entrees, mesure):
-        """Chaque sortie du scénario est vérifiée par la règle de justesse, quelle que soit son entrée."""
+        """Chaque sortie du scénario est vérifiée par la règle de justesse, quelle que soit son entrée ; le ratio est
+        relu sur les sorties chronométrées (il remplace celui de fixes, lu sur la vérification)."""
         cpu = mesure["utilisateur_s"] + mesure["systeme_s"]
         traites = [self.juste(a, b, e, f"{s}/") for e in entrees if e.cote == self.SCENARIOS[s]]
         valeurs = {f"debit_{s}": sum(traites) / 1e6 / cpu if cpu > 0 else None}
         if s == "compression":
-            valeurs["memoire_max_ko"] = mesure["maxrss_ko"]
+            compresse = sum(len(b.exiger("f", f"compression/c/{e.nom}")) for e in entrees if e.cote == "f")
+            valeurs.update(memoire_max_ko=mesure["maxrss_ko"], ratio=sum(traites) / compresse if compresse else None)
         return valeurs, len(traites)

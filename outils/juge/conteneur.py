@@ -21,6 +21,15 @@ ISOLATION = ["--network", "none", "--read-only", "--cap-drop", "ALL", "--securit
              "--user", "65534:65534", "--tmpfs", "/tmp:rw,noexec,nosuid,size=64m", "-e", "HOME=/tmp", "-e", "LC_ALL=C", "--hostname", "juge"]
 PAQUET = re.compile(r"[a-z0-9][a-z0-9+.-]{0,63}")
 HARNAIS = "/variante/execution"  # what follows it in a plan command reaches it on its descriptor 0, not in argv
+TEMPS = 946684800  # access and modification times of everything mounted for an execution, set before each container
+
+
+def temps_fixes(*dossiers):
+    """Fixed times on these folders (the judge's own) and everything in them, no link followed."""
+    for dossier in dossiers:
+        for racine, sous, noms in os.walk(dossier):
+            for chemin in [racine] + [os.path.join(racine, n) for n in sous + noms]:
+                os.utime(chemin, (TEMPS, TEMPS), follow_symlinks=False)
 
 
 class Docker:
@@ -122,6 +131,7 @@ class Execution:
                 raise Erreur(f"commande de plan invalide : {propre(etiquette, 80)}")
             lignes.append("\t".join([etiquette, " ".join(commande[i:])] + commande[:i]))
         dossier_ouvert(sorties)
+        temps_fixes(self.chrono, self.constructions[variante], entrees, sorties)
         jeton = secrets.token_hex(16)
         entree = "\n".join([jeton, f"{int(delai)} {int(bool(valgrind))}"] + lignes) + "\n"
         montages = [(self.chrono, "/chrono", True), (self.constructions[variante], "/variante", True), (entrees, "/entrees", True),
