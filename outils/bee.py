@@ -991,8 +991,9 @@ def commits_premier_parent(racine, ref, *chemins, filtre=None):
 def lire_versions(racine, demandes):
     """Contenu de fichiers à des révisions données, en un seul appel (git cat-file --batch) : {(sha, chemin): texte, ou None
     si le fichier n'existe pas à cette révision ou n'est pas du texte UTF-8}. Seuls les chemins de CHEMIN_HISTORIQUE sont lus.
-    ruche-0095: never a request that holds a newline (cat-file --batch reads one per line: it would shift every answer after it)."""
-    demandes = [d for d in dict.fromkeys(demandes) if CHEMIN_HISTORIQUE.match(d[1]) and "\n" not in f"{d[0]}:{d[1]}"]
+    ruche-0095: never a request that holds a newline or a carriage return (cat-file --batch reads one per line, and drops a
+    final carriage return: it would read another file, or shift every answer after it)."""
+    demandes = [d for d in dict.fromkeys(demandes) if CHEMIN_HISTORIQUE.match(d[1]) and not set("\n\r") & set(f"{d[0]}:{d[1]}")]
     resultat = {d: None for d in demandes}
     # ruche-0040: the sizes first; a version over its bound is not read at all.
     tailles = tailles_objets(racine, [f"{s}:{c}" for s, c in demandes]) if demandes else None
@@ -2212,8 +2213,9 @@ def probleme_marque(relatif):
 
 def tailles_objets(depot, noms):
     """The size in bytes of each git object `ref:path` (None: absent, not a file), in one call; None if git fails. One name per
-    line, which any git reads; NUL-separated (-Z, git 2.42 or later) only when a name holds a newline (ruche-0095)."""
-    fin = "\0" if any("\n" in n for n in noms) else "\n"
+    line, which any git reads; NUL-separated (-Z, git 2.42 or later) only when a name holds a newline or a carriage return,
+    which a line would cut, or drop at its end (ruche-0095)."""
+    fin = "\0" if any(c in n for n in noms for c in "\n\r") else "\n"
     code, sortie = _git_brut(depot, "cat-file", *(["-Z"] if fin == "\0" else []), "--batch-check=%(objecttype) %(objectsize)",
                              entree="".join(f"{n}{fin}" for n in noms).encode("utf-8"))
     lignes = sortie.decode("utf-8", "replace").split(fin)
@@ -2228,7 +2230,8 @@ def tailles_a(depot, ref, chemins):
     tailles = tailles_objets(depot, [f"{ref}:{c}" for c in chemins]) if chemins else []
     if tailles is None:
         raise ErreurBee(f"git cat-file : taille des fichiers de {ref} illisible ; rien n'est lu"
-                        + (" (a name that holds a newline needs git 2.42 or later)" if any("\n" in c for c in chemins) else ""))
+                        + (" (a name that holds a newline or a carriage return needs git 2.42 or later)"
+                           if any(c in n for n in chemins for c in "\n\r") else ""))
     return {c: t for c, t in zip(chemins, tailles) if t is not None}
 
 

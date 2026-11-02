@@ -12517,6 +12517,25 @@ class TestBornesLibreServiceRegistre(BaseRevueRuche0020):
         self.assertEqual([t[:100] for t in lus if "ENORME" in t], [], "read whole, or parsed")
         self.abandonner()
 
+    def test_a_name_ending_with_a_carriage_return_is_sized_exactly(self):
+        """ruche-0095 (review H1): git cat-file reads one name per line and drops a final carriage return. membres/a.yaml
+        followed by one is sized as itself, never as its 5-byte twin; membres/b followed by two is never taken for absent: each
+        is refused by its size, and never read."""
+        self.branche()
+        borne = bee.OCTETS_MAX["membres"]
+        (self.dossier / "membres/a.yaml").write_text("a: 1\n", encoding="utf-8")
+        attendus = []
+        for nom in ("membres/a.yaml\r", "membres/b\r\r"):
+            chemin = self.dossier / nom
+            chemin.write_text("texte: " + " ".join(["ENORME"] * (borne // 7 + 1)) + "\n", encoding="utf-8")
+            attendus.append(bee.montrer(f"{nom} : {chemin.stat().st_size} octets, au plus {borne} pour ce fichier"))
+        self.commit()
+        with self.lectures() as lus:
+            texte = self.refusee("gaspard", *attendus)
+        self.assertNotIn("Traceback", texte)
+        self.assertEqual([t[:100] for t in lus if "ENORME" in t], [], "read whole, or parsed")
+        self.abandonner()
+
     def test_un_noeud_de_l_arbre_au_dela_de_sa_borne_n_est_pas_lu(self):
         self.branche()
         sens = self.dossier / "arbre/SENS.md"
@@ -12953,7 +12972,7 @@ GIT_NON_LISTING = {"add", "branch", "cat-file", "checkout", "commit", "config", 
 GIT_LISTING_OPTIONS = {"--name-only", "--name-status", "--numstat", "--raw", "--porcelain", "--objects", "--stat", "--summary",
                        "-p", "--patch", "--patch-with-raw", "--patch-with-stat", "--compact-summary", "--dirstat"}
 GIT_QUOTING_OPTIONS = {"--stat", "--summary", "-p", "--patch", "--patch-with-raw", "--patch-with-stat", "--compact-summary",
-                       "--dirstat"}  # they print paths quoted, even with -z
+                       "--dirstat", "--unified"}  # they print paths quoted, even with -z; also -u and -U<n>, for a diff
 # They detect renames: a listing by one of them hides a rename's old path, or gives it two paths (status: "R  new\0old\0"),
 # unless asked for --no-renames; these options turn the detection back on, even after it.
 GIT_RENAME_COMMANDS = {"diff", "diff-tree", "diff-index", "diff-files", "log", "whatchanged", "show", "status"}
@@ -12966,8 +12985,8 @@ def git_listings(source):
     wrapper: a function that passes its own *arguments on to an invocation, before any "--" (git, _git_brut, and any new
     one, found as a fixed point); a call to a wrapper is read with the words the wrapper puts before them. Its words are its
     literal arguments up to "--"; its command, the first one after the global options (-C <dir>, -c <name=value>, --...).
-    Its options are its words after the command. It lists paths if its command is not in GIT_NON_LISTING (show only with -s
-    or --no-patch, and no listing option), if it has a listing option, or for add -n. Problems: a listing without -z, with an
+    Its options are its words after the command. It lists paths if its command is not in GIT_NON_LISTING (show always: -s
+    still lists a tree, and -u prints a patch), if it has a listing option, or for add -n. Problems: a listing without -z, with an
     option that quotes paths, by a command of GIT_RENAME_COMMANDS without --no-renames, or with an option that detects
     renames; commit --dry-run; a command that is not a literal (unless it is the function's own *arguments); a "git" literal
     that starts no invocation."""
@@ -13022,13 +13041,13 @@ def git_listings(source):
         options = {m.split("=", 1)[0] for m in apres}
         if commande == "commit" and "--dry-run" in options:
             problemes.append((noeud.lineno, "commit --dry-run lists paths"))
-        if (commande is not None and commande not in GIT_NON_LISTING
-                and not (commande == "show" and options & {"-s", "--no-patch"} and not options & GIT_LISTING_OPTIONS)) \
-                or options & GIT_LISTING_OPTIONS or (commande == "add" and options & {"-n", "--dry-run"}):
+        if (commande is not None and commande not in GIT_NON_LISTING) or options & GIT_LISTING_OPTIONS \
+                or (commande == "add" and options & {"-n", "--dry-run"}):
             listings.append((noeud.lineno, getattr(fonctions.get(noeud), "name", None), mots))
             if "-z" not in apres:
                 problemes.append((noeud.lineno, "lists paths without -z"))
-            if quotent := sorted(options & GIT_QUOTING_OPTIONS):
+            if quotent := sorted(options & GIT_QUOTING_OPTIONS | {m for m in options if commande in GIT_RENAME_COMMANDS - {"status"}
+                                                                  and (m == "-u" or m.startswith("-U"))}):
                 problemes.append((noeud.lineno, f"{', '.join(quotent)}: quotes paths, even with -z"))
             if commande in GIT_RENAME_COMMANDS and "--no-renames" not in apres:
                 problemes.append((noeud.lineno, "renames not turned off (--no-renames)"))
@@ -13091,8 +13110,12 @@ class TestGitListings(unittest.TestCase):
             ("    outil(depot, 'cat-file', 'blob', 'HEAD:x')", None),
             ("    outil(depot, 'show', 'HEAD:x')", [Z, R]),  # a tree's paths, for a folder
             ("    outil(depot, 'show', '--format=%H', 'HEAD')", [Z, R]),  # the patch follows the format
-            ("    outil(depot, 'show', '-s', '--format=%H', 'HEAD')", None),
+            ("    outil(depot, 'show', '-s', '--format=%H', 'HEAD')", [Z, R]),  # -s still lists a tree's paths
             ("    outil(depot, 'show', '--no-patch', '--name-only', 'HEAD')", [Z, R]),
+            ("    outil(depot, 'show', '-z', '--no-renames', '-s', '-u', 'HEAD')", ["-u: quotes paths, even with -z"]),
+            ("    outil(depot, 'diff', '-z', '--no-renames', '-U5', 'a...b')", ["-U5: quotes paths, even with -z"]),
+            ("    outil(depot, 'log', '-z', '--no-renames', '--unified=3')", ["--unified: quotes paths, even with -z"]),
+            ("    outil(depot, 'status', '-z', '--porcelain', '--no-renames', '-u')", None),  # status -u: untracked files
             ("    outil(depot, 'commit', '--dry-run')", ["commit --dry-run lists paths"]),
             ("    montrer_commit(depot, '--name-only', 'HEAD')", [Z, R]),
             ("    fichiers(depot, '-z')", None),
@@ -13391,10 +13414,14 @@ class TestGitHelper(unittest.TestCase):
         a name that holds a newline is refused, and the message says what it needs."""
         self.ecrire("taches/a.yaml", "a: 1\n")
         self.ecrire("taches/b\n.yaml", "b: 22\n")
+        self.ecrire("taches/a.yaml\r", "x" * 5000)
+        self.ecrire("taches/c\r\r", "y" * 7000)
         self.commit()
         simples, avec_saut = ["HEAD:taches/a.yaml", "HEAD:absent", "HEAD:taches"], ["HEAD:taches/b\n.yaml", "HEAD:taches/a.yaml"]
+        avec_retour = ["HEAD:taches/a.yaml\r", "HEAD:taches/c\r\r", "HEAD:taches/a.yaml"]  # a line would drop the final \r
         self.assertEqual(bee.tailles_objets(self.depot, simples), [5, None, None])
         self.assertEqual(bee.tailles_objets(self.depot, avec_saut), [6, 5], "this git reads -Z")
+        self.assertEqual(bee.tailles_objets(self.depot, avec_retour), [5000, 7000, 5])
         vieux = tempfile.TemporaryDirectory()
         self.addCleanup(vieux.cleanup)
         faux = pathlib.Path(vieux.name) / "git"
@@ -13405,8 +13432,11 @@ class TestGitHelper(unittest.TestCase):
             self.assertEqual(bee.tailles_objets(self.depot, simples), [5, None, None])
             self.assertEqual(bee.tailles_a(self.depot, "HEAD", ["taches/a.yaml"]), {"taches/a.yaml": 5})
             self.assertIsNone(bee.tailles_objets(self.depot, avec_saut))
-            with self.assertRaisesRegex(bee.ErreurBee, r"illisible ; rien n'est lu \(a name that holds a newline needs git 2\.42 or later\)"):
-                bee.tailles_a(self.depot, "HEAD", ["taches/a.yaml", "taches/b\n.yaml"])
+            self.assertIsNone(bee.tailles_objets(self.depot, avec_retour))
+            for nom in ("taches/b\n.yaml", "taches/a.yaml\r"):
+                with self.subTest(nom=nom), self.assertRaisesRegex(bee.ErreurBee, r"illisible ; rien n'est lu \(a name that holds a "
+                                                                   r"newline or a carriage return needs git 2\.42 or later\)"):
+                    bee.tailles_a(self.depot, "HEAD", ["taches/a.yaml", nom])
 
     def test_lire_versions_never_shifts_its_answers(self):
         """A request that holds a newline is never written to cat-file --batch: it would answer twice for it."""
@@ -13415,9 +13445,9 @@ class TestGitHelper(unittest.TestCase):
         self.ecrire("taches/miniz/a.yaml\n", "x: 0\n")
         sha = self.commit()
         demandes = [(sha, "taches/miniz/a.yaml\n"), (sha, "taches/miniz/b.yaml"), (f"{sha}\n", "taches/miniz/b.yaml"),
-                    (sha, "taches/miniz/a.yaml")]
+                    (f"{sha}\r", "taches/miniz/b.yaml"), (sha, "taches/miniz/a.yaml")]
         versions = bee.lire_versions(self.depot, demandes)
-        self.assertEqual([versions.get(d) for d in demandes], [None, "b: 2\n", None, "a: 1\n"])
+        self.assertEqual([versions.get(d) for d in demandes], [None, "b: 2\n", None, None, "a: 1\n"])
 
     def test_a_name_ending_with_a_newline_in_history_is_never_read(self):
         """DatesDeFusion reads the history of the gestures' folders: the twin with a final newline is listed as it is, matched
