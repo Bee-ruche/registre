@@ -1070,13 +1070,100 @@ class TestRegistre(BaseTest):
         self.assertEqual(code, 1, texte)
         self.assertIn("construction(s) suspecte(s)", texte)
 
+    def regler_juge_commun_min(self, valeur):
+        """ruche-0086 : la ligne juge_commun_min de bee.yaml, quelle que soit la valeur réelle ; None : la clé est retirée."""
+        chemin = self.dossier / "bee.yaml"
+        texte = re.sub(r"(?m)^juge_commun_min:.*\n", "", chemin.read_text(encoding="utf-8"))
+        chemin.write_text(texte + ("" if valeur is None else f"juge_commun_min: {valeur}\n"), encoding="utf-8")
+
     def test_porte_si_juge_incomplet(self):
         self.regler_porte("si_juge_incomplet")
+        self.regler_juge_commun_min(2)
         self.contributeurs("bruno", "chloe")  # leurs relectures comptent pour R3 ; leur vote pèse
-        complet = self.contribution_jugee()
+        complet = self.contribution_jugee(extra_juge={"version": 3, "commun": "juge-v2"})  # ruche-0086 : juge commun au minimum
         self.assertEqual(self.bee("voter", complet, "--utilisateur", "bruno", "--valeur", "1")[0], 0)
         code, texte = self.bee("verifier-acceptation", complet)
         self.assertEqual(code, 0, texte)  # juge isolé complet, rien de suspect : pas de gardien requis
+
+    def test_juge_commun_sous_le_minimum_exige_un_gardien(self):
+        # ruche-0086 : un verdict du juge commun juge-v1, minimum 2 : incomplet pour la porte de R3, un gardien (ici le conseil) relit.
+        self.regler_porte("si_juge_incomplet")
+        self.regler_juge_commun_min(2)
+        self.contributeurs("bruno", "chloe")
+        cid = self.contribution_jugee(extra_juge={"version": 3, "commun": "juge-v1"})
+        self.assertEqual(self.bee("voter", cid, "--utilisateur", "bruno", "--valeur", "1")[0], 0)
+        code, texte = self.bee("verifier-acceptation", cid)
+        self.assertEqual(code, 1, texte)
+        self.assertIn("pas entièrement jugé cette contribution, juge commun absent ou sous juge_commun_min", texte)
+        self.assertEqual(self.bee("relire", cid, *self.lu(cid), "--utilisateur", "bidji29", "--avis", "favorable",
+                                  "--motif", "Relu : jugé par juge-v1, sorties et objets relus à la main.")[0], 0)
+        code, texte = self.bee("verifier-acceptation", cid)
+        self.assertEqual(code, 0, texte)
+
+    def test_juge_commun_min_absent_ou_mal_forme_ferme_la_porte(self):
+        # ruche-0086 : un minimum absent, mal formé ou absurde ne rend aucun verdict complet, jamais l'inverse.
+        self.regler_porte("si_juge_incomplet")
+        self.contributeurs("bruno", "chloe")
+        cid = self.contribution_jugee(extra_juge={"version": 3, "commun": "juge-v2"})
+        self.assertEqual(self.bee("voter", cid, "--utilisateur", "bruno", "--valeur", "1")[0], 0)
+        for valeur in (None, "", "null", "true", "false", "'2'", "2.0", "0", "-2", "10000", str(10 ** 30), "[2]", "{v: 2}", "2"):
+            with self.subTest(juge_commun_min=valeur):
+                self.regler_juge_commun_min(valeur)
+                code, texte = self.bee("verifier-acceptation", cid)
+                self.assertEqual(code, 0 if valeur == "2" else 1, texte)
+                if valeur != "2":
+                    self.assertIn("aucun juge n'y suffit", texte)
+
+    def test_juge_commun_etiquette_lue_strictement(self):
+        # ruche-0086 : seul « juge-vN » exact (chiffres ASCII, sans zéro de tête) compte ; tout autre libellé est incomplet.
+        self.regler_juge_commun_min(2)
+        reg = bee.Registre(self.dossier)
+        for commun, complet in (("juge-v2", True), ("juge-v3", True), ("juge-v10", True), ("juge-v9999", True), ("juge-v1", False),
+                                ("juge-v0", False), ("juge-v02", False), ("juge-v2\n", False), ("juge-v", False), ("JUGE-V2", False),
+                                ("juge-v2.1", False), (" juge-v2", False), ("juge-v٢", False), ("juge-v10000", False),
+                                ("juge-v-2", False), (None, False), (2, False), (["juge-v2"], False)):
+            with self.subTest(commun=commun):
+                verdict = {"fichiers_controles": True, "juge": {"commun": commun, "sorties_comparees": 914, "constructions_suspectes": []}}
+                self.assertIs(bee.juge_complet(reg, verdict), complet)
+        self.regler_juge_commun_min(None)
+        self.assertFalse(bee.juge_complet(bee.Registre(self.dossier), verdict | {"juge": verdict["juge"] | {"commun": "juge-v2"}}))
+
+    def test_valider_signale_un_juge_commun_min_absent_ou_mal_forme(self):
+        # ruche-0086 (revue) : avec la porte à si_juge_incomplet, bee valider signale un minimum absent ou mal formé ; sinon, rien.
+        self.regler_porte("si_juge_incomplet")
+        for valeur in (None, "true", "'2'", "2.0", "0", "10000"):
+            with self.subTest(juge_commun_min=valeur):
+                self.regler_juge_commun_min(valeur)
+                code, texte = self.bee("valider")
+                self.assertEqual(code, 1, texte)
+                self.assertIn("juge_commun_min : entier de 1 à 9999 attendu", texte)
+        self.regler_juge_commun_min(2)
+        self.valide()
+        chemin = self.dossier / "bee.yaml"  # la porte toujours fermée (true) ne lit pas le minimum : rien à signaler
+        chemin.write_text(chemin.read_text(encoding="utf-8").replace("relecture_gardien_requise: si_juge_incomplet", "relecture_gardien_requise: true"),
+                          encoding="utf-8")
+        self.regler_juge_commun_min(None)
+        self.valide()
+
+    def test_juge_commun_etiquette_chiffres_ascii_a_l_enregistrement(self):
+        # ruche-0086 (revue) : « juge-v٢ » (chiffre arabe-indien) n'est pas une étiquette : enregistrée comme absente, le verdict reste.
+        cid = self.contribution_jugee(extra_juge={"version": 3, "commun": "juge-v٢"})
+        self.assertIsNone(bee.Registre(self.dossier).enregistrement(cid)[1]["verdict"]["juge"]["commun"])
+        self.valide()
+
+    def test_juge_commun_min_n_atteint_pas_l_historique(self):
+        # ruche-0086 : le minimum se lit à la porte de R3, au moment d'intégrer ; une contribution intégrée sous juge-v1 le reste,
+        # et le registre reste valide quand le conseil relève le minimum.
+        self.regler_porte("si_juge_incomplet")
+        self.regler_juge_commun_min(1)
+        self.contributeurs("bruno", "chloe")
+        cid = self.contribution_jugee(extra_juge={"version": 3, "commun": "juge-v1"})
+        self.assertEqual(self.bee("voter", cid, "--utilisateur", "bruno", "--valeur", "1")[0], 0)
+        code, texte = self.bee("integrer", cid, "--fusion-sha", "deadbee")
+        self.assertEqual(code, 0, texte)
+        self.regler_juge_commun_min(2)
+        self.valide()
+        self.assertEqual(bee.Registre(self.dossier).enregistrement(cid)[1]["statut"], "integree")
 
     def test_porte_si_juge_incomplet_sans_juge(self):
         self.regler_porte("si_juge_incomplet")
