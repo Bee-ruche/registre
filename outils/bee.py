@@ -9428,6 +9428,7 @@ def cmd_ecartees(args):
 
 
 DOSSIERS_LIBRE_SERVICE = ("taches/", "contributions/", "votes/", "mesures/", "membres/", "propositions/", "debats/", "invitations/")
+MOTIF_DATE = re.compile(r"^[ -]*(\w+): [\"']?(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ)[\"']?$", re.M)  # ruche-0129 : une date déclarée
 
 
 def executer(commande, depot=None, verifier=True):
@@ -9441,6 +9442,62 @@ def executer(commande, depot=None, verifier=True):
 def proprietaire_depot(url):
     correspondance = re.search(r"github\.com[:/]([A-Za-z0-9-]+)/([A-Za-z0-9_.-]+?)(?:\.git)?/?$", url or "")
     return (correspondance[1], correspondance[2]) if correspondance else (None, None)
+
+
+def engagements_prepares(depot, changements):
+    """ruche-0129 (E7) : les engagements (réservation, inscription en parallèle) préparés avec la soumission qui les suit, dans
+    les mêmes changements. La porte juge une soumission sur l'engagement de sa base (« ouverte → en_relecture » lui est refusé) :
+    l'engagement part d'abord, seul. {chemin de la tâche : (titre de sa PR, ce que modifier_tache rejoue sur la tâche de HEAD)}."""
+    prepares = {}
+    for chemin in changements:
+        m = re.match(r"contributions/([a-z0-9-]+)/", chemin)
+        if not m or not (depot / chemin).is_file() or lire_ou_rien(depot, "HEAD", chemin) is not None:
+            continue  # une soumission ajoute sa contribution
+        enr = lire_yaml(depot / chemin)
+        tid, u, depuis = enr.get("tache"), enr.get("auteur"), enr.get("engage_depuis")
+        tache = f"taches/{m[1]}/{tid}.yaml"
+        t = lire_ou_rien(depot, "HEAD", tache) if tache in changements else None
+        if not (isinstance(t, dict) and depuis and t.get("statut") in ("ouverte", "reservee", "en_relecture")) or u in [
+                (t.get("reservation") or {}).get("utilisateur"), *(p.get("utilisateur") for p in paralleles_de(t))]:
+            continue  # déjà engagé sur HEAD : une seule PR
+        engagement = {"utilisateur": u, "depuis": depuis}
+        prepares[tache] = ((f"Réservation {tid}", {"statut": "reservee", "reservation": engagement}) if t["statut"] == "ouverte"
+                           else (f"Inscription en parallèle {tid}", {"paralleles": paralleles_de(t) + [engagement]}))
+    return prepares
+
+
+def plafonds_par_pr(reg, depot, changements):
+    """ruche-0129 (E7) : les plafonds par PR de la porte (notes, arguments, créations), comptés avant toute PR. Comme à la
+    porte, les arguments le sont pour tous ; notes et créations, hors conseil et robots (ici, l'auteur que nomme chaque geste)."""
+    libres, comptes = set(reg.conseil) | set(reg.robots), defaultdict(int)
+    for c in changements:
+        if (dossier := c.split("/", 1)[0]) not in ("taches", "propositions", "invitations", "debats"):
+            continue
+        avant, apres = lire_ou_rien(depot, "HEAD", c), lire_yaml(depot / c) if (depot / c).is_file() else None
+        numerote = any(r.match(c) for r in (CHEMIN_TACHE, CHEMIN_PROPOSITION, CHEMIN_INVITATION))  # ce que la porte compte comme créé
+        if numerote and avant is None and isinstance(apres, dict) and apres.get(CREES_PAR[dossier][1]) not in libres:
+            comptes[dossier] += 1
+        for cle in ("notes", "arguments"):
+            listes = [d.get(cle) if isinstance(d, dict) and isinstance(d.get(cle), list) else [] for d in (avant, apres)]
+            comptes[cle] += sum(cle == "arguments" or isinstance(x, dict) and x.get("par") not in libres  # arguments : pour tous
+                                for x in listes[1][len(listes[0]):])
+    plafonds = {"notes": ("notes.max_par_pr", config_notes(reg)["max_par_pr"]),
+                "arguments": ("agora.arguments_max_par_pr", config_agora(reg)["arguments_max_par_pr"]),
+                **{d: (f"creations.{d}_max_par_pr", config_creations(reg)[f"{d}_max_par_pr"]) for d in CREES_PAR}}
+    return [f"{comptes[k]} {k} ajoutés, au plus {n} ({cle})" for k, (cle, n) in plafonds.items() if comptes[k] > n]
+
+
+def dates_de_session(depot, changements):
+    """ruche-0129 : les (clé, instant) que la session ajoute aux fichiers de HEAD, hors engage_depuis (celui de l'engagement)."""
+    lues = lambda octets: set(MOTIF_DATE.findall(octets.decode("utf-8", "replace")))  # noqa: E731
+    return {(k, v) for c in changements if c.endswith(".yaml") and (depot / c).is_file() for k, v in
+            lues((depot / c).read_bytes()) - lues(_git_brut(depot, "cat-file", "blob", f"HEAD:{c}")[1]) if k != "engage_depuis"}
+
+
+def remettre(depot, source, chemins):
+    """ruche-0129 : remet sur le disque les changements que porte la branche `source`, et le dit."""
+    executer(["git", "--literal-pathspecs", "restore", "--source", source, "--worktree", "--", *chemins], depot)
+    print(f"  Remis sur le disque : {', '.join(map(montrer, sorted(chemins)))}")
 
 
 def cmd_publier(args):
@@ -9463,14 +9520,43 @@ def cmd_publier(args):
     problemes = verifier_registre(Registre(depot))
     if problemes:
         raise ErreurBee("le registre n'est pas valide, la PR serait refusée :\n  " + "\n  ".join(problemes[:10]))
+    if depasses := plafonds_par_pr(reg, depot, changements):
+        raise ErreurBee("plafonds par PR de la porte : " + " ; ".join(depasses) + ". Publiez en plusieurs fois, chaque PR sous "
+                        "les plafonds.")
+    prepares = engagements_prepares(depot, changements)
+    avant = ", ".join(titre for titre, _ in prepares.values())
+    attente = depot / executer(["git", "rev-parse", "--git-path", "bee-publier.json"], depot).stdout.strip()  # la PR qu'il suit
+    suivie = json.loads(attente.read_text(encoding="utf-8")) if prepares and attente.is_file() else {}
+    reprise = suivie.get("cle") == json.dumps(prepares, sort_keys=True)  # relancé pendant que la PR de l'engagement attend
+    # Revue de ruche-0129 : chaque date déclarée est l'heure de la PR, à 2 h près, celle d'un engagement préparé comprise, que sa
+    # soumission reprend (engage_depuis), sauf si sa PR attend déjà ; la seconde PR part au plus --delai minutes plus tard.
+    dates = dates_de_session(depot, changements) | {("engage_depuis", (r.get("reservation") or r["paralleles"][-1])["depuis"])
+                                                    for _, r in prepares.values() if not reprise}
+    if perimees := sorted({v for k, v in dates for m in {0, args.delai * bool(prepares)}
+                           if probleme_date_pr(v, k, maintenant() + dt.timedelta(minutes=m))}):
+        if args.a_blanc or not args.redater:
+            raise ErreurBee(f"{', '.join(perimees)} : hors de la fenêtre de la porte (chaque date déclarée est l'heure de la PR, à "
+                            f"2 h près, jamais dans le futur{' ; pour la seconde PR, --delai minutes plus tard' if prepares else ''}). "
+                            f"Pour mettre les dates de la session à l'heure de maintenant : bee publier --titre \"{args.titre}\" --redater")
+        for c in (c for c in changements if c.endswith(".yaml") and (depot / c).is_file()):
+            (depot / c).write_text(MOTIF_DATE.sub(lambda m: m[0].replace(m[2], en_iso(maintenant())) if m.groups() in dates else m[0],
+                                                  (depot / c).read_text(encoding="utf-8")), encoding="utf-8")
+        print(f"  Redaté à {en_iso(maintenant())} : {', '.join(sorted({v for _, v in dates}))}")
+        prepares = engagements_prepares(depot, changements)
     if args.a_blanc:
         print("✓ à blanc : les fichiers relèvent du libre-service et le registre reste valide. Rien n'a été écrit ni poussé.")
         print(f"  Dépôt : {amont} — PR « {args.titre} »")
         for c in changements:
             print(f"  - {montrer(c)}")
+        if prepares:
+            print(f"  En deux PR, dans l'ordre : d'abord « {avant} » seule ({', '.join(prepares)}), puis, une fois fusionnée, "
+                  f"« {args.titre} » : la porte juge une soumission sur l'engagement de sa base.")
         print("  Sans --a-blanc, bee publierait : branche, commit, poussée, PR, attente de la fusion automatique.")
         return 0
+    if prepares and args.sans_attendre:
+        raise ErreurBee(f"« {avant} » doit être fusionnée avant « {args.titre} », qui en dépend : publiez sans --sans-attendre")
     branche_initiale = executer(["git", "rev-parse", "--abbrev-ref", "HEAD"], depot).stdout.strip()
+    retour = branche_initiale if branche_initiale != "HEAD" else "main"
     base = re.sub(r"[^a-z0-9]+", "-", args.titre.lower().translate(str.maketrans("àâäéèêëîïôöùûüç", "aaaeeeeiioouuuc"))).strip("-")[:50] or "publication"
     # Horodatée pour ne jamais retomber sur une branche distante restée d'une publication précédente.
     racine_branche = f"bee/{base}-{maintenant().strftime('%Y%m%d-%H%M%S')}"
@@ -9479,8 +9565,41 @@ def cmd_publier(args):
         branche, n = f"{racine_branche}-{n}", n + 1
     executer(["git", "switch", "-c", branche], depot)
     try:
+        if prepares:  # ruche-0129 (E7) : d'abord un commit des engagements seuls, rejoués sur la tâche de HEAD ; puis la session
+            finaux = {c: (depot / c).read_bytes() for c in prepares}
+            try:
+                for c, (_, rejeu) in prepares.items():
+                    (depot / c).write_bytes(_git_brut(depot, "cat-file", "blob", f"HEAD:{c}")[1])
+                    modifier_tache(depot / c, **rejeu)
+                executer(["git", "--literal-pathspecs", "commit", "-m", avant, "--", *prepares], depot)  # eux seuls, quel que soit l'index
+            finally:
+                for c, octets in finaux.items():
+                    (depot / c).write_bytes(octets)
         executer(["git", "--literal-pathspecs", "add", "--", *changements], depot)
         executer(["git", "commit", "-m", args.titre], depot)
+        if prepares:  # l'engagement part seul ; le reste attend sa fusion, sur le disque, puis est rejoué sur main
+            executer(["git", "switch", retour], depot)
+            remettre(depot, branche, changements)
+            if reprise:
+                print(f"  « {avant} » attend déjà ({suivie['pr'][0]}) : bee publier la suit, sans en ouvrir une seconde.")
+            else:
+                executer(["git", "push", "origin", f"{branche}~1:refs/heads/{branche}-engagement"], depot)
+                proprietaire = proprietaire_depot(executer(["git", "remote", "get-url", "origin"], depot).stdout.strip())[0]
+                prefixe = "" if proprietaire in (None, proprietaire_depot(f"https://github.com/{amont}")[0]) else f"{proprietaire}:"
+                pr = json.loads(executer(["gh", "api", f"repos/{amont}/pulls", "-X", "POST", "-f", f"title={avant}",
+                                          "-f", f"head={prefixe}{branche}-engagement", "-f", "base=main",
+                                          "-f", f"body=Publié avec `bee publier`.\n\nNature : {avant}."], depot).stdout)
+                print(f"✓ PR ouverte : {pr['html_url']}")
+                suivie = {"cle": json.dumps(prepares, sort_keys=True), "pr": [pr["html_url"], pr["number"]]}
+                attente.write_text(json.dumps(suivie), encoding="utf-8")
+            if code := attendre_fusion(args, depot, amont, *suivie["pr"], attente=attente, ranger=(branche, changements)):
+                print(f"  « {args.titre} » en dépend : rien d'autre n'est publié, vos changements sont sur le disque. Relancez bee "
+                      "publier une fois cette PR fusionnée : il la suit, sans en ouvrir une seconde.")
+                return code
+            if executer(["git", "rebase", "--onto", "main", f"{branche}~1", branche], depot, verifier=False).returncode:
+                executer(["git", "rebase", "--abort"], depot, verifier=False)
+                raise ErreurBee(f"« {avant} » est fusionnée, mais « {args.titre} » ne s'applique plus sur main (ses fichiers y ont "
+                                "changé entre-temps) : comparez-les à main (git diff) avant de relancer bee publier")
         executer(["git", "push", "-u", "origin", branche], depot)
         proprietaire, _ = proprietaire_depot(executer(["git", "remote", "get-url", "origin"], depot).stdout.strip())
         proprietaire_amont, _ = proprietaire_depot(f"https://github.com/{amont}")
@@ -9488,6 +9607,14 @@ def cmd_publier(args):
         # API REST plutôt que `gh pr create` (GraphQL) : elle fonctionne aussi dans les environnements restreints.
         pr = json.loads(executer(["gh", "api", f"repos/{amont}/pulls", "-X", "POST", "-f", f"title={args.titre}",
                                   "-f", f"head={tete}", "-f", "base=main", "-f", f"body={corps}"], depot).stdout)
+    except BaseException as e:  # revue de ruche-0129 : à chaque échec, les changements que le disque n'a plus y reviennent
+        executer(["git", "switch", retour], depot, verifier=False)
+        if not git(depot, "--literal-pathspecs", "status", "-z", "--porcelain", "--no-renames", "--untracked-files=all", "--",
+                   *changements):
+            remettre(depot, branche, changements)
+        if prepares and isinstance(e, ErreurBee):
+            raise ErreurBee(f"{e}\n  Rien d'autre n'est publié : vos changements sont revenus sur le disque.") from None
+        raise
     finally:
         executer(["git", "switch", branche_initiale if branche_initiale != "HEAD" else "main"], depot, verifier=False)
     adresse, numero = pr["html_url"], pr["number"]
@@ -9495,6 +9622,12 @@ def cmd_publier(args):
     if args.sans_attendre:
         print(f"  Pensez à attendre sa fusion avant l'étape suivante (gh api repos/{amont}/pulls/{numero} --jq .merged).")
         return 0
+    return attendre_fusion(args, depot, amont, adresse, numero)
+
+
+def attendre_fusion(args, depot, amont, adresse, numero, attente=None, ranger=None):
+    """Attend la fusion de la PR, puis remet main à jour : 0 ; 2 si elle est toujours ouverte après --delai ; refusée : ErreurBee.
+    ruche-0129 : `attente` suit la PR d'un engagement ; `ranger` (branche, chemins) retire du disque ce que la branche porte."""
     import time
     limite = time.monotonic() + args.delai * 60
     print(f"  Attente de la fusion (au plus {args.delai} min)…")
@@ -9502,12 +9635,21 @@ def cmd_publier(args):
         infos = json.loads(executer(["gh", "api", f"repos/{amont}/pulls/{numero}"], depot).stdout or "{}")
         etat = "MERGED" if infos.get("merged") else str(infos.get("state", "")).upper()
         if etat == "MERGED":
+            if ranger:  # si rien n'a changé sur le disque pendant l'attente, tout y est dans la branche
+                executer(["git", "add", "-A"], depot)
+                if executer(["git", "diff", "-z", "--no-renames", "--cached", "--quiet", ranger[0]], depot, verifier=False).returncode:
+                    raise ErreurBee("vos changements ont changé sur le disque pendant l'attente : ils y restent ; relancez bee publier")
+                executer(["git", "--literal-pathspecs", "restore", "--source", "HEAD", "--staged", "--worktree", "--", *ranger[1]], depot)
             distant = "upstream" if executer(["git", "remote", "get-url", "upstream"], depot, verifier=False).returncode == 0 else "origin"
             executer(["git", "switch", "main"], depot, verifier=False)
             executer(["git", "pull", "--ff-only", distant, "main"], depot)
+            if attente:
+                attente.unlink(missing_ok=True)
             print("✓ PR fusionnée ; main est à jour. Vous pouvez passer à l'étape suivante.")
             return 0
         if etat == "CLOSED":
+            if attente:
+                attente.unlink(missing_ok=True)
             raise ErreurBee(f"la PR a été refusée et fermée : lisez le message de la CI sur {adresse}")
         if time.monotonic() > limite:
             print(f"⚠ la PR est toujours ouverte après {args.delai} min : elle attend sans doute une relecture humaine. "
@@ -10477,6 +10619,7 @@ def construire_analyseur():
     p.add_argument("--corps", help="texte de la PR (facultatif)")
     p.add_argument("--amont", help="dépôt du registre (défaut : <organisation>/registre)")
     p.add_argument("--sans-attendre", action="store_true", help="ne pas attendre la fusion")
+    p.add_argument("--redater", action="store_true", help="met les dates de la session à l'heure de maintenant (fenêtre de 2 h de la porte)")
     p.add_argument("--a-blanc", "--dry-run", action="store_true",
                    help="vérifie tout et affiche ce qui serait publié, sans rien écrire ni pousser")
     p.add_argument("--delai", type=int, default=10, help="minutes d'attente au plus (défaut : 10)")
