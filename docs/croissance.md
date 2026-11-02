@@ -235,7 +235,10 @@ l'agora, tout numéro reste refusé, sauf `0x…` et les shas ; une date ISO qu'
 écartée, et un saut de ligne ne joint deux groupes que si l'un a déjà un séparateur ou s'ils ont chacun quatre chiffres ou plus. Une mesure ne
 porte que les métriques de son projet (ou leur décompte d'instructions), et aucun nombre de neuf chiffres ou plus.
 **Question au conseil** (ruche-0047) : le dossier d'une invitation ne devrait-il devenir public qu'une fois relu par un
-humain ?
+humain ? **Réponse du conseil (2 novembre 2026)** : la ruche ne grandira pas par des invitations écrites par des tiers,
+mais par des candidatures : une personne se présente elle-même, partage ce qu'elle choisit de partager, et l'autorité
+compétente décide de l'accueillir. Personne n'écrit plus sur une personne qui ne l'a pas demandé. La conception suit dans
+une tâche du conseil ; d'ici là, aucune invitation n'est proposée.
 
 ## Le frein
 
