@@ -10,7 +10,12 @@ contexte: 'Founder''s decision of 1 Nov 2026: the hive opens by waves of invitat
   every invitation itself. Propose and tool a wave: a list of people (each with a guarantor or a public reason), the
   checks R13 asks for each, one decision of the council for the whole wave, the messages prepared and sent by a human
   of the council, and the measures that must hold before the next wave (regressions, refusals by the gate, guardians''
-  load, CI queue). The rule change goes to the council; the founder merges it.'
+  load, CI queue). The rule change goes to the council; the founder merges it.
+
+
+  Council''s note (2 Nov 2026, from ruche-0097''s design): the measures that must hold between waves include the write
+  path''s, from `bee mesures-ecriture` (ruche-0134) once it lands; until then, the counts are taken by hand from the
+  Actions logs.'
 fichiers:
 - REGLES.md
 - docs/croissance.md
