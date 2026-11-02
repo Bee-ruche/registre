@@ -1,0 +1,13 @@
+id: ruche-0038-c1
+tache: ruche-0038
+auteur: bidji29
+pr: https://github.com/Bee-ruche/registre/pull/155
+resume: The common judge publishes its report's hash and key figures as job outputs, checks the caller's
+  inputs before judging, and bounds disk and reads.
+statut: integree
+soumise_le: '2026-11-02T07:46:51Z'
+engage_depuis: '2026-11-02T06:44:39Z'
+relectures: []
+decidee_le: '2026-11-02T09:08:32Z'
+motif_decision: 'Hive tooling contribution: registry PR #155 merged at the judged commit 76e90d1 by the agent principal under the council''s permanent authorisation, after an independent adversarial review by an agent of another model with the architect''s private brief (no blocking finding; its two should-fix items are part of ruche-0117, to be done before juge-v3); CI green on the merged commit, the judge''s Docker meta-tests included. R1: 200 lines excluding the judge''s tests and toy project, for an M task at 200. Recorded by hand: it changes a workflow. Submitted inside the code PR.'
+fusion_sha: 3745e40a9e5848fb2040efd75fc87632487987ad

@@ -75,10 +75,44 @@ cree_le: "2026-10-27"
 """
 
 
+def _numeros_lies():
+    """ruche-0022: the account numbers the real registry binds in gouvernance/, so that fixtures copied from it agree."""
+    lies = {}
+    for fichier in sorted((RACINE / "gouvernance").glob("*.yaml")):
+        donnees = yaml.safe_load(fichier.read_text(encoding="utf-8")) or {}
+        for liste in (donnees.values() if isinstance(donnees, dict) else []):
+            for entree in (liste if isinstance(liste, list) else []):
+                nom = isinstance(entree, dict) and (entree.get("pseudo") or entree.get("account"))
+                if nom and type(entree.get("github_id")) is int:
+                    lies[str(nom).casefold()] = entree["github_id"]
+    return lies
+
+
+NUMEROS_LIES = _numeros_lies()
+
+
+def numero_de(login):
+    """ruche-0022: the GitHub account number the tests give a login (the same in faux_gh), as the API would: the real
+    registry's binding if it has one, else a number derived from the login."""
+    return NUMEROS_LIES.get(str(login).casefold()) or zlib.crc32(str(login).casefold().encode()) % 10 ** 8 + 1
+
+
+def valeur_option(arguments, option):
+    return next((a.split("=", 1)[1] if "=" in a else arguments[i + 1] for i, a in enumerate(arguments)
+                 if (a == option and i + 1 < len(arguments)) or a.startswith(option + "=")), None)
+
+
 def lancer(*arguments):
+    arguments = list(arguments)
+    # ruche-0022: like the workflows, which read the PR author's number from the API, each login has its number (numero_de) for
+    # bee inscrire and bee verifier-pr, unless the test gives one (--github-id) or none (--github-id=).
+    for commande, option in (("inscrire", "--pseudo"), ("verifier-pr", "--auteur")):
+        if commande in arguments and valeur_option(arguments, "--github-id") is None and valeur_option(arguments, option) is not None:
+            arguments += ["--github-id", str(numero_de(valeur_option(arguments, option)))]
+    arguments = [a for a in arguments if a != "--github-id="]
     sortie, erreur = io.StringIO(), io.StringIO()
     with contextlib.redirect_stdout(sortie), contextlib.redirect_stderr(erreur):
-        code = bee.principal(list(arguments))
+        code = bee.principal(arguments)
     return code, sortie.getvalue() + erreur.getvalue()
 
 
@@ -2247,7 +2281,7 @@ class TestPullRequests(BaseTest):
         git(self.dossier, "switch", "-qf", "main")
         git(self.dossier, "switch", "-qc", branch)
         bee.ecrire_yaml(self.dossier / f"membres/{pseudo}.yaml",
-                        {"pseudo": pseudo, "inscrit_le": "2026-10-27", "compte_cree_le": "2021-05-05", **dates})
+                        {"pseudo": pseudo, "inscrit_le": "2026-10-27", "compte_cree_le": "2021-05-05", "github_id": numero_de(pseudo), **dates})
         self.commit()
 
     def test_each_member_date_outside_its_tolerance_is_refused(self):
@@ -2581,7 +2615,7 @@ class TestPullRequests(BaseTest):
                 self.commit()
                 code, texte = self.bee("verifier-pr", "--base", base, "--tete", "HEAD", "--auteur", "alice", "--fusion-auto")
                 code_v, texte_v = self.bee("valider")
-                propres = bee.verifier_pr(bee.Registre(self.dossier), base, "HEAD", "alice")[0]  # without bee valider's checks
+                propres = bee.verifier_pr(bee.Registre(self.dossier), base, "HEAD", "alice", github_id=numero_de("alice"))[0]  # without bee valider's checks
                 self.assertNotIn("Traceback", texte + texte_v)
                 if adresse in self.AUTRES_PR:
                     self.assertEqual((code, code_v, propres), (0, 0, []), texte + texte_v)
@@ -4217,15 +4251,19 @@ if args[:1] == ["api"] and "/git/commits/" in args[1]:
         sys.exit(1)
     print(arbre)
     sys.exit(0)
+# ruche-0022: an account's number (users/<login>, .user.id of a PR) is numero_de(login) of the tests, or "comptes" of the state.
+jq = args[args.index("--jq") + 1] if "--jq" in args else ""
+numero_de = lambda login: (etat.get("comptes") or {}).get(login, json.loads(os.environ.get("FAUX_GH_COMPTES", "{}")).get(login.casefold()) or zlib.crc32(login.casefold().encode()) % 10 ** 8 + 1)  # noqa: E731
 if args[:1] == ["api"] and args[1].startswith("users/"):
-    print("2020-01-01")
+    print(f"2020-01-01 {numero_de(args[1][6:])}" if ".id" in jq else "2020-01-01")
     sys.exit(0)
 if args[:1] == ["api"] and args[1].startswith("repos/") and "/pulls/" in args[1]:
     proprietaire, depot, _, numero = args[1].split("/")[1:5]
     pr = etat.get(f"https://github.com/{proprietaire}/{depot}/pull/{numero}")
     if pr is None:
         sys.exit(1)
-    print(pr.get("auteur") or "")
+    auteur = pr.get("auteur") or ""
+    print(f"{auteur}\t{numero_de(auteur) if auteur else ''}" if ".user.id" in jq else auteur)
     sys.exit(0)
 if args[:1] == ["api"]:
     sys.exit(1)
@@ -4275,6 +4313,7 @@ class TestRevueAdverse(BaseParallele):
             journal.write_text("", encoding="utf-8")
         avant = len(journal.read_text(encoding="utf-8").splitlines())
         env = dict(os.environ, PATH=f"{racine / 'bin'}{os.pathsep}{os.environ['PATH']}", FAUX_GH_ETAT=str(etat),
+                   FAUX_GH_COMPTES=json.dumps(NUMEROS_LIES),
                    FAUX_GH_JOURNAL=str(journal), GH_TOKEN="jeton-registre", BEE_INTEGRATION_TOKEN="jeton-forks",
                    GITHUB_REPOSITORY="Bee-ruche/registre", RUNNER_TEMP=str(racine / "runner"), **(env_en_plus or {}))
         env.pop("BEE_REGISTRE", None)
@@ -13091,7 +13130,7 @@ class TestAgentAccounts(BaseRepetitionGenerale):
         auteurs = self.dossier.parent / "auteurs.tsv"
         for login, attendu in ((AGENT, 0), ("bidji29", 0), ("mallory", 1), ("LaRuche-Architect", 1), ("alice", 1)):
             with self.subTest(fork_pr_by=login):
-                auteurs.write_text(f"{PR_MINIZ}89001\t{login}\n", encoding="utf-8")
+                auteurs.write_text(f"{PR_MINIZ}89001\t{login}\t{numero_de(login)}\n", encoding="utf-8")
                 code, texte = self.verifier(AGENT, "--fusion-auto", "--auteurs-pr", str(auteurs))
                 self.assertEqual(code, attendu, texte)
                 self.assertIn("soumission", texte)
@@ -14990,7 +15029,7 @@ class TestClocksRuche0091(BaseInvitations):
     def anciennete(self):
         poussee = "2026-10-31T23:30:00Z"  # an account created on 2026-08-03 is 89 days old, 90 on 2026-11-01
         self.pr(poussee, lambda: bee.ecrire_yaml(self.dossier / "membres/david.yaml", {
-            "pseudo": "david", "inscrit_le": "2026-10-31", "compte_cree_le": "2026-08-03"}))
+            "pseudo": "david", "inscrit_le": "2026-10-31", "compte_cree_le": "2026-08-03", "github_id": numero_de("david")}))
         return "david", poussee, "2026-11-01T00:30:00Z", ("--compte-cree-le", "2026-08-03"), "le compte GitHub doit avoir au moins 90 jours"
 
     def test_each_rule_is_judged_on_its_documented_clock(self):
@@ -15524,7 +15563,7 @@ class TestQuotedPathsGate(BaseRepetitionGenerale):
         if lien:
             os.symlink("../README.md", self.dossier / lien)
         self.commit()
-        return bee.verifier_pr(bee.Registre(self.dossier), "main", "HEAD", auteur)
+        return bee.verifier_pr(bee.Registre(self.dossier), "main", "HEAD", auteur, github_id=numero_de(auteur))
 
     def test_a_quoted_name_is_treated_as_its_plain_equivalent(self):
         cas = {  # (author, files, options): what the plain name gives
@@ -16018,6 +16057,364 @@ class TestSuiteEnParallele(unittest.TestCase):
                 flux = yaml.safe_load(texte)
                 alterer(flux)
                 self.assertTrue(ecarts(flux), nom)
+
+
+class TestIdentiteParNumeroFil(BaseParallele):
+    """ruche-0022 : un compte renommé (bee renommer) garde son fil et les refus d'un gardien qui y sont posés, ses contributions
+    et relectures pour son niveau, et une seule voix ; l'historique garde l'ancien login, et le registre reste valide."""
+
+    def setUp(self):
+        super().setUp()
+        (self.dossier / "gouvernance/gardiens.yaml").write_text("membres:\n  - pseudo: bruno\n", encoding="utf-8")
+        self.fermer_porte()
+
+    def ok_(self, *arguments):
+        code, texte = self.bee(*arguments)
+        self.assertEqual(code, 0, texte)
+        return texte
+
+    def test_un_compte_renomme_garde_son_fil_ses_refus_son_niveau_et_une_voix(self):
+        self.ok_("prendre", "miniz-0099", "--utilisateur", "alice")
+        c1 = self.soumettre("miniz-0099", "alice", 99401)
+        self.verdict(c1, 0.05)
+        self.ok_("relire", c1, *self.lu(c1), "--utilisateur", "bruno", "--avis", "defavorable", "--motif", "Régression sur n6.")
+        self.ok_("cloturer", c1, "--motif", "PR fermée sans fusion.")
+        self.ok_("prendre", "miniz-9001", "--utilisateur", "chloe")
+        c3 = self.soumettre("miniz-9001", "chloe", 99403)
+        self.ok_("voter", c3, "--utilisateur", "alice", "--valeur", "1")
+        self.assertIn("membres/alice2.yaml", self.ok_("renommer", "--ancien", "alice", "--pseudo", "alice2"))
+        fiche = bee.lire_yaml(self.dossier / "membres/alice2.yaml")
+        self.assertEqual((fiche["pseudo"], fiche["github_id"], fiche["anciens_logins"]), ("alice2", numero_de("alice"), ["alice"]))
+        self.assertFalse((self.dossier / "membres/alice.yaml").exists())
+        self.valide()  # the history still names alice: a former login stays known
+        # The thread follows the account: alice2 submits the same work again; the guardian's refusal on c1 still blocks it.
+        self.ok_("prendre", "miniz-0099", "--utilisateur", "alice2")
+        c2 = self.soumettre("miniz-0099", "alice2", 99402)
+        self.verdict(c2, 0.05)
+        reg = bee.Registre(self.dossier)
+        self.assertEqual([c for c, _ in bee.fil_de(reg, self.enr(c2))], [c1, c2])
+        self.assertEqual(bee.releve_relectures(reg, self.enr(c2), bee.calculer_niveaux(reg))["fil"], [("bruno", c1, "refus")])
+        self.assertIn(f"refus de bruno dans {c1} (même auteur, même tâche)", self.acceptation(c2)[1])
+        # One voice: alice2's vote replaces alice's.
+        self.ok_("voter", c3, "--utilisateur", "alice2", "--valeur", "-1")
+        self.assertEqual([(v["votant"], v["valeur"]) for v in bee.votes_de(bee.Registre(self.dossier), c3)], [("alice2", -1)])
+        # Levels: what alice did counts for alice2, by either login.
+        enr = self.enr(c1)
+        bee.ecrire_yaml(self.dossier / f"contributions/miniz/{c1}.yaml", {**enr, "statut": "integree"})
+        niveaux = bee.calculer_niveaux(bee.Registre(self.dossier))
+        self.assertEqual((niveaux["alice2"]["integrees"], "alice" in niveaux), (1, False))
+        self.assertEqual((bee.niveau_de(niveaux, "alice"), bee.niveau_de(niveaux, "alice2")), ("Contributeur", "Contributeur"))
+
+
+class TestIdentiteParNumero(BaseRepetitionGenerale):
+    """ruche-0022 : l'identité d'un membre est le numéro de son compte GitHub (github_id), relevé auprès de l'API par le
+    workflow, jamais lu dans la PR ; qui est qui se lit sur main. Un compte renommé garde R7 et R8 ; un login repris par un
+    autre compte n'hérite de rien (refusé, un humain regarde) ; une fiche à un numéro déjà pris est refusée ; les fiches et les
+    listes sans numéro restent valides et agissent comme avant."""
+
+    def setUp(self):
+        super().setUp()
+        for n in (9003, 9004, 9005):
+            (self.dossier / f"taches/miniz/miniz-{n}.yaml").write_text(TACHE_OPTIMISATION.replace("miniz-0099", f"miniz-{n}"),
+                                                                      encoding="utf-8")
+        self.commit("tasks of the test")
+        self.comptes = {}  # login: the number the API gives for it, when it is not numero_de(login)
+
+    def verifier(self, auteur, *options):
+        if auteur in self.comptes and not any(o.startswith("--github-id") for o in options):
+            options = (*options, "--github-id", str(self.comptes[auteur]))
+        return super().verifier(auteur, *options)
+
+    def abandonner(self, nom):
+        git(self.dossier, "switch", "-qf", "main")
+        git(self.dossier, "branch", "-qD", nom)
+
+    def renommer_et_fusionner(self, ancien, nouveau):
+        self.branche("renommage")
+        self.ok("renommer", "--ancien", ancien, "--pseudo", nouveau)
+        self.commit()
+        self.comptes[nouveau] = self.comptes.get(ancien, numero_de(ancien))  # the same account, under its new login
+        self.libre_service(nouveau, "renommage")
+        self.fusionner("renommage")
+
+    def renommer_par_le_conseil(self, ancien, nouveau):
+        """The council moves a member file on main by hand (bee renommer refuses an account that holds work)."""
+        fiche = bee.lire_yaml(self.dossier / f"membres/{ancien}.yaml")
+        (self.dossier / f"membres/{ancien}.yaml").unlink()
+        bee.ecrire_yaml(self.dossier / f"membres/{nouveau}.yaml", {**fiche, "pseudo": nouveau, "anciens_logins": [ancien],
+                                                                   "renomme_le": os.environ["BEE_MAINTENANT"][:10]})
+        self.commit(f"le conseil renomme {ancien}")
+        self.comptes[nouveau] = numero_de(ancien)
+
+    def test_un_compte_renomme_garde_r7_et_r8(self):
+        self.a("2026-10-30T10:00:00Z")
+        self.prendre_et_fusionner("gaspard")
+        self.a("2026-10-30T10:05:00Z")
+        self.liberer_et_fusionner("gaspard")
+        for tache in ("miniz-9001", "miniz-9003", "miniz-9004"):
+            self.prendre_et_fusionner("gaspard", tache)
+        self.a("2026-10-30T10:10:00Z")
+        # Rename when you hold nothing: gaspard holds three reservations (S1, review of #156).
+        self.ko("gaspard holds a reservation, a parallel registration or a contribution in review : rename when you hold nothing",
+                "renommer", "--ancien", "gaspard", "--pseudo", "gaspard2")
+        self.branche("renommage")
+        fiche = bee.lire_yaml(self.dossier / "membres/gaspard.yaml")
+        (self.dossier / "membres/gaspard.yaml").unlink()
+        bee.ecrire_yaml(self.dossier / "membres/gaspard2.yaml", {**fiche, "pseudo": "gaspard2", "anciens_logins": ["gaspard"],
+                                                                 "renomme_le": "2026-10-30"})
+        self.commit()
+        self.comptes["gaspard2"] = numero_de("gaspard")
+        self.refusee("gaspard2", "gaspard holds a reservation, a parallel registration or a contribution in review")
+        self.abandonner("renommage")
+        # The council may move it anyway: what gaspard did and holds is gaspard2's.
+        self.renommer_par_le_conseil("gaspard", "gaspard2")
+        self.assertEqual(bee.lire_yaml(self.dossier / "membres/gaspard2.yaml")["anciens_logins"], ["gaspard"])
+        self.ok("valider")
+        self.a("2026-10-30T10:20:00Z")
+        # R7: gaspard2 is gaspard, who left miniz-0099 15 minutes ago.
+        self.ko("R7 : gaspard2 a quitté cette tâche sans contribution le 2026-10-30T10:05:00Z", "prendre", "miniz-0099",
+                "--utilisateur", "gaspard2")
+        self.branche("reprise")
+        bee.modifier_tache(self.chemin_tache(), statut="reservee", reservation={"utilisateur": "gaspard2", "depuis": "2026-10-30T10:20:00Z"})
+        self.commit()
+        self.refusee("gaspard2", "R7 : gaspard2 a quitté cette tâche sans contribution le 2026-10-30T10:05:00Z")
+        self.abandonner("reprise")
+        # R8: gaspard's three reservations are gaspard2's.
+        self.ko("règle R8 : gaspard2 a déjà 3 réservations ou inscriptions en parallèle", "prendre", "miniz-9005", "--utilisateur", "gaspard2")
+        self.branche("quatrieme")
+        bee.modifier_tache(self.chemin_tache("miniz-9005"), statut="reservee",
+                           reservation={"utilisateur": "gaspard2", "depuis": os.environ["BEE_MAINTENANT"]})
+        self.commit()
+        self.refusee("gaspard2", "règle R8 : gaspard2 a 4 réservations ou inscriptions en parallèle")
+        self.abandonner("quatrieme")
+        # A 24 h cap (notes) is not reset by a rename either.
+        conf = bee.config_notes(bee.Registre(self.dossier))
+        self.noter_a_la_main(*({"par": "gaspard"} for _ in range(conf["max_par_24h"])))
+        self.commit("notes de gaspard")
+        self.ko("plafond : gaspard2 a déjà", "noter", "miniz-0099", "--utilisateur", "gaspard2", "--texte", "Une de plus.")
+
+    def test_les_debats_d_avant_un_renommage_restent_valides(self):
+        """B1 (review of #156): the agora checks of bee valider know a member file's former logins, as the others do."""
+        self.a("2026-10-30T10:00:00Z")
+        debat = self.ouvrir("gaspard")
+        self.ok("debattre", "argumenter", debat, "--utilisateur", "gaspard", "--position", "pour", "--texte", "Un plafond simple limite les abus.")
+        self.ok("debattre", "argumenter", debat, "--utilisateur", "farid", "--position", "contre", "--texte", "Un plafond fixe est trop rigide.")
+        self.commit("débat de gaspard")
+        self.a("2026-10-30T10:30:00Z")
+        self.renommer_et_fusionner("gaspard", "gaspard2")
+        self.ok("valider")
+
+    def test_un_ancien_login_ne_donne_aucun_statut(self):
+        """B2 (review of #156): a governance entry naming a member file's former login needs that account's number."""
+        self.renommer_et_fusionner("gaspard", "gaspard2")
+        gardiens = self.dossier / "gouvernance/gardiens.yaml"
+        self.branche("nomination")
+        gardiens.write_text("membres:\n  - pseudo: gaspard\n", encoding="utf-8")
+        self.commit()
+        self.refusee("bidji29", "gouvernance : gaspard is a former login of gaspard2 : named only with that account's github_id")
+        self.ko("gouvernance : gaspard is a former login of gaspard2", "valider")
+        gardiens.write_text(f"membres:\n  - pseudo: gaspard\n    github_id: {numero_de('gaspard')}\n", encoding="utf-8")
+        self.ok("valider")  # the council names that very account: its status follows it
+
+    def test_un_numero_est_un_entier(self):
+        """S3 (review of #156): github_id is an int, never a float or a bool, in bee valider and at the gate."""
+        self.branche("flottant")
+        (self.dossier / "membres/david.yaml").write_text(
+            f"pseudo: david\ninscrit_le: '2026-10-29'\ncompte_cree_le: '2020-01-01'\ngithub_id: {numero_de('david')}.0\n", encoding="utf-8")
+        self.commit()
+        code, texte = self.verifier("david", "--compte-cree-le", "2020-01-01", "--fusion-auto")
+        self.assertEqual(code, 1, texte)
+        self.assertIn(f"david : github_id is a GitHub account's number (a positive integer)", texte)
+        self.assertIn("membres/david.yaml : github_id is the number GitHub gives for david's account", texte)
+        for valeur in ("true", f"{numero_de('david')}.0", "-3"):
+            with self.subTest(github_id=valeur):
+                (self.dossier / "membres/david.yaml").write_text(
+                    f"pseudo: david\ninscrit_le: '2026-10-29'\ncompte_cree_le: '2020-01-01'\ngithub_id: {valeur}\n", encoding="utf-8")
+                self.assertEqual(self.bee("valider")[0], 1)
+
+    def test_un_renommage_par_30_jours_et_5_anciens_logins_au_plus(self):
+        """S5 (review of #156): one rename per account per 30 days, and 5 former logins at most."""
+        self.a("2026-10-30T10:00:00Z")
+        self.renommer_et_fusionner("gaspard", "gaspard2")
+        self.a("2026-11-28T10:00:00Z")
+        self.ko("gaspard2 : one rename per 30 days, and 5 former logins at most", "renommer", "--ancien", "gaspard2", "--pseudo", "gaspard3")
+        self.branche("trop-tot")
+        fiche = bee.lire_yaml(self.dossier / "membres/gaspard2.yaml")
+        (self.dossier / "membres/gaspard2.yaml").unlink()
+        bee.ecrire_yaml(self.dossier / "membres/gaspard3.yaml", {**fiche, "pseudo": "gaspard3", "anciens_logins": ["gaspard", "gaspard2"],
+                                                                 "renomme_le": "2026-11-28"})
+        self.commit()
+        self.comptes["gaspard3"] = numero_de("gaspard")
+        self.refusee("gaspard3", "gaspard2 : one rename per 30 days")
+        self.abandonner("trop-tot")
+        self.a("2026-11-29T10:00:00Z")
+        self.renommer_et_fusionner("gaspard2", "gaspard3")
+        # Five former logins: no sixth.
+        chemin = self.dossier / "membres/gaspard3.yaml"
+        bee.ecrire_yaml(chemin, {**bee.lire_yaml(chemin), "anciens_logins": ["g1", "g2", "g3", "gaspard", "gaspard2"], "renomme_le": "2026-01-01"})
+        self.commit("cinq anciens logins")
+        self.ok("valider")
+        self.ko("gaspard3 : one rename per 30 days, and 5 former logins at most", "renommer", "--ancien", "gaspard3", "--pseudo", "gaspard4")
+        bee.ecrire_yaml(chemin, {**bee.lire_yaml(chemin), "anciens_logins": ["g0", "g1", "g2", "g3", "gaspard", "gaspard2"]})
+        self.ko("anciens_logins", "valider")
+
+    def test_un_renommage_est_seul_dans_sa_pr(self):
+        self.branche("renommage")
+        self.ok("renommer", "--ancien", "gaspard", "--pseudo", "gaspard2")
+        self.ok("prendre", "miniz-0099", "--utilisateur", "gaspard2")
+        self.commit()
+        self.comptes["gaspard2"] = numero_de("gaspard")
+        self.refusee("gaspard2", "a rename (bee renommer) is published alone in its PR")
+
+    def test_un_login_repris_par_un_autre_compte_n_herite_de_rien(self):
+        self.a("2026-10-30T10:00:00Z")
+        self.renommer_et_fusionner("gaspard", "gaspard2")
+        self.comptes["gaspard"] = autre = numero_de("gaspard") + 1  # another account took the login gaspard on GitHub
+        attendu = (f"gaspard : the registry binds this login to the GitHub account {numero_de('gaspard')}, and this PR's author is "
+                   f"the account {autre} : a renamed or reused login inherits nothing ; a human looks")
+        for nom, geste in (("inscription", lambda: bee.ecrire_yaml(self.dossier / "membres/gaspard.yaml", {
+                                "pseudo": "gaspard", "inscrit_le": "2026-10-30", "compte_cree_le": "2020-01-01", "github_id": autre})),
+                           ("reservation", lambda: bee.modifier_tache(self.chemin_tache(), statut="reservee", reservation={
+                                "utilisateur": "gaspard", "depuis": os.environ["BEE_MAINTENANT"]}))):
+            with self.subTest(geste=nom):
+                self.branche(nom)
+                geste()
+                self.commit()
+                self.refusee("gaspard", attendu)
+                self.abandonner(nom)
+        # A fork PR opened by the account that took gaspard does not count as gaspard2's, though gaspard was its login.
+        self.prendre_et_fusionner("gaspard2", "miniz-9001")
+        self.branche("soumission")
+        adresse = "https://github.com/Bee-ruche/minizBee/pull/99501"
+        self.ok("soumettre", "miniz-9001", "--utilisateur", "gaspard2", "--pr", adresse)
+        self.commit()
+        auteurs = self.dossier.parent / "auteurs_pr.tsv"
+        for ligne, accepte in ((f"gaspard\t{autre}", False), ("gaspard", False), (f"gaspard2\t{numero_de('gaspard')}", True),
+                               (f"gaspard\t{numero_de('gaspard')}", True)):
+            with self.subTest(auteur_pr=ligne):
+                auteurs.write_text(f"{adresse}\t{ligne}\n", encoding="utf-8")
+                code, texte = self.verifier("gaspard2", "--auteurs-pr", str(auteurs))
+                self.assertEqual(code, 0 if accepte else 1, texte)
+                if not accepte:
+                    self.assertIn(f"la PR {adresse} doit avoir été ouverte par gaspard2 sur GitHub", texte)
+
+    def test_une_fiche_a_un_numero_deja_pris_est_refusee(self):
+        self.ko("the account %d already has its file, gaspard : a renamed account moves it (bee renommer)" % numero_de("gaspard"),
+                "inscrire", "--pseudo", "gaspard-bis", "--compte-cree-le", "2020-01-01", "--github-id", str(numero_de("gaspard")))
+        self.branche("double")
+        bee.ecrire_yaml(self.dossier / "membres/gaspard-bis.yaml", {"pseudo": "gaspard-bis", "inscrit_le": "2026-10-29",
+                                                                    "compte_cree_le": "2020-01-01", "github_id": numero_de("gaspard")})
+        self.commit()
+        self.comptes["gaspard-bis"] = numero_de("gaspard")  # gaspard's account, renamed on GitHub, enrols anew
+        self.refusee("gaspard-bis", f"membres/gaspard-bis.yaml : github_id {numero_de('gaspard')} is already gaspard's : one account, one file")
+        self.ko(f"github_id {numero_de('gaspard')} is already gaspard's", "valider")
+
+    def test_le_numero_vient_de_l_api_jamais_de_la_pr(self):
+        self.branche("inscription")
+        self.ok("inscrire", "--pseudo", "david", "--compte-cree-le", "2020-01-01", "--github-id", "4242")
+        self.commit()
+        self.refusee("david", f"github_id is the number GitHub gives for david's account ({numero_de('david')}), never one the PR writes")
+        code, texte = self.verifier("david", "--github-id=")  # the API was not read: refused, fails closed
+        self.assertEqual(code, 1, texte)
+        self.assertIn("(not read: --github-id), never one the PR writes", texte)
+        self.comptes["david"] = 4242  # the API gives 4242: the same number, accepted
+        code, texte = self.verifier("david", "--compte-cree-le", "2020-01-01", "--fusion-auto")
+        self.assertEqual(code, 0, texte)
+        self.assertIn("FUSION_AUTO=oui", texte)
+        for numero in ([], ["--github-id", "null"]):  # bee inscrire requires a number: a bee fails early
+            erreur = io.StringIO()
+            with self.subTest(numero=numero), contextlib.redirect_stderr(erreur), self.assertRaises(SystemExit):
+                bee.principal(["--registre", str(self.dossier), "inscrire", "--pseudo", "eve", "--compte-cree-le", "2020-01-01", *numero])
+            self.assertIn("--github-id", erreur.getvalue())
+        # The workflows read it from the API with the creation date, for the PR's author, and pass it to the gate.
+        for flux, etape in (("fusion-auto.yml", "Vérifier la fusion simulée"), ("validation.yml", "Règles de la pull request")):
+            with self.subTest(flux=flux):
+                etapes = [s for job in yaml.safe_load((RACINE / ".github/workflows" / flux).read_text(encoding="utf-8"))["jobs"].values()
+                          for s in job["steps"]]
+                script = next(s["run"] for s in etapes if s.get("name", "").startswith(etape))
+                self.assertIn('''compte=$(gh api "users/$AUTEUR" --jq '"\\(.created_at[:10]) \\(.id)"')''', script)
+                self.assertRegex(script, r'--github-id "\$(\{compte#\* \}|numero_compte)"')
+
+    def test_une_pr_ne_change_pas_qui_est_qui_pour_ses_propres_controles(self):
+        # eve's file says bidji29 was her login, and the same PR does what only the council does: in the PR's own state, eve
+        # would be bidji29, so the council ; the gate reads who is who on main.
+        self.branche("usurpation")
+        bee.ecrire_yaml(self.dossier / "membres/eve.yaml", {"pseudo": "eve", "inscrit_le": "2026-10-29", "compte_cree_le": "2020-01-01",
+                                                            "github_id": numero_de("eve"), "anciens_logins": ["bidji29"]})
+        (self.dossier / "taches/miniz/miniz-0100.yaml").write_text(TACHE_OPTIMISATION.replace("miniz-0099", "miniz-0100"), encoding="utf-8")
+        self.commit()
+        reg = bee.Registre(self.dossier)
+        self.assertTrue(reg.identites.meme("eve", "bidji29") and "eve" in reg.conseil)
+        problemes = bee.verifier_pr(reg, "main", "HEAD", "eve", github_id=numero_de("eve"))[0]
+        self.assertFalse(reg.identites.meme("eve", "bidji29") or "eve" in reg.conseil)
+        self.assertTrue(any("a new member file has no former login" in p for p in problemes), problemes)
+        self.assertTrue(any("créer directement une tâche ouverte est réservé au conseil" in p for p in problemes), problemes)
+        self.abandonner("usurpation")
+        # A binding forged in the PR (gaspard's file given another number) moves nothing either: main's binds gaspard.
+        self.branche("liaison")
+        bee.ecrire_yaml(self.dossier / "membres/gaspard.yaml", {**bee.lire_yaml(self.dossier / "membres/gaspard.yaml"), "github_id": 777})
+        self.commit()
+        self.comptes["gaspard"] = 777
+        self.refusee("gaspard", f"gaspard : the registry binds this login to the GitHub account {numero_de('gaspard')}, and this PR's "
+                                "author is the account 777")
+
+    def test_un_login_nomme_dans_gouvernance_est_renomme_par_le_conseil(self):
+        (self.dossier / "gouvernance/gardiens.yaml").write_text("membres:\n  - pseudo: gaspard\n", encoding="utf-8")
+        self.commit("le conseil nomme gaspard gardien")
+        self.ko("gaspard or gaspard2 is named in gouvernance/ : the council renames it", "renommer", "--ancien", "gaspard", "--pseudo", "gaspard2")
+        self.ko("farid or bidji29 is named in gouvernance/", "renommer", "--ancien", "farid", "--pseudo", "bidji29")  # S4
+        self.branche("renommage")
+        fiche = bee.lire_yaml(self.dossier / "membres/gaspard.yaml")
+        (self.dossier / "membres/gaspard.yaml").unlink()
+        bee.ecrire_yaml(self.dossier / "membres/gaspard2.yaml", {**fiche, "pseudo": "gaspard2", "anciens_logins": ["gaspard"]})
+        self.commit()
+        self.comptes["gaspard2"] = numero_de("gaspard")
+        self.refusee("gaspard2", "gaspard or gaspard2 is named in gouvernance/ : the council renames it, the list and the member file in one PR")
+        self.abandonner("renommage")
+        # A member file is withdrawn by the council only, outside a rename.
+        self.branche("retrait")
+        (self.dossier / "membres/farid.yaml").unlink()
+        self.commit()
+        self.refusee("farid", "membres/farid.yaml : a member file is deleted by the council only, or moved by its own account's rename")
+
+    def test_les_fiches_et_les_listes_sans_numero_restent_valides(self):
+        # A member file from before ruche-0022, without a number: valid, and its login acts as before, without a binding.
+        bee.ecrire_yaml(self.dossier / "membres/ancien.yaml", {"pseudo": "ancien", "inscrit_le": "2026-10-20", "compte_cree_le": "2020-01-01"})
+        self.ok("valider")
+        self.commit("une fiche d'avant")
+        self.branche("prise")
+        self.ok("prendre", "miniz-0099", "--utilisateur", "ancien")
+        self.commit()
+        self.comptes["ancien"] = 1234
+        self.libre_service("ancien", "reservation")
+        self.abandonner("prise")
+        # Governance lists and agent accounts may carry a number, the council's: then the gate binds their login to it.
+        conseil = self.dossier / "gouvernance/conseil.yaml"
+        garants = self.dossier / "gouvernance/garants.yaml"  # the real registry binds bidji29: this test binds it itself
+        garants.write_text(re.sub(r"\n    github_id: \d+", "", garants.read_text(encoding="utf-8")), encoding="utf-8")
+        sans = re.sub(r"\n    github_id: \d+", "", conseil.read_text(encoding="utf-8"))
+        conseil.write_text(sans.replace("role: fondateur", "role: fondateur\n    github_id: 5"), encoding="utf-8")
+        agents = self.dossier / "gouvernance/comptes-agents.yaml"
+        agents.write_text(agents.read_text(encoding="utf-8").replace("    acts_for: bidji29", "    acts_for: bidji29\n    github_id: 6"),
+                          encoding="utf-8")
+        self.ok("valider")
+        self.commit("le conseil lie ses comptes")
+        for qui, numero, accepte in (("bidji29", 5, True), ("bidji29", 7, False), ("laruche-architect", 6, True),
+                                     ("laruche-architect", 5, False)):
+            with self.subTest(qui=qui, numero=numero):
+                self.branche("note")
+                self.noter_a_la_main({"par": "bidji29"})
+                self.commit()
+                code, texte = self.verifier(qui, "--github-id", str(numero))
+                self.assertEqual(code == 0, accepte, texte)
+                self.abandonner("note")
+        for valeur in ('"5"', "0", "true"):
+            with self.subTest(github_id=valeur):
+                conseil.write_text(re.sub(r"github_id: .*", f"github_id: {valeur}", conseil.read_text(encoding="utf-8")), encoding="utf-8")
+                self.ko("bidji29 : github_id is a GitHub account's number (a positive integer)", "valider")
+        conseil.write_text(re.sub(r"github_id: .*", "github_id: 5", conseil.read_text(encoding="utf-8")), encoding="utf-8")
+        (self.dossier / "gouvernance/gardiens.yaml").write_text("membres:\n  - pseudo: gaspard\n    github_id: 99\n", encoding="utf-8")
+        self.ko(f"« gaspard » is bound to two GitHub accounts ({numero_de('gaspard')} and 99)", "valider")
 
 
 if __name__ == "__main__":

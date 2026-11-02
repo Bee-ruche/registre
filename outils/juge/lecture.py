@@ -36,8 +36,8 @@ def propre(octets, maximum=1500):
 def lire_sortie(racine, relatif, maximum=TAILLE_MAX_SORTIE):
     """Lit racine/relatif sans jamais suivre un lien symbolique (le conteneur a écrit dans racine).
 
-    Renvoie None si le fichier n'existe pas ; Refus s'il n'est pas un fichier ordinaire ou s'il est trop gros."""
-    morceaux = relatif.split("/")
+    Renvoie None si le fichier n'existe pas ; Refus s'il n'est pas un fichier ordinaire ou s'il dépasse maximum (TAILLE_MAX_SORTIE au plus)."""
+    maximum, morceaux = min(maximum, TAILLE_MAX_SORTIE), relatif.split("/")
     if any(m in ("", ".", "..") for m in morceaux):
         raise Refus(f"chemin de sortie invalide : {relatif}")
     fd = os.open(racine, os.O_RDONLY | os.O_DIRECTORY)
