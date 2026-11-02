@@ -75,9 +75,26 @@ cree_le: "2026-10-27"
 """
 
 
+def _numeros_lies():
+    """ruche-0022: the account numbers the real registry binds in gouvernance/, so that fixtures copied from it agree."""
+    lies = {}
+    for fichier in sorted((RACINE / "gouvernance").glob("*.yaml")):
+        donnees = yaml.safe_load(fichier.read_text(encoding="utf-8")) or {}
+        for liste in (donnees.values() if isinstance(donnees, dict) else []):
+            for entree in (liste if isinstance(liste, list) else []):
+                nom = isinstance(entree, dict) and (entree.get("pseudo") or entree.get("account"))
+                if nom and type(entree.get("github_id")) is int:
+                    lies[str(nom).casefold()] = entree["github_id"]
+    return lies
+
+
+NUMEROS_LIES = _numeros_lies()
+
+
 def numero_de(login):
-    """ruche-0022: the GitHub account number the tests give a login (the same in faux_gh), as the API would."""
-    return zlib.crc32(str(login).casefold().encode()) % 10 ** 8 + 1
+    """ruche-0022: the GitHub account number the tests give a login (the same in faux_gh), as the API would: the real
+    registry's binding if it has one, else a number derived from the login."""
+    return NUMEROS_LIES.get(str(login).casefold()) or zlib.crc32(str(login).casefold().encode()) % 10 ** 8 + 1
 
 
 def valeur_option(arguments, option):
@@ -4236,7 +4253,7 @@ if args[:1] == ["api"] and "/git/commits/" in args[1]:
     sys.exit(0)
 # ruche-0022: an account's number (users/<login>, .user.id of a PR) is numero_de(login) of the tests, or "comptes" of the state.
 jq = args[args.index("--jq") + 1] if "--jq" in args else ""
-numero_de = lambda login: (etat.get("comptes") or {}).get(login, zlib.crc32(login.casefold().encode()) % 10 ** 8 + 1)  # noqa: E731
+numero_de = lambda login: (etat.get("comptes") or {}).get(login, json.loads(os.environ.get("FAUX_GH_COMPTES", "{}")).get(login.casefold()) or zlib.crc32(login.casefold().encode()) % 10 ** 8 + 1)  # noqa: E731
 if args[:1] == ["api"] and args[1].startswith("users/"):
     print(f"2020-01-01 {numero_de(args[1][6:])}" if ".id" in jq else "2020-01-01")
     sys.exit(0)
@@ -4296,6 +4313,7 @@ class TestRevueAdverse(BaseParallele):
             journal.write_text("", encoding="utf-8")
         avant = len(journal.read_text(encoding="utf-8").splitlines())
         env = dict(os.environ, PATH=f"{racine / 'bin'}{os.pathsep}{os.environ['PATH']}", FAUX_GH_ETAT=str(etat),
+                   FAUX_GH_COMPTES=json.dumps(NUMEROS_LIES),
                    FAUX_GH_JOURNAL=str(journal), GH_TOKEN="jeton-registre", BEE_INTEGRATION_TOKEN="jeton-forks",
                    GITHUB_REPOSITORY="Bee-ruche/registre", RUNNER_TEMP=str(racine / "runner"), **(env_en_plus or {}))
         env.pop("BEE_REGISTRE", None)
@@ -12597,7 +12615,7 @@ class TestAgentAccounts(BaseRepetitionGenerale):
         auteurs = self.dossier.parent / "auteurs.tsv"
         for login, attendu in ((AGENT, 0), ("bidji29", 0), ("mallory", 1), ("LaRuche-Architect", 1), ("alice", 1)):
             with self.subTest(fork_pr_by=login):
-                auteurs.write_text(f"{PR_MINIZ}89001\t{login}\n", encoding="utf-8")
+                auteurs.write_text(f"{PR_MINIZ}89001\t{login}\t{numero_de(login)}\n", encoding="utf-8")
                 code, texte = self.verifier(AGENT, "--fusion-auto", "--auteurs-pr", str(auteurs))
                 self.assertEqual(code, attendu, texte)
                 self.assertIn("soumission", texte)
@@ -15857,7 +15875,10 @@ class TestIdentiteParNumero(BaseRepetitionGenerale):
         self.abandonner("prise")
         # Governance lists and agent accounts may carry a number, the council's: then the gate binds their login to it.
         conseil = self.dossier / "gouvernance/conseil.yaml"
-        conseil.write_text(conseil.read_text(encoding="utf-8").replace("role: fondateur", "role: fondateur\n    github_id: 5"), encoding="utf-8")
+        garants = self.dossier / "gouvernance/garants.yaml"  # the real registry binds bidji29: this test binds it itself
+        garants.write_text(re.sub(r"\n    github_id: \d+", "", garants.read_text(encoding="utf-8")), encoding="utf-8")
+        sans = re.sub(r"\n    github_id: \d+", "", conseil.read_text(encoding="utf-8"))
+        conseil.write_text(sans.replace("role: fondateur", "role: fondateur\n    github_id: 5"), encoding="utf-8")
         agents = self.dossier / "gouvernance/comptes-agents.yaml"
         agents.write_text(agents.read_text(encoding="utf-8").replace("    acts_for: bidji29", "    acts_for: bidji29\n    github_id: 6"),
                           encoding="utf-8")
