@@ -31,6 +31,9 @@ hors_perimetre:
 - creating the juge-v2 tag (the council)
 - pinning the forks (ruche-0024)
 noeud: projets/ruche/ruche
-statut: ouverte
+statut: reservee
+reservation:
+  utilisateur: "bidji29"
+  depuis: "2026-11-02T00:14:49Z"
 cree_par: conseil
 cree_le: '2026-11-01'
