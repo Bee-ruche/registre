@@ -198,7 +198,7 @@ class TestWorkflows(unittest.TestCase):
 
 class TestFusionAutoNeMergeQuApresVerification(unittest.TestCase):
     """fusion-auto.yml: the merge step runs only after the verification step ran, succeeded and returned code 0, for a PR
-    it found; a skipped verification (no PR found) never leads to `gh pr merge` (an empty output compares equal to '0')."""
+    it found; a skipped verification (no PR found) never leads to `gh pr merge` (its absent output, null, equals '0')."""
 
     def test_la_fusion_exige_une_verification_reussie(self):
         import yaml
@@ -206,9 +206,13 @@ class TestFusionAutoNeMergeQuApresVerification(unittest.TestCase):
         etapes = [e for job in flux["jobs"].values() for e in job.get("steps", [])]
         fusion = [e for e in etapes if re.search(r"(?m)^\s*gh pr merge ", e.get("run", ""))]
         self.assertEqual(len(fusion), 1)
-        condition = fusion[0].get("if", "")
-        for exigence in ("steps.verif.outcome == 'success'", "steps.verif.outputs.code == '0'", "steps.pr.outputs.numero != ''"):
-            self.assertIn(exigence, condition)
+        condition = " ".join(str(fusion[0].get("if", "")).split())
+        self.assertEqual(condition.split(" && "), ["steps.verif.outcome == 'success'", "steps.verif.outputs.code != ''",
+                                                   "steps.verif.outputs.code == '0'", "steps.pr.outputs.numero != ''"])
+        for interdit in ("||", "!(", "${{"):
+            self.assertNotIn(interdit, condition)
+        self.assertEqual(len(re.findall(r"(?m)^\s*gh pr merge ", "\n".join(e.get("run", "") for e in etapes))), 1)
+        self.assertNotRegex("\n".join(e.get("run", "") for e in etapes), r"pulls/[^ ]*/merge", "no other way to merge")
         self.assertIn('[[ "$NUMERO" =~ ^[0-9]+$ ]] ||', fusion[0]["run"])
         self.assertLess(fusion[0]["run"].index("=~ ^[0-9]+$"), fusion[0]["run"].index("gh pr merge"))
 
