@@ -45,6 +45,13 @@ on:
       code:
         description: "0 si toutes les sorties de B sont justes, 1 si le juge refuse B, 2 si l'environnement ne convient pas"
         value: ${{ jobs.juge.outputs.code }}
+      empreinte: {description: "SHA-256 of juge.json (artifact « juge »)", value: "${{ jobs.juge.outputs.empreinte }}"}
+      suspectes: {description: "number of suspicious constructs, those juge.json leaves out included", value: "${{ jobs.juge.outputs.suspectes }}"}
+      sorties_comparees: {description: "outputs of B compared", value: "${{ jobs.juge.outputs.sorties_comparees }}"}
+      greffon: {description: "SHA-256 of the plugin", value: "${{ jobs.juge.outputs.greffon }}"}
+      graine: {description: "seed of the judge", value: "${{ jobs.juge.outputs.graine }}"}
+      base: {description: "commit A judged", value: "${{ jobs.juge.outputs.base }}"}
+      tete: {description: "commit B judged", value: "${{ jobs.juge.outputs.tete }}"}
 
 permissions:
   contents: read
@@ -55,7 +62,26 @@ jobs:
     timeout-minutes: 150
     outputs:
       code: ${{ steps.juge.outputs.code }}
+      empreinte: ${{ steps.juge.outputs.empreinte }}
+      suspectes: ${{ steps.juge.outputs.suspectes }}
+      sorties_comparees: ${{ steps.juge.outputs.sorties_comparees }}
+      greffon: ${{ steps.juge.outputs.greffon }}
+      graine: ${{ steps.juge.outputs.graine }}
+      base: ${{ steps.juge.outputs.base }}
+      tete: ${{ steps.juge.outputs.tete }}
     steps:
+      - name: Entrées de l'appelant, avant tout usage (un appel qui ne laisse pas un jugement complet s'arrête ici)
+        env:
+          BASE: ${{ inputs.base_sha }}
+          TETE: ${{ inputs.tete_sha }}
+          BASE_EVENEMENT: ${{ github.event.pull_request.base.sha }}
+          TETE_EVENEMENT: ${{ github.event.pull_request.head.sha }}
+          REPETITIONS: ${{ inputs.repetitions }}
+          SANS_INSTRUCTIONS: ${{ inputs.sans_instructions }}
+        run: |
+          [[ "$BASE" =~ ^[0-9a-f]{40}$ && "$TETE" =~ ^[0-9a-f]{40}$ && "$BASE" == "$BASE_EVENEMENT" && "$TETE" == "$TETE_EVENEMENT" ]] || { echo "base_sha, tete_sha: the event's pull request's (40 hexadecimal digits)" >&2; exit 1; }
+          [[ "$REPETITIONS" =~ ^[1-9][0-9]{0,2}$ ]] && (( REPETITIONS >= 10 && REPETITIONS <= 50 )) || { echo "repetitions: 10 to 50" >&2; exit 1; }
+          [[ "$SANS_INSTRUCTIONS" == false ]] || { echo "sans_instructions: a verdict needs the instruction count" >&2; exit 1; }
       - name: Commit de ce workflow, sur la branche principale du registre (le code du juge y est lu)
         id: preparation
         env:
@@ -94,12 +120,16 @@ jobs:
           path: pr
           fetch-depth: 0
           persist-credentials: false
+      - name: Dossier de travail du juge, borné (tmpfs ; tout ce que les conteneurs écrivent y reste)
+        run: |
+          mkdir -p "$RUNNER_TEMP/juge" && sudo mount -t tmpfs -o "size=4g,nr_inodes=262144,mode=0755,nosuid,nodev,uid=$(id -u),gid=$(id -g)" tmpfs "$RUNNER_TEMP/juge"
       - name: Juger
         id: juge
         env:
           OPTIONS: ${{ inputs.options }}
           REPETITIONS: ${{ inputs.repetitions }}
-          SANS_INSTRUCTIONS: ${{ inputs.sans_instructions }}
+          BASE: ${{ inputs.base_sha }}
+          TETE: ${{ inputs.tete_sha }}
           SOURCE: Bee-ruche/registre@${{ steps.preparation.outputs.commit }}
         run: |
           mkdir -p resultats
@@ -107,10 +137,9 @@ jobs:
           while IFS= read -r ligne; do
             [ -n "$ligne" ] && options+=(--option "$ligne")
           done <<< "$OPTIONS"
-          [ "$SANS_INSTRUCTIONS" = "true" ] && options+=(--sans-instructions)
           set +e
           python3 juge-commun/outils/juge/juge.py --outillage base --source-a base --source-b pr \
-            --repetitions "$REPETITIONS" --source-juge "$SOURCE" \
+            --repetitions "$REPETITIONS" --source-juge "$SOURCE" --base "$BASE" --tete "$TETE" --travail "$RUNNER_TEMP/juge" \
             "${options[@]}" --json resultats/juge.json > /dev/null 2> resultats/journal.txt
           code=$?
           set -e
@@ -121,6 +150,7 @@ jobs:
           printf '\n::%s::\n' "$jeton"
           echo "$code" > resultats/code
           echo "code=$code" >> "$GITHUB_OUTPUT"
+          python3 juge-commun/outils/juge/rapport.py resultats/juge.json >> "$GITHUB_OUTPUT"
       - name: Conserver le rapport
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
