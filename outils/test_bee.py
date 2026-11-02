@@ -985,6 +985,40 @@ class TestRegistre(BaseTest):
         code, texte = self.bee("verifier-acceptation", cid)
         self.assertEqual(code, 0, texte)
 
+    def test_r4_reproduction_par_une_autre_personne_qui_dit_sa_configuration(self):
+        """ruche-0042 : pour R4, une mesure d'une autre configuration est celle d'un autre utilisateur que l'auteur de la contribution
+        (sans la casse ; un compte d'agent déclaré est sa personne), qui dit sa configuration. Les autres restent des fichiers valides."""
+        cid = self.contribution_relue(0.06, True, 0.0)  # +6 % au chronomètre seul : R4 exige une reproduction
+        declarer_agents(self.dossier, (AGENT, "bidji29"), ("alice-agent", "alice"))
+        mesure = {"contribution": cid, "le": "2026-10-29T12:00:00Z", "base": "2948eeb", "candidat": "abc1234",
+                  "config": {"architecture": "arm64", "compilateur": "clang 17"},
+                  "metriques": {"debit_compression_n6": {"gain": 0.05, "au_dela_du_bruit": True}}}
+        dossier = self.dossier / "mesures" / cid
+
+        def manque_r4(soumise_par, **champs):
+            shutil.rmtree(dossier, ignore_errors=True)
+            bee.ecrire_yaml(dossier / f"{soumise_par}.yaml",
+                            {k: v for k, v in {**mesure, "soumise_par": soumise_par, **champs}.items() if v is not None})
+            return [r for r in bee.raisons_r3(bee.Registre(self.dossier), cid)[2] if "reproduit par une mesure" in r]
+
+        for soumise_par, champs in (("alice", {}), ("Alice", {}), ("alice-agent", {}), ("ALICE-AGENT", {}), ("bruno", {"config": None}),
+                                    ("bruno", {"config": {"architecture": " "}}), ("bruno", {"config": {"compilateur": "gcc 13"}}),
+                                    ("bruno", {"config": "arm64"})):
+            with self.subTest(soumise_par=soumise_par, **champs):
+                self.assertTrue(manque_r4(soumise_par, **champs), "elle ne compte pas pour R4")
+        self.assertFalse(manque_r4("bruno"), "celle de bruno, qui dit sa configuration, compte")
+        reg = bee.Registre(self.dossier)
+        de_bruno = next(m for _, m in reg.mesures if m.get("soumise_par") == "bruno")
+        self.assertTrue(bee.reproduces_for_r4(reg, de_bruno, "alice"))
+        for auteur in (None, "", " ", 5):  # sans auteur à qui la comparer, aucune ne compte (échec fermé)
+            self.assertFalse(bee.reproduces_for_r4(reg, de_bruno, auteur), repr(auteur))
+        code, texte = self.bee("verifier-acceptation", cid)
+        self.assertEqual(code, 0, texte)
+        # Celle de l'auteur reste un fichier valide, à côté : elle ne compte simplement pas.
+        bee.ecrire_yaml(dossier / "alice.yaml", {**mesure, "soumise_par": "alice"})
+        self.valide()
+        self.assertEqual(self.bee("verifier-acceptation", cid)[0], 0)
+
     def test_r5_chronometre_bruite_ignore_instructions_jugees(self):
         cid = self.contribution_relue(0.05, True, 0.05, {"debit_compression_n1": -0.05})
         self.assertEqual(self.bee("verifier-acceptation", cid)[0], 0, "un recul au chronomètre seul ne bloque pas")
@@ -13044,6 +13078,227 @@ class TestR8Bootstrap(BaseRepetitionGenerale):
         self.commit()
         for auteur in (AGENT, "bidji29"):
             self.refusee(auteur, "règle R8 : bidji29 a 9 réservations ou inscriptions en parallèle", "maximum 8")
+
+
+class TestAjoutSeulRuche0042(BaseRepetitionGenerale):
+    """ruche-0042, commandment 10: a published vote is never withdrawn, before or after its vote closes, and no longer changes
+    once closed; its voter replaces it while the vote is open. A published measurement is neither changed nor withdrawn; adding
+    one stays self-service."""
+
+    VOTE_CLOS = "2026-11-06T00:00:00Z"  # P-0001 opens at 2026-10-29T22:00Z (setUp): its vote lasts 7 days (duree_vote_jours)
+
+    def setUp(self):
+        super().setUp()
+        self.contributeurs("bruno")  # miniz-9100-c1, integrated: another contribution a measurement could be moved to
+        self.commit("une contribution intégrée")
+        self.prendre_et_fusionner("alice")
+        self.publie("alice", "soumettre", "miniz-0099", "--utilisateur", "alice", "--pr", "https://github.com/Bee-ruche/minizBee/pull/77042")
+        self.cid = "miniz-0099-c1"
+        self.publie("gaspard", "proposer", "--utilisateur", "gaspard", "--regle", "R8", "--texte", "Quatre engagements au plus.",
+                    "--motif", "Essai de ruche-0042.")
+        for votant in ("gaspard", "bidji29"):  # bidji29: the council
+            for sujet in ("P-0001", self.cid):
+                self.publie(votant, "voter", sujet, "--utilisateur", votant, "--valeur", "1", natures=("vote",))
+        for qui in ("farid", "alice"):  # alice measures her own contribution: a valid file, which R4 does not count
+            self.publie(qui, "enregistrer-mesure", self.cid, "--ab", self.rapport_ab(), "--utilisateur", qui, natures=("mesure",))
+
+    def publie(self, auteur, *commande, natures=()):
+        """A gesture made by its bee command, accepted as self-service, then merged into main."""
+        self.branche("geste")
+        self.ok(*commande)
+        self.commit()
+        self.libre_service(auteur, *natures)
+        self.fusionner("geste")
+
+    def rapport_ab(self):
+        rapport = self.dossier.parent / "ab.json"  # outside the registry: never committed
+        rapport.write_text(json.dumps({"base": {"commit": "2948eeb"}, "candidat": {"commit": "839b676"},
+                                       "machine": {"architecture": "arm64", "compilateur": "clang 17"},
+                                       "metriques": {"debit_compression_n6": {"gain": 0.05, "au_dela_du_bruit": True}}}), encoding="utf-8")
+        return str(rapport)
+
+    def abandonner(self, nom="pr"):
+        git(self.dossier, "switch", "-qf", "main")
+        git(self.dossier, "branch", "-qD", nom)
+
+    def test_retirer_un_vote_est_refuse_avant_comme_apres_la_cloture(self):
+        for quand in (None, self.VOTE_CLOS):
+            if quand:
+                self.a(quand)
+            for sujet, votant in [(s, v) for s in ("P-0001", self.cid) for v in ("gaspard", "bidji29")]:  # a member, the council
+                with self.subTest(clos=bool(quand), sujet=sujet, votant=votant):
+                    git(self.dossier, "switch", "-qf", "main")
+                    git(self.dossier, "switch", "-qc", nom := f"retrait-{sujet}-{votant}-{bool(quand)}")
+                    git(self.dossier, "rm", "-q", f"votes/{sujet}/{votant}.yaml")
+                    self.commit()
+                    texte = self.refusee(votant, f"votes/{sujet}/{votant}.yaml : a published vote is never withdrawn (commandment 10)")
+                    self.assertIn("PR refusée (1 problème(s))", texte, "the only refusal is this rule's: the voter withdraws their own vote")
+                    self.abandonner(nom)
+
+    def test_renommer_son_vote_est_refuse(self):
+        """With --no-renames, a rename is a withdrawal plus an addition: the withdrawal is refused."""
+        self.branche("renomme")
+        git(self.dossier, "mv", f"votes/{self.cid}", "votes/miniz-9100-c1")
+        chemin = self.dossier / "votes/miniz-9100-c1/gaspard.yaml"
+        bee.ecrire_yaml(chemin, {**bee.lire_yaml(chemin), "sujet": "miniz-9100-c1"})
+        self.commit()
+        self.refusee("gaspard", f"votes/{self.cid}/gaspard.yaml : a published vote is never withdrawn")
+
+    def test_remplacer_son_vote_avant_la_cloture_reste_permis(self):
+        """ruche-0033 makes the replacement explicit, and git keeps the vote replaced: it is not a withdrawal."""
+        self.a("2026-10-30T09:00:00Z")
+        for sujet in ("P-0001", self.cid):
+            with self.subTest(sujet=sujet):
+                self.branche("remplacement")
+                self.ok("voter", sujet, "--utilisateur", "gaspard", "--valeur", "-1")
+                self.commit()
+                self.libre_service("gaspard", "vote")
+                self.fusionner("remplacement")
+                self.assertEqual(bee.lire_yaml(self.dossier / f"votes/{sujet}/gaspard.yaml")["valeur"], -1)
+
+    def test_modifier_un_vote_apres_la_cloture_est_refuse(self):
+        self.a(self.VOTE_CLOS)
+        self.ko("le vote sur P-0001 est clos", "voter", "P-0001", "--utilisateur", "gaspard", "--valeur", "-1")
+        self.ko("le vote sur P-0001 est clos", "voter", "P-0001", "--utilisateur", "farid", "--valeur", "1")
+        self.branche("apres")
+        chemin = self.dossier / "votes/P-0001/gaspard.yaml"
+        bee.ecrire_yaml(chemin, {**bee.lire_yaml(chemin), "valeur": -1, "le": self.VOTE_CLOS})
+        self.commit()
+        self.refusee("gaspard", "votes/P-0001/gaspard.yaml : le vote sur P-0001 est clos")
+
+    def test_modifier_une_mesure_est_refuse(self):
+        chemin = self.dossier / f"mesures/{self.cid}/farid.yaml"
+        publiee = bee.lire_yaml(chemin)
+        self.a("2026-10-30T09:00:00Z")
+        self.branche("modif")
+        for champs in ({"metriques": {"debit_compression_n6": {"gain": 0.09, "au_dela_du_bruit": True}}, "le": "2026-10-30T09:00:00Z"},
+                       {"config": {"architecture": "x86_64"}, "le": "2026-10-30T09:00:00Z"}, {"motif": "Remesuré."}):
+            with self.subTest(champs=sorted(champs)):
+                bee.ecrire_yaml(chemin, {**publiee, **champs})
+                self.commit()
+                self.refusee("farid", f"mesures/{self.cid}/farid.yaml : a published measurement is neither changed nor withdrawn")
+        # bee enregistrer-mesure does not overwrite it either, and does not claim that a local file is published.
+        git(self.dossier, "checkout", "-q", "main", "--", ".")
+        texte = self.ko(f"mesures/{self.cid}/farid.yaml already exists : one measurement per person and per contribution, never "
+                        "changed once published (commandment 10) ; if this file is not published yet, delete it, then rerun",
+                        "enregistrer-mesure", self.cid, "--ab", self.rapport_ab(), "--utilisateur", "farid")
+        self.assertEqual(bee.lire_yaml(chemin), publiee)
+
+    def test_retirer_renommer_ou_changer_le_mode_d_une_mesure_est_refuse(self):
+        message = "a published measurement is neither changed nor withdrawn (commandment 10)"
+        autre = "miniz-9100-c1"
+        for nom, geste, auteurs in (
+                ("retrait", lambda: git(self.dossier, "rm", "-q", f"mesures/{self.cid}/farid.yaml"), ("farid", "bidji29")),
+                ("deplacement", lambda: self.deplacer_mesure(autre), ("farid",)),
+                ("mode", lambda: (self.dossier / f"mesures/{self.cid}/farid.yaml").chmod(0o755), ("farid", "bidji29"))):
+            with self.subTest(geste=nom):
+                git(self.dossier, "switch", "-qf", "main")
+                git(self.dossier, "switch", "-qc", nom)
+                geste()
+                self.commit()
+                self.assertTrue(git(self.dossier, "diff", "--name-only", "main...HEAD").strip(), "the PR changes something")
+                for auteur in auteurs:
+                    self.refusee(auteur, f"mesures/{self.cid}/farid.yaml : {message}")
+                self.abandonner(nom)
+
+    def deplacer_mesure(self, autre):
+        git(self.dossier, "mv", f"mesures/{self.cid}", f"mesures/{autre}")
+        chemin = self.dossier / f"mesures/{autre}/farid.yaml"
+        bee.ecrire_yaml(chemin, {**bee.lire_yaml(chemin), "contribution": autre})
+        git(self.dossier, "rm", "-q", "--cached", f"mesures/{autre}/alice.yaml")
+        (self.dossier / f"mesures/{autre}/alice.yaml").unlink()
+        git(self.dossier, "checkout", "-q", "main", "--", f"mesures/{self.cid}/alice.yaml")
+
+    def test_ajouter_une_mesure_reste_en_libre_service(self):
+        self.a("2026-10-30T09:00:00Z")
+        # Dated before the PR, it is refused: the remedy deletes the local file first, since bee enregistrer-mesure never overwrites.
+        self.branche("perimee")
+        self.ok("enregistrer-mesure", self.cid, "--ab", self.rapport_ab(), "--utilisateur", "chloe")
+        self.a("2026-10-30T12:00:00Z")
+        self.commit()
+        self.refusee("chloe", f"mesures/{self.cid}/chloe.yaml : le (2026-10-30T09:00:00Z) doit être l'heure de la PR",
+                     f"delete mesures/{self.cid}/chloe.yaml, then rerun bee enregistrer-mesure")
+        self.abandonner("perimee")
+        self.publie("chloe", "enregistrer-mesure", self.cid, "--ab", self.rapport_ab(), "--utilisateur", "chloe", natures=("mesure",))
+        self.assertEqual(sorted(p.name for p in (self.dossier / f"mesures/{self.cid}").iterdir()), ["alice.yaml", "chloe.yaml", "farid.yaml"])
+
+    def test_les_votes_et_mesures_publies_restent_valides(self):
+        """Nothing published before this change becomes invalid: bee valider still accepts the votes (the closed one included)
+        and the measurements (the author's own included), and a PR that leaves them alone stays self-service."""
+        self.a(self.VOTE_CLOS)
+        reg = bee.Registre(self.dossier)
+        self.assertEqual((len(reg.votes), len(reg.mesures)), (4, 2))
+        self.valide()
+        self.publie("chloe", "voter", self.cid, "--utilisateur", "chloe", "--valeur", "1", natures=("vote",))
+        self.valide()
+
+    def fermer(self, statut):
+        """As the robot or the council writes it, on the current branch: the contribution leaves review with `statut`. Integrated,
+        or set aside in favour of miniz-0099-c2 (integrated), its task is integrated; otherwise (cancelled, refused…) it reopens."""
+        maintenant, dossier, retenue = os.environ["BEE_MAINTENANT"], self.dossier / "contributions/miniz", self.cid
+        if statut == "ecartee":
+            retenue = "miniz-0099-c2"
+            bee.ecrire_yaml(dossier / f"{retenue}.yaml", {"id": retenue, "tache": "miniz-0099", "auteur": "farid", "statut": "integree",
+                                                         "pr": "https://github.com/Bee-ruche/minizBee/pull/77043",
+                                                         "soumise_le": maintenant, "relectures": []})
+        enr = bee.lire_yaml(dossier / f"{self.cid}.yaml")
+        enr.update({"statut": statut, "decidee_le": maintenant, "motif_decision": "Essai de ruche-0042."},
+                   **({"retenue": retenue} if statut == "ecartee" else {}), **({"jamais_integree": True} if statut == "annulee" else {}))
+        bee.ecrire_yaml(dossier / f"{self.cid}.yaml", enr)
+        if statut in ("integree", "ecartee"):
+            bee.modifier_tache(self.chemin_tache(), statut="integree", contribution=retenue)
+        else:
+            bee.modifier_tache(self.chemin_tache(), statut="ouverte", contribution=None)
+        self.valide()
+        self.commit(f"contribution {statut}")
+
+    def vote_a_la_main(self, votant, nom, dossier=None, depuis="main"):
+        """A PR writing `votant`'s vote on the contribution by hand, dated now (bee voter refuses once it is closed), in the folder
+        `dossier` (by default, the contribution's)."""
+        git(self.dossier, "switch", "-qf", depuis)
+        git(self.dossier, "switch", "-qc", nom)
+        bee.ecrire_yaml(self.dossier / f"votes/{dossier or self.cid}/{votant}.yaml",
+                        {"votant": votant, "sujet": self.cid, "valeur": -1, "le": os.environ["BEE_MAINTENANT"]})
+        self.commit()
+
+    def test_un_vote_sur_une_contribution_se_clot_quand_elle_quitte_la_relecture(self):
+        """A vote on a contribution is written or changed only while the contribution is in review (en_relecture); once it has
+        left it, whatever its status, no one adds or changes one, the council included, and its subject is checked both as the
+        vote's folder and as the file's sujet."""
+        self.a("2026-10-30T09:00:00Z")
+        for votant in ("chloe", "gaspard", "bidji29"):  # in review: a new vote, a replaced one, the council's replaced one
+            with self.subTest(statut="en_relecture", votant=votant):
+                self.vote_a_la_main(votant, nom := f"ouvert-{votant}")
+                self.libre_service(votant, "vote")
+                self.abandonner(nom)
+        # The council's PR that integrates the contribution cannot carry its vote too: it votes in an earlier PR.
+        message = f"le vote sur {self.cid} est clos : la contribution n'est plus en relecture (statut : integree)"
+        self.branche("integration")
+        self.fermer("integree")
+        self.vote_a_la_main("bidji29", "integration-et-vote", depuis="integration")
+        texte = self.refusee("bidji29", f"votes/{self.cid}/bidji29.yaml : {message}")
+        self.assertIn("PR refusée (1 problème(s))", texte)
+        main = git(self.dossier, "rev-parse", "main").strip()
+        schema = json.loads((self.dossier / "schemas/enregistrement.schema.json").read_text(encoding="utf-8"))
+        statuts = [s for s in schema["properties"]["statut"]["enum"] if s != "en_relecture"]  # every status out of review
+        self.assertLessEqual({"integree", "ecartee", "annulee", "refusee"}, set(statuts))
+        for statut in statuts:
+            git(self.dossier, "switch", "-qf", "main")
+            git(self.dossier, "reset", "-q", "--hard", main)
+            self.fermer(statut)
+            message = f"le vote sur {self.cid} est clos : la contribution n'est plus en relecture (statut : {statut})"
+            self.ko(message, "voter", self.cid, "--utilisateur", "chloe", "--valeur", "1")
+            self.assertFalse((self.dossier / f"votes/{self.cid}/chloe.yaml").exists(), "nothing written")
+            for votant in ("chloe", "gaspard", "bidji29"):  # an added vote, a changed one, the council's changed one
+                with self.subTest(statut=statut, votant=votant):
+                    self.vote_a_la_main(votant, nom := f"{statut}-{votant}")
+                    texte = self.refusee(votant, f"votes/{self.cid}/{votant}.yaml : {message}")
+                    self.assertIn("PR refusée (1 problème(s))", texte, "the only refusal is the closed vote")
+                    self.abandonner(nom)
+            with self.subTest(statut=statut, dossier="miniz-0099-c01"):  # the file's sujet names it, in another folder
+                self.vote_a_la_main("chloe", nom := f"{statut}-c01", dossier="miniz-0099-c01")
+                self.refusee("chloe", f"votes/miniz-0099-c01/chloe.yaml : {message}")
+                self.abandonner(nom)
 
 
 # --- ruche-0095: every list of paths read from git is NUL-separated (-z), never compared in git's quoted form ---
