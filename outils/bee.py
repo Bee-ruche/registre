@@ -14,6 +14,7 @@ utilisateur : voir AGENTS.md.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import datetime as dt
 import fnmatch
 import hashlib
@@ -399,13 +400,11 @@ class Registre:
             donnees = self._lire_fichier(chemin)
             if donnees is not None:
                 self.mesures.append((chemin, donnees))
-        # ruche-0022: who is who, from this registry's own files; the gate adopts the base's instead (verifier_pr).
-        self.entrees_liees = entrees_liees(conseil, gardiens, garants, self.fiches_agents)
+        self.entrees_liees = entrees_liees(conseil, gardiens, garants, self.fiches_agents)  # ruche-0022: the gate adopts main's instead
         self.identites_lues = Identites([m for _, m in self.membres.values()], self.entrees_liees)
         self.adopter(self.identites_lues)
 
-    def adopter(self, identites):
-        """ruche-0022: who is who for every check on this registry, and the sets of persons read through it."""
+    def adopter(self, identites):  # ruche-0022: who is who for every check on this registry, and the sets read through it
         self.identites = identites
         self.conseil, self.gardiens, self.garants, self.robots, self.agents = (
             Pseudos(s, identites) for s in (self.conseil, self.gardiens, self.garants, self.robots, self.comptes_agents))
@@ -421,9 +420,8 @@ class Registre:
         chemin = self.racine / relatif
         return self._lire_fichier(chemin) if chemin.exists() else None
 
-    def inscrit(self, pseudo):
-        """A member (its file's login), the council, or a former login of a member file: history keeps the old login (ruche-0022)."""
-        return pseudo in self.membres or pseudo in self.conseil or self.identites.connait(pseudo)
+    def inscrit(self, pseudo):  # a member, the council, or a member file's former login: history keeps it (ruche-0022)
+        return pseudo in self.membres or pseudo in self.conseil or (isinstance(pseudo, str) and pseudo.casefold() in self.identites.noms)
 
     def privilegies(self):
         """Conseil et gardiens : ceux dont la relecture ouvre la porte de R3."""
@@ -521,7 +519,7 @@ class Registre:
         self.exiger_orthographe(pseudo)
         if pseudo not in self.membres and pseudo not in self.conseil:
             raise ErreurBee(f"{pseudo} n'est pas inscrit dans ce registre. Si votre PR d'inscription est ouverte, attendez sa fusion, "
-                            f"puis : git switch main && git pull upstream main. Sinon : bee inscrire --pseudo {pseudo} --compte-cree-le AAAA-MM-JJ")
+                            f"puis : git switch main && git pull upstream main. Sinon : bee inscrire --pseudo {pseudo} --compte-cree-le AAAA-MM-JJ --github-id N")
 
     def est_integree(self, identifiant):
         return identifiant in self.taches and self.taches[identifiant][1].get("statut") == "integree"
@@ -585,16 +583,14 @@ def meme_pseudo(a, b):
     return isinstance(a, str) and isinstance(b, str) and a.casefold() == b.casefold()
 
 
-def logins_de(entree):
-    """The logins of a member file or of a governance entry: pseudo (or account), then its former logins (anciens_logins)."""
+def logins_de(entree):  # a member file's or a governance entry's logins: pseudo (or account), then anciens_logins
     anciens = entree.get("anciens_logins") if isinstance(entree.get("anciens_logins"), list) else []
     return [x for x in [entree.get("pseudo", entree.get("account")), *anciens] if isinstance(x, str)]
 
 
 class Identites:
-    """ruche-0022: who is who. A member file with github_id names one person under its logins, current and former (the current
-    one names it); any other login is itself, without case. `numeros` binds logins to account numbers (member files, governance
-    lists, agent accounts). Each Registre reads its own; the gate takes the base's, never the PR's (verifier_pr)."""
+    """ruche-0022: a member file with github_id names one person (its pseudo) under its logins, current and former; any other
+    login is itself. `numeros` binds logins to account numbers. Each Registre reads its own; the gate takes main's (verifier_pr)."""
     def __init__(self, fiches=(), listes=()):
         self.noms, self.numeros, self.conflits = {}, {}, []
         for e, membre in [*((f, True) for f in fiches), *((e, False) for e in listes)]:
@@ -613,9 +609,6 @@ class Identites:
 
     def meme(self, a, b):
         return isinstance(a, str) and isinstance(b, str) and self.cle(a) == self.cle(b)
-
-    def connait(self, login):  # a current or former login of a member file with its number
-        return isinstance(login, str) and login.casefold() in self.noms
 
 
 class Pseudos(frozenset):
@@ -675,24 +668,20 @@ def agent_accounts(donnees):
 LISTES_LIEES = ("gouvernance/conseil.yaml", "gouvernance/gardiens.yaml", "gouvernance/garants.yaml", AGENT_ACCOUNTS)
 
 
-def entrees_liees(*documents):
-    """ruche-0022: the entries of the governance lists (membres) and agent accounts (accounts), which may carry github_id."""
+def entrees_liees(*documents):  # ruche-0022: the entries of the governance lists and agent accounts, which may carry github_id
     return [e for d in documents if isinstance(d, dict) for cle in ("membres", "accounts") if isinstance(d.get(cle), list)
             for e in d[cle] if isinstance(e, dict)]
 
 
-def qui_est_qui(racine, ref):
-    """ruche-0022: who is who at `ref` (Identites), read in git: the gate takes it from the base, never from the PR."""
+def qui_est_qui(racine, ref):  # ruche-0022: who is who at `ref`, read in git: the gate takes main's, never the PR's
     membres = [c for c in git(racine, "ls-tree", "-z", "--name-only", ref, "membres/", remplacer=True) if FICHIERS_LIBRE_SERVICE["membres"][1].match(c)]
     lus = {c: lire_ou_rien(racine, ref, c) for c in [*membres, *LISTES_LIEES]}
     return Identites([f for c, f in lus.items() if c in membres and isinstance(f, dict)], entrees_liees(*(lus[c] for c in LISTES_LIEES)))
 
 
 def lire_ou_rien(racine, ref, chemin):
-    try:
+    with contextlib.suppress(ErreurBee):
         return lire_yaml_ref(racine, ref, chemin)
-    except ErreurBee:
-        return None
 
 
 def identity_values(donnees, profondeur=0):
@@ -1556,7 +1545,7 @@ class Niveaux(dict):
 
 
 def calculer_niveaux(reg):
-    qui = reg.identites  # ruche-0022: a person's contributions and reviews count together, under all their logins
+    qui = reg.identites  # ruche-0022: by person
     stats = defaultdict(lambda: {"integrees": 0, "relectures": 0})
     for pseudo in reg.membres:
         stats[pseudo]
@@ -1942,7 +1931,7 @@ def verifier_registre(reg):
         if not ids and projet["categorie"] != "ruche":
             ajouter(f"{reg.rel(chemin)} : un projet à optimiser déclare au moins une métrique (seule la ruche elle-même n'en a pas)")
 
-    vus_pseudos = {}
+    vus_pseudos, logins, numeros = {}, {}, {}  # ruche-0022: one member file per login, current or former, and per number
     for stem, (chemin, membre) in sorted(reg.membres.items()):
         if selon_schema("membre", chemin, membre) and membre["pseudo"] != stem:
             ajouter(f"{reg.rel(chemin)} : pseudo « {membre['pseudo']} » différent du nom de fichier")
@@ -1950,16 +1939,17 @@ def verifier_registre(reg):
             ajouter(f"{reg.rel(chemin)} : « {stem} » et « {vus_pseudos[stem.casefold()]} » sont le même login GitHub (la casse ne "
                     "compte pas) : une seule fiche par compte")
         vus_pseudos.setdefault(stem.casefold(), stem)
-    logins, numeros = {}, {}  # ruche-0022: one member file per login, current or former, and per account number
-    for stem, (chemin, membre) in sorted(reg.membres.items()):
         for login in logins_de(membre) if isinstance(membre, dict) else []:
             if logins.setdefault(login.casefold(), stem).casefold() != stem.casefold():
                 ajouter(f"{reg.rel(chemin)} : the login « {login} » is already {logins[login.casefold()]}'s (one account, one file)")
         if isinstance(membre, dict) and (n := membre.get("github_id")) is not None and numeros.setdefault(n, stem) != stem:
             ajouter(f"{reg.rel(chemin)} : github_id {n} is already {numeros[n]}'s : one account, one file (a renamed account: bee renommer)")
-    for e in reg.entrees_liees:
+    for e in [*reg.entrees_liees, *(m for _, m in reg.membres.values() if isinstance(m, dict))]:  # an int: never a bool or a float
         if "github_id" in e and not (type(e["github_id"]) is int and e["github_id"] > 0):
-            ajouter(f"gouvernance : {(logins_de(e) or ['?'])[0]} : github_id is a GitHub account's number (a positive integer)")
+            ajouter(f"{(logins_de(e) or ['?'])[0]} : github_id is a GitHub account's number (a positive integer)")
+    for e in reg.entrees_liees:  # a login renamed away from never hands its former holder a status
+        if "github_id" not in e and reg.identites_lues.nom(login := (logins_de(e) or ["?"])[0]).casefold() != login.casefold():
+            ajouter(f"gouvernance : {login} is a former login of {reg.identites_lues.nom(login)} : named only with that account's github_id")
     for login, un, autre in reg.identites_lues.conflits:
         ajouter(f"« {login} » is bound to two GitHub accounts ({un} and {autre}) : a login is one account's (ruche-0022)")
 
@@ -3246,7 +3236,7 @@ def verifier_agora_registre(reg, ajouter, selon_schema, instant_valide):
                     ajouter(f"bee.yaml : agora.{cle} : clé inconnue ({', '.join(AGORA_DEFAUT)})")
                 elif not isinstance(valeur, int) or isinstance(valeur, bool) or valeur <= 0:
                     ajouter(f"bee.yaml : agora.{cle} : entier positif attendu")
-    connus = set(reg.membres) | set(reg.conseil)
+    connus = set(reg.membres) | set(reg.conseil) | {x for _, m in reg.membres.values() if isinstance(m, dict) for x in logins_de(m)}  # ruche-0022
     for stem, (chemin, d) in reg.debats.items():
         if not selon_schema("debat", chemin, d):
             continue
@@ -4888,13 +4878,11 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
     declared date is checked against it, and so is what is judged at the time of the act (R7, R8, the 24 h caps, the agora's
     delays, an earlier invitation's expiry); engagement expiries, the end of a vote, the brake and the account's age: now.
 
-    ruche-0022: `reg` adopts who is who from the base, never from the PR. A login the base binds to an account number acts only as
-    that account: `github_id`, the PR author's, read by the workflow from the API; another, or none, is refused."""
+    ruche-0022: `reg` adopts main's who is who; a login it binds to a number acts only as that account (`github_id`, from the API)."""
     instant = instant or maintenant()
     reg.adopter(qui_est_qui(reg.racine, base))
     if (lie := reg.identites.numeros.get(str(auteur).casefold())) is not None and lie != github_id:
-        return [f"{auteur} : the registry binds this login to the GitHub account {lie}, and this PR's author is the account "
-                f"{github_id or 'not read (--github-id)'} : a renamed or reused login inherits nothing ; a human looks (ruche-0022)"], ["gouvernance"]
+        return [f"{auteur} : the registry binds this login to the GitHub account {lie}, and this PR's author is the account {github_id or 'not read (--github-id)'} : a renamed or reused login inherits nothing ; a human looks (ruche-0022)"], ["gouvernance"]
     try:
         agents = agent_accounts(lire_yaml_ref(reg.racine, base, AGENT_ACCOUNTS))
     except ErreurBee:
@@ -5509,8 +5497,7 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
             depart, arrivee = (fiches_pr[s].get(n) if type(n) is int else None for s in ("D", "A"))
             natures.append("renommage" if depart and arrivee else "gouvernance" if statut_git == "D" else "inscription" if statut_git == "A" else "profil")
             if statut_git == "D":  # ruche-0022: a member file is never withdrawn in self-service, only moved by its own account's rename
-                exiger(est_conseil or (arrivee is not None and n == github_id), f"{chemin} : a member file is deleted by the council "
-                                                                               "only, or moved by its own account's rename (bee renommer)")
+                exiger(est_conseil or (arrivee is not None and n == github_id), f"{chemin} : a member file is deleted by the council only, or moved by its own account's rename (bee renommer)")
                 continue
             exiger(pathlib.PurePosixPath(chemin).stem == auteur or est_conseil, f"{chemin} : on ne s'inscrit qu'en son nom ({auteur})")
             if statut_git != "D" and isinstance(nouveau, dict):
@@ -5523,17 +5510,15 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
                 differences = {k for k in set(ancien) | set(nouveau) if ancien.get(k) != nouveau.get(k)}
                 exiger(differences <= {"categories_preferees"} or est_conseil, f"{chemin} : seules les catégories préférées sont modifiables")
             if statut_git == "A" and isinstance(nouveau, dict):
-                exiger(github_id is not None and nouveau.get("github_id") == github_id,
-                       f"{chemin} : github_id is the number GitHub gives for {auteur}'s account ({github_id or 'not read: --github-id'}), "
-                       "never one the PR writes : bee inscrire --github-id \"$(gh api user --jq .id)\" (ruche-0022)")
+                exiger(type(nouveau.get("github_id")) is int and nouveau.get("github_id") == github_id,
+                       f"{chemin} : github_id is the number GitHub gives for {auteur}'s account ({github_id or 'not read: --github-id'}), never one the PR writes (ruche-0022)")
                 if depart is not None:  # ruche-0022: a rename by the account itself (same number), of a login no list names
-                    exiger(nouveau == {**depart, "pseudo": auteur, "anciens_logins": [*(depart.get("anciens_logins") or []), depart.get("pseudo")]},
-                           f"{chemin} : a rename changes only pseudo and appends the old login to anciens_logins : bee renommer writes it")
-                    exiger(not any(depart.get("pseudo") in x for x in (reg.conseil, reg.gardiens, reg.garants, Pseudos(agents.values(), reg.identites))),
-                           f"{chemin} : {depart.get('pseudo')} is named in gouvernance/ : the council renames it, the list and the file in one PR")
+                    exiger(str(nouveau.get("renomme_le")) in jours_de_la_pr(instant) and nouveau == {**depart, "pseudo": auteur, "anciens_logins": [
+                        *(depart.get("anciens_logins") or []), depart.get("pseudo")], "renomme_le": nouveau.get("renomme_le")},
+                           f"{chemin} : a rename changes pseudo, appends the old login to anciens_logins, and is dated : bee renommer writes it")
+                    exiger((refus := refus_renommage(reg, depart, auteur, agents, instant)) is None, f"{chemin} : {refus}")
                     continue
-                exiger("anciens_logins" not in nouveau, f"{chemin} : a new member file has no former login : a renamed account moves "
-                                                        "its file (bee renommer)")
+                exiger("anciens_logins" not in nouveau, f"{chemin} : a new member file has no former login : a renamed account moves its file (bee renommer)")
                 minimum = int(reg.config.get("anciennete_compte_min_jours", 90))
                 # Each date of the file is checked at the time of the PR: inscrit_le is the PR's day (jours_de_la_pr), and
                 # compte_cree_le is GitHub's date. The account's age runs from GitHub's date to the instant of the check.
@@ -6120,22 +6105,34 @@ def cmd_inscrire(args):
     return 0
 
 
+def refus_renommage(reg, fiche, nouveau, agents, instant):
+    """ruche-0022: why a member file may not move to `nouveau` (None if it may): gouvernance/, work in flight, 30 days, 5 logins."""
+    ancien = fiche.get("pseudo")
+    if any(x in s for x in (ancien, nouveau) for s in (reg.conseil, reg.gardiens, reg.garants, Pseudos(agents.values(), reg.identites))):
+        return f"{ancien} or {nouveau} is named in gouvernance/ : the council renames it, the list and the member file in one PR"
+    if engagements_de(reg, ancien) or any(isinstance(e, dict) and e.get("statut") == "en_relecture" and reg.identites.meme(e.get("auteur"), ancien)
+                                          for _, e in reg.enregistrements.values()):
+        return f"{ancien} holds a reservation, a parallel registration or a contribution in review : rename when you hold nothing"
+    if len(fiche.get("anciens_logins") or []) >= 5 or str(fiche.get("renomme_le") or "") > (instant - dt.timedelta(days=30)).date().isoformat():
+        return f"{ancien} : one rename per 30 days, and 5 former logins at most"
+    return None
+
+
 def cmd_renommer(args):
     """ruche-0022: an account renamed on GitHub moves its member file to its new login (same number, old login in anciens_logins)."""
     reg = Registre(args.registre)
     chemin, fiche = reg.membres.get(args.ancien) or (None, None)
-    if not re.fullmatch(PSEUDO_MOTIF, args.pseudo) or args.pseudo == args.ancien:
-        raise ErreurBee(f"pseudo invalide : {args.pseudo!r} (your new GitHub login, other than {args.ancien})")
-    if not isinstance(fiche, dict) or type(fiche.get("github_id")) is not int:
-        raise ErreurBee(f"{args.ancien} : no member file with its account number (github_id) here : the council completes it first")
-    if any(args.ancien in x for x in (reg.conseil, reg.gardiens, reg.garants, Pseudos(reg.comptes_agents.values(), reg.identites))):
-        raise ErreurBee(f"{args.ancien} is named in gouvernance/ : the council renames it, the list and the member file in one PR")
+    if not re.fullmatch(PSEUDO_MOTIF, args.pseudo) or args.pseudo == args.ancien or not (isinstance(fiche, dict) and type(fiche.get("github_id")) is int):
+        raise ErreurBee("--pseudo: your new GitHub login ; --ancien: your member file's login, with its github_id (else the council completes it)")
+    if refus := refus_renommage(reg, fiche, args.pseudo, reg.comptes_agents, maintenant()):
+        raise ErreurBee(refus)
     if [p for p in reg.membres if p != args.ancien and reg.identites.meme(p, args.pseudo)] or \
             reg.identites.numeros.get(args.pseudo.casefold(), fiche["github_id"]) != fiche["github_id"]:
         raise ErreurBee(f"{args.pseudo} is already another account's login in this registry")
     chemin.unlink()
     ecrire_yaml(reg.racine / "membres" / f"{args.pseudo}.yaml",
-                {**fiche, "pseudo": args.pseudo, "anciens_logins": [*(fiche.get("anciens_logins") or []), args.ancien]})
+                {**fiche, "pseudo": args.pseudo, "anciens_logins": [*(fiche.get("anciens_logins") or []), args.ancien],
+                 "renomme_le": maintenant().date().isoformat()})
     print(f"✓ membres/{args.ancien}.yaml → membres/{args.pseudo}.yaml. Publiez, seul : bee publier --titre 'Renommage {args.pseudo}'")
     return 0
 
@@ -7454,8 +7451,7 @@ def lire_auteurs_pr(chemin):
 
 
 def pr_du_compte(qui, agents, auteurs_pr, contribution):
-    """ruche-0022: the fork PR was opened by the contribution's author (or its agent account), as that very account where the
-    registry binds the login to a number. A PR missing from the list is refused (fail closed)."""
+    """ruche-0022: the fork PR's author is the contribution's (or its agent account), as that very account if its login is bound."""
     login, numero = auteurs_pr.get(contribution.get("pr")) or ("", None)
     return (bool(contribution.get("auteur")) and qui.meme(person_of(agents, login), str(contribution.get("auteur")))
             and qui.numeros.get(login.casefold(), numero) == numero)

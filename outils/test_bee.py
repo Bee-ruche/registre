@@ -14496,7 +14496,7 @@ class TestClocksRuche0091(BaseInvitations):
     def anciennete(self):
         poussee = "2026-10-31T23:30:00Z"  # an account created on 2026-08-03 is 89 days old, 90 on 2026-11-01
         self.pr(poussee, lambda: bee.ecrire_yaml(self.dossier / "membres/david.yaml", {
-            "pseudo": "david", "inscrit_le": "2026-10-31", "compte_cree_le": "2026-08-03"}))
+            "pseudo": "david", "inscrit_le": "2026-10-31", "compte_cree_le": "2026-08-03", "github_id": numero_de("david")}))
         return "david", poussee, "2026-11-01T00:30:00Z", ("--compte-cree-le", "2026-08-03"), "le compte GitHub doit avoir au moins 90 jours"
 
     def test_each_rule_is_judged_on_its_documented_clock(self):
@@ -15604,6 +15604,15 @@ class TestIdentiteParNumero(BaseRepetitionGenerale):
         self.libre_service(nouveau, "renommage")
         self.fusionner("renommage")
 
+    def renommer_par_le_conseil(self, ancien, nouveau):
+        """The council moves a member file on main by hand (bee renommer refuses an account that holds work)."""
+        fiche = bee.lire_yaml(self.dossier / f"membres/{ancien}.yaml")
+        (self.dossier / f"membres/{ancien}.yaml").unlink()
+        bee.ecrire_yaml(self.dossier / f"membres/{nouveau}.yaml", {**fiche, "pseudo": nouveau, "anciens_logins": [ancien],
+                                                                   "renomme_le": os.environ["BEE_MAINTENANT"][:10]})
+        self.commit(f"le conseil renomme {ancien}")
+        self.comptes[nouveau] = numero_de(ancien)
+
     def test_un_compte_renomme_garde_r7_et_r8(self):
         self.a("2026-10-30T10:00:00Z")
         self.prendre_et_fusionner("gaspard")
@@ -15612,7 +15621,20 @@ class TestIdentiteParNumero(BaseRepetitionGenerale):
         for tache in ("miniz-9001", "miniz-9003", "miniz-9004"):
             self.prendre_et_fusionner("gaspard", tache)
         self.a("2026-10-30T10:10:00Z")
-        self.renommer_et_fusionner("gaspard", "gaspard2")
+        # Rename when you hold nothing: gaspard holds three reservations (S1, review of #156).
+        self.ko("gaspard holds a reservation, a parallel registration or a contribution in review : rename when you hold nothing",
+                "renommer", "--ancien", "gaspard", "--pseudo", "gaspard2")
+        self.branche("renommage")
+        fiche = bee.lire_yaml(self.dossier / "membres/gaspard.yaml")
+        (self.dossier / "membres/gaspard.yaml").unlink()
+        bee.ecrire_yaml(self.dossier / "membres/gaspard2.yaml", {**fiche, "pseudo": "gaspard2", "anciens_logins": ["gaspard"],
+                                                                 "renomme_le": "2026-10-30"})
+        self.commit()
+        self.comptes["gaspard2"] = numero_de("gaspard")
+        self.refusee("gaspard2", "gaspard holds a reservation, a parallel registration or a contribution in review")
+        self.abandonner("renommage")
+        # The council may move it anyway: what gaspard did and holds is gaspard2's.
+        self.renommer_par_le_conseil("gaspard", "gaspard2")
         self.assertEqual(bee.lire_yaml(self.dossier / "membres/gaspard2.yaml")["anciens_logins"], ["gaspard"])
         self.ok("valider")
         self.a("2026-10-30T10:20:00Z")
@@ -15638,6 +15660,71 @@ class TestIdentiteParNumero(BaseRepetitionGenerale):
         self.commit("notes de gaspard")
         self.ko("plafond : gaspard2 a déjà", "noter", "miniz-0099", "--utilisateur", "gaspard2", "--texte", "Une de plus.")
 
+    def test_les_debats_d_avant_un_renommage_restent_valides(self):
+        """B1 (review of #156): the agora checks of bee valider know a member file's former logins, as the others do."""
+        self.a("2026-10-30T10:00:00Z")
+        debat = self.ouvrir("gaspard")
+        self.ok("debattre", "argumenter", debat, "--utilisateur", "gaspard", "--position", "pour", "--texte", "Un plafond simple limite les abus.")
+        self.ok("debattre", "argumenter", debat, "--utilisateur", "farid", "--position", "contre", "--texte", "Un plafond fixe est trop rigide.")
+        self.commit("débat de gaspard")
+        self.a("2026-10-30T10:30:00Z")
+        self.renommer_et_fusionner("gaspard", "gaspard2")
+        self.ok("valider")
+
+    def test_un_ancien_login_ne_donne_aucun_statut(self):
+        """B2 (review of #156): a governance entry naming a member file's former login needs that account's number."""
+        self.renommer_et_fusionner("gaspard", "gaspard2")
+        gardiens = self.dossier / "gouvernance/gardiens.yaml"
+        self.branche("nomination")
+        gardiens.write_text("membres:\n  - pseudo: gaspard\n", encoding="utf-8")
+        self.commit()
+        self.refusee("bidji29", "gouvernance : gaspard is a former login of gaspard2 : named only with that account's github_id")
+        self.ko("gouvernance : gaspard is a former login of gaspard2", "valider")
+        gardiens.write_text(f"membres:\n  - pseudo: gaspard\n    github_id: {numero_de('gaspard')}\n", encoding="utf-8")
+        self.ok("valider")  # the council names that very account: its status follows it
+
+    def test_un_numero_est_un_entier(self):
+        """S3 (review of #156): github_id is an int, never a float or a bool, in bee valider and at the gate."""
+        self.branche("flottant")
+        (self.dossier / "membres/david.yaml").write_text(
+            f"pseudo: david\ninscrit_le: '2026-10-29'\ncompte_cree_le: '2020-01-01'\ngithub_id: {numero_de('david')}.0\n", encoding="utf-8")
+        self.commit()
+        code, texte = self.verifier("david", "--compte-cree-le", "2020-01-01", "--fusion-auto")
+        self.assertEqual(code, 1, texte)
+        self.assertIn(f"david : github_id is a GitHub account's number (a positive integer)", texte)
+        self.assertIn("membres/david.yaml : github_id is the number GitHub gives for david's account", texte)
+        for valeur in ("true", f"{numero_de('david')}.0", "-3"):
+            with self.subTest(github_id=valeur):
+                (self.dossier / "membres/david.yaml").write_text(
+                    f"pseudo: david\ninscrit_le: '2026-10-29'\ncompte_cree_le: '2020-01-01'\ngithub_id: {valeur}\n", encoding="utf-8")
+                self.assertEqual(self.bee("valider")[0], 1)
+
+    def test_un_renommage_par_30_jours_et_5_anciens_logins_au_plus(self):
+        """S5 (review of #156): one rename per account per 30 days, and 5 former logins at most."""
+        self.a("2026-10-30T10:00:00Z")
+        self.renommer_et_fusionner("gaspard", "gaspard2")
+        self.a("2026-11-28T10:00:00Z")
+        self.ko("gaspard2 : one rename per 30 days, and 5 former logins at most", "renommer", "--ancien", "gaspard2", "--pseudo", "gaspard3")
+        self.branche("trop-tot")
+        fiche = bee.lire_yaml(self.dossier / "membres/gaspard2.yaml")
+        (self.dossier / "membres/gaspard2.yaml").unlink()
+        bee.ecrire_yaml(self.dossier / "membres/gaspard3.yaml", {**fiche, "pseudo": "gaspard3", "anciens_logins": ["gaspard", "gaspard2"],
+                                                                 "renomme_le": "2026-11-28"})
+        self.commit()
+        self.comptes["gaspard3"] = numero_de("gaspard")
+        self.refusee("gaspard3", "gaspard2 : one rename per 30 days")
+        self.abandonner("trop-tot")
+        self.a("2026-11-29T10:00:00Z")
+        self.renommer_et_fusionner("gaspard2", "gaspard3")
+        # Five former logins: no sixth.
+        chemin = self.dossier / "membres/gaspard3.yaml"
+        bee.ecrire_yaml(chemin, {**bee.lire_yaml(chemin), "anciens_logins": ["g1", "g2", "g3", "gaspard", "gaspard2"], "renomme_le": "2026-01-01"})
+        self.commit("cinq anciens logins")
+        self.ok("valider")
+        self.ko("gaspard3 : one rename per 30 days, and 5 former logins at most", "renommer", "--ancien", "gaspard3", "--pseudo", "gaspard4")
+        bee.ecrire_yaml(chemin, {**bee.lire_yaml(chemin), "anciens_logins": ["g0", "g1", "g2", "g3", "gaspard", "gaspard2"]})
+        self.ko("anciens_logins", "valider")
+
     def test_un_renommage_est_seul_dans_sa_pr(self):
         self.branche("renommage")
         self.ok("renommer", "--ancien", "gaspard", "--pseudo", "gaspard2")
@@ -15648,14 +15735,14 @@ class TestIdentiteParNumero(BaseRepetitionGenerale):
 
     def test_un_login_repris_par_un_autre_compte_n_herite_de_rien(self):
         self.a("2026-10-30T10:00:00Z")
-        self.prendre_et_fusionner("gaspard")
         self.renommer_et_fusionner("gaspard", "gaspard2")
         self.comptes["gaspard"] = autre = numero_de("gaspard") + 1  # another account took the login gaspard on GitHub
         attendu = (f"gaspard : the registry binds this login to the GitHub account {numero_de('gaspard')}, and this PR's author is "
                    f"the account {autre} : a renamed or reused login inherits nothing ; a human looks")
         for nom, geste in (("inscription", lambda: bee.ecrire_yaml(self.dossier / "membres/gaspard.yaml", {
                                 "pseudo": "gaspard", "inscrit_le": "2026-10-30", "compte_cree_le": "2020-01-01", "github_id": autre})),
-                           ("liberation", lambda: bee.modifier_tache(self.chemin_tache(), statut="ouverte", reservation=None))):
+                           ("reservation", lambda: bee.modifier_tache(self.chemin_tache(), statut="reservee", reservation={
+                                "utilisateur": "gaspard", "depuis": os.environ["BEE_MAINTENANT"]}))):
             with self.subTest(geste=nom):
                 self.branche(nom)
                 geste()
@@ -15741,14 +15828,15 @@ class TestIdentiteParNumero(BaseRepetitionGenerale):
     def test_un_login_nomme_dans_gouvernance_est_renomme_par_le_conseil(self):
         (self.dossier / "gouvernance/gardiens.yaml").write_text("membres:\n  - pseudo: gaspard\n", encoding="utf-8")
         self.commit("le conseil nomme gaspard gardien")
-        self.ko("gaspard is named in gouvernance/ : the council renames it", "renommer", "--ancien", "gaspard", "--pseudo", "gaspard2")
+        self.ko("gaspard or gaspard2 is named in gouvernance/ : the council renames it", "renommer", "--ancien", "gaspard", "--pseudo", "gaspard2")
+        self.ko("farid or bidji29 is named in gouvernance/", "renommer", "--ancien", "farid", "--pseudo", "bidji29")  # S4
         self.branche("renommage")
         fiche = bee.lire_yaml(self.dossier / "membres/gaspard.yaml")
         (self.dossier / "membres/gaspard.yaml").unlink()
         bee.ecrire_yaml(self.dossier / "membres/gaspard2.yaml", {**fiche, "pseudo": "gaspard2", "anciens_logins": ["gaspard"]})
         self.commit()
         self.comptes["gaspard2"] = numero_de("gaspard")
-        self.refusee("gaspard2", "gaspard is named in gouvernance/ : the council renames it, the list and the file in one PR")
+        self.refusee("gaspard2", "gaspard or gaspard2 is named in gouvernance/ : the council renames it, the list and the member file in one PR")
         self.abandonner("renommage")
         # A member file is withdrawn by the council only, outside a rename.
         self.branche("retrait")

@@ -83,7 +83,6 @@ jobs:
           # BASE: the PR's real base, computed by the "Scope of the PR" step (never empty: an empty base would compare HEAD
           # with itself and pass).
           [ -n "$BASE" ]
-          # ruche-0022 : the account's creation date and number, read together from the API (fusion-auto does the same).
           compte=$(gh api "users/$AUTEUR" --jq '"\(.created_at[:10]) \(.id)"')
           # ruche-0091: the time of the PR is this run's creation, GitHub's record of the push; unreadable or malformed: refused.
           instant=$(timeout 60 gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq .created_at)

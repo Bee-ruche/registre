@@ -69,7 +69,6 @@ jobs:
             echo "code=3" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          # ruche-0022 : la date de création et le numéro (id) du compte, relevés ensemble auprès de l'API, jamais lus dans la PR.
           compte=$(gh api "users/$AUTEUR" --jq '"\(.created_at[:10]) \(.id)"')
           cree=${compte% *}; numero_compte=${compte#* }
           # Auteur GitHub de chaque PR déclarée dans une contribution ajoutée ou modifiée : verifier-pr exige que ce soit
