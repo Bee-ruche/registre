@@ -28,6 +28,9 @@ hors_perimetre:
   - "les forks"
 depend_de: [ruche-0022]
 noeud: projets/ruche/ruche
-statut: ouverte
+statut: reservee
+reservation:
+  utilisateur: "bidji29"
+  depuis: "2026-11-02T11:21:48Z"
 cree_par: conseil
 cree_le: "2026-10-31"

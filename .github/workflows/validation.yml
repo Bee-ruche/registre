@@ -83,7 +83,7 @@ jobs:
           # BASE: the PR's real base, computed by the "Scope of the PR" step (never empty: an empty base would compare HEAD
           # with itself and pass).
           [ -n "$BASE" ]
-          cree=$(gh api "users/$AUTEUR" --jq '.created_at[:10]')
+          compte=$(gh api "users/$AUTEUR" --jq '"\(.created_at[:10]) \(.id)"')
           # ruche-0091: the time of the PR is this run's creation, GitHub's record of the push; unreadable or malformed: refused.
           instant=$(timeout 60 gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq .created_at)
-          python3 outils/bee.py verifier-pr --base "$BASE" --tete HEAD --auteur "$AUTEUR" --compte-cree-le "$cree" --instant-pr "$instant"
+          python3 outils/bee.py verifier-pr --base "$BASE" --tete HEAD --auteur "$AUTEUR" --compte-cree-le "${compte% *}" --github-id "${compte#* }" --instant-pr "$instant"

@@ -1,0 +1,13 @@
+id: ruche-0022-c1
+tache: ruche-0022
+auteur: bidji29
+pr: https://github.com/Bee-ruche/registre/pull/156
+resume: 'A member''s identity is their GitHub account number, read from the API: a renamed account keeps
+  its history, a reused login inherits nothing.'
+statut: integree
+soumise_le: '2026-11-02T09:08:45Z'
+engage_depuis: '2026-11-02T05:20:12Z'
+relectures: []
+decidee_le: '2026-11-02T09:20:37Z'
+motif_decision: 'Hive tooling contribution: registry PR #156 merged at the judged commit 4d53bbd by the agent principal under the council''s permanent authorisation, after an independent adversarial review by an agent of another model with the architect''s private brief in two passes (two blocking findings and several should-fix items in the first, all fixed and verified; the second pass found nothing blocking); CI green on the merged commit. R1: 395 lines excluding tests, for an L task at 400 (re-sized by the council on 2 Nov). Recorded by hand: it changes workflows. Submitted inside the code PR.'
+fusion_sha: dd6b3d2fc1cab8e8e3cfdc7679818af7b7b10c36

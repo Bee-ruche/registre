@@ -5,12 +5,19 @@ type: test
 poste: gouvernance
 taille: S
 titre: Integration and verdict robots compare a fork PR's author by account number, not login
-contexte: Follow-up of ruche-0022 (a member's identity is their GitHub account number). integration-auto.yml and verdicts.yml
-  check that a fork PR was opened by the contribution's author (or their declared agent account) by comparing logins.
-  A renamed account's contribution in flight is then neither merged nor recorded (it fails closed), and the comparison
-  does not use the number the registry now binds. Compare the PR author's numeric id (`.user.id` of the PR, from the
-  API) with the number bound to the contribution's author on main, falling back to the login only for a person whose
+contexte: 'Follow-up of ruche-0022 (a member''s identity is their GitHub account number). integration-auto.yml and verdicts.yml
+  check that a fork PR was opened by the contribution''s author (or their declared agent account) by comparing logins.
+  A renamed account''s contribution in flight is then neither merged nor recorded (it fails closed), and the comparison
+  does not use the number the registry now binds. Compare the PR author''s numeric id (`.user.id` of the PR, from the
+  API) with the number bound to the contribution''s author on main, falling back to the login only for a person whose
   files carry no number.
+
+
+  Council''s note (2 Nov 2026, from ruche-0022''s review): the same holds for ruche-0094''s recorder in outils/bee.py
+  (`meme_pseudo(person_of(agents, auteur_pr), ...)`), and fusion-auto and validation should read the PR''s own `.user.id`
+  rather than `users/<login>`, which a login changing hands could swap. Document what a member does when GitHub renames
+  them while work is in flight (rename back, or ask the council), guard `github_id` lists in valider, and make the message
+  for a rename published the next day say to restore the old file and rerun.'
 fichiers:
 - .github/workflows/integration-auto.yml
 - .github/workflows/verdicts.yml
