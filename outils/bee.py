@@ -534,6 +534,7 @@ PASSE = dt.datetime.min.replace(tzinfo=dt.timezone.utc)
 # A declared date (reservation, registration, submission...) is never more than a minute after the time of the PR (ruche-0091:
 # in CI, the push's) or of the check that reads it.
 AVANCE_MAX = dt.timedelta(minutes=1)
+INSTANT_PR_AGE_MAX = dt.timedelta(hours=24)  # ruche-0091: at the check, --instant-pr is at most this old (a re-run keeps it)
 
 
 def paralleles_de(tache):
@@ -4439,9 +4440,9 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
     checked as its person with that status: what passes then is never merged automatically (nature agent_account, a human
     must look); what still fails is refused.
 
-    ruche-0091: `instant` is the time of the PR: in CI, the time GitHub recorded for the push being checked (--instant-pr),
-    else now. Every date the PR declares is checked against it, and so is what is judged at the time of the act (R7, R8, the
-    24 h caps, the agora's delays); expiries, the end of a vote, the brake and the account's age stay at the check."""
+    ruche-0091: `instant` is the time of the PR: in CI, the time GitHub recorded for the push (--instant-pr), else now. Every
+    declared date is checked against it, and so is what is judged at the time of the act (R7, R8, the 24 h caps, the agora's
+    delays, an earlier invitation's expiry); engagement expiries, the end of a vote, the brake and the account's age: now."""
     instant = instant or maintenant()
     try:
         agents = agent_accounts(lire_yaml_ref(reg.racine, base, AGENT_ACCOUNTS))
@@ -6891,8 +6892,8 @@ def cmd_verifier_pr(args):
     reg = Registre(args.registre)
     auteurs_pr = lire_auteurs_pr(args.auteurs_pr) if args.auteurs_pr else None
     instant = None if args.instant_pr is None else lire_instant(args.instant_pr, "--instant-pr")  # empty or malformed: refused
-    if instant and instant > maintenant() + AVANCE_MAX:
-        raise ErreurBee(f"--instant-pr ({args.instant_pr}) : after the check, so not the time of a push")
+    if instant and not (m := maintenant()) - INSTANT_PR_AGE_MAX <= instant <= m + AVANCE_MAX:
+        raise ErreurBee(f"--instant-pr ({args.instant_pr}) : not within the 24 h before the check (a re-run or a late pipeline) : push again")
     problemes, natures = verifier_pr(reg, args.base, args.tete, args.auteur, args.compte_cree_le, instant, auteurs_pr)
     problemes = verifier_registre(reg) + problemes
     for p in problemes:

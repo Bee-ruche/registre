@@ -79,7 +79,6 @@ jobs:
           # with itself and pass).
           [ -n "$BASE" ]
           cree=$(gh api "users/$AUTEUR" --jq '.created_at[:10]')
-          # ruche-0091: the time of the PR is this run's creation, GitHub's record of the push (or reopening) that triggered it,
-          # never a date the PR writes; unreadable, the step stops here; empty or malformed, verifier-pr refuses (fails closed).
-          instant=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq .created_at)
+          # ruche-0091: the time of the PR is this run's creation, GitHub's record of the push; unreadable or malformed: refused.
+          instant=$(timeout 60 gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq .created_at)
           python3 outils/bee.py verifier-pr --base "$BASE" --tete HEAD --auteur "$AUTEUR" --compte-cree-le "$cree" --instant-pr "$instant"
