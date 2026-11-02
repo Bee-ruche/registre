@@ -85,8 +85,15 @@ Règles de sûreté, vérifiées par le juge commun (revue adverse du 28/10) :
   d'outillage du fork), jugée par l'ancienne version et par la nouvelle.
 - `verdict.json` porte `juge.version` (entier : 2 pour le juge de minizBee de miniz-0031, 3 pour le
   juge commun v1 et v2), `juge.commun` (« juge-v1 », « juge-v2 »), `juge.projet` et `juge.greffon` (empreinte SHA-256 du
-  greffon) : le registre sait par quel juge chaque verdict a été rendu, et peut exiger une version
-  minimale (`bee.yaml`).
+  greffon) : le registre sait par quel juge chaque verdict a été rendu, et exige une version
+  minimale (`bee.yaml`, ci-dessous).
+- **Minimum version** (`juge_commun_min` in `bee.yaml`, ruche-0086): with R3's gate at `si_juge_incomplet`, a verdict whose
+  `juge.commun` is not exactly `juge-vN` (N in ASCII digits, no leading zero) with N at least this minimum is not entirely
+  judged: a guardian or the council must review it, as for any incomplete judge. Missing or malformed (not an integer from 1
+  to 9999), no verdict is complete: the gate closes, never opens. It is read when R3 is checked, so it reaches contributions
+  still in review, judged by an older judge, never those already integrated. **The council raises it**, after it has tagged
+  the new version and every fork is pinned to it (a fork's PR, the forks' tasks); raised earlier, the forks' verdicts go to a
+  guardian until they move.
 
 ## Le workflow `juge.yml`, version 2 (ruche-0024)
 
