@@ -457,6 +457,7 @@ class Registre:
                 self.problemes_chargement.append(f"{self.rel(chemin)} : le fichier doit contenir un objet YAML (clé: valeur)")
         self.ne_plus_contacter = self._lire_facultatif("invitations/ne-plus-contacter.yaml")
         self.retraits = self._lire_facultatif(CHEMIN_RETRAITS)  # retraits demandés (ruche-0048), par empreintes
+        self.signalements = self._dossier("signalements/S-*.yaml")  # ruche-0118: comptes qu'un membre croit liés
         self.votes = []
         for chemin in sorted(self.racine.glob("votes/*/*.yaml")):
             donnees = self._lire_fichier(chemin)
@@ -1635,8 +1636,10 @@ def tableau_essaim(reg, instant=None, jours_notes=7):
     invitations = [resume_invitation(i, conf, instant, frein) for _, (_, i) in sorted(reg.invitations.items())
                    if isinstance(i, dict) and etat_invitation(i) in ("proposee", "decidee", "envoyee", "relancee")
                    and not expiree(i, instant, conf)]
+    signalements = [{"id": i, **{k: s.get(k) for k in ("comptes", "motif", "par", "le")}} for i, (_, s) in sorted(reg.signalements.items())
+                    if isinstance(s, dict) and "decision" not in s]  # ruche-0118: open reports, for the council
     return {"en_cours": en_cours, "en_relecture": relecture, "courses": courses, "notes": notes[:15], "debats": debats,
-            "invitations": invitations, "frein": frein}
+            "invitations": invitations, "frein": frein, "signalements": signalements[:10], "signalements_ouverts": len(signalements)}
 
 
 # --------------------------------------------------------------------------
@@ -2266,12 +2269,17 @@ def verifier_comptes(reg):
             ajouter(f"{lieu} : soumise par « {mesure['soumise_par']} », qui n'est pas inscrit")
         instant_valide(chemin, mesure["le"], "le")
 
+    for chemin, s in reg.signalements.values():  # ruche-0118: written by bee signaler, decided by the council (bee signalement)
+        for quoi, x in (("le", s), ("decision/le", s.get("decision"))) if selon_schema("signalement", chemin, s) else ():
+            if x:
+                instant_valide(chemin, x["le"], quoi)
+
     # ruche-0029 : le contrôle commun de tout texte libre, dans chaque valeur et chaque clé des données que bee imprime, même
     # échappé en YAML ; un titre et un résumé tiennent sur une ligne. Le verdict, écrit par la CI, a ses propres bornes.
     # ruche-0040: and each text under its bound (borne_texte), in every self-service file, the do-not-contact list included.
     liste = [(reg.racine / CHEMIN_NON_CONTACT, reg.ne_plus_contacter)] if reg.ne_plus_contacter is not None else []
     for chemin, donnees in [*reg.taches.values(), *reg.enregistrements.values(), *reg.propositions.values(), *reg.debats.values(),
-                            *reg.invitations.values(), *reg.membres.values(), *reg.votes, *reg.mesures, *liste]:
+                            *reg.invitations.values(), *reg.membres.values(), *reg.votes, *reg.mesures, *reg.signalements.values(), *liste]:
         donnees = {k: v for k, v in donnees.items() if k != "verdict"} if isinstance(donnees, dict) else donnees
         for probleme in problemes_textes_libre_service(donnees, reg.rel(chemin)):
             ajouter(probleme)
@@ -2386,6 +2394,7 @@ ID_TACHE_MOTIF = r"[a-z0-9]+(?:-[a-z0-9]+)*-[0-9]{4}"
 CHEMIN_TACHE = re.compile(r"^taches/(?P<projet>[a-z0-9]+(?:-[a-z0-9]+)*)/(?P=projet)-(?P<n>[0-9]{4})\.yaml\Z")
 CHEMIN_PROPOSITION = re.compile(r"^propositions/P-(?P<n>[0-9]{4})\.yaml\Z")
 CHEMIN_INVITATION = re.compile(r"^invitations/I-(?P<n>[0-9]{4})\.yaml\Z")
+CHEMIN_SIGNALEMENT = re.compile(r"^signalements/S-(?P<n>[0-9]{4})\.yaml\Z")  # ruche-0118
 CHEMIN_NON_CONTACT = "invitations/ne-plus-contacter.yaml"
 # Dossier → (forme attendue de ses fichiers, pour le message ; motif). Les débats ont leurs propres contrôles (verifier_debat).
 FICHIERS_LIBRE_SERVICE = {
@@ -2398,12 +2407,14 @@ FICHIERS_LIBRE_SERVICE = {
     "propositions": ("propositions/P-<nnnn>.yaml", CHEMIN_PROPOSITION),
     "invitations": (f"invitations/I-<nnnn>.yaml et {CHEMIN_NON_CONTACT}",
                     re.compile(rf"^(?:{CHEMIN_INVITATION.pattern[1:-2]}|{re.escape(CHEMIN_NON_CONTACT)})\Z")),
+    "signalements": ("signalements/S-<nnnn>.yaml", CHEMIN_SIGNALEMENT),
 }
 
 # ruche-0040: a self-service file's bound in bytes, by its folder whatever its name (any other file bee reads: the largest), is
 # checked from the filesystem or git before any parsing. Constants of the tool, like the schemas: the data cannot loosen them.
 OCTETS_MAX = {"taches": 256 * 1024, "contributions": 256 * 1024, "votes": 32 * 1024, "mesures": 32 * 1024, "membres": 32 * 1024,
-              "propositions": 128 * 1024, "debats": 512 * 1024, "invitations": 64 * 1024, CHEMIN_NON_CONTACT: 1024 * 1024}
+              "propositions": 128 * 1024, "debats": 512 * 1024, "invitations": 64 * 1024, CHEMIN_NON_CONTACT: 1024 * 1024,
+              "signalements": 4 * 1024}
 OCTETS_LECTURE_MAX = max(OCTETS_MAX.values())
 # An append (AJOUTS) stops at the bound minus MARGE_OCTETS: a reserve for closes, syntheses, reservations and robot writes.
 MARGE_OCTETS, AJOUTS = 20 * 1024, frozenset({"note", "argument", "relecture", "inscription_parallele"})
@@ -2588,10 +2599,11 @@ def jours_de_la_pr(instant):
 
 CREATIONS_DEFAUT = {"taches_max_par_pr": 3, "taches_max_par_24h": 5, "propositions_max_par_pr": 3, "propositions_max_par_24h": 5,
                     "invitations_max_par_pr": 1, "invitations_max_par_24h": 2,  # R13 (bee inviter)
+                    "signalements_max_par_pr": 1, "signalements_max_par_24h": 2, "signalements_ouverts_max": 2, "signalements_nommant_max": 3,  # ruche-0118
                     "contexte_max": 3000, "elements_max": 10, "element_max": 300, "fichiers_max": 30, "chemin_max": 200}
 # Ce qui est créé en libre-service, par dossier : (éléments du registre, clé de l'auteur, clé de la date déclarée).
 CREES_PAR = {"taches": ("taches", "cree_par", "cree_le"), "propositions": ("propositions", "auteur", "ouverte_le"),
-             "invitations": ("invitations", "propose_par", "propose_le")}
+             "invitations": ("invitations", "propose_par", "propose_le"), "signalements": ("signalements", "par", "le")}
 
 
 def config_creations(reg):
@@ -3798,6 +3810,7 @@ CROISSANCE_DEFAUT = {"invitations_par_semaine": 3, "relances_max": 1, "delai_rel
                      "branche_dormante_jours": 30}  # R13, par branches (outillé par ruche-0023)
 SEMAINE = dt.timedelta(days=7)
 ID_INVITATION = re.compile(r"^I-[0-9]{4}\Z")
+ID_SIGNALEMENT = re.compile(r"^S-[0-9]{4}\Z")
 # Identifiant public : <plateforme>:<nom>, d'une liste fermée (revue adverse de ruche-0020, A1 et A2 : github.com:x, gh:x, x/.,
 # x/repositories désignaient la même personne). Plateforme canonique -> (alias acceptés à l'écriture, adresse du profil, qui
 # est le canal). Le nom d'une forge est un seul segment (aucun /) ; « site » désigne un domaine, et son canal est une page de ce
@@ -4116,6 +4129,7 @@ SENSIBLE_DOUTE = re.compile(
     r"(?<!il y )a \d{1,2} ans|under 18\b(?!\s*(?:%|[^\W\d_]))|teen(?:ager)?s?|adolescente?s?|minors|born (?:on|in)|n[ée]e? (?:le|en) \d)\b")
 SCHEMAS_TEXTES = {"taches": "tache", "contributions": "enregistrement", "votes": "vote", "mesures": "mesure", "membres": "membre", "projets": "projet",
                   "propositions": "proposition", "debats": "debat", "invitations": "invitation", CHEMIN_NON_CONTACT: "ne-plus-contacter",
+                  "signalements": "signalement",
                   "gouvernance/incidents.yaml": "incidents", "gouvernance/retraits.yaml": "retraits", "CONTRIBUTION.yaml": "contribution"}
 NON_LIBRE = re.compile(r"\d{4}-\d\d-\d\d(?:[T ]\d\d:\d\d(?::\d\d(?:\.\d+)?)?)?(?:Z|[+-]\d\d:?\d\d)?|(?=\d*[a-f])(?![0-9a-f]*?\d{9})[0-9a-f]{7,64}")  # a date, a sha
 
@@ -5621,11 +5635,14 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
                             if s == "A" and c not in liens and (m := CHEMIN_INVITATION.match(c))]
     if invitations_ajoutees:  # R13 : comme les propositions, au numéro suivant, sans trou
         attendus.update(numeros_attendus(invitations_ajoutees, numero_suivant(numeros_dans(reg, base, "invitations", CHEMIN_INVITATION))))
+    if signalements := [(int(m["n"]), c, "signalements/S-{:04d}.yaml") for s, c in changements if s == "A" and c not in liens
+                        and (m := CHEMIN_SIGNALEMENT.match(c))]:  # ruche-0118, likewise
+        attendus.update(numeros_attendus(signalements, numero_suivant(numeros_dans(reg, base, "signalements", CHEMIN_SIGNALEMENT))))
     arguments_ajoutes = 0
     dates_arguments = []    # instants des arguments ajoutés (plafond tous débats confondus, R12)
     notes_ajoutees = 0      # notes ajoutées par la PR, toutes tâches confondues
     # Tâches proposées, propositions de règle (B1) et invitations (R13) ajoutées par la PR.
-    creations = {"taches": 0, "propositions": 0, "invitations": 0}
+    creations = {"taches": 0, "propositions": 0, "invitations": 0, "signalements": 0}
     dates_notes = []        # instants des notes ajoutées bien datées (plafond sur 24 h glissantes)
     frein_calcule = []
     # R13, échec fermé (revue adverse, G1) : si la liste de non-contact ou une invitation est illisible sur la base, aucun geste
@@ -6257,6 +6274,18 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
                                 "ne se retire pas : seul le conseil écrit son issue")
             continue
 
+        if partie[0] == "signalements":  # ruche-0118: a member reports two accounts (bee signaler) ; the council decides (bee signalement)
+            natures.append("signalement" if statut_git == "A" and attendus.get(chemin, chemin) else "gouvernance")
+            if statut_git != "A":
+                if exiger(est_conseil, f"{chemin} : a report is neither changed nor withdrawn : the council alone decides it (bee signalement)") and statut_git == "M":
+                    exiger((refus := refus_decision(reg, ancien, nouveau, auteur, instant)) is None, f"{chemin} : {refus}")
+            elif numero_attendu(chemin, "le signalement", "bee signaler"):
+                creations["signalements"] += 1
+                exiger((refus := refus_signalement(reg, nouveau, auteur, instant, pathlib.PurePosixPath(chemin).stem)) is None, f"{chemin} : {refus}")
+                exiger(_git_brut(reg.racine, "cat-file", "blob", f"{tete}:{chemin}")[1] == texte_yaml({k: nouveau.get(k) for k in ("par", "le", "comptes", "motif")}).encode(),
+                       f"{chemin} : not exactly the file bee signaler writes (trailing spaces, line breaks, quotes, order, comments) : write it with bee signaler")
+            continue
+
         if partie[0] == "debats":
             brut = None
             if statut_git != "D":
@@ -6354,7 +6383,8 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
         conf_creations = config_creations(reg)
         for dossier, quoi, commande in (("taches", "tâches proposées", "bee proposer-tache"), ("propositions", "propositions de règle",
                                                                                                "bee proposer"),
-                                        ("invitations", "invitations proposées", "bee inviter")):
+                                        ("invitations", "invitations proposées", "bee inviter"),
+                                        ("signalements", "signalements", "bee signaler")):
             if not creations[dossier]:
                 continue
             exiger(creations[dossier] <= conf_creations[f"{dossier}_max_par_pr"],
@@ -6404,7 +6434,7 @@ LIBRE_SERVICE = {"reservation", "liberation", "soumission", "mise_a_jour", "note
                  # R13 (verifier_invitation) : l'accord d'un gardien, écarter. Proposer une invitation (phase de lancement, seconde
                  # revue adverse F1), l'accord du conseil, l'envoi, la relance, la réponse et la liste de non-contact n'y sont pas :
                  # le conseil les fusionne lui-même.
-                 "accord_gardien", "ecartement_invitation"}
+                 "accord_gardien", "ecartement_invitation", "signalement"}
 
 
 # --------------------------------------------------------------------------
@@ -6679,6 +6709,11 @@ def cmd_essaim(args):
                     f"{retard} argument(s) après la synthèse" if x["synthese_le"] else "pas encore de synthèse")
             print(f"  - {x['id']} (rapporteur {_nettoyer(x['rapporteur'] or RAPPORTEUR_ABSENT)}, {x['arguments']} argument(s), dernière activité "
                   f"{x['derniere_activite']}, {etat}) : {question if len(question) <= 90 else question[:89] + '…'}")
+    if tableau["signalements"]:
+        print(f"\nSignalements ouverts, pour le conseil : {(n := tableau['signalements_ouverts'])}{', les 10 premiers' * (n > 10)} (bee voir <S-nnnn>, bee signalement) :")
+        for x in tableau["signalements"]:
+            print(f"  - {_nettoyer(x['id'])} : {_nettoyer(' et '.join(map(str, x['comptes'])) if isinstance(x['comptes'], list) else x['comptes'])} ({_nettoyer(x['motif'])}), "
+                  f"signalé par {_nettoyer(x['par'])} le {_nettoyer(x['le'])}")
     frein = tableau["frein"]
     print(f"\nGrandir (R13, docs/croissance.md) : frein {'SERRÉ' if frein['serre'] else 'desserré'}"
           + (f" ({' ; '.join(frein['raisons'])})" if frein["serre"] else "")
@@ -6758,6 +6793,12 @@ def cmd_voir(args):
               + f" ; feu vert du conseil : {date(v) if (v := feu_vert(inv)) else 'aucun'}")
         print()
         print(cadre_donnees(inv, DEBUT_DONNEES.format(id=inv.get("id"))))
+        return 0
+    if ID_SIGNALEMENT.match(str(args.tache)):  # ruche-0118: a report, for the council
+        if not isinstance(s := (reg.signalements.get(args.tache) or (None, None))[1], dict):
+            raise ErreurBee(f"signalement inconnu : {args.tache} (bee essaim liste ceux qui sont ouverts)")
+        print(f"{args.tache} : " + ("décidé" if "decision" in s else "ouvert : le conseil lie les deux comptes ou l'écarte (bee signalement)"))
+        print(cadre_donnees(s, DEBUT_DONNEES.format(id=args.tache)))
         return 0
     _, t = reg.tache(args.tache)
     print("\n".join(lignes_calculees_tache(reg, t)))
@@ -6860,6 +6901,99 @@ def cmd_lier(args):
     ecrire_yaml(chemin, nouveau)
     print(f"✓ {reg.rel(chemin)}. Publiez : bee publier --titre 'Comptes liés {args.utilisateur}'" + (
         f" ; puis, depuis l'autre compte : bee lier --utilisateur <son login> --compte-de {fiche.get('github_id')}" * declare))
+    return 0
+
+
+MOTIFS_SIGNALEMENT = ("relectures_croisees", "votes_croises", "relais_d_engagements", "copie_de_contribution")  # ruche-0118, closed
+ECARTS_SIGNALEMENT = ("sans_indice", "personnes_distinctes", "deja_lies", "doublon")  # the council's codes to dismiss a report
+BLOCAGE_SIGNALEMENT = dt.timedelta(days=30)  # a dismissed pair is not reported again before
+
+
+def paire_signalee(reg, comptes):
+    """ruche-0118: the persons a report's logins name (identites.cle : a former login or a linked account is its person), or None."""
+    return frozenset(map(reg.identites.cle, comptes)) if isinstance(comptes, list) and all(isinstance(c, str) for c in comptes) else None
+
+
+def refus_signalement(reg, s, auteur, instant, soi=None):
+    """ruche-0118: None if `auteur` may file the report `s` (any other report: `soi` is its own name), else why : by persons (identites.cle),
+    never one of the two nor a linked pair, one open per pair, none 30 days after a dismissal, open reports capped (bee.yaml, creations)."""
+    comptes, conf = s.get("comptes"), config_creations(reg)
+    if set(s) != {"par", "le", "comptes", "motif"} or s["motif"] not in MOTIFS_SIGNALEMENT:
+        return f"a report holds par, le, comptes and motif, nothing else (no free text) ; motif : {', '.join(MOTIFS_SIGNALEMENT)}"
+    if s["par"] != auteur or auteur not in reg.membres:
+        return f"par : a member reports in their own name ({auteur})"
+    if not (isinstance(comptes, list) and all(isinstance(c, str) and c in reg.membres and c.casefold() in reg.identites.numeros for c in comptes) and len(set(comptes)) == len(comptes) == 2):
+        return "comptes : the logins of two member accounts, as membres/ names them, each file with its github_id (no one outside the hive)"
+    if len(paire := paire_signalee(reg, comptes)) < 2:
+        return "comptes : these two accounts are already linked (one person) : nothing to report"
+    if any(reg.identites.meme(auteur, c) for c in comptes):
+        return "the reporter is neither account : one's own accounts are linked with bee lier"
+    ouverts = [x for nom, (_, x) in sorted(reg.signalements.items()) if nom != soi and isinstance(x, dict) and "decision" not in x]
+    for nom, (_, x) in sorted(reg.signalements.items()):
+        if nom == soi or not isinstance(x, dict) or paire_signalee(reg, x.get("comptes")) != paire:
+            continue
+        if "decision" not in x:
+            return f"{nom} already reports these two persons, and is open : one open report per pair (by person : linked accounts and former logins too)"
+        d = x["decision"] if isinstance(x["decision"], dict) else {}  # unreadable: as a dismissal that never ends (fails closed)
+        if d.get("issue") != "lies" and ((m := _instant_ou_rien(d.get("le"))) is None or m > instant - BLOCAGE_SIGNALEMENT):
+            return f"{nom} was dismissed on {d.get('le')} : this pair is not reported again for 30 days after (by person : linked accounts and former logins too)"
+    if sum(reg.identites.meme(x.get("par"), auteur) for x in ouverts) >= (m := conf["signalements_ouverts_max"]):
+        return f"{reg.identites.nom(auteur)} already has {m} open reports, at most {m} per person who reports (creations.signalements_ouverts_max)"
+    for c in comptes:
+        if sum(reg.identites.cle(c) in (paire_signalee(reg, x.get("comptes")) or ()) for x in ouverts) >= (m := conf["signalements_nommant_max"]):
+            return f"{reg.identites.nom(c)} is already named in {m} open reports, at most {m} per person (creations.signalements_nommant_max)"
+    return probleme_date_pr(s["le"], "le", instant) or (s["le"] != en_iso(lire_instant(s["le"])) and f"le ({s['le']}) : the time of the PR as bee writes it ({en_iso(instant)})") or None
+
+
+def refus_decision(reg, avant, apres, auteur, instant):
+    """ruche-0118: None if the council member `auteur` may add `apres`'s decision to the open report `avant` by this PR, else why."""
+    d, comptes = apres.get("decision"), avant.get("comptes") if isinstance(avant, dict) and "decision" not in avant else None
+    if not (isinstance(comptes, list) and len(comptes) == 2 and isinstance(d, dict) and apres == {**avant, "decision": d}):
+        return "the council adds its decision to an open report, nothing else (bee signalement)"
+    if d.get("par") != auteur or any(reg.identites.meme(auteur, c) for c in comptes):
+        return "decision/par : the council member who authors this PR, neither of the two accounts nor linked to one"
+    if d.get("issue") == "lies" and (reg.identites.meme(*comptes) or not reg.identites_lues.meme(*comptes)):
+        return "decision lies : this PR links the two member files (bee signalement --lier writes both)"
+    return probleme_date_pr(d.get("le"), "decision/le", instant) or (d["le"] != en_iso(lire_instant(d["le"])) and f"decision/le ({d['le']}) : the time of the PR as bee writes it ({en_iso(instant)})") or None
+
+
+def cmd_signaler(args):
+    """ruche-0118: reports two member accounts you believe are one person, with a reason code ; the council links or dismisses."""
+    reg = Registre(args.registre)
+    reg.exiger_membre(args.utilisateur)
+    exiger_creation_permise(reg, "signalements", args.utilisateur)
+    s = {"par": args.utilisateur, "le": en_iso(maintenant()), "comptes": args.comptes, "motif": args.motif}
+    if refus := refus_signalement(reg, s, args.utilisateur, maintenant()):
+        raise ErreurBee(refus)
+    chemin = reg.racine / f"signalements/S-{numero_suivant(int(n[2:]) for n in reg.signalements if ID_SIGNALEMENT.match(n)):04d}.yaml"
+    ecrire_yaml(chemin, s)
+    print(f"✓ {reg.rel(chemin)}. Publiez : bee publier --titre 'Signalement {chemin.stem}' ; le conseil le lit (bee essaim) et décide")
+    return 0
+
+
+def cmd_signalement(args):
+    """ruche-0118: the council decides an open report : links its two accounts (--lier <the person's login> : autres_comptes in that
+    member file, compte_de in the other's, as bee lier writes them from both sides) or dismisses it with a code (--ecarter)."""
+    reg = Registre(args.registre)
+    chemin, s = reg.signalements.get(args.signalement) or (None, None)
+    if (args.utilisateur not in reg.conseil or not isinstance(s, dict) or "decision" in s or not isinstance(s.get("comptes"), list)
+            or any(reg.identites.meme(args.utilisateur, c) for c in s["comptes"])):
+        raise ErreurBee(f"{args.signalement} : the council alone decides an open report, never one naming its own account or a linked one (bee essaim)")
+    if args.lier:
+        personne, noms = reg.identites.compte(args.lier), [reg.identites.compte(c) for c in s["comptes"]]
+        if personne not in noms or len(set(noms)) != 2 or not all(n in reg.membres for n in noms):
+            raise ErreurBee(f"--lier : one of the two accounts of {args.signalement} ({', '.join(map(str, noms))}), each with its member file")
+        (cp, p), (ca, a) = reg.membres[personne], reg.membres[next(n for n in noms if n != personne)]
+        p2, a2 = {**p, "autres_comptes": [*(p.get("autres_comptes") or []), a.get("github_id")]}, {**a, "compte_de": p.get("github_id")}
+        refus = refus_lien(reg, p, p2, p.get("github_id"))
+        reg.membres[personne] = (cp, p2)  # the other side confirms a file that lists it
+        if refus := refus or refus_lien(reg, a, a2, a.get("github_id")):
+            raise ErreurBee(f"{args.signalement} : {refus}")
+        ecrire_yaml(cp, p2)
+        ecrire_yaml(ca, a2)
+    ecrire_yaml(chemin, {**s, "decision": {"par": args.utilisateur, "le": en_iso(maintenant()), "issue": args.ecarter or "lies"}})
+    print(f"✓ {reg.rel(chemin)}{' and both member files' * bool(args.lier)}. Publiez : bee publier --titre 'Décision {args.signalement}' "
+          "(le conseil fusionne lui-même)")
     return 0
 
 
@@ -6982,7 +7116,7 @@ def exiger_creation_permise(reg, dossier, utilisateur):
         return
     maximum = config_creations(reg)[f"{dossier}_max_par_24h"]
     if creations_recentes(reg, "HEAD", dossier, utilisateur, maintenant()) >= maximum:
-        quoi = {"taches": "tâches proposées", "propositions": "propositions de règle"}.get(dossier, "invitations proposées")
+        quoi = {"taches": "tâches proposées", "propositions": "propositions de règle", "signalements": "signalements"}.get(dossier, "invitations proposées")
         raise ErreurBee(f"plafond : {utilisateur} a déjà {maximum} {quoi} sur 24 h glissantes (creations.{dossier}_max_par_24h) ; "
                         "réessayez plus tard, ou rejoignez une tâche ou une proposition existante")
 
@@ -9427,7 +9561,8 @@ def cmd_ecartees(args):
     return 0
 
 
-DOSSIERS_LIBRE_SERVICE = ("taches/", "contributions/", "votes/", "mesures/", "membres/", "propositions/", "debats/", "invitations/")
+DOSSIERS_LIBRE_SERVICE = ("taches/", "contributions/", "votes/", "mesures/", "membres/", "propositions/", "debats/", "invitations/",
+                          "signalements/")
 MOTIF_DATE = re.compile(r"^[ -]*(\w+): [\"']?(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ)[\"']?$", re.M)  # ruche-0129 : une date déclarée
 
 
@@ -10269,8 +10404,8 @@ def construire_analyseur():
     p.add_argument("--json", action="store_true")
 
     p = ajouter("voir", cmd_voir, "Affiche une tâche complète et ce qu'il faut savoir pour la prendre ; ou une invitation (I-0001) : "
-                                  "son état, ses identités déclarées et la consigne d'accord.")
-    p.add_argument("tache", help="une tâche (miniz-0012) ou une invitation (I-0001)")
+                                  "son état, ses identités déclarées et la consigne d'accord ; ou un signalement (S-0001).")
+    p.add_argument("tache", help="une tâche (miniz-0012), une invitation (I-0001) ou un signalement (S-0001)")
 
     p = ajouter("contexte", cmd_contexte,
                 "L'arbre du sens (docs/arbre.md) : imprime le chemin d'une tâche (racine, rôle, projet, tâche) et sa taille en "
@@ -10301,6 +10436,19 @@ def construire_analyseur():
     lien = p.add_mutually_exclusive_group(required=True)
     lien.add_argument("--autre-compte", type=int, help="from your member file: your other account's number (gh api users/<login> --jq .id)")
     lien.add_argument("--compte-de", type=int, help="from the other account: the number of the member file that declared it")
+
+    p = ajouter("signaler", cmd_signaler, "ruche-0118: reports two member accounts you believe are one person (never your own : bee lier) ; "
+                                          "only their logins and a reason code ; the council links them or dismisses the report.")
+    p.add_argument("--utilisateur", required=True, help="you, a member (the reporter is neither account)")
+    p.add_argument("--comptes", required=True, nargs=2, metavar="LOGIN", help="the two member accounts, as membres/ names them")
+    p.add_argument("--motif", required=True, choices=MOTIFS_SIGNALEMENT)
+
+    p = ajouter("signalement", cmd_signalement, "ruche-0118, the council: links the two accounts of an open report, or dismisses it.")
+    p.add_argument("signalement", help="S-0001")
+    p.add_argument("--utilisateur", required=True, help="a council member")
+    decision = p.add_mutually_exclusive_group(required=True)
+    decision.add_argument("--lier", metavar="LOGIN", help="the account that lists the other (autres_comptes) ; the other confirms (compte_de)")
+    decision.add_argument("--ecarter", choices=ECARTS_SIGNALEMENT, help="dismiss : the pair is not reported again for 30 days")
 
     p = ajouter("prendre", cmd_prendre, "Réserve une tâche (72 h maximum, 3 réservations ou inscriptions en parallèle par utilisateur).")
     p.add_argument("tache")
