@@ -1,0 +1,10 @@
+id: ruche-0086-c1
+tache: ruche-0086
+auteur: bidji29
+pr: https://github.com/Bee-ruche/registre/pull/135
+resume: 'The registry requires a minimum common-judge version: a verdict from an older judge is incomplete
+  for R3''s review gate; a malformed minimum fails closed.'
+statut: en_relecture
+soumise_le: '2026-11-02T01:46:11Z'
+engage_depuis: '2026-11-02T00:14:49Z'
+relectures: []
