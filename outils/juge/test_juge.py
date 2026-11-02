@@ -24,6 +24,13 @@ et, depuis la revue adverse du 28/10 (défauts de contrat d'un greffon) :
   objet_oublie       le script de construction ne laisse pas l'objet du projet dans obj/ : erreur
   jetons_scindes     l'assembleur est formé par concaténation de jetons (a##sm) : vu dans les objets
   greffon_distrait   un greffon qui ne lit pas les sorties de B d'un scénario : erreur, pas d'acceptation
+et, depuis ruche-0037 (le code jugé ne peut pas savoir s'il est vérifié ou mesuré) :
+  memes_conditions            B relève tout ce qu'il peut observer de son processus : le même relevé dans chaque mode
+  sortie_fausse_chronometree  B juste quand il est vérifié, faux quand il est chronométré (le harnais de la base le
+                              lui dit) : refusé par les entrées de vérification mêlées aux mesures
+  memes_compteurs             sur les mêmes /entrees, le même relevé dans chaque mode, compteurs du processus compris
+  sortie_changeante_chronometree  sorties libres : B donne, chronométré, une autre sortie juste : refusé
+  cote_sans_melange, instructions_sans_melange  un côté mesuré sans entrée à mêler : erreur ; un décompte sans : signalé
 
 Without Docker, the analysis is also tested on objects of the toy project built on the host as the judge
 builds them (DockerLocal; built, surveyed and analysed, never run): seeded constructs in every family and
@@ -34,6 +41,10 @@ ruche-0024 (juge-v2): juge.yml's scripts are run with bash, gh replaced by a sta
 at a commit of the registry's main, preparation failing closed, a hostile journal that issues no workflow command);
 the declared history is checked against the base's ancestry, fetched within a time budget, then read without any
 git transport (TestHistorique); with Docker, historique_declare and historique_non_declare.
+
+ruche-0037, without Docker: the harness is started the same way in every mode (TestMemesConditions); inputs are renamed
+and each verification input passes in a measurement, drawn from the seed, with the same output (TestMelange); fixed times,
+the harness alone in /variante, at least one repetition (TestConditionsFixes).
 """
 
 import concurrent.futures
@@ -459,6 +470,236 @@ class TestImage(unittest.TestCase):
             with self.assertRaises(lecture.Erreur):
                 conteneur.dockerfile([mauvais])
 
+
+# ------------------------------------------------------------------ ruche-0037: the same conditions in every mode
+
+class FauxDocker:
+    """Stand-in for conteneur.Docker: records each container (command, mounts, standard input) and answers like chrono."""
+
+    def __init__(self):
+        self.appels = []
+
+    def lancer(self, commande, montages, pids=2, entree=None, delai=3600):
+        self.appels.append((commande, montages, entree.decode()))
+        jeton, _, *plan = entree.decode().splitlines()
+        sortie = "".join(json.dumps({"jeton": jeton, "etiquette": ligne.split("\t")[0], "code": 0, "signal": 0,
+                                     "instructions": 1}) + "\n" for ligne in plan)
+        return subprocess.CompletedProcess(commande, 0, sortie.encode(), b"")
+
+
+# A stand-in for docker that records each call (arguments, standard input) and answers as chrono would.
+DOCKER_CHRONO = r"""#!/usr/bin/env python3
+import json, os, sys
+entree = sys.stdin.read()
+with open(os.environ["FAUX_DOCKER_JOURNAL"], "a") as f:
+    f.write(json.dumps([sys.argv[1:], entree]) + "\n")
+jeton, _, *plan = entree.splitlines()
+for ligne in plan:
+    print(json.dumps({"jeton": jeton, "etiquette": ligne.split("\t")[0], "code": 0, "signal": 0, "instructions": 1}))
+"""
+
+
+class TestMemesConditions(unittest.TestCase):
+    """The judge starts the harness the same way in every mode (same arguments, same mounts); the mode reaches it on its
+    descriptor 0 only."""
+
+    def setUp(self):
+        self.travail = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.travail)
+
+    def test_modes_differ_only_on_the_harness_input(self):
+        docker = FauxDocker()
+        execution = conteneur.Execution(docker, "/c", {"B": "/b"}, self.travail)
+        harnais = [conteneur.HARNAIS, "/entrees", "/sorties"]
+        execution.lancer("B", "/e", os.path.join(self.travail, "s"), [("verifier", [conteneur.HARNAIS, "verifier", "/entrees", "/sorties"])], delai=3600)
+        execution.lancer("B", "/e", os.path.join(self.travail, "s"), [("compression", [conteneur.HARNAIS, "compression", "/entrees", "/sorties"])])
+        execution.lancer("B", "/e", os.path.join(self.travail, "s"), [("compression", juge.VALGRIND + [conteneur.HARNAIS, "compression", "/entrees", "/sorties"])],
+                         valgrind=True, delai=3600)
+        vus = []
+        for commande, montages, entree in docker.appels:
+            self.assertEqual(commande, ["/chrono/chrono"])
+            self.assertEqual(sorted(cible for _, cible, _ in montages), ["/chrono", "/entrees", "/sorties", "/variante"])
+            _, options, ligne = entree.splitlines()
+            etiquette, parametres, *argv = ligne.split("\t")
+            self.assertEqual(argv[argv.index(conteneur.HARNAIS):], [conteneur.HARNAIS])
+            self.assertEqual(parametres.split(), [etiquette] + harnais[1:])
+            vus.append((options, argv))
+        self.assertEqual(vus, [("3600 0", [conteneur.HARNAIS]), ("1800 0", [conteneur.HARNAIS]), ("3600 1", juge.VALGRIND + [conteneur.HARNAIS])])
+        for mauvais in ([conteneur.HARNAIS], ["/bin/sh", "-c", "x"], [conteneur.HARNAIS, "a\tb"]):
+            with self.assertRaises(lecture.Erreur):
+                execution.lancer("B", "/e", os.path.join(self.travail, "s"), [("x", mauvais)])
+
+    def test_same_docker_request_in_every_mode(self):
+        """The Docker command is the same in every mode (bounds, isolation, mounts, their options and their order, the
+        image), but for the container's name; only the standard input differs. A stand-in docker, first on PATH, records
+        each call made through the real Docker.lancer and answers as chrono would."""
+        dossier = os.path.join(self.travail, "bin")
+        os.makedirs(dossier)
+        with open(os.path.join(dossier, "docker"), "w", encoding="utf-8") as f:
+            f.write(DOCKER_CHRONO)
+        os.chmod(os.path.join(dossier, "docker"), 0o755)
+        journal_docker = os.path.join(self.travail, "docker.journal")
+        execution = conteneur.Execution(conteneur.Docker("sha256:" + "0" * 64), "/c", {"B": "/b"}, self.travail)
+        sorties = os.path.join(self.travail, "s")
+        with mock.patch.dict(os.environ, {"PATH": dossier + os.pathsep + os.environ["PATH"], "FAUX_DOCKER_JOURNAL": journal_docker}):
+            for mode, prefixe, valgrind in (("verifier", [], False), ("compression", [], False), ("compression", juge.VALGRIND, True)):
+                execution.lancer("B", "/e", sorties, [(mode, prefixe + [conteneur.HARNAIS, mode, "/entrees", "/sorties"])],
+                                 valgrind=valgrind)
+        with open(journal_docker, encoding="utf-8") as f:
+            appels = [json.loads(ligne) for ligne in f]
+        self.assertEqual(len(appels), 3)
+        commandes = []
+        for commande, _ in appels:
+            i = commande.index("--name")
+            self.assertRegex(commande[i + 1], r"^bee-juge-[0-9a-f]{12}$")
+            commandes.append(commande[:i + 1] + commande[i + 2:])
+        self.assertEqual(commandes, [commandes[0]] * 3)
+        commande = commandes[0]
+        self.assertEqual(commande[commande.index("--ulimit"):commande.index("--ulimit") + 4], conteneur.Docker.BORNES)
+        for option in conteneur.ISOLATION:
+            self.assertIn(option, commande)
+        self.assertEqual([c for c in commande if c.startswith("type=bind")],
+                         ["type=bind,source=/c,target=/chrono,readonly", "type=bind,source=/b,target=/variante,readonly",
+                          "type=bind,source=/e,target=/entrees,readonly", f"type=bind,source={sorties},target=/sorties"])
+        self.assertEqual(commande[-2:], ["sha256:" + "0" * 64, "/chrono/chrono"])
+        self.assertEqual(len({entree for _, entree in appels}), 3)
+
+    def test_mounted_folders_have_neutral_names(self):
+        """A scenario's outputs are mounted on /sorties, as verification's, from a neutral folder renamed afterwards."""
+        projet = greffon_jouet.Projet({})
+        dossiers = juge.preparer(self.travail, "verification", projet.repetition(random.Random(1), projet.corpus(JOUET)), ("f", "z"))
+        sorties = juge.sorties_de(self.travail, "sorties-verification-B", ("f", "z"))
+        for dossier in list(dossiers.values()) + list(sorties.values()):
+            self.assertRegex(os.path.basename(dossier), r"^[0-9a-f]{16}$")
+        montes, test = [], self
+
+        class FausseExecution:
+            def lancer(self, variante, entrees, dossier, plan, **options):
+                test.assertRegex(os.path.relpath(dossier, test.travail), r"^[0-9a-f]{16}$")
+                test.assertEqual([c[-1] for _, c in plan], ["/sorties"])
+                montes.append(dossier)
+                with open(os.path.join(dossier, "sortie"), "w", encoding="utf-8") as f:
+                    f.write(plan[0][0])
+                return {plan[0][0]: {}}
+        plans = {c: [(s, [conteneur.HARNAIS, s, "/entrees", "/sorties"]) for s, cs in projet.SCENARIOS.items() if cs == c] for c in "fz"}
+        self.assertEqual(set(juge.lancer_par_cote(FausseExecution(), "B", dossiers, sorties, plans)), set(projet.SCENARIOS))
+        self.assertEqual(len(set(montes)), len(projet.SCENARIOS))
+        for s, c in projet.SCENARIOS.items():
+            self.assertEqual(lecture.exiger(sorties[c], f"{s}/sortie"), s.encode())
+
+
+class TestMelange(unittest.TestCase):
+    """Verification inputs are mixed into the measured inputs, drawn from the judge's seed (A and B get the same); every
+    input is written shuffled and renamed, the plugin keeping its names."""
+
+    def tirage(self, graine, repetitions=3):
+        projet = greffon_jouet.Projet({})
+        rng = random.Random(graine)
+        corpus = projet.corpus(JOUET)
+        verification = projet.verification(rng, corpus)
+        ecrites, neutres = juge.renommer(rng, verification)
+        noms = {(e.cote, e.nom): n for e, n in zip(verification, neutres)}
+        par_cote = {c: [e for e in verification if e.cote == c] for c in "fz"}
+        tours = {c: juge.tour(rng, l) for c, l in par_cote.items()}
+        combien = {c: -(-len(l) // repetitions) for c, l in par_cote.items()}
+        return verification, ecrites, noms, [(juge.meler(rng, projet.repetition(rng, corpus), tours, combien, noms), combien)
+                                             for _ in range(repetitions)]
+
+    def test_verification_inputs_renamed(self):
+        verification, ecrites, noms, _ = self.tirage(1)
+        entrees.verifier_entrees(ecrites, ("f", "z"))
+        self.assertEqual(sorted(e.nom for e in ecrites), [f"e{i:04d}" for i in range(len(verification))])
+        self.assertNotEqual([e.donnees for e in ecrites], [e.donnees for e in verification], "shuffled")
+        par_nom = {(e.cote, e.nom): e for e in ecrites}
+        for e in verification:
+            self.assertEqual(par_nom[(e.cote, noms[(e.cote, e.nom)])]._replace(nom=e.nom), e)
+
+    def test_each_verification_input_passes_in_a_measurement(self):
+        verification, ecrites, noms, tirages = self.tirage(1)
+        ecrite = {(e.cote, e.nom): e for e in ecrites}
+        passees = set()
+        for (melees, melange), combien in tirages:
+            entrees.verifier_entrees(melees, ("f", "z"))
+            self.assertTrue(all(re.fullmatch(r"e\d{4}", e.nom) for e in melees))
+            self.assertEqual(len(melange), sum(combien.values()))
+            par_nom = {(e.cote, e.nom): e for e in melees}
+            positions = sorted(melees.index(par_nom[cle]) for cle in melange)
+            self.assertLess(positions[0], len(melees) - len(melange), "mixed in, not appended")
+            for (cote, nom), nom_verification in melange.items():
+                self.assertEqual(par_nom[(cote, nom)]._replace(nom=nom_verification), ecrite[(cote, nom_verification)])
+            for c in "fz":
+                self.assertEqual(sum(1 for cote, _ in melange if cote == c), combien[c])
+            passees |= set(melange.values())
+        self.assertEqual(passees, {e.nom for e in ecrites})
+
+    def test_drawn_from_the_seed(self):
+        self.assertEqual(self.tirage(7)[3], self.tirage(7)[3])
+        self.assertNotEqual(self.tirage(7)[3], self.tirage(8)[3])
+
+    def test_names_translated_for_the_plugin(self):
+        racine = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, racine)
+        os.makedirs(os.path.join(racine, "c"))
+        for nom in ("e0003", "e0003.6", "e0007"):
+            with open(os.path.join(racine, "c", nom), "wb") as f:
+                f.write(nom.encode())
+        vue = lecture.Sorties({"f": racine}, {("f", "k000"): "e0003", ("f", "a.b"): "e0007"})
+        self.assertEqual((vue.exiger("f", "c/k000"), vue.exiger("f", "c/k000.6"), vue.lire("f", "c/a.b")), (b"e0003", b"e0003.6", b"e0007"))
+        self.assertTrue(vue.couvre("f", "k000") and vue.couvre("f", "a.b"))
+        self.assertIsNone(vue.lire("f", "c/k001"))
+
+    def test_mixed_input_same_output_as_in_verification(self):
+        """B's output of a mixed-in input, in a measured run, must be its own verification output, byte for byte."""
+        travail = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, travail)
+
+        def ecrire(chemin, octets):
+            os.makedirs(os.path.dirname(chemin), exist_ok=True)
+            with open(chemin, "wb") as f:
+                f.write(octets)
+        ecrire(os.path.join(travail, "v", "c", "e0004"), b"sortie")
+        ecrire(os.path.join(travail, "v", "e", "e0004.6"), b"0 6\n")
+        index = juge.sorties_par_entree({"f": os.path.join(travail, "v")})
+        self.assertEqual(sorted(index[("f", "e0004")]), ["c/e0004", "e/e0004.6"])
+        ecrire(os.path.join(travail, "m", "compression", "c", "e0011"), b"sortie")
+        ecrire(os.path.join(travail, "m", "compression", "e", "e0011.6"), b"0 6\n")
+        args = (index, {"f": os.path.join(travail, "v")}, {"f": os.path.join(travail, "m")})
+        self.assertEqual(juge.memes_sorties(*args, {("f", "e0011"): "e0004"}, [("compression", "f")]), 2)
+        ecrire(os.path.join(travail, "m", "compression", "c", "e0011"), b"autre")
+        with self.assertRaises(lecture.Refus):
+            juge.memes_sorties(*args, {("f", "e0011"): "e0004"}, [("compression", "f")])
+        with self.assertRaises(lecture.Erreur):
+            juge.memes_sorties(*args, {("f", "e0012"): "e0004"}, [("compression", "f")])
+
+
+class TestConditionsFixes(unittest.TestCase):
+    """Fixed times on what a container sees; /variante holds the harness alone; repetitions at least 1."""
+
+    def test_times_and_variant(self):
+        travail = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, travail)
+        construction = os.path.join(travail, "construction")
+        os.makedirs(os.path.join(construction, "obj"))
+        for nom in ("execution", "obj/rle.o"):
+            with open(os.path.join(construction, nom), "wb") as f:
+                f.write(nom.encode())
+        variante = juge.variante(construction, os.path.join(travail, "variante"))
+        self.assertEqual(os.listdir(variante), ["execution"])
+        conteneur.temps_fixes(variante)
+        for chemin in (variante, os.path.join(variante, "execution")):
+            st = os.stat(chemin)
+            self.assertEqual((st.st_atime, st.st_mtime), (conteneur.TEMPS, conteneur.TEMPS))
+        os.remove(os.path.join(construction, "execution"))
+        os.symlink("/etc/hostname", os.path.join(construction, "execution"))
+        with self.assertRaises(lecture.Refus):
+            juge.variante(construction, os.path.join(travail, "variante-2"))
+
+    def test_repetitions_at_least_one(self):
+        for options in (["--repetitions", "0", "--chauffe", "0"], ["--chauffe", "-1"]):
+            with contextlib.redirect_stderr(io.StringIO()) as erreur, self.assertRaises(SystemExit) as fin:
+                juge.main(["--outillage", JOUET, "--source-a", JOUET, "--source-b", JOUET] + options)
+            self.assertEqual(fin.exception.code, 2)
+            self.assertIn("--repetitions", erreur.getvalue())
 
 
 # ------------------------------------------------------------------ juge.yml (ruche-0024): read and run its scripts
@@ -1403,6 +1644,210 @@ size_t rle_borne(size_t n)
 """)
 
 
+# ruche-0037: a library that records what it observes of its process at its first call; the meta-tests compare digests.
+ESPION = r'''
+#include <dirent.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/auxv.h>
+#include <sys/resource.h>
+#include <sys/stat.h>
+#include <sys/utsname.h>
+#include <unistd.h>
+
+extern char **environ;
+static int rle_vu = 0;
+static char rle_tampon[65536], rle_compteurs[8][4096];
+
+static size_t rle_lire(const char *chemin, char *tampon, size_t taille)
+{
+    size_t n = 0;
+    ssize_t lu;
+    int fd = open(chemin, O_RDONLY);
+    if (fd < 0)
+        return 0;
+    while (n < taille - 1 && (lu = read(fd, tampon + n, taille - 1 - n)) > 0)
+        n += (size_t)lu;
+    close(fd);
+    tampon[n] = 0;
+    return n;
+}
+
+static void rle_texte(const char *cle, const char *p, size_t n)
+{
+    size_t i;
+    fprintf(stderr, "%s=", cle);
+    for (i = 0; i < n; i++)
+        if (p[i] >= 32 && p[i] < 127 && p[i] != '\\')
+            fputc(p[i], stderr);
+        else
+            fprintf(stderr, "\\x%02x", (unsigned char)p[i]);
+    fputc('\n', stderr);
+}
+
+static int rle_compare(const void *a, const void *b)
+{
+    return strcmp(*(char *const *)a, *(char *const *)b);
+}
+
+static void rle_dossier(const char *chemin)
+{
+    char *noms[512];
+    int n = 0, i;
+    struct dirent *d;
+    DIR *r = opendir(chemin);
+    while (r && n < 512 && (d = readdir(r)))
+        noms[n++] = strdup(d->d_name);
+    if (r)
+        closedir(r);
+    qsort(noms, (size_t)n, sizeof(char *), rle_compare);
+    fprintf(stderr, "ls:%s=", chemin);
+    for (i = 0; i < n; i++)
+        fprintf(stderr, "%s ", noms[i]);
+    fputc('\n', stderr);
+}
+
+static void rle_espion(void)
+{
+    static const char *const compteurs[] = {"/proc/self/io", "/proc/self/stat", "/proc/self/statm", "/proc/self/schedstat"};
+    static const char *const fichiers[] = {"/proc/self/cmdline", "/proc/self/environ", "/proc/1/cmdline", "/proc/self/status",
+        "/proc/self/mountinfo", "/proc/self/cgroup", "/proc/self/limits", "/etc/hosts", "/etc/hostname"};
+    static const char *const dossiers[] = {"/", "/chrono", "/entrees", "/sorties", "/tmp", "/variante", "/proc/self/fd"};
+    static const char *const dates[] = {"/chrono", "/chrono/chrono", "/entrees", "/entrees/liste", "/sorties", "/variante",
+        "/variante/execution"};
+    char ligne[4096], *p;
+    size_t k, longueurs[4];
+    int i, fd;
+    struct rusage ru;
+    struct stat st;
+    struct utsname u;
+    if (rle_vu++)
+        return;
+    for (k = 0; k < 4; k++)
+        longueurs[k] = rle_lire(compteurs[k], rle_compteurs[k], sizeof(rle_compteurs[k]));
+    getrusage(RUSAGE_SELF, &ru);
+    fputs("ESPION-DEBUT\n", stderr);
+    for (k = 0; k < 4; k++)
+        rle_texte(compteurs[k], rle_compteurs[k], longueurs[k]);
+    fprintf(stderr, "rusage=%ld %ld %ld %ld %ld %ld %ld %ld %ld\n", (long)(ru.ru_utime.tv_sec * 1000000 + ru.ru_utime.tv_usec),
+            (long)(ru.ru_stime.tv_sec * 1000000 + ru.ru_stime.tv_usec), ru.ru_maxrss, ru.ru_minflt, ru.ru_majflt,
+            ru.ru_inblock, ru.ru_oublock, ru.ru_nvcsw, ru.ru_nivcsw);
+    for (k = 0; k < sizeof(fichiers) / sizeof(fichiers[0]); k++)
+        rle_texte(fichiers[k], rle_tampon, rle_lire(fichiers[k], rle_tampon, sizeof(rle_tampon)));
+    for (k = 0; k < sizeof(dates) / sizeof(dates[0]); k++)
+        if (lstat(dates[k], &st) == 0)
+            fprintf(stderr, "date:%s=%o %ld %ld\n", dates[k], (unsigned)st.st_mode, (long)st.st_atime, (long)st.st_mtime);
+    for (k = 0; k < sizeof(dossiers) / sizeof(dossiers[0]); k++)
+        rle_dossier(dossiers[k]);
+    fputs("environ=", stderr);
+    for (i = 0; environ && environ[i]; i++)
+        fprintf(stderr, "%s;", environ[i]);
+    fputc('\n', stderr);
+    p = (char *)getauxval(AT_EXECFN);
+    fprintf(stderr, "auxv=%s %lu %lu %lu %lu %lu %lx %lx %lu %lu\n", p ? p : "-", getauxval(AT_SECURE), getauxval(AT_UID),
+            getauxval(AT_EUID), getauxval(AT_GID), getauxval(AT_EGID), getauxval(AT_HWCAP), getauxval(AT_HWCAP2),
+            getauxval(AT_PAGESZ), getauxval(AT_CLKTCK));
+    fputs("descripteurs=", stderr);
+    for (fd = 0; fd < 1024; fd++) {
+        char lien[256];
+        ssize_t n;
+        if (fcntl(fd, F_GETFD) < 0)
+            continue;
+        snprintf(ligne, sizeof(ligne), "/proc/self/fd/%d", fd);
+        n = readlink(ligne, lien, sizeof(lien) - 1);
+        lien[n > 0 ? n : 0] = 0;
+        if (strncmp(lien, "pipe:[", 6) == 0)
+            lien[5] = 0;
+        fstat(fd, &st);
+        fprintf(stderr, "%d:%s:%o:%x:%x;", fd, lien, (unsigned)(st.st_mode & S_IFMT), (unsigned)fcntl(fd, F_GETFL),
+                (unsigned)fcntl(fd, F_GETFD));
+    }
+    fputc('\n', stderr);
+    fprintf(stderr, "cwd=%s\n", getcwd(ligne, sizeof(ligne)) ? ligne : "-");
+    i = (int)readlink("/proc/self/exe", ligne, sizeof(ligne) - 1);
+    fprintf(stderr, "exe=%.*s\n", i > 0 ? i : 0, ligne);
+    fprintf(stderr, "ids=%d %d %d %d %d %d %d\n", (int)getppid(), (int)getuid(), (int)geteuid(), (int)getgid(), (int)getegid(),
+            (int)getpgrp(), (int)getsid(0));
+    i = (int)umask(022);
+    umask((mode_t)i);
+    uname(&u);
+    fprintf(stderr, "umask=%o\nuname=%s %s %s\n", i, u.nodename, u.sysname, u.machine);
+    fputs("ESPION-FIN\n", stderr);
+}
+'''
+
+
+def espion(texte, corpus):
+    texte = "#define _GNU_SOURCE\n" + remplacer(texte, INCLUDE, INCLUDE + ESPION)
+    texte = remplacer(texte, DEBUT_COMPRESSER, DEBUT_COMPRESSER + "    rle_espion();\n")
+    return remplacer(texte, "    *produit = 0;\n    if (n < 8)", "    rle_espion();\n    *produit = 0;\n    if (n < 8)")
+
+
+# Values that differ between any two containers, replaced before the records are compared.
+VARIABLE = [(re.compile(p), r) for p, r in (
+    (r"(^|\\x0a)\d+ \d+ \d+:\d+ ", r"\1"), (r"[0-9a-f]{64}", "<conteneur>"), (r"overlay2/l/[A-Z0-9]+", "<couche>"),
+    (r"bee-juge-[A-Za-z0-9_]+", "bee-juge-*"), (r"(?<![0-9a-f])[0-9a-f]{16}(?![0-9a-f])", "<neutre>"),
+    (r"\\x0a(?:Tgid|Pid|NStgid|NSpid|Vm[A-Za-z]+|Rss[A-Za-z]+|(?:non)?voluntary_ctxt_switches):(?:\\x09|[^\\])*", ""))]
+# Counters (they depend on the inputs: compared only when the inputs are the same, test_memes_compteurs).
+COMPTEURS = ("/proc/self/io", "/proc/self/stat", "/proc/self/statm", "/proc/self/schedstat", "rusage")
+# Counters that vary from one run to the next in the same mode (time, scheduling, resident memory): compared within these
+# bounds, the others exactly.
+BRUIT = {"stat_utime": 20, "stat_stime": 20, "stat_minflt": 40, "stat_rss": 100, "statm_1": 100, "statm_2": 100,
+         "schedstat_0": 2e8, "schedstat_1": 2e8, "schedstat_2": 20, "ru_utime": 2e5, "ru_stime": 2e5, "ru_maxrss": 400,
+         "ru_minflt": 40, "ru_nvcsw": 20, "ru_nivcsw": 20, "ru_inblock": 1000}
+# Keys allowed to differ under the instruction counter.
+EXCEPTIONS_INSTRUCTIONS = {"/proc/self/cmdline", "/proc/self/environ", "/proc/self/status", "auxv", "ls:/proc/self/fd"}
+
+
+def releve_espion(texte):
+    debut, fin = texte.rindex("ESPION-DEBUT\n"), texte.rindex("ESPION-FIN\n")
+    releve = {}
+    for ligne in texte[debut:fin].splitlines()[1:]:
+        cle, _, valeur = ligne.partition("=")
+        for motif, remplacement in VARIABLE:
+            valeur = motif.sub(remplacement, valeur)
+        releve[cle] = valeur
+    # The mount table is compared as a set: Docker fixes its order before the container starts (by destination in
+    # recent versions, in no fixed order for mounts of equal depth in older ones), from a request that is the same in
+    # every mode (test_same_docker_request_in_every_mode), and the container can change no mount.
+    releve["/proc/self/mountinfo"] = "\\x0a".join(sorted(releve["/proc/self/mountinfo"].split("\\x0a")))
+    return releve
+
+
+def empreintes(releve, sauf=()):
+    """The record as one digest per key (counters and `sauf` aside)."""
+    return {k: hashlib.sha256(v.encode()).hexdigest()[:16] for k, v in releve.items() if k not in COMPTEURS and k not in sauf}
+
+
+def compteurs(releve):
+    """The counters of a record: {name: integer}."""
+    resultat = {}
+    for ligne in releve["/proc/self/io"].split("\\x0a"):
+        if ": " in ligne:
+            resultat["io_" + ligne.split(": ")[0]] = int(ligne.split(": ")[1])
+    stat = releve["/proc/self/stat"].rpartition(")")[2].split()
+    for nom, rang in (("minflt", 10), ("majflt", 12), ("utime", 14), ("stime", 15), ("threads", 20), ("vsize", 23), ("rss", 24)):
+        resultat["stat_" + nom] = int(stat[rang - 3])
+    resultat.update(("statm_" + str(i), int(x)) for i, x in enumerate(releve["/proc/self/statm"].replace("\\x0a", "").split()))
+    resultat.update(("schedstat_" + str(i), int(x)) for i, x in enumerate(releve["/proc/self/schedstat"].replace("\\x0a", "").split()))
+    resultat.update(zip(("ru_utime", "ru_stime", "ru_maxrss", "ru_minflt", "ru_majflt", "ru_inblock", "ru_oublock", "ru_nvcsw",
+                         "ru_nivcsw"), map(int, releve["rusage"].split())))
+    return resultat
+
+
+def sortie_fausse_chronometree(texte, corpus):
+    """Wrong only when timed: it compresses the corpus's sizes (the measured inputs) right, anything else wrong.
+    The mode comes from the base's harness (made to tell it, test_sortie_fausse_chronometree)."""
+    tailles = ", ".join(str(len(d)) for _, d in corpus)
+    texte = remplacer(texte, INCLUDE, INCLUDE + f"extern int rle_mesure;\nstatic const unsigned long rle_connues[] = {{ {tailles} }};\n")
+    return remplacer(texte, DEBUT_COMPRESSER, DEBUT_COMPRESSER +
+                     "    if (rle_mesure) { size_t k; int vu = 0;\n"
+                     "      for (k = 0; k < sizeof(rle_connues) / sizeof(rle_connues[0]); k++) vu |= rle_connues[k] == n;\n"
+                     "      if (!vu) return 0; }\n")
+
+
 @unittest.skipUnless(os.environ.get("BEE_JUGE_INTEGRATION") == "1" and shutil.which("docker"),
                      "méta-tests : BEE_JUGE_INTEGRATION=1 et Docker requis")
 class TestJugeContreVariantes(unittest.TestCase):
@@ -1440,9 +1885,9 @@ class TestJugeContreVariantes(unittest.TestCase):
             f.write(texte.replace(ancien, nouveau) if texte.count(ancien) >= 1 else remplacer(texte, ancien, nouveau))
         return base
 
-    def juger(self, nom, source_b, sans_instructions=False, base=JOUET, repetitions=2, options=()):
+    def juger(self, nom, source_b, sans_instructions=False, base=JOUET, repetitions=2, options=(), extra=()):
         commande = [sys.executable, os.path.join(ICI, "juge.py"), "--outillage", base, "--source-a", base,
-                    "--source-b", source_b, "--repetitions", str(repetitions), "--chauffe", "0"]
+                    "--source-b", source_b, "--repetitions", str(repetitions), "--chauffe", "0"] + list(extra)
         for o in options:
             commande += ["--option", o]
         if sans_instructions:
@@ -1453,6 +1898,22 @@ class TestJugeContreVariantes(unittest.TestCase):
         rapport = json.loads(r.stdout) if r.returncode == 0 else None
         print(f"\n[{nom}] code {r.returncode} : {r.stderr.strip().splitlines()[-1] if r.stderr.strip() else ''}", file=sys.stderr)
         return r.returncode, rapport, r.stderr
+
+    def juger_espionne(self, source_b):
+        """juge.py in this process; for each container that runs B: its standard input (options, plan) and error."""
+        conteneurs, lancer = [], conteneur.Docker.lancer
+
+        def espionner(docker, commande, montages, pids=2, entree=None, delai=3600):
+            r = lancer(docker, commande, montages, pids, entree, delai)
+            if commande == ["/chrono/chrono"] and any(h.endswith("variante-B") for h, c, _ in montages if c == "/variante"):
+                conteneurs.append((entree.decode(), r.stderr.decode("utf-8", "replace")))
+            return r
+        argv = ["--outillage", JOUET, "--source-a", JOUET, "--source-b", source_b, "--repetitions", "2", "--chauffe", "0"]
+        if os.environ.get("BEE_JUGE_RESEAU"):
+            argv += ["--reseau-construction", os.environ["BEE_JUGE_RESEAU"]]
+        with mock.patch.object(conteneur.Docker, "lancer", espionner), mock.patch.dict(os.environ), \
+                contextlib.redirect_stdout(io.StringIO()):
+            return juge.main(argv), conteneurs
 
     def types_suspects(self, rapport):
         return {s["type"] for s in rapport["juge"]["constructions_suspectes"]}
@@ -1467,6 +1928,10 @@ class TestJugeContreVariantes(unittest.TestCase):
             self.assertEqual(m["A"], m["B"])
         self.assertEqual(set(rapport["metriques"]), {"debit_compression", "debit_decompression", "ratio", "memoire_max_ko"})
         self.assertIsNone(rapport["juge"]["source"])  # named by juge.yml (--source-juge), not by a local run
+        verification = rapport["juge"]["verification"]  # ruche-0037: 20 f and 30 z verification inputs, over 2 repetitions
+        self.assertEqual(verification["melees_par_repetition"], {"f": 10, "z": 15})
+        self.assertEqual(verification["entrees_melees"], 3 * 25)  # 2 repetitions and the instruction count
+        self.assertEqual(verification["instructions_sans_melange"], [])
 
     def test_historique_declare(self):
         """ruche-0024: the toy plugin reads rle.c at a commit the base does not have; declared, it is fetched in its own
@@ -1572,9 +2037,9 @@ class TestJugeContreVariantes(unittest.TestCase):
         self.assertIn("preambule_valgrind", " ".join(s["detail"] for s in rapport["juge"]["constructions_suspectes"]))
 
     def test_greffon_distrait(self):
-        """Le greffon de la base oublie de lire les décompressions de B : erreur, jamais une acceptation."""
+        """Le greffon de la base oublie de lire les sorties de B d'un scénario : erreur, jamais une acceptation."""
         base = self.base_modifiee("greffon_distrait", "bee/juge/projet.py",
-                                  'if b.exiger("z", f"decompression/d/{e.nom}") != e.attendu:', "if False:")
+                                  'self.juste(a, b, e, f"{s}/")', 'self.juste(a, a, e, f"{s}/")')
         code, _, sortie = self.juger("greffon_distrait", self.preparer("greffon_distrait"), True, base=base)
         self.assertEqual(code, 2)
         self.assertIn("aucune sortie de B", sortie)
@@ -1589,6 +2054,113 @@ class TestJugeContreVariantes(unittest.TestCase):
         code, rapport, _ = self.juger("seeded_bytes", self.preparer("seeded_bytes", lambda t, c: t + octets_asm("48b80f05909090909090")), True)
         self.assertEqual(code, 0)
         self.assertIn("octets", self.types_suspects(rapport))
+
+    def test_memes_conditions(self):
+        """ruche-0037: B records everything it can observe of its process at its first call: the same digests in every
+        mode (counters aside, the inputs differing; EXCEPTIONS_INSTRUCTIONS aside under the instruction counter)."""
+        code, conteneurs = self.juger_espionne(self.preparer("memes_conditions", espion))
+        self.assertEqual(code, 0)
+        releves = {}
+        for entree, erreur in conteneurs:
+            _, options, ligne = entree.splitlines()
+            releves.setdefault((options.split()[1] == "1", ligne.split("\t")[0]), []).append(releve_espion(erreur))
+        self.assertEqual(sorted(releves), [(False, "compression"), (False, "decompression"), (False, "verifier"),
+                                           (True, "compression"), (True, "decompression")])
+        natifs = [r for (valgrind, _), liste in sorted(releves.items()) if not valgrind for r in liste]
+        self.assertEqual(len(natifs), 6)  # verification (2 sides), 2 repetitions × 2 scenarios
+        for r in natifs:
+            self.assertEqual(empreintes(r), empreintes(natifs[0]))
+        for r in releves[(True, "compression")] + releves[(True, "decompression")]:
+            self.assertEqual(empreintes(r, EXCEPTIONS_INSTRUCTIONS), empreintes(natifs[0], EXCEPTIONS_INSTRUCTIONS))
+
+    def executer_modes(self, source_b, modes):
+        """B built and run by the judge's own containers on one /entrees (the f side of a repetition), once per mode:
+        [(mode, valgrind)]. Returns its records, in order."""
+        projet, travail = greffon_jouet.Projet({}), tempfile.mkdtemp(dir=self.travail)
+        os.chmod(travail, 0o755)
+        docker = conteneur.Docker(conteneur.construire_image(projet.PAQUETS, os.environ.get("BEE_JUGE_RESEAU")))
+        sources = juge.copier_sources(source_b, os.path.join(travail, "sources-B"), projet.SOURCES, projet.SOURCES_REQUISES)
+        outils = juge.copier_outillage(JOUET, JOUET, os.path.join(travail, "outillage"), projet)
+        juge.construire(docker, projet, sources, outils, os.path.join(travail, "construction-B"), "B", travail)
+        execution = conteneur.Execution(docker, conteneur.compiler_chrono(docker, travail),
+                                        {"B": juge.variante(os.path.join(travail, "construction-B"), os.path.join(travail, "variante-B"))},
+                                        travail)
+        entrees = [e for e in projet.repetition(random.Random(1), projet.corpus(JOUET)) if e.cote == "f"]
+        dossier = juge.preparer(travail, "", juge.renommer(random.Random(1), entrees)[0], ("f", "z"))["f"]
+        erreurs, lancer = [], docker.lancer
+
+        def espionner(*a, **k):
+            r = lancer(*a, **k)
+            erreurs.append(r.stderr.decode("utf-8", "replace"))
+            return r
+        docker.lancer = espionner
+        for mode, valgrind in modes:
+            commande = (juge.VALGRIND if valgrind else []) + [conteneur.HARNAIS, mode, "/entrees", "/sorties"]
+            execution.lancer("B", dossier, juge.sorties_de(travail, "", ("f",))["f"], [(mode, commande)], valgrind=valgrind, delai=600)
+        return [releve_espion(e) for e in erreurs]
+
+    def test_memes_compteurs(self):
+        """ruche-0037: on the same /entrees, B observes the same thing in every mode, the counters it can read about itself
+        included (exactly, or within BRUIT); under the instruction counter, EXCEPTIONS_INSTRUCTIONS and the counters aside."""
+        modes = [("verifier", False), ("compression", False), ("decompression", False), ("compression", True)]
+        releves = self.executer_modes(self.preparer("memes_compteurs", espion), modes)
+        natifs, sous_valgrind = releves[:3], releves[3]
+        valeurs = [compteurs(r) for r in natifs]
+        for r, c in zip(natifs[1:], valeurs[1:]):
+            self.assertEqual(empreintes(r), empreintes(natifs[0]))
+            self.assertEqual({k: v for k, v in c.items() if k not in BRUIT}, {k: v for k, v in valeurs[0].items() if k not in BRUIT})
+        for nom, ecart in BRUIT.items():
+            self.assertLessEqual(max(c[nom] for c in valeurs) - min(c[nom] for c in valeurs), ecart, nom)
+        self.assertEqual(empreintes(sous_valgrind, EXCEPTIONS_INSTRUCTIONS), empreintes(natifs[0], EXCEPTIONS_INSTRUCTIONS))
+
+    def base_qui_dit_le_mode(self, nom):
+        """A copy of the toy whose harness tells the library the mode (int rle_mesure): the case mixing must catch."""
+        base = os.path.join(self.travail, "base-" + nom)
+        shutil.copytree(JOUET, base, ignore=shutil.ignore_patterns("__pycache__"))
+        chemin = os.path.join(base, "bee", "juge", "execution.c")
+        with open(chemin, encoding="utf-8") as f:
+            texte = f.read()
+        texte = remplacer(texte, "static char entrees[256], sorties[256];\n", "static char entrees[256], sorties[256];\nint rle_mesure = 0;\n")
+        texte = remplacer(texte, "    explicit_bzero(mode, sizeof(mode));\n",
+                          '    rle_mesure = strcmp(mode, "verifier") != 0;\n    explicit_bzero(mode, sizeof(mode));\n')
+        with open(chemin, "w", encoding="utf-8") as f:
+            f.write(texte)
+        return base
+
+    def test_sortie_fausse_chronometree(self):
+        """ruche-0037: B is right whenever it is verified, and wrong when timed on inputs other than the corpus's (the
+        base's harness is made to tell it the mode): the verification inputs mixed into the timed inputs refuse it."""
+        code, rapport, sortie = self.juger("sortie_fausse_chronometree",
+                                           self.preparer("sortie_fausse_chronometree", sortie_fausse_chronometree), True,
+                                           base=self.base_qui_dit_le_mode("sortie_fausse_chronometree"))
+        self.assertEqual(code, 1, sortie)
+        self.assertIn("REFUS", sortie)
+        self.assertIn("compression/c/e", sortie)  # a timed output of a mixed-in input, not the verification step
+
+    def test_sortie_changeante_chronometree(self):
+        """ruche-0037: with outputs allowed to differ from the base's, B gives a valid but different output when timed:
+        its output of a mixed-in input differs from its own in verification, refused."""
+        source_b = self.preparer("sortie_changeante_chronometree", lambda t, c: remplacer(
+            remplacer(t, INCLUDE, INCLUDE + "extern int rle_mesure;\n"), "        if (plage >= 3) {", "        if (plage >= 3 && !rle_mesure) {"))
+        code, _, sortie = self.juger("sortie_changeante_chronometree", source_b, True, options=["sortie_compressee=peut_changer"],
+                                     base=self.base_qui_dit_le_mode("sortie_changeante_chronometree"))
+        self.assertEqual(code, 1, sortie)
+        self.assertIn("différente de sa sortie en vérification", sortie)
+
+    def test_cote_sans_melange(self):
+        """ruche-0037: a measured side without verification inputs to mix in is an error of the plugin, never a pass."""
+        base = self.base_modifiee("cote_sans_melange", "bee/juge/projet.py", "return self.entrees(fichiers, self.flux(rng, fichiers))",
+                                  "return self.entrees(fichiers, [])")
+        code, _, sortie = self.juger("cote_sans_melange", self.preparer("cote_sans_melange"), True, base=base)
+        self.assertEqual(code, 2, sortie)
+        self.assertIn("aucune entrée de vérification", sortie)
+
+    def test_instructions_sans_melange(self):
+        """ruche-0037: an instruction-count scenario that got no verification input (none within the prefix) is flagged."""
+        code, rapport, sortie = self.juger("instructions_sans_melange", self.preparer("instructions_sans_melange"),
+                                           extra=["--prefixe-instructions", "1"])
+        self.assertEqual(code, 0, sortie)
+        self.assertEqual(rapport["juge"]["verification"]["instructions_sans_melange"], ["decompression"])
 
     def test_lien_symbolique(self):
         source_b = self.preparer("lien_symbolique")

@@ -101,11 +101,21 @@ class Sorties:
     C'est la seule vue que le greffon d'un projet a sur ce que le conteneur a écrit. Elle retient ce que
     le greffon a effectivement lu (`lues`) : le juge commun vérifie ensuite que chaque entrée a eu au
     moins une sortie de B lue, si bien qu'un greffon qui oublie une entrée ou un scénario est arrêté au
-    lieu de laisser passer une sortie que personne n'a regardée (revue adverse du 28/10)."""
+    lieu de laisser passer une sortie que personne n'a regardée (revue adverse du 28/10).
 
-    def __init__(self, racines):
-        self._racines = dict(racines)
+    `noms` ({(côté, nom du greffon): nom écrit}) : les entrées ont été écrites sous d'autres noms (ruche-0037) ; le
+    greffon garde les siens, traduits ici dans le dernier composant du chemin (« c/k000.6 » se lit « c/e0012.6 »)."""
+
+    def __init__(self, racines, noms=None):
+        self._racines, self._noms = dict(racines), dict(noms or {})
         self.lues = set()
+
+    def _chemin(self, cote, relatif):
+        tete, barre, dernier = relatif.rpartition("/")
+        for i in [len(dernier)] + [j for j in range(len(dernier) - 1, 0, -1) if dernier[j] == "."]:
+            if (cote, dernier[:i]) in self._noms:
+                return tete + barre + self._noms[(cote, dernier[:i])] + dernier[i:]
+        return relatif
 
     def _racine(self, cote):
         if cote not in self._racines:
@@ -113,18 +123,18 @@ class Sorties:
         return self._racines[cote]
 
     def lire(self, cote, relatif, maximum=TAILLE_MAX_SORTIE):
-        donnees = lire_sortie(self._racine(cote), relatif, maximum)
+        donnees = lire_sortie(self._racine(cote), self._chemin(cote, relatif), maximum)
         if donnees is not None:
             self.lues.add((cote, relatif))
         return donnees
 
     def exiger(self, cote, relatif, maximum=TAILLE_MAX_SORTIE):
-        donnees = exiger(self._racine(cote), relatif, maximum)
+        donnees = exiger(self._racine(cote), self._chemin(cote, relatif), maximum)
         self.lues.add((cote, relatif))
         return donnees
 
     def statut(self, cote, relatif):
-        resultat = statut(self._racine(cote), relatif)
+        resultat = statut(self._racine(cote), self._chemin(cote, relatif))
         self.lues.add((cote, relatif))
         return resultat
 
