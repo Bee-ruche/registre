@@ -60,6 +60,8 @@ import struct
 import subprocess
 import sys
 import tempfile
+import time
+import tracemalloc
 import unittest
 from unittest import mock
 
@@ -71,6 +73,7 @@ import conteneur  # noqa: E402
 import entrees  # noqa: E402
 import juge  # noqa: E402
 import lecture  # noqa: E402
+import rapport  # noqa: E402
 import stats  # noqa: E402
 
 sys.path.insert(0, os.path.join(JOUET, "bee", "juge"))
@@ -744,6 +747,9 @@ def etape(donnees, nom):
 PREPARATION = "Commit de ce workflow, sur la branche principale du registre (le code du juge y est lu)"
 HISTORIQUE = "Historique déclaré (ancêtres de la base ; seul appel de juge.py avec le jeton, avant le greffon et la PR)"
 IMAGE = "Image du juge (avec réseau, avant tout fichier de la PR)"
+ENTREES = "Entrées de l'appelant, avant tout usage (un appel qui ne laisse pas un jugement complet s'arrête ici)"
+TRAVAIL = "Dossier de travail du juge, borné (tmpfs ; tout ce que les conteneurs écrivent y reste)"
+SORTIES_DU_JOB = ["code"] + list(rapport.FORMATS)
 
 
 def commandes_du_runner(sortie):
@@ -798,7 +804,10 @@ class TestWorkflowJuge(unittest.TestCase):
     def test_one_judging_job_whose_step_writes_the_code(self):
         self.assertEqual(list(self.wf["jobs"]), ["juge"])
         self.assertEqual(self.wf["on"]["workflow_call"]["outputs"]["code"]["value"], "${{ jobs.juge.outputs.code }}")
-        self.assertEqual(self.wf["jobs"]["juge"]["outputs"], {"code": "${{ steps.juge.outputs.code }}"})
+        # ruche-0038: the report's SHA-256 and key figures too, all written by the judging step
+        self.assertEqual({k: v["value"] for k, v in self.wf["on"]["workflow_call"]["outputs"].items()},
+                         {k: "${{ jobs.juge.outputs.%s }}" % k for k in SORTIES_DU_JOB})
+        self.assertEqual(self.wf["jobs"]["juge"]["outputs"], {k: "${{ steps.juge.outputs.%s }}" % k for k in SORTIES_DU_JOB})
         self.assertEqual(etape(self.wf, "Juger")["id"], "juge")
         self.assertIn('echo "code=$code" >> "$GITHUB_OUTPUT"', etape(self.wf, "Juger")["run"])
 
@@ -807,8 +816,8 @@ class TestWorkflowJuge(unittest.TestCase):
         self.assertNotIn("JUGE_COMMUN_REF", self.texte)
         self.assertIn(f"juge-v{juge.VERSION_COMMUNE}", self.texte)  # the version label stays named in the usage comment
         etapes = self.wf["jobs"]["juge"]["steps"]
-        self.assertEqual(etapes[0]["name"], PREPARATION)
-        self.assertEqual(etapes[0]["env"], {"DEPOT": "${{ job.workflow_repository }}", "COMMIT": "${{ job.workflow_sha }}",
+        self.assertEqual([etapes[0]["name"], etapes[1]["name"]], [ENTREES, PREPARATION])  # the caller's inputs first (ruche-0038)
+        self.assertEqual(etapes[1]["env"], {"DEPOT": "${{ job.workflow_repository }}", "COMMIT": "${{ job.workflow_sha }}",
                                             "GH_TOKEN": "${{ github.token }}"})
         extractions = [e for e in etapes if str(e.get("uses", "")).startswith("actions/checkout@")]
         juge_commun = [e for e in extractions if e["with"].get("path") == "juge-commun"]
@@ -877,12 +886,14 @@ class TestWorkflowJuge(unittest.TestCase):
                    "::error::after a forged resume\n##[error]old syntax\nx\r::warning::after a carriage return\n"
                    "::set-output name=code::0\n::warning file=rle.c,line=1::props\nend ##[group]x")
         os.makedirs(os.path.join(self.dossier, "juge-commun", "outils", "juge"))
+        shutil.copy(os.path.join(ICI, "rapport.py"), os.path.join(self.dossier, "juge-commun", "outils", "juge"))
         with open(os.path.join(self.dossier, "juge-commun", "outils", "juge", "juge.py"), "w", encoding="utf-8") as f:
             f.write(f"import sys\nsys.stderr.write({hostile!r})\nsys.exit(1)\n")
         r, sortie = self.lancer(script, {"OPTIONS": "sortie_compressee=identique", "REPETITIONS": "2",
                                          "SANS_INSTRUCTIONS": "false", "SOURCE": "Bee-ruche/registre@" + "0" * 40})
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertEqual(sortie, "code=1\n")  # the judging step itself writes the job's code
+        # the judging step itself writes the job's code, and the report's figures (none: no report)
+        self.assertEqual(sortie, "code=1\n" + "".join(f"{k}=\n" for k in rapport.FORMATS))
         with open(os.path.join(self.dossier, "resultats", "code")) as f:
             self.assertEqual(f.read().strip(), "1")
         with open(os.path.join(self.dossier, "resultats", "journal.txt"), newline="") as f:
@@ -897,6 +908,246 @@ class TestWorkflowJuge(unittest.TestCase):
         self.assertNotIn("##[", r.stdout)
         self.assertEqual(r.stdout.count("# #["), 2)
         self.assertEqual(commandes_du_runner(r.stdout), ["stop-commands", "<resume>"])
+
+    def test_caller_inputs_checked_before_any_use(self):
+        """ruche-0038, the call as workflow_call makes it (github.event is the caller's): the first step, which nothing
+        precedes and after whose failure only the upload of results/ runs, accepts only the event's pull request as base
+        and head (full commits), 10 to 50 repetitions and the instruction count; anything else ends the job, nothing judged."""
+        etapes = self.wf["jobs"]["juge"]["steps"]
+        entrees = etapes[0]
+        self.assertEqual(entrees["name"], ENTREES)
+        self.assertEqual(entrees["env"], {"BASE": "${{ inputs.base_sha }}", "TETE": "${{ inputs.tete_sha }}",
+                                          "BASE_EVENEMENT": "${{ github.event.pull_request.base.sha }}",
+                                          "TETE_EVENEMENT": "${{ github.event.pull_request.head.sha }}",
+                                          "REPETITIONS": "${{ inputs.repetitions }}", "SANS_INSTRUCTIONS": "${{ inputs.sans_instructions }}"})
+        self.assertEqual([e["name"] for e in etapes if "if" in e or "continue-on-error" in e], ["Conserver le rapport"])
+        self.assertNotIn("continue-on-error", self.wf["jobs"]["juge"])
+        self.assertNotIn("--sans-instructions", self.texte)  # the judging step never skips the instruction count
+        base, tete = "0123456789abcdef0123456789abcdef01234567", "89abcdef0123456789abcdef0123456789abcdef"
+        appel = {"BASE": base, "TETE": tete, "BASE_EVENEMENT": base, "TETE_EVENEMENT": tete, "REPETITIONS": "10", "SANS_INSTRUCTIONS": "false"}
+        for env in (appel, dict(appel, REPETITIONS="27"), dict(appel, REPETITIONS="50")):
+            with self.subTest(acceptee=env):
+                r, sortie = self.lancer(entrees["run"], env)
+                self.assertEqual((r.returncode, sortie, r.stderr), (0, "", ""))
+        refusees = [dict(appel, REPETITIONS=v) for v in ("9", "2", "0", "-10", "51", "100", "010", "10.5", "1e1", "", " 10", "10\n",
+                                                          "a[$(touch injection)]")]
+        refusees += [dict(appel, SANS_INSTRUCTIONS=v) for v in ("true", "", "False", "0")]
+        refusees += [dict(appel, BASE=v, BASE_EVENEMENT=v) for v in (base[:39], base.upper(), base + "\n", base + "0", "main", "HEAD", "")]
+        refusees += [dict(appel, TETE=v, TETE_EVENEMENT=v) for v in (tete[:39], "v1.0", "refs/pull/1/head")]
+        refusees += [dict(appel, BASE_EVENEMENT=""), dict(appel, TETE_EVENEMENT=""), dict(appel, BASE_EVENEMENT="", TETE_EVENEMENT=""),
+                     dict(appel, BASE=tete), dict(appel, TETE=base), dict(appel, BASE=tete, TETE=base), dict(appel, TETE_EVENEMENT=base)]
+        for env in refusees:
+            with self.subTest(refusee=env):
+                r, sortie = self.lancer(entrees["run"], env)
+                self.assertEqual((r.returncode, sortie), (1, ""))
+                self.assertTrue(r.stderr.strip())
+        self.assertFalse(os.path.exists(os.path.join(self.dossier, "injection")))
+
+    def test_work_folder_bounded(self):
+        """ruche-0038: the judge works in a size-bounded tmpfs that juge.yml mounts just before judging (executable: the
+        harness runs from it)."""
+        noms = [e.get("name") for e in self.wf["jobs"]["juge"]["steps"]]
+        self.assertEqual(noms.index(TRAVAIL) + 1, noms.index("Juger"))
+        script = etape(self.wf, TRAVAIL)["run"]
+        self.assertIn('sudo mount -t tmpfs -o "size=4g,nr_inodes=262144,mode=0755,nosuid,nodev,uid=$(id -u),gid=$(id -g)" '
+                      'tmpfs "$RUNNER_TEMP/juge"', script)
+        self.assertNotIn("noexec", script)
+        self.assertIn('--base "$BASE" --tete "$TETE" --travail "$RUNNER_TEMP/juge"', etape(self.wf, "Juger")["run"])
+
+    def test_report_tied_to_the_judging_job(self):
+        """ruche-0038: the judging step publishes juge.json's SHA-256 and key figures as job outputs; on the verdict side,
+        rapport.py --verifier, given those outputs (toJSON(needs.<job>.outputs)), refuses a report changed in between."""
+        juge_commun = os.path.join(self.dossier, "juge-commun", "outils", "juge")
+        os.makedirs(juge_commun)
+        shutil.copy(os.path.join(ICI, "rapport.py"), juge_commun)
+        with open(os.path.join(juge_commun, "juge.py"), "w", encoding="utf-8") as f:
+            f.write("import json, sys\nopen('arguments.json', 'w').write(json.dumps(sys.argv[1:]))\n"
+                    f"open(sys.argv[sys.argv.index('--json') + 1], 'w').write({json.dumps(RAPPORT, indent=2)!r})\n")
+        r, sortie = self.lancer(etape(self.wf, "Juger")["run"], {"OPTIONS": "", "REPETITIONS": "10", "BASE": RAPPORT["juge"]["base"],
+                                                                 "TETE": RAPPORT["juge"]["tete"], "SOURCE": "x", "RUNNER_TEMP": "/rt"})
+        self.assertEqual(r.returncode, 0, r.stderr)
+        with open(os.path.join(self.dossier, "arguments.json")) as f:
+            arguments = json.load(f)
+        self.assertEqual(arguments[arguments.index("--base"):arguments.index("--travail") + 2],
+                         ["--base", RAPPORT["juge"]["base"], "--tete", RAPPORT["juge"]["tete"], "--travail", "/rt/juge"])
+        chemin = os.path.join(self.dossier, "resultats", "juge.json")
+        with open(chemin, "rb") as f:
+            donnees = f.read()
+        publiees = dict(ligne.split("=", 1) for ligne in sortie.splitlines())
+        self.assertEqual(publiees, {"code": "0", "empreinte": hashlib.sha256(donnees).hexdigest(), "suspectes": "103",
+                                    "sorties_comparees": "57", "greffon": "ab" * 32, "graine": "cd" * 16,
+                                    "base": RAPPORT["juge"]["base"], "tete": RAPPORT["juge"]["tete"]})
+        with open(os.path.join(self.dossier, "sorties.json"), "w") as f:
+            json.dump(publiees, f)  # what toJSON(needs.juge.outputs) gives the verdict job
+        verifier = [sys.executable, os.path.join(ICI, "rapport.py"), chemin, "--verifier", os.path.join(self.dossier, "sorties.json")]
+        self.assertEqual(subprocess.run(verifier, capture_output=True).returncode, 0)
+        self.assertEqual(rapport.verifier(chemin, publiees)["juge"]["greffon"], "ab" * 32)
+        autre = json.loads(json.dumps(RAPPORT))
+        autre["juge"]["verification"]["sorties_comparees"] = 58
+        sans_suspects = dict(RAPPORT, juge=dict(RAPPORT["juge"], constructions_suspectes=[], constructions_suspectes_omises=0))
+        modifies = [json.dumps(RAPPORT).encode(), donnees + b"\n", donnees.replace(b'"gain": 0.25', b'"gain": 0.35'),
+                    json.dumps(autre, indent=2).encode(), json.dumps(sans_suspects, indent=2).encode(), b""]
+        for modifie in modifies:
+            with self.subTest(modifie=modifie[:60]):
+                with open(chemin, "wb") as f:
+                    f.write(modifie)
+                self.assertEqual(subprocess.run(verifier, capture_output=True).returncode, 1 if modifie else 2)
+                with self.assertRaises((rapport.Ecart, ValueError)):
+                    rapport.verifier(chemin, publiees)
+        with open(chemin, "wb") as f:
+            f.write(donnees)
+        for cle, valeur in (("empreinte", ""), ("empreinte", "0" * 64), ("suspectes", "100"), ("tete", RAPPORT["juge"]["base"])):
+            with self.subTest(sortie=cle), self.assertRaises(rapport.Ecart):
+                rapport.verifier(chemin, dict(publiees, **{cle: valeur}))
+        os.remove(chemin)
+        os.symlink(os.path.join(self.dossier, "sorties.json"), chemin)
+        self.assertNotEqual(subprocess.run(verifier, capture_output=True).returncode, 0)
+        os.remove(chemin)
+        self.assertEqual(subprocess.run(verifier, capture_output=True).returncode, 1)
+
+
+# A judge's report: as juge.py writes it, with 100 suspicious constructs listed and 3 left out.
+RAPPORT = {"repetitions": 10, "metriques": {"debit_compression": {"gain": 0.25}}, "juge": {
+    "version": 3, "commun": "juge-v2", "source": "Bee-ruche/registre@" + "1" * 40, "base": "2" * 40, "tete": "3" * 40,
+    "projet": "jouet", "greffon": "ab" * 32, "graine": "cd" * 16, "image": "bee-juge-commun:0123456789abcdef",
+    "image_id": "sha256:" + "ef" * 32, "constructions_suspectes_omises": 3, "verification": {"sorties_comparees": 57},
+    "constructions_suspectes": [{"type": "source", "detail": f"pragma {i}"} for i in range(juge.SUSPECTES_MAX)]}}
+
+
+class TestRapport(unittest.TestCase):
+    """rapport.py (ruche-0038): the report's figures are read strictly, and the report itself within bounds."""
+
+    def setUp(self):
+        self.dossier = tempfile.mkdtemp(prefix="bee-rapport-")
+        self.chemin = os.path.join(self.dossier, "juge.json")
+
+    def tearDown(self):
+        shutil.rmtree(self.dossier, ignore_errors=True)
+
+    def test_figures(self):
+        donnees = json.dumps(RAPPORT).encode()
+        self.assertEqual(rapport.chiffres(donnees)["suspectes"], str(juge.SUSPECTES_MAX + 3))
+        local = dict(RAPPORT, juge=dict(RAPPORT["juge"], base=None, tete=None))  # juge.py run by hand: no commits named
+        self.assertEqual([rapport.chiffres(json.dumps(local).encode())[k] for k in ("base", "tete")], ["", ""])
+        juge_ = RAPPORT["juge"]
+        mauvais = [b"[]", b"{}", b"{\"juge\": []}", b"\xff", json.dumps(dict(RAPPORT, juge={})).encode()]
+        mauvais += [json.dumps(dict(RAPPORT, juge=dict(juge_, **{cle: valeur}))).encode() for cle, valeur in (
+            ("constructions_suspectes_omises", -1), ("constructions_suspectes_omises", True), ("constructions_suspectes_omises", "3"),
+            ("constructions_suspectes", "abc"), ("constructions_suspectes", None), ("greffon", "x"), ("greffon", "AB" * 32),
+            ("graine", ""), ("graine", 12), ("base", "main"), ("tete", "3" * 39), ("verification", {"sorties_comparees": -1}),
+            ("verification", {"sorties_comparees": 1.5}), ("verification", {"sorties_comparees": True}), ("verification", {}))]
+        for donnees in mauvais:
+            with self.subTest(donnees=donnees[:80]), self.assertRaises(ValueError):
+                rapport.chiffres(donnees)
+
+    def test_reading_bounded(self):
+        self.assertIsNone(rapport.lire(self.chemin))
+        with contextlib.redirect_stdout(io.StringIO()) as sortie:
+            self.assertEqual(rapport.main([self.chemin]), 0)
+        self.assertEqual(sortie.getvalue(), "".join(f"{k}=\n" for k in rapport.FORMATS))
+        with open(self.chemin, "wb") as f:
+            f.write(b"x" * 101)
+        with mock.patch.object(rapport, "RAPPORT_MAX", 100), self.assertRaises(ValueError):
+            rapport.lire(self.chemin)
+        os.remove(self.chemin)
+        os.mkfifo(self.chemin)
+        with self.assertRaises(ValueError):  # not a regular file: never read, never waited for
+            rapport.lire(self.chemin)
+        os.remove(self.chemin)
+        os.symlink("/etc/hostname", self.chemin)
+        with self.assertRaises(OSError):
+            rapport.lire(self.chemin)
+        with contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(rapport.main([self.chemin]), 2)
+            self.assertEqual(rapport.main([]), 2)
+
+
+# Stand-in for the docker client: logs its arguments; « image inspect » answers FAUX_DOCKER_ID; « run » writes FAUX_DOCKER_MIO
+# MiB on each standard stream (stdout: A, B…; stderr: a, b…), then, with FAUX_DOCKER_SANS_FIN, writes on without end.
+FAUX_DOCKER = r"""#!/usr/bin/env python3
+import os, sys
+with open(os.environ["FAUX_DOCKER_JOURNAL"], "a") as f:
+    f.write(" ".join(sys.argv[1:]) + "\n")
+if sys.argv[1:3] == ["image", "inspect"]:
+    print(os.environ.get("FAUX_DOCKER_ID", ""))
+if sys.argv[1] != "run":
+    sys.exit(0)
+sys.stdin.read()
+for i in range(int(os.environ.get("FAUX_DOCKER_MIO", "0"))):
+    sys.stdout.buffer.write(bytes([65 + i % 26]) * (1 << 20))
+    sys.stderr.buffer.write(bytes([97 + i % 26]) * (1 << 20))
+while os.environ.get("FAUX_DOCKER_SANS_FIN"):
+    sys.stderr.buffer.write(b"x" * 65536)
+"""
+
+
+class TestBornes(unittest.TestCase):
+    """ruche-0038: what a container writes is bounded (file size, no log on the host's disk) and the host reads it within
+    bounds (the start of its standard output, the end of its standard error; outputs never beyond TAILLE_MAX_SORTIE)."""
+
+    def setUp(self):
+        self.dossier = tempfile.mkdtemp(prefix="bee-bornes-")
+        os.makedirs(os.path.join(self.dossier, "bin"))
+        with open(os.path.join(self.dossier, "bin", "docker"), "w", encoding="utf-8") as f:
+            f.write(FAUX_DOCKER)
+        os.chmod(os.path.join(self.dossier, "bin", "docker"), 0o755)
+        self.journal = os.path.join(self.dossier, "docker.journal")
+        self.env = mock.patch.dict(os.environ, {"PATH": os.path.join(self.dossier, "bin") + os.pathsep + os.environ["PATH"],
+                                                "FAUX_DOCKER_JOURNAL": self.journal})
+        self.env.start()
+
+    def tearDown(self):
+        self.env.stop()
+        shutil.rmtree(self.dossier, ignore_errors=True)
+
+    def test_container_limits(self):
+        self.assertEqual(conteneur.Docker.BORNES, ["--ulimit", f"fsize={lecture.TAILLE_MAX_SORTIE}", "--log-driver", "none"])
+        conteneur.Docker("sha256:" + "0" * 64).lancer(["true"], [(self.dossier, "/sorties", False)])
+        with open(self.journal) as f:
+            arguments = f.read().split()
+        self.assertEqual(arguments[arguments.index("--ulimit"):arguments.index("--ulimit") + 4], conteneur.Docker.BORNES)
+        self.assertEqual(arguments[-2:], ["sha256:" + "0" * 64, "true"])  # the image by its id
+
+    def test_streams_read_within_bounds(self):
+        tracemalloc.start()
+        try:
+            with mock.patch.dict(os.environ, {"FAUX_DOCKER_MIO": "40"}):
+                r = conteneur.Docker("i").lancer(["x"], [], entree=b"jeton\n", delai=120)
+            pointe = tracemalloc.get_traced_memory()[1]
+        finally:
+            tracemalloc.stop()
+        self.assertEqual((r.returncode, r.stdout, r.stderr), (0, b"A" * (1 << 20), bytes([97 + 39 % 26]) * (1 << 20)))
+        self.assertLess(pointe, 12 << 20)  # 80 MiB written, a few MiB held
+
+    def test_endless_writer_stopped_at_its_deadline(self):
+        debut = time.monotonic()
+        with mock.patch.dict(os.environ, {"FAUX_DOCKER_SANS_FIN": "1"}), self.assertRaises(lecture.Refus):
+            conteneur.Docker("i").lancer(["x"], [], delai=2)
+        self.assertLess(time.monotonic() - debut, 30)
+        with open(self.journal) as f:
+            self.assertRegex(f.read(), r"\nkill bee-juge-[0-9a-f]{12}\n")
+
+    def test_image_id(self):
+        with mock.patch.dict(os.environ, {"FAUX_DOCKER_ID": "sha256:" + "a" * 64}):
+            self.assertEqual(conteneur.identifiant_image("bee-juge-commun:x"), "sha256:" + "a" * 64)
+        for mauvais in ("", "a" * 64, "sha256:" + "A" * 64, "sha256:" + "a" * 63, "sha256:" + "a" * 64 + "\nx"):
+            with self.subTest(mauvais=mauvais), mock.patch.dict(os.environ, {"FAUX_DOCKER_ID": mauvais}), \
+                    self.assertRaises(lecture.Erreur):
+                conteneur.identifiant_image("bee-juge-commun:x")
+
+    def test_outputs_never_read_beyond_the_bound(self):
+        with open(os.path.join(self.dossier, "sortie"), "wb") as f:
+            f.write(b"x" * 101)
+        with mock.patch.object(lecture, "TAILLE_MAX_SORTIE", 100), self.assertRaises(lecture.Refus):
+            lecture.lire_sortie(self.dossier, "sortie", maximum=1 << 30)
+        self.assertEqual(lecture.lire_sortie(self.dossier, "sortie", maximum=1 << 30), b"x" * 101)
+
+    def test_commits_named_in_full(self):
+        for valeur in ("abc", "2" * 39, "2" * 40 + "\n", "main", "A" * 40):
+            for option in ("--base", "--tete"):
+                with self.subTest(option=option, valeur=valeur), contextlib.redirect_stderr(io.StringIO()), \
+                        self.assertRaises(SystemExit):
+                    juge.main(["--outillage", JOUET, option, valeur])
 
 
 def git_test(depot, *args):
@@ -1899,6 +2150,78 @@ class TestJugeContreVariantes(unittest.TestCase):
         code, _, sortie = self.juger("lien_symbolique", source_b, True)
         self.assertEqual(code, 1)
         self.assertIn("lien symbolique", sortie)
+
+    def juge_borne(self, nom, source_b, *options):
+        """juge.py against the toy base, with the options given (ruche-0038); returns (code, report, journal, seconds)."""
+        commande = [sys.executable, os.path.join(ICI, "juge.py"), "--outillage", JOUET, "--source-a", JOUET, "--source-b", source_b,
+                    "--repetitions", "2", "--chauffe", "0", "--sans-instructions", *options]
+        commande += ["--reseau-construction", os.environ["BEE_JUGE_RESEAU"]] if os.environ.get("BEE_JUGE_RESEAU") else []
+        debut = time.monotonic()
+        r = subprocess.run(commande, capture_output=True, text=True, timeout=1800)
+        print(f"\n[{nom}] code {r.returncode} : {r.stderr.strip().splitlines()[-1] if r.stderr.strip() else ''}", file=sys.stderr)
+        return r.returncode, json.loads(r.stdout) if r.returncode == 0 else None, r.stderr, time.monotonic() - debut
+
+    def test_rapport_du_job(self):
+        """ruche-0038: juge.json names the commits judged and the image's id, lists SUSPECTES_MAX suspicious constructs and
+        counts the rest; its figures are those rapport.py publishes, and a report changed afterwards is refused."""
+        lignes = "".join(f"#pragma rle_marque_{i:03d}\n" for i in range(juge.SUSPECTES_MAX + 25))
+        chemin, base, tete = os.path.join(self.travail, "rapport_du_job.json"), "4" * 40, "5" * 40
+        code, rapport_, journal_, _ = self.juge_borne("rapport_du_job", self.preparer("rapport_du_job", lambda t, c: t + lignes),
+                                                       "--base", base, "--tete", tete, "--json", chemin)
+        self.assertEqual(code, 0, journal_)
+        j = rapport_["juge"]
+        self.assertEqual((j["base"], j["tete"], len(j["constructions_suspectes"]), j["constructions_suspectes_omises"]),
+                         (base, tete, juge.SUSPECTES_MAX, 25))
+        self.assertEqual(journal_.count("construction suspecte :"), juge.SUSPECTES_MAX)
+        self.assertRegex(j["image_id"], r"^sha256:[0-9a-f]{64}$")
+        self.assertEqual(j["image_id"], conteneur.identifiant_image(j["image"]))
+        publiees = rapport.chiffres(rapport.lire(chemin))
+        self.assertEqual((publiees["suspectes"], publiees["sorties_comparees"], publiees["base"], publiees["tete"]),
+                         (str(juge.SUSPECTES_MAX + 25), str(j["verification"]["sorties_comparees"]), base, tete))
+        self.assertEqual(rapport.verifier(chemin, publiees), rapport_)
+        j["constructions_suspectes"].pop()
+        with open(chemin, "w", encoding="utf-8") as f:
+            json.dump(rapport_, f, ensure_ascii=False, indent=2)
+        with self.assertRaises(rapport.Ecart):
+            rapport.verifier(chemin, publiees)
+
+    def test_ecriture_sans_fin(self):
+        """ruche-0038: a judged code that writes without end is stopped at the file size bound of every container (SIGXFSZ):
+        a refusal, in bounded time."""
+        def sans_fin(texte, corpus):
+            texte = remplacer(texte, INCLUDE, INCLUDE + "#include <stdio.h>\n")
+            return remplacer(texte, DEBUT_COMPRESSER, DEBUT_COMPRESSER +
+                             '    { static unsigned char rle_bloc[1 << 16]; FILE *rle_f = fopen("/sorties/rle_sans_fin", "wb");\n'
+                             "      while (rle_f) fwrite(rle_bloc, 1, sizeof rle_bloc, rle_f); }\n")
+        code, _, journal_, duree = self.juge_borne("ecriture_sans_fin", self.preparer("ecriture_sans_fin", sans_fin))
+        self.assertEqual(code, 1, journal_)
+        self.assertIn("signal 25", journal_)
+        self.assertLess(duree, 600)
+
+    def test_disque_plein(self):
+        """ruche-0038: a judged code that fills the work folder (a small tmpfs here, as juge.yml mounts a larger one): a
+        refusal, in bounded time, and the folder left empty."""
+        dossier, sudo = os.path.join(self.travail, "tmpfs-borne"), ([] if os.geteuid() == 0 else ["sudo", "-n"])
+        os.makedirs(dossier)
+        options = f"size=96m,nr_inodes=4096,mode=0755,nosuid,nodev,uid={os.getuid()},gid={os.getgid()}"
+        if subprocess.run(sudo + ["mount", "-t", "tmpfs", "-o", options, "tmpfs", dossier], capture_output=True).returncode != 0:
+            self.skipTest("mounting a tmpfs needs root or sudo without a password")
+        self.addCleanup(subprocess.run, sudo + ["umount", dossier], capture_output=True)
+
+        def remplir(texte, corpus):  # files of 32 MiB, 2 GiB at most, until the folder is full
+            texte = remplacer(texte, INCLUDE, INCLUDE + "#include <stdio.h>\n")
+            return remplacer(texte, DEBUT_COMPRESSER, DEBUT_COMPRESSER +
+                             "    { static unsigned char rle_bloc[1 << 16]; static int rle_fait; char rle_p[64]; int k, j = 512;\n"
+                             "      for (k = 0; !rle_fait && k < 64 && j == 512; k++) {\n"
+                             '        FILE *rle_f; snprintf(rle_p, sizeof rle_p, "/sorties/rle_plein_%d", k);\n'
+                             '        if (!(rle_f = fopen(rle_p, "wb"))) break;\n'
+                             "        for (j = 0; j < 512 && fwrite(rle_bloc, 1, sizeof rle_bloc, rle_f) == sizeof rle_bloc; j++) ;\n"
+                             "        if (fclose(rle_f) != 0) j = 0; }\n"
+                             "      rle_fait = 1; }\n")
+        code, _, journal_, duree = self.juge_borne("disque_plein", self.preparer("disque_plein", remplir), "--travail", dossier)
+        self.assertEqual(code, 1, journal_)
+        self.assertLess(duree, 600)
+        self.assertEqual(os.listdir(dossier), [])
 
 
 if __name__ == "__main__":

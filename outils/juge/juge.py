@@ -69,6 +69,7 @@ OBJET = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.+-]{0,127}\.o")
 IDENTIFIANT = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,63}")
 PREFIXE = re.compile(r"[A-Za-z][A-Za-z0-9]{0,30}_")  # un mot suivi de « _ » : frontière d'identifiant
 PERMIS_MAX = 64
+SUSPECTES_MAX = 100  # juge.json lists at most this many suspicious constructs and counts the rest (constructions_suspectes_omises)
 JAMAIS_PERMIS = analyse.JAMAIS_PERMIS
 UNITES = (".c", ".S", ".s", ".cc", ".cpp", ".cxx")  # unités de traduction : chacune doit laisser son objet
 ARCHITECTURES_ANALYSEES = ("x86_64", "amd64")  # mnémoniques et préambule de Valgrind connus d'analyse.py
@@ -428,6 +429,9 @@ def main(argv=None):
                            help="checks and fetches the declared history (--historique) into the base, without loading the plugin")
     analyseur.add_argument("--historique", default="", help="with --historique-seulement: commits fetched into the base")
     analyseur.add_argument("--source-juge", help="DEPOT@COMMIT of this judge's code (juge.yml: the workflow's own commit)")
+    analyseur.add_argument("--base", help="commit of A, recorded in juge.json (juge.yml: checked against the event)")
+    analyseur.add_argument("--tete", help="commit of B, recorded in juge.json (juge.yml: checked against the event)")
+    analyseur.add_argument("--travail", help="folder of the work directory (juge.yml: a size-bounded tmpfs)")
     analyseur.add_argument("--option", action="append", default=[], help="option du greffon, CLE=VALEUR (répétable)")
     analyseur.add_argument("--repetitions", type=int, default=10)
     analyseur.add_argument("--chauffe", type=int, default=1)
@@ -444,6 +448,8 @@ def main(argv=None):
         analyseur.error("--repetitions : au moins 1 ; --chauffe : au moins 0")
     if args.historique and not args.historique_seulement:
         analyseur.error("--historique va avec --historique-seulement")
+    if any(c is not None and not COMMIT.fullmatch(c) for c in (args.base, args.tete)):
+        analyseur.error("--base, --tete : full commits (40 hexadecimal digits)")
     # Defence in depth: the plugin, loaded later in this process, does not find GH_TOKEN in os.environ (the value
     # stays in /proc/<pid>/environ: juge.yml gives the token to the --historique-seulement call alone).
     jeton = os.environ.pop("GH_TOKEN", None)
@@ -464,11 +470,11 @@ def main(argv=None):
     if not (args.source_a and args.source_b):
         analyseur.error("--source-a et --source-b sont requis")
     cotes = tuple(projet.COTES)
-    travail = tempfile.mkdtemp(prefix="bee-juge-")
+    travail = tempfile.mkdtemp(prefix="bee-juge-", dir=args.travail)
     os.chmod(travail, 0o755)
     try:
         image = conteneur.construire_image(getattr(projet, "PAQUETS", ()), args.reseau_construction)
-        docker = conteneur.Docker(image, args.memoire)
+        docker = conteneur.Docker(conteneur.identifiant_image(image), args.memoire)  # every container runs the image by its id
         source_a = copier_sources(args.source_a, os.path.join(travail, "sources-A"), projet.SOURCES, projet.SOURCES_REQUISES)
         source_b = copier_sources(args.source_b, os.path.join(travail, "sources-B"), projet.SOURCES, projet.SOURCES_REQUISES)
         outils = copier_outillage(outillage, source_a, os.path.join(travail, "outillage"), projet)
@@ -485,6 +491,7 @@ def main(argv=None):
             # analyse.py ne connaît que les instructions x86-64 : ailleurs, le désassemblage n'est pas analysé.
             suspects.append({"type": "architecture", "detail": f"{architecture} : instructions des objets non analysées "
                                                                "(analyse.py ne couvre que x86-64)"})
+        omises, suspects = max(0, len(suspects) - SUSPECTES_MAX), suspects[:SUSPECTES_MAX]
         for s in suspects:
             journal(f"construction suspecte : {propre(s['detail'], 300)}")
 
@@ -620,11 +627,14 @@ def main(argv=None):
             "version": VERSION_JUGE,
             "commun": f"juge-v{VERSION_COMMUNE}",
             "source": args.source_juge,
+            "base": args.base, "tete": args.tete,
             "projet": projet.NOM,
             "greffon": empreinte_greffon,
             "graine": graine.hex(),
             "image": image,
-            "isolation": " ".join(conteneur.ISOLATION) + " --pids-limit 2 (exécution), 64 (compilation)",
+            "image_id": docker.image,
+            "constructions_suspectes_omises": omises,
+            "isolation": " ".join(conteneur.ISOLATION + conteneur.Docker.BORNES) + " --pids-limit 2 (exécution), 64 (compilation)",
             "verification": verification,
             "analyse": {"architecture": platform.machine().lower(), "prefixes": list(projet.PREFIXES),
                         "permis": list(getattr(projet, "PERMIS", ()))},

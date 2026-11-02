@@ -5,6 +5,7 @@ lecture seule, aucune capacité, pas d'élévation de privilège, utilisateur 65
 nombre de processus et mémoire bornés. Le conteneur ne voit que ce qui lui est monté.
 """
 
+import contextlib
 import hashlib
 import json
 import os
@@ -13,6 +14,7 @@ import secrets
 import shutil
 import subprocess
 import tempfile
+import threading
 
 from lecture import Erreur, Refus, journal, propre
 
@@ -33,13 +35,17 @@ def temps_fixes(*dossiers):
 
 
 class Docker:
+    # No file above lecture.TAILLE_MAX_SORTIE, no log on the host's disk; the host keeps SORTIE_MAX of stdout (start), stderr (end).
+    BORNES = ["--ulimit", f"fsize={256 << 20}", "--log-driver", "none"]
+    SORTIE_MAX = 1 << 20
+
     def __init__(self, image, memoire="4g"):
         self.image, self.memoire = image, memoire
 
     def lancer(self, commande, montages, pids=2, entree=None, delai=3600):
         nom = "bee-juge-" + secrets.token_hex(6)
         cmd = ["docker", "run", "--rm", "--name", nom, "--pids-limit", str(pids),
-               "--memory", self.memoire, "--memory-swap", self.memoire] + ISOLATION
+               "--memory", self.memoire, "--memory-swap", self.memoire] + self.BORNES + ISOLATION
         if entree is not None:
             cmd.append("-i")
         for hote, cible, lecture_seule in montages:
@@ -47,11 +53,25 @@ class Docker:
                 raise Erreur(f"chemin de montage invalide : {hote}")
             cmd += ["--mount", f"type=bind,source={hote},target={cible}" + (",readonly" if lecture_seule else "")]
         cmd += [self.image] + commande
-        try:
-            return subprocess.run(cmd, input=entree, capture_output=True, timeout=delai)
-        except subprocess.TimeoutExpired:
-            subprocess.run(["docker", "kill", nom], capture_output=True)
-            raise Refus(f"délai de {delai} s dépassé dans le conteneur ({commande[0]})")
+        with subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE) as p:
+            lus = (bytearray(), bytearray())
+            fils = [threading.Thread(target=_garder, args=(f, g, self.SORTIE_MAX, fin), daemon=True)
+                    for f, g, fin in ((p.stdout, lus[0], False), (p.stderr, lus[1], True))]
+            for f in fils:
+                f.start()
+            with contextlib.suppress(BrokenPipeError):  # a token and a plan: far below a pipe's capacity
+                p.stdin.write(entree or b"")
+                p.stdin.close()
+            try:
+                p.wait(timeout=delai)
+            except subprocess.TimeoutExpired:
+                subprocess.run(["docker", "kill", nom], capture_output=True)
+                p.kill()
+                raise Refus(f"délai de {delai} s dépassé dans le conteneur ({commande[0]})")
+            finally:
+                for f in fils:
+                    f.join()
+        return subprocess.CompletedProcess(cmd, p.returncode, bytes(lus[0]), bytes(lus[1]))
 
 
 def dockerfile(paquets):
@@ -88,6 +108,21 @@ def construire_image(paquets, reseau=None):
     if r.returncode != 0:
         raise Erreur("construction de l'image impossible : " + r.stderr[-2000:])
     return etiquette
+
+
+def identifiant_image(etiquette):
+    """The image's id, the SHA-256 of its configuration (which names its layers): containers run it, juge.json records it."""
+    r = subprocess.run(["docker", "image", "inspect", "--format", "{{.Id}}", etiquette], capture_output=True, text=True)
+    if r.returncode != 0 or not re.fullmatch(r"sha256:[0-9a-f]{64}", r.stdout.strip()):
+        raise Erreur(f"identifiant de l'image {etiquette} illisible : " + propre(r.stderr, 300))
+    return r.stdout.strip()
+
+
+def _garder(flux, garde, maximum, fin):
+    """Reads a container's stream to its end, keeping at most `maximum` bytes of it: its start, or its end (fin)."""
+    for bloc in iter(lambda: flux.read(1 << 16), b""):
+        garde += bloc if fin else bloc[:maximum - len(garde)]
+        del garde[:-maximum if fin else 0]
 
 
 def dossier_ouvert(chemin):

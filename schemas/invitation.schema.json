@@ -56,13 +56,13 @@
         "required": ["fait", "source"],
         "properties": {
           "fait": {"allOf": [{"$ref": "#/$defs/texte"}, {"minLength": 1, "maxLength": 1000}]},
-          "source": {"$ref": "#/$defs/adresse"}
+          "source": {"anyOf": [{"$ref": "#/$defs/adresse"}, {"enum": ["[retiré]", "…"], "description": "Retirée à la demande de la personne qu'elle nomme (ruche-0048)"}]}
         }
       }
     }]},
     "message": {"allOf": [{"$ref": "#/$defs/texte"}, {"minLength": 1, "maxLength": 10000}],
                 "description": "Le texte exact, avec la mention de R13 mot pour mot ; la relance renvoie le même"},
-    "debat": {"type": "string", "pattern": "^D-[0-9]{4}$", "description": "Le débat de l'agora où l'invitation se discute"},
+    "debat": {"type": "string", "pattern": "^D-[0-9]{4}$", "description": "Son débat propre, ouvert avec elle par son proposant, et qui la nomme (invitation) : bee le vérifie (ruche-0050)"},
     "homonyme": {"allOf": [{"$ref": "#/$defs/texte"}, {"minLength": 1, "maxLength": 5000}],
                  "description": "Le conseil seul, quand le nom est sur la liste de non-contact sous une autre forge : pourquoi ce n'est pas la même personne"},
     "propose_par": {"$ref": "#/$defs/pseudo"},
