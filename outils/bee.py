@@ -1822,6 +1822,9 @@ def verifier_registre(reg):
     reprise = reg.config.get("reprise_apres_liberation_heures")
     if reprise is not None and (not isinstance(reprise, (int, float)) or isinstance(reprise, bool) or reprise < 0):
         ajouter("bee.yaml : reprise_apres_liberation_heures : nombre d'heures positif ou nul attendu (R7)")
+    # ruche-0086: the gate's own rule (the highest label passes iff the minimum is readable): a missing or malformed minimum, said.
+    if mode_porte(reg) == "si_juge_incomplet" and not juge_commun_suffisant(reg, {"juge": {"commun": "juge-v9999"}}):
+        ajouter("bee.yaml : juge_commun_min : entier de 1 à 9999 attendu (R3, docs/juge-commun.md) ; sinon, aucun verdict n'est complet")
 
     for stem, (chemin, projet) in reg.projets.items():
         if not selon_schema("projet", chemin, projet):
@@ -7372,7 +7375,7 @@ def cmd_enregistrer_verdict(args):
         verdict["juge"] = {
             "version": entier(juge.get("version")),
             # Juge commun du registre (outils/juge/, docs/juge-commun.md) : étiquette qui a rendu le verdict.
-            "commun": juge.get("commun") if isinstance(juge.get("commun"), str) and re.fullmatch(r"juge-v\d{1,4}", juge.get("commun")) else None,
+            "commun": juge.get("commun") if isinstance(juge.get("commun"), str) and re.fullmatch(r"juge-v[0-9]{1,4}", juge.get("commun")) else None,
             "sorties_comparees": entier(juge.get("sorties_comparees")),
             "constructions_suspectes": [{"type": str(s.get("type", ""))[:40], "detail": str(s.get("detail", ""))[:300]}
                                         for s in suspects[:VERDICT_MAX["suspectes"]] if isinstance(s, dict)],
@@ -7764,7 +7767,8 @@ def raisons_r3(reg, cid, bilan=None):
         exiger(any(r.get("relecteur") in privilegies for r in favorables),
                "porte de relecture temporaire : une relecture favorable d'un gardien ou du conseil est exigée "
                + ("tant que le juge de la CI n'est pas sûr" if mode_porte(reg) == "toujours"
-                  else "car le juge isolé n'a pas entièrement jugé cette contribution")
+                  else "car le juge isolé n'a pas entièrement jugé cette contribution" + ("" if juge_commun_suffisant(reg, verdict) else
+                       ", juge commun absent ou sous juge_commun_min (minimum absent ou mal formé : aucun juge n'y suffit)"))
                + " (bee.yaml : relecture_gardien_requise)")
     suspects = ((verdict.get("juge") or {}).get("constructions_suspectes")) or []
     if suspects:
@@ -7804,19 +7808,29 @@ def mode_porte(reg):
     return "toujours" if valeur else "jamais"
 
 
-def juge_complet(verdict):
+def juge_commun_suffisant(reg, verdict):
+    """ruche-0086: was the verdict rendered by a common judge at least bee.yaml's juge_commun_min? Its label must be exactly
+    "juge-vN", N in ASCII digits without a leading zero; any other label, or a minimum missing or malformed (not an int from 1 to
+    9999: a bool, a string, a float), and the answer is no: the gate closes, never opens. Read at R3, so never on an integrated one."""
+    minimum, commun = reg.config.get("juge_commun_min"), (verdict.get("juge") or {}).get("commun")
+    return bool(type(minimum) is int and 1 <= minimum <= 9999 and isinstance(commun, str)
+                and re.fullmatch(r"juge-v[1-9][0-9]{0,3}", commun) and int(commun[6:]) >= minimum)
+
+
+def juge_complet(reg, verdict):
     """Le juge isolé a-t-il entièrement jugé ce verdict ? Liste des fichiers contrôlée par le registre, aucun
-    juge modifié, sorties vérifiées de l'extérieur, aucune construction suspecte, et pas d'amorçage."""
+    juge modifié, sorties vérifiées de l'extérieur, aucune construction suspecte, pas d'amorçage, et un juge commun au moins
+    égal au minimum (juge_commun_suffisant)."""
     juge = verdict.get("juge") or {}
     return bool(verdict.get("fichiers_controles") and not verdict.get("juges_modifies") and not verdict.get("amorcage")
                 and isinstance(juge.get("sorties_comparees"), int) and juge["sorties_comparees"] > 0
-                and not juge.get("constructions_suspectes"))
+                and not juge.get("constructions_suspectes") and juge_commun_suffisant(reg, verdict))
 
 
 def porte_exigee(reg, verdict):
     """Vrai si la porte de relecture temporaire de R3 s'applique à ce verdict."""
     mode = mode_porte(reg)
-    return mode == "toujours" or (mode == "si_juge_incomplet" and not juge_complet(verdict))
+    return mode == "toujours" or (mode == "si_juge_incomplet" and not juge_complet(reg, verdict))
 
 
 def porte_humaine(reg):
