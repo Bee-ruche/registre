@@ -546,7 +546,7 @@ PASSE = dt.datetime.min.replace(tzinfo=dt.timezone.utc)
 # A declared date (reservation, registration, submission...) is never more than a minute after the time of the PR (ruche-0091:
 # in CI, the push's) or of the check that reads it.
 AVANCE_MAX = dt.timedelta(minutes=1)
-INSTANT_PR_AGE_MAX = dt.timedelta(hours=24)  # ruche-0091: at the check, --instant-pr is at most this old (a re-run keeps it)
+INSTANT_PR_AGE_MAX = dt.timedelta(hours=24)  # ruche-0091: --instant-pr is refused outside [the check - this, the check + AVANCE_MAX]
 
 
 def paralleles_de(tache):
@@ -7025,7 +7025,7 @@ def cmd_verifier_pr(args):
     auteurs_pr = lire_auteurs_pr(args.auteurs_pr) if args.auteurs_pr else None
     instant = None if args.instant_pr is None else lire_instant(args.instant_pr, "--instant-pr")  # empty or malformed: refused
     if instant and not (m := maintenant()) - INSTANT_PR_AGE_MAX <= instant <= m + AVANCE_MAX:
-        raise ErreurBee(f"--instant-pr ({args.instant_pr}) : not within the 24 h before the check (a re-run or a late pipeline) : push again")
+        raise ErreurBee(f"--instant-pr ({args.instant_pr}) : outside [the check - 24 h, the check + 1 min] : push again")
     problemes, natures = verifier_pr(reg, args.base, args.tete, args.auteur, args.compte_cree_le, instant, auteurs_pr)
     problemes = list(dict.fromkeys(verifier_registre(reg) + problemes))  # once each (a file over its bound: ruche-0040)
     for p in problemes:

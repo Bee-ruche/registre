@@ -2222,7 +2222,7 @@ class TestPullRequests(BaseTest):
                 os.environ["BEE_MAINTENANT"] = maintenant
                 code_lu, texte = self.verifier("alice", "--instant-pr", "2026-10-27T12:00:00Z")
                 self.assertEqual(code_lu, code, texte)
-                self.assertEqual("not within the 24 h before the check (a re-run or a late pipeline) : push again" in texte, bool(code))
+                self.assertEqual("outside [the check - 24 h, the check + 1 min] : push again" in texte, bool(code))
 
     def test_an_existing_member_file_keeps_its_dates(self):
         """The dates of a registered member are not checked again against a later PR: a profile change passes, without
@@ -3644,6 +3644,45 @@ class TestPullRequestsEnParallele(BaseParallele):
                         self.libre_service(qui, nature, *push)
                     else:
                         self.refusee(qui, refus, *push)
+
+    def test_in_flight_prs_on_one_task_follow_the_order_of_their_merges(self):
+        """ruche-0091 (N2): bruno's parallel registration is pushed at 13:00, alice's submission at 13:05, and alice's PR merges
+        first. Both change the task's file: bruno's PR no longer merges with main (fusion-auto leaves it to a human). Resolved
+        by hand with its 13:00 date and pushed again at 13:20, it is judged at that push, and a registration earlier than the
+        submission main now holds is refused; bee prendre --en-parallele again, at 13:20, passes. So the dates on a task follow
+        the order of its merges, whatever the order of the pushes."""
+        self.main_reservee_avec_inscrits()  # alice since 12:00
+        self.a("2026-10-27T13:00:00Z")
+        self.branche("inscription")
+        self.parallele("miniz-0099", "bruno")
+        self.commit()
+        git(self.dossier, "switch", "-q", "main")
+        self.a("2026-10-27T13:05:00Z")
+        self.branche("soumission")
+        self.soumettre("miniz-0099", "alice", 99103)
+        self.commit()
+        self.libre_service("alice", "soumission", "--instant-pr", "2026-10-27T13:05:00Z")
+        git(self.dossier, "switch", "-q", "main")
+        git(self.dossier, "merge", "-q", "--ff-only", "soumission")
+        git(self.dossier, "switch", "-q", "inscription")
+        fusion = subprocess.run(["git", "-C", str(self.dossier), "-c", "user.name=t", "-c", "user.email=t@t", "merge", "-q", "--no-edit",
+                                 "main"], capture_output=True, text=True)
+        self.assertNotEqual(fusion.returncode, 0, "the two PRs change the same lines of the task")
+        git(self.dossier, "merge", "--abort")
+        git(self.dossier, "switch", "-qc", "resolue", "main")  # resolved by hand, keeping the 13:00 date
+        bee.modifier_tache(self.chemin(), paralleles=[{"utilisateur": "bruno", "depuis": "2026-10-27T13:00:00Z"}])
+        self.commit()
+        self.a("2026-10-27T13:25:00Z")
+        self.refusee("bruno", "ne peut pas être antérieure à la réservation, aux inscriptions ni aux soumissions",
+                     "--instant-pr", "2026-10-27T13:20:00Z")
+        git(self.dossier, "switch", "-qf", "main")
+        self.a("2026-10-27T13:20:00Z")
+        self.branche("a-nouveau")
+        self.parallele("miniz-0099", "bruno")
+        self.commit()
+        self.a("2026-10-27T13:25:00Z")
+        self.libre_service("bruno", "inscription_parallele", "--instant-pr", "2026-10-27T13:20:00Z")
+        self.assertEqual(bee.paralleles_de(self.tache("miniz-0099")), [{"utilisateur": "bruno", "depuis": "2026-10-27T13:20:00Z"}])
 
     def test_un_fichier_du_libre_service_garde_son_mode(self):
         """In the self-service folders, a file added or modified by a member is a regular file and keeps its mode, with or
@@ -13060,7 +13099,7 @@ class TestR8Bootstrap(BaseRepetitionGenerale):
         self.a("2026-12-02T00:00:00Z")
         code, texte = self.verifier("bidji29", *push)
         self.assertEqual(code, 1, texte)
-        self.assertIn("not within the 24 h before the check", texte)
+        self.assertIn("--instant-pr (2026-11-30T23:30:00Z) : outside [the check - 24 h, the check + 1 min]", texte)
         self.refusee("bidji29", "règle R8 : bidji29 prend un engagement après la fin de r8_amorcage")  # a local run: the check's time
 
     def test_an_unreadable_engagement_date_gives_the_usual_cap(self):
@@ -13223,7 +13262,8 @@ class TestClocksRuche0091(BaseInvitations):
             "par": "gaspard", "le": poussee, "texte": "Une note dès la proposition."}))
         return "gaspard", poussee, "2026-10-30T13:00:00Z", (), "une note est datée de l'heure de la PR"
 
-    def date_de_mesure(self):
+    def soumise_sur_main(self):
+        """On main: alice takes miniz-0099 and submits miniz-0099-c1 at 2026-10-30T09:00."""
         self.a("2026-10-30T09:00:00Z")
         for nom, commande in (("prise", ["prendre", "miniz-0099", "--utilisateur", "alice"]),
                               ("soumission", ["soumettre", "miniz-0099", "--utilisateur", "alice", "--pr", PR_MINIZ + "77004"])):
@@ -13231,6 +13271,42 @@ class TestClocksRuche0091(BaseInvitations):
             self.ok(*commande)
             self.commit()
             self.fusionner(nom)
+
+    def date_d_argument(self):
+        self.a("2026-10-30T12:00:00Z")
+        debat = self.ouvrir("alice")
+        self.commit("a debate")
+        poussee = "2026-10-30T13:00:00Z"
+        self.pr(poussee, lambda: self.argumenter("bruno", "fait", "R8 plafonne déjà les engagements à 3 par utilisateur.", "--source",
+                                                 "REGLES.md", debat=debat))
+        return "bruno", poussee, "2026-10-30T16:00:00Z", (), "relancez la commande bee debattre"
+
+    def date_d_accord(self):
+        self.jusqu_a("proposee")  # I-0001, published 2026-10-30T10:00: a guardian may agree from 2026-11-02T10:00
+        poussee = "2026-11-02T11:00:00Z"
+        self.pr(poussee, lambda: self.geste("accord-gardien", "gina"))
+        return "gina", poussee, "2026-11-02T14:00:00Z", (), "accord_gardien.le (2026-11-02T11:00:00Z) doit être l'heure de la PR"
+
+    def date_de_relecture(self):
+        self.soumise_sur_main()
+        poussee = "2026-10-30T10:00:00Z"
+        self.pr(poussee, lambda: self.ok("relire", "miniz-0099-c1", "--utilisateur", "bruno", "--avis", "favorable", "--motif",
+                                         "Relu en entier, banc rejoué."))
+        return "bruno", poussee, "2026-10-30T13:00:00Z", (), "relecture de bruno, le (2026-10-30T10:00:00Z) doit être l'heure de la PR"
+
+    def date_de_proposition(self):
+        poussee = "2026-10-30T10:00:00Z"
+        self.pr(poussee, lambda: self.ok("proposer", "--utilisateur", "gaspard", "--regle", "R4", "--texte", "Au moins 1,5 % sur la "
+                                         "métrique visée.", "--motif", "Le bruit mesuré est plus faible que prévu."))
+        return "gaspard", poussee, "2026-10-30T13:00:00Z", (), "ouverte_le (2026-10-30T10:00:00Z) doit être l'heure de la PR"
+
+    def date_d_invitation(self):
+        poussee = "2026-10-30T10:00:00Z"
+        self.pr(poussee, lambda: self.inviter("alice"))
+        return "alice", poussee, "2026-10-30T13:00:00Z", (), "propose_le (2026-10-30T10:00:00Z) doit être l'heure de la PR"
+
+    def date_de_mesure(self):
+        self.soumise_sur_main()
         poussee = "2026-10-30T10:00:00Z"
         self.pr(poussee, lambda: bee.ecrire_yaml(self.dossier / "mesures/miniz-0099-c1/bruno.yaml", {
             "contribution": "miniz-0099-c1", "soumise_par": "bruno", "le": poussee, "base": "2948eeb", "candidat": "839b676",
@@ -13310,7 +13386,9 @@ class TestClocksRuche0091(BaseInvitations):
                "24 h creation cap": (self.plafond_24h, "push"), "R8 end": (self.r8_fin, "push"),
                "agora silence before closing": (self.silence_agora, "push"), "agora relief": (self.releve_agora, "push"),
                "note date": (self.note, "push"), "proposed task's note date": (self.note_de_tache_proposee, "push"),
-               "measure date": (self.date_de_mesure, "push"),
+               "measure date": (self.date_de_mesure, "push"), "agora argument date": (self.date_d_argument, "push"),
+               "guardian's agreement date": (self.date_d_accord, "push"), "review date": (self.date_de_relecture, "push"),
+               "proposition ouverte_le": (self.date_de_proposition, "push"), "invitation propose_le": (self.date_d_invitation, "push"),
                "vote date": (self.date_de_vote, "push"), "task cree_le": (self.cree_le, "push"),
                "earlier invitation's expiry": (self.invitation_expiree, "push"),
                "robot expiry, promotion": (lambda: self.expiration_robot("promotion"), "check"),
