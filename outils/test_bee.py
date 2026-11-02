@@ -2545,9 +2545,9 @@ class TestPublier(BaseTest):
         "mention d'équipe": ("cc @Bee-ruche/conseil", "la mention « @Bee-ruche/conseil »"),
         "mention entre parenthèses": ("Relu (@octocat).", "la mention « @octocat »"),
         "mention pleine chasse": ("Merci ＠octocat", "la mention « @octocat »"),
-        "issue d'un autre dépôt": ("Voir amont-fictif/miniz#12", "« amont-fictif/miniz#12 » mène hors de Bee-ruche"),
-        "commit d'un autre dépôt": ("Voir amont-fictif/miniz@a5c3785", "« amont-fictif/miniz@a5c3785 » mène"),
-        "commit d'un fork": ("Voir amont-fictif@a5c37851d", "« amont-fictif@a5c37851d » mène"),
+        "issue d'un autre dépôt": ("Voir amont-fictif/miniz#12", "« amont-fictif/miniz#12 » renvoie à un dépôt hors de Bee-ruche"),
+        "commit d'un autre dépôt": ("Voir amont-fictif/miniz@a5c3785", "« amont-fictif/miniz@a5c3785 » renvoie"),
+        "commit d'un fork": ("Voir amont-fictif@a5c37851d", "« amont-fictif@a5c37851d » renvoie"),
         "adresse d'une issue": ("Voir https://github.com/amont-fictif/miniz/issues/12", "« https://github.com/amont-fictif/miniz/issues/12 »"),
         "adresse d'une PR, en lien": ("[ici](https://github.com/amont-fictif/miniz/pull/3)", "« https://github.com/amont-fictif/miniz/pull/3 »"),
         "adresse d'un commit": ("https://github.com/amont-fictif/miniz/commit/a5c3785", "mène hors de Bee-ruche"),
@@ -2576,6 +2576,23 @@ class TestPublier(BaseTest):
                "[x][1]\n\n[1]: /upstream/repo", "[x](/Bee-ruche/../upstream/repo)", '<a href=" /upstream/repo">x</a>',
                '<a href="https://github.com\n/upstream/repo">x</a>'],
     }
+    # The second review (2 Nov): CommonMark escapes (N1), a scheme with one slash (N2), tag-split text (N5), srcset (N6), a
+    # root-relative link to another host (N7); and what bees write every night must pass (N4).
+    SECONDE_REVUE_REFUSES = {
+        "N1": ["upstream/repo\\#12", "upstream\\/repo#12", "upstream/re\\_po#12", "\\@upstream", "github\\.com/upstream/repo",
+               "[x](\\/upstream/repo)"],
+        "N2": ["[x](https:/upstream/repo)", '<a href="https:/upstream/repo">x</a>', "![i](https:/upstream/a.png)", "[x]: https:/upstream/repo",
+               "[x](HTTPS:/upstream/repo)", "<https:/upstream/repo>", "<HTTPS:/upstream/repo>"],
+        "N5": ["@<foo>upstream</foo>", "upstream/repo<foo>#12</foo>", "@<b></b>upstream", "up<b></b>stream/repo#12", "@<!-- c -->upstream"],
+        "N6": ['<img srcset="/Bee-ruche/a.png 1x, /upstream/b.png 2x">', '<img SRCSET="https://github.com/Bee-ruche/a.png">'],
+        "N7": ["[x](//Bee-ruche/x)", "[x](/\\Bee-ruche/x)", "[x](///Bee-ruche/x)", '<a href="//Bee-ruche/x">x</a>'],
+        "used definition": ["[x][1]\n\n[1]: /upstream/repo", "voir [OK]\n\n[ok]: /upstream/x", "[x][1]&colon;\n\n[1]: /upstream/repo"],
+    }
+    SECONDE_REVUE_HONNETES = ["PREFIX=/usr/local", "TMPDIR=/tmp", "PATH=/usr/bin:$PATH", "--prefix=/usr", "--output=/dev/null", 'path = "/tmp/x"',
+                              "BEE_REGISTRE=/home/claude/registre", "x=[1,2,3]", "a[i]==b[j]", "gain=12%", "width=50%",
+                              "https://example.org/a%20b", "tests/test_bee.py::TestPublier::test_x", "file.py:func", "[ok]: /tmp/x",
+                              "https://github.com/Bee-ruche/registre", "https://example.org/a", "[doc](https://example.org/a%20b)",
+                              "[x](/Bee-ruche/registre/pull/3)", "x == y", "50 % plus rapide"]
     SORTANTS_HONNETES = ["Réservation miniz-0036", "Soumission miniz-0012-c1", "Réservation ruche-0024, ruche-0042", "x@upstream",
                          "uses actions/checkout@v4", "pkg@1.2.3", "#12, GH-12, D-0019", "Bee-ruche/registre#12", "Bee-ruche/minizBee@a5c3785",
                          "https://github.com/Bee-ruche/registre/pull/53.", "github.com/Bee-ruche/minizBee", "https://bee-ruche.github.io/registre/",
@@ -2622,17 +2639,33 @@ class TestPublier(BaseTest):
         """No code skipping, entities decoded, raw and NFKC forms read, only the GitHub owner Bee-ruche inside; honest texts pass.
         Invitations and other outgoing texts keep their check (no organisation)."""
         for quoi, maximum in (("titre", 256), ("corps", 8000)):
-            for groupe, textes in self.REVUE_REFUSES.items():
+            for groupe, textes in {**self.REVUE_REFUSES, **self.SECONDE_REVUE_REFUSES}.items():
                 for texte in textes:
                     with self.subTest(quoi=quoi, groupe=groupe, texte=texte):
                         self.assertIn("ce texte sort de la ruche (commandements 8 et 13)",
                                       bee.texte_sortant_refuse(texte, quoi, maximum, "Bee-ruche") or "accepté")
-            for texte in self.SORTANTS_HONNETES:
+            for texte in self.SORTANTS_HONNETES + self.SECONDE_REVUE_HONNETES:
                 with self.subTest(quoi=quoi, honnete=texte):
                     self.assertIsNone(bee.texte_sortant_refuse(texte, quoi, maximum, "Bee-ruche"))
         self.assertNotIn("a" * 81, bee.texte_sortant_refuse("@" + "a" * 200, "corps", 8000, "Bee-ruche"), "the echo is cut at 80")
         self.assertIn("corps de 8001 caractères, au plus 8000", bee.texte_sortant_refuse("a" * 8001, "corps", 8000, "Bee-ruche"))
         self.assertIsNone(bee.texte_sortant_refuse("Bonjour @octocat, voir amont-fictif/miniz#12.", "message", 1000))
+
+    def test_refus_nomme_le_mot_et_reference_demesuree(self):
+        """The refusal names the offending word and says why; a numeric reference too long for int() is refused, not a crash
+        (N3), and only a text that GitHub renders is decoded."""
+        refuse = lambda texte: bee.texte_sortant_refuse(texte, "corps", 8000, "Bee-ruche")  # noqa: E731
+        for texte, attendu in (("Voir upstream/repo\\#12.", "« upstream/repo#12 » renvoie à un dépôt hors de Bee-ruche"),
+                               ("[x](https:/upstream/repo)", "« https:/upstream/repo » n'a qu'une barre"),
+                               ("[x](//Bee-ruche/x)", "« ](//Bee-ruche/x » est un lien relatif"),
+                               ('<img srcset="/Bee-ruche/a.png">', "« srcset=\"/Bee-ruche/a.png » liste plusieurs adresses"),
+                               ("https://github.com/Bee-ruche/%2e%2e/upstream", "cache où il mène"),
+                               ("[ici](https://github.com/upstream/repo).", "« https://github.com/upstream/repo » mène hors de Bee-ruche")):
+            with self.subTest(texte=texte):
+                self.assertIn(attendu, refuse(texte))
+        demesure = "&#" + "0" * 4400 + "64;upstream"
+        self.assertIn("référence de caractère démesurée", refuse(demesure))
+        self.assertNotIn("démesurée", bee.texte_sortant_refuse(demesure, "message", 8000) or "")  # not decoded: no crash
 
 
 class TestFork(BaseTest):

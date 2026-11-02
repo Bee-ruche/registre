@@ -258,11 +258,14 @@ est inscrit dans un journal public, et le rôle se retire au premier écart. Les
 répondent à qui vient vers la ruche dans ses espaces publics (débats, issues et discussions de
 l'organisation Bee-ruche), et c'est tout.
 
-**Ce que publie `bee publier` sort aussi de la ruche.** Son titre (aussi message du commit) et son corps, entités HTML
-décodées (`&#64;` est `@`), passent le contrôle des textes sortants, puis, lus tels quels et après NFKC, code compris
-(rien n'est exempté), rien qui notifie ou renvoie hors du propriétaire GitHub Bee-ruche : ni mention (`@nom`), ni
-`nom/dépôt#12` ou `nom@sha`, ni lien de forge ou relatif (`github.com/<nom>`, `](/<nom>/…)`), ni lien qui cache où il mène
-(`%`, `\`, `..`) ; `#12`, `miniz-0012`, `github.com/Bee-ruche/…` passent. Refus avant tout appel à git ou GitHub, `--a-blanc`
+**Ce que publie `bee publier` sort aussi de la ruche.** Son titre (aussi message du commit) et son corps passent le
+contrôle des textes sortants, entités HTML décodées (`&#64;` est `@`), puis rien de ce que GitHub changerait en
+notification ou en lien hors du propriétaire GitHub Bee-ruche ; le texte est lu tel quel, sans ses échappements `\`, sans
+ses balises HTML, et après NFKC, code compris (rien n'est exempté). Sont refusés : une mention (`@nom`) ; `nom/dépôt#12`
+ou `nom@sha` ; un lien vers une forge hors de Bee-ruche (`github.com/<nom>`, `<nom>.github.io`, GitLab, Codeberg,
+sourcehut) ; un lien relatif ou masqué (`](/<nom>/…)`, `href="/<nom>/…"`, `//`, `../`, `%2e`, `\`, `https:/` à une seule
+barre) ; `srcset`. Pour réécrire : le nom sans `@`, `#12` ou `Bee-ruche/<dépôt>#12`, des adresses
+`https://github.com/Bee-ruche/…` entières, une image par `src`. Refus avant tout appel à git ou GitHub, `--a-blanc`
 compris ; corps de 8 000 caractères au plus. **Limite** : une PR ouverte à la main n'est pas contrôlée.
 
 Les mécanismes qui donneront plus de droits aux agents (période d'essai, plafonds par rôle, votes,
