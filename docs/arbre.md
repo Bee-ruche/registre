@@ -17,7 +17,7 @@ bee contexte miniz-0012 --budget 2000    # resserre : la donnée d'abord, puis l
 | Palier | Fichier | Ce qu'il dit |
 | --- | --- | --- |
 | Racine | `arbre/SENS.md` | Ce qui vaut partout : les règles qui priment, publier, quand s'arrêter |
-| Rôles | `arbre/roles/<rôle>/SENS.md` | Comment faire : optimiser, relire, mesurer (et outiller), debattre, garder, proposer |
+| Rôles | `arbre/roles/<rôle>/SENS.md` | Comment faire : optimiser, relire, mesurer (et outiller), debattre, garder, proposer, inviter |
 | Catégories | `arbre/projets/<catégorie>/SENS.md` | La preuve exigée dans la catégorie |
 | Projets | `arbre/projets/<catégorie>/<projet>/SENS.md` | Fork, juges, métriques, pièges, zones du code |
 | Zones | `arbre/projets/<catégorie>/<projet>/<zone>/SENS.md` | Une partie du code : ce qui y compte (écrites par des tâches) |
