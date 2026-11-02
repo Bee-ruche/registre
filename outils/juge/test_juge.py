@@ -45,10 +45,18 @@ git transport (TestHistorique); with Docker, historique_declare and historique_n
 ruche-0037, without Docker: the harness is started the same way in every mode (TestMemesConditions); inputs are renamed
 and each verification input passes in a measurement, drawn from the seed, with the same output (TestMelange); fixed times,
 the harness alone in /variante, at least one repetition (TestConditionsFixes).
+
+ruche-0036: outputs frozen when their container ends, order drawn at each repetition, each scenario's CPU time, on a toy
+with two scenarios per side (jouet_a_quatre_scenarios). Without Docker, conteneur.Docker is replaced by an emulation of
+chrono and of the toy harness (DockerEmule, nothing is run): the order recorded is the order run, each scenario's CPU
+time is chrono's, an output changed, added or removed after its freeze is refused (TestOrdreEtEmpreintes, TestFigees).
+With Docker, scenarios_voisins: every scenario of B tries to read and to modify the others' outputs, before and after
+its own work: the honest toy's verdict and comparisons, the order changing between repetitions.
 """
 
 import concurrent.futures
 import contextlib
+import glob
 import hashlib
 import io
 import json
@@ -421,6 +429,103 @@ class TestCouverture(unittest.TestCase):
             shutil.rmtree(racine)
 
 
+def ajouter(chemin, octets):
+    with open(chemin, "ab") as f:
+        f.write(octets)
+
+
+# lecture.figer in a subprocess, as uid 65534 when started as root (lecture imported first): exit 10 on Refus, 0 without
+# error, 1 on any other exception (Python's own exit code), 11 if root cannot drop its privileges.
+FIGER_SANS_PRIVILEGE = """import os, sys
+sys.path.insert(0, sys.argv[1])
+import lecture
+if os.geteuid() == 0:
+    try:
+        os.setgroups([]); os.setgid(65534); os.setuid(65534)
+    except OSError:
+        sys.exit(11)
+try:
+    lecture.figer(sys.argv[2])
+except lecture.Refus:
+    sys.exit(10)
+"""
+
+
+class TestFigees(unittest.TestCase):
+    """ruche-0036: outputs are frozen (listing and SHA-256 of each file); only what was frozen is read."""
+
+    def setUp(self):
+        self.racine = tempfile.mkdtemp()
+        os.makedirs(os.path.join(self.racine, "s", "c"))
+        for nom, octets in (("s/c/k000", b"abc"), ("s/c/k001", b""), ("s/s.err", b"")):
+            with open(os.path.join(self.racine, nom), "wb") as f:
+                f.write(octets)
+        os.symlink("/etc/hostname", os.path.join(self.racine, "s", "lien"))
+        self.figees = {"f": lecture.figer(self.racine)}
+
+    def tearDown(self):
+        shutil.rmtree(self.racine)
+
+    def test_empreinte(self):
+        vide = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        self.assertEqual(self.figees["f"], {"s": "dossier", "s/c": "dossier", "s/lien": "autre", "s/s.err": vide, "s/c/k001": vide,
+                                            "s/c/k000": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"})
+
+    def test_seul_le_fige_se_lit(self):
+        vue = lecture.Sorties({"f": self.racine}, figees=self.figees)
+        self.assertEqual((vue.exiger("f", "s/c/k000"), vue.lire("f", "s/c/absent")), (b"abc", None))
+        vue.controler()
+        copie = lecture.Sorties(vue)
+        self.assertEqual((copie.lues, list(copie)), (set(), [self.racine]))
+
+        def chemin(relatif):
+            return os.path.join(self.racine, relatif)
+        for nom, changer, relatif in (("modifié", lambda: ajouter(chemin("s/c/k000"), b"x"), "s/c/k000"),
+                                      ("retiré", lambda: os.remove(chemin("s/c/k000")), "s/c/k000"),
+                                      ("ajouté", lambda: ajouter(chemin("s/c/absent"), b""), "s/c/absent")):
+            with self.subTest(nom=nom):
+                changer()
+                with self.assertRaises(lecture.Refus):
+                    copie.lire("f", relatif)
+                with self.assertRaises(lecture.Refus):
+                    copie.controler()
+                shutil.rmtree(self.racine)
+                self.setUp()
+                copie = lecture.Sorties({"f": self.racine}, figees=self.figees)
+
+    def test_ajout_non_lu(self):
+        ajouter(os.path.join(self.racine, "s", "ajout"), b"")
+        vue = lecture.Sorties({"f": self.racine}, figees=self.figees)
+        self.assertEqual(vue.exiger("f", "s/c/k000"), b"abc")
+        with self.assertRaises(lecture.Refus):
+            vue.controler()
+
+    def test_juge_sans_privilege(self):
+        """The judge not root (as on a hosted runner, here uid 65534 in a subprocess): any system error while freezing what
+        the container left (status, listing, opening) is a refusal (Refus, exit 1), never an error of the environment (exit 2)."""
+        def figer_sans_privilege():
+            r = subprocess.run([sys.executable, "-I", "-c", FIGER_SANS_PRIVILEGE, ICI, self.racine], capture_output=True,
+                               text=True, timeout=60)
+            if r.returncode == 11:
+                self.skipTest("root cannot drop to uid 65534 here: the non-root judge is not tested")
+            return r.returncode, r.stderr
+        for dossier, _, fichiers in os.walk(self.racine):
+            os.chmod(dossier, 0o755)
+            for chemin in (os.path.join(dossier, nom) for nom in fichiers):
+                if not os.path.islink(chemin):  # s/lien is not followed
+                    os.chmod(chemin, 0o644)
+        self.assertEqual(figer_sans_privilege(), (0, ""))  # everything readable: frozen as root freezes it
+        for relatif, mode in (("s", 0o444), ("s/c", 0o444), ("s", 0o111), ("s", 0o000), ("s/c/k000", 0o000)):
+            with self.subTest(relatif=relatif, mode=oct(mode)):
+                chemin = os.path.join(self.racine, relatif)
+                ancien = 0o755 if os.path.isdir(chemin) else 0o644  # as set above
+                os.chmod(chemin, mode)
+                try:
+                    self.assertEqual(figer_sans_privilege(), (10, ""))
+                finally:
+                    os.chmod(chemin, ancien)
+
+
 class TestCodecDeReference(unittest.TestCase):
     def test_aller_retour(self):
         rng = random.Random(5)
@@ -582,7 +687,8 @@ class TestMemesConditions(unittest.TestCase):
                     f.write(plan[0][0])
                 return {plan[0][0]: {}}
         plans = {c: [(s, [conteneur.HARNAIS, s, "/entrees", "/sorties"]) for s, cs in projet.SCENARIOS.items() if cs == c] for c in "fz"}
-        self.assertEqual(set(juge.lancer_par_cote(FausseExecution(), "B", dossiers, sorties, plans)), set(projet.SCENARIOS))
+        mesures, _ = juge.lancer_par_cote(FausseExecution(), "B", dossiers, sorties, plans, list(projet.SCENARIOS))
+        self.assertEqual(set(mesures), set(projet.SCENARIOS))
         self.assertEqual(len(set(montes)), len(projet.SCENARIOS))
         for s, c in projet.SCENARIOS.items():
             self.assertEqual(lecture.exiger(sorties[c], f"{s}/sortie"), s.encode())
@@ -657,19 +763,25 @@ class TestMelange(unittest.TestCase):
             os.makedirs(os.path.dirname(chemin), exist_ok=True)
             with open(chemin, "wb") as f:
                 f.write(octets)
+        def figee(dossier):  # ruche-0036: the judge compares outputs as frozen when their container ended
+            return lecture.Sorties({"f": os.path.join(travail, dossier)}, figees={"f": lecture.figer(os.path.join(travail, dossier))})
         ecrire(os.path.join(travail, "v", "c", "e0004"), b"sortie")
         ecrire(os.path.join(travail, "v", "e", "e0004.6"), b"0 6\n")
-        index = juge.sorties_par_entree({"f": os.path.join(travail, "v")})
+        verification = figee("v")
+        index = juge.sorties_par_entree(verification.figees)
         self.assertEqual(sorted(index[("f", "e0004")]), ["c/e0004", "e/e0004.6"])
         ecrire(os.path.join(travail, "m", "compression", "c", "e0011"), b"sortie")
         ecrire(os.path.join(travail, "m", "compression", "e", "e0011.6"), b"0 6\n")
-        args = (index, {"f": os.path.join(travail, "v")}, {"f": os.path.join(travail, "m")})
-        self.assertEqual(juge.memes_sorties(*args, {("f", "e0011"): "e0004"}, [("compression", "f")]), 2)
+        self.assertEqual(juge.memes_sorties(index, verification, figee("m"), {("f", "e0011"): "e0004"}, [("compression", "f")]), 2)
         ecrire(os.path.join(travail, "m", "compression", "c", "e0011"), b"autre")
-        with self.assertRaises(lecture.Refus):
-            juge.memes_sorties(*args, {("f", "e0011"): "e0004"}, [("compression", "f")])
+        with self.assertRaisesRegex(lecture.Refus, "différente"):
+            juge.memes_sorties(index, verification, figee("m"), {("f", "e0011"): "e0004"}, [("compression", "f")])
         with self.assertRaises(lecture.Erreur):
-            juge.memes_sorties(*args, {("f", "e0012"): "e0004"}, [("compression", "f")])
+            juge.memes_sorties(index, verification, figee("m"), {("f", "e0012"): "e0004"}, [("compression", "f")])
+        mesuree = figee("m")
+        ecrire(os.path.join(travail, "m", "compression", "c", "e0011"), b"sortie")
+        with self.assertRaisesRegex(lecture.Refus, "empreinte"):
+            juge.memes_sorties(index, verification, mesuree, {("f", "e0011"): "e0004"}, [("compression", "f")])
 
 
 class TestConditionsFixes(unittest.TestCase):
@@ -700,6 +812,165 @@ class TestConditionsFixes(unittest.TestCase):
                 juge.main(["--outillage", JOUET, "--source-a", JOUET, "--source-b", JOUET] + options)
             self.assertEqual(fin.exception.code, 2)
             self.assertIn("--repetitions", erreur.getvalue())
+
+# ------------------------------------------------------------------ ruche-0036: frozen outputs, drawn order, CPU times
+
+QUATRE_SCENARIOS = {"compression": "f", "compression_bis": "f", "decompression": "z", "decompression_bis": "z"}
+
+
+def jouet_a_quatre_scenarios(dossier):
+    """A copy of the toy project with two scenarios per side (the harness does the same work in every mode)."""
+    shutil.copytree(JOUET, dossier, ignore=shutil.ignore_patterns("__pycache__"))
+    for fichier, ancien, nouveau in (
+            ("projet.py", 'SCENARIOS = {"compression": "f", "decompression": "z"}', f"SCENARIOS = {QUATRE_SCENARIOS!r}"),
+            ("execution.c", '|| strcmp(mode, "decompression") == 0);',
+             '|| strcmp(mode, "decompression") == 0 || strcmp(mode, "compression_bis") == 0\n'
+             '         || strcmp(mode, "decompression_bis") == 0);')):
+        chemin = os.path.join(dossier, "bee", "juge", fichier)
+        with open(chemin, encoding="utf-8") as f:
+            texte = f.read()
+        with open(chemin, "w", encoding="utf-8") as f:
+            f.write(remplacer(texte, ancien, nouveau))
+    return dossier
+
+
+def harnais_jouet(entrees, sorties):
+    """The toy harness (jouet/bee/juge/execution.c), emulated with the plugin's reference codec: the same work in every
+    mode, f inputs give c/NAME, z inputs d/NAME and e/NAME."""
+    def ecrire(dossier, nom, octets):
+        os.makedirs(os.path.join(sorties, dossier), exist_ok=True)
+        with open(os.path.join(sorties, dossier, nom), "wb") as f:
+            f.write(octets)
+    with open(os.path.join(entrees, "liste"), encoding="ascii") as f:
+        for ligne in filter(str.strip, f):
+            cote, nom, _ = ligne.split()
+            with open(os.path.join(entrees, cote, nom), "rb") as g:
+                donnees = g.read()
+            if cote == "f":
+                ecrire("c", nom, greffon_jouet.compresser(donnees))
+            else:
+                original = greffon_jouet.decompresser(donnees)
+                ecrire("d", nom, original or b"")
+                ecrire("e", nom, b"-1 0\n" if original is None else b"0 %d\n" % len(original))
+
+
+class DockerEmule:
+    """Stand-in for conteneur.Docker: nothing is run; chrono (plan on its standard input) and the toy harness are emulated
+    on the host folders of the mounts. Each container is recorded (plan labels, variant, writable mounts, whether they
+    were empty, the CPU time answered); `apres(self)` is called once each has ended."""
+
+    image = "sha256:" + "0" * 64
+
+    def __init__(self, apres=None):
+        self.conteneurs, self.apres = [], apres
+
+    def lancer(self, commande, montages, pids=2, entree=None, delai=3600):
+        hote = {cible: source for source, cible, _ in montages}
+        jeton, _, *plan = entree.decode().splitlines()
+        ecrits = [source for source, _, lecture_seule in montages if not lecture_seule]
+        c = {"etiquettes": [p.split("\t")[0] for p in plan], "variante": hote["/variante"][-1], "ecrits": ecrits,
+             "neuf": all(not os.listdir(d) for d in ecrits)}
+        self.conteneurs.append(c)
+        lignes = []
+        for ligne in plan:
+            etiquette, parametres, *_ = ligne.split("\t")
+            _, entrees_c, sorties_c = parametres.split()
+            harnais_jouet(hote[entrees_c], hote[sorties_c])
+            utilisateur, systeme = 0.001 * len(self.conteneurs), 0.0005
+            c["cpu"] = round(utilisateur + systeme, 6)
+            lignes.append(json.dumps({"jeton": jeton, "etiquette": etiquette, "code": 0, "signal": 0, "utilisateur_s": utilisateur,
+                                      "systeme_s": systeme, "mur_s": 0.01, "maxrss_ko": 1000, "instructions": 1000}))
+        if self.apres:
+            self.apres(self)
+        return subprocess.CompletedProcess(commande, 0, ("\n".join(lignes) + "\n").encode(), b"")
+
+
+class TestOrdreEtEmpreintes(unittest.TestCase):
+    """ruche-0036, without Docker: juge.main on the toy with two scenarios per side, conteneur.Docker emulated."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.travail = tempfile.mkdtemp(prefix="bee-ordre-")
+        cls.base = jouet_a_quatre_scenarios(os.path.join(cls.travail, "jouet"))
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.travail, ignore_errors=True)
+
+    def juger(self, apres=None, graine="00" * 16, graine_ordre=None):
+        emule, sortie = DockerEmule(apres), io.StringIO()
+        with mock.patch.object(juge.shutil, "which", return_value="/usr/bin/docker"), \
+                mock.patch.object(juge.conteneur, "construire_image", return_value="image"), \
+                mock.patch.object(juge.conteneur, "identifiant_image", return_value="sha256:" + "0" * 64), \
+                mock.patch.object(juge, "variante", side_effect=lambda construction, dossier: dossier), \
+                mock.patch.object(juge.conteneur, "Docker", return_value=emule), \
+                mock.patch.object(juge.conteneur, "compiler_chrono", return_value="/chrono-hote"), \
+                mock.patch.object(juge, "construire", return_value=releves()), \
+                contextlib.redirect_stdout(sortie), contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(juge.main(["--outillage", self.base, "--source-a", self.base, "--source-b", self.base,
+                                        "--repetitions", "3", "--graine", graine]
+                                       + (["--graine-ordre", graine_ordre] if graine_ordre else [])), 0)
+        return json.loads(sortie.getvalue()), emule
+
+    def test_ordre_tire_et_temps_processeur(self):
+        """The order is drawn at each repetition, the same for A and B, from its own seed (secrets, independent of the
+        inputs' seed) recorded in juge.json, and is the order run; each scenario's CPU time is the one chrono measured; one
+        command and one fresh writable folder per container."""
+        rapport, emule = self.juger(graine_ordre="00" * 16)
+        self.assertEqual(len(emule.conteneurs), 2 * 2 + 2 * 4 * 4 + 2 * 2)  # verification, 1 + 3 repetitions, instructions
+        for c in emule.conteneurs:
+            self.assertEqual((len(c["etiquettes"]), len(c["ecrits"]), c["neuf"]), (1, 1, True))
+        self.assertEqual(len({d for c in emule.conteneurs for d in c["ecrits"]}), len(emule.conteneurs))
+        deroulement = rapport["juge"]["scenarios"]["deroulement"]
+        self.assertEqual([e["etape"] for e in deroulement], ["chauffe", "mesure", "mesure", "mesure", "instructions"])
+        self.assertEqual([e["variantes"] for e in deroulement], ["AB", "BA", "AB", "BA", "AB"])
+        consignes = []
+        for e in deroulement:
+            attendus = greffon_jouet.Projet.INSTRUCTIONS if e["etape"] == "instructions" else QUATRE_SCENARIOS
+            self.assertEqual(sorted(e["ordre"]), sorted(attendus))
+            consignes += [(v, s, e["temps_processeur_s"][v][s]) for v in e["variantes"] for s in e["ordre"]]
+        lances = [(c["variante"], c["etiquettes"][0], c["cpu"]) for c in emule.conteneurs if c["etiquettes"] != ["verifier"]]
+        self.assertEqual(lances, consignes)
+        self.assertGreater(len({tuple(e["ordre"]) for e in deroulement[:4]}), 1)
+
+        def ordres(r):
+            return [e["ordre"] for e in r["juge"]["scenarios"]["deroulement"]]
+
+        def tires(graine_ordre):  # the orders the recorded order seed alone gives
+            tirage = random.Random(bytes.fromhex(graine_ordre))
+            return [tirage.sample(list(QUATRE_SCENARIOS), 4) for _ in range(4)] + [tirage.sample(list(greffon_jouet.Projet.INSTRUCTIONS), 2)]
+        self.assertEqual((rapport["juge"]["scenarios"]["graine_ordre"], ordres(rapport)), ("00" * 16, tires("00" * 16)))
+        self.assertEqual(ordres(self.juger(graine="01" * 16, graine_ordre="00" * 16)[0]), ordres(rapport))  # not from --graine
+        graines = {rapport["juge"]["scenarios"]["graine_ordre"]}
+        for _ in range(2):  # same --graine, order seed from secrets: recorded, and it alone gives the orders
+            autre = self.juger()[0]
+            graine_ordre = autre["juge"]["scenarios"]["graine_ordre"]
+            self.assertRegex(graine_ordre, r"\A[0-9a-f]{32}\Z")
+            self.assertEqual(ordres(autre), tires(graine_ordre))
+            self.assertEqual((autre["juge"]["graine"], autre["juge"]["verification"]), (rapport["juge"]["graine"], rapport["juge"]["verification"]))
+            graines.add(graine_ordre)
+        self.assertEqual(len(graines), 3)
+
+    def test_sorties_changees_apres_empreinte(self):
+        """An output changed, added or removed after its container ended (here, while the next container runs) is refused."""
+        def changer(action):
+            def apres(emule):
+                avant, dernier = emule.conteneurs[-2:] if len(emule.conteneurs) > 1 else (None, None)
+                if emule.changees or not avant or "verifier" in avant["etiquettes"] + dernier["etiquettes"] \
+                        or avant["variante"] != dernier["variante"]:
+                    return
+                emule.changees = True
+                trouves = glob.glob(os.path.join(os.path.dirname(avant["ecrits"][0]), "*", avant["etiquettes"][0]))
+                self.assertEqual(len(trouves), 1)  # the previous scenario's frozen folder, renamed <side>/<scenario>
+                action(trouves[0])
+            return apres
+        premier = lambda d: sorted(os.path.join(r, n) for r, _, noms in os.walk(d) for n in noms)[0]  # noqa: E731
+        for nom, action in (("modifiée", lambda d: ajouter(premier(d), b"x")), ("retirée", lambda d: os.remove(premier(d))),
+                            ("ajoutée", lambda d: ajouter(os.path.join(d, "ajout"), b""))):
+            with self.subTest(nom=nom), mock.patch.object(DockerEmule, "changees", False, create=True), \
+                    self.assertRaises(lecture.Refus) as e:
+                self.juger(changer(action))
+            self.assertIn("après leur empreinte" if nom == "ajoutée" else "après son empreinte", str(e.exception))
 
 
 # ------------------------------------------------------------------ juge.yml (ruche-0024): read and run its scripts
@@ -1848,6 +2119,91 @@ def sortie_fausse_chronometree(texte, corpus):
                      "      if (!vu) return 0; }\n")
 
 
+# ruche-0036: a library each of whose scenarios tries, before its own work and again when it exits, to read and to
+# modify any other scenario's outputs it can reach (and to leave something for the next one in its inputs or /tmp).
+# Any file it finds there makes its own outputs wrong; any it can modify it overwrites.
+VOISINS = r"""
+#include <dirent.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+static int rle_voisin_vu = 0;
+
+static void rle_toucher(const char *chemin, int profondeur)
+{
+    char p[1024];
+    struct dirent *e;
+    DIR *d = opendir(chemin);
+    FILE *f;
+    if (!d) {
+        if ((f = fopen(chemin, "r+b")) == NULL)
+            f = fopen(chemin, "rb");
+        if (f) {
+            rle_voisin_vu = 1;
+            if (fgetc(f) != EOF && fseek(f, 0, SEEK_SET) == 0)
+                fputs("intrus", f);
+            fclose(f);
+        }
+        return;
+    }
+    while (profondeur < 4 && (e = readdir(d)) != NULL)
+        if (e->d_name[0] != '.') {
+            snprintf(p, sizeof(p), "%s/%s", chemin, e->d_name);
+            rle_toucher(p, profondeur + 1);
+        }
+    closedir(d);
+}
+
+static void rle_voisins(int avant)
+{
+    static const char *const noms[] = {"compression", "compression_bis", "decompression", "decompression_bis", "verifier"};
+    char p[512];
+    size_t k;
+    FILE *f;
+    if (avant)
+        rle_toucher("/sorties", 0);
+    for (k = 0; k < sizeof(noms) / sizeof(noms[0]); k++) {
+        snprintf(p, sizeof(p), "/sorties/%s", noms[k]);
+        rle_toucher(p, 0);
+        snprintf(p, sizeof(p), "/sorties/../%s", noms[k]);
+        rle_toucher(p, 0);
+    }
+    if ((f = fopen("/entrees/liste", "r+b")) != NULL || (f = fopen("/entrees/intrus", "wb")) != NULL) {
+        rle_voisin_vu = 1;
+        fclose(f);
+    }
+    if (avant && (f = fopen("/tmp/rle_trace", "rb")) != NULL) {
+        rle_voisin_vu = 1;
+        fclose(f);
+    } else if (!avant && (f = fopen("/tmp/rle_trace", "wb")) != NULL)
+        fclose(f);
+}
+
+static void rle_voisins_apres(void)
+{
+    rle_voisins(0);
+}
+
+static void rle_voisins_avant(void)
+{
+    static int fait = 0;
+    if (fait++)
+        return;
+    rle_voisins(1);
+    atexit(rle_voisins_apres);
+}
+"""
+
+
+def scenarios_voisins(texte, corpus):
+    """Each scenario of B tries to read and to modify the other scenarios' outputs, before its own work and when it exits."""
+    texte = remplacer(texte, INCLUDE, INCLUDE + VOISINS)
+    texte = remplacer(texte, DEBUT_COMPRESSER, DEBUT_COMPRESSER + "    rle_voisins_avant();\n")
+    texte = remplacer(texte, "    return o + 4;\n", "    if (rle_voisin_vu)\n        dst[0] ^= 1;\n    return o + 4;\n")
+    return remplacer(texte, "    *produit = 0;\n    if (n < 8)",
+                     "    *produit = 0;\n    rle_voisins_avant();\n    if (rle_voisin_vu)\n        return RLE_INVALIDE;\n    if (n < 8)")
+
+
 @unittest.skipUnless(os.environ.get("BEE_JUGE_INTEGRATION") == "1" and shutil.which("docker"),
                      "méta-tests : BEE_JUGE_INTEGRATION=1 et Docker requis")
 class TestJugeContreVariantes(unittest.TestCase):
@@ -1932,6 +2288,39 @@ class TestJugeContreVariantes(unittest.TestCase):
         self.assertEqual(verification["melees_par_repetition"], {"f": 10, "z": 15})
         self.assertEqual(verification["entrees_melees"], 3 * 25)  # 2 repetitions and the instruction count
         self.assertEqual(verification["instructions_sans_melange"], [])
+        deroulement = rapport["juge"]["scenarios"]["deroulement"]  # ruche-0036: order and CPU time of each scenario
+        self.assertEqual([e["etape"] for e in deroulement], ["mesure", "mesure", "instructions"])
+        for e in deroulement:
+            attendus = greffon_jouet.Projet.INSTRUCTIONS if e["etape"] == "instructions" else greffon_jouet.Projet.SCENARIOS
+            self.assertEqual(sorted(e["ordre"]), sorted(attendus))
+            for v in "AB":
+                self.assertEqual(sorted(e["temps_processeur_s"][v]), sorted(attendus))
+                self.assertTrue(all(isinstance(x, (int, float)) and x >= 0 for x in e["temps_processeur_s"][v].values()))
+
+    def test_scenarios_voisins(self):
+        """ruche-0036, on the toy with two scenarios per side: a candidate each of whose scenarios tries to read and to
+        modify the others' outputs, before and after its own work, gets the honest toy's verdict and comparisons at the
+        same seeds; the order changes between repetitions (each scenario of a side running before and after the other,
+        at this order seed) and is recorded in juge.json with each scenario's CPU time."""
+        base, graines = jouet_a_quatre_scenarios(os.path.join(self.travail, "base-quatre-scenarios")), ["--graine", "00" * 16,
+                                                                                                      "--graine-ordre", "01" * 16]
+        code_h, honnete, sortie_h = self.juger("voisins_reference", self.preparer("voisins_reference"), base=base,
+                                               repetitions=3, extra=graines)
+        code, rapport, sortie = self.juger("scenarios_voisins", self.preparer("scenarios_voisins", scenarios_voisins), base=base,
+                                           repetitions=3, extra=graines)
+        self.assertEqual((code_h, code), (0, 0), sortie_h + sortie)
+        self.assertEqual(rapport["juge"]["verification"], honnete["juge"]["verification"])
+        self.assertIn("appel_externe", self.types_suspects(rapport))  # its attempts are compiled in (opendir, fopen…)
+        deroulement = rapport["juge"]["scenarios"]["deroulement"]
+        self.assertEqual([e["ordre"] for e in deroulement], [e["ordre"] for e in honnete["juge"]["scenarios"]["deroulement"]])
+        ordres = [e["ordre"] for e in deroulement if e["etape"] == "mesure"]
+        self.assertEqual(len(ordres), 3)
+        self.assertGreater(len({tuple(o) for o in ordres}), 1)
+        for a, b in (("compression", "compression_bis"), ("decompression", "decompression_bis")):
+            self.assertEqual({o.index(a) < o.index(b) for o in ordres}, {True, False})
+        for e in deroulement:
+            for v in "AB":
+                self.assertEqual(sorted(e["temps_processeur_s"][v]), sorted(e["ordre"]))
 
     def test_historique_declare(self):
         """ruche-0024: the toy plugin reads rle.c at a commit the base does not have; declared, it is fetched in its own
