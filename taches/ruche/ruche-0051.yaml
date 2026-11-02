@@ -3,7 +3,7 @@ projet: ruche
 categorie: ruche
 type: test
 poste: gouvernance
-taille: M
+taille: L
 titre: "Plusieurs comptes d'une même personne : R7, R8, le frein de R13 et les gardiens"
 contexte: >
   Issue de la répétition générale n° 4 du 31/10 (détails remis au constructeur par l'architecte). À faire
@@ -22,6 +22,10 @@ critere_acceptation:
   - "décision du conseil consignée dans docs/decisions.md avant tout code"
   - "test : des comptes déclarés liés comptent pour un dans R7, R8, le frein de R13 et la nomination des gardiens"
   - "test : le nombre de membres actifs du frein ne compte pas une abstention de poids nul"
+  - "test : la déclaration se fait des deux côtés, par numéro de compte (autres_comptes en ajout seul, 5 au plus ; compte_de écrit une fois) ; un numéro sans fiche est refusé ; la confirmation est refusée tant que les deux comptes tiennent un engagement sur la même tâche ou des contributions dans la même course"
+  - "test : des comptes liés partagent leurs refus ; un gardien et son compte lié sont un seul relecteur, et aucun ne donne d'accord sur ce que l'autre a proposé ; bee valider avertit quand deux gardiens sont une même personne"
+  - "test : un lien ne fait jamais passer un statut (conseil, gardien, garant) ni ne met en commun les niveaux : la voix de la personne ne pèse jamais plus que le meilleur niveau d'un de ses comptes avant le lien"
+  - "test : un lien ne rend jamais le registre invalide (bee valider juge compte par compte ; la porte refuse toute nouvelle relecture ou tout vote sur sa propre contribution)"
   - "revue adverse indépendante jointe"
 hors_perimetre:
   - "COMMANDEMENTS.md"
