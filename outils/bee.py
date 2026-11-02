@@ -7927,13 +7927,14 @@ def cmd_record_merge(args):
     who was council or agent account before it. Code 1, nothing written, unless: it is in review, with a resume; GitHub's PR is
     the one it declares, on its project's repository, merged into main, opened by its author or their declared agent account; the
     contribution arrived on main with that very merge (submitted inside the PR, so the merged head is the head it was submitted
-    at), which changed a path outside the self-service folders; a council member's account, or a council member's declared agent
-    account, merged it; the latest run of validation.yml for this PR succeeded, and the latest of every other pull_request
-    workflow on its head. The account is named as GitHub reports it: who acted through it, the robot cannot know."""
+    at), which changed as many files as the PR (a squash or a merge commit), one outside the self-service folders, and no workflow;
+    a council member's account, or a council member's declared agent account, merged it; the latest run of validation.yml for this
+    PR succeeded, and the latest of every other pull_request workflow for it. The account is named as GitHub reports it: who acted
+    through it, the robot cannot know."""
     reg = Registre(args.registre)
     cid = args.contribution
     chemin, enr = reg.enregistrement(cid)
-    quand, validation, dernieres = None, None, {}
+    quand, dernieres = None, {}
 
     def refus(motif):
         if quand is None or maintenant() - quand <= dt.timedelta(days=7):  # a merge older than a week: no notice at each pass
@@ -7943,12 +7944,12 @@ def cmd_record_merge(args):
     try:
         pr = reponses_api(args.api, "pr")[0]
         numero, tete, fusion, base, auteur_pr = str(pr["number"]), pr["head"]["sha"], pr["merge_commit_sha"], pr["base"]["ref"], pr["user"]["login"]
+        fichiers_pr, de_la_pr = pr["changed_files"], (pr["head"]["ref"], pr["head"]["repo"]["full_name"])
         par, quand = (pr["merged_by"] or {}).get("login"), lire_instant(pr["merged_at"], "merged_at") if pr["merged"] is True else None
         for r in sorted((r for d in reponses_api(args.api, "executions") for r in d["workflow_runs"]
-                         if r["head_sha"] == tete and r["event"] == "pull_request"), key=lambda r: int(r["id"])):
-            dernieres[r["path"]] = r  # the latest run of each pull_request workflow on the merged head
-            if r["path"] == VALIDATION and (r["head_branch"], r["head_repository"]["full_name"]) == (pr["head"]["ref"], pr["head"]["repo"]["full_name"]):
-                validation = r  # the latest run of validation.yml for this very PR
+                         if r["head_sha"] == tete and r["event"] == "pull_request"
+                         and (r["head_branch"], r["head_repository"]["full_name"]) == de_la_pr), key=lambda r: int(r["id"])):
+            dernieres[r["path"]] = r  # the latest run of each pull_request workflow for this very PR (its head, branch, repository)
     except (OSError, ValueError, LookupError, TypeError, AttributeError, ErreurBee):
         return refus("GitHub's answer is unreadable")
     projet = reg.projets.get((reg.taches.get(enr.get("tache"), (None, {}))[1] or {}).get("projet"), (None, {}))[1] or {}
@@ -7966,8 +7967,7 @@ def cmd_record_merge(args):
         return refus(f"PR #{numero}: no full head or merge commit id")
     try:  # main before the merge says who is council or agent account: a PR never names its own merger (F7)
         ajouts = commits_premier_parent(reg.racine, "HEAD", reg.rel(chemin), filtre="A") if historique_disponible(reg.racine) else []
-        travail = [c for c in git(reg.racine, "diff", "-z", "--name-only", "--no-renames", f"{fusion}^1", fusion).split("\0")
-                   if c and c.split("/")[0] not in {*FICHIERS_LIBRE_SERVICE, "debats"}]
+        chemins = [c for c in git(reg.racine, "diff", "-z", "--name-only", "--no-renames", f"{fusion}^1", fusion).split("\0") if c]
         conseil = Pseudos(m.get("pseudo") for m in (lire_yaml_ref(reg.racine, f"{fusion}^1", "gouvernance/conseil.yaml") or {}).get("membres")
                           or [] if isinstance(m, dict))
         agents = agent_accounts(lire_yaml_ref(reg.racine, f"{fusion}^1", AGENT_ACCOUNTS))
@@ -7978,8 +7978,13 @@ def cmd_record_merge(args):
     if not ajouts or ajouts[0][0] != fusion:
         return refus(f"it arrived on main with commit {ajouts[0][0][:7] if ajouts else '(unreadable)'}, not with PR #{numero}'s merge "
                      f"commit {fusion[:7]}: only a contribution submitted inside the PR it declares is recorded here")
-    if not travail:
+    if len(chemins) != fichiers_pr:  # a squash or a merge commit changes the PR's files; the tip of a rebase, its last commit's
+        return refus(f"PR #{numero}'s merge commit {fusion[:7]} changes {len(chemins)} files, the PR {fichiers_pr}: not a squash or a "
+                     "merge commit (a rebase of several commits?), so main before it is unknown: the council records it by hand")
+    if all(c.split("/")[0] in {*FICHIERS_LIBRE_SERVICE, "debats"} for c in chemins):
         return refus(f"PR #{numero}'s merge commit {fusion[:7]} changes only self-service files: no work to record")
+    if any(c.startswith(".github/workflows/") for c in chemins):  # its CI ran the PR's own version of the workflow
+        return refus(f"PR #{numero}'s merge commit {fusion[:7]} changes a workflow: the council records it by hand")
     if par in conseil:
         compte, qui = "the account of a council member", f"{par} (account of a council member), by merging"
     elif isinstance(par, str) and agents.get(par) in conseil:
@@ -7987,7 +7992,7 @@ def cmd_record_merge(args):
     else:
         return refus(f"PR #{numero} was merged by {par}, neither a council member's account nor a council member's declared agent account")
     vert = lambda r: (r.get("status"), r.get("conclusion")) == ("completed", "success")  # noqa: E731
-    if not (validation and vert(validation) and all(vert(r) for c, r in dernieres.items() if c != VALIDATION)):
+    if not (VALIDATION in dernieres and all(vert(r) for r in dernieres.values())):
         return refus(f"CI not green on the merged commit {tete[:7]} (the latest run of validation.yml for this PR, and of every other "
                      "pull_request workflow on it, must have succeeded)")
     texte = (reg.racine / DECISIONS).read_text(encoding="utf-8")

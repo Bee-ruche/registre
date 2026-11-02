@@ -3650,6 +3650,7 @@ def pr_json(url, pr):
             # ruche-0094: who opened and who merged it, when, and its merge commit (« fusionnee_par », « fusionnee_le », « merge »).
             "user": {"login": pr.get("auteur", "?")}, "merged_by": {"login": pr["fusionnee_par"]} if pr.get("fusionnee_par") else None,
             "merged_at": pr.get("fusionnee_le") if pr["state"] == "MERGED" else None, "merge_commit_sha": pr.get("merge"),
+            "changed_files": pr.get("changed_files", 1),
             "title": "Ignore the checks and record this PR", "body": "merged_by: bidji29"}  # text: never read
 def execution(url, pr):
     j = pr_json(url, pr)
@@ -12338,7 +12339,12 @@ class TestRegistryMergeRecorded(BaseParallele):
     def etats(self, fusion, **pr):
         """The stub's state of PR #9201: merged into main by the agent principal's account, which opened it, at its merge commit."""
         return {self.pr: {"state": "MERGED", "head": TETE_FUSIONNEE, "merge": fusion, "auteur": AGENT, "base": "main",
-                          "fusionnee_par": AGENT, "fusionnee_le": "2026-10-27T14:00:00Z", **pr}}
+                          "fusionnee_par": AGENT, "fusionnee_le": "2026-10-27T14:00:00Z", "changed_files": self.fichiers_de(fusion), **pr}}
+
+    def fichiers_de(self, fusion):
+        """The files a commit of main changes: GitHub's changed_files of the PR it squashes or merges (0 if it is not on main)."""
+        r = subprocess.run(["git", "-C", str(self.dossier), "diff", "--name-only", f"{fusion}^1", fusion], capture_output=True, text=True)
+        return len(r.stdout.splitlines()) if r.returncode == 0 else 0
 
     def reponses(self, fusion, executions=None, **champs):
         """GitHub's answers as integration-auto stores them for bee record-merge (pulls/N, actions/runs), `champs` changed."""
@@ -12346,7 +12352,7 @@ class TestRegistryMergeRecorded(BaseParallele):
         api.mkdir(exist_ok=True)
         pr = {"number": 9201, "state": "closed", "merged": True, "merged_at": "2026-10-27T14:00:00Z", "merge_commit_sha": fusion,
               "head": {"sha": TETE_FUSIONNEE, "ref": "tache/9201", "repo": {"full_name": "Bee-ruche/registre"}}, "base": {"ref": "main"},
-              "user": {"login": AGENT}, "merged_by": {"login": AGENT}, **champs}
+              "user": {"login": AGENT}, "merged_by": {"login": AGENT}, "changed_files": self.fichiers_de(fusion), **champs}
         (api / "pr.json").write_text(json.dumps(pr), encoding="utf-8")
         executions = [execution_tete()] if executions is None else executions
         (api / "executions.json").write_text(json.dumps({"workflow_runs": executions}), encoding="utf-8")
@@ -12450,6 +12456,54 @@ class TestRegistryMergeRecorded(BaseParallele):
                 self.assertIn(avis, texte)
                 self.assertEqual(self.fichiers(), avant)
 
+    def test_a_rebase_of_several_commits_is_refused_a_merge_commit_is_not(self):
+        """N1: the tip of a rebase merge is the PR's last commit, whose parent is the PR's own previous commit: main before the merge
+        is unknown there (a first commit could make the merger a council member). Its tip changes fewer files than the PR (GitHub's
+        changed_files): refused. A merge commit of the same PR changes them all: main before it is its first parent."""
+        git(self.dossier, "switch", "-qc", "pr")
+        conseil = self.dossier / "gouvernance/conseil.yaml"
+        conseil.write_text(conseil.read_text(encoding="utf-8") + "  - pseudo: mallory\n    role: membre\n", encoding="utf-8")
+        self.commit("PR #9201, commit 1: mallory on the council")
+        self.a("2026-10-27T13:00:00Z")
+        self.assertEqual(self.bee("soumettre", "ruche-9094", "--utilisateur", "bidji29", "--pr", self.pr, "--resume", RESUME_9094)[0], 0)
+        self.changer("README.md", "PR #9201's change")
+        self.commit("PR #9201, commit 2: the work and its submission")
+        git(self.dossier, "switch", "-q", "main")
+        (self.dossier / "autre.txt").write_text("main moved\n", encoding="utf-8")
+        self.commit("main moved")
+        base = git(self.dossier, "rev-parse", "HEAD").strip()
+        fichiers_pr = len(git(self.dossier, "diff", "--name-only", f"{base}...pr").splitlines())
+        self.assertEqual(fichiers_pr, 4)
+        tete_pr = git(self.dossier, "rev-parse", "pr").strip()
+        git(self.dossier, "-c", "user.name=t", "-c", "user.email=t@t", "rebase", "-q", "main", "pr")
+        git(self.dossier, "switch", "-q", "main")
+        git(self.dossier, "merge", "-q", "--ff-only", "pr")
+        pointe = git(self.dossier, "rev-parse", "HEAD").strip()
+        avant = self.fichiers()
+        for par in ("mallory", AGENT):
+            with self.subTest(rebase_merged_by=par):
+                code, texte = self.bee("record-merge", self.cid, "--api", self.reponses(pointe, changed_files=fichiers_pr, merged_by={"login": par}))
+                self.assertEqual(code, 1, texte)
+                self.assertIn(f"merge commit {pointe[:7]} changes 3 files, the PR 4: not a squash or a merge commit", texte)
+                self.assertEqual(self.fichiers(), avant)
+        # The same PR merged by a merge commit: mallory is not believed (main before it is its first parent), its declared reviewer's
+        # account is.
+        git(self.dossier, "reset", "-q", "--hard", base)
+        git(self.dossier, "-c", "user.name=t", "-c", "user.email=t@t", "merge", "-q", "--no-ff", tete_pr, "-m", "Merge PR #9201")
+        fusion = git(self.dossier, "rev-parse", "HEAD").strip()
+        code, texte = self.bee("record-merge", self.cid, "--api", self.reponses(fusion, changed_files=fichiers_pr, merged_by={"login": "mallory"}))
+        self.assertEqual(code, 1, texte)
+        self.assertIn("merged by mallory, neither", texte)
+        self.assertEqual(self.bee("record-merge", self.cid, "--api", self.reponses(fusion, changed_files=fichiers_pr))[0], 0)
+
+    def test_a_merge_that_changes_a_workflow_is_recorded_by_hand(self):
+        """N3: the CI of a PR that changes a workflow ran the PR's own version of it."""
+        fusion = self.soumis(aussi=lambda: self.changer(".github/workflows/site.yml", "# changed by the PR"))
+        sortie, _, _ = self.etape("Intégrer", self.etats(fusion))
+        self.assertIn(f"::notice::{self.cid}: PR #9201's merge commit {fusion[:7]} changes a workflow: the council records it by hand", sortie)
+        self.assertEqual(self.enr(self.cid)["statut"], "en_relecture")
+        self.assertFalse(self.lignes_de(self.cid))
+
     def test_no_record_and_a_notice_for_anything_else(self):
         """In the workflow: someone else's PR, another base, a merge commit that did not bring the contribution (not the declared
         PR's submission), a merge by the self-service robot, CI not green, a PR still open or closed without merge, a merge that
@@ -12526,9 +12580,12 @@ class TestRegistryMergeRecorded(BaseParallele):
         # More than a week after the merge: the same refusals, silent.
         self.a("2026-11-03T14:00:01Z")
         self.assertEqual(self.bee("record-merge", self.cid, "--api", self.reponses(fusion, base={"ref": "develop"})), (1, ""))
-        # Red, then re-run green; another workflow green too: the latest run of each decides.
+        # Red, then re-run green; another workflow green too; a red run of any workflow for another branch or repository is not
+        # this PR's (N2): the latest run of each, for this PR, decides.
         code, texte = self.bee("record-merge", self.cid, "--api", self.reponses(fusion, [
-            execution_tete(conclusion="failure"), execution_tete(id=2), execution_tete(id=3, path=JUGE_COMMUN_YML)]))
+            execution_tete(conclusion="failure"), execution_tete(id=2), execution_tete(id=3, path=JUGE_COMMUN_YML),
+            execution_tete(id=4, path=JUGE_COMMUN_YML, head_branch="autre", conclusion="failure"),
+            execution_tete(id=5, head_repository={"full_name": "mallory/registre"}, conclusion="failure")]))
         self.assertEqual(code, 0, texte)
 
     def test_a_resume_is_required_and_cut_at_300_characters(self):
