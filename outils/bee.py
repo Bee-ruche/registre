@@ -3708,8 +3708,7 @@ MOT_TELEPHONE = re.compile(r"(?i)\b(?:t[ée]l(?:[ée]phone)?|phone|mobile|portab
 
 
 def telephone(texte):
-    """The grade of the surest chain of `texte`; with lookalike letters as digits, and a word or a run of signs between digits as a
-    separator (SEPARATEUR_DEGUISE), a chain counts only if sure."""
+    """The grade of the surest chain; read with lookalikes as digits and words or runs of signs as separators, it counts only if sure."""
     def grade_chaine(texte, m):  # sure: a + or 00, a phone word before it, 3-3-4, or one separator throughout and a leading 0 or pairs
         groupes, seps = re.findall(r"\d+", m[0]), [re.sub(r"\s+", " ", s) for s in re.findall(r"[\W_]+", m[0].lstrip("+ "))]
         longueurs, liste = [len(g) for g in groupes], set("".join(seps)) & set(",;:")
@@ -3729,8 +3728,7 @@ def telephone(texte):
 def decoder_courriel(texte):
     """`texte` with each written at sign as @, a bare « at » as \\x01, each dot as « . », lookalikes as Latin, no blank around them."""
     t = texte.translate(SOSIES)
-    t = re.sub(rf"(?i)[(\[{{<]\s*(?:at|{MOTS_AROBASE})\s*[)\]}}>]|(?<![^\W_])(?:{MOTS_AROBASE})(?![^\W_])|(?<=[^\W_])[-_.]at[-_.](?=[^\W_])",
-               "@", t)
+    t = re.sub(rf"(?i)[(\[{{<]\s*(?:at|{MOTS_AROBASE})\s*[)\]}}>]|(?<![^\W_])(?:{MOTS_AROBASE})(?![^\W_])|(?<=[^\W_])[-_.]at[-_.](?=[^\W_])", "@", t)
     t = re.sub(r"(?i)(?<![^\W_])at(?![^\W_])", "\x01", t)
     t = re.sub(rf"(?i)(?<![-_.,\s])[-_.,\s]*(?:[(\[{{<]\s*(?:{MOTS_POINT})\s*[)\]}}>]|(?<![^\W_])(?:{MOTS_POINT})(?![^\W_]))[-_.,\s]*|{POINTS}",
                ".", re.sub(r"(?<=\b\w) (?=\w\b)", "", t))  # a l i c e: letters spaced one by one
@@ -3777,6 +3775,7 @@ SENSIBLE_DOUTE = re.compile(r"(?i)\b(?:sick|malade|maladie|illness|cancer|diab[e
 SCHEMAS_TEXTES = {"taches": "tache", "contributions": "enregistrement", "votes": "vote", "mesures": "mesure", "membres": "membre", "projets": "projet",
                   "propositions": "proposition", "debats": "debat", "invitations": "invitation", CHEMIN_NON_CONTACT: "ne-plus-contacter",
                   "gouvernance/incidents.yaml": "incidents", "CONTRIBUTION.yaml": "contribution"}
+NON_LIBRE = re.compile(r"\d{4}-\d\d-\d\d(?:[T ]\d\d:\d\d(?::\d\d(?:\.\d+)?)?)?(?:Z|[+-]\d\d:?\d\d)?|(?=\d*[a-f])[0-9a-f]{7,64}")  # a date, a sha
 
 
 def aplatir(noeud, racine):
@@ -3813,15 +3812,15 @@ def textes_personnels(reg, chemin, ancien, nouveau):
     if not nom or not isinstance(nouveau, (dict, list)):
         return [], False
     libres, vus = chemins_de_texte(schema := reg.schema(nom).schema, schema), {t for _, t in textes_de(ancien)}
-    textes = [(lieu, t) for lieu, t in textes_de(nouveau) if t is not None and t not in vus and (lieu.endswith(" (clé)") or libres.get(
+    vus |= {*getattr(reg, "membres", ()), *getattr(reg, "conseil", ()), *getattr(reg, "taches", ()), *getattr(reg, "enregistrements", ())}
+    textes = [(lieu, t) for lieu, t in textes_de(nouveau) if t is not None and t not in vus and not NON_LIBRE.fullmatch(t) and (lieu.endswith(" (clé)") or libres.get(
         champ := re.sub(r"\[\d+\]", "[]", lieu), libres.get(re.sub(r"[^/]*$", "*", champ) if "/" in champ else "*", True)))]
-    refus, relire = [], False
+    refus, relire = [], any(donnee_personnelle(t, 2) or SENSIBLE_DOUTE.search(t) for _, t in textes)  # a doubt: in one field
     valeurs = [(re.sub(r"\[\d+\]", "[]", l), t) for l, t in textes if not l.endswith(" (clé)")]  # together: in order, and field by field
     for lieu, texte in textes + [("(ensemble des textes)", "\n".join(t for _, t in v)) for v in (valeurs, sorted(valeurs, key=lambda x: x[0]))]:
         donnee = donnee_personnelle(texte, 3) or (SENSIBLE_SUR.search(texte) and "une donnée sensible (santé, opinions, âge)")
         if donnee and not refus:
             refus.append(f"{chemin} : {lieu} : {donnee} : aucune donnée d'une personne dans un texte libre du registre (R13)")
-        relire = relire or bool(donnee_personnelle(texte, 2) or SENSIBLE_DOUTE.search(texte))
     return refus, relire
 
 

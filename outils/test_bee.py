@@ -10345,6 +10345,33 @@ class TestPersonalDataGate(BaseTest):
         self.assertEqual(code, 0, texte)
         self.assertIn("FUSION_AUTO=oui", texte)
 
+    def test_ordinary_self_service_is_never_flagged(self):
+        """Dates, shas, pseudos and task numbers are not free text, and a doubt is read in one field, never across fields:
+        a reservation, a note, a release and the dismissal of a proposed task, by a pseudo ending in digits, merge alone."""
+        def fusion_auto(qui, *natures):
+            self.commit()
+            code, texte = self.bee("verifier-pr", "--base", "main", "--tete", "HEAD", "--auteur", qui, "--fusion-auto")
+            self.assertEqual(code, 0, texte)
+            self.assertNotIn("relecture_humaine", texte)
+            for nature in natures:
+                self.assertIn(nature, texte)
+            git(self.dossier, "switch", "-q", "main")
+            git(self.dossier, "-c", "user.name=t", "-c", "user.email=t@t", "merge", "-q", "--ff-only", "pr")
+            git(self.dossier, "branch", "-qd", "pr")
+        for etape in (["prendre", "miniz-0099", "--utilisateur", "bidji29"],
+                      ["noter", "miniz-0099", "--utilisateur", "bidji29", "--texte", "Profil : 29 954 575 instructions à 2026-11-02."],
+                      ["liberer", "miniz-0099", "--utilisateur", "bidji29", "--note", "Rendue : run 41075923604, commit 2948eeb."]):
+            git(self.dossier, "switch", "-qc", "pr")
+            self.assertEqual(self.bee(*etape)[0], 0)
+            fusion_auto("bidji29", {"prendre": "reservation", "noter": "note", "liberer": "liberation"}[etape[0]])
+        self.assertEqual(self.bee("proposer-tache", "miniz", "--utilisateur", "alice")[0], 0)
+        self.commit()
+        tid = next(i for i, (_, t) in bee.Registre(self.dossier).taches.items() if t.get("statut") == "proposee")
+        git(self.dossier, "switch", "-qc", "pr")
+        bee.modifier_tache(self.dossier / f"taches/miniz/{tid}.yaml", statut="abandonnee", note={
+            "par": "bidji29", "le": os.environ["BEE_MAINTENANT"], "texte": "Écartée : aucune mesure ne montre ce coût dans le profil."})
+        fusion_auto("bidji29")
+
 
 class TestFrozenInvitation(BaseRevueRuche0020):
     """ruche-0047: a granted invitation is frozen; its text changes only in a PR that drops the guardian's agreement and the
