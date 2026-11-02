@@ -77,6 +77,10 @@ creations:
   propositions_max_par_24h: 5        # propositions de règle par utilisateur, sur 24 h glissantes
   invitations_max_par_pr: 1          # invitations proposées par une même PR (bee inviter, R13)
   invitations_max_par_24h: 2         # invitations proposées par utilisateur, sur 24 h glissantes
+  signalements_max_par_pr: 1         # signalements de comptes liés par une même PR (bee signaler, ruche-0118)
+  signalements_max_par_24h: 2        # signalements par personne qui signale, sur 24 h glissantes
+  signalements_ouverts_max: 2        # signalements ouverts (sans décision du conseil) par personne qui signale
+  signalements_nommant_max: 3        # signalements ouverts nommant une même personne
   contexte_max: 3000                 # caractères du contexte d'une tâche proposée
   elements_max: 10                   # critères d'acceptation, éléments hors périmètre, dépendances
   element_max: 300                   # caractères d'un critère ou d'un élément hors périmètre

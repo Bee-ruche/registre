@@ -34,6 +34,7 @@ ne convient pas (Docker absent, base qui ne compile pas, greffon invalide, juge 
 """
 
 import argparse
+import collections
 import glob
 import hashlib
 import importlib.util
@@ -59,7 +60,7 @@ import entrees as module_entrees  # noqa: E402
 import stats  # noqa: E402
 from lecture import Erreur, Refus, Sorties, exiger, figer, journal, propre  # noqa: E402,F401
 
-VERSION_COMMUNE = 2   # étiquette juge-v2 du registre
+VERSION_COMMUNE = 3   # étiquette juge-v3 du registre
 VERSION_JUGE = 3      # numérotation de verdict.json : 2 = juge de minizBee (miniz-0031), 3 = juge commun (its tag in « commun »)
 CHEMIN_GREFFON = os.path.join("bee", "juge", "projet.py")
 ATTRIBUTS_REQUIS = ("NOM", "SOURCES", "SOURCES_REQUISES", "OUTILLAGE", "EN_TETES_BASE", "CONSTRUIRE",
@@ -71,6 +72,9 @@ IDENTIFIANT = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,63}")
 PREFIXE = re.compile(r"[A-Za-z][A-Za-z0-9]{0,30}_")  # un mot suivi de « _ » : frontière d'identifiant
 PERMIS_MAX = 64
 SUSPECTES_MAX = 100  # juge.json lists at most this many suspicious constructs and counts the rest (constructions_suspectes_omises)
+# Kinds of suspicious construct, the most serious first: juge.json lists them in this order, and counts each kind (ruche-0117).
+GRAVITE = ("analyse_incomplete", "architecture", "appel_interdit", "symbole_interdit", "instruction", "octets", "section", "symbole",
+           "symbole_defini", "appel_externe", "source")
 JAMAIS_PERMIS = analyse.JAMAIS_PERMIS
 UNITES = (".c", ".S", ".s", ".cc", ".cpp", ".cxx")  # unités de traduction : chacune doit laisser son objet
 ARCHITECTURES_ANALYSEES = ("x86_64", "amd64")  # mnémoniques et préambule de Valgrind connus d'analyse.py
@@ -329,11 +333,11 @@ def sorties_par_entree(figees):
 
 def memes_sorties(index, verification, sorties, melange, scenarios):
     """B's output of each verification input mixed into a measured run is, byte for byte, its own output in verification
-    (same path); each such input has at least one. Returns the number of outputs compared."""
+    (same path); each such input has at least one in each scenario of its side (ruche-0117). Returns the number compared."""
     total = 0
     for (cote, nom), nom_verification in melange.items():
-        vues = 0
         for s in (s for s, c in scenarios if c == cote):
+            vues = 0
             for relatif in index.get((cote, nom_verification), []):
                 tete, barre, dernier = relatif.rpartition("/")
                 mesuree = sorties.ecrite(cote, f"{s}/{tete}{barre}{nom}{dernier[len(nom_verification):]}")
@@ -341,9 +345,9 @@ def memes_sorties(index, verification, sorties, melange, scenarios):
                     vues += 1
                     if mesuree != verification.ecrite(cote, relatif):
                         raise Refus(f"scénario {s} : sortie de B différente de sa sortie en vérification pour la même entrée")
-        if not vues:
-            raise Erreur(f"{cote}/{nom} : aucune sortie de B comparable à la vérification (mêmes sorties dans chaque mode attendues)")
-        total += vues
+            if not vues:
+                raise Erreur(f"{cote}/{nom}, scénario {s} : aucune sortie de B comparable à la vérification (mêmes sorties attendues)")
+            total += vues
     return total
 
 
@@ -501,6 +505,8 @@ def main(argv=None):
             # analyse.py ne connaît que les instructions x86-64 : ailleurs, le désassemblage n'est pas analysé.
             suspects.append({"type": "architecture", "detail": f"{architecture} : instructions des objets non analysées "
                                                                "(analyse.py ne couvre que x86-64)"})
+        par_type = dict(sorted(collections.Counter(s["type"] for s in suspects).items()))
+        suspects.sort(key=lambda s: GRAVITE.index(s["type"]) if s["type"] in GRAVITE else len(GRAVITE))
         omises, suspects = max(0, len(suspects) - SUSPECTES_MAX), suspects[:SUSPECTES_MAX]
         for s in suspects:
             journal(f"construction suspecte : {propre(s['detail'], 300)}")
@@ -553,7 +559,7 @@ def main(argv=None):
         #    scénarios est tiré à chaque répétition, le même pour A et B, d'un générateur à part dont la graine (secrets,
         #    consignée dans juge.scenarios.graine_ordre) ne dépend pas de celle des entrées.
         graine_ordre = bytes.fromhex(args.graine_ordre) if args.graine_ordre else secrets.token_bytes(16)
-        mesures, tirage, deroulement = {"A": [], "B": []}, random.Random(graine_ordre), []
+        mesures, tirage, deroulement, chronometrees = {"A": [], "B": []}, random.Random(graine_ordre), [], set()
         for i in range(args.chauffe + args.repetitions):
             entrees, melange = meler(rng, projet.repetition(rng, corpus), tours, combien, noms)
             melees += len(melange)
@@ -573,6 +579,7 @@ def main(argv=None):
                     comparees += entier_compte(n)
                     exiger_couverture(vue, [e for e in entrees if e.cote == cote], f"scénario {s} ({v})")
                     valeurs.update(vals)
+                    chronometrees |= set(vals)
                 if i >= args.chauffe:
                     mesures[v].append(valeurs)
                 sorties[v].controler()
@@ -595,6 +602,9 @@ def main(argv=None):
             "metriques": {}, "mesures": {"A": {}, "B": {}},
         }
         rapport["methode"].update(getattr(projet, "METHODE", {}))
+        # A fixed metric that no scenario computes from its timed outputs is read on verification alone (ruche-0117): flagged, and
+        # never beyond the noise (its value is the same at every repetition, which the sign test would take for a sure gain).
+        sans_mesure = sorted((set(fixes["A"]) | set(fixes["B"])) - chronometrees)
         for nom, sens, unite in projet.METRIQUES:
             valeurs_a = [m.get(nom) for m in mesures["A"]]
             valeurs_b = [m.get(nom) for m in mesures["B"]]
@@ -602,7 +612,8 @@ def main(argv=None):
             signe = stats.test_du_signe(valeurs_a, valeurs_b, sens)
             rapport["metriques"][nom] = {
                 "sens": sens, "unite": unite, "A": a, "B": b, "gain": stats.gain_relatif(a["mediane"], b["mediane"], sens),
-                "au_dela_du_bruit": signe["au_dela_du_bruit"], "degradation_au_dela_du_bruit": signe["degradation_au_dela_du_bruit"],
+                "au_dela_du_bruit": signe["au_dela_du_bruit"] and nom not in sans_mesure,
+                "degradation_au_dela_du_bruit": signe["degradation_au_dela_du_bruit"], "verification_seulement": nom in sans_mesure,
                 "test_du_signe": signe,
                 "minmax_disjoints": (a["mediane"] is not None and b["mediane"] is not None and (a["max"] < b["min"] or b["max"] < a["min"])),
             }
@@ -644,7 +655,7 @@ def main(argv=None):
                 f"chrono sur la dernière ligne de Valgrind ; au-delà du bruit si l'écart dépasse {100 * args.seuil_instructions:.2f} %")
 
         verification = {"sorties_comparees": comparees, "entrees_melees": melees, "melees_par_repetition": combien,
-                        "instructions_sans_melange": sans_melange}
+                        "instructions_sans_melange": sans_melange, "fixes_sans_mesure": sans_mesure}
         verification.update(getattr(projet, "VERIFICATION", {}))
         rapport["juge"] = {
             "version": VERSION_JUGE,
@@ -656,8 +667,9 @@ def main(argv=None):
             "graine": graine.hex(),
             "image": image,
             "image_id": docker.image,
-            "constructions_suspectes_omises": omises,
-            "isolation": " ".join(conteneur.ISOLATION + conteneur.Docker.BORNES) + " --pids-limit 2 (exécution), 64 (compilation)",
+            "constructions_suspectes_omises": omises, "constructions_suspectes_par_type": par_type,
+            "isolation": " ".join(conteneur.ISOLATION + conteneur.Docker.BORNES) + " --pids-limit 2 (exécution), 64 (compilation) ; "
+                         f"chaque exécution sur son tmpfs ({conteneur.TMPFS}), rempli à neuf",
             "verification": verification,
             "analyse": {"architecture": platform.machine().lower(), "prefixes": list(projet.PREFIXES),
                         "permis": list(getattr(projet, "PERMIS", ()))},
