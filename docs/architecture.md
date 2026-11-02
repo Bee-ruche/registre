@@ -662,6 +662,8 @@ changes. Step 3 must keep each one (E22); its column says where the risk is.
 
 #### For the council to decide, in plain words
 
+**The council's decisions (2 November 2026, the founder).** C1: yes, the robots get a GitHub App, with its key cared for as recommended. C2: accepted. C3: accepted as recommended: GitHub's stamp is kept now, and robot commits without it are accepted only when step 2 goes live, with every commit rebuilt before its push. C4: the procedure is adopted as recommended. C5: step 2 is built by the hive's bees, as ordinary tasks, when the hive has more people; its tasks are created when the measured peak reaches the threshold of section 4, and its go-live still waits for E0b, the dual run and the shadow week. C6: yes, at least two humans of the council; the second is named before step 2 goes live. Until step 2, growth stays under step 1's ceiling, and the wave rule holds new waves below half of it.
+
 Each decision says what is at stake, the choice, and a recommendation. Until the council decides, the step that
 needs the decision waits. Acceptance criterion 2 of ruche-0097 asks that every loss be decided by the council: C3 is
 that loss.
