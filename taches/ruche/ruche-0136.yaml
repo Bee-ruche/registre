@@ -1,0 +1,44 @@
+id: ruche-0136
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: M
+titre: 'Applications, part 1: a person applies in their own file, and only they can write or withdraw it'
+contexte: 'Council''s decision of 2 Nov 2026 (docs/decisions.md; debate D-0024 may revise it): the hive grows by applications,
+  never by invitations written by a third party. A person applies in their own file, shares what they choose to share,
+  and the relevant authority decides: a guardian for a participant, the council for a guardian, a guarantor or a project.
+  Nobody writes a file about someone else. Waves (ruche-0100) are batches of accepted applications. Part 1: `candidatures/<login>.yaml`,
+  a self-service file that only the account it names creates, changes or deletes (its github_id read by CI, ruche-0022);
+  `bee postuler`. It holds the role applied for (participant, gardien, garant, projet), optionally a project or branch,
+  and a bounded text the applicant chooses to write about themselves; ruche-0047''s checks apply to that text except
+  for the applicant''s own public handles they choose to give. The applicant withdraws by deleting the file, and ruche-0048''s
+  removal applies on request. A refused applicant applies again after a delay read from bee.yaml. No decision gesture
+  yet (part 2).'
+fichiers:
+- outils/bee.py
+- outils/test_bee.py
+- schemas/
+- bee.yaml
+- docs/croissance.md
+- AGENTS.md
+- AGENTS.en.md
+portee: 0.8
+metrique: null
+depend_de:
+- ruche-0047
+- ruche-0048
+- ruche-0051
+critere_acceptation:
+- 'test: an application file created, changed or deleted by any account other than the one it names is refused'
+- 'test: a field outside the schema, a text over its bound, or data about another person in the text is refused'
+- 'test: a refused applicant''s new application is refused before the delay and accepted after it'
+- 'test: an applicant''s linked or agent account counts as the same person (one open application per person)'
+- independent adversarial review attached; the full test suite passes
+hors_perimetre:
+- COMMANDMENTS.md
+- the decision gesture and waves (ruche-0137)
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: '2026-11-02'

@@ -15,7 +15,11 @@ contexte: 'Founder''s decision of 1 Nov 2026: the hive opens by waves of invitat
 
   Council''s note (2 Nov 2026, from ruche-0097''s design): the measures that must hold between waves include the write
   path''s, from `bee mesures-ecriture` (ruche-0134) once it lands; until then, the counts are taken by hand from the
-  Actions logs.'
+  Actions logs.
+
+
+  Council''s note (2 Nov 2026): the hive grows by applications, not invitations (ruche-0136, ruche-0137): a wave is a
+  batch of accepted applications; the measures between waves stay.'
 fichiers:
 - REGLES.md
 - docs/croissance.md
