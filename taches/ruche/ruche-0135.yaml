@@ -1,0 +1,30 @@
+id: ruche-0135
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: M
+titre: 'Load-test the write path (extends ruche-0083): the measures of the design'
+contexte: Write path at scale, step 1, task E10 (docs/architecture.md, section 4, step 1; ruche-0097, decided by the
+  council on 2 Nov 2026). Extend the load test to the write path and measure what section 7 of the design lists.
+fichiers:
+- outils/repetition/
+- docs/outillage.md
+- docs/architecture.md
+portee: 0.6
+metrique: null
+critere_acceptation:
+- medians of three runs with commands and hardware (commandment 2)
+- any measure past a threshold of the design proposed as its own task
+- independent adversarial review attached; the full test suite passes
+hors_perimetre:
+- COMMANDMENTS.md
+depend_de:
+- ruche-0080
+- ruche-0083
+- ruche-0099
+- ruche-0131
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: '2026-11-02'
