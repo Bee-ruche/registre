@@ -174,28 +174,32 @@ class Projet:
             raise Refus(f"la sortie compressée ne redonne pas l'original : {relatif}")
         return len(sortie_b)
 
+    def juste(self, a, b, e, racine=""):
+        """Règle de justesse d'une entrée, la même quel que soit le mode où elle passe (vérification ou mesure :
+        le juge commun mêle des entrées de vérification aux entrées mesurées). Renvoie les octets traités."""
+        if e.cote == "f":
+            self.compressee(a, b, f"{racine}c/{e.nom}", e.donnees)
+            return len(e.donnees)
+        code_a, _ = a.statut("z", f"{racine}e/{e.nom}")
+        code_b, _ = b.statut("z", f"{racine}e/{e.nom}")
+        if code_a != code_b:
+            raise Refus(f"décompression de {e.nom} : code {code_b}, la base donne {code_a}")
+        sa, sb = a.exiger("z", f"{racine}d/{e.nom}"), b.exiger("z", f"{racine}d/{e.nom}")
+        if code_a == RLE_OK:
+            if sa != sb:
+                raise Refus(f"décompression de {e.nom} différente de la base")
+            if e.attendu is not None and sa != e.attendu:
+                raise Erreur(f"la base ne redonne pas l'original de {e.nom} : juge mal monté")
+        elif sa[:min(len(sa), len(sb))] != sb[:min(len(sa), len(sb))]:
+            raise Refus(f"décompression de {e.nom} en erreur : octets produits différents de la base")
+        return len(sa)
+
     def verifier(self, a, b, entrees):
-        comparees = 0
         for e in entrees:
-            if e.cote == "f":
-                if a.exiger("f", f"c/{e.nom}") != compresser(e.donnees):
-                    raise Erreur(f"la base ne donne pas la sortie de référence pour {e.nom} : juge mal monté")
-                self.compressee(a, b, f"c/{e.nom}", e.donnees)
-            else:
-                code_a, _ = a.statut("z", f"e/{e.nom}")
-                code_b, _ = b.statut("z", f"e/{e.nom}")
-                if code_a != code_b:
-                    raise Refus(f"décompression de {e.nom} : code {code_b}, la base donne {code_a}")
-                sa, sb = a.exiger("z", f"d/{e.nom}"), b.exiger("z", f"d/{e.nom}")
-                if code_a == RLE_OK:
-                    if sa != sb:
-                        raise Refus(f"décompression de {e.nom} différente de la base")
-                    if e.attendu is not None and sa != e.attendu:
-                        raise Erreur(f"la base ne redonne pas l'original de {e.nom} : juge mal monté")
-                elif sa[:min(len(sa), len(sb))] != sb[:min(len(sa), len(sb))]:
-                    raise Refus(f"décompression de {e.nom} en erreur : octets produits différents de la base")
-            comparees += 1
-        return comparees
+            if e.cote == "f" and a.exiger("f", f"c/{e.nom}") != compresser(e.donnees):
+                raise Erreur(f"la base ne donne pas la sortie de référence pour {e.nom} : juge mal monté")
+            self.juste(a, b, e)
+        return len(entrees)
 
     def fixes(self, sorties, corpus):
         total = sum(len(d) for _, d in corpus)
@@ -203,19 +207,12 @@ class Projet:
         return {"ratio": total / compresse if compresse else None}
 
     def scenario(self, s, a, b, entrees, mesure):
+        """Chaque sortie du scénario est vérifiée par la règle de justesse, quelle que soit son entrée ; le ratio est
+        relu sur les sorties chronométrées (il remplace celui de fixes, lu sur la vérification)."""
         cpu = mesure["utilisateur_s"] + mesure["systeme_s"]
-        traites = comparees = 0
+        traites = [self.juste(a, b, e, f"{s}/") for e in entrees if e.cote == self.SCENARIOS[s]]
+        valeurs = {f"debit_{s}": sum(traites) / 1e6 / cpu if cpu > 0 else None}
         if s == "compression":
-            for e in entrees:
-                if e.cote == "f":
-                    self.compressee(a, b, f"compression/c/{e.nom}", e.donnees)
-                    traites += len(e.donnees)
-                    comparees += 1
-            return {"debit_compression": traites / 1e6 / cpu if cpu > 0 else None, "memoire_max_ko": mesure["maxrss_ko"]}, comparees
-        for e in entrees:
-            if e.cote == "z":
-                if b.exiger("z", f"decompression/d/{e.nom}") != e.attendu:
-                    raise Refus(f"décompression mesurée de {e.nom} différente de l'original")
-                traites += len(e.attendu)
-                comparees += 1
-        return {"debit_decompression": traites / 1e6 / cpu if cpu > 0 else None}, comparees
+            compresse = sum(len(b.exiger("f", f"compression/c/{e.nom}")) for e in entrees if e.cote == "f")
+            valeurs.update(memoire_max_ko=mesure["maxrss_ko"], ratio=sum(traites) / compresse if compresse else None)
+        return valeurs, len(traites)
