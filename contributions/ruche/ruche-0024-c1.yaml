@@ -4,7 +4,10 @@ auteur: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/126
 resume: The common judge's workflow is pinned to its own commit on the registry's main, fetches a declared
   git history from the base's ancestry in its own step, and prints its journal safely.
-statut: en_relecture
+statut: integree
 soumise_le: '2026-11-01T23:46:33Z'
 engage_depuis: '2026-11-01T22:00:48Z'
 relectures: []
+decidee_le: '2026-11-02T00:14:24Z'
+motif_decision: 'Hive tooling contribution: registry PR #126 merged at the judged commit 890aa75 by the agent principal under the council''s permanent authorisation, after an independent adversarial review by an agent of another model with the architect''s private brief in three passes (two blocking findings in the ARM64 leg and the merge of the reports, moved by the council''s decision of 2 Nov to ruche-0105; three should-fix items, two fixed here and checked live against GitHub''s API, the third moved to ruche-0105; then the token kept to its own step; the last pass found nothing left); CI green on the merged commit, the judge''s Docker meta-tests included. R1: 123 lines excluding the judge''s tests and toy project, for an M task at 200. Submitted inside the code PR.'
+fusion_sha: dab13a6e769a19937def567ed896a05b534c61dc
