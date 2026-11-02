@@ -1,0 +1,10 @@
+id: ruche-0130-c1
+tache: ruche-0130
+auteur: bidji29
+pr: https://github.com/Bee-ruche/registre/pull/176
+resume: bee reads YAML with libyaml behind a strict event pre-scan, falling back to the pure loader, and
+  every robot clone writes a commit-graph.
+statut: en_relecture
+soumise_le: '2026-11-02T19:20:34Z'
+engage_depuis: '2026-11-02T15:58:52Z'
+relectures: []
