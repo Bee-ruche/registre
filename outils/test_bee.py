@@ -11190,9 +11190,11 @@ class TestRetraitDemandeRuche0048(BaseRevueRuche0020):
     def entree_a_la_main(self, *noms, **champs):
         """Une consignation écrite à la main, sous sa forme canonique, et les fichiers qu'en écrirait la commande."""
         entree = {"le": os.environ["BEE_MAINTENANT"], "par": "bidji29", "demande": {"canal": "courriel", "le": "2026-11-01"},
-                  "empreintes": sorted(set().union(*map(bee.empreintes_passage, noms))), **champs}
+                  "passages": 0, "empreintes": sorted(set().union(*map(bee.empreintes_passage, noms)))}
         reg = bee.Registre(self.dossier)
-        for chemin, (texte, avant, apres, _) in bee.balayer(reg, entree)[0].items():
+        resultats = bee.balayer(reg, entree)[0]
+        entree = {**entree, "passages": sum(len(v) for r in resultats.values() for v in r[3].values()), **champs}  # ruche-0116
+        for chemin, (texte, avant, apres, _) in resultats.items():
             (self.dossier / chemin).write_text(bee.texte_apres(chemin, texte, avant, apres, set(entree["empreintes"])), encoding="utf-8")
         anciens = (reg.retraits or {}).get("retraits") or []
         (self.dossier / bee.CHEMIN_RETRAITS).write_text(bee._rendu_fidele({"retraits": [*anciens, entree]}, "x"), encoding="utf-8")
@@ -11223,7 +11225,7 @@ class TestRetraitDemandeRuche0048(BaseRevueRuche0020):
         for nom, morceau in (("zorglub", "trop courant"), ("bruno", "jamais retiré"), ("@bruno", "jamais retiré"),
                              ("github:bidji29", "jamais retiré"), ("gina", "jamais retiré"), ("R13", "jamais retiré"),
                              ("miniz-0099", "jamais retiré"), ("minizBee", "jamais retiré"), ("I-0002", "jamais retiré"),
-                             ("10", "jamais retiré"), ("A3", "jamais retiré"), ("bruno a raison", "jamais retiré"),
+                             ("10", "jamais retiré"), ("A2", "jamais retiré"), ("bruno a raison", "jamais retiré"),
                              ("Pour refuser, répondez simplement", "rien ne nomme")):
             with self.subTest(nom):
                 code, texte = self.retirer(noms=["octocat", nom] if morceau != "rien ne nomme" else [nom])
@@ -11442,6 +11444,73 @@ class TestRetraitDemandeRuche0048(BaseRevueRuche0020):
         self.entree_a_la_main("nulle-part-ailleurs")
         self.commit()
         self.refusee("bidji29", "un retrait qui ne retire rien ne se consigne pas")
+
+    # --- ruche-0116 : un plafond glissant sur 7 jours, les commentaires corrigés par le conseil, les seuls arguments qui existent ---
+
+    def test_ruche0116_trois_retraits_bornes_refuses_ensemble_au_dela_du_plafond_glissant(self):
+        self.a("2026-10-31T10:00:00Z")
+        groupes = [[f"nom{g}{i}x" for i in range(3)] for g in "abc"]  # 3 noms x 6 passages : 18 par retrait, sous ses bornes
+        for tache, groupe in zip(("miniz-9001", "miniz-9002", "miniz-0099"), groupes):
+            self.ok("noter", tache, "--utilisateur", "chloe", "--texte", " ".join(n for n in groupe for _ in range(6)))
+        self.commit("des passages")
+        for quand, groupe in (("2026-11-02T10:00:00Z", groupes[0]), ("2026-11-03T10:00:00Z", groupes[1])):
+            self.a(quand)
+            self.branche()
+            code, texte = self.retirer(noms=groupe)
+            self.assertEqual(code, 0, texte)
+            self.commit()
+            self.attend_le_conseil("bidji29", "retrait_demande")
+            self.fusionner()
+        self.assertEqual([r["passages"] for r in bee.lire_yaml(self.dossier / bee.CHEMIN_RETRAITS)["retraits"]], [18, 18])
+        self.a("2026-11-04T10:00:00Z")  # 18 + 18 + 18 > 40 en 7 jours : la commande et la porte refusent
+        code, texte = self.retirer(noms=groupes[2])
+        self.assertEqual(code, 1, texte)
+        self.assertIn("plus de 40 passages en 7 jours glissants", texte)
+        for champs, morceau in (({}, "plus de 40 passages en 7 jours glissants"), ({"passages": 0}, "passages : 18")):
+            with self.subTest(champs):
+                self.branche()
+                self.entree_a_la_main(*groupes[2], **champs)
+                self.commit()
+                self.refusee("bidji29", morceau)
+                self.abandonner()
+        self.a("2026-11-09T10:01:00Z")  # le premier retrait sort de la fenêtre : 18 + 18 <= 40
+        self.branche()
+        code, texte = self.retirer(noms=groupes[2])
+        self.assertEqual(code, 0, texte)
+        self.commit()
+        self.attend_le_conseil("bidji29", "retrait_demande")
+
+    def test_ruche0116_le_conseil_corrige_le_commentaire_comme_le_dit_la_doc(self):
+        tache = self.chemin_tache("miniz-0099")
+        tache.write_text("# Demandé par octocat le 12/10\n" + tache.read_text(encoding="utf-8"), encoding="utf-8")
+        self.commit("sur main : un commentaire la nomme")
+        texte = self.retrait_en_pr()
+        self.assertIn("le supprime, ou y écrit [retiré] à la place de chaque passage", texte)
+        self.assertIn("y écrit `[retiré]` à la place de", (RACINE / "docs/croissance.md").read_text(encoding="utf-8"))
+        brut = tache.read_text(encoding="utf-8")
+        for nom, corrige in (("marque", brut.replace("# Demandé par octocat", f"# Demandé par {bee.MARQUE_RETRAIT}", 1)),
+                             ("suppression", brut.replace("# Demandé par octocat le 12/10\n", "", 1))):
+            with self.subTest(nom):
+                tache.write_text(corrige, encoding="utf-8")
+                self.commit()
+                self.attend_le_conseil("bidji29", "retrait_demande")
+                git(self.dossier, "reset", "-q", "--hard", "HEAD~1")
+        for nom, faux in (("un autre texte", "# Demandé par quelqu'un le 12/10"), ("un commentaire ajouté", "# Demandé le 12/10\n# Bo")):
+            with self.subTest(nom):
+                self.changer_puis_refuser(lambda: tache.write_text(brut.replace("# Demandé par octocat le 12/10", faux, 1), encoding="utf-8"),
+                                          "miniz-0099.yaml : un retrait demandé ne change")
+
+    def test_ruche0116_seuls_les_arguments_qui_existent_sont_proteges(self):
+        protegees = bee.empreintes_protegees(bee.Registre(self.dossier))
+        self.assertTrue(bee.empreintes_passage("A2") <= protegees and not bee.empreintes_passage("A3") & protegees)
+        self.assertTrue(bee.empreintes_passage("R13") <= protegees)
+
+    def test_ruche0116_une_source_retiree_est_la_marque_entiere(self):
+        schema = json.loads((RACINE / "schemas/invitation.schema.json").read_text(encoding="utf-8"))
+        source = bee.Draft202012Validator({**schema["properties"]["pourquoi"]["oneOf"][1]["items"]["properties"]["source"],
+                                           "$defs": schema["$defs"]})
+        self.assertTrue(source.is_valid(bee.MARQUE_RETRAIT) and source.is_valid("https://github.com/hubot"))
+        self.assertFalse(source.is_valid(bee.MARQUE_COURTE))
 
     def test_passages_unitaires(self):
         empreintes = set().union(*map(bee.empreintes_passage, ("github:octocat", "octocat", "exemple.org", "Odile Martin")))
