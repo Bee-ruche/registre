@@ -219,14 +219,21 @@ ne se supprime que par le conseil. `bee valider` ne revérifie pas le rôle actu
 (contrôlé à son ajout) : révoquer un gardien ou quitter le conseil ne rend jamais le registre invalide.
 
 **Tout texte libre du registre** (chaque chaîne que son schéma ne contraint ni par un format, ni par une liste, ni par
-un motif d'identifiant, et chaque clé, dans tout fichier qui a un schéma, ceux du conseil et le manifeste compris) passe
-ces détecteurs quand une PR l'ajoute, champ par champ et tous ensemble, écritures déguisées comprises. **Refusés** : un
-courriel, une adresse postale, un numéro sûr (`+` ou `00`, un mot de téléphone, la forme d'un numéro), une donnée
-sensible dite de quelqu'un (naissance, minorité, maladie, religion, orientation, opinion politique). **Signalés** : un
-numéro douteux, un mot de santé, d'opinion, d'âge ou de minorité ; un humain lit alors la PR avant sa fusion
-(`relecture_humaine`, code 3). Des chiffres techniques (un bloc, des milliers, une liste, une décimale) passent ; hors
-de la ruche et dans l'agora, tout numéro reste refusé. **Question au conseil** (ruche-0047) : le dossier d'une
-invitation ne devrait-il devenir public qu'une fois relu par un humain ?
+un motif d'identifiant, et chaque clé, dans tout fichier qui a un schéma, ceux du conseil et le manifeste compris ; une
+date, un sha, un pseudo ou un numéro de tâche n'en sont pas) passe ces détecteurs quand une PR l'ajoute, borné d'abord,
+écritures déguisées comprises : seul, puis avec les autres textes de la PR et la fin de la note précédente de la tâche,
+joints sans jamais coller deux nombres. **Refusés** : un courriel, une adresse postale, un numéro sûr (après un mot de
+téléphone ; ou, sans virgule de liste : `+` avec un seul séparateur, `00` suivi d'un indicatif de pays, la forme 3-3-4,
+un seul séparateur et un 0 initial), une donnée sensible dite de quelqu'un (âge, naissance, minorité, maladie ou
+traitement, religion, orientation, parti ou opinion politique). **Signalés** : un numéro douteux (listes de paires, bits,
+statistiques de diff, nombres pointés, neuf chiffres groupés par trois) et un mot de santé, d'opinion, d'âge ou de
+minorité ; un humain lit alors la PR avant sa fusion (`relecture_humaine`, code 3). Un nombre technique passe (un bloc,
+des milliers, une liste, une date ISO, une décimale, une adresse IP, `0x…` et les shas). Hors de la ruche et dans
+l'agora, tout numéro reste refusé, sauf `0x…` et les shas ; une date ISO qu'aucun chiffre ne touche sur sa ligne est
+écartée, et un saut de ligne ne joint deux groupes que si l'un a déjà un séparateur ou s'ils ont chacun quatre chiffres ou plus. **Limite** :
+un nombre rangé dans les métriques d'une mesure n'est pas lu (suite : les clés de métrique vérifiées contre le projet).
+**Question au conseil** (ruche-0047) : le dossier d'une invitation ne devrait-il devenir public qu'une fois relu par un
+humain ?
 
 ## Le frein
 

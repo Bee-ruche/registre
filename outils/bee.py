@@ -3585,7 +3585,7 @@ POURQUOI_MAX, FAIT_MAX, ADRESSE_MAX = 5, 300, 200
 # Données personnelles (revues adverses, C1 à C3 puis F1) : un premier filtre, cherché dans tout ce qui sort de la ruche après
 # normalisation (NFKC : ＠ et chiffres pleine largeur, espaces insécables ; tirets unifiés ; URL décodée). Les faux positifs
 # sont acceptés : la relecture humaine reste le vrai contrôle.
-COURRIEL = re.compile(r"(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}")
+COURRIEL = re.compile(r"(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:[.,;:~\x02][A-Za-z0-9-]+)*[.,;:~\x02][A-Za-z]{2,}")
 # ruche-0044: "at the point where", "at some point soon" are English prose, not "<name> at <domain> point <tld>". Fail-closed,
 # such a match is skipped only if all hold: the word is "at" (never "arobase"), the would-be domain is a determiner, the
 # separator is "point", the word after it is in CONTINUATIONS_EN (honest continuations; a test checks that none is a
@@ -3605,22 +3605,28 @@ COURRIEL_DEGUISE = re.compile(r"(?<![\w.+-])[\w.+-]+\s+(?:at|arobase)"
                               rf"(?!(?<=at)\s+(?:{DETERMINANTS_EN})\s+point\s+(?:{CONTINUATIONS_EN})\b(?!{SUITE_D_ADRESSE}))"
                               r"\s+[\w-]+\s+(?:dot|point)\s+[a-z]{2,}\b", re.I)
 # ruche-0047: every free text of the registry is checked for contact details, however written (decoder_courriel): "<name> at
-# <domain> <tld>" with a common top-level domain after a dot, a dash, a slash or a blank, or a bare domain later after an "at".
+# <domain>" with any top-level domain after a dot (a file extension aside), a common one after another sign or a blank, a common
+# mail provider alone, or a bare domain later after an "at"; a dot followed by a blank (\x02) takes only a common one.
 SOSIES = str.maketrans("аеорсухіјѕԁԛԝАВЕКМНОРСТХІЈЅοανικρτυχΑΒΕΖΗΙΚΜΝΟΡΤΥΧ", "aeopcyxijsdqwABEKMHOPCTXIJSoavikptuxABEZHIKMNOPTYX")
 MOTS_AROBASE, MOTS_POINT = r"arobase|arroba|chiocciola|klammeraffe", r"dot|point|punto|punkt|ponto|nokta|te[cč]ka|kropka|piste|punt|d0t"
 MOTS_VIDES = rf"{DETERMINANTS_EN}|{CONTINUATIONS_EN}|in|into|to|by|at|is|are|be|not|or|so|as|our|my|your|his|her|their|its"
 TLD = (r"(?:com|org|net|edu|gov|biz|io|co|eu|uk|fr|de|es|nl|ch|ca|au|nz|jp|cn|ru|br|pt|se|dk|fi|ie|lu|cz|gr|hu|ro|mx|za|kr|tw|hk|sg|tr|"
        r"ua|email|online)(?![\w-]|[./]\w)")  # any case right after the at sign (COURRIEL_DECODE), lower case later (DOMAINE_NU)
+EXTENSIONS = (r"py|pyc|cc|cpp|hpp|cs|go|rs|rb|js|ts|sh|md|rst|txt|ya?ml|json|toml|ini|cfg|conf|lock|log|html?|css|xml|csv|patch|diff|gz|"
+              r"zip|tar|so|exe|dll|bin|in|am|mk|cmake|java|kt|lua|sql|php|out|tmp|bak|orig|swp|asm|obj|lib|dylib|wasm|dat|raw")
+FOURNISSEURS = r"gmail|googlemail|hotmail|outlook|yahoo|icloud|aol|protonmail|proton|gmx|laposte|wanadoo|orange|sfr|yandex|zoho|fastmail|posteo"
 ETIQUETTE = r"[^\W_]+(?:-[^\W_]+)*"
-COURRIEL_DECODE = re.compile(rf"(?<![\w.+-])[\w.+%-]+,?[@\x01](?:(?:{DETERMINANTS_EN})\.(?:{CONTINUATIONS_EN})\s*)?"
-                             rf"(?:(?!(?:{MOTS_VIDES})\b)[^\W_]+\s*[./|_-]{{1,2}}\s*){{0,4}}(?!(?:{MOTS_VIDES})\b)[^\W_]+(?:\s*[./|_-]{{1,2}}\s*|\s+){TLD}", re.I)
-DOMAINE_NU = re.compile(rf"(?<![\w.@\x01/:-])(?!(?i:{MOTS_VIDES})\b|www\.){ETIQUETTE}(?:\.{ETIQUETTE})*\.{TLD}")
-VOIES_FR = r"rue|r\.|avenue|av\.|boulevard|bd|chemin|ch\.|all[ée]e|impasse|imp\.|place|pl\.|quai|route|rte|cours|voie|passage|square|faubourg|fbg|chauss[ée]e"
+COURRIEL_DECODE = re.compile(rf"(?<![\w.+%-])[\w.+%-]+,?[@\x01](?:(?:{FOURNISSEURS})\b|(?:(?:{DETERMINANTS_EN})\.(?:{CONTINUATIONS_EN})\s*)?"
+                             rf"(?:(?!(?:{MOTS_VIDES})\b)[^\W_]+\s*[./|_,;:~\x02-]{{1,2}}\s*){{0,4}}(?!(?:{MOTS_VIDES})\b)[^\W_]+(?:\.(?!(?:"
+                             rf"{EXTENSIONS})\b)[^\W\d_]{{2,}}(?![\w-]|[./(]\w)|(?:\s*[/|_,;:~\x02-]{{1,2}}\s*|\s+){TLD}))", re.I)
+DOMAINE_NU = re.compile(rf"(?<![\w.@\x01\x02/:-])(?!(?i:{MOTS_VIDES})\b|www\.){ETIQUETTE}(?:\.{ETIQUETTE})*[.\x02]{TLD}")
+VOIES_FR = r"rue|r\.|avenue|av\.?|boulevard|bd|chemin|ch\.|all[ée]e|impasse|imp\.|place|pl\.|quai|route|rte|cours|voie|passage|square|faubourg|fbg|chauss[ée]e"
 VOIES_EN = r"Street|St|Road|Rd|Avenue|Ave|Lane|Ln|Boulevard|Blvd|Drive|Dr|Court|Ct|Way|Place|Pl|Square|Sq|Terrace|Close|Crescent|Strasse|Straße|Weg|Gasse|Platz"
 ADRESSE_POSTALE = re.compile(rf"(?i:\b\d{{1,5}}\s*(?:bis|ter|[a-z])?\s*,?\s+(?:{VOIES_FR})(?=[\s.,]|$))"
                              rf"|\b\d{{1,5}}[A-Za-z]?\s+(?:[A-ZÀ-Ý][\w'’-]*\s+){{1,4}}(?:{VOIES_EN})\b"
-                             r"|(?i:\b\d{1,5}[a-z]?\s+(?:[^\W\d_][\w'’-]*\s+){1,4}(?:street|road|avenue|boulevard|lane|terrace|crescent)\b|\b[^\W\d_]+"
-                             r"(?:stra(?:ß|ss)e|gasse|platz)\s+\d{1,4}\b)|\b(?:Via|Piazza|Calle|Plaza|Rua|Avenida|Carrer)\s+(?:[A-ZÀ-Ý][\w'’-]*\s+){1,3}\d{1,4}\b"
+                             r"|(?i:\b\d{1,5}[a-z]?\s+(?:[^\W\d_][\w'’-]*\s+){1,4}(?:street|road|avenue|boulevard|lane|terrace|crescent|drive|rd|st|ave|"
+                             r"av|blvd|ln)\b|\b[^\W\d_]+(?:stra(?:ß|ss)e|gasse|platz)\s+\d{1,4}\b|\bp\.?\s?o\.?\s?box\s+\d+|\b(?:rue|avenue|boulevard|"
+                             r"impasse|all[ée]e)\s+(?:[^\W\d_][\w'’-]*\s+){1,4}\d{1,4}\b)|\b(?:Via|Piazza|Calle|Plaza|Rua|Avenida|Carrer)\s+(?:[A-ZÀ-Ý][\w'’-]*\s+){1,3}\d{1,4}\b"
                              r"|\b\d{5}\s+[A-ZÀ-Ý][a-zà-ÿ-]{2,}|\b[A-ZÀ-Ý][a-zà-ÿ-]{2,}\s+\d{5}\b")
 # Caractères refusés en plus de caractere_interdit dans ce qui sort de la ruche (revue adverse, B1 et B2) : sélecteurs de variante,
 # autres Default_Ignorable_Code_Point, remplissages et braille vide, qui ne s'affichent pas et portent une charge cachée.
@@ -3706,39 +3712,62 @@ def decoder_url(texte):
     return re.sub(r"(?:%[0-9A-Fa-f]{2})+", lambda m: bytes.fromhex(m.group(0).replace("%", "")).decode("utf-8", "replace"), str(texte))
 
 
-# ruche-0047: a phone-like chain, 9 digits or more, and its grade (grade_chaine): 3 sure, refused in every free text; 2 doubtful,
-# read by a human; 1 weak (technical: one block, thousands, a list, a decimal). Out of the hive and in the agora, all are refused.
-CHAINE_CHIFFRES = re.compile(r"(?<![\da-fA-FxX])(?!(?<=[^\W\d_]-)\d{4}(?!\d))(?:\+\s?)?\d+(?:[\W_]{1,3}\d+)*")
+# ruche-0047: a phone-like chain, 9 digits or more, and its grade (telephone): 3 sure, refused in every free text; 2 doubtful, read by
+# a human; 1 weak (technical). Out of the hive and in the agora, all are refused. A line break joins two groups only when one side
+# already holds a separator, or both 4 digits or more. Set aside first: 0x… and shas, ISO dates not next to other digits on their
+# line, and in technical text every ISO date, decimals and IPv4 addresses (HORS_NUMERO, TECHNIQUE).
+CHAINE_CHIFFRES = re.compile(r"(?<!\d)(?:\+\s?)?\d+(?:[\W_]{1,3}\d+)*")
 SEPARATEUR_DEGUISE = re.compile(r"(?<=\d)[^\w,;:]{4,}(?=\d)|(?<=\d)[^\w,;:]{1,3}[^\W\d_]{1,7}[^\w,;:]{1,3}(?=\d)")
 MOT_TELEPHONE = re.compile(r"(?i)\b(?:t[ée]l(?:[ée]phone)?|phone|mobile|portable|gsm|whats ?app|sms|fax)\b")
+HORS_NUMERO = re.compile(r"0[xX][0-9a-fA-F]+|(?<![^\W_])(?=[0-9a-fA-F]*[a-fA-F])(?=[0-9a-fA-F]*\d)[0-9a-fA-F]{7,}(?![^\W_])|(?<!\d)(?<!\d[^\w\n])"
+                         r"(?<!\d[^\w\n]{2})(?<!\d[^\w\n]{3})(?<!-)\d{4}-[01]\d-[0-3]\d(?:T\d\d:\d\d(?::\d\d(?:\.\d+)?)?(?:Z|[+-]\d\d:?\d\d)?)?(?![^\w\n]{0,3}\d)")
+TECHNIQUE = re.compile(r"(?<![\d.,])\d{1,3}(?:\.\d{1,3}){3}(?![\d.,])|(?<![\d.,])\d+[.,]\d+(?![\d.,])|(?<![\d-])\d{4}-[01]\d-[0-3]\d(?:T[\d:.]+(?:Z|[+-]\d\d:?\d\d)?)?(?![\d-])")
 
 
-def telephone(texte):
-    """The grade of the surest chain; read with lookalikes as digits and words or runs of signs as separators, it counts only if sure."""
-    def grade_chaine(texte, m):  # sure: a + or 00, a phone word before it, 3-3-4, or one separator throughout and a leading 0 or pairs
-        groupes, seps = re.findall(r"\d+", m[0]), [re.sub(r"\s+", " ", s) for s in re.findall(r"[\W_]+", m[0].lstrip("+ "))]
-        longueurs, liste = [len(g) for g in groupes], set("".join(seps)) & set(",;:")
+def telephone(texte, technique=False):
+    """The grade (0 to 3) of the surest chain of `texte`; read again with lookalikes as digits and a word or a run of signs between
+    digits as a separator, a chain counts only if sure. Sure: a phone word before it, or, with no list (« , », « ; », « : ») and
+    not only 0 and 1: + with one separator or 3-3-4, 3-3-4, or, not after a task number's dash, 00 and a country code, or one
+    separator throughout and 0 then 1-9."""
+    def chaines(x, couper=True):  # (start, chain), cut at a line break unless one side holds a separator or both 4 digits or more
+        for m in CHAINE_CHIFFRES.finditer(x):
+            morceaux, debut = re.split(r"([\W_]*\n[\W_]*)" if couper else "(?!)", m[0]), m.start()
+            parts, chiffres, interne = [morceaux[0]], sum(c.isdigit() for c in morceaux[0]), bool(re.search(r"\d[\W_]+\d", morceaux[0]))
+            for sep, piece in zip(morceaux[1::2], morceaux[2::2]):
+                if interne or re.search(r"\d[\W_]+\d", piece) or min(chiffres, len(piece)) >= 4:
+                    parts, chiffres, interne = parts + [sep, piece], chiffres + sum(c.isdigit() for c in piece), True
+                else:
+                    yield debut, (chaine := "".join(parts))
+                    debut, parts, chiffres, interne = debut + len(chaine) + len(sep), [piece], len(piece), False
+            yield debut, "".join(parts)
+
+    def grade(x, debut, chaine):
+        groupes, seps = re.findall(r"\d+", chaine), [re.sub(r"\s+", " ", s) for s in re.findall(r"[\W_]+", chaine.lstrip("+ "))]
+        longueurs, uniforme, liste = [len(g) for g in groupes], len(set(seps)) <= 1, re.search(r"[,;] |:", "".join(seps))
         if sum(longueurs) < 9:
             return 0
-        if not liste and (m[0][0] == "+" or (m[0][:2] == "00" and len(groupes) > 1) or MOT_TELEPHONE.search(texte[max(0, m.start() - 25):m.start()])
-                          or longueurs[-3:] == [3, 3, 4] or (len(set(seps)) <= 1 and (re.match(r"0[1-9]", groupes[0]) or set(longueurs) == {2}))):
+        if MOT_TELEPHONE.search(x[max(0, debut - 25):debut]) or not liste and set("".join(groupes)) - {"0", "1"} and (
+                chaine[0] == "+" and (uniforme or longueurs[-3:] == [3, 3, 4]) or longueurs[-3:] == [3, 3, 4]
+                or not re.fullmatch(r"[^\W\d_]-", x[max(0, debut - 2):debut]) and (re.match(r"00[1-9]", chaine) or uniforme and re.match(r"0[1-9]", chaine))):
             return 3
-        milliers = len(set(seps)) == 1 and len(seps[0]) == 1 and longueurs[0] <= 3 and set(longueurs[1:]) == {3}
-        return 1 if (len(groupes) == 1 or milliers or liste or (len(set(seps)) > 1 and "." in "".join(seps))) else 2
-    t = re.sub(r"(?<=\d)[OoIl](?![^\W\d_])|(?<![^\W\d_])[OoIl](?=\d)", lambda c: "0" if c[0] in "Oo" else "1",
-               re.sub(r"[^\D0-9]", lambda c: str(unicodedata.decimal(c[0])), texte))
-    lu = SEPARATEUR_DEGUISE.sub(" - ", t)
-    return max([grade_chaine(t, m) for m in CHAINE_CHIFFRES.finditer(t)] + [3 * (grade_chaine(lu, m) == 3) for m in CHAINE_CHIFFRES.finditer(lu)] + [0])
+        milliers = uniforme and seps and len(seps[0]) == 1 and longueurs[0] <= 3 and set(longueurs[1:]) == {3} and sum(longueurs) != 9
+        return 1 if (len(groupes) == 1 or milliers or liste or set(longueurs) == {1} and groupes[0] != "0"
+                     or not uniforme and "." in "".join(seps)) else 2
+    t = re.sub(r"[^\x00-\x7f]", lambda c: str(int(n)) if (n := unicodedata.numeric(c[0], -1)) in range(10) else c[0], texte)
+    t = HORS_NUMERO.sub(" elisions ", re.sub(r"(?<=\d)[OoIl](?![^\W\d_])|(?<![^\W\d_])[OoIl](?=\d)", lambda c: "0" if c[0] in "Oo" else "1", t))
+    t, lu = (t := TECHNIQUE.sub(" elisions ", t) if technique else t), SEPARATEUR_DEGUISE.sub(" - ", t)
+    return max([grade(t, d, c) for d, c in chaines(t)] + [3 * (grade(lu, d, c) == 3) for d, c in chaines(lu, False)] + [0])
 
 
 def decoder_courriel(texte):
-    """`texte` with each written at sign as @, a bare « at » as \\x01, each dot as « . », lookalikes as Latin, no blank around them."""
+    """`texte` with each written at sign as @, a bare « at » as \\x01, each dot as « . » (\\x02 when a blank follows a written one),
+    lookalikes as Latin, no blank around them."""
     t = texte.translate(SOSIES)
-    t = re.sub(rf"(?i)[(\[{{<]\s*(?:at|{MOTS_AROBASE})\s*[)\]}}>]|(?<![^\W_])(?:{MOTS_AROBASE})(?![^\W_])|(?<=[^\W_])[-_.]at[-_.](?=[^\W_])", "@", t)
+    t = re.sub(rf"(?i)[(\[{{<]\s*(?:at|@|{MOTS_AROBASE})\s*[)\]}}>]|(?<![^\W_])(?:{MOTS_AROBASE})(?![^\W_])|(?<=[^\W_])[-_.]at[-_.](?=[^\W_])", "@", t)
     t = re.sub(r"(?i)(?<![^\W_])at(?![^\W_])", "\x01", t)
-    t = re.sub(rf"(?i)(?<![-_.,\s])[-_.,\s]*(?:[(\[{{<]\s*(?:{MOTS_POINT})\s*[)\]}}>]|(?<![^\W_])(?:{MOTS_POINT})(?![^\W_]))[-_.,\s]*|{POINTS}",
+    t = re.sub(rf"(?i)(?<![-_.,\s])[-_.,\s]*(?:[(\[{{<]\s*(?:{MOTS_POINT}|\.)\s*[)\]}}>]|(?<![^\W_])(?:{MOTS_POINT})(?![^\W_]))[-_.,\s]*|{POINTS}",
                ".", re.sub(r"(?<=\b\w) (?=\w\b)", "", t))  # a l i c e: letters spaced one by one
-    return re.sub(r"(?<!\s)\s+(?=[@\x01.])|(?<=[@\x01.])\s+|(?<=\w),(?=\s*\x01)", "", t)
+    return re.sub(r"(?<!\s)\s+(?=[@\x01.\x02])|(?<=[@\x01])\s+|(?<=\w),(?=\s*\x01)", "", re.sub(r"\.\s+", "\x02", t))
 
 
 def courriel(texte):
@@ -3749,35 +3778,54 @@ def courriel(texte):
                 or (at >= 0 and DOMAINE_NU.search(d, at + 1)))
 
 
+BORNE_DETECTEURS = 4 * max(TEXTES_PROPRES.values())  # characters read by donnee_personnelle, the rest is not (ruche-0047)
+
+
 def donnee_personnelle(texte, seuil=1):
-    """Ce qui ressemble à une donnée personnelle dans un texte (courriel, même déguisé ; téléphone ; adresse postale), ou None."""
-    texte = re.sub(r"[\u2010-\u2015\u2212\ufe58\ufe63]", "-", unicodedata.normalize("NFKC", decoder_url(texte)))
+    """Ce qui ressemble à une donnée personnelle dans un texte (courriel, même déguisé ; téléphone ; adresse postale), ou None.
+    `seuil` : le grade d'un numéro qui compte (telephone ; au-delà de 1, les décimales et adresses IP sont écartées)."""
+    texte = decoder_url(str(texte)[:BORNE_DETECTEURS])
+    try:  # HTML entities, decoded to a fixed point as ruche-0049 does
+        texte = entites_decodees(re.sub(r"&#([xX]?)0+(?=[0-9a-fA-F])", r"&#\1", texte), "") if "&" in texte else texte
+    except ValueError:  # a reference longer than int() reads: no character, nothing decoded
+        pass
+    texte = re.sub(r"[\u2010-\u2015\u2212\ufe58\ufe63]", "-", unicodedata.normalize("NFKC", texte))
     texte = re.sub(r"[^\S\n]", " ", texte)
     if courriel(texte):
         return "une adresse de courriel"
     if any(ADRESSE_POSTALE.search(t) for t in (texte, re.sub(r"[-_+/]", " ", texte), texte.translate(SOSIES))):
         return "une adresse postale"
-    return "un numéro de téléphone" if telephone(texte) >= seuil else None
+    return "un numéro de téléphone" if telephone(texte, seuil > 1) >= seuil else None
 
 
 # ruche-0047: data about a person that no free text carries (commandment 10): health, opinions, age or being a minor. Refused when a
-# sentence says it of someone; a word that may say it is read by a human. Health checks, minor versions, child processes pass.
-SENSIBLE_SUR = re.compile(r"(?i)\b(?:date (?:of birth|de naissance)|\d{1,2}[- ]years?[- ]old (?:boy|girl|child|kid|son|daughter|student|man|"
-                          r"woman)|(?:is|est|was|était) (?:a|un|une) (?:minor|mineure?)\b(?![\s-]*[^\W\d_])|(?:is|est|was|était) (?:pregnant|"
-                          r"enceinte)|hospitali[sz](?:ed|ée?)|(?:he|she|il|elle) (?:is|was|has|had|est|était|a|avait) (?:an? |une? )?(?:sick|"
-                          r"malade|cancer|diab\w+|d[ée]press\w+|autis\w+|handicap\w*|disabled)|(?:is|est|was|était|identifies as) (?:an? |"
-                          r"une? )?(?:communist|socialist|fascist|anarchist|catholic|muslim|jewish|christian|atheist|buddhist|hindu|protestant|"
-                          r"gay|lesbian|bisexual|transgender|homosexual|communiste|socialiste|fasciste|anarchiste|catholique|musulmane?|juive?|"
-                          r"chrétienne?|athée|bouddhiste|protestante?|homosexuel(?:le)?|lesbienne|transgenre)\b)")
-SENSIBLE_DOUTE = re.compile(r"(?i)\b(?:sick|malade|maladie|illness|cancer|diab[eè]t\w*|d[ée]pression|depressed|anxiety|anxiété|burn[- ]?out|"
-                            r"autis\w*|adhd|tdah|hiv|vih|sida|pregnan\w*|enceinte|handicapée?|disabilit(?:y|ies)|psychiatr\w*|th[ée]rap(?:y|ie|"
-                            r"ist\w*)|hospital|h[ôo]pital|m[ée]dicaments?|medication|surgery|chirurgie|chemo\w*|chimio\w*|mental health|"
-                            r"sant[ée] mentale|d[ée]c[ée]d[ée]e?|deceased|political party|parti politique|(?:left|right)[- ]wing|far[- ](?:left|"
-                            r"right)|extr[êe]me[- ](?:gauche|droite)|religio\w+|church|[ée]glise|mosque|mosquée|synagogue|syndiqu[ée]e?|"
-                            r"union member|sexual orientation|orientation sexuelle|sexualit[yé]|gay|lesbian|lesbienne|homosexu\w*|bisexu\w*|"
-                            r"transgen\w*|queer|\d{1,2}[- ]years?[- ]old|years of age|âgée? de \d{1,2} ans|a \d{1,2} ans|teen(?:ager)?s?|"
-                            r"adolescente?s?|underage|(?:an?|the|une?|des|les) (?:minor|mineur)e?s?\b(?![\s-]*[^\W\d_])|minors|born (?:on|in)|"
-                            r"n[ée]e? (?:le|en) \d)\b")
+# sentence says it of someone (a subject: she, he, il, elle, contractions included); a word that may say it is read by a human.
+# Health checks, a minor version, « a minor » release, a date of birth field, the age of a branch, child processes pass.
+SENSIBLE_SUR = re.compile(
+    r"(?i)\b(?:date (?:of birth|de naissance)(?! ?(?:fields?|columns?|formats?|pars\w+|attributes?|propert\w+|keys?|champs?|colonnes?|"
+    r"attributs?|cl[ée]s?)\b)|\d{1,2}[- ]years?[- ]old (?:boy|girl|child|kid|son|daughter|student|man|woman)|\d{1,2} ?y\.?o\b|\d{1,2} ?y/o\b|"
+    r"aged \d{1,2}\b(?! ?(?:ms|s|sec\w*|min\w*|h|hours?|days?|jours?|weeks?|semaines?|months?|mois|commits?|releases?|versions?)\b)|"
+    r"under (?:the age of )?18\b(?! ?(?:ms|s|%|[kmg]i?b|bytes?|octets?)\b)|moins de 18 ans|underage|"
+    r"(?:she|he|il|elle)(?:['’]s|\s+(?:is|was|has|had|est|était|a|avait)) (?:an? |une? )?(?:minor|mineure?)\b|"
+    r"(?:she|he|il|elle)(?:['’]s|\s+(?:is|was|est|était|a)) \d{1,2}(?: years?(?: old)?| ans)?(?=\s*(?:[.,;!?)]|$))|"
+    r"(?:is|est|was|était) (?:pregnant|enceinte)|hospitali[sz](?:ed|ée?)|\bon (?:anti-?depressants?|insulin|chemo\w*|meds)\b|"
+    r"sous (?:antid[ée]presseurs?|insuline|chimio\w*)|member of the \w+ party|membre du parti|de confession \w+|"
+    r"(?:(?:she|he|il|elle)(?:['’]s|\s+(?:is|was|has|had|est|était|a|avait))|diagnosed with|diagnostiquée? (?:avec|d['’e])|suffers from|"
+    r"souffre d['’e]|atteinte? d['’e]) (?:an? |une? |du |de la |d['’])?(?:cancer|leuk[ae]mia|leucémie|epilepsy|épilepsie|diab\w+|hiv|vih|"
+    r"aids|sida|d[ée]press\w+|autis\w+|schizophr\w+|bipola\w+|alzheimer\w*|parkinson\w*|asthma|asthme|tubercul\w+|hepatitis|hépatite|"
+    r"scl[ée]ros\w+|sick|malade|handicap\w*|disabled)|(?:(?:she|he|il|elle)(?:['’]s|\s+(?:is|was|est|était))|identifies as) "
+    r"(?:an? |une? )?(?:republican|democrat|conservative|libertarian|labour|tory|républicaine?|conservat\w+)\b|"
+    r"(?:(?:she|he|il|elle)['’]s|is|est|was|était|identifies as) (?:an? |une? )?(?:communist|socialist|fascist|anarchist|catholic|muslim|"
+    r"jewish|christian|atheist|buddhist|hindu|protestant|evangelical|gay|lesbian|bisexual|transgender|homosexual|communiste|socialiste|"
+    r"fasciste|anarchiste|catholique|musulmane?|juive?|chrétienne?|athée|bouddhiste|protestante?|homosexuel(?:le)?|lesbienne|transgenre)\b)")
+SENSIBLE_DOUTE = re.compile(
+    r"(?i)\b(?:sick|malade|maladie|illness|cancer|diab[eè]t\w*|d[ée]pression|depressed|anxiety|anxiété|burn[- ]?out|autis\w*|adhd|"
+    r"tdah|hiv|vih|sida|pregnan\w*|enceinte|handicapée?|disabilit(?:y|ies)|psychiatr\w*|th[ée]rap(?:y|ie|ist\w*)|hospital|h[ôo]pital|"
+    r"m[ée]dicaments?|medication|surgery|chirurgie|chemo\w*|chimio\w*|mental health|sant[ée] mentale|d[ée]c[ée]d[ée]e?|deceased|"
+    r"political party|parti politique|(?:left|right)[- ]wing(?! of)|far[- ](?:left|right)|extr[êe]me[- ](?:gauche|droite)|religio\w+|"
+    r"(?-i:church)|[ée]glise|mosque|mosquée|synagogue|syndiqu[ée]e?|union member|sexual orientation|orientation sexuelle|sexualit[yé]|"
+    r"gay|lesbian|lesbienne|homosexu\w*|bisexu\w*|transgen\w*|queer|\d{1,2}[- ]years?[- ]old|years of age|âgée? de \d{1,2} ans|"
+    r"(?<!il y )a \d{1,2} ans|teen(?:ager)?s?|adolescente?s?|minors|born (?:on|in)|n[ée]e? (?:le|en) \d)\b")
 SCHEMAS_TEXTES = {"taches": "tache", "contributions": "enregistrement", "votes": "vote", "mesures": "mesure", "membres": "membre", "projets": "projet",
                   "propositions": "proposition", "debats": "debat", "invitations": "invitation", CHEMIN_NON_CONTACT: "ne-plus-contacter",
                   "gouvernance/incidents.yaml": "incidents", "CONTRIBUTION.yaml": "contribution"}
@@ -3813,17 +3861,24 @@ def chemins_de_texte(noeud, racine, chemin="", sortie=None, profondeur=0):
 
 def textes_personnels(reg, chemin, ancien, nouveau):
     """ruche-0047: (refusals, whether a human must read it) for the free texts a PR adds to a file of SCHEMAS_TEXTES (CONTRIBUTION.yaml:
-    the fork's manifest), keys and paths its schema does not name included, each alone and all together."""
+    the fork's manifest), keys and paths its schema does not name included; dates, shas and the registry's names are not free text.
+    Each text, bounded first, is read alone (a doubt: read by a human), then all together and field by field, after the last 60
+    characters of a task's previous note, joined by a breaker that glues no digits: there only what is sure is refused."""
     nom = SCHEMAS_TEXTES.get(chemin) or SCHEMAS_TEXTES.get(chemin.split("/", 1)[0] if chemin.endswith(".yaml") else "")
     if not nom or not isinstance(nouveau, (dict, list)):
         return [], False
     libres, vus = chemins_de_texte(schema := reg.schema(nom).schema, schema), {t for _, t in textes_de(ancien)}
     vus |= {*getattr(reg, "membres", ()), *getattr(reg, "conseil", ()), *getattr(reg, "taches", ()), *getattr(reg, "enregistrements", ())}
-    textes = [(lieu, t) for lieu, t in textes_de(nouveau) if t is not None and t not in vus and not NON_LIBRE.fullmatch(t) and (lieu.endswith(" (clé)") or libres.get(
-        champ := re.sub(r"\[\d+\]", "[]", lieu), libres.get(re.sub(r"[^/]*$", "*", champ) if "/" in champ else "*", True)))]
-    refus, relire = [], any(donnee_personnelle(t, 2) or SENSIBLE_DOUTE.search(t) for _, t in textes)  # a doubt: in one field
-    valeurs = [(re.sub(r"\[\d+\]", "[]", l), t) for l, t in textes if not l.endswith(" (clé)")]  # together: in order, and field by field
-    for lieu, texte in textes + [("(ensemble des textes)", "\n".join(t for _, t in v)) for v in (valeurs, sorted(valeurs, key=lambda x: x[0]))]:
+    textes = [(lieu, t[:BORNE_DETECTEURS]) for lieu, t in textes_de(nouveau) if t is not None and t not in vus and not NON_LIBRE.fullmatch(t)
+              and (lieu.endswith(" (clé)") or libres.get(champ := re.sub(r"\[\d+\]", "[]", lieu), libres.get(re.sub(r"[^/]*$", "*", champ)
+                                                                                                         if "/" in champ else "*", True)))]
+    refus, relire = [], any(donnee_personnelle(t, 2) or SENSIBLE_DOUTE.search(t) for _, t in textes)
+    notes = ancien.get("notes") if nom == "tache" and isinstance(ancien, dict) and isinstance(ancien.get("notes"), list) else []
+    fin = str(notes[-1].get("texte"))[-60:] if notes and isinstance(notes[-1], dict) else ""
+    valeurs = [("notes[]/texte", fin)] * bool(fin and not (donnee_personnelle(fin, 3) or SENSIBLE_SUR.search(fin))) + [
+        (re.sub(r"\[\d+\]", "[]", l), t) for l, t in textes if not l.endswith(" (clé)")]
+    for lieu, texte in textes + [("(ensemble des textes)", "\n;;;;\n".join(t for _, t in v)[:BORNE_DETECTEURS])
+                                 for v in (valeurs, sorted(valeurs, key=lambda x: x[0]))]:
         donnee = donnee_personnelle(texte, 3) or (SENSIBLE_SUR.search(texte) and "une donnée sensible (santé, opinions, âge)")
         if donnee and not refus:
             refus.append(f"{chemin} : {lieu} : {donnee} : aucune donnée d'une personne dans un texte libre du registre (R13)")

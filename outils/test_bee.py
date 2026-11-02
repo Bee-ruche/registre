@@ -2757,7 +2757,9 @@ class TestPublier(BaseTest):
                               "https://example.org/a%20b", "tests/test_bee.py::TestPublier::test_x", "file.py:func", "[ok]: /tmp/x",
                               "https://github.com/Bee-ruche/registre", "https://example.org/a", "[doc](https://example.org/a%20b)",
                               "[x](/Bee-ruche/registre/pull/3)", "x == y", "50 % plus rapide", "https://github.com/Bee-ruche/registre/www.x.org",
-                              "ids 12&#10;34", "a&#9;b"]
+                              "a&#9;b"]
+    # Refused on purpose in an outgoing text since ruche-0047: nine digits over two lines, two blocks of four digits or more joining.
+    SORTANTS_REFUSES_EXPRES_0047 = ["ids 1234&#10;56789"]
     SORTANTS_HONNETES = ["Réservation miniz-0036", "Soumission miniz-0012-c1", "Réservation ruche-0024, ruche-0042", "x@upstream",
                          "uses actions/checkout@v4", "pkg@1.2.3", "#12, GH-12, D-0019", "Bee-ruche/registre#12", "Bee-ruche/minizBee@a5c3785",
                          "https://github.com/Bee-ruche/registre/pull/53.", "github.com/Bee-ruche/minizBee", "https://bee-ruche.github.io/registre/",
@@ -2784,6 +2786,10 @@ class TestPublier(BaseTest):
         self.assertFalse(self.journal.exists(), "aucun appel à gh")
         self.assertEqual((git(self.dossier, "rev-parse", "HEAD"), git(self.dossier, "branch").split()), (avant, ["*", "main"]))
         self.assertNotIn("bee/", git(self.dossier, "ls-remote", "--heads", "origin"))
+
+    def test_refused_on_purpose_since_ruche_0047(self):
+        for texte in self.SORTANTS_REFUSES_EXPRES_0047:
+            self.assertIn("un numéro de téléphone", bee.texte_sortant_refuse(texte, "corps", 8000, "Bee-ruche") or "")
 
     def test_titre_et_corps_honnetes_passent(self):
         corps = ("Réservation de miniz-0099 (registre #12, GH-12, Bee-ruche/minizBee#3, Bee-ruche/minizBee@a5c3785, "
@@ -10161,8 +10167,13 @@ ADRESSES_0047 = ("12 rue de la Paix-Fictive", "12, rue de la Paix-Fictive", "12\
                  "Via Fittizia 12", "Calle Ficticia 5", "99001 Exempleville", "Exempleville 99001", "12 boulevard Inventé")
 # Ordinary technical text that bees write: it is neither refused nor read by a human first.
 TECHNIQUES_0047 = (
-    "instructions_decompression 29 954 575 -> 26 160 282 (-12,67 %)", "134 164 249 instructions, 1 234 567 890 octets",
+    "instructions_decompression 29 954 575 -> 26 160 282 (-12,67 %)", "29 954 575 instructions, 1 234 567 890 octets",
     "run 41075923604, PR #16", "commit 55ef68e935b0cf2d9efa6999063b2c9d1054c49c", "miniz-0017-c1, miniz-0018 et miniz-0039",
+    "It is a minor, backwards compatible change.", "The bump is a minor; see CHANGELOG.", "This release is a minor (no API change).",
+    "C'est une mineure.", "Add a date of birth field to the form parser.", "mean 0.123456789 ms", "ip 192.168.1.100", "2026-10-27 - 2026-11-02",
+    "1 2 3 4 5 6 7 8 9", "il y a 10 ans", "Church encoding", "the left-wing of the tree", 'static const char hex[] = "0123456789abcdef";',
+    "The estimate is conservative.", "Cache entries aged 10 minutes are dropped under 18 ms.", "Fixes:\n- 145\n- 146\n- 147",
+    "Mesures:\n12.5\n13.1\n12.9\n13.4", "Dates\n2026-11-02\n2026-11-03", "1\n2\n3\n4\n5\n6\n7\n8\n9", "fails at bee.py and at main.rs",
     "lignes 1163-1174 et 1471-1477 de miniz_tdef.c", "(l. 1120-1123) 6,6 %", "Python 3.10, 3.11, 3.12 et 3.13",
     "produit par 0x0001000100010001", "le commit 8839681 : 3843 contrôles, 0 écart", "mémoire 1764 à 1766 Ko",
     "The health checks pass on every minor version.", "A minor change; the change is minor.", "The age of a branch, the age of the cache.",
@@ -10173,10 +10184,24 @@ TECHNIQUES_0047 = (
     "It fails at bee.py line 42, then at deflate.c.", "Le décodeur est appelé à chaque appel (0 à 40, 0 à 34, 0 à 28).")
 # Sensitive data said of someone: refused; a word that may say it: read by a human.
 SENSIBLES_SURES_0047 = ("Sa date de naissance : 1er mai 1990.", "Date of birth: 1 May 1990.", "Elle est malade depuis mars.", "He has cancer.",
+                        "She is 14.", "She was aged 14 then.", "A 14yo maintainer.", "Not under 18, she said.", "He is a Republican.",
+                        "She has leukemia.", "Diagnosed with epilepsy.", "He is on antidepressants.", "She's an atheist.", "Elle a 15 ans.",
+                        "Il est de confession juive.", "He's a minor.",
                         "Elle est une mineure.", "She is a minor.", "He is a 15-year-old student.", "Elle est enceinte.", "Il a été hospitalisé.",
                         "She is Catholic.", "Il est musulman.", "He identifies as gay.", "Elle est communiste.")
 SENSIBLES_DOUTEUSES_0047 = ("Il soigne un cancer.", "Treated for depression last year.", "Son parti politique est connu.", "Votes far-right.",
-                            "Fifteen, or 15 years old.", "Elle a 15 ans.", "A teenager maintains it.", "Seen at church.", "We met minors there.")
+                            "Fifteen, or 15 years old.", "Le projet a 15 ans.", "A teenager maintains it.", "Seen at church.", "We met minors there.")
+# Technical numbers that look like a number from afar: read by a human, never refused.
+DOUTES_TECHNIQUES_0047 = ("bits 0101 1100 0011 1010", "01101010 10011100", "code lengths 12 15 17 20 22", "10 11 12 13 14 15",
+                          "+120 -45 +300 -12", "+1234 -5678 +9", "10.20.30.40.50", "134 164 249 instructions", "Joignable au 612 345 678.")
+# The adversarial review's shapes (fictional): refused in every free text.
+REVUE_0047 = ("alice.martin[@]example[.]org", "alice.martin&#64;example.org", "alice.martin&amp;#64;example.org", "alice.martin@example,org",
+              "alice.martin@example;org", "alice.martin@example:org", "alice.martin@example~org", "alice.martin at example,org",
+              "alice.martin at hotmail", "bob at gmail for details", *(f"alice.martin at example.{t}" for t in ("it", "be", "pl", "info", "dev", "xyz",
+              "me", "app")), "Write to alice.martin at Example.It", "06,12,34,56,78", "06;12;34;56;78", "0033612345678", "0033 6 12 34 56 78",
+              "\u2776\u2777\u2778 \u2779\u277a\u277b \u277c\u277d\u277e\u2776", "\u96f6\u516d \u4e00\u4e8c \u4e09\u56db \u4e94\u516d \u4e03\u516b",
+              "Contact Phone0612345678 for details", "Fax0612345678", "Mobile06 12 34 56 78", "ID0612345678", "joignez-la au Phone0612345678 svp.",
+              "12 oak rd", "12 high st", "12 av Foch", "12 oak drive", "PO Box 1234", "Rue de la Paix 12")
 
 
 def variantes_courriel_0047():
@@ -10253,6 +10278,25 @@ def planter_0047(chemin, valeur):
     return valeur
 
 
+def numero_main_0047(texte):
+    """main's phone detector before ruche-0047, for the differential check: 9 digits or more that no letter separates, nor more than
+    3 other characters in a row; a line break cuts; an O taken for 0 next to digits."""
+    texte = re.sub(r"(?<=\d)[Oo](?![^\W\d_])|(?<![^\W\d_])[Oo](?=\d)", "0", texte)
+    chiffres = ecart = 0
+    for c in texte:
+        if c.isdigit():
+            chiffres, ecart = chiffres + 1, 0
+            if chiffres >= 9:
+                return True
+        elif c.isalpha() or c == "\n":
+            chiffres = ecart = 0
+        elif chiffres:
+            ecart += 1
+            if ecart > 3:
+                chiffres = ecart = 0
+    return False
+
+
 class TestPersonalDataEveryFreeText(unittest.TestCase):
     """ruche-0047: every free text of the registry, as its schema says, is checked for contact details, however written, and
     for sensitive data about a person; ordinary technical text passes. No registry: fast."""
@@ -10289,12 +10333,43 @@ class TestPersonalDataEveryFreeText(unittest.TestCase):
         self.assertIn("(ensemble des textes)", refus[0])
         ancien = {"notes": [{"texte": "Pour la suite, alice at"}]}
         self.assertEqual(bee.textes_personnels(reg, "taches/miniz/miniz-0099.yaml", ancien, ancien), ([], False), "only what is new is read")
+        suite = {"notes": [*ancien["notes"], {"texte": "example dot org, le soir."}]}
+        self.assertIn("(ensemble des textes)", bee.textes_personnels(reg, "taches/miniz/miniz-0099.yaml", ancien, suite)[0][0],
+                      "split across two PRs: the previous note's end is read with the new one")
+        self.assertEqual(bee.textes_personnels(reg, "taches/miniz/x.yaml", None, {"notes": [{"texte": "ruche-0029 : 12 34"},
+                                                                                            {"texte": "56 78 90 x"}]}), ([], False),
+                         "the join glues no digits")
+        for nom in ("ruche-0028", "ruche-0100"):  # real task files, read as new, with no registry names to lean on
+            with self.subTest(tache=nom):
+                donnees = bee.lire_yaml(pathlib.Path(__file__).parent / "tests" / "textes-0047" / f"{nom}.yaml")
+                self.assertEqual(bee.textes_personnels(reg, f"taches/ruche/{nom}.yaml", None, donnees), ([], False))
 
     def test_disguised_contact_details_are_refused(self):
-        variantes = [*variantes_courriel_0047(), *variantes_telephone_0047(), *(f"Elle vit au {a}, depuis 2019." for a in ADRESSES_0047)]
+        variantes = [*variantes_courriel_0047(), *variantes_telephone_0047(), *(f"Elle vit au {a}, depuis 2019." for a in ADRESSES_0047),
+                     *REVUE_0047]
         passees = [v for v in variantes if bee.donnee_personnelle(v, 3) is None]
         self.assertEqual(passees, [])
         self.assertGreaterEqual(len(variantes), 1000)
+
+    def test_outgoing_texts_refuse_what_main_refused(self):
+        """Differential (fictional shapes): a number main refused in an outgoing text is still refused, unless it sits in a hex context
+        (0x…, or a word of 7 hex characters or more with a letter and a digit, such as a sha), which is set aside on purpose."""
+        hasard = __import__("random").Random(47)
+        prefixes = ("", "Contact ", "Phone", "Fax", "Mobile", "ID", "Tel", "abc", "e", "F", "x", "X", "ref-", "run ", "#", "PR #", "le ",
+                    "miniz-", "tel:", "+", "00", "0x", "(", "Joignable au ")
+        separateurs = (" ", "-", ".", "/", ",", ";", ":", "  ", " - ", "\n", "(", ") ", "_", "%", ", ", "--", "...")
+        formes, ecarts = [], []
+        for _ in range(4000):
+            groupes = ["".join(hasard.choice("0123456789") for _ in range(hasard.randint(1, 5))) for _ in range(hasard.randint(1, 6))]
+            corps = groupes[0] + "".join(hasard.choice(separateurs) + g for g in groupes[1:])
+            formes.append(hasard.choice(prefixes) + corps + hasard.choice(("", " for details", ".", "x", "abc", " ms", " %", "\n12", " 2026")))
+        formes += ["Contact Phone0612345678 for details", "Fax0612345678", "Mobile06 12 34 56 78", "ID0612345678", "2026-11-02 10:00:00 12"]
+        hexa = re.compile(r"0[xX]|(?<![^\W_])(?=[0-9a-fA-F]*[a-fA-F])(?=[0-9a-fA-F]*\d)[0-9a-fA-F]{7,}(?![^\W_])")
+        for forme in formes:
+            if numero_main_0047(lu := bee.decoder_url(forme)) and not hexa.search(lu) and bee.texte_sortant_refuse(forme, "corps", 8000, "Bee-ruche") is None:
+                ecarts.append(forme)
+        self.assertEqual(ecarts, [])
+        self.assertGreater(sum(numero_main_0047(bee.decoder_url(f)) for f in formes), 1000)
 
     def test_honest_text_passes(self):
         for texte in PHRASES_HONNETES_0044 + TECHNIQUES_0047:
@@ -10310,7 +10385,7 @@ class TestPersonalDataEveryFreeText(unittest.TestCase):
             with self.subTest(sure=texte):
                 refus, _ = bee.textes_personnels(reg, "taches/miniz/x.yaml", None, {"notes": [{"texte": texte}]})
                 self.assertIn("une donnée sensible", refus[0] if refus else "")
-        for texte in SENSIBLES_DOUTEUSES_0047 + ("Joignable au 12 34 56 78 9.", "Le 1234 5678 9012 3456."):
+        for texte in SENSIBLES_DOUTEUSES_0047 + DOUTES_TECHNIQUES_0047 + ("Joignable au 12 34 56 78 9.", "Le 1234 5678 9012 3456."):
             with self.subTest(doute=texte):
                 self.assertEqual(bee.textes_personnels(reg, "taches/miniz/x.yaml", None, {"notes": [{"texte": texte}]}), ([], True))
 
@@ -10318,13 +10393,16 @@ class TestPersonalDataEveryFreeText(unittest.TestCase):
         """A free text at the largest bound of the registry is checked in well under a second, however it is written."""
         n = max(bee.TEXTES_PROPRES.values())
         for motif in (" ", "-", "at ", "alice at ", "1 ", "12-", "0 6 ", "a.", "@", "a@b.", "dot ", "point - ", "\n", "06 x ", "a l i c e ",
-                      "x\u00b7", "(at) ", ", ", "the point where ", "at at the ", "Il est ", "12 rue "):
+                      "x\u00b7", "(at) ", ", ", "the point where ", "at at the ", "Il est ", "12 rue ", "%", "+", "_", "a%", "%1", "1%", "+1 ", "a+",
+                      "~", ";", ":", "a,", "&#64;", "&", "[.]", "\n1", "0x1", "1\n", "1;", "a\u2027", ". ", "a. ", "she's ", "aged 1 "):
             texte = (motif * (n // len(motif) + 1))[:n]
-            with self.subTest(motif=motif):
-                debut = time.perf_counter()
-                bee.donnee_personnelle(texte)
-                bee.textes_personnels(reg_schemas_0047(), "propositions/P-0001.yaml", None, {"texte_propose": texte, "motif": texte[:4000]})
-                self.assertLess(time.perf_counter() - debut, 1.0)
+            for nom, verifier in (("detectors", lambda: bee.donnee_personnelle(texte)),
+                                  ("gate", lambda: bee.textes_personnels(reg_schemas_0047(), "propositions/P-0001.yaml", None, {"texte_propose": texte})),
+                                  ("past the bound", lambda: bee.donnee_personnelle(texte * 6))):  # bounded before any detector runs
+                with self.subTest(motif=motif, appel=nom):
+                    debut = time.perf_counter()
+                    verifier()
+                    self.assertLess(time.perf_counter() - debut, 1.0)
 
 
 class TestPersonalDataGate(BaseTest):
@@ -10348,7 +10426,8 @@ class TestPersonalDataGate(BaseTest):
 
     def test_a_task_note_is_checked(self):
         for textes in (["Pour en parler : alice at example dot org."], ["Joignable au 06 dash 12 dash 34 dash 56 dash 78."],
-                       ["Pour en parler, alice at", "example. Org, le soir."], ["Elle est malade depuis mars."]):
+                       ["Pour en parler, alice at", "example dot org, le soir."], ["Elle est malade depuis mars."],
+                       ["joignez-la au Phone0612345678 svp."], ["Écrire à alice.martin[@]example[.]org."]):
             with self.subTest(textes=textes):
                 code, texte = self.noter(*textes)
                 self.assertEqual(code, 1, texte)
@@ -10357,9 +10436,16 @@ class TestPersonalDataGate(BaseTest):
         self.assertEqual(code, 3, texte)
         self.assertIn("relecture_humaine", texte)
         self.assertIn("Un humain doit lire cette PR avant sa fusion", texte)
-        code, texte = self.noter("The health checks pass on every minor version; 134 164 249 instructions (-2,1 %), run 41075923604.")
+        code, texte = self.noter("The health checks pass on every minor version; 29 954 575 instructions (-2,1 %), run 41075923604.")
         self.assertEqual(code, 0, texte)
         self.assertIn("FUSION_AUTO=oui", texte)
+        # Split across two PRs: the first half merges; the second is read after the end of the previous note.
+        self.assertEqual(self.noter("Pour la suite, alice.martin at")[0], 0)
+        git(self.dossier, "switch", "-q", "main")
+        git(self.dossier, "-c", "user.name=t", "-c", "user.email=t@t", "merge", "-q", "--ff-only", "note")
+        code, texte = self.noter("example dot org, le soir.")
+        self.assertEqual(code, 1, texte)
+        self.assertIn("(ensemble des textes)", texte)
 
     def test_ordinary_self_service_is_never_flagged(self):
         """Dates, shas, pseudos and task numbers are not free text, and a doubt is read in one field, never across fields:
