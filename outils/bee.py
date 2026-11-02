@@ -2764,11 +2764,12 @@ CHEMIN_DEBAT = re.compile(r"^debats/(D-[0-9]{4})\.yaml\Z")
 POSITIONS = ("pour", "contre", "question", "fait")
 ISSUES = ("proposition", "tache", "decision", "sans_suite")
 # Ordre des clés à l'écriture : les arguments en dernier, pour qu'un argument ajouté soit un ajout en fin de fichier.
-CLES_DEBAT = ("id", "question", "question_caviardee_pour", "ouvert_par", "ouvert_le", "statut", "rapporteur", "synthese",
-              "synthese_caviardee_pour", "synthese_par", "synthese_le", "clos_le", "clos_par", "issue", "reference", "arguments")
-CLES_ARGUMENT = ("id", "par", "le", "position", "repond_a", "doublon_de", "caviarde_pour", "texte", "sources")
-CLES_IMMUABLES_DEBAT = ("id", "question", "question_caviardee_pour", "ouvert_par", "ouvert_le")
-CLES_SYNTHESE = ("synthese", "synthese_par", "synthese_le", "rapporteur")
+CLES_DEBAT = ("id", "invitation", "question", "question_caviardee_pour", "ouvert_par", "ouvert_le", "statut", "rapporteur", "synthese",
+              "synthese_caviardee_pour", "synthese_par", "synthese_le", "synthese_couvre", "clos_le", "clos_par", "issue", "reference",
+              "arguments")
+CLES_ARGUMENT = ("id", "par", "le", "position", "repond_a", "doublon_de", "doublon_par", "conteste", "caviarde_pour", "texte", "sources")
+CLES_IMMUABLES_DEBAT = ("id", "invitation", "question", "question_caviardee_pour", "ouvert_par", "ouvert_le")
+CLES_SYNTHESE = ("synthese", "synthese_par", "synthese_le", "synthese_couvre", "rapporteur")
 CLES_CLOTURE = ("statut", "clos_le", "clos_par", "issue", "reference")
 # Valeurs par défaut de bee.yaml, clé agora (docs/agora.md, « Contre le bruit »).
 AGORA_DEFAUT = {"texte_max": 1500, "synthese_max": 4000, "question_max": 1500, "arguments_max_par_24h": 5,
@@ -2816,7 +2817,9 @@ def participants_tour(debat, conseil=()):
     ont_pris_part = {a.get("par") for a in arguments_de(debat) if isinstance(a.get("par"), str)}
     ont_pris_part.add((debat or {}).get("synthese_par"))
     ouvreur = (debat or {}).get("ouvert_par")
-    return [p for p in participants_debat(debat) if not (p == ouvreur and p in conseil and p not in ont_pris_part)]
+    # ruche-0050: an invitation's debate is opened by its proposer, who never holds the pen there.
+    return [p for p in participants_debat(debat) if not (p == ouvreur and ((debat or {}).get("invitation")
+                                                                          or (p in conseil and p not in ont_pris_part)))]
 
 
 def rapporteur_suivant(debat, auteur, conseil=()):
@@ -2849,6 +2852,31 @@ def arguments_apres_synthese(debat):
     return resultat
 
 
+def contestes(debat):
+    """ruche-0050: the ids whose duplicate marking an argument contests (conteste: a list of ids)."""
+    return {str(c) for a in arguments_de(debat) for c in (a.get("conteste") if isinstance(a.get("conteste"), list) else [])}
+
+
+def arguments_a_couvrir(debat):
+    """ruche-0050: the arguments of an invitation's debate that its synthesis has not read: those after the last one it covers
+    (synthese_couvre, written with it), all of them without a synthesis; a duplicate is left out while nobody contests its
+    marking. Counted, not dated: neither a clock nor the order of two PRs in flight can make it look read."""
+    ids = [str(a.get("id")) for a in arguments_de(debat)]
+    couvre = str(debat.get("synthese_couvre")) if debat.get("synthese") else None
+    debut, contre = ids.index(couvre) + 1 if couvre in ids else 0, contestes(debat)
+    return [i for a, i in zip(arguments_de(debat)[debut:], ids[debut:]) if not (a.get("doublon_de") and i not in contre)]
+
+
+def en_attente(debat):
+    """ruche-0050: what the synthesis has yet to cover: counted in an invitation's debate (arguments_a_couvrir), dated elsewhere."""
+    return arguments_a_couvrir(debat) if debat.get("invitation") else arguments_apres_synthese(debat)
+
+
+def synthese_a_jour(debat):
+    """ruche-0050: an invitation's debate has a synthesis, and it covers every argument it must (arguments_a_couvrir)."""
+    return bool(debat.get("synthese")) and not arguments_a_couvrir(debat)
+
+
 # Affichage d'un débat né sans rapporteur (bee debattre importer-questions).
 RAPPORTEUR_ABSENT = "aucun encore (le premier qui argumente le devient)"
 
@@ -2864,7 +2892,7 @@ def resume_debat(debat):
             "derniere_activite": en_iso(derniere) if derniere else None,
             "dernier_argument": {k: dernier.get(k) for k in ("id", "par", "le", "position")} if dernier else None,
             "synthese_le": debat.get("synthese_le") if debat.get("synthese") else None,
-            "arguments_apres_synthese": arguments_apres_synthese(debat),
+            "arguments_apres_synthese": en_attente(debat),
             "issue": debat.get("issue"), "reference": debat.get("reference")}
 
 
@@ -3206,11 +3234,11 @@ def releve_refusee(debat, utilisateur, instant, heures, conseil=()):
     if utilisateur not in participants:
         return f"{utilisateur} n'est pas un participant du débat (ni son auteur, ni l'auteur d'un argument)"
     if utilisateur not in candidats and utilisateur != rapporteur:
-        return (f"{utilisateur} n'est pas dans le tour de rôle du débat : le conseil qui l'a ouvert sans y argumenter désigne "
-                "un rapporteur par une décision (docs/agora.md)")
+        return (f"{utilisateur} n'est pas dans le tour de rôle du débat (le conseil qui l'a ouvert sans y argumenter, ou le proposant "
+                "de son invitation) : le conseil désigne un rapporteur par une décision (docs/agora.md)")
     if utilisateur not in eligibles:
         return f"{utilisateur} a écrit la dernière synthèse : un autre participant relève le rapporteur"
-    attente = [m for a in arguments_de(debat) if a.get("id") in set(arguments_apres_synthese(debat))
+    attente = [m for a in arguments_de(debat) if str(a.get("id")) in set(map(str, en_attente(debat)))
                and (m := _instant_ou_rien(a.get("le")))]
     if not attente:
         return "aucun argument n'attend la synthèse : le rapporteur n'est pas en retard"
@@ -3247,14 +3275,17 @@ def verifier_agora_registre(reg, ajouter, selon_schema, instant_valide):
                 [(d["synthese_par"], "synthese_par")] if d.get("synthese") else []):
             if qui not in connus:
                 ajouter(f"{lieu} : {quoi} « {qui} » n'est pas inscrit")
+        proposant = d["ouvert_par"] if d.get("invitation") else None  # ruche-0050: never the pen of their invitation's debate
+        if proposant and reg.invitations.get(d["invitation"], (None, {}))[1].get("debat") != stem:
+            ajouter(f"{lieu} : invitation « {d['invitation']} » does not name this debate back (its debat)")
         if "rapporteur" not in d:
             # Débat né sans rapporteur (importer-questions) : le premier qui argumente le devient, dans la même PR.
-            if d["arguments"] or d.get("synthese"):
+            if [a for a in d["arguments"] if a["par"] != proposant] or d.get("synthese"):
                 ajouter(f"{lieu} : débat sans rapporteur, mais avec des arguments ou une synthèse : le premier qui argumente devient "
                         "rapporteur (bee debattre argumenter)")
-        elif d["rapporteur"] not in participants_debat(d):
+        elif d["rapporteur"] not in participants_debat(d) or (proposant and same_person(reg, d["rapporteur"], proposant)):
             ajouter(f"{lieu} : le rapporteur « {d['rapporteur']} » doit être un participant du débat (celui qui l'a ouvert ou "
-                    "l'auteur d'un argument)")
+                    "l'auteur d'un argument), jamais le proposant de son invitation")
         instant_valide(chemin, d["ouvert_le"], "ouvert_le")
         # Un caviardage dit pour quelle invitation, et le texte est « retiré : <motif> » (commandement 10, R12).
         for champ, marque in CAVIARDABLES.items():
@@ -3282,6 +3313,10 @@ def verifier_agora_registre(reg, ajouter, selon_schema, instant_valide):
                 if cible is None or cible.get("doublon_de") or cible.get("position") != a["position"]:
                     ajouter(f"{lieu} : {a['id']} : doublon_de « {a['doublon_de']} » doit désigner un argument précédent, de même "
                             "position, qui n'est pas lui-même un doublon")
+            if "conteste" in a and not all((vus.get(c) or {}).get("doublon_de") for c in a["conteste"]):
+                ajouter(f"{lieu} : {a['id']} : conteste {a['conteste']} must name earlier arguments marked as duplicates")
+            if a.get("doublon_de") and proposant and (not a.get("doublon_par") or same_person(reg, a["doublon_par"], proposant)):
+                ajouter(f"{lieu} : {a['id']} : in an invitation's debate, a duplicate marking is signed (doublon_par), never by the proposer")
             for s in a.get("sources") or []:
                 probleme = forme_source(s)
                 if probleme:
@@ -3289,6 +3324,8 @@ def verifier_agora_registre(reg, ajouter, selon_schema, instant_valide):
             vus[a["id"]] = a
         if d.get("synthese"):
             instant_valide(chemin, d["synthese_le"], "synthese_le")
+        if "synthese_couvre" in d and not (proposant and d.get("synthese") and d["synthese_couvre"] in [a["id"] for a in d["arguments"]]):
+            ajouter(f"{lieu} : synthese_couvre : the last argument an invitation's synthesis has read, one of the debate's (ruche-0050)")
         if d["statut"] == "clos":
             instant_valide(chemin, d["clos_le"], "clos_le")
             clos = _instant_ou_rien(d["clos_le"])
@@ -3361,6 +3398,9 @@ def verifier_debat(reg, chemin, statut_git, ancien, nouveau, auteur, *, est_cons
         moment = date_recente(nouveau.get("synthese_le"), "synthese_le")
         if moment and precedente:
             exiger(moment > precedente, "synthese_le : publier une synthèse, c'est la dater de maintenant")
+        dernier = ([a.get("id") for a in arguments_de(nouveau)] or [None])[-1]
+        exiger(not nouveau.get("invitation") or nouveau.get("synthese_couvre") == dernier, f"synthese_couvre : an invitation's synthesis "
+               f"covers the last argument of the debate as merged ({_nettoyer(dernier)}) : update main and synthesize again (ruche-0050)")
 
     # Caviardage (commandement 10, phrase ajoutée ; R12) : le conseil seul retire d'un débat, même clos, le texte d'un argument
     # qui désigne ou décrit une personne extérieure, à son refus ou à sa demande ; c'est la seule modification d'un argument.
@@ -3382,6 +3422,11 @@ def verifier_debat(reg, chemin, statut_git, ancien, nouveau, auteur, *, est_cons
         exiger(nouveau.get("id") == identifiant, f"id « {nouveau.get('id')} » différent du nom de fichier « {identifiant} »")
         exiger(membre, f"{auteur} doit d'abord s'inscrire (bee inscrire)")
         exiger(nouveau.get("ouvert_par") == auteur, f"on n'ouvre un débat qu'en son nom ({auteur}), pas au nom de {nouveau.get('ouvert_par')}")
+        if "invitation" in nouveau:  # ruche-0050: opened for its invitation, by its proposer, in the PR that proposes it
+            inv = reg.invitations.get(str(nouveau.get("invitation")), (None, {}))[1]
+            exiger(inv.get("debat") == identifiant and inv.get("propose_par") == auteur,
+                   f"invitation « {_nettoyer(nouveau.get('invitation'))} » : an invitation's debate is opened with it, by its proposer, "
+                   "and the invitation names it (bee inviter does both)")
         if "rapporteur" in nouveau:
             exiger(nouveau.get("rapporteur") == auteur, f"le premier rapporteur est celui qui ouvre le débat ({auteur}), ou personne")
         else:
@@ -3429,6 +3474,7 @@ def verifier_debat(reg, chemin, statut_git, ancien, nouveau, auteur, *, est_cons
 
     # --- Arguments : ajout seul ; seul doublon_de peut être posé sur un argument existant. ---
     rapporteur = base.get("rapporteur")
+    proposant = nouveau.get("ouvert_par") if nouveau.get("invitation") else None  # ruche-0050
     anciens = base.get("arguments") if isinstance(base.get("arguments"), list) else []
     nouveaux = nouveau.get("arguments") if isinstance(nouveau.get("arguments"), list) else []
     ajoutes = []
@@ -3438,12 +3484,15 @@ def verifier_debat(reg, chemin, statut_git, ancien, nouveau, auteur, *, est_cons
                 continue
             ident = a.get("id") if isinstance(a, dict) else f"arguments/{i}"
             marque_doublon = (isinstance(a, dict) and isinstance(n, dict) and "doublon_de" not in a
-                      and set(n) == set(a) | {"doublon_de"} and all(n[k] == a[k] for k in a))
+                      and set(n) == set(a) | {"doublon_de", *(["doublon_par"] if proposant else [])} and all(n[k] == a[k] for k in a))
             if not exiger(marque_doublon, f"{ident} modifié, déplacé ou remplacé : les arguments sont en ajout seul, on n'en modifie aucun "
                                   "(pour répondre ou corriger, ajoutez-en un avec repond_a)"):
                 continue
             natures.append("doublon")
             exiger(auteur == rapporteur or privilegie, f"{ident} : seuls le rapporteur ({rapporteur}) ou un gardien marquent un doublon")
+            if proposant:
+                exiger(n.get("doublon_par") == auteur and not same_person(reg, auteur, proposant), f"{ident} : in an invitation's debate, "
+                       f"a duplicate marking is signed by its author (doublon_par: {auteur}), never by the proposer")
             cible = next((x for x in nouveaux[:i] if isinstance(x, dict) and x.get("id") == n.get("doublon_de")), None)
             exiger(cible is not None and not cible.get("doublon_de") and cible.get("position") == n.get("position"),
                    f"{ident} ne peut être que le doublon d'un argument précédent, de même position, qui n'est pas lui-même un doublon")
@@ -3466,6 +3515,11 @@ def verifier_debat(reg, chemin, statut_git, ancien, nouveau, auteur, *, est_cons
         moment = date_recente(arg.get("le"), f"{ident}.le")
         if moment and precedent:
             exiger(moment >= precedent, f"{ident} : un argument n'est pas daté d'avant l'argument précédent ni d'avant l'ouverture")
+        if "conteste" in arg:  # ruche-0050: one argument may contest several markings
+            marques = [x.get("id") for x in nouveaux[:rang] if isinstance(x, dict) and x.get("doublon_de")]
+            cibles = arg["conteste"] if isinstance(arg["conteste"], list) else []
+            exiger(cibles and all(isinstance(c, str) and c in marques for c in cibles),
+                   f"{ident} : conteste : a list of earlier arguments marked as duplicates ({_nettoyer(arg['conteste'])})")
         precedent = max(precedent, moment) if moment and precedent else (moment or precedent)
         probleme = texte_recevable(arg.get("texte"), f"{ident} : texte", conf["texte_max"])
         exiger(probleme is None, f"{probleme} (agora.texte_max) : un argument est court ; découpez-le, ou résumez et citez vos sources")
@@ -3501,11 +3555,14 @@ def verifier_debat(reg, chemin, statut_git, ancien, nouveau, auteur, *, est_cons
                f"{conf['arguments_max_par_24h']} par utilisateur et par débat sur 24 h glissantes (agora.arguments_max_par_24h) : "
                "laissez les autres répondre")
 
+    if proposant and "rapporteur" in nouveau:
+        exiger(not same_person(reg, nouveau.get("rapporteur"), proposant), f"rapporteur « {_nettoyer(nouveau.get('rapporteur'))} » : the "
+               "proposer of the invitation never holds the pen of its debate, nor under an agent account")
     if statut_git == "M":
         if "rapporteur" not in ancien:
             # --- Prise de plume : dans un débat né sans rapporteur, le premier qui argumente le devient, dans la même PR,
             # pour lui-même seulement ; personne d'autre ne le désigne. La synthèse vient dans une PR suivante. ---
-            if ajoutes:
+            if ajoutes and not (proposant and same_person(reg, auteur, proposant)):
                 natures.append("prise_de_plume")
                 exiger(nouveau.get("rapporteur") == auteur,
                        f"premier à argumenter dans ce débat sans rapporteur, {auteur} en devient le rapporteur, dans la même PR "
@@ -3513,7 +3570,7 @@ def verifier_debat(reg, chemin, statut_git, ancien, nouveau, auteur, *, est_cons
             else:
                 exiger("rapporteur" not in nouveau, "un débat sans rapporteur n'en reçoit un que par son premier argument, pour "
                                                     "l'auteur de cet argument")
-            exiger(all(ancien.get(c) == nouveau.get(c) for c in ("synthese", "synthese_par", "synthese_le")),
+            exiger(all(ancien.get(c) == nouveau.get(c) for c in ("synthese", "synthese_par", "synthese_le", "synthese_couvre")),
                    "la synthèse se publie dans une PR suivante, une fois rapporteur (bee debattre synthetiser)")
         else:
             # --- Synthèse : le rapporteur seul, qui désigne le suivant parmi les autres participants. ---
@@ -3551,6 +3608,10 @@ def verifier_debat(reg, chemin, statut_git, ancien, nouveau, auteur, *, est_cons
             exiger(nouveau.get("statut") == "clos", "un débat ouvert ne change de statut que pour être clos (bee debattre clore)")
             exiger(auteur == rapporteur or privilegie,
                    f"seuls le rapporteur ({rapporteur or RAPPORTEUR_ABSENT}), un gardien ou le conseil closent un débat")
+            if proposant:  # ruche-0050
+                inv = reg.invitations.get(str(nouveau.get("invitation")), (None, {}))[1]
+                exiger(privilegie and etat_invitation(inv) != "proposee", "an invitation's debate is closed by a guardian or the "
+                       "council only, once the invitation is no longer proposed (decided in the same PR at the latest)")
             exiger(nouveau.get("clos_par") == auteur, f"clos_par : la clôture est signée de son auteur ({auteur})")
             date_recente(nouveau.get("clos_le"), "clos_le")
             if exiger(nouveau.get("issue") in ISSUES, "la clôture nomme ce qui sort du débat : issue proposition, tache, decision ou "
@@ -4311,6 +4372,21 @@ def messages_et_places(reg, debut, sauf=None):
                    and (m := feu_vert(inv)) and m > debut)
 
 
+def perime_a_l_envoi(reg, inv, envoi):
+    """ruche-0050: what its debate's synthesis did not cover at the envoi: in the debate's version of the last commit of main up
+    to then (a later synthesis erases nothing); without that history, in the debate as it stands, its arguments up to then."""
+    d, chemin = debat_propre(reg, inv), f"debats/{inv.get('debat')}.yaml"
+    for sha, moment, _ in (commits_premier_parent(reg.racine, "HEAD", chemin) if d and historique_disponible(reg.racine) else []):
+        if moment <= envoi:
+            try:
+                version = lire_yaml_ref(reg.racine, sha, chemin)
+            except ErreurBee:
+                break
+            return arguments_a_couvrir(version) if isinstance(version, dict) else []
+    retard = set(arguments_a_couvrir(d)) if d else set()
+    return [i for a in arguments_de(d) if (i := str(a.get("id"))) in retard and (m := _instant_ou_rien(a.get("le"))) and m <= envoi]
+
+
 def alertes_croissance(reg):
     """Ce que bee valider et bee essaim signalent sans le refuser (seconde revue adverse, B1 et H2) : un message consigné est un
     fait ; s'il porte à plus de invitations_par_semaine les messages de 7 jours glissants (envois concurrents, envoi hors
@@ -4336,6 +4412,10 @@ def alertes_croissance(reg):
         if envoi and verts and envoi > max(verts) + SEMAINE:
             alertes.append(f"{iid} : envoi consigné le {en_iso(envoi)}, après l'échéance de son feu vert ({en_iso(max(verts) + SEMAINE)}) : "
                            "consigné, car c'est un fait ; un feu vert échu se renouvelle avant l'envoi (R13)")
+        # ruche-0050 : un envoi consigné alors que la synthèse de son débat ne couvrait pas un argument déjà publié.
+        if envoi and (lus := perime_a_l_envoi(reg, inv, envoi)):
+            alertes.append(f"{iid} : envoi consigné le {en_iso(envoi)} sur une synthèse périmée ({inv.get('debat')} ne couvrait pas "
+                           f"{', '.join(lus)}) : consigné, car c'est un fait ; le conseil revoit l'invitation (R13)")
     return alertes
 
 
@@ -4457,9 +4537,7 @@ def refus_invitation(reg, inv, conseil=False, instant=None):
                 elif cle_personne(x) in vues:
                     refus.append(f"autres_identites : « {_nettoyer(x)} » désigne une identité déjà déclarée")
                 vues.add(cle_personne(x))
-    debat = reg.debats.get(str(inv.get("debat")), (None, None))[1]
-    if not (isinstance(debat, dict) and debat.get("statut") == "ouvert"):
-        refus.append(f"debat « {_nettoyer(inv.get('debat'))} » : une invitation se discute dans un débat ouvert de l'agora (bee debats)")
+    refus += refus_debat_invitation(reg, inv, accord=False)
     illisibles = invitations_illisibles(reg)
     if illisibles:
         refus.append(f"illisible(s) : {', '.join(illisibles)} : rien ne bouge dans invitations/ tant que le conseil ne l'a pas réparé")
@@ -4509,7 +4587,31 @@ def refus_invitation(reg, inv, conseil=False, instant=None):
     return refus
 
 
-def refus_geste(reg, ancien, nouveau, geste, auteur, instant, publication=None, frein=None, refus_lie=False, status=True):
+def debat_propre(reg, inv):
+    """ruche-0050: the invitation's own debate (opened with it, by its proposer, naming it back), or None."""
+    d = reg.debats.get(str(inv.get("debat")), (None, None))[1]
+    return d if isinstance(d, dict) and d.get("invitation") == inv.get("id") and d.get("ouvert_par") == inv.get("propose_par") else None
+
+
+def refus_debat_invitation(reg, inv, accord=True, clos=False, avant=None):
+    """ruche-0050: [] if the invitation's debate is its own (debat_propre) and open (`clos`: or closed, for a renewal), and, for an
+    accord (the guardian's, the green light, its renewal), if its synthesis is up to date (synthese_a_jour); else why. `avant`:
+    the debate on main, when a PR gives the accord: judged on it too, and no duplicate marking travels with the accord."""
+    did, d = _nettoyer(inv.get("debat")), debat_propre(reg, inv)
+    if d is None:
+        return [f"debat « {did} » : not the debate opened for {inv.get('id')} with it, by its proposer (bee inviter opens it)"]
+    base = avant if isinstance(avant, dict) else d
+    if base.get("statut") != "ouvert" and not clos:
+        return [f"{did} is closed : an invitation is proposed and decided while its own debate is open"]
+    marques = lambda x: {str(a.get("id")) for a in arguments_de(x) if a.get("doublon_de")}  # noqa: E731
+    if accord and marques(d) - marques(base):
+        return [f"{did} : a duplicate marking and an accord never travel in the same PR : publish the marking first"]
+    attente = arguments_a_couvrir(base) or arguments_a_couvrir(d)
+    return [f"{did} : its synthesis is out of date ({'it does not cover ' + ', '.join(attente) if base.get('synthese') else 'none yet'}) "
+            "; the rapporteur publishes one first (bee debattre synthetiser)"] if accord and not (synthese_a_jour(base) and synthese_a_jour(d)) else []
+
+
+def refus_geste(reg, ancien, nouveau, geste, auteur, instant, publication=None, frein=None, refus_lie=False, status=True, debat_main=None):
     """Ce que verifier_pr refuse d'un geste de suivi ajouté à une invitation (bee invitation le dit avant d'écrire) : qui a le
     droit de le faire, dans quel état, à quel moment, sous quel frein et quel plafond. L'envoi est un fait, consigné après
     coup : seuls son auteur (le conseil) et le feu vert qui l'a précédé sont exigés. [] si le geste est permis."""
@@ -4554,6 +4656,8 @@ def refus_geste(reg, ancien, nouveau, geste, auteur, instant, publication=None, 
     debat_tenu = (echeance is not None and moment >= echeance,
                   f"une invitation reste {conf['debat_min_heures']} h publique, débattue dans l'agora, avant tout accord "
                   f"(croissance.debat_min_heures) : pas avant le {en_iso(echeance) if echeance else '(pas encore publiée)'}")
+    if geste in ("accord_gardien", "accord_conseil", "renouvellement"):  # the green light and its renewal (ruche-0050)
+        refus += refus_debat_invitation(reg, ancien, clos=geste == "renouvellement", avant=debat_main)  # renewed on the closing synthesis
     if geste == "accord_gardien":
         exiger(avant == "proposee", f"un accord de gardien se donne à une invitation proposée (statut : {avant})")
         exiger(status and auteur in en_fonction, f"{auteur} n'est pas un gardien en fonction : seul un gardien nommé (gouvernance/gardiens.yaml), "
@@ -4721,8 +4825,12 @@ def verifier_invitation(reg, chemin, statut_git, ancien, nouveau, auteur, *, est
     exiger(nouveau.get("statut") == etat_invitation(nouveau), f"statut « {nouveau.get('statut')} » au lieu de "
                                                               f"« {etat_invitation(nouveau)} »")
     publication = publiee_le(reg, base, chemin, ancien) if geste in ("accord_gardien", "accord_conseil") else None
+    try:  # ruche-0050: an accord is judged on its debate as it is on main (a closure or a marking in the same PR changes nothing)
+        avant = lire_yaml_ref(reg.racine, base, f"debats/{ancien.get('debat')}.yaml") if ID_DEBAT.match(str(ancien.get("debat"))) else None
+    except ErreurBee:
+        avant = None
     for refus in refus_geste(reg, ancien, nouveau, geste, auteur, instant, publication, frein() if geste in VERS_LE_CONTACT else None,
-                             refus_lie=refus_lie, status=status):
+                             refus_lie=refus_lie, status=status, debat_main=avant):
         exiger(False, refus)
     if (geste == "reponse" and bloc.get("valeur") in ("refusee", "sans_reponse")) or (
             geste == "retrait" and etat_invitation(ancien) != "acceptee"):
@@ -4804,6 +4912,8 @@ def verifier_invitations_registre(reg, ajouter, selon_schema, instant_valide):
             ajouter(f"{lieu} : id « {inv['id']} » différent du nom de fichier « {stem} »")
         if inv["statut"] != etat_invitation(inv):
             ajouter(f"{lieu} : statut « {inv['statut']} » alors que ses gestes disent « {etat_invitation(inv)} »")
+        if debat_propre(reg, inv) is None:  # ruche-0050
+            ajouter(f"{lieu} : debat « {inv['debat']} » : not the debate opened for it, with it, by its proposer (bee inviter opens it)")
         if "ecartee" in inv and ("envoi" in inv or "reponse" in inv) or (
                 (inv.get("reponse") or {}).get("valeur") in ("acceptee", "sans_reponse") and "envoi" not in inv):
             ajouter(f"{lieu} : gestes incohérents (on n'écarte qu'avant l'envoi ; acceptée ou sans réponse suppose un envoi)")
@@ -6064,7 +6174,7 @@ def cmd_voir(args):
         conf = config_croissance(reg)
         resume = resume_invitation(inv, conf, frein=etat_frein(reg))
         print(montrer_ligne(f"{resume['id']} : {resume['statut']} ; demande : {resume['demande']} ; attend : {resume['attend']}"))
-        print("\n".join(lignes_identites(inv)))
+        print("\n".join(lignes_identites(inv) + lignes_debat_invitation(reg, inv)))
         # Les dates relues par bee (jamais la valeur brute du fichier : revue de ruche-0052, C) ; l'échéance de la porte.
         date = lambda m: en_iso(m) if m else "?"  # noqa: E731
         print(f"proposée le {date(_instant_ou_rien(inv.get('propose_le')))}"
@@ -6783,6 +6893,8 @@ def _appliquer_synthese(reg, d, u, texte, suivant, instant):
     if not autres and suivant != u:
         raise ErreurBee("vous êtes le seul participant du tour de rôle : vous restez rapporteur")
     d.update({"synthese": texte, "synthese_par": u, "synthese_le": en_iso(instant), "rapporteur": suivant})
+    if d.get("invitation") and arguments_de(d):  # ruche-0050: the last argument it has read
+        d["synthese_couvre"] = arguments_de(d)[-1].get("id")
     d.pop("synthese_caviardee_pour", None)
     return suivant
 
@@ -6849,6 +6961,9 @@ def debattre_argumenter(args):
     existants = d.get("arguments") if isinstance(d.get("arguments"), list) else []
     if args.repond_a and not any(isinstance(a, dict) and a.get("id") == args.repond_a for a in existants):
         raise ErreurBee(f"{args.repond_a} n'est pas un argument de {args.debat} (bee debats --voir {args.debat})")
+    for c in args.conteste or []:
+        if not any(isinstance(a, dict) and a.get("id") == c and a.get("doublon_de") for a in existants):
+            raise ErreurBee(f"--conteste {c} : not an argument of {args.debat} marked as a duplicate (bee debats --voir {args.debat})")
     instant = maintenant()
     if arguments_depuis(d, u, instant - FENETRE_PLAFOND, reg.identites) >= conf["arguments_max_par_24h"]:
         siens = [m for a in arguments_de(d) if a.get("par") == u and (m := _instant_ou_rien(a.get("le")))]
@@ -6864,11 +6979,13 @@ def debattre_argumenter(args):
     argument = {"id": f"A{len(existants) + 1}", "par": u, "le": en_iso(instant), "position": args.position}
     if args.repond_a:
         argument["repond_a"] = args.repond_a
+    if args.conteste:
+        argument["conteste"] = args.conteste  # ruche-0050: the duplicate marking counts no more against the synthesis
     argument["texte"] = texte
     if sources:
         argument["sources"] = sources
     d = {**d, "arguments": list(existants) + [argument]}
-    prise = "rapporteur" not in d
+    prise = "rapporteur" not in d and not (d.get("invitation") and same_person(reg, u, d.get("ouvert_par")))
     if prise:
         d["rapporteur"] = u  # premier à argumenter dans un débat né sans rapporteur : la plume est à lui
     exiger_place(reg.rel(chemin), rendu_debat(d, chemin))
@@ -6921,7 +7038,11 @@ def debattre_doublon(args):
     if cible >= rang or arguments[cible].get("doublon_de") or arguments[cible].get("position") != arguments[rang].get("position"):
         raise ErreurBee(f"{args.argument} ne peut être que le doublon d'un argument précédent, de même position, qui n'est pas "
                         "lui-même un doublon")
+    if d.get("invitation") and same_person(reg, u, d.get("ouvert_par")):
+        raise ErreurBee(f"{u} proposed {d.get('invitation')} : the proposer never marks a duplicate in its debate (ruche-0050)")
     arguments[rang]["doublon_de"] = args.de
+    if d.get("invitation"):
+        arguments[rang]["doublon_par"] = u
     ecrire_debat(chemin, {**d, "arguments": arguments})
     print(f"✓ {args.argument} marqué doublon de {args.de} dans {args.debat} : il reste lu, rien n'est effacé.")
     print(f"  {_publier(args.debat, 'Doublon')}")
@@ -6973,6 +7094,9 @@ def debattre_clore(args):
     rapporteur, privilegie = d.get("rapporteur"), u in reg.privilegies()
     if u != rapporteur and not privilegie:
         raise ErreurBee(f"seuls le rapporteur ({rapporteur or RAPPORTEUR_ABSENT}), un gardien ou le conseil closent un débat")
+    if d.get("invitation") and (not privilegie or etat_invitation(reg.invitations.get(d["invitation"], (None, {}))[1]) == "proposee"):
+        raise ErreurBee(f"{args.debat} is {d['invitation']}'s debate : a guardian or the council closes it, once the invitation is no "
+                        "longer proposed (decided in the same PR at the latest) (ruche-0050)")
     reference = args.reference or ""
     probleme = probleme_reference(reg, args.issue, reference)
     if probleme:
@@ -7129,6 +7253,8 @@ def voir_debat(reg, identifiant, en_json=False):
             details.append(f"répond à {a['repond_a']}")
         if a.get("doublon_de"):
             details.append(f"doublon de {a['doublon_de']}")
+        if a.get("conteste"):
+            details.append(f"conteste le doublon {_nettoyer(', '.join(sorted(contestes({'arguments': [a]}))))}")
         print(f"  {a.get('id')} · " + " · ".join(details))
         print(_en_retrait(a.get("texte")))
         for s in a.get("sources") or []:
@@ -7222,10 +7348,20 @@ def cmd_inviter(args):
     canal = args.canal or (modele.format(identifiant.partition(":")[2]) if modele else None)
     if canal is None:
         raise ErreurBee("--canal : pour un site, la page de ce site où la personne publie comment la contacter")
+    # ruche-0050: its own debate, opened with it, by its proposer, without a rapporteur (the proposer never holds its pen).
+    did, instant = prochain_debat(reg), en_iso(maintenant())
+    if u not in reg.conseil and ouvertures_depuis(reg, u, maintenant() - FENETRE_PLAFOND) >= config_agora(reg)["ouvertures_max_par_24h"]:
+        raise ErreurBee(f"plafond : {u} a déjà ouvert {config_agora(reg)['ouvertures_max_par_24h']} débats en 24 h "
+                        "(agora.ouvertures_max_par_24h), et l'invitation ouvre le sien : rien n'a été écrit")
+    if (reg.racine / "debats" / f"{did}.yaml").exists():  # unreadable, so not loaded: never overwritten
+        raise ErreurBee(f"debats/{did}.yaml existe déjà : rien n'a été écrit ni écrasé")
+    reg.debats[did] = (reg.racine / "debats" / f"{did}.yaml", {
+        "id": did, "invitation": chemin.stem, "question": f"Invitation {chemin.stem} ({args.demande}) : faut-il l'envoyer ? Son débat "
+        "propre (R13) : on y désigne la personne par ce numéro, jamais par son nom.", "ouvert_par": u, "ouvert_le": instant,
+        "statut": "ouvert", "synthese": "", "arguments": []})
     inv = {"id": chemin.stem, "statut": "proposee", "personne": {"identifiant": identifiant, "canal": canal},
            "demande": args.demande, "pourquoi": [{"fait": f, "source": s} for f, s in zip(faits, sources)],
-           "message": texte if mention in texte else f"{texte}\n\n{mention}", "debat": args.debat, "propose_par": u,
-           "propose_le": en_iso(maintenant())}
+           "message": texte if mention in texte else f"{texte}\n\n{mention}", "debat": did, "propose_par": u, "propose_le": instant}
     if args.autre_identite:
         # Les autres identités de la même personne, déclarées (troisième revue adverse, C3) : sous leur forme canonique.
         inv["autres_identites"] = [forme_identifiant(x)[0] or x for x in args.autre_identite]
@@ -7234,10 +7370,12 @@ def cmd_inviter(args):
     refus = refus_invitation(reg, inv, conseil=u in reg.conseil)
     if refus:
         raise ErreurBee("invitation refusée, rien n'a été écrit :\n  " + "\n  ".join(refus))
+    ecrire_debat(*reg.debats[did])
     ecrire_invitation(chemin, inv)
     frein = etat_frein(reg)
     print(f"✓ {reg.rel(chemin)} proposée : {inv['statut']}. Rien n'est envoyé : elle reste au moins "
-          f"{config_croissance(reg)['debat_min_heures']} h publique (débat {args.debat}), puis un gardien et le conseil décident, et un "
+          f"{config_croissance(reg)['debat_min_heures']} h publique (son débat {did}, ouvert avec elle ; un autre que vous en tiendra "
+          "la synthèse, à jour avant tout accord), puis un gardien et le conseil décident, et un "
           "humain du conseil envoie lui-même le message (R13). Pendant la phase de lancement, sa PR attend le conseil, qui la "
           "fusionne lui-même.")
     if frein["serre"] and args.demande not in RENFORCENT_ENCADREMENT:
@@ -7261,6 +7399,20 @@ def lignes_identites(inv):
     return [montrer_ligne(f"Identifiant : {personne.get('identifiant', inv.get('personne'))} ; canal : {personne.get('canal', '-')}"),
             montrer_ligne("Autres identités déclarées : " + (", ".join(str(x) for x in autres) if autres else "aucune")),
             CONSIGNE_IDENTITES]
+
+
+def lignes_debat_invitation(reg, inv):
+    """ruche-0050: the invitation's own debate as an accord sees it, then each duplicate marking and who contested it (bee voir,
+    the accords)."""
+    probleme = refus_debat_invitation(reg, inv) if etat_invitation(inv) == "proposee" else []  # decided: no warning (ruche-0050)
+    lignes = [f"Débat de l'invitation : {probleme[0] if probleme else _nettoyer(inv.get('debat'))}"
+              + ("" if probleme or etat_invitation(inv) != "proposee" else " ouvert, synthèse à jour")]
+    arguments = arguments_de(reg.debats.get(str(inv.get("debat")), (None, None))[1])
+    for a in [a for a in arguments if a.get("doublon_de")]:
+        contre = [f"{_nettoyer(c.get('par'))} ({c.get('id')})" for c in arguments if str(a.get("id")) in contestes({"arguments": [c]})]
+        lignes.append(montrer_ligne(f"  {a.get('id')} marqué doublon de {a.get('doublon_de')} par {a.get('doublon_par') or '?'} : "
+                                    + (f"CONTESTÉ par {', '.join(contre)}" if contre else "non contesté")))
+    return lignes
 
 
 def bloc_retrait(utilisateur, instant):
@@ -7302,6 +7454,9 @@ def cmd_invitation(args):
                         refus_lie=bool(sur_la_liste(identites_propres(inv), non_contactes(reg))))
     if refus:
         raise ErreurBee(f"{args.invitation} : " + " ; ".join(refus))
+    if geste == "envoi" and (perime := refus_debat_invitation(reg, inv, clos=True)):  # ruche-0050 : un fait, signalé
+        print(f"⚠ {args.invitation} : {perime[0]}. L'envoi se consigne quand même (c'est un fait), et il sera signalé (bee valider, "
+              "bee essaim).")
     identifiant = identifiant_de(inv)
     aussi = {}
     if raison and etat_invitation(inv) != "acceptee":
@@ -7349,7 +7504,7 @@ def cmd_invitation(args):
                           "ruche, l'en ôterait."}[geste]
     print(f"✓ {args.invitation} : {geste} consigné (statut : {nouveau['statut']}). Suite : {suite}")
     if geste in ("accord_gardien", "accord_conseil"):
-        print("  " + "\n  ".join(lignes_identites(inv)))
+        print("  " + "\n  ".join(lignes_identites(inv) + lignes_debat_invitation(reg, inv)))
     if aussi:
         print(f"  Retirées aussi, car une identité de la même personne y figure : {', '.join(aussi)} (« {RETIRE[raison]} »).")
     if geste in NATURES_INVITATION and NATURES_INVITATION[geste] not in LIBRE_SERVICE:
@@ -9413,6 +9568,8 @@ def construire_analyseur():
     a.add_argument("--position", required=True, choices=POSITIONS, help="pour, contre, question, ou fait (sources obligatoires)")
     a.add_argument("--texte", required=True, help="court : bee.yaml, agora.texte_max (1 500 caractères par défaut)")
     a.add_argument("--repond-a", help="argument auquel vous répondez (ex. A3)")
+    a.add_argument("--conteste", action="append", help="contest the duplicate marking of this argument (ex. A7), repeatable: in an "
+                                                     "invitation's debate, it counts again for the synthesis")
     a.add_argument("--source", action="append", help="adresse https:// ou chemin du registre ; répétable ; obligatoire pour un fait")
     a = actions.add_parser("synthetiser", help="Rapporteur : publie la synthèse et désigne le rapporteur suivant.",
                            description="Réécrit la synthèse (le rapporteur ; ou un autre participant qui relève un rapporteur "
@@ -9456,7 +9613,8 @@ def construire_analyseur():
     p.add_argument("--json", action="store_true")
 
     p = ajouter("inviter", cmd_inviter,
-                "R13 : propose une invitation (devenir garant, participer, faire entrer un projet) au numéro suivant. N'envoie rien : "
+                "R13 : propose une invitation (devenir garant, participer, faire entrer un projet) au numéro suivant, et ouvre son "
+                "débat. N'envoie rien : "
                 "un gardien puis le conseil décident, un humain du conseil envoie lui-même le message (docs/croissance.md).")
     p.add_argument("--utilisateur", required=True)
     p.add_argument("--identifiant", required=True, help="identifiant public : <plateforme>:<nom>, plateforme parmi "
@@ -9469,7 +9627,6 @@ def construire_analyseur():
     p.add_argument("--message", help="le texte exact du message ; bee y ajoute la mention de R13 (Bee, agents d'IA sous un conseil "
                                      "humain, comment refuser)")
     p.add_argument("--fichier", help="ou un fichier qui contient le message")
-    p.add_argument("--debat", required=True, help="le débat ouvert de l'agora où l'invitation se discute (ex. D-0020)")
     p.add_argument("--langue", choices=sorted(MENTION_INVITATION), default="fr", help="langue de la mention ajoutée (défaut : fr)")
     p.add_argument("--autre-identite", action="append", help=f"une autre identité publique de la même personne (gitlab:x, "
                    f"site:exemple.org), {AUTRES_IDENTITES_MAX} au plus : comparée à la liste et aux autres invitations, inscrite "
