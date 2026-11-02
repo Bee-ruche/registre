@@ -13812,7 +13812,8 @@ class TestGitHelper(unittest.TestCase):
 # ruche-0092: the suite in parallel processes, inside validation.yml's single « valider » job (`python3 outils/test_bee.py
 # --processus N`; without options: unittest.main, serial). At thousands of bees the scarce resource is the organisation's
 # concurrent jobs, not minutes: processes, not jobs. No test is lost: each process reports the suite it loaded and the tests
-# it ran, and a test missing, run twice, added or removed after the split, an empty shard or a failed process fails the run.
+# it ran, and a test missing, run twice, added or removed after the split, skipped, an expected failure or an unexpected success,
+# an empty shard or a failed process fails the run.
 # Each process is a fresh interpreter: environment variables, the working directory and the audit hook stay its own.
 
 def nom_du_test(test):
@@ -13835,14 +13836,17 @@ def repartir(tests, n):
 
 def controler(tests, tranches, rapports=None):
     """[] if each test is in exactly one shard and no shard is empty; with the processes' reports (None: no report), also if
-    each process loaded the very suite that was split and ran at least one test, and each test ran exactly once."""
+    each process loaded the very suite that was split and ran at least one test, each test ran exactly once, and none was
+    skipped, an expected failure or an unexpected success."""
     n = len(tranches)
     erreurs = [f"shard {i + 1}/{n}: no test" for i, t in enumerate(tranches) if not t]
     listes = {"in the shards": [t for tranche in tranches for t in tranche]}
     for i, r in enumerate(rapports or ()):
         if r is None or not r["lances"]:
             erreurs.append(f"shard {i + 1}/{n}: " + ("no report" if r is None else "ran no test"))
-        elif collections.Counter(r["vus"]) != collections.Counter(tests):
+        erreurs += [f"shard {i + 1}/{n}: {ecart} (the parallel run accepts no skip, expected failure or unexpected success)"
+                    for ecart in (r or {}).get("ecarts", [])]
+        if r and r["lances"] and collections.Counter(r["vus"]) != collections.Counter(tests):
             erreurs.append(f"shard {i + 1}/{n}: the suite changed after the split (added: {sorted(set(r['vus']) - set(tests))}, "
                            f"removed: {sorted(set(tests) - set(r['vus']))})")
     if rapports is not None:
@@ -13864,9 +13868,9 @@ def en_parallele(commande, tests, processus):
 
 
 def lancer_tranches(commande, tests, tranches):
-    """Starts `commande --tranche <plan> <i>` for each shard at once, prints their logs once all have ended, then returns the
-    errors of controler on their reports and of their exit codes."""
-    n, enfants = len(tranches), []
+    """Starts `commande --tranche <plan> <i>` for each shard at once, prints each shard's log as soon as it ends, then returns
+    the errors of controler on their reports and of their exit codes."""
+    n, enfants, codes, rapports = len(tranches), [], {}, {}
     print(f"{len(tests)} tests in {n} shards of {', '.join(str(len(t)) for t in tranches)}", flush=True)
     with tempfile.TemporaryDirectory() as dossier:
         plan = pathlib.Path(dossier) / "plan.json"
@@ -13876,16 +13880,20 @@ def lancer_tranches(commande, tests, tranches):
                 with open(plan.with_name(f"journal-{i}.txt"), "w", encoding="utf-8") as journal:
                     enfants.append(subprocess.Popen([*commande, "--tranche", str(plan), str(i)], stdin=subprocess.DEVNULL, stdout=journal,
                                                     stderr=subprocess.STDOUT))
-            codes = [e.wait() for e in enfants]
+            while len(codes) < n:  # a live log: each shard's journal as soon as it ends
+                for i, e in enumerate(enfants):
+                    if i not in codes and e.poll() is not None:
+                        codes[i], rapport = e.returncode, plan.with_name(f"rapport-{i}.json")
+                        rapports[i] = json.loads(rapport.read_text(encoding="utf-8")) if rapport.exists() else None
+                        print(f"=== shard {i + 1}/{n}: {len(tranches[i])} tests, exit code {codes[i]}, "
+                              f"{rapports[i]['duree'] if rapports[i] else '?'} s ===\n"
+                              + plan.with_name(f"journal-{i}.txt").read_text(encoding="utf-8", errors="replace"), flush=True)
+                time.sleep(0.2)
         finally:
             for e in enfants:
                 e.kill()  # only those still running: an interruption
-        rapports = [json.loads(r.read_text(encoding="utf-8")) if r.exists() else None
-                    for r in (plan.with_name(f"rapport-{i}.json") for i in range(n))]
-        for i, (code, rapport) in enumerate(zip(codes, rapports)):
-            print(f"=== shard {i + 1}/{n}: {len(tranches[i])} tests, exit code {code}, {rapport['duree'] if rapport else '?'} s ===\n"
-                  + plan.with_name(f"journal-{i}.txt").read_text(encoding="utf-8", errors="replace"))
-    return controler(tests, tranches, rapports) + [f"shard {i + 1}/{n}: exit code {c}" for i, c in enumerate(codes) if c]
+    return (controler(tests, tranches, [rapports[i] for i in range(n)])
+            + [f"shard {i + 1}/{n}: exit code {codes[i]}" for i in range(n) if codes[i]])
 
 
 class Lances(unittest.TextTestResult):
@@ -13905,9 +13913,12 @@ def tranche(module, plan, i):
     debut, plan = time.monotonic(), pathlib.Path(plan)
     vus, tests = ids_des_tests(module), json.loads(plan.read_text(encoding="utf-8"))["tranches"][i]
     resultat = unittest.TextTestRunner(verbosity=2, resultclass=Lances).run(unittest.defaultTestLoader.loadTestsFromNames(tests, module))
-    plan.with_name(f"rapport-{i}.json").write_text(json.dumps({"vus": vus, "lances": resultat.lances,
+    nom = lambda t: nom_du_test(getattr(t, "test_case", t))  # noqa: E731 (a subtest: its test)
+    ecarts = ([f"{nom(t)}: skipped ({raison})" for t, raison in resultat.skipped] + [f"{nom(t)}: expected failure" for t, _ in
+              resultat.expectedFailures] + [f"{nom(t)}: unexpected success" for t in resultat.unexpectedSuccesses])
+    plan.with_name(f"rapport-{i}.json").write_text(json.dumps({"vus": vus, "lances": resultat.lances, "ecarts": ecarts,
                                                                "duree": round(time.monotonic() - debut)}), encoding="utf-8")
-    return 0 if resultat.wasSuccessful() else 1
+    return 0 if resultat.wasSuccessful() and not ecarts else 1
 
 
 def principal_tests(module, fichier, arguments):
@@ -13922,7 +13933,8 @@ def principal_tests(module, fichier, arguments):
 
 class TestSuiteEnParallele(unittest.TestCase):
     """ruche-0092: the suite in parallel processes loses no test: each runs exactly once, or the whole run fails (a test added
-    or removed after the split, a split that drops or doubles one, an empty shard, a shard that ran nothing, a failed one)."""
+    or removed after the split, a split that drops or doubles one, an empty shard, a shard that ran nothing, a failed one, a
+    skip, an expected failure, an unexpected success). The module essai.py: ECART sets B.test_4's deviation, LENT slows B.test_5."""
 
     TESTS = ["A.test_1", "A.test_2", "B.test_3", "B.test_4", "B.test_5"]
 
@@ -13930,10 +13942,19 @@ class TestSuiteEnParallele(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.module = pathlib.Path(self.temp.name) / "essai.py"
-        self.module.write_text(f"import os, sys, unittest\nsys.path.insert(0, {str(RACINE / 'outils')!r})\nimport test_bee\n"
+        self.module.write_text(f"import os, sys, time, unittest\nsys.path.insert(0, {str(RACINE / 'outils')!r})\nimport test_bee\n"
+                               "ECART = os.environ.get('ECART')\n"
                                "class A(unittest.TestCase):\n    def test_1(self): pass\n    def test_2(self): pass\n"
-                               "class B(unittest.TestCase):\n    def test_3(self): pass\n    def test_4(self): pass\n"
-                               "    def test_5(self): self.assertNotIn('ECHEC', os.environ)\n"
+                               "class B(unittest.TestCase):\n    def test_3(self): pass\n"
+                               "    def test_4(self):\n"
+                               "        if ECART == 'skip': self.skipTest('a reason')\n"
+                               "        with self.subTest(n=1):\n"
+                               "            if ECART == 'skipped subtest': self.skipTest('in a subtest')\n"
+                               "        self.assertNotEqual(ECART, 'expected failure')\n"
+                               "    if ECART in ('expected failure', 'unexpected success'): test_4 = unittest.expectedFailure(test_4)\n"
+                               "    def test_5(self):\n"
+                               "        self.assertNotIn('ECHEC', os.environ)\n"
+                               "        time.sleep(float(os.environ.get('LENT', 0)))\n"
                                "sys.exit(test_bee.principal_tests(sys.modules[__name__], __file__, sys.argv[1:]))\n", encoding="utf-8")
 
     def lancer(self, tests, processus=2):
@@ -13993,8 +14014,72 @@ class TestSuiteEnParallele(unittest.TestCase):
                 principal_tests(sys.modules[__name__], __file__, ["--processus", nombre])  # unittest.main: unknown option
             self.assertEqual(fin.exception.code, 2)
 
+    def test_a_skip_an_expected_failure_or_an_unexpected_success_fails_the_run(self):
+        for ecart, attendu in (("skip", "skipped (a reason)"), ("skipped subtest", "skipped (in a subtest)"),
+                               ("expected failure", "expected failure"), ("unexpected success", "unexpected success")):
+            with self.subTest(ecart=ecart), mock.patch.dict(os.environ, ECART=ecart):
+                code, sortie = self.lancer(self.TESTS)
+                self.assertEqual(code, 1, sortie)
+                self.assertIn(f"shard 2/2: B.test_4: {attendu} (the parallel run accepts no skip, expected failure or unexpected "
+                              "success)", sortie)
+                self.assertIn("shard 2/2: exit code 1", sortie)
+                self.assertNotIn("all passed", sortie)
+
+    def test_each_shards_log_prints_as_soon_as_it_ends(self):
+        with mock.patch.dict(os.environ, LENT="3"):  # B.test_5, in shard 1, ends 3 s after shard 2
+            code, sortie = self.lancer(self.TESTS)
+        self.assertEqual(code, 0, sortie)
+        self.assertLess(sortie.index("=== shard 2/2: 2 tests, exit code 0"), sortie.index("=== shard 1/2: 3 tests, exit code 0"))
+
+    def test_the_real_file_exits_with_the_runners_code(self):
+        """The entry line of outils/test_bee.py itself: without sys.exit, a failed parallel run would exit 0 and pass the step."""
+        r = subprocess.run([sys.executable, str(RACINE / "outils" / "test_bee.py"), "--processus", "1000"], capture_output=True,
+                           text=True, stdin=subprocess.DEVNULL)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("shard 1000/1000: no test", r.stdout)
+        self.assertNotIn("=== shard", r.stdout)  # a split that fails runs nothing
+
     def test_validation_yml_runs_the_suite_in_processes_inside_its_job(self):
-        self.assertRegex(TestCiScope.etapes()[1]["outil"]["run"], r"^python3 outils/test_bee\.py --processus [1-9][0-9]*\n?$")
+        etape = TestCiScope.etapes()[1]["outil"]
+        self.assertRegex(etape["run"], r"^python3 outils/test_bee\.py --processus [1-9][0-9]*\n?$")
+        self.assertIsInstance(etape.get("timeout-minutes"), int)  # a hang stops the job, not after GitHub's 360 minutes
+
+    def test_validation_yml_runs_each_check_once_in_order_and_none_fails_silently(self):
+        """The tool's tests, then the judge's, then bee valider, then bee verifier-pr, each once in the « valider » job, and no
+        continue-on-error (job or step): a failed step stops the job. Checked on the file and on altered copies of it."""
+        texte = (RACINE / ".github/workflows/validation.yml").read_text(encoding="utf-8")
+        commandes = ("python3 outils/test_bee.py --processus", "python3 outils/juge/test_juge.py", "python3 outils/bee.py valider",
+                     "python3 outils/bee.py verifier-pr")
+
+        def ecarts(flux):
+            job = flux["jobs"]["valider"]
+            places = [[k for k, e in enumerate(job["steps"]) for _ in range(str(e.get("run", "")).count(c))] for c in commandes]
+            return ([f"{c}: {len(p)} times" for c, p in zip(commandes, places) if len(p) != 1]
+                    + ["out of order"] * (sorted(p[0] for p in places if p) != [p[0] for p in places if p])
+                    + [f"continue-on-error: {e.get('name', 'job')}" for e in (job, *job["steps"]) if "continue-on-error" in e])
+
+        def place(flux, nom):
+            return next(k for k, e in enumerate(flux["jobs"]["valider"]["steps"]) if e.get("name", "").startswith(nom))
+
+        def deplacer(flux, nom, avant):
+            etape = flux["jobs"]["valider"]["steps"].pop(place(flux, nom))
+            flux["jobs"]["valider"]["steps"].insert(place(flux, avant), etape)
+
+        self.assertEqual(ecarts(yaml.safe_load(texte)), [])
+        etapes = lambda f: f["jobs"]["valider"]["steps"]  # noqa: E731
+        alterations = {
+            "continue-on-error on the tests": lambda f: etapes(f)[place(f, "Tests de l'outil")].update({"continue-on-error": True}),
+            "continue-on-error on the job": lambda f: f["jobs"]["valider"].update({"continue-on-error": True}),
+            "Validation complète above the tests": lambda f: deplacer(f, "Validation complète", "Tests de l'outil"),
+            "the PR rules above bee valider": lambda f: deplacer(f, "Règles de la pull request", "Validation complète"),
+            "bee valider twice": lambda f: etapes(f).append(etapes(f)[place(f, "Validation complète")]),
+            "no judge tests": lambda f: etapes(f).pop(place(f, "Tests unitaires du juge")),
+        }
+        for nom, alterer in alterations.items():
+            with self.subTest(alteration=nom):
+                flux = yaml.safe_load(texte)
+                alterer(flux)
+                self.assertTrue(ecarts(flux), nom)
 
 
 if __name__ == "__main__":
