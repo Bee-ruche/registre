@@ -4339,11 +4339,11 @@ def depots_de_la_ruche(reg):
 
 
 def empreintes_protegees(reg):
-    """Jamais retirés (commandement 10 : hors de la ruche) : pseudos de la ruche, projets, dépôts, numéros (tâches, règles…)."""
+    """Jamais retirés (commandement 10 : hors de la ruche) : pseudos de la ruche, projets, dépôts, numéros (tâches, règles, arguments…)."""
     noms = (set(reg.membres) | reg.conseil | reg.gardiens | reg.garants | reg.robots | set(reg.comptes_agents)
             | set(reg.comptes_agents.values()) | set(reg.projets) | depots_de_la_ruche(reg))
     ids = (set(reg.taches) | set(reg.enregistrements) | set(reg.propositions) | set(reg.debats) | set(reg.invitations)
-           | {f"{p}{n}" for p in ("", "R", "C") for n in range(1, 100)} | {x for n in noms if isinstance(n, str) for x in (n, f"github:{n}")})
+           | {f"{p}{n}" for p in ("", "R", "C", "A") for n in range(1, 100)} | {x for n in noms if isinstance(n, str) for x in (n, f"github:{n}")})
     return frozenset().union(*(empreintes_passage(x) for x in ids if isinstance(x, str)))
 
 

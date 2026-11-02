@@ -10812,7 +10812,7 @@ class TestRetraitDemandeRuche0048(BaseRevueRuche0020):
         for nom, morceau in (("zorglub", "trop courant"), ("bruno", "jamais retiré"), ("@bruno", "jamais retiré"),
                              ("github:bidji29", "jamais retiré"), ("gina", "jamais retiré"), ("R13", "jamais retiré"),
                              ("miniz-0099", "jamais retiré"), ("minizBee", "jamais retiré"), ("I-0002", "jamais retiré"),
-                             ("10", "jamais retiré"), ("bruno a raison", "jamais retiré"),
+                             ("10", "jamais retiré"), ("A3", "jamais retiré"), ("bruno a raison", "jamais retiré"),
                              ("Pour refuser, répondez simplement", "rien ne nomme")):
             with self.subTest(nom):
                 code, texte = self.retirer(noms=["octocat", nom] if morceau != "rien ne nomme" else [nom])
@@ -10971,12 +10971,50 @@ class TestRetraitDemandeRuche0048(BaseRevueRuche0020):
         self.fusionner()
         self.a("2026-11-03T10:00:00Z")
         self.branche()
+        avant = set(self.dossier.glob("debats/D-*.yaml"))
         code, texte = self.bee("inviter", "--utilisateur", "chloe", "--identifiant", "github:octocat", "--demande", "garant", "--fait",
-                               "Un fait public.", "--source", "https://github.com/octocat", "--message", MESSAGE_INVITATION, "--debat", "D-0001")
-        self.assertEqual(code, 3, texte)
+                               "Un fait public.", "--source", "https://github.com/octocat", "--message", MESSAGE_INVITATION)
+        self.assertEqual(code, 3, texte)  # ruche-0050 : bee inviter ouvre aussi le débat propre de l'invitation
         self.assertIn("correspond à un retrait demandé consigné", texte)
+        self.assertEqual((self.invitation("I-0003")["personne"]["identifiant"], len(set(self.dossier.glob("debats/D-*.yaml")) - avant)),
+                         ("github:octocat", 1))
         self.commit()
         self.attend_le_conseil("chloe", "invitation", "retrait_demande_consigne")
+        # Une invitation d'une autre personne n'est pas signalée.
+        self.abandonner()
+        self.branche()
+        self.assertNotIn("retrait demandé", self.inviter("chloe", "github:fictif-autre"))
+        self.commit()
+        self.assertNotIn("retrait_demande_consigne", self.attend_le_conseil("chloe", "invitation"))
+
+    def test_le_debat_propre_d_une_invitation(self):
+        """ruche-0050 : le retrait atteint le débat propre d'une invitation (ses arguments, sa synthèse), jamais doublon_de,
+        doublon_par, conteste, synthese_couvre ni invitation."""
+        for quand, faire in (
+                ("2026-10-30T11:30:00Z", lambda: self.argumenter("chloe", "pour", "octocat a déjà refusé, selon Odile Martin.", debat="D-0002")),
+                ("2026-10-30T11:40:00Z", lambda: self.ok("debattre", "doublon", "D-0002", "--argument", "A2", "--de", "A1", "--utilisateur", "gina")),
+                ("2026-10-30T11:50:00Z", lambda: self.argumenter("chloe", "question", "Le doublon de A2 ne tient pas : octocat y est nommé.",
+                                                                 "--conteste", "A2", debat="D-0002")),
+                ("2026-10-30T12:00:00Z", lambda: self.ok("debattre", "synthetiser", "D-0002", "--utilisateur", "bruno", "--texte",
+                                                         "octocat : un avis pour (A1), une question (A3)."))):
+            self.a(quand)
+            faire()
+        self.commit("sur main : le débat de I-0001 la nomme")
+        self.valide()
+        avant, m = self.debat("D-0002"), bee.MARQUE_RETRAIT
+        texte = self.retrait_en_pr()
+        self.assertIn("debats/D-0002.yaml : synthese mot(s) 1 ; arguments/1/texte mot(s) 1, 6 ; arguments/2/texte mot(s) 9", texte)
+        self.attend_le_conseil("bidji29", "retrait_demande")
+        d = self.debat("D-0002")
+        self.assertEqual([a["texte"] for a in d["arguments"]], [avant["arguments"][0]["texte"], f"{m} a déjà refusé, selon {m}.",
+                                                                f"Le doublon de A2 ne tient pas : {m} y est nommé."])
+        self.assertEqual(d["synthese"], f"{m} : un avis pour (A1), une question (A3).")
+        structure = lambda x: (x["invitation"], x["synthese_couvre"], x["synthese_par"], [(a["id"], a["par"], a.get("doublon_de"),  # noqa: E731
+                                                                                         a.get("doublon_par"), a.get("conteste")) for a in x["arguments"]])
+        self.assertEqual(structure(d), structure(avant))
+        self.assertEqual(structure(d)[:2], ("I-0001", "A3"))
+        self.assertEqual(d["arguments"][1]["doublon_par"], "gina")
+        self.valide()
 
     def test_NIT_identifiant_vide_jamais_repete_et_consignation_seule(self):
         self.a("2026-11-02T10:00:00Z")
@@ -11018,7 +11056,8 @@ class TestRetraitDemandeChampsRuche0048(unittest.TestCase):
                    "reservation/utilisateur", "sortie_compressee", "statut", "taille", "type"},
         "debats": {"arguments/caviarde_pour", "arguments/doublon_de", "arguments/id", "arguments/le", "arguments/par", "arguments/position",
                    "arguments/repond_a", "clos_le", "clos_par", "id", "issue", "ouvert_le", "ouvert_par", "question_caviardee_pour",
-                   "rapporteur", "statut", "synthese_caviardee_pour", "synthese_le", "synthese_par"},
+                   "rapporteur", "statut", "synthese_caviardee_pour", "synthese_le", "synthese_par",
+                   "invitation", "synthese_couvre", "arguments/doublon_par", "arguments/conteste"},  # ruche-0050 : un numéro, un pseudo
         "invitations": {"debat", "demande", "id", "message", "personne", "personne/canal", "personne/identifiant", "autres_identites",
                         "pourquoi", "propose_le", "propose_par", "statut", "reponse/valeur", "retrait/raison"}
                        | {f"{g}/{c}" for g in ("accord_conseil", "accord_gardien", "ecartee", "envoi", "relance", "renouvellement", "reponse",
