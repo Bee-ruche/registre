@@ -113,11 +113,12 @@ gardien et au conseil de le voir) ; un `depot_origine` sur un hébergement parta
 ## Ce que la ruche garde d'une personne
 
 Les données d'une personne extérieure à la ruche ne sont pas du commun (commandement 10) : elles se retirent à
-son refus ou à sa demande.
+son refus ou à sa demande. Ce sont **deux gestes distincts** : un refus l'inscrit sur la liste de non-contact,
+pour toujours ; un retrait demandé retire ses données sans l'y inscrire, et elle pourra être invitée de nouveau.
 
 - **La liste de non-contact ne nomme personne.** `invitations/ne-plus-contacter.yaml` ne garde que des
   **empreintes** : le SHA-256, en hexadécimal, de la clé canonique de chaque identifiant (celle de `bee` :
-  plateforme, casse, espaces, page de forge, domaine enregistrable). Au refus, au silence ou au retrait, `bee` y
+  plateforme, casse, espaces, page de forge, domaine enregistrable). Au refus, au silence ou au retrait d'une invitation, `bee` y
   inscrit l'empreinte de l'identifiant, du canal et des autres identités déclarées ; jamais ce que désignent les
   sources (un tiers cité n'a rien refusé). Toute invitation nouvelle se compare par les empreintes de ses clés
   candidates (identité, canal, autres identités, ce que désignent ses sources) ; un nom de la liste sous une
@@ -127,8 +128,8 @@ son refus ou à sa demande.
   l'invitation, ce qui désigne ou décrit la personne (identifiant et canal, autres identités, raisons et
   sources, message, motif d'un `homonyme`) par « retiré : refus », et garde le numéro, les dates, la demande,
   le statut, le débat et le proposant ; au silence (`sans_reponse`), de même, « retiré : sans réponse ». Le
-  conseil fait de même à la demande de la personne, à tout moment (`bee invitation retirer`, « retiré :
-  demande », le motif d'un écart compris) : elle s'inscrit alors aussi sur la liste, sauf si elle a accepté.
+  conseil fait de même quand la personne demande, à tout moment, à ne plus être contactée (`bee invitation retirer`,
+  « retiré : demande », le motif d'un écart compris) : c'est un refus, elle s'inscrit aussi sur la liste, sauf si elle a accepté.
   Un retrait au motif « refus » ou « sans réponse » suit un refus ou un silence réel de la même personne (dans
   la même PR, ou déjà sur la liste) ; sinon, le seul motif est « demande ».
   **Toutes ses invitations** se retirent en même temps, quel que soit leur statut (expirée, écartée, en
@@ -139,10 +140,28 @@ son refus ou à sa demande.
 - **Dans l'agora.** Pour une invitation refusée, restée sans réponse ou retirée, le conseil caviarde un argument,
   la question ou la synthèse qui désigne la personne (`bee debattre caviarder D-0020 A3 --invitation I-0007
   --motif refus`, le motif de son retrait) : le texte devient « retiré : <motif> », les sources d'un argument
-  « retiré » ; son auteur, sa date, son identifiant et le reste du débat demeurent (R12). C'est la seule
-  modification d'un débat de ce genre, réservée au conseil, même dans un débat clos, et elle nomme
-  l'invitation (`caviarde_pour`) : sans invitation retirée, rien ne se caviarde. **Limite** : l'historique git garde
-  l'ancien contenu ; seul un effacement de l'historique, hors de portée de la ruche, l'en ôterait.
+  « retiré » ; son auteur, sa date, son identifiant et le reste du débat demeurent (R12). C'est, avec le retrait
+  demandé, la seule modification d'un débat, réservée au conseil, même dans un débat clos, et elle nomme
+  l'invitation (`caviarde_pour`) : sans invitation retirée, rien ne se caviarde.
+- **Un retrait demandé ne met pas sur la liste.** Quand la personne demande que ses données soient retirées, sans
+  refuser d'être contactée, le conseil consigne un retrait demandé (`bee retirer-donnees --utilisateur <conseil>
+  --identifiant github:octocat --identifiant octocat --identifiant "<son nom>" --canal courriel --demande-le
+  2026-11-01` ; `--reference`, son issue ou sa discussion sur Bee-ruche, pour une demande faite en public). Dans
+  les textes libres du registre (agora, sources comprises ; titres, contextes et notes des tâches ; motifs,
+  résumés, messages et faits), chaque passage qui la nomme (1 à 4 mots, comparés sur la clé canonique de `bee`)
+  devient `« retiré à la demande de la personne »` (une source : « retiré ») ; ses invitations retirent leur
+  dossier (« retiré : demande »). Auteurs, dates et reste d'un argument demeurent mot pour mot.
+  `gouvernance/retraits.yaml` (schéma `schemas/retraits.schema.json`), en ajout seul, consigne qui, quand, le
+  canal et le jour de la demande, et les seules empreintes de ce qui la nomme : les identifiants donnés à la
+  commande ne sont écrits nulle part. `bee verifier-pr` n'accepte qu'un retrait du conseil, d'une entrée, dont
+  chaque autre fichier modifié est exactement ce qu'en écrit la commande depuis `main` : sans demande consignée,
+  ou avec un mot de plus, il est refusé ; le geste ne fait taire aucun argument. Le conseil le fusionne lui-même,
+  par une PR qui ne nomme pas la personne. **Limites** : seules les formes données sont retrouvées ; une
+  empreinte ne dit pas ce qu'elle désigne (celle d'un mot courant retirerait ce mot partout, visiblement : au
+  relecteur de la PR de la refuser) ; `docs/`, que le conseil modifie lui-même, et les sources de l'invitation d'un tiers en sont hors.
+- **Ce que garde l'historique.** Après un refus, un caviardage ou un retrait demandé, l'historique git garde
+  l'ancien contenu ; seul un effacement de l'historique, hors de portée de la ruche, l'en ôterait. Le conseil n'y
+  fait rien d'automatique, et l'historique n'est pas réécrit.
 - **Un site, une personne.** Un site se compare sur son domaine enregistrable : les deux derniers labels
   (`blog.exemple.org` est `exemple.org`), les trois derniers sous une courte liste de suffixes à deux niveaux
   (`co.uk`, `com.au`…). **Limite** : sans la liste publique des suffixes, un suffixe à deux niveaux absent de
@@ -167,7 +186,8 @@ bee invitation consigner-envoi I-0001 --utilisateur <conseil>       # jamais ref
 bee invitation consigner-relance I-0001 --utilisateur <conseil>     # une fois, 14 jours après : le même message
 bee invitation consigner-reponse I-0001 --utilisateur <conseil> --valeur acceptee|refusee|sans_reponse
 bee invitation ecarter I-0001 --utilisateur <pseudo> --motif "…"    # avant l'envoi
-bee invitation retirer I-0001 --utilisateur <conseil>               # à la demande de la personne
+bee invitation retirer I-0001 --utilisateur <conseil>               # elle demande à ne plus être contactée
+bee retirer-donnees --utilisateur <conseil> --identifiant … --canal courriel --demande-le …  # retrait demandé, sans liste
 bee invitation renouveler I-0001 --utilisateur <conseil>            # un feu vert échu (7 jours sans envoi), une fois
 ```
 
@@ -185,7 +205,8 @@ personnelles sont un premier filtre, pas une garantie.
 | Relance consignée | Le conseil : le même message, une fois (`relances_max`) | `delai_relance_jours` (14) après l'envoi ; frein desserré (sauf garant ou gardien) ; aucun incident ; une place dans le plafond | Le conseil |
 | Réponse consignée | Le conseil | `acceptee` après l'envoi ; `refusee` à tout moment avant la fin ; `sans_reponse` 14 jours après le dernier message. `refusee` et `sans_reponse` inscrivent les empreintes de la personne sur la liste de non-contact et retirent son dossier de toutes ses invitations, dans la même PR | Le conseil |
 | Écarter | Avant le feu vert : le proposant, un gardien en fonction ou le conseil ; après : le conseil seul ; avec un motif | Avant l'envoi. Une invitation écartée après le feu vert retient la personne (elle est « déjà invitée ») | Automatique |
-| Retirer le dossier | Le conseil, à la demande de la personne | À tout moment, frein et incident compris ; la personne s'inscrit sur la liste (sauf si elle a accepté), et ses autres invitations se retirent aussi | Le conseil |
+| Retirer le dossier | Le conseil, quand la personne demande à ne plus être contactée | À tout moment, frein et incident compris ; la personne s'inscrit sur la liste (sauf si elle a accepté), et ses autres invitations se retirent aussi | Le conseil |
+| Retrait demandé (`bee retirer-donnees`) | Le conseil, à la demande de la personne | À tout moment ; ses données sortent des textes du registre, la liste n'est pas touchée | Le conseil |
 | Liste de non-contact | Le conseil, en ajout seul, par empreintes (avec une réponse ou un retrait) | Jamais une entrée retirée ni modifiée, jamais un nom en clair ; la liste ne se supprime pas | Le conseil |
 
 **Le plafond** (`invitations_par_semaine`, 3) compte, sur 7 jours glissants et pour toute la ruche, chaque

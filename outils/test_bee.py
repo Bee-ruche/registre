@@ -10311,6 +10311,152 @@ class TestVerificationRuche0020(BaseRevueRuche0020):
                                                 "pendant la phase de lancement, commandement 11) |"))
 
 
+class TestRetraitDemandeRuche0048(BaseRevueRuche0020):
+    """ruche-0048 (commandement 10) : un retrait demandé, distinct du refus, retire les passages qui nomment une personne
+    extérieure (agora, notes, invitations), sans l'inscrire sur la liste de non-contact ; il est consigné avec sa demande, par
+    les seules empreintes, et ne touche à rien d'autre. Données fictives."""
+
+    NOMS = ("github:octocat", "octocat", "Alice Martin")
+    ARGUMENT = "Je propose @octocat comme garant ; Alice Martin maintient zlib depuis dix ans, et le plafond doit rester bas."
+
+    def setUp(self):
+        super().setUp()
+        self.jusqu_a("proposee")  # I-0001 : alice invite github:octocat
+        self.a("2026-10-30T11:00:00Z")
+        self.inviter("bruno", "github:hubot")  # I-0002 : une autre personne
+        self.argumenter("bruno", "fait", self.ARGUMENT, "--source", "https://github.com/octocat", "--source", "REGLES.md")
+        self.argumenter("chloe", "contre", "Le plafond de R13 ne dit rien de la personne.", "--repond-a", "A1")
+        self.ok("noter", "miniz-0099", "--utilisateur", "chloe", "--texte", "J'en ai parlé à octocat (Alice Martin), qui dit non.")
+        self.commit("sur main : des textes qui nomment la personne")
+
+    def retirer(self, qui="bidji29", *options):
+        noms = [x for n in self.NOMS for x in ("--identifiant", n)]
+        return self.bee("retirer-donnees", "--utilisateur", qui, *noms, "--canal", "courriel", "--demande-le", "2026-11-01", *options)
+
+    def retrait_en_pr(self):
+        self.a("2026-11-02T10:00:00Z")
+        self.branche()
+        code, texte = self.retirer()
+        self.assertEqual(code, 0, texte)
+        self.commit()
+        return texte
+
+    def tous_les_textes(self):
+        return "\n".join(p.read_text(encoding="utf-8") for d in bee.DOSSIERS_LIBRE_SERVICE + ("gouvernance/",)
+                         for p in (self.dossier / d).rglob("*.yaml"))
+
+    def test_retrait_demande_retire_partout_sans_liste_et_un_refus_y_inscrit(self):
+        self.assertIn("octocat", self.tous_les_textes())
+        texte = self.retrait_en_pr()
+        self.assertIn("La liste de non-contact n'est pas touchée", texte)
+        self.attend_le_conseil("bidji29", "retrait_demande")
+        self.fusionner()
+        marque = bee.MARQUE_RETRAIT
+        tout = self.tous_les_textes()
+        for nom in ("octocat", "Alice Martin"):
+            self.assertNotIn(nom, tout)
+        inv = self.invitation()
+        self.assertEqual((inv["statut"], inv["personne"], inv["pourquoi"], inv["message"], inv["retrait"]["raison"]),
+                         ("retiree", "retiré : demande", "retiré : demande", "retiré : demande", "demande"))
+        self.assertEqual(self.invitation("I-0002")["personne"]["identifiant"], "github:hubot")
+        a1, a2 = self.debat()["arguments"]
+        self.assertEqual(a1["texte"], self.ARGUMENT.replace("@octocat", marque).replace("Alice Martin", marque))
+        self.assertEqual((a1["sources"], a1["par"], a1["position"]), (["retiré", "REGLES.md"], "bruno", "fait"))
+        self.assertEqual(a2["texte"], "Le plafond de R13 ne dit rien de la personne.")
+        self.assertEqual(self.tache("miniz-0099")["notes"][-1]["texte"], f"J'en ai parlé à {marque} ({marque}), qui dit non.")
+        self.assertFalse((self.dossier / bee.CHEMIN_NON_CONTACT).exists())
+        self.valide()
+        # Un refus inscrit toujours la personne sur la liste, comme avant.
+        self.a("2026-11-02T12:00:00Z")
+        self.branche()
+        self.geste("consigner-reponse", "bidji29", "--valeur", "refusee", invitation="I-0002")
+        self.publier("bidji29", "reponse_invitation", "non_contact", libre=False)
+        self.assertEqual(bee.lire_yaml(self.dossier / bee.CHEMIN_NON_CONTACT), {"empreintes": [bee.empreinte("github:hubot")]})
+        self.valide()
+
+    def test_un_auteur_hors_du_conseil_est_refuse(self):
+        self.a("2026-11-02T10:00:00Z")
+        for qui in ("alice", "gina"):
+            code, texte = self.retirer(qui)
+            self.assertEqual(code, 1, texte)
+            self.assertIn(f"le conseil seul ({qui} ?)", texte)
+        self.assertFalse((self.dossier / bee.CHEMIN_RETRAITS).exists())
+        self.retrait_en_pr()
+        for qui in ("alice", "gina"):
+            texte = self.refusee(qui, f"{qui} n'est pas du conseil : seul le conseil consigne un retrait demandé")
+            self.assertNotIn("FUSION_AUTO=oui", texte)
+        self.attend_le_conseil("bidji29", "retrait_demande")
+
+    def test_un_retrait_sans_demande_consignee_est_refuse(self):
+        self.retrait_en_pr()
+        entree = bee.lire_yaml(self.dossier / bee.CHEMIN_RETRAITS)["retraits"][0]
+        for nom, retraits, morceau in (("sans consignation", None, "arguments"),
+                                       ("sans demande", [{k: v for k, v in entree.items() if k != "demande"}], "demande"),
+                                       ("référence d'une demande privée", [{**entree, "demande": {**entree["demande"],
+                                        "reference": "https://github.com/Bee-ruche/registre/issues/12"}}], "si, et seulement si"),
+                                       ("demande postérieure", [{**entree, "demande": {"canal": "issue", "le": "2026-11-03",
+                                        "reference": "https://github.com/Bee-ruche/registre/issues/12"}}], "précède le retrait"),
+                                       ("deux retraits d'un coup", [entree, json.loads(json.dumps(entree))], "une entrée par PR")):
+            with self.subTest(nom):
+                chemin = self.dossier / bee.CHEMIN_RETRAITS
+                if retraits is None:
+                    chemin.unlink()
+                else:
+                    chemin.write_text(bee.texte_yaml({"retraits": retraits}), encoding="utf-8")
+                self.commit()
+                self.refusee("bidji29", morceau)
+                git(self.dossier, "reset", "-q", "--hard", "HEAD~1")
+        self.attend_le_conseil("bidji29", "retrait_demande")
+
+    def test_un_retrait_ne_touche_que_les_passages_qui_nomment_la_personne(self):
+        self.retrait_en_pr()
+        marque = bee.MARQUE_RETRAIT
+        for nom, avant, apres in (("un mot de plus", "doit rester bas", "doit monter"),
+                                  ("un passage qui ne la nomme pas", "le plafond doit rester bas", marque),
+                                  ("un autre argument", "Le plafond de R13", marque)):
+            with self.subTest(nom):
+                d = self.debat()
+                d["arguments"] = [{**a, "texte": a["texte"].replace(avant, apres)} for a in d["arguments"]]
+                self.ecrire(d)
+                self.commit()
+                self.refusee("bidji29", "D-0001.yaml : un retrait demandé ne change que les passages qui nomment la personne")
+                git(self.dossier, "reset", "-q", "--hard", "HEAD~1")
+        # Un autre fichier, ou un champ qui n'est pas un texte libre (l'auteur d'un argument), n'est pas un retrait.
+        d = self.debat()
+        d["arguments"][1]["par"] = marque
+        self.ecrire(d)
+        (self.dossier / "docs/croissance.md").write_text("Rien.\n", encoding="utf-8")
+        self.commit()
+        self.refusee("bidji29", "D-0001.yaml : un retrait", "docs/croissance.md : un retrait")
+        git(self.dossier, "reset", "-q", "--hard", "HEAD~1")
+        self.attend_le_conseil("bidji29", "retrait_demande")
+
+    def test_la_consignation_ne_garde_aucun_identifiant_en_clair(self):
+        self.retrait_en_pr()
+        chemin = self.dossier / bee.CHEMIN_RETRAITS
+        texte = chemin.read_text(encoding="utf-8")
+        for nom in ("octocat", "alice", "martin", "hubot"):
+            self.assertNotIn(nom, texte.casefold())
+        entree = bee.lire_yaml(chemin)["retraits"][0]
+        self.assertEqual(entree["demande"], {"canal": "courriel", "le": "2026-11-01"})
+        self.assertEqual(set(entree["empreintes"]), set().union(*map(bee.empreintes_passage, self.NOMS)))
+        self.valide()
+        chemin.write_text(bee.texte_yaml({"retraits": [{**entree, "empreintes": [*entree["empreintes"], "github:octocat"]}]}),
+                          encoding="utf-8")
+        self.commit()
+        self.refusee("bidji29", "format incorrect")
+        self.assertIn("empreintes/3 : format incorrect", self.bee("valider")[1])
+
+    def test_passages_unitaires(self):
+        empreintes = set().union(*map(bee.empreintes_passage, ("github:octocat", "octocat", "exemple.org")))
+        m = bee.MARQUE_RETRAIT
+        for avant, apres in (("Voir (@OctoCat), GitHub:octocat.", f"Voir ({m}), {m}."),
+                             ("https://github.com/octocat/zlib et https://blog.exemple.org/x !", f"{m} et {m} !"),
+                             ("octo cat, comme la clé canonique", f"{m}, comme la clé canonique"),
+                             ("octocats, octo-cat et https://github.com/hubot", "octocats, octo-cat et https://github.com/hubot")):
+            self.assertEqual(bee.passages_retires(avant, empreintes), apres)
+
+
 class TestManifesteRecopie(BaseRepetitionGenerale):
     """ruche-0017 : au verdict, le registre recopie du manifeste ce que le relecteur doit voir (modèle, gain déclaré, teste,
     non_teste, doutes), borné et typé, et bee l'imprime encadré comme de la donnée. Revue adverse : ce sont des données du
