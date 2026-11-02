@@ -59,6 +59,7 @@ jobs:
         with:
           ref: main
           fetch-depth: 0   # ruche-0028 : la fenêtre de R3 part de l'heure de fusion de la soumission, lue dans l'historique
+                           # ruche-0094: main before a registry PR's merge commit, and the PR's base (bee record-merge)
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
