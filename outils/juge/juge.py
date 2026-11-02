@@ -10,7 +10,8 @@ Ce que garantit le juge commun, quel que soit le greffon :
   d'instructions ont lieu dans des conteneurs sans réseau, en lecture seule, sans privilège, limités à
   deux processus pour l'exécution, qui ne voient que leurs entrées et un dossier de sorties ;
 - chaque côté d'entrées (« f », « z »…) a son propre conteneur : un harnais ne voit jamais les entrées
-  d'un autre côté ;
+  d'un autre côté ; chaque scénario a le sien, avec ses seules sorties, figées (SHA-256) dès la fin du
+  conteneur : la comparaison ne lit que ce qui a été figé ; leur ordre est tiré à chaque répétition ;
 - la graine des entrées tirées au hasard est choisie ici, APRÈS la compilation ; le greffon perturbe les
   entrées des mesures à chaque répétition ;
 - le temps processeur et la mémoire sont mesurés par le noyau (wait4) dans le lanceur chrono du juge
@@ -56,7 +57,7 @@ import analyse  # noqa: E402
 import conteneur  # noqa: E402
 import entrees as module_entrees  # noqa: E402
 import stats  # noqa: E402
-from lecture import Erreur, Refus, Sorties, exiger, journal, lire_sortie, propre  # noqa: E402,F401
+from lecture import Erreur, Refus, Sorties, exiger, figer, journal, propre  # noqa: E402,F401
 
 VERSION_COMMUNE = 2   # étiquette juge-v2 du registre
 VERSION_JUGE = 3      # numérotation de verdict.json : 2 = juge de minizBee (miniz-0031), 3 = juge commun (its tag in « commun »)
@@ -270,15 +271,24 @@ def sorties_de(travail, nom, cotes):
     return {c: conteneur.dossier_ouvert(os.path.join(travail, secrets.token_hex(8))) for c in cotes}
 
 
-def lancer_par_cote(execution, variante, dossiers, sorties, plans, **options):
-    """Un conteneur par scénario, ses sorties sur /sorties comme la vérification (dossier neutre, puis <côté>/<scénario>)."""
-    mesures = {}
-    for cote, plan in plans.items():
-        for etiquette, commande in plan:
-            dossier = conteneur.dossier_ouvert(os.path.join(os.path.dirname(sorties[cote]), secrets.token_hex(8)))
-            mesures.update(execution.lancer(variante, dossiers[cote], dossier, [(etiquette, commande)], **options))
-            os.rename(dossier, os.path.join(sorties[cote], etiquette))
-    return mesures
+def lancer_par_cote(execution, variante, dossiers, sorties, plans, ordre, **options):
+    """Un conteneur par scénario, dans l'ordre tiré (ruche-0036), ses sorties sur /sorties comme la vérification (dossier
+    neutre, puis <côté>/<scénario>), figées dès la fin du conteneur. Renvoie (mesures, Sorties qui ne lit que le figé)."""
+    mesures, commandes, figees = {}, {s: (c, commande) for c, plan in plans.items() for s, commande in plan}, {c: {} for c in sorties}
+    for etiquette in ordre:
+        cote, commande = commandes[etiquette]
+        dossier = conteneur.dossier_ouvert(os.path.join(os.path.dirname(sorties[cote]), secrets.token_hex(8)))
+        mesures.update(execution.lancer(variante, dossiers[cote], dossier, [(etiquette, commande)], **options))
+        figees[cote][etiquette] = "dossier"
+        figees[cote].update((f"{etiquette}/{k}", e) for k, e in figer(dossier).items())
+        os.rename(dossier, os.path.join(sorties[cote], etiquette))
+    return mesures, Sorties(sorties, figees=figees)
+
+
+def etape(nom, variantes, ordre, mesures):
+    """Une étape de juge.json : ordre des variantes et des scénarios, temps processeur de chaque scénario (wait4, chrono)."""
+    return {"etape": nom, "variantes": "".join(variantes), "ordre": list(ordre), "temps_processeur_s": {
+        v: {s: round(m[s]["utilisateur_s"] + m[s]["systeme_s"], 6) for s in ordre} for v, m in sorted(mesures.items())}}
 
 
 def tour(rng, entrees):
@@ -306,15 +316,14 @@ def meler(rng, mesurees, tours, combien, noms):
     return entrees, {(e.cote, neutres[len(mesurees) + j]): noms[(e.cote, e.nom)] for j, e in enumerate(ajout)}
 
 
-def sorties_par_entree(racines):
-    """B's verification outputs: {(side, written name): [paths relative to the side's folder]}."""
+def sorties_par_entree(figees):
+    """B's verification outputs, as frozen: {(side, written name): [paths relative to the side's folder]}."""
     index = {}
-    for c, racine in racines.items():
-        for dossier, _, noms in os.walk(racine):
-            for n in noms:
-                m = re.fullmatch(r"(e\d{4,})(\..*)?", n)
-                if m:
-                    index.setdefault((c, m.group(1)), []).append(os.path.relpath(os.path.join(dossier, n), racine))
+    for c, empreinte in figees.items():
+        for chemin, e in empreinte.items():
+            m = re.fullmatch(r"(e\d{4,})(\..*)?", chemin.rpartition("/")[2])
+            if m and e != "dossier":
+                index.setdefault((c, m.group(1)), []).append(chemin)
     return index
 
 
@@ -327,10 +336,10 @@ def memes_sorties(index, verification, sorties, melange, scenarios):
         for s in (s for s, c in scenarios if c == cote):
             for relatif in index.get((cote, nom_verification), []):
                 tete, barre, dernier = relatif.rpartition("/")
-                mesuree = lire_sortie(os.path.join(sorties[cote], s), tete + barre + nom + dernier[len(nom_verification):])
+                mesuree = sorties.ecrite(cote, f"{s}/{tete}{barre}{nom}{dernier[len(nom_verification):]}")
                 if mesuree is not None:
                     vues += 1
-                    if mesuree != exiger(verification[cote], relatif):
+                    if mesuree != verification.ecrite(cote, relatif):
                         raise Refus(f"scénario {s} : sortie de B différente de sa sortie en vérification pour la même entrée")
         if not vues:
             raise Erreur(f"{cote}/{nom} : aucune sortie de B comparable à la vérification (mêmes sorties dans chaque mode attendues)")
@@ -512,17 +521,21 @@ def main(argv=None):
         racines = {}
         commande = ["/variante/execution", "verifier", "/entrees", "/sorties"]
         for v in "AB":
-            racines[v] = sorties_de(travail, f"sorties-verification-{v}", cotes)
+            racines[v], figees = sorties_de(travail, f"sorties-verification-{v}", cotes), {}
             for cote in cotes:
                 execution.lancer(v, dossiers[cote], racines[v][cote], [("verifier", commande)], delai=3600)
+                figees[cote] = figer(racines[v][cote])  # dès la fin du conteneur : seul le figé sera lu
+            racines[v] = Sorties(racines[v], noms, figees)
         vue_b = Sorties(racines["B"], noms)
         comparees += entier_compte(projet.verifier(Sorties(racines["A"], noms), vue_b, entrees))
         exiger_couverture(vue_b, entrees, "vérification")
         if comparees == 0:
             raise Erreur("vérification : aucune sortie comparée : juge mal monté")
         fixes = {v: dict(projet.fixes(Sorties(racines[v], noms), corpus)) for v in "AB"}
+        for v in "AB":
+            racines[v].controler()
         effacer(racines["A"], dossiers)
-        index = sorties_par_entree(racines["B"])
+        index = sorties_par_entree(racines["B"].figees)
         journal(f"vérification : {comparees} sorties de B justes ({len(entrees)} entrées)")
         # Verification inputs mixed into every measurement (ruche-0037), spread over the repetitions.
         par_cote = {c: [e for e in entrees if e.cote == c] for c in set(projet.SCENARIOS.values())}
@@ -535,18 +548,20 @@ def main(argv=None):
         sans_melange = sorted(s for s in projet.INSTRUCTIONS if not legeres.get(projet.SCENARIOS[s]))
         melees = 0
 
-        # 2. Mesures au chronomètre (temps processeur du fils, lu par le noyau), A et B entrelacés.
-        mesures = {"A": [], "B": []}
+        # 2. Mesures au chronomètre (temps processeur du fils, lu par le noyau), A et B entrelacés ; l'ordre des
+        #    scénarios est tiré à chaque répétition, d'un générateur dérivé de la graine (les entrées n'en changent pas).
+        mesures, tirage, deroulement = {"A": [], "B": []}, random.Random(b"bee: ordre des scenarios " + graine), []
         for i in range(args.chauffe + args.repetitions):
             entrees, melange = meler(rng, projet.repetition(rng, corpus), tours, combien, noms)
             melees += len(melange)
             dossiers = preparer(travail, f"repetition-{i}", entrees, cotes)
             plans = {c: [(s, ["/variante/execution", s, "/entrees", "/sorties"]) for s, cs in projet.SCENARIOS.items() if cs == c]
                      for c in cotes}
-            sorties, brut = {}, {}
-            for v in (("A", "B") if i % 2 == 0 else ("B", "A")):
-                sorties[v] = sorties_de(travail, f"sorties-{i}-{v}", cotes)
-                brut[v] = lancer_par_cote(execution, v, dossiers, sorties[v], plans)
+            sorties, brut, ordre = {}, {}, tirage.sample(list(projet.SCENARIOS), len(projet.SCENARIOS))
+            variantes = ("A", "B") if i % 2 == 0 else ("B", "A")
+            for v in variantes:
+                brut[v], sorties[v] = lancer_par_cote(execution, v, dossiers, sorties_de(travail, f"sorties-{i}-{v}", cotes), plans,
+                                                       ordre)
             for v in "AB":
                 valeurs = dict(fixes[v])  # a scenario's value of a fixed metric, read on its timed outputs, replaces it
                 for s, cote in projet.SCENARIOS.items():
@@ -557,12 +572,14 @@ def main(argv=None):
                     valeurs.update(vals)
                 if i >= args.chauffe:
                     mesures[v].append(valeurs)
+                sorties[v].controler()
             comparees += memes_sorties(index, racines["B"], sorties["B"], melange, projet.SCENARIOS.items())
+            deroulement.append(etape("chauffe" if i < args.chauffe else "mesure", variantes, ordre, brut))
             effacer(sorties["A"], sorties["B"], dossiers)
             journal(f"répétition {i + 1}/{args.chauffe + args.repetitions} ({'chauffe' if i < args.chauffe else 'mesurée'}) faite")
 
         rapport = {
-            "repetitions": args.repetitions, "chauffe": args.chauffe, "ordre": "A, B puis B, A, en alternance",
+            "repetitions": args.repetitions, "chauffe": args.chauffe, "ordre": "A, B puis B, A, en alternance ; scénarios : juge.scenarios",
             "machine": stats.description_machine(),
             "methode": {
                 "valeur_retenue": "médiane des répétitions",
@@ -597,16 +614,19 @@ def main(argv=None):
             dossiers = preparer(travail, "instructions", entrees, cotes)
             plans = {c: [(s, VALGRIND + ["/variante/execution", s, "/entrees", "/sorties"])
                          for s in projet.INSTRUCTIONS if projet.SCENARIOS[s] == c] for c in cotes}
-            comptes, sorties = {}, {}
+            comptes, sorties, ordre = {}, {}, tirage.sample(list(projet.INSTRUCTIONS), len(projet.INSTRUCTIONS))
             for v in "AB":
-                sorties[v] = sorties_de(travail, f"sorties-instructions-{v}", cotes)
-                comptes[v] = lancer_par_cote(execution, v, dossiers, sorties[v], plans, valgrind=True, delai=3600)
+                comptes[v], sorties[v] = lancer_par_cote(execution, v, dossiers, sorties_de(travail, f"sorties-instructions-{v}", cotes),
+                                                         plans, ordre, valgrind=True, delai=3600)
             for s in projet.INSTRUCTIONS:
                 vue = Sorties(sorties["B"])
                 _, n = projet.scenario(s, Sorties(sorties["A"]), vue, entrees, comptes["B"][s])
                 comparees += entier_compte(n)
                 exiger_couverture(vue, [e for e in entrees if e.cote == projet.SCENARIOS[s]], f"instructions {s}")
+            for v in "AB":
+                sorties[v].controler()
             comparees += memes_sorties(index, racines["B"], sorties["B"], melange, [(s, projet.SCENARIOS[s]) for s in projet.INSTRUCTIONS])
+            deroulement.append(etape("instructions", "AB", ordre, comptes))
             effacer(sorties["A"], sorties["B"], dossiers)
             rapport["instructions"] = {}
             for s in projet.INSTRUCTIONS:
@@ -639,6 +659,11 @@ def main(argv=None):
             "analyse": {"architecture": platform.machine().lower(), "prefixes": list(projet.PREFIXES),
                         "permis": list(getattr(projet, "PERMIS", ()))},
             "constructions_suspectes": suspects,
+            "scenarios": {"isolement": "un conteneur par scénario ; ses sorties figées (SHA-256 de chaque fichier et liste) à la fin "
+                          "du conteneur, seules lues : un écart ensuite est un refus",
+                          "ordre": "tiré à chaque répétition (générateur dérivé de la graine)",
+                          "temps_processeur": "utilisateur + système, wait4 dans chrono (pas le cgroup) ; sous Valgrind en « instructions »",
+                          "deroulement": deroulement},
         }
         rapport["duree_s"] = round(time.time() - debut, 1)
     finally:
