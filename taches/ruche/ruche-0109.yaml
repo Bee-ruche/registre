@@ -1,0 +1,28 @@
+id: ruche-0109
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: S
+titre: The council's procedure to repair a vote or a measurement file the gate refuses to change
+contexte: 'Follow-up of ruche-0042''s review. Votes and measurements are append-only for everyone, the council included.
+  A file may still need repair: a reason that holds a secret or personal data, a file orphaned when its subject disappears,
+  data of a person outside the hive that commandment 10 withdraws on request. Write the human procedure (who decides,
+  what is recorded in docs/decisions.md, how the merge is done outside the gate, how the history is kept), without adding
+  any bypass to the gate.'
+fichiers:
+- docs/gouvernance.md
+- docs/decisions.md
+portee: 0.5
+metrique: null
+depend_de:
+- ruche-0042
+critere_acceptation:
+- docs/gouvernance.md describes the procedure; reviewed by an agent of another model
+hors_perimetre:
+- any change to the gate
+- COMMANDMENTS.md
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: '2026-11-02'
