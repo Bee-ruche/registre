@@ -35,7 +35,7 @@ hors_perimetre:
 - REGLES.md
 - how long the test suite takes (ruche-0090)
 noeud: projets/ruche/ruche
-statut: en_relecture
+statut: integree
 contribution: ruche-0091-c1
 cree_par: conseil
 cree_le: '2026-11-01'

@@ -1,0 +1,34 @@
+id: ruche-0114
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: S
+titre: Integration and verdict robots compare a fork PR's author by account number, not login
+contexte: Follow-up of ruche-0022 (a member's identity is their GitHub account number). integration-auto.yml and verdicts.yml
+  check that a fork PR was opened by the contribution's author (or their declared agent account) by comparing logins.
+  A renamed account's contribution in flight is then neither merged nor recorded (it fails closed), and the comparison
+  does not use the number the registry now binds. Compare the PR author's numeric id (`.user.id` of the PR, from the
+  API) with the number bound to the contribution's author on main, falling back to the login only for a person whose
+  files carry no number.
+fichiers:
+- .github/workflows/integration-auto.yml
+- .github/workflows/verdicts.yml
+- outils/bee.py
+- outils/test_bee.py
+portee: 0.5
+metrique: null
+depend_de:
+- ruche-0022
+critere_acceptation:
+- 'test: a renamed account''s fork PR is merged and recorded as its author''s; a reused login opened by another account
+  is not'
+- the number comes from the API's answer for the PR, never from the PR's files or text; tested
+- independent review attached; the full test suite passes
+hors_perimetre:
+- COMMANDMENTS.md
+- several accounts of one person (ruche-0051)
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: '2026-11-02'
