@@ -10819,7 +10819,7 @@ class TestFrozenInvitation(BaseRevueRuche0020):
                 ("alice", ("accord_gardien", "accord_conseil"), {"pourquoi": fait}, "pourquoi ne change jamais sous un accord"),
                 ("alice", ("accord_gardien",), {"pourquoi": fait}, "pourquoi ne change jamais sous un accord"),
                 ("bruno", (), {"pourquoi": fait}, "seuls le proposant et le conseil révisent une invitation"),
-                ("alice", (), {"pourquoi": fait, "debat": "D-0002"}, "debat ne change jamais"),
+                ("alice", (), {"pourquoi": fait, "debat": "D-0999"}, "debat ne change jamais"),  # never another debate than its own
                 ("alice", (), {"pourquoi": [{"fait": "Joignable au 06 12 34 56 78.", "source": "https://github.com/octocat"}]},
                  "un numéro de téléphone")):
             with self.subTest(qui=qui, gardes=gardes, champs=list(champs)):

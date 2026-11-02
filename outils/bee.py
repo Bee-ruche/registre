@@ -3986,7 +3986,7 @@ SENSIBLE_DOUTE = re.compile(
     r"(?<!il y )a \d{1,2} ans|under 18\b(?!\s*(?:%|[^\W\d_]))|teen(?:ager)?s?|adolescente?s?|minors|born (?:on|in)|n[ée]e? (?:le|en) \d)\b")
 SCHEMAS_TEXTES = {"taches": "tache", "contributions": "enregistrement", "votes": "vote", "mesures": "mesure", "membres": "membre", "projets": "projet",
                   "propositions": "proposition", "debats": "debat", "invitations": "invitation", CHEMIN_NON_CONTACT: "ne-plus-contacter",
-                  "gouvernance/incidents.yaml": "incidents", "CONTRIBUTION.yaml": "contribution"}
+                  "gouvernance/incidents.yaml": "incidents", "gouvernance/retraits.yaml": "retraits", "CONTRIBUTION.yaml": "contribution"}
 NON_LIBRE = re.compile(r"\d{4}-\d\d-\d\d(?:[T ]\d\d:\d\d(?::\d\d(?:\.\d+)?)?)?(?:Z|[+-]\d\d:?\d\d)?|(?=\d*[a-f])(?![0-9a-f]*?\d{9})[0-9a-f]{7,64}")  # a date, a sha
 
 
