@@ -4,7 +4,11 @@ auteur: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/137
 resume: 'R13 can be found and followed: a role for inviting, the dates of an invitation in bee voir, and
   a guardian''s gesture to report an incident that the brake counts.'
-statut: en_relecture
+statut: integree
 soumise_le: '2026-11-02T04:56:00Z'
 engage_depuis: '2026-11-01T22:00:47Z'
 relectures: []
+decidee_le: '2026-11-02T05:19:46Z'
+motif_decision: 'Hive tooling contribution: registry PR #137 merged at commit 4d49bdb by bidji29, the
+  account of a council member, CI green on the merged commit.'
+fusion_sha: d372a4ea37ca627f980c2d246956995e3e43a3b5

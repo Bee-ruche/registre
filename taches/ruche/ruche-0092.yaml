@@ -30,7 +30,7 @@ hors_perimetre:
 - the test fixture (ruche-0093)
 - fusion-auto.yml
 noeud: projets/ruche/ruche
-statut: en_relecture
+statut: integree
 contribution: ruche-0092-c1
 cree_par: conseil
 cree_le: '2026-11-01'

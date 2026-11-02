@@ -4,7 +4,11 @@ auteur: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/124
 resume: 'bee publier checks a PR''s title and body as an outgoing text, before anything is pushed: no
   mention, no reference or link outside the hive.'
-statut: en_relecture
+statut: integree
 soumise_le: '2026-11-02T04:31:00Z'
 engage_depuis: '2026-11-01T22:00:46Z'
 relectures: []
+decidee_le: '2026-11-02T04:53:34Z'
+motif_decision: 'Hive tooling contribution: registry PR #124 merged at commit e547400 by bidji29, the
+  account of a council member, CI green on the merged commit.'
+fusion_sha: dc8a916300c6139144d652228c0702028c379855
