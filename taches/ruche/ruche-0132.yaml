@@ -29,9 +29,7 @@ hors_perimetre:
 depend_de:
 - ruche-0092
 noeud: projets/ruche/ruche
-statut: reservee
-reservation:
-  utilisateur: "bidji29"
-  depuis: "2026-11-02T16:02:11Z"
+statut: en_relecture
+contribution: ruche-0132-c1
 cree_par: conseil
 cree_le: '2026-11-02'
