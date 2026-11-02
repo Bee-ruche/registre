@@ -1,7 +1,7 @@
 # Juge commun : un juge isolé pour tous les projets (spécification)
 
 Statut : version 3 (next tag `juge-v3`, created by the council once this is merged) ; version 2 en service depuis le 2 novembre 2026, étiquette `juge-v2` ;
-version 1 depuis le 28 octobre 2026, étiquette `juge-v1` (fusion décidée par le conseil). Les forks passent à juge-v3 par miniz-0048 et libyaml-0020. Les forks y passent par les tâches miniz-0032 (après l'intégration de miniz-0031) et
+version 1 depuis le 28 octobre 2026, étiquette `juge-v1` (fusion décidée par le conseil). Les forks y passent par les tâches miniz-0032 (après l'intégration de miniz-0031) et
 libyaml-0005 (après libyaml-0002).
 
 ## Le problème
