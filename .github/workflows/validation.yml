@@ -27,6 +27,9 @@ jobs:
           python-version: "3.12"
       - name: Dépendances
         run: pip install -r outils/requirements.txt
+      - name: API budget, start (ruche-0121; puts first on PATH a gh that logs each call)
+        env: {GITHUB_TOKEN: "${{ github.token }}"}
+        run: python3 outils/bee.py api-budget start --dossier "$RUNNER_TEMP/api-budget" --jeton GITHUB_TOKEN
       - name: Scope of the PR (data only, or the full suite)
         id: portee
         if: github.event_name == 'pull_request'
@@ -78,12 +81,20 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           AUTEUR: ${{ github.event.pull_request.user.login }}
+          GITHUB_ID: ${{ github.event.pull_request.user.id }}
           BASE: ${{ steps.portee.outputs.base }}
         run: |
           # BASE: the PR's real base, computed by the "Scope of the PR" step (never empty: an empty base would compare HEAD
           # with itself and pass).
           [ -n "$BASE" ]
-          compte=$(gh api "users/$AUTEUR" --jq '"\(.created_at[:10]) \(.id)"')
+          # ruche-0121: the author's account number is GitHub's, in the event; its creation date is read only for a PR that adds a
+          # member file (registering checks it, and refuses without it).
+          cree=""
+          if [ "$(python3 outils/bee.py needs-account-date --base "$BASE" --tete HEAD)" != no ]; then cree=$(gh api "user/$GITHUB_ID" --jq '.created_at[:10]'); fi
           # ruche-0091: the time of the PR is this run's creation, GitHub's record of the push; unreadable or malformed: refused.
           instant=$(timeout 60 gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq .created_at)
-          python3 outils/bee.py verifier-pr --base "$BASE" --tete HEAD --auteur "$AUTEUR" --compte-cree-le "${compte% *}" --github-id "${compte#* }" --instant-pr "$instant"
+          python3 outils/bee.py verifier-pr --base "$BASE" --tete HEAD --auteur "$AUTEUR" --compte-cree-le "$cree" --github-id "$GITHUB_ID" --instant-pr "$instant"
+      - name: API budget, end (ruche-0121)
+        if: always()
+        env: {GITHUB_TOKEN: "${{ github.token }}"}
+        run: python3 outils/bee.py api-budget end --dossier "$RUNNER_TEMP/api-budget" --jeton GITHUB_TOKEN
