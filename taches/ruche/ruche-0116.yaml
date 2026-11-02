@@ -11,7 +11,11 @@ contexte: 'Follow-up of ruche-0048''s review (details in the architect''s brief)
   (for example at most 40 replaced passages per 7 days across all entries, one setting). A YAML comment that names the
   person is reported, never touched; the docs say the council corrects it by hand, but the gate accepts only its deletion:
   say "supprime le commentaire" or accept the marker inside a comment, and align the invitation schema''s `anyOf` for
-  sources with the custom check.'
+  sources with the custom check.
+
+
+  Council''s note (2 Nov 2026, from the review of ruche-0048''s adaptation to ruche-0050): the removal protects argument
+  ids A1 to A99 whether or not they exist; protect only the ids that the debate actually holds.'
 fichiers:
 - outils/bee.py
 - outils/test_bee.py

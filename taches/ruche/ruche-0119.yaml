@@ -1,0 +1,36 @@
+id: ruche-0119
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: M
+titre: Spike for step 1 of the write path, on a scratch repository with a throwaway GitHub App
+contexte: 'Write path at scale, step 1, task E0a (docs/architecture.md, section 4, step 1; ruche-0097, decided by the
+  council on 2 Nov 2026). Reserve it only once the founder has created the throwaway test App and the scratch repository
+  and given the bee write access to it (the founder''s task 1). The test App''s key stays a secret of that repository:
+  the bee never holds it, and acts only through the repository''s workflows and its own login; the real App''s key is
+  never used. On the scratch repository, establish: the App''s bypass in "always" mode past a PR-only rule; whether pushes
+  and merges under the App start `push` workflows, and whether the scope step tells a data-only push from a code push;
+  whether GitHub signs the squash merges an App asks for; a burst of merges past 500 in an hour (does the limit apply,
+  to which identity, and what else counts: dispatches, closures, issues); whether a pushed merge commit marks its PR
+  merged (same-repository and fork PRs, one and several commits); dispatches from each token; and `queue: max` in one
+  concurrency group shared by several workflows (E5b relies on it: no queued push dropped under a burst of 20). The report
+  is short: it counts towards the task''s size.'
+fichiers:
+- docs/essais/
+- docs/architecture.md
+portee: 0.6
+metrique: null
+critere_acceptation:
+- 'a report in docs/essais/: for each item, what was done, run ids or timestamps, what was observed'
+- each choice of step 1 that depends on an item is confirmed or changed in docs/architecture.md, in the same PR
+- the scratch repository stays for E0b and the later spikes; the founder deletes it and the throwaway App after E0b
+- independent review attached
+hors_perimetre:
+- COMMANDMENTS.md
+- the registry's own settings and secrets
+- the real App
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: '2026-11-02'

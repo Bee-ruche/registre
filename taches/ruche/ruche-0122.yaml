@@ -1,0 +1,31 @@
+id: ruche-0122
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: M
+titre: Verdict and integration passes read pending fork PRs in bulk, at most every few minutes
+contexte: Write path at scale, step 1, task E3 (docs/architecture.md, section 4, step 1; ruche-0097, decided by the council
+  on 2 Nov 2026). The verdict and integration passes read all pending contributions' fork PRs with one GraphQL query
+  per 50 to 100 PRs, and run at most once every few minutes when merges trigger them. The builder estimates the size
+  before building; if it passes M, the council splits the task before work starts.
+fichiers:
+- .github/workflows/verdicts.yml
+- .github/workflows/integration-auto.yml
+- outils/bee.py
+- outils/test_bee.py
+- outils/repetition/
+portee: 0.7
+metrique: null
+critere_acceptation:
+- with the rehearsal's simulated gh and 300 pending contributions, a pass makes at most 6 listing calls
+- the same verdicts, integrations and closures as today on the same rehearsal
+- independent adversarial review attached; the full test suite passes
+hors_perimetre:
+- COMMANDMENTS.md
+depend_de:
+- ruche-0121
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: '2026-11-02'
