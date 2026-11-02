@@ -56,6 +56,8 @@ jobs:
           NUMERO: ${{ steps.pr.outputs.numero }}
           AUTEUR: ${{ steps.pr.outputs.auteur }}
           SHA: ${{ github.event.workflow_run.head_sha }}
+          # ruche-0091: the time of the PR, GitHub's record of the validation run that the push triggered (never the PR's text)
+          INSTANT_PR: ${{ github.event.workflow_run.created_at }}
         run: |
           git fetch origin "pull/$NUMERO/head:pr-$NUMERO"
           test "$(git rev-parse "pr-$NUMERO")" = "$SHA"
@@ -87,7 +89,7 @@ jobs:
           done < "$RUNNER_TEMP/prs.txt"
           set +e
           python3 outils/bee.py --registre ../fusion verifier-pr --base origin/main --tete HEAD \
-            --auteur "$AUTEUR" --compte-cree-le "$cree" --github-id "$numero_compte" --auteurs-pr "$RUNNER_TEMP/auteurs_pr.tsv" --fusion-auto
+            --auteur "$AUTEUR" --compte-cree-le "$cree" --github-id "$numero_compte" --auteurs-pr "$RUNNER_TEMP/auteurs_pr.tsv" --fusion-auto --instant-pr "$INSTANT_PR"
           code=$?
           set -e
           echo "code=$code" >> "$GITHUB_OUTPUT"

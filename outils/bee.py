@@ -554,8 +554,10 @@ class Registre:
 
 FUTUR_LOINTAIN = dt.datetime.max.replace(tzinfo=dt.timezone.utc)
 PASSE = dt.datetime.min.replace(tzinfo=dt.timezone.utc)
-# Une date déclarée (réservation, inscription, soumission) ne dépasse jamais l'instant de vérification de plus d'une minute.
+# A declared date (reservation, registration, submission...) is never more than a minute after the time of the PR (ruche-0091:
+# in CI, the push's) or of the check that reads it.
 AVANCE_MAX = dt.timedelta(minutes=1)
+INSTANT_PR_AGE_MAX = dt.timedelta(hours=24)  # ruche-0091: --instant-pr is refused outside [the check - this, the check + AVANCE_MAX]
 
 
 def paralleles_de(tache):
@@ -2659,7 +2661,7 @@ def verifier_engagements(reg, chemin, ancien, nouveau, differences, auteur, *, e
                    f"le nouveau titulaire doit être le plus ancien inscrit en parallèle, {elu.get('utilisateur')}, à la date de "
                    f"son inscription ({elu.get('depuis')}) : l'échéance R7 ne s'allonge pas")
             exiger(pn == sans(pa, elu.get("utilisateur")), "seul le nouveau titulaire quitte la liste des inscrits en parallèle")
-        exiger(titulaire == auteur or est_conseil or (est_robot and engagement_expire(reg, ra.get("depuis"), instant)),
+        exiger(titulaire == auteur or est_conseil or (est_robot and engagement_expire(reg, ra.get("depuis"), maintenant())),
                f"seul le titulaire ({titulaire}) libère sa réservation avant expiration")
         return "promotion", problemes
 
@@ -2720,7 +2722,7 @@ def verifier_engagements(reg, chemin, ancien, nouveau, differences, auteur, *, e
                "une PR ne retire qu'une inscription en parallèle, la sienne, sans réordonner les autres")
         p = retraits[0]
         qui = p.get("utilisateur")
-        exiger(qui == auteur or est_conseil or (est_robot and engagement_expire(reg, p.get("depuis"), instant)),
+        exiger(qui == auteur or est_conseil or (est_robot and engagement_expire(reg, p.get("depuis"), maintenant())),
                f"on ne retire que sa propre inscription en parallèle ({qui} n'est pas {auteur})")
         return "retrait_parallele", problemes
     if pa != pn:
@@ -4882,6 +4884,10 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
     checked as its person with that status: what passes then is never merged automatically (nature agent_account, a human
     must look); what still fails is refused.
 
+    ruche-0091: `instant` is the time of the PR: in CI, the time GitHub recorded for the push (--instant-pr), else now. Every
+    declared date is checked against it, and so is what is judged at the time of the act (R7, R8, the 24 h caps, the agora's
+    delays, an earlier invitation's expiry); engagement expiries, the end of a vote, the brake and the account's age: now.
+
     ruche-0022: `reg` adopts who is who from the base, never from the PR. A login the base binds to an account number acts only as
     that account: `github_id`, the PR author's, read by the workflow from the API; another, or none, is refused."""
     instant = instant or maintenant()
@@ -4995,7 +5001,7 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
     def frein():
         """L'état du frein de R13 (etat_frein), calculé une fois, et seulement si un geste vers le contact le demande."""
         if not frein_calcule:
-            frein_calcule.append(etat_frein(reg, instant))
+            frein_calcule.append(etat_frein(reg, maintenant()))  # ruche-0091: the brake as it is at the check
         return frein_calcule[0]
 
     def exiger(condition, message):
@@ -5167,7 +5173,7 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
                 expiree = False
                 try:
                     depuis = lire_instant((ancien.get("reservation") or {}).get("depuis"), chemin)
-                    expiree = instant - depuis > dt.timedelta(hours=int(reg.config.get("reservation_max_heures", 72)))
+                    expiree = maintenant() - depuis > dt.timedelta(hours=int(reg.config.get("reservation_max_heures", 72)))
                 except ErreurBee:
                     pass
                 exiger(titulaire == auteur or est_conseil or (est_robot and expiree),
@@ -5466,7 +5472,7 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
                 exiger(probleme is None, f"{probleme} : relancez bee voter")
                 sujet = str(nouveau.get("sujet", ""))
                 if ID_PROPOSITION.match(sujet) and sujet in reg.propositions:
-                    resultat = depouiller_proposition(reg, sujet, niveaux, instant)
+                    resultat = depouiller_proposition(reg, sujet, niveaux, maintenant())  # closed at the check (ruche-0091)
                     exiger(not resultat["terminee"] and reg.propositions[sujet][1].get("statut") == "ouverte",
                            f"{chemin} : le vote sur {sujet} est clos")
                 # ruche-0042: a contribution's vote closes when it leaves review, for everyone; the folder's and the file's subject.
@@ -5542,7 +5548,7 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
                         github = lire_date(compte_cree_le, "--compte-cree-le")
                         exiger(str(nouveau.get("compte_cree_le")) == github.isoformat(),
                                f"{chemin} : compte_cree_le ne correspond pas à la date fournie par GitHub ({compte_cree_le})")
-                        age = (instant.astimezone(dt.timezone.utc).date() - github).days
+                        age = (maintenant().astimezone(dt.timezone.utc).date() - github).days
                         exiger(age >= minimum, f"{chemin} : le compte GitHub doit avoir au moins {minimum} jours")
                     except ErreurBee as e:
                         problemes.append(str(e))
@@ -7479,8 +7485,10 @@ def cmd_prs_declarees(args):
 def cmd_verifier_pr(args):
     reg = Registre(args.registre)
     auteurs_pr = lire_auteurs_pr(args.auteurs_pr) if args.auteurs_pr else None
-    problemes, natures = verifier_pr(reg, args.base, args.tete, args.auteur, args.compte_cree_le, auteurs_pr=auteurs_pr,
-                                     github_id=args.github_id)
+    instant = None if args.instant_pr is None else lire_instant(args.instant_pr, "--instant-pr")  # empty or malformed: refused
+    if instant and not (m := maintenant()) - INSTANT_PR_AGE_MAX <= instant <= m + AVANCE_MAX:
+        raise ErreurBee(f"--instant-pr ({args.instant_pr}) : outside [the check - 24 h, the check + 1 min] : push again")
+    problemes, natures = verifier_pr(reg, args.base, args.tete, args.auteur, args.compte_cree_le, instant, auteurs_pr, args.github_id)
     problemes = list(dict.fromkeys(verifier_registre(reg) + problemes))  # once each (a file over its bound: ruche-0040)
     for p in problemes:
         print(f"✗ {montrer(p)}")
@@ -8340,14 +8348,20 @@ def cmd_integrer(args):
         for r in raisons:
             print("  - " + montrer(r))
         return 1
-    instant = en_iso(maintenant())
+    rivales = [(c, e) for c, e in contributions_en_course(reg, enr["tache"]) if c != args.contribution]
+    return integrer(reg, args, chemin, enr, en_iso(maintenant()), f"Intégration automatique (R3) : {resume_r3(reg, bilan)}"
+                    + (f" ; meilleure de sa course devant {', '.join(c for c, _ in rivales)}." if rivales else "."))
+
+
+def integrer(reg, args, chemin, enr, instant, motif, message=None):
+    """Writes an integration (bee integrer; bee record-merge, ruche-0094): args.contribution and its task « integree », with
+    args.fusion_sha; its rivals still in the race « ecartee » in its favour; the task's engagements ended, with a note."""
     tid = enr["tache"]
     rivales = [(c, e) for c, e in contributions_en_course(reg, tid) if c != args.contribution]
     enr = dict(enr)
     enr["statut"] = "integree"
     enr["decidee_le"] = instant
-    enr["motif_decision"] = (f"Intégration automatique (R3) : {resume_r3(reg, bilan)}"
-                             + (f" ; meilleure de sa course devant {', '.join(c for c, _ in rivales)}." if rivales else "."))
+    enr["motif_decision"] = motif
     if args.fusion_sha:
         enr["fusion_sha"] = args.fusion_sha
     ecrire_yaml(chemin, enr)
@@ -8379,13 +8393,109 @@ def cmd_integrer(args):
         textes.append(f"La tâche est intégrée : les engagements de {', '.join(fins)} prennent fin.")
     note = {"par": "github-actions[bot]", "le": instant, "texte": " ".join(textes)} if textes else None
     modifier_tache(chemin_tache, statut="integree", note=note, **changements)
-    print(f"✓ {args.contribution} intégrée automatiquement (R3).")
-    print(f"  PR du projet à fusionner : {enr.get('pr', '(inconnue)')}")
+    print(message or f"✓ {args.contribution} intégrée automatiquement (R3).\n  PR du projet à fusionner : {enr.get('pr', '(inconnue)')}")
     for c, e in rivales:
         # La PR de chaque concurrente écartée est fermée par le workflow, après la publication du registre (bee ecartees),
         # si elle est encore ouverte et que son auteur GitHub est bien celui de la contribution.
         print(f"ecartee: {c} {e.get('pr', '')} {e.get('auteur', '')}")
     return 0
+
+
+DECISIONS, ENTETE_DECISIONS = "docs/decisions.md", "| --- | --- | --- | --- |\n"
+VALIDATION = ".github/workflows/validation.yml"
+
+
+def cmd_record_merge(args):
+    """ruche-0094: records a registry contribution whose declared PR was merged into main, as the council does by hand: it and its
+    task « integree » (integrer) with the merge time, merge commit and a reason, and a row in docs/decisions.md. Facts from GitHub's
+    REST API only, stored by integration-auto in --api (pr.json: pulls/N; executions.json: the Actions runs of the merged head),
+    never from the PR's files or text; main's history says which commit added the contribution and what the merge changed, and
+    who was council or agent account just before it and at the PR's base (both must hold). Code 1, nothing written, unless: it is in review, with a resume; GitHub's PR is
+    the one it declares, on its project's repository, merged into main, opened by its author or their declared agent account; the
+    contribution arrived on main with that very merge (submitted inside the PR, so the merged head is the head it was submitted
+    at); from the PR's base to it, as many files as the PR changed, one outside the self-service folders, and no workflow;
+    a council member's account, or a council member's declared agent account, merged it; the latest run of validation.yml for this
+    PR succeeded, and the latest of every other pull_request workflow for it. The account is named as GitHub reports it: who acted
+    through it, the robot cannot know."""
+    reg = Registre(args.registre)
+    cid = args.contribution
+    chemin, enr = reg.enregistrement(cid)
+    quand, dernieres = None, {}
+
+    def refus(motif):
+        if quand is None or maintenant() - quand <= dt.timedelta(days=7):  # a merge older than a week: no notice at each pass
+            print(montrer(f"{cid}: {motif}; nothing recorded."))
+        return 1
+
+    try:
+        pr = reponses_api(args.api, "pr")[0]
+        numero, tete, fusion, base, auteur_pr = str(pr["number"]), pr["head"]["sha"], pr["merge_commit_sha"], pr["base"]["ref"], pr["user"]["login"]
+        fichiers_pr, de_la_pr, base_sha = pr["changed_files"], (pr["head"]["ref"], pr["head"]["repo"]["full_name"]), pr["base"]["sha"]
+        par, quand = (pr["merged_by"] or {}).get("login"), lire_instant(pr["merged_at"], "merged_at") if pr["merged"] is True else None
+        for r in sorted((r for d in reponses_api(args.api, "executions") for r in d["workflow_runs"]
+                         if r["head_sha"] == tete and r["event"] == "pull_request"
+                         and (r.get("head_branch"), (r.get("head_repository") or {}).get("full_name")) == de_la_pr), key=lambda r: int(r["id"])):
+            dernieres[r["path"]] = r  # the latest run of each pull_request workflow for this very PR (its head, branch, repository)
+    except (OSError, ValueError, LookupError, TypeError, AttributeError, ErreurBee):
+        return refus("GitHub's answer is unreadable")
+    projet = reg.projets.get((reg.taches.get(enr.get("tache"), (None, {}))[1] or {}).get("projet"), (None, {}))[1] or {}
+    if enr.get("statut") != "en_relecture":
+        return refus(f"status {enr.get('statut')}: only a contribution in review is recorded (a record made by hand is left alone)")
+    if not isinstance(enr.get("resume"), str) or not enr["resume"].strip():
+        return refus("no resume to write as what it brings in docs/decisions.md")
+    if pr_canonique(enr.get("pr")) is None or pr_canonique(enr.get("pr")) != pr_canonique(f"{projet.get('fork')}/pull/{numero}"):
+        return refus(f"GitHub's PR #{numero} on its project's repository is not the PR it declares ({enr.get('pr')})")
+    if quand is None:
+        return refus(f"PR #{numero} is not merged (closed without merge, or still open)")
+    if base != "main":
+        return refus(f"PR #{numero} was merged into {base}, not main")
+    if not all(isinstance(s, str) and re.fullmatch(r"[0-9a-f]{40}", s) for s in (tete, fusion, base_sha)):
+        return refus(f"PR #{numero}: no full head, merge or base commit id")
+    try:  # who is council or agent account: on main just before the merge AND at the PR's base (GitHub's, on main before it), both
+        ajouts = commits_premier_parent(reg.racine, "HEAD", reg.rel(chemin), filtre="A") if historique_disponible(reg.racine) else []
+        chemins = [c for c in git(reg.racine, "diff", "-z", "--name-only", "--no-renames", base_sha, fusion) if c]  # all the PR (ruche-0095)
+        git(reg.racine, "merge-base", "--is-ancestor", base_sha, f"{fusion}^1")  # no commit of the PR can be its base (F7, N1)
+        autorites = [(Pseudos(m.get("pseudo") for m in (lire_yaml_ref(reg.racine, ref, "gouvernance/conseil.yaml") or {}).get("membres")
+                              or [] if isinstance(m, dict)), agent_accounts(lire_yaml_ref(reg.racine, ref, AGENT_ACCOUNTS)))
+                     for ref in (f"{fusion}^1", base_sha)]
+    except (ErreurBee, AttributeError, TypeError):
+        return refus(f"main's history at PR #{numero}'s merge commit {fusion[:7]}, or its base {base_sha[:7]} before it, is unreadable")
+    if not all(meme_pseudo(person_of(agents, auteur_pr), enr.get("auteur")) for _, agents in autorites):
+        return refus(f"PR #{numero} was opened by {auteur_pr}, neither {enr.get('auteur')} nor their declared agent account")
+    if not ajouts or ajouts[0][0] != fusion:
+        return refus(f"it arrived on main with commit {ajouts[0][0][:7] if ajouts else '(unreadable)'}, not with PR #{numero}'s merge "
+                     f"commit {fusion[:7]}: only a contribution submitted inside the PR it declares is recorded here")
+    if len(chemins) != fichiers_pr:  # from the PR's base to its merge commit (squash, merge commit or rebase): the PR, nothing else
+        return refus(f"main from PR #{numero}'s base {base_sha[:7]} to its merge commit {fusion[:7]} changes {len(chemins)} files, the "
+                     f"PR {fichiers_pr}: the council records it by hand")
+    if all(c.split("/")[0] in {*FICHIERS_LIBRE_SERVICE, "debats"} for c in chemins):
+        return refus(f"PR #{numero} (merge commit {fusion[:7]}) changes only self-service files: no work to record")
+    if any(c.startswith(".github/workflows/") for c in chemins):  # its CI ran the PR's own version of the workflow
+        return refus(f"PR #{numero} (merge commit {fusion[:7]}) changes a workflow: the council records it by hand")
+    comptes = [("the account of a council member", f"{par} (account of a council member), by merging") if par in conseil
+               else (f"declared agent account of {agents[par]}", f"{par} (declared agent account of {agents[par]}, a council member), by merging")
+               if isinstance(par, str) and agents.get(par) in conseil else None for conseil, agents in autorites]
+    if None in comptes:
+        return refus(f"PR #{numero} was merged by {par}, neither a council member's account nor a council member's declared agent account"
+                     " (on main before the merge and at the PR's base)")
+    compte, qui = comptes[0]
+    vert = lambda r: (r.get("status"), r.get("conclusion")) == ("completed", "success")  # noqa: E731
+    if not (VALIDATION in dernieres and all(vert(r) for r in dernieres.values())):
+        return refus(f"CI not green on the merged commit {tete[:7]} (the latest run of validation.yml for this PR, and of every other "
+                     "pull_request workflow on it, must have succeeded)")
+    texte = (reg.racine / DECISIONS).read_text(encoding="utf-8")
+    if ENTETE_DECISIONS not in texte:
+        return refus(f"{DECISIONS} has no table header to add the row under")
+    if not re.search(rf"(?m)^\| [^|]+ \| {re.escape(cid)} integrated \(", texte):  # a row already written (by hand, or by a failed pass)
+        quoi = " ".join(enr["resume"].split()).rstrip(".")
+        quoi = (quoi if len(quoi) <= 300 else quoi[:299] + "…").replace("|", "\\|")
+        ligne = (f"| {en_iso(quand)[:10]} | {cid} integrated (PR #{numero}, merged at the judged commit {tete[:7]}): {quoi} | Task "
+                 f"{enr['tache']}; recorded by the integration workflow from GitHub's facts: merged at {en_iso(quand)}, merge commit "
+                 f"{fusion[:7]}, CI green on the merged commit (ruche-0094) | {qui} |\n")
+        (reg.racine / DECISIONS).write_text(texte.replace(ENTETE_DECISIONS, ENTETE_DECISIONS + ligne, 1), encoding="utf-8")
+    return integrer(reg, argparse.Namespace(contribution=cid, fusion_sha=fusion), chemin, enr, en_iso(quand),
+                    f"Hive tooling contribution: registry PR #{numero} merged at commit {tete[:7]} by {par}, {compte}, CI green on the merged "
+                    "commit.", f"✓ {cid} recorded as integrated: PR #{numero} merged at {en_iso(quand)} by {par}, merge commit {fusion}.")
 
 
 def cmd_cloturer(args):
@@ -9429,6 +9539,11 @@ def construire_analyseur():
     p.add_argument("contribution", help="id de la contribution (ex. miniz-0012-c1)")
     p.add_argument("--fusion-sha", help="SHA du commit de fusion sur le dépôt du projet, consigné dans la contribution")
 
+    p = ajouter("record-merge", cmd_record_merge, "Records a registry contribution whose declared PR was merged into main, from "
+                                                  "GitHub's facts (used by integration-auto, ruche-0094).")
+    p.add_argument("contribution", help="id of the contribution (e.g. ruche-0094-c1)")
+    p.add_argument("--api", required=True, help="folder of GitHub's answers stored by integration-auto (pr.json, executions.json)")
+
     p = ajouter("cloturer", cmd_cloturer,
                 "Clôt une contribution abandonnée (PR fermée sans fusion) et rouvre sa tâche. Utilisé par le workflow de confiance.")
     p.add_argument("contribution", help="id de la contribution (ex. miniz-0012-c1)")
@@ -9451,6 +9566,8 @@ def construire_analyseur():
     p.add_argument("--auteurs-pr", help="fichier « adresse<TAB>login » : auteur GitHub de chaque PR déclarée dans une contribution "
                                         "ajoutée ou modifiée (relevé par fusion-auto) ; chacune doit être celle de l'auteur de la "
                                         "contribution, et une PR absente est refusée")
+    p.add_argument("--instant-pr", help="time GitHub recorded for the push being checked (the CI gives it): every declared date "
+                                        "is checked against it; without it, the current time")
 
     p = ajouter("prs-declarees", cmd_prs_declarees,
                 "Liste les PR déclarées par les contributions ajoutées ou modifiées d'une PR du registre (utilisé par fusion-auto).")
