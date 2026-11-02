@@ -98,7 +98,7 @@ class ChargeurBee(yaml.SafeLoader):
                 continue
             if deja:
                 raise yaml.constructor.ConstructorError(None, None, f"clé « {cle} » en double", noeud_cle.start_mark)
-        return super().construct_mapping(node, deep=deep)
+        return yaml.constructor.SafeConstructor.construct_mapping(self, node, deep=deep)  # named: _ChargeurBeeC shares it
 
 
 ChargeurBee.yaml_implicit_resolvers = {
@@ -107,7 +107,51 @@ ChargeurBee.yaml_implicit_resolvers = {
 }
 
 
+# ruche-0130: libyaml's parser, when PyYAML has it, reads the registry about eight times faster. It composes the nodes in
+# C, so ChargeurBee.compose_node never sees its events: a pre-scan of the same events refuses first what compose_node
+# refuses (anchor, alias, explicit tag), and a nesting deeper than PROFONDEUR_C_MAX; the constructor (merge key, duplicate
+# key, integer too long) is the same Python code on both paths. The C path only accepts: a finding or any error sends the
+# text to the pure-Python loader, whose refusal and message stay the reference (and the loader when libyaml is missing).
+PROFONDEUR_C_MAX = 64
+_LU_AUTREMENT_EN_C = re.compile(r"[\t\ufeff]|[|>][-+0-9]*#")
+_ChargeurBeeC = None
+if getattr(yaml, "__with_libyaml__", False):
+    class _ChargeurBeeC(yaml.CSafeLoader):
+        construct_mapping = ChargeurBee.construct_mapping
+
+    _ChargeurBeeC.yaml_implicit_resolvers = ChargeurBee.yaml_implicit_resolvers
+
+
+def _lisible_en_c(texte):
+    """True when libyaml's events hold no anchor, alias or explicit tag, nested at most PROFONDEUR_C_MAX deep, and the
+    text avoids where libyaml's scanner reads otherwise than PyYAML's (found by a differential fuzz): a tab or a byte
+    order mark anywhere (libyaml drops a BOM at a line's start), a block scalar header followed by # (|#), and a plain
+    scalar in a flow collection holding ? ([a?] and {a?: b} for libyaml only) or, as a precaution, : (the two scanners'
+    rules differ there too; today libyaml only refuses more, [b:])."""
+    if _LU_AUTREMENT_EN_C.search(texte):
+        return False
+    flux = []  # flow_style of each open collection: a flow one holds only flow ones
+    for evenement in yaml.parse(texte, Loader=_ChargeurBeeC):
+        if (isinstance(evenement, yaml.AliasEvent) or getattr(evenement, "anchor", None) is not None
+                or getattr(evenement, "tag", None) is not None):
+            return False
+        if isinstance(evenement, yaml.CollectionStartEvent):
+            flux.append(bool(evenement.flow_style))
+            if len(flux) > PROFONDEUR_C_MAX:
+                return False
+        elif isinstance(evenement, yaml.CollectionEndEvent):
+            flux.pop()
+        elif (isinstance(evenement, yaml.ScalarEvent) and flux and flux[-1] and not evenement.style
+              and ("?" in evenement.value or ":" in evenement.value)):
+            return False
+    return True
+
+
 def charger_texte_yaml(texte, origine="<texte>"):
+    if _ChargeurBeeC is not None:
+        with contextlib.suppress(yaml.YAMLError, RecursionError, ValueError):
+            if _lisible_en_c(texte):
+                return yaml.load(texte, Loader=_ChargeurBeeC)
     try:
         return yaml.load(texte, Loader=ChargeurBee)
     except (yaml.YAMLError, RecursionError, ValueError) as e:  # ruche-0040: too deep, or an integer too long, is refused too
