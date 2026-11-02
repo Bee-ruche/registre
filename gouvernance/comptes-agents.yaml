@@ -8,5 +8,6 @@
 accounts:
   - account: laruche-architect
     acts_for: bidji29
+    github_id: 350913671
     declared_on: "2026-11-01"
     purpose: the agent principal (architect) of La Ruche, which the founder runs
