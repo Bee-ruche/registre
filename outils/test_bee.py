@@ -292,6 +292,7 @@ class TestCiScope(unittest.TestCase):
             self.ecrire(chemin, "id: y\n")
         self.assertEqual(self.portee(), ("data", None))
         self.assertEqual(lancer("--registre", str(self.depot), "ci-scope", "--base", self.base), (0, "data\n"))
+        self.assertEqual(bee.dernier_commit_de_code(self.depot, "HEAD"), self.base, "ruche-0132: the same rules on main")
 
     def test_anything_else_runs_the_full_suite(self):
         lien = lambda chemin: os.symlink("../README.md", self.depot / chemin)  # noqa: E731
@@ -328,6 +329,12 @@ class TestCiScope(unittest.TestCase):
                 portee, raison = bee.ci_scope(self.depot, self.base, "HEAD")
                 self.assertEqual(portee, "full")
                 self.assertTrue(raison)
+                # ruche-0132: main's last code commit is judged by the same rules: under a data commit, this one is code.
+                sha = git(self.depot, "rev-parse", "HEAD").strip()
+                self.ecrire("propositions/P-0009.yaml")
+                git(self.depot, "add", "propositions/P-0009.yaml")
+                git(self.depot, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "c")
+                self.assertEqual(bee.dernier_commit_de_code(self.depot, "HEAD"), sha)
         self.assertEqual(bee.ci_scope(self.depot, "0" * 40, "HEAD")[0], "full", "unknown base")
         self.assertEqual(bee.ci_scope(self.temp.name, self.base, "HEAD")[0], "full", "not a repository")
         code, sortie = lancer("--registre", str(self.depot), "ci-scope", "--base", "0" * 40)
@@ -409,11 +416,12 @@ class TestCiScope(unittest.TestCase):
     @staticmethod
     def executions(*runs, **champs):
         """A response of actions/workflows/suite.yml/runs, newest first: one dispatched run on main per (commit, status,
-        conclusion); `champs` replace fields of every run."""
+        conclusion[, run_attempt, 1 by default]); `champs` replace fields of every run."""
         return json.dumps({"workflow_runs": [{"id": 100 - k, "path": ".github/workflows/suite.yml", "head_branch": "main",
                                               "event": "workflow_dispatch", "display_title": f"Full suite on {commit}",
-                                              "head_sha": commit, "status": statut, "conclusion": conclusion, **champs}
-                                             for k, (commit, statut, conclusion) in enumerate(runs)]})
+                                              "head_sha": commit, "status": statut, "conclusion": conclusion,
+                                              "run_attempt": (essai or [1])[0], **champs}
+                                             for k, (commit, statut, conclusion, *essai) in enumerate(runs)]})
 
     @staticmethod
     def tourne(etape, evenement, portee):
@@ -687,6 +695,82 @@ class TestMainVert(unittest.TestCase):
             with self.subTest(reponse=reponse):
                 self.assertFalse(bee.main_vert(self.depot, "HEAD", reponse)[0])
         self.assertFalse(bee.main_vert(self.depot, "0" * 40, json.loads(TestCiScope.executions(succes)))[0], "main's code not found")
+
+    def test_one_git_process_and_no_ceiling_at_a_thousand_data_commits(self):
+        """Review of ruche-0132: the search is one `git log` (not one git process per data commit), and finds main's last
+        code commit under 1,500 data commits (an hour and a half at the target pace; it stopped at 1,000)."""
+        flux = "".join(f"commit refs/heads/main\ncommitter t <t@t> {1700000000 + k} +0000\ndata 1\nc\n"
+                       f"{'from refs/heads/main^0' + chr(10) if k == 0 else ''}M 100644 inline membres/m{k}.yaml\ndata 6\nid: x\n\n"
+                       for k in range(1500))
+        subprocess.run(["git", "-C", str(self.depot), "fast-import", "--quiet"], input=flux, text=True, check=True)
+        self.assertGreaterEqual(bee.LIMITE_COMMITS_DONNEES, 100_000)
+        with mock.patch.object(subprocess, "Popen", wraps=subprocess.Popen) as processus:
+            self.assertEqual(bee.dernier_commit_de_code(self.depot, "HEAD"), self.code)
+        self.assertEqual(processus.call_count, 1, "one git process")
+        self.assertEqual(bee.dernier_commit_de_code(self.depot, "HEAD", limite=1503), self.code)
+        self.assertIsNone(bee.dernier_commit_de_code(self.depot, "HEAD", limite=1502), "past the ceiling: none")
+        self.assertEqual(self.vert((self.code, "completed", "success")), (True, None))
+
+    def test_rows_added_to_docs_decisions_count_as_data(self):
+        """Review of ruche-0132, the architect's decision: to find main's last code commit (not for a PR's scope), a commit
+        that changes only self-service data and docs/decisions.md, with lines added only (the integration workflow's
+        « Intégrations et clôtures automatiques », a council row), counts as data; any other change to it is code."""
+        tableau = "| Date | Décision |\n| --- | --- |\n| 2026-11-01 | a |\n"
+        (self.depot / "docs").mkdir()
+        (self.depot / "docs/autre.md").write_text(tableau, encoding="utf-8")
+        code = self.commit("docs/decisions.md", tableau)
+        base = self.commit("membres/bruno.yaml")
+        decisions = self.depot / "docs/decisions.md"
+        ecrire = lambda chemin, texte="id: x\n": ((self.depot / chemin).parent.mkdir(parents=True, exist_ok=True),  # noqa: E731
+                                                   (self.depot / chemin).write_text(texte, encoding="utf-8"))
+        ligne = lambda chemin=decisions: chemin.write_text(tableau.replace("| --- |\n", "| --- |\n| 2026-11-02 | b |\n"), encoding="utf-8")  # noqa: E731
+        honnetes = {
+            "the integration workflow's commit": lambda: (ligne(), ecrire("taches/miniz/miniz-0001.yaml", "id: y\n"),
+                                                          ecrire("contributions/miniz/miniz-0001-c1.yaml")),
+            "a council row at the end": lambda: decisions.write_text(tableau + "| 2026-11-02 | c |\n", encoding="utf-8"),
+        }
+        detours = {
+            "a row changed": lambda: decisions.write_text(tableau.replace("| a |", "| A |"), encoding="utf-8"),
+            "a row removed": lambda: decisions.write_text(tableau.rsplit("| 2026", 1)[0], encoding="utf-8"),
+            "a row added, another changed": lambda: decisions.write_text(tableau.replace("| a |", "| A |") + "| x | y |\n", encoding="utf-8"),
+            "and code": lambda: (ligne(), ecrire("outils/bee.py", "print('data')\n")),
+            "executable": lambda: (ligne(), decisions.chmod(0o755)),
+            "another document": lambda: ligne(self.depot / "docs/autre.md"),
+            "deleted": lambda: decisions.unlink(),
+            "symlink": lambda: (decisions.unlink(), os.symlink("autre.md", decisions)),
+            "binary": lambda: decisions.write_bytes(tableau.encode() + b"| \0 |\n"),
+        }
+        for nom, changer in {**honnetes, **detours}.items():
+            with self.subTest(cas=nom):
+                git(self.depot, "reset", "-q", "--hard", base)
+                changer()
+                sha = self.commit("membres/chloe.yaml", nom)  # the change, with data
+                self.commit("membres/david.yaml")  # a data commit on top
+                self.assertEqual(bee.dernier_commit_de_code(self.depot, "HEAD"), code if nom in honnetes else sha)
+                self.assertEqual(bee.ci_scope(self.depot, base, sha)[0], "full", "a PR's scope is unchanged")
+        git(self.depot, "reset", "-q", "--hard", base)
+        self.commit("docs/decisions.md", tableau + "| 2026-11-02 | c |\n")  # a council row, alone
+        self.assertEqual(bee.dernier_commit_de_code(self.depot, "HEAD"), code)
+
+    def test_a_re_run_in_progress_counts_as_red(self):
+        """Review of ruche-0132: re-running a failed run of main's last code commit puts it back in progress, and the newest
+        completed run is then an older success; a run not completed with run_attempt > 1 counts as red."""
+        autre = "0" * 40
+        for statut in ("queued", "in_progress", "waiting", "requested", "pending"):
+            with self.subTest(statut=statut):
+                vert, raison = self.vert((self.code, statut, None, 2), (autre, "completed", "success"))
+                self.assertFalse(vert)
+                self.assertIn("100", raison)
+        self.assertFalse(self.vert((self.code, "in_progress", None, 3), (self.code, "completed", "success"))[0])
+        reponse = json.loads(TestCiScope.executions((self.code, "in_progress", None), (autre, "completed", "success")))
+        del reponse["workflow_runs"][0]["run_attempt"]
+        self.assertFalse(bee.main_vert(self.depot, "HEAD", reponse)[0], "not completed, attempt unknown")
+        # A first attempt in progress: the newest completed run decides, as before; a re-run that completed: its conclusion.
+        self.assertEqual(self.vert((self.code, "in_progress", None, 1), (autre, "completed", "success")), (True, None))
+        self.assertEqual(self.vert((self.code, "completed", "success", 2), (autre, "completed", "failure")), (True, None))
+        self.assertFalse(self.vert((self.code, "completed", "failure", 2))[0])
+        # An older run re-run while the newest one, for main's last code commit, succeeded: green.
+        self.assertEqual(self.vert((self.code, "completed", "success"), (autre, "in_progress", None, 2)), (True, None))
 
     def test_command(self):
         fichier = self.depot.parent / f"{self.depot.name}.json"
