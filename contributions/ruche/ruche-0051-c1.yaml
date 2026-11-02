@@ -4,7 +4,11 @@ auteur: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/162
 resume: Several accounts of one person, declared from both sides by account number, count as one person;
   status and levels never pass through a link.
-statut: en_relecture
+statut: integree
 soumise_le: '2026-11-02T14:54:07Z'
 engage_depuis: '2026-11-02T11:21:48Z'
 relectures: []
+decidee_le: '2026-11-02T15:24:24Z'
+motif_decision: 'Hive tooling contribution: registry PR #162 merged at commit 5bbfeb6 by bidji29, the
+  account of a council member, CI green on the merged commit.'
+fusion_sha: 20f44e71495bad3c2a82acf72533f669568a4fb7
