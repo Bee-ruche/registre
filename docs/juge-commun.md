@@ -93,7 +93,9 @@ Règles de sûreté, vérifiées par le juge commun (revue adverse du 28/10) :
   to 9999), no verdict is complete: the gate closes, never opens. It is read when R3 is checked, so it reaches contributions
   still in review, judged by an older judge, never those already integrated. **The council raises it**, after it has tagged
   the new version and every fork is pinned to it (each fork moves by a tooling PR); raised earlier, the forks' verdicts go to a
-  guardian until they move.
+  guardian until they move. It checks the version of the judge's code (the label, `VERSION_COMMUNE` in `outils/juge/juge.py`),
+  not the commit a fork pins: the council bumps `VERSION_COMMUNE` whenever a change to the judge or to its workflow's
+  protections ships, then raises the minimum. `bee valider` reports a missing or malformed minimum.
 
 ## Le workflow `juge.yml`, version 2 (ruche-0024)
 

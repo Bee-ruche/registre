@@ -1126,6 +1126,29 @@ class TestRegistre(BaseTest):
         self.regler_juge_commun_min(None)
         self.assertFalse(bee.juge_complet(bee.Registre(self.dossier), verdict | {"juge": verdict["juge"] | {"commun": "juge-v2"}}))
 
+    def test_valider_signale_un_juge_commun_min_absent_ou_mal_forme(self):
+        # ruche-0086 (revue) : avec la porte à si_juge_incomplet, bee valider signale un minimum absent ou mal formé ; sinon, rien.
+        self.regler_porte("si_juge_incomplet")
+        for valeur in (None, "true", "'2'", "2.0", "0", "10000"):
+            with self.subTest(juge_commun_min=valeur):
+                self.regler_juge_commun_min(valeur)
+                code, texte = self.bee("valider")
+                self.assertEqual(code, 1, texte)
+                self.assertIn("juge_commun_min : entier de 1 à 9999 attendu", texte)
+        self.regler_juge_commun_min(2)
+        self.valide()
+        chemin = self.dossier / "bee.yaml"  # la porte toujours fermée (true) ne lit pas le minimum : rien à signaler
+        chemin.write_text(chemin.read_text(encoding="utf-8").replace("relecture_gardien_requise: si_juge_incomplet", "relecture_gardien_requise: true"),
+                          encoding="utf-8")
+        self.regler_juge_commun_min(None)
+        self.valide()
+
+    def test_juge_commun_etiquette_chiffres_ascii_a_l_enregistrement(self):
+        # ruche-0086 (revue) : « juge-v٢ » (chiffre arabe-indien) n'est pas une étiquette : enregistrée comme absente, le verdict reste.
+        cid = self.contribution_jugee(extra_juge={"version": 3, "commun": "juge-v٢"})
+        self.assertIsNone(bee.Registre(self.dossier).enregistrement(cid)[1]["verdict"]["juge"]["commun"])
+        self.valide()
+
     def test_juge_commun_min_n_atteint_pas_l_historique(self):
         # ruche-0086 : le minimum se lit à la porte de R3, au moment d'intégrer ; une contribution intégrée sous juge-v1 le reste,
         # et le registre reste valide quand le conseil relève le minimum.

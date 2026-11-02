@@ -1804,6 +1804,9 @@ def verifier_registre(reg):
     reprise = reg.config.get("reprise_apres_liberation_heures")
     if reprise is not None and (not isinstance(reprise, (int, float)) or isinstance(reprise, bool) or reprise < 0):
         ajouter("bee.yaml : reprise_apres_liberation_heures : nombre d'heures positif ou nul attendu (R7)")
+    # ruche-0086: the gate's own rule (the highest label passes iff the minimum is readable): a missing or malformed minimum, said.
+    if mode_porte(reg) == "si_juge_incomplet" and not juge_commun_suffisant(reg, {"juge": {"commun": "juge-v9999"}}):
+        ajouter("bee.yaml : juge_commun_min : entier de 1 à 9999 attendu (R3, docs/juge-commun.md) ; sinon, aucun verdict n'est complet")
 
     for stem, (chemin, projet) in reg.projets.items():
         if not selon_schema("projet", chemin, projet):
@@ -7336,7 +7339,7 @@ def cmd_enregistrer_verdict(args):
         verdict["juge"] = {
             "version": entier(juge.get("version")),
             # Juge commun du registre (outils/juge/, docs/juge-commun.md) : étiquette qui a rendu le verdict.
-            "commun": juge.get("commun") if isinstance(juge.get("commun"), str) and re.fullmatch(r"juge-v\d{1,4}", juge.get("commun")) else None,
+            "commun": juge.get("commun") if isinstance(juge.get("commun"), str) and re.fullmatch(r"juge-v[0-9]{1,4}", juge.get("commun")) else None,
             "sorties_comparees": entier(juge.get("sorties_comparees")),
             "constructions_suspectes": [{"type": str(s.get("type", ""))[:40], "detail": str(s.get("detail", ""))[:300]}
                                         for s in suspects[:VERDICT_MAX["suspectes"]] if isinstance(s, dict)],
