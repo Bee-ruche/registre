@@ -45,7 +45,7 @@ bee publier --titre "Mesure <contribution> (<architecture>)"
 compilateur), les deux commits comparés, et pour chaque métrique le gain, le résultat du test du
 signe et le nombre de paires gagnées. Le tout va dans `mesures/<contribution>/<pseudo>.yaml`
 (schéma : [`schemas/mesure.schema.json`](../schemas/mesure.schema.json)). Une mesure est
-**définitive** : une par personne et par contribution, jamais modifiée ni retirée une fois publiée
+**définitive** : une par personne et par contribution (des comptes liés sont une personne : ruche-0051), jamais modifiée ni retirée une fois publiée
 (commandement 10) ; `bee enregistrer-mesure` n'écrit pas par-dessus, `bee verifier-pr` refuse de la
 changer. La PR est fusionnée automatiquement (libre-service).
 

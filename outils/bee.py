@@ -592,11 +592,12 @@ def logins_de(entree):  # a member file's or a governance entry's logins: pseudo
 
 def liens_confirmes(fiches):
     """ruche-0051: [(an account's member file, its person's)]: the person's file lists the account's number in autres_comptes, and
-    the account's own file names the person's number in compte_de. One step only: neither side is linked the other way."""
+    the account's own file names the person's number in compte_de. One step only: neither side is linked the other way. Both files
+    name their pseudo (else no link, and bee valider says why)."""
     par_numero = {f["github_id"]: f for f in fiches if isinstance(f, dict) and type(f.get("github_id")) is int}
     return [(f, p) for f in par_numero.values() if type(f.get("compte_de")) is int and (p := par_numero.get(f["compte_de"])) is not None
             and p is not f and f["github_id"] in (p.get("autres_comptes") if isinstance(p.get("autres_comptes"), list) else [])
-            and "compte_de" not in p and not f.get("autres_comptes")]
+            and "compte_de" not in p and not f.get("autres_comptes") and all(isinstance(x.get("pseudo"), str) for x in (f, p))]
 
 
 class Identites:
@@ -613,17 +614,24 @@ class Identites:
                     if membre:
                         self.comptes.setdefault(login.casefold(), e.get("pseudo"))
         self.noms = {**self.comptes, **{x.casefold(): p["pseudo"] for f, p in liens_confirmes(fiches) for x in logins_de(f)}}
+        self.grouper()
+
+    def grouper(self):  # ruche-0051: each person's accounts, read once (comptes_de is called for every eligible voter)
+        self.groupes = {}
+        for x in self.noms:
+            self.groupes.setdefault(self.cle(x), set()).add(self.compte(x))
 
     def par_compte(self):
         vue = object.__new__(Identites)
         vue.__dict__.update(self.__dict__, noms=self.comptes)
+        vue.grouper()
         return vue
 
     def compte(self, login):  # ruche-0051: the account a login names, links aside
         return self.comptes.get(login.casefold()) or login if isinstance(login, str) else login
 
     def comptes_de(self, login):  # ruche-0051: the accounts of a login's person, by their current logins
-        return {self.compte(x) for x in self.noms if self.meme(x, login)} | {self.compte(login)}
+        return self.groupes.get(self.cle(login), set()) | {self.compte(login)}
 
     def nom(self, login):  # the person a login names: its member file's current login, else the login itself
         return self.noms.get(login.casefold()) or login if isinstance(login, str) else login
@@ -918,12 +926,17 @@ def vote_recevable(vote, concurrents):
     return vote.get("votant") not in concurrents
 
 
+def votes_comptes(reg, enr):
+    """Les votes qui comptent sur une contribution (vote net, score) : ni de son auteur, ni d'un compte lié à lui, même d'avant
+    le lien (ruche-0051), ni de ses concurrents actuels."""
+    concurrents = concurrents_de(reg, enr)
+    return [v for v in votes_de(reg, enr.get("id")) if not reg.identites.meme(v.get("votant"), enr.get("auteur"))
+            and vote_recevable(v, concurrents)]
+
+
 def vote_net(reg, enr, niveaux):
     """Vote net pondéré d'une contribution : ni l'auteur, ni ses concurrents actuels."""
-    concurrents = concurrents_de(reg, enr)
-    return sum(int(v.get("valeur", 0)) * poids_voix(reg, niveaux, v.get("votant"))
-               for v in votes_de(reg, enr.get("id")) if not reg.identites.meme(v.get("votant"), enr.get("auteur"))
-               and vote_recevable(v, concurrents))
+    return sum(int(v.get("valeur", 0)) * poids_voix(reg, niveaux, v.get("votant")) for v in votes_comptes(reg, enr))
 
 
 def gain_mesure(reg, enr):
@@ -1362,13 +1375,14 @@ def activite_par_poste(reg, instant=None, jours=None):
     clone superficiel), il compte à sa date déclarée, et pas du tout si elle est dans le futur (instant_du_geste).
 
     Un même utilisateur ne pèse pas plus de cap.poids_max_par_utilisateur_et_jour dans un poste, par jour UTC : ses gestes
-    comptent dans l'ordre où ils sont arrivés, jusqu'à ce plafond ; un seul ne fait pas basculer le guide."""
+    comptent dans l'ordre où ils sont arrivés, jusqu'à ce plafond ; un seul ne fait pas basculer le guide. Ses comptes liés
+    pèsent avec lui (ruche-0051)."""
     gestes, jours = gestes_recents(reg, instant, jours)
     activite = defaultdict(lambda: {"total": 0.0, "gestes": defaultdict(float)})
     plafond = poids_max_par_jour(reg)
     pris = defaultdict(float)  # (utilisateur, poste, jour UTC) -> poids déjà compté
     for moment, poste, poids, genre, qui in sorted(gestes, key=lambda g: g[0]):
-        cle = (qui, poste, moment.astimezone(dt.timezone.utc).date())
+        cle = (reg.identites.cle(qui), poste, moment.astimezone(dt.timezone.utc).date())  # ruche-0051: a person's accounts, one weight
         compte = min(poids, max(0.0, plafond - pris[cle]))
         if compte > 0:
             pris[cle] += compte
@@ -1828,12 +1842,10 @@ def calculer_score(reg, enr, niveaux):
     # Comme R3 (releve_relectures) : les favorables qui comptent sur le commit jugé, ni Nouveaux ni abstentions.
     confiance = min(1.0, len(releve_relectures(reg, enr, niveaux)["favorables"]) / 3)
     numerateur = denominateur = 0
-    concurrents = concurrents_de(reg, enr)  # course entre contributions d'une même tâche : on ne vote pas sur son concurrent
-    for vote in votes_de(reg, enr.get("id")):
-        if vote_recevable(vote, concurrents):
-            poids = poids_voix(reg, niveaux, vote.get("votant"))
-            numerateur += poids * vote.get("valeur", 0)
-            denominateur += poids
+    for vote in votes_comptes(reg, enr):  # comme le vote net : ni l'auteur (ni un compte lié), ni un concurrent en course
+        poids = poids_voix(reg, niveaux, vote.get("votant"))
+        numerateur += poids * vote.get("valeur", 0)
+        denominateur += poids
     v = 1 + 0.5 * numerateur / denominateur if denominateur else 1.0
     return {"S": gain * portee * confiance / (1 + lignes / 100) * v, "G": gain, "P": portee, "C": confiance, "L": lignes, "V": v}
 
@@ -1884,11 +1896,11 @@ def verifier_registre(reg):
 
 
 def problemes_liens(reg):  # ruche-0051: a declaration alone does nothing; compte_de always confirms one, and no file lists itself
-    fiches = [m for _, m in reg.membres.values() if isinstance(m, dict)]
-    lies = [id(f) for f, _ in liens_confirmes(fiches)]
-    return [f"membres/{m.get('pseudo')}.yaml : a link is one step, confirmed from both sides by account numbers, never to oneself "
-            "(autres_comptes, then compte_de ; only the council unlinks, in both files : ruche-0051)" for m in fiches
-            if ("compte_de" in m and id(m) not in lies) or (isinstance(m.get("autres_comptes"), list) and m.get("github_id") in m["autres_comptes"])]
+    lies = {id(f) for f, _ in liens_confirmes([m for _, m in reg.membres.values() if isinstance(m, dict)])}
+    return [f"membres/{stem}.yaml : a link is one step, confirmed from both sides by account numbers, never to oneself, between two "
+            "member files that name their pseudo (autres_comptes, then compte_de ; only the council unlinks, in both files : ruche-0051)"
+            for stem, (_, m) in reg.membres.items() if isinstance(m, dict) and (("compte_de" in m and id(m) not in lies) or (
+                isinstance(m.get("autres_comptes"), list) and m.get("github_id") in m["autres_comptes"]))]
 
 
 def verifier_comptes(reg):
@@ -2869,10 +2881,13 @@ def participants_tour(debat, conseil=()):
     (répétition générale, tour 2)."""
     ont_pris_part = {a.get("par") for a in arguments_de(debat) if isinstance(a.get("par"), str)}
     ont_pris_part.add((debat or {}).get("synthese_par"))
-    ouvreur = (debat or {}).get("ouvert_par")
-    # ruche-0050: an invitation's debate is opened by its proposer, who never holds the pen there.
-    return [p for p in participants_debat(debat) if not (p == ouvreur and ((debat or {}).get("invitation")
-                                                                          or (p in conseil and p not in ont_pris_part)))]
+    ouvreur, qui = (debat or {}).get("ouvert_par"), getattr(conseil, "qui", None)  # reg.conseil carries who is who (adopter)
+
+    def hors_du_tour(p):  # ruche-0050: an invitation's debate is opened by its proposer, who never holds the pen there (ruche-0051:
+        if (debat or {}).get("invitation"):  # nor under a linked account)
+            return p == ouvreur or bool(qui and qui.meme(p, ouvreur))
+        return p == ouvreur and p in conseil and p not in ont_pris_part
+    return [p for p in participants_debat(debat) if not hors_du_tour(p)]
 
 
 def rapporteur_suivant(debat, auteur, conseil=()):
@@ -3608,9 +3623,10 @@ def verifier_debat(reg, chemin, statut_git, ancien, nouveau, auteur, *, est_cons
                f"{conf['arguments_max_par_24h']} par utilisateur et par débat sur 24 h glissantes (agora.arguments_max_par_24h) : "
                "laissez les autres répondre")
 
-    if proposant and "rapporteur" in nouveau:
+    plume = ancien.get("rapporteur") if statut_git == "M" and isinstance(ancien, dict) else None  # judged when the pen changes hands
+    if proposant and "rapporteur" in nouveau and nouveau.get("rapporteur") != plume:
         exiger(not same_person(reg, nouveau.get("rapporteur"), proposant), f"rapporteur « {_nettoyer(nouveau.get('rapporteur'))} » : the "
-               "proposer of the invitation never holds the pen of its debate, nor under an agent account")
+               "proposer of the invitation never holds the pen of its debate, nor under an agent account or a linked account")
     if statut_git == "M":
         if "rapporteur" not in ancien:
             # --- Prise de plume : dans un débat né sans rapporteur, le premier qui argumente le devient, dans la même PR,
@@ -4867,11 +4883,10 @@ def refus_geste(reg, ancien, nouveau, geste, auteur, instant, publication=None, 
         exiger(avant == "proposee", f"un accord de gardien se donne à une invitation proposée (statut : {avant})")
         exiger(status and auteur in en_fonction, f"{auteur} n'est pas un gardien en fonction : seul un gardien nommé (gouvernance/gardiens.yaml), "
                                       "dont le garant n'est pas révoqué, donne l'accord de gardien")
-        qui = reg.identites  # ruche-0051: by person
+        qui = reg.identites  # ruche-0051: by person, every guardian entry of each person, whatever their order in the file
         exiger(not qui.meme(auteur, proposant), "on ne donne pas son accord à sa propre invitation (ni à celle d'un compte lié)")
-        garants = {qui.cle(m["pseudo"]): m.get("garant") for m in reg.fiches_gardiens if isinstance(m.get("pseudo"), str)}
-        sien = garants.get(qui.cle(auteur))
-        exiger(not qui.meme(sien, proposant) and not (qui.cle(proposant) in garants and garants[qui.cle(proposant)] == sien),
+        siens, leurs = ([m.get("garant") for m in reg.fiches_gardiens if qui.meme(m.get("pseudo"), x)] for x in (auteur, proposant))
+        exiger(not any(qui.meme(g, proposant) or any(qui.meme(g, h) for h in leurs) for g in siens),
                f"le garant de {auteur} est le proposant, ou dirige aussi le proposant : l'accord d'un gardien vient d'ailleurs "
                "(docs/garants.md)")
         exiger(*debat_tenu)
@@ -5840,7 +5855,11 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
             # Revue adverse de ruche-0028 (S4) : une fiche nommée par un pseudo n'a pas de double qui n'en diffère que par la casse.
             nom = pathlib.PurePosixPath(chemin).stem
             doubles = sorted(c.stem for c in (reg.racine / pathlib.PurePosixPath(chemin).parent).glob("*.yaml") if c.stem != nom and reg.identites.meme(c.stem, nom))
-            exiger(not doubles, f"{chemin} : {', '.join(doubles)} existe déjà : un pseudo est un login GitHub, sans la casse ; modifiez cette fiche")
+            lies = [d for d in doubles if partie[0] != "membres" and reg.identites.compte(d).casefold() != reg.identites.compte(nom).casefold()]
+            exiger(len(lies) == len(doubles), f"{chemin} : {', '.join(d for d in doubles if d not in lies)} existe déjà : un pseudo est un "
+                                              "login GitHub, sans la casse ; modifiez cette fiche")
+            exiger(not lies, f"{chemin} : {', '.join(lies)} existe déjà, d'un compte lié à {nom} : une personne, "
+                             f"{'un vote' if partie[0] == 'votes' else 'une mesure'} par sujet, quel que soit son compte (ruche-0051)")
         if partie[0] == "votes" and len(partie) == 3:
             natures.append("vote")
             exiger(pathlib.PurePosixPath(chemin).stem == auteur, f"{chemin} : on ne vote qu'en son nom ({auteur})")
@@ -6110,9 +6129,10 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
         m = r8_maximum(reg, auteur, tids := [tid for tid, _ in engagements_de(reg, auteur)], instant)  # said here when only the end refuses
         exiger(not m < len(tids) <= r8_maximum(reg, auteur, tids, PASSE), f"règle R8 : {auteur} prend un engagement après la fin de "
                f"r8_amorcage : {len(tids)} réservations ou inscriptions en parallèle, maximum {m} (un nouvel engagement se juge à l'heure de la PR)")
-        comptes = {reg.identites.compte(x).casefold() for x in reg.identites.noms if reg.identites.meme(x, auteur)}  # ruche-0051: bee
-        exiger(len(comptes) < 2 or len(tids) <= r8_maximum(reg, auteur, tids, PASSE), f"règle R8 : {auteur} a {len(tids)} réservations ou "
-               f"inscriptions en parallèle avec ses comptes liés (une personne), maximum {m}")  # valider counts accounts; the gate, persons
+        # ruche-0051: bee valider counts accounts; the gate, persons
+        exiger(len(reg.identites.comptes_de(auteur)) < 2 or len(tids) <= r8_maximum(reg, auteur, tids, PASSE),
+               f"règle R8 : {auteur} a {len(tids)} réservations ou inscriptions en parallèle avec ses comptes liés (une personne), "
+               f"maximum {m}")
     exiger("renommage" not in natures or set(natures) == {"renommage"}, "a rename (bee renommer) is published alone in its PR (ruche-0022)")
     # L'arbre du sens (ruche-0010) : aucun commentaire YAML ajouté au libre-service, et un noeud introduit qui existe.
     refus_arbre, natures_arbre = verifier_pr_arbre(reg, base, tete, changements, liens, est_conseil)
@@ -6572,13 +6592,15 @@ def cmd_lier(args):
     reg = Registre(args.registre)
     reg.exiger_membre(args.utilisateur)
     chemin, fiche = reg.membres.get(args.utilisateur) or (None, {})
-    nouveau = {**fiche, "autres_comptes": [*(fiche.get("autres_comptes") or []), args.autre_compte]} if args.autre_compte else {
-        **fiche, "compte_de": args.compte_de}
+    declare = args.autre_compte is not None
+    if (numero := args.autre_compte if declare else args.compte_de) < 1:
+        raise ErreurBee(f"{numero} : a GitHub account's number is a positive integer (gh api users/<login> --jq .id)")
+    nouveau = {**fiche, "autres_comptes": [*(fiche.get("autres_comptes") or []), numero]} if declare else {**fiche, "compte_de": numero}
     if refus := refus_lien(reg, fiche, nouveau, fiche.get("github_id")):
         raise ErreurBee(f"{args.utilisateur} : {refus}")
     ecrire_yaml(chemin, nouveau)
     print(f"✓ {reg.rel(chemin)}. Publiez : bee publier --titre 'Comptes liés {args.utilisateur}'" + (
-        f" ; puis, depuis l'autre compte : bee lier --utilisateur <son login> --compte-de {fiche.get('github_id')}" * bool(args.autre_compte)))
+        f" ; puis, depuis l'autre compte : bee lier --utilisateur <son login> --compte-de {fiche.get('github_id')}" * declare))
     return 0
 
 
@@ -8731,7 +8753,7 @@ def raisons_r3(reg, cid, bilan=None):
         elif auteur not in privilegies:  # un auteur du conseil ou gardien répond lui-même de ses juges
             exiger(any(r.get("relecteur") in privilegies or niveau_de(niveaux, r.get("relecteur")) == "Confirmé" for r in favorables),
                    f"la PR modifie des juges ({liste}) : une relecture favorable d'un gardien, du conseil ou d'un Confirmé est exigée")
-    relecteurs_eligibles = [m for m in eligibles if relecture_comptee(reg, niveaux, m)]
+    relecteurs_eligibles = {reg.identites.cle(m) for m in eligibles if relecture_comptee(reg, niveaux, m)}  # ruche-0051: persons
     cible = int(cfg.get("relectures_requises", 2))
     requises = min(cible, len(relecteurs_eligibles))
     plafond = lambda seuil, valeur: (f" (seuil {seuil} plafonné à ce que les membres dont l'avis compte, hors auteur, peuvent "  # noqa: E731

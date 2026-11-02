@@ -17234,6 +17234,188 @@ class TestComptesLiesRuche0051(BaseInvitations):
         self.assertEqual(bee.calculer_niveaux(bee.Registre(self.dossier))["farid"]["relectures"], 0)
         self.ko("règle R8 : alice a déjà 4", "prendre", "miniz-9006", "--utilisateur", "alice")
 
+    def test_l_accord_d_un_gardien_se_juge_par_personne_quel_que_soit_l_ordre_des_gardiens(self):
+        """Every guardian entry of a person counts, in any order of gouvernance/gardiens.yaml, and guarantors compare as persons:
+        gina and gina2 are one person, under hector through gina; neither gives an accord on hector's invitation. gina's
+        guarantor hector and jules's hector2 are one person: gina gives no accord on jules's. chloe, under ivan, is not refused."""
+        self.a("2026-09-30T09:00:00Z")
+        for qui in ("gina", "gina2", "hector", "hector2", "jules"):
+            self.ok("inscrire", "--pseudo", qui, "--compte-cree-le", "2020-01-01")
+        self.commit("inscriptions")
+        self.lies("gina", "gina2")
+        self.lies("hector", "hector2")
+        (self.dossier / "gouvernance/garants.yaml").write_text("membres:\n" + "".join(
+            f"  - pseudo: {g}\n    identite_publique: {g.title()}\n" for g in ("hector", "hector2", "ivan")), encoding="utf-8")
+        self.a("2026-10-30T10:00:00Z")
+        self.inviter("hector")
+        self.inviter("jules", "github:exemple-deux")
+        self.commit("deux invitations")
+        self.a("2026-11-02T11:00:00Z")
+        for gardiens, invitation, qui, refuse in (
+                ((("gina", "hector"), ("gina2", "ivan"), ("chloe", "ivan")), "I-0001", "gina", True),
+                ((("gina", "hector"), ("gina2", "ivan"), ("chloe", "ivan")), "I-0001", "gina2", True),
+                ((("gina2", "ivan"), ("gina", "hector"), ("chloe", "ivan")), "I-0001", "gina", True),
+                ((("gina2", "ivan"), ("gina", "hector"), ("chloe", "ivan")), "I-0001", "gina2", True),
+                ((("gina2", "ivan"), ("gina", "hector"), ("chloe", "ivan")), "I-0001", "chloe", False),
+                ((("gina", "hector"), ("jules", "hector2"), ("chloe", "ivan")), "I-0002", "gina", True),
+                ((("gina", "hector"), ("jules", "hector2"), ("chloe", "ivan")), "I-0002", "chloe", False)):
+            with self.subTest(gardiens=gardiens, invitation=invitation, qui=qui):
+                (self.dossier / "gouvernance/gardiens.yaml").write_text(
+                    "membres:\n" + "".join(f"  - pseudo: {p}\n    garant: {g}\n" for p, g in gardiens), encoding="utf-8")
+                self.commit("gardiens")
+                morceau = f"le garant de {qui} est le proposant, ou dirige aussi le proposant"
+                texte = self.bee("invitation", "accord-gardien", invitation, "--utilisateur", qui)[1]
+                self.assertEqual(morceau in texte, refuse, texte)
+                if refuse and qui == "gina" and invitation == "I-0001":  # the gate, as the tool
+                    self.branche("accord")
+                    inv = bee.lire_yaml(self.chemin_invitation(invitation))
+                    self.ecrire_invitation({**inv, "accord_gardien": {"par": qui, "le": os.environ["BEE_MAINTENANT"]}}, invitation)
+                    self.commit()
+                    self.refusee(qui, morceau)
+                    self.abandonner("accord")
+
+    def test_r3_demande_les_relectures_de_personnes(self):
+        """R3's required reviews are capped at the persons whose review counts: alice and farid, both Contributeurs, are one
+        person; once alice has reviewed bidji29's work, farid gives no second review, and R3 asks for one."""
+        self.a("2026-10-30T10:00:00Z")
+        self.contributeurs("alice", "farid")
+        self.commit("alice et farid sont Contributeurs")
+        self.lies()
+        self.prendre_et_fusionner("bidji29")
+        cid = self.soumettre_et_fusionner("bidji29", "miniz-0099", 77001)
+        self.verdict(cid)
+        self.ok("relire", cid, "--commit", "abc1234", "--utilisateur", "alice", "--avis", "favorable", "--motif", "Relu en entier, banc rejoué.")
+        self.commit("relecture d'alice")
+        self.ko("farid a déjà relu", "relire", cid, "--commit", "abc1234", "--utilisateur", "farid", "--avis", "favorable",
+                "--motif", "Relu en entier, banc rejoué.")
+        bilan = {}
+        raisons = bee.raisons_r3(bee.Registre(self.dossier), cid, bilan)[2]
+        self.assertEqual((bilan["favorables"], bilan["requises"], bilan["cible"]), (1, 1, 2))
+        self.assertEqual([r for r in raisons if "requise(s)" in r], [])
+
+    def test_le_cap_pese_une_personne_avec_ses_comptes_lies(self):
+        """The cap weighs a person at most cap.poids_max_par_utilisateur_et_jour per post and per day: alice and farid, linked,
+        write 13 notes each in a day; their notes weigh that once (without the link, twice)."""
+        self.a("2026-10-30T10:00:00Z")
+        self.lies()
+        self.a("2026-10-30T12:00:00Z")
+        for qui in ("alice", "farid"):
+            for n in range(13):
+                bee.modifier_tache(self.chemin_tache(), note={"par": qui, "le": os.environ["BEE_MAINTENANT"], "texte": f"Note {n} de {qui}."})
+        self.commit("26 notes")
+        reg = bee.Registre(self.dossier)
+        plafond = bee.poids_max_par_jour(reg)
+        self.assertEqual(bee.activite_par_poste(reg)[0]["coordination"]["gestes"]["notes"], plafond)
+        reg.adopter(reg.identites.par_compte())
+        self.assertEqual(bee.activite_par_poste(reg)[0]["coordination"]["gestes"]["notes"], 2 * plafond)
+
+    def test_un_vote_d_un_compte_lie_ne_compte_pas_dans_le_score(self):
+        """Like the net vote, the score's V leaves out a vote by the author's linked account, even one cast before the link."""
+        self.a("2026-10-30T10:00:00Z")
+        self.contributeurs("farid")
+        self.commit("farid est Contributeur")
+        self.prendre_et_fusionner("alice")
+        cid = self.soumettre_et_fusionner("alice", "miniz-0099", 77003)
+        self.verdict(cid)
+        self.branche("vote")
+        self.ok("voter", cid, "--utilisateur", "farid", "--valeur", "1")
+        self.publier("farid", "vote", nom="vote")
+
+        def v_et_vote_net():
+            reg = bee.Registre(self.dossier)
+            enr, niveaux = reg.enregistrement(cid)[1], bee.calculer_niveaux(reg)
+            return bee.calculer_score(reg, enr, niveaux)["V"], bee.vote_net(reg, enr, niveaux)
+        self.assertEqual(v_et_vote_net(), (1.5, 1))
+        self.lies("farid", "alice")
+        self.assertEqual(v_et_vote_net(), (1.0, 0))
+        self.ok("valider")
+
+    def test_la_plume_du_debat_d_une_invitation_ne_passe_pas_a_un_compte_lie_au_proposant(self):
+        """The proposer never holds the pen of its invitation's debate, nor under a linked account: judged when the pen changes
+        hands. bruno holds it when he and alice, the proposer, link their accounts: chloe still argues there; the pen then goes
+        round without bruno, and a synthesis that hands it to him is refused."""
+        self.a("2026-10-30T10:00:00Z")
+        self.branche()
+        self.inviter("alice")
+        self.publier("alice", "invitation", libre=False)
+        self.debattre_invitation()  # bruno argues, holds the pen of D-0002, and synthesizes
+        self.a("2026-10-30T11:00:00Z")
+        self.lies("alice", "bruno")
+        self.ok("valider")
+        self.a("2026-10-30T12:00:00Z")
+        self.branche("objection")
+        self.argumenter("chloe", "contre", "Les faits cités ont cinq ans.", debat="D-0002")
+        self.publier("chloe", "argument", nom="objection")
+        reg = bee.Registre(self.dossier)
+        self.assertEqual(bee.participants_tour(self.debat("D-0002"), reg.conseil), ["chloe"])
+        self.a("2026-10-30T12:30:00Z")
+        self.branche("synthese")
+        self.assertIn("rapporteur suivant : chloe", self.ok("debattre", "synthetiser", "D-0002", "--utilisateur", "bruno", "--texte",
+                                                            "Un avis pour (A1), une objection sur la date des faits (A2)."))
+        self.publier("bruno", "synthese", nom="synthese")
+        self.a("2026-10-30T13:00:00Z")
+        self.ko("vous restez rapporteur", "debattre", "synthetiser", "D-0002", "--utilisateur", "chloe", "--suivant", "bruno",
+                "--texte", "Pour (A1), une objection (A2).")
+        self.branche("rendue")
+        self.ecrire({**self.debat("D-0002"), "synthese": "Pour (A1), une objection (A2).", "synthese_par": "chloe",
+                     "synthese_le": os.environ["BEE_MAINTENANT"], "rapporteur": "bruno"}, "D-0002")
+        self.commit()
+        self.refusee("chloe", "rapporteur « bruno » : the proposer of the invitation never holds the pen of its debate, nor under "
+                     "an agent account or a linked account")
+
+    def test_comptes_de_lit_chaque_personne_une_fois(self):
+        """comptes_de, read for every eligible voter in R3, does not go through every member file at each call: who is who
+        groups each person's accounts once; a person's accounts are its own, by person or, links aside, by account."""
+        fiches = [{"pseudo": f"u{i}", "github_id": 1000 + i} for i in range(2000)]
+        for h in range(0, 400, 2):
+            fiches[h]["autres_comptes"], fiches[h + 1]["compte_de"] = [1001 + h], 1000 + h
+
+        class SansParcours(dict):
+            def __iter__(self):
+                raise AssertionError("comptes_de goes through every member file")
+        qui = bee.Identites(fiches, [])
+        qui.noms = SansParcours(qui.noms)
+        self.assertEqual([qui.comptes_de(x) for x in ("u0", "U1", "u500", "inconnu")], [{"u0", "u1"}, {"u0", "u1"}, {"u500"}, {"inconnu"}])
+        self.assertEqual(bee.Identites(fiches, []).par_compte().comptes_de("u0"), {"u0"})
+
+    def test_un_lien_entre_fiches_qui_nomment_leur_pseudo(self):
+        """A member file without its pseudo links no one; bee valider says why. A GitHub account's number is a positive integer."""
+        self.assertEqual(bee.Identites([{"github_id": 1, "autres_comptes": [2]}, {"pseudo": "b", "github_id": 2, "compte_de": 1}]).nom("B"), "b")
+        self.a("2026-10-30T10:00:00Z")
+        self.lies()
+        alice = bee.lire_yaml(self.dossier / "membres/alice.yaml")
+        for option in ("--autre-compte", "--compte-de"):
+            with self.subTest(option=option):
+                self.ko("0 : a GitHub account's number is a positive integer", "lier", "--utilisateur", "bruno", option, "0")
+                self.assertNotIn("compte_de", bee.lire_yaml(self.dossier / "membres/bruno.yaml"))
+        bee.ecrire_yaml(self.dossier / "membres/alice.yaml", {k: v for k, v in alice.items() if k != "pseudo"})
+        texte = self.ko("membres/farid.yaml : a link is one step, confirmed from both sides by account numbers, never to oneself, "
+                        "between two member files that name their pseudo", "valider")
+        self.assertNotIn("Traceback", texte)
+
+    def test_un_vote_et_une_mesure_par_personne(self):
+        """A linked account files no second vote nor second measurement on a subject its person has: the gate says so."""
+        self.a("2026-10-30T10:00:00Z")
+        self.lies()
+        self.prendre_et_fusionner("bruno")
+        cid = self.soumettre_et_fusionner("bruno", "miniz-0099", 77008)
+        for dossier, donnees in (("votes", {"votant": "{}", "sujet": cid, "valeur": 1}),
+                                 ("mesures", {"contribution": cid, "soumise_par": "{}", "base": "2948eeb", "candidat": "839b676",
+                                              "config": {"architecture": "arm64"},
+                                              "metriques": {"debit_compression_n6": {"gain": 0.05, "au_dela_du_bruit": True}}})):
+            with self.subTest(dossier=dossier):
+                ecrire = lambda qui: bee.ecrire_yaml(self.dossier / f"{dossier}/{cid}/{qui}.yaml", {  # noqa: E731
+                    **{k: (v.format(qui) if v == "{}" else v) for k, v in donnees.items()}, "le": os.environ["BEE_MAINTENANT"]})
+                ecrire("alice")
+                self.commit(f"{dossier} d'alice")
+                self.branche("second")
+                ecrire("farid")
+                self.commit()
+                texte = self.refusee("farid", f"{dossier}/{cid}/farid.yaml : alice existe déjà, d'un compte lié à farid : une personne, "
+                                     + ("un vote" if dossier == "votes" else "une mesure") + " par sujet, quel que soit son compte")
+                self.assertNotIn("un pseudo est un login GitHub", texte)
+                self.abandonner("second")
+
 
 if __name__ == "__main__":
     sys.exit(principal_tests(sys.modules[__name__], __file__, sys.argv[1:]))
