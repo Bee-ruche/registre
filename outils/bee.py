@@ -3675,7 +3675,7 @@ def texte_sortant_refuse(texte, quoi, maximum, organisation=None):
     probleme = texte_recevable(texte, quoi, maximum)
     if probleme:
         return probleme
-    lus = [texte]  # as typed, as GitHub decodes it, decoded to a fixed point with a control reference (&#1;) dropped or U+FFFD
+    lus = [texte]  # as typed, as GitHub decodes it, decoded to a fixed point with a reference past U+10FFFF dropped or U+FFFD
     if organisation is not None:
         try:
             lus += [html.unescape(texte.replace("\\&", "&amp;")), entites_decodees(texte, "")]  # once, an escaped & kept
@@ -3686,7 +3686,7 @@ def texte_sortant_refuse(texte, quoi, maximum, organisation=None):
     if c is not None:
         return (f"{quoi} : caractère invisible refusé (U+{ord(c):04X}, catégorie {unicodedata.category(c)}) : ce texte sort de la "
                 "ruche, il ne cache rien")
-    donnee = next(filter(None, map(donnee_personnelle, dict.fromkeys([texte] + lus[2:]))), None)  # &#1; as U+FFFD, or dropped
+    donnee = next(filter(None, map(donnee_personnelle, dict.fromkeys([texte] + lus[2:]))), None)  # U+FFFD, or dropped
     renvoi = (next(filter(None, (renvoi_hors_ruche(lu, organisation) for lu in lus + [texte])), None)
               if organisation is not None and not donnee else None)
     return (f"{quoi} : {donnee} : aucune donnée personnelle au-delà de l'identifiant public et du canal (R13)" if donnee
@@ -3702,14 +3702,16 @@ def entites_decodees(texte, abandon):
 
 
 def reference_decodee(reference, abandon):
-    """A numeric character reference (&#64;, &#x40;) decoded as html does, or `abandon` where a renderer may show nothing or
-    U+FFFD instead: U+0000, a control (&#1;, &#127;, &#128;), a surrogate, a noncharacter, past U+10FFFF. ValueError if the
-    number is longer than int() reads."""
+    """A numeric character reference (&#64;, &#x40;) decoded as html does, except a character the check of hidden characters
+    refuses when typed (&#0;, &#1;, &#12;, &#13;, &#128;, &#xD800;, &#xFDD0;) or a tab or a newline (&#9;, &#10;), kept as
+    itself: that check then treats it as the character typed. `abandon` past U+10FFFF or where html gives nothing. ValueError
+    if the number is longer than int() reads."""
     hexa = reference[2] in "xX"
     n = int(reference[3 if hexa else 2:].rstrip(";"), 16 if hexa else 10)
-    if n > 0x10FFFF or 0xD800 <= n <= 0xDFFF or unicodedata.category(chr(n)) == "Cc":
+    if n > 0x10FFFF:
         return abandon
-    return html.unescape(reference) or abandon
+    c = chr(n)
+    return c if c in "\t\n" or caractere_sortant_interdit(c) else html.unescape(reference) or abandon
 
 
 # What GitHub would turn into a notification or a link outside the hive (ruche-0049). Fail closed: each is searched in several
@@ -3764,7 +3766,9 @@ def premier_renvoi(forme, organisation):
                 if definition_inutile(forme, m.start(), etiquettes):
                     continue
             return f"« {jeton(m)} » {raison_du_renvoi(motif, organisation)}"
-    forme = re.sub(r"(?i)(?=https?://|www\.)", " ", forme)  # each address read from its own start, not as another's tail
+    # Each address read from its own start; \x0b marks the cuts (no accepted text has one), removed for a run's dot segments.
+    forme = re.sub(r"(?i)(?=https?://|www\.)", "\x0b", forme)
+    vus = set()
     for m in LIEN_OU_HOTE.finditer(forme):
         adresse = decoder_url(re.sub(r"(?i)^(?!https?://)", "https://", m[0])).replace("\\", "/")  # as a browser reads it
         if sur_hotes(hote_de(adresse), HOTES_GITHUB_OPAQUES):
@@ -3774,7 +3778,19 @@ def premier_renvoi(forme, organisation):
             return f"« {jeton(m)} » mène hors de {organisation} (seul son propriétaire GitHub est dans la ruche)"
         if forges and LIEN_SUSPECT.search(m[1]):
             return f"« {jeton(m)} » cache où il mène (%xx, \\, /../ ou hôte suivi d'un point)"
+        if forges and (fin := fin_de_suite(forme, m.start(1), vus)) is not None:  # the rest of its run, once
+            if LIEN_SUSPECT.search(forme[m.start(1):fin].replace("\x0b", "")):
+                return f"« {jeton(m)} » cache où il mène (%xx, \\, /../ ou hôte suivi d'un point)"
     return None
+
+
+def fin_de_suite(forme, debut, vus):
+    """Where the whitespace-delimited run holding `debut` ends in `forme`, or None if a scan from an earlier start reached it."""
+    fin = re.compile(r"(?:[^\s<]+|\x0b)*").match(forme, debut).end()
+    if fin in vus:
+        return None
+    vus.add(fin)
+    return fin
 
 
 def raison_du_renvoi(motif, organisation):

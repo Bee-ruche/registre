@@ -2583,6 +2583,12 @@ class TestPublier(BaseTest):
         "F2": ["https://github.com/Bee-ruche/x'/../../upstream/repo", "https://github.com/Bee-ruche/x)/../../upstream/repo",
                "https://github.com/Bee-ruche/x]/%2e%2e/upstream/repo", "https://github.com/Bee-ruche/x}/..%2fupstream/repo",
                "https://github.com/Bee-ruche/x`/../../upstream/repo"],
+        # Round 4: an embedded www. or https:// in a forge path must not hide a later /../ (its run is read whole).
+        "F3": ["https://github.com/Bee-ruche/www.x.org/../../upstream/repo", "https://github.com/Bee-ruche/https://x.org/../../../upstream/repo",
+               "https://github.com/Bee-ruche/a?www.x/../../../upstream/repo", "https://github.com/Bee-ruche/www.%2e%2e/%2e%2e/upstream/repo",
+               "https://bee-ruche.github.io/www.x.org/../../upstream", "[a](https://github.com/Bee-ruche/www.x.org/../../upstream/repo)",
+               "<https://github.com/Bee-ruche/www.x.org/../../upstream/repo>",
+               "example.com,https://github.com/Bee-ruche/www.x.org/../../upstream/repo"],
         # GitHub-owned hosts: github.dev reads like github.com; a shortener or an editor does not say where it leads.
         "hôtes": ["https://github.dev/upstream/repo", "https://vscode.dev/github/upstream/repo", "https://vscode.dev/github/Bee-ruche/registre",
                   "https://git.io/abc", "https://git.io/Bee-ruche"],
@@ -2603,7 +2609,8 @@ class TestPublier(BaseTest):
                               "BEE_REGISTRE=/home/claude/registre", "x=[1,2,3]", "a[i]==b[j]", "gain=12%", "width=50%",
                               "https://example.org/a%20b", "tests/test_bee.py::TestPublier::test_x", "file.py:func", "[ok]: /tmp/x",
                               "https://github.com/Bee-ruche/registre", "https://example.org/a", "[doc](https://example.org/a%20b)",
-                              "[x](/Bee-ruche/registre/pull/3)", "x == y", "50 % plus rapide"]
+                              "[x](/Bee-ruche/registre/pull/3)", "x == y", "50 % plus rapide", "https://github.com/Bee-ruche/registre/www.x.org",
+                              "ids 1234&#10;56789", "a&#9;b"]
     SORTANTS_HONNETES = ["Réservation miniz-0036", "Soumission miniz-0012-c1", "Réservation ruche-0024, ruche-0042", "x@upstream",
                          "uses actions/checkout@v4", "pkg@1.2.3", "#12, GH-12, D-0019", "Bee-ruche/registre#12", "Bee-ruche/minizBee@a5c3785",
                          "https://github.com/Bee-ruche/registre/pull/53.", "github.com/Bee-ruche/minizBee", "https://bee-ruche.github.io/registre/",
@@ -2653,7 +2660,7 @@ class TestPublier(BaseTest):
             for groupe, textes in {**self.REVUE_REFUSES, **self.SECONDE_REVUE_REFUSES}.items():
                 for texte in textes:
                     with self.subTest(quoi=quoi, groupe=groupe, texte=texte):
-                        self.assertIn("ce texte sort de la ruche (commandements 8 et 13)",
+                        self.assertIn("ce texte sort de la ruche",  # (commandements 8 et 13), or a hidden character
                                       bee.texte_sortant_refuse(texte, quoi, maximum, "Bee-ruche") or "accepté")
             for texte in self.SORTANTS_HONNETES + self.SECONDE_REVUE_HONNETES:
                 with self.subTest(quoi=quoi, honnete=texte):
@@ -2680,12 +2687,27 @@ class TestPublier(BaseTest):
         self.assertNotIn("démesurée", bee.texte_sortant_refuse(demesure, "message", 8000) or "")  # not decoded: no crash
 
     def test_donnee_personnelle_dans_chaque_lecture(self):
-        """An address split by a reference that a renderer shows as nothing (or U+FFFD) is still personal data."""
+        """An address split by a reference that a renderer shows as nothing, or as a hidden character, is refused: a hidden
+        character as when typed, a reference past U+10FFFF as personal data in the reading where it is dropped."""
         for reference in ("&#1;", "&#0;", "&#127;", "&#128;", "&#xD800;", "&#x110000;"):
             for texte in (f"bob@exa{reference}mple.com", f"bob@example{reference}.com", f"bob@{reference}example.com"):
                 with self.subTest(texte=texte):
-                    self.assertIn("une adresse de courriel", bee.texte_sortant_refuse(texte, "corps", 8000, "Bee-ruche"))
+                    attendu = "une adresse de courriel" if reference == "&#x110000;" else "caractère invisible refusé"
+                    self.assertIn(attendu, bee.texte_sortant_refuse(texte, "corps", 8000, "Bee-ruche"))
         self.assertIsNone(bee.texte_sortant_refuse("https://github.dev/Bee-ruche/registre, &#233;t&#233;", "corps", 8000, "Bee-ruche"))
+
+    def test_controle_encode_refuse_comme_le_caractere(self):
+        """An encoded control is refused as the typed one is (texte_recevable): a tab and a newline pass, a form feed, a carriage
+        return or any other control does not."""
+        for code in (0, 1, 8, 11, 12, 13, 27, 127, 128, 159):
+            for reference in (f"&#{code};", f"&#x{code:x};"):
+                with self.subTest(reference=reference):
+                    self.assertIn(f"caractère invisible refusé (U+{code:04X}",
+                                  bee.texte_sortant_refuse(f"bonjour{reference}monde", "corps", 8000, "Bee-ruche"))
+                    self.assertIsNotNone(bee.texte_recevable(f"bonjour{chr(code)}monde", "corps", 8000), "the typed one is refused too")
+        for reference in ("&#9;", "&#10;", "&#x9;", "&#xA;"):
+            with self.subTest(reference=reference):
+                self.assertIsNone(bee.texte_sortant_refuse(f"ids 1234{reference}5678", "corps", 8000, "Bee-ruche"))
 
 
 class TestFork(BaseTest):
