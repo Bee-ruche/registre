@@ -14,12 +14,13 @@ import shutil
 import subprocess
 import tempfile
 
-from lecture import Erreur, Refus, journal, lire_sortie, propre
+from lecture import Erreur, Refus, journal, propre
 
 ICI = os.path.dirname(os.path.abspath(__file__))
 ISOLATION = ["--network", "none", "--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
-             "--user", "65534:65534", "--tmpfs", "/tmp:rw,noexec,nosuid,size=64m", "-e", "HOME=/tmp", "-e", "LC_ALL=C"]
+             "--user", "65534:65534", "--tmpfs", "/tmp:rw,noexec,nosuid,size=64m", "-e", "HOME=/tmp", "-e", "LC_ALL=C", "--hostname", "juge"]
 PAQUET = re.compile(r"[a-z0-9][a-z0-9+.-]{0,63}")
+HARNAIS = "/variante/execution"  # what follows it in a plan command reaches it on its descriptor 0, not in argv
 
 
 class Docker:
@@ -112,21 +113,20 @@ class Execution:
         self.docker, self.chrono, self.constructions, self.travail = docker, chrono, constructions, travail
 
     def lancer(self, variante, entrees, sorties, plan, valgrind=False, delai=1800):
-        """plan : [(étiquette, [programme, arguments…])]. Renvoie {étiquette: mesure}."""
-        dossier_plan = tempfile.mkdtemp(prefix="plan-", dir=self.travail)
-        os.chmod(dossier_plan, 0o755)
-        with open(os.path.join(dossier_plan, "plan.txt"), "w", encoding="utf-8") as f:
-            for etiquette, commande in plan:
-                f.write("\t".join([etiquette] + commande) + "\n")
-        os.chmod(os.path.join(dossier_plan, "plan.txt"), 0o644)
+        """plan : [(étiquette, [programme, arguments…])], HARNAIS among them. Renvoie {étiquette: mesure}.
+        Plan, options and the harness's arguments go through standard inputs: same argv and files in every mode."""
+        lignes = []
+        for etiquette, commande in plan:
+            i = commande.index(HARNAIS) + 1 if HARNAIS in commande else len(commande)
+            if i == len(commande) or any(c in x for x in [etiquette] + commande for c in "\t\n"):
+                raise Erreur(f"commande de plan invalide : {propre(etiquette, 80)}")
+            lignes.append("\t".join([etiquette, " ".join(commande[i:])] + commande[:i]))
         dossier_ouvert(sorties)
-        dossier_ouvert(os.path.join(sorties, "journal"))
         jeton = secrets.token_hex(16)
-        commande = ["/chrono/chrono", "--delai", str(delai), "--journal", "/sorties/journal"] + (["--valgrind"] if valgrind else []) + ["/plan/plan.txt"]
+        entree = "\n".join([jeton, f"{int(delai)} {int(bool(valgrind))}"] + lignes) + "\n"
         montages = [(self.chrono, "/chrono", True), (self.constructions[variante], "/variante", True), (entrees, "/entrees", True),
-                    (sorties, "/sorties", False), (dossier_plan, "/plan", True)]
-        r = self.docker.lancer(commande, montages, pids=2, entree=(jeton + "\n").encode(), delai=delai * len(plan) + 300)
-        shutil.rmtree(dossier_plan, ignore_errors=True)
+                    (sorties, "/sorties", False)]
+        r = self.docker.lancer(["/chrono/chrono"], montages, pids=2, entree=entree.encode(), delai=delai * len(plan) + 300)
         if r.returncode != 0:
             raise Refus(f"le lanceur a échoué pour {variante} (code {r.returncode}) : " + propre(r.stderr))
         mesures = {}
@@ -141,8 +141,7 @@ class Execution:
             if not isinstance(m, dict) or m.get("jeton") != jeton or m.get("etiquette") != etiquette:
                 raise Refus(f"{variante} : ligne de mesure non authentique ({etiquette})")
             if m.get("code") != 0 or m.get("signal") != 0:
-                trace = lire_sortie(sorties, f"journal/{etiquette}.err", 1 << 20) or b""
-                raise Refus(f"{variante}/{etiquette} : code {m.get('code')}, signal {m.get('signal')}. " + propre(trace, 800))
+                raise Refus(f"{variante}/{etiquette} : code {m.get('code')}, signal {m.get('signal')}. " + propre(r.stderr, 800))
             if valgrind and not isinstance(m.get("instructions"), int):
                 raise Refus(f"{variante}/{etiquette} : résumé de Valgrind absent ou illisible")
             mesures[etiquette] = m

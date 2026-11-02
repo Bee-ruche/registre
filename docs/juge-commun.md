@@ -46,12 +46,24 @@ lue par le juge commun **depuis la base de la PR** (jamais depuis la PR). Modèl
 | `verification(rng, corpus)` | entrées de vérification (`entrees.Entree`) : corpus, données tirées au hasard, dérivées (flux produits par l'hôte), invalides |
 | `verifier(a, b, entrees)` | règle de justesse sur les sorties du mode `verifier` ; lève `Refus` au premier écart, `Erreur` si la base elle-même est fausse ; renvoie le nombre de sorties comparées |
 | `fixes(sorties, corpus)` | métriques qui ne dépendent pas du temps (ratio de compression…), lues sur les sorties de vérification |
-| `repetition(rng, corpus)`, `instructions(rng, corpus, prefixe)` | entrées des mesures, perturbées à chaque appel |
-| `scenario(s, a, b, entrees, mesure)` | vérifie les sorties d'un scénario mesuré et en tire les métriques (à partir de la mesure de chrono) ; renvoie `(valeurs, sorties comparées)` |
+| `repetition(rng, corpus)`, `instructions(rng, corpus, prefixe)` | entrées des mesures, perturbées à chaque appel (le juge commun y mêle des entrées de vérification, puis renomme le tout) |
+| `scenario(s, a, b, entrees, mesure)` | vérifie **chaque** sortie d'un scénario mesuré par la règle de `verifier`, entrées de vérification mêlées comprises (invalides aussi), et en tire les métriques (à partir de la mesure de chrono) ; renvoie `(valeurs, sorties comparées)` |
 
-Le harnais (`execution`) est appelé `execution <mode> /entrees /sorties`, avec le mode `verifier` ou
-un nom de scénario ; `/entrees/liste` donne une ligne `<côté> <nom> <entier>` par entrée, dont les
-octets sont dans `/entrees/<côté>/<nom>`.
+Le harnais (`execution`) est appelé sans argument ; son descripteur 0 porte une ligne `<mode> /entrees /sorties`, avec le
+mode `verifier` ou un nom de scénario ; `/entrees/liste` donne une ligne `<côté> <nom> <entier>` par entrée, dont les octets
+sont dans `/entrees/<côté>/<nom>`. Dans un scénario, il traite toute entrée de son côté comme en vérification.
+
+**What the harness guarantees the judged code (ruche-0037).** It cannot tell whether it is verified, timed or counted. In every
+mode the harness gets the same arguments (its path alone), environment (fixed by `chrono`), descriptors (0 the pipe of its
+parameters, 1 `/dev/null`, 2 a pipe read by `chrono`), working directory (`/`), host name and mounts (`/sorties` too: one
+container per scenario; every mounted folder has a neutral name); `chrono` has no argument and writes no file (plan, options and
+journal use its standard streams). The harness reads its parameters to the end of the pipe, copies them, then erases their text,
+its arguments and its environment in place before any call to the judged code, and does the same work in every mode where it
+can. Under Valgrind, only what Valgrind adds to the process differs. Verification inputs are mixed into every measurement: at
+each repetition (warm-up included), ⌈n/r⌉ of each measured side (n of them on that side, r repetitions), taken in turn in an
+order drawn from the judge's seed, so each is timed at least once; as many in the instruction count (within its prefix). All are
+shuffled and renamed (`e0000`…), the same for A and B; a wrong output fails the judgement whatever the mode. `juge.json`:
+`juge.verification.entrees_melees` (total), `melees_par_repetition` (per side).
 
 Règles de sûreté, vérifiées par le juge commun (revue adverse du 28/10) :
 - les relevés d'analyse (`nm`, `objdump`) sont produits par le juge commun lui-même, dans un conteneur, sur

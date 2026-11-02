@@ -6,24 +6,25 @@
    par wait4, c'est-à-dire mesurés par le noyau, pas déclarés par le code mesuré.
 
    Ce que le fils ne peut pas faire :
-   - écrire sur la sortie standard du conteneur, qui porte les mesures : ses descripteurs 0 et 1 sont
-     /dev/null, 2 est un journal dans le dossier de sorties ; ce processus se déclare non « dumpable »
-     (prctl), si bien que /proc/1/fd et /proc/1/mem lui sont fermés ;
+   - écrire sur la sortie standard du conteneur, qui porte les mesures : son descripteur 1 est /dev/null,
+     2 un tube lu par chrono (sa fin va sur la sortie d'erreur du conteneur) ; ce processus se déclare non
+     « dumpable » (prctl), si bien que /proc/1/fd et /proc/1/mem lui sont fermés ;
    - lancer d'autres processus : le conteneur est limité à deux processus (--pids-limit 2) ;
    - forger une ligne de mesure : chaque ligne porte un jeton lu sur l'entrée standard avant le premier
-     fork, que le fils ne voit jamais.
+     fork, que le fils ne voit jamais ;
+   - savoir dans quel mode il tourne (ruche-0037) : quel que soit le mode, mêmes arguments, environnement fixe,
+     dossier courant « / », 0 = un tube portant ses paramètres ; chrono n'a ni argument ni fichier.
 
-   Décompte d'instructions (--valgrind) : la commande est valgrind --tool=cachegrind, dont le résumé
+   Décompte d'instructions (valgrind à 1) : la commande est valgrind --tool=cachegrind, dont le résumé
    (« I refs: N ») est la DERNIÈRE ligne écrite sur la sortie d'erreur du fils. chrono lit cette sortie
    par un tube et relève la dernière ligne non vide. Le code mesuré peut écrire sur la même sortie, mais
    seulement AVANT le résumé, que Valgrind écrit en dernier, une fois le programme terminé ; s'il tue le
    processus pour empêcher le résumé, le signal est relevé et la mesure refusée par l'hôte. Le fichier
    cachegrind.out, lui, n'est pas lu : le code mesuré pourrait le forger.
 
-   Usage : chrono [--delai SECONDES] [--journal DOSSIER] [--valgrind] <plan>
-     plan : une commande par ligne, champs séparés par des tabulations : étiquette, programme, arguments.
-            Étiquette : lettres, chiffres, « _ » et « - ».
-     L'entrée standard donne le jeton (une ligne de 16 à 64 caractères hexadécimaux).
+   Usage : chrono ; l'entrée standard donne le jeton (une ligne de 16 à 64 caractères hexadécimaux), une ligne
+     « <délai en secondes> <valgrind : 0 ou 1> », puis le plan : une commande par ligne, champs séparés par des
+     tabulations : étiquette (lettres, chiffres, « _ » et « - »), paramètres, programme, arguments.
    Sortie : une ligne JSON par commande, dans l'ordre du plan :
      {"jeton": "...", "etiquette": "...", "code": 0, "signal": 0, "utilisateur_s": 0.0, "systeme_s": 0.0,
       "mur_s": 0.0, "maxrss_ko": 0, "instructions": null}
@@ -49,6 +50,7 @@
 #define LIGNE_MAX 4096
 #define QUEUE_MAX 65536
 
+static char *const ENVIRONNEMENT[] = {"HOME=/tmp", "LC_ALL=C", "PATH=/usr/bin:/bin", NULL}; /* le même pour chaque fils */
 static volatile pid_t fils_courant = 0;
 
 static void sur_alarme(int signal_recu)
@@ -118,37 +120,23 @@ static int etiquette_valide(const char *e)
 
 int main(int argc, char **argv)
 {
-    char jeton[80], ligne[LIGNE_MAX], journal_chemin[4096];
-    const char *journal = NULL, *plan = NULL;
+    char jeton[80], ligne[LIGNE_MAX];
     unsigned delai = 0;
     int valgrind = 0;
     static char queue[QUEUE_MAX + 1];
     char (*lignes)[LIGNE_MAX] = NULL;
     size_t nombre = 0, capacite = 0, i, n;
-    FILE *f;
-    int nul, k;
+    int nul;
     struct sigaction action;
 
-    umask(0); /* l'hôte doit pouvoir effacer les journaux (écrits par un autre utilisateur) */
+    umask(0); /* hérité du fils : l'hôte doit pouvoir effacer ce qu'il écrit (autre utilisateur) */
     /* D'abord : plus personne (même uid) n'ouvre /proc/<ce processus>/fd ni /mem. */
     if (prctl(PR_SET_DUMPABLE, 0, 0, 0, 0) != 0)
         mourir("prctl(PR_SET_DUMPABLE) a échoué");
 
-    for (k = 1; k < argc; k++)
-    {
-        if (strcmp(argv[k], "--delai") == 0 && k + 1 < argc)
-            delai = (unsigned)strtoul(argv[++k], NULL, 10);
-        else if (strcmp(argv[k], "--journal") == 0 && k + 1 < argc)
-            journal = argv[++k];
-        else if (strcmp(argv[k], "--valgrind") == 0)
-            valgrind = 1;
-        else if (!plan)
-            plan = argv[k];
-        else
-            mourir("argument inattendu");
-    }
-    if (!plan)
-        mourir("usage : chrono [--delai S] [--journal DOSSIER] <plan>");
+    (void)argv;
+    if (argc != 1 || chdir("/") != 0)
+        mourir("usage : chrono, sans argument (jeton, options et plan sur l'entrée standard)");
 
     if (!fgets(jeton, sizeof(jeton), stdin))
         mourir("jeton absent sur l'entrée standard");
@@ -156,11 +144,10 @@ int main(int argc, char **argv)
     n = strlen(jeton);
     if (n < 16 || n > 64 || strspn(jeton, "0123456789abcdef") != n)
         mourir("jeton invalide");
+    if (!fgets(ligne, sizeof(ligne), stdin) || sscanf(ligne, "%u %d", &delai, &valgrind) != 2)
+        mourir("options absentes (délai, valgrind)");
 
-    f = fopen(plan, "r");
-    if (!f)
-        mourir("plan illisible");
-    while (fgets(ligne, sizeof(ligne), f))
+    while (fgets(ligne, sizeof(ligne), stdin))
     {
         ligne[strcspn(ligne, "\r\n")] = 0;
         if (!ligne[0])
@@ -174,7 +161,6 @@ int main(int argc, char **argv)
         }
         memcpy(lignes[nombre++], ligne, LIGNE_MAX);
     }
-    fclose(f);
 
     nul = open("/dev/null", O_RDWR | O_CLOEXEC);
     if (nul < 0)
@@ -190,7 +176,7 @@ int main(int argc, char **argv)
     for (i = 0; i < nombre; i++)
     {
         char *champs[CHAMPS_MAX + 1], *sauvegarde = NULL, *morceau;
-        int nchamps = 0, statut = 0, sortie_journal = -1, tube[2] = {-1, -1};
+        int nchamps = 0, statut = 0, tube[2] = {-1, -1}, entree[2] = {-1, -1};
         size_t remplissage = 0;
         long long instructions = -1;
         struct rusage ru;
@@ -201,19 +187,13 @@ int main(int argc, char **argv)
              morceau = strtok_r(NULL, "\t", &sauvegarde))
             champs[nchamps++] = morceau;
         champs[nchamps] = NULL;
-        if (nchamps < 2 || !etiquette_valide(champs[0]))
+        if (nchamps < 3 || !etiquette_valide(champs[0]))
             mourir("ligne de plan invalide");
 
-        if (journal)
-        {
-            int c = snprintf(journal_chemin, sizeof(journal_chemin), "%s/%s.err", journal, champs[0]);
-            if (c < 0 || (size_t)c >= sizeof(journal_chemin))
-                mourir("chemin de journal trop long");
-            sortie_journal = open(journal_chemin, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC | O_NOFOLLOW, 0644);
-        }
-
-        if (valgrind && pipe2(tube, O_CLOEXEC) != 0)
-            mourir("pipe2 a échoué");
+        n = strlen(champs[1]); /* les paramètres (le mode compris) : un tube que le fils lit puis ferme */
+        if (pipe2(tube, O_CLOEXEC) != 0 || pipe2(entree, O_CLOEXEC) != 0 || write(entree[1], champs[1], n) != (ssize_t)n
+            || write(entree[1], "\n", 1) != 1 || close(entree[1]) != 0)
+            mourir("tubes impossibles");
         fflush(stdout);
         debut = maintenant();
         pid = fork();
@@ -221,16 +201,15 @@ int main(int argc, char **argv)
             mourir("fork a échoué");
         if (pid == 0)
         {
-            int erreur = valgrind ? tube[1] : (sortie_journal >= 0 ? sortie_journal : nul);
-            if (dup2(nul, 0) < 0 || dup2(nul, 1) < 0 || dup2(erreur, 2) < 0)
+            if (dup2(entree[0], 0) < 0 || dup2(nul, 1) < 0 || dup2(tube[1], 2) < 0)
                 _exit(126);
-            execv(champs[1], champs + 1);
+            execve(champs[2], champs + 2, ENVIRONNEMENT);
             _exit(127);
         }
         fils_courant = pid;
+        close(entree[0]);
         if (delai)
             alarm(delai);
-        if (valgrind)
         {
             /* Lit tout ce que le fils écrit sur sa sortie d'erreur ; ne garde que la fin. */
             char morceau_lu[8192];
@@ -261,7 +240,9 @@ int main(int argc, char **argv)
             }
             close(tube[0]);
             queue[remplissage] = 0;
-            instructions = releve_instructions(queue, remplissage);
+            if (valgrind)
+                instructions = releve_instructions(queue, remplissage);
+            fwrite(queue, 1, remplissage, stderr); /* le journal du fils, pour l'hôte */
         }
         while (wait4(pid, &statut, 0, &ru) < 0)
             if (errno != EINTR)
@@ -269,8 +250,6 @@ int main(int argc, char **argv)
         alarm(0);
         fils_courant = 0;
         fin = maintenant();
-        if (sortie_journal >= 0)
-            close(sortie_journal);
 
         printf("{\"jeton\": \"%s\", \"etiquette\": \"%s\", \"code\": %d, \"signal\": %d, \"utilisateur_s\": %.6f, "
                "\"systeme_s\": %.6f, \"mur_s\": %.6f, \"maxrss_ko\": %ld, \"instructions\": ",

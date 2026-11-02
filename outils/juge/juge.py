@@ -260,24 +260,41 @@ def preparer(travail, nom, entrees, cotes):
     module_entrees.verifier_entrees(entrees, cotes)
     dossiers = {}
     for c in cotes:
-        dossiers[c] = os.path.join(travail, f"{nom}-{c}")
+        dossiers[c] = os.path.join(travail, secrets.token_hex(8))  # neutral: a mount's host path shows in the container
         module_entrees.ecrire(dossiers[c], [e for e in entrees if e.cote == c], cotes)
     return dossiers
 
 
 def sorties_de(travail, nom, cotes):
-    return {c: conteneur.dossier_ouvert(os.path.join(travail, f"{nom}-{c}")) for c in cotes}
+    return {c: conteneur.dossier_ouvert(os.path.join(travail, secrets.token_hex(8))) for c in cotes}
 
 
 def lancer_par_cote(execution, variante, dossiers, sorties, plans, **options):
-    """Un conteneur par côté ; renvoie les mesures de tous les côtés, fusionnées."""
+    """Un conteneur par scénario, ses sorties sur /sorties comme la vérification (dossier neutre, puis <côté>/<scénario>)."""
     mesures = {}
     for cote, plan in plans.items():
-        if plan:
-            for etiquette, _ in plan:
-                conteneur.dossier_ouvert(os.path.join(sorties[cote], etiquette))
-            mesures.update(execution.lancer(variante, dossiers[cote], sorties[cote], plan, **options))
+        for etiquette, commande in plan:
+            dossier = conteneur.dossier_ouvert(os.path.join(os.path.dirname(sorties[cote]), secrets.token_hex(8)))
+            mesures.update(execution.lancer(variante, dossiers[cote], dossier, [(etiquette, commande)], **options))
+            os.rename(dossier, os.path.join(sorties[cote], etiquette))
     return mesures
+
+
+def tour(rng, entrees):
+    """The verification inputs in an order drawn from the judge's seed, round after round: each passes once per round."""
+    while entrees:
+        ordre = list(entrees)
+        rng.shuffle(ordre)
+        yield from ordre
+
+
+def meler(rng, mesurees, tours, combien):
+    """Measured inputs and `combien[c]` verification inputs per side from `tours[c]`, shuffled and renamed (e0000…): neither
+    name nor order tells them apart; `scenario` checks every output. Returns (inputs, number of verification inputs)."""
+    ajout = [next(tours[c]) for c, k in combien.items() for _ in range(k)]
+    tout = list(mesurees) + ajout
+    rng.shuffle(tout)
+    return [e._replace(nom=f"e{i:04d}") for i, e in enumerate(tout)], len(ajout)
 
 
 def effacer(*groupes):
@@ -443,13 +460,21 @@ def main(argv=None):
         fixes = {v: dict(projet.fixes(Sorties(racines[v]), corpus)) for v in "AB"}
         effacer(racines["A"], racines["B"], dossiers)
         journal(f"vérification : {comparees} sorties de B justes ({len(entrees)} entrées)")
+        # Verification inputs mixed into every measurement (ruche-0037): each passes once in a timed repetition.
+        par_cote = {c: [e for e in entrees if e.cote == c] for c in set(projet.SCENARIOS.values())}
+        tours = {c: tour(rng, l) for c, l in par_cote.items()}
+        combien = {c: -(-len(l) // (args.chauffe + args.repetitions)) for c, l in par_cote.items()}
+        legeres = {c: [e for e in l if max(len(e.donnees), e.taille) <= args.prefixe_instructions]
+                   for c, l in par_cote.items() if c in {projet.SCENARIOS[s] for s in projet.INSTRUCTIONS}}
+        melees = 0
 
         # 2. Mesures au chronomètre (temps processeur du fils, lu par le noyau), A et B entrelacés.
         mesures = {"A": [], "B": []}
         for i in range(args.chauffe + args.repetitions):
-            entrees = projet.repetition(rng, corpus)
+            entrees, n = meler(rng, projet.repetition(rng, corpus), tours, combien)
+            melees += n
             dossiers = preparer(travail, f"repetition-{i}", entrees, cotes)
-            plans = {c: [(s, ["/variante/execution", s, "/entrees", f"/sorties/{s}"]) for s, cs in projet.SCENARIOS.items() if cs == c]
+            plans = {c: [(s, ["/variante/execution", s, "/entrees", "/sorties"]) for s, cs in projet.SCENARIOS.items() if cs == c]
                      for c in cotes}
             sorties, brut = {}, {}
             for v in (("A", "B") if i % 2 == 0 else ("B", "A")):
@@ -499,9 +524,11 @@ def main(argv=None):
 
         # 3. Décompte d'instructions : Valgrind dans le conteneur, tout le processus, résumé relevé par chrono.
         if not args.sans_instructions and projet.INSTRUCTIONS:
-            entrees = projet.instructions(rng, corpus, args.prefixe_instructions)
+            entrees, n = meler(rng, projet.instructions(rng, corpus, args.prefixe_instructions),
+                               {c: tour(rng, l) for c, l in legeres.items()}, {c: min(combien[c], len(l)) for c, l in legeres.items()})
+            melees += n
             dossiers = preparer(travail, "instructions", entrees, cotes)
-            plans = {c: [(s, VALGRIND + ["/variante/execution", s, "/entrees", f"/sorties/{s}"])
+            plans = {c: [(s, VALGRIND + ["/variante/execution", s, "/entrees", "/sorties"])
                          for s in projet.INSTRUCTIONS if projet.SCENARIOS[s] == c] for c in cotes}
             comptes, sorties = {}, {}
             for v in "AB":
@@ -525,7 +552,7 @@ def main(argv=None):
                 f"entrées du greffon (préfixe de {args.prefixe_instructions} octets), perturbées ; résumé relevé par "
                 f"chrono sur la dernière ligne de Valgrind ; au-delà du bruit si l'écart dépasse {100 * args.seuil_instructions:.2f} %")
 
-        verification = {"sorties_comparees": comparees}
+        verification = {"sorties_comparees": comparees, "entrees_melees": melees, "melees_par_repetition": combien}
         verification.update(getattr(projet, "VERIFICATION", {}))
         rapport["juge"] = {
             "version": VERSION_JUGE,
