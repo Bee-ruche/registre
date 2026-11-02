@@ -672,9 +672,11 @@ def same_person(reg, a, b):
 
 def reproduces_for_r4(reg, mesure, auteur):
     """ruche-0042: a measurement counts for R4 as another configuration's only if another person than the contribution's author
-    filed it (same_person), and it states its configuration (config.architecture), so that the reproduction can be checked."""
+    filed it (same_person), and it states its configuration (config.architecture), so that the reproduction can be checked. Without
+    an author to compare with, none counts."""
     config = mesure.get("config")
-    return (isinstance(mesure.get("soumise_par"), str) and not same_person(reg, mesure["soumise_par"], auteur)
+    return (isinstance(auteur, str) and bool(auteur.strip()) and isinstance(mesure.get("soumise_par"), str)
+            and not same_person(reg, mesure["soumise_par"], auteur)
             and isinstance(config, dict) and isinstance(config.get("architecture"), str) and bool(config["architecture"].strip()))
 
 
@@ -5147,6 +5149,10 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
                     resultat = depouiller_proposition(reg, sujet, niveaux, instant)
                     exiger(not resultat["terminee"] and reg.propositions[sujet][1].get("statut") == "ouverte",
                            f"{chemin} : le vote sur {sujet} est clos")
+                if partie[1] in reg.enregistrements:  # ruche-0042: a contribution's vote closes when it leaves review, for everyone
+                    statut = enr_vote.get("statut") if isinstance(enr_vote := reg.enregistrements[partie[1]][1], dict) else None
+                    exiger(statut == "en_relecture", f"{chemin} : le vote sur {partie[1]} est clos : la contribution n'est plus en "
+                                                     f"relecture (statut : {statut})")
             continue
 
         if partie[0] == "mesures" and len(partie) == 3:
@@ -5167,7 +5173,7 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
                 exiger(nouveau.get("contribution") == partie[1], f"{chemin} : la mesure doit être rangée sous sa contribution")
                 exiger(nouveau.get("contribution") in reg.enregistrements, f"{chemin} : contribution « {nouveau.get('contribution')} » inconnue")
                 probleme = probleme_date_pr(nouveau.get("le"), f"{chemin} : le", instant)
-                exiger(probleme is None, f"{probleme} : relancez bee enregistrer-mesure")
+                exiger(probleme is None, f"{probleme} : delete {chemin}, then rerun bee enregistrer-mesure")
             continue
 
         if partie[0] == "membres" and len(partie) == 2:
@@ -6240,6 +6246,8 @@ def cmd_voter(args):
         if args.utilisateur in concurrents_de(reg, reg.enregistrements[args.sujet][1]):
             raise ErreurBee(f"{args.utilisateur} est en course sur la même tâche que {args.sujet} : on ne vote pas sur une "
                             "concurrente (commandement 3)")
+        if (statut := reg.enregistrements[args.sujet][1].get("statut")) != "en_relecture":  # ruche-0042, as verifier-pr
+            raise ErreurBee(f"le vote sur {args.sujet} est clos : la contribution n'est plus en relecture (statut : {statut})")
     elif args.sujet in reg.propositions:
         resultat = depouiller_proposition(reg, args.sujet, calculer_niveaux(reg), maintenant())
         if resultat["terminee"] or reg.propositions[args.sujet][1].get("statut") != "ouverte":
@@ -7464,8 +7472,8 @@ def cmd_enregistrer_mesure(args):
     reg.exiger_membre(args.utilisateur)
     reg.enregistrement(args.contribution)  # lève une erreur si la contribution est inconnue
     if (deja := reg.racine / "mesures" / args.contribution / f"{args.utilisateur}.yaml").exists():  # ruche-0042, as verifier-pr
-        raise ErreurBee(f"{reg.rel(deja)} exists : a published measurement is neither changed nor withdrawn (commandment 10) ; if it "
-                        "is not published yet, delete it, then rerun")
+        raise ErreurBee(f"{reg.rel(deja)} already exists : one measurement per person and per contribution, never changed once "
+                        "published (commandment 10) ; if this file is not published yet, delete it, then rerun")
     with open(args.ab, encoding="utf-8") as f:
         brut = json.load(f)
     machine = brut.get("machine") or {}

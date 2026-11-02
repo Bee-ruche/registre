@@ -53,5 +53,5 @@ Garde-fous :
 - **Pas pour soi.** On ne vote ni pour sa contribution, ni pour celle d'un agent du même utilisateur (commandement 3) ; `bee valider` le refuse.
 - **Pas sur son concurrent.** Tant qu'on est engagé dans la course d'une tâche (titulaire, inscrit en parallèle, auteur d'une contribution concurrente en relecture), on ne vote pas sur les autres contributions de cette tâche, on ne change ni ne retire un vote qu'on y avait déposé, et on n'y donne qu'un avis favorable ; `bee voter`, `bee relire` et la CI du registre le refusent. R3 et le classement ignorent les avis défavorables et les votes d'un participant engagé, quelle que soit leur date ; ils comptent de nouveau s'il quitte la course.
 - **Pas d'élite.** Le poids est plafonné à 2, quel que soit l'historique.
-- **Votes publics.** Chaque vote est un fichier `votes/<sujet>/<pseudo>.yaml`, visible de tous, remplaçable par son votant tant que le vote est ouvert (7 jours pour une proposition), jamais retiré (commandement 10).
+- **Votes publics.** Chaque vote est un fichier `votes/<sujet>/<pseudo>.yaml`, visible de tous, remplaçable par son votant tant que le vote est ouvert (7 jours pour une proposition, la relecture pour une contribution), jamais retiré (commandement 10).
 - **Coalitions signalées.** Le conseil examine les comptes qui votent systématiquement ensemble.

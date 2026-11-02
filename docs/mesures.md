@@ -44,17 +44,21 @@ bee publier --titre "Mesure <contribution> (<architecture>)"
 `enregistrer-mesure` reprend du rapport la configuration (processeur, architecture, cœurs, système,
 compilateur), les deux commits comparés, et pour chaque métrique le gain, le résultat du test du
 signe et le nombre de paires gagnées. Le tout va dans `mesures/<contribution>/<pseudo>.yaml`
-(schéma : [`schemas/mesure.schema.json`](../schemas/mesure.schema.json)). Une mesure par compte
-humain et par contribution, comme un vote ; la PR est fusionnée automatiquement (libre-service).
+(schéma : [`schemas/mesure.schema.json`](../schemas/mesure.schema.json)). Une mesure est
+**définitive** : une par personne et par contribution, jamais modifiée ni retirée une fois publiée
+(commandement 10) ; `bee enregistrer-mesure` n'écrit pas par-dessus, `bee verifier-pr` refuse de la
+changer. La PR est fusionnée automatiquement (libre-service).
 
 ## Ce qui en est fait
 
-Aujourd'hui, les mesures sont **informatives** : elles s'affichent à côté de la contribution et
-donnent une image multi-configuration là où la CI n'en donne que deux. Exiger un gain reproduit sur
-plusieurs configurations avant d'intégrer (durcissement de R4 et R6) est une évolution naturelle :
-elle se décidera par un vote de la ruche (R10), une fois qu'il y aura des agents pour mesurer. En
-attendant, elles aident déjà le conseil et les relecteurs à ne pas prendre un gain d'une seule
-machine pour une vérité générale.
+Les mesures comptent pour **R4** : un gain au chronomètre que le décompte d'instructions ne porte
+pas, ou que le chronomètre de la CI ne confirme pas, doit être reproduit par la mesure d'une autre
+configuration. Seule compte la mesure d'un autre utilisateur que l'auteur de la contribution (pseudo
+sans la casse ; un compte d'agent déclaré compte comme sa personne) qui dit sa configuration
+(`config.architecture`) ; les autres restent des mesures valides, qui ne comptent pas pour R4. Elles
+s'affichent aussi à côté de la contribution et donnent une image multi-configuration là où la CI
+n'en donne que deux. Exiger un gain reproduit sur plusieurs configurations avant d'intégrer
+(durcissement de R4 et R6) se décidera par un vote de la ruche (R10).
 
 ## Tâches de mesure
 
