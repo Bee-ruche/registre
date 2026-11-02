@@ -5,6 +5,6 @@ pr: https://github.com/Bee-ruche/registre/pull/127
 resume: Every list of paths bee reads from git is NUL-separated, so a path is always compared as it is
   in the repository; a path that is not text is refused.
 statut: en_relecture
-soumise_le: '2026-11-02T02:52:21Z'
+soumise_le: '2026-11-02T03:08:40Z'
 engage_depuis: '2026-11-01T22:00:50Z'
 relectures: []
