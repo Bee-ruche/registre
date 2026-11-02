@@ -381,6 +381,32 @@ class TestCiScope(unittest.TestCase):
         self.assertNotEqual(r.returncode, 0, "an empty base compares HEAD with itself and passes")
         self.assertEqual(appels, "")
 
+    def test_both_workflows_give_the_gate_github_s_record_of_the_push(self):
+        """ruche-0091: the PR rules take the time of the PR from this run's creation (the API, read with the run's id), and
+        stop if it is unreadable; fusion-auto takes the creation of the validation run that the push triggered."""
+        regles = self.etapes()[1]["regles"]["run"]
+        self.assertIn('instant=$(timeout 60 gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq .created_at)', regles)
+        faux_bee = pathlib.Path(tempfile.mkdtemp(dir=self.temp.name))
+        (faux_bee / "outils").mkdir()
+        (faux_bee / "outils/bee.py").write_text("import sys\nprint('BEE', *sys.argv[1:])\n", encoding="utf-8")
+        env = {"BASE": "abc", "AUTEUR": "alice", "GITHUB_RUN_ID": "4242"}
+        r, _, appels = self.rejouer(regles, {**env, "FAUX_GH": "2026-10-27T12:00:00Z"}, cwd=faux_bee)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("api repos/Bee-ruche/registre/actions/runs/4242 --jq .created_at", appels)
+        self.assertTrue(r.stdout.rstrip().endswith("--instant-pr 2026-10-27T12:00:00Z"), r.stdout)
+        (faux_bee / "bin").mkdir()  # a gh that answers for the account, not for the run
+        (faux_bee / "bin/gh").write_text('#!/bin/sh\ncase "$*" in *actions/runs/*) exit 1;; esac\necho 2020-01-01\n', encoding="utf-8")
+        (faux_bee / "bin/gh").chmod(0o755)
+        r = subprocess.run(["bash", "-e", "-c", regles], cwd=faux_bee, capture_output=True, text=True,
+                           env={**os.environ, **env, "PATH": f"{faux_bee / 'bin'}{os.pathsep}{os.environ['PATH']}",
+                                "GITHUB_REPOSITORY": "Bee-ruche/registre"})
+        self.assertNotEqual(r.returncode, 0)
+        self.assertNotIn("BEE", r.stdout, "the gate never runs without GitHub's record")
+        etape = next(s for s in yaml.safe_load((RACINE / ".github/workflows/fusion-auto.yml").read_text(encoding="utf-8"))["jobs"]
+                     ["fusionner"]["steps"] if s.get("name", "").startswith("Vérifier la fusion simulée"))
+        self.assertEqual(etape["env"]["INSTANT_PR"], "${{ github.event.workflow_run.created_at }}")
+        self.assertRegex(etape["run"], r'verifier-pr [^\n]*\\\n[^\n]*--instant-pr "\$INSTANT_PR"\n')
+
     def test_the_data_only_step_runs_exactly_the_tests_allowed_to_read_live_data(self):
         """One list: on a data-only PR, validation.yml runs TESTS_REGISTRE_REEL, the tests the audit hook lets read the live
         registry's data; each exists."""
@@ -2291,6 +2317,52 @@ class TestPullRequests(BaseTest):
         code, texte = self.verifier("david", "--compte-cree-le", "2021-05-05")
         self.assertEqual(code, 0, texte)
 
+    # --- ruche-0091: the time of the PR is the time GitHub recorded for the push (--instant-pr), not the time of the check ---
+
+    def test_member_file_is_dated_at_the_push_and_the_account_age_runs_to_the_check(self):
+        """inscrit_le is the day of the push, even when the check runs the next day, and a later day is refused whenever the
+        check runs; the account's age still runs to the check (as before), and a local run still takes the current time."""
+        age_89, push = "2026-07-30", ("--instant-pr", "2026-10-27T12:00:00Z")  # 89 days old on 2026-10-27, 90 on 2026-10-28
+        self.member_pr("late-check", compte_cree_le=age_89)  # inscrit_le 2026-10-27, as bee inscrire writes it at the push
+        os.environ["BEE_MAINTENANT"] = "2026-10-28T09:00:00Z"
+        code, texte = self.verifier("david", "--compte-cree-le", age_89, *push, "--fusion-auto")
+        self.assertEqual(code, 0, texte)
+        self.assertIn("FUSION_AUTO=oui", texte)
+        code, texte = self.verifier("david", "--compte-cree-le", age_89)
+        self.assertEqual(code, 1, texte)
+        self.assertIn("inscrit_le (2026-10-27) must be the date of the PR (2026-10-28)", texte)
+        os.environ["BEE_MAINTENANT"] = "2026-10-27T13:00:00Z"
+        code, texte = self.verifier("david", "--compte-cree-le", age_89, *push)
+        self.assertEqual(code, 1, texte)
+        self.assertIn("le compte GitHub doit avoir au moins 90 jours", texte)
+        self.member_pr("dated-after-the-push", inscrit_le="2026-10-28")
+        os.environ["BEE_MAINTENANT"] = "2026-10-28T09:00:00Z"
+        code, texte = self.verifier("david", "--compte-cree-le", "2021-05-05", *push)
+        self.assertEqual(code, 1, texte)
+        self.assertIn("inscrit_le (2026-10-28) must be the date of the PR (2026-10-27)", texte)
+
+    def test_a_missing_or_malformed_time_of_the_push_is_refused(self):
+        """In CI the time of the push comes from GitHub: empty, unreadable, without a time zone, or after the check, the PR
+        is refused (fails closed), never checked at the current time instead."""
+        git(self.dossier, "switch", "-qc", "reservation")
+        self.assertEqual(self.bee("prendre", "miniz-0099", "--utilisateur", "alice")[0], 0)
+        self.commit()
+        self.assertEqual(self.verifier("alice", "--instant-pr", "2026-10-27T12:01:00Z")[0], 0)
+        for valeur in ("", "null", "garbage", "2026-10-27T12:00:00", "2026-10-27", "2026-10-27T12:01:01Z", "2099-01-01T00:00:00Z"):
+            with self.subTest(valeur=valeur):
+                code, texte = self.verifier("alice", "--instant-pr", valeur, "--fusion-auto")
+                self.assertEqual(code, 1, texte)
+                self.assertIn("--instant-pr", texte)
+                self.assertNotIn("FUSION_AUTO", texte)
+        # Review S1: a re-run keeps its run's creation time; older than 24 h at the check, it is refused.
+        for maintenant, code in (("2026-10-28T11:00:00Z", 0), ("2026-10-28T12:00:00Z", 0), ("2026-10-28T12:00:01Z", 1),
+                                 ("2026-10-28T13:00:00Z", 1)):
+            with self.subTest(maintenant=maintenant):
+                os.environ["BEE_MAINTENANT"] = maintenant
+                code_lu, texte = self.verifier("alice", "--instant-pr", "2026-10-27T12:00:00Z")
+                self.assertEqual(code_lu, code, texte)
+                self.assertEqual("outside [the check - 24 h, the check + 1 min] : push again" in texte, bool(code))
+
     def test_an_existing_member_file_keeps_its_dates(self):
         """The dates of a registered member are not checked again against a later PR: a profile change passes, without
         GitHub's date; changing a date stays refused (only the preferred categories change)."""
@@ -3531,14 +3603,14 @@ class TestPullRequestsEnParallele(BaseParallele):
     def verifier(self, auteur, *options):
         return self.bee("verifier-pr", "--base", "main", "--tete", "HEAD", "--auteur", auteur, *options)
 
-    def libre_service(self, auteur, nature):
-        code, texte = self.verifier(auteur, "--fusion-auto")
+    def libre_service(self, auteur, nature, *options):
+        code, texte = self.verifier(auteur, "--fusion-auto", *options)
         self.assertEqual(code, 0, texte)
         self.assertIn("FUSION_AUTO=oui", texte)
         self.assertIn(nature, texte)
 
-    def refusee(self, auteur, morceau):
-        code, texte = self.verifier(auteur)
+    def refusee(self, auteur, morceau, *options):
+        code, texte = self.verifier(auteur, *options)
         self.assertEqual(code, 1, texte)
         self.assertIn(morceau, texte)
 
@@ -3854,6 +3926,80 @@ class TestPullRequestsEnParallele(BaseParallele):
                 self.assertEqual(code, 0 if acceptee else 1, texte)
                 if not acceptee:
                     self.assertIn(f"taches/miniz/{tid}.yaml : depuis ({depuis}) doit être l'heure de la PR", texte)
+
+    def test_engagement_dates_are_checked_at_the_push_whenever_the_check_runs(self):
+        """ruche-0091: the reservation, then the parallel registration, written by bee at the push (12:00, --instant-pr) pass
+        when the check runs hours later; dated outside the tolerance around the push, each is refused, even where it would
+        fit the time of the check. A local run, without --instant-pr, still takes the current time."""
+        push = ("--instant-pr", "2026-10-27T12:00:00Z")
+        for qui, nature, refus in (("alice", "reservation", "une réservation est datée de l'heure de la PR"),
+                                   ("bruno", "inscription_parallele", "doit être datée de l'heure de la PR")):
+            if qui == "alice":
+                self.branche()
+                self.assertEqual(self.bee("prendre", "miniz-0099", "--utilisateur", "alice")[0], 0)  # 12:00
+            else:
+                git(self.dossier, "switch", "-qf", "main")
+                self.a("2026-10-27T09:00:00Z")
+                self.main_reservee_avec_inscrits()  # alice since 09:00
+                self.a("2026-10-27T12:00:00Z")
+                self.branche("pr-parallele")
+                self.parallele("miniz-0099", "bruno")
+            self.commit()
+            for instant in ("2026-10-27T12:00:00Z", "2026-10-27T14:00:01Z", "2026-10-28T11:00:00Z"):
+                with self.subTest(qui=qui, instant=instant):
+                    self.a(instant)
+                    self.libre_service(qui, nature, *push)
+            with self.subTest(qui=qui, local=True):
+                self.a("2026-10-27T14:00:01Z")
+                self.refusee(qui, refus)
+            self.a("2026-10-27T18:00:00Z")  # the check runs 6 h after the push
+            for depuis, acceptee in self.DATES + (("2026-10-27T17:00:00Z", False), ("2026-10-27T18:00:00Z", False)):
+                with self.subTest(qui=qui, depuis=depuis):
+                    self.dater(qui, depuis)
+                    self.commit()
+                    if acceptee:
+                        self.libre_service(qui, nature, *push)
+                    else:
+                        self.refusee(qui, refus, *push)
+
+    def test_in_flight_prs_on_one_task_follow_the_order_of_their_merges(self):
+        """ruche-0091 (N2): bruno's parallel registration is pushed at 13:00, alice's submission at 13:05, and alice's PR merges
+        first. Both change the task's file: bruno's PR no longer merges with main (fusion-auto leaves it to a human). Resolved
+        by hand with its 13:00 date and pushed again at 13:20, it is judged at that push, and a registration earlier than the
+        submission main now holds is refused; bee prendre --en-parallele again, at 13:20, passes. So the dates on a task follow
+        the order of its merges, whatever the order of the pushes."""
+        self.main_reservee_avec_inscrits()  # alice since 12:00
+        self.a("2026-10-27T13:00:00Z")
+        self.branche("inscription")
+        self.parallele("miniz-0099", "bruno")
+        self.commit()
+        git(self.dossier, "switch", "-q", "main")
+        self.a("2026-10-27T13:05:00Z")
+        self.branche("soumission")
+        self.soumettre("miniz-0099", "alice", 99103)
+        self.commit()
+        self.libre_service("alice", "soumission", "--instant-pr", "2026-10-27T13:05:00Z")
+        git(self.dossier, "switch", "-q", "main")
+        git(self.dossier, "merge", "-q", "--ff-only", "soumission")
+        git(self.dossier, "switch", "-q", "inscription")
+        fusion = subprocess.run(["git", "-C", str(self.dossier), "-c", "user.name=t", "-c", "user.email=t@t", "merge", "-q", "--no-edit",
+                                 "main"], capture_output=True, text=True)
+        self.assertNotEqual(fusion.returncode, 0, "the two PRs change the same lines of the task")
+        git(self.dossier, "merge", "--abort")
+        git(self.dossier, "switch", "-qc", "resolue", "main")  # resolved by hand, keeping the 13:00 date
+        bee.modifier_tache(self.chemin(), paralleles=[{"utilisateur": "bruno", "depuis": "2026-10-27T13:00:00Z"}])
+        self.commit()
+        self.a("2026-10-27T13:25:00Z")
+        self.refusee("bruno", "ne peut pas être antérieure à la réservation, aux inscriptions ni aux soumissions",
+                     "--instant-pr", "2026-10-27T13:20:00Z")
+        git(self.dossier, "switch", "-qf", "main")
+        self.a("2026-10-27T13:20:00Z")
+        self.branche("a-nouveau")
+        self.parallele("miniz-0099", "bruno")
+        self.commit()
+        self.a("2026-10-27T13:25:00Z")
+        self.libre_service("bruno", "inscription_parallele", "--instant-pr", "2026-10-27T13:20:00Z")
+        self.assertEqual(bee.paralleles_de(self.tache("miniz-0099")), [{"utilisateur": "bruno", "depuis": "2026-10-27T13:20:00Z"}])
 
     def test_un_fichier_du_libre_service_garde_son_mode(self):
         """In the self-service folders, a file added or modified by a member is a regular file and keeps its mode, with or
@@ -4835,7 +4981,8 @@ class TestRevueAdverse(BaseParallele):
         git(self.dossier, "switch", "-q", "main")
         (racine / "home").mkdir()
         sortie_gh = racine / "github_output"
-        env = {"NUMERO": "1", "AUTEUR": "chloe", "SHA": sha, "HOME": str(racine / "home"), "GITHUB_OUTPUT": str(sortie_gh)}
+        env = {"NUMERO": "1", "AUTEUR": "chloe", "SHA": sha, "HOME": str(racine / "home"), "GITHUB_OUTPUT": str(sortie_gh),
+               "INSTANT_PR": "2026-10-27T13:00:05Z"}  # ruche-0091: workflow_run.created_at, the validation run of the push
         # La PR 5555 a été ouverte par david : la soumission de chloe est refusée par l'étape de fusion-auto.
         sortie, _, appels = self.etape("Vérifier la fusion simulée", {PR_MINIZ + "5555": {"state": "OPEN", "head": "x", "auteur": "david"}},
                                        flux="fusion-auto.yml", env_en_plus=env, reussite=False)
@@ -4857,6 +5004,42 @@ class TestRevueAdverse(BaseParallele):
         code, texte = self.bee("verifier-pr", "--base", "main", "--tete", "HEAD", "--auteur", "chloe", "--auteurs-pr", str(vide))
         self.assertEqual(code, 1, texte)
         self.assertIn("auteur relevé : inconnu", texte)
+
+    def test_fusion_auto_checks_the_declared_dates_at_the_push(self):
+        """ruche-0091: fusion-auto's step gives verifier-pr the creation of the validation run that the push triggered. A
+        submission written at the push merges when the step runs hours later; one dated after the push is refused, and so is
+        the PR when that record is missing or malformed (fails closed)."""
+        self.fermer_porte()
+        self.assertEqual(self.bee("prendre", "miniz-0099", "--utilisateur", "alice")[0], 0)
+        self.init_git()
+        racine = self.dossier.parent
+        subprocess.run(["git", "clone", "-q", "--bare", str(self.dossier), str(racine / "origine.git")], check=True)
+        git(self.dossier, "remote", "add", "origin", str(racine / "origine.git"))
+        git(self.dossier, "fetch", "-q", "origin")
+        self.a("2026-10-27T13:00:00Z")
+        self.branche("soumission")
+        self.assertEqual(self.bee("soumettre", "miniz-0099", "--utilisateur", "alice", "--pr", PR_MINIZ + "5555")[0], 0)
+        self.commit()
+        git(self.dossier, "push", "-q", "origin", "soumission:refs/pull/1/head")
+        sha = git(self.dossier, "rev-parse", "soumission").strip()
+        git(self.dossier, "switch", "-q", "main")
+        (racine / "home").mkdir()
+        sortie_gh = racine / "github_output"
+        self.a("2026-10-27T17:30:00Z")  # the step runs 4 h 30 after the push
+        for instant_pr, code in (("2026-10-27T13:00:05Z", "0"), ("2026-10-27T12:58:00Z", "1"), ("", "1"), ("null", "1"),
+                                 ("2026-10-27 13:00:05", "1")):
+            with self.subTest(instant_pr=instant_pr):
+                if (racine / "fusion").exists():
+                    git(self.dossier, "worktree", "remove", "--force", "../fusion")
+                    git(self.dossier, "branch", "-D", "pr-1")
+                sortie_gh.write_text("", encoding="utf-8")
+                env = {"NUMERO": "1", "AUTEUR": "alice", "SHA": sha, "HOME": str(racine / "home"), "GITHUB_OUTPUT": str(sortie_gh),
+                       "INSTANT_PR": instant_pr}
+                sortie, _, _ = self.etape("Vérifier la fusion simulée", {PR_MINIZ + "5555": {"state": "OPEN", "head": "x", "auteur": "alice"}},
+                                          flux="fusion-auto.yml", env_en_plus=env, reussite=code == "0")
+                self.assertIn(f"code={code}", sortie_gh.read_text(encoding="utf-8"), sortie)
+                if instant_pr == "2026-10-27T12:58:00Z":
+                    self.assertIn("soumise_le doit être l'heure de la soumission", sortie)
 
     def test_N8_une_integration_d_une_manche_anterieure_n_empeche_pas_de_clore(self):
         self.fermer_porte()
@@ -13497,6 +13680,28 @@ class TestR8Bootstrap(BaseRepetitionGenerale):
         self.valide()
         self.ko("maximum 3", "prendre", "ruche-9010", "--utilisateur", "bidji29")
 
+    def test_a_stale_time_of_the_push_does_not_extend_the_bootstrap(self):
+        """ruche-0091 (review, S1): within 24 h, the time of the push decides, even after the end date; a re-run keeps its run's
+        creation time, and older than 24 h at the check it is refused, so an engagement pushed before the end date is never judged
+        there days later."""
+        self.a("2026-11-30T20:00:00Z")
+        for n in range(9001, 9008):
+            self.ok("prendre", f"ruche-{n}", "--utilisateur", "bidji29")
+        self.commit("seven tooling tasks of bidji29, before the end date")
+        self.branche("huitieme")
+        self.a("2026-11-30T23:30:00Z")
+        self.ok("prendre", "ruche-9008", "--utilisateur", "bidji29")
+        self.commit()
+        push = ("--instant-pr", "2026-11-30T23:30:00Z")
+        self.a("2026-12-01T01:00:00Z")
+        code, texte = self.verifier("bidji29", *push)
+        self.assertEqual(code, 0, texte)
+        self.a("2026-12-02T00:00:00Z")
+        code, texte = self.verifier("bidji29", *push)
+        self.assertEqual(code, 1, texte)
+        self.assertIn("--instant-pr (2026-11-30T23:30:00Z) : outside [the check - 24 h, the check + 1 min]", texte)
+        self.refusee("bidji29", "règle R8 : bidji29 prend un engagement après la fin de r8_amorcage")  # a local run: the check's time
+
     def test_an_unreadable_engagement_date_gives_the_usual_cap(self):
         for n in range(9001, 9005):
             self.ok("prendre", f"ruche-{n}", "--utilisateur", "bidji29")
@@ -13536,6 +13741,269 @@ class TestR8Bootstrap(BaseRepetitionGenerale):
         self.commit()
         for auteur in (AGENT, "bidji29"):
             self.refusee(auteur, "règle R8 : bidji29 a 9 réservations ou inscriptions en parallèle", "maximum 8")
+
+
+class TestClocksRuche0091(BaseInvitations):
+    """ruche-0091 (review, S2): each rule of the gate is judged on its documented clock. For each, a PR whose verdict at the time
+    of the push differs from its verdict at the time of the check (both shown), then the check as the CI runs it (--instant-pr:
+    the push; BEE_MAINTENANT: the check) gives the documented one. To the push: the declared dates and what is judged at the
+    time of the act; at the check: engagement expiries, the brake, the end of a vote and the account's age."""
+
+    def repartir(self):
+        git(self.dossier, "switch", "-qf", "main")
+        git(self.dossier, "reset", "-q", "--hard", self.depart)
+        git(self.dossier, "clean", "-qfd")
+        for branche in git(self.dossier, "branch", "--format=%(refname:short)").split():
+            if branche != "main":
+                git(self.dossier, "branch", "-qD", branche)
+
+    def verdict(self, auteur, options, poussee, verification):
+        self.a(verification)
+        code, texte = self.verifier(auteur, *options, "--instant-pr", poussee)
+        self.assertIn(code, (0, 1), texte)
+        self.assertNotIn("Traceback", texte)
+        return code, texte
+
+    def pr(self, quand, ecrire):
+        """A PR branch from main whose changes `ecrire` makes at `quand`, the time of its push."""
+        self.a(quand)
+        self.branche()
+        ecrire()
+        self.commit(quand=quand)
+
+    def modifier(self, tache="miniz-0099", **champs):
+        bee.modifier_tache(self.chemin_tache(tache), **champs)
+
+    # --- To the push ---
+
+    def r7_reservation(self):
+        self.a("2026-10-30T09:00:00Z")
+        self.prendre_et_fusionner("alice")
+        self.a("2026-10-30T10:00:00Z")
+        self.liberer_et_fusionner("alice")  # alice may take it again from 2026-10-31T10:00
+        poussee = "2026-10-31T09:30:00Z"
+        self.pr(poussee, lambda: self.modifier(statut="reservee", reservation={"utilisateur": "alice", "depuis": poussee}))
+        return "alice", poussee, "2026-10-31T10:30:00Z", (), "R7 : alice a quitté cette tâche sans contribution"
+
+    def r7_parallele(self):
+        self.a("2026-10-30T09:00:00Z")
+        self.prendre_et_fusionner("alice")
+        self.a("2026-10-30T10:00:00Z")
+        self.liberer_et_fusionner("alice")
+        self.a("2026-10-30T10:10:00Z")
+        self.prendre_et_fusionner("bruno")
+        poussee = "2026-10-31T09:30:00Z"
+        self.pr(poussee, lambda: self.modifier(paralleles=[{"utilisateur": "alice", "depuis": poussee}]))
+        return "alice", poussee, "2026-10-31T10:30:00Z", (), "R7 : alice a quitté cette tâche sans contribution"
+
+    def plafond_24h(self):
+        self.a("2026-10-30T09:00:00Z")
+        for _ in range(5):
+            self.proposer_tache("gaspard")
+        self.commit("five proposed tasks of gaspard")
+        self.pr("2026-10-31T09:30:00Z", lambda: self.proposer_tache("gaspard"))  # bee checks the cap at 09:30 too
+        return "gaspard", "2026-10-31T08:30:00Z", "2026-10-31T09:30:00Z", (), "plafond : gaspard aurait 6 tâches proposées en 24 h"
+
+    def r8_fin(self):
+        for n in range(9001, 9009):
+            (self.dossier / f"taches/ruche/ruche-{n}.yaml").write_text(
+                TACHE_OPTIMISATION.replace("miniz-0099", f"ruche-{n}").replace("projet: miniz", "projet: ruche")
+                .replace("categorie: compression-sans-perte", "categorie: ruche").replace("type: optimisation", "type: test")
+                .replace("metrique: debit_compression_n6", "metrique: null").replace("sortie_compressee: identique\n", "")
+                .replace("cree_par: tests", "cree_par: conseil"), encoding="utf-8")
+        TestR8Bootstrap.reglage(self, R8_AMORCAGE)
+        self.a("2026-11-30T20:00:00Z")
+        for n in range(9001, 9008):
+            self.ok("prendre", f"ruche-{n}", "--utilisateur", "bidji29")
+        self.commit("seven tooling tasks of bidji29")
+        poussee = "2026-11-30T23:30:00Z"
+        self.pr(poussee, lambda: self.modifier("ruche-9008", statut="reservee", reservation={"utilisateur": "bidji29", "depuis": poussee}))
+        return "bidji29", poussee, "2026-12-01T00:30:00Z", (), "règle R8 : bidji29 prend un engagement après la fin de r8_amorcage"
+
+    def silence_agora(self):
+        self.a("2026-10-30T12:00:00Z")
+        debat = self.ouvrir("alice")
+        self.a("2026-10-30T12:10:00Z")
+        self.argumenter("bruno", "fait", "R8 plafonne déjà les engagements à 3 par utilisateur.", "--source", "REGLES.md", debat=debat)
+        self.commit("a debate")
+        poussee, verification = "2026-10-31T11:40:00Z", "2026-10-31T12:40:00Z"  # 24 h of silence from 2026-10-31T12:10
+
+        def clore():
+            self.a(verification)
+            self.ok("debattre", "clore", debat, "--utilisateur", "alice", "--issue", "sans_suite", "--synthese", "Rien n'en sort.")
+            self.ecrire({**self.debat(debat), "synthese_le": poussee, "clos_le": poussee}, debat)
+        self.pr(poussee, clore)
+        return "alice", poussee, verification, (), "le rapporteur ne clôt qu'après 24 h sans nouvel argument"
+
+    def note(self):
+        poussee = "2026-10-30T10:00:00Z"
+        self.pr(poussee, lambda: self.noter_a_la_main({"le": poussee}))
+        return "gaspard", poussee, "2026-10-30T13:00:00Z", (), "une note est datée de l'heure de la PR"
+
+    def releve_agora(self):
+        self.a("2026-10-30T12:00:00Z")
+        debat = self.ouvrir("alice")
+        self.a("2026-10-30T12:10:00Z")
+        self.argumenter("bruno", "fait", "R8 plafonne déjà les engagements à 3 par utilisateur.", "--source", "REGLES.md", debat=debat)
+        self.commit("a debate")
+        poussee, verification = "2026-11-02T11:40:00Z", "2026-11-02T12:40:00Z"  # alice, the rapporteur, has 72 h: until 12:10
+
+        def synthetiser():
+            self.a(verification)
+            self.ok("debattre", "synthetiser", debat, "--utilisateur", "bruno", "--texte", "Synthèse de relève par bruno.")
+            self.ecrire({**self.debat(debat), "synthese_le": poussee}, debat)
+        self.pr(poussee, synthetiser)
+        return "bruno", poussee, verification, (), "le rapporteur (alice) a jusqu'au 2026-11-02T12:10:00Z"
+
+    def note_de_tache_proposee(self):
+        poussee = "2026-10-30T10:00:00Z"
+        self.pr(poussee, lambda: bee.modifier_tache(self.proposer_tache("gaspard"), note={
+            "par": "gaspard", "le": poussee, "texte": "Une note dès la proposition."}))
+        return "gaspard", poussee, "2026-10-30T13:00:00Z", (), "une note est datée de l'heure de la PR"
+
+    def soumise_sur_main(self):
+        """On main: alice takes miniz-0099 and submits miniz-0099-c1 at 2026-10-30T09:00."""
+        self.a("2026-10-30T09:00:00Z")
+        for nom, commande in (("prise", ["prendre", "miniz-0099", "--utilisateur", "alice"]),
+                              ("soumission", ["soumettre", "miniz-0099", "--utilisateur", "alice", "--pr", PR_MINIZ + "77004"])):
+            self.branche(nom)
+            self.ok(*commande)
+            self.commit()
+            self.fusionner(nom)
+
+    def date_d_argument(self):
+        self.a("2026-10-30T12:00:00Z")
+        debat = self.ouvrir("alice")
+        self.commit("a debate")
+        poussee = "2026-10-30T13:00:00Z"
+        self.pr(poussee, lambda: self.argumenter("bruno", "fait", "R8 plafonne déjà les engagements à 3 par utilisateur.", "--source",
+                                                 "REGLES.md", debat=debat))
+        return "bruno", poussee, "2026-10-30T16:00:00Z", (), "relancez la commande bee debattre"
+
+    def date_d_accord(self):
+        self.jusqu_a("proposee")  # I-0001, published 2026-10-30T10:00: a guardian may agree from 2026-11-02T10:00
+        poussee = "2026-11-02T11:00:00Z"
+        self.pr(poussee, lambda: self.geste("accord-gardien", "gina"))
+        return "gina", poussee, "2026-11-02T14:00:00Z", (), "accord_gardien.le (2026-11-02T11:00:00Z) doit être l'heure de la PR"
+
+    def date_de_relecture(self):
+        self.soumise_sur_main()
+        poussee = "2026-10-30T10:00:00Z"
+        self.pr(poussee, lambda: self.ok("relire", "miniz-0099-c1", "--utilisateur", "bruno", "--avis", "favorable", "--motif",
+                                         "Relu en entier, banc rejoué."))
+        return "bruno", poussee, "2026-10-30T13:00:00Z", (), "relecture de bruno, le (2026-10-30T10:00:00Z) doit être l'heure de la PR"
+
+    def date_de_proposition(self):
+        poussee = "2026-10-30T10:00:00Z"
+        self.pr(poussee, lambda: self.ok("proposer", "--utilisateur", "gaspard", "--regle", "R4", "--texte", "Au moins 1,5 % sur la "
+                                         "métrique visée.", "--motif", "Le bruit mesuré est plus faible que prévu."))
+        return "gaspard", poussee, "2026-10-30T13:00:00Z", (), "ouverte_le (2026-10-30T10:00:00Z) doit être l'heure de la PR"
+
+    def date_d_invitation(self):
+        poussee = "2026-10-30T10:00:00Z"
+        self.pr(poussee, lambda: self.inviter("alice"))
+        return "alice", poussee, "2026-10-30T13:00:00Z", (), "propose_le (2026-10-30T10:00:00Z) doit être l'heure de la PR"
+
+    def date_de_mesure(self):
+        self.soumise_sur_main()
+        poussee = "2026-10-30T10:00:00Z"
+        self.pr(poussee, lambda: bee.ecrire_yaml(self.dossier / "mesures/miniz-0099-c1/bruno.yaml", {
+            "contribution": "miniz-0099-c1", "soumise_par": "bruno", "le": poussee, "base": "2948eeb", "candidat": "839b676",
+            "config": {"architecture": "arm64"}, "metriques": {"debit_compression_n6": {"gain": 0.05, "au_dela_du_bruit": True}}}))
+        return "bruno", poussee, "2026-10-30T13:00:00Z", (), "mesures/miniz-0099-c1/bruno.yaml : le (2026-10-30T10:00:00Z) doit être"
+
+    def date_de_vote(self):
+        self.a("2026-10-30T10:00:00Z")
+        self.proposition()
+        self.commit("P-0001, open until 2026-11-06T10:00")
+        poussee = "2026-10-31T10:00:00Z"
+        self.pr(poussee, lambda: self.ok("voter", "P-0001", "--utilisateur", "alice", "--valeur", "1"))
+        return "alice", poussee, "2026-10-31T13:00:00Z", (), "votes/P-0001/alice.yaml : le (2026-10-31T10:00:00Z) doit être l'heure de la PR"
+
+    def cree_le(self):
+        poussee = "2026-10-30T23:30:00Z"
+        self.pr(poussee, lambda: self.proposer_tache("gaspard"))
+        return "gaspard", poussee, "2026-10-31T02:00:00Z", (), "cree_le (2026-10-30) est la date de la PR (2026-10-31)"
+
+    def invitation_expiree(self):
+        self.jusqu_a("proposee")  # I-0001 of github:octocat, proposed 2026-10-30T10:00, expires 14 days later
+        poussee, verification = "2026-11-13T09:30:00Z", "2026-11-13T10:30:00Z"
+
+        def inviter():
+            self.a(verification)
+            self.inviter("alice")
+            self.ecrire_invitation({**self.invitation("I-0002"), "propose_le": poussee}, "I-0002")
+        self.pr(poussee, inviter)
+        return "alice", poussee, verification, (), "est déjà invité(e) (I-0001)"
+
+    # --- At the check ---
+
+    def expiration_robot(self, geste):
+        self.a("2026-10-30T09:00:00Z")
+        self.prendre_et_fusionner("alice")
+        if geste == "retrait":  # alice submits: her reservation ends; bruno's registration then expires alone
+            self.branche("soumission")
+            self.ok("soumettre", "miniz-0099", "--utilisateur", "alice", "--pr", PR_MINIZ + "77003")
+            self.commit()
+            self.fusionner("soumission")
+        if geste in ("promotion", "retrait"):
+            self.a("2026-10-30T10:00:00Z")
+            self.prendre_et_fusionner("bruno", "miniz-0099", "--en-parallele")
+        verification = "2026-11-02T09:30:00Z" if geste != "retrait" else "2026-11-02T10:30:00Z"
+        self.pr(verification, lambda: self.ok("liberer-expirees"))
+        refus = ("on ne retire que sa propre inscription en parallèle (bruno" if geste == "retrait" else
+                 "seul le titulaire (alice) libère sa réservation avant expiration")
+        return "github-actions[bot]", "2026-11-02T08:30:00Z" if geste != "retrait" else "2026-11-02T09:30:00Z", verification, (), refus
+
+    def frein(self):
+        self.jusqu_a("proposee")  # I-0001, published 2026-10-30T10:00: a guardian may agree from 2026-11-02T10:00
+        (self.dossier / "gouvernance/incidents.yaml").write_text(
+            'incidents:\n  - id: INC-0001\n    titre: Messages en nombre\n    ouvert_le: "2026-10-31T10:00:00Z"\n'
+            '    clos_le: "2026-11-02T11:30:00Z"\n', encoding="utf-8")
+        self.commit("an incident, closed at 11:30")
+        poussee = "2026-11-02T11:00:00Z"
+        self.pr(poussee, lambda: self.ecrire_invitation({**self.invitation(), "accord_gardien": {"par": "gina", "le": poussee}}))
+        return "gina", poussee, "2026-11-02T12:00:00Z", (), "incident(s) ouvert(s) : INC-0001"
+
+    def fin_du_vote(self):
+        self.a("2026-10-30T10:00:00Z")
+        self.proposition()
+        self.commit("P-0001, open until 2026-11-06T10:00")
+        poussee = "2026-11-06T09:30:00Z"
+        self.pr(poussee, lambda: self.ok("voter", "P-0001", "--utilisateur", "alice", "--valeur", "1"))
+        return "alice", poussee, "2026-11-06T10:30:00Z", (), "le vote sur P-0001 est clos"
+
+    def anciennete(self):
+        poussee = "2026-10-31T23:30:00Z"  # an account created on 2026-08-03 is 89 days old, 90 on 2026-11-01
+        self.pr(poussee, lambda: bee.ecrire_yaml(self.dossier / "membres/david.yaml", {
+            "pseudo": "david", "inscrit_le": "2026-10-31", "compte_cree_le": "2026-08-03"}))
+        return "david", poussee, "2026-11-01T00:30:00Z", ("--compte-cree-le", "2026-08-03"), "le compte GitHub doit avoir au moins 90 jours"
+
+    def test_each_rule_is_judged_on_its_documented_clock(self):
+        self.depart = git(self.dossier, "rev-parse", "HEAD").strip()
+        cas = {"R7, reservation": (self.r7_reservation, "push"), "R7, parallel registration": (self.r7_parallele, "push"),
+               "24 h creation cap": (self.plafond_24h, "push"), "R8 end": (self.r8_fin, "push"),
+               "agora silence before closing": (self.silence_agora, "push"), "agora relief": (self.releve_agora, "push"),
+               "note date": (self.note, "push"), "proposed task's note date": (self.note_de_tache_proposee, "push"),
+               "measure date": (self.date_de_mesure, "push"), "agora argument date": (self.date_d_argument, "push"),
+               "guardian's agreement date": (self.date_d_accord, "push"), "review date": (self.date_de_relecture, "push"),
+               "proposition ouverte_le": (self.date_de_proposition, "push"), "invitation propose_le": (self.date_d_invitation, "push"),
+               "vote date": (self.date_de_vote, "push"), "task cree_le": (self.cree_le, "push"),
+               "earlier invitation's expiry": (self.invitation_expiree, "push"),
+               "robot expiry, promotion": (lambda: self.expiration_robot("promotion"), "check"),
+               "robot expiry, withdrawal": (lambda: self.expiration_robot("retrait"), "check"),
+               "robot expiry, release": (lambda: self.expiration_robot("liberation"), "check"),
+               "brake": (self.frein, "check"), "end of a vote": (self.fin_du_vote, "check"), "account age": (self.anciennete, "check")}
+        for regle, (preparer, horloge) in cas.items():
+            with self.subTest(regle=regle):
+                self.repartir()
+                auteur, poussee, verification, options, refus = preparer()
+                a_la_poussee = self.verdict(auteur, options, poussee, poussee)
+                a_la_verification = self.verdict(auteur, options, verification, verification)
+                self.assertNotEqual(a_la_poussee[0], a_la_verification[0], a_la_poussee[1] + a_la_verification[1])
+                self.assertIn(refus, (a_la_poussee if a_la_poussee[0] else a_la_verification)[1])
+                code, texte = self.verdict(auteur, options, poussee, verification)
+                self.assertEqual(code, (a_la_poussee if horloge == "push" else a_la_verification)[0], texte)
 
 
 class TestAjoutSeulRuche0042(BaseRepetitionGenerale):
