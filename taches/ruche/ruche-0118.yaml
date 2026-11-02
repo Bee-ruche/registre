@@ -36,6 +36,9 @@ hors_perimetre:
 - COMMANDMENTS.md
 - many real people acting together (D-0002)
 noeud: projets/ruche/ruche
-statut: ouverte
+statut: reservee
+reservation:
+  utilisateur: "bidji29"
+  depuis: "2026-11-02T16:01:26Z"
 cree_par: conseil
 cree_le: '2026-11-02'
