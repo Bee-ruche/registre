@@ -543,8 +543,10 @@ class Registre:
 
 FUTUR_LOINTAIN = dt.datetime.max.replace(tzinfo=dt.timezone.utc)
 PASSE = dt.datetime.min.replace(tzinfo=dt.timezone.utc)
-# Une date déclarée (réservation, inscription, soumission) ne dépasse jamais l'instant de vérification de plus d'une minute.
+# A declared date (reservation, registration, submission...) is never more than a minute after the time of the PR (ruche-0091:
+# in CI, the push's) or of the check that reads it.
 AVANCE_MAX = dt.timedelta(minutes=1)
+INSTANT_PR_AGE_MAX = dt.timedelta(hours=24)  # ruche-0091: --instant-pr is refused outside [the check - this, the check + AVANCE_MAX]
 
 
 def paralleles_de(tache):
@@ -2566,7 +2568,7 @@ def verifier_engagements(reg, chemin, ancien, nouveau, differences, auteur, *, e
                    f"le nouveau titulaire doit être le plus ancien inscrit en parallèle, {elu.get('utilisateur')}, à la date de "
                    f"son inscription ({elu.get('depuis')}) : l'échéance R7 ne s'allonge pas")
             exiger(pn == sans(pa, elu.get("utilisateur")), "seul le nouveau titulaire quitte la liste des inscrits en parallèle")
-        exiger(titulaire == auteur or est_conseil or (est_robot and engagement_expire(reg, ra.get("depuis"), instant)),
+        exiger(titulaire == auteur or est_conseil or (est_robot and engagement_expire(reg, ra.get("depuis"), maintenant())),
                f"seul le titulaire ({titulaire}) libère sa réservation avant expiration")
         return "promotion", problemes
 
@@ -2627,7 +2629,7 @@ def verifier_engagements(reg, chemin, ancien, nouveau, differences, auteur, *, e
                "une PR ne retire qu'une inscription en parallèle, la sienne, sans réordonner les autres")
         p = retraits[0]
         qui = p.get("utilisateur")
-        exiger(qui == auteur or est_conseil or (est_robot and engagement_expire(reg, p.get("depuis"), instant)),
+        exiger(qui == auteur or est_conseil or (est_robot and engagement_expire(reg, p.get("depuis"), maintenant())),
                f"on ne retire que sa propre inscription en parallèle ({qui} n'est pas {auteur})")
         return "retrait_parallele", problemes
     if pa != pn:
@@ -4845,7 +4847,11 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
     ruche-0089: a declared agent account (AGENT_ACCOUNTS, read in the base: a PR never declares its own author) is checked
     as its person, without the person's council, guardian or robot status. If that fails or is not all self-service, it is
     checked as its person with that status: what passes then is never merged automatically (nature agent_account, a human
-    must look); what still fails is refused."""
+    must look); what still fails is refused.
+
+    ruche-0091: `instant` is the time of the PR: in CI, the time GitHub recorded for the push (--instant-pr), else now. Every
+    declared date is checked against it, and so is what is judged at the time of the act (R7, R8, the 24 h caps, the agora's
+    delays, an earlier invitation's expiry); engagement expiries, the end of a vote, the brake and the account's age: now."""
     instant = instant or maintenant()
     try:
         agents = agent_accounts(lire_yaml_ref(reg.racine, base, AGENT_ACCOUNTS))
@@ -4948,7 +4954,7 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
     def frein():
         """L'état du frein de R13 (etat_frein), calculé une fois, et seulement si un geste vers le contact le demande."""
         if not frein_calcule:
-            frein_calcule.append(etat_frein(reg, instant))
+            frein_calcule.append(etat_frein(reg, maintenant()))  # ruche-0091: the brake as it is at the check
         return frein_calcule[0]
 
     def exiger(condition, message):
@@ -5120,7 +5126,7 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
                 expiree = False
                 try:
                     depuis = lire_instant((ancien.get("reservation") or {}).get("depuis"), chemin)
-                    expiree = instant - depuis > dt.timedelta(hours=int(reg.config.get("reservation_max_heures", 72)))
+                    expiree = maintenant() - depuis > dt.timedelta(hours=int(reg.config.get("reservation_max_heures", 72)))
                 except ErreurBee:
                     pass
                 exiger(titulaire == auteur or est_conseil or (est_robot and expiree),
@@ -5419,7 +5425,7 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
                 exiger(probleme is None, f"{probleme} : relancez bee voter")
                 sujet = str(nouveau.get("sujet", ""))
                 if ID_PROPOSITION.match(sujet) and sujet in reg.propositions:
-                    resultat = depouiller_proposition(reg, sujet, niveaux, instant)
+                    resultat = depouiller_proposition(reg, sujet, niveaux, maintenant())  # closed at the check (ruche-0091)
                     exiger(not resultat["terminee"] and reg.propositions[sujet][1].get("statut") == "ouverte",
                            f"{chemin} : le vote sur {sujet} est clos")
                 # ruche-0042: a contribution's vote closes when it leaves review, for everyone; the folder's and the file's subject.
@@ -5477,7 +5483,7 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
                         github = lire_date(compte_cree_le, "--compte-cree-le")
                         exiger(str(nouveau.get("compte_cree_le")) == github.isoformat(),
                                f"{chemin} : compte_cree_le ne correspond pas à la date fournie par GitHub ({compte_cree_le})")
-                        age = (instant.astimezone(dt.timezone.utc).date() - github).days
+                        age = (maintenant().astimezone(dt.timezone.utc).date() - github).days
                         exiger(age >= minimum, f"{chemin} : le compte GitHub doit avoir au moins {minimum} jours")
                     except ErreurBee as e:
                         problemes.append(str(e))
@@ -7410,7 +7416,10 @@ def cmd_prs_declarees(args):
 def cmd_verifier_pr(args):
     reg = Registre(args.registre)
     auteurs_pr = lire_auteurs_pr(args.auteurs_pr) if args.auteurs_pr else None
-    problemes, natures = verifier_pr(reg, args.base, args.tete, args.auteur, args.compte_cree_le, auteurs_pr=auteurs_pr)
+    instant = None if args.instant_pr is None else lire_instant(args.instant_pr, "--instant-pr")  # empty or malformed: refused
+    if instant and not (m := maintenant()) - INSTANT_PR_AGE_MAX <= instant <= m + AVANCE_MAX:
+        raise ErreurBee(f"--instant-pr ({args.instant_pr}) : outside [the check - 24 h, the check + 1 min] : push again")
+    problemes, natures = verifier_pr(reg, args.base, args.tete, args.auteur, args.compte_cree_le, instant, auteurs_pr)
     problemes = list(dict.fromkeys(verifier_registre(reg) + problemes))  # once each (a file over its bound: ruche-0040)
     for p in problemes:
         print(f"✗ {montrer(p)}")
@@ -9375,6 +9384,8 @@ def construire_analyseur():
     p.add_argument("--auteurs-pr", help="fichier « adresse<TAB>login » : auteur GitHub de chaque PR déclarée dans une contribution "
                                         "ajoutée ou modifiée (relevé par fusion-auto) ; chacune doit être celle de l'auteur de la "
                                         "contribution, et une PR absente est refusée")
+    p.add_argument("--instant-pr", help="time GitHub recorded for the push being checked (the CI gives it): every declared date "
+                                        "is checked against it; without it, the current time")
 
     p = ajouter("prs-declarees", cmd_prs_declarees,
                 "Liste les PR déclarées par les contributions ajoutées ou modifiées d'une PR du registre (utilisé par fusion-auto).")
