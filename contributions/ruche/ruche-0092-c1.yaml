@@ -1,0 +1,13 @@
+id: ruche-0092-c1
+tache: ruche-0092
+auteur: bidji29
+pr: https://github.com/Bee-ruche/registre/pull/142
+resume: The tool's test suite runs in parallel processes inside the valider job; every test runs exactly
+  once or the check fails.
+statut: integree
+soumise_le: '2026-11-02T05:40:46Z'
+engage_depuis: '2026-11-01T22:53:30Z'
+relectures: []
+decidee_le: '2026-11-02T05:49:32Z'
+motif_decision: 'Hive tooling contribution: registry PR #142 merged at the judged commit 3832920 by the agent principal under the council''s permanent authorisation, after an independent adversarial review by an agent of another model in two passes (no blocking finding; four should-fix items fixed and verified); CI green on the merged commit, the tool''s tests taking 10.5 minutes in 4 processes against about 26 serially in the same half-hour. R1: 9 lines excluding tests, for an S task at 50. Recorded by hand: it changes a workflow. Submitted inside the code PR.'
+fusion_sha: b8c7ab04d25c52c8fd845642da433572fae4615c
