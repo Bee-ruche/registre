@@ -17332,15 +17332,18 @@ class TestComptesLiesRuche0051(BaseInvitations):
 
     def test_la_plume_du_debat_d_une_invitation_ne_passe_pas_a_un_compte_lie_au_proposant(self):
         """The proposer never holds the pen of its invitation's debate, nor under a linked account: judged when the pen changes
-        hands. bruno holds it when he and alice, the proposer, link their accounts: chloe still argues there; the pen then goes
-        round without bruno, and a synthesis that hands it to him is refused."""
+        hands. bruno holds it when the council links his account to alice's, the proposer (ruche-0118): chloe still argues there;
+        the pen then goes round without bruno, and a synthesis that hands it to him is refused."""
         self.a("2026-10-30T10:00:00Z")
         self.branche()
         self.inviter("alice")
         self.publier("alice", "invitation", libre=False)
         self.debattre_invitation()  # bruno argues, holds the pen of D-0002, and synthesizes
         self.a("2026-10-30T11:00:00Z")
-        self.lies("alice", "bruno")
+        self.a_la_main("alice", autres_comptes=[numero_de("bruno")])
+        self.a_la_main("bruno", compte_de=numero_de("alice"))
+        self.commit("le conseil lie alice et bruno")
+        self.assertTrue(bee.Registre(self.dossier).identites.meme("alice", "bruno"))
         self.ok("valider")
         self.a("2026-10-30T12:00:00Z")
         self.branche("objection")
@@ -17362,6 +17365,35 @@ class TestComptesLiesRuche0051(BaseInvitations):
         self.commit()
         self.refusee("chloe", "rapporteur « bruno » : the proposer of the invitation never holds the pen of its debate, nor under "
                      "an agent account or a linked account")
+
+    def test_un_lien_attend_que_la_plume_du_debat_d_une_invitation_soit_passee(self):
+        """Two accounts do not link while one holds the pen of the open debate of an invitation the other proposed: bruno holds
+        D-0002, the debate of alice's I-0001; once he has passed the pen to chloe, the link goes through."""
+        self.a("2026-10-30T10:00:00Z")
+        self.branche()
+        self.inviter("alice")
+        self.publier("alice", "invitation", libre=False)
+        self.debattre_invitation()  # bruno argues, holds the pen of D-0002, and synthesizes
+        self.a("2026-10-30T11:00:00Z")
+        self.lier("alice", "--autre-compte", numero_de("bruno"))
+        morceau = "one account holds the pen of D-0002, the debate of an invitation the other proposed"
+        self.ko(morceau, "lier", "--utilisateur", "bruno", "--compte-de", str(numero_de("alice")))
+        self.branche("plume")
+        self.a_la_main("bruno", compte_de=numero_de("alice"))
+        self.commit()
+        self.refusee("bruno", morceau)
+        self.abandonner("plume")
+        self.a("2026-10-30T12:00:00Z")
+        self.branche("objection")
+        self.argumenter("chloe", "contre", "Les faits cités ont cinq ans.", debat="D-0002")
+        self.publier("chloe", "argument", nom="objection")
+        self.a("2026-10-30T12:30:00Z")
+        self.branche("synthese")
+        self.ok("debattre", "synthetiser", "D-0002", "--utilisateur", "bruno", "--suivant", "chloe", "--texte",
+                "Un avis pour (A1), une objection sur la date des faits (A2).")
+        self.publier("bruno", "synthese", nom="synthese")
+        self.lier("bruno", "--compte-de", numero_de("alice"))
+        self.assertTrue(bee.Registre(self.dossier).identites.meme("alice", "bruno"))
 
     def test_comptes_de_lit_chaque_personne_une_fois(self):
         """comptes_de, read for every eligible voter in R3, does not go through every member file at each call: who is who

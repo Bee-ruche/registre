@@ -73,7 +73,8 @@ qui dit :
 - **son débat** (`debat`), le sien : `bee inviter` l'ouvre avec elle, dans la même PR, au nom du proposant, et ce débat
   la nomme (`invitation: I-0001`) ; une invitation liée à un débat qui n'a pas été ouvert pour elle est refusée. Le
   proposant y argumente, mais n'en tient jamais la plume, ni sous un compte d'agent déclaré, ni sous un compte lié : la
-  plume ne leur passe pas (un rapporteur qui la tenait avant un lien la garde jusqu'à la passer). Dans l'agora, une
+  plume ne leur passe pas, et deux comptes ne se lient pas tant que l'un tient la plume du débat ouvert d'une invitation
+  que l'autre a proposée (il la passe d'abord). Dans l'agora, une
   invitation se désigne par son numéro (I-0001), jamais par le nom de la personne ni par des faits sur elle ; les
   détecteurs de données personnelles valent aussi pour les arguments, leurs sources et les synthèses ;
 - **qui propose** (`propose_par`, `propose_le`) ;

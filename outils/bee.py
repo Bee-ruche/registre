@@ -6562,7 +6562,8 @@ def taches_tenues(reg, qui):
 
 def refus_lien(reg, avant, apres, numero):
     """ruche-0051: None if an account's own PR may change its file's links so (add to autres_comptes; write compte_de once, to confirm
-    a file that lists it, while the two hold nothing on the same task), else why. Only the council unlinks."""
+    a file that lists it, while the two hold nothing on the same task and neither holds the pen of the other's open invitation
+    debate), else why. Only the council unlinks."""
     if all(avant.get(k) == apres.get(k) for k in LIENS):
         return None
     avant_l, apres_l = (x.get("autres_comptes") if isinstance(x.get("autres_comptes"), list) else [] for x in (avant, apres))
@@ -6583,6 +6584,12 @@ def refus_lien(reg, avant, apres, numero):
         if communes := taches_tenues(reg, apres.get("pseudo")) & taches_tenues(reg, p.get("pseudo")):
             return (f"the two accounts both hold {', '.join(sorted(map(str, communes)))} (an engagement or a contribution in the race) : one "
                     "person, one place per task ; leave it with one account first")
+        a, b = apres.get("pseudo"), p.get("pseudo")
+        if plumes := sorted(str(i) for i, (_, d) in reg.debats.items() if isinstance(d, dict) and d.get("invitation")
+                            and d.get("statut") != "clos" and any(same_person(reg, d.get("rapporteur"), x)
+                                                                 and same_person(reg, d.get("ouvert_par"), y) for x, y in ((a, b), (b, a)))):
+            return (f"one account holds the pen of {', '.join(plumes)}, the debate of an invitation the other proposed : the proposer never "
+                    "holds it ; pass the pen first (bee debattre synthetiser)")
     return None
 
 
