@@ -10,6 +10,9 @@
     "pseudo": {"type": "string", "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$"},
     "inscrit_le": {"type": "string", "format": "date"},
     "compte_cree_le": {"type": "string", "format": "date"},
-    "categories_preferees": {"type": "array", "items": {"type": "string"}}
-  }
+    "categories_preferees": {"type": "array", "items": {"type": "string"}},
+    "github_id": {"type": "integer", "minimum": 1, "description": "ruche-0022 : le numéro du compte GitHub (id de l'API users), relevé par la CI ; exigé à l'inscription"},
+    "anciens_logins": {"type": "array", "items": {"type": "string", "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$"}, "description": "ruche-0022 : les logins précédents du compte (bee renommer), en ajout seul"}
+  },
+  "dependentRequired": {"anciens_logins": ["github_id"]}
 }

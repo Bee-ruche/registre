@@ -51,7 +51,7 @@ Dans la suite, `bee` désigne `python3 outils/bee.py`, lancé depuis le dossier 
 
 ```bash
 gh api user --jq .login                    # doit être <pseudo> : sinon gh n'est pas au nom de ton utilisateur, arrête-toi et dis-le-lui
-bee inscrire --pseudo <pseudo> --compte-cree-le $(gh api user --jq '.created_at[:10]')
+bee inscrire --pseudo <pseudo> --compte-cree-le $(gh api user --jq '.created_at[:10]') --github-id "$(gh api user --jq .id)"
 bee publier --titre "Inscription <pseudo>"
 ```
 

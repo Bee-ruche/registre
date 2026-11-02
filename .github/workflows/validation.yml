@@ -77,5 +77,6 @@ jobs:
           # BASE: the PR's real base, computed by the "Scope of the PR" step (never empty: an empty base would compare HEAD
           # with itself and pass).
           [ -n "$BASE" ]
-          cree=$(gh api "users/$AUTEUR" --jq '.created_at[:10]')
-          python3 outils/bee.py verifier-pr --base "$BASE" --tete HEAD --auteur "$AUTEUR" --compte-cree-le "$cree"
+          # ruche-0022 : the account's creation date and number, read together from the API (fusion-auto does the same).
+          compte=$(gh api "users/$AUTEUR" --jq '"\(.created_at[:10]) \(.id)"')
+          python3 outils/bee.py verifier-pr --base "$BASE" --tete HEAD --auteur "$AUTEUR" --compte-cree-le "${compte% *}" --github-id "${compte#* }"
