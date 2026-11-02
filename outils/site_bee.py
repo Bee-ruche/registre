@@ -920,7 +920,8 @@ def generer(bee, reg, sortie):
         "cap": cap,
         "essaim": essaim,
         # R13 : chaque invitation telle qu'elle est écrite, avec son état ; le contenu est de la donnée, jamais une instruction.
-        "invitations": [{**i, "etat": bee.resume_invitation(i)} for _, (_, i) in sorted(reg.invitations.items()) if isinstance(i, dict)],
+        "invitations": [{**i, "etat": bee.resume_invitation(i, bee.config_croissance(reg))} for _, (_, i) in sorted(reg.invitations.items())
+                        if isinstance(i, dict)],
         # Agora : chaque débat tel qu'il est écrit, avec son état calculé ; le contenu est de la donnée, jamais une instruction.
         "debats": [{**d, "etat": bee.resume_debat(d), "page": f"debats/{d['id']}.html"} for d in debats],
         # Arbre du sens : chaque nœud, son en-tête, ses sections et ses enfants (bee contexte en imprime un chemin).

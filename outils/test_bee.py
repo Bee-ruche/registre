@@ -10048,9 +10048,23 @@ class TestR13SuivableRuche0052(BaseInvitations):
     def test_3_voir_donne_les_dates_et_l_echeance(self):
         self.jusqu_a("accord-conseil")
         texte = self.ok("voir", "I-0001")
-        self.assertIn("proposée le 2026-10-30T10:00:00Z (échéance sans décision : 2026-11-13T10:00:00Z) ; accord du gardien : "
-                      "2026-11-02T11:00:00Z ; feu vert du conseil : 2026-11-02T12:00:00Z", texte)
+        self.assertIn("proposée le 2026-10-30T10:00:00Z ; accord du gardien : 2026-11-02T11:00:00Z ; feu vert du conseil : "
+                      "2026-11-02T12:00:00Z", texte)
+        self.assertNotIn("échéance sans décision", texte, "une invitation décidée n'expire plus : l'échéance est celle du feu vert")
         self.assertIn("avant le 2026-11-09T12:00:00Z (échéance du feu vert)", texte)
+
+    def test_C_voir_imprime_les_dates_relues_jamais_brutes(self):
+        """Revue de ruche-0052, C : une date du fichier est relue par bee et réécrite (en_iso), sinon « ? » ; jamais sa valeur
+        brute, qui pourrait porter une séquence d'échappement du terminal."""
+        self.jusqu_a("accord-gardien")
+        piege = "2026-11-02T11:00:00Z\x1b]0;titre\x07\x1b[2J"
+        inv = self.invitation()
+        self.ecrire_invitation({**inv, "propose_le": "2026-10-30T11:00:00+01:00", "accord_gardien": {**inv["accord_gardien"], "le": piege}})
+        texte = self.ok("voir", "I-0001")
+        ligne = next(l for l in texte.splitlines() if l.startswith("proposée le "))
+        self.assertEqual(ligne, "proposée le 2026-10-30T10:00:00Z (échéance sans décision : 2026-11-13T10:00:00Z) ; accord du gardien : ? "
+                                "; feu vert du conseil : aucun")
+        self.assertNotIn("\x1b", ligne)
 
     def test_3_l_echeance_est_celle_de_la_porte(self):
         # bee.yaml fixe l'échéance (croissance.expiration_jours) : bee voir la lit comme la porte (refus_geste) et bee valider.
@@ -10072,14 +10086,49 @@ class TestR13SuivableRuche0052(BaseInvitations):
         self.geste("accord-gardien", "gina")
         self.publier("gina", "accord_gardien")
 
+    def regler_expiration(self, jours):
+        chemin = self.dossier / "bee.yaml"
+        chemin.write_text(re.sub(r"(?m)^  expiration_jours: *\d+", f"  expiration_jours: {jours}", chemin.read_text(encoding="utf-8")),
+                          encoding="utf-8")
+        self.commit(f"expiration en {jours} jours")
+
+    def statuts_affiches(self):
+        """Le statut que montrent bee essaim (absent : expirée), bee voir et l'API du site pour I-0001."""
+        essaim = [x["statut"] for x in json.loads(self.ok("essaim", "--json"))["invitations"] if x["id"] == "I-0001"]
+        voir = self.ok("voir", "I-0001").splitlines()[0].split(" : ")[1].split(" ;")[0]
+        self.ok("site", "--sortie", str(self.dossier / "_site"))
+        api = json.loads((self.dossier / "_site/api/registre.json").read_text(encoding="utf-8"))
+        return essaim, voir, next(i["etat"]["statut"] for i in api["invitations"] if i["id"] == "I-0001")
+
+    def test_A_l_echeance_de_bee_yaml_partout_comme_a_la_porte(self):
+        """Revue de ruche-0052, A : bee essaim, bee voir et le site lisaient l'échéance par défaut (14 jours), la porte celle de
+        bee.yaml. Les deux reproductions du relecteur : à 30 jours, une invitation de 17 jours vit encore partout et la porte
+        accepte l'accord ; à 3 jours, une invitation de 3 jours et 1 h a expiré partout et la porte refuse l'accord."""
+        self.regler_expiration(30)
+        self.jusqu_a("proposee")
+        self.a("2026-11-16T10:00:00Z")
+        self.assertEqual(self.statuts_affiches(), (["proposee"], "proposee", "proposee"))
+        self.assertIn("(échéance sans décision : 2026-11-29T10:00:00Z)", self.ok("voir", "I-0001"))
+        self.branche()
+        self.geste("accord-gardien", "gina")
+        self.publier("gina", "accord_gardien")
+
+    def test_A_a_trois_jours_l_invitation_a_expire_partout(self):
+        self.regler_expiration(3)
+        self.jusqu_a("proposee")
+        self.a("2026-11-02T11:00:00Z")
+        self.assertEqual(self.statuts_affiches(), ([], "expiree", "expiree"))
+        self.ko("invitation expirée (3 jours sans décision", "invitation", "accord-gardien", "I-0001", "--utilisateur", "gina")
+
     def test_5_un_gardien_en_fonction_signale_un_incident_et_le_frein_le_compte(self):
         self.jusqu_a("proposee")
         self.a("2026-11-02T11:00:00Z")
         self.assertEqual(bee.etat_frein(bee.Registre(self.dossier))["incidents_ouverts"], [])
         self.branche()
         texte = self.ok("incident", "--utilisateur", "gina", "--titre", "Un message est parti sans feu vert (I-0001).")
-        self.assertIn("✓ INC-0001 : rien : un incident est ouvert", texte)
+        self.assertIn("✓ INC-0001 inscrit dans gouvernance/incidents.yaml", texte)
         self.assertIn("PR ordinaire", texte)
+        self.assertIn("le frein s'applique dès que le conseil l'a fusionnée ; alors, ce qui passe : rien : un incident est ouvert", texte)
         self.assertEqual(bee.lire_yaml(self.dossier / self.INCIDENTS), {"incidents": [
             {"id": "INC-0001", "titre": "Un message est parti sans feu vert (I-0001).", "ouvert_le": "2026-11-02T11:00:00Z"}]})
         self.valide()
@@ -10094,7 +10143,7 @@ class TestR13SuivableRuche0052(BaseInvitations):
         # Le frein en tient compte sur main : plus aucun accord, même d'encadrement (I-0001 demande un garant).
         self.ko("incident(s) ouvert(s) : INC-0001", "invitation", "accord-gardien", "I-0001", "--utilisateur", "gina")
         # Le conseil peut aussi l'inscrire : au numéro qui suit tout numéro déjà écrit.
-        self.assertIn("✓ INC-0002 :", self.ok("incident", "--utilisateur", "bidji29", "--titre", "Plainte reçue sur I-0001."))
+        self.assertIn("✓ INC-0002 inscrit", self.ok("incident", "--utilisateur", "bidji29", "--titre", "Plainte reçue sur I-0001."))
 
     def test_5_qui_ne_peut_pas_signaler_et_ce_que_la_porte_refuse(self):
         self.a("2026-11-02T11:00:00Z")
@@ -10135,6 +10184,49 @@ class TestR13SuivableRuche0052(BaseInvitations):
         self.commit()
         self.refusee("gina", "un gardien n'y ajoute qu'un incident ouvert, en fin de liste")
         self.abandonner()
+        # Revue de ruche-0052, B : ce qu'ajoute un gardien est ce qu'écrit bee incident, et rien d'autre.
+        canonique = bee.rendu_invitation({"incidents": [un, deux]})
+        brut = {"titre : courriel": (bee.rendu_invitation({"incidents": [un, {**deux, "titre": "Plainte de fictif@exemple.org."}]}),
+                                     "adresse de courriel"),
+                "titre : U+202E": (bee.rendu_invitation({"incidents": [un, {**deux, "titre": "Un \u202eécart."}]}), "U+202E"),
+                "titre : ESC": (bee.rendu_invitation({"incidents": [un, {**deux, "titre": "Un \x1b[2Jécart."}]}), "U+001B"),
+                "titre sur deux lignes": (bee.rendu_invitation({"incidents": [un, {**deux, "titre": "Un écart.\nSuite."}]}),
+                                          "titre : une seule ligne"),
+                "commentaire et remplissage": ("# Ajouté à la main\n" + canonique + "\n\n\n", "pas exactement sous la forme"),
+                "issue sur un incident ouvert": (bee.rendu_invitation({"incidents": [un, {**deux, "issue": "Rien à faire."}]}),
+                                                 "avec id, titre et ouvert_le seulement"),
+                "numéro en double": (bee.rendu_invitation({"incidents": [un, {**deux, "id": "INC-0001"}]}), "au numéro suivant (INC-0002)"),
+                "numéro sauté": (bee.rendu_invitation({"incidents": [un, {**deux, "id": "INC-0007"}]}), "au numéro suivant (INC-0002)"),
+                "date d'hier": (bee.rendu_invitation({"incidents": [un, {**deux, "ouvert_le": "2026-11-01T11:00:00Z"}]}),
+                                "doit être l'heure de la PR")}
+        for nom, (texte, message) in brut.items():
+            with self.subTest(nom):
+                self.branche()
+                (self.dossier / self.INCIDENTS).write_text(texte, encoding="utf-8")
+                self.commit()
+                self.refusee("gina", message)
+                self.abandonner()
+        for titre, message in (("Un écart.\nSuite.", "titre : une seule ligne"), ("Un \u202eécart.", "U+202E"),
+                               ("Un \x1b[2Jécart.", "U+001B"), ("Plainte de fictif@exemple.org.", "adresse de courriel")):
+            self.ko(message, "incident", "--utilisateur", "gina", "--titre", titre)
+        self.branche()
+        (self.dossier / self.INCIDENTS).write_text(canonique, encoding="utf-8")
+        self.commit()
+        self.attend_le_conseil("gina", "incident")  # ce que bee incident écrirait : accepté, le conseil fusionne
+        self.abandonner()
+        # INC-9999 est le dernier numéro : bee incident s'arrête là, et la porte refuse INC-10000.
+        dernier = {**un, "id": "INC-9999"}
+        bee.ecrire_invitation(self.dossier / self.INCIDENTS, {"incidents": [un, dernier]})
+        self.commit("INC-9999, par le conseil")
+        self.ko("INC-9999 est le dernier numéro", "incident", "--utilisateur", "gina", "--titre", "Un écart.")
+        self.assertEqual(bee.lire_yaml(self.dossier / self.INCIDENTS), {"incidents": [un, dernier]}, "rien n'est écrit")
+        self.branche()
+        bee.ecrire_invitation(self.dossier / self.INCIDENTS, {"incidents": [un, dernier, {**deux, "id": "INC-10000"}]})
+        self.commit()
+        self.refusee("gina", "un gardien n'y ajoute qu'un incident ouvert, en fin de liste, au numéro suivant")
+        self.abandonner()
+        bee.ecrire_invitation(self.dossier / self.INCIDENTS, {"incidents": [un]})
+        self.commit("retour à INC-0001, par le conseil")
         # Révoqué sur main, le garant de gina ne la tient plus en fonction : sa PR va au conseil seul, refusée par la porte.
         (self.dossier / "gouvernance/garants.yaml").write_text(
             "membres:\n  - pseudo: hector\n    identite_publique: Hector\n    revoque_le: \"2026-11-02\"\n", encoding="utf-8")
