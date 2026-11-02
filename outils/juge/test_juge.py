@@ -39,8 +39,8 @@ at a commit of the registry's main, preparation failing closed, a hostile journa
 the declared history is checked against the base's ancestry, fetched within a time budget, then read without any
 git transport (TestHistorique); with Docker, historique_declare and historique_non_declare.
 
-ruche-0037, without Docker: chrono's and the harness's arguments, the mounts and the mounted folders' names are the same
-in every mode (TestMemesConditions); each verification input passes in a measurement, drawn from the seed (TestMelange).
+ruche-0037, without Docker: the harness is started the same way in every mode (TestMemesConditions); each verification
+input passes in a measurement, drawn from the seed (TestMelange).
 """
 
 import concurrent.futures
@@ -480,9 +480,8 @@ class FauxDocker:
 
 
 class TestMemesConditions(unittest.TestCase):
-    """What the judge controls is the same whether the judged code is verified, timed or counted: chrono's argv, the
-    harness's argv, the mounted paths and the names of the mounted folders; the mode reaches the harness on its
-    descriptor 0 only (the meta-test memes_conditions checks what the code itself observes, in containers)."""
+    """The judge starts the harness the same way in every mode (same arguments, same mounts); the mode reaches it on its
+    descriptor 0 only."""
 
     def setUp(self):
         self.travail = tempfile.mkdtemp()
@@ -1263,8 +1262,7 @@ size_t rle_borne(size_t n)
 """)
 
 
-# ruche-0037: a library that writes on its standard error, at its first call, everything it can observe of its process.
-# The meta-test memes_conditions compares these records across modes (verification, timer, instruction count).
+# ruche-0037: a library that records what it observes of its process at its first call (memes_conditions).
 ESPION = r'''
 #include <dirent.h>
 #include <errno.h>
@@ -1335,7 +1333,6 @@ static void rle_dossier(const char *cle, const char *chemin)
     fputc('\n', stderr);
 }
 
-/* Mode words anywhere in the process's writable memory (stack, heap, data): read first, before anything is copied. */
 static void rle_memoire(void)
 {
     static const char *const mots[] = {"verifier", "compression", "decompression", "repetition", "instructions"};
@@ -1379,16 +1376,13 @@ static void rle_espion(void)
     rle_fichier("parent", "/proc/1/cmdline");
     snprintf(ligne, sizeof(ligne), "/proc/%d/cmdline", (int)getppid());
     rle_fichier("parent_direct", ligne);
-    /* the argument and environment strings, read in place on the stack (fields 48 to 51 of /proc/self/stat) */
     rle_lire("/proc/self/stat");
     p = strrchr(rle_tampon, ')');
     for (i = 3, champ = p ? strtok(p + 2, " ") : NULL; champ; champ = strtok(NULL, " "), i++)
         if (i >= 48 && i <= 51)
             zones[i - 48] = strtoul(champ, NULL, 10);
-    if (zones[1] > zones[0] && zones[1] - zones[0] < 4096 && zones[3] > zones[2] && zones[3] - zones[2] < 4096) {
-        rle_texte("pile_arguments", (const char *)zones[0], zones[1] - zones[0]);
-        rle_texte("pile_environnement", (const char *)zones[2], zones[3] - zones[2]);
-    }
+    if (zones[3] > zones[0] && zones[3] - zones[0] < 8192)
+        rle_texte("pile", (const char *)zones[0], zones[3] - zones[0]);
     fputs("environ=", stderr);
     for (i = 0; environ && environ[i]; i++)
         fprintf(stderr, "%s;", environ[i]);
@@ -1456,17 +1450,13 @@ def espion(texte, corpus):
     return remplacer(texte, "    *produit = 0;\n    if (n < 8)", "    rle_espion();\n    *produit = 0;\n    if (n < 8)")
 
 
-# Values that differ between any two containers whatever the mode (mount and device numbers, container, layer and
-# folder names, process number, memory use and context switches), replaced before the records are compared.
+# Values that differ between any two containers, replaced before the records are compared.
 VARIABLE = [(re.compile(p), r) for p, r in (
     (r"(^|\\x0a)\d+ \d+ \d+:\d+ ", r"\1"), (r"[0-9a-f]{64}", "<conteneur>"), (r"overlay2/l/[A-Z0-9]+", "<couche>"),
     (r"bee-juge-[A-Za-z0-9_]+", "bee-juge-*"), (r"(?<![0-9a-f])[0-9a-f]{16}(?![0-9a-f])", "<neutre>"),
     (r"\\x0a(?:Tgid|Pid|NStgid|NSpid|Vm[A-Za-z]+|Rss[A-Za-z]+|(?:non)?voluntary_ctxt_switches):(?:\\x09|[^\\])*", ""))]
-# What Valgrind itself changes in the process it runs (its own command line, environment, descriptors and limits, its
-# signal handlers, the auxiliary vector it builds, its copy of the harness's command line): the instruction count is
-# compared with the other modes on everything else.
-VISIBLE_SOUS_VALGRIND = {"cmdline", "environ_proc", "pile_arguments", "pile_environnement", "auxv", "descripteurs_proc",
-                         "limites", "statut"}
+# Keys allowed to differ under the instruction counter.
+EXCEPTIONS_INSTRUCTIONS = {"cmdline", "environ_proc", "pile", "auxv", "descripteurs_proc", "limites", "statut"}
 
 
 def releve_espion(texte):
@@ -1698,9 +1688,8 @@ class TestJugeContreVariantes(unittest.TestCase):
         self.assertIn("octets", self.types_suspects(rapport))
 
     def test_memes_conditions(self):
-        """ruche-0037: B records everything it can observe of its process at its first call (arguments, environment,
-        descriptors, working directory, parent, auxiliary vector, limits, mounts, visible files, mode words anywhere in
-        its writable memory): the same record in every mode, Valgrind's own traces aside in the instruction count."""
+        """ruche-0037: B records everything it can observe of its process at its first call: the same record in every
+        mode (EXCEPTIONS_INSTRUCTIONS aside under the instruction counter)."""
         code, conteneurs = self.juger_espionne(self.preparer("memes_conditions", espion))
         self.assertEqual(code, 0)
         releves = {}
@@ -1715,11 +1704,11 @@ class TestJugeContreVariantes(unittest.TestCase):
             self.assertEqual(r, natifs[0])
         self.assertEqual(natifs[0]["memoire"], "0 0 0 0 0")
         self.assertEqual(natifs[0]["sorties"], ". .. ")
-        self.assertEqual(natifs[0]["cmdline"].replace("\\x00", ""), "")  # erased in place by the harness
-        commun = {k: v for k, v in natifs[0].items() if k not in VISIBLE_SOUS_VALGRIND}
+        self.assertEqual(natifs[0]["cmdline"].replace("\\x00", ""), "")
+        commun = {k: v for k, v in natifs[0].items() if k not in EXCEPTIONS_INSTRUCTIONS}
         for r in releves[(True, "compression")] + releves[(True, "decompression")]:
-            self.assertEqual({k: v for k, v in r.items() if k not in VISIBLE_SOUS_VALGRIND}, commun)
-            self.assertEqual(r["cmdline"], "/variante/execution\\x00")  # Valgrind's copy: the harness's path alone
+            self.assertEqual({k: v for k, v in r.items() if k not in EXCEPTIONS_INSTRUCTIONS}, commun)
+            self.assertEqual(r["cmdline"], "/variante/execution\\x00")
 
     def test_sortie_fausse_chronometree(self):
         """ruche-0037: B is right whenever it is verified, and wrong when timed on inputs other than the corpus's (the

@@ -13,7 +13,7 @@
      (statut), si bien que chaque sortie se vérifie de la même façon, quel que soit le mode.
    Le code jugé ne peut pas savoir s'il est vérifié ou mesuré : avant le premier appel à rle, le harnais
    lit ses paramètres jusqu'à la fin du tube, les recopie, puis efface leur texte, ses arguments et son
-   environnement (les chaînes elles-mêmes, que /proc/self/cmdline et /proc/self/environ relisent).
+   environnement.
    Code de sortie : 0 si toutes les sorties ont été écrites, 2 sinon. */
 
 #include "rle.h"

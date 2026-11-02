@@ -260,7 +260,7 @@ def preparer(travail, nom, entrees, cotes):
     module_entrees.verifier_entrees(entrees, cotes)
     dossiers = {}
     for c in cotes:
-        dossiers[c] = os.path.join(travail, secrets.token_hex(8))  # neutral: a mount's host path shows in the container
+        dossiers[c] = os.path.join(travail, secrets.token_hex(8))  # a neutral name, the same kind in every mode
         module_entrees.ecrire(dossiers[c], [e for e in entrees if e.cote == c], cotes)
     return dossiers
 

@@ -53,17 +53,14 @@ Le harnais (`execution`) est appelé sans argument ; son descripteur 0 porte une
 mode `verifier` ou un nom de scénario ; `/entrees/liste` donne une ligne `<côté> <nom> <entier>` par entrée, dont les octets
 sont dans `/entrees/<côté>/<nom>`. Dans un scénario, il traite toute entrée de son côté comme en vérification.
 
-**What the harness guarantees the judged code (ruche-0037).** It cannot tell whether it is verified, timed or counted. In every
-mode the harness gets the same arguments (its path alone), environment (fixed by `chrono`), descriptors (0 the pipe of its
-parameters, 1 `/dev/null`, 2 a pipe read by `chrono`), working directory (`/`), host name and mounts (`/sorties` too: one
-container per scenario; every mounted folder has a neutral name); `chrono` has no argument and writes no file (plan, options and
-journal use its standard streams). The harness reads its parameters to the end of the pipe, copies them, then erases their text,
-its arguments and its environment in place before any call to the judged code, and does the same work in every mode where it
-can. Under Valgrind, only what Valgrind adds to the process differs. Verification inputs are mixed into every measurement: at
-each repetition (warm-up included), ⌈n/r⌉ of each measured side (n of them on that side, r repetitions), taken in turn in an
-order drawn from the judge's seed, so each is timed at least once; as many in the instruction count (within its prefix). All are
-shuffled and renamed (`e0000`…), the same for A and B; a wrong output fails the judgement whatever the mode. `juge.json`:
-`juge.verification.entrees_melees` (total), `melees_par_repetition` (per side).
+**What the harness guarantees the judged code (ruche-0037).** The same arguments, environment, descriptors, working directory
+and mounts in every mode (verification, timer, instruction count), one container per scenario; the mode reaches the harness on
+its descriptor 0. The harness reads its parameters to the end of the pipe, copies them, then erases their text, its arguments
+and its environment before any call to the judged code, and does the same work in every mode where it can. Verification inputs
+are mixed into the measured ones: at each repetition (warm-up included), ⌈n/r⌉ of each measured side (n of them on that side, r
+repetitions), taken in turn in an order drawn from the judge's seed, so each is timed at least once; as many in the instruction
+count (within its prefix). All are shuffled and renamed (`e0000`…), the same for A and B; a wrong output fails the judgement
+whatever the mode. `juge.json`: `juge.verification.entrees_melees` (total), `melees_par_repetition` (per side).
 
 Règles de sûreté, vérifiées par le juge commun (revue adverse du 28/10) :
 - les relevés d'analyse (`nm`, `objdump`) sont produits par le juge commun lui-même, dans un conteneur, sur
