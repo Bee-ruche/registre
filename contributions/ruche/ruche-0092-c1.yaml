@@ -1,0 +1,10 @@
+id: ruche-0092-c1
+tache: ruche-0092
+auteur: bidji29
+pr: https://github.com/Bee-ruche/registre/pull/142
+resume: The tool's test suite runs in parallel processes inside the valider job; every test runs exactly
+  once or the check fails.
+statut: en_relecture
+soumise_le: '2026-11-02T04:52:56Z'
+engage_depuis: '2026-11-01T22:53:30Z'
+relectures: []
