@@ -14007,7 +14007,8 @@ class TestAgentAccountsValider(BaseTest):
     def test_the_declaration_of_the_registry(self):
         self.valide()
         reg = bee.Registre(self.dossier)
-        self.assertEqual(reg.comptes_agents, {AGENT: "bidji29"})
+        self.assertEqual(reg.comptes_agents.get(AGENT), "bidji29")
+        self.assertEqual(set(reg.comptes_agents.values()), {"bidji29"}, "every declared agent account acts for its person")
         self.assertTrue("LaRuche-Architect" in reg.agents and "bidji29" not in reg.agents)
         self.assertEqual(bee.autre_orthographe(reg, "LaRuche-Architect"), AGENT)
         self.assertEqual(self.bee("acts-for", AGENT), (0, "bidji29\n"))
@@ -17421,8 +17422,8 @@ class TestIdentiteParNumero(BaseRepetitionGenerale):
         sans = re.sub(r"\n    github_id: \d+", "", conseil.read_text(encoding="utf-8"))
         conseil.write_text(sans.replace("role: fondateur", "role: fondateur\n    github_id: 5"), encoding="utf-8")
         agents = self.dossier / "gouvernance/comptes-agents.yaml"
-        agents.write_text(agents.read_text(encoding="utf-8").replace("    acts_for: bidji29", "    acts_for: bidji29\n    github_id: 6"),
-                          encoding="utf-8")
+        sans = re.sub(r"\n    github_id: \d+", "", agents.read_text(encoding="utf-8"))  # the real registry binds its agent accounts
+        agents.write_text(sans.replace("    acts_for: bidji29", "    acts_for: bidji29\n    github_id: 6", 1), encoding="utf-8")
         self.ok("valider")
         self.commit("le conseil lie ses comptes")
         for qui, numero, accepte in (("bidji29", 5, True), ("bidji29", 7, False), ("laruche-architect", 6, True),
