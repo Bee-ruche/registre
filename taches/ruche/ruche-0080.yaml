@@ -31,9 +31,7 @@ hors_perimetre:
 - the real registry
 - any AI agent
 noeud: projets/ruche/ruche
-statut: reservee
-reservation:
-  utilisateur: "bidji29"
-  depuis: "2026-11-02T16:01:36Z"
+statut: en_relecture
+contribution: ruche-0080-c1
 cree_par: conseil
 cree_le: '2026-10-31'
