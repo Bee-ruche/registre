@@ -5147,14 +5147,15 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
                     exiger(probleme is None, f"{probleme} (notes.texte_max)")
                 probleme = probleme_date_pr(nouveau.get("le"), f"{chemin} : le", instant)
                 exiger(probleme is None, f"{probleme} : relancez bee voter")
-                sujet = nouveau.get("sujet", "")
+                sujet = str(nouveau.get("sujet", ""))
                 if ID_PROPOSITION.match(sujet) and sujet in reg.propositions:
                     resultat = depouiller_proposition(reg, sujet, niveaux, instant)
                     exiger(not resultat["terminee"] and reg.propositions[sujet][1].get("statut") == "ouverte",
                            f"{chemin} : le vote sur {sujet} est clos")
-                if partie[1] in reg.enregistrements:  # ruche-0042: a contribution's vote closes when it leaves review, for everyone
-                    statut = enr_vote.get("statut") if isinstance(enr_vote := reg.enregistrements[partie[1]][1], dict) else None
-                    exiger(statut == "en_relecture", f"{chemin} : le vote sur {partie[1]} est clos : la contribution n'est plus en "
+                # ruche-0042: a contribution's vote closes when it leaves review, for everyone; the folder's and the file's subject.
+                for cid_vote in [c for c in dict.fromkeys((partie[1], sujet)) if c in reg.enregistrements]:
+                    statut = enr_vote.get("statut") if isinstance(enr_vote := reg.enregistrements[cid_vote][1], dict) else None
+                    exiger(statut == "en_relecture", f"{chemin} : le vote sur {cid_vote} est clos : la contribution n'est plus en "
                                                      f"relecture (statut : {statut})")
             continue
 

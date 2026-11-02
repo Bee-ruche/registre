@@ -13212,8 +13212,8 @@ class TestAjoutSeulRuche0042(BaseRepetitionGenerale):
         self.valide()
 
     def fermer(self, statut):
-        """On main, as the integration robot writes it: the contribution leaves review, integrated, or set aside in favour of
-        miniz-0099-c2, integrated."""
+        """As the robot or the council writes it, on the current branch: the contribution leaves review with `statut`. Integrated,
+        or set aside in favour of miniz-0099-c2 (integrated), its task is integrated; otherwise (cancelled, refused…) it reopens."""
         maintenant, dossier, retenue = os.environ["BEE_MAINTENANT"], self.dossier / "contributions/miniz", self.cid
         if statut == "ecartee":
             retenue = "miniz-0099-c2"
@@ -13222,31 +13222,46 @@ class TestAjoutSeulRuche0042(BaseRepetitionGenerale):
                                                          "soumise_le": maintenant, "relectures": []})
         enr = bee.lire_yaml(dossier / f"{self.cid}.yaml")
         enr.update({"statut": statut, "decidee_le": maintenant, "motif_decision": "Essai de ruche-0042."},
-                   **({"retenue": retenue} if statut == "ecartee" else {}))
+                   **({"retenue": retenue} if statut == "ecartee" else {}), **({"jamais_integree": True} if statut == "annulee" else {}))
         bee.ecrire_yaml(dossier / f"{self.cid}.yaml", enr)
-        bee.modifier_tache(self.chemin_tache(), statut="integree", contribution=retenue)
+        if statut in ("integree", "ecartee"):
+            bee.modifier_tache(self.chemin_tache(), statut="integree", contribution=retenue)
+        else:
+            bee.modifier_tache(self.chemin_tache(), statut="ouverte", contribution=None)
         self.valide()
         self.commit(f"contribution {statut}")
 
-    def vote_a_la_main(self, votant, nom):
-        """A PR from main writing `votant`'s vote on the contribution by hand, dated now (bee voter refuses once it is closed)."""
-        git(self.dossier, "switch", "-qf", "main")
+    def vote_a_la_main(self, votant, nom, dossier=None, depuis="main"):
+        """A PR writing `votant`'s vote on the contribution by hand, dated now (bee voter refuses once it is closed), in the folder
+        `dossier` (by default, the contribution's)."""
+        git(self.dossier, "switch", "-qf", depuis)
         git(self.dossier, "switch", "-qc", nom)
-        bee.ecrire_yaml(self.dossier / f"votes/{self.cid}/{votant}.yaml",
+        bee.ecrire_yaml(self.dossier / f"votes/{dossier or self.cid}/{votant}.yaml",
                         {"votant": votant, "sujet": self.cid, "valeur": -1, "le": os.environ["BEE_MAINTENANT"]})
         self.commit()
 
     def test_un_vote_sur_une_contribution_se_clot_quand_elle_quitte_la_relecture(self):
         """A vote on a contribution is written or changed only while the contribution is in review (en_relecture); once it has
-        left it, no one adds or changes one, the council included."""
+        left it, whatever its status, no one adds or changes one, the council included, and its subject is checked both as the
+        vote's folder and as the file's sujet."""
         self.a("2026-10-30T09:00:00Z")
         for votant in ("chloe", "gaspard", "bidji29"):  # in review: a new vote, a replaced one, the council's replaced one
             with self.subTest(statut="en_relecture", votant=votant):
                 self.vote_a_la_main(votant, nom := f"ouvert-{votant}")
                 self.libre_service(votant, "vote")
                 self.abandonner(nom)
+        # The council's PR that integrates the contribution cannot carry its vote too: it votes in an earlier PR.
+        message = f"le vote sur {self.cid} est clos : la contribution n'est plus en relecture (statut : integree)"
+        self.branche("integration")
+        self.fermer("integree")
+        self.vote_a_la_main("bidji29", "integration-et-vote", depuis="integration")
+        texte = self.refusee("bidji29", f"votes/{self.cid}/bidji29.yaml : {message}")
+        self.assertIn("PR refusée (1 problème(s))", texte)
         main = git(self.dossier, "rev-parse", "main").strip()
-        for statut in ("integree", "ecartee"):
+        schema = json.loads((self.dossier / "schemas/enregistrement.schema.json").read_text(encoding="utf-8"))
+        statuts = [s for s in schema["properties"]["statut"]["enum"] if s != "en_relecture"]  # every status out of review
+        self.assertLessEqual({"integree", "ecartee", "annulee", "refusee"}, set(statuts))
+        for statut in statuts:
             git(self.dossier, "switch", "-qf", "main")
             git(self.dossier, "reset", "-q", "--hard", main)
             self.fermer(statut)
@@ -13259,7 +13274,10 @@ class TestAjoutSeulRuche0042(BaseRepetitionGenerale):
                     texte = self.refusee(votant, f"votes/{self.cid}/{votant}.yaml : {message}")
                     self.assertIn("PR refusée (1 problème(s))", texte, "the only refusal is the closed vote")
                     self.abandonner(nom)
-
+            with self.subTest(statut=statut, dossier="miniz-0099-c01"):  # the file's sujet names it, in another folder
+                self.vote_a_la_main("chloe", nom := f"{statut}-c01", dossier="miniz-0099-c01")
+                self.refusee("chloe", f"votes/miniz-0099-c01/chloe.yaml : {message}")
+                self.abandonner(nom)
 
 if __name__ == "__main__":
     unittest.main()

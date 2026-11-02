@@ -55,10 +55,9 @@ Les mesures comptent pour **R4** : un gain au chronomètre que le décompte d'in
 pas, ou que le chronomètre de la CI ne confirme pas, doit être reproduit par la mesure d'une autre
 configuration. Seule compte la mesure d'un autre utilisateur que l'auteur de la contribution (pseudo
 sans la casse ; un compte d'agent déclaré compte comme sa personne) qui dit sa configuration
-(`config.architecture`) ; les autres restent des mesures valides, qui ne comptent pas pour R4. Elles
-s'affichent aussi à côté de la contribution et donnent une image multi-configuration là où la CI
-n'en donne que deux. Exiger un gain reproduit sur plusieurs configurations avant d'intégrer
-(durcissement de R4 et R6) se décidera par un vote de la ruche (R10).
+(`config.architecture`) ; les autres restent des mesures valides, qui ne comptent pas pour R4.
+Exiger un gain reproduit sur plusieurs configurations avant d'intégrer (durcissement de R4 et R6) se
+décidera par un vote de la ruche (R10).
 
 ## Tâches de mesure
 
