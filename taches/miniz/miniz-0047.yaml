@@ -1,0 +1,38 @@
+id: miniz-0047
+projet: miniz
+categorie: compression-sans-perte
+type: test
+taille: M
+titre: 'minizBee moves to the common judge juge-v2: pinned commit, declared corpus history, no fetch'
+contexte: 'The registry''s common judge is juge-v2 since ruche-0024 (registry PR #126, merged at dab13a6 on 2 Nov 2026):
+  juge.yml reads the judge at its own commit and refuses one that is not on the registry''s main, and a fork declares
+  the git commits its plugin needs (`historique`), which juge.yml checks in the base''s ancestry and fetches in a step
+  of its own, before any file of the PR; during judging, git has no transport. minizBee still calls juge.yml at juge-v1
+  (821647d) and its plugin fetches the corpus commit 2948eeb on the host while judging (the workaround of miniz-0032).
+  Pin bee-ci.yml''s juge job and JUGE_COMMUN_SHA (isoler.sh, image) to dab13a6, declare 2948eeb as history, remove the
+  plugin''s fetch (a missing commit is an environment error), tie the declared history to COMMIT_CORPUS by a test, and
+  update bee/README.md. A council change to the fork''s CI, merged by the council: minizBee PR #22.'
+fichiers:
+- .github/workflows/bee-ci.yml
+- bee/juge/projet.py
+- bee/ci/
+- bee/README.md
+- bee/juge/test_juge.py
+portee: 0.9
+metrique: null
+depend_de:
+- ruche-0024
+critere_acceptation:
+- 'the fork''s CI passes on the PR: the common judge (juge-v2) fetches the declared history in its own step and gives
+  code 0 on master''s code, with the same counts as juge-v1 (outputs compared, instructions)'
+- no git fetch remains in the plugin; a test ties the declared history to COMMIT_CORPUS
+- bee/README.md describes juge-v2 and the declared history; no stale juge-v1 statement is left
+- independent review attached; merged by the council
+hors_perimetre:
+- code of miniz
+- the registry's judge (ruche-0024, ruche-0105)
+- bee/corpus/
+noeud: projets/compression-sans-perte/miniz/bee
+statut: ouverte
+cree_par: conseil
+cree_le: '2026-11-02'
