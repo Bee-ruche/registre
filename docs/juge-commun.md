@@ -108,6 +108,18 @@ Règles de sûreté, vérifiées par le juge commun (revue adverse du 28/10) :
 - **Journal sûr** : les 40 dernières lignes du journal, que la PR peut remplir, s'impriment entre
   `::stop-commands::<jeton>` et `::<jeton>::`, jeton tiré après le jugement, et `##[` y devient `# #[`
   (ruche-0025) : aucune ne devient une commande de workflow.
+- **The caller's inputs** (ruche-0038), checked first: `base_sha` and `tete_sha` are the event's pull request's
+  (`github.event.pull_request.base.sha`, `.head.sha`, 40 hexadecimal digits), `repetitions` 10 to 50, `sans_instructions`
+  false (a verdict needs the instruction count); otherwise the job fails before anything is checked out or judged.
+- **Job outputs tied to the report** (ruche-0038): `code`, `empreinte` (SHA-256 of `juge.json`), `suspectes` (all of them),
+  `sorties_comparees`, `greffon`, `graine`, `base`, `tete` (`outils/juge/rapport.py`; empty without a report). The verdict
+  job reads `juge.json` from the artifact « juge » and checks it against them, `python3 rapport.py juge.json --verifier
+  sorties.json` (`toJSON(needs.<judging job>.outputs)`), refused (code 1) at any difference. `juge.json` names `juge.base`,
+  `juge.tete` and `juge.image_id`, the image's id, by which every container runs it.
+- **Disk and reads bounded** (ruche-0038): the work folder is a tmpfs of 4 GiB and 262,144 files (`--travail`); containers
+  run with `--ulimit fsize` at `lecture.TAILLE_MAX_SORTIE` (256 MiB) and no log on the host's disk, which keeps the first MiB
+  of their standard output and the last of their error; no output is read beyond that size. Writing without end or filling the
+  folder fails the judgement. `juge.json` lists 100 suspicious constructs at most (the rest: `constructions_suspectes_omises`).
 
 ## Trois greffons côte à côte
 
