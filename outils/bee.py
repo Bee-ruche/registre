@@ -8481,13 +8481,13 @@ def cmd_verifier_pr(args):
     return 0
 
 
-def ci_scope(racine, base, tete):
+def ci_scope(racine, base, tete, brut=None):
     """What the registry CI runs for a PR (validation.yml, ruche-0090): ("data", None) if base...tete only adds or modifies
     regular files that the self-service gate accepts, each in its place (FICHIERS_LIBRE_SERVICE, CHEMIN_DEBAT), else
     ("full", reason). Fails closed: any other path, status or mode (deletion, rename, symlink, executable), an empty or
     unexpected diff, any error."""
     try:
-        sortie = subprocess.run(["git", "-C", str(racine), "diff", "--raw", "-z", "--no-renames", "--no-abbrev", f"{base}...{tete}"],
+        sortie = brut if brut is not None else subprocess.run(["git", "-C", str(racine), "diff", "--raw", "-z", "--no-renames", "--no-abbrev", f"{base}...{tete}"],
                                 capture_output=True, check=True).stdout.decode("utf-8")
         champs = sortie.split("\0")
         if champs.pop() != "" or not champs or len(champs) % 2:
@@ -8502,6 +8502,76 @@ def ci_scope(racine, base, tete):
         return "data", None
     except Exception as e:  # noqa: BLE001 - whatever goes wrong, the full suite runs
         return "full", f"{type(e).__name__}: {e}"
+
+
+SUITE = ".github/workflows/suite.yml"
+TITRE_SUITE = "Full suite on "  # suite.yml's run-name: the commit a dispatched run tests
+LIMITE_COMMITS_DONNEES = 100_000  # weeks of data commits at the target pace
+
+
+def commit_de_donnees(parents, brut, ajouts):
+    """ci_scope's rules on a commit's raw diff against its first parent (a root or empty commit is code), except that
+    docs/decisions.md with lines added only is data here (the integration workflow's rows, a council's; the architect's decision)."""
+    reste = [(m, c) for m, c in brut if not (c == DECISIONS and ajouts.get(c) and re.fullmatch(r":100644 100644 \w+ \w+ M", m))]
+    return bool(parents and brut) and (not reste or ci_scope(None, None, None, "".join(f"{m}\0{c}\0" for m, c in reste))[0] == "data")
+
+
+def dernier_commit_de_code(racine, base, limite=LIMITE_COMMITS_DONNEES):
+    """ruche-0132: the last commit of base's first-parent history that is not data (commit_de_donnees), from one `git log`
+    read as it comes and stopped there. None past `limite` data commits, or on any error (fails closed)."""
+    def lire(flux, reste=b""):  # its NUL-separated fields, as they come (bytes that are not UTF-8 kept apart), then None
+        while bloc := flux.read1(1 << 16):
+            *champs, reste = (reste + bloc).split(b"\0")
+            yield from (c.decode("utf-8", "surrogateescape") for c in champs)
+        yield None
+    commande = ["git", "-C", str(racine), "log", "-z", "--raw", "--numstat", "--no-renames", "--no-abbrev", "--no-textconv",
+                "--first-parent", "--diff-merges=first-parent", f"--max-count={limite}", "--format=%H %P", base, "--"]
+    with contextlib.suppress(Exception), subprocess.Popen(commande, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL) as git_log:
+        commit, brut, ajouts, champs = None, [], {}, lire(git_log.stdout)
+        for champ in champs:
+            if champ and champ.lstrip("\n").startswith(":"):  # a raw entry (the first follows the header's newline), then its path
+                brut.append((champ.lstrip("\n"), next(champs)))
+            elif champ and "\t" in champ:  # --numstat: lines added, lines removed, path
+                ajouts[champ.split("\t", 2)[2]] = re.match(r"[1-9][0-9]*\t0\t", champ)
+            else:  # the next commit's header (%H %P), or the end (None, read only if git succeeded): the commit before it is complete
+                if commit is not None and (champ is not None or git_log.wait() == 0) and not commit_de_donnees(commit[1:], brut, ajouts):
+                    git_log.kill()
+                    return commit[0]  # an empty header: IndexError, None
+                commit, brut, ajouts = None if champ is None else champ.split(), [], {}
+    return None
+
+
+def main_vert(racine, base, reponse):
+    """ruche-0132: whether main is green for the PR fast path, from one filtered read of suite.yml's latest runs on main
+    (actions/workflows/suite.yml/runs, newest first): the newest run must test main's last code commit (dernier_commit_de_code),
+    and the newest completed one, or re-run (run_attempt > 1: it would hide a failure), a success. (True, None), or (False, reason)."""
+    try:
+        runs = [r for r in reponse["workflow_runs"] if (r["path"], r["head_branch"], r["event"]) == (SUITE, "main", "workflow_dispatch")]
+        code = dernier_commit_de_code(racine, base)
+        if not runs or not code:
+            return False, "no run of suite.yml on main" if not runs else "main's last code commit not found"
+        dernier = max(runs, key=lambda r: r["id"])
+        termines = [r for r in runs if r["status"] == "completed" or r["run_attempt"] > 1]
+        if dernier["display_title"] != TITRE_SUITE + code:
+            return False, f"the newest run of suite.yml ({dernier['id']}) is not for main's last code commit {code}"
+        if not termines or ((t := max(termines, key=lambda r: r["id"]))["status"], t["conclusion"]) != ("completed", "success"):
+            return False, "no completed run of suite.yml in the page" if not termines else f"suite.yml's run {t['id']}: {t['conclusion'] or t['status']}"
+        return True, None
+    except Exception as e:  # noqa: BLE001 - whatever goes wrong, the full suite runs
+        return False, f"{type(e).__name__}: {e}"
+
+
+def cmd_main_green(args):
+    try:
+        reponse = json.loads(pathlib.Path(args.runs).read_text(encoding="utf-8"))
+    except Exception as e:  # noqa: BLE001
+        vert, raison = False, f"{type(e).__name__}: {e}"
+    else:
+        vert, raison = main_vert(args.registre or os.environ.get("BEE_REGISTRE") or RACINE_OUTIL, args.base, reponse)
+    print("green" if vert else "red")
+    if raison:
+        print(f"full suite: {raison}", file=sys.stderr)
+    return 0
 
 
 def cmd_ci_scope(args):
@@ -10729,6 +10799,11 @@ def construire_analyseur():
                                           "else 'full' (the full test suite runs; used by validation.yml).")
     p.add_argument("--base", required=True)
     p.add_argument("--tete", default="HEAD")
+
+    p = ajouter("main-green", cmd_main_green, "Prints 'green' if suite.yml's runs on main (a saved actions/workflows/suite.yml/runs "
+                                              "response) allow the PR fast path, else 'red' (used by validation.yml).")
+    p.add_argument("--base", required=True, help="main's commit (the PR's base)")
+    p.add_argument("--runs", required=True, help="the JSON file of the API's response")
 
     p = ajouter("acts-for", cmd_acts_for, "Prints the person a GitHub login acts for: the person of its declared agent account "
                                           "(gouvernance/comptes-agents.yaml), or the login itself (used by integration-auto).")
