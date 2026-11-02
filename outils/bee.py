@@ -5339,7 +5339,7 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
             for probleme in ((titre_incident_refuse(ajout.get("titre")), probleme_date_pr(ajout.get("ouvert_le"), "ouvert_le", instant))
                              if ajout else ()):
                 exiger(probleme is None, f"{chemin} : {probleme} (bee incident)")
-            sortie = subprocess.run(["git", "-C", str(reg.racine), "show", f"{tete}:{chemin}"], capture_output=True)
+            sortie = subprocess.run(["git", "-C", str(reg.racine), "cat-file", "blob", f"{tete}:{chemin}"], capture_output=True)
             try:
                 canonique = rendu_invitation(nouveau, chemin).encode("utf-8") if isinstance(nouveau, dict) else None
             except ErreurBee:
