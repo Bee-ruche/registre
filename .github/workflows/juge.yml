@@ -1,16 +1,16 @@
 # Juge commun Bee, workflow réutilisable (docs/juge-commun.md).
 #
-# Un fork l'appelle depuis sa CI, en épinglant une étiquette du registre :
+# Un fork l'appelle depuis sa CI, en épinglant le commit d'une étiquette du registre :
 #   juge:
-#     uses: Bee-ruche/registre/.github/workflows/juge.yml@juge-v2
+#     uses: Bee-ruche/registre/.github/workflows/juge.yml@<commit de juge-v2> # juge-v2
 #     with: { base_sha: <base de la PR>, tete_sha: <tête de la PR>, options: "sortie_compressee=identique" }
 # Il juge la tête contre la base avec le greffon de la BASE (bee/juge/projet.py), jamais celui de la PR,
 # et publie un artefact « juge » : juge.json (rapport, section « juge » comprise) et code (0 juste,
 # 1 refusé, 2 environnement). Le job ne devient jamais rouge à cause de B : c'est le verdict du fork
 # qui lit le code et décide. Aucun secret, aucune écriture : permissions en lecture seule.
 #
-# JUGE_COMMUN_REF doit valoir l'étiquette de cette version (outils/juge/test_juge.py le vérifie) :
-# le juge commun est lu à cette étiquette, pas à la branche principale du registre.
+# The judge's code is read at this workflow's own commit (job.workflow_sha), which must be a commit of
+# Bee-ruche/registre's main, never at a tag or a branch (test_juge.py); juge.json names it (juge.source).
 name: Juge commun
 
 on:
@@ -29,6 +29,10 @@ on:
         required: false
         type: string
         default: ""
+      historique:
+        description: "commits whose git objects the plugin reads (full SHAs, blank-separated): ancestors of the base, fetched before the PR"
+        type: string
+        default: ""
       repetitions:
         required: false
         type: number
@@ -45,9 +49,6 @@ on:
 permissions:
   contents: read
 
-env:
-  JUGE_COMMUN_REF: juge-v2
-
 jobs:
   juge:
     runs-on: ubuntu-24.04
@@ -55,11 +56,22 @@ jobs:
     outputs:
       code: ${{ steps.juge.outputs.code }}
     steps:
-      - name: Juge commun (registre, à son étiquette)
+      - name: Commit de ce workflow, sur la branche principale du registre (le code du juge y est lu)
+        id: preparation
+        env:
+          DEPOT: ${{ job.workflow_repository }}
+          COMMIT: ${{ job.workflow_sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [[ "${DEPOT,,}" == bee-ruche/registre && "$COMMIT" =~ ^[0-9a-f]{40}$ ]] || { echo "this workflow is not Bee-ruche/registre's at a full commit" >&2; exit 1; }
+          etat="$(timeout 60 gh api "repos/Bee-ruche/registre/compare/main...$COMMIT" --jq .status)" || etat="API error or timeout"
+          [[ "$etat" == identical || "$etat" == behind ]] || { echo "workflow commit $COMMIT is not on the registry's main ($etat)" >&2; exit 1; }
+          echo "commit=$COMMIT" >> "$GITHUB_OUTPUT"
+      - name: Juge commun (registre, au commit de ce workflow)
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           repository: Bee-ruche/registre
-          ref: ${{ env.JUGE_COMMUN_REF }}
+          ref: ${{ steps.preparation.outputs.commit }}
           path: juge-commun
           persist-credentials: false
       - name: Base de la PR (greffon, harnais, corpus)
@@ -68,7 +80,12 @@ jobs:
           ref: ${{ inputs.base_sha }}
           path: base
           persist-credentials: false
-      - name: Image du juge (seule étape avec réseau, avant tout fichier de la PR)
+      - name: Historique déclaré (ancêtres de la base ; seul appel de juge.py avec le jeton, avant le greffon et la PR)
+        env:
+          HISTORIQUE: ${{ inputs.historique }}
+          GH_TOKEN: ${{ github.token }}
+        run: python3 juge-commun/outils/juge/juge.py --outillage base --historique-seulement --historique "$HISTORIQUE"
+      - name: Image du juge (avec réseau, avant tout fichier de la PR)
         run: python3 juge-commun/outils/juge/juge.py --outillage base --image-seulement
       - name: Tête de la PR (données ; rien n'en est exécuté hors conteneur)
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -83,6 +100,7 @@ jobs:
           OPTIONS: ${{ inputs.options }}
           REPETITIONS: ${{ inputs.repetitions }}
           SANS_INSTRUCTIONS: ${{ inputs.sans_instructions }}
+          SOURCE: Bee-ruche/registre@${{ steps.preparation.outputs.commit }}
         run: |
           mkdir -p resultats
           options=()
@@ -92,11 +110,15 @@ jobs:
           [ "$SANS_INSTRUCTIONS" = "true" ] && options+=(--sans-instructions)
           set +e
           python3 juge-commun/outils/juge/juge.py --outillage base --source-a base --source-b pr \
-            --repetitions "$REPETITIONS" \
+            --repetitions "$REPETITIONS" --source-juge "$SOURCE" \
             "${options[@]}" --json resultats/juge.json > /dev/null 2> resultats/journal.txt
           code=$?
           set -e
-          tail -n 40 resultats/journal.txt
+          # The judged PR can fill the journal: none of its lines may become a workflow command (token drawn after it).
+          jeton="$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
+          echo "::stop-commands::$jeton"
+          tail -n 40 resultats/journal.txt | sed 's/##\[/# #[/g'
+          printf '\n::%s::\n' "$jeton"
           echo "$code" > resultats/code
           echo "code=$code" >> "$GITHUB_OUTPUT"
       - name: Conserver le rapport
