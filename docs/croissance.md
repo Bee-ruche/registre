@@ -74,7 +74,7 @@ qui dit :
   invitation se désigne par son numéro (I-0001), jamais par le nom de la personne ni par des faits sur elle ; les
   détecteurs de données personnelles valent aussi pour les arguments, leurs sources et les synthèses ;
 - **qui propose** (`propose_par`, `propose_le`) ;
-- puis ses **gestes de suivi**, ajoutés un à un, jamais modifiés ni retirés, et son `statut`, qui dit ce
+- puis ses **gestes de suivi**, ajoutés un à un, jamais modifiés ni retirés (sauf ses accords, à une révision), et son `statut`, qui dit ce
   que disent ses gestes. Seule exception : le dossier de la personne se retire à son refus, à son silence ou à
   sa demande (plus bas, « Ce que la ruche garde d'une personne »).
 
@@ -195,8 +195,10 @@ refusée). Des feux verts ou des envois concurrents qui dépassent ensemble le p
 
 Ce que `bee verifier-pr` refuse en plus : un geste signé d'un autre que l'auteur de la PR, ou daté d'une autre
 heure que celle de la PR (2 h de tolérance) ; deux gestes sur une invitation dans une même PR ; tout changement
-de la personne, des faits, du message ou du débat (pour un autre message, on écarte et on propose de nouveau),
-hors du retrait de son dossier ; une invitation vers une personne de la liste de non-contact (par son
+de la personne, de la demande ou du débat, hors du retrait de son dossier ; **une invitation accordée est figée** :
+ses faits, son message et son homonyme ne se révisent qu'avant l'envoi, par son proposant ou le conseil, dans une PR
+qui retire l'accord du gardien et le feu vert du conseil et la propose de nouveau (`propose_le` à l'heure de la PR :
+les 72 h de débat repartent) ; le conseil la fusionne, puis les accords se redonnent ; une invitation vers une personne de la liste de non-contact (par son
 identifiant, son canal, une autre identité ou une source), ou déjà invitée (une identité déclarée commune avec
 une autre invitation : identifiant, canal, autres identités ; sauf invitation acceptée, expirée, retirée, ou
 écartée avant le feu vert), comparée sur sa **clé canonique** (plateforme et alias, casse, espaces, forme Unicode, `@`, `~`
@@ -215,6 +217,16 @@ liste de non-contact ou une invitation est illisible sur `main`, aucun geste d'i
 conseil ne l'a pas réparée (hors du libre-service, en reprenant sa dernière version lisible). Une invitation
 ne se supprime que par le conseil. `bee valider` ne revérifie pas le rôle actuel de l'auteur d'un geste passé
 (contrôlé à son ajout) : révoquer un gardien ou quitter le conseil ne rend jamais le registre invalide.
+
+**Tout texte libre du registre** (chaque chaîne que son schéma ne contraint ni par un format, ni par une liste, ni par
+un motif d'identifiant, et chaque clé, dans tout fichier qui a un schéma, ceux du conseil et le manifeste compris) passe
+ces détecteurs quand une PR l'ajoute, champ par champ et tous ensemble, écritures déguisées comprises. **Refusés** : un
+courriel, une adresse postale, un numéro sûr (`+` ou `00`, un mot de téléphone, la forme d'un numéro), une donnée
+sensible dite de quelqu'un (naissance, minorité, maladie, religion, orientation, opinion politique). **Signalés** : un
+numéro douteux, un mot de santé, d'opinion, d'âge ou de minorité ; un humain lit alors la PR avant sa fusion
+(`relecture_humaine`, code 3). Des chiffres techniques (un bloc, des milliers, une liste, une décimale) passent ; hors
+de la ruche et dans l'agora, tout numéro reste refusé. **Question au conseil** (ruche-0047) : le dossier d'une
+invitation ne devrait-il devenir public qu'une fois relu par un humain ?
 
 ## Le frein
 

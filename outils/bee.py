@@ -2044,6 +2044,7 @@ def verifier_manifeste(reg, donnees, origine="CONTRIBUTION.yaml", utilisateur=No
     a_remplir = champs_a_remplir(donnees)
     if a_remplir:
         problemes.append(f"{origine} : il reste des champs « {A_REMPLIR} » / « {A_REMPLIR_EN} » : {', '.join(a_remplir)}")
+    problemes += [p.replace("CONTRIBUTION.yaml", origine, 1) for p in textes_personnels(reg, "CONTRIBUTION.yaml", None, donnees)[0]]
     for erreur in sorted(reg.schema("contribution").iter_errors(donnees), key=lambda e: [str(x) for x in e.absolute_path]):
         if isinstance(erreur.instance, str) and any(m in erreur.instance for m in MARQUES_A_REMPLIR):
             continue  # déjà signalé ci-dessus
@@ -3521,7 +3522,7 @@ POURQUOI_MAX, FAIT_MAX, ADRESSE_MAX = 5, 300, 200
 # Données personnelles (revues adverses, C1 à C3 puis F1) : un premier filtre, cherché dans tout ce qui sort de la ruche après
 # normalisation (NFKC : ＠ et chiffres pleine largeur, espaces insécables ; tirets unifiés ; URL décodée). Les faux positifs
 # sont acceptés : la relecture humaine reste le vrai contrôle.
-COURRIEL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}")
+COURRIEL = re.compile(r"(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}")
 # ruche-0044: "at the point where", "at some point soon" are English prose, not "<name> at <domain> point <tld>". Fail-closed,
 # such a match is skipped only if all hold: the word is "at" (never "arobase"), the would-be domain is a determiner, the
 # separator is "point", the word after it is in CONTINUATIONS_EN (honest continuations; a test checks that none is a
@@ -3537,13 +3538,26 @@ CONTINUATIONS_EN = (r"where|which|when|that|of|after|before|during|until|again|a
 POINTS = "[.。｡·‧•∙⋅・։،۔।።]"  # a dot or a sign used as one, after NFKC (… is ..., ｡ is 。)
 SUITE_D_ADRESSE = (r"\s*" + POINTS + r"+[^\S\n]*[^\W_]|[\s\S]{0,60}?(?:\b(?:dot|point)\b|[(\[{<]\s*(?:dot|point)|@"
                    r"|[^\W_][^\w\s'’-]+[^\W\d_]{2,}|\s" + POINTS + r"+\s*[a-z]|[^\W_]" + POINTS + r"+[^\S\n]+(?-i:[a-z]))")
-COURRIEL_DEGUISE = re.compile(r"\b[\w.+-]+\s+(?:at|arobase)"
+COURRIEL_DEGUISE = re.compile(r"(?<![\w.+-])[\w.+-]+\s+(?:at|arobase)"
                               rf"(?!(?<=at)\s+(?:{DETERMINANTS_EN})\s+point\s+(?:{CONTINUATIONS_EN})\b(?!{SUITE_D_ADRESSE}))"
                               r"\s+[\w-]+\s+(?:dot|point)\s+[a-z]{2,}\b", re.I)
+# ruche-0047: every free text of the registry is checked for contact details, however written (decoder_courriel): "<name> at
+# <domain> <tld>" with a common top-level domain after a dot, a dash, a slash or a blank, or a bare domain later after an "at".
+SOSIES = str.maketrans("аеорсухіјѕԁԛԝАВЕКМНОРСТХІЈЅοανικρτυχΑΒΕΖΗΙΚΜΝΟΡΤΥΧ", "aeopcyxijsdqwABEKMHOPCTXIJSoavikptuxABEZHIKMNOPTYX")
+MOTS_AROBASE, MOTS_POINT = r"arobase|arroba|chiocciola|klammeraffe", r"dot|point|punto|punkt|ponto|nokta|te[cč]ka|kropka|piste|punt|d0t"
+MOTS_VIDES = rf"{DETERMINANTS_EN}|{CONTINUATIONS_EN}|in|into|to|by|at|is|are|be|not|or|so|as|our|my|your|his|her|their|its"
+TLD = (r"(?:com|org|net|edu|gov|biz|io|co|eu|uk|fr|de|es|nl|ch|ca|au|nz|jp|cn|ru|br|pt|se|dk|fi|ie|lu|cz|gr|hu|ro|mx|za|kr|tw|hk|sg|tr|"
+       r"ua|email|online)(?![\w-]|[./]\w)")  # any case right after the at sign (COURRIEL_DECODE), lower case later (DOMAINE_NU)
+ETIQUETTE = r"[^\W_]+(?:-[^\W_]+)*"
+COURRIEL_DECODE = re.compile(rf"(?<![\w.+-])[\w.+%-]+,?[@\x01](?:(?:{DETERMINANTS_EN})\.(?:{CONTINUATIONS_EN})\s*)?"
+                             rf"(?:(?!(?:{MOTS_VIDES})\b)[^\W_]+\s*[./|_-]{{1,2}}\s*){{0,4}}(?!(?:{MOTS_VIDES})\b)[^\W_]+(?:\s*[./|_-]{{1,2}}\s*|\s+){TLD}", re.I)
+DOMAINE_NU = re.compile(rf"(?<![\w.@\x01/:-])(?!(?i:{MOTS_VIDES})\b|www\.){ETIQUETTE}(?:\.{ETIQUETTE})*\.{TLD}")
 VOIES_FR = r"rue|r\.|avenue|av\.|boulevard|bd|chemin|ch\.|all[ée]e|impasse|imp\.|place|pl\.|quai|route|rte|cours|voie|passage|square|faubourg|fbg|chauss[ée]e"
 VOIES_EN = r"Street|St|Road|Rd|Avenue|Ave|Lane|Ln|Boulevard|Blvd|Drive|Dr|Court|Ct|Way|Place|Pl|Square|Sq|Terrace|Close|Crescent|Strasse|Straße|Weg|Gasse|Platz"
 ADRESSE_POSTALE = re.compile(rf"(?i:\b\d{{1,5}}\s*(?:bis|ter|[a-z])?\s*,?\s+(?:{VOIES_FR})(?=[\s.,]|$))"
                              rf"|\b\d{{1,5}}[A-Za-z]?\s+(?:[A-ZÀ-Ý][\w'’-]*\s+){{1,4}}(?:{VOIES_EN})\b"
+                             r"|(?i:\b\d{1,5}[a-z]?\s+(?:[^\W\d_][\w'’-]*\s+){1,4}(?:street|road|avenue|boulevard|lane|terrace|crescent)\b|\b[^\W\d_]+"
+                             r"(?:stra(?:ß|ss)e|gasse|platz)\s+\d{1,4}\b)|\b(?:Via|Piazza|Calle|Plaza|Rua|Avenida|Carrer)\s+(?:[A-ZÀ-Ý][\w'’-]*\s+){1,3}\d{1,4}\b"
                              r"|\b\d{5}\s+[A-ZÀ-Ý][a-zà-ÿ-]{2,}|\b[A-ZÀ-Ý][a-zà-ÿ-]{2,}\s+\d{5}\b")
 # Caractères refusés en plus de caractere_interdit dans ce qui sort de la ruche (revue adverse, B1 et B2) : sélecteurs de variante,
 # autres Default_Ignorable_Code_Point, remplissages et braille vide, qui ne s'affichent pas et portent une charge cachée.
@@ -3629,44 +3643,129 @@ def decoder_url(texte):
     return re.sub(r"(?:%[0-9A-Fa-f]{2})+", lambda m: bytes.fromhex(m.group(0).replace("%", "")).decode("utf-8", "replace"), str(texte))
 
 
-def numero_de_telephone(texte):
-    """Au moins 9 chiffres que ne sépare aucune lettre ni plus de 3 caractères à la suite ; un O pris pour 0 entre chiffres."""
-    texte = re.sub(r"(?<=\d)[Oo](?![^\W\d_])|(?<![^\W\d_])[Oo](?=\d)", "0", texte)
-    chiffres = ecart = 0
-    for c in texte:
-        if c.isdigit():
-            chiffres, ecart = chiffres + 1, 0
-            if chiffres >= 9:
-                return True
-        elif c.isalpha() or c == "\n":
-            chiffres = ecart = 0
-        elif chiffres:
-            ecart += 1
-            if ecart > 3:
-                chiffres = ecart = 0
-    return False
+# ruche-0047: a phone-like chain, 9 digits or more, and its grade (grade_chaine): 3 sure, refused in every free text; 2 doubtful,
+# read by a human; 1 weak (technical: one block, thousands, a list, a decimal). Out of the hive and in the agora, all are refused.
+CHAINE_CHIFFRES = re.compile(r"(?<![\da-fA-FxX])(?!(?<=[^\W\d_]-)\d{4}(?!\d))(?:\+\s?)?\d+(?:[\W_]{1,3}\d+)*")
+SEPARATEUR_DEGUISE = re.compile(r"(?<=\d)[^\w,;:]{4,}(?=\d)|(?<=\d)[^\w,;:]{1,3}[^\W\d_]{1,7}[^\w,;:]{1,3}(?=\d)")
+MOT_TELEPHONE = re.compile(r"(?i)\b(?:t[ée]l(?:[ée]phone)?|phone|mobile|portable|gsm|whats ?app|sms|fax)\b")
+
+
+def telephone(texte):
+    """The grade of the surest chain of `texte`; with lookalike letters as digits, and a word or a run of signs between digits as a
+    separator (SEPARATEUR_DEGUISE), a chain counts only if sure."""
+    def grade_chaine(texte, m):  # sure: a + or 00, a phone word before it, 3-3-4, or one separator throughout and a leading 0 or pairs
+        groupes, seps = re.findall(r"\d+", m[0]), [re.sub(r"\s+", " ", s) for s in re.findall(r"[\W_]+", m[0].lstrip("+ "))]
+        longueurs, liste = [len(g) for g in groupes], set("".join(seps)) & set(",;:")
+        if sum(longueurs) < 9:
+            return 0
+        if not liste and (m[0][0] == "+" or (m[0][:2] == "00" and len(groupes) > 1) or MOT_TELEPHONE.search(texte[max(0, m.start() - 25):m.start()])
+                          or longueurs[-3:] == [3, 3, 4] or (len(set(seps)) <= 1 and (re.match(r"0[1-9]", groupes[0]) or set(longueurs) == {2}))):
+            return 3
+        milliers = len(set(seps)) == 1 and len(seps[0]) == 1 and longueurs[0] <= 3 and set(longueurs[1:]) == {3}
+        return 1 if (len(groupes) == 1 or milliers or liste or (len(set(seps)) > 1 and "." in "".join(seps))) else 2
+    t = re.sub(r"(?<=\d)[OoIl](?![^\W\d_])|(?<![^\W\d_])[OoIl](?=\d)", lambda c: "0" if c[0] in "Oo" else "1",
+               re.sub(r"[^\D0-9]", lambda c: str(unicodedata.decimal(c[0])), texte))
+    lu = SEPARATEUR_DEGUISE.sub(" - ", t)
+    return max([grade_chaine(t, m) for m in CHAINE_CHIFFRES.finditer(t)] + [3 * (grade_chaine(lu, m) == 3) for m in CHAINE_CHIFFRES.finditer(lu)] + [0])
+
+
+def decoder_courriel(texte):
+    """`texte` with each written at sign as @, a bare « at » as \\x01, each dot as « . », lookalikes as Latin, no blank around them."""
+    t = texte.translate(SOSIES)
+    t = re.sub(rf"(?i)[(\[{{<]\s*(?:at|{MOTS_AROBASE})\s*[)\]}}>]|(?<![^\W_])(?:{MOTS_AROBASE})(?![^\W_])|(?<=[^\W_])[-_.]at[-_.](?=[^\W_])",
+               "@", t)
+    t = re.sub(r"(?i)(?<![^\W_])at(?![^\W_])", "\x01", t)
+    t = re.sub(rf"(?i)(?<![-_.,\s])[-_.,\s]*(?:[(\[{{<]\s*(?:{MOTS_POINT})\s*[)\]}}>]|(?<![^\W_])(?:{MOTS_POINT})(?![^\W_]))[-_.,\s]*|{POINTS}",
+               ".", re.sub(r"(?<=\b\w) (?=\w\b)", "", t))  # a l i c e: letters spaced one by one
+    return re.sub(r"(?<!\s)\s+(?=[@\x01.])|(?<=[@\x01.])\s+|(?<=\w),(?=\s*\x01)", "", t)
 
 
 def courriel(texte):
     """Une adresse de courriel, même déguisée : (at), [dot], ＠, 。, espaces autour de l'@ ou du point, « at … dot »."""
-    t = texte.replace("\u3002", ".").replace("\uff61", ".")
-    t = re.sub(r"(?i)\s*[(\[{<]\s*(?:at|arobase)\s*[)\]}>]\s*", "@", t)
-    t = re.sub(r"(?i)\s*[(\[{<]\s*(?:dot|point)\s*[)\]}>]\s*", ".", t)
-    t = re.sub(r"\s*@\s*", "@", t)
-    for _ in range(5):
-        t = re.sub(r"(?i)(@[\w-]+(?:\.[\w-]+)*)\s*(?:\.|\bdot\b|\bpoint\b)\s*(?=[a-z0-9-]+)", r"\1.", t)
-    return bool(COURRIEL.search(t) or COURRIEL_DEGUISE.search(texte))
+    d = decoder_courriel(texte)
+    at = d.find("\x01")
+    return bool(COURRIEL.search(d) or COURRIEL_DEGUISE.search(texte) or COURRIEL_DECODE.search(d)
+                or (at >= 0 and DOMAINE_NU.search(d, at + 1)))
 
 
-def donnee_personnelle(texte):
+def donnee_personnelle(texte, seuil=1):
     """Ce qui ressemble à une donnée personnelle dans un texte (courriel, même déguisé ; téléphone ; adresse postale), ou None."""
     texte = re.sub(r"[\u2010-\u2015\u2212\ufe58\ufe63]", "-", unicodedata.normalize("NFKC", decoder_url(texte)))
     texte = re.sub(r"[^\S\n]", " ", texte)
     if courriel(texte):
         return "une adresse de courriel"
-    if ADRESSE_POSTALE.search(texte) or ADRESSE_POSTALE.search(re.sub(r"[-_+/]", " ", texte)):
+    if any(ADRESSE_POSTALE.search(t) for t in (texte, re.sub(r"[-_+/]", " ", texte), texte.translate(SOSIES))):
         return "une adresse postale"
-    return "un numéro de téléphone" if numero_de_telephone(texte) else None
+    return "un numéro de téléphone" if telephone(texte) >= seuil else None
+
+
+# ruche-0047: data about a person that no free text carries (commandment 10): health, opinions, age or being a minor. Refused when a
+# sentence says it of someone; a word that may say it is read by a human. Health checks, minor versions, child processes pass.
+SENSIBLE_SUR = re.compile(r"(?i)\b(?:date (?:of birth|de naissance)|\d{1,2}[- ]years?[- ]old (?:boy|girl|child|kid|son|daughter|student|man|"
+                          r"woman)|(?:is|est|was|était) (?:a|un|une) (?:minor|mineure?)\b(?![\s-]*[^\W\d_])|(?:is|est|was|était) (?:pregnant|"
+                          r"enceinte)|hospitali[sz](?:ed|ée?)|(?:he|she|il|elle) (?:is|was|has|had|est|était|a|avait) (?:an? |une? )?(?:sick|"
+                          r"malade|cancer|diab\w+|d[ée]press\w+|autis\w+|handicap\w*|disabled)|(?:is|est|was|était|identifies as) (?:an? |"
+                          r"une? )?(?:communist|socialist|fascist|anarchist|catholic|muslim|jewish|christian|atheist|buddhist|hindu|protestant|"
+                          r"gay|lesbian|bisexual|transgender|homosexual|communiste|socialiste|fasciste|anarchiste|catholique|musulmane?|juive?|"
+                          r"chrétienne?|athée|bouddhiste|protestante?|homosexuel(?:le)?|lesbienne|transgenre)\b)")
+SENSIBLE_DOUTE = re.compile(r"(?i)\b(?:sick|malade|maladie|illness|cancer|diab[eè]t\w*|d[ée]pression|depressed|anxiety|anxiété|burn[- ]?out|"
+                            r"autis\w*|adhd|tdah|hiv|vih|sida|pregnan\w*|enceinte|handicapée?|disabilit(?:y|ies)|psychiatr\w*|th[ée]rap(?:y|ie|"
+                            r"ist\w*)|hospital|h[ôo]pital|m[ée]dicaments?|medication|surgery|chirurgie|chemo\w*|chimio\w*|mental health|"
+                            r"sant[ée] mentale|d[ée]c[ée]d[ée]e?|deceased|political party|parti politique|(?:left|right)[- ]wing|far[- ](?:left|"
+                            r"right)|extr[êe]me[- ](?:gauche|droite)|religio\w+|church|[ée]glise|mosque|mosquée|synagogue|syndiqu[ée]e?|"
+                            r"union member|sexual orientation|orientation sexuelle|sexualit[yé]|gay|lesbian|lesbienne|homosexu\w*|bisexu\w*|"
+                            r"transgen\w*|queer|\d{1,2}[- ]years?[- ]old|years of age|âgée? de \d{1,2} ans|a \d{1,2} ans|teen(?:ager)?s?|"
+                            r"adolescente?s?|underage|(?:an?|the|une?|des|les) (?:minor|mineur)e?s?\b(?![\s-]*[^\W\d_])|minors|born (?:on|in)|"
+                            r"n[ée]e? (?:le|en) \d)\b")
+SCHEMAS_TEXTES = {"taches": "tache", "contributions": "enregistrement", "votes": "vote", "mesures": "mesure", "membres": "membre", "projets": "projet",
+                  "propositions": "proposition", "debats": "debat", "invitations": "invitation", CHEMIN_NON_CONTACT: "ne-plus-contacter",
+                  "gouvernance/incidents.yaml": "incidents", "CONTRIBUTION.yaml": "contribution"}
+
+
+def aplatir(noeud, racine):
+    """`noeud` and what it includes through $ref and allOf, as a list of schema nodes."""
+    if not isinstance(noeud, dict):
+        return []
+    ref = noeud.get("$ref", "")
+    return [noeud, *(aplatir(racine.get("$defs", {}).get(ref.rsplit("/", 1)[-1]), racine) if ref else []),
+            *(x for membre in noeud.get("allOf", []) for x in aplatir(membre, racine))]
+
+
+def chemins_de_texte(noeud, racine, chemin="", sortie=None, profondeur=0):
+    """{path: free} for each string of a JSON schema (« notes[]/texte », « * »: any key): free unless it has a format, an enum, a const
+    or a pattern that does more than exclude characters (an identifier, a sha, a login); free under one alternative, free."""
+    sortie = {} if sortie is None else sortie
+    membres = aplatir(noeud, racine) if profondeur <= 20 else []
+    if any("string" in str(m.get("type")) or {"pattern", "enum", "const"} & set(m) for m in membres):
+        sortie[chemin] = sortie.get(chemin, False) or not any({"format", "enum", "const"} & set(m) or not re.fullmatch(
+            r"(\^\[\^[^\]]*\]\*\$)?", m.get("pattern", "")) for m in membres)
+    for m in membres:
+        for cle, sous in m.get("properties", {}).items():
+            chemins_de_texte(sous, racine, f"{chemin}/{cle}".lstrip("/"), sortie, profondeur + 1)
+        for sous in [m.get("additionalProperties"), *m.get("patternProperties", {}).values()]:
+            chemins_de_texte(sous, racine, f"{chemin}/*".lstrip("/"), sortie, profondeur + 1)
+        for sous in [m.get("items"), *m.get("oneOf", []), *m.get("anyOf", [])]:
+            chemins_de_texte(sous, racine, chemin + "[]" * (sous is m.get("items")), sortie, profondeur + 1)
+    return sortie
+
+
+def textes_personnels(reg, chemin, ancien, nouveau):
+    """ruche-0047: (refusals, whether a human must read it) for the free texts a PR adds to a file of SCHEMAS_TEXTES (CONTRIBUTION.yaml:
+    the fork's manifest), keys and paths its schema does not name included, each alone and all together."""
+    nom = SCHEMAS_TEXTES.get(chemin) or SCHEMAS_TEXTES.get(chemin.split("/", 1)[0] if chemin.endswith(".yaml") else "")
+    if not nom or not isinstance(nouveau, (dict, list)):
+        return [], False
+    libres, vus = chemins_de_texte(schema := reg.schema(nom).schema, schema), {t for _, t in textes_de(ancien)}
+    textes = [(lieu, t) for lieu, t in textes_de(nouveau) if t is not None and t not in vus and (lieu.endswith(" (clé)") or libres.get(
+        champ := re.sub(r"\[\d+\]", "[]", lieu), libres.get(re.sub(r"[^/]*$", "*", champ) if "/" in champ else "*", True)))]
+    refus, relire = [], False
+    valeurs = [(re.sub(r"\[\d+\]", "[]", l), t) for l, t in textes if not l.endswith(" (clé)")]  # together: in order, and field by field
+    for lieu, texte in textes + [("(ensemble des textes)", "\n".join(t for _, t in v)) for v in (valeurs, sorted(valeurs, key=lambda x: x[0]))]:
+        donnee = donnee_personnelle(texte, 3) or (SENSIBLE_SUR.search(texte) and "une donnée sensible (santé, opinions, âge)")
+        if donnee and not refus:
+            refus.append(f"{chemin} : {lieu} : {donnee} : aucune donnée d'une personne dans un texte libre du registre (R13)")
+        relire = relire or bool(donnee_personnelle(texte, 2) or SENSIBLE_DOUTE.search(texte))
+    return refus, relire
 
 
 def texte_sortant_refuse(texte, quoi, maximum):
@@ -4384,7 +4483,19 @@ def verifier_invitation(reg, chemin, statut_git, ancien, nouveau, auteur, *, est
               if ajoutes == ["reponse"] else None)
     raison = raison if raison in RETIRE else None
     reference = retirer(ancien, raison) if raison else ancien
+    revisees = [c for c in ("pourquoi", "message", "homonyme") if not raison and ancien.get(c) != nouveau.get(c)]
+    if revisees:  # ruche-0047: a granted invitation is frozen; a revision drops its agreements, given again after 72 h
+        natures.append("invitation")
+        exiger(not any(g in nouveau for g in GESTES_INVITATION), f"{', '.join(revisees)} ne change jamais sous un accord : la PR qui "
+               "révise une invitation retire l'accord du gardien et le feu vert du conseil, qui se redonnent ensuite")
+        exiger(etat_invitation(ancien) in ("proposee", "decidee") and not expiree(ancien, instant, config_croissance(reg))
+               and (auteur == ancien.get("propose_par") or est_conseil), "seuls le proposant et le conseil révisent une invitation, avant l'envoi")
+        probleme = probleme_date_pr(nouveau.get("propose_le"), "propose_le", instant)
+        exiger(probleme is None and nouveau.get("statut") == "proposee", f"{probleme or 'statut'} : révisée, elle est proposée de nouveau")
+        problemes += [f"{chemin} : {r}" for r in refus_invitation(reg, nouveau, conseil=est_conseil, instant=instant)]
     for cle in sorted(set(ancien) | set(nouveau)):
+        if revisees and cle in ("pourquoi", "message", "homonyme", "statut", "propose_le") + GESTES_INVITATION:
+            continue
         if cle != "statut" and cle not in GESTES_INVITATION:
             exiger(reference.get(cle) == nouveau.get(cle),
                    f"{cle} : le dossier de la personne se retire, à son refus, à son silence ou à sa demande (« {RETIRE[raison]} », "
@@ -4394,6 +4505,8 @@ def verifier_invitation(reg, chemin, statut_git, ancien, nouveau, auteur, *, est
         elif cle in ancien and cle != "statut":
             exiger(reference[cle] == nouveau.get(cle), f"{cle} : les gestes sont en ajout seul, on n'en modifie ni n'en retire aucun"
                    + (f" (seul le motif d'un écart se retire : « {RETIRE[raison]} »)" if raison else ""))
+    if revisees:
+        return natures, problemes, envois
     if not exiger(len(ajoutes) == 1, f"un geste par PR et par invitation ({', '.join(ajoutes) or 'aucun'}) : bee invitation l'écrit"):
         natures.append("gouvernance")
         return natures, problemes, envois
@@ -4722,6 +4835,8 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
         deja = pseudos_mal_ecrits(reg, ancien)  # ruche-0028 (revue, N1) : aucun pseudo nouvellement écrit hors de son orthographe
         problemes += [f"{chemin} : {k} « {v} » s'écrit {b} (sa fiche) : un pseudo s'écrit comme sa fiche, casse comprise"
                       for k, v, b in pseudos_mal_ecrits(reg, nouveau) if (k, v, b) not in deja]
+        problemes += (personnels := textes_personnels(reg, chemin, ancien, nouveau))[0]  # ruche-0047: every free text the PR adds
+        natures += ["relecture_humaine"] * personnels[1]
 
         if partie[0] == "taches" and len(partie) == 3:
             if statut_git == "A":
@@ -7029,6 +7144,8 @@ def cmd_verifier_pr(args):
         print(f"\nPR refusée ({len(problemes)} problème(s)). Nature : {resume}.")
         return 1
     print(f"✓ PR valide. Nature : {resume}.")
+    if "relecture_humaine" in natures:  # ruche-0047: what the detectors cannot tell, a human reads (never merged automatically)
+        print("⚠ Un humain doit lire cette PR avant sa fusion : un texte libre pourrait concerner une personne (R13, docs/croissance.md).")
     if args.fusion_auto:
         if natures and set(natures) <= LIBRE_SERVICE:
             print("FUSION_AUTO=oui")
