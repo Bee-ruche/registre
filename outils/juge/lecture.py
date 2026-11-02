@@ -121,6 +121,26 @@ def _figer(racine):
     return empreinte
 
 
+def copier(source, cible):
+    """The outputs a container left on its own tmpfs, copied into cible (an empty folder of the judge) before that tmpfs goes
+    (ruche-0117): no link followed, each file read by lire_sortie (size bounded), a link or special file left as a link (figer:
+    « autre », a refusal when read); anything unreadable is a refusal, as in figer."""
+    try:
+        for dossier, sous, fichiers in os.walk(source, onerror=_illisible):
+            for nom in sous + fichiers:
+                relatif = os.path.relpath(os.path.join(dossier, nom), source)
+                mode, copie = os.lstat(os.path.join(source, relatif)).st_mode, os.path.join(cible, relatif)
+                if stat.S_ISDIR(mode):
+                    os.mkdir(copie)
+                elif stat.S_ISREG(mode):
+                    with open(copie, "xb") as f:
+                        f.write(exiger(source, relatif.replace(os.sep, "/")))
+                else:
+                    os.symlink("autre", copie)
+    except OSError as e:
+        _illisible(e)
+
+
 class Sorties:
     """Les sorties d'une variante (A ou B) pour une étape, un dossier par côté (« f », « z »…).
 

@@ -2,7 +2,7 @@
 #
 # Un fork l'appelle depuis sa CI, en épinglant le commit d'une étiquette du registre :
 #   juge:
-#     uses: Bee-ruche/registre/.github/workflows/juge.yml@<commit de juge-v2> # juge-v2
+#     uses: Bee-ruche/registre/.github/workflows/juge.yml@<commit de juge-v3> # juge-v3
 #     with: { base_sha: <base de la PR>, tete_sha: <tête de la PR>, options: "sortie_compressee=identique" }
 # Il juge la tête contre la base avec le greffon de la BASE (bee/juge/projet.py), jamais celui de la PR,
 # et publie un artefact « juge » : juge.json (rapport, section « juge » comprise) et code (0 juste,
@@ -148,9 +148,10 @@ jobs:
           echo "::stop-commands::$jeton"
           tail -n 40 resultats/journal.txt | sed 's/##\[/# #[/g'
           printf '\n::%s::\n' "$jeton"
-          echo "$code" > resultats/code
-          echo "code=$code" >> "$GITHUB_OUTPUT"
-          python3 juge-commun/outils/juge/rapport.py resultats/juge.json >> "$GITHUB_OUTPUT"
+          # The code goes out only with the figures, once rapport.py has checked the report: code 2 if it fails (ruche-0117).
+          python3 juge-commun/outils/juge/rapport.py resultats/juge.json --code "$code" > resultats/sorties
+          sed -n 's/^code=//p' resultats/sorties > resultats/code
+          cat resultats/sorties >> "$GITHUB_OUTPUT"
       - name: Conserver le rapport
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

@@ -16,7 +16,7 @@ import subprocess
 import tempfile
 import threading
 
-from lecture import Erreur, Refus, journal, propre
+from lecture import Erreur, Refus, copier, journal, propre
 
 ICI = os.path.dirname(os.path.abspath(__file__))
 ISOLATION = ["--network", "none", "--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
@@ -24,6 +24,14 @@ ISOLATION = ["--network", "none", "--read-only", "--cap-drop", "ALL", "--securit
 PAQUET = re.compile(r"[a-z0-9][a-z0-9+.-]{0,63}")
 HARNAIS = "/variante/execution"  # what follows it in a plan command reaches it on its descriptor 0, not in argv
 TEMPS = 946684800  # access and modification times of everything mounted for an execution, set before each container
+# Each execution's own tmpfs (ruche-0117), mounted just before its container and gone once its outputs are copied out: all the
+# container sees of the judge (chrono, the harness, its inputs, /etc files Docker would write on the host's disk, its outputs) is
+# created there anew, in a fixed order: no inode, link count, time, free space or mount line follows the run's progress.
+TMPFS = "size=4g,nr_inodes=262144,mode=0755,nosuid,nodev"
+ETC = {"hostname": "juge\n", "hosts": "127.0.0.1\tlocalhost\n", "resolv.conf": ""}
+# Docker (up to 29.0) mounts folders of equal depth in an order drawn for each container (/etc's three, its network files, last
+# in its own order): each folder of the judge is given at its own depth, through the image's link to its root (Dockerfile.base).
+LIEN = "/.racine"
 
 
 def temps_fixes(*dossiers):
@@ -32,6 +40,22 @@ def temps_fixes(*dossiers):
         for racine, sous, noms in os.walk(dossier):
             for chemin in [racine] + [os.path.join(racine, n) for n in sous + noms]:
                 os.utime(chemin, (TEMPS, TEMPS), follow_symlinks=False)
+
+
+def monture(*commande):
+    """mount or umount, as root or through sudo -n (juge.yml's runner); failing is an error of the environment."""
+    r = subprocess.run(([] if os.geteuid() == 0 else ["sudo", "-n"]) + list(commande), capture_output=True, text=True)
+    if r.returncode != 0:
+        raise Erreur(f"{commande[0]} du tmpfs d'une exécution impossible (root ou sudo -n requis) : " + propre(r.stderr, 300))
+
+
+def copier_arbre(source, cible):
+    """A folder of the judge copied in a fixed order (names sorted), modes kept: the same tree gets the same inodes."""
+    for dossier, sous, noms in os.walk(source):
+        sous.sort()
+        os.makedirs(os.path.join(cible, os.path.relpath(dossier, source)), exist_ok=True)
+        for n in sorted(noms):
+            shutil.copy(os.path.join(dossier, n), os.path.join(cible, os.path.relpath(dossier, source), n))
 
 
 class Docker:
@@ -166,12 +190,28 @@ class Execution:
                 raise Erreur(f"commande de plan invalide : {propre(etiquette, 80)}")
             lignes.append("\t".join([etiquette, " ".join(commande[i:])] + commande[:i]))
         dossier_ouvert(sorties)
-        temps_fixes(self.chrono, self.constructions[variante], entrees, sorties)
         jeton = secrets.token_hex(16)
         entree = "\n".join([jeton, f"{int(delai)} {int(bool(valgrind))}"] + lignes) + "\n"
-        montages = [(self.chrono, "/chrono", True), (self.constructions[variante], "/variante", True), (entrees, "/entrees", True),
-                    (sorties, "/sorties", False)]
-        r = self.docker.lancer(["/chrono/chrono"], montages, pids=2, entree=entree.encode(), delai=delai * len(plan) + 300)
+        racine = os.path.join(self.travail, "execution")  # the same path each time: one execution at a time
+        os.mkdir(racine)
+        monture("mount", "-t", "tmpfs", "-o", f"{TMPFS},uid={os.getuid()},gid={os.getgid()}", "tmpfs", racine)
+        try:
+            copier_arbre(self.chrono, os.path.join(racine, "chrono"))
+            copier_arbre(self.constructions[variante], os.path.join(racine, "variante"))
+            os.mkdir(os.path.join(racine, "etc"))
+            for nom, texte in ETC.items():
+                with open(os.path.join(racine, "etc", nom), "w", encoding="ascii") as f:
+                    f.write(texte)
+            dossier_ouvert(os.path.join(racine, "sorties"))
+            copier_arbre(entrees, os.path.join(racine, "entrees"))  # last: the other inodes do not depend on the inputs
+            temps_fixes(racine)
+            montages = [(os.path.join(racine, n), LIEN * i + "/" + n, n != "sorties") for i, n in enumerate(("chrono", "variante", "entrees", "sorties"))]
+            montages += [(os.path.join(racine, "etc", n), "/etc/" + n, True) for n in ETC]
+            r = self.docker.lancer(["/chrono/chrono"], montages, pids=2, entree=entree.encode(), delai=delai * len(plan) + 300)
+            copier(os.path.join(racine, "sorties"), sorties)
+        finally:
+            monture("umount", racine)
+            os.rmdir(racine)
         if r.returncode != 0:
             raise Refus(f"le lanceur a échoué pour {variante} (code {r.returncode}) : " + propre(r.stderr))
         mesures = {}

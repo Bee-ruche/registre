@@ -64,6 +64,7 @@ SEQUENCES = {nom: re.compile(b"(?=(" + motif + b"))") for nom, motif in (
     ("rdrand", rb"\x0f\xc7[\xf0-\xf7]"), ("rdseed", rb"\x0f\xc7[\xf8-\xff]"), ("rdpid", rb"\xf3[\x40-\x4f]?\x0f\xc7[\xf8-\xff]"),
     ("preambule_valgrind", rb"\x48\xc1\xc7\x03\x48\xc1\xc7\x0d\x48\xc1\xc7\x3d\x48\xc1\xc7\x33"))}
 
+DETAIL_MAX = 300  # characters of a detail: names, paths and extracts come from the judged code (ruche-0117)
 SECTIONS_PERMISES = re.compile(
     r"^\.(?:text(?:\.(?:unlikely|hot|cold)(?:\..*)?)?|text\.[A-Za-z0-9_]+|rodata(?:\..*)?|data(?:\..*)?|bss(?:\..*)?"
     r"|debug_.*|note(?:\..*)?|comment|eh_frame|group|rela?\..*)$")
@@ -192,7 +193,7 @@ def analyser(releves_a, releves_b, textes_a, textes_b, prefixes=(), permis=()):
 
     prefixes : espace de noms du projet (noms qu'il définit et appelle entre ses fichiers) ;
     permis   : fonctions externes permises en plus d'INDEFINIS_PERMIS.
-    Renvoie la liste des constructions suspectes que B ajoute par rapport à A (liste de dicts)."""
+    Renvoie la liste des constructions suspectes que B ajoute par rapport à A (liste de dicts), chaque détail coupé à DETAIL_MAX."""
     prefixes = tuple(prefixes)
     tous_permis = INDEFINIS_PERMIS | frozenset(permis)
     suspects = []
@@ -232,7 +233,7 @@ def analyser(releves_a, releves_b, textes_a, textes_b, prefixes=(), permis=()):
     for (chemin, raison, extrait), n in sorted(constructions_du_texte(textes_b).items()):
         if n > vus_a[(chemin, raison, extrait)]:
             suspects.append({"type": "source", "detail": f"{raison} : « {extrait[:160]} » ({chemin})"})
-    return suspects
+    return [dict(s, detail=s["detail"] if len(s["detail"]) <= DETAIL_MAX else s["detail"][:DETAIL_MAX - 1] + "…") for s in suspects]
 
 
 def constructions_du_texte(textes):
