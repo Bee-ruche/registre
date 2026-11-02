@@ -17928,7 +17928,12 @@ class TestChargeurCRuche0130(unittest.TestCase):
         "a: 'b\tc'\n",  # a tab in a quoted value: valid, read by the pure loader
         "a: [x,\n\ufeffy]\n",  # a byte order mark at a line's start: kept by the pure loader, dropped by libyaml's
         "a: [https://x.org/a]\n",  # a colon in a plain scalar of a flow sequence
+        "? a\n: b\n",  # an explicit key: outside the allowlist, read by the pure loader
+        "%YAML 1.1\n---\na: 1\n",  # a directive: likewise
     )
+    # Texts libyaml's loader alone reads, outside the allowlist: refused by both paths, as by the pure loader. An empty
+    # explicit key in a flow collection, and a comment glued to a directive.
+    HORS_LISTE = ("a: [?]]\n", "a: [?, : x]\n", "[?,,]\n", "[?,:]\n", "[?::]\n", "%YAML 1.1#\n---\na: 1\n")
 
     def test_chaque_test_du_chargeur_passe_avec_les_deux_analyseurs(self):
         module = sys.modules[__name__]
@@ -18001,6 +18006,30 @@ class TestChargeurCRuche0130(unittest.TestCase):
             if len(set(lus)) > 1:
                 ecarts.append(texte)
         self.assertEqual(ecarts, [])
+        for texte in self.HORS_LISTE:
+            lus = []
+            for analyseur, chargeur_c in analyseurs():
+                with self.subTest(texte, analyseur=analyseur), mock.patch.object(bee, "_ChargeurBeeC", chargeur_c), \
+                        chargeurs_utilises() as vus:
+                    lus.append(lecture(texte))
+                    self.assertEqual(lus[-1][0], "refus", lus[-1])
+                    self.assertEqual(dict(vus), {"ChargeurBee": 1})  # the pre-scan sends it to the pure loader alone
+            self.assertEqual(len(set(lus)), 1, lus)
+            if bee._ChargeurBeeC is not None:  # without the pre-scan, libyaml's loader takes it
+                self.assertIsNotNone(yaml.load(texte, Loader=bee._ChargeurBeeC))
+
+    def test_seule_une_version_exercee_de_libyaml_lit(self):
+        """libyaml reads only in a version exercised here (VERSIONS_LIBYAML_EXERCEES); another one leaves all to the pure loader."""
+        if bee._ChargeurBeeC is None:
+            self.skipTest("PyYAML without libyaml")
+        import importlib.util
+        from yaml import _yaml
+        for version, lit_en_c in ((next(iter(bee.VERSIONS_LIBYAML_EXERCEES)), True), ((0, 2, 6), False), ((0, 2, 2), False)):
+            with self.subTest(version=version), mock.patch.object(_yaml, "get_version", lambda: version):
+                spec = importlib.util.spec_from_file_location("bee_version_libyaml", bee.__file__)
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                self.assertEqual(module._ChargeurBeeC is not None, lit_en_c)
 
 
 if __name__ == "__main__":

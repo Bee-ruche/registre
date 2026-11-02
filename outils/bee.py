@@ -108,14 +108,29 @@ ChargeurBee.yaml_implicit_resolvers = {
 
 
 # ruche-0130: libyaml's parser, when PyYAML has it, reads the registry about eight times faster. It composes the nodes in
-# C, so ChargeurBee.compose_node never sees its events: a pre-scan of the same events refuses first what compose_node
-# refuses (anchor, alias, explicit tag), and a nesting deeper than PROFONDEUR_C_MAX; the constructor (merge key, duplicate
-# key, integer too long) is the same Python code on both paths. The C path only accepts: a finding or any error sends the
-# text to the pure-Python loader, whose refusal and message stay the reference (and the loader when libyaml is missing).
+# C, so ChargeurBee.compose_node never sees its events. The C path is taken only for a text made of an allowlist of forms
+# read alike by both parsers (_lisible_en_c); any other text, a finding or an error, goes to the pure-Python loader, whose
+# value, refusal and message stay the reference (and the loader when libyaml is missing, or of a version not exercised
+# here). The constructor (merge key, duplicate key, integer too long) is the same Python code on both paths.
 PROFONDEUR_C_MAX = 64
+VERSIONS_LIBYAML_EXERCEES = {(0, 2, 5)}  # another version reads everything with the pure loader until it is exercised
 _LU_AUTREMENT_EN_C = re.compile(r"[\t\ufeff]|[|>][-+0-9]*#")
+# The tokens of the allowlist: no directive (%), tag (!), anchor (&) or alias (*); a key token only for an implicit key.
+_JETONS_C = (yaml.StreamStartToken, yaml.StreamEndToken, yaml.DocumentStartToken, yaml.DocumentEndToken,
+             yaml.BlockSequenceStartToken, yaml.BlockMappingStartToken, yaml.BlockEndToken, yaml.FlowSequenceStartToken,
+             yaml.FlowSequenceEndToken, yaml.FlowMappingStartToken, yaml.FlowMappingEndToken, yaml.BlockEntryToken,
+             yaml.FlowEntryToken, yaml.KeyToken, yaml.ValueToken, yaml.ScalarToken)
+
+
+def _version_libyaml():
+    with contextlib.suppress(ImportError, AttributeError):
+        from yaml import _yaml
+        return tuple(_yaml.get_version())
+    return None
+
+
 _ChargeurBeeC = None
-if getattr(yaml, "__with_libyaml__", False):
+if getattr(yaml, "__with_libyaml__", False) and _version_libyaml() in VERSIONS_LIBYAML_EXERCEES:
     class _ChargeurBeeC(yaml.CSafeLoader):
         construct_mapping = ChargeurBee.construct_mapping
 
@@ -123,27 +138,33 @@ if getattr(yaml, "__with_libyaml__", False):
 
 
 def _lisible_en_c(texte):
-    """True when libyaml's events hold no anchor, alias or explicit tag, nested at most PROFONDEUR_C_MAX deep, and the
-    text avoids where libyaml's scanner reads otherwise than PyYAML's (found by a differential fuzz): a tab or a byte
-    order mark anywhere (libyaml drops a BOM at a line's start), a block scalar header followed by # (|#), and a plain
-    scalar in a flow collection holding ? ([a?] and {a?: b} for libyaml only) or, as a precaution, : (the two scanners'
-    rules differ there too; today libyaml only refuses more, [b:])."""
+    """True when the text holds only forms read alike by libyaml and PyYAML (found and checked by a differential fuzz):
+    libyaml's tokens are all in _JETONS_C, a key token only where an implicit key starts (an explicit key, ?, is read
+    otherwise in a flow collection); no tab, no byte order mark, no block scalar header followed by # (|#); no plain
+    scalar holding ? or : in a flow collection; and libyaml's events nest at most PROFONDEUR_C_MAX deep."""
     if _LU_AUTREMENT_EN_C.search(texte):
         return False
-    flux = []  # flow_style of each open collection: a flow one holds only flow ones
-    for evenement in yaml.parse(texte, Loader=_ChargeurBeeC):
-        if (isinstance(evenement, yaml.AliasEvent) or getattr(evenement, "anchor", None) is not None
-                or getattr(evenement, "tag", None) is not None):
+    flux, precedent = 0, None  # open flow collections; the key token waiting for the token after it
+    for jeton in yaml.scan(texte, Loader=_ChargeurBeeC):
+        if not isinstance(jeton, _JETONS_C):
             return False
+        if precedent is not None and jeton.start_mark.index != precedent.start_mark.index:
+            return False  # the key token stands on its own character: an explicit key (?)
+        precedent = jeton if isinstance(jeton, yaml.KeyToken) else None
+        if isinstance(jeton, (yaml.FlowSequenceStartToken, yaml.FlowMappingStartToken)):
+            flux += 1
+        elif isinstance(jeton, (yaml.FlowSequenceEndToken, yaml.FlowMappingEndToken)):
+            flux -= 1
+        elif isinstance(jeton, yaml.ScalarToken) and flux and jeton.plain and ("?" in jeton.value or ":" in jeton.value):
+            return False
+    profondeur = 0
+    for evenement in yaml.parse(texte, Loader=_ChargeurBeeC):
         if isinstance(evenement, yaml.CollectionStartEvent):
-            flux.append(bool(evenement.flow_style))
-            if len(flux) > PROFONDEUR_C_MAX:
+            profondeur += 1
+            if profondeur > PROFONDEUR_C_MAX:
                 return False
         elif isinstance(evenement, yaml.CollectionEndEvent):
-            flux.pop()
-        elif (isinstance(evenement, yaml.ScalarEvent) and flux and flux[-1] and not evenement.style
-              and ("?" in evenement.value or ":" in evenement.value)):
-            return False
+            profondeur -= 1
     return True
 
 
