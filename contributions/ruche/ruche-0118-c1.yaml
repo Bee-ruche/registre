@@ -1,0 +1,14 @@
+id: ruche-0118-c1
+tache: ruche-0118
+auteur: bidji29
+pr: https://github.com/Bee-ruche/registre/pull/177
+resume: Members report two accounts they believe are one person, with a reason code only; the council
+  links the pair or dismisses the report.
+statut: integree
+soumise_le: '2026-11-02T20:03:54Z'
+engage_depuis: '2026-11-02T16:01:26Z'
+relectures: []
+decidee_le: '2026-11-02T20:11:43Z'
+motif_decision: 'Hive tooling contribution: registry PR #177 merged at commit 5fd6961 by bidji29, the
+  account of a council member, CI green on the merged commit.'
+fusion_sha: 30d5ad34ac5187b53e682e734c1801980c3d1569
