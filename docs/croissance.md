@@ -157,15 +157,18 @@ pour toujours ; un retrait demandé retire ses données sans l'y inscrire, et el
   champ et le numéro de son premier mot, jamais le texte, et chaque commentaire YAML qui la nomme par son fichier et sa ligne.
   **Ce qu'il change** : dans les textes libres des tâches, débats, invitations, contributions, votes, mesures, propositions et
   incidents, chaque passage qui la nomme (1 à 4 mots, comparés sur la clé canonique de `bee`, élision, possessif et ponctuation
-  autour exclus ; une adresse sur un hébergement partagé, sa page seule) devient `[retiré]`, ou `…` là où `[retiré]` dépasserait
+  autour exclus ; une adresse sur un hébergement partagé, sa page seule ; la source d'une invitation, entière) devient `[retiré]`, ou `…` là où `[retiré]` dépasserait
   la borne du champ (jamais plus long que le passage : aucune retouche à la main) ; ses propres invitations retirent leur
   dossier (« retiré : demande »). **Ce qu'il ne change jamais** : un auteur, une date, un statut, un identifiant, le message
   d'une autre invitation, un commentaire YAML, le reste d'un argument, mot pour mot ; ni `docs/` ni `arbre/`. Le conseil
-  corrige à la main, dans une PR à lui, les commentaires et ces pages. Il refuse un identifiant qui est, ou dont une phrase
-  contient, un pseudo de la ruche, un projet, un dépôt ou un numéro (tâche, règle, commandement…) ; une empreinte qui nomme
-  plus de 8 passages, en comptant chaque occurrence (`RETRAIT_PASSAGES_MAX`) ; plus de 40 passages en un retrait
-  (`RETRAIT_TOTAL_MAX`) : deux réglages du conseil. `gouvernance/retraits.yaml` (schéma `schemas/retraits.schema.json`), en ajout
-  seul et sous sa forme canonique, consigne qui, quand, le canal et le jour de la demande (depuis le 2026-10-01), et les seules
+  corrige à la main un commentaire qui la nomme, dans la PR du retrait : il y écrit `[retiré]` à la place de chaque passage qui
+  la nomme, ou il supprime le commentaire ; la porte n'accepte rien d'autre. Ces pages, il les corrige dans une PR à lui. `bee`
+  refuse un identifiant qui est, ou dont une phrase contient, un pseudo de la ruche, un projet, un dépôt ou un numéro (tâche,
+  règle, commandement, argument que tient un débat…) ; une empreinte qui nomme plus de 8 passages, en comptant chaque occurrence
+  (`RETRAIT_PASSAGES_MAX`) ; plus de 40 passages en un retrait (`RETRAIT_TOTAL_MAX`), ou en 7 jours glissants, tous retraits
+  confondus (`RETRAIT_SEMAINE_MAX`) : trois réglages du conseil. `gouvernance/retraits.yaml` (schéma
+  `schemas/retraits.schema.json`), en ajout seul et sous sa forme canonique, consigne qui, quand, le canal et le jour de la
+  demande (depuis le 2026-10-01), le nombre de passages retirés (`passages`), et les seules
   empreintes de ce qui la nomme. `bee verifier-pr` n'accepte qu'un retrait du conseil, d'une entrée, qui retire quelque chose,
   dont chaque autre fichier, parcouru, ordinaire et modifié, est exactement ce qu'en écrit la commande (la liste seulement avec
   `--non-contact`, et ces empreintes seules), et après lequel plus rien ne la nomme. Une empreinte ne dit pas ce qu'elle

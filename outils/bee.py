@@ -4435,6 +4435,7 @@ def sur_la_liste(cles, liste):
 CHEMIN_RETRAITS, MARQUE_RETRAIT, PONCTUATION = "gouvernance/retraits.yaml", "[retiré]", "\"'«»“”‘’()[]{}<>.,;:!?*_`… \t\n\r"
 # Réglages du conseil : une empreinte qui nomme plus de 8 passages est trop courante pour une personne ; 40 passages par retrait.
 RETRAIT_PASSAGES_MAX, RETRAIT_TOTAL_MAX, MARQUE_COURTE = 8, 40, "…"  # « … » quand la marque dépasserait une borne
+RETRAIT_SEMAINE_MAX = 40  # ruche-0116 : passages retirés sur 7 jours glissants, tous retraits confondus (leur champ passages)
 ELISION = re.compile(r"(?is)((?:[dlcjmnst]|qu|jusqu|lorsqu|puisqu)['’])?(.+?)(['’]s)?")
 # Ce qu'un retrait parcourt, par sorte (fichiers, schéma, textes libres) ; jamais le message d'une invitation, docs/ ni arbre/.
 PARCOURS = {"taches": (CHEMIN_TACHE, "tache", {"titre", "contexte", "critere_acceptation", "hors_perimetre", "texte"}),
@@ -4524,6 +4525,7 @@ def retrait_de(reg, chemin, texte, entree):
     apres, trouves, refus = avant, {}, None
     for lieu, valeur in textes_parcourus(avant, PARCOURS[sorte][2]):
         if (nouveau := passages_retires(valeur, empreintes, vus := [])) != valeur:
+            nouveau = MARQUE_RETRAIT if lieu[-1] == "source" else nouveau  # ruche-0116 : une source se retire entière (schéma)
             trouves[lieu], refus = vus, problemes_forme(reg, chemin, avant) if refus is None else refus
             if problemes_forme(reg, chemin, _poser(apres, lieu, nouveau)) - refus:
                 nouveau = passages_retires(valeur, empreintes, marque=MARQUE_COURTE)
@@ -4569,7 +4571,9 @@ def empreintes_protegees(reg):
     noms = (set(reg.membres) | reg.conseil | reg.gardiens | reg.garants | reg.robots | set(reg.comptes_agents)
             | set(reg.comptes_agents.values()) | set(reg.projets) | depots_de_la_ruche(reg))
     ids = (set(reg.taches) | set(reg.enregistrements) | set(reg.propositions) | set(reg.debats) | set(reg.invitations)
-           | {f"{p}{n}" for p in ("", "R", "C", "A") for n in range(1, 100)} | {x for n in noms if isinstance(n, str) for x in (n, f"github:{n}")})
+           | {f"{p}{n}" for p in ("", "R", "C") for n in range(1, 100)} | {x for n in noms if isinstance(n, str) for x in (n, f"github:{n}")}
+           | {a.get("id") for _, d in reg.debats.values() if isinstance(d, dict) and isinstance(d.get("arguments"), list)
+              for a in d["arguments"] if isinstance(a, dict)})  # ruche-0116 : les arguments que tient un débat, pas A1 à A99
     return frozenset().union(*(empreintes_passage(x) for x in ids if isinstance(x, str)))
 
 
@@ -5292,13 +5296,18 @@ def probleme_demande(reg, entree):
     return None
 
 
-def probleme_passages(reg, trouves):
+def probleme_passages(reg, trouves, entree, anciens):
     """None, ou pourquoi ces passages ({lieu: passages} par fichier) ne se retirent pas : la commande et la porte en jugent de même."""
-    passages = [p for t in trouves for v in t.values() for p in v]
+    passages, fin = [p for t in trouves for v in t.values() for p in v], _instant_ou_rien(entree["le"])
+    if entree.get("passages") != len(passages):
+        return f"passages : {entree.get('passages')} au lieu de {len(passages)}, le nombre de passages que retire ce retrait"
     if max((sum(e in p[1] for p in passages) for e in {e for p in passages for e in p[1]}), default=0) > RETRAIT_PASSAGES_MAX:
         return f"une empreinte nomme plus de {RETRAIT_PASSAGES_MAX} passages : trop courante pour une personne"
     if len(passages) > RETRAIT_TOTAL_MAX:
         return f"plus de {RETRAIT_TOTAL_MAX} passages en un retrait"
+    recents = sum(a["passages"] for a in anciens if not (fin and (t := _instant_ou_rien(a["le"])) and t <= fin - SEMAINE))
+    if recents + len(passages) > RETRAIT_SEMAINE_MAX:
+        return f"plus de {RETRAIT_SEMAINE_MAX} passages en 7 jours glissants, tous retraits confondus ({recents} déjà)"
     protegees = empreintes_protegees(reg)
     if any(empreintes_passage(m.strip(PONCTUATION)) & protegees for p in passages for m in p[2].split()):
         return "un passage retiré contient un pseudo de la ruche, un projet ou un numéro"
@@ -5343,14 +5352,15 @@ def verifier_retrait(reg, base, tete, changements, auteur, est_conseil, instant)
             elif statut_git == "M" and None not in (ancien, nouveau) and sorte_parcourue(chemin) and nouveau != ancien:
                 tete_d, (_, apres_d, t) = charger_texte_yaml(nouveau, chemin), retrait_de(reg, chemin, ancien, entree)
                 trouves.append(t)
-                ok = tete_d == apres_d and set(commentaires_yaml(nouveau)) <= set(commentaires_yaml(ancien)) and (
+                ok = tete_d == apres_d and set(commentaires_yaml(nouveau)) <= {x for c in commentaires_yaml(ancien) for x in (
+                    c, passages_retires(c, empreintes))} and (
                     sorte_parcourue(chemin) not in ("debats", "invitations") or nouveau == texte_apres(chemin, ancien, None, tete_d, set()))
         if not ok:
             problemes.append(f"{chemin} : un retrait demandé ne change, dans les fichiers qu'il parcourt, que les passages qui nomment "
                              f"la personne (une empreinte consignée), chacun devenu {MARQUE_RETRAIT} (bee retirer-donnees l'écrit)")
     if not autres:
         problemes.append(f"{CHEMIN_RETRAITS} : un retrait qui ne retire rien ne se consigne pas")
-    if probleme := probleme_passages(reg, trouves):
+    if probleme := probleme_passages(reg, trouves, entree, anciens):
         problemes.append(f"{CHEMIN_RETRAITS} : {probleme}")
     if reste := sorted(balayer(reg, entree)[0]):
         problemes.append(f"{', '.join(reste[:5])} : nomment encore la personne (une empreinte consignée) : bee retirer-donnees les retire")
@@ -8107,7 +8117,7 @@ def cmd_retirer_donnees(args):
         if any(empreintes_passage(x) & protegees for x in [nom, *(m.strip(PONCTUATION) for m in nom.split())]):
             raise ErreurBee(f"identifiant n° {k} : un pseudo de la ruche, un projet ou un numéro (seul ou dans la phrase) : jamais retiré")
     entree = {"le": en_iso(maintenant()), "par": u, "demande": {"canal": args.canal, "le": args.demande_le, **(
-        {"reference": args.reference} if args.reference else {})}, **({"non_contact": True} if args.non_contact else {}),
+        {"reference": args.reference} if args.reference else {})}, **({"non_contact": True} if args.non_contact else {}), "passages": 0,
               "empreintes": sorted(set().union(*map(empreintes_passage, noms)))}
     donnees = {"retraits": [*((reg.retraits or {}).get("retraits") or []), entree]}
     if probleme := next(("/".join(map(str, e.absolute_path)) for e in reg.schema("retraits").iter_errors(donnees)), None):
@@ -8115,14 +8125,16 @@ def cmd_retirer_donnees(args):
     if probleme := probleme_demande(reg, entree):
         raise ErreurBee(f"retrait refusé : {probleme}")
     resultats, commentaires = balayer(reg, entree)
-    if probleme := probleme_passages(reg, [r[3] for r in resultats.values()]):
+    entree["passages"] = sum(len(v) for r in resultats.values() for v in r[3].values())
+    if probleme := probleme_passages(reg, [r[3] for r in resultats.values()], entree, donnees["retraits"][:-1]):
         raise ErreurBee(f"retrait refusé : {probleme}")
     if not resultats and not args.non_contact:
         raise ErreurBee("rien ne nomme ces identifiants : il n'y a rien à retirer, ni à consigner")
     for chemin, (_, _, _, trouves) in resultats.items():  # où, jamais le texte : le fichier, le champ, le n° du mot
         print(f"  {chemin} : " + " ; ".join(f"{'/'.join(map(str, lieu))} mot(s) {', '.join(str(p[0]) for p in v)}" for lieu, v in trouves.items()))
     for chemin, ligne in commentaires:
-        print(f"  ⚠ {chemin}:{ligne} : un commentaire la nomme ; bee n'y touche pas : le conseil le corrige à la main, comme docs/")
+        print(f"  ⚠ {chemin}:{ligne} : un commentaire la nomme ; bee n'y touche pas : dans la PR du retrait, le conseil y écrit "
+              f"{MARQUE_RETRAIT} à la place de chaque passage qui la nomme, ou le supprime")
     if not args.confirmer:
         print("À blanc : rien n'est écrit. Relisez les fichiers et les invitations ci-dessus, puis relancez avec --confirmer.")
         return 0

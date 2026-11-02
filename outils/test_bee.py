@@ -11188,11 +11188,14 @@ class TestRetraitDemandeRuche0048(BaseRevueRuche0020):
         git(self.dossier, "reset", "-q", "--hard", "HEAD~1")
 
     def entree_a_la_main(self, *noms, **champs):
-        """Une consignation écrite à la main, sous sa forme canonique, et les fichiers qu'en écrirait la commande."""
+        """Une consignation écrite à la main, sous sa forme canonique, et les fichiers qu'en écrirait la commande (ruche-0116 : avec
+        le nombre de passages qu'elle retire, sauf s'il est donné)."""
         entree = {"le": os.environ["BEE_MAINTENANT"], "par": "bidji29", "demande": {"canal": "courriel", "le": "2026-11-01"},
                   "empreintes": sorted(set().union(*map(bee.empreintes_passage, noms))), **champs}
         reg = bee.Registre(self.dossier)
-        for chemin, (texte, avant, apres, _) in bee.balayer(reg, entree)[0].items():
+        resultats = bee.balayer(reg, entree)[0]
+        entree.setdefault("passages", sum(len(v) for r in resultats.values() for v in r[3].values()))
+        for chemin, (texte, avant, apres, _) in resultats.items():
             (self.dossier / chemin).write_text(bee.texte_apres(chemin, texte, avant, apres, set(entree["empreintes"])), encoding="utf-8")
         anciens = (reg.retraits or {}).get("retraits") or []
         (self.dossier / bee.CHEMIN_RETRAITS).write_text(bee._rendu_fidele({"retraits": [*anciens, entree]}, "x"), encoding="utf-8")
@@ -11223,7 +11226,7 @@ class TestRetraitDemandeRuche0048(BaseRevueRuche0020):
         for nom, morceau in (("zorglub", "trop courant"), ("bruno", "jamais retiré"), ("@bruno", "jamais retiré"),
                              ("github:bidji29", "jamais retiré"), ("gina", "jamais retiré"), ("R13", "jamais retiré"),
                              ("miniz-0099", "jamais retiré"), ("minizBee", "jamais retiré"), ("I-0002", "jamais retiré"),
-                             ("10", "jamais retiré"), ("A3", "jamais retiré"), ("bruno a raison", "jamais retiré"),
+                             ("10", "jamais retiré"), ("A2", "jamais retiré"), ("bruno a raison", "jamais retiré"),
                              ("Pour refuser, répondez simplement", "rien ne nomme")):
             with self.subTest(nom):
                 code, texte = self.retirer(noms=["octocat", nom] if morceau != "rien ne nomme" else [nom])
@@ -11455,6 +11458,106 @@ class TestRetraitDemandeRuche0048(BaseRevueRuche0020):
                              ("github.com/octocat et octocat/zlib, octocat…le", f"{m} et {m}, {m}…le"),
                              ("octocats, octo-chat et https://github.com/hubot", "octocats, octo-chat et https://github.com/hubot")):
             self.assertEqual(bee.passages_retires(avant, empreintes), apres)
+
+    # --- ruche-0116 : un plafond glissant entre les retraits ; un commentaire qui la nomme ; une source ; les arguments ---
+
+    def retrait_fusionne(self, quand, noms):
+        self.a(quand)
+        self.branche()
+        code, texte = self.retirer(noms=noms)
+        self.assertEqual(code, 0, texte)
+        self.commit()
+        self.attend_le_conseil("bidji29", "retrait_demande")
+        self.fusionner()
+
+    def test_ruche_0116_trois_retraits_dans_leurs_bornes_refuses_au_dela_du_plafond_glissant(self):
+        personnes = [[f"p{k}n{i}x" for i in range(2)] for k in range(3)]  # 14 passages chacune, 7 par empreinte
+        self.a("2026-10-31T10:00:00Z")
+        for noms in personnes:
+            self.ok("noter", "miniz-0099", "--utilisateur", "chloe", "--texte", " ".join(n for n in noms for _ in range(7)))
+        self.commit("sur main : trois personnes nommées")
+        self.retrait_fusionne("2026-11-02T10:00:00Z", personnes[0])
+        self.retrait_fusionne("2026-11-04T10:00:00Z", personnes[1])
+        self.assertEqual([e["passages"] for e in bee.lire_yaml(self.dossier / bee.CHEMIN_RETRAITS)["retraits"]], [14, 14])
+        # La troisième, dans ses bornes (12 empreintes, 8 par empreinte, 40 par retrait), passerait 40 en 7 jours : refusée.
+        self.a("2026-11-06T10:00:00Z")
+        code, texte = self.retirer(noms=personnes[2])
+        self.assertEqual(code, 1, texte)
+        self.assertIn(f"plus de {bee.RETRAIT_SEMAINE_MAX} passages en 7 jours glissants, tous retraits confondus (28 déjà)", texte)
+        self.assertFalse(any(n in texte for n in personnes[2]))
+        # La porte refuse de même une consignation écrite à la main, ou qui tait le nombre de ses passages.
+        for champs, morceau in (({}, "retraits.yaml : plus de 40 passages en 7 jours glissants"), ({"passages": 0}, "passages : 0 au lieu de 14")):
+            with self.subTest(champs):
+                self.branche()
+                self.entree_a_la_main(*personnes[2], **champs)
+                self.commit()
+                self.refusee("bidji29", morceau)
+                self.abandonner()
+        # Sept jours après le premier, il sort de la fenêtre : la même passe (14 + 14).
+        self.retrait_fusionne("2026-11-09T10:00:01Z", personnes[2])
+        self.assertEqual(bee.lire_yaml(self.dossier / bee.CHEMIN_RETRAITS)["retraits"][-1]["passages"], 14)
+        self.valide()
+
+    def test_ruche_0116_un_commentaire_qui_la_nomme_se_corrige_comme_le_disent_les_docs(self):
+        tache, marque = self.chemin_tache("miniz-0099"), bee.MARQUE_RETRAIT
+        tache.write_text("# Demandé par octocat le 12/10\n# Relu le 13/10\n" + tache.read_text(encoding="utf-8"), encoding="utf-8")
+        self.commit("sur main : un commentaire la nomme")
+        texte = self.retrait_en_pr()
+        self.assertIn("⚠ taches/miniz/miniz-0099.yaml:1 : un commentaire la nomme ; bee n'y touche pas : dans la PR du retrait, le "
+                      f"conseil y écrit {marque} à la place de chaque passage qui la nomme, ou le supprime", texte)
+        docs = " ".join((RACINE / "docs/croissance.md").read_text(encoding="utf-8").split())
+        self.assertIn(f"dans la PR du retrait : il y écrit `{marque}` à la place de chaque passage qui la nomme, ou il supprime le "
+                      "commentaire ; la porte n'accepte rien d'autre", docs)
+        avant = tache.read_text(encoding="utf-8")
+        for nom, faux in (("une autre retouche", avant.replace("# Demandé par octocat le 12/10", f"# Demandé par {marque} le 13/10")),
+                          ("la marque où rien ne la nomme", avant.replace("# Relu le 13/10", f"# {marque} le 13/10")),
+                          ("la marque courte", avant.replace("# Demandé par octocat", f"# Demandé par {bee.MARQUE_COURTE}")),
+                          ("un commentaire ajouté", avant.replace("# Relu le 13/10\n", f"# Relu le 13/10\n# {marque}\n"))):
+            with self.subTest(nom):
+                self.changer_puis_refuser(lambda: tache.write_text(faux, encoding="utf-8"), "miniz-0099.yaml : un retrait demandé ne change")
+        for nom, juste in (("la marque, à la main", avant.replace("# Demandé par octocat", f"# Demandé par {marque}")),
+                           ("le commentaire supprimé", avant.replace("# Demandé par octocat le 12/10\n", ""))):
+            with self.subTest(nom):
+                tache.write_text(juste, encoding="utf-8")
+                self.commit()
+                self.attend_le_conseil("bidji29", "retrait_demande")
+                git(self.dossier, "reset", "-q", "--hard", "HEAD~1")
+        tache.write_text(avant.replace("# Demandé par octocat", f"# Demandé par {marque}"), encoding="utf-8")
+        self.commit()
+        self.fusionner()
+        self.assertNotIn("octocat", tache.read_text(encoding="utf-8"))
+        self.valide()
+
+    def test_ruche_0116_une_source_qui_la_nomme_devient_la_marque_qu_accepte_le_schema(self):
+        source = "https://github.com/octocat/zlib)."
+        self.assertIsNone(bee.adresse_sortante_refusee(source, "source"))  # recevable pour bee inviter
+        inv = self.invitation("I-0002")
+        self.ecrire_invitation({**inv, "pourquoi": [{"fait": "Maintient zlib.", "source": source}]}, "I-0002")
+        self.commit("sur main : une source d'I-0002 la nomme, ponctuée")
+        self.valide()
+        self.retrait_en_pr()
+        self.attend_le_conseil("bidji29", "retrait_demande")
+        self.assertEqual(self.invitation("I-0002")["pourquoi"], [{"fait": "Maintient zlib.", "source": bee.MARQUE_RETRAIT}])
+        self.valide()
+        schema, apres = bee.Registre(self.dossier).schema("invitation"), self.invitation("I-0002")
+        for source, acceptee in ((bee.MARQUE_RETRAIT, True), (bee.MARQUE_RETRAIT + ").", False), (bee.MARQUE_COURTE, False)):
+            with self.subTest(source):
+                erreurs = list(schema.iter_errors({**apres, "pourquoi": [{"fait": "Maintient zlib.", "source": source}]}))
+                self.assertEqual(not erreurs, acceptee, erreurs)
+
+    def test_ruche_0116_seuls_les_arguments_que_tient_un_debat_sont_proteges(self):
+        self.a("2026-10-31T10:00:00Z")
+        self.ok("noter", "miniz-0099", "--utilisateur", "chloe", "--texte", "A7, un pseudo du dehors, en a parlé.")
+        self.commit("sur main : un pseudo qui a la forme d'un numéro d'argument")
+        tenus = {a["id"] for _, d in bee.Registre(self.dossier).debats.values() for a in d.get("arguments", [])}
+        self.assertTrue("A1" in tenus and "A7" not in tenus, tenus)
+        self.a("2026-11-02T10:00:00Z")
+        code, texte = self.retirer(noms=["A1"], confirmer=False)
+        self.assertEqual(code, 1, texte)
+        self.assertIn("jamais retiré", texte)
+        code, texte = self.retirer(noms=["A7"], confirmer=False)
+        self.assertEqual(code, 0, texte)
+        self.assertIn("taches/miniz/miniz-0099.yaml : notes/", texte)
 
 
 class TestRetraitDemandeChampsRuche0048(unittest.TestCase):
