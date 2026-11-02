@@ -26,7 +26,7 @@ adverse du 27/10 l'a montré : une faille du juge se corrige une fois, ou elle r
 | `lecture.py` : lecture sûre des sorties (sans lien, sans fichier spécial, taille bornée) | `projet.py` : le greffon décrit ci-dessous |
 | `analyse.py` : constructions suspectes (liste des fonctions permises fournie par le greffon) | Le corpus et son générateur (`bee/corpus/`) |
 | `juge.py` : l'orchestration (compiler A et B, analyser, tirer la graine, vérifier, mesurer, instructions, rapport au format d'`ab.py` + section `juge`) | Les méta-tests propres au projet (variantes malveillantes du code du projet) |
-| Les méta-tests du juge commun (sur un projet jouet) et le workflow réutilisable `juge.yml` (`workflow_call`) | L'appel du workflow, épinglé : `uses: Bee-ruche/registre/.github/workflows/juge.yml@juge-vN` |
+| Les méta-tests du juge commun (sur un projet jouet) et le workflow réutilisable `juge.yml` (`workflow_call`) | L'appel du workflow, épinglé au commit d'une étiquette : `uses: Bee-ruche/registre/.github/workflows/juge.yml@<commit> # juge-vN` |
 
 ## Le greffon d'un projet (`bee/juge/projet.py`)
 
@@ -77,14 +77,28 @@ Règles de sûreté, vérifiées par le juge commun (revue adverse du 28/10) :
 - Le juge commun est versionné par étiquette (`juge-v1`, `juge-v2`…) dans le registre. Un changement
   passe par une PR d'outillage sur le registre, avec les méta-tests communs (workflow
   `juge-commun.yml`) et ceux de chaque projet qui l'utilise, et la relecture de deux gardiens.
-- Le workflow réutilisable `.github/workflows/juge.yml` lit le juge commun à sa propre étiquette
-  (`JUGE_COMMUN_REF`, vérifié par un test), jamais à la branche principale.
+- Le workflow réutilisable `.github/workflows/juge.yml` lit le juge commun au commit même du workflow
+  appelé (`job.workflow_sha`), jamais à une étiquette ni à une branche : le workflow doit être celui de
+  `Bee-ruche/registre` (`job.workflow_repository`) et ce commit être sur sa branche principale (API compare :
+  `identical` ou `behind`), sinon le juge s'arrête (vérifié par un test) ; `juge.json` le nomme (`juge.source`).
 - Chaque fork épingle une version dans son workflow ; il monte de version par une PR (tâche
   d'outillage du fork), jugée par l'ancienne version et par la nouvelle.
 - `verdict.json` porte `juge.version` (entier : 2 pour le juge de minizBee de miniz-0031, 3 pour le
   juge commun v1 et v2), `juge.commun` (« juge-v1 », « juge-v2 »), `juge.projet` et `juge.greffon` (empreinte SHA-256 du
   greffon) : le registre sait par quel juge chaque verdict a été rendu, et peut exiger une version
   minimale (`bee.yaml`).
+
+## Le workflow `juge.yml`, version 2 (ruche-0024)
+
+- **Historique déclaré** : l'entrée `historique` (16 commits complets au plus, séparés par des blancs) nomme les
+  commits dont le greffon lit les objets git. Chacun doit être un ancêtre de la base (API compare du dépôt
+  appelant : `identical` ou `behind`), vérifié avant toute récupération ; le workflow les récupère ensuite dans la
+  copie de la base, chacun avec son arbre et sans son historique, dans une étape à part, seule à recevoir le jeton,
+  avant de charger le greffon et avant tout fichier de la PR, en 10 minutes au plus en tout (sinon erreur, code 2). Le jugement refuse
+  ensuite tout transport git (`GIT_ALLOW_PROTOCOL`) : un objet non déclaré est une erreur (code 2).
+- **Journal sûr** : les 40 dernières lignes du journal, que la PR peut remplir, s'impriment entre
+  `::stop-commands::<jeton>` et `::<jeton>::`, jeton tiré après le jugement, et `##[` y devient `# #[`
+  (ruche-0025) : aucune ne devient une commande de workflow.
 
 ## Trois greffons côte à côte
 

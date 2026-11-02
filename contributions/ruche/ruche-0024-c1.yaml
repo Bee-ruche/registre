@@ -1,0 +1,10 @@
+id: ruche-0024-c1
+tache: ruche-0024
+auteur: bidji29
+pr: https://github.com/Bee-ruche/registre/pull/126
+resume: The common judge's workflow is pinned to its own commit on the registry's main, fetches a declared
+  git history from the base's ancestry in its own step, and prints its journal safely.
+statut: en_relecture
+soumise_le: '2026-11-01T23:46:33Z'
+engage_depuis: '2026-11-01T22:00:48Z'
+relectures: []
