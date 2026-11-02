@@ -37,9 +37,7 @@ hors_perimetre:
 - COMMANDMENTS.md
 - REGLES.md
 noeud: projets/ruche/ruche
-statut: reservee
-reservation:
-  utilisateur: "bidji29"
-  depuis: "2026-11-01T23:10:48Z"
+statut: integree
+contribution: ruche-0094-c1
 cree_par: conseil
 cree_le: '2026-11-01'

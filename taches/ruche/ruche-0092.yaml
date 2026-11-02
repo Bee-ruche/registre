@@ -30,9 +30,7 @@ hors_perimetre:
 - the test fixture (ruche-0093)
 - fusion-auto.yml
 noeud: projets/ruche/ruche
-statut: reservee
-reservation:
-  utilisateur: "bidji29"
-  depuis: "2026-11-01T22:53:30Z"
+statut: integree
+contribution: ruche-0092-c1
 cree_par: conseil
 cree_le: '2026-11-01'

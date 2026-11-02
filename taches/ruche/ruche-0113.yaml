@@ -1,0 +1,32 @@
+id: ruche-0113
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: S
+titre: 'Two pins left by reviews: clock order guards (ruche-0091) and proposition vote closure (ruche-0042)'
+contexte: 'Follow-ups of two reviews, test-first. (1) ruche-0091 pinned every rule of the gate to its documented clock
+  (TestClocksRuche0091), except three order guards: a note''s `precedent`, the order of parallel registrations, and the
+  order of submissions. They compare only entries dated up to the judged instant, so a mutation shows only when an existing
+  entry is dated between the push and the check: add one row each with such an entry. (2) Since ruche-0042, a vote on
+  a contribution is closed by its folder and by its `sujet` alike; make the closure of a proposition''s vote the same
+  (a vote file whose folder or `sujet` names a closed proposition is refused), and test both.'
+fichiers:
+- outils/bee.py
+- outils/test_bee.py
+portee: 0.4
+metrique: null
+depend_de:
+- ruche-0091
+- ruche-0042
+critere_acceptation:
+- 'test: each of the three order guards, judged at the wrong clock, makes one row of TestClocksRuche0091 fail'
+- 'test: a vote on a closed proposition is refused whether its folder or its sujet names it'
+- independent review attached; the full test suite passes
+hors_perimetre:
+- COMMANDMENTS.md
+- REGLES.md
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: '2026-11-02'

@@ -1,0 +1,10 @@
+id: ruche-0038-c1
+tache: ruche-0038
+auteur: bidji29
+pr: https://github.com/Bee-ruche/registre/pull/155
+resume: The common judge publishes its report's hash and key figures as job outputs, checks the caller's
+  inputs before judging, and bounds disk and reads.
+statut: en_relecture
+soumise_le: '2026-11-02T07:46:51Z'
+engage_depuis: '2026-11-02T06:44:39Z'
+relectures: []

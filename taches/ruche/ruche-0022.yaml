@@ -3,7 +3,7 @@ projet: ruche
 categorie: ruche
 type: test
 poste: gouvernance
-taille: M
+taille: L
 titre: "L'identité d'un membre : son numéro de compte GitHub, pas seulement son login"
 contexte: >
   Revue adverse de ruche-0012 (30/10, quatrième passe) : la ruche identifie un membre par son login GitHub
@@ -28,10 +28,8 @@ critere_acceptation:
 hors_perimetre: [COMMANDEMENTS.md, l'ancienneté minimale du compte, les comptes multiples d'une même personne]
 depend_de: [ruche-0012]
 noeud: projets/ruche
-statut: reservee
-reservation:
-  utilisateur: "bidji29"
-  depuis: "2026-11-02T05:20:12Z"
+statut: en_relecture
+contribution: ruche-0022-c1
 cree_par: conseil
 cree_le: "2026-10-30"
 notes:

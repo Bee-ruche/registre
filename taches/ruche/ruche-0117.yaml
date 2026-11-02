@@ -1,0 +1,37 @@
+id: ruche-0117
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: M
+titre: 'Common judge before juge-v3: what the reviews of ruche-0037 and ruche-0038 left'
+contexte: 'Follow-up of the adversarial reviews of ruche-0037 and ruche-0038 (details in the architect''s brief). To
+  do before the council tags juge-v3: (1) the cap on suspicious constructs in juge.json keeps the most serious first
+  and counts each kind, and each detail is shortened when built; (2) juge.yml publishes the code only after the report
+  is checked, or a failed check forces a non-zero code; `rapport.py --verifier` also checks the code and the base and
+  head against the PR''s; the docs say any non-zero exit blocks; (3) the inputs and the variant copy are created again
+  just before each container, so no file time differs between phases, and the spy compares every time it can read; (4)
+  a fixed metric that no scenario computes from its timed outputs is flagged in juge.json, and a fork cannot keep a verification-only
+  ratio for a verdict; (5) the identity check counts comparable outputs per scenario, not per side; (6) the outputs folder
+  of each container is its own size-limited tmpfs, so one side cannot fill the other''s.'
+fichiers:
+- outils/juge/
+- .github/workflows/juge.yml
+- docs/juge-commun.md
+portee: 0.8
+metrique: null
+depend_de:
+- ruche-0036
+- ruche-0037
+- ruche-0038
+critere_acceptation:
+- meta-test for each of the six points, failing on the code before this task
+- independent adversarial review attached, made with the architect's brief; the judge's tests pass with Docker
+hors_perimetre:
+- COMMANDMENTS.md
+- the forks (miniz-0048, libyaml-0020)
+- the tag itself (the council)
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: '2026-11-02'

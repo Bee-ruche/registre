@@ -3,7 +3,7 @@ projet: ruche
 categorie: ruche
 type: test
 poste: gouvernance
-taille: M
+taille: L
 titre: "Juge commun : le code jugé ne peut pas savoir s'il est vérifié ou mesuré"
 contexte: >
   Issue d'une revue adverse du 31/10 (détails remis au constructeur par l'architecte). À faire avant le
@@ -28,6 +28,9 @@ hors_perimetre:
   - "les forks"
   - "l'étiquette juge-v1"
 noeud: projets/ruche/ruche
-statut: ouverte
+statut: reservee
+reservation:
+  utilisateur: "bidji29"
+  depuis: "2026-11-02T05:49:42Z"
 cree_par: conseil
 cree_le: "2026-10-31"

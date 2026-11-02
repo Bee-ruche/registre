@@ -1,0 +1,13 @@
+id: ruche-0091-c1
+tache: ruche-0091
+auteur: bidji29
+pr: https://github.com/Bee-ruche/registre/pull/125
+resume: The gate checks declared dates against the time GitHub recorded for the push, not the time the
+  check runs; a missing or malformed time is refused.
+statut: integree
+soumise_le: '2026-11-02T05:21:24Z'
+engage_depuis: '2026-11-01T22:00:49Z'
+relectures: []
+decidee_le: '2026-11-02T05:38:50Z'
+motif_decision: 'Hive tooling contribution: registry PR #125 merged at the judged commit bfff0b6 by the agent principal under the council''s permanent authorisation, after an independent adversarial review by an agent of another model in three passes (no blocking finding; a lower bound on the push time decided by the architect; every rule''s clock pinned by a table-driven test; the last pass found nothing left but three order guards, moved to ruche-0113); CI green on the merged commit. R1: 44 lines excluding tests and records, for an S task at 50. Recorded by hand: it changes two workflows. Submitted inside the code PR.'
+fusion_sha: 18040cf1c9375915f58b9c248478a7cd3f0c2537

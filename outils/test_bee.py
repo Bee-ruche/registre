@@ -1,5 +1,6 @@
-"""Tests de l'outil bee : python3 -m unittest outils/test_bee.py"""
+"""Tests de l'outil bee : python3 -m unittest outils/test_bee.py ; en N processus : python3 outils/test_bee.py --processus N"""
 import ast
+import collections
 import contextlib
 import hashlib
 import io
@@ -13,6 +14,7 @@ import subprocess
 import sys
 import zlib
 import tempfile
+import time
 import types
 import unicodedata
 import unittest
@@ -73,10 +75,27 @@ cree_le: "2026-10-27"
 """
 
 
+def numero_de(login):
+    """ruche-0022: the GitHub account number the tests give a login (the same in faux_gh), as the API would."""
+    return zlib.crc32(str(login).casefold().encode()) % 10 ** 8 + 1
+
+
+def valeur_option(arguments, option):
+    return next((a.split("=", 1)[1] if "=" in a else arguments[i + 1] for i, a in enumerate(arguments)
+                 if (a == option and i + 1 < len(arguments)) or a.startswith(option + "=")), None)
+
+
 def lancer(*arguments):
+    arguments = list(arguments)
+    # ruche-0022: like the workflows, which read the PR author's number from the API, each login has its number (numero_de) for
+    # bee inscrire and bee verifier-pr, unless the test gives one (--github-id) or none (--github-id=).
+    for commande, option in (("inscrire", "--pseudo"), ("verifier-pr", "--auteur")):
+        if commande in arguments and valeur_option(arguments, "--github-id") is None and valeur_option(arguments, option) is not None:
+            arguments += ["--github-id", str(numero_de(valeur_option(arguments, option)))]
+    arguments = [a for a in arguments if a != "--github-id="]
     sortie, erreur = io.StringIO(), io.StringIO()
     with contextlib.redirect_stdout(sortie), contextlib.redirect_stderr(erreur):
-        code = bee.principal(list(arguments))
+        code = bee.principal(arguments)
     return code, sortie.getvalue() + erreur.getvalue()
 
 
@@ -194,6 +213,27 @@ class TestWorkflows(unittest.TestCase):
                 donnees = yaml.safe_load(f.read_text(encoding="utf-8"))
                 self.assertIsInstance(donnees, dict)
                 self.assertIn("jobs", donnees)
+
+
+class TestFusionAutoNeMergeQuApresVerification(unittest.TestCase):
+    """fusion-auto.yml: the merge step runs only after the verification step ran, succeeded and returned code 0, for a PR
+    it found; a skipped verification (no PR found) never leads to `gh pr merge` (its absent output, null, equals '0')."""
+
+    def test_la_fusion_exige_une_verification_reussie(self):
+        import yaml
+        flux = yaml.safe_load((RACINE / ".github" / "workflows" / "fusion-auto.yml").read_text(encoding="utf-8"))
+        etapes = [e for job in flux["jobs"].values() for e in job.get("steps", [])]
+        fusion = [e for e in etapes if re.search(r"(?m)^\s*gh pr merge ", e.get("run", ""))]
+        self.assertEqual(len(fusion), 1)
+        condition = " ".join(str(fusion[0].get("if", "")).split())
+        self.assertEqual(condition.split(" && "), ["steps.verif.outcome == 'success'", "steps.verif.outputs.code != ''",
+                                                   "steps.verif.outputs.code == '0'", "steps.pr.outputs.numero != ''"])
+        for interdit in ("||", "!(", "${{"):
+            self.assertNotIn(interdit, condition)
+        self.assertEqual(len(re.findall(r"(?m)^\s*gh pr merge ", "\n".join(e.get("run", "") for e in etapes))), 1)
+        self.assertNotRegex("\n".join(e.get("run", "") for e in etapes), r"pulls/[^ ]*/merge", "no other way to merge")
+        self.assertIn('[[ "$NUMERO" =~ ^[0-9]+$ ]] ||', fusion[0]["run"])
+        self.assertLess(fusion[0]["run"].index("=~ ^[0-9]+$"), fusion[0]["run"].index("gh pr merge"))
 
 
 class TestCiScope(unittest.TestCase):
@@ -380,6 +420,32 @@ class TestCiScope(unittest.TestCase):
         r, _, appels = self.rejouer(roles["regles"]["run"], {"BASE": "", "AUTEUR": "alice", "FAUX_GH": "2020-01-01"})
         self.assertNotEqual(r.returncode, 0, "an empty base compares HEAD with itself and passes")
         self.assertEqual(appels, "")
+
+    def test_both_workflows_give_the_gate_github_s_record_of_the_push(self):
+        """ruche-0091: the PR rules take the time of the PR from this run's creation (the API, read with the run's id), and
+        stop if it is unreadable; fusion-auto takes the creation of the validation run that the push triggered."""
+        regles = self.etapes()[1]["regles"]["run"]
+        self.assertIn('instant=$(timeout 60 gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq .created_at)', regles)
+        faux_bee = pathlib.Path(tempfile.mkdtemp(dir=self.temp.name))
+        (faux_bee / "outils").mkdir()
+        (faux_bee / "outils/bee.py").write_text("import sys\nprint('BEE', *sys.argv[1:])\n", encoding="utf-8")
+        env = {"BASE": "abc", "AUTEUR": "alice", "GITHUB_RUN_ID": "4242"}
+        r, _, appels = self.rejouer(regles, {**env, "FAUX_GH": "2026-10-27T12:00:00Z"}, cwd=faux_bee)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("api repos/Bee-ruche/registre/actions/runs/4242 --jq .created_at", appels)
+        self.assertTrue(r.stdout.rstrip().endswith("--instant-pr 2026-10-27T12:00:00Z"), r.stdout)
+        (faux_bee / "bin").mkdir()  # a gh that answers for the account, not for the run
+        (faux_bee / "bin/gh").write_text('#!/bin/sh\ncase "$*" in *actions/runs/*) exit 1;; esac\necho 2020-01-01\n', encoding="utf-8")
+        (faux_bee / "bin/gh").chmod(0o755)
+        r = subprocess.run(["bash", "-e", "-c", regles], cwd=faux_bee, capture_output=True, text=True,
+                           env={**os.environ, **env, "PATH": f"{faux_bee / 'bin'}{os.pathsep}{os.environ['PATH']}",
+                                "GITHUB_REPOSITORY": "Bee-ruche/registre"})
+        self.assertNotEqual(r.returncode, 0)
+        self.assertNotIn("BEE", r.stdout, "the gate never runs without GitHub's record")
+        etape = next(s for s in yaml.safe_load((RACINE / ".github/workflows/fusion-auto.yml").read_text(encoding="utf-8"))["jobs"]
+                     ["fusionner"]["steps"] if s.get("name", "").startswith("Vérifier la fusion simulée"))
+        self.assertEqual(etape["env"]["INSTANT_PR"], "${{ github.event.workflow_run.created_at }}")
+        self.assertRegex(etape["run"], r'verifier-pr [^\n]*\\\n[^\n]*--instant-pr "\$INSTANT_PR"\n')
 
     def test_the_data_only_step_runs_exactly_the_tests_allowed_to_read_live_data(self):
         """One list: on a data-only PR, validation.yml runs TESTS_REGISTRE_REEL, the tests the audit hook lets read the live
@@ -2198,7 +2264,7 @@ class TestPullRequests(BaseTest):
         git(self.dossier, "switch", "-qf", "main")
         git(self.dossier, "switch", "-qc", branch)
         bee.ecrire_yaml(self.dossier / f"membres/{pseudo}.yaml",
-                        {"pseudo": pseudo, "inscrit_le": "2026-10-27", "compte_cree_le": "2021-05-05", **dates})
+                        {"pseudo": pseudo, "inscrit_le": "2026-10-27", "compte_cree_le": "2021-05-05", "github_id": numero_de(pseudo), **dates})
         self.commit()
 
     def test_each_member_date_outside_its_tolerance_is_refused(self):
@@ -2290,6 +2356,52 @@ class TestPullRequests(BaseTest):
         self.member_pr("utc-west", inscrit_le="2026-10-28")
         code, texte = self.verifier("david", "--compte-cree-le", "2021-05-05")
         self.assertEqual(code, 0, texte)
+
+    # --- ruche-0091: the time of the PR is the time GitHub recorded for the push (--instant-pr), not the time of the check ---
+
+    def test_member_file_is_dated_at_the_push_and_the_account_age_runs_to_the_check(self):
+        """inscrit_le is the day of the push, even when the check runs the next day, and a later day is refused whenever the
+        check runs; the account's age still runs to the check (as before), and a local run still takes the current time."""
+        age_89, push = "2026-07-30", ("--instant-pr", "2026-10-27T12:00:00Z")  # 89 days old on 2026-10-27, 90 on 2026-10-28
+        self.member_pr("late-check", compte_cree_le=age_89)  # inscrit_le 2026-10-27, as bee inscrire writes it at the push
+        os.environ["BEE_MAINTENANT"] = "2026-10-28T09:00:00Z"
+        code, texte = self.verifier("david", "--compte-cree-le", age_89, *push, "--fusion-auto")
+        self.assertEqual(code, 0, texte)
+        self.assertIn("FUSION_AUTO=oui", texte)
+        code, texte = self.verifier("david", "--compte-cree-le", age_89)
+        self.assertEqual(code, 1, texte)
+        self.assertIn("inscrit_le (2026-10-27) must be the date of the PR (2026-10-28)", texte)
+        os.environ["BEE_MAINTENANT"] = "2026-10-27T13:00:00Z"
+        code, texte = self.verifier("david", "--compte-cree-le", age_89, *push)
+        self.assertEqual(code, 1, texte)
+        self.assertIn("le compte GitHub doit avoir au moins 90 jours", texte)
+        self.member_pr("dated-after-the-push", inscrit_le="2026-10-28")
+        os.environ["BEE_MAINTENANT"] = "2026-10-28T09:00:00Z"
+        code, texte = self.verifier("david", "--compte-cree-le", "2021-05-05", *push)
+        self.assertEqual(code, 1, texte)
+        self.assertIn("inscrit_le (2026-10-28) must be the date of the PR (2026-10-27)", texte)
+
+    def test_a_missing_or_malformed_time_of_the_push_is_refused(self):
+        """In CI the time of the push comes from GitHub: empty, unreadable, without a time zone, or after the check, the PR
+        is refused (fails closed), never checked at the current time instead."""
+        git(self.dossier, "switch", "-qc", "reservation")
+        self.assertEqual(self.bee("prendre", "miniz-0099", "--utilisateur", "alice")[0], 0)
+        self.commit()
+        self.assertEqual(self.verifier("alice", "--instant-pr", "2026-10-27T12:01:00Z")[0], 0)
+        for valeur in ("", "null", "garbage", "2026-10-27T12:00:00", "2026-10-27", "2026-10-27T12:01:01Z", "2099-01-01T00:00:00Z"):
+            with self.subTest(valeur=valeur):
+                code, texte = self.verifier("alice", "--instant-pr", valeur, "--fusion-auto")
+                self.assertEqual(code, 1, texte)
+                self.assertIn("--instant-pr", texte)
+                self.assertNotIn("FUSION_AUTO", texte)
+        # Review S1: a re-run keeps its run's creation time; older than 24 h at the check, it is refused.
+        for maintenant, code in (("2026-10-28T11:00:00Z", 0), ("2026-10-28T12:00:00Z", 0), ("2026-10-28T12:00:01Z", 1),
+                                 ("2026-10-28T13:00:00Z", 1)):
+            with self.subTest(maintenant=maintenant):
+                os.environ["BEE_MAINTENANT"] = maintenant
+                code_lu, texte = self.verifier("alice", "--instant-pr", "2026-10-27T12:00:00Z")
+                self.assertEqual(code_lu, code, texte)
+                self.assertEqual("outside [the check - 24 h, the check + 1 min] : push again" in texte, bool(code))
 
     def test_an_existing_member_file_keeps_its_dates(self):
         """The dates of a registered member are not checked again against a later PR: a profile change passes, without
@@ -2486,7 +2598,7 @@ class TestPullRequests(BaseTest):
                 self.commit()
                 code, texte = self.bee("verifier-pr", "--base", base, "--tete", "HEAD", "--auteur", "alice", "--fusion-auto")
                 code_v, texte_v = self.bee("valider")
-                propres = bee.verifier_pr(bee.Registre(self.dossier), base, "HEAD", "alice")[0]  # without bee valider's checks
+                propres = bee.verifier_pr(bee.Registre(self.dossier), base, "HEAD", "alice", github_id=numero_de("alice"))[0]  # without bee valider's checks
                 self.assertNotIn("Traceback", texte + texte_v)
                 if adresse in self.AUTRES_PR:
                     self.assertEqual((code, code_v, propres), (0, 0, []), texte + texte_v)
@@ -3531,14 +3643,14 @@ class TestPullRequestsEnParallele(BaseParallele):
     def verifier(self, auteur, *options):
         return self.bee("verifier-pr", "--base", "main", "--tete", "HEAD", "--auteur", auteur, *options)
 
-    def libre_service(self, auteur, nature):
-        code, texte = self.verifier(auteur, "--fusion-auto")
+    def libre_service(self, auteur, nature, *options):
+        code, texte = self.verifier(auteur, "--fusion-auto", *options)
         self.assertEqual(code, 0, texte)
         self.assertIn("FUSION_AUTO=oui", texte)
         self.assertIn(nature, texte)
 
-    def refusee(self, auteur, morceau):
-        code, texte = self.verifier(auteur)
+    def refusee(self, auteur, morceau, *options):
+        code, texte = self.verifier(auteur, *options)
         self.assertEqual(code, 1, texte)
         self.assertIn(morceau, texte)
 
@@ -3855,6 +3967,80 @@ class TestPullRequestsEnParallele(BaseParallele):
                 if not acceptee:
                     self.assertIn(f"taches/miniz/{tid}.yaml : depuis ({depuis}) doit être l'heure de la PR", texte)
 
+    def test_engagement_dates_are_checked_at_the_push_whenever_the_check_runs(self):
+        """ruche-0091: the reservation, then the parallel registration, written by bee at the push (12:00, --instant-pr) pass
+        when the check runs hours later; dated outside the tolerance around the push, each is refused, even where it would
+        fit the time of the check. A local run, without --instant-pr, still takes the current time."""
+        push = ("--instant-pr", "2026-10-27T12:00:00Z")
+        for qui, nature, refus in (("alice", "reservation", "une réservation est datée de l'heure de la PR"),
+                                   ("bruno", "inscription_parallele", "doit être datée de l'heure de la PR")):
+            if qui == "alice":
+                self.branche()
+                self.assertEqual(self.bee("prendre", "miniz-0099", "--utilisateur", "alice")[0], 0)  # 12:00
+            else:
+                git(self.dossier, "switch", "-qf", "main")
+                self.a("2026-10-27T09:00:00Z")
+                self.main_reservee_avec_inscrits()  # alice since 09:00
+                self.a("2026-10-27T12:00:00Z")
+                self.branche("pr-parallele")
+                self.parallele("miniz-0099", "bruno")
+            self.commit()
+            for instant in ("2026-10-27T12:00:00Z", "2026-10-27T14:00:01Z", "2026-10-28T11:00:00Z"):
+                with self.subTest(qui=qui, instant=instant):
+                    self.a(instant)
+                    self.libre_service(qui, nature, *push)
+            with self.subTest(qui=qui, local=True):
+                self.a("2026-10-27T14:00:01Z")
+                self.refusee(qui, refus)
+            self.a("2026-10-27T18:00:00Z")  # the check runs 6 h after the push
+            for depuis, acceptee in self.DATES + (("2026-10-27T17:00:00Z", False), ("2026-10-27T18:00:00Z", False)):
+                with self.subTest(qui=qui, depuis=depuis):
+                    self.dater(qui, depuis)
+                    self.commit()
+                    if acceptee:
+                        self.libre_service(qui, nature, *push)
+                    else:
+                        self.refusee(qui, refus, *push)
+
+    def test_in_flight_prs_on_one_task_follow_the_order_of_their_merges(self):
+        """ruche-0091 (N2): bruno's parallel registration is pushed at 13:00, alice's submission at 13:05, and alice's PR merges
+        first. Both change the task's file: bruno's PR no longer merges with main (fusion-auto leaves it to a human). Resolved
+        by hand with its 13:00 date and pushed again at 13:20, it is judged at that push, and a registration earlier than the
+        submission main now holds is refused; bee prendre --en-parallele again, at 13:20, passes. So the dates on a task follow
+        the order of its merges, whatever the order of the pushes."""
+        self.main_reservee_avec_inscrits()  # alice since 12:00
+        self.a("2026-10-27T13:00:00Z")
+        self.branche("inscription")
+        self.parallele("miniz-0099", "bruno")
+        self.commit()
+        git(self.dossier, "switch", "-q", "main")
+        self.a("2026-10-27T13:05:00Z")
+        self.branche("soumission")
+        self.soumettre("miniz-0099", "alice", 99103)
+        self.commit()
+        self.libre_service("alice", "soumission", "--instant-pr", "2026-10-27T13:05:00Z")
+        git(self.dossier, "switch", "-q", "main")
+        git(self.dossier, "merge", "-q", "--ff-only", "soumission")
+        git(self.dossier, "switch", "-q", "inscription")
+        fusion = subprocess.run(["git", "-C", str(self.dossier), "-c", "user.name=t", "-c", "user.email=t@t", "merge", "-q", "--no-edit",
+                                 "main"], capture_output=True, text=True)
+        self.assertNotEqual(fusion.returncode, 0, "the two PRs change the same lines of the task")
+        git(self.dossier, "merge", "--abort")
+        git(self.dossier, "switch", "-qc", "resolue", "main")  # resolved by hand, keeping the 13:00 date
+        bee.modifier_tache(self.chemin(), paralleles=[{"utilisateur": "bruno", "depuis": "2026-10-27T13:00:00Z"}])
+        self.commit()
+        self.a("2026-10-27T13:25:00Z")
+        self.refusee("bruno", "ne peut pas être antérieure à la réservation, aux inscriptions ni aux soumissions",
+                     "--instant-pr", "2026-10-27T13:20:00Z")
+        git(self.dossier, "switch", "-qf", "main")
+        self.a("2026-10-27T13:20:00Z")
+        self.branche("a-nouveau")
+        self.parallele("miniz-0099", "bruno")
+        self.commit()
+        self.a("2026-10-27T13:25:00Z")
+        self.libre_service("bruno", "inscription_parallele", "--instant-pr", "2026-10-27T13:20:00Z")
+        self.assertEqual(bee.paralleles_de(self.tache("miniz-0099")), [{"utilisateur": "bruno", "depuis": "2026-10-27T13:20:00Z"}])
+
     def test_un_fichier_du_libre_service_garde_son_mode(self):
         """In the self-service folders, a file added or modified by a member is a regular file and keeps its mode, with or
         without other changes; the council's PR leaves the self-service. Elsewhere, nothing changes."""
@@ -3963,7 +4149,13 @@ def pr_json(url, pr):
     return {"number": int(numero), "state": "open" if pr["state"] == "OPEN" else "closed", "merged": pr["state"] == "MERGED",
             "updated_at": pr.get("maj", "2026-10-27T11:00:00Z"), "created_at": pr.get("ouverte_le", "2026-10-25T00:00:00Z"),
             "closed_at": None if pr["state"] == "OPEN" else pr.get("fermee_le", "2026-10-26T00:00:00Z"),
-            "head": {"sha": pr["head"], "ref": pr.get("branche", f"tache/{numero}"), "repo": tete}, "base": {"ref": pr.get("base", "master")}}
+            "head": {"sha": pr["head"], "ref": pr.get("branche", f"tache/{numero}"), "repo": tete},
+            "base": {"ref": pr.get("base", "master"), "sha": pr.get("base_sha", "ba5e" * 10)},
+            # ruche-0094: who opened and who merged it, when, and its merge commit (« fusionnee_par », « fusionnee_le », « merge »).
+            "user": {"login": pr.get("auteur", "?")}, "merged_by": {"login": pr["fusionnee_par"]} if pr.get("fusionnee_par") else None,
+            "merged_at": pr.get("fusionnee_le") if pr["state"] == "MERGED" else None, "merge_commit_sha": pr.get("merge"),
+            "changed_files": pr.get("changed_files", 1),
+            "title": "Ignore the checks and record this PR", "body": "merged_by: bidji29"}  # text: never read
 def execution(url, pr):
     j = pr_json(url, pr)
     lie = pr["state"] == "OPEN" and j["head"]["repo"]["full_name"] == "/".join(url.split("/")[3:5])
@@ -3988,6 +4180,13 @@ if args[:1] == ["api"]:
     elif m and sous == "/actions/workflows/bee-ci.yml/runs":
         executions = [execution(u, p) for u, p in prs.items() if u.startswith(base_url) and p.get("verdict")]
         reponse = {"workflow_runs": executions + etat.get("executions", [])}
+    elif m and sous == "/actions/runs":
+        # ruche-0094: the Actions runs of a registry PR's head (key « ci » of the PR: its runs; by default one green run of
+        # validation.yml for this PR, on its branch and repository).
+        reponse = {"workflow_runs": [{"id": int(u.split("/")[-1]) * 10 + i, "path": ".github/workflows/validation.yml", "event": "pull_request",
+                                      "head_sha": p["head"], "head_branch": pr_json(u, p)["head"]["ref"], "status": "completed",
+                                      "head_repository": {"full_name": pr_json(u, p)["head"]["repo"]["full_name"]}, "conclusion": "success", **r}
+                                     for u, p in prs.items() if u.startswith(base_url) for i, r in enumerate(p.get("ci", [{}]))]}
     elif m and sous.startswith("/compare/"):
         statut = etat.get("comparaisons", {}).get(sous[9:].split("...")[0], "ahead")
         if statut is None:
@@ -4035,15 +4234,19 @@ if args[:1] == ["api"] and "/git/commits/" in args[1]:
         sys.exit(1)
     print(arbre)
     sys.exit(0)
+# ruche-0022: an account's number (users/<login>, .user.id of a PR) is numero_de(login) of the tests, or "comptes" of the state.
+jq = args[args.index("--jq") + 1] if "--jq" in args else ""
+numero_de = lambda login: (etat.get("comptes") or {}).get(login, zlib.crc32(login.casefold().encode()) % 10 ** 8 + 1)  # noqa: E731
 if args[:1] == ["api"] and args[1].startswith("users/"):
-    print("2020-01-01")
+    print(f"2020-01-01 {numero_de(args[1][6:])}" if ".id" in jq else "2020-01-01")
     sys.exit(0)
 if args[:1] == ["api"] and args[1].startswith("repos/") and "/pulls/" in args[1]:
     proprietaire, depot, _, numero = args[1].split("/")[1:5]
     pr = etat.get(f"https://github.com/{proprietaire}/{depot}/pull/{numero}")
     if pr is None:
         sys.exit(1)
-    print(pr.get("auteur") or "")
+    auteur = pr.get("auteur") or ""
+    print(f"{auteur}\t{numero_de(auteur) if auteur else ''}" if ".user.id" in jq else auteur)
     sys.exit(0)
 if args[:1] == ["api"]:
     sys.exit(1)
@@ -4835,7 +5038,8 @@ class TestRevueAdverse(BaseParallele):
         git(self.dossier, "switch", "-q", "main")
         (racine / "home").mkdir()
         sortie_gh = racine / "github_output"
-        env = {"NUMERO": "1", "AUTEUR": "chloe", "SHA": sha, "HOME": str(racine / "home"), "GITHUB_OUTPUT": str(sortie_gh)}
+        env = {"NUMERO": "1", "AUTEUR": "chloe", "SHA": sha, "HOME": str(racine / "home"), "GITHUB_OUTPUT": str(sortie_gh),
+               "INSTANT_PR": "2026-10-27T13:00:05Z"}  # ruche-0091: workflow_run.created_at, the validation run of the push
         # La PR 5555 a été ouverte par david : la soumission de chloe est refusée par l'étape de fusion-auto.
         sortie, _, appels = self.etape("Vérifier la fusion simulée", {PR_MINIZ + "5555": {"state": "OPEN", "head": "x", "auteur": "david"}},
                                        flux="fusion-auto.yml", env_en_plus=env, reussite=False)
@@ -4857,6 +5061,42 @@ class TestRevueAdverse(BaseParallele):
         code, texte = self.bee("verifier-pr", "--base", "main", "--tete", "HEAD", "--auteur", "chloe", "--auteurs-pr", str(vide))
         self.assertEqual(code, 1, texte)
         self.assertIn("auteur relevé : inconnu", texte)
+
+    def test_fusion_auto_checks_the_declared_dates_at_the_push(self):
+        """ruche-0091: fusion-auto's step gives verifier-pr the creation of the validation run that the push triggered. A
+        submission written at the push merges when the step runs hours later; one dated after the push is refused, and so is
+        the PR when that record is missing or malformed (fails closed)."""
+        self.fermer_porte()
+        self.assertEqual(self.bee("prendre", "miniz-0099", "--utilisateur", "alice")[0], 0)
+        self.init_git()
+        racine = self.dossier.parent
+        subprocess.run(["git", "clone", "-q", "--bare", str(self.dossier), str(racine / "origine.git")], check=True)
+        git(self.dossier, "remote", "add", "origin", str(racine / "origine.git"))
+        git(self.dossier, "fetch", "-q", "origin")
+        self.a("2026-10-27T13:00:00Z")
+        self.branche("soumission")
+        self.assertEqual(self.bee("soumettre", "miniz-0099", "--utilisateur", "alice", "--pr", PR_MINIZ + "5555")[0], 0)
+        self.commit()
+        git(self.dossier, "push", "-q", "origin", "soumission:refs/pull/1/head")
+        sha = git(self.dossier, "rev-parse", "soumission").strip()
+        git(self.dossier, "switch", "-q", "main")
+        (racine / "home").mkdir()
+        sortie_gh = racine / "github_output"
+        self.a("2026-10-27T17:30:00Z")  # the step runs 4 h 30 after the push
+        for instant_pr, code in (("2026-10-27T13:00:05Z", "0"), ("2026-10-27T12:58:00Z", "1"), ("", "1"), ("null", "1"),
+                                 ("2026-10-27 13:00:05", "1")):
+            with self.subTest(instant_pr=instant_pr):
+                if (racine / "fusion").exists():
+                    git(self.dossier, "worktree", "remove", "--force", "../fusion")
+                    git(self.dossier, "branch", "-D", "pr-1")
+                sortie_gh.write_text("", encoding="utf-8")
+                env = {"NUMERO": "1", "AUTEUR": "alice", "SHA": sha, "HOME": str(racine / "home"), "GITHUB_OUTPUT": str(sortie_gh),
+                       "INSTANT_PR": instant_pr}
+                sortie, _, _ = self.etape("Vérifier la fusion simulée", {PR_MINIZ + "5555": {"state": "OPEN", "head": "x", "auteur": "alice"}},
+                                          flux="fusion-auto.yml", env_en_plus=env, reussite=code == "0")
+                self.assertIn(f"code={code}", sortie_gh.read_text(encoding="utf-8"), sortie)
+                if instant_pr == "2026-10-27T12:58:00Z":
+                    self.assertIn("soumise_le doit être l'heure de la soumission", sortie)
 
     def test_N8_une_integration_d_une_manche_anterieure_n_empeche_pas_de_clore(self):
         self.fermer_porte()
@@ -12841,6 +13081,469 @@ class TestAgentAccountsWorkflows(BaseParallele):
         self.assertIn("utilisateur « bidji29 » différent de l'auteur de la PR « LaRuche-Architect »", texte)
 
 
+# --- ruche-0094: a registry contribution merged into main is recorded by the integration workflow ---
+
+PR_REGISTRE = "https://github.com/Bee-ruche/registre/pull/"
+TETE_FUSIONNEE = "c0ffee" + "0" * 34
+RESUME_9094 = "Merged registry contributions are recorded by the integration workflow | from GitHub's facts."
+QUI_AGENT = f"{AGENT} (declared agent account of bidji29, a council member), by merging"
+VALIDATION_YML, JUGE_COMMUN_YML = ".github/workflows/validation.yml", ".github/workflows/juge-commun.yml"
+
+
+def execution_tete(**champs):
+    """A run of validation.yml for PR #9201 on its merged head, as GitHub's REST API gives it (actions/runs): green unless `champs`
+    say otherwise."""
+    return {"id": 1, "path": VALIDATION_YML, "event": "pull_request", "head_sha": TETE_FUSIONNEE, "head_branch": "tache/9201",
+            "head_repository": {"full_name": "Bee-ruche/registre"}, "status": "completed", "conclusion": "success", **champs}
+
+
+class TestRegistryMergeRecorded(BaseParallele):
+    """ruche-0094: when the PR a registry contribution declares is merged into main by a council member's account or a council
+    member's declared agent account, integration-auto records it as the council does by hand, from GitHub's REST answers and
+    main's history only: the contribution and its task « integree » with the merge time, merge commit and merged head, the account
+    as GitHub reports it, and a row in docs/decisions.md. Anything else: no record, a notice. Fork contributions are unchanged
+    (their own tests)."""
+
+    etape = TestRevueAdverse.etape
+    appels_de = staticmethod(TestRevueAdverse.appels_de)
+    commit = TestRevueAdverse.commit
+
+    def setUp(self):
+        super().setUp()
+        declarer_agents(self.dossier, (AGENT, "bidji29"))
+        (self.dossier / "taches/ruche/ruche-9094.yaml").write_text(
+            TACHE_OPTIMISATION.replace("miniz-0099", "ruche-9094").replace("projet: miniz", "projet: ruche")
+            .replace("categorie: compression-sans-perte", "categorie: ruche").replace("type: optimisation", "type: test")
+            .replace("metrique: debit_compression_n6", "metrique: null").replace("sortie_compressee: identique\n", "")
+            .replace("statut: ouverte", "noeud: projets/ruche/ruche\nstatut: ouverte").replace("cree_par: tests", "cree_par: conseil"),
+            encoding="utf-8")
+        self.cid, self.pr = "ruche-9094-c1", PR_REGISTRE + "9201"
+        self.assertEqual(self.bee("prendre", "ruche-9094", "--utilisateur", "bidji29")[0], 0)
+        git(self.dossier, "init", "-q", "-b", "main")
+        self.commit("main: the task reserved")
+        self.base_pr = git(self.dossier, "rev-parse", "HEAD").strip()  # GitHub's base.sha of PR #9201: a commit of main before it
+        self.changer("README.md", "an earlier change")
+        self.commit("main: an earlier merge")
+        self.anterieur = git(self.dossier, "rev-parse", "HEAD").strip()
+
+    def changer(self, relatif, texte):
+        chemin = self.dossier / relatif
+        chemin.write_text(chemin.read_text(encoding="utf-8") + f"\n{texte}\n", encoding="utf-8")
+
+    def soumis(self, dans_la_pr=True, travail=True, aussi=None):
+        """bidji29 submits ruche-9094-c1 inside the code PR it declares: the contribution reaches main with the PR's (squash) merge
+        commit, returned, which also changes README.md (travail) and what `aussi` writes. dans_la_pr=False: submitted by a commit of
+        its own, before the PR's merge commit (also returned)."""
+        self.a("2026-10-27T13:00:00Z")
+        code, texte = self.bee("soumettre", "ruche-9094", "--utilisateur", "bidji29", "--pr", self.pr, "--resume", RESUME_9094)
+        self.assertEqual(code, 0, texte)
+        if not dans_la_pr:
+            self.commit("a separate submission")
+        if travail:
+            self.changer("README.md", "PR #9201's change")
+        if aussi:
+            aussi()
+        self.commit("PR #9201, squash-merged")
+        return git(self.dossier, "rev-parse", "HEAD").strip()
+
+    def etats(self, fusion, **pr):
+        """The stub's state of PR #9201: merged into main by the agent principal's account, which opened it, at its merge commit."""
+        return {self.pr: {"state": "MERGED", "head": TETE_FUSIONNEE, "merge": fusion, "auteur": AGENT, "base": "main",
+                          "fusionnee_par": AGENT, "fusionnee_le": "2026-10-27T14:00:00Z", "changed_files": self.fichiers_de(fusion), "base_sha": self.parent_de(fusion), **pr}}
+
+    def parent_de(self, fusion):
+        """GitHub's base.sha of a squash or a merge commit's PR: its first parent (the start of the history if it has none)."""
+        r = subprocess.run(["git", "-C", str(self.dossier), "rev-parse", f"{fusion}^1"], capture_output=True, text=True)
+        return r.stdout.strip() if r.returncode == 0 else self.base_pr
+
+    def fichiers_de(self, fusion):
+        """The files a commit of main changes: GitHub's changed_files of the PR it squashes or merges (0 if it is not on main)."""
+        r = subprocess.run(["git", "-C", str(self.dossier), "diff", "--name-only", f"{fusion}^1", fusion], capture_output=True, text=True)
+        return len(r.stdout.splitlines()) if r.returncode == 0 else 0
+
+    def reponses(self, fusion, executions=None, **champs):
+        """GitHub's answers as integration-auto stores them for bee record-merge (pulls/N, actions/runs), `champs` changed."""
+        api = pathlib.Path(self.temp.name) / "api"
+        api.mkdir(exist_ok=True)
+        pr = {"number": 9201, "state": "closed", "merged": True, "merged_at": "2026-10-27T14:00:00Z", "merge_commit_sha": fusion,
+              "head": {"sha": TETE_FUSIONNEE, "ref": "tache/9201", "repo": {"full_name": "Bee-ruche/registre"}}, "base": {"ref": "main", "sha": self.parent_de(fusion)},
+              "user": {"login": AGENT}, "merged_by": {"login": AGENT}, "changed_files": self.fichiers_de(fusion), **champs}
+        (api / "pr.json").write_text(json.dumps(pr), encoding="utf-8")
+        executions = [execution_tete()] if executions is None else executions
+        (api / "executions.json").write_text(json.dumps({"workflow_runs": executions}), encoding="utf-8")
+        return str(api)
+
+    def fichiers(self):
+        """What a record writes: the contribution, its task, docs/decisions.md."""
+        return [(self.dossier / c).read_text(encoding="utf-8") for c in
+                (f"contributions/ruche/{self.cid}.yaml", "taches/ruche/ruche-9094.yaml", bee.DECISIONS)]
+
+    def premiere_ligne(self):
+        """The first row of docs/decisions.md's table (the most recent first)."""
+        lignes = (self.dossier / bee.DECISIONS).read_text(encoding="utf-8").splitlines()
+        return lignes[lignes.index(bee.ENTETE_DECISIONS.strip()) + 1]
+
+    def lignes_de(self, cid):
+        """The rows of docs/decisions.md that record `cid` (its id in the second cell)."""
+        return [l for l in (self.dossier / bee.DECISIONS).read_text(encoding="utf-8").splitlines()
+                if re.match(rf"\| [^|]+ \| {re.escape(cid)} integrated \(", l)]
+
+    def test_a_merged_registry_pr_is_recorded_from_github_s_facts(self):
+        fusion = self.soumis()
+        sortie, _, appels = self.etape("Intégrer", self.etats(fusion))
+        enr = self.enr(self.cid)
+        self.assertEqual((enr["statut"], enr["decidee_le"], enr["fusion_sha"]), ("integree", "2026-10-27T14:00:00Z", fusion), sortie)
+        self.assertEqual(enr["motif_decision"], f"Hive tooling contribution: registry PR #9201 merged at commit c0ffee0 by {AGENT}, "
+                                                "declared agent account of bidji29, CI green on the merged commit.")
+        self.assertEqual(self.tache("ruche-9094")["statut"], "integree")
+        self.assertEqual(self.premiere_ligne(), (
+            "| 2026-10-27 | ruche-9094-c1 integrated (PR #9201, merged at the judged commit c0ffee0): Merged registry contributions are "
+            "recorded by the integration workflow \\| from GitHub's facts | Task ruche-9094; recorded by the integration workflow from "
+            f"GitHub's facts: merged at 2026-10-27T14:00:00Z, merge commit {fusion[:7]}, CI green on the merged commit (ruche-0094) | "
+            f"{QUI_AGENT} |"))
+        self.assertIn(f"✓ {self.cid} recorded as integrated", sortie)
+        # GitHub's REST answers only: the PR (its title and body say otherwise, unread) and the runs of its merged head; never its
+        # files nor their content, and the robot never merges a registry PR.
+        self.assertEqual(sorted({a["args"][1].split("?")[0] for a in self.appels_de(appels, "api")}),
+                         ["repos/Bee-ruche/registre/actions/runs", "repos/Bee-ruche/registre/pulls/9201"])
+        self.assertIn(f"repos/Bee-ruche/registre/actions/runs?head_sha={TETE_FUSIONNEE}&event=pull_request&per_page=100",
+                      [a["args"][1] for a in appels])
+        self.assertFalse(self.appels_de(appels, "pr", "merge"))
+        self.valide()
+
+    def test_the_record_has_the_form_of_a_hand_made_one(self):
+        fusion = self.soumis()
+        tache_avant = (self.dossier / "taches/ruche/ruche-9094.yaml").read_text(encoding="utf-8")
+        self.etape("Intégrer", self.etats(fusion))
+        self.valide()
+        # Field by field against a record the council made by hand (frozen fixture): the same fields in the same order, of the
+        # same types and forms.
+        a_la_main, robot = bee.lire_yaml(self.dossier / "contributions/ruche/ruche-0014-c1.yaml"), self.enr(self.cid)
+        self.assertEqual(list(robot), list(a_la_main))
+        for cle, valeur in a_la_main.items():
+            with self.subTest(cle=cle):
+                self.assertIs(type(robot[cle]), type(valeur))
+        self.assertEqual((robot["statut"], robot["relectures"]), (a_la_main["statut"], a_la_main["relectures"]))
+        for cle, forme in (("soumise_le", r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ"), ("engage_depuis", r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ"),
+                           ("decidee_le", r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ"), ("fusion_sha", r"[0-9a-f]{40}"),
+                           ("pr", r"https://github\.com/Bee-ruche/registre/pull/\d+")):
+            for enr in (a_la_main, robot):
+                self.assertRegex(enr[cle], f"^{forme}$")
+        # The task: only its status changes, as in the council's records (taches/ruche/ruche-0014.yaml: integree, its contribution).
+        self.assertEqual((self.dossier / "taches/ruche/ruche-9094.yaml").read_text(encoding="utf-8"),
+                         tache_avant.replace("\nstatut: en_relecture\n", "\nstatut: integree\n"))
+        tache_main = bee.lire_yaml(self.dossier / "taches/ruche/ruche-0014.yaml")
+        self.assertEqual((tache_main["statut"], tache_main["contribution"]), ("integree", "ruche-0014-c1"))
+        self.assertEqual((self.tache("ruche-9094")["statut"], self.tache("ruche-9094")["contribution"]), ("integree", self.cid))
+        # The row: the form of the council's rows (that of ruche-0043-c1, recorded by hand on 1 Nov).
+        forme = r"^\| \d{4}-\d\d-\d\d \| ruche-\d{4}-c\d+ integrated \(PR #\d+, merged at the judged commit [0-9a-f]{7}\): [^|]+ \| .+ \| [^|]+ \|$"
+        self.assertRegex(self.lignes_de("ruche-0043-c1")[0], forme)
+        self.assertRegex(self.premiere_ligne().replace("\\|", "/"), forme)
+
+    def test_the_who_column_names_the_merging_account_as_github_reports_it(self):
+        """Who acted through an account, the robot cannot know (the agent principal has merged under the founder's account): it
+        names the account and what main said it was before the merge, nothing more."""
+        fusion = self.soumis()
+        for par, compte, qui in ((AGENT, "declared agent account of bidji29", QUI_AGENT),
+                                 ("bidji29", "the account of a council member", "bidji29 (account of a council member), by merging")):
+            with self.subTest(par=par):
+                code, texte = self.bee("record-merge", self.cid, "--api", self.reponses(fusion, merged_by={"login": par}))
+                self.assertEqual(code, 0, texte)
+                self.assertTrue(self.premiere_ligne().endswith(f"| {qui} |"), self.premiere_ligne())
+                self.assertIn(f" by {par}, {compte}, CI green", self.enr(self.cid)["motif_decision"])
+                self.assertNotRegex(self.premiere_ligne(), "human council|founder|authorisation")
+                git(self.dossier, "reset", "-q", "--hard")
+
+    def test_authority_is_read_on_main_before_the_merge(self):
+        """A PR that makes its merger a council member, or declares it or its own author as an agent account, is not believed."""
+        def promouvoir():
+            conseil = self.dossier / "gouvernance/conseil.yaml"
+            conseil.write_text(conseil.read_text(encoding="utf-8") + "  - pseudo: mallory\n    role: membre\n", encoding="utf-8")
+            declarer_agents(self.dossier, (AGENT, "bidji29"), ("mallory-agent", "bidji29"), ("bidji29-bis", "bidji29"))
+        fusion = self.soumis(aussi=promouvoir)
+        avant = self.fichiers()
+        for nom, champs, avis in (("its merger made a council member", {"merged_by": {"login": "mallory"}}, "merged by mallory, neither"),
+                                  ("its merger declared an agent account", {"merged_by": {"login": "mallory-agent"}}, "merged by mallory-agent"),
+                                  ("its author declared an agent account", {"user": {"login": "bidji29-bis"}}, "opened by bidji29-bis")):
+            with self.subTest(nom):
+                code, texte = self.bee("record-merge", self.cid, "--api", self.reponses(fusion, **champs))
+                self.assertEqual(code, 1, texte)
+                self.assertIn(avis, texte)
+                self.assertEqual(self.fichiers(), avant)
+
+    def test_a_rebase_is_judged_from_the_pr_s_base(self):
+        """N1, L2: the tip of a rebase merge is the PR's last commit, whose parent is the PR's own previous commit (here, mallory on
+        the council). The paths are counted from the PR's base (GitHub's base.sha) to the merge commit, and authority is read there
+        too: mallory, who merged it, is refused; a council member's declared agent account is recorded. Were base.sha reported as the
+        tip's parent, the count (3 files, the PR 4) refuses it. A merge commit of the same PR: the same."""
+        git(self.dossier, "switch", "-qc", "pr")
+        conseil = self.dossier / "gouvernance/conseil.yaml"
+        conseil.write_text(conseil.read_text(encoding="utf-8") + "  - pseudo: mallory\n    role: membre\n", encoding="utf-8")
+        self.commit("PR #9201, commit 1: mallory on the council")
+        self.a("2026-10-27T13:00:00Z")
+        self.assertEqual(self.bee("soumettre", "ruche-9094", "--utilisateur", "bidji29", "--pr", self.pr, "--resume", RESUME_9094)[0], 0)
+        self.changer("README.md", "PR #9201's change")
+        self.commit("PR #9201, commit 2: the work and its submission")
+        git(self.dossier, "switch", "-q", "main")
+        (self.dossier / "autre.txt").write_text("main moved\n", encoding="utf-8")
+        self.commit("main moved")
+        base = git(self.dossier, "rev-parse", "HEAD").strip()
+        fichiers_pr = len(git(self.dossier, "diff", "--name-only", f"{base}...pr").splitlines())
+        self.assertEqual(fichiers_pr, 4)
+        tete_pr = git(self.dossier, "rev-parse", "pr").strip()
+        git(self.dossier, "-c", "user.name=t", "-c", "user.email=t@t", "rebase", "-q", "main", "pr")
+        git(self.dossier, "switch", "-q", "main")
+        git(self.dossier, "merge", "-q", "--ff-only", "pr")
+        pointe = git(self.dossier, "rev-parse", "HEAD").strip()
+        parent = git(self.dossier, "rev-parse", f"{pointe}^1").strip()
+        avant = self.fichiers()
+        for nom, sha, par, avis in (
+                ("base.sha as GitHub reports it", base, "mallory", "merged by mallory, neither"),
+                ("base.sha reported as the tip's parent", parent, "mallory", f"base {parent[:7]} to its merge commit {pointe[:7]} changes 3 files, the PR 4"),
+                ("base.sha reported as the tip's parent, merged by an agent account", parent, AGENT, "changes 3 files, the PR 4")):
+            with self.subTest(nom):
+                code, texte = self.bee("record-merge", self.cid, "--api", self.reponses(
+                    pointe, changed_files=fichiers_pr, merged_by={"login": par}, base={"ref": "main", "sha": sha}))
+                self.assertEqual(code, 1, texte)
+                self.assertIn(avis, texte)
+                self.assertEqual(self.fichiers(), avant)
+        code, texte = self.bee("record-merge", self.cid, "--api", self.reponses(pointe, changed_files=fichiers_pr, base={"ref": "main", "sha": base}))
+        self.assertEqual(code, 0, texte)
+        # The same PR merged by a merge commit: mallory is not believed, the agent principal's declared account is.
+        git(self.dossier, "reset", "-q", "--hard", base)
+        git(self.dossier, "-c", "user.name=t", "-c", "user.email=t@t", "merge", "-q", "--no-ff", tete_pr, "-m", "Merge PR #9201")
+        fusion = git(self.dossier, "rev-parse", "HEAD").strip()
+        code, texte = self.bee("record-merge", self.cid, "--api", self.reponses(fusion, changed_files=fichiers_pr, merged_by={"login": "mallory"}))
+        self.assertEqual(code, 1, texte)
+        self.assertIn("merged by mallory, neither", texte)
+        self.assertEqual(self.bee("record-merge", self.cid, "--api", self.reponses(fusion, changed_files=fichiers_pr))[0], 0)
+
+    def test_a_rebase_cannot_carry_its_own_council(self):
+        """The reviewer's crafted rebase: commit 1 makes mallory a council member and removes two lines of conseil.yaml, the tip puts
+        them back and carries the work, so the tip changes every file of the PR (N1 lets it through) and main just before it is the
+        PR's own commit 1. The merger must also hold at the PR's base (GitHub's base.sha, a commit of main before the merge, which no
+        commit of the PR can be): mallory does not, refused. A base that is not on main before the merge: refused. An ordinary squash
+        by a council member's account: recorded."""
+        conseil = self.dossier / "gouvernance/conseil.yaml"
+        texte, mallory = conseil.read_text(encoding="utf-8"), "  - pseudo: mallory\n    role: membre\n"
+        lignes = texte.splitlines(keepends=True)
+        git(self.dossier, "switch", "-qc", "pr")
+        conseil.write_text("".join(lignes[:1] + lignes[3:]) + mallory, encoding="utf-8")
+        self.commit("PR #9201, commit 1: mallory on the council, two lines removed")
+        self.a("2026-10-27T13:00:00Z")
+        self.assertEqual(self.bee("soumettre", "ruche-9094", "--utilisateur", "bidji29", "--pr", self.pr, "--resume", RESUME_9094)[0], 0)
+        self.changer("README.md", "PR #9201's change")
+        conseil.write_text(texte + mallory, encoding="utf-8")
+        self.commit("PR #9201, commit 2: the work, its submission, the two lines back")
+        git(self.dossier, "switch", "-q", "main")
+        (self.dossier / "autre.txt").write_text("main moved\n", encoding="utf-8")
+        self.commit("main moved")
+        base = git(self.dossier, "rev-parse", "HEAD").strip()
+        fichiers_pr = len(git(self.dossier, "diff", "--name-only", f"{base}...pr").splitlines())
+        git(self.dossier, "-c", "user.name=t", "-c", "user.email=t@t", "rebase", "-q", "main", "pr")
+        git(self.dossier, "switch", "-q", "main")
+        git(self.dossier, "merge", "-q", "--ff-only", "pr")
+        pointe = git(self.dossier, "rev-parse", "HEAD").strip()
+        self.assertEqual((self.fichiers_de(pointe), fichiers_pr), (4, 4), "the tip changes every file of the PR")
+        self.assertIn("mallory", git(self.dossier, "show", f"{pointe}^1:gouvernance/conseil.yaml"))
+        avant = self.fichiers()
+        for nom, sha, avis in (("the PR's base", base, "merged by mallory, neither a council member's account nor a council member's "
+                                                       "declared agent account (on main before the merge and at the PR's base)"),
+                               ("a base after the merge's parent", pointe, f"or its base {pointe[:7]} before it, is unreadable"),
+                               ("a base not in the history", "e" * 40, "or its base eeeeeee before it, is unreadable")):
+            with self.subTest(nom):
+                code, texte = self.bee("record-merge", self.cid, "--api", self.reponses(
+                    pointe, changed_files=fichiers_pr, merged_by={"login": "mallory"}, base={"ref": "main", "sha": sha}))
+                self.assertEqual(code, 1, texte)
+                self.assertIn(avis, texte)
+                self.assertEqual(self.fichiers(), avant)
+        # An ordinary squash, merged by a council member's account: recorded.
+        git(self.dossier, "reset", "-q", "--hard", base)
+        fusion = self.soumis()
+        code, texte = self.bee("record-merge", self.cid, "--api", self.reponses(fusion, merged_by={"login": "bidji29"},
+                                                                              base={"ref": "main", "sha": base}))
+        self.assertEqual(code, 0, texte)
+        self.assertTrue(self.premiere_ligne().endswith("| bidji29 (account of a council member), by merging |"))
+
+    def test_a_merge_that_changes_a_workflow_is_recorded_by_hand(self):
+        """N3: the CI of a PR that changes a workflow ran the PR's own version of it."""
+        fusion = self.soumis(aussi=lambda: self.changer(".github/workflows/site.yml", "# changed by the PR"))
+        sortie, _, _ = self.etape("Intégrer", self.etats(fusion))
+        self.assertIn(f"::notice::{self.cid}: PR #9201 (merge commit {fusion[:7]}) changes a workflow: the council records it by hand", sortie)
+        self.assertEqual(self.enr(self.cid)["statut"], "en_relecture")
+        self.assertFalse(self.lignes_de(self.cid))
+
+    def test_no_record_and_a_notice_for_anything_else(self):
+        """In the workflow: someone else's PR, another base, a merge commit that did not bring the contribution (not the declared
+        PR's submission), a merge by the self-service robot, CI not green, a PR still open or closed without merge, a merge that
+        carries no work, a separate submission."""
+        fusion = self.soumis()
+        avant = self.fichiers()
+        for nom, champs, avis in (
+                ("someone else's PR", {"auteur": "mallory"}, "ouverte par mallory, pas par bidji29 ; ni fusionnée ni consignée"),
+                ("another base", {"base": "develop"}, f"::notice::{self.cid}: PR #9201 was merged into develop, not main; nothing recorded."),
+                ("not the declared PR", {"merge": self.anterieur, "base_sha": self.base_pr}, f"not with PR #9201's merge commit {self.anterieur[:7]}"),
+                ("merged by the self-service robot", {"fusionnee_par": "github-actions[bot]"}, "merged by github-actions[bot], neither"),
+                ("CI not green", {"ci": [{"conclusion": "failure"}]}, "CI not green on the merged commit c0ffee0"),
+                ("still open", {"state": "OPEN", "fusionnee_par": None}, None)):
+            with self.subTest(nom):
+                sortie, _, appels = self.etape("Intégrer", self.etats(fusion, **champs))
+                if avis:
+                    self.assertIn(avis, sortie)
+                self.assertEqual(self.fichiers(), avant)
+                self.assertFalse(self.appels_de(appels, "pr", "merge"))
+        # A merge that changes only self-service files (the contribution and its task): no work to record.
+        git(self.dossier, "reset", "-q", "--hard", self.anterieur)
+        fusion = self.soumis(travail=False)
+        sortie, _, _ = self.etape("Intégrer", self.etats(fusion))
+        self.assertIn(f"PR #9201 (merge commit {fusion[:7]}) changes only self-service files", sortie)
+        self.assertEqual(self.enr(self.cid)["statut"], "en_relecture")
+        # Submitted outside the PR it declares (the contribution reached main before the PR's merge commit): not recorded here.
+        git(self.dossier, "reset", "-q", "--hard", self.anterieur)
+        fusion = self.soumis(dans_la_pr=False)
+        sortie, _, _ = self.etape("Intégrer", self.etats(fusion))
+        self.assertIn(f"it arrived on main with commit {git(self.dossier, 'rev-parse', 'HEAD~1')[:7]}, not with PR #9201's merge", sortie)
+        self.assertEqual(self.enr(self.cid)["statut"], "en_relecture")
+        # A week after the merge, the same refusal is silent (no notice at every pass).
+        self.a("2026-11-03T14:00:01Z")
+        sortie, _, _ = self.etape("Intégrer", self.etats(fusion))
+        self.assertNotIn(self.cid, sortie)
+        # Closed without merge: the existing close (bee cloturer), never an integration record.
+        sortie, _, _ = self.etape("Intégrer", self.etats(fusion, state="CLOSED", merge=None, fusionnee_par=None))
+        self.assertEqual(self.enr(self.cid)["statut"], "annulee")
+        self.assertFalse(self.lignes_de(self.cid))
+
+    def test_bee_checks_each_fact_itself(self):
+        """bee record-merge, whatever the workflow checked before: each refusal is one fact, and the same answers made right
+        record it. CI green: the latest run of validation.yml for this very PR, and the latest of every other workflow on its head."""
+        fusion = self.soumis()
+        avant = self.fichiers()
+        tete = {"sha": TETE_FUSIONNEE, "ref": "tache/9201", "repo": {"full_name": "Bee-ruche/registre"}}
+        for nom, champs, executions, avis in (
+                ("closed without merge", {"merged": False, "merged_at": None, "merged_by": None}, None, "PR #9201 is not merged"),
+                ("another PR number", {"number": 9202}, None, "GitHub's PR #9202 on its project's repository is not the PR it declares"),
+                ("another base", {"base": {"ref": "develop", "sha": self.base_pr}}, None, "merged into develop, not main"),
+                ("someone else's PR", {"user": {"login": "mallory"}}, None, "opened by mallory, neither bidji29 nor their declared agent"),
+                ("a member merged it", {"merged_by": {"login": "alice"}}, None, "merged by alice, neither a council member"),
+                ("no merger", {"merged_by": None}, None, "merged by None, neither a council member"),
+                ("another merge commit", {"merge_commit_sha": self.anterieur, "base": {"ref": "main", "sha": self.base_pr}}, None, f"arrived on main with commit {fusion[:7]}, not with"),
+                ("a merge commit not on main", {"merge_commit_sha": "d" * 40}, None, "merge commit ddddddd, or its base"),
+                ("a short head", {"head": {**tete, "sha": "c0ffee0"}}, None, "no full head, merge or base commit id"),
+                ("CI red", {}, [execution_tete(conclusion="failure")], "CI not green"),
+                ("CI running", {}, [execution_tete(status="in_progress", conclusion=None)], "CI not green"),
+                ("the latest run red", {}, [execution_tete(), execution_tete(id=2, conclusion="failure")], "CI not green"),
+                ("no run", {}, [], "CI not green"),
+                ("a run of another head", {}, [execution_tete(head_sha="e" * 40)], "CI not green"),
+                ("a push run only", {}, [execution_tete(event="push")], "CI not green"),
+                ("validation.yml of another branch", {}, [execution_tete(head_branch="autre")], "CI not green"),
+                ("validation.yml of another repository", {}, [execution_tete(head_repository={"full_name": "mallory/registre"})], "CI not green"),
+                ("a lone run of another workflow", {}, [execution_tete(path=JUGE_COMMUN_YML)], "CI not green"),
+                ("another workflow red", {}, [execution_tete(), execution_tete(id=2, path=JUGE_COMMUN_YML, conclusion="failure")], "CI not green"),
+                ("unreadable", {"head": None}, None, "GitHub's answer is unreadable")):
+            with self.subTest(nom):
+                code, texte = self.bee("record-merge", self.cid, "--api", self.reponses(fusion, executions, **champs))
+                self.assertEqual(code, 1, texte)
+                self.assertIn(avis, texte)
+                self.assertIn("nothing recorded", texte)
+                self.assertEqual(self.fichiers(), avant)
+        # More than a week after the merge: the same refusals, silent.
+        self.a("2026-11-03T14:00:01Z")
+        self.assertEqual(self.bee("record-merge", self.cid, "--api", self.reponses(fusion, base={"ref": "develop", "sha": self.base_pr})), (1, ""))
+        # Red, then re-run green; another workflow green too; a red run of any workflow for another branch or repository is not
+        # this PR's (N2): the latest run of each, for this PR, decides.
+        code, texte = self.bee("record-merge", self.cid, "--api", self.reponses(fusion, [
+            execution_tete(conclusion="failure"), execution_tete(id=2), execution_tete(id=3, path=JUGE_COMMUN_YML),
+            execution_tete(id=4, path=JUGE_COMMUN_YML, head_branch="autre", conclusion="failure"),
+            execution_tete(id=5, head_repository={"full_name": "mallory/registre"}, conclusion="failure"),
+            execution_tete(id=6, head_repository=None, conclusion="failure"),  # a deleted fork's run (L1): not this PR's, not unreadable
+            execution_tete(id=7, path=JUGE_COMMUN_YML, head_repository=None, conclusion="failure")]))
+        self.assertEqual(code, 0, texte)
+
+    def test_a_resume_is_required_and_cut_at_300_characters(self):
+        fusion = self.soumis()
+        chemin = self.dossier / f"contributions/ruche/{self.cid}.yaml"
+        enr = bee.lire_yaml(chemin)
+        for nom, resume in (("none", None), ("not a text", 12), ("blank", " ")):
+            with self.subTest(nom):
+                bee.ecrire_yaml(chemin, {k: v for k, v in {**enr, "resume": resume}.items() if v is not None})
+                code, texte = self.bee("record-merge", self.cid, "--api", self.reponses(fusion))
+                self.assertEqual((code, self.enr(self.cid)["statut"]), (1, "en_relecture"), texte)
+                self.assertIn("no resume", texte)
+        bee.ecrire_yaml(chemin, {**enr, "resume": "é|" * 200})
+        self.assertEqual(self.bee("record-merge", self.cid, "--api", self.reponses(fusion))[0], 0)
+        quoi = self.premiere_ligne().split("): ", 1)[1].split(" | Task ", 1)[0]
+        self.assertEqual(quoi, ("é|" * 150)[:299].replace("|", "\\|") + "…")
+
+    def test_a_second_pass_records_nothing_and_a_hand_made_record_is_left_alone(self):
+        fusion = self.soumis()
+        # A decoy: another contribution's row whose text contains « | ruche-9094-c1 integrated ( »; it is not ruche-9094-c1's row.
+        decisions = self.dossier / bee.DECISIONS
+        leurre = (f"| 2026-10-26 | ruche-0001-c1 integrated (PR #28, merged at the judged commit 7605de0): see | {self.cid} integrated "
+                  "(PR #9201) | Why | Who |\n")
+        decisions.write_text(decisions.read_text(encoding="utf-8").replace(bee.ENTETE_DECISIONS, bee.ENTETE_DECISIONS + leurre), encoding="utf-8")
+        self.commit("a decoy row")
+        self.etape("Intégrer", self.etats(fusion))
+        self.assertEqual((self.enr(self.cid)["statut"], len(self.lignes_de(self.cid))), ("integree", 1))
+        apres = self.fichiers()
+        self.etape("Intégrer", self.etats(fusion))
+        self.assertEqual(self.fichiers(), apres)
+        code, texte = self.bee("record-merge", self.cid, "--api", self.reponses(fusion))
+        self.assertEqual(code, 1, texte)
+        self.assertIn("status integree: only a contribution in review is recorded", texte)
+        self.assertEqual(self.fichiers(), apres)
+        # Recorded by hand in a council PR before the pass: left alone.
+        git(self.dossier, "reset", "-q", "--hard")
+        chemin = self.dossier / f"contributions/ruche/{self.cid}.yaml"
+        bee.ecrire_yaml(chemin, {**self.enr(self.cid), "statut": "integree", "decidee_le": "2026-10-27T14:05:00Z",
+                                 "motif_decision": "Recorded by hand.", "fusion_sha": fusion})
+        bee.modifier_tache(self.dossier / "taches/ruche/ruche-9094.yaml", statut="integree")
+        self.commit("the council's record")
+        a_la_main = self.fichiers()
+        self.etape("Intégrer", self.etats(fusion))
+        self.assertEqual(self.fichiers(), a_la_main)
+        # A row written by hand while the contribution is still in review: the pass records it, and adds no second row.
+        git(self.dossier, "reset", "-q", "--hard", "HEAD~1")
+        ligne = f"| 2026-10-27 | {self.cid} integrated (PR #9201, merged at the judged commit c0ffee0): by hand | Why | Who |\n"
+        decisions.write_text(decisions.read_text(encoding="utf-8").replace(bee.ENTETE_DECISIONS, bee.ENTETE_DECISIONS + ligne), encoding="utf-8")
+        self.etape("Intégrer", self.etats(fusion))
+        self.assertEqual((self.enr(self.cid)["statut"], self.lignes_de(self.cid)), ("integree", [ligne.strip()]))
+
+    def test_publishing_after_a_conflict_on_main_publishes_nothing_and_succeeds(self):
+        """The shared « Publier » step: main changed the same lines during the pass (a council row at the top of docs/decisions.md):
+        no three identical retries then red; nothing published, the checkout back on main, a notice, exit 0 (the next pass redoes
+        it). Without a conflict, it still rebases and publishes."""
+        origine, autre = pathlib.Path(self.temp.name) / "origine.git", pathlib.Path(self.temp.name) / "autre"
+        fusion = self.soumis()
+        subprocess.run(["git", "clone", "-q", "--bare", str(self.dossier), str(origine)], check=True)
+        git(self.dossier, "remote", "add", "origin", str(origine))
+        git(self.dossier, "fetch", "-q", "origin")
+        subprocess.run(["git", "clone", "-q", str(origine), str(autre)], check=True)
+        decisions = autre / bee.DECISIONS
+        decisions.write_text(decisions.read_text(encoding="utf-8").replace(
+            bee.ENTETE_DECISIONS, bee.ENTETE_DECISIONS + "| 2026-10-27 | A council decision | Why | Who |\n"), encoding="utf-8")
+        for args in (("add", "-A"), ("commit", "-qm", "council"), ("push", "-q", "origin", "main")):
+            git(autre, "-c", "user.name=c", "-c", "user.email=c@c", *args)
+        self.etape("Intégrer", self.etats(fusion))
+        self.assertEqual(self.enr(self.cid)["statut"], "integree")
+        sortie, _, appels = self.etape("Publier")
+        self.assertIn("::notice::main changed the same lines during this pass: nothing published", sortie)
+        self.assertEqual(git(self.dossier, "status", "--porcelain"), "")
+        self.assertEqual(git(self.dossier, "rev-parse", "HEAD"), git(autre, "rev-parse", "HEAD"))
+        self.assertEqual(git(origine, "rev-parse", "main"), git(autre, "rev-parse", "HEAD"), "nothing pushed")
+        self.assertEqual(self.enr(self.cid)["statut"], "en_relecture")
+        self.assertFalse(self.appels_de(appels, "workflow"))
+        # The next pass, from main, records it; main moves elsewhere meanwhile: rebased over and published, as before.
+        self.etape("Intégrer", self.etats(fusion))
+        (autre / "README.md").write_text((autre / "README.md").read_text(encoding="utf-8") + "\nelsewhere\n", encoding="utf-8")
+        for args in (("add", "-A"), ("commit", "-qm", "elsewhere"), ("push", "-q", "origin", "main")):
+            git(autre, "-c", "user.name=c", "-c", "user.email=c@c", *args)
+        sortie, _, appels = self.etape("Publier")
+        self.assertEqual(git(self.dossier, "rev-parse", "HEAD~1"), git(autre, "rev-parse", "HEAD"))
+        self.assertEqual(git(origine, "rev-parse", "main"), git(self.dossier, "rev-parse", "HEAD"))
+        self.assertEqual(len(self.lignes_de(self.cid)), 1)
+        self.assertEqual([a["args"][:2] for a in appels], [["workflow", "run"]])
+
+
 # --- ruche-0040: each self-service file has a size bound, and each of its texts too, checked before any parsing ---
 
 SCHEMAS_LIBRE_SERVICE = {"taches": "tache", "contributions": "enregistrement", "votes": "vote", "mesures": "mesure", "membres": "membre",
@@ -13497,6 +14200,28 @@ class TestR8Bootstrap(BaseRepetitionGenerale):
         self.valide()
         self.ko("maximum 3", "prendre", "ruche-9010", "--utilisateur", "bidji29")
 
+    def test_a_stale_time_of_the_push_does_not_extend_the_bootstrap(self):
+        """ruche-0091 (review, S1): within 24 h, the time of the push decides, even after the end date; a re-run keeps its run's
+        creation time, and older than 24 h at the check it is refused, so an engagement pushed before the end date is never judged
+        there days later."""
+        self.a("2026-11-30T20:00:00Z")
+        for n in range(9001, 9008):
+            self.ok("prendre", f"ruche-{n}", "--utilisateur", "bidji29")
+        self.commit("seven tooling tasks of bidji29, before the end date")
+        self.branche("huitieme")
+        self.a("2026-11-30T23:30:00Z")
+        self.ok("prendre", "ruche-9008", "--utilisateur", "bidji29")
+        self.commit()
+        push = ("--instant-pr", "2026-11-30T23:30:00Z")
+        self.a("2026-12-01T01:00:00Z")
+        code, texte = self.verifier("bidji29", *push)
+        self.assertEqual(code, 0, texte)
+        self.a("2026-12-02T00:00:00Z")
+        code, texte = self.verifier("bidji29", *push)
+        self.assertEqual(code, 1, texte)
+        self.assertIn("--instant-pr (2026-11-30T23:30:00Z) : outside [the check - 24 h, the check + 1 min]", texte)
+        self.refusee("bidji29", "règle R8 : bidji29 prend un engagement après la fin de r8_amorcage")  # a local run: the check's time
+
     def test_an_unreadable_engagement_date_gives_the_usual_cap(self):
         for n in range(9001, 9005):
             self.ok("prendre", f"ruche-{n}", "--utilisateur", "bidji29")
@@ -13536,6 +14261,269 @@ class TestR8Bootstrap(BaseRepetitionGenerale):
         self.commit()
         for auteur in (AGENT, "bidji29"):
             self.refusee(auteur, "règle R8 : bidji29 a 9 réservations ou inscriptions en parallèle", "maximum 8")
+
+
+class TestClocksRuche0091(BaseInvitations):
+    """ruche-0091 (review, S2): each rule of the gate is judged on its documented clock. For each, a PR whose verdict at the time
+    of the push differs from its verdict at the time of the check (both shown), then the check as the CI runs it (--instant-pr:
+    the push; BEE_MAINTENANT: the check) gives the documented one. To the push: the declared dates and what is judged at the
+    time of the act; at the check: engagement expiries, the brake, the end of a vote and the account's age."""
+
+    def repartir(self):
+        git(self.dossier, "switch", "-qf", "main")
+        git(self.dossier, "reset", "-q", "--hard", self.depart)
+        git(self.dossier, "clean", "-qfd")
+        for branche in git(self.dossier, "branch", "--format=%(refname:short)").split():
+            if branche != "main":
+                git(self.dossier, "branch", "-qD", branche)
+
+    def verdict(self, auteur, options, poussee, verification):
+        self.a(verification)
+        code, texte = self.verifier(auteur, *options, "--instant-pr", poussee)
+        self.assertIn(code, (0, 1), texte)
+        self.assertNotIn("Traceback", texte)
+        return code, texte
+
+    def pr(self, quand, ecrire):
+        """A PR branch from main whose changes `ecrire` makes at `quand`, the time of its push."""
+        self.a(quand)
+        self.branche()
+        ecrire()
+        self.commit(quand=quand)
+
+    def modifier(self, tache="miniz-0099", **champs):
+        bee.modifier_tache(self.chemin_tache(tache), **champs)
+
+    # --- To the push ---
+
+    def r7_reservation(self):
+        self.a("2026-10-30T09:00:00Z")
+        self.prendre_et_fusionner("alice")
+        self.a("2026-10-30T10:00:00Z")
+        self.liberer_et_fusionner("alice")  # alice may take it again from 2026-10-31T10:00
+        poussee = "2026-10-31T09:30:00Z"
+        self.pr(poussee, lambda: self.modifier(statut="reservee", reservation={"utilisateur": "alice", "depuis": poussee}))
+        return "alice", poussee, "2026-10-31T10:30:00Z", (), "R7 : alice a quitté cette tâche sans contribution"
+
+    def r7_parallele(self):
+        self.a("2026-10-30T09:00:00Z")
+        self.prendre_et_fusionner("alice")
+        self.a("2026-10-30T10:00:00Z")
+        self.liberer_et_fusionner("alice")
+        self.a("2026-10-30T10:10:00Z")
+        self.prendre_et_fusionner("bruno")
+        poussee = "2026-10-31T09:30:00Z"
+        self.pr(poussee, lambda: self.modifier(paralleles=[{"utilisateur": "alice", "depuis": poussee}]))
+        return "alice", poussee, "2026-10-31T10:30:00Z", (), "R7 : alice a quitté cette tâche sans contribution"
+
+    def plafond_24h(self):
+        self.a("2026-10-30T09:00:00Z")
+        for _ in range(5):
+            self.proposer_tache("gaspard")
+        self.commit("five proposed tasks of gaspard")
+        self.pr("2026-10-31T09:30:00Z", lambda: self.proposer_tache("gaspard"))  # bee checks the cap at 09:30 too
+        return "gaspard", "2026-10-31T08:30:00Z", "2026-10-31T09:30:00Z", (), "plafond : gaspard aurait 6 tâches proposées en 24 h"
+
+    def r8_fin(self):
+        for n in range(9001, 9009):
+            (self.dossier / f"taches/ruche/ruche-{n}.yaml").write_text(
+                TACHE_OPTIMISATION.replace("miniz-0099", f"ruche-{n}").replace("projet: miniz", "projet: ruche")
+                .replace("categorie: compression-sans-perte", "categorie: ruche").replace("type: optimisation", "type: test")
+                .replace("metrique: debit_compression_n6", "metrique: null").replace("sortie_compressee: identique\n", "")
+                .replace("cree_par: tests", "cree_par: conseil"), encoding="utf-8")
+        TestR8Bootstrap.reglage(self, R8_AMORCAGE)
+        self.a("2026-11-30T20:00:00Z")
+        for n in range(9001, 9008):
+            self.ok("prendre", f"ruche-{n}", "--utilisateur", "bidji29")
+        self.commit("seven tooling tasks of bidji29")
+        poussee = "2026-11-30T23:30:00Z"
+        self.pr(poussee, lambda: self.modifier("ruche-9008", statut="reservee", reservation={"utilisateur": "bidji29", "depuis": poussee}))
+        return "bidji29", poussee, "2026-12-01T00:30:00Z", (), "règle R8 : bidji29 prend un engagement après la fin de r8_amorcage"
+
+    def silence_agora(self):
+        self.a("2026-10-30T12:00:00Z")
+        debat = self.ouvrir("alice")
+        self.a("2026-10-30T12:10:00Z")
+        self.argumenter("bruno", "fait", "R8 plafonne déjà les engagements à 3 par utilisateur.", "--source", "REGLES.md", debat=debat)
+        self.commit("a debate")
+        poussee, verification = "2026-10-31T11:40:00Z", "2026-10-31T12:40:00Z"  # 24 h of silence from 2026-10-31T12:10
+
+        def clore():
+            self.a(verification)
+            self.ok("debattre", "clore", debat, "--utilisateur", "alice", "--issue", "sans_suite", "--synthese", "Rien n'en sort.")
+            self.ecrire({**self.debat(debat), "synthese_le": poussee, "clos_le": poussee}, debat)
+        self.pr(poussee, clore)
+        return "alice", poussee, verification, (), "le rapporteur ne clôt qu'après 24 h sans nouvel argument"
+
+    def note(self):
+        poussee = "2026-10-30T10:00:00Z"
+        self.pr(poussee, lambda: self.noter_a_la_main({"le": poussee}))
+        return "gaspard", poussee, "2026-10-30T13:00:00Z", (), "une note est datée de l'heure de la PR"
+
+    def releve_agora(self):
+        self.a("2026-10-30T12:00:00Z")
+        debat = self.ouvrir("alice")
+        self.a("2026-10-30T12:10:00Z")
+        self.argumenter("bruno", "fait", "R8 plafonne déjà les engagements à 3 par utilisateur.", "--source", "REGLES.md", debat=debat)
+        self.commit("a debate")
+        poussee, verification = "2026-11-02T11:40:00Z", "2026-11-02T12:40:00Z"  # alice, the rapporteur, has 72 h: until 12:10
+
+        def synthetiser():
+            self.a(verification)
+            self.ok("debattre", "synthetiser", debat, "--utilisateur", "bruno", "--texte", "Synthèse de relève par bruno.")
+            self.ecrire({**self.debat(debat), "synthese_le": poussee}, debat)
+        self.pr(poussee, synthetiser)
+        return "bruno", poussee, verification, (), "le rapporteur (alice) a jusqu'au 2026-11-02T12:10:00Z"
+
+    def note_de_tache_proposee(self):
+        poussee = "2026-10-30T10:00:00Z"
+        self.pr(poussee, lambda: bee.modifier_tache(self.proposer_tache("gaspard"), note={
+            "par": "gaspard", "le": poussee, "texte": "Une note dès la proposition."}))
+        return "gaspard", poussee, "2026-10-30T13:00:00Z", (), "une note est datée de l'heure de la PR"
+
+    def soumise_sur_main(self):
+        """On main: alice takes miniz-0099 and submits miniz-0099-c1 at 2026-10-30T09:00."""
+        self.a("2026-10-30T09:00:00Z")
+        for nom, commande in (("prise", ["prendre", "miniz-0099", "--utilisateur", "alice"]),
+                              ("soumission", ["soumettre", "miniz-0099", "--utilisateur", "alice", "--pr", PR_MINIZ + "77004"])):
+            self.branche(nom)
+            self.ok(*commande)
+            self.commit()
+            self.fusionner(nom)
+
+    def date_d_argument(self):
+        self.a("2026-10-30T12:00:00Z")
+        debat = self.ouvrir("alice")
+        self.commit("a debate")
+        poussee = "2026-10-30T13:00:00Z"
+        self.pr(poussee, lambda: self.argumenter("bruno", "fait", "R8 plafonne déjà les engagements à 3 par utilisateur.", "--source",
+                                                 "REGLES.md", debat=debat))
+        return "bruno", poussee, "2026-10-30T16:00:00Z", (), "relancez la commande bee debattre"
+
+    def date_d_accord(self):
+        self.jusqu_a("proposee")  # I-0001, published 2026-10-30T10:00: a guardian may agree from 2026-11-02T10:00
+        poussee = "2026-11-02T11:00:00Z"
+        self.pr(poussee, lambda: self.geste("accord-gardien", "gina"))
+        return "gina", poussee, "2026-11-02T14:00:00Z", (), "accord_gardien.le (2026-11-02T11:00:00Z) doit être l'heure de la PR"
+
+    def date_de_relecture(self):
+        self.soumise_sur_main()
+        poussee = "2026-10-30T10:00:00Z"
+        self.pr(poussee, lambda: self.ok("relire", "miniz-0099-c1", "--utilisateur", "bruno", "--avis", "favorable", "--motif",
+                                         "Relu en entier, banc rejoué."))
+        return "bruno", poussee, "2026-10-30T13:00:00Z", (), "relecture de bruno, le (2026-10-30T10:00:00Z) doit être l'heure de la PR"
+
+    def date_de_proposition(self):
+        poussee = "2026-10-30T10:00:00Z"
+        self.pr(poussee, lambda: self.ok("proposer", "--utilisateur", "gaspard", "--regle", "R4", "--texte", "Au moins 1,5 % sur la "
+                                         "métrique visée.", "--motif", "Le bruit mesuré est plus faible que prévu."))
+        return "gaspard", poussee, "2026-10-30T13:00:00Z", (), "ouverte_le (2026-10-30T10:00:00Z) doit être l'heure de la PR"
+
+    def date_d_invitation(self):
+        poussee = "2026-10-30T10:00:00Z"
+        self.pr(poussee, lambda: self.inviter("alice"))
+        return "alice", poussee, "2026-10-30T13:00:00Z", (), "propose_le (2026-10-30T10:00:00Z) doit être l'heure de la PR"
+
+    def date_de_mesure(self):
+        self.soumise_sur_main()
+        poussee = "2026-10-30T10:00:00Z"
+        self.pr(poussee, lambda: bee.ecrire_yaml(self.dossier / "mesures/miniz-0099-c1/bruno.yaml", {
+            "contribution": "miniz-0099-c1", "soumise_par": "bruno", "le": poussee, "base": "2948eeb", "candidat": "839b676",
+            "config": {"architecture": "arm64"}, "metriques": {"debit_compression_n6": {"gain": 0.05, "au_dela_du_bruit": True}}}))
+        return "bruno", poussee, "2026-10-30T13:00:00Z", (), "mesures/miniz-0099-c1/bruno.yaml : le (2026-10-30T10:00:00Z) doit être"
+
+    def date_de_vote(self):
+        self.a("2026-10-30T10:00:00Z")
+        self.proposition()
+        self.commit("P-0001, open until 2026-11-06T10:00")
+        poussee = "2026-10-31T10:00:00Z"
+        self.pr(poussee, lambda: self.ok("voter", "P-0001", "--utilisateur", "alice", "--valeur", "1"))
+        return "alice", poussee, "2026-10-31T13:00:00Z", (), "votes/P-0001/alice.yaml : le (2026-10-31T10:00:00Z) doit être l'heure de la PR"
+
+    def cree_le(self):
+        poussee = "2026-10-30T23:30:00Z"
+        self.pr(poussee, lambda: self.proposer_tache("gaspard"))
+        return "gaspard", poussee, "2026-10-31T02:00:00Z", (), "cree_le (2026-10-30) est la date de la PR (2026-10-31)"
+
+    def invitation_expiree(self):
+        self.jusqu_a("proposee")  # I-0001 of github:octocat, proposed 2026-10-30T10:00, expires 14 days later
+        poussee, verification = "2026-11-13T09:30:00Z", "2026-11-13T10:30:00Z"
+
+        def inviter():
+            self.a(verification)
+            self.inviter("alice")
+            self.ecrire_invitation({**self.invitation("I-0002"), "propose_le": poussee}, "I-0002")
+        self.pr(poussee, inviter)
+        return "alice", poussee, verification, (), "est déjà invité(e) (I-0001)"
+
+    # --- At the check ---
+
+    def expiration_robot(self, geste):
+        self.a("2026-10-30T09:00:00Z")
+        self.prendre_et_fusionner("alice")
+        if geste == "retrait":  # alice submits: her reservation ends; bruno's registration then expires alone
+            self.branche("soumission")
+            self.ok("soumettre", "miniz-0099", "--utilisateur", "alice", "--pr", PR_MINIZ + "77003")
+            self.commit()
+            self.fusionner("soumission")
+        if geste in ("promotion", "retrait"):
+            self.a("2026-10-30T10:00:00Z")
+            self.prendre_et_fusionner("bruno", "miniz-0099", "--en-parallele")
+        verification = "2026-11-02T09:30:00Z" if geste != "retrait" else "2026-11-02T10:30:00Z"
+        self.pr(verification, lambda: self.ok("liberer-expirees"))
+        refus = ("on ne retire que sa propre inscription en parallèle (bruno" if geste == "retrait" else
+                 "seul le titulaire (alice) libère sa réservation avant expiration")
+        return "github-actions[bot]", "2026-11-02T08:30:00Z" if geste != "retrait" else "2026-11-02T09:30:00Z", verification, (), refus
+
+    def frein(self):
+        self.jusqu_a("proposee")  # I-0001, published 2026-10-30T10:00: a guardian may agree from 2026-11-02T10:00
+        (self.dossier / "gouvernance/incidents.yaml").write_text(
+            'incidents:\n  - id: INC-0001\n    titre: Messages en nombre\n    ouvert_le: "2026-10-31T10:00:00Z"\n'
+            '    clos_le: "2026-11-02T11:30:00Z"\n', encoding="utf-8")
+        self.commit("an incident, closed at 11:30")
+        poussee = "2026-11-02T11:00:00Z"
+        self.pr(poussee, lambda: self.ecrire_invitation({**self.invitation(), "accord_gardien": {"par": "gina", "le": poussee}}))
+        return "gina", poussee, "2026-11-02T12:00:00Z", (), "incident(s) ouvert(s) : INC-0001"
+
+    def fin_du_vote(self):
+        self.a("2026-10-30T10:00:00Z")
+        self.proposition()
+        self.commit("P-0001, open until 2026-11-06T10:00")
+        poussee = "2026-11-06T09:30:00Z"
+        self.pr(poussee, lambda: self.ok("voter", "P-0001", "--utilisateur", "alice", "--valeur", "1"))
+        return "alice", poussee, "2026-11-06T10:30:00Z", (), "le vote sur P-0001 est clos"
+
+    def anciennete(self):
+        poussee = "2026-10-31T23:30:00Z"  # an account created on 2026-08-03 is 89 days old, 90 on 2026-11-01
+        self.pr(poussee, lambda: bee.ecrire_yaml(self.dossier / "membres/david.yaml", {
+            "pseudo": "david", "inscrit_le": "2026-10-31", "compte_cree_le": "2026-08-03", "github_id": numero_de("david")}))
+        return "david", poussee, "2026-11-01T00:30:00Z", ("--compte-cree-le", "2026-08-03"), "le compte GitHub doit avoir au moins 90 jours"
+
+    def test_each_rule_is_judged_on_its_documented_clock(self):
+        self.depart = git(self.dossier, "rev-parse", "HEAD").strip()
+        cas = {"R7, reservation": (self.r7_reservation, "push"), "R7, parallel registration": (self.r7_parallele, "push"),
+               "24 h creation cap": (self.plafond_24h, "push"), "R8 end": (self.r8_fin, "push"),
+               "agora silence before closing": (self.silence_agora, "push"), "agora relief": (self.releve_agora, "push"),
+               "note date": (self.note, "push"), "proposed task's note date": (self.note_de_tache_proposee, "push"),
+               "measure date": (self.date_de_mesure, "push"), "agora argument date": (self.date_d_argument, "push"),
+               "guardian's agreement date": (self.date_d_accord, "push"), "review date": (self.date_de_relecture, "push"),
+               "proposition ouverte_le": (self.date_de_proposition, "push"), "invitation propose_le": (self.date_d_invitation, "push"),
+               "vote date": (self.date_de_vote, "push"), "task cree_le": (self.cree_le, "push"),
+               "earlier invitation's expiry": (self.invitation_expiree, "push"),
+               "robot expiry, promotion": (lambda: self.expiration_robot("promotion"), "check"),
+               "robot expiry, withdrawal": (lambda: self.expiration_robot("retrait"), "check"),
+               "robot expiry, release": (lambda: self.expiration_robot("liberation"), "check"),
+               "brake": (self.frein, "check"), "end of a vote": (self.fin_du_vote, "check"), "account age": (self.anciennete, "check")}
+        for regle, (preparer, horloge) in cas.items():
+            with self.subTest(regle=regle):
+                self.repartir()
+                auteur, poussee, verification, options, refus = preparer()
+                a_la_poussee = self.verdict(auteur, options, poussee, poussee)
+                a_la_verification = self.verdict(auteur, options, verification, verification)
+                self.assertNotEqual(a_la_poussee[0], a_la_verification[0], a_la_poussee[1] + a_la_verification[1])
+                self.assertIn(refus, (a_la_poussee if a_la_poussee[0] else a_la_verification)[1])
+                code, texte = self.verdict(auteur, options, poussee, verification)
+                self.assertEqual(code, (a_la_poussee if horloge == "push" else a_la_verification)[0], texte)
 
 
 class TestAjoutSeulRuche0042(BaseRepetitionGenerale):
@@ -14042,7 +15030,7 @@ class TestQuotedPathsGate(BaseRepetitionGenerale):
         if lien:
             os.symlink("../README.md", self.dossier / lien)
         self.commit()
-        return bee.verifier_pr(bee.Registre(self.dossier), "main", "HEAD", auteur)
+        return bee.verifier_pr(bee.Registre(self.dossier), "main", "HEAD", auteur, github_id=numero_de(auteur))
 
     def test_a_quoted_name_is_treated_as_its_plain_equivalent(self):
         cas = {  # (author, files, options): what the plain name gives
@@ -14265,5 +15253,633 @@ class TestGitHelper(unittest.TestCase):
         self.assertIsNone(dates.date("taches/miniz/miniz-0100.yaml\n", bee.cle_creation({"id": "miniz-0100", "cree_par": "mallory"})))
 
 
+# ruche-0092: the suite in parallel processes, inside validation.yml's single « valider » job (`python3 outils/test_bee.py
+# --processus N`; without options: unittest.main, serial). At thousands of bees the scarce resource is the organisation's
+# concurrent jobs, not minutes: processes, not jobs. No test is lost: each process reports the suite it loaded and the tests
+# it ran, and a test missing, run twice, added or removed after the split, skipped, an expected failure or an unexpected success,
+# an empty shard or a failed process fails the run.
+# Each process is a fresh interpreter: environment variables, the working directory and the audit hook stay its own.
+
+def nom_du_test(test):
+    return f"{type(test).__qualname__}.{test._testMethodName}"
+
+
+def ids_des_tests(module):
+    """A module's tests, « Class.method », in the order unittest runs them."""
+    def aplatir(suite):
+        for t in suite:
+            yield from aplatir(t) if isinstance(t, unittest.TestSuite) else [nom_du_test(t)]
+    return list(aplatir(unittest.defaultTestLoader.loadTestsFromModule(module)))
+
+
+def repartir(tests, n):
+    """n shards, one test in n each, in the suite's order: every class is shared among all shards (similar durations, with no
+    recorded durations to keep up to date), and keeps its order within each."""
+    return [tests[i::n] for i in range(n)]
+
+
+def controler(tests, tranches, rapports=None):
+    """[] if each test is in exactly one shard and no shard is empty; with the processes' reports (None: no report), also if
+    each process loaded the very suite that was split and ran at least one test, each test ran exactly once, and none was
+    skipped, an expected failure or an unexpected success."""
+    n = len(tranches)
+    erreurs = [f"shard {i + 1}/{n}: no test" for i, t in enumerate(tranches) if not t]
+    listes = {"in the shards": [t for tranche in tranches for t in tranche]}
+    for i, r in enumerate(rapports or ()):
+        if r is None or not r["lances"]:
+            erreurs.append(f"shard {i + 1}/{n}: " + ("no report" if r is None else "ran no test"))
+        erreurs += [f"shard {i + 1}/{n}: {ecart} (the parallel run accepts no skip, expected failure or unexpected success)"
+                    for ecart in (r or {}).get("ecarts", [])]
+        if r and r["lances"] and collections.Counter(r["vus"]) != collections.Counter(tests):
+            erreurs.append(f"shard {i + 1}/{n}: the suite changed after the split (added: {sorted(set(r['vus']) - set(tests))}, "
+                           f"removed: {sorted(set(tests) - set(r['vus']))})")
+    if rapports is not None:
+        listes["run"] = [t for r in rapports if r for t in r["lances"]]
+    attendu = collections.Counter(tests)
+    for quoi, liste in listes.items():
+        compte = collections.Counter(liste)
+        erreurs += [f"{t}: {quoi} {compte[t]} times, expected {attendu[t]}" for t in sorted(attendu | compte) if compte[t] != attendu[t]]
+    return erreurs
+
+
+def en_parallele(commande, tests, processus):
+    """Runs `tests` in `processus` processes, one shard each; 0 if every process passed and every test ran exactly once."""
+    tranches = repartir(tests, processus)
+    erreurs = controler(tests, tranches) or lancer_tranches(commande, tests, tranches)
+    print(f"{len(tests)} tests in {processus} processes ({os.cpu_count()} CPUs): "
+          + ("FAILED\n" + "\n".join(erreurs) if erreurs else "each ran exactly once, all passed."))
+    return 1 if erreurs else 0
+
+
+def lancer_tranches(commande, tests, tranches):
+    """Starts `commande --tranche <plan> <i>` for each shard at once, prints each shard's log as soon as it ends, then returns
+    the errors of controler on their reports and of their exit codes."""
+    n, enfants, codes, rapports = len(tranches), [], {}, {}
+    print(f"{len(tests)} tests in {n} shards of {', '.join(str(len(t)) for t in tranches)}", flush=True)
+    with tempfile.TemporaryDirectory() as dossier:
+        plan = pathlib.Path(dossier) / "plan.json"
+        plan.write_text(json.dumps({"tests": tests, "tranches": tranches}), encoding="utf-8")
+        try:
+            for i in range(n):
+                with open(plan.with_name(f"journal-{i}.txt"), "w", encoding="utf-8") as journal:
+                    enfants.append(subprocess.Popen([*commande, "--tranche", str(plan), str(i)], stdin=subprocess.DEVNULL, stdout=journal,
+                                                    stderr=subprocess.STDOUT))
+            while len(codes) < n:  # a live log: each shard's journal as soon as it ends
+                for i, e in enumerate(enfants):
+                    if i not in codes and e.poll() is not None:
+                        codes[i], rapport = e.returncode, plan.with_name(f"rapport-{i}.json")
+                        rapports[i] = json.loads(rapport.read_text(encoding="utf-8")) if rapport.exists() else None
+                        print(f"=== shard {i + 1}/{n}: {len(tranches[i])} tests, exit code {codes[i]}, "
+                              f"{rapports[i]['duree'] if rapports[i] else '?'} s ===\n"
+                              + plan.with_name(f"journal-{i}.txt").read_text(encoding="utf-8", errors="replace"), flush=True)
+                time.sleep(0.2)
+        finally:
+            for e in enfants:
+                e.kill()  # only those still running: an interruption
+    return (controler(tests, tranches, [rapports[i] for i in range(n)])
+            + [f"shard {i + 1}/{n}: exit code {codes[i]}" for i in range(n) if codes[i]])
+
+
+class Lances(unittest.TextTestResult):
+    """A result that keeps the name of each test it starts."""
+
+    def __init__(self, *arguments, **options):
+        super().__init__(*arguments, **options)
+        self.lances = []
+
+    def startTest(self, test):
+        self.lances.append(nom_du_test(test))
+        super().startTest(test)
+
+
+def tranche(module, plan, i):
+    """One process of en_parallele: runs shard i of the plan, then writes its report (the suite it loaded, the tests it ran)."""
+    debut, plan = time.monotonic(), pathlib.Path(plan)
+    vus, tests = ids_des_tests(module), json.loads(plan.read_text(encoding="utf-8"))["tranches"][i]
+    resultat = unittest.TextTestRunner(verbosity=2, resultclass=Lances).run(unittest.defaultTestLoader.loadTestsFromNames(tests, module))
+    nom = lambda t: nom_du_test(getattr(t, "test_case", t))  # noqa: E731 (a subtest: its test)
+    ecarts = ([f"{nom(t)}: skipped ({raison})" for t, raison in resultat.skipped] + [f"{nom(t)}: expected failure" for t, _ in
+              resultat.expectedFailures] + [f"{nom(t)}: unexpected success" for t in resultat.unexpectedSuccesses])
+    plan.with_name(f"rapport-{i}.json").write_text(json.dumps({"vus": vus, "lances": resultat.lances, "ecarts": ecarts,
+                                                               "duree": round(time.monotonic() - debut)}), encoding="utf-8")
+    return 0 if resultat.wasSuccessful() and not ecarts else 1
+
+
+def principal_tests(module, fichier, arguments):
+    """`python3 <fichier>`: the suite, serial (unittest.main and its options); `--processus N`: in N processes;
+    `--tranche <plan> <i>`: one of them."""
+    if len(arguments) == 2 and arguments[0] == "--processus" and re.fullmatch(r"[1-9][0-9]*", arguments[1]):
+        return en_parallele([sys.executable, os.path.abspath(fichier)], ids_des_tests(module), int(arguments[1]))
+    if len(arguments) == 3 and arguments[0] == "--tranche":
+        return tranche(module, arguments[1], int(arguments[2]))
+    unittest.main(module=module, argv=[fichier, *arguments])
+
+
+class TestSuiteEnParallele(unittest.TestCase):
+    """ruche-0092: the suite in parallel processes loses no test: each runs exactly once, or the whole run fails (a test added
+    or removed after the split, a split that drops or doubles one, an empty shard, a shard that ran nothing, a failed one, a
+    skip, an expected failure, an unexpected success). The module essai.py: ECART sets B.test_4's deviation, LENT slows B.test_5."""
+
+    TESTS = ["A.test_1", "A.test_2", "B.test_3", "B.test_4", "B.test_5"]
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.module = pathlib.Path(self.temp.name) / "essai.py"
+        self.module.write_text(f"import os, sys, time, unittest\nsys.path.insert(0, {str(RACINE / 'outils')!r})\nimport test_bee\n"
+                               "ECART = os.environ.get('ECART')\n"
+                               "class A(unittest.TestCase):\n    def test_1(self): pass\n    def test_2(self): pass\n"
+                               "class B(unittest.TestCase):\n    def test_3(self): pass\n"
+                               "    def test_4(self):\n"
+                               "        if ECART == 'skip': self.skipTest('a reason')\n"
+                               "        with self.subTest(n=1):\n"
+                               "            if ECART == 'skipped subtest': self.skipTest('in a subtest')\n"
+                               "        self.assertNotEqual(ECART, 'expected failure')\n"
+                               "    if ECART in ('expected failure', 'unexpected success'): test_4 = unittest.expectedFailure(test_4)\n"
+                               "    def test_5(self):\n"
+                               "        self.assertNotIn('ECHEC', os.environ)\n"
+                               "        time.sleep(float(os.environ.get('LENT', 0)))\n"
+                               "sys.exit(test_bee.principal_tests(sys.modules[__name__], __file__, sys.argv[1:]))\n", encoding="utf-8")
+
+    def lancer(self, tests, processus=2):
+        sortie = io.StringIO()
+        with contextlib.redirect_stdout(sortie):
+            code = en_parallele([sys.executable, str(self.module)], tests, processus)
+        return code, sortie.getvalue()
+
+    def test_each_test_runs_exactly_once(self):
+        for processus in (1, 2, 5):
+            with self.subTest(processus=processus):
+                code, sortie = self.lancer(self.TESTS, processus)
+                self.assertEqual(code, 0, sortie)
+                self.assertEqual(sortie.count("=== shard "), processus)
+                self.assertTrue(sortie.endswith(f"5 tests in {processus} processes ({os.cpu_count()} CPUs): each ran exactly once, all passed.\n"))
+        self.assertEqual(ids_des_tests(sys.modules[__name__]).count("TestSuiteEnParallele.test_each_test_runs_exactly_once"), 1)
+
+    def test_a_test_added_or_removed_after_the_split_fails_the_run(self):
+        code, sortie = self.lancer([t for t in self.TESTS if t != "B.test_4"])  # in no shard: no process runs it
+        self.assertEqual(code, 1, sortie)
+        self.assertIn("the suite changed after the split (added: ['B.test_4'], removed: [])", sortie)
+        self.assertNotIn("B.test_4: run", sortie)
+        code, sortie = self.lancer(self.TESTS + ["B.test_6"])
+        self.assertEqual(code, 1, sortie)
+        self.assertIn("the suite changed after the split (added: [], removed: ['B.test_6'])", sortie)
+        self.assertIn("B.test_6: run 0 times, expected 1", sortie)
+
+    def test_a_split_that_drops_or_doubles_a_test_or_leaves_a_shard_empty_runs_nothing_and_fails(self):
+        for fautive, erreur in ((lambda t, n: [t[:2], t[3:]], "B.test_3: in the shards 0 times, expected 1"),
+                                (lambda t, n: [t[:3], t[2:]], "B.test_3: in the shards 2 times, expected 1"),
+                                (lambda t, n: [t, []], "shard 2/2: no test")):
+            with self.subTest(erreur=erreur), mock.patch.dict(globals(), repartir=fautive):
+                code, sortie = self.lancer(self.TESTS)
+                self.assertEqual(code, 1, sortie)
+                self.assertIn(erreur, sortie)
+                self.assertNotIn("=== shard", sortie)
+        code, sortie = self.lancer(self.TESTS, 6)
+        self.assertEqual((code, sortie.count("=== shard")), (1, 0), sortie)
+        self.assertIn("shard 6/6: no test", sortie)
+
+    def test_a_shard_that_ran_nothing_or_reported_nothing_fails_the_run(self):
+        tranches = repartir(self.TESTS, 2)
+        self.assertEqual(controler(self.TESTS, tranches, [{"vus": self.TESTS, "lances": t} for t in tranches]), [])
+        self.assertEqual(controler(self.TESTS, tranches, [{"vus": self.TESTS, "lances": tranches[0]}, {"vus": self.TESTS, "lances": []}]),
+                         ["shard 2/2: ran no test", "A.test_2: run 0 times, expected 1", "B.test_4: run 0 times, expected 1"])
+        self.assertIn("shard 2/2: no report", controler(self.TESTS, tranches, [{"vus": self.TESTS, "lances": tranches[0]}, None]))
+
+    def test_a_failed_shard_fails_the_run(self):
+        with mock.patch.dict(os.environ, ECHEC="1"):
+            code, sortie = self.lancer(self.TESTS)
+        self.assertEqual(code, 1, sortie)
+        self.assertIn("shard 1/2: exit code 1", sortie)  # B.test_5, the 5th test, is in the 1st shard
+
+    def test_a_bad_number_of_processes_runs_nothing(self):
+        for nombre in ("0", "-1", "deux", "²"):
+            with self.subTest(nombre=nombre), self.assertRaises(SystemExit) as fin, contextlib.redirect_stderr(io.StringIO()):
+                principal_tests(sys.modules[__name__], __file__, ["--processus", nombre])  # unittest.main: unknown option
+            self.assertEqual(fin.exception.code, 2)
+
+    def test_a_skip_an_expected_failure_or_an_unexpected_success_fails_the_run(self):
+        for ecart, attendu in (("skip", "skipped (a reason)"), ("skipped subtest", "skipped (in a subtest)"),
+                               ("expected failure", "expected failure"), ("unexpected success", "unexpected success")):
+            with self.subTest(ecart=ecart), mock.patch.dict(os.environ, ECART=ecart):
+                code, sortie = self.lancer(self.TESTS)
+                self.assertEqual(code, 1, sortie)
+                self.assertIn(f"shard 2/2: B.test_4: {attendu} (the parallel run accepts no skip, expected failure or unexpected "
+                              "success)", sortie)
+                self.assertIn("shard 2/2: exit code 1", sortie)
+                self.assertNotIn("all passed", sortie)
+
+    def test_each_shards_log_prints_as_soon_as_it_ends(self):
+        with mock.patch.dict(os.environ, LENT="3"):  # B.test_5, in shard 1, ends 3 s after shard 2
+            code, sortie = self.lancer(self.TESTS)
+        self.assertEqual(code, 0, sortie)
+        self.assertLess(sortie.index("=== shard 2/2: 2 tests, exit code 0"), sortie.index("=== shard 1/2: 3 tests, exit code 0"))
+
+    def test_the_real_file_exits_with_the_runners_code(self):
+        """The entry line of outils/test_bee.py itself: without sys.exit, a failed parallel run would exit 0 and pass the step."""
+        r = subprocess.run([sys.executable, str(RACINE / "outils" / "test_bee.py"), "--processus", "1000"], capture_output=True,
+                           text=True, stdin=subprocess.DEVNULL)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("shard 1000/1000: no test", r.stdout)
+        self.assertNotIn("=== shard", r.stdout)  # a split that fails runs nothing
+
+    def test_validation_yml_runs_the_suite_in_processes_inside_its_job(self):
+        etape = TestCiScope.etapes()[1]["outil"]
+        self.assertRegex(etape["run"], r"^python3 outils/test_bee\.py --processus [1-9][0-9]*\n?$")
+        self.assertIsInstance(etape.get("timeout-minutes"), int)  # a hang stops the job, not after GitHub's 360 minutes
+
+    def test_validation_yml_runs_each_check_once_in_order_and_none_fails_silently(self):
+        """The tool's tests, then the judge's, then bee valider, then bee verifier-pr, each once in the « valider » job, and no
+        continue-on-error (job or step): a failed step stops the job. Checked on the file and on altered copies of it."""
+        texte = (RACINE / ".github/workflows/validation.yml").read_text(encoding="utf-8")
+        commandes = ("python3 outils/test_bee.py --processus", "python3 outils/juge/test_juge.py", "python3 outils/bee.py valider",
+                     "python3 outils/bee.py verifier-pr")
+
+        def ecarts(flux):
+            job = flux["jobs"]["valider"]
+            places = [[k for k, e in enumerate(job["steps"]) for _ in range(str(e.get("run", "")).count(c))] for c in commandes]
+            return ([f"{c}: {len(p)} times" for c, p in zip(commandes, places) if len(p) != 1]
+                    + ["out of order"] * (sorted(p[0] for p in places if p) != [p[0] for p in places if p])
+                    + [f"continue-on-error: {e.get('name', 'job')}" for e in (job, *job["steps"]) if "continue-on-error" in e])
+
+        def place(flux, nom):
+            return next(k for k, e in enumerate(flux["jobs"]["valider"]["steps"]) if e.get("name", "").startswith(nom))
+
+        def deplacer(flux, nom, avant):
+            etape = flux["jobs"]["valider"]["steps"].pop(place(flux, nom))
+            flux["jobs"]["valider"]["steps"].insert(place(flux, avant), etape)
+
+        self.assertEqual(ecarts(yaml.safe_load(texte)), [])
+        etapes = lambda f: f["jobs"]["valider"]["steps"]  # noqa: E731
+        alterations = {
+            "continue-on-error on the tests": lambda f: etapes(f)[place(f, "Tests de l'outil")].update({"continue-on-error": True}),
+            "continue-on-error on the job": lambda f: f["jobs"]["valider"].update({"continue-on-error": True}),
+            "Validation complète above the tests": lambda f: deplacer(f, "Validation complète", "Tests de l'outil"),
+            "the PR rules above bee valider": lambda f: deplacer(f, "Règles de la pull request", "Validation complète"),
+            "bee valider twice": lambda f: etapes(f).append(etapes(f)[place(f, "Validation complète")]),
+            "no judge tests": lambda f: etapes(f).pop(place(f, "Tests unitaires du juge")),
+        }
+        for nom, alterer in alterations.items():
+            with self.subTest(alteration=nom):
+                flux = yaml.safe_load(texte)
+                alterer(flux)
+                self.assertTrue(ecarts(flux), nom)
+
+
+class TestIdentiteParNumeroFil(BaseParallele):
+    """ruche-0022 : un compte renommé (bee renommer) garde son fil et les refus d'un gardien qui y sont posés, ses contributions
+    et relectures pour son niveau, et une seule voix ; l'historique garde l'ancien login, et le registre reste valide."""
+
+    def setUp(self):
+        super().setUp()
+        (self.dossier / "gouvernance/gardiens.yaml").write_text("membres:\n  - pseudo: bruno\n", encoding="utf-8")
+        self.fermer_porte()
+
+    def ok_(self, *arguments):
+        code, texte = self.bee(*arguments)
+        self.assertEqual(code, 0, texte)
+        return texte
+
+    def test_un_compte_renomme_garde_son_fil_ses_refus_son_niveau_et_une_voix(self):
+        self.ok_("prendre", "miniz-0099", "--utilisateur", "alice")
+        c1 = self.soumettre("miniz-0099", "alice", 99401)
+        self.verdict(c1, 0.05)
+        self.ok_("relire", c1, *self.lu(c1), "--utilisateur", "bruno", "--avis", "defavorable", "--motif", "Régression sur n6.")
+        self.ok_("cloturer", c1, "--motif", "PR fermée sans fusion.")
+        self.ok_("prendre", "miniz-9001", "--utilisateur", "chloe")
+        c3 = self.soumettre("miniz-9001", "chloe", 99403)
+        self.ok_("voter", c3, "--utilisateur", "alice", "--valeur", "1")
+        self.assertIn("membres/alice2.yaml", self.ok_("renommer", "--ancien", "alice", "--pseudo", "alice2"))
+        fiche = bee.lire_yaml(self.dossier / "membres/alice2.yaml")
+        self.assertEqual((fiche["pseudo"], fiche["github_id"], fiche["anciens_logins"]), ("alice2", numero_de("alice"), ["alice"]))
+        self.assertFalse((self.dossier / "membres/alice.yaml").exists())
+        self.valide()  # the history still names alice: a former login stays known
+        # The thread follows the account: alice2 submits the same work again; the guardian's refusal on c1 still blocks it.
+        self.ok_("prendre", "miniz-0099", "--utilisateur", "alice2")
+        c2 = self.soumettre("miniz-0099", "alice2", 99402)
+        self.verdict(c2, 0.05)
+        reg = bee.Registre(self.dossier)
+        self.assertEqual([c for c, _ in bee.fil_de(reg, self.enr(c2))], [c1, c2])
+        self.assertEqual(bee.releve_relectures(reg, self.enr(c2), bee.calculer_niveaux(reg))["fil"], [("bruno", c1, "refus")])
+        self.assertIn(f"refus de bruno dans {c1} (même auteur, même tâche)", self.acceptation(c2)[1])
+        # One voice: alice2's vote replaces alice's.
+        self.ok_("voter", c3, "--utilisateur", "alice2", "--valeur", "-1")
+        self.assertEqual([(v["votant"], v["valeur"]) for v in bee.votes_de(bee.Registre(self.dossier), c3)], [("alice2", -1)])
+        # Levels: what alice did counts for alice2, by either login.
+        enr = self.enr(c1)
+        bee.ecrire_yaml(self.dossier / f"contributions/miniz/{c1}.yaml", {**enr, "statut": "integree"})
+        niveaux = bee.calculer_niveaux(bee.Registre(self.dossier))
+        self.assertEqual((niveaux["alice2"]["integrees"], "alice" in niveaux), (1, False))
+        self.assertEqual((bee.niveau_de(niveaux, "alice"), bee.niveau_de(niveaux, "alice2")), ("Contributeur", "Contributeur"))
+
+
+class TestIdentiteParNumero(BaseRepetitionGenerale):
+    """ruche-0022 : l'identité d'un membre est le numéro de son compte GitHub (github_id), relevé auprès de l'API par le
+    workflow, jamais lu dans la PR ; qui est qui se lit sur main. Un compte renommé garde R7 et R8 ; un login repris par un
+    autre compte n'hérite de rien (refusé, un humain regarde) ; une fiche à un numéro déjà pris est refusée ; les fiches et les
+    listes sans numéro restent valides et agissent comme avant."""
+
+    def setUp(self):
+        super().setUp()
+        for n in (9003, 9004, 9005):
+            (self.dossier / f"taches/miniz/miniz-{n}.yaml").write_text(TACHE_OPTIMISATION.replace("miniz-0099", f"miniz-{n}"),
+                                                                      encoding="utf-8")
+        self.commit("tasks of the test")
+        self.comptes = {}  # login: the number the API gives for it, when it is not numero_de(login)
+
+    def verifier(self, auteur, *options):
+        if auteur in self.comptes and not any(o.startswith("--github-id") for o in options):
+            options = (*options, "--github-id", str(self.comptes[auteur]))
+        return super().verifier(auteur, *options)
+
+    def abandonner(self, nom):
+        git(self.dossier, "switch", "-qf", "main")
+        git(self.dossier, "branch", "-qD", nom)
+
+    def renommer_et_fusionner(self, ancien, nouveau):
+        self.branche("renommage")
+        self.ok("renommer", "--ancien", ancien, "--pseudo", nouveau)
+        self.commit()
+        self.comptes[nouveau] = self.comptes.get(ancien, numero_de(ancien))  # the same account, under its new login
+        self.libre_service(nouveau, "renommage")
+        self.fusionner("renommage")
+
+    def renommer_par_le_conseil(self, ancien, nouveau):
+        """The council moves a member file on main by hand (bee renommer refuses an account that holds work)."""
+        fiche = bee.lire_yaml(self.dossier / f"membres/{ancien}.yaml")
+        (self.dossier / f"membres/{ancien}.yaml").unlink()
+        bee.ecrire_yaml(self.dossier / f"membres/{nouveau}.yaml", {**fiche, "pseudo": nouveau, "anciens_logins": [ancien],
+                                                                   "renomme_le": os.environ["BEE_MAINTENANT"][:10]})
+        self.commit(f"le conseil renomme {ancien}")
+        self.comptes[nouveau] = numero_de(ancien)
+
+    def test_un_compte_renomme_garde_r7_et_r8(self):
+        self.a("2026-10-30T10:00:00Z")
+        self.prendre_et_fusionner("gaspard")
+        self.a("2026-10-30T10:05:00Z")
+        self.liberer_et_fusionner("gaspard")
+        for tache in ("miniz-9001", "miniz-9003", "miniz-9004"):
+            self.prendre_et_fusionner("gaspard", tache)
+        self.a("2026-10-30T10:10:00Z")
+        # Rename when you hold nothing: gaspard holds three reservations (S1, review of #156).
+        self.ko("gaspard holds a reservation, a parallel registration or a contribution in review : rename when you hold nothing",
+                "renommer", "--ancien", "gaspard", "--pseudo", "gaspard2")
+        self.branche("renommage")
+        fiche = bee.lire_yaml(self.dossier / "membres/gaspard.yaml")
+        (self.dossier / "membres/gaspard.yaml").unlink()
+        bee.ecrire_yaml(self.dossier / "membres/gaspard2.yaml", {**fiche, "pseudo": "gaspard2", "anciens_logins": ["gaspard"],
+                                                                 "renomme_le": "2026-10-30"})
+        self.commit()
+        self.comptes["gaspard2"] = numero_de("gaspard")
+        self.refusee("gaspard2", "gaspard holds a reservation, a parallel registration or a contribution in review")
+        self.abandonner("renommage")
+        # The council may move it anyway: what gaspard did and holds is gaspard2's.
+        self.renommer_par_le_conseil("gaspard", "gaspard2")
+        self.assertEqual(bee.lire_yaml(self.dossier / "membres/gaspard2.yaml")["anciens_logins"], ["gaspard"])
+        self.ok("valider")
+        self.a("2026-10-30T10:20:00Z")
+        # R7: gaspard2 is gaspard, who left miniz-0099 15 minutes ago.
+        self.ko("R7 : gaspard2 a quitté cette tâche sans contribution le 2026-10-30T10:05:00Z", "prendre", "miniz-0099",
+                "--utilisateur", "gaspard2")
+        self.branche("reprise")
+        bee.modifier_tache(self.chemin_tache(), statut="reservee", reservation={"utilisateur": "gaspard2", "depuis": "2026-10-30T10:20:00Z"})
+        self.commit()
+        self.refusee("gaspard2", "R7 : gaspard2 a quitté cette tâche sans contribution le 2026-10-30T10:05:00Z")
+        self.abandonner("reprise")
+        # R8: gaspard's three reservations are gaspard2's.
+        self.ko("règle R8 : gaspard2 a déjà 3 réservations ou inscriptions en parallèle", "prendre", "miniz-9005", "--utilisateur", "gaspard2")
+        self.branche("quatrieme")
+        bee.modifier_tache(self.chemin_tache("miniz-9005"), statut="reservee",
+                           reservation={"utilisateur": "gaspard2", "depuis": os.environ["BEE_MAINTENANT"]})
+        self.commit()
+        self.refusee("gaspard2", "règle R8 : gaspard2 a 4 réservations ou inscriptions en parallèle")
+        self.abandonner("quatrieme")
+        # A 24 h cap (notes) is not reset by a rename either.
+        conf = bee.config_notes(bee.Registre(self.dossier))
+        self.noter_a_la_main(*({"par": "gaspard"} for _ in range(conf["max_par_24h"])))
+        self.commit("notes de gaspard")
+        self.ko("plafond : gaspard2 a déjà", "noter", "miniz-0099", "--utilisateur", "gaspard2", "--texte", "Une de plus.")
+
+    def test_les_debats_d_avant_un_renommage_restent_valides(self):
+        """B1 (review of #156): the agora checks of bee valider know a member file's former logins, as the others do."""
+        self.a("2026-10-30T10:00:00Z")
+        debat = self.ouvrir("gaspard")
+        self.ok("debattre", "argumenter", debat, "--utilisateur", "gaspard", "--position", "pour", "--texte", "Un plafond simple limite les abus.")
+        self.ok("debattre", "argumenter", debat, "--utilisateur", "farid", "--position", "contre", "--texte", "Un plafond fixe est trop rigide.")
+        self.commit("débat de gaspard")
+        self.a("2026-10-30T10:30:00Z")
+        self.renommer_et_fusionner("gaspard", "gaspard2")
+        self.ok("valider")
+
+    def test_un_ancien_login_ne_donne_aucun_statut(self):
+        """B2 (review of #156): a governance entry naming a member file's former login needs that account's number."""
+        self.renommer_et_fusionner("gaspard", "gaspard2")
+        gardiens = self.dossier / "gouvernance/gardiens.yaml"
+        self.branche("nomination")
+        gardiens.write_text("membres:\n  - pseudo: gaspard\n", encoding="utf-8")
+        self.commit()
+        self.refusee("bidji29", "gouvernance : gaspard is a former login of gaspard2 : named only with that account's github_id")
+        self.ko("gouvernance : gaspard is a former login of gaspard2", "valider")
+        gardiens.write_text(f"membres:\n  - pseudo: gaspard\n    github_id: {numero_de('gaspard')}\n", encoding="utf-8")
+        self.ok("valider")  # the council names that very account: its status follows it
+
+    def test_un_numero_est_un_entier(self):
+        """S3 (review of #156): github_id is an int, never a float or a bool, in bee valider and at the gate."""
+        self.branche("flottant")
+        (self.dossier / "membres/david.yaml").write_text(
+            f"pseudo: david\ninscrit_le: '2026-10-29'\ncompte_cree_le: '2020-01-01'\ngithub_id: {numero_de('david')}.0\n", encoding="utf-8")
+        self.commit()
+        code, texte = self.verifier("david", "--compte-cree-le", "2020-01-01", "--fusion-auto")
+        self.assertEqual(code, 1, texte)
+        self.assertIn(f"david : github_id is a GitHub account's number (a positive integer)", texte)
+        self.assertIn("membres/david.yaml : github_id is the number GitHub gives for david's account", texte)
+        for valeur in ("true", f"{numero_de('david')}.0", "-3"):
+            with self.subTest(github_id=valeur):
+                (self.dossier / "membres/david.yaml").write_text(
+                    f"pseudo: david\ninscrit_le: '2026-10-29'\ncompte_cree_le: '2020-01-01'\ngithub_id: {valeur}\n", encoding="utf-8")
+                self.assertEqual(self.bee("valider")[0], 1)
+
+    def test_un_renommage_par_30_jours_et_5_anciens_logins_au_plus(self):
+        """S5 (review of #156): one rename per account per 30 days, and 5 former logins at most."""
+        self.a("2026-10-30T10:00:00Z")
+        self.renommer_et_fusionner("gaspard", "gaspard2")
+        self.a("2026-11-28T10:00:00Z")
+        self.ko("gaspard2 : one rename per 30 days, and 5 former logins at most", "renommer", "--ancien", "gaspard2", "--pseudo", "gaspard3")
+        self.branche("trop-tot")
+        fiche = bee.lire_yaml(self.dossier / "membres/gaspard2.yaml")
+        (self.dossier / "membres/gaspard2.yaml").unlink()
+        bee.ecrire_yaml(self.dossier / "membres/gaspard3.yaml", {**fiche, "pseudo": "gaspard3", "anciens_logins": ["gaspard", "gaspard2"],
+                                                                 "renomme_le": "2026-11-28"})
+        self.commit()
+        self.comptes["gaspard3"] = numero_de("gaspard")
+        self.refusee("gaspard3", "gaspard2 : one rename per 30 days")
+        self.abandonner("trop-tot")
+        self.a("2026-11-29T10:00:00Z")
+        self.renommer_et_fusionner("gaspard2", "gaspard3")
+        # Five former logins: no sixth.
+        chemin = self.dossier / "membres/gaspard3.yaml"
+        bee.ecrire_yaml(chemin, {**bee.lire_yaml(chemin), "anciens_logins": ["g1", "g2", "g3", "gaspard", "gaspard2"], "renomme_le": "2026-01-01"})
+        self.commit("cinq anciens logins")
+        self.ok("valider")
+        self.ko("gaspard3 : one rename per 30 days, and 5 former logins at most", "renommer", "--ancien", "gaspard3", "--pseudo", "gaspard4")
+        bee.ecrire_yaml(chemin, {**bee.lire_yaml(chemin), "anciens_logins": ["g0", "g1", "g2", "g3", "gaspard", "gaspard2"]})
+        self.ko("anciens_logins", "valider")
+
+    def test_un_renommage_est_seul_dans_sa_pr(self):
+        self.branche("renommage")
+        self.ok("renommer", "--ancien", "gaspard", "--pseudo", "gaspard2")
+        self.ok("prendre", "miniz-0099", "--utilisateur", "gaspard2")
+        self.commit()
+        self.comptes["gaspard2"] = numero_de("gaspard")
+        self.refusee("gaspard2", "a rename (bee renommer) is published alone in its PR")
+
+    def test_un_login_repris_par_un_autre_compte_n_herite_de_rien(self):
+        self.a("2026-10-30T10:00:00Z")
+        self.renommer_et_fusionner("gaspard", "gaspard2")
+        self.comptes["gaspard"] = autre = numero_de("gaspard") + 1  # another account took the login gaspard on GitHub
+        attendu = (f"gaspard : the registry binds this login to the GitHub account {numero_de('gaspard')}, and this PR's author is "
+                   f"the account {autre} : a renamed or reused login inherits nothing ; a human looks")
+        for nom, geste in (("inscription", lambda: bee.ecrire_yaml(self.dossier / "membres/gaspard.yaml", {
+                                "pseudo": "gaspard", "inscrit_le": "2026-10-30", "compte_cree_le": "2020-01-01", "github_id": autre})),
+                           ("reservation", lambda: bee.modifier_tache(self.chemin_tache(), statut="reservee", reservation={
+                                "utilisateur": "gaspard", "depuis": os.environ["BEE_MAINTENANT"]}))):
+            with self.subTest(geste=nom):
+                self.branche(nom)
+                geste()
+                self.commit()
+                self.refusee("gaspard", attendu)
+                self.abandonner(nom)
+        # A fork PR opened by the account that took gaspard does not count as gaspard2's, though gaspard was its login.
+        self.prendre_et_fusionner("gaspard2", "miniz-9001")
+        self.branche("soumission")
+        adresse = "https://github.com/Bee-ruche/minizBee/pull/99501"
+        self.ok("soumettre", "miniz-9001", "--utilisateur", "gaspard2", "--pr", adresse)
+        self.commit()
+        auteurs = self.dossier.parent / "auteurs_pr.tsv"
+        for ligne, accepte in ((f"gaspard\t{autre}", False), ("gaspard", False), (f"gaspard2\t{numero_de('gaspard')}", True),
+                               (f"gaspard\t{numero_de('gaspard')}", True)):
+            with self.subTest(auteur_pr=ligne):
+                auteurs.write_text(f"{adresse}\t{ligne}\n", encoding="utf-8")
+                code, texte = self.verifier("gaspard2", "--auteurs-pr", str(auteurs))
+                self.assertEqual(code, 0 if accepte else 1, texte)
+                if not accepte:
+                    self.assertIn(f"la PR {adresse} doit avoir été ouverte par gaspard2 sur GitHub", texte)
+
+    def test_une_fiche_a_un_numero_deja_pris_est_refusee(self):
+        self.ko("the account %d already has its file, gaspard : a renamed account moves it (bee renommer)" % numero_de("gaspard"),
+                "inscrire", "--pseudo", "gaspard-bis", "--compte-cree-le", "2020-01-01", "--github-id", str(numero_de("gaspard")))
+        self.branche("double")
+        bee.ecrire_yaml(self.dossier / "membres/gaspard-bis.yaml", {"pseudo": "gaspard-bis", "inscrit_le": "2026-10-29",
+                                                                    "compte_cree_le": "2020-01-01", "github_id": numero_de("gaspard")})
+        self.commit()
+        self.comptes["gaspard-bis"] = numero_de("gaspard")  # gaspard's account, renamed on GitHub, enrols anew
+        self.refusee("gaspard-bis", f"membres/gaspard-bis.yaml : github_id {numero_de('gaspard')} is already gaspard's : one account, one file")
+        self.ko(f"github_id {numero_de('gaspard')} is already gaspard's", "valider")
+
+    def test_le_numero_vient_de_l_api_jamais_de_la_pr(self):
+        self.branche("inscription")
+        self.ok("inscrire", "--pseudo", "david", "--compte-cree-le", "2020-01-01", "--github-id", "4242")
+        self.commit()
+        self.refusee("david", f"github_id is the number GitHub gives for david's account ({numero_de('david')}), never one the PR writes")
+        code, texte = self.verifier("david", "--github-id=")  # the API was not read: refused, fails closed
+        self.assertEqual(code, 1, texte)
+        self.assertIn("(not read: --github-id), never one the PR writes", texte)
+        self.comptes["david"] = 4242  # the API gives 4242: the same number, accepted
+        code, texte = self.verifier("david", "--compte-cree-le", "2020-01-01", "--fusion-auto")
+        self.assertEqual(code, 0, texte)
+        self.assertIn("FUSION_AUTO=oui", texte)
+        for numero in ([], ["--github-id", "null"]):  # bee inscrire requires a number: a bee fails early
+            erreur = io.StringIO()
+            with self.subTest(numero=numero), contextlib.redirect_stderr(erreur), self.assertRaises(SystemExit):
+                bee.principal(["--registre", str(self.dossier), "inscrire", "--pseudo", "eve", "--compte-cree-le", "2020-01-01", *numero])
+            self.assertIn("--github-id", erreur.getvalue())
+        # The workflows read it from the API with the creation date, for the PR's author, and pass it to the gate.
+        for flux, etape in (("fusion-auto.yml", "Vérifier la fusion simulée"), ("validation.yml", "Règles de la pull request")):
+            with self.subTest(flux=flux):
+                etapes = [s for job in yaml.safe_load((RACINE / ".github/workflows" / flux).read_text(encoding="utf-8"))["jobs"].values()
+                          for s in job["steps"]]
+                script = next(s["run"] for s in etapes if s.get("name", "").startswith(etape))
+                self.assertIn('''compte=$(gh api "users/$AUTEUR" --jq '"\\(.created_at[:10]) \\(.id)"')''', script)
+                self.assertRegex(script, r'--github-id "\$(\{compte#\* \}|numero_compte)"')
+
+    def test_une_pr_ne_change_pas_qui_est_qui_pour_ses_propres_controles(self):
+        # eve's file says bidji29 was her login, and the same PR does what only the council does: in the PR's own state, eve
+        # would be bidji29, so the council ; the gate reads who is who on main.
+        self.branche("usurpation")
+        bee.ecrire_yaml(self.dossier / "membres/eve.yaml", {"pseudo": "eve", "inscrit_le": "2026-10-29", "compte_cree_le": "2020-01-01",
+                                                            "github_id": numero_de("eve"), "anciens_logins": ["bidji29"]})
+        (self.dossier / "taches/miniz/miniz-0100.yaml").write_text(TACHE_OPTIMISATION.replace("miniz-0099", "miniz-0100"), encoding="utf-8")
+        self.commit()
+        reg = bee.Registre(self.dossier)
+        self.assertTrue(reg.identites.meme("eve", "bidji29") and "eve" in reg.conseil)
+        problemes = bee.verifier_pr(reg, "main", "HEAD", "eve", github_id=numero_de("eve"))[0]
+        self.assertFalse(reg.identites.meme("eve", "bidji29") or "eve" in reg.conseil)
+        self.assertTrue(any("a new member file has no former login" in p for p in problemes), problemes)
+        self.assertTrue(any("créer directement une tâche ouverte est réservé au conseil" in p for p in problemes), problemes)
+        self.abandonner("usurpation")
+        # A binding forged in the PR (gaspard's file given another number) moves nothing either: main's binds gaspard.
+        self.branche("liaison")
+        bee.ecrire_yaml(self.dossier / "membres/gaspard.yaml", {**bee.lire_yaml(self.dossier / "membres/gaspard.yaml"), "github_id": 777})
+        self.commit()
+        self.comptes["gaspard"] = 777
+        self.refusee("gaspard", f"gaspard : the registry binds this login to the GitHub account {numero_de('gaspard')}, and this PR's "
+                                "author is the account 777")
+
+    def test_un_login_nomme_dans_gouvernance_est_renomme_par_le_conseil(self):
+        (self.dossier / "gouvernance/gardiens.yaml").write_text("membres:\n  - pseudo: gaspard\n", encoding="utf-8")
+        self.commit("le conseil nomme gaspard gardien")
+        self.ko("gaspard or gaspard2 is named in gouvernance/ : the council renames it", "renommer", "--ancien", "gaspard", "--pseudo", "gaspard2")
+        self.ko("farid or bidji29 is named in gouvernance/", "renommer", "--ancien", "farid", "--pseudo", "bidji29")  # S4
+        self.branche("renommage")
+        fiche = bee.lire_yaml(self.dossier / "membres/gaspard.yaml")
+        (self.dossier / "membres/gaspard.yaml").unlink()
+        bee.ecrire_yaml(self.dossier / "membres/gaspard2.yaml", {**fiche, "pseudo": "gaspard2", "anciens_logins": ["gaspard"]})
+        self.commit()
+        self.comptes["gaspard2"] = numero_de("gaspard")
+        self.refusee("gaspard2", "gaspard or gaspard2 is named in gouvernance/ : the council renames it, the list and the member file in one PR")
+        self.abandonner("renommage")
+        # A member file is withdrawn by the council only, outside a rename.
+        self.branche("retrait")
+        (self.dossier / "membres/farid.yaml").unlink()
+        self.commit()
+        self.refusee("farid", "membres/farid.yaml : a member file is deleted by the council only, or moved by its own account's rename")
+
+    def test_les_fiches_et_les_listes_sans_numero_restent_valides(self):
+        # A member file from before ruche-0022, without a number: valid, and its login acts as before, without a binding.
+        bee.ecrire_yaml(self.dossier / "membres/ancien.yaml", {"pseudo": "ancien", "inscrit_le": "2026-10-20", "compte_cree_le": "2020-01-01"})
+        self.ok("valider")
+        self.commit("une fiche d'avant")
+        self.branche("prise")
+        self.ok("prendre", "miniz-0099", "--utilisateur", "ancien")
+        self.commit()
+        self.comptes["ancien"] = 1234
+        self.libre_service("ancien", "reservation")
+        self.abandonner("prise")
+        # Governance lists and agent accounts may carry a number, the council's: then the gate binds their login to it.
+        conseil = self.dossier / "gouvernance/conseil.yaml"
+        conseil.write_text(conseil.read_text(encoding="utf-8").replace("role: fondateur", "role: fondateur\n    github_id: 5"), encoding="utf-8")
+        agents = self.dossier / "gouvernance/comptes-agents.yaml"
+        agents.write_text(agents.read_text(encoding="utf-8").replace("    acts_for: bidji29", "    acts_for: bidji29\n    github_id: 6"),
+                          encoding="utf-8")
+        self.ok("valider")
+        self.commit("le conseil lie ses comptes")
+        for qui, numero, accepte in (("bidji29", 5, True), ("bidji29", 7, False), ("laruche-architect", 6, True),
+                                     ("laruche-architect", 5, False)):
+            with self.subTest(qui=qui, numero=numero):
+                self.branche("note")
+                self.noter_a_la_main({"par": "bidji29"})
+                self.commit()
+                code, texte = self.verifier(qui, "--github-id", str(numero))
+                self.assertEqual(code == 0, accepte, texte)
+                self.abandonner("note")
+        for valeur in ('"5"', "0", "true"):
+            with self.subTest(github_id=valeur):
+                conseil.write_text(re.sub(r"github_id: .*", f"github_id: {valeur}", conseil.read_text(encoding="utf-8")), encoding="utf-8")
+                self.ko("bidji29 : github_id is a GitHub account's number (a positive integer)", "valider")
+        conseil.write_text(re.sub(r"github_id: .*", "github_id: 5", conseil.read_text(encoding="utf-8")), encoding="utf-8")
+        (self.dossier / "gouvernance/gardiens.yaml").write_text("membres:\n  - pseudo: gaspard\n    github_id: 99\n", encoding="utf-8")
+        self.ko(f"« gaspard » is bound to two GitHub accounts ({numero_de('gaspard')} and 99)", "valider")
+
+
 if __name__ == "__main__":
-    unittest.main()
+    sys.exit(principal_tests(sys.modules[__name__], __file__, sys.argv[1:]))

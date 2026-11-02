@@ -1,0 +1,13 @@
+id: ruche-0094-c1
+tache: ruche-0094
+auteur: bidji29
+pr: https://github.com/Bee-ruche/registre/pull/134
+resume: A registry contribution whose PR is merged into main is recorded by the integration workflow,
+  from GitHub's facts only.
+statut: integree
+soumise_le: '2026-11-02T06:06:40Z'
+engage_depuis: '2026-11-01T23:10:48Z'
+relectures: []
+decidee_le: '2026-11-02T06:15:39Z'
+motif_decision: 'Hive tooling contribution: registry PR #134 merged at the judged commit 30be874 by the agent principal under the council''s permanent authorisation, after an independent adversarial review by an agent of another model with the architect''s private brief in four passes (one blocking finding in the first, then should-fix items, all fixed and verified; the last pass found nothing left); CI green on the merged commit. R1: 149 lines excluding tests, for an M task at 200. Recorded by hand: it changes a workflow, which bee record-merge leaves to the council. Submitted inside the code PR.'
+fusion_sha: 72afcfaf7f22bf38913bee3748181bc05a16fc69
