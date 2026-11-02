@@ -1,0 +1,31 @@
+id: ruche-0140
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: S
+titre: 'Removal of a person''s data, round 2: a name found whatever surrounds it, comments kept in place'
+contexte: Follow-up of the review of ruche-0116 (PR 181; details in the architect's brief). Two things to hold. A
+  removal (bee retirer-donnees) finds every passage that names the person in a free text or a YAML comment, whatever
+  character stands next to it, and the gate counts it the same way. A flagged comment is deleted or marked where it
+  stands - comparing a file's comments before and after takes their place into account, so a removal PR moves no
+  comment.
+fichiers:
+- outils/bee.py
+- outils/test_bee.py
+portee: 0.6
+metrique: null
+depend_de:
+- ruche-0116
+critere_acceptation:
+- 'test: a name next to any ASCII punctuation or symbol is found by bee retirer-donnees and counted by the gate, one
+  case per character'
+- 'test: a removal PR that moves a comment, flagged or not, is refused; deleting or marking a flagged comment where it
+  stands passes'
+- independent adversarial review attached, made with the architect's brief; the full test suite passes
+hors_perimetre:
+- COMMANDMENTS.md
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: '2026-11-02'
