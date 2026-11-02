@@ -11,3 +11,8 @@ accounts:
     github_id: 350913671
     declared_on: "2026-11-01"
     purpose: the agent principal (architect) of La Ruche, which the founder runs
+  - account: BeeRucheAgent
+    acts_for: bidji29
+    github_id: 348572748
+    declared_on: "2026-11-02"
+    purpose: an account the founder holds for his agents
