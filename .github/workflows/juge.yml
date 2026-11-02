@@ -2,7 +2,7 @@
 #
 # Un fork l'appelle depuis sa CI, en épinglant le commit d'une étiquette du registre :
 #   juge:
-#     uses: Bee-ruche/registre/.github/workflows/juge.yml@<commit de juge-v2> # juge-v2
+#     uses: Bee-ruche/registre/.github/workflows/juge.yml@<commit de juge-v3> # juge-v3
 #     with: { base_sha: <base de la PR>, tete_sha: <tête de la PR>, options: "sortie_compressee=identique" }
 # Il juge la tête contre la base avec le greffon de la BASE (bee/juge/projet.py), jamais celui de la PR,
 # et publie un artefact « juge » : juge.json (rapport, section « juge » comprise) et code (0 juste,

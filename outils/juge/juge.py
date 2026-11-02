@@ -60,7 +60,7 @@ import entrees as module_entrees  # noqa: E402
 import stats  # noqa: E402
 from lecture import Erreur, Refus, Sorties, exiger, figer, journal, propre  # noqa: E402,F401
 
-VERSION_COMMUNE = 2   # étiquette juge-v2 du registre
+VERSION_COMMUNE = 3   # étiquette juge-v3 du registre
 VERSION_JUGE = 3      # numérotation de verdict.json : 2 = juge de minizBee (miniz-0031), 3 = juge commun (its tag in « commun »)
 CHEMIN_GREFFON = os.path.join("bee", "juge", "projet.py")
 ATTRIBUTS_REQUIS = ("NOM", "SOURCES", "SOURCES_REQUISES", "OUTILLAGE", "EN_TETES_BASE", "CONSTRUIRE",
