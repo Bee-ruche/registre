@@ -194,13 +194,17 @@ personnelles sont un premier filtre, pas une garantie.
 | Liste de non-contact | Le conseil, en ajout seul, par empreintes (avec une réponse ou un retrait) | Jamais une entrée retirée ni modifiée, jamais un nom en clair ; la liste ne se supprime pas | Le conseil |
 
 **Son débat, à jour.** L'accord du gardien et le feu vert exigent le débat propre de l'invitation, ouvert, et une synthèse
-qui couvre tout argument : elle note le dernier qu'elle a lu (`synthese_couvre`), et tout argument publié après lui la
-rend périmée, compté et non daté (ni une horloge ni l'ordre de deux PR en vol n'y changent rien). Un doublon ne compte
+qui couvre tout argument : elle note le dernier qu'elle a lu (`synthese_couvre`, le dernier du débat fusionné), et tout
+argument publié après lui la rend périmée, compté et non daté (ni une horloge ni l'ordre de deux PR en vol n'y changent
+rien) ; la relève et `bee debats` comptent de même. Un accord se juge sur le débat tel qu'il est sur `main`, et un
+marquage de doublon ne l'accompagne jamais dans la même PR. Un doublon ne compte
 pas, tant que personne ne conteste son marquage : un marquage y est signé (`doublon_par`), jamais par le proposant, et
 tout membre conteste un ou plusieurs marquages par un argument (`bee debattre argumenter D-0024 --conteste A7 …`), même
 celui qui les a posés. Seuls un gardien ou le conseil closent ce débat, une fois l'invitation décidée (au plus tard dans
-la même PR) ; un feu vert se renouvelle alors si la synthèse de clôture couvrait tout. Un envoi consigné sur une
-synthèse périmée reste un fait : `consigner-envoi` prévient, puis il est signalé. `bee voir I-0001` et la sortie des
+la même PR ; **limite** : une invitation expirée sans décision reste « proposée », son débat reste ouvert) ; un feu vert
+se renouvelle alors si la synthèse de clôture couvrait tout. Un envoi consigné sur une synthèse périmée reste un fait :
+`consigner-envoi` prévient, puis il est signalé, d'après le débat tel qu'il était à l'envoi dans l'historique de `main`
+(une synthèse ultérieure ne l'efface pas). `bee voir I-0001` et la sortie des
 accords disent l'état de ce débat (avant la décision), chaque doublon, qui l'a marqué et qui l'a contesté.
 
 **Le plafond** (`invitations_par_semaine`, 3) compte, sur 7 jours glissants et pour toute la ruche, chaque

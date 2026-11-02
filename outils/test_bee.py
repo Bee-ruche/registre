@@ -10897,10 +10897,11 @@ class TestDebatInvitationRuche0050(BaseRevueRuche0020):
         self.accord_a_la_main("accord_conseil", "bidji29")
         self.refusee("bidji29", "D-0002 is closed")
 
-    def test_une_synthese_ecrite_sans_avoir_lu_un_argument_fusionne_avant_elle_ne_le_couvre_pas(self):
-        """La course miroir : l'argument de gaspard est fusionné avant la synthèse que le rapporteur a écrite sans l'avoir lu. La
-        synthèse note le dernier argument qu'elle a lu (synthese_couvre) : l'argument de gaspard reste à couvrir, quelles que soient
-        les dates (même antérieure à la synthèse)."""
+    def test_une_synthese_ecrite_sans_avoir_lu_un_argument_ne_le_couvre_pas(self):
+        """La course miroir : l'objection de gaspard (pr1) et la synthèse de chloe (pr2), écrite sans l'avoir lue, sont en vol. Vérifiée
+        sur main qui a déjà l'objection, la synthèse est refusée : elle couvre le dernier argument du débat fusionné. Vérifiées
+        toutes deux avant la première fusion, elles passent : la synthèse note A2 (synthese_couvre), et A3 reste à couvrir, même
+        daté d'avant elle, pour l'accord comme pour la relève et bee debats."""
         self.jusqu_a("proposee")  # A1 (bruno), synthèse de bruno, rapporteur bruno
         # chloe participe déjà : la rotation de la plume ne rattrape rien, seul synthese_couvre le peut.
         for quand, qui, commande in (("2026-10-31T09:00:00Z", "chloe", ["argumenter", "--position", "pour", "--texte", "Je soutiens."]),
@@ -10918,24 +10919,66 @@ class TestDebatInvitationRuche0050(BaseRevueRuche0020):
         self.ok("debattre", "synthetiser", "D-0002", "--utilisateur", "chloe", "--texte", "Deux avis pour ; rien d'autre.")
         self.commit()
         self.a("2026-11-02T10:06:00Z")
+        self.libre_service("chloe", "synthese")  # vérifiée avant que pr1 ne soit fusionnée
         git(self.dossier, "switch", "-q", "pr1")
         self.libre_service("gaspard", "argument")
         self.fusionner("pr1")
         git(self.dossier, "switch", "-q", "pr2")
         git(self.dossier, "-c", "user.name=t", "-c", "user.email=t@t", "merge", "-q", "--no-edit", "main")
-        self.libre_service("chloe", "synthese")
-        self.fusionner("pr2")
+        self.refusee("chloe", "synthese_couvre : an invitation's synthesis covers the last argument of the debate as merged (A3)")
+        self.fusionner("pr2")  # fusionnée quand même, sur sa vérification d'avant : la course
         d = self.debat("D-0002")
-        self.assertEqual((d["synthese_couvre"], d["arguments"][-1]["id"]), ("A2", "A3"))
+        self.assertEqual((d["synthese_couvre"], d["arguments"][-1]["id"], d["rapporteur"]), ("A2", "A3", "bruno"))
         self.assertLess(d["arguments"][-1]["le"], d["synthese_le"], "A3 est daté d'avant la synthèse")
         self.a("2026-11-02T14:00:00Z")
         self.ko("D-0002 : its synthesis is out of date (it does not cover A3)", "invitation", "accord-gardien", "I-0001", "--utilisateur", "gina")
-        # Une synthèse ne prétend pas avoir lu un argument qui n'existe pas.
+        etat = next(x for x in json.loads(self.ok("debats", "--json")) if x["id"] == "D-0002")
+        self.assertEqual(etat["arguments_apres_synthese"], ["A3"], "bee debats compte comme les accords")
+        # La relève compte aussi : 72 h après A3, gaspard (ni le rapporteur, ni l'auteur de la dernière synthèse) relève bruno.
+        self.a("2026-11-05T09:00:00Z")
+        self.ko("a jusqu'au 2026-11-05T10:00:00Z", "debattre", "synthetiser", "D-0002", "--utilisateur", "gaspard", "--texte", "Relève.")
+        self.a("2026-11-05T11:00:00Z")
         self.branche()
-        self.ecrire({**self.debat("D-0002"), "synthese_couvre": "A9", "synthese": "Tout lu.", "synthese_le": self.maintenant(),
-                     "synthese_par": "chloe"}, "D-0002")
+        self.assertIn("en relève de bruno", self.ok("debattre", "synthetiser", "D-0002", "--utilisateur", "gaspard", "--texte",
+                                                    "Deux avis pour (A1, A2) ; une objection (A3)."))
+        self.publier("gaspard", "synthese")
+        self.a("2026-11-05T12:00:00Z")
+        self.branche()
+        self.geste("accord-gardien", "gina")
+        self.publier("gina", "accord_gardien")
+
+    def test_un_accord_se_juge_sur_le_debat_de_main_et_ne_voyage_pas_avec_un_marquage(self):
+        self.jusqu_a("proposee")
+        self.a("2026-11-02T10:30:00Z")
+        self.branche()
+        self.argumenter("chloe", "pour", "Une objection de fond qui nuance A1.", debat="D-0002")
+        self.publier("chloe", "argument")
+        # Un gardien qui marque A2 et donne son accord dans la même PR (elle serait fusionnée sans humain) : refusé.
+        self.a("2026-11-02T11:00:00Z")
+        self.branche()
+        self.ok("debattre", "doublon", "D-0002", "--argument", "A2", "--de", "A1", "--utilisateur", "gina")
+        self.ok("invitation", "accord-gardien", "I-0001", "--utilisateur", "gina")  # la commande voit le marquage local
         self.commit()
-        self.refusee("chloe", "synthese_couvre : the last argument an invitation's synthesis has read")
+        self.refusee("gina", "D-0002 : a duplicate marking and an accord never travel in the same PR")
+        self.abandonner()
+        # Le marquage d'abord, publié et contestable ; l'accord ensuite.
+        for quand, qui, commande, nature in (
+                ("2026-11-02T11:00:00Z", "gina", ["debattre", "doublon", "D-0002", "--argument", "A2", "--de", "A1"], "doublon"),
+                ("2026-11-02T11:30:00Z", "gina", ["invitation", "accord-gardien", "I-0001"], "accord_gardien"),
+                ("2026-11-02T12:00:00Z", "chloe", ["debattre", "argumenter", "D-0002", "--position", "pour", "--texte",
+                                                   "Une autre nuance de A1."], "argument")):
+            self.a(quand)
+            self.branche()
+            self.ok(*commande, "--utilisateur", qui)
+            self.publier(qui, nature)
+        # Le conseil : marquage, feu vert et clôture dans une PR : le feu vert se juge sur main, où A3 n'est pas marqué.
+        self.a("2026-11-02T12:30:00Z")
+        self.branche()
+        for commande in (["debattre", "doublon", "D-0002", "--argument", "A3", "--de", "A1"], ["invitation", "accord-conseil", "I-0001"],
+                         ["debattre", "clore", "D-0002", "--issue", "sans_suite"]):
+            self.ok(*commande, "--utilisateur", "bidji29")
+        self.commit()
+        self.refusee("bidji29", "D-0002 : a duplicate marking and an accord never travel in the same PR")
 
     def test_un_debat_general_garde_les_regles_de_main(self):
         """Le scénario de la revue : dans un débat ordinaire, un argument marqué doublon après la synthèse empêche toujours le
@@ -10980,6 +11023,12 @@ class TestDebatInvitationRuche0050(BaseRevueRuche0020):
         self.assertEqual(code, 0, texte)
         self.assertIn(alerte, texte)
         self.assertIn(alerte, self.ok("essaim"))
+        # Une synthèse publiée après l'envoi n'efface pas le signalement : il se calcule sur le débat tel qu'il était à l'envoi.
+        self.a("2026-10-30T11:00:00Z")
+        self.branche()
+        self.ok("debattre", "synthetiser", "D-0002", "--utilisateur", "bruno", "--texte", "Un avis pour (A1) ; une objection (A2).")
+        self.publier("bruno", "synthese")
+        self.assertIn(alerte, self.bee("valider")[1], "une synthèse ultérieure n'efface pas le signalement")
 
     def test_un_feu_vert_se_renouvelle_sur_un_debat_clos_si_sa_synthese_couvrait_tout(self):
         self.decidees(2)  # feux verts du 2026-10-20, échus le 27 ; D-0002 et D-0003 à jour

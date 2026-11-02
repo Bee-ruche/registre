@@ -2784,6 +2784,11 @@ def arguments_a_couvrir(debat):
     return [i for a, i in zip(arguments_de(debat)[debut:], ids[debut:]) if not (a.get("doublon_de") and i not in contre)]
 
 
+def en_attente(debat):
+    """ruche-0050: what the synthesis has yet to cover: counted in an invitation's debate (arguments_a_couvrir), dated elsewhere."""
+    return arguments_a_couvrir(debat) if debat.get("invitation") else arguments_apres_synthese(debat)
+
+
 def synthese_a_jour(debat):
     """ruche-0050: an invitation's debate has a synthesis, and it covers every argument it must (arguments_a_couvrir)."""
     return bool(debat.get("synthese")) and not arguments_a_couvrir(debat)
@@ -2804,7 +2809,7 @@ def resume_debat(debat):
             "derniere_activite": en_iso(derniere) if derniere else None,
             "dernier_argument": {k: dernier.get(k) for k in ("id", "par", "le", "position")} if dernier else None,
             "synthese_le": debat.get("synthese_le") if debat.get("synthese") else None,
-            "arguments_apres_synthese": arguments_apres_synthese(debat),
+            "arguments_apres_synthese": en_attente(debat),
             "issue": debat.get("issue"), "reference": debat.get("reference")}
 
 
@@ -3150,7 +3155,7 @@ def releve_refusee(debat, utilisateur, instant, heures, conseil=()):
                 "de son invitation) : le conseil désigne un rapporteur par une décision (docs/agora.md)")
     if utilisateur not in eligibles:
         return f"{utilisateur} a écrit la dernière synthèse : un autre participant relève le rapporteur"
-    attente = [m for a in arguments_de(debat) if a.get("id") in set(arguments_apres_synthese(debat))
+    attente = [m for a in arguments_de(debat) if str(a.get("id")) in set(map(str, en_attente(debat)))
                and (m := _instant_ou_rien(a.get("le")))]
     if not attente:
         return "aucun argument n'attend la synthèse : le rapporteur n'est pas en retard"
@@ -3310,6 +3315,9 @@ def verifier_debat(reg, chemin, statut_git, ancien, nouveau, auteur, *, est_cons
         moment = date_recente(nouveau.get("synthese_le"), "synthese_le")
         if moment and precedente:
             exiger(moment > precedente, "synthese_le : publier une synthèse, c'est la dater de maintenant")
+        dernier = ([a.get("id") for a in arguments_de(nouveau)] or [None])[-1]
+        exiger(not nouveau.get("invitation") or nouveau.get("synthese_couvre") == dernier, f"synthese_couvre : an invitation's synthesis "
+               f"covers the last argument of the debate as merged ({_nettoyer(dernier)}) : update main and synthesize again (ruche-0050)")
 
     # Caviardage (commandement 10, phrase ajoutée ; R12) : le conseil seul retire d'un débat, même clos, le texte d'un argument
     # qui désigne ou décrit une personne extérieure, à son refus ou à sa demande ; c'est la seule modification d'un argument.
@@ -4281,6 +4289,21 @@ def messages_et_places(reg, debut, sauf=None):
                    and (m := feu_vert(inv)) and m > debut)
 
 
+def perime_a_l_envoi(reg, inv, envoi):
+    """ruche-0050: what its debate's synthesis did not cover at the envoi: in the debate's version of the last commit of main up
+    to then (a later synthesis erases nothing); without that history, in the debate as it stands, its arguments up to then."""
+    d, chemin = debat_propre(reg, inv), f"debats/{inv.get('debat')}.yaml"
+    for sha, moment, _ in (commits_premier_parent(reg.racine, "HEAD", chemin) if d and historique_disponible(reg.racine) else []):
+        if moment <= envoi:
+            try:
+                version = lire_yaml_ref(reg.racine, sha, chemin)
+            except ErreurBee:
+                break
+            return arguments_a_couvrir(version) if isinstance(version, dict) else []
+    retard = set(arguments_a_couvrir(d)) if d else set()
+    return [i for a in arguments_de(d) if (i := str(a.get("id"))) in retard and (m := _instant_ou_rien(a.get("le"))) and m <= envoi]
+
+
 def alertes_croissance(reg):
     """Ce que bee valider et bee essaim signalent sans le refuser (seconde revue adverse, B1 et H2) : un message consigné est un
     fait ; s'il porte à plus de invitations_par_semaine les messages de 7 jours glissants (envois concurrents, envoi hors
@@ -4307,9 +4330,7 @@ def alertes_croissance(reg):
             alertes.append(f"{iid} : envoi consigné le {en_iso(envoi)}, après l'échéance de son feu vert ({en_iso(max(verts) + SEMAINE)}) : "
                            "consigné, car c'est un fait ; un feu vert échu se renouvelle avant l'envoi (R13)")
         # ruche-0050 : un envoi consigné alors que la synthèse de son débat ne couvrait pas un argument déjà publié.
-        d = debat_propre(reg, inv) if envoi else None
-        retard = set(arguments_a_couvrir(d)) if d else set()
-        if lus := [i for a in arguments_de(d) if (i := str(a.get("id"))) in retard and (m := _instant_ou_rien(a.get("le"))) and m <= envoi]:
+        if envoi and (lus := perime_a_l_envoi(reg, inv, envoi)):
             alertes.append(f"{iid} : envoi consigné le {en_iso(envoi)} sur une synthèse périmée ({inv.get('debat')} ne couvrait pas "
                            f"{', '.join(lus)}) : consigné, car c'est un fait ; le conseil revoit l'invitation (R13)")
     return alertes
@@ -4489,19 +4510,25 @@ def debat_propre(reg, inv):
     return d if isinstance(d, dict) and d.get("invitation") == inv.get("id") and d.get("ouvert_par") == inv.get("propose_par") else None
 
 
-def refus_debat_invitation(reg, inv, accord=True, clos=False):
+def refus_debat_invitation(reg, inv, accord=True, clos=False, avant=None):
     """ruche-0050: [] if the invitation's debate is its own (debat_propre) and open (`clos`: or closed, for a renewal), and, for an
-    accord (the guardian's, the green light, its renewal), if its synthesis is up to date (synthese_a_jour); else why."""
+    accord (the guardian's, the green light, its renewal), if its synthesis is up to date (synthese_a_jour); else why. `avant`:
+    the debate on main, when a PR gives the accord: judged on it too, and no duplicate marking travels with the accord."""
     did, d = _nettoyer(inv.get("debat")), debat_propre(reg, inv)
     if d is None:
         return [f"debat « {did} » : not the debate opened for {inv.get('id')} with it, by its proposer (bee inviter opens it)"]
-    if d.get("statut") != "ouvert" and not clos:
+    base = avant if isinstance(avant, dict) else d
+    if base.get("statut") != "ouvert" and not clos:
         return [f"{did} is closed : an invitation is proposed and decided while its own debate is open"]
-    return [f"{did} : its synthesis is out of date ({'it does not cover ' + ', '.join(arguments_a_couvrir(d)) if d.get('synthese') else 'none yet'}) "
-            "; the rapporteur publishes one first (bee debattre synthetiser)"] if accord and not synthese_a_jour(d) else []
+    marques = lambda x: {str(a.get("id")) for a in arguments_de(x) if a.get("doublon_de")}  # noqa: E731
+    if accord and marques(d) - marques(base):
+        return [f"{did} : a duplicate marking and an accord never travel in the same PR : publish the marking first"]
+    attente = arguments_a_couvrir(base) or arguments_a_couvrir(d)
+    return [f"{did} : its synthesis is out of date ({'it does not cover ' + ', '.join(attente) if base.get('synthese') else 'none yet'}) "
+            "; the rapporteur publishes one first (bee debattre synthetiser)"] if accord and not (synthese_a_jour(base) and synthese_a_jour(d)) else []
 
 
-def refus_geste(reg, ancien, nouveau, geste, auteur, instant, publication=None, frein=None, refus_lie=False, status=True, clos_ici=False):
+def refus_geste(reg, ancien, nouveau, geste, auteur, instant, publication=None, frein=None, refus_lie=False, status=True, debat_main=None):
     """Ce que verifier_pr refuse d'un geste de suivi ajouté à une invitation (bee invitation le dit avant d'écrire) : qui a le
     droit de le faire, dans quel état, à quel moment, sous quel frein et quel plafond. L'envoi est un fait, consigné après
     coup : seuls son auteur (le conseil) et le feu vert qui l'a précédé sont exigés. [] si le geste est permis."""
@@ -4547,7 +4574,7 @@ def refus_geste(reg, ancien, nouveau, geste, auteur, instant, publication=None, 
                   f"une invitation reste {conf['debat_min_heures']} h publique, débattue dans l'agora, avant tout accord "
                   f"(croissance.debat_min_heures) : pas avant le {en_iso(echeance) if echeance else '(pas encore publiée)'}")
     if geste in ("accord_gardien", "accord_conseil", "renouvellement"):  # the green light and its renewal (ruche-0050)
-        refus += refus_debat_invitation(reg, ancien, clos=geste == "renouvellement" or clos_ici)  # renewed on the closing synthesis
+        refus += refus_debat_invitation(reg, ancien, clos=geste == "renouvellement", avant=debat_main)  # renewed on the closing synthesis
     if geste == "accord_gardien":
         exiger(avant == "proposee", f"un accord de gardien se donne à une invitation proposée (statut : {avant})")
         exiger(status and auteur in en_fonction, f"{auteur} n'est pas un gardien en fonction : seul un gardien nommé (gouvernance/gardiens.yaml), "
@@ -4715,12 +4742,12 @@ def verifier_invitation(reg, chemin, statut_git, ancien, nouveau, auteur, *, est
     exiger(nouveau.get("statut") == etat_invitation(nouveau), f"statut « {nouveau.get('statut')} » au lieu de "
                                                               f"« {etat_invitation(nouveau)} »")
     publication = publiee_le(reg, base, chemin, ancien) if geste in ("accord_gardien", "accord_conseil") else None
-    try:  # ruche-0050: a green light given with the closure of its debate, in the same PR, is judged on the debate open on main
+    try:  # ruche-0050: an accord is judged on its debate as it is on main (a closure or a marking in the same PR changes nothing)
         avant = lire_yaml_ref(reg.racine, base, f"debats/{ancien.get('debat')}.yaml") if ID_DEBAT.match(str(ancien.get("debat"))) else None
     except ErreurBee:
         avant = None
     for refus in refus_geste(reg, ancien, nouveau, geste, auteur, instant, publication, frein() if geste in VERS_LE_CONTACT else None,
-                             refus_lie=refus_lie, status=status, clos_ici=isinstance(avant, dict) and avant.get("statut") == "ouvert"):
+                             refus_lie=refus_lie, status=status, debat_main=avant):
         exiger(False, refus)
     if (geste == "reponse" and bloc.get("valeur") in ("refusee", "sans_reponse")) or (
             geste == "retrait" and etat_invitation(ancien) != "acceptee"):
