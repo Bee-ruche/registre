@@ -1,0 +1,10 @@
+id: ruche-0042-c1
+tache: ruche-0042
+auteur: bidji29
+pr: https://github.com/Bee-ruche/registre/pull/133
+resume: Votes and measurements are append-only; R4 counts a measurement only from another person who states
+  their configuration.
+statut: en_relecture
+soumise_le: '2026-11-02T04:00:56Z'
+engage_depuis: '2026-11-01T22:00:46Z'
+relectures: []
