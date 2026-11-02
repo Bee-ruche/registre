@@ -43,8 +43,11 @@ jobs:
         run: |
           # Seulement une PR vers main : la vérification simule la fusion dans origin/main, et gh pr merge fusionne dans la
           # base réelle de la PR. Une PR vers une autre branche (celle d'une PR ouverte, par exemple) n'est jamais fusionnée ici.
-          gh pr list --state open --base main --limit 200 --json number,headRefOid,author,baseRefName \
-            --jq ".[] | select(.headRefOid == \"$SHA\" and .baseRefName == \"main\") | \"numero=\(.number)\nauteur=\(.author.login)\"" >> "$GITHUB_OUTPUT"
+          trouve=$(gh pr list --state open --base main --limit 200 --json number,headRefOid,author,baseRefName \
+            --jq ".[] | select(.headRefOid == \"$SHA\" and .baseRefName == \"main\") | \"numero=\(.number)\nauteur=\(.author.login)\"")
+          # Nothing found (the PR was merged or closed meanwhile, or is beyond the 200 newest): say so, nothing is merged.
+          if [ -z "$trouve" ]; then echo "::notice::no open pull request to main has head $SHA: nothing is verified or merged"
+          else printf '%s\n' "$trouve" >> "$GITHUB_OUTPUT"; fi
       - name: Vérifier la fusion simulée avec l'outil de confiance
         id: verif
         if: steps.pr.outputs.numero != ''
@@ -88,11 +91,14 @@ jobs:
           echo "code=$code" >> "$GITHUB_OUTPUT"
           [ "$code" = 0 ] || [ "$code" = 3 ]
       - name: Fusionner
-        if: steps.verif.outputs.code == '0'
+        # Only after the verification step ran and succeeded with code 0, for the PR it found. A skipped step's outputs are
+        # absent (null), and an expression coerces null and '0' to the number 0: null == '0' is true, so each term is needed.
+        if: steps.verif.outcome == 'success' && steps.verif.outputs.code != '' && steps.verif.outputs.code == '0' && steps.pr.outputs.numero != ''
         env:
           GH_TOKEN: ${{ github.token }}
           NUMERO: ${{ steps.pr.outputs.numero }}
           SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
+          [[ "$NUMERO" =~ ^[0-9]+$ ]] || { echo "::error::no pull request number: nothing is merged"; exit 1; }
           gh pr merge "$NUMERO" --squash --match-head-commit "$SHA"
           gh workflow run site.yml --ref main || true

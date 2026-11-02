@@ -196,6 +196,27 @@ class TestWorkflows(unittest.TestCase):
                 self.assertIn("jobs", donnees)
 
 
+class TestFusionAutoNeMergeQuApresVerification(unittest.TestCase):
+    """fusion-auto.yml: the merge step runs only after the verification step ran, succeeded and returned code 0, for a PR
+    it found; a skipped verification (no PR found) never leads to `gh pr merge` (its absent output, null, equals '0')."""
+
+    def test_la_fusion_exige_une_verification_reussie(self):
+        import yaml
+        flux = yaml.safe_load((RACINE / ".github" / "workflows" / "fusion-auto.yml").read_text(encoding="utf-8"))
+        etapes = [e for job in flux["jobs"].values() for e in job.get("steps", [])]
+        fusion = [e for e in etapes if re.search(r"(?m)^\s*gh pr merge ", e.get("run", ""))]
+        self.assertEqual(len(fusion), 1)
+        condition = " ".join(str(fusion[0].get("if", "")).split())
+        self.assertEqual(condition.split(" && "), ["steps.verif.outcome == 'success'", "steps.verif.outputs.code != ''",
+                                                   "steps.verif.outputs.code == '0'", "steps.pr.outputs.numero != ''"])
+        for interdit in ("||", "!(", "${{"):
+            self.assertNotIn(interdit, condition)
+        self.assertEqual(len(re.findall(r"(?m)^\s*gh pr merge ", "\n".join(e.get("run", "") for e in etapes))), 1)
+        self.assertNotRegex("\n".join(e.get("run", "") for e in etapes), r"pulls/[^ ]*/merge", "no other way to merge")
+        self.assertIn('[[ "$NUMERO" =~ ^[0-9]+$ ]] ||', fusion[0]["run"])
+        self.assertLess(fusion[0]["run"].index("=~ ^[0-9]+$"), fusion[0]["run"].index("gh pr merge"))
+
+
 class TestCiScope(unittest.TestCase):
     """ruche-0090: a registry PR that only adds or modifies self-service data files skips the tool and judge test suites
     (bee ci-scope, decided by the base's tool in validation.yml); anything else runs the full suite (fails closed)."""
