@@ -52,6 +52,15 @@ chrono and of the toy harness (DockerEmule, nothing is run): the order recorded 
 time is chrono's, an output changed, added or removed after its freeze is refused (TestOrdreEtEmpreintes, TestFigees).
 With Docker, scenarios_voisins: every scenario of B tries to read and to modify the others' outputs, before and after
 its own work: the honest toy's verdict and comparisons, the order changing between repetitions.
+
+ruche-0117 (before the juge-v3 tag): suspicious constructs ranked and counted, each detail cut (test_detail_cut_when_built,
+test_suspectes_les_plus_graves_d_abord, test_rapport_du_job); the judging step publishes the code once the report is checked,
+--verifier wants the code 0 and the PR's commits (test_code_published_once_the_report_is_checked,
+test_verifier_requires_code_0_and_the_pull_request_commits); a fixed metric read on verification alone is flagged
+(test_fixed_metric_read_on_verification_alone); the identity check counts per scenario
+(test_mixed_input_same_output_as_in_verification); each execution on its own tmpfs (test_each_execution_on_its_own_tmpfs);
+with Docker, test_memes_montures: identical scenarios at different positions, variant passes, repetitions and modes see the same
+thing, mount by mount (RESTE aside), and none sees what another left in its outputs.
 """
 
 import concurrent.futures
@@ -174,6 +183,15 @@ class TestAnalyse(unittest.TestCase):
         self.assertEqual([s["detail"][-5:] for s in analyse.analyser(releves(), releves(), a, b)], ["(y.c)"])
         b = {"x.c": "#pragma once\nint a;\n#pragma once\n", "y.c": "int b;\n"}
         self.assertEqual(len(analyse.analyser(releves(), releves(), a, b)), 1)
+
+    def test_detail_cut_when_built(self):
+        """ruche-0117: names and extracts come from the judged code; a symbol of 5,000 characters gives a detail of DETAIL_MAX."""
+        nom = "bee_" + "x" * 5000
+        trouvees = analyse.analyser(releves(), releves(nm=NM_A + f"/s/obj/rle.o: {nom} D 0000000000000000 4\n"), {}, {},
+                                    prefixes=("rle_",))
+        self.assertEqual([s["type"] for s in trouvees], ["symbole_defini"])
+        self.assertEqual(len(trouvees[0]["detail"]), analyse.DETAIL_MAX)
+        self.assertTrue(trouvees[0]["detail"].startswith(nom[:200]) and trouvees[0]["detail"].endswith("…"))
 
 
 # Every prefix word objdump prints before an x86-64 instruction.
@@ -623,7 +641,8 @@ class TestMemesConditions(unittest.TestCase):
         vus = []
         for commande, montages, entree in docker.appels:
             self.assertEqual(commande, ["/chrono/chrono"])
-            self.assertEqual(sorted(cible for _, cible, _ in montages), ["/chrono", "/entrees", "/sorties", "/variante"])
+            self.assertEqual(sorted(cible for _, cible, _ in montages),
+                             sorted(["/chrono", "/entrees", "/sorties", "/variante"] + ["/etc/" + n for n in conteneur.ETC]))
             _, options, ligne = entree.splitlines()
             etiquette, parametres, *argv = ligne.split("\t")
             self.assertEqual(argv[argv.index(conteneur.HARNAIS):], [conteneur.HARNAIS])
@@ -663,9 +682,12 @@ class TestMemesConditions(unittest.TestCase):
         self.assertEqual(commande[commande.index("--ulimit"):commande.index("--ulimit") + 4], conteneur.Docker.BORNES)
         for option in conteneur.ISOLATION:
             self.assertIn(option, commande)
+        racine = os.path.join(self.travail, "execution")  # ruche-0117: each execution's own tmpfs, at the same path
         self.assertEqual([c for c in commande if c.startswith("type=bind")],
-                         ["type=bind,source=/c,target=/chrono,readonly", "type=bind,source=/b,target=/variante,readonly",
-                          "type=bind,source=/e,target=/entrees,readonly", f"type=bind,source={sorties},target=/sorties"])
+                         [f"type=bind,source={racine}/chrono,target=/chrono,readonly",
+                          f"type=bind,source={racine}/variante,target=/variante,readonly",
+                          f"type=bind,source={racine}/entrees,target=/entrees,readonly", f"type=bind,source={racine}/sorties,target=/sorties"]
+                         + [f"type=bind,source={racine}/etc/{n},target=/etc/{n},readonly" for n in conteneur.ETC])
         self.assertEqual(commande[-2:], ["sha256:" + "0" * 64, "/chrono/chrono"])
         self.assertEqual(len({entree for _, entree in appels}), 3)
 
@@ -782,6 +804,12 @@ class TestMelange(unittest.TestCase):
         ecrire(os.path.join(travail, "m", "compression", "c", "e0011"), b"sortie")
         with self.assertRaisesRegex(lecture.Refus, "empreinte"):
             juge.memes_sorties(index, verification, mesuree, {("f", "e0011"): "e0004"}, [("compression", "f")])
+        # ruche-0117: counted per scenario, not per side: a scenario of the side without a comparable output is an error.
+        deux = [("compression", "f"), ("compression_bis", "f")]
+        with self.assertRaisesRegex(lecture.Erreur, "compression_bis"):
+            juge.memes_sorties(index, verification, figee("m"), {("f", "e0011"): "e0004"}, deux)
+        ecrire(os.path.join(travail, "m", "compression_bis", "e", "e0011.6"), b"0 6\n")
+        self.assertEqual(juge.memes_sorties(index, verification, figee("m"), {("f", "e0011"): "e0004"}, deux), 3)
 
 
 class TestConditionsFixes(unittest.TestCase):
@@ -868,8 +896,10 @@ class DockerEmule:
         hote = {cible: source for source, cible, _ in montages}
         jeton, _, *plan = entree.decode().splitlines()
         ecrits = [source for source, _, lecture_seule in montages if not lecture_seule]
-        c = {"etiquettes": [p.split("\t")[0] for p in plan], "variante": hote["/variante"][-1], "ecrits": ecrits,
-             "neuf": all(not os.listdir(d) for d in ecrits)}
+        with open(os.path.join(hote["/variante"], "execution"), encoding="ascii") as f:
+            variante = f.read()
+        c = {"etiquettes": [p.split("\t")[0] for p in plan], "variante": variante, "ecrits": ecrits,
+             "neuf": all(not os.listdir(d) for d in ecrits), "tmpfs": all(os.path.ismount(os.path.dirname(d)) for d in ecrits)}
         self.conteneurs.append(c)
         lignes = []
         for ligne in plan:
@@ -885,6 +915,19 @@ class DockerEmule:
         return subprocess.CompletedProcess(commande, 0, ("\n".join(lignes) + "\n").encode(), b"")
 
 
+def dossier_ouvert_vide(travail):
+    """chrono's folder for DockerEmule (nothing is run): an empty folder."""
+    return conteneur.dossier_ouvert(os.path.join(travail, "chrono"))
+
+
+def variante_emulee(construction, dossier):
+    """/variante for DockerEmule: a harness file that names the variant (the last letter of the folder)."""
+    os.makedirs(dossier)
+    with open(os.path.join(dossier, "execution"), "w", encoding="ascii") as f:
+        f.write(dossier[-1])
+    return dossier
+
+
 class TestOrdreEtEmpreintes(unittest.TestCase):
     """ruche-0036, without Docker: juge.main on the toy with two scenarios per side, conteneur.Docker emulated."""
 
@@ -897,17 +940,17 @@ class TestOrdreEtEmpreintes(unittest.TestCase):
     def tearDownClass(cls):
         shutil.rmtree(cls.travail, ignore_errors=True)
 
-    def juger(self, apres=None, graine="00" * 16, graine_ordre=None):
-        emule, sortie = DockerEmule(apres), io.StringIO()
+    def juger(self, apres=None, graine="00" * 16, graine_ordre=None, base=None):
+        base, emule, sortie = base or self.base, DockerEmule(apres), io.StringIO()
         with mock.patch.object(juge.shutil, "which", return_value="/usr/bin/docker"), \
                 mock.patch.object(juge.conteneur, "construire_image", return_value="image"), \
                 mock.patch.object(juge.conteneur, "identifiant_image", return_value="sha256:" + "0" * 64), \
-                mock.patch.object(juge, "variante", side_effect=lambda construction, dossier: dossier), \
+                mock.patch.object(juge, "variante", side_effect=variante_emulee), \
                 mock.patch.object(juge.conteneur, "Docker", return_value=emule), \
-                mock.patch.object(juge.conteneur, "compiler_chrono", return_value="/chrono-hote"), \
+                mock.patch.object(juge.conteneur, "compiler_chrono", side_effect=lambda docker, travail: dossier_ouvert_vide(travail)), \
                 mock.patch.object(juge, "construire", return_value=releves()), \
                 contextlib.redirect_stdout(sortie), contextlib.redirect_stderr(io.StringIO()):
-            self.assertEqual(juge.main(["--outillage", self.base, "--source-a", self.base, "--source-b", self.base,
+            self.assertEqual(juge.main(["--outillage", base, "--source-a", base, "--source-b", base,
                                         "--repetitions", "3", "--graine", graine]
                                        + (["--graine-ordre", graine_ordre] if graine_ordre else [])), 0)
         return json.loads(sortie.getvalue()), emule
@@ -918,9 +961,8 @@ class TestOrdreEtEmpreintes(unittest.TestCase):
         command and one fresh writable folder per container."""
         rapport, emule = self.juger(graine_ordre="00" * 16)
         self.assertEqual(len(emule.conteneurs), 2 * 2 + 2 * 4 * 4 + 2 * 2)  # verification, 1 + 3 repetitions, instructions
-        for c in emule.conteneurs:
-            self.assertEqual((len(c["etiquettes"]), len(c["ecrits"]), c["neuf"]), (1, 1, True))
-        self.assertEqual(len({d for c in emule.conteneurs for d in c["ecrits"]}), len(emule.conteneurs))
+        for c in emule.conteneurs:  # ruche-0117: its fresh writable folder on its own tmpfs, mounted for it
+            self.assertEqual((len(c["etiquettes"]), len(c["ecrits"]), c["neuf"], c["tmpfs"]), (1, 1, True, True))
         deroulement = rapport["juge"]["scenarios"]["deroulement"]
         self.assertEqual([e["etape"] for e in deroulement], ["chauffe", "mesure", "mesure", "mesure", "instructions"])
         self.assertEqual([e["variantes"] for e in deroulement], ["AB", "BA", "AB", "BA", "AB"])
@@ -951,6 +993,55 @@ class TestOrdreEtEmpreintes(unittest.TestCase):
             graines.add(graine_ordre)
         self.assertEqual(len(graines), 3)
 
+    def test_each_execution_on_its_own_tmpfs(self):
+        """ruche-0117: each container's folders are on a tmpfs mounted for it alone, of fixed bounds: whatever the containers
+        before it wrote, each finds the same free space and the same device, and nothing of it remains after the judge."""
+        vus = []
+
+        def apres(emule):
+            ecrit = emule.conteneurs[-1]["ecrits"][0]
+            st, fs = os.stat(ecrit), os.statvfs(ecrit)
+            vus.append((st.st_dev, fs.f_blocks * fs.f_frsize, fs.f_files, os.path.ismount(os.path.dirname(ecrit))))
+            self.assertEqual(sorted(os.listdir(os.path.dirname(ecrit))), ["chrono", "entrees", "etc", "sorties", "variante"])
+        _, emule = self.juger(apres)
+        self.assertEqual(len(vus), len(emule.conteneurs))
+        self.assertEqual(set(vus), {(vus[0][0], 4 << 30, 262144, True)})
+        self.assertFalse(any(os.path.ismount(os.path.dirname(c["ecrits"][0])) for c in emule.conteneurs))
+
+    def test_suspectes_les_plus_graves_d_abord(self):
+        """ruche-0117: juge.json lists the most serious constructs first (GRAVITE), SUSPECTES_MAX at most, and counts each kind."""
+        trouvees = [{"type": "source", "detail": f"pragma {i}"} for i in range(juge.SUSPECTES_MAX + 20)]
+        trouvees += [{"type": "symbole", "detail": "s"}, {"type": "inconnu", "detail": "?"}, {"type": "appel_interdit", "detail": "g"}]
+        with mock.patch.object(juge.analyse, "analyser", return_value=trouvees), \
+                mock.patch.object(juge.platform, "machine", return_value="x86_64"):
+            j = self.juger()[0]["juge"]
+        self.assertEqual([s["type"] for s in j["constructions_suspectes"][:3]], ["appel_interdit", "symbole", "source"])
+        self.assertEqual((len(j["constructions_suspectes"]), j["constructions_suspectes_omises"]), (juge.SUSPECTES_MAX, 23))
+        self.assertEqual(j["constructions_suspectes_par_type"], {"appel_interdit": 1, "inconnu": 1, "source": 120, "symbole": 1})
+
+    def test_fixed_metric_read_on_verification_alone(self):
+        """ruche-0117: a fixed metric that no scenario computes from its timed outputs (the ratio, here the base's scenario
+        returns none) is flagged in juge.json and never beyond the noise, even where the sign test says so; the toy's own
+        ratio, read on its timed outputs, is not flagged."""
+        base = os.path.join(self.travail, "sans-ratio")
+        if not os.path.isdir(base):
+            shutil.copytree(self.base, base)
+            chemin = os.path.join(base, "bee", "juge", "projet.py")
+            with open(chemin, encoding="utf-8") as f:
+                texte = f.read()
+            with open(chemin, "w", encoding="utf-8") as f:
+                f.write(remplacer(texte, ', ratio=sum(traites) / compresse if compresse else None)', ")"))
+        vrai = stats.test_du_signe
+        with mock.patch.object(juge.stats, "test_du_signe", side_effect=lambda a, b, sens: dict(vrai(a, b, sens), au_dela_du_bruit=True)):
+            honnete, sans_ratio = self.juger()[0], self.juger(base=base)[0]
+        self.assertEqual(honnete["juge"]["verification"]["fixes_sans_mesure"], [])
+        self.assertEqual(sans_ratio["juge"]["verification"]["fixes_sans_mesure"], ["ratio"])
+        for rapport_, seulement in ((honnete, False), (sans_ratio, True)):
+            ratio = rapport_["metriques"]["ratio"]
+            self.assertEqual((ratio["verification_seulement"], ratio["au_dela_du_bruit"]), (seulement, not seulement))
+            self.assertTrue(rapport_["metriques"]["debit_compression"]["au_dela_du_bruit"])
+            self.assertFalse(rapport_["metriques"]["debit_compression"]["verification_seulement"])
+
     def test_sorties_changees_apres_empreinte(self):
         """An output changed, added or removed after its container ended (here, while the next container runs) is refused."""
         def changer(action):
@@ -960,7 +1051,8 @@ class TestOrdreEtEmpreintes(unittest.TestCase):
                         or avant["variante"] != dernier["variante"]:
                     return
                 emule.changees = True
-                trouves = glob.glob(os.path.join(os.path.dirname(avant["ecrits"][0]), "*", avant["etiquettes"][0]))
+                travail = os.path.dirname(os.path.dirname(avant["ecrits"][0]))  # <travail>/execution/sorties (ruche-0117)
+                trouves = glob.glob(os.path.join(travail, "*", avant["etiquettes"][0]))
                 self.assertEqual(len(trouves), 1)  # the previous scenario's frozen folder, renamed <side>/<scenario>
                 action(trouves[0])
             return apres
@@ -1099,7 +1191,8 @@ class TestWorkflowJuge(unittest.TestCase):
                          {k: "${{ jobs.juge.outputs.%s }}" % k for k in SORTIES_DU_JOB})
         self.assertEqual(self.wf["jobs"]["juge"]["outputs"], {k: "${{ steps.juge.outputs.%s }}" % k for k in SORTIES_DU_JOB})
         self.assertEqual(etape(self.wf, "Juger")["id"], "juge")
-        self.assertIn('echo "code=$code" >> "$GITHUB_OUTPUT"', etape(self.wf, "Juger")["run"])
+        self.assertIn('rapport.py resultats/juge.json --code "$code" > resultats/sorties\n', etape(self.wf, "Juger")["run"])
+        self.assertIn('cat resultats/sorties >> "$GITHUB_OUTPUT"', etape(self.wf, "Juger")["run"])
 
     def test_judge_code_read_at_the_workflow_commit(self):
         """No tag, no branch: the registry is checked out at the commit the preparation step checked."""
@@ -1233,6 +1326,33 @@ class TestWorkflowJuge(unittest.TestCase):
                 self.assertTrue(r.stderr.strip())
         self.assertFalse(os.path.exists(os.path.join(self.dossier, "injection")))
 
+    def test_code_published_once_the_report_is_checked(self):
+        """ruche-0117: the judging step publishes the code only with the report's figures, once rapport.py has checked the
+        report: a report that fails its check (none for a code 0, malformed) publishes code 2, in the job's outputs as in
+        resultats/code; a refusal or an error without a report keeps its code."""
+        juge_commun = os.path.join(self.dossier, "juge-commun", "outils", "juge")
+        os.makedirs(juge_commun)
+        shutil.copy(os.path.join(ICI, "rapport.py"), juge_commun)
+        with open(os.path.join(juge_commun, "juge.py"), "w", encoding="utf-8") as f:
+            f.write("import os, sys\nif os.environ['FAUX_RAPPORT']:\n"
+                    "    open(sys.argv[sys.argv.index('--json') + 1], 'w').write(os.environ['FAUX_RAPPORT'])\n"
+                    "sys.exit(int(os.environ['FAUX_CODE']))\n")
+        bon = json.dumps(RAPPORT, indent=2)
+        for code, rapport_, attendu in ((0, bon, "0"), (0, "", "2"), (0, "{}", "2"), (0, bon[:-1], "2"), (1, "", "1"), (2, "", "2"),
+                                        (1, "{}", "2")):
+            with self.subTest(code=code, rapport=rapport_[:20]):
+                shutil.rmtree(os.path.join(self.dossier, "resultats"), ignore_errors=True)
+                r, sortie = self.lancer(etape(self.wf, "Juger")["run"], {"OPTIONS": "", "REPETITIONS": "10", "BASE": "2" * 40,
+                                        "TETE": "3" * 40, "SOURCE": "x", "RUNNER_TEMP": "/rt", "FAUX_CODE": str(code),
+                                        "FAUX_RAPPORT": rapport_})
+                self.assertEqual(r.returncode, 0, r.stderr)
+                publiees = dict(ligne.split("=", 1) for ligne in sortie.splitlines())
+                self.assertEqual(list(publiees), SORTIES_DU_JOB)
+                self.assertEqual(publiees["code"], attendu)
+                self.assertEqual(publiees["empreinte"] != "", attendu == "0")
+                with open(os.path.join(self.dossier, "resultats", "code")) as f:
+                    self.assertEqual(f.read(), attendu + "\n")
+
     def test_work_folder_bounded(self):
         """ruche-0038: the judge works in a size-bounded tmpfs that juge.yml mounts just before judging (executable: the
         harness runs from it)."""
@@ -1269,9 +1389,11 @@ class TestWorkflowJuge(unittest.TestCase):
                                     "base": RAPPORT["juge"]["base"], "tete": RAPPORT["juge"]["tete"]})
         with open(os.path.join(self.dossier, "sorties.json"), "w") as f:
             json.dump(publiees, f)  # what toJSON(needs.juge.outputs) gives the verdict job
-        verifier = [sys.executable, os.path.join(ICI, "rapport.py"), chemin, "--verifier", os.path.join(self.dossier, "sorties.json")]
+        commits = [RAPPORT["juge"]["base"], RAPPORT["juge"]["tete"]]  # ruche-0117: the pull request's, given to --verifier
+        verifier = [sys.executable, os.path.join(ICI, "rapport.py"), chemin, "--verifier", os.path.join(self.dossier, "sorties.json"),
+                    "--base", commits[0], "--tete", commits[1]]
         self.assertEqual(subprocess.run(verifier, capture_output=True).returncode, 0)
-        self.assertEqual(rapport.verifier(chemin, publiees)["juge"]["greffon"], "ab" * 32)
+        self.assertEqual(rapport.verifier(chemin, publiees, *commits)["juge"]["greffon"], "ab" * 32)
         autre = json.loads(json.dumps(RAPPORT))
         autre["juge"]["verification"]["sorties_comparees"] = 58
         sans_suspects = dict(RAPPORT, juge=dict(RAPPORT["juge"], constructions_suspectes=[], constructions_suspectes_omises=0))
@@ -1283,12 +1405,12 @@ class TestWorkflowJuge(unittest.TestCase):
                     f.write(modifie)
                 self.assertEqual(subprocess.run(verifier, capture_output=True).returncode, 1 if modifie else 2)
                 with self.assertRaises((rapport.Ecart, ValueError)):
-                    rapport.verifier(chemin, publiees)
+                    rapport.verifier(chemin, publiees, *commits)
         with open(chemin, "wb") as f:
             f.write(donnees)
         for cle, valeur in (("empreinte", ""), ("empreinte", "0" * 64), ("suspectes", "100"), ("tete", RAPPORT["juge"]["base"])):
             with self.subTest(sortie=cle), self.assertRaises(rapport.Ecart):
-                rapport.verifier(chemin, dict(publiees, **{cle: valeur}))
+                rapport.verifier(chemin, dict(publiees, **{cle: valeur}), *commits)
         os.remove(chemin)
         os.symlink(os.path.join(self.dossier, "sorties.json"), chemin)
         self.assertNotEqual(subprocess.run(verifier, capture_output=True).returncode, 0)
@@ -1329,6 +1451,29 @@ class TestRapport(unittest.TestCase):
         for donnees in mauvais:
             with self.subTest(donnees=donnees[:80]), self.assertRaises(ValueError):
                 rapport.chiffres(donnees)
+
+    def test_verifier_requires_code_0_and_the_pull_request_commits(self):
+        """ruche-0117: rapport.py --verifier also checks the published code (0) and the report's base and head against the pull
+        request's, given by the verdict job; any other exit than 0 blocks the verdict."""
+        with open(self.chemin, "w", encoding="utf-8") as f:
+            json.dump(RAPPORT, f)
+        publiees, commits = rapport.publier(self.chemin, "0"), (RAPPORT["juge"]["base"], RAPPORT["juge"]["tete"])
+        self.assertEqual(rapport.verifier(self.chemin, publiees, *commits)["juge"]["greffon"], "ab" * 32)
+        sans_code = {k: v for k, v in publiees.items() if k != "code"}
+        for publiees_, base, tete in ((dict(publiees, code="1"), *commits), (dict(publiees, code="2"), *commits), (sans_code, *commits),
+                                      (publiees, commits[1], commits[0]), (publiees, "0" * 40, commits[1]), (publiees, commits[0], ""),
+                                      (publiees, "AB" * 20, commits[1]), (publiees, None, commits[1]),
+                                      (publiees, commits[0], commits[1] + "\n")):
+            with self.subTest(code=publiees_.get("code"), base=base, tete=tete), self.assertRaises(rapport.Ecart):
+                rapport.verifier(self.chemin, publiees_, base, tete)
+        sorties = os.path.join(self.dossier, "sorties.json")
+        with open(sorties, "w") as f:
+            json.dump(publiees, f)
+        commande = [sys.executable, os.path.join(ICI, "rapport.py"), self.chemin, "--verifier", sorties]
+        for arguments, code in ((["--base", commits[0], "--tete", commits[1]], 0), (["--base", commits[0], "--tete", commits[0]], 1),
+                                ([], 2), (["--base", commits[0]], 2), (["--tete", commits[1], "--base", commits[0]], 2)):
+            with self.subTest(arguments=arguments):
+                self.assertEqual(subprocess.run(commande + arguments, capture_output=True).returncode, code)
 
     def test_reading_bounded(self):
         self.assertIsNone(rapport.lire(self.chemin))
@@ -2204,6 +2349,160 @@ def scenarios_voisins(texte, corpus):
                      "    *produit = 0;\n    rle_voisins_avant();\n    if (rle_voisin_vu)\n        return RLE_INVALIDE;\n    if (n < 8)")
 
 
+# ruche-0117: a library that records, at its first call, what it can see of every mount (from /proc/self/mountinfo): its line,
+# statx of the mount point (inode, device, links, mode, owner, size, access and modification times, the age of its change and
+# birth times, the mount id) and statfs; for the judge's mounts, the same for every entry, and each folder's entries in the order
+# readdir gives them (as ranks among their sorted names: the inputs' names are data). Then it fills part of its outputs folder.
+MONTURES = r"""
+#include <dirent.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <sys/statfs.h>
+#include <time.h>
+#ifndef STATX_MNT_ID_UNIQUE
+#define STATX_MNT_ID_UNIQUE 0x4000U
+#endif
+static int rle_montures_vu = 0;
+
+static long long rle_age(struct statx_timestamp t, struct timespec n)
+{
+    return (long long)(n.tv_sec - t.tv_sec) * 1000 + ((long)n.tv_nsec - (long)t.tv_nsec) / 1000000;
+}
+
+static void rle_voir(const char *chemin, const char *cle)
+{
+    struct statx s;
+    struct statfs f;
+    struct timespec n;
+    clock_gettime(CLOCK_REALTIME, &n);
+    if (statx(AT_FDCWD, chemin, AT_SYMLINK_NOFOLLOW, STATX_BASIC_STATS | STATX_BTIME | STATX_MNT_ID_UNIQUE, &s) != 0) {
+        fprintf(stderr, "stat:%s=absent\n", cle);
+        return;
+    }
+    fprintf(stderr, "stat:%s=%llu %u:%u %u %o %u %u %llu\n", cle, (unsigned long long)s.stx_ino, s.stx_dev_major,
+            s.stx_dev_minor, s.stx_nlink, s.stx_mode, s.stx_uid, s.stx_gid, (unsigned long long)s.stx_size);
+    fprintf(stderr, "temps:%s=%lld.%09u %lld.%09u\n", cle, (long long)s.stx_atime.tv_sec, s.stx_atime.tv_nsec,
+            (long long)s.stx_mtime.tv_sec, s.stx_mtime.tv_nsec);
+    fprintf(stderr, "age:%s=%lld %lld\n", cle, rle_age(s.stx_ctime, n), (s.stx_mask & STATX_BTIME) ? rle_age(s.stx_btime, n) : -1LL);
+    fprintf(stderr, "mnt:%s=%llu\n", cle, (unsigned long long)s.stx_mnt_id);
+    if (statfs(chemin, &f) == 0) {
+        fprintf(stderr, "statfs:%s=%lx %ld %llu %llu %llu %llu %llu\n", cle, (long)f.f_type, (long)f.f_bsize,
+                (unsigned long long)f.f_blocks, (unsigned long long)f.f_bfree, (unsigned long long)f.f_bavail,
+                (unsigned long long)f.f_files, (unsigned long long)f.f_ffree);
+        fprintf(stderr, "fsid:%s=%x:%x\n", cle, (unsigned)f.f_fsid.__val[0], (unsigned)f.f_fsid.__val[1]);
+    }
+}
+
+static int rle_compare_noms(const void *a, const void *b)
+{
+    return strcmp(*(char *const *)a, *(char *const *)b);
+}
+
+static void rle_arbre(const char *chemin, const char *cle, int profondeur)
+{
+    char *noms[256], *tries[256], sous[1024], sous_cle[1024];
+    int n = 0, i, j;
+    struct dirent *e;
+    DIR *d;
+    rle_voir(chemin, cle);
+    if (profondeur > 3 || !(d = opendir(chemin)))
+        return;
+    while (n < 256 && (e = readdir(d)))
+        if (strcmp(e->d_name, ".") && strcmp(e->d_name, ".."))
+            noms[n++] = strdup(e->d_name);
+    closedir(d);
+    memcpy(tries, noms, sizeof(char *) * (size_t)n);
+    qsort(tries, (size_t)n, sizeof(char *), rle_compare_noms);
+    fprintf(stderr, "ordre:%s=", cle);
+    for (i = 0; i < n; i++)
+        for (j = 0; j < n; j++)
+            if (noms[i] == tries[j])
+                fprintf(stderr, "%d ", j);
+    fputc('\n', stderr);
+    for (j = 0; j < n; j++) {
+        snprintf(sous, sizeof(sous), "%s/%s", chemin, tries[j]);
+        snprintf(sous_cle, sizeof(sous_cle), "%s/#%d", cle, j);
+        rle_arbre(sous, sous_cle, profondeur + 1);
+    }
+}
+
+static void rle_montures(void)
+{
+    static const char *const juge[] = {"/chrono", "/variante", "/entrees", "/sorties", "/tmp"};
+    static char tampon[1 << 16];
+    char *ligne, *suite, point[1024];
+    size_t k, n = 0;
+    ssize_t lu;
+    int fd;
+    FILE *f;
+    struct timespec maintenant;
+    if (rle_montures_vu++)
+        return;
+    clock_gettime(CLOCK_REALTIME, &maintenant);
+    fprintf(stderr, "MONTURES-DEBUT\nmaintenant=%lld.%09ld\n", (long long)maintenant.tv_sec, maintenant.tv_nsec);
+    if ((fd = open("/proc/self/mountinfo", O_RDONLY)) >= 0) {
+        while (n < sizeof(tampon) - 1 && (lu = read(fd, tampon + n, sizeof(tampon) - 1 - n)) > 0)
+            n += (size_t)lu;
+        close(fd);
+    }
+    tampon[n] = 0;
+    for (ligne = strtok_r(tampon, "\n", &suite); ligne; ligne = strtok_r(NULL, "\n", &suite)) {
+        if (sscanf(ligne, "%*s %*s %*s %*s %1023s", point) != 1)
+            continue;
+        fprintf(stderr, "montage:%s=%s\n", point, ligne);
+        rle_voir(point, point);
+    }
+    for (k = 0; k < sizeof(juge) / sizeof(juge[0]); k++)
+        rle_arbre(juge[k], juge[k], 0);
+    fputs("MONTURES-FIN\n", stderr);
+    if ((f = fopen("/sorties/rle_lest", "wb")) != NULL) {  /* 8 MiB left in its outputs: no other container may see them */
+        static char lest[1 << 20];
+        for (k = 0; k < 8; k++)
+            fwrite(lest, 1, sizeof(lest), f);
+        fclose(f);
+    }
+}
+"""
+
+
+def espion_montures(texte, corpus):
+    texte = "#define _GNU_SOURCE\n" + remplacer(texte, INCLUDE, INCLUDE + MONTURES)
+    texte = remplacer(texte, DEBUT_COMPRESSER, DEBUT_COMPRESSER + "    rle_montures();\n")
+    return remplacer(texte, "    *produit = 0;\n    if (n < 8)", "    rle_montures();\n    *produit = 0;\n    if (n < 8)")
+
+
+def releve_montures(texte):
+    """The record of MONTURES: {key: value}, a container's id (in cgroup paths, drawn by Docker) replaced."""
+    debut, fin = texte.rindex("MONTURES-DEBUT\n"), texte.rindex("MONTURES-FIN\n")
+    return {cle: re.sub(r"[0-9a-f]{64}", "<conteneur>", valeur)
+            for cle, _, valeur in (ligne.partition("=") for ligne in texte[debut:fin].splitlines()[1:])}
+
+
+# Every container of a side gets the same inputs, whatever the step, repetition or mode (test_memes_montures): four verification
+# inputs per side, two measured inputs and two mixed-in ones per repetition, as many in the instruction count.
+MEMES_ENTREES = """
+
+_DONNEES = bytes(range(64)) * 8
+Projet.corpus = lambda self, outillage: [(f"k{i:03d}", _DONNEES) for i in range(4)]
+Projet.verification = lambda self, rng, corpus: self.entrees(corpus, [(f"z{i:03d}", compresser(_DONNEES), 512, _DONNEES) for i in range(4)])
+Projet.repetition = lambda self, rng, corpus: self.entrees(corpus[:2], [(f"z{i:03d}", compresser(_DONNEES), 512, _DONNEES) for i in range(2)])
+"""
+AGE_MAX_MS = 5000  # spread allowed between the ages of a time (container start-up, Valgrind's included)
+# The judge's mounts: fixed access and modification times. Docker's own mounts are made with the container: their times are
+# compared as ages, from the record's « maintenant ».
+MONTURES_DU_JUGE = ("/chrono", "/variante", "/entrees", "/sorties", "/etc/hostname", "/etc/hosts", "/etc/resolv.conf")
+# What remains visible of the run's progress, outside the judge's mounts (docs/juge-commun.md): the container's root (Docker's
+# overlay on the host's disk: its inode, its free blocks and files, and, with the containerd image store, its layers' numbers
+# in its mount line), and kernel-wide counters: unique mount ids (statx), the host's process count (link count of /proc), the
+# inode numbers the kernel gives each container's cgroup and message queue file system.
+RESTE = {"stat:/", "statfs:/", "montage:/", "fsid:/", "stat:/proc", "stat:/dev/mqueue"}
+RESTE_PREFIXES = ("mnt:", "stat:/sys/fs/cgroup")
+RESTE_INSTRUCTIONS = {"statfs:/tmp"}  # Valgrind keeps files of its own, unlinked, in /tmp (the instruction count is detectable)
+
+
 @unittest.skipUnless(os.environ.get("BEE_JUGE_INTEGRATION") == "1" and shutil.which("docker"),
                      "méta-tests : BEE_JUGE_INTEGRATION=1 et Docker requis")
 class TestJugeContreVariantes(unittest.TestCase):
@@ -2255,20 +2554,27 @@ class TestJugeContreVariantes(unittest.TestCase):
         print(f"\n[{nom}] code {r.returncode} : {r.stderr.strip().splitlines()[-1] if r.stderr.strip() else ''}", file=sys.stderr)
         return r.returncode, rapport, r.stderr
 
-    def juger_espionne(self, source_b):
+    def juger_espionne(self, source_b, base=JOUET, extra=(), rapport_=None):
         """juge.py in this process; for each container that runs B: its standard input (options, plan) and error."""
-        conteneurs, lancer = [], conteneur.Docker.lancer
+        conteneurs, lancer, executer, variantes = [], conteneur.Docker.lancer, conteneur.Execution.lancer, []
 
         def espionner(docker, commande, montages, pids=2, entree=None, delai=3600):
             r = lancer(docker, commande, montages, pids, entree, delai)
-            if commande == ["/chrono/chrono"] and any(h.endswith("variante-B") for h, c, _ in montages if c == "/variante"):
+            if commande == ["/chrono/chrono"] and variantes[-1:] == ["B"]:  # ruche-0117: /variante is a copy, on its own tmpfs
                 conteneurs.append((entree.decode(), r.stderr.decode("utf-8", "replace")))
             return r
-        argv = ["--outillage", JOUET, "--source-a", JOUET, "--source-b", source_b, "--repetitions", "2", "--chauffe", "0"]
+
+        def execution(self, variante, *arguments, **options):
+            variantes.append(variante)
+            try:
+                return executer(self, variante, *arguments, **options)
+            finally:
+                variantes.pop()
+        argv = ["--outillage", base, "--source-a", base, "--source-b", source_b, "--repetitions", "2", "--chauffe", "0", *extra]
         if os.environ.get("BEE_JUGE_RESEAU"):
             argv += ["--reseau-construction", os.environ["BEE_JUGE_RESEAU"]]
-        with mock.patch.object(conteneur.Docker, "lancer", espionner), mock.patch.dict(os.environ), \
-                contextlib.redirect_stdout(io.StringIO()):
+        with mock.patch.object(conteneur.Docker, "lancer", espionner), mock.patch.object(conteneur.Execution, "lancer", execution), \
+                mock.patch.dict(os.environ), contextlib.redirect_stdout(rapport_ or io.StringIO()):
             return juge.main(argv), conteneurs
 
     def types_suspects(self, rapport):
@@ -2462,6 +2768,50 @@ class TestJugeContreVariantes(unittest.TestCase):
         for r in releves[(True, "compression")] + releves[(True, "decompression")]:
             self.assertEqual(empreintes(r, EXCEPTIONS_INSTRUCTIONS), empreintes(natifs[0], EXCEPTIONS_INSTRUCTIONS))
 
+    def test_memes_montures(self):
+        """ruche-0117 (points 3, 6 and 7): every container of a side gets the same inputs; B, run at different positions (orders
+        drawn so that each scenario changes place), in both variant passes (A first, then B first), at both repetitions and in
+        every mode (verification, timed, instruction count), sees the same thing, mount by mount: mount lines, inode, device,
+        links, mode, owner, size, access and modification times, directory order, statfs; the ages of its change and birth
+        times within AGE_MAX_MS; each tmpfs's f_fsid the same or drawn anew; RESTE aside (outside the judge's mounts). The
+        8 MiB each container leaves in its outputs are seen by none of the others."""
+        base = jouet_a_quatre_scenarios(os.path.join(self.travail, "base-memes-montures"))
+        with open(os.path.join(base, "bee", "juge", "projet.py"), "a", encoding="utf-8") as f:
+            f.write(MEMES_ENTREES)
+        graine = next(g for g in (f"{i:02x}" * 16 for i in range(256)) if (lambda t: (lambda o, p: all(
+            o.index(s) != p.index(s) for s in QUATRE_SCENARIOS))(t.sample(list(QUATRE_SCENARIOS), 4), t.sample(list(QUATRE_SCENARIOS), 4)))(
+            random.Random(bytes.fromhex(g))))
+        sortie = io.StringIO()
+        code, conteneurs = self.juger_espionne(self.preparer("memes_montures", espion_montures), base,
+                                               ["--graine-ordre", graine], sortie)
+        self.assertEqual(code, 0)
+        deroulement = json.loads(sortie.getvalue())["juge"]["scenarios"]["deroulement"]
+        self.assertEqual([(e["etape"], e["variantes"]) for e in deroulement], [("mesure", "AB"), ("mesure", "BA"), ("instructions", "AB")])
+        par_cote = {}
+        for entree, erreur in conteneurs:
+            releve = releve_montures(erreur)
+            if entree.splitlines()[1].split()[1] == "1":
+                releve = {k: v for k, v in releve.items() if k not in RESTE_INSTRUCTIONS}
+            maintenant = float(releve.pop("maintenant"))
+            for cle in [k for k in releve if k.startswith("temps:") and not k[6:].startswith(MONTURES_DU_JUGE)]:
+                releve["age" + cle] = " ".join(str(round(1000 * (maintenant - float(x)))) for x in releve.pop(cle).split())
+            par_cote.setdefault("f" if "stat:/entrees/#0/#0" in releve else "z", []).append(releve)
+        self.assertEqual({c: len(l) for c, l in par_cote.items()}, {"f": 6, "z": 6})  # verification, 2 × 2 timed, instructions
+        for cote, liste in par_cote.items():
+            self.assertIn(f"stat:/entrees/#{'0' if cote == 'f' else '2'}/#3", liste[0])  # four inputs on the side's folder
+            for cle in sorted(set().union(*liste)):
+                valeurs = [r.get(cle) for r in liste if cle in r or cle not in RESTE_INSTRUCTIONS]
+                with self.subTest(cote=cote, cle=cle):
+                    if cle in RESTE or cle.startswith(RESTE_PREFIXES):
+                        continue
+                    if cle.startswith(("age:", "agetemps:")):
+                        for ages in zip(*(map(int, v.split()) for v in valeurs)):
+                            self.assertLessEqual(max(ages) - min(ages), AGE_MAX_MS, valeurs)
+                    elif cle.startswith("fsid:"):
+                        self.assertIn(len(set(valeurs)), (1, len(valeurs)), valeurs)
+                    else:
+                        self.assertEqual(len(set(valeurs)), 1, valeurs)
+
     def executer_modes(self, source_b, modes):
         """B built and run by the judge's own containers on one /entrees (the f side of a repetition), once per mode:
         [(mode, valgrind)]. Returns its records, in order."""
@@ -2571,27 +2921,37 @@ class TestJugeContreVariantes(unittest.TestCase):
 
     def test_rapport_du_job(self):
         """ruche-0038: juge.json names the commits judged and the image's id, lists SUSPECTES_MAX suspicious constructs and
-        counts the rest; its figures are those rapport.py publishes, and a report changed afterwards is refused."""
+        counts the rest; its figures are those rapport.py publishes, and a report changed afterwards is refused. ruche-0117: the
+        most serious first, a forbidden call and a global symbol of 2,000 characters added after 125 pragmas, each kind counted,
+        each detail cut to DETAIL_MAX; rapport.py --verifier wants the code 0 and the pull request's commits."""
         lignes = "".join(f"#pragma rle_marque_{i:03d}\n" for i in range(juge.SUSPECTES_MAX + 25))
+        lignes += '#include <stdlib.h>\nchar *rle_env(void) { return getenv("BEE"); }\nint bee_' + "x" * 2000 + " = 1;\n"
         chemin, base, tete = os.path.join(self.travail, "rapport_du_job.json"), "4" * 40, "5" * 40
         code, rapport_, journal_, _ = self.juge_borne("rapport_du_job", self.preparer("rapport_du_job", lambda t, c: t + lignes),
                                                        "--base", base, "--tete", tete, "--json", chemin)
         self.assertEqual(code, 0, journal_)
         j = rapport_["juge"]
         self.assertEqual((j["base"], j["tete"], len(j["constructions_suspectes"]), j["constructions_suspectes_omises"]),
-                         (base, tete, juge.SUSPECTES_MAX, 25))
+                         (base, tete, juge.SUSPECTES_MAX, 28))
+        self.assertEqual([s["type"] for s in j["constructions_suspectes"][:3]], ["appel_interdit", "symbole_defini", "source"])
+        self.assertEqual(j["constructions_suspectes_par_type"], {"appel_interdit": 1, "source": 126, "symbole_defini": 1})
+        self.assertLessEqual(max(len(s["detail"]) for s in j["constructions_suspectes"]), analyse.DETAIL_MAX)
         self.assertEqual(journal_.count("construction suspecte :"), juge.SUSPECTES_MAX)
         self.assertRegex(j["image_id"], r"^sha256:[0-9a-f]{64}$")
         self.assertEqual(j["image_id"], conteneur.identifiant_image(j["image"]))
         publiees = rapport.chiffres(rapport.lire(chemin))
         self.assertEqual((publiees["suspectes"], publiees["sorties_comparees"], publiees["base"], publiees["tete"]),
-                         (str(juge.SUSPECTES_MAX + 25), str(j["verification"]["sorties_comparees"]), base, tete))
-        self.assertEqual(rapport.verifier(chemin, publiees), rapport_)
+                         (str(juge.SUSPECTES_MAX + 28), str(j["verification"]["sorties_comparees"]), base, tete))
+        publiees = rapport.publier(chemin, "0")
+        self.assertEqual(rapport.verifier(chemin, publiees, base, tete), rapport_)
+        for autres in ((tete, base), (base, "6" * 40)):
+            with self.assertRaises(rapport.Ecart):
+                rapport.verifier(chemin, publiees, *autres)
         j["constructions_suspectes"].pop()
         with open(chemin, "w", encoding="utf-8") as f:
             json.dump(rapport_, f, ensure_ascii=False, indent=2)
         with self.assertRaises(rapport.Ecart):
-            rapport.verifier(chemin, publiees)
+            rapport.verifier(chemin, publiees, base, tete)
 
     def test_ecriture_sans_fin(self):
         """ruche-0038: a judged code that writes without end is stopped at the file size bound of every container (SIGXFSZ):
