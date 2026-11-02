@@ -509,6 +509,34 @@ class TestMemesConditions(unittest.TestCase):
             with self.assertRaises(lecture.Erreur):
                 execution.lancer("B", "/e", os.path.join(self.travail, "s"), [("x", mauvais)])
 
+    def test_same_docker_request_in_every_mode(self):
+        """The Docker command is the same in every mode (mounts, their options and their order included), but for the
+        container's name; only the standard input differs."""
+        appels = []
+
+        def run(commande, input=None, capture_output=True, timeout=None):
+            jeton, _, *plan = input.decode().splitlines()
+            appels.append((commande, input.decode()))
+            sortie = "".join(json.dumps({"jeton": jeton, "etiquette": ligne.split("\t")[0], "code": 0, "signal": 0,
+                                         "instructions": 1}) + "\n" for ligne in plan)
+            return subprocess.CompletedProcess(commande, 0, sortie.encode(), b"")
+        execution = conteneur.Execution(conteneur.Docker("image"), "/c", {"B": "/b"}, self.travail)
+        sorties = os.path.join(self.travail, "s")
+        with mock.patch.object(conteneur.subprocess, "run", side_effect=run):
+            for mode, prefixe, valgrind in (("verifier", [], False), ("compression", [], False), ("compression", juge.VALGRIND, True)):
+                execution.lancer("B", "/e", sorties, [(mode, prefixe + [conteneur.HARNAIS, mode, "/entrees", "/sorties"])],
+                                 valgrind=valgrind)
+        commandes = []
+        for commande, _ in appels:
+            i = commande.index("--name")
+            self.assertRegex(commande[i + 1], r"^bee-juge-[0-9a-f]{12}$")
+            commandes.append(commande[:i + 1] + commande[i + 2:])
+        self.assertEqual(commandes, [commandes[0]] * 3)
+        self.assertEqual([c for c in commandes[0] if c.startswith("type=bind")],
+                         ["type=bind,source=/c,target=/chrono,readonly", "type=bind,source=/b,target=/variante,readonly",
+                          "type=bind,source=/e,target=/entrees,readonly", f"type=bind,source={sorties},target=/sorties"])
+        self.assertEqual(len({entree for _, entree in appels}), 3)
+
     def test_mounted_folders_have_neutral_names(self):
         """A scenario's outputs are mounted on /sorties, as verification's, from a neutral folder renamed afterwards."""
         projet = greffon_jouet.Projet({})
@@ -1467,6 +1495,10 @@ def releve_espion(texte):
         for motif, remplacement in VARIABLE:
             valeur = motif.sub(remplacement, valeur)
         releve[cle] = valeur
+    # The mount table is compared as a set: Docker fixes its order before the container starts (by destination in
+    # recent versions, in no fixed order for mounts of equal depth in older ones), from a request that is the same in
+    # every mode (test_same_docker_request_in_every_mode), and the container can change no mount.
+    releve["montages"] = "\\x0a".join(sorted(releve["montages"].split("\\x0a")))
     return releve
 
 
