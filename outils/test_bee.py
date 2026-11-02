@@ -2744,7 +2744,7 @@ class TestPullRequests(BaseTest):
                 git(self.dossier, "switch", "-qf", "main")
 
 
-class TestPublier(BaseTest):
+class BasePublier(BaseTest):
     """bee publier avec de vrais dépôts git locaux et un faux gh qui journalise ses appels."""
 
     def setUp(self):
@@ -2777,6 +2777,10 @@ class TestPublier(BaseTest):
     def tearDown(self):
         os.environ["PATH"] = self.ancien_path
         super().tearDown()
+
+
+class TestPublier(BasePublier):
+    """bee publier, une PR à la fois."""
 
     def test_reservation_publiee_et_fusionnee(self):
         self.bee("prendre", "miniz-0099", "--utilisateur", "alice")
@@ -3011,6 +3015,413 @@ class TestPublier(BaseTest):
         for reference in ("&#9;", "&#10;", "&#x9;", "&#xA;"):
             with self.subTest(reference=reference):
                 self.assertIsNone(bee.texte_sortant_refuse(f"ids 1234{reference}5678", "corps", 8000, "Bee-ruche"))
+
+
+class TestPublierParSession(BasePublier):
+    """ruche-0129 (E7) : bee publier met les gestes indépendants d'une session dans une seule PR, sous les plafonds par PR de la
+    porte ; un engagement préparé avec la soumission qui le suit part d'abord, seul, puis la soumission, rejouée sur le main
+    qu'il a laissé. Le faux gh numérote ses PR et, selon gh.mode, les fusionne comme GitHub (un commit « squash » sur le main du
+    dépôt distant, par une fusion à trois), les ferme sans fusion ou les laisse ouvertes ; la porte juge ensuite chaque commit
+    fusionné contre son parent, comme elle juge une PR fusionnée avec le main du moment."""
+
+    SOUMISSION = "contributions/miniz/miniz-0099-c1.yaml"
+    TACHE = "taches/miniz/miniz-0099.yaml"
+
+    def setUp(self):
+        super().setUp()
+        self.racine = pathlib.Path(self.temp.name)
+        self.mode = self.racine / "gh.mode"
+        self.mode.write_text("fusion", encoding="utf-8")
+        (self.racine / "bin" / "gh").write_text(
+            "#!/bin/sh\n"
+            f"cd '{self.racine}'\n"
+            f"echo \"$@\" >> '{self.journal}'\n"
+            "case \"$*\" in\n"
+            "  *'-X POST'*)\n"
+            "    n=$(( $(cat compteur 2>/dev/null || echo 0) + 1 )); echo $n > compteur\n"
+            "    for a in \"$@\"; do case \"$a\" in head=*) echo \"${a#head=}\" > pr-$n ;; esac; done\n"
+            "    printf '{\"html_url\": \"https://github.com/Bee-ruche/registre/pull/%s\", \"number\": %s}\\n' $n $n ;;\n"
+            "  *pulls/*)\n"
+            "    n=${2##*/}\n"
+            "    case $(cat gh.mode) in\n"
+            "      fermee) echo '{\"state\": \"closed\", \"merged\": false}' ;;\n"
+            "      ouverte) echo '{\"state\": \"open\", \"merged\": false}' ;;\n"
+            "      *) if [ ! -e pr-$n.fusionnee ]; then\n"
+            "           arbre=$(git --git-dir=distant.git merge-tree --write-tree main \"refs/heads/$(cat pr-$n)\") || exit 1\n"
+            "           c=$(git --git-dir=distant.git -c user.name=t -c user.email=t@t commit-tree $arbre -p main -m \"PR $n\")\n"
+            "           git --git-dir=distant.git update-ref refs/heads/main $c && touch pr-$n.fusionnee\n"
+            "         fi\n"
+            "         echo '{\"state\": \"closed\", \"merged\": true}' ;;\n"
+            "    esac ;;\n"
+            "esac\n", encoding="utf-8")
+
+    def a(self, instant):
+        os.environ["BEE_MAINTENANT"] = instant
+
+    def ok(self, *arguments):
+        code, texte = self.bee(*arguments)
+        self.assertEqual(code, 0, texte)
+        return texte
+
+    def sur_main(self, message):
+        """Ce que le test prépare avant la session, sur main, publié tel quel sur le dépôt distant ; renvoie ce commit."""
+        git(self.dossier, "add", "-A")
+        git(self.dossier, "commit", "-qm", message)
+        git(self.dossier, "push", "-q", "origin", "main")
+        return git(self.dossier, "rev-parse", "HEAD").strip()
+
+    def prs(self):
+        """Les titres des PR ouvertes, dans l'ordre."""
+        return re.findall(r"-X POST -f title=(.*?) -f head=", self.journal.read_text(encoding="utf-8")) if self.journal.exists() else []
+
+    def fusions(self, depuis):
+        """Les commits ajoutés à main depuis `depuis`, du plus ancien au plus récent ; le main local doit être celui du distant."""
+        self.assertEqual(git(self.dossier, "rev-parse", "main"), git(self.dossier, "rev-parse", "origin/main"))
+        return git(self.dossier, "rev-list", "--reverse", f"{depuis}..main").split()
+
+    def fichiers(self, sha):
+        return sorted(git(self.dossier, "diff-tree", "--no-commit-id", "--name-only", "-r", sha).split())
+
+    def porte(self, sha, auteur):
+        """La porte juge le commit fusionné `sha` contre son parent, au nom de l'auteur de la PR."""
+        parent = git(self.dossier, "rev-parse", f"{sha}~1").strip()
+        git(self.dossier, "switch", "-q", "--detach", sha)
+        try:
+            return self.bee("verifier-pr", "--base", parent, "--tete", "HEAD", "--auteur", auteur, "--fusion-auto")
+        finally:
+            git(self.dossier, "switch", "-q", "main")
+
+    def accepte(self, sha, auteur, *natures):
+        code, texte = self.porte(sha, auteur)
+        self.assertEqual(code, 0, texte)
+        for nature in ("FUSION_AUTO=oui", *natures):
+            self.assertIn(nature, texte)
+
+    def preparer_reservation_et_soumission(self):
+        self.a("2026-10-27T12:00:00Z")
+        self.ok("prendre", "miniz-0099", "--utilisateur", "alice")
+        reservee = (self.dossier / self.TACHE).read_text(encoding="utf-8")
+        self.a("2026-10-27T12:30:00Z")
+        self.ok("soumettre", "miniz-0099", "--utilisateur", "alice", "--pr", "https://github.com/Bee-ruche/minizBee/pull/99007",
+                "--resume", "Essai.")
+        return reservee
+
+    # --- Critère 1 : une session de gestes indépendants, une PR que la porte accepte ---
+
+    def test_deux_relectures_deux_votes_et_une_note_en_une_pr_que_la_porte_accepte(self):
+        self.soumettre_0099("alice")
+        self.ok("prendre", "miniz-9001", "--utilisateur", "bruno")
+        self.ok("soumettre", "miniz-9001", "--utilisateur", "bruno", "--pr", "https://github.com/Bee-ruche/minizBee/pull/99008",
+                "--resume", "Essai.")
+        base = self.sur_main("deux contributions en relecture")
+        self.a("2026-10-27T12:30:00Z")
+        for cid in ("miniz-0099-c1", "miniz-9001-c1"):
+            self.ok("relire", cid, "--utilisateur", "chloe", "--avis", "favorable", "--motif", "Diff relu : la sortie reste identique.")
+            self.ok("voter", cid, "--utilisateur", "chloe", "--valeur", "1")
+        self.ok("noter", "miniz-9002", "--utilisateur", "chloe", "--texte", "Piste : le corpus n6 suffit à mesurer ce gain.")
+        code, texte = self.bee("publier", "--titre", "Session chloe", "--intervalle", "0")
+        self.assertEqual(code, 0, texte)
+        self.assertEqual(self.prs(), ["Session chloe"], "une seule PR pour la session")
+        (fusion,) = self.fusions(base)
+        self.assertEqual(self.fichiers(fusion), ["contributions/miniz/miniz-0099-c1.yaml", "contributions/miniz/miniz-9001-c1.yaml",
+                                                 "taches/miniz/miniz-9002.yaml", "votes/miniz-0099-c1/chloe.yaml",
+                                                 "votes/miniz-9001-c1/chloe.yaml"])
+        self.accepte(fusion, "chloe", "relecture", "vote", "note")
+        code, texte = self.porte(fusion, "bruno")  # the same PR opened by another: the gate's checks are unchanged (G2, G3)
+        self.assertEqual(code, 1, texte)
+        self.assertIn("on ne note qu'en son nom", texte)
+        self.assertEqual((git(self.dossier, "status", "--porcelain"), git(self.dossier, "rev-parse", "--abbrev-ref", "HEAD").strip()),
+                         ("", "main"))
+
+    def test_une_session_au_dela_d_un_plafond_par_pr_est_refusee_avant_toute_pr(self):
+        """Onze notes : plus que le plafond par PR de la porte (notes.max_par_pr, 10). bee publier refuse avant tout appel à git ou
+        gh, comme la porte refuserait la PR ; dix passent ; le conseil n'est plafonné ni ici ni à la porte."""
+        self.a("2026-10-27T12:30:00Z")
+        for i in range(11):
+            self.ok("noter", "miniz-9002", "--utilisateur", "chloe", "--texte", f"Note de session numéro {i + 1}.")
+        code, texte = self.bee("publier", "--titre", "Session chloe", "--intervalle", "0")
+        self.assertEqual(code, 1, texte)
+        self.assertIn("11 notes ajoutés, au plus 10 (notes.max_par_pr)", texte)
+        self.assertFalse(self.journal.exists(), "aucun appel à gh")
+        self.assertEqual(git(self.dossier, "branch", "--format=%(refname:short)").split(), ["main"])
+        git(self.dossier, "switch", "-qc", "lot")
+        git(self.dossier, "add", "-A")
+        git(self.dossier, "commit", "-qm", "lot")
+        code, texte = self.bee("verifier-pr", "--base", "main", "--tete", "HEAD", "--auteur", "chloe")
+        self.assertEqual(code, 1, texte)
+        self.assertIn("plafond : 11 notes ajoutées par cette PR, au plus 10", texte)
+        for qui, nombre in (("chloe", 10), ("bidji29", 11)):
+            with self.subTest(qui=qui):
+                git(self.dossier, "switch", "-qf", "main")
+                for i in range(nombre):
+                    self.ok("noter", "miniz-9002", "--utilisateur", qui, "--texte", f"Note de session numéro {i + 1}.")
+                self.ok("publier", "--titre", f"Session {qui}", "--a-blanc")
+                git(self.dossier, "checkout", "-q", "--", ".")
+
+    # --- Critère 2 : une réservation et sa soumission préparées ensemble, deux PR dans l'ordre ---
+
+    def test_reservation_et_soumission_preparees_ensemble_deux_pr_dans_l_ordre(self):
+        """La réservation part seule, telle que bee prendre l'a écrite, puis, fusionnée, la soumission avec la note de la session ;
+        la porte accepte chacune sur le main que laisse la précédente, et refuse les deux en une PR. Main a bougé pendant la
+        session (une note de bruno sur la même tâche, fusionnée ailleurs) : la soumission est rejouée dessus, la note reste."""
+        base = git(self.dossier, "rev-parse", "HEAD").strip()
+        ailleurs = self.racine / "ailleurs"
+        subprocess.run(["git", "clone", "-q", str(self.racine / "distant.git"), str(ailleurs)], check=True)
+        self.a("2026-10-27T11:50:00Z")
+        self.assertEqual(lancer("--registre", str(ailleurs), "noter", "miniz-0099", "--utilisateur", "bruno", "--texte",
+                                "Piste : regarder la table de hachage.")[0], 0)
+        for commande in (["add", "-A"], ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "note de bruno"],
+                         ["push", "-q", "origin", "main"]):
+            git(ailleurs, *commande)
+        reservee = self.preparer_reservation_et_soumission()
+        self.ok("noter", "miniz-9002", "--utilisateur", "alice", "--texte", "Approche : une table plus petite, même sortie.")
+        self.a("2026-10-27T12:40:00Z")
+        code, texte = self.bee("publier", "--titre", "Soumission miniz-0099-c1", "--intervalle", "0")
+        self.assertEqual(code, 0, texte)
+        self.assertEqual(self.prs(), ["Réservation miniz-0099", "Soumission miniz-0099-c1"], "deux PR, dans l'ordre")
+        git(self.dossier, "fetch", "-q", "origin")
+        note_de_bruno, reservation, soumission = self.fusions(base)
+        branche = (self.racine / "pr-1").read_text(encoding="utf-8").strip()
+        self.assertEqual(git(self.dossier, "show", f"origin/{branche}:{self.TACHE}"), reservee, "la réservation telle que bee prendre l'écrit")
+        self.assertEqual(self.fichiers(reservation), [self.TACHE])
+        self.assertEqual(self.fichiers(soumission), [self.SOUMISSION, self.TACHE, "taches/miniz/miniz-9002.yaml"])
+        self.accepte(reservation, "alice", "reservation")
+        self.accepte(soumission, "alice", "soumission", "note")
+        code, texte = self.bee("verifier-pr", "--base", note_de_bruno, "--tete", "HEAD", "--auteur", "alice")
+        self.assertEqual(code, 1, texte)
+        self.assertIn("passage ouverte → en_relecture réservé au conseil", texte)
+        tache = self.tache("miniz-0099")
+        self.assertEqual((tache["statut"], tache["contribution"], [n["par"] for n in tache["notes"]]),
+                         ("en_relecture", "miniz-0099-c1", ["bruno"]))
+        self.assertEqual(git(self.dossier, "status", "--porcelain"), "")
+
+    def test_inscription_en_parallele_et_soumission_preparees_ensemble(self):
+        """L'autre engagement : bruno s'inscrit en parallèle sur la tâche d'alice et soumet sans publier entre les deux ; son
+        inscription part d'abord, seule, puis sa soumission ; la porte accepte chacune, dans l'ordre."""
+        self.ok("prendre", "miniz-0099", "--utilisateur", "alice")
+        base = self.sur_main("alice réserve")
+        self.a("2026-10-27T12:10:00Z")
+        self.ok("prendre", "miniz-0099", "--utilisateur", "bruno", "--en-parallele")
+        self.a("2026-10-27T12:30:00Z")
+        self.ok("soumettre", "miniz-0099", "--utilisateur", "bruno", "--pr", "https://github.com/Bee-ruche/minizBee/pull/99101",
+                "--resume", "Essai.")
+        self.ok("publier", "--titre", "Soumission miniz-0099-c1", "--intervalle", "0")
+        self.assertEqual(self.prs(), ["Inscription en parallèle miniz-0099", "Soumission miniz-0099-c1"])
+        inscription, soumission = self.fusions(base)
+        self.accepte(inscription, "bruno", "inscription_parallele")
+        self.accepte(soumission, "bruno", "soumission_parallele")
+        self.assertEqual(self.tache("miniz-0099")["reservation"]["utilisateur"], "alice")
+
+    def test_engagement_refuse_ou_en_attente_rien_d_autre_ne_part(self):
+        """Refusé ou pas encore fusionné, l'engagement part seul : la soumission ne part pas, et les changements de la session
+        reviennent sur le disque, tels quels. En attente, la recette imprimée mène, une fois la fusion faite, à la soumission
+        seule, que la porte accepte. Sans attendre, des gestes dépendants ne partent pas ; à blanc, les deux PR sont annoncées."""
+        self.preparer_reservation_et_soumission()
+        avant = ({c: (self.dossier / c).read_bytes() for c in (self.SOUMISSION, self.TACHE)}, git(self.dossier, "status", "--porcelain"))
+        sur_le_disque = lambda: ({c: (self.dossier / c).read_bytes() for c in (self.SOUMISSION, self.TACHE)},  # noqa: E731
+                                 git(self.dossier, "status", "--porcelain"))
+        texte = self.ok("publier", "--titre", "Soumission miniz-0099-c1", "--a-blanc")
+        self.assertIn("En deux PR, dans l'ordre : d'abord « Réservation miniz-0099 » seule (taches/miniz/miniz-0099.yaml), puis, "
+                      "une fois fusionnée, « Soumission miniz-0099-c1 »", texte)
+        code, texte = self.bee("publier", "--titre", "Soumission miniz-0099-c1", "--sans-attendre")
+        self.assertEqual(code, 1, texte)
+        self.assertIn("« Réservation miniz-0099 » doit être fusionnée avant « Soumission miniz-0099-c1 »", texte)
+        self.assertEqual((self.prs(), sur_le_disque()), ([], avant))
+        self.mode.write_text("fermee", encoding="utf-8")
+        code, texte = self.bee("publier", "--titre", "Soumission miniz-0099-c1", "--intervalle", "0")
+        self.assertEqual(code, 1, texte)
+        self.assertIn("la PR a été refusée et fermée", texte)
+        self.assertIn("Rien d'autre n'est publié : vos changements sont revenus sur le disque.", texte)
+        self.assertEqual((self.prs(), sur_le_disque()), (["Réservation miniz-0099"], avant))
+        self.mode.write_text("ouverte", encoding="utf-8")
+        for _ in range(2):  # run again while it waits: the same PR is followed, a second one is never opened
+            code, texte = self.bee("publier", "--titre", "Soumission miniz-0099-c1", "--delai", "0", "--intervalle", "0")
+            self.assertEqual(code, 2, texte)
+            self.assertIn("rien d'autre n'est publié, vos changements sont sur le disque. Relancez bee publier une fois cette PR "
+                          "fusionnée : il la suit, sans en ouvrir une seconde.", texte)
+            self.assertNotIn("git stash", texte)
+            self.assertEqual((self.prs(), sur_le_disque()), (["Réservation miniz-0099"] * 2, avant))
+        self.assertIn("« Réservation miniz-0099 » attend déjà (https://github.com/Bee-ruche/registre/pull/2)", texte)
+        self.assertEqual(git(self.dossier, "rev-parse", "--abbrev-ref", "HEAD").strip(), "main")
+        # The reservation merges; run once more, bee publier follows it, then sends the submission alone.
+        self.mode.write_text("fusion", encoding="utf-8")
+        base = git(self.dossier, "rev-parse", "HEAD").strip()
+        self.ok("publier", "--titre", "Soumission miniz-0099-c1", "--intervalle", "0")
+        self.assertEqual(self.prs(), ["Réservation miniz-0099"] * 2 + ["Soumission miniz-0099-c1"])
+        reservation, soumission = self.fusions(base)
+        self.accepte(reservation, "alice", "reservation")
+        self.accepte(soumission, "alice", "soumission")
+        self.assertEqual(git(self.dossier, "status", "--porcelain"), "")
+
+    # --- Revue de ruche-0129 : rien ne reste caché sur une branche locale ; une date hors de la fenêtre ; les plafonds ---
+
+    def disque(self, *autres):
+        """Les changements de la session sur le disque : le contenu des fichiers (None : absent), et git status."""
+        chemins = (self.SOUMISSION, self.TACHE, *autres)
+        return ({c: (self.dossier / c).read_bytes() if (self.dossier / c).exists() else None for c in chemins},
+                git(self.dossier, "status", "--porcelain"))
+
+    def test_interrompue_pendant_l_attente_rien_n_est_cache_et_la_relance_suit_la_meme_pr(self):
+        """Bloquant : interrompu pendant l'attente de l'engagement, bee publier laisse les changements de la session sur le disque,
+        pas sur une branche locale ; relancé pendant que la PR attend, il la suit sans en ouvrir une seconde ; elle fusionnée, il
+        publie le reste, que la porte accepte."""
+        self.preparer_reservation_et_soumission()
+        avant = self.disque()
+        self.mode.write_text("ouverte", encoding="utf-8")
+        with mock.patch("time.sleep", side_effect=KeyboardInterrupt), self.assertRaises(KeyboardInterrupt):
+            self.bee("publier", "--titre", "Soumission miniz-0099-c1", "--intervalle", "0")
+        self.assertEqual((self.prs(), self.disque()), (["Réservation miniz-0099"], avant))
+        code, texte = self.bee("publier", "--titre", "Soumission miniz-0099-c1", "--delai", "0", "--intervalle", "0")
+        self.assertEqual(code, 2, texte)
+        self.assertIn("« Réservation miniz-0099 » attend déjà (https://github.com/Bee-ruche/registre/pull/1) : bee publier la suit, "
+                      "sans en ouvrir une seconde.", texte)
+        self.assertIn(f"Remis sur le disque : {self.SOUMISSION}, {self.TACHE}", texte)
+        self.assertEqual((self.prs(), self.disque()), (["Réservation miniz-0099"], avant))
+        self.mode.write_text("fusion", encoding="utf-8")
+        base = git(self.dossier, "rev-parse", "HEAD").strip()
+        self.ok("publier", "--titre", "Soumission miniz-0099-c1", "--intervalle", "0")
+        self.assertEqual(self.prs(), ["Réservation miniz-0099", "Soumission miniz-0099-c1"])
+        reservation, soumission = self.fusions(base)
+        self.accepte(reservation, "alice", "reservation")
+        self.accepte(soumission, "alice", "soumission")
+        self.assertEqual((git(self.dossier, "status", "--porcelain"), self.tache("miniz-0099")["statut"]), ("", "en_relecture"))
+
+    def test_conflit_apres_l_engagement_les_changements_reviennent_sur_le_disque(self):
+        """Bloquant : l'engagement fusionné, le reste ne s'applique plus sur main (une note de bruno, fusionnée ailleurs, au même
+        endroit que celle de la session) : rien d'autre ne part, les changements de la session reviennent sur le disque, tels
+        quels, et bee publier dit lesquels ; main est à jour, avec l'engagement."""
+        note = "taches/miniz/miniz-9002.yaml"
+        ailleurs = self.racine / "ailleurs"
+        subprocess.run(["git", "clone", "-q", str(self.racine / "distant.git"), str(ailleurs)], check=True)
+        self.a("2026-10-27T11:50:00Z")
+        self.assertEqual(lancer("--registre", str(ailleurs), "noter", "miniz-9002", "--utilisateur", "bruno", "--texte",
+                                "Piste : regarder la table de hachage.")[0], 0)
+        for commande in (["add", "-A"], ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "note de bruno"],
+                         ["push", "-q", "origin", "main"]):
+            git(ailleurs, *commande)
+        self.preparer_reservation_et_soumission()
+        self.ok("noter", "miniz-9002", "--utilisateur", "alice", "--texte", "Approche : une table plus petite, même sortie.")
+        avant = self.disque(note)
+        code, texte = self.bee("publier", "--titre", "Soumission miniz-0099-c1", "--intervalle", "0")
+        self.assertEqual(code, 1, texte)
+        self.assertIn("« Réservation miniz-0099 » est fusionnée, mais « Soumission miniz-0099-c1 » ne s'applique plus sur main", texte)
+        self.assertIn(f"Remis sur le disque : {self.SOUMISSION}, {self.TACHE}, {note}", texte.rsplit("✓ PR fusionnée", 1)[1])
+        self.assertEqual((self.prs(), self.disque(note)[0]), (["Réservation miniz-0099"], avant[0]))
+        self.assertEqual(git(self.dossier, "rev-parse", "--abbrev-ref", "HEAD").strip(), "main")
+        git(self.dossier, "fetch", "-q", "origin")
+        self.assertEqual(git(self.dossier, "rev-parse", "HEAD"), git(self.dossier, "rev-parse", "origin/main"))
+        self.assertIn("statut: reservee", git(self.dossier, "show", f"HEAD:{self.TACHE}"))
+        self.assertIn("bruno", git(self.dossier, "show", f"HEAD:{note}"))
+
+    def test_poussee_refusee_les_changements_reviennent_sur_le_disque(self):
+        """À chaque échec, pas seulement pendant l'attente : une poussée refusée laisse la session sur le disque, listée, et non sur
+        la branche locale de la PR, une seule PR comme deux."""
+        for prendre in (False, True):
+            with self.subTest(engagement=prendre):
+                git(self.dossier, "switch", "-qf", "main")
+                git(self.dossier, "clean", "-qfd")
+                if prendre:
+                    self.preparer_reservation_et_soumission()
+                else:
+                    self.soumettre_0099()
+                avant = self.disque()
+                git(self.dossier, "remote", "set-url", "origin", str(self.racine / "absent.git"))
+                try:
+                    code, texte = self.bee("publier", "--titre", "Soumission miniz-0099-c1", "--intervalle", "0")
+                finally:
+                    git(self.dossier, "remote", "set-url", "origin", str(self.racine / "distant.git"))
+                self.assertEqual(code, 1, texte)
+                self.assertIn("git push", texte)
+                self.assertIn(f"Remis sur le disque : {self.SOUMISSION}, {self.TACHE}", texte)
+                self.assertEqual((self.prs(), self.disque(), git(self.dossier, "rev-parse", "--abbrev-ref", "HEAD").strip()),
+                                 ([], avant, "main"))
+
+    def test_un_changement_fait_pendant_l_attente_n_est_pas_perdu(self):
+        """Pendant que l'engagement attend, la session est sur le disque : un geste ajouté là (une note) n'est pas écrasé quand
+        main se met à jour ; bee publier s'arrête, le laisse sur le disque, et relancé, publie la session avec lui."""
+        note = "taches/miniz/miniz-9002.yaml"
+        self.preparer_reservation_et_soumission()
+        self.mode.write_text("ouverte", encoding="utf-8")
+
+        def pendant_l_attente(_):
+            self.mode.write_text("fusion", encoding="utf-8")
+            self.assertEqual(lancer("--registre", str(self.dossier), "noter", "miniz-9002", "--utilisateur", "alice", "--texte",
+                                    "Ajoutée pendant l'attente.")[0], 0)
+
+        base = git(self.dossier, "rev-parse", "HEAD").strip()
+        with mock.patch("time.sleep", side_effect=pendant_l_attente):
+            code, texte = self.bee("publier", "--titre", "Soumission miniz-0099-c1", "--intervalle", "0")
+        self.assertEqual(code, 1, texte)
+        self.assertIn("ont changé sur le disque pendant l'attente : ils y restent", texte)
+        self.assertIn("Ajoutée pendant l'attente.", (self.dossier / note).read_text(encoding="utf-8"))
+        self.ok("publier", "--titre", "Soumission miniz-0099-c1", "--intervalle", "0")
+        self.assertEqual(self.prs(), ["Réservation miniz-0099", "Soumission miniz-0099-c1"])
+        reservation, soumission = self.fusions(base)
+        self.assertEqual(self.fichiers(soumission), [self.SOUMISSION, self.TACHE, note])
+        self.accepte(soumission, "alice", "soumission", "note")
+
+    def test_une_date_hors_de_la_fenetre_de_la_porte_est_refusee_avec_la_commande_pour_la_redater(self):
+        """Chaque date déclarée est l'heure de la PR, à 2 h près, jamais dans le futur : une session plus vieille est refusée avant
+        toute PR, avec la commande qui la redate ; la seconde PR d'un engagement compte avec l'attente (--delai). Redatées, les
+        dates de la session suivent ensemble (engage_depuis avec sa réservation) et la porte accepte les deux PR."""
+        self.preparer_reservation_et_soumission()  # réservée à 12 h, soumise à 12 h 30
+        avant = self.disque()
+        self.a("2026-10-27T13:55:00Z")
+        for options in ([], ["--redater"]):
+            code, texte = self.bee("publier", "--titre", "Soumission miniz-0099-c1", "--a-blanc", *options)
+            self.assertEqual(code, 1, texte)
+            self.assertIn("2026-10-27T12:00:00Z : hors de la fenêtre de la porte (chaque date déclarée est l'heure de la PR, à 2 h près, "
+                          "jamais dans le futur ; pour la seconde PR, --delai minutes plus tard)", texte)
+            self.assertIn('bee publier --titre "Soumission miniz-0099-c1" --redater', texte)
+        self.assertEqual((self.prs(), self.disque()), ([], avant))
+        self.ok("publier", "--titre", "Soumission miniz-0099-c1", "--a-blanc", "--delai", "4")  # 13 h 59 - 2 h <= 12 h
+        self.a("2026-10-27T14:30:00Z")
+        base = git(self.dossier, "rev-parse", "HEAD").strip()
+        texte = self.ok("publier", "--titre", "Soumission miniz-0099-c1", "--redater", "--intervalle", "0")
+        self.assertIn("Redaté à 2026-10-27T14:30:00Z : 2026-10-27T12:00:00Z, 2026-10-27T12:30:00Z", texte)
+        self.assertEqual(self.prs(), ["Réservation miniz-0099", "Soumission miniz-0099-c1"])
+        reservation, soumission = self.fusions(base)
+        self.accepte(reservation, "alice", "reservation")
+        self.accepte(soumission, "alice", "soumission")
+        self.assertIn('depuis: "2026-10-27T14:30:00Z"', git(self.dossier, "show", f"{reservation}:{self.TACHE}"))
+        contribution = bee.lire_yaml(self.dossier / self.SOUMISSION)
+        self.assertEqual((contribution["engage_depuis"], contribution["soumise_le"]), ("2026-10-27T14:30:00Z",) * 2)
+
+    def test_plafonds_d_arguments_et_de_creations_comme_a_la_porte(self):
+        """bee publier compte les plafonds par PR comme la porte : les arguments, pour tous, le conseil compris
+        (agora.arguments_max_par_pr, ramené ici à 3 : à 20, les plafonds sur 24 h d'un auteur mordent avant) ; les tâches
+        proposées, pour chacun sauf le conseil. Au-delà, bee publier refuse avant toute PR, comme la porte ; au plafond, les deux
+        acceptent."""
+        config = self.dossier / "bee.yaml"
+        config.write_text(config.read_text(encoding="utf-8").replace("arguments_max_par_pr: 20", "arguments_max_par_pr: 3"),
+                          encoding="utf-8")
+        self.sur_main("plafond d'arguments par PR ramené à 3")
+        for qui, arguments, taches, refus in (
+                ("bidji29", 4, 0, ("4 arguments ajoutés, au plus 3 (agora.arguments_max_par_pr)",
+                                   "plafond : 4 arguments ajoutés par cette PR, au plus 3")),
+                ("bidji29", 3, 0, None),
+                ("alice", 0, 4, ("4 taches ajoutés, au plus 3 (creations.taches_max_par_pr)",
+                                 "plafond : 4 tâches proposées ajoutées par cette PR, au plus 3")),
+                ("alice", 0, 3, None), ("bidji29", 0, 4, None)):
+            with self.subTest(qui=qui, arguments=arguments, taches=taches):
+                git(self.dossier, "switch", "-qf", "main")
+                git(self.dossier, "clean", "-qfd")
+                if arguments:
+                    self.ok("debattre", "ouvrir", "--utilisateur", qui, "--question", "Faut-il regrouper les gestes d'une session ?")
+                for i in range(arguments):
+                    self.ok("debattre", "argumenter", "D-0001", "--utilisateur", qui, "--position", "pour", "--texte", f"Argument {i + 1}.")
+                for _ in range(taches):
+                    self.ok("proposer-tache", "miniz", "--utilisateur", qui, "--type", "test")
+                code, texte = self.bee("publier", "--titre", f"Session {qui}", "--a-blanc")
+                git(self.dossier, "switch", "-qc", f"session-{qui}-{arguments}-{taches}")
+                git(self.dossier, "add", "-A")
+                git(self.dossier, "commit", "-qm", "session")
+                porte = self.bee("verifier-pr", "--base", "main", "--tete", "HEAD", "--auteur", qui)
+                self.assertEqual((code, porte[0]), (1, 1) if refus else (0, 0), texte + porte[1])
+                if refus:
+                    self.assertIn(refus[0], texte)
+                    self.assertIn(refus[1], porte[1])
+        self.assertFalse(self.journal.exists(), "aucun appel à gh")
 
 
 class TestFork(BaseTest):
@@ -16161,7 +16572,9 @@ QUOTED_CHARACTERS = {"non-ASCII": "é", "quote": '"', "backslash": "\\", "tab": 
 # for show <rev>:<path>, which prints a file; with a listing option, it lists paths too.
 GIT_NON_LISTING = {"add", "branch", "cat-file", "checkout", "commit", "config", "fetch", "for-each-ref", "hash-object", "init",
                    "ls-remote", "merge", "merge-base", "pull", "push", "remote", "reset", "rev-parse", "switch",
-                   "symbolic-ref", "update-index", "var", "version"}  # not show: it prints a patch, or a tree's paths
+                   "symbolic-ref", "update-index", "var", "version",
+                   "rebase", "restore"}  # not show: it prints a patch, or a tree's paths; rebase, restore: bee publier reads
+                                         # only their exit code (ruche-0129), as for merge and checkout
 GIT_LISTING_OPTIONS = {"--name-only", "--name-status", "--numstat", "--raw", "--porcelain", "--objects", "--stat", "--summary",
                        "-p", "--patch", "--patch-with-raw", "--patch-with-stat", "--compact-summary", "--dirstat"}
 GIT_QUOTING_OPTIONS = {"--stat", "--summary", "-p", "--patch", "--patch-with-raw", "--patch-with-stat", "--compact-summary",
@@ -18245,6 +18658,178 @@ class TestSignalementsRuche0118(BaseInvitations):
         self.decider("S-0002", "--lier", "alice")
         self.assertTrue(bee.Registre(self.dossier).identites.meme("bruno", "gaspard"))
         self.valide()
+
+# --- ruche-0130: libyaml's parser behind an event pre-scan; the pure-Python one is the reference and the fallback ---
+
+def analyseurs():
+    """The parsers bee can read with here: the pure one always, libyaml's when PyYAML has it (bee._ChargeurBeeC)."""
+    return [("pur", None)] + ([("C", bee._ChargeurBeeC)] if bee._ChargeurBeeC is not None else [])
+
+
+@contextlib.contextmanager
+def chargeurs_utilises():
+    """Counts, by loader class, each yaml.load call made meanwhile."""
+    vus, charger = collections.Counter(), yaml.load
+
+    def espion(texte, Loader):
+        vus[Loader.__name__] += 1
+        return charger(texte, Loader=Loader)
+    with mock.patch.object(yaml, "load", espion):
+        yield vus
+
+
+def lecture(texte):
+    """What bee makes of a text: ("ok", its value) or ("refus", the whole message)."""
+    try:
+        return ("ok", bee.charger_texte_yaml(texte, "f.yaml"))
+    except bee.ErreurBee as e:
+        return ("refus", str(e))
+
+
+class TestChargeurCRuche0130(unittest.TestCase):
+    """ruche-0130: every refusal of bee's loader holds with libyaml's parser as with the pure one, with the same message, and
+    an honest file reads the same; libyaml's loader alone (no pre-scan) would accept what bee refuses."""
+
+    TESTS_CHARGEUR = (  # the tests of the loader's refusals, each run again with each parser
+        "TestRevueAdverse.test_I6_une_cle_en_double_est_refusee",
+        "TestRevueAdverse.test_N1_seule_la_forme_que_les_robots_editent_est_acceptee",
+        "TestRevueAdverse.test_N10_un_bloc_coupe_n_echappe_pas_au_controle_de_forme",
+        "TestPullRequestsAgora.test_refus_cles_yaml_non_canoniques",
+        "TestRetraitDemandeRuche0048.test_commentaires_et_consignation_mal_formee",
+        "TestBornesLibreServiceRegistre.test_yaml_trop_profond_ou_entier_demesure_refuse_sans_trace",
+        "TestChargeurCRuche0130.test_chaque_refus_du_chargeur_avec_son_message",
+        "TestChargeurCRuche0130.test_un_fichier_honnete_se_lit_pareil",
+        "TestChargeurCRuche0130.test_differentiel_des_deux_analyseurs",
+    )
+    # name: (text, part of the refusal, whether libyaml's loader alone accepts it)
+    REFUS = {
+        "ancre": ("statut: &s reservee\n", "ancre YAML (&…) refusée", True),
+        "ancre et alias": ("statut: &s reservee\ntitre: *s\n", "ancre YAML (&…) refusée", True),
+        "alias seul": ("statut: reservee\ntitre: *s\n", "alias YAML (*…) refusé", False),
+        "ancre sur une liste": ("notes: &n\n  - a\n", "ancre YAML (&…) refusée", True),
+        "étiquette explicite": ("statut: !!str reservee\n", "étiquette YAML explicite (tag:yaml.org,2002:str) refusée", True),
+        "étiquette non spécifique": ("statut: ! reservee\n", "étiquette YAML explicite (!) refusée", True),
+        "étiquette sur une valeur vide": ("statut: !\n", "étiquette YAML explicite (!) refusée", True),
+        "étiquette sur le document": ("--- !!map\nstatut: reservee\n", "étiquette YAML explicite (tag:yaml.org,2002:map)", True),
+        "clé de fusion": ("<<: {statut: reservee}\ntitre: t\n", "clé de fusion YAML (<<) refusée", False),
+        "clé en double": ("statut: ouverte\ntitre: t\nstatut: reservee\n", "clé « statut » en double", False),
+        "deux documents": ("statut: ouverte\n---\nstatut: reservee\n", "expected a single document", False),
+        "trop profond": ("motif: " + "[" * 5000 + "]" * 5000 + "\n", "maximum recursion depth", None),
+        "tabulation (lue par libyaml)": ("statut: reservee\ttitre\n", "found character '\\t' that cannot start any token", True),
+        "? en flux (lu par libyaml)": ("fichiers: [outils/bee.py?]\n", "expected ',' or ']', but got '?'", True),
+        "? dans une clé en flux (lu par libyaml)": ("reservation: {utilisateur?: alice}\n", "expected ',' or '}', but got '?'", True),
+        "en-tête de bloc collé à # (lu par libyaml)": ("contexte: |#\n  texte\n", "expected chomping or indentation indicators", True),
+    }
+    HONNETES = (  # read the same by both; the first ones through libyaml when it is there
+        TACHE_OPTIMISATION,
+        'reservation:\n  utilisateur: "alice"\n  depuis: "2026-10-27T12:00:00Z"\nfichiers: [outils/bee.py, docs/a.md]\n',
+        "contexte: >\n  Pourquoi ? Une ligne : deux points.\n  # pas un commentaire\nportee: 0.7\nle: 2026-11-02\nn: 0o17\n",
+        "a: 'b\tc'\n",  # a tab in a quoted value: valid, read by the pure loader
+        "a: [x,\n\ufeffy]\n",  # a byte order mark at a line's start: kept by the pure loader, dropped by libyaml's
+        "a: [https://x.org/a]\n",  # a colon in a plain scalar of a flow sequence
+        "? a\n: b\n",  # an explicit key: outside the allowlist, read by the pure loader
+        "%YAML 1.1\n---\na: 1\n",  # a directive: likewise
+    )
+    # Texts libyaml's loader alone reads, outside the allowlist: refused by both paths, as by the pure loader. An empty
+    # explicit key in a flow collection, and a comment glued to a directive.
+    HORS_LISTE = ("a: [?]]\n", "a: [?, : x]\n", "[?,,]\n", "[?,:]\n", "[?::]\n", "%YAML 1.1#\n---\na: 1\n")
+
+    def test_chaque_test_du_chargeur_passe_avec_les_deux_analyseurs(self):
+        module = sys.modules[__name__]
+        for nom, chargeur_c in analyseurs():
+            with self.subTest(analyseur=nom), mock.patch.object(bee, "_ChargeurBeeC", chargeur_c), chargeurs_utilises() as vus:
+                resultat = unittest.TestResult()
+                unittest.defaultTestLoader.loadTestsFromNames(self.TESTS_CHARGEUR, module).run(resultat)
+                echecs = [f"{t}\n{trace}" for t, trace in resultat.failures + resultat.errors]
+                self.assertEqual((resultat.testsRun, resultat.skipped), (len(self.TESTS_CHARGEUR), []))
+                self.assertEqual(echecs, [], "\n".join(echecs))
+                # The parser named is the one that read: libyaml's never without it; with it, for what it accepts, and the
+                # pure one for each refusal.
+                self.assertEqual(vus["_ChargeurBeeC"] > 0, chargeur_c is not None, vus)
+                self.assertGreater(vus["ChargeurBee"], 0, vus)
+
+    def test_chaque_refus_du_chargeur_avec_son_message(self):
+        if hasattr(sys, "set_int_max_str_digits"):  # Python 3.11 and later: an integer too long is refused too (ruche-0040)
+            self.REFUS = {**self.REFUS, "entier démesuré": ("motif: " + "9" * 5000 + "\n", "Exceeds the limit", False)}
+        for nom, (texte, refus, seul_c_accepte) in self.REFUS.items():
+            messages = {}
+            for analyseur, chargeur_c in analyseurs():
+                with self.subTest(nom, analyseur=analyseur), mock.patch.object(bee, "_ChargeurBeeC", chargeur_c):
+                    sorte, messages[analyseur] = lecture(texte)
+                    self.assertEqual(sorte, "refus", messages[analyseur])
+                    self.assertIn(refus, messages[analyseur])
+                    self.assertTrue(messages[analyseur].startswith("f.yaml : YAML invalide ("), messages[analyseur])
+            self.assertEqual(len(set(messages.values())), 1, messages)  # the same message, word for word
+            if bee._ChargeurBeeC is not None and seul_c_accepte:  # without the pre-scan, libyaml's loader takes it
+                with self.subTest(nom, analyseur="C sans pré-examen"):
+                    self.assertIsInstance(yaml.load(texte, Loader=bee._ChargeurBeeC), dict)
+
+    def test_un_fichier_honnete_se_lit_pareil(self):
+        for i, texte in enumerate(self.HONNETES):
+            lus = {}
+            for analyseur, chargeur_c in analyseurs():
+                with self.subTest(i, analyseur=analyseur), mock.patch.object(bee, "_ChargeurBeeC", chargeur_c), \
+                        chargeurs_utilises() as vus:
+                    lus[analyseur] = lecture(texte)
+                    self.assertEqual(lus[analyseur][0], "ok", lus[analyseur])
+                    if chargeur_c is not None and i < 3:  # registry-like text: libyaml alone, no second reading
+                        self.assertEqual(dict(vus), {"_ChargeurBeeC": 1})
+            self.assertEqual(len({repr(v) for v in lus.values()}), 1, lus)
+        valeur = lecture(self.HONNETES[1])[1]
+        self.assertEqual((valeur["reservation"]["depuis"], valeur["fichiers"]), ("2026-10-27T12:00:00Z", ["outils/bee.py", "docs/a.md"]))
+        self.assertEqual(lecture(self.HONNETES[2])[1]["le"], "2026-11-02")  # dates stay text, as with ChargeurBee
+        # Nested PROFONDEUR_C_MAX deep, libyaml reads; one more, the pure loader does (it alone refuses what is too deep).
+        for profondeur, lecteur in ((bee.PROFONDEUR_C_MAX, "_ChargeurBeeC"), (bee.PROFONDEUR_C_MAX + 1, "ChargeurBee")):
+            with self.subTest(profondeur=profondeur), chargeurs_utilises() as vus:
+                lu = lecture("a: " + "[" * (profondeur - 1) + "]" * (profondeur - 1) + "\n")
+                self.assertEqual(lu[0], "ok", lu)
+                self.assertEqual(dict(vus), {lecteur if bee._ChargeurBeeC is not None else "ChargeurBee": 1})
+
+    def test_differentiel_des_deux_analyseurs(self):
+        """A frozen fuzz (seed 130) of the frozen fixture: each mutated text reads the same with each parser, value or
+        refusal word for word. It found the four places where libyaml's scanner reads otherwise (bee._LU_AUTREMENT_EN_C)."""
+        textes = [p.read_text(encoding="utf-8") for p in sorted(JEU_FIGE.rglob("*.yaml"))] + [TACHE_OPTIMISATION]
+        self.assertGreater(len(textes), 10)
+        morceaux = list(":-?&*!|>#'\"[]{},% \t\n") + ["\n  ", "\n- ", ": ", "? ", "[a, ", "{a: ", "a:b", "a?", " #c", "|-", ">2",
+                                                     "\ufeff", "\x85", "\u2028", "\r\n", "\r", "---\n", "...\n", "\"\\/\"", "~", "0o7"]
+        hasard, ecarts = __import__("random").Random(130), []
+        for _ in range(1500):
+            texte = hasard.choice(textes)
+            for _ in range(hasard.randint(1, 3)):
+                k = hasard.randint(0, len(texte))
+                texte = texte[:k] + hasard.choice(morceaux) + texte[k + hasard.randint(0, 2):]
+            lus = []
+            for _, chargeur_c in analyseurs():
+                with mock.patch.object(bee, "_ChargeurBeeC", chargeur_c):
+                    lus.append(repr(lecture(texte)))
+            if len(set(lus)) > 1:
+                ecarts.append(texte)
+        self.assertEqual(ecarts, [])
+        for texte in self.HORS_LISTE:
+            lus = []
+            for analyseur, chargeur_c in analyseurs():
+                with self.subTest(texte, analyseur=analyseur), mock.patch.object(bee, "_ChargeurBeeC", chargeur_c), \
+                        chargeurs_utilises() as vus:
+                    lus.append(lecture(texte))
+                    self.assertEqual(lus[-1][0], "refus", lus[-1])
+                    self.assertEqual(dict(vus), {"ChargeurBee": 1})  # the pre-scan sends it to the pure loader alone
+            self.assertEqual(len(set(lus)), 1, lus)
+            if bee._ChargeurBeeC is not None:  # without the pre-scan, libyaml's loader takes it
+                self.assertIsNotNone(yaml.load(texte, Loader=bee._ChargeurBeeC))
+
+    def test_seule_une_version_exercee_de_libyaml_lit(self):
+        """libyaml reads only in a version exercised here (VERSIONS_LIBYAML_EXERCEES); another one leaves all to the pure loader."""
+        if bee._ChargeurBeeC is None:
+            self.skipTest("PyYAML without libyaml")
+        import importlib.util
+        from yaml import _yaml
+        for version, lit_en_c in ((next(iter(bee.VERSIONS_LIBYAML_EXERCEES)), True), ((0, 2, 6), False), ((0, 2, 2), False)):
+            with self.subTest(version=version), mock.patch.object(_yaml, "get_version", lambda: version):
+                spec = importlib.util.spec_from_file_location("bee_version_libyaml", bee.__file__)
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                self.assertEqual(module._ChargeurBeeC is not None, lit_en_c)
+
 
 if __name__ == "__main__":
     sys.exit(principal_tests(sys.modules[__name__], __file__, sys.argv[1:]))
