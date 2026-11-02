@@ -44,6 +44,7 @@ import re
 import secrets
 import shutil
 import stat
+import subprocess
 import sys
 import tempfile
 import time
@@ -72,6 +73,7 @@ JAMAIS_PERMIS = analyse.JAMAIS_PERMIS
 UNITES = (".c", ".S", ".s", ".cc", ".cpp", ".cxx")  # unités de traduction : chacune doit laisser son objet
 ARCHITECTURES_ANALYSEES = ("x86_64", "amd64")  # mnémoniques et préambule de Valgrind connus d'analyse.py
 VALGRIND = ["/usr/bin/valgrind", "--tool=cachegrind", "--cache-sim=no", "--vgdb=no", "--cachegrind-out-file=/dev/null"]
+COMMIT, HISTORIQUE_MAX, DEPOT = re.compile(r"[0-9a-f]{40}"), 16, re.compile(r"[A-Za-z0-9-]+/(?!\.\.?$)[A-Za-z0-9_.-]+")
 
 
 # ------------------------------------------------------------------ greffon
@@ -298,6 +300,44 @@ def exiger_couverture(sorties_b, entrees, etape):
                      f"({', '.join(oubliees[:5])}) : juge mal monté")
 
 
+# ------------------------------------------------------------------ declared history
+
+def recuperer_historique(outillage, texte, jeton=None, budget=600):
+    """Fetches into the base's repository the commits its plugin reads (juge.yml's `historique`), with their trees
+    and blobs but no history. Each must be in the base's ancestry, as GitHub's compare API on the calling repository
+    (GITHUB_REPOSITORY) says (identical or behind), all checked before any fetch; checks and fetches share one time
+    budget. juge.yml runs it in its own step (--historique-seulement), the only call of juge.py given a token
+    (GH_TOKEN, passed to gh alone), before anything loads the plugin and before the PR."""
+    commits, depot = sorted(set(texte.split())), os.environ.get("GITHUB_REPOSITORY", "")
+    if len(commits) > HISTORIQUE_MAX or not all(COMMIT.fullmatch(c) for c in commits):
+        raise Erreur(f"historique : at most {HISTORIQUE_MAX} full commit SHAs (40 hexadecimal digits), separated by blanks")
+    if not commits:
+        return []
+    fin = time.monotonic() + budget
+
+    def lancer(commande, env=None):
+        try:
+            return subprocess.run(commande, capture_output=True, text=True, errors="replace", env=env,
+                                  timeout=max(0.01, fin - time.monotonic()))
+        except subprocess.TimeoutExpired:
+            raise Erreur(f"historique : checks and fetches exceeded their budget of {budget} s")
+        except OSError as e:
+            raise Erreur(f"historique : {commande[0]} unavailable ({propre(str(e), 200)})")
+    base = lancer(["git", "-C", outillage, "rev-parse", "HEAD"]).stdout.strip()
+    if not DEPOT.fullmatch(depot) or not COMMIT.fullmatch(base):
+        raise Erreur("historique : the calling repository (GITHUB_REPOSITORY, owner/name) and the base's commit are required")
+    for c in commits:
+        r = lancer(["gh", "api", f"repos/{depot}/compare/{base}...{c}", "--jq", ".status"],
+                   {**os.environ, "GH_TOKEN": jeton} if jeton else None)
+        if r.returncode != 0 or r.stdout.strip() not in ("identical", "behind"):
+            raise Erreur(f"historique : {c} is not in the ancestry of the base ({propre(r.stdout.strip() or r.stderr, 300)})")
+    for c in commits:
+        r = lancer(["git", "-C", outillage, "fetch", "--quiet", "--no-tags", "--depth=1", "origin", f"{c}:refs/bee/historique/{c}"])
+        if r.returncode != 0:
+            raise Erreur(f"historique : commit {c} not fetched from the base's origin : " + propre(r.stderr, 500))
+    return commits
+
+
 # ------------------------------------------------------------------ programme
 
 def options_de(liste):
@@ -316,7 +356,11 @@ def main(argv=None):
     analyseur.add_argument("--source-a")
     analyseur.add_argument("--source-b")
     analyseur.add_argument("--image-seulement", action="store_true",
-                           help="construit l'image du conteneur (seule étape avec réseau) et affiche son étiquette")
+                           help="construit l'image du conteneur (avec réseau, avant la PR) et affiche son étiquette")
+    analyseur.add_argument("--historique-seulement", action="store_true",
+                           help="checks and fetches the declared history (--historique) into the base, without loading the plugin")
+    analyseur.add_argument("--historique", default="", help="with --historique-seulement: commits fetched into the base")
+    analyseur.add_argument("--source-juge", help="DEPOT@COMMIT of this judge's code (juge.yml: the workflow's own commit)")
     analyseur.add_argument("--option", action="append", default=[], help="option du greffon, CLE=VALEUR (répétable)")
     analyseur.add_argument("--repetitions", type=int, default=10)
     analyseur.add_argument("--chauffe", type=int, default=1)
@@ -329,11 +373,21 @@ def main(argv=None):
     analyseur.add_argument("--memoire", default="4g")
     analyseur.add_argument("--garder", action="store_true")
     args = analyseur.parse_args(argv)
+    if args.historique and not args.historique_seulement:
+        analyseur.error("--historique va avec --historique-seulement")
+    # Defence in depth: the plugin, loaded later in this process, does not find GH_TOKEN in os.environ (the value
+    # stays in /proc/<pid>/environ: juge.yml gives the token to the --historique-seulement call alone).
+    jeton = os.environ.pop("GH_TOKEN", None)
+    if args.historique_seulement:
+        print(" ".join(recuperer_historique(os.path.abspath(args.outillage), args.historique, jeton)))
+        return 0
 
     debut = time.time()
     if shutil.which("docker") is None:
         raise Erreur("docker introuvable")
     outillage = os.path.abspath(args.outillage)
+    if not args.image_seulement:
+        os.environ["GIT_ALLOW_PROTOCOL"] = "none"  # judging: no git transport at all, the declared history is already here
     projet, empreinte_greffon = charger_greffon(outillage, options_de(args.option))
     if args.image_seulement:
         print(conteneur.construire_image(getattr(projet, "PAQUETS", ()), args.reseau_construction))
@@ -476,6 +530,7 @@ def main(argv=None):
         rapport["juge"] = {
             "version": VERSION_JUGE,
             "commun": f"juge-v{VERSION_COMMUNE}",
+            "source": args.source_juge,
             "projet": projet.NOM,
             "greffon": empreinte_greffon,
             "graine": graine.hex(),
