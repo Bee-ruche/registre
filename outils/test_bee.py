@@ -985,6 +985,40 @@ class TestRegistre(BaseTest):
         code, texte = self.bee("verifier-acceptation", cid)
         self.assertEqual(code, 0, texte)
 
+    def test_r4_reproduction_par_une_autre_personne_qui_dit_sa_configuration(self):
+        """ruche-0042 : pour R4, une mesure d'une autre configuration est celle d'un autre utilisateur que l'auteur de la contribution
+        (sans la casse ; un compte d'agent déclaré est sa personne), qui dit sa configuration. Les autres restent des fichiers valides."""
+        cid = self.contribution_relue(0.06, True, 0.0)  # +6 % au chronomètre seul : R4 exige une reproduction
+        declarer_agents(self.dossier, (AGENT, "bidji29"), ("alice-agent", "alice"))
+        mesure = {"contribution": cid, "le": "2026-10-29T12:00:00Z", "base": "2948eeb", "candidat": "abc1234",
+                  "config": {"architecture": "arm64", "compilateur": "clang 17"},
+                  "metriques": {"debit_compression_n6": {"gain": 0.05, "au_dela_du_bruit": True}}}
+        dossier = self.dossier / "mesures" / cid
+
+        def manque_r4(soumise_par, **champs):
+            shutil.rmtree(dossier, ignore_errors=True)
+            bee.ecrire_yaml(dossier / f"{soumise_par}.yaml",
+                            {k: v for k, v in {**mesure, "soumise_par": soumise_par, **champs}.items() if v is not None})
+            return [r for r in bee.raisons_r3(bee.Registre(self.dossier), cid)[2] if "reproduit par une mesure" in r]
+
+        for soumise_par, champs in (("alice", {}), ("Alice", {}), ("alice-agent", {}), ("ALICE-AGENT", {}), ("bruno", {"config": None}),
+                                    ("bruno", {"config": {"architecture": " "}}), ("bruno", {"config": {"compilateur": "gcc 13"}}),
+                                    ("bruno", {"config": "arm64"})):
+            with self.subTest(soumise_par=soumise_par, **champs):
+                self.assertTrue(manque_r4(soumise_par, **champs), "elle ne compte pas pour R4")
+        self.assertFalse(manque_r4("bruno"), "celle de bruno, qui dit sa configuration, compte")
+        reg = bee.Registre(self.dossier)
+        de_bruno = next(m for _, m in reg.mesures if m.get("soumise_par") == "bruno")
+        self.assertTrue(bee.reproduces_for_r4(reg, de_bruno, "alice"))
+        for auteur in (None, "", " ", 5):  # sans auteur à qui la comparer, aucune ne compte (échec fermé)
+            self.assertFalse(bee.reproduces_for_r4(reg, de_bruno, auteur), repr(auteur))
+        code, texte = self.bee("verifier-acceptation", cid)
+        self.assertEqual(code, 0, texte)
+        # Celle de l'auteur reste un fichier valide, à côté : elle ne compte simplement pas.
+        bee.ecrire_yaml(dossier / "alice.yaml", {**mesure, "soumise_par": "alice"})
+        self.valide()
+        self.assertEqual(self.bee("verifier-acceptation", cid)[0], 0)
+
     def test_r5_chronometre_bruite_ignore_instructions_jugees(self):
         cid = self.contribution_relue(0.05, True, 0.05, {"debit_compression_n1": -0.05})
         self.assertEqual(self.bee("verifier-acceptation", cid)[0], 0, "un recul au chronomètre seul ne bloque pas")
@@ -1516,7 +1550,7 @@ class TestArbre(BaseTest):
         self.assertEqual(bee.role_de_tache(reg.tache("miniz-0003")[1]), "mesurer")
         noeuds = bee.charger_arbre(reg)["noeuds"]
         self.assertEqual({n for n in noeuds if n.startswith("roles/")},
-                         {f"roles/{r}" for r in ("optimiser", "relire", "mesurer", "debattre", "garder", "proposer")})
+                         {f"roles/{r}" for r in ("optimiser", "relire", "mesurer", "debattre", "garder", "proposer", "inviter")})
         self.assertTrue(bee.correspond("arbre/roles/relire/SENS.md", bee.CHEMINS_OUTILLAGE),
                         "l'arbre est de l'outillage : PR ordinaire, jamais fusionnée automatiquement")
 
@@ -1682,6 +1716,22 @@ class TestArbre(BaseTest):
         self.assertIn("rôle inconnu : voter", texte)
         self.assertEqual(self.bee("contexte", "miniz-9999")[0], 1)
 
+    def test_ruche_0052_role_inviter_imprime_le_chemin_de_r13(self):
+        # ruche-0052 (1) : qui veut inviter trouve R13 sans connaître la ruche, dans le budget de jetons des rôles (1 900).
+        code, texte = self.bee("contexte", "--role", "inviter")
+        self.assertEqual(code, 0, texte)
+        self.assertIn("# bee contexte --role inviter : racine > roles/inviter", texte)
+        role = texte[texte.index("=== nœud roles/inviter ==="):]
+        self.assertIn("docs/croissance.md", role)
+        for commande in ("inviter", "voir I-<nnnn>", "invitation", "essaim", "incident"):
+            self.assertIn(commande, role)
+        self.assertLess(int(re.search(r"Environ (\d+) jetons", texte).group(1)), 1900)
+        self.assertLess(bee.estimer_jetons(texte), 1900)
+        self.assertIn("- `roles/inviter` : inviter une personne hors de la ruche (R13, docs/croissance.md)", self.bee("contexte")[1])
+        code, texte = self.bee("contexte", "miniz-0099", "--role", "inviter")
+        self.assertEqual(code, 0, texte)
+        self.assertIn("=== nœud roles/inviter ===", texte)
+
     def test_contexte_zone_et_noeud_ailleurs(self):
         self.ajouter_zone()
         chemin = self.dossier / "taches/miniz/miniz-0099.yaml"
@@ -1735,7 +1785,7 @@ class TestArbre(BaseTest):
         # resserre (décision du 30/10 : l'ancien garde-fou mesurait miniz-0012 avec ses notes, et la moindre ligne
         # ajoutée à un nœud le cassait, ce qui bloquait l'écriture des zones, ruche-0014 à ruche-0016).
         reg = bee.Registre(self.dossier)
-        for role in ("optimiser", "relire", "mesurer", "debattre", "garder", "proposer"):
+        for role in ("optimiser", "relire", "mesurer", "debattre", "garder", "proposer", "inviter"):
             for projet in ("miniz", "libyaml", "ruche"):
                 tache = next(t for _, t in reg.taches.values() if t.get("projet") == projet)
                 texte, jetons = bee.texte_contexte(reg, tache["id"], role, registre=str(self.dossier))
@@ -1763,7 +1813,7 @@ class TestArbre(BaseTest):
 
     def test_B1_la_consigne_des_failles_est_sur_chaque_chemin(self):
         reg = bee.Registre(self.dossier)
-        for role in ("optimiser", "relire", "mesurer", "debattre", "garder", "proposer"):
+        for role in ("optimiser", "relire", "mesurer", "debattre", "garder", "proposer", "inviter"):
             for projet in ("miniz", "libyaml", "ruche"):
                 tache = next(t for _, t in sorted(reg.taches.items()) if t[1].get("projet") == projet)[1]
                 for budget in (None, 1):
@@ -1911,7 +1961,7 @@ class TestArbre(BaseTest):
     def test_m4_courses_juge_isole_et_commandes_dans_les_noeuds(self):
         for role in ("relire", "optimiser"):
             self.assertIn("qui a jugé une course n'y entre plus", self.plat(self.noeud(f"roles/{role}").read_text(encoding="utf-8")))
-        for role in ("optimiser", "relire", "mesurer", "debattre", "garder", "proposer"):
+        for role in ("optimiser", "relire", "mesurer", "debattre", "garder", "proposer", "inviter"):
             with self.subTest(role=role):
                 self.assertRegex(self.noeud(f"roles/{role}").read_text(encoding="utf-8"), r"(?m)^Commandes : ")
         self.assertIn("python3 bee/juge/juge.py --source-a <base> --source-b <ta copie>",
@@ -2626,6 +2676,184 @@ class TestPublier(BaseTest):
         code, texte = self.bee("publier", "--titre", "Rien")
         self.assertEqual(code, 1)
         self.assertIn("aucun changement", texte)
+
+    # --- ruche-0049: the title and body leave the hive, checked like any outgoing text ---
+
+    SORTANTS_REFUSES = {
+        "mention": ("Merci @octocat", "la mention « @octocat » notifierait"),
+        "mention d'équipe": ("cc @Bee-ruche/conseil", "la mention « @Bee-ruche/conseil »"),
+        "mention entre parenthèses": ("Relu (@octocat).", "la mention « @octocat »"),
+        "mention pleine chasse": ("Merci ＠octocat", "la mention « @octocat »"),
+        "issue d'un autre dépôt": ("Voir amont-fictif/miniz#12", "« amont-fictif/miniz#12 » renvoie à un dépôt hors de Bee-ruche"),
+        "commit d'un autre dépôt": ("Voir amont-fictif/miniz@a5c3785", "« amont-fictif/miniz@a5c3785 » renvoie"),
+        "commit d'un fork": ("Voir amont-fictif@a5c37851d", "« amont-fictif@a5c37851d » renvoie"),
+        "adresse d'une issue": ("Voir https://github.com/amont-fictif/miniz/issues/12", "« https://github.com/amont-fictif/miniz/issues/12 »"),
+        "adresse d'une PR, en lien": ("[ici](https://github.com/amont-fictif/miniz/pull/3)", "« https://github.com/amont-fictif/miniz/pull/3 »"),
+        "adresse d'un commit": ("https://github.com/amont-fictif/miniz/commit/a5c3785", "mène hors de Bee-ruche"),
+        "adresse sans schéma": ("Voir github.com/amont-fictif/miniz", "« github.com/amont-fictif/miniz »"),
+        "autre forge": ("Voir https://gitlab.com/amont-fictif/miniz", "« https://gitlab.com/amont-fictif/miniz »"),
+        "page de forge": ("Voir https://amont-fictif.github.io/miniz", "mène hors de Bee-ruche"),
+        "courriel": ("Écrire à jean.dupont@example.org", "une adresse de courriel"),
+        "téléphone": ("Au 06 12 34 56 78", "un numéro de téléphone"),
+        "caractère invisible": ("Réservation\u2060 miniz-0099", "(U+2060, catégorie Cf)"),
+    }
+    # The adversarial review's texts (31/10 fix round): read in code too (B1), entities decoded (B2), raw and NFKC forms (B3), only
+    # the GitHub owner Bee-ruche is inside (S1), no link that hides where it leads and no relative link outside (S2).
+    REVUE_REFUSES = {
+        "B1": ["`@upstream`", "```\n@upstream\n```", "`\n# h\n@upstream `", '<b title="`">@upstream</b> `', "<http://x.example/`>@upstream `",
+               "| a |\n|---|\n| ` |\n| @upstream ` |", "    @upstream", "<code>@upstream</code>", "`upstream/repo#12`",
+               "`https://github.com/upstream/repo`"],
+        "B2": ["&#64;upstream", "&commat;upstream", "@&#117;pstream", "upstream/repo&#35;12", "upstream&#47;repo#12",
+               "https://&#103;ithub.com/upstream/repo", "&amp;#64;upstream", "x&#1;@upstream", "\\&#117;&#64;upstream"],
+        "B3": ["ª@upstream", "ａ@upstream", "ⓐ@upstream", "²@upstream", "①@upstream", "＿@upstream", "™@upstream", "ﬁ@upstream",
+               "_x_@upstream", "x@y.z1@upstream"],
+        "S1": ["https://gitlab.com/Bee-ruche/x", "https://codeberg.org/Bee-ruche/x", "https://bee-ruche.gitlab.io/x", "https://sr.ht/~Bee-ruche/x"],
+        "S2": ["https://github.com/Bee-ruche/../upstream/repo", "https://github.com/Bee-ruche/%2e%2e/upstream/repo", "https://%67ithub.com/upstream/repo",
+               "https://github%2Ecom/upstream/repo", "https://github.com./upstream/repo", "https://github.com:/upstream/repo",
+               "https://github.com\\upstream/repo", "github.com:upstream/repo", "https://github\u3002com/upstream/repo",
+               "[x](/upstream/repo/issues/1)", "[x](../../../upstream/repo)", '<a href="/upstream/repo">x</a>', "<a href=/upstream/repo>x</a>",
+               "[x][1]\n\n[1]: /upstream/repo", "[x](/Bee-ruche/../upstream/repo)", '<a href=" /upstream/repo">x</a>',
+               '<a href="https://github.com\n/upstream/repo">x</a>'],
+        # Round 3 (F1): an address right after another host or address is read from its own start.
+        "F1": ["example.com,https://github.com/upstream/repo/issues/1", "README.md;https://github.com/upstream/repo/issues/1",
+               "https://github.com/Bee-ruche/registre|https://github.com/upstream/repo/issues/1",
+               "https://example.org/a|https://github.com/upstream/repo/issues/1", "example.com.https://github.com/upstream/repo"],
+        # (F2): a /../ after a quote, a parenthesis, a bracket, a brace or a backtick in a forge address.
+        "F2": ["https://github.com/Bee-ruche/x'/../../upstream/repo", "https://github.com/Bee-ruche/x)/../../upstream/repo",
+               "https://github.com/Bee-ruche/x]/%2e%2e/upstream/repo", "https://github.com/Bee-ruche/x}/..%2fupstream/repo",
+               "https://github.com/Bee-ruche/x`/../../upstream/repo"],
+        # Round 4: an embedded www. or https:// in a forge path must not hide a later /../ (its run is read whole).
+        "F3": ["https://github.com/Bee-ruche/www.x.org/../../upstream/repo", "https://github.com/Bee-ruche/https://x.org/../../../upstream/repo",
+               "https://github.com/Bee-ruche/a?www.x/../../../upstream/repo", "https://github.com/Bee-ruche/www.%2e%2e/%2e%2e/upstream/repo",
+               "https://bee-ruche.github.io/www.x.org/../../upstream", "[a](https://github.com/Bee-ruche/www.x.org/../../upstream/repo)",
+               "<https://github.com/Bee-ruche/www.x.org/../../upstream/repo>",
+               "example.com,https://github.com/Bee-ruche/www.x.org/../../upstream/repo"],
+        # Round 5: a link's run goes on past <, a Unicode space or (in an angle destination) a blank; a hidden owner still has a run.
+        "F4": ["[x](https://github.com/Bee-ruche/a<b/../../upstream/repo)", "[x](<https://github.com/Bee-ruche/a b/../../upstream/repo>)",
+               "[x](<https://github.com/Bee-ruche/a\tb/../../upstream/repo>)", "[x](https://github.com/Bee-ruche/a\u00a0b/../../upstream/repo)",
+               "[x](https://github.com/Bee-ruche/a\u3000b/../../upstream/repo)", '<a href="https://github.com/Bee-ruche/a<b/../../upstream/repo">x</a>',
+               "[x][1]\n\n[1]: <https://github.com/Bee-ruche/a b/../../upstream/repo>", "![x](https://github.com/Bee-ruche/a<b/../../upstream/repo)",
+               "[x](https://bee-ruche.github.io/a<b/../../upstream/repo)", "[x](https://github.com/<x/../upstream/repo)",
+               "[x](<https://github.com/ /../upstream/repo>)"],
+        # GitHub-owned hosts: github.dev reads like github.com; a shortener or an editor does not say where it leads.
+        "hôtes": ["https://github.dev/upstream/repo", "https://vscode.dev/github/upstream/repo", "https://vscode.dev/github/Bee-ruche/registre",
+                  "https://git.io/abc", "https://git.io/Bee-ruche"],
+    }
+    # The second review (2 Nov): CommonMark escapes (N1), a scheme with one slash (N2), tag-split text (N5), srcset (N6), a
+    # root-relative link to another host (N7); and what bees write every night must pass (N4).
+    SECONDE_REVUE_REFUSES = {
+        "N1": ["upstream/repo\\#12", "upstream\\/repo#12", "upstream/re\\_po#12", "\\@upstream", "github\\.com/upstream/repo",
+               "[x](\\/upstream/repo)"],
+        "N2": ["[x](https:/upstream/repo)", '<a href="https:/upstream/repo">x</a>', "![i](https:/upstream/a.png)", "[x]: https:/upstream/repo",
+               "[x](HTTPS:/upstream/repo)", "<https:/upstream/repo>", "<HTTPS:/upstream/repo>"],
+        "N5": ["@<foo>upstream</foo>", "upstream/repo<foo>#12</foo>", "@<b></b>upstream", "up<b></b>stream/repo#12", "@<!-- c -->upstream"],
+        "N6": ['<img srcset="/Bee-ruche/a.png 1x, /upstream/b.png 2x">', '<img SRCSET="https://github.com/Bee-ruche/a.png">'],
+        "N7": ["[x](//Bee-ruche/x)", "[x](/\\Bee-ruche/x)", "[x](///Bee-ruche/x)", '<a href="//Bee-ruche/x">x</a>'],
+        "used definition": ["[x][1]\n\n[1]: /upstream/repo", "voir [OK]\n\n[ok]: /upstream/x", "[x][1]&colon;\n\n[1]: /upstream/repo"],
+    }
+    SECONDE_REVUE_HONNETES = ["PREFIX=/usr/local", "TMPDIR=/tmp", "PATH=/usr/bin:$PATH", "--prefix=/usr", "--output=/dev/null", 'path = "/tmp/x"',
+                              "BEE_REGISTRE=/home/claude/registre", "x=[1,2,3]", "a[i]==b[j]", "gain=12%", "width=50%",
+                              "https://example.org/a%20b", "tests/test_bee.py::TestPublier::test_x", "file.py:func", "[ok]: /tmp/x",
+                              "https://github.com/Bee-ruche/registre", "https://example.org/a", "[doc](https://example.org/a%20b)",
+                              "[x](/Bee-ruche/registre/pull/3)", "x == y", "50 % plus rapide", "https://github.com/Bee-ruche/registre/www.x.org",
+                              "ids 1234&#10;56789", "a&#9;b"]
+    SORTANTS_HONNETES = ["Réservation miniz-0036", "Soumission miniz-0012-c1", "Réservation ruche-0024, ruche-0042", "x@upstream",
+                         "uses actions/checkout@v4", "pkg@1.2.3", "#12, GH-12, D-0019", "Bee-ruche/registre#12", "Bee-ruche/minizBee@a5c3785",
+                         "https://github.com/Bee-ruche/registre/pull/53.", "github.com/Bee-ruche/minizBee", "https://bee-ruche.github.io/registre/",
+                         "https://github.com/Bee-ruche/registre/compare/main...tache/ruche-0049", "[croissance](docs/croissance.md), [ici](#publier)",
+                         "Voir AGENTS.md. Puis bee.py: la fonction.", "outils/bee.py:3550", "&lt;b&gt; &amp; ok", "https://zlib.net",
+                         "Publié avec `bee publier`.\n\nNature : Réservation miniz-0036."]
+
+    def test_titre_ou_corps_sortant_refuse_avant_tout_appel(self):
+        """Refused before any git or gh call, --a-blanc included, with the reason of the outgoing-text check."""
+        self.bee("prendre", "miniz-0099", "--utilisateur", "alice")
+        avant = git(self.dossier, "rev-parse", "HEAD")
+        with mock.patch.object(bee, "executer", side_effect=AssertionError("git or gh called")):
+            for nom, (texte, raison) in self.SORTANTS_REFUSES.items():
+                for options in (["--titre", texte], ["--titre", "Réservation miniz-0099", "--corps", texte]):
+                    for a_blanc in ([], ["--a-blanc"]):
+                        with self.subTest(nom=nom, options=options[::2], a_blanc=a_blanc):
+                            code, sortie = self.bee("publier", *options, *a_blanc)
+                            self.assertEqual(code, 1, sortie)
+                            self.assertIn(f"{'corps' if '--corps' in options else 'titre'} : ", sortie)
+                            self.assertIn(raison, sortie)
+        code, sortie = self.bee("publier", "--titre", "Merci @octocat", "--intervalle", "0")  # the real thing, real git
+        self.assertEqual(code, 1, sortie)
+        self.assertIn("commandements 8 et 13", sortie)
+        self.assertFalse(self.journal.exists(), "aucun appel à gh")
+        self.assertEqual((git(self.dossier, "rev-parse", "HEAD"), git(self.dossier, "branch").split()), (avant, ["*", "main"]))
+        self.assertNotIn("bee/", git(self.dossier, "ls-remote", "--heads", "origin"))
+
+    def test_titre_et_corps_honnetes_passent(self):
+        corps = ("Réservation de miniz-0099 (registre #12, GH-12, Bee-ruche/minizBee#3, Bee-ruche/minizBee@a5c3785, "
+                 "https://github.com/Bee-ruche/registre/pull/53, https://bee-ruche.github.io/registre/).\n\n"
+                 "Lu dans outils/bee.py et docs/croissance.md ; `gh api user --jq .login`.\n```\ngh repo fork Bee-ruche/registre\n```")
+        self.bee("prendre", "miniz-0099", "--utilisateur", "alice")
+        with mock.patch.object(bee, "texte_sortant_refuse", wraps=bee.texte_sortant_refuse) as controle:
+            code, texte = self.bee("publier", "--titre", "Réservation miniz-0099", "--corps", corps, "--a-blanc")
+            self.assertEqual(code, 0, texte)
+            code, texte = self.bee("publier", "--titre", "Réservation miniz-0099", "--corps", corps, "--intervalle", "0")
+            self.assertEqual(code, 0, texte)
+        # The outgoing-text check itself, reused (no copy): once for the title, once for the body, under the hive's organisation.
+        appels = [c.args for c in controle.call_args_list if len(c.args) == 4]
+        self.assertEqual(appels, [("Réservation miniz-0099", "titre", 256, "Bee-ruche"), (corps, "corps", 8000, "Bee-ruche")] * 2)
+        self.assertIn(f"body={corps}", self.journal.read_text(encoding="utf-8"))
+
+    def test_textes_de_la_revue_refuses_dans_le_titre_et_le_corps(self):
+        """No code skipping, entities decoded, raw and NFKC forms read, only the GitHub owner Bee-ruche inside; honest texts pass.
+        Invitations and other outgoing texts keep their check (no organisation)."""
+        for quoi, maximum in (("titre", 256), ("corps", 8000)):
+            for groupe, textes in {**self.REVUE_REFUSES, **self.SECONDE_REVUE_REFUSES}.items():
+                for texte in textes:
+                    with self.subTest(quoi=quoi, groupe=groupe, texte=texte):
+                        self.assertIn("ce texte sort de la ruche",  # (commandements 8 et 13), or a hidden character
+                                      bee.texte_sortant_refuse(texte, quoi, maximum, "Bee-ruche") or "accepté")
+            for texte in self.SORTANTS_HONNETES + self.SECONDE_REVUE_HONNETES:
+                with self.subTest(quoi=quoi, honnete=texte):
+                    self.assertIsNone(bee.texte_sortant_refuse(texte, quoi, maximum, "Bee-ruche"))
+        self.assertNotIn("a" * 81, bee.texte_sortant_refuse("@" + "a" * 200, "corps", 8000, "Bee-ruche"), "the echo is cut at 80")
+        self.assertIn("corps de 8001 caractères, au plus 8000", bee.texte_sortant_refuse("a" * 8001, "corps", 8000, "Bee-ruche"))
+        self.assertIsNone(bee.texte_sortant_refuse("Bonjour @octocat, voir amont-fictif/miniz#12.", "message", 1000))
+
+    def test_refus_nomme_le_mot_et_reference_demesuree(self):
+        """The refusal names the offending word and says why; a numeric reference too long for int() is refused, not a crash
+        (N3), and only a text that GitHub renders is decoded."""
+        refuse = lambda texte: bee.texte_sortant_refuse(texte, "corps", 8000, "Bee-ruche")  # noqa: E731
+        for texte, attendu in (("Voir upstream/repo\\#12.", "« upstream/repo#12 » renvoie à un dépôt hors de Bee-ruche"),
+                               ("[x](https:/upstream/repo)", "« https:/upstream/repo » n'a qu'une barre"),
+                               ("[x](//Bee-ruche/x)", "« ](//Bee-ruche/x » est un lien relatif"),
+                               ('<img srcset="/Bee-ruche/a.png">', "« srcset=\"/Bee-ruche/a.png » liste plusieurs adresses"),
+                               ("https://github.com/Bee-ruche/%2e%2e/upstream", "cache où il mène"),
+                               ("[ici](https://github.com/upstream/repo).", "« https://github.com/upstream/repo » mène hors de Bee-ruche")):
+            with self.subTest(texte=texte):
+                self.assertIn(attendu, refuse(texte))
+        self.assertIn("« /upstream/repo » est un lien relatif", refuse("[x][1]\n\n[1]: /upstream/repo"), "a definition names its target")
+        demesure = "&#" + "0" * 4400 + "64;upstream"
+        self.assertIn("référence de caractère démesurée", refuse(demesure))
+        self.assertNotIn("démesurée", bee.texte_sortant_refuse(demesure, "message", 8000) or "")  # not decoded: no crash
+
+    def test_donnee_personnelle_dans_chaque_lecture(self):
+        """An address split by a reference that a renderer shows as nothing, or as a hidden character, is refused: a hidden
+        character as when typed, a reference past U+10FFFF as personal data in the reading where it is dropped."""
+        for reference in ("&#1;", "&#0;", "&#127;", "&#128;", "&#xD800;", "&#x110000;"):
+            for texte in (f"bob@exa{reference}mple.com", f"bob@example{reference}.com", f"bob@{reference}example.com"):
+                with self.subTest(texte=texte):
+                    attendu = "une adresse de courriel" if reference == "&#x110000;" else "caractère invisible refusé"
+                    self.assertIn(attendu, bee.texte_sortant_refuse(texte, "corps", 8000, "Bee-ruche"))
+        self.assertIsNone(bee.texte_sortant_refuse("https://github.dev/Bee-ruche/registre, &#233;t&#233;", "corps", 8000, "Bee-ruche"))
+
+    def test_controle_encode_refuse_comme_le_caractere(self):
+        """An encoded control is refused as the typed one is (texte_recevable): a tab and a newline pass, a form feed, a carriage
+        return or any other control does not."""
+        for code in (0, 1, 8, 11, 12, 13, 27, 127, 128, 159):
+            for reference in (f"&#{code};", f"&#x{code:x};"):
+                with self.subTest(reference=reference):
+                    self.assertIn(f"caractère invisible refusé (U+{code:04X}",
+                                  bee.texte_sortant_refuse(f"bonjour{reference}monde", "corps", 8000, "Bee-ruche"))
+                    self.assertIsNotNone(bee.texte_recevable(f"bonjour{chr(code)}monde", "corps", 8000), "the typed one is refused too")
+        for reference in ("&#9;", "&#10;", "&#x9;", "&#xA;"):
+            with self.subTest(reference=reference):
+                self.assertIsNone(bee.texte_sortant_refuse(f"ids 1234{reference}5678", "corps", 8000, "Bee-ruche"))
 
 
 class TestFork(BaseTest):
@@ -10099,6 +10327,270 @@ class TestVerificationRuche0020(BaseRevueRuche0020):
                                                 "pendant la phase de lancement, commandement 11) |"))
 
 
+class TestR13SuivableRuche0052(BaseInvitations):
+    """ruche-0052 (répétition générale n° 4) : R13 trouvable et suivable. AGENTS.md renvoie à docs/croissance.md là où il parle
+    d'inviter ; bee voir I-<nnnn> donne les dates de l'invitation et son échéance, calculée comme la porte ; un gardien en fonction
+    signale un incident par bee incident, et le frein en tient compte. Le rôle inviter : TestArbre."""
+
+    INCIDENTS = "gouvernance/incidents.yaml"
+
+    def abandonner(self, nom="pr"):
+        git(self.dossier, "switch", "-qf", "main")
+        git(self.dossier, "branch", "-qD", nom)
+
+    def test_2_agents_md_renvoie_a_croissance_la_ou_il_parle_d_inviter(self):
+        texte = (self.dossier / "AGENTS.md").read_text(encoding="utf-8")
+        roles = texte[texte.index("## Ton rôle"):texte.index("**Avant de réserver**")]
+        ligne = next(l for l in roles.splitlines() if l.startswith("| **Inviter**"))
+        self.assertIn("[docs/croissance.md](docs/croissance.md)", ligne)
+        self.assertIn("[`inviter`](arbre/roles/inviter/SENS.md)", ligne)
+        self.assertTrue((self.dossier / "arbre/roles/inviter/SENS.md").is_file())
+
+    def test_3_voir_donne_les_dates_et_l_echeance(self):
+        self.jusqu_a("accord-conseil")
+        texte = self.ok("voir", "I-0001")
+        self.assertIn("proposée le 2026-10-30T10:00:00Z ; accord du gardien : 2026-11-02T11:00:00Z ; feu vert du conseil : "
+                      "2026-11-02T12:00:00Z", texte)
+        self.assertNotIn("échéance sans décision", texte, "une invitation décidée n'expire plus : l'échéance est celle du feu vert")
+        self.assertIn("avant le 2026-11-09T12:00:00Z (échéance du feu vert)", texte)
+
+    def test_C_voir_imprime_les_dates_relues_jamais_brutes(self):
+        """Revue de ruche-0052, C : une date du fichier est relue par bee et réécrite (en_iso), sinon « ? » ; jamais sa valeur
+        brute, qui pourrait porter une séquence d'échappement du terminal."""
+        self.jusqu_a("accord-gardien")
+        piege = "2026-11-02T11:00:00Z\x1b]0;titre\x07\x1b[2J"
+        inv = self.invitation()
+        self.ecrire_invitation({**inv, "propose_le": "2026-10-30T11:00:00+01:00", "accord_gardien": {**inv["accord_gardien"], "le": piege}})
+        texte = self.ok("voir", "I-0001")
+        ligne = next(l for l in texte.splitlines() if l.startswith("proposée le "))
+        self.assertEqual(ligne, "proposée le 2026-10-30T10:00:00Z (échéance sans décision : 2026-11-13T10:00:00Z) ; accord du gardien : ? "
+                                "; feu vert du conseil : aucun")
+        self.assertNotIn("\x1b", ligne)
+
+    def test_3_l_echeance_est_celle_de_la_porte(self):
+        # bee.yaml fixe l'échéance (croissance.expiration_jours) : bee voir la lit comme la porte (refus_geste) et bee valider.
+        chemin = self.dossier / "bee.yaml"
+        chemin.write_text(re.sub(r"(?m)^  expiration_jours: *\d+", "  expiration_jours: 3", chemin.read_text(encoding="utf-8")),
+                          encoding="utf-8")
+        self.commit("expiration en 3 jours")
+        self.jusqu_a("proposee")
+        self.assertIn("proposée le 2026-10-30T10:00:00Z (échéance sans décision : 2026-11-02T10:00:00Z) ; accord du gardien : aucun ; "
+                      "feu vert du conseil : aucun", self.ok("voir", "I-0001"))
+        reg = bee.Registre(self.dossier)
+        inv, conf, fin = reg.invitation("I-0001")[1], bee.config_croissance(reg), bee.lire_instant("2026-11-02T10:00:00Z", "test")
+        self.assertEqual(bee.expiration(inv, conf), fin)
+        self.assertEqual((bee.expiree(inv, fin, conf), bee.expiree(inv, fin + bee.dt.timedelta(seconds=1), conf)), (False, True))
+        self.a("2026-11-02T10:00:01Z")
+        self.ko("invitation expirée (3 jours sans décision", "invitation", "accord-gardien", "I-0001", "--utilisateur", "gina")
+        self.a("2026-11-02T10:00:00Z")  # à l'échéance même : 72 h de débat tenues, pas encore expirée
+        self.branche()
+        self.geste("accord-gardien", "gina")
+        self.publier("gina", "accord_gardien")
+
+    def regler_expiration(self, jours):
+        chemin = self.dossier / "bee.yaml"
+        chemin.write_text(re.sub(r"(?m)^  expiration_jours: *\d+", f"  expiration_jours: {jours}", chemin.read_text(encoding="utf-8")),
+                          encoding="utf-8")
+        self.commit(f"expiration en {jours} jours")
+
+    def statuts_affiches(self):
+        """Le statut que montrent bee essaim (absent : expirée), bee voir et l'API du site pour I-0001."""
+        essaim = [x["statut"] for x in json.loads(self.ok("essaim", "--json"))["invitations"] if x["id"] == "I-0001"]
+        voir = self.ok("voir", "I-0001").splitlines()[0].split(" : ")[1].split(" ;")[0]
+        self.ok("site", "--sortie", str(self.dossier / "_site"))
+        api = json.loads((self.dossier / "_site/api/registre.json").read_text(encoding="utf-8"))
+        return essaim, voir, next(i["etat"]["statut"] for i in api["invitations"] if i["id"] == "I-0001")
+
+    def test_A_l_echeance_de_bee_yaml_partout_comme_a_la_porte(self):
+        """Revue de ruche-0052, A : bee essaim, bee voir et le site lisaient l'échéance par défaut (14 jours), la porte celle de
+        bee.yaml. Les deux reproductions du relecteur : à 30 jours, une invitation de 17 jours vit encore partout et la porte
+        accepte l'accord ; à 3 jours, une invitation de 3 jours et 1 h a expiré partout et la porte refuse l'accord."""
+        self.regler_expiration(30)
+        self.jusqu_a("proposee")
+        self.a("2026-11-16T10:00:00Z")
+        self.assertEqual(self.statuts_affiches(), (["proposee"], "proposee", "proposee"))
+        self.assertIn("(échéance sans décision : 2026-11-29T10:00:00Z)", self.ok("voir", "I-0001"))
+        self.branche()
+        self.geste("accord-gardien", "gina")
+        self.publier("gina", "accord_gardien")
+
+    def test_A_a_trois_jours_l_invitation_a_expire_partout(self):
+        self.regler_expiration(3)
+        self.jusqu_a("proposee")
+        self.a("2026-11-02T11:00:00Z")
+        self.assertEqual(self.statuts_affiches(), ([], "expiree", "expiree"))
+        self.ko("invitation expirée (3 jours sans décision", "invitation", "accord-gardien", "I-0001", "--utilisateur", "gina")
+
+    def test_5_un_gardien_en_fonction_signale_un_incident_et_le_frein_le_compte(self):
+        self.jusqu_a("proposee")
+        self.a("2026-11-02T11:00:00Z")
+        self.assertEqual(bee.etat_frein(bee.Registre(self.dossier))["incidents_ouverts"], [])
+        self.branche()
+        texte = self.ok("incident", "--utilisateur", "gina", "--titre", "Un message est parti sans feu vert (I-0001).")
+        self.assertIn("✓ INC-0001 inscrit dans gouvernance/incidents.yaml", texte)
+        self.assertIn("PR ordinaire", texte)
+        self.assertIn("le frein s'applique dès que le conseil l'a fusionnée ; alors, ce qui passe : rien : un incident est ouvert", texte)
+        self.assertEqual(bee.lire_yaml(self.dossier / self.INCIDENTS), {"incidents": [
+            {"id": "INC-0001", "titre": "Un message est parti sans feu vert (I-0001).", "ouvert_le": "2026-11-02T11:00:00Z"}]})
+        self.valide()
+        frein = bee.etat_frein(bee.Registre(self.dossier))
+        self.assertEqual((frein["serre"], frein["incidents_ouverts"]), (True, ["INC-0001"]))
+        self.assertIn("frein SERRÉ (incident(s) ouvert(s) : INC-0001", self.ok("essaim"))
+        # La porte : gina, gardienne en fonction à l'heure de la PR, passe, et le conseil fusionne ; un membre est refusé.
+        self.commit()
+        self.attend_le_conseil("gina", "incident")
+        self.refusee("alice", f"{self.INCIDENTS} : modification réservée au conseil humain")
+        self.fusionner()
+        # Le frein en tient compte sur main : plus aucun accord, même d'encadrement (I-0001 demande un garant).
+        self.ko("incident(s) ouvert(s) : INC-0001", "invitation", "accord-gardien", "I-0001", "--utilisateur", "gina")
+        # Le conseil peut aussi l'inscrire : au numéro qui suit tout numéro déjà écrit.
+        self.assertIn("✓ INC-0002 inscrit", self.ok("incident", "--utilisateur", "bidji29", "--titre", "Plainte reçue sur I-0001."))
+
+    def test_voir_echappe_chaque_champ(self):
+        """Dernière revue de ruche-0052 (2) : la première ligne et les identités de bee voir passent par montrer, sur une ligne :
+        ni commande de workflow (« :: » en début de ligne, « ##[ »), ni échappement du terminal, ni fausse ligne de bee."""
+        self.jusqu_a("proposee")
+        inv = self.invitation()
+        self.ecrire_invitation({**inv, "demande": "garant\n::warning::demande", "autres_identites": ["gitlab:y\x1b]0;titre\x07"],
+                                "personne": {"identifiant": "github:x\n::error::identifiant",
+                                             "canal": "https://github.com/x\n##[error]canal\x1b[2J\nIdentifiant : github:leurre"}})
+        texte = self.ok("voir", "I-0001")
+        avant_donnees = texte[:texte.index("=== DONNÉES")]
+        for ligne in texte.splitlines():
+            self.assertNotRegex(ligne, r"^\s*::", ligne)
+        self.assertNotIn("##[", texte)
+        self.assertNotIn("\x1b", texte)
+        self.assertEqual([l for l in avant_donnees.splitlines() if l.startswith("Identifiant : ")],
+                         ["Identifiant : github:x\\n: :error::identifiant ; canal : https://github.com/x\\n# #[error]canal<U+001B>[2J"
+                          "\\nIdentifiant : github:leurre"], "une seule ligne d'identités, le leurre y reste visible")
+        self.assertIn("demande : garant\\n: :warning::demande ; attend", avant_donnees)
+        self.assertIn("Autres identités déclarées : gitlab:y<U+001B>]0;titre<U+0007>", avant_donnees)
+
+    def test_la_porte_refuse_un_fichier_d_incidents_illisible_sur_main(self):
+        """Dernière revue de ruche-0052 (1) : illisible ou vide sur main, le fichier ne se remplace pas par un seul incident ;
+        la porte le refuse à un gardien, comme bee incident : le conseil le répare d'abord."""
+        self.a("2026-11-02T11:00:00Z")
+        un = {"id": "INC-0001", "titre": "Un écart.", "ouvert_le": "2026-11-02T11:00:00Z"}
+        for nom, base in (("illisible", "incidents: [\n"), ("vide", "incidents:\n")):
+            with self.subTest(nom):
+                (self.dossier / self.INCIDENTS).write_text(base, encoding="utf-8")
+                self.commit(f"incidents {nom}, sur main")
+                self.ko("illisible : le conseil le répare d'abord", "incident", "--utilisateur", "gina", "--titre", "Un écart.")
+                self.branche()
+                bee.ecrire_invitation(self.dossier / self.INCIDENTS, {"incidents": [un]})
+                self.commit()
+                self.refusee("gina", f"{self.INCIDENTS} illisible sur main : le conseil le répare d'abord")
+                self.abandonner()
+
+    def test_bee_incident_dit_que_les_commentaires_sont_perdus(self):
+        """Dernière revue de ruche-0052 (3) : la réécriture canonique perd les commentaires du conseil ; bee incident le dit."""
+        self.a("2026-11-02T11:00:00Z")
+        un = {"id": "INC-0001", "titre": "Un écart.", "ouvert_le": "2026-11-02T11:00:00Z"}
+        (self.dossier / self.INCIDENTS).write_text("# Tenu par le conseil.\n" + bee.rendu_invitation({"incidents": [un]}), encoding="utf-8")
+        self.commit("incidents commentés, sur main")
+        texte = self.ok("incident", "--utilisateur", "gina", "--titre", "Un second écart (I-0001).")
+        self.assertIn("⚠ Les commentaires de gouvernance/incidents.yaml sont perdus", texte)
+        self.assertNotIn("# Tenu par le conseil", (self.dossier / self.INCIDENTS).read_text(encoding="utf-8"))
+        # Un fichier sans commentaire : aucun avertissement, même quand un titre porte « # ».
+        for titre in ("Suite du ticket #12 (I-0001).", "Encore une suite (I-0001)."):
+            with self.subTest(titre):
+                self.assertNotIn("commentaires", self.ok("incident", "--utilisateur", "gina", "--titre", titre))
+        self.assertEqual([i["id"] for i in bee.lire_yaml(self.dossier / self.INCIDENTS)["incidents"]],
+                         ["INC-0001", "INC-0002", "INC-0003", "INC-0004"])
+
+    def test_5_qui_ne_peut_pas_signaler_et_ce_que_la_porte_refuse(self):
+        self.a("2026-11-02T11:00:00Z")
+        self.ko("alice n'est ni un gardien en fonction ni du conseil", "incident", "--utilisateur", "alice", "--titre", "Un écart.")
+        self.ko("adresse de courriel", "incident", "--utilisateur", "gina", "--titre", "Plainte de fictif@exemple.org.")
+        self.assertFalse((self.dossier / self.INCIDENTS).exists())
+        (self.dossier / self.INCIDENTS).write_text("incidents: [\n", encoding="utf-8")
+        self.ko("illisible", "incident", "--utilisateur", "gina", "--titre", "Un écart.")
+        self.assertEqual((self.dossier / self.INCIDENTS).read_text(encoding="utf-8"), "incidents: [\n", "rien n'est réécrit")
+        (self.dossier / self.INCIDENTS).unlink()
+        # Un gardien sans garant (ivan), ou dont le garant est révoqué, n'est pas en fonction.
+        (self.dossier / "gouvernance/gardiens.yaml").write_text("membres:\n  - pseudo: gina\n    garant: hector\n  - pseudo: ivan\n",
+                                                               encoding="utf-8")
+        self.commit("ivan, gardien sans garant")
+        self.ko("ivan n'est ni un gardien en fonction", "incident", "--utilisateur", "ivan", "--titre", "Un écart.")
+        un = {"id": "INC-0001", "titre": "Un écart.", "ouvert_le": "2026-11-02T11:00:00Z"}
+        self.branche("ivan")
+        bee.ecrire_invitation(self.dossier / self.INCIDENTS, {"incidents": [un]})
+        self.commit()
+        self.refusee("ivan", "modification réservée au conseil humain")
+        self.abandonner("ivan")
+        bee.ecrire_invitation(self.dossier / self.INCIDENTS, {"incidents": [un]})
+        self.commit("INC-0001, par le conseil")
+        # Un gardien en fonction n'y fait rien d'autre qu'ajouter un incident ouvert, en fin de liste.
+        deux = {**un, "id": "INC-0002"}
+        cas = {"clore": [{**un, "clos_le": "2026-11-02T11:00:00Z", "issue": "Réglé."}], "modifier": [{**un, "titre": "Autre."}],
+               "retirer": [], "clos d'emblée": [un, {**deux, "clos_le": "2026-11-02T11:00:00Z"}],
+               "deux d'un coup": [un, deux, {**deux, "id": "INC-0003"}], "devant": [deux, un]}
+        for nom, liste in cas.items():
+            with self.subTest(nom):
+                self.branche()
+                bee.ecrire_invitation(self.dossier / self.INCIDENTS, {"incidents": liste})
+                self.commit()
+                self.refusee("gina", "un gardien n'y ajoute qu'un incident ouvert, en fin de liste")
+                self.abandonner()
+        self.branche()
+        (self.dossier / self.INCIDENTS).unlink()
+        self.commit()
+        self.refusee("gina", "un gardien n'y ajoute qu'un incident ouvert, en fin de liste")
+        self.abandonner()
+        # Revue de ruche-0052, B : ce qu'ajoute un gardien est ce qu'écrit bee incident, et rien d'autre.
+        canonique = bee.rendu_invitation({"incidents": [un, deux]})
+        brut = {"titre : courriel": (bee.rendu_invitation({"incidents": [un, {**deux, "titre": "Plainte de fictif@exemple.org."}]}),
+                                     "adresse de courriel"),
+                "titre : U+202E": (bee.rendu_invitation({"incidents": [un, {**deux, "titre": "Un \u202eécart."}]}), "U+202E"),
+                "titre : ESC": (bee.rendu_invitation({"incidents": [un, {**deux, "titre": "Un \x1b[2Jécart."}]}), "U+001B"),
+                "titre sur deux lignes": (bee.rendu_invitation({"incidents": [un, {**deux, "titre": "Un écart.\nSuite."}]}),
+                                          "titre : une seule ligne"),
+                "commentaire et remplissage": ("# Ajouté à la main\n" + canonique + "\n\n\n", "pas exactement sous la forme"),
+                "issue sur un incident ouvert": (bee.rendu_invitation({"incidents": [un, {**deux, "issue": "Rien à faire."}]}),
+                                                 "avec id, titre et ouvert_le seulement"),
+                "numéro en double": (bee.rendu_invitation({"incidents": [un, {**deux, "id": "INC-0001"}]}), "au numéro suivant (INC-0002)"),
+                "numéro sauté": (bee.rendu_invitation({"incidents": [un, {**deux, "id": "INC-0007"}]}), "au numéro suivant (INC-0002)"),
+                "date d'hier": (bee.rendu_invitation({"incidents": [un, {**deux, "ouvert_le": "2026-11-01T11:00:00Z"}]}),
+                                "doit être l'heure de la PR")}
+        for nom, (texte, message) in brut.items():
+            with self.subTest(nom):
+                self.branche()
+                (self.dossier / self.INCIDENTS).write_text(texte, encoding="utf-8")
+                self.commit()
+                self.refusee("gina", message)
+                self.abandonner()
+        for titre, message in (("Un écart.\nSuite.", "titre : une seule ligne"), ("Un \u202eécart.", "U+202E"),
+                               ("Un \x1b[2Jécart.", "U+001B"), ("Plainte de fictif@exemple.org.", "adresse de courriel")):
+            self.ko(message, "incident", "--utilisateur", "gina", "--titre", titre)
+        self.branche()
+        (self.dossier / self.INCIDENTS).write_text(canonique, encoding="utf-8")
+        self.commit()
+        self.attend_le_conseil("gina", "incident")  # ce que bee incident écrirait : accepté, le conseil fusionne
+        self.abandonner()
+        # INC-9999 est le dernier numéro : bee incident s'arrête là, et la porte refuse INC-10000.
+        dernier = {**un, "id": "INC-9999"}
+        bee.ecrire_invitation(self.dossier / self.INCIDENTS, {"incidents": [un, dernier]})
+        self.commit("INC-9999, par le conseil")
+        self.ko("INC-9999 est le dernier numéro", "incident", "--utilisateur", "gina", "--titre", "Un écart.")
+        self.assertEqual(bee.lire_yaml(self.dossier / self.INCIDENTS), {"incidents": [un, dernier]}, "rien n'est écrit")
+        self.branche()
+        bee.ecrire_invitation(self.dossier / self.INCIDENTS, {"incidents": [un, dernier, {**deux, "id": "INC-10000"}]})
+        self.commit()
+        self.refusee("gina", "un gardien n'y ajoute qu'un incident ouvert, en fin de liste, au numéro suivant")
+        self.abandonner()
+        bee.ecrire_invitation(self.dossier / self.INCIDENTS, {"incidents": [un]})
+        self.commit("retour à INC-0001, par le conseil")
+        # Révoqué sur main, le garant de gina ne la tient plus en fonction : sa PR va au conseil seul, refusée par la porte.
+        (self.dossier / "gouvernance/garants.yaml").write_text(
+            "membres:\n  - pseudo: hector\n    identite_publique: Hector\n    revoque_le: \"2026-11-02\"\n", encoding="utf-8")
+        self.commit("garant révoqué")
+        self.branche()
+        self.ko("gina n'est ni un gardien en fonction", "incident", "--utilisateur", "gina", "--titre", "Un écart.")
+        bee.ecrire_invitation(self.dossier / self.INCIDENTS, {"incidents": [un, deux]})
+        self.commit()
+        self.refusee("gina", "modification réservée au conseil humain")
+
+
 class TestManifesteRecopie(BaseRepetitionGenerale):
     """ruche-0017 : au verdict, le registre recopie du manifeste ce que le relecteur doit voir (modèle, gain déclaré, teste,
     non_teste, doutes), borné et typé, et bee l'imprime encadré comme de la donnée. Revue adverse : ce sont des données du
@@ -13044,6 +13536,227 @@ class TestR8Bootstrap(BaseRepetitionGenerale):
         self.commit()
         for auteur in (AGENT, "bidji29"):
             self.refusee(auteur, "règle R8 : bidji29 a 9 réservations ou inscriptions en parallèle", "maximum 8")
+
+
+class TestAjoutSeulRuche0042(BaseRepetitionGenerale):
+    """ruche-0042, commandment 10: a published vote is never withdrawn, before or after its vote closes, and no longer changes
+    once closed; its voter replaces it while the vote is open. A published measurement is neither changed nor withdrawn; adding
+    one stays self-service."""
+
+    VOTE_CLOS = "2026-11-06T00:00:00Z"  # P-0001 opens at 2026-10-29T22:00Z (setUp): its vote lasts 7 days (duree_vote_jours)
+
+    def setUp(self):
+        super().setUp()
+        self.contributeurs("bruno")  # miniz-9100-c1, integrated: another contribution a measurement could be moved to
+        self.commit("une contribution intégrée")
+        self.prendre_et_fusionner("alice")
+        self.publie("alice", "soumettre", "miniz-0099", "--utilisateur", "alice", "--pr", "https://github.com/Bee-ruche/minizBee/pull/77042")
+        self.cid = "miniz-0099-c1"
+        self.publie("gaspard", "proposer", "--utilisateur", "gaspard", "--regle", "R8", "--texte", "Quatre engagements au plus.",
+                    "--motif", "Essai de ruche-0042.")
+        for votant in ("gaspard", "bidji29"):  # bidji29: the council
+            for sujet in ("P-0001", self.cid):
+                self.publie(votant, "voter", sujet, "--utilisateur", votant, "--valeur", "1", natures=("vote",))
+        for qui in ("farid", "alice"):  # alice measures her own contribution: a valid file, which R4 does not count
+            self.publie(qui, "enregistrer-mesure", self.cid, "--ab", self.rapport_ab(), "--utilisateur", qui, natures=("mesure",))
+
+    def publie(self, auteur, *commande, natures=()):
+        """A gesture made by its bee command, accepted as self-service, then merged into main."""
+        self.branche("geste")
+        self.ok(*commande)
+        self.commit()
+        self.libre_service(auteur, *natures)
+        self.fusionner("geste")
+
+    def rapport_ab(self):
+        rapport = self.dossier.parent / "ab.json"  # outside the registry: never committed
+        rapport.write_text(json.dumps({"base": {"commit": "2948eeb"}, "candidat": {"commit": "839b676"},
+                                       "machine": {"architecture": "arm64", "compilateur": "clang 17"},
+                                       "metriques": {"debit_compression_n6": {"gain": 0.05, "au_dela_du_bruit": True}}}), encoding="utf-8")
+        return str(rapport)
+
+    def abandonner(self, nom="pr"):
+        git(self.dossier, "switch", "-qf", "main")
+        git(self.dossier, "branch", "-qD", nom)
+
+    def test_retirer_un_vote_est_refuse_avant_comme_apres_la_cloture(self):
+        for quand in (None, self.VOTE_CLOS):
+            if quand:
+                self.a(quand)
+            for sujet, votant in [(s, v) for s in ("P-0001", self.cid) for v in ("gaspard", "bidji29")]:  # a member, the council
+                with self.subTest(clos=bool(quand), sujet=sujet, votant=votant):
+                    git(self.dossier, "switch", "-qf", "main")
+                    git(self.dossier, "switch", "-qc", nom := f"retrait-{sujet}-{votant}-{bool(quand)}")
+                    git(self.dossier, "rm", "-q", f"votes/{sujet}/{votant}.yaml")
+                    self.commit()
+                    texte = self.refusee(votant, f"votes/{sujet}/{votant}.yaml : a published vote is never withdrawn (commandment 10)")
+                    self.assertIn("PR refusée (1 problème(s))", texte, "the only refusal is this rule's: the voter withdraws their own vote")
+                    self.abandonner(nom)
+
+    def test_renommer_son_vote_est_refuse(self):
+        """With --no-renames, a rename is a withdrawal plus an addition: the withdrawal is refused."""
+        self.branche("renomme")
+        git(self.dossier, "mv", f"votes/{self.cid}", "votes/miniz-9100-c1")
+        chemin = self.dossier / "votes/miniz-9100-c1/gaspard.yaml"
+        bee.ecrire_yaml(chemin, {**bee.lire_yaml(chemin), "sujet": "miniz-9100-c1"})
+        self.commit()
+        self.refusee("gaspard", f"votes/{self.cid}/gaspard.yaml : a published vote is never withdrawn")
+
+    def test_remplacer_son_vote_avant_la_cloture_reste_permis(self):
+        """ruche-0033 makes the replacement explicit, and git keeps the vote replaced: it is not a withdrawal."""
+        self.a("2026-10-30T09:00:00Z")
+        for sujet in ("P-0001", self.cid):
+            with self.subTest(sujet=sujet):
+                self.branche("remplacement")
+                self.ok("voter", sujet, "--utilisateur", "gaspard", "--valeur", "-1")
+                self.commit()
+                self.libre_service("gaspard", "vote")
+                self.fusionner("remplacement")
+                self.assertEqual(bee.lire_yaml(self.dossier / f"votes/{sujet}/gaspard.yaml")["valeur"], -1)
+
+    def test_modifier_un_vote_apres_la_cloture_est_refuse(self):
+        self.a(self.VOTE_CLOS)
+        self.ko("le vote sur P-0001 est clos", "voter", "P-0001", "--utilisateur", "gaspard", "--valeur", "-1")
+        self.ko("le vote sur P-0001 est clos", "voter", "P-0001", "--utilisateur", "farid", "--valeur", "1")
+        self.branche("apres")
+        chemin = self.dossier / "votes/P-0001/gaspard.yaml"
+        bee.ecrire_yaml(chemin, {**bee.lire_yaml(chemin), "valeur": -1, "le": self.VOTE_CLOS})
+        self.commit()
+        self.refusee("gaspard", "votes/P-0001/gaspard.yaml : le vote sur P-0001 est clos")
+
+    def test_modifier_une_mesure_est_refuse(self):
+        chemin = self.dossier / f"mesures/{self.cid}/farid.yaml"
+        publiee = bee.lire_yaml(chemin)
+        self.a("2026-10-30T09:00:00Z")
+        self.branche("modif")
+        for champs in ({"metriques": {"debit_compression_n6": {"gain": 0.09, "au_dela_du_bruit": True}}, "le": "2026-10-30T09:00:00Z"},
+                       {"config": {"architecture": "x86_64"}, "le": "2026-10-30T09:00:00Z"}, {"motif": "Remesuré."}):
+            with self.subTest(champs=sorted(champs)):
+                bee.ecrire_yaml(chemin, {**publiee, **champs})
+                self.commit()
+                self.refusee("farid", f"mesures/{self.cid}/farid.yaml : a published measurement is neither changed nor withdrawn")
+        # bee enregistrer-mesure does not overwrite it either, and does not claim that a local file is published.
+        git(self.dossier, "checkout", "-q", "main", "--", ".")
+        texte = self.ko(f"mesures/{self.cid}/farid.yaml already exists : one measurement per person and per contribution, never "
+                        "changed once published (commandment 10) ; if this file is not published yet, delete it, then rerun",
+                        "enregistrer-mesure", self.cid, "--ab", self.rapport_ab(), "--utilisateur", "farid")
+        self.assertEqual(bee.lire_yaml(chemin), publiee)
+
+    def test_retirer_renommer_ou_changer_le_mode_d_une_mesure_est_refuse(self):
+        message = "a published measurement is neither changed nor withdrawn (commandment 10)"
+        autre = "miniz-9100-c1"
+        for nom, geste, auteurs in (
+                ("retrait", lambda: git(self.dossier, "rm", "-q", f"mesures/{self.cid}/farid.yaml"), ("farid", "bidji29")),
+                ("deplacement", lambda: self.deplacer_mesure(autre), ("farid",)),
+                ("mode", lambda: (self.dossier / f"mesures/{self.cid}/farid.yaml").chmod(0o755), ("farid", "bidji29"))):
+            with self.subTest(geste=nom):
+                git(self.dossier, "switch", "-qf", "main")
+                git(self.dossier, "switch", "-qc", nom)
+                geste()
+                self.commit()
+                self.assertTrue(git(self.dossier, "diff", "--name-only", "main...HEAD").strip(), "the PR changes something")
+                for auteur in auteurs:
+                    self.refusee(auteur, f"mesures/{self.cid}/farid.yaml : {message}")
+                self.abandonner(nom)
+
+    def deplacer_mesure(self, autre):
+        git(self.dossier, "mv", f"mesures/{self.cid}", f"mesures/{autre}")
+        chemin = self.dossier / f"mesures/{autre}/farid.yaml"
+        bee.ecrire_yaml(chemin, {**bee.lire_yaml(chemin), "contribution": autre})
+        git(self.dossier, "rm", "-q", "--cached", f"mesures/{autre}/alice.yaml")
+        (self.dossier / f"mesures/{autre}/alice.yaml").unlink()
+        git(self.dossier, "checkout", "-q", "main", "--", f"mesures/{self.cid}/alice.yaml")
+
+    def test_ajouter_une_mesure_reste_en_libre_service(self):
+        self.a("2026-10-30T09:00:00Z")
+        # Dated before the PR, it is refused: the remedy deletes the local file first, since bee enregistrer-mesure never overwrites.
+        self.branche("perimee")
+        self.ok("enregistrer-mesure", self.cid, "--ab", self.rapport_ab(), "--utilisateur", "chloe")
+        self.a("2026-10-30T12:00:00Z")
+        self.commit()
+        self.refusee("chloe", f"mesures/{self.cid}/chloe.yaml : le (2026-10-30T09:00:00Z) doit être l'heure de la PR",
+                     f"delete mesures/{self.cid}/chloe.yaml, then rerun bee enregistrer-mesure")
+        self.abandonner("perimee")
+        self.publie("chloe", "enregistrer-mesure", self.cid, "--ab", self.rapport_ab(), "--utilisateur", "chloe", natures=("mesure",))
+        self.assertEqual(sorted(p.name for p in (self.dossier / f"mesures/{self.cid}").iterdir()), ["alice.yaml", "chloe.yaml", "farid.yaml"])
+
+    def test_les_votes_et_mesures_publies_restent_valides(self):
+        """Nothing published before this change becomes invalid: bee valider still accepts the votes (the closed one included)
+        and the measurements (the author's own included), and a PR that leaves them alone stays self-service."""
+        self.a(self.VOTE_CLOS)
+        reg = bee.Registre(self.dossier)
+        self.assertEqual((len(reg.votes), len(reg.mesures)), (4, 2))
+        self.valide()
+        self.publie("chloe", "voter", self.cid, "--utilisateur", "chloe", "--valeur", "1", natures=("vote",))
+        self.valide()
+
+    def fermer(self, statut):
+        """As the robot or the council writes it, on the current branch: the contribution leaves review with `statut`. Integrated,
+        or set aside in favour of miniz-0099-c2 (integrated), its task is integrated; otherwise (cancelled, refused…) it reopens."""
+        maintenant, dossier, retenue = os.environ["BEE_MAINTENANT"], self.dossier / "contributions/miniz", self.cid
+        if statut == "ecartee":
+            retenue = "miniz-0099-c2"
+            bee.ecrire_yaml(dossier / f"{retenue}.yaml", {"id": retenue, "tache": "miniz-0099", "auteur": "farid", "statut": "integree",
+                                                         "pr": "https://github.com/Bee-ruche/minizBee/pull/77043",
+                                                         "soumise_le": maintenant, "relectures": []})
+        enr = bee.lire_yaml(dossier / f"{self.cid}.yaml")
+        enr.update({"statut": statut, "decidee_le": maintenant, "motif_decision": "Essai de ruche-0042."},
+                   **({"retenue": retenue} if statut == "ecartee" else {}), **({"jamais_integree": True} if statut == "annulee" else {}))
+        bee.ecrire_yaml(dossier / f"{self.cid}.yaml", enr)
+        if statut in ("integree", "ecartee"):
+            bee.modifier_tache(self.chemin_tache(), statut="integree", contribution=retenue)
+        else:
+            bee.modifier_tache(self.chemin_tache(), statut="ouverte", contribution=None)
+        self.valide()
+        self.commit(f"contribution {statut}")
+
+    def vote_a_la_main(self, votant, nom, dossier=None, depuis="main"):
+        """A PR writing `votant`'s vote on the contribution by hand, dated now (bee voter refuses once it is closed), in the folder
+        `dossier` (by default, the contribution's)."""
+        git(self.dossier, "switch", "-qf", depuis)
+        git(self.dossier, "switch", "-qc", nom)
+        bee.ecrire_yaml(self.dossier / f"votes/{dossier or self.cid}/{votant}.yaml",
+                        {"votant": votant, "sujet": self.cid, "valeur": -1, "le": os.environ["BEE_MAINTENANT"]})
+        self.commit()
+
+    def test_un_vote_sur_une_contribution_se_clot_quand_elle_quitte_la_relecture(self):
+        """A vote on a contribution is written or changed only while the contribution is in review (en_relecture); once it has
+        left it, whatever its status, no one adds or changes one, the council included, and its subject is checked both as the
+        vote's folder and as the file's sujet."""
+        self.a("2026-10-30T09:00:00Z")
+        for votant in ("chloe", "gaspard", "bidji29"):  # in review: a new vote, a replaced one, the council's replaced one
+            with self.subTest(statut="en_relecture", votant=votant):
+                self.vote_a_la_main(votant, nom := f"ouvert-{votant}")
+                self.libre_service(votant, "vote")
+                self.abandonner(nom)
+        # The council's PR that integrates the contribution cannot carry its vote too: it votes in an earlier PR.
+        message = f"le vote sur {self.cid} est clos : la contribution n'est plus en relecture (statut : integree)"
+        self.branche("integration")
+        self.fermer("integree")
+        self.vote_a_la_main("bidji29", "integration-et-vote", depuis="integration")
+        texte = self.refusee("bidji29", f"votes/{self.cid}/bidji29.yaml : {message}")
+        self.assertIn("PR refusée (1 problème(s))", texte)
+        main = git(self.dossier, "rev-parse", "main").strip()
+        schema = json.loads((self.dossier / "schemas/enregistrement.schema.json").read_text(encoding="utf-8"))
+        statuts = [s for s in schema["properties"]["statut"]["enum"] if s != "en_relecture"]  # every status out of review
+        self.assertLessEqual({"integree", "ecartee", "annulee", "refusee"}, set(statuts))
+        for statut in statuts:
+            git(self.dossier, "switch", "-qf", "main")
+            git(self.dossier, "reset", "-q", "--hard", main)
+            self.fermer(statut)
+            message = f"le vote sur {self.cid} est clos : la contribution n'est plus en relecture (statut : {statut})"
+            self.ko(message, "voter", self.cid, "--utilisateur", "chloe", "--valeur", "1")
+            self.assertFalse((self.dossier / f"votes/{self.cid}/chloe.yaml").exists(), "nothing written")
+            for votant in ("chloe", "gaspard", "bidji29"):  # an added vote, a changed one, the council's changed one
+                with self.subTest(statut=statut, votant=votant):
+                    self.vote_a_la_main(votant, nom := f"{statut}-{votant}")
+                    texte = self.refusee(votant, f"votes/{self.cid}/{votant}.yaml : {message}")
+                    self.assertIn("PR refusée (1 problème(s))", texte, "the only refusal is the closed vote")
+                    self.abandonner(nom)
+            with self.subTest(statut=statut, dossier="miniz-0099-c01"):  # the file's sujet names it, in another folder
+                self.vote_a_la_main("chloe", nom := f"{statut}-c01", dossier="miniz-0099-c01")
+                self.refusee("chloe", f"votes/miniz-0099-c01/chloe.yaml : {message}")
+                self.abandonner(nom)
 
 
 # --- ruche-0095: every list of paths read from git is NUL-separated (-z), never compared in git's quoted form ---
