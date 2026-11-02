@@ -2,7 +2,8 @@
 # Ce job exécute la version de l'outil contenue dans la PR, mais en lecture seule et
 # sans secret : il ne peut rien écrire. La décision de fusion est prise ailleurs
 # (fusion-auto.yml), par l'outil de la branche principale.
-# Its token is read-only (contents: read; actions: read, for the scope step to read main's last push run).
+# Its token is read-only (contents: read; actions: read, for the scope step to read main's last push run, and the PR rules
+# this run's creation time).
 name: Validation du registre
 
 on:
@@ -53,7 +54,12 @@ jobs:
           echo "Scope: $portee (main's last push run: $main)"
       - name: Tests de l'outil
         if: steps.portee.outputs.portee != 'data'
-        run: python3 -m unittest outils/test_bee.py
+        # ruche-0092: in parallel processes inside this job, not in more jobs (the organisation's concurrent jobs are the scarce
+        # resource); the number is set here only: GitHub's hosted runners for public repositories have 4 vCPUs (the log
+        # prints the count). Every test runs exactly once, or the step fails; the steps below run once, after it passes.
+        # Timeout: about 3 times the step's time on CI on 2 Nov 2026 (about 10 minutes); a hang stops here, not after 360.
+        timeout-minutes: 30
+        run: python3 outils/test_bee.py --processus 4
       - name: "Tests unitaires du juge commun (sans Docker ; méta-tests dans juge-commun.yml)"
         if: steps.portee.outputs.portee != 'data'
         run: python3 outils/juge/test_juge.py
@@ -78,4 +84,6 @@ jobs:
           # with itself and pass).
           [ -n "$BASE" ]
           cree=$(gh api "users/$AUTEUR" --jq '.created_at[:10]')
-          python3 outils/bee.py verifier-pr --base "$BASE" --tete HEAD --auteur "$AUTEUR" --compte-cree-le "$cree"
+          # ruche-0091: the time of the PR is this run's creation, GitHub's record of the push; unreadable or malformed: refused.
+          instant=$(timeout 60 gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq .created_at)
+          python3 outils/bee.py verifier-pr --base "$BASE" --tete HEAD --auteur "$AUTEUR" --compte-cree-le "$cree" --instant-pr "$instant"
