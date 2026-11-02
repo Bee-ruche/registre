@@ -3,7 +3,7 @@ projet: ruche
 categorie: ruche
 type: test
 poste: gouvernance
-taille: S
+taille: M
 titre: 'Tool: every list of paths read from git is NUL-separated, never compared in quoted form'
 contexte: Follow-up of ruche-0089's review (details in the architect's brief). git prints a path that contains certain
   characters in a quoted, escaped form unless it is asked for NUL-separated output (-z). bee reads several lists of changed
