@@ -13,7 +13,13 @@ contexte: 'Follow-up of the adversarial reviews of ruche-0037 and ruche-0038 (de
   just before each container, so no file time differs between phases, and the spy compares every time it can read; (4)
   a fixed metric that no scenario computes from its timed outputs is flagged in juge.json, and a fork cannot keep a verification-only
   ratio for a verdict; (5) the identity check counts comparable outputs per scenario, not per side; (6) the outputs folder
-  of each container is its own size-limited tmpfs, so one side cannot fill the other''s.'
+  of each container is its own size-limited tmpfs, so one side cannot fill the other''s.
+
+
+  Council''s note (2 Nov 2026, from an adversarial review): (7) nothing the judge''s setup lets a container observe may
+  depend on the run''s progress: its position in the order, the variant pass, the repetition, or whether it is verified
+  or measured. Details in the architect''s brief. The builder estimates the size first; if it passes M, the council re-sizes
+  or splits the task before work starts.'
 fichiers:
 - outils/juge/
 - .github/workflows/juge.yml
@@ -25,7 +31,9 @@ depend_de:
 - ruche-0037
 - ruche-0038
 critere_acceptation:
-- meta-test for each of the six points, failing on the code before this task
+- meta-test for each of the seven points, failing on the code before this task
+- 'for point 7: identical scenarios run at forced different positions, variant passes, repetitions and modes observe
+  the same thing, compared field by field as the architect''s brief lists'
 - independent adversarial review attached, made with the architect's brief; the judge's tests pass with Docker
 hors_perimetre:
 - COMMANDMENTS.md

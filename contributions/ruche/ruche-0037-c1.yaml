@@ -1,0 +1,14 @@
+id: ruche-0037-c1
+tache: ruche-0037
+auteur: bidji29
+pr: https://github.com/Bee-ruche/registre/pull/157
+resume: The judge's harness gives the judged code the same conditions in every mode, and verification
+  inputs are mixed into the measured ones.
+statut: integree
+soumise_le: '2026-11-02T12:33:02Z'
+engage_depuis: '2026-11-02T05:49:42Z'
+relectures: []
+decidee_le: '2026-11-02T13:04:36Z'
+motif_decision: 'Hive tooling contribution: registry PR #157 merged at commit c8783b8 by bidji29, the
+  account of a council member, CI green on the merged commit.'
+fusion_sha: a029d6356b903b4f4fd41e921f098e81ede62b4b

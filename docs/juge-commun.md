@@ -40,18 +40,51 @@ lue par le juge commun **depuis la base de la PR** (jamais depuis la PR). Modèl
 | `SOURCES`, `SOURCES_REQUISES` | motifs glob des fichiers du projet copiés dans le conteneur et compilés (`miniz.c`, `src/*.c`…) ; tout lien symbolique est refusé ; the text analysis reads these same files, whole |
 | `OUTILLAGE`, `EN_TETES_BASE`, `CONSTRUIRE` | dossiers de la base montés sur `/outillage` ; en-têtes de la base copiés dans `/outillage/base/` (le harnais se compile avec eux) ; script de construction, qui doit produire `execution` et laisser **chaque objet du projet dans `obj/`**, un `obj/<nom>.o` par unité de traduction des `SOURCES` (`.c`, `.S`, `.cc`…), deux unités homonymes étant refusées (le juge s'arrête sinon) |
 | `PREFIXES`, `PERMIS` | espace de noms du projet (au moins un préfixe, chacun un mot terminé par `_` : `mz_`, `yaml_`) et fonctions externes permises en plus de la liste commune (64 au plus). Les fonctions qui servent à tromper la mesure (horloge, processus, environnement, signaux, appels système : `analyse.JAMAIS_PERMIS`) ne sont jamais permises et sont signalées par leur nom exact, avant toute exemption |
-| `COTES` | côtés d'entrées (`f`, `z`…) : un conteneur par côté, jamais deux côtés montés ensemble |
+| `COTES` | côtés d'entrées (`f`, `z`…) : jamais deux côtés montés ensemble ; en vérification, un conteneur par côté ; dans les mesures, un par scénario (ci-dessous) |
 | `SCENARIOS`, `INSTRUCTIONS`, `METRIQUES`, `METHODE` | scénarios mesurés au chronomètre et leur côté ; ceux dont on compte les instructions ; métriques (nom, sens, unité) ; textes de méthode ajoutés au rapport |
 | `corpus(outillage)` | corpus de la base, `[(nom, octets)]` (aide : `entrees.charger_corpus`) |
 | `verification(rng, corpus)` | entrées de vérification (`entrees.Entree`) : corpus, données tirées au hasard, dérivées (flux produits par l'hôte), invalides |
 | `verifier(a, b, entrees)` | règle de justesse sur les sorties du mode `verifier` ; lève `Refus` au premier écart, `Erreur` si la base elle-même est fausse ; renvoie le nombre de sorties comparées |
 | `fixes(sorties, corpus)` | métriques qui ne dépendent pas du temps (ratio de compression…), lues sur les sorties de vérification |
-| `repetition(rng, corpus)`, `instructions(rng, corpus, prefixe)` | entrées des mesures, perturbées à chaque appel |
-| `scenario(s, a, b, entrees, mesure)` | vérifie les sorties d'un scénario mesuré et en tire les métriques (à partir de la mesure de chrono) ; renvoie `(valeurs, sorties comparées)` |
+| `repetition(rng, corpus)`, `instructions(rng, corpus, prefixe)` | entrées des mesures, perturbées à chaque appel (le juge commun y mêle des entrées de vérification, puis renomme le tout) |
+| `scenario(s, a, b, entrees, mesure)` | vérifie **chaque** sortie d'un scénario mesuré par la règle de `verifier`, entrées de vérification mêlées comprises (invalides aussi), et en tire les métriques (à partir de la mesure de chrono) ; renvoie `(valeurs, sorties comparées)` |
 
-Le harnais (`execution`) est appelé `execution <mode> /entrees /sorties`, avec le mode `verifier` ou
-un nom de scénario ; `/entrees/liste` donne une ligne `<côté> <nom> <entier>` par entrée, dont les
-octets sont dans `/entrees/<côté>/<nom>`.
+Le harnais (`execution`) est appelé sans argument ; son descripteur 0 porte 256 octets : la ligne `<mode> /entrees /sorties`
+(mode `verifier` ou nom de scénario), complétée d'espaces et finie par une fin de ligne ; `/entrees/liste` donne une ligne
+`<côté> <nom> <entier>` par entrée, dont les octets sont dans `/entrees/<côté>/<nom>`. Dans un scénario, il traite toute
+entrée de son côté comme en vérification.
+
+**What the harness guarantees the judged code (ruche-0037).** The same arguments, environment, descriptors, working directory
+and mounts in every mode (verification, timer, instruction count), one container per scenario; the mode reaches the harness on
+its descriptor 0, in a record of fixed length. The harness reads that record to its end, copies it, then erases it, its
+arguments and its environment before any call to the judged code, and does the same work and writes the same outputs in every
+mode. `/variante` holds the harness alone; inputs, harness, `chrono` and the output folder carry fixed times. Inputs are
+shuffled and renamed (`e0000`…) in every mode; the plugin keeps its own names, translated by `Sorties`. These conditions do not
+hide everything about the run: the wall clock stays readable, and the instruction count runs under Valgrind, which the judged
+code can detect. Mixing is the backstop. Every verification input is verified; the verification inputs of each measured side are
+also mixed into the measured ones and spread over the repetitions (⌈n/r⌉ per repetition, warm-up included, taken in turn in an
+order drawn from the judge's seed; as many in the instruction count, within its prefix), the same for A and B. A wrong output
+fails the judgement whatever the mode, and B's output of a mixed-in input must be, byte for byte, its own output in
+verification. A measured side without verification inputs is an error. A scenario may return a fixed metric computed on its
+timed outputs (the toy's ratio); it replaces the value `fixes()` reads on verification. `juge.json`:
+`juge.verification.entrees_melees` (total), `melees_par_repetition` (per side), `instructions_sans_melange` (instruction-count
+scenarios that got none).
+
+**Per-scenario isolation (ruche-0036).** In the measurements and the instruction count, each scenario runs in its own
+container (above), with a fresh `/tmp` and a fresh output folder mounted on `/sorties`: of all the outputs, it sees only its
+own. Verification still runs one container per side, not per scenario.
+- **Frozen outputs**: as soon as each container ends (verification included), the judge records the listing of its output
+  folder and the SHA-256 of each file (`lecture.figer`). The plugin (through `Sorties`) and the byte-for-byte comparison of
+  mixed-in inputs read only what was frozen: a file changed, added or removed afterwards is a refusal, when it is read and at
+  the check that ends each step; so is anything the judge cannot read while freezing (root or not).
+- **Drawn order**: the order of the scenarios is drawn anew at each repetition (warm-up included) and for the instruction
+  count, the same for A and B.
+- **`juge.json`**: `juge.scenarios.graine_ordre` is the seed of that draw (from `secrets`, apart from the inputs' seed and
+  generator; `--graine-ordre` reruns it); `juge.scenarios.deroulement` gives, per step (`chauffe`, `mesure`,
+  `instructions`), the order of the variants and of the scenarios, and **each scenario's CPU time** for A and B (user +
+  system, read by `chrono` with `wait4`; under Valgrind for `instructions`).
+- Meta-test, on a copy of the toy with two scenarios per side: a candidate each of whose scenarios tries to read and to
+  modify the others' outputs, before and after its own work, gets the honest toy's verdict and comparisons.
 
 Règles de sûreté, vérifiées par le juge commun (revue adverse du 28/10) :
 - les relevés d'analyse (`nm`, `objdump`) sont produits par le juge commun lui-même, dans un conteneur, sur
