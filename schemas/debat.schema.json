@@ -29,6 +29,7 @@
                  "description": "L'état du débat en quelques paragraphes, que l'on lit d'abord ; vide tant que personne ne l'a écrite"},
     "synthese_par": {"$ref": "#/$defs/pseudo"},
     "synthese_le": {"type": "string"},
+    "synthese_couvre": {"$ref": "#/$defs/id_argument", "description": "Débat d'une invitation : le dernier argument que la synthèse a lu"},
     "clos_le": {"type": "string"},
     "clos_par": {"$ref": "#/$defs/pseudo"},
     "issue": {"enum": ["proposition", "tache", "decision", "sans_suite"],
@@ -49,7 +50,8 @@
           "position": {"enum": ["pour", "contre", "question", "fait"]},
           "repond_a": {"$ref": "#/$defs/id_argument"},
           "doublon_de": {"$ref": "#/$defs/id_argument"},
-          "conteste": {"$ref": "#/$defs/id_argument", "description": "Conteste le marquage doublon de cet argument précédent : il compte de nouveau pour la synthèse"},
+          "doublon_par": {"$ref": "#/$defs/pseudo", "description": "Qui a marqué le doublon, dans le débat d'une invitation (jamais son proposant)"},
+          "conteste": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/id_argument"}, "description": "Conteste le marquage doublon de ces arguments précédents : dans le débat d'une invitation, ils comptent de nouveau pour la synthèse"},
           "caviarde_pour": {"type": "string", "pattern": "^I-[0-9]{4}$", "description": "Le conseil a caviardé cet argument pour cette invitation refusée ou retirée (commandement 10, R12)"},
           "texte": {"allOf": [{"$ref": "#/$defs/texte"}, {"minLength": 1, "maxLength": 5000}]},
           "sources": {

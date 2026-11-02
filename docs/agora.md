@@ -82,8 +82,9 @@ bee debattre synthetiser D-0001 --utilisateur <pseudo> --fichier synthese.txt   
 - **Les doublons** : le rapporteur ou un gardien marque un argument qui en répète un autre
   (`bee debattre doublon D-0001 --argument A7 --de A2 --utilisateur <pseudo>`). Le doublon reste lu ;
   il ne peut renvoyer qu'à un argument précédent, de même position, qui n'est pas lui-même un doublon. Le marquage
-  ne se retire pas, mais tout membre le conteste, en ajout seul, par un argument (`bee debattre argumenter D-0001
-  --conteste A7 …`), même celui qui l'a posé ; dans le débat d'une invitation, un doublon contesté compte de nouveau.
+  ne se retire pas, mais tout membre conteste un ou plusieurs marquages, en ajout seul, par un argument (`bee debattre
+  argumenter D-0001 --conteste A7 --conteste A8 …`), même celui qui les a posés ; dans le débat d'une invitation, un
+  doublon contesté compte de nouveau, et un marquage y est signé (`doublon_par`), jamais par le proposant.
 - **La relève d'un rapporteur absent**, sans compter sur personne : si des arguments attendent la
   synthèse et qu'aucune n'a été publiée **72 h après le premier d'entre eux**
   (`releve_rapporteur_heures`), tout autre participant du débat publie la synthèse à sa place avec la
@@ -108,12 +109,12 @@ La clôture **nomme ce qui sort du débat** :
 | `decision` | La date d'une décision consignée dans [decisions.md](decisions.md) (`2026-10-29`) |
 | `sans_suite` | Aucune |
 
-- **Qui clôt** : le rapporteur, un gardien ou le conseil.
-- **Le rapporteur ne clôt pas en hâte** : il lui faut une synthèse à jour (postérieure à tout argument
-  qu'elle doit couvrir : un argument de son instant ne l'est pas, un doublon non contesté n'y compte pas, la
-  règle des accords d'une invitation ; `--synthese` la publie dans la même PR) et 24 h sans nouvel
-  argument, pour que chacun ait pu répondre. Un gardien ou le conseil peut clore à tout moment (débat
-  hors sujet, doublon d'un autre débat, contenu à écarter).
+- **Qui clôt** : le rapporteur, un gardien ou le conseil ; le débat d'une invitation, un gardien ou le conseil
+  seulement, une fois l'invitation décidée ([croissance.md](croissance.md)).
+- **Le rapporteur ne clôt pas en hâte** : il lui faut une synthèse à jour (postérieure au dernier
+  argument ; `--synthese` la publie dans la même PR) et 24 h sans nouvel argument, pour que chacun ait
+  pu répondre. Un gardien ou le conseil peut clore à tout moment (débat hors sujet, doublon d'un autre
+  débat, contenu à écarter).
 - **Un débat clos ne reçoit plus rien** : ni argument, ni synthèse, ni changement d'issue. Pour le
   reprendre, on ouvre un nouveau débat dont la question cite l'ancien (« suite de D-0001 : … »).
 - **Un débat ne se supprime jamais** (commandement 10). Tout son historique, synthèses successives
@@ -196,7 +197,7 @@ l'agora.
 | Transition | Qui | Contrôles |
 | --- | --- | --- |
 | Ouvrir (`ouverture_debat`) | Tout membre | Au numéro suivant le plus grand de `main`, sans trou ; `ouvert_par` = l'auteur de la PR, `rapporteur` = l'auteur ou personne (alors sans argument ni synthèse) ; daté de l'heure de la PR (2 h de tolérance, jamais dans le futur) ; question courte ; né ouvert, sans clôture ; 3 ouvertures sur 24 h glissantes au plus |
-| Argumenter (`argument`) | Tout membre | Débat ouvert ; arguments ajoutés en fin de liste seulement, signés de l'auteur de la PR, numérotés à la suite, datés de l'heure de la PR et pas avant le précédent ni la synthèse déjà sur `main` ; texte court ; `conteste` vers un doublon précédent ; `repond_a` vers un argument précédent ; un fait a des sources (5 au plus, de 200 caractères), et chaque chemin cité existe dans le registre ; 5 par débat et 15 tous débats confondus, par utilisateur sur 24 h glissantes, 20 par PR |
+| Argumenter (`argument`) | Tout membre | Débat ouvert ; arguments ajoutés en fin de liste seulement, signés de l'auteur de la PR, numérotés à la suite, datés de l'heure de la PR et pas avant le précédent ; texte court ; `conteste` vers des doublons précédents ; `repond_a` vers un argument précédent ; un fait a des sources (5 au plus, de 200 caractères), et chaque chemin cité existe dans le registre ; 5 par débat et 15 tous débats confondus, par utilisateur sur 24 h glissantes, 20 par PR |
 | Prendre la plume (`prise_de_plume`) | Le premier qui argumente dans un débat sans rapporteur | Dans la même PR que son argument, `rapporteur` = l'auteur de la PR, personne d'autre ; un débat sans rapporteur n'en reçoit un que par son premier argument ; la synthèse vient dans une PR suivante |
 | Synthétiser (`synthese`) | Le rapporteur | Signée et datée de maintenant ; non vide, courte ; le rapporteur suivant est un autre participant, hors conseil qui a ouvert le débat sans y prendre part (lui-même seulement s'il est seul) |
 | Relever un rapporteur absent (`synthese`) | Un autre participant | Des arguments attendent la synthèse depuis 72 h après le premier d'entre eux ; participant dans `main` avant la PR ; pas l'auteur de la dernière synthèse s'il y a quelqu'un d'autre ; puis les mêmes contrôles qu'une synthèse, rapporteur suivant compris |

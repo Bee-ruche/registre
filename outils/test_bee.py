@@ -8446,6 +8446,7 @@ class BaseInvitations(BaseRepetitionGenerale):
             self.ecrire({"id": f"D-{n + 1:04d}", "invitation": f"I-{n:04d}", "question": f"Invitation I-{n:04d} : faut-il l'envoyer ?",
                          "ouvert_par": "alice", "ouvert_le": quand, "statut": "ouvert", "rapporteur": "bruno", "synthese": "Un avis pour.",
                          "synthese_par": "bruno", "synthese_le": bee.en_iso(bee.lire_instant(quand, "") + bee.dt.timedelta(seconds=1)),
+                         "synthese_couvre": "A1",
                          "arguments": [{"id": "A1", "par": "bruno", "le": quand, "position": "pour", "texte": "Des faits publics."}]},
                         f"D-{n + 1:04d}")
             self.ecrire_invitation({
@@ -10722,8 +10723,9 @@ class TestDebatInvitationRuche0050(BaseRevueRuche0020):
             self.branche()
             self.ok("debattre", commande[0], "D-0002", "--utilisateur", qui, *commande[1:])
             self.publier(qui)
+        self.assertEqual((self.debat("D-0002")["synthese_couvre"], self.debat("D-0002")["arguments"][2]["doublon_par"]), ("A2", "chloe"))
         voir = self.ok("voir", "I-0001")
-        self.assertIn("A3 marqué doublon de A2 : non contesté", voir)
+        self.assertIn("A3 marqué doublon de A2 par chloe : non contesté", voir)
         self.assertIn("D-0002 ouvert, synthèse à jour", voir, "un doublon non contesté ne compte pas contre la synthèse")
         # gaspard conteste le marquage de A3 ; chloe, qui a marqué A4, conteste aussi le sien : acceptés, et visibles.
         self.a("2026-10-31T13:00:00Z")
@@ -10735,23 +10737,15 @@ class TestDebatInvitationRuche0050(BaseRevueRuche0020):
             self.branche()
             self.argumenter(qui, "question", texte, "--conteste", cible, debat="D-0002")
             self.publier(qui, "argument")
-        self.assertEqual([a.get("conteste") for a in self.debat("D-0002")["arguments"][-2:]], ["A3", "A4"])
+        self.assertEqual([a.get("conteste") for a in self.debat("D-0002")["arguments"][-2:]], [["A3"], ["A4"]])
         voir = self.ok("voir", "I-0001")
-        self.assertIn("A3 marqué doublon de A2 : CONTESTÉ par gaspard (A5)", voir)
-        self.assertIn("A4 marqué doublon de A2 : CONTESTÉ par chloe (A6)", voir)
+        self.assertIn("A3 marqué doublon de A2 par chloe : CONTESTÉ par gaspard (A5)", voir)
+        self.assertIn("A4 marqué doublon de A2 par chloe : CONTESTÉ par chloe (A6)", voir)
         self.assertIn("conteste le doublon A3", self.ok("debats", "--voir", "D-0002"))
         # Contesté, le marquage ne cache plus l'argument : la synthèse doit le couvrir avant l'accord du gardien.
         self.a("2026-11-02T11:00:00Z")
         self.ko("it does not cover A3, A4, A5, A6", "invitation", "accord-gardien", "I-0001", "--utilisateur", "gina")
         self.assertIn("it does not cover A3, A4, A5, A6", self.ok("voir", "I-0001"))
-        self.branche()
-        d = self.debat("D-0002")
-        d["arguments"].append({"id": "A7", "par": "gaspard", "le": self.maintenant(), "position": "question", "conteste": "A1",
-                               "texte": "A1 n'est pas un doublon."})
-        self.ecrire(d, "D-0002")
-        self.commit()
-        self.refusee("gaspard", "A7 : conteste « A1 » must name an earlier argument marked as a duplicate")
-        self.abandonner()
         self.a("2026-11-02T11:30:00Z")
         self.branche()
         self.ok("debattre", "synthetiser", "D-0002", "--utilisateur", "chloe", "--texte",
@@ -10762,11 +10756,104 @@ class TestDebatInvitationRuche0050(BaseRevueRuche0020):
             self.a(quand)
             self.branche()
             texte = self.geste(action, qui)
-            self.assertIn("A3 marqué doublon de A2 : CONTESTÉ par gaspard (A5)", texte, "au feu vert aussi")
+            self.assertIn("A3 marqué doublon de A2 par chloe : CONTESTÉ par gaspard (A5)", texte, "au feu vert aussi")
             self.publier(qui, nature, libre=libre)
         self.assertEqual(self.invitation()["statut"], "decidee")
 
-    def test_accords_refuses_si_le_debat_est_clos_ou_si_un_argument_est_plus_recent_que_sa_synthese(self):
+    def test_un_argument_conteste_plusieurs_marquages_et_les_formes_illisibles_sont_refusees(self):
+        self.jusqu_a("proposee")
+        for quand, qui, commande in (
+                ("2026-10-31T10:00:00Z", "chloe", ["argumenter", "--position", "contre", "--texte", "Le message dit mal comment refuser."]),
+                ("2026-10-31T10:30:00Z", "gaspard", ["argumenter", "--position", "contre", "--texte", "Les faits cités ont cinq ans."]),
+                ("2026-10-31T11:00:00Z", "farid", ["argumenter", "--position", "contre", "--texte", "Le canal n'est pas un lieu de contact."]),
+                ("2026-10-31T11:30:00Z", "bruno", ["doublon", "--argument", "A3", "--de", "A2"]),
+                ("2026-10-31T12:00:00Z", "bruno", ["doublon", "--argument", "A4", "--de", "A2"]),
+                ("2026-10-31T12:30:00Z", "chloe", ["argumenter", "--position", "question", "--conteste", "A3", "--conteste", "A4",
+                                                   "--texte", "Ni A3 ni A4 ne répètent A2."])):
+            self.a(quand)
+            self.branche()
+            self.ok("debattre", commande[0], "D-0002", "--utilisateur", qui, *commande[1:])
+            self.publier(qui)
+        voir = self.ok("voir", "I-0001")
+        for ident in ("A3", "A4"):
+            self.assertIn(f"{ident} marqué doublon de A2 par bruno : CONTESTÉ par chloe (A5)", voir)
+        self.assertIn("it does not cover A2, A3, A4, A5", voir)
+        # Écrites à la main : une contestation qui n'est pas une liste d'arguments marqués, un argument sans id. Refusées, sans plantage.
+        self.a("2026-10-31T13:00:00Z")
+        for nom, conteste in (("un texte", "A3"), ("un nombre", [7]), ("un argument non marqué", ["A1", "A3"]), ("vide", [])):
+            with self.subTest(nom):
+                self.branche()
+                d = self.debat("D-0002")
+                self.ecrire({**d, "arguments": d["arguments"] + [{"id": "A6", "par": "gaspard", "le": self.maintenant(), "position": "question",
+                                                                  "conteste": conteste, "texte": "Une contestation mal formée."}]}, "D-0002")
+                self.commit()
+                self.refusee("gaspard", "A6 : conteste : a list of earlier arguments marked as duplicates")
+                self.abandonner()
+        d = self.debat("D-0002")
+        self.ecrire({**d, "arguments": d["arguments"] + [{"par": "gaspard", "le": self.maintenant(), "position": "question",
+                                                          "conteste": "A3", "texte": "Sans id."}]}, "D-0002")
+        for commande in (["voir", "I-0001"], ["valider"], ["invitation", "accord-gardien", "I-0001", "--utilisateur", "gina"]):
+            self.assertNotIn("Traceback", self.bee(*commande)[1], commande)
+
+    def test_le_proposant_ne_marque_pas_de_doublon_dans_le_debat_de_son_invitation(self):
+        """Le conseil ou un gardien qui propose une invitation ne marque aucun doublon dans son débat ; un marquage y est signé."""
+        self.a("2026-10-30T10:00:00Z")
+        self.branche()
+        self.inviter("bidji29")
+        self.publier("bidji29", "invitation", libre=False)
+        for quand, qui, texte in (("2026-10-30T10:20:00Z", "bruno", "Les faits cités sont minces."),
+                                  ("2026-10-30T11:00:00Z", "chloe", "Le canal indiqué n'est pas un lieu de contact.")):
+            self.a(quand)
+            self.branche()
+            self.argumenter(qui, "contre", texte, debat="D-0002")
+            self.publier(qui, "argument")
+        self.a("2026-10-30T11:10:00Z")
+        self.ko("bidji29 proposed I-0001 : the proposer never marks a duplicate in its debate", "debattre", "doublon", "D-0002",
+                "--argument", "A2", "--de", "A1", "--utilisateur", "bidji29")
+        d = self.debat("D-0002")
+        for qui, marque, morceau in (
+                ("bidji29", {"doublon_de": "A1", "doublon_par": "bidji29"}, "never by the proposer"),
+                ("bruno", {"doublon_de": "A1"}, "A2 modifié, déplacé ou remplacé"),  # sans doublon_par : pas un marquage
+                ("bruno", {"doublon_de": "A1", "doublon_par": "gina"}, "signed by its author (doublon_par: bruno)")):
+            with self.subTest(qui=qui, marque=marque):
+                self.branche()
+                self.ecrire({**d, "arguments": [d["arguments"][0], {**d["arguments"][1], **marque}]}, "D-0002")
+                self.commit()
+                self.refusee(qui, morceau)
+                self.abandonner()
+        self.branche()
+        self.ok("debattre", "doublon", "D-0002", "--argument", "A2", "--de", "A1", "--utilisateur", "gina")
+        self.publier("gina", "doublon")
+        self.assertIn("A2 marqué doublon de A1 par gina : non contesté", self.ok("voir", "I-0001"))
+        self.valide()
+
+    def test_seuls_un_gardien_ou_le_conseil_closent_le_debat_d_une_invitation_decidee(self):
+        self.jusqu_a("proposee")
+        self.a("2026-10-31T11:00:00Z")  # 24 h de silence : le rapporteur pourrait clore un débat ordinaire
+        for qui in ("bruno", "gina"):
+            self.ko("a guardian or the council closes it, once the invitation is no longer proposed", "debattre", "clore", "D-0002",
+                    "--utilisateur", qui, "--issue", "sans_suite")
+            with self.subTest(qui=qui):
+                self.branche()
+                self.ecrire({**self.debat("D-0002"), "statut": "clos", "clos_le": self.maintenant(), "clos_par": qui, "issue": "sans_suite",
+                             "reference": ""}, "D-0002")
+                self.commit()
+                self.refusee(qui, "an invitation's debate is closed by a guardian or the council only")
+                self.abandonner()
+        for quand, qui, action, nature, libre in (("2026-11-02T12:00:00Z", "gina", "accord-gardien", "accord_gardien", True),
+                                                  ("2026-11-02T13:00:00Z", "bidji29", "accord-conseil", "accord_conseil", False)):
+            self.a(quand)
+            self.branche()
+            self.geste(action, qui)
+            if qui == "bidji29":  # le feu vert et la clôture dans la même PR : le feu vert se juge sur le débat ouvert de main
+                self.ok("debattre", "clore", "D-0002", "--utilisateur", "bidji29", "--issue", "sans_suite")
+            self.publier(qui, nature, *(["cloture_debat"] if qui == "bidji29" else []), libre=libre)
+        self.assertEqual((self.invitation()["statut"], self.debat("D-0002")["statut"]), ("decidee", "clos"))
+        voir = self.ok("voir", "I-0001")
+        self.assertIn("Débat de l'invitation : D-0002", voir)
+        self.assertNotIn("is closed", voir, "décidée : ni « clos » ni « périmée » en avertissement")
+
+    def test_accords_refuses_si_le_debat_est_clos_ou_si_un_argument_suit_ce_que_sa_synthese_couvre(self):
         self.jusqu_a("proposee")
         self.a("2026-10-30T12:00:00Z")
         self.branche()
@@ -10798,16 +10885,11 @@ class TestDebatInvitationRuche0050(BaseRevueRuche0020):
         self.accord_a_la_main("accord_conseil", "bidji29")
         self.refusee("bidji29", "D-0002 : its synthesis is out of date (it does not cover A3)")
         self.abandonner()
-        # Un débat clos : ni feu vert, ni accord du gardien, même sur une synthèse à jour.
-        for quand, qui, commande, nature in (
-                ("2026-11-02T15:30:00Z", "chloe", ["debattre", "synthetiser", "D-0002", "--texte", "Pour (A1) ; deux objections (A2, A3)."],
-                 "synthese"),
-                ("2026-11-02T16:00:00Z", "gina", ["debattre", "clore", "D-0002", "--issue", "sans_suite"], "cloture_debat"),
-                ("2026-11-02T16:00:00Z", "gina", ["debattre", "clore", "D-0003", "--issue", "sans_suite"], "cloture_debat")):
-            self.a(quand)
-            self.branche()
-            self.ok(*commande, "--utilisateur", qui)
-            self.publier(qui, nature)
+        # Un débat clos (ici par le conseil, sur main, sans passer par la porte) : ni feu vert, ni accord du gardien.
+        for did in ("D-0002", "D-0003"):
+            self.ecrire({**self.debat(did), "statut": "clos", "clos_le": self.maintenant(), "clos_par": "bidji29", "issue": "sans_suite",
+                         "reference": ""}, did)
+        self.commit("sur main : le conseil clôt les deux débats")
         self.a("2026-11-02T16:30:00Z")
         self.ko("D-0002 is closed", "invitation", "accord-conseil", "I-0001", "--utilisateur", "bidji29")
         self.ko("D-0003 is closed", "invitation", "accord-gardien", "I-0002", "--utilisateur", "gina")
@@ -10815,61 +10897,119 @@ class TestDebatInvitationRuche0050(BaseRevueRuche0020):
         self.accord_a_la_main("accord_conseil", "bidji29")
         self.refusee("bidji29", "D-0002 is closed")
 
-    def test_le_rapporteur_clot_selon_la_meme_regle_que_les_accords(self):
-        """Une seule règle (synthese_a_jour) : un argument de l'instant de la synthèse n'est pas couvert, pour clore comme pour
-        les accords ; une synthèse postérieure, publiée dans la même PR que la clôture, l'est."""
+    def test_une_synthese_ecrite_sans_avoir_lu_un_argument_fusionne_avant_elle_ne_le_couvre_pas(self):
+        """La course miroir : l'argument de gaspard est fusionné avant la synthèse que le rapporteur a écrite sans l'avoir lu. La
+        synthèse note le dernier argument qu'elle a lu (synthese_couvre) : l'argument de gaspard reste à couvrir, quelles que soient
+        les dates (même antérieure à la synthèse)."""
+        self.jusqu_a("proposee")  # A1 (bruno), synthèse de bruno, rapporteur bruno
+        # chloe participe déjà : la rotation de la plume ne rattrape rien, seul synthese_couvre le peut.
+        for quand, qui, commande in (("2026-10-31T09:00:00Z", "chloe", ["argumenter", "--position", "pour", "--texte", "Je soutiens."]),
+                                     ("2026-10-31T10:00:00Z", "bruno", ["synthetiser", "--texte", "Deux avis pour (A1, A2)."])):
+            self.a(quand)
+            self.branche()
+            self.ok("debattre", commande[0], "D-0002", "--utilisateur", qui, *commande[1:])
+            self.publier(qui)
+        self.a("2026-11-02T10:00:00Z")
+        self.branche("pr1")
+        self.argumenter("gaspard", "contre", "Une objection que le rapporteur n'a pas lue.", debat="D-0002")
+        self.commit()
+        self.a("2026-11-02T10:05:00Z")
+        self.branche("pr2")
+        self.ok("debattre", "synthetiser", "D-0002", "--utilisateur", "chloe", "--texte", "Deux avis pour ; rien d'autre.")
+        self.commit()
+        self.a("2026-11-02T10:06:00Z")
+        git(self.dossier, "switch", "-q", "pr1")
+        self.libre_service("gaspard", "argument")
+        self.fusionner("pr1")
+        git(self.dossier, "switch", "-q", "pr2")
+        git(self.dossier, "-c", "user.name=t", "-c", "user.email=t@t", "merge", "-q", "--no-edit", "main")
+        self.libre_service("chloe", "synthese")
+        self.fusionner("pr2")
+        d = self.debat("D-0002")
+        self.assertEqual((d["synthese_couvre"], d["arguments"][-1]["id"]), ("A2", "A3"))
+        self.assertLess(d["arguments"][-1]["le"], d["synthese_le"], "A3 est daté d'avant la synthèse")
+        self.a("2026-11-02T14:00:00Z")
+        self.ko("D-0002 : its synthesis is out of date (it does not cover A3)", "invitation", "accord-gardien", "I-0001", "--utilisateur", "gina")
+        # Une synthèse ne prétend pas avoir lu un argument qui n'existe pas.
+        self.branche()
+        self.ecrire({**self.debat("D-0002"), "synthese_couvre": "A9", "synthese": "Tout lu.", "synthese_le": self.maintenant(),
+                     "synthese_par": "chloe"}, "D-0002")
+        self.commit()
+        self.refusee("chloe", "synthese_couvre : the last argument an invitation's synthesis has read")
+
+    def test_un_debat_general_garde_les_regles_de_main(self):
+        """Le scénario de la revue : dans un débat ordinaire, un argument marqué doublon après la synthèse empêche toujours le
+        rapporteur de clore (règle de main : synthèse postérieure au dernier argument), par la commande comme par la porte."""
         self.a("2026-10-30T10:00:00Z")
         self.ouvrir("alice", "Faut-il un modèle de message pour les invitations de garant ?")  # D-0002, alice rapporteuse
         self.commit("débat ouvert")
-        self.a("2026-10-30T11:00:00Z")
-        for qui, commande, nature in (("bruno", ["argumenter", "--position", "pour", "--texte", "Un modèle évite les oublis."], "argument"),
-                                      ("alice", ["synthetiser", "--texte", "Un avis pour (A1)."], "synthese")):
+        for quand, qui, commande in (("2026-10-30T11:00:00Z", "bruno", ["argumenter", "--position", "pour", "--texte", "Un modèle évite les oublis."]),
+                                     ("2026-10-30T11:30:00Z", "alice", ["synthetiser", "--texte", "Un avis pour (A1)."]),
+                                     ("2026-10-30T12:00:00Z", "chloe", ["argumenter", "--position", "pour", "--texte",
+                                                                        "Il faut aussi un modèle pour les relances, avec d'autres cas."]),
+                                     ("2026-10-30T12:10:00Z", "bruno", ["doublon", "--argument", "A2", "--de", "A1"])):
+            self.a(quand)
             self.branche()
             self.ok("debattre", commande[0], "D-0002", "--utilisateur", qui, *commande[1:])
-            self.publier(qui, nature)
+            self.publier(qui)
         d = self.debat("D-0002")
-        self.assertEqual((d["rapporteur"], d["arguments"][0]["le"]), ("bruno", d["synthese_le"]))
-        self.a("2026-10-31T12:00:00Z")
-        self.ko("postérieure à tout argument qu'elle doit couvrir", "debattre", "clore", "D-0002", "--utilisateur", "bruno", "--issue",
-                "sans_suite")
+        self.assertEqual((d["rapporteur"], d["arguments"][1]["doublon_de"], "doublon_par" in d["arguments"][1], "synthese_couvre" in d),
+                         ("bruno", "A1", False, False))
+        self.a("2026-10-31T13:00:00Z")
+        self.ko("le rapporteur clôt sur une synthèse à jour, postérieure au dernier argument", "debattre", "clore", "D-0002",
+                "--utilisateur", "bruno", "--issue", "sans_suite")
         self.branche()
-        self.ecrire({**d, "statut": "clos", "clos_le": self.maintenant(), "clos_par": "bruno", "issue": "sans_suite", "reference": ""},
-                    "D-0002")
+        self.ecrire({**d, "statut": "clos", "clos_le": self.maintenant(), "clos_par": "bruno", "issue": "sans_suite", "reference": ""}, "D-0002")
         self.commit()
-        self.refusee("bruno", "le rapporteur clôt sur une synthèse à jour, postérieure à tout argument qu'elle doit couvrir")
-        self.abandonner()
-        self.branche()
-        self.ok("debattre", "clore", "D-0002", "--utilisateur", "bruno", "--issue", "sans_suite", "--synthese", "Un avis pour (A1), seul.")
-        self.publier("bruno", "cloture_debat", "synthese")
+        self.refusee("bruno", "le rapporteur clôt sur une synthèse à jour, postérieure au dernier argument")
 
-    def test_un_argument_publie_a_l_instant_de_la_synthese_compte_comme_plus_recent(self):
-        """Même instant : la synthèse a pu ne pas le lire ; il compte donc comme plus récent, et l'accord attend une synthèse
-        postérieure. Les dates suivent les fusions : un argument n'est jamais daté d'avant la synthèse déjà sur main."""
-        self.jusqu_a("proposee")  # synthèse de D-0002 le 2026-10-30T10:40:00Z
-        self.a("2026-10-30T10:50:00Z")
+    def test_un_envoi_sur_une_synthese_perimee_est_consigne_et_signale(self):
+        self.decidees(1, quand="2026-10-29T10:00:00Z")  # D-0002 : A1 et une synthèse qui le couvre
+        self.a("2026-10-30T09:00:00Z")
         self.branche()
-        d = self.debat("D-0002")
-        self.ecrire({**d, "arguments": d["arguments"] + [{"id": "A2", "par": "chloe", "le": "2026-10-30T10:39:00Z", "position": "contre",
-                                                          "texte": "Une objection antidatée."}]}, "D-0002")
-        self.commit()
-        self.refusee("chloe", "A2 : dated before the synthesis already on main (2026-10-30T10:40:00Z)")
-        self.abandonner()
-        self.a("2026-10-30T10:40:00Z")
-        self.branche()
-        self.argumenter("chloe", "contre", "Une objection publiée à l'instant de la synthèse.", debat="D-0002")
+        self.argumenter("chloe", "contre", "Une objection après le feu vert.", debat="D-0002")
         self.publier("chloe", "argument")
-        d = self.debat("D-0002")
-        self.assertEqual(d["arguments"][-1]["le"], d["synthese_le"])
-        self.a("2026-11-02T11:00:00Z")
-        self.ko("it does not cover A2", "invitation", "accord-gardien", "I-0001", "--utilisateur", "gina")
-        self.a("2026-11-02T11:30:00Z")
+        self.a("2026-10-30T10:00:00Z")
         self.branche()
-        self.ok("debattre", "synthetiser", "D-0002", "--utilisateur", "bruno", "--texte", "Pour (A1) ; une objection (A2).")
-        self.publier("bruno", "synthese")
-        self.a("2026-11-02T12:00:00Z")
+        texte = self.geste("consigner-envoi", "bidji29")
+        self.assertIn("⚠ I-0001 : D-0002 : its synthesis is out of date (it does not cover A2)", texte)
+        self.publier("bidji29", "envoi_invitation", libre=False)
+        self.assertEqual(self.invitation()["statut"], "envoyee", "un envoi consigné reste un fait")
+        alerte = "I-0001 : envoi consigné le 2026-10-30T10:00:00Z sur une synthèse périmée (D-0002 ne couvrait pas A2)"
+        code, texte = self.bee("valider")
+        self.assertEqual(code, 0, texte)
+        self.assertIn(alerte, texte)
+        self.assertIn(alerte, self.ok("essaim"))
+
+    def test_un_feu_vert_se_renouvelle_sur_un_debat_clos_si_sa_synthese_couvrait_tout(self):
+        self.decidees(2)  # feux verts du 2026-10-20, échus le 27 ; D-0002 et D-0003 à jour
+        self.a("2026-10-27T09:00:00Z")
         self.branche()
-        self.geste("accord-gardien", "gina")
-        self.publier("gina", "accord_gardien")
+        self.argumenter("chloe", "contre", "Une objection que la synthèse de clôture ne couvrira pas.", debat="D-0003")
+        self.publier("chloe", "argument")
+        for did in ("D-0002", "D-0003"):
+            self.a("2026-10-27T12:00:00Z")
+            self.branche()
+            self.ok("debattre", "clore", did, "--utilisateur", "gina", "--issue", "sans_suite")
+            self.publier("gina", "cloture_debat")
+        self.assertNotIn("out of date", self.ok("voir", "I-0002"), "décidée : pas d'avertissement")
+        self.a("2026-10-28T10:00:00Z")
+        self.ko("D-0003 : its synthesis is out of date (it does not cover A2)", "invitation", "renouveler", "I-0002", "--utilisateur",
+                "bidji29")
+        self.branche()
+        self.geste("renouveler", "bidji29")
+        self.publier("bidji29", "renouvellement_invitation", libre=False)
+
+    def test_bee_inviter_respecte_le_plafond_d_ouvertures_avant_d_ecrire(self):
+        self.a("2026-10-30T10:00:00Z")
+        for i in range(3):
+            self.ouvrir("alice", f"Question numéro {i + 1} : qu'en dit l'essaim de la ruche ?")
+        self.commit("trois débats d'alice")
+        self.a("2026-10-30T11:00:00Z")
+        self.ko("plafond : alice a déjà ouvert 3 débats en 24 h (agora.ouvertures_max_par_24h), et l'invitation ouvre le sien",
+                "inviter", "--utilisateur", "alice", "--identifiant", "github:octocat", "--demande", "garant", "--fait",
+                "Maintient un logiciel libre.", "--source", "https://github.com/octocat", "--message", MESSAGE_INVITATION)
+        self.assertFalse(self.chemin_invitation().exists() or self.chemin_debat("D-0005").exists(), "rien n'a été écrit")
 
 
 class TestR13SuivableRuche0052(BaseInvitations):
