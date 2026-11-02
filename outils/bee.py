@@ -3529,8 +3529,10 @@ HOTES_FORGES = {"github.com": "github", "gitlab.com": "gitlab", "codeberg.org": 
                 "git.sr.ht": "sourcehut"}
 # Tout sous-domaine d'une forge (gist.github.com, raw.githubusercontent.com, todo.sr.ht…) se ramène au profil du premier
 # segment du chemin (troisième revue adverse, C5) ; l'API désigne le profil après users/, repos/ ou orgs/.
-DOMAINES_FORGES = {"github.com": "github", "githubusercontent.com": "github", "gitlab.com": "gitlab", "codeberg.org": "codeberg",
-                   "sr.ht": "sourcehut"}
+DOMAINES_FORGES = {"github.com": "github", "githubusercontent.com": "github", "github.dev": "github", "gitlab.com": "gitlab",
+                   "codeberg.org": "codeberg", "sr.ht": "sourcehut"}
+# GitHub-owned hosts whose path does not name the owner (ruche-0049): a shortener, an editor (vscode.dev/github/<owner>/…).
+HOTES_GITHUB_OPAQUES = ("git.io", "vscode.dev")
 PAGES_FORGES = {"github.io": "github", "gitlab.io": "gitlab", "codeberg.page": "codeberg", "srht.site": "sourcehut"}
 # Un site se compare sur son domaine enregistrable : les deux derniers labels, trois sous ces suffixes à deux niveaux courants.
 # Limite (docs/croissance.md) : sans la liste publique des suffixes, un suffixe à deux niveaux absent d'ici n'est pas reconnu.
@@ -3724,18 +3726,164 @@ def donnee_personnelle(texte):
     return "un numéro de téléphone" if numero_de_telephone(texte) else None
 
 
-def texte_sortant_refuse(texte, quoi, maximum):
+def texte_sortant_refuse(texte, quoi, maximum, organisation=None):
     """None si un texte qui sortira de la ruche est recevable : texte_recevable, sans caractère sortant interdit, sans donnée
-    personnelle ; sinon la raison."""
+    personnelle ; sinon la raison. With `organisation` (PR title or body, ruche-0049): the entities decoded first, and
+    renvoi_hors_ruche on every way the text may be read (as typed, as GitHub decodes it, decoded to a fixed point)."""
     probleme = texte_recevable(texte, quoi, maximum)
     if probleme:
         return probleme
+    lus = [texte]  # as typed, as GitHub decodes it, decoded to a fixed point with a reference past U+10FFFF dropped or U+FFFD
+    if organisation is not None:
+        try:
+            lus += [html.unescape(texte.replace("\\&", "&amp;")), entites_decodees(texte, "")]  # once, an escaped & kept
+            texte = entites_decodees(texte, "\ufffd")
+        except ValueError:  # a numeric reference longer than int() reads (&#000…64;)
+            return f"{quoi} : référence de caractère démesurée (&#…;) : écrivez le caractère lui-même"
     c = next((c for c in texte if caractere_sortant_interdit(c)), None)
     if c is not None:
         return (f"{quoi} : caractère invisible refusé (U+{ord(c):04X}, catégorie {unicodedata.category(c)}) : ce texte sort de la "
                 "ruche, il ne cache rien")
-    donnee = donnee_personnelle(texte)
-    return (f"{quoi} : {donnee} : aucune donnée personnelle au-delà de l'identifiant public et du canal (R13)" if donnee else None)
+    donnee = next(filter(None, map(donnee_personnelle, dict.fromkeys([texte] + lus[2:]))), None)  # U+FFFD, or dropped
+    renvoi = (next(filter(None, (renvoi_hors_ruche(lu, organisation) for lu in lus + [texte])), None)
+              if organisation is not None and not donnee else None)
+    return (f"{quoi} : {donnee} : aucune donnée personnelle au-delà de l'identifiant public et du canal (R13)" if donnee
+            else f"{quoi} : {renvoi} : ce texte sort de la ruche (commandements 8 et 13)" if renvoi else None)
+
+
+def entites_decodees(texte, abandon):
+    """`texte` with its HTML entities decoded to a fixed point, each numeric reference by reference_decodee."""
+    while texte != (decode := html.unescape(re.sub(r"&#(?:[0-9]+|[xX][0-9a-fA-F]+);?", lambda m: reference_decodee(m[0], abandon),
+                                                   texte))):
+        texte = decode
+    return texte
+
+
+def reference_decodee(reference, abandon):
+    """A numeric character reference (&#64;, &#x40;) decoded as html does, except a character the check of hidden characters
+    refuses when typed (&#0;, &#1;, &#12;, &#13;, &#128;, &#xD800;, &#xFDD0;) or a tab or a newline (&#9;, &#10;), kept as
+    itself: that check then treats it as the character typed. `abandon` past U+10FFFF or where html gives nothing. ValueError
+    if the number is longer than int() reads."""
+    hexa = reference[2] in "xX"
+    n = int(reference[3 if hexa else 2:].rstrip(";"), 16 if hexa else 10)
+    if n > 0x10FFFF:
+        return abandon
+    c = chr(n)
+    return c if c in "\t\n" or caractere_sortant_interdit(c) else html.unescape(reference) or abandon
+
+
+# What GitHub would turn into a notification or a link outside the hive (ruche-0049). Fail closed: each is searched in several
+# forms of the text (renvoi_hors_ruche), and refusing an honest text is the accepted cost.
+MENTION_GITHUB = re.compile(r"(?<![A-Za-z0-9])@[A-Za-z0-9][A-Za-z0-9/-]*|@[\w.+-]*@[A-Za-z0-9][A-Za-z0-9/-]*")
+REFERENCE_GITHUB = re.compile(r"(?i)(?<![\w.-])([\w.-]+)(?:/[\w.-]+#\d+|(?:/[\w.-]+)?@[0-9a-f]{7,})")
+LIEN_OU_HOTE = re.compile(r"(?i)(?<![\w.-])(?:https?://)?(?:[\w-]+\.)+[a-z]{2,}([^\s<]*)")  # as far as a GFM autolink goes
+# Where a link destination starts: ](…), ]: … (a reference definition), a URL attribute (href=…), <https:… (an autolink).
+ATTRIBUT_URL = (r"\b(?:href|src|srcset|action|formaction|data|poster|cite|background|ping|longdesc|usemap|manifest|content"
+                r"|imagesrcset|xlink:href)\s*=")
+# Group 1: what follows a destination's start up to a .., a %xx or a ] (never the owner), else a root-relative /owner.
+LIEN_RELATIF = re.compile(r"(?i)(?:\][(:]|" + ATTRIBUT_URL + r"|<(?=https?:))\s*[\"'<]?\s*(?![a-z][a-z0-9+.-]*://)"
+                          r"(?=([^\s\"'<>()=]*?(?:\.\.(?![^/\\\s\"'<>()])|%[0-9a-f]{2}|\])|[/\\]+[^/\\\s\"'<>()\]=]*))?")
+UNE_BARRE = re.compile(r"^[/\\]")  # a root-relative link: its first segment is its owner (//x, /\x: another host)
+# % or \ in a host.
+LIEN_MASQUE = re.compile(r"(?i)(?:(https?:/*|//)(?=[^\s/<>()\[\]{}`'\"]*(?:%[0-9a-f]{2}|\\))|https?:|//)[^\s<>()\[\]{}`'\"]*")
+UNE_SEULE_BARRE = re.compile(r"(?i)(?<![\w.+-])(https?:)[/\\](?![/\\])")  # a browser reads https:/x as github.com/x
+SRCSET = re.compile(r"(?i)(srcset)")  # every candidate of a srcset is a link
+RENVOIS = (REFERENCE_GITHUB, LIEN_RELATIF, LIEN_MASQUE, UNE_SEULE_BARRE, SRCSET)  # group 1: an owner, or what is never one
+LIEN_SUSPECT = re.compile(r"%[0-9A-Fa-f]{2}|\\|/\.\.(?:/|$)|^\.(?=.)")  # after a forge host: %xx, \, /../, host.
+ECHAPPEMENT = re.compile(r"\\([!-/:-@\[-`{-~])")  # a CommonMark backslash escape
+BALISE = re.compile(r"<!--[\s\S]*?(?:-->|$)|</?[A-Za-z][^<>]*>")  # an HTML comment or tag
+
+
+def renvoi_hors_ruche(texte, organisation):
+    """What GitHub would turn into a notification or a link outside `organisation`, the hive's GitHub owner, in a PR title or
+    body, else None. GitHub's rendering is not modelled: the text is read as is, without its backslash escapes, then without its
+    HTML tags too, each as is, after NFKC, and with no blank in a quoted attribute value; code included, _ may be emphasis."""
+    sans_echappements = ECHAPPEMENT.sub(r"\1", texte)
+    for base in (texte, sans_echappements, BALISE.sub("", sans_echappements)):
+        nfkc = unicodedata.normalize("NFKC", base).replace("\u3002", ".")
+        for forme in (base, nfkc, re.sub(r"=\s*(\"[^\"]*\"|'[^']*')|(?<=\]\()\s*<[^<>\n]*>|(?<=\]:)\s*<[^<>\n]*>",
+                                         lambda m: re.sub(r"\s", "", m[0]), nfkc)):  # no blank in a quoted value, <destination>
+            renvoi = premier_renvoi(forme, organisation)
+            if renvoi:
+                return renvoi
+    return None
+
+
+def premier_renvoi(forme, organisation):
+    """The first thing in `forme` that renvoi_hors_ruche refuses, named, or None."""
+    jeton = lambda m: next((mot for mot in (w.rstrip(")]>\"'.,;:!?") for w in forme[m.start():].split(maxsplit=2)[:2]) if mot),
+                           "")[:80]  # noqa: E731  the word it starts, or the next one (a definition's target after ]:)
+    if mention := MENTION_GITHUB.search(forme):
+        return f"la mention « {mention[0][:80]} » notifierait quelqu'un sur GitHub (écrivez le nom sans @)"
+    etiquettes = None
+    for motif in RENVOIS:
+        for m in motif.finditer(forme):
+            if UNE_BARRE.sub("", m[1] or organisation, count=1).casefold() == organisation.casefold():
+                continue
+            if m[0].startswith("]:"):
+                etiquettes = etiquettes_de(forme) if etiquettes is None else etiquettes
+                if definition_inutile(forme, m.start(), etiquettes):
+                    continue
+            return f"« {jeton(m)} » {raison_du_renvoi(motif, organisation)}"
+    # Each address read from its own start; \x0b marks the cuts (no accepted text has one), removed for a run's dot segments.
+    forme = re.sub(r"(?i)(?=https?://|www\.)", "\x0b", forme)
+    vus = set()
+    for m in LIEN_OU_HOTE.finditer(forme):
+        adresse = decoder_url(re.sub(r"(?i)^(?!https?://)", "https://", m[0])).replace("\\", "/")  # as a browser reads it
+        if sur_hotes(hote_de(adresse), HOTES_GITHUB_OPAQUES):
+            return f"« {jeton(m)} » mène vers GitHub sans dire où (raccourci ou éditeur) : donnez l'adresse github.com/…"
+        forges = {c for c in cles_d_adresse(adresse) if not c.startswith("site:")}
+        if forges - {f"github:{organisation.casefold()}"}:
+            return f"« {jeton(m)} » mène hors de {organisation} (seul son propriétaire GitHub est dans la ruche)"
+        forge = forges or sur_hotes(hote_de(adresse), tuple(DOMAINES_FORGES))  # even if a < or a blank hides the owner
+        if forge and LIEN_SUSPECT.search(m[1]):
+            return f"« {jeton(m)} » cache où il mène (%xx, \\, /../ ou hôte suivi d'un point)"
+        if forge and (fin := fin_de_suite(forme, m.start(1), vus)) is not None:  # the rest of its run, once
+            if LIEN_SUSPECT.search(forme[m.start(1):fin].replace("\x0b", "")):
+                return f"« {jeton(m)} » cache où il mène (%xx, \\, /../ ou hôte suivi d'un point)"
+    return None
+
+
+def fin_de_suite(forme, debut, vus):
+    """Where the whitespace-delimited run holding `debut` ends in `forme`, or None if a scan from an earlier start reached it."""
+    fin = re.compile(r"[^ \t\n\r\f]*").match(forme, debut).end()  # up to ASCII whitespace: a destination may hold <, NBSP, U+3000
+    if fin in vus:
+        return None
+    vus.add(fin)
+    return fin
+
+
+def raison_du_renvoi(motif, organisation):
+    """Why a pattern of RENVOIS refuses what it found, said to the bee."""
+    if motif is REFERENCE_GITHUB:
+        return f"renvoie à un dépôt hors de {organisation}"
+    if motif is LIEN_RELATIF:
+        return f"est un lien relatif qui mène hors de {organisation} ou cache où il mène (.., %xx, ])"
+    if motif is LIEN_MASQUE:
+        return "cache son hôte (%xx ou \\)"
+    if motif is UNE_SEULE_BARRE:
+        return "n'a qu'une barre : un navigateur y lit github.com/…"
+    return "liste plusieurs adresses : une image par src"
+
+
+def cle_etiquette(etiquette):
+    return " ".join(etiquette.split()).casefold()  # labels match regardless of case and blanks, as in CommonMark
+
+
+def etiquettes_de(forme):
+    """How many times each [label] appears in `forme` (a definition's own included)."""
+    compte = defaultdict(int)
+    for etiquette in re.findall(r"\[([^\[\]]*)\]", forme):
+        compte[cle_etiquette(etiquette)] += 1
+    return compte
+
+
+def definition_inutile(forme, fin, etiquettes):
+    """True if the reference definition whose label ends at `fin` ([label]: target) makes no link: its label appears nowhere
+    else (any other [label] counts as a use). An odd label (no [ within 1,000 characters, or ] or \\ in it) never does."""
+    debut = forme.rfind("[", max(0, fin - 1000), fin)
+    etiquette = forme[debut + 1:fin]
+    return debut >= 0 and not re.search(r"[\]\\]", etiquette) and etiquettes[cle_etiquette(etiquette)] < 2
 
 
 def hote_de(adresse):
@@ -8105,6 +8253,10 @@ def cmd_publier(args):
     depot = reg.racine
     organisation = reg.config.get("organisation", "")
     amont = args.amont or f"{organisation}/registre"
+    corps = args.corps or f"Publié avec `bee publier`.\n\nNature : {args.titre}."
+    if probleme := (texte_sortant_refuse(args.titre, "titre", 256, organisation)  # both leave the hive: refused before any
+                    or texte_sortant_refuse(corps, "corps", 8000, organisation)):  # git or gh call; 256: GitHub's, 8000: fast
+        raise ErreurBee(probleme)
     changements = [l[3:] for l in git(depot, "status", "-z", "--porcelain", "--no-renames", "--untracked-files=all")]
     if not changements:
         raise ErreurBee("aucun changement à publier (avez-vous lancé bee prendre, soumettre, relire, voter… ?)")
@@ -8137,7 +8289,6 @@ def cmd_publier(args):
         proprietaire, _ = proprietaire_depot(executer(["git", "remote", "get-url", "origin"], depot).stdout.strip())
         proprietaire_amont, _ = proprietaire_depot(f"https://github.com/{amont}")
         tete = branche if proprietaire in (None, proprietaire_amont) else f"{proprietaire}:{branche}"
-        corps = args.corps or f"Publié avec `bee publier`.\n\nNature : {args.titre}."
         # API REST plutôt que `gh pr create` (GraphQL) : elle fonctionne aussi dans les environnements restreints.
         pr = json.loads(executer(["gh", "api", f"repos/{amont}/pulls", "-X", "POST", "-f", f"title={args.titre}",
                                   "-f", f"head={tete}", "-f", "base=main", "-f", f"body={corps}"], depot).stdout)
