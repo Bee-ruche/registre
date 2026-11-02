@@ -31,6 +31,9 @@ hors_perimetre:
 - implementing the design (follow-up tasks)
 - COMMANDMENTS.md
 noeud: projets/ruche/ruche
-statut: ouverte
+statut: reservee
+reservation:
+  utilisateur: "bidji29"
+  depuis: "2026-11-02T03:44:47Z"
 cree_par: conseil
 cree_le: '2026-11-01'
