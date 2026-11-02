@@ -31,7 +31,7 @@ hors_perimetre:
 - creating the juge-v2 tag (the council)
 - pinning the forks (ruche-0024)
 noeud: projets/ruche/ruche
-statut: en_relecture
+statut: integree
 contribution: ruche-0086-c1
 cree_par: conseil
 cree_le: '2026-11-01'
