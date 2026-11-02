@@ -2662,6 +2662,184 @@ class TestPublier(BaseTest):
         self.assertEqual(code, 1)
         self.assertIn("aucun changement", texte)
 
+    # --- ruche-0049: the title and body leave the hive, checked like any outgoing text ---
+
+    SORTANTS_REFUSES = {
+        "mention": ("Merci @octocat", "la mention « @octocat » notifierait"),
+        "mention d'équipe": ("cc @Bee-ruche/conseil", "la mention « @Bee-ruche/conseil »"),
+        "mention entre parenthèses": ("Relu (@octocat).", "la mention « @octocat »"),
+        "mention pleine chasse": ("Merci ＠octocat", "la mention « @octocat »"),
+        "issue d'un autre dépôt": ("Voir amont-fictif/miniz#12", "« amont-fictif/miniz#12 » renvoie à un dépôt hors de Bee-ruche"),
+        "commit d'un autre dépôt": ("Voir amont-fictif/miniz@a5c3785", "« amont-fictif/miniz@a5c3785 » renvoie"),
+        "commit d'un fork": ("Voir amont-fictif@a5c37851d", "« amont-fictif@a5c37851d » renvoie"),
+        "adresse d'une issue": ("Voir https://github.com/amont-fictif/miniz/issues/12", "« https://github.com/amont-fictif/miniz/issues/12 »"),
+        "adresse d'une PR, en lien": ("[ici](https://github.com/amont-fictif/miniz/pull/3)", "« https://github.com/amont-fictif/miniz/pull/3 »"),
+        "adresse d'un commit": ("https://github.com/amont-fictif/miniz/commit/a5c3785", "mène hors de Bee-ruche"),
+        "adresse sans schéma": ("Voir github.com/amont-fictif/miniz", "« github.com/amont-fictif/miniz »"),
+        "autre forge": ("Voir https://gitlab.com/amont-fictif/miniz", "« https://gitlab.com/amont-fictif/miniz »"),
+        "page de forge": ("Voir https://amont-fictif.github.io/miniz", "mène hors de Bee-ruche"),
+        "courriel": ("Écrire à jean.dupont@example.org", "une adresse de courriel"),
+        "téléphone": ("Au 06 12 34 56 78", "un numéro de téléphone"),
+        "caractère invisible": ("Réservation\u2060 miniz-0099", "(U+2060, catégorie Cf)"),
+    }
+    # The adversarial review's texts (31/10 fix round): read in code too (B1), entities decoded (B2), raw and NFKC forms (B3), only
+    # the GitHub owner Bee-ruche is inside (S1), no link that hides where it leads and no relative link outside (S2).
+    REVUE_REFUSES = {
+        "B1": ["`@upstream`", "```\n@upstream\n```", "`\n# h\n@upstream `", '<b title="`">@upstream</b> `', "<http://x.example/`>@upstream `",
+               "| a |\n|---|\n| ` |\n| @upstream ` |", "    @upstream", "<code>@upstream</code>", "`upstream/repo#12`",
+               "`https://github.com/upstream/repo`"],
+        "B2": ["&#64;upstream", "&commat;upstream", "@&#117;pstream", "upstream/repo&#35;12", "upstream&#47;repo#12",
+               "https://&#103;ithub.com/upstream/repo", "&amp;#64;upstream", "x&#1;@upstream", "\\&#117;&#64;upstream"],
+        "B3": ["ª@upstream", "ａ@upstream", "ⓐ@upstream", "²@upstream", "①@upstream", "＿@upstream", "™@upstream", "ﬁ@upstream",
+               "_x_@upstream", "x@y.z1@upstream"],
+        "S1": ["https://gitlab.com/Bee-ruche/x", "https://codeberg.org/Bee-ruche/x", "https://bee-ruche.gitlab.io/x", "https://sr.ht/~Bee-ruche/x"],
+        "S2": ["https://github.com/Bee-ruche/../upstream/repo", "https://github.com/Bee-ruche/%2e%2e/upstream/repo", "https://%67ithub.com/upstream/repo",
+               "https://github%2Ecom/upstream/repo", "https://github.com./upstream/repo", "https://github.com:/upstream/repo",
+               "https://github.com\\upstream/repo", "github.com:upstream/repo", "https://github\u3002com/upstream/repo",
+               "[x](/upstream/repo/issues/1)", "[x](../../../upstream/repo)", '<a href="/upstream/repo">x</a>', "<a href=/upstream/repo>x</a>",
+               "[x][1]\n\n[1]: /upstream/repo", "[x](/Bee-ruche/../upstream/repo)", '<a href=" /upstream/repo">x</a>',
+               '<a href="https://github.com\n/upstream/repo">x</a>'],
+        # Round 3 (F1): an address right after another host or address is read from its own start.
+        "F1": ["example.com,https://github.com/upstream/repo/issues/1", "README.md;https://github.com/upstream/repo/issues/1",
+               "https://github.com/Bee-ruche/registre|https://github.com/upstream/repo/issues/1",
+               "https://example.org/a|https://github.com/upstream/repo/issues/1", "example.com.https://github.com/upstream/repo"],
+        # (F2): a /../ after a quote, a parenthesis, a bracket, a brace or a backtick in a forge address.
+        "F2": ["https://github.com/Bee-ruche/x'/../../upstream/repo", "https://github.com/Bee-ruche/x)/../../upstream/repo",
+               "https://github.com/Bee-ruche/x]/%2e%2e/upstream/repo", "https://github.com/Bee-ruche/x}/..%2fupstream/repo",
+               "https://github.com/Bee-ruche/x`/../../upstream/repo"],
+        # Round 4: an embedded www. or https:// in a forge path must not hide a later /../ (its run is read whole).
+        "F3": ["https://github.com/Bee-ruche/www.x.org/../../upstream/repo", "https://github.com/Bee-ruche/https://x.org/../../../upstream/repo",
+               "https://github.com/Bee-ruche/a?www.x/../../../upstream/repo", "https://github.com/Bee-ruche/www.%2e%2e/%2e%2e/upstream/repo",
+               "https://bee-ruche.github.io/www.x.org/../../upstream", "[a](https://github.com/Bee-ruche/www.x.org/../../upstream/repo)",
+               "<https://github.com/Bee-ruche/www.x.org/../../upstream/repo>",
+               "example.com,https://github.com/Bee-ruche/www.x.org/../../upstream/repo"],
+        # Round 5: a link's run goes on past <, a Unicode space or (in an angle destination) a blank; a hidden owner still has a run.
+        "F4": ["[x](https://github.com/Bee-ruche/a<b/../../upstream/repo)", "[x](<https://github.com/Bee-ruche/a b/../../upstream/repo>)",
+               "[x](<https://github.com/Bee-ruche/a\tb/../../upstream/repo>)", "[x](https://github.com/Bee-ruche/a\u00a0b/../../upstream/repo)",
+               "[x](https://github.com/Bee-ruche/a\u3000b/../../upstream/repo)", '<a href="https://github.com/Bee-ruche/a<b/../../upstream/repo">x</a>',
+               "[x][1]\n\n[1]: <https://github.com/Bee-ruche/a b/../../upstream/repo>", "![x](https://github.com/Bee-ruche/a<b/../../upstream/repo)",
+               "[x](https://bee-ruche.github.io/a<b/../../upstream/repo)", "[x](https://github.com/<x/../upstream/repo)",
+               "[x](<https://github.com/ /../upstream/repo>)"],
+        # GitHub-owned hosts: github.dev reads like github.com; a shortener or an editor does not say where it leads.
+        "hôtes": ["https://github.dev/upstream/repo", "https://vscode.dev/github/upstream/repo", "https://vscode.dev/github/Bee-ruche/registre",
+                  "https://git.io/abc", "https://git.io/Bee-ruche"],
+    }
+    # The second review (2 Nov): CommonMark escapes (N1), a scheme with one slash (N2), tag-split text (N5), srcset (N6), a
+    # root-relative link to another host (N7); and what bees write every night must pass (N4).
+    SECONDE_REVUE_REFUSES = {
+        "N1": ["upstream/repo\\#12", "upstream\\/repo#12", "upstream/re\\_po#12", "\\@upstream", "github\\.com/upstream/repo",
+               "[x](\\/upstream/repo)"],
+        "N2": ["[x](https:/upstream/repo)", '<a href="https:/upstream/repo">x</a>', "![i](https:/upstream/a.png)", "[x]: https:/upstream/repo",
+               "[x](HTTPS:/upstream/repo)", "<https:/upstream/repo>", "<HTTPS:/upstream/repo>"],
+        "N5": ["@<foo>upstream</foo>", "upstream/repo<foo>#12</foo>", "@<b></b>upstream", "up<b></b>stream/repo#12", "@<!-- c -->upstream"],
+        "N6": ['<img srcset="/Bee-ruche/a.png 1x, /upstream/b.png 2x">', '<img SRCSET="https://github.com/Bee-ruche/a.png">'],
+        "N7": ["[x](//Bee-ruche/x)", "[x](/\\Bee-ruche/x)", "[x](///Bee-ruche/x)", '<a href="//Bee-ruche/x">x</a>'],
+        "used definition": ["[x][1]\n\n[1]: /upstream/repo", "voir [OK]\n\n[ok]: /upstream/x", "[x][1]&colon;\n\n[1]: /upstream/repo"],
+    }
+    SECONDE_REVUE_HONNETES = ["PREFIX=/usr/local", "TMPDIR=/tmp", "PATH=/usr/bin:$PATH", "--prefix=/usr", "--output=/dev/null", 'path = "/tmp/x"',
+                              "BEE_REGISTRE=/home/claude/registre", "x=[1,2,3]", "a[i]==b[j]", "gain=12%", "width=50%",
+                              "https://example.org/a%20b", "tests/test_bee.py::TestPublier::test_x", "file.py:func", "[ok]: /tmp/x",
+                              "https://github.com/Bee-ruche/registre", "https://example.org/a", "[doc](https://example.org/a%20b)",
+                              "[x](/Bee-ruche/registre/pull/3)", "x == y", "50 % plus rapide", "https://github.com/Bee-ruche/registre/www.x.org",
+                              "ids 1234&#10;56789", "a&#9;b"]
+    SORTANTS_HONNETES = ["Réservation miniz-0036", "Soumission miniz-0012-c1", "Réservation ruche-0024, ruche-0042", "x@upstream",
+                         "uses actions/checkout@v4", "pkg@1.2.3", "#12, GH-12, D-0019", "Bee-ruche/registre#12", "Bee-ruche/minizBee@a5c3785",
+                         "https://github.com/Bee-ruche/registre/pull/53.", "github.com/Bee-ruche/minizBee", "https://bee-ruche.github.io/registre/",
+                         "https://github.com/Bee-ruche/registre/compare/main...tache/ruche-0049", "[croissance](docs/croissance.md), [ici](#publier)",
+                         "Voir AGENTS.md. Puis bee.py: la fonction.", "outils/bee.py:3550", "&lt;b&gt; &amp; ok", "https://zlib.net",
+                         "Publié avec `bee publier`.\n\nNature : Réservation miniz-0036."]
+
+    def test_titre_ou_corps_sortant_refuse_avant_tout_appel(self):
+        """Refused before any git or gh call, --a-blanc included, with the reason of the outgoing-text check."""
+        self.bee("prendre", "miniz-0099", "--utilisateur", "alice")
+        avant = git(self.dossier, "rev-parse", "HEAD")
+        with mock.patch.object(bee, "executer", side_effect=AssertionError("git or gh called")):
+            for nom, (texte, raison) in self.SORTANTS_REFUSES.items():
+                for options in (["--titre", texte], ["--titre", "Réservation miniz-0099", "--corps", texte]):
+                    for a_blanc in ([], ["--a-blanc"]):
+                        with self.subTest(nom=nom, options=options[::2], a_blanc=a_blanc):
+                            code, sortie = self.bee("publier", *options, *a_blanc)
+                            self.assertEqual(code, 1, sortie)
+                            self.assertIn(f"{'corps' if '--corps' in options else 'titre'} : ", sortie)
+                            self.assertIn(raison, sortie)
+        code, sortie = self.bee("publier", "--titre", "Merci @octocat", "--intervalle", "0")  # the real thing, real git
+        self.assertEqual(code, 1, sortie)
+        self.assertIn("commandements 8 et 13", sortie)
+        self.assertFalse(self.journal.exists(), "aucun appel à gh")
+        self.assertEqual((git(self.dossier, "rev-parse", "HEAD"), git(self.dossier, "branch").split()), (avant, ["*", "main"]))
+        self.assertNotIn("bee/", git(self.dossier, "ls-remote", "--heads", "origin"))
+
+    def test_titre_et_corps_honnetes_passent(self):
+        corps = ("Réservation de miniz-0099 (registre #12, GH-12, Bee-ruche/minizBee#3, Bee-ruche/minizBee@a5c3785, "
+                 "https://github.com/Bee-ruche/registre/pull/53, https://bee-ruche.github.io/registre/).\n\n"
+                 "Lu dans outils/bee.py et docs/croissance.md ; `gh api user --jq .login`.\n```\ngh repo fork Bee-ruche/registre\n```")
+        self.bee("prendre", "miniz-0099", "--utilisateur", "alice")
+        with mock.patch.object(bee, "texte_sortant_refuse", wraps=bee.texte_sortant_refuse) as controle:
+            code, texte = self.bee("publier", "--titre", "Réservation miniz-0099", "--corps", corps, "--a-blanc")
+            self.assertEqual(code, 0, texte)
+            code, texte = self.bee("publier", "--titre", "Réservation miniz-0099", "--corps", corps, "--intervalle", "0")
+            self.assertEqual(code, 0, texte)
+        # The outgoing-text check itself, reused (no copy): once for the title, once for the body, under the hive's organisation.
+        appels = [c.args for c in controle.call_args_list if len(c.args) == 4]
+        self.assertEqual(appels, [("Réservation miniz-0099", "titre", 256, "Bee-ruche"), (corps, "corps", 8000, "Bee-ruche")] * 2)
+        self.assertIn(f"body={corps}", self.journal.read_text(encoding="utf-8"))
+
+    def test_textes_de_la_revue_refuses_dans_le_titre_et_le_corps(self):
+        """No code skipping, entities decoded, raw and NFKC forms read, only the GitHub owner Bee-ruche inside; honest texts pass.
+        Invitations and other outgoing texts keep their check (no organisation)."""
+        for quoi, maximum in (("titre", 256), ("corps", 8000)):
+            for groupe, textes in {**self.REVUE_REFUSES, **self.SECONDE_REVUE_REFUSES}.items():
+                for texte in textes:
+                    with self.subTest(quoi=quoi, groupe=groupe, texte=texte):
+                        self.assertIn("ce texte sort de la ruche",  # (commandements 8 et 13), or a hidden character
+                                      bee.texte_sortant_refuse(texte, quoi, maximum, "Bee-ruche") or "accepté")
+            for texte in self.SORTANTS_HONNETES + self.SECONDE_REVUE_HONNETES:
+                with self.subTest(quoi=quoi, honnete=texte):
+                    self.assertIsNone(bee.texte_sortant_refuse(texte, quoi, maximum, "Bee-ruche"))
+        self.assertNotIn("a" * 81, bee.texte_sortant_refuse("@" + "a" * 200, "corps", 8000, "Bee-ruche"), "the echo is cut at 80")
+        self.assertIn("corps de 8001 caractères, au plus 8000", bee.texte_sortant_refuse("a" * 8001, "corps", 8000, "Bee-ruche"))
+        self.assertIsNone(bee.texte_sortant_refuse("Bonjour @octocat, voir amont-fictif/miniz#12.", "message", 1000))
+
+    def test_refus_nomme_le_mot_et_reference_demesuree(self):
+        """The refusal names the offending word and says why; a numeric reference too long for int() is refused, not a crash
+        (N3), and only a text that GitHub renders is decoded."""
+        refuse = lambda texte: bee.texte_sortant_refuse(texte, "corps", 8000, "Bee-ruche")  # noqa: E731
+        for texte, attendu in (("Voir upstream/repo\\#12.", "« upstream/repo#12 » renvoie à un dépôt hors de Bee-ruche"),
+                               ("[x](https:/upstream/repo)", "« https:/upstream/repo » n'a qu'une barre"),
+                               ("[x](//Bee-ruche/x)", "« ](//Bee-ruche/x » est un lien relatif"),
+                               ('<img srcset="/Bee-ruche/a.png">', "« srcset=\"/Bee-ruche/a.png » liste plusieurs adresses"),
+                               ("https://github.com/Bee-ruche/%2e%2e/upstream", "cache où il mène"),
+                               ("[ici](https://github.com/upstream/repo).", "« https://github.com/upstream/repo » mène hors de Bee-ruche")):
+            with self.subTest(texte=texte):
+                self.assertIn(attendu, refuse(texte))
+        self.assertIn("« /upstream/repo » est un lien relatif", refuse("[x][1]\n\n[1]: /upstream/repo"), "a definition names its target")
+        demesure = "&#" + "0" * 4400 + "64;upstream"
+        self.assertIn("référence de caractère démesurée", refuse(demesure))
+        self.assertNotIn("démesurée", bee.texte_sortant_refuse(demesure, "message", 8000) or "")  # not decoded: no crash
+
+    def test_donnee_personnelle_dans_chaque_lecture(self):
+        """An address split by a reference that a renderer shows as nothing, or as a hidden character, is refused: a hidden
+        character as when typed, a reference past U+10FFFF as personal data in the reading where it is dropped."""
+        for reference in ("&#1;", "&#0;", "&#127;", "&#128;", "&#xD800;", "&#x110000;"):
+            for texte in (f"bob@exa{reference}mple.com", f"bob@example{reference}.com", f"bob@{reference}example.com"):
+                with self.subTest(texte=texte):
+                    attendu = "une adresse de courriel" if reference == "&#x110000;" else "caractère invisible refusé"
+                    self.assertIn(attendu, bee.texte_sortant_refuse(texte, "corps", 8000, "Bee-ruche"))
+        self.assertIsNone(bee.texte_sortant_refuse("https://github.dev/Bee-ruche/registre, &#233;t&#233;", "corps", 8000, "Bee-ruche"))
+
+    def test_controle_encode_refuse_comme_le_caractere(self):
+        """An encoded control is refused as the typed one is (texte_recevable): a tab and a newline pass, a form feed, a carriage
+        return or any other control does not."""
+        for code in (0, 1, 8, 11, 12, 13, 27, 127, 128, 159):
+            for reference in (f"&#{code};", f"&#x{code:x};"):
+                with self.subTest(reference=reference):
+                    self.assertIn(f"caractère invisible refusé (U+{code:04X}",
+                                  bee.texte_sortant_refuse(f"bonjour{reference}monde", "corps", 8000, "Bee-ruche"))
+                    self.assertIsNotNone(bee.texte_recevable(f"bonjour{chr(code)}monde", "corps", 8000), "the typed one is refused too")
+        for reference in ("&#9;", "&#10;", "&#x9;", "&#xA;"):
+            with self.subTest(reference=reference):
+                self.assertIsNone(bee.texte_sortant_refuse(f"ids 1234{reference}5678", "corps", 8000, "Bee-ruche"))
+
 
 class TestFork(BaseTest):
     def setUp(self):
