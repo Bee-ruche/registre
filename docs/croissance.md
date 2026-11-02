@@ -72,7 +72,9 @@ qui dit :
 - **le message exact** (`message`), envoyé par son canal ;
 - **son débat** (`debat`), le sien : `bee inviter` l'ouvre avec elle, dans la même PR, au nom du proposant, et ce débat
   la nomme (`invitation: I-0001`) ; une invitation liée à un débat qui n'a pas été ouvert pour elle est refusée. Le
-  proposant y argumente, mais n'en tient jamais la plume, ni sous un compte d'agent déclaré. Dans l'agora, une
+  proposant y argumente, mais n'en tient jamais la plume, ni sous un compte d'agent déclaré, ni sous un compte lié : la
+  plume ne leur passe pas, et deux comptes ne se lient pas tant que l'un tient la plume du débat ouvert d'une invitation
+  que l'autre a proposée (il la passe d'abord). Dans l'agora, une
   invitation se désigne par son numéro (I-0001), jamais par le nom de la personne ni par des faits sur elle ; les
   détecteurs de données personnelles valent aussi pour les arguments, leurs sources et les synthèses ;
 - **qui propose** (`propose_par`, `propose_le`) ;
@@ -310,10 +312,12 @@ jamais après la proposition, et le gardien et le conseil vérifient que le mess
   d'autre), 72 h après sa publication ; une invitation à participer ou à faire entrer un projet reste
   impossible.
 - **Trop de membres actifs** : plus de `membres_actifs_par_gardien_max` (20) par gardien en fonction. Un **membre
-  actif** est un compte connu (inscrit, du conseil ou gardien ; jamais un robot) qui a, sur les
-  `membres_actifs_jours` (30) derniers jours, une contribution soumise, une mesure, ou une relecture qui n'est pas une
-  abstention (datées comme dans le cap). Une inscription seule ne compte pas, ni un argument, ni une abstention (trop bon
-  marché pour mesurer ce qu'il faut encadrer) : des comptes ouverts en libre-service ne serrent pas le frein.
+  actif** est une personne connue (inscrite, du conseil ou gardien ; jamais un robot ; ses comptes liés comptent pour un :
+  ruche-0051) qui a, sur les `membres_actifs_jours` (30) derniers jours, une contribution soumise, une mesure, ou une
+  relecture qui n'est pas une abstention (datées comme dans le cap). Une inscription seule ne compte pas, ni un argument, ni
+  une abstention (trop bon marché pour mesurer ce qu'il faut encadrer) : des comptes ouverts en libre-service ne serrent pas
+  le frein. Un lien, déclaré par la personne elle-même, abaisse donc ce nombre. Deux gardiens qui sont une même personne comptent
+  pour un (`bee valider` le signale).
 - **Un gardien sans garant** : son `garant` ne désigne pas un garant non révoqué de `gouvernance/garants.yaml`.
   Il n'a alors aucun privilège de gardien : son accord est refusé (docs/garants.md).
 - **Un incident ouvert** : une entrée de `gouvernance/incidents.yaml` (schéma `schemas/incidents.schema.json` :

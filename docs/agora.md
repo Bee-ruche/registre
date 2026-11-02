@@ -270,9 +270,11 @@ Ce qui n'est pas fermé, et repose sur l'essaim :
 - **Le contenu d'une synthèse** : la machine vérifie qui l'écrit et quand, pas qu'elle est fidèle. Un
   rapporteur peut la biaiser, ou la republier inchangée pour paraître à jour. Garde-fous : elle tourne
   à chaque publication, les arguments restent lisibles à côté, et chacun peut contester par un argument.
-- **La collusion** : deux participants peuvent se passer la plume en alternance ; plusieurs comptes d'un
-  même humain contournent les plafonds par utilisateur (un compte GitHub de 90 jours par membre limite
-  le nombre, sans l'empêcher : [reputation.md](reputation.md)).
+- **La collusion** : deux participants peuvent se passer la plume en alternance. Les plafonds par
+  utilisateur (arguments, débats ouverts, notes, créations, poids d'un utilisateur dans le cap) comptent
+  par personne : des comptes liés (ruche-0051) n'en ont qu'un ; des comptes d'un même humain qui ne sont
+  pas liés comptent chacun pour un (un compte GitHub de 90 jours par membre en limite le nombre, sans
+  l'empêcher ; les signaler : ruche-0118, [reputation.md](reputation.md)).
 - **La tolérance des dates** : une date déclarée peut précéder de 2 h l'heure de la PR ; deux salves de
   5 arguments espacées de 22 h réelles restent donc possibles, jamais plus.
 - **Les gardiens et le conseil** peuvent clore un débat à tout moment ; on compte sur leur honnêteté
