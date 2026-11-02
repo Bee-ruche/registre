@@ -663,6 +663,23 @@ def person_of(agents, login):
     return agents.get(login, login) if isinstance(login, str) else login
 
 
+def same_person(reg, a, b):
+    """ruche-0042: two logins are the same person: without case (meme_pseudo), a declared agent account counting as its person
+    (person_of), whatever the case it is written in."""
+    agents = {compte.casefold(): personne for compte, personne in reg.comptes_agents.items()}
+    return meme_pseudo(*(person_of(agents, x.casefold()) if isinstance(x, str) else x for x in (a, b)))
+
+
+def reproduces_for_r4(reg, mesure, auteur):
+    """ruche-0042: a measurement counts for R4 as another configuration's only if another person than the contribution's author
+    filed it (same_person), and it states its configuration (config.architecture), so that the reproduction can be checked. Without
+    an author to compare with, none counts."""
+    config = mesure.get("config")
+    return (isinstance(auteur, str) and bool(auteur.strip()) and isinstance(mesure.get("soumise_par"), str)
+            and not same_person(reg, mesure["soumise_par"], auteur)
+            and isinstance(config, dict) and isinstance(config.get("architecture"), str) and bool(config["architecture"].strip()))
+
+
 def engagements_de(reg, utilisateur):
     """R8 : réservations et inscriptions en parallèle de l'utilisateur, tous agents confondus : [(tâche, genre)]."""
     resultat = []
@@ -5265,31 +5282,43 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
             natures.append("vote")
             exiger(pathlib.PurePosixPath(chemin).stem == auteur, f"{chemin} : on ne vote qu'en son nom ({auteur})")
             exiger(known, f"{chemin} : {auteur} doit d'abord s'inscrire (bee inscrire)")
-            # Course (R3) : un participant engagé ne vote pas sur une concurrente, ni ne modifie ou ne retire un vote
-            # qu'il y avait déposé (le dossier du vote nomme son sujet, même pour une suppression).
+            # Course (R3) : un participant engagé ne vote pas sur une concurrente, ni ne modifie un vote qu'il y avait déposé (le
+            # dossier du vote nomme son sujet).
             if partie[1] in reg.enregistrements:
                 exiger(auteur not in concurrents_de(reg, reg.enregistrements[partie[1]][1]),
                        f"{chemin} : {auteur} est en course sur la même tâche que {partie[1]} : on ne vote pas sur une concurrente, "
                        "et on ne change ni ne retire son vote tant qu'on est en course (commandement 3)")
-            if statut_git != "D" and exiger(isinstance(nouveau, dict), f"{chemin} : fichier illisible"):
+            if statut_git == "D":  # ruche-0042: whoever asks, before or after the vote closes; its voter replaces it while open
+                natures.append("gouvernance")
+                exiger(False, f"{chemin} : a published vote is never withdrawn (commandment 10) ; while its vote is open, bee voter replaces it")
+            elif exiger(isinstance(nouveau, dict), f"{chemin} : fichier illisible"):
                 exiger(nouveau.get("votant") == auteur, f"{chemin} : votant déclaré différent de {auteur}")
                 if "motif" in nouveau:
                     probleme = texte_recevable(nouveau.get("motif"), f"{chemin} : motif du vote", config_notes(reg)["texte_max"])
                     exiger(probleme is None, f"{probleme} (notes.texte_max)")
                 probleme = probleme_date_pr(nouveau.get("le"), f"{chemin} : le", instant)
                 exiger(probleme is None, f"{probleme} : relancez bee voter")
-                sujet = nouveau.get("sujet", "")
+                sujet = str(nouveau.get("sujet", ""))
                 if ID_PROPOSITION.match(sujet) and sujet in reg.propositions:
                     resultat = depouiller_proposition(reg, sujet, niveaux, instant)
                     exiger(not resultat["terminee"] and reg.propositions[sujet][1].get("statut") == "ouverte",
                            f"{chemin} : le vote sur {sujet} est clos")
+                # ruche-0042: a contribution's vote closes when it leaves review, for everyone; the folder's and the file's subject.
+                for cid_vote in [c for c in dict.fromkeys((partie[1], sujet)) if c in reg.enregistrements]:
+                    statut = enr_vote.get("statut") if isinstance(enr_vote := reg.enregistrements[cid_vote][1], dict) else None
+                    exiger(statut == "en_relecture", f"{chemin} : le vote sur {cid_vote} est clos : la contribution n'est plus en "
+                                                     f"relecture (statut : {statut})")
             continue
 
         if partie[0] == "mesures" and len(partie) == 3:
             natures.append("mesure")
             exiger(pathlib.PurePosixPath(chemin).stem == auteur, f"{chemin} : on ne dépose une mesure qu'en son nom ({auteur})")
             exiger(known, f"{chemin} : {auteur} doit d'abord s'inscrire (bee inscrire)")
-            if statut_git != "D" and exiger(isinstance(nouveau, dict), f"{chemin} : fichier illisible"):
+            if statut_git != "A":  # ruche-0042: in addition only, whoever asks (a change of content or of mode, a removal, a move)
+                natures.append("gouvernance")
+                exiger(False, f"{chemin} : a published measurement is neither changed nor withdrawn (commandment 10) : it stays as "
+                              "bee enregistrer-mesure wrote it")
+            elif exiger(isinstance(nouveau, dict), f"{chemin} : fichier illisible"):
                 exiger(nouveau.get("soumise_par") == auteur, f"{chemin} : soumise_par déclaré différent de {auteur}")
                 probleme = probleme_textes_libres({k: v for k, v in nouveau.items() if k != "motif"}, chemin, TEXTE_COURT_MAX)
                 exiger(probleme is None, f"{probleme} (champs descriptifs d'une mesure)")
@@ -5299,7 +5328,7 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
                 exiger(nouveau.get("contribution") == partie[1], f"{chemin} : la mesure doit être rangée sous sa contribution")
                 exiger(nouveau.get("contribution") in reg.enregistrements, f"{chemin} : contribution « {nouveau.get('contribution')} » inconnue")
                 probleme = probleme_date_pr(nouveau.get("le"), f"{chemin} : le", instant)
-                exiger(probleme is None, f"{probleme} : relancez bee enregistrer-mesure")
+                exiger(probleme is None, f"{probleme} : delete {chemin}, then rerun bee enregistrer-mesure")
             continue
 
         if partie[0] == "membres" and len(partie) == 2:
@@ -6372,6 +6401,8 @@ def cmd_voter(args):
         if args.utilisateur in concurrents_de(reg, reg.enregistrements[args.sujet][1]):
             raise ErreurBee(f"{args.utilisateur} est en course sur la même tâche que {args.sujet} : on ne vote pas sur une "
                             "concurrente (commandement 3)")
+        if (statut := reg.enregistrements[args.sujet][1].get("statut")) != "en_relecture":  # ruche-0042, as verifier-pr
+            raise ErreurBee(f"le vote sur {args.sujet} est clos : la contribution n'est plus en relecture (statut : {statut})")
     elif args.sujet in reg.propositions:
         resultat = depouiller_proposition(reg, args.sujet, calculer_niveaux(reg), maintenant())
         if resultat["terminee"] or reg.propositions[args.sujet][1].get("statut") != "ouverte":
@@ -7597,6 +7628,9 @@ def cmd_enregistrer_mesure(args):
     reg = Registre(args.registre)
     reg.exiger_membre(args.utilisateur)
     reg.enregistrement(args.contribution)  # lève une erreur si la contribution est inconnue
+    if (deja := reg.racine / "mesures" / args.contribution / f"{args.utilisateur}.yaml").exists():  # ruche-0042, as verifier-pr
+        raise ErreurBee(f"{reg.rel(deja)} already exists : one measurement per person and per contribution, never changed once "
+                        "published (commandment 10) ; if this file is not published yet, delete it, then rerun")
     with open(args.ab, encoding="utf-8") as f:
         brut = json.load(f)
     machine = brut.get("machine") or {}
@@ -7788,8 +7822,9 @@ def raisons_r3(reg, cid, bilan=None):
         gain_inst = ((v.get("instructions") or {}).get(proxy) or {}).get("gain") if proxy else None
 
         def reproduit(minimum):
-            """Mesures d'autres configurations (pas de l'auteur) qui voient le gain au chronomètre, au-delà du bruit."""
-            return [m for _, m in reg.mesures if m.get("contribution") == cid and not meme_pseudo(m.get("soumise_par"), auteur)
+            """Mesures d'autres configurations (une autre personne que l'auteur, qui dit sa configuration : reproduces_for_r4) qui
+            voient le gain au chronomètre, au-delà du bruit."""
+            return [m for _, m in reg.mesures if m.get("contribution") == cid and reproduces_for_r4(reg, m, auteur)
                     and ((m.get("metriques") or {}).get(metrique) or {}).get("au_dela_du_bruit")
                     and (((m.get("metriques") or {}).get(metrique) or {}).get("gain") or 0) > minimum]
 
