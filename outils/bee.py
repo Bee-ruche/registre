@@ -3721,7 +3721,7 @@ def decoder_url(texte):
 CHAINE_CHIFFRES = re.compile(r"(?<!\d)(?:\+\s?)?\d+(?:[\W_]{1,3}\d+)*")
 SEPARATEUR_DEGUISE = re.compile(r"(?<=\d)[^\w,;:]{4,}(?=\d)|(?<=\d)[^\w,;:]{1,3}[^\W\d_]{1,7}[^\w,;:]{1,3}(?=\d)")
 MOT_TELEPHONE = re.compile(r"(?i)\b(?:t[ée]l(?:[ée]phone)?|phone|mobile|portable|gsm|whats ?app|sms|fax)\b")
-HORS_NUMERO = re.compile(r"0[xX][0-9a-fA-F]+|(?<![^\W_])(?=[0-9a-fA-F]*[a-fA-F])(?=[0-9a-fA-F]*\d)(?![0-9a-fA-F]*?\d{9})[0-9a-fA-F]{7,}(?![^\W_])|(?<!\d)(?<!\d[^\w\n])"
+HORS_NUMERO = re.compile(r"0[xX][0-9a-fA-F]+|(?<![^\W_])(?=[0-9a-fA-F]*[a-fA-F])(?=[0-9a-fA-F]*\d)(?![0-9a-fA-F]*?\d{9})(?<!\d[\W_])(?<!\d[\W_]{2})(?<!\d[\W_]{3})[0-9a-fA-F]{7,}(?![^\W_])(?![\W_]{1,3}\d)|(?<!\d)(?<!\d[^\w\n])"
                          r"(?<!\d[^\w\n]{2})(?<!\d[^\w\n]{3})(?<!-)\d{4}-[01]\d-[0-3]\d(?:T\d\d:\d\d(?::\d\d(?:\.\d+)?)?(?:Z|[+-]\d\d:?\d\d)?)?(?![^\w\n]{0,3}\d)")
 TECHNIQUE = re.compile(r"(?<![\d.,])\d{1,3}(?:\.\d{1,3}){3}(?![\d.,])|(?<![\d.,])\d+[.,]\d+(?![\d.,])|(?<![\d-])\d{4}-[01]\d-[0-3]\d(?:T[\d:.]+(?:Z|[+-]\d\d:?\d\d)?)?(?![\d-])")
 
@@ -3749,7 +3749,7 @@ def telephone(texte, technique=False):
         if sum(longueurs) < 9:
             return 0
         colle = re.search(r"[A-Za-z0-9]*$", x[max(0, debut - 64):debut])[0] + re.match(r"[A-Za-z0-9]*", x[debut + len(chaine):][:64])[0]
-        colle = re.fullmatch(r"[0-9a-fA-F]*[a-fA-F][0-9a-fA-F]*", colle)  # glued to a word of hex letters only: doubtful at most
+        colle = len(groupes) == 1 and re.fullmatch(r"[0-9a-fA-F]*[a-fA-F][0-9a-fA-F]*", colle)  # one block in a hex word: doubtful at most
         if MOT_TELEPHONE.search(x[max(0, debut - 25):debut]) or not liste and set("".join(groupes)) - {"0", "1"} and (
                 chaine[0] == "+" and (uniforme or longueurs[-3:] == [3, 3, 4]) or longueurs[-3:] == [3, 3, 4]
                 or not re.fullmatch(r"[^\W\d_]-", x[max(0, debut - 2):debut]) and (re.match(r"00[1-9]", chaine) or uniforme and re.match(r"0[1-9]", chaine))):
@@ -3759,6 +3759,9 @@ def telephone(texte, technique=False):
                      or not uniforme and "." in "".join(seps)) else 2
     t = re.sub(r"[^\x00-\x7f]", lambda c: str(int(n)) if (n := unicodedata.numeric(c[0], -1)) in range(10) else c[0], texte)
     t = HORS_NUMERO.sub(" elisions ", re.sub(r"(?<=\d)[OoIl](?![^\W\d_])|(?<![^\W\d_])[OoIl](?=\d)", lambda c: "0" if c[0] in "Oo" else "1", t))
+    if technique:  # an exact digit alphabet (a hex table) is no number in technical text, unless a phone word precedes it
+        t = re.sub(r"(?<![^\W_])0123456789(?:abcdef|ABCDEF)?(?![^\W_])", lambda m: m[0] if MOT_TELEPHONE.search(
+            t[max(0, m.start() - 25):m.start()]) else " elisions ", t)
     lu, entiers = SEPARATEUR_DEGUISE.sub(" - ", t), [max(g, 2) for d, c in chaines(t)
                                                   if (g := grade(t, d, c)) == 3 or g and re.match(r"\+|0[1-9]", c) and not re.search(r"[,;] |:", c)]
     t = TECHNIQUE.sub(" elisions ", t) if technique else t  # a decimal or an IPv4 address goes, never a number read in full above

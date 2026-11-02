@@ -10412,7 +10412,8 @@ TECHNIQUES_0047 = (
     "It is a minor, backwards compatible change.", "The bump is a minor; see CHANGELOG.", "This release is a minor (no API change).",
     "C'est une mineure.", "Add a date of birth field to the form parser.", "mean 0.123456789 ms", "ip 192.168.1.100", "2026-10-27 - 2026-11-02",
     "1 2 3 4 5 6 7 8 9", "il y a 10 ans", "Church encoding", "the left-wing of the tree", "le champ date of birth est validé",
-    "the CI takes under 18 minutes", "a block of under 18 bits", "load under 18 %",
+    "the CI takes under 18 minutes", "a block of under 18 bits", "load under 18 %", 'static const char hex[] = "0123456789abcdef";',
+    'HEX = "0123456789ABCDEF"', "digits = '0123456789'",
     "The estimate is conservative.", "Cache entries aged 10 minutes are dropped under 18 ms.", "Fixes:\n- 145\n- 146\n- 147",
     "Mesures:\n12.5\n13.1\n12.9\n13.4", "Dates\n2026-11-02\n2026-11-03", "1\n2\n3\n4\n5\n6\n7\n8\n9", "fails at bee.py and at main.rs",
     "lignes 1163-1174 et 1471-1477 de miniz_tdef.c", "(l. 1120-1123) 6,6 %", "Python 3.10, 3.11, 3.12 et 3.13",
@@ -10435,7 +10436,7 @@ SENSIBLES_DOUTEUSES_0047 = ("Il soigne un cancer.", "Treated for depression last
 # Technical numbers that look like a number from afar: read by a human, never refused.
 DOUTES_TECHNIQUES_0047 = ("bits 0101 1100 0011 1010", "01101010 10011100", "code lengths 12 15 17 20 22", "10 11 12 13 14 15",
                           "+120 -45 +300 -12", "+1234 -5678 +9", "10.20.30.40.50", "134 164 249 instructions", "Joignable au 612 345 678.",
-                          'static const char hex[] = "0123456789abcdef";', "Cafe0612345678", "e0612345678", "0612345678e", "0612 345.678")
+                          "Cafe0612345678", "e0612345678", "0612345678e", "0612 345.678")
 # The adversarial review's shapes (fictional): refused in every free text.
 REVUE_0047 = ("alice.martin[@]example[.]org", "alice.martin&#64;example.org", "alice.martin&amp;#64;example.org", "alice.martin@example,org",
               "alice.martin@example;org", "alice.martin@example:org", "alice.martin@example~org", "alice.martin at example,org",
@@ -10444,7 +10445,8 @@ REVUE_0047 = ("alice.martin[@]example[.]org", "alice.martin&#64;example.org", "a
               "\u2776\u2777\u2778 \u2779\u277a\u277b \u277c\u277d\u277e\u2776", "\u96f6\u516d \u4e00\u4e8c \u4e09\u56db \u4e94\u516d \u4e03\u516b",
               "Contact Phone0612345678 for details", "Fax0612345678", "Mobile06 12 34 56 78", "ID0612345678", "joignez-la au Phone0612345678 svp.",
               "12 oak rd", "12 high st", "12 av Foch", "12 oak drive", "PO Box 1234", "Rue de la Paix 12", "tél. 06.12345678", "+33.612345678",
-              "0612.345678", "+44.2079460958", "tel 612,5551234", "Phone 0.612345678", "tel 0612345678a")
+              "0612.345678", "+44.2079460958", "tel 612,5551234", "Phone 0.612345678", "tel 0612345678a", "612-555-1234abc",
+              "Contact: 612 555 1234abc", "tel +44 20 7946 0958abc", "06 12 34 5678abc", "tel 0123456789")
 
 
 def variantes_courriel_0047():
@@ -10607,7 +10609,8 @@ class TestPersonalDataEveryFreeText(unittest.TestCase):
             corps = groupes[0] + "".join(hasard.choice(separateurs) + g for g in groupes[1:])
             formes.append(hasard.choice(prefixes) + corps + hasard.choice(("", " for details", ".", "x", "abc", " ms", " %", "\n12", " 2026")))
         formes += ["Contact Phone0612345678 for details", "Fax0612345678", "Mobile06 12 34 56 78", "ID0612345678", "2026-11-02 10:00:00 12",
-                   "Cafe0612345678", "e0612345678", "0612345678e", "tel 0612345678a", "tél. 06.12345678", "0612 345.678"]
+                   "Cafe0612345678", "e0612345678", "0612345678e", "tel 0612345678a", "tél. 06.12345678", "0612 345.678",
+                   "612-555-1234abc", "Contact: 612 555 1234abc", "tel +44 20 7946 0958abc", "06 12 34 5678abc"]
         hexa = re.compile(r"0[xX]|(?<![^\W_])(?=[0-9a-fA-F]*[a-fA-F])(?=[0-9a-fA-F]*\d)(?![0-9a-fA-F]*?\d{9})[0-9a-fA-F]{7,}(?![^\W_])")
         for forme in formes:
             if numero_main_0047(lu := bee.decoder_url(forme)) and not hexa.search(lu) and bee.texte_sortant_refuse(forme, "corps", 8000, "Bee-ruche") is None:
@@ -10671,7 +10674,8 @@ class TestPersonalDataGate(BaseTest):
     def test_a_task_note_is_checked(self):
         for textes in (["Pour en parler : alice at example dot org."], ["Joignable au 06 dash 12 dash 34 dash 56 dash 78."],
                        ["Pour en parler, alice at", "example dot org, le soir."], ["Elle est malade depuis mars."],
-                       ["joignez-la au Phone0612345678 svp."], ["Écrire à alice.martin[@]example[.]org."]):
+                       ["joignez-la au Phone0612345678 svp."], ["Écrire à alice.martin[@]example[.]org."],
+                       ["Joignable : tel +44 20 7946 0958abc svp."]):
             with self.subTest(textes=textes):
                 code, texte = self.noter(*textes)
                 self.assertEqual(code, 1, texte)
