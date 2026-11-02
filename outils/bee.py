@@ -896,7 +896,7 @@ def depart_du_titulaire(reg, tid, paralleles):
 
 DOSSIERS_GESTES = ("taches", "contributions", "votes", "mesures", "propositions", "debats")
 # Seuls ces chemins sont relus dans l'historique : ni guillemet, ni espace, ni saut de ligne (git cat-file --batch).
-CHEMIN_HISTORIQUE = re.compile(r"^(?:taches|contributions|votes|mesures|propositions|debats)/[A-Za-z0-9._/-]+\.yaml$")
+CHEMIN_HISTORIQUE = re.compile(r"^(?:taches|contributions|votes|mesures|propositions|debats)/[A-Za-z0-9._/-]+\.yaml\Z")
 
 
 class _ChargeurHistorique(getattr(yaml, "CSafeLoader", yaml.SafeLoader)):
@@ -925,6 +925,22 @@ def _git_brut(depot, *arguments, entree=None):
     return resultat.returncode, resultat.stdout
 
 
+def champs_git(sortie, arguments, remplacer=False):
+    """ruche-0095: the fields of a git listing asked with -z (its output, in bytes), each path as it is in the repository,
+    never quoted; an output that is not NUL-terminated is refused (ErreurBee). A path that is not UTF-8 text is refused too,
+    the path shown escaped; with `remplacer` (the readers of main's tree and history, which a refusal would block for good),
+    it is read with each undecodable byte written \\xNN instead, so that it equals no path written by bee."""
+    if sortie and not sortie.endswith(b"\0"):
+        raise ErreurBee(f"git {' '.join(arguments)} : not a -z listing")
+    try:
+        return sortie.decode("utf-8").split("\0")[:-1]
+    except UnicodeDecodeError as e:
+        if remplacer:
+            return sortie.decode("utf-8", "backslashreplace").split("\0")[:-1]
+        illisible = sortie[sortie.rfind(b"\0", 0, e.start) + 1:sortie.find(b"\0", e.start)].decode("utf-8", "backslashreplace")
+        raise ErreurBee(f"git {' '.join(arguments)} : the path {illisible!r} is not UTF-8 text: refused (rename it)") from None
+
+
 def historique_disponible(racine):
     """Vrai si `racine` est la racine d'un dépôt git complet : ni un clone superficiel (son historique s'arrête au dernier
     commit), ni un dossier sans git ou dans le dépôt d'un autre. Sans cela, l'historique ne dit pas quand un geste est arrivé."""
@@ -947,7 +963,7 @@ def commits_premier_parent(racine, ref, *chemins, filtre=None):
     if code:
         return []
     commits = []
-    for bloc in sortie.decode("utf-8").strip("\0").split("\0\0"):  # -z: "\0<sha> <instant>\0\n<path>\0<path>\0" per commit
+    for bloc in "\0".join(champs_git(sortie, ("log",), remplacer=True)).strip("\0").split("\0\0"):  # "\0<sha> <instant>\0\n<path>\0…"
         lignes = bloc.replace("\0\n", "\0", 1).split("\0")
         if not lignes:
             continue
@@ -962,8 +978,9 @@ def commits_premier_parent(racine, ref, *chemins, filtre=None):
 
 def lire_versions(racine, demandes):
     """Contenu de fichiers à des révisions données, en un seul appel (git cat-file --batch) : {(sha, chemin): texte, ou None
-    si le fichier n'existe pas à cette révision ou n'est pas du texte UTF-8}. Seuls les chemins de CHEMIN_HISTORIQUE sont lus."""
-    demandes = [d for d in dict.fromkeys(demandes) if CHEMIN_HISTORIQUE.match(d[1])]
+    si le fichier n'existe pas à cette révision ou n'est pas du texte UTF-8}. Seuls les chemins de CHEMIN_HISTORIQUE sont lus.
+    ruche-0095: never a request that holds a newline (cat-file --batch reads one per line: it would shift every answer after it)."""
+    demandes = [d for d in dict.fromkeys(demandes) if CHEMIN_HISTORIQUE.match(d[1]) and "\n" not in f"{d[0]}:{d[1]}"]
     resultat = {d: None for d in demandes}
     if not demandes:
         return resultat
@@ -1087,7 +1104,7 @@ class DatesDeFusion:
         if code:
             self.disponible = False
             return
-        modifies = {ligne[3:] for ligne in sortie.decode("utf-8").split("\0")[:-1]}
+        modifies = {ligne[3:] for ligne in champs_git(sortie, ("status",), remplacer=True)}
         par_fichier = defaultdict(list)
         for sha, moment, chemins in commits_premier_parent(racine, "HEAD", *DOSSIERS_GESTES):
             for chemin in chemins:
@@ -2071,11 +2088,25 @@ def verifier_manifeste(reg, donnees, origine="CONTRIBUTION.yaml", utilisateur=No
 # Vérification d'une pull request sur le registre (aucun code de la PR n'est exécuté)
 # --------------------------------------------------------------------------
 
-def git(depot, *arguments):
-    resultat = subprocess.run(["git", "-C", str(depot), *arguments], capture_output=True)  # only a -z listing, read as bytes
-    if resultat.returncode != 0 or (champs := resultat.stdout.decode("utf-8").split("\0")).pop():  # a path not UTF-8 raises
-        raise ErreurBee(f"git {' '.join(arguments)} : {os.fsdecode(resultat.stderr).strip() or 'not a -z listing'}")
-    return list(zip(champs[::2], champs[1::2], strict=True)) if {"--name-status", "--raw"} & set(arguments) else champs
+def git(depot, *arguments, remplacer=False):
+    """ruche-0095: a git listing asked with -z, read as bytes: its fields (champs_git). With --name-status or --raw, its entries
+    by their status: (status or « :<modes> <shas> <status> », path), or (…, old path, new path) for a rename or a copy (R, C);
+    any other status is refused, never paired blindly."""
+    resultat = subprocess.run(["git", "-C", str(depot), *arguments], capture_output=True)
+    if resultat.returncode != 0:
+        raise ErreurBee(f"git {' '.join(arguments)} : {os.fsdecode(resultat.stderr).strip()}")
+    champs = champs_git(resultat.stdout, arguments, remplacer)
+    if not {"--name-status", "--raw"} & set(arguments):
+        return champs
+    entrees, suite = [], iter(champs)
+    for tete in suite:
+        statut = tete.rpartition(" ")[2]
+        nombre = 1 if statut in ("A", "M", "D", "T") else 2 if statut[:1] in ("R", "C") and statut[1:].isdigit() else 0
+        chemins = [next(suite, None) for _ in range(nombre)]
+        if not nombre or None in chemins:
+            raise ErreurBee(f"git {' '.join(arguments)} : unexpected entry {tete!r}: refused")
+        entrees.append((tete, *chemins))
+    return entrees
 
 
 def lire_yaml_ref(depot, ref, chemin):
@@ -2098,21 +2129,21 @@ def correspond(chemin, motifs):
 
 PSEUDO_MOTIF = r"[A-Za-z0-9][A-Za-z0-9-]{0,38}"
 ID_TACHE_MOTIF = r"[a-z0-9]+(?:-[a-z0-9]+)*-[0-9]{4}"
-CHEMIN_TACHE = re.compile(r"^taches/(?P<projet>[a-z0-9]+(?:-[a-z0-9]+)*)/(?P=projet)-(?P<n>[0-9]{4})\.yaml$")
-CHEMIN_PROPOSITION = re.compile(r"^propositions/P-(?P<n>[0-9]{4})\.yaml$")
-CHEMIN_INVITATION = re.compile(r"^invitations/I-(?P<n>[0-9]{4})\.yaml$")
+CHEMIN_TACHE = re.compile(r"^taches/(?P<projet>[a-z0-9]+(?:-[a-z0-9]+)*)/(?P=projet)-(?P<n>[0-9]{4})\.yaml\Z")
+CHEMIN_PROPOSITION = re.compile(r"^propositions/P-(?P<n>[0-9]{4})\.yaml\Z")
+CHEMIN_INVITATION = re.compile(r"^invitations/I-(?P<n>[0-9]{4})\.yaml\Z")
 CHEMIN_NON_CONTACT = "invitations/ne-plus-contacter.yaml"
 # Dossier → (forme attendue de ses fichiers, pour le message ; motif). Les débats ont leurs propres contrôles (verifier_debat).
 FICHIERS_LIBRE_SERVICE = {
     "taches": ("taches/<projet>/<projet>-<nnnn>.yaml", CHEMIN_TACHE),
-    "contributions": ("contributions/<projet>/<tâche>-c<n>.yaml", re.compile(rf"^contributions/[a-z0-9]+(?:-[a-z0-9]+)*/{ID_TACHE_MOTIF}-c[0-9]+\.yaml$")),
+    "contributions": ("contributions/<projet>/<tâche>-c<n>.yaml", re.compile(rf"^contributions/[a-z0-9]+(?:-[a-z0-9]+)*/{ID_TACHE_MOTIF}-c[0-9]+\.yaml\Z")),
     "votes": ("votes/<contribution ou P-nnnn>/<pseudo>.yaml",
-              re.compile(rf"^votes/(?:{ID_TACHE_MOTIF}-c[0-9]+|P-[0-9]{{4}})/{PSEUDO_MOTIF}\.yaml$")),
-    "mesures": ("mesures/<contribution>/<pseudo>.yaml", re.compile(rf"^mesures/{ID_TACHE_MOTIF}-c[0-9]+/{PSEUDO_MOTIF}\.yaml$")),
-    "membres": ("membres/<pseudo>.yaml", re.compile(rf"^membres/{PSEUDO_MOTIF}\.yaml$")),
+              re.compile(rf"^votes/(?:{ID_TACHE_MOTIF}-c[0-9]+|P-[0-9]{{4}})/{PSEUDO_MOTIF}\.yaml\Z")),
+    "mesures": ("mesures/<contribution>/<pseudo>.yaml", re.compile(rf"^mesures/{ID_TACHE_MOTIF}-c[0-9]+/{PSEUDO_MOTIF}\.yaml\Z")),
+    "membres": ("membres/<pseudo>.yaml", re.compile(rf"^membres/{PSEUDO_MOTIF}\.yaml\Z")),
     "propositions": ("propositions/P-<nnnn>.yaml", CHEMIN_PROPOSITION),
     "invitations": (f"invitations/I-<nnnn>.yaml et {CHEMIN_NON_CONTACT}",
-                    re.compile(rf"^(?:{CHEMIN_INVITATION.pattern[1:-1]}|{re.escape(CHEMIN_NON_CONTACT)})$")),
+                    re.compile(rf"^(?:{CHEMIN_INVITATION.pattern[1:-2]}|{re.escape(CHEMIN_NON_CONTACT)})\Z")),
 }
 
 
@@ -2124,7 +2155,7 @@ def numero_suivant(numeros):
 
 def numeros_dans(reg, ref, dossier, motif):
     """Numéros (groupe « n » de `motif`) des fichiers de `dossier` à la révision `ref`."""
-    return [int(m["n"]) for nom in git(reg.racine, "ls-tree", "-z", "--name-only", ref, dossier.rstrip("/") + "/")
+    return [int(m["n"]) for nom in git(reg.racine, "ls-tree", "-z", "--name-only", ref, dossier.rstrip("/") + "/", remplacer=True)
             if (m := motif.match(nom))]
 
 
@@ -2256,7 +2287,7 @@ def creations_recentes(reg, ref, dossier, utilisateur, instant):
     if historique_disponible(reg.racine):
         code, sortie = _git_brut(reg.racine, "ls-tree", "-z", "-r", "--name-only", ref, dossier + "/")
         if not code:
-            publies = set(sortie.decode("utf-8").split("\0")[:-1])
+            publies = set(champs_git(sortie, ("ls-tree",), remplacer=True))
             recents = {c for _, moment, chemins in commits_premier_parent(reg.racine, ref, dossier, filtre="A")
                        if moment > debut for c in chemins}
             return sum(1 for c in siens if c in recents or c not in publies)
@@ -2527,7 +2558,7 @@ def contributions_de_la_pr(reg, base, tete):
 
 ID_DEBAT = re.compile(r"^D-[0-9]{4}$")
 ID_ARGUMENT = re.compile(r"^A[1-9][0-9]*$")
-CHEMIN_DEBAT = re.compile(r"^debats/(D-[0-9]{4})\.yaml$")
+CHEMIN_DEBAT = re.compile(r"^debats/(D-[0-9]{4})\.yaml\Z")
 POSITIONS = ("pour", "contre", "question", "fait")
 ISSUES = ("proposition", "tache", "decision", "sans_suite")
 # Ordre des clés à l'écriture : les arguments en dernier, pour qu'un argument ajouté soit un ajout en fin de fichier.
@@ -4485,7 +4516,7 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
     debats_ajoutes = sorted(c for s, c in changements if s == "A" and CHEMIN_DEBAT.match(c) and c not in liens)
     debats_attendus = {}
     if debats_ajoutes:
-        numeros = [int(m[1][2:]) for n in git(reg.racine, "ls-tree", "-z", "--name-only", base, "debats/")
+        numeros = [int(m[1][2:]) for n in git(reg.racine, "ls-tree", "-z", "--name-only", base, "debats/", remplacer=True)
                    if (m := CHEMIN_DEBAT.match(n))]
         debats_attendus = {c: f"debats/D-{max(numeros, default=0) + 1 + k:04d}.yaml" for k, c in enumerate(debats_ajoutes)}
     # Numérotation (T5, T6) : une tâche ou une proposition de règle ajoutée porte le numéro qui suit le plus grand de la
@@ -4518,7 +4549,7 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
     # d'invitation ne passe ; le conseil répare d'abord (hors du libre-service, en reprenant la dernière version lisible).
     illisibles_base = []
     if any(c.startswith("invitations/") for _, c in changements):
-        for nom in git(reg.racine, "ls-tree", "-z", "-r", "--name-only", base, "--", "invitations/"):
+        for nom in git(reg.racine, "ls-tree", "-z", "-r", "--name-only", base, "--", "invitations/", remplacer=True):
             if not (CHEMIN_INVITATION.match(nom) or nom == CHEMIN_NON_CONTACT):
                 continue
             try:
@@ -6934,7 +6965,7 @@ def cmd_verifier_fork(args):
     reg = Registre(args.registre)
     problemes, total, avertissements = verifier_fork(reg, args.depot, args.base, args.tete, args.tache, args.auteur)
     for a in avertissements:
-        print(f"⚠ {a}")
+        print(f"⚠ {montrer(a)}")
     for p in problemes:
         print(f"✗ {montrer(p)}")
     if problemes:
@@ -7870,7 +7901,7 @@ def cmd_publier(args):
         print("✓ à blanc : les fichiers relèvent du libre-service et le registre reste valide. Rien n'a été écrit ni poussé.")
         print(f"  Dépôt : {amont} — PR « {args.titre} »")
         for c in changements:
-            print(f"  - {c}")
+            print(f"  - {montrer(c)}")
         print("  Sans --a-blanc, bee publierait : branche, commit, poussée, PR, attente de la fusion automatique.")
         return 0
     branche_initiale = executer(["git", "rev-parse", "--abbrev-ref", "HEAD"], depot).stdout.strip()
@@ -7882,7 +7913,7 @@ def cmd_publier(args):
         branche, n = f"{racine_branche}-{n}", n + 1
     executer(["git", "switch", "-c", branche], depot)
     try:
-        executer(["git", "add", "--", *changements], depot)
+        executer(["git", "--literal-pathspecs", "add", "--", *changements], depot)
         executer(["git", "commit", "-m", args.titre], depot)
         executer(["git", "push", "-u", "origin", branche], depot)
         proprietaire, _ = proprietaire_depot(executer(["git", "remote", "get-url", "origin"], depot).stdout.strip())
