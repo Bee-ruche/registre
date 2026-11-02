@@ -6,9 +6,9 @@ poste: gouvernance
 taille: S
 titre: An invitation refused, silent or withdrawn closes its own debate through a guardian or the council
 contexte: Follow-up of ruche-0050 (an invitation's debate is its own). When an invitation ends without being accepted
-  (refused, silent, withdrawn on request), its debate can stay open, with no one bound to close it. Such a debate is
-  closed by a guardian or the council, with the issue "sans suite"; until then it takes no new argument, bee debats
-  and bee essaim show it as waiting for that closing, and bee valider warns while it stays open.
+  (refused, silent, withdrawn on request), its debate can stay open, with no one bound to close it. Such a debate takes
+  no new argument, is closed only by a guardian or the council (issue "sans suite"), and bee debats shows it as waiting
+  for that closing.
 fichiers:
 - outils/bee.py
 - outils/test_bee.py
@@ -20,7 +20,7 @@ depend_de: []
 critere_acceptation:
 - 'test: on a refused, silent or withdrawn invitation, its debate takes no new argument and is closed only by a guardian
   or the council'
-- 'test: bee debats shows such a debate as waiting for its closing, and bee valider warns'
+- 'test: bee debats shows such a debate as waiting for its closing'
 - independent adversarial review attached, made with the architect's brief; the full test suite passes
 hors_perimetre:
 - COMMANDMENTS.md

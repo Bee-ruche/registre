@@ -24,7 +24,7 @@ depend_de: []
 critere_acceptation:
 - 'test: past the cap on reports naming one person, a new report is kept for the council, and the council''s gesture
   links or dismisses it like any other'
-- 'test: for each refusal of the gate on signalements/, the same file on main makes bee valider fail'
+- 'test: each case the gate refuses on signalements/ that the brief lists also makes bee valider fail on main'
 - 'test: the council''s gesture on a report is refused when the deciding person filed it, under any of their accounts'
 - independent adversarial review attached, made with the architect's brief; the full test suite passes
 hors_perimetre:

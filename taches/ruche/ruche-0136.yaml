@@ -8,21 +8,20 @@ titre: 'Common judge after juge-v3: machine failures, where seeds came from, a m
 contexte: Follow-up of the reviews of ruche-0117 (details in the architect's brief). Three things the common judge
   should state or hold on its own. A failure of the machine that runs the judge (the container engine or its runtime)
   is an error of the environment, never a refusal of the judged code. The report (juge.json) says whether each seed was
-  drawn by the judge or given on its command line for a local reproduction. Every folder the judge mounts into a
-  container sits at a depth that no other mount of that container shares, Docker's own files included, so that the
-  order of the mounts never depends on how Docker sorts equal depths. Ships under the next version of the common judge,
-  which the council tags.
+  drawn by the judge or given on its command line for a local reproduction. Each folder the judge mounts into a
+  container sits at a depth of its own. Ships under the next version of the common judge, which the council tags.
 fichiers:
 - outils/juge/
+- .github/workflows/juge.yml
 - docs/juge-commun.md
 portee: 0.7
 metrique: null
 depend_de: []
 critere_acceptation:
-- 'meta-test: a failing container engine or runtime ends the judge with an environment error, distinct from a refusal,
-  and the verdict side never records it as a refusal'
-- 'test: juge.json says, for each seed, drawn or given; a report with a given seed is never taken as a judgment'
-- 'meta-test: every folder the judge mounts has a depth of its own, whatever order Docker draws among equal depths'
+- 'meta-test: a failing container engine or runtime ends the judge with an environment error, distinct from a refusal
+  in its exit code and in juge.json, and juge.yml reports it as such'
+- 'test: juge.json says, for each seed, whether it was drawn or given'
+- 'meta-test: each folder the judge mounts has a depth of its own, whatever order Docker draws'
 - independent adversarial review attached, made with the architect's brief; the judge's tests pass with Docker
 hors_perimetre:
 - COMMANDMENTS.md
