@@ -449,6 +449,7 @@ def main(argv=None):
     analyseur.add_argument("--seuil-instructions", type=float, default=0.002)
     analyseur.add_argument("--json")
     analyseur.add_argument("--graine", help="graine hexadécimale (reproduction locale) ; défaut : tirée au hasard")
+    analyseur.add_argument("--graine-ordre", help="graine hexadécimale de l'ordre des scénarios (reproduction locale) ; défaut : tirée au hasard, à part")
     analyseur.add_argument("--reseau-construction", help="réseau de docker build (« host » sans pont Docker)")
     analyseur.add_argument("--memoire", default="4g")
     analyseur.add_argument("--garder", action="store_true")
@@ -549,8 +550,10 @@ def main(argv=None):
         melees = 0
 
         # 2. Mesures au chronomètre (temps processeur du fils, lu par le noyau), A et B entrelacés ; l'ordre des
-        #    scénarios est tiré à chaque répétition, d'un générateur dérivé de la graine (les entrées n'en changent pas).
-        mesures, tirage, deroulement = {"A": [], "B": []}, random.Random(b"bee: ordre des scenarios " + graine), []
+        #    scénarios est tiré à chaque répétition, le même pour A et B, d'un générateur à part dont la graine (secrets,
+        #    consignée dans juge.scenarios.graine_ordre) ne dépend pas de celle des entrées.
+        graine_ordre = bytes.fromhex(args.graine_ordre) if args.graine_ordre else secrets.token_bytes(16)
+        mesures, tirage, deroulement = {"A": [], "B": []}, random.Random(graine_ordre), []
         for i in range(args.chauffe + args.repetitions):
             entrees, melange = meler(rng, projet.repetition(rng, corpus), tours, combien, noms)
             melees += len(melange)
@@ -659,9 +662,9 @@ def main(argv=None):
             "analyse": {"architecture": platform.machine().lower(), "prefixes": list(projet.PREFIXES),
                         "permis": list(getattr(projet, "PERMIS", ()))},
             "constructions_suspectes": suspects,
-            "scenarios": {"isolement": "un conteneur par scénario ; ses sorties figées (SHA-256 de chaque fichier et liste) à la fin "
-                          "du conteneur, seules lues : un écart ensuite est un refus",
-                          "ordre": "tiré à chaque répétition (générateur dérivé de la graine)",
+            "scenarios": {"isolement": "un conteneur par scénario (vérification : un par côté) ; ses sorties figées (SHA-256 de chaque "
+                          "fichier et liste) à la fin du conteneur, seules lues : un écart ensuite est un refus",
+                          "ordre": "tiré à chaque répétition, le même pour A et B", "graine_ordre": graine_ordre.hex(),
                           "temps_processeur": "utilisateur + système, wait4 dans chrono (pas le cgroup) ; sous Valgrind en « instructions »",
                           "deroulement": deroulement},
         }

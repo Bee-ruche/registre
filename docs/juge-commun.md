@@ -40,7 +40,7 @@ lue par le juge commun **depuis la base de la PR** (jamais depuis la PR). Modèl
 | `SOURCES`, `SOURCES_REQUISES` | motifs glob des fichiers du projet copiés dans le conteneur et compilés (`miniz.c`, `src/*.c`…) ; tout lien symbolique est refusé ; the text analysis reads these same files, whole |
 | `OUTILLAGE`, `EN_TETES_BASE`, `CONSTRUIRE` | dossiers de la base montés sur `/outillage` ; en-têtes de la base copiés dans `/outillage/base/` (le harnais se compile avec eux) ; script de construction, qui doit produire `execution` et laisser **chaque objet du projet dans `obj/`**, un `obj/<nom>.o` par unité de traduction des `SOURCES` (`.c`, `.S`, `.cc`…), deux unités homonymes étant refusées (le juge s'arrête sinon) |
 | `PREFIXES`, `PERMIS` | espace de noms du projet (au moins un préfixe, chacun un mot terminé par `_` : `mz_`, `yaml_`) et fonctions externes permises en plus de la liste commune (64 au plus). Les fonctions qui servent à tromper la mesure (horloge, processus, environnement, signaux, appels système : `analyse.JAMAIS_PERMIS`) ne sont jamais permises et sont signalées par leur nom exact, avant toute exemption |
-| `COTES` | côtés d'entrées (`f`, `z`…) : jamais deux côtés montés ensemble (un conteneur par scénario, ci-dessous) |
+| `COTES` | côtés d'entrées (`f`, `z`…) : jamais deux côtés montés ensemble ; en vérification, un conteneur par côté ; dans les mesures, un par scénario (ci-dessous) |
 | `SCENARIOS`, `INSTRUCTIONS`, `METRIQUES`, `METHODE` | scénarios mesurés au chronomètre et leur côté ; ceux dont on compte les instructions ; métriques (nom, sens, unité) ; textes de méthode ajoutés au rapport |
 | `corpus(outillage)` | corpus de la base, `[(nom, octets)]` (aide : `entrees.charger_corpus`) |
 | `verification(rng, corpus)` | entrées de vérification (`entrees.Entree`) : corpus, données tirées au hasard, dérivées (flux produits par l'hôte), invalides |
@@ -70,18 +70,19 @@ timed outputs (the toy's ratio); it replaces the value `fixes()` reads on verifi
 `juge.verification.entrees_melees` (total), `melees_par_repetition` (per side), `instructions_sans_melange` (instruction-count
 scenarios that got none).
 
-**Per-scenario isolation (ruche-0036).** Each scenario runs in its own container (above), with a fresh `/tmp` and a fresh
-output folder mounted on `/sorties`: of all the outputs, it sees only its own.
+**Per-scenario isolation (ruche-0036).** In the measurements and the instruction count, each scenario runs in its own
+container (above), with a fresh `/tmp` and a fresh output folder mounted on `/sorties`: of all the outputs, it sees only its
+own. Verification still runs one container per side, not per scenario.
 - **Frozen outputs**: as soon as each container ends (verification included), the judge records the listing of its output
   folder and the SHA-256 of each file (`lecture.figer`). The plugin (through `Sorties`) and the byte-for-byte comparison of
   mixed-in inputs read only what was frozen: a file changed, added or removed afterwards is a refusal, when it is read and at
-  the check that ends each step.
-- **Drawn order**: at each repetition (warm-up included) and for the instruction count, the order of the scenarios is drawn
-  from a generator derived from the seed (drawn after compilation), separate from the one that draws the inputs; the same
-  for A and B.
-- **`juge.json`**: `juge.scenarios.deroulement` gives, per step (`chauffe`, `mesure`, `instructions`), the order of the
-  variants and of the scenarios, and **each scenario's CPU time** for A and B (user + system, read by `chrono` with `wait4`;
-  under Valgrind for `instructions`).
+  the check that ends each step; so is anything the judge cannot read while freezing (root or not).
+- **Drawn order**: the order of the scenarios is drawn anew at each repetition (warm-up included) and for the instruction
+  count, the same for A and B.
+- **`juge.json`**: `juge.scenarios.graine_ordre` is the seed of that draw (from `secrets`, apart from the inputs' seed and
+  generator; `--graine-ordre` reruns it); `juge.scenarios.deroulement` gives, per step (`chauffe`, `mesure`,
+  `instructions`), the order of the variants and of the scenarios, and **each scenario's CPU time** for A and B (user +
+  system, read by `chrono` with `wait4`; under Valgrind for `instructions`).
 - Meta-test, on a copy of the toy with two scenarios per side: a candidate each of whose scenarios tries to read and to
   modify the others' outputs, before and after its own work, gets the honest toy's verdict and comparisons.
 

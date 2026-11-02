@@ -104,6 +104,13 @@ def figer(racine):
     """Empreinte d'un dossier de sorties, relevée dès la fin du conteneur qui l'a écrit (ruche-0036) : {chemin relatif :
     SHA-256 d'un fichier ordinaire, « dossier », ou « autre » (lien, fichier spécial)}. Ses clés sont la liste du dossier ;
     aucun lien n'est suivi, chaque fichier est lu par lire_sortie (taille bornée), un dossier illisible est un refus."""
+    try:
+        return _figer(racine)
+    except OSError as e:  # état, liste ou ouverture de ce que le conteneur a laissé : un refus (1), jamais une erreur (2)
+        _illisible(e)
+
+
+def _figer(racine):
     empreinte = {}
     for dossier, sous, fichiers in os.walk(racine, onerror=_illisible):
         for nom in sous + fichiers:

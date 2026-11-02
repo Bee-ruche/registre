@@ -434,6 +434,23 @@ def ajouter(chemin, octets):
         f.write(octets)
 
 
+# lecture.figer in a subprocess, as uid 65534 when started as root (lecture imported first): exit 10 on Refus, 0 without
+# error, 1 on any other exception (Python's own exit code), 11 if root cannot drop its privileges.
+FIGER_SANS_PRIVILEGE = """import os, sys
+sys.path.insert(0, sys.argv[1])
+import lecture
+if os.geteuid() == 0:
+    try:
+        os.setgroups([]); os.setgid(65534); os.setuid(65534)
+    except OSError:
+        sys.exit(11)
+try:
+    lecture.figer(sys.argv[2])
+except lecture.Refus:
+    sys.exit(10)
+"""
+
+
 class TestFigees(unittest.TestCase):
     """ruche-0036: outputs are frozen (listing and SHA-256 of each file); only what was frozen is read."""
 
@@ -482,6 +499,31 @@ class TestFigees(unittest.TestCase):
         self.assertEqual(vue.exiger("f", "s/c/k000"), b"abc")
         with self.assertRaises(lecture.Refus):
             vue.controler()
+
+    def test_juge_sans_privilege(self):
+        """The judge not root (as on a hosted runner, here uid 65534 in a subprocess): any system error while freezing what
+        the container left (status, listing, opening) is a refusal (Refus, exit 1), never an error of the environment (exit 2)."""
+        def figer_sans_privilege():
+            r = subprocess.run([sys.executable, "-I", "-c", FIGER_SANS_PRIVILEGE, ICI, self.racine], capture_output=True,
+                               text=True, timeout=60)
+            if r.returncode == 11:
+                self.skipTest("root cannot drop to uid 65534 here: the non-root judge is not tested")
+            return r.returncode, r.stderr
+        for dossier, _, fichiers in os.walk(self.racine):
+            os.chmod(dossier, 0o755)
+            for chemin in (os.path.join(dossier, nom) for nom in fichiers):
+                if not os.path.islink(chemin):  # s/lien is not followed
+                    os.chmod(chemin, 0o644)
+        self.assertEqual(figer_sans_privilege(), (0, ""))  # everything readable: frozen as root freezes it
+        for relatif, mode in (("s", 0o444), ("s/c", 0o444), ("s", 0o111), ("s", 0o000), ("s/c/k000", 0o000)):
+            with self.subTest(relatif=relatif, mode=oct(mode)):
+                chemin = os.path.join(self.racine, relatif)
+                ancien = 0o755 if os.path.isdir(chemin) else 0o644  # as set above
+                os.chmod(chemin, mode)
+                try:
+                    self.assertEqual(figer_sans_privilege(), (10, ""))
+                finally:
+                    os.chmod(chemin, ancien)
 
 
 class TestCodecDeReference(unittest.TestCase):
@@ -855,7 +897,7 @@ class TestOrdreEtEmpreintes(unittest.TestCase):
     def tearDownClass(cls):
         shutil.rmtree(cls.travail, ignore_errors=True)
 
-    def juger(self, apres=None, graine="00" * 16):
+    def juger(self, apres=None, graine="00" * 16, graine_ordre=None):
         emule, sortie = DockerEmule(apres), io.StringIO()
         with mock.patch.object(juge.shutil, "which", return_value="/usr/bin/docker"), \
                 mock.patch.object(juge.conteneur, "construire_image", return_value="image"), \
@@ -866,13 +908,15 @@ class TestOrdreEtEmpreintes(unittest.TestCase):
                 mock.patch.object(juge, "construire", return_value=releves()), \
                 contextlib.redirect_stdout(sortie), contextlib.redirect_stderr(io.StringIO()):
             self.assertEqual(juge.main(["--outillage", self.base, "--source-a", self.base, "--source-b", self.base,
-                                        "--repetitions", "3", "--graine", graine]), 0)
+                                        "--repetitions", "3", "--graine", graine]
+                                       + (["--graine-ordre", graine_ordre] if graine_ordre else [])), 0)
         return json.loads(sortie.getvalue()), emule
 
     def test_ordre_tire_et_temps_processeur(self):
-        """The order is drawn at each repetition from the seed, recorded in juge.json, and is the order run; each
-        scenario's CPU time is the one chrono measured; one command and one fresh writable folder per container."""
-        rapport, emule = self.juger()
+        """The order is drawn at each repetition, the same for A and B, from its own seed (secrets, independent of the
+        inputs' seed) recorded in juge.json, and is the order run; each scenario's CPU time is the one chrono measured; one
+        command and one fresh writable folder per container."""
+        rapport, emule = self.juger(graine_ordre="00" * 16)
         self.assertEqual(len(emule.conteneurs), 2 * 2 + 2 * 4 * 4 + 2 * 2)  # verification, 1 + 3 repetitions, instructions
         for c in emule.conteneurs:
             self.assertEqual((len(c["etiquettes"]), len(c["ecrits"]), c["neuf"]), (1, 1, True))
@@ -888,10 +932,24 @@ class TestOrdreEtEmpreintes(unittest.TestCase):
         lances = [(c["variante"], c["etiquettes"][0], c["cpu"]) for c in emule.conteneurs if c["etiquettes"] != ["verifier"]]
         self.assertEqual(lances, consignes)
         self.assertGreater(len({tuple(e["ordre"]) for e in deroulement[:4]}), 1)
-        self.assertEqual(self.juger()[0]["juge"]["scenarios"]["deroulement"], deroulement)  # same seed, same orders
-        autre = self.juger(graine="01" * 16)[0]
-        self.assertNotEqual([e["ordre"] for e in autre["juge"]["scenarios"]["deroulement"]], [e["ordre"] for e in deroulement])
-        self.assertEqual(autre["juge"]["verification"], rapport["juge"]["verification"])  # the inputs do not depend on the order
+
+        def ordres(r):
+            return [e["ordre"] for e in r["juge"]["scenarios"]["deroulement"]]
+
+        def tires(graine_ordre):  # the orders the recorded order seed alone gives
+            tirage = random.Random(bytes.fromhex(graine_ordre))
+            return [tirage.sample(list(QUATRE_SCENARIOS), 4) for _ in range(4)] + [tirage.sample(list(greffon_jouet.Projet.INSTRUCTIONS), 2)]
+        self.assertEqual((rapport["juge"]["scenarios"]["graine_ordre"], ordres(rapport)), ("00" * 16, tires("00" * 16)))
+        self.assertEqual(ordres(self.juger(graine="01" * 16, graine_ordre="00" * 16)[0]), ordres(rapport))  # not from --graine
+        graines = {rapport["juge"]["scenarios"]["graine_ordre"]}
+        for _ in range(2):  # same --graine, order seed from secrets: recorded, and it alone gives the orders
+            autre = self.juger()[0]
+            graine_ordre = autre["juge"]["scenarios"]["graine_ordre"]
+            self.assertRegex(graine_ordre, r"\A[0-9a-f]{32}\Z")
+            self.assertEqual(ordres(autre), tires(graine_ordre))
+            self.assertEqual((autre["juge"]["graine"], autre["juge"]["verification"]), (rapport["juge"]["graine"], rapport["juge"]["verification"]))
+            graines.add(graine_ordre)
+        self.assertEqual(len(graines), 3)
 
     def test_sorties_changees_apres_empreinte(self):
         """An output changed, added or removed after its container ended (here, while the next container runs) is refused."""
@@ -2242,13 +2300,14 @@ class TestJugeContreVariantes(unittest.TestCase):
     def test_scenarios_voisins(self):
         """ruche-0036, on the toy with two scenarios per side: a candidate each of whose scenarios tries to read and to
         modify the others' outputs, before and after its own work, gets the honest toy's verdict and comparisons at the
-        same seed; the order changes between repetitions (each scenario of a side running before and after the other)
-        and is recorded in juge.json with each scenario's CPU time."""
-        base, graine = jouet_a_quatre_scenarios(os.path.join(self.travail, "base-quatre-scenarios")), "00" * 16
+        same seeds; the order changes between repetitions (each scenario of a side running before and after the other,
+        at this order seed) and is recorded in juge.json with each scenario's CPU time."""
+        base, graines = jouet_a_quatre_scenarios(os.path.join(self.travail, "base-quatre-scenarios")), ["--graine", "00" * 16,
+                                                                                                      "--graine-ordre", "01" * 16]
         code_h, honnete, sortie_h = self.juger("voisins_reference", self.preparer("voisins_reference"), base=base,
-                                               repetitions=3, extra=["--graine", graine])
+                                               repetitions=3, extra=graines)
         code, rapport, sortie = self.juger("scenarios_voisins", self.preparer("scenarios_voisins", scenarios_voisins), base=base,
-                                           repetitions=3, extra=["--graine", graine])
+                                           repetitions=3, extra=graines)
         self.assertEqual((code_h, code), (0, 0), sortie_h + sortie)
         self.assertEqual(rapport["juge"]["verification"], honnete["juge"]["verification"])
         self.assertIn("appel_externe", self.types_suspects(rapport))  # its attempts are compiled in (opendir, fopen…)
