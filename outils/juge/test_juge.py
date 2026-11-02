@@ -487,6 +487,18 @@ class FauxDocker:
         return subprocess.CompletedProcess(commande, 0, sortie.encode(), b"")
 
 
+# A stand-in for docker that records each call (arguments, standard input) and answers as chrono would.
+DOCKER_CHRONO = r"""#!/usr/bin/env python3
+import json, os, sys
+entree = sys.stdin.read()
+with open(os.environ["FAUX_DOCKER_JOURNAL"], "a") as f:
+    f.write(json.dumps([sys.argv[1:], entree]) + "\n")
+jeton, _, *plan = entree.splitlines()
+for ligne in plan:
+    print(json.dumps({"jeton": jeton, "etiquette": ligne.split("\t")[0], "code": 0, "signal": 0, "instructions": 1}))
+"""
+
+
 class TestMemesConditions(unittest.TestCase):
     """The judge starts the harness the same way in every mode (same arguments, same mounts); the mode reaches it on its
     descriptor 0 only."""
@@ -518,31 +530,38 @@ class TestMemesConditions(unittest.TestCase):
                 execution.lancer("B", "/e", os.path.join(self.travail, "s"), [("x", mauvais)])
 
     def test_same_docker_request_in_every_mode(self):
-        """The Docker command is the same in every mode (mounts, their options and their order included), but for the
-        container's name; only the standard input differs."""
-        appels = []
-
-        def run(commande, input=None, capture_output=True, timeout=None):
-            jeton, _, *plan = input.decode().splitlines()
-            appels.append((commande, input.decode()))
-            sortie = "".join(json.dumps({"jeton": jeton, "etiquette": ligne.split("\t")[0], "code": 0, "signal": 0,
-                                         "instructions": 1}) + "\n" for ligne in plan)
-            return subprocess.CompletedProcess(commande, 0, sortie.encode(), b"")
-        execution = conteneur.Execution(conteneur.Docker("image"), "/c", {"B": "/b"}, self.travail)
+        """The Docker command is the same in every mode (bounds, isolation, mounts, their options and their order, the
+        image), but for the container's name; only the standard input differs. A stand-in docker, first on PATH, records
+        each call made through the real Docker.lancer and answers as chrono would."""
+        dossier = os.path.join(self.travail, "bin")
+        os.makedirs(dossier)
+        with open(os.path.join(dossier, "docker"), "w", encoding="utf-8") as f:
+            f.write(DOCKER_CHRONO)
+        os.chmod(os.path.join(dossier, "docker"), 0o755)
+        journal_docker = os.path.join(self.travail, "docker.journal")
+        execution = conteneur.Execution(conteneur.Docker("sha256:" + "0" * 64), "/c", {"B": "/b"}, self.travail)
         sorties = os.path.join(self.travail, "s")
-        with mock.patch.object(conteneur.subprocess, "run", side_effect=run):
+        with mock.patch.dict(os.environ, {"PATH": dossier + os.pathsep + os.environ["PATH"], "FAUX_DOCKER_JOURNAL": journal_docker}):
             for mode, prefixe, valgrind in (("verifier", [], False), ("compression", [], False), ("compression", juge.VALGRIND, True)):
                 execution.lancer("B", "/e", sorties, [(mode, prefixe + [conteneur.HARNAIS, mode, "/entrees", "/sorties"])],
                                  valgrind=valgrind)
+        with open(journal_docker, encoding="utf-8") as f:
+            appels = [json.loads(ligne) for ligne in f]
+        self.assertEqual(len(appels), 3)
         commandes = []
         for commande, _ in appels:
             i = commande.index("--name")
             self.assertRegex(commande[i + 1], r"^bee-juge-[0-9a-f]{12}$")
             commandes.append(commande[:i + 1] + commande[i + 2:])
         self.assertEqual(commandes, [commandes[0]] * 3)
-        self.assertEqual([c for c in commandes[0] if c.startswith("type=bind")],
+        commande = commandes[0]
+        self.assertEqual(commande[commande.index("--ulimit"):commande.index("--ulimit") + 4], conteneur.Docker.BORNES)
+        for option in conteneur.ISOLATION:
+            self.assertIn(option, commande)
+        self.assertEqual([c for c in commande if c.startswith("type=bind")],
                          ["type=bind,source=/c,target=/chrono,readonly", "type=bind,source=/b,target=/variante,readonly",
                           "type=bind,source=/e,target=/entrees,readonly", f"type=bind,source={sorties},target=/sorties"])
+        self.assertEqual(commande[-2:], ["sha256:" + "0" * 64, "/chrono/chrono"])
         self.assertEqual(len({entree for _, entree in appels}), 3)
 
     def test_mounted_folders_have_neutral_names(self):
