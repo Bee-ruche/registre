@@ -27,7 +27,7 @@ critere_acceptation:
   - "test : un verdict sans chronomètre ARM64 se juge comme aujourd'hui"
   - "revue adverse indépendante jointe (R4 décide de l'intégration)"
 hors_perimetre: [COMMANDEMENTS.md, juge.yml et outils/juge/ (ruche-0024), les forks]
-depend_de: [ruche-0024]
+depend_de: [ruche-0105]
 noeud: projets/ruche
 statut: ouverte
 cree_par: conseil
