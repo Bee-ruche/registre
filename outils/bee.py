@@ -3471,8 +3471,10 @@ HOTES_FORGES = {"github.com": "github", "gitlab.com": "gitlab", "codeberg.org": 
                 "git.sr.ht": "sourcehut"}
 # Tout sous-domaine d'une forge (gist.github.com, raw.githubusercontent.com, todo.sr.ht…) se ramène au profil du premier
 # segment du chemin (troisième revue adverse, C5) ; l'API désigne le profil après users/, repos/ ou orgs/.
-DOMAINES_FORGES = {"github.com": "github", "githubusercontent.com": "github", "gitlab.com": "gitlab", "codeberg.org": "codeberg",
-                   "sr.ht": "sourcehut"}
+DOMAINES_FORGES = {"github.com": "github", "githubusercontent.com": "github", "github.dev": "github", "gitlab.com": "gitlab",
+                   "codeberg.org": "codeberg", "sr.ht": "sourcehut"}
+# GitHub-owned hosts whose path does not name the owner (ruche-0049): a shortener, an editor (vscode.dev/github/<owner>/…).
+HOTES_GITHUB_OPAQUES = ("git.io", "vscode.dev")
 PAGES_FORGES = {"github.io": "github", "gitlab.io": "gitlab", "codeberg.page": "codeberg", "srht.site": "sourcehut"}
 # Un site se compare sur son domaine enregistrable : les deux derniers labels, trois sous ces suffixes à deux niveaux courants.
 # Limite (docs/croissance.md) : sans la liste publique des suffixes, un suffixe à deux niveaux absent d'ici n'est pas reconnu.
@@ -3673,7 +3675,7 @@ def texte_sortant_refuse(texte, quoi, maximum, organisation=None):
     probleme = texte_recevable(texte, quoi, maximum)
     if probleme:
         return probleme
-    lus = [texte]  # read as typed, as GitHub decodes its entities, decoded to a fixed point with &#1; dropped and as U+FFFD
+    lus = [texte]  # as typed, as GitHub decodes it, decoded to a fixed point with a control reference (&#1;) dropped or U+FFFD
     if organisation is not None:
         try:
             lus += [html.unescape(texte.replace("\\&", "&amp;")), entites_decodees(texte, "")]  # once, an escaped & kept
@@ -3684,7 +3686,7 @@ def texte_sortant_refuse(texte, quoi, maximum, organisation=None):
     if c is not None:
         return (f"{quoi} : caractère invisible refusé (U+{ord(c):04X}, catégorie {unicodedata.category(c)}) : ce texte sort de la "
                 "ruche, il ne cache rien")
-    donnee = donnee_personnelle(texte)
+    donnee = next(filter(None, map(donnee_personnelle, dict.fromkeys([texte] + lus[2:]))), None)  # &#1; as U+FFFD, or dropped
     renvoi = (next(filter(None, (renvoi_hors_ruche(lu, organisation) for lu in lus + [texte])), None)
               if organisation is not None and not donnee else None)
     return (f"{quoi} : {donnee} : aucune donnée personnelle au-delà de l'identifiant public et du canal (R13)" if donnee
@@ -3692,18 +3694,29 @@ def texte_sortant_refuse(texte, quoi, maximum, organisation=None):
 
 
 def entites_decodees(texte, abandon):
-    """`texte` with its HTML entities decoded to a fixed point; a numeric reference Python drops (&#1;) becomes `abandon`."""
-    while texte != (decode := html.unescape(re.sub(r"&#(?:\d+|[xX][0-9a-fA-F]+);?", lambda m: html.unescape(m[0]) or abandon,
+    """`texte` with its HTML entities decoded to a fixed point, each numeric reference by reference_decodee."""
+    while texte != (decode := html.unescape(re.sub(r"&#(?:[0-9]+|[xX][0-9a-fA-F]+);?", lambda m: reference_decodee(m[0], abandon),
                                                    texte))):
         texte = decode
     return texte
+
+
+def reference_decodee(reference, abandon):
+    """A numeric character reference (&#64;, &#x40;) decoded as html does, or `abandon` where a renderer may show nothing or
+    U+FFFD instead: U+0000, a control (&#1;, &#127;, &#128;), a surrogate, a noncharacter, past U+10FFFF. ValueError if the
+    number is longer than int() reads."""
+    hexa = reference[2] in "xX"
+    n = int(reference[3 if hexa else 2:].rstrip(";"), 16 if hexa else 10)
+    if n > 0x10FFFF or 0xD800 <= n <= 0xDFFF or unicodedata.category(chr(n)) == "Cc":
+        return abandon
+    return html.unescape(reference) or abandon
 
 
 # What GitHub would turn into a notification or a link outside the hive (ruche-0049). Fail closed: each is searched in several
 # forms of the text (renvoi_hors_ruche), and refusing an honest text is the accepted cost.
 MENTION_GITHUB = re.compile(r"(?<![A-Za-z0-9])@[A-Za-z0-9][A-Za-z0-9/-]*|@[\w.+-]*@[A-Za-z0-9][A-Za-z0-9/-]*")
 REFERENCE_GITHUB = re.compile(r"(?i)(?<![\w.-])([\w.-]+)(?:/[\w.-]+#\d+|(?:/[\w.-]+)?@[0-9a-f]{7,})")
-LIEN_OU_HOTE = re.compile(r"(?i)(?<![\w.-])(?:https?://)?(?:[\w-]+\.)+[a-z]{2,}([^\s<>()\[\]{}`'\"]*)")
+LIEN_OU_HOTE = re.compile(r"(?i)(?<![\w.-])(?:https?://)?(?:[\w-]+\.)+[a-z]{2,}([^\s<]*)")  # as far as a GFM autolink goes
 # Where a link destination starts: ](…), ]: … (a reference definition), a URL attribute (href=…), <https:… (an autolink).
 ATTRIBUT_URL = (r"\b(?:href|src|srcset|action|formaction|data|poster|cite|background|ping|longdesc|usemap|manifest|content"
                 r"|imagesrcset|xlink:href)\s*=")
@@ -3737,7 +3750,8 @@ def renvoi_hors_ruche(texte, organisation):
 
 def premier_renvoi(forme, organisation):
     """The first thing in `forme` that renvoi_hors_ruche refuses, named, or None."""
-    jeton = lambda m: forme[m.start():].split(maxsplit=1)[0].rstrip(")]>\"'.,;:!?")[:80]  # noqa: E731  the word it starts
+    jeton = lambda m: next((mot for mot in (w.rstrip(")]>\"'.,;:!?") for w in forme[m.start():].split(maxsplit=2)[:2]) if mot),
+                           "")[:80]  # noqa: E731  the word it starts, or the next one (a definition's target after ]:)
     if mention := MENTION_GITHUB.search(forme):
         return f"la mention « {mention[0][:80]} » notifierait quelqu'un sur GitHub (écrivez le nom sans @)"
     etiquettes = None
@@ -3750,8 +3764,11 @@ def premier_renvoi(forme, organisation):
                 if definition_inutile(forme, m.start(), etiquettes):
                     continue
             return f"« {jeton(m)} » {raison_du_renvoi(motif, organisation)}"
+    forme = re.sub(r"(?i)(?=https?://|www\.)", " ", forme)  # each address read from its own start, not as another's tail
     for m in LIEN_OU_HOTE.finditer(forme):
         adresse = decoder_url(re.sub(r"(?i)^(?!https?://)", "https://", m[0])).replace("\\", "/")  # as a browser reads it
+        if sur_hotes(hote_de(adresse), HOTES_GITHUB_OPAQUES):
+            return f"« {jeton(m)} » mène vers GitHub sans dire où (raccourci ou éditeur) : donnez l'adresse github.com/…"
         forges = {c for c in cles_d_adresse(adresse) if not c.startswith("site:")}
         if forges - {f"github:{organisation.casefold()}"}:
             return f"« {jeton(m)} » mène hors de {organisation} (seul son propriétaire GitHub est dans la ruche)"

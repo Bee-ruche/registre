@@ -2575,6 +2575,17 @@ class TestPublier(BaseTest):
                "[x](/upstream/repo/issues/1)", "[x](../../../upstream/repo)", '<a href="/upstream/repo">x</a>', "<a href=/upstream/repo>x</a>",
                "[x][1]\n\n[1]: /upstream/repo", "[x](/Bee-ruche/../upstream/repo)", '<a href=" /upstream/repo">x</a>',
                '<a href="https://github.com\n/upstream/repo">x</a>'],
+        # Round 3 (F1): an address right after another host or address is read from its own start.
+        "F1": ["example.com,https://github.com/upstream/repo/issues/1", "README.md;https://github.com/upstream/repo/issues/1",
+               "https://github.com/Bee-ruche/registre|https://github.com/upstream/repo/issues/1",
+               "https://example.org/a|https://github.com/upstream/repo/issues/1", "example.com.https://github.com/upstream/repo"],
+        # (F2): a /../ after a quote, a parenthesis, a bracket, a brace or a backtick in a forge address.
+        "F2": ["https://github.com/Bee-ruche/x'/../../upstream/repo", "https://github.com/Bee-ruche/x)/../../upstream/repo",
+               "https://github.com/Bee-ruche/x]/%2e%2e/upstream/repo", "https://github.com/Bee-ruche/x}/..%2fupstream/repo",
+               "https://github.com/Bee-ruche/x`/../../upstream/repo"],
+        # GitHub-owned hosts: github.dev reads like github.com; a shortener or an editor does not say where it leads.
+        "hôtes": ["https://github.dev/upstream/repo", "https://vscode.dev/github/upstream/repo", "https://vscode.dev/github/Bee-ruche/registre",
+                  "https://git.io/abc", "https://git.io/Bee-ruche"],
     }
     # The second review (2 Nov): CommonMark escapes (N1), a scheme with one slash (N2), tag-split text (N5), srcset (N6), a
     # root-relative link to another host (N7); and what bees write every night must pass (N4).
@@ -2663,9 +2674,18 @@ class TestPublier(BaseTest):
                                ("[ici](https://github.com/upstream/repo).", "« https://github.com/upstream/repo » mène hors de Bee-ruche")):
             with self.subTest(texte=texte):
                 self.assertIn(attendu, refuse(texte))
+        self.assertIn("« /upstream/repo » est un lien relatif", refuse("[x][1]\n\n[1]: /upstream/repo"), "a definition names its target")
         demesure = "&#" + "0" * 4400 + "64;upstream"
         self.assertIn("référence de caractère démesurée", refuse(demesure))
         self.assertNotIn("démesurée", bee.texte_sortant_refuse(demesure, "message", 8000) or "")  # not decoded: no crash
+
+    def test_donnee_personnelle_dans_chaque_lecture(self):
+        """An address split by a reference that a renderer shows as nothing (or U+FFFD) is still personal data."""
+        for reference in ("&#1;", "&#0;", "&#127;", "&#128;", "&#xD800;", "&#x110000;"):
+            for texte in (f"bob@exa{reference}mple.com", f"bob@example{reference}.com", f"bob@{reference}example.com"):
+                with self.subTest(texte=texte):
+                    self.assertIn("une adresse de courriel", bee.texte_sortant_refuse(texte, "corps", 8000, "Bee-ruche"))
+        self.assertIsNone(bee.texte_sortant_refuse("https://github.dev/Bee-ruche/registre, &#233;t&#233;", "corps", 8000, "Bee-ruche"))
 
 
 class TestFork(BaseTest):
