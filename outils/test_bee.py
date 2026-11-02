@@ -18274,5 +18274,177 @@ class TestComptesLiesRuche0051(BaseInvitations):
                 self.abandonner("second")
 
 
+# --- ruche-0130: libyaml's parser behind an event pre-scan; the pure-Python one is the reference and the fallback ---
+
+def analyseurs():
+    """The parsers bee can read with here: the pure one always, libyaml's when PyYAML has it (bee._ChargeurBeeC)."""
+    return [("pur", None)] + ([("C", bee._ChargeurBeeC)] if bee._ChargeurBeeC is not None else [])
+
+
+@contextlib.contextmanager
+def chargeurs_utilises():
+    """Counts, by loader class, each yaml.load call made meanwhile."""
+    vus, charger = collections.Counter(), yaml.load
+
+    def espion(texte, Loader):
+        vus[Loader.__name__] += 1
+        return charger(texte, Loader=Loader)
+    with mock.patch.object(yaml, "load", espion):
+        yield vus
+
+
+def lecture(texte):
+    """What bee makes of a text: ("ok", its value) or ("refus", the whole message)."""
+    try:
+        return ("ok", bee.charger_texte_yaml(texte, "f.yaml"))
+    except bee.ErreurBee as e:
+        return ("refus", str(e))
+
+
+class TestChargeurCRuche0130(unittest.TestCase):
+    """ruche-0130: every refusal of bee's loader holds with libyaml's parser as with the pure one, with the same message, and
+    an honest file reads the same; libyaml's loader alone (no pre-scan) would accept what bee refuses."""
+
+    TESTS_CHARGEUR = (  # the tests of the loader's refusals, each run again with each parser
+        "TestRevueAdverse.test_I6_une_cle_en_double_est_refusee",
+        "TestRevueAdverse.test_N1_seule_la_forme_que_les_robots_editent_est_acceptee",
+        "TestRevueAdverse.test_N10_un_bloc_coupe_n_echappe_pas_au_controle_de_forme",
+        "TestPullRequestsAgora.test_refus_cles_yaml_non_canoniques",
+        "TestRetraitDemandeRuche0048.test_commentaires_et_consignation_mal_formee",
+        "TestBornesLibreServiceRegistre.test_yaml_trop_profond_ou_entier_demesure_refuse_sans_trace",
+        "TestChargeurCRuche0130.test_chaque_refus_du_chargeur_avec_son_message",
+        "TestChargeurCRuche0130.test_un_fichier_honnete_se_lit_pareil",
+        "TestChargeurCRuche0130.test_differentiel_des_deux_analyseurs",
+    )
+    # name: (text, part of the refusal, whether libyaml's loader alone accepts it)
+    REFUS = {
+        "ancre": ("statut: &s reservee\n", "ancre YAML (&…) refusée", True),
+        "ancre et alias": ("statut: &s reservee\ntitre: *s\n", "ancre YAML (&…) refusée", True),
+        "alias seul": ("statut: reservee\ntitre: *s\n", "alias YAML (*…) refusé", False),
+        "ancre sur une liste": ("notes: &n\n  - a\n", "ancre YAML (&…) refusée", True),
+        "étiquette explicite": ("statut: !!str reservee\n", "étiquette YAML explicite (tag:yaml.org,2002:str) refusée", True),
+        "étiquette non spécifique": ("statut: ! reservee\n", "étiquette YAML explicite (!) refusée", True),
+        "étiquette sur une valeur vide": ("statut: !\n", "étiquette YAML explicite (!) refusée", True),
+        "étiquette sur le document": ("--- !!map\nstatut: reservee\n", "étiquette YAML explicite (tag:yaml.org,2002:map)", True),
+        "clé de fusion": ("<<: {statut: reservee}\ntitre: t\n", "clé de fusion YAML (<<) refusée", False),
+        "clé en double": ("statut: ouverte\ntitre: t\nstatut: reservee\n", "clé « statut » en double", False),
+        "deux documents": ("statut: ouverte\n---\nstatut: reservee\n", "expected a single document", False),
+        "trop profond": ("motif: " + "[" * 5000 + "]" * 5000 + "\n", "maximum recursion depth", None),
+        "tabulation (lue par libyaml)": ("statut: reservee\ttitre\n", "found character '\\t' that cannot start any token", True),
+        "? en flux (lu par libyaml)": ("fichiers: [outils/bee.py?]\n", "expected ',' or ']', but got '?'", True),
+        "? dans une clé en flux (lu par libyaml)": ("reservation: {utilisateur?: alice}\n", "expected ',' or '}', but got '?'", True),
+        "en-tête de bloc collé à # (lu par libyaml)": ("contexte: |#\n  texte\n", "expected chomping or indentation indicators", True),
+    }
+    HONNETES = (  # read the same by both; the first ones through libyaml when it is there
+        TACHE_OPTIMISATION,
+        'reservation:\n  utilisateur: "alice"\n  depuis: "2026-10-27T12:00:00Z"\nfichiers: [outils/bee.py, docs/a.md]\n',
+        "contexte: >\n  Pourquoi ? Une ligne : deux points.\n  # pas un commentaire\nportee: 0.7\nle: 2026-11-02\nn: 0o17\n",
+        "a: 'b\tc'\n",  # a tab in a quoted value: valid, read by the pure loader
+        "a: [x,\n\ufeffy]\n",  # a byte order mark at a line's start: kept by the pure loader, dropped by libyaml's
+        "a: [https://x.org/a]\n",  # a colon in a plain scalar of a flow sequence
+        "? a\n: b\n",  # an explicit key: outside the allowlist, read by the pure loader
+        "%YAML 1.1\n---\na: 1\n",  # a directive: likewise
+    )
+    # Texts libyaml's loader alone reads, outside the allowlist: refused by both paths, as by the pure loader. An empty
+    # explicit key in a flow collection, and a comment glued to a directive.
+    HORS_LISTE = ("a: [?]]\n", "a: [?, : x]\n", "[?,,]\n", "[?,:]\n", "[?::]\n", "%YAML 1.1#\n---\na: 1\n")
+
+    def test_chaque_test_du_chargeur_passe_avec_les_deux_analyseurs(self):
+        module = sys.modules[__name__]
+        for nom, chargeur_c in analyseurs():
+            with self.subTest(analyseur=nom), mock.patch.object(bee, "_ChargeurBeeC", chargeur_c), chargeurs_utilises() as vus:
+                resultat = unittest.TestResult()
+                unittest.defaultTestLoader.loadTestsFromNames(self.TESTS_CHARGEUR, module).run(resultat)
+                echecs = [f"{t}\n{trace}" for t, trace in resultat.failures + resultat.errors]
+                self.assertEqual((resultat.testsRun, resultat.skipped), (len(self.TESTS_CHARGEUR), []))
+                self.assertEqual(echecs, [], "\n".join(echecs))
+                # The parser named is the one that read: libyaml's never without it; with it, for what it accepts, and the
+                # pure one for each refusal.
+                self.assertEqual(vus["_ChargeurBeeC"] > 0, chargeur_c is not None, vus)
+                self.assertGreater(vus["ChargeurBee"], 0, vus)
+
+    def test_chaque_refus_du_chargeur_avec_son_message(self):
+        if hasattr(sys, "set_int_max_str_digits"):  # Python 3.11 and later: an integer too long is refused too (ruche-0040)
+            self.REFUS = {**self.REFUS, "entier démesuré": ("motif: " + "9" * 5000 + "\n", "Exceeds the limit", False)}
+        for nom, (texte, refus, seul_c_accepte) in self.REFUS.items():
+            messages = {}
+            for analyseur, chargeur_c in analyseurs():
+                with self.subTest(nom, analyseur=analyseur), mock.patch.object(bee, "_ChargeurBeeC", chargeur_c):
+                    sorte, messages[analyseur] = lecture(texte)
+                    self.assertEqual(sorte, "refus", messages[analyseur])
+                    self.assertIn(refus, messages[analyseur])
+                    self.assertTrue(messages[analyseur].startswith("f.yaml : YAML invalide ("), messages[analyseur])
+            self.assertEqual(len(set(messages.values())), 1, messages)  # the same message, word for word
+            if bee._ChargeurBeeC is not None and seul_c_accepte:  # without the pre-scan, libyaml's loader takes it
+                with self.subTest(nom, analyseur="C sans pré-examen"):
+                    self.assertIsInstance(yaml.load(texte, Loader=bee._ChargeurBeeC), dict)
+
+    def test_un_fichier_honnete_se_lit_pareil(self):
+        for i, texte in enumerate(self.HONNETES):
+            lus = {}
+            for analyseur, chargeur_c in analyseurs():
+                with self.subTest(i, analyseur=analyseur), mock.patch.object(bee, "_ChargeurBeeC", chargeur_c), \
+                        chargeurs_utilises() as vus:
+                    lus[analyseur] = lecture(texte)
+                    self.assertEqual(lus[analyseur][0], "ok", lus[analyseur])
+                    if chargeur_c is not None and i < 3:  # registry-like text: libyaml alone, no second reading
+                        self.assertEqual(dict(vus), {"_ChargeurBeeC": 1})
+            self.assertEqual(len({repr(v) for v in lus.values()}), 1, lus)
+        valeur = lecture(self.HONNETES[1])[1]
+        self.assertEqual((valeur["reservation"]["depuis"], valeur["fichiers"]), ("2026-10-27T12:00:00Z", ["outils/bee.py", "docs/a.md"]))
+        self.assertEqual(lecture(self.HONNETES[2])[1]["le"], "2026-11-02")  # dates stay text, as with ChargeurBee
+        # Nested PROFONDEUR_C_MAX deep, libyaml reads; one more, the pure loader does (it alone refuses what is too deep).
+        for profondeur, lecteur in ((bee.PROFONDEUR_C_MAX, "_ChargeurBeeC"), (bee.PROFONDEUR_C_MAX + 1, "ChargeurBee")):
+            with self.subTest(profondeur=profondeur), chargeurs_utilises() as vus:
+                lu = lecture("a: " + "[" * (profondeur - 1) + "]" * (profondeur - 1) + "\n")
+                self.assertEqual(lu[0], "ok", lu)
+                self.assertEqual(dict(vus), {lecteur if bee._ChargeurBeeC is not None else "ChargeurBee": 1})
+
+    def test_differentiel_des_deux_analyseurs(self):
+        """A frozen fuzz (seed 130) of the frozen fixture: each mutated text reads the same with each parser, value or
+        refusal word for word. It found the four places where libyaml's scanner reads otherwise (bee._LU_AUTREMENT_EN_C)."""
+        textes = [p.read_text(encoding="utf-8") for p in sorted(JEU_FIGE.rglob("*.yaml"))] + [TACHE_OPTIMISATION]
+        self.assertGreater(len(textes), 10)
+        morceaux = list(":-?&*!|>#'\"[]{},% \t\n") + ["\n  ", "\n- ", ": ", "? ", "[a, ", "{a: ", "a:b", "a?", " #c", "|-", ">2",
+                                                     "\ufeff", "\x85", "\u2028", "\r\n", "\r", "---\n", "...\n", "\"\\/\"", "~", "0o7"]
+        hasard, ecarts = __import__("random").Random(130), []
+        for _ in range(1500):
+            texte = hasard.choice(textes)
+            for _ in range(hasard.randint(1, 3)):
+                k = hasard.randint(0, len(texte))
+                texte = texte[:k] + hasard.choice(morceaux) + texte[k + hasard.randint(0, 2):]
+            lus = []
+            for _, chargeur_c in analyseurs():
+                with mock.patch.object(bee, "_ChargeurBeeC", chargeur_c):
+                    lus.append(repr(lecture(texte)))
+            if len(set(lus)) > 1:
+                ecarts.append(texte)
+        self.assertEqual(ecarts, [])
+        for texte in self.HORS_LISTE:
+            lus = []
+            for analyseur, chargeur_c in analyseurs():
+                with self.subTest(texte, analyseur=analyseur), mock.patch.object(bee, "_ChargeurBeeC", chargeur_c), \
+                        chargeurs_utilises() as vus:
+                    lus.append(lecture(texte))
+                    self.assertEqual(lus[-1][0], "refus", lus[-1])
+                    self.assertEqual(dict(vus), {"ChargeurBee": 1})  # the pre-scan sends it to the pure loader alone
+            self.assertEqual(len(set(lus)), 1, lus)
+            if bee._ChargeurBeeC is not None:  # without the pre-scan, libyaml's loader takes it
+                self.assertIsNotNone(yaml.load(texte, Loader=bee._ChargeurBeeC))
+
+    def test_seule_une_version_exercee_de_libyaml_lit(self):
+        """libyaml reads only in a version exercised here (VERSIONS_LIBYAML_EXERCEES); another one leaves all to the pure loader."""
+        if bee._ChargeurBeeC is None:
+            self.skipTest("PyYAML without libyaml")
+        import importlib.util
+        from yaml import _yaml
+        for version, lit_en_c in ((next(iter(bee.VERSIONS_LIBYAML_EXERCEES)), True), ((0, 2, 6), False), ((0, 2, 2), False)):
+            with self.subTest(version=version), mock.patch.object(_yaml, "get_version", lambda: version):
+                spec = importlib.util.spec_from_file_location("bee_version_libyaml", bee.__file__)
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                self.assertEqual(module._ChargeurBeeC is not None, lit_en_c)
+
+
 if __name__ == "__main__":
     sys.exit(principal_tests(sys.modules[__name__], __file__, sys.argv[1:]))

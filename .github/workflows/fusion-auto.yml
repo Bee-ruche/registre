@@ -30,6 +30,8 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
+      - name: Commit-graph (ruche-0130)
+        run: git commit-graph write --reachable --changed-paths
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
