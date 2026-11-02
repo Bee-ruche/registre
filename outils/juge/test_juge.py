@@ -58,9 +58,11 @@ test_suspectes_les_plus_graves_d_abord, test_rapport_du_job); the judging step p
 --verifier wants the code 0 and the PR's commits (test_code_published_once_the_report_is_checked,
 test_verifier_requires_code_0_and_the_pull_request_commits); a fixed metric read on verification alone is flagged
 (test_fixed_metric_read_on_verification_alone); the identity check counts per scenario
-(test_mixed_input_same_output_as_in_verification); each execution on its own tmpfs (test_each_execution_on_its_own_tmpfs);
-with Docker, test_memes_montures: identical scenarios at different positions, variant passes, repetitions and modes see the same
-thing, mount by mount (RESTE aside), and none sees what another left in its outputs.
+(test_mixed_input_same_output_as_in_verification); each execution on its own tmpfs (test_each_execution_on_its_own_tmpfs),
+unmounted at once (test_tmpfs_in_use_is_an_error); the judge's mounts in one order whatever order Docker draws for those of
+equal depth (test_one_mount_order_whatever_docker_draws); with Docker, test_memes_montures: identical scenarios at different
+positions, variant passes, repetitions and modes see the same thing, mount by mount (RESTE aside), and none sees what another
+left in its outputs.
 """
 
 import concurrent.futures
@@ -68,6 +70,7 @@ import contextlib
 import glob
 import hashlib
 import io
+import itertools
 import json
 import os
 import random
@@ -641,7 +644,7 @@ class TestMemesConditions(unittest.TestCase):
         vus = []
         for commande, montages, entree in docker.appels:
             self.assertEqual(commande, ["/chrono/chrono"])
-            self.assertEqual(sorted(cible for _, cible, _ in montages),
+            self.assertEqual(sorted(cible.replace(conteneur.LIEN, "") for _, cible, _ in montages),
                              sorted(["/chrono", "/entrees", "/sorties", "/variante"] + ["/etc/" + n for n in conteneur.ETC]))
             _, options, ligne = entree.splitlines()
             etiquette, parametres, *argv = ligne.split("\t")
@@ -685,11 +688,50 @@ class TestMemesConditions(unittest.TestCase):
         racine = os.path.join(self.travail, "execution")  # ruche-0117: each execution's own tmpfs, at the same path
         self.assertEqual([c for c in commande if c.startswith("type=bind")],
                          [f"type=bind,source={racine}/chrono,target=/chrono,readonly",
-                          f"type=bind,source={racine}/variante,target=/variante,readonly",
-                          f"type=bind,source={racine}/entrees,target=/entrees,readonly", f"type=bind,source={racine}/sorties,target=/sorties"]
+                          f"type=bind,source={racine}/variante,target=/.racine/variante,readonly",
+                          f"type=bind,source={racine}/entrees,target=/.racine/.racine/entrees,readonly",
+                          f"type=bind,source={racine}/sorties,target=/.racine/.racine/.racine/sorties"]
                          + [f"type=bind,source={racine}/etc/{n},target=/etc/{n},readonly" for n in conteneur.ETC])
         self.assertEqual(commande[-2:], ["sha256:" + "0" * 64, "/chrono/chrono"])
         self.assertEqual(len({entree for _, entree in appels}), 3)
+
+    def test_one_mount_order_whatever_docker_draws(self):
+        """ruche-0117: Docker up to 29.0 sorts mounts by depth alone (stably), those of equal depth in the order a map gives
+        them, drawn for each container (/etc's three come last, as its network files). Whatever that order, the judge's own
+        mounts come out in one order, and land, through the image's link to its root, on /chrono, /variante, /entrees and
+        /sorties."""
+        docker = FauxDocker()
+        conteneur.Execution(docker, "/c", {"B": "/b"}, self.travail).lancer(
+            "B", "/e", os.path.join(self.travail, "s"), [("verifier", [conteneur.HARNAIS, "verifier", "/entrees", "/sorties"])])
+        cibles = [cible for _, cible, _ in docker.appels[0][1] if cible not in ["/etc/" + n for n in conteneur.ETC]]
+        ordres = {tuple(sorted(tirage, key=lambda c: os.path.normpath(c).count("/"))) for tirage in itertools.permutations(cibles)}
+        self.assertEqual(len(ordres), 1)
+        self.assertEqual([c.replace(conteneur.LIEN, "") for c in ordres.pop()], ["/chrono", "/variante", "/entrees", "/sorties"])
+        image = conteneur.dockerfile([])
+        self.assertLess(image.index(f"\nRUN ln -s / {conteneur.LIEN}\n"), image.index("\nUSER "))
+
+    def test_tmpfs_in_use_is_an_error(self):
+        """ruche-0117: each execution's tmpfs is unmounted at once, not detached (no --lazy): one still in use when its
+        container has ended stops the judge with an error, rather than staying alive out of sight."""
+        docker, tenus = FauxDocker(), []
+        lancer = docker.lancer
+
+        def tenir(commande, montages, **options):
+            tenus.append(os.open(os.path.dirname(montages[0][0]), os.O_RDONLY))
+            return lancer(commande, montages, **options)
+        docker.lancer = tenir
+        racine = os.path.join(self.travail, "execution")
+        try:
+            with self.assertRaisesRegex(lecture.Erreur, "^umount du tmpfs"):
+                conteneur.Execution(docker, "/c", {"B": "/b"}, self.travail).lancer(
+                    "B", "/e", os.path.join(self.travail, "s"), [("verifier", [conteneur.HARNAIS, "verifier", "/entrees", "/sorties"])])
+            self.assertTrue(os.path.ismount(racine))
+        finally:
+            for fd in tenus:
+                os.close(fd)
+            if os.path.ismount(racine):
+                conteneur.monture("umount", racine)
+        self.assertEqual(len(tenus), 1)
 
     def test_mounted_folders_have_neutral_names(self):
         """A scenario's outputs are mounted on /sorties, as verification's, from a neutral folder renamed afterwards."""
@@ -893,7 +935,7 @@ class DockerEmule:
         self.conteneurs, self.apres = [], apres
 
     def lancer(self, commande, montages, pids=2, entree=None, delai=3600):
-        hote = {cible: source for source, cible, _ in montages}
+        hote = {cible.replace(conteneur.LIEN, ""): source for source, cible, _ in montages}  # the image's link, followed
         jeton, _, *plan = entree.decode().splitlines()
         ecrits = [source for source, _, lecture_seule in montages if not lecture_seule]
         with open(os.path.join(hote["/variante"], "execution"), encoding="ascii") as f:
@@ -2204,6 +2246,7 @@ def espion(texte, corpus):
 # Values that differ between any two containers, replaced before the records are compared.
 VARIABLE = [(re.compile(p), r) for p, r in (
     (r"(^|\\x0a)\d+ \d+ \d+:\d+ ", r"\1"), (r"[0-9a-f]{64}", "<conteneur>"), (r"overlay2/l/[A-Z0-9]+", "<couche>"),
+    (r"io\.containerd\.snapshotter\.v1\.overlayfs/snapshots/\d+", "<couche>"),
     (r"bee-juge-[A-Za-z0-9_]+", "bee-juge-*"), (r"(?<![0-9a-f])[0-9a-f]{16}(?![0-9a-f])", "<neutre>"),
     (r"\\x0a(?:Tgid|Pid|NStgid|NSpid|Vm[A-Za-z]+|Rss[A-Za-z]+|(?:non)?voluntary_ctxt_switches):(?:\\x09|[^\\])*", ""))]
 # Counters (they depend on the inputs: compared only when the inputs are the same, test_memes_compteurs).
@@ -2225,10 +2268,8 @@ def releve_espion(texte):
         for motif, remplacement in VARIABLE:
             valeur = motif.sub(remplacement, valeur)
         releve[cle] = valeur
-    # The mount table is compared as a set: Docker fixes its order before the container starts (by destination in
-    # recent versions, in no fixed order for mounts of equal depth in older ones), from a request that is the same in
-    # every mode (test_same_docker_request_in_every_mode), and the container can change no mount.
-    releve["/proc/self/mountinfo"] = "\\x0a".join(sorted(releve["/proc/self/mountinfo"].split("\\x0a")))
+    # The mount table is compared line by line, in its order: each of the judge's mounts at its own depth, Docker creates
+    # them in the same order whatever its version (test_one_mount_order_whatever_docker_draws).
     return releve
 
 

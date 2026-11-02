@@ -29,6 +29,9 @@ TEMPS = 946684800  # access and modification times of everything mounted for an 
 # created there anew, in a fixed order: no inode, link count, time, free space or mount line follows the run's progress.
 TMPFS = "size=4g,nr_inodes=262144,mode=0755,nosuid,nodev"
 ETC = {"hostname": "juge\n", "hosts": "127.0.0.1\tlocalhost\n", "resolv.conf": ""}
+# Docker (up to 29.0) mounts folders of equal depth in an order drawn for each container (/etc's three, its network files, last
+# in its own order): each folder of the judge is given at its own depth, through the image's link to its root (Dockerfile.base).
+LIEN = "/.racine"
 
 
 def temps_fixes(*dossiers):
@@ -202,12 +205,12 @@ class Execution:
             dossier_ouvert(os.path.join(racine, "sorties"))
             copier_arbre(entrees, os.path.join(racine, "entrees"))  # last: the other inodes do not depend on the inputs
             temps_fixes(racine)
-            montages = [(os.path.join(racine, n), "/" + n, n != "sorties") for n in ("chrono", "variante", "entrees", "sorties")]
+            montages = [(os.path.join(racine, n), LIEN * i + "/" + n, n != "sorties") for i, n in enumerate(("chrono", "variante", "entrees", "sorties"))]
             montages += [(os.path.join(racine, "etc", n), "/etc/" + n, True) for n in ETC]
             r = self.docker.lancer(["/chrono/chrono"], montages, pids=2, entree=entree.encode(), delai=delai * len(plan) + 300)
             copier(os.path.join(racine, "sorties"), sorties)
         finally:
-            monture("umount", "--lazy", racine)
+            monture("umount", racine)
             os.rmdir(racine)
         if r.returncode != 0:
             raise Refus(f"le lanceur a échoué pour {variante} (code {r.returncode}) : " + propre(r.stderr))
