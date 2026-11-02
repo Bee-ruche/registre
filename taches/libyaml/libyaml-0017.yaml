@@ -34,3 +34,11 @@ noeud: projets/parsing-serialisation/libyaml
 statut: ouverte
 cree_par: conseil
 cree_le: "2026-10-31"
+notes:
+- par: bidji29
+  le: '2026-11-02T09:13:03Z'
+  texte: 'Council''s note (2 Nov 2026): the common judge''s next version (juge-v3: ruche-0036, 0037, 0038, 0117) changes
+    the harness and plugin contract. Write libyamlBee''s harness and plugin to it directly: the harness reads its parameters
+    as one fixed-length record from descriptor 0 and erases them before calling the library, writes the same outputs
+    at the same paths in every mode; the plugin checks every output, and fixed metrics are computed from timed outputs
+    too. See docs/juge-commun.md once ruche-0037 is merged.'
