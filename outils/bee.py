@@ -9378,8 +9378,101 @@ def proprietaire_depot(url):
     return (correspondance[1], correspondance[2]) if correspondance else (None, None)
 
 
+def engagements_prepares(depot, changements):
+    """ruche-0129 (E7) : les engagements (réservation, inscription en parallèle) préparés avec la soumission qui les suit, dans
+    les mêmes changements. La porte juge une soumission sur l'engagement de sa base (« ouverte → en_relecture » lui est refusé) :
+    l'engagement part d'abord, seul. {chemin de la tâche : (titre de sa PR, ce que modifier_tache rejoue sur la tâche de HEAD)}."""
+    prepares = {}
+    for chemin in changements:
+        m = re.match(r"contributions/([a-z0-9-]+)/", chemin)
+        if not m or not (depot / chemin).is_file() or lire_ou_rien(depot, "HEAD", chemin) is not None:
+            continue  # une soumission ajoute sa contribution
+        enr = lire_yaml(depot / chemin)
+        tid, u, depuis = enr.get("tache"), enr.get("auteur"), enr.get("engage_depuis")
+        tache = f"taches/{m[1]}/{tid}.yaml"
+        t = lire_ou_rien(depot, "HEAD", tache) if tache in changements else None
+        if not (isinstance(t, dict) and depuis and t.get("statut") in ("ouverte", "reservee", "en_relecture")) or u in [
+                (t.get("reservation") or {}).get("utilisateur"), *(p.get("utilisateur") for p in paralleles_de(t))]:
+            continue  # déjà engagé sur HEAD : une seule PR
+        engagement = {"utilisateur": u, "depuis": depuis}
+        prepares[tache] = ((f"Réservation {tid}", {"statut": "reservee", "reservation": engagement}) if t["statut"] == "ouverte"
+                           else (f"Inscription en parallèle {tid}", {"paralleles": paralleles_de(t) + [engagement]}))
+    return prepares
+
+
+def plafonds_par_pr(reg, depot, changements):
+    """ruche-0129 (E7) : les plafonds par PR de la porte (notes, arguments, créations), comptés avant toute PR. Comme à la
+    porte, ni le conseil ni les robots n'y sont soumis (ici, d'après l'auteur que nomme chaque geste)."""
+    libres, comptes = set(reg.conseil) | set(reg.robots), defaultdict(int)
+    for c in changements:
+        if (dossier := c.split("/", 1)[0]) not in ("taches", "propositions", "invitations", "debats"):
+            continue
+        avant, apres = lire_ou_rien(depot, "HEAD", c), lire_yaml(depot / c) if (depot / c).is_file() else None
+        numerote = any(r.match(c) for r in (CHEMIN_TACHE, CHEMIN_PROPOSITION, CHEMIN_INVITATION))  # ce que la porte compte comme créé
+        if numerote and avant is None and isinstance(apres, dict) and apres.get(CREES_PAR[dossier][1]) not in libres:
+            comptes[dossier] += 1
+        for cle in ("notes", "arguments"):
+            listes = [d.get(cle) if isinstance(d, dict) and isinstance(d.get(cle), list) else [] for d in (avant, apres)]
+            comptes[cle] += sum(isinstance(x, dict) and x.get("par") not in libres for x in listes[1][len(listes[0]):])
+    plafonds = {"notes": ("notes.max_par_pr", config_notes(reg)["max_par_pr"]),
+                "arguments": ("agora.arguments_max_par_pr", config_agora(reg)["arguments_max_par_pr"]),
+                **{d: (f"creations.{d}_max_par_pr", config_creations(reg)[f"{d}_max_par_pr"]) for d in CREES_PAR}}
+    return [f"{comptes[k]} {k} ajoutés, au plus {n} ({cle})" for k, (cle, n) in plafonds.items() if comptes[k] > n]
+
+
+def nouvelle_branche(depot, titre):
+    """Une branche locale neuve, nommée d'après le titre de sa PR."""
+    base = re.sub(r"[^a-z0-9]+", "-", titre.lower().translate(str.maketrans("àâäéèêëîïôöùûüç", "aaaeeeeiioouuuc"))).strip("-")[:50] or "publication"
+    # Horodatée pour ne jamais retomber sur une branche distante restée d'une publication précédente.
+    racine_branche = f"bee/{base}-{maintenant().strftime('%Y%m%d-%H%M%S')}"
+    branche, n = racine_branche, 2
+    while executer(["git", "rev-parse", "--verify", "--quiet", branche], depot, verifier=False).returncode == 0:
+        branche, n = f"{racine_branche}-{n}", n + 1
+    return branche
+
+
+def preparer_en_deux(depot, prepares, titres, changements, retour):
+    """Deux commits sur deux branches locales, rien de poussé : la première porte les engagements seuls, rejoués sur la tâche
+    de HEAD ; la seconde, au-dessus, tous les changements. Revient sur `retour`, le disque propre : les changements sont dans
+    la seconde."""
+    finaux, branches = {c: (depot / c).read_bytes() for c in prepares}, []
+    try:
+        for titre, chemins in zip(titres, (list(prepares), changements)):
+            branches.append(nouvelle_branche(depot, titre))
+            executer(["git", "switch", "-c", branches[-1]], depot)
+            try:
+                for c, (_, rejeu) in (prepares.items() if len(branches) == 1 else ()):
+                    (depot / c).write_bytes(_git_brut(depot, "cat-file", "blob", f"HEAD:{c}")[1])
+                    modifier_tache(depot / c, **rejeu)
+                executer(["git", "--literal-pathspecs", "add", "--", *chemins], depot)
+                executer(["git", "commit", "-m", titre], depot)
+            finally:
+                for c, octets in finaux.items():
+                    (depot / c).write_bytes(octets)
+    finally:
+        executer(["git", "switch", retour], depot, verifier=False)
+    return branches
+
+
+def ouvrir_pr(depot, amont, branche, titre, corps):
+    """Pousse `branche` et ouvre sa PR sur `amont` : (adresse, numéro)."""
+    executer(["git", "push", "-u", "origin", branche], depot)
+    proprietaire, _ = proprietaire_depot(executer(["git", "remote", "get-url", "origin"], depot).stdout.strip())
+    proprietaire_amont, _ = proprietaire_depot(f"https://github.com/{amont}")
+    tete = branche if proprietaire in (None, proprietaire_amont) else f"{proprietaire}:{branche}"
+    # API REST plutôt que `gh pr create` (GraphQL) : elle fonctionne aussi dans les environnements restreints.
+    pr = json.loads(executer(["gh", "api", f"repos/{amont}/pulls", "-X", "POST", "-f", f"title={titre}",
+                              "-f", f"head={tete}", "-f", "base=main", "-f", f"body={corps}"], depot).stdout)
+    print(f"✓ PR ouverte : {pr['html_url']}")
+    return pr["html_url"], pr["number"]
+
+
 def cmd_publier(args):
-    """Branche, commit, push, PR, puis attente de la fusion : une action du registre en une commande."""
+    """Branche, commit, push, PR, puis attente de la fusion : une action du registre en une commande.
+
+    ruche-0129 (E7) : les gestes indépendants d'une session (relectures, votes, notes, mesures…) partent ensemble, en une PR,
+    sous les plafonds par PR de la porte (plafonds_par_pr). Un engagement préparé avec sa soumission (engagements_prepares)
+    part d'abord, seul ; le reste suit une fois sa PR fusionnée, rejoué sur le main qu'elle a laissé."""
     reg = Registre(args.registre)
     depot = reg.racine
     organisation = reg.config.get("organisation", "")
@@ -9398,38 +9491,65 @@ def cmd_publier(args):
     problemes = verifier_registre(Registre(depot))
     if problemes:
         raise ErreurBee("le registre n'est pas valide, la PR serait refusée :\n  " + "\n  ".join(problemes[:10]))
+    if depasses := plafonds_par_pr(reg, depot, changements):
+        raise ErreurBee("plafonds par PR de la porte : " + " ; ".join(depasses) + ". Publiez en plusieurs fois, chaque PR sous les "
+                        "plafonds (git stash push -- <fichiers> met des fichiers de côté le temps d'une publication)")
+    prepares = engagements_prepares(depot, changements)
+    avant = ", ".join(titre for titre, _ in prepares.values())
     if args.a_blanc:
         print("✓ à blanc : les fichiers relèvent du libre-service et le registre reste valide. Rien n'a été écrit ni poussé.")
         print(f"  Dépôt : {amont} — PR « {args.titre} »")
         for c in changements:
             print(f"  - {montrer(c)}")
+        if prepares:
+            print(f"  En deux PR, dans l'ordre : d'abord « {avant} » seule ({', '.join(prepares)}), puis, une fois fusionnée, "
+                  f"« {args.titre} » : la porte juge une soumission sur l'engagement de sa base.")
         print("  Sans --a-blanc, bee publierait : branche, commit, poussée, PR, attente de la fusion automatique.")
         return 0
+    if prepares and args.sans_attendre:
+        raise ErreurBee(f"« {avant} » doit être fusionnée avant « {args.titre} », qui en dépend : publiez sans --sans-attendre")
     branche_initiale = executer(["git", "rev-parse", "--abbrev-ref", "HEAD"], depot).stdout.strip()
-    base = re.sub(r"[^a-z0-9]+", "-", args.titre.lower().translate(str.maketrans("àâäéèêëîïôöùûüç", "aaaeeeeiioouuuc"))).strip("-")[:50] or "publication"
-    # Horodatée pour ne jamais retomber sur une branche distante restée d'une publication précédente.
-    racine_branche = f"bee/{base}-{maintenant().strftime('%Y%m%d-%H%M%S')}"
-    branche, n = racine_branche, 2
-    while executer(["git", "rev-parse", "--verify", "--quiet", branche], depot, verifier=False).returncode == 0:
-        branche, n = f"{racine_branche}-{n}", n + 1
-    executer(["git", "switch", "-c", branche], depot)
+    retour = branche_initiale if branche_initiale != "HEAD" else "main"
+    if prepares:
+        premiere, branche = preparer_en_deux(depot, prepares, (avant, args.titre), changements, retour)
+        try:
+            code = attendre_fusion(args, depot, amont, *ouvrir_pr(depot, amont, premiere, avant,
+                                                                  f"Publié avec `bee publier`.\n\nNature : {avant}."))
+        except ErreurBee as e:
+            code = e
+        if code:  # refusée, ou pas encore fusionnée : rien d'autre ne part, et les changements reviennent sur le disque
+            executer(["git", "--literal-pathspecs", "restore", "--source", branche, "--worktree", "--", *changements], depot)
+            if isinstance(code, ErreurBee):
+                raise ErreurBee(f"{code}\n  Rien d'autre n'est publié : vos changements sont revenus sur le disque.") from None
+            fichiers = " ".join(prepares)
+            print(f"  « {args.titre} » en dépend : rien d'autre n'est publié, vos changements sont revenus sur le disque. Une fois "
+                  f"cette PR fusionnée : git stash push -- {fichiers} ; git pull --ff-only upstream main ; git checkout "
+                  f"'stash@{{0}}' -- {fichiers} ; git stash drop ; puis relancez bee publier.")
+            return code
+        if executer(["git", "rebase", "--onto", "main", premiere, branche], depot, verifier=False).returncode:
+            executer(["git", "rebase", "--abort"], depot, verifier=False)
+            executer(["git", "switch", retour], depot, verifier=False)
+            raise ErreurBee(f"« {avant} » est fusionnée, mais « {args.titre} » ne s'applique plus sur main (ses fichiers y ont "
+                            f"changé entre-temps) : elle reste sur la branche locale {branche}")
+    else:
+        branche = nouvelle_branche(depot, args.titre)
+        executer(["git", "switch", "-c", branche], depot)
     try:
-        executer(["git", "--literal-pathspecs", "add", "--", *changements], depot)
-        executer(["git", "commit", "-m", args.titre], depot)
-        executer(["git", "push", "-u", "origin", branche], depot)
-        proprietaire, _ = proprietaire_depot(executer(["git", "remote", "get-url", "origin"], depot).stdout.strip())
-        proprietaire_amont, _ = proprietaire_depot(f"https://github.com/{amont}")
-        tete = branche if proprietaire in (None, proprietaire_amont) else f"{proprietaire}:{branche}"
-        # API REST plutôt que `gh pr create` (GraphQL) : elle fonctionne aussi dans les environnements restreints.
-        pr = json.loads(executer(["gh", "api", f"repos/{amont}/pulls", "-X", "POST", "-f", f"title={args.titre}",
-                                  "-f", f"head={tete}", "-f", "base=main", "-f", f"body={corps}"], depot).stdout)
+        if not prepares:
+            executer(["git", "--literal-pathspecs", "add", "--", *changements], depot)
+            executer(["git", "commit", "-m", args.titre], depot)
+        adresse, numero = ouvrir_pr(depot, amont, branche, args.titre, corps)
     finally:
-        executer(["git", "switch", branche_initiale if branche_initiale != "HEAD" else "main"], depot, verifier=False)
-    adresse, numero = pr["html_url"], pr["number"]
-    print(f"✓ PR ouverte : {adresse}")
+        executer(["git", "switch", retour], depot, verifier=False)
     if args.sans_attendre:
         print(f"  Pensez à attendre sa fusion avant l'étape suivante (gh api repos/{amont}/pulls/{numero} --jq .merged).")
         return 0
+    return attendre_fusion(args, depot, amont, adresse, numero)
+
+
+def attendre_fusion(args, depot, amont, adresse, numero):
+    """Attend la fusion de la PR, puis remet main à jour : 0 ; 2 si elle est toujours ouverte après --delai ; fermée sans
+    fusion : ErreurBee."""
     import time
     limite = time.monotonic() + args.delai * 60
     print(f"  Attente de la fusion (au plus {args.delai} min)…")
@@ -10408,7 +10528,7 @@ def construire_analyseur():
     p.add_argument("verdict")
 
     p = ajouter("publier", cmd_publier, "Publie vos changements du registre : branche, commit, push, PR, puis attente de la fusion.")
-    p.add_argument("--titre", required=True, help="ex. « Réservation miniz-0012 », « Soumission miniz-0012-c1 »")
+    p.add_argument("--titre", required=True, help="ex. « Réservation miniz-0012 », « Soumission miniz-0012-c1 », « Session <pseudo> »")
     p.add_argument("--corps", help="texte de la PR (facultatif)")
     p.add_argument("--amont", help="dépôt du registre (défaut : <organisation>/registre)")
     p.add_argument("--sans-attendre", action="store_true", help="ne pas attendre la fusion")

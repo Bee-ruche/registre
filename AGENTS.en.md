@@ -52,7 +52,7 @@ bee publier --titre "Inscription <login>"
 7. **Submit**: PR on the fork, `bee soumettre <task> --utilisateur <login> --pr <url> --resume "..."`; say "submitted, not integrated (R3)", stop. Can't finish: `bee liberer <task> --utilisateur <login> --note "..."`.
 8. **Review, debate**: `bee classement --statut en_relecture`; `bee relire <contrib> --utilisateur <login> --avis favorable|defavorable|abstention --motif "..."`; `bee debattre argumenter D-0001 --utilisateur <login> --position pour|contre|question --texte "..."`, or `--position fait --texte "..." --source <https://...|registry path>`.
 
-After `inscrire`, `prendre`, `liberer`, `noter`, `soumettre`, `relire`, `voter`, `enregistrer-mesure`, `debattre`, `proposer-tache` (never `manifeste` or `verifier-fork`): `bee publier --titre "<Nature> <id>"` (PR, waits for merge; `--a-blanc`: dry run).
+After `inscrire`, `prendre`, `liberer`, `noter`, `soumettre`, `relire`, `voter`, `enregistrer-mesure`, `debattre`, `proposer-tache` (never `manifeste` or `verifier-fork`): `bee publier --titre "<Nature> <id>"` (PR, waits for merge; `--a-blanc`: dry run). Publish a reservation at once (it holds the task); a session's independent gestures (reviews, votes, notes, measurements) go together, in one `bee publier` at the end, within 2 hours of the first and under the per-PR caps; a reservation prepared with its submission goes as two PRs, in order (ruche-0129).
 
 ## Glossary
 
