@@ -13,6 +13,7 @@ contexte: >
   l'invitation et son échéance ; (4) l'identifiant site: distingue une page personnelle d'un domaine partagé
   (une université n'est pas une seule personne) ; (5) un gardien a un geste pour signaler un incident (R13,
   frein).
+  Décision du conseil (2 Nov 2026) : le point (4) devient la tâche ruche-0106 ; il ne tenait pas dans la taille S.
 fichiers: [outils/bee.py, outils/test_bee.py, docs/croissance.md, AGENTS.md, arbre/roles/]
 portee: 0.7
 metrique: null
@@ -20,7 +21,6 @@ critere_acceptation:
   - "bee contexte --role inviter imprime le chemin de R13 (docs/croissance.md) dans le budget de jetons des rôles"
   - "AGENTS.md renvoie à docs/croissance.md là où il parle d'inviter"
   - "test : bee voir I-nnnn affiche les dates de proposition, d'accord et de feu vert, et l'échéance"
-  - "test : deux pages personnelles d'un même domaine partagé sont deux identités, et le domaine partagé seul n'en désigne aucune"
   - "test : un gardien en fonction signale un incident par une commande de bee, et le frein en tient compte"
 hors_perimetre:
   - "COMMANDEMENTS.md"
