@@ -1,0 +1,11 @@
+id: ruche-0117-c1
+tache: ruche-0117
+auteur: bidji29
+pr: https://github.com/Bee-ruche/registre/pull/183
+resume: 'The common judge before juge-v3: suspicious constructs ranked, code published only with a checked
+  report, fresh inputs per container, flagged verification-only metrics, per-scenario identity, a tmpfs
+  per execution, and nothing in the setup tied to the run''s progress.'
+statut: en_relecture
+soumise_le: '2026-11-02T19:35:50Z'
+engage_depuis: '2026-11-02T16:01:44Z'
+relectures: []
