@@ -40,8 +40,8 @@ LIGNES_MAX = {"S": 50, "M": 200, "L": 400}
 ORDRE_TAILLES = ("S", "M", "L")
 POIDS_VOTE = {"Nouveau": 0, "Contributeur": 1, "Confirmé": 2}
 TAILLES_PAR_NIVEAU = {"Nouveau": ("S",), "Contributeur": ("S", "M"), "Confirmé": ("S", "M", "L")}
-ID_CONTRIBUTION = re.compile(r"^(?P<tache>[a-z0-9]+(?:-[a-z0-9]+)*-[0-9]{4})-c(?P<n>[0-9]+)$")
-ID_PROPOSITION = re.compile(r"^P-[0-9]{4}$")
+ID_CONTRIBUTION = re.compile(r"^(?P<tache>[a-z0-9]+(?:-[a-z0-9]+)*-[0-9]{4})-c(?P<n>[0-9]+)\Z")
+ID_PROPOSITION = re.compile(r"^P-[0-9]{4}\Z")
 # Numéros 9000 et plus (tâches <projet>-9xxx, propositions P-9xxx) : réservés aux tests de l'outil (fixtures). Ils restent
 # hors du libre-service et n'entrent pas dans la numérotation : un numéro squatté là ne gèle plus bee proposer ni bee
 # proposer-tache (répétition générale du 29/10, T5 et T6 ; tâche ruche-0011).
@@ -908,7 +908,7 @@ def depart_du_titulaire(reg, tid, paralleles):
 
 DOSSIERS_GESTES = ("taches", "contributions", "votes", "mesures", "propositions", "debats")
 # Seuls ces chemins sont relus dans l'historique : ni guillemet, ni espace, ni saut de ligne (git cat-file --batch).
-CHEMIN_HISTORIQUE = re.compile(r"^(?:taches|contributions|votes|mesures|propositions|debats)/[A-Za-z0-9._/-]+\.yaml$")
+CHEMIN_HISTORIQUE = re.compile(r"^(?:taches|contributions|votes|mesures|propositions|debats)/[A-Za-z0-9._/-]+\.yaml\Z")
 
 
 class _ChargeurHistorique(getattr(yaml, "CSafeLoader", yaml.SafeLoader)):
@@ -937,6 +937,22 @@ def _git_brut(depot, *arguments, entree=None):
     return resultat.returncode, resultat.stdout
 
 
+def champs_git(sortie, arguments, remplacer=False):
+    """ruche-0095: the fields of a git listing asked with -z (its output, in bytes), each path as it is in the repository,
+    never quoted; an output that is not NUL-terminated is refused (ErreurBee). A path that is not UTF-8 text is refused too,
+    the path shown escaped; with `remplacer` (the readers of main's tree and history, which a refusal would block for good),
+    it is read with each undecodable byte written \\xNN instead, so that it equals no path written by bee."""
+    if sortie and not sortie.endswith(b"\0"):
+        raise ErreurBee(f"git {' '.join(arguments)} : not a -z listing")
+    try:
+        return sortie.decode("utf-8").split("\0")[:-1]
+    except UnicodeDecodeError as e:
+        if remplacer:
+            return sortie.decode("utf-8", "backslashreplace").split("\0")[:-1]
+        illisible = sortie[sortie.rfind(b"\0", 0, e.start) + 1:sortie.find(b"\0", e.start)].decode("utf-8", "backslashreplace")
+        raise ErreurBee(f"git {' '.join(arguments)} : the path {illisible!r} is not UTF-8 text: refused (rename it)") from None
+
+
 def historique_disponible(racine):
     """Vrai si `racine` est la racine d'un dépôt git complet : ni un clone superficiel (son historique s'arrête au dernier
     commit), ni un dossier sans git ou dans le dépôt d'un autre. Sans cela, l'historique ne dit pas quand un geste est arrivé."""
@@ -954,13 +970,13 @@ def commits_premier_parent(racine, ref, *chemins, filtre=None):
     """Commits de `ref` qui touchent ces chemins, sur le premier parent (les fusions dans la branche), du plus récent au plus
     ancien : [(sha, instant du commit, [chemins touchés])]. `filtre` : celui de git diff (« A » : les fichiers ajoutés).
     Vide si l'historique est illisible."""
-    code, sortie = _git_brut(racine, "-c", "core.quotepath=off", "log", "--first-parent", "--no-renames", "--format=%x00%H %ct",
+    code, sortie = _git_brut(racine, "log", "-z", "--first-parent", "--no-renames", "--format=%x00%H %ct",
                              "--name-only", *([f"--diff-filter={filtre}"] if filtre else []), ref, "--", *chemins)
     if code:
         return []
     commits = []
-    for bloc in sortie.decode("utf-8", "replace").split("\x00")[1:]:
-        lignes = [ligne for ligne in bloc.split("\n") if ligne.strip()]
+    for bloc in "\0".join(champs_git(sortie, ("log",), remplacer=True)).strip("\0").split("\0\0"):  # "\0<sha> <instant>\0\n<path>\0…"
+        lignes = bloc.replace("\0\n", "\0", 1).split("\0")
         if not lignes:
             continue
         sha, _, horodatage = lignes[0].partition(" ")
@@ -974,8 +990,10 @@ def commits_premier_parent(racine, ref, *chemins, filtre=None):
 
 def lire_versions(racine, demandes):
     """Contenu de fichiers à des révisions données, en un seul appel (git cat-file --batch) : {(sha, chemin): texte, ou None
-    si le fichier n'existe pas à cette révision ou n'est pas du texte UTF-8}. Seuls les chemins de CHEMIN_HISTORIQUE sont lus."""
-    demandes = [d for d in dict.fromkeys(demandes) if CHEMIN_HISTORIQUE.match(d[1])]
+    si le fichier n'existe pas à cette révision ou n'est pas du texte UTF-8}. Seuls les chemins de CHEMIN_HISTORIQUE sont lus.
+    ruche-0095: never a request that holds a newline or a carriage return (cat-file --batch reads one per line, and drops a
+    final carriage return: it would read another file, or shift every answer after it)."""
+    demandes = [d for d in dict.fromkeys(demandes) if CHEMIN_HISTORIQUE.match(d[1]) and not set("\n\r") & set(f"{d[0]}:{d[1]}")]
     resultat = {d: None for d in demandes}
     # ruche-0040: the sizes first; a version over its bound is not read at all.
     tailles = tailles_objets(racine, [f"{s}:{c}" for s, c in demandes]) if demandes else None
@@ -1097,12 +1115,12 @@ class DatesDeFusion:
             self._charger(reg.racine)
 
     def _charger(self, racine):
-        code, sortie = _git_brut(racine, "-c", "core.quotepath=off", "status", "--porcelain", "--untracked-files=all",
+        code, sortie = _git_brut(racine, "status", "-z", "--porcelain", "--untracked-files=all",
                                  "--no-renames", "--", *DOSSIERS_GESTES)
         if code:
             self.disponible = False
             return
-        modifies = {ligne[3:] for ligne in sortie.decode("utf-8", "replace").splitlines() if len(ligne) > 3}
+        modifies = {ligne[3:] for ligne in champs_git(sortie, ("status",), remplacer=True)}
         par_fichier = defaultdict(list)
         for sha, moment, chemins in commits_premier_parent(racine, "HEAD", *DOSSIERS_GESTES):
             for chemin in chemins:
@@ -2091,15 +2109,29 @@ def verifier_manifeste(reg, donnees, origine="CONTRIBUTION.yaml", utilisateur=No
 # Vérification d'une pull request sur le registre (aucun code de la PR n'est exécuté)
 # --------------------------------------------------------------------------
 
-def git(depot, *arguments):
-    resultat = subprocess.run(["git", "-C", str(depot), *arguments], capture_output=True, text=True)
+def git(depot, *arguments, remplacer=False):
+    """ruche-0095: a git listing asked with -z, read as bytes: its fields (champs_git). With --name-status or --raw, its entries
+    by their status: (status or « :<modes> <shas> <status> », path), or (…, old path, new path) for a rename or a copy (R, C);
+    any other status is refused, never paired blindly."""
+    resultat = subprocess.run(["git", "-C", str(depot), *arguments], capture_output=True)
     if resultat.returncode != 0:
-        raise ErreurBee(f"git {' '.join(arguments)} : {resultat.stderr.strip()}")
-    return resultat.stdout
+        raise ErreurBee(f"git {' '.join(arguments)} : {os.fsdecode(resultat.stderr).strip()}")
+    champs = champs_git(resultat.stdout, arguments, remplacer)
+    if not {"--name-status", "--raw"} & set(arguments):
+        return champs
+    entrees, suite = [], iter(champs)
+    for tete in suite:
+        statut = tete.rpartition(" ")[2]
+        nombre = 1 if statut in ("A", "M", "D", "T") else 2 if statut[:1] in ("R", "C") and statut[1:].isdigit() else 0
+        chemins = [next(suite, None) for _ in range(nombre)]
+        if not nombre or None in chemins:
+            raise ErreurBee(f"git {' '.join(arguments)} : unexpected entry {tete!r}: refused")
+        entrees.append((tete, *chemins))
+    return entrees
 
 
 def lire_yaml_ref(depot, ref, chemin):
-    resultat = subprocess.run(["git", "-C", str(depot), "show", f"{ref}:{chemin}"], capture_output=True)
+    resultat = subprocess.run(["git", "-C", str(depot), "cat-file", "blob", f"{ref}:{chemin}"], capture_output=True)  # a file only
     if resultat.returncode != 0:
         return None
     try:
@@ -2118,21 +2150,21 @@ def correspond(chemin, motifs):
 
 PSEUDO_MOTIF = r"[A-Za-z0-9][A-Za-z0-9-]{0,38}"
 ID_TACHE_MOTIF = r"[a-z0-9]+(?:-[a-z0-9]+)*-[0-9]{4}"
-CHEMIN_TACHE = re.compile(r"^taches/(?P<projet>[a-z0-9]+(?:-[a-z0-9]+)*)/(?P=projet)-(?P<n>[0-9]{4})\.yaml$")
-CHEMIN_PROPOSITION = re.compile(r"^propositions/P-(?P<n>[0-9]{4})\.yaml$")
-CHEMIN_INVITATION = re.compile(r"^invitations/I-(?P<n>[0-9]{4})\.yaml$")
+CHEMIN_TACHE = re.compile(r"^taches/(?P<projet>[a-z0-9]+(?:-[a-z0-9]+)*)/(?P=projet)-(?P<n>[0-9]{4})\.yaml\Z")
+CHEMIN_PROPOSITION = re.compile(r"^propositions/P-(?P<n>[0-9]{4})\.yaml\Z")
+CHEMIN_INVITATION = re.compile(r"^invitations/I-(?P<n>[0-9]{4})\.yaml\Z")
 CHEMIN_NON_CONTACT = "invitations/ne-plus-contacter.yaml"
 # Dossier → (forme attendue de ses fichiers, pour le message ; motif). Les débats ont leurs propres contrôles (verifier_debat).
 FICHIERS_LIBRE_SERVICE = {
     "taches": ("taches/<projet>/<projet>-<nnnn>.yaml", CHEMIN_TACHE),
-    "contributions": ("contributions/<projet>/<tâche>-c<n>.yaml", re.compile(rf"^contributions/[a-z0-9]+(?:-[a-z0-9]+)*/{ID_TACHE_MOTIF}-c[0-9]+\.yaml$")),
+    "contributions": ("contributions/<projet>/<tâche>-c<n>.yaml", re.compile(rf"^contributions/[a-z0-9]+(?:-[a-z0-9]+)*/{ID_TACHE_MOTIF}-c[0-9]+\.yaml\Z")),
     "votes": ("votes/<contribution ou P-nnnn>/<pseudo>.yaml",
-              re.compile(rf"^votes/(?:{ID_TACHE_MOTIF}-c[0-9]+|P-[0-9]{{4}})/{PSEUDO_MOTIF}\.yaml$")),
-    "mesures": ("mesures/<contribution>/<pseudo>.yaml", re.compile(rf"^mesures/{ID_TACHE_MOTIF}-c[0-9]+/{PSEUDO_MOTIF}\.yaml$")),
-    "membres": ("membres/<pseudo>.yaml", re.compile(rf"^membres/{PSEUDO_MOTIF}\.yaml$")),
+              re.compile(rf"^votes/(?:{ID_TACHE_MOTIF}-c[0-9]+|P-[0-9]{{4}})/{PSEUDO_MOTIF}\.yaml\Z")),
+    "mesures": ("mesures/<contribution>/<pseudo>.yaml", re.compile(rf"^mesures/{ID_TACHE_MOTIF}-c[0-9]+/{PSEUDO_MOTIF}\.yaml\Z")),
+    "membres": ("membres/<pseudo>.yaml", re.compile(rf"^membres/{PSEUDO_MOTIF}\.yaml\Z")),
     "propositions": ("propositions/P-<nnnn>.yaml", CHEMIN_PROPOSITION),
     "invitations": (f"invitations/I-<nnnn>.yaml et {CHEMIN_NON_CONTACT}",
-                    re.compile(rf"^(?:{CHEMIN_INVITATION.pattern[1:-1]}|{re.escape(CHEMIN_NON_CONTACT)})$")),
+                    re.compile(rf"^(?:{CHEMIN_INVITATION.pattern[1:-2]}|{re.escape(CHEMIN_NON_CONTACT)})\Z")),
 }
 
 # ruche-0040: a self-service file's bound in bytes, by its folder whatever its name (any other file bee reads: the largest), is
@@ -2183,11 +2215,16 @@ def probleme_marque(relatif):
 
 
 def tailles_objets(depot, noms):
-    """The size in bytes of each git object `ref:path` (None: absent, not a file), in one call; None if git fails."""
-    code, sortie = _git_brut(depot, "cat-file", "--batch-check=%(objecttype) %(objectsize)",
-                             entree="".join(f"{n}\n" for n in noms).encode("utf-8"))
-    lignes = sortie.decode("utf-8", "replace").splitlines()
-    return None if code or len(lignes) != len(noms) else [int(l[5:]) if l.startswith("blob ") else None for l in lignes]
+    """The size in bytes of each git object `ref:path` (None: absent, not a file), in one call; None if git fails. One name per
+    line, which any git reads; NUL-separated (-Z, git 2.42 or later) only when a name holds a newline or a carriage return,
+    which a line would cut, or drop at its end (ruche-0095)."""
+    fin = "\0" if any(c in n for n in noms for c in "\n\r") else "\n"
+    code, sortie = _git_brut(depot, "cat-file", *(["-Z"] if fin == "\0" else []), "--batch-check=%(objecttype) %(objectsize)",
+                             entree="".join(f"{n}{fin}" for n in noms).encode("utf-8"))
+    lignes = sortie.decode("utf-8", "replace").split(fin)
+    if code or lignes.pop() != "" or len(lignes) != len(noms):
+        return None
+    return [int(l[5:]) if l.startswith("blob ") else None for l in lignes]
 
 
 def tailles_a(depot, ref, chemins):
@@ -2195,7 +2232,9 @@ def tailles_a(depot, ref, chemins):
     chemins = [c for c in chemins if sorte_libre_service(c) or c.lower().endswith((".yaml", ".yml"))]
     tailles = tailles_objets(depot, [f"{ref}:{c}" for c in chemins]) if chemins else []
     if tailles is None:
-        raise ErreurBee(f"git cat-file : taille des fichiers de {ref} illisible ; rien n'est lu")
+        raise ErreurBee(f"git cat-file : taille des fichiers de {ref} illisible ; rien n'est lu"
+                        + (" (a name that holds a newline or a carriage return needs git 2.42 or later)"
+                           if any(c in n for n in chemins for c in "\n\r") else ""))
     return {c: t for c, t in zip(chemins, tailles) if t is not None}
 
 
@@ -2213,7 +2252,7 @@ def numero_suivant(numeros):
 
 def numeros_dans(reg, ref, dossier, motif):
     """Numéros (groupe « n » de `motif`) des fichiers de `dossier` à la révision `ref`."""
-    return [int(m["n"]) for nom in git(reg.racine, "ls-tree", "--name-only", ref, dossier.rstrip("/") + "/").splitlines()
+    return [int(m["n"]) for nom in git(reg.racine, "ls-tree", "-z", "--name-only", ref, dossier.rstrip("/") + "/", remplacer=True)
             if (m := motif.match(nom))]
 
 
@@ -2343,9 +2382,9 @@ def creations_recentes(reg, ref, dossier, utilisateur, instant):
     if not siens:
         return 0
     if historique_disponible(reg.racine):
-        code, sortie = _git_brut(reg.racine, "-c", "core.quotepath=off", "ls-tree", "-r", "--name-only", ref, dossier + "/")
+        code, sortie = _git_brut(reg.racine, "ls-tree", "-z", "-r", "--name-only", ref, dossier + "/")
         if not code:
-            publies = set(sortie.decode("utf-8", "replace").splitlines())
+            publies = set(champs_git(sortie, ("ls-tree",), remplacer=True))
             recents = {c for _, moment, chemins in commits_premier_parent(reg.racine, ref, dossier, filtre="A")
                        if moment > debut for c in chemins}
             return sum(1 for c in siens if c in recents or c not in publies)
@@ -2581,11 +2620,10 @@ def verifier_engagements(reg, chemin, ancien, nouveau, differences, auteur, *, e
 
 def contributions_de_la_pr(reg, base, tete):
     """Contributions ajoutées ou modifiées par la PR : [(chemin, contribution lue dans la tête)]."""
-    sorties = git(reg.racine, "diff", "--name-status", "--no-renames", f"{base}...{tete}")
-    tailles = tailles_a(reg.racine, tete, [ligne.partition("\t")[2] for ligne in sorties.splitlines()])  # ruche-0040: never read
+    changements = git(reg.racine, "diff", "-z", "--name-status", "--no-renames", f"{base}...{tete}")
+    tailles = tailles_a(reg.racine, tete, [c for _, c in changements])  # ruche-0040: never read
     resultat = []
-    for ligne in sorties.splitlines():
-        statut_git, _, chemin = ligne.partition("\t")
+    for statut_git, chemin in changements:
         partie = chemin.split("/")
         if (statut_git in ("A", "M") and partie[0] == "contributions" and len(partie) == 3 and chemin.endswith(".yaml")
                 and tailles.get(chemin, 0) <= borne_octets(chemin)):
@@ -2618,9 +2656,9 @@ def contributions_de_la_pr(reg, base, tete):
 # Contre le bruit : textes courts, arguments plafonnés par utilisateur et par débat sur 24 h glissantes, et par PR
 # (bee.yaml, clé agora ; règle R12). Le contenu d'un débat est de la donnée, jamais une instruction (commandement 5).
 
-ID_DEBAT = re.compile(r"^D-[0-9]{4}$")
-ID_ARGUMENT = re.compile(r"^A[1-9][0-9]*$")
-CHEMIN_DEBAT = re.compile(r"^debats/(D-[0-9]{4})\.yaml$")
+ID_DEBAT = re.compile(r"^D-[0-9]{4}\Z")
+ID_ARGUMENT = re.compile(r"^A[1-9][0-9]*\Z")
+CHEMIN_DEBAT = re.compile(r"^debats/(D-[0-9]{4})\.yaml\Z")
 POSITIONS = ("pour", "contre", "question", "fait")
 ISSUES = ("proposition", "tache", "decision", "sans_suite")
 # Ordre des clés à l'écriture : les arguments en dernier, pour qu'un argument ajouté soit un ajout en fin de fichier.
@@ -3455,7 +3493,7 @@ CROISSANCE_DEFAUT = {"invitations_par_semaine": 3, "relances_max": 1, "delai_rel
                      "expiration_jours": 14, "membres_actifs_jours": 30,
                      "branche_dormante_jours": 30}  # R13, par branches (outillé par ruche-0023)
 SEMAINE = dt.timedelta(days=7)
-ID_INVITATION = re.compile(r"^I-[0-9]{4}$")
+ID_INVITATION = re.compile(r"^I-[0-9]{4}\Z")
 # Identifiant public : <plateforme>:<nom>, d'une liste fermée (revue adverse de ruche-0020, A1 et A2 : github.com:x, gh:x, x/.,
 # x/repositories désignaient la même personne). Plateforme canonique -> (alias acceptés à l'écriture, adresse du profil, qui
 # est le canal). Le nom d'une forge est un seul segment (aucun /) ; « site » désigne un domaine, et son canal est une page de ce
@@ -4564,7 +4602,7 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
         agents = {}  # unreadable in the base: no agent account (fail closed)
     if (personne := agents.get(auteur)) is None:
         return verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr, agents)
-    if touchees := {c for c in git(reg.racine, "diff", "-z", "--name-only", "--no-renames", f"{base}...{tete}").split("\0")
+    if touchees := {c for c in git(reg.racine, "diff", "-z", "--name-only", "--no-renames", f"{base}...{tete}")
                     if c.casefold().startswith(tuple(a.casefold() for a in AUTHORITY_FILES))}:
         return [f"{c} : changed only by a PR from the council's own account (ruche-0089)" for c in sorted(touchees)], ["gouvernance"]
     problemes, natures = verifier_pr_de(reg, base, tete, personne, compte_cree_le, instant, auteurs_pr, agents, auteur, status=False)
@@ -4577,8 +4615,7 @@ def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, aute
 def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr, agents, agent=None, status=True):
     """verifier_pr for `auteur`, who is the person of the agent account `agent` if there is one. `status`: whether the
     author's council, guardian and robot status count."""
-    sorties = git(reg.racine, "diff", "--name-status", "--no-renames", f"{base}...{tete}")
-    changements = [ligne.split("\t", 1) for ligne in sorties.splitlines() if ligne.strip()]
+    changements = git(reg.racine, "diff", "-z", "--name-status", "--no-renames", f"{base}...{tete}")
     # ruche-0040: a file over its bound is refused here, from its size in git, and nothing below reads it.
     tailles = tailles_a(reg.racine, tete, [c for s, c in changements if s != "D"])
     trop_gros = {c: n for c, n in tailles.items() if n > borne_octets(c)}
@@ -4601,8 +4638,7 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
     # Liens symboliques : refusés partout. Un lien ferait lire à l'outil un autre fichier que celui que montre la PR (au
     # pire, un fichier de la machine de CI, dont un message d'erreur pourrait citer le contenu).
     liens, modes = set(), {}
-    for ligne in git(reg.racine, "diff", "--raw", "--no-renames", f"{base}...{tete}").splitlines():
-        meta, _, chemin = ligne.partition("\t")
+    for meta, chemin in git(reg.racine, "diff", "-z", "--raw", "--no-renames", f"{base}...{tete}"):
         champs = meta.split()
         if len(champs) >= 2 and champs[1] == "120000":
             liens.add(chemin)
@@ -4613,7 +4649,7 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
     debats_ajoutes = sorted(c for s, c in changements if s == "A" and CHEMIN_DEBAT.match(c) and c not in liens)
     debats_attendus = {}
     if debats_ajoutes:
-        numeros = [int(m[1][2:]) for n in git(reg.racine, "ls-tree", "--name-only", base, "debats/").splitlines()
+        numeros = [int(m[1][2:]) for n in git(reg.racine, "ls-tree", "-z", "--name-only", base, "debats/", remplacer=True)
                    if (m := CHEMIN_DEBAT.match(n))]
         debats_attendus = {c: f"debats/D-{max(numeros, default=0) + 1 + k:04d}.yaml" for k, c in enumerate(debats_ajoutes)}
     # Numérotation (T5, T6) : une tâche ou une proposition de règle ajoutée porte le numéro qui suit le plus grand de la
@@ -4646,7 +4682,7 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
     # d'invitation ne passe ; le conseil répare d'abord (hors du libre-service, en reprenant la dernière version lisible).
     illisibles_base = []
     if any(c.startswith("invitations/") for _, c in changements):
-        for nom in git(reg.racine, "ls-tree", "-r", "--name-only", base, "--", "invitations/").splitlines():
+        for nom in git(reg.racine, "ls-tree", "-z", "-r", "--name-only", base, "--", "invitations/", remplacer=True):
             if not (CHEMIN_INVITATION.match(nom) or nom == CHEMIN_NON_CONTACT):
                 continue
             try:
@@ -5224,7 +5260,7 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
         if partie[0] == "debats":
             brut = None
             if statut_git != "D":
-                sortie = subprocess.run(["git", "-C", str(reg.racine), "show", f"{tete}:{chemin}"], capture_output=True)
+                sortie = subprocess.run(["git", "-C", str(reg.racine), "cat-file", "blob", f"{tete}:{chemin}"], capture_output=True)
                 brut = sortie.stdout if sortie.returncode == 0 else b""
             natures_debat, refus, n = verifier_debat(reg, chemin, statut_git, ancien, nouveau, auteur, est_conseil=est_conseil,
                                                      instant=instant, attendu=debats_attendus.get(chemin), brut=brut,
@@ -5247,7 +5283,7 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
                     natures.append("gouvernance")
             brut = None
             if statut_git != "D":
-                sortie = subprocess.run(["git", "-C", str(reg.racine), "show", f"{tete}:{chemin}"], capture_output=True)
+                sortie = subprocess.run(["git", "-C", str(reg.racine), "cat-file", "blob", f"{tete}:{chemin}"], capture_output=True)
                 brut = sortie.stdout if sortie.returncode == 0 else b""
             natures_invitation, refus, _ = verifier_invitation(reg, chemin, statut_git, ancien, nouveau, auteur,
                                                                     est_conseil=est_conseil, instant=instant, brut=brut, base=base,
@@ -5360,12 +5396,12 @@ def verifier_fork(reg, depot, base, tete, identifiant_tache, auteur=None):
             conseil = " Lancez d'abord : git fetch upstream" if "upstream" in ref else ""
             raise ErreurBee(f"révision « {ref} » introuvable dans {depot}.{conseil}")
     if tete == "HEAD":
-        en_attente = [l[3:] for l in git(depot, "status", "--porcelain", "--untracked-files=no").splitlines() if l.strip()]
+        en_attente = [l[3:] for l in git(depot, "status", "-z", "--porcelain", "--no-renames", "--untracked-files=no")]
         if en_attente:
             problemes.append(f"{len(en_attente)} fichier(s) modifié(s) mais non commité(s) ({', '.join(en_attente[:5])}"
                              f"{'…' if len(en_attente) > 5 else ''}) : l'outil vérifie le dernier commit, pas le disque. Commitez d'abord.")
     fichiers_tache = [f.rstrip("/") for f in tache.get("fichiers") or []]
-    for ligne in git(depot, "diff", "--numstat", "--no-renames", f"{base}...{tete}").splitlines():
+    for ligne in git(depot, "diff", "-z", "--numstat", "--no-renames", f"{base}...{tete}"):
         ajoutees, retirees, chemin = ligne.split("\t", 2)
         if correspond(chemin, exclus):
             continue
@@ -5379,7 +5415,7 @@ def verifier_fork(reg, depot, base, tete, identifiant_tache, auteur=None):
     if total > maximum:
         problemes.append(f"R1 : {total} lignes modifiées, maximum {maximum} pour une tâche {tache['taille']}")
     if tache["type"] in ("optimisation", "relecture"):
-        for chemin in git(depot, "diff", "--name-only", "--no-renames", f"{base}...{tete}").splitlines():
+        for chemin in git(depot, "diff", "-z", "--name-only", "--no-renames", f"{base}...{tete}"):
             if correspond(chemin, juges):
                 problemes.append(f"{chemin} : une tâche {tache['type']} ne peut pas modifier ce qui la juge (commandement 3)")
     # Manifeste : manifestes/<tâche>.yaml (un fichier par tâche, donc pas de conflit entre deux PR), sinon
@@ -5402,7 +5438,7 @@ def verifier_fork(reg, depot, base, tete, identifiant_tache, auteur=None):
         problemes += verifier_manifeste(reg, manifeste, nom_manifeste, person_of(reg.comptes_agents, auteur))  # ruche-0089
         if isinstance(manifeste, dict) and manifeste.get("tache") != identifiant_tache:
             problemes.append(f"{nom_manifeste} : tâche « {manifeste.get('tache')} » au lieu de « {identifiant_tache} »")
-    autres = [c for c in git(depot, "diff", "--name-only", "--no-renames", f"{base}...{tete}").splitlines()
+    autres = [c for c in git(depot, "diff", "-z", "--name-only", "--no-renames", f"{base}...{tete}")
               if correspond(c, ["manifestes/**"]) and c != chemin_manifeste(identifiant_tache)]
     if autres:
         problemes.append(f"la branche modifie le manifeste d'une autre tâche ({', '.join(autres[:3])}) : une PR, une tâche")
@@ -7073,7 +7109,7 @@ def cmd_verifier_fork(args):
     reg = Registre(args.registre)
     problemes, total, avertissements = verifier_fork(reg, args.depot, args.base, args.tete, args.tache, args.auteur)
     for a in avertissements:
-        print(f"⚠ {a}")
+        print(f"⚠ {montrer(a)}")
     for p in problemes:
         print(f"✗ {montrer(p)}")
     if problemes:
@@ -7981,7 +8017,7 @@ def cmd_record_merge(args):
         return refus(f"PR #{numero}: no full head, merge or base commit id")
     try:  # who is council or agent account: on main just before the merge AND at the PR's base (GitHub's, on main before it), both
         ajouts = commits_premier_parent(reg.racine, "HEAD", reg.rel(chemin), filtre="A") if historique_disponible(reg.racine) else []
-        chemins = [c for c in git(reg.racine, "diff", "-z", "--name-only", "--no-renames", base_sha, fusion).split("\0") if c]  # all the PR
+        chemins = [c for c in git(reg.racine, "diff", "-z", "--name-only", "--no-renames", base_sha, fusion) if c]  # all the PR (ruche-0095)
         git(reg.racine, "merge-base", "--is-ancestor", base_sha, f"{fusion}^1")  # no commit of the PR can be its base (F7, N1)
         autorites = [(Pseudos(m.get("pseudo") for m in (lire_yaml_ref(reg.racine, ref, "gouvernance/conseil.yaml") or {}).get("membres")
                               or [] if isinstance(m, dict)), agent_accounts(lire_yaml_ref(reg.racine, ref, AGENT_ACCOUNTS)))
@@ -8136,7 +8172,7 @@ def cmd_publier(args):
     depot = reg.racine
     organisation = reg.config.get("organisation", "")
     amont = args.amont or f"{organisation}/registre"
-    changements = [l[3:].strip().strip('"') for l in executer(["git", "status", "--porcelain", "--untracked-files=all"], depot).stdout.splitlines() if l.strip()]
+    changements = [l[3:] for l in git(depot, "status", "-z", "--porcelain", "--no-renames", "--untracked-files=all")]
     if not changements:
         raise ErreurBee("aucun changement à publier (avez-vous lancé bee prendre, soumettre, relire, voter… ?)")
     interdits = [c for c in changements if not c.startswith(DOSSIERS_LIBRE_SERVICE)]
@@ -8150,7 +8186,7 @@ def cmd_publier(args):
         print("✓ à blanc : les fichiers relèvent du libre-service et le registre reste valide. Rien n'a été écrit ni poussé.")
         print(f"  Dépôt : {amont} — PR « {args.titre} »")
         for c in changements:
-            print(f"  - {c}")
+            print(f"  - {montrer(c)}")
         print("  Sans --a-blanc, bee publierait : branche, commit, poussée, PR, attente de la fusion automatique.")
         return 0
     branche_initiale = executer(["git", "rev-parse", "--abbrev-ref", "HEAD"], depot).stdout.strip()
@@ -8162,7 +8198,7 @@ def cmd_publier(args):
         branche, n = f"{racine_branche}-{n}", n + 1
     executer(["git", "switch", "-c", branche], depot)
     try:
-        executer(["git", "add", "--", *changements], depot)
+        executer(["git", "--literal-pathspecs", "add", "--", *changements], depot)
         executer(["git", "commit", "-m", args.titre], depot)
         executer(["git", "push", "-u", "origin", branche], depot)
         proprietaire, _ = proprietaire_depot(executer(["git", "remote", "get-url", "origin"], depot).stdout.strip())
@@ -8231,7 +8267,7 @@ LARGEUR_NOEUD = 120                        # caractères par ligne au plus : un 
 ROLE_PAR_TYPE = {"optimisation": "optimiser", "relecture": "relire", "mesure": "mesurer", "test": "mesurer",
                  "decoupage": "proposer"}
 CARACTERES_PAR_JETON = 4                   # estimation grossière de la taille d'un texte en jetons
-SEGMENT_NOEUD = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+SEGMENT_NOEUD = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*\Z")
 ENFANT_NOEUD = re.compile(r"^- `([^`]+)`\s*:\s*\S")
 
 
@@ -8740,7 +8776,7 @@ def verifier_pr_arbre(reg, base, tete, changements, liens, est_conseil):
             continue
 
         def texte_a(ref):
-            sortie = subprocess.run(["git", "-C", str(reg.racine), "show", f"{ref}:{chemin}"], capture_output=True)
+            sortie = subprocess.run(["git", "-C", str(reg.racine), "cat-file", "blob", f"{ref}:{chemin}"], capture_output=True)
             return sortie.stdout.decode("utf-8", errors="replace") if sortie.returncode == 0 else ""
         nouveau_texte = texte_a(tete)
         anciens = commentaires_yaml(texte_a(base)) if statut_git == "M" else []
