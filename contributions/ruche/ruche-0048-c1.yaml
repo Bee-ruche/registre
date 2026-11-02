@@ -4,7 +4,11 @@ auteur: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/150
 resume: A council gesture removes an outside person's data at their request, only where they are named,
   with a recorded request and no do-not-contact entry.
-statut: en_relecture
+statut: integree
 soumise_le: '2026-11-02T12:11:56Z'
 engage_depuis: '2026-11-02T04:53:43Z'
 relectures: []
+decidee_le: '2026-11-02T12:31:10Z'
+motif_decision: 'Hive tooling contribution: registry PR #150 merged at commit fc7c891 by bidji29, the
+  account of a council member, CI green on the merged commit.'
+fusion_sha: 8d95ff5489fb4693fe0757236db51917e0a22628
