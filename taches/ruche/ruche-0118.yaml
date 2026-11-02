@@ -1,0 +1,41 @@
+id: ruche-0118
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: M
+titre: Reporting suspected linked accounts, and the council's gesture to link or dismiss
+contexte: 'Split from ruche-0051 (council''s decision of 2 Nov 2026, docs/decisions.md). Any member may report two member
+  accounts they believe are one person (never an account outside the hive: commandment 10), in a self-service file holding
+  only the two logins and a reason code from a closed list (relectures_croisees, votes_croises, relais_d_engagements,
+  copie_de_contribution); no free text, so no personal data. The reporter is neither account; one open report per pair,
+  compared by account numbers. Reports are merged automatically and recorded for the council. The council links the pair
+  (writing ruche-0051''s two fields in both member files) or dismisses the report with a code (sans_indice, personnes_distinctes,
+  deja_lies, doublon); a dismissed pair is not reported again for 30 days. Reports are capped per reporter (a setting
+  next to R12''s caps in bee.yaml).'
+fichiers:
+- outils/bee.py
+- outils/test_bee.py
+- schemas/
+- docs/gouvernance.md
+- docs/reputation.md
+portee: 0.6
+metrique: null
+depend_de:
+- ruche-0051
+critere_acceptation:
+- 'test: a report holds only the two logins of member accounts and a reason code from the closed list; any other field,
+  free text, an unknown code or a login that is not a member is refused'
+- 'test: a report is recorded for the council (bee voir and bee essaim show it to the council); the council''s link writes
+  both sides and the pair then counts as one person; a dismissal with a code from its closed list blocks the same pair
+  for 30 days, by account numbers, and an unknown dismissal code is refused'
+- 'test: a reporter who is one of the two accounts, a second open report of the same pair, or a report past the reporter''s
+  cap is refused'
+- independent adversarial review attached; the full test suite passes
+hors_perimetre:
+- COMMANDMENTS.md
+- many real people acting together (D-0002)
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: '2026-11-02'
