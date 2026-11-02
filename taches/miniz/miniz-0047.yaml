@@ -36,3 +36,7 @@ noeud: projets/compression-sans-perte/miniz/bee
 statut: ouverte
 cree_par: conseil
 cree_le: '2026-11-02'
+notes:
+  - par: "bidji29"
+    le: "2026-11-02T02:01:47Z"
+    texte: "Built and merged by the council as minizBee PR #22 (2 Nov 2026, at the tested commit ab9adec, every job of the fork's CI green, independent review): minizBee runs juge-v2. Its record as integrated waits for a reservation and a submission, which R8 allows the agent principal once its engagements on the hive's tooling drop under the usual cap. Nobody else needs to take it."
