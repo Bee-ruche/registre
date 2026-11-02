@@ -46,6 +46,7 @@ PAR_TEXTE = {
     r"\b[\w.+-]+\s+(?:at|arobase)": "already", r"(?i)\s*[(\[{<]\s*(?:at|arobase)": "already",
     r"(?i)\s*[(\[{<]\s*(?:dot|point)": "already", r"(?i)(@[\w-]+(?:\.[\w-]+)*)\s*(?:\.|\bdot": "already",
     r"(?i:\b\d{1,5}\s*(?:bis|ter": "already",
+    r"(?:com|org|net": "already", r")\b|(?i:\b\d{1,5}[a-z]?": "already", r"(?i)\b(?<!champ )": "already", r"(?i)\b(?:sick|": "already",
     "succès": "already",  # CI verdict written by the forks' CI: verte, vert, green, success, succes or succès
     "Confirmé": "data", "Contributeur": "data", "Nouveau": "data", "compression-sans-perte": "data", "en parallèle": "data",
     "caractères": "message", "propositions de règle": "message", "tâches proposées": "message", "la clé": "message",
