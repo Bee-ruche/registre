@@ -37,7 +37,7 @@ gh repo fork Bee-ruche/registre --clone && cd registre
 pip install -r outils/requirements.txt
 python3 outils/bee.py valider  # below: bee = python3 outils/bee.py
 # only if membres/<login>.yaml is missing; account 90+ days old
-bee inscrire --pseudo <login> --compte-cree-le $(gh api user --jq '.created_at[:10]')
+bee inscrire --pseudo <login> --compte-cree-le $(gh api user --jq '.created_at[:10]') --github-id "$(gh api user --jq .id)"
 bee publier --titre "Inscription <login>"
 ```
 

@@ -55,6 +55,7 @@ PAR_TEXTE = {
     "Le conseil, à la demande": "message", "Le conseil renouvelle": "message", " (clé)": "message", "le titre": "message",
     # Refuses text that imitates bee's own frame (FIN_DONNEES): when ruche-0069 translates the frame, refuse both forms.
     "le résumé": "message", r"===\s*(?:fin\s+des": "message",
+    r"(?is)((?:[dlcjmnst]|qu|jusqu": "already",  # ruche-0048: French elisions (d', qu'…) and the English possessive ('s)
 }
 PAR_CONSTANTE = {
     "MENTION_INVITATION": "already", "PHRASE_DEMANDE": "already", "VOIES_FR": "already", "VOIES_EN": "already",

@@ -75,10 +75,44 @@ cree_le: "2026-10-27"
 """
 
 
+def _numeros_lies():
+    """ruche-0022: the account numbers the real registry binds in gouvernance/, so that fixtures copied from it agree."""
+    lies = {}
+    for fichier in sorted((RACINE / "gouvernance").glob("*.yaml")):
+        donnees = yaml.safe_load(fichier.read_text(encoding="utf-8")) or {}
+        for liste in (donnees.values() if isinstance(donnees, dict) else []):
+            for entree in (liste if isinstance(liste, list) else []):
+                nom = isinstance(entree, dict) and (entree.get("pseudo") or entree.get("account"))
+                if nom and type(entree.get("github_id")) is int:
+                    lies[str(nom).casefold()] = entree["github_id"]
+    return lies
+
+
+NUMEROS_LIES = _numeros_lies()
+
+
+def numero_de(login):
+    """ruche-0022: the GitHub account number the tests give a login (the same in faux_gh), as the API would: the real
+    registry's binding if it has one, else a number derived from the login."""
+    return NUMEROS_LIES.get(str(login).casefold()) or zlib.crc32(str(login).casefold().encode()) % 10 ** 8 + 1
+
+
+def valeur_option(arguments, option):
+    return next((a.split("=", 1)[1] if "=" in a else arguments[i + 1] for i, a in enumerate(arguments)
+                 if (a == option and i + 1 < len(arguments)) or a.startswith(option + "=")), None)
+
+
 def lancer(*arguments):
+    arguments = list(arguments)
+    # ruche-0022: like the workflows, which read the PR author's number from the API, each login has its number (numero_de) for
+    # bee inscrire and bee verifier-pr, unless the test gives one (--github-id) or none (--github-id=).
+    for commande, option in (("inscrire", "--pseudo"), ("verifier-pr", "--auteur")):
+        if commande in arguments and valeur_option(arguments, "--github-id") is None and valeur_option(arguments, option) is not None:
+            arguments += ["--github-id", str(numero_de(valeur_option(arguments, option)))]
+    arguments = [a for a in arguments if a != "--github-id="]
     sortie, erreur = io.StringIO(), io.StringIO()
     with contextlib.redirect_stdout(sortie), contextlib.redirect_stderr(erreur):
-        code = bee.principal(list(arguments))
+        code = bee.principal(arguments)
     return code, sortie.getvalue() + erreur.getvalue()
 
 
@@ -2247,7 +2281,7 @@ class TestPullRequests(BaseTest):
         git(self.dossier, "switch", "-qf", "main")
         git(self.dossier, "switch", "-qc", branch)
         bee.ecrire_yaml(self.dossier / f"membres/{pseudo}.yaml",
-                        {"pseudo": pseudo, "inscrit_le": "2026-10-27", "compte_cree_le": "2021-05-05", **dates})
+                        {"pseudo": pseudo, "inscrit_le": "2026-10-27", "compte_cree_le": "2021-05-05", "github_id": numero_de(pseudo), **dates})
         self.commit()
 
     def test_each_member_date_outside_its_tolerance_is_refused(self):
@@ -2581,7 +2615,7 @@ class TestPullRequests(BaseTest):
                 self.commit()
                 code, texte = self.bee("verifier-pr", "--base", base, "--tete", "HEAD", "--auteur", "alice", "--fusion-auto")
                 code_v, texte_v = self.bee("valider")
-                propres = bee.verifier_pr(bee.Registre(self.dossier), base, "HEAD", "alice")[0]  # without bee valider's checks
+                propres = bee.verifier_pr(bee.Registre(self.dossier), base, "HEAD", "alice", github_id=numero_de("alice"))[0]  # without bee valider's checks
                 self.assertNotIn("Traceback", texte + texte_v)
                 if adresse in self.AUTRES_PR:
                     self.assertEqual((code, code_v, propres), (0, 0, []), texte + texte_v)
@@ -4245,15 +4279,19 @@ if args[:1] == ["api"] and "/git/commits/" in args[1]:
         sys.exit(1)
     print(arbre)
     sys.exit(0)
+# ruche-0022: an account's number (users/<login>, .user.id of a PR) is numero_de(login) of the tests, or "comptes" of the state.
+jq = args[args.index("--jq") + 1] if "--jq" in args else ""
+numero_de = lambda login: (etat.get("comptes") or {}).get(login, json.loads(os.environ.get("FAUX_GH_COMPTES", "{}")).get(login.casefold()) or zlib.crc32(login.casefold().encode()) % 10 ** 8 + 1)  # noqa: E731
 if args[:1] == ["api"] and args[1].startswith("users/"):
-    print("2020-01-01")
+    print(f"2020-01-01 {numero_de(args[1][6:])}" if ".id" in jq else "2020-01-01")
     sys.exit(0)
 if args[:1] == ["api"] and args[1].startswith("repos/") and "/pulls/" in args[1]:
     proprietaire, depot, _, numero = args[1].split("/")[1:5]
     pr = etat.get(f"https://github.com/{proprietaire}/{depot}/pull/{numero}")
     if pr is None:
         sys.exit(1)
-    print(pr.get("auteur") or "")
+    auteur = pr.get("auteur") or ""
+    print(f"{auteur}\t{numero_de(auteur) if auteur else ''}" if ".user.id" in jq else auteur)
     sys.exit(0)
 if args[:1] == ["api"]:
     sys.exit(1)
@@ -4303,6 +4341,7 @@ class TestRevueAdverse(BaseParallele):
             journal.write_text("", encoding="utf-8")
         avant = len(journal.read_text(encoding="utf-8").splitlines())
         env = dict(os.environ, PATH=f"{racine / 'bin'}{os.pathsep}{os.environ['PATH']}", FAUX_GH_ETAT=str(etat),
+                   FAUX_GH_COMPTES=json.dumps(NUMEROS_LIES),
                    FAUX_GH_JOURNAL=str(journal), GH_TOKEN="jeton-registre", BEE_INTEGRATION_TOKEN="jeton-forks",
                    GITHUB_REPOSITORY="Bee-ruche/registre", RUNNER_TEMP=str(racine / "runner"), **(env_en_plus or {}))
         env.pop("BEE_REGISTRE", None)
@@ -8366,7 +8405,7 @@ class BaseInvitations(BaseRepetitionGenerale):
         source = f"https://github.com/{identifiant.partition(':')[2]}" if identifiant.startswith("github:") else "https://exemple-source.org/projet"
         return self.ok("inviter", "--utilisateur", qui, "--identifiant", identifiant,
                        "--demande", demande, "--fait", "Maintient un logiciel libre de compression depuis dix ans.",
-                       "--source", source, "--message", message, "--debat", "D-0001", *options)
+                       "--source", source, "--message", message, *options)
 
     def geste(self, action, qui, *options, invitation="I-0001"):
         return self.ok("invitation", action, invitation, "--utilisateur", qui, *options)
@@ -8415,14 +8454,39 @@ class BaseInvitations(BaseRepetitionGenerale):
               ("2026-11-02T12:00:00Z", "accord-conseil"), ("2026-11-02T13:00:00Z", "consigner-envoi"),
               ("2026-11-16T14:00:00Z", "consigner-relance"))
 
+    def debat_a_la_main(self, invitation, qui, quand):
+        """ruche-0050 : le débat propre d'une invitation écrite à la main (au numéro suivant, ouvert par son proposant, sans
+        rapporteur) ; renvoie son numéro. Le même s'il existe déjà pour ce numéro d'invitation."""
+        reg = bee.Registre(self.dossier)
+        debat = next((i for i, (_, d) in reg.debats.items() if d.get("invitation") == invitation), None)
+        if debat is None:
+            debat = bee.prochain_debat(reg)
+            self.ecrire({"id": debat, "invitation": invitation, "question": f"Invitation {invitation} : faut-il l'envoyer ?",
+                         "ouvert_par": qui, "ouvert_le": quand, "statut": "ouvert", "synthese": "", "arguments": []}, debat)
+        return debat
+
+    def debattre_invitation(self, debat="D-0002", qui="bruno", quand="2026-10-30T10:20:00Z", apres="2026-10-30T10:40:00Z"):
+        """ruche-0050 : dans le débat propre d'une invitation, `qui` (pas le proposant) argumente et prend la plume, puis publie
+        une synthèse à jour, chaque geste par une PR fusionnée."""
+        self.a(quand)
+        self.branche("argument")
+        self.argumenter(qui, "pour", "Les faits cités sont publics et sourcés.", debat=debat)
+        self.publier(qui, "argument", "prise_de_plume", nom="argument")
+        self.a(apres)
+        self.branche("synthese")
+        self.ok("debattre", "synthetiser", debat, "--utilisateur", qui, "--texte", "Un avis pour (A1), sur des faits publics.")
+        self.publier(qui, "synthese", nom="synthese")
+
     def jusqu_a(self, derniere):
-        """Mène I-0001 (alice invite github:octocat) honnêtement jusqu'à l'étape voulue, un geste par PR fusionnée."""
+        """Mène I-0001 (alice invite github:octocat) honnêtement jusqu'à l'étape voulue, un geste par PR fusionnée ; son débat
+        propre (D-0002) reçoit un argument de bruno, puis sa synthèse."""
         for quand, etape in self.ETAPES:
             self.a(quand)
             self.branche()
             if etape == "proposee":
                 self.inviter()
                 self.publier("alice", "invitation", libre=False)
+                self.debattre_invitation()
             elif etape == "accord-gardien":
                 self.geste(etape, "gina")
                 self.publier("gina", "accord_gardien")
@@ -8443,14 +8507,21 @@ class BaseInvitations(BaseRepetitionGenerale):
         self.decidees(nombre, quand, conseil=False)
 
     def decidees(self, nombre, quand="2026-10-20T10:00:00Z", conseil=True):
-        """Le conseil a sur main `nombre` invitations décidées (accords d'un gardien et du conseil), de personnes différentes."""
+        """Le conseil a sur main `nombre` invitations décidées (accords d'un gardien et du conseil), de personnes différentes, chacune
+        avec son débat propre (D-0002…), où bruno a argumenté puis publié une synthèse à jour."""
         for n in range(1, nombre + 1):
+            self.ecrire({"id": f"D-{n + 1:04d}", "invitation": f"I-{n:04d}", "question": f"Invitation I-{n:04d} : faut-il l'envoyer ?",
+                         "ouvert_par": "alice", "ouvert_le": quand, "statut": "ouvert", "rapporteur": "bruno", "synthese": "Un avis pour.",
+                         "synthese_par": "bruno", "synthese_le": bee.en_iso(bee.lire_instant(quand, "") + bee.dt.timedelta(seconds=1)),
+                         "synthese_couvre": "A1",
+                         "arguments": [{"id": "A1", "par": "bruno", "le": quand, "position": "pour", "texte": "Des faits publics."}]},
+                        f"D-{n + 1:04d}")
             self.ecrire_invitation({
                 "id": f"I-{n:04d}", "statut": "decidee",
                 "personne": {"identifiant": f"github:personne{n}", "canal": f"https://github.com/personne{n}"},
                 "demande": "garant", "pourquoi": [{"fait": "Un fait public.", "source": "https://github.com/Bee-ruche"}],
                 "message": MESSAGE_INVITATION + "\n\n" + bee.mentions_invitation(bee.Registre(self.dossier))["fr"],
-                "debat": "D-0001", "propose_par": "alice", "propose_le": quand,
+                "debat": f"D-{n + 1:04d}", "propose_par": "alice", "propose_le": quand,
                 "accord_gardien": {"par": "gina", "le": quand},
                 **({"accord_conseil": {"par": "bidji29", "le": quand}} if conseil else {})}, f"I-{n:04d}")
             if not conseil:
@@ -8484,7 +8555,7 @@ class TestInvitations(BaseInvitations):
         self.branche()
         self.ko("est sur la liste de non-contact", "inviter", "--utilisateur", "bruno", "--identifiant", "github:OctoCat",
                 "--canal", "https://github.com/octocat", "--demande", "participer", "--fait", "Un fait.", "--source",
-                "https://github.com/octocat", "--message", MESSAGE_INVITATION, "--debat", "D-0001")
+                "https://github.com/octocat", "--message", MESSAGE_INVITATION)
         self.assertEqual(json.loads(self.ok("essaim", "--json"))["invitations"], [], "une invitation close n'est plus en cours")
 
     def test_reponses_acceptee_et_sans_reponse(self):
@@ -8536,7 +8607,7 @@ class TestInvitations(BaseInvitations):
         self.assertEqual((essaim["frein"]["gardiens"], essaim["frein"]["invitations_par_semaine"]), (1, 3))
         texte = self.ok("essaim")
         self.assertIn("frein desserré", texte)
-        self.assertIn("I-0001 (garant, github:octocat, proposée par alice, débat D-0001) : proposee, attend l'accord du conseil", texte)
+        self.assertIn("I-0001 (garant, github:octocat, proposée par alice, débat D-0002) : proposee, attend l'accord du conseil", texte)
         self.ok("site", "--sortie", str(self.dossier / "_site"))
         page = (self.dossier / "_site/index.html").read_text(encoding="utf-8")
         self.assertIn("Grandir sans se perdre", page)
@@ -8642,7 +8713,7 @@ class TestPullRequestsInvitations(BaseInvitations):
         self.a("2026-10-30T12:00:00Z")
         self.ko("plafond : alice a déjà 2 invitations proposées", "inviter", "--utilisateur", "alice", "--identifiant", "github:x",
                 "--canal", "https://github.com/x", "--demande", "garant", "--fait", "Un fait.", "--source", "https://github.com/x",
-                "--message", MESSAGE_INVITATION, "--debat", "D-0001")
+                "--message", MESSAGE_INVITATION)
         self.branche()
         inv = self.invitation("I-0002")
         self.ecrire_invitation({**inv, "id": "I-0003", "personne": {"identifiant": "github:x", "canal": "https://github.com/x"},
@@ -8675,7 +8746,7 @@ class TestPullRequestsInvitations(BaseInvitations):
         # bee inviter les refuse aussi, avant d'écrire.
         self.ko("un numéro de téléphone : aucune donnée personnelle", "inviter", "--utilisateur", "alice", "--identifiant", "github:octocat",
                 "--canal", "https://github.com/octocat", "--demande", "garant", "--fait", "Joignable au 06 12 34 56 78.",
-                "--source", "https://github.com/octocat", "--message", MESSAGE_INVITATION, "--debat", "D-0001")
+                "--source", "https://github.com/octocat", "--message", MESSAGE_INVITATION)
         self.assertFalse(self.chemin_invitation().exists())
 
     def test_rien_d_autre_sur_la_personne(self):
@@ -8695,7 +8766,7 @@ class TestPullRequestsInvitations(BaseInvitations):
             with self.subTest(identifiant=identifiant):
                 self.ko("est sur la liste de non-contact", "inviter", "--utilisateur", "alice", "--identifiant", identifiant,
                         "--canal", "https://github.com/octocat", "--demande", "garant", "--fait", "Un fait.", "--source",
-                        "https://github.com/octocat", "--message", MESSAGE_INVITATION, "--debat", "D-0001")
+                        "https://github.com/octocat", "--message", MESSAGE_INVITATION)
         # Écrites à la main, en contournant bee inviter : refusées par verifier-pr, avec ou sans espaces.
         for identifiant in ("github:OctoCat", " github:octocat", "github: octocat", "github:octo​cat"):
             with self.subTest(identifiant=identifiant):
@@ -8952,6 +9023,7 @@ class TestPullRequestsInvitations(BaseInvitations):
             self.branche(f"pr{n}")
             self.inviter(qui, identifiant, demande=demande)
             self.publier(qui, "invitation", nom=f"pr{n}", libre=False)
+        self.debattre_invitation("D-0003", "chloe", "2026-10-30T11:20:00Z", "2026-10-30T11:40:00Z")
         preparer()
         self.commit("frein")
         self.a("2026-11-02T12:00:00Z")
@@ -9058,7 +9130,7 @@ class BaseRevueRuche0020(BaseInvitations):
         git(self.dossier, "switch", "-qf", "main")
         git(self.dossier, "branch", "-qD", nom)
         if (self.dossier / "invitations").exists():
-            git(self.dossier, "clean", "-qfd", "--", "invitations")
+            git(self.dossier, "clean", "-qfd", "--", "invitations", "debats")
 
     def mention(self):
         return bee.mentions_invitation(bee.Registre(self.dossier))["fr"]
@@ -9070,12 +9142,13 @@ class BaseRevueRuche0020(BaseInvitations):
         """Une invitation écrite à la main, sous la forme canonique (rien de maquillé dans le YAML) ; le message porte la mention
         de sa demande."""
         demande = champs.get("demande", "garant")
+        debat = self.debat_a_la_main(identifiant, qui, os.environ["BEE_MAINTENANT"])  # ruche-0050 : son débat propre
         self.ecrire_invitation({
             "id": identifiant, "statut": "proposee",
             "personne": {"identifiant": "github:octocat", "canal": "https://github.com/octocat"},
             "demande": demande, "pourquoi": [{"fait": "Maintient un logiciel libre.", "source": "https://github.com/octocat"}],
             "message": MESSAGE_INVITATION + "\n\n" + bee.mentions_invitation(bee.Registre(self.dossier), demande)["fr"],
-            "debat": "D-0001", "propose_par": qui, "propose_le": os.environ["BEE_MAINTENANT"], **champs}, identifiant)
+            "debat": debat, "propose_par": qui, "propose_le": os.environ["BEE_MAINTENANT"], **champs}, identifiant)
 
     def essayer(self, variantes, preparer, auteur="alice"):
         """Pour chaque variante : une PR, preparer(variante), verifier-pr ; renvoie celles qui partiraient en fusion automatique."""
@@ -9093,7 +9166,7 @@ class BaseRevueRuche0020(BaseInvitations):
 
     def inviter_brut(self, *options, identifiant="github:octocat", fait="Un fait public.", message=MESSAGE_INVITATION):
         return self.bee("inviter", "--utilisateur", "alice", "--identifiant", identifiant, "--demande", "garant", "--fait", fait,
-                        "--source", "https://github.com/octocat", "--message", message, "--debat", "D-0001", *options)
+                        "--source", "https://github.com/octocat", "--message", message, *options)
 
 
 class TestRevueAdverseRuche0020(BaseRevueRuche0020):
@@ -9116,7 +9189,7 @@ class TestRevueAdverseRuche0020(BaseRevueRuche0020):
         # Honnête : un alias s'écrit sous sa forme canonique, et le canal d'une forge en découle.
         self.branche()
         self.ok("inviter", "--utilisateur", "alice", "--identifiant", "gh:hubot", "--demande", "garant", "--fait", "Un fait public.",
-                "--source", "https://github.com/hubot", "--message", MESSAGE_INVITATION, "--debat", "D-0001")
+                "--source", "https://github.com/hubot", "--message", MESSAGE_INVITATION)
         self.assertEqual(self.invitation()["personne"], {"identifiant": "github:hubot", "canal": "https://github.com/hubot"})
         self.commit()
         self.attend_le_conseil("alice", "invitation")
@@ -9254,6 +9327,7 @@ class TestRevueAdverseRuche0020(BaseRevueRuche0020):
         message = "Bonjour, venez faire tourner vos agents sur nos tâches : il suffit de participer, rien d'autre."
         self.proposer_brut(message=message + "\n\n" + self.mention())
         self.publier("alice", "invitation", libre=False)
+        self.debattre_invitation()
         incident = 'incidents:\n  - id: INC-0001\n    titre: Messages en nombre\n    ouvert_le: "2026-10-31T10:00:00Z"\n'
         (self.dossier / "gouvernance/incidents.yaml").write_text(incident, encoding="utf-8")
         self.commit("incident ouvert")
@@ -9409,7 +9483,7 @@ class TestSecondeRevueRuche0020(BaseRevueRuche0020):
         self.publier("bidji29", "ecartement_invitation")
         code, texte = self.bee("inviter", "--utilisateur", "bruno", "--identifiant", "github:personne2", "--demande", "garant",
                                "--fait", "Un fait public.", "--source", "https://github.com/personne2", "--message",
-                               MESSAGE_INVITATION, "--debat", "D-0001")
+                               MESSAGE_INVITATION)
         self.assertEqual(code, 1, texte)
         self.assertIn("est déjà invité(e) (I-0002)", texte)
 
@@ -9544,7 +9618,8 @@ class TestSecondeRevueRuche0020(BaseRevueRuche0020):
             self.ecrire_invitation({**self.invitation(f"I-{n:04d}"), "statut": "envoyee",
                                     "envoi": {"par": "bidji29", "le": "2026-10-05T10:00:00Z"}}, f"I-{n:04d}")
         quatre = {**self.invitation("I-0003"), "id": "I-0004", "statut": "proposee", "propose_le": "2026-10-28T10:00:00Z",
-                  "personne": {"identifiant": "github:personne4", "canal": "https://github.com/personne4"}}
+                  "personne": {"identifiant": "github:personne4", "canal": "https://github.com/personne4"},
+                  "debat": self.debat_a_la_main("I-0004", "alice", "2026-10-28T10:00:00Z")}
         for cle in ("accord_conseil", "envoi"):
             quatre.pop(cle)
         quatre["accord_gardien"] = {"par": "gina", "le": "2026-10-28T10:00:00Z"}
@@ -9638,7 +9713,7 @@ class TestDossierRetireRuche0020(BaseRevueRuche0020):
                                                                                              "retiré : refus"))
         self.assertEqual({c: inv[c] for c in ("id", "demande", "statut", "propose_par", "propose_le", "debat")},
                          {"id": "I-0001", "demande": "garant", "statut": "refusee", "propose_par": "alice",
-                          "propose_le": "2026-10-30T10:00:00Z", "debat": "D-0001"})
+                          "propose_le": "2026-10-30T10:00:00Z", "debat": "D-0002"})
         self.valide()
         self.ok("site", "--sortie", str(self.dossier / "_site"))
         for fichier in (self.dossier / "_site").rglob("*"):
@@ -9793,7 +9868,8 @@ class TestTroisiemeRevueRuche0020(BaseRevueRuche0020):
         # I-0001 : la même personne, proposée le 10/10, jamais décidée (expirée) ; I-0003 : une autre personne, acceptée plus tôt,
         # qui déclare la même identité (elle reste : une invitation acceptée ne se retire qu'à la demande).
         self.a("2026-10-30T09:00:00Z")
-        base = {"statut": "proposee", "demande": "garant", "debat": "D-0001", "propose_par": "alice",
+        base = {"statut": "proposee", "demande": "garant", "debat": self.debat_a_la_main("I-0001", "alice", "2026-10-10T10:00:00Z"),
+                "propose_par": "alice",
                 "pourquoi": [{"fait": "Fait fictif : maintient fictif-lib depuis 2015.", "source": "https://exemple-source.org/lib"}],
                 "message": MESSAGE_INVITATION + "\n\n" + self.mention()}
         self.ecrire_invitation({"id": "I-0001", **base, "personne": {"identifiant": self.CIBLE, "canal": "https://github.com/fictif-cible"},
@@ -9921,7 +9997,7 @@ class TestTroisiemeRevueRuche0020(BaseRevueRuche0020):
         self.branche()
         self.ok("inviter", "--utilisateur", "alice", "--identifiant", self.CIBLE, "--demande", "garant", "--fait",
                 "Fait fictif : co-maintient fictif-lib.", "--source", "https://github.com/fictif-tiers", "--autre-identite",
-                "codeberg:fictif-cible", "--message", MESSAGE_INVITATION, "--debat", "D-0001")
+                "codeberg:fictif-cible", "--message", MESSAGE_INVITATION)
         self.publier("alice", "invitation", libre=False)
         self.refuser()
         liste = set(bee.lire_yaml(self.dossier / bee.CHEMIN_NON_CONTACT)["empreintes"])
@@ -10007,8 +10083,9 @@ class TestTroisiemeRevueRuche0020(BaseRevueRuche0020):
         self.a("2026-10-30T10:00:00Z")
         self.decidees(2, quand="2026-10-30T09:00:00Z")
         for n in (3, 4):
-            inv = {**self.invitation("I-0001"), "id": f"I-{n:04d}", "statut": "proposee",
+            inv = {**self.invitation("I-0001"), "id": f"I-{n:04d}", "statut": "proposee", "debat": f"D-{n + 1:04d}",
                    "personne": {"identifiant": f"github:fictif-{n}", "canal": f"https://github.com/fictif-{n}"}}
+            self.ecrire({**self.debat("D-0002"), "id": f"D-{n + 1:04d}", "invitation": f"I-{n:04d}"}, f"D-{n + 1:04d}")
             del inv["accord_conseil"]
             self.ecrire_invitation(inv, f"I-{n:04d}")
         self.commit("deux invitations accordées par un gardien", quand="2026-10-30T09:00:00Z")
@@ -10898,6 +10975,7 @@ class TestVerificationRuche0020(BaseRevueRuche0020):
         self.assertIn("Autres identités déclarées : gitlab:fictif-tiers", texte)
         self.assertIn("vérifiez sur les sources que chaque autre identité déclarée est bien celle de la même personne", texte)
         self.assertIn("I-0001 : proposee", texte)
+        self.debattre_invitation()
         self.a("2026-11-02T11:00:00Z")
         self.branche()
         texte = self.geste("accord-gardien", "gina")
@@ -10955,6 +11033,940 @@ class TestVerificationRuche0020(BaseRevueRuche0020):
                      if "Commandement 10 complété" in l)
         self.assertTrue(ligne.rstrip().endswith("| Agent principal, sur autorisation du conseil (28/10 : changer les commandements "
                                                 "pendant la phase de lancement, commandement 11) |"))
+
+
+class TestRetraitDemandeRuche0048(BaseRevueRuche0020):
+    """ruche-0048 (commandement 10) : un retrait demandé, distinct du refus, retire les passages qui nomment une personne
+    extérieure (agora, notes, invitations), sans l'inscrire sur la liste de non-contact ; il est consigné avec sa demande, par
+    les seules empreintes, et ne touche à rien d'autre. Données fictives."""
+
+    NOMS = ("github:octocat", "octocat", "Odile Martin")
+    ARGUMENT = "Je propose @octocat comme garant ; Odile Martin maintient zlib depuis dix ans, et le plafond doit rester bas."
+
+    def setUp(self):
+        super().setUp()
+        self.jusqu_a("proposee")  # I-0001 : alice invite github:octocat
+        self.a("2026-10-30T11:00:00Z")
+        self.inviter("bruno", "github:hubot")  # I-0002 : une autre personne
+        self.argumenter("bruno", "fait", self.ARGUMENT, "--source", "https://github.com/octocat", "--source", "REGLES.md")
+        self.argumenter("chloe", "contre", "Le plafond de R13 ne dit rien de la personne.", "--repond-a", "A1")
+        self.ok("noter", "miniz-0099", "--utilisateur", "chloe", "--texte", "J'en ai parlé à octocat (Odile Martin), qui dit non.")
+        self.commit("sur main : des textes qui nomment la personne")
+
+    def retirer(self, qui="bidji29", *options, noms=None, confirmer=True):
+        """bee retirer-donnees, les identifiants dans un fichier hors du registre (jamais sur la ligne de commande)."""
+        fichier = pathlib.Path(self.temp.name) / "identifiants.txt"
+        fichier.write_text("\n".join(self.NOMS if noms is None else noms) + "\n", encoding="utf-8")
+        return self.bee("retirer-donnees", "--utilisateur", qui, "--identifiants-de", str(fichier), "--canal", "courriel",
+                        "--demande-le", "2026-11-01", *(["--confirmer"] if confirmer else []), *options)
+
+    def retrait_en_pr(self, *options, noms=None):
+        self.a("2026-11-02T10:00:00Z")
+        self.branche()
+        code, texte = self.retirer("bidji29", *options, noms=noms)
+        self.assertEqual(code, 0, texte)
+        self.commit()
+        return texte
+
+    def tous_les_textes(self):
+        return "\n".join(p.read_text(encoding="utf-8") for d in bee.DOSSIERS_LIBRE_SERVICE + ("gouvernance/",)
+                         for p in (self.dossier / d).rglob("*.yaml"))
+
+    def test_retrait_demande_retire_partout_sans_liste_et_un_refus_y_inscrit(self):
+        self.assertIn("octocat", self.tous_les_textes())
+        texte = self.retrait_en_pr()
+        self.assertIn("la liste de non-contact n'est pas touchée", texte)
+        self.assertIn("debats/D-0001.yaml : arguments/0/texte mot(s) 3, 7 ; arguments/0/sources/0 mot(s) 1", texte)
+        self.assertIn("invitations/I-0001.yaml : dossier mot(s) 1", texte)
+        for nom in ("octocat", "Odile", "Martin"):
+            self.assertNotIn(nom, texte)
+        self.attend_le_conseil("bidji29", "retrait_demande")
+        self.fusionner()
+        marque = bee.MARQUE_RETRAIT
+        tout = self.tous_les_textes()
+        for nom in ("octocat", "Odile Martin"):
+            self.assertNotIn(nom, tout)
+        inv = self.invitation()
+        self.assertEqual((inv["statut"], inv["personne"], inv["pourquoi"], inv["message"], inv["retrait"]["raison"]),
+                         ("retiree", "retiré : demande", "retiré : demande", "retiré : demande", "demande"))
+        self.assertEqual(self.invitation("I-0002")["personne"]["identifiant"], "github:hubot")
+        a1, a2 = self.debat()["arguments"]
+        self.assertEqual(a1["texte"], self.ARGUMENT.replace("@octocat", marque).replace("Odile Martin", marque))
+        self.assertEqual((a1["sources"], a1["par"], a1["position"]), ([marque, "REGLES.md"], "bruno", "fait"))
+        self.assertEqual(a2["texte"], "Le plafond de R13 ne dit rien de la personne.")
+        self.assertEqual(self.tache("miniz-0099")["notes"][-1]["texte"], f"J'en ai parlé à {marque} ({marque}), qui dit non.")
+        self.assertFalse((self.dossier / bee.CHEMIN_NON_CONTACT).exists())
+        self.valide()
+        # Un refus inscrit toujours la personne sur la liste, comme avant.
+        self.a("2026-11-02T12:00:00Z")
+        self.branche()
+        self.geste("consigner-reponse", "bidji29", "--valeur", "refusee", invitation="I-0002")
+        self.publier("bidji29", "reponse_invitation", "non_contact", libre=False)
+        self.assertEqual(bee.lire_yaml(self.dossier / bee.CHEMIN_NON_CONTACT), {"empreintes": [bee.empreinte("github:hubot")]})
+        self.valide()
+
+    def test_un_auteur_hors_du_conseil_est_refuse(self):
+        self.a("2026-11-02T10:00:00Z")
+        for qui in ("alice", "gina"):
+            code, texte = self.retirer(qui)
+            self.assertEqual(code, 1, texte)
+            self.assertIn(f"{qui} n'est pas du conseil", texte)
+        self.assertFalse((self.dossier / bee.CHEMIN_RETRAITS).exists())
+        self.retrait_en_pr()
+        for qui in ("alice", "gina"):
+            texte = self.refusee(qui, f"{qui} n'est pas du conseil : seul le conseil consigne un retrait demandé")
+            self.assertNotIn("FUSION_AUTO=oui", texte)
+        self.attend_le_conseil("bidji29", "retrait_demande")
+
+    def test_un_retrait_sans_demande_consignee_est_refuse(self):
+        self.retrait_en_pr()
+        entree = bee.lire_yaml(self.dossier / bee.CHEMIN_RETRAITS)["retraits"][0]
+        for nom, retraits, morceau in (("sans consignation", None, "arguments"),
+                                       ("sans demande", [{k: v for k, v in entree.items() if k != "demande"}], "(retraits/0)"),
+                                       ("référence d'une demande privée", [{**entree, "demande": {**entree["demande"],
+                                        "reference": "https://github.com/Bee-ruche/registre/issues/12"}}], "si, et seulement si"),
+                                       ("demande postérieure", [{**entree, "demande": {"canal": "issue", "le": "2026-11-03",
+                                        "reference": "https://github.com/Bee-ruche/registre/issues/12"}}], "au jour du retrait"),
+                                       ("deux retraits d'un coup", [entree, json.loads(json.dumps(entree))], "une entrée par PR")):
+            with self.subTest(nom):
+                chemin = self.dossier / bee.CHEMIN_RETRAITS
+                if retraits is None:
+                    chemin.unlink()
+                else:
+                    chemin.write_text(bee._rendu_fidele({"retraits": retraits}, "x"), encoding="utf-8")
+                self.commit()
+                self.refusee("bidji29", morceau)
+                git(self.dossier, "reset", "-q", "--hard", "HEAD~1")
+        self.attend_le_conseil("bidji29", "retrait_demande")
+
+    def test_un_retrait_ne_touche_que_les_passages_qui_nomment_la_personne(self):
+        self.retrait_en_pr()
+        marque = bee.MARQUE_RETRAIT
+        for nom, avant, apres in (("un mot de plus", "doit rester bas", "doit monter"),
+                                  ("un passage qui ne la nomme pas", "le plafond doit rester bas", marque),
+                                  ("un autre argument", "Le plafond de R13", marque)):
+            with self.subTest(nom):
+                d = self.debat()
+                d["arguments"] = [{**a, "texte": a["texte"].replace(avant, apres)} for a in d["arguments"]]
+                self.ecrire(d)
+                self.commit()
+                self.refusee("bidji29", "D-0001.yaml : un retrait demandé ne change, dans les fichiers qu'il parcourt, que les passages")
+                git(self.dossier, "reset", "-q", "--hard", "HEAD~1")
+        # Un autre fichier, ou un champ qui n'est pas un texte libre (l'auteur d'un argument), n'est pas un retrait.
+        d = self.debat()
+        d["arguments"][1]["par"] = marque
+        self.ecrire(d)
+        (self.dossier / "docs/croissance.md").write_text("Rien.\n", encoding="utf-8")
+        self.commit()
+        self.refusee("bidji29", "D-0001.yaml : un retrait demandé ne change", "docs/croissance.md : un retrait demandé ne change")
+        git(self.dossier, "reset", "-q", "--hard", "HEAD~1")
+        self.attend_le_conseil("bidji29", "retrait_demande")
+
+    def test_la_consignation_ne_garde_aucun_identifiant_en_clair(self):
+        self.retrait_en_pr()
+        chemin = self.dossier / bee.CHEMIN_RETRAITS
+        texte = chemin.read_text(encoding="utf-8")
+        for nom in ("octocat", "odile", "martin", "hubot"):
+            self.assertNotIn(nom, texte.casefold())
+        entree = bee.lire_yaml(chemin)["retraits"][0]
+        self.assertEqual(entree["demande"], {"canal": "courriel", "le": "2026-11-01"})
+        self.assertEqual(set(entree["empreintes"]), set().union(*map(bee.empreintes_passage, self.NOMS)))
+        self.valide()
+        chemin.write_text(bee._rendu_fidele({"retraits": [{**entree, "empreintes": [*entree["empreintes"], "github:octocat"]}]}, "x"),
+                          encoding="utf-8")
+        self.commit()
+        texte = self.refusee("bidji29", "(retraits/0/empreintes/3)")
+        self.assertIn("empreintes/3 : format incorrect", self.bee("valider")[1])
+
+    # --- Revue adverse de ruche-0048 (B1 à B3, S1 à S8, NIT) ---
+
+    def changer_puis_refuser(self, faire, *morceaux):
+        """Sur la PR du retrait : un changement de plus, refusé par verifier-pr, puis défait."""
+        faire()
+        self.commit()
+        self.refusee("bidji29", *morceaux)
+        git(self.dossier, "reset", "-q", "--hard", "HEAD~1")
+
+    def entree_a_la_main(self, *noms, **champs):
+        """Une consignation écrite à la main, sous sa forme canonique, et les fichiers qu'en écrirait la commande."""
+        entree = {"le": os.environ["BEE_MAINTENANT"], "par": "bidji29", "demande": {"canal": "courriel", "le": "2026-11-01"},
+                  "empreintes": sorted(set().union(*map(bee.empreintes_passage, noms))), **champs}
+        reg = bee.Registre(self.dossier)
+        for chemin, (texte, avant, apres, _) in bee.balayer(reg, entree)[0].items():
+            (self.dossier / chemin).write_text(bee.texte_apres(chemin, texte, avant, apres, set(entree["empreintes"])), encoding="utf-8")
+        anciens = (reg.retraits or {}).get("retraits") or []
+        (self.dossier / bee.CHEMIN_RETRAITS).write_text(bee._rendu_fidele({"retraits": [*anciens, entree]}, "x"), encoding="utf-8")
+        return entree
+
+    def test_B1_S6_ni_suppression_ni_ajout_ni_lien_ni_mode(self):
+        self.retrait_en_pr()
+        tache = self.dossier / "taches/miniz/miniz-0099.yaml"
+        for faire, morceau in ((lambda: (self.dossier / "debats/D-0001.yaml").unlink(), "debats/D-0001.yaml : un retrait"),
+                               (lambda: (self.dossier / "outils/bee.py").unlink(), "outils/bee.py : un retrait"),
+                               (lambda: (self.dossier / "COMMANDMENTS.md").unlink(), "COMMANDMENTS.md : un retrait"),
+                               (lambda: shutil.copy(self.dossier / "debats/D-0001.yaml", self.dossier / "debats/D-0009.yaml"),
+                                "debats/D-0009.yaml : un retrait demandé ne change"),
+                               (lambda: (tache.unlink(), tache.symlink_to("miniz-9001.yaml")), "miniz-0099.yaml : un retrait ne change que"),
+                               (lambda: os.chmod(self.dossier / "debats/D-0001.yaml", 0o755), "D-0001.yaml : un retrait ne change que"),
+                               (lambda: os.chmod(self.dossier / bee.CHEMIN_RETRAITS, 0o755), "retraits.yaml : un retrait ne change que")):
+            with self.subTest(morceau):
+                self.changer_puis_refuser(faire, morceau)
+        self.attend_le_conseil("bidji29", "retrait_demande")
+
+    def test_B2_ni_mot_courant_ni_pseudo_de_la_ruche_ni_numero(self):
+        self.a("2026-10-31T10:00:00Z")
+        for i in range(9):
+            self.ok("noter", "miniz-0099", "--utilisateur", "chloe", "--texte", f"Note {i} : zorglub en parle.")
+        self.ok("noter", "miniz-0099", "--utilisateur", "chloe", "--texte", "Je pense que bruno a raison.")
+        self.commit("neuf passages")
+        self.a("2026-11-02T10:00:00Z")
+        for nom, morceau in (("zorglub", "trop courant"), ("bruno", "jamais retiré"), ("@bruno", "jamais retiré"),
+                             ("github:bidji29", "jamais retiré"), ("gina", "jamais retiré"), ("R13", "jamais retiré"),
+                             ("miniz-0099", "jamais retiré"), ("minizBee", "jamais retiré"), ("I-0002", "jamais retiré"),
+                             ("10", "jamais retiré"), ("A3", "jamais retiré"), ("bruno a raison", "jamais retiré"),
+                             ("Pour refuser, répondez simplement", "rien ne nomme")):
+            with self.subTest(nom):
+                code, texte = self.retirer(noms=["octocat", nom] if morceau != "rien ne nomme" else [nom])
+                self.assertEqual(code, 1, texte)
+                self.assertIn(morceau, texte)
+                self.assertNotIn(nom, texte)
+        self.assertFalse((self.dossier / bee.CHEMIN_RETRAITS).exists())
+        # Chaque occurrence compte (9 dans un seul champ), 40 passages au plus par retrait, 12 identifiants au plus.
+        self.ok("noter", "miniz-9001", "--utilisateur", "chloe", "--texte", "Une note : " + "bzzt " * 9)
+        noms = [f"nom{i}x" for i in range(6)]
+        self.ok("noter", "miniz-9002", "--utilisateur", "chloe", "--texte", " ".join(n for n in noms for _ in range(7)))
+        for liste, morceau in ((["bzzt"], "plus de 8 passages"), (noms, "plus de 40 passages"),
+                               ([f"nom{i}x" for i in range(13)], "retraits/0/empreintes")):
+            with self.subTest(morceau):
+                code, texte = self.retirer(noms=liste)
+                self.assertEqual(code, 1, texte)
+                self.assertIn(morceau, texte)
+        self.commit("des passages")
+        # La porte refuse de même une consignation écrite à la main.
+        for noms, morceau in ((("octocat", "zorglub"), "trop courante"), (("octocat", "bruno"), "ne se retire jamais"),
+                              (("octocat", "bruno a"), "un passage retiré contient un pseudo"), (("bzzt",), "plus de 8 passages")):
+            with self.subTest(noms):
+                self.branche()
+                self.entree_a_la_main(*noms)
+                self.commit()
+                self.refusee("bidji29", morceau)
+                self.abandonner()
+
+    def test_B2_S2_le_message_d_une_autre_invitation_demeure_ses_faits_et_sources_se_retirent(self):
+        inv = self.invitation("I-0002")
+        message = inv["message"].replace("Bonjour", "Bonjour, octocat m'a parlé de vous", 1)
+        self.ecrire_invitation({**inv, "message": message, "pourquoi": [
+            {"fait": "Maintient zlib avec octocat.", "source": "https://github.com/octocat/zlib"}]}, "I-0002")
+        (self.dossier / "gouvernance/incidents.yaml").write_text(bee._rendu_fidele({"incidents": [
+            {"id": "INC-0001", "titre": "Plainte fictive au sujet de octocat", "ouvert_le": "2026-10-30T09:00:00Z",
+             "clos_le": "2026-10-30T10:00:00Z", "issue": "Close ; d'octocat, rien d'autre."}]}, "x"), encoding="utf-8")
+        self.commit("sur main : I-0002 et un incident la nomment")
+        self.retrait_en_pr()
+        self.attend_le_conseil("bidji29", "retrait_demande")
+        apres, marque = self.invitation("I-0002"), bee.MARQUE_RETRAIT
+        self.assertEqual((apres["message"], apres["personne"]["identifiant"], apres["statut"]), (message, "github:hubot", "proposee"))
+        self.assertEqual(apres["pourquoi"], [{"fait": f"Maintient zlib avec {marque}.", "source": marque}])
+        incident = bee.lire_yaml(self.dossier / "gouvernance/incidents.yaml")["incidents"][0]
+        self.assertEqual((incident["titre"], incident["issue"]), (f"Plainte fictive au sujet de {marque}", f"Close ; d'{marque}, rien d'autre."))
+        self.valide()
+
+    def test_B3_la_marque_courte_quand_la_marque_deborderait(self):
+        titre = ("Ne pas relire ce que Bo Li propose sur les plafonds " + "x" * 100)[:100]
+        tache = self.chemin_tache("miniz-0099")
+        tache.write_text(re.sub(r"(?m)^titre:.*$", "titre: " + json.dumps(titre, ensure_ascii=False), tache.read_text(encoding="utf-8")),
+                         encoding="utf-8")
+        self.commit("sur main : un titre au plus long")
+        texte = self.retrait_en_pr(noms=["Bo Li", "octocat"])
+        self.assertIn("taches/miniz/miniz-0099.yaml : titre mot(s) 6", texte)
+        self.assertNotIn("Bo Li", texte)
+        self.assertEqual(self.tache("miniz-0099")["titre"], titre.replace("Bo Li", bee.MARQUE_COURTE))
+        self.attend_le_conseil("bidji29", "retrait_demande")
+        self.valide()
+        # Aucune retouche à la main : un titre coupé (la négation ôtée) est refusé.
+        coupe = titre.replace("Bo Li", bee.MARQUE_COURTE).replace("Ne pas r", "R")
+        self.changer_puis_refuser(lambda: tache.write_text(re.sub(r"(?m)^titre:.*$", "titre: " + json.dumps(coupe, ensure_ascii=False),
+                                                                  tache.read_text(encoding="utf-8")), encoding="utf-8"),
+                                  "miniz-0099.yaml : un retrait demandé ne change")
+
+    def test_commentaires_et_consignation_mal_formee(self):
+        tache = self.chemin_tache("miniz-0099")
+        tache.write_text("# Demandé par octocat le 12/10\n" + tache.read_text(encoding="utf-8"), encoding="utf-8")
+        self.commit("sur main : un commentaire la nomme")
+        texte = self.retrait_en_pr()
+        self.assertIn("⚠ taches/miniz/miniz-0099.yaml:1 : un commentaire la nomme", texte)
+        self.assertTrue(tache.read_text(encoding="utf-8").startswith("# Demandé par octocat le 12/10\n"))
+        self.assertIn(bee.MARQUE_RETRAIT, self.tache("miniz-0099")["notes"][-1]["texte"])
+        self.attend_le_conseil("bidji29", "retrait_demande")
+        chemin = self.dossier / bee.CHEMIN_RETRAITS
+        canonique = chemin.read_text(encoding="utf-8")
+        for nom, faux in (("clé en double", canonique.replace("  par: bidji29\n", "  par: bidji29\n  par: bidji29\n")),
+                          ("ancre", canonique.replace("  empreintes:\n", "  empreintes: &e\n", 1))):
+            with self.subTest(nom):
+                self.assertNotEqual(faux, canonique)
+                texte = self.changer_puis_refuser(lambda: chemin.write_text(faux, encoding="utf-8"), "retraits.yaml : en ajout seul")
+
+    def test_S1_S2_la_porte_ne_touche_que_ce_que_parcourt_la_commande_jusqu_au_bout(self):
+        self.retrait_en_pr()
+        projet = self.dossier / "projets/miniz.yaml"
+        self.changer_puis_refuser(lambda: projet.write_text(projet.read_text(encoding="utf-8").replace("miniz", "[retiré]", 1),
+                                                            encoding="utf-8"), "projets/miniz.yaml : un retrait demandé ne change")
+        # Appliqué en partie (le débat laissé tel qu'il était) : la tête nomme encore la personne.
+        avant = git(self.dossier, "show", "main:debats/D-0001.yaml")
+        self.changer_puis_refuser(lambda: self.chemin_debat().write_text(avant, encoding="utf-8"),
+                                  "debats/D-0001.yaml : nomment encore la personne")
+        # S7 : dans une tâche, le diff ne montre que la marque.
+        self.assertEqual(git(self.dossier, "diff", "--numstat", "main", "--", "taches/miniz/miniz-0099.yaml").split()[:2], ["1", "1"])
+
+    def test_S3_la_consignation_canonique_datee_et_referencee(self):
+        self.retrait_en_pr()
+        chemin, entree = self.dossier / bee.CHEMIN_RETRAITS, bee.lire_yaml(self.dossier / bee.CHEMIN_RETRAITS)["retraits"][0]
+        canonique = chemin.read_text(encoding="utf-8")
+        self.changer_puis_refuser(lambda: chemin.write_text("# Bo Li\n" + canonique, encoding="utf-8"), "telle que l'écrit")
+        for demande, morceau in (({"canal": "courriel", "le": "2026-02-31"}, "une date réelle"),
+                                 ({"canal": "courriel", "le": "2026-09-30"}, "du 2026-10-01"),
+                                 ({"canal": "issue", "le": "2026-11-01", "reference": "https://github.com/Bee-ruche/bo-li/issues/9"},
+                                  "un dépôt de la ruche")):
+            with self.subTest(demande):
+                self.changer_puis_refuser(lambda: chemin.write_text(bee._rendu_fidele({"retraits": [{**entree, "demande": demande}]}, "x"),
+                                                                    encoding="utf-8"), morceau)
+        chemin.write_text(bee._rendu_fidele({"retraits": [{**entree, "demande": {
+            "canal": "issue", "le": "2026-11-01", "reference": "https://github.com/Bee-ruche/minizBee/issues/9"}}]}, "x"), encoding="utf-8")
+        self.commit()
+        self.attend_le_conseil("bidji29", "retrait_demande")
+
+    def test_S4_S8_hebergement_partage_a_blanc_et_identifiants_hors_ligne_de_commande(self):
+        e = bee.empreintes_passage
+        for alice, bruno in (("https://twitter.com/alice", "https://twitter.com/bruno"), ("alice.wordpress.com", "bruno.wordpress.com"),
+                             ("https://exemple.org/~alice", "https://exemple.org/~bruno"), ("https://medium.com/@alice", "medium.com/@bruno")):
+            self.assertTrue(e(alice) and not e(alice) & e(bruno), alice)
+        self.assertEqual(e("https://octocat.github.io/x"), e("github:octocat"))
+        self.assertTrue(e("https://www.linkedin.com/in/alice") == e("linkedin.com/in/alice") and not e("linkedin.com/in/alice") & e(
+            "https://linkedin.com/in/bruno"))
+        self.a("2026-11-02T10:00:00Z")
+        with mock.patch("sys.stdin", io.StringIO("github:octocat\n")):
+            code, texte = self.bee("retirer-donnees", "--utilisateur", "bidji29", "--identifiants-de", "-", "--canal", "courriel",
+                                   "--demande-le", "2026-11-01")
+        self.assertEqual(code, 0, texte)
+        self.assertIn("invitations/I-0001.yaml : dossier mot(s) 1", texte)
+        self.assertIn("À blanc : rien n'est écrit", texte)
+        self.assertEqual(git(self.dossier, "status", "--porcelain"), "")
+        code, texte = self.bee("retirer-donnees", "--utilisateur", "bidji29", "--identifiant", "octocat", "--canal", "courriel",
+                               "--demande-le", "2026-11-01")  # argparse en fait --identifiants-de : un fichier, jamais un identifiant
+        self.assertEqual(code, 1, texte)
+        self.assertNotIn("octocat", texte)
+
+    def test_S5_non_contact_a_la_demande_et_signal_d_une_nouvelle_invitation(self):
+        self.retrait_en_pr()
+        self.fusionner()
+        self.assertFalse((self.dossier / bee.CHEMIN_NON_CONTACT).exists())
+        self.a("2026-11-03T10:00:00Z")
+        self.ko("bee retirer-donnees --non-contact", "invitation", "retirer", "I-0001", "--utilisateur", "bidji29")
+        # Plus tard, elle demande aussi à ne plus être contactée : rien à retirer, la liste reçoit ses empreintes.
+        self.branche()
+        code, texte = self.retirer("bidji29", "--non-contact", noms=["github:octocat"])
+        self.assertEqual(code, 0, texte)
+        self.publier("bidji29", "retrait_demande", libre=False)
+        self.assertEqual(bee.lire_yaml(self.dossier / bee.CHEMIN_NON_CONTACT), {"empreintes": [bee.empreinte("github:octocat")]})
+        self.valide()
+        # La liste ne reçoit rien d'autre que les empreintes consignées.
+        self.a("2026-11-03T12:00:00Z")
+        self.branche()
+        self.entree_a_la_main("octocat", non_contact=True)
+        bee.ecrire_invitation(self.dossier / bee.CHEMIN_NON_CONTACT, {"empreintes": [bee.empreinte("github:octocat"), bee.empreinte("github:hubot")]})
+        self.commit()
+        self.refusee("bidji29", "ne-plus-contacter.yaml : un retrait demandé ne change")
+        self.abandonner()
+
+    def test_S5_une_nouvelle_invitation_de_la_personne_est_signalee(self):
+        self.retrait_en_pr()
+        self.fusionner()
+        self.a("2026-11-03T10:00:00Z")
+        self.branche()
+        avant = set(self.dossier.glob("debats/D-*.yaml"))
+        code, texte = self.bee("inviter", "--utilisateur", "chloe", "--identifiant", "github:octocat", "--demande", "garant", "--fait",
+                               "Un fait public.", "--source", "https://github.com/octocat", "--message", MESSAGE_INVITATION)
+        self.assertEqual(code, 3, texte)  # ruche-0050 : bee inviter ouvre aussi le débat propre de l'invitation
+        self.assertIn("correspond à un retrait demandé consigné", texte)
+        self.assertEqual((self.invitation("I-0003")["personne"]["identifiant"], len(set(self.dossier.glob("debats/D-*.yaml")) - avant)),
+                         ("github:octocat", 1))
+        self.commit()
+        self.attend_le_conseil("chloe", "invitation", "retrait_demande_consigne")
+        # Une invitation d'une autre personne n'est pas signalée.
+        self.abandonner()
+        self.branche()
+        self.assertNotIn("retrait demandé", self.inviter("chloe", "github:fictif-autre"))
+        self.commit()
+        self.assertNotIn("retrait_demande_consigne", self.attend_le_conseil("chloe", "invitation"))
+
+    def test_le_debat_propre_d_une_invitation(self):
+        """ruche-0050 : le retrait atteint le débat propre d'une invitation (ses arguments, sa synthèse), jamais doublon_de,
+        doublon_par, conteste, synthese_couvre ni invitation."""
+        for quand, faire in (
+                ("2026-10-30T11:30:00Z", lambda: self.argumenter("chloe", "pour", "octocat a déjà refusé, selon Odile Martin.", debat="D-0002")),
+                ("2026-10-30T11:40:00Z", lambda: self.ok("debattre", "doublon", "D-0002", "--argument", "A2", "--de", "A1", "--utilisateur", "gina")),
+                ("2026-10-30T11:50:00Z", lambda: self.argumenter("chloe", "question", "Le doublon de A2 ne tient pas : octocat y est nommé.",
+                                                                 "--conteste", "A2", debat="D-0002")),
+                ("2026-10-30T12:00:00Z", lambda: self.ok("debattre", "synthetiser", "D-0002", "--utilisateur", "bruno", "--texte",
+                                                         "octocat : un avis pour (A1), une question (A3)."))):
+            self.a(quand)
+            faire()
+        self.commit("sur main : le débat de I-0001 la nomme")
+        self.valide()
+        avant, m = self.debat("D-0002"), bee.MARQUE_RETRAIT
+        texte = self.retrait_en_pr()
+        self.assertIn("debats/D-0002.yaml : synthese mot(s) 1 ; arguments/1/texte mot(s) 1, 6 ; arguments/2/texte mot(s) 9", texte)
+        self.attend_le_conseil("bidji29", "retrait_demande")
+        d = self.debat("D-0002")
+        self.assertEqual([a["texte"] for a in d["arguments"]], [avant["arguments"][0]["texte"], f"{m} a déjà refusé, selon {m}.",
+                                                                f"Le doublon de A2 ne tient pas : {m} y est nommé."])
+        self.assertEqual(d["synthese"], f"{m} : un avis pour (A1), une question (A3).")
+        structure = lambda x: (x["invitation"], x["synthese_couvre"], x["synthese_par"], [(a["id"], a["par"], a.get("doublon_de"),  # noqa: E731
+                                                                                         a.get("doublon_par"), a.get("conteste")) for a in x["arguments"]])
+        self.assertEqual(structure(d), structure(avant))
+        self.assertEqual(structure(d)[:2], ("I-0001", "A3"))
+        self.assertEqual(d["arguments"][1]["doublon_par"], "gina")
+        self.valide()
+
+    def test_NIT_identifiant_vide_jamais_repete_et_consignation_seule(self):
+        self.a("2026-11-02T10:00:00Z")
+        for nom in ("@", "~", "https://", "​"):
+            with self.subTest(repr(nom)):
+                code, texte = self.retirer(noms=["octocat", nom])
+                self.assertEqual(code, 1, texte)
+                self.assertIn("identifiant n° 2 : vide ou sans nom", texte)
+        for options in (("--reference", "Bo Li"), ("--demande-le", "Bo Li")):
+            code, texte = self.retirer("bidji29", *options)
+            self.assertEqual(code, 1, texte)
+            self.assertNotIn("Bo Li", texte)
+        self.branche()
+        self.entree_a_la_main("nulle-part-ailleurs")
+        self.commit()
+        self.refusee("bidji29", "un retrait qui ne retire rien ne se consigne pas")
+
+    def test_passages_unitaires(self):
+        empreintes = set().union(*map(bee.empreintes_passage, ("github:octocat", "octocat", "exemple.org", "Odile Martin")))
+        for avant in ("d'Odile Martin", "Odile Martin's", "Odile-Martin"):
+            self.assertIn(bee.MARQUE_RETRAIT, bee.passages_retires(avant, empreintes), avant)
+        m = bee.MARQUE_RETRAIT
+        for avant, apres in (("Voir (@OctoCat), GitHub:octocat.", f"Voir ({m}), {m}."),
+                             ("https://github.com/octocat/zlib et https://blog.exemple.org/x !", f"{m} et {m} !"),
+                             ("octo cat, comme la clé canonique", f"{m}, comme la clé canonique"),
+                             ("d'octocat, qu'octocat, octocat's, l’octocat", f"d'{m}, qu'{m}, {m}'s, l’{m}"),
+                             ("github.com/octocat et octocat/zlib, octocat…le", f"{m} et {m}, {m}…le"),
+                             ("octocats, octo-chat et https://github.com/hubot", "octocats, octo-chat et https://github.com/hubot")):
+            self.assertEqual(bee.passages_retires(avant, empreintes), apres)
+
+
+class TestRetraitDemandeChampsRuche0048(unittest.TestCase):
+    """ruche-0048 (revue adverse, S2), sans registre : chaque texte d'un schéma que parcourt un retrait demandé est retirable, ou
+    nommé ici hors du retrait (auteurs, dates, statuts, identifiants, ce qu'écrit la CI, et le message d'une invitation)."""
+
+    HORS_DU_RETRAIT = {
+        "taches": {"categorie", "contribution", "cree_le", "cree_par", "depend_de", "fichiers", "id", "metrique", "noeud", "notes/le",
+                   "notes/par", "paralleles/depuis", "paralleles/utilisateur", "poste", "projet", "reservation/depuis",
+                   "reservation/utilisateur", "sortie_compressee", "statut", "taille", "type"},
+        "debats": {"arguments/caviarde_pour", "arguments/doublon_de", "arguments/id", "arguments/le", "arguments/par", "arguments/position",
+                   "arguments/repond_a", "clos_le", "clos_par", "id", "issue", "ouvert_le", "ouvert_par", "question_caviardee_pour",
+                   "rapporteur", "statut", "synthese_caviardee_pour", "synthese_le", "synthese_par",
+                   "invitation", "synthese_couvre", "arguments/doublon_par", "arguments/conteste"},  # ruche-0050 : un numéro, un pseudo
+        "invitations": {"debat", "demande", "id", "message", "personne", "personne/canal", "personne/identifiant", "autres_identites",
+                        "pourquoi", "propose_le", "propose_par", "statut", "reponse/valeur", "retrait/raison"}
+                       | {f"{g}/{c}" for g in ("accord_conseil", "accord_gardien", "ecartee", "envoi", "relance", "renouvellement", "reponse",
+                                               "retrait") for c in ("le", "par")},
+        "contributions": {"attente_verdict/sha", "auteur", "decidee_le", "engage_depuis", "fusion_sha", "id", "levees/le", "levees/par",
+                          "levees/relecteur", "pr", "relectures/arbre", "relectures/avis", "relectures/confirme_par", "relectures/le",
+                          "relectures/relecteur", "relectures/sha", "resume_sha", "retenue", "soumise_le", "statut", "tache", "verdict/arbre",
+                          "verdict/base", "verdict/ci", "verdict/etape_en_echec", "verdict/execution", "verdict/juge/commun",
+                          "verdict/juge/constructions_suspectes/detail", "verdict/juge/constructions_suspectes/type",
+                          "verdict/juges_modifies", "verdict/sha", "verdicts/arbre", "verdicts/ci", "verdicts/sha"},
+        "votes": {"le", "sujet", "votant"},
+        "mesures": {"base", "candidat", "config/architecture", "config/compilateur", "config/processeur", "config/systeme", "contribution",
+                    "le", "outil", "soumise_par"},
+        "propositions": {"auteur", "id", "ouverte_le", "regle", "statut"},
+        "gouvernance": {"incidents/clos_le", "incidents/id", "incidents/ouvert_le"}}
+
+    def test_chaque_texte_est_retirable_ou_nomme_hors_du_retrait(self):
+        self.assertEqual(set(bee.PARCOURS), set(self.HORS_DU_RETRAIT))
+        for sorte, (_, nom, champs) in bee.PARCOURS.items():
+            schema = json.loads((RACINE / "schemas" / f"{nom}.schema.json").read_text(encoding="utf-8"))
+            hors = {re.sub(r"\[\d+\]", "", lieu_de(c)) for c in champs_texte(schema) if not any(k in champs for k in c if isinstance(k, str))}
+            self.assertEqual(hors, self.HORS_DU_RETRAIT[sorte], sorte)
+
+
+class TestDebatInvitationRuche0050(BaseRevueRuche0020):
+    """ruche-0050 : le débat d'une invitation est le sien (ouvert avec elle, par son proposant, et elle le nomme) ; le proposant n'en
+    tient jamais la plume, pas même sous un compte d'agent ; un marquage « doublon » se conteste, et la contestation se voit ;
+    l'accord du gardien et le feu vert exigent un débat ouvert et une synthèse plus récente que tout argument."""
+
+    def accord_a_la_main(self, geste, qui, invitation="I-0001"):
+        """Un accord écrit à la main (sans bee invitation), daté de maintenant, puis commité."""
+        inv = {**self.invitation(invitation), geste: {"par": qui, "le": self.maintenant()}}
+        self.ecrire_invitation({**inv, "statut": bee.etat_invitation(inv)}, invitation)
+        self.commit()
+
+    def nouveau_debat(self, qui="bruno", **champs):
+        return {"id": "D-0002", "invitation": "I-0001", "question": "Invitation I-0001 : faut-il l'envoyer ?", "ouvert_par": qui,
+                "ouvert_le": self.maintenant(), "statut": "ouvert", "synthese": "", "arguments": [], **champs}
+
+    def test_une_invitation_liee_a_un_debat_qui_n_a_pas_ete_ouvert_pour_elle_est_refusee(self):
+        self.a("2026-10-30T10:00:00Z")
+        self.branche()
+        self.inviter()
+        d = self.debat("D-0002")
+        self.assertEqual((d["invitation"], d["ouvert_par"], "rapporteur" in d, self.invitation()["debat"]), ("I-0001", "alice", False, "D-0002"))
+        self.publier("alice", "invitation", "ouverture_debat", libre=False)
+        self.valide()
+        cas = (  # (ce qu'écrit la PR, son auteur, ce qui est refusé)
+            ("le débat général du conseil", lambda: self.proposer_brut("I-0002", "bruno", debat="D-0001"), "bruno",
+             "debat « D-0001 » : not the debate opened for I-0002"),
+            ("le débat d'une autre invitation", lambda: self.proposer_brut("I-0002", "bruno", debat="D-0002"), "bruno",
+             "debat « D-0002 » : not the debate opened for I-0002"),
+            ("un débat ouvert par un autre", lambda: (self.proposer_brut("I-0002", "bruno"), self.ecrire(
+                {**self.debat("D-0003"), "ouvert_par": "chloe"}, "D-0003")), "bruno", "not the debate opened for I-0002 with it, by its proposer"),
+            ("un débat ouvert seul pour un numéro à venir", lambda: self.ecrire(self.nouveau_debat(id="D-0003", invitation="I-0002"), "D-0003"),
+             "bruno", "invitation « I-0002 » : an invitation's debate is opened with it, by its proposer"))
+        self.a("2026-10-30T11:00:00Z")
+        for nom, preparer, auteur, morceau in cas:
+            with self.subTest(nom):
+                self.branche()
+                preparer()
+                self.commit()
+                self.refusee(auteur, morceau)
+                self.abandonner()
+        # Une invitation déjà sur main qui nomme un débat qui n'est pas le sien (écrite avant ruche-0050) : aucun accord.
+        self.proposer_brut("I-0002", "bruno", debat="D-0001")
+        self.chemin_debat("D-0003").unlink()
+        self.commit("sur main : une invitation qui nomme le débat général")
+        self.assertIn("I-0002.yaml : debat « D-0001 » : not the debate opened for it", self.bee("valider")[1], "bee valider le refuse")
+        self.a("2026-11-02T12:00:00Z")
+        self.ko("debat « D-0001 » : not the debate opened for I-0002", "invitation", "accord-gardien", "I-0002", "--utilisateur", "gina")
+        self.branche()
+        self.accord_a_la_main("accord_gardien", "gina", "I-0002")
+        self.refusee("gina", "debat « D-0001 » : not the debate opened for I-0002")
+
+    def test_un_debat_d_invitation_dont_le_rapporteur_est_le_proposant_est_refuse(self):
+        self.a("2026-10-30T10:00:00Z")
+        self.branche()
+        self.inviter()
+        self.ecrire({**self.debat("D-0002"), "rapporteur": "alice"}, "D-0002")
+        self.commit()
+        self.refusee("alice", "rapporteur « alice » : the proposer of the invitation never holds the pen of its debate")
+        self.abandonner()
+        self.branche()
+        self.inviter()
+        self.publier("alice", "invitation", "ouverture_debat", libre=False)
+        # alice argumente la première dans le débat de son invitation : elle ne prend pas la plume ; la prendre à la main est refusé.
+        self.a("2026-10-30T10:10:00Z")
+        self.branche()
+        self.assertNotIn("vous devenez le rapporteur", self.argumenter("alice", "pour", "Les faits cités sont publics.", debat="D-0002"))
+        self.assertNotIn("rapporteur", self.debat("D-0002"))
+        self.publier("alice", "argument")
+        self.valide()
+        self.branche()
+        d = self.debat("D-0002")
+        self.ecrire({**d, "rapporteur": "alice", "arguments": d["arguments"] + [
+            {"id": "A2", "par": "alice", "le": self.maintenant(), "position": "pour", "texte": "Un second fait public."}]}, "D-0002")
+        self.commit()
+        self.refusee("alice", "the proposer of the invitation never holds the pen of its debate")
+        self.abandonner()
+        # bruno argumente : il prend la plume, et la garde à la synthèse (elle ne revient jamais à alice).
+        self.debattre_invitation()
+        self.assertEqual(self.debat("D-0002")["rapporteur"], "bruno")
+        self.a("2026-10-30T11:00:00Z")
+        self.ko("vous restez rapporteur", "debattre", "synthetiser", "D-0002", "--utilisateur", "bruno", "--suivant", "alice", "--texte", "Pour.")
+        for qui, champs in (("bruno", {"synthese": "Pour.", "synthese_par": "bruno", "synthese_le": self.maintenant(), "rapporteur": "alice"}),
+                            ("bidji29", {"rapporteur": "alice"})):  # la synthèse de bruno ; le conseil qui désigne
+            with self.subTest(qui=qui):
+                self.branche()
+                self.ecrire({**self.debat("D-0002"), **champs}, "D-0002")
+                self.commit()
+                self.refusee(qui, "rapporteur « alice » : the proposer of the invitation never holds the pen of its debate")
+                self.abandonner()
+        # Ni en relevant un rapporteur absent, 72 h après un argument que la synthèse ne couvre pas.
+        self.branche()
+        self.argumenter("chloe", "contre", "Une objection sans synthèse.", debat="D-0002")
+        self.publier("chloe", "argument")
+        self.a("2026-11-02T12:00:00Z")
+        self.ko("ou le proposant de son invitation", "debattre", "synthetiser", "D-0002", "--utilisateur", "alice", "--texte", "Pour.")
+        self.ecrire({**self.debat("D-0002"), "rapporteur": "alice"}, "D-0002")
+        self.assertIn("jamais le proposant de son invitation", self.bee("valider")[1])
+
+    def test_le_rapporteur_sous_le_compte_d_agent_du_proposant_est_refuse(self):
+        declarer_agents(self.dossier, ("alice-agent", "alice"))
+        self.commit("sur main : le compte d'agent d'alice est déclaré")
+        self.a("2026-10-30T10:00:00Z")
+        self.branche()
+        self.inviter()
+        self.publier("alice", "invitation", "ouverture_debat", libre=False)
+        # Son compte d'agent argumente le premier, au nom d'alice : l'argument passe, mais pas la prise de plume.
+        self.a("2026-10-30T10:10:00Z")
+        self.branche()
+        self.argumenter("alice", "pour", "Les faits cités sont publics.", debat="D-0002")
+        self.commit()
+        self.libre_service("alice-agent", "argument")
+        self.ecrire({**self.debat("D-0002"), "rapporteur": "alice"}, "D-0002")
+        self.commit()
+        self.refusee("alice-agent", "the proposer of the invitation never holds the pen of its debate, nor under an agent account")
+        self.abandonner()
+        # Le compte d'agent lui-même, désigné rapporteur par le conseil : refusé, car c'est alice.
+        self.debattre_invitation()
+        self.a("2026-10-30T11:00:00Z")
+        self.branche()
+        self.ecrire({**self.debat("D-0002"), "rapporteur": "alice-agent"}, "D-0002")
+        self.commit()
+        self.refusee("bidji29", "rapporteur « alice-agent » : the proposer of the invitation never holds the pen of its debate")
+
+    def test_un_doublon_se_conteste_et_la_contestation_parait_dans_bee_voir_et_au_feu_vert(self):
+        self.jusqu_a("proposee")  # D-0002 : A1 (bruno), sa synthèse à 10 h 40 ; bruno est rapporteur
+        # chloe objecte ; bruno synthétise et lui passe la plume ; gaspard objecte autrement ; chloe, rapporteuse, marque pourtant A3
+        # comme doublon de A2 : sans contestation, il ne compte pas contre la synthèse.
+        for quand, qui, commande in (
+                ("2026-10-31T10:00:00Z", "chloe", ["argumenter", "--position", "contre", "--texte", "Le message dit mal comment refuser."]),
+                ("2026-10-31T10:30:00Z", "bruno", ["synthetiser", "--texte", "Une objection sur le message (A2)."]),
+                ("2026-10-31T11:00:00Z", "gaspard", ["argumenter", "--position", "contre", "--texte", "Les faits cités ont cinq ans."]),
+                ("2026-10-31T11:30:00Z", "chloe", ["doublon", "--argument", "A3", "--de", "A2"]),
+                ("2026-10-31T12:00:00Z", "farid", ["argumenter", "--position", "contre", "--texte", "Il dit mal comment refuser."]),
+                ("2026-10-31T12:30:00Z", "chloe", ["doublon", "--argument", "A4", "--de", "A2"])):
+            self.a(quand)
+            self.branche()
+            self.ok("debattre", commande[0], "D-0002", "--utilisateur", qui, *commande[1:])
+            self.publier(qui)
+        self.assertEqual((self.debat("D-0002")["synthese_couvre"], self.debat("D-0002")["arguments"][2]["doublon_par"]), ("A2", "chloe"))
+        voir = self.ok("voir", "I-0001")
+        self.assertIn("A3 marqué doublon de A2 par chloe : non contesté", voir)
+        self.assertIn("D-0002 ouvert, synthèse à jour", voir, "un doublon non contesté ne compte pas contre la synthèse")
+        # gaspard conteste le marquage de A3 ; chloe, qui a marqué A4, conteste aussi le sien : acceptés, et visibles.
+        self.a("2026-10-31T13:00:00Z")
+        self.ko("--conteste A2 : not an argument of D-0002 marked as a duplicate", "debattre", "argumenter", "D-0002", "--utilisateur",
+                "gaspard", "--position", "question", "--conteste", "A2", "--texte", "A2 n'est pas un doublon.")
+        for quand, qui, cible, texte in (("2026-10-31T13:00:00Z", "gaspard", "A3", "A3 n'est pas un doublon de A2 : autre objection."),
+                                         ("2026-10-31T13:30:00Z", "chloe", "A4", "Je conteste mon propre marquage : A4 ajoute un point.")):
+            self.a(quand)
+            self.branche()
+            self.argumenter(qui, "question", texte, "--conteste", cible, debat="D-0002")
+            self.publier(qui, "argument")
+        self.assertEqual([a.get("conteste") for a in self.debat("D-0002")["arguments"][-2:]], [["A3"], ["A4"]])
+        voir = self.ok("voir", "I-0001")
+        self.assertIn("A3 marqué doublon de A2 par chloe : CONTESTÉ par gaspard (A5)", voir)
+        self.assertIn("A4 marqué doublon de A2 par chloe : CONTESTÉ par chloe (A6)", voir)
+        self.assertIn("conteste le doublon A3", self.ok("debats", "--voir", "D-0002"))
+        # Contesté, le marquage ne cache plus l'argument : la synthèse doit le couvrir avant l'accord du gardien.
+        self.a("2026-11-02T11:00:00Z")
+        self.ko("it does not cover A3, A4, A5, A6", "invitation", "accord-gardien", "I-0001", "--utilisateur", "gina")
+        self.assertIn("it does not cover A3, A4, A5, A6", self.ok("voir", "I-0001"))
+        self.a("2026-11-02T11:30:00Z")
+        self.branche()
+        self.ok("debattre", "synthetiser", "D-0002", "--utilisateur", "chloe", "--texte",
+                "Trois objections (A2, A3, A4) ; deux marquages de doublon contestés (A5, A6).")
+        self.publier("chloe", "synthese")
+        for quand, qui, action, nature, libre in (("2026-11-02T12:00:00Z", "gina", "accord-gardien", "accord_gardien", True),
+                                                  ("2026-11-02T13:00:00Z", "bidji29", "accord-conseil", "accord_conseil", False)):
+            self.a(quand)
+            self.branche()
+            texte = self.geste(action, qui)
+            self.assertIn("A3 marqué doublon de A2 par chloe : CONTESTÉ par gaspard (A5)", texte, "au feu vert aussi")
+            self.publier(qui, nature, libre=libre)
+        self.assertEqual(self.invitation()["statut"], "decidee")
+
+    def test_un_argument_conteste_plusieurs_marquages_et_les_formes_illisibles_sont_refusees(self):
+        self.jusqu_a("proposee")
+        for quand, qui, commande in (
+                ("2026-10-31T10:00:00Z", "chloe", ["argumenter", "--position", "contre", "--texte", "Le message dit mal comment refuser."]),
+                ("2026-10-31T10:30:00Z", "gaspard", ["argumenter", "--position", "contre", "--texte", "Les faits cités ont cinq ans."]),
+                ("2026-10-31T11:00:00Z", "farid", ["argumenter", "--position", "contre", "--texte", "Le canal n'est pas un lieu de contact."]),
+                ("2026-10-31T11:30:00Z", "bruno", ["doublon", "--argument", "A3", "--de", "A2"]),
+                ("2026-10-31T12:00:00Z", "bruno", ["doublon", "--argument", "A4", "--de", "A2"]),
+                ("2026-10-31T12:30:00Z", "chloe", ["argumenter", "--position", "question", "--conteste", "A3", "--conteste", "A4",
+                                                   "--texte", "Ni A3 ni A4 ne répètent A2."])):
+            self.a(quand)
+            self.branche()
+            self.ok("debattre", commande[0], "D-0002", "--utilisateur", qui, *commande[1:])
+            self.publier(qui)
+        voir = self.ok("voir", "I-0001")
+        for ident in ("A3", "A4"):
+            self.assertIn(f"{ident} marqué doublon de A2 par bruno : CONTESTÉ par chloe (A5)", voir)
+        self.assertIn("it does not cover A2, A3, A4, A5", voir)
+        # Écrites à la main : une contestation qui n'est pas une liste d'arguments marqués, un argument sans id. Refusées, sans plantage.
+        self.a("2026-10-31T13:00:00Z")
+        for nom, conteste in (("un texte", "A3"), ("un nombre", [7]), ("un argument non marqué", ["A1", "A3"]), ("vide", [])):
+            with self.subTest(nom):
+                self.branche()
+                d = self.debat("D-0002")
+                self.ecrire({**d, "arguments": d["arguments"] + [{"id": "A6", "par": "gaspard", "le": self.maintenant(), "position": "question",
+                                                                  "conteste": conteste, "texte": "Une contestation mal formée."}]}, "D-0002")
+                self.commit()
+                self.refusee("gaspard", "A6 : conteste : a list of earlier arguments marked as duplicates")
+                self.abandonner()
+        d = self.debat("D-0002")
+        self.ecrire({**d, "arguments": d["arguments"] + [{"par": "gaspard", "le": self.maintenant(), "position": "question",
+                                                          "conteste": "A3", "texte": "Sans id."}]}, "D-0002")
+        for commande in (["voir", "I-0001"], ["valider"], ["invitation", "accord-gardien", "I-0001", "--utilisateur", "gina"]):
+            self.assertNotIn("Traceback", self.bee(*commande)[1], commande)
+
+    def test_le_proposant_ne_marque_pas_de_doublon_dans_le_debat_de_son_invitation(self):
+        """Le conseil ou un gardien qui propose une invitation ne marque aucun doublon dans son débat ; un marquage y est signé."""
+        self.a("2026-10-30T10:00:00Z")
+        self.branche()
+        self.inviter("bidji29")
+        self.publier("bidji29", "invitation", libre=False)
+        for quand, qui, texte in (("2026-10-30T10:20:00Z", "bruno", "Les faits cités sont minces."),
+                                  ("2026-10-30T11:00:00Z", "chloe", "Le canal indiqué n'est pas un lieu de contact.")):
+            self.a(quand)
+            self.branche()
+            self.argumenter(qui, "contre", texte, debat="D-0002")
+            self.publier(qui, "argument")
+        self.a("2026-10-30T11:10:00Z")
+        self.ko("bidji29 proposed I-0001 : the proposer never marks a duplicate in its debate", "debattre", "doublon", "D-0002",
+                "--argument", "A2", "--de", "A1", "--utilisateur", "bidji29")
+        d = self.debat("D-0002")
+        for qui, marque, morceau in (
+                ("bidji29", {"doublon_de": "A1", "doublon_par": "bidji29"}, "never by the proposer"),
+                ("bruno", {"doublon_de": "A1"}, "A2 modifié, déplacé ou remplacé"),  # sans doublon_par : pas un marquage
+                ("bruno", {"doublon_de": "A1", "doublon_par": "gina"}, "signed by its author (doublon_par: bruno)")):
+            with self.subTest(qui=qui, marque=marque):
+                self.branche()
+                self.ecrire({**d, "arguments": [d["arguments"][0], {**d["arguments"][1], **marque}]}, "D-0002")
+                self.commit()
+                self.refusee(qui, morceau)
+                self.abandonner()
+        self.branche()
+        self.ok("debattre", "doublon", "D-0002", "--argument", "A2", "--de", "A1", "--utilisateur", "gina")
+        self.publier("gina", "doublon")
+        self.assertIn("A2 marqué doublon de A1 par gina : non contesté", self.ok("voir", "I-0001"))
+        self.valide()
+
+    def test_seuls_un_gardien_ou_le_conseil_closent_le_debat_d_une_invitation_decidee(self):
+        self.jusqu_a("proposee")
+        self.a("2026-10-31T11:00:00Z")  # 24 h de silence : le rapporteur pourrait clore un débat ordinaire
+        for qui in ("bruno", "gina"):
+            self.ko("a guardian or the council closes it, once the invitation is no longer proposed", "debattre", "clore", "D-0002",
+                    "--utilisateur", qui, "--issue", "sans_suite")
+            with self.subTest(qui=qui):
+                self.branche()
+                self.ecrire({**self.debat("D-0002"), "statut": "clos", "clos_le": self.maintenant(), "clos_par": qui, "issue": "sans_suite",
+                             "reference": ""}, "D-0002")
+                self.commit()
+                self.refusee(qui, "an invitation's debate is closed by a guardian or the council only")
+                self.abandonner()
+        for quand, qui, action, nature, libre in (("2026-11-02T12:00:00Z", "gina", "accord-gardien", "accord_gardien", True),
+                                                  ("2026-11-02T13:00:00Z", "bidji29", "accord-conseil", "accord_conseil", False)):
+            self.a(quand)
+            self.branche()
+            self.geste(action, qui)
+            if qui == "bidji29":  # le feu vert et la clôture dans la même PR : le feu vert se juge sur le débat ouvert de main
+                self.ok("debattre", "clore", "D-0002", "--utilisateur", "bidji29", "--issue", "sans_suite")
+            self.publier(qui, nature, *(["cloture_debat"] if qui == "bidji29" else []), libre=libre)
+        self.assertEqual((self.invitation()["statut"], self.debat("D-0002")["statut"]), ("decidee", "clos"))
+        voir = self.ok("voir", "I-0001")
+        self.assertIn("Débat de l'invitation : D-0002", voir)
+        self.assertNotIn("is closed", voir, "décidée : ni « clos » ni « périmée » en avertissement")
+
+    def test_accords_refuses_si_le_debat_est_clos_ou_si_un_argument_suit_ce_que_sa_synthese_couvre(self):
+        self.jusqu_a("proposee")
+        self.a("2026-10-30T12:00:00Z")
+        self.branche()
+        self.inviter("bruno", "github:hubot")  # I-0002, son débat D-0003 reste sans synthèse
+        self.publier("bruno", "invitation", libre=False)
+        self.a("2026-11-02T10:30:00Z")
+        self.branche()
+        self.argumenter("chloe", "contre", "Une objection arrivée après la synthèse.", debat="D-0002")
+        self.publier("chloe", "argument")
+        self.a("2026-11-02T13:00:00Z")
+        self.ko("D-0003 : its synthesis is out of date (none yet)", "invitation", "accord-gardien", "I-0002", "--utilisateur", "gina")
+        self.ko("D-0002 : its synthesis is out of date (it does not cover A2)", "invitation", "accord-gardien", "I-0001", "--utilisateur", "gina")
+        self.branche()
+        self.accord_a_la_main("accord_gardien", "gina")
+        self.refusee("gina", "D-0002 : its synthesis is out of date (it does not cover A2)")
+        self.abandonner()
+        for quand, qui, commande, nature in (
+                ("2026-11-02T13:30:00Z", "bruno", ["debattre", "synthetiser", "D-0002", "--texte", "Pour (A1) ; une objection (A2)."], "synthese"),
+                ("2026-11-02T14:00:00Z", "gina", ["invitation", "accord-gardien", "I-0001"], "accord_gardien"),
+                ("2026-11-02T14:30:00Z", "gaspard", ["debattre", "argumenter", "D-0002", "--position", "contre", "--texte",
+                                                     "Une objection après l'accord du gardien."], "argument")):
+            self.a(quand)
+            self.branche()
+            self.ok(*commande, "--utilisateur", qui)
+            self.publier(qui, nature)
+        self.a("2026-11-02T15:00:00Z")
+        self.ko("D-0002 : its synthesis is out of date (it does not cover A3)", "invitation", "accord-conseil", "I-0001", "--utilisateur", "bidji29")
+        self.branche()
+        self.accord_a_la_main("accord_conseil", "bidji29")
+        self.refusee("bidji29", "D-0002 : its synthesis is out of date (it does not cover A3)")
+        self.abandonner()
+        # Un débat clos (ici par le conseil, sur main, sans passer par la porte) : ni feu vert, ni accord du gardien.
+        for did in ("D-0002", "D-0003"):
+            self.ecrire({**self.debat(did), "statut": "clos", "clos_le": self.maintenant(), "clos_par": "bidji29", "issue": "sans_suite",
+                         "reference": ""}, did)
+        self.commit("sur main : le conseil clôt les deux débats")
+        self.a("2026-11-02T16:30:00Z")
+        self.ko("D-0002 is closed", "invitation", "accord-conseil", "I-0001", "--utilisateur", "bidji29")
+        self.ko("D-0003 is closed", "invitation", "accord-gardien", "I-0002", "--utilisateur", "gina")
+        self.branche()
+        self.accord_a_la_main("accord_conseil", "bidji29")
+        self.refusee("bidji29", "D-0002 is closed")
+
+    def test_une_synthese_ecrite_sans_avoir_lu_un_argument_ne_le_couvre_pas(self):
+        """La course miroir : l'objection de gaspard (pr1) et la synthèse de chloe (pr2), écrite sans l'avoir lue, sont en vol. Vérifiée
+        sur main qui a déjà l'objection, la synthèse est refusée : elle couvre le dernier argument du débat fusionné. Vérifiées
+        toutes deux avant la première fusion, elles passent : la synthèse note A2 (synthese_couvre), et A3 reste à couvrir, même
+        daté d'avant elle, pour l'accord comme pour la relève et bee debats."""
+        self.jusqu_a("proposee")  # A1 (bruno), synthèse de bruno, rapporteur bruno
+        # chloe participe déjà : la rotation de la plume ne rattrape rien, seul synthese_couvre le peut.
+        for quand, qui, commande in (("2026-10-31T09:00:00Z", "chloe", ["argumenter", "--position", "pour", "--texte", "Je soutiens."]),
+                                     ("2026-10-31T10:00:00Z", "bruno", ["synthetiser", "--texte", "Deux avis pour (A1, A2)."])):
+            self.a(quand)
+            self.branche()
+            self.ok("debattre", commande[0], "D-0002", "--utilisateur", qui, *commande[1:])
+            self.publier(qui)
+        self.a("2026-11-02T10:00:00Z")
+        self.branche("pr1")
+        self.argumenter("gaspard", "contre", "Une objection que le rapporteur n'a pas lue.", debat="D-0002")
+        self.commit()
+        self.a("2026-11-02T10:05:00Z")
+        self.branche("pr2")
+        self.ok("debattre", "synthetiser", "D-0002", "--utilisateur", "chloe", "--texte", "Deux avis pour ; rien d'autre.")
+        self.commit()
+        self.a("2026-11-02T10:06:00Z")
+        self.libre_service("chloe", "synthese")  # vérifiée avant que pr1 ne soit fusionnée
+        git(self.dossier, "switch", "-q", "pr1")
+        self.libre_service("gaspard", "argument")
+        self.fusionner("pr1")
+        git(self.dossier, "switch", "-q", "pr2")
+        git(self.dossier, "-c", "user.name=t", "-c", "user.email=t@t", "merge", "-q", "--no-edit", "main")
+        self.refusee("chloe", "synthese_couvre : an invitation's synthesis covers the last argument of the debate as merged (A3)")
+        self.fusionner("pr2")  # fusionnée quand même, sur sa vérification d'avant : la course
+        d = self.debat("D-0002")
+        self.assertEqual((d["synthese_couvre"], d["arguments"][-1]["id"], d["rapporteur"]), ("A2", "A3", "bruno"))
+        self.assertLess(d["arguments"][-1]["le"], d["synthese_le"], "A3 est daté d'avant la synthèse")
+        self.a("2026-11-02T14:00:00Z")
+        self.ko("D-0002 : its synthesis is out of date (it does not cover A3)", "invitation", "accord-gardien", "I-0001", "--utilisateur", "gina")
+        etat = next(x for x in json.loads(self.ok("debats", "--json")) if x["id"] == "D-0002")
+        self.assertEqual(etat["arguments_apres_synthese"], ["A3"], "bee debats compte comme les accords")
+        # La relève compte aussi : 72 h après A3, gaspard (ni le rapporteur, ni l'auteur de la dernière synthèse) relève bruno.
+        self.a("2026-11-05T09:00:00Z")
+        self.ko("a jusqu'au 2026-11-05T10:00:00Z", "debattre", "synthetiser", "D-0002", "--utilisateur", "gaspard", "--texte", "Relève.")
+        self.a("2026-11-05T11:00:00Z")
+        self.branche()
+        self.assertIn("en relève de bruno", self.ok("debattre", "synthetiser", "D-0002", "--utilisateur", "gaspard", "--texte",
+                                                    "Deux avis pour (A1, A2) ; une objection (A3)."))
+        self.publier("gaspard", "synthese")
+        self.a("2026-11-05T12:00:00Z")
+        self.branche()
+        self.geste("accord-gardien", "gina")
+        self.publier("gina", "accord_gardien")
+
+    def test_un_accord_se_juge_sur_le_debat_de_main_et_ne_voyage_pas_avec_un_marquage(self):
+        self.jusqu_a("proposee")
+        self.a("2026-11-02T10:30:00Z")
+        self.branche()
+        self.argumenter("chloe", "pour", "Une objection de fond qui nuance A1.", debat="D-0002")
+        self.publier("chloe", "argument")
+        # Un gardien qui marque A2 et donne son accord dans la même PR (elle serait fusionnée sans humain) : refusé.
+        self.a("2026-11-02T11:00:00Z")
+        self.branche()
+        self.ok("debattre", "doublon", "D-0002", "--argument", "A2", "--de", "A1", "--utilisateur", "gina")
+        self.ok("invitation", "accord-gardien", "I-0001", "--utilisateur", "gina")  # la commande voit le marquage local
+        self.commit()
+        self.refusee("gina", "D-0002 : a duplicate marking and an accord never travel in the same PR")
+        self.abandonner()
+        # Le marquage d'abord, publié et contestable ; l'accord ensuite.
+        for quand, qui, commande, nature in (
+                ("2026-11-02T11:00:00Z", "gina", ["debattre", "doublon", "D-0002", "--argument", "A2", "--de", "A1"], "doublon"),
+                ("2026-11-02T11:30:00Z", "gina", ["invitation", "accord-gardien", "I-0001"], "accord_gardien"),
+                ("2026-11-02T12:00:00Z", "chloe", ["debattre", "argumenter", "D-0002", "--position", "pour", "--texte",
+                                                   "Une autre nuance de A1."], "argument")):
+            self.a(quand)
+            self.branche()
+            self.ok(*commande, "--utilisateur", qui)
+            self.publier(qui, nature)
+        # Le conseil : marquage, feu vert et clôture dans une PR : le feu vert se juge sur main, où A3 n'est pas marqué.
+        self.a("2026-11-02T12:30:00Z")
+        self.branche()
+        for commande in (["debattre", "doublon", "D-0002", "--argument", "A3", "--de", "A1"], ["invitation", "accord-conseil", "I-0001"],
+                         ["debattre", "clore", "D-0002", "--issue", "sans_suite"]):
+            self.ok(*commande, "--utilisateur", "bidji29")
+        self.commit()
+        self.refusee("bidji29", "D-0002 : a duplicate marking and an accord never travel in the same PR")
+
+    def test_un_debat_general_garde_les_regles_de_main(self):
+        """Le scénario de la revue : dans un débat ordinaire, un argument marqué doublon après la synthèse empêche toujours le
+        rapporteur de clore (règle de main : synthèse postérieure au dernier argument), par la commande comme par la porte."""
+        self.a("2026-10-30T10:00:00Z")
+        self.ouvrir("alice", "Faut-il un modèle de message pour les invitations de garant ?")  # D-0002, alice rapporteuse
+        self.commit("débat ouvert")
+        for quand, qui, commande in (("2026-10-30T11:00:00Z", "bruno", ["argumenter", "--position", "pour", "--texte", "Un modèle évite les oublis."]),
+                                     ("2026-10-30T11:30:00Z", "alice", ["synthetiser", "--texte", "Un avis pour (A1)."]),
+                                     ("2026-10-30T12:00:00Z", "chloe", ["argumenter", "--position", "pour", "--texte",
+                                                                        "Il faut aussi un modèle pour les relances, avec d'autres cas."]),
+                                     ("2026-10-30T12:10:00Z", "bruno", ["doublon", "--argument", "A2", "--de", "A1"])):
+            self.a(quand)
+            self.branche()
+            self.ok("debattre", commande[0], "D-0002", "--utilisateur", qui, *commande[1:])
+            self.publier(qui)
+        d = self.debat("D-0002")
+        self.assertEqual((d["rapporteur"], d["arguments"][1]["doublon_de"], "doublon_par" in d["arguments"][1], "synthese_couvre" in d),
+                         ("bruno", "A1", False, False))
+        self.a("2026-10-31T13:00:00Z")
+        self.ko("le rapporteur clôt sur une synthèse à jour, postérieure au dernier argument", "debattre", "clore", "D-0002",
+                "--utilisateur", "bruno", "--issue", "sans_suite")
+        self.branche()
+        self.ecrire({**d, "statut": "clos", "clos_le": self.maintenant(), "clos_par": "bruno", "issue": "sans_suite", "reference": ""}, "D-0002")
+        self.commit()
+        self.refusee("bruno", "le rapporteur clôt sur une synthèse à jour, postérieure au dernier argument")
+
+    def test_un_envoi_sur_une_synthese_perimee_est_consigne_et_signale(self):
+        self.decidees(1, quand="2026-10-29T10:00:00Z")  # D-0002 : A1 et une synthèse qui le couvre
+        self.a("2026-10-30T09:00:00Z")
+        self.branche()
+        self.argumenter("chloe", "contre", "Une objection après le feu vert.", debat="D-0002")
+        self.publier("chloe", "argument")
+        self.a("2026-10-30T10:00:00Z")
+        self.branche()
+        texte = self.geste("consigner-envoi", "bidji29")
+        self.assertIn("⚠ I-0001 : D-0002 : its synthesis is out of date (it does not cover A2)", texte)
+        self.publier("bidji29", "envoi_invitation", libre=False)
+        self.assertEqual(self.invitation()["statut"], "envoyee", "un envoi consigné reste un fait")
+        alerte = "I-0001 : envoi consigné le 2026-10-30T10:00:00Z sur une synthèse périmée (D-0002 ne couvrait pas A2)"
+        code, texte = self.bee("valider")
+        self.assertEqual(code, 0, texte)
+        self.assertIn(alerte, texte)
+        self.assertIn(alerte, self.ok("essaim"))
+        # Une synthèse publiée après l'envoi n'efface pas le signalement : il se calcule sur le débat tel qu'il était à l'envoi.
+        self.a("2026-10-30T11:00:00Z")
+        self.branche()
+        self.ok("debattre", "synthetiser", "D-0002", "--utilisateur", "bruno", "--texte", "Un avis pour (A1) ; une objection (A2).")
+        self.publier("bruno", "synthese")
+        self.assertIn(alerte, self.bee("valider")[1], "une synthèse ultérieure n'efface pas le signalement")
+
+    def test_un_feu_vert_se_renouvelle_sur_un_debat_clos_si_sa_synthese_couvrait_tout(self):
+        self.decidees(2)  # feux verts du 2026-10-20, échus le 27 ; D-0002 et D-0003 à jour
+        self.a("2026-10-27T09:00:00Z")
+        self.branche()
+        self.argumenter("chloe", "contre", "Une objection que la synthèse de clôture ne couvrira pas.", debat="D-0003")
+        self.publier("chloe", "argument")
+        for did in ("D-0002", "D-0003"):
+            self.a("2026-10-27T12:00:00Z")
+            self.branche()
+            self.ok("debattre", "clore", did, "--utilisateur", "gina", "--issue", "sans_suite")
+            self.publier("gina", "cloture_debat")
+        self.assertNotIn("out of date", self.ok("voir", "I-0002"), "décidée : pas d'avertissement")
+        self.a("2026-10-28T10:00:00Z")
+        self.ko("D-0003 : its synthesis is out of date (it does not cover A2)", "invitation", "renouveler", "I-0002", "--utilisateur",
+                "bidji29")
+        self.branche()
+        self.geste("renouveler", "bidji29")
+        self.publier("bidji29", "renouvellement_invitation", libre=False)
+
+    def test_bee_inviter_respecte_le_plafond_d_ouvertures_avant_d_ecrire(self):
+        self.a("2026-10-30T10:00:00Z")
+        for i in range(3):
+            self.ouvrir("alice", f"Question numéro {i + 1} : qu'en dit l'essaim de la ruche ?")
+        self.commit("trois débats d'alice")
+        self.a("2026-10-30T11:00:00Z")
+        self.ko("plafond : alice a déjà ouvert 3 débats en 24 h (agora.ouvertures_max_par_24h), et l'invitation ouvre le sien",
+                "inviter", "--utilisateur", "alice", "--identifiant", "github:octocat", "--demande", "garant", "--fait",
+                "Maintient un logiciel libre.", "--source", "https://github.com/octocat", "--message", MESSAGE_INVITATION)
+        self.assertFalse(self.chemin_invitation().exists() or self.chemin_debat("D-0005").exists(), "rien n'a été écrit")
 
 
 class TestR13SuivableRuche0052(BaseInvitations):
@@ -12076,7 +13088,7 @@ class TestOrthographe(BaseInvitations):
         source = "https://github.com/octocat"
         self.ko("Gina : votre fiche est gina", "inviter", "--utilisateur", "Gina", "--identifiant", "github:octocat", "--demande",
                 "garant", "--fait", "Maintient un logiciel libre de compression depuis dix ans.", "--source", source,
-                "--message", MESSAGE_INVITATION, "--debat", "D-0001")
+                "--message", MESSAGE_INVITATION)
         self.branche()
         self.inviter("gina")
         bee.ecrire_invitation(self.chemin_invitation(), {**self.invitation(), "propose_par": "Gina"})  # écrite à la main
@@ -12987,7 +13999,7 @@ class TestAgentAccounts(BaseRepetitionGenerale):
         auteurs = self.dossier.parent / "auteurs.tsv"
         for login, attendu in ((AGENT, 0), ("bidji29", 0), ("mallory", 1), ("LaRuche-Architect", 1), ("alice", 1)):
             with self.subTest(fork_pr_by=login):
-                auteurs.write_text(f"{PR_MINIZ}89001\t{login}\n", encoding="utf-8")
+                auteurs.write_text(f"{PR_MINIZ}89001\t{login}\t{numero_de(login)}\n", encoding="utf-8")
                 code, texte = self.verifier(AGENT, "--fusion-auto", "--auteurs-pr", str(auteurs))
                 self.assertEqual(code, attendu, texte)
                 self.assertIn("soumission", texte)
@@ -14886,7 +15898,7 @@ class TestClocksRuche0091(BaseInvitations):
     def anciennete(self):
         poussee = "2026-10-31T23:30:00Z"  # an account created on 2026-08-03 is 89 days old, 90 on 2026-11-01
         self.pr(poussee, lambda: bee.ecrire_yaml(self.dossier / "membres/david.yaml", {
-            "pseudo": "david", "inscrit_le": "2026-10-31", "compte_cree_le": "2026-08-03"}))
+            "pseudo": "david", "inscrit_le": "2026-10-31", "compte_cree_le": "2026-08-03", "github_id": numero_de("david")}))
         return "david", poussee, "2026-11-01T00:30:00Z", ("--compte-cree-le", "2026-08-03"), "le compte GitHub doit avoir au moins 90 jours"
 
     def test_each_rule_is_judged_on_its_documented_clock(self):
@@ -15420,7 +16432,7 @@ class TestQuotedPathsGate(BaseRepetitionGenerale):
         if lien:
             os.symlink("../README.md", self.dossier / lien)
         self.commit()
-        return bee.verifier_pr(bee.Registre(self.dossier), "main", "HEAD", auteur)
+        return bee.verifier_pr(bee.Registre(self.dossier), "main", "HEAD", auteur, github_id=numero_de(auteur))
 
     def test_a_quoted_name_is_treated_as_its_plain_equivalent(self):
         cas = {  # (author, files, options): what the plain name gives
@@ -15914,6 +16926,364 @@ class TestSuiteEnParallele(unittest.TestCase):
                 flux = yaml.safe_load(texte)
                 alterer(flux)
                 self.assertTrue(ecarts(flux), nom)
+
+
+class TestIdentiteParNumeroFil(BaseParallele):
+    """ruche-0022 : un compte renommé (bee renommer) garde son fil et les refus d'un gardien qui y sont posés, ses contributions
+    et relectures pour son niveau, et une seule voix ; l'historique garde l'ancien login, et le registre reste valide."""
+
+    def setUp(self):
+        super().setUp()
+        (self.dossier / "gouvernance/gardiens.yaml").write_text("membres:\n  - pseudo: bruno\n", encoding="utf-8")
+        self.fermer_porte()
+
+    def ok_(self, *arguments):
+        code, texte = self.bee(*arguments)
+        self.assertEqual(code, 0, texte)
+        return texte
+
+    def test_un_compte_renomme_garde_son_fil_ses_refus_son_niveau_et_une_voix(self):
+        self.ok_("prendre", "miniz-0099", "--utilisateur", "alice")
+        c1 = self.soumettre("miniz-0099", "alice", 99401)
+        self.verdict(c1, 0.05)
+        self.ok_("relire", c1, *self.lu(c1), "--utilisateur", "bruno", "--avis", "defavorable", "--motif", "Régression sur n6.")
+        self.ok_("cloturer", c1, "--motif", "PR fermée sans fusion.")
+        self.ok_("prendre", "miniz-9001", "--utilisateur", "chloe")
+        c3 = self.soumettre("miniz-9001", "chloe", 99403)
+        self.ok_("voter", c3, "--utilisateur", "alice", "--valeur", "1")
+        self.assertIn("membres/alice2.yaml", self.ok_("renommer", "--ancien", "alice", "--pseudo", "alice2"))
+        fiche = bee.lire_yaml(self.dossier / "membres/alice2.yaml")
+        self.assertEqual((fiche["pseudo"], fiche["github_id"], fiche["anciens_logins"]), ("alice2", numero_de("alice"), ["alice"]))
+        self.assertFalse((self.dossier / "membres/alice.yaml").exists())
+        self.valide()  # the history still names alice: a former login stays known
+        # The thread follows the account: alice2 submits the same work again; the guardian's refusal on c1 still blocks it.
+        self.ok_("prendre", "miniz-0099", "--utilisateur", "alice2")
+        c2 = self.soumettre("miniz-0099", "alice2", 99402)
+        self.verdict(c2, 0.05)
+        reg = bee.Registre(self.dossier)
+        self.assertEqual([c for c, _ in bee.fil_de(reg, self.enr(c2))], [c1, c2])
+        self.assertEqual(bee.releve_relectures(reg, self.enr(c2), bee.calculer_niveaux(reg))["fil"], [("bruno", c1, "refus")])
+        self.assertIn(f"refus de bruno dans {c1} (même auteur, même tâche)", self.acceptation(c2)[1])
+        # One voice: alice2's vote replaces alice's.
+        self.ok_("voter", c3, "--utilisateur", "alice2", "--valeur", "-1")
+        self.assertEqual([(v["votant"], v["valeur"]) for v in bee.votes_de(bee.Registre(self.dossier), c3)], [("alice2", -1)])
+        # Levels: what alice did counts for alice2, by either login.
+        enr = self.enr(c1)
+        bee.ecrire_yaml(self.dossier / f"contributions/miniz/{c1}.yaml", {**enr, "statut": "integree"})
+        niveaux = bee.calculer_niveaux(bee.Registre(self.dossier))
+        self.assertEqual((niveaux["alice2"]["integrees"], "alice" in niveaux), (1, False))
+        self.assertEqual((bee.niveau_de(niveaux, "alice"), bee.niveau_de(niveaux, "alice2")), ("Contributeur", "Contributeur"))
+
+
+class TestIdentiteParNumero(BaseRepetitionGenerale):
+    """ruche-0022 : l'identité d'un membre est le numéro de son compte GitHub (github_id), relevé auprès de l'API par le
+    workflow, jamais lu dans la PR ; qui est qui se lit sur main. Un compte renommé garde R7 et R8 ; un login repris par un
+    autre compte n'hérite de rien (refusé, un humain regarde) ; une fiche à un numéro déjà pris est refusée ; les fiches et les
+    listes sans numéro restent valides et agissent comme avant."""
+
+    def setUp(self):
+        super().setUp()
+        for n in (9003, 9004, 9005):
+            (self.dossier / f"taches/miniz/miniz-{n}.yaml").write_text(TACHE_OPTIMISATION.replace("miniz-0099", f"miniz-{n}"),
+                                                                      encoding="utf-8")
+        self.commit("tasks of the test")
+        self.comptes = {}  # login: the number the API gives for it, when it is not numero_de(login)
+
+    def verifier(self, auteur, *options):
+        if auteur in self.comptes and not any(o.startswith("--github-id") for o in options):
+            options = (*options, "--github-id", str(self.comptes[auteur]))
+        return super().verifier(auteur, *options)
+
+    def abandonner(self, nom):
+        git(self.dossier, "switch", "-qf", "main")
+        git(self.dossier, "branch", "-qD", nom)
+
+    def renommer_et_fusionner(self, ancien, nouveau):
+        self.branche("renommage")
+        self.ok("renommer", "--ancien", ancien, "--pseudo", nouveau)
+        self.commit()
+        self.comptes[nouveau] = self.comptes.get(ancien, numero_de(ancien))  # the same account, under its new login
+        self.libre_service(nouveau, "renommage")
+        self.fusionner("renommage")
+
+    def renommer_par_le_conseil(self, ancien, nouveau):
+        """The council moves a member file on main by hand (bee renommer refuses an account that holds work)."""
+        fiche = bee.lire_yaml(self.dossier / f"membres/{ancien}.yaml")
+        (self.dossier / f"membres/{ancien}.yaml").unlink()
+        bee.ecrire_yaml(self.dossier / f"membres/{nouveau}.yaml", {**fiche, "pseudo": nouveau, "anciens_logins": [ancien],
+                                                                   "renomme_le": os.environ["BEE_MAINTENANT"][:10]})
+        self.commit(f"le conseil renomme {ancien}")
+        self.comptes[nouveau] = numero_de(ancien)
+
+    def test_un_compte_renomme_garde_r7_et_r8(self):
+        self.a("2026-10-30T10:00:00Z")
+        self.prendre_et_fusionner("gaspard")
+        self.a("2026-10-30T10:05:00Z")
+        self.liberer_et_fusionner("gaspard")
+        for tache in ("miniz-9001", "miniz-9003", "miniz-9004"):
+            self.prendre_et_fusionner("gaspard", tache)
+        self.a("2026-10-30T10:10:00Z")
+        # Rename when you hold nothing: gaspard holds three reservations (S1, review of #156).
+        self.ko("gaspard holds a reservation, a parallel registration or a contribution in review : rename when you hold nothing",
+                "renommer", "--ancien", "gaspard", "--pseudo", "gaspard2")
+        self.branche("renommage")
+        fiche = bee.lire_yaml(self.dossier / "membres/gaspard.yaml")
+        (self.dossier / "membres/gaspard.yaml").unlink()
+        bee.ecrire_yaml(self.dossier / "membres/gaspard2.yaml", {**fiche, "pseudo": "gaspard2", "anciens_logins": ["gaspard"],
+                                                                 "renomme_le": "2026-10-30"})
+        self.commit()
+        self.comptes["gaspard2"] = numero_de("gaspard")
+        self.refusee("gaspard2", "gaspard holds a reservation, a parallel registration or a contribution in review")
+        self.abandonner("renommage")
+        # The council may move it anyway: what gaspard did and holds is gaspard2's.
+        self.renommer_par_le_conseil("gaspard", "gaspard2")
+        self.assertEqual(bee.lire_yaml(self.dossier / "membres/gaspard2.yaml")["anciens_logins"], ["gaspard"])
+        self.ok("valider")
+        self.a("2026-10-30T10:20:00Z")
+        # R7: gaspard2 is gaspard, who left miniz-0099 15 minutes ago.
+        self.ko("R7 : gaspard2 a quitté cette tâche sans contribution le 2026-10-30T10:05:00Z", "prendre", "miniz-0099",
+                "--utilisateur", "gaspard2")
+        self.branche("reprise")
+        bee.modifier_tache(self.chemin_tache(), statut="reservee", reservation={"utilisateur": "gaspard2", "depuis": "2026-10-30T10:20:00Z"})
+        self.commit()
+        self.refusee("gaspard2", "R7 : gaspard2 a quitté cette tâche sans contribution le 2026-10-30T10:05:00Z")
+        self.abandonner("reprise")
+        # R8: gaspard's three reservations are gaspard2's.
+        self.ko("règle R8 : gaspard2 a déjà 3 réservations ou inscriptions en parallèle", "prendre", "miniz-9005", "--utilisateur", "gaspard2")
+        self.branche("quatrieme")
+        bee.modifier_tache(self.chemin_tache("miniz-9005"), statut="reservee",
+                           reservation={"utilisateur": "gaspard2", "depuis": os.environ["BEE_MAINTENANT"]})
+        self.commit()
+        self.refusee("gaspard2", "règle R8 : gaspard2 a 4 réservations ou inscriptions en parallèle")
+        self.abandonner("quatrieme")
+        # A 24 h cap (notes) is not reset by a rename either.
+        conf = bee.config_notes(bee.Registre(self.dossier))
+        self.noter_a_la_main(*({"par": "gaspard"} for _ in range(conf["max_par_24h"])))
+        self.commit("notes de gaspard")
+        self.ko("plafond : gaspard2 a déjà", "noter", "miniz-0099", "--utilisateur", "gaspard2", "--texte", "Une de plus.")
+
+    def test_les_debats_d_avant_un_renommage_restent_valides(self):
+        """B1 (review of #156): the agora checks of bee valider know a member file's former logins, as the others do."""
+        self.a("2026-10-30T10:00:00Z")
+        debat = self.ouvrir("gaspard")
+        self.ok("debattre", "argumenter", debat, "--utilisateur", "gaspard", "--position", "pour", "--texte", "Un plafond simple limite les abus.")
+        self.ok("debattre", "argumenter", debat, "--utilisateur", "farid", "--position", "contre", "--texte", "Un plafond fixe est trop rigide.")
+        self.commit("débat de gaspard")
+        self.a("2026-10-30T10:30:00Z")
+        self.renommer_et_fusionner("gaspard", "gaspard2")
+        self.ok("valider")
+
+    def test_un_ancien_login_ne_donne_aucun_statut(self):
+        """B2 (review of #156): a governance entry naming a member file's former login needs that account's number."""
+        self.renommer_et_fusionner("gaspard", "gaspard2")
+        gardiens = self.dossier / "gouvernance/gardiens.yaml"
+        self.branche("nomination")
+        gardiens.write_text("membres:\n  - pseudo: gaspard\n", encoding="utf-8")
+        self.commit()
+        self.refusee("bidji29", "gouvernance : gaspard is a former login of gaspard2 : named only with that account's github_id")
+        self.ko("gouvernance : gaspard is a former login of gaspard2", "valider")
+        gardiens.write_text(f"membres:\n  - pseudo: gaspard\n    github_id: {numero_de('gaspard')}\n", encoding="utf-8")
+        self.ok("valider")  # the council names that very account: its status follows it
+
+    def test_un_numero_est_un_entier(self):
+        """S3 (review of #156): github_id is an int, never a float or a bool, in bee valider and at the gate."""
+        self.branche("flottant")
+        (self.dossier / "membres/david.yaml").write_text(
+            f"pseudo: david\ninscrit_le: '2026-10-29'\ncompte_cree_le: '2020-01-01'\ngithub_id: {numero_de('david')}.0\n", encoding="utf-8")
+        self.commit()
+        code, texte = self.verifier("david", "--compte-cree-le", "2020-01-01", "--fusion-auto")
+        self.assertEqual(code, 1, texte)
+        self.assertIn(f"david : github_id is a GitHub account's number (a positive integer)", texte)
+        self.assertIn("membres/david.yaml : github_id is the number GitHub gives for david's account", texte)
+        for valeur in ("true", f"{numero_de('david')}.0", "-3"):
+            with self.subTest(github_id=valeur):
+                (self.dossier / "membres/david.yaml").write_text(
+                    f"pseudo: david\ninscrit_le: '2026-10-29'\ncompte_cree_le: '2020-01-01'\ngithub_id: {valeur}\n", encoding="utf-8")
+                self.assertEqual(self.bee("valider")[0], 1)
+
+    def test_un_renommage_par_30_jours_et_5_anciens_logins_au_plus(self):
+        """S5 (review of #156): one rename per account per 30 days, and 5 former logins at most."""
+        self.a("2026-10-30T10:00:00Z")
+        self.renommer_et_fusionner("gaspard", "gaspard2")
+        self.a("2026-11-28T10:00:00Z")
+        self.ko("gaspard2 : one rename per 30 days, and 5 former logins at most", "renommer", "--ancien", "gaspard2", "--pseudo", "gaspard3")
+        self.branche("trop-tot")
+        fiche = bee.lire_yaml(self.dossier / "membres/gaspard2.yaml")
+        (self.dossier / "membres/gaspard2.yaml").unlink()
+        bee.ecrire_yaml(self.dossier / "membres/gaspard3.yaml", {**fiche, "pseudo": "gaspard3", "anciens_logins": ["gaspard", "gaspard2"],
+                                                                 "renomme_le": "2026-11-28"})
+        self.commit()
+        self.comptes["gaspard3"] = numero_de("gaspard")
+        self.refusee("gaspard3", "gaspard2 : one rename per 30 days")
+        self.abandonner("trop-tot")
+        self.a("2026-11-29T10:00:00Z")
+        self.renommer_et_fusionner("gaspard2", "gaspard3")
+        # Five former logins: no sixth.
+        chemin = self.dossier / "membres/gaspard3.yaml"
+        bee.ecrire_yaml(chemin, {**bee.lire_yaml(chemin), "anciens_logins": ["g1", "g2", "g3", "gaspard", "gaspard2"], "renomme_le": "2026-01-01"})
+        self.commit("cinq anciens logins")
+        self.ok("valider")
+        self.ko("gaspard3 : one rename per 30 days, and 5 former logins at most", "renommer", "--ancien", "gaspard3", "--pseudo", "gaspard4")
+        bee.ecrire_yaml(chemin, {**bee.lire_yaml(chemin), "anciens_logins": ["g0", "g1", "g2", "g3", "gaspard", "gaspard2"]})
+        self.ko("anciens_logins", "valider")
+
+    def test_un_renommage_est_seul_dans_sa_pr(self):
+        self.branche("renommage")
+        self.ok("renommer", "--ancien", "gaspard", "--pseudo", "gaspard2")
+        self.ok("prendre", "miniz-0099", "--utilisateur", "gaspard2")
+        self.commit()
+        self.comptes["gaspard2"] = numero_de("gaspard")
+        self.refusee("gaspard2", "a rename (bee renommer) is published alone in its PR")
+
+    def test_un_login_repris_par_un_autre_compte_n_herite_de_rien(self):
+        self.a("2026-10-30T10:00:00Z")
+        self.renommer_et_fusionner("gaspard", "gaspard2")
+        self.comptes["gaspard"] = autre = numero_de("gaspard") + 1  # another account took the login gaspard on GitHub
+        attendu = (f"gaspard : the registry binds this login to the GitHub account {numero_de('gaspard')}, and this PR's author is "
+                   f"the account {autre} : a renamed or reused login inherits nothing ; a human looks")
+        for nom, geste in (("inscription", lambda: bee.ecrire_yaml(self.dossier / "membres/gaspard.yaml", {
+                                "pseudo": "gaspard", "inscrit_le": "2026-10-30", "compte_cree_le": "2020-01-01", "github_id": autre})),
+                           ("reservation", lambda: bee.modifier_tache(self.chemin_tache(), statut="reservee", reservation={
+                                "utilisateur": "gaspard", "depuis": os.environ["BEE_MAINTENANT"]}))):
+            with self.subTest(geste=nom):
+                self.branche(nom)
+                geste()
+                self.commit()
+                self.refusee("gaspard", attendu)
+                self.abandonner(nom)
+        # A fork PR opened by the account that took gaspard does not count as gaspard2's, though gaspard was its login.
+        self.prendre_et_fusionner("gaspard2", "miniz-9001")
+        self.branche("soumission")
+        adresse = "https://github.com/Bee-ruche/minizBee/pull/99501"
+        self.ok("soumettre", "miniz-9001", "--utilisateur", "gaspard2", "--pr", adresse)
+        self.commit()
+        auteurs = self.dossier.parent / "auteurs_pr.tsv"
+        for ligne, accepte in ((f"gaspard\t{autre}", False), ("gaspard", False), (f"gaspard2\t{numero_de('gaspard')}", True),
+                               (f"gaspard\t{numero_de('gaspard')}", True)):
+            with self.subTest(auteur_pr=ligne):
+                auteurs.write_text(f"{adresse}\t{ligne}\n", encoding="utf-8")
+                code, texte = self.verifier("gaspard2", "--auteurs-pr", str(auteurs))
+                self.assertEqual(code, 0 if accepte else 1, texte)
+                if not accepte:
+                    self.assertIn(f"la PR {adresse} doit avoir été ouverte par gaspard2 sur GitHub", texte)
+
+    def test_une_fiche_a_un_numero_deja_pris_est_refusee(self):
+        self.ko("the account %d already has its file, gaspard : a renamed account moves it (bee renommer)" % numero_de("gaspard"),
+                "inscrire", "--pseudo", "gaspard-bis", "--compte-cree-le", "2020-01-01", "--github-id", str(numero_de("gaspard")))
+        self.branche("double")
+        bee.ecrire_yaml(self.dossier / "membres/gaspard-bis.yaml", {"pseudo": "gaspard-bis", "inscrit_le": "2026-10-29",
+                                                                    "compte_cree_le": "2020-01-01", "github_id": numero_de("gaspard")})
+        self.commit()
+        self.comptes["gaspard-bis"] = numero_de("gaspard")  # gaspard's account, renamed on GitHub, enrols anew
+        self.refusee("gaspard-bis", f"membres/gaspard-bis.yaml : github_id {numero_de('gaspard')} is already gaspard's : one account, one file")
+        self.ko(f"github_id {numero_de('gaspard')} is already gaspard's", "valider")
+
+    def test_le_numero_vient_de_l_api_jamais_de_la_pr(self):
+        self.branche("inscription")
+        self.ok("inscrire", "--pseudo", "david", "--compte-cree-le", "2020-01-01", "--github-id", "4242")
+        self.commit()
+        self.refusee("david", f"github_id is the number GitHub gives for david's account ({numero_de('david')}), never one the PR writes")
+        code, texte = self.verifier("david", "--github-id=")  # the API was not read: refused, fails closed
+        self.assertEqual(code, 1, texte)
+        self.assertIn("(not read: --github-id), never one the PR writes", texte)
+        self.comptes["david"] = 4242  # the API gives 4242: the same number, accepted
+        code, texte = self.verifier("david", "--compte-cree-le", "2020-01-01", "--fusion-auto")
+        self.assertEqual(code, 0, texte)
+        self.assertIn("FUSION_AUTO=oui", texte)
+        for numero in ([], ["--github-id", "null"]):  # bee inscrire requires a number: a bee fails early
+            erreur = io.StringIO()
+            with self.subTest(numero=numero), contextlib.redirect_stderr(erreur), self.assertRaises(SystemExit):
+                bee.principal(["--registre", str(self.dossier), "inscrire", "--pseudo", "eve", "--compte-cree-le", "2020-01-01", *numero])
+            self.assertIn("--github-id", erreur.getvalue())
+        # The workflows read it from the API with the creation date, for the PR's author, and pass it to the gate.
+        for flux, etape in (("fusion-auto.yml", "Vérifier la fusion simulée"), ("validation.yml", "Règles de la pull request")):
+            with self.subTest(flux=flux):
+                etapes = [s for job in yaml.safe_load((RACINE / ".github/workflows" / flux).read_text(encoding="utf-8"))["jobs"].values()
+                          for s in job["steps"]]
+                script = next(s["run"] for s in etapes if s.get("name", "").startswith(etape))
+                self.assertIn('''compte=$(gh api "users/$AUTEUR" --jq '"\\(.created_at[:10]) \\(.id)"')''', script)
+                self.assertRegex(script, r'--github-id "\$(\{compte#\* \}|numero_compte)"')
+
+    def test_une_pr_ne_change_pas_qui_est_qui_pour_ses_propres_controles(self):
+        # eve's file says bidji29 was her login, and the same PR does what only the council does: in the PR's own state, eve
+        # would be bidji29, so the council ; the gate reads who is who on main.
+        self.branche("usurpation")
+        bee.ecrire_yaml(self.dossier / "membres/eve.yaml", {"pseudo": "eve", "inscrit_le": "2026-10-29", "compte_cree_le": "2020-01-01",
+                                                            "github_id": numero_de("eve"), "anciens_logins": ["bidji29"]})
+        (self.dossier / "taches/miniz/miniz-0100.yaml").write_text(TACHE_OPTIMISATION.replace("miniz-0099", "miniz-0100"), encoding="utf-8")
+        self.commit()
+        reg = bee.Registre(self.dossier)
+        self.assertTrue(reg.identites.meme("eve", "bidji29") and "eve" in reg.conseil)
+        problemes = bee.verifier_pr(reg, "main", "HEAD", "eve", github_id=numero_de("eve"))[0]
+        self.assertFalse(reg.identites.meme("eve", "bidji29") or "eve" in reg.conseil)
+        self.assertTrue(any("a new member file has no former login" in p for p in problemes), problemes)
+        self.assertTrue(any("créer directement une tâche ouverte est réservé au conseil" in p for p in problemes), problemes)
+        self.abandonner("usurpation")
+        # A binding forged in the PR (gaspard's file given another number) moves nothing either: main's binds gaspard.
+        self.branche("liaison")
+        bee.ecrire_yaml(self.dossier / "membres/gaspard.yaml", {**bee.lire_yaml(self.dossier / "membres/gaspard.yaml"), "github_id": 777})
+        self.commit()
+        self.comptes["gaspard"] = 777
+        self.refusee("gaspard", f"gaspard : the registry binds this login to the GitHub account {numero_de('gaspard')}, and this PR's "
+                                "author is the account 777")
+
+    def test_un_login_nomme_dans_gouvernance_est_renomme_par_le_conseil(self):
+        (self.dossier / "gouvernance/gardiens.yaml").write_text("membres:\n  - pseudo: gaspard\n", encoding="utf-8")
+        self.commit("le conseil nomme gaspard gardien")
+        self.ko("gaspard or gaspard2 is named in gouvernance/ : the council renames it", "renommer", "--ancien", "gaspard", "--pseudo", "gaspard2")
+        self.ko("farid or bidji29 is named in gouvernance/", "renommer", "--ancien", "farid", "--pseudo", "bidji29")  # S4
+        self.branche("renommage")
+        fiche = bee.lire_yaml(self.dossier / "membres/gaspard.yaml")
+        (self.dossier / "membres/gaspard.yaml").unlink()
+        bee.ecrire_yaml(self.dossier / "membres/gaspard2.yaml", {**fiche, "pseudo": "gaspard2", "anciens_logins": ["gaspard"]})
+        self.commit()
+        self.comptes["gaspard2"] = numero_de("gaspard")
+        self.refusee("gaspard2", "gaspard or gaspard2 is named in gouvernance/ : the council renames it, the list and the member file in one PR")
+        self.abandonner("renommage")
+        # A member file is withdrawn by the council only, outside a rename.
+        self.branche("retrait")
+        (self.dossier / "membres/farid.yaml").unlink()
+        self.commit()
+        self.refusee("farid", "membres/farid.yaml : a member file is deleted by the council only, or moved by its own account's rename")
+
+    def test_les_fiches_et_les_listes_sans_numero_restent_valides(self):
+        # A member file from before ruche-0022, without a number: valid, and its login acts as before, without a binding.
+        bee.ecrire_yaml(self.dossier / "membres/ancien.yaml", {"pseudo": "ancien", "inscrit_le": "2026-10-20", "compte_cree_le": "2020-01-01"})
+        self.ok("valider")
+        self.commit("une fiche d'avant")
+        self.branche("prise")
+        self.ok("prendre", "miniz-0099", "--utilisateur", "ancien")
+        self.commit()
+        self.comptes["ancien"] = 1234
+        self.libre_service("ancien", "reservation")
+        self.abandonner("prise")
+        # Governance lists and agent accounts may carry a number, the council's: then the gate binds their login to it.
+        conseil = self.dossier / "gouvernance/conseil.yaml"
+        garants = self.dossier / "gouvernance/garants.yaml"  # the real registry binds bidji29: this test binds it itself
+        garants.write_text(re.sub(r"\n    github_id: \d+", "", garants.read_text(encoding="utf-8")), encoding="utf-8")
+        sans = re.sub(r"\n    github_id: \d+", "", conseil.read_text(encoding="utf-8"))
+        conseil.write_text(sans.replace("role: fondateur", "role: fondateur\n    github_id: 5"), encoding="utf-8")
+        agents = self.dossier / "gouvernance/comptes-agents.yaml"
+        agents.write_text(agents.read_text(encoding="utf-8").replace("    acts_for: bidji29", "    acts_for: bidji29\n    github_id: 6"),
+                          encoding="utf-8")
+        self.ok("valider")
+        self.commit("le conseil lie ses comptes")
+        for qui, numero, accepte in (("bidji29", 5, True), ("bidji29", 7, False), ("laruche-architect", 6, True),
+                                     ("laruche-architect", 5, False)):
+            with self.subTest(qui=qui, numero=numero):
+                self.branche("note")
+                self.noter_a_la_main({"par": "bidji29"})
+                self.commit()
+                code, texte = self.verifier(qui, "--github-id", str(numero))
+                self.assertEqual(code == 0, accepte, texte)
+                self.abandonner("note")
+        for valeur in ('"5"', "0", "true"):
+            with self.subTest(github_id=valeur):
+                conseil.write_text(re.sub(r"github_id: .*", f"github_id: {valeur}", conseil.read_text(encoding="utf-8")), encoding="utf-8")
+                self.ko("bidji29 : github_id is a GitHub account's number (a positive integer)", "valider")
+        conseil.write_text(re.sub(r"github_id: .*", "github_id: 5", conseil.read_text(encoding="utf-8")), encoding="utf-8")
+        (self.dossier / "gouvernance/gardiens.yaml").write_text("membres:\n  - pseudo: gaspard\n    github_id: 99\n", encoding="utf-8")
+        self.ko(f"« gaspard » is bound to two GitHub accounts ({numero_de('gaspard')} and 99)", "valider")
 
 
 if __name__ == "__main__":

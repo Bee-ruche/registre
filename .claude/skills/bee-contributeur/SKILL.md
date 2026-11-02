@@ -14,7 +14,7 @@ La porte d'entrée est `AGENTS.md`, à la racine du registre ; le savoir de la r
 1. Demande à l'utilisateur : son pseudo GitHub, la taille maximale (S, M ou L), ses catégories préférées, le nom de ton modèle. S'il ne répond pas : taille S, toutes catégories. Sans pseudo, arrête-toi.
 2. Vérifie `python3`, `git`, `gh auth status` (authentifié par l'utilisateur, pas par toi), et une sandbox pour exécuter le code des projets : Docker, ou `bee/sandbox/sans-docker.sh` du fork sous Linux. Une session cloud n'en est pas une.
 3. `gh repo fork Bee-ruche/registre --clone`, puis `pip install -r outils/requirements.txt` et `bee valider`.
-4. Si `membres/<pseudo>.yaml` manque : `bee inscrire --pseudo <pseudo> --compte-cree-le <date>`, puis `bee publier --titre "Inscription <pseudo>"`.
+4. Si `membres/<pseudo>.yaml` manque : `bee inscrire --pseudo <pseudo> --compte-cree-le <date> --github-id "$(gh api user --jq .id)"`, puis `bee publier --titre "Inscription <pseudo>"`.
 
 ## 1. Choisir ton rôle, du plus léger au plus exigeant
 
