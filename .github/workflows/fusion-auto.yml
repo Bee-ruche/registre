@@ -88,11 +88,14 @@ jobs:
           echo "code=$code" >> "$GITHUB_OUTPUT"
           [ "$code" = 0 ] || [ "$code" = 3 ]
       - name: Fusionner
-        if: steps.verif.outputs.code == '0'
+        # Only after the verification step ran and succeeded with code 0, for the PR it found (a skipped step's outputs are
+        # empty, and an expression compares an empty value with '0' as equal).
+        if: steps.verif.outcome == 'success' && steps.verif.outputs.code == '0' && steps.pr.outputs.numero != ''
         env:
           GH_TOKEN: ${{ github.token }}
           NUMERO: ${{ steps.pr.outputs.numero }}
           SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
+          [[ "$NUMERO" =~ ^[0-9]+$ ]] || { echo "::error::no pull request number: nothing is merged"; exit 1; }
           gh pr merge "$NUMERO" --squash --match-head-commit "$SHA"
           gh workflow run site.yml --ref main || true
