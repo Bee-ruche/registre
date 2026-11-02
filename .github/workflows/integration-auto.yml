@@ -102,7 +102,7 @@ jobs:
                 echo "::notice::$id : PR $pr merged, but GitHub's answers are unreadable; nothing recorded, the next pass retries."; continue
               fi
               if sortie=$(python3 outils/bee.py record-merge "$id" --api "$api" < /dev/null 2>&1); then printf '%s\n' "$sortie"
-              else echo "::notice::$(printf '%s' "$sortie" | tr '\n' ' ')"; fi
+              elif [ -n "$sortie" ]; then echo "::notice::$(printf '%s' "$sortie" | tr '\n' ' ')"; fi  # silent a week after the merge
               continue
             fi
             python3 outils/bee.py verifier-acceptation "$id" || continue
@@ -170,11 +170,18 @@ jobs:
             git commit -qam "Intégrations et clôtures automatiques (R3)"
             # main a pu avancer pendant ce passage (fusions libre-service) : se rebaser, revalider, réessayer.
             for essai in 1 2 3; do
-              if git pull -q --rebase origin main && python3 outils/bee.py valider && git push origin HEAD:main; then
+              if ! git pull -q --rebase origin main; then
+                if git rebase --abort 2>/dev/null; then
+                  # ruche-0094: main changed the same lines during this pass; the same commit would conflict at every try. Nothing is
+                  # published (the next step then reads main only), and the next pass redoes the work from main (idempotent).
+                  git reset -q --hard origin/main
+                  echo "::notice::main changed the same lines during this pass: nothing published; the next pass redoes the work."
+                  exit 0
+                fi
+              elif python3 outils/bee.py valider && git push origin HEAD:main; then
                 gh workflow run site.yml --ref main || true
                 exit 0
               fi
-              git rebase --abort 2>/dev/null || true
               sleep $((essai * 10))
             done
             echo "::error::publication impossible après 3 essais ; le prochain passage refera le travail (idempotent)."

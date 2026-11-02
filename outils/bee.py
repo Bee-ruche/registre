@@ -7916,73 +7916,93 @@ def integrer(reg, args, chemin, enr, instant, motif, message=None):
 
 
 DECISIONS, ENTETE_DECISIONS = "docs/decisions.md", "| --- | --- | --- | --- |\n"
+VALIDATION = ".github/workflows/validation.yml"
 
 
 def cmd_record_merge(args):
     """ruche-0094: records a registry contribution whose declared PR was merged into main, as the council does by hand: it and its
     task « integree » (integrer) with the merge time, merge commit and a reason, and a row in docs/decisions.md. Facts from GitHub's
     REST API only, stored by integration-auto in --api (pr.json: pulls/N; executions.json: the Actions runs of the merged head),
-    never from the PR's files or text; main's history says which commit added the contribution. Code 1, nothing written, unless:
-    it is in review; GitHub's PR is the one it declares, on its project's repository, merged into main, opened by its author or
-    their declared agent account; the contribution arrived on main with that very merge (submitted inside the PR, so the merged
-    head is the head it was submitted at); a council member, or a council member's declared agent account, merged it; the latest
-    run of each workflow on the merged head succeeded."""
+    never from the PR's files or text; main's history says which commit added the contribution and what the merge changed, and
+    who was council or agent account before it. Code 1, nothing written, unless: it is in review, with a resume; GitHub's PR is
+    the one it declares, on its project's repository, merged into main, opened by its author or their declared agent account; the
+    contribution arrived on main with that very merge (submitted inside the PR, so the merged head is the head it was submitted
+    at), which changed a path outside the self-service folders; a council member's account, or a council member's declared agent
+    account, merged it; the latest run of validation.yml for this PR succeeded, and the latest of every other pull_request
+    workflow on its head. The account is named as GitHub reports it: who acted through it, the robot cannot know."""
     reg = Registre(args.registre)
     cid = args.contribution
     chemin, enr = reg.enregistrement(cid)
+    quand, validation, dernieres = None, None, {}
 
     def refus(motif):
-        print(montrer(f"{cid}: {motif}; nothing recorded."))
+        if quand is None or maintenant() - quand <= dt.timedelta(days=7):  # a merge older than a week: no notice at each pass
+            print(montrer(f"{cid}: {motif}; nothing recorded."))
         return 1
 
     try:
-        pr, dernieres = reponses_api(args.api, "pr")[0], {}
+        pr = reponses_api(args.api, "pr")[0]
         numero, tete, fusion, base, auteur_pr = str(pr["number"]), pr["head"]["sha"], pr["merge_commit_sha"], pr["base"]["ref"], pr["user"]["login"]
         par, quand = (pr["merged_by"] or {}).get("login"), lire_instant(pr["merged_at"], "merged_at") if pr["merged"] is True else None
         for r in sorted((r for d in reponses_api(args.api, "executions") for r in d["workflow_runs"]
                          if r["head_sha"] == tete and r["event"] == "pull_request"), key=lambda r: int(r["id"])):
-            dernieres[r["workflow_id"]] = r  # the latest run of each workflow on the merged head
+            dernieres[r["path"]] = r  # the latest run of each pull_request workflow on the merged head
+            if r["path"] == VALIDATION and (r["head_branch"], r["head_repository"]["full_name"]) == (pr["head"]["ref"], pr["head"]["repo"]["full_name"]):
+                validation = r  # the latest run of validation.yml for this very PR
     except (OSError, ValueError, LookupError, TypeError, AttributeError, ErreurBee):
         return refus("GitHub's answer is unreadable")
     projet = reg.projets.get((reg.taches.get(enr.get("tache"), (None, {}))[1] or {}).get("projet"), (None, {}))[1] or {}
-    ajouts = commits_premier_parent(reg.racine, "HEAD", reg.rel(chemin), filtre="A") if historique_disponible(reg.racine) else []
-    role = next((m.get("role") for m in (lire_yaml(reg.racine / "gouvernance" / "conseil.yaml") or {}).get("membres") or []
-                 if isinstance(m, dict) and meme_pseudo(m.get("pseudo"), par)), None)
     if enr.get("statut") != "en_relecture":
         return refus(f"status {enr.get('statut')}: only a contribution in review is recorded (a record made by hand is left alone)")
+    if not isinstance(enr.get("resume"), str) or not enr["resume"].strip():
+        return refus("no resume to write as what it brings in docs/decisions.md")
     if pr_canonique(enr.get("pr")) is None or pr_canonique(enr.get("pr")) != pr_canonique(f"{projet.get('fork')}/pull/{numero}"):
         return refus(f"GitHub's PR #{numero} on its project's repository is not the PR it declares ({enr.get('pr')})")
     if quand is None:
         return refus(f"PR #{numero} is not merged (closed without merge, or still open)")
     if base != "main":
         return refus(f"PR #{numero} was merged into {base}, not main")
-    if not meme_pseudo(person_of(reg.comptes_agents, auteur_pr), enr.get("auteur")):
-        return refus(f"PR #{numero} was opened by {auteur_pr}, neither {enr.get('auteur')} nor their declared agent account")
     if not all(isinstance(s, str) and re.fullmatch(r"[0-9a-f]{40}", s) for s in (tete, fusion)):
         return refus(f"PR #{numero}: no full head or merge commit id")
+    try:  # main before the merge says who is council or agent account: a PR never names its own merger (F7)
+        ajouts = commits_premier_parent(reg.racine, "HEAD", reg.rel(chemin), filtre="A") if historique_disponible(reg.racine) else []
+        travail = [c for c in git(reg.racine, "diff", "-z", "--name-only", "--no-renames", f"{fusion}^1", fusion).split("\0")
+                   if c and c.split("/")[0] not in {*FICHIERS_LIBRE_SERVICE, "debats"}]
+        conseil = Pseudos(m.get("pseudo") for m in (lire_yaml_ref(reg.racine, f"{fusion}^1", "gouvernance/conseil.yaml") or {}).get("membres")
+                          or [] if isinstance(m, dict))
+        agents = agent_accounts(lire_yaml_ref(reg.racine, f"{fusion}^1", AGENT_ACCOUNTS))
+    except (ErreurBee, AttributeError, TypeError):
+        return refus(f"main's history at PR #{numero}'s merge commit {fusion[:7]} is unreadable")
+    if not meme_pseudo(person_of(agents, auteur_pr), enr.get("auteur")):
+        return refus(f"PR #{numero} was opened by {auteur_pr}, neither {enr.get('auteur')} nor their declared agent account")
     if not ajouts or ajouts[0][0] != fusion:
         return refus(f"it arrived on main with commit {ajouts[0][0][:7] if ajouts else '(unreadable)'}, not with PR #{numero}'s merge "
                      f"commit {fusion[:7]}: only a contribution submitted inside the PR it declares is recorded here")
-    if par in reg.conseil:
-        qui = "The founder (human council), by merging" if role == "fondateur" else f"{par} (human council), by merging"
-    elif par in reg.agents and person_of(reg.comptes_agents, par) in reg.conseil:
-        qui = "Agent principal, by delegation of the council (permanent merge authorisation)"
+    if not travail:
+        return refus(f"PR #{numero}'s merge commit {fusion[:7]} changes only self-service files: no work to record")
+    if par in conseil:
+        compte, qui = "the account of a council member", f"{par} (account of a council member), by merging"
+    elif isinstance(par, str) and agents.get(par) in conseil:
+        compte, qui = f"declared agent account of {agents[par]}", f"{par} (declared agent account of {agents[par]}, a council member), by merging"
     else:
-        return refus(f"PR #{numero} was merged by {par}, neither a council member nor a council member's declared agent account")
-    if not dernieres or any((r.get("status"), r.get("conclusion")) != ("completed", "success") for r in dernieres.values()):
-        return refus(f"CI not green on the merged commit {tete[:7]} (the latest run of each workflow on it must have succeeded)")
+        return refus(f"PR #{numero} was merged by {par}, neither a council member's account nor a council member's declared agent account")
+    vert = lambda r: (r.get("status"), r.get("conclusion")) == ("completed", "success")  # noqa: E731
+    if not (validation and vert(validation) and all(vert(r) for c, r in dernieres.items() if c != VALIDATION)):
+        return refus(f"CI not green on the merged commit {tete[:7]} (the latest run of validation.yml for this PR, and of every other "
+                     "pull_request workflow on it, must have succeeded)")
     texte = (reg.racine / DECISIONS).read_text(encoding="utf-8")
     if ENTETE_DECISIONS not in texte:
         return refus(f"{DECISIONS} has no table header to add the row under")
-    if f"| {cid} integrated (" not in texte:  # a row already written (by hand, or by a pass that failed after it) is left alone
-        quoi = " ".join(str(enr.get("resume")).split()).rstrip(".").replace("|", "\\|")
+    if not re.search(rf"(?m)^\| [^|]+ \| {re.escape(cid)} integrated \(", texte):  # a row already written (by hand, or by a failed pass)
+        quoi = " ".join(enr["resume"].split()).rstrip(".")
+        quoi = (quoi if len(quoi) <= 300 else quoi[:299] + "…").replace("|", "\\|")
         ligne = (f"| {en_iso(quand)[:10]} | {cid} integrated (PR #{numero}, merged at the judged commit {tete[:7]}): {quoi} | Task "
                  f"{enr['tache']}; recorded by the integration workflow from GitHub's facts: merged at {en_iso(quand)}, merge commit "
                  f"{fusion[:7]}, CI green on the merged commit (ruche-0094) | {qui} |\n")
         (reg.racine / DECISIONS).write_text(texte.replace(ENTETE_DECISIONS, ENTETE_DECISIONS + ligne, 1), encoding="utf-8")
     return integrer(reg, argparse.Namespace(contribution=cid, fusion_sha=fusion), chemin, enr, en_iso(quand),
-                    f"Hive tooling contribution: registry PR #{numero} merged at commit {tete[:7]} by {par}, CI green on the merged commit.",
-                    f"✓ {cid} recorded as integrated: PR #{numero} merged at {en_iso(quand)} by {par}, merge commit {fusion}.")
+                    f"Hive tooling contribution: registry PR #{numero} merged at commit {tete[:7]} by {par}, {compte}, CI green on the merged "
+                    "commit.", f"✓ {cid} recorded as integrated: PR #{numero} merged at {en_iso(quand)} by {par}, merge commit {fusion}.")
 
 
 def cmd_cloturer(args):

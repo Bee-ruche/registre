@@ -3676,10 +3676,12 @@ if args[:1] == ["api"]:
         executions = [execution(u, p) for u, p in prs.items() if u.startswith(base_url) and p.get("verdict")]
         reponse = {"workflow_runs": executions + etat.get("executions", [])}
     elif m and sous == "/actions/runs":
-        # ruche-0094: the Actions runs of a registry PR's head (key « ci » of the PR: its runs; by default one green run).
-        reponse = {"workflow_runs": [{"id": int(u.split("/")[-1]) * 10 + i, "workflow_id": 7, "event": "pull_request", "head_sha": p["head"],
-                                      "status": "completed", "conclusion": "success", **r} for u, p in prs.items() if u.startswith(base_url)
-                                     for i, r in enumerate(p.get("ci", [{}]))]}
+        # ruche-0094: the Actions runs of a registry PR's head (key « ci » of the PR: its runs; by default one green run of
+        # validation.yml for this PR, on its branch and repository).
+        reponse = {"workflow_runs": [{"id": int(u.split("/")[-1]) * 10 + i, "path": ".github/workflows/validation.yml", "event": "pull_request",
+                                      "head_sha": p["head"], "head_branch": pr_json(u, p)["head"]["ref"], "status": "completed",
+                                      "head_repository": {"full_name": pr_json(u, p)["head"]["repo"]["full_name"]}, "conclusion": "success", **r}
+                                     for u, p in prs.items() if u.startswith(base_url) for i, r in enumerate(p.get("ci", [{}]))]}
     elif m and sous.startswith("/compare/"):
         statut = etat.get("comparaisons", {}).get(sous[9:].split("...")[0], "ahead")
         if statut is None:
@@ -12274,20 +12276,23 @@ class TestAgentAccountsWorkflows(BaseParallele):
 PR_REGISTRE = "https://github.com/Bee-ruche/registre/pull/"
 TETE_FUSIONNEE = "c0ffee" + "0" * 34
 RESUME_9094 = "Merged registry contributions are recorded by the integration workflow | from GitHub's facts."
-QUI_AGENT = "Agent principal, by delegation of the council (permanent merge authorisation)"
+QUI_AGENT = f"{AGENT} (declared agent account of bidji29, a council member), by merging"
+VALIDATION_YML, JUGE_COMMUN_YML = ".github/workflows/validation.yml", ".github/workflows/juge-commun.yml"
 
 
-def execution(**champs):
-    """An Actions run of the merged head, as GitHub's REST API gives it (actions/runs): green unless `champs` say otherwise."""
-    return {"id": 1, "workflow_id": 7, "event": "pull_request", "head_sha": TETE_FUSIONNEE, "status": "completed", "conclusion": "success",
-            **champs}
+def execution_tete(**champs):
+    """A run of validation.yml for PR #9201 on its merged head, as GitHub's REST API gives it (actions/runs): green unless `champs`
+    say otherwise."""
+    return {"id": 1, "path": VALIDATION_YML, "event": "pull_request", "head_sha": TETE_FUSIONNEE, "head_branch": "tache/9201",
+            "head_repository": {"full_name": "Bee-ruche/registre"}, "status": "completed", "conclusion": "success", **champs}
 
 
 class TestRegistryMergeRecorded(BaseParallele):
-    """ruche-0094: when the PR a registry contribution declares is merged into main by the council or a council member's declared
-    agent account, integration-auto records it as the council does by hand, from GitHub's REST answers and main's history only:
-    the contribution and its task « integree » with the merge time, merge commit and merged head, and a row in docs/decisions.md.
-    Anything else: no record, a notice. Fork contributions are unchanged (their own tests)."""
+    """ruche-0094: when the PR a registry contribution declares is merged into main by a council member's account or a council
+    member's declared agent account, integration-auto records it as the council does by hand, from GitHub's REST answers and
+    main's history only: the contribution and its task « integree » with the merge time, merge commit and merged head, the account
+    as GitHub reports it, and a row in docs/decisions.md. Anything else: no record, a notice. Fork contributions are unchanged
+    (their own tests)."""
 
     etape = TestRevueAdverse.etape
     appels_de = staticmethod(TestRevueAdverse.appels_de)
@@ -12306,17 +12311,28 @@ class TestRegistryMergeRecorded(BaseParallele):
         self.assertEqual(self.bee("prendre", "ruche-9094", "--utilisateur", "bidji29")[0], 0)
         git(self.dossier, "init", "-q", "-b", "main")
         self.commit("main: the task reserved")
+        self.changer("README.md", "an earlier change")
+        self.commit("main: an earlier merge")
+        self.anterieur = git(self.dossier, "rev-parse", "HEAD").strip()
 
-    def soumis(self, dans_la_pr=True):
+    def changer(self, relatif, texte):
+        chemin = self.dossier / relatif
+        chemin.write_text(chemin.read_text(encoding="utf-8") + f"\n{texte}\n", encoding="utf-8")
+
+    def soumis(self, dans_la_pr=True, travail=True, aussi=None):
         """bidji29 submits ruche-9094-c1 inside the code PR it declares: the contribution reaches main with the PR's (squash) merge
-        commit, returned. dans_la_pr=False: submitted by a commit of its own, before the PR's merge commit (also returned)."""
+        commit, returned, which also changes README.md (travail) and what `aussi` writes. dans_la_pr=False: submitted by a commit of
+        its own, before the PR's merge commit (also returned)."""
         self.a("2026-10-27T13:00:00Z")
         code, texte = self.bee("soumettre", "ruche-9094", "--utilisateur", "bidji29", "--pr", self.pr, "--resume", RESUME_9094)
         self.assertEqual(code, 0, texte)
-        self.commit("PR #9201, squash-merged" if dans_la_pr else "a separate submission")
         if not dans_la_pr:
-            (self.dossier / "README.md").write_text("PR #9201's change\n", encoding="utf-8")
-            self.commit("PR #9201, squash-merged")
+            self.commit("a separate submission")
+        if travail:
+            self.changer("README.md", "PR #9201's change")
+        if aussi:
+            aussi()
+        self.commit("PR #9201, squash-merged")
         return git(self.dossier, "rev-parse", "HEAD").strip()
 
     def etats(self, fusion, **pr):
@@ -12329,9 +12345,11 @@ class TestRegistryMergeRecorded(BaseParallele):
         api = pathlib.Path(self.temp.name) / "api"
         api.mkdir(exist_ok=True)
         pr = {"number": 9201, "state": "closed", "merged": True, "merged_at": "2026-10-27T14:00:00Z", "merge_commit_sha": fusion,
-              "head": {"sha": TETE_FUSIONNEE}, "base": {"ref": "main"}, "user": {"login": AGENT}, "merged_by": {"login": AGENT}, **champs}
+              "head": {"sha": TETE_FUSIONNEE, "ref": "tache/9201", "repo": {"full_name": "Bee-ruche/registre"}}, "base": {"ref": "main"},
+              "user": {"login": AGENT}, "merged_by": {"login": AGENT}, **champs}
         (api / "pr.json").write_text(json.dumps(pr), encoding="utf-8")
-        (api / "executions.json").write_text(json.dumps({"workflow_runs": [execution()] if executions is None else executions}), encoding="utf-8")
+        executions = [execution_tete()] if executions is None else executions
+        (api / "executions.json").write_text(json.dumps({"workflow_runs": executions}), encoding="utf-8")
         return str(api)
 
     def fichiers(self):
@@ -12344,13 +12362,18 @@ class TestRegistryMergeRecorded(BaseParallele):
         lignes = (self.dossier / bee.DECISIONS).read_text(encoding="utf-8").splitlines()
         return lignes[lignes.index(bee.ENTETE_DECISIONS.strip()) + 1]
 
+    def lignes_de(self, cid):
+        """The rows of docs/decisions.md that record `cid` (its id in the second cell)."""
+        return [l for l in (self.dossier / bee.DECISIONS).read_text(encoding="utf-8").splitlines()
+                if re.match(rf"\| [^|]+ \| {re.escape(cid)} integrated \(", l)]
+
     def test_a_merged_registry_pr_is_recorded_from_github_s_facts(self):
         fusion = self.soumis()
         sortie, _, appels = self.etape("Intégrer", self.etats(fusion))
         enr = self.enr(self.cid)
         self.assertEqual((enr["statut"], enr["decidee_le"], enr["fusion_sha"]), ("integree", "2026-10-27T14:00:00Z", fusion), sortie)
-        self.assertEqual(enr["motif_decision"], f"Hive tooling contribution: registry PR #9201 merged at commit c0ffee0 by {AGENT}, CI "
-                                                "green on the merged commit.")
+        self.assertEqual(enr["motif_decision"], f"Hive tooling contribution: registry PR #9201 merged at commit c0ffee0 by {AGENT}, "
+                                                "declared agent account of bidji29, CI green on the merged commit.")
         self.assertEqual(self.tache("ruche-9094")["statut"], "integree")
         self.assertEqual(self.premiere_ligne(), (
             "| 2026-10-27 | ruche-9094-c1 integrated (PR #9201, merged at the judged commit c0ffee0): Merged registry contributions are "
@@ -12393,30 +12416,50 @@ class TestRegistryMergeRecorded(BaseParallele):
         self.assertEqual((self.tache("ruche-9094")["statut"], self.tache("ruche-9094")["contribution"]), ("integree", self.cid))
         # The row: the form of the council's rows (that of ruche-0043-c1, recorded by hand on 1 Nov).
         forme = r"^\| \d{4}-\d\d-\d\d \| ruche-\d{4}-c\d+ integrated \(PR #\d+, merged at the judged commit [0-9a-f]{7}\): [^|]+ \| .+ \| [^|]+ \|$"
-        ligne_main = next(l for l in (self.dossier / bee.DECISIONS).read_text(encoding="utf-8").splitlines() if "| ruche-0043-c1 integrated (" in l)
-        self.assertRegex(ligne_main, forme)
-        self.assertTrue(ligne_main.endswith(f"| {QUI_AGENT} |"))
+        self.assertRegex(self.lignes_de("ruche-0043-c1")[0], forme)
         self.assertRegex(self.premiere_ligne().replace("\\|", "/"), forme)
 
-    def test_the_who_column_follows_the_merging_account(self):
+    def test_the_who_column_names_the_merging_account_as_github_reports_it(self):
+        """Who acted through an account, the robot cannot know (the agent principal has merged under the founder's account): it
+        names the account and what main said it was before the merge, nothing more."""
         fusion = self.soumis()
-        for par, qui in ((AGENT, QUI_AGENT), ("bidji29", "The founder (human council), by merging")):
+        for par, compte, qui in ((AGENT, "declared agent account of bidji29", QUI_AGENT),
+                                 ("bidji29", "the account of a council member", "bidji29 (account of a council member), by merging")):
             with self.subTest(par=par):
                 code, texte = self.bee("record-merge", self.cid, "--api", self.reponses(fusion, merged_by={"login": par}))
                 self.assertEqual(code, 0, texte)
                 self.assertTrue(self.premiere_ligne().endswith(f"| {qui} |"), self.premiere_ligne())
-                self.assertIn(f" by {par}, CI green", self.enr(self.cid)["motif_decision"])
+                self.assertIn(f" by {par}, {compte}, CI green", self.enr(self.cid)["motif_decision"])
+                self.assertNotRegex(self.premiere_ligne(), "human council|founder|authorisation")
                 git(self.dossier, "reset", "-q", "--hard")
+
+    def test_authority_is_read_on_main_before_the_merge(self):
+        """A PR that makes its merger a council member, or declares it or its own author as an agent account, is not believed."""
+        def promouvoir():
+            conseil = self.dossier / "gouvernance/conseil.yaml"
+            conseil.write_text(conseil.read_text(encoding="utf-8") + "  - pseudo: mallory\n    role: membre\n", encoding="utf-8")
+            declarer_agents(self.dossier, (AGENT, "bidji29"), ("mallory-agent", "bidji29"), ("bidji29-bis", "bidji29"))
+        fusion = self.soumis(aussi=promouvoir)
+        avant = self.fichiers()
+        for nom, champs, avis in (("its merger made a council member", {"merged_by": {"login": "mallory"}}, "merged by mallory, neither"),
+                                  ("its merger declared an agent account", {"merged_by": {"login": "mallory-agent"}}, "merged by mallory-agent"),
+                                  ("its author declared an agent account", {"user": {"login": "bidji29-bis"}}, "opened by bidji29-bis")):
+            with self.subTest(nom):
+                code, texte = self.bee("record-merge", self.cid, "--api", self.reponses(fusion, **champs))
+                self.assertEqual(code, 1, texte)
+                self.assertIn(avis, texte)
+                self.assertEqual(self.fichiers(), avant)
 
     def test_no_record_and_a_notice_for_anything_else(self):
         """In the workflow: someone else's PR, another base, a merge commit that did not bring the contribution (not the declared
-        PR's submission), a merge by the self-service robot, a PR still open or closed without merge."""
+        PR's submission), a merge by the self-service robot, CI not green, a PR still open or closed without merge, a merge that
+        carries no work, a separate submission."""
         fusion = self.soumis()
         avant = self.fichiers()
         for nom, champs, avis in (
                 ("someone else's PR", {"auteur": "mallory"}, "ouverte par mallory, pas par bidji29 ; ni fusionnée ni consignée"),
                 ("another base", {"base": "develop"}, f"::notice::{self.cid}: PR #9201 was merged into develop, not main; nothing recorded."),
-                ("not the declared PR", {"merge": "d" * 40}, f"not with PR #9201's merge commit ddddddd"),
+                ("not the declared PR", {"merge": self.anterieur}, f"not with PR #9201's merge commit {self.anterieur[:7]}"),
                 ("merged by the self-service robot", {"fusionnee_par": "github-actions[bot]"}, "merged by github-actions[bot], neither"),
                 ("CI not green", {"ci": [{"conclusion": "failure"}]}, "CI not green on the merged commit c0ffee0"),
                 ("still open", {"state": "OPEN", "fusionnee_par": None}, None)):
@@ -12426,22 +12469,33 @@ class TestRegistryMergeRecorded(BaseParallele):
                     self.assertIn(avis, sortie)
                 self.assertEqual(self.fichiers(), avant)
                 self.assertFalse(self.appels_de(appels, "pr", "merge"))
+        # A merge that changes only self-service files (the contribution and its task): no work to record.
+        git(self.dossier, "reset", "-q", "--hard", self.anterieur)
+        fusion = self.soumis(travail=False)
+        sortie, _, _ = self.etape("Intégrer", self.etats(fusion))
+        self.assertIn(f"PR #9201's merge commit {fusion[:7]} changes only self-service files", sortie)
+        self.assertEqual(self.enr(self.cid)["statut"], "en_relecture")
         # Submitted outside the PR it declares (the contribution reached main before the PR's merge commit): not recorded here.
-        git(self.dossier, "reset", "-q", "--hard", "HEAD~1")
+        git(self.dossier, "reset", "-q", "--hard", self.anterieur)
         fusion = self.soumis(dans_la_pr=False)
         sortie, _, _ = self.etape("Intégrer", self.etats(fusion))
         self.assertIn(f"it arrived on main with commit {git(self.dossier, 'rev-parse', 'HEAD~1')[:7]}, not with PR #9201's merge", sortie)
         self.assertEqual(self.enr(self.cid)["statut"], "en_relecture")
+        # A week after the merge, the same refusal is silent (no notice at every pass).
+        self.a("2026-11-03T14:00:01Z")
+        sortie, _, _ = self.etape("Intégrer", self.etats(fusion))
+        self.assertNotIn(self.cid, sortie)
         # Closed without merge: the existing close (bee cloturer), never an integration record.
         sortie, _, _ = self.etape("Intégrer", self.etats(fusion, state="CLOSED", merge=None, fusionnee_par=None))
         self.assertEqual(self.enr(self.cid)["statut"], "annulee")
-        self.assertNotIn(f"| {self.cid} integrated (", (self.dossier / bee.DECISIONS).read_text(encoding="utf-8"))
+        self.assertFalse(self.lignes_de(self.cid))
 
     def test_bee_checks_each_fact_itself(self):
         """bee record-merge, whatever the workflow checked before: each refusal is one fact, and the same answers made right
-        record it. The latest run of each workflow on the merged head decides."""
+        record it. CI green: the latest run of validation.yml for this very PR, and the latest of every other workflow on its head."""
         fusion = self.soumis()
         avant = self.fichiers()
+        tete = {"sha": TETE_FUSIONNEE, "ref": "tache/9201", "repo": {"full_name": "Bee-ruche/registre"}}
         for nom, champs, executions, avis in (
                 ("closed without merge", {"merged": False, "merged_at": None, "merged_by": None}, None, "PR #9201 is not merged"),
                 ("another PR number", {"number": 9202}, None, "GitHub's PR #9202 on its project's repository is not the PR it declares"),
@@ -12449,14 +12503,19 @@ class TestRegistryMergeRecorded(BaseParallele):
                 ("someone else's PR", {"user": {"login": "mallory"}}, None, "opened by mallory, neither bidji29 nor their declared agent"),
                 ("a member merged it", {"merged_by": {"login": "alice"}}, None, "merged by alice, neither a council member"),
                 ("no merger", {"merged_by": None}, None, "merged by None, neither a council member"),
-                ("another merge commit", {"merge_commit_sha": "d" * 40}, None, f"arrived on main with commit {fusion[:7]}, not with"),
-                ("a short head", {"head": {"sha": "c0ffee0"}}, None, "no full head or merge commit id"),
-                ("CI red", {}, [execution(conclusion="failure")], "CI not green"),
-                ("CI running", {}, [execution(status="in_progress", conclusion=None)], "CI not green"),
-                ("the latest run red", {}, [execution(), execution(id=2, conclusion="failure")], "CI not green"),
+                ("another merge commit", {"merge_commit_sha": self.anterieur}, None, f"arrived on main with commit {fusion[:7]}, not with"),
+                ("a merge commit not on main", {"merge_commit_sha": "d" * 40}, None, "merge commit ddddddd is unreadable"),
+                ("a short head", {"head": {**tete, "sha": "c0ffee0"}}, None, "no full head or merge commit id"),
+                ("CI red", {}, [execution_tete(conclusion="failure")], "CI not green"),
+                ("CI running", {}, [execution_tete(status="in_progress", conclusion=None)], "CI not green"),
+                ("the latest run red", {}, [execution_tete(), execution_tete(id=2, conclusion="failure")], "CI not green"),
                 ("no run", {}, [], "CI not green"),
-                ("a run of another head", {}, [execution(head_sha="e" * 40)], "CI not green"),
-                ("a push run only", {}, [execution(event="push")], "CI not green"),
+                ("a run of another head", {}, [execution_tete(head_sha="e" * 40)], "CI not green"),
+                ("a push run only", {}, [execution_tete(event="push")], "CI not green"),
+                ("validation.yml of another branch", {}, [execution_tete(head_branch="autre")], "CI not green"),
+                ("validation.yml of another repository", {}, [execution_tete(head_repository={"full_name": "mallory/registre"})], "CI not green"),
+                ("a lone run of another workflow", {}, [execution_tete(path=JUGE_COMMUN_YML)], "CI not green"),
+                ("another workflow red", {}, [execution_tete(), execution_tete(id=2, path=JUGE_COMMUN_YML, conclusion="failure")], "CI not green"),
                 ("unreadable", {"head": None}, None, "GitHub's answer is unreadable")):
             with self.subTest(nom):
                 code, texte = self.bee("record-merge", self.cid, "--api", self.reponses(fusion, executions, **champs))
@@ -12464,13 +12523,39 @@ class TestRegistryMergeRecorded(BaseParallele):
                 self.assertIn(avis, texte)
                 self.assertIn("nothing recorded", texte)
                 self.assertEqual(self.fichiers(), avant)
-        # Red, then re-run green: the latest run decides.
-        code, texte = self.bee("record-merge", self.cid, "--api", self.reponses(fusion, [execution(conclusion="failure"), execution(id=2)]))
+        # More than a week after the merge: the same refusals, silent.
+        self.a("2026-11-03T14:00:01Z")
+        self.assertEqual(self.bee("record-merge", self.cid, "--api", self.reponses(fusion, base={"ref": "develop"})), (1, ""))
+        # Red, then re-run green; another workflow green too: the latest run of each decides.
+        code, texte = self.bee("record-merge", self.cid, "--api", self.reponses(fusion, [
+            execution_tete(conclusion="failure"), execution_tete(id=2), execution_tete(id=3, path=JUGE_COMMUN_YML)]))
         self.assertEqual(code, 0, texte)
+
+    def test_a_resume_is_required_and_cut_at_300_characters(self):
+        fusion = self.soumis()
+        chemin = self.dossier / f"contributions/ruche/{self.cid}.yaml"
+        enr = bee.lire_yaml(chemin)
+        for nom, resume in (("none", None), ("not a text", 12), ("blank", " ")):
+            with self.subTest(nom):
+                bee.ecrire_yaml(chemin, {k: v for k, v in {**enr, "resume": resume}.items() if v is not None})
+                code, texte = self.bee("record-merge", self.cid, "--api", self.reponses(fusion))
+                self.assertEqual((code, self.enr(self.cid)["statut"]), (1, "en_relecture"), texte)
+                self.assertIn("no resume", texte)
+        bee.ecrire_yaml(chemin, {**enr, "resume": "é|" * 200})
+        self.assertEqual(self.bee("record-merge", self.cid, "--api", self.reponses(fusion))[0], 0)
+        quoi = self.premiere_ligne().split("): ", 1)[1].split(" | Task ", 1)[0]
+        self.assertEqual(quoi, ("é|" * 150)[:299].replace("|", "\\|") + "…")
 
     def test_a_second_pass_records_nothing_and_a_hand_made_record_is_left_alone(self):
         fusion = self.soumis()
+        # A decoy: another contribution's row whose text contains « | ruche-9094-c1 integrated ( »; it is not ruche-9094-c1's row.
+        decisions = self.dossier / bee.DECISIONS
+        leurre = (f"| 2026-10-26 | ruche-0001-c1 integrated (PR #28, merged at the judged commit 7605de0): see | {self.cid} integrated "
+                  "(PR #9201) | Why | Who |\n")
+        decisions.write_text(decisions.read_text(encoding="utf-8").replace(bee.ENTETE_DECISIONS, bee.ENTETE_DECISIONS + leurre), encoding="utf-8")
+        self.commit("a decoy row")
         self.etape("Intégrer", self.etats(fusion))
+        self.assertEqual((self.enr(self.cid)["statut"], len(self.lignes_de(self.cid))), ("integree", 1))
         apres = self.fichiers()
         self.etape("Intégrer", self.etats(fusion))
         self.assertEqual(self.fichiers(), apres)
@@ -12490,12 +12575,45 @@ class TestRegistryMergeRecorded(BaseParallele):
         self.assertEqual(self.fichiers(), a_la_main)
         # A row written by hand while the contribution is still in review: the pass records it, and adds no second row.
         git(self.dossier, "reset", "-q", "--hard", "HEAD~1")
-        decisions = self.dossier / bee.DECISIONS
         ligne = f"| 2026-10-27 | {self.cid} integrated (PR #9201, merged at the judged commit c0ffee0): by hand | Why | Who |\n"
         decisions.write_text(decisions.read_text(encoding="utf-8").replace(bee.ENTETE_DECISIONS, bee.ENTETE_DECISIONS + ligne), encoding="utf-8")
         self.etape("Intégrer", self.etats(fusion))
+        self.assertEqual((self.enr(self.cid)["statut"], self.lignes_de(self.cid)), ("integree", [ligne.strip()]))
+
+    def test_publishing_after_a_conflict_on_main_publishes_nothing_and_succeeds(self):
+        """The shared « Publier » step: main changed the same lines during the pass (a council row at the top of docs/decisions.md):
+        no three identical retries then red; nothing published, the checkout back on main, a notice, exit 0 (the next pass redoes
+        it). Without a conflict, it still rebases and publishes."""
+        origine, autre = pathlib.Path(self.temp.name) / "origine.git", pathlib.Path(self.temp.name) / "autre"
+        fusion = self.soumis()
+        subprocess.run(["git", "clone", "-q", "--bare", str(self.dossier), str(origine)], check=True)
+        git(self.dossier, "remote", "add", "origin", str(origine))
+        git(self.dossier, "fetch", "-q", "origin")
+        subprocess.run(["git", "clone", "-q", str(origine), str(autre)], check=True)
+        decisions = autre / bee.DECISIONS
+        decisions.write_text(decisions.read_text(encoding="utf-8").replace(
+            bee.ENTETE_DECISIONS, bee.ENTETE_DECISIONS + "| 2026-10-27 | A council decision | Why | Who |\n"), encoding="utf-8")
+        for args in (("add", "-A"), ("commit", "-qm", "council"), ("push", "-q", "origin", "main")):
+            git(autre, "-c", "user.name=c", "-c", "user.email=c@c", *args)
+        self.etape("Intégrer", self.etats(fusion))
         self.assertEqual(self.enr(self.cid)["statut"], "integree")
-        self.assertEqual(decisions.read_text(encoding="utf-8").count(f"| {self.cid} integrated ("), 1)
+        sortie, _, appels = self.etape("Publier")
+        self.assertIn("::notice::main changed the same lines during this pass: nothing published", sortie)
+        self.assertEqual(git(self.dossier, "status", "--porcelain"), "")
+        self.assertEqual(git(self.dossier, "rev-parse", "HEAD"), git(autre, "rev-parse", "HEAD"))
+        self.assertEqual(git(origine, "rev-parse", "main"), git(autre, "rev-parse", "HEAD"), "nothing pushed")
+        self.assertEqual(self.enr(self.cid)["statut"], "en_relecture")
+        self.assertFalse(self.appels_de(appels, "workflow"))
+        # The next pass, from main, records it; main moves elsewhere meanwhile: rebased over and published, as before.
+        self.etape("Intégrer", self.etats(fusion))
+        (autre / "README.md").write_text((autre / "README.md").read_text(encoding="utf-8") + "\nelsewhere\n", encoding="utf-8")
+        for args in (("add", "-A"), ("commit", "-qm", "elsewhere"), ("push", "-q", "origin", "main")):
+            git(autre, "-c", "user.name=c", "-c", "user.email=c@c", *args)
+        sortie, _, appels = self.etape("Publier")
+        self.assertEqual(git(self.dossier, "rev-parse", "HEAD~1"), git(autre, "rev-parse", "HEAD"))
+        self.assertEqual(git(origine, "rev-parse", "main"), git(self.dossier, "rev-parse", "HEAD"))
+        self.assertEqual(len(self.lignes_de(self.cid)), 1)
+        self.assertEqual([a["args"][:2] for a in appels], [["workflow", "run"]])
 
 
 # --- ruche-0040: each self-service file has a size bound, and each of its texts too, checked before any parsing ---
