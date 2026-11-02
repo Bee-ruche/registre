@@ -165,9 +165,10 @@ pour toujours ; un retrait demandé retire ses données sans l'y inscrire, et el
   chaque passage qui la nomme, rien d'autre ; et ces pages dans une PR à lui. Il refuse un identifiant qui est, ou dont une phrase
   contient, un pseudo de la ruche, un projet, un dépôt ou un numéro (tâche, règle, commandement, argument d'un débat qui existe…) ; une empreinte qui nomme
   plus de 8 passages, en comptant chaque occurrence (`RETRAIT_PASSAGES_MAX`) ; plus de 40 passages en un retrait
-  (`RETRAIT_TOTAL_MAX`) ; plus de 40 passages sur 7 jours glissants, tous retraits confondus (`RETRAIT_SEMAINE_MAX`, lus dans
-  le champ `passages` de chaque entrée) : trois réglages du conseil. `gouvernance/retraits.yaml` (schéma `schemas/retraits.schema.json`), en ajout
-  seul et sous sa forme canonique, consigne qui, quand, le canal et le jour de la demande (depuis le 2026-10-01), le nombre de passages retirés, et les seules
+  (`RETRAIT_TOTAL_MAX`) ; plus de 40 sur les 7 jours qui précèdent la PR, tous retraits confondus (`RETRAIT_SEMAINE_MAX`, 2 h de
+  plus pour un `le` antidaté) : trois réglages du conseil, où compte chaque passage d'un commentaire signalé. `gouvernance/retraits.yaml`
+  (schéma `schemas/retraits.schema.json`), en ajout seul et sous sa forme canonique, consigne qui, quand, le canal et le jour de
+  la demande (depuis le 2026-10-01), le nombre de passages retirés (commentaires compris), et les seules
   empreintes de ce qui la nomme. `bee verifier-pr` n'accepte qu'un retrait du conseil, d'une entrée, qui retire quelque chose,
   dont chaque autre fichier, parcouru, ordinaire et modifié, est exactement ce qu'en écrit la commande (la liste seulement avec
   `--non-contact`, et ces empreintes seules), et après lequel plus rien ne la nomme. Une empreinte ne dit pas ce qu'elle
