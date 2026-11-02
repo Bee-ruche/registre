@@ -1551,7 +1551,7 @@ class TestArbre(BaseTest):
         self.assertEqual(bee.role_de_tache(reg.tache("miniz-0003")[1]), "mesurer")
         noeuds = bee.charger_arbre(reg)["noeuds"]
         self.assertEqual({n for n in noeuds if n.startswith("roles/")},
-                         {f"roles/{r}" for r in ("optimiser", "relire", "mesurer", "debattre", "garder", "proposer")})
+                         {f"roles/{r}" for r in ("optimiser", "relire", "mesurer", "debattre", "garder", "proposer", "inviter")})
         self.assertTrue(bee.correspond("arbre/roles/relire/SENS.md", bee.CHEMINS_OUTILLAGE),
                         "l'arbre est de l'outillage : PR ordinaire, jamais fusionnée automatiquement")
 
@@ -1717,6 +1717,22 @@ class TestArbre(BaseTest):
         self.assertIn("rôle inconnu : voter", texte)
         self.assertEqual(self.bee("contexte", "miniz-9999")[0], 1)
 
+    def test_ruche_0052_role_inviter_imprime_le_chemin_de_r13(self):
+        # ruche-0052 (1) : qui veut inviter trouve R13 sans connaître la ruche, dans le budget de jetons des rôles (1 900).
+        code, texte = self.bee("contexte", "--role", "inviter")
+        self.assertEqual(code, 0, texte)
+        self.assertIn("# bee contexte --role inviter : racine > roles/inviter", texte)
+        role = texte[texte.index("=== nœud roles/inviter ==="):]
+        self.assertIn("docs/croissance.md", role)
+        for commande in ("inviter", "voir I-<nnnn>", "invitation", "essaim", "incident"):
+            self.assertIn(commande, role)
+        self.assertLess(int(re.search(r"Environ (\d+) jetons", texte).group(1)), 1900)
+        self.assertLess(bee.estimer_jetons(texte), 1900)
+        self.assertIn("- `roles/inviter` : inviter une personne hors de la ruche (R13, docs/croissance.md)", self.bee("contexte")[1])
+        code, texte = self.bee("contexte", "miniz-0099", "--role", "inviter")
+        self.assertEqual(code, 0, texte)
+        self.assertIn("=== nœud roles/inviter ===", texte)
+
     def test_contexte_zone_et_noeud_ailleurs(self):
         self.ajouter_zone()
         chemin = self.dossier / "taches/miniz/miniz-0099.yaml"
@@ -1770,7 +1786,7 @@ class TestArbre(BaseTest):
         # resserre (décision du 30/10 : l'ancien garde-fou mesurait miniz-0012 avec ses notes, et la moindre ligne
         # ajoutée à un nœud le cassait, ce qui bloquait l'écriture des zones, ruche-0014 à ruche-0016).
         reg = bee.Registre(self.dossier)
-        for role in ("optimiser", "relire", "mesurer", "debattre", "garder", "proposer"):
+        for role in ("optimiser", "relire", "mesurer", "debattre", "garder", "proposer", "inviter"):
             for projet in ("miniz", "libyaml", "ruche"):
                 tache = next(t for _, t in reg.taches.values() if t.get("projet") == projet)
                 texte, jetons = bee.texte_contexte(reg, tache["id"], role, registre=str(self.dossier))
@@ -1798,7 +1814,7 @@ class TestArbre(BaseTest):
 
     def test_B1_la_consigne_des_failles_est_sur_chaque_chemin(self):
         reg = bee.Registre(self.dossier)
-        for role in ("optimiser", "relire", "mesurer", "debattre", "garder", "proposer"):
+        for role in ("optimiser", "relire", "mesurer", "debattre", "garder", "proposer", "inviter"):
             for projet in ("miniz", "libyaml", "ruche"):
                 tache = next(t for _, t in sorted(reg.taches.items()) if t[1].get("projet") == projet)[1]
                 for budget in (None, 1):
@@ -1946,7 +1962,7 @@ class TestArbre(BaseTest):
     def test_m4_courses_juge_isole_et_commandes_dans_les_noeuds(self):
         for role in ("relire", "optimiser"):
             self.assertIn("qui a jugé une course n'y entre plus", self.plat(self.noeud(f"roles/{role}").read_text(encoding="utf-8")))
-        for role in ("optimiser", "relire", "mesurer", "debattre", "garder", "proposer"):
+        for role in ("optimiser", "relire", "mesurer", "debattre", "garder", "proposer", "inviter"):
             with self.subTest(role=role):
                 self.assertRegex(self.noeud(f"roles/{role}").read_text(encoding="utf-8"), r"(?m)^Commandes : ")
         self.assertIn("python3 bee/juge/juge.py --source-a <base> --source-b <ta copie>",
@@ -10605,6 +10621,270 @@ class TestVerificationRuche0020(BaseRevueRuche0020):
                      if "Commandement 10 complété" in l)
         self.assertTrue(ligne.rstrip().endswith("| Agent principal, sur autorisation du conseil (28/10 : changer les commandements "
                                                 "pendant la phase de lancement, commandement 11) |"))
+
+
+class TestR13SuivableRuche0052(BaseInvitations):
+    """ruche-0052 (répétition générale n° 4) : R13 trouvable et suivable. AGENTS.md renvoie à docs/croissance.md là où il parle
+    d'inviter ; bee voir I-<nnnn> donne les dates de l'invitation et son échéance, calculée comme la porte ; un gardien en fonction
+    signale un incident par bee incident, et le frein en tient compte. Le rôle inviter : TestArbre."""
+
+    INCIDENTS = "gouvernance/incidents.yaml"
+
+    def abandonner(self, nom="pr"):
+        git(self.dossier, "switch", "-qf", "main")
+        git(self.dossier, "branch", "-qD", nom)
+
+    def test_2_agents_md_renvoie_a_croissance_la_ou_il_parle_d_inviter(self):
+        texte = (self.dossier / "AGENTS.md").read_text(encoding="utf-8")
+        roles = texte[texte.index("## Ton rôle"):texte.index("**Avant de réserver**")]
+        ligne = next(l for l in roles.splitlines() if l.startswith("| **Inviter**"))
+        self.assertIn("[docs/croissance.md](docs/croissance.md)", ligne)
+        self.assertIn("[`inviter`](arbre/roles/inviter/SENS.md)", ligne)
+        self.assertTrue((self.dossier / "arbre/roles/inviter/SENS.md").is_file())
+
+    def test_3_voir_donne_les_dates_et_l_echeance(self):
+        self.jusqu_a("accord-conseil")
+        texte = self.ok("voir", "I-0001")
+        self.assertIn("proposée le 2026-10-30T10:00:00Z ; accord du gardien : 2026-11-02T11:00:00Z ; feu vert du conseil : "
+                      "2026-11-02T12:00:00Z", texte)
+        self.assertNotIn("échéance sans décision", texte, "une invitation décidée n'expire plus : l'échéance est celle du feu vert")
+        self.assertIn("avant le 2026-11-09T12:00:00Z (échéance du feu vert)", texte)
+
+    def test_C_voir_imprime_les_dates_relues_jamais_brutes(self):
+        """Revue de ruche-0052, C : une date du fichier est relue par bee et réécrite (en_iso), sinon « ? » ; jamais sa valeur
+        brute, qui pourrait porter une séquence d'échappement du terminal."""
+        self.jusqu_a("accord-gardien")
+        piege = "2026-11-02T11:00:00Z\x1b]0;titre\x07\x1b[2J"
+        inv = self.invitation()
+        self.ecrire_invitation({**inv, "propose_le": "2026-10-30T11:00:00+01:00", "accord_gardien": {**inv["accord_gardien"], "le": piege}})
+        texte = self.ok("voir", "I-0001")
+        ligne = next(l for l in texte.splitlines() if l.startswith("proposée le "))
+        self.assertEqual(ligne, "proposée le 2026-10-30T10:00:00Z (échéance sans décision : 2026-11-13T10:00:00Z) ; accord du gardien : ? "
+                                "; feu vert du conseil : aucun")
+        self.assertNotIn("\x1b", ligne)
+
+    def test_3_l_echeance_est_celle_de_la_porte(self):
+        # bee.yaml fixe l'échéance (croissance.expiration_jours) : bee voir la lit comme la porte (refus_geste) et bee valider.
+        chemin = self.dossier / "bee.yaml"
+        chemin.write_text(re.sub(r"(?m)^  expiration_jours: *\d+", "  expiration_jours: 3", chemin.read_text(encoding="utf-8")),
+                          encoding="utf-8")
+        self.commit("expiration en 3 jours")
+        self.jusqu_a("proposee")
+        self.assertIn("proposée le 2026-10-30T10:00:00Z (échéance sans décision : 2026-11-02T10:00:00Z) ; accord du gardien : aucun ; "
+                      "feu vert du conseil : aucun", self.ok("voir", "I-0001"))
+        reg = bee.Registre(self.dossier)
+        inv, conf, fin = reg.invitation("I-0001")[1], bee.config_croissance(reg), bee.lire_instant("2026-11-02T10:00:00Z", "test")
+        self.assertEqual(bee.expiration(inv, conf), fin)
+        self.assertEqual((bee.expiree(inv, fin, conf), bee.expiree(inv, fin + bee.dt.timedelta(seconds=1), conf)), (False, True))
+        self.a("2026-11-02T10:00:01Z")
+        self.ko("invitation expirée (3 jours sans décision", "invitation", "accord-gardien", "I-0001", "--utilisateur", "gina")
+        self.a("2026-11-02T10:00:00Z")  # à l'échéance même : 72 h de débat tenues, pas encore expirée
+        self.branche()
+        self.geste("accord-gardien", "gina")
+        self.publier("gina", "accord_gardien")
+
+    def regler_expiration(self, jours):
+        chemin = self.dossier / "bee.yaml"
+        chemin.write_text(re.sub(r"(?m)^  expiration_jours: *\d+", f"  expiration_jours: {jours}", chemin.read_text(encoding="utf-8")),
+                          encoding="utf-8")
+        self.commit(f"expiration en {jours} jours")
+
+    def statuts_affiches(self):
+        """Le statut que montrent bee essaim (absent : expirée), bee voir et l'API du site pour I-0001."""
+        essaim = [x["statut"] for x in json.loads(self.ok("essaim", "--json"))["invitations"] if x["id"] == "I-0001"]
+        voir = self.ok("voir", "I-0001").splitlines()[0].split(" : ")[1].split(" ;")[0]
+        self.ok("site", "--sortie", str(self.dossier / "_site"))
+        api = json.loads((self.dossier / "_site/api/registre.json").read_text(encoding="utf-8"))
+        return essaim, voir, next(i["etat"]["statut"] for i in api["invitations"] if i["id"] == "I-0001")
+
+    def test_A_l_echeance_de_bee_yaml_partout_comme_a_la_porte(self):
+        """Revue de ruche-0052, A : bee essaim, bee voir et le site lisaient l'échéance par défaut (14 jours), la porte celle de
+        bee.yaml. Les deux reproductions du relecteur : à 30 jours, une invitation de 17 jours vit encore partout et la porte
+        accepte l'accord ; à 3 jours, une invitation de 3 jours et 1 h a expiré partout et la porte refuse l'accord."""
+        self.regler_expiration(30)
+        self.jusqu_a("proposee")
+        self.a("2026-11-16T10:00:00Z")
+        self.assertEqual(self.statuts_affiches(), (["proposee"], "proposee", "proposee"))
+        self.assertIn("(échéance sans décision : 2026-11-29T10:00:00Z)", self.ok("voir", "I-0001"))
+        self.branche()
+        self.geste("accord-gardien", "gina")
+        self.publier("gina", "accord_gardien")
+
+    def test_A_a_trois_jours_l_invitation_a_expire_partout(self):
+        self.regler_expiration(3)
+        self.jusqu_a("proposee")
+        self.a("2026-11-02T11:00:00Z")
+        self.assertEqual(self.statuts_affiches(), ([], "expiree", "expiree"))
+        self.ko("invitation expirée (3 jours sans décision", "invitation", "accord-gardien", "I-0001", "--utilisateur", "gina")
+
+    def test_5_un_gardien_en_fonction_signale_un_incident_et_le_frein_le_compte(self):
+        self.jusqu_a("proposee")
+        self.a("2026-11-02T11:00:00Z")
+        self.assertEqual(bee.etat_frein(bee.Registre(self.dossier))["incidents_ouverts"], [])
+        self.branche()
+        texte = self.ok("incident", "--utilisateur", "gina", "--titre", "Un message est parti sans feu vert (I-0001).")
+        self.assertIn("✓ INC-0001 inscrit dans gouvernance/incidents.yaml", texte)
+        self.assertIn("PR ordinaire", texte)
+        self.assertIn("le frein s'applique dès que le conseil l'a fusionnée ; alors, ce qui passe : rien : un incident est ouvert", texte)
+        self.assertEqual(bee.lire_yaml(self.dossier / self.INCIDENTS), {"incidents": [
+            {"id": "INC-0001", "titre": "Un message est parti sans feu vert (I-0001).", "ouvert_le": "2026-11-02T11:00:00Z"}]})
+        self.valide()
+        frein = bee.etat_frein(bee.Registre(self.dossier))
+        self.assertEqual((frein["serre"], frein["incidents_ouverts"]), (True, ["INC-0001"]))
+        self.assertIn("frein SERRÉ (incident(s) ouvert(s) : INC-0001", self.ok("essaim"))
+        # La porte : gina, gardienne en fonction à l'heure de la PR, passe, et le conseil fusionne ; un membre est refusé.
+        self.commit()
+        self.attend_le_conseil("gina", "incident")
+        self.refusee("alice", f"{self.INCIDENTS} : modification réservée au conseil humain")
+        self.fusionner()
+        # Le frein en tient compte sur main : plus aucun accord, même d'encadrement (I-0001 demande un garant).
+        self.ko("incident(s) ouvert(s) : INC-0001", "invitation", "accord-gardien", "I-0001", "--utilisateur", "gina")
+        # Le conseil peut aussi l'inscrire : au numéro qui suit tout numéro déjà écrit.
+        self.assertIn("✓ INC-0002 inscrit", self.ok("incident", "--utilisateur", "bidji29", "--titre", "Plainte reçue sur I-0001."))
+
+    def test_voir_echappe_chaque_champ(self):
+        """Dernière revue de ruche-0052 (2) : la première ligne et les identités de bee voir passent par montrer, sur une ligne :
+        ni commande de workflow (« :: » en début de ligne, « ##[ »), ni échappement du terminal, ni fausse ligne de bee."""
+        self.jusqu_a("proposee")
+        inv = self.invitation()
+        self.ecrire_invitation({**inv, "demande": "garant\n::warning::demande", "autres_identites": ["gitlab:y\x1b]0;titre\x07"],
+                                "personne": {"identifiant": "github:x\n::error::identifiant",
+                                             "canal": "https://github.com/x\n##[error]canal\x1b[2J\nIdentifiant : github:leurre"}})
+        texte = self.ok("voir", "I-0001")
+        avant_donnees = texte[:texte.index("=== DONNÉES")]
+        for ligne in texte.splitlines():
+            self.assertNotRegex(ligne, r"^\s*::", ligne)
+        self.assertNotIn("##[", texte)
+        self.assertNotIn("\x1b", texte)
+        self.assertEqual([l for l in avant_donnees.splitlines() if l.startswith("Identifiant : ")],
+                         ["Identifiant : github:x\\n: :error::identifiant ; canal : https://github.com/x\\n# #[error]canal<U+001B>[2J"
+                          "\\nIdentifiant : github:leurre"], "une seule ligne d'identités, le leurre y reste visible")
+        self.assertIn("demande : garant\\n: :warning::demande ; attend", avant_donnees)
+        self.assertIn("Autres identités déclarées : gitlab:y<U+001B>]0;titre<U+0007>", avant_donnees)
+
+    def test_la_porte_refuse_un_fichier_d_incidents_illisible_sur_main(self):
+        """Dernière revue de ruche-0052 (1) : illisible ou vide sur main, le fichier ne se remplace pas par un seul incident ;
+        la porte le refuse à un gardien, comme bee incident : le conseil le répare d'abord."""
+        self.a("2026-11-02T11:00:00Z")
+        un = {"id": "INC-0001", "titre": "Un écart.", "ouvert_le": "2026-11-02T11:00:00Z"}
+        for nom, base in (("illisible", "incidents: [\n"), ("vide", "incidents:\n")):
+            with self.subTest(nom):
+                (self.dossier / self.INCIDENTS).write_text(base, encoding="utf-8")
+                self.commit(f"incidents {nom}, sur main")
+                self.ko("illisible : le conseil le répare d'abord", "incident", "--utilisateur", "gina", "--titre", "Un écart.")
+                self.branche()
+                bee.ecrire_invitation(self.dossier / self.INCIDENTS, {"incidents": [un]})
+                self.commit()
+                self.refusee("gina", f"{self.INCIDENTS} illisible sur main : le conseil le répare d'abord")
+                self.abandonner()
+
+    def test_bee_incident_dit_que_les_commentaires_sont_perdus(self):
+        """Dernière revue de ruche-0052 (3) : la réécriture canonique perd les commentaires du conseil ; bee incident le dit."""
+        self.a("2026-11-02T11:00:00Z")
+        un = {"id": "INC-0001", "titre": "Un écart.", "ouvert_le": "2026-11-02T11:00:00Z"}
+        (self.dossier / self.INCIDENTS).write_text("# Tenu par le conseil.\n" + bee.rendu_invitation({"incidents": [un]}), encoding="utf-8")
+        self.commit("incidents commentés, sur main")
+        texte = self.ok("incident", "--utilisateur", "gina", "--titre", "Un second écart (I-0001).")
+        self.assertIn("⚠ Les commentaires de gouvernance/incidents.yaml sont perdus", texte)
+        self.assertNotIn("# Tenu par le conseil", (self.dossier / self.INCIDENTS).read_text(encoding="utf-8"))
+        # Un fichier sans commentaire : aucun avertissement, même quand un titre porte « # ».
+        for titre in ("Suite du ticket #12 (I-0001).", "Encore une suite (I-0001)."):
+            with self.subTest(titre):
+                self.assertNotIn("commentaires", self.ok("incident", "--utilisateur", "gina", "--titre", titre))
+        self.assertEqual([i["id"] for i in bee.lire_yaml(self.dossier / self.INCIDENTS)["incidents"]],
+                         ["INC-0001", "INC-0002", "INC-0003", "INC-0004"])
+
+    def test_5_qui_ne_peut_pas_signaler_et_ce_que_la_porte_refuse(self):
+        self.a("2026-11-02T11:00:00Z")
+        self.ko("alice n'est ni un gardien en fonction ni du conseil", "incident", "--utilisateur", "alice", "--titre", "Un écart.")
+        self.ko("adresse de courriel", "incident", "--utilisateur", "gina", "--titre", "Plainte de fictif@exemple.org.")
+        self.assertFalse((self.dossier / self.INCIDENTS).exists())
+        (self.dossier / self.INCIDENTS).write_text("incidents: [\n", encoding="utf-8")
+        self.ko("illisible", "incident", "--utilisateur", "gina", "--titre", "Un écart.")
+        self.assertEqual((self.dossier / self.INCIDENTS).read_text(encoding="utf-8"), "incidents: [\n", "rien n'est réécrit")
+        (self.dossier / self.INCIDENTS).unlink()
+        # Un gardien sans garant (ivan), ou dont le garant est révoqué, n'est pas en fonction.
+        (self.dossier / "gouvernance/gardiens.yaml").write_text("membres:\n  - pseudo: gina\n    garant: hector\n  - pseudo: ivan\n",
+                                                               encoding="utf-8")
+        self.commit("ivan, gardien sans garant")
+        self.ko("ivan n'est ni un gardien en fonction", "incident", "--utilisateur", "ivan", "--titre", "Un écart.")
+        un = {"id": "INC-0001", "titre": "Un écart.", "ouvert_le": "2026-11-02T11:00:00Z"}
+        self.branche("ivan")
+        bee.ecrire_invitation(self.dossier / self.INCIDENTS, {"incidents": [un]})
+        self.commit()
+        self.refusee("ivan", "modification réservée au conseil humain")
+        self.abandonner("ivan")
+        bee.ecrire_invitation(self.dossier / self.INCIDENTS, {"incidents": [un]})
+        self.commit("INC-0001, par le conseil")
+        # Un gardien en fonction n'y fait rien d'autre qu'ajouter un incident ouvert, en fin de liste.
+        deux = {**un, "id": "INC-0002"}
+        cas = {"clore": [{**un, "clos_le": "2026-11-02T11:00:00Z", "issue": "Réglé."}], "modifier": [{**un, "titre": "Autre."}],
+               "retirer": [], "clos d'emblée": [un, {**deux, "clos_le": "2026-11-02T11:00:00Z"}],
+               "deux d'un coup": [un, deux, {**deux, "id": "INC-0003"}], "devant": [deux, un]}
+        for nom, liste in cas.items():
+            with self.subTest(nom):
+                self.branche()
+                bee.ecrire_invitation(self.dossier / self.INCIDENTS, {"incidents": liste})
+                self.commit()
+                self.refusee("gina", "un gardien n'y ajoute qu'un incident ouvert, en fin de liste")
+                self.abandonner()
+        self.branche()
+        (self.dossier / self.INCIDENTS).unlink()
+        self.commit()
+        self.refusee("gina", "un gardien n'y ajoute qu'un incident ouvert, en fin de liste")
+        self.abandonner()
+        # Revue de ruche-0052, B : ce qu'ajoute un gardien est ce qu'écrit bee incident, et rien d'autre.
+        canonique = bee.rendu_invitation({"incidents": [un, deux]})
+        brut = {"titre : courriel": (bee.rendu_invitation({"incidents": [un, {**deux, "titre": "Plainte de fictif@exemple.org."}]}),
+                                     "adresse de courriel"),
+                "titre : U+202E": (bee.rendu_invitation({"incidents": [un, {**deux, "titre": "Un \u202eécart."}]}), "U+202E"),
+                "titre : ESC": (bee.rendu_invitation({"incidents": [un, {**deux, "titre": "Un \x1b[2Jécart."}]}), "U+001B"),
+                "titre sur deux lignes": (bee.rendu_invitation({"incidents": [un, {**deux, "titre": "Un écart.\nSuite."}]}),
+                                          "titre : une seule ligne"),
+                "commentaire et remplissage": ("# Ajouté à la main\n" + canonique + "\n\n\n", "pas exactement sous la forme"),
+                "issue sur un incident ouvert": (bee.rendu_invitation({"incidents": [un, {**deux, "issue": "Rien à faire."}]}),
+                                                 "avec id, titre et ouvert_le seulement"),
+                "numéro en double": (bee.rendu_invitation({"incidents": [un, {**deux, "id": "INC-0001"}]}), "au numéro suivant (INC-0002)"),
+                "numéro sauté": (bee.rendu_invitation({"incidents": [un, {**deux, "id": "INC-0007"}]}), "au numéro suivant (INC-0002)"),
+                "date d'hier": (bee.rendu_invitation({"incidents": [un, {**deux, "ouvert_le": "2026-11-01T11:00:00Z"}]}),
+                                "doit être l'heure de la PR")}
+        for nom, (texte, message) in brut.items():
+            with self.subTest(nom):
+                self.branche()
+                (self.dossier / self.INCIDENTS).write_text(texte, encoding="utf-8")
+                self.commit()
+                self.refusee("gina", message)
+                self.abandonner()
+        for titre, message in (("Un écart.\nSuite.", "titre : une seule ligne"), ("Un \u202eécart.", "U+202E"),
+                               ("Un \x1b[2Jécart.", "U+001B"), ("Plainte de fictif@exemple.org.", "adresse de courriel")):
+            self.ko(message, "incident", "--utilisateur", "gina", "--titre", titre)
+        self.branche()
+        (self.dossier / self.INCIDENTS).write_text(canonique, encoding="utf-8")
+        self.commit()
+        self.attend_le_conseil("gina", "incident")  # ce que bee incident écrirait : accepté, le conseil fusionne
+        self.abandonner()
+        # INC-9999 est le dernier numéro : bee incident s'arrête là, et la porte refuse INC-10000.
+        dernier = {**un, "id": "INC-9999"}
+        bee.ecrire_invitation(self.dossier / self.INCIDENTS, {"incidents": [un, dernier]})
+        self.commit("INC-9999, par le conseil")
+        self.ko("INC-9999 est le dernier numéro", "incident", "--utilisateur", "gina", "--titre", "Un écart.")
+        self.assertEqual(bee.lire_yaml(self.dossier / self.INCIDENTS), {"incidents": [un, dernier]}, "rien n'est écrit")
+        self.branche()
+        bee.ecrire_invitation(self.dossier / self.INCIDENTS, {"incidents": [un, dernier, {**deux, "id": "INC-10000"}]})
+        self.commit()
+        self.refusee("gina", "un gardien n'y ajoute qu'un incident ouvert, en fin de liste, au numéro suivant")
+        self.abandonner()
+        bee.ecrire_invitation(self.dossier / self.INCIDENTS, {"incidents": [un]})
+        self.commit("retour à INC-0001, par le conseil")
+        # Révoqué sur main, le garant de gina ne la tient plus en fonction : sa PR va au conseil seul, refusée par la porte.
+        (self.dossier / "gouvernance/garants.yaml").write_text(
+            "membres:\n  - pseudo: hector\n    identite_publique: Hector\n    revoque_le: \"2026-11-02\"\n", encoding="utf-8")
+        self.commit("garant révoqué")
+        self.branche()
+        self.ko("gina n'est ni un gardien en fonction", "incident", "--utilisateur", "gina", "--titre", "Un écart.")
+        bee.ecrire_invitation(self.dossier / self.INCIDENTS, {"incidents": [un, deux]})
+        self.commit()
+        self.refusee("gina", "modification réservée au conseil humain")
 
 
 class TestManifesteRecopie(BaseRepetitionGenerale):
