@@ -2845,6 +2845,12 @@ def montrer(texte):
     return re.sub(r"(?m)^(\s*)::", r"\1: :", texte)
 
 
+def montrer_ligne(texte):
+    """montrer, sur une seule ligne : un saut de ligne s'écrit « \\n » ; un champ d'une ligne (identifiant, canal, demande) ne
+    fabrique pas une ligne qui imiterait bee (revue de ruche-0052)."""
+    return montrer(texte).replace("\n", "\\n")
+
+
 CLE_VERDICT = re.compile(r"[A-Za-z0-9_.-]{1,80}")
 
 
@@ -5282,6 +5288,9 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
             # Le conseil fusionne.
             natures.append("incident")
             avant, apres = ((x or {}).get("incidents") if isinstance(x or {}, dict) else None for x in (ancien, nouveau))
+            # Sur la base, le fichier est absent, ou lisible et tient une liste (revue de ruche-0052) : sinon le conseil le répare
+            # d'abord, comme bee incident le dit ; « incidents: » vide ou illisible ne se remplace pas par un seul incident.
+            exiger(statut_git == "A" or isinstance(avant, list), f"{chemin} illisible sur main : le conseil le répare d'abord (bee incident)")
             ajout = apres[-1] if isinstance(apres, list) and apres and isinstance(apres[-1], dict) else {}
             suivant = incident_suivant(avant if isinstance(avant, list) else [])
             exiger(isinstance(apres, list) and apres[:-1] == (avant or []) and set(ajout) == {"id", "titre", "ouvert_le"}
@@ -5723,7 +5732,7 @@ def cmd_voir(args):
         _, inv = reg.invitation(args.tache)
         conf = config_croissance(reg)
         resume = resume_invitation(inv, conf, frein=etat_frein(reg))
-        print(f"{resume['id']} : {resume['statut']} ; demande : {resume['demande']} ; attend : {resume['attend']}")
+        print(montrer_ligne(f"{resume['id']} : {resume['statut']} ; demande : {resume['demande']} ; attend : {resume['attend']}"))
         print("\n".join(lignes_identites(inv)))
         # Les dates relues par bee (jamais la valeur brute du fichier : revue de ruche-0052, C) ; l'échéance de la porte.
         date = lambda m: en_iso(m) if m else "?"  # noqa: E731
@@ -6881,8 +6890,9 @@ def lignes_identites(inv):
     """Les identités déclarées d'une invitation, et la consigne d'accord (bee invitation, bee voir)."""
     personne = inv.get("personne") if isinstance(inv.get("personne"), dict) else {}
     autres = inv.get("autres_identites") if isinstance(inv.get("autres_identites"), list) else []
-    return [f"Identifiant : {_nettoyer(personne.get('identifiant', inv.get('personne')))} ; canal : {_nettoyer(personne.get('canal', '-'))}",
-            "Autres identités déclarées : " + (", ".join(_nettoyer(x) for x in autres) if autres else "aucune"),
+    # Par montrer (revue de ruche-0052) : ni commande de workflow (« :: » en début de ligne, « ##[ »), ni échappement du terminal.
+    return [montrer_ligne(f"Identifiant : {personne.get('identifiant', inv.get('personne'))} ; canal : {personne.get('canal', '-')}"),
+            montrer_ligne("Autres identités déclarées : " + (", ".join(str(x) for x in autres) if autres else "aucune")),
             CONSIGNE_IDENTITES]
 
 
@@ -6995,9 +7005,16 @@ def cmd_incident(args):
     ident = incident_suivant(liste)
     if probleme := titre_incident_refuse(args.titre) or (None if ident else "INC-9999 est le dernier numéro : le conseil décide de la suite"):
         raise ErreurBee(probleme)
+    # La réécriture canonique (la seule forme que la porte accepte d'un gardien) perd les commentaires du fichier : on le dit.
+    texte = (reg.racine / chemin).read_text(encoding="utf-8") if (reg.racine / chemin).exists() else ""
+    commentaires = texte != rendu_invitation({"incidents": liste}, chemin) and any(
+        l.lstrip().startswith("#") or " #" in l for l in texte.splitlines())
     ecrire_invitation(reg.racine / chemin, {"incidents": liste + [{"id": ident, "titre": args.titre, "ouvert_le": en_iso(maintenant())}]})
     print(f"✓ {ident} inscrit dans {chemin}. Publiez-le par une PR ordinaire (bee publier ne l'envoie pas) : le frein s'applique dès que "
           f"le conseil l'a fusionnée ; alors, ce qui passe : {etat_frein(Registre(args.registre))['ce_qui_passe']}.")
+    if commentaires:
+        print(f"⚠ Les commentaires de {chemin} sont perdus : bee le réécrit sous sa forme canonique. Dites-le au conseil dans la PR ; "
+              "ses notes se gardent dans les champs des incidents (titre, issue), pas en commentaire.")
     return 0
 
 

@@ -10145,6 +10145,58 @@ class TestR13SuivableRuche0052(BaseInvitations):
         # Le conseil peut aussi l'inscrire : au numéro qui suit tout numéro déjà écrit.
         self.assertIn("✓ INC-0002 inscrit", self.ok("incident", "--utilisateur", "bidji29", "--titre", "Plainte reçue sur I-0001."))
 
+    def test_voir_echappe_chaque_champ(self):
+        """Dernière revue de ruche-0052 (2) : la première ligne et les identités de bee voir passent par montrer, sur une ligne :
+        ni commande de workflow (« :: » en début de ligne, « ##[ »), ni échappement du terminal, ni fausse ligne de bee."""
+        self.jusqu_a("proposee")
+        inv = self.invitation()
+        self.ecrire_invitation({**inv, "demande": "garant\n::warning::demande", "autres_identites": ["gitlab:y\x1b]0;titre\x07"],
+                                "personne": {"identifiant": "github:x\n::error::identifiant",
+                                             "canal": "https://github.com/x\n##[error]canal\x1b[2J\nIdentifiant : github:leurre"}})
+        texte = self.ok("voir", "I-0001")
+        avant_donnees = texte[:texte.index("=== DONNÉES")]
+        for ligne in texte.splitlines():
+            self.assertNotRegex(ligne, r"^\s*::", ligne)
+        self.assertNotIn("##[", texte)
+        self.assertNotIn("\x1b", texte)
+        self.assertEqual([l for l in avant_donnees.splitlines() if l.startswith("Identifiant : ")],
+                         ["Identifiant : github:x\\n: :error::identifiant ; canal : https://github.com/x\\n# #[error]canal<U+001B>[2J"
+                          "\\nIdentifiant : github:leurre"], "une seule ligne d'identités, le leurre y reste visible")
+        self.assertIn("demande : garant\\n: :warning::demande ; attend", avant_donnees)
+        self.assertIn("Autres identités déclarées : gitlab:y<U+001B>]0;titre<U+0007>", avant_donnees)
+
+    def test_la_porte_refuse_un_fichier_d_incidents_illisible_sur_main(self):
+        """Dernière revue de ruche-0052 (1) : illisible ou vide sur main, le fichier ne se remplace pas par un seul incident ;
+        la porte le refuse à un gardien, comme bee incident : le conseil le répare d'abord."""
+        self.a("2026-11-02T11:00:00Z")
+        un = {"id": "INC-0001", "titre": "Un écart.", "ouvert_le": "2026-11-02T11:00:00Z"}
+        for nom, base in (("illisible", "incidents: [\n"), ("vide", "incidents:\n")):
+            with self.subTest(nom):
+                (self.dossier / self.INCIDENTS).write_text(base, encoding="utf-8")
+                self.commit(f"incidents {nom}, sur main")
+                self.ko("illisible : le conseil le répare d'abord", "incident", "--utilisateur", "gina", "--titre", "Un écart.")
+                self.branche()
+                bee.ecrire_invitation(self.dossier / self.INCIDENTS, {"incidents": [un]})
+                self.commit()
+                self.refusee("gina", f"{self.INCIDENTS} illisible sur main : le conseil le répare d'abord")
+                self.abandonner()
+
+    def test_bee_incident_dit_que_les_commentaires_sont_perdus(self):
+        """Dernière revue de ruche-0052 (3) : la réécriture canonique perd les commentaires du conseil ; bee incident le dit."""
+        self.a("2026-11-02T11:00:00Z")
+        un = {"id": "INC-0001", "titre": "Un écart.", "ouvert_le": "2026-11-02T11:00:00Z"}
+        (self.dossier / self.INCIDENTS).write_text("# Tenu par le conseil.\n" + bee.rendu_invitation({"incidents": [un]}), encoding="utf-8")
+        self.commit("incidents commentés, sur main")
+        texte = self.ok("incident", "--utilisateur", "gina", "--titre", "Un second écart (I-0001).")
+        self.assertIn("⚠ Les commentaires de gouvernance/incidents.yaml sont perdus", texte)
+        self.assertNotIn("# Tenu par le conseil", (self.dossier / self.INCIDENTS).read_text(encoding="utf-8"))
+        # Un fichier sans commentaire : aucun avertissement, même quand un titre porte « # ».
+        for titre in ("Suite du ticket #12 (I-0001).", "Encore une suite (I-0001)."):
+            with self.subTest(titre):
+                self.assertNotIn("commentaires", self.ok("incident", "--utilisateur", "gina", "--titre", titre))
+        self.assertEqual([i["id"] for i in bee.lire_yaml(self.dossier / self.INCIDENTS)["incidents"]],
+                         ["INC-0001", "INC-0002", "INC-0003", "INC-0004"])
+
     def test_5_qui_ne_peut_pas_signaler_et_ce_que_la_porte_refuse(self):
         self.a("2026-11-02T11:00:00Z")
         self.ko("alice n'est ni un gardien en fonction ni du conseil", "incident", "--utilisateur", "alice", "--titre", "Un écart.")
