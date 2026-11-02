@@ -56,7 +56,7 @@
         "required": ["fait", "source"],
         "properties": {
           "fait": {"allOf": [{"$ref": "#/$defs/texte"}, {"minLength": 1, "maxLength": 1000}]},
-          "source": {"anyOf": [{"$ref": "#/$defs/adresse"}, {"const": "[retiré]", "description": "Retirée à la demande de la personne qu'elle nomme (ruche-0048)"}]}
+          "source": {"anyOf": [{"$ref": "#/$defs/adresse"}, {"enum": ["[retiré]", "…"], "description": "Retirée à la demande de la personne qu'elle nomme (ruche-0048)"}]}
         }
       }
     }]},

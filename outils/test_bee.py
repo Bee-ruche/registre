@@ -10551,8 +10551,8 @@ class TestRetraitDemandeRuche0048(BaseRevueRuche0020):
     extérieure (agora, notes, invitations), sans l'inscrire sur la liste de non-contact ; il est consigné avec sa demande, par
     les seules empreintes, et ne touche à rien d'autre. Données fictives."""
 
-    NOMS = ("github:octocat", "octocat", "Alice Martin")
-    ARGUMENT = "Je propose @octocat comme garant ; Alice Martin maintient zlib depuis dix ans, et le plafond doit rester bas."
+    NOMS = ("github:octocat", "octocat", "Odile Martin")
+    ARGUMENT = "Je propose @octocat comme garant ; Odile Martin maintient zlib depuis dix ans, et le plafond doit rester bas."
 
     def setUp(self):
         super().setUp()
@@ -10561,7 +10561,7 @@ class TestRetraitDemandeRuche0048(BaseRevueRuche0020):
         self.inviter("bruno", "github:hubot")  # I-0002 : une autre personne
         self.argumenter("bruno", "fait", self.ARGUMENT, "--source", "https://github.com/octocat", "--source", "REGLES.md")
         self.argumenter("chloe", "contre", "Le plafond de R13 ne dit rien de la personne.", "--repond-a", "A1")
-        self.ok("noter", "miniz-0099", "--utilisateur", "chloe", "--texte", "J'en ai parlé à octocat (Alice Martin), qui dit non.")
+        self.ok("noter", "miniz-0099", "--utilisateur", "chloe", "--texte", "J'en ai parlé à octocat (Odile Martin), qui dit non.")
         self.commit("sur main : des textes qui nomment la personne")
 
     def retirer(self, qui="bidji29", *options, noms=None, confirmer=True):
@@ -10587,22 +10587,22 @@ class TestRetraitDemandeRuche0048(BaseRevueRuche0020):
         self.assertIn("octocat", self.tous_les_textes())
         texte = self.retrait_en_pr()
         self.assertIn("la liste de non-contact n'est pas touchée", texte)
-        self.assertIn("debats/D-0001.yaml : arguments/0/texte (2), arguments/0/sources/0 (1)", texte)
-        self.assertIn("invitations/I-0001.yaml : dossier (1)", texte)
-        for nom in ("octocat", "Alice", "Martin"):
+        self.assertIn("debats/D-0001.yaml : arguments/0/texte mot(s) 3, 7 ; arguments/0/sources/0 mot(s) 1", texte)
+        self.assertIn("invitations/I-0001.yaml : dossier mot(s) 1", texte)
+        for nom in ("octocat", "Odile", "Martin"):
             self.assertNotIn(nom, texte)
         self.attend_le_conseil("bidji29", "retrait_demande")
         self.fusionner()
         marque = bee.MARQUE_RETRAIT
         tout = self.tous_les_textes()
-        for nom in ("octocat", "Alice Martin"):
+        for nom in ("octocat", "Odile Martin"):
             self.assertNotIn(nom, tout)
         inv = self.invitation()
         self.assertEqual((inv["statut"], inv["personne"], inv["pourquoi"], inv["message"], inv["retrait"]["raison"]),
                          ("retiree", "retiré : demande", "retiré : demande", "retiré : demande", "demande"))
         self.assertEqual(self.invitation("I-0002")["personne"]["identifiant"], "github:hubot")
         a1, a2 = self.debat()["arguments"]
-        self.assertEqual(a1["texte"], self.ARGUMENT.replace("@octocat", marque).replace("Alice Martin", marque))
+        self.assertEqual(a1["texte"], self.ARGUMENT.replace("@octocat", marque).replace("Odile Martin", marque))
         self.assertEqual((a1["sources"], a1["par"], a1["position"]), ([marque, "REGLES.md"], "bruno", "fait"))
         self.assertEqual(a2["texte"], "Le plafond de R13 ne dit rien de la personne.")
         self.assertEqual(self.tache("miniz-0099")["notes"][-1]["texte"], f"J'en ai parlé à {marque} ({marque}), qui dit non.")
@@ -10677,7 +10677,7 @@ class TestRetraitDemandeRuche0048(BaseRevueRuche0020):
         self.retrait_en_pr()
         chemin = self.dossier / bee.CHEMIN_RETRAITS
         texte = chemin.read_text(encoding="utf-8")
-        for nom in ("octocat", "alice", "martin", "hubot"):
+        for nom in ("octocat", "odile", "martin", "hubot"):
             self.assertNotIn(nom, texte.casefold())
         entree = bee.lire_yaml(chemin)["retraits"][0]
         self.assertEqual(entree["demande"], {"canal": "courriel", "le": "2026-11-01"})
@@ -10703,7 +10703,7 @@ class TestRetraitDemandeRuche0048(BaseRevueRuche0020):
         entree = {"le": os.environ["BEE_MAINTENANT"], "par": "bidji29", "demande": {"canal": "courriel", "le": "2026-11-01"},
                   "empreintes": sorted(set().union(*map(bee.empreintes_passage, noms))), **champs}
         reg = bee.Registre(self.dossier)
-        for chemin, (texte, avant, apres, _, _) in bee.balayer(reg, entree).items():
+        for chemin, (texte, avant, apres, _) in bee.balayer(reg, entree)[0].items():
             (self.dossier / chemin).write_text(bee.texte_apres(chemin, texte, avant, apres, set(entree["empreintes"])), encoding="utf-8")
         anciens = (reg.retraits or {}).get("retraits") or []
         (self.dossier / bee.CHEMIN_RETRAITS).write_text(bee._rendu_fidele({"retraits": [*anciens, entree]}, "x"), encoding="utf-8")
@@ -10728,20 +10728,34 @@ class TestRetraitDemandeRuche0048(BaseRevueRuche0020):
         self.a("2026-10-31T10:00:00Z")
         for i in range(9):
             self.ok("noter", "miniz-0099", "--utilisateur", "chloe", "--texte", f"Note {i} : zorglub en parle.")
+        self.ok("noter", "miniz-0099", "--utilisateur", "chloe", "--texte", "Je pense que bruno a raison.")
         self.commit("neuf passages")
         self.a("2026-11-02T10:00:00Z")
         for nom, morceau in (("zorglub", "trop courant"), ("bruno", "jamais retiré"), ("@bruno", "jamais retiré"),
                              ("github:bidji29", "jamais retiré"), ("gina", "jamais retiré"), ("R13", "jamais retiré"),
                              ("miniz-0099", "jamais retiré"), ("minizBee", "jamais retiré"), ("I-0002", "jamais retiré"),
-                             ("10", "jamais retiré"), ("Pour refuser, répondez simplement", "rien ne nomme")):
+                             ("10", "jamais retiré"), ("bruno a raison", "jamais retiré"),
+                             ("Pour refuser, répondez simplement", "rien ne nomme")):
             with self.subTest(nom):
                 code, texte = self.retirer(noms=["octocat", nom] if morceau != "rien ne nomme" else [nom])
                 self.assertEqual(code, 1, texte)
                 self.assertIn(morceau, texte)
                 self.assertNotIn(nom, texte)
         self.assertFalse((self.dossier / bee.CHEMIN_RETRAITS).exists())
+        # Chaque occurrence compte (9 dans un seul champ), 40 passages au plus par retrait, 12 identifiants au plus.
+        self.ok("noter", "miniz-9001", "--utilisateur", "chloe", "--texte", "Une note : " + "bzzt " * 9)
+        noms = [f"nom{i}x" for i in range(6)]
+        self.ok("noter", "miniz-9002", "--utilisateur", "chloe", "--texte", " ".join(n for n in noms for _ in range(7)))
+        for liste, morceau in ((["bzzt"], "plus de 8 passages"), (noms, "plus de 40 passages"),
+                               ([f"nom{i}x" for i in range(13)], "retraits/0/empreintes")):
+            with self.subTest(morceau):
+                code, texte = self.retirer(noms=liste)
+                self.assertEqual(code, 1, texte)
+                self.assertIn(morceau, texte)
+        self.commit("des passages")
         # La porte refuse de même une consignation écrite à la main.
-        for noms, morceau in ((("octocat", "zorglub"), "trop courante"), (("octocat", "bruno"), "ne se retire jamais")):
+        for noms, morceau in ((("octocat", "zorglub"), "trop courante"), (("octocat", "bruno"), "ne se retire jamais"),
+                              (("octocat", "bruno a"), "un passage retiré contient un pseudo"), (("bzzt",), "plus de 8 passages")):
             with self.subTest(noms):
                 self.branche()
                 self.entree_a_la_main(*noms)
@@ -10767,32 +10781,40 @@ class TestRetraitDemandeRuche0048(BaseRevueRuche0020):
         self.assertEqual((incident["titre"], incident["issue"]), (f"Plainte fictive au sujet de {marque}", f"Close ; d'{marque}, rien d'autre."))
         self.valide()
 
-    def test_B3_un_texte_qui_deborderait_se_raccourcit_a_la_main(self):
-        titre = ("Relire ce que Bo Li propose sur les plafonds " + "x" * 100)[:100]
+    def test_B3_la_marque_courte_quand_la_marque_deborderait(self):
+        titre = ("Ne pas relire ce que Bo Li propose sur les plafonds " + "x" * 100)[:100]
         tache = self.chemin_tache("miniz-0099")
         tache.write_text(re.sub(r"(?m)^titre:.*$", "titre: " + json.dumps(titre, ensure_ascii=False), tache.read_text(encoding="utf-8")),
                          encoding="utf-8")
         self.commit("sur main : un titre au plus long")
         texte = self.retrait_en_pr(noms=["Bo Li", "octocat"])
-        self.assertIn("⚠ taches/miniz/miniz-0099.yaml : titre dépasserait sa borne", texte)
+        self.assertIn("taches/miniz/miniz-0099.yaml : titre mot(s) 6", texte)
         self.assertNotIn("Bo Li", texte)
-        self.assertEqual(self.tache("miniz-0099")["titre"], titre)
-        self.refusee("bidji29", "taches/miniz/miniz-0099.yaml : nomment encore la personne")
-        marque = bee.MARQUE_RETRAIT
-        for nouveau, accepte in ((("Relire ce que [retiré] a dit " + "x" * 100)[:100], False),  # réécrit : refusé
-                                 (("Relire ce que Bo propose sur les plafonds " + "x" * 100)[:100], False),  # sans la marque
-                                 (("Relire ce que [retiré] propose sur les plafonds " + "x" * 100)[:100], True)):  # coupé
-            with self.subTest(nouveau):
-                tache.write_text(re.sub(r"(?m)^titre:.*$", "titre: " + json.dumps(nouveau, ensure_ascii=False),
-                                        tache.read_text(encoding="utf-8")), encoding="utf-8")
-                self.commit()
-                if accepte:
-                    self.attend_le_conseil("bidji29", "retrait_demande")
-                else:
-                    self.refusee("bidji29", "miniz-0099.yaml : un retrait demandé ne change")
-                    git(self.dossier, "reset", "-q", "--hard", "HEAD~1")
-        self.assertIn(marque, self.tache("miniz-0099")["titre"])
+        self.assertEqual(self.tache("miniz-0099")["titre"], titre.replace("Bo Li", bee.MARQUE_COURTE))
+        self.attend_le_conseil("bidji29", "retrait_demande")
         self.valide()
+        # Aucune retouche à la main : un titre coupé (la négation ôtée) est refusé.
+        coupe = titre.replace("Bo Li", bee.MARQUE_COURTE).replace("Ne pas r", "R")
+        self.changer_puis_refuser(lambda: tache.write_text(re.sub(r"(?m)^titre:.*$", "titre: " + json.dumps(coupe, ensure_ascii=False),
+                                                                  tache.read_text(encoding="utf-8")), encoding="utf-8"),
+                                  "miniz-0099.yaml : un retrait demandé ne change")
+
+    def test_commentaires_et_consignation_mal_formee(self):
+        tache = self.chemin_tache("miniz-0099")
+        tache.write_text("# Demandé par octocat le 12/10\n" + tache.read_text(encoding="utf-8"), encoding="utf-8")
+        self.commit("sur main : un commentaire la nomme")
+        texte = self.retrait_en_pr()
+        self.assertIn("⚠ taches/miniz/miniz-0099.yaml:1 : un commentaire la nomme", texte)
+        self.assertTrue(tache.read_text(encoding="utf-8").startswith("# Demandé par octocat le 12/10\n"))
+        self.assertIn(bee.MARQUE_RETRAIT, self.tache("miniz-0099")["notes"][-1]["texte"])
+        self.attend_le_conseil("bidji29", "retrait_demande")
+        chemin = self.dossier / bee.CHEMIN_RETRAITS
+        canonique = chemin.read_text(encoding="utf-8")
+        for nom, faux in (("clé en double", canonique.replace("  par: bidji29\n", "  par: bidji29\n  par: bidji29\n")),
+                          ("ancre", canonique.replace("  empreintes:\n", "  empreintes: &e\n", 1))):
+            with self.subTest(nom):
+                self.assertNotEqual(faux, canonique)
+                texte = self.changer_puis_refuser(lambda: chemin.write_text(faux, encoding="utf-8"), "retraits.yaml : en ajout seul")
 
     def test_S1_S2_la_porte_ne_touche_que_ce_que_parcourt_la_commande_jusqu_au_bout(self):
         self.retrait_en_pr()
@@ -10829,12 +10851,14 @@ class TestRetraitDemandeRuche0048(BaseRevueRuche0020):
                              ("https://exemple.org/~alice", "https://exemple.org/~bruno"), ("https://medium.com/@alice", "medium.com/@bruno")):
             self.assertTrue(e(alice) and not e(alice) & e(bruno), alice)
         self.assertEqual(e("https://octocat.github.io/x"), e("github:octocat"))
+        self.assertTrue(e("https://www.linkedin.com/in/alice") == e("linkedin.com/in/alice") and not e("linkedin.com/in/alice") & e(
+            "https://linkedin.com/in/bruno"))
         self.a("2026-11-02T10:00:00Z")
         with mock.patch("sys.stdin", io.StringIO("github:octocat\n")):
             code, texte = self.bee("retirer-donnees", "--utilisateur", "bidji29", "--identifiants-de", "-", "--canal", "courriel",
                                    "--demande-le", "2026-11-01")
         self.assertEqual(code, 0, texte)
-        self.assertIn("invitations/I-0001.yaml : dossier (1)", texte)
+        self.assertIn("invitations/I-0001.yaml : dossier mot(s) 1", texte)
         self.assertIn("À blanc : rien n'est écrit", texte)
         self.assertEqual(git(self.dossier, "status", "--porcelain"), "")
         code, texte = self.bee("retirer-donnees", "--utilisateur", "bidji29", "--identifiant", "octocat", "--canal", "courriel",
@@ -10893,8 +10917,8 @@ class TestRetraitDemandeRuche0048(BaseRevueRuche0020):
         self.refusee("bidji29", "un retrait qui ne retire rien ne se consigne pas")
 
     def test_passages_unitaires(self):
-        empreintes = set().union(*map(bee.empreintes_passage, ("github:octocat", "octocat", "exemple.org", "Alice Martin")))
-        for avant in ("d'Alice Martin", "Alice Martin's", "Alice-Martin"):
+        empreintes = set().union(*map(bee.empreintes_passage, ("github:octocat", "octocat", "exemple.org", "Odile Martin")))
+        for avant in ("d'Odile Martin", "Odile Martin's", "Odile-Martin"):
             self.assertIn(bee.MARQUE_RETRAIT, bee.passages_retires(avant, empreintes), avant)
         m = bee.MARQUE_RETRAIT
         for avant, apres in (("Voir (@OctoCat), GitHub:octocat.", f"Voir ({m}), {m}."),
