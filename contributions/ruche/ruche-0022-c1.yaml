@@ -1,0 +1,10 @@
+id: ruche-0022-c1
+tache: ruche-0022
+auteur: bidji29
+pr: https://github.com/Bee-ruche/registre/pull/156
+resume: 'A member''s identity is their GitHub account number, read from the API: a renamed account keeps
+  its history, a reused login inherits nothing.'
+statut: en_relecture
+soumise_le: '2026-11-02T07:52:12Z'
+engage_depuis: '2026-11-02T05:20:12Z'
+relectures: []
