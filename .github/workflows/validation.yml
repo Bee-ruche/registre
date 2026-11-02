@@ -2,8 +2,9 @@
 # Ce job exécute la version de l'outil contenue dans la PR, mais en lecture seule et
 # sans secret : il ne peut rien écrire. La décision de fusion est prise ailleurs
 # (fusion-auto.yml), par l'outil de la branche principale.
-# Its token is read-only (contents: read; actions: read, for the scope step to read main's last push run, and the PR rules
-# this run's creation time).
+# Its token is read-only (contents: read; actions: read, for the scope step to read suite.yml's runs on main, and the PR
+# rules this run's creation time). ruche-0132: the full suite is suite.yml, called below unless the PR is data only; the
+# required check `valider` is the last job, and passes only if everything that had to run passed.
 name: Validation du registre
 
 on:
@@ -16,8 +17,10 @@ permissions:
   actions: read
 
 jobs:
-  valider:
+  controles:
     runs-on: ubuntu-24.04
+    outputs:
+      portee: ${{ steps.portee.outputs.portee }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -42,27 +45,18 @@ jobs:
           [ -n "$BASE" ]
           echo "base=$BASE" >> "$GITHUB_OUTPUT"
           # ruche-0090: the base's tool (never the PR's own) says whether the PR only adds or modifies self-service data
-          # files; and a red main sends every PR back to the full suite (main's last completed push run must be a success).
-          # Fails closed: any output but "data", or any error (a base without ci-scope, an unreadable run), runs the full suite.
+          # files; and a red main sends every PR back to the full suite (ruche-0132: one read of suite.yml's runs on main, judged
+          # by the base's tool: the newest must be for main's last code commit, the newest completed one a success).
+          # Fails closed: any output but "data" and "green", or any error (a base without ci-scope or main-green, a failed call).
           mkdir -p "$RUNNER_TEMP/outil-base"
           portee=$(git show "$BASE:outils/bee.py" > "$RUNNER_TEMP/outil-base/bee.py" &&
                    python3 "$RUNNER_TEMP/outil-base/bee.py" --registre . ci-scope --base "$BASE" --tete HEAD) || portee=full
-          main=$(timeout 60 gh api "repos/$GITHUB_REPOSITORY/actions/workflows/validation.yml/runs?branch=main&event=push&status=completed&per_page=1" \
-                 --jq '.workflow_runs[0].conclusion') || main=unknown  # an error or a timeout: the full suite
-          [ "$portee" = data ] && [ "$main" = success ] || portee=full
+          main=$(timeout 60 gh api "repos/$GITHUB_REPOSITORY/actions/workflows/suite.yml/runs?branch=main&event=workflow_dispatch&per_page=20" \
+                   > "$RUNNER_TEMP/suite.json" &&
+                 python3 "$RUNNER_TEMP/outil-base/bee.py" --registre . main-green --base "$BASE" --runs "$RUNNER_TEMP/suite.json") || main=unknown
+          [ "$portee" = data ] && [ "$main" = green ] || portee=full
           echo "portee=$portee" >> "$GITHUB_OUTPUT"
-          echo "Scope: $portee (main's last push run: $main)"
-      - name: Tests de l'outil
-        if: steps.portee.outputs.portee != 'data'
-        # ruche-0092: in parallel processes inside this job, not in more jobs (the organisation's concurrent jobs are the scarce
-        # resource); the number is set here only: GitHub's hosted runners for public repositories have 4 vCPUs (the log
-        # prints the count). Every test runs exactly once, or the step fails; the steps below run once, after it passes.
-        # Timeout: about 3 times the step's time on CI on 2 Nov 2026 (about 10 minutes); a hang stops here, not after 360.
-        timeout-minutes: 30
-        run: python3 outils/test_bee.py --processus 4
-      - name: "Tests unitaires du juge commun (sans Docker ; méta-tests dans juge-commun.yml)"
-        if: steps.portee.outputs.portee != 'data'
-        run: python3 outils/juge/test_juge.py
+          echo "Scope: $portee (main for the fast path: $main)"
       - name: Tests that read the live registry (data-only PR)
         # A data-only PR changes no code: of the tool's tests, only these may read the live registry's data (the others read
         # the frozen fixture of ruche-0093). This list is TESTS_REGISTRE_REEL in outils/test_bee.py (TestCiScope checks it),
@@ -87,3 +81,23 @@ jobs:
           # ruche-0091: the time of the PR is this run's creation, GitHub's record of the push; unreadable or malformed: refused.
           instant=$(timeout 60 gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq .created_at)
           python3 outils/bee.py verifier-pr --base "$BASE" --tete HEAD --auteur "$AUTEUR" --compte-cree-le "${compte% *}" --github-id "${compte#* }" --instant-pr "$instant"
+  suite:
+    # A code PR and every push to main: the full suite (suite.yml), after the checks above passed.
+    needs: controles
+    if: needs.controles.outputs.portee != 'data'
+    uses: ./.github/workflows/suite.yml
+  valider:
+    # The required check of main's branch rules. It always runs (a skipped required check counts as passed): it passes if the
+    # checks passed and the full suite did, or was skipped for a data-only PR.
+    needs: [controles, suite]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Everything that had to run passed
+        env:
+          CONTROLES: ${{ needs.controles.result }}
+          SUITE: ${{ needs.suite.result }}
+          PORTEE: ${{ needs.controles.outputs.portee }}
+        run: |
+          echo "Checks: $CONTROLES; full suite: $SUITE; scope: $PORTEE"
+          [ "$CONTROLES" = success ] && { [ "$SUITE" = success ] || { [ "$SUITE" = skipped ] && [ "$PORTEE" = data ]; }; }

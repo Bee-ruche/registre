@@ -8305,6 +8305,58 @@ def ci_scope(racine, base, tete):
         return "full", f"{type(e).__name__}: {e}"
 
 
+SUITE = ".github/workflows/suite.yml"
+TITRE_SUITE = "Full suite on "  # suite.yml's run-name: the commit a dispatched run tests
+LIMITE_COMMITS_DONNEES = 1000
+
+
+def dernier_commit_de_code(racine, base, limite=LIMITE_COMMITS_DONNEES):
+    """ruche-0132: the last commit of base's first-parent history that changes anything but data (ci_scope against its first
+    parent: a root commit or an empty one counts as code). None past `limite` data commits, or on any error (fails closed)."""
+    try:
+        lignes = subprocess.run(["git", "-C", str(racine), "log", "-z", "--no-renames", "--first-parent", f"--max-count={limite}",
+                                 "--format=%H %P", base, "--"], capture_output=True, check=True, text=True).stdout.split("\0")
+    except Exception:  # noqa: BLE001
+        return None
+    for commit, *parents in (ligne.split() for ligne in lignes if ligne):
+        if not parents or ci_scope(racine, parents[0], commit)[0] != "data":
+            return commit
+    return None
+
+
+def main_vert(racine, base, reponse):
+    """ruche-0132: whether main is green for the PR fast path, from one filtered read of suite.yml's latest runs on main
+    (actions/workflows/suite.yml/runs, newest first): the newest run must test main's last code commit (dernier_commit_de_code),
+    and the newest completed one must have succeeded. (True, None) or (False, reason); anything unexpected: False."""
+    try:
+        runs = [r for r in reponse["workflow_runs"] if (r["path"], r["head_branch"], r["event"]) == (SUITE, "main", "workflow_dispatch")]
+        code = dernier_commit_de_code(racine, base)
+        if not runs or not code:
+            return False, "no run of suite.yml on main" if not runs else "main's last code commit not found"
+        dernier = max(runs, key=lambda r: r["id"])
+        termines = [r for r in runs if r["status"] == "completed"]
+        if dernier["display_title"] != TITRE_SUITE + code:
+            return False, f"the newest run of suite.yml ({dernier['id']}) is not for main's last code commit {code}"
+        if not termines or (t := max(termines, key=lambda r: r["id"]))["conclusion"] != "success":
+            return False, "no completed run of suite.yml in the page" if not termines else f"suite.yml's run {t['id']}: {t['conclusion']}"
+        return True, None
+    except Exception as e:  # noqa: BLE001 - whatever goes wrong, the full suite runs
+        return False, f"{type(e).__name__}: {e}"
+
+
+def cmd_main_green(args):
+    try:
+        reponse = json.loads(pathlib.Path(args.runs).read_text(encoding="utf-8"))
+    except Exception as e:  # noqa: BLE001
+        vert, raison = False, f"{type(e).__name__}: {e}"
+    else:
+        vert, raison = main_vert(args.registre or os.environ.get("BEE_REGISTRE") or RACINE_OUTIL, args.base, reponse)
+    print("green" if vert else "red")
+    if raison:
+        print(f"full suite: {raison}", file=sys.stderr)
+    return 0
+
+
 def cmd_ci_scope(args):
     portee, raison = ci_scope(args.registre or os.environ.get("BEE_REGISTRE") or RACINE_OUTIL, args.base, args.tete)
     print(portee)
@@ -10374,6 +10426,11 @@ def construire_analyseur():
                                           "else 'full' (the full test suite runs; used by validation.yml).")
     p.add_argument("--base", required=True)
     p.add_argument("--tete", default="HEAD")
+
+    p = ajouter("main-green", cmd_main_green, "Prints 'green' if suite.yml's runs on main (a saved actions/workflows/suite.yml/runs "
+                                              "response) allow the PR fast path, else 'red' (used by validation.yml).")
+    p.add_argument("--base", required=True, help="main's commit (the PR's base)")
+    p.add_argument("--runs", required=True, help="the JSON file of the API's response")
 
     p = ajouter("acts-for", cmd_acts_for, "Prints the person a GitHub login acts for: the person of its declared agent account "
                                           "(gouvernance/comptes-agents.yaml), or the login itself (used by integration-auto).")
