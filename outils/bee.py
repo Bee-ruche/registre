@@ -3746,7 +3746,8 @@ def renvoi_hors_ruche(texte, organisation):
     sans_echappements = ECHAPPEMENT.sub(r"\1", texte)
     for base in (texte, sans_echappements, BALISE.sub("", sans_echappements)):
         nfkc = unicodedata.normalize("NFKC", base).replace("\u3002", ".")
-        for forme in (base, nfkc, re.sub(r"=\s*(\"[^\"]*\"|'[^']*')", lambda m: re.sub(r"\s", "", m[0]), nfkc)):
+        for forme in (base, nfkc, re.sub(r"=\s*(\"[^\"]*\"|'[^']*')|(?<=\]\()\s*<[^<>\n]*>|(?<=\]:)\s*<[^<>\n]*>",
+                                         lambda m: re.sub(r"\s", "", m[0]), nfkc)):  # no blank in a quoted value, <destination>
             renvoi = premier_renvoi(forme, organisation)
             if renvoi:
                 return renvoi
@@ -3779,9 +3780,10 @@ def premier_renvoi(forme, organisation):
         forges = {c for c in cles_d_adresse(adresse) if not c.startswith("site:")}
         if forges - {f"github:{organisation.casefold()}"}:
             return f"« {jeton(m)} » mène hors de {organisation} (seul son propriétaire GitHub est dans la ruche)"
-        if forges and LIEN_SUSPECT.search(m[1]):
+        forge = forges or sur_hotes(hote_de(adresse), tuple(DOMAINES_FORGES))  # even if a < or a blank hides the owner
+        if forge and LIEN_SUSPECT.search(m[1]):
             return f"« {jeton(m)} » cache où il mène (%xx, \\, /../ ou hôte suivi d'un point)"
-        if forges and (fin := fin_de_suite(forme, m.start(1), vus)) is not None:  # the rest of its run, once
+        if forge and (fin := fin_de_suite(forme, m.start(1), vus)) is not None:  # the rest of its run, once
             if LIEN_SUSPECT.search(forme[m.start(1):fin].replace("\x0b", "")):
                 return f"« {jeton(m)} » cache où il mène (%xx, \\, /../ ou hôte suivi d'un point)"
     return None
@@ -3789,7 +3791,7 @@ def premier_renvoi(forme, organisation):
 
 def fin_de_suite(forme, debut, vus):
     """Where the whitespace-delimited run holding `debut` ends in `forme`, or None if a scan from an earlier start reached it."""
-    fin = re.compile(r"(?:[^\s<]+|\x0b)*").match(forme, debut).end()
+    fin = re.compile(r"[^ \t\n\r\f]*").match(forme, debut).end()  # up to ASCII whitespace: a destination may hold <, NBSP, U+3000
     if fin in vus:
         return None
     vus.add(fin)

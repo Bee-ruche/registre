@@ -2676,6 +2676,13 @@ class TestPublier(BaseTest):
                "https://bee-ruche.github.io/www.x.org/../../upstream", "[a](https://github.com/Bee-ruche/www.x.org/../../upstream/repo)",
                "<https://github.com/Bee-ruche/www.x.org/../../upstream/repo>",
                "example.com,https://github.com/Bee-ruche/www.x.org/../../upstream/repo"],
+        # Round 5: a link's run goes on past <, a Unicode space or (in an angle destination) a blank; a hidden owner still has a run.
+        "F4": ["[x](https://github.com/Bee-ruche/a<b/../../upstream/repo)", "[x](<https://github.com/Bee-ruche/a b/../../upstream/repo>)",
+               "[x](<https://github.com/Bee-ruche/a\tb/../../upstream/repo>)", "[x](https://github.com/Bee-ruche/a\u00a0b/../../upstream/repo)",
+               "[x](https://github.com/Bee-ruche/a\u3000b/../../upstream/repo)", '<a href="https://github.com/Bee-ruche/a<b/../../upstream/repo">x</a>',
+               "[x][1]\n\n[1]: <https://github.com/Bee-ruche/a b/../../upstream/repo>", "![x](https://github.com/Bee-ruche/a<b/../../upstream/repo)",
+               "[x](https://bee-ruche.github.io/a<b/../../upstream/repo)", "[x](https://github.com/<x/../upstream/repo)",
+               "[x](<https://github.com/ /../upstream/repo>)"],
         # GitHub-owned hosts: github.dev reads like github.com; a shortener or an editor does not say where it leads.
         "hôtes": ["https://github.dev/upstream/repo", "https://vscode.dev/github/upstream/repo", "https://vscode.dev/github/Bee-ruche/registre",
                   "https://git.io/abc", "https://git.io/Bee-ruche"],
