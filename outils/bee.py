@@ -28,7 +28,7 @@ import re
 import subprocess
 import sys
 import unicodedata
-from collections import defaultdict
+from collections import Counter, defaultdict
 
 try:
     import yaml
@@ -4433,10 +4433,9 @@ def sur_la_liste(cles, liste):
 
 # Retrait demandé (commandement 10, ruche-0048) : distinct du refus, il ne touche pas à la liste de non-contact sans --non-contact.
 CHEMIN_RETRAITS, MARQUE_RETRAIT, PONCTUATION = "gouvernance/retraits.yaml", "[retiré]", "\"'«»“”‘’()[]{}<>.,;:!?*_`… \t\n\r"
-# Réglages du conseil : une empreinte qui nomme plus de 8 passages est trop courante pour une personne ; 40 passages par retrait ;
-# 40 passages sur 7 jours glissants, tous retraits confondus (ruche-0116 : lus dans gouvernance/retraits.yaml, champ passages).
+# Réglages du conseil : une empreinte qui nomme plus de 8 passages est trop courante pour une personne ; 40 passages par retrait.
 RETRAIT_PASSAGES_MAX, RETRAIT_TOTAL_MAX, MARQUE_COURTE = 8, 40, "…"  # « … » quand la marque dépasserait une borne
-RETRAIT_SEMAINE_MAX = 40
+RETRAIT_SEMAINE_MAX = 40  # ruche-0116 : 40 passages sur 7 jours glissants, tous retraits confondus (le champ passages de chacun)
 ELISION = re.compile(r"(?is)((?:[dlcjmnst]|qu|jusqu|lorsqu|puisqu)['’])?(.+?)(['’]s)?")
 # Ce qu'un retrait parcourt, par sorte (fichiers, schéma, textes libres) ; jamais le message d'une invitation, docs/ ni arbre/.
 PARCOURS = {"taches": (CHEMIN_TACHE, "tache", {"titre", "contexte", "critere_acceptation", "hors_perimetre", "texte"}),
@@ -5295,22 +5294,18 @@ def probleme_demande(reg, entree):
     return None
 
 
-def probleme_passages(reg, trouves, entree, anciens):
-    """None, ou pourquoi ces passages ({lieu: passages} par fichier) ne se retirent pas : la commande et la porte en jugent de même ;
-    entree.passages les compte, et ceux des retraits `anciens` des 7 jours qui précèdent s'y ajoutent (ruche-0116)."""
+def probleme_passages(reg, trouves, entree, anciens, instant):
+    """None, ou pourquoi ces passages ({lieu: passages} par fichier) ne se retirent pas : la commande et la porte en jugent de même."""
     passages = [p for t in trouves for v in t.values() for p in v]
-    if entree.get("passages") != len(passages):
+    if entree.get("passages") != len(passages):  # ruche-0116 : ceux des commentaires signalés compris
         return f"passages : {len(passages)}, le nombre de passages que retire la PR"
-    try:
-        debut = en_iso(dt.datetime.fromisoformat(str(entree["le"]).replace("Z", "+00:00")) - dt.timedelta(days=7))
-    except ValueError:
-        return "le : un instant réel"
-    if len(passages) + sum(r.get("passages", 0) for r in anciens if str(r.get("le")) > debut) > RETRAIT_SEMAINE_MAX:
-        return f"plus de {RETRAIT_SEMAINE_MAX} passages en 7 jours glissants, tous retraits confondus ({CHEMIN_RETRAITS})"
     if max((sum(e in p[1] for p in passages) for e in {e for p in passages for e in p[1]}), default=0) > RETRAIT_PASSAGES_MAX:
         return f"une empreinte nomme plus de {RETRAIT_PASSAGES_MAX} passages : trop courante pour une personne"
     if len(passages) > RETRAIT_TOTAL_MAX:
         return f"plus de {RETRAIT_TOTAL_MAX} passages en un retrait"
+    debut = en_iso(instant - dt.timedelta(days=7) - TOLERANCE_DATE)  # depuis l'heure de la PR ; un `le` antérieur a pu être antidaté de 2 h
+    if len(passages) + sum(r.get("passages", 0) for r in anciens if str(r.get("le")) > debut) > RETRAIT_SEMAINE_MAX:
+        return f"plus de {RETRAIT_SEMAINE_MAX} passages en 7 jours glissants, tous retraits confondus ({CHEMIN_RETRAITS})"
     protegees = empreintes_protegees(reg)
     if any(empreintes_passage(m.strip(PONCTUATION)) & protegees for p in passages for m in p[2].split()):
         return "un passage retiré contient un pseudo de la ruche, un projet ou un numéro"
@@ -5355,17 +5350,18 @@ def verifier_retrait(reg, base, tete, changements, auteur, est_conseil, instant)
             elif statut_git == "M" and None not in (ancien, nouveau) and sorte_parcourue(chemin) and nouveau != ancien:
                 tete_d, (_, apres_d, t) = charger_texte_yaml(nouveau, chemin), retrait_de(reg, chemin, ancien, entree)
                 trouves.append(t)
-                anciens_c = set(commentaires_yaml(ancien))  # ruche-0116 : un commentaire qui la nomme, supprimé ou ses passages marqués
-                ok = tete_d == apres_d and set(commentaires_yaml(nouveau)) <= anciens_c | {passages_retires(c, empreintes) for c in anciens_c} and (
+                ca, cn, t["#"] = Counter(commentaires_yaml(ancien)), Counter(commentaires_yaml(nouveau)), []  # ruche-0116 : multi-ensembles
+                marques = Counter(passages_retires(c, empreintes, t["#"]) for c in (ca - cn).elements())  # tel quel s'il ne la nomme pas
+                ok = tete_d == apres_d and not marques & (ca - cn) and not (cn - ca) - marques and (  # ôté : il la nommait ; ajouté : marqué
                     sorte_parcourue(chemin) not in ("debats", "invitations") or nouveau == texte_apres(chemin, ancien, None, tete_d, set()))
         if not ok:
             problemes.append(f"{chemin} : un retrait demandé ne change, dans les fichiers qu'il parcourt, que les passages qui nomment "
                              f"la personne (une empreinte consignée), chacun devenu {MARQUE_RETRAIT} (bee retirer-donnees l'écrit)")
     if not autres:
         problemes.append(f"{CHEMIN_RETRAITS} : un retrait qui ne retire rien ne se consigne pas")
-    if probleme := probleme_passages(reg, trouves, entree, anciens):
+    if probleme := probleme_passages(reg, trouves, entree, anciens, instant):
         problemes.append(f"{CHEMIN_RETRAITS} : {probleme}")
-    if reste := sorted(balayer(reg, entree)[0]):
+    if reste := sorted({*(b := balayer(reg, entree))[0], *(c for c, _ in b[1])}):  # ruche-0116 : un commentaire compris
         problemes.append(f"{', '.join(reste[:5])} : nomment encore la personne (une empreinte consignée) : bee retirer-donnees les retire")
     return problemes
 
@@ -8128,10 +8124,12 @@ def cmd_retirer_donnees(args):
     if probleme := probleme_demande(reg, entree):
         raise ErreurBee(f"retrait refusé : {probleme}")
     resultats, commentaires = balayer(reg, entree)
-    entree["passages"] = sum(len(v) for r in resultats.values() for v in r[3].values())
-    if probleme := probleme_passages(reg, [r[3] for r in resultats.values()], entree, donnees["retraits"][:-1]):
+    par_fichier = [r[3] for r in resultats.values()] + [{"#": vus} for c in {c for c, _ in commentaires} for x in commentaires_yaml(
+        (reg.racine / c).read_text(encoding="utf-8")) if passages_retires(x, set(entree["empreintes"]), vus := []) != x]  # ruche-0116
+    entree["passages"] = sum(len(v) for t in par_fichier for v in t.values())
+    if probleme := probleme_passages(reg, par_fichier, entree, donnees["retraits"][:-1], maintenant()):
         raise ErreurBee(f"retrait refusé : {probleme}")
-    if not resultats and not args.non_contact:
+    if not entree["passages"] and not args.non_contact:
         raise ErreurBee("rien ne nomme ces identifiants : il n'y a rien à retirer, ni à consigner")
     for chemin, (_, _, _, trouves) in resultats.items():  # où, jamais le texte : le fichier, le champ, le n° du mot
         print(f"  {chemin} : " + " ; ".join(f"{'/'.join(map(str, lieu))} mot(s) {', '.join(str(p[0]) for p in v)}" for lieu, v in trouves.items()))
