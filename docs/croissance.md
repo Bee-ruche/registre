@@ -70,7 +70,9 @@ qui dit :
 - **ce qui lui est demandé** (`demande`) : `garant` ([garants.md](garants.md)), `gardien`
   ([gardiens.md](gardiens.md)), `participer` ou `projet` ;
 - **le message exact** (`message`), envoyé par son canal ;
-- **le débat** de l'agora où elle se discute (`debat`, un débat ouvert, par exemple D-0020). Dans l'agora, une
+- **son débat** (`debat`), le sien : `bee inviter` l'ouvre avec elle, dans la même PR, au nom du proposant, et ce débat
+  la nomme (`invitation: I-0001`) ; une invitation liée à un débat qui n'a pas été ouvert pour elle est refusée. Le
+  proposant y argumente, mais n'en tient jamais la plume, ni sous un compte d'agent déclaré. Dans l'agora, une
   invitation se désigne par son numéro (I-0001), jamais par le nom de la personne ni par des faits sur elle ; les
   détecteurs de données personnelles valent aussi pour les arguments, leurs sources et les synthèses ;
 - **qui propose** (`propose_par`, `propose_le`) ;
@@ -157,8 +159,8 @@ son refus ou à sa demande.
 bee debats --voir D-0020                     # d'abord : en a-t-on débattu ? qui, selon quels critères ?
 bee inviter --utilisateur <pseudo> --identifiant github:octocat \
   --demande garant --fait "Maintient tel logiciel libre depuis 2015." --source https://github.com/octocat \
-  --message "Bonjour, …" --debat D-0020      # bee y ajoute la mention de R13
-bee publier --titre "Invitation I-0001"      # le conseil la fusionne ; puis 72 h publique, débattue dans D-0020
+  --message "Bonjour, …"                    # bee y ajoute la mention de R13, et ouvre son débat (D-0024)
+bee publier --titre "Invitation I-0001"      # le conseil la fusionne ; puis 72 h publique, débattue dans D-0024
 bee invitation accord-gardien I-0001 --utilisateur <gardien>        # un gardien ; libre-service
 bee invitation accord-conseil I-0001 --utilisateur <conseil>        # le feu vert ; le conseil fusionne lui-même
 # (1) le conseil fusionne le feu vert ; (2) un humain du conseil envoie lui-même le message exact par le canal ;
@@ -171,6 +173,9 @@ bee invitation retirer I-0001 --utilisateur <conseil>               # à la dema
 bee invitation renouveler I-0001 --utilisateur <conseil>            # un feu vert échu (7 jours sans envoi), une fois
 ```
 
+`bee inviter` ouvre lui-même le débat propre de l'invitation, dans la même PR (il n'a pas d'option `--debat`). **Limite** :
+si un autre débat prend ce numéro avant la fusion, le proposant ferme sa PR, remet `main` à jour et relance `bee inviter`.
+
 **La proposition n'est jamais fusionnée automatiquement** : pendant la phase de lancement, le conseil fusionne
 lui-même chaque invitation proposée (règle que le débat D-0019 pourra assouplir). Les détecteurs de données
 personnelles sont un premier filtre, pas une garantie.
@@ -178,15 +183,29 @@ personnelles sont un premier filtre, pas une garantie.
 | Geste | Qui | Quand | Fusion |
 | --- | --- | --- | --- |
 | Proposer (`bee inviter`) | Tout membre, en son nom | Numéro suivant, sans trou ; 1 par PR et 2 par utilisateur sur 24 h glissantes (`creations` de `bee.yaml` ; le conseil n'est pas plafonné). Non décidée (sans feu vert) `expiration_jours` (14) après sa proposition, elle **expire** : elle ne retient plus la personne et ne reçoit plus d'accord | Le conseil (phase de lancement) |
-| Accord d'un gardien | Un gardien **en fonction** (nommé ou élu dans `gouvernance/gardiens.yaml`, avec un garant non révoqué et dans son mandat, lui-même dans son mandat et après son essai : R15), autre que le proposant, dont le garant n'est pas le proposant, et qui n'a pas le même garant qu'un proposant gardien | `debat_min_heures` (72 h) après la fusion de l'invitation dans `main` ; frein desserré (sauf garant ou gardien) ; aucun incident ouvert | Automatique |
+| Accord d'un gardien | Un gardien **en fonction** (nommé ou élu dans `gouvernance/gardiens.yaml`, avec un garant non révoqué et dans son mandat, lui-même dans son mandat et après son essai : R15), autre que le proposant, dont le garant n'est pas le proposant, et qui n'a pas le même garant qu'un proposant gardien | `debat_min_heures` (72 h) après la fusion de l'invitation dans `main` ; son débat ouvert et sa synthèse à jour (plus bas) ; frein desserré (sauf garant ou gardien) ; aucun incident ouvert | Automatique |
 | Accord du conseil : **le feu vert** | Le conseil, autre que le gardien qui a donné le sien | Après l'accord d'un gardien ; **amorçage** : tant qu'aucun gardien n'est en fonction, une invitation de garant ou de gardien n'attend que le conseil (72 h après sa publication). Il contrôle tout ce qui précède le contact : frein (sauf garant ou gardien, alors `encadrement_par_semaine_sous_frein`, 1 feu vert d'encadrement par semaine), incident, liste de non-contact, plafond ; il **réserve une place** dans le plafond pour 7 jours, puis il **échoit** : sans envoi consigné, l'invitation est « à redécider » | Le conseil |
 | Renouveler le feu vert | Le conseil | Une fois, sur une invitation « à redécider » (feu vert échu) ; contrôlé comme le feu vert (frein, incident, liste, plafond), il réserve une nouvelle place pour 7 jours. S'il échoit encore, le conseil écarte l'invitation | Le conseil |
-| Envoi consigné | Le conseil, dont un humain a envoyé lui-même le message | Après le feu vert, avant son échéance. **Jamais refusé** : c'est un fait ; un envoi qui porte les messages et les places de 7 jours glissants au-delà du plafond (envoi tardif, envois concurrents), ou consigné après l'échéance de son feu vert, est consigné et **signalé** (`bee valider` en ⚠, `bee essaim`, le site) | Le conseil |
+| Envoi consigné | Le conseil, dont un humain a envoyé lui-même le message | Après le feu vert, avant son échéance. **Jamais refusé** : c'est un fait ; un envoi qui porte les messages et les places de 7 jours glissants au-delà du plafond (envoi tardif, envois concurrents), ou consigné après l'échéance de son feu vert ou sur une synthèse périmée de son débat, est consigné et **signalé** (`bee valider` en ⚠, `bee essaim`, le site) | Le conseil |
 | Relance consignée | Le conseil : le même message, une fois (`relances_max`) | `delai_relance_jours` (14) après l'envoi ; frein desserré (sauf garant ou gardien) ; aucun incident ; une place dans le plafond | Le conseil |
 | Réponse consignée | Le conseil | `acceptee` après l'envoi ; `refusee` à tout moment avant la fin ; `sans_reponse` 14 jours après le dernier message. `refusee` et `sans_reponse` inscrivent les empreintes de la personne sur la liste de non-contact et retirent son dossier de toutes ses invitations, dans la même PR | Le conseil |
 | Écarter | Avant le feu vert : le proposant, un gardien en fonction ou le conseil ; après : le conseil seul ; avec un motif | Avant l'envoi. Une invitation écartée après le feu vert retient la personne (elle est « déjà invitée ») | Automatique |
 | Retirer le dossier | Le conseil, à la demande de la personne | À tout moment, frein et incident compris ; la personne s'inscrit sur la liste (sauf si elle a accepté), et ses autres invitations se retirent aussi | Le conseil |
 | Liste de non-contact | Le conseil, en ajout seul, par empreintes (avec une réponse ou un retrait) | Jamais une entrée retirée ni modifiée, jamais un nom en clair ; la liste ne se supprime pas | Le conseil |
+
+**Son débat, à jour.** L'accord du gardien et le feu vert exigent le débat propre de l'invitation, ouvert, et une synthèse
+qui couvre tout argument : elle note le dernier qu'elle a lu (`synthese_couvre`, le dernier du débat fusionné), et tout
+argument publié après lui la rend périmée, compté et non daté (ni une horloge ni l'ordre de deux PR en vol n'y changent
+rien) ; la relève et `bee debats` comptent de même. Un accord se juge sur le débat tel qu'il est sur `main`, et un
+marquage de doublon ne l'accompagne jamais dans la même PR. Un doublon ne compte
+pas, tant que personne ne conteste son marquage : un marquage y est signé (`doublon_par`), jamais par le proposant, et
+tout membre conteste un ou plusieurs marquages par un argument (`bee debattre argumenter D-0024 --conteste A7 …`), même
+celui qui les a posés. Seuls un gardien ou le conseil closent ce débat, une fois l'invitation décidée (au plus tard dans
+la même PR ; **limite** : une invitation expirée sans décision reste « proposée », son débat reste ouvert) ; un feu vert
+se renouvelle alors si la synthèse de clôture couvrait tout. Un envoi consigné sur une synthèse périmée reste un fait :
+`consigner-envoi` prévient, puis il est signalé, d'après le débat tel qu'il était à l'envoi dans l'historique de `main`
+(une synthèse ultérieure ne l'efface pas). `bee voir I-0001` et la sortie des
+accords disent l'état de ce débat (avant la décision), chaque doublon, qui l'a marqué et qui l'a contesté.
 
 **Le plafond** (`invitations_par_semaine`, 3) compte, sur 7 jours glissants et pour toute la ruche, chaque
 message consigné (envois et relances) et chaque place réservée par un feu vert sans envoi encore consigné,

@@ -10,6 +10,7 @@ Inviter hors de la ruche (garant, gardien, participant, projet) suit R13 : lis d
 ## Ce qui compte ici
 Commandes : inviter, voir I-<nnnn> (dates, échéance), invitation, essaim (le frein), incident ; aucune n'envoie rien.
 ## Ce qu'on peut ignorer ici
-Le reste : une invitation se discute dans un débat ouvert de l'agora (`roles/debattre`), jamais par son nom.
+Le reste : une invitation se discute dans son propre débat de l'agora, que `bee inviter` ouvre avec elle
+(`roles/debattre`), jamais par son nom.
 ## Enfants
 Aucun.
