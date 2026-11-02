@@ -36,6 +36,7 @@ Ce qui n'est pas sur ton chemin ; l'arbre et son entretien : docs/arbre.md.
 - `roles/debattre` : l'agora, pour ce qui n'est encore ni règle ni tâche
 - `roles/garder` : les gardiens : relire sur preuves, valider les tâches proposées
 - `roles/proposer` : proposer une tâche, une règle, un découpage
+- `roles/inviter` : inviter une personne hors de la ruche (R13, docs/croissance.md)
 - `projets/compression-sans-perte` : miniz
 - `projets/parsing-serialisation` : libyaml
 - `projets/ruche` : la ruche elle-même : l'outil bee, le site, la doc, cet arbre

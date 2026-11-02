@@ -129,7 +129,8 @@ pour toujours ; un retrait demandé retire ses données sans l'y inscrire, et el
   sources, message, motif d'un `homonyme`) par « retiré : refus », et garde le numéro, les dates, la demande,
   le statut, le débat et le proposant ; au silence (`sans_reponse`), de même, « retiré : sans réponse ». Le
   conseil fait de même quand la personne demande, à tout moment, à ne plus être contactée (`bee invitation retirer`,
-  « retiré : demande », le motif d'un écart compris) : c'est un refus, elle s'inscrit aussi sur la liste, sauf si elle a accepté.
+  « retiré : demande », le motif d'un écart compris) : c'est sa demande de ne plus être contactée, distincte d'un
+  retrait de ses données (plus bas) ; elle s'inscrit aussi sur la liste, sauf si elle a accepté.
   Un retrait au motif « refus » ou « sans réponse » suit un refus ou un silence réel de la même personne (dans
   la même PR, ou déjà sur la liste) ; sinon, le seul motif est « demande ».
   **Toutes ses invitations** se retirent en même temps, quel que soit leur statut (expirée, écartée, en
@@ -161,7 +162,8 @@ pour toujours ; un retrait demandé retire ses données sans l'y inscrire, et el
   relecteur de la PR de la refuser) ; `docs/`, que le conseil modifie lui-même, et les sources de l'invitation d'un tiers en sont hors.
 - **Ce que garde l'historique.** Après un refus, un caviardage ou un retrait demandé, l'historique git garde
   l'ancien contenu ; seul un effacement de l'historique, hors de portée de la ruche, l'en ôterait. Le conseil n'y
-  fait rien d'automatique, et l'historique n'est pas réécrit.
+  fait rien d'automatique, et l'historique n'est pas réécrit. La réponse du conseil le dit à la personne : l'historique
+  git du registre garde l'ancien texte, et il n'est pas réécrit.
 - **Un site, une personne.** Un site se compare sur son domaine enregistrable : les deux derniers labels
   (`blog.exemple.org` est `exemple.org`), les trois derniers sous une courte liste de suffixes à deux niveaux
   (`co.uk`, `com.au`…). **Limite** : sans la liste publique des suffixes, un suffixe à deux niveaux absent de
@@ -264,8 +266,10 @@ jamais après la proposition, et le gardien et le conseil vérifient que le mess
 - **Un incident ouvert** : une entrée de `gouvernance/incidents.yaml` (schéma `schemas/incidents.schema.json` :
   `id` INC-<nnnn>, `titre`, `ouvert_le`, puis `clos_le` et `issue`) sans `clos_le`, ou dont le `clos_le` n'est
   pas passé (`bee valider` refuse une date future). Le conseil l'ouvre et le clôt ; un gardien qui constate un
-  écart (message non décidé, plainte, abus) le lui signale. Un fichier illisible compte comme un incident
-  ouvert.
+  écart (message non décidé, plainte, abus) le lui signale : `bee incident --utilisateur <gardien> --titre "…"`
+  l'inscrit (au numéro suivant, un titre d'une ligne, sans donnée personnelle), par une PR ordinaire que la
+  porte accepte d'un gardien en fonction et que le conseil fusionne ; le frein s'applique dès cette fusion.
+  Un fichier illisible compte comme un incident ouvert.
 
 Le conseil fusionne les feux verts un à un, chacun à jour de `main` : la CI revalide alors le plafond sur
 l'état réel. Deux envois concurrents qui le dépassent quand même sont consignés et signalés, jamais refusés.

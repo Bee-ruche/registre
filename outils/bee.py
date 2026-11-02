@@ -1465,10 +1465,10 @@ def tableau_essaim(reg, instant=None, jours_notes=7):
     debats = [resume_debat(d) for _, d in reg.debats.values() if isinstance(d, dict) and d.get("statut") == "ouvert"]
     debats.sort(key=lambda x: (str(x["derniere_activite"] or ""), x["id"] or ""), reverse=True)
     # R13 : les invitations en cours (ni acceptées, ni refusées, ni sans réponse, ni écartées) et l'état du frein.
-    frein = etat_frein(reg, instant)
-    invitations = [resume_invitation(i, instant, frein) for _, (_, i) in sorted(reg.invitations.items())
+    frein, conf = etat_frein(reg, instant), config_croissance(reg)
+    invitations = [resume_invitation(i, conf, instant, frein) for _, (_, i) in sorted(reg.invitations.items())
                    if isinstance(i, dict) and etat_invitation(i) in ("proposee", "decidee", "envoyee", "relancee")
-                   and not expiree(i, instant)]
+                   and not expiree(i, instant, conf)]
     return {"en_cours": en_cours, "en_relecture": relecture, "courses": courses, "notes": notes[:15], "debats": debats,
             "invitations": invitations, "frein": frein}
 
@@ -2907,6 +2907,12 @@ def montrer(texte):
     return re.sub(r"(?m)^(\s*)::", r"\1: :", texte)
 
 
+def montrer_ligne(texte):
+    """montrer, sur une seule ligne : un saut de ligne s'écrit « \\n » ; un champ d'une ligne (identifiant, canal, demande) ne
+    fabrique pas une ligne qui imiterait bee (revue de ruche-0052)."""
+    return montrer(texte).replace("\n", "\\n")
+
+
 CLE_VERDICT = re.compile(r"[A-Za-z0-9_.-]{1,80}")
 
 
@@ -4219,14 +4225,35 @@ def incidents_ouverts(reg, instant=None):
             if not (isinstance(i, dict) and (clos := _instant_ou_rien(i.get("clos_le"))) and clos <= limite)]
 
 
+def incident_suivant(liste):
+    """L'identifiant du prochain incident (bee incident, et la porte pour un gardien) : celui qui suit le plus grand déjà écrit,
+    sous la forme INC-<nnnn> ; None au-delà d'INC-9999 (le conseil décide alors de la suite)."""
+    n = 1 + max((int(i["id"][4:]) for i in liste if isinstance(i, dict) and re.fullmatch(r"INC-[0-9]{4}", str(i.get("id")))), default=0)
+    return f"INC-{n:04d}" if n <= 9999 else None
+
+
+def titre_incident_refuse(titre):
+    """None si le titre d'un incident signalé est recevable (bee incident, et la porte pour un gardien : revue de ruche-0052, B) :
+    une seule ligne, 300 caractères au plus, rien de caché ni de personnel, contrôlé comme ce qui sort de la ruche ; sinon la
+    raison. Limite : un nom de personne n'est pas reconnu ; une invitation se désigne par son numéro."""
+    if isinstance(titre, str) and re.search(r"[\r\n]", titre):
+        return "titre : une seule ligne"
+    return texte_sortant_refuse(titre, "titre", 300)
+
+
 def expiree(inv, instant, conf=None):
     """Une invitation non décidée expire (seconde revue adverse, G1) : expiration_jours après sa proposition, elle ne retient
     plus la personne et ne reçoit plus d'accord ; on en propose une nouvelle."""
     if not isinstance(inv, dict) or etat_invitation(inv) != "proposee":
         return False
+    return bool(fin := expiration(inv, conf)) and instant > fin
+
+
+def expiration(inv, conf=None):
+    """L'échéance d'une invitation non décidée, l'instant où elle expire (expiree ; bee voir) ; None sans date de proposition."""
     jours = (conf or {}).get("expiration_jours", CROISSANCE_DEFAUT["expiration_jours"])
     propose = _instant_ou_rien(inv.get("propose_le"))
-    return bool(propose) and instant > propose + dt.timedelta(days=jours)
+    return propose + dt.timedelta(days=jours) if propose else None
 
 
 def feu_vert(inv):
@@ -4827,17 +4854,18 @@ SUITE_INVITATION = {"decidee": "l'envoi (feu vert donné), par un humain du cons
                     "relancee": "une réponse ; sinon, sans réponse et la liste de non-contact"}
 
 
-def resume_invitation(inv, instant=None, frein=None):
-    """L'état d'une invitation en une ligne de données (bee essaim, site, API) ; « expiree » : non décidée à temps ;
-    « a_redecider » : feu vert échu sans envoi (troisième revue adverse, C8). `frein` (etat_frein) : sous un incident ou un
-    frein qui l'arrête, une invitation décidée n'attend rien, pas même l'envoi."""
+def resume_invitation(inv, conf, instant=None, frein=None):
+    """L'état d'une invitation en une ligne de données (bee essaim, bee voir, site, API) ; « expiree » : non décidée à temps ;
+    « a_redecider » : feu vert échu sans envoi (troisième revue adverse, C8). `conf` (config_croissance) : l'échéance est
+    celle de bee.yaml, comme à la porte (revue de ruche-0052, A). `frein` (etat_frein) : sous un incident ou un frein qui
+    l'arrête, une invitation décidée n'attend rien, pas même l'envoi."""
     instant = instant or maintenant()
     etat = etat_invitation(inv)
     attend = (("l'accord du conseil" if "accord_gardien" in inv else "l'accord d'un gardien") if etat == "proposee"
               else SUITE_INVITATION.get(etat))
     if etat == "decidee" and feu_vert(inv):
         attend = f"{attend}, avant le {en_iso(feu_vert(inv) + SEMAINE)} (échéance du feu vert)"
-    if expiree(inv, instant):
+    if expiree(inv, instant, conf):
         etat, attend = "expiree", "rien : non décidée à temps, elle ne retient plus la personne"
     elif feu_vert_echu(inv, instant):
         etat = "a_redecider"
@@ -5575,6 +5603,34 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
             problemes += refus
             continue
 
+        if chemin == "gouvernance/incidents.yaml" and not est_conseil and status and auteur in gardiens_en_fonction(reg):
+            # R13, frein : un gardien en fonction à l'heure de la PR ajoute un incident ouvert, tel que l'écrit bee incident (revue
+            # de ruche-0052, B) : en fin de liste, au numéro suivant, id, titre et ouvert_le seulement, un titre d'une ligne ni
+            # caché ni personnel, daté de l'heure de la PR, le fichier sous sa forme canonique (ni commentaire ni remplissage).
+            # Le conseil fusionne.
+            natures.append("incident")
+            avant, apres = ((x or {}).get("incidents") if isinstance(x or {}, dict) else None for x in (ancien, nouveau))
+            # Sur la base, le fichier est absent, ou lisible et tient une liste (revue de ruche-0052) : sinon le conseil le répare
+            # d'abord, comme bee incident le dit ; « incidents: » vide ou illisible ne se remplace pas par un seul incident.
+            exiger(statut_git == "A" or isinstance(avant, list), f"{chemin} illisible sur main : le conseil le répare d'abord (bee incident)")
+            ajout = apres[-1] if isinstance(apres, list) and apres and isinstance(apres[-1], dict) else {}
+            suivant = incident_suivant(avant if isinstance(avant, list) else [])
+            exiger(isinstance(apres, list) and apres[:-1] == (avant or []) and set(ajout) == {"id", "titre", "ouvert_le"}
+                   and ajout["id"] == suivant,
+                   f"{chemin} : un gardien n'y ajoute qu'un incident ouvert, en fin de liste, au numéro suivant "
+                   f"({suivant or 'aucun : INC-9999 est le dernier, le conseil décide'}), avec id, titre et ouvert_le seulement (bee incident)")
+            for probleme in ((titre_incident_refuse(ajout.get("titre")), probleme_date_pr(ajout.get("ouvert_le"), "ouvert_le", instant))
+                             if ajout else ()):
+                exiger(probleme is None, f"{chemin} : {probleme} (bee incident)")
+            sortie = subprocess.run(["git", "-C", str(reg.racine), "cat-file", "blob", f"{tete}:{chemin}"], capture_output=True)
+            try:
+                canonique = rendu_invitation(nouveau, chemin).encode("utf-8") if isinstance(nouveau, dict) else None
+            except ErreurBee:
+                canonique = None
+            exiger(sortie.returncode == 0 and sortie.stdout == canonique,
+                   f"{chemin} : le fichier n'est pas exactement sous la forme qu'écrit bee incident (commentaire, autre mise en forme) : "
+                   "écrivez-le avec bee incident")
+            continue
         if not est_conseil and correspond(chemin, CHEMINS_OUTILLAGE):
             # Tâches de la ruche (projets/ruche.yaml) : tout membre peut proposer une PR d'outillage du registre.
             # Elle n'est jamais fusionnée automatiquement (« outillage » n'est pas en libre-service) : un gardien
@@ -5996,9 +6052,16 @@ def cmd_voir(args):
     if ID_INVITATION.match(str(args.tache)):
         # Une invitation (R13) : son état calculé, ses identités déclarées et la consigne d'accord, puis ses données.
         _, inv = reg.invitation(args.tache)
-        resume = resume_invitation(inv, frein=etat_frein(reg))
-        print(f"{resume['id']} : {resume['statut']} ; demande : {resume['demande']} ; attend : {resume['attend']}")
+        conf = config_croissance(reg)
+        resume = resume_invitation(inv, conf, frein=etat_frein(reg))
+        print(montrer_ligne(f"{resume['id']} : {resume['statut']} ; demande : {resume['demande']} ; attend : {resume['attend']}"))
         print("\n".join(lignes_identites(inv)))
+        # Les dates relues par bee (jamais la valeur brute du fichier : revue de ruche-0052, C) ; l'échéance de la porte.
+        date = lambda m: en_iso(m) if m else "?"  # noqa: E731
+        print(f"proposée le {date(_instant_ou_rien(inv.get('propose_le')))}"
+              + (f" (échéance sans décision : {date(expiration(inv, conf))})" if etat_invitation(inv) == "proposee" else "")
+              + " ; accord du gardien : " + (date(_instant_ou_rien(bloc_de(inv, "accord_gardien").get("le"))) if "accord_gardien" in inv else "aucun")
+              + f" ; feu vert du conseil : {date(v) if (v := feu_vert(inv)) else 'aucun'}")
         print()
         print(cadre_donnees(inv, DEBUT_DONNEES.format(id=inv.get("id"))))
         return 0
@@ -7151,8 +7214,9 @@ def lignes_identites(inv):
     """Les identités déclarées d'une invitation, et la consigne d'accord (bee invitation, bee voir)."""
     personne = inv.get("personne") if isinstance(inv.get("personne"), dict) else {}
     autres = inv.get("autres_identites") if isinstance(inv.get("autres_identites"), list) else []
-    return [f"Identifiant : {_nettoyer(personne.get('identifiant', inv.get('personne')))} ; canal : {_nettoyer(personne.get('canal', '-'))}",
-            "Autres identités déclarées : " + (", ".join(_nettoyer(x) for x in autres) if autres else "aucune"),
+    # Par montrer (revue de ruche-0052) : ni commande de workflow (« :: » en début de ligne, « ##[ »), ni échappement du terminal.
+    return [montrer_ligne(f"Identifiant : {personne.get('identifiant', inv.get('personne'))} ; canal : {personne.get('canal', '-')}"),
+            montrer_ligne("Autres identités déclarées : " + (", ".join(str(x) for x in autres) if autres else "aucune")),
             CONSIGNE_IDENTITES]
 
 
@@ -7273,6 +7337,31 @@ def cmd_retirer_donnees(args):
     print(f"✓ Retrait demandé consigné dans {CHEMIN_RETRAITS}, par empreintes ; passages retirés : {', '.join(reg.rel(c) for c in changes) or 'aucun'}. "
           "La liste de non-contact n'est pas touchée. L'historique git garde l'ancien contenu : seul un effacement de l'historique, "
           "hors de portée de la ruche, l'en ôterait.\n  Publiez par une PR du conseil (pas bee publier), sans nommer la personne.")
+    return 0
+
+
+def cmd_incident(args):
+    # R13, frein : un gardien en fonction ou le conseil inscrit un incident ouvert, tel que la porte l'accepte d'un gardien
+    # (verifier_pr) ; le frein le compte dès que le conseil a fusionné la PR.
+    reg, chemin, u = Registre(args.registre), "gouvernance/incidents.yaml", args.utilisateur
+    liste = reg.incidents.get("incidents") if isinstance(reg.incidents, dict) else None if (reg.racine / chemin).exists() else []
+    if u not in gardiens_en_fonction(reg) | reg.conseil:
+        raise ErreurBee(f"{u} n'est ni un gardien en fonction ni du conseil : signalez-leur l'écart (R13)")
+    if not isinstance(liste, list):
+        raise ErreurBee(f"{chemin} illisible : le conseil le répare d'abord")
+    ident = incident_suivant(liste)
+    if probleme := titre_incident_refuse(args.titre) or (None if ident else "INC-9999 est le dernier numéro : le conseil décide de la suite"):
+        raise ErreurBee(probleme)
+    # La réécriture canonique (la seule forme que la porte accepte d'un gardien) perd les commentaires du fichier : on le dit.
+    texte = (reg.racine / chemin).read_text(encoding="utf-8") if (reg.racine / chemin).exists() else ""
+    commentaires = texte != rendu_invitation({"incidents": liste}, chemin) and any(
+        l.lstrip().startswith("#") or " #" in l for l in texte.splitlines())
+    ecrire_invitation(reg.racine / chemin, {"incidents": liste + [{"id": ident, "titre": args.titre, "ouvert_le": en_iso(maintenant())}]})
+    print(f"✓ {ident} inscrit dans {chemin}. Publiez-le par une PR ordinaire (bee publier ne l'envoie pas) : le frein s'applique dès que "
+          f"le conseil l'a fusionnée ; alors, ce qui passe : {etat_frein(Registre(args.registre))['ce_qui_passe']}.")
+    if commentaires:
+        print(f"⚠ Les commentaires de {chemin} sont perdus : bee le réécrit sous sa forme canonique. Dites-le au conseil dans la PR ; "
+              "ses notes se gardent dans les champs des incidents (titre, issue), pas en commentaire.")
     return 0
 
 
@@ -9290,6 +9379,12 @@ def construire_analyseur():
     p.add_argument("--canal", required=True, choices=("courriel", "message_prive", "issue", "discussion", "autre"))
     p.add_argument("--demande-le", required=True, help="le jour de la demande (2026-11-01)")
     p.add_argument("--reference", help="une demande publique seulement : son issue ou sa discussion sur Bee-ruche")
+
+    p = ajouter("incident", cmd_incident, "R13, frein : un gardien en fonction ou le conseil inscrit un incident (écart, plainte, abus) "
+                "dans gouvernance/incidents.yaml ; PR ordinaire : toute invitation s'arrête dès que le conseil l'a fusionnée.")
+    p.add_argument("--utilisateur", required=True)
+    p.add_argument("--titre", required=True, help="ce qui s'est passé, en une ligne de 300 caractères au plus, sans donnée personnelle "
+                                                  "(une invitation : son numéro, jamais le nom de la personne)")
 
     p = ajouter("niveaux", cmd_niveaux, "Affiche le niveau et le poids de vote de chaque membre.")
     p.add_argument("--json", action="store_true")
