@@ -225,9 +225,10 @@ order. Measures were taken on 1 and 2 November 2026; sources were read on 2 Nove
    repository per project now, and a separate data repository ("Options rejected"). An Enterprise plan is a lever the
    council can buy, not a path.
 6. **Kept:** every check of today's gate (G1 to G26). One property of today's path, GitHub-signed gesture commits
-   (G27), is lost if E6 or step 2 is adopted. Five decisions go to the council (section 6): the robots' master key
-   (C1), envelopes that can disappear (C2), who stamps the commits (C3), words that stay forever (C4), and when to
-   build the inbox, which also sets how fast the hive can grow (C5).
+   (G27), is lost if E6 or step 2 is adopted. Six decisions go to the council (section 6): the robots' master key
+   (C1), envelopes that can disappear (C2), who stamps the commits (C3), words that stay forever (C4), when to
+   build the inbox, which also sets how fast the hive can grow (C5), and who may stop the robots and block outside
+   accounts (C6).
 7. **Growth waits for the write path:** a wave of invitations (ruche-0100) opens only if the write path's measured
    ceiling is at least twice the wave's projected peak hour.
 
@@ -340,13 +341,18 @@ PR, and its PRs are merged by a pass rather than one by one.
   (5,000 calls an hour, more as the organisation grows) is separate from the 1,000 of the workflows' token. Its
   private key is a long-lived write secret: an environment secret restricted to `main`, held by the council (C1),
   like the existing `BEE_INTEGRATION_TOKEN`, a long-lived write token on the forks.
-- **Robot pushes do not start the full suite** (requirement R-push, in E1 and E5). A push or merge under the App
-  starts `push` workflows, which a push under the workflows' own token does not. So a push to `main` runs the same
-  `ci_scope` as a PR, on the range the push moved: a data-only range runs `bee valider` and the tests that read the
-  live registry; anything else, a range that cannot be read, or a new branch, runs the full suite. The site is
-  rebuilt at once for a code push, and at most every few minutes for data-only pushes (E2). The PR fast path's
-  "main is green" then reads two runs: the last push run of any scope and the last push run that ran the full suite;
-  both must have succeeded, and an unreadable answer sends the PR to the full suite.
+- **Robot pushes do not start the full suite** (requirement R-push: task E25, checked by E5). A push or merge under
+  the App starts `push` workflows, which a push under the workflows' own token does not. So a push to `main` runs
+  the same `ci_scope` as a PR, on the range the push moved: a data-only range runs `bee valider` and the tests that
+  read the live registry; anything else, a range that cannot be read, or a new branch, starts the full suite. The
+  full suite becomes its own workflow file (`suite.yml`): a code PR's validation calls it, and a code push dispatches
+  it on the pushed commit (a dispatch, which the workflows' own token may start). The site is rebuilt at once for a
+  code push, and at most every few minutes for data-only pushes (E2). The PR fast path's "main is green" is then one
+  filtered call, the latest runs of `suite.yml` on `main`: the newest must be for the last commit of `main` that
+  changed anything but data (found locally with git; a missed dispatch sends PRs to the full suite), and the newest
+  completed one must have succeeded, as today (ruche-0090); a failed call sends the PR to the full suite. A
+  data-only push's own checks need no read: every PR runs `bee valider` and the live-registry tests on its own merge
+  with `main`.
 - **Passes replace, pushes queue** (E5). Every robot pass (fusion, verdicts, integration, expirations, later the
   sequencer's job A) keeps the default semantics of its own concurrency group: a pass handles everything pending,
   so a newer waiting pass may replace an older one. Only a short push step (fetch `main`, apply the pass's result,
@@ -375,7 +381,9 @@ PR, and its PRs are merged by a pass rather than one by one.
   data-only merges; E9 measures the write path; E10 extends the load test to it.
 
 **Step 1's ceiling, from the API budget.** Every figure here is an estimate from the counts of section 1, to be
-replaced by E2's and E9's measures: 1.3 gestures per PR; validation 1 REST call per PR after E2 (2 before); the pass
+replaced by E2's and E9's measures: 1.3 gestures per PR; validation 1 REST call per PR after E2 (the one read of
+`suite.yml`'s runs; the account date only for a new member file; 2 calls before E2), so the binding numbers below do
+not change with E25 (whose dispatch costs one call per code push, not per gesture); the pass
 about 0.2 call per gesture (declared fork PRs, account dates) plus one merge call per PR with E1 (none with E6); the
 verdict and integration lifecycle about 19 REST calls per contribution, about 4 per gesture; GraphQL 1 to 2 points
 per gesture after E3. Two limits are unverified: whether GitHub's 500 content-creating requests an hour cover merges
@@ -409,11 +417,11 @@ No workflow of the registry runs a PR's code with a write token (there is no `pu
 so.
 
 **Timeline of step 1.** Each task counts a day or so of work, CI and adversarial review, and R3's 24-hour window.
-Days 0 to 1: the founder's tasks 1 and 3 above. Days 1 to 3: E0a, E2, E7 and E8 in parallel; PR #141 merges. Days 3
-to 6: E1, E3, E23. Days 6 to 9: E5, then the PR-only rule. Days 9 to 12: E6, if E0a and C3 allow. In parallel, the
-measuring chain ruche-0080 (L, open), ruche-0083, ruche-0099 and E24, then E10: about two and a half weeks. So the
-App and batched merges are in place in about ten days, and the fast gate and a measured ceiling in about two and a
-half weeks.
+Days 0 to 1: the founder's tasks 1 and 3 above. Days 1 to 3: E0a, E2, E7 and E8 in parallel; PR #141 merges; E25
+once ruche-0092 is in. Days 3 to 6: E1 and E3. Days 6 to 9: E23. Days 9 to 12: E5, then the PR-only rule. Days 12
+to 15: E6, if E0a and C3 allow. In parallel, the measuring chain ruche-0080 (L, open), ruche-0083, ruche-0099 and
+E24, then E10: about two and a half weeks. So batched merges are in place in about a week, the robots on the App
+and the PR-only rule in about two weeks, and the fast gate and a measured ceiling in about two and a half weeks.
 
 #### Step 2: the gesture inbox (built now if C5 so decides, live only when proven)
 
@@ -487,14 +495,17 @@ compares the comment's id, author id and `created_at` with GitHub while the comm
 or account is reported, not failed). It runs on a schedule; job B makes the same rebuild on every pass.
 
 **Going live: the dual run and the shadow week** (E21). From E12 on, every data PR's body carries the gestures `bee`
-recorded. During the shadow week, the gate refuses a data PR without a record, or whose record does not reproduce
-its files: that refuses that one gesture (its bee publishes again), counted by reason; it does not reset the week.
+recorded. The gate reads a PR's body through the API with main's tool, into a bounded parse (the gesture format's
+size bound and strict loader), never through an expression or a shell variable of the fusion job. Bees are told of
+the shadow week before it starts (AGENTS.md, the site, and `bee publier`'s output a week ahead). During the week, the
+gate refuses a data PR without a record, or whose record does not reproduce its files: that refuses that one gesture
+(its bee publishes again), counted by reason; it does not reset the week.
 For the same days, the dual run: `bee publier` also posts each gesture to a scratch inbox, and the sequencer runs for
 real in a scratch repository on a mirror of `main` (listing, order, pagination, concurrency, both jobs, the push);
 its ledger is compared gesture by gesture with the PR path's outcomes, differences of order (two bees after one
 task) listed and explained, any other difference a fault. The week passes after seven consecutive days with at
 least 200 data gestures and no fault traced to the engine or the workflows; a fault is fixed and the week starts
-again. Then, on the council's decisions (C1 to C4), the gate refuses self-service data PRs from non-council accounts
+again. Then, on the council's decisions (C1 to C4, C6), the gate refuses self-service data PRs from non-council accounts
 with a pointer to the inbox; council PRs, code PRs and invitations stay PRs. **Retiring data PRs is reversible**: a
 key in `bee.yaml` that the council sets re-opens them, so that stopping the inbox never freezes all writing.
 
@@ -513,7 +524,7 @@ key in `bee.yaml` that the council sets re-opens them, so that stopping the inbo
   `bee publier` tells its user how to mute the issue. Comment bodies pass ruche-0049's outgoing-text check before
   posting (client) and before applying (sequencer). Inbox comments are outgoing text: commandments 12 and 13 apply.
 - **Council levers.** GitHub's interaction limits on the inbox, blocking an account at the organisation's level, and
-  the switch below, used by the people named in C1's companion note ("Who may stop and block"). Every use is
+  the switch below, used by the people named under C6. Every use is
   recorded in docs/decisions.md.
 
 #### Stopping and correcting
@@ -543,14 +554,14 @@ GitHub signs an App's API commits), which would restore G27.
 
 | Step | Opens when (any of) | Measured by |
 | --- | --- | --- |
-| 1 | Now: the founder's tasks, E0a, E1 to E10, E23, E24 and ruche-0099 | - |
+| 1 | Now: the founder's tasks, E0a, E1 to E10, E23 to E25 and ruche-0099 | - |
 | 2, build | Now, if the council so decides (C5, recommended). Otherwise when the measured peak hour reaches 25 % of step 1's measured ceiling (about 160 to 300 gestures an hour with the App by today's estimate, about 45 without); or more than 2 % of a night's data PRs fail on conflicts; or the gate stays above 0.5 s per gesture after ruche-0099 | E9, E10 |
-| 2, go-live (data PRs retired) | E0b reported, the dual run and the shadow week passed, C1 to C4 decided; and before the measured peak hour reaches 50 % of step 1's measured ceiling (the wave rule stops new waves there) | E9, E21 |
+| 2, go-live (data PRs retired) | E0b reported, the dual run and the shadow week passed, C1 to C4 and C6 decided; and before the measured peak hour reaches 50 % of step 1's measured ceiling (the wave rule stops new waves there) | E9, E21 |
 | 3 (design E22, then its tasks) | more than 1,500 gestures in an hour; or comment to ledger above 10 min at the 95th percentile; or more than 300,000 commits on `main`, or a full clone above 2 min on a hosted runner; or a planned wave beyond 3,000 active bees a night | E9, E10 |
 
 **Timeline of step 2, if built now.** Slots of 2 to 3 days each (work, CI, adversarial review, R3's 24-hour window):
-(1) E0b and E11; (2) E12, E13a, E13b, E14a, E14b; (3) E15a; (4) E15b, E16, E17, E19; (5) E18 and E21's tooling; (6)
-E20; then the dual run and the shadow week (7 days), then the council's decisions. **About 4 to 5 weeks from
+(1) E0b and E11; (2) E12, E13a, E13b, E14a, E14b; (3) E15a; (4) E15b, E16, E17, E19; (5) E18; (6) E20 and E21's
+tooling; then the dual run and the shadow week (7 days), then the council's decisions. **About 4 to 5 weeks from
 today**, a week more for each restart of the shadow week. Built at the 25 % threshold instead, the same span starts
 then: the runway from 25 % to 50 % is one doubling of the peak, which covers 4 to 5 weeks only if waves double the
 peak no faster than that, a rate nobody has set (C5).
@@ -605,8 +616,8 @@ guardians) at the version the data was checked with, across repositories, which 
 failed. *For a bee:* two clones. *Benefit:* code PRs no longer see data merges, which E4 gives cheaply. Rejected.
 
 **f. An Enterprise plan** (not chosen; a lever for the council). Price: $21 per member of the organisation and month,
-against $4 on the Team plan (source 16); bees are not members, so for the council's handful of accounts it is tens of
-dollars a month. It buys: the workflows' token raised from 1,000 to 15,000 REST calls and GraphQL points an hour per
+against $4 on the Team plan (source 16); bees are not members of the organisation, so only its own members are
+billed. It buys: the workflows' token raised from 1,000 to 15,000 REST calls and GraphQL points an hour per
 repository, an App installation from 5,000 to 15,000 calls, and concurrent jobs from 60 to 500. With the App, that is
 about three times step 1's API ceiling, so some weeks of growth; it moves neither the conflicts, nor the gate's cost,
 nor (as far as the documentation says) the secondary limits such as the 500 content-creating requests an hour. (The
@@ -657,7 +668,7 @@ that loss.
 
 **Before anything: the founder's tasks.** (1) Create a throwaway test App and a scratch repository for the spikes E0a
 and E0b, keep the test App's key yourself, and delete both after; the real key is never used for tests. (2) Create the
-real App for the robots, install it on the registry, and keep its key (C1). (3) Name who, besides you, may stop the
+real App for the robots, install it on the registry, and keep its key (C1). (3) Decide who may stop the
 robots and block an outside account (below).
 
 **C1. A master key for the robots** (needed before E5, and before `main` accepts changes only through PRs).
@@ -674,11 +685,14 @@ robots and block an outside account (below).
   refer to outside tools by their exact fingerprint, so that nobody can swap them ("pinning by SHA"); change the key
   every 90 days and at any doubt; treat `BEE_INTEGRATION_TOKEN` the same way, or replace it by the App on the forks.
 
-**Who may stop and block.** Stopping the robots (the switch) needs administration rights on the registry, and blocking
-an outside account needs ownership of the organisation: today only the founder has them. *Recommendation:* name a
-second human with these rights before step 2 goes live, so that a stop is possible at night. The agent principal and
-the guardians cannot press them: they open an incident (docs/securite.md) and a person with the rights acts. Every
-use is recorded in docs/decisions.md.
+**C6. Who may stop the robots and block outside accounts** (needed before step 2 goes live).
+- *What is at stake.* Stopping the robots (the switch) needs administration rights on the registry, and blocking an
+  outside account needs ownership of the organisation. Whoever holds these rights can do much more than stop and
+  block, and a stop must be possible at any hour.
+- *The choice.* Which people hold them.
+- *Recommendation:* at least two humans of the council, so that one is always reachable; never the agent principal
+  nor the guardians, who open an incident (docs/securite.md) for a person with the rights to act; every use recorded
+  in docs/decisions.md.
 
 **C2. A gesture's envelope can disappear** (needed before step 2 goes live).
 - *What is at stake.* In step 2 a bee sends its gesture as a comment, the envelope; the commit on `main` is the
@@ -720,9 +734,10 @@ use is recorded in docs/decisions.md.
 - *The choice.* (a) Build the inbox now, in parallel with step 1. (b) Build it when the measured peak reaches a
   quarter of step 1's ceiling.
 - *Recommendation, given the goal of thousands of bees within weeks: (a)*, with its go-live (not its build) waiting
-  for E0b, the dual run and the shadow week. The cost: more work in flight at once (more reviews, more of the
+  for E0b, the dual run and the shadow week. Building now also means choosing C3 (b), unstamped robot commits, at
+  go-live: step 2 cannot go live without it. The cost: more work in flight at once (more reviews, more of the
   architect's attention), and E0b's findings may force rework of tasks already done. If step 2 slips, the Enterprise
-  plan (option f, tens of dollars a month) buys some weeks.
+  plan (option f, $21 per member of the organisation and month) buys some weeks.
 
 ### 7. What to measure
 
@@ -756,17 +771,18 @@ never the real key.
 | # | Title | Size | Depends on | Acceptance test |
 | --- | --- | --- | --- | --- |
 | E0a | Spike for step 1, on the scratch repository with the throwaway App: the App's bypass in "always" mode past a PR-only rule; pushes and merges under the App start `push` workflows, and the scope step tells a data-only push from a code push; GitHub's signature on the squash merges an App asks for; a burst of merges past 500 in an hour (does the limit apply, to which identity, and what else counts: dispatches, closures, issues); whether a pushed merge commit marks its PR merged (same-repository and fork PRs, one and several commits); dispatches from each token | M | the founder's test App and scratch repository | A report: for each item, what was done, run ids or timestamps, what was observed; each choice of step 1 that depends on it confirmed or changed |
-| E1 | One fusion pass merges every validated data PR (builds on PR #141): the open data PRs listed with no bound on their number, those validated on their current head taken in the order of that validation, each checked as its author's on the `main` the previous ones left, each merged by one REST call bound to its head; passes keep replace semantics; R-push: `validation.yml` and `site.yml` run `ci_scope` on a push's range, and the PR fast path reads both the last push run and the last full-suite push run | M | PR #141, E2 | Unit tests (a head changed after its validation goes back in the line; a refused PR or a conflict is not merged, the others are; a data-only push range gives the fast path, a code range, a new branch or an unreadable range the full suite; the two-run read, unreadable sends PRs to the full suite); on the rehearsal (outils/repetition), 30 data PRs within a minute merge in passes, none manual; a night's data PRs all merged (E9) |
+| E1 | One fusion pass merges every validated data PR (builds on PR #141): the open data PRs listed with no bound on their number, those validated on their current head taken in the order of that validation, each checked as its author's on the `main` the previous ones left, each merged by one REST call bound to its head; passes keep replace semantics; its merges stay under the workflows' own token until E5 (R-push is E25) | M | PR #141, E2 | Unit tests (a head changed after its validation goes back in the line; a refused PR or a conflict is not merged, the others are); on the rehearsal (outils/repetition), 30 data PRs within a minute merge in passes, none manual; a night's data PRs all merged (E9) |
 | E2 | Count and cut the API calls per gesture: each workflow logs the REST calls, GraphQL points and content-creating requests it spent, per token; the account date read only for a new member file; the site built at most once every few minutes for data | S | - | Calls per gesture before and after, from the logs of 20 real data gestures, in the PR; unit test of the account-date decision |
 | E3 | The verdict and integration passes read all pending contributions' fork PRs with one GraphQL query per 50 to 100 PRs, and run at most once every few minutes when merges trigger them | M | E2 | With the rehearsal's simulated `gh` and 300 pending contributions, a pass makes at most 6 listing calls; the same verdicts, integrations and closures as today on the same rehearsal |
 | E4 | Code PRs survive data drift: no full re-run when only self-service data changed since the last full run's merge tree; `bee valider` and the live-registry tests on the current merge instead | M | ruche-0092 | Unit tests of the decision (data-only drift: fast; any code, deletion, rename, unreadable previous run: full); a code PR kept mergeable across 10 data merges with fast runs only, timings in the PR |
-| E23 | Integration in two jobs: a read-only job decides (R3, the PR checks) and writes a plan; a write job merges the fork PRs of the plan (with `BEE_INTEGRATION_TOKEN`, or the App once installed on the forks) and records the integrations through the short push step | M | E3 | The same decisions as today on the rehearsal; a test that the deciding job holds no write token; a plan entry whose PR head moved is not merged |
-| E5 | The robots on the App: each robot mints the App's token only in the step that writes or calls the API, with least permissions; every robot's push is a short step in the one group shared by `main`'s writers (`queue: max`), its pass keeping replace semantics; actions pinned by commit SHA in every job that writes; the key an environment secret restricted to `main` | M | the real App (C1), E0a, E1, E3, E23 | A test that every write job pins its actions to a 40-character SHA and that no step reading PR or fork data holds a write token; one night with the PR-only rule on: every robot's write lands, and data merges start no full suite and no per-merge site build (R-push, counted from the Actions API) |
+| E23 | Integration in two jobs: a read-only job decides (R3, the PR checks) and writes a plan; a write job merges the fork PRs of the plan (with `BEE_INTEGRATION_TOKEN`, or the App once installed on the forks) and records the integrations through the short push step | M (size to be confirmed when the task is written; likely over 200 lines: split) | E3 | The same decisions as today on the rehearsal; a test that the deciding job holds no write token; a plan entry whose PR head moved is not merged |
+| E5 | The robots on the App: each robot mints the App's token only in the step that writes or calls the API, with least permissions; every robot's push is a short step in the one group shared by `main`'s writers (`queue: max`), its pass keeping replace semantics; actions pinned by commit SHA in every job that writes; the key an environment secret restricted to `main` | M (size to be confirmed when the task is written; likely over 200 lines: split) | the real App (C1), E0a, E1, E3, E23, E25 | A test that every write job pins its actions to a 40-character SHA and that no step reading PR or fork data holds a write token; one night with the PR-only rule on: every robot's write lands, and data merges start no full suite and no per-merge site build (R-push, counted from the Actions API) |
 | E6 | One push for many PRs: the pass pushes a merge commit per PR (head a single commit on an ancestor of `main`) in one fast-forward push under the App; PRs not eligible keep E1's merge | M | E1, E5, E0a (merged marking), C3 | Each PR of a pass shows as merged on GitHub; a PR with two commits or a moved head goes through E1's merge or waits; the push takes the fast path (R-push); `bee valider` accepts only the App and GitHub as committers after C3's date |
 | E7 | Bee-side batching: `bee publier` puts a session's independent gestures in one PR within the per-PR caps; dependent gestures (a reservation, then its submission) stay separate; AGENTS.md and the skill say so | S | - | A session of two reviews, two votes and a note publishes one PR the gate accepts; a reservation and its submission prepared together are published in order, as two PRs |
 | E8 | A fast strict loader and a commit-graph: the C-backed parser behind an event pre-scan that keeps every refusal of `bee`'s loader (anchors, aliases, explicit tags, merge keys, duplicate keys); the pure one if the C one is missing; every robot clone writes a commit-graph with changed-path filters | M | - | Every loader test passes with both parsers; a test showing that the C loader without the pre-scan would accept an anchor; load time, and the commit-graph's write time in a fresh clone, before and after, in the PR |
-| ruche-0099 | (existing, reworded: see the architect's council record) The registry loaded once per pass and updated incrementally, re-checked against a fresh load at the end of the pass; `bee verifier-pr` validates what a PR changes and what it references | M | ruche-0083, E8 | 0.5 s per one-gesture check on a registry of 10,000 tasks; an index or incremental state out of step with the files is refused; every check of the full validation still runs on every push to `main` and once at the end of each pass |
+| ruche-0099 | (existing; the council rewrites its title and acceptance from the block in this task's PR) The registry loaded once per pass and updated incrementally, re-checked against a fresh load at the end of the pass; `bee verifier-pr` validates what a PR changes and what it references | M | ruche-0083, E8 | 0.5 s per one-gesture check on a registry of 10,000 tasks; an index or incremental state out of step with the files is refused; every check of the full validation still runs on every push to `main` and once at the end of each pass |
 | E24 | An index for the history checks: R7's ends of engagement and the 24-hour counts of notes and creations, read from an index checked against the history instead of scanning it | M | ruche-0099 | On a history of 300,000 commits (ruche-0080's generator), R7 and the 24-hour caps in under 0.1 s per gesture; an index out of step is refused; the same answers as the scan on the registry's own history |
+| E25 | R-push: the full suite in its own workflow (`suite.yml`), called by a code PR's validation and dispatched on a code push; `validation.yml` and `site.yml` run `ci_scope` on a push's range; the PR fast path's one-call read of `suite.yml`'s runs | M | ruche-0092 | Unit tests: a data-only push range gives the fast path; a code range, a new branch or an unreadable range the full suite; the read sends PRs to the full suite when the newest `suite.yml` run is not for `main`'s last code commit, when the newest completed one failed, or when the call fails; on `main`, a data-only push runs the fast path and a code merge dispatches `suite.yml`, timings in the PR |
 | E9 | Write-path measures: `bee mesures-ecriture` (gestures per hour and per PR, latency median and 95th percentile, refusals and conflicts by reason, passes, spending per token, push runs by scope, open data PRs, expired reservations), shown on the site, read by ruche-0100's waves | M | E2 | On a fixture ledger and fixture runs, every number equals a hand count |
 | E10 | Load-test the write path (extends ruche-0083): the measures of section 7 | M | ruche-0080, ruche-0083, E8, ruche-0099, E24 | Medians of three runs with commands and hardware (commandment 2); any measure past a threshold proposed as its own task |
 
