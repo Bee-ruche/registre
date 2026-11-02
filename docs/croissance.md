@@ -227,11 +227,13 @@ téléphone ; ou, sans virgule de liste : `+` avec un seul séparateur, `00` sui
 un seul séparateur et un 0 initial), une donnée sensible dite de quelqu'un (âge, naissance, minorité, maladie ou
 traitement, religion, orientation, parti ou opinion politique). **Signalés** : un numéro douteux (listes de paires, bits,
 statistiques de diff, nombres pointés, neuf chiffres groupés par trois) et un mot de santé, d'opinion, d'âge ou de
-minorité ; un humain lit alors la PR avant sa fusion (`relecture_humaine`, code 3). Un nombre technique passe (un bloc,
-des milliers, une liste, une date ISO, une décimale, une adresse IP, `0x…` et les shas). Hors de la ruche et dans
+minorité ; un humain lit alors la PR avant sa fusion (`relecture_humaine`, code 3), comme pour un numéro collé à des
+lettres hexadécimales. Un nombre technique passe (un bloc, des milliers, une liste, une date ISO, une décimale, une
+adresse IP, `0x…` et les shas), sauf une décimale qui suit un mot de téléphone ou `+`, ou commence par 0 puis 1 à 9 : elle
+est lue avec son numéro ; un mot hexadécimal qui porte neuf chiffres d'affilée n'est pas un sha. Hors de la ruche et dans
 l'agora, tout numéro reste refusé, sauf `0x…` et les shas ; une date ISO qu'aucun chiffre ne touche sur sa ligne est
-écartée, et un saut de ligne ne joint deux groupes que si l'un a déjà un séparateur ou s'ils ont chacun quatre chiffres ou plus. **Limite** :
-un nombre rangé dans les métriques d'une mesure n'est pas lu (suite : les clés de métrique vérifiées contre le projet).
+écartée, et un saut de ligne ne joint deux groupes que si l'un a déjà un séparateur ou s'ils ont chacun quatre chiffres ou plus. Une mesure ne
+porte que les métriques de son projet (ou leur décompte d'instructions), et aucun nombre de neuf chiffres ou plus.
 **Question au conseil** (ruche-0047) : le dossier d'une invitation ne devrait-il devenir public qu'une fois relu par un
 humain ?
 

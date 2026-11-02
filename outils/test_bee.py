@@ -2687,6 +2687,28 @@ class TestPullRequests(BaseTest):
         self.assertIn("FUSION_AUTO=oui", texte)
         self.assertEqual(self.verifier("chloe")[0], 1, "on ne dépose pas une mesure au nom d'un autre")
 
+    def test_les_metriques_d_une_mesure_sont_celles_du_projet(self):
+        """ruche-0047: a measurement's metric is one of its project's (or its instruction count), and holds no number of 9 digits
+        or more: neither a key nor a value carries a contact detail."""
+        cid = self.soumettre_0099()
+        self.commit("soumission")
+        for nom, metriques, attendu in (
+                ("clé hors du projet", {"telephone_alice_martin": {"gain": 0.05, "au_dela_du_bruit": True}}, "métrique inconnue du projet"),
+                ("nombre démesuré", {"debit_compression_n6": {"gain": 0.05, "au_dela_du_bruit": True, "paires": 612345678}},
+                 "un nombre de 9 chiffres ou plus"),
+                ("honnête", {"debit_compression_n6": {"gain": 0.05, "au_dela_du_bruit": True, "victoires_b": 9, "paires": 10},
+                             "instructions_n6": {"gain": 0.04, "au_dela_du_bruit": True}}, None)):
+            with self.subTest(nom=nom):
+                git(self.dossier, "switch", "-qC", "mesure", "main")
+                bee.ecrire_yaml(self.dossier / f"mesures/{cid}/bruno.yaml", {
+                    "contribution": cid, "soumise_par": "bruno", "le": os.environ["BEE_MAINTENANT"], "base": "2948eeb",
+                    "candidat": "839b676", "config": {"architecture": "arm64"}, "metriques": metriques})
+                self.commit()
+                code, texte = self.verifier("bruno", "--fusion-auto")
+                self.assertEqual(code, 1 if attendu else 0, texte)
+                self.assertIn(attendu or "FUSION_AUTO=oui", texte)
+                git(self.dossier, "switch", "-qf", "main")
+
 
 class TestPublier(BaseTest):
     """bee publier avec de vrais dépôts git locaux et un faux gh qui journalise ses appels."""
@@ -10389,7 +10411,8 @@ TECHNIQUES_0047 = (
     "run 41075923604, PR #16", "commit 55ef68e935b0cf2d9efa6999063b2c9d1054c49c", "miniz-0017-c1, miniz-0018 et miniz-0039",
     "It is a minor, backwards compatible change.", "The bump is a minor; see CHANGELOG.", "This release is a minor (no API change).",
     "C'est une mineure.", "Add a date of birth field to the form parser.", "mean 0.123456789 ms", "ip 192.168.1.100", "2026-10-27 - 2026-11-02",
-    "1 2 3 4 5 6 7 8 9", "il y a 10 ans", "Church encoding", "the left-wing of the tree", 'static const char hex[] = "0123456789abcdef";',
+    "1 2 3 4 5 6 7 8 9", "il y a 10 ans", "Church encoding", "the left-wing of the tree", "le champ date of birth est validé",
+    "the CI takes under 18 minutes", "a block of under 18 bits", "load under 18 %",
     "The estimate is conservative.", "Cache entries aged 10 minutes are dropped under 18 ms.", "Fixes:\n- 145\n- 146\n- 147",
     "Mesures:\n12.5\n13.1\n12.9\n13.4", "Dates\n2026-11-02\n2026-11-03", "1\n2\n3\n4\n5\n6\n7\n8\n9", "fails at bee.py and at main.rs",
     "lignes 1163-1174 et 1471-1477 de miniz_tdef.c", "(l. 1120-1123) 6,6 %", "Python 3.10, 3.11, 3.12 et 3.13",
@@ -10402,16 +10425,17 @@ TECHNIQUES_0047 = (
     "It fails at bee.py line 42, then at deflate.c.", "Le décodeur est appelé à chaque appel (0 à 40, 0 à 34, 0 à 28).")
 # Sensitive data said of someone: refused; a word that may say it: read by a human.
 SENSIBLES_SURES_0047 = ("Sa date de naissance : 1er mai 1990.", "Date of birth: 1 May 1990.", "Elle est malade depuis mars.", "He has cancer.",
-                        "She is 14.", "She was aged 14 then.", "A 14yo maintainer.", "Not under 18, she said.", "He is a Republican.",
-                        "She has leukemia.", "Diagnosed with epilepsy.", "He is on antidepressants.", "She's an atheist.", "Elle a 15 ans.",
+                        "She is 14.", "She was aged 14 then.", "A 14yo maintainer.", "He is a Republican.",
+                        "She has leukemia.", "Diagnosed with epilepsy.", "He is on antidepressants.", "She's an atheist.", "Elle a 15 ans.", "She is under 18.",
                         "Il est de confession juive.", "He's a minor.",
                         "Elle est une mineure.", "She is a minor.", "He is a 15-year-old student.", "Elle est enceinte.", "Il a été hospitalisé.",
                         "She is Catholic.", "Il est musulman.", "He identifies as gay.", "Elle est communiste.")
 SENSIBLES_DOUTEUSES_0047 = ("Il soigne un cancer.", "Treated for depression last year.", "Son parti politique est connu.", "Votes far-right.",
-                            "Fifteen, or 15 years old.", "Le projet a 15 ans.", "A teenager maintains it.", "Seen at church.", "We met minors there.")
+                            "Fifteen, or 15 years old.", "Le projet a 15 ans.", "Not under 18, she said.", "A teenager maintains it.", "Seen at church.", "We met minors there.")
 # Technical numbers that look like a number from afar: read by a human, never refused.
 DOUTES_TECHNIQUES_0047 = ("bits 0101 1100 0011 1010", "01101010 10011100", "code lengths 12 15 17 20 22", "10 11 12 13 14 15",
-                          "+120 -45 +300 -12", "+1234 -5678 +9", "10.20.30.40.50", "134 164 249 instructions", "Joignable au 612 345 678.")
+                          "+120 -45 +300 -12", "+1234 -5678 +9", "10.20.30.40.50", "134 164 249 instructions", "Joignable au 612 345 678.",
+                          'static const char hex[] = "0123456789abcdef";', "Cafe0612345678", "e0612345678", "0612345678e", "0612 345.678")
 # The adversarial review's shapes (fictional): refused in every free text.
 REVUE_0047 = ("alice.martin[@]example[.]org", "alice.martin&#64;example.org", "alice.martin&amp;#64;example.org", "alice.martin@example,org",
               "alice.martin@example;org", "alice.martin@example:org", "alice.martin@example~org", "alice.martin at example,org",
@@ -10419,7 +10443,8 @@ REVUE_0047 = ("alice.martin[@]example[.]org", "alice.martin&#64;example.org", "a
               "me", "app")), "Write to alice.martin at Example.It", "06,12,34,56,78", "06;12;34;56;78", "0033612345678", "0033 6 12 34 56 78",
               "\u2776\u2777\u2778 \u2779\u277a\u277b \u277c\u277d\u277e\u2776", "\u96f6\u516d \u4e00\u4e8c \u4e09\u56db \u4e94\u516d \u4e03\u516b",
               "Contact Phone0612345678 for details", "Fax0612345678", "Mobile06 12 34 56 78", "ID0612345678", "joignez-la au Phone0612345678 svp.",
-              "12 oak rd", "12 high st", "12 av Foch", "12 oak drive", "PO Box 1234", "Rue de la Paix 12")
+              "12 oak rd", "12 high st", "12 av Foch", "12 oak drive", "PO Box 1234", "Rue de la Paix 12", "tél. 06.12345678", "+33.612345678",
+              "0612.345678", "+44.2079460958", "tel 612,5551234", "Phone 0.612345678", "tel 0612345678a")
 
 
 def variantes_courriel_0047():
@@ -10581,8 +10606,9 @@ class TestPersonalDataEveryFreeText(unittest.TestCase):
             groupes = ["".join(hasard.choice("0123456789") for _ in range(hasard.randint(1, 5))) for _ in range(hasard.randint(1, 6))]
             corps = groupes[0] + "".join(hasard.choice(separateurs) + g for g in groupes[1:])
             formes.append(hasard.choice(prefixes) + corps + hasard.choice(("", " for details", ".", "x", "abc", " ms", " %", "\n12", " 2026")))
-        formes += ["Contact Phone0612345678 for details", "Fax0612345678", "Mobile06 12 34 56 78", "ID0612345678", "2026-11-02 10:00:00 12"]
-        hexa = re.compile(r"0[xX]|(?<![^\W_])(?=[0-9a-fA-F]*[a-fA-F])(?=[0-9a-fA-F]*\d)[0-9a-fA-F]{7,}(?![^\W_])")
+        formes += ["Contact Phone0612345678 for details", "Fax0612345678", "Mobile06 12 34 56 78", "ID0612345678", "2026-11-02 10:00:00 12",
+                   "Cafe0612345678", "e0612345678", "0612345678e", "tel 0612345678a", "tél. 06.12345678", "0612 345.678"]
+        hexa = re.compile(r"0[xX]|(?<![^\W_])(?=[0-9a-fA-F]*[a-fA-F])(?=[0-9a-fA-F]*\d)(?![0-9a-fA-F]*?\d{9})[0-9a-fA-F]{7,}(?![^\W_])")
         for forme in formes:
             if numero_main_0047(lu := bee.decoder_url(forme)) and not hexa.search(lu) and bee.texte_sortant_refuse(forme, "corps", 8000, "Bee-ruche") is None:
                 ecarts.append(forme)

@@ -3721,7 +3721,7 @@ def decoder_url(texte):
 CHAINE_CHIFFRES = re.compile(r"(?<!\d)(?:\+\s?)?\d+(?:[\W_]{1,3}\d+)*")
 SEPARATEUR_DEGUISE = re.compile(r"(?<=\d)[^\w,;:]{4,}(?=\d)|(?<=\d)[^\w,;:]{1,3}[^\W\d_]{1,7}[^\w,;:]{1,3}(?=\d)")
 MOT_TELEPHONE = re.compile(r"(?i)\b(?:t[ée]l(?:[ée]phone)?|phone|mobile|portable|gsm|whats ?app|sms|fax)\b")
-HORS_NUMERO = re.compile(r"0[xX][0-9a-fA-F]+|(?<![^\W_])(?=[0-9a-fA-F]*[a-fA-F])(?=[0-9a-fA-F]*\d)[0-9a-fA-F]{7,}(?![^\W_])|(?<!\d)(?<!\d[^\w\n])"
+HORS_NUMERO = re.compile(r"0[xX][0-9a-fA-F]+|(?<![^\W_])(?=[0-9a-fA-F]*[a-fA-F])(?=[0-9a-fA-F]*\d)(?![0-9a-fA-F]*?\d{9})[0-9a-fA-F]{7,}(?![^\W_])|(?<!\d)(?<!\d[^\w\n])"
                          r"(?<!\d[^\w\n]{2})(?<!\d[^\w\n]{3})(?<!-)\d{4}-[01]\d-[0-3]\d(?:T\d\d:\d\d(?::\d\d(?:\.\d+)?)?(?:Z|[+-]\d\d:?\d\d)?)?(?![^\w\n]{0,3}\d)")
 TECHNIQUE = re.compile(r"(?<![\d.,])\d{1,3}(?:\.\d{1,3}){3}(?![\d.,])|(?<![\d.,])\d+[.,]\d+(?![\d.,])|(?<![\d-])\d{4}-[01]\d-[0-3]\d(?:T[\d:.]+(?:Z|[+-]\d\d:?\d\d)?)?(?![\d-])")
 
@@ -3748,17 +3748,21 @@ def telephone(texte, technique=False):
         longueurs, uniforme, liste = [len(g) for g in groupes], len(set(seps)) <= 1, re.search(r"[,;] |:", "".join(seps))
         if sum(longueurs) < 9:
             return 0
+        colle = re.search(r"[A-Za-z0-9]*$", x[max(0, debut - 64):debut])[0] + re.match(r"[A-Za-z0-9]*", x[debut + len(chaine):][:64])[0]
+        colle = re.fullmatch(r"[0-9a-fA-F]*[a-fA-F][0-9a-fA-F]*", colle)  # glued to a word of hex letters only: doubtful at most
         if MOT_TELEPHONE.search(x[max(0, debut - 25):debut]) or not liste and set("".join(groupes)) - {"0", "1"} and (
                 chaine[0] == "+" and (uniforme or longueurs[-3:] == [3, 3, 4]) or longueurs[-3:] == [3, 3, 4]
                 or not re.fullmatch(r"[^\W\d_]-", x[max(0, debut - 2):debut]) and (re.match(r"00[1-9]", chaine) or uniforme and re.match(r"0[1-9]", chaine))):
-            return 3
+            return 3 - bool(colle and not MOT_TELEPHONE.search(x[max(0, debut - 25):debut]))
         milliers = uniforme and seps and len(seps[0]) == 1 and longueurs[0] <= 3 and set(longueurs[1:]) == {3} and sum(longueurs) != 9
         return 1 if (len(groupes) == 1 or milliers or liste or set(longueurs) == {1} and groupes[0] != "0"
                      or not uniforme and "." in "".join(seps)) else 2
     t = re.sub(r"[^\x00-\x7f]", lambda c: str(int(n)) if (n := unicodedata.numeric(c[0], -1)) in range(10) else c[0], texte)
     t = HORS_NUMERO.sub(" elisions ", re.sub(r"(?<=\d)[OoIl](?![^\W\d_])|(?<![^\W\d_])[OoIl](?=\d)", lambda c: "0" if c[0] in "Oo" else "1", t))
-    t, lu = (t := TECHNIQUE.sub(" elisions ", t) if technique else t), SEPARATEUR_DEGUISE.sub(" - ", t)
-    return max([grade(t, d, c) for d, c in chaines(t)] + [3 * (grade(lu, d, c) == 3) for d, c in chaines(lu, False)] + [0])
+    lu, entiers = SEPARATEUR_DEGUISE.sub(" - ", t), [max(g, 2) for d, c in chaines(t)
+                                                  if (g := grade(t, d, c)) == 3 or g and re.match(r"\+|0[1-9]", c) and not re.search(r"[,;] |:", c)]
+    t = TECHNIQUE.sub(" elisions ", t) if technique else t  # a decimal or an IPv4 address goes, never a number read in full above
+    return max([grade(t, d, c) for d, c in chaines(t)] + [3 * (grade(lu, d, c) == 3) for d, c in chaines(lu, False)] + entiers + [0])
 
 
 def decoder_courriel(texte):
@@ -3804,10 +3808,11 @@ def donnee_personnelle(texte, seuil=1):
 # sentence says it of someone (a subject: she, he, il, elle, contractions included); a word that may say it is read by a human.
 # Health checks, a minor version, « a minor » release, a date of birth field, the age of a branch, child processes pass.
 SENSIBLE_SUR = re.compile(
-    r"(?i)\b(?:date (?:of birth|de naissance)(?! ?(?:fields?|columns?|formats?|pars\w+|attributes?|propert\w+|keys?|champs?|colonnes?|"
+    r"(?i)\b(?<!champ )(?<!field )(?<!column )(?<!colonne )(?:date (?:of birth|de naissance)(?! ?(?:fields?|columns?|formats?|pars\w+|attributes?|propert\w+|keys?|champs?|colonnes?|"
     r"attributs?|cl[ée]s?)\b)|\d{1,2}[- ]years?[- ]old (?:boy|girl|child|kid|son|daughter|student|man|woman)|\d{1,2} ?y\.?o\b|\d{1,2} ?y/o\b|"
     r"aged \d{1,2}\b(?! ?(?:ms|s|sec\w*|min\w*|h|hours?|days?|jours?|weeks?|semaines?|months?|mois|commits?|releases?|versions?)\b)|"
-    r"under (?:the age of )?18\b(?! ?(?:ms|s|%|[kmg]i?b|bytes?|octets?)\b)|moins de 18 ans|underage|"
+    r"under (?:the age of 18|18 (?:years?|ans)\b)|(?:she|he|they|il|elle)(?:['’](?:s|re)|\s+(?:is|was|are|were|est|était)) under 18\b|"
+    r"moins de 18 ans|underage|"
     r"(?:she|he|il|elle)(?:['’]s|\s+(?:is|was|has|had|est|était|a|avait)) (?:an? |une? )?(?:minor|mineure?)\b|"
     r"(?:she|he|il|elle)(?:['’]s|\s+(?:is|was|est|était|a)) \d{1,2}(?: years?(?: old)?| ans)?(?=\s*(?:[.,;!?)]|$))|"
     r"(?:is|est|was|était) (?:pregnant|enceinte)|hospitali[sz](?:ed|ée?)|\bon (?:anti-?depressants?|insulin|chemo\w*|meds)\b|"
@@ -3827,11 +3832,11 @@ SENSIBLE_DOUTE = re.compile(
     r"political party|parti politique|(?:left|right)[- ]wing(?! of)|far[- ](?:left|right)|extr[êe]me[- ](?:gauche|droite)|religio\w+|"
     r"(?-i:church)|[ée]glise|mosque|mosquée|synagogue|syndiqu[ée]e?|union member|sexual orientation|orientation sexuelle|sexualit[yé]|"
     r"gay|lesbian|lesbienne|homosexu\w*|bisexu\w*|transgen\w*|queer|\d{1,2}[- ]years?[- ]old|years of age|âgée? de \d{1,2} ans|"
-    r"(?<!il y )a \d{1,2} ans|teen(?:ager)?s?|adolescente?s?|minors|born (?:on|in)|n[ée]e? (?:le|en) \d)\b")
+    r"(?<!il y )a \d{1,2} ans|under 18\b(?!\s*(?:%|[^\W\d_]))|teen(?:ager)?s?|adolescente?s?|minors|born (?:on|in)|n[ée]e? (?:le|en) \d)\b")
 SCHEMAS_TEXTES = {"taches": "tache", "contributions": "enregistrement", "votes": "vote", "mesures": "mesure", "membres": "membre", "projets": "projet",
                   "propositions": "proposition", "debats": "debat", "invitations": "invitation", CHEMIN_NON_CONTACT: "ne-plus-contacter",
                   "gouvernance/incidents.yaml": "incidents", "CONTRIBUTION.yaml": "contribution"}
-NON_LIBRE = re.compile(r"\d{4}-\d\d-\d\d(?:[T ]\d\d:\d\d(?::\d\d(?:\.\d+)?)?)?(?:Z|[+-]\d\d:?\d\d)?|(?=\d*[a-f])[0-9a-f]{7,64}")  # a date, a sha
+NON_LIBRE = re.compile(r"\d{4}-\d\d-\d\d(?:[T ]\d\d:\d\d(?::\d\d(?:\.\d+)?)?)?(?:Z|[+-]\d\d:?\d\d)?|(?=\d*[a-f])(?![0-9a-f]*?\d{9})[0-9a-f]{7,64}")  # a date, a sha
 
 
 def aplatir(noeud, racine):
@@ -5563,6 +5568,16 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
                     exiger(probleme is None, f"{probleme} (notes.texte_max)")
                 exiger(nouveau.get("contribution") == partie[1], f"{chemin} : la mesure doit être rangée sous sa contribution")
                 exiger(nouveau.get("contribution") in reg.enregistrements, f"{chemin} : contribution « {nouveau.get('contribution')} » inconnue")
+                # ruche-0047: a metric is one of the project's (or its instruction count), and no number in it holds 9 digits or more.
+                enr = reg.enregistrements.get(nouveau.get("contribution"), (None, {}))[1]
+                connues = reg.metriques(reg.taches.get(enr.get("tache"), (None, {}))[1].get("projet") if isinstance(enr, dict) else None)
+                connues = {*connues, *(m["instructions"] for m in connues.values() if isinstance(m.get("instructions"), str))}
+                metriques = nouveau.get("metriques") if isinstance(nouveau.get("metriques"), dict) else {}
+                inconnues = sorted(str(k) for k in metriques if k not in connues) if connues else []
+                exiger(not inconnues, f"{chemin} : metriques : {', '.join(inconnues)} : métrique inconnue du projet ({', '.join(sorted(connues))})")
+                exiger(all(abs(v) < 1e8 for m in metriques.values() if isinstance(m, dict) for v in m.values()
+                           if isinstance(v, (int, float)) and not isinstance(v, bool)),
+                       f"{chemin} : metriques : un nombre de 9 chiffres ou plus n'est ni un gain ni un compte de paires (R13)")
                 probleme = probleme_date_pr(nouveau.get("le"), f"{chemin} : le", instant)
                 exiger(probleme is None, f"{probleme} : delete {chemin}, then rerun bee enregistrer-mesure")
             continue
