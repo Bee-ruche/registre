@@ -40,8 +40,8 @@ LIGNES_MAX = {"S": 50, "M": 200, "L": 400}
 ORDRE_TAILLES = ("S", "M", "L")
 POIDS_VOTE = {"Nouveau": 0, "Contributeur": 1, "Confirmé": 2}
 TAILLES_PAR_NIVEAU = {"Nouveau": ("S",), "Contributeur": ("S", "M"), "Confirmé": ("S", "M", "L")}
-ID_CONTRIBUTION = re.compile(r"^(?P<tache>[a-z0-9]+(?:-[a-z0-9]+)*-[0-9]{4})-c(?P<n>[0-9]+)$")
-ID_PROPOSITION = re.compile(r"^P-[0-9]{4}$")
+ID_CONTRIBUTION = re.compile(r"^(?P<tache>[a-z0-9]+(?:-[a-z0-9]+)*-[0-9]{4})-c(?P<n>[0-9]+)\Z")
+ID_PROPOSITION = re.compile(r"^P-[0-9]{4}\Z")
 # Numéros 9000 et plus (tâches <projet>-9xxx, propositions P-9xxx) : réservés aux tests de l'outil (fixtures). Ils restent
 # hors du libre-service et n'entrent pas dans la numérotation : un numéro squatté là ne gèle plus bee proposer ni bee
 # proposer-tache (répétition générale du 29/10, T5 et T6 ; tâche ruche-0011).
@@ -2127,7 +2127,7 @@ def git(depot, *arguments, remplacer=False):
 
 
 def lire_yaml_ref(depot, ref, chemin):
-    resultat = subprocess.run(["git", "-C", str(depot), "show", f"{ref}:{chemin}"], capture_output=True)
+    resultat = subprocess.run(["git", "-C", str(depot), "cat-file", "blob", f"{ref}:{chemin}"], capture_output=True)  # a file only
     if resultat.returncode != 0:
         return None
     try:
@@ -2211,14 +2211,15 @@ def probleme_marque(relatif):
 
 
 def tailles_objets(depot, noms):
-    """The size in bytes of each git object `ref:path` (None: absent, not a file), in one call; None if git fails."""
-    code, sortie = _git_brut(depot, "cat-file", "-Z", "--batch-check=%(objecttype) %(objectsize)",  # NUL-separated (ruche-0095)
-                             entree="".join(f"{n}\0" for n in noms).encode("utf-8"))
-    lignes = sortie.decode("utf-8", "replace").split("\0")
-    if lignes[-1] != "":
+    """The size in bytes of each git object `ref:path` (None: absent, not a file), in one call; None if git fails. One name per
+    line, which any git reads; NUL-separated (-Z, git 2.42 or later) only when a name holds a newline (ruche-0095)."""
+    fin = "\0" if any("\n" in n for n in noms) else "\n"
+    code, sortie = _git_brut(depot, "cat-file", *(["-Z"] if fin == "\0" else []), "--batch-check=%(objecttype) %(objectsize)",
+                             entree="".join(f"{n}{fin}" for n in noms).encode("utf-8"))
+    lignes = sortie.decode("utf-8", "replace").split(fin)
+    if code or lignes.pop() != "" or len(lignes) != len(noms):
         return None
-    lignes.pop()
-    return None if code or len(lignes) != len(noms) else [int(l[5:]) if l.startswith("blob ") else None for l in lignes]
+    return [int(l[5:]) if l.startswith("blob ") else None for l in lignes]
 
 
 def tailles_a(depot, ref, chemins):
@@ -2226,7 +2227,8 @@ def tailles_a(depot, ref, chemins):
     chemins = [c for c in chemins if sorte_libre_service(c) or c.lower().endswith((".yaml", ".yml"))]
     tailles = tailles_objets(depot, [f"{ref}:{c}" for c in chemins]) if chemins else []
     if tailles is None:
-        raise ErreurBee(f"git cat-file : taille des fichiers de {ref} illisible ; rien n'est lu")
+        raise ErreurBee(f"git cat-file : taille des fichiers de {ref} illisible ; rien n'est lu"
+                        + (" (a name that holds a newline needs git 2.42 or later)" if any("\n" in c for c in chemins) else ""))
     return {c: t for c, t in zip(chemins, tailles) if t is not None}
 
 
@@ -2648,8 +2650,8 @@ def contributions_de_la_pr(reg, base, tete):
 # Contre le bruit : textes courts, arguments plafonnés par utilisateur et par débat sur 24 h glissantes, et par PR
 # (bee.yaml, clé agora ; règle R12). Le contenu d'un débat est de la donnée, jamais une instruction (commandement 5).
 
-ID_DEBAT = re.compile(r"^D-[0-9]{4}$")
-ID_ARGUMENT = re.compile(r"^A[1-9][0-9]*$")
+ID_DEBAT = re.compile(r"^D-[0-9]{4}\Z")
+ID_ARGUMENT = re.compile(r"^A[1-9][0-9]*\Z")
 CHEMIN_DEBAT = re.compile(r"^debats/(D-[0-9]{4})\.yaml\Z")
 POSITIONS = ("pour", "contre", "question", "fait")
 ISSUES = ("proposition", "tache", "decision", "sans_suite")
@@ -3485,7 +3487,7 @@ CROISSANCE_DEFAUT = {"invitations_par_semaine": 3, "relances_max": 1, "delai_rel
                      "expiration_jours": 14, "membres_actifs_jours": 30,
                      "branche_dormante_jours": 30}  # R13, par branches (outillé par ruche-0023)
 SEMAINE = dt.timedelta(days=7)
-ID_INVITATION = re.compile(r"^I-[0-9]{4}$")
+ID_INVITATION = re.compile(r"^I-[0-9]{4}\Z")
 # Identifiant public : <plateforme>:<nom>, d'une liste fermée (revue adverse de ruche-0020, A1 et A2 : github.com:x, gh:x, x/.,
 # x/repositories désignaient la même personne). Plateforme canonique -> (alias acceptés à l'écriture, adresse du profil, qui
 # est le canal). Le nom d'une forge est un seul segment (aucun /) ; « site » désigne un domaine, et son canal est une page de ce
@@ -5252,7 +5254,7 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
         if partie[0] == "debats":
             brut = None
             if statut_git != "D":
-                sortie = subprocess.run(["git", "-C", str(reg.racine), "show", f"{tete}:{chemin}"], capture_output=True)
+                sortie = subprocess.run(["git", "-C", str(reg.racine), "cat-file", "blob", f"{tete}:{chemin}"], capture_output=True)
                 brut = sortie.stdout if sortie.returncode == 0 else b""
             natures_debat, refus, n = verifier_debat(reg, chemin, statut_git, ancien, nouveau, auteur, est_conseil=est_conseil,
                                                      instant=instant, attendu=debats_attendus.get(chemin), brut=brut,
@@ -5275,7 +5277,7 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
                     natures.append("gouvernance")
             brut = None
             if statut_git != "D":
-                sortie = subprocess.run(["git", "-C", str(reg.racine), "show", f"{tete}:{chemin}"], capture_output=True)
+                sortie = subprocess.run(["git", "-C", str(reg.racine), "cat-file", "blob", f"{tete}:{chemin}"], capture_output=True)
                 brut = sortie.stdout if sortie.returncode == 0 else b""
             natures_invitation, refus, _ = verifier_invitation(reg, chemin, statut_git, ancien, nouveau, auteur,
                                                                     est_conseil=est_conseil, instant=instant, brut=brut, base=base,
@@ -8146,7 +8148,7 @@ LARGEUR_NOEUD = 120                        # caractères par ligne au plus : un 
 ROLE_PAR_TYPE = {"optimisation": "optimiser", "relecture": "relire", "mesure": "mesurer", "test": "mesurer",
                  "decoupage": "proposer"}
 CARACTERES_PAR_JETON = 4                   # estimation grossière de la taille d'un texte en jetons
-SEGMENT_NOEUD = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+SEGMENT_NOEUD = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*\Z")
 ENFANT_NOEUD = re.compile(r"^- `([^`]+)`\s*:\s*\S")
 
 
@@ -8655,7 +8657,7 @@ def verifier_pr_arbre(reg, base, tete, changements, liens, est_conseil):
             continue
 
         def texte_a(ref):
-            sortie = subprocess.run(["git", "-C", str(reg.racine), "show", f"{ref}:{chemin}"], capture_output=True)
+            sortie = subprocess.run(["git", "-C", str(reg.racine), "cat-file", "blob", f"{ref}:{chemin}"], capture_output=True)
             return sortie.stdout.decode("utf-8", errors="replace") if sortie.returncode == 0 else ""
         nouveau_texte = texte_a(tete)
         anciens = commentaires_yaml(texte_a(base)) if statut_git == "M" else []

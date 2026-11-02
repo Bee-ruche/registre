@@ -12948,13 +12948,16 @@ QUOTED_CHARACTERS = {"non-ASCII": "é", "quote": '"', "backslash": "\\", "tab": 
 # Git commands whose output bee never reads as a list of paths (an allowlist): any other command lists paths. "show" is here
 # for show <rev>:<path>, which prints a file; with a listing option, it lists paths too.
 GIT_NON_LISTING = {"add", "branch", "cat-file", "checkout", "commit", "config", "fetch", "for-each-ref", "hash-object", "init",
-                   "ls-remote", "merge", "merge-base", "pull", "push", "remote", "reset", "rev-parse", "show", "switch",
-                   "symbolic-ref", "update-index", "var", "version"}
+                   "ls-remote", "merge", "merge-base", "pull", "push", "remote", "reset", "rev-parse", "switch",
+                   "symbolic-ref", "update-index", "var", "version"}  # not show: it prints a patch, or a tree's paths
 GIT_LISTING_OPTIONS = {"--name-only", "--name-status", "--numstat", "--raw", "--porcelain", "--objects", "--stat", "--summary",
                        "-p", "--patch", "--patch-with-raw", "--patch-with-stat", "--compact-summary", "--dirstat"}
 GIT_QUOTING_OPTIONS = {"--stat", "--summary", "-p", "--patch", "--patch-with-raw", "--patch-with-stat", "--compact-summary",
                        "--dirstat"}  # they print paths quoted, even with -z
-GIT_RENAME_FORMATS = {"--name-status", "--raw", "--numstat"}  # a rename takes two paths in them: bee asks for --no-renames
+# They detect renames: a listing by one of them hides a rename's old path, or gives it two paths (status: "R  new\0old\0"),
+# unless asked for --no-renames; these options turn the detection back on, even after it.
+GIT_RENAME_COMMANDS = {"diff", "diff-tree", "diff-index", "diff-files", "log", "whatchanged", "show", "status"}
+GIT_RENAME_OPTIONS = ("-M", "-C", "--find-renames", "--find-copies")  # prefixes: -M50%, --find-copies-harder...
 
 
 def git_listings(source):
@@ -12963,9 +12966,11 @@ def git_listings(source):
     wrapper: a function that passes its own *arguments on to an invocation, before any "--" (git, _git_brut, and any new
     one, found as a fixed point); a call to a wrapper is read with the words the wrapper puts before them. Its words are its
     literal arguments up to "--"; its command, the first one after the global options (-C <dir>, -c <name=value>, --...).
-    It lists paths if its command is not in GIT_NON_LISTING, if it has a listing option, or for add -n. Problems: a listing
-    without -z, with an option that quotes paths, or with --name-status, --raw or --numstat but not --no-renames; a command
-    that is not a literal (unless it is the function's own *arguments); a "git" literal that starts no invocation."""
+    Its options are its words after the command. It lists paths if its command is not in GIT_NON_LISTING (show only with -s
+    or --no-patch, and no listing option), if it has a listing option, or for add -n. Problems: a listing without -z, with an
+    option that quotes paths, by a command of GIT_RENAME_COMMANDS without --no-renames, or with an option that detects
+    renames; commit --dry-run; a command that is not a literal (unless it is the function's own *arguments); a "git" literal
+    that starts no invocation."""
     arbre = ast.parse(source)
     fonctions = {}
     for fonction in ast.walk(arbre):  # outer functions come first: the innermost one wins
@@ -13013,16 +13018,22 @@ def git_listings(source):
         if commande is None and relais(noeud, liste) != i:
             problemes.append((noeud.lineno, "a git command that is not a literal"))
         mots = [e.value for e in liste if litteral(e)]
-        options = {m.split("=", 1)[0] for m in mots}
-        if (commande is not None and commande not in GIT_NON_LISTING) or options & GIT_LISTING_OPTIONS \
-                or (commande == "add" and options & {"-n", "--dry-run"}):
+        apres = [e.value for e in liste[i + 1:] if litteral(e)]  # after the command: -C is no longer git's directory
+        options = {m.split("=", 1)[0] for m in apres}
+        if commande == "commit" and "--dry-run" in options:
+            problemes.append((noeud.lineno, "commit --dry-run lists paths"))
+        if (commande is not None and commande not in GIT_NON_LISTING
+                and not (commande == "show" and options & {"-s", "--no-patch"} and not options & GIT_LISTING_OPTIONS)) \
+                or options & GIT_LISTING_OPTIONS or (commande == "add" and options & {"-n", "--dry-run"}):
             listings.append((noeud.lineno, getattr(fonctions.get(noeud), "name", None), mots))
-            if "-z" not in mots:
+            if "-z" not in apres:
                 problemes.append((noeud.lineno, "lists paths without -z"))
             if quotent := sorted(options & GIT_QUOTING_OPTIONS):
                 problemes.append((noeud.lineno, f"{', '.join(quotent)}: quotes paths, even with -z"))
-            if options & GIT_RENAME_FORMATS and "--no-renames" not in mots:
+            if commande in GIT_RENAME_COMMANDS and "--no-renames" not in apres:
                 problemes.append((noeud.lineno, "renames not turned off (--no-renames)"))
+            if detectent := sorted(m for m in apres if m.startswith(GIT_RENAME_OPTIONS)):
+                problemes.append((noeud.lineno, f"{', '.join(detectent)}: detects renames again"))
     tetes = {id(n.elts[0]) for n in ast.walk(arbre) if est_argv(n)}
     problemes += [(n.lineno, 'a "git" that starts no invocation') for n in ast.walk(arbre)
                   if isinstance(n, ast.Constant) and n.value == "git" and id(n) not in tetes]
@@ -13044,6 +13055,7 @@ class TestGitListings(unittest.TestCase):
                               "verifier_pr", "verifier_pr_de", "verifier_fork", "cmd_publier", "ci_scope"}, {x[1] for x in listings})
 
     def test_the_scan_finds_each_evasion(self):
+        Z, R = "lists paths without -z", "renames not turned off (--no-renames)"
         lignes = [
             ("import subprocess", None),
             ("def outil(depot, *arguments):", None),
@@ -13051,37 +13063,55 @@ class TestGitListings(unittest.TestCase):
             ("def relai(depot, *mots):", None),
             ("    return outil(depot, *mots)", None),
             ("def historique(depot, *chemins):", None),
-            ("    return relai(depot, 'log', '-z', '--name-only', '--', *chemins)", None),  # passes on pathspecs: not a wrapper
+            ("    return relai(depot, 'log', '-z', '--no-renames', '--name-only', '--', *chemins)", None),  # pathspecs: no wrapper
             ("def lister(depot, *a):", None),
-            ("    return subprocess.run(['git', '-C', depot, 'diff', '--name-only', *a])", ["lists paths without -z"]),
+            ("    return subprocess.run(['git', '-C', depot, 'diff', '--name-only', *a])", [Z, R]),
             ("def fichiers(d, *a):", None),
-            ("    return outil(d, 'ls-files', *a)", ["lists paths without -z"]),
+            ("    return outil(d, 'ls-files', *a)", [Z]),
             ("def montrer_commit(d, *a):", None),
-            ("    return outil(d, 'show', *a)", None),
-            ("def f(depot, noms, commande):", None),
+            ("    return outil(d, 'show', *a)", [Z, R]),  # show without -s prints a patch
+            ("def git(d, *a):", None),
+            ("    return outil(d, *a)", None),
+            ("def f(depot, noms, commande, d):", None),
             ("    outil(depot, 'ls-tree', '-z', '--name-only', 'HEAD')", None),
-            ("    relai(depot, '-c', 'core.quotepath=off', 'diff', '--name-only')", ["lists paths without -z"]),
-            ("    subprocess.run(['git', 'status', '--porcelain'])", ["lists paths without -z"]),
+            ("    relai(depot, '-c', 'core.quotepath=off', 'diff', '--name-only')", [Z, R]),
+            ("    subprocess.run(['git', 'status', '--porcelain'])", [Z, R]),
             ("    subprocess.run(['git', '--literal-pathspecs', 'add', '--', *noms])", None),
             ("    historique(depot, 'taches')", None),
             ("    outil(depot, *noms)", ["a git command that is not a literal"]),
-            ("    relai(depot, commande, '--name-only')", ["a git command that is not a literal", "lists paths without -z"]),
+            ("    relai(depot, commande, '--name-only')", ["a git command that is not a literal", Z]),
             ("    programme = 'git'", ['a "git" that starts no invocation']),
-            ("    outil(depot, 'log', '-z', '-p')", ["-p: quotes paths, even with -z"]),
-            ("    outil(depot, 'rev-list', '--objects', 'HEAD')", ["lists paths without -z"]),
-            ("    outil(depot, 'clean', '-n')", ["lists paths without -z"]),
-            ("    outil(depot, 'add', '-n', '.')", ["lists paths without -z"]),
-            ("    outil(depot, 'diff', '-z', '--stat=80', '--summary')", ["--stat, --summary: quotes paths, even with -z"]),
-            ("    outil(depot, 'diff', '-z', '--name-status')", ["renames not turned off (--no-renames)"]),
+            ("    outil(depot, 'log', '-z', '--no-renames', '-p')", ["-p: quotes paths, even with -z"]),
+            ("    outil(depot, 'rev-list', '--objects', 'HEAD')", [Z]),
+            ("    outil(depot, 'clean', '-n')", [Z]),
+            ("    outil(depot, 'add', '-n', '.')", [Z]),
+            ("    outil(depot, 'diff', '-z', '--no-renames', '--stat=80', '--summary')", ["--stat, --summary: quotes paths, even with -z"]),
+            ("    outil(depot, 'diff', '-z', '--name-status')", [R]),
             ("    outil(depot, 'diff', '-z', '--raw', '--no-renames', 'a...b')", None),
-            ("    outil(depot, 'show', 'HEAD:x')", None),
-            ("    montrer_commit(depot, '--name-only', 'HEAD')", ["lists paths without -z"]),
+            ("    outil(depot, 'cat-file', 'blob', 'HEAD:x')", None),
+            ("    outil(depot, 'show', 'HEAD:x')", [Z, R]),  # a tree's paths, for a folder
+            ("    outil(depot, 'show', '--format=%H', 'HEAD')", [Z, R]),  # the patch follows the format
+            ("    outil(depot, 'show', '-s', '--format=%H', 'HEAD')", None),
+            ("    outil(depot, 'show', '--no-patch', '--name-only', 'HEAD')", [Z, R]),
+            ("    outil(depot, 'commit', '--dry-run')", ["commit --dry-run lists paths"]),
+            ("    montrer_commit(depot, '--name-only', 'HEAD')", [Z, R]),
             ("    fichiers(depot, '-z')", None),
+            # The review's cases (G1): each listing by diff, diff-tree, log or status keeps renames off, and nothing turns
+            # their detection back on.
+            ("    git(d, 'diff', '-z', '--name-only', 'a...b')", [R]),
+            ("    git(d, 'log', '-z', '--name-only')", [R]),
+            ("    git(d, 'status', '-z', '--porcelain')", [R]),
+            ("    git(d, 'diff-tree', '-z', '-r', '--name-only', 'a')", [R]),
+            ("    git(d, 'diff', '-z', '--raw', '--no-renames', '-M', 'a...b')", ["-M: detects renames again"]),
+            ("    git(d, 'diff', '-z', '--name-status', '--no-renames', '-C', 'a...b')", ["-C: detects renames again"]),
+            ("    git(d, 'log', '-z', '--name-only', '--no-renames', '--find-renames=50%', '--find-copies-harder')",
+             ["--find-copies-harder, --find-renames=50%: detects renames again"]),
+            ("    git(d, '-C', 'x', 'diff', '-z', '--no-renames', '--name-only')", None),  # -C before the command: a directory
         ]
         listings, wrappers, problemes = git_listings("\n".join(l for l, _ in lignes))
-        self.assertEqual(wrappers, {"outil", "relai", "lister", "fichiers", "montrer_commit"})
+        self.assertEqual(wrappers, {"outil", "relai", "lister", "fichiers", "montrer_commit", "git"})
         self.assertEqual(problemes, sorted((n, p) for n, (_, attendus) in enumerate(lignes, 1) for p in attendus or ()))
-        self.assertIn((7, "historique", ["-C", "log", "-z", "--name-only"]), listings)  # with the wrapper's own words
+        self.assertIn((7, "historique", ["-C", "log", "-z", "--no-renames", "--name-only"]), listings)  # with the wrapper's words
 
 
 def noms_non_utf8_permis(test, dossier):
@@ -13343,6 +13373,40 @@ class TestGitHelper(unittest.TestCase):
                 with self.subTest(chemin=chemin, motif=motif.pattern):
                     self.assertTrue(motif.match(chemin))
                     self.assertIsNone(motif.match(chemin + "\n"))
+
+    def test_ids_end_at_the_end_of_the_text(self):
+        """Review N1: an id or a node segment never takes a final newline for its end."""
+        exemples = {"ID_CONTRIBUTION": "miniz-0001-c1", "ID_PROPOSITION": "P-0001", "ID_DEBAT": "D-0001", "ID_ARGUMENT": "A1",
+                    "ID_INVITATION": "I-0001", "SEGMENT_NOEUD": "projets"}
+        motifs = {nom: v for nom, v in vars(bee).items() if (nom.startswith("ID_") or nom == "SEGMENT_NOEUD") and isinstance(v, re.Pattern)}
+        self.assertEqual(set(motifs), set(exemples))
+        for nom, motif in motifs.items():
+            with self.subTest(motif=nom):
+                self.assertTrue(motif.pattern.endswith("\\Z"), motif.pattern)
+                self.assertTrue(motif.match(exemples[nom]))
+                self.assertIsNone(motif.match(exemples[nom] + "\n"))
+
+    def test_object_sizes_need_a_recent_git_only_for_a_name_holding_a_newline(self):
+        """Review G3: cat-file -Z needs git 2.42 or later. With a git that rejects it, plain names are still sized, one per line;
+        a name that holds a newline is refused, and the message says what it needs."""
+        self.ecrire("taches/a.yaml", "a: 1\n")
+        self.ecrire("taches/b\n.yaml", "b: 22\n")
+        self.commit()
+        simples, avec_saut = ["HEAD:taches/a.yaml", "HEAD:absent", "HEAD:taches"], ["HEAD:taches/b\n.yaml", "HEAD:taches/a.yaml"]
+        self.assertEqual(bee.tailles_objets(self.depot, simples), [5, None, None])
+        self.assertEqual(bee.tailles_objets(self.depot, avec_saut), [6, 5], "this git reads -Z")
+        vieux = tempfile.TemporaryDirectory()
+        self.addCleanup(vieux.cleanup)
+        faux = pathlib.Path(vieux.name) / "git"
+        faux.write_text('#!/bin/sh\nfor a in "$@"; do [ "$a" = -Z ] && { echo "error: unknown switch Z" >&2; exit 129; }; done\n'
+                        f'exec "{shutil.which("git")}" "$@"\n', encoding="utf-8")
+        faux.chmod(0o755)
+        with mock.patch.dict(os.environ, {"PATH": f"{vieux.name}{os.pathsep}{os.environ['PATH']}"}):
+            self.assertEqual(bee.tailles_objets(self.depot, simples), [5, None, None])
+            self.assertEqual(bee.tailles_a(self.depot, "HEAD", ["taches/a.yaml"]), {"taches/a.yaml": 5})
+            self.assertIsNone(bee.tailles_objets(self.depot, avec_saut))
+            with self.assertRaisesRegex(bee.ErreurBee, r"illisible ; rien n'est lu \(a name that holds a newline needs git 2\.42 or later\)"):
+                bee.tailles_a(self.depot, "HEAD", ["taches/a.yaml", "taches/b\n.yaml"])
 
     def test_lire_versions_never_shifts_its_answers(self):
         """A request that holds a newline is never written to cat-file --batch: it would answer twice for it."""
