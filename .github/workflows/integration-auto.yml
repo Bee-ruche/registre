@@ -13,6 +13,8 @@
 # continue (autres contributions en relecture, titulaire ou inscrits en parallèle). Les clôtures passent APRÈS
 # les intégrations du passage, et jamais quand une concurrente est intégrée ou fusionnée : une contribution qui
 # a perdu la course est écartée, pas annulée.
+# ruche-0094: a registry contribution (its PR on this repository) is never merged here; once the council or its agent principal
+# has merged it into main, it is recorded as the council would by hand, from GitHub's API and main's history (bee record-merge).
 # Les PR des contributions écartées ne sont fermées qu'APRÈS la publication réussie du registre (étape « Fermer
 # les PR des contributions écartées »), et seulement si elles sont ouvertes et ouvertes par l'auteur de la
 # contribution. Si un passage échoue au milieu, le suivant refait tout : rien n'est perdu ni fait deux fois.
@@ -89,6 +91,20 @@ jobs:
               echo "::notice::$id : la PR $pr a été ouverte par $auteur_pr, pas par $auteur ; ni fusionnée ni consignée."; continue
             fi
             [ "$etat" = "MERGED" ] && printf '%s\n' "$id" >> "$tmp/fusionnees.txt"
+            # ruche-0094: a registry contribution (its PR is on this repository) is never merged here. Once the council (or its
+            # agent principal) has merged its PR into main, bee record-merge records it from GitHub's REST answers alone (the PR,
+            # and the Actions runs of its merged head) and main's history, as a hand-made record; anything else: a notice.
+            if [ "${depot,,}" = "${GITHUB_REPOSITORY,,}" ]; then
+              [ "$etat" = "MERGED" ] || continue
+              api="$tmp/api"; rm -rf "$api" && mkdir -p "$api"
+              if ! { [[ "$tete" =~ ^[0-9a-f]{40}$ ]] && gh api "repos/${depot}/pulls/${pr##*/}" > "$api/pr.json" \
+                     && gh api "repos/${depot}/actions/runs?head_sha=${tete}&event=pull_request&per_page=100" --paginate > "$api/executions.json"; } < /dev/null; then
+                echo "::notice::$id : PR $pr merged, but GitHub's answers are unreadable; nothing recorded, the next pass retries."; continue
+              fi
+              if sortie=$(python3 outils/bee.py record-merge "$id" --api "$api" < /dev/null 2>&1); then printf '%s\n' "$sortie"
+              else echo "::notice::$(printf '%s' "$sortie" | tr '\n' ' ')"; fi
+              continue
+            fi
             python3 outils/bee.py verifier-acceptation "$id" || continue
             if [ "$sha" = "-" ]; then
               echo "::notice::$id : verdict sans commit associé ; laissée en relecture."; continue
