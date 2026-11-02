@@ -24,6 +24,9 @@ fenetre_acceptation_heures: 24   # R3 : délai d'ouverture avant intégration au
 relecture_gardien_requise: si_juge_incomplet  # R3 : porte de relecture TEMPORAIRE — une relecture favorable d'un gardien ou du conseil est
                                  # exigée pour tout autre auteur, tant que le juge de la CI n'est pas sûr. Valeurs : true,
                                  # si_juge_incomplet (seulement si le juge isolé du fork n'a pas tout jugé), false
+juge_commun_min: 2               # R3 (ruche-0086, docs/juge-commun.md): with si_juge_incomplet, a verdict from an older common judge than juge-v<min>,
+                                 # or from none, is not entirely judged (a guardian reviews). The council raises it once the new juge-vN tag exists and
+                                 # every fork is pinned to it. Missing or malformed (not an int from 1 to 9999): no verdict is complete.
 duree_vote_jours: 7              # R10
 quorum_votants: 20               # R10
 majorite_requise: 0.6667         # R10

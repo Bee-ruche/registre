@@ -1,0 +1,10 @@
+id: ruche-0095-c1
+tache: ruche-0095
+auteur: bidji29
+pr: https://github.com/Bee-ruche/registre/pull/127
+resume: Every list of paths bee reads from git is NUL-separated, so a path is always compared as it is
+  in the repository; a path that is not text is refused.
+statut: en_relecture
+soumise_le: '2026-11-02T03:23:36Z'
+engage_depuis: '2026-11-01T22:00:50Z'
+relectures: []

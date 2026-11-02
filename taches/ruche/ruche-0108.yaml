@@ -1,0 +1,31 @@
+id: ruche-0108
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: S
+titre: 'R4: who may reproduce a gain (a minimum standing for the measurer), proposed to the council'
+contexte: Follow-up of ruche-0042's review. R4 counts a measurement by any other person who states a configuration; a
+  second account at least 90 days old can register and reproduce any gain, and the configuration it states is never checked.
+  Propose to the council a minimum standing for a measurer whose measurement counts for R4 (a level from docs/reputation.md,
+  or a guardian's or a confirmed member's countersignature), with its cost for a hive that has few members, then build
+  what the council decides.
+fichiers:
+- docs/reputation.md
+- docs/gouvernance.md
+- outils/bee.py
+- outils/test_bee.py
+portee: 0.6
+metrique: null
+depend_de:
+- ruche-0042
+critere_acceptation:
+- the proposal and the council's decision recorded in docs/decisions.md before any code
+- 'test: a measurement by a member below the decided standing does not count for R4; independent review attached'
+hors_perimetre:
+- COMMANDMENTS.md
+- REGLES.md (by a rule proposal, R10)
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: '2026-11-02'
