@@ -31,7 +31,7 @@ hors_perimetre:
 - the real registry
 - any AI agent
 noeud: projets/ruche/ruche
-statut: en_relecture
+statut: integree
 contribution: ruche-0080-c1
 cree_par: conseil
 cree_le: '2026-10-31'
