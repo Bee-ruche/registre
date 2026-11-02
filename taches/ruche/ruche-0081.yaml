@@ -17,7 +17,11 @@ contexte: 'R15 (docs/devolution.md, section 1): every appointed privilege (guara
   a person is in office at a given instant, used everywhere a guardian or a guarantor counts; ruche-0082 adds the trial
   to that same function. Fail closed: a missing or unreadable date means not in office. Acts made in office keep their
   effect after the term (R15). ruche-0026 touches the same places: whichever is integrated second rebases on the other.
-  If the work outgrows L, stop and propose a split (commandment 4).'
+  If the work outgrows L, stop and propose a split (commandment 4).
+
+
+  Council''s note (2 Nov 2026, from ruche-0051''s design): `gardiens_en_fonction` checks only that a guardian has a guarantor;
+  docs/croissance.md says it also checks R15''s term and trial period, which no code does yet. Include it here.'
 fichiers:
 - outils/bee.py
 - outils/test_bee.py
