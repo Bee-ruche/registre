@@ -4,7 +4,11 @@ auteur: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/152
 resume: An invitation's debate is its own, its proposer never holds the pen, a duplicate marking can be
   contested, and the accords need a current synthesis.
-statut: en_relecture
+statut: integree
 soumise_le: '2026-11-02T11:22:55Z'
 engage_depuis: '2026-11-02T04:53:50Z'
 relectures: []
+decidee_le: '2026-11-02T11:41:10Z'
+motif_decision: 'Hive tooling contribution: registry PR #152 merged at commit 9875c99 by bidji29, the
+  account of a council member, CI green on the merged commit.'
+fusion_sha: 5438a0609b95d1ee7fb34ee6a34e15d5905f9d08
