@@ -23,7 +23,7 @@ import test_bee  # noqa: E402
 import load_test  # noqa: E402
 
 UTC = dt.timezone.utc
-BASE = int(dt.datetime(2026, 10, 27, 13, tzinfo=UTC).timestamp())  # la veille de la semaine : le 28/10 ; la semaine : le 2/11
+BASE = int(dt.datetime(2026, 10, 27, 13, tzinfo=UTC).timestamp())  # inscriptions le lendemain du commit de base ; la semaine ensuite
 LUNDI = dt.datetime(2026, 11, 2, tzinfo=UTC)
 FIN = "2026-11-09T00:00:00Z"
 SURVEILLANCE = None  # pendant test_hors_ligne : les événements d'audit relevés

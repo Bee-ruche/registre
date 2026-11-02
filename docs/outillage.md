@@ -72,7 +72,7 @@ graine à l'autre (la graine ne tire que les heures, les paires, les avis et les
 Pour toute la ruche : **une tâche proposée pour 10 membres** (`bee proposer-tache`, telle qu'il l'écrit),
 **un argument pour 5 membres**, dans un débat ouvert de la base. La semaine va du lundi 0 h au lundi suivant
 (UTC) ; **la moitié des contributions arrive le vendredi soir** (18 h à minuit), l'autre moitié du lundi 6 h au
-dimanche 6 h. La veille, les N membres s'inscrivent, puis le conseil ouvre une tâche par membre (sur les projets
+dimanche 6 h. Le lendemain du commit de base, les N membres s'inscrivent, puis le conseil ouvre une tâche par membre (sur les projets
 à optimiser qui ont un fork) et nomme **les gardiens au maximum du frein** : un pour 20 membres actifs, comptés
 comme `bee` les compte à la fin de la semaine (ceux de la base compris), chacun avec un garant, un garant pour
 deux gardiens ([devolution.md](devolution.md)).
@@ -86,7 +86,7 @@ dans l'historique. Les PR passent l'une après l'autre, dans l'ordre de leur heu
 `central.git` (son clone nu) et `etat/` (`base`, `fin`, `prs.tsv`, `auteurs_pr.tsv`). L'historique : la base
 en un commit (son passé y est daté), puis une PR par geste, fusionnée en squash comme `fusion-auto` (auteur
 et heure du geste, fusion une minute après), dont le message nomme la commande `bee` qui a écrit ses fichiers :
-8,3 N + 1 PR, soit 8 301 à 1 000 membres. Chaque fichier est écrit par les fonctions d'écriture de l'outil `bee`
+8,3 N + 1 PR, soit 8 301 à 1 000 membres. Chaque fichier (sauf `garants.yaml` et `gardiens.yaml`, complétés comme le ferait le conseil à la main) est écrit par les fonctions d'écriture de l'outil `bee`
 de la base. La même graine sur la même base donne les mêmes octets.
 
 ```bash
