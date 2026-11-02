@@ -4,7 +4,11 @@ auteur: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/145
 resume: No data about a person outside the hive in any free text, disguised or sensitive ones included;
   a granted invitation is frozen.
-statut: en_relecture
+statut: integree
 soumise_le: '2026-11-02T13:34:50Z'
 engage_depuis: '2026-11-02T03:01:35Z'
 relectures: []
+decidee_le: '2026-11-02T13:53:27Z'
+motif_decision: 'Hive tooling contribution: registry PR #145 merged at commit b373f90 by bidji29, the
+  account of a council member, CI green on the merged commit.'
+fusion_sha: 8d2006d592e8f81ddd029e463aaa644275ebb4d8
