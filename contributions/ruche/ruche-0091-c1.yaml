@@ -5,6 +5,6 @@ pr: https://github.com/Bee-ruche/registre/pull/125
 resume: The gate checks declared dates against the time GitHub recorded for the push, not the time the
   check runs; a missing or malformed time is refused.
 statut: en_relecture
-soumise_le: '2026-11-02T04:36:17Z'
+soumise_le: '2026-11-02T05:21:24Z'
 engage_depuis: '2026-11-01T22:00:49Z'
 relectures: []
