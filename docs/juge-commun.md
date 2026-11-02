@@ -68,13 +68,30 @@ fails the judgement whatever the mode, and B's output of a mixed-in input must b
 verification. A measured side without verification inputs is an error. A scenario may return a fixed metric computed on its
 timed outputs (the toy's ratio); it replaces the value `fixes()` reads on verification. `juge.json`:
 `juge.verification.entrees_melees` (total), `melees_par_repetition` (per side), `instructions_sans_melange` (instruction-count
-scenarios that got none).
+scenarios that got none). Since ruche-0117, the byte-for-byte check wants a comparable output in each scenario of the side, and
+a fixed metric that no scenario returns, read on verification alone, is named in `fixes_sans_mesure`, marked
+`verification_seulement` in `metriques` and never `au_dela_du_bruit`: its value is the same at every repetition.
+
+**Each execution on its own tmpfs (ruche-0117).** Nothing the judge's setup shows a container depends on the run's progress
+(its position, the variant pass, the repetition, the mode). Just before each container, the judge mounts a fresh tmpfs
+(`conteneur.TMPFS`: 4 GiB, 262,144 files; as root or through `sudo -n`, as on juge.yml's runner, an error otherwise) and creates
+there anew, in a fixed order with fixed access and modification times, all the container sees of it: `chrono`, the harness,
+the inputs, `/etc/hostname`, `/etc/hosts`, `/etc/resolv.conf` (which Docker would write on the host's disk) and the outputs
+folder; once the container ends, the outputs are copied out and the tmpfs unmounted. Docker (up to 29.0) mounts folders of equal
+depth in an order drawn for each container: each of the judge's is given at its own depth, through the image's link to its root
+(`/.racine/variante` is `/variante`), so all are mounted in one order. Identical scenarios thus find the same
+inodes, devices, links, sizes, directory order, free space and mount lines, change and birth times as old (`f_fsid` is drawn by
+the kernel at each mount), and no container's outputs share space with another's while it runs (test_memes_montures). What
+still follows the progress, as the clock does: the container's root, Docker's overlay on the host's disk (its inode, free
+space and, with the containerd image store, its layers' numbers in `/proc/self/mountinfo`), and kernel-wide counters (unique
+mount ids, the inode numbers of each container's cgroup and message queues, the host's process count in `/proc`'s links).
 
 **Per-scenario isolation (ruche-0036).** In the measurements and the instruction count, each scenario runs in its own
 container (above), with a fresh `/tmp` and a fresh output folder mounted on `/sorties`: of all the outputs, it sees only its
 own. Verification still runs one container per side, not per scenario.
-- **Frozen outputs**: as soon as each container ends (verification included), the judge records the listing of its output
-  folder and the SHA-256 of each file (`lecture.figer`). The plugin (through `Sorties`) and the byte-for-byte comparison of
+- **Frozen outputs**: as soon as each container ends (verification included), its outputs are copied out of its tmpfs
+  (`lecture.copier`: no link followed, size bounded, a link or special file left as a link) and the judge records the listing of
+  that folder and the SHA-256 of each file (`lecture.figer`). The plugin (through `Sorties`) and the byte-for-byte comparison of
   mixed-in inputs read only what was frozen: a file changed, added or removed afterwards is a refusal, when it is read and at
   the check that ends each step; so is anything the judge cannot read while freezing (root or not).
 - **Drawn order**: the order of the scenarios is drawn anew at each repetition (warm-up included) and for the instruction
@@ -147,12 +164,17 @@ Règles de sûreté, vérifiées par le juge commun (revue adverse du 28/10) :
 - **Job outputs tied to the report** (ruche-0038): `code`, `empreinte` (SHA-256 of `juge.json`), `suspectes` (all of them),
   `sorties_comparees`, `greffon`, `graine`, `base`, `tete` (`outils/juge/rapport.py`; empty without a report). The verdict
   job reads `juge.json` from the artifact « juge » and checks it against them, `python3 rapport.py juge.json --verifier
-  sorties.json` (`toJSON(needs.<judging job>.outputs)`), refused (code 1) at any difference. `juge.json` names `juge.base`,
+  sorties.json --base <the PR's base> --tete <its head>` (`toJSON(needs.<judging job>.outputs)`), refused (code 1) at any
+  difference, a code other than 0 or other commits than the PR's (ruche-0117); any non-zero exit blocks the verdict. The judging
+  step publishes the code only with the figures, once `rapport.py --code` has checked the report: code 2 if the report fails
+  (none for a code 0, malformed). `juge.json` names `juge.base`,
   `juge.tete` and `juge.image_id`, the image's id, by which every container runs it.
 - **Disk and reads bounded** (ruche-0038): the work folder is a tmpfs of 4 GiB and 262,144 files (`--travail`); containers
   run with `--ulimit fsize` at `lecture.TAILLE_MAX_SORTIE` (256 MiB) and no log on the host's disk, which keeps the first MiB
   of their standard output and the last of their error; no output is read beyond that size. Writing without end or filling the
-  folder fails the judgement. `juge.json` lists 100 suspicious constructs at most (the rest: `constructions_suspectes_omises`).
+  folder fails the judgement. `juge.json` lists 100 suspicious constructs at most (the rest: `constructions_suspectes_omises`),
+  the most serious first (`juge.GRAVITE`), each kind counted (`constructions_suspectes_par_type`), each detail cut to 300
+  characters as `analyse.analyser` builds the list (ruche-0117).
 
 ## Trois greffons côte à côte
 
