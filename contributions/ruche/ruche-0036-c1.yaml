@@ -1,0 +1,10 @@
+id: ruche-0036-c1
+tache: ruche-0036
+auteur: bidji29
+pr: https://github.com/Bee-ruche/registre/pull/164
+resume: The common judge runs each scenario in its own container, freezes its outputs when the container
+  ends, draws the order at each repetition, and records each scenario's CPU time.
+statut: en_relecture
+soumise_le: '2026-11-02T13:21:00Z'
+engage_depuis: '2026-11-02T05:39:22Z'
+relectures: []
