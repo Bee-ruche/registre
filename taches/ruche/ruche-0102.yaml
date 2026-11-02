@@ -24,6 +24,8 @@ critere_acceptation:
   pass in every free text'
 - 'test: every phone number and e-mail address the current tests catch is still caught, including the disguised forms;
   a differential check on generated strings shows no new acceptance outside the honest forms above'
+- 'from ruche-0049''s review: links to GitHub''s documentation (docs.github.com, cli.github.com) pass in outgoing PR
+  texts, while any other subdomain of github.com is still read as a repository path'
 - 'test: a free text at its size bound is checked in well under a second by every detector'
 - independent adversarial review attached, made with the architect's brief; the full test suite passes
 hors_perimetre:
