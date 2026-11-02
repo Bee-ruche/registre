@@ -7941,7 +7941,7 @@ def cmd_record_merge(args):
     who was council or agent account just before it and at the PR's base (both must hold). Code 1, nothing written, unless: it is in review, with a resume; GitHub's PR is
     the one it declares, on its project's repository, merged into main, opened by its author or their declared agent account; the
     contribution arrived on main with that very merge (submitted inside the PR, so the merged head is the head it was submitted
-    at), which changed as many files as the PR (a squash or a merge commit), one outside the self-service folders, and no workflow;
+    at); from the PR's base to it, as many files as the PR changed, one outside the self-service folders, and no workflow;
     a council member's account, or a council member's declared agent account, merged it; the latest run of validation.yml for this
     PR succeeded, and the latest of every other pull_request workflow for it. The account is named as GitHub reports it: who acted
     through it, the robot cannot know."""
@@ -7962,7 +7962,7 @@ def cmd_record_merge(args):
         par, quand = (pr["merged_by"] or {}).get("login"), lire_instant(pr["merged_at"], "merged_at") if pr["merged"] is True else None
         for r in sorted((r for d in reponses_api(args.api, "executions") for r in d["workflow_runs"]
                          if r["head_sha"] == tete and r["event"] == "pull_request"
-                         and (r["head_branch"], r["head_repository"]["full_name"]) == de_la_pr), key=lambda r: int(r["id"])):
+                         and (r.get("head_branch"), (r.get("head_repository") or {}).get("full_name")) == de_la_pr), key=lambda r: int(r["id"])):
             dernieres[r["path"]] = r  # the latest run of each pull_request workflow for this very PR (its head, branch, repository)
     except (OSError, ValueError, LookupError, TypeError, AttributeError, ErreurBee):
         return refus("GitHub's answer is unreadable")
@@ -7981,7 +7981,7 @@ def cmd_record_merge(args):
         return refus(f"PR #{numero}: no full head, merge or base commit id")
     try:  # who is council or agent account: on main just before the merge AND at the PR's base (GitHub's, on main before it), both
         ajouts = commits_premier_parent(reg.racine, "HEAD", reg.rel(chemin), filtre="A") if historique_disponible(reg.racine) else []
-        chemins = [c for c in git(reg.racine, "diff", "-z", "--name-only", "--no-renames", f"{fusion}^1", fusion).split("\0") if c]
+        chemins = [c for c in git(reg.racine, "diff", "-z", "--name-only", "--no-renames", base_sha, fusion).split("\0") if c]  # all the PR
         git(reg.racine, "merge-base", "--is-ancestor", base_sha, f"{fusion}^1")  # no commit of the PR can be its base (F7, N1)
         autorites = [(Pseudos(m.get("pseudo") for m in (lire_yaml_ref(reg.racine, ref, "gouvernance/conseil.yaml") or {}).get("membres")
                               or [] if isinstance(m, dict)), agent_accounts(lire_yaml_ref(reg.racine, ref, AGENT_ACCOUNTS)))
@@ -7993,13 +7993,13 @@ def cmd_record_merge(args):
     if not ajouts or ajouts[0][0] != fusion:
         return refus(f"it arrived on main with commit {ajouts[0][0][:7] if ajouts else '(unreadable)'}, not with PR #{numero}'s merge "
                      f"commit {fusion[:7]}: only a contribution submitted inside the PR it declares is recorded here")
-    if len(chemins) != fichiers_pr:  # a squash or a merge commit changes the PR's files; the tip of a rebase, its last commit's
-        return refus(f"PR #{numero}'s merge commit {fusion[:7]} changes {len(chemins)} files, the PR {fichiers_pr}: not a squash or a "
-                     "merge commit (a rebase of several commits?), so main before it is unknown: the council records it by hand")
+    if len(chemins) != fichiers_pr:  # from the PR's base to its merge commit (squash, merge commit or rebase): the PR, nothing else
+        return refus(f"main from PR #{numero}'s base {base_sha[:7]} to its merge commit {fusion[:7]} changes {len(chemins)} files, the "
+                     f"PR {fichiers_pr}: the council records it by hand")
     if all(c.split("/")[0] in {*FICHIERS_LIBRE_SERVICE, "debats"} for c in chemins):
-        return refus(f"PR #{numero}'s merge commit {fusion[:7]} changes only self-service files: no work to record")
+        return refus(f"PR #{numero} (merge commit {fusion[:7]}) changes only self-service files: no work to record")
     if any(c.startswith(".github/workflows/") for c in chemins):  # its CI ran the PR's own version of the workflow
-        return refus(f"PR #{numero}'s merge commit {fusion[:7]} changes a workflow: the council records it by hand")
+        return refus(f"PR #{numero} (merge commit {fusion[:7]}) changes a workflow: the council records it by hand")
     comptes = [("the account of a council member", f"{par} (account of a council member), by merging") if par in conseil
                else (f"declared agent account of {agents[par]}", f"{par} (declared agent account of {agents[par]}, a council member), by merging")
                if isinstance(par, str) and agents.get(par) in conseil else None for conseil, agents in autorites]
