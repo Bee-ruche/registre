@@ -40,6 +40,9 @@ hors_perimetre:
 - the forks (miniz-0048, libyaml-0020)
 - the tag itself (the council)
 noeud: projets/ruche/ruche
-statut: ouverte
+statut: reservee
+reservation:
+  utilisateur: "bidji29"
+  depuis: "2026-11-02T16:01:44Z"
 cree_par: conseil
 cree_le: '2026-11-02'
