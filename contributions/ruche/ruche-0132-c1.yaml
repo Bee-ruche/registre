@@ -5,6 +5,6 @@ pr: https://github.com/Bee-ruche/registre/pull/182
 resume: The full suite runs in its own workflow, called by a code PR's validation, and the fast path reads
   its latest runs on main in one call.
 statut: en_relecture
-soumise_le: '2026-11-02T18:16:22Z'
+soumise_le: '2026-11-02T19:47:24Z'
 engage_depuis: '2026-11-02T16:02:11Z'
 relectures: []
