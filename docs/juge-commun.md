@@ -92,7 +92,7 @@ Règles de sûreté, vérifiées par le juge commun (revue adverse du 28/10) :
   judged: a guardian or the council must review it, as for any incomplete judge. Missing or malformed (not an integer from 1
   to 9999), no verdict is complete: the gate closes, never opens. It is read when R3 is checked, so it reaches contributions
   still in review, judged by an older judge, never those already integrated. **The council raises it**, after it has tagged
-  the new version and every fork is pinned to it (a fork's PR, the forks' tasks); raised earlier, the forks' verdicts go to a
+  the new version and every fork is pinned to it (each fork moves by a tooling PR); raised earlier, the forks' verdicts go to a
   guardian until they move.
 
 ## Le workflow `juge.yml`, version 2 (ruche-0024)
