@@ -17,6 +17,7 @@
   },
   "properties": {
     "id": {"type": "string", "pattern": "^D-[0-9]{4}$"},
+    "invitation": {"type": "string", "pattern": "^I-[0-9]{4}$", "description": "Le débat propre de cette invitation (R13), ouvert avec elle par son proposant, qui n'en tient jamais la plume"},
     "question": {"allOf": [{"$ref": "#/$defs/texte"}, {"minLength": 10, "maxLength": 5000}]},
     "question_caviardee_pour": {"type": "string", "pattern": "^I-[0-9]{4}$", "description": "Le conseil a caviardé la question pour cette invitation refusée ou retirée (commandement 10, R12)"},
     "synthese_caviardee_pour": {"type": "string", "pattern": "^I-[0-9]{4}$", "description": "Le conseil a caviardé la synthèse pour cette invitation refusée ou retirée ; la marque tombe avec la synthèse suivante"},
@@ -48,6 +49,7 @@
           "position": {"enum": ["pour", "contre", "question", "fait"]},
           "repond_a": {"$ref": "#/$defs/id_argument"},
           "doublon_de": {"$ref": "#/$defs/id_argument"},
+          "conteste": {"$ref": "#/$defs/id_argument", "description": "Conteste le marquage doublon de cet argument précédent : il compte de nouveau pour la synthèse"},
           "caviarde_pour": {"type": "string", "pattern": "^I-[0-9]{4}$", "description": "Le conseil a caviardé cet argument pour cette invitation refusée ou retirée (commandement 10, R12)"},
           "texte": {"allOf": [{"$ref": "#/$defs/texte"}, {"minLength": 1, "maxLength": 5000}]},
           "sources": {

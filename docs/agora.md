@@ -60,7 +60,9 @@ les arguments : si ton idée y est déjà, n'ajoute rien.
 Chaque débat a un **rapporteur**, qui tient la synthèse. Au départ, c'est celui qui ouvre le débat
 (`bee debattre ouvrir`). Un débat ouvert par `bee debattre importer-questions` naît **sans
 rapporteur** : le premier qui y argumente le devient, dans la même PR que son argument, et pour
-lui-même seulement. Le conseil qui importe les questions ne garde donc pas la plume.
+lui-même seulement. Le conseil qui importe les questions ne garde donc pas la plume. Le débat propre d'une
+invitation (R13) naît de même, ouvert par `bee inviter` : son proposant y argumente sans jamais prendre la plume
+([croissance.md](croissance.md)).
 
 ```bash
 bee debattre synthetiser D-0001 --utilisateur <pseudo> --fichier synthese.txt   # ou --texte "…"
@@ -79,7 +81,9 @@ bee debattre synthetiser D-0001 --utilisateur <pseudo> --fichier synthese.txt   
   la place de l'essaim et ne réécrit pas ce que les autres ont dit : les arguments restent lisibles à côté.
 - **Les doublons** : le rapporteur ou un gardien marque un argument qui en répète un autre
   (`bee debattre doublon D-0001 --argument A7 --de A2 --utilisateur <pseudo>`). Le doublon reste lu ;
-  il ne peut renvoyer qu'à un argument précédent, de même position, qui n'est pas lui-même un doublon.
+  il ne peut renvoyer qu'à un argument précédent, de même position, qui n'est pas lui-même un doublon. Le marquage
+  ne se retire pas, mais tout membre le conteste, en ajout seul, par un argument (`bee debattre argumenter D-0001
+  --conteste A7 …`), même celui qui l'a posé ; dans le débat d'une invitation, un doublon contesté compte de nouveau.
 - **La relève d'un rapporteur absent**, sans compter sur personne : si des arguments attendent la
   synthèse et qu'aucune n'a été publiée **72 h après le premier d'entre eux**
   (`releve_rapporteur_heures`), tout autre participant du débat publie la synthèse à sa place avec la
@@ -191,7 +195,7 @@ l'agora.
 | Transition | Qui | Contrôles |
 | --- | --- | --- |
 | Ouvrir (`ouverture_debat`) | Tout membre | Au numéro suivant le plus grand de `main`, sans trou ; `ouvert_par` = l'auteur de la PR, `rapporteur` = l'auteur ou personne (alors sans argument ni synthèse) ; daté de l'heure de la PR (2 h de tolérance, jamais dans le futur) ; question courte ; né ouvert, sans clôture ; 3 ouvertures sur 24 h glissantes au plus |
-| Argumenter (`argument`) | Tout membre | Débat ouvert ; arguments ajoutés en fin de liste seulement, signés de l'auteur de la PR, numérotés à la suite, datés de l'heure de la PR et pas avant le précédent ; texte court ; `repond_a` vers un argument précédent ; un fait a des sources (5 au plus, de 200 caractères), et chaque chemin cité existe dans le registre ; 5 par débat et 15 tous débats confondus, par utilisateur sur 24 h glissantes, 20 par PR |
+| Argumenter (`argument`) | Tout membre | Débat ouvert ; arguments ajoutés en fin de liste seulement, signés de l'auteur de la PR, numérotés à la suite, datés de l'heure de la PR et pas avant le précédent ni la synthèse déjà sur `main` ; texte court ; `conteste` vers un doublon précédent ; `repond_a` vers un argument précédent ; un fait a des sources (5 au plus, de 200 caractères), et chaque chemin cité existe dans le registre ; 5 par débat et 15 tous débats confondus, par utilisateur sur 24 h glissantes, 20 par PR |
 | Prendre la plume (`prise_de_plume`) | Le premier qui argumente dans un débat sans rapporteur | Dans la même PR que son argument, `rapporteur` = l'auteur de la PR, personne d'autre ; un débat sans rapporteur n'en reçoit un que par son premier argument ; la synthèse vient dans une PR suivante |
 | Synthétiser (`synthese`) | Le rapporteur | Signée et datée de maintenant ; non vide, courte ; le rapporteur suivant est un autre participant, hors conseil qui a ouvert le débat sans y prendre part (lui-même seulement s'il est seul) |
 | Relever un rapporteur absent (`synthese`) | Un autre participant | Des arguments attendent la synthèse depuis 72 h après le premier d'entre eux ; participant dans `main` avant la PR ; pas l'auteur de la dernière synthèse s'il y a quelqu'un d'autre ; puis les mêmes contrôles qu'une synthèse, rapporteur suivant compris |
