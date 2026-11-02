@@ -14,6 +14,7 @@ utilisateur : voir AGENTS.md.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import datetime as dt
 import fnmatch
 import functools
@@ -4061,64 +4062,146 @@ def sur_la_liste(cles, liste):
     return sorted(c for c in cles if empreinte(c) in liste)
 
 
-# Retrait demandé (commandement 10, ruche-0048) : distinct du refus, il ne touche pas à la liste de non-contact.
-CHEMIN_RETRAITS, MARQUE_RETRAIT, PONCTUATION = "gouvernance/retraits.yaml", "« retiré à la demande de la personne »", "\"'«»“”‘’()[]{}<>.,;:!?*_` \t\n\r"
-TEXTES_RETIRABLES = frozenset({c.rpartition("/")[2] for v in CHAMPS_LONGS.values() for c in v} | {"titre", "sources", "texte_propose"})
+# Retrait demandé (commandement 10, ruche-0048) : distinct du refus, il ne touche pas à la liste de non-contact sans --non-contact.
+CHEMIN_RETRAITS, MARQUE_RETRAIT, PONCTUATION = "gouvernance/retraits.yaml", "[retiré]", "\"'«»“”‘’()[]{}<>.,;:!?*_`… \t\n\r"
+RETRAIT_PASSAGES_MAX = 8  # réglage du conseil : une empreinte qui nomme plus de passages est trop courante pour une personne
+ELISION = re.compile(r"(?is)((?:[dlcjmnst]|qu|jusqu|lorsqu|puisqu)['’])?(.+?)(['’]s)?")
+# Ce qu'un retrait parcourt, par sorte (fichiers, schéma, textes libres) ; jamais le message d'une invitation, docs/ ni arbre/.
+PARCOURS = {"taches": (CHEMIN_TACHE, "tache", {"titre", "contexte", "critere_acceptation", "hors_perimetre", "texte"}),
+            "debats": (CHEMIN_DEBAT, "debat", {"question", "synthese", "texte", "sources", "reference"}),
+            "invitations": (CHEMIN_INVITATION, "invitation", {"fait", "source", "homonyme", "motif"}),
+            "contributions": (FICHIERS_LIBRE_SERVICE["contributions"][1], "enregistrement", {"resume", "motif", "motif_decision", "declare"}),
+            "votes": (FICHIERS_LIBRE_SERVICE["votes"][1], "vote", {"motif"}),
+            "mesures": (FICHIERS_LIBRE_SERVICE["mesures"][1], "mesure", {"motif"}),
+            "propositions": (CHEMIN_PROPOSITION, "proposition", {"texte_propose", "motif", "resultat"}),
+            "gouvernance": (re.compile(r"^gouvernance/incidents\.yaml\Z"), "incidents", {"titre", "issue"})}
 
 
-@functools.lru_cache(maxsize=1 << 16)
-def empreintes_passage(passage):
-    """Les empreintes des clés que nomme un passage : une adresse https:// (ce qu'elle désigne, jamais prise comme un nom), sinon
-    lui-même sans @ ni ~ initial (un nom, un pseudo, github:octocat), et un site écrit sans plateforme (exemple.org)."""
+def sorte_parcourue(chemin):
+    sorte = str(chemin).split("/")[0]
+    return sorte if sorte in PARCOURS and PARCOURS[sorte][0].match(str(chemin)) else None
+
+
+def cles_passage(passage):
+    """Les clés que nomme un passage : une adresse, sa forge ou son site (sur un hébergement partagé, la page seule) ; sinon lui-même
+    sans @ ni ~ (Alice-Martin comme Alice Martin, octocat, github:octocat), et le propriétaire d'un chemin octocat/zlib."""
     nom = passage.lstrip("@~")
+    nom = "https://" + nom if re.fullmatch(r"(?i)[a-z0-9.-]+\.[a-z]{2,}(?:/\S*)?", nom) else nom
     if re.match(r"(?i)https?://", nom):
-        return frozenset(empreinte(c) for c in ([] if re.search(r"\s", nom) else cles_d_adresse(nom)))
-    return frozenset(empreinte(c) for c in ({nom, f"site:{nom}"} if "." in nom and ":" not in nom else {nom}))
+        hote, premier = hote_de(nom), re.match(r"(?i)https?://[^/?#]*/*([^/?#]*)", nom)[1].casefold()
+        if re.search(r"\s", nom) or not hote or any(hote.endswith("." + p) for p in PAGES_FORGES) or not (
+                sur_hotes(hote, PLATEFORMES_PARTAGEES) or premier[:1] in ("~", "@")):
+            return set() if re.search(r"\s", nom) else cles_d_adresse(nom)
+        return {f"partage:{hote}|{premier if hote in PLATEFORMES_PARTAGEES or premier[:1] in ('~', '@') else ''}"}
+    return {nom, nom.replace("-", "")} | ({nom.split("/")[0]} if "/" in nom and not re.search(r"\s", nom) else set())
 
 
-def passages_retires(texte, empreintes, marque=MARQUE_RETRAIT):
-    """Le texte où chaque passage qui nomme la personne (1 à 4 mots, sans la ponctuation qui les entoure, dont une clé a son
-    empreinte consignée) devient la marque ; tout le reste demeure, mot pour mot."""
-    mots, morceaux, curseur, i = [m.span() for m in re.finditer(r"\S+", texte)], [], 0, 0
+@functools.lru_cache(maxsize=1 << 14)
+def empreintes_passage(passage):
+    return frozenset(empreinte(c) for c in cles_passage(passage))
+
+
+def passages_retires(texte, empreintes, vus=None):
+    """Le texte où chaque passage qui la nomme (1 à 4 mots, sans ponctuation, élision ni possessif autour) devient la marque."""
+    mots, morceaux, curseur, i, vus = [m.span() for m in re.finditer(r"[^\s…]+", texte)], [], 0, 0, [] if vus is None else vus
     while i < len(mots):
         for n in range(min(4, len(mots) - i), 0, -1):
             debut, fin = mots[i][0], mots[i + n - 1][1]
-            passage = texte[debut:fin].strip(PONCTUATION)
-            debut += len(texte[debut:fin]) - len(texte[debut:fin].lstrip(PONCTUATION))
-            if passage and empreintes_passage(passage) & empreintes:
-                morceaux, curseur = morceaux + [texte[curseur:debut], marque], debut + len(passage)
+            passage = texte[debut:fin].strip(PONCTUATION) or " "
+            debut, nu = debut + len(texte[debut:fin]) - len(texte[debut:fin].lstrip(PONCTUATION)), ELISION.fullmatch(passage)
+            if nom := next(((d, d + len(x), t) for d, x in ((0, passage), (len(nu[1] or ""), nu[2]))
+                            if x.strip() and (t := empreintes_passage(x) & empreintes)), None):
+                morceaux, curseur = morceaux + [texte[curseur:debut + nom[0]], MARQUE_RETRAIT], debut + nom[1]
+                vus.append(nom[2])
                 break
         i += n
     return "".join(morceaux) + texte[curseur:]
 
 
-def effacer(donnees, empreintes, marque=None):
-    """Les données où, dans les seuls textes libres (jamais un auteur, une date, un identifiant), chaque passage qui nomme la
-    personne devient la marque (« retiré » pour une source, qui reste d'un seul mot)."""
+def textes_parcourus(donnees, champs, lieu=(), libre=False):
+    """[(lieu, texte)] des textes d'un champ parcouru : jamais un auteur, une date, un statut, un identifiant."""
     if isinstance(donnees, dict):
-        return {k: effacer(v, empreintes, marque or (k in TEXTES_RETIRABLES and ("retiré" if k == "sources" else MARQUE_RETRAIT)))
-                for k, v in donnees.items()}
+        return [x for k, v in donnees.items() for x in textes_parcourus(v, champs, lieu + (k,), libre or k in champs)]
     if isinstance(donnees, list):
-        return [effacer(v, empreintes, marque) for v in donnees]
-    return passages_retires(donnees, empreintes, marque) if marque and isinstance(donnees, str) else donnees
+        return [x for i, v in enumerate(donnees) for x in textes_parcourus(v, champs, lieu + (i,), libre)]
+    return [(lieu, donnees)] if libre and isinstance(donnees, str) else []
 
 
-def apres_retrait(chemin, texte, entree):
-    """Un fichier YAML du registre après le retrait `entree` : ses textes libres effacés, et le dossier d'une invitation dont une
-    identité déclarée est consignée (« retiré : demande »). bee retirer-donnees l'écrit, bee verifier-pr l'exige octet pour octet."""
-    ancien = charger_texte_yaml(texte, chemin) if chemin.endswith(".yaml") else None
-    if not isinstance(ancien, dict):
-        return texte
-    empreintes, nouveau, invitation = set(entree["empreintes"]), ancien, CHEMIN_INVITATION.match(chemin)
-    if invitation and not retiree(ancien) and {empreinte(c) for c in identites_propres(ancien)} & empreintes:
-        nouveau = retirer({**ancien, "retrait": {"par": entree["par"], "le": entree["le"], "raison": "demande"}, "statut": "retiree"}, "demande")
-    if (nouveau := effacer(nouveau, empreintes)) == ancien:
-        return texte
-    if invitation or CHEMIN_DEBAT.match(chemin):
-        return (rendu_invitation if invitation else rendu_debat)(nouveau, chemin)
-    for cle in (c for c in nouveau if nouveau[c] != ancien[c]):
-        texte = remplacer_bloc(texte, str(cle), _rendu_fidele({cle: nouveau[cle]}, chemin).rstrip("\n").split("\n"))
+def _poser(donnees, lieu, valeur):
+    if not lieu:
+        return valeur
+    copie = dict(donnees) if isinstance(donnees, dict) else list(donnees)
+    copie[lieu[0]] = _poser(donnees[lieu[0]], lieu[1:], valeur)
+    return copie
+
+
+def problemes_forme(reg, chemin, donnees):
+    """Ce que bee valider refuserait d'un fichier parcouru (son schéma, les bornes de ses textes), sans en citer le texte."""
+    return ({"/".join(map(str, e.absolute_path)) + ":" + e.validator for e in reg.schema(PARCOURS[sorte_parcourue(chemin)][1]).iter_errors(donnees)}
+            | set(problemes_textes_libre_service(donnees, chemin) if sorte_libre_service(chemin) else ()))
+
+
+def retrait_de(reg, chemin, texte, entree):
+    """(avant, après, débordements [(lieu, retiré)], {lieu: empreintes par passage}) d'un fichier parcouru ; un texte qui déborderait
+    reste tel quel (le conseil le raccourcit) ; l'invitation d'une identité consignée retire son dossier (« retiré : demande »)."""
+    avant, empreintes, sorte = charger_texte_yaml(texte, chemin), set(entree["empreintes"]), sorte_parcourue(chemin)
+    if not isinstance(avant, dict):
+        return avant, avant, [], {}
+    if sorte == "invitations" and not retiree(avant) and (vus := {empreinte(c) for c in identites_propres(avant)} & empreintes):
+        geste = {"par": entree["par"], "le": entree["le"], "raison": "demande"}
+        return avant, retirer({**avant, "retrait": geste, "statut": "retiree"}, "demande"), [], {("dossier",): [vus]}
+    apres, debords, trouves, refus = avant, [], {}, None
+    for lieu, valeur in textes_parcourus(avant, PARCOURS[sorte][2]):
+        if (nouveau := passages_retires(valeur, empreintes, vus := [])) != valeur:
+            trouves[lieu] = vus
+            refus = problemes_forme(reg, chemin, avant) if refus is None else refus
+            if problemes_forme(reg, chemin, essai := _poser(apres, lieu, nouveau)) - refus:
+                debords.append((lieu, nouveau))
+            else:
+                apres = essai
+    return avant, apres, debords, trouves
+
+
+def texte_apres(chemin, texte, avant, apres, empreintes):
+    """Débat, invitation : leur forme canonique ; sinon la marque ligne à ligne si le YAML relu est `apres`, à défaut les blocs changés."""
+    if apres == avant or sorte_parcourue(chemin) in ("debats", "invitations"):
+        return texte if apres == avant else (rendu_debat if CHEMIN_DEBAT.match(chemin) else rendu_invitation)(apres, chemin)
+    lignes = "\n".join(passages_retires(ligne, empreintes) for ligne in texte.split("\n"))
+    with contextlib.suppress(ErreurBee):
+        if charger_texte_yaml(lignes, chemin) == apres:
+            return lignes
+    for cle in (c for c in apres if apres[c] != avant[c]):
+        texte = remplacer_bloc(texte, str(cle), _rendu_fidele({cle: apres[cle]}, chemin).rstrip("\n").split("\n"))
     return texte
+
+
+def balayer(reg, entree):
+    """{chemin: (texte, avant, après, débordements, trouvés)} des fichiers parcourus que le retrait change ou ferait déborder."""
+    resultats = {}
+    for fichier in sorted(f for sorte in PARCOURS for f in (reg.racine / sorte).rglob("*.yaml") if f.is_file()):
+        if sorte_parcourue(chemin := reg.rel(fichier)):
+            r = retrait_de(reg, chemin, texte := fichier.read_text(encoding="utf-8"), entree)
+            if r[1] != r[0] or r[2]:
+                resultats[chemin] = (texte, *r)
+    return resultats
+
+
+def depots_de_la_ruche(reg):
+    return {"registre"} | {str(p.get("fork")).rstrip("/").rsplit("/", 1)[-1] for _, p in reg.projets.values() if isinstance(p, dict)}
+
+
+def empreintes_protegees(reg):
+    """Jamais retirés (commandement 10 : hors de la ruche) : pseudos de la ruche, projets, dépôts, numéros (tâches, règles…)."""
+    noms = (set(reg.membres) | reg.conseil | reg.gardiens | reg.garants | reg.robots | set(reg.comptes_agents)
+            | set(reg.comptes_agents.values()) | set(reg.projets) | depots_de_la_ruche(reg))
+    ids = (set(reg.taches) | set(reg.enregistrements) | set(reg.propositions) | set(reg.debats) | set(reg.invitations)
+           | {f"{p}{n}" for p in ("", "R", "C") for n in range(1, 100)} | {x for n in noms if isinstance(n, str) for x in (n, f"github:{n}")})
+    return frozenset().union(*(empreintes_passage(x) for x in ids if isinstance(x, str)))
+
+
+def empreintes_retirees(reg):
+    retraits = reg.retraits.get("retraits") if isinstance(reg.retraits, dict) else None
+    return {e for r in retraits or [] if isinstance(r, dict) for e in r.get("empreintes") or [] if isinstance(e, str)}
 
 
 def retiree(inv):
@@ -4666,6 +4749,8 @@ def verifier_invitation(reg, chemin, statut_git, ancien, nouveau, auteur, *, est
         exiger(probleme is None, f"{probleme} : relancez bee inviter")
         for refus in refus_invitation(reg, nouveau, conseil=est_conseil, instant=instant):
             exiger(False, refus)
+        if {empreinte(c) for c in identites_propres(nouveau)} & empreintes_retirees(reg):
+            natures.append("retrait_demande_consigne")  # ruche-0048 : un signal neutre pour le conseil, jamais un refus
         return natures, problemes, envois
     if not exiger(isinstance(ancien, dict), "fichier illisible dans la base"):
         return natures, problemes, envois
@@ -4750,42 +4835,76 @@ def retraits_justifies(reg, base, tete, changements):
     return justifies
 
 
-def probleme_demande(entree):
-    """None si la demande d'un retrait est vérifiable (ruche-0048), sinon la raison."""
+def probleme_demande(reg, entree):
+    """None si la demande d'un retrait est vérifiable (ruche-0048), sinon la raison (jamais une valeur recopiée)."""
     demande = entree["demande"]
-    if str(demande["le"]) > str(entree["le"])[:10]:
-        return f"la demande (le {demande['le']}) précède le retrait"
+    try:
+        jour, retrait = dt.date.fromisoformat(str(demande["le"])), dt.date.fromisoformat(str(entree["le"])[:10])
+    except ValueError:
+        return "demande.le : une date réelle (AAAA-MM-JJ)"
+    if not dt.date(2026, 10, 1) <= jour <= retrait:
+        return "demande.le : du 2026-10-01 au jour du retrait"
     if ("reference" in demande) != (demande["canal"] in ("issue", "discussion")):
         return "une référence publique (--reference) si, et seulement si, la demande a été faite en public (canal issue ou discussion)"
+    if "reference" in demande and demande["reference"].split("/")[4] not in depots_de_la_ruche(reg):
+        return "reference : une issue ou une discussion d'un dépôt de la ruche (le registre, un fork de projets/)"
     return None
 
 
 def verifier_retrait(reg, base, tete, changements, auteur, est_conseil, instant):
-    """Un retrait demandé (ruche-0048) : du conseil, une entrée ajoutée à gouvernance/retraits.yaml, et tout autre fichier modifié
-    exactement apres_retrait de sa base ; hors des passages qui nomment la personne, tout demeure mot pour mot."""
+    """Un retrait demandé (ruche-0048) : du conseil, une entrée canonique ajoutée ; tout autre fichier, parcouru et ordinaire, est
+    retrait_de de sa base (un débordement : coupé à la main, la marque gardée) ; plus rien ne la nomme dans la tête."""
     if not est_conseil:  # avant de lire quoi que ce soit
         return [f"{CHEMIN_RETRAITS} : {auteur} n'est pas du conseil : seul le conseil consigne un retrait demandé"]
+    lire = lambda ref, c: (s.stdout.decode("utf-8", "replace") if (s := subprocess.run(  # noqa: E731
+        ["git", "-C", str(reg.racine), "cat-file", "blob", f"{ref}:{c}"], capture_output=True)).returncode == 0 else None)
     try:
         avant, apres = lire_yaml_ref(reg.racine, base, CHEMIN_RETRAITS) or {"retraits": []}, lire_yaml_ref(reg.racine, tete, CHEMIN_RETRAITS)
-    except ErreurBee as e:
-        return [str(e)]
+        canonique = lire(tete, CHEMIN_RETRAITS) == _rendu_fidele(apres, CHEMIN_RETRAITS)
+    except ErreurBee:
+        apres, canonique = None, False
     anciens = avant.get("retraits") if isinstance(avant, dict) else None
-    erreurs = [message_schema(e) for e in reg.schema("retraits").iter_errors(apres)] if apres is not None else ["supprimé"]
-    if erreurs or not isinstance(anciens, list) or len(apres["retraits"]) != len(anciens) + 1 or apres["retraits"][:-1] != anciens:
-        return [f"{CHEMIN_RETRAITS} : en ajout seul, une entrée par PR, que bee retirer-donnees écrit ({'; '.join(erreurs[:3])})"]
+    erreurs = ["/".join(map(str, e.absolute_path)) for e in reg.schema("retraits").iter_errors(apres)] if apres is not None else ["?"]
+    if (erreurs or not canonique or not isinstance(anciens, list) or len(apres["retraits"]) != len(anciens) + 1
+            or apres["retraits"][:-1] != anciens):
+        return [f"{CHEMIN_RETRAITS} : en ajout seul, une entrée par PR, telle que l'écrit bee retirer-donnees ({', '.join(erreurs[:3])})"]
     entree = apres["retraits"][-1]
-    problemes = [f"{CHEMIN_RETRAITS} : {p}" for p in (None if entree["par"] == auteur else f"par : l'auteur de la PR ({auteur})",
-                                                      probleme_demande(entree), probleme_date_pr(entree["le"], "le", instant)) if p]
+    empreintes, comptes, autres = set(entree["empreintes"]), defaultdict(int), 0
+    problemes = [f"{CHEMIN_RETRAITS} : {p}" for p in (
+        None if entree["par"] == auteur else f"par : l'auteur de la PR ({auteur})", probleme_demande(reg, entree),
+        probleme_date_pr(entree["le"], "le", instant), "un pseudo de la ruche, un projet ou un numéro ne se retire jamais"
+        if empreintes & empreintes_protegees(reg) else None) if p]
+    for meta, chemin in git(reg.racine, "diff", "-z", "--raw", "--no-renames", f"{base}...{tete}"):  # ruche-0043 : ni lien ni mode
+        if meta.split()[1] != "100644" or meta.split()[0] not in (":100644", ":000000"):
+            problemes.append(f"{chemin} : un retrait ne change que le texte d'un fichier ordinaire (100644), ni lien, ni mode, ni suppression")
     for statut_git, chemin in (c for c in changements if c[1] != CHEMIN_RETRAITS):
-        ancien, nouveau = (s.stdout.decode("utf-8", "replace") if s.returncode == 0 else None for s in (subprocess.run(
-            ["git", "-C", str(reg.racine), "cat-file", "blob", f"{ref}:{chemin}"], capture_output=True) for ref in (base, tete)))
-        try:
-            attendu = apres_retrait(chemin, ancien, entree) if statut_git == "M" and ancien is not None else None
-        except ErreurBee:
-            attendu = None
-        if not (nouveau != ancien and nouveau == attendu):
-            problemes.append(f"{chemin} : un retrait demandé ne change que les passages qui nomment la personne (une empreinte "
-                             f"consignée), chacun devenu {MARQUE_RETRAIT}, et rien d'autre (bee retirer-donnees l'écrit)")
+        ancien, nouveau, autres, ok = lire(base, chemin), lire(tete, chemin), autres + 1, False
+        with contextlib.suppress(ErreurBee, TypeError, AttributeError, KeyError, IndexError):
+            if chemin == CHEMIN_NON_CONTACT and statut_git in "AM" and entree.get("non_contact"):  # --non-contact
+                liste, ajout = empreintes_de(charger_texte_yaml(ancien or "empreintes: []\n")), empreintes_de(charger_texte_yaml(nouveau))
+                ok = (nouveau == rendu_invitation({"empreintes": ajout}) and ajout[:len(liste)] == liste
+                      and set(ajout[len(liste):]) <= empreintes and len(set(ajout)) == len(ajout))
+            elif statut_git == "M" and None not in (ancien, nouveau) and sorte_parcourue(chemin) and nouveau != ancien:
+                tete_d, (avant_d, apres_d, debords, trouves) = charger_texte_yaml(nouveau, chemin), retrait_de(reg, chemin, ancien, entree)
+                for e in (e for t in trouves.values() for e in set().union(*t)):
+                    comptes[e] += 1
+                ok = set(commentaires_yaml(nouveau)) <= set(commentaires_yaml(ancien)) and (
+                    sorte_parcourue(chemin) not in ("debats", "invitations") or nouveau == texte_apres(chemin, ancien, None, tete_d, set()))
+                for lieu, retire in debords:  # raccourci à la main : en coupant seulement, la marque gardée, dans ses bornes
+                    v, reste = functools.reduce(lambda d, k: d[k], lieu, tete_d), iter(retire)
+                    ok = ok and isinstance(v, str) and MARQUE_RETRAIT in v and all(c in reste for c in v) and not (
+                        problemes_forme(reg, chemin, _poser(apres_d, lieu, v)) - problemes_forme(reg, chemin, avant_d))
+                    tete_d = _poser(tete_d, lieu, functools.reduce(lambda d, k: d[k], lieu, apres_d)) if ok else tete_d
+                ok = ok and tete_d == apres_d
+        if not ok:
+            problemes.append(f"{chemin} : un retrait demandé ne change, dans les fichiers qu'il parcourt, que les passages qui nomment "
+                             f"la personne (une empreinte consignée), chacun devenu {MARQUE_RETRAIT} (bee retirer-donnees l'écrit)")
+    if not autres:
+        problemes.append(f"{CHEMIN_RETRAITS} : un retrait qui ne retire rien ne se consigne pas")
+    if max(comptes.values(), default=0) > RETRAIT_PASSAGES_MAX:
+        problemes.append(f"{CHEMIN_RETRAITS} : une empreinte nomme plus de {RETRAIT_PASSAGES_MAX} passages : trop courante pour une personne")
+    if reste := sorted(balayer(reg, entree)):
+        problemes.append(f"{', '.join(reste[:5])} : nomment encore la personne (une empreinte consignée) : bee retirer-donnees les retire")
     return problemes
 
 
@@ -7208,6 +7327,9 @@ def cmd_inviter(args):
     elif frein["serre"]:
         print("  Frein serré aujourd'hui, mais il n'arrête pas une invitation qui renforce l'encadrement (garant, gardien).")
     print(f"  Publiez : bee publier --titre 'Invitation {chemin.stem}' ; la PR n'est pas fusionnée automatiquement.")
+    if {empreinte(c) for c in identites_propres(inv)} & empreintes_retirees(reg):  # ruche-0048 : un signal neutre, pas un refus
+        print("  ⚠ Une identité de cette invitation correspond à un retrait demandé consigné : le conseil le voit avant toute suite.")
+        return 3
     return 0
 
 
@@ -7244,7 +7366,8 @@ def cmd_invitation(args):
         raise ErreurBee(f"illisible(s) : {', '.join(invitations_illisibles(reg))} : aucun geste d'invitation tant que le conseil ne "
                         "l'a pas réparé")
     if geste in inv:
-        raise ErreurBee(f"{args.invitation} : {geste} est déjà consigné ; un geste ne se refait ni ne se modifie")
+        raise ErreurBee(f"{args.invitation} : {geste} est déjà consigné ; un geste ne se refait ni ne se modifie" + (
+            " ; pour inscrire la personne sur la liste de non-contact : bee retirer-donnees --non-contact" if geste == "retrait" else ""))
     instant = maintenant()
     bloc = {"par": u, "le": en_iso(instant)}
     if geste == "reponse":
@@ -7324,25 +7447,55 @@ def cmd_invitation(args):
 
 
 def cmd_retirer_donnees(args):
-    """Retrait demandé (commandement 10, ruche-0048), distinct du refus : le conseil retire les passages qui nomment une personne
-    extérieure, à sa demande, sans l'inscrire sur la liste de non-contact. Seules les empreintes des identifiants sont écrites."""
-    reg = Registre(args.registre)
-    reg.exiger_orthographe(args.utilisateur)
-    if args.utilisateur not in reg.conseil or not all(i.strip(PONCTUATION) for i in args.identifiant):
-        raise ErreurBee(f"retrait refusé : le conseil seul ({args.utilisateur} ?), avec des identifiants non vides")
-    entree = {"le": en_iso(maintenant()), "par": args.utilisateur,
-              "demande": {"canal": args.canal, "le": args.demande_le, **({"reference": args.reference} if args.reference else {})},
-              "empreintes": sorted(set().union(*(empreintes_passage(i.strip(PONCTUATION)) for i in args.identifiant)))}
+    """Retrait demandé (commandement 10, ruche-0048) : les identifiants viennent d'un fichier ou de l'entrée standard, ne sont ni
+    écrits ni montrés (gouvernance/retraits.yaml n'en garde que les empreintes) ; sans --confirmer, rien n'est écrit."""
+    reg, u = Registre(args.registre), args.utilisateur
+    reg.exiger_orthographe(u)
+    if u not in reg.conseil:
+        raise ErreurBee(f"{u} n'est pas du conseil : seul le conseil consigne un retrait demandé")
+    try:
+        texte = sys.stdin.read() if args.identifiants_de == "-" else pathlib.Path(args.identifiants_de).read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        raise ErreurBee("--identifiants-de : un fichier lisible, ou - (l'entrée standard)") from None
+    noms, protegees = [n.strip(PONCTUATION) for n in texte.splitlines() if n.strip()], empreintes_protegees(reg)
+    for k, nom in enumerate(noms, 1):
+        if not cles_passage(nom) or any(cle_personne(c).replace(":", "") in ("", "site") for c in cles_passage(nom)):
+            raise ErreurBee(f"identifiant n° {k} : vide ou sans nom (une forge, un site, un pseudo ou un nom)")
+        if empreintes_passage(nom) & protegees:
+            raise ErreurBee(f"identifiant n° {k} : un pseudo de la ruche, un projet ou un numéro : jamais retiré (des personnes hors de la ruche)")
+    entree = {"le": en_iso(maintenant()), "par": u, "demande": {"canal": args.canal, "le": args.demande_le, **(
+        {"reference": args.reference} if args.reference else {})}, **({"non_contact": True} if args.non_contact else {}),
+              "empreintes": sorted(set().union(*map(empreintes_passage, noms)))}
     donnees = {"retraits": [*((reg.retraits or {}).get("retraits") or []), entree]}
-    if probleme := next((message_schema(e) for e in reg.schema("retraits").iter_errors(donnees)), None) or probleme_demande(entree):
+    if probleme := next(("/".join(map(str, e.absolute_path)) for e in reg.schema("retraits").iter_errors(donnees)), None):
+        raise ErreurBee(f"retrait refusé : {probleme} (voir bee retirer-donnees --help)")
+    if probleme := probleme_demande(reg, entree):
         raise ErreurBee(f"retrait refusé : {probleme}")
-    changes = {c: n for c in sorted(p for d in DOSSIERS_LIBRE_SERVICE for p in (reg.racine / d).rglob("*.yaml") if p.is_file())
-               if (n := apres_retrait(reg.rel(c), t := c.read_text(encoding="utf-8"), entree)) != t}
-    for chemin, texte in [*changes.items(), (reg.racine / CHEMIN_RETRAITS, _rendu_fidele(donnees, CHEMIN_RETRAITS))]:
-        chemin.write_text(texte, encoding="utf-8")
-    print(f"✓ Retrait demandé consigné dans {CHEMIN_RETRAITS}, par empreintes ; passages retirés : {', '.join(reg.rel(c) for c in changes) or 'aucun'}. "
-          "La liste de non-contact n'est pas touchée. L'historique git garde l'ancien contenu : seul un effacement de l'historique, "
-          "hors de portée de la ruche, l'en ôterait.\n  Publiez par une PR du conseil (pas bee publier), sans nommer la personne.")
+    resultats, comptes = balayer(reg, entree), defaultdict(int)
+    for e in (e for r in resultats.values() for t in r[4].values() for e in set().union(*t)):
+        comptes[e] += 1
+    for k, nom in enumerate(noms, 1):
+        if max((comptes[e] for e in empreintes_passage(nom)), default=0) > RETRAIT_PASSAGES_MAX:
+            raise ErreurBee(f"identifiant n° {k} : nomme plus de {RETRAIT_PASSAGES_MAX} passages : trop courant pour une personne")
+    if not resultats and not args.non_contact:
+        raise ErreurBee("rien ne nomme ces identifiants : il n'y a rien à retirer, ni à consigner")
+    for chemin, (_, _, _, debords, trouves) in resultats.items():  # des comptes, jamais le texte
+        print(f"  {chemin} : " + ", ".join(f"{'/'.join(map(str, lieu))} ({len(v)})" for lieu, v in trouves.items()))
+        for lieu, _ in debords:
+            print(f"  ⚠ {chemin} : {'/'.join(map(str, lieu))} dépasserait sa borne avec la marque : laissé tel quel ; raccourcissez-le à la main "
+                  "dans cette PR, en coupant seulement et en gardant la marque")
+    if not args.confirmer:
+        print("À blanc : rien n'est écrit. Relisez les fichiers et les invitations ci-dessus, puis relancez avec --confirmer.")
+        return 0
+    for chemin, (texte, avant, apres, _, _) in resultats.items():
+        (reg.racine / chemin).write_text(texte_apres(chemin, texte, avant, apres, set(entree["empreintes"])), encoding="utf-8")
+    if args.non_contact:
+        liste = list(empreintes_de(reg.ne_plus_contacter) or [])
+        ecrire_invitation(reg.racine / CHEMIN_NON_CONTACT, {"empreintes": liste + [e for e in entree["empreintes"] if e not in liste]})
+    (reg.racine / CHEMIN_RETRAITS).write_text(_rendu_fidele(donnees, CHEMIN_RETRAITS), encoding="utf-8")
+    print(f"✓ Retrait demandé consigné dans {CHEMIN_RETRAITS}, par empreintes ; la liste de non-contact "
+          + ("reçoit ces empreintes." if args.non_contact else "n'est pas touchée.") + " L'historique git garde l'ancien contenu (le diff de "
+          "la PR le montre au conseil) ; il n'est pas réécrit.\n  Publiez par une PR du conseil (pas bee publier), sans nommer la personne.")
     return 0
 
 
@@ -9384,10 +9537,13 @@ def construire_analyseur():
     p = ajouter("retirer-donnees", cmd_retirer_donnees, "Commandement 10 : à la demande d'une personne extérieure, le conseil retire "
                 "les passages qui la nomment (agora, notes, invitations…), sans liste de non-contact ; il consigne la demande.")
     p.add_argument("--utilisateur", required=True)
-    p.add_argument("--identifiant", action="append", required=True, help="chaque forme qui la nomme (github:octocat, octocat, son nom)")
+    p.add_argument("--identifiants-de", required=True, help="un fichier, ou - (l'entrée standard) : une forme qui la nomme par ligne "
+                                                           "(github:octocat, octocat, son nom) ; jamais sur la ligne de commande")
     p.add_argument("--canal", required=True, choices=("courriel", "message_prive", "issue", "discussion", "autre"))
     p.add_argument("--demande-le", required=True, help="le jour de la demande (2026-11-01)")
     p.add_argument("--reference", help="une demande publique seulement : son issue ou sa discussion sur Bee-ruche")
+    p.add_argument("--non-contact", action="store_true", help="elle demande aussi à ne plus être contactée : la liste reçoit les empreintes")
+    p.add_argument("--confirmer", action="store_true", help="écrire ; sans lui, bee montre seulement ce qu'il retirerait")
 
     p = ajouter("incident", cmd_incident, "R13, frein : un gardien en fonction ou le conseil inscrit un incident (écart, plainte, abus) "
                 "dans gouvernance/incidents.yaml ; PR ordinaire : toute invitation s'arrête dès que le conseil l'a fusionnée.")

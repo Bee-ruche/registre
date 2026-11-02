@@ -144,22 +144,30 @@ pour toujours ; un retrait demandé retire ses données sans l'y inscrire, et el
   « retiré » ; son auteur, sa date, son identifiant et le reste du débat demeurent (R12). C'est, avec le retrait
   demandé, la seule modification d'un débat, réservée au conseil, même dans un débat clos, et elle nomme
   l'invitation (`caviarde_pour`) : sans invitation retirée, rien ne se caviarde.
-- **Un retrait demandé ne met pas sur la liste.** Quand la personne demande que ses données soient retirées, sans
-  refuser d'être contactée, le conseil consigne un retrait demandé (`bee retirer-donnees --utilisateur <conseil>
-  --identifiant github:octocat --identifiant octocat --identifiant "<son nom>" --canal courriel --demande-le
-  2026-11-01` ; `--reference`, son issue ou sa discussion sur Bee-ruche, pour une demande faite en public). Dans
-  les textes libres du registre (agora, sources comprises ; titres, contextes et notes des tâches ; motifs,
-  résumés, messages et faits), chaque passage qui la nomme (1 à 4 mots, comparés sur la clé canonique de `bee`)
-  devient `« retiré à la demande de la personne »` (une source : « retiré ») ; ses invitations retirent leur
-  dossier (« retiré : demande »). Auteurs, dates et reste d'un argument demeurent mot pour mot.
-  `gouvernance/retraits.yaml` (schéma `schemas/retraits.schema.json`), en ajout seul, consigne qui, quand, le
-  canal et le jour de la demande, et les seules empreintes de ce qui la nomme : les identifiants donnés à la
-  commande ne sont écrits nulle part. `bee verifier-pr` n'accepte qu'un retrait du conseil, d'une entrée, dont
-  chaque autre fichier modifié est exactement ce qu'en écrit la commande depuis `main` : sans demande consignée,
-  ou avec un mot de plus, il est refusé ; le geste ne fait taire aucun argument. Le conseil le fusionne lui-même,
-  par une PR qui ne nomme pas la personne. **Limites** : seules les formes données sont retrouvées ; une
-  empreinte ne dit pas ce qu'elle désigne (celle d'un mot courant retirerait ce mot partout, visiblement : au
-  relecteur de la PR de la refuser) ; `docs/`, que le conseil modifie lui-même, et les sources de l'invitation d'un tiers en sont hors.
+- **Un retrait demandé ne met pas sur la liste.** Quand la personne demande que ses données soient retirées, le conseil
+  consigne un retrait demandé : `bee retirer-donnees --utilisateur <conseil> --identifiants-de <fichier|-> --canal courriel
+  --demande-le 2026-11-01` (`--reference`, son issue ou sa discussion sur un dépôt de la ruche, pour une demande faite en public ;
+  `--non-contact` si elle demande aussi à ne plus être contactée). Les identifiants (une forme par ligne : `github:octocat`,
+  `octocat`, son nom) viennent d'un fichier ou de l'entrée standard, jamais de la ligne de commande, et ne sont ni écrits ni
+  montrés. Sans `--confirmer`, rien n'est écrit : `bee` montre, par fichier et par champ, combien de passages il retirerait, et
+  les invitations dont il retirerait le dossier. **Ce qu'il change** : dans les textes libres des tâches, débats, invitations,
+  contributions, votes, mesures, propositions et incidents, chaque passage qui la nomme (1 à 4 mots, comparés sur la clé
+  canonique de `bee`, élision, possessif et ponctuation autour exclus ; une adresse sur un hébergement partagé, sa page seule)
+  devient `[retiré]` ; ses propres invitations retirent leur dossier (« retiré : demande »). **Ce qu'il ne change jamais** : un
+  auteur, une date, un statut, un identifiant, le message d'une autre invitation, le reste d'un argument, mot pour mot ; ni
+  `docs/` ni `arbre/`, que le conseil corrige à la main. Il refuse un pseudo de la ruche, un projet, un dépôt, un numéro (tâche,
+  règle, commandement…), et un identifiant qui nomme plus de 8 passages (`RETRAIT_PASSAGES_MAX`, réglage du conseil) : trop
+  courant pour une personne. Un texte qui dépasserait sa borne avec la marque reste tel quel : le conseil le raccourcit à la main
+  dans la même PR, en coupant seulement et en gardant la marque. `gouvernance/retraits.yaml` (schéma
+  `schemas/retraits.schema.json`), en ajout seul et sous sa forme canonique, consigne qui, quand, le canal et le jour de la
+  demande (depuis le 2026-10-01), et les seules empreintes de ce qui la nomme. `bee verifier-pr` n'accepte qu'un retrait du
+  conseil, d'une entrée, qui retire quelque chose, dont chaque autre fichier, parcouru, ordinaire et modifié, est exactement ce
+  qu'en écrit la commande (la liste seulement avec `--non-contact`, et ces empreintes seules), et après lequel plus rien ne la
+  nomme. Une empreinte ne dit pas ce qu'elle désigne : **le diff de la PR montre au conseil les passages retirés, qu'il lit avant
+  de la fusionner**, par une PR qui ne nomme pas la personne. Une invitation nouvelle dont une identité correspond à un retrait
+  consigné est signalée (`bee inviter` sort en 3 ; nature `retrait_demande_consigne`), jamais refusée ; si la personne demande
+  plus tard à ne plus être contactée, `bee retirer-donnees --non-contact` l'inscrit. **Limites** : seules les formes données
+  sont retrouvées (ni une faute, ni un nom dans un mot) ; `gouvernance/retraits.yaml` est borné à 512 Ko, sans rotation.
 - **Ce que garde l'historique.** Après un refus, un caviardage ou un retrait demandé, l'historique git garde
   l'ancien contenu ; seul un effacement de l'historique, hors de portée de la ruche, l'en ôterait. Le conseil n'y
   fait rien d'automatique, et l'historique n'est pas réécrit. La réponse du conseil le dit à la personne : l'historique
@@ -189,7 +197,7 @@ bee invitation consigner-relance I-0001 --utilisateur <conseil>     # une fois, 
 bee invitation consigner-reponse I-0001 --utilisateur <conseil> --valeur acceptee|refusee|sans_reponse
 bee invitation ecarter I-0001 --utilisateur <pseudo> --motif "…"    # avant l'envoi
 bee invitation retirer I-0001 --utilisateur <conseil>               # elle demande à ne plus être contactée
-bee retirer-donnees --utilisateur <conseil> --identifiant … --canal courriel --demande-le …  # retrait demandé, sans liste
+bee retirer-donnees --utilisateur <conseil> --identifiants-de - --canal courriel --demande-le …  # retrait demandé
 bee invitation renouveler I-0001 --utilisateur <conseil>            # un feu vert échu (7 jours sans envoi), une fois
 ```
 

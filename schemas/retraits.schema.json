@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://bee.local/schemas/retraits.schema.json",
   "title": "Retraits demandés (commandement 10)",
-  "description": "Fichier : gouvernance/retraits.yaml (docs/croissance.md), en ajout seul, par le conseil (bee retirer-donnees). Chaque retrait est lié à une demande vérifiable : son canal, son jour, et sa référence publique si, et seulement si, elle a été faite en public. De la personne, il ne garde que les empreintes (SHA-256 de la clé canonique) de ce qui la nomme, jamais un nom en clair ; il ne l'inscrit pas sur la liste de non-contact.",
+  "description": "Fichier : gouvernance/retraits.yaml (docs/croissance.md), en ajout seul, par le conseil (bee retirer-donnees). Chaque retrait est lié à une demande vérifiable : son canal, son jour, et sa référence publique si, et seulement si, elle a été faite en public. De la personne, il ne garde que les empreintes (SHA-256 de la clé canonique) de ce qui la nomme, jamais un nom en clair ; il ne l'inscrit sur la liste de non-contact que si elle l'a demandé aussi (non_contact).",
   "type": "object", "additionalProperties": false, "required": ["retraits"],
   "properties": {"retraits": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["le", "par", "demande", "empreintes"], "properties": {
     "le": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"},
@@ -11,5 +11,6 @@
       "canal": {"enum": ["courriel", "message_prive", "issue", "discussion", "autre"]},
       "le": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
       "reference": {"type": "string", "pattern": "^https://github\\.com/Bee-ruche/[A-Za-z0-9._-]+/(issues|discussions)/[0-9]+$"}}},
+    "non_contact": {"const": true, "description": "Elle a demandé aussi à ne plus être contactée : la liste reçoit les empreintes"},
     "empreintes": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}}}}}
 }
