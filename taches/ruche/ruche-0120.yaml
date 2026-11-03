@@ -31,6 +31,9 @@ hors_perimetre:
 depend_de:
 - ruche-0121
 noeud: projets/ruche/ruche
-statut: ouverte
+statut: reservee
+reservation:
+  utilisateur: "bidji29"
+  depuis: "2026-11-03T01:03:20Z"
 cree_par: conseil
 cree_le: '2026-11-02'
