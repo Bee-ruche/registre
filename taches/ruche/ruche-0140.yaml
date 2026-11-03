@@ -1,0 +1,27 @@
+id: ruche-0140
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: S
+titre: 'Removal of a person''s data, round 2: every passage found, flagged comments changed where they stand'
+contexte: Follow-up of the review of ruche-0116 (PR 181; details in the architect's brief). Two things to hold. A
+  removal (bee retirer-donnees) finds every passage that names the person, and the gate counts it the same way. A
+  flagged comment is deleted or marked where it stands.
+fichiers:
+- outils/bee.py
+- outils/test_bee.py
+portee: 0.6
+metrique: null
+depend_de:
+- ruche-0116
+critere_acceptation:
+- 'test: a name is found by bee retirer-donnees and counted by the gate whatever surrounds it (cases in the brief)'
+- 'test: a removal PR changes only the flagged comments, where they stand (cases in the brief)'
+- independent adversarial review attached, made with the architect's brief; the full test suite passes
+hors_perimetre:
+- COMMANDMENTS.md
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: '2026-11-02'

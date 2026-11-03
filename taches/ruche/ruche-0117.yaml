@@ -40,7 +40,7 @@ hors_perimetre:
 - the forks (miniz-0048, libyaml-0020)
 - the tag itself (the council)
 noeud: projets/ruche/ruche
-statut: en_relecture
+statut: integree
 contribution: ruche-0117-c1
 cree_par: conseil
 cree_le: '2026-11-02'
