@@ -30,7 +30,7 @@ import shutil
 import subprocess
 import sys
 import unicodedata
-from collections import defaultdict
+from collections import Counter, defaultdict
 
 try:
     import yaml
@@ -4516,6 +4516,7 @@ def sur_la_liste(cles, liste):
 CHEMIN_RETRAITS, MARQUE_RETRAIT, PONCTUATION = "gouvernance/retraits.yaml", "[retiré]", "\"'«»“”‘’()[]{}<>.,;:!?*_`… \t\n\r"
 # Réglages du conseil : une empreinte qui nomme plus de 8 passages est trop courante pour une personne ; 40 passages par retrait.
 RETRAIT_PASSAGES_MAX, RETRAIT_TOTAL_MAX, MARQUE_COURTE = 8, 40, "…"  # « … » quand la marque dépasserait une borne
+RETRAIT_SEMAINE_MAX = 40  # ruche-0116 : 40 passages sur 7 jours glissants, tous retraits confondus (le champ passages de chacun)
 ELISION = re.compile(r"(?is)((?:[dlcjmnst]|qu|jusqu|lorsqu|puisqu)['’])?(.+?)(['’]s)?")
 # Ce qu'un retrait parcourt, par sorte (fichiers, schéma, textes libres) ; jamais le message d'une invitation, docs/ ni arbre/.
 PARCOURS = {"taches": (CHEMIN_TACHE, "tache", {"titre", "contexte", "critere_acceptation", "hors_perimetre", "texte"}),
@@ -4650,7 +4651,8 @@ def empreintes_protegees(reg):
     noms = (set(reg.membres) | reg.conseil | reg.gardiens | reg.garants | reg.robots | set(reg.comptes_agents)
             | set(reg.comptes_agents.values()) | set(reg.projets) | depots_de_la_ruche(reg))
     ids = (set(reg.taches) | set(reg.enregistrements) | set(reg.propositions) | set(reg.debats) | set(reg.invitations)
-           | {f"{p}{n}" for p in ("", "R", "C", "A") for n in range(1, 100)} | {x for n in noms if isinstance(n, str) for x in (n, f"github:{n}")})
+           | {f"{p}{n}" for p in ("", "R", "C") for n in range(1, 100)} | {x for n in noms if isinstance(n, str) for x in (n, f"github:{n}")}
+           | {a.get("id") for _, d in reg.debats.values() if isinstance(d, dict) for a in d.get("arguments") or [] if isinstance(a, dict)})
     return frozenset().union(*(empreintes_passage(x) for x in ids if isinstance(x, str)))
 
 
@@ -5373,13 +5375,18 @@ def probleme_demande(reg, entree):
     return None
 
 
-def probleme_passages(reg, trouves):
+def probleme_passages(reg, trouves, entree, anciens, instant):
     """None, ou pourquoi ces passages ({lieu: passages} par fichier) ne se retirent pas : la commande et la porte en jugent de même."""
     passages = [p for t in trouves for v in t.values() for p in v]
+    if entree.get("passages") != len(passages):  # ruche-0116 : ceux des commentaires signalés compris
+        return f"passages : {len(passages)}, le nombre de passages que retire la PR"
     if max((sum(e in p[1] for p in passages) for e in {e for p in passages for e in p[1]}), default=0) > RETRAIT_PASSAGES_MAX:
         return f"une empreinte nomme plus de {RETRAIT_PASSAGES_MAX} passages : trop courante pour une personne"
     if len(passages) > RETRAIT_TOTAL_MAX:
         return f"plus de {RETRAIT_TOTAL_MAX} passages en un retrait"
+    debut = en_iso(instant - dt.timedelta(days=7) - TOLERANCE_DATE)  # depuis l'heure de la PR ; un `le` antérieur a pu être antidaté de 2 h
+    if len(passages) + sum(r.get("passages", 0) for r in anciens if str(r.get("le")) > debut) > RETRAIT_SEMAINE_MAX:
+        return f"plus de {RETRAIT_SEMAINE_MAX} passages en 7 jours glissants, tous retraits confondus ({CHEMIN_RETRAITS})"
     protegees = empreintes_protegees(reg)
     if any(empreintes_passage(m.strip(PONCTUATION)) & protegees for p in passages for m in p[2].split()):
         return "un passage retiré contient un pseudo de la ruche, un projet ou un numéro"
@@ -5424,16 +5431,18 @@ def verifier_retrait(reg, base, tete, changements, auteur, est_conseil, instant)
             elif statut_git == "M" and None not in (ancien, nouveau) and sorte_parcourue(chemin) and nouveau != ancien:
                 tete_d, (_, apres_d, t) = charger_texte_yaml(nouveau, chemin), retrait_de(reg, chemin, ancien, entree)
                 trouves.append(t)
-                ok = tete_d == apres_d and set(commentaires_yaml(nouveau)) <= set(commentaires_yaml(ancien)) and (
+                ca, cn, t["#"] = Counter(commentaires_yaml(ancien)), Counter(commentaires_yaml(nouveau)), []  # ruche-0116 : multi-ensembles
+                marques = Counter(passages_retires(c, empreintes, t["#"]) for c in (ca - cn).elements())  # tel quel s'il ne la nomme pas
+                ok = tete_d == apres_d and not marques & (ca - cn) and not (cn - ca) - marques and (  # ôté : il la nommait ; ajouté : marqué
                     sorte_parcourue(chemin) not in ("debats", "invitations") or nouveau == texte_apres(chemin, ancien, None, tete_d, set()))
         if not ok:
             problemes.append(f"{chemin} : un retrait demandé ne change, dans les fichiers qu'il parcourt, que les passages qui nomment "
                              f"la personne (une empreinte consignée), chacun devenu {MARQUE_RETRAIT} (bee retirer-donnees l'écrit)")
     if not autres:
         problemes.append(f"{CHEMIN_RETRAITS} : un retrait qui ne retire rien ne se consigne pas")
-    if probleme := probleme_passages(reg, trouves):
+    if probleme := probleme_passages(reg, trouves, entree, anciens, instant):
         problemes.append(f"{CHEMIN_RETRAITS} : {probleme}")
-    if reste := sorted(balayer(reg, entree)[0]):
+    if reste := sorted({*(b := balayer(reg, entree))[0], *(c for c, _ in b[1])}):  # ruche-0116 : un commentaire compris
         problemes.append(f"{', '.join(reste[:5])} : nomment encore la personne (une empreinte consignée) : bee retirer-donnees les retire")
     return problemes
 
@@ -8308,7 +8317,7 @@ def cmd_retirer_donnees(args):
         if any(empreintes_passage(x) & protegees for x in [nom, *(m.strip(PONCTUATION) for m in nom.split())]):
             raise ErreurBee(f"identifiant n° {k} : un pseudo de la ruche, un projet ou un numéro (seul ou dans la phrase) : jamais retiré")
     entree = {"le": en_iso(maintenant()), "par": u, "demande": {"canal": args.canal, "le": args.demande_le, **(
-        {"reference": args.reference} if args.reference else {})}, **({"non_contact": True} if args.non_contact else {}),
+        {"reference": args.reference} if args.reference else {})}, **({"non_contact": True} if args.non_contact else {}), "passages": 0,
               "empreintes": sorted(set().union(*map(empreintes_passage, noms)))}
     donnees = {"retraits": [*((reg.retraits or {}).get("retraits") or []), entree]}
     if probleme := next(("/".join(map(str, e.absolute_path)) for e in reg.schema("retraits").iter_errors(donnees)), None):
@@ -8316,14 +8325,18 @@ def cmd_retirer_donnees(args):
     if probleme := probleme_demande(reg, entree):
         raise ErreurBee(f"retrait refusé : {probleme}")
     resultats, commentaires = balayer(reg, entree)
-    if probleme := probleme_passages(reg, [r[3] for r in resultats.values()]):
+    par_fichier = [r[3] for r in resultats.values()] + [{"#": vus} for c in {c for c, _ in commentaires} for x in commentaires_yaml(
+        (reg.racine / c).read_text(encoding="utf-8")) if passages_retires(x, set(entree["empreintes"]), vus := []) != x]  # ruche-0116
+    entree["passages"] = sum(len(v) for t in par_fichier for v in t.values())
+    if probleme := probleme_passages(reg, par_fichier, entree, donnees["retraits"][:-1], maintenant()):
         raise ErreurBee(f"retrait refusé : {probleme}")
-    if not resultats and not args.non_contact:
+    if not entree["passages"] and not args.non_contact:
         raise ErreurBee("rien ne nomme ces identifiants : il n'y a rien à retirer, ni à consigner")
     for chemin, (_, _, _, trouves) in resultats.items():  # où, jamais le texte : le fichier, le champ, le n° du mot
         print(f"  {chemin} : " + " ; ".join(f"{'/'.join(map(str, lieu))} mot(s) {', '.join(str(p[0]) for p in v)}" for lieu, v in trouves.items()))
     for chemin, ligne in commentaires:
-        print(f"  ⚠ {chemin}:{ligne} : un commentaire la nomme ; bee n'y touche pas : le conseil le corrige à la main, comme docs/")
+        print(f"  ⚠ {chemin}:{ligne} : un commentaire la nomme ; bee n'y touche pas : le conseil le corrige à la main "
+              f"dans cette PR (il le supprime, ou y écrit {MARQUE_RETRAIT} à la place de chaque passage)")
     if not args.confirmer:
         print("À blanc : rien n'est écrit. Relisez les fichiers et les invitations ci-dessus, puis relancez avec --confirmer.")
         return 0
@@ -8611,7 +8624,9 @@ def creations_gh(args):
     if args[:1] == ["api"]:
         if args[1:2] == ["graphql"]:
             return int(any(a.startswith("query=") and a[6:].lstrip().startswith("mutation") for a in args))
-        methode = next((args[i + 1] for i, a in enumerate(args[:-1]) if a in ("-X", "--method")), None)
+        methode = next((args[i + 1] if a in ("-X", "--method") else a.removeprefix("--method=").removeprefix("-X")
+                        for i, a in enumerate(args) if (a in ("-X", "--method") and i + 1 < len(args)) or a.startswith(("--method=", "-X"))
+                        and a != "-X"), None)
         champs = any(a in ("-f", "-F", "--field", "--raw-field", "--input") for a in args)
         return int((methode or ("POST" if champs else "GET")).upper() != "GET")
     if args[:2] == ["pr", "close"]:
@@ -8620,12 +8635,13 @@ def creations_gh(args):
 
 
 def depense_api(avant, apres):
-    """REST calls and GraphQL points one token's bucket spent between two `gh api rate_limit` answers (a window restarted in
-    between: the new window's count, and window=renewed)."""
+    """REST calls and GraphQL points one token's bucket spent between two `gh api rate_limit` answers, each resource in its own
+    window: one restarted in between gives the new window's count, and window=renewed; a counter at 0 at the start is the same
+    window (GitHub moves an unused resource's reset at every reading)."""
     a, b = avant["resources"], apres["resources"]
-    meme = all(a[k]["reset"] == b[k]["reset"] for k in ("core", "graphql"))
-    return {**{n: b[k]["used"] - (a[k]["used"] if meme else 0) for k, n in (("core", "rest"), ("graphql", "graphql"))},
-            "rest_left": f"{b['core']['remaining']}/{b['core']['limit']}", "window": "same" if meme else "renewed"}
+    renouvelees = {k for k in ("core", "graphql") if a[k]["reset"] != b[k]["reset"] and a[k]["used"]}
+    return {**{n: b[k]["used"] - (0 if k in renouvelees else a[k]["used"]) for k, n in (("core", "rest"), ("graphql", "graphql"))},
+            "rest_left": f"{b['core']['remaining']}/{b['core']['limit']}", "window": "renewed" if renouvelees else "same"}
 
 
 def cmd_api_budget(args):
@@ -8644,7 +8660,8 @@ def cmd_api_budget(args):
                 (dossier / f"{nom}.json").write_text(json.dumps(r), encoding="utf-8")
             if (reel := shutil.which("gh")) and pathlib.Path(reel).resolve() != gh.resolve():
                 gh.write_text(GH_JOURNALISE.format(journal=shlex.quote(str(dossier / "appels")), gh=shlex.quote(reel)), encoding="utf-8")
-                gh.chmod(0o755)
+                gh.chmod(0o555)
+                gh.parent.chmod(0o555)  # written once: read and run only
                 if os.environ.get("GITHUB_PATH"):
                     with open(os.environ["GITHUB_PATH"], "a", encoding="utf-8") as f:
                         f.write(f"{gh.parent}\n")
@@ -8657,6 +8674,8 @@ def cmd_api_budget(args):
             siens = [a for e, a in appels if e == empreinte_jeton(jetons[nom])] if nom in jetons else \
                 [a for e, a in appels if e not in set(map(empreinte_jeton, jetons.values()))]
             mesure = depense_api(json.loads((dossier / f"{nom}.json").read_text(encoding="utf-8")), limites[nom]) if nom in limites else {}
+            if nom != "GITHUB_TOKEN":  # what is left of another token's budget is not the registry's to print
+                mesure.pop("rest_left", None)
             if nom != "other" or siens:
                 print(f"::notice title=API budget::workflow={os.environ.get('GITHUB_WORKFLOW', '?')} token={nom} "
                       + " ".join(f"{k}={v}" for k, v in {**mesure, "gh_calls": len(siens), "creating": sum(map(creations_gh, siens))}.items()))

@@ -32,9 +32,6 @@ jobs:
           python-version: "3.12"
       - name: Dépendances
         run: pip install -r outils/requirements.txt
-      - name: API budget, start (ruche-0121; puts first on PATH a gh that logs each call)
-        env: {GITHUB_TOKEN: "${{ github.token }}"}
-        run: python3 outils/bee.py api-budget start --dossier "$RUNNER_TEMP/api-budget" --jeton GITHUB_TOKEN
       - name: Scope of the PR (data only, or the full suite)
         id: portee
         if: github.event_name == 'pull_request'
@@ -62,6 +59,9 @@ jobs:
           [ "$portee" = data ] && [ "$main" = green ] || portee=full
           echo "portee=$portee" >> "$GITHUB_OUTPUT"
           echo "Scope: $portee (main for the fast path: $main)"
+      - name: API budget, start (ruche-0121; after the scope, decided by the base's tool; puts first on PATH a gh that logs each call)
+        env: {GITHUB_TOKEN: "${{ github.token }}"}
+        run: python3 outils/bee.py api-budget start --dossier "$RUNNER_TEMP/api-budget" --jeton GITHUB_TOKEN
       - name: Tests that read the live registry (data-only PR)
         # A data-only PR changes no code: of the tool's tests, only these may read the live registry's data (the others read
         # the frozen fixture of ruche-0093). This list is TESTS_REGISTRE_REEL in outils/test_bee.py (TestCiScope checks it),
