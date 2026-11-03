@@ -26,6 +26,9 @@ hors_perimetre:
 - COMMANDMENTS.md
 - redaction of arguments (already the council's gesture, R12)
 noeud: projets/ruche/ruche
-statut: ouverte
+statut: reservee
+reservation:
+  utilisateur: "bidji29"
+  depuis: "2026-11-03T00:32:35Z"
 cree_par: conseil
 cree_le: '2026-11-02'
