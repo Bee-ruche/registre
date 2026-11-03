@@ -28,6 +28,9 @@ hors_perimetre:
 - the forks (their move to the next judge version is their own task)
 - the tag itself (the council)
 noeud: projets/ruche/ruche
-statut: ouverte
+statut: reservee
+reservation:
+  utilisateur: "bidji29"
+  depuis: "2026-11-03T00:32:33Z"
 cree_par: conseil
 cree_le: '2026-11-02'
