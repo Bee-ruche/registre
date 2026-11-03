@@ -18694,10 +18694,8 @@ class TestComptesLiesRuche0051(BaseInvitations):
 
 
 
-class TestSignalementsRuche0118(BaseInvitations):
-    """ruche-0118 : un membre signale deux comptes membres qu'il croit être une personne : leurs deux logins et un motif d'une liste
-    fermée, rien d'autre. Le signalement est fusionné sans humain, sous un plafond par signaleur, et montré au conseil, qui lie les
-    deux fiches (ruche-0051) ou l'écarte avec un code : une paire écartée ne se signale plus pendant 30 jours, par numéros de compte."""
+class OutilsSignalements(BaseInvitations):
+    """ruche-0118 and ruche-0137: what the tests of reports share."""
 
     def abandonner(self, nom="pr"):
         git(self.dossier, "switch", "-qf", "main")
@@ -18748,6 +18746,12 @@ class TestSignalementsRuche0118(BaseInvitations):
         self.commit()
         self.assertNotIn("FUSION_AUTO=oui", self.refusee(auteur or qui, f"signalements/{nom}.yaml : {morceau}"))
         self.abandonner()
+
+
+class TestSignalementsRuche0118(OutilsSignalements):
+    """ruche-0118 : un membre signale deux comptes membres qu'il croit être une personne : leurs deux logins et un motif d'une liste
+    fermée, rien d'autre. Le signalement est fusionné sans humain, sous un plafond par signaleur, et montré au conseil, qui lie les
+    deux fiches (ruche-0051) ou l'écarte avec un code : une paire écartée ne se signale plus pendant 30 jours, par numéros de compte."""
 
     def test_un_signalement_ne_tient_que_deux_comptes_membres_et_un_motif(self):
         self.a("2026-10-30T10:00:00Z")
@@ -18950,9 +18954,14 @@ class TestSignalementsRuche0118(BaseInvitations):
         # Per person named: alice is named in three open reports (one from farid, gaspard's account) ; a fourth is refused, whoever
         # files it, until the council decides one.
         self.signaler("chloe", "alice", "farid")
-        nommee = "alice is already named in 3 open reports, at most 3 per person (creations.signalements_nommant_max)"
-        self.ko(nommee, "signaler", "--utilisateur", "bruno", "--comptes", "dora", "alice", "--motif", "votes_croises")
-        self.refusee_a_la_main("bruno", "S-0005", nommee, comptes=["dora", "alice"])
+        # ruche-0137: past that cap a fourth is not refused but kept for the council (never merged automatically), whoever files it,
+        # until the council decides one.
+        self.branche()
+        self.assertIn("alice : already named in 3 open reports (creations.signalements_nommant_max) : this one waits for the council",
+                      self.ok("signaler", "--utilisateur", "bruno", "--comptes", "dora", "alice", "--motif", "votes_croises"))
+        self.commit()
+        self.attend_le_conseil("bruno", "signalement_au_plafond_pour_le_conseil")
+        self.abandonner()
         self.decider("S-0001", "--ecarter", "sans_indice")
         self.assertEqual(self.signaler("bruno", "dora", "alice"), "S-0005")
         self.valide()
@@ -19075,6 +19084,148 @@ class TestSignalementsRuche0118(BaseInvitations):
         self.decider("S-0002", "--lier", "alice")
         self.assertTrue(bee.Registre(self.dossier).identites.meme("bruno", "gaspard"))
         self.valide()
+
+class TestSignalementsRuche0137(OutilsSignalements):
+    """ruche-0137: past the cap on reports naming one person, a report waits for the council instead of being refused ; bee valider
+    judges signalements/ on main as strictly as the gate ; no one decides a report they filed, under any of their accounts."""
+
+    def au_conseil(self, qui, a, b):
+        """bee signaler past the cap: accepted by the gate, never merged automatically ; the council merges it."""
+        self.branche("signalement")
+        texte = self.ok("signaler", "--utilisateur", qui, "--comptes", a, b, "--motif", "votes_croises")
+        self.assertIn("this one waits for the council, who merges it itself", texte)
+        self.commit()
+        self.attend_le_conseil(qui, "signalement_au_plafond_pour_le_conseil")
+        self.fusionner("signalement")
+        return texte.split("signalements/", 1)[1].split(".yaml", 1)[0]
+
+    def test_au_dela_du_plafond_nommant_le_signalement_attend_le_conseil(self):
+        self.a("2026-10-30T10:00:00Z")
+        self.inscrire("dora")
+        # Three reports name alice (possibly worthless) : the cap no longer shields her from the report of the true pair.
+        self.signaler("gaspard", "alice", "farid")
+        self.signaler("farid", "alice", "gaspard")
+        self.signaler("gaspard", "alice", "chloe")
+        self.assertEqual(self.au_conseil("chloe", "alice", "bruno"), "S-0004")
+        self.valide()
+        self.assertIn("S-0004 : alice et bruno (votes_croises), signalé par chloe", self.ok("essaim"))
+        # The council decides it like any other : it links...
+        self.decider("S-0004", "--lier", "alice")
+        self.assertTrue(bee.Registre(self.dossier).identites.meme("alice", "bruno"))
+        # ... or dismisses (alice is still named in three open reports).
+        self.assertEqual(self.au_conseil("chloe", "dora", "alice"), "S-0005")
+        self.decider("S-0005", "--ecarter", "sans_indice")
+        self.assertEqual(self.lire("signalements/S-0005.yaml")["decision"]["issue"], "sans_indice")
+        self.valide()
+        # Past the cap, every other check still refuses : not in one's own name, nor a pair already open.
+        self.refusee_a_la_main("farid", "S-0006", "par : a member reports in their own name (chloe)", auteur="chloe", comptes=["dora", "alice"])
+        self.refusee_a_la_main("dora", "S-0006", "S-0001 already reports these two persons, and is open", comptes=["farid", "alice"])
+        self.ko("S-0001 already reports these two persons", "signaler", "--utilisateur", "dora", "--comptes", "alice", "farid", "--motif", "votes_croises")
+
+    def test_valider_refuse_sur_main_ce_que_la_porte_refuse(self):
+        self.a("2026-10-30T10:00:00Z")
+        decision = {"par": "bidji29", "le": "2026-10-30T10:00:00Z", "issue": "sans_indice"}
+        for champs, morceau in (({"par": "inconnu"}, "par : inconnu is not a member"),
+                                ({"par": "alice"}, "the reporter is neither account"),
+                                ({"comptes": ["alice", "inconnu"]}, "comptes : the logins of two member accounts"),
+                                ({"decision": {**decision, "par": "chloe"}}, "decision/par : chloe is not of the council"),
+                                ({"decision": {**decision, "issue": "lies"}}, "decision lies : the two member files are linked")):
+            with self.subTest(champs=champs):
+                self.a_la_main("S-0001", **champs)
+                self.ko(f"signalements/S-0001.yaml : {morceau}", "valider")
+                (self.dossier / "signalements/S-0001.yaml").unlink()
+        # Honest, on main : filed and decided through bee ; a link written later, or a rename, never makes it invalid (by account).
+        self.signaler("gaspard", "alice", "bruno")
+        self.decider("S-0001", "--ecarter", "sans_indice")
+        self.signaler("chloe", "farid", "bruno")
+        self.decider("S-0002", "--lier", "farid")
+        self.lier("gaspard", "alice")
+        self.ok("renommer", "--ancien", "chloe", "--pseudo", "chloe-b")
+        self.commit("chloe renommée")
+        self.valide()
+
+    def test_nul_ne_decide_un_signalement_qu_il_a_depose(self):
+        self.a("2026-10-30T10:00:00Z")
+        self.inscrire("bidji29", "dora")
+        declarer_agents(self.dossier, (AGENT, "bidji29"))
+        self.lier("bidji29", "dora")
+        self.commit("agents")
+        self.signaler("bidji29", "alice", "bruno")  # S-0001, from the council member's own account
+        self.signaler("dora", "chloe", "farid")  # S-0002, from a linked account
+        self.branche("decision")  # the guardian in office dismisses S-0001, then bidji29 has room for a third report
+        self.ok("signalement", "S-0001", "--utilisateur", "gina", "--ecarter", "personnes_distinctes")
+        self.publier("gina", "gouvernance", libre=False, nom="decision")
+        self.a("2026-10-31T10:01:00Z")
+        self.branche("signalement")  # S-0003, from the agent account, in the person's name
+        self.ok("signaler", "--utilisateur", "bidji29", "--comptes", "gaspard", "alice", "--motif", "votes_croises")
+        self.commit()
+        self.libre_service(AGENT, "signalement")
+        self.fusionner("signalement")
+        sien = "decision/par : never the person who filed the report, under any of their accounts : it waits for another council member"
+        for nom in ("S-0002", "S-0003"):
+            with self.subTest(signalement=nom):
+                self.ko(f"{nom} : {sien}", "signalement", nom, "--utilisateur", "bidji29", "--ecarter", "sans_indice")
+                s = self.lire(f"signalements/{nom}.yaml")
+                for auteur in ("bidji29", AGENT):
+                    self.branche("decision")
+                    bee.ecrire_yaml(self.dossier / f"signalements/{nom}.yaml", {**s, "decision": {"par": "bidji29", "le": s["le"], "issue": "sans_indice"}})
+                    self.commit()
+                    self.refusee(auteur, f"signalements/{nom}.yaml : {sien}")
+                    self.abandonner("decision")
+        # A guardian in office decides a report a council member filed, never another ; it links as the council does.
+        self.signaler("gaspard", "dora", "chloe")  # S-0004
+        self.ko("S-0004 : the council alone decides an open report", "signalement", "S-0004", "--utilisateur", "gina", "--ecarter", "sans_indice")
+        self.branche("decision")
+        s = self.lire("signalements/S-0004.yaml")
+        bee.ecrire_yaml(self.dossier / "signalements/S-0004.yaml", {**s, "decision": {"par": "gina", "le": s["le"], "issue": "sans_indice"}})
+        self.commit()
+        self.refusee("gina", "signalements/S-0004.yaml : a report is neither changed nor withdrawn : the council alone decides it")
+        self.abandonner("decision")
+        # Linking, the guardian writes the link of its decision in the two files, nothing else.
+        for qui, champs, morceau in (("alice", {"categories_preferees": ["compression"]}, "seules les catégories préférées sont modifiables"),
+                                     ("chloe", {"categories_preferees": ["compression"]}, "on ne s'inscrit qu'en son nom (gina)")):
+            with self.subTest(fiche=qui):
+                self.branche("decision")
+                self.ok("signalement", "S-0003", "--utilisateur", "gina", "--lier", "gaspard")
+                bee.ecrire_yaml(self.dossier / f"membres/{qui}.yaml", {**self.lire(f"membres/{qui}.yaml"), **champs})
+                self.commit()
+                self.refusee("gina", f"membres/{qui}.yaml : {morceau}")
+                self.abandonner("decision")
+        self.branche("decision")
+        self.ok("signalement", "S-0003", "--utilisateur", "gina", "--lier", "gaspard")
+        self.publier("gina", "gouvernance", libre=False, nom="decision")
+        self.assertTrue(bee.Registre(self.dossier).identites.meme("alice", "gaspard"))
+        self.valide()
+        # The other council member decides the report of the linked account.
+        conseil = self.dossier / "gouvernance/conseil.yaml"
+        conseil.write_text(conseil.read_text(encoding="utf-8") + "  - pseudo: hector\n    role: membre\n", encoding="utf-8")
+        self.commit("hector au conseil")
+        self.branche("decision")
+        self.ok("signalement", "S-0002", "--utilisateur", "hector", "--ecarter", "sans_indice")
+        self.publier("hector", "gouvernance", libre=False, nom="decision")
+        self.valide()
+
+    def test_lier_un_compte_deja_lie_dit_ce_que_dit_la_porte(self):
+        """Optional detail of the brief: farid already linked to gaspard, --lier farid on alice and farid links alice to gaspard,
+        the person, as a decision written by hand passes the gate ; --lier alice is refused by both."""
+        self.a("2026-10-30T10:00:00Z")
+        self.lier("gaspard", "farid")
+        self.signaler("chloe", "alice", "farid")
+        self.ko("S-0001 : autres_comptes : 5 at most, each the number of a member file linked to no one", "signalement", "S-0001",
+                "--utilisateur", "bidji29", "--lier", "alice")
+        s, alice = self.lire("signalements/S-0001.yaml"), self.lire("membres/alice.yaml")
+        self.branche("decision")
+        bee.ecrire_yaml(self.dossier / "signalements/S-0001.yaml", {**s, "decision": {"par": "bidji29", "le": s["le"], "issue": "lies"}})
+        bee.ecrire_yaml(self.dossier / "membres/alice.yaml", {**alice, "autres_comptes": [numero_de("farid")]})
+        self.commit()
+        self.refusee("bidji29", "signalements/S-0001.yaml : decision lies : this PR links the two member files")
+        self.abandonner("decision")
+        self.decider("S-0001", "--lier", "farid")
+        self.assertEqual(self.lire("membres/gaspard.yaml")["autres_comptes"], [numero_de("farid"), numero_de("alice")])
+        self.assertEqual(self.lire("membres/alice.yaml")["compte_de"], numero_de("gaspard"))
+        self.assertTrue(bee.Registre(self.dossier).identites.meme("alice", "farid"))
+        self.valide()
+
 
 # --- ruche-0130: libyaml's parser behind an event pre-scan; the pure-Python one is the reference and the fallback ---
 
