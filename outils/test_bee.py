@@ -3275,10 +3275,15 @@ class TestPublierParSession(BasePublier):
             "    n=$(( $(cat compteur 2>/dev/null || echo 0) + 1 )); echo $n > compteur\n"
             "    for a in \"$@\"; do case \"$a\" in head=*) echo \"${a#head=}\" > pr-$n ;; esac; done\n"
             "    printf '{\"html_url\": \"https://github.com/Bee-ruche/registre/pull/%s\", \"number\": %s}\\n' $n $n ;;\n"
+            "  *'pulls?'*)\n"  # ruche-0138: the open PRs whose branch is the head asked for, as GitHub lists them
+            "    s=''; printf '['; for f in pr-*; do case $f in *.*) continue ;; esac\n"
+            "      if [ -e \"$f\" ] && [ \"$(cat $f)\" = \"${2##*:}\" ] && [ ! -e $f.fusionnee ] && [ ! -e $f.fermee ]; then\n"
+            "        printf '%s{\"html_url\": \"https://github.com/Bee-ruche/registre/pull/%s\", \"number\": %s}' \"$s\" ${f#pr-} ${f#pr-}; s=,\n"
+            "      fi; done; echo ']' ;;\n"
             "  *pulls/*)\n"
             "    n=${2##*/}\n"
             "    case $(cat gh.mode) in\n"
-            "      fermee) echo '{\"state\": \"closed\", \"merged\": false}' ;;\n"
+            "      fermee) touch pr-$n.fermee; echo '{\"state\": \"closed\", \"merged\": false}' ;;\n"
             "      ouverte) echo '{\"state\": \"open\", \"merged\": false}' ;;\n"
             "      *) if [ ! -e pr-$n.fusionnee ]; then\n"
             "           arbre=$(git --git-dir=distant.git merge-tree --write-tree main \"refs/heads/$(cat pr-$n)\") || exit 1\n"
@@ -3620,6 +3625,134 @@ class TestPublierParSession(BasePublier):
         self.assertIn('depuis: "2026-10-27T14:30:00Z"', git(self.dossier, "show", f"{reservation}:{self.TACHE}"))
         contribution = bee.lire_yaml(self.dossier / self.SOUMISSION)
         self.assertEqual((contribution["engage_depuis"], contribution["soumise_le"]), ("2026-10-27T14:30:00Z",) * 2)
+
+    # --- ruche-0138 : redater, un second engagement, la PR retrouvée par sa branche, un état illisible, les fichiers de bee seuls ---
+
+    def fichier_etat(self):
+        return self.dossier / ".git" / "bee-publier.json"
+
+    def test_redater_laisse_une_ligne_existante_de_la_meme_seconde(self):
+        """Critère 1 : la note de bruno, déjà sur main, et celle d'alice, de la même seconde : --redater ne change que la ligne
+        d'alice, et la porte accepte ; dans l'autre sens, la date d'alice, identique à celle de bruno, est vérifiée : sans
+        --redater, elle est refusée hors de la fenêtre."""
+        note = "taches/miniz/miniz-9002.yaml"
+        self.a("2026-10-27T12:00:00Z")
+        self.ok("noter", "miniz-9002", "--utilisateur", "bruno", "--texte", "Piste : regarder la table de hachage.")
+        base = self.sur_main("note de bruno")
+        self.ok("noter", "miniz-9002", "--utilisateur", "alice", "--texte", "Approche : une table plus petite, même sortie.")
+        avant = (self.dossier / note).read_bytes()
+        self.a("2026-10-27T14:30:00Z")
+        code, texte = self.bee("publier", "--titre", "Note alice", "--intervalle", "0")
+        self.assertEqual(code, 1, texte)
+        self.assertIn("2026-10-27T12:00:00Z : hors de la fenêtre de la porte", texte)
+        self.assertEqual(((self.dossier / note).read_bytes(), self.prs()), (avant, []))
+        texte = self.ok("publier", "--titre", "Note alice", "--redater", "--intervalle", "0")
+        self.assertIn("Redaté à 2026-10-27T14:30:00Z : 2026-10-27T12:00:00Z", texte)
+        (fusion,) = self.fusions(base)
+        self.accepte(fusion, "alice", "note")
+        notes = {n["par"]: n["le"] for n in self.tache("miniz-9002")["notes"]}
+        self.assertEqual(notes, {"bruno": "2026-10-27T12:00:00Z", "alice": "2026-10-27T14:30:00Z"})
+
+    def test_un_second_engagement_prepare_pendant_l_attente_part_apres_dans_sa_propre_pr(self):
+        """Critère 2 : pendant que la réservation de miniz-0099 attend, alice réserve et soumet miniz-9001 ; la relance suit la
+        première PR, sans en ouvrir une autre ni rien y ajouter ; elle fusionnée, la seconde réservation part seule, dans sa PR,
+        puis le reste ; la porte accepte chacune, dans l'ordre."""
+        self.preparer_reservation_et_soumission()
+        self.mode.write_text("ouverte", encoding="utf-8")
+        self.a("2026-10-27T12:40:00Z")
+        self.assertEqual(self.bee("publier", "--titre", "Session alice", "--delai", "0", "--intervalle", "0")[0], 2)
+        premiere = git(self.dossier, "rev-parse", f"origin/{(self.racine / 'pr-1').read_text(encoding='utf-8').strip()}")
+        self.a("2026-10-27T12:45:00Z")
+        self.ok("prendre", "miniz-9001", "--utilisateur", "alice")
+        self.a("2026-10-27T12:50:00Z")
+        self.ok("soumettre", "miniz-9001", "--utilisateur", "alice", "--pr", "https://github.com/Bee-ruche/minizBee/pull/99008",
+                "--resume", "Essai.")
+        self.a("2026-10-27T12:55:00Z")
+        code, texte = self.bee("publier", "--titre", "Session alice", "--delai", "0", "--intervalle", "0")
+        self.assertEqual(code, 2, texte)
+        self.assertIn("« Réservation miniz-0099 » attend déjà (https://github.com/Bee-ruche/registre/pull/1)", texte)
+        git(self.dossier, "fetch", "-q", "origin")
+        self.assertEqual((self.prs(), git(self.dossier, "rev-parse", f"origin/{(self.racine / 'pr-1').read_text().strip()}")),
+                         (["Réservation miniz-0099"], premiere), "la PR qui attend n'a rien reçu de plus")
+        self.mode.write_text("fusion", encoding="utf-8")
+        base = git(self.dossier, "rev-parse", "HEAD").strip()
+        self.a("2026-10-27T13:00:00Z")
+        self.ok("publier", "--titre", "Session alice", "--intervalle", "0")
+        self.assertEqual(self.prs(), ["Réservation miniz-0099", "Réservation miniz-9001", "Session alice"])
+        r1, r2, reste = self.fusions(base)
+        self.assertEqual((self.fichiers(r1), self.fichiers(r2)), ([self.TACHE], ["taches/miniz/miniz-9001.yaml"]))
+        self.accepte(r1, "alice", "reservation")
+        self.accepte(r2, "alice", "reservation")
+        self.accepte(reste, "alice", "soumission")
+        self.assertEqual((self.tache("miniz-0099")["statut"], self.tache("miniz-9001")["statut"]), ("en_relecture",) * 2)
+        self.assertEqual(git(self.dossier, "status", "--porcelain"), "")
+
+    def test_sans_fichier_d_etat_la_relance_retrouve_la_pr_par_sa_branche(self):
+        """Critère 3 : le fichier d'état perdu (réponse au POST perdue, interruption avant son écriture), la relance retrouve sur
+        GitHub la PR d'engagement ouverte par sa branche, la suit et n'en ouvre aucune autre ; fusionnée, le reste part."""
+        self.preparer_reservation_et_soumission()
+        self.mode.write_text("ouverte", encoding="utf-8")
+        self.assertEqual(self.bee("publier", "--titre", "Soumission miniz-0099-c1", "--delai", "0", "--intervalle", "0")[0], 2)
+        for _ in range(2):
+            self.fichier_etat().unlink()
+            code, texte = self.bee("publier", "--titre", "Soumission miniz-0099-c1", "--delai", "0", "--intervalle", "0")
+            self.assertEqual(code, 2, texte)
+            self.assertIn("« Réservation miniz-0099 » attend déjà (https://github.com/Bee-ruche/registre/pull/1)", texte)
+            self.assertEqual(self.prs(), ["Réservation miniz-0099"])
+        self.mode.write_text("fusion", encoding="utf-8")
+        self.fichier_etat().unlink()
+        base = git(self.dossier, "rev-parse", "HEAD").strip()
+        self.ok("publier", "--titre", "Soumission miniz-0099-c1", "--intervalle", "0")
+        self.assertEqual(self.prs(), ["Réservation miniz-0099", "Soumission miniz-0099-c1"])
+        reservation, soumission = self.fusions(base)
+        self.accepte(reservation, "alice", "reservation")
+        self.accepte(soumission, "alice", "soumission")
+
+    def test_un_fichier_d_etat_illisible_arrete_tout_avant_d_ecrire(self):
+        """Critère 4 : un fichier d'état illisible arrête bee publier avec un message clair, sans trace : rien d'écrit (pas même
+        les dates qu'aurait remises --redater), rien de poussé, aucun appel à gh ; supprimé, la publication suit son cours."""
+        self.preparer_reservation_et_soumission()
+        avant = self.disque()
+        self.a("2026-10-27T14:31:00Z")
+        for contenu in ("{", "[]", '{"cle": "{}"}', '{"cle": "[1]", "pr": ["u", 1]}', '{"cle": "{}", "pr": [1, "x"]}', "\xff"):
+            with self.subTest(contenu=contenu):
+                self.fichier_etat().write_bytes(contenu.encode("latin-1"))
+                code, texte = self.bee("publier", "--titre", "Soumission miniz-0099-c1", "--redater", "--intervalle", "0")
+                self.assertEqual(code, 1, texte)
+                self.assertIn("bee-publier.json est illisible : rien n'est écrit ni poussé. Supprimez-le", texte)
+                self.assertNotIn("Traceback", texte)
+                self.assertEqual((self.disque(), self.journal.exists()), (avant, False))
+                self.assertEqual(git(self.dossier, "branch", "--format=%(refname:short)").split(), ["main"])
+                self.assertNotIn("bee/", git(self.dossier, "ls-remote", "--heads", "origin"))
+        self.fichier_etat().unlink()
+        self.ok("publier", "--titre", "Soumission miniz-0099-c1", "--redater", "--intervalle", "0")
+        self.assertEqual(self.prs(), ["Réservation miniz-0099", "Soumission miniz-0099-c1"])
+
+    def test_un_fichier_etranger_n_est_jamais_publie(self):
+        """Critère 5 : un fichier que bee n'a pas écrit (une tâche retouchée à la main, un brouillon dans mesures/) n'est ni
+        indexé ni publié, une PR comme deux, y compris quand l'attente de l'engagement se termine ; il reste sur le disque, tel
+        quel, et bee publier le nomme ; après un échec, rien ne reste dans l'index."""
+        etrangers = {"taches/miniz/miniz-9002.yaml": None, "mesures/brouillon.txt": b"mes essais\n"}
+        etrangers["taches/miniz/miniz-9002.yaml"] = (self.dossier / "taches/miniz/miniz-9002.yaml").read_bytes() + b"# brouillon\n"
+        for c, octets in etrangers.items():
+            (self.dossier / c).parent.mkdir(parents=True, exist_ok=True)
+            (self.dossier / c).write_bytes(octets)
+        self.preparer_reservation_et_soumission()
+        git(self.dossier, "remote", "set-url", "origin", str(self.racine / "absent.git"))
+        try:
+            self.assertEqual(self.bee("publier", "--titre", "Soumission miniz-0099-c1", "--intervalle", "0")[0], 1)
+        finally:
+            git(self.dossier, "remote", "set-url", "origin", str(self.racine / "distant.git"))
+        self.assertEqual(git(self.dossier, "diff", "--cached", "--name-only"), "", "rien ne reste dans l'index")
+        base = git(self.dossier, "rev-parse", "HEAD").strip()
+        texte = self.ok("publier", "--titre", "Soumission miniz-0099-c1", "--intervalle", "0")
+        self.assertIn("Laissés de côté (bee ne les a pas écrits) : taches/miniz/miniz-9002.yaml, mesures/brouillon.txt", texte)
+        reservation, soumission = self.fusions(base)
+        self.assertEqual((self.fichiers(reservation), self.fichiers(soumission)), ([self.TACHE], [self.SOUMISSION, self.TACHE]))
+        self.accepte(soumission, "alice", "soumission")
+        self.assertEqual({c: (self.dossier / c).read_bytes() for c in etrangers}, etrangers)
+        self.assertEqual((git(self.dossier, "diff", "--cached", "--name-only"), sorted(git(self.dossier, "status", "--porcelain",
+                          "--untracked-files=all").splitlines())), ("", [" M taches/miniz/miniz-9002.yaml", "?? mesures/brouillon.txt"]))
 
     def test_plafonds_d_arguments_et_de_creations_comme_a_la_porte(self):
         """bee publier compte les plafonds par PR comme la porte : les arguments, pour tous, le conseil compris
@@ -17320,6 +17453,7 @@ class TestQuotedPathsGate(BaseRepetitionGenerale):
         git(self.dossier, "switch", "-qf", "main")
         (self.dossier / "votes").mkdir(exist_ok=True)
         (self.dossier / f"votes/{NOM_HOSTILE}.txt").write_text("x\n", encoding="utf-8")
+        bee.noter_ecrit(self.dossier / f"votes/{NOM_HOSTILE}.txt")  # ruche-0138: bee publier publishes only what bee wrote
         code, texte = self.bee("publier", "--titre", "Essai", "--a-blanc")
         self.assertEqual(code, 0, texte)
         self.assertIn("  - votes/a", texte)
