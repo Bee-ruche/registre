@@ -4,7 +4,10 @@ auteur: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/182
 resume: The full suite runs in its own workflow, called by a code PR's validation, and the fast path reads
   its latest runs on main in one call.
-statut: en_relecture
+statut: integree
 soumise_le: '2026-11-02T20:51:54Z'
 engage_depuis: '2026-11-02T16:02:11Z'
 relectures: []
+decidee_le: '2026-11-02T21:05:54Z'
+motif_decision: 'Hive tooling contribution: registry PR #182 merged at the judged commit 4a36a06 under the council''s permanent authorisation, after an independent adversarial review in a separate session (nothing blocking; three fixes, verified by the same reviewer; what it left for E25b is a note on ruche-0133); CI green on the judged commit (valider, suite / tests). R1: 183 lines changed outside tests, for an M task at 200. Recorded by hand: it changes workflows. Submitted inside the code PR.'
+fusion_sha: a649b46c0c2f7ff533b678a348ee13833480c05e

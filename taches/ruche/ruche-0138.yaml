@@ -1,0 +1,36 @@
+id: ruche-0138
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: M
+titre: 'bee publier, round 2: re-dating, a second engagement, finding the waiting PR, and only bee''s files'
+contexte: Follow-up of the review of ruche-0129 (PR 178). bee publier batches a session's gestures and publishes an
+  engagement before the rest. Five things to hold. --redater changes the dates of the lines this session added, and
+  never an existing line, even one with the same time. While an engagement PR waits for its merge, another engagement
+  prepared meanwhile stays on disk and goes out after, never inside the waiting PR. The waiting engagement PR is found
+  again from its branch on GitHub, so a run after an interruption or a lost state file follows it and never opens a
+  second one. A state file that cannot be read stops bee publier with a clear message and changes nothing. bee
+  publier commits only the files bee wrote in this session, never another file of the working tree.
+fichiers:
+- outils/bee.py
+- outils/test_bee.py
+- AGENTS.md
+- AGENTS.en.md
+portee: 0.7
+metrique: null
+depend_de: []
+critere_acceptation:
+- 'test: --redater leaves untouched an existing line with the same time as a line of the session'
+- 'test: a second engagement prepared while the first waits is published after its merge, in its own PR'
+- 'test: with the state file removed, a run finds the waiting PR from its branch and opens no other PR'
+- 'test: a malformed state file stops bee publier with a message, nothing written, nothing pushed'
+- 'test: a stray file in the working tree is never committed by bee publier'
+- independent review attached; the full test suite passes
+hors_perimetre:
+- COMMANDMENTS.md
+- the gate's caps (bee.yaml)
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: '2026-11-02'
