@@ -47,13 +47,18 @@ permissions:
   pull-requests: write
   actions: write
 
+# ruche-0122: passes replace (a newer pending run replaces an older one; the job « pause » spaces them a few minutes apart);
+# the job that writes main keeps the group it shares with expirations.yml.
 concurrency:
-  group: ecriture-main
+  group: integration
   cancel-in-progress: false
 
 jobs:
   integrer:
     runs-on: ubuntu-24.04
+    concurrency:
+      group: ecriture-main
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
         with:
@@ -76,23 +81,20 @@ jobs:
           BEE_INTEGRATION_TOKEN: ${{ secrets.BEE_INTEGRATION_TOKEN }}
         run: |
           tmp="${RUNNER_TEMP:-$(mktemp -d)}"
-          python3 outils/bee.py en-attente \
-            | python3 -c 'import json, sys; [print(c["id"], c["pr"], c.get("sha_verdict") or "-", c.get("auteur") or "-", sep="\t") for c in json.load(sys.stdin) if c.get("pr")]' \
+          # ruche-0122: every PR read in bulk, as in verdicts.yml (an unreadable one is left out of the pass).
+          python3 outils/bee.py en-attente --pr-states \
+            | python3 -c 'import json, sys; [print(c["id"], c["pr"], c.get("sha_verdict") or "-", c.get("auteur") or "-", c["pr_state"], c["pr_head"], c["pr_merge"], c["pr_author"], c["pr_person"], sep="\t") for c in json.load(sys.stdin) if c.get("pr") and c.get("pr_state")]' \
             > "$tmp/a_integrer.tsv"
           : > "$tmp/a_clore.txt"
           : > "$tmp/fusionnees.txt"
-          while IFS=$'\t' read -r id pr sha auteur; do
+          while IFS=$'\t' read -r id pr sha auteur etat tete fusion auteur_pr personne; do
             depot=$(printf '%s' "$pr" | sed -E 's#^https://github\.com/([A-Za-z0-9-]+/[A-Za-z0-9_.-]+)/pull/[0-9]+$#\1#')
-            infos=$(gh pr view "$pr" --json state,headRefOid,mergeCommit,author \
-              --jq '"\(.state) \(.headRefOid) \(.mergeCommit.oid // "-") \(.author.login)"') || continue
-            read -r etat tete fusion auteur_pr <<< "$infos"
             if [ "$etat" = "CLOSED" ]; then
               # Clôturée après les intégrations de ce passage (une concurrente intégrée l'écarte au lieu de l'annuler).
               printf '%s\n' "$id" >> "$tmp/a_clore.txt"; continue
             fi
             # La PR doit être celle de l'auteur de la contribution (le pseudo d'un membre est son login GitHub) : sinon
-            # rien n'est fusionné ni consigné, on n'intègre pas le travail d'un autre sous son nom.
-            personne=$(python3 outils/bee.py acts-for -- "$auteur_pr" < /dev/null) || personne=""
+            # rien n'est fusionné ni consigné, on n'intègre pas le travail d'un autre sous son nom (personne : bee acts-for).
             if [ "${personne,,}" != "${auteur,,}" ]; then
               echo "::notice::$id : la PR $pr a été ouverte par $auteur_pr, pas par $auteur ; ni fusionnée ni consignée."; continue
             fi
@@ -225,3 +227,11 @@ jobs:
         if: always()
         env: {GITHUB_TOKEN: "${{ github.token }}", BEE_INTEGRATION_TOKEN: "${{ secrets.BEE_INTEGRATION_TOKEN }}"}
         run: python3 outils/bee.py api-budget end --dossier "$RUNNER_TEMP/api-budget" --jeton GITHUB_TOKEN --jeton BEE_INTEGRATION_TOKEN
+  pause:
+    # ruche-0122: as in verdicts.yml, at most one pass every few minutes when merges trigger them; it holds « integration » only.
+    if: always() && github.event_name != 'workflow_dispatch'
+    needs: integrer
+    runs-on: ubuntu-24.04
+    permissions: {}
+    steps:
+      - run: sleep 180

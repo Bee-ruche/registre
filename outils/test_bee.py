@@ -5122,6 +5122,25 @@ if args[:2] == ["pr", "view"]:
         sys.exit(2)
     print(reponses[champs])
     sys.exit(0)
+if args[:3] == ["api", "graphql", "-f"]:
+    # ruche-0122: the bulk read of bee en-attente --pr-states, the same fields as pr view; « graphql_illisible »: no answer at all,
+    # « absente » on a PR: null with an error (GitHub's answer for a PR it cannot resolve), « graphql » on a PR: its raw answer.
+    import re
+    if etat.get("graphql_illisible"):
+        print("<html>502</html>")
+        sys.exit(1)
+    donnees, erreur, depot = {}, False, None
+    for m in re.finditer(r'(r\d+): repository\(owner: "([^"]*)", name: "([^"]*)"\)|(p\d+): pullRequest\(number: (\d+)\)', args[3]):
+        if m[1]:
+            depot = donnees.setdefault(m[1], {}), f"https://github.com/{m[2]}/{m[3]}/pull/"
+            continue
+        pr = etat.get(depot[1] + m[5])
+        erreur |= pr is None or bool(pr.get("absente"))
+        depot[0][m[4]] = None if pr is None or pr.get("absente") else pr.get("graphql") or {
+            "state": pr["state"], "headRefOid": pr["head"], "mergeCommit": {"oid": pr["merge"]} if pr.get("merge") else None,
+            "author": {"login": pr.get("auteur", "?")}}
+    print(json.dumps({"data": donnees, **({"errors": [{"type": "NOT_FOUND"}]} if erreur else {})}))
+    sys.exit(1 if erreur else 0)
 if args[:2] == ["pr", "merge"]:
     pr, sha = etat.get(args[2]), args[args.index("--match-head-commit") + 1]
     if pr is None or pr["state"] != "OPEN" or pr["head"] != sha or pr.get("conflit"):

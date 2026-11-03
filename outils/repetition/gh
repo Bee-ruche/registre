@@ -1,4 +1,31 @@
 #!/usr/bin/env bash
 # Le gh de la ruche simulée : il refuse tout, pour qu'aucune commande de la simulation n'atteigne le vrai GitHub.
+# ruche-0122 : sauf la lecture groupée des PR des forks (gh api graphql, celle de bee en-attente --pr-states), servie depuis
+# etat/prs_fork.tsv (auteur) et etat/commits_fork.tsv (tête : le dernier commit poussé) ; une PR sans commit n'a pas de réponse.
+# Chaque appel, servi ou refusé, s'ajoute à etat/appels_gh.tsv (sa commande, puis son code).
+if [ -n "${BEE_SIMU:-}" ] && [ -d "$BEE_SIMU/etat" ] && [ "${1:-} ${2:-} ${3:-}" = "api graphql -f" ]; then
+  python3 - "$BEE_SIMU/etat" "${4#query=}" <<'EOF'
+import json, pathlib, re, sys
+etat, requete = pathlib.Path(sys.argv[1]), sys.argv[2]
+lignes = lambda nom: [l.split("\t") for l in (etat / nom).read_text(encoding="utf-8").splitlines()] if (etat / nom).exists() else []
+auteurs = {l[0]: l[1] for l in lignes("prs_fork.tsv") if len(l) >= 2}
+tetes = {l[1]: l[2] for l in lignes("commits_fork.tsv") if len(l) >= 3}
+donnees, depot = {}, None
+for m in re.finditer(r'(r\d+): repository\(owner: "([^"]*)", name: "([^"]*)"\)|(p\d+): pullRequest\(number: (\d+)\)', requete):
+    if m[1]:
+        depot = donnees.setdefault(m[1], {}), f"https://github.com/{m[2]}/{m[3]}/pull/"
+    elif depot:
+        url = depot[1] + m[5]
+        depot[0][m[4]] = {"state": "OPEN", "headRefOid": tetes[url], "mergeCommit": None,
+                          "author": {"login": auteurs[url]}} if url in auteurs and url in tetes else None
+manque = sum(v is None for r in donnees.values() for v in r.values())
+print(json.dumps({"data": donnees, **({"errors": [{"message": f"{manque} PR sans réponse"}]} if manque else {})}))
+sys.exit(1 if manque or not donnees else 0)
+EOF
+  code=$?
+  printf 'api graphql\t%s\n' "$code" >> "$BEE_SIMU/etat/appels_gh.tsv"
+  exit "$code"
+fi
+[ -n "${BEE_SIMU:-}" ] && [ -d "$BEE_SIMU/etat" ] && printf '%s\t1\n' "$(printf '%s ' "$@" | tr -d '\t\n' | cut -c1-200)" >> "$BEE_SIMU/etat/appels_gh.tsv"
 echo "gh est désactivé dans la ruche simulée (appel refusé : gh $*). Voir LISEZMOI.md pour les gestes simulés." >&2
 exit 1
