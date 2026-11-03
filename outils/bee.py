@@ -8611,7 +8611,9 @@ def creations_gh(args):
     if args[:1] == ["api"]:
         if args[1:2] == ["graphql"]:
             return int(any(a.startswith("query=") and a[6:].lstrip().startswith("mutation") for a in args))
-        methode = next((args[i + 1] for i, a in enumerate(args[:-1]) if a in ("-X", "--method")), None)
+        methode = next((args[i + 1] if a in ("-X", "--method") else a.removeprefix("--method=").removeprefix("-X")
+                        for i, a in enumerate(args) if (a in ("-X", "--method") and i + 1 < len(args)) or a.startswith(("--method=", "-X"))
+                        and a != "-X"), None)
         champs = any(a in ("-f", "-F", "--field", "--raw-field", "--input") for a in args)
         return int((methode or ("POST" if champs else "GET")).upper() != "GET")
     if args[:2] == ["pr", "close"]:
@@ -8620,12 +8622,13 @@ def creations_gh(args):
 
 
 def depense_api(avant, apres):
-    """REST calls and GraphQL points one token's bucket spent between two `gh api rate_limit` answers (a window restarted in
-    between: the new window's count, and window=renewed)."""
+    """REST calls and GraphQL points one token's bucket spent between two `gh api rate_limit` answers, each resource in its own
+    window: one restarted in between gives the new window's count, and window=renewed; a counter at 0 at the start is the same
+    window (GitHub moves an unused resource's reset at every reading)."""
     a, b = avant["resources"], apres["resources"]
-    meme = all(a[k]["reset"] == b[k]["reset"] for k in ("core", "graphql"))
-    return {**{n: b[k]["used"] - (a[k]["used"] if meme else 0) for k, n in (("core", "rest"), ("graphql", "graphql"))},
-            "rest_left": f"{b['core']['remaining']}/{b['core']['limit']}", "window": "same" if meme else "renewed"}
+    renouvelees = {k for k in ("core", "graphql") if a[k]["reset"] != b[k]["reset"] and a[k]["used"]}
+    return {**{n: b[k]["used"] - (0 if k in renouvelees else a[k]["used"]) for k, n in (("core", "rest"), ("graphql", "graphql"))},
+            "rest_left": f"{b['core']['remaining']}/{b['core']['limit']}", "window": "renewed" if renouvelees else "same"}
 
 
 def cmd_api_budget(args):
@@ -8644,7 +8647,8 @@ def cmd_api_budget(args):
                 (dossier / f"{nom}.json").write_text(json.dumps(r), encoding="utf-8")
             if (reel := shutil.which("gh")) and pathlib.Path(reel).resolve() != gh.resolve():
                 gh.write_text(GH_JOURNALISE.format(journal=shlex.quote(str(dossier / "appels")), gh=shlex.quote(reel)), encoding="utf-8")
-                gh.chmod(0o755)
+                gh.chmod(0o555)
+                gh.parent.chmod(0o555)  # written once: read and run only
                 if os.environ.get("GITHUB_PATH"):
                     with open(os.environ["GITHUB_PATH"], "a", encoding="utf-8") as f:
                         f.write(f"{gh.parent}\n")
@@ -8657,6 +8661,8 @@ def cmd_api_budget(args):
             siens = [a for e, a in appels if e == empreinte_jeton(jetons[nom])] if nom in jetons else \
                 [a for e, a in appels if e not in set(map(empreinte_jeton, jetons.values()))]
             mesure = depense_api(json.loads((dossier / f"{nom}.json").read_text(encoding="utf-8")), limites[nom]) if nom in limites else {}
+            if nom != "GITHUB_TOKEN":  # what is left of another token's budget is not the registry's to print
+                mesure.pop("rest_left", None)
             if nom != "other" or siens:
                 print(f"::notice title=API budget::workflow={os.environ.get('GITHUB_WORKFLOW', '?')} token={nom} "
                       + " ".join(f"{k}={v}" for k, v in {**mesure, "gh_calls": len(siens), "creating": sum(map(creations_gh, siens))}.items()))

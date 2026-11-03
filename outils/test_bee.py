@@ -764,6 +764,8 @@ sys.exit(3 if a[:2] == ["pr", "view"] else 0)
                (["api", "repos/o/r/actions/workflows/site.yml/dispatches", "-f", "ref=main"], 1),
                (["api", "-X", "GET", "search/code", "-f", "q=x"], 0), (["api", "--method", "put", "repos/o/r/pulls/5/merge"], 1),
                (["api", "-X", "DELETE", "repos/o/r/git/refs/x"], 1), (["api", "graphql", "-f", "query= mutation { x }"], 1),
+               (["api", "--method=POST", "repos/o/r/dispatches"], 1), (["api", "-XPOST", "repos/o/r/dispatches"], 1),
+               (["api", "-XGET", "search/code", "-f", "q=x"], 0), (["api", "--method=get", "x", "-F", "a=1"], 0), (["api", "x", "-X"], 0),
                (["api", "graphql", "-f", "query=query { x }"], 0), (["api", "rate_limit"], 0), ([], 0), (["api"], 0)]
         for args, attendu in cas:
             with self.subTest(args=args):
@@ -775,6 +777,19 @@ sys.exit(3 if a[:2] == ["pr", "view"] else 0)
         self.assertEqual(bee.depense_api(lecture(10, 3), lecture(17, 5)), {"rest": 7, "graphql": 2, "rest_left": "983/1000", "window": "same"})
         # A window that restarted in between: what the new window spent, marked as such.
         self.assertEqual(bee.depense_api(lecture(900, 3), lecture(4, 1, 200)), {"rest": 4, "graphql": 1, "rest_left": "996/1000", "window": "renewed"})
+        # Each resource in its own window: GitHub moves an unused resource's reset at every reading; a counter at 0 at the start
+        # is the same window, and one resource's new window leaves the other's count alone.
+        deux = lambda core, reset_core, graphql, reset_graphql: {"resources": {  # noqa: E731
+            "core": {"used": core, "limit": 5000, "remaining": 5000 - core, "reset": reset_core},
+            "graphql": {"used": graphql, "limit": 5000, "remaining": 5000 - graphql, "reset": reset_graphql}}}
+        self.assertEqual(bee.depense_api(deux(1200, 100, 0, 1793663978), deux(1205, 100, 0, 1793663981)),
+                         {"rest": 5, "graphql": 0, "rest_left": "3795/5000", "window": "same"})
+        self.assertEqual(bee.depense_api(deux(0, 1793663978, 40, 100), deux(3, 1793663990, 42, 100)),
+                         {"rest": 3, "graphql": 2, "rest_left": "4997/5000", "window": "same"})
+        self.assertEqual(bee.depense_api(deux(1200, 100, 40, 100), deux(1203, 100, 2, 200)),
+                         {"rest": 3, "graphql": 2, "rest_left": "3797/5000", "window": "renewed"})
+        self.assertEqual(bee.depense_api(deux(1200, 100, 40, 100), deux(6, 200, 41, 100)),
+                         {"rest": 6, "graphql": 1, "rest_left": "4994/5000", "window": "renewed"})
 
     def test_start_and_end_log_each_token_s_spending_and_this_job_s_calls(self):
         reel = self.dossier / "reel"
@@ -791,6 +806,7 @@ sys.exit(3 if a[:2] == ["pr", "view"] else 0)
         r = budget("start")
         self.assertEqual((r.returncode, r.stdout, r.stderr), (0, "", ""))
         self.assertEqual(chemin.read_text(encoding="utf-8"), f"{mesure / 'bin'}\n")
+        self.assertEqual([oct(f.stat().st_mode & 0o777) for f in (mesure / "bin", mesure / "bin/gh")], ["0o555", "0o555"])
         # The job's later steps find the logging gh first; it changes nothing of what gh prints, reads or returns.
         env["PATH"] = f"{mesure / 'bin'}{os.pathsep}{env['PATH']}"
         script = ('GH_TOKEN=jeton-registre gh api repos/o/r/pulls/1\nGH_TOKEN=jeton-registre gh pr merge 5 --squash\n'
@@ -807,7 +823,7 @@ sys.exit(3 if a[:2] == ["pr", "view"] else 0)
             "::notice title=API budget::workflow=Intégration automatique token=GITHUB_TOKEN rest=3 graphql=3 rest_left=997/1000 "
             "window=same gh_calls=5 creating=2",
             "::notice title=API budget::workflow=Intégration automatique token=BEE_INTEGRATION_TOKEN rest=0 graphql=3 "
-            "rest_left=1000/1000 window=same gh_calls=1 creating=2",
+            "window=same gh_calls=1 creating=2",
             "::notice title=API budget::workflow=Intégration automatique token=other gh_calls=1 creating=0"])
         # A record cut short at the end (the job stopped while writing it) is dropped; the others count as before.
         with open(mesure / "appels", "ab") as f:
@@ -825,8 +841,9 @@ sys.exit(3 if a[:2] == ["pr", "view"] else 0)
                 self.assertFalse((self.dossier / "autre").exists())
 
     def test_every_workflow_measures_each_token_it_uses(self):
-        """Each workflow that calls gh starts the measure right after its dependencies, before any gh call, with every token
-        its steps give gh, and ends it last in that job, even after a failure (if: always()); its other jobs call no gh."""
+        """Each workflow that calls gh starts the measure right after its dependencies (validation.yml: after its scope step,
+        decided by the base's tool), before any other gh call, with every token its steps give gh, and ends it last in that job,
+        even after a failure (if: always()); its other jobs call no gh."""
         appelants = {f.name for f in (RACINE / ".github/workflows").glob("*.yml")
                      if any(re.search(r"(^|[\s(;|&])gh ", s.get("run", "")) for s in self.etapes(f.name))}
         self.assertEqual(appelants, {*self.ROBOTS, "juge.yml", "site.yml"})
@@ -837,7 +854,8 @@ sys.exit(3 if a[:2] == ["pr", "view"] else 0)
                 self.assertEqual(len(avec_gh), 1, "one job calls gh (ruche-0132: validation.yml's controles)")
                 etapes = avec_gh[0]
                 noms = [s.get("name", "") for s in etapes]
-                debut, fin = etapes[noms.index("Dépendances") + 1], etapes[-1]
+                apres = "Scope of the PR (data only, or the full suite)" if nom == "validation.yml" else "Dépendances"
+                debut, fin = etapes[noms.index(apres) + 1], etapes[-1]
                 options = " ".join(f"--jeton {j}" for j in jetons)
                 self.assertEqual(debut["run"], f'python3 outils/bee.py api-budget start --dossier "$RUNNER_TEMP/api-budget" {options}')
                 self.assertEqual(fin["run"], f'python3 outils/bee.py api-budget end --dossier "$RUNNER_TEMP/api-budget" {options}')
@@ -845,7 +863,8 @@ sys.exit(3 if a[:2] == ["pr", "view"] else 0)
                 for etape in (debut, fin):
                     self.assertEqual(etape["env"], {j: self.JETONS[j] for j in jetons})
                 avant = etapes[:etapes.index(debut)]
-                self.assertFalse([s for s in avant if "gh " in s.get("run", "")], "a gh call before the measure starts")
+                self.assertEqual([s.get("name") for s in avant if "gh " in s.get("run", "")], [apres] if nom == "validation.yml" else [],
+                                 "a gh call before the measure starts (validation.yml: the scope step's one read only)")
                 donnes = {v for s in self.etapes(nom) for v in (s.get("env") or {}).values() if "token" in str(v).lower()}
                 self.assertEqual(donnes, {self.JETONS[j] for j in jetons}, "a token given to gh but not measured")
         deployer = self.flux("site.yml")["jobs"]["deployer"]["steps"]
