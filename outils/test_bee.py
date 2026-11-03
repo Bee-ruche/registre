@@ -5,6 +5,7 @@ import contextlib
 import hashlib
 import io
 import itertools
+import inspect
 import json
 import math
 import os
@@ -125,6 +126,10 @@ def git(depot, *arguments):
 # these on a data-only PR, and skips the rest of the suite (TestCiScope checks the workflow against this list).
 TESTS_REGISTRE_REEL = ("TestRegistreReel", "TestRegistre.test_le_registre_livre_est_valide",
                        "TestArbre.test_chemins_livres_tiennent_dans_un_budget_court")
+# ruche-0133: the tests of the full suite that read docs/decisions.md as it stands. A push that only adds rows there counts
+# as data (bee push-scope, like main-green) and skips the full suite: validation.yml's fast path runs these too.
+TESTS_DECISIONS = ("TestTroisiemeRevueRuche0020.test_1_decision_du_commandement_10",
+                   "TestVerificationRuche0020.test_decide_par_sur_autorisation_du_conseil")
 DOSSIERS_REELS = tuple(os.path.join(str(RACINE), d) + os.sep for d in DONNEES_REGISTRE)
 
 
@@ -347,7 +352,7 @@ class TestCiScope(unittest.TestCase):
         etapes = yaml.safe_load((RACINE / ".github/workflows/validation.yml").read_text(encoding="utf-8"))["jobs"]["controles"]["steps"]
         suite = yaml.safe_load((RACINE / ".github/workflows/suite.yml").read_text(encoding="utf-8"))["jobs"]["tests"]["steps"]
         nom = lambda debut, dans=etapes: next(s for s in dans if s.get("name", "").startswith(debut))  # noqa: E731
-        return etapes, {"portee": nom("Scope of the PR"), "outil": nom("Tests de l'outil", suite), "juge": nom("Tests unitaires du juge", suite),
+        return etapes, {"portee": nom("Scope of the PR"), "push": nom("Scope of the push"), "outil": nom("Tests de l'outil", suite), "juge": nom("Tests unitaires du juge", suite),
                         "reel": nom("Tests that read the live registry"), "valider": nom("Validation complète"),
                         "regles": nom("Règles de la pull request")}
 
@@ -425,16 +430,19 @@ class TestCiScope(unittest.TestCase):
 
     @staticmethod
     def tourne(etape, evenement, portee):
-        """Whether a step runs: evaluates only the `if:` shapes validation.yml uses (GitHub compares strings ignoring case);
+        """Whether a step runs: evaluates only the `if:` shapes validation.yml uses (GitHub compares strings ignoring case),
+        `portee` being the output of the event's scope step (ruche-0133: the PR's or the push's), alone or joined by « || »;
         any other shape fails the test, to be added here knowingly."""
         condition = etape.get("if")
         if condition is None or condition == "always()":  # ruche-0121: the API budget's end step
             return True
-        forme = re.fullmatch(r"(github\.event_name|steps\.portee\.outputs\.portee) (==|!=) '([a-z_]+)'", str(condition).strip())
-        if not isinstance(condition, str) or not forme:
+        formes = [re.fullmatch(r"(github\.event_name|steps\.portee(_push)?\.outputs\.portee) (==|!=) '([a-z_]+)'", c)
+                  for c in str(condition).strip().split(" || ")]
+        if not isinstance(condition, str) or not all(formes):
             raise AssertionError(f"{etape.get('name')}: unknown if: {condition!r}")
-        valeur = evenement if forme[1] == "github.event_name" else (portee or "")
-        return (valeur.lower() == forme[3]) == (forme[2] == "==")
+        valeurs = {"github.event_name": evenement, "steps.portee.outputs.portee": portee if evenement == "pull_request" else None,
+                   "steps.portee_push.outputs.portee": portee if evenement == "push" else None}
+        return any(((valeurs[f[1]] or "").lower() == f[4]) == (f[3] == "==") for f in formes)
 
     def test_wiring_of_each_step(self):
         """S1 (review): which steps run, for each event and each output of the scope step; the PR rules take the scope
@@ -442,10 +450,10 @@ class TestCiScope(unittest.TestCase):
         etapes, roles = self.etapes()
         for evenement in ("push", "pull_request"):
             for sortie in (None, "", "full", "data", "garbage", "DATA"):
-                portee = sortie if self.tourne(roles["portee"], evenement, None) else None
-                donnees = evenement == "pull_request" and str(portee).lower() == "data"
+                portee = sortie if self.tourne(roles["portee" if evenement == "pull_request" else "push"], evenement, None) else None
+                donnees = str(portee).lower() == "data"  # ruche-0133: a data-only push takes the fast path too
                 attendu = {id(roles["portee"]): evenement == "pull_request", id(roles["regles"]): evenement == "pull_request",
-                           id(roles["reel"]): donnees}
+                           id(roles["push"]): evenement == "push", id(roles["reel"]): donnees}
                 for etape in etapes:  # every other step, « Validation complète » included, always runs
                     with self.subTest(evenement=evenement, portee=sortie, etape=etape.get("name") or etape.get("uses")):
                         self.assertEqual(self.tourne(etape, evenement, portee), attendu.get(id(etape), True))
@@ -461,28 +469,32 @@ class TestCiScope(unittest.TestCase):
         self.assertEqual(appels, "")
 
     def test_wiring_of_the_jobs(self):
-        """ruche-0132: the full suite is suite.yml, called after the checks unless the scope is data; the required check
-        `valider` always runs and passes only if the checks passed and the suite did, or was skipped for a data-only PR;
-        suite.yml keeps the suite's steps, a read-only token and no PR text in a script."""
+        """ruche-0132: the full suite is suite.yml, called after the checks of a PR unless the scope is data (ruche-0133: and
+        dispatched for a push that is not data only); the required check `valider` always runs and passes only if the checks
+        passed and the suite did, or was skipped for a data-only PR or push, or dispatched for a code push; suite.yml keeps
+        the suite's steps, a read-only token and no PR text in a script."""
         lire = lambda nom: yaml.safe_load((RACINE / ".github/workflows" / nom).read_text(encoding="utf-8"))  # noqa: E731
         flux, suite = lire("validation.yml"), lire("suite.yml")
-        self.assertEqual(list(flux["jobs"]), ["controles", "suite", "valider"])
-        self.assertEqual(flux["jobs"]["controles"]["outputs"], {"portee": "${{ steps.portee.outputs.portee }}"})
-        self.assertEqual(flux["jobs"]["suite"], {"needs": "controles", "if": "needs.controles.outputs.portee != 'data'",
+        self.assertEqual(list(flux["jobs"]), ["controles", "suite", "relancer", "valider"])
+        self.assertEqual(flux["jobs"]["controles"]["outputs"], {"portee": "${{ steps.portee.outputs.portee || steps.portee_push.outputs.portee }}",
+                                                               "commit": "${{ steps.portee_push.outputs.commit }}"})
+        self.assertEqual(flux["jobs"]["suite"], {"needs": "controles", "if": "github.event_name != 'push' && needs.controles.outputs.portee != 'data'",
                                                  "uses": "./.github/workflows/suite.yml"})
         porte = flux["jobs"]["valider"]
-        self.assertEqual((porte["needs"], porte["if"], len(porte["steps"])), (["controles", "suite"], "always()", 1))
+        self.assertEqual((porte["needs"], porte["if"], len(porte["steps"])), (["controles", "suite", "relancer"], "always()", 1))
         self.assertEqual(porte["steps"][0]["env"], {"CONTROLES": "${{ needs.controles.result }}", "SUITE": "${{ needs.suite.result }}",
-                                                    "PORTEE": "${{ needs.controles.outputs.portee }}"})
+                                                    "PORTEE": "${{ needs.controles.outputs.portee }}", "RELANCE": "${{ needs.relancer.result }}"})
         resultats = ("success", "failure", "cancelled", "skipped")
-        for controles, sous, portee in itertools.product(resultats, resultats, ("data", "full", "", "DATA")):
-            with self.subTest(controles=controles, suite=sous, portee=portee):
-                r, _, _ = self.rejouer(porte["steps"][0]["run"], {"CONTROLES": controles, "SUITE": sous, "PORTEE": portee})
-                attendu = controles == "success" and (sous == "success" or (sous == "skipped" and portee == "data"))
+        for controles, sous, portee, relance in itertools.product(resultats, resultats, ("data", "full", "", "DATA"), resultats):
+            with self.subTest(controles=controles, suite=sous, portee=portee, relance=relance):
+                r, _, _ = self.rejouer(porte["steps"][0]["run"], {"CONTROLES": controles, "SUITE": sous, "PORTEE": portee, "RELANCE": relance})
+                attendu = controles == "success" and (sous == "success" or (sous == "skipped" and (
+                    (portee == "data" and relance == "skipped") or relance == "success")))
                 self.assertEqual(r.returncode == 0, attendu, r.stdout + r.stderr)
         self.assertEqual(suite["permissions"], {"contents": "read"})
         self.assertEqual(set(suite[True]), {"workflow_call", "workflow_dispatch"})  # PyYAML reads the key « on » as True
-        self.assertEqual([list(suite[True][e]["inputs"]) for e in ("workflow_call", "workflow_dispatch")], [["commit"], ["commit"]])
+        # ruche-0133: the input `commit` is the dispatch's (validation.yml's job relancer passes it); a call tests its caller's commit.
+        self.assertEqual((suite[True]["workflow_call"], list(suite[True]["workflow_dispatch"]["inputs"])), (None, ["commit"]))
         self.assertEqual(suite["run-name"], bee.TITRE_SUITE + "${{ inputs.commit || github.sha }}")
         self.assertEqual(list(suite["jobs"]), ["tests"])
         etapes = suite["jobs"]["tests"]["steps"]
@@ -524,12 +536,12 @@ class TestCiScope(unittest.TestCase):
         self.assertRegex(etape["run"], r'verifier-pr [^\n]*\\\n[^\n]*--instant-pr "\$INSTANT_PR"\n')
 
     def test_the_data_only_step_runs_exactly_the_tests_allowed_to_read_live_data(self):
-        """One list: on a data-only PR, validation.yml runs TESTS_REGISTRE_REEL, the tests the audit hook lets read the live
-        registry's data; each exists."""
+        """One list: on a data-only PR or push, validation.yml runs TESTS_REGISTRE_REEL, the tests the audit hook lets read the
+        live registry's data, and (ruche-0133) TESTS_DECISIONS, those that read docs/decisions.md as it stands; each exists."""
         commande = self.etapes()[1]["reel"]["run"].split()
         self.assertEqual(commande[:3], ["python3", "-m", "unittest"])
-        self.assertEqual(sorted(commande[3:]), sorted(f"outils.test_bee.{n}" for n in TESTS_REGISTRE_REEL))
-        for nom in TESTS_REGISTRE_REEL:
+        self.assertEqual(sorted(commande[3:]), sorted(f"outils.test_bee.{n}" for n in TESTS_REGISTRE_REEL + TESTS_DECISIONS))
+        for nom in TESTS_REGISTRE_REEL + TESTS_DECISIONS:
             classe, _, methode = nom.partition(".")
             self.assertTrue(issubclass(globals()[classe], unittest.TestCase), nom)
             self.assertTrue(not methode or callable(getattr(globals()[classe], methode, None)), nom)
@@ -849,12 +861,12 @@ sys.exit(3 if a[:2] == ["pr", "view"] else 0)
         self.assertEqual(appelants, {*self.ROBOTS, "juge.yml", "site.yml"})
         for nom, jetons in self.ROBOTS.items():
             with self.subTest(flux=nom):
-                jobs = [j.get("steps", []) for j in self.flux(nom)["jobs"].values()]
+                jobs = [j.get("steps", []) for n, j in self.flux(nom)["jobs"].items() if (nom, n) != ("validation.yml", "relancer")]
                 avec_gh = [e for e in jobs if any("gh " in s.get("run", "") for s in e)]
-                self.assertEqual(len(avec_gh), 1, "one job calls gh (ruche-0132: validation.yml's controles)")
+                self.assertEqual(len(avec_gh), 1, "one job calls gh (ruche-0132: validation.yml's controles; ruche-0133: and relancer, below)")
                 etapes = avec_gh[0]
                 noms = [s.get("name", "") for s in etapes]
-                apres = "Scope of the PR (data only, or the full suite)" if nom == "validation.yml" else "Dépendances"
+                apres = "Scope of the push (data only, or the full suite)" if nom == "validation.yml" else "Dépendances"  # ruche-0133: after both scopes
                 debut, fin = etapes[noms.index(apres) + 1], etapes[-1]
                 options = " ".join(f"--jeton {j}" for j in jetons)
                 self.assertEqual(debut["run"], f'python3 outils/bee.py api-budget start --dossier "$RUNNER_TEMP/api-budget" {options}')
@@ -863,23 +875,33 @@ sys.exit(3 if a[:2] == ["pr", "view"] else 0)
                 for etape in (debut, fin):
                     self.assertEqual(etape["env"], {j: self.JETONS[j] for j in jetons})
                 avant = etapes[:etapes.index(debut)]
-                self.assertEqual([s.get("name") for s in avant if "gh " in s.get("run", "")], [apres] if nom == "validation.yml" else [],
+                self.assertEqual([s.get("name") for s in avant if "gh " in s.get("run", "")], ["Scope of the PR (data only, or the full suite)"] if nom == "validation.yml" else [],
                                  "a gh call before the measure starts (validation.yml: the scope step's one read only)")
                 donnes = {v for s in self.etapes(nom) for v in (s.get("env") or {}).values() if "token" in str(v).lower()}
                 self.assertEqual(donnes, {self.JETONS[j] for j in jetons}, "a token given to gh but not measured")
-        deployer = self.flux("site.yml")["jobs"]["deployer"]["steps"]
-        self.assertEqual(deployer[0]["run"], 'gh api rate_limit > "$RUNNER_TEMP/rate_limit.json" || true')  # never stops the deployment
-        self.assertEqual((deployer[-1].get("if"), deployer[-1]["run"].endswith("|| true")), ("always()", True))
+        # ruche-0133: site.yml's job portee measures with bee (it has a checkout), validation.yml's relancer in jq (it has none).
+        portee = self.flux("site.yml")["jobs"]["portee"]["steps"]
+        noms = [s.get("name", "") for s in portee]
+        self.assertEqual([s["run"] for s in (portee[noms.index("Dépendances") + 1], portee[-1])],
+                         [f'python3 outils/bee.py api-budget {m} --dossier "$RUNNER_TEMP/api-budget" --jeton GITHUB_TOKEN' for m in ("start", "end")])
+        self.assertEqual((portee[-1].get("if"), [s["env"] for s in (portee[noms.index("Dépendances") + 1], portee[-1])]), ("always()", [{"GITHUB_TOKEN": self.JETONS["GITHUB_TOKEN"]}] * 2))
+        self.assertEqual([s.get("name", "") for s in portee[:noms.index("Dépendances") + 1] if "gh " in s.get("run", "")], [])
+        deployer, relancer = self.flux("site.yml")["jobs"]["deployer"]["steps"], self.flux("validation.yml")["jobs"]["relancer"]["steps"]
+        for etapes in (deployer, relancer):
+            self.assertEqual(etapes[0]["run"].split("  #")[0], 'gh api rate_limit > "$RUNNER_TEMP/rate_limit.json" || true')  # never stops the job
+            self.assertEqual((etapes[-1].get("if"), etapes[-1]["run"].endswith("|| true")), ("always()", True))
         if shutil.which("jq"):  # the site's end step computes what bee api-budget does, in jq
             lecture = lambda core, reset: json.dumps({"resources": {"core": {"used": core, "reset": reset}, "graphql": {"used": 0, "reset": reset}}})  # noqa: E731
-            for (avant, apres), attendu in (((lecture(10, 5), lecture(14, 5)), "rest=4 window=same"), ((lecture(10, 5), lecture(3, 6)), "rest=3 window=renewed")):
-                with self.subTest(attendu=attendu):
+            for ((avant, apres), attendu), (etapes, flux) in itertools.product(
+                    (((lecture(10, 5), lecture(14, 5)), "rest=4 window=same"), ((lecture(10, 5), lecture(3, 6)), "rest=3 window=renewed")),
+                    ((deployer, "Site"), (relancer, "Validation du registre"))):
+                with self.subTest(attendu=attendu, flux=flux):
                     (self.dossier / "rate_limit.json").write_text(avant, encoding="utf-8")
                     (self.dossier / "gh").write_text(f"#!/bin/sh\necho '{apres}'\n", encoding="utf-8")
                     (self.dossier / "gh").chmod(0o755)
-                    r = subprocess.run(["bash", "-e", "-o", "pipefail", "-c", deployer[-1]["run"]], capture_output=True, text=True,
+                    r = subprocess.run(["bash", "-e", "-o", "pipefail", "-c", etapes[-1]["run"]], capture_output=True, text=True,
                                        env={**os.environ, "PATH": f"{self.dossier}{os.pathsep}{os.environ['PATH']}", "RUNNER_TEMP": str(self.dossier)})
-                    self.assertEqual(r.stdout, f"::notice title=API budget::workflow=Site token=GITHUB_TOKEN {attendu}\n", r.stderr)
+                    self.assertEqual(r.stdout, f"::notice title=API budget::workflow={flux} token=GITHUB_TOKEN {attendu}\n", r.stderr)
 
     def test_the_robots_start_the_site_with_one_call(self):
         """gh workflow run reads the workflow, then dispatches it (two calls): the robots dispatch it directly."""
@@ -890,16 +912,24 @@ sys.exit(3 if a[:2] == ["pr", "view"] else 0)
                 self.assertNotIn("gh workflow run", texte)
                 self.assertEqual(texte.count("site.yml/dispatches"), texte.count(appel), "every dispatch is the one call")
                 self.assertEqual(texte.count(appel), 0 if nom == "validation.yml" else 1)
+        # ruche-0133: a push dispatches suite.yml (validation.yml) and site.yml (site.yml) with one call each too.
+        for nom, flux in (("validation.yml", "suite.yml"), ("site.yml", "site.yml")):
+            with self.subTest(flux=nom):
+                texte = "\n".join(s.get("run", "") for s in self.etapes(nom))
+                self.assertNotIn("gh workflow run", texte)
+                self.assertEqual(len(re.findall(rf'(?m)^timeout 60 gh api -X POST "repos/\$GITHUB_REPOSITORY/actions/workflows/{flux}/dispatches" -f ref=main -f "inputs\[[a-z]+\]=\$[a-z_A-Z]+"$', texte)), 1)
 
     def test_the_site_builds_at_once_for_code_and_at_most_every_few_minutes_for_data(self):
         site = self.flux("site.yml")
-        self.assertEqual(site[True], {"push": {"branches": ["main"]}, "workflow_dispatch": None})
-        # A push (code) cancels the run in progress; a dispatch (a robot, after data) waits, and the newest waiting one replaces
-        # the others (GitHub keeps one pending run per group).
-        self.assertEqual(site["concurrency"], {"group": "pages", "cancel-in-progress": "${{ github.event_name == 'push' }}"})
+        self.assertEqual(list(site[True]), ["push", "workflow_dispatch"])
+        self.assertEqual(list(site[True]["workflow_dispatch"]["inputs"]), ["immediat"])  # ruche-0133: a push dispatches the build
+        # Code (ruche-0133: a dispatch with immediat, from a code push) cancels the run in progress; a dispatch after data (a
+        # robot, a data-only push) waits, and the newest waiting one replaces the others (GitHub keeps one pending run per group).
+        self.assertEqual(site["concurrency"], {"group": "${{ github.event_name == 'push' && format('site-push-{0}', github.run_id) || 'pages' }}",
+                                               "cancel-in-progress": "${{ github.event_name != 'push' && inputs.immediat == true }}"})
         pause = site["jobs"]["pause"]
         self.assertEqual({k: v for k, v in pause.items() if k != "steps"},
-                         {"if": "github.event_name != 'push'", "needs": "deployer", "runs-on": "ubuntu-24.04", "permissions": {}})
+                         {"if": "github.event_name != 'push' && inputs.immediat != true", "needs": "deployer", "runs-on": "ubuntu-24.04", "permissions": {}})
         self.assertEqual(len(pause["steps"]), 1)
         secondes = int(re.fullmatch(r"sleep ([0-9]+)", pause["steps"][0]["run"])[1])
         self.assertTrue(120 <= secondes <= 600, secondes)
@@ -919,9 +949,170 @@ sys.exit(3 if a[:2] == ["pr", "view"] else 0)
                 flux = self.flux(nom)
                 self.assertNotIn("pull_request_target", flux[True])
                 self.assertEqual(flux["permissions"], attendues)
-                self.assertEqual({n: j["permissions"] for n, j in flux["jobs"].items() if "permissions" in j}, {"pause": {}} if nom == "site.yml" else {})
+                jobs = {"site.yml": {"pause": {}, "portee": {"contents": "read", "actions": "write"}},  # ruche-0133: the push's dispatches
+                        "validation.yml": {"relancer": {"actions": "write"}}}.get(nom, {})
+                self.assertEqual({n: j["permissions"] for n, j in flux["jobs"].items() if "permissions" in j}, jobs)
                 for etape in self.etapes(nom):
                     self.assertNotIn("${{", etape.get("run", ""), etape.get("name"))
+
+
+class TestPushScope(unittest.TestCase):
+    """ruche-0133 (R-push): a push to main is scoped on the range it moved, by main's tool before the push (bee push-scope, in
+    validation.yml and site.yml): data only, the fast path and the site on E2's interval; anything else (code, a new branch,
+    a forced push, an unreadable range) the full suite, dispatched on the commit main-green expects, and the site at once."""
+
+    setUp, tearDown, ecrire, rejouer = TestCiScope.setUp, TestCiScope.tearDown, TestCiScope.ecrire, TestCiScope.rejouer
+
+    def commit(self, chemin=None, texte="id: y\n"):
+        if chemin:
+            self.ecrire(chemin, texte)
+        return TestCiScope.commit(self)
+
+    def portee(self, avant, apres="HEAD"):
+        return bee.push_scope(self.depot, avant, apres)
+
+    def decisions(self, *lignes):
+        return "# Décisions\n\n| Date | Décision | Pourquoi | Par |\n" + bee.ENTETE_DECISIONS + "".join(lignes)
+
+    def test_a_data_only_range_takes_the_fast_path(self):
+        self.base = self.commit("docs/decisions.md", self.decisions("| 2026-11-01 | a | b | c |\n"))
+        self.commit("membres/alice.yaml")
+        self.commit("debats/D-0001.yaml")
+        self.commit("docs/decisions.md", self.decisions("| 2026-11-03 | x integrated (#1) | b | c |\n", "| 2026-11-01 | a | b | c |\n"))
+        self.assertEqual(self.portee(self.base), ("data", None))
+        self.assertEqual(lancer("--registre", str(self.depot), "push-scope", "--avant", self.base), (0, "data\n"))
+        self.assertEqual(self.portee(git(self.depot, "rev-parse", "HEAD~1").strip()), ("data", None), "a row in decisions.md alone")
+
+    def test_anything_else_runs_the_full_suite_on_main_s_last_code_commit(self):
+        avant = self.base
+        code = self.commit("outils/bee.py", "print('data')\n")
+        self.assertEqual(self.portee(avant), ("full", code))
+        self.commit("membres/alice.yaml")  # data on top: the suite still tests the code commit, the one main-green expects
+        self.assertEqual(self.portee(avant), ("full", code))
+        self.assertEqual(lancer("--registre", str(self.depot), "push-scope", "--avant", avant), (0, f"full {code}\n"))
+        apres = git(self.depot, "rev-parse", "HEAD").strip()
+        self.assertEqual(self.portee(code), ("data", None), "a later data push")
+        cas = {"new branch": "0" * 40, "empty range": apres, "unknown commit": "1" * 40, "short sha": avant[:7], "upper case": avant.upper(),
+               "a name": "HEAD~1", "empty": "", "an option": "--all", "None": None}
+        for nom, avant_ in cas.items():
+            with self.subTest(cas=nom):
+                self.assertEqual(self.portee(avant_), ("full", code))
+        self.assertEqual(self.portee(code, "0" * 40), ("full", None), "an unreadable pushed commit")
+        self.assertEqual(self.portee(code, "--all"), ("full", None))
+        self.assertEqual(bee.push_scope(self.temp.name, code, apres), ("full", None), "not a repository")
+        self.assertEqual(lancer("--registre", str(self.depot), "push-scope", "--avant", code, "--apres", "0" * 40), (0, "full\n"))
+        # A row in decisions.md that also removes a line is code.
+        git(self.depot, "reset", "-q", "--hard", avant)
+        self.commit("docs/decisions.md", self.decisions("| a |\n", "| b |\n"))
+        retrait = self.commit("docs/decisions.md", self.decisions("| c |\n", "| a |\n"))
+        self.assertEqual(self.portee(git(self.depot, "rev-parse", "HEAD~1").strip()), ("full", retrait))
+
+    def test_a_forced_push_or_code_hidden_under_a_merge_runs_the_full_suite(self):
+        git(self.depot, "checkout", "-q", "-b", "cote")
+        cote = self.commit("membres/alice.yaml")
+        git(self.depot, "checkout", "-q", "main")
+        avant = self.commit("membres/bruno.yaml")
+        git(self.depot, "checkout", "-q", "cote")
+        self.assertEqual(self.portee(avant), ("full", self.base), "main rewritten under a data commit: avant is not an ancestor")
+        # Main had code (avant); the pushed merge's first parent is a data branch, main its second: its change is code.
+        git(self.depot, "checkout", "-q", "main")
+        avant = self.commit("outils/bee.py", "print('data')\n")
+        git(self.depot, "checkout", "-q", "cote")
+        git(self.depot, "-c", "user.name=t", "-c", "user.email=t@t", "merge", "-q", "--no-ff", "--no-edit", "main")
+        fusion = git(self.depot, "rev-parse", "HEAD").strip()
+        self.assertEqual(git(self.depot, "rev-parse", "HEAD^1").strip(), cote)
+        self.assertEqual(self.portee(avant), ("full", fusion))
+
+    @staticmethod
+    def flux(nom):
+        return yaml.safe_load((RACINE / ".github/workflows" / nom).read_text(encoding="utf-8"))
+
+    def test_both_workflows_run_the_same_scope_step_with_main_s_tool_before_the_push(self):
+        validation = TestCiScope.etapes()[1]["push"]
+        site = next(e for e in self.flux("site.yml")["jobs"]["portee"]["steps"] if e.get("id") == "portee_push")
+        self.assertEqual(validation["run"], site["run"])
+        for etape in (validation, site):
+            self.assertEqual((etape["id"], etape["env"]), ("portee_push", {"AVANT": "${{ github.event.before }}", "APRES": "${{ github.sha }}"}))
+        self.assertEqual(validation["if"], "github.event_name == 'push'")
+
+        def etape(changer=None, outil_avant=None, avant=None):
+            git(self.depot, "checkout", "-q", "main")
+            git(self.depot, "checkout", "-q", self.base, "--", "outils/bee.py")  # main's real tool, unless the case sets another
+            if outil_avant == "absent":
+                git(self.depot, "rm", "-qf", "outils/bee.py")
+            elif outil_avant:
+                self.ecrire("outils/bee.py", outil_avant)
+            debut = self.commit()
+            if changer:
+                changer()
+            apres = self.commit()
+            r, sorties, _ = self.rejouer(validation["run"], {"AVANT": debut if avant is None else avant, "APRES": apres})
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            return sorties["portee"], sorties["commit"], apres
+
+        self.assertEqual(etape(lambda: self.ecrire("membres/alice.yaml"))[:2], ("data", ""))
+        portee, commit, apres = etape(lambda: self.ecrire("outils/bee.py", "print('data')\n"))  # the pushed tool never decides
+        self.assertEqual((portee, commit), ("full", apres))
+        portee, commit, apres = etape(lambda: (self.ecrire("outils/x.py"), self.commit(), self.ecrire("membres/bruno.yaml")))
+        self.assertEqual((portee, commit), ("full", git(self.depot, "rev-parse", "HEAD~1").strip()), "main's last code commit")
+        donnees = lambda: self.ecrire("membres/chloe.yaml")  # noqa: E731
+        for nom, outil, avant in (("new branch", None, "0" * 40), ("no before", None, ""), ("before is a name", None, "HEAD~1"),
+                                  ("tool fails", "print('data')\nraise SystemExit(2)\n", None), ("tool's extra space", "print('data ')\n", None),
+                                  ("tool names no commit", "print('full abc')\n", None), ("no tool", "absent", None)):
+            with self.subTest(cas=nom):
+                portee, commit, apres = etape(donnees, outil, avant)
+                self.assertEqual((portee, commit), ("full", apres))
+
+    def test_a_code_push_dispatches_suite_yml_on_the_named_commit(self):
+        flux = self.flux("validation.yml")
+        job = flux["jobs"]["relancer"]
+        self.assertEqual((job["needs"], job["if"], job["permissions"]),
+                         ("controles", "always() && github.event_name == 'push' && needs.controles.outputs.portee != 'data'", {"actions": "write"}))
+        self.assertFalse([e for e in job["steps"] if "uses" in e or "bee.py" in e.get("run", "")], "nothing of the push runs with this token")
+        envoi = next(e for e in job["steps"] if e["name"].startswith("Dispatch the full suite"))
+        self.assertEqual(envoi["env"], {"COMMIT": "${{ needs.controles.outputs.commit || github.sha }}", "GH_TOKEN": "${{ github.token }}"})
+        script = envoi["run"]
+        sha = "a" * 40
+        r, _, appels = self.rejouer(script, {"COMMIT": sha, "FAUX_GH": ""})
+        self.assertEqual((r.returncode, appels.split()), (0, ["api", "-X", "POST", "repos/Bee-ruche/registre/actions/workflows/suite.yml/dispatches",
+                                                              "-f", "ref=main", "-f", f"inputs[commit]={sha}"]))
+        for commit in ("", "a" * 39, "A" * 40, f"{sha} -f x=y", f"{sha}\n"):
+            with self.subTest(commit=commit):
+                r, _, appels = self.rejouer(script, {"COMMIT": commit, "FAUX_GH": ""})
+                self.assertNotEqual(r.returncode, 0)
+                self.assertEqual(appels, "")
+        self.assertEqual(self.portee(self.base, "HEAD")[0], "full", "an empty push")
+
+    def test_site_yml_builds_a_code_push_at_once_and_data_on_e2_s_interval(self):
+        flux = self.flux("site.yml")
+        self.assertEqual(flux[True]["push"], {"branches": ["main"]})
+        self.assertEqual(flux[True]["workflow_dispatch"]["inputs"]["immediat"]["type"], "boolean")
+        self.assertEqual(flux["concurrency"], {"group": "${{ github.event_name == 'push' && format('site-push-{0}', github.run_id) || 'pages' }}",
+                                               "cancel-in-progress": "${{ github.event_name != 'push' && inputs.immediat == true }}"})
+        jobs = flux["jobs"]
+        self.assertEqual(list(jobs), ["portee", "construire", "deployer", "pause"])
+        self.assertEqual((jobs["portee"]["if"], jobs["portee"]["permissions"]), ("github.event_name == 'push'", {"contents": "read", "actions": "write"}))
+        self.assertEqual(jobs["portee"]["steps"][0], {"uses": "actions/checkout@v4", "with": {"fetch-depth": 0, "persist-credentials": False}})
+        self.assertEqual((jobs["construire"]["if"], jobs["deployer"]["needs"]), ("github.event_name != 'push'", "construire"))
+        self.assertEqual((jobs["pause"]["if"], jobs["pause"]["needs"]), ("github.event_name != 'push' && inputs.immediat != true", "deployer"))
+        envoi = next(e for e in jobs["portee"]["steps"] if e.get("name", "").startswith("Dispatch the build"))
+        self.assertEqual(envoi["env"]["PORTEE"], "${{ steps.portee_push.outputs.portee }}")
+        for portee, immediat in (("data", "false"), ("full", "true"), ("", "true"), ("DATA", "true"), ("data ", "true")):
+            with self.subTest(portee=portee):
+                r, _, appels = self.rejouer(envoi["run"], {"PORTEE": portee, "FAUX_GH": ""})
+                self.assertEqual((r.returncode, appels.split()), (0, ["api", "-X", "POST", "repos/Bee-ruche/registre/actions/workflows/site.yml/dispatches",
+                                                                      "-f", "ref=main", "-f", f"inputs[immediat]={immediat}"]))
+
+    def test_the_tests_that_read_decisions_md_as_it_stands_are_listed(self):
+        """TESTS_DECISIONS is every test that reads the live docs/decisions.md (a new one goes in the list, or reads a copy)."""
+        lisent = set()
+        for nom, classe in list(globals().items()):
+            if isinstance(classe, type) and issubclass(classe, unittest.TestCase):
+                for methode, f in vars(classe).items():
+                    if methode.startswith("test") and callable(f) and re.search(r'RACINE\s*/\s*("docs/decisions\.md"|bee\.DECISIONS|"docs"\s*/\s*"decisions\.md")',
+                                                                               inspect.getsource(f)):
+                        lisent.add(f"{nom}.{methode}")
+        self.assertEqual(lisent, set(TESTS_DECISIONS))
 
 
 class TestMainVert(unittest.TestCase):

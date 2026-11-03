@@ -8556,6 +8556,27 @@ def dernier_commit_de_code(racine, base, limite=LIMITE_COMMITS_DONNEES):
     return None
 
 
+def push_scope(racine, avant, apres):
+    """ruche-0133 (R-push): what a push to main runs, on the range it moved (validation.yml, site.yml). ("data", None) if
+    avant is a strict ancestor of apres and apres's last code commit (dernier_commit_de_code, the rules main-green reads main
+    by) is avant or older: every first-parent commit since is data. Else ("full", the commit suite.yml must test: that last
+    code commit, the one main-green expects, or apres if none is found). Fails closed: a new branch, a forced push, an empty
+    or unreadable range, any error."""
+    def ancetre(x, y):
+        return subprocess.run(["git", "-C", str(racine), "merge-base", "--is-ancestor", x, y], capture_output=True).returncode == 0
+    cible = None
+    try:
+        apres = subprocess.run(["git", "-C", str(racine), "rev-parse", "--verify", "--end-of-options", f"{apres}^{{commit}}"],
+                               capture_output=True, check=True, text=True).stdout.strip()
+        code = dernier_commit_de_code(racine, apres)
+        cible = code or apres
+        if re.fullmatch(r"[0-9a-f]{40}", str(avant)) and avant != apres and code and ancetre(avant, apres) and ancetre(code, avant):
+            return "data", None
+        return "full", cible
+    except Exception:  # noqa: BLE001 - whatever goes wrong, the full suite runs
+        return "full", cible
+
+
 def main_vert(racine, base, reponse):
     """ruche-0132: whether main is green for the PR fast path, from one filtered read of suite.yml's latest runs on main
     (actions/workflows/suite.yml/runs, newest first): the newest run must test main's last code commit (dernier_commit_de_code),
@@ -8594,6 +8615,12 @@ def cmd_ci_scope(args):
     print(portee)
     if raison:
         print(f"full suite: {raison}", file=sys.stderr)
+    return 0
+
+
+def cmd_push_scope(args):
+    portee, cible = push_scope(args.registre or os.environ.get("BEE_REGISTRE") or RACINE_OUTIL, args.avant, args.apres)
+    print(" ".join(filter(None, (portee, cible))))
     return 0
 
 
@@ -10901,6 +10928,11 @@ def construire_analyseur():
                                           "else 'full' (the full test suite runs; used by validation.yml).")
     p.add_argument("--base", required=True)
     p.add_argument("--tete", default="HEAD")
+
+    p = ajouter("push-scope", cmd_push_scope, "Prints 'data' if a push to main only brought data commits (the fast path), else "
+                                              "'full' and the commit suite.yml must test (ruche-0133; used by validation.yml, site.yml).")
+    p.add_argument("--avant", required=True, help="the commit main was at before the push (github.event.before)")
+    p.add_argument("--apres", default="HEAD", help="the pushed commit")
 
     p = ajouter("needs-account-date", lambda a: print("yes" if date_compte_requise(a.registre or os.environ.get("BEE_REGISTRE") or RACINE_OUTIL, a.base, a.tete)
                                                       else "no") or 0, "Prints 'yes' if a registry PR adds a member file (its check needs the account's "
