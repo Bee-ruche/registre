@@ -1,0 +1,10 @@
+id: ruche-0121-c1
+tache: ruche-0121
+auteur: bidji29
+pr: https://github.com/Bee-ruche/registre/pull/186
+resume: Each workflow logs the API it spends per token, the account date is read only for a new member
+  file, and data rebuilds the site at most every few minutes.
+statut: en_relecture
+soumise_le: '2026-11-03T00:47:58Z'
+engage_depuis: '2026-11-02T16:02:02Z'
+relectures: []
