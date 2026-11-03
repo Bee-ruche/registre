@@ -12277,6 +12277,88 @@ class TestRetraitDemandeRuche0048(BaseRevueRuche0020):
                              ("octocats, octo-chat et https://github.com/hubot", "octocats, octo-chat et https://github.com/hubot")):
             self.assertEqual(bee.passages_retires(avant, empreintes), apres)
 
+    # --- ruche-0140 : un nom trouvé quel que soit le symbole ASCII autour ; un commentaire changé là où il est, et nulle part ailleurs ---
+
+    def test_ruche0140_chaque_symbole_ascii_autour_d_un_nom(self):
+        empreintes, m = bee.empreintes_passage("octocat") | bee.empreintes_passage("Odile Martin"), bee.MARQUE_RETRAIT
+        symboles = [c for c in map(chr, range(33, 127)) if not c.isalnum()]
+        self.assertEqual(len(symboles), 32)
+        for c in symboles:
+            with self.subTest(c):
+                for texte in (f"vu {c}octocat hier", f"vu octocat{c} hier", f"vu {c}octocat{c} hier", f"{c}Odile Martin{c}"):
+                    vus = []
+                    self.assertNotIn("octocat", apres := bee.passages_retires(texte, empreintes, vus), texte)
+                    self.assertIn(m, apres)
+                    self.assertEqual(len(vus), 1, texte)
+                    self.assertNotIn("Odile", apres)
+                self.assertEqual(bee.passages_retires(f"{c}octocats{c} {c}octocatx", empreintes), f"{c}octocats{c} {c}octocatx")
+        for avant, apres in (("#octocat's, d'#octocat", f"#{m}'s, d'#{m}"), ("d'octocat, octocat's", f"d'{m}, {m}'s")):
+            self.assertEqual(bee.passages_retires(avant, empreintes), apres)  # l'élision et le possessif, comme avant
+
+    def test_ruche0140_un_nom_colle_a_un_diese_retire_et_compte(self):
+        tache = self.chemin_tache("miniz-0099")
+        self.ok("noter", "miniz-0099", "--utilisateur", "chloe", "--texte", "Relancé par #zorgu, puis =zorgu= et |zorgu|.")
+        tache.write_text("# Demandé par #zorgu le 12/10\n" + tache.read_text(encoding="utf-8"), encoding="utf-8")
+        self.commit("sur main : #zorgu dans une note et dans un commentaire")
+        self.a("2026-11-02T10:00:00Z")
+        self.branche()
+        code, texte = self.retirer(noms=["zorgu"])
+        self.assertEqual(code, 0, texte)
+        self.assertIn("⚠ taches/miniz/miniz-0099.yaml:1 : un commentaire la nomme", texte)
+        self.assertEqual(bee.lire_yaml(self.dossier / bee.CHEMIN_RETRAITS)["retraits"][-1]["passages"], 4)
+        m = bee.MARQUE_RETRAIT
+        self.assertEqual(self.tache("miniz-0099")["notes"][-1]["texte"], f"Relancé par #{m}, puis ={m}= et |{m}|.")
+        self.commit()
+        self.refusee("bidji29", "miniz-0099.yaml : nomment encore la personne")  # le commentaire reste à corriger
+        self.marquer_les_commentaires(tache, "zorgu")
+        self.assertTrue(tache.read_text(encoding="utf-8").startswith(f"# Demandé par #{m} le 12/10\n"))
+        self.commit()
+        self.attend_le_conseil("bidji29", "retrait_demande")
+        brut = tache.read_text(encoding="utf-8")  # détourné : la note garde #zorgu, ou la consignation compte 3 passages
+        self.changer_puis_refuser(lambda: tache.write_text(brut.replace(f"#{m},", "#zorgu,"), encoding="utf-8"),
+                                  "miniz-0099.yaml : nomment encore la personne")
+        chemin = self.dossier / bee.CHEMIN_RETRAITS
+        retraits = bee.lire_yaml(chemin)
+        retraits["retraits"][-1]["passages"] = 3
+        self.changer_puis_refuser(lambda: chemin.write_text(bee._rendu_fidele(retraits, "x"), encoding="utf-8"), "passages : 4")
+
+    def test_ruche0140_un_commentaire_ne_change_que_la_ou_il_est(self):
+        tache = self.chemin_tache("miniz-0099")
+        tete = "# Relu le 13/10\n# Demandé par octocat le 12/10\n# Classé le 14/10\n"
+        tache.write_text(tete + tache.read_text(encoding="utf-8"), encoding="utf-8")
+        self.commit("sur main : un commentaire la nomme, entre deux autres")
+        self.retrait_en_pr()
+        brut, marque = tache.read_text(encoding="utf-8"), "# Demandé par [retiré] le 12/10\n"
+        self.assertIn("\nstatut: ", brut)
+        sans = brut.replace("# Demandé par octocat le 12/10\n", "")
+        fin_de_ligne = lambda texte, c: re.sub(r"(?m)^(statut: .*)$", lambda x: x[1] + " " + c, texte, count=1)  # noqa: E731
+        for nom, faux in (("un autre déplacé en fin de ligne", fin_de_ligne(sans.replace("# Relu le 13/10\n", ""), "# Relu le 13/10")),
+                          ("un autre déplacé en bas", sans.replace("# Relu le 13/10\n", "") + "# Relu le 13/10\n"),
+                          ("deux autres échangés", sans.replace("# Relu le 13/10\n# Classé le 14/10\n", "# Classé le 14/10\n# Relu le 13/10\n")),
+                          ("le marqué déplacé en fin de ligne", fin_de_ligne(sans, marque.strip())),
+                          ("le marqué déplacé en bas", sans + marque)):
+            with self.subTest(nom):
+                self.changer_puis_refuser(lambda: tache.write_text(faux, encoding="utf-8"), "miniz-0099.yaml : un retrait demandé ne change")
+        for nom, juste in (("marqué là où il est", brut.replace("# Demandé par octocat le 12/10\n", marque)), ("ôté", sans)):
+            with self.subTest(nom):
+                tache.write_text(juste, encoding="utf-8")
+                self.commit()
+                self.attend_le_conseil("bidji29", "retrait_demande")
+                git(self.dossier, "reset", "-q", "--hard", "HEAD~1")
+
+    def test_ruche0140_commentaires_en_place_unitaire(self):
+        e, m = bee.empreintes_passage("octocat"), bee.MARQUE_RETRAIT
+        ancien = "# a\nid: x  # par octocat\nstatut: ouverte\n# b\n"
+        for nouveau, attendu in ((ancien, True), (ancien.replace("octocat", m), True), (ancien.replace("  # par octocat", ""), True),
+                                 ("id: x  # par octocat\nstatut: ouverte  # a\n# b\n", False),
+                                 ("# a\nid: x\nstatut: ouverte  # par " + m + "\n# b\n", False),
+                                 ("# a\nid: x\n# par " + m + "\nstatut: ouverte\n# b\n", False),
+                                 ("# b\nid: x  # par octocat\nstatut: ouverte\n# a\n", False), (ancien + "# c\n", False)):
+            with self.subTest(nouveau):
+                self.assertIs(bee.commentaires_en_place(ancien, nouveau, e, vus := []), attendu)
+                if attendu:  # compté quand accepté ; un refus s'arrête au premier écart
+                    self.assertEqual(len(vus), 1)
+
 
 class TestRetraitDemandeChampsRuche0048(unittest.TestCase):
     """ruche-0048 (revue adverse, S2), sans registre : chaque texte d'un schéma que parcourt un retrait demandé est retirable, ou

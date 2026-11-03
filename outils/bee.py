@@ -4515,6 +4515,7 @@ CHEMIN_RETRAITS, MARQUE_RETRAIT, PONCTUATION = "gouvernance/retraits.yaml", "[re
 # Réglages du conseil : une empreinte qui nomme plus de 8 passages est trop courante pour une personne ; 40 passages par retrait.
 RETRAIT_PASSAGES_MAX, RETRAIT_TOTAL_MAX, MARQUE_COURTE = 8, 40, "…"  # « … » quand la marque dépasserait une borne
 RETRAIT_SEMAINE_MAX = 40  # ruche-0116 : 40 passages sur 7 jours glissants, tous retraits confondus (le champ passages de chacun)
+SYMBOLES_ASCII = "".join(c for c in map(chr, range(33, 127)) if not c.isalnum())  # ruche-0140 : #octocat, octocat=, |octocat|…
 ELISION = re.compile(r"(?is)((?:[dlcjmnst]|qu|jusqu|lorsqu|puisqu)['’])?(.+?)(['’]s)?")
 # Ce qu'un retrait parcourt, par sorte (fichiers, schéma, textes libres) ; jamais le message d'une invitation, docs/ ni arbre/.
 PARCOURS = {"taches": (CHEMIN_TACHE, "tache", {"titre", "contexte", "critere_acceptation", "hors_perimetre", "texte"}),
@@ -4552,7 +4553,8 @@ def empreintes_passage(passage):
 
 
 def passages_retires(texte, empreintes, vus=None, marque=MARQUE_RETRAIT):
-    """Le texte où chaque passage qui la nomme (1 à 4 mots, sans ponctuation, élision ni possessif autour) devient la marque ; `vus`
+    """Le texte où chaque passage qui la nomme (1 à 4 mots, sans ponctuation, symbole ASCII, élision ni possessif autour) devient la
+    marque ; `vus`
     reçoit, pour chacun, (n° de son premier mot, ses empreintes, le passage)."""
     mots, morceaux, curseur, i, vus = [m.span() for m in re.finditer(r"[^\s…]+", texte)], [], 0, 0, [] if vus is None else vus
     while i < len(mots):
@@ -4560,7 +4562,8 @@ def passages_retires(texte, empreintes, vus=None, marque=MARQUE_RETRAIT):
             debut, fin = mots[i][0], mots[i + n - 1][1]
             passage = texte[debut:fin].strip(PONCTUATION) or " "
             debut, nu = debut + len(texte[debut:fin]) - len(texte[debut:fin].lstrip(PONCTUATION)), ELISION.fullmatch(passage)
-            if nom := next(((d, d + len(x), t) for d, x in ((0, passage), (len(nu[1] or ""), nu[2]))
+            nus = (len(nu[1] or "") + len(nu[2]) - len(nu[2].lstrip(SYMBOLES_ASCII)), nu[2].strip(SYMBOLES_ASCII))  # ruche-0140
+            if nom := next(((d, d + len(x), t) for d, x in ((0, passage), (len(nu[1] or ""), nu[2]), nus)
                             if x.strip() and (t := empreintes_passage(x) & empreintes)), None):
                 morceaux, curseur = morceaux + [texte[curseur:debut + nom[0]], marque], debut + nom[1]
                 vus.append((sum(a <= debut + nom[0] for a, _ in mots), nom[2], texte[debut + nom[0]:curseur]))
@@ -5429,9 +5432,8 @@ def verifier_retrait(reg, base, tete, changements, auteur, est_conseil, instant)
             elif statut_git == "M" and None not in (ancien, nouveau) and sorte_parcourue(chemin) and nouveau != ancien:
                 tete_d, (_, apres_d, t) = charger_texte_yaml(nouveau, chemin), retrait_de(reg, chemin, ancien, entree)
                 trouves.append(t)
-                ca, cn, t["#"] = Counter(commentaires_yaml(ancien)), Counter(commentaires_yaml(nouveau)), []  # ruche-0116 : multi-ensembles
-                marques = Counter(passages_retires(c, empreintes, t["#"]) for c in (ca - cn).elements())  # tel quel s'il ne la nomme pas
-                ok = tete_d == apres_d and not marques & (ca - cn) and not (cn - ca) - marques and (  # ôté : il la nommait ; ajouté : marqué
+                t["#"] = []
+                ok = tete_d == apres_d and commentaires_en_place(ancien, nouveau, empreintes, t["#"]) and (  # ruche-0140
                     sorte_parcourue(chemin) not in ("debats", "invitations") or nouveau == texte_apres(chemin, ancien, None, tete_d, set()))
         if not ok:
             problemes.append(f"{chemin} : un retrait demandé ne change, dans les fichiers qu'il parcourt, que les passages qui nomment "
@@ -10388,20 +10390,41 @@ def texte_contexte(reg, identifiant_tache=None, role=None, budget=None, registre
     return texte, jetons
 
 
-def commentaires_yaml(texte):
+def commentaires_yaml(texte, places=False):
     """Les commentaires d'un texte YAML (en colonne 0 ou en fin de ligne), tels que les voit le lecteur YAML : ce qui reste
-    entre ses jetons. Le texte d'un bloc (| ou >) n'en est pas un. [] si le texte ne se lit pas (refusé par ailleurs)."""
+    entre ses jetons. Le texte d'un bloc (| ou >) n'en est pas un. [] si le texte ne se lit pas (refusé par ailleurs).
+    `places` : [((nombre de jetons avant lui, en fin de ligne ?), commentaire)] (ruche-0140)."""
     try:
         couverts = sorted((j.start_mark.index, j.end_mark.index) for j in yaml.scan(texte, Loader=yaml.SafeLoader))
     except yaml.YAMLError:
         return []
     trous, position = [], 0
-    for debut, fin in couverts:
+    for k, (debut, fin) in enumerate(couverts):
         if debut > position:
-            trous.append(texte[position:debut])
+            trous.append((k, position, texte[position:debut]))
         position = max(position, fin)
-    trous.append(texte[position:])
-    return [ligne.strip() for morceau in trous for ligne in morceau.split("\n") if ligne.strip()]
+    trous.append((len(couverts), position, texte[position:]))
+    tous = [((k, not i and bool(texte[:o].rsplit("\n", 1)[-1].strip())), ligne.strip())
+            for k, o, morceau in trous for i, ligne in enumerate(morceau.split("\n")) if ligne.strip()]
+    return tous if places else [c for _, c in tous]
+
+
+def commentaires_en_place(ancien, nouveau, empreintes, vus):
+    """ruche-0140 : à chaque place (entre les mêmes jetons YAML, en fin de ligne ou non), les commentaires de `nouveau` sont, dans
+    l'ordre, ceux d'`ancien` ou leur marque ; seul un commentaire qui la nomme s'ôte. `vus` reçoit les passages de ceux qui la nomment."""
+    a, n = commentaires_yaml(ancien, True), commentaires_yaml(nouveau, True)
+    for place in {p for p, _ in a + n}:
+        reste = [c for p, c in n if p == place]
+        for c in (c for p, c in a if p == place):
+            if (marque := passages_retires(c, empreintes, v := [])) != c:
+                vus += v
+            if reste and reste[0] in (c, marque):
+                reste.pop(0)
+            elif marque == c:
+                return False
+        if reste:
+            return False
+    return True
 
 
 def verifier_pr_arbre(reg, base, tete, changements, liens, est_conseil):
