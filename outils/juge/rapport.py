@@ -4,8 +4,8 @@
   python3 rapport.py juge.json --code CODE        juge.yml's outputs: code=CODE then the figures, once the report is checked;
                                                   code=2 if it fails its check (malformed, or none for code 0) (ruche-0117)
   python3 rapport.py juge.json --verifier S.json --base BASE --tete TETE
-      S.json: toJSON(needs.<judging job>.outputs), BASE and TETE the pull request's commits; 0 the same report, its code 0 and
-      the PR's commits; 1 not; 2 error. Any non-zero exit blocks the verdict.
+      S.json: toJSON(needs.<judging job>.outputs), BASE and TETE the pull request's commits; 0 the same report, its code 0,
+      the PR's commits and both seeds drawn by the judge (ruche-0136); 1 not; 2 error. Any non-zero exit blocks the verdict.
 Standard library only: a verdict job can run this file alone (docs/juge-commun.md)."""
 
 import hashlib
@@ -18,6 +18,9 @@ import sys
 RAPPORT_MAX = 32 << 20  # bytes; juge.json is far smaller (juge.py caps its list of suspicious constructs)
 FORMATS = {"empreinte": r"[0-9a-f]{64}", "suspectes": r"0|[1-9][0-9]{0,8}", "sorties_comparees": r"0|[1-9][0-9]{0,15}",
            "greffon": r"[0-9a-f]{64}", "graine": r"[0-9a-f]{2,64}", "base": r"[0-9a-f]{40}|", "tete": r"[0-9a-f]{40}|"}
+
+
+ISSUES = {"0": "juste", "1": "refus", "2": "erreur_environnement"}  # juge.py's exit code and juge.json's juge.issue (ruche-0136)
 
 
 class Ecart(Exception):  # the report read is not the one the judging job published
@@ -55,13 +58,27 @@ def chiffres(donnees):
     return valeurs
 
 
+def issue(donnees):
+    """The report's own code (juge.code, with its juge.issue); ValueError unless it is one of ISSUES."""
+    try:
+        juge = json.loads(donnees)["juge"]
+        code, nom = juge["code"], juge["issue"]
+    except (KeyError, TypeError) as e:
+        raise ValueError(f"report without its code ({e!r})")
+    if type(code) is not int or ISSUES.get(str(code)) != nom:
+        raise ValueError("malformed code in the report")
+    return str(code)
+
+
 def publier(chemin, code):
     """juge.yml's job outputs: {"code": ..., figures}; code 2 and no figures if the report fails its check."""
     try:
         donnees = lire(chemin)
-        if code not in ("0", "1", "2") or (code == "0" and donnees is None):
+        if code not in ISSUES or (code == "0" and donnees is None):
             raise ValueError("no report for code 0, or a code other than 0, 1 and 2")
-        return {"code": code, **(chiffres(donnees) if donnees else dict.fromkeys(FORMATS, ""))}
+        if donnees is not None and issue(donnees) != code:
+            raise ValueError("the report's code is not the judge's exit code")
+        return {"code": code, **(chiffres(donnees) if code == "0" else dict.fromkeys(FORMATS, ""))}
     except (OSError, ValueError) as e:
         print(f"rapport : erreur : {e}; code 2 published", file=sys.stderr)
         return {"code": "2", **dict.fromkeys(FORMATS, "")}
@@ -85,7 +102,12 @@ def verifier(chemin, publiees, base, tete):
         raise Ecart("figure(s) other than the judging job's: " + ", ".join(ecarts))
     if (valeurs["base"], valeurs["tete"]) != (base, tete):
         raise Ecart("base or head other than the pull request's")
-    return json.loads(donnees)
+    if issue(donnees) != "0":
+        raise Ecart("the report is not a judgement's (its own code is not 0)")
+    rapport = json.loads(donnees)
+    if rapport["juge"].get("origine_des_graines") != {"graine": "tiree", "graine_ordre": "tiree"}:
+        raise Ecart("a seed given on the command line, or its origin unsaid: a local reproduction, never a judgement")
+    return rapport
 
 
 def main(argv):

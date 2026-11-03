@@ -16,7 +16,7 @@ import subprocess
 import tempfile
 import threading
 
-from lecture import Erreur, Refus, copier, journal, propre
+from lecture import Erreur, Panne, Refus, copier, journal, propre
 
 ICI = os.path.dirname(os.path.abspath(__file__))
 ISOLATION = ["--network", "none", "--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
@@ -29,9 +29,17 @@ TEMPS = 946684800  # access and modification times of everything mounted for an 
 # created there anew, in a fixed order: no inode, link count, time, free space or mount line follows the run's progress.
 TMPFS = "size=4g,nr_inodes=262144,mode=0755,nosuid,nodev"
 ETC = {"hostname": "juge\n", "hosts": "127.0.0.1\tlocalhost\n", "resolv.conf": ""}
-# Docker (up to 29.0) mounts folders of equal depth in an order drawn for each container (/etc's three, its network files, last
-# in its own order): each folder of the judge is given at its own depth, through the image's link to its root (Dockerfile.base).
+# Docker (up to 29.0) mounts folders of equal depth in an order drawn for each container: each folder the judge mounts, in every
+# container, is given at a depth of its own from PROFONDEUR on, deeper than any of Docker's own mounts (4 at most:
+# /sys/fs/cgroup/cpu under cgroup v1), through the image's link to its root (Dockerfile.base) (ruche-0136).
 LIEN = "/.racine"
+PROFONDEUR = 8
+
+
+def placer(montages):
+    """The judge's folders (targets « /name »), each at its own depth in the given order; /etc's files stay where they are."""
+    dossiers = [cible for _, cible, _ in montages if cible.count("/") == 1]
+    return [(h, LIEN * (PROFONDEUR - 1 + dossiers.index(c)) + c if c in dossiers else c, l) for h, c, l in montages]
 
 
 def temps_fixes(*dossiers):
@@ -68,11 +76,11 @@ class Docker:
 
     def lancer(self, commande, montages, pids=2, entree=None, delai=3600):
         nom = "bee-juge-" + secrets.token_hex(6)
-        cmd = ["docker", "run", "--rm", "--name", nom, "--pids-limit", str(pids),
+        cmd = ["docker", "run", "--name", nom, "--pids-limit", str(pids),
                "--memory", self.memoire, "--memory-swap", self.memoire] + self.BORNES + ISOLATION
         if entree is not None:
             cmd.append("-i")
-        for hote, cible, lecture_seule in montages:
+        for hote, cible, lecture_seule in placer(montages):
             if "," in hote or "," in cible:
                 raise Erreur(f"chemin de montage invalide : {hote}")
             cmd += ["--mount", f"type=bind,source={hote},target={cible}" + (",readonly" if lecture_seule else "")]
@@ -90,11 +98,22 @@ class Docker:
                 p.wait(timeout=delai)
             except subprocess.TimeoutExpired:
                 subprocess.run(["docker", "kill", nom], capture_output=True)
+                subprocess.run(["docker", "rm", "-f", nom], capture_output=True)
                 p.kill()
                 raise Refus(f"délai de {delai} s dépassé dans le conteneur ({commande[0]})")
             finally:
                 for f in fils:
                     f.join()
+        # Docker's own record, never the code or the error stream the judged code writes: a container that was not created, did
+        # not run to its end, or whose code is not its process's is a failure of the machine, never a refusal (ruche-0136).
+        etat = subprocess.run(["docker", "inspect", "--format", "{{json .State}}", nom], capture_output=True, text=True)
+        subprocess.run(["docker", "rm", "-f", nom], capture_output=True)
+        try:
+            etat = json.loads(etat.stdout) if etat.returncode == 0 else None
+        except ValueError:
+            etat = None
+        if not isinstance(etat, dict) or (etat.get("Status"), etat.get("Error"), etat.get("ExitCode")) != ("exited", "", p.returncode):
+            raise Panne(f"machine du juge en panne (Docker, son runtime ou l'image ; code {p.returncode}) : " + propre(bytes(lus[1]), 500))
         return subprocess.CompletedProcess(cmd, p.returncode, bytes(lus[0]), bytes(lus[1]))
 
 
@@ -205,7 +224,7 @@ class Execution:
             dossier_ouvert(os.path.join(racine, "sorties"))
             copier_arbre(entrees, os.path.join(racine, "entrees"))  # last: the other inodes do not depend on the inputs
             temps_fixes(racine)
-            montages = [(os.path.join(racine, n), LIEN * i + "/" + n, n != "sorties") for i, n in enumerate(("chrono", "variante", "entrees", "sorties"))]
+            montages = [(os.path.join(racine, n), "/" + n, n != "sorties") for n in ("chrono", "variante", "entrees", "sorties")]
             montages += [(os.path.join(racine, "etc", n), "/etc/" + n, True) for n in ETC]
             r = self.docker.lancer(["/chrono/chrono"], montages, pids=2, entree=entree.encode(), delai=delai * len(plan) + 300)
             copier(os.path.join(racine, "sorties"), sorties)

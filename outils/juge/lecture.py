@@ -19,6 +19,10 @@ class Erreur(Exception):
     """L'environnement ne convient pas (Docker absent, base qui ne compile pas, juge mal monté) : code 2."""
 
 
+class Panne(Erreur):
+    """A failure of the machine that judges (Docker, its runtime, an image): an environment error, never a refusal (ruche-0136)."""
+
+
 class Refus(Exception):
     """Le juge refuse la variante B : code 1."""
 
