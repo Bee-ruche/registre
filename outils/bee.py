@@ -8684,6 +8684,109 @@ def cmd_api_budget(args):
     return 0
 
 
+# ruche-0120 (E1): one fusion pass merges every validated data PR, in order, each bound to its head: preparer (the API's
+# reads), verifier (no token: the gate, as each author's, on the main the previous ones left), fusionner (REST, bound).
+CANDIDATS, AUTEURS_PASSE, RESULTATS = "candidats.tsv", "auteurs_pr.tsv", "resultats.tsv"
+AUTEUR_PR_JQ = '"\\(.user.login // "")\\t\\(.user.id // "")"'  # login, then the account's number (lire_auteurs_pr)
+lire_tsv = lambda chemin: [l.split("\t") for l in pathlib.Path(chemin).read_text(encoding="utf-8").splitlines() if l]  # noqa: E731
+
+
+def ordre_de_passe(prs, validations):
+    """The open PRs [(number, head, login, account number)] whose current head has a successful validation [(run id, head,
+    created_at)], in the order of its first such run, with that run's creation (the time of the PR, ruche-0091): a head
+    pushed again after its validation waits for its own, behind those validated before it."""
+    premiere = {}
+    for run, sha, cree in sorted(validations, key=lambda v: int(v[0])):
+        premiere.setdefault(sha, (int(run), cree))
+    return [(*p, premiere[p[1]][1]) for p in sorted((p for p in prs if p[1] in premiere), key=lambda p: (premiere[p[1]][0], int(p[0])))]
+
+
+def passe_preparer(reg, dossier, prs, validations, base, ref_pr):
+    """Fetches the heads, keeps the PRs whose fetched head is the validated one and that change only self-service folders
+    (the gate would refuse any other, or leave it to the council), then reads from GitHub what the gate needs (gh api, logged
+    by api-budget; a failed read is empty, and the gate then refuses: fails closed)."""
+    def lire_api(*arguments):
+        r = subprocess.run(["gh", "api", *arguments], capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=60)
+        return r.stdout.strip() if r.returncode == 0 else ""
+    candidats, lignes, auteurs, vus = ordre_de_passe(prs, validations), [], [], set()
+    specs = [f"+{ref_pr.format(c[0])}:refs/bee-passe/{c[0]}" for c in candidats]
+    for lot in [specs] + ([[s] for s in specs] if specs and _git_brut(reg.racine, "fetch", "-q", "origin", *specs)[0] else []):
+        _git_brut(reg.racine, "fetch", "-q", "origin", *lot)  # one gone (merged, closed): then each on its own
+    for numero, sha, login, github_id, instant in candidats:
+        tete = _git_brut(reg.racine, "rev-parse", "-q", "--verify", f"refs/bee-passe/{numero}^{{commit}}")[1].decode().strip()
+        try:  # the fetched head is the validated one, and the PR changes only self-service folders
+            chemins = git(reg.racine, "diff", "-z", "--name-only", "--no-renames", f"{base}...{sha}") if tete == sha else []
+            adresses = [str(c.get("pr")) for _, c in contributions_de_la_pr(reg, base, sha) if ADRESSE_PR.match(str(c.get("pr") or ""))]
+        except ErreurBee:
+            continue
+        if not chemins or any(c.split("/")[0] + "/" not in DOSSIERS_LIBRE_SERVICE for c in chemins):
+            continue
+        date = lire_api(f"user/{github_id}", "--jq", ".created_at[:10]") if github_id and date_compte_requise(reg.racine, base, sha) else ""
+        for adresse in dict.fromkeys(adresses).keys() - vus:
+            vus.add(adresse)
+            m = ADRESSE_PR.match(adresse)
+            auteurs.append(f"{adresse}\t{lire_api(f'repos/{m[1]}/{m[2]}/pulls/{m[3]}', '--jq', AUTEUR_PR_JQ)}")
+        lignes.append("\t".join((numero, sha, login, github_id, instant, date)))
+    (dossier / CANDIDATS).write_text("".join(f"{l}\n" for l in lignes), encoding="utf-8")
+    (dossier / AUTEURS_PASSE).write_text("".join(f"{l}\n" for l in auteurs), encoding="utf-8")
+
+
+def passe_verifier(racine, dossier, base):
+    """Each candidate merged with the main the previous ones left and checked by verifier-pr --fusion-auto as its author's; an
+    accepted one is squashed onto it. resultats.tsv: number, head, what to do."""
+    tete = lambda depot, ref: _git_brut(depot, "rev-parse", "-q", "--verify", f"{ref}^{{commit}}")[1].decode().strip()  # noqa: E731
+    pointe, arbre, resultats = tete(racine, base), dossier / "fusion", []
+    _git_brut(dossier, "init", "-q", "fusion")  # its own repository, which reads the registry's objects
+    (arbre / ".git/objects/info/alternates").write_text(str((pathlib.Path(racine) / _git_brut(racine, "rev-parse", "--git-common-dir")[1]
+                                                             .decode().strip() / "objects").resolve()) + "\n", encoding="utf-8")
+    try:
+        for numero, sha, auteur, github_id, instant, date in lire_tsv(dossier / CANDIDATS):
+            _git_brut(arbre, "reset", "-q", "--hard", pointe)
+            if _git_brut(arbre, "-c", "user.name=fusion-auto", "-c", "user.email=fusion-auto@localhost", "merge", "-q", "--no-edit", "--no-ff", sha)[0]:
+                _git_brut(arbre, "merge", "--abort")
+                etat, sortie = "conflict", "Conflict with main (as the previous PRs of this pass leave it): not merged.\n"
+            else:
+                r = subprocess.run([sys.executable, str(pathlib.Path(__file__).resolve()), "--registre", str(arbre), "verifier-pr", "--base", pointe,
+                                    "--auteur", auteur, "--compte-cree-le", date, *(["--github-id", github_id] if github_id else []),
+                                    "--auteurs-pr", str(dossier / AUTEURS_PASSE), "--fusion-auto", "--instant-pr", instant], capture_output=True, text=True)
+                etat, sortie = {0: "merge", 3: "council"}.get(r.returncode, "refused"), r.stdout + r.stderr
+            if etat == "merge":  # squashed onto that main, as GitHub merges it
+                _git_brut(arbre, "reset", "-q", "--soft", pointe)
+                _git_brut(arbre, "-c", "user.name=fusion-auto", "-c", "user.email=fusion-auto@localhost", "commit", "-q", "-m", f"#{numero}")
+                pointe = tete(arbre, "HEAD")
+            print(f"--- PR #{numero} ({sha}, {auteur}): {etat}\n{sortie}")
+            resultats.append((numero, sha, etat))
+    finally:
+        shutil.rmtree(arbre, ignore_errors=True)
+    (dossier / RESULTATS).write_text("".join("\t".join(r) + "\n" for r in resultats), encoding="utf-8")
+    print("::notice title=Fusion pass::validated=%d " % len(resultats) + " ".join(f"{e}={sum(r[2] == e for r in resultats)}" for e in ("merge", "refused", "conflict", "council")))
+
+
+def passe_fusionner(dossier, depot):
+    """One REST merge per accepted PR, in order, bound to its checked head (sha); the first that fails stops the pass."""
+    fusionnees = []
+    for numero, sha, _ in (r for r in lire_tsv(dossier / RESULTATS) if r[2:] == ["merge"]):
+        bien_formee = re.fullmatch(r"[0-9]+", numero) and re.fullmatch(r"[0-9a-f]{40}", sha)
+        r = bien_formee and subprocess.run(["gh", "api", "-X", "PUT", f"repos/{depot}/pulls/{numero}/merge", "-f", f"sha={sha}", "-f",
+                                            "merge_method=squash"], capture_output=True, text=True, stdin=subprocess.DEVNULL)
+        if not r or r.returncode:  # the PRs after it were checked on a main that held it: the next pass takes them
+            print(f"::warning title=Fusion pass::PR #{numero} not merged ({r.stderr.strip() if r else 'malformed'}): the pass stops")
+            break
+        fusionnees.append(numero)
+    (dossier / "fusionnees").write_text("".join(f"{n}\n" for n in fusionnees), encoding="utf-8")
+    print(f"::notice title=Fusion pass::merged={len(fusionnees)}")
+
+
+def cmd_passe_fusion(args):
+    (dossier := pathlib.Path(args.dossier)).mkdir(parents=True, exist_ok=True)
+    if args.etape == "preparer":
+        return passe_preparer(Registre(args.registre), dossier, [p[:4] for p in lire_tsv(args.prs) if len(p) >= 4 and p[0].isdigit()],
+                              [v[:3] for v in lire_tsv(args.validations) if len(v) >= 3 and v[0].isdigit()], args.base, args.ref_pr) or 0
+    if args.etape == "verifier":
+        return passe_verifier(args.registre or os.environ.get("BEE_REGISTRE") or RACINE_OUTIL, dossier, args.base) or 0
+    return passe_fusionner(dossier, args.depot) or 0
+
+
 def cmd_verifier_fork(args):
     reg = Registre(args.registre)
     problemes, total, avertissements = verifier_fork(reg, args.depot, args.base, args.tete, args.tache, args.auteur)
@@ -10913,6 +11016,15 @@ def construire_analyseur():
     p.add_argument("moment", choices=["start", "end"])
     p.add_argument("--dossier", required=True, help="the job's folder for the measure ($RUNNER_TEMP/api-budget)")
     p.add_argument("--jeton", action="append", default=[], help="name of an environment variable holding a token (repeatable)")
+
+    p = ajouter("passe-fusion", cmd_passe_fusion, "One fusion pass (ruche-0120; used by fusion-auto).")
+    p.add_argument("etape", choices=["preparer", "verifier", "fusionner"])
+    p.add_argument("--dossier", required=True, help="the pass's folder")
+    p.add_argument("--prs", help="preparer: open PRs to main, « number<TAB>head<TAB>login<TAB>account number » a line")
+    p.add_argument("--validations", help="preparer: successful validation runs, « run id<TAB>head<TAB>created_at » a line")
+    p.add_argument("--base", default="origin/main")
+    p.add_argument("--ref-pr", default="refs/pull/{}/head", help="preparer: the remote ref of PR {}")
+    p.add_argument("--depot", help="fusionner: owner/name")
 
     p = ajouter("main-green", cmd_main_green, "Prints 'green' if suite.yml's runs on main (a saved actions/workflows/suite.yml/runs "
                                               "response) allow the PR fast path, else 'red' (used by validation.yml).")

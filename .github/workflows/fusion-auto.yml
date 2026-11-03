@@ -4,6 +4,7 @@
 # Sécurité : ce job a un jeton en écriture, donc il n'exécute JAMAIS le code de la PR.
 # Il utilise l'outil bee de la branche principale et lit les fichiers de la PR comme
 # des données, sur une fusion simulée avec main (pour voir l'état réel après fusion).
+# ruche-0120 (E1) : une passe fusionne toutes les PR de données validées, dans l'ordre, chacune liée à sa tête vérifiée.
 name: Fusion automatique
 
 on:
@@ -30,6 +31,7 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
+          persist-credentials: false  # ruche-0120: the check runs without a token
       - name: Commit-graph (ruche-0130)
         run: git commit-graph write --reachable --changed-paths
       - uses: actions/setup-python@v5
@@ -40,80 +42,33 @@ jobs:
       - name: API budget, start (ruche-0121; puts first on PATH a gh that logs each call)
         env: {GITHUB_TOKEN: "${{ github.token }}"}
         run: python3 outils/bee.py api-budget start --dossier "$RUNNER_TEMP/api-budget" --jeton GITHUB_TOKEN
-      - name: Retrouver la pull request
-        id: pr
+      - name: Lister les PR ouvertes et leurs validations (ruche-0120)
         env:
           GH_TOKEN: ${{ github.token }}
-          SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
-          # Seulement une PR vers main : la vérification simule la fusion dans origin/main, et gh pr merge fusionne dans la
-          # base réelle de la PR. Une PR vers une autre branche (celle d'une PR ouverte, par exemple) n'est jamais fusionnée ici.
-          # ruche-0121: the REST listing gives each PR's author with its account number (no other call), 100 PRs a page, all pages.
-          trouve=$(gh api "repos/$GITHUB_REPOSITORY/pulls?state=open&base=main&per_page=100" --paginate --jq ".[] | select(.head.sha == \"$SHA\" \
-            and .base.ref == \"main\") | \"numero=\(.number)\nauteur=\(.user.login)\ngithub_id=\(.user.id)\"")
-          # Nothing found (the PR was merged or closed meanwhile): say so, nothing is merged.
-          if [ -z "$trouve" ]; then echo "::notice::no open pull request to main has head $SHA: nothing is verified or merged"
-          else printf '%s\n' "$trouve" >> "$GITHUB_OUTPUT"; fi
-      - name: Vérifier la fusion simulée avec l'outil de confiance
+          d="$RUNNER_TEMP/passe"; mkdir -p "$d"
+          # One GraphQL query per 100 open PRs to main, all pages: number, head, author and its account number (no other call).
+          gh api graphql --paginate -f owner="${GITHUB_REPOSITORY%/*}" -f name="${GITHUB_REPOSITORY#*/}" -f query='query($owner: String!, $name: String!, $endCursor: String) {
+            repository(owner: $owner, name: $name) { pullRequests(states: OPEN, baseRefName: "main", first: 100, after: $endCursor) {
+              pageInfo { hasNextPage endCursor } nodes { number headRefOid author { login ... on User { databaseId } } } } } }' \
+            --jq '.data.repository.pullRequests.nodes[] | [.number, .headRefOid, (.author.login // ""), (.author.databaseId // "")] | @tsv' > "$d/prs.tsv"
+          # Successful validations of the last 24 hours (older: refused, ruche-0091), 100 a page: the order and time of each PR.
+          depuis=$(date -u -d '-24 hours' +%Y-%m-%dT%H:%M:%SZ)
+          gh api "repos/$GITHUB_REPOSITORY/actions/workflows/validation.yml/runs?event=pull_request&status=success&per_page=100&created=%3E%3D$depuis" \
+            --paginate --jq '.workflow_runs[] | [.id, .head_sha, .created_at] | @tsv' > "$d/validations.tsv"
+          # Heads fetched without a token (public registry); each declared fork PR's author; the account date for a new member.
+          python3 outils/bee.py passe-fusion preparer --dossier "$d" --prs "$d/prs.tsv" --validations "$d/validations.tsv"
+      - name: Vérifier chaque PR sans jeton, sur le main que laissent les précédentes (ruche-0120)
         id: verif
-        if: steps.pr.outputs.numero != ''
-        env:
-          GH_TOKEN: ${{ github.token }}
-          NUMERO: ${{ steps.pr.outputs.numero }}
-          AUTEUR: ${{ steps.pr.outputs.auteur }}
-          GITHUB_ID: ${{ steps.pr.outputs.github_id }}
-          SHA: ${{ github.event.workflow_run.head_sha }}
-          # ruche-0091: the time of the PR, GitHub's record of the validation run that the push triggered (never the PR's text)
-          INSTANT_PR: ${{ github.event.workflow_run.created_at }}
-        run: |
-          git fetch origin "pull/$NUMERO/head:pr-$NUMERO"
-          test "$(git rev-parse "pr-$NUMERO")" = "$SHA"
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git worktree add --detach ../fusion origin/main
-          if ! git -C ../fusion merge --no-edit --no-ff "pr-$NUMERO"; then
-            echo "Conflit avec main : relecture humaine requise."
-            echo "code=3" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          # ruche-0121: the author's account number came with the PR; its creation date is read only for a PR that adds a member file.
-          cree=""
-          if [ "$(python3 outils/bee.py --registre ../fusion needs-account-date --base origin/main --tete HEAD)" != no ]; then
-            cree=$(gh api "user/$GITHUB_ID" --jq '.created_at[:10]'); fi
-          # Auteur GitHub de chaque PR déclarée dans une contribution ajoutée ou modifiée : verifier-pr exige que ce soit
-          # l'auteur de la contribution (pas de squat de la PR d'un autre), et refuse une PR dont l'auteur n'a pas pu être
-          # relevé (échec fermé). Les adresses viennent du contenu de la PR : on les revalide ici par expression
-          # régulière et on n'appelle l'API qu'avec leurs composants validés.
-          # ruche-0089 : verifier-pr lit les comptes d'agents déclarés sur origin/main (--base), jamais dans la PR. Un compte
-          # d'agent est vérifié comme sa personne, sans son statut ; ce que seul ce statut permet n'est jamais fusionné ici.
-          : > "$RUNNER_TEMP/auteurs_pr.tsv"
-          python3 outils/bee.py --registre ../fusion prs-declarees --base origin/main --tete HEAD > "$RUNNER_TEMP/prs.txt"
-          while IFS= read -r adresse; do
-            if [[ "$adresse" =~ ^https://github\.com/([A-Za-z0-9-]+)/([A-Za-z0-9_][A-Za-z0-9_.-]*)/pull/([0-9]+)$ ]]; then
-              proprietaire="${BASH_REMATCH[1]}"; depot="${BASH_REMATCH[2]}"; numero="${BASH_REMATCH[3]}"
-              auteur_pr=$(gh api "repos/${proprietaire}/${depot}/pulls/${numero}" --jq '"\(.user.login // "")\t\(.user.id // "")"' < /dev/null) || auteur_pr=""
-              printf '%s\t%s\n' "$adresse" "$auteur_pr" >> "$RUNNER_TEMP/auteurs_pr.tsv"  # login, then the account's number
-            fi
-          done < "$RUNNER_TEMP/prs.txt"
-          set +e
-          python3 outils/bee.py --registre ../fusion verifier-pr --base origin/main --tete HEAD \
-            --auteur "$AUTEUR" --compte-cree-le "$cree" --github-id "$GITHUB_ID" --auteurs-pr "$RUNNER_TEMP/auteurs_pr.tsv" --fusion-auto --instant-pr "$INSTANT_PR"
-          code=$?
-          set -e
-          echo "code=$code" >> "$GITHUB_OUTPUT"
-          [ "$code" = 0 ] || [ "$code" = 3 ]
+        run: python3 outils/bee.py passe-fusion verifier --dossier "$RUNNER_TEMP/passe"
       - name: Fusionner
-        # Only after the verification step ran and succeeded with code 0, for the PR it found. A skipped step's outputs are
-        # absent (null), and an expression coerces null and '0' to the number 0: null == '0' is true, so each term is needed.
-        if: steps.verif.outcome == 'success' && steps.verif.outputs.code != '' && steps.verif.outputs.code == '0' && steps.pr.outputs.numero != ''
+        # Only after the check ran and succeeded; each merge is bound to the head that was checked (the API's sha).
+        if: steps.verif.outcome == 'success'
         env:
           GH_TOKEN: ${{ github.token }}
-          NUMERO: ${{ steps.pr.outputs.numero }}
-          SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
-          [[ "$NUMERO" =~ ^[0-9]+$ ]] || { echo "::error::no pull request number: nothing is merged"; exit 1; }
-          gh pr merge "$NUMERO" --squash --match-head-commit "$SHA"
-          gh api -X POST "repos/$GITHUB_REPOSITORY/actions/workflows/site.yml/dispatches" -f ref=main || true  # ruche-0121: one call
+          python3 outils/bee.py passe-fusion fusionner --dossier "$RUNNER_TEMP/passe" --depot "$GITHUB_REPOSITORY"
+          [ ! -s "$RUNNER_TEMP/passe/fusionnees" ] || gh api -X POST "repos/$GITHUB_REPOSITORY/actions/workflows/site.yml/dispatches" -f ref=main || true  # ruche-0121: one call
       - name: API budget, end (ruche-0121)
         if: always()
         env: {GITHUB_TOKEN: "${{ github.token }}"}
