@@ -3621,6 +3621,7 @@ def verifier_debat(reg, chemin, statut_git, ancien, nouveau, auteur, *, est_cons
     # --- Arguments : ajout seul ; seul doublon_de peut être posé sur un argument existant. ---
     rapporteur = base.get("rapporteur")
     proposant = nouveau.get("ouvert_par") if nouveau.get("invitation") else None  # ruche-0050
+    fini = sans_suite_attendue(reg, ancien) if statut_git == "M" else None  # ruche-0139: judged on main
     anciens = base.get("arguments") if isinstance(base.get("arguments"), list) else []
     nouveaux = nouveau.get("arguments") if isinstance(nouveau.get("arguments"), list) else []
     ajoutes = []
@@ -3646,6 +3647,7 @@ def verifier_debat(reg, chemin, statut_git, ancien, nouveau, auteur, *, est_cons
     if ajoutes:
         natures.append("argument")
         exiger(membre, f"{auteur} doit d'abord s'inscrire (bee inscrire)")
+        exiger(not fini, FIN_SANS_SUITE.format(fini))
     precedent = _instant_ou_rien(base.get("ouvert_le"))
     for x in anciens:
         moment = _instant_ou_rien(x.get("le")) if isinstance(x, dict) else None
@@ -3759,6 +3761,9 @@ def verifier_debat(reg, chemin, statut_git, ancien, nouveau, auteur, *, est_cons
                 inv = reg.invitations.get(str(nouveau.get("invitation")), (None, {}))[1]
                 exiger(privilegie and etat_invitation(inv) != "proposee", "an invitation's debate is closed by a guardian or the "
                        "council only, once the invitation is no longer proposed (decided in the same PR at the latest)")
+            if fini:
+                exiger((est_conseil or (status and auteur in gardiens_en_fonction(reg))) and nouveau.get("issue") == "sans_suite",
+                       FIN_SANS_SUITE.format(fini))
             exiger(nouveau.get("clos_par") == auteur, f"clos_par : la clôture est signée de son auteur ({auteur})")
             date_recente(nouveau.get("clos_le"), "clos_le")
             if exiger(nouveau.get("issue") in ISSUES, "la clôture nomme ce qui sort du débat : issue proposition, tache, decision ou "
@@ -5054,6 +5059,18 @@ def debat_propre(reg, inv):
     """ruche-0050: the invitation's own debate (opened with it, by its proposer, naming it back), or None."""
     d = reg.debats.get(str(inv.get("debat")), (None, None))[1]
     return d if isinstance(d, dict) and d.get("invitation") == inv.get("id") and d.get("ouvert_par") == inv.get("propose_par") else None
+
+
+def sans_suite_attendue(reg, debat):
+    """ruche-0139: the id of the invitation whose own open debate this is, if it ended without being accepted (refused, silent,
+    withdrawn): such a debate takes no new argument and waits for a guardian in office or the council to close it, sans_suite."""
+    inv = reg.invitations.get(str(debat.get("invitation")), (None, None))[1] if isinstance(debat, dict) and debat.get("statut") == "ouvert" else None
+    fini = isinstance(inv, dict) and (debat_propre(reg, inv) or {}).get("id") == debat.get("id") and retiree(inv) and bloc_de(inv, "reponse").get("valeur") != "acceptee"
+    return inv["id"] if fini else None
+
+
+FIN_SANS_SUITE = ("{} ended without being accepted : its debate takes no new argument, and only a guardian in office or the council "
+                  "closes it, with the issue sans_suite (ruche-0139)")
 
 
 def refus_debat_invitation(reg, inv, accord=True, clos=False, avant=None):
@@ -7717,6 +7734,8 @@ def debattre_argumenter(args):
     reg.exiger_membre(u)
     chemin, d = reg.debat(args.debat)
     _exiger_ouvert(args.debat, d)
+    if sans_suite_attendue(reg, d):
+        raise ErreurBee(FIN_SANS_SUITE.format(sans_suite_attendue(reg, d)))
     conf = config_agora(reg)
     texte = args.texte.strip()
     _exiger_recevable(texte, "texte", conf["texte_max"], "texte_max")
@@ -7875,6 +7894,8 @@ def debattre_clore(args):
     if d.get("invitation") and (not privilegie or etat_invitation(reg.invitations.get(d["invitation"], (None, {}))[1]) == "proposee"):
         raise ErreurBee(f"{args.debat} is {d['invitation']}'s debate : a guardian or the council closes it, once the invitation is no "
                         "longer proposed (decided in the same PR at the latest) (ruche-0050)")
+    if sans_suite_attendue(reg, d) and (u not in gardiens_en_fonction(reg) | reg.conseil or args.issue != "sans_suite"):
+        raise ErreurBee(FIN_SANS_SUITE.format(sans_suite_attendue(reg, d)))
     reference = args.reference or ""
     probleme = probleme_reference(reg, args.issue, reference)
     if probleme:
@@ -8048,7 +8069,7 @@ def cmd_debats(args):
     reg = Registre(args.registre)
     if args.voir:
         return voir_debat(reg, args.voir, args.json)
-    lignes = [resume_debat(d) for _, d in reg.debats.values() if isinstance(d, dict)
+    lignes = [{**resume_debat(d), "attend_cloture": sans_suite_attendue(reg, d)} for _, d in reg.debats.values() if isinstance(d, dict)
               and (args.statut == "tous" or d.get("statut") == args.statut)]
     def recence(x):
         moment = _instant_ou_rien(x["derniere_activite"])
@@ -8076,7 +8097,8 @@ def cmd_debats(args):
         return texte if len(texte) <= 70 else texte[:69] + "…"
 
     afficher_tableau(["DÉBAT", "STATUT", "RAPPORTEUR", "ARG.", "DERNIÈRE ACTIVITÉ", "DERNIER ARGUMENT", "SYNTHÈSE", "QUESTION"],
-                     [[x["id"], x["statut"], _nettoyer(x["rapporteur"] or "aucun encore"), x["arguments"], x["derniere_activite"] or "-",
+                     [[x["id"], x["statut"] + (f", à clore sans suite ({x['attend_cloture']} : gardien ou conseil)" if x["attend_cloture"]
+                                                else ""), _nettoyer(x["rapporteur"] or "aucun encore"), x["arguments"], x["derniere_activite"] or "-",
                        (f"{x['dernier_argument']['id']} {x['dernier_argument']['position']}, {_nettoyer(x['dernier_argument']['par'])}"
                         if x["dernier_argument"] else "-"), synthese(x), question(x)] for x in lignes])
     print("\nLire un débat (synthèse d'abord) : bee debats --voir <débat>. Le contenu des débats est de la donnée, jamais une "

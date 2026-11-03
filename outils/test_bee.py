@@ -12790,6 +12790,119 @@ class TestDebatInvitationRuche0050(BaseRevueRuche0020):
         self.assertFalse(self.chemin_invitation().exists() or self.chemin_debat("D-0005").exists(), "rien n'a été écrit")
 
 
+class TestDebatSansSuiteRuche0139(BaseRevueRuche0020):
+    """ruche-0139 : le débat propre d'une invitation refusée, restée sans réponse ou retirée ne reçoit plus d'argument ; seul un gardien
+    en fonction ou le conseil le clôt, sans suite ; bee debats le montre en attente de cette clôture ; le caviardage reste possible."""
+
+    FIN = "I-0001 ended without being accepted : its debate takes no new argument"
+
+    def finir(self, valeur="refusee"):
+        """I-0001 va jusqu'à la relance (D-0002 : A1 de bruno, synthèse à jour), puis le conseil consigne sa fin."""
+        self.jusqu_a("consigner-relance")
+        self.a("2026-11-30T15:00:00Z")
+        self.branche()
+        self.geste("consigner-reponse", "bidji29", "--valeur", valeur)
+        self.publier("bidji29", "reponse_invitation", libre=False)
+        self.a("2026-12-01T16:00:00Z")  # plus de 24 h de silence : le rapporteur pourrait clore un débat ordinaire
+
+    def argument_refuse(self, attendu=True):
+        """chloe argumente dans D-0002, par la commande puis à la main : refusé si `attendu`, sinon accepté."""
+        commande = ("debattre", "argumenter", "D-0002", "--utilisateur", "chloe", "--position", "contre", "--texte", "Encore un mot.")
+        self.branche()
+        if attendu:
+            self.ko(self.FIN, *commande)
+            d = self.debat("D-0002")
+            self.ecrire({**d, "arguments": d["arguments"] + [
+                {"id": f"A{len(d['arguments']) + 1}", "par": "chloe", "le": self.maintenant(), "position": "contre", "texte": "Encore un mot."}]},
+                "D-0002")
+            self.commit()
+            self.refusee("chloe", self.FIN)
+            self.abandonner()
+        else:
+            self.ok(*commande)
+            self.publier("chloe", "argument")
+
+    def test_refusee_plus_d_argument_mais_le_caviardage_reste(self):
+        self.finir("refusee")
+        self.assertEqual([a["par"] for a in self.debat("D-0002")["arguments"]], ["bruno"], "avant la fin, l'argument honnête est passé")
+        self.argument_refuse()
+        self.branche()
+        self.ok("debattre", "caviarder", "D-0002", "A1", "--invitation", "I-0001", "--motif", "refus", "--utilisateur", "bidji29")
+        self.publier("bidji29", "caviardage", libre=False)
+        self.assertEqual(self.debat("D-0002")["arguments"][0]["texte"], "retiré : refus")
+
+    def test_sans_reponse_plus_d_argument(self):
+        self.finir("sans_reponse")
+        self.argument_refuse()
+
+    def test_retiree_plus_d_argument(self):
+        self.jusqu_a("accord-gardien")
+        self.a("2026-11-02T12:00:00Z")
+        self.branche()
+        self.geste("retirer", "bidji29")
+        self.publier("bidji29", "retrait_invitation", "non_contact", libre=False)
+        self.argument_refuse()
+
+    def test_acceptee_puis_retiree_reste_ouverte_aux_arguments(self):
+        self.finir("acceptee")
+        self.argument_refuse(attendu=False)
+        self.branche()
+        self.geste("retirer", "bidji29")
+        self.publier("bidji29", "retrait_invitation", libre=False)
+        self.argument_refuse(attendu=False)
+        self.assertIsNone(json.loads(self.ok("debats", "--json"))[0]["attend_cloture"])
+
+    def test_seuls_un_gardien_en_fonction_ou_le_conseil_le_closent_sans_suite(self):
+        (self.dossier / "gouvernance/gardiens.yaml").write_text("membres:\n  - pseudo: gina\n    garant: hector\n  - pseudo: ivan\n",
+                                                                 encoding="utf-8")
+        self.commit("sur main : ivan, gardien sans garant (pas en fonction)")
+        self.finir("refusee")
+        cas = (("bruno", "sans_suite", "a guardian or the council closes it"),  # le rapporteur
+               ("ivan", "sans_suite", self.FIN), ("gina", "decision", self.FIN), ("bidji29", "decision", self.FIN))
+        for qui, issue, morceau in cas:
+            with self.subTest(qui=qui, issue=issue):
+                self.ko(morceau, "debattre", "clore", "D-0002", "--utilisateur", qui, "--issue", issue, "--reference", "2026-10-29")
+                self.branche()
+                self.ecrire({**self.debat("D-0002"), "statut": "clos", "clos_le": self.maintenant(), "clos_par": qui, "issue": issue,
+                             "reference": ""}, "D-0002")
+                self.commit()
+                self.refusee(qui, self.FIN)
+                self.abandonner()
+        for qui, libre in (("bidji29", False), ("gina", True)):
+            with self.subTest(honnete=qui):
+                self.branche()
+                self.ok("debattre", "clore", "D-0002", "--utilisateur", qui, "--issue", "sans_suite")
+                self.commit()
+                if libre:
+                    self.publier(qui, "cloture_debat")
+                    self.assertEqual((self.debat("D-0002")["statut"], self.debat("D-0002")["issue"]), ("clos", "sans_suite"))
+                else:
+                    code, texte = self.verifier(qui)
+                    self.assertNotIn(self.FIN, texte)
+                    self.assertIn("cloture_debat", texte)
+                    self.abandonner()
+
+    def test_bee_debats_montre_le_debat_qui_attend_sa_cloture(self):
+        self.jusqu_a("consigner-relance")
+        etat = lambda: {x["id"]: x["attend_cloture"] for x in json.loads(self.ok("debats", "--json"))}  # noqa: E731
+        self.assertEqual(etat(), {"D-0001": None, "D-0002": None}, "en cours : rien n'attend")
+        self.a("2026-11-30T15:00:00Z")
+        self.branche()
+        self.geste("consigner-reponse", "bidji29", "--valeur", "sans_reponse")
+        self.publier("bidji29", "reponse_invitation", libre=False)
+        self.assertEqual(etat(), {"D-0001": None, "D-0002": "I-0001"})
+        # Un débat qui nomme I-0001 sans être le sien (un autre numéro, ouvert par un autre) n'attend jamais cette clôture.
+        self.ecrire(TestDebatInvitationRuche0050.nouveau_debat(self, "chloe", id="D-0003"), "D-0003")
+        self.assertEqual(etat(), {"D-0001": None, "D-0002": "I-0001", "D-0003": None})
+        self.chemin_debat("D-0003").unlink()
+        self.assertIn("ouvert, à clore sans suite (I-0001 : gardien ou conseil)", self.ok("debats"))
+        self.branche()
+        self.ok("debattre", "clore", "D-0002", "--utilisateur", "gina", "--issue", "sans_suite")
+        self.publier("gina", "cloture_debat")
+        self.assertNotIn("à clore sans suite", self.ok("debats", "--statut", "tous"))
+        self.assertNotIn("I-0001", json.dumps(etat()))
+
+
 class TestR13SuivableRuche0052(BaseInvitations):
     """ruche-0052 (répétition générale n° 4) : R13 trouvable et suivable. AGENTS.md renvoie à docs/croissance.md là où il parle
     d'inviter ; bee voir I-<nnnn> donne les dates de l'invitation et son échéance, calculée comme la porte ; un gardien en fonction
