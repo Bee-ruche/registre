@@ -129,10 +129,13 @@ Règles de sûreté, vérifiées par le juge commun (revue adverse du 28/10) :
 refusal of the judged code: after each container, the judge reads Docker's own record of it (`docker inspect`, then the container
 is removed), never its code or error stream, which the judged code writes; a container that was not created (daemon out of reach,
 image or runtime missing), that its runtime failed to start, or whose recorded state is not « exited » with its process's code
-stops the judge with code 2 (`lecture.Panne`). With `--json`, `juge.json` is written whatever the outcome: `juge.code` and
-`juge.issue` (`juste` 0, `refus` 1, `erreur_environnement` 2), and on a stop `juge.motif` and `juge.panne_machine`;
-`rapport.py --code` publishes a code only if the report says the same (code 2 otherwise), and juge.yml's judging step annotates
-it: a notice for 0, a warning for a refusal of B, an error for an error of the environment, which judges nothing.
+stops the judge with code 2 (`lecture.Panne`, whose motif never quotes the container's error stream); at its deadline, a
+container that never started is one too, one that ran a refusal. With `--json`, `juge.json` is written whole or not at all
+(renamed into place) whatever the outcome: `juge.code` and `juge.issue` (`juste` 0, `refus` 1, `erreur_environnement` 2), and on a
+stop `juge.motif` and `juge.panne_machine`, a refusal staying a refusal whatever its message holds; `rapport.py --code` publishes
+0 only with its report, whole and checked, and a code only if the report does not say another (code 2 otherwise; a refusal needs
+no report), and juge.yml's judging step annotates it: a notice for 0, a warning for a refusal of B, an error for an error of the
+environment, which judges nothing.
 `juge.origine_des_graines` says for each seed (`graine`, `graine_ordre`) whether the judge drew it (`tiree`) or it was given on
 the command line (`donnee`, `--graine`, `--graine-ordre`: a local reproduction). `rapport.py --verifier` refuses any report
 whose seeds were not both drawn, or that does not say: a reproduction is never taken for a judgement (its seed is no longer drawn

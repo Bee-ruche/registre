@@ -2,7 +2,8 @@
 """juge.json's SHA-256 and key figures (FORMATS), juge.yml's job outputs; the verdict job checks the report against them.
   python3 rapport.py juge.json                    the figures, « key=value » lines (empty values: no report)
   python3 rapport.py juge.json --code CODE        juge.yml's outputs: code=CODE then the figures, once the report is checked;
-                                                  code=2 if it fails its check (malformed, or none for code 0) (ruche-0117)
+                                                  code=2 if it fails its check (none or malformed for code 0, another
+                                                  code stated) (ruche-0117); a refusal (1) needs no report (ruche-0136)
   python3 rapport.py juge.json --verifier S.json --base BASE --tete TETE
       S.json: toJSON(needs.<judging job>.outputs), BASE and TETE the pull request's commits; 0 the same report, its code 0,
       the PR's commits and both seeds drawn by the judge (ruche-0136); 1 not; 2 error. Any non-zero exit blocks the verdict.
@@ -70,9 +71,24 @@ def issue(donnees):
     return str(code)
 
 
-def publier(chemin, code):
-    """juge.yml's job outputs: {"code": ..., figures}; code 2 and no figures if the report fails its check."""
+def contredit(chemin):
+    """True if the report, read and parsed, states a code or an issue other than a refusal's."""
     try:
+        juge = json.loads(lire(chemin) or b"{}").get("juge")
+        code = juge.get("code", 1) if isinstance(juge, dict) else 1
+        return type(code) is not int or code != 1 or isinstance(juge, dict) and juge.get("issue", ISSUES["1"]) != ISSUES["1"]
+    except (OSError, ValueError, AttributeError, RecursionError):
+        return False
+
+
+def publier(chemin, code):
+    """juge.yml's job outputs: {"code": ..., figures}; code 2 and no figures if the report fails its check. A refusal needs no
+    report: code 1 stays 1 whatever state its report is in, unless the report states another code."""
+    try:
+        if code == "1" and contredit(chemin):
+            raise ValueError("the report's code is not the judge's exit code")
+        if code == "1":
+            return {"code": "1", **dict.fromkeys(FORMATS, "")}
         donnees = lire(chemin)
         if code not in ISSUES or (code == "0" and donnees is None):
             raise ValueError("no report for code 0, or a code other than 0, 1 and 2")

@@ -1452,7 +1452,7 @@ class TestWorkflowJuge(unittest.TestCase):
         annonces = {"0": "::notice title=Juge commun::code 0 :", "1": "::warning title=Juge commun::code 1 : refus du code jugé",
                     "2": "::error title=Juge commun::code 2 : erreur d'environnement"}
         for code, rapport_, attendu in ((0, bon, "0"), (0, "", "2"), (0, "{}", "2"), (0, bon[:-1], "2"), (1, "", "1"), (2, "", "2"),
-                                        (1, "{}", "2"), (1, refus, "1"), (2, panne, "2"), (1, panne, "2"), (2, refus, "2"), (0, panne, "2"),
+                                        (1, "{}", "1"), (1, refus[:-9], "1"), (1, refus, "1"), (2, panne, "2"), (1, panne, "2"), (2, refus, "2"), (0, panne, "2"),
                                         (1, faux, "2"), (1, bon, "2")):
             with self.subTest(code=code, rapport=rapport_[:20]):
                 shutil.rmtree(os.path.join(self.dossier, "resultats"), ignore_errors=True)
@@ -1608,6 +1608,30 @@ class TestRapport(unittest.TestCase):
         with open(self.chemin, "w", encoding="utf-8") as f:
             json.dump(RAPPORT, f)
 
+    def test_a_refusal_needs_no_report(self):
+        """ruche-0136: a refusal (code 1) is published as 1 whatever state its report is in (none, cut short, malformed, not a
+        regular file), unless the report states another code; a code 0 still needs its report, whole and checked."""
+        def publie(code):
+            with contextlib.redirect_stderr(io.StringIO()):
+                return rapport.publier(self.chemin, code)["code"]
+        refus = json.dumps({"juge": dict(RAPPORT["juge"], code=1, issue="refus", motif="m")})
+        for contenu, attendu in ((None, "1"), ("", "1"), (refus[:-7], "1"), ("[1]", "1"), ('{"juge": 3}', "1"), (refus, "1"),
+                                 ("\xff", "1"), (json.dumps(RAPPORT), "2"), (refus.replace('"refus"', '"juste"'), "2"),
+                                 (refus.replace('"code": 1', '"code": 2'), "2"), (refus.replace('"code": 1', '"code": true'), "2")):
+            with contextlib.suppress(FileNotFoundError):
+                os.remove(self.chemin)
+            if contenu is not None:
+                with open(self.chemin, "w", encoding="utf-8", errors="surrogateescape") as f:
+                    f.write(contenu.replace("\xff", "\udcff"))
+            with self.subTest(contenu=contenu and contenu[:40]):
+                self.assertEqual(publie("1"), attendu)
+        os.remove(self.chemin)
+        os.mkfifo(self.chemin)
+        self.assertEqual((publie("1"), publie("0"), publie("2")), ("1", "2", "2"))
+        os.remove(self.chemin)
+        os.symlink(self.dossier, self.chemin)
+        self.assertEqual((publie("1"), publie("0")), ("1", "2"))
+
     def test_reading_bounded(self):
         self.assertIsNone(rapport.lire(self.chemin))
         with contextlib.redirect_stdout(io.StringIO()) as sortie:
@@ -1702,6 +1726,16 @@ class TestBornes(unittest.TestCase):
         with open(self.journal) as f:
             self.assertRegex(f.read(), r"\nkill bee-juge-[0-9a-f]{12}\n")
 
+    def test_deadline_without_a_started_container_is_a_machine_failure(self):
+        """ruche-0136: at its deadline, Docker's record is read before the container is removed: never started (no record, or
+        still created) is a failure of the machine; started, the deadline stays a refusal."""
+        for env, attendue in (({"FAUX_DOCKER_INSPECT": "1"}, lecture.Panne), ({"FAUX_DOCKER_ETAT": '{"Status": "created"}'}, lecture.Panne),
+                              ({"FAUX_DOCKER_ETAT": '{"Status": "running"}'}, lecture.Refus), ({}, lecture.Refus)):
+            with self.subTest(env=env), mock.patch.dict(os.environ, dict(env, FAUX_DOCKER_SANS_FIN="1")), self.assertRaises(attendue):
+                conteneur.Docker("i").lancer(["x"], [], delai=1)
+        with open(self.journal) as f:
+            self.assertEqual(re.findall(r"^(inspect|kill|rm) ", f.read(), re.M), ["inspect", "kill", "rm"] * 4)
+
     def test_machine_failure_is_an_environment_error(self):
         """ruche-0136: Docker's own record of the container decides, never its code or error stream: a daemon out of reach, a
         runtime that cannot create the container (OCI), a container whose code is not its process's or whose record is
@@ -1712,8 +1746,10 @@ class TestBornes(unittest.TestCase):
                     {"FAUX_DOCKER_CODE": "1", "FAUX_DOCKER_ERREUR": "failed to connect to the docker API", "FAUX_DOCKER_INSPECT": "1"},
                     {"FAUX_DOCKER_CODE": "125", "FAUX_DOCKER_ETAT": etat("exited", 0)}, {"FAUX_DOCKER_ETAT": "{"},
                     {"FAUX_DOCKER_ETAT": etat("running", 0)}):
-            with self.subTest(env=env), mock.patch.dict(os.environ, env), self.assertRaisesRegex(lecture.Panne, "^machine du juge en panne"):
+            with self.subTest(env=env), mock.patch.dict(os.environ, env), contextlib.redirect_stderr(io.StringIO()), \
+                    self.assertRaisesRegex(lecture.Panne, "^machine du juge en panne") as panne:
                 conteneur.Docker("i").lancer(["x"], [])
+            self.assertNotRegex(str(panne.exception), "runc|daemon|API")  # what the error stream holds stays out of the motif
         with open(self.journal) as f:
             self.assertEqual(len(re.findall(r"^rm -f bee-juge-[0-9a-f]{12}$", f.read(), re.M)), 6)
         self.assertTrue(issubclass(lecture.Panne, lecture.Erreur))
@@ -1750,6 +1786,25 @@ class TestBornes(unittest.TestCase):
         with open(chemin, encoding="utf-8") as f:
             self.assertEqual(json.load(f)["juge"], {"code": 1, "issue": "refus", "panne_machine": False, "motif": "juge : REFUS : B"})
         self.assertEqual([rapport.publier(chemin, c)["code"] for c in "012"], ["2", "1", "2"])
+
+    def test_a_refusal_stays_a_refusal_whatever_its_message_holds(self):
+        """ruche-0136: a refusal quoting a name that is not UTF-8 exits with 1, its juge.json whole and saying refus, and
+        rapport.py publishes 1; a report that cannot be written leaves none, neither partial nor stale."""
+        self.assertEqual(lecture.propre("a\udcffb\ud800"), "a?b?")
+        chemin, source_b = os.path.join(self.dossier, "resultats", "juge.json"), os.path.join(os.fsencode(self.dossier), b"B\xff")
+        os.mkdir(source_b)
+        r = subprocess.run([sys.executable, os.path.join(ICI, "juge.py"), "--outillage", JOUET, "--source-a", JOUET, "--source-b",
+                            source_b, "--json", chemin, "--travail", self.dossier], capture_output=True, timeout=300,
+                           env=dict(os.environ, FAUX_DOCKER_ID="sha256:" + "a" * 64))
+        self.assertEqual(r.returncode, 1, r.stderr)
+        with open(chemin, encoding="utf-8") as f:
+            self.assertEqual((lambda j: (j["code"], j["issue"], j["panne_machine"]))(json.load(f)["juge"]), (1, "refus", False))
+        sortie = subprocess.run([sys.executable, os.path.join(ICI, "rapport.py"), chemin, "--code", "1"], capture_output=True, text=True)
+        self.assertEqual(sortie.stdout.splitlines()[0], "code=1")
+        with mock.patch.dict(juge.ECHEC, json=chemin, juge={}), contextlib.redirect_stderr(io.StringIO()), \
+                mock.patch.object(os, "replace", side_effect=OSError("disque plein")):
+            self.assertEqual(juge.arreter(1, "juge : REFUS : B\udcff"), 1)
+        self.assertEqual(os.listdir(os.path.dirname(chemin)), [])
 
     def test_image_id(self):
         with mock.patch.dict(os.environ, {"FAUX_DOCKER_ID": "sha256:" + "a" * 64}):

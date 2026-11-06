@@ -697,24 +697,38 @@ def main(argv=None):
             shutil.rmtree(travail, ignore_errors=True)
 
     stats.afficher_tableau(rapport)
-    texte = json.dumps(rapport, ensure_ascii=False, indent=2)
-    if args.json:
-        os.makedirs(os.path.dirname(os.path.abspath(args.json)), exist_ok=True)
-        with open(args.json, "w", encoding="utf-8") as f:
-            f.write(texte + "\n")
+    texte = ecrire_rapport(args.json, rapport)
     print(texte)
     return 0
+
+
+def ecrire_rapport(chemin, rapport):
+    """juge.json, whole or not at all (a temporary file renamed onto it); its text, every lone surrogate replaced."""
+    texte = re.sub("[\ud800-\udfff]", "\ufffd", json.dumps(rapport, ensure_ascii=False, indent=2))
+    if chemin:
+        dossier = os.path.dirname(os.path.abspath(chemin))
+        os.makedirs(dossier, exist_ok=True)
+        fd, temporaire = tempfile.mkstemp(dir=dossier, prefix=".juge-")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(texte + "\n")
+            os.replace(temporaire, chemin)
+        except BaseException:
+            with contextlib.suppress(OSError):
+                os.unlink(temporaire)
+            raise
+    return texte
 
 
 def arreter(code, message, panne=False):
     """The judge stops (1 refusal, 2 error): the message on standard error and, with --json, in juge.json (ruche-0136)."""
     print(message, file=sys.stderr)
-    with contextlib.suppress(OSError):  # no report written: rapport.py --code keeps the exit code
-        if ECHEC.get("json"):
-            os.makedirs(os.path.dirname(os.path.abspath(ECHEC["json"])), exist_ok=True)
-            with open(ECHEC["json"], "w", encoding="utf-8") as f:
-                json.dump({"juge": dict(ECHEC["juge"], code=code, issue=ISSUES[code], panne_machine=panne, motif=message)}, f,
-                          ensure_ascii=False, indent=2)
+    try:
+        ecrire_rapport(ECHEC.get("json"), {"juge": dict(ECHEC.get("juge", {}), code=code, issue=ISSUES[code], panne_machine=panne,
+                                                        motif=message)})
+    except (OSError, ValueError):  # no report, never a stale or partial one: rapport.py --code keeps the exit code
+        with contextlib.suppress(OSError, TypeError):
+            os.unlink(ECHEC.get("json"))
     return code
 
 

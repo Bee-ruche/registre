@@ -97,24 +97,34 @@ class Docker:
             try:
                 p.wait(timeout=delai)
             except subprocess.TimeoutExpired:
-                subprocess.run(["docker", "kill", nom], capture_output=True)
-                subprocess.run(["docker", "rm", "-f", nom], capture_output=True)
+                etat = releve(nom, tuer=True)
                 p.kill()
+                if etat.get("Status") in (None, "created"):  # never started: the machine's failure; once run, a refusal
+                    raise Panne(f"machine du juge en panne : conteneur jamais démarré en {delai} s ({commande[0]})")
                 raise Refus(f"délai de {delai} s dépassé dans le conteneur ({commande[0]})")
             finally:
                 for f in fils:
                     f.join()
         # Docker's own record, never the code or the error stream the judged code writes: a container that was not created, did
         # not run to its end, or whose code is not its process's is a failure of the machine, never a refusal (ruche-0136).
-        etat = subprocess.run(["docker", "inspect", "--format", "{{json .State}}", nom], capture_output=True, text=True)
-        subprocess.run(["docker", "rm", "-f", nom], capture_output=True)
-        try:
-            etat = json.loads(etat.stdout) if etat.returncode == 0 else None
-        except ValueError:
-            etat = None
-        if not isinstance(etat, dict) or (etat.get("Status"), etat.get("Error"), etat.get("ExitCode")) != ("exited", "", p.returncode):
-            raise Panne(f"machine du juge en panne (Docker, son runtime ou l'image ; code {p.returncode}) : " + propre(bytes(lus[1]), 500))
+        etat = releve(nom)
+        if (etat.get("Status"), etat.get("Error"), etat.get("ExitCode")) != ("exited", "", p.returncode):
+            journal("erreurs de docker run (hors du motif) : " + propre(bytes(lus[1]), 500))
+            raise Panne(f"machine du juge en panne (Docker, son runtime ou l'image ; code {p.returncode})")
         return subprocess.CompletedProcess(cmd, p.returncode, bytes(lus[0]), bytes(lus[1]))
+
+
+def releve(nom, tuer=False):
+    """Docker's record of a container ({} if none or unreadable), read before the container is (killed and) removed."""
+    etat = subprocess.run(["docker", "inspect", "--format", "{{json .State}}", nom], capture_output=True, text=True)
+    if tuer:
+        subprocess.run(["docker", "kill", nom], capture_output=True)
+    subprocess.run(["docker", "rm", "-f", nom], capture_output=True)
+    try:
+        etat = json.loads(etat.stdout) if etat.returncode == 0 else None
+    except ValueError:
+        etat = None
+    return etat if isinstance(etat, dict) else {}
 
 
 def dockerfile(paquets):

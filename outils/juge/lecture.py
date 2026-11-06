@@ -34,7 +34,7 @@ def journal(message):
 def propre(octets, maximum=1500):
     """Texte venu du conteneur, affichable sans risque : tronqué, caractères de contrôle retirés."""
     texte = octets.decode("utf-8", "replace") if isinstance(octets, bytes) else str(octets)
-    texte = re.sub(r"[^\x20-\x7e\n -￿]", "?", texte[-maximum:])
+    texte = re.sub("[^\x20-\x7e\n\xa0-\ud7ff\ue000-\uffff]", "?", texte[-maximum:])  # nor a lone surrogate
     return texte.replace("::", ": :")  # pas de commande de workflow GitHub
 
 
