@@ -1086,7 +1086,8 @@ class TestPushScope(unittest.TestCase):
         cas = {"green": ([(code, "completed", "success")], "data"), "in progress": ([(code, "in_progress", None)], "data"),
                "queued": ([(code, "queued", None), (code, "completed", "failure")], "data"),
                "failed": ([(code, "completed", "failure")], "full"), "cancelled": ([(code, "completed", "cancelled")], "full"),
-               "missed dispatch": ([(self.base, "completed", "success")], "full"), "error": (None, "full"), "no tool": ([(code, "completed", "success")], "full")}
+               "missed dispatch": ([(self.base, "completed", "success")], "full"),
+               "run on the pushed commit": ([(apres, "completed", "success")], "full"), "error": (None, "full"), "no tool": ([(code, "completed", "success")], "full")}
         for nom, (runs, attendu) in cas.items():
             with self.subTest(cas=nom):
                 faux = "error" if runs is None else TestCiScope.executions(*runs)
