@@ -59,6 +59,9 @@ jobs:
           [ "$portee" = data ] && [ "$main" = green ] || portee=full
           echo "portee=$portee" >> "$GITHUB_OUTPUT"
           echo "Scope: $portee (main for the fast path: $main)"
+      - name: API budget, start (ruche-0121; after the scope, decided by the base's tool; puts first on PATH a gh that logs each call)
+        env: {GITHUB_TOKEN: "${{ github.token }}"}
+        run: python3 outils/bee.py api-budget start --dossier "$RUNNER_TEMP/api-budget" --jeton GITHUB_TOKEN
       - name: Tests that read the live registry (data-only PR)
         # A data-only PR changes no code: of the tool's tests, only these may read the live registry's data (the others read
         # the frozen fixture of ruche-0093). This list is TESTS_REGISTRE_REEL in outils/test_bee.py (TestCiScope checks it),
@@ -74,15 +77,23 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           AUTEUR: ${{ github.event.pull_request.user.login }}
+          GITHUB_ID: ${{ github.event.pull_request.user.id }}
           BASE: ${{ steps.portee.outputs.base }}
         run: |
           # BASE: the PR's real base, computed by the "Scope of the PR" step (never empty: an empty base would compare HEAD
           # with itself and pass).
           [ -n "$BASE" ]
-          compte=$(gh api "users/$AUTEUR" --jq '"\(.created_at[:10]) \(.id)"')
+          # ruche-0121: the author's account number is GitHub's, in the event; its creation date is read only for a PR that adds a
+          # member file (registering checks it, and refuses without it).
+          cree=""
+          if [ "$(python3 outils/bee.py needs-account-date --base "$BASE" --tete HEAD)" != no ]; then cree=$(gh api "user/$GITHUB_ID" --jq '.created_at[:10]'); fi
           # ruche-0091: the time of the PR is this run's creation, GitHub's record of the push; unreadable or malformed: refused.
           instant=$(timeout 60 gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq .created_at)
-          python3 outils/bee.py verifier-pr --base "$BASE" --tete HEAD --auteur "$AUTEUR" --compte-cree-le "${compte% *}" --github-id "${compte#* }" --instant-pr "$instant"
+          python3 outils/bee.py verifier-pr --base "$BASE" --tete HEAD --auteur "$AUTEUR" --compte-cree-le "$cree" --github-id "$GITHUB_ID" --instant-pr "$instant"
+      - name: API budget, end (ruche-0121)
+        if: always()
+        env: {GITHUB_TOKEN: "${{ github.token }}"}
+        run: python3 outils/bee.py api-budget end --dossier "$RUNNER_TEMP/api-budget" --jeton GITHUB_TOKEN
   suite:
     # A code PR and every push to main: the full suite (suite.yml), after the checks above passed.
     needs: controles

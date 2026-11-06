@@ -67,6 +67,9 @@ jobs:
           python-version: "3.12"
       - name: Dépendances
         run: pip install -r outils/requirements.txt
+      - name: API budget, start (ruche-0121; puts first on PATH a gh that logs each call)
+        env: {GITHUB_TOKEN: "${{ github.token }}", BEE_INTEGRATION_TOKEN: "${{ secrets.BEE_INTEGRATION_TOKEN }}"}
+        run: python3 outils/bee.py api-budget start --dossier "$RUNNER_TEMP/api-budget" --jeton GITHUB_TOKEN --jeton BEE_INTEGRATION_TOKEN
       - name: Intégrer ce qui satisfait R3, clore ce qui est abandonné
         env:
           GH_TOKEN: ${{ github.token }}
@@ -182,7 +185,7 @@ jobs:
                   exit 0
                 fi
               elif python3 outils/bee.py valider && git push origin HEAD:main; then
-                gh workflow run site.yml --ref main || true
+                gh api -X POST "repos/$GITHUB_REPOSITORY/actions/workflows/site.yml/dispatches" -f ref=main || true  # ruche-0121: one call
                 exit 0
               fi
               sleep $((essai * 10))
@@ -218,3 +221,7 @@ jobs:
               || echo "::warning::$id : fermeture de la PR $pr impossible ; le prochain passage réessaiera."
           done < "$tmp/ecartees.tsv"
           rm -f "$tmp/ecartees.tsv"
+      - name: API budget, end (ruche-0121)
+        if: always()
+        env: {GITHUB_TOKEN: "${{ github.token }}", BEE_INTEGRATION_TOKEN: "${{ secrets.BEE_INTEGRATION_TOKEN }}"}
+        run: python3 outils/bee.py api-budget end --dossier "$RUNNER_TEMP/api-budget" --jeton GITHUB_TOKEN --jeton BEE_INTEGRATION_TOKEN
