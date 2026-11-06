@@ -26,9 +26,10 @@ hors_perimetre:
 depend_de:
 - ruche-0121
 noeud: projets/ruche/ruche
-statut: reservee
-reservation:
-  utilisateur: "bidji29"
-  depuis: "2026-11-03T01:03:21Z"
+statut: ouverte
 cree_par: conseil
 cree_le: '2026-11-02'
+notes:
+  - par: "bee"
+    le: "2026-11-06T06:34:45Z"
+    texte: "Réservation de bidji29 expirée après 72 h (R7)."
