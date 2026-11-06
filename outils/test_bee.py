@@ -244,27 +244,51 @@ class TestFusionAutoNeMergeQuApresVerification(unittest.TestCase):
         etapes = [e for job in flux["jobs"].values() for e in job.get("steps", [])]
         fusion = [e for e in etapes if "passe-fusion fusionner" in e.get("run", "")]
         self.assertEqual(len(fusion), 1)
-        condition = " ".join(str(fusion[0].get("if", "")).split())
-        self.assertEqual(condition, "steps.verif.outcome == 'success'")
+        # The merge job runs only after the check job succeeded (needs), and only if it accepted a PR.
+        job = flux["jobs"]["fusionner"]
+        self.assertEqual((job["needs"], job["if"]), ("verifier", "contains(needs.verifier.outputs.acceptees, ':')"))
+        self.assertIn(fusion[0], job["steps"])
         verif = [e for e in etapes if e.get("id") == "verif"]
         self.assertEqual(len(verif), 1)
         self.assertEqual((verif[0]["run"], verif[0].get("env")), ('python3 outils/bee.py passe-fusion verifier --dossier "$RUNNER_TEMP/passe"', None))
-        self.assertLess(etapes.index(verif[0]), etapes.index(fusion[0]))
-        self.assertIs(etapes[0]["with"]["persist-credentials"], False, "no token left in git's configuration for the check")
+        self.assertIn(verif[0], flux["jobs"]["verifier"]["steps"])
+        self.assertEqual(flux["jobs"]["verifier"]["outputs"], {"acceptees": "${{ steps.verif.outputs.acceptees }}"})
+        for nom, job in flux["jobs"].items():
+            self.assertIs(job["steps"][0]["with"]["persist-credentials"], False, f"{nom}: no token left in git's configuration")
         texte = "\n".join(e.get("run", "") for e in etapes)
         self.assertNotRegex(texte, r"gh pr merge|pulls/[^ ]*/merge", "no other way to merge")
         self.assertEqual(texte.count("passe-fusion fusionner"), 1)
+
+    def test_the_job_that_reads_the_prs_never_writes(self):
+        """The listing, the preparer (which parses the PRs' files) and the check run in a job whose token only reads; the job whose
+        token writes runs no step that reads a PR: it gets only the check job's output, each merge validated by bee."""
+        flux = yaml.safe_load((RACINE / ".github/workflows/fusion-auto.yml").read_text(encoding="utf-8"))
+        self.assertEqual(list(flux["jobs"]), ["verifier", "fusionner"])
+        self.assertEqual(flux["jobs"]["verifier"]["permissions"], {"contents": "read", "pull-requests": "read", "actions": "read"})
+        self.assertNotIn("permissions", flux["jobs"]["fusionner"])
+        texte = lambda nom: "\n".join(e.get("run", "") for e in flux["jobs"][nom]["steps"])  # noqa: E731
+        for etape in ("gh api graphql", "passe-fusion preparer", "passe-fusion verifier", "git fetch", "pulls?"):
+            self.assertNotIn(etape, texte("fusionner"))
+        self.assertIn("passe-fusion preparer", texte("verifier"))
+        self.assertNotIn("passe-fusion fusionner", texte("verifier"))
+        etape = next(e for e in flux["jobs"]["fusionner"]["steps"] if "passe-fusion fusionner" in e.get("run", ""))
+        self.assertEqual(etape["env"]["ACCEPTEES"], "${{ needs.verifier.outputs.acceptees }}")
+        self.assertIn('--acceptees "$ACCEPTEES"', etape["run"])
+        self.assertEqual([e.get("uses") for e in flux["jobs"]["fusionner"]["steps"] if "uses" in e], ["actions/checkout@v4", "actions/setup-python@v5"])
+        self.assertEqual(flux["jobs"]["fusionner"]["steps"][0]["with"]["ref"], "main")
 
     def test_a_pass_can_ask_for_another(self):
         """A pass that could not merge every accepted PR asks for another (workflow_dispatch), which leaves out the PRs listed."""
         flux = yaml.safe_load((RACINE / ".github/workflows/fusion-auto.yml").read_text(encoding="utf-8"))
         self.assertEqual(flux[True]["workflow_dispatch"], {"inputs": {"exclure": {"default": ""}}})
-        job = flux["jobs"]["fusionner"]
+        job = flux["jobs"]["verifier"]
         self.assertEqual(job["env"], {"EXCLURE": "${{ inputs.exclure }}"})
         self.assertTrue(job["if"].startswith("github.event_name == 'workflow_dispatch' || "))
-        self.assertIsInstance(job["timeout-minutes"], int)
+        self.assertTrue(all(isinstance(j["timeout-minutes"], int) for j in flux["jobs"].values()))
+        etapes = [e for j in flux["jobs"].values() for e in j["steps"]]
         for etape in ("passe-fusion preparer", "passe-fusion fusionner"):
-            self.assertIn('--exclure "$EXCLURE"', next(e["run"] for e in job["steps"] if etape in e.get("run", "")))
+            self.assertIn('--exclure "$EXCLURE"', next(e["run"] for e in etapes if etape in e.get("run", "")))
+        self.assertEqual(next(e for e in etapes if "passe-fusion fusionner" in e.get("run", ""))["env"]["EXCLURE"], "${{ inputs.exclure }}")
 
 
 class TestCiScope(unittest.TestCase):
@@ -533,7 +557,7 @@ class TestCiScope(unittest.TestCase):
         self.assertNotIn("BEE", r.stdout, "the gate never runs without GitHub's record")
         # ruche-0120: fusion-auto reads, with the PRs' validations, each run's creation (TestPasseFusion: the gate gets it).
         etape = next(s for s in yaml.safe_load((RACINE / ".github/workflows/fusion-auto.yml").read_text(encoding="utf-8"))["jobs"]
-                     ["fusionner"]["steps"] if s.get("name", "").startswith("Lister les PR ouvertes"))
+                     ["verifier"]["steps"] if s.get("name", "").startswith("Lister les PR ouvertes"))
         self.assertIn("--jq '.workflow_runs[] | [.id, .head_sha, .created_at] | @tsv'", etape["run"])
 
     def test_the_data_only_step_runs_exactly_the_tests_allowed_to_read_live_data(self):
@@ -867,23 +891,30 @@ sys.exit(3 if a[:2] == ["pr", "view"] else 0)
             with self.subTest(flux=nom):
                 jobs = [j.get("steps", []) for j in self.flux(nom)["jobs"].values()]
                 avec_gh = [e for e in jobs if any("gh " in s.get("run", "") for s in e)]
-                self.assertEqual(len(avec_gh), 1, "one job calls gh (ruche-0132: validation.yml's controles)")
-                etapes = avec_gh[0]
-                noms = [s.get("name", "") for s in etapes]
-                apres = "Scope of the PR (data only, or the full suite)" if nom == "validation.yml" else "Dépendances"
-                debut, fin = etapes[noms.index(apres) + 1], etapes[-1]
-                options = " ".join(f"--jeton {j}" for j in jetons)
-                self.assertEqual(debut["run"], f'python3 outils/bee.py api-budget start --dossier "$RUNNER_TEMP/api-budget" {options}')
-                self.assertEqual(fin["run"], f'python3 outils/bee.py api-budget end --dossier "$RUNNER_TEMP/api-budget" {options}')
-                self.assertEqual((debut.get("if"), fin.get("if")), (None, "always()"))
-                for etape in (debut, fin):
-                    self.assertEqual(etape["env"], {j: self.JETONS[j] for j in jetons})
-                avant = etapes[:etapes.index(debut)]
-                self.assertEqual([s.get("name") for s in avant if "gh " in s.get("run", "")], [apres] if nom == "validation.yml" else [],
-                                 "a gh call before the measure starts (validation.yml: the scope step's one read only)")
+                self.assertEqual(len(avec_gh), 2 if nom == "fusion-auto.yml" else 1, "the jobs that call gh (ruche-0132: validation.yml's "
+                                                                                     "controles; ruche-0120: fusion-auto's check and merge)")
+                for etapes in avec_gh:
+                    self.mesure_dans_le_job(nom, jetons, etapes)
                 donnes = {v for s in self.etapes(nom) for v in (s.get("env") or {}).values() if "token" in str(v).lower()}
                 self.assertEqual(donnes, {self.JETONS[j] for j in jetons}, "a token given to gh but not measured")
         deployer = self.flux("site.yml")["jobs"]["deployer"]["steps"]
+        self.mesure_du_site(deployer)
+
+    def mesure_dans_le_job(self, nom, jetons, etapes):
+        noms = [s.get("name", "") for s in etapes]
+        apres = "Scope of the PR (data only, or the full suite)" if nom == "validation.yml" else "Dépendances"
+        debut, fin = etapes[noms.index(apres) + 1], etapes[-1]
+        options = " ".join(f"--jeton {j}" for j in jetons)
+        self.assertEqual(debut["run"], f'python3 outils/bee.py api-budget start --dossier "$RUNNER_TEMP/api-budget" {options}')
+        self.assertEqual(fin["run"], f'python3 outils/bee.py api-budget end --dossier "$RUNNER_TEMP/api-budget" {options}')
+        self.assertEqual((debut.get("if"), fin.get("if")), (None, "always()"))
+        for etape in (debut, fin):
+            self.assertEqual(etape["env"], {j: self.JETONS[j] for j in jetons})
+        avant = etapes[:etapes.index(debut)]
+        self.assertEqual([s.get("name") for s in avant if "gh " in s.get("run", "")], [apres] if nom == "validation.yml" else [],
+                         "a gh call before the measure starts (validation.yml: the scope step's one read only)")
+
+    def mesure_du_site(self, deployer):
         self.assertEqual(deployer[0]["run"], 'gh api rate_limit > "$RUNNER_TEMP/rate_limit.json" || true')  # never stops the deployment
         self.assertEqual((deployer[-1].get("if"), deployer[-1]["run"].endswith("|| true")), ("always()", True))
         if shutil.which("jq"):  # the site's end step computes what bee api-budget does, in jq
@@ -935,7 +966,8 @@ sys.exit(3 if a[:2] == ["pr", "view"] else 0)
                 flux = self.flux(nom)
                 self.assertNotIn("pull_request_target", flux[True])
                 self.assertEqual(flux["permissions"], attendues)
-                self.assertEqual({n: j["permissions"] for n, j in flux["jobs"].items() if "permissions" in j}, {"pause": {}} if nom == "site.yml" else {})
+                self.assertEqual({n: j["permissions"] for n, j in flux["jobs"].items() if "permissions" in j}, {"pause": {}} if nom == "site.yml" else
+                                 {"verifier": {"contents": "read", "pull-requests": "read", "actions": "read"}} if nom == "fusion-auto.yml" else {})
                 for etape in self.etapes(nom):
                     self.assertNotIn("${{", etape.get("run", ""), etape.get("name"))
 
@@ -2793,7 +2825,9 @@ class TestPasseFusion(BaseTest):
         (self.passe / bee.CANDIDATS).write_text("".join("\t".join((n, sha, qui, str(numero_de(qui)), self.INSTANT, "")) + "\n"
                                                         for n, sha, qui in candidats), encoding="utf-8")
         (self.passe / bee.AUTEURS_PASSE).write_text("", encoding="utf-8")
-        code, texte = lancer("--registre", str(self.dossier), "passe-fusion", "verifier", "--dossier", str(self.passe), "--base", "main")
+        (self.passe / "sortie").unlink(missing_ok=True)
+        with mock.patch.dict(os.environ, {"GITHUB_OUTPUT": str(self.passe / "sortie")}):
+            code, texte = lancer("--registre", str(self.dossier), "passe-fusion", "verifier", "--dossier", str(self.passe), "--base", "main")
         self.assertEqual(code, 0, texte)
         return [tuple(l) for l in bee.lire_tsv(self.passe / bee.RESULTATS)], texte
 
@@ -2826,7 +2860,8 @@ class TestPasseFusion(BaseTest):
         self.assertEqual(resultats, [("11", honnete, "merge"), ("12", usurpee, "refused"), ("13", conflit, "conflict"),
                                      ("14", reservation, "merge")], texte)
         self.assertIn("::notice title=Fusion pass::validated=4 merge=2 refused=1 conflict=1 council=0", texte)
-        self.assertEqual((self.passe / bee.MAIN_VERIFIE).read_text(encoding="utf-8"), git(self.dossier, "rev-parse", "main"), "the main they were checked on")
+        self.assertEqual((self.passe / "sortie").read_text(encoding="utf-8"), f"acceptees={git(self.dossier, 'rev-parse', 'main').strip()} 11:{honnete} 14:{reservation}\n",
+                         "for the merge job: the main they were checked on, then each accepted PR and its head")
         # Alone on main, the third PR merges: the conflict came from the main the first one left.
         self.assertEqual(self.verifier(("13", conflit, "chloe"))[0], [("13", conflit, "merge")])
         # The time of the PR is its validation's creation: one older than 24 hours is refused (ruche-0091: push again).
@@ -2881,9 +2916,12 @@ class TestPasseFusion(BaseTest):
         return {**os.environ, "PATH": f"{bin_}{os.pathsep}{os.environ['PATH']}", "BEE_PAUSE_FUSION": "0"}
 
     def fusionner(self, env, *options):
+        """The merge job's step, given what the check job output: the checked main (self.passe/main), then each accepted PR."""
         (self.passe / "gh.log").unlink(missing_ok=True)
+        acceptees = " ".join([(self.passe / "main").read_text(encoding="utf-8").strip()]
+                             + [f"{n}:{sha}" for n, sha, e in bee.lire_tsv(self.passe / bee.RESULTATS) if e == "merge"])
         r = subprocess.run([sys.executable, str(RACINE / "outils/bee.py"), "passe-fusion", "fusionner", "--dossier", str(self.passe),
-                            "--depot", "Bee-ruche/registre", *options], capture_output=True, text=True, env=env)
+                            "--depot", "Bee-ruche/registre", "--acceptees", acceptees, *options], capture_output=True, text=True, env=env)
         self.assertEqual(r.returncode, 0, r.stderr)
         journal = self.passe / "gh.log"
         return r.stdout, journal.read_text(encoding="utf-8").splitlines() if journal.exists() else []
@@ -2923,7 +2961,7 @@ elif "/commits/" in a[1]:
 
     def test_each_merge_is_one_rest_call_bound_to_its_checked_head(self):
         a, b, c, d = ("a" * 40, "b" * 40, "c" * 40, "d" * 40)
-        (self.passe / bee.MAIN_VERIFIE).write_text("m" * 40 + "\n", encoding="utf-8")
+        (self.passe / "main").write_text("m" * 40 + "\n", encoding="utf-8")
         (self.passe / bee.RESULTATS).write_text(f"1\t{a}\tmerge\n2\t{b}\trefused\n3\t{c}\tconflict\n4\t{d}\tmerge\n5\t{a}\tcouncil\n", encoding="utf-8")
         env = self.faux_github()
         sortie, appels = self.fusionner(env)
@@ -2940,9 +2978,13 @@ elif "/commits/" in a[1]:
         (self.passe / bee.RESULTATS).write_text(f"1 --x\t{a}\tmerge\n4\t{d}\tmerge\n", encoding="utf-8")
         sortie, appels = self.fusionner(env)
         self.assertEqual((self.merges(appels), (self.passe / "fusionnees").read_text(encoding="utf-8")), ([], ""))
+        # The merge job validates what it gets: a head that is not 40 hexadecimal digits is never sent, nor anything after it.
+        (self.passe / "github").unlink(missing_ok=True)
+        sortie, appels = self.fusionner(env, "--acceptees", f"{'m' * 40} 1:{'a' * 39} 4:{d}")
+        self.assertEqual((self.merges(appels), (self.passe / "fusionnees").read_text(encoding="utf-8")), ([], ""))
 
     def resultats(self, *numeros):
-        (self.passe / bee.MAIN_VERIFIE).write_text("m" * 40 + "\n", encoding="utf-8")
+        (self.passe / "main").write_text("m" * 40 + "\n", encoding="utf-8")
         (self.passe / bee.RESULTATS).write_text("".join(f"{n}\t{n * 40}\tmerge\n" for n in numeros), encoding="utf-8")
         (self.passe / "github").unlink(missing_ok=True)
 
@@ -18656,7 +18698,7 @@ class TestIdentiteParNumero(BaseRepetitionGenerale):
         # ruche-0120: fusion-auto takes it from its listing of the PRs (GitHub's record of each author), which the pass gives the
         # gate, and reads the date by it (TestPasseFusion).
         listage = next(s["run"] for s in yaml.safe_load((RACINE / ".github/workflows/fusion-auto.yml").read_text(encoding="utf-8"))["jobs"]
-                       ["fusionner"]["steps"] if s.get("name", "").startswith("Lister les PR ouvertes"))
+                       ["verifier"]["steps"] if s.get("name", "").startswith("Lister les PR ouvertes"))
         self.assertIn('''[.number, .headRefOid, (.author.login // ""), (.author.databaseId // "")] | @tsv''', listage)
 
     def test_une_pr_ne_change_pas_qui_est_qui_pour_ses_propres_controles(self):

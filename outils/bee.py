@@ -8686,7 +8686,7 @@ def cmd_api_budget(args):
 
 
 # ruche-0120 (E1): one fusion pass merges every validated data PR, in order, each bound to its head: preparer, verifier, fusionner.
-CANDIDATS, AUTEURS_PASSE, RESULTATS, MAIN_VERIFIE, PAUSE_FUSION = "candidats.tsv", "auteurs_pr.tsv", "resultats.tsv", "main", float(os.environ.get("BEE_PAUSE_FUSION", "10"))
+CANDIDATS, AUTEURS_PASSE, RESULTATS, PAUSE_FUSION = "candidats.tsv", "auteurs_pr.tsv", "resultats.tsv", float(os.environ.get("BEE_PAUSE_FUSION", "10"))
 AUTEUR_PR_JQ = '"\\(.user.login // "")\\t\\(.user.id // "")"'  # login, then the account's number (lire_auteurs_pr)
 gh_api = lambda *a: "" if (r := subprocess.run(["timeout", "60", "gh", "api", *a], capture_output=True, text=True, stdin=subprocess.DEVNULL)).returncode else r.stdout.strip()  # noqa: E731
 lire_tsv = lambda chemin: [l.split("\t") for l in pathlib.Path(chemin).read_text(encoding="utf-8").splitlines() if l]  # noqa: E731
@@ -8724,10 +8724,10 @@ def passe_preparer(reg, dossier, prs, validations, base, ref_pr):
 
 def passe_verifier(racine, dossier, base):
     """Each candidate merged with the main the previous ones left and checked by verifier-pr --fusion-auto as its author's; an
-    accepted one is squashed onto it. resultats.tsv: number, head, what to do; MAIN_VERIFIE: the main they were checked on."""
+    accepted one is squashed onto it. resultats.tsv: number, head, what to do; the job's output: that main, then each accepted one."""
     tete = lambda depot, ref: _git_brut(depot, "rev-parse", "-q", "--verify", f"{ref}^{{commit}}")[1].decode().strip()  # noqa: E731
     pointe, arbre, resultats = tete(racine, base), dossier / "fusion", []
-    (dossier / MAIN_VERIFIE).write_text(f"{pointe}\n", encoding="utf-8")
+    verifie = pointe
     _git_brut(dossier, "init", "-q", "fusion")  # its own repository, which reads the registry's objects
     (arbre / ".git/objects/info/alternates").write_text(str((pathlib.Path(racine) / _git_brut(racine, "rev-parse", "--git-common-dir")[1]
                                                              .decode().strip() / "objects").resolve()) + "\n", encoding="utf-8")
@@ -8751,16 +8751,18 @@ def passe_verifier(racine, dossier, base):
     finally:
         shutil.rmtree(arbre, ignore_errors=True)
     (dossier / RESULTATS).write_text("".join("\t".join(r) + "\n" for r in resultats), encoding="utf-8")
+    with open(os.environ.get("GITHUB_OUTPUT") or os.devnull, "a", encoding="utf-8") as f:  # what the merge job reads, and nothing else
+        print("acceptees=" + " ".join([verifie] + [f"{n}:{s}" for n, s, e in resultats if e == "merge"]), file=f)
     print("::notice title=Fusion pass::validated=%d " % len(resultats) + " ".join(f"{e}={sum(r[2] == e for r in resultats)}" for e in ("merge", "refused", "conflict", "council")))
 
 
-def passe_fusionner(dossier, depot, exclues):
+def passe_fusionner(dossier, depot, exclues, attendu, acceptees):
     """One REST merge per accepted PR, in order, bound to its checked head and to the main it was checked on (before the first, each
     merge's parent after). One refused three times is excluded; then, or if main moved, another pass (3 in a row at most) is asked."""
-    acceptees, fusionnees, attendu = [r for r in lire_tsv(dossier / RESULTATS) if r[2:] == ["merge"]], [], (dossier / MAIN_VERIFIE).read_text(encoding="utf-8").strip()
+    fusionnees = []
     arret = "main moved since the check" if acceptees and gh_api(f"repos/{depot}/git/ref/heads/main", "--jq", ".object.sha") != attendu else None
     exclues += ["0"] if arret else []
-    for numero, sha, _ in [] if arret else acceptees:
+    for numero, sha in [] if arret else acceptees:
         fusion, bien_formee = ("-X", "PUT", f"repos/{depot}/pulls/{numero}/merge", "-f", f"sha={sha}", "-f", "merge_method=squash", "--jq", ".sha"), re.fullmatch(r"[0-9]+", numero) and re.fullmatch(r"[0-9a-f]{40}", sha)
         nouveau = bien_formee and next(filter(None, (gh_api(*fusion) or time.sleep(PAUSE_FUSION * (i < 2)) for i in range(3))), "")  # a refusal may be momentary
         fusionnees += [numero] * bool(nouveau)
@@ -8782,7 +8784,8 @@ def cmd_passe_fusion(args):
                               [v[:3] for v in lire_tsv(args.validations) if len(v) >= 3 and v[0].isdigit()], args.base, args.ref_pr) or 0
     if args.etape == "verifier":
         return passe_verifier(args.registre or os.environ.get("BEE_REGISTRE") or RACINE_OUTIL, dossier, args.base) or 0
-    return passe_fusionner(dossier, args.depot, exclues) or 0
+    attendu, *acceptees = (args.acceptees or "-").split()  # main's checked commit, then « number:head » of each accepted PR
+    return passe_fusionner(dossier, args.depot, exclues, attendu, [(a.split(":") + [""])[:2] for a in acceptees]) or 0
 
 
 def cmd_verifier_fork(args):
@@ -11023,6 +11026,7 @@ def construire_analyseur():
     p.add_argument("--base", default="origin/main")
     p.add_argument("--ref-pr", default="refs/pull/{}/head", help="preparer: the remote ref of PR {}")
     p.add_argument("--depot", help="fusionner: owner/name")
+    p.add_argument("--acceptees", help="fusionner: the checked main's commit, then « number:head » of each accepted PR")
     p.add_argument("--exclure", default="", help="PR numbers this pass leaves out (passes before it could not merge them; 0: main moved)")
 
     p = ajouter("main-green", cmd_main_green, "Prints 'green' if suite.yml's runs on main (a saved actions/workflows/suite.yml/runs "

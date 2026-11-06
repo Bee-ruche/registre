@@ -22,11 +22,13 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  fusionner:
+  verifier:
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    permissions: {contents: read, pull-requests: read, actions: read}  # ruche-0120: the job that reads the PRs never writes
     env: {EXCLURE: "${{ inputs.exclure }}"}  # ruche-0120: the PRs the passes before this one could not merge
+    outputs: {acceptees: "${{ steps.verif.outputs.acceptees }}"}  # main's checked commit, then « number:head » of each accepted PR
     steps:
       - name: Code de confiance (branche principale)
         uses: actions/checkout@v4
@@ -62,12 +64,29 @@ jobs:
       - name: Vérifier chaque PR sans jeton, sur le main que laissent les précédentes (ruche-0120)
         id: verif
         run: python3 outils/bee.py passe-fusion verifier --dossier "$RUNNER_TEMP/passe"
-      - name: Fusionner
-        if: steps.verif.outcome == 'success'  # ruche-0120: each merge bound to its checked head and to the checked main
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: API budget, end (ruche-0121)
+        if: always()
+        env: {GITHUB_TOKEN: "${{ github.token }}"}
+        run: python3 outils/bee.py api-budget end --dossier "$RUNNER_TEMP/api-budget" --jeton GITHUB_TOKEN
+  fusionner:  # reads nothing from the PRs: only the numbers and heads the check accepted, and the main it checked
+    needs: verifier
+    if: contains(needs.verifier.outputs.acceptees, ':')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with: {ref: main, persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - name: Dépendances
+        run: pip install -r outils/requirements.txt
+      - name: API budget, start (ruche-0121; puts first on PATH a gh that logs each call)
+        env: {GITHUB_TOKEN: "${{ github.token }}"}
+        run: python3 outils/bee.py api-budget start --dossier "$RUNNER_TEMP/api-budget" --jeton GITHUB_TOKEN
+      - name: Fusionner, chaque PR liée à sa tête vérifiée et au main vérifié (ruche-0120)
+        env: {GH_TOKEN: "${{ github.token }}", ACCEPTEES: "${{ needs.verifier.outputs.acceptees }}", EXCLURE: "${{ inputs.exclure }}"}
         run: |
-          python3 outils/bee.py passe-fusion fusionner --dossier "$RUNNER_TEMP/passe" --depot "$GITHUB_REPOSITORY" --exclure "$EXCLURE"
+          python3 outils/bee.py passe-fusion fusionner --dossier "$RUNNER_TEMP/passe" --depot "$GITHUB_REPOSITORY" --acceptees "$ACCEPTEES" --exclure "$EXCLURE"
           [ ! -s "$RUNNER_TEMP/passe/fusionnees" ] || gh api -X POST "repos/$GITHUB_REPOSITORY/actions/workflows/site.yml/dispatches" -f ref=main || true  # ruche-0121: one call
       - name: API budget, end (ruche-0121)
         if: always()
