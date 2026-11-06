@@ -4517,7 +4517,6 @@ CHEMIN_RETRAITS, MARQUE_RETRAIT, PONCTUATION = "gouvernance/retraits.yaml", "[re
 # Réglages du conseil : une empreinte qui nomme plus de 8 passages est trop courante pour une personne ; 40 passages par retrait.
 RETRAIT_PASSAGES_MAX, RETRAIT_TOTAL_MAX, MARQUE_COURTE = 8, 40, "…"  # « … » quand la marque dépasserait une borne
 RETRAIT_SEMAINE_MAX = 40  # ruche-0116 : 40 passages sur 7 jours glissants, tous retraits confondus (le champ passages de chacun)
-SYMBOLES_ASCII = "".join(c for c in map(chr, range(33, 127)) if not c.isalnum())  # ruche-0140 : #octocat, octocat=, |octocat|…
 ELISION = re.compile(r"(?is)((?:[dlcjmnst]|qu|jusqu|lorsqu|puisqu)['’])?(.+?)(['’]s)?")
 # Ce qu'un retrait parcourt, par sorte (fichiers, schéma, textes libres) ; jamais le message d'une invitation, docs/ ni arbre/.
 PARCOURS = {"taches": (CHEMIN_TACHE, "tache", {"titre", "contexte", "critere_acceptation", "hors_perimetre", "texte"}),
@@ -4555,8 +4554,7 @@ def empreintes_passage(passage):
 
 
 def passages_retires(texte, empreintes, vus=None, marque=MARQUE_RETRAIT):
-    """Le texte où chaque passage qui la nomme (1 à 4 mots, sans ponctuation, symbole ASCII, élision ni possessif autour) devient la
-    marque ; `vus`
+    """Le texte où chaque passage qui la nomme (1 à 4 mots, sans ponctuation, élision ni possessif autour) devient la marque ; `vus`
     reçoit, pour chacun, (n° de son premier mot, ses empreintes, le passage)."""
     mots, morceaux, curseur, i, vus = [m.span() for m in re.finditer(r"[^\s…]+", texte)], [], 0, 0, [] if vus is None else vus
     while i < len(mots):
@@ -4564,13 +4562,17 @@ def passages_retires(texte, empreintes, vus=None, marque=MARQUE_RETRAIT):
             debut, fin = mots[i][0], mots[i + n - 1][1]
             passage = texte[debut:fin].strip(PONCTUATION) or " "
             debut, nu = debut + len(texte[debut:fin]) - len(texte[debut:fin].lstrip(PONCTUATION)), ELISION.fullmatch(passage)
-            nus = (len(nu[1] or "") + len(nu[2]) - len(nu[2].lstrip(SYMBOLES_ASCII)), nu[2].strip(SYMBOLES_ASCII))  # ruche-0140
-            if nom := next(((d, d + len(x), t) for d, x in ((0, passage), (len(nu[1] or ""), nu[2]), nus)
-                            if x.strip() and (t := empreintes_passage(x) & empreintes)), None):
+            d0, nus = len(nu[1] or ""), ((m.start(), re.findall(r"[^\W_]+|[\W_]+", m[1])) for m in re.finditer(  # ruche-0140 : ses
+                r"(?<![^\W_])(?=([^\W_]+(?:[\W_]+[^\W_]+){0,3}))", passage))  # 1 à 4 suites alphanumériques, quoi qui les entoure
+            if nom := next(((d, e, t) for g in (((0, len(passage), passage), (d0, d0 + len(nu[2]), nu[2])), ((a, e, "".join(p[:k:2]))
+                    for a, p in nus if a < mots[i][1] - debut for k in range(len(p), 0, -2) for e in [a + len("".join(p[:k]))]
+                    if e > mots[i + n - 1][0] - debut)) for d, e, x in g if x.strip() and (t := empreintes_passage(x) & empreintes)), None):
                 morceaux, curseur = morceaux + [texte[curseur:debut + nom[0]], marque], debut + nom[1]
                 vus.append((sum(a <= debut + nom[0] for a, _ in mots), nom[2], texte[debut + nom[0]:curseur]))
                 break
         i += n
+        if mots[i - 1][0] < curseur < mots[i - 1][1] and len(vus) <= RETRAIT_TOTAL_MAX:  # ruche-0140 : la suite du mot (bornée)
+            mots[i - 1], i = (curseur, mots[i - 1][1]), i - 1
     return "".join(morceaux) + texte[curseur:]
 
 
@@ -5434,8 +5436,7 @@ def verifier_retrait(reg, base, tete, changements, auteur, est_conseil, instant)
             elif statut_git == "M" and None not in (ancien, nouveau) and sorte_parcourue(chemin) and nouveau != ancien:
                 tete_d, (_, apres_d, t) = charger_texte_yaml(nouveau, chemin), retrait_de(reg, chemin, ancien, entree)
                 trouves.append(t)
-                t["#"] = []
-                ok = tete_d == apres_d and commentaires_en_place(ancien, nouveau, empreintes, t["#"]) and (  # ruche-0140
+                ok = tete_d == apres_d and commentaires_en_place(ancien, nouveau, empreintes, t.setdefault("#", [])) and (  # ruche-0140
                     sorte_parcourue(chemin) not in ("debats", "invitations") or nouveau == texte_apres(chemin, ancien, None, tete_d, set()))
         if not ok:
             problemes.append(f"{chemin} : un retrait demandé ne change, dans les fichiers qu'il parcourt, que les passages qui nomment "
@@ -10484,7 +10485,8 @@ def commentaires_yaml(texte, places=False):
     entre ses jetons. Le texte d'un bloc (| ou >) n'en est pas un. [] si le texte ne se lit pas (refusé par ailleurs).
     `places` : [((nombre de jetons avant lui, en fin de ligne ?), commentaire)] (ruche-0140)."""
     try:
-        couverts = sorted((j.start_mark.index, j.end_mark.index) for j in yaml.scan(texte, Loader=yaml.SafeLoader))
+        couverts = sorted(x for j in yaml.scan(texte, Loader=yaml.SafeLoader) for a, b in [(j.start_mark.index, j.end_mark.index)] for x in (
+            [(a, a + re.match(r"[|>][-+0-9]*", texte[a:a + 4]).end()), (texte.find("\n", a) % (len(texte) + 1), b)] if getattr(j, "style", None) in ("|", ">") else [(a, b)]))
     except yaml.YAMLError:
         return []
     trous, position = [], 0
@@ -10493,7 +10495,7 @@ def commentaires_yaml(texte, places=False):
             trous.append((k, position, texte[position:debut]))
         position = max(position, fin)
     trous.append((len(couverts), position, texte[position:]))
-    tous = [((k, not i and bool(texte[:o].rsplit("\n", 1)[-1].strip())), ligne.strip())
+    tous = [((k, not i and bool(texte[texte.rfind("\n", 0, o) + 1:o].strip())), ligne.strip())
             for k, o, morceau in trous for i, ligne in enumerate(morceau.split("\n")) if ligne.strip()]
     return tous if places else [c for _, c in tous]
 
@@ -10501,14 +10503,14 @@ def commentaires_yaml(texte, places=False):
 def commentaires_en_place(ancien, nouveau, empreintes, vus):
     """ruche-0140 : à chaque place (entre les mêmes jetons YAML, en fin de ligne ou non), les commentaires de `nouveau` sont, dans
     l'ordre, ceux d'`ancien` ou leur marque ; seul un commentaire qui la nomme s'ôte. `vus` reçoit les passages de ceux qui la nomment."""
-    a, n = commentaires_yaml(ancien, True), commentaires_yaml(nouveau, True)
-    for place in {p for p, _ in a + n}:
-        reste = [c for p, c in n if p == place]
-        for c in (c for p, c in a if p == place):
+    a, n = [(g := defaultdict(list), [g[p].append(c) for p, c in commentaires_yaml(x, True)])[0] for x in (ancien, nouveau)]
+    for place in a.keys() | n.keys():
+        reste = n[place][::-1]  # du dernier au premier : chacun s'ôte en temps constant
+        for c in a[place]:
             if (marque := passages_retires(c, empreintes, v := [])) != c:
                 vus += v
-            if reste and reste[0] in (c, marque):
-                reste.pop(0)
+            if reste and reste[-1] in (c, marque):
+                reste.pop()
             elif marque == c:
                 return False
         if reste:
