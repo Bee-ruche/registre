@@ -255,6 +255,17 @@ class TestFusionAutoNeMergeQuApresVerification(unittest.TestCase):
         self.assertNotRegex(texte, r"gh pr merge|pulls/[^ ]*/merge", "no other way to merge")
         self.assertEqual(texte.count("passe-fusion fusionner"), 1)
 
+    def test_a_pass_can_ask_for_another(self):
+        """A pass that could not merge every accepted PR asks for another (workflow_dispatch), which leaves out the PRs listed."""
+        flux = yaml.safe_load((RACINE / ".github/workflows/fusion-auto.yml").read_text(encoding="utf-8"))
+        self.assertEqual(flux[True]["workflow_dispatch"], {"inputs": {"exclure": {"default": ""}}})
+        job = flux["jobs"]["fusionner"]
+        self.assertEqual(job["env"], {"EXCLURE": "${{ inputs.exclure }}"})
+        self.assertTrue(job["if"].startswith("github.event_name == 'workflow_dispatch' || "))
+        self.assertIsInstance(job["timeout-minutes"], int)
+        for etape in ("passe-fusion preparer", "passe-fusion fusionner"):
+            self.assertIn('--exclure "$EXCLURE"', next(e["run"] for e in job["steps"] if etape in e.get("run", "")))
+
 
 class TestCiScope(unittest.TestCase):
     """ruche-0090: a registry PR that only adds or modifies self-service data files skips the tool and judge test suites
@@ -729,6 +740,7 @@ sys.exit(3 if a[:2] == ["pr", "view"] else 0)
         script = etapes["Lister les PR ouvertes et leurs validations (ruche-0120)"]["run"]
         reponses = {"graphql": {"data": {"repository": {"pullRequests": {"nodes": [
             {"number": 9, "headRefOid": "a" * 40, "author": {"login": "alice", "databaseId": 583231}},
+            {"number": 8, "isDraft": True, "headRefOid": "d" * 40, "author": {"login": "bruno", "databaseId": 2}},  # a draft is never merged
             {"number": 7, "headRefOid": "b" * 40, "author": None}, {"number": 6, "headRefOid": "c" * 40, "author": {"login": "robot[bot]"}}]}}}},
             "runs": {"workflow_runs": [{"id": 12, "head_sha": "a" * 40, "created_at": "2026-11-03T10:00:00Z", "event": "pull_request"}]}}
         dossier = pathlib.Path(tempfile.mkdtemp(dir=self.temp.name))
@@ -742,7 +754,7 @@ sys.exit(3 if a[:2] == ["pr", "view"] else 0)
         (dossier / "outils/bee.py").write_text("import sys\nprint('BEE', *sys.argv[1:])\n", encoding="utf-8")
         r = subprocess.run(["bash", "-e", "-c", script], cwd=dossier, capture_output=True, text=True,
                            env={**os.environ, "PATH": f"{dossier / 'bin'}{os.pathsep}{os.environ['PATH']}", "RUNNER_TEMP": str(dossier),
-                                "GITHUB_REPOSITORY": "Bee-ruche/registre"})
+                                "GITHUB_REPOSITORY": "Bee-ruche/registre", "EXCLURE": "12"})
         self.assertEqual(r.returncode, 0, r.stderr)
         passe = dossier / "passe"
         self.assertEqual((passe / "prs.tsv").read_text(encoding="utf-8"),
@@ -754,7 +766,8 @@ sys.exit(3 if a[:2] == ["pr", "view"] else 0)
         self.assertIn('pullRequests(states: OPEN, baseRefName: "main", first: 100, after: $endCursor)', appels[0])
         self.assertRegex(appels[1], r"^api repos/Bee-ruche/registre/actions/workflows/validation\.yml/runs\?event=pull_request&status=success"
                                     r"&per_page=100&created=%3E%3D20\d\d-\d\d-\d\dT\d\d:\d\d:\d\dZ --paginate --jq ")
-        self.assertEqual(r.stdout, f"BEE passe-fusion preparer --dossier {passe} --prs {passe}/prs.tsv --validations {passe}/validations.tsv\n")
+        self.assertIn("nodes { number isDraft headRefOid", appels[0])
+        self.assertEqual(r.stdout, f"BEE passe-fusion preparer --dossier {passe} --prs {passe}/prs.tsv --validations {passe}/validations.tsv --exclure 12\n")
 
     def test_content_creating_requests_of_a_gh_call(self):
         """Measured on gh 2.89 against a mock server: a merge is one query and one mutation, a closing with its comment one
@@ -2788,11 +2801,17 @@ class TestPasseFusion(BaseTest):
         prs = [("5", "a" * 40, "alice", "1"), ("6", "b2" * 20, "bruno", "2"), ("7", "c" * 40, "chloe", "3"), ("8", "d" * 40, "david", "4")]
         validations = [("100", "b1" * 20, "2026-10-27T10:00:00Z"), ("101", "a" * 40, "2026-10-27T10:01:00Z"),
                        ("102", "c" * 40, "2026-10-27T10:02:00Z"), ("103", "b2" * 20, "2026-10-27T10:03:00Z"),
-                       ("104", "a" * 40, "2026-10-27T10:04:00Z")]  # a re-run of a's validation keeps its place
+                       ("105", "b1" * 20, "2026-10-27T10:05:00Z")]  # a head validated again takes the place of its latest run
         # 6 was validated first, then pushed again: its new head goes behind those validated before it; 8 is not validated.
+        self.assertEqual(bee.ordre_de_passe(prs, validations[:4]), [("5", "a" * 40, "alice", "1", "2026-10-27T10:01:00Z"),
+                                                                    ("7", "c" * 40, "chloe", "3", "2026-10-27T10:02:00Z"),
+                                                                    ("6", "b2" * 20, "bruno", "2", "2026-10-27T10:03:00Z")])
+        # Pushed back to its first head, 6 waits behind all the others, with the time of that head's latest validation.
+        prs[1] = ("6", "b1" * 20, "bruno", "2")
         self.assertEqual(bee.ordre_de_passe(prs, validations), [("5", "a" * 40, "alice", "1", "2026-10-27T10:01:00Z"),
                                                                 ("7", "c" * 40, "chloe", "3", "2026-10-27T10:02:00Z"),
-                                                                ("6", "b2" * 20, "bruno", "2", "2026-10-27T10:03:00Z")])
+                                                                ("6", "b1" * 20, "bruno", "2", "2026-10-27T10:05:00Z")])
+        prs[1] = ("6", "b2" * 20, "bruno", "2")
         self.assertEqual(bee.ordre_de_passe(prs, validations[:3]), [("5", "a" * 40, "alice", "1", "2026-10-27T10:01:00Z"),
                                                                     ("7", "c" * 40, "chloe", "3", "2026-10-27T10:02:00Z")],
                          "a head pushed again and not yet validated waits")
@@ -2807,6 +2826,7 @@ class TestPasseFusion(BaseTest):
         self.assertEqual(resultats, [("11", honnete, "merge"), ("12", usurpee, "refused"), ("13", conflit, "conflict"),
                                      ("14", reservation, "merge")], texte)
         self.assertIn("::notice title=Fusion pass::validated=4 merge=2 refused=1 conflict=1 council=0", texte)
+        self.assertEqual((self.passe / bee.MAIN_VERIFIE).read_text(encoding="utf-8"), git(self.dossier, "rev-parse", "main"), "the main they were checked on")
         # Alone on main, the third PR merges: the conflict came from the main the first one left.
         self.assertEqual(self.verifier(("13", conflit, "chloe"))[0], [("13", conflit, "merge")])
         # The time of the PR is its validation's creation: one older than 24 hours is refused (ruche-0091: push again).
@@ -2827,39 +2847,139 @@ class TestPasseFusion(BaseTest):
         self.assertEqual([r[2] for r in resultats], ["merge", "merge", "merge", "refused"], texte)
         self.assertEqual([r[2] for r in self.verifier(("23", heads[3], "alice"))[0]], ["merge"], "alone, it is valid")
 
+    def test_a_check_that_outlasts_its_time_is_a_refusal(self):
+        honnete = self.pr("honnete", self.note("miniz-0001", "alice"))
+        appels, lancer_vrai = [], subprocess.run
+
+        def lancer_lent(commande, *args, **kwargs):  # the gate as `timeout` ends it
+            if "verifier-pr" not in commande:
+                return lancer_vrai(commande, *args, **kwargs)
+            appels.append(commande)
+            return subprocess.CompletedProcess(commande, 124, "", "")
+        with mock.patch.object(bee.subprocess, "run", lancer_lent):
+            resultats, texte = self.verifier(("11", honnete, "alice"))
+        self.assertEqual((resultats, appels[0][:2]), ([("11", honnete, "refused")], ["timeout", "600"]), texte)
+
+    def test_a_pass_takes_100_prs_at_most_and_a_slow_read_is_an_empty_one(self):
+        """The first 100 in the line (the others wait for the next pass); a GitHub read that outlasts its time is empty (fails closed)."""
+        prs = [(str(n), f"{n:040x}", "alice", "1") for n in range(1, 151)]
+        validations = [(str(1000 + n), f"{n:040x}", "2026-10-27T10:00:00Z") for n in range(150, 0, -1)]
+        recuperees = []
+        with mock.patch.object(bee, "_git_brut", lambda depot, *a: recuperees.extend(a[3:]) or (1, b"")):
+            bee.passe_preparer(bee.Registre(str(self.dossier)), self.passe, prs, validations, "main", "refs/pull/{}/head")
+        self.assertEqual(recuperees[:100], [f"+refs/pull/{n}/head:refs/bee-passe/{n}" for n in range(1, 101)])
+        self.assertEqual(len({r for r in recuperees if r.startswith("+")}), 100)
+        with mock.patch.object(bee.subprocess, "run", return_value=subprocess.CompletedProcess([], 124, "late", "")) as lancer_:
+            self.assertEqual(bee.gh_api("user/1"), "")
+        self.assertEqual(lancer_.call_args[0][0], ["timeout", "60", "gh", "api", "user/1"])
+
     def faux_gh(self, script):
         bin_ = pathlib.Path(self.temp.name) / "bin"
         bin_.mkdir(exist_ok=True)
         (bin_ / "gh").write_text(f'#!/bin/sh\nprintf "%s\\n" "$*" >> "{self.passe}/gh.log"\n{script}\n', encoding="utf-8")
         (bin_ / "gh").chmod(0o755)
-        return {**os.environ, "PATH": f"{bin_}{os.pathsep}{os.environ['PATH']}"}
+        return {**os.environ, "PATH": f"{bin_}{os.pathsep}{os.environ['PATH']}", "BEE_PAUSE_FUSION": "0"}
 
-    def fusionner(self, env):
+    def fusionner(self, env, *options):
+        (self.passe / "gh.log").unlink(missing_ok=True)
         r = subprocess.run([sys.executable, str(RACINE / "outils/bee.py"), "passe-fusion", "fusionner", "--dossier", str(self.passe),
-                            "--depot", "Bee-ruche/registre"], capture_output=True, text=True, env=env)
+                            "--depot", "Bee-ruche/registre", *options], capture_output=True, text=True, env=env)
         self.assertEqual(r.returncode, 0, r.stderr)
         journal = self.passe / "gh.log"
         return r.stdout, journal.read_text(encoding="utf-8").splitlines() if journal.exists() else []
 
+    # A GitHub stand-in: main is m...m (or $MAIN); the squash merge of PR n answers its commit s<n>0...0, whose parent is the main
+    # before it (or $PARENT); PRs in $REFUSE are always refused, those in $MOMENT once.
+    GITHUB = r'''import os, pathlib, sys
+a, d = sys.argv[1:], pathlib.Path(os.environ["D"])
+with open(d / "gh.log", "a") as f:
+    print(*a, file=f)
+etat = d / "github"
+main, vus = (etat.read_text().split(";") if etat.exists() else ["m" * 40, ""])
+if a[1].endswith("git/ref/heads/main"):
+    print(os.environ.get("MAIN", main))
+elif "PUT" in a:
+    n = a[3].split("/")[4]
+    if n in os.environ.get("REFUSE", "").split() or (n in os.environ.get("MOMENT", "").split() and f",{n}," not in vus):
+        etat.write_text(f"{main};{vus},{n},")
+        sys.exit(1)
+    nouveau = f"s{n}".ljust(40, "0")
+    (d / f"parent{n}").write_text(main)
+    etat.write_text(f"{nouveau};{vus}")
+    print(nouveau)
+elif "/commits/" in a[1]:
+    print(os.environ.get("PARENT") or (d / f"parent{a[1].split('/commits/s')[1].rstrip('0')}").read_text())
+'''
+
+    def faux_github(self):
+        bin_ = pathlib.Path(self.temp.name) / "bin"
+        bin_.mkdir(exist_ok=True)
+        (bin_ / "gh").write_text(f"#!{sys.executable}\n{self.GITHUB}", encoding="utf-8")
+        (bin_ / "gh").chmod(0o755)
+        return {**os.environ, "PATH": f"{bin_}{os.pathsep}{os.environ['PATH']}", "BEE_PAUSE_FUSION": "0", "D": str(self.passe)}
+
+    def merges(self, appels):
+        return [a.split("/")[4] for a in appels if a.startswith("api -X PUT")]
+
     def test_each_merge_is_one_rest_call_bound_to_its_checked_head(self):
         a, b, c, d = ("a" * 40, "b" * 40, "c" * 40, "d" * 40)
+        (self.passe / bee.MAIN_VERIFIE).write_text("m" * 40 + "\n", encoding="utf-8")
         (self.passe / bee.RESULTATS).write_text(f"1\t{a}\tmerge\n2\t{b}\trefused\n3\t{c}\tconflict\n4\t{d}\tmerge\n5\t{a}\tcouncil\n", encoding="utf-8")
-        sortie, appels = self.fusionner(self.faux_gh("exit 0"))
-        self.assertEqual(appels, [f"api -X PUT repos/Bee-ruche/registre/pulls/{n}/merge -f sha={s} -f merge_method=squash" for n, s in (("1", a), ("4", d))])
+        env = self.faux_github()
+        sortie, appels = self.fusionner(env)
+        s1 = "s1" + "0" * 38
+        self.assertEqual(appels, ["api repos/Bee-ruche/registre/git/ref/heads/main --jq .object.sha",
+                                  f"api -X PUT repos/Bee-ruche/registre/pulls/1/merge -f sha={a} -f merge_method=squash --jq .sha",
+                                  f"api repos/Bee-ruche/registre/commits/{s1} --jq .parents[0].sha",
+                                  f"api -X PUT repos/Bee-ruche/registre/pulls/4/merge -f sha={d} -f merge_method=squash --jq .sha",
+                                  f"api repos/Bee-ruche/registre/commits/{'s4' + '0' * 38} --jq .parents[0].sha"])
         self.assertEqual((self.passe / "fusionnees").read_text(encoding="utf-8"), "1\n4\n")
-        self.assertIn("::notice title=Fusion pass::merged=2", sortie)
-        # A merge GitHub refuses (the head moved: 409; not mergeable: 405) stops the pass: the PRs after it were checked on a
-        # main that held it.
-        (self.passe / "gh.log").unlink()
-        sortie, appels = self.fusionner(self.faux_gh('case "$*" in *pulls/1/merge*) echo "Head branch was modified" >&2; exit 1;; esac'))
-        self.assertEqual(len(appels), 1)
-        self.assertEqual((self.passe / "fusionnees").read_text(encoding="utf-8"), "")
-        self.assertIn("PR #1 not merged (Head branch was modified): the pass stops", sortie)
-        # A malformed line is never sent to GitHub.
-        (self.passe / "gh.log").unlink()
+        self.assertIn("::notice title=Fusion pass::merged=2\n", sortie)
+        # A malformed line is never sent to GitHub, and nothing after it is merged.
+        (self.passe / "github").unlink()
         (self.passe / bee.RESULTATS).write_text(f"1 --x\t{a}\tmerge\n4\t{d}\tmerge\n", encoding="utf-8")
-        sortie, appels = self.fusionner(self.faux_gh("exit 0"))
-        self.assertEqual((appels, (self.passe / "fusionnees").read_text(encoding="utf-8")), ([], ""))
+        sortie, appels = self.fusionner(env)
+        self.assertEqual((self.merges(appels), (self.passe / "fusionnees").read_text(encoding="utf-8")), ([], ""))
+
+    def resultats(self, *numeros):
+        (self.passe / bee.MAIN_VERIFIE).write_text("m" * 40 + "\n", encoding="utf-8")
+        (self.passe / bee.RESULTATS).write_text("".join(f"{n}\t{n * 40}\tmerge\n" for n in numeros), encoding="utf-8")
+        (self.passe / "github").unlink(missing_ok=True)
+
+    def test_a_merge_github_refuses_does_not_hold_the_others_back(self):
+        """A merge refused for a moment is tried again; one still refused is excluded, and the pass asks for another, which
+        checks the PRs after it on the real main; three in a row at most."""
+        env = self.faux_github()
+        self.resultats("1", "2", "3")
+        sortie, appels = self.fusionner({**env, "MOMENT": "2"})
+        self.assertEqual(self.merges(appels), ["1", "2", "2", "3"])
+        self.assertEqual((self.passe / "fusionnees").read_text(encoding="utf-8"), "1\n2\n3\n")
+        self.assertFalse([a for a in appels if "dispatches" in a])
+        self.resultats("1", "2", "3")
+        sortie, appels = self.fusionner({**env, "REFUSE": "2"}, "--exclure", "7")
+        self.assertEqual(self.merges(appels), ["1", "2", "2", "2"], "tried three times, then the PRs after it wait")
+        self.assertEqual((self.passe / "fusionnees").read_text(encoding="utf-8"), "1\n")
+        self.assertIn("PR #2: not merged: the pass stops", sortie)
+        self.assertEqual(appels[-1], "api -X POST repos/Bee-ruche/registre/actions/workflows/fusion-auto.yml/dispatches -f ref=main -f inputs[exclure]=7,2")
+        self.resultats("1", "2")
+        sortie, appels = self.fusionner({**env, "REFUSE": "1"}, "--exclure", "7,8,9")
+        self.assertFalse([a for a in appels if "dispatches" in a], "three passes in a row asked for: no more")
+        self.resultats("2")
+        self.assertFalse([a for a in self.fusionner({**env, "REFUSE": "2"})[1] if "dispatches" in a], "nothing left after it")
+
+    def test_merges_happen_only_on_the_main_that_was_checked(self):
+        env = self.faux_github()
+        self.resultats("1", "2")
+        sortie, appels = self.fusionner({**env, "MAIN": "e" * 40})
+        self.assertEqual((self.merges(appels), appels[-1]), ([], "api -X POST repos/Bee-ruche/registre/actions/workflows/fusion-auto.yml/dispatches "
+                                                                  "-f ref=main -f inputs[exclure]=0"))
+        self.assertIn("main moved since the check: the pass stops", sortie)
+        # Main moved between the first check and the merge: the PR is merged, the next ones wait for another pass.
+        sortie, appels = self.fusionner({**env, "PARENT": "e" * 40})
+        self.assertEqual(self.merges(appels), ["1"])
+        self.assertEqual((self.passe / "fusionnees").read_text(encoding="utf-8"), "1\n")
+        self.assertIn("PR #1: main moved during the pass: the pass stops", sortie)
+        self.assertTrue(appels[-1].endswith("inputs[exclure]=0"))
 
     def test_preparer_keeps_validated_data_prs_and_reads_what_the_gate_needs(self):
         origine = pathlib.Path(self.temp.name) / "origine.git"
@@ -2891,6 +3011,11 @@ class TestPasseFusion(BaseTest):
         self.assertEqual((self.passe / "gh.log").read_text(encoding="utf-8").splitlines(),
                          [f"api repos/Bee-ruche/minizBee/pulls/99007 --jq {bee.AUTEUR_PR_JQ}", "api user/12 --jq .created_at[:10]"])
         self.assertEqual(bee.lire_auteurs_pr(self.passe / bee.AUTEURS_PASSE), {"https://github.com/Bee-ruche/minizBee/pull/99007": ("alice", 11)})
+        # A pass asked for by another leaves out the PRs that one could not merge (numbers only; 0: main had moved).
+        r = subprocess.run([sys.executable, str(RACINE / "outils/bee.py"), "--registre", str(self.dossier), "passe-fusion", "preparer",
+                            "--dossier", str(self.passe), "--prs", str(self.passe / "prs.tsv"), "--validations", str(self.passe / "validations.tsv"),
+                            "--ref-pr", "refs/heads/pr/{}", "--exclure", "0,1"], capture_output=True, text=True, env=env)
+        self.assertEqual((r.returncode, [c[0] for c in bee.lire_tsv(self.passe / bee.CANDIDATS)]), (0, ["2"]), r.stderr)
 
 
 class TestPullRequests(BaseTest):

@@ -4,13 +4,13 @@
 # Sécurité : ce job a un jeton en écriture, donc il n'exécute JAMAIS le code de la PR.
 # Il utilise l'outil bee de la branche principale et lit les fichiers de la PR comme
 # des données, sur une fusion simulée avec main (pour voir l'état réel après fusion).
-# ruche-0120 (E1) : une passe fusionne toutes les PR de données validées, dans l'ordre, chacune liée à sa tête vérifiée.
 name: Fusion automatique
 
 on:
   workflow_run:
     workflows: ["Validation du registre"]
     types: [completed]
+  workflow_dispatch: {inputs: {exclure: {default: ""}}}  # ruche-0120: a pass that could not merge every accepted PR asks for another
 
 permissions:
   contents: write
@@ -23,8 +23,10 @@ concurrency:
 
 jobs:
   fusionner:
-    if: github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion == 'success'
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env: {EXCLURE: "${{ inputs.exclure }}"}  # ruche-0120: the PRs the passes before this one could not merge
     steps:
       - name: Code de confiance (branche principale)
         uses: actions/checkout@v4
@@ -47,27 +49,25 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           d="$RUNNER_TEMP/passe"; mkdir -p "$d"
-          # One GraphQL query per 100 open PRs to main, all pages: number, head, author and its account number (no other call).
+          # One GraphQL query per 100 open PRs to main, all pages: number, head, author and its account number (no other call); no draft.
           gh api graphql --paginate -f owner="${GITHUB_REPOSITORY%/*}" -f name="${GITHUB_REPOSITORY#*/}" -f query='query($owner: String!, $name: String!, $endCursor: String) {
             repository(owner: $owner, name: $name) { pullRequests(states: OPEN, baseRefName: "main", first: 100, after: $endCursor) {
-              pageInfo { hasNextPage endCursor } nodes { number headRefOid author { login ... on User { databaseId } } } } } }' \
-            --jq '.data.repository.pullRequests.nodes[] | [.number, .headRefOid, (.author.login // ""), (.author.databaseId // "")] | @tsv' > "$d/prs.tsv"
+              pageInfo { hasNextPage endCursor } nodes { number isDraft headRefOid author { login ... on User { databaseId } } } } } }' \
+            --jq '.data.repository.pullRequests.nodes[] | select(.isDraft | not) | [.number, .headRefOid, (.author.login // ""), (.author.databaseId // "")] | @tsv' > "$d/prs.tsv"
           # Successful validations of the last 24 hours (older: refused, ruche-0091), 100 a page: the order and time of each PR.
           depuis=$(date -u -d '-24 hours' +%Y-%m-%dT%H:%M:%SZ)
           gh api "repos/$GITHUB_REPOSITORY/actions/workflows/validation.yml/runs?event=pull_request&status=success&per_page=100&created=%3E%3D$depuis" \
             --paginate --jq '.workflow_runs[] | [.id, .head_sha, .created_at] | @tsv' > "$d/validations.tsv"
-          # Heads fetched without a token (public registry); each declared fork PR's author; the account date for a new member.
-          python3 outils/bee.py passe-fusion preparer --dossier "$d" --prs "$d/prs.tsv" --validations "$d/validations.tsv"
+          python3 outils/bee.py passe-fusion preparer --dossier "$d" --prs "$d/prs.tsv" --validations "$d/validations.tsv" --exclure "$EXCLURE"  # heads fetched without a token
       - name: Vérifier chaque PR sans jeton, sur le main que laissent les précédentes (ruche-0120)
         id: verif
         run: python3 outils/bee.py passe-fusion verifier --dossier "$RUNNER_TEMP/passe"
       - name: Fusionner
-        # Only after the check ran and succeeded; each merge is bound to the head that was checked (the API's sha).
-        if: steps.verif.outcome == 'success'
+        if: steps.verif.outcome == 'success'  # ruche-0120: each merge bound to its checked head and to the checked main
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          python3 outils/bee.py passe-fusion fusionner --dossier "$RUNNER_TEMP/passe" --depot "$GITHUB_REPOSITORY"
+          python3 outils/bee.py passe-fusion fusionner --dossier "$RUNNER_TEMP/passe" --depot "$GITHUB_REPOSITORY" --exclure "$EXCLURE"
           [ ! -s "$RUNNER_TEMP/passe/fusionnees" ] || gh api -X POST "repos/$GITHUB_REPOSITORY/actions/workflows/site.yml/dispatches" -f ref=main || true  # ruche-0121: one call
       - name: API budget, end (ruche-0121)
         if: always()
