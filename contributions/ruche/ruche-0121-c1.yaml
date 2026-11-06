@@ -1,0 +1,13 @@
+id: ruche-0121-c1
+tache: ruche-0121
+auteur: bidji29
+pr: https://github.com/Bee-ruche/registre/pull/186
+resume: Each workflow logs the API it spends per token, the account date is read only for a new member
+  file, and data rebuilds the site at most every few minutes.
+statut: integree
+soumise_le: '2026-11-03T00:47:58Z'
+engage_depuis: '2026-11-02T16:02:02Z'
+relectures: []
+decidee_le: '2026-11-03T01:02:43Z'
+motif_decision: 'Hive tooling contribution: registry PR #186 merged at the judged commit 2485aa3 under the council''s permanent authorisation, after an independent adversarial review in a separate session, made with the architect''s brief (nothing on workflow security; one serious finding on the measurement window and four minor ones, all fixed and verified by the same reviewer, whose run of the full suite passed); CI green on the judged commit (valider, suite / tests). R1: 190 lines changed outside tests, for an M task at 200. Criterion 3 (the same measure on main) comes as a note within 3 days. Recorded by hand: it changes workflows. Submitted inside the code PR.'
+fusion_sha: 1f2e749be1f8025a8d4786af523ee54670b9812d

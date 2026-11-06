@@ -39,6 +39,9 @@ jobs:
           python-version: "3.12"
       - name: Dépendances
         run: pip install -r outils/requirements.txt
+      - name: API budget, start (ruche-0121; puts first on PATH a gh that logs each call)
+        env: {GITHUB_TOKEN: "${{ github.token }}"}
+        run: python3 outils/bee.py api-budget start --dossier "$RUNNER_TEMP/api-budget" --jeton GITHUB_TOKEN
       - name: Récupérer les verdicts
         env:
           GH_TOKEN: ${{ github.token }}
@@ -131,7 +134,7 @@ jobs:
             # main a pu avancer pendant ce passage (fusions libre-service) : se rebaser, revalider, réessayer.
             for essai in 1 2 3; do
               if git pull -q --rebase origin main && python3 outils/bee.py valider && git push origin HEAD:main; then
-                gh workflow run site.yml --ref main || true
+                gh api -X POST "repos/$GITHUB_REPOSITORY/actions/workflows/site.yml/dispatches" -f ref=main || true  # ruche-0121: one call
                 exit 0
               fi
               git rebase --abort 2>/dev/null || true
@@ -140,3 +143,7 @@ jobs:
             echo "::error::publication impossible après 3 essais ; le prochain passage refera le travail (idempotent)."
             exit 1
           fi
+      - name: API budget, end (ruche-0121)
+        if: always()
+        env: {GITHUB_TOKEN: "${{ github.token }}"}
+        run: python3 outils/bee.py api-budget end --dossier "$RUNNER_TEMP/api-budget" --jeton GITHUB_TOKEN
