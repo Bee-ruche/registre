@@ -3623,7 +3623,8 @@ def verifier_debat(reg, chemin, statut_git, ancien, nouveau, auteur, *, est_cons
     # --- Arguments : ajout seul ; seul doublon_de peut être posé sur un argument existant. ---
     rapporteur = base.get("rapporteur")
     proposant = nouveau.get("ouvert_par") if nouveau.get("invitation") else None  # ruche-0050
-    fini = sans_suite_attendue(reg, ancien) if statut_git == "M" else None  # ruche-0139: judged on main
+    fini = sans_suite_attendue(reg, ancien) if statut_git == "M" else None  # ruche-0139: judged on main; frozen but for its closing
+    exiger(not fini or all(ancien.get(c) == nouveau.get(c) for c in {*ancien, *nouveau} - set(CLES_CLOTURE)), FIN_SANS_SUITE.format(fini))
     anciens = base.get("arguments") if isinstance(base.get("arguments"), list) else []
     nouveaux = nouveau.get("arguments") if isinstance(nouveau.get("arguments"), list) else []
     ajoutes = []
@@ -3649,7 +3650,6 @@ def verifier_debat(reg, chemin, statut_git, ancien, nouveau, auteur, *, est_cons
     if ajoutes:
         natures.append("argument")
         exiger(membre, f"{auteur} doit d'abord s'inscrire (bee inscrire)")
-        exiger(not fini, FIN_SANS_SUITE.format(fini))
     precedent = _instant_ou_rien(base.get("ouvert_le"))
     for x in anciens:
         moment = _instant_ou_rien(x.get("le")) if isinstance(x, dict) else None
@@ -3764,8 +3764,8 @@ def verifier_debat(reg, chemin, statut_git, ancien, nouveau, auteur, *, est_cons
                 exiger(privilegie and etat_invitation(inv) != "proposee", "an invitation's debate is closed by a guardian or the "
                        "council only, once the invitation is no longer proposed (decided in the same PR at the latest)")
             if fini:
-                exiger((est_conseil or (status and auteur in gardiens_en_fonction(reg))) and nouveau.get("issue") == "sans_suite",
-                       FIN_SANS_SUITE.format(fini))
+                exiger((est_conseil or (status and auteur in gardiens_en_fonction(reg) and not same_person(reg, auteur, proposant)
+                        and not garanti_par_proposant(reg, auteur, proposant))) and nouveau.get("issue") == "sans_suite", FIN_SANS_SUITE.format(fini))
             exiger(nouveau.get("clos_par") == auteur, f"clos_par : la clôture est signée de son auteur ({auteur})")
             date_recente(nouveau.get("clos_le"), "clos_le")
             if exiger(nouveau.get("issue") in ISSUES, "la clôture nomme ce qui sort du débat : issue proposition, tache, decision ou "
@@ -5071,8 +5071,15 @@ def sans_suite_attendue(reg, debat):
     return inv["id"] if fini else None
 
 
-FIN_SANS_SUITE = ("{} ended without being accepted : its debate takes no new argument, and only a guardian in office or the council "
-                  "closes it, with the issue sans_suite (ruche-0139)")
+def garanti_par_proposant(reg, gardien, proposant):
+    """The guardian's guarantor is the proposer, or also directs the proposer (docs/garants.md): by person, every entry."""
+    qui = reg.identites
+    siens, leurs = ([m.get("garant") for m in reg.fiches_gardiens if qui.meme(m.get("pseudo"), x)] for x in (gardien, proposant))
+    return any(qui.meme(g, proposant) or any(qui.meme(g, h) for h in leurs) for g in siens)
+
+
+FIN_SANS_SUITE = ("{} ended without being accepted : its debate takes no new argument, synthesis or duplicate marking ; only a guardian "
+                  "in office (not guaranteed by or with the proposer) or the council closes it, with the issue sans_suite (ruche-0139)")
 
 
 def refus_debat_invitation(reg, inv, accord=True, clos=False, avant=None):
@@ -5146,8 +5153,7 @@ def refus_geste(reg, ancien, nouveau, geste, auteur, instant, publication=None, 
                                       "dont le garant n'est pas révoqué, donne l'accord de gardien")
         qui = reg.identites  # ruche-0051: by person, every guardian entry of each person, whatever their order in the file
         exiger(not qui.meme(auteur, proposant), "on ne donne pas son accord à sa propre invitation (ni à celle d'un compte lié)")
-        siens, leurs = ([m.get("garant") for m in reg.fiches_gardiens if qui.meme(m.get("pseudo"), x)] for x in (auteur, proposant))
-        exiger(not any(qui.meme(g, proposant) or any(qui.meme(g, h) for h in leurs) for g in siens),
+        exiger(not garanti_par_proposant(reg, auteur, proposant),
                f"le garant de {auteur} est le proposant, ou dirige aussi le proposant : l'accord d'un gardien vient d'ailleurs "
                "(docs/garants.md)")
         exiger(*debat_tenu)
@@ -7808,6 +7814,8 @@ def debattre_synthetiser(args):
     reg.exiger_membre(u)
     chemin, d = reg.debat(args.debat)
     _exiger_ouvert(args.debat, d)
+    if sans_suite_attendue(reg, d):
+        raise ErreurBee(FIN_SANS_SUITE.format(sans_suite_attendue(reg, d)))
     d = dict(d)
     absent = d.get("rapporteur") if d.get("rapporteur") != u else None
     suivant = _appliquer_synthese(reg, d, u, _texte_ou_fichier(args, "synthèse"), args.suivant, maintenant())
@@ -7827,6 +7835,8 @@ def debattre_doublon(args):
     _exiger_ouvert(args.debat, d)
     if u != d.get("rapporteur") and u not in reg.privilegies():
         raise ErreurBee(f"seuls le rapporteur ({d.get('rapporteur') or RAPPORTEUR_ABSENT}) ou un gardien marquent un doublon")
+    if sans_suite_attendue(reg, d):
+        raise ErreurBee(FIN_SANS_SUITE.format(sans_suite_attendue(reg, d)))
     arguments = [dict(a) for a in arguments_de(d)]
     rang = next((i for i, a in enumerate(arguments) if a.get("id") == args.argument), None)
     cible = next((i for i, a in enumerate(arguments) if a.get("id") == args.de), None)
@@ -7896,7 +7906,8 @@ def debattre_clore(args):
     if d.get("invitation") and (not privilegie or etat_invitation(reg.invitations.get(d["invitation"], (None, {}))[1]) == "proposee"):
         raise ErreurBee(f"{args.debat} is {d['invitation']}'s debate : a guardian or the council closes it, once the invitation is no "
                         "longer proposed (decided in the same PR at the latest) (ruche-0050)")
-    if sans_suite_attendue(reg, d) and (u not in gardiens_en_fonction(reg) | reg.conseil or args.issue != "sans_suite"):
+    if sans_suite_attendue(reg, d) and (args.issue != "sans_suite" or args.synthese or u not in reg.conseil and (u not in gardiens_en_fonction(reg)
+                                        or same_person(reg, u, d["ouvert_par"]) or garanti_par_proposant(reg, u, d["ouvert_par"]))):
         raise ErreurBee(FIN_SANS_SUITE.format(sans_suite_attendue(reg, d)))
     reference = args.reference or ""
     probleme = probleme_reference(reg, args.issue, reference)

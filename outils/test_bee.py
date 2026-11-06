@@ -13234,6 +13234,68 @@ class TestDebatSansSuiteRuche0139(BaseRevueRuche0020):
                     self.assertIn("cloture_debat", texte)
                     self.abandonner()
 
+    def figer_avec_a2(self):
+        """chloe argumente pour (A2) dans D-0002 après la synthèse de bruno, puis le conseil consigne le refus de I-0001 ; plus de
+        72 h passent : A2 attend la synthèse, et le rapporteur pourrait être relevé dans un débat ordinaire."""
+        self.jusqu_a("consigner-relance")
+        self.a("2026-11-16T15:00:00Z")
+        self.branche()
+        self.argumenter("chloe", "pour", "Les faits sont publics.", debat="D-0002")
+        self.publier("chloe", "argument")
+        self.a("2026-11-30T15:00:00Z")
+        self.branche()
+        self.geste("consigner-reponse", "bidji29", "--valeur", "refusee")
+        self.publier("bidji29", "reponse_invitation", libre=False)
+        self.a("2026-12-01T16:00:00Z")
+
+    def test_plus_de_synthese_ni_de_releve(self):
+        self.figer_avec_a2()
+        for qui, suivant in (("bruno", "chloe"), ("chloe", "bruno")):  # le rapporteur, puis la relève d'un rapporteur absent
+            with self.subTest(qui=qui):
+                self.ko(self.FIN, "debattre", "synthetiser", "D-0002", "--utilisateur", qui, "--texte", "Deux avis pour.")
+                self.branche()
+                self.ecrire({**self.debat("D-0002"), "synthese": "Deux avis pour.", "synthese_par": qui, "synthese_le": self.maintenant(),
+                             "synthese_couvre": "A2", "rapporteur": suivant}, "D-0002")
+                self.commit()
+                self.refusee(qui, self.FIN)
+                self.abandonner()
+        self.ko(self.FIN, "debattre", "clore", "D-0002", "--utilisateur", "gina", "--issue", "sans_suite", "--synthese", "Deux avis.")
+        self.branche()
+        self.ok("debattre", "clore", "D-0002", "--utilisateur", "gina", "--issue", "sans_suite")
+        self.publier("gina", "cloture_debat")
+
+    def test_plus_de_doublon(self):
+        self.figer_avec_a2()
+        self.ko(self.FIN, "debattre", "doublon", "D-0002", "--argument", "A2", "--de", "A1", "--utilisateur", "gina")
+        self.branche()
+        d = self.debat("D-0002")
+        self.ecrire({**d, "arguments": [d["arguments"][0], {**d["arguments"][1], "doublon_de": "A1", "doublon_par": "gina"}]}, "D-0002")
+        self.commit()
+        self.refusee("gina", self.FIN)
+        self.abandonner()
+
+    def test_un_gardien_garanti_par_le_proposant_ou_avec_lui_ne_le_clot_pas(self):
+        self.finir("refusee")
+        (self.dossier / "gouvernance/gardiens.yaml").write_text(
+            "membres:\n  - pseudo: gina\n    garant: hector\n  - pseudo: ivan\n    garant: alice\n  - pseudo: alice\n    garant: kim\n"
+            "  - pseudo: jules\n    garant: kim\n", encoding="utf-8")
+        (self.dossier / "gouvernance/garants.yaml").write_text("".join(
+            f"  - pseudo: {g}\n    identite_publique: {g.title()}\n" for g in ("hector", "alice", "kim")).join(("membres:\n", "")),
+            encoding="utf-8")
+        self.commit("sur main : ivan garanti par alice (la proposante), jules par kim, qui garantit aussi alice")
+        for qui in ("ivan", "jules", "alice"):
+            with self.subTest(qui=qui):
+                self.ko(self.FIN, "debattre", "clore", "D-0002", "--utilisateur", qui, "--issue", "sans_suite")
+                self.branche()
+                self.ecrire({**self.debat("D-0002"), "statut": "clos", "clos_le": self.maintenant(), "clos_par": qui,
+                             "issue": "sans_suite", "reference": ""}, "D-0002")
+                self.commit()
+                self.refusee(qui, self.FIN)
+                self.abandonner()
+        self.branche()
+        self.ok("debattre", "clore", "D-0002", "--utilisateur", "gina", "--issue", "sans_suite")
+        self.publier("gina", "cloture_debat")
+
     def test_bee_debats_montre_le_debat_qui_attend_sa_cloture(self):
         self.jusqu_a("consigner-relance")
         etat = lambda: {x["id"]: x["attend_cloture"] for x in json.loads(self.ok("debats", "--json"))}  # noqa: E731
