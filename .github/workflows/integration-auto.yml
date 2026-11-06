@@ -81,13 +81,13 @@ jobs:
           BEE_INTEGRATION_TOKEN: ${{ secrets.BEE_INTEGRATION_TOKEN }}
         run: |
           tmp="${RUNNER_TEMP:-$(mktemp -d)}"
-          # ruche-0122: every PR read in bulk, as in verdicts.yml (an unreadable one is left out of the pass).
+          # ruche-0122: every PR read in bulk, as in verdicts.yml (an unreadable one, or one not a user's, is left out of the pass).
           python3 outils/bee.py en-attente --pr-states \
-            | python3 -c 'import json, sys; [print(c["id"], c["pr"], c.get("sha_verdict") or "-", c.get("auteur") or "-", c["pr_state"], c["pr_head"], c["pr_merge"], c["pr_author"], c["pr_person"], sep="\t") for c in json.load(sys.stdin) if c.get("pr") and c.get("pr_state")]' \
+            | python3 -c 'import json, sys; [print(c["id"], c["pr"], c.get("sha_verdict") or "-", c.get("auteur") or "-", c["pr_state"], c["pr_head"], c["pr_merge"], c["pr_author"], c["pr_author_id"], c["pr_person"], sep="\t") for c in json.load(sys.stdin) if c.get("pr") and c.get("pr_state")]' \
             > "$tmp/a_integrer.tsv"
           : > "$tmp/a_clore.txt"
           : > "$tmp/fusionnees.txt"
-          while IFS=$'\t' read -r id pr sha auteur etat tete fusion auteur_pr personne; do
+          while IFS=$'\t' read -r id pr sha auteur etat tete fusion auteur_pr compte_pr personne; do
             depot=$(printf '%s' "$pr" | sed -E 's#^https://github\.com/([A-Za-z0-9-]+/[A-Za-z0-9_.-]+)/pull/[0-9]+$#\1#')
             if [ "$etat" = "CLOSED" ]; then
               # Clôturée après les intégrations de ce passage (une concurrente intégrée l'écarte au lieu de l'annuler).

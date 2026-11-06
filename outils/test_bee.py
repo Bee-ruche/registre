@@ -5112,7 +5112,7 @@ if args[:2] == ["pr", "view"]:
     pr = etat.get(args[2])
     if pr is None:
         sys.exit(1)
-    auteur = pr.get("auteur", "?")
+    auteur = pr.get("auteur", "?") if pr.get("type_auteur", "User") == "User" else "app/" + pr.get("auteur", "?")
     reponses = {"state,headRefOid,mergeCommit": f"{pr['state']} {pr['head']} {pr.get('merge') or '-'}",
                 "state,headRefOid,mergeCommit,author": f"{pr['state']} {pr['head']} {pr.get('merge') or '-'} {auteur}",
                 "headRefOid,author": f"{pr['head']} {auteur}",
@@ -5124,9 +5124,13 @@ if args[:2] == ["pr", "view"]:
     sys.exit(0)
 if args[:3] == ["api", "graphql", "-f"]:
     # ruche-0122: the bulk read of bee en-attente --pr-states, the same fields as pr view; « graphql_illisible »: no answer at all,
-    # « absente » on a PR: null with an error (GitHub's answer for a PR it cannot resolve), « graphql » on a PR: its raw answer.
-    import re
-    if etat.get("graphql_illisible"):
+    # « absente » on a PR: null with an error (GitHub's answer for a PR it cannot resolve), « graphql » on a PR: its raw answer;
+    # « casse_lot » on a PR: no answer at all for a query that reads it; « graphql_lent »: an answer, after that many seconds.
+    # The author: « type_auteur » (User by default; a bot or an App has no account number here), « compte » (its number).
+    import re, time, zlib
+    time.sleep(etat.get("graphql_lent", 0))
+    if etat.get("graphql_illisible") or any(f'pullRequest(number: {u.rsplit("/", 1)[1]})' in args[3] and f'name: "{u.split("/")[4]}"' in args[3]
+                                            for u, pr in etat.items() if isinstance(pr, dict) and pr.get("casse_lot")):
         print("<html>502</html>")
         sys.exit(1)
     donnees, erreur, depot = {}, False, None
@@ -5138,7 +5142,8 @@ if args[:3] == ["api", "graphql", "-f"]:
         erreur |= pr is None or bool(pr.get("absente"))
         depot[0][m[4]] = None if pr is None or pr.get("absente") else pr.get("graphql") or {
             "state": pr["state"], "headRefOid": pr["head"], "mergeCommit": {"oid": pr["merge"]} if pr.get("merge") else None,
-            "author": {"login": pr.get("auteur", "?")}}
+            "author": {"__typename": pr.get("type_auteur", "User"), "login": pr.get("auteur", "?"),
+                       **({"databaseId": pr.get("compte", zlib.crc32(pr.get("auteur", "?").encode()) + 1)} if pr.get("type_auteur", "User") == "User" else {})}}
     print(json.dumps({"data": donnees, **({"errors": [{"type": "NOT_FOUND"}]} if erreur else {})}))
     sys.exit(1 if erreur else 0)
 if args[:2] == ["pr", "merge"]:
@@ -19638,11 +19643,11 @@ class TestBulkPrReads(BaseParallele):
     AVANT = {"verdicts.yml": [
         ("          python3 outils/bee.py en-attente --pr-states \\\n            | python3 -c 'import json, sys; [print(c[\"id\"], c[\"pr\"], "
          "c.get(\"sha_verdict\") or \"-\", c.get(\"ci_verdict\") or \"-\", c.get(\"auteur\") or \"-\", c.get(\"sha_attente\") or \"-\", "
-         "c[\"pr_head\"], c[\"pr_author\"], c[\"pr_person\"], sep=\"\\t\") for c in json.load(sys.stdin) if c.get(\"pr_head\")]' \\\n",
+         "c[\"pr_head\"], c[\"pr_author\"], c[\"pr_author_id\"], c[\"pr_person\"], sep=\"\\t\") for c in json.load(sys.stdin) if c.get(\"pr_head\")]' \\\n",
          "          python3 outils/bee.py en-attente \\\n            | python3 -c 'import json, sys; [print(c[\"id\"], c[\"pr\"], "
          "c.get(\"sha_verdict\") or \"-\", c.get(\"ci_verdict\") or \"-\", c.get(\"auteur\") or \"-\", c.get(\"sha_attente\") or \"-\", "
          "sep=\"\\t\") for c in json.load(sys.stdin)]' \\\n"),
-        (" sha_attente sha auteur_pr personne; do\n", " sha_attente; do\n"),
+        (" sha_attente sha auteur_pr compte_pr personne; do\n", " sha_attente; do\n"),
         ('[ "$depot" = "$GITHUB_REPOSITORY" ] && continue\n', '[ "$depot" = "$GITHUB_REPOSITORY" ] && continue\n'
          "            infos=$(gh pr view \"$pr\" --json headRefOid,author --jq '\"\\(.headRefOid) \\(.author.login)\"') || continue\n"
          '            read -r sha auteur_pr <<< "$infos"\n'),
@@ -19650,10 +19655,10 @@ class TestBulkPrReads(BaseParallele):
         "integration-auto.yml": [
         ("          python3 outils/bee.py en-attente --pr-states \\\n            | python3 -c 'import json, sys; [print(c[\"id\"], c[\"pr\"], "
          "c.get(\"sha_verdict\") or \"-\", c.get(\"auteur\") or \"-\", c[\"pr_state\"], c[\"pr_head\"], c[\"pr_merge\"], c[\"pr_author\"], "
-         "c[\"pr_person\"], sep=\"\\t\") for c in json.load(sys.stdin) if c.get(\"pr\") and c.get(\"pr_state\")]' \\\n",
+         "c[\"pr_author_id\"], c[\"pr_person\"], sep=\"\\t\") for c in json.load(sys.stdin) if c.get(\"pr\") and c.get(\"pr_state\")]' \\\n",
          "          python3 outils/bee.py en-attente \\\n            | python3 -c 'import json, sys; [print(c[\"id\"], c[\"pr\"], "
          "c.get(\"sha_verdict\") or \"-\", c.get(\"auteur\") or \"-\", sep=\"\\t\") for c in json.load(sys.stdin) if c.get(\"pr\")]' \\\n"),
-        (" sha auteur etat tete fusion auteur_pr personne; do\n", " sha auteur; do\n"),
+        (" sha auteur etat tete fusion auteur_pr compte_pr personne; do\n", " sha auteur; do\n"),
         ('            if [ "$etat" = "CLOSED" ]; then\n',
          "            infos=$(gh pr view \"$pr\" --json state,headRefOid,mergeCommit,author \\\n"
          "              --jq '\"\\(.state) \\(.headRefOid) \\(.mergeCommit.oid // \"-\") \\(.author.login)\"') || continue\n"
@@ -19764,25 +19769,26 @@ class TestBulkPrReads(BaseParallele):
         lu, appels = self.lire(etats, [*etats, *etats, *bizarres])
         self.assertEqual(len(appels), 3)
         self.assertTrue(all(a[:3] == ["api", "graphql", "-f"] and a[3].count("pullRequest(") <= 50 for a in appels))
-        attendu = {u: (p["state"], p["head"], p.get("merge") or "-", p["auteur"]) for u, p in etats.items()}
+        attendu = {u: (p["state"], p["head"], p.get("merge") or "-", p["auteur"], zlib.crc32(p["auteur"].encode()) + 1) for u, p in etats.items()}
         attendu[bizarres[0]] = attendu["https://github.com/Bee-ruche/minizBee/pull/7"]  # GitHub reads 0007 as 7, as gh pr view does
         self.assertEqual(lu, attendu)
 
     def test_fail_closed_on_unreadable_answers(self):
         """An answer that is not GitHub's form leaves the PR out (the pass skips it); a PR GitHub cannot resolve leaves out only
-        itself; an unreadable answer leaves out its whole batch."""
+        itself; when every answer is unreadable, nothing is read, within a bounded number of queries."""
         bon = {"state": "OPEN", "head": "abc1234", "auteur": "alice"}
         etats = {PR_MINIZ + "1": bon, PR_MINIZ + "2": {**bon, "absente": True},
-                 PR_MINIZ + "3": {**bon, "graphql": {"state": "OPEN", "headRefOid": "abc1234 x", "mergeCommit": None, "author": {"login": "alice"}}},
-                 PR_MINIZ + "4": {**bon, "graphql": {"state": "DRAFT", "headRefOid": "abc1234", "mergeCommit": None, "author": {"login": "alice"}}},
+                 PR_MINIZ + "3": {**bon, "graphql": {"state": "OPEN", "headRefOid": "abc1234 x", "mergeCommit": None, "author": {"__typename": "User", "login": "alice", "databaseId": 1}}},
+                 PR_MINIZ + "4": {**bon, "graphql": {"state": "DRAFT", "headRefOid": "abc1234", "mergeCommit": None, "author": {"__typename": "User", "login": "alice", "databaseId": 1}}},
                  PR_MINIZ + "5": {**bon, "graphql": {"state": "OPEN", "headRefOid": "abc1234", "mergeCommit": None, "author": None}},
-                 PR_MINIZ + "6": {**bon, "graphql": {"state": "OPEN", "headRefOid": "abc1234", "mergeCommit": None, "author": {"login": "a\tb"}}},
-                 PR_MINIZ + "7": {**bon, "graphql": {"state": "MERGED", "headRefOid": "abc1234", "mergeCommit": {"oid": 7}, "author": {"login": "alice"}}},
+                 PR_MINIZ + "6": {**bon, "graphql": {"state": "OPEN", "headRefOid": "abc1234", "mergeCommit": None, "author": {"__typename": "User", "login": "a\tb", "databaseId": 1}}},
+                 PR_MINIZ + "7": {**bon, "graphql": {"state": "MERGED", "headRefOid": "abc1234", "mergeCommit": {"oid": 7}, "author": {"__typename": "User", "login": "alice", "databaseId": 1}}},
                  PR_MINIZ + "8": {**bon, "graphql": ["OPEN"]}}
         lu, _ = self.lire(etats, list(etats))
-        self.assertEqual(lu, {PR_MINIZ + "1": ("OPEN", "abc1234", "-", "alice")})
+        self.assertEqual(lu, {PR_MINIZ + "1": ("OPEN", "abc1234", "-", "alice", zlib.crc32(b"alice") + 1)})
         lu, appels = self.lire({**etats, "graphql_illisible": True}, list(etats))
-        self.assertEqual((lu, len(appels)), ({}, 1))
+        self.assertEqual(lu, {})
+        self.assertLessEqual(len(appels), 1 + bee.REPRISES_PRS)
         # In a pass: nothing read, nothing integrated nor closed, nothing recorded.
         c1, c2 = self.course_relue()
         self.init_git()
@@ -19790,8 +19796,64 @@ class TestBulkPrReads(BaseParallele):
         for flux, etape in (("integration-auto.yml", "Intégrer"), ("verdicts.yml", "Récupérer les verdicts")):
             _, _, appels = self.etape(etape, {"graphql_illisible": True, PR_MINIZ + "99101": {"state": "CLOSED", "head": "abc1235", "auteur": "bruno"},
                                               PR_MINIZ + "99102": {"state": "OPEN", "head": "abc1236", "auteur": "alice"}}, flux=flux)
-            self.assertEqual([a["args"][:2] for a in appels], [["api", "graphql"]])
+            self.assertEqual({tuple(a["args"][:2]) for a in appels}, {("api", "graphql")})
             self.assertEqual(git(self.dossier, "status", "--porcelain", "--", "contributions", "taches"), "")
+
+    def test_only_a_user_s_pr_counts(self):
+        """The bulk read keeps a PR only if its author is a user, with its account number: a bot or an App, whose login GraphQL
+        gives bare, is left out (gh pr view gives it as app/<name>), even named as the member or as their declared agent account;
+        in a pass, nothing of it is merged, closed nor recorded."""
+        bon = {"state": "OPEN", "head": "abc1234", "auteur": "alice", "compte": 4242}
+        etats = {PR_MINIZ + "1": bon, PR_MINIZ + "2": {**bon, "type_auteur": "Bot"}, PR_MINIZ + "3": {**bon, "type_auteur": "Bot", "auteur": "alice-agent"},
+                 PR_MINIZ + "4": {**bon, "graphql": {"state": "OPEN", "headRefOid": "abc1234", "mergeCommit": None,
+                                                     "author": {"__typename": "User", "login": "alice"}}},
+                 PR_MINIZ + "5": {**bon, "graphql": {"state": "OPEN", "headRefOid": "abc1234", "mergeCommit": None,
+                                                     "author": {"__typename": "User", "login": "alice", "databaseId": True}}},
+                 PR_MINIZ + "6": {**bon, "graphql": {"state": "OPEN", "headRefOid": "abc1234", "mergeCommit": None,
+                                                     "author": {"__typename": "Bot", "login": "alice", "databaseId": 4242}}}}
+        lu, _ = self.lire(etats, list(etats))
+        self.assertEqual(lu, {PR_MINIZ + "1": ("OPEN", "abc1234", "-", "alice", 4242)})
+        c1, c2 = self.course_relue()  # c2 (alice, 99102) ranked first, c1 (bruno, 99101)
+        self.init_git()
+        self.a("2026-11-02T00:00:00Z")
+        for flux, etape in (("integration-auto.yml", "Intégrer"), ("verdicts.yml", "Récupérer les verdicts")):
+            git(self.dossier, "checkout", "-q", "--", ".")
+            _, _, appels = self.etape(etape, {PR_MINIZ + "99101": {"state": "CLOSED", "head": "abc1235", "auteur": "bruno", "type_auteur": "Bot"},
+                                              PR_MINIZ + "99102": {"state": "OPEN", "head": "abc1236", "auteur": "alice", "type_auteur": "Bot"}}, flux=flux)
+            self.assertEqual({tuple(a["args"][:2]) for a in appels}, {("api", "graphql")})
+            self.assertEqual(git(self.dossier, "status", "--porcelain", "--", "contributions", "taches"), "")
+
+    def test_one_bad_pr_does_not_hold_up_its_batch(self):
+        """A PR that makes its batch's answer unreadable: its 49 neighbours are still read, in halves, within a few queries more;
+        when every answer is unreadable (an outage), the queries stay bounded; a query gh does not answer in time ends the reads."""
+        etats = {PR_MINIZ + str(k): {"state": "OPEN", "head": f"{k:040x}", "auteur": f"m{k}"} for k in range(1, 51)}
+        etats[PR_MINIZ + "17"]["casse_lot"] = True
+        lu, appels = self.lire(etats, list(etats))
+        self.assertEqual(set(lu), set(etats) - {PR_MINIZ + "17"})
+        self.assertLessEqual(len(appels), 13)
+        many = {PR_MINIZ + str(k): {"state": "OPEN", "head": f"{k:040x}", "auteur": f"m{k}"} for k in range(1, 301)}
+        lu, appels = self.lire({**many, "graphql_illisible": True}, list(many))
+        self.assertEqual((lu, len(appels)), ({}, 6 + bee.REPRISES_PRS))
+        with mock.patch.object(bee, "DELAI_GH_PRS", 1):
+            lu, appels = self.lire({**many, "graphql_lent": 3}, list(many))
+        self.assertEqual(lu, {})
+        self.assertLessEqual(len(appels), 1)
+
+    def test_addresses_that_are_not_text(self):
+        """A pr field that is not text (a list, a mapping) is no address: neither the bulk read nor en-attente --pr-states breaks."""
+        bon = {"state": "OPEN", "head": "abc1234", "auteur": "alice"}
+        lu, appels = self.lire({PR_MINIZ + "1": bon}, [["x"], {"a": 1}, PR_MINIZ + "1", [PR_MINIZ + "1"]])
+        self.assertEqual((list(lu), len(appels)), ([PR_MINIZ + "1"], 1))
+        c1, c2 = self.course_relue()
+        chemin = self.dossier / "contributions/miniz" / f"{c2}.yaml"
+        enr = bee.lire_yaml(chemin)
+        enr["pr"] = [enr["pr"]]
+        bee.ecrire_yaml(chemin, enr)
+        with mock.patch.object(bee, "etats_prs", lambda adresses: {PR_MINIZ + "99101": ("OPEN", "abc1234", "-", "bruno", 7)}):
+            code, texte = self.bee("en-attente", "--pr-states")
+        self.assertEqual(code, 0, texte)
+        lus = {c["id"]: (c["pr_state"], c["pr_author_id"]) for c in json.loads(texte)}
+        self.assertEqual((lus[c1], lus[c2]), (("OPEN", 7), (None, None)))
 
     def test_the_passes_read_no_pr_one_by_one(self):
         """No gh pr view and no bee acts-for per contribution in either pass (but the merge commit read after a merge)."""

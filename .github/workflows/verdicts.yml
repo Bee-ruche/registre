@@ -48,11 +48,12 @@ jobs:
         run: |
           journal() { sed -e 's/##\[/# #[/g' -e 's/^/  | /'; }  # ruche-0025 : ce que bee imprime, jamais en tête de ligne du journal
           # ruche-0122: every PR is read in bulk (bee en-attente --pr-states, one GraphQL query per 50 PRs), as gh pr view reads one; a
-          # PR whose answer is unreadable is left out of the pass, and the person its author acts for is bee acts-for's (ruche-0089).
+          # PR whose answer is unreadable, or whose author is not a user, is left out of the pass; the person its author acts for is
+          # bee acts-for's (ruche-0089), compte_pr the author's account number.
           python3 outils/bee.py en-attente --pr-states \
-            | python3 -c 'import json, sys; [print(c["id"], c["pr"], c.get("sha_verdict") or "-", c.get("ci_verdict") or "-", c.get("auteur") or "-", c.get("sha_attente") or "-", c["pr_head"], c["pr_author"], c["pr_person"], sep="\t") for c in json.load(sys.stdin) if c.get("pr_head")]' \
+            | python3 -c 'import json, sys; [print(c["id"], c["pr"], c.get("sha_verdict") or "-", c.get("ci_verdict") or "-", c.get("auteur") or "-", c.get("sha_attente") or "-", c["pr_head"], c["pr_author"], c["pr_author_id"], c["pr_person"], sep="\t") for c in json.load(sys.stdin) if c.get("pr_head")]' \
             > a_traiter.tsv
-          while IFS=$'\t' read -r id pr sha_connu ci_connue auteur sha_attente sha auteur_pr personne; do
+          while IFS=$'\t' read -r id pr sha_connu ci_connue auteur sha_attente sha auteur_pr compte_pr personne; do
             depot=$(printf '%s' "$pr" | sed -E 's#^https://github\.com/([A-Za-z0-9-]+/[A-Za-z0-9_.-]+)/pull/[0-9]+$#\1#')
             # Contribution de la ruche (PR sur le registre lui-même) : pas de CI de fork ni de verdict à collecter ; elle
             # est relue et fusionnée par le conseil. Ne jamais arrêter la collecte des autres pour elle.
