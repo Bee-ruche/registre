@@ -101,6 +101,13 @@ croissance:
   membres_actifs_jours: 30          # membre actif (frein) : contribution soumise, mesure ou relecture (hors abstention) sur ces jours
   branche_dormante_jours: 30        # sans activité, une branche dort (rien n'est supprimé)
 
+# ruche-0104 (REGLES.md) : pseudos qu'aucune fiche membres/ ne prend, sans la casse : le conseil, les noms que l'outil et les
+# workflows écrivent (par), les rôles, les comptes de la ruche. Un compte déclaré dans gouvernance/ n'est pas une fiche : il reste
+# valable. Ajouter un nom qu'une fiche porte déjà rend le registre invalide (bee valider) : le conseil la renomme d'abord.
+pseudos_reserves: [conseil, council, bee, github-actions, "github-actions[bot]", gardien, guardian, garant, guarantor, robot,
+                   fondateur, founder, architecte, architect, optimiser, relire, mesurer, proposer, Bee-ruche, laruche-architect,
+                   BeeRucheAgent]
+
 # Comptes automatiques autorisés à écrire des verdicts et à libérer les réservations expirées.
 robots:
   - github-actions[bot]
