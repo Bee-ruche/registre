@@ -1,7 +1,6 @@
-# ruche-0132 (E25a): the full test suite, in its own workflow. A code PR's validation calls it on its own commit
-# (validation.yml), and it can be dispatched on a commit of a branch (`commit`: its full SHA; default, the dispatched ref's
-# tip), as validation.yml does for a code push to main (ruche-0133). The PR fast path reads its dispatched runs on main by
-# their title (bee main-green). Read-only and without secrets: it can write nothing.
+# ruche-0132 (E25a): the full test suite, in its own workflow. A code PR's validation calls it (validation.yml), and it can
+# be dispatched on a commit of a branch (`commit`: its full SHA; default, the dispatched ref's tip). The PR fast path reads
+# its dispatched runs on main by their title (bee main-green). Read-only and without secrets: it can write nothing.
 name: Suite complète
 run-name: Full suite on ${{ inputs.commit || github.sha }}
 

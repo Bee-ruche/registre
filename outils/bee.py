@@ -8557,11 +8557,10 @@ def dernier_commit_de_code(racine, base, limite=LIMITE_COMMITS_DONNEES):
 
 
 def push_scope(racine, avant, apres):
-    """ruche-0133 (R-push): what a push to main runs, on the range it moved (validation.yml, site.yml). ("data", None) if
-    avant is a strict ancestor of apres and apres's last code commit (dernier_commit_de_code, the rules main-green reads main
-    by) is avant or older: every first-parent commit since is data. Else ("full", the commit suite.yml must test: that last
-    code commit, the one main-green expects, or apres if none is found). Fails closed: a new branch, a forced push, an empty
-    or unreadable range, any error."""
+    """ruche-0133 (R-push): what a push to main runs, on the range it moved (validation.yml, site.yml), and the commit suite.yml
+    must test: apres's last code commit (dernier_commit_de_code, the one main-green expects), or apres if none is found.
+    "data" if avant is a strict ancestor of apres and that commit is avant or older (every first-parent commit since is data),
+    else "full". Fails closed: a new branch, a forced push, an empty or unreadable range, any error."""
     def ancetre(x, y):
         return subprocess.run(["git", "-C", str(racine), "merge-base", "--is-ancestor", x, y], capture_output=True).returncode == 0
     cible = None
@@ -8571,7 +8570,7 @@ def push_scope(racine, avant, apres):
         code = dernier_commit_de_code(racine, apres)
         cible = code or apres
         if re.fullmatch(r"[0-9a-f]{40}", str(avant)) and avant != apres and code and ancetre(avant, apres) and ancetre(code, avant):
-            return "data", None
+            return "data", code
         return "full", cible
     except Exception:  # noqa: BLE001 - whatever goes wrong, the full suite runs
         return "full", cible
@@ -8580,18 +8579,17 @@ def push_scope(racine, avant, apres):
 def main_vert(racine, base, reponse):
     """ruche-0132: whether main is green for the PR fast path, from one filtered read of suite.yml's latest runs on main
     (actions/workflows/suite.yml/runs, newest first): the newest run must test main's last code commit (dernier_commit_de_code),
-    and the newest completed one, or re-run (run_attempt > 1: it would hide a failure), a success. (True, None), or (False, reason)."""
+    and (ruche-0133) have completed with success. (True, None); (None, reason) while that run is not completed; or (False, reason)."""
     try:
         runs = [r for r in reponse["workflow_runs"] if (r["path"], r["head_branch"], r["event"]) == (SUITE, "main", "workflow_dispatch")]
         code = dernier_commit_de_code(racine, base)
         if not runs or not code:
             return False, "no run of suite.yml on main" if not runs else "main's last code commit not found"
         dernier = max(runs, key=lambda r: r["id"])
-        termines = [r for r in runs if r["status"] == "completed" or r["run_attempt"] > 1]
         if dernier["display_title"] != TITRE_SUITE + code:
             return False, f"the newest run of suite.yml ({dernier['id']}) is not for main's last code commit {code}"
-        if not termines or ((t := max(termines, key=lambda r: r["id"]))["status"], t["conclusion"]) != ("completed", "success"):
-            return False, "no completed run of suite.yml in the page" if not termines else f"suite.yml's run {t['id']}: {t['conclusion'] or t['status']}"
+        if (dernier["status"], dernier["conclusion"]) != ("completed", "success"):
+            return (None if dernier["status"] != "completed" else False), f"suite.yml's run {dernier['id']}: {dernier['conclusion'] or dernier['status']}"
         return True, None
     except Exception as e:  # noqa: BLE001 - whatever goes wrong, the full suite runs
         return False, f"{type(e).__name__}: {e}"
@@ -8604,7 +8602,7 @@ def cmd_main_green(args):
         vert, raison = False, f"{type(e).__name__}: {e}"
     else:
         vert, raison = main_vert(args.registre or os.environ.get("BEE_REGISTRE") or RACINE_OUTIL, args.base, reponse)
-    print("green" if vert else "red")
+    print("green" if vert else "pending" if vert is None else "red")
     if raison:
         print(f"full suite: {raison}", file=sys.stderr)
     return 0
@@ -10930,7 +10928,7 @@ def construire_analyseur():
     p.add_argument("--tete", default="HEAD")
 
     p = ajouter("push-scope", cmd_push_scope, "Prints 'data' if a push to main only brought data commits (the fast path), else "
-                                              "'full' and the commit suite.yml must test (ruche-0133; used by validation.yml, site.yml).")
+                                              "'full', then the commit suite.yml must test (ruche-0133; used by validation.yml, site.yml).")
     p.add_argument("--avant", required=True, help="the commit main was at before the push (github.event.before)")
     p.add_argument("--apres", default="HEAD", help="the pushed commit")
 
@@ -10947,7 +10945,7 @@ def construire_analyseur():
     p.add_argument("--jeton", action="append", default=[], help="name of an environment variable holding a token (repeatable)")
 
     p = ajouter("main-green", cmd_main_green, "Prints 'green' if suite.yml's runs on main (a saved actions/workflows/suite.yml/runs "
-                                              "response) allow the PR fast path, else 'red' (used by validation.yml).")
+                                              "response) allow the PR fast path, else 'pending' (that run unfinished) or 'red'.")
     p.add_argument("--base", required=True, help="main's commit (the PR's base)")
     p.add_argument("--runs", required=True, help="the JSON file of the API's response")
 

@@ -353,7 +353,7 @@ class TestCiScope(unittest.TestCase):
         suite = yaml.safe_load((RACINE / ".github/workflows/suite.yml").read_text(encoding="utf-8"))["jobs"]["tests"]["steps"]
         nom = lambda debut, dans=etapes: next(s for s in dans if s.get("name", "").startswith(debut))  # noqa: E731
         return etapes, {"portee": nom("Scope of the PR"), "push": nom("Scope of the push"), "outil": nom("Tests de l'outil", suite), "juge": nom("Tests unitaires du juge", suite),
-                        "reel": nom("Tests that read the live registry"), "valider": nom("Validation complète"),
+                        "reel": nom("Tests that read the live registry"), "valider": nom("Validation complète"), "vert": nom("Main for a data-only push"),
                         "regles": nom("Règles de la pull request")}
 
     def rejouer(self, script, env, cwd=None):
@@ -364,6 +364,7 @@ class TestCiScope(unittest.TestCase):
         (dossier / "bin/python3").write_text(f'#!/bin/sh\nexec "{sys.executable}" "$@"\n', encoding="utf-8")
         (dossier / "bin/gh").write_text('#!/bin/sh\necho "$@" >> "$RUNNER_TEMP/gh.log"\n[ "$FAUX_GH" != error ] || exit 1\n'
                                         'echo "$FAUX_GH"\n', encoding="utf-8")
+        (dossier / "bin/pip").write_text('#!/bin/sh\necho "$@" >> "$RUNNER_TEMP/pip.log"\n', encoding="utf-8")  # ruche-0133: nothing installed
         for f in (dossier / "bin").iterdir():
             f.chmod(0o755)
         (dossier / "etape.sh").write_text(script, encoding="utf-8")
@@ -451,9 +452,10 @@ class TestCiScope(unittest.TestCase):
         for evenement in ("push", "pull_request"):
             for sortie in (None, "", "full", "data", "garbage", "DATA"):
                 portee = sortie if self.tourne(roles["portee" if evenement == "pull_request" else "push"], evenement, None) else None
-                donnees = str(portee).lower() == "data"  # ruche-0133: a data-only push takes the fast path too
+                donnees = str(portee).lower() == "data"  # ruche-0133: a data-only push takes the fast path too, if main is green
                 attendu = {id(roles["portee"]): evenement == "pull_request", id(roles["regles"]): evenement == "pull_request",
-                           id(roles["push"]): evenement == "push", id(roles["reel"]): donnees}
+                           id(roles["push"]): evenement == "push", id(roles["vert"]): evenement == "push" and donnees,
+                           id(roles["reel"]): donnees or evenement == "push"}  # ruche-0133: the live registry on every push
                 for etape in etapes:  # every other step, « Validation complète » included, always runs
                     with self.subTest(evenement=evenement, portee=sortie, etape=etape.get("name") or etape.get("uses")):
                         self.assertEqual(self.tourne(etape, evenement, portee), attendu.get(id(etape), True))
@@ -476,7 +478,7 @@ class TestCiScope(unittest.TestCase):
         lire = lambda nom: yaml.safe_load((RACINE / ".github/workflows" / nom).read_text(encoding="utf-8"))  # noqa: E731
         flux, suite = lire("validation.yml"), lire("suite.yml")
         self.assertEqual(list(flux["jobs"]), ["controles", "suite", "relancer", "valider"])
-        self.assertEqual(flux["jobs"]["controles"]["outputs"], {"portee": "${{ steps.portee.outputs.portee || steps.portee_push.outputs.portee }}",
+        self.assertEqual(flux["jobs"]["controles"]["outputs"], {"portee": "${{ steps.portee.outputs.portee || steps.vert_push.outputs.portee || steps.portee_push.outputs.portee }}",
                                                                "commit": "${{ steps.portee_push.outputs.commit }}"})
         self.assertEqual(flux["jobs"]["suite"], {"needs": "controles", "if": "github.event_name != 'push' && needs.controles.outputs.portee != 'data'",
                                                  "uses": "./.github/workflows/suite.yml"})
@@ -866,7 +868,7 @@ sys.exit(3 if a[:2] == ["pr", "view"] else 0)
                 self.assertEqual(len(avec_gh), 1, "one job calls gh (ruche-0132: validation.yml's controles; ruche-0133: and relancer, below)")
                 etapes = avec_gh[0]
                 noms = [s.get("name", "") for s in etapes]
-                apres = "Scope of the push (data only, or the full suite)" if nom == "validation.yml" else "Dépendances"  # ruche-0133: after both scopes
+                apres = "Scope of the PR (data only, or the full suite)" if nom == "validation.yml" else "Dépendances"  # ruche-0133: after both scopes
                 debut, fin = etapes[noms.index(apres) + 1], etapes[-1]
                 options = " ".join(f"--jeton {j}" for j in jetons)
                 self.assertEqual(debut["run"], f'python3 outils/bee.py api-budget start --dossier "$RUNNER_TEMP/api-budget" {options}')
@@ -879,13 +881,17 @@ sys.exit(3 if a[:2] == ["pr", "view"] else 0)
                                  "a gh call before the measure starts (validation.yml: the scope step's one read only)")
                 donnes = {v for s in self.etapes(nom) for v in (s.get("env") or {}).values() if "token" in str(v).lower()}
                 self.assertEqual(donnes, {self.JETONS[j] for j in jetons}, "a token given to gh but not measured")
-        # ruche-0133: site.yml's job portee measures with bee (it has a checkout), validation.yml's relancer in jq (it has none).
+        # ruche-0133: site.yml's job portee measures with main's tool before the push, right after its scope step (nothing of the
+        # push runs with its token; a measure never stops the dispatch), validation.yml's relancer in jq (it has no checkout).
         portee = self.flux("site.yml")["jobs"]["portee"]["steps"]
         noms = [s.get("name", "") for s in portee]
-        self.assertEqual([s["run"] for s in (portee[noms.index("Dépendances") + 1], portee[-1])],
-                         [f'python3 outils/bee.py api-budget {m} --dossier "$RUNNER_TEMP/api-budget" --jeton GITHUB_TOKEN' for m in ("start", "end")])
-        self.assertEqual((portee[-1].get("if"), [s["env"] for s in (portee[noms.index("Dépendances") + 1], portee[-1])]), ("always()", [{"GITHUB_TOKEN": self.JETONS["GITHUB_TOKEN"]}] * 2))
-        self.assertEqual([s.get("name", "") for s in portee[:noms.index("Dépendances") + 1] if "gh " in s.get("run", "")], [])
+        debut = noms.index("Scope of the push (data only, or the full suite)") + 1
+        self.assertEqual([s["run"] for s in (portee[debut], portee[-1])],
+                         [f'python3 "$RUNNER_TEMP/outil-avant/bee.py" api-budget {m} --dossier "$RUNNER_TEMP/api-budget" --jeton GITHUB_TOKEN || true' for m in ("start", "end")])
+        self.assertEqual((portee[-1].get("if"), [s["env"] for s in (portee[debut], portee[-1])]), ("always()", [{"GITHUB_TOKEN": self.JETONS["GITHUB_TOKEN"]}] * 2))
+        self.assertEqual([s.get("name", "") for s in portee[:debut] if "gh " in s.get("run", "")], [])
+        self.assertEqual([s for s in portee if "outils/" in s.get("run", "").replace("outil-avant/", "").replace("$AVANT:outils/", "")], [],
+                         "nothing of the push runs in the job whose token may start a workflow")
         deployer, relancer = self.flux("site.yml")["jobs"]["deployer"]["steps"], self.flux("validation.yml")["jobs"]["relancer"]["steps"]
         for etapes in (deployer, relancer):
             self.assertEqual(etapes[0]["run"].split("  #")[0], 'gh api rate_limit > "$RUNNER_TEMP/rate_limit.json" || true')  # never stops the job
@@ -979,9 +985,10 @@ class TestPushScope(unittest.TestCase):
         self.commit("membres/alice.yaml")
         self.commit("debats/D-0001.yaml")
         self.commit("docs/decisions.md", self.decisions("| 2026-11-03 | x integrated (#1) | b | c |\n", "| 2026-11-01 | a | b | c |\n"))
-        self.assertEqual(self.portee(self.base), ("data", None))
-        self.assertEqual(lancer("--registre", str(self.depot), "push-scope", "--avant", self.base), (0, "data\n"))
-        self.assertEqual(self.portee(git(self.depot, "rev-parse", "HEAD~1").strip()), ("data", None), "a row in decisions.md alone")
+        # ruche-0133 (review): with main's last code commit, which a data push dispatches the suite on if main is not green.
+        self.assertEqual(self.portee(self.base), ("data", self.base))
+        self.assertEqual(lancer("--registre", str(self.depot), "push-scope", "--avant", self.base), (0, f"data {self.base}\n"))
+        self.assertEqual(self.portee(git(self.depot, "rev-parse", "HEAD~1").strip()), ("data", self.base), "a row in decisions.md alone")
 
     def test_anything_else_runs_the_full_suite_on_main_s_last_code_commit(self):
         avant = self.base
@@ -991,7 +998,7 @@ class TestPushScope(unittest.TestCase):
         self.assertEqual(self.portee(avant), ("full", code))
         self.assertEqual(lancer("--registre", str(self.depot), "push-scope", "--avant", avant), (0, f"full {code}\n"))
         apres = git(self.depot, "rev-parse", "HEAD").strip()
-        self.assertEqual(self.portee(code), ("data", None), "a later data push")
+        self.assertEqual(self.portee(code), ("data", code), "a later data push")
         cas = {"new branch": "0" * 40, "empty range": apres, "unknown commit": "1" * 40, "short sha": avant[:7], "upper case": avant.upper(),
                "a name": "HEAD~1", "empty": "", "an option": "--all", "None": None}
         for nom, avant_ in cas.items():
@@ -1038,6 +1045,7 @@ class TestPushScope(unittest.TestCase):
         def etape(changer=None, outil_avant=None, avant=None):
             git(self.depot, "checkout", "-q", "main")
             git(self.depot, "checkout", "-q", self.base, "--", "outils/bee.py")  # main's real tool, unless the case sets another
+            self.ecrire("outils/requirements.txt", (RACINE / "outils/requirements.txt").read_text(encoding="utf-8"))  # and its dependencies
             if outil_avant == "absent":
                 git(self.depot, "rm", "-qf", "outils/bee.py")
             elif outil_avant:
@@ -1050,7 +1058,10 @@ class TestPushScope(unittest.TestCase):
             self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
             return sorties["portee"], sorties["commit"], apres
 
-        self.assertEqual(etape(lambda: self.ecrire("membres/alice.yaml"))[:2], ("data", ""))
+        self.assertEqual(etape(lambda: self.ecrire("membres/alice.yaml"))[:2], ("data", git(self.depot, "rev-parse", "HEAD~1").strip()))
+        self.assertIn("pip install -q -r \"$RUNNER_TEMP/outil-avant/requirements.txt\"", validation["run"], "main's dependencies before the push")
+        self.assertLess(TestCiScope.etapes()[0].index(validation), [e.get("name") for e in TestCiScope.etapes()[0]].index("Dépendances"),
+                        "the scope is read before the pushed dependencies are installed")
         portee, commit, apres = etape(lambda: self.ecrire("outils/bee.py", "print('data')\n"))  # the pushed tool never decides
         self.assertEqual((portee, commit), ("full", apres))
         portee, commit, apres = etape(lambda: (self.ecrire("outils/x.py"), self.commit(), self.ecrire("membres/bruno.yaml")))
@@ -1058,10 +1069,30 @@ class TestPushScope(unittest.TestCase):
         donnees = lambda: self.ecrire("membres/chloe.yaml")  # noqa: E731
         for nom, outil, avant in (("new branch", None, "0" * 40), ("no before", None, ""), ("before is a name", None, "HEAD~1"),
                                   ("tool fails", "print('data')\nraise SystemExit(2)\n", None), ("tool's extra space", "print('data ')\n", None),
-                                  ("tool names no commit", "print('full abc')\n", None), ("no tool", "absent", None)):
+                                  ("tool names no commit", "print('full abc')\n", None), ("no tool", "absent", None),
+                                  ("data alone", "print('data')\n", None), ("data and more", "print('data " + "a" * 40 + " x')\n", None)):
             with self.subTest(cas=nom):
                 portee, commit, apres = etape(donnees, outil, avant)
                 self.assertEqual((portee, commit), ("full", apres))
+
+    def test_a_data_only_push_needs_main_green_or_its_run_in_progress(self):
+        """Review of ruche-0133: after a failed, cancelled or missed run, a data push dispatches the suite again on main's last
+        code commit (main's tool before the push reads suite.yml's runs); green, or that run queued or in progress: the fast path."""
+        etape = TestCiScope.etapes()[1]["vert"]
+        self.assertEqual((etape["if"], etape["env"]), ("steps.portee_push.outputs.portee == 'data'", {"APRES": "${{ github.sha }}", "GH_TOKEN": "${{ github.token }}"}))
+        code = self.commit("outils/x.py", "x = 1\n")
+        apres = self.commit("membres/alice.yaml")
+        copie = f'mkdir -p "$RUNNER_TEMP/outil-avant"; cp "{RACINE / "outils/bee.py"}" "$RUNNER_TEMP/outil-avant/bee.py"\n'
+        cas = {"green": ([(code, "completed", "success")], "data"), "in progress": ([(code, "in_progress", None)], "data"),
+               "queued": ([(code, "queued", None), (code, "completed", "failure")], "data"),
+               "failed": ([(code, "completed", "failure")], "full"), "cancelled": ([(code, "completed", "cancelled")], "full"),
+               "missed dispatch": ([(self.base, "completed", "success")], "full"), "error": (None, "full"), "no tool": ([(code, "completed", "success")], "full")}
+        for nom, (runs, attendu) in cas.items():
+            with self.subTest(cas=nom):
+                faux = "error" if runs is None else TestCiScope.executions(*runs)
+                r, sorties, appels = self.rejouer(("" if nom == "no tool" else copie) + etape["run"], {"APRES": apres, "FAUX_GH": faux})
+                self.assertEqual((r.returncode, sorties.get("portee")), (0, attendu), r.stdout + r.stderr)
+                self.assertIn("actions/workflows/suite.yml/runs?branch=main&event=workflow_dispatch", appels)
 
     def test_a_code_push_dispatches_suite_yml_on_the_named_commit(self):
         flux = self.flux("validation.yml")
@@ -1166,8 +1197,11 @@ class TestMainVert(unittest.TestCase):
     def test_green(self):
         self.assertEqual(self.vert((self.code, "completed", "success")), (True, None))
         self.assertEqual(self.vert((self.code, "completed", "success"), ("0" * 40, "completed", "failure")), (True, None))
-        # The newest run is for main's code and still running: the newest completed one decides (as for ruche-0090).
-        self.assertEqual(self.vert((self.code, "in_progress", None), ("0" * 40, "completed", "success")), (True, None))
+        # ruche-0133 (review): the newest run is for main's code and not finished: not green, whatever succeeded before it.
+        for statut in ("queued", "in_progress", "waiting"):
+            with self.subTest(statut=statut):
+                self.assertEqual(self.vert((self.code, statut, None), ("0" * 40, "completed", "success")), (None, f"suite.yml's run 100: {statut}"))
+                self.assertIsNone(self.vert((self.code, statut, None), (self.code, "completed", "success"))[0], "a second run of the same commit")
 
     def test_the_newest_run_is_not_for_main_s_last_code_commit(self):
         for runs in ([(self.donnees[-1], "completed", "success")], [("0" * 40, "completed", "success"), (self.code, "completed", "success")],
@@ -1187,7 +1221,7 @@ class TestMainVert(unittest.TestCase):
                 self.assertFalse(self.vert((self.code, "completed", conclusion))[0])
                 self.assertFalse(self.vert((self.code, "queued", None), (self.code, "completed", conclusion),
                                            (self.code, "completed", "success"))[0])
-        self.assertEqual(self.vert((self.code, "in_progress", None)), (False, "no completed run of suite.yml in the page"))
+        self.assertEqual(self.vert((self.code, "in_progress", None)), (None, "suite.yml's run 100: in_progress"))
 
     def test_other_runs_and_unexpected_responses(self):
         succes = (self.code, "completed", "success")
@@ -1269,8 +1303,8 @@ class TestMainVert(unittest.TestCase):
         reponse = json.loads(TestCiScope.executions((self.code, "in_progress", None), (autre, "completed", "success")))
         del reponse["workflow_runs"][0]["run_attempt"]
         self.assertFalse(bee.main_vert(self.depot, "HEAD", reponse)[0], "not completed, attempt unknown")
-        # A first attempt in progress: the newest completed run decides, as before; a re-run that completed: its conclusion.
-        self.assertEqual(self.vert((self.code, "in_progress", None, 1), (autre, "completed", "success")), (True, None))
+        # A first attempt in progress: not green either (ruche-0133); a re-run that completed: its conclusion.
+        self.assertIsNone(self.vert((self.code, "in_progress", None, 1), (autre, "completed", "success"))[0])
         self.assertEqual(self.vert((self.code, "completed", "success", 2), (autre, "completed", "failure")), (True, None))
         self.assertFalse(self.vert((self.code, "completed", "failure", 2))[0])
         # An older run re-run while the newest one, for main's last code commit, succeeded: green.
@@ -1281,6 +1315,7 @@ class TestMainVert(unittest.TestCase):
         self.addCleanup(lambda: fichier.unlink(missing_ok=True))
         for contenu, attendu in ((TestCiScope.executions((self.code, "completed", "success")), "green\n"),
                                  (TestCiScope.executions((self.code, "completed", "failure")), "red\n"), ("", "red\n"),
+                                 (TestCiScope.executions((self.code, "in_progress", None), (self.code, "completed", "success")), "pending\n"),
                                  ("not json", "red\n"), (None, "red\n")):
             with self.subTest(contenu=contenu):
                 fichier.unlink(missing_ok=True)

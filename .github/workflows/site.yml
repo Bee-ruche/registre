@@ -42,29 +42,27 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Dépendances
-        run: pip install -r outils/requirements.txt
-      - name: API budget, start (ruche-0121)
-        env: {GITHUB_TOKEN: "${{ github.token }}"}
-        run: python3 outils/bee.py api-budget start --dossier "$RUNNER_TEMP/api-budget" --jeton GITHUB_TOKEN
       - name: Scope of the push (data only, or the full suite)
         id: portee_push
         env:
           AVANT: ${{ github.event.before }}
           APRES: ${{ github.sha }}
         run: |
-          # ruche-0133: the tool of main before the push (never the pushed one) reads the range; a new branch (no « before »),
-          # a forced push, an unreadable range or any output but « data » and « full <commit> »: full (the suite, on main's
-          # last code commit if the tool names it, else on the pushed commit; the site at once). The same script in
-          # validation.yml and site.yml (TestCiScope checks it).
+          # ruche-0133: main's tool and dependencies before the push (never the pushed ones) read the range; no « before »,
+          # an error or any output but « data|full <commit> »: full, on the pushed commit. Same script in site.yml, validation.yml.
           mkdir -p "$RUNNER_TEMP/outil-avant"
           sortie=$([[ "$AVANT" =~ ^[0-9a-f]{40}$ ]] && git show "$AVANT:outils/bee.py" > "$RUNNER_TEMP/outil-avant/bee.py" &&
+                   git show "$AVANT:outils/requirements.txt" > "$RUNNER_TEMP/outil-avant/requirements.txt" &&
+                   pip install -q -r "$RUNNER_TEMP/outil-avant/requirements.txt" >&2 &&
                    python3 "$RUNNER_TEMP/outil-avant/bee.py" --registre . push-scope --avant "$AVANT" --apres "$APRES") || sortie=
-          commit=${sortie#full }
-          if [ "$sortie" = data ]; then portee=data commit=; else portee=full; [[ "$commit" =~ ^[0-9a-f]{40}$ ]] || commit=$APRES; fi
+          commit=${sortie#* }
+          if [[ "$sortie" =~ ^(data|full)\ [0-9a-f]{40}$ ]]; then portee=${sortie%% *}; else portee=full commit=$APRES; fi
           echo "portee=$portee" >> "$GITHUB_OUTPUT"
           echo "commit=$commit" >> "$GITHUB_OUTPUT"
           echo "Scope: $portee $commit"
+      - name: API budget, start (ruche-0121; by main's tool before the push, so nothing pushed runs with this token)
+        env: {GITHUB_TOKEN: "${{ github.token }}"}
+        run: python3 "$RUNNER_TEMP/outil-avant/bee.py" api-budget start --dossier "$RUNNER_TEMP/api-budget" --jeton GITHUB_TOKEN || true
       - name: Dispatch the build (one call)
         env:
           PORTEE: ${{ steps.portee_push.outputs.portee }}
@@ -75,7 +73,7 @@ jobs:
       - name: API budget, end (ruche-0121)
         if: always()
         env: {GITHUB_TOKEN: "${{ github.token }}"}
-        run: python3 outils/bee.py api-budget end --dossier "$RUNNER_TEMP/api-budget" --jeton GITHUB_TOKEN
+        run: python3 "$RUNNER_TEMP/outil-avant/bee.py" api-budget end --dossier "$RUNNER_TEMP/api-budget" --jeton GITHUB_TOKEN || true
   construire:
     if: github.event_name != 'push'
     runs-on: ubuntu-24.04

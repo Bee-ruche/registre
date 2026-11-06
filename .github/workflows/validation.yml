@@ -4,9 +4,8 @@
 # (fusion-auto.yml), par l'outil de la branche principale.
 # Its token is read-only (contents: read; actions: read, for the scope step to read suite.yml's runs on main, and the PR
 # rules this run's creation time). ruche-0132: the full suite is suite.yml, called below unless the PR is data only; the
-# required check `valider` is the last job, and passes only if everything that had to run passed. ruche-0133 (R-push): a
-# push to main is scoped on the range it moved; a data-only push runs the fast path, any other dispatches suite.yml on the
-# commit main-green expects (job `relancer`, the only one whose token may start a workflow).
+# required check `valider` is the last job, and passes only if everything that had to run passed. ruche-0133: a push to
+# main runs the fast path if data only with main green, else dispatches suite.yml (job `relancer`, alone allowed to).
 name: Validation du registre
 
 on:
@@ -22,7 +21,7 @@ jobs:
   controles:
     runs-on: ubuntu-24.04
     outputs:
-      portee: ${{ steps.portee.outputs.portee || steps.portee_push.outputs.portee }}
+      portee: ${{ steps.portee.outputs.portee || steps.vert_push.outputs.portee || steps.portee_push.outputs.portee }}
       commit: ${{ steps.portee_push.outputs.commit }}
     steps:
       - uses: actions/checkout@v4
@@ -33,6 +32,25 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Scope of the push (data only, or the full suite)
+        id: portee_push
+        if: github.event_name == 'push'
+        env:
+          AVANT: ${{ github.event.before }}
+          APRES: ${{ github.sha }}
+        run: |
+          # ruche-0133: main's tool and dependencies before the push (never the pushed ones) read the range; no « before »,
+          # an error or any output but « data|full <commit> »: full, on the pushed commit. Same script in site.yml, validation.yml.
+          mkdir -p "$RUNNER_TEMP/outil-avant"
+          sortie=$([[ "$AVANT" =~ ^[0-9a-f]{40}$ ]] && git show "$AVANT:outils/bee.py" > "$RUNNER_TEMP/outil-avant/bee.py" &&
+                   git show "$AVANT:outils/requirements.txt" > "$RUNNER_TEMP/outil-avant/requirements.txt" &&
+                   pip install -q -r "$RUNNER_TEMP/outil-avant/requirements.txt" >&2 &&
+                   python3 "$RUNNER_TEMP/outil-avant/bee.py" --registre . push-scope --avant "$AVANT" --apres "$APRES") || sortie=
+          commit=${sortie#* }
+          if [[ "$sortie" =~ ^(data|full)\ [0-9a-f]{40}$ ]]; then portee=${sortie%% *}; else portee=full commit=$APRES; fi
+          echo "portee=$portee" >> "$GITHUB_OUTPUT"
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+          echo "Scope: $portee $commit"
       - name: Dépendances
         run: pip install -r outils/requirements.txt
       - name: Scope of the PR (data only, or the full suite)
@@ -62,34 +80,23 @@ jobs:
           [ "$portee" = data ] && [ "$main" = green ] || portee=full
           echo "portee=$portee" >> "$GITHUB_OUTPUT"
           echo "Scope: $portee (main for the fast path: $main)"
-      - name: Scope of the push (data only, or the full suite)
-        id: portee_push
-        if: github.event_name == 'push'
-        env:
-          AVANT: ${{ github.event.before }}
-          APRES: ${{ github.sha }}
-        run: |
-          # ruche-0133: the tool of main before the push (never the pushed one) reads the range; a new branch (no « before »),
-          # a forced push, an unreadable range or any output but « data » and « full <commit> »: full (the suite, on main's
-          # last code commit if the tool names it, else on the pushed commit; the site at once). The same script in
-          # validation.yml and site.yml (TestCiScope checks it).
-          mkdir -p "$RUNNER_TEMP/outil-avant"
-          sortie=$([[ "$AVANT" =~ ^[0-9a-f]{40}$ ]] && git show "$AVANT:outils/bee.py" > "$RUNNER_TEMP/outil-avant/bee.py" &&
-                   python3 "$RUNNER_TEMP/outil-avant/bee.py" --registre . push-scope --avant "$AVANT" --apres "$APRES") || sortie=
-          commit=${sortie#full }
-          if [ "$sortie" = data ]; then portee=data commit=; else portee=full; [[ "$commit" =~ ^[0-9a-f]{40}$ ]] || commit=$APRES; fi
-          echo "portee=$portee" >> "$GITHUB_OUTPUT"
-          echo "commit=$commit" >> "$GITHUB_OUTPUT"
-          echo "Scope: $portee $commit"
       - name: API budget, start (ruche-0121; after the scope, decided by the base's tool; puts first on PATH a gh that logs each call)
         env: {GITHUB_TOKEN: "${{ github.token }}"}
         run: python3 outils/bee.py api-budget start --dossier "$RUNNER_TEMP/api-budget" --jeton GITHUB_TOKEN
-      - name: Tests that read the live registry (data-only PR or push)
+      - name: Main for a data-only push (else the full suite again; by main's tool before the push)
+        id: vert_push
+        if: steps.portee_push.outputs.portee == 'data'
+        env: {APRES: "${{ github.sha }}", GH_TOKEN: "${{ github.token }}"}
+        run: |
+          main=$(timeout 60 gh api "repos/$GITHUB_REPOSITORY/actions/workflows/suite.yml/runs?branch=main&event=workflow_dispatch&per_page=20" > "$RUNNER_TEMP/suite.json" &&
+                 python3 "$RUNNER_TEMP/outil-avant/bee.py" --registre . main-green --base "$APRES" --runs "$RUNNER_TEMP/suite.json") || main=unknown
+          if [ "$main" = green ] || [ "$main" = pending ]; then echo portee=data; else echo portee=full; fi | tee -a "$GITHUB_OUTPUT"
+      - name: Tests that read the live registry (data-only PR, or any push)
         # A data-only PR changes no code: of the tool's tests, only these may read the live registry's data (the others read
         # the frozen fixture of ruche-0093). This list is TESTS_REGISTRE_REEL in outils/test_bee.py (TestCiScope checks it),
-        # whose audit hook fails any other test that reads the live data. ruche-0133: a data-only push too, and with them
-        # the tests that read docs/decisions.md as it stands (TESTS_DECISIONS: a push of rows there counts as data).
-        if: steps.portee.outputs.portee == 'data' || steps.portee_push.outputs.portee == 'data'
+        # whose audit hook fails any other test that reads the live data. ruche-0133: every push too (the suite it dispatches
+        # tests an older tree), and with them those that read docs/decisions.md as it stands (TESTS_DECISIONS).
+        if: steps.portee.outputs.portee == 'data' || github.event_name == 'push'
         run: >-
           python3 -m unittest outils.test_bee.TestRegistreReel outils.test_bee.TestRegistre.test_le_registre_livre_est_valide
           outils.test_bee.TestArbre.test_chemins_livres_tiennent_dans_un_budget_court
@@ -152,7 +159,8 @@ jobs:
           rest=\($b.core.used - if $m then $a.core.used else 0 end) window=\(if $m then "same" else "renewed" end)"' || true
   valider:
     # The required check of main's branch rules. It always runs (a skipped required check counts as passed): it passes if the
-    # checks passed and the full suite did, or was skipped for a data-only PR or push, or dispatched for a code push.
+    # checks passed and the full suite did, or was skipped for a data-only PR or push, or dispatched for a code push. On a push
+    # it does not wait for the suite: main's verdict is suite.yml's run on main's last code commit (bee main-green).
     needs: [controles, suite, relancer]
     if: always()
     runs-on: ubuntu-24.04
