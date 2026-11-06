@@ -19329,6 +19329,8 @@ class TestSignalementsRuche0118(OutilsSignalements):
         self.a("2026-10-30T10:00:00Z")
         for n in range(1, 13):
             self.a_la_main(f"S-{n:04d}", par="chloe")
+        config = self.dossier / "bee.yaml"  # ruche-0137: below the cap per person named (past it, they are listed apart)
+        config.write_text(re.sub(r"(?m)^  signalements_nommant_max: *3\b", "  signalements_nommant_max: 20", config.read_text(encoding="utf-8")), encoding="utf-8")
         self.commit("douze signalements ouverts")
         essaim = self.ok("essaim")
         self.assertIn("Signalements ouverts, pour le conseil : 12, les 10 premiers", essaim)
@@ -19487,7 +19489,9 @@ class TestSignalementsRuche0137(OutilsSignalements):
         for champs, morceau in (({"par": "inconnu"}, "par : inconnu is not a member"),
                                 ({"par": "alice"}, "the reporter is neither account"),
                                 ({"comptes": ["alice", "inconnu"]}, "comptes : the logins of two member accounts"),
-                                ({"decision": {**decision, "par": "chloe"}}, "decision/par : chloe is not of the council"),
+                                ({"decision": {**decision, "par": "inconnu"}}, "decision/par : inconnu is not a known account"),
+                                ({"decision": {**decision, "par": "gaspard"}}, "decision/par : neither the reporter nor one of the two accounts"),
+                                ({"decision": {**decision, "par": "bruno"}}, "decision/par : neither the reporter nor one of the two accounts"),
                                 ({"decision": {**decision, "issue": "lies"}}, "decision lies : the two member files are linked")):
             with self.subTest(champs=champs):
                 self.a_la_main("S-0001", **champs)
@@ -19562,6 +19566,99 @@ class TestSignalementsRuche0137(OutilsSignalements):
         self.branche("decision")
         self.ok("signalement", "S-0002", "--utilisateur", "hector", "--ecarter", "sans_indice")
         self.publier("hector", "gouvernance", libre=False, nom="decision")
+        self.valide()
+
+    def test_au_dela_du_plafond_nommant_un_par_24_h_et_a_part_dans_essaim(self):
+        self.a("2026-10-30T10:00:00Z")
+        self.inscrire("dora", "emile", "hugo")
+        self.signaler("gaspard", "alice", "farid")
+        self.signaler("farid", "alice", "gaspard")
+        self.signaler("gaspard", "alice", "chloe")
+        self.assertEqual(self.au_conseil("chloe", "alice", "bruno"), "S-0004")
+        # Past the cap, one more per 24 h waits for the council ; a second is refused, by bee and by the gate.
+        jour = "alice is already named in signalements_nommant_max open reports : past it, at most 1 over 24 h wait for the council"
+        self.ko(jour, "signaler", "--utilisateur", "chloe", "--comptes", "alice", "dora", "--motif", "votes_croises")
+        self.refusee_a_la_main("bruno", "S-0005", jour, comptes=["alice", "dora"])
+        self.a("2026-10-31T10:01:00Z")
+        self.assertEqual(self.au_conseil("chloe", "alice", "dora"), "S-0005")
+        self.a("2026-11-01T10:02:00Z")
+        self.assertEqual(self.au_conseil("bruno", "alice", "emile"), "S-0006")
+        # bee essaim lists them apart, newest first, so that a flood never hides the others.
+        essaim = self.ok("essaim")
+        self.assertIn("Signalements ouverts, pour le conseil : 3 (", essaim)
+        self.assertIn("Signalements au-delà du plafond nommant une personne : 3 (", essaim)
+        self.assertLess(essaim.index("S-0006 : alice et emile"), essaim.index("S-0005 : alice et dora"))
+        self.assertLess(essaim.index("S-0005 : alice et dora"), essaim.index("S-0004 : alice et bruno"))
+        tableau = json.loads(self.ok("essaim", "--json"))
+        self.assertEqual([x["id"] for x in tableau["signalements_au_plafond"]], ["S-0006", "S-0005", "S-0004"])
+        # The value is the council's (bee.yaml) : at 2, a second one the same day waits for the council too.
+        config = self.dossier / "bee.yaml"
+        config.write_text(config.read_text(encoding="utf-8").replace("  signalements_nommant_max: 3", "  signalements_nommant_max: 3\n  signalements_au_plafond_par_24h: 2"), encoding="utf-8")
+        self.commit("deux par 24 h")
+        self.a("2026-11-01T10:03:00Z")
+        self.assertEqual(self.au_conseil("dora", "alice", "hugo"), "S-0007")
+        self.valide()
+
+    def test_un_gardien_ne_decide_pas_ce_qui_touche_son_garant(self):
+        self.a("2026-10-30T10:00:00Z")
+        self.inscrire("bidji29", "hector")  # hector is gina's guarantor
+        self.signaler("bidji29", "hector", "alice")  # S-0001 names him
+        conseil = self.dossier / "gouvernance/conseil.yaml"
+        conseil.write_text(conseil.read_text(encoding="utf-8") + "  - pseudo: hector\n    role: membre\n", encoding="utf-8")
+        self.commit("hector au conseil")
+        self.signaler("hector", "bruno", "chloe")  # S-0002, he files it
+        garant = "decision/par : a guardian never decides a report filed by, or naming, the person of their guarantor"
+        for nom in ("S-0001", "S-0002"):
+            with self.subTest(signalement=nom):
+                self.ko(f"{nom} : {garant}", "signalement", nom, "--utilisateur", "gina", "--ecarter", "sans_indice")
+                s = self.lire(f"signalements/{nom}.yaml")
+                self.branche("decision")
+                bee.ecrire_yaml(self.dossier / f"signalements/{nom}.yaml", {**s, "decision": {"par": "gina", "le": s["le"], "issue": "sans_indice"}})
+                self.commit()
+                self.refusee("gina", f"signalements/{nom}.yaml : {garant}")
+                self.abandonner("decision")
+        self.decider("S-0002", "--ecarter", "sans_indice")  # another council member decides it
+        self.valide()
+
+    def test_valider_ne_rejuge_pas_le_conseil_ni_les_gardiens_d_alors(self):
+        self.a("2026-10-30T10:00:00Z")
+        self.inscrire("bidji29")
+        self.signaler("bidji29", "alice", "bruno")
+        self.branche("decision")
+        self.ok("signalement", "S-0001", "--utilisateur", "gina", "--ecarter", "personnes_distinctes")
+        self.publier("gina", "gouvernance", libre=False, nom="decision")
+        (self.dossier / "gouvernance/gardiens.yaml").write_text("membres: []\n", encoding="utf-8")  # gina leaves, then bidji29
+        conseil = self.dossier / "gouvernance/conseil.yaml"
+        conseil.write_text(conseil.read_text(encoding="utf-8") + "  - pseudo: hector\n    role: membre\n", encoding="utf-8")
+        self.commit("gina n'est plus gardienne ; hector au conseil")
+        conseil.write_text(re.sub(r"(?ms)^  - pseudo: bidji29\n.*?(?=^  - )", "", conseil.read_text(encoding="utf-8")), encoding="utf-8")
+        self.commit("bidji29 quitte le conseil")
+        self.assertNotIn("bidji29", bee.Registre(self.dossier).conseil)
+        self.valide()
+        # Written by hand on main, signed by the reporter : refused.
+        s = self.lire("signalements/S-0001.yaml")
+        bee.ecrire_yaml(self.dossier / "signalements/S-0001.yaml", {**s, "decision": {**s["decision"], "par": "bidji29"}})
+        self.ko("signalements/S-0001.yaml : decision/par : neither the reporter nor one of the two accounts", "valider")
+
+    def test_un_gardien_n_ecrit_que_le_lien_de_la_paire_decidee(self):
+        self.a("2026-10-30T10:00:00Z")
+        self.inscrire("bidji29")
+        self.signaler("bidji29", "gaspard", "alice")
+        for qui, champs, morceau in (
+                ("gaspard", {"autres_comptes": [numero_de("alice"), numero_de("farid")]}, "a guardian's decision writes one link, to the other account"),
+                ("gaspard", {"autres_comptes": [numero_de("farid")]}, "a guardian's decision writes one link, to the other account"),
+                ("alice", {"compte_de": numero_de("chloe")}, "compte_de")):
+            with self.subTest(fiche=qui, champs=champs):
+                self.branche("decision")
+                self.ok("signalement", "S-0001", "--utilisateur", "gina", "--lier", "gaspard")
+                bee.ecrire_yaml(self.dossier / f"membres/{qui}.yaml", {**self.lire(f"membres/{qui}.yaml"), **champs})
+                self.commit()
+                self.refusee("gina", f"membres/{qui}.yaml : {morceau}")
+                self.abandonner("decision")
+        self.branche("decision")
+        self.ok("signalement", "S-0001", "--utilisateur", "gina", "--lier", "gaspard")
+        self.publier("gina", "gouvernance", libre=False, nom="decision")
+        self.assertTrue(bee.Registre(self.dossier).identites.meme("alice", "gaspard"))
         self.valide()
 
     def test_lier_un_compte_deja_lie_dit_ce_que_dit_la_porte(self):

@@ -1638,10 +1638,12 @@ def tableau_essaim(reg, instant=None, jours_notes=7):
     invitations = [resume_invitation(i, conf, instant, frein) for _, (_, i) in sorted(reg.invitations.items())
                    if isinstance(i, dict) and etat_invitation(i) in ("proposee", "decidee", "envoyee", "relancee")
                    and not expiree(i, instant, conf)]
-    signalements = [{"id": i, **{k: s.get(k) for k in ("comptes", "motif", "par", "le")}} for i, (_, s) in sorted(reg.signalements.items())
-                    if isinstance(s, dict) and "decision" not in s]  # ruche-0118: open reports, for the council
+    au_dela = signalements_au_plafond(reg)  # ruche-0137: past the cap naming a person, listed apart and newest first
+    signalements, plafond = ([{"id": i, **{k: s.get(k) for k in ("comptes", "motif", "par", "le")}} for i, (_, s) in sorted(reg.signalements.items(), reverse=sens)
+                              if isinstance(s, dict) and "decision" not in s and (i in au_dela) == sens] for sens in (False, True))  # ruche-0118: for the council
     return {"en_cours": en_cours, "en_relecture": relecture, "courses": courses, "notes": notes[:15], "debats": debats,
-            "invitations": invitations, "frein": frein, "signalements": signalements[:10], "signalements_ouverts": len(signalements)}
+            "invitations": invitations, "frein": frein, "signalements": signalements[:10], "signalements_ouverts": len(signalements),
+            "signalements_au_plafond": plafond[:10], "signalements_au_plafond_ouverts": len(plafond)}
 
 
 # --------------------------------------------------------------------------
@@ -2604,6 +2606,7 @@ def jours_de_la_pr(instant):
 CREATIONS_DEFAUT = {"taches_max_par_pr": 3, "taches_max_par_24h": 5, "propositions_max_par_pr": 3, "propositions_max_par_24h": 5,
                     "invitations_max_par_pr": 1, "invitations_max_par_24h": 2,  # R13 (bee inviter)
                     "signalements_max_par_pr": 1, "signalements_max_par_24h": 2, "signalements_ouverts_max": 2, "signalements_nommant_max": 3,  # ruche-0118
+                    "signalements_au_plafond_par_24h": 1,  # ruche-0137: past signalements_nommant_max, per person named
                     "contexte_max": 3000, "elements_max": 10, "element_max": 300, "fichiers_max": 30, "chemin_max": 200}
 # Ce qui est créé en libre-service, par dossier : (éléments du registre, clé de l'auteur, clé de la date déclarée).
 CREES_PAR = {"taches": ("taches", "cree_par", "cree_le"), "propositions": ("propositions", "auteur", "ouverte_le"),
@@ -5598,11 +5601,13 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
     est_conseil = status and auteur in reg.conseil
     est_robot = status and auteur in reg.robots
     is_guardian = status and auteur in reg.gardiens
-    decide_en_gardien, liables = is_guardian and auteur in gardiens_en_fonction(reg), set()  # ruche-0137: a report a council member filed
+    decide_en_gardien, liables = is_guardian and auteur in gardiens_en_fonction(reg), {}  # ruche-0137: a report a council member filed
     for s, c in changements if decide_en_gardien else ():  # the two member files a guardian links by deciding « lies »
         if s == "M" and CHEMIN_SIGNALEMENT.match(c) and isinstance(x := lire_ou_rien(reg.racine, base, c), dict) and signale_par_le_conseil(reg, x):
             if isinstance(d := (lire_ou_rien(reg.racine, tete, c) or {}).get("decision"), dict) and d.get("issue") == "lies" and isinstance(x.get("comptes"), list):
-                liables |= {reg.identites.compte(reg.identites.nom(k)).casefold() for k in x["comptes"]} | {str(k).casefold() for k in x["comptes"]}
+                for k, autre in zip(x["comptes"], x["comptes"][::-1]):  # {member file: the numbers of the other side, its link}
+                    for f in {str(k).casefold(), str(reg.identites.compte(reg.identites.nom(k))).casefold()}:
+                        liables.setdefault(f, set()).update(reg.identites.numeros.get(str(n).casefold()) for n in (autre, reg.identites.nom(autre)))
     known = auteur in reg.membres or auteur in reg.conseil  # a known person (bee valider: an agent's person is one)
     amorcage = bool(reg.config.get("amorcage"))
     niveaux = calculer_niveaux(reg)
@@ -6227,8 +6232,18 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
                 exiger((refus := refus_lien(reg, ancien if isinstance(ancien, dict) and statut_git == "M" else {}, nouveau, github_id)) is None or lien,
                        f"{chemin} : {refus}")
             if lien and isinstance(ancien, dict) and isinstance(nouveau, dict):  # the guardian adds the link of its decision, nothing else
-                exiger(all(k not in ancien or ancien[k] == nouveau.get(k) or (k == "autres_comptes" and isinstance(ancien[k], list) and isinstance(
-                    nouveau.get(k), list) and nouveau[k][:len(ancien[k])] == ancien[k]) for k in LIENS), f"{chemin} : links are added, never changed or removed")
+                al, nl = (f["autres_comptes"] if isinstance(f.get("autres_comptes"), list) else [] for f in (ancien, nouveau))
+                ajouts = nl[len(al):] + [nouveau.get("compte_de")] * (nouveau.get("compte_de") != ancien.get("compte_de"))
+                exiger(len(ajouts) == 1 and type(ajouts[0]) is int and ajouts[0] in liables[pathlib.PurePosixPath(chemin).stem.casefold()] - {None},
+                       f"{chemin} : a guardian's decision writes one link, to the other account of the pair it links")
+                soi, sauves = nouveau.get("github_id"), {}  # the other file's compte_de, confirmed by this PR, is judged on its own
+                for n, (c, f) in list(reg.membres.items()) if nl != al else ():
+                    if n.casefold() in liables and isinstance(f, dict) and f.get("compte_de") == soi and (lire_ou_rien(reg.racine, base, reg.rel(c)) or {}).get("compte_de") != soi:
+                        sauves[n], reg.membres[n] = (c, f), (c, {k: v for k, v in f.items() if k != "compte_de"})
+                try:
+                    exiger((refus := refus_lien(reg, ancien, nouveau, soi)) is None, f"{chemin} : {refus}")
+                finally:
+                    reg.membres.update(sauves)
             if statut_git == "A" and isinstance(nouveau, dict):
                 exiger(type(nouveau.get("github_id")) is int and nouveau.get("github_id") == github_id,
                        f"{chemin} : github_id is the number GitHub gives for {auteur}'s account ({github_id or 'not read: --github-id'}), never one the PR writes (ruche-0022)")
@@ -6734,9 +6749,11 @@ def cmd_essaim(args):
                     f"{retard} argument(s) après la synthèse" if x["synthese_le"] else "pas encore de synthèse")
             print(f"  - {x['id']} (rapporteur {_nettoyer(x['rapporteur'] or RAPPORTEUR_ABSENT)}, {x['arguments']} argument(s), dernière activité "
                   f"{x['derniere_activite']}, {etat}) : {question if len(question) <= 90 else question[:89] + '…'}")
-    if tableau["signalements"]:
-        print(f"\nSignalements ouverts, pour le conseil : {(n := tableau['signalements_ouverts'])}{', les 10 premiers' * (n > 10)} (bee voir <S-nnnn>, bee signalement) :")
-        for x in tableau["signalements"]:
+    for cle, titre, premiers in (("signalements", "Signalements ouverts, pour le conseil", "les 10 premiers"),
+                                 ("signalements_au_plafond", "Signalements au-delà du plafond nommant une personne", "les 10 derniers")):
+        if tableau[cle]:
+            print(f"\n{titre} : {(n := tableau[cle + '_ouverts'])}{', ' + premiers if n > 10 else ''} (bee voir <S-nnnn>, bee signalement) :")
+        for x in tableau[cle]:
             print(f"  - {_nettoyer(x['id'])} : {_nettoyer(' et '.join(map(str, x['comptes'])) if isinstance(x['comptes'], list) else x['comptes'])} ({_nettoyer(x['motif'])}), "
                   f"signalé par {_nettoyer(x['par'])} le {_nettoyer(x['le'])}")
     frein = tableau["frein"]
@@ -6964,6 +6981,12 @@ def refus_signalement(reg, s, auteur, instant, soi=None):
             return f"{nom} was dismissed on {d.get('le')} : this pair is not reported again for 30 days after (by person : linked accounts and former logins too)"
     if sum(reg.identites.meme(x.get("par"), auteur) for x in ouverts) >= (m := conf["signalements_ouverts_max"]):
         return f"{reg.identites.nom(auteur)} already has {m} open reports, at most {m} per person who reports (creations.signalements_ouverts_max)"
+    au_dela, k = signalements_au_plafond(reg, soi).values(), conf["signalements_au_plafond_par_24h"]  # ruche-0137
+    for c in nommes_au_plafond(reg, comptes, soi):
+        if sum(reg.identites.cle(c) in paire_signalee(reg, x["comptes"]) and ((t := _instant_ou_rien(x.get("le"))) is None or t > instant - FENETRE_PLAFOND)
+               for x in au_dela) >= k:
+            return (f"{c} is already named in signalements_nommant_max open reports : past it, at most {k} over 24 h wait for the council, per "
+                    "person named (creations.signalements_au_plafond_par_24h)")
     return probleme_date_pr(s["le"], "le", instant) or (s["le"] != en_iso(lire_instant(s["le"])) and f"le ({s['le']}) : the time of the PR as bee writes it ({en_iso(instant)})") or None
 
 
@@ -6973,6 +6996,17 @@ def nommes_au_plafond(reg, comptes, soi=None):
     m, ouverts = config_creations(reg)["signalements_nommant_max"], [paire_signalee(reg, x.get("comptes")) or () for nom, (_, x)
                                                                       in reg.signalements.items() if nom != soi and isinstance(x, dict) and "decision" not in x]
     return [reg.identites.nom(c) for c in (comptes if paire_signalee(reg, comptes) else ()) if sum(reg.identites.cle(c) in p for p in ouverts) >= m]
+
+
+def signalements_au_plafond(reg, soi=None):
+    """ruche-0137: the open reports past signalements_nommant_max, {name: report} : by number, the first ones naming a person fill the cap."""
+    m, vus, au_dela = config_creations(reg)["signalements_nommant_max"], Counter(), {}
+    for nom, (_, x) in sorted(reg.signalements.items()):
+        if nom != soi and isinstance(x, dict) and "decision" not in x and (p := paire_signalee(reg, x.get("comptes"))):
+            if any(vus[c] >= m for c in p):
+                au_dela[nom] = x
+            vus.update(p)
+    return au_dela
 
 
 def signale_par_le_conseil(reg, s):  # ruche-0137: filed by a council member, under any of their accounts (linked, agent)
@@ -6985,7 +7019,15 @@ def refus_decideur(reg, s, qui):
     if not (qui in reg.conseil or (qui in gardiens_en_fonction(reg) and signale_par_le_conseil(reg, s))) or any(
             same_person(reg, qui, c) for c in s.get("comptes") or ()):
         return "the council alone decides an open report, never one naming its own account or a linked one ; a guardian in office, one a council member filed"
-    return DECIDE_SON_SIGNALEMENT if same_person(reg, qui, s.get("par")) else None
+    return DECIDE_SON_SIGNALEMENT if same_person(reg, qui, s.get("par")) else refus_garant(reg, s, qui)
+
+
+def refus_garant(reg, s, qui):
+    """ruche-0137: a guardian (outside the council) never decides a report filed by, or naming, the person of their guarantor."""
+    garants = [] if qui in reg.conseil else [m.get("garant") for m in reg.fiches_gardiens if reg.identites.meme(m.get("pseudo"), qui)]
+    noms = [s.get("par"), *(s.get("comptes") if isinstance(s.get("comptes"), list) else [])]
+    return next(("decision/par : a guardian never decides a report filed by, or naming, the person of their guarantor"
+                 for g in garants for x in noms if same_person(reg, g, x)), None)
 
 
 DECIDE_SON_SIGNALEMENT = ("decision/par : never the person who filed the report, under any of their accounts : it waits for another "
@@ -6995,13 +7037,23 @@ DECIDE_SON_SIGNALEMENT = ("decision/par : never the person who filed the report,
 def refus_signalement_sur_main(reg, s):
     """ruche-0137: bee valider refuses on main what the gate refuses, by account (a later link never makes the registry invalid)."""
     qui, d, par, comptes = reg.identites_lues, s.get("decision") or {}, s["par"], s["comptes"]
+    compte = lambda x: qui.compte(x).casefold() if isinstance(x, str) else x  # noqa: E731
     return [m for faute, m in (
         (par not in reg.membres and par.casefold() not in qui.comptes, f"par : {par} is not a member : a member reports in their own name"),
         (any(qui.compte(par).casefold() == qui.compte(c).casefold() for c in comptes), "the reporter is neither account"),
         (not all(c.casefold() in qui.comptes for c in comptes), "comptes : the logins of two member accounts, each file with its github_id"),
-        (d and not (d["par"] in reg.conseil or (d["par"] in reg.gardiens and signale_par_le_conseil(reg, s))),
-         f"decision/par : {d.get('par')} is not of the council (a guardian decides only a report a council member filed)"),
+        (d and not (str(d["par"]).casefold() in {*qui.numeros, *deja_nommes(reg)} or d["par"] in reg.conseil or d["par"] in reg.gardiens),
+         f"decision/par : {d.get('par')} is not a known account"),  # by account : a later change of council or guardians changes nothing
+        (d and compte(d["par"]) in {compte(x) for x in [par, *comptes]}, "decision/par : neither the reporter nor one of the two accounts"),
         (d.get("issue") == "lies" and not qui.meme(*comptes), "decision lies : the two member files are linked (bee signalement --lier writes both)")) if faute]
+
+
+def deja_nommes(reg):
+    """ruche-0137: the logins the council and guardian lists have ever named (git history, casefolded), read once."""
+    if not hasattr(reg, "deja_nommes"):
+        code, sortie = _git_brut(reg.racine, "log", "--format=", "-p", "--", "gouvernance/conseil.yaml", "gouvernance/gardiens.yaml")
+        reg.deja_nommes = set() if code else {x.casefold() for x in re.findall(r"(?m)^[-+ ]\s*-?\s*pseudo:\s*['\"]?([\w.-]+)", sortie.decode("utf-8", "replace"))}
+    return reg.deja_nommes
 
 
 def refus_decision(reg, avant, apres, auteur, instant):
@@ -7013,6 +7065,8 @@ def refus_decision(reg, avant, apres, auteur, instant):
         return "decision/par : the council member who authors this PR, neither of the two accounts nor linked to one"
     if same_person(reg, auteur, avant.get("par")):  # ruche-0137
         return DECIDE_SON_SIGNALEMENT
+    if refus := refus_garant(reg, avant, auteur):
+        return refus
     if d.get("issue") == "lies" and (reg.identites.meme(*comptes) or not reg.identites_lues.meme(*comptes)):
         return "decision lies : this PR links the two member files (bee signalement --lier writes both)"
     return probleme_date_pr(d.get("le"), "decision/le", instant) or (d["le"] != en_iso(lire_instant(d["le"])) and f"decision/le ({d['le']}) : the time of the PR as bee writes it ({en_iso(instant)})") or None
