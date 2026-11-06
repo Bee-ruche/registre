@@ -428,7 +428,7 @@ class TestCiScope(unittest.TestCase):
         """Whether a step runs: evaluates only the `if:` shapes validation.yml uses (GitHub compares strings ignoring case);
         any other shape fails the test, to be added here knowingly."""
         condition = etape.get("if")
-        if condition is None:
+        if condition is None or condition == "always()":  # ruche-0121: the API budget's end step
             return True
         forme = re.fullmatch(r"(github\.event_name|steps\.portee\.outputs\.portee) (==|!=) '([a-z_]+)'", str(condition).strip())
         if not isinstance(condition, str) or not forme:
@@ -610,6 +610,319 @@ class TestCiScope(unittest.TestCase):
             self.assertIn("reads the live registry's data", texte)
 
 
+class TestApiBudget(unittest.TestCase):
+    """ruche-0121 (E2): each workflow logs, per token, the REST calls, GraphQL points and content-creating requests it spent
+    (bee api-budget); the account's creation date is read only for a PR that adds a member file; the site is rebuilt at once
+    for a push (code), at most every few minutes for the robots' dispatches (data); the workflows' security is unchanged."""
+
+    # The workflows that call gh with the registry's tokens, and the tokens each gives gh (juge.yml runs under a fork's token).
+    ROBOTS = {"validation.yml": ["GITHUB_TOKEN"], "fusion-auto.yml": ["GITHUB_TOKEN"], "verdicts.yml": ["GITHUB_TOKEN"],
+              "integration-auto.yml": ["GITHUB_TOKEN", "BEE_INTEGRATION_TOKEN"], "expirations.yml": ["GITHUB_TOKEN"]}
+    JETONS = {"GITHUB_TOKEN": "${{ github.token }}", "BEE_INTEGRATION_TOKEN": "${{ secrets.BEE_INTEGRATION_TOKEN }}"}
+    # A real gh stand-in: counts, per token ($GH_TOKEN), REST calls (gh api) and GraphQL points (pr ...: one query; merge and
+    # close: one more per mutation), answers rate_limit from those counts, echoes its stdin for `api echo`, exits 3 for pr view.
+    GH_REEL = r'''import json, os, pathlib, sys
+a, f = sys.argv[1:], pathlib.Path(os.environ["COMPTES"])
+c = json.loads(f.read_text()) if f.exists() else {}
+mien = c.setdefault(os.environ.get("GH_TOKEN", ""), {"core": 0, "graphql": 0})
+if a == ["api", "rate_limit"]:
+    print(json.dumps({"resources": {k: {"used": n, "limit": 1000, "remaining": 1000 - n, "reset": 1700000000} for k, n in mien.items()}}))
+    sys.exit(0)
+if a[:1] == ["api"]:
+    mien["core"] += 1
+else:
+    mien["graphql"] += 1 + (a[:2] == ["pr", "merge"]) + (a[:2] == ["pr", "close"]) * (1 + ("--comment" in a))
+f.write_text(json.dumps(c))
+if a[:2] == ["api", "echo"]:
+    sys.stdout.write(sys.stdin.read())
+sys.exit(3 if a[:2] == ["pr", "view"] else 0)
+'''
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.dossier = pathlib.Path(self.temp.name)
+
+    @staticmethod
+    def flux(nom):
+        return yaml.safe_load((RACINE / ".github/workflows" / nom).read_text(encoding="utf-8"))
+
+    @staticmethod
+    def etapes(nom):
+        return [s for job in TestApiBudget.flux(nom)["jobs"].values() for s in job.get("steps", [])]
+
+    def depot(self):
+        depot = self.dossier / "depot"
+        git(self.temp.name, "init", "-q", "-b", "main", str(depot))
+        for chemin in ("membres/alice.yaml", "taches/miniz/miniz-0001.yaml"):
+            (depot / chemin).parent.mkdir(parents=True, exist_ok=True)
+            (depot / chemin).write_text("id: x\n", encoding="utf-8")
+        git(depot, "add", "-A")
+        git(depot, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "base")
+        return depot, git(depot, "rev-parse", "HEAD").strip()
+
+    def test_the_account_date_is_needed_only_for_a_new_member_file(self):
+        depot, base = self.depot()
+        cas = {"a new member file": (["membres/bruno.yaml"], [], True),
+               "a new member file among data": (["membres/bruno.yaml", "votes/miniz-0001-c1/bruno.yaml"], [], True),
+               "another case of the folder": (["Membres/bruno.yaml"], [], True),
+               "a profile change": (["membres/alice.yaml"], [], False),
+               "a deleted member file": ([], ["membres/alice.yaml"], False),
+               "a reservation": (["taches/miniz/miniz-0001.yaml"], [], False),
+               "a vote and a measure": (["votes/miniz-0001-c1/bruno.yaml", "mesures/miniz-0001-c1/bruno.yaml"], [], False)}
+        for nom, (ecrits, supprimes, attendu) in cas.items():
+            with self.subTest(cas=nom):
+                git(depot, "checkout", "-q", "-B", "pr", base)
+                for chemin in ecrits:
+                    (depot / chemin).parent.mkdir(parents=True, exist_ok=True)
+                    (depot / chemin).write_text("id: y\n", encoding="utf-8")
+                for chemin in supprimes:
+                    (depot / chemin).unlink()
+                git(depot, "add", "-A")
+                git(depot, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", nom)
+                self.assertIs(bee.date_compte_requise(depot, base, "HEAD"), attendu)
+                self.assertEqual(lancer("--registre", str(depot), "needs-account-date", "--base", base), (0, "yes\n" if attendu else "no\n"))
+        # Whatever goes wrong, the date is read (fails closed: one more call, never a registration without its date).
+        self.assertTrue(bee.date_compte_requise(depot, "0" * 40, "HEAD"), "unknown base")
+        self.assertTrue(bee.date_compte_requise(self.dossier, base, "HEAD"), "not a repository")
+
+    def rejouer(self, script, env, bee_faux):
+        """Runs a step's script (bash -e) in a folder whose outils/bee.py prints its arguments and answers needs-account-date
+        with $DECISION, with a stub gh that logs its arguments and prints $FAUX_GH: (result, gh calls, bee's lines)."""
+        dossier = pathlib.Path(tempfile.mkdtemp(dir=self.temp.name))
+        (dossier / "outils").mkdir()
+        (dossier / "outils/bee.py").write_text(bee_faux, encoding="utf-8")
+        (dossier / "bin").mkdir()
+        (dossier / "bin/gh").write_text('#!/bin/sh\necho "$@" >> "$RUNNER_TEMP/gh.log"\necho "$FAUX_GH"\n', encoding="utf-8")
+        (dossier / "bin/gh").chmod(0o755)
+        r = subprocess.run(["bash", "-e", "-c", script], cwd=dossier, capture_output=True, text=True,
+                           env={**os.environ, "PATH": f"{dossier / 'bin'}{os.pathsep}{os.environ['PATH']}", "RUNNER_TEMP": str(dossier),
+                                "GITHUB_REPOSITORY": "Bee-ruche/registre", "GITHUB_RUN_ID": "4242", **env})
+        journal = dossier / "gh.log"
+        return r, journal.read_text(encoding="utf-8").splitlines() if journal.exists() else []
+
+    def test_validation_reads_the_date_only_for_a_new_member_file(self):
+        """validation.yml: the author's number is GitHub's (the event), its creation date one call, only when needed."""
+        etape = next(s for s in self.etapes("validation.yml") if s.get("name", "").startswith("Règles de la pull request"))
+        self.assertEqual(etape["env"]["GITHUB_ID"], "${{ github.event.pull_request.user.id }}")
+        bee_faux = ("import os, sys\nif 'needs-account-date' in sys.argv:\n    print(os.environ['DECISION'])\n    sys.exit(int(os.environ['CODE']))\n"
+                    "print('BEE', *sys.argv[1:])\n")
+        for decision, code, lue in (("no", "0", False), ("yes", "0", True), ("", "1", True), ("garbage", "0", True)):
+            with self.subTest(decision=decision, code=code):
+                r, appels = self.rejouer(etape["run"], {"BASE": "abc", "AUTEUR": "alice", "GITHUB_ID": "583231", "DECISION": decision,
+                                                        "CODE": code, "FAUX_GH": "2020-01-01"}, bee_faux)
+                self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+                self.assertEqual([a for a in appels if a.startswith(("api user", "api users"))],
+                                 ["api user/583231 --jq .created_at[:10]"] if lue else [])
+                self.assertEqual(len(appels), 2 if lue else 1, appels)  # and the run's creation time (ruche-0091)
+                self.assertIn(f"--compte-cree-le {'2020-01-01' if lue else ''} --github-id 583231 ", r.stdout)
+
+    def test_fusion_auto_finds_the_pr_and_its_author_s_number_in_one_listing(self):
+        """fusion-auto.yml: one REST listing of the open PRs to main (all pages) gives the PR and its author's number; no
+        other call before the gate, but the date for a new member file."""
+        if not shutil.which("jq"):
+            self.skipTest("jq is needed to apply the listing's filter as gh --jq does")
+        etapes = {s.get("name", ""): s for s in self.etapes("fusion-auto.yml")}
+        script = etapes["Retrouver la pull request"]["run"]
+        tete = "a" * 40
+        prs = [{"number": 7, "head": {"sha": "b" * 40}, "base": {"ref": "main"}, "user": {"login": "bruno", "id": 2}},
+               {"number": 8, "head": {"sha": tete}, "base": {"ref": "autre"}, "user": {"login": "chloe", "id": 3}},
+               {"number": 9, "head": {"sha": tete}, "base": {"ref": "main"}, "user": {"login": "alice", "id": 583231}, "title": "x\ny"}]
+        dossier = pathlib.Path(tempfile.mkdtemp(dir=self.temp.name))
+        (dossier / "bin").mkdir()
+        (dossier / "bin/gh").write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$RUNNER_TEMP/gh.log"\n'
+                                        'while [ "$1" != --jq ]; do shift; done\njq -r "$2" "$RUNNER_TEMP/prs.json"\n', encoding="utf-8")
+        (dossier / "bin/gh").chmod(0o755)
+        (dossier / "prs.json").write_text(json.dumps(prs), encoding="utf-8")
+        for sha, attendu in ((tete, {"numero": "9", "auteur": "alice", "github_id": "583231"}), ("c" * 40, {})):
+            with self.subTest(sha=sha):
+                (dossier / "sortie").write_text("", encoding="utf-8")
+                (dossier / "gh.log").write_text("", encoding="utf-8")
+                r = subprocess.run(["bash", "-e", "-c", script], cwd=dossier, capture_output=True, text=True,
+                                   env={**os.environ, "PATH": f"{dossier / 'bin'}{os.pathsep}{os.environ['PATH']}", "SHA": sha,
+                                        "RUNNER_TEMP": str(dossier), "GITHUB_OUTPUT": str(dossier / "sortie"), "GITHUB_REPOSITORY": "Bee-ruche/registre"})
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertEqual(dict(l.split("=", 1) for l in (dossier / "sortie").read_text(encoding="utf-8").splitlines()), attendu)
+                appel = (dossier / "gh.log").read_text(encoding="utf-8").splitlines()
+                self.assertEqual(len(appel), 1)
+                self.assertTrue(appel[0].startswith("api repos/Bee-ruche/registre/pulls?state=open&base=main&per_page=100 --paginate --jq "))
+        verif = etapes["Vérifier la fusion simulée avec l'outil de confiance"]
+        self.assertEqual(verif["env"]["GITHUB_ID"], "${{ steps.pr.outputs.github_id }}")
+        self.assertNotIn("users/", verif["run"])
+        self.assertIn('if [ "$(python3 outils/bee.py --registre ../fusion needs-account-date --base origin/main --tete HEAD)" != no ]; then\n'
+                      '  cree=$(gh api "user/$GITHUB_ID" --jq \'.created_at[:10]\'); fi', verif["run"])
+        self.assertIn('--compte-cree-le "$cree" --github-id "$GITHUB_ID" ', verif["run"])
+
+    def test_content_creating_requests_of_a_gh_call(self):
+        """Measured on gh 2.89 against a mock server: a merge is one query and one mutation, a closing with its comment one
+        query and two mutations, gh workflow run a GET and a POST, gh api with fields and no method a POST."""
+        cas = [(["pr", "merge", "5", "--squash", "--match-head-commit", "a"], 1), (["pr", "close", "u", "--comment", "x"], 2),
+               (["pr", "close", "u"], 1), (["pr", "view", "u", "--json", "state"], 0), (["pr", "list", "--json", "number"], 0),
+               (["workflow", "run", "site.yml", "--ref", "main"], 1), (["run", "download", "1", "-n", "verdict"], 0),
+               (["api", "repos/o/r/pulls/5"], 0), (["api", "repos/o/r/pulls?state=open", "--paginate", "--jq", ".[]"], 0),
+               (["api", "-X", "POST", "repos/o/r/actions/workflows/site.yml/dispatches", "-f", "ref=main"], 1),
+               (["api", "repos/o/r/actions/workflows/site.yml/dispatches", "-f", "ref=main"], 1),
+               (["api", "-X", "GET", "search/code", "-f", "q=x"], 0), (["api", "--method", "put", "repos/o/r/pulls/5/merge"], 1),
+               (["api", "-X", "DELETE", "repos/o/r/git/refs/x"], 1), (["api", "graphql", "-f", "query= mutation { x }"], 1),
+               (["api", "--method=POST", "repos/o/r/dispatches"], 1), (["api", "-XPOST", "repos/o/r/dispatches"], 1),
+               (["api", "-XGET", "search/code", "-f", "q=x"], 0), (["api", "--method=get", "x", "-F", "a=1"], 0), (["api", "x", "-X"], 0),
+               (["api", "graphql", "-f", "query=query { x }"], 0), (["api", "rate_limit"], 0), ([], 0), (["api"], 0)]
+        for args, attendu in cas:
+            with self.subTest(args=args):
+                self.assertEqual(bee.creations_gh(args), attendu)
+
+    def test_a_token_s_spending_between_two_readings(self):
+        lecture = lambda core, graphql, reset=100: {"resources": {"core": {"used": core, "limit": 1000, "remaining": 1000 - core, "reset": reset},  # noqa: E731
+                                                                  "graphql": {"used": graphql, "limit": 1000, "remaining": 1000 - graphql, "reset": reset}}}
+        self.assertEqual(bee.depense_api(lecture(10, 3), lecture(17, 5)), {"rest": 7, "graphql": 2, "rest_left": "983/1000", "window": "same"})
+        # A window that restarted in between: what the new window spent, marked as such.
+        self.assertEqual(bee.depense_api(lecture(900, 3), lecture(4, 1, 200)), {"rest": 4, "graphql": 1, "rest_left": "996/1000", "window": "renewed"})
+        # Each resource in its own window: GitHub moves an unused resource's reset at every reading; a counter at 0 at the start
+        # is the same window, and one resource's new window leaves the other's count alone.
+        deux = lambda core, reset_core, graphql, reset_graphql: {"resources": {  # noqa: E731
+            "core": {"used": core, "limit": 5000, "remaining": 5000 - core, "reset": reset_core},
+            "graphql": {"used": graphql, "limit": 5000, "remaining": 5000 - graphql, "reset": reset_graphql}}}
+        self.assertEqual(bee.depense_api(deux(1200, 100, 0, 1793663978), deux(1205, 100, 0, 1793663981)),
+                         {"rest": 5, "graphql": 0, "rest_left": "3795/5000", "window": "same"})
+        self.assertEqual(bee.depense_api(deux(0, 1793663978, 40, 100), deux(3, 1793663990, 42, 100)),
+                         {"rest": 3, "graphql": 2, "rest_left": "4997/5000", "window": "same"})
+        self.assertEqual(bee.depense_api(deux(1200, 100, 40, 100), deux(1203, 100, 2, 200)),
+                         {"rest": 3, "graphql": 2, "rest_left": "3797/5000", "window": "renewed"})
+        self.assertEqual(bee.depense_api(deux(1200, 100, 40, 100), deux(6, 200, 41, 100)),
+                         {"rest": 6, "graphql": 1, "rest_left": "4994/5000", "window": "renewed"})
+
+    def test_start_and_end_log_each_token_s_spending_and_this_job_s_calls(self):
+        reel = self.dossier / "reel"
+        reel.mkdir()
+        (reel / "gh").write_text(f"#!{sys.executable}\n{self.GH_REEL}", encoding="utf-8")
+        (reel / "gh").chmod(0o755)
+        mesure, chemin = self.dossier / "mesure", self.dossier / "github_path"
+        env = {**os.environ, "PATH": f"{reel}{os.pathsep}{os.environ['PATH']}", "COMPTES": str(self.dossier / "comptes.json"),
+               "GITHUB_TOKEN": "jeton-registre", "BEE_INTEGRATION_TOKEN": "jeton-forks", "GITHUB_PATH": str(chemin),
+               "GITHUB_WORKFLOW": "Intégration automatique"}
+        budget = lambda moment, env=env: subprocess.run(  # noqa: E731
+            [sys.executable, str(RACINE / "outils/bee.py"), "api-budget", moment, "--dossier", str(mesure), "--jeton", "GITHUB_TOKEN",
+             "--jeton", "BEE_INTEGRATION_TOKEN", "--jeton", "ABSENT"], env=env, capture_output=True, text=True)
+        r = budget("start")
+        self.assertEqual((r.returncode, r.stdout, r.stderr), (0, "", ""))
+        self.assertEqual(chemin.read_text(encoding="utf-8"), f"{mesure / 'bin'}\n")
+        self.assertEqual([oct(f.stat().st_mode & 0o777) for f in (mesure / "bin", mesure / "bin/gh")], ["0o555", "0o555"])
+        # The job's later steps find the logging gh first; it changes nothing of what gh prints, reads or returns.
+        env["PATH"] = f"{mesure / 'bin'}{os.pathsep}{env['PATH']}"
+        script = ('GH_TOKEN=jeton-registre gh api repos/o/r/pulls/1\nGH_TOKEN=jeton-registre gh pr merge 5 --squash\n'
+                  'GH_TOKEN=jeton-forks gh pr close u --comment "two words\nand a line"\n'
+                  'GH_TOKEN=jeton-registre gh api -X POST repos/o/r/actions/workflows/site.yml/dispatches -f ref=main\n'
+                  'GH_TOKEN=inconnu gh api repos/o/r\nset +e; GH_TOKEN=jeton-registre gh pr view 5; echo "code=$?"\n'
+                  'printf "a\\0b" | GH_TOKEN=jeton-registre gh api echo | od -An -c\n')
+        r = subprocess.run(["bash", "-e", "-c", script], env=env, capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout.split(), ["code=3", "a", "\\0", "b"])
+        r = budget("end", {**env, "GITHUB_PATH": ""})
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout.splitlines(), lignes := [
+            "::notice title=API budget::workflow=Intégration automatique token=GITHUB_TOKEN rest=3 graphql=3 rest_left=997/1000 "
+            "window=same gh_calls=5 creating=2",
+            "::notice title=API budget::workflow=Intégration automatique token=BEE_INTEGRATION_TOKEN rest=0 graphql=3 "
+            "window=same gh_calls=1 creating=2",
+            "::notice title=API budget::workflow=Intégration automatique token=other gh_calls=1 creating=0"])
+        # A record cut short at the end (the job stopped while writing it) is dropped; the others count as before.
+        with open(mesure / "appels", "ab") as f:
+            f.write(b"0123456789abcdef\x003\x00api\x00")
+        r = budget("end", {**env, "PATH": f"{reel}{os.pathsep}{os.environ['PATH']}"})
+        self.assertEqual((r.returncode, r.stdout.splitlines()), (0, lignes), r.stderr)
+        # Without gh, or when rate_limit cannot be read, nothing is measured and the job goes on.
+        (self.dossier / "panne").mkdir()
+        (self.dossier / "panne/gh").write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+        (self.dossier / "panne/gh").chmod(0o755)
+        for nom, chemin_gh, erreur in (("no gh", "/nonexistent", "FileNotFoundError"), ("rate_limit unreadable", str(self.dossier / "panne"), "CalledProcessError")):
+            with self.subTest(cas=nom):
+                r = budget("start", {**env, "PATH": chemin_gh, "GITHUB_PATH": str(self.dossier / "autre")})
+                self.assertEqual((r.returncode, r.stdout), (0, f"::notice title=API budget::not measured ({erreur})\n"), r.stderr)
+                self.assertFalse((self.dossier / "autre").exists())
+
+    def test_every_workflow_measures_each_token_it_uses(self):
+        """Each workflow that calls gh starts the measure right after its dependencies (validation.yml: after its scope step,
+        decided by the base's tool), before any other gh call, with every token its steps give gh, and ends it last in that job,
+        even after a failure (if: always()); its other jobs call no gh."""
+        appelants = {f.name for f in (RACINE / ".github/workflows").glob("*.yml")
+                     if any(re.search(r"(^|[\s(;|&])gh ", s.get("run", "")) for s in self.etapes(f.name))}
+        self.assertEqual(appelants, {*self.ROBOTS, "juge.yml", "site.yml"})
+        for nom, jetons in self.ROBOTS.items():
+            with self.subTest(flux=nom):
+                jobs = [j.get("steps", []) for j in self.flux(nom)["jobs"].values()]
+                avec_gh = [e for e in jobs if any("gh " in s.get("run", "") for s in e)]
+                self.assertEqual(len(avec_gh), 1, "one job calls gh (ruche-0132: validation.yml's controles)")
+                etapes = avec_gh[0]
+                noms = [s.get("name", "") for s in etapes]
+                apres = "Scope of the PR (data only, or the full suite)" if nom == "validation.yml" else "Dépendances"
+                debut, fin = etapes[noms.index(apres) + 1], etapes[-1]
+                options = " ".join(f"--jeton {j}" for j in jetons)
+                self.assertEqual(debut["run"], f'python3 outils/bee.py api-budget start --dossier "$RUNNER_TEMP/api-budget" {options}')
+                self.assertEqual(fin["run"], f'python3 outils/bee.py api-budget end --dossier "$RUNNER_TEMP/api-budget" {options}')
+                self.assertEqual((debut.get("if"), fin.get("if")), (None, "always()"))
+                for etape in (debut, fin):
+                    self.assertEqual(etape["env"], {j: self.JETONS[j] for j in jetons})
+                avant = etapes[:etapes.index(debut)]
+                self.assertEqual([s.get("name") for s in avant if "gh " in s.get("run", "")], [apres] if nom == "validation.yml" else [],
+                                 "a gh call before the measure starts (validation.yml: the scope step's one read only)")
+                donnes = {v for s in self.etapes(nom) for v in (s.get("env") or {}).values() if "token" in str(v).lower()}
+                self.assertEqual(donnes, {self.JETONS[j] for j in jetons}, "a token given to gh but not measured")
+        deployer = self.flux("site.yml")["jobs"]["deployer"]["steps"]
+        self.assertEqual(deployer[0]["run"], 'gh api rate_limit > "$RUNNER_TEMP/rate_limit.json" || true')  # never stops the deployment
+        self.assertEqual((deployer[-1].get("if"), deployer[-1]["run"].endswith("|| true")), ("always()", True))
+        if shutil.which("jq"):  # the site's end step computes what bee api-budget does, in jq
+            lecture = lambda core, reset: json.dumps({"resources": {"core": {"used": core, "reset": reset}, "graphql": {"used": 0, "reset": reset}}})  # noqa: E731
+            for (avant, apres), attendu in (((lecture(10, 5), lecture(14, 5)), "rest=4 window=same"), ((lecture(10, 5), lecture(3, 6)), "rest=3 window=renewed")):
+                with self.subTest(attendu=attendu):
+                    (self.dossier / "rate_limit.json").write_text(avant, encoding="utf-8")
+                    (self.dossier / "gh").write_text(f"#!/bin/sh\necho '{apres}'\n", encoding="utf-8")
+                    (self.dossier / "gh").chmod(0o755)
+                    r = subprocess.run(["bash", "-e", "-o", "pipefail", "-c", deployer[-1]["run"]], capture_output=True, text=True,
+                                       env={**os.environ, "PATH": f"{self.dossier}{os.pathsep}{os.environ['PATH']}", "RUNNER_TEMP": str(self.dossier)})
+                    self.assertEqual(r.stdout, f"::notice title=API budget::workflow=Site token=GITHUB_TOKEN {attendu}\n", r.stderr)
+
+    def test_the_robots_start_the_site_with_one_call(self):
+        """gh workflow run reads the workflow, then dispatches it (two calls): the robots dispatch it directly."""
+        appel = 'gh api -X POST "repos/$GITHUB_REPOSITORY/actions/workflows/site.yml/dispatches" -f ref=main || true  # ruche-0121: one call'
+        for nom in self.ROBOTS:
+            with self.subTest(flux=nom):
+                texte = "\n".join(s.get("run", "") for s in self.etapes(nom))
+                self.assertNotIn("gh workflow run", texte)
+                self.assertEqual(texte.count("site.yml/dispatches"), texte.count(appel), "every dispatch is the one call")
+                self.assertEqual(texte.count(appel), 0 if nom == "validation.yml" else 1)
+
+    def test_the_site_builds_at_once_for_code_and_at_most_every_few_minutes_for_data(self):
+        site = self.flux("site.yml")
+        self.assertEqual(site[True], {"push": {"branches": ["main"]}, "workflow_dispatch": None})
+        # A push (code) cancels the run in progress; a dispatch (a robot, after data) waits, and the newest waiting one replaces
+        # the others (GitHub keeps one pending run per group).
+        self.assertEqual(site["concurrency"], {"group": "pages", "cancel-in-progress": "${{ github.event_name == 'push' }}"})
+        pause = site["jobs"]["pause"]
+        self.assertEqual({k: v for k, v in pause.items() if k != "steps"},
+                         {"if": "github.event_name != 'push'", "needs": "deployer", "runs-on": "ubuntu-24.04", "permissions": {}})
+        self.assertEqual(len(pause["steps"]), 1)
+        secondes = int(re.fullmatch(r"sleep ([0-9]+)", pause["steps"][0]["run"])[1])
+        self.assertTrue(120 <= secondes <= 600, secondes)
+        self.assertFalse([j for j in site["jobs"].values() if "pause" in str(j.get("needs", ""))], "nothing waits for the pause")
+
+    def test_the_workflows_security_is_unchanged(self):
+        """No pull_request_target, the same permissions, and no expression in any run: (a PR's text never becomes code)."""
+        permissions = {"expirations.yml": {"contents": "write", "actions": "write"}, "verdicts.yml": {"contents": "write", "actions": "write"},
+                       "fusion-auto.yml": {"contents": "write", "pull-requests": "write", "actions": "write"},
+                       "integration-auto.yml": {"contents": "write", "pull-requests": "write", "actions": "write"},
+                       "validation.yml": {"contents": "read", "actions": "read"}, "juge.yml": {"contents": "read"},
+                       "juge-commun.yml": {"contents": "read"}, "site.yml": {"contents": "read", "pages": "write", "id-token": "write"},
+                       "suite.yml": {"contents": "read"}}  # ruche-0132
+        self.assertEqual(sorted(f.name for f in (RACINE / ".github/workflows").glob("*.yml")), sorted(permissions))
+        for nom, attendues in permissions.items():
+            with self.subTest(flux=nom):
+                flux = self.flux(nom)
+                self.assertNotIn("pull_request_target", flux[True])
+                self.assertEqual(flux["permissions"], attendues)
+                self.assertEqual({n: j["permissions"] for n, j in flux["jobs"].items() if "permissions" in j}, {"pause": {}} if nom == "site.yml" else {})
+                for etape in self.etapes(nom):
+                    self.assertNotIn("${{", etape.get("run", ""), etape.get("name"))
+
 
 class TestMainVert(unittest.TestCase):
     """ruche-0132: the PR fast path's « main is green », one read of suite.yml's runs on main (bee main-green): the newest run
@@ -784,6 +1097,7 @@ class TestMainVert(unittest.TestCase):
                     fichier.write_text(contenu, encoding="utf-8")
                 code, sortie = lancer("--registre", str(self.depot), "main-green", "--base", "HEAD", "--runs", str(fichier))
                 self.assertEqual((code, sortie.splitlines(True)[:1]), (0, [attendu]))
+
 
 class BaseTest(unittest.TestCase):
     def setUp(self):
@@ -5060,6 +5374,11 @@ if args[:1] == ["api"] and "/git/commits/" in args[1]:
 # ruche-0022: an account's number (users/<login>, .user.id of a PR) is numero_de(login) of the tests, or "comptes" of the state.
 jq = args[args.index("--jq") + 1] if "--jq" in args else ""
 numero_de = lambda login: (etat.get("comptes") or {}).get(login, json.loads(os.environ.get("FAUX_GH_COMPTES", "{}")).get(login.casefold()) or zlib.crc32(login.casefold().encode()) % 10 ** 8 + 1)  # noqa: E731
+if args[:1] == ["api"] and re.fullmatch(r"user/[0-9]+", args[1]):  # ruche-0121: « cree_le » of the state, None: unreadable
+    if etat.get("cree_le", "2020-01-01") is None:
+        sys.exit(1)
+    print(etat.get("cree_le", "2020-01-01"))
+    sys.exit(0)
 if args[:1] == ["api"] and args[1].startswith("users/"):
     print(f"2020-01-01 {numero_de(args[1][6:])}" if ".id" in jq else "2020-01-01")
     sys.exit(0)
@@ -5862,8 +6181,8 @@ class TestRevueAdverse(BaseParallele):
         git(self.dossier, "switch", "-q", "main")
         (racine / "home").mkdir()
         sortie_gh = racine / "github_output"
-        env = {"NUMERO": "1", "AUTEUR": "chloe", "SHA": sha, "HOME": str(racine / "home"), "GITHUB_OUTPUT": str(sortie_gh),
-               "INSTANT_PR": "2026-10-27T13:00:05Z"}  # ruche-0091: workflow_run.created_at, the validation run of the push
+        env = {"NUMERO": "1", "AUTEUR": "chloe", "GITHUB_ID": str(numero_de("chloe")), "SHA": sha, "HOME": str(racine / "home"),
+               "GITHUB_OUTPUT": str(sortie_gh), "INSTANT_PR": "2026-10-27T13:00:05Z"}  # ruche-0091: workflow_run.created_at, the validation run of the push
         # La PR 5555 a été ouverte par david : la soumission de chloe est refusée par l'étape de fusion-auto.
         sortie, _, appels = self.etape("Vérifier la fusion simulée", {PR_MINIZ + "5555": {"state": "OPEN", "head": "x", "auteur": "david"}},
                                        flux="fusion-auto.yml", env_en_plus=env, reussite=False)
@@ -5871,6 +6190,7 @@ class TestRevueAdverse(BaseParallele):
         self.assertIn("doit avoir été ouverte par chloe sur GitHub (auteur relevé : david)", sortie)
         self.assertEqual([a["args"][1] for a in self.appels_de(appels, "api") if "/pulls/" in a["args"][1]],
                          ["repos/Bee-ruche/minizBee/pulls/5555"])
+        self.assertEqual([a["args"][1] for a in self.appels_de(appels, "api")], ["repos/Bee-ruche/minizBee/pulls/5555"], "ruche-0121: no account read")
         # La même, ouverte par chloe : fusion automatique.
         git(self.dossier, "worktree", "remove", "--force", "../fusion")
         git(self.dossier, "branch", "-D", "pr-1")
@@ -5914,13 +6234,45 @@ class TestRevueAdverse(BaseParallele):
                     git(self.dossier, "worktree", "remove", "--force", "../fusion")
                     git(self.dossier, "branch", "-D", "pr-1")
                 sortie_gh.write_text("", encoding="utf-8")
-                env = {"NUMERO": "1", "AUTEUR": "alice", "SHA": sha, "HOME": str(racine / "home"), "GITHUB_OUTPUT": str(sortie_gh),
-                       "INSTANT_PR": instant_pr}
+                env = {"NUMERO": "1", "AUTEUR": "alice", "GITHUB_ID": str(numero_de("alice")), "SHA": sha, "HOME": str(racine / "home"),
+                       "GITHUB_OUTPUT": str(sortie_gh), "INSTANT_PR": instant_pr}
                 sortie, _, _ = self.etape("Vérifier la fusion simulée", {PR_MINIZ + "5555": {"state": "OPEN", "head": "x", "auteur": "alice"}},
                                           flux="fusion-auto.yml", env_en_plus=env, reussite=code == "0")
                 self.assertIn(f"code={code}", sortie_gh.read_text(encoding="utf-8"), sortie)
                 if instant_pr == "2026-10-27T12:58:00Z":
                     self.assertIn("soumise_le doit être l'heure de la soumission", sortie)
+
+    def test_fusion_auto_reads_the_account_date_only_for_a_registration(self):
+        """ruche-0121: fusion-auto's gate step takes the author's number from the PR listing, and reads the account's creation
+        date (one call, by that number) only for a PR that adds a member file; unreadable, the step stops: nothing merged."""
+        self.init_git()
+        racine = self.dossier.parent
+        subprocess.run(["git", "clone", "-q", "--bare", str(self.dossier), str(racine / "origine.git")], check=True)
+        git(self.dossier, "remote", "add", "origin", str(racine / "origine.git"))
+        git(self.dossier, "fetch", "-q", "origin")
+        self.a("2026-10-27T13:00:00Z")
+        self.branche("inscription")
+        self.assertEqual(self.bee("inscrire", "--pseudo", "david", "--compte-cree-le", "2020-01-01")[0], 0)
+        self.commit()
+        git(self.dossier, "push", "-q", "origin", "inscription:refs/pull/1/head")
+        sha = git(self.dossier, "rev-parse", "inscription").strip()
+        git(self.dossier, "switch", "-q", "main")
+        (racine / "home").mkdir()
+        sortie_gh = racine / "github_output"
+        for cree_le, code in (("2020-01-01", "0"), ("2026-10-01", "1"), (None, None)):
+            with self.subTest(cree_le=cree_le):
+                if (racine / "fusion").exists():
+                    git(self.dossier, "worktree", "remove", "--force", "../fusion")
+                    git(self.dossier, "branch", "-D", "pr-1")
+                sortie_gh.write_text("", encoding="utf-8")
+                env = {"NUMERO": "1", "AUTEUR": "david", "GITHUB_ID": str(numero_de("david")), "SHA": sha, "HOME": str(racine / "home"),
+                       "GITHUB_OUTPUT": str(sortie_gh), "INSTANT_PR": "2026-10-27T13:00:05Z"}
+                sortie, _, appels = self.etape("Vérifier la fusion simulée", {"cree_le": cree_le}, flux="fusion-auto.yml",
+                                               env_en_plus=env, reussite=code == "0")
+                self.assertEqual([a["args"][1:] for a in self.appels_de(appels, "api")], [[f"user/{numero_de('david')}", "--jq", ".created_at[:10]"]])
+                self.assertEqual(sortie_gh.read_text(encoding="utf-8"), f"code={code}\n" if code else "", sortie)
+                if code == "1":
+                    self.assertIn("compte_cree_le ne correspond pas à la date fournie par GitHub (2026-10-01)", sortie)
 
     def test_N8_une_integration_d_une_manche_anterieure_n_empeche_pas_de_clore(self):
         self.fermer_porte()
@@ -15888,7 +16240,7 @@ class TestRegistryMergeRecorded(BaseParallele):
         self.assertEqual(git(self.dossier, "rev-parse", "HEAD"), git(autre, "rev-parse", "HEAD"))
         self.assertEqual(git(origine, "rev-parse", "main"), git(autre, "rev-parse", "HEAD"), "nothing pushed")
         self.assertEqual(self.enr(self.cid)["statut"], "en_relecture")
-        self.assertFalse(self.appels_de(appels, "workflow"))
+        self.assertFalse([a for a in appels if "site.yml" in " ".join(a["args"])], "no site dispatch")
         # The next pass, from main, records it; main moves elsewhere meanwhile: rebased over and published, as before.
         self.etape("Intégrer", self.etats(fusion))
         (autre / "README.md").write_text((autre / "README.md").read_text(encoding="utf-8") + "\nelsewhere\n", encoding="utf-8")
@@ -15898,7 +16250,8 @@ class TestRegistryMergeRecorded(BaseParallele):
         self.assertEqual(git(self.dossier, "rev-parse", "HEAD~1"), git(autre, "rev-parse", "HEAD"))
         self.assertEqual(git(origine, "rev-parse", "main"), git(self.dossier, "rev-parse", "HEAD"))
         self.assertEqual(len(self.lignes_de(self.cid)), 1)
-        self.assertEqual([a["args"][:2] for a in appels], [["workflow", "run"]])
+        self.assertEqual([a["args"] for a in appels], [["api", "-X", "POST", "repos/Bee-ruche/registre/actions/workflows/site.yml/dispatches",
+                                                        "-f", "ref=main"]])  # ruche-0121: the site dispatched in one call
 
 
 # --- ruche-0040: each self-service file has a size bound, and each of its texts too, checked before any parsing ---
@@ -18162,14 +18515,20 @@ class TestIdentiteParNumero(BaseRepetitionGenerale):
             with self.subTest(numero=numero), contextlib.redirect_stderr(erreur), self.assertRaises(SystemExit):
                 bee.principal(["--registre", str(self.dossier), "inscrire", "--pseudo", "eve", "--compte-cree-le", "2020-01-01", *numero])
             self.assertIn("--github-id", erreur.getvalue())
-        # The workflows read it from the API with the creation date, for the PR's author, and pass it to the gate.
-        for flux, etape in (("fusion-auto.yml", "Vérifier la fusion simulée"), ("validation.yml", "Règles de la pull request")):
+        # The workflows take it from GitHub's record of the PR's author (ruche-0121: the event, the PR listing), read the creation
+        # date by that number when the PR adds a member file, and pass both to the gate.
+        for flux, etape, source in (("fusion-auto.yml", "Vérifier la fusion simulée", "${{ steps.pr.outputs.github_id }}"),
+                                    ("validation.yml", "Règles de la pull request", "${{ github.event.pull_request.user.id }}")):
             with self.subTest(flux=flux):
                 etapes = [s for job in yaml.safe_load((RACINE / ".github/workflows" / flux).read_text(encoding="utf-8"))["jobs"].values()
                           for s in job.get("steps", [])]  # ruche-0132: validation.yml's suite job calls suite.yml (no steps)
-                script = next(s["run"] for s in etapes if s.get("name", "").startswith(etape))
-                self.assertIn('''compte=$(gh api "users/$AUTEUR" --jq '"\\(.created_at[:10]) \\(.id)"')''', script)
-                self.assertRegex(script, r'--github-id "\$(\{compte#\* \}|numero_compte)"')
+                etape = next(s for s in etapes if s.get("name", "").startswith(etape))
+                self.assertEqual(etape["env"]["GITHUB_ID"], source)
+                self.assertIn('''cree=$(gh api "user/$GITHUB_ID" --jq '.created_at[:10]'); fi''', etape["run"])
+                self.assertIn('--compte-cree-le "$cree" --github-id "$GITHUB_ID" ', etape["run"])
+        listage = next(s["run"] for s in yaml.safe_load((RACINE / ".github/workflows/fusion-auto.yml").read_text(encoding="utf-8"))["jobs"]
+                       ["fusionner"]["steps"] if s.get("name") == "Retrouver la pull request")
+        self.assertIn('''auteur=\\(.user.login)\\ngithub_id=\\(.user.id)''', listage)
 
     def test_une_pr_ne_change_pas_qui_est_qui_pour_ses_propres_controles(self):
         # eve's file says bidji29 was her login, and the same PR does what only the council does: in the PR's own state, eve
