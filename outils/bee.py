@@ -197,7 +197,7 @@ def problemes_de_forme(texte, donnees):
     for cle in donnees:
         motif = re.compile(r"^" + re.escape(str(cle)) + r":(?=\s|$)", re.M)
         if len(motif.findall(texte)) != 1:
-            problemes.append(f"clé de premier niveau « {cle} » : elle s'écrit `{cle}:` en colonne 0, une seule fois, sans "
+            problemes.append(f"clé de premier niveau « {citer(cle)} » : elle s'écrit `{citer(cle)}:` en colonne 0, une seule fois, sans "
                              "guillemets ni espace avant les deux-points")
     if problemes:
         return problemes
@@ -209,7 +209,7 @@ def problemes_de_forme(texte, donnees):
     for cle, valeur in donnees.items():
         position = _bloc_racine(lignes, str(cle))
         if position is None:
-            problemes.append(f"clé de premier niveau « {cle} » : bloc introuvable")
+            problemes.append(f"clé de premier niveau « {citer(cle)} » : bloc introuvable")
             continue
         debut, fin = position
         couvertes.update(range(debut, fin))
@@ -218,7 +218,7 @@ def problemes_de_forme(texte, donnees):
         except ErreurBee:
             seul = None
         if not (isinstance(seul, dict) and list(seul) == [cle] and seul[cle] == valeur):
-            problemes.append(f"clé de premier niveau « {cle} » : son bloc (lignes {debut + 1} à {fin}) ne se relit pas seul avec "
+            problemes.append(f"clé de premier niveau « {citer(cle)} » : son bloc (lignes {debut + 1} à {fin}) ne se relit pas seul avec "
                              "la valeur du fichier ; ses lignes suivantes s'écrivent indentées (ni commentaire en colonne 0 "
                              "dans le bloc, ni valeur en ligne continuée en colonne 0)")
     orphelines = [i + 1 for i, ligne in enumerate(lignes)
@@ -284,23 +284,23 @@ def message_schema(erreur):
         manquants = [c for c in attendu if isinstance(valeur, dict) and c not in valeur]
         return f"champ obligatoire manquant : {', '.join(manquants) or ', '.join(attendu)}"
     if v == "enum":
-        return f"valeur « {valeur} » non permise (attendu : {', '.join(str(x) for x in attendu)})"
+        return f"valeur « {citer(valeur)} » non permise (attendu : {', '.join(str(x) for x in attendu)})"
     if v == "const":
-        return f"valeur « {valeur} » non permise (attendu : {attendu})"
+        return f"valeur « {citer(valeur)} » non permise (attendu : {attendu})"
     if v == "type":
         types = attendu if isinstance(attendu, list) else [attendu]
-        return f"« {valeur} » devrait être {' ou '.join(TYPES_JSON.get(t, t) for t in types)}"
+        return f"« {citer(valeur)} » devrait être {' ou '.join(TYPES_JSON.get(t, t) for t in types)}"
     if v == "minLength":
         return f"texte trop court ({len(valeur)} caractères, minimum {attendu})"
     if v == "maxLength":
         return f"texte trop long ({len(valeur)} caractères, maximum {attendu})"
     if v == "pattern":
-        return f"format incorrect : « {valeur} »"
+        return f"format incorrect : « {citer(valeur)} »"
     if v == "format":
-        return f"« {valeur} » n'est pas au format {attendu}"
+        return f"« {citer(valeur)} » n'est pas au format {attendu}"
     if v == "additionalProperties":
         connus = set((erreur.schema or {}).get("properties", {}))
-        return f"champ(s) inconnu(s) : {', '.join(sorted(set(valeur) - connus)) if isinstance(valeur, dict) else valeur}"
+        return f"champ(s) inconnu(s) : {', '.join(sorted(map(citer, set(valeur) - connus)) if isinstance(valeur, dict) else citer(valeur))}"
     if v == "minimum":
         return f"valeur {valeur} inférieure au minimum {attendu}"
     if v == "maximum":
@@ -3073,17 +3073,23 @@ def texte_recevable(texte, quoi, maximum):
 # Les marques qu'imprime bee autour des données (DEBUT_DONNEES, FIN_DONNEES, DEBUT_DECLARE), sous leur forme comparée.
 MARQUE_ENCADRE = re.compile(r"===\s*(?:fin\s+des\s+)?donnees")
 MARQUE_NEUTRALISEE = "[marque d'encadré neutralisée]"
+# ruche-0088: what NFKC leaves apart but the eye reads as a letter of the mark or as « = » (Cyrillic, Greek, Armenian, Lisu,
+# small capitals, box drawing, double hyphens), read as that letter after casefold; fail closed, as the rest of the check.
+SOSIES_MARQUE = str.maketrans({**dict.fromkeys("ԁꓒꓓ", "d"), **dict.fromkeys("еεϵҽꓰ", "e"), **dict.fromkeys("ϝꓝ", "f"),
+                               **dict.fromkeys("іιıӏɩꓲ", "i"), **dict.fromkeys("νոꓠɴ", "n"), **dict.fromkeys("оοօꓳᴏ", "o"),
+                               **dict.fromkeys("ѕꓢꜱ", "s"), **dict.fromkeys("═꞊゠⹀᐀", "=")})
+EGAUX_SOSIES = "=═꞊゠⹀᐀"
 
 
 def marques_encadre(texte):
     """Les étendues [début, fin) de `texte` où se lit une marque d'encadré (« === DONNÉES », « === FIN DES DONNÉES ») : sans
-    casse ni accent, espaces tolérées, chaque caractère lu après NFKC (« ＝ » pleine chasse est « = »)."""
+    casse ni accent, espaces tolérées, chaque caractère lu après NFKC (« ＝ » pleine chasse est « = ») et SOSIES_MARQUE."""
     texte = str(texte)
-    if "=" not in unicodedata.normalize("NFKD", unicodedata.normalize("NFKC", texte)):
+    if not any(c in EGAUX_SOSIES for c in unicodedata.normalize("NFKD", unicodedata.normalize("NFKC", texte))):
         return []
     forme, origine = [], []
     for i, c in enumerate(texte):
-        for x in unicodedata.normalize("NFKD", unicodedata.normalize("NFKC", c)).casefold():
+        for x in unicodedata.normalize("NFKD", unicodedata.normalize("NFKC", c)).casefold().translate(SOSIES_MARQUE):
             if not unicodedata.combining(x):
                 forme.append(x)
                 origine.append(i)
@@ -3156,18 +3162,26 @@ def problemes_textes_libre_service(donnees, relatif):
     return problemes_textes(donnees, relatif, sorte)
 
 
-def montrer(texte):
+def montrer(texte, une_ligne=False):
     """Un message tel qu'on peut l'imprimer (bee valider, verifier-pr) : chaque caractère que refuse caractere_sortant_interdit
     écrit « <U+XXXX> », même cité par le message d'un schéma. No GitHub Actions workflow command survives: « ##[ » anywhere,
-    « :: » at the start of a line, after any spaces (the runner trims them)."""
+    « :: » at the start of a line, after any spaces (the runner trims them). Every line after the first is indented (ruche-0088):
+    a text quoted in the message never prints a line of its own that would pass for one of bee's."""
     texte = "".join(f"<U+{ord(c):04X}>" if caractere_sortant_interdit(c) else c for c in str(texte)).replace("##[", "# #[")
-    return re.sub(r"(?m)^(\s*)::", r"\1: :", texte)
+    texte = re.sub(r"(?m)^(\s*)::", r"\1: :", texte)
+    return texte.replace("\n", "\\n") if une_ligne else re.sub(r"\n(?=\S)", "\n  ", texte)
 
 
 def montrer_ligne(texte):
     """montrer, sur une seule ligne : un saut de ligne s'écrit « \\n » ; un champ d'une ligne (identifiant, canal, demande) ne
     fabrique pas une ligne qui imiterait bee (revue de ruche-0052)."""
-    return montrer(texte).replace("\n", "\\n")
+    return montrer(texte, une_ligne=True)
+
+
+def citer(texte):
+    """A member's or a fork's text quoted in a line of bee (a key, a value, an identifier): montrer_ligne, the mark of a frame
+    broken (ruche-0088), so every printed quote goes through the same neutralisation."""
+    return montrer_ligne(neutraliser_marques(str(texte)))
 
 
 CLE_VERDICT = re.compile(r"[A-Za-z0-9_.-]{1,80}")
@@ -3176,14 +3190,16 @@ CLE_VERDICT = re.compile(r"[A-Za-z0-9_.-]{1,80}")
 def verdict_montrable(verdict):
     """Les chaînes que enregistrer-verdict recopie du verdict.json, données du fork (ruche-0029, S2) : chaque texte sur une ligne,
     borné, l'invisible montré, la marque cassée (texte_declare) ; une clé de scénario ou de métrique hors de CLE_VERDICT est
-    remplacée (cle_refusee_<n>), jamais le verdict perdu. Renvoie le nombre de clés remplacées."""
+    remplacée (cle_refusee_<n>, un nom qu'aucune clé honnête du même champ ne porte), jamais le verdict perdu. Renvoie le nombre de clés remplacées."""
     remplacees = 0
     if "etape_en_echec" in verdict:
         verdict["etape_en_echec"] = texte_declare(verdict["etape_en_echec"], 200) or "inconnue"
     for champ in ("instructions", "degradations"):
         if isinstance(verdict.get(champ), dict):
-            remplacees += sum(not CLE_VERDICT.fullmatch(c) for c in verdict[champ])
-            verdict[champ] = {c if CLE_VERDICT.fullmatch(c) else f"cle_refusee_{i}": v for i, (c, v) in enumerate(verdict[champ].items())}
+            honnetes = {c for c in verdict[champ] if CLE_VERDICT.fullmatch(c)}
+            remplacees += len(verdict[champ]) - len(honnetes)
+            noms = (n for i in range(len(verdict[champ]) * 2 + 1) if (n := f"cle_refusee_{i}") not in honnetes)  # never an honest key's
+            verdict[champ] = {c if c in honnetes else next(noms): v for c, v in verdict[champ].items()}
     if isinstance(verdict.get("juge"), dict):
         verdict["juge"]["constructions_suspectes"] = [{k: texte_declare(s[k], 300) or "" for k in ("type", "detail")}
                                                       for s in verdict["juge"]["constructions_suspectes"]]
@@ -4203,7 +4219,8 @@ def texte_sortant_refuse(texte, quoi, maximum, organisation=None):
             texte = entites_decodees(texte, "\ufffd")
         except ValueError:  # a numeric reference longer than int() reads (&#000…64;)
             return f"{quoi} : référence de caractère démesurée (&#…;) : écrivez le caractère lui-même"
-    c = next((c for c in texte if caractere_sortant_interdit(c)), None)
+    # The text as typed passed texte_recevable (probleme_texte_libre): only what its entities decode to is left to check.
+    c = next((c for c in texte if caractere_sortant_interdit(c)), None) if organisation is not None else None
     if c is not None:
         return (f"{quoi} : caractère invisible refusé (U+{ord(c):04X}, catégorie {unicodedata.category(c)}) : ce texte sort de la "
                 "ruche, il ne cache rien")
@@ -6536,6 +6553,7 @@ def generer_site(reg, sortie):
 # --------------------------------------------------------------------------
 
 def afficher_tableau(entetes, lignes):
+    lignes = [[citer(x) for x in ligne] for ligne in lignes]  # ruche-0088: each cell, a text read from the registry
     largeurs = [max(len(str(x)) for x in [h] + [l[i] for l in lignes]) for i, h in enumerate(entetes)]
     print("  ".join(str(h).ljust(largeurs[i]) for i, h in enumerate(entetes)).rstrip())
     for ligne in lignes:
@@ -6695,36 +6713,36 @@ def cmd_essaim(args):
         print("\nCourses (R3 : une seule contribution par tâche est intégrée, la mieux classée : score de course = gain mesuré "
               "× portée / (1 + lignes/100), sinon vote net) :")
         for c in tableau["courses"]:
-            rangs = " ; ".join(f"{x['rang']}. {x['contribution']} ({x['auteur']}, score de course "
+            rangs = " ; ".join(f"{x['rang']}. {citer(x['contribution'])} ({citer(x['auteur'])}, score de course "
                                f"{'—' if x['gain_mesure'] is None else format(x['gain_mesure'], '.4f')}, vote {x['vote_net']:+d})"
                                for x in c["contributions"])
-            engages = ", ".join(f"{e['utilisateur']} ({e['role']})" for e in c["engages"])
-            print(f"  - {c['tache']} : {rangs}" + (f" ; travaillent encore : {engages}" if engages else "")
+            engages = ", ".join(f"{citer(e['utilisateur'])} ({e['role']})" for e in c["engages"])
+            print(f"  - {citer(c['tache'])} : {rangs}" + (f" ; travaillent encore : {engages}" if engages else "")
                   + " ; chaque contribution attend au plus 120 h après sa soumission")
     if tableau["notes"]:
         print("\nNotes récentes (7 jours) :")
         for n in tableau["notes"]:
             texte = n["texte"] if len(n["texte"]) <= 140 else n["texte"][:137] + "…"
-            print(f"  - {n['tache']}, {n['par']}, {n['le']} : {texte}")
+            print(f"  - {citer(n['tache'])}, {citer(n['par'])}, {citer(n['le'])} : {citer(texte)}")
     if tableau.get("debats"):
         print("\nDébats ouverts de l'agora (bee debats --voir <débat>, synthèse d'abord) :")
         # Les débats encore sans argument tiennent sur une ligne (tour 2 : 17 lignes vides noyaient les autres).
         muets = [x["id"] for x in tableau["debats"] if not x["arguments"] and not x["synthese_le"]]
         if muets:
-            print(f"  - {len(muets)} débat(s) attendent un premier argument : {', '.join(sorted(muets))} ; leurs questions : "
+            print(f"  - {len(muets)} débat(s) attendent un premier argument : {', '.join(sorted(map(citer, muets)))} ; leurs questions : "
                   "bee debats")
         for x in [x for x in tableau["debats"] if x["id"] not in muets]:
             question = " ".join(_nettoyer(x["question"]).split())
             retard = len(x["arguments_apres_synthese"])
             etat = ("synthèse à jour" if x["synthese_le"] and not retard else
                     f"{retard} argument(s) après la synthèse" if x["synthese_le"] else "pas encore de synthèse")
-            print(f"  - {x['id']} (rapporteur {_nettoyer(x['rapporteur'] or RAPPORTEUR_ABSENT)}, {x['arguments']} argument(s), dernière activité "
+            print(f"  - {citer(x['id'])} (rapporteur {citer(x['rapporteur'] or RAPPORTEUR_ABSENT)}, {x['arguments']} argument(s), dernière activité "
                   f"{x['derniere_activite']}, {etat}) : {question if len(question) <= 90 else question[:89] + '…'}")
     if tableau["signalements"]:
         print(f"\nSignalements ouverts, pour le conseil : {(n := tableau['signalements_ouverts'])}{', les 10 premiers' * (n > 10)} (bee voir <S-nnnn>, bee signalement) :")
         for x in tableau["signalements"]:
-            print(f"  - {_nettoyer(x['id'])} : {_nettoyer(' et '.join(map(str, x['comptes'])) if isinstance(x['comptes'], list) else x['comptes'])} ({_nettoyer(x['motif'])}), "
-                  f"signalé par {_nettoyer(x['par'])} le {_nettoyer(x['le'])}")
+            print(f"  - {citer(x['id'])} : {citer(' et '.join(map(str, x['comptes'])) if isinstance(x['comptes'], list) else x['comptes'])} ({citer(x['motif'])}), "
+                  f"signalé par {citer(x['par'])} le {citer(x['le'])}")
     frein = tableau["frein"]
     print(f"\nGrandir (R13, docs/croissance.md) : frein {'SERRÉ' if frein['serre'] else 'desserré'}"
           + (f" ({' ; '.join(frein['raisons'])})" if frein["serre"] else "")
@@ -6735,8 +6753,8 @@ def cmd_essaim(args):
     for alerte in frein["alertes"]:
         print(f"  ⚠ {alerte}")
     for x in tableau["invitations"]:
-        print(f"  - {_nettoyer(x['id'])} ({_nettoyer(x['demande'])}, {_nettoyer(x['identifiant'])}, proposée par "
-              f"{_nettoyer(x['propose_par'])}, débat {_nettoyer(x['debat'])}) : {_nettoyer(x['statut'])}, attend {x['attend']}")
+        print(f"  - {citer(x['id'])} ({citer(x['demande'])}, {citer(x['identifiant'])}, proposée par "
+              f"{citer(x['propose_par'])}, débat {citer(x['debat'])}) : {citer(x['statut'])}, attend {citer(x['attend'])}")
     if not tableau["invitations"]:
         print("  Aucune invitation en cours (bee inviter en propose une ; rien ne part sans les accords que demande R13).")
     print("\nAvant de choisir : évitez de reprendre seul ce qu'un autre fait déjà. Pour travailler sur une tâche déjà "
@@ -6803,13 +6821,13 @@ def cmd_voir(args):
               + " ; accord du gardien : " + (date(_instant_ou_rien(bloc_de(inv, "accord_gardien").get("le"))) if "accord_gardien" in inv else "aucun")
               + f" ; feu vert du conseil : {date(v) if (v := feu_vert(inv)) else 'aucun'}")
         print()
-        print(cadre_donnees(inv, DEBUT_DONNEES.format(id=inv.get("id"))))
+        print(cadre_donnees(inv, DEBUT_DONNEES.format(id=citer(inv.get("id")))))
         return 0
     if ID_SIGNALEMENT.match(str(args.tache)):  # ruche-0118: a report, for the council
         if not isinstance(s := (reg.signalements.get(args.tache) or (None, None))[1], dict):
             raise ErreurBee(f"signalement inconnu : {args.tache} (bee essaim liste ceux qui sont ouverts)")
         print(f"{args.tache} : " + ("décidé" if "decision" in s else "ouvert : le conseil lie les deux comptes ou l'écarte (bee signalement)"))
-        print(cadre_donnees(s, DEBUT_DONNEES.format(id=args.tache)))
+        print(cadre_donnees(s, DEBUT_DONNEES.format(id=citer(args.tache))))
         return 0
     _, t = reg.tache(args.tache)
     print("\n".join(lignes_calculees_tache(reg, t)))
@@ -7995,7 +8013,7 @@ def cmd_debattre(args):
 
 def _nettoyer(texte):
     """Texte d'utilisateur à l'affichage : les caractères qui maquilleraient le terminal sont remplacés."""
-    return "".join(chr(0xFFFD) if caractere_interdit(c) else c for c in str(texte if texte is not None else ""))
+    return "".join(chr(0xFFFD) if caractere_sortant_interdit(c) else c for c in str(texte if texte is not None else ""))
 
 
 def _en_retrait(texte, marge="    "):
@@ -8188,7 +8206,7 @@ def lignes_debat_invitation(reg, inv):
     """ruche-0050: the invitation's own debate as an accord sees it, then each duplicate marking and who contested it (bee voir,
     the accords)."""
     probleme = refus_debat_invitation(reg, inv) if etat_invitation(inv) == "proposee" else []  # decided: no warning (ruche-0050)
-    lignes = [f"Débat de l'invitation : {probleme[0] if probleme else _nettoyer(inv.get('debat'))}"
+    lignes = [f"Débat de l'invitation : {citer(probleme[0] if probleme else inv.get('debat'))}"
               + ("" if probleme or etat_invitation(inv) != "proposee" else " ouvert, synthèse à jour")]
     arguments = arguments_de(reg.debats.get(str(inv.get("debat")), (None, None))[1])
     for a in [a for a in arguments if a.get("doublon_de")]:
@@ -10201,6 +10219,8 @@ def verifier_arbre(reg, ajouter):
         if interdit:
             # Chaque agent lit ces nœuds : rien n'y est caché à l'affichage (comme dans l'agora).
             ajouter(f"{lieu} : caractère invisible ou de contrôle refusé (U+{ord(interdit):04X})")
+        elif probleme := probleme_texte_libre(n["texte"], lieu):  # ruche-0088: the strict check, as every free text
+            ajouter(probleme)
         if not n["titre"]:
             ajouter(f"{lieu} : titre manquant (« # Titre » avant la première section)")
         if n["hors_section"]:
@@ -10248,12 +10268,38 @@ def verifier_arbre(reg, ajouter):
         # Le texte d'une tâche s'imprime dans bee voir et bee contexte : rien n'y est caché à l'affichage, proposée ou
         # non, dans aucun champ ni commentaire (revue adverse, I1).
         try:
-            interdit = premier_caractere_interdit(pathlib.Path(chemin).read_text(encoding="utf-8"))
+            texte = pathlib.Path(chemin).read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
-            interdit = None
-        if interdit:
+            texte = ""
+        if interdit := premier_caractere_interdit(texte):
             ajouter(f"{reg.rel(chemin)} : caractère invisible ou de contrôle refusé (U+{ord(interdit):04X}) : il cacherait ou "
                     "maquillerait le texte à l'affichage")
+        elif probleme := probleme_texte_libre(texte, f"{reg.rel(chemin)} (texte du fichier, commentaires compris)"):  # ruche-0088
+            ajouter(probleme)
+    for probleme in problemes_textes_du_conseil(reg):
+        ajouter(probleme)
+
+
+def problemes_textes_du_conseil(reg):
+    """ruche-0088: the files only the council writes (projets/, categories.yaml, bee.yaml, gouvernance/) get the strict check of
+    every free text too, on the text as written (comments included) and, for YAML, on each value and key as read."""
+    r = reg.racine
+    for chemin in [r / "bee.yaml", r / "categories.yaml", *sorted(r.glob("projets/*.yaml")),
+                   *sorted(p for p in r.glob("gouvernance/**/*") if p.is_file())]:
+        try:  # absent, past its bound or not text: what reads it says so
+            texte = chemin.read_text(encoding="utf-8") if chemin.stat().st_size <= borne_octets(reg.rel(chemin)) else None
+        except (OSError, UnicodeDecodeError):
+            texte = None
+        if texte is None:
+            continue
+        if probleme := probleme_texte_libre(texte, f"{reg.rel(chemin)} (texte du fichier, commentaires compris)"):
+            yield probleme
+        elif chemin.suffix == ".yaml":
+            try:
+                donnees = charger_texte_yaml(texte, reg.rel(chemin))
+            except ErreurBee:  # unreadable: its own check says so
+                continue
+            yield from problemes_textes(donnees, reg.rel(chemin))
 
 
 def branche_projets(noeuds, identifiant):
@@ -10341,7 +10387,7 @@ def cadre_donnees_tache(tache, notes_omises=0, contexte_max=None):
             del donnees["notes"]
     if contexte_max is not None and isinstance(donnees.get("contexte"), str) and len(donnees["contexte"]) > contexte_max:
         donnees["contexte"] = donnees["contexte"][:contexte_max].rstrip() + " […]"
-    return cadre_donnees(donnees, DEBUT_DONNEES.format(id=tache.get("id")))
+    return cadre_donnees(donnees, DEBUT_DONNEES.format(id=citer(tache.get("id"))))
 
 
 def cadre_donnees(donnees, debut):
