@@ -9849,6 +9849,10 @@ def cmd_publier(args):
     journal = depot / executer(["git", "rev-parse", "--git-path", "bee-session"], depot).stdout.strip()  # ruche-0138
     ecrits = set(journal.read_text(encoding="utf-8").split("\0")) if journal.is_file() else set()
     changements = [c for c in tous if c in ecrits]  # ce que bee a écrit pour la session, rien d'autre
+    attente = depot / executer(["git", "rev-parse", "--git-path", "bee-publier.json"], depot).stdout.strip()  # la PR qu'il suit
+    if liens := [c for c in sorted(ecrits - {""}) if any((depot / p).is_symlink() for p in [c, *pathlib.PurePosixPath(c).parents][:-1])] + [
+            str(f) for f in (journal, attente) if f.is_symlink()]:  # ruche-0138 : lstat, chaque fichier et ses dossiers
+        raise ErreurBee(f"lien symbolique refusé, bee n'écrit ni ne lit à travers : {', '.join(map(montrer, liens))}")
     interdits = [c for c in tous if not c.startswith(DOSSIERS_LIBRE_SERVICE)]
     if interdits:
         raise ErreurBee("ces fichiers ne relèvent pas du libre-service et feraient refuser la PR : " + ", ".join(interdits[:8])
@@ -9865,11 +9869,11 @@ def cmd_publier(args):
         raise ErreurBee("plafonds par PR de la porte : " + " ; ".join(depasses) + ". Publiez en plusieurs fois, chaque PR sous "
                         "les plafonds.")
     prepares = engagements_prepares(depot, changements)
-    attente = depot / executer(["git", "rev-parse", "--git-path", "bee-publier.json"], depot).stdout.strip()  # la PR qu'il suit
     try:  # ruche-0138 : illisible, il arrête tout, avant toute écriture
         suivie = json.loads(attente.read_text(encoding="utf-8")) if prepares and attente.is_file() else None
         attendus = json.loads(suivie["cle"]) if suivie is not None else {}
-        if not (isinstance(attendus, dict) and (suivie is None or isinstance(suivie["pr"][0], str) and int(suivie["pr"][1]))):
+        if not (isinstance(attendus, dict) and (suivie is None or isinstance(suivie["pr"][0], str) and type(suivie["pr"][1]) is int
+                                                and suivie["pr"][1] > 0)):
             raise ValueError
     except (OSError, ValueError, LookupError, TypeError):
         raise ErreurBee(f"{montrer(str(attente))} est illisible : rien n'est écrit ni poussé. Supprimez-le, puis relancez bee "
@@ -9877,7 +9881,18 @@ def cmd_publier(args):
     # Relancé pendant que la PR de l'engagement attend : il la suit ; un engagement préparé depuis part après, dans sa PR.
     prepares_json = json.loads(json.dumps(prepares, sort_keys=True))
     reprise = bool(attendus) and all(prepares_json.get(c) == v for c, v in attendus.items())
-    partiel = reprise and prepares_json != attendus
+    # ruche-0138 : une PR, une branche par engagement (son empreinte, avant toute redatation) ; sans fichier d'état, chacun
+    # est cherché sur GitHub, un par un
+    branche_de = lambda c, v: f"bee/engagement-{hashlib.sha256(json.dumps({c: v}, sort_keys=True).encode()).hexdigest()[:16]}"
+    proprietaire = proprietaire_depot(executer(["git", "remote", "get-url", "origin"], depot).stdout.strip())[0]
+    de_l_amont = proprietaire_depot(f"https://github.com/{amont}")[0]
+    for c, v in (sorted(prepares_json.items()) if not (reprise or args.a_blanc) else []):
+        if ouvertes := json.loads(executer(["gh", "api", f"repos/{amont}/pulls?state=open&head={proprietaire or de_l_amont}:"
+                                            f"{branche_de(c, v)}"], depot).stdout or "[]"):
+            reprise, attendus = True, {c: v}
+            suivie = {"cle": json.dumps(attendus, sort_keys=True), "pr": [ouvertes[0]["html_url"], ouvertes[0]["number"]]}
+            attente.write_text(json.dumps(suivie), encoding="utf-8")
+            break
     # Revue de ruche-0129 : chaque date déclarée est l'heure de la PR, à 2 h près, celle d'un engagement préparé comprise, que sa
     # soumission reprend (engage_depuis), sauf si sa PR attend déjà ; la seconde PR part au plus --delai minutes plus tard.
     dates = dates_de_session(depot, changements) | {("engage_depuis", (r.get("reservation") or r["paralleles"][-1])["depuis"])
@@ -9896,7 +9911,7 @@ def cmd_publier(args):
             (depot / c).write_text("".join(lignes), encoding="utf-8")
         print(f"  Redaté à {en_iso(maintenant())} : {', '.join(sorted({v for _, v in dates}))}")
         prepares = engagements_prepares(depot, changements)
-    engagements = {c: v for c, v in prepares.items() if not reprise or c in attendus}  # ceux de la PR suivie ou à ouvrir
+    engagements = {c: v for c, v in prepares.items() if c in attendus} if reprise else dict(sorted(prepares.items())[:1])
     avant = ", ".join(titre for titre, _ in engagements.values())
     if args.a_blanc:
         print("✓ à blanc : les fichiers relèvent du libre-service et le registre reste valide. Rien n'a été écrit ni poussé.")
@@ -9910,6 +9925,7 @@ def cmd_publier(args):
         return 0
     if prepares and args.sans_attendre:
         raise ErreurBee(f"« {avant} » doit être fusionnée avant « {args.titre} », qui en dépend : publiez sans --sans-attendre")
+    partiel = set(prepares) != set(engagements)
     branche_initiale = executer(["git", "rev-parse", "--abbrev-ref", "HEAD"], depot).stdout.strip()
     retour = branche_initiale if branche_initiale != "HEAD" else "main"
     base = re.sub(r"[^a-z0-9]+", "-", args.titre.lower().translate(str.maketrans("àâäéèêëîïôöùûüç", "aaaeeeeiioouuuc"))).strip("-")[:50] or "publication"
@@ -9931,29 +9947,20 @@ def cmd_publier(args):
                 for c, octets in finaux.items():
                     (depot / c).write_bytes(octets)
         executer(["git", "--literal-pathspecs", "add", "--", *changements], depot)
-        executer(["git", "commit", "-m", args.titre], depot)
+        executer(["git", "--literal-pathspecs", "commit", "-m", args.titre, "--", *changements], depot)  # eux seuls (ruche-0138)
         if prepares:  # l'engagement part seul ; le reste attend sa fusion, sur le disque, puis est rejoué sur main
             executer(["git", "switch", retour], depot)
             remettre(depot, branche, changements)
-            # ruche-0138 : sa branche ne dépend que des engagements ; une PR ouverte depuis elle est suivie, jamais doublée.
-            cle = json.dumps(engagements, sort_keys=True)
-            branche_e = f"bee/engagement-{hashlib.sha256(cle.encode()).hexdigest()[:16]}"
-            proprietaire = proprietaire_depot(executer(["git", "remote", "get-url", "origin"], depot).stdout.strip())[0]
-            de_l_amont = proprietaire_depot(f"https://github.com/{amont}")[0]
-            prefixe = "" if proprietaire in (None, de_l_amont) else f"{proprietaire}:"
-            if not reprise and (ouvertes := json.loads(executer(["gh", "api", f"repos/{amont}/pulls?state=open&head="
-                                                                 f"{proprietaire or de_l_amont}:{branche_e}"], depot).stdout or "[]")):
-                reprise, suivie = True, {"cle": cle, "pr": [ouvertes[0]["html_url"], ouvertes[0]["number"]]}
-                attente.write_text(json.dumps(suivie), encoding="utf-8")
             if reprise:
-                print(f"  « {avant} » attend déjà ({suivie['pr'][0]}) : bee publier la suit, sans en ouvrir une seconde.")
+                print(montrer(f"  « {avant} » attend déjà ({suivie['pr'][0]}) : bee publier la suit, sans en ouvrir une seconde."))
             else:
+                branche_e, prefixe = branche_de(*min(engagements.items())), "" if proprietaire in (None, de_l_amont) else f"{proprietaire}:"
                 executer(["git", "push", "-f", "origin", f"{branche}~1:refs/heads/{branche_e}"], depot)  # sans PR : la sienne
                 pr = json.loads(executer(["gh", "api", f"repos/{amont}/pulls", "-X", "POST", "-f", f"title={avant}",
                                           "-f", f"head={prefixe}{branche_e}", "-f", "base=main",
                                           "-f", f"body=Publié avec `bee publier`.\n\nNature : {avant}."], depot).stdout)
                 print(f"✓ PR ouverte : {pr['html_url']}")
-                suivie = {"cle": cle, "pr": [pr["html_url"], pr["number"]]}
+                suivie = {"cle": json.dumps(engagements, sort_keys=True), "pr": [pr["html_url"], pr["number"]]}
                 attente.write_text(json.dumps(suivie), encoding="utf-8")
             if code := attendre_fusion(args, depot, amont, *suivie["pr"], attente=attente, ranger=(branche, changements)):
                 print(f"  « {args.titre} » en dépend : rien d'autre n'est publié, vos changements sont sur le disque. Relancez bee "
@@ -10011,8 +10018,8 @@ def attendre_fusion(args, depot, amont, adresse, numero, attente=None, ranger=No
             if ranger:  # si rien n'a changé sur le disque pendant l'attente, tout y est dans la branche (ruche-0138 : sans index)
                 journal = depot / executer(["git", "rev-parse", "--git-path", "bee-session"], depot).stdout.strip()
                 ecrits = set(journal.read_text(encoding="utf-8").split("\0")) if journal.is_file() else set()
-                if any(_git_brut(depot, "cat-file", "blob", f"{ranger[0]}:{c}")[1] != ((depot / c).read_bytes() if (depot / c).is_file()
-                       else b"") for c in ecrits | set(ranger[1])):
+                if any((depot / c).is_symlink() or _git_brut(depot, "cat-file", "blob", f"{ranger[0]}:{c}")[1] != ((depot / c).read_bytes()
+                       if (depot / c).is_file() else b"") for c in ecrits | set(ranger[1])):  # ruche-0138 : un lien, jamais suivi
                     raise ErreurBee("vos changements ont changé sur le disque pendant l'attente : ils y restent ; relancez bee publier")
                 for c in ranger[1]:  # chacun remis à son état de HEAD, sans passer par l'index
                     if (lu := _git_brut(depot, "cat-file", "blob", f"HEAD:{c}"))[0]:
@@ -10020,6 +10027,11 @@ def attendre_fusion(args, depot, amont, adresse, numero, attente=None, ranger=No
                     else:
                         (depot / c).write_bytes(lu[1])
             distant = "upstream" if executer(["git", "remote", "get-url", "upstream"], depot, verifier=False).returncode == 0 else "origin"
+            executer(["git", "fetch", distant, "main"], depot)  # ruche-0138 : un fichier retouché à la main que main change
+            if retouches := sorted({l[3:] for l in git(depot, "status", "-z", "--porcelain", "--no-renames", "--untracked-files=all")}
+                                   & set(git(depot, "diff", "-z", "--name-only", "--no-renames", "main", "FETCH_HEAD"))):
+                raise ErreurBee(f"la PR est fusionnée, mais main change {', '.join(map(montrer, retouches))}, retouché(s) à la main : "
+                                "mettez-les de côté (git stash), puis relancez bee publier, qui reprend où il en est")
             executer(["git", "switch", "main"], depot, verifier=False)
             executer(["git", "pull", "--ff-only", distant, "main"], depot)
             if attente:
