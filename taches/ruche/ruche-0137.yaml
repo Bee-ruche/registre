@@ -31,7 +31,10 @@ hors_perimetre:
 - COMMANDMENTS.md
 - the caps' values in bee.yaml (the council)
 noeud: projets/ruche/ruche
-statut: ouverte
+statut: reservee
+reservation:
+  utilisateur: "bidji29"
+  depuis: "2026-11-07T12:00:09Z"
 cree_par: conseil
 cree_le: '2026-11-02'
 notes:
