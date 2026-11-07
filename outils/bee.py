@@ -3071,10 +3071,12 @@ def texte_recevable(texte, quoi, maximum):
 
 
 # Les marques qu'imprime bee autour des données (DEBUT_DONNEES, FIN_DONNEES, DEBUT_DECLARE), sous leur forme comparée.
-# ruche-0088, structural and fail closed: in the compared form, « \x02 » is any non-ASCII symbol or dash (read as « = ») and
-# « \x01 » any non-ASCII letter (read as any letter of the mark), so no table of look-alikes is needed; spaces never cross a line.
-_L = {c: f"[{c}\x01]" for c in "definos"}
-MARQUE_ENCADRE = re.compile("[=\x02]{{3,}}[^\\S\n]*(?:{f}{i}{n}[^\\S\n]+{d}{e}{s}[^\\S\n]+)?{d}{o}{n}{n}{e}{e}{s}".format(**_L))
+# ruche-0088, structural and fail closed: in the compared form, « \x02 » is any non-ASCII symbol or dash (read as « = », and
+# as a letter of the mark after its first one) and « \x01 » any non-ASCII letter (read as any letter of the mark), so no table
+# of look-alikes is needed; spaces never cross a line; a run of signs is read from its start; a non-ASCII word never ends inside.
+_L = {c: f"[{c}\x01\x02]" for c in "einos"} | {c: f"[{c}\x01]" for c in "df"}
+MARQUE_ENCADRE = re.compile("(?<![=\x02])[=\x02]{{3,}}[^\\S\n]*(?:{f}{i}{n}[^\\S\n]+{d}{e}{s}[^\\S\n]+)?{d}{o}{n}{n}{e}{e}{s}"
+                            "(?!\x01)".format(**_L))
 MARQUE_NEUTRALISEE = "[marque d'encadré neutralisée]"
 
 
@@ -3083,9 +3085,10 @@ def _symbole(x):
 
 
 def _forme_marque(c):
-    """The compared form of one character (marques_encadre): a non-ASCII symbol or dash, before or after NFKC, reads as « = »
-    (code 2); after NFKC, NFKD and casefold, combining marks dropped, a non-ASCII letter reads as any letter (code 1)."""
-    if _symbole(c):
+    """The compared form of one character (marques_encadre), read after NFKC: a non-ASCII symbol or dash, before or after NFKC,
+    reads as « = » (code 2) unless NFKC makes it a letter or digit; after NFKD and casefold, combining marks dropped, a
+    non-ASCII letter reads as any letter (code 1)."""
+    if _symbole(c) and not unicodedata.normalize("NFKC", c).isalnum():
         return "\x02"
     return "".join("\x02" if _symbole(x) else "\x01" if not x.isascii() and x.isalpha() else x
                    for x in unicodedata.normalize("NFKD", unicodedata.normalize("NFKC", c)).casefold() if not unicodedata.combining(x))
@@ -5954,14 +5957,14 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
                     # de la tâche reste une « decision », jamais fusionnée automatiquement.
                     par_conseil = est_conseil and t_base.get("statut") == "ouverte" and t.get("statut") == "en_relecture"
                     exiger(t.get("contribution") == cid and (par_titulaire or par_parallele or par_conseil),
-                           f"{chemin} : la PR doit aussi passer la tâche {nouveau.get('tache')} (réservée par {auteur}) "
+                           f"{chemin} : la PR doit aussi passer la tâche {citer(nouveau.get('tache'))} (réservée par {auteur}) "
                            f"en relecture avec la contribution {cid}, ou, pour un inscrit en parallèle, le retirer de la liste "
                            f"des inscrits et pointer la tâche sur {cid} : bee soumettre le fait")
                     # Numérotation : le numéro suivant le plus grand déjà pris pour la tâche, jamais un trou (bee soumettre).
                     m = ID_CONTRIBUTION.match(cid)
                     attendu = 1 + max(numeros_contributions(reg, nouveau.get("tache"), sauf=cid), default=0)
                     exiger(bool(m) and m["tache"] == nouveau.get("tache") and int(m["n"]) == attendu,
-                           f"{chemin} : la contribution suivante de {nouveau.get('tache')} est {nouveau.get('tache')}-c{attendu} : "
+                           f"{chemin} : la contribution suivante de {citer(nouveau.get('tache'))} est {citer(nouveau.get('tache'))}-c{attendu} : "
                            "bee soumettre la numérote")
                     projet = reg.projets.get(t.get("projet"), (None, {}))[1] or {}
                     exiger(bool(projet.get("fork")), f"{chemin} : le projet {t.get('projet')} n'a pas de fork : aucune contribution n'y est possible")
@@ -6000,11 +6003,11 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
                     # quand ils sont fournis, une PR absente de la liste est refusée (échec fermé).
                     if auteurs_pr is not None:
                         exiger(pr_du_compte(reg.identites, agents, auteurs_pr, nouveau),
-                               f"{chemin} : la PR {nouveau.get('pr')} doit avoir été ouverte par {nouveau.get('auteur')} sur GitHub "
+                               f"{chemin} : la PR {citer(nouveau.get('pr'))} doit avoir été ouverte par {citer(nouveau.get('auteur'))} sur GitHub "
                                f"(auteur relevé : {(auteurs_pr.get(nouveau.get('pr')) or ('',))[0] or 'inconnu'})")
                     cle = pr_canonique(nouveau.get("pr"))  # ruche-0041: compared in canonical form
                     autres = [i for i, (_, e) in reg.enregistrements.items() if i != cid and pr_canonique(e.get("pr")) == cle]
-                    exiger(cle is not None, f"{chemin} : adresse de PR invalide : {nouveau.get('pr')} (attendu : "
+                    exiger(cle is not None, f"{chemin} : adresse de PR invalide : {citer(nouveau.get('pr'))} (attendu : "
                                             "https://github.com/<organisation>/<dépôt>/pull/<numéro>)")
                     exiger(cle is None or not autres, f"{chemin} : la PR {nouveau.get('pr')} est déjà liée à {', '.join(autres)}")
                 continue

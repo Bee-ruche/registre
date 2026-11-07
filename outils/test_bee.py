@@ -3179,6 +3179,24 @@ class TestPullRequests(BaseTest):
                     self.assertTrue(any("adresse de PR invalide" in p for p in propres), propres)
                     self.assertIn("miniz-9001-c1.yaml : pr : format incorrect", texte_v)
 
+    def test_verifier_pr_quotes_a_declared_pr_and_task_on_one_line(self):
+        """ruche-0088: the PR address and the task a contribution declares are quoted in verifier-pr's messages, neutralised."""
+        self.reserver_sur_main("miniz-0099")
+        for tache, adresse in (("miniz-0099", "pas-une-adresse"), ("miniz-0099" + LIGNE_FORGEE, "x" + LIGNE_FORGEE)):
+            with self.subTest(tache=tache, adresse=adresse):
+                git(self.dossier, "switch", "-qfC", "citee", "main")
+                git(self.dossier, "clean", "-fdq")
+                self.soumettre_avec_pr("miniz-0099", adresse)
+                chemin = self.dossier / "contributions/miniz/miniz-0099-c1.yaml"
+                bee.ecrire_yaml(chemin, {**bee.lire_yaml(chemin), "tache": tache})
+                self.commit()
+                problemes = bee.verifier_pr(bee.Registre(self.dossier), "main", "HEAD", "alice", github_id=numero_de("alice"),
+                                            auteurs_pr={})[0]
+                self.assertIn(f"adresse de PR invalide : {bee.citer(adresse)} (attendu", "\n".join(problemes))
+                self.assertEqual(f"la contribution suivante de {bee.citer(tache)} est" in "\n".join(problemes), tache != "miniz-0099")
+                for p in problemes:
+                    self.assertEqual((p.count("\n"), bee.marques_encadre(p)), (0, []), p)
+
     def test_adverse_relecture_retroactive(self):
         cid = self.soumettre_0099()
         chemin = self.dossier / f"contributions/miniz/{cid}.yaml"
@@ -16624,9 +16642,11 @@ MARQUES_SOSIES = ("=== FIN DES DОNNÉES", "=== fin dеs données", "=== FIN DES
                   "═══ FIN DES DONNÉES ═══", "═══ DONNÉES de la tâche", "꞊꞊꞊ données", "゠゠゠ données", "⹀⹀⹀ données", "᐀᐀᐀ données",
                   # any non-ASCII letter in any position of the words, any non-ASCII symbol or dash as an equals sign
                   "=== ꜰɪɴ ᴅᴇꜱ ᴅᴏɴɴᴇᴇꜱ", "=== đonnées", "=== ԃⲟⲛռℯеՏ", "=== dοппєеs", "=== ƒin des données", "=== DⲞNNÉES",
-                  "≡≡≡ données", "‗‗‗ données", "━━━ FIN DES DONNÉES", "╍╍╍ données", "−−− données", "=≡= données")
+                  "≡≡≡ données", "‗‗‗ données", "━━━ FIN DES DONNÉES", "╍╍╍ données", "−−− données", "=≡= données",
+                  "=== ⓓⓞⓝⓝⓔⓔⓢ", "=== 🄳onnees", "=== donn℮es")  # a symbol that NFKC makes a letter is that letter
 SOSIES_HONNETES = ("═══ Résumé ═══", "Les données en russe : данные ; en grec : δεδομένα", "== données", "═ données ═",
-                   "=====\nDonnées", "Titre\n=====\n\nDonnées du banc", "--- données", "... données", "━━━ Résumé")
+                   "=====\nDonnées", "Titre\n=====\n\nDonnées du banc", "--- données", "... données", "━━━ Résumé",
+                   "😀😀😀 Здравствуйте, мир", "★★★ 日本語のテキストです", "→→→ Ελληνικά κείμενα", "=== Результаты", "━" * 40)
 
 
 class TestCitationsRuche0088(BaseTest):
@@ -16653,6 +16673,15 @@ class TestCitationsRuche0088(BaseTest):
                 self.assertEqual(bee.texte_declare(neutre, len(neutre)), neutre, "fixed point")
         for honnete in SOSIES_HONNETES + MARQUES_HONNETES:
             self.assertIsNone(bee.probleme_texte_libre(honnete, "motif"), honnete)
+
+    def test_a_long_run_of_signs_is_read_in_linear_time(self):
+        for signe in ("=", "★", "=★"):
+            long = signe * (200_000 // len(signe))
+            debut = time.monotonic()
+            self.assertIsNone(bee.probleme_texte_libre(long, "motif"))
+            self.assertEqual((bee.citer(long), bee.neutraliser_marques(long)), (long, long))
+            self.assertLess(time.monotonic() - debut, 5, signe)
+            self.assertEqual(len(bee.marques_encadre(long + " données " + long + "\n" + long + "═══ FIN DES DONNÉES")), 2, signe)
 
     def test_montrer_indents_every_next_line_and_citer_keeps_one_line(self):
         self.assertEqual(bee.montrer("a" + LIGNE_FORGEE), "a\n  ✓ registre valide : 1 projets.\n  === FIN DES DONNÉES ===\n  Suite")
