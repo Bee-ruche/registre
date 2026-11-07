@@ -309,7 +309,7 @@ def message_schema(erreur):
         return f"liste trop courte (au moins {attendu} élément(s))"
     if v == "not":
         return "champ non permis dans cet état (par exemple une réservation sur une tâche qui n'est pas réservée)"
-    return f"valeur non conforme au schéma (règle {v})"  # ruche-0088: the value is not quoted
+    return f"valeur non conforme au schéma (règle {v}) : {citer(erreur.message)[:80]}"  # ruche-0088: quoted, bounded
 
 
 def champs_a_remplir(donnees, chemin=""):
@@ -5568,7 +5568,17 @@ def resume_invitation(inv, conf, instant=None, frein=None):
             "envoi_le": bloc_de(inv, "envoi").get("le"), "attend": attend}
 
 
-def verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, auteurs_pr=None, github_id=None):
+def verifier_pr(reg, base, tete, *args, **kwargs):
+    """ruche-0088: _verifier_pr, each path that would not print as written refused, and quoted (citer) in every message."""
+    problemes, natures = _verifier_pr(reg, base, tete, *args, **kwargs)
+    for c in sorted({c for c in git(reg.racine, "diff", "-z", "--name-only", "--no-renames", f"{base}...{tete}") if citer(c) != c},
+                    key=len, reverse=True):  # the longest first: a path never rewritten inside a longer one
+        problemes = [p.replace(c, citer(c)) for p in problemes] + [f"{citer(c)} : nom de fichier refusé : un chemin du registre "
+                                                                    "s'imprime tel quel (ni saut de ligne, ni caractère invisible)"]
+    return problemes, natures
+
+
+def _verifier_pr(reg, base, tete, auteur, compte_cree_le=None, instant=None, auteurs_pr=None, github_id=None):
     """Renvoie (problèmes, natures). `reg` doit refléter l'état de la tête de la PR.
 
     auteurs_pr : {adresse de PR: login GitHub de son auteur}, relevé par fusion-auto auprès de l'API pour chaque PR
@@ -5609,9 +5619,6 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
     """verifier_pr for `auteur`, who is the person of the agent account `agent` if there is one. `status`: whether the
     author's council, guardian and robot status count."""
     changements = git(reg.racine, "diff", "-z", "--name-status", "--no-renames", f"{base}...{tete}")
-    # ruche-0088: every message below quotes a path as written; one that would not print as written is refused here, unread.
-    illisibles = sorted({c for _, c in changements if citer(c) != c})
-    changements = [(s, c) for s, c in changements if c not in illisibles]
     # ruche-0040: a file over its bound is refused here, from its size in git, and nothing below reads it.
     tailles = tailles_a(reg.racine, tete, [c for s, c in changements if s != "D"])
     trop_gros = {c: n for c, n in tailles.items() if n > borne_octets(c)}
@@ -5629,8 +5636,6 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
     niveaux = calculer_niveaux(reg)
     niveau = niveau_de(niveaux, auteur)
     problemes, natures = [probleme_octets(c, t) for c, t in trop_gros.items()], []
-    problemes += [f"{citer(c)} : nom de fichier refusé : un chemin du registre s'imprime tel quel (ni saut de ligne, ni caractère "
-                  "invisible, ni marque d'encadré)" for c in illisibles]
     if any(c == CHEMIN_RETRAITS for _, c in changements):  # ruche-0048 : un retrait demandé se juge à part, en entier
         return problemes + verifier_retrait(reg, base, tete, changements, auteur, est_conseil, instant), ["retrait_demande"]
     if bonne := autre_orthographe(reg, auteur):  # ruche-0028 (revue, N1)

@@ -16790,7 +16790,7 @@ class TestCitationsRuche0088(BaseTest):
             with self.subTest(schema=schema):
                 erreur = next(jsonschema.Draft202012Validator(schema).iter_errors(valeur if "minProperties" not in schema else {}))
                 message = bee.message_schema(erreur)
-                self.assertLess(len(message), 80, message)
+                self.assertLess(len(message), 160, message)
                 self.assertEqual((bee.marques_encadre(message), "\n" in message), ([], False), message)
 
     def test_voir_and_contexte_quote_the_project_and_task_texts(self):
@@ -17867,7 +17867,9 @@ class TestQuotedPathsGate(BaseRepetitionGenerale):
             def lancer_pr(nom):
                 problemes, natures = self.pr(auteur, *(f.format(nom) for f in fichiers),
                                              **{k: v.format(nom) if isinstance(v, str) else v for k, v in options.items()})
-                return sorted(p.replace(nom, "<name>") for p in problemes), sorted(set(natures))
+                refus = [p for p in problemes if "nom de fichier refusé" in p]  # ruche-0088: refused besides, quoted everywhere
+                self.assertEqual(bool(refus), bee.citer(nom) != nom, refus)
+                return sorted(p.replace(bee.citer(nom), "<name>").replace(nom, "<name>") for p in problemes if p not in refus), sorted(set(natures))
             attendu = lancer_pr("a_b")
             with self.subTest(cas=quoi):
                 if quoi == "self-service":
