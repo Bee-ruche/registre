@@ -106,7 +106,7 @@ croissance:
 # valable. Ajouter un nom qu'une fiche porte déjà rend le registre invalide (bee valider) : le conseil la renomme d'abord.
 pseudos_reserves: [conseil, council, bee, github-actions, "github-actions[bot]", gardien, guardian, garant, guarantor, robot,
                    fondateur, founder, architecte, architect, optimiser, relire, mesurer, proposer, Bee-ruche, laruche-architect,
-                   BeeRucheAgent]
+                   BeeRucheAgent, agent-architecte-bee]
 
 # Comptes automatiques autorisés à écrire des verdicts et à libérer les réservations expirées.
 robots:

@@ -654,9 +654,13 @@ def meme_pseudo(a, b):
 
 
 def reserved_pseudo(config, pseudo):
-    """ruche-0104: why `pseudo` may not name a member file (None if it may): bee.yaml's pseudos_reserves, case aside (meme_pseudo)."""
+    """ruche-0104: why `pseudo` may not name a member file (None if it may): bee.yaml's pseudos_reserves, the council and the robots,
+    case aside (meme_pseudo). Without a readable, non-empty list, no name is accepted."""
     liste = config.get("pseudos_reserves") if isinstance(config, dict) else None
-    if any(meme_pseudo(pseudo, r) for r in (liste if isinstance(liste, list) else [])):
+    if not (isinstance(liste, list) and liste):
+        return "bee.yaml : pseudos_reserves is required and never empty : no member file is accepted without it (ruche-0104)"
+    robots = config.get("robots") if isinstance(config.get("robots"), list) else []
+    if any(meme_pseudo(pseudo, r) for r in [*liste, "conseil", *robots]):
         return f"« {pseudo} » is a reserved pseudonym (bee.yaml, pseudos_reserves) : no member takes a name the tool gives a meaning to"
     return None
 
@@ -2055,10 +2059,12 @@ def verifier_comptes(reg):
     # ruche-0086: the gate's own rule (the highest label passes iff the minimum is readable): a missing or malformed minimum, said.
     if mode_porte(reg) == "si_juge_incomplet" and not juge_commun_suffisant(reg, {"juge": {"commun": "juge-v9999"}}):
         ajouter("bee.yaml : juge_commun_min : entier de 1 à 9999 attendu (R3, docs/juge-commun.md) ; sinon, aucun verdict n'est complet")
-    reserves = reg.config.get("pseudos_reserves", [])  # ruche-0104
-    if not (isinstance(reserves, list) and all(isinstance(r, str) and re.fullmatch(rf"{PSEUDO_MOTIF}(\[bot\])?", r) for r in reserves)
-            and len({r.casefold() for r in reserves}) == len(reserves)):
-        ajouter("bee.yaml : pseudos_reserves : a list of distinct GitHub logins, case aside (a robot's may end in [bot]) (ruche-0104)")
+    reserves, robots = reg.config.get("pseudos_reserves"), reg.config.get("robots")  # ruche-0104: required, with the council and robots
+    if not (reserves_lisibles := isinstance(reserves, list) and all(isinstance(r, str) and re.fullmatch(rf"{PSEUDO_MOTIF}(\[bot\])?", r)
+            for r in reserves) and len({r.casefold() for r in reserves}) == len(reserves) and {str(x).casefold() for x in
+            ["conseil", *(robots if isinstance(robots, list) else [])]} <= {r.casefold() for r in reserves}):
+        ajouter("bee.yaml : pseudos_reserves : a list of distinct GitHub logins, case aside (a robot's may end in [bot]), required, "
+                "naming at least conseil and every robot (ruche-0104)")
 
     for stem, (chemin, projet) in reg.projets.items():
         if not selon_schema("projet", chemin, projet):
@@ -2084,7 +2090,7 @@ def verifier_comptes(reg):
             ajouter(f"{reg.rel(chemin)} : « {stem} » et « {vus_pseudos[stem.casefold()]} » sont le même login GitHub (la casse ne "
                     "compte pas) : une seule fiche par compte")
         vus_pseudos.setdefault(stem.casefold(), stem)
-        if refus := reserved_pseudo(reg.config, stem):  # ruche-0104: the council renames it, or leaves the name off the list
+        if reserves_lisibles and (refus := reserved_pseudo(reg.config, stem)):  # ruche-0104: the council renames it, or leaves the name off the list
             ajouter(f"{reg.rel(chemin)} : {refus}")
         for login in logins_de(membre) if isinstance(membre, dict) else []:
             if logins.setdefault(login.casefold(), stem).casefold() != stem.casefold():
