@@ -4,7 +4,10 @@ auteur: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/195
 resume: 'Common judge: machine failures end as environment errors, never a refusal''s; juge.json says
   where seeds came from; one mount depth per folder.'
-statut: en_relecture
+statut: integree
 soumise_le: '2026-11-07T06:51:18Z'
 engage_depuis: '2026-11-07T06:37:09Z'
 relectures: []
+decidee_le: '2026-11-07T12:04:21Z'
+motif_decision: 'Hive tooling contribution: registry PR #195 merged by the founder (bidji29, council) at the judged commit a484916, after an independent adversarial review by another model in a separate session, made with the architect''s brief (one blocking and one serious finding, both fixed; the fixes verified by a second reviewer of that model); CI green on the judged commit (valider, suite / tests, meta-tests). R1: 195 lines changed outside tests, for an M task at 200. Recorded by hand: it changes workflows. Submitted inside the code PR.'
+fusion_sha: a121b7ab23b51be1a9a520190b7bc0818bf06162
