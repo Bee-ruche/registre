@@ -111,6 +111,10 @@ La clôture **nomme ce qui sort du débat** :
 
 - **Qui clôt** : le rapporteur, un gardien ou le conseil ; le débat d'une invitation, un gardien ou le conseil
   seulement, une fois l'invitation décidée ([croissance.md](croissance.md)).
+  Le débat d'une invitation refusée, restée sans réponse ou retirée (jamais acceptée) est figé, jugé sur `main` : seuls le
+  caviardage du conseil et sa clôture `sans_suite` le changent, par le conseil ou un gardien en fonction ni proposant ni garanti
+  par ou avec lui ; `bee debats` le montre « à clore sans suite » (ruche-0139). Une PR du conseil qui consigne la fin de
+  l'invitation et argumente dans la même PR est un acte du conseil lui-même.
 - **Le rapporteur ne clôt pas en hâte** : il lui faut une synthèse à jour (postérieure au dernier
   argument ; `--synthese` la publie dans la même PR) et 24 h sans nouvel argument, pour que chacun ait
   pu répondre. Un gardien ou le conseil peut clore à tout moment (débat hors sujet, doublon d'un autre
@@ -202,7 +206,7 @@ l'agora.
 | Synthétiser (`synthese`) | Le rapporteur | Signée et datée de maintenant ; non vide, courte ; le rapporteur suivant est un autre participant, hors conseil qui a ouvert le débat sans y prendre part (lui-même seulement s'il est seul) |
 | Relever un rapporteur absent (`synthese`) | Un autre participant | Des arguments attendent la synthèse depuis 72 h après le premier d'entre eux ; participant dans `main` avant la PR ; pas l'auteur de la dernière synthèse s'il y a quelqu'un d'autre ; puis les mêmes contrôles qu'une synthèse, rapporteur suivant compris |
 | Marquer un doublon (`doublon`) | Le rapporteur, un gardien, le conseil | Seule clé ajoutée à un argument existant ; vers un argument précédent, de même position, qui n'est pas un doublon ; jamais retirée ensuite |
-| Clore (`cloture_debat`) | Le rapporteur, un gardien, le conseil | Une issue et une référence qui existe ; signée et datée ; pour le rapporteur, synthèse à jour et 24 h de silence |
+| Clore (`cloture_debat`) | Le rapporteur, un gardien, le conseil | Une issue et une référence qui existe ; signée et datée ; pour le rapporteur, synthèse à jour et 24 h de silence ; le débat d'une invitation refusée, sans réponse ou retirée (figé) : un gardien en fonction, non garanti par ou avec le proposant, ou le conseil, `sans_suite`, sans synthèse |
 | Relever le rapporteur | Le conseil | Un participant ; nature « gouvernance », jamais fusionnée automatiquement |
 | Caviarder (`caviardage`) | Le conseil seul | Pour une invitation refusée, restée sans réponse ou retirée, qu'il nomme (`bee debattre caviarder D-0020 A3 --invitation I-0007 --motif refus`, `caviarde_pour: I-0007` ; le motif est celui de son retrait) : seul change le texte d'arguments existants, de la question ou de la synthèse, qui devient « retiré : <motif> » (les sources d'un argument, « retiré ») ; identifiant, auteur, date, position, liens et reste du débat demeurent ; même dans un débat clos ; jamais fusionné automatiquement. Sans invitation retirée, rien ne se caviarde : le conseil ne fait taire aucune critique. La marque d'une synthèse caviardée tombe avec la synthèse suivante |
 
