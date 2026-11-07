@@ -12758,6 +12758,18 @@ class TestRetraitDemandeRuche0048(BaseRevueRuche0020):
         self.assertEqual(bee.passages_retires("octocat|octocat", empreintes, vus := []), f"{m}|{m}")
         self.assertEqual(len(vus), 2)
 
+    def test_ruche0140_un_nom_compose_n_est_jamais_coupe(self):
+        e, m = bee.empreintes_passage("octo"), bee.MARQUE_RETRAIT
+        for texte in ("relu par octo-bot", "github.com/octo-org/zlib", "octo_handler", "x-octo", "a_octo b", "par:octo-bot"):
+            with self.subTest(texte):
+                self.assertEqual(bee.passages_retires(texte, e, vus := []), texte)
+                self.assertEqual(len(vus), 0)
+        for texte, attendu in (("by:octo", f"by:{m}"), ("x/octo", f"x/{m}"), ("octo/zlib", m), ("octo:octo-bot", f"{m}:octo-bot"),
+                               ("(octo)", f"({m})")):
+            with self.subTest(texte):
+                self.assertEqual(bee.passages_retires(texte, e, vus := []), attendu)
+                self.assertEqual(len(vus), 1)
+
     def test_ruche0140_commentaires_en_place_a_la_borne_de_taille(self):
         e = bee.empreintes_passage("octocat")
         texte = "".join(f"c{i}: v  # n{i}\n# m{i}\n# p{i}\n" for i in range(8000))

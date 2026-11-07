@@ -4566,7 +4566,8 @@ def passages_retires(texte, empreintes, vus=None, marque=MARQUE_RETRAIT):
                 r"(?<![^\W_])(?=([^\W_]+(?:[\W_]+[^\W_]+){0,3}))", passage))  # 1 à 4 suites alphanumériques, quoi qui les entoure
             if nom := next(((d, e, t) for g in (((0, len(passage), passage), (d0, d0 + len(nu[2]), nu[2])), ((a, e, "".join(p[:k:2]))
                     for a, p in nus if a < mots[i][1] - debut for k in range(len(p), 0, -2) for e in [a + len("".join(p[:k]))]
-                    if e > mots[i + n - 1][0] - debut)) for d, e, x in g if x.strip() and (t := empreintes_passage(x) & empreintes)), None):
+                    if e > mots[i + n - 1][0] - debut and not {passage[a - 1:a], passage[e:e + 1]} & {"-", "_"}))  # tout le nom composé
+                    for d, e, x in g if x.strip() and (t := empreintes_passage(x) & empreintes)), None):
                 morceaux, curseur = morceaux + [texte[curseur:debut + nom[0]], marque], debut + nom[1]
                 vus.append((sum(a <= debut + nom[0] for a, _ in mots), nom[2], texte[debut + nom[0]:curseur]))
                 break
