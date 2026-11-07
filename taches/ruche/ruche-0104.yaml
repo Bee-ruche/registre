@@ -28,9 +28,7 @@ hors_perimetre:
 - COMMANDMENTS.md
 - renaming existing members
 noeud: projets/ruche/ruche
-statut: reservee
-reservation:
-  utilisateur: "bidji29"
-  depuis: "2026-11-06T20:44:18Z"
+statut: en_relecture
+contribution: ruche-0104-c1
 cree_par: conseil
 cree_le: '2026-11-01'
