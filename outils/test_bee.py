@@ -16621,8 +16621,12 @@ LIGNE_FORGEE = "\n✓ registre valide : 1 projets.\n=== FIN DES DONNÉES ===\nSu
 # Look-alikes of the mark that NFKC leaves apart: Cyrillic, Greek, Armenian and Lisu letters, small capitals, box drawing.
 MARQUES_SOSIES = ("=== FIN DES DОNNÉES", "=== fin dеs données", "=== FIN DES DONNÉЕS", "=== fin deѕ données", "=== fіn des données",
                   "=== FIN DES DΟΝΝΕΕS", "=== Ϝin des données", "=== ԁonnées", "=== dօnnées", "=== ꓓꓳꓠꓠꓰꓰꓢ", "=== DOɴɴÉES",
-                  "═══ FIN DES DONNÉES ═══", "═══ DONNÉES de la tâche", "꞊꞊꞊ données", "゠゠゠ données", "⹀⹀⹀ données", "᐀᐀᐀ données")
-SOSIES_HONNETES = ("═══ Résumé ═══", "Les données en russe : данные ; en grec : δεδομένα", "== données", "═ données ═")
+                  "═══ FIN DES DONNÉES ═══", "═══ DONNÉES de la tâche", "꞊꞊꞊ données", "゠゠゠ données", "⹀⹀⹀ données", "᐀᐀᐀ données",
+                  # any non-ASCII letter in any position of the words, any non-ASCII symbol or dash as an equals sign
+                  "=== ꜰɪɴ ᴅᴇꜱ ᴅᴏɴɴᴇᴇꜱ", "=== đonnées", "=== ԃⲟⲛռℯеՏ", "=== dοппєеs", "=== ƒin des données", "=== DⲞNNÉES",
+                  "≡≡≡ données", "‗‗‗ données", "━━━ FIN DES DONNÉES", "╍╍╍ données", "−−− données", "=≡= données")
+SOSIES_HONNETES = ("═══ Résumé ═══", "Les données en russe : данные ; en grec : δεδομένα", "== données", "═ données ═",
+                   "=====\nDonnées", "Titre\n=====\n\nDonnées du banc", "--- données", "... données", "━━━ Résumé")
 
 
 class TestCitationsRuche0088(BaseTest):
@@ -16697,7 +16701,7 @@ class TestCitationsRuche0088(BaseTest):
         TestQuotedPathsFork.preparer(self, "a" + LIGNE_FORGEE.replace("=", "-") + "\n✓ branche conforme : 1 lignes")
         code, texte = self.bee("verifier-fork", "--tache", "miniz-0099", "--base", "master", "--depot", str(self.fork))
         self.assertEqual(code, 1, texte)
-        self.assertIn("⚠ a\n  ✓ registre valide", texte)
+        self.assertIn("⚠ a\\n✓ registre valide", texte)  # quoted on its line
         self.assertEqual([l for l in texte.splitlines() if l.startswith(("✓", "Suite"))], [], texte)
 
     def test_a_refused_verdict_key_never_takes_an_honest_keys_name(self):
@@ -16755,6 +16759,91 @@ class TestCitationsRuche0088(BaseTest):
                 self.assertEqual(code, 1, sortie)
                 self.assertRegex(sortie, rf"✗ {re.escape(relatif)}.*(fausse marque d'encadré|caractère invisible refusé \(U\+(E000|200B))")
                 chemin.write_text(avant, encoding="utf-8")
+
+    def test_a_schema_path_quotes_each_key(self):
+        chemin = self.dossier / "projets/miniz.yaml"
+        avant = chemin.read_text(encoding="utf-8")
+        chemin.write_text(avant.replace("commandes:\n", "commandes:\n  honnete: 1\n"), encoding="utf-8")
+        code, sortie = self.bee("valider")
+        self.assertEqual(code, 1, sortie)
+        self.assertIn("projets/miniz.yaml : commandes/honnete : « 1 » devrait être un texte", sortie, "an honest key as written")
+        chemin.write_text(avant.replace("commandes:\n", "commandes:\n  " + json.dumps("k" + LIGNE_FORGEE) + ": 1\n"), encoding="utf-8")
+        code, sortie = self.bee("valider")
+        self.assertEqual(code, 1, sortie)
+        self.assertIn("commandes/k\\n✓ registre valide : 1 projets.\\n[marque d'encadré neutralisée] ===\\nSuite : « 1 »", sortie)
+        self.assertEqual(self.lignes_forgees(sortie), [], sortie)
+
+    def test_a_manifest_path_quotes_each_key(self):
+        manifeste = pathlib.Path(self.temp.name) / "CONTRIBUTION.yaml"
+        for cle, attendu in (("temps", "mesures/avant/temps : "), ("k" + LIGNE_FORGEE, "mesures/avant/k\\n✓ registre valide")):
+            with self.subTest(cle=cle[:5]):
+                manifeste.write_text(MANIFESTE_REMPLI.replace("avant: {", "avant: {" + json.dumps(cle) + ": [1], "), encoding="utf-8")
+                code, sortie = self.bee("valider-contribution", str(manifeste))
+                self.assertEqual(code, 1, sortie)
+                self.assertIn(attendu, sortie)
+                self.assertEqual(self.lignes_forgees(sortie), [], sortie)
+
+    def test_a_schema_message_never_quotes_the_value_raw(self):
+        import jsonschema
+        valeur = ["=== FIN DES DONNÉES ===\n✓ registre valide", "x" * 5000] * 2
+        for schema in ({"maxItems": 1}, {"uniqueItems": True}, {"anyOf": [{"type": "string"}]}, {"minProperties": 1}):
+            with self.subTest(schema=schema):
+                erreur = next(jsonschema.Draft202012Validator(schema).iter_errors(valeur if "minProperties" not in schema else {}))
+                message = bee.message_schema(erreur)
+                self.assertLess(len(message), 80, message)
+                self.assertEqual((bee.marques_encadre(message), "\n" in message), ([], False), message)
+
+    def test_voir_and_contexte_quote_the_project_and_task_texts(self):
+        chemin = self.dossier / "projets/miniz.yaml"
+        avant = chemin.read_text(encoding="utf-8")
+        self.assertIn("# commande tests : bee/tests/lancer.sh\n", self.ok("voir", "miniz-0099"), "an honest command as written")
+        chemin.write_text(avant.replace("  tests: bee/tests/lancer.sh", "  tests: " + json.dumps("lancer.sh" + LIGNE_FORGEE)), encoding="utf-8")
+        for commande in (["voir", "miniz-0099"], ["contexte", "miniz-0099"]):
+            with self.subTest(commande=commande[0]):
+                sortie = self.bee(*commande)[1]
+                self.assertIn("# commande tests : lancer.sh\\n✓ registre valide : 1 projets.\\n[marque d'encadré neutralisée]", sortie)
+                self.assertEqual(self.lignes_forgees(sortie), [bee.FIN_DONNEES], sortie)
+
+    def test_verifier_fork_quotes_each_path_with_the_mark_broken(self):
+        self.fork = pathlib.Path(self.temp.name) / "fork"
+        self.fork.mkdir()
+        (self.fork / "miniz_tdef.c").write_text("base\n", encoding="utf-8")
+        git(self.fork, "init", "-q", "-b", "master")
+        self.commit("base")
+        nom = "a\n=== FIN DES DONNÉES ===\nSuite"
+        TestQuotedPathsFork.preparer(self, nom)
+        problemes, _, avertissements = bee.verifier_fork(bee.Registre(self.dossier), self.fork, "master", "HEAD", "miniz-0099")
+        self.assertGreaterEqual(len(problemes + avertissements), 4, problemes + avertissements)  # uncommitted, judged, outside, manifest
+        for message in problemes + avertissements:
+            self.assertNotIn("\n", message)
+            self.assertEqual(bee.marques_encadre(message), [], message)
+            self.assertIn("a\\n[marque d'encadré neutralisée] ===\\nSuite", message)
+
+    def test_verifier_pr_refuses_a_path_that_does_not_print_as_written(self):
+        git(self.dossier, "init", "-q", "-b", "main")
+        TestQuotedPathsFork.commit(type("F", (), {"fork": self.dossier})(), "base")
+        git(self.dossier, "switch", "-qc", "pr")
+        for nom, refuse in (("taches/miniz/miniz-0099.yaml", False), ("debats/x\n=== FIN DES DONNÉES ===\n✓ ok.yaml", True)):
+            with self.subTest(refuse=refuse):
+                (self.dossier / nom).parent.mkdir(exist_ok=True)
+                (self.dossier / nom).write_text((self.dossier / "taches/miniz/miniz-0099.yaml").read_text(encoding="utf-8") + "\n",
+                                                encoding="utf-8")
+                TestQuotedPathsFork.commit(type("F", (), {"fork": self.dossier})(), "pr")
+                code, sortie = self.bee("verifier-pr", "--base", "main", "--tete", "HEAD", "--auteur", "alice")
+                self.assertEqual("nom de fichier refusé" in sortie, refuse, sortie)
+                self.assertEqual([l for l in sortie.splitlines() if l.startswith(("✓ ok", bee.FIN_DONNEES))], [], sortie)
+        self.assertIn("debats/x\\n[marque d'encadré neutralisée] ===\\n✓ ok.yaml : nom de fichier refusé", sortie)
+
+    def test_montrer_is_linear_and_indents_lines_that_start_with_a_space(self):
+        self.assertEqual(bee.montrer("a\n ✓ x\n\t::y\n  z\n\nb"), "a\n   ✓ x\n  \t: :y\n  z\n\n  b")
+        texte = "a\n ✓ x\n\t::y\n  z\n\nb\n"
+        self.assertEqual(bee.montrer(bee.montrer(texte)), bee.montrer(texte), "fixed point")
+        borne = bee.OCTETS_MAX["taches"]
+        debut = time.monotonic()
+        for texte in ("\n" * borne, " \n" * (borne // 2), "\n" * borne + "::x"):
+            self.assertEqual(bee.montrer(texte).count("\n"), texte.count("\n"))
+            self.assertNotIn("\n", bee.citer(texte))
+        self.assertLess(time.monotonic() - debut, 30, "linear in the number of lines, at the bound of a file")
 
 
 class TestR8Bootstrap(BaseRepetitionGenerale):
@@ -17702,7 +17791,8 @@ class TestQuotedPathsFork(BaseTest):
         changed again, but not committed. The result, with `nom` written <name>."""
         self.preparer(nom)
         problemes, total, avertissements = bee.verifier_fork(bee.Registre(self.dossier), self.fork, "master", "HEAD", "miniz-0099")
-        return sorted(p.replace(nom, "<name>") for p in problemes), total, sorted(a.replace(nom, "<name>") for a in avertissements)
+        nommer = lambda m: m.replace(bee.citer(nom), "<name>").replace(nom, "<name>")  # noqa: E731 (quoted as bee prints it, ruche-0088)
+        return sorted(map(nommer, problemes)), total, sorted(map(nommer, avertissements))
 
     def preparer(self, nom):
         git(self.fork, "switch", "-qf", "master")

@@ -309,7 +309,7 @@ def message_schema(erreur):
         return f"liste trop courte (au moins {attendu} élément(s))"
     if v == "not":
         return "champ non permis dans cet état (par exemple une réservation sur une tâche qui n'est pas réservée)"
-    return erreur.message
+    return f"valeur non conforme au schéma (règle {v})"  # ruche-0088: the value is not quoted
 
 
 def champs_a_remplir(donnees, chemin=""):
@@ -1983,7 +1983,7 @@ def verifier_comptes(reg):
             return False
         valide = True
         for erreur in sorted(reg.schema(nom).iter_errors(donnees), key=lambda e: [str(x) for x in e.absolute_path]):
-            lieu = "/".join(str(x) for x in erreur.absolute_path) or "(racine)"
+            lieu = "/".join(citer(x) for x in erreur.absolute_path) or "(racine)"
             ajouter(f"{reg.rel(chemin)} : {lieu} : {message_schema(erreur)}")
             valide = False
         return valide
@@ -2308,7 +2308,7 @@ def verifier_manifeste(reg, donnees, origine="CONTRIBUTION.yaml", utilisateur=No
     for erreur in sorted(reg.schema("contribution").iter_errors(donnees), key=lambda e: [str(x) for x in e.absolute_path]):
         if isinstance(erreur.instance, str) and any(m in erreur.instance for m in MARQUES_A_REMPLIR):
             continue  # déjà signalé ci-dessus
-        lieu = "/".join(str(x) for x in erreur.absolute_path) or "(racine)"
+        lieu = "/".join(citer(x) for x in erreur.absolute_path) or "(racine)"
         problemes.append(f"{origine} : {lieu} : {message_schema(erreur)}")
     mesures_brutes = donnees.get("mesures") if isinstance(donnees.get("mesures"), dict) else {}
     for cote in ("avant", "apres"):
@@ -3071,28 +3071,36 @@ def texte_recevable(texte, quoi, maximum):
 
 
 # Les marques qu'imprime bee autour des données (DEBUT_DONNEES, FIN_DONNEES, DEBUT_DECLARE), sous leur forme comparée.
-MARQUE_ENCADRE = re.compile(r"===\s*(?:fin\s+des\s+)?donnees")
+# ruche-0088, structural and fail closed: in the compared form, « \x02 » is any non-ASCII symbol or dash (read as « = ») and
+# « \x01 » any non-ASCII letter (read as any letter of the mark), so no table of look-alikes is needed; spaces never cross a line.
+_L = {c: f"[{c}\x01]" for c in "definos"}
+MARQUE_ENCADRE = re.compile("[=\x02]{{3,}}[^\\S\n]*(?:{f}{i}{n}[^\\S\n]+{d}{e}{s}[^\\S\n]+)?{d}{o}{n}{n}{e}{e}{s}".format(**_L))
 MARQUE_NEUTRALISEE = "[marque d'encadré neutralisée]"
-# ruche-0088: what NFKC leaves apart but the eye reads as a letter of the mark or as « = » (Cyrillic, Greek, Armenian, Lisu,
-# small capitals, box drawing, double hyphens), read as that letter after casefold; fail closed, as the rest of the check.
-SOSIES_MARQUE = str.maketrans({**dict.fromkeys("ԁꓒꓓ", "d"), **dict.fromkeys("еεϵҽꓰ", "e"), **dict.fromkeys("ϝꓝ", "f"),
-                               **dict.fromkeys("іιıӏɩꓲ", "i"), **dict.fromkeys("νոꓠɴ", "n"), **dict.fromkeys("оοօꓳᴏ", "o"),
-                               **dict.fromkeys("ѕꓢꜱ", "s"), **dict.fromkeys("═꞊゠⹀᐀", "=")})
-EGAUX_SOSIES = "=═꞊゠⹀᐀"
+
+
+def _symbole(x):
+    return not x.isascii() and unicodedata.category(x) in ("Sm", "Sk", "So", "Pd", "Po")
+
+
+def _forme_marque(c):
+    """The compared form of one character (marques_encadre): a non-ASCII symbol or dash, before or after NFKC, reads as « = »
+    (code 2); after NFKC, NFKD and casefold, combining marks dropped, a non-ASCII letter reads as any letter (code 1)."""
+    if _symbole(c):
+        return "\x02"
+    return "".join("\x02" if _symbole(x) else "\x01" if not x.isascii() and x.isalpha() else x
+                   for x in unicodedata.normalize("NFKD", unicodedata.normalize("NFKC", c)).casefold() if not unicodedata.combining(x))
 
 
 def marques_encadre(texte):
     """Les étendues [début, fin) de `texte` où se lit une marque d'encadré (« === DONNÉES », « === FIN DES DONNÉES ») : sans
-    casse ni accent, espaces tolérées, chaque caractère lu après NFKC (« ＝ » pleine chasse est « = ») et SOSIES_MARQUE."""
+    casse ni accent, espaces tolérées, chaque caractère lu par _forme_marque (« ＝ » pleine chasse est « = »)."""
     texte = str(texte)
-    if not any(c in EGAUX_SOSIES for c in unicodedata.normalize("NFKD", unicodedata.normalize("NFKC", texte))):
+    if "=" not in (n := unicodedata.normalize("NFKC", texte)) and not any(map(_symbole, set(texte + n))):
         return []
     forme, origine = [], []
     for i, c in enumerate(texte):
-        for x in unicodedata.normalize("NFKD", unicodedata.normalize("NFKC", c)).casefold().translate(SOSIES_MARQUE):
-            if not unicodedata.combining(x):
-                forme.append(x)
-                origine.append(i)
+        forme.append(f := _forme_marque(c))
+        origine += [i] * len(f)
     return [(origine[m.start()], origine[m.end() - 1] + 1) for m in MARQUE_ENCADRE.finditer("".join(forme))]
 
 
@@ -3168,8 +3176,8 @@ def montrer(texte, une_ligne=False):
     « :: » at the start of a line, after any spaces (the runner trims them). Every line after the first is indented (ruche-0088):
     a text quoted in the message never prints a line of its own that would pass for one of bee's."""
     texte = "".join(f"<U+{ord(c):04X}>" if caractere_sortant_interdit(c) else c for c in str(texte)).replace("##[", "# #[")
-    texte = re.sub(r"(?m)^(\s*)::", r"\1: :", texte)
-    return texte.replace("\n", "\\n") if une_ligne else re.sub(r"\n(?=\S)", "\n  ", texte)
+    texte = re.sub(r"(?m)^([^\S\n]*)::", r"\1: :", texte)  # spaces of one line only: linear
+    return texte.replace("\n", "\\n") if une_ligne else re.sub(r"\n(?!  |\n|\Z)", "\n  ", texte)
 
 
 def montrer_ligne(texte):
@@ -5601,6 +5609,9 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
     """verifier_pr for `auteur`, who is the person of the agent account `agent` if there is one. `status`: whether the
     author's council, guardian and robot status count."""
     changements = git(reg.racine, "diff", "-z", "--name-status", "--no-renames", f"{base}...{tete}")
+    # ruche-0088: every message below quotes a path as written; one that would not print as written is refused here, unread.
+    illisibles = sorted({c for _, c in changements if citer(c) != c})
+    changements = [(s, c) for s, c in changements if c not in illisibles]
     # ruche-0040: a file over its bound is refused here, from its size in git, and nothing below reads it.
     tailles = tailles_a(reg.racine, tete, [c for s, c in changements if s != "D"])
     trop_gros = {c: n for c, n in tailles.items() if n > borne_octets(c)}
@@ -5618,6 +5629,8 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
     niveaux = calculer_niveaux(reg)
     niveau = niveau_de(niveaux, auteur)
     problemes, natures = [probleme_octets(c, t) for c, t in trop_gros.items()], []
+    problemes += [f"{citer(c)} : nom de fichier refusé : un chemin du registre s'imprime tel quel (ni saut de ligne, ni caractère "
+                  "invisible, ni marque d'encadré)" for c in illisibles]
     if any(c == CHEMIN_RETRAITS for _, c in changements):  # ruche-0048 : un retrait demandé se juge à part, en entier
         return problemes + verifier_retrait(reg, base, tete, changements, auteur, est_conseil, instant), ["retrait_demande"]
     if bonne := autre_orthographe(reg, auteur):  # ruche-0028 (revue, N1)
@@ -6489,7 +6502,7 @@ def verifier_fork(reg, depot, base, tete, identifiant_tache, auteur=None):
     if tete == "HEAD":
         en_attente = [l[3:] for l in git(depot, "status", "-z", "--porcelain", "--no-renames", "--untracked-files=no")]
         if en_attente:
-            problemes.append(f"{len(en_attente)} fichier(s) modifié(s) mais non commité(s) ({', '.join(en_attente[:5])}"
+            problemes.append(f"{len(en_attente)} fichier(s) modifié(s) mais non commité(s) ({', '.join(map(citer, en_attente[:5]))}"
                              f"{'…' if len(en_attente) > 5 else ''}) : l'outil vérifie le dernier commit, pas le disque. Commitez d'abord.")
     fichiers_tache = [f.rstrip("/") for f in tache.get("fichiers") or []]
     for ligne in git(depot, "diff", "-z", "--numstat", "--no-renames", f"{base}...{tete}"):
@@ -6497,18 +6510,18 @@ def verifier_fork(reg, depot, base, tete, identifiant_tache, auteur=None):
         if correspond(chemin, exclus):
             continue
         if ajoutees == "-":
-            problemes.append(f"{chemin} : fichier binaire modifié (commandement 7 : pas de binaire opaque)")
+            problemes.append(f"{citer(chemin)} : fichier binaire modifié (commandement 7 : pas de binaire opaque)")
             continue
         total += int(ajoutees) + int(retirees)
         if fichiers_tache and not any(chemin == f or chemin.startswith(f + "/") for f in fichiers_tache):
-            avertissements.append(f"{chemin} : hors des fichiers de la tâche ({', '.join(fichiers_tache)}) ; justifiez-le dans le manifeste, les relecteurs jugeront")
+            avertissements.append(f"{citer(chemin)} : hors des fichiers de la tâche ({', '.join(map(citer, fichiers_tache))}) ; justifiez-le dans le manifeste, les relecteurs jugeront")
     maximum = LIGNES_MAX[tache["taille"]]
     if total > maximum:
         problemes.append(f"R1 : {total} lignes modifiées, maximum {maximum} pour une tâche {tache['taille']}")
     if tache["type"] in ("optimisation", "relecture"):
         for chemin in git(depot, "diff", "-z", "--name-only", "--no-renames", f"{base}...{tete}"):
             if correspond(chemin, juges):
-                problemes.append(f"{chemin} : une tâche {tache['type']} ne peut pas modifier ce qui la juge (commandement 3)")
+                problemes.append(f"{citer(chemin)} : une tâche {tache['type']} ne peut pas modifier ce qui la juge (commandement 3)")
     # Manifeste : manifestes/<tâche>.yaml (un fichier par tâche, donc pas de conflit entre deux PR), sinon
     # l'ancien emplacement CONTRIBUTION.yaml à la racine.
     nom_manifeste = chemin_manifeste(identifiant_tache)
@@ -6528,11 +6541,11 @@ def verifier_fork(reg, depot, base, tete, identifiant_tache, auteur=None):
     else:
         problemes += verifier_manifeste(reg, manifeste, nom_manifeste, person_of(reg.comptes_agents, auteur))  # ruche-0089
         if isinstance(manifeste, dict) and manifeste.get("tache") != identifiant_tache:
-            problemes.append(f"{nom_manifeste} : tâche « {manifeste.get('tache')} » au lieu de « {identifiant_tache} »")
+            problemes.append(f"{nom_manifeste} : tâche « {citer(manifeste.get('tache'))} » au lieu de « {identifiant_tache} »")
     autres = [c for c in git(depot, "diff", "-z", "--name-only", "--no-renames", f"{base}...{tete}")
               if correspond(c, ["manifestes/**"]) and c != chemin_manifeste(identifiant_tache)]
     if autres:
-        problemes.append(f"la branche modifie le manifeste d'une autre tâche ({', '.join(autres[:3])}) : une PR, une tâche")
+        problemes.append(f"la branche modifie le manifeste d'une autre tâche ({', '.join(map(citer, autres[:3]))}) : une PR, une tâche")
     if total == 0 and not problemes and tache["type"] == "optimisation":
         # Normal pour une tâche de mesure ou d'outillage, qui ne touche que bee/ et tests/.
         avertissements.append("aucune ligne de code modifiée hors tests et bancs pour une optimisation : est-ce bien la bonne branche ?")
@@ -6768,35 +6781,36 @@ def lignes_calculees_tache(reg, t):
     part, encadré comme de la donnée (cadre_donnees_tache)."""
     lignes = ["# --- calculé par bee ---"]
     bloquee = reg.bloquee_par(t)
-    lignes.append(f"# bloquée par : {', '.join(bloquee) if bloquee else 'rien'}")
+    lignes.append(f"# bloquée par : {', '.join(map(citer, bloquee)) if bloquee else 'rien'}")  # ruche-0088: each text quoted
     lignes.append(f"# poste (cap de la ruche, R11) : {poste_de(t)}" + ("" if t.get("poste") else " (d'après son type)"))
     lignes.append(f"# lignes modifiées autorisées (R1) : {LIGNES_MAX[t['taille']]}")
     niveau_requis = "Confirmé" if t["type"] == "decoupage" else {"S": "Nouveau", "M": "Contributeur", "L": "Confirmé"}[t["taille"]]
     lignes.append(f"# niveau requis : {niveau_requis}" + (" (non appliqué pendant l'amorçage)" if reg.config.get("amorcage") else ""))
     projet = reg.projets.get(t["projet"], (None, {}))[1]
     if projet.get("fork"):
-        lignes.append(f"# fork : {projet['fork']}")
+        lignes.append(f"# fork : {citer(projet['fork'])}")
     for nom, commande in (projet.get("commandes") or {}).items():
-        lignes.append(f"# commande {nom} : {commande}")
+        lignes.append(f"# commande {citer(nom)} : {citer(commande)}")
     # Travail en parallèle et course (R3, R7, R11) : qui travaille encore, quelles contributions sont en concurrence.
     instant = maintenant()
     course = etat_course(reg, t["id"], calculer_niveaux(reg), instant)
     for e in course["engages"]:
         fin = _instant_ou_rien(e["depuis"])
         echeance = en_iso(fin + dt.timedelta(hours=float(reg.config.get("reservation_max_heures", 72)))) if fin else "?"
-        lignes.append(f"# {e['role']} : {e['utilisateur']}, depuis {e['depuis']} (échéance R7 : {echeance})")
+        lignes.append(f"# {e['role']} : {citer(e['utilisateur'])}, depuis {citer(e['depuis'])} (échéance R7 : {echeance})")
     if course["contributions"]:
         lignes.append("# contributions en course (R3, de la mieux classée à la moins bien classée, par score de course = gain mesuré "
                       "× portée / (1 + lignes/100), sinon vote net ; chacune est protégée 96 h après sa soumission, puis n'attend "
                       "plus, au plus 24 h, qu'une concurrente intégrable mieux classée) :")
         for c in course["contributions"]:
             for alerte in alertes_relecteurs(reg, reg.enregistrements.get(c["contribution"], (None, {}))[1] or {}):
-                lignes.append(f"#   ⚠ {c['contribution']} : {alerte}")
-            lignes.append(f"#   {c['rang']}. {c['contribution']} par {c['auteur']}, soumise le {c['soumise_le']}, CI {c['ci'] or 'en attente'}, "
+                lignes.append(f"#   ⚠ {citer(c['contribution'])} : {citer(alerte)}")
+            lignes.append(f"#   {c['rang']}. {citer(c['contribution'])} par {citer(c['auteur'])}, soumise le {citer(c['soumise_le'])}, "
+                          f"CI {citer(c['ci'] or 'en attente')}, "
                           f"score de course {'—' if c['gain_mesure'] is None else format(c['gain_mesure'], '.4f')}, vote net {c['vote_net']:+d}, "
-                          f"protégée jusqu'au {c['protegee_jusqu_au']}, plus aucune attente après le {c['attentes_jusqu_au']}")
+                          f"protégée jusqu'au {citer(c['protegee_jusqu_au'])}, plus aucune attente après le {citer(c['attentes_jusqu_au'])}")
     if t.get("statut") in ("reservee", "en_relecture"):
-        lignes.append(f"# rejoindre en parallèle : bee prendre {t['id']} --utilisateur <pseudo> --en-parallele")
+        lignes.append(f"# rejoindre en parallèle : bee prendre {citer(t['id'])} --utilisateur <pseudo> --en-parallele")
     # Le nombre de notes, dit hors des données : « aucune » se distingue d'une liste omise (tour 2).
     notes = t.get("notes") if isinstance(t.get("notes"), list) else []
     lignes.append(f"# notes : {len(notes) or 'aucune'}")
