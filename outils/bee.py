@@ -9780,8 +9780,76 @@ def cmd_en_attente(args):
     resultat = [{"id": cid, "pr": enr.get("pr"), "auteur": enr.get("auteur"), "sha_verdict": (enr.get("verdict") or {}).get("sha"),
                  "ci_verdict": (enr.get("verdict") or {}).get("ci"), "sha_attente": (enr.get("attente_verdict") or {}).get("sha")}
                 for tid in taches for cid, enr in classement_course(reg, tid, niveaux)]
+    if args.pr_states:  # ruche-0122: each PR as `gh pr view` reads it, all in bulk; the person it acts for, as `bee acts-for` says
+        etats = etats_prs([c["pr"] for c in resultat])
+        for c in resultat:
+            etat, tete, fusion, login, compte = (isinstance(c["pr"], str) and etats.get(c["pr"])) or (None,) * 5
+            c.update(pr_state=etat, pr_head=tete, pr_merge=fusion, pr_author=login, pr_author_id=compte,
+                     pr_person=login and person_of(reg.comptes_agents, login))
     print(json.dumps(resultat, ensure_ascii=False, indent=2))
     return 0
+
+
+LOT_PRS = 50  # ruche-0122: fork PRs read per GraphQL query (300 pending contributions: 6 queries)
+REPRISES_PRS = 16  # queries a pass may add to read again, in halves, the PRs of unreadable answers (one bad PR among 50: 12)
+DELAI_GH_PRS = 60  # seconds a query may take; past it, the reads stop and the PRs not read yet are left out
+
+
+def lire_lot_prs(lot):
+    """One GraphQL query for these (address, match) pairs: {address: (state, head, merge commit or "-", login, account number)}
+    of the PRs it answers for, None if its answer is unreadable, "delai" if gh did not answer in time."""
+    depots = defaultdict(list)
+    for i, (adresse, m) in enumerate(lot):
+        depots[m[1], m[2]].append((i, adresse, int(m[3])))  # owner and name match [A-Za-z0-9_.-]: no quote, no escape
+    requete = "query { " + " ".join(f'r{j}: repository(owner: "{p}", name: "{d}") {{ ' + " ".join(
+        f"p{i}: pullRequest(number: {n}) {{ state headRefOid mergeCommit {{ oid }} author {{ __typename login ... on User {{ databaseId }} }} }}"
+        for i, _, n in prs) + " }" for j, ((p, d), prs) in enumerate(depots.items())) + " }"
+    try:
+        r = subprocess.run(["gh", "api", "graphql", "-f", f"query={requete}"], capture_output=True, text=True, stdin=subprocess.DEVNULL,
+                           timeout=DELAI_GH_PRS)
+        donnees = json.loads(r.stdout)["data"]
+    except subprocess.TimeoutExpired:
+        return "delai"
+    except (ValueError, KeyError, TypeError):
+        return None
+    etats = {}
+    for j, prs in enumerate(depots.values()):
+        for i, adresse, _ in prs:
+            try:
+                pr = donnees[f"r{j}"][f"p{i}"]
+                etat, tete, fusion, auteur = pr["state"], pr["headRefOid"], (pr["mergeCommit"] or {"oid": "-"})["oid"], pr["author"]
+                login, compte, genre = auteur["login"], auteur["databaseId"], auteur["__typename"]
+            except (KeyError, TypeError):
+                continue
+            # Only a user's PR: a bot's or an App's login is bare in GraphQL, and could read as a member's pseudo (fail closed).
+            if etat in ("OPEN", "CLOSED", "MERGED") and genre == "User" and all(isinstance(v, str) for v in (tete, fusion, login)) \
+                    and type(compte) is int and 0 < compte < 2 ** 63 and re.fullmatch(r"[0-9a-f]{7,40}", tete) \
+                    and re.fullmatch(r"-|[0-9a-f]{7,40}", fusion) and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,99}", login):
+                etats[adresse] = (etat, tete, fusion, login, compte)
+    return etats
+
+
+def etats_prs(adresses):
+    """ruche-0122 (E3): {address: (state, head, merge commit or "-", author's login, author's account number)} of each PR address,
+    read with one GraphQL query per LOT_PRS PRs, the fields `gh pr view --json state,headRefOid,mergeCommit,author` reads for one.
+    A PR whose answer is missing or not of the expected form, or whose author is not a user, is left out, and the pass skips it,
+    as when `gh pr view` failed (fail closed); an answer GitHub gives with errors still serves the PRs it holds, and the PRs of
+    an unreadable answer are read again in halves (within REPRISES_PRS queries), so that one bad PR does not hold up the others."""
+    vues = {a: m for a in dict.fromkeys(a for a in adresses if isinstance(a, str)) if (m := ADRESSE_PR.fullmatch(a))}
+    liste = list(vues.items())
+    etats, lots, reprises = {}, [liste[d:d + LOT_PRS] for d in range(0, len(liste), LOT_PRS)][::-1], REPRISES_PRS
+    while lots:
+        lot = lots.pop()
+        lu = lire_lot_prs(lot)
+        if lu == "delai":
+            break
+        if lu is None:
+            if len(lot) > 1 and reprises >= 2:
+                reprises -= 2
+                lots += [lot[len(lot) // 2:], lot[:len(lot) // 2]]
+            continue
+        etats.update(lu)
+    return etats
 
 
 def cmd_ecartees(args):
@@ -11054,7 +11122,8 @@ def construire_analyseur():
     p.add_argument("--delai", type=int, default=10, help="minutes d'attente au plus (défaut : 10)")
     p.add_argument("--intervalle", type=float, default=15, help=argparse.SUPPRESS)
 
-    ajouter("en-attente", cmd_en_attente, "Liste en JSON les contributions en relecture et le commit de leur dernier verdict (utilisé par la CI).")
+    p = ajouter("en-attente", cmd_en_attente, "Liste en JSON les contributions en relecture et le commit de leur dernier verdict (utilisé par la CI).")
+    p.add_argument("--pr-states", action="store_true", help="ruche-0122: also each PR's state, head, merge commit and author, read in bulk")
 
     p = ajouter("site", cmd_site, "Génère le site statique du registre.")
     p.add_argument("--sortie", default="_site")
