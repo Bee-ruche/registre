@@ -6749,10 +6749,10 @@ def cmd_essaim(args):
                     f"{retard} argument(s) après la synthèse" if x["synthese_le"] else "pas encore de synthèse")
             print(f"  - {x['id']} (rapporteur {_nettoyer(x['rapporteur'] or RAPPORTEUR_ABSENT)}, {x['arguments']} argument(s), dernière activité "
                   f"{x['derniere_activite']}, {etat}) : {question if len(question) <= 90 else question[:89] + '…'}")
-    for cle, titre, premiers in (("signalements", "Signalements ouverts, pour le conseil", "les 10 premiers"),
-                                 ("signalements_au_plafond", "Signalements au-delà du plafond nommant une personne", "les 10 derniers")):
+    for cle in ("signalements", "signalements_au_plafond"):  # ruche-0137: past the cap naming a person, apart, newest first
         if tableau[cle]:
-            print(f"\n{titre} : {(n := tableau[cle + '_ouverts'])}{', ' + premiers if n > 10 else ''} (bee voir <S-nnnn>, bee signalement) :")
+            print(f"\n{'Signalements au-delà du plafond nommant une personne' if cle != 'signalements' else 'Signalements ouverts, pour le conseil'} : "
+                  f"{(n := tableau[cle + '_ouverts'])}{(', les 10 derniers' if cle != 'signalements' else ', les 10 premiers') * (n > 10)} (bee voir <S-nnnn>, bee signalement) :")
         for x in tableau[cle]:
             print(f"  - {_nettoyer(x['id'])} : {_nettoyer(' et '.join(map(str, x['comptes'])) if isinstance(x['comptes'], list) else x['comptes'])} ({_nettoyer(x['motif'])}), "
                   f"signalé par {_nettoyer(x['par'])} le {_nettoyer(x['le'])}")
@@ -7051,8 +7051,11 @@ def refus_signalement_sur_main(reg, s):
 def deja_nommes(reg):
     """ruche-0137: the logins the council and guardian lists have ever named (git history, casefolded), read once."""
     if not hasattr(reg, "deja_nommes"):
-        code, sortie = _git_brut(reg.racine, "log", "--format=", "-p", "--", "gouvernance/conseil.yaml", "gouvernance/gardiens.yaml")
-        reg.deja_nommes = set() if code else {x.casefold() for x in re.findall(r"(?m)^[-+ ]\s*-?\s*pseudo:\s*['\"]?([\w.-]+)", sortie.decode("utf-8", "replace"))}
+        listes = ("gouvernance/conseil.yaml", "gouvernance/gardiens.yaml")
+        code, sortie = _git_brut(reg.racine, "log", "-z", "--no-renames", "--format=%H", "--", *listes)
+        reg.deja_nommes = {m["pseudo"].casefold() for h in ([] if code else sortie.decode("ascii", "replace").split("\0")) if h.strip() for c in listes
+                           if isinstance(f := lire_ou_rien(reg.racine, h.strip(), c), dict) and isinstance(f.get("membres"), list)
+                           for m in f["membres"] if isinstance(m, dict) and isinstance(m.get("pseudo"), str)}
     return reg.deja_nommes
 
 
