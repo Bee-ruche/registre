@@ -9884,9 +9884,10 @@ def cmd_publier(args):
     # ruche-0138 : une PR, une branche par engagement (son empreinte, avant toute redatation) ; sans fichier d'état, chacun
     # est cherché sur GitHub, un par un
     branche_de = lambda c, v: f"bee/engagement-{hashlib.sha256(json.dumps({c: v}, sort_keys=True).encode()).hexdigest()[:16]}"
-    proprietaire = proprietaire_depot(executer(["git", "remote", "get-url", "origin"], depot).stdout.strip())[0]
-    de_l_amont = proprietaire_depot(f"https://github.com/{amont}")[0]
-    for c, v in (sorted(prepares_json.items()) if not (reprise or args.a_blanc) else []):
+    if chercher := prepares and not (reprise or args.a_blanc):
+        proprietaire = proprietaire_depot(executer(["git", "remote", "get-url", "origin"], depot).stdout.strip())[0]
+        de_l_amont = proprietaire_depot(f"https://github.com/{amont}")[0]
+    for c, v in (sorted(prepares_json.items()) if chercher else []):
         if ouvertes := json.loads(executer(["gh", "api", f"repos/{amont}/pulls?state=open&head={proprietaire or de_l_amont}:"
                                             f"{branche_de(c, v)}"], depot).stdout or "[]"):
             reprise, attendus = True, {c: v}
