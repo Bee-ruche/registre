@@ -63,6 +63,12 @@ unmounted at once (test_tmpfs_in_use_is_an_error); the judge's mounts in one ord
 equal depth (test_one_mount_order_whatever_docker_draws); with Docker, test_memes_montures: identical scenarios at different
 positions, variant passes, repetitions and modes see the same thing, mount by mount (RESTE aside), and none sees what another
 left in its outputs.
+
+ruche-0136: a failure of the machine (Docker, its runtime) is an error of the environment, read on Docker's own record; a judged
+code that mimics one stays a refusal (test_machine_failure_is_an_environment_error, test_judged_code_that_mimics_a_failure_stays_a_refusal,
+test_juge_json_says_the_environment_error; with Docker, panne_de_la_machine, panne_simulee); where each seed came from
+(test_where_each_seed_came_from, verifier_les_graines); each folder of the judge at a depth of its own, in every container
+(test_one_mount_order_whatever_docker_draws; with Docker, test_profondeurs).
 """
 
 import concurrent.futures
@@ -616,6 +622,9 @@ class FauxDocker:
 # A stand-in for docker that records each call (arguments, standard input) and answers as chrono would.
 DOCKER_CHRONO = r"""#!/usr/bin/env python3
 import json, os, sys
+if sys.argv[1] != "run":  # ruche-0136: Docker's record of the container, read after it ends, then its removal
+    print(json.dumps({"Status": "exited", "Error": "", "ExitCode": 0}) if sys.argv[1] == "inspect" else "")
+    sys.exit(0)
 entree = sys.stdin.read()
 with open(os.environ["FAUX_DOCKER_JOURNAL"], "a") as f:
     f.write(json.dumps([sys.argv[1:], entree]) + "\n")
@@ -623,6 +632,11 @@ jeton, _, *plan = entree.splitlines()
 for ligne in plan:
     print(json.dumps({"jeton": jeton, "etiquette": ligne.split("\t")[0], "code": 0, "signal": 0, "instructions": 1}))
 """
+
+
+# Docker's own mounts in a container of the judge (cgroup v1 and v2, /proc and /sys masked; /dev/shm also sorted with the judge's).
+MONTURES_DOCKER = ["/proc", "/dev", "/dev/pts", "/sys", "/sys/fs/cgroup", "/sys/fs/cgroup/cpu", "/dev/mqueue", "/dev/shm",
+                   "/proc/bus", "/proc/sys", "/proc/acpi", "/sys/firmware", "/sys/devices/virtual/powercap"]
 
 
 class TestMemesConditions(unittest.TestCase):
@@ -687,26 +701,58 @@ class TestMemesConditions(unittest.TestCase):
             self.assertIn(option, commande)
         racine = os.path.join(self.travail, "execution")  # ruche-0117: each execution's own tmpfs, at the same path
         self.assertEqual([c for c in commande if c.startswith("type=bind")],
-                         [f"type=bind,source={racine}/chrono,target=/chrono,readonly",
-                          f"type=bind,source={racine}/variante,target=/.racine/variante,readonly",
-                          f"type=bind,source={racine}/entrees,target=/.racine/.racine/entrees,readonly",
-                          f"type=bind,source={racine}/sorties,target=/.racine/.racine/.racine/sorties"]
+                         [f"type=bind,source={racine}/chrono,target={conteneur.LIEN * 7}/chrono,readonly",
+                          f"type=bind,source={racine}/variante,target={conteneur.LIEN * 8}/variante,readonly",
+                          f"type=bind,source={racine}/entrees,target={conteneur.LIEN * 9}/entrees,readonly",
+                          f"type=bind,source={racine}/sorties,target={conteneur.LIEN * 10}/sorties"]
                          + [f"type=bind,source={racine}/etc/{n},target=/etc/{n},readonly" for n in conteneur.ETC])
         self.assertEqual(commande[-2:], ["sha256:" + "0" * 64, "/chrono/chrono"])
         self.assertEqual(len({entree for _, entree in appels}), 3)
 
+    def commandes_docker(self, *appels):
+        """The docker run commands the real Docker.lancer makes for these calls, a stand-in docker first on PATH."""
+        dossier, journal_docker = os.path.join(self.travail, "bin"), os.path.join(self.travail, "docker.journal")
+        os.makedirs(dossier, exist_ok=True)
+        with open(os.path.join(dossier, "docker"), "w", encoding="utf-8") as f:
+            f.write(DOCKER_CHRONO)
+        os.chmod(os.path.join(dossier, "docker"), 0o755)
+        with mock.patch.dict(os.environ, {"PATH": dossier + os.pathsep + os.environ["PATH"], "FAUX_DOCKER_JOURNAL": journal_docker}):
+            for appel in appels:
+                appel()
+        with open(journal_docker, encoding="utf-8") as f:
+            return [json.loads(ligne)[0] for ligne in f]
+
     def test_one_mount_order_whatever_docker_draws(self):
-        """ruche-0117: Docker up to 29.0 sorts mounts by depth alone (stably), those of equal depth in the order a map gives
-        them, drawn for each container (/etc's three come last, as its network files). Whatever that order, the judge's own
-        mounts come out in one order, and land, through the image's link to its root, on /chrono, /variante, /entrees and
-        /sorties."""
-        docker = FauxDocker()
-        conteneur.Execution(docker, "/c", {"B": "/b"}, self.travail).lancer(
-            "B", "/e", os.path.join(self.travail, "s"), [("verifier", [conteneur.HARNAIS, "verifier", "/entrees", "/sorties"])])
-        cibles = [cible for _, cible, _ in docker.appels[0][1] if cible not in ["/etc/" + n for n in conteneur.ETC]]
-        ordres = {tuple(sorted(tirage, key=lambda c: os.path.normpath(c).count("/"))) for tirage in itertools.permutations(cibles)}
-        self.assertEqual(len(ordres), 1)
-        self.assertEqual([c.replace(conteneur.LIEN, "") for c in ordres.pop()], ["/chrono", "/variante", "/entrees", "/sorties"])
+        """ruche-0136: Docker up to 29.0 sorts the mounts it is given (binds, tmpfs, /dev/shm, /etc's files) by depth alone,
+        those of equal depth in an order drawn for each container. Each folder the judge mounts, in an execution's container
+        as in a build's, has a depth no other mount of the container shares, Docker's own included (MONTURES_DOCKER;
+        test_profondeurs with Docker): whatever order Docker draws, they come out in one order, and land, through the image's
+        link to its root, where they are named. The layout of juge-v3 (/variante at /etc's depth) fails this check."""
+        execution = conteneur.Execution(conteneur.Docker("i"), "/c", {"B": "/b"}, self.travail)
+        commandes = self.commandes_docker(
+            lambda: execution.lancer("B", "/e", os.path.join(self.travail, "s"), [("verifier", [conteneur.HARNAIS, "verifier", "/entrees", "/sorties"])]),
+            lambda: conteneur.Docker("i").lancer(["true"], [(self.travail, n, n != "/sortie") for n in ("/sources", "/outillage", "/sortie")],
+                                                entree=b"jeton\n0 0\n"))
+        profondeur = lambda c: os.path.normpath(c).count("/")  # noqa: E731
+
+        def ordres(commande):
+            cibles = [o.split("target=")[1].split(",")[0] for o in commande if o.startswith("type=bind")]
+            dossiers = [c for c in cibles if not c.startswith("/etc/")]
+            autres = [c for c in cibles if c.startswith("/etc/")] + ["/dev/shm"] + [commande[i + 1].split(":")[0] for i, o
+                                                                                    in enumerate(commande) if o == "--tmpfs"]
+            uniques = len({profondeur(c) for c in dossiers}) == len(dossiers) and \
+                not {profondeur(c) for c in dossiers} & {profondeur(c) for c in autres + MONTURES_DOCKER}
+            return uniques, {tuple(c if c in dossiers else "" for c in sorted(tirage, key=profondeur))  # where each one comes
+                             for tirage in itertools.permutations(dossiers + autres)}
+        for commande, noms in zip(commandes, (["/chrono", "/variante", "/entrees", "/sorties"], ["/sources", "/outillage", "/sortie"])):
+            uniques, tires = ordres(commande)
+            self.assertTrue(uniques)
+            self.assertEqual(len(tires), 1)
+            self.assertEqual([c.replace(conteneur.LIEN, "") for c in tires.pop() if c], noms)
+        ancien = [o.replace(conteneur.LIEN * 7 + "/chrono", "/chrono").replace(conteneur.LIEN * 8, conteneur.LIEN)
+                  for o in commandes[0]]  # juge-v3: /chrono at depth 1 (/tmp's), /variante at 2 (/etc's)
+        self.assertFalse(ordres(ancien)[0])
+        self.assertGreater(len(ordres(ancien)[1]), 1)
         image = conteneur.dockerfile([])
         self.assertLess(image.index(f"\nRUN ln -s / {conteneur.LIEN}\n"), image.index("\nUSER "))
 
@@ -992,9 +1038,8 @@ class TestOrdreEtEmpreintes(unittest.TestCase):
                 mock.patch.object(juge.conteneur, "compiler_chrono", side_effect=lambda docker, travail: dossier_ouvert_vide(travail)), \
                 mock.patch.object(juge, "construire", return_value=releves()), \
                 contextlib.redirect_stdout(sortie), contextlib.redirect_stderr(io.StringIO()):
-            self.assertEqual(juge.main(["--outillage", base, "--source-a", base, "--source-b", base,
-                                        "--repetitions", "3", "--graine", graine]
-                                       + (["--graine-ordre", graine_ordre] if graine_ordre else [])), 0)
+            self.assertEqual(juge.main(["--outillage", base, "--source-a", base, "--source-b", base, "--repetitions", "3"]
+                                       + (["--graine", graine] if graine else []) + (["--graine-ordre", graine_ordre] if graine_ordre else [])), 0)
         return json.loads(sortie.getvalue()), emule
 
     def test_ordre_tire_et_temps_processeur(self):
@@ -1034,6 +1079,27 @@ class TestOrdreEtEmpreintes(unittest.TestCase):
             self.assertEqual((autre["juge"]["graine"], autre["juge"]["verification"]), (rapport["juge"]["graine"], rapport["juge"]["verification"]))
             graines.add(graine_ordre)
         self.assertEqual(len(graines), 3)
+
+    def test_where_each_seed_came_from(self):
+        """ruche-0136: juge.json says, for each seed (the inputs', the order's), whether the judge drew it or it was given on the
+        command line (--graine, --graine-ordre: a local reproduction); only a report whose seeds were both drawn passes
+        rapport.py --verifier."""
+        chemin = os.path.join(self.travail, "graines.json")
+        for graine, graine_ordre, origines in ((None, None, ("tiree", "tiree")), ("00" * 16, None, ("donnee", "tiree")),
+                                               (None, "01" * 16, ("tiree", "donnee")), ("00" * 16, "01" * 16, ("donnee", "donnee"))):
+            with self.subTest(graine=graine, graine_ordre=graine_ordre):
+                j = self.juger(graine=graine, graine_ordre=graine_ordre)[0]
+                j["juge"].update(base="2" * 40, tete="3" * 40)
+                self.assertEqual(j["juge"]["origine_des_graines"], dict(zip(("graine", "graine_ordre"), origines)))
+                self.assertEqual((j["juge"]["graine"] == graine, j["juge"]["scenarios"]["graine_ordre"] == graine_ordre),
+                                 (graine is not None, graine_ordre is not None))
+                with open(chemin, "w", encoding="utf-8") as f:
+                    json.dump(j, f)
+                if origines == ("tiree", "tiree"):
+                    self.assertEqual(rapport.verifier(chemin, rapport.publier(chemin, "0"), "2" * 40, "3" * 40), j)
+                else:
+                    with self.assertRaisesRegex(rapport.Ecart, "seed given"):
+                        rapport.verifier(chemin, rapport.publier(chemin, "0"), "2" * 40, "3" * 40)
 
     def test_each_execution_on_its_own_tmpfs(self):
         """ruche-0117: each container's folders are on a tmpfs mounted for it alone, of fixed bounds: whatever the containers
@@ -1327,12 +1393,12 @@ class TestWorkflowJuge(unittest.TestCase):
         self.assertGreaterEqual(len([c for c in commandes_du_runner(journal) if c != "<resume>"]), 6)  # the simulator sees them
         lignes = r.stdout.splitlines()
         jeton = re.fullmatch(r"::stop-commands::([0-9a-f]{64})", lignes[0]).group(1)
-        self.assertEqual(lignes[-1], f"::{jeton}::")
+        self.assertEqual(lignes[-2:], [f"::{jeton}::", "::warning title=Juge commun::code 1 : refus du code jugé (B)"])  # ruche-0136
         self.assertNotIn(jeton, journal)
         self.assertEqual(r.stdout.count(jeton), 2)
         self.assertNotIn("##[", r.stdout)
         self.assertEqual(r.stdout.count("# #["), 2)
-        self.assertEqual(commandes_du_runner(r.stdout), ["stop-commands", "<resume>"])
+        self.assertEqual(commandes_du_runner(r.stdout), ["stop-commands", "<resume>", "warning"])
 
     def test_caller_inputs_checked_before_any_use(self):
         """ruche-0038, the call as workflow_call makes it (github.event is the caller's): the first step, which nothing
@@ -1371,7 +1437,8 @@ class TestWorkflowJuge(unittest.TestCase):
     def test_code_published_once_the_report_is_checked(self):
         """ruche-0117: the judging step publishes the code only with the report's figures, once rapport.py has checked the
         report: a report that fails its check (none for a code 0, malformed) publishes code 2, in the job's outputs as in
-        resultats/code; a refusal or an error without a report keeps its code."""
+        resultats/code; a refusal or an error without a report keeps its code. ruche-0136: with a report, only if the report says
+        the same code; the step reports a code 2 as an error of the environment, never as a refusal of B."""
         juge_commun = os.path.join(self.dossier, "juge-commun", "outils", "juge")
         os.makedirs(juge_commun)
         shutil.copy(os.path.join(ICI, "rapport.py"), juge_commun)
@@ -1380,8 +1447,13 @@ class TestWorkflowJuge(unittest.TestCase):
                     "    open(sys.argv[sys.argv.index('--json') + 1], 'w').write(os.environ['FAUX_RAPPORT'])\n"
                     "sys.exit(int(os.environ['FAUX_CODE']))\n")
         bon = json.dumps(RAPPORT, indent=2)
+        refus, panne = ({"juge": dict(RAPPORT["juge"], code=c, issue=i, motif="m")} for c, i in ((1, "refus"), (2, "erreur_environnement")))
+        refus, panne, faux = json.dumps(refus), json.dumps(panne), json.dumps({"juge": dict(RAPPORT["juge"], code=1, issue="juste")})
+        annonces = {"0": "::notice title=Juge commun::code 0 :", "1": "::warning title=Juge commun::code 1 : refus du code jugé",
+                    "2": "::error title=Juge commun::code 2 : erreur d'environnement"}
         for code, rapport_, attendu in ((0, bon, "0"), (0, "", "2"), (0, "{}", "2"), (0, bon[:-1], "2"), (1, "", "1"), (2, "", "2"),
-                                        (1, "{}", "2")):
+                                        (1, "{}", "1"), (1, refus[:-9], "1"), (1, refus, "1"), (2, panne, "2"), (1, panne, "2"), (2, refus, "2"), (0, panne, "2"),
+                                        (1, faux, "2"), (1, bon, "2")):
             with self.subTest(code=code, rapport=rapport_[:20]):
                 shutil.rmtree(os.path.join(self.dossier, "resultats"), ignore_errors=True)
                 r, sortie = self.lancer(etape(self.wf, "Juger")["run"], {"OPTIONS": "", "REPETITIONS": "10", "BASE": "2" * 40,
@@ -1394,6 +1466,8 @@ class TestWorkflowJuge(unittest.TestCase):
                 self.assertEqual(publiees["empreinte"] != "", attendu == "0")
                 with open(os.path.join(self.dossier, "resultats", "code")) as f:
                     self.assertEqual(f.read(), attendu + "\n")
+                self.assertEqual([ligne for ligne in r.stdout.splitlines() if ligne.startswith("::") and "title=" in ligne][-1:],
+                                 [l for l in r.stdout.splitlines() if l.startswith(annonces[attendu])])
 
     def test_work_folder_bounded(self):
         """ruche-0038: the judge works in a size-bounded tmpfs that juge.yml mounts just before judging (executable: the
@@ -1463,7 +1537,8 @@ class TestWorkflowJuge(unittest.TestCase):
 # A judge's report: as juge.py writes it, with 100 suspicious constructs listed and 3 left out.
 RAPPORT = {"repetitions": 10, "metriques": {"debit_compression": {"gain": 0.25}}, "juge": {
     "version": 3, "commun": "juge-v2", "source": "Bee-ruche/registre@" + "1" * 40, "base": "2" * 40, "tete": "3" * 40,
-    "projet": "jouet", "greffon": "ab" * 32, "graine": "cd" * 16, "image": "bee-juge-commun:0123456789abcdef",
+    "projet": "jouet", "greffon": "ab" * 32, "code": 0, "issue": "juste", "graine": "cd" * 16,
+    "origine_des_graines": {"graine": "tiree", "graine_ordre": "tiree"}, "image": "bee-juge-commun:0123456789abcdef",
     "image_id": "sha256:" + "ef" * 32, "constructions_suspectes_omises": 3, "verification": {"sorties_comparees": 57},
     "constructions_suspectes": [{"type": "source", "detail": f"pragma {i}"} for i in range(juge.SUSPECTES_MAX)]}}
 
@@ -1512,10 +1587,50 @@ class TestRapport(unittest.TestCase):
         with open(sorties, "w") as f:
             json.dump(publiees, f)
         commande = [sys.executable, os.path.join(ICI, "rapport.py"), self.chemin, "--verifier", sorties]
+        self.verifier_les_graines(publiees, commits)
         for arguments, code in ((["--base", commits[0], "--tete", commits[1]], 0), (["--base", commits[0], "--tete", commits[0]], 1),
                                 ([], 2), (["--base", commits[0]], 2), (["--tete", commits[1], "--base", commits[0]], 2)):
             with self.subTest(arguments=arguments):
                 self.assertEqual(subprocess.run(commande + arguments, capture_output=True).returncode, code)
+
+    def verifier_les_graines(self, publiees, commits):
+        """ruche-0136: a report with a seed given on the command line (a local reproduction), or that does not say where its
+        seeds came from, is never taken for a judgement: --verifier refuses it, its figures and SHA-256 published or not."""
+        for origines in ({"graine": "donnee", "graine_ordre": "tiree"}, {"graine": "tiree", "graine_ordre": "donnee"},
+                         {"graine": "tiree"}, None, "tiree", {"graine": "tiree", "graine_ordre": "tiree", "x": 1}):
+            reproduction = dict(RAPPORT, juge=dict(RAPPORT["juge"], origine_des_graines=origines))
+            if origines is None:
+                del reproduction["juge"]["origine_des_graines"]
+            with open(self.chemin, "w", encoding="utf-8") as f:
+                json.dump(reproduction, f)
+            with self.subTest(origines=origines), self.assertRaisesRegex(rapport.Ecart, "seed"):
+                rapport.verifier(self.chemin, rapport.publier(self.chemin, "0"), *commits)
+        with open(self.chemin, "w", encoding="utf-8") as f:
+            json.dump(RAPPORT, f)
+
+    def test_a_refusal_needs_no_report(self):
+        """ruche-0136: a refusal (code 1) is published as 1 whatever state its report is in (none, cut short, malformed, not a
+        regular file), unless the report states another code; a code 0 still needs its report, whole and checked."""
+        def publie(code):
+            with contextlib.redirect_stderr(io.StringIO()):
+                return rapport.publier(self.chemin, code)["code"]
+        refus = json.dumps({"juge": dict(RAPPORT["juge"], code=1, issue="refus", motif="m")})
+        for contenu, attendu in ((None, "1"), ("", "1"), (refus[:-7], "1"), ("[1]", "1"), ('{"juge": 3}', "1"), (refus, "1"),
+                                 ("\xff", "1"), (json.dumps(RAPPORT), "2"), (refus.replace('"refus"', '"juste"'), "2"),
+                                 (refus.replace('"code": 1', '"code": 2'), "2"), (refus.replace('"code": 1', '"code": true'), "2")):
+            with contextlib.suppress(FileNotFoundError):
+                os.remove(self.chemin)
+            if contenu is not None:
+                with open(self.chemin, "w", encoding="utf-8", errors="surrogateescape") as f:
+                    f.write(contenu.replace("\xff", "\udcff"))
+            with self.subTest(contenu=contenu and contenu[:40]):
+                self.assertEqual(publie("1"), attendu)
+        os.remove(self.chemin)
+        os.mkfifo(self.chemin)
+        self.assertEqual((publie("1"), publie("0"), publie("2")), ("1", "2", "2"))
+        os.remove(self.chemin)
+        os.symlink(self.dossier, self.chemin)
+        self.assertEqual((publie("1"), publie("0")), ("1", "2"))
 
     def test_reading_bounded(self):
         self.assertIsNone(rapport.lire(self.chemin))
@@ -1539,6 +1654,8 @@ class TestRapport(unittest.TestCase):
             self.assertEqual(rapport.main([]), 2)
 
 
+OCI = "docker: Error response from daemon: failed to create task for container: OCI runtime create failed: runc create failed\n"
+
 # Stand-in for the docker client: logs its arguments; « image inspect » answers FAUX_DOCKER_ID; « run » writes FAUX_DOCKER_MIO
 # MiB on each standard stream (stdout: A, B…; stderr: a, b…), then, with FAUX_DOCKER_SANS_FIN, writes on without end.
 FAUX_DOCKER = r"""#!/usr/bin/env python3
@@ -1547,6 +1664,9 @@ with open(os.environ["FAUX_DOCKER_JOURNAL"], "a") as f:
     f.write(" ".join(sys.argv[1:]) + "\n")
 if sys.argv[1:3] == ["image", "inspect"]:
     print(os.environ.get("FAUX_DOCKER_ID", ""))
+if sys.argv[1] == "inspect":  # ruche-0136: Docker's record of the container (FAUX_DOCKER_ETAT, JSON), or none (no container)
+    print(os.environ.get("FAUX_DOCKER_ETAT", '{"Status": "exited", "Error": "", "ExitCode": 0}'))
+    sys.exit(int(os.environ.get("FAUX_DOCKER_INSPECT", "0")))
 if sys.argv[1] != "run":
     sys.exit(0)
 sys.stdin.read()
@@ -1555,6 +1675,8 @@ for i in range(int(os.environ.get("FAUX_DOCKER_MIO", "0"))):
     sys.stderr.buffer.write(bytes([97 + i % 26]) * (1 << 20))
 while os.environ.get("FAUX_DOCKER_SANS_FIN"):
     sys.stderr.buffer.write(b"x" * 65536)
+sys.stderr.write(os.environ.get("FAUX_DOCKER_ERREUR", ""))
+sys.exit(int(os.environ.get("FAUX_DOCKER_CODE", "0")))
 """
 
 
@@ -1581,7 +1703,7 @@ class TestBornes(unittest.TestCase):
         self.assertEqual(conteneur.Docker.BORNES, ["--ulimit", f"fsize={lecture.TAILLE_MAX_SORTIE}", "--log-driver", "none"])
         conteneur.Docker("sha256:" + "0" * 64).lancer(["true"], [(self.dossier, "/sorties", False)])
         with open(self.journal) as f:
-            arguments = f.read().split()
+            arguments = f.readline().split()  # the run (ruche-0136: then inspect and rm)
         self.assertEqual(arguments[arguments.index("--ulimit"):arguments.index("--ulimit") + 4], conteneur.Docker.BORNES)
         self.assertEqual(arguments[-2:], ["sha256:" + "0" * 64, "true"])  # the image by its id
 
@@ -1603,6 +1725,86 @@ class TestBornes(unittest.TestCase):
         self.assertLess(time.monotonic() - debut, 30)
         with open(self.journal) as f:
             self.assertRegex(f.read(), r"\nkill bee-juge-[0-9a-f]{12}\n")
+
+    def test_deadline_without_a_started_container_is_a_machine_failure(self):
+        """ruche-0136: at its deadline, Docker's record is read before the container is removed: never started (no record, or
+        still created) is a failure of the machine; started, the deadline stays a refusal."""
+        for env, attendue in (({"FAUX_DOCKER_INSPECT": "1"}, lecture.Panne), ({"FAUX_DOCKER_ETAT": '{"Status": "created"}'}, lecture.Panne),
+                              ({"FAUX_DOCKER_ETAT": '{"Status": "running"}'}, lecture.Refus), ({}, lecture.Refus)):
+            with self.subTest(env=env), mock.patch.dict(os.environ, dict(env, FAUX_DOCKER_SANS_FIN="1")), self.assertRaises(attendue):
+                conteneur.Docker("i").lancer(["x"], [], delai=1)
+        with open(self.journal) as f:
+            self.assertEqual(re.findall(r"^(inspect|kill|rm) ", f.read(), re.M), ["inspect", "kill", "rm"] * 4)
+
+    def test_machine_failure_is_an_environment_error(self):
+        """ruche-0136: Docker's own record of the container decides, never its code or error stream: a daemon out of reach, a
+        runtime that cannot create the container (OCI), a container whose code is not its process's or whose record is
+        unreadable is a failure of the machine (Panne, an Erreur: code 2), each container removed after it ends."""
+        etat = lambda statut, code, erreur="": json.dumps({"Status": statut, "Error": erreur, "ExitCode": code})  # noqa: E731
+        for env in ({"FAUX_DOCKER_CODE": "125", "FAUX_DOCKER_ERREUR": OCI, "FAUX_DOCKER_INSPECT": "1", "FAUX_DOCKER_ETAT": ""},
+                    {"FAUX_DOCKER_CODE": "127", "FAUX_DOCKER_ERREUR": OCI, "FAUX_DOCKER_ETAT": etat("created", 127, OCI)},
+                    {"FAUX_DOCKER_CODE": "1", "FAUX_DOCKER_ERREUR": "failed to connect to the docker API", "FAUX_DOCKER_INSPECT": "1"},
+                    {"FAUX_DOCKER_CODE": "125", "FAUX_DOCKER_ETAT": etat("exited", 0)}, {"FAUX_DOCKER_ETAT": "{"},
+                    {"FAUX_DOCKER_ETAT": etat("running", 0)}):
+            with self.subTest(env=env), mock.patch.dict(os.environ, env), contextlib.redirect_stderr(io.StringIO()), \
+                    self.assertRaisesRegex(lecture.Panne, "^machine du juge en panne") as panne:
+                conteneur.Docker("i").lancer(["x"], [])
+            self.assertNotRegex(str(panne.exception), "runc|daemon|API")  # what the error stream holds stays out of the motif
+        with open(self.journal) as f:
+            self.assertEqual(len(re.findall(r"^rm -f bee-juge-[0-9a-f]{12}$", f.read(), re.M)), 6)
+        self.assertTrue(issubclass(lecture.Panne, lecture.Erreur))
+
+    def test_judged_code_that_mimics_a_failure_stays_a_refusal(self):
+        """ruche-0136: a container that ran to its end, exiting 125 with a daemon's error on its stream (both of which the
+        judged code can write), is no failure of the machine: its code is returned, and in an execution it is a refusal."""
+        env = {"FAUX_DOCKER_CODE": "125", "FAUX_DOCKER_ERREUR": OCI, "FAUX_DOCKER_ETAT": json.dumps({"Status": "exited", "Error": "",
+                                                                                                    "ExitCode": 125})}
+        with mock.patch.dict(os.environ, env):
+            self.assertEqual(conteneur.Docker("i").lancer(["x"], []).returncode, 125)
+            with self.assertRaises(lecture.Refus):
+                conteneur.Execution(conteneur.Docker("i"), "/c", {"B": "/b"}, self.dossier).lancer(
+                    "B", "/e", os.path.join(self.dossier, "s"), [("verifier", [conteneur.HARNAIS, "verifier", "/entrees", "/sorties"])])
+
+    def test_juge_json_says_the_environment_error(self):
+        """ruche-0136: the judge stopped by a failure of the machine exits with 2, and its juge.json says so (code 2,
+        erreur_environnement, panne_machine); stopped by a refusal, 1 and refus; rapport.py publishes the code only when the
+        report agrees with it."""
+        chemin = os.path.join(self.dossier, "resultats", "juge.json")
+        env = {"FAUX_DOCKER_ID": "sha256:" + "a" * 64, "FAUX_DOCKER_CODE": "125", "FAUX_DOCKER_ERREUR": OCI, "FAUX_DOCKER_INSPECT": "1"}
+        r = subprocess.run([sys.executable, os.path.join(ICI, "juge.py"), "--outillage", JOUET, "--source-a", JOUET, "--source-b",
+                            JOUET, "--json", chemin, "--travail", self.dossier, "--tete", "3" * 40], env=dict(os.environ, **env),
+                           capture_output=True, text=True, timeout=300)
+        self.assertEqual(r.returncode, 2, r.stderr)
+        with open(chemin, encoding="utf-8") as f:
+            j = json.load(f)["juge"]
+        self.assertEqual((j["code"], j["issue"], j["panne_machine"], j["tete"], j["commun"]),
+                         (2, "erreur_environnement", True, "3" * 40, f"juge-v{juge.VERSION_COMMUNE}"))
+        self.assertIn("machine du juge en panne", j["motif"])
+        self.assertEqual([rapport.publier(chemin, c)["code"] for c in "012"], ["2", "2", "2"])
+        with mock.patch.dict(juge.ECHEC, json=chemin, juge={}), contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(juge.arreter(1, "juge : REFUS : B"), 1)
+        with open(chemin, encoding="utf-8") as f:
+            self.assertEqual(json.load(f)["juge"], {"code": 1, "issue": "refus", "panne_machine": False, "motif": "juge : REFUS : B"})
+        self.assertEqual([rapport.publier(chemin, c)["code"] for c in "012"], ["2", "1", "2"])
+
+    def test_a_refusal_stays_a_refusal_whatever_its_message_holds(self):
+        """ruche-0136: a refusal quoting a name that is not UTF-8 exits with 1, its juge.json whole and saying refus, and
+        rapport.py publishes 1; a report that cannot be written leaves none, neither partial nor stale."""
+        self.assertEqual(lecture.propre("a\udcffb\ud800"), "a?b?")
+        chemin, source_b = os.path.join(self.dossier, "resultats", "juge.json"), os.path.join(os.fsencode(self.dossier), b"B\xff")
+        os.mkdir(source_b)
+        r = subprocess.run([sys.executable, os.path.join(ICI, "juge.py"), "--outillage", JOUET, "--source-a", JOUET, "--source-b",
+                            source_b, "--json", chemin, "--travail", self.dossier], capture_output=True, timeout=300,
+                           env=dict(os.environ, FAUX_DOCKER_ID="sha256:" + "a" * 64))
+        self.assertEqual(r.returncode, 1, r.stderr)
+        with open(chemin, encoding="utf-8") as f:
+            self.assertEqual((lambda j: (j["code"], j["issue"], j["panne_machine"]))(json.load(f)["juge"]), (1, "refus", False))
+        sortie = subprocess.run([sys.executable, os.path.join(ICI, "rapport.py"), chemin, "--code", "1"], capture_output=True, text=True)
+        self.assertEqual(sortie.stdout.splitlines()[0], "code=1")
+        with mock.patch.dict(juge.ECHEC, json=chemin, juge={}), contextlib.redirect_stderr(io.StringIO()), \
+                mock.patch.object(os, "replace", side_effect=OSError("disque plein")):
+            self.assertEqual(juge.arreter(1, "juge : REFUS : B\udcff"), 1)
+        self.assertEqual(os.listdir(os.path.dirname(chemin)), [])
 
     def test_image_id(self):
         with mock.patch.dict(os.environ, {"FAUX_DOCKER_ID": "sha256:" + "a" * 64}):
@@ -2544,6 +2746,23 @@ RESTE_PREFIXES = ("mnt:", "stat:/sys/fs/cgroup")
 RESTE_INSTRUCTIONS = {"statfs:/tmp"}  # Valgrind keeps files of its own, unlinked, in /tmp (the instruction count is detectable)
 
 
+# ruche-0136: the real docker client, but the PANNE_RANG-th « docker run » gets PANNE_OPTIONS (a runtime that fails).
+DOCKER_EN_PANNE = r"""#!/usr/bin/env python3
+import os, sys
+arguments = sys.argv[1:]
+if arguments[:1] == ["run"]:
+    with open(os.environ["PANNE_COMPTE"], "a+") as f:
+        f.seek(0)
+        rang = int(f.read() or 0) + 1
+        f.seek(0)
+        f.truncate()
+        f.write(str(rang))
+    if rang == int(os.environ["PANNE_RANG"]):
+        arguments[1:1] = os.environ["PANNE_OPTIONS"].split()
+os.execv(DOCKER, [DOCKER] + arguments)
+"""
+
+
 @unittest.skipUnless(os.environ.get("BEE_JUGE_INTEGRATION") == "1" and shutil.which("docker"),
                      "méta-tests : BEE_JUGE_INTEGRATION=1 et Docker requis")
 class TestJugeContreVariantes(unittest.TestCase):
@@ -2631,6 +2850,7 @@ class TestJugeContreVariantes(unittest.TestCase):
             self.assertEqual(m["A"], m["B"])
         self.assertEqual(set(rapport["metriques"]), {"debit_compression", "debit_decompression", "ratio", "memoire_max_ko"})
         self.assertIsNone(rapport["juge"]["source"])  # named by juge.yml (--source-juge), not by a local run
+        self.assertEqual(rapport["juge"]["origine_des_graines"], {"graine": "tiree", "graine_ordre": "tiree"})  # ruche-0136
         verification = rapport["juge"]["verification"]  # ruche-0037: 20 f and 30 z verification inputs, over 2 repetitions
         self.assertEqual(verification["melees_par_repetition"], {"f": 10, "z": 15})
         self.assertEqual(verification["entrees_melees"], 3 * 25)  # 2 repetitions and the instruction count
@@ -2657,6 +2877,7 @@ class TestJugeContreVariantes(unittest.TestCase):
                                            repetitions=3, extra=graines)
         self.assertEqual((code_h, code), (0, 0), sortie_h + sortie)
         self.assertEqual(rapport["juge"]["verification"], honnete["juge"]["verification"])
+        self.assertEqual(rapport["juge"]["origine_des_graines"], {"graine": "donnee", "graine_ordre": "donnee"})  # ruche-0136
         self.assertIn("appel_externe", self.types_suspects(rapport))  # its attempts are compiled in (opendir, fopen…)
         deroulement = rapport["juge"]["scenarios"]["deroulement"]
         self.assertEqual([e["ordre"] for e in deroulement], [e["ordre"] for e in honnete["juge"]["scenarios"]["deroulement"]])
@@ -2706,6 +2927,59 @@ class TestJugeContreVariantes(unittest.TestCase):
                                      options=[f"commit_corpus={commit}"])
         self.assertEqual(code, 2)
         self.assertIn("historique", sortie)
+
+    def test_profondeurs(self):
+        """ruche-0136, with Docker: every mount Docker makes itself in a container of the judge (/proc, /dev, /sys and cgroups,
+        /dev/shm, /tmp, /etc's files, masked paths) is shallower than conteneur.PROFONDEUR, from which each folder of the judge
+        is given (test_one_mount_order_whatever_docker_draws), and each folder lands where it is named."""
+        image = conteneur.construire_image([], os.environ.get("BEE_JUGE_RESEAU"))
+        dossiers = [conteneur.dossier_ouvert(os.path.join(self.travail, "profondeur-" + n)) for n in ("a", "b")]
+        r = conteneur.Docker(conteneur.identifiant_image(image)).lancer(
+            ["cat", "/proc/self/mountinfo"], [(dossiers[0], "/sources", True), (dossiers[1], "/sortie", False)], pids=8, delai=120)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        points = [ligne.split()[4] for ligne in r.stdout.decode().splitlines()]
+        self.assertTrue({"/sources", "/sortie", "/tmp", "/dev/shm", "/etc/hosts"} <= set(points), points)
+        self.assertLess(max(p.count("/") for p in points if p not in ("/sources", "/sortie")), conteneur.PROFONDEUR)
+        self.assertFalse(set(points) - set(MONTURES_DOCKER) - {"/", "/sources", "/sortie", "/tmp", "/etc/hostname", "/etc/hosts",
+                                                                 "/etc/resolv.conf", "/proc/fs", "/proc/irq", "/proc/sysrq-trigger",
+                                                                 "/proc/interrupts", "/proc/keys", "/proc/timer_list",
+                                                                 "/proc/kcore", "/proc/latency_stats", "/proc/timer_stats",
+                                                                 "/proc/sched_debug", "/proc/scsi"}
+                         - {p for p in points if p.startswith("/sys/fs/cgroup/")})
+
+    def test_panne_de_la_machine(self):
+        """ruche-0136, with Docker: the container of B's build created with a runtime Docker does not have, then the one of
+        B's verification that the runtime fails to start (OCI): each time the judge ends with code 2, and its juge.json says
+        an error of the environment, a failure of the machine; before ruche-0136, both were refusals of B."""
+        dossier = os.path.join(self.travail, "docker-en-panne")
+        os.makedirs(dossier)
+        with open(os.path.join(dossier, "docker"), "w", encoding="utf-8") as f:
+            f.write(DOCKER_EN_PANNE.replace("DOCKER", repr(shutil.which("docker"))))
+        os.chmod(os.path.join(dossier, "docker"), 0o755)
+        for rang, options in ((4, "--runtime bee-panne"), (8, "--entrypoint /bee-panne")):
+            chemin, compte = (os.path.join(dossier, f"{n}-{rang}") for n in ("juge.json", "compte"))
+            with self.subTest(rang=rang), mock.patch.dict(os.environ, {"PATH": dossier + os.pathsep + os.environ["PATH"],
+                                                                      "PANNE_RANG": str(rang), "PANNE_OPTIONS": options, "PANNE_COMPTE": compte}):
+                code, _, sortie = self.juger(f"panne-{rang}", self.preparer(f"panne-{rang}"), True, extra=["--json", chemin])
+                self.assertEqual(code, 2, sortie)
+                with open(chemin, encoding="utf-8") as f:
+                    j = json.load(f)["juge"]
+                self.assertEqual((j["code"], j["issue"], j["panne_machine"]), (2, "erreur_environnement", True))
+                with open(compte) as f:
+                    self.assertEqual(f.read(), str(rang))
+
+    def test_panne_simulee(self):
+        """ruche-0136, with Docker: B's code writes a daemon's error and exits with 125, as a failing runtime would: the
+        container ran to its end, so it is a refusal of B (code 1, « refus » in juge.json), never an error of the environment."""
+        def simuler(texte, corpus):
+            texte = remplacer(texte, INCLUDE, INCLUDE + "#include <stdio.h>\n#include <stdlib.h>\n")
+            return remplacer(texte, DEBUT_COMPRESSER, DEBUT_COMPRESSER + f"    fputs({json.dumps(OCI)}, stderr); exit(125);\n")
+        chemin = os.path.join(self.travail, "panne_simulee.json")
+        code, _, sortie = self.juger("panne_simulee", self.preparer("panne_simulee", simuler), True, extra=["--json", chemin])
+        self.assertEqual(code, 1, sortie)
+        with open(chemin, encoding="utf-8") as f:
+            j = json.load(f)["juge"]
+        self.assertEqual((j["code"], j["issue"], j["panne_machine"]), (1, "refus", False))
 
     def test_sortie_anticipee(self):
         code, _, sortie = self.juger("sortie_anticipee", self.preparer("sortie_anticipee", sortie_anticipee), True)
