@@ -653,6 +653,18 @@ def meme_pseudo(a, b):
     return isinstance(a, str) and isinstance(b, str) and a.casefold() == b.casefold()
 
 
+def reserved_pseudo(config, pseudo):
+    """ruche-0104: why `pseudo` may not name a member file (None if it may): bee.yaml's pseudos_reserves, the council and the robots,
+    case aside (meme_pseudo). Without a readable, non-empty list, no name is accepted."""
+    liste = config.get("pseudos_reserves") if isinstance(config, dict) else None
+    if not (isinstance(liste, list) and liste):
+        return "bee.yaml : pseudos_reserves is required and never empty : no member file is accepted without it (ruche-0104)"
+    robots = config.get("robots") if isinstance(config.get("robots"), list) else []
+    if any(meme_pseudo(pseudo, r) for r in [*liste, "conseil", *robots]):
+        return f"« {pseudo} » is a reserved pseudonym (bee.yaml, pseudos_reserves) : no member takes a name the tool gives a meaning to"
+    return None
+
+
 def logins_de(entree):  # a member file's or a governance entry's logins: pseudo (or account), then anciens_logins
     anciens = entree.get("anciens_logins") if isinstance(entree.get("anciens_logins"), list) else []
     return [x for x in [entree.get("pseudo", entree.get("account")), *anciens] if isinstance(x, str)]
@@ -2047,6 +2059,12 @@ def verifier_comptes(reg):
     # ruche-0086: the gate's own rule (the highest label passes iff the minimum is readable): a missing or malformed minimum, said.
     if mode_porte(reg) == "si_juge_incomplet" and not juge_commun_suffisant(reg, {"juge": {"commun": "juge-v9999"}}):
         ajouter("bee.yaml : juge_commun_min : entier de 1 à 9999 attendu (R3, docs/juge-commun.md) ; sinon, aucun verdict n'est complet")
+    reserves, robots = reg.config.get("pseudos_reserves"), reg.config.get("robots")  # ruche-0104: required, with the council and robots
+    if not (reserves_lisibles := isinstance(reserves, list) and all(isinstance(r, str) and re.fullmatch(rf"{PSEUDO_MOTIF}(\[bot\])?", r)
+            for r in reserves) and len({r.casefold() for r in reserves}) == len(reserves) and {str(x).casefold() for x in
+            ["conseil", *(robots if isinstance(robots, list) else [])]} <= {r.casefold() for r in reserves}):
+        ajouter("bee.yaml : pseudos_reserves : a list of distinct GitHub logins, case aside (a robot's may end in [bot]), required, "
+                "naming at least conseil and every robot (ruche-0104)")
 
     for stem, (chemin, projet) in reg.projets.items():
         if not selon_schema("projet", chemin, projet):
@@ -2072,6 +2090,8 @@ def verifier_comptes(reg):
             ajouter(f"{reg.rel(chemin)} : « {stem} » et « {vus_pseudos[stem.casefold()]} » sont le même login GitHub (la casse ne "
                     "compte pas) : une seule fiche par compte")
         vus_pseudos.setdefault(stem.casefold(), stem)
+        if reserves_lisibles and (refus := reserved_pseudo(reg.config, stem)):  # ruche-0104: the council renames it, or leaves the name off the list
+            ajouter(f"{reg.rel(chemin)} : {refus}")
         for login in logins_de(membre) if isinstance(membre, dict) else []:
             if logins.setdefault(login.casefold(), stem).casefold() != stem.casefold():
                 ajouter(f"{reg.rel(chemin)} : the login « {login} » is already {logins[login.casefold()]}'s (one account, one file)")
@@ -6218,7 +6238,9 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
             if statut_git in ("A", "M") and isinstance(nouveau, dict) and depart is None and not est_conseil:  # ruche-0051
                 exiger((refus := refus_lien(reg, ancien if isinstance(ancien, dict) and statut_git == "M" else {}, nouveau, github_id)) is None,
                        f"{chemin} : {refus}")
-            if statut_git == "A" and isinstance(nouveau, dict):
+            if statut_git == "A" and isinstance(nouveau, dict):  # ruche-0104: main's list, never the PR's
+                exiger(not (refus := next(filter(None, (reserved_pseudo(lire_ou_rien(reg.racine, base, "bee.yaml"), x) for x in (
+                    pathlib.PurePosixPath(chemin).stem, nouveau.get("pseudo")))), None)), f"{chemin} : {refus}")
                 exiger(type(nouveau.get("github_id")) is int and nouveau.get("github_id") == github_id,
                        f"{chemin} : github_id is the number GitHub gives for {auteur}'s account ({github_id or 'not read: --github-id'}), never one the PR writes (ruche-0022)")
                 if depart is not None:  # ruche-0022: a rename by the account itself (same number), of a login no list names
@@ -6822,6 +6844,8 @@ def cmd_inscrire(args):
     reg = Registre(args.registre)
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]{0,38}", args.pseudo):  # le motif du schéma membre, avant toute comparaison
         raise ErreurBee(f"pseudo invalide : {args.pseudo!r} (un login GitHub : lettres ASCII, chiffres et tirets, 39 caractères au plus)")
+    if refus := reserved_pseudo(reg.config, args.pseudo):
+        raise ErreurBee(refus)
     chemin = reg.racine / "membres" / f"{args.pseudo}.yaml"
     deja = [p for p in reg.membres if reg.identites.meme(p, args.pseudo)]
     if chemin.exists() or deja:
@@ -7014,7 +7038,7 @@ def cmd_renommer(args):
     chemin, fiche = reg.membres.get(args.ancien) or (None, None)
     if not re.fullmatch(PSEUDO_MOTIF, args.pseudo) or args.pseudo == args.ancien or not (isinstance(fiche, dict) and type(fiche.get("github_id")) is int):
         raise ErreurBee("--pseudo: your new GitHub login ; --ancien: your member file's login, with its github_id (else the council completes it)")
-    if refus := refus_renommage(reg, fiche, args.pseudo, reg.comptes_agents, maintenant()):
+    if refus := reserved_pseudo(reg.config, args.pseudo) or refus_renommage(reg, fiche, args.pseudo, reg.comptes_agents, maintenant()):
         raise ErreurBee(refus)
     if [p for p in reg.membres if p != args.ancien and reg.identites.meme(p, args.pseudo)] or \
             reg.identites.numeros.get(args.pseudo.casefold(), fiche["github_id"]) != fiche["github_id"]:

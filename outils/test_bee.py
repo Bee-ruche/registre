@@ -19607,5 +19607,161 @@ class TestChargeurCRuche0130(unittest.TestCase):
                 self.assertEqual(module._ChargeurBeeC is not None, lit_en_c)
 
 
+# --- ruche-0104: reserved pseudonyms (bee.yaml pseudos_reserves), refused in bee inscrire and the gate, reported by bee valider ---
+
+class TestReservedPseudonyms(BaseTest):
+    REFUSED = ("conseil", "Conseil", "CONSEIL", "bee", "github-actions", "mesurer", "Relire", "laruche-architect")
+    ROBOT = '"github-actions[bot]"'
+
+    def setUp(self):
+        super().setUp()
+        git(self.dossier, "init", "-q", "-b", "main")
+        self.commit("base")
+
+    def commit(self, message="pr"):
+        git(self.dossier, "-c", "user.name=t", "-c", "user.email=t@t", "add", "-A")
+        git(self.dossier, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", message)
+
+    def set_list(self, *names):
+        chemin = self.dossier / "bee.yaml"
+        texte = re.sub(r"(?ms)^pseudos_reserves:.*?\]\n", f"pseudos_reserves: [{', '.join(names)}]\n", chemin.read_text(encoding="utf-8"))
+        self.assertIn(f"pseudos_reserves: [{', '.join(names)}]", texte)
+        chemin.write_text(texte, encoding="utf-8")
+
+    def member_pr(self, pseudo, branch=None, change=None):
+        git(self.dossier, "switch", "-qf", "main")
+        git(self.dossier, "switch", "-qc", branch or f"i-{pseudo}")
+        bee.ecrire_yaml(self.dossier / f"membres/{pseudo}.yaml",
+                        {"pseudo": pseudo, "inscrit_le": "2026-10-27", "compte_cree_le": "2021-05-05", "github_id": numero_de(pseudo)})
+        if change:
+            change()
+        self.commit()
+        return self.bee("verifier-pr", "--base", "main", "--tete", "HEAD", "--auteur", pseudo, "--compte-cree-le", "2021-05-05")
+
+    def test_the_real_list_names_the_council_robots_roles_and_hive_accounts(self):
+        reserves = bee.lire_yaml(RACINE / "bee.yaml")["pseudos_reserves"]
+        for nom in ("conseil", "bee", "github-actions[bot]", "mesurer", "relire", "optimiser", "proposer", "gardien", "laruche-architect"):
+            self.assertTrue(bee.reserved_pseudo({"pseudos_reserves": reserves}, nom.upper()), nom)
+        self.assertIsNone(bee.reserved_pseudo({"pseudos_reserves": reserves}, "bidji29"), "a council member's own login is a person")
+
+    def test_bee_inscrire_refuses_a_reserved_name_whatever_its_case(self):
+        for pseudo in self.REFUSED:
+            with self.subTest(pseudo=pseudo):
+                code, texte = self.bee("inscrire", "--pseudo", pseudo, "--compte-cree-le", "2020-01-01")
+                self.assertEqual(code, 1, texte)
+                self.assertIn("reserved pseudonym", texte)
+                self.assertFalse((self.dossier / f"membres/{pseudo}.yaml").exists())
+        self.assertEqual(self.bee("inscrire", "--pseudo", "conseiller", "--compte-cree-le", "2020-01-01")[0], 0, "an honest name")
+        self.valide()
+
+    def test_bee_renommer_refuses_a_reserved_name(self):
+        code, texte = self.bee("renommer", "--ancien", "alice", "--pseudo", "Conseil")
+        self.assertEqual(code, 1, texte)
+        self.assertIn("reserved pseudonym", texte)
+        self.assertTrue((self.dossier / "membres/alice.yaml").exists())
+
+    def test_the_gate_refuses_a_reserved_name_and_accepts_an_honest_one(self):
+        for pseudo in self.REFUSED:
+            with self.subTest(pseudo=pseudo):
+                code, texte = self.member_pr(pseudo)
+                self.assertEqual(code, 1, texte)
+                self.assertIn(f"membres/{pseudo}.yaml : « {pseudo} » is a reserved pseudonym", texte)
+        code, texte = self.member_pr("david")
+        self.assertEqual(code, 0, texte)
+
+    def test_the_gate_reads_mains_list_never_the_prs(self):
+        code, texte = self.member_pr("mesurer", change=lambda: self.set_list("conseil", self.ROBOT))
+        self.assertEqual(code, 1, texte)
+        self.assertIn("« mesurer » is a reserved pseudonym", texte)
+        git(self.dossier, "switch", "-qf", "main")
+        self.set_list("conseil", self.ROBOT, "david")
+        self.commit("main reserves david")
+        code, texte = self.member_pr("david")
+        self.assertEqual(code, 1, texte)
+        self.assertIn("« david » is a reserved pseudonym", texte)
+        self.assertEqual(self.member_pr("mesurer", branch="mesurer-2")[0], 0, "off main's list, the name is free")
+
+    def test_the_list_is_read_from_bee_yaml(self):
+        self.set_list("conseil", self.ROBOT, "zoe")
+        self.assertEqual(self.bee("inscrire", "--pseudo", "mesurer", "--compte-cree-le", "2020-01-01")[0], 0)
+        code, texte = self.bee("inscrire", "--pseudo", "Zoe", "--compte-cree-le", "2020-01-01")
+        self.assertEqual(code, 1, texte)
+        self.assertIn("reserved pseudonym", texte)
+        self.valide()
+
+    def test_bee_valider_reports_an_existing_member_with_a_reserved_name(self):
+        self.valide()
+        bee.ecrire_yaml(self.dossier / "membres/Mesurer.yaml",
+                        {"pseudo": "Mesurer", "inscrit_le": "2026-10-27", "compte_cree_le": "2021-05-05", "github_id": numero_de("Mesurer")})
+        code, texte = self.bee("valider")
+        self.assertEqual(code, 1, texte)
+        self.assertIn("membres/Mesurer.yaml : « Mesurer » is a reserved pseudonym", texte)
+        self.set_list("conseil", self.ROBOT, "bee")  # the council takes the name off the list: the member file is valid again
+        self.valide()
+
+    def test_the_council_and_the_robots_stay_reserved_whatever_the_list_says(self):
+        self.set_list(self.ROBOT, "bee")
+        code, texte = self.bee("valider")
+        self.assertEqual(code, 1, texte)
+        self.assertIn("bee.yaml : pseudos_reserves : a list of distinct GitHub logins", texte)
+        code, texte = self.bee("inscrire", "--pseudo", "Conseil", "--compte-cree-le", "2020-01-01")
+        self.assertEqual(code, 1, texte)
+        self.assertIn("reserved pseudonym", texte)
+        self.set_list("conseil", self.ROBOT, "bee")
+        chemin = self.dossier / "bee.yaml"
+        chemin.write_text(chemin.read_text(encoding="utf-8").replace("robots:\n", "robots:\n  - veilleur\n", 1), encoding="utf-8")
+        self.assertIn("veilleur", bee.lire_yaml(chemin)["robots"])
+        code, texte = self.bee("valider")
+        self.assertEqual(code, 1, texte)
+        self.assertIn("naming at least conseil and every robot", texte)
+        code, texte = self.bee("inscrire", "--pseudo", "Veilleur", "--compte-cree-le", "2020-01-01")
+        self.assertEqual(code, 1, texte)
+        self.assertIn("reserved pseudonym", texte)
+        self.commit("main adds a robot")
+        code, texte = self.member_pr("veilleur")
+        self.assertEqual(code, 1, texte)
+        self.assertIn("« veilleur » is a reserved pseudonym", texte)
+        git(self.dossier, "switch", "-qf", "main")
+        self.set_list("conseil", self.ROBOT, "bee", "veilleur")
+        self.valide()
+        self.assertEqual(self.bee("inscrire", "--pseudo", "david", "--compte-cree-le", "2020-01-01")[0], 0, "an honest name")
+
+    def test_a_missing_or_empty_list_refuses_every_new_member(self):
+        chemin = self.dossier / "bee.yaml"
+        for valeur in ("", "pseudos_reserves: []\n"):
+            with self.subTest(valeur=valeur):
+                chemin.write_text(re.sub(r"(?ms)^pseudos_reserves:.*?\]\n", valeur, chemin.read_text(encoding="utf-8")), encoding="utf-8")
+                self.assertFalse(bee.lire_yaml(chemin).get("pseudos_reserves"))
+                code, texte = self.bee("valider")
+                self.assertEqual(code, 1, texte)
+                self.assertIn("bee.yaml : pseudos_reserves : a list of distinct GitHub logins", texte)
+                for pseudo in ("conseil", "david"):
+                    code, texte = self.bee("inscrire", "--pseudo", pseudo, "--compte-cree-le", "2020-01-01")
+                    self.assertEqual(code, 1, texte)
+                    self.assertIn("pseudos_reserves is required", texte)
+                    self.assertFalse((self.dossier / f"membres/{pseudo}.yaml").exists())
+                self.commit(f"main without a list {valeur!r}")
+                code, texte = self.member_pr("david", branch=f"d-{len(valeur)}")
+                self.assertEqual(code, 1, texte)
+                self.assertIn("pseudos_reserves is required", texte)
+                git(self.dossier, "switch", "-qf", "main")
+                git(self.dossier, "reset", "-q", "--hard", "HEAD~1")
+        self.assertTrue(bee.reserved_pseudo(None, "david"), "a base without bee.yaml accepts no name")
+        self.assertEqual(self.member_pr("david", branch="d-ok")[0], 0, "with main's list, an honest name passes")
+        self.valide()
+
+    def test_bee_valider_checks_the_lists_shape(self):
+        for valeur in ("conseil", "[conseil, Conseil]", "[conseil, 3]", "[\"a b\"]", "{conseil: 1}"):
+            with self.subTest(valeur=valeur):
+                chemin = self.dossier / "bee.yaml"
+                chemin.write_text(re.sub(r"(?ms)^pseudos_reserves:.*?\]\n", f"pseudos_reserves: {valeur}\n", chemin.read_text(encoding="utf-8")),
+                                  encoding="utf-8")
+                code, texte = self.bee("valider")
+                self.assertEqual(code, 1, texte)
+                self.assertIn("bee.yaml : pseudos_reserves : a list of distinct GitHub logins", texte)
+                git(self.dossier, "checkout", "-q", "--", "bee.yaml")
+        self.valide()
+
+
 if __name__ == "__main__":
     sys.exit(principal_tests(sys.modules[__name__], __file__, sys.argv[1:]))
