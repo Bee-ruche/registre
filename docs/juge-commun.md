@@ -78,8 +78,11 @@ a fixed metric that no scenario returns, read on verification alone, is named in
 there anew, in a fixed order with fixed access and modification times, all the container sees of it: `chrono`, the harness,
 the inputs, `/etc/hostname`, `/etc/hosts`, `/etc/resolv.conf` (which Docker would write on the host's disk) and the outputs
 folder; once the container ends, the outputs are copied out and the tmpfs unmounted. Docker (up to 29.0) mounts folders of equal
-depth in an order drawn for each container: each of the judge's is given at its own depth, through the image's link to its root
-(`/.racine/variante` is `/variante`), so all are mounted in one order. Identical scenarios thus find the same
+depth in an order drawn for each container: since ruche-0136, each folder the judge mounts, in every container (executions and
+builds), is given at a depth that no other mount of the container shares, from `conteneur.PROFONDEUR` (8) on, deeper than any
+of Docker's own (4 at most: `/sys/fs/cgroup/cpu` under cgroup v1), through the image's link to its root
+(`/.racine/…/.racine/variante` is `/variante`), so all are mounted in one order, whatever order Docker draws
+(test_one_mount_order_whatever_docker_draws; with Docker, test_profondeurs). `/etc`'s three files stay at their depth. Identical scenarios thus find the same
 inodes, devices, links, sizes, directory order, free space and mount lines, change and birth times as old (`f_fsid` is drawn by
 the kernel at each mount), and no container's outputs share space with another's while it runs (test_memes_montures). What
 still follows the progress, as the clock does: the container's root, Docker's overlay on the host's disk (its inode, free
@@ -121,6 +124,22 @@ Règles de sûreté, vérifiées par le juge commun (revue adverse du 28/10) :
 - the judged files (`SOURCES`) are scanned whole, each file of B against A's, line splices joined, without
   git: only a net, the objects show the code produced. Une PR qui modifie `bee/juge/` est une tâche
   d'outillage : le registre le détecte et exige un gardien (R3).
+
+**Machine failures and seeds (ruche-0136).** A failure of the machine that judges is an error of the environment, never a
+refusal of the judged code: after each container, the judge reads Docker's own record of it (`docker inspect`, then the container
+is removed), never its code or error stream, which the judged code writes; a container that was not created (daemon out of reach,
+image or runtime missing), that its runtime failed to start, or whose recorded state is not « exited » with its process's code
+stops the judge with code 2 (`lecture.Panne`, whose motif never quotes the container's error stream); at its deadline, a
+container that never started is one too, one that ran a refusal. With `--json`, `juge.json` is written whole or not at all
+(renamed into place) whatever the outcome: `juge.code` and `juge.issue` (`juste` 0, `refus` 1, `erreur_environnement` 2), and on a
+stop `juge.motif` and `juge.panne_machine`, a refusal staying a refusal whatever its message holds; `rapport.py --code` publishes
+0 only with its report, whole and checked, and a code only if the report does not say another (code 2 otherwise; a refusal needs
+no report), and juge.yml's judging step annotates it: a notice for 0, a warning for a refusal of B, an error for an error of the
+environment, which judges nothing.
+`juge.origine_des_graines` says for each seed (`graine`, `graine_ordre`) whether the judge drew it (`tiree`) or it was given on
+the command line (`donnee`, `--graine`, `--graine-ordre`: a local reproduction). `rapport.py --verifier` refuses any report
+whose seeds were not both drawn, or that does not say: a reproduction is never taken for a judgement (its seed is no longer drawn
+after the build). Refusing rather than marking keeps one rule on the verdict side: only a judgement passes.
 
 ## Versions
 

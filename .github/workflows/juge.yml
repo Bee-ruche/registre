@@ -6,8 +6,8 @@
 #     with: { base_sha: <base de la PR>, tete_sha: <tête de la PR>, options: "sortie_compressee=identique" }
 # Il juge la tête contre la base avec le greffon de la BASE (bee/juge/projet.py), jamais celui de la PR,
 # et publie un artefact « juge » : juge.json (rapport, section « juge » comprise) et code (0 juste,
-# 1 refusé, 2 environnement). Le job ne devient jamais rouge à cause de B : c'est le verdict du fork
-# qui lit le code et décide. Aucun secret, aucune écriture : permissions en lecture seule.
+# 1 refusé, 2 environnement, une panne de la machine du juge comprise : jamais un refus de B, ruche-0136).
+# Le job ne devient jamais rouge à cause de B : c'est le verdict du fork qui lit le code et décide. Aucun secret, aucune écriture : permissions en lecture seule.
 #
 # The judge's code is read at this workflow's own commit (job.workflow_sha), which must be a commit of
 # Bee-ruche/registre's main, never at a tag or a branch (test_juge.py); juge.json names it (juge.source).
@@ -43,7 +43,7 @@ on:
         default: false
     outputs:
       code:
-        description: "0 si toutes les sorties de B sont justes, 1 si le juge refuse B, 2 si l'environnement ne convient pas"
+        description: "0 si toutes les sorties de B sont justes, 1 si le juge refuse B, 2 si l'environnement ne convient pas (panne de la machine du juge comprise)"
         value: ${{ jobs.juge.outputs.code }}
       empreinte: {description: "SHA-256 of juge.json (artifact « juge »)", value: "${{ jobs.juge.outputs.empreinte }}"}
       suspectes: {description: "number of suspicious constructs, those juge.json leaves out included", value: "${{ jobs.juge.outputs.suspectes }}"}
@@ -152,6 +152,13 @@ jobs:
           python3 juge-commun/outils/juge/rapport.py resultats/juge.json --code "$code" > resultats/sorties
           sed -n 's/^code=//p' resultats/sorties > resultats/code
           cat resultats/sorties >> "$GITHUB_OUTPUT"
+          # ruche-0136: the outcome said as what it is; an error of the environment (the judge's machine: Docker, its runtime, the
+          # image; or its report) is never a refusal of the judged code, and judges nothing.
+          case "$(cat resultats/code)" in
+            0) echo "::notice title=Juge commun::code 0 : toutes les sorties de B sont justes" ;;
+            1) echo "::warning title=Juge commun::code 1 : refus du code jugé (B)" ;;
+            *) echo "::error title=Juge commun::code 2 : erreur d'environnement (machine du juge ou rapport), pas un refus de B : rien n'est jugé" ;;
+          esac
       - name: Conserver le rapport
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
