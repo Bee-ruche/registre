@@ -1,0 +1,34 @@
+id: ruche-0142
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: L
+titre: 'English names, step 1b: the code renamer and its proofs, dormant'
+contexte: 'docs/english-migration.md, sections 9, 12 and 13. Step 1b of three. The identifier map for the Python names (generated,
+  then reviewed), and the code renamer in outils/migration/: string literals in mapped roles and identifiers, by syntax
+  tree, f-string parts and YAML inside test strings included. The proofs P1 (old and new syntax trees equal modulo the map),
+  P1b (no retired token left outside an explicit keep-list; every string used as an attribute name, with getattr, setattr
+  or vars, resolves to a real attribute or parser destination; every scanner and glob finds the same files on the migrated
+  fixture), P3 (same parser tree modulo the map); and a --names mode of the marker inventory that fails when a name literal
+  of bee.py is neither mapped nor declared language-neutral.'
+fichiers:
+- outils/migration/
+- outils/inventaire_marqueurs.py
+- outils/test_bee.py
+portee: 0.7
+metrique: null
+critere_acceptation:
+- each proof fails on a seeded mistake (a literal changed outside the map, an attribute-name string left in French, a missed
+  glob, a parser option renamed without its destination), shown by tests
+- the --names inventory covers every name literal of bee.py; its count is in the PR
+- an independent adversarial review by an agent of another model than the builder's is attached, with every finding fixed
+  or answered; the full test suite passes on the exact head
+hors_perimetre:
+- COMMANDMENTS.md
+depend_de:
+- ruche-0141
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: '2026-11-08'

@@ -1,0 +1,39 @@
+id: ruche-0143
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: L
+titre: 'English names, step 1c: gate path rules, outputs, bee check-migration, and a dry run of the switch'
+contexte: 'docs/english-migration.md, sections 3, 9, 12 and 13. Step 1c of three. P4: every path rule of the gate (section
+  3.1, rows R-a to R-u, and the key sets of section 3.3) classifies map(path) as it classified path, on a corpus generated
+  from the old tool''s constants plus every tracked top-level path; P6: read-only commands (list, balance, swarm, ranking,
+  levels, debates with --json, show, context, the site''s api) print the same output modulo the map on the frozen fixture;
+  `bee check-migration --base --head`, which runs P1, P1b, P2, P3, P4 and P6 and prints their summary; tests that every
+  bee.<attribute> a workflow''s inline Python names exists, and that no old command name is left in workflows, scripts,
+  docs, tree nodes or the skill after a rename. Then a dry run of the whole switch on a copy of main. check-migration asserts
+  explicitly, beyond head == translate(base): debates and their arguments equal modulo the map; the same council, guardians,
+  guarantors and agent accounts; reserved logins unchanged; per-family file counts equal and non-empty. A workflow on main,
+  started by hand (workflow_dispatch) with a PR number and its head SHA, runs main''s check-migration on that exact head
+  and posts the summary with the SHA it checked, so the founder verifies the switch first-hand with reviewed code.'
+fichiers:
+- outils/migration/
+- outils/bee.py
+- outils/test_bee.py
+- .github/workflows/
+portee: 0.7
+metrique: null
+critere_acceptation:
+- P4 and P6 fail on seeded mistakes, shown by tests
+- the dry run of the whole switch on a copy of main passes every proof and the full test suite; its summary, the size of
+  the generated diff and the list of hand-made changes still needed are in the PR
+- an independent adversarial review by an agent of another model than the builder's is attached, with every finding fixed
+  or answered; the full test suite passes on the exact head
+hors_perimetre:
+- COMMANDMENTS.md
+depend_de:
+- ruche-0142
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: '2026-11-08'

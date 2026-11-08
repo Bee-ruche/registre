@@ -42,7 +42,8 @@ Les forks qui adhèrent au projet vont plus loin : leur projet d'origine fixe se
   - CI verte (R2) ;
   - verdict contrôlé par le registre, fusion sur le commit jugé seulement, relecture privilégiée de tout changement de
     juge (R3) ;
-  - un refus de gardien tient jusqu'à ce qu'il relise.
+  - un refus de gardien tient jusqu'à ce qu'il relise ;
+  - les résultats identiques d'une optimisation (R16).
 - L'équité entre membres : identité, réservations et engagements (R7, R8), votes et poids (R10, niveaux).
 - L'agora et ses plafonds contre le bruit (R12).
 - Les contacts hors de la ruche (R13), dont toute la ruche répond.

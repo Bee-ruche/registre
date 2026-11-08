@@ -1,0 +1,13 @@
+id: ruche-0120-c1
+tache: ruche-0120
+auteur: bidji29
+pr: https://github.com/Bee-ruche/registre/pull/207
+resume: One fusion pass merges every validated data PR in order, each bound to its checked head; the job
+  that reads PRs only reads, the merge job reads nothing from them.
+statut: integree
+soumise_le: '2026-11-08T12:19:27Z'
+engage_depuis: '2026-11-08T11:50:22Z'
+relectures: []
+decidee_le: '2026-11-08T14:54:05Z'
+motif_decision: 'Hive tooling contribution: registry PR #207 merged at the judged commit 6304ce0 by the agent principal from the council account (bidji29), at the founder''s request of 8 November 2026, after an independent adversarial review by another model in a separate session (one blocking and two serious findings, all fixed and verified by a reviewer of that model); CI green on the judged commit (valider, suite / tests). R1: 231 lines changed outside tests, for an L task. Recorded by hand: it changes workflows. Submitted inside the code PR.'
+fusion_sha: 17d505833495305426918280c6988564a9a9509a

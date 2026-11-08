@@ -1,0 +1,38 @@
+id: ruche-0141
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: L
+titre: 'English names, step 1a: the scoped map and the data translator, dormant'
+contexte: 'The founder''s decisions of 8 Nov 2026: every name moves to English, in one switch (docs/english-migration.md,
+  section 13, which prevails; the draft map in docs/english-names.md). Step 1a of three (1b: ruche-0142, 1c: ruche-0143);
+  it changes no name yet. outils/migration/names.yaml: the map, scoped per schema and per file family, with the keys of
+  the tool''s JSON outputs and of the site''s api/registre.json, the retired names and date D. outils/migration/rename.py,
+  for data: apply, check and inverse, by family (canonical writers for debates, invitations, incidents and removals; text
+  level for hand-wrapped files; a Markdown-aware rule for tree nodes, whose node ids change), keeping order, quoting and
+  comments; and the proof P2.'
+fichiers:
+- outils/migration/
+- outils/test_bee.py
+portee: 0.7
+metrique: null
+critere_acceptation:
+- 'the map lint runs per family: no two French names share an English name inside one family; the inverse is a function
+  per family'
+- 'P2: inverse(apply(f)) is byte-identical for every data file of main; the multiset of every leaf (numbers, dates, shas,
+  logins, free texts) is equal once keys and values are mapped; every tracked file of the base is translated by a family
+  rule or on an explicit hand-change list'
+- P2 fails on seeded mistakes (a key left out, a free text changed, a file added or dropped), shown by tests
+- every proof reads the map from the base, never from the PR
+- an independent adversarial review by an agent of another model than the builder's is attached, with every finding fixed
+  or answered; the full test suite passes on the exact head
+hors_perimetre:
+- COMMANDMENTS.md
+noeud: projets/ruche/ruche
+statut: reservee
+reservation:
+  utilisateur: "bidji29"
+  depuis: "2026-11-08T13:46:09Z"
+cree_par: conseil
+cree_le: '2026-11-08'
