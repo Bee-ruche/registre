@@ -21,7 +21,11 @@
 #                 domain). Every scalar outside a domain is a leaf, kept byte for byte: free texts are never translated.
 #   domains       closed: a value outside its domain is refused. open_domains: values not listed stay as written.
 #                 The domains `path` and `node` are the path map and the tree segments.
-#   hand          tracked files that no family translates: each changes by hand or by another step, and is listed.
+#   code          the code files (Python, shell, workflows), listed one by one: step 1b's proofs (P1, P1b, P3) cover their
+#                 content; P2 checks only their place (the path map) and their mode.
+#   hand          every other file no family translates, by glob, the first matching entry deciding: same (byte-identical,
+#                 at its English path), becomes (byte-identical to that file of the base) or removed. A schema of
+#                 schemas/ is translated with its family (keys, domains and schema_strings: $id, patterns), byte for byte.
 #   new           globs of files the switch may add.
 version: 1
 date_d: '2027-01-01'
@@ -76,8 +80,8 @@ hand_tokens:
   ecart: bee cap --json key -> gap
   creations/<dossier>_max_par_pr: 'bee.yaml keys built as f"{dossier}_max_par_pr": folder and suffix both change
     (by hand)'
-  fichiers: 'the path values of open tasks'' fichiers and hors_perimetre are re-scoped by hand by a council PR right
-    after the switch (check-fork only warns on a file outside them): ruche-0058 and ruche-0146 to ruche-0150 already
+  fichiers: 'switch checklist: the path values of open tasks'' fichiers and hors_perimetre are left to a council
+    PR right after the switch (bee only warns on a file outside them): ruche-0058 and ruche-0146 to ruche-0150 already
     name the English paths, so translating them would make the inverse ambiguous; closed tasks keep theirs as written'
   --dry-run: 'publier''s second spelling of --a-blanc: dropped, --a-blanc becomes --dry-run (one name, one-to-one)'
   conseil: the council's pseudo -> council in data (login domain) and code; both stay in pseudos_reserves
@@ -483,6 +487,9 @@ families:
       poste: area
       categorie: category
       noeud: node
+    schema_strings:
+      https://bee.local/schemas/tache.schema.json: https://bee.local/schemas/task.schema.json
+      ^(racine|[a-z0-9]+(-[a-z0-9]+)*(/[a-z0-9]+(-[a-z0-9]+)*)*)$: ^(root|[a-z0-9]+(-[a-z0-9]+)*(/[a-z0-9]+(-[a-z0-9]+)*)*)$
   contributions:
     note: contribution records; metric ids (keys under instructions and degradations) stay until the metric-id step
     files:
@@ -563,6 +570,8 @@ families:
       verdict/degradations: null
       verdicts[]/instructions: null
       verdicts[]/degradations: null
+    schema_strings:
+      https://bee.local/schemas/enregistrement.schema.json: https://bee.local/schemas/contribution-record.schema.json
   debates:
     note: 're-rendered by the tool''s canonical writer (rendu_debat): a debate must equal its own rendering'
     files:
@@ -607,6 +616,8 @@ families:
       statut: debate_status
       issue: debate_outcome
       arguments[]/position: position
+    schema_strings:
+      https://bee.local/schemas/debat.schema.json: https://bee.local/schemas/debate.schema.json
   proposals:
     note: rule proposals; ouverte_le and the debates' ouvert_le share opened_at, one family each
     files:
@@ -625,6 +636,8 @@ families:
     values:
       '**/auteur': login
       statut: proposal_status
+    schema_strings:
+      https://bee.local/schemas/proposition.schema.json: https://bee.local/schemas/proposal.schema.json
   members:
     note: ''
     files:
@@ -644,6 +657,8 @@ families:
     values:
       '**/pseudo': login
       categories_preferees[]: category
+    schema_strings:
+      https://bee.local/schemas/membre.schema.json: https://bee.local/schemas/member.schema.json
   votes:
     note: ''
     files:
@@ -688,6 +703,8 @@ families:
       '**/soumise_par': login
     key_values:
       metriques: null
+    schema_strings:
+      https://bee.local/schemas/mesure.schema.json: https://bee.local/schemas/measurement.schema.json
   invitations:
     note: re-rendered by the tool's canonical writer (rendu_invitation)
     files:
@@ -742,6 +759,8 @@ families:
     schema: ne-plus-contacter.schema.json
     keys:
       empreintes: fingerprints
+    schema_strings:
+      https://bee.local/schemas/ne-plus-contacter.schema.json: https://bee.local/schemas/do-not-contact.schema.json
   reports:
     note: 'comptes -> accounts, the same English word as the agent accounts'' list: another family'
     files:
@@ -760,6 +779,8 @@ families:
       motif: report_reason
       decision/issue: report_outcome
       comptes[]: login
+    schema_strings:
+      https://bee.local/schemas/signalement.schema.json: https://bee.local/schemas/report.schema.json
   council:
     note: ''
     files:
@@ -854,6 +875,8 @@ families:
     values:
       '**/par': login
       retraits[]/demande/canal: removal_channel
+    schema_strings:
+      https://bee.local/schemas/retraits.schema.json: https://bee.local/schemas/removals.schema.json
   projects:
     note: metric ids (metriques[]/id and instructions) stay until the metric-id step; fork paths are not registry
       paths
@@ -898,6 +921,8 @@ families:
       chemins_hors_decompte[]: path
       commandes/tests: command
       commandes/valider: command
+    schema_strings:
+      https://bee.local/schemas/projet.schema.json: https://bee.local/schemas/project.schema.json
   categories:
     note: ''
     files:
@@ -1036,6 +1061,8 @@ families:
     key_values:
       mesures/avant: null
       mesures/apres: null
+    schema_strings:
+      https://bee.local/schemas/contribution.schema.json: https://bee.local/schemas/manifest.schema.json
   fork_verdict:
     note: verdict.json written by the forks' bee/ci/verdict.py (boundary)
     files: []
@@ -1863,37 +1890,86 @@ open_domains:
     'retiré : refus': 'withdrawn: refusal'
     'retiré : demande': 'withdrawn: request'
     'retiré : sans réponse': 'withdrawn: no answer'
+code:
+- .github/workflows/expirations.yml
+- .github/workflows/fusion-auto.yml
+- .github/workflows/integration-auto.yml
+- .github/workflows/juge-commun.yml
+- .github/workflows/juge.yml
+- .github/workflows/site.yml
+- .github/workflows/suite.yml
+- .github/workflows/validation.yml
+- .github/workflows/verdicts.yml
+- outils/bee.py
+- outils/inventaire_marqueurs.py
+- outils/juge/analyse.py
+- outils/juge/conteneur.py
+- outils/juge/entrees.py
+- outils/juge/isoler.sh
+- outils/juge/jouet/bee/juge/construire.sh
+- outils/juge/jouet/bee/juge/projet.py
+- outils/juge/juge.py
+- outils/juge/lecture.py
+- outils/juge/rapport.py
+- outils/juge/stats.py
+- outils/juge/test_juge.py
+- outils/migration/rename.py
+- outils/repetition/bee
+- outils/repetition/ci-simulee
+- outils/repetition/ci_simulee.py
+- outils/repetition/commun.sh
+- outils/repetition/decider-conseil
+- outils/repetition/gh
+- outils/repetition/horloge.py
+- outils/repetition/load_test.py
+- outils/repetition/monter.sh
+- outils/repetition/ouvrir-pr-fork
+- outils/repetition/pousser-pr-fork
+- outils/repetition/publier
+- outils/repetition/test_load_test.py
+- outils/site_bee.py
+- outils/test_bee.py
 hand:
-- files: outils/*.py
-  why: 'the tool, the site, the tests: step 1b''s renamer (P1, P1b) and the full suite'
+- files: COMMANDEMENTS.md
+  removed: true
+  why: a translation, removed (plan, section 12, change 13; open question 2)
+- files: AGENTS.en.md
+  removed: true
+  why: its text becomes AGENTS.md (plan, section 12, change 13)
+- files: AGENTS.md
+  becomes: AGENTS.en.md
+  why: 'the front door in English: the base''s AGENTS.en.md, byte for byte'
+- files: '*.md'
+  same: true
+  why: root documents, moved by the path map; their text changes after the switch, by council PRs
+- files: .gitignore
+  same: true
+  why: names no French folder
+- files: docs/**
+  same: true
+  why: moved by the path map; names in their text change after the switch, by council PRs
+- files: gouvernance/consignes/*.md
+  same: true
+  why: role instructions, moved; their text by the founder, after the switch
+- files: modeles/BEE.md
+  same: true
+  why: template prose, moved
+- files: .claude/**
+  same: true
+  why: the skill, moved; its text after the switch
+- files: .github/**
+  same: true
+  why: templates, moved (the workflows are code)
 - files: outils/requirements.txt
+  same: true
   why: names no French word
 - files: outils/juge/**
-  why: 'the common judge: judge track (judge-v4), moved by the path map'
-- files: outils/repetition/**
-  why: 'the dress-rehearsal kit: step 1b''s renamer, moved by the path map'
-- files: outils/migration/**
-  why: this map and its tools (read from the base by every proof)
-- files: schemas/*.json
-  why: 'schema properties and enums: step 1b''s renamer (P1 on the schemas), checked against this map'
-- files: .github/**
-  why: 'workflows and templates: step 1b''s renamer, the workflow tests'
-- files: .claude/**
-  why: 'the skill: prose step'
-- files: docs/**
-  why: 'docs: moved by the path map; paths, commands and names in their text by the switch, prose later'
-- files: gouvernance/consignes/*.md
-  why: 'role instructions: moved by the path map; prose by the founder'
-- files: modeles/BEE.md
-  why: template prose
-- files: '*.md'
-  why: 'root documents: moved by the path map; their text by the switch and the prose step'
-- files: .gitignore
-  why: names no French folder
-- files: COMMANDEMENTS.md
-  why: a translation, removed (plan, section 12, change 13; open question 2)
-  removed: true
-- files: AGENTS.en.md
-  why: replaced by AGENTS.md in English (plan, section 12, change 13)
-  removed: true
+  same: true
+  why: the judge's C files, header and Dockerfile, moved (its Python and shell are code)
+- files: outils/repetition/*.md
+  same: true
+  why: the rehearsal kit's README template, moved
+- files: outils/migration/names.yaml
+  same: true
+  why: 'this map, moved: every proof reads it from the base'
 new: []
