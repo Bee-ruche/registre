@@ -4,7 +4,11 @@ auteur: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/227
 resume: 'English names, step 1b: the identifier map, the Python code renamer and proofs P1, P1b (a, b),
   P3 and --names, run only from the base''s own code; dormant.'
-statut: en_relecture
+statut: integree
 soumise_le: '2026-11-08T23:17:22Z'
 engage_depuis: '2026-11-08T19:01:21Z'
 relectures: []
+decidee_le: '2026-11-08T23:39:49Z'
+motif_decision: 'Hive tooling contribution: registry PR #227 merged at commit 36adfd4 by bidji29, the
+  account of a council member, CI green on the merged commit.'
+fusion_sha: ebc54de549862a313f36bc20d403e8479c516dbb

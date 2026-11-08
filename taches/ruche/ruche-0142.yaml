@@ -29,7 +29,7 @@ hors_perimetre:
 depend_de:
 - ruche-0141
 noeud: projets/ruche/ruche
-statut: en_relecture
+statut: integree
 contribution: ruche-0142-c1
 cree_par: conseil
 cree_le: '2026-11-08'
