@@ -6,21 +6,76 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      immediat:
+        description: "Build at once, cancelling the build in progress, and no pause after (a code push; ruche-0133)"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
   pages: write
   id-token: write
 
-# ruche-0121: a push (a council merge: code) builds at once, cancelling the run in progress; a dispatch (a robot, after data)
-# waits its turn, and dispatches meanwhile collapse into one pending run, the newest. After a dispatched build, the job
-# « pause » holds the group: data rebuilds the site at most once every few minutes, and the last change is always built.
+# ruche-0121: a code change builds at once, cancelling the run in progress; a dispatch (a robot, after data) waits its turn,
+# and dispatches meanwhile collapse into one pending run, the newest. After a data build, the job « pause » holds the group:
+# data rebuilds the site at most once every few minutes, and the last change is always built. ruche-0133 (R-push): a push
+# builds nothing itself, outside the group (job « portee »): its range scoped like validation.yml's, it dispatches this
+# workflow, with « immediat » unless the push is data only (a robot's push under the App then follows the interval).
 concurrency:
-  group: pages
-  cancel-in-progress: ${{ github.event_name == 'push' }}
+  group: ${{ github.event_name == 'push' && format('site-push-{0}', github.run_id) || 'pages' }}
+  cancel-in-progress: ${{ github.event_name != 'push' && inputs.immediat == true }}
 
 jobs:
+  portee:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Scope of the push (data only, or the full suite)
+        id: portee_push
+        env:
+          AVANT: ${{ github.event.before }}
+          APRES: ${{ github.sha }}
+        run: |
+          # ruche-0133: main's tool and dependencies before the push (never the pushed ones) read the range; no « before »,
+          # an error or any output but « data|full <commit> »: full, on the pushed commit. Same script in site.yml, validation.yml.
+          mkdir -p "$RUNNER_TEMP/outil-avant"
+          sortie=$([[ "$AVANT" =~ ^[0-9a-f]{40}$ ]] && git show "$AVANT:outils/bee.py" > "$RUNNER_TEMP/outil-avant/bee.py" &&
+                   git show "$AVANT:outils/requirements.txt" > "$RUNNER_TEMP/outil-avant/requirements.txt" &&
+                   pip install -q -r "$RUNNER_TEMP/outil-avant/requirements.txt" >&2 &&
+                   python3 "$RUNNER_TEMP/outil-avant/bee.py" --registre . push-scope --avant "$AVANT" --apres "$APRES") || sortie=
+          commit=${sortie#* }
+          if [[ "$sortie" =~ ^(data|full)\ [0-9a-f]{40}$ ]]; then portee=${sortie%% *}; else portee=full commit=$APRES; fi
+          echo "portee=$portee" >> "$GITHUB_OUTPUT"
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+          echo "Scope: $portee $commit"
+      - name: API budget, start (ruche-0121; by main's tool before the push, so nothing pushed runs with this token)
+        env: {GITHUB_TOKEN: "${{ github.token }}"}
+        run: python3 "$RUNNER_TEMP/outil-avant/bee.py" api-budget start --dossier "$RUNNER_TEMP/api-budget" --jeton GITHUB_TOKEN || true
+      - name: Dispatch the build (one call)
+        env:
+          PORTEE: ${{ steps.portee_push.outputs.portee }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "$PORTEE" = data ]; then immediat=false; else immediat=true; fi
+          timeout 60 gh api -X POST "repos/$GITHUB_REPOSITORY/actions/workflows/site.yml/dispatches" -f ref=main -f "inputs[immediat]=$immediat"
+      - name: API budget, end (ruche-0121)
+        if: always()
+        env: {GITHUB_TOKEN: "${{ github.token }}"}
+        run: python3 "$RUNNER_TEMP/outil-avant/bee.py" api-budget end --dossier "$RUNNER_TEMP/api-budget" --jeton GITHUB_TOKEN || true
   construire:
+    if: github.event_name != 'push'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -59,7 +114,7 @@ jobs:
           ($a.core.reset == $b.core.reset) as $m | "::notice title=API budget::workflow=Site token=GITHUB_TOKEN rest=\($b.core.used
           - if $m then $a.core.used else 0 end) window=\(if $m then "same" else "renewed" end)"' || true
   pause:
-    if: github.event_name != 'push'
+    if: github.event_name != 'push' && inputs.immediat != true
     needs: deployer
     runs-on: ubuntu-24.04
     permissions: {}

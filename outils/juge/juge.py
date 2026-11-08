@@ -30,11 +30,13 @@ Usage :
   --source-a / --source-b : dépôts de la référence (A, la base) et de la candidate (B, la PR)
 Sortie : rapport JSON au format d'ab.py (mesures, metriques, instructions) plus une section « juge ».
 Code de sortie : 0 si toutes les sorties de B sont justes, 1 si le juge refuse B, 2 si l'environnement
-ne convient pas (Docker absent, base qui ne compile pas, greffon invalide, juge mal monté).
+ne convient pas (Docker absent, base qui ne compile pas, greffon invalide, juge mal monté), une panne de la machine
+(Docker, son runtime, l'image) comprise. With --json, juge.json says it in every case (juge.code, juge.issue: ISSUES).
 """
 
 import argparse
 import collections
+import contextlib
 import glob
 import hashlib
 import importlib.util
@@ -58,10 +60,12 @@ import analyse  # noqa: E402
 import conteneur  # noqa: E402
 import entrees as module_entrees  # noqa: E402
 import stats  # noqa: E402
-from lecture import Erreur, Refus, Sorties, exiger, figer, journal, propre  # noqa: E402,F401
+from lecture import Erreur, Panne, Refus, Sorties, exiger, figer, journal, propre  # noqa: E402,F401
 
 VERSION_COMMUNE = 3   # étiquette juge-v3 du registre
 VERSION_JUGE = 3      # numérotation de verdict.json : 2 = juge de minizBee (miniz-0031), 3 = juge commun (its tag in « commun »)
+ISSUES = {0: "juste", 1: "refus", 2: "erreur_environnement"}  # juge.json's juge.issue for each exit code (ruche-0136)
+ECHEC = {}  # what juge.json says when the judge stops (code 1 or 2): its path and the judge's identity, set by main
 CHEMIN_GREFFON = os.path.join("bee", "juge", "projet.py")
 ATTRIBUTS_REQUIS = ("NOM", "SOURCES", "SOURCES_REQUISES", "OUTILLAGE", "EN_TETES_BASE", "CONSTRUIRE",
                     "PREFIXES", "COTES", "SCENARIOS", "INSTRUCTIONS", "METRIQUES")
@@ -467,6 +471,8 @@ def main(argv=None):
     # Defence in depth: the plugin, loaded later in this process, does not find GH_TOKEN in os.environ (the value
     # stays in /proc/<pid>/environ: juge.yml gives the token to the --historique-seulement call alone).
     jeton = os.environ.pop("GH_TOKEN", None)
+    ECHEC.update(json=args.json, juge={"version": VERSION_JUGE, "commun": f"juge-v{VERSION_COMMUNE}", "source": args.source_juge,
+                                       "base": args.base, "tete": args.tete})
     if args.historique_seulement:
         print(" ".join(recuperer_historique(os.path.abspath(args.outillage), args.historique, jeton)))
         return 0
@@ -664,7 +670,10 @@ def main(argv=None):
             "base": args.base, "tete": args.tete,
             "projet": projet.NOM,
             "greffon": empreinte_greffon,
+            "code": 0, "issue": ISSUES[0],
             "graine": graine.hex(),
+            # A seed given on the command line is a local reproduction, never a judgement: rapport.py --verifier refuses it.
+            "origine_des_graines": {"graine": "donnee" if args.graine else "tiree", "graine_ordre": "donnee" if args.graine_ordre else "tiree"},
             "image": image,
             "image_id": docker.image,
             "constructions_suspectes_omises": omises, "constructions_suspectes_par_type": par_type,
@@ -688,24 +697,47 @@ def main(argv=None):
             shutil.rmtree(travail, ignore_errors=True)
 
     stats.afficher_tableau(rapport)
-    texte = json.dumps(rapport, ensure_ascii=False, indent=2)
-    if args.json:
-        os.makedirs(os.path.dirname(os.path.abspath(args.json)), exist_ok=True)
-        with open(args.json, "w", encoding="utf-8") as f:
-            f.write(texte + "\n")
+    texte = ecrire_rapport(args.json, rapport)
     print(texte)
     return 0
+
+
+def ecrire_rapport(chemin, rapport):
+    """juge.json, whole or not at all (a temporary file renamed onto it); its text, every lone surrogate replaced."""
+    texte = re.sub("[\ud800-\udfff]", "\ufffd", json.dumps(rapport, ensure_ascii=False, indent=2))
+    if chemin:
+        dossier = os.path.dirname(os.path.abspath(chemin))
+        os.makedirs(dossier, exist_ok=True)
+        fd, temporaire = tempfile.mkstemp(dir=dossier, prefix=".juge-")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(texte + "\n")
+            os.replace(temporaire, chemin)
+        except BaseException:
+            with contextlib.suppress(OSError):
+                os.unlink(temporaire)
+            raise
+    return texte
+
+
+def arreter(code, message, panne=False):
+    """The judge stops (1 refusal, 2 error): the message on standard error and, with --json, in juge.json (ruche-0136)."""
+    print(message, file=sys.stderr)
+    try:
+        ecrire_rapport(ECHEC.get("json"), {"juge": dict(ECHEC.get("juge", {}), code=code, issue=ISSUES[code], panne_machine=panne,
+                                                        motif=message)})
+    except (OSError, ValueError):  # no report, never a stale or partial one: rapport.py --code keeps the exit code
+        with contextlib.suppress(OSError, TypeError):
+            os.unlink(ECHEC.get("json"))
+    return code
 
 
 if __name__ == "__main__":
     try:
         sys.exit(main())
     except Refus as e:
-        print(f"juge : REFUS : {propre(str(e), 3000)}", file=sys.stderr)
-        sys.exit(1)
+        sys.exit(arreter(1, f"juge : REFUS : {propre(str(e), 3000)}"))
     except Erreur as e:
-        print(f"juge : erreur : {propre(str(e), 3000)}", file=sys.stderr)
-        sys.exit(2)
+        sys.exit(arreter(2, f"juge : erreur : {propre(str(e), 3000)}", isinstance(e, Panne)))
     except Exception:  # noqa: BLE001 — défaut du juge ou du greffon : jamais un succès, jamais une trace brute
-        print("juge : erreur interne (juge ou greffon) : " + propre(traceback.format_exc(), 3000), file=sys.stderr)
-        sys.exit(2)
+        sys.exit(arreter(2, "juge : erreur interne (juge ou greffon) : " + propre(traceback.format_exc(), 3000)))

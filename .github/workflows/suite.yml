@@ -6,10 +6,6 @@ run-name: Full suite on ${{ inputs.commit || github.sha }}
 
 on:
   workflow_call:
-    inputs:
-      commit:  # never passed by validation.yml: the caller's own commit is checked out, as before ruche-0132
-        required: false
-        type: string
   workflow_dispatch:
     inputs:
       commit:

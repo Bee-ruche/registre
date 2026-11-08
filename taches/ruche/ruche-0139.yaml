@@ -26,7 +26,8 @@ hors_perimetre:
 - COMMANDMENTS.md
 - redaction of arguments (already the council's gesture, R12)
 noeud: projets/ruche/ruche
-statut: ouverte
+statut: integree
+contribution: ruche-0139-c1
 cree_par: conseil
 cree_le: '2026-11-02'
 notes:

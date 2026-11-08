@@ -31,9 +31,7 @@ hors_perimetre:
 - COMMANDMENTS.md
 - translating bee's frame (ruche-0069)
 noeud: projets/ruche/ruche
-statut: reservee
-reservation:
-  utilisateur: "bidji29"
-  depuis: "2026-11-06T20:44:18Z"
+statut: integree
+contribution: ruche-0088-c1
 cree_par: conseil
 cree_le: '2026-11-01'
