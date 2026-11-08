@@ -47,20 +47,20 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           journal() { sed -e 's/##\[/# #[/g' -e 's/^/  | /'; }  # ruche-0025 : ce que bee imprime, jamais en tête de ligne du journal
-          python3 outils/bee.py en-attente \
-            | python3 -c 'import json, sys; [print(c["id"], c["pr"], c.get("sha_verdict") or "-", c.get("ci_verdict") or "-", c.get("auteur") or "-", c.get("sha_attente") or "-", sep="\t") for c in json.load(sys.stdin)]' \
+          # ruche-0122: every PR is read in bulk (bee en-attente --pr-states, one GraphQL query per 50 PRs), as gh pr view reads one; a
+          # PR whose answer is unreadable, or whose author is not a user, is left out of the pass; the person its author acts for is
+          # bee acts-for's (ruche-0089), compte_pr the author's account number.
+          python3 outils/bee.py en-attente --pr-states \
+            | python3 -c 'import json, sys; [print(c["id"], c["pr"], c.get("sha_verdict") or "-", c.get("ci_verdict") or "-", c.get("auteur") or "-", c.get("sha_attente") or "-", c["pr_head"], c["pr_author"], c["pr_author_id"], c["pr_person"], sep="\t") for c in json.load(sys.stdin) if c.get("pr_head")]' \
             > a_traiter.tsv
-          while IFS=$'\t' read -r id pr sha_connu ci_connue auteur sha_attente; do
+          while IFS=$'\t' read -r id pr sha_connu ci_connue auteur sha_attente sha auteur_pr compte_pr personne; do
             depot=$(printf '%s' "$pr" | sed -E 's#^https://github\.com/([A-Za-z0-9-]+/[A-Za-z0-9_.-]+)/pull/[0-9]+$#\1#')
             # Contribution de la ruche (PR sur le registre lui-même) : pas de CI de fork ni de verdict à collecter ; elle
             # est relue et fusionnée par le conseil. Ne jamais arrêter la collecte des autres pour elle.
             [ "$depot" = "$GITHUB_REPOSITORY" ] && continue
-            infos=$(gh pr view "$pr" --json headRefOid,author --jq '"\(.headRefOid) \(.author.login)"') || continue
-            read -r sha auteur_pr <<< "$infos"
             # Le champ pr d'une contribution est déclaré par son auteur : la PR doit être la sienne (le pseudo d'un membre
             # est son login GitHub). Sinon, aucun verdict : on ne juge pas le travail d'un autre sous son nom.
-            # ruche-0089 : une PR ouverte par son compte d'agent déclaré compte comme la sienne (bee acts-for lit main).
-            personne=$(python3 outils/bee.py acts-for -- "$auteur_pr" < /dev/null) || personne=""
+            # ruche-0089 : une PR ouverte par son compte d'agent déclaré compte comme la sienne (personne : bee acts-for, sur main).
             if [ "${personne,,}" != "${auteur,,}" ]; then
               echo "::notice::$id : la PR $pr a été ouverte par $auteur_pr, pas par $auteur ; aucun verdict n'est enregistré."; continue
             fi
@@ -147,3 +147,12 @@ jobs:
         if: always()
         env: {GITHUB_TOKEN: "${{ github.token }}"}
         run: python3 outils/bee.py api-budget end --dossier "$RUNNER_TEMP/api-budget" --jeton GITHUB_TOKEN
+  pause:
+    # ruche-0122: holds the group a few minutes after each pass but a manual one: merges start at most one pass every few minutes,
+    # and the newest pending run replaces an older one, so the last trigger is always served.
+    if: always() && github.event_name != 'workflow_dispatch'
+    needs: verdicts
+    runs-on: ubuntu-24.04
+    permissions: {}
+    steps:
+      - run: sleep 180

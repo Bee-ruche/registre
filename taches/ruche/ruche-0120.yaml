@@ -3,7 +3,7 @@ projet: ruche
 categorie: ruche
 type: test
 poste: gouvernance
-taille: M
+taille: L
 titre: One fusion pass merges every validated data PR, in order, each bound to its head
 contexte: 'Write path at scale, step 1, task E1 (docs/architecture.md, section 4, step 1; ruche-0097, decided by the
   council on 2 Nov 2026). Builds on PR #141''s fix of fusion-auto. One fusion run lists the open data PRs (one GraphQL

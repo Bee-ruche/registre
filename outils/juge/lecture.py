@@ -19,6 +19,10 @@ class Erreur(Exception):
     """L'environnement ne convient pas (Docker absent, base qui ne compile pas, juge mal monté) : code 2."""
 
 
+class Panne(Erreur):
+    """A failure of the machine that judges (Docker, its runtime, an image): an environment error, never a refusal (ruche-0136)."""
+
+
 class Refus(Exception):
     """Le juge refuse la variante B : code 1."""
 
@@ -30,7 +34,7 @@ def journal(message):
 def propre(octets, maximum=1500):
     """Texte venu du conteneur, affichable sans risque : tronqué, caractères de contrôle retirés."""
     texte = octets.decode("utf-8", "replace") if isinstance(octets, bytes) else str(octets)
-    texte = re.sub(r"[^\x20-\x7e\n -￿]", "?", texte[-maximum:])
+    texte = re.sub("[^\x20-\x7e\n\xa0-\ud7ff\ue000-\uffff]", "?", texte[-maximum:])  # nor a lone surrogate
     return texte.replace("::", ": :")  # pas de commande de workflow GitHub
 
 
