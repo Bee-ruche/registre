@@ -22400,10 +22400,6 @@ class TestEnglishNamesStep1b(unittest.TestCase):
         for cas, (avant, apres, message) in refus.items():
             with self.subTest(cas):
                 self.assertTrue(any(message in p for p in carte.same_python(avant, apres, collections.Counter())), carte.same_python(avant, apres, collections.Counter()))
-        # a role-dependent token: either English name passes P1, and the renamer leaves it to the hand-made part
-        for apres in ('x = "issue"\n', 'x = "outcome"\n'):
-            self.assertEqual(carte.same_python('x = "issue"\n', apres, collections.Counter()), [])
-        self.assertEqual(carte.rename_python('x = "issue"\n')[0], 'x = "issue"\n')
         # on the switch: a literal changed outside the map, an identifier renamed otherwise, a number changed
         tete = self.variante(lambda f: [self.remplacer("tools/bee.py", a, b)(f) for a, b in (
             ('p.add_argument("--status", default="open",', 'p.add_argument("--status", default="opened",'),
@@ -22412,6 +22408,70 @@ class TestEnglishNamesStep1b(unittest.TestCase):
         for message in ("the string « ouverte » became « opened », not through the map", "the identifier construire_analyseur became make_parser, "
                         "the map says build_parser", "64 became 65, the map says 64", "P3 and P1b (b) not run: P1 does not hold for tools/bee.py"):
             self.assertTrue(any(p.startswith("tools/bee.py: ") and message in p or p.endswith(message) for p in problemes), (message, problemes))
+
+    def test_hand_tokens_take_the_role_their_table_says_and_p1_refuses_any_other(self):
+        """Review of 223391e, finding 1: a role-dependent token was accepted in either English form at every literal."""
+        carte, chemin = self.carte, "outils/bee.py"
+        avant = ('def verifier_engagements(a):\n    return a.get("contribution"), a.get("issue")\n\n\n'
+                 'def verifier_manifeste(reg):\n    return reg.schema("contribution")\n\n\n'
+                 'def probleme_demande(d):\n    return d["canal"] in ("issue", "discussion")\n')
+        apres = ('def check_engagements(a):\n    return a.get("contribution"), a.get("outcome")\n\n\n'
+                 'def check_manifest(reg):\n    return reg.schema("manifest")\n\n\n'
+                 'def request_problem(d):\n    return d["channel"] in ("issue", "discussion")\n')
+        self.assertEqual(carte.rename_python(avant, chemin)[0], apres)
+        self.assertEqual((carte.same_python(avant, apres, collections.Counter(), chemin), carte.residue(chemin, apres)), ([], []))
+        for a, b, message in (('a.get("contribution"), a.get("outcome")', 'a.get("manifest"), a.get("outcome")', "« contribution » became « manifest »"),
+                              ('reg.schema("manifest")', 'reg.schema("contribution")', None), ('in ("issue", "discussion")', 'in ("outcome", "discussion")',
+                                                                                              "« issue » became « outcome »")):
+            with self.subTest(b):
+                faux = apres.replace(a, b)
+                problemes = carte.same_python(avant, faux, collections.Counter(), chemin) or carte.residue(chemin, faux)
+                self.assertTrue(problemes and (message is None or message in problemes[0]), problemes)
+        self.assertIn("token issue: two English names", " ".join(self.carte_changee(lambda m: m["hand"]["issue"].pop("default"))[1].lint({})))
+        # on the switch: a key and a schema the translated data no longer has, read by the new tool
+        tete = self.variante(lambda f: [self.remplacer("tools/bee.py", a, b)(f) for a, b in (
+            ('new.get("outcome") == "no_follow_up"', 'new.get("issue") == "no_follow_up"'), ('per_schema("report", path, s)', 'per_schema("signalement", path, s)'))])
+        problemes = rename_code.check(self.depot, self.base, tete)[0]
+        for message in ("reads the key « issue », which the translated tree no longer has", "reads the schema « signalement », which the translated "
+                        "tree no longer has", "« \"issue\" » is still French (it would become « \"outcome\" »)"):
+            self.assertTrue(any(message in p for p in problemes), (message, problemes))
+
+    def test_names_inside_texts_placeholders_fields_alternations_and_keys(self):
+        """Review of 223391e, finding 2: names inside strings that are not names, which neither P1b (a) nor --names saw."""
+        carte, chemin = self.carte, "outils/bee.py"
+        avant = ('import collections, re\nADRESSE_PR = "Bee ({adresse})"\nEntree = collections.namedtuple("Entree", "cote nom")\n'
+                 'CHEMIN_HISTORIQUE = re.compile(r"^(?:taches|debats)/x")\n\n\ndef f(x, e):\n'
+                 '    return ADRESSE_PR.format(adresse=x), e.nom, f"inputs[exclure]={x}", "%(statut)s" % {"statut": x}\n')
+        apres = ('import collections, re\nPR_ADDRESS = "Bee ({address})"\nInput = collections.namedtuple("Input", "quoted_side name")\n'
+                 'HISTORY_PATH = re.compile(r"^(?:tasks|debates)/x")\n\n\ndef f(x, e):\n'
+                 '    return PR_ADDRESS.format(address=x), e.name, f"inputs[exclude]={x}", "%(status)s" % {"status": x}\n')
+        self.assertEqual(carte.rename_python(avant, chemin)[0], apres)
+        self.assertEqual((carte.same_python(avant, apres, collections.Counter(), chemin), carte.residue(chemin, apres),
+                          carte.attribute_names(ast.parse(apres), None)), ([], [], []))
+        for a, b, message in (('"Bee ({address})"', '"Bee ({adresse})"', "the template's « {adresse} » is given by no keyword of format()"),
+                              ('"quoted_side name"', '"cote nom"', "« cote nom » names no attribute of the new code"),
+                              ('"inputs[exclude]="', '"inputs[exclure]="', "inputs[exclure]="), ("(?:tasks|debates)", "(?:taches|debates)", "taches|debates")):
+            with self.subTest(b):
+                faux = apres.replace(a, b) if a in apres else apres.replace('f"inputs[exclude]={x}"', '"inputs[exclure]=" + x')
+                problemes = carte.residue(chemin, faux) + carte.attribute_names(ast.parse(faux), None)
+                self.assertTrue(any(message in p for p in problemes), problemes)
+        # a sentence's final period never makes a word a name; a compound word is one
+        self.assertEqual(carte.text("voir le statut. Puis notes[]/texte et _max_par_24h)"), "voir le statut. Puis notes[]/text et _max_per_24h)")
+
+    def test_command_line_and_environment_names_are_in_names_yaml_and_the_code_is_utf8(self):
+        """Review of 223391e, findings 3 and 4."""
+        nm = self.names.m
+        self.assertEqual((nm["cli"]["commands"]["passe-fusion"], nm["cli"]["options"]["--acceptees"], nm["env"]["BEE_MAINTENANT"]),
+                         ("merge-pass", "--accepted", "BEE_NOW"))
+        for jeton in ("--exclure", "BEE_REGISTRE"):
+            self.assertIn(f"token {jeton}: an option or environment variable", " ".join(self.carte_changee(lambda m: m["tokens"].update({jeton: "x"}))[1].lint({})))
+        for entete in ("\ufeff", "#!/usr/bin/env python3\n# -*- coding: latin-1 -*-\n"):
+            with self.subTest(repr(entete)):
+                tete = self.variante(lambda f: f.__setitem__("tools/site_bee.py", entete.encode() + f["tools/site_bee.py"].split(b"\n", 1)[1]))
+                self.assertTrue(any(p.startswith("tools/site_bee.py: Problem: a byte order mark or a coding declaration") for p in
+                                    rename_code.check(self.depot, self.base, tete)[0]))
+        with mock.patch.object(rename_code, "parser_tree", side_effect=ValueError("no parser")):
+            self.assertIn("P3 and P1b (b) not run: tools/bee.py does not load: ValueError: no parser", rename_code.check(self.depot, self.base, self.tete)[0])
 
     def test_the_honest_switch_holds_but_for_the_pending_test_files(self):
         problemes, nombres = self.verdict

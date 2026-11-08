@@ -45,13 +45,13 @@ english: [
   comments, commit, commits, committer, common, comparators, compare, compared, compile, compiler, complaisance,
   complete, completed, compose, composer, comprehension, compress, compressed, compression, compute, computed,
   conclusion, concurrent, cond, condition, conditions, conf, config, configuration, confirm, confirmation, confirmed,
-  conflict, conflicts, const, constant, constants, construct, constructor, constructs, contact, contacted, container,
-  contains, content, contents, contest, contested, context, contextlib, contextmanager, continuation, continuations,
-  continues, contradicts, contribution, contributions, control, coordination, copied, copy, copyfile, copytree, core,
-  corpus, correct, cos, council, councils, count, counted, counter, counts, cover, coverage, covered, covering,
-  covers, cp, cpu, crc, creat, create, created, creating, creation, creations, credit, criteria, criterion, cs,
-  current, cursor, cut, cuts, cv, cwd, cx, cy, daemon, data, date, dated, dates, datetime, datum, david, day, days,
-  deadline, debate, debates, decide, decided, decider, decides, decision, decisions, declaration, declarations,
+  conflict, conflicts, const, constant, constants, construct, constructor, constructs, consts, contact, contacted,
+  container, contains, content, contents, contest, contested, context, contextlib, contextmanager, continuation,
+  continuations, continues, contradicts, contribution, contributions, control, coordination, copied, copy, copyfile,
+  copytree, core, corpus, correct, cos, council, councils, count, counted, counter, counts, cover, coverage, covered,
+  covering, covers, cp, cpu, crc, creat, create, created, creating, creation, creations, credit, criteria, criterion,
+  cs, current, cursor, cut, cuts, cv, cwd, cx, cy, daemon, data, date, dated, dates, datetime, datum, david, day,
+  days, deadline, debate, debates, decide, decided, decider, decides, decision, decisions, declaration, declarations,
   declared, decode, decoded, decoder, decompress, deep, def, default, defaultdict, defaults, defect, defined,
   definition, defs, degradation, degradations, delay, denominator, dep, departure, dependencies, depends, depth,
   description, dest, destination, dests, detail, details, detector, detectors, determiners, dev, devnull, devolution,
@@ -89,92 +89,92 @@ english: [
   integrated, integration, integrations, interleave, interleaved, internal, interrupt, interval, inv, invalid,
   invariant, inventory, inverse, invisible, invisibles, invitation, invitations, invite, io, ip, is, isabs, isalnum,
   isalpha, isascii, isdigit, isdir, isfile, isfinite, isidentifier, isinstance, iskeyword, islink, islnk, ismount,
-  iso, isoformat, isolated, isolation, isreg, issubclass, issue, issues, isupper, it, item, items, iter, iterdir,
-  itertools, its, itself, job, jobs, join, joined, joinpath, jp, jq, json, jsonschema, judge, judged, judges, judging,
-  jumps, justified, justifies, kb, keep, keepends, keeper, keeps, kept, key, keybase, keyboard, keys, keyword,
-  keywords, kids, kill, kind, kinds, kn, known, ko, kr, kv, kwargs, label, labels, lag, lambda, language, languages,
-  large, last, launch, lead, leads, leaf, least, leaves, left, legend, len, length, lengths, less, level, levels,
-  libc, libyaml, lift, lifted, lifts, light, like, limit, limits, line, linear, lineno, lines, link, linkable, linked,
-  linkedin, links, lint, list, listdir, listed, listing, listings, lists, literal, literals, live, ljust, load,
-  loader, loading, loads, local, locale, locals, location, log, logged, login, logins, long, longer, longest, look,
-  lookalikes, lookup, lot, lots, lower, lru, ls, lstat, lstrip, machine, made, main, major, majority, make, makedirs,
-  maketrans, malformed, mallory, manifest, many, map, mapped, mapping, maps, margin, mark, markdown, marked, marker,
-  markers, master, mastodon, match, matcher, matches, math, matrix, matter, max, maximal, maximum, maxsize, maxsplit,
-  md, me, means, measured, measurement, measurements, measures, median, medium, member, members, memory, mention,
-  mentions, merge, merged, merges, merging, message, messages, messenger, meta, metavar, method, methods, metric,
-  metrics, microsecond, middle, mimics, min, minimal, minimum, miniz, minor, minutes, missing, misspelt, mistake,
-  mixed, mkdir, mkdtemp, mkfifo, mkstemp, mn, mnemonics, mock, mode, model, modes, modified, modify, module, modules,
-  moment, monday, monotonic, month, months, most, mount, mounted, mounts, moves, ms, msg, mtime, multiple, mutation,
-  mutually, mx, my, name, named, namedtuple, names, namesake, namesakes, namespace, nan, nargs, nature, natures, nav,
-  nb, need, needed, needs, neighbouring, net, netlify, network, neutral, neutralise, neutralised, never, new, newest,
-  newline, next, nfkc, nfkd, ninth, nit, nl, nm, nnnn, "no", node, nodes, nofollow, noise, non, nonblock, none,
-  nonlocal, normalize, normpath, not, note, notes, nothing, notice, now, nul, "null", number, numbered, numbers,
+  iso, isoformat, isolated, isolation, isreg, isspace, issubclass, issue, issues, isupper, it, item, items, iter,
+  iterdir, itertools, its, itself, job, jobs, join, joined, joinpath, jp, jq, json, jsonschema, judge, judged, judges,
+  judging, jumps, justified, justifies, kb, keep, keepends, keeper, keeps, kept, key, keybase, keyboard, keys,
+  keyword, keywords, kids, kill, kind, kinds, kn, known, ko, kr, kv, kwargs, label, labels, lag, lambda, language,
+  languages, large, last, launch, lead, leads, leaf, least, leaves, left, legend, len, length, lengths, less, level,
+  levels, libc, libyaml, lift, lifted, lifts, light, like, limit, limits, line, linear, lineno, lines, link, linkable,
+  linked, linkedin, links, lint, list, listdir, listed, listing, listings, lists, literal, literals, live, ljust,
+  load, loader, loading, loads, local, locale, locals, location, log, logged, login, logins, long, longer, longest,
+  look, lookalikes, lookup, lot, lots, lower, lru, ls, lstat, lstrip, machine, made, main, major, majority, make,
+  makedirs, maketrans, malformed, mallory, manifest, many, map, mapped, mapping, maps, margin, mark, markdown, marked,
+  marker, markers, master, mastodon, match, matcher, matches, math, matrix, matter, max, maximal, maximum, maxsize,
+  maxsplit, md, me, means, measured, measurement, measurements, measures, median, medium, member, members, memory,
+  mention, mentions, merge, merged, merges, merging, message, messages, messenger, meta, metavar, method, methods,
+  metric, metrics, microsecond, middle, mimics, min, minimal, minimum, miniz, minor, minutes, missing, misspelt,
+  mistake, mixed, mkdir, mkdtemp, mkfifo, mkstemp, mn, mnemonics, mock, mode, model, modes, modified, modify, module,
+  modules, moment, monday, monotonic, month, months, most, mount, mounted, mounts, moves, ms, msg, mtime, multiple,
+  mutation, mutually, mx, my, name, named, namedtuple, names, namesake, namesakes, namespace, nan, nargs, nature,
+  natures, nav, nb, need, needed, needs, neighbouring, net, netlify, network, neutral, neutralise, neutralised, never,
+  new, newest, newline, next, nfkc, nfkd, ninth, nit, nl, nm, nnnn, "no", node, nodes, nofollow, noise, non, nonblock,
+  none, nonlocal, normalize, normpath, not, note, notes, nothing, notice, now, nul, "null", number, numbered, numbers,
   numerator, numeric, numstat, nz, obj, objdump, object, objects, oc, occurrences, oci, oct, octocat, of, "off",
   office, offset, oid, ok, old, oldest, omitted, "on", once, one, onerror, ones, oneself, only, onto, op, opaque,
-  opcodes, open, opened, opener, opening, openings, opens, operands, opinion, opinions, option, optional, options, or,
-  ord, order, ordered, ordinary, org, organization, orgs, origin, original, originals, origins, orphans, os, other,
-  others, otherwise, out, outcome, outcomes, outgoing, outlasts, output, outputs, outside, overflow, oversight, own,
-  owner, pa, pack, package, packages, page, pages, pair, pairs, paragraph, paragraphs, parallel, parallels, parent,
-  parents, parse, parser, parsers, part, partial, participants, partition, parts, party, pass, passage, passages,
-  past, patch, patched, path, pathlib, paths, pathsep, pathspecs, pattern, patterns, pause, pct, peek, pen, pending,
-  pens, per, percent, perf, permissions, permutations, person, personal, persons, perturb, perturbed, pf, ph, phase,
-  phone, pick, pid, pids, piece, pieces, pipe, pk, place, placements, places, plain, plan, plans, platform, platforms,
-  plugin, pn, point, pointer, points, poll, pool, pop, popen, porcelain, position, positions, positive, posix, post,
-  postal, pr, preamble, prefix, prefixes, prepare, prepared, present, prev, previous, principal, print, printed,
-  prints, private, privilege, privileged, problem, problems, process, processed, processes, processor, product,
-  profile, profiles, prog, program, progress, project, projects, promotion, proof, prop, properties, proposal,
-  proposals, propose, proposed, proposer, proposing, prose, protected, protection, providers, proxies, proxy, prs,
-  pseudonyms, psl, publish, published, publishes, publishing, pull, pulls, punctuation, pure, purpose, push, pushed,
-  put, pv, py, python, qualname, query, question, questions, queue, quiet, quorum, quote, quoted, quotes, quoting, ra,
-  race, races, racing, radians, radius, raises, ran, randbytes, randint, random, randomness, randrange, range, rank,
-  ranking, ranks, rapporteur, rate, ratio, raw, rdonly, rdwr, re, reach, read, readable, reader, reading, readings,
-  readline, readme, reads, real, reason, reasons, rebase, rec, recency, recent, record, recorded, records, recursion,
-  red, redact, redactable, redacted, redaction, redactions, redate, redirect, reduce, reduced, ref, reference,
-  referral, referrals, refs, refusal, refuse, refused, reg, regex, regexes, register, registered, registrable,
-  registration, registry, rehearsal, rel, relative, release, released, relpath, remaining, remedy, reminder, remote,
-  removal, removals, remove, removed, removeprefix, removesuffix, rename, renamed, renames, render, rendered, renewed,
-  repetitions, replace, replaced, replay, replies, repo, report, reported, reports, repos, repository, repr,
-  represent, representer, reproduced, reproduces, reproduction, request, requested, requests, require, required,
-  requires, rerun, res, reservation, reservations, reserved, reset, residue, resolve, resolvers, resources, responses,
-  rest, restore, result, resultclass, results, retake, retakes, retries, return, returncode, rev, reverse, reversed,
-  review, reviewer, reviewers, reviews, revised, revision, rfind, rglob, rindex, rival, rivals, rle, rmdir, rmtree,
-  rn, rng, robot, robots, role, roles, room, root, roots, round, rounds, rows, rpartition, rsplit, rstrip, ruche,
-  rule, rules, run, runner, runners, running, runs, safe, said, same, sample, saved, says, sb, scalar, scan, scanned,
-  scanners, scans, scenario, scenarios, sch, schema, schemas, scope, scopes, score, scores, script, search, sec,
-  second, seconds, secrets, section, sections, security, seed, seeded, seen, seg, segment, segments, self, sending,
-  sendings, sensitive, sent, sentence, sentences, sep, separated, separator, seps, sequence, sequences, service,
-  session, set, setattr, setdefault, setitem, setting, settings, severity, sg, sh, sha, shallow, shape, shapes, shard,
-  shards, shared, shifts, shlex, short, shortened, show, showable, shown, shstrndx, shuffle, shuffled, shutil, side,
-  sided, sides, sign, signal, signs, silence, silent, silently, sim, simple, sin, since, single, site, sites, six,
-  size, sized, sizes, skip, skipped, skype, slack, sleep, slice, slow, small, soft, someone, soon, sort, sorted,
-  source, sourceforge, sourcehut, sources, space, span, spec, specs, spelling, spellings, spending, split, splitext,
-  splitlines, spy, sqrt, sr, srcset, srht, st, stack, stale, stands, starred, start, started, starts, startswith,
-  stat, state, states, staticmethod, statistics, stats, status, statuses, statvfs, stay, stays, stderr, stdin, stdout,
-  stem, step, steps, still, stop, stopped, stopwatch, store, str, stream, streams, streets, strengthen, strerror,
-  strftime, strict, string, strings, strip, struct, structure, style, sub, subfolders, subject, submission, submit,
-  submitted, subparsers, subprocess, subscript, substack, succeeded, succeeds, success, successes, successful, sudo,
-  suffices, sufficient, suffix, suffixes, suite, suites, sum, summary, super, suppress, suppression, sure,
-  surrogateescape, surveillance, survey, surveys, suspect, suspects, suspicious, svg, swarm, sweep, switch, sym,
-  symbol, symbols, symlink, symlinks, syntax, synthesis, synthesize, sys, system, table, tag, tail, take, taken,
-  takes, taking, tallies, tally, tar, tarfile, target, targets, task, tasks, tbody, tear, technique, techniques,
-  telegram, temp, tempfile, template, temporary, test, tests, text, textconv, texts, than, that, the, their, theirs,
-  third, this, thousand, thousands, thread, threading, threads, three, threema, threshold, tid, tids, tied, tiktok,
-  time, timed, timedelta, timeline, timeout, times, timestamp, timestamping, timezone, tip, title, tld, tmp, tmpfs,
-  to, today, todo, together, tok, token, tokenize, tokens, tolerance, too, took, tool, tooling, tools, top, toplevel,
-  total, touch, touched, towards, trace, traceback, traced, tracemalloc, transformation, translate, translated,
-  traverse, treated, tree, trees, "true", trust, tsv, tumblr, tuple, turn, turned, turns, tw, twitter, two, type,
-  typename, types, tzinfo, ua, uk, unchanged, undeclared, undefined, under, unescape, unexpected, unfavorable,
-  unfinished, unfolding, unicode, unicodedata, unidata, uniform, union, unit, units, unittest, unknown, unknowns,
-  unless, unlink, unmapped, unpack, unreadable, unreadables, until, up, update, updated, upkeep, upper, ups, upstream,
-  url, use, used, useful, useless, user, users, uses, usual, utc, utf, util, utime, val, valgrind, valid, validate,
-  validated, validation, validations, validator, vals, value, values, vararg, variable, variant, variants, vars,
-  verbosity, vercel, verdict, verdicts, verification, verify, version, versions, viber, view, views, visit, vn, voice,
-  vote, voter, voters, votes, vouched, vulnerability, wa, wait, waiting, waits, walk, wanted, warmup, warning,
-  warnings, was, web, wechat, week, weekday, weight, weights, well, wf, what, whatever, whatsapp, when, whenever,
-  where, which, who, whole, whose, why, width, widths, window, winning, wins, wiring, with, withdraw, withdrawal,
-  withdrawn, within, without, word, wordpress, words, work, workdir, workflow, workflows, worktree, wrappers,
-  wrapping, wraps, write, writer, writes, writing, written, wronly, www, yaml, year, "yes", yml, youtube, za, zero,
-  zip, zlib, zone
+  opcodes, open, opened, opener, opening, openings, opens, operands, opinion, opinions, ops, option, optional,
+  options, or, ord, order, ordered, ordinary, org, organization, orgs, origin, original, originals, origins, orphans,
+  os, other, others, otherwise, out, outcome, outcomes, outgoing, outlasts, output, outputs, outside, overflow,
+  oversight, own, owner, pa, pack, package, packages, page, pages, pair, pairs, paragraph, paragraphs, parallel,
+  parallels, parent, parents, parse, parser, parsers, part, partial, participants, partition, parts, party, pass,
+  passage, passages, past, patch, patched, path, pathlib, paths, pathsep, pathspecs, pattern, patterns, pause, pct,
+  peek, pen, pending, pens, per, percent, perf, permissions, permutations, person, personal, persons, perturb,
+  perturbed, pf, ph, phase, phone, pick, pid, pids, piece, pieces, pipe, pk, place, placements, places, plain, plan,
+  plans, platform, platforms, plugin, pn, point, pointer, points, poll, pool, pop, popen, porcelain, position,
+  positions, positive, posix, post, postal, pr, preamble, prefix, prefixes, prepare, prepared, present, prev,
+  previous, principal, print, printed, prints, private, privilege, privileged, problem, problems, process, processed,
+  processes, processor, product, profile, profiles, prog, program, progress, project, projects, promotion, proof,
+  prop, properties, proposal, proposals, propose, proposed, proposer, proposing, prose, protected, protection,
+  providers, proxies, proxy, prs, pseudonyms, psl, publish, published, publishes, publishing, pull, pulls,
+  punctuation, pure, purpose, push, pushed, put, pv, py, python, qualname, query, question, questions, queue, quiet,
+  quorum, quote, quoted, quotes, quoting, ra, race, races, racing, radians, radius, raises, ran, randbytes, randint,
+  random, randomness, randrange, range, rank, ranking, ranks, rapporteur, rate, ratio, raw, rdonly, rdwr, re, reach,
+  read, readable, reader, reading, readings, readline, readme, reads, real, reason, reasons, rebase, rec, recency,
+  recent, record, recorded, records, recursion, red, redact, redactable, redacted, redaction, redactions, redate,
+  redirect, reduce, reduced, ref, reference, referral, referrals, refs, refusal, refuse, refused, reg, regex, regexes,
+  register, registered, registrable, registration, registry, rehearsal, rel, relative, release, released, relpath,
+  remaining, remedy, reminder, remote, removal, removals, remove, removed, removeprefix, removesuffix, rename,
+  renamed, renames, render, rendered, renewed, repetitions, replace, replaced, replay, replies, repo, report,
+  reported, reports, repos, repository, repr, represent, representer, reproduced, reproduces, reproduction, request,
+  requested, requests, require, required, requires, rerun, res, reservation, reservations, reserved, reset, residue,
+  resolve, resolvers, resources, responses, rest, restore, result, resultclass, results, retake, retakes, retired,
+  retries, return, returncode, rev, reverse, reversed, review, reviewer, reviewers, reviews, revised, revision, rfind,
+  rglob, rindex, rival, rivals, rle, rmdir, rmtree, rn, rng, robot, robots, role, roles, room, root, roots, round,
+  rounds, rows, rpartition, rsplit, rstrip, ruche, rule, rules, run, runner, runners, running, runs, safe, said, same,
+  sample, saved, says, sb, scalar, scan, scanned, scanners, scans, scenario, scenarios, sch, schema, schemas, scope,
+  scoped, scopes, score, scores, script, search, sec, second, seconds, secrets, section, sections, security, seed,
+  seeded, seen, seg, segment, segments, self, sending, sendings, sensitive, sent, sentence, sentences, sep, separated,
+  separator, seps, sequence, sequences, service, session, set, setattr, setdefault, setitem, setting, settings,
+  severity, sg, sh, sha, shallow, shape, shapes, shard, shards, shared, shifts, shlex, short, shortened, show,
+  showable, shown, shstrndx, shuffle, shuffled, shutil, side, sided, sides, sign, signal, signs, silence, silent,
+  silently, sim, simple, sin, since, single, site, sites, six, size, sized, sizes, skip, skipped, skype, slack, sleep,
+  slice, slow, small, soft, someone, soon, sort, sorted, source, sourceforge, sourcehut, sources, space, span, spec,
+  specs, spelling, spellings, spending, split, splitext, splitlines, spy, sqrt, sr, srcset, srht, st, stack, stale,
+  stands, starred, start, started, starts, startswith, stat, state, states, staticmethod, statistics, stats, status,
+  statuses, statvfs, stay, stays, stderr, stdin, stdout, stem, stems, step, steps, still, stop, stopped, stopwatch,
+  store, str, stream, streams, streets, strengthen, strerror, strftime, strict, string, strings, strip, struct,
+  structure, style, sub, subfolders, subject, submission, submit, submitted, subparsers, subprocess, subscript,
+  substack, succeeded, succeeds, success, successes, successful, sudo, suffices, sufficient, suffix, suffixes, suite,
+  suites, sum, summary, super, suppress, suppression, sure, surrogateescape, surveillance, survey, surveys, suspect,
+  suspects, suspicious, svg, swarm, sweep, switch, sym, symbol, symbols, symlink, symlinks, syntax, synthesis,
+  synthesize, sys, system, table, tag, tail, take, taken, takes, taking, tallies, tally, tar, tarfile, target,
+  targets, task, tasks, tbody, tear, technique, techniques, telegram, temp, tempfile, template, temporary, test,
+  tests, text, textconv, texts, than, that, the, their, theirs, third, this, thousand, thousands, thread, threading,
+  threads, three, threema, threshold, tid, tids, tied, tiktok, time, timed, timedelta, timeline, timeout, times,
+  timestamp, timestamping, timezone, tip, title, tld, tmp, tmpfs, to, today, todo, together, tok, token, tokenize,
+  tokens, tolerance, too, took, tool, tooling, tools, top, toplevel, total, touch, touched, towards, trace, traceback,
+  traced, tracemalloc, transformation, translate, translated, traverse, treated, tree, trees, "true", trust, tsv,
+  tumblr, tuple, turn, turned, turns, tw, twitter, two, type, typename, types, tzinfo, ua, uk, unchanged, undeclared,
+  undefined, under, unescape, unexpected, unfavorable, unfinished, unfolding, unicode, unicodedata, unidata, uniform,
+  union, unit, units, unittest, unknown, unknowns, unless, unlink, unmapped, unpack, unreadable, unreadables, until,
+  up, update, updated, upkeep, upper, ups, upstream, url, use, used, useful, useless, user, users, uses, usual, utc,
+  utf, util, utime, val, valgrind, valid, validate, validated, validation, validations, validator, vals, value,
+  values, vararg, variable, variant, variants, vars, verbosity, vercel, verdict, verdicts, verification, verify,
+  version, versions, viber, view, views, visit, vn, voice, vote, voter, voters, votes, vouched, vulnerability, wa,
+  wait, waiting, waits, walk, wanted, warmup, warning, warnings, was, web, wechat, week, weekday, weight, weights,
+  well, wf, what, whatever, whatsapp, when, whenever, where, which, who, whole, whose, why, width, widths, window,
+  winning, wins, wiring, with, withdraw, withdrawal, withdrawn, within, without, word, wordpress, words, work,
+  workdir, workflow, workflows, worktree, wrappers, wrapping, wraps, write, writer, writes, writing, written, wronly,
+  www, yaml, year, "yes", yml, youtube, za, zero, zip, zlib, zone
 ]
 identifiers:
   _appliquer_synthese: _apply_synthesis
@@ -398,7 +398,7 @@ identifiers:
   brut: raw
   BUDGET_NOEUD: NODE_BUDGET
   BUDGET_RACINE: ROOT_BUDGET
-  ca: it
+  ca: old_contribution
   cadre_declare: declared_frame
   cadre_donnees: data_frame
   cadre_donnees_tache: task_data_frame
@@ -557,6 +557,7 @@ identifiers:
   cmd_verifier_pr: cmd_check_pr
   cmd_voir: cmd_show
   cmd_voter: cmd_vote
+  cn: new_contribution
   colle: glued
   colonne: column_of
   colonnes: columns
@@ -1880,7 +1881,7 @@ identifiers:
   VERIFICATION: VERIFICATION_CMD
   verifie: checked_one
   verifiees: checked_ones
-  verifier: check
+  verifier: verify
   verifier_agora_registre: check_agora_registry
   verifier_arbre: check_tree
   verifier_comptes: check_accounts
@@ -1894,7 +1895,7 @@ identifiers:
   verifier_notes_ajoutees: check_added_notes
   verifier_pr: check_pr
   verifier_pr_arbre: check_pr_tree
-  verifier_pr_de: check_pr_of
+  verifier_pr_de: check_pr_for
   verifier_registre: check_registry
   verifier_retrait: check_removal
   verifier_tache_proposee: check_proposed_task
@@ -1955,14 +1956,7 @@ attributes:
   source_juge: judge_source
   suivant: next
   travail: workdir
-  verifier: verify
 tokens:
-  passe-fusion: merge-pass
-  --acceptees: --accepted
-  --exclure: --exclude
-  BEE_MAINTENANT: BEE_NOW
-  BEE_REGISTRE: BEE_REGISTRY
-  BEE_PAUSE_FUSION: BEE_MERGE_PAUSE
   fusionnee_le: merged_at
   defauts: defects
   cle_refusee_: refused_key_
@@ -1988,48 +1982,69 @@ tokens:
   rendu: rendered
   element: item
   toutes: all
+  exclure: exclude
+  acceptees: accepted
 hand:
   issue:
     english:
     - issue
     - outcome
+    default: outcome
+    roles:
+      outils/bee.py:probleme_demande: issue
+      outils/bee.py:construire_analyseur: issue
     why: key -> outcome (debates, incidents, reports, outputs); the removal channel value « issue » stays
   signalement:
     english:
     - decide-report
     - report
+    default: report
+    roles:
+      outils/bee.py:construire_analyseur: decide-report
     why: command -> decide-report; gate nature -> report
   consignes:
     english:
     - brief
     - briefs
+    default: briefs
     why: the guarantors' key -> brief; the folder gouvernance/consignes/ -> governance/briefs/
   juge-commun:
     english:
     - common-judge
     - judge-meta-tests
+    default: judge-meta-tests
     why: docs/juge-commun.md -> docs/common-judge.md; .github/workflows/juge-commun.yml -> judge-meta-tests.yml
   archive:
     english:
     - archive
     - archived
+    default: archive
     why: the project status archive -> archived; git archive and tar archives stay
   registre:
     english:
     - registre
     - registry
+    default: registre
+    roles:
+      outils/site_bee.py:generer:registre: registry
+      outils/site_bee.py:generer:registre.json: registry
     why: the folder outils/tests/registre/ -> tools/tests/registry/ and the identifier -> registry; the repository Bee-ruche/registre
       keeps its name
   contribution:
     english:
     - contribution
     - manifest
+    default: contribution
+    roles:
+      outils/bee.py:verifier_manifeste: manifest
+      outils/bee.py:SCHEMAS_TEXTES: manifest
     why: the key and value stay contribution; the schema contribution.schema.json -> manifest.schema.json (it validates
       the forks manifest)
   manifestes:
     english:
     - manifestes
     - manifests
+    default: manifests
     why: 'the forks manifest folder: manifests/, and manifestes/ read until date D (plan, section 3.1, R-s): by hand'
 shared:
 - scope: verifier_comptes
@@ -2083,8 +2098,14 @@ keep:
   - absente
   - toujours
   - jamais
+  - (racine)
+  - Pourquoi cette branche existe
+  - Ce qui compte ici
+  - Ce qu'on peut ignorer ici
+  - Enfants
   why: 'kept on purpose: the old name of an authority file (forever); a CI word the forks may write (forever); a metric
-    id (step 5); a git ref namespace the workflows share; display labels and message words (bees messages, step 3)'
+    id (step 5); a git ref namespace the workflows share; display labels and message words (bees messages, step 3); the
+    French node headings bee reads beside the English ones until the tree is translated (plan, section 5.8)'
 - files: outils/test_bee.py
   scopes:
   - TACHE_PIEGE_0141
@@ -2098,3 +2119,18 @@ keep:
   - traduction_0142
   - TestEnglishNamesStep1b
   why: 'the tests of the migration tooling: their fixtures and expectations are French on purpose (the base before the switch)'
+- files: outils/inventaire_marqueurs.py
+  scopes:
+  - FRANCAIS
+  - PAR_TEXTE
+  - CLASSES
+  why: 'the French markers the inventory detects and classifies: French on purpose (ruche-0055)'
+- files: outils/juge/juge.py
+  tokens:
+  - refs/bee/historique/
+  - :refs/bee/historique/
+  why: 'the git ref namespace the judge writes in fork clones: renamed with the judge track (judge-v4)'
+- files: outils/site_bee.py
+  tokens:
+  - Enfants
+  why: a display heading of the site (bees messages and the site, step 3)

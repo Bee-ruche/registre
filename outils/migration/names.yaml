@@ -11,6 +11,8 @@
 #   retired       French names refused once the switch is merged (the switch fills the guard).
 #   hand_tokens   tokens whose English name depends on their role: renamed by hand (plan, section 12, change 7).
 #   paths         French path -> English path; an entry ending in / maps a folder prefix, the others one file.
+#   env           environment variables bee, its tests and the workflows read (english-names.md, section 5.5; ruche-0142
+#                 added BEE_PAUSE_FUSION, the auto-merge pause).
 #   tree          node ids are paths under tree/: each segment maps through `segments`; children lines are read in the
 #                 sections named in `children`.
 #   families      per file family: files (globs from the registry's root), writer (text: key and value tokens edited in
@@ -177,6 +179,15 @@ paths:
   .github/workflows/integration-auto.yml: .github/workflows/auto-integration.yml
   .github/workflows/juge.yml: .github/workflows/judge.yml
   .github/workflows/juge-commun.yml: .github/workflows/judge-meta-tests.yml
+env:
+  BEE_REGISTRE: BEE_REGISTRY
+  BEE_MAINTENANT: BEE_NOW
+  BEE_SIMU: BEE_SIM
+  BEE_SIMU_ROBOT: BEE_SIM_ROBOT
+  BEE_JUGE_RESEAU: BEE_JUDGE_NETWORK
+  BEE_JUGE_INTEGRATION: BEE_JUDGE_INTEGRATION
+  BEE_FLUX_SEUL: BEE_STREAM_ONLY
+  BEE_PAUSE_FUSION: BEE_MERGE_PAUSE
 tree:
   dir:
   - arbre
@@ -275,8 +286,14 @@ cli:
     publier: publish
     en-attente: pending
     site: site
+    passe-fusion: merge-pass
+    passe-fusion preparer: merge-pass prepare
+    passe-fusion verifier: merge-pass verify
+    passe-fusion fusionner: merge-pass merge
   options:
     --registre: --registry
+    --acceptees: --accepted
+    --exclure: --exclude
     --version: --version
     --a-blanc: --dry-run
     --ab: --ab

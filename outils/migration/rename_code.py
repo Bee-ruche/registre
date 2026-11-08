@@ -19,6 +19,8 @@ sys.path += [str(SELF.parent.parent), str(SELF.parent)]  # last: never in front 
 import bee, rename  # noqa: E402, E401
 
 IDS = ("outils/migration/identifiers.yaml", "tools/migration/identifiers.yaml")
+NAME_SHAPE = r"[\w./*{}<>~#@\[\]-]+"  # a whole literal shaped as a name (a path, a key path, a glob, an address)
+RUN = re.compile(r"((?:[\w\[\]<>@#/-]|\.(?=[\w\[\]<>@#/-]))+)")  # a run of name characters (a sentence's final period aside)
 WORD = re.compile(r"((?<!\\)[\w.-]+)")  # the tokens P1 compares inside a text (never the letter of an escape: \\n)
 LINE = re.compile(r"([ \t]*(?:- )*)([A-Za-z_][\w-]*)(:)((?=[ \t]).*|)")  # a YAML key at a line start, and the rest
 VALUE = re.compile(r"( +)([\"']?)([\w.-]+(?:/[\w.-]+)*)(\2)([ \t]*(?:#.*)?)")  # its one-token value
@@ -38,7 +40,7 @@ class CodeMap:
         self.attrs, pairs = {**self.ids, **m["attributes"]}, collections.defaultdict(set)
         for d in [*(f["keys"] for f in nm["families"].values()), *(f.get("schema_strings") or {} for f in nm["families"].values()),
                   *nm["domains"].values(), *nm["open_domains"].values(), nm["cli"]["commands"], nm["cli"]["options"],
-                  *nm["cli"]["scripts"].values(), nm["tree"]["segments"]]:
+                  *nm["cli"]["scripts"].values(), nm["tree"]["segments"], nm.get("env") or {}]:
             [pairs[str(a)].add(str(b)) for a, b in d.items()]
         for a, b in nm["cli"]["commands"].items():  # a subcommand's own name: « invitation accord-conseil » -> council-approval
             [pairs[a.split(" ")[1]].add(b.split(" ")[1]) for _ in [1] if " " in a]
@@ -54,11 +56,23 @@ class CodeMap:
         self.hand = {t: pairs.get(t, set()) | set(m["hand"].get(t, {}).get("english", ())) for t in {t for t, v in pairs.items() if len(v) > 1} | set(m["hand"])}
         self.named = {t: next(iter(v)) for t, v in pairs.items() if t not in self.hand}
         self.tokens = {**{t: e for t, e in self.ids.items() if t not in pairs and not self.covered(t, False)}, **self.named}  # never an English word
-        self.targets = set(self.tokens.values()) | set(self.attrs.values())
+        self.targets, self.inverse = set(self.tokens.values()) | set(self.attrs.values()), {e: f for f, e in self.ids.items()}
+        self.tokens = self.base_tokens = collections.ChainMap({}, self.tokens)
         self.keep = [(rename.glob_re(k["files"]), set(k.get("scopes") or ()), set(k.get("tokens") or ())) for k in m["keep"]]
+
+    def scoped(self, path, scope, literal=""):
+        """tokens, each hand token resolved by the role table of its file and scope (and literal), else by its default."""
+        scope = self.inverse.get(scope, scope)  # the new tree's scopes are English
+        self.tokens = collections.ChainMap({t: (h.get("roles") or {}).get(f"{path}:{scope}:{literal}", (h.get("roles") or {}).get(
+            f"{path}:{scope}", h.get("default", t))) for t, h in self.m["hand"].items()}, self.base_tokens)
 
     def covered(self, name, mapped=True):
         return mapped and name in self.attrs or all(len(w) < 2 or w in self.english for w in words(name))
+
+    def frozen(self, tree, scopes):
+        """The lines of the top-level scopes named in the keep-list: their strings stay as written."""
+        return {i for n in tree.body if scopes & {y for x in [getattr(n, "name", None), *(t.id for t in getattr(n, "targets", [getattr(n, "target", None)])
+                                                              if isinstance(t, ast.Name))] for y in (x, self.inverse.get(x))} for i in range(n.lineno, n.end_lineno + 1)}
 
     def kept(self, path):
         """In one code file (French path): the top-level scopes whose strings stay as written, and the tokens kept anywhere."""
@@ -70,10 +84,11 @@ class CodeMap:
         the name map as it says (unless a keyword); one English name per identifier in each scope; a pending file: one line."""
         problems = [f"identifier {a} -> {b}: not an identifier, a keyword, or not made of English words" for a, b in [*self.ids.items(),
                     *self.m["attributes"].items()] if not (isinstance(b, str) and b.isidentifier() and not keyword.iskeyword(b) and a != b and self.covered(b, False))]
-        problems += [f"token {t}: two English names {sorted(v)}, not declared in hand" for t, v in self.hand.items() if t not in self.m["hand"]]
+        problems += [f"token {t}: two English names {sorted(v)}, not declared in hand with a default" for t, v in self.hand.items() if "default" not in self.m["hand"].get(t, {})]
+        problems += [f"token {t}: an option or environment variable, its English belongs in names.yaml" for t in self.m["tokens"] if re.match(r"-|BEE_", t)]
         for path, text in sorted(code.items()):
             tree, seen, missing = ast.parse(text), set(), 0
-            for _, f, v in [*idents(tree), *((c, "attr", c.value) for c in identifier_strings(tree) if isinstance(getattr(c, "value", None), str))]:
+            for _, f, v in [*idents(tree), *((c, "attr", w) for c in identifier_strings(tree) for w in re.findall(r"\w+", str(getattr(c, "value", ""))))]:
                 for x in set(v.split(".") if f == "module" else [v]) - seen:
                     seen.add(x)
                     if not self.covered(x):
@@ -113,28 +128,34 @@ class CodeMap:
 
     def whole(self, s):
         """The English of a whole literal shaped as a name: a token, a node id, a path, or names joined by / or a dot."""
-        if s in self.tokens or s in self.hand or not re.fullmatch(r"[\w./*{}<>~-]+", s):
+        if s in self.tokens or s in self.hand or not re.fullmatch(NAME_SHAPE, s):
             return self.tokens.get(s, s)
         seg = self.names.m["tree"]["segments"]
         if "/" in s and s.split("/")[0] in ("racine", "roles", "projets") and all(x in seg for x in s.split("/")):
             return "/".join(seg[x] for x in s.split("/"))
-        return "".join(self.tokens.get(x, x) for x in re.split(r"([/.])", self.names.path(s)))
+        return "".join(self.tokens.get(x, x) for x in re.split(r"([/.#@<>\[\]])", self.names.path(s)))
 
     def text(self, t):
-        """The names in a text: a YAML key at a line start and its one-token value, options, regex group names, paths and node
-        ids (never in an address), commands after « bee », constants, bee.<name>; prose stays (translated after the switch)."""
+        """The names in a text: a YAML key at a line start and its one-token value; every compound word (with _ . / [ ] < > @ #
+        inside, or a hyphen between letters: options, paths, keys, constants); placeholders; a folder group (a|b)/; k=; commands
+        after « bee »; bee.<name>. A plain word stays: prose is translated after the switch."""
         parts = re.split(r"(\n|\\n)", t)
         for i in range(0, len(parts), 2):
             if x := LINE.fullmatch(parts[i]):
                 v = VALUE.fullmatch(x[4])
                 parts[i] = x[1] + self.tokens.get(x[2], x[2]) + x[3] + (f"{v[1]}{v[2]}{self.whole(v[3])}{v[4]}{v[5]}" if v and
                                                                         isinstance(yaml.safe_load(v[3]), str) else x[4])
-        t = re.sub(r"(?<![\w-])--[a-z][\w-]*", lambda x: self.tokens.get(x[0], x[0]), "".join(parts))
-        t = re.sub(r"(\(\?P[<=]|\\g<)(\w+)(?=[>)])", lambda x: x[1] + self.tokens.get(x[2], x[2]), t)  # as m["name"] is renamed
-        t = re.sub(r"(?<![\w.:/@-])[\w.-]+(?:/[\w.*{}<>~-]*)+|(?<![\w.:/-])[A-Z]+\.md\b", lambda x: self.whole(x[0]), t)
-        t = re.sub(r"(?<![\w/.-])(bee(?:\.py)? +)([a-z][\w-]*)( +[a-z][\w-]*)?", lambda x: x[1] + self.command(x[2], x[3] or ""), t)
-        t = re.sub(r"(?<![\w.-])[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b", lambda x: self.tokens.get(x[0], x[0]), t)
+        t = RUN.sub(lambda x: self.whole(x[0]) if re.search(r"[_.\[\]<>@#/]|\w-\w|^--", x[0]) else x[0], "".join(parts))
+        t = re.sub(r"(?<=\{)[A-Za-z_]\w*(?=[}!:.\[])|(?<=%\()[A-Za-z_]\w*(?=\))", lambda x: self.ids.get(x[0], x[0]), t)  # as .format(name=)
+        t = re.sub(r"(?<=\(\?P=)\w+(?=\))|(?<=\\g<)\w+(?=>)", lambda x: self.tokens.get(x[0], x[0]), t)  # regex back-references, as m["name"]
+        t = re.sub(r"(?<=\()(\?:)?([\w-]+(?:\|[\w-]+)+)(?=\)/)", lambda x: (x[1] or "") + "|".join(map(self.name, x[2].split("|"))), t)  # (a|b)/
+        t = re.sub(r"(?<![\w-])[a-z_][\w-]*(?=\]?=)", lambda x: self.name(x[0]), t)  # k=, x[k]=
+        t = re.sub(r"((?<![\w/.-])bee +|(?<![\w.-])bee\.py +)([a-z][\w-]*)( +[a-z][\w-]*)?", lambda x: x[1] + self.command(x[2], x[3] or ""), t)
         return re.sub(r"(?<![\w.])bee\.([A-Za-z_]\w*)", lambda x: "bee." + self.ids.get(x[1], x[1]), t)
+
+    def name(self, x):
+        """A name of the name map (or of the role table), never an identifier: for patterns that hold French words."""
+        return self.tokens.maps[0].get(x) or self.named.get(x, x)
 
     def command(self, a, b):
         c = self.names.m["cli"]["commands"]
@@ -156,22 +177,21 @@ class CodeMap:
         scopes, kept = self.kept(path)
         lines, starts, tree = source.split("\n"), [0], ast.parse(source)  # lines as the tokenizer counts them (not at U+2028)
         [starts.append(starts[-1] + len(x) + 1) for x in lines]
-        frozen = [range(n.lineno, n.end_lineno + 1) for n in tree.body if scopes & ({getattr(n, "name", None)} | {
-            t.id for t in getattr(n, "targets", [getattr(n, "target", None)]) if isinstance(t, ast.Name)})]
+        frozen = self.frozen(tree, scopes)
         roles = {(c.lineno, len(lines[c.lineno - 1].encode()[:c.col_offset].decode())) for c in identifier_strings(tree)}  # bytes -> characters
-        edits, changes, prev = {}, [], None
+        edits, changes, prev, where = {}, [], None, scopes_of(tree)
         for tok in tokenize.generate_tokens(io.StringIO(source).readline):
             a, b = starts[tok.start[0] - 1] + tok.start[1], starts[tok.end[0] - 1] + tok.end[1]
             d, prev = self.attrs if prev == "." else self.ids, tok.string if tok.type not in (tokenize.NL, tokenize.COMMENT, tokenize.NEWLINE) else prev
             if tok.type == tokenize.NAME and tok.string in d:
                 new = d[tok.string]
-            elif tok.type in (tokenize.STRING, tokenize.FSTRING_MIDDLE) and not any(tok.start[0] in r for r in frozen):
+            elif tok.type in (tokenize.STRING, tokenize.FSTRING_MIDDLE) and tok.start[0] not in frozen:
                 if source[a:b] != tok.string:
                     raise rename.Problem(f"{path}:{tok.start[0]}: a string part the tokenizer does not place")
-                new = self.string(tok.string) if tok.type == tokenize.STRING else self.whole(tok.string) if \
-                    re.fullmatch(r"[\w./*<>~-]+", tok.string) else self.text(tok.string)  # an f-string part: f"{x}_max_par_pr"
-                if tok.start in roles and (v := ast.literal_eval(tok.string)) in self.attrs:
-                    new = tok.string.replace(v, self.attrs[v])
+                self.scoped(path, where[tok.start[0]], value := tok.string if tok.type != tokenize.STRING else str(ast.literal_eval(tok.string)))
+                new = tok.string if value in kept else self.string(tok.string) if tok.type == tokenize.STRING else self.whole(tok.string) if \
+                    re.fullmatch(NAME_SHAPE, tok.string) else self.text(tok.string)  # an f-string part: f"{x}_max_par_pr"
+                new = re.sub(r"\w+", lambda x: self.attrs.get(x[0], x[0]), tok.string) if tok.start in roles else new  # attributes, fields
                 if kept and len(WORD.split(new)) == len(WORD.split(tok.string)):
                     new = "".join(o if o in kept else n for o, n in zip(WORD.split(tok.string), WORD.split(new)))
             else:
@@ -179,28 +199,31 @@ class CodeMap:
             if new != tok.string:
                 edits[a, b] = new
                 changes.append((tok.start[0], tok.string, new))
-        cuts = [0, *(x for e in sorted(edits) for x in e), len(source)]  # one pass: 20 000 edits on 1 MB stay linear
+        cuts, self.tokens = [0, *(x for e in sorted(edits) for x in e), len(source)], self.base_tokens  # one pass: 20 000 edits stay linear
         return "".join(source[cuts[i]:cuts[i + 1]] + edits.get((cuts[i + 1], cuts[i + 2]), "") for i in range(0, len(cuts) - 2, 2)) + source[cuts[-2]:], changes
 
     # --- P1 ---
 
     def allowed(self, a, b):
-        """A token of a text changes only to its English name (either, for a role-dependent token), dot by dot if need be."""
-        return b == self.tokens.get(a) or b in self.hand.get(a, ()) or \
+        """A token of a text changes only to its English name (a hand token: as its role says), dot by dot if need be."""
+        return b == self.tokens.get(a) or a not in self.hand and b in (self.ids.get(a), self.attrs.get(a)) or \
             "." in a and a.count(".") == b.count(".") and all(x == y or self.allowed(x, y) for x, y in zip(a.split("."), b.split(".")))
 
-    def string_change(self, a, b):
-        """The (old, new) names by which string a became b, or None if it changed otherwise."""
-        if a == b or self.whole(a) == b or self.attrs.get(a) == b:
+    def string_change(self, a, b, role=False):
+        """The (old, new) names by which string a became b, or None if it changed otherwise (role: an attribute-name string)."""
+        if a == b or (re.sub(r"\w+", lambda x: self.attrs.get(x[0], x[0]), a) if role else self.whole(a)) == b:
             return [(a, b)] if a != b else []
-        x, y = WORD.split(a), WORD.split(b)
-        pairs = [(s, t) for s, t in zip(x[1::2], y[1::2]) if s != t]
-        return pairs if len(x) == len(y) and x[0::2] == y[0::2] and all(self.allowed(s, t) for s, t in pairs) else None
+        for x, y in ((p.split(a), p.split(b)) for p in (WORD, RUN)):  # word by word, else name run by name run
+            changed, c = [i for i in range(1, len(x), 2) if x[i] != y[i]], self.names.m["cli"]["commands"]  # a command after « bee »: a command
+            if len(x) == len(y) and x[0::2] == y[0::2] and all(self.allowed(x[i], y[i]) or self.whole(x[i]) == y[i] or i > 1 and x[i - 1].isspace()
+                                                                and y[i] == c.get(x[i]) and re.fullmatch(r"(?:.*/)?bee(?:\.py)?", x[i - 2]) for i in changed):
+                return [(x[i], y[i]) for i in changed]
 
-    def same_python(self, old, new, counts):
+    def same_python(self, old, new, counts, path=""):
         """P1 for one file: equal syntax trees once identifiers go through the map and strings (f-string parts included) through
         whole() or token by token; numbers, operators, structure identical; no two dict keys merge. counts: each mapping."""
-        problems = []
+        problems, tree = [], ast.parse(old)
+        where, roles = scopes_of(tree), {(c.lineno, c.col_offset) for c in identifier_strings(tree)}
 
         def same(a, b, line):
             if type(a) is not type(b):
@@ -219,7 +242,8 @@ class CodeMap:
                 x, y = getattr(a, f, None), getattr(b, f, None)
                 if isinstance(a, ast.Constant) and isinstance(x, (str, bytes)) and type(x) is type(y):
                     s, t = (x.decode("utf-8", "surrogateescape"), y.decode("utf-8", "surrogateescape")) if isinstance(x, bytes) else (x, y)
-                    if (pairs := self.string_change(s, t)) is None:
+                    self.scoped(path, where[line], s)
+                    if (pairs := self.string_change(s, t, (a.lineno, a.col_offset) in roles)) is None:
                         problems.append(f"line {line}: the string « {s[:60]} » became « {t[:60]} », not through the map")
                     counts.update(("string", p, q) for p, q in pairs or [])
                 elif isinstance(x, str) and isinstance(y, str):
@@ -228,26 +252,40 @@ class CodeMap:
                     counts.update([("identifier", x, y)] if x != y else [])
                 else:
                     same(x, y, line)
-        same(ast.parse(old), ast.parse(new), 1)
+        same(tree, ast.parse(new), 1)
+        self.tokens = self.base_tokens
         return problems
 
     # --- P1b ---
 
     def residue(self, path, new):
-        """P1b (a): renaming the new file again changes nothing, but kept tokens and English names (« voter »: blind spots)."""
-        return [f"line {n}: « {a[:50]} » is still French (it would become « {b[:50]} »)" for n, a, b in self.rename_python(new, path)[1]
-                if a not in self.targets and (len(WORD.split(a)) != len(WORD.split(b)) or any(
-                    x != y and x not in self.targets for x, y in zip(WORD.split(a), WORD.split(b))))]
+        """P1b (a): renaming the new file again changes nothing, and no string without a space holds a French name, but kept
+        tokens, hand tokens and English names (« voter »: blind spots)."""
+        tree, (scopes, kept) = ast.parse(new), self.kept(path)
+        out = [f"line {n}: « {a[:50]} » is still French (it would become « {b[:50]} »)" for n, a, b in self.rename_python(new, path)[1]
+               if a not in self.targets and (len(WORD.split(a)) != len(WORD.split(b)) or any(
+                   x != y and x not in self.targets for x, y in zip(WORD.split(a), WORD.split(b))))]
+        frozen, seen = self.frozen(tree, scopes), {int(x.split(":")[0][5:]) for x in out}
+        return out + [f"line {c.lineno}: « {c.value[:50]} » holds the French name « {w} »" for c in ast.walk(tree) if isinstance(c, ast.Constant)
+                      and isinstance(c.value, str) and not re.search(r"\s", c.value) and c.lineno not in frozen | seen and c.value not in kept for w in dict.fromkeys(
+                          re.findall(r"[\w-]+", c.value)) if self.named.get(w, w) != w and w not in self.hand.keys() | self.targets | kept]
 
     def attribute_names(self, tree, dests):
-        """P1b (b): each attribute-name string and args.<name> names an attribute of the new code or (for args) a destination."""
-        defined = {v for _, _, v in idents(tree)} | dests
+        """P1b (b): each attribute-name string and args.<name> (dests: the tool's) names an attribute of the new code or a
+        destination; each placeholder of a template given to format() by keyword is one of its keywords."""
+        consts = {t.id: n.value.value for n in tree.body if isinstance(n, ast.Assign) and isinstance(getattr(n.value, "value", None), str) for t in n.targets
+                  if isinstance(t, ast.Name)}
+        formats = [(n, n.func.value.value if isinstance(n.func.value, ast.Constant) else consts.get(getattr(n.func.value, "id", None))) for n in ast.walk(tree)
+                   if isinstance(n, ast.Call) and getattr(n.func, "attr", None) == "format" and n.keywords and not n.args and all(k.arg for k in n.keywords)]
+        defined, dests = {v for _, _, v in idents(tree)} | (dests or set()), dests if dests is not None else ()
         found = [((getattr(n, "args", None) or [None])[0], c) for n in ast.walk(tree) for c in identifier_strings(n, False)]
-        found += [(n.value, ast.Constant(n.attr, lineno=n.lineno)) for n in ast.walk(tree) if isinstance(n, ast.Attribute) and getattr(n.value, "id", None) == "args"]
+        found += [(n.value, ast.Constant(n.attr, lineno=n.lineno)) for n in ast.walk(tree) if isinstance(n, ast.Attribute) and getattr(n.value, "id", None) == "args" and dests]
         bad = lambda s, r: s not in dests if getattr(r, "id", None) == "args" else s not in defined and (  # noqa: E731
             s in self.attrs or self.tokens.get(s, s) != s or not self.covered(s))
         return [f"line {s.lineno}: « {s.value} » names no attribute of the new code" + (" and no parser destination" if getattr(r, "id", None) == "args" else "")
-                for r, s in found if isinstance(s, ast.Constant) and isinstance(s.value, str) and bad(s.value, r)]
+                for r, s in found if isinstance(s, ast.Constant) and isinstance(s.value, str) and bad(s.value, r)] + [
+            f"line {n.lineno}: the template's « {{{x}}} » is given by no keyword of format()" for n, t in formats if isinstance(t, str)
+            for x in sorted(set(re.findall(r"(?<!\{)\{([A-Za-z_]\w*)", t)) - {k.arg for k in n.keywords})]
 
     # --- P3 ---
 
@@ -263,8 +301,8 @@ class CodeMap:
 
 
 def identifier_strings(tree, deep=True):
-    """The string constants that are attribute names: given to getattr, setattr, hasattr or delattr, or a key of vars(x);
-    the first argument of add_argument without dashes, and every dest= (argparse destinations)."""
+    """The string constants that are attribute names: given to getattr, setattr, hasattr or delattr, a key of vars(x), the
+    fields of a namedtuple or __slots__; the first argument of add_argument without dashes, and every dest= (destinations)."""
     of = lambda e: isinstance(e, ast.Call) and getattr(e.func, "id", None) == "vars"  # noqa: E731
     for n in ast.walk(tree) if deep else [tree]:
         if isinstance(n, ast.Call):
@@ -272,8 +310,19 @@ def identifier_strings(tree, deep=True):
             yield from [n.args[1]] if name in ("getattr", "setattr", "hasattr", "delattr") and len(n.args) > 1 else \
                 [n.args[0]] if name == "add_argument" and n.args and not str(getattr(n.args[0], "value", "-")).startswith("-") else []
             yield from (k.value for k in n.keywords if k.arg == "dest")
-            yield from n.args[:1] if isinstance(n.func, ast.Attribute) and of(n.func.value) else []
+            yield from n.args[:1] if isinstance(n.func, ast.Attribute) and of(n.func.value) else n.args[1:2] if name == "namedtuple" else []
+        yield from n.value.elts if isinstance(n, ast.Assign) and getattr(n.targets[0], "id", None) == "__slots__" and hasattr(n.value, "elts") else []
         yield from [n.slice] if isinstance(n, ast.Subscript) and of(n.value) else [n.left] if isinstance(n, ast.Compare) and of(n.comparators[0]) else []
+
+
+def scopes_of(tree):
+    """The innermost def or class, or top-level assignment, of each line: the role table's scope."""
+    out, top = collections.defaultdict(str), {id(n) for n in tree.body}
+    for n in ast.walk(tree):  # breadth first: an inner scope overrides its outer one
+        name = n.name if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) else \
+            getattr((getattr(n, "targets", None) or [getattr(n, "target", None)])[0], "id", None) if id(n) in top else None
+        out.update(dict.fromkeys(range(n.lineno, n.end_lineno + 1), name) if name else {})
+    return out
 
 
 def parser_tree(parser):
@@ -302,9 +351,19 @@ def walk_trees(t):
         yield from (y for c in (a["choices"].values() if isinstance(a["choices"], dict) else []) for y in walk_trees(c))
 
 
+def data_keys(names, base, files):
+    """Every key of the data files of base, read in files at the same path or at its English one."""
+    out, todo = set(), [(f[0], files.get(p, files.get(names.path(p)))) for p in base if (f := names.families_of(p))]
+    todo = [(lambda d, w: d[0] if w == "markdown" else d)(names.parts(f, b.decode("utf-8")), names.fam[f]["writer"]) for f, b in todo if b]
+    while todo:
+        o = todo.pop()
+        out, todo = out | (set(o) if isinstance(o, dict) else set()), todo + (list(o.values()) if isinstance(o, dict) else o if isinstance(o, list) else [])
+    return out
+
+
 def check(repo, base, head):
-    """P1, P1b (a, b) and P3 (plan, sections 9 and 12, change 2); P1b (c), the scans on the fixture, is step 1c's, with P6.
-    Returns (problems, counts of each mapping)."""
+    """P1, P1b (a, b, and the data the new code reads) and P3 (plan, sections 9 and 12, change 2); the scans on the fixture
+    (P1b c) are step 1c's, with P6. Returns (problems, counts of each mapping)."""
     files, after, none = rename.tree_files(repo, base), rename.tree_files(repo, head), collections.Counter()
     if (at := next((c for c in rename.MAPS if c in files), None)) is None or IDS[rename.MAPS.index(at)] not in files:
         return [f"no {rename.MAP} and {IDS[0]} at the base {base}"], none
@@ -316,10 +375,16 @@ def check(repo, base, head):
     names = rename.Names(files[at].decode("utf-8"))
     cm, code = CodeMap(names, files[IDS[rename.MAPS.index(at)]].decode("utf-8")), {p: files[p].decode("utf-8") for p in names.code if p.endswith(".py")}
     problems, counts, tool = [f"the map: {x}" for x in cm.lint(code)], collections.Counter(), names.path(f"{tools_dir}/bee.py")
+    stems = [{p.split("/")[-1].split(".")[0] for p in t if p.startswith("schemas/")} for t in (files, after)]
+    retired, trees = (data_keys(names, files, files) - data_keys(names, files, after), stems[0] - stems[1]), {}
     for p, text in code.items():
         try:
-            new = after[q := names.path(p)].decode("utf-8")
-            problems += [f"{q}: {x}" for x in cm.same_python(text, new, counts)] or [f"P1b: {q}: {x}" for x in cm.residue(p, new)]
+            if re.match(r"\ufeff|([^\n]*\n)?[ \t\f]*#.*?coding[:=]", new := after[q := names.path(p)].decode("utf-8")):
+                raise rename.Problem("a byte order mark or a coding declaration: the code is read as UTF-8, nothing else")
+            problems += [f"{q}: {x}" for x in cm.same_python(text, new, counts, p)] or [f"P1b: {q}: {x}" for x in (
+                [] if p in cm.m["pending"] else cm.residue(p, new))]  # a pending file: its own names are not mapped yet
+            problems += [f"P1b: {q}: line {c.lineno}: reads the {('key', 'schema')[k]} « {c.value} », which the translated tree no longer has" for c, k in
+                         ([] if p in cm.m["pending"] else read_names(trees.setdefault(q, ast.parse(new)))) if c.value in retired[k]]
         except (KeyError, SyntaxError, UnicodeDecodeError, rename.Problem) as e:
             problems.append(f"{q}: {'not in the head' if isinstance(e, KeyError) else f'{type(e).__name__}: {e}'}")
     if any(x.startswith(f"{tool}: ") for x in problems):
@@ -328,11 +393,26 @@ def check(repo, base, head):
         (path := pathlib.Path(tmp) / tool).parent.mkdir(parents=True)
         path.write_bytes(after[tool])
         spec = importlib.util.spec_from_file_location("bee_after_the_move", path)
-        spec.loader.exec_module(new := importlib.util.module_from_spec(spec))
-        trees = parser_tree(bee.construire_analyseur()), parser_tree(getattr(new, cm.ids.get("construire_analyseur", "construire_analyseur"))())
-        problems += [f"P3: {x}" for x in tree_diff(cm.mapped_tree(trees[0]), trees[1])]
-        dests = {a["dest"] for t in walk_trees(trees[1]) for a in t["actions"]} | {k for t in walk_trees(trees[1]) for k in t["defaults"]}
-    return problems + [f"P1b: {tool}: {x}" for x in cm.attribute_names(ast.parse(after[tool].decode("utf-8")), dests)], counts
+        try:
+            spec.loader.exec_module(new := importlib.util.module_from_spec(spec))
+            trees_p3 = parser_tree(bee.construire_analyseur()), parser_tree(getattr(new, cm.ids.get("construire_analyseur", "construire_analyseur"))())
+        except Exception as e:  # noqa: BLE001 - a new tool that does not load is a refusal, never a crash
+            return problems + [f"P3 and P1b (b) not run: {tool} does not load: {type(e).__name__}: {e}"], counts
+    cm.scoped(f"{tools_dir}/bee.py", "construire_analyseur")  # the parser's names are that function's
+    problems += [f"P3: {x}" for x in tree_diff(cm.mapped_tree(trees_p3[0]), trees_p3[1])]
+    dests = {a["dest"] for t in walk_trees(trees_p3[1]) for a in t["actions"]} | {k for t in walk_trees(trees_p3[1]) for k in t["defaults"]}
+    return problems + [f"P1b: {q}: {x}" for q, t in trees.items() for x in cm.attribute_names(t, dests if q == tool else None)], counts
+
+
+def read_names(tree):
+    """The string constants the code reads data by: x["k"], x.get("k") and the like, "k" in x, and a schema's name."""
+    for n in ast.walk(tree):
+        f = getattr(n, "func", None)
+        found = [n.slice] if isinstance(n, ast.Subscript) else n.args[:1] if isinstance(n, ast.Call) and (getattr(f, "attr", None) in (
+            "get", "setdefault", "pop", "schema") or getattr(f, "id", None) in ("selon_schema", "per_schema")) else [n.left] if \
+            isinstance(n, ast.Compare) and isinstance(n.ops[0], (ast.In, ast.NotIn)) else []
+        yield from ((c, getattr(f, "attr", getattr(f, "id", "")) in ("schema", "selon_schema", "per_schema")) for c in found
+                    if isinstance(c, ast.Constant) and isinstance(c.value, str))
 
 
 def main(argv=None):
