@@ -3,6 +3,7 @@ import ast
 import collections
 import contextlib
 import hashlib
+import importlib.util
 import io
 import itertools
 import inspect
@@ -21477,6 +21478,393 @@ class TestReservedPseudonyms(BaseTest):
                 self.assertIn("bee.yaml : pseudos_reserves : a list of distinct GitHub logins", texte)
                 git(self.dossier, "checkout", "-q", "--", "bee.yaml")
         self.valide()
+
+
+# --- ruche-0141: English names, step 1a: the scoped map, its lint, the data translator and proof P2 (dormant) ---
+
+_SPEC_RENAME = importlib.util.spec_from_file_location("rename", pathlib.Path(__file__).resolve().parent / "migration" / "rename.py")
+rename = importlib.util.module_from_spec(_SPEC_RENAME)
+_SPEC_RENAME.loader.exec_module(rename)
+CARTE_NOMS = pathlib.Path(__file__).resolve().parent / "migration" / "names.yaml"
+
+# A task written by hand: comments, both quotings, a flow list, a hand-wrapped folded text, and free texts that hold
+# lines looking like keys and values (« statut: ouverte ») which the translator must never touch.
+TACHE_PIEGE_0141 = """\
+# a comment, kept as written
+id: miniz-9050
+projet: miniz
+categorie: 'compression-sans-perte'
+type: "optimisation"
+taille: S
+titre: "Une tâche « piège » : statut: ouverte"
+contexte: >
+  Repliée à la main, sur deux lignes
+  courtes, qui restent ainsi.
+fichiers: [miniz_tdef.c, outils/bee.py]
+portee: 1.0   # a trailing comment
+metrique: debit_compression_n6
+sortie_compressee: identique
+critere_acceptation:
+  - |
+    Un texte libre qui contient des clés :
+    statut: ouverte
+    hors_perimetre: [a]
+hors_perimetre: [format de sortie]
+statut: ouverte
+noeud: projets/compression-sans-perte/miniz/deflate
+cree_par: conseil
+cree_le: "2026-10-27"
+"""
+TACHE_PIEGE_0141_EN = """\
+# a comment, kept as written
+id: miniz-9050
+project: miniz
+category: 'lossless-compression'
+type: "optimization"
+size: S
+title: "Une tâche « piège » : statut: ouverte"
+context: >
+  Repliée à la main, sur deux lignes
+  courtes, qui restent ainsi.
+files: [miniz_tdef.c, outils/bee.py]
+reach: 1.0   # a trailing comment
+metric: debit_compression_n6
+compressed_output: identical
+acceptance_criteria:
+  - |
+    Un texte libre qui contient des clés :
+    statut: ouverte
+    hors_perimetre: [a]
+out_of_scope: [format de sortie]
+status: open
+node: projects/lossless-compression/miniz/deflate
+created_by: council
+created_on: "2026-10-27"
+"""
+# A synthesis whose canonical folding moves once its key gets one letter longer (synthese -> synthesis).
+SYNTHESE_0141 = "xx " + " ".join(["mot"] * 40)
+NOEUD_0141 = """\
+---
+parent: racine
+mis_a_jour: "2026-10-30"
+entretenu_par: ruche-0010
+budget_lignes: 40
+---
+# Relire
+## Pourquoi cette branche existe
+- `roles/relire` : une ligne de prose qui ressemble à un enfant, hors de la section des enfants
+## Enfants
+- `roles/relire` : relire `roles/mesurer` en prose, sans le traduire
+- pas un enfant : `roles/relire`
+"""
+
+
+def ecrire_familles_0141(racine):
+    """One file of each family main does not hold yet (or not as a test may change it), written as bee writes it."""
+    instant = "2026-11-01T10:00:00Z"
+    (racine / "taches/miniz/miniz-9050.yaml").write_text(TACHE_PIEGE_0141, encoding="utf-8")
+    bee.ecrire_debat(racine / "debats/D-9001.yaml", {
+        "id": "D-9001", "question": "Une question longue, " * 6, "ouvert_par": "alice", "ouvert_le": instant, "statut": "clos",
+        "rapporteur": "alice", "synthese": SYNTHESE_0141, "synthese_le": instant, "synthese_par": "alice", "issue": "sans_suite",
+        "reference": "", "clos_le": instant, "clos_par": "alice", "arguments": [
+            {"id": "A1", "par": "bruno", "le": instant, "position": "contre", "texte": "Deux lignes\nd'argument.", "sources": ["https://x.example"]}]})
+    bee.ecrire_yaml(racine / "propositions/P-9001.yaml", {"id": "P-9001", "auteur": "alice", "regle": "R3", "texte_propose": "T",
+                                                         "motif": "M", "ouverte_le": instant, "statut": "adoptee"})
+    bee.ecrire_yaml(racine / "membres/alice.yaml", {"pseudo": "alice", "github_id": 9001, "compte_cree_le": "2020-01-01",
+                                                   "inscrit_le": "2026-10-27", "categories_preferees": ["compression-sans-perte"]})
+    bee.ecrire_yaml(racine / "votes/P-9001/alice.yaml", {"votant": "alice", "sujet": "P-9001", "valeur": 1, "motif": "M", "le": instant})
+    bee.ecrire_yaml(racine / "mesures/miniz-0001-c1/alice.yaml", {
+        "contribution": "miniz-0001-c1", "soumise_par": "alice", "le": instant, "outil": "ab.py", "base": "a" * 40, "candidat": "b" * 40,
+        "repetitions": 10, "config": {"processeur": "x", "coeurs": 2, "systeme": "linux", "compilateur": "gcc", "architecture": "arm64"},
+        "metriques": {"debit_compression_n1": {"gain": 0.03, "au_dela_du_bruit": True, "paires": 10, "victoires_b": 9}}, "motif": "M"})
+    bee.ecrire_invitation(racine / "invitations/I-9001.yaml", {
+        "id": "I-9001", "statut": "retiree", "personne": "retiré : refus", "autres_identites": "retiré : refus", "demande": "garant",
+        "pourquoi": [{"fait": "F", "source": "[retiré]"}], "message": "retiré : refus", "debat": "D-9001", "propose_par": "alice",
+        "propose_le": instant, "retrait": {"par": "bidji29", "le": instant, "raison": "refus"}})
+    bee.ecrire_invitation(racine / "invitations/ne-plus-contacter.yaml", {"empreintes": ["0" * 64]})
+    bee.ecrire_yaml(racine / "signalements/S-9001.yaml", {"par": "alice", "le": instant, "comptes": ["bruno", "chloe"], "motif": "votes_croises",
+                                                         "decision": {"par": "bidji29", "le": instant, "issue": "lies"}})
+    bee.ecrire_invitation(racine / "gouvernance/incidents.yaml", {"incidents": [{"id": "INC-0001", "titre": "T", "ouvert_le": instant,
+                                                                                "clos_le": instant, "issue": "réglé"}]})
+    (racine / "gouvernance/retraits.yaml").write_text(bee._rendu_fidele({"retraits": [{
+        "par": "bidji29", "le": instant, "demande": {"canal": "issue", "le": instant, "reference": "https://x.example/1"},
+        "empreintes": ["1" * 64], "passages": 2, "non_contact": True}]}, "retraits"), encoding="utf-8")
+
+
+def commit_fichiers_0141(depot, fichiers, parent, executables=()):
+    """Commits exactly these files ({path: bytes}; executables: mode 100755) on top of parent, through a scratch index: the
+    working tree is untouched."""
+    with tempfile.TemporaryDirectory() as arbre:
+        for chemin, contenu in fichiers.items():
+            (pathlib.Path(arbre) / chemin).parent.mkdir(parents=True, exist_ok=True)
+            (pathlib.Path(arbre) / chemin).write_bytes(contenu)
+            (pathlib.Path(arbre) / chemin).chmod(0o755 if chemin in executables else 0o644)
+        env = {**os.environ, "GIT_DIR": str(depot / ".git"), "GIT_WORK_TREE": arbre, "GIT_INDEX_FILE": str(depot / ".git" / "index-0141")}
+        lancer_git = lambda *a: subprocess.run(["git", *a], env=env, cwd=arbre, check=True, capture_output=True, text=True).stdout.strip()  # noqa: E731
+        pathlib.Path(env["GIT_INDEX_FILE"]).unlink(missing_ok=True)
+        lancer_git("add", "-A", "-f", ".")
+        return lancer_git("commit-tree", lancer_git("write-tree"), "-p", parent, "-m", "x")
+
+
+def traduction_0141(names, fichiers):
+    """The data part of the switch, as ruche-0145 will regenerate it: each file at its English path, translated by its
+    family, or as it is when the hand-change list names it (removed files left out)."""
+    tete = {}
+    for chemin, contenu in fichiers.items():
+        familles, mains = names.families_of(chemin), [h for r, h in names.hand if r.match(chemin)]
+        if familles:
+            tete[names.path(chemin)] = names.translate(familles[0], contenu.decode("utf-8")).encode("utf-8")
+        elif not any(h.get("removed") for h in mains):
+            tete[names.path(chemin)] = contenu
+    return tete
+
+
+class TestEnglishNamesStep1a(unittest.TestCase):
+    """ruche-0141 (docs/english-migration.md, sections 12 and 13): the scoped map and its lint, the data translator (apply,
+    inverse, check) and proof P2, dormant. P2 runs here on a copy of the repository with the frozen fixture and one file of
+    every family main does not hold yet; on main itself: python3 outils/migration/rename.py check --base origin/main."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.temp = tempfile.TemporaryDirectory()
+        cls.depot = pathlib.Path(cls.temp.name) / "registre"
+        shutil.copytree(RACINE, cls.depot, ignore=sans_donnees_reelles)
+        shutil.copytree(JEU_FIGE, cls.depot, dirs_exist_ok=True)
+        ecrire_familles_0141(cls.depot)
+        git(cls.depot, "init", "-q")
+        git(cls.depot, "config", "user.email", "tests@example.org")
+        git(cls.depot, "config", "user.name", "tests")
+        git(cls.depot, "add", "-A", "-f", ".")
+        git(cls.depot, "commit", "-qm", "base")
+        cls.base = git(cls.depot, "rev-parse", "HEAD").strip()
+        cls.names = rename.Names((cls.depot / rename.MAP).read_text(encoding="utf-8"))
+        modes = {}
+        cls.fichiers = rename.tree_files(cls.depot, cls.base, modes)
+        cls.executables = {c for p, m in modes.items() if m == b"100755" for c in (p, cls.names.path(p))}
+        cls.traduits = traduction_0141(cls.names, cls.fichiers)
+        cls.tete = commit_fichiers_0141(cls.depot, cls.traduits, cls.base, cls.executables)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.temp.cleanup()
+
+    def lire_depot(self, chemin):
+        return (RACINE / chemin).read_text(encoding="utf-8") if (RACINE / chemin).is_file() else None
+
+    def variante(self, changer, de=None, executables=()):
+        """A commit on top of the base (de=None) or of the translated head, its files changed by changer({path: bytes})."""
+        fichiers = dict(self.fichiers if de is None else self.traduits)
+        changer(fichiers)
+        return commit_fichiers_0141(self.depot, fichiers, self.base if de is None else self.tete, self.executables | set(executables))
+
+    def test_the_map_is_one_to_one_per_family_and_its_lint_refuses_a_collision(self):
+        texte = CARTE_NOMS.read_text(encoding="utf-8")
+        names = rename.Names(texte)
+        self.assertEqual(names.lint(self.lire_depot), [])
+        f = names.fam
+        # the collisions of the flat draft, resolved by scoping: one English name, in two families
+        self.assertEqual((f["debates"]["keys"]["ouvert_le"], f["proposals"]["keys"]["ouverte_le"]), ("opened_at", "opened_at"))
+        self.assertEqual((f["reports"]["keys"]["comptes"], f["agent_accounts"]["keys"]["accounts"]), ("accounts", "accounts"))
+        self.assertEqual((f["debates"]["keys"]["issue"], names.m["domains"]["removal_channel"]["issue"]), ("outcome", "issue"))
+        for nom, famille in f.items():
+            with self.subTest(famille=nom):
+                inverse = {en: fr for fr, en in famille["keys"].items()}
+                self.assertEqual({fr: en for en, fr in inverse.items()}, famille["keys"], "the inverse is a function")
+        for nom in ("tasks", "contributions", "debates", "proposals", "members", "votes", "measurements", "invitations", "reports",
+                    "council", "guardians", "guarantors", "agent_accounts", "incidents", "removals", "projects", "categories",
+                    "config", "tree", "manifest", "fork_verdict", "out_swarm", "out_balance", "out_ranking", "out_levels",
+                    "out_debates", "out_list", "out_pending", "site_api"):
+            self.assertIn(nom, f)
+        self.assertEqual((names.m["cli"]["commands"]["cap"], f["tasks"]["keys"]["portee"]), ("balance", "reach"))
+        for jeton in ("issue", "signalement", "contribution", "enregistrement", "ecartee", "ecarter", "ecartees"):
+            self.assertIn(jeton, names.m["hand_tokens"])
+        self.assertGreaterEqual(str(names.m["date_d"]), "2027-01-01")
+        self.assertIn("taches/", names.m["retired"])
+        refus = {
+            "two French keys of one family, one English name": (
+                lambda m: m["families"]["debates"]["keys"].update(ouverte_le="opened_at"), "share the English name « opened_at »"),
+            "two values of one domain, one English name": (
+                lambda m: m["domains"]["position"].update(question="for"), "domain position: « pour » and « question » share"),
+            "two French paths, one English path": (lambda m: m["paths"].update({"taches2/": "tasks/"}), "share the English name « tasks/ »"),
+            "two commands, one English name": (lambda m: m["cli"]["commands"].update(lister2="list"), "share the English name « list »"),
+            "a key of a family's schema left out": (lambda m: m["families"]["tasks"]["keys"].pop("portee"), "key « portee » of the schema"),
+            "an enumerated value of a schema left out": (
+                lambda m: m["domains"]["task_status"].pop("abandonnee"), "value « abandonnee » outside the domain task_status"),
+            "an enumerated value without a domain": (
+                lambda m: m["families"]["invitations"]["values"].pop("personne"), "« retiré : refus » at personne: no domain"),
+            "an English value that reads back as null": (
+                lambda m: m["domains"]["task_status"].update(ouverte="null"), "reads back as NoneType"),
+            "an unknown domain": (lambda m: m["families"]["tasks"]["values"].update(statut="statuts"), "unknown domain statuts"),
+            "date D before 2027": (lambda m: m.update(date_d="2026-12-31"), "2027-01-01 at the earliest"),
+            "a retired name that is an English path": (lambda m: m["retired"].append("tasks/"), "retired name tasks/"),
+        }
+        for cas, (changer, message) in refus.items():
+            with self.subTest(cas):
+                carte = yaml.safe_load(texte)
+                changer(carte)
+                problemes = rename.Names(yaml.safe_dump(carte, allow_unicode=True)).lint(self.lire_depot)
+                self.assertTrue(any(message in p for p in problemes), problemes)
+
+    def test_p2_holds_for_every_family_and_for_the_translated_head(self):
+        problemes, nombres = rename.check(self.depot, self.base)
+        self.assertEqual(problemes, [])
+        self.assertEqual(set(nombres), {"tasks", "contributions", "debates", "proposals", "members", "votes", "measurements",
+                                        "invitations", "do_not_contact", "reports", "council", "guardians", "guarantors",
+                                        "agent_accounts", "incidents", "removals", "projects", "categories", "config", "tree"})
+        self.assertEqual(rename.check(self.depot, self.base, self.tete)[0], [])
+        for chemin in ("tasks/miniz/miniz-9050.yaml", "debates/D-9001.yaml", "governance/council.yaml", "governance/removals.yaml",
+                       "invitations/do-not-contact.yaml", "tree/MEANING.md", "tree/roles/review/MEANING.md", "templates/task.yaml",
+                       "measurements/miniz-0001-c1/alice.yaml", "reports/S-9001.yaml", "tools/migration/names.yaml", "RULES.md"):
+            self.assertIn(chemin, self.traduits)
+        self.assertNotIn("COMMANDEMENTS.md", self.traduits)
+        self.assertEqual(self.traduits["tasks/miniz/miniz-9050.yaml"].decode("utf-8"), TACHE_PIEGE_0141_EN)
+        # and file by file: inverse(apply(f)) is f, byte for byte
+        for chemin, contenu in self.fichiers.items():
+            if familles := self.names.families_of(chemin):
+                with self.subTest(chemin):
+                    texte = contenu.decode("utf-8")
+                    self.assertEqual(self.names.translate(familles[0], self.names.translate(familles[0], texte), True), texte)
+
+    def test_text_level_keeps_order_quoting_comments_wrapping_and_never_touches_a_free_text(self):
+        names = self.names
+        self.assertEqual(names.translate("tasks", TACHE_PIEGE_0141), TACHE_PIEGE_0141_EN)
+        self.assertEqual(names.translate("tasks", TACHE_PIEGE_0141_EN, True), TACHE_PIEGE_0141)
+        self.assertEqual(names.same_values("tasks", TACHE_PIEGE_0141, TACHE_PIEGE_0141_EN), [])
+        # a key smuggled into a free text, translated there too: the values and the leaves differ
+        triche = TACHE_PIEGE_0141_EN.replace("    statut: ouverte", "    status: open")
+        self.assertEqual(names.same_values("tasks", TACHE_PIEGE_0141, triche),
+                         ["the values differ once keys and values are mapped", "a leaf changed (number, date, sha, login or free text)"])
+        for texte, message in (
+                (TACHE_PIEGE_0141.replace("statut: ouverte\nnoeud", 'statut: "ouv\\u0065rte"\nnoeud'), "a form the translator does not edit"),
+                (TACHE_PIEGE_0141.replace("statut: ouverte\nnoeud", "statut: bidule\nnoeud"), "value « bidule » outside the domain task_status"),
+                (TACHE_PIEGE_0141.replace("taille: S", "taille: S\nbidule: 1"), "key « bidule » (under the top) is not in the map"),
+                (TACHE_PIEGE_0141.replace("noeud: projets/", "noeud: projetz/"), "has a segment outside the tree map")):
+            with self.subTest(message):
+                with self.assertRaises(rename.Problem) as e:
+                    names.translate("tasks", texte)
+                self.assertIn(message, str(e.exception))
+
+    def test_canonical_families_are_rendered_again_by_the_tools_writer(self):
+        names, texte = self.names, self.fichiers["debats/D-9001.yaml"].decode("utf-8")
+        nouveau = names.translate("debates", texte)
+        self.assertEqual(nouveau, bee._rendu_fidele(bee.charger_texte_yaml(nouveau), "x"), "render(parse(new)) == new")
+        self.assertEqual(names.translate("debates", nouveau, True), texte)
+        self.assertIn("synthesis: xx mot", nouveau)
+        self.assertIn("status: closed\n", nouveau)
+        self.assertIn("outcome: no_follow_up\n", nouveau)
+        self.assertNotEqual(names.text("debates", texte, False), nouveau, "edited in place, the folding would not be the writer's")
+        with self.assertRaises(rename.Problem) as e:
+            names.translate("debates", "# a comment\n" + texte)
+        self.assertIn("not in the canonical form", str(e.exception))
+        invitation = names.translate("invitations", self.fichiers["invitations/I-9001.yaml"].decode("utf-8"))
+        for attendu in ("person: 'withdrawn: refusal'", "source: '[removed]'", "cause: refusal", "status: withdrawn", "request: guarantor"):
+            self.assertIn(attendu, invitation)
+
+    def test_tree_nodes_change_their_ids_in_the_front_matter_and_the_children_lines_only(self):
+        names = self.names
+        nouveau = names.translate("tree", NOEUD_0141)
+        self.assertEqual(nouveau, NOEUD_0141.replace("parent: racine", "parent: root").replace("mis_a_jour", "updated_on")
+                         .replace("entretenu_par", "maintained_by").replace("budget_lignes", "line_budget")
+                         .replace("## Enfants\n- `roles/relire`", "## Enfants\n- `roles/review`"))
+        self.assertEqual(names.translate("tree", nouveau, True), NOEUD_0141)
+        self.assertEqual(names.same_values("tree", NOEUD_0141, nouveau), [])
+        self.assertEqual(names.path("arbre/roles/relire/SENS.md"), "tree/roles/review/MEANING.md")
+        self.assertEqual(names.path("arbre/SENS.md"), "tree/MEANING.md")
+        self.assertEqual(names.path("tree/projects/lossless-compression/miniz/MEANING.md", True), "arbre/projets/compression-sans-perte/miniz/SENS.md")
+        self.assertIn("noeud: projets/compression-sans-perte/miniz/deflate", TACHE_PIEGE_0141)
+        self.assertIn("node: projects/lossless-compression/miniz/deflate", names.translate("tasks", TACHE_PIEGE_0141))
+        prose = nouveau.replace("relire `roles/mesurer` en prose", "relire `roles/measure` en prose")
+        self.assertIn("the children or the text outside the front matter differ", names.same_values("tree", NOEUD_0141, prose)[0])
+
+    def test_p2_fails_on_each_seeded_mistake(self):
+        tache = "tasks/miniz/miniz-9050.yaml"
+        remplacer = lambda chemin, a, b: lambda f: f.__setitem__(chemin, f[chemin].replace(a.encode(), b.encode(), 1))  # noqa: E731
+        sans_portee = lambda f: f.__setitem__(rename.MAP, f[rename.MAP].replace(b"\n      portee: reach\n", b"\n", 1))  # noqa: E731
+        cas_base = {
+            "a key left out of the map": (sans_portee, "taches/miniz/miniz-9050.yaml: key « portee » (under the top) is not in the map of the family tasks"),
+            "a value outside its domain": (remplacer("taches/miniz/miniz-9050.yaml", "statut: ouverte\nnoeud", "statut: bidule\nnoeud"),
+                                           "taches/miniz/miniz-9050.yaml: value « bidule » outside the domain task_status"),
+            "a file in no family and on no hand-change list": (lambda f: f.update({"notes.txt": b"x\n"}),
+                                                               "notes.txt: matched by no family and no hand-change entry"),
+        }
+        for cas, (changer, message) in cas_base.items():
+            with self.subTest(cas):
+                problemes = rename.check(self.depot, self.variante(changer))[0]
+                self.assertIn(message, problemes)
+        cas_tete = {
+            "a free text changed": (remplacer(tache, "piège", "piege"), f"{tache}: not the translation of taches/miniz/miniz-9050.yaml "
+                                                                       "(a leaf changed: number, date, sha, login or free text)"),
+            "a key smuggled into a free text, translated": (remplacer(tache, "    statut: ouverte", "    status: open"),
+                                                             f"{tache}: not the translation of taches/miniz/miniz-9050.yaml "
+                                                             "(a leaf changed: number, date, sha, login or free text)"),
+            "a value mapped otherwise": (remplacer(tache, "status: open", "status: opened"),
+                                         f"{tache}: not the translation of taches/miniz/miniz-9050.yaml (value « opened » outside the domain task_status)"),
+            "a file added": (lambda f: f.update({"tasks/miniz/miniz-9051.yaml": f[tache]}),
+                             "tasks/miniz/miniz-9051.yaml: added (the translation of no file of the base)"),
+            "a file left at its French path": (lambda f: f.update({"taches/miniz/miniz-9050.yaml": f[tache]}),
+                                               "taches/miniz/miniz-9050.yaml: added (the translation of no file of the base)"),
+            "a file dropped": (lambda f: f.pop("debates/D-9001.yaml"), "debats/D-9001.yaml: dropped (no debates/D-9001.yaml in the head)"),
+            "a removed file kept": (lambda f: f.update({"COMMANDEMENTS.md": b"x\n"}), "COMMANDEMENTS.md: listed as removed, still in the head"),
+        }
+        cas_tete["a mode changed"] = (lambda f: None, f"{tache}: mode 100755, taches/miniz/miniz-9050.yaml had 100644")
+        for cas, (changer, message) in cas_tete.items():
+            with self.subTest(cas):
+                problemes = rename.check(self.depot, self.base, self.variante(changer, "tete", [tache] if "mode" in cas else []))[0]
+                self.assertEqual(len(problemes), 1, problemes)
+                self.assertEqual(problemes[0], message)
+
+    def test_every_proof_reads_the_map_from_the_base_never_from_the_head(self):
+        tache, opened = "tasks/miniz/miniz-9050.yaml", lambda texte: texte.replace(b"ouverte: open\n", b"ouverte: opened\n", 1)
+        self.assertIn(b"ouverte: open\n", self.fichiers[rename.MAP])
+
+        def tete_avec_sa_carte(f):
+            f[tache] = f[tache].replace(b"status: open\n", b"status: opened\n")
+            f["tools/migration/names.yaml"] = opened(f["tools/migration/names.yaml"])  # the head's own map agrees with it
+            f[rename.MAP] = f["tools/migration/names.yaml"]
+        tete = self.variante(tete_avec_sa_carte, de="tete")
+        problemes = rename.check(self.depot, self.base, tete)[0]
+        self.assertIn(f"{tache}: not the translation of taches/miniz/miniz-9050.yaml (value « opened » outside the domain task_status)",
+                      problemes)
+        self.assertIn(f"{rename.MAP}: added (the translation of no file of the base)", problemes)
+        # the working tree's map is not read either
+        carte = self.depot / rename.MAP
+        avant = carte.read_bytes()
+        try:
+            carte.write_bytes(opened(avant))
+            self.assertEqual(rename.check(self.depot, self.base, self.tete)[0], [])
+        finally:
+            carte.write_bytes(avant)
+        # the base's map decides: a base whose map says « opened » accepts that head's task
+        base = self.variante(lambda f: f.__setitem__(rename.MAP, opened(f[rename.MAP])))
+        names = rename.Names(opened(self.fichiers[rename.MAP]).decode("utf-8"))
+        tete = commit_fichiers_0141(self.depot, traduction_0141(names, rename.tree_files(self.depot, base)), base, self.executables)
+        problemes = rename.check(self.depot, base, tete)[0]
+        self.assertEqual(problemes, [])
+
+    def test_the_command_line_and_dormancy(self):
+        sortie = io.StringIO()
+        with contextlib.redirect_stdout(sortie):
+            self.assertEqual(rename.main(["check", "--repo", str(self.depot), "--base", self.base, "--head", self.tete]), 0)
+            self.assertEqual(rename.main(["check", "--repo", str(self.depot), "--base", self.base, "--head", self.base]), 1)
+            self.assertEqual(rename.main(["lint", "--map", str(self.depot / rename.MAP)]), 0)
+        self.assertIn("✓ P2 holds at", sortie.getvalue())
+        self.assertIn("✗ taches/miniz/miniz-9050.yaml: dropped (no tasks/miniz/miniz-9050.yaml in the head)", sortie.getvalue())
+        with tempfile.TemporaryDirectory() as dossier:
+            source, en, retour = (pathlib.Path(dossier) / n for n in ("fr", "en", "retour"))
+            for chemin in ("taches/miniz/miniz-9050.yaml", "arbre/roles/relire/SENS.md", "bee.yaml", "debats/D-9001.yaml"):
+                (source / chemin).parent.mkdir(parents=True, exist_ok=True)
+                (source / chemin).write_bytes(self.fichiers[chemin])
+            with contextlib.redirect_stdout(io.StringIO()):
+                carte = ["--map", str(self.depot / rename.MAP)]
+                self.assertEqual(rename.main(["apply", str(source), str(en), *carte]), 0)
+                self.assertEqual(rename.main(["inverse", str(en), str(retour), *carte]), 0)
+            self.assertEqual((en / "tasks/miniz/miniz-9050.yaml").read_text(encoding="utf-8"), TACHE_PIEGE_0141_EN)
+            self.assertTrue((en / "tree/roles/review/MEANING.md").is_file())
+            for chemin in ("taches/miniz/miniz-9050.yaml", "arbre/roles/relire/SENS.md", "bee.yaml", "debats/D-9001.yaml"):
+                self.assertEqual((retour / chemin).read_bytes(), self.fichiers[chemin])
+        # dormant: nothing of the tool, the site or the workflows calls the migration tooling
+        for chemin in ("outils/bee.py", "outils/site_bee.py", *(p.relative_to(RACINE).as_posix() for p in (RACINE / ".github").rglob("*.yml"))):
+            self.assertNotIn("migration/", (RACINE / chemin).read_text(encoding="utf-8"), chemin)
 
 
 if __name__ == "__main__":

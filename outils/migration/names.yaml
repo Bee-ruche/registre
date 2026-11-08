@@ -1,0 +1,1899 @@
+# The French -> English name map of the registry, scoped per schema and per file family (ruche-0141, step 1a of the plan
+# docs/english-migration.md, section 13). Generated once from the reviewed draft docs/english-names.md (its seed), the
+# schemas, the data of main and the tool's JSON outputs; edited by hand since, and reviewed as data.
+#
+# Read by outils/migration/rename.py (apply, inverse, check, lint). Inside one family (the keys of one file family, the
+# values of one domain, the paths, the commands, the options of one script), two French names never share an English name,
+# so the inverse is a function per family (the lint). Every proof reads this file from the base commit, never from the PR.
+#
+#   date_d        the date until which fork documents are read in either vocabulary: 2027-01-01 at the earliest; the switch
+#                 (ruche-0145) sets the final value (its merge plus six weeks).
+#   retired       French names refused once the switch is merged (the switch fills the guard).
+#   hand_tokens   tokens whose English name depends on their role: renamed by hand (plan, section 12, change 7).
+#   paths         French path -> English path; an entry ending in / maps a folder prefix, the others one file.
+#   tree          node ids are paths under tree/: each segment maps through `segments`; children lines are read in the
+#                 sections named in `children`.
+#   families      per file family: files (globs from the registry's root), writer (text: key and value tokens edited in
+#                 place, order, quoting, comments and wrapping kept; canonical: re-rendered by the tool's own writer;
+#                 markdown: tree nodes; json: an output, no file), keys (every key of the family, French -> English),
+#                 values (path -> domain: `a/b`, `[]` for a list item, `*` for a key that is data, `**/k` for k at any
+#                 depth), key_values (path -> domain, or null: the keys of that mapping are data, kept or mapped by the
+#                 domain). Every scalar outside a domain is a leaf, kept byte for byte: free texts are never translated.
+#   domains       closed: a value outside its domain is refused. open_domains: values not listed stay as written.
+#                 The domains `path` and `node` are the path map and the tree segments.
+#   hand          tracked files that no family translates: each changes by hand or by another step, and is listed.
+#   new           globs of files the switch may add.
+version: 1
+date_d: '2027-01-01'
+retired:
+- AGENTS.en.md
+- COMMANDEMENTS.md
+- MAINTENEURS.md
+- REGLES.md
+- UTILISATEURS.md
+- arbre/
+- debats/
+- docs/arbre.md
+- docs/candidats.md
+- docs/cap.md
+- docs/capacites.md
+- docs/croissance.md
+- docs/garants.md
+- docs/gardiens.md
+- docs/gouvernance.md
+- docs/juge-commun.md
+- docs/mesures.md
+- docs/nouveau-projet.md
+- docs/organisation.md
+- docs/outillage.md
+- docs/perimetre.md
+- docs/questions-ouvertes.md
+- docs/securite.md
+- docs/taches.md
+- gouvernance/
+- invitations/ne-plus-contacter.yaml
+- membres/
+- mesures/
+- modeles/
+- outils/
+- projets/
+- propositions/
+- signalements/
+- taches/
+hand_tokens:
+  issue: key -> outcome (debates, incidents, report decisions, judge report); the removal channel value « issue
+    » stays
+  signalement: command -> decide-report; gate nature and folder signalements -> report(s)
+  contribution: key and positional stay contribution; schema contribution.schema.json -> manifest.schema.json (it
+    validates the fork's manifest); the record schema enregistrement.schema.json -> contribution-record.schema.json
+  enregistrement: schema name only -> contribution-record (no key or value)
+  ecartee: contribution and invitation status -> set_aside; the invitation gesture key ecartee -> set_aside
+  ecartees: command -> set-aside
+  ecarter: invitation action -> dismiss; option --ecarter -> --dismiss
+  ecartement_invitation: gate nature -> invitation_dismissal
+  ecart_declare: key -> declared_gap
+  ecart_declare_max: bee.yaml key -> max_declared_gap
+  ecart: bee cap --json key -> gap
+  creations/<dossier>_max_par_pr: 'bee.yaml keys built as f"{dossier}_max_par_pr": folder and suffix both change
+    (by hand)'
+  fichiers: 'the path values of open tasks'' fichiers and hors_perimetre are re-scoped by hand by a council PR right
+    after the switch (check-fork only warns on a file outside them): ruche-0058 and ruche-0146 to ruche-0150 already
+    name the English paths, so translating them would make the inverse ambiguous; closed tasks keep theirs as written'
+  --dry-run: 'publier''s second spelling of --a-blanc: dropped, --a-blanc becomes --dry-run (one name, one-to-one)'
+  conseil: the council's pseudo -> council in data (login domain) and code; both stay in pseudos_reserves
+paths:
+  taches/: tasks/
+  debats/: debates/
+  propositions/: proposals/
+  membres/: members/
+  mesures/: measurements/
+  signalements/: reports/
+  invitations/ne-plus-contacter.yaml: invitations/do-not-contact.yaml
+  gouvernance/: governance/
+  gouvernance/conseil.yaml: governance/council.yaml
+  gouvernance/gardiens.yaml: governance/guardians.yaml
+  gouvernance/garants.yaml: governance/guarantors.yaml
+  gouvernance/comptes-agents.yaml: governance/agent-accounts.yaml
+  gouvernance/retraits.yaml: governance/removals.yaml
+  gouvernance/consignes/: governance/briefs/
+  gouvernance/consignes/abeille-du-conseil.md: governance/briefs/council-bee.md
+  gouvernance/consignes/constructeur.md: governance/briefs/builder.md
+  gouvernance/consignes/relecteur-adverse.md: governance/briefs/adversarial-reviewer.md
+  gouvernance/consignes/repetition-generale.md: governance/briefs/dress-rehearsal.md
+  projets/: projects/
+  modeles/: templates/
+  modeles/tache.yaml: templates/task.yaml
+  arbre/: tree/
+  outils/: tools/
+  outils/inventaire_marqueurs.py: tools/marker_inventory.py
+  outils/tests/registre/: tools/tests/registry/
+  outils/tests/registre/taches/: tools/tests/registry/tasks/
+  outils/tests/textes-0047/: tools/tests/texts-0047/
+  outils/juge/: tools/judge/
+  outils/juge/juge.py: tools/judge/judge.py
+  outils/juge/analyse.py: tools/judge/analysis.py
+  outils/juge/chrono.c: tools/judge/stopwatch.c
+  outils/juge/conteneur.py: tools/judge/container.py
+  outils/juge/entrees.py: tools/judge/inputs.py
+  outils/juge/isoler.sh: tools/judge/isolate.sh
+  outils/juge/lecture.py: tools/judge/reader.py
+  outils/juge/rapport.py: tools/judge/report.py
+  outils/juge/test_juge.py: tools/judge/test_judge.py
+  outils/juge/jouet/: tools/judge/toy/
+  outils/juge/jouet/bee/juge/: tools/judge/toy/bee/judge/
+  outils/juge/jouet/bee/juge/projet.py: tools/judge/toy/bee/judge/project.py
+  outils/juge/jouet/bee/juge/construire.sh: tools/judge/toy/bee/judge/build.sh
+  outils/repetition/: tools/rehearsal/
+  outils/repetition/LISEZMOI-modele.md: tools/rehearsal/README-template.md
+  outils/repetition/ci-simulee: tools/rehearsal/simulated-ci
+  outils/repetition/ci_simulee.py: tools/rehearsal/simulated_ci.py
+  outils/repetition/commun.sh: tools/rehearsal/common.sh
+  outils/repetition/decider-conseil: tools/rehearsal/council-decide
+  outils/repetition/horloge.py: tools/rehearsal/clock.py
+  outils/repetition/monter.sh: tools/rehearsal/setup.sh
+  outils/repetition/ouvrir-pr-fork: tools/rehearsal/open-fork-pr
+  outils/repetition/pousser-pr-fork: tools/rehearsal/push-fork-pr
+  outils/repetition/publier: tools/rehearsal/publish
+  outils/migration/: tools/migration/
+  schemas/contribution.schema.json: schemas/manifest.schema.json
+  schemas/enregistrement.schema.json: schemas/contribution-record.schema.json
+  schemas/debat.schema.json: schemas/debate.schema.json
+  schemas/membre.schema.json: schemas/member.schema.json
+  schemas/mesure.schema.json: schemas/measurement.schema.json
+  schemas/ne-plus-contacter.schema.json: schemas/do-not-contact.schema.json
+  schemas/projet.schema.json: schemas/project.schema.json
+  schemas/proposition.schema.json: schemas/proposal.schema.json
+  schemas/retraits.schema.json: schemas/removals.schema.json
+  schemas/signalement.schema.json: schemas/report.schema.json
+  schemas/tache.schema.json: schemas/task.schema.json
+  REGLES.md: RULES.md
+  UTILISATEURS.md: USERS.md
+  MAINTENEURS.md: MAINTAINERS.md
+  docs/arbre.md: docs/tree.md
+  docs/candidats.md: docs/candidates.md
+  docs/cap.md: docs/balance.md
+  docs/capacites.md: docs/capabilities.md
+  docs/croissance.md: docs/growth.md
+  docs/garants.md: docs/guarantors.md
+  docs/gardiens.md: docs/guardians.md
+  docs/gouvernance.md: docs/governance.md
+  docs/juge-commun.md: docs/common-judge.md
+  docs/mesures.md: docs/measurements.md
+  docs/nouveau-projet.md: docs/new-project.md
+  docs/organisation.md: docs/organization.md
+  docs/outillage.md: docs/tooling.md
+  docs/perimetre.md: docs/scope.md
+  docs/questions-ouvertes.md: docs/open-questions.md
+  docs/securite.md: docs/security.md
+  docs/taches.md: docs/tasks.md
+  .github/ISSUE_TEMPLATE/proposition-tache.md: .github/ISSUE_TEMPLATE/task-proposal.md
+  .claude/skills/bee-contributeur/: .claude/skills/bee-contributor/
+  .github/workflows/fusion-auto.yml: .github/workflows/auto-merge.yml
+  .github/workflows/integration-auto.yml: .github/workflows/auto-integration.yml
+  .github/workflows/juge.yml: .github/workflows/judge.yml
+  .github/workflows/juge-commun.yml: .github/workflows/judge-meta-tests.yml
+tree:
+  dir:
+  - arbre
+  - tree
+  children:
+  - Enfants
+  - Children
+  segments:
+    racine: root
+    roles: roles
+    projets: projects
+    debattre: debate
+    garder: guard
+    inviter: invite
+    mesurer: measure
+    optimiser: optimize
+    proposer: propose
+    relire: review
+    compression-sans-perte: lossless-compression
+    parsing-serialisation: parsing-serialization
+    ruche: ruche
+    miniz: miniz
+    api: api
+    bee: bee
+    deflate: deflate
+    inflate: inflate
+    libyaml: libyaml
+    SENS.md: MEANING.md
+cli:
+  commands:
+    valider: validate
+    lister: list
+    cap: balance
+    essaim: swarm
+    voir: show
+    contexte: context
+    inscrire: register
+    renommer: rename
+    lier: link
+    signaler: report
+    signalement: decide-report
+    prendre: take
+    proposer-tache: propose-task
+    liberer: release
+    noter: note
+    liberer-expirees: release-expired
+    manifeste: manifest
+    valider-contribution: validate-manifest
+    soumettre: submit
+    relire: review
+    confirmer-defaut: confirm-defect
+    enregistrer-mesure: record-measurement
+    voter: vote
+    proposer: propose
+    depouiller: tally
+    debattre: debate
+    debattre ouvrir: debate open
+    debattre argumenter: debate argue
+    debattre synthetiser: debate synthesize
+    debattre doublon: debate duplicate
+    debattre caviarder: debate redact
+    debattre clore: debate close
+    debattre importer-questions: debate import-questions
+    debats: debates
+    inviter: invite
+    invitation: invitation
+    invitation accord-gardien: invitation guardian-approval
+    invitation accord-conseil: invitation council-approval
+    invitation consigner-envoi: invitation record-sent
+    invitation consigner-relance: invitation record-reminder
+    invitation consigner-reponse: invitation record-answer
+    invitation ecarter: invitation dismiss
+    invitation retirer: invitation withdraw
+    invitation renouveler: invitation renew
+    retirer-donnees: remove-data
+    incident: incident
+    niveaux: levels
+    classement: ranking
+    verifier-acceptation: check-acceptance
+    integrer: integrate
+    record-merge: record-merge
+    cloturer: close
+    ecartees: set-aside
+    verifier-pr: check-pr
+    prs-declarees: declared-prs
+    ci-scope: ci-scope
+    push-scope: push-scope
+    needs-account-date: needs-account-date
+    api-budget: api-budget
+    main-green: main-green
+    acts-for: acts-for
+    verifier-fork: check-fork
+    enregistrer-verdict: record-verdict
+    choisir-execution: pick-run
+    bases-declarees: declared-bases
+    publier: publish
+    en-attente: pending
+    site: site
+  options:
+    --registre: --registry
+    --version: --version
+    --a-blanc: --dry-run
+    --ab: --ab
+    --amont: --upstream
+    --ancien: --old
+    --api: --api
+    --apres: --after
+    --arbre: --tree
+    --argument: --argument
+    --auteur: --author
+    --auteurs-pr: --pr-authors
+    --autre-compte: --other-account
+    --autre-identite: --other-identity
+    --avant: --before
+    --avis: --opinion
+    --base: --base
+    --bases: --bases
+    --budget: --budget
+    --canal: --channel
+    --candidat: --candidate
+    --categorie: --category
+    --categories: --categories
+    --commit: --commit
+    --compte-cree-le: --account-created-on
+    --compte-de: --account-of
+    --comptes: --accounts
+    --confirmer: --confirm
+    --conteste: --contest
+    --corps: --body
+    --de: --of
+    --defaut: --defect
+    --deja-lu: --already-read
+    --delai: --timeout
+    --demande: --request
+    --demande-le: --requested-on
+    --depot: --repo
+    --disponibles: --available
+    --dossier: --dir
+    --ecarter: --dismiss
+    --en-parallele: --parallel
+    --execution: --run
+    --fait: --fact
+    --fichier: --file
+    --fichiers: --files
+    --fusion-auto: --auto-merge
+    --fusion-sha: --merge-sha
+    --fusionnees: --merged
+    --github-id: --github-id
+    --homonyme: --namesake
+    --identifiant: --identifier
+    --identifiants-de: --identifiers-from
+    --instant-pr: --pr-time
+    --intervalle: --interval
+    --invitation: --invitation
+    --issue: --outcome
+    --jeton: --token
+    --jours: --days
+    --json: --json
+    --langue: --language
+    --lier: --link
+    --lignes: --lines
+    --manifeste: --manifest
+    --message: --message
+    --metrique: --metric
+    --mettre-a-jour: --update
+    --modele: --model
+    --motif: --reason
+    --non-contact: --no-contact
+    --note: --note
+    --outil: --tool
+    --par: --by
+    --position: --position
+    --poste: --area
+    --pr: --pr
+    --pr-states: --pr-states
+    --projet: --project
+    --pseudo: --login
+    --question: --question
+    --raison: --cause
+    --redater: --redate
+    --reference: --reference
+    --regle: --rule
+    --relecteur: --reviewer
+    --repond-a: --replies-to
+    --resume: --summary
+    --role: --role
+    --runs: --runs
+    --sans-attendre: --no-wait
+    --sha: --sha
+    --sortie: --output
+    --source: --source
+    --statut: --status
+    --suivant: --next
+    --synthese: --synthesis
+    --tache: --task
+    --taille: --size
+    --taille-max: --max-size
+    --tete: --head
+    --texte: --text
+    --titre: --title
+    --type: --type
+    --utilisateur: --user
+    --valeur: --value
+    --verdict: --verdict
+    --voir: --show
+    <argument>: <argument>
+    <contribution>: <contribution>
+    <debat>: <debate>
+    <fichier>: <file>
+    <invitation>: <invitation>
+    <login>: <login>
+    <moment>: <moment>
+    <projet>: <project>
+    <proposition>: <proposal>
+    <signalement>: <report>
+    <sujet>: <subject>
+    <tache>: <task>
+    <verdict>: <verdict>
+  scripts:
+    outils/juge/juge.py:
+      --outillage: --tooling
+      --source-a: --source-a
+      --source-b: --source-b
+      --image-seulement: --image-only
+      --historique-seulement: --history-only
+      --historique: --history
+      --source-juge: --judge-source
+      --base: --base
+      --tete: --head
+      --travail: --workdir
+      --option: --option
+      --repetitions: --repetitions
+      --chauffe: --warmup
+      --sans-instructions: --no-instructions
+      --prefixe-instructions: --instructions-prefix
+      --seuil-instructions: --instructions-threshold
+      --json: --json
+      --graine: --seed
+      --graine-ordre: --order-seed
+      --reseau-construction: --build-network
+      --memoire: --memory
+      --garder: --keep
+    outils/juge/rapport.py:
+      --code: --code
+      --verifier: --verify
+      --base: --base
+      --tete: --head
+    outils/test_bee.py:
+      --processus: --processes
+    outils/repetition/load_test.py:
+      <dossier>: <dir>
+      --membres: --members
+      --graine: --seed
+      --registre: --registry
+      --base: --base
+      --rejouer: --replay
+    outils/inventaire_marqueurs.py:
+      --all: --all
+    outils/repetition/publier (script):
+      <pseudo> <titre>: <login> <title>
+families:
+  tasks:
+    note: 'task files (self-service, hand-wrapped: translated at the text level). The path values of fichiers and
+      hors_perimetre stay as written (see hand_tokens: fichiers).'
+    files:
+    - taches/*/*.yaml
+    - outils/tests/registre/taches/*/*.yaml
+    - outils/tests/textes-0047/*.yaml
+    - modeles/tache.yaml
+    writer: text
+    schema: tache.schema.json
+    keys:
+      categorie: category
+      contexte: context
+      contribution: contribution
+      cree_le: created_on
+      cree_par: created_by
+      critere_acceptation: acceptance_criteria
+      depend_de: depends_on
+      depuis: since
+      fichiers: files
+      hors_perimetre: out_of_scope
+      id: id
+      le: at
+      metrique: metric
+      noeud: node
+      notes: notes
+      par: by
+      paralleles: parallel
+      portee: reach
+      poste: area
+      projet: project
+      reservation: reservation
+      sortie_compressee: compressed_output
+      statut: status
+      taille: size
+      texte: text
+      titre: title
+      type: type
+      utilisateur: user
+    values:
+      '**/cree_par': login
+      '**/par': login
+      '**/utilisateur': login
+      statut: task_status
+      type: task_type
+      taille: size
+      sortie_compressee: compressed_output
+      poste: area
+      categorie: category
+      noeud: node
+  contributions:
+    note: contribution records; metric ids (keys under instructions and degradations) stay until the metric-id step
+    files:
+    - contributions/*/*.yaml
+    - outils/tests/registre/contributions/*/*.yaml
+    writer: text
+    schema: enregistrement.schema.json
+    keys:
+      A: A
+      B: B
+      amorcage: bootstrap
+      arbre: tree
+      attente_verdict: awaiting_verdict
+      au_dela_du_bruit: beyond_noise
+      auteur: author
+      avis: opinion
+      base: base
+      ci: ci
+      commun: common
+      confirme_par: confirmed_by
+      constructions_suspectes: suspicious_constructs
+      decidee_le: decided_at
+      declare: declared
+      defaut_confirme: confirmed_defect
+      defaut_signale: reported_defect
+      degradations: degradations
+      detail: detail
+      doutes: doubts
+      ecart_declare: declared_gap
+      engage_depuis: engaged_since
+      etape_en_echec: failed_step
+      execution: run
+      fichiers_controles: checked_files
+      fusion_sha: merge_sha
+      gain: gain
+      id: id
+      instructions: instructions
+      jamais_integree: never_integrated
+      juge: judge
+      juges_modifies: modified_judges
+      le: at
+      levees: lifts
+      lignes_modifiees: changed_lines
+      modele: model
+      motif: reason
+      motif_decision: decision_reason
+      non_teste: untested
+      par: by
+      pr: pr
+      relecteur: reviewer
+      relectures: reviews
+      resume: summary
+      resume_sha: summary_sha
+      retenue: kept
+      sha: sha
+      sorties_comparees: outputs_compared
+      soumise_le: submitted_at
+      statut: status
+      tache: task
+      teste: tested
+      type: type
+      verdict: verdict
+      verdicts: verdicts
+      verdicts_oublies: dropped_verdicts
+      version: version
+    values:
+      '**/auteur': login
+      '**/confirme_par': login
+      '**/par': login
+      '**/relecteur': login
+      statut: contribution_status
+      verdict/ci: ci
+      verdicts[]/ci: ci
+      relectures[]/avis: opinion
+      attente_verdict/motif: wait_code
+    key_values:
+      verdict/instructions: null
+      verdict/degradations: null
+      verdicts[]/instructions: null
+      verdicts[]/degradations: null
+  debates:
+    note: 're-rendered by the tool''s canonical writer (rendu_debat): a debate must equal its own rendering'
+    files:
+    - debats/D-*.yaml
+    writer: canonical
+    schema: debat.schema.json
+    keys:
+      arguments: arguments
+      caviarde_pour: redacted_for
+      clos_le: closed_at
+      clos_par: closed_by
+      conteste: contested_by
+      doublon_de: duplicate_of
+      doublon_par: duplicate_marked_by
+      id: id
+      invitation: invitation
+      issue: outcome
+      le: at
+      ouvert_le: opened_at
+      ouvert_par: opened_by
+      par: by
+      position: position
+      question: question
+      question_caviardee_pour: question_redacted_for
+      rapporteur: rapporteur
+      reference: reference
+      repond_a: replies_to
+      sources: sources
+      statut: status
+      synthese: synthesis
+      synthese_caviardee_pour: synthesis_redacted_for
+      synthese_couvre: synthesis_covers
+      synthese_le: synthesis_at
+      synthese_par: synthesis_by
+      texte: text
+    values:
+      '**/clos_par': login
+      '**/ouvert_par': login
+      '**/par': login
+      '**/rapporteur': login
+      '**/synthese_par': login
+      statut: debate_status
+      issue: debate_outcome
+      arguments[]/position: position
+  proposals:
+    note: rule proposals; ouverte_le and the debates' ouvert_le share opened_at, one family each
+    files:
+    - propositions/P-*.yaml
+    writer: text
+    schema: proposition.schema.json
+    keys:
+      auteur: author
+      id: id
+      motif: reason
+      ouverte_le: opened_at
+      regle: rule
+      resultat: result
+      statut: status
+      texte_propose: proposed_text
+    values:
+      '**/auteur': login
+      statut: proposal_status
+  members:
+    note: ''
+    files:
+    - membres/*.yaml
+    writer: text
+    schema: membre.schema.json
+    keys:
+      anciens_logins: former_logins
+      autres_comptes: other_accounts
+      categories_preferees: preferred_categories
+      compte_cree_le: account_created_on
+      compte_de: account_of
+      github_id: github_id
+      inscrit_le: registered_on
+      pseudo: login
+      renomme_le: renamed_on
+    values:
+      '**/pseudo': login
+      categories_preferees[]: category
+  votes:
+    note: ''
+    files:
+    - votes/*/*.yaml
+    writer: text
+    schema: vote.schema.json
+    keys:
+      le: at
+      motif: reason
+      sujet: subject
+      valeur: value
+      votant: voter
+    values:
+      '**/votant': login
+  measurements:
+    note: metric ids (keys under metriques) stay until the metric-id step
+    files:
+    - mesures/*/*.yaml
+    writer: text
+    schema: mesure.schema.json
+    keys:
+      architecture: architecture
+      au_dela_du_bruit: beyond_noise
+      base: base
+      candidat: candidate
+      coeurs: cores
+      compilateur: compiler
+      config: config
+      contribution: contribution
+      gain: gain
+      le: at
+      metriques: metrics
+      motif: reason
+      outil: tool
+      paires: pairs
+      processeur: processor
+      repetitions: repetitions
+      soumise_par: submitted_by
+      systeme: system
+      victoires_b: b_wins
+    values:
+      '**/soumise_par': login
+    key_values:
+      metriques: null
+  invitations:
+    note: re-rendered by the tool's canonical writer (rendu_invitation)
+    files:
+    - invitations/I-*.yaml
+    writer: canonical
+    schema: invitation.schema.json
+    keys:
+      accord_conseil: council_approval
+      accord_gardien: guardian_approval
+      autres_identites: other_identities
+      canal: channel
+      debat: debate
+      demande: request
+      ecartee: set_aside
+      envoi: sent
+      fait: fact
+      homonyme: namesake
+      id: id
+      identifiant: identifier
+      le: at
+      message: message
+      motif: reason
+      par: by
+      personne: person
+      pourquoi: why
+      propose_le: proposed_at
+      propose_par: proposed_by
+      raison: cause
+      relance: reminder
+      renouvellement: renewal
+      reponse: answer
+      retrait: withdrawal
+      source: source
+      statut: status
+      valeur: value
+    values:
+      '**/par': login
+      '**/propose_par': login
+      statut: invitation_status
+      demande: invitation_request
+      reponse/valeur: invitation_answer
+      retrait/raison: withdrawal_cause
+      personne: withdrawn_text
+      autres_identites: withdrawn_text
+      pourquoi: withdrawn_text
+      pourquoi[]/source: removed_marker
+  do_not_contact:
+    note: ''
+    files:
+    - invitations/ne-plus-contacter.yaml
+    writer: canonical
+    schema: ne-plus-contacter.schema.json
+    keys:
+      empreintes: fingerprints
+  reports:
+    note: 'comptes -> accounts, the same English word as the agent accounts'' list: another family'
+    files:
+    - signalements/S-*.yaml
+    writer: text
+    schema: signalement.schema.json
+    keys:
+      comptes: accounts
+      decision: decision
+      issue: outcome
+      le: at
+      motif: reason
+      par: by
+    values:
+      '**/par': login
+      motif: report_reason
+      decision/issue: report_outcome
+      comptes[]: login
+  council:
+    note: ''
+    files:
+    - gouvernance/conseil.yaml
+    writer: text
+    keys:
+      github_id: github_id
+      membres: members
+      pseudo: login
+      role: role
+    values:
+      '**/pseudo': login
+      membres[]/role: council_role
+  guardians:
+    note: ''
+    files:
+    - gouvernance/gardiens.yaml
+    writer: text
+    keys:
+      depuis: since
+      garant: guarantor
+      github_id: github_id
+      membres: members
+      motif: reason
+      pseudo: login
+      revoque_le: revoked_on
+    values:
+      '**/garant': login
+      '**/pseudo': login
+  guarantors:
+    note: role is a free text here; consignes is a path into governance/briefs/
+    files:
+    - gouvernance/garants.yaml
+    writer: text
+    keys:
+      conflits: conflicts
+      consignes: brief
+      engagement: engagement
+      github_id: github_id
+      identite_publique: public_identity
+      membres: members
+      motif: reason
+      profil: profile
+      pseudo: login
+      revoque_le: revoked_on
+      role: role
+      signe_le: signed_on
+    values:
+      '**/pseudo': login
+      membres[]/consignes: path
+  agent_accounts:
+    note: ''
+    files:
+    - gouvernance/comptes-agents.yaml
+    writer: text
+    keys:
+      account: account
+      accounts: accounts
+      acts_for: acts_for
+      declared_on: declared_on
+      github_id: github_id
+      purpose: purpose
+  incidents:
+    note: re-rendered by the tool's canonical writer (bee incident)
+    files:
+    - gouvernance/incidents.yaml
+    writer: canonical
+    schema: incidents.schema.json
+    keys:
+      clos_le: closed_at
+      id: id
+      incidents: incidents
+      issue: outcome
+      ouvert_le: opened_at
+      titre: title
+  removals:
+    note: re-rendered by the tool's canonical writer (bee retirer-donnees)
+    files:
+    - gouvernance/retraits.yaml
+    writer: canonical
+    schema: retraits.schema.json
+    keys:
+      canal: channel
+      demande: request
+      empreintes: fingerprints
+      le: at
+      non_contact: no_contact
+      par: by
+      passages: passages
+      reference: reference
+      retraits: removals
+    values:
+      '**/par': login
+      retraits[]/demande/canal: removal_channel
+  projects:
+    note: metric ids (metriques[]/id and instructions) stay until the metric-id step; fork paths are not registry
+      paths
+    files:
+    - projets/*.yaml
+    writer: text
+    schema: projet.schema.json
+    keys:
+      banc_ab: ab_bench
+      categorie: category
+      chemins_hors_decompte: paths_not_counted
+      chemins_juges: judge_paths
+      commandes: commands
+      corpus: corpus
+      depot_origine: upstream_repo
+      description: description
+      fork: fork
+      fuzz: fuzz
+      hors_perimetre: out_of_scope
+      id: id
+      instructions: instructions
+      licence: license
+      metriques: metrics
+      nom: name
+      palier_mainteneur: maintainer_tier
+      perimetre: scope
+      phase_ouverture: opening_phase
+      reference: reference
+      sens: direction
+      statut: status
+      tests: tests
+      unite: unit
+      valider: validate
+      verdict_exige_base_juge: verdict_requires_judge_base
+    values:
+      statut: project_status
+      palier_mainteneur: maintainer_tier
+      categorie: category
+      metriques[]/sens: direction
+      metriques[]/unite: unit
+      chemins_juges[]: path
+      chemins_hors_decompte[]: path
+      commandes/tests: command
+      commandes/valider: command
+  categories:
+    note: ''
+    files:
+    - categories.yaml
+    writer: text
+    keys:
+      id: id
+      nom: name
+      preuve: proof
+      statut: status
+    values:
+      '[]/id': category
+      '[]/statut': category_status
+  config:
+    note: 'bee.yaml: keys and values; pseudos_reserves keeps its logins as written (both conseil and council are
+      reserved)'
+    files:
+    - bee.yaml
+    writer: text
+    keys:
+      agora: agora
+      amorcage: bootstrap
+      anciennete_compte_min_jours: min_account_age_days
+      arguments_max_par_24h: arguments_max_per_24h
+      arguments_max_par_24h_tous_debats: arguments_max_per_24h_all_debates
+      arguments_max_par_pr: arguments_max_per_pr
+      branche_dormante_jours: dormant_branch_days
+      cap: balance
+      chemin_max: path_max
+      contexte_max: context_max
+      creations: creations
+      croissance: growth
+      debat_min_heures: debate_min_hours
+      degradation_max_autres: max_other_degradation
+      delai_relance_jours: reminder_delay_days
+      duree_vote_jours: vote_duration_days
+      ecart_declare_max: max_declared_gap
+      element_max: item_max
+      elements_max: items_max
+      encadrement_par_semaine_sous_frein: oversight_per_week_under_brake
+      expiration_jours: expiry_days
+      fenetre_acceptation_heures: acceptance_window_hours
+      fenetre_jours: window_days
+      fichiers_max: files_max
+      gain_minimal: min_gain
+      invitations_max_par_24h: invitations_max_per_24h
+      invitations_max_par_pr: invitations_max_per_pr
+      invitations_par_semaine: invitations_per_week
+      juge_commun_min: common_judge_min
+      jusqu_au: until
+      majorite_requise: required_majority
+      max: max
+      max_par_24h: max_per_24h
+      max_par_pr: max_per_pr
+      membres_actifs_jours: active_member_days
+      membres_actifs_par_gardien_max: active_members_per_guardian_max
+      message_max: message_max
+      nom: name
+      notes: notes
+      organisation: organization
+      ouvertures_max_par_24h: openings_max_per_24h
+      phase: phase
+      poids_max_par_utilisateur_et_jour: max_weight_per_user_per_day
+      postes: areas
+      propositions_max_par_24h: proposals_max_per_24h
+      propositions_max_par_pr: proposals_max_per_pr
+      pseudos_reserves: reserved_logins
+      question_max: question_max
+      quorum_votants: voter_quorum
+      r8_amorcage: r8_bootstrap
+      relances_max: reminders_max
+      relecture_gardien_requise: guardian_review_required
+      relectures_requises: reviews_required
+      releve_rapporteur_heures: rapporteur_relief_hours
+      reprise_apres_liberation_heures: retake_after_release_hours
+      reservation_max_heures: reservation_max_hours
+      reservations_max_par_utilisateur: reservations_max_per_user
+      robots: robots
+      signalements_au_plafond_par_24h: reports_at_cap_per_24h
+      signalements_max_par_24h: reports_max_per_24h
+      signalements_max_par_pr: reports_max_per_pr
+      signalements_nommant_max: reports_naming_max
+      signalements_ouverts_max: reports_open_max
+      silence_avant_cloture_heures: silence_before_close_hours
+      source_max: source_max
+      sources_par_argument_max: sources_per_argument_max
+      synthese_max: synthesis_max
+      taches_max_par_24h: tasks_max_per_24h
+      taches_max_par_pr: tasks_max_per_pr
+      texte_max: text_max
+      vote_net_min: min_net_vote
+    values:
+      relecture_gardien_requise: guardian_review
+    key_values:
+      cap/postes: area
+  tree:
+    note: 'tree nodes: the front matter is translated as YAML, node ids change in parent and in the children lines;
+      the rest of the Markdown is prose and stays'
+    files:
+    - arbre/SENS.md
+    - arbre/**/SENS.md
+    writer: markdown
+    keys:
+      parent: parent
+      mis_a_jour: updated_on
+      entretenu_par: maintained_by
+      budget_lignes: line_budget
+    values:
+      parent: node
+  manifest:
+    note: 'the fork''s manifest (manifestes/<task>.yaml, CONTRIBUTION.yaml in a fork): boundary document'
+    files: []
+    writer: text
+    schema: contribution.schema.json
+    keys:
+      agent: agent
+      apres: after
+      avant: before
+      changement: change
+      client: client
+      commande: command
+      doutes: doubts
+      machine: machine
+      mesures: measurements
+      modele: model
+      non_teste: untested
+      repetitions: repetitions
+      resume: summary
+      tache: task
+      taille_reelle: actual_size
+      teste: tested
+      utilisateur: user
+    values:
+      '**/utilisateur': login
+      taille_reelle: size
+    key_values:
+      mesures/avant: null
+      mesures/apres: null
+  fork_verdict:
+    note: verdict.json written by the forks' bee/ci/verdict.py (boundary)
+    files: []
+    writer: text
+    keys:
+      ci: ci
+      etape_en_echec: failed_step
+      gain: gain
+      metrique: metric
+      au_dela_du_bruit: beyond_noise
+      mesures: measurements
+      instructions: instructions
+      degradations: degradations
+      lignes_modifiees: changed_lines
+      amorcage: bootstrap
+      base_juge: judge_base
+      regle: rule
+      depart: start
+      juge: judge
+      version: version
+      commun: common
+      projet: project
+      greffon: plugin
+      graine: seed
+      sorties_comparees: outputs_compared
+      constructions_suspectes: suspicious_constructs
+      source: source
+      etapes: steps
+      details: details
+      A: A
+      B: B
+      base: base
+      type: type
+      detail: detail
+    values:
+      ci: ci
+      base_juge/regle: fork_judge_base_rule
+    key_values:
+      instructions: null
+      degradations: null
+      mesures: null
+  judge_report:
+    note: 'juge.json of the common judge (pinned by SHA in the forks): judge track'
+    files: []
+    writer: text
+    keys:
+      juge: judge
+      verification: verification
+      sorties_comparees: outputs_compared
+      code: code
+      issue: outcome
+      origine_des_graines: seed_origin
+      metriques: metrics
+      mesures: measurements
+      methode: method
+      repetitions: repetitions
+      chauffe: warmup
+      ordre: order
+  ab_report:
+    note: bee/bench/ab.py report read by bee enregistrer-mesure --ab
+    files: []
+    writer: text
+    keys:
+      config: config
+      metriques: metrics
+      base: base
+      candidat: candidate
+      repetitions: repetitions
+      victoires_B: b_wins
+      paires: pairs
+      paires_utiles: useful_pairs
+      test_du_signe: sign_test
+    key_values:
+      metriques: null
+  out_list:
+    note: 'bee lister --json: task records plus computed keys'
+    files: []
+    writer: json
+    keys:
+      bloquee_par: blocked_by
+      categorie: category
+      contexte: context
+      contribution: contribution
+      cree_le: created_on
+      cree_par: created_by
+      critere_acceptation: acceptance_criteria
+      depend_de: depends_on
+      depuis: since
+      fichiers: files
+      hors_perimetre: out_of_scope
+      id: id
+      le: at
+      metrique: metric
+      noeud: node
+      notes: notes
+      par: by
+      paralleles: parallel
+      portee: reach
+      poste: area
+      projet: project
+      reservation: reservation
+      sortie_compressee: compressed_output
+      statut: status
+      taille: size
+      texte: text
+      titre: title
+      type: type
+      utilisateur: user
+    values:
+      '[]/statut': task_status
+      '[]/type': task_type
+      '[]/taille': size
+      '[]/poste': area
+      '[]/categorie': category
+      '[]/noeud': node
+      '[]/sortie_compressee': compressed_output
+      '**/cree_par': login
+      '**/par': login
+  out_balance:
+    note: bee cap --json (balance)
+    files: []
+    writer: json
+    keys:
+      a_relire: to_review
+      a_valider: to_validate
+      cible: target
+      debats: debates
+      ecart: gap
+      en_retard: behind
+      fenetre_jours: window_days
+      gestes: gestures
+      id: id
+      pistes: leads
+      poids: weight
+      poste: area
+      poste_suggere: suggested_area
+      postes: areas
+      propositions: proposals
+      reel: actual
+      taches: tasks
+      taille: size
+      titre: title
+      total: total
+    values:
+      en_retard: area
+      poste_suggere: area
+      postes[]/poste: area
+      pistes/taches[]/taille: size
+    key_values:
+      postes[]/gestes: gesture_label
+  out_swarm:
+    note: bee essaim --json (swarm), also the site's essaim
+    files: []
+    writer: json
+    keys:
+      alertes: alerts
+      arguments: arguments
+      arguments_apres_synthese: arguments_after_synthesis
+      attend: awaits
+      attentes_jusqu_au: waits_until
+      auteur: author
+      ce_qui_passe: what_passes
+      ci: ci
+      concurrentes: rivals
+      contribution: contribution
+      contributions: contributions
+      courses: races
+      debat: debate
+      debats: debates
+      demande: request
+      depuis: since
+      dernier_argument: last_argument
+      derniere_activite: last_activity
+      en_cours: in_progress
+      en_relecture: in_review
+      encadrement: oversight
+      engages: engaged
+      envoi_le: sent_at
+      envois_7_jours: sent_7_days
+      expire_dans_heures: expires_in_hours
+      fenetre_restante_heures: window_left_hours
+      frein: brake
+      gain_mesure: measured_gain
+      gardiens: guardians
+      gardiens_en_fonction: guardians_in_office
+      heures: hours
+      id: id
+      identifiant: identifier
+      incidents_ouverts: open_incidents
+      invitations: invitations
+      invitations_par_semaine: invitations_per_week
+      issue: outcome
+      le: at
+      membres_actifs: active_members
+      membres_actifs_max: active_members_max
+      notes: notes
+      ouvert_le: opened_at
+      ouvert_par: opened_by
+      par: by
+      paralleles: parallel
+      participants: participants
+      places_prises_7_jours: places_taken_7_days
+      position: position
+      poste: area
+      pr: pr
+      propose_le: proposed_at
+      propose_par: proposed_by
+      protegee_jusqu_au: protected_until
+      question: question
+      raisons: reasons
+      rang: rank
+      rapporteur: rapporteur
+      reference: reference
+      relectures: reviews
+      relectures_total: reviews_total
+      role: role
+      serre: tight
+      signalements: reports
+      signalements_au_plafond: reports_at_cap
+      signalements_au_plafond_ouverts: reports_at_cap_open
+      signalements_ouverts: reports_open
+      soumise_le: submitted_at
+      statut: status
+      synthese_le: synthesis_at
+      tache: task
+      taille: size
+      texte: text
+      titre: title
+      utilisateur: user
+      vote_net: net_vote
+    values:
+      en_cours[]/statut: task_status
+      en_cours[]/poste: area
+      en_cours[]/taille: size
+      en_relecture[]/poste: area
+      en_relecture[]/ci: ci
+      debats[]/statut: debate_status
+      debats[]/issue: debate_outcome
+      debats[]/dernier_argument/position: position
+      courses[]/contributions[]/ci: ci
+      courses[]/engages[]/role: engaged_role
+      invitations[]/statut: invitation_status
+      invitations[]/demande: invitation_request
+  out_ranking:
+    note: bee classement --json (ranking); score letters stay
+    files: []
+    writer: json
+    keys:
+      C: C
+      G: G
+      L: L
+      P: P
+      S: S
+      V: V
+      alertes: alerts
+      auteur: author
+      id: id
+      resume: summary
+      statut: status
+    values:
+      '[]/statut': contribution_status
+  out_levels:
+    note: 'bee niveaux --json (levels): logins are keys'
+    files: []
+    writer: json
+    keys:
+      integrees: integrated
+      niveau: level
+      relectures: reviews
+    values:
+      '*/niveau': level
+    key_values:
+      ? ''
+      : null
+  out_debates:
+    note: bee debats --json and bee debats --voir <d> --json (debates)
+    files: []
+    writer: json
+    keys:
+      arguments: arguments
+      arguments_apres_synthese: arguments_after_synthesis
+      attend_cloture: awaits_closing
+      caviarde_pour: redacted_for
+      clos_le: closed_at
+      clos_par: closed_by
+      conteste: contested_by
+      dernier_argument: last_argument
+      derniere_activite: last_activity
+      doublon_de: duplicate_of
+      doublon_par: duplicate_marked_by
+      etat: state
+      id: id
+      invitation: invitation
+      issue: outcome
+      le: at
+      ouvert_le: opened_at
+      ouvert_par: opened_by
+      par: by
+      participants: participants
+      position: position
+      question: question
+      question_caviardee_pour: question_redacted_for
+      rapporteur: rapporteur
+      reference: reference
+      repond_a: replies_to
+      sources: sources
+      statut: status
+      synthese: synthesis
+      synthese_caviardee_pour: synthesis_redacted_for
+      synthese_couvre: synthesis_covers
+      synthese_le: synthesis_at
+      synthese_par: synthesis_by
+      texte: text
+    values:
+      '**/statut': debate_status
+      '**/issue': debate_outcome
+      '**/position': position
+  out_tally:
+    note: bee depouiller <P> (tally)
+    files: []
+    writer: json
+    keys:
+      cloture: closing
+      contre: against
+      majorite_requise: required_majority
+      part_pour: share_for
+      pour: for
+      proposition: proposal
+      quorum: quorum
+      regle: rule
+      resultat: result
+      statut: status
+      terminee: finished
+      votants_ponderes: weighted_voters
+    values:
+      statut: proposal_status
+      resultat: proposal_status
+  out_pending:
+    note: bee en-attente --pr-states (JSON read by integration-auto.yml and verdicts.yml)
+    files: []
+    writer: json
+    keys:
+      auteur: author
+      ci_verdict: verdict_ci
+      id: id
+      pr: pr
+      pr_author: pr_author
+      pr_author_id: pr_author_id
+      pr_head: pr_head
+      pr_merge: pr_merge
+      pr_person: pr_person
+      pr_state: pr_state
+      sha_attente: awaiting_sha
+      sha_verdict: verdict_sha
+    values:
+      '[]/ci_verdict': ci
+  site_api:
+    note: the site's api/registre.json (-> api/registry.json); tree sections are the node headings
+    files: []
+    writer: json
+    keys:
+      A: A
+      B: B
+      a_relire: to_review
+      a_valider: to_validate
+      alertes: alerts
+      amorcage: bootstrap
+      arbre: tree
+      arguments: arguments
+      arguments_apres_synthese: arguments_after_synthesis
+      attend: awaits
+      attente_verdict: awaiting_verdict
+      attentes_jusqu_au: waits_until
+      au_dela_du_bruit: beyond_noise
+      auteur: author
+      avis: opinion
+      banc_ab: ab_bench
+      base: base
+      bloquee_par: blocked_by
+      budget_lignes: line_budget
+      cap: balance
+      categorie: category
+      caviarde_pour: redacted_for
+      ce_qui_passe: what_passes
+      chemins_hors_decompte: paths_not_counted
+      chemins_juges: judge_paths
+      ci: ci
+      cible: target
+      clos_le: closed_at
+      clos_par: closed_by
+      commandes: commands
+      commun: common
+      concurrentes: rivals
+      confirme_par: confirmed_by
+      constructions_suspectes: suspicious_constructs
+      conteste: contested_by
+      contexte: context
+      contribution: contribution
+      contributions: contributions
+      corpus: corpus
+      courses: races
+      cree_le: created_on
+      cree_par: created_by
+      critere_acceptation: acceptance_criteria
+      debat: debate
+      debats: debates
+      decidee_le: decided_at
+      declare: declared
+      defaut_confirme: confirmed_defect
+      defaut_signale: reported_defect
+      degradations: degradations
+      demande: request
+      depend_de: depends_on
+      depot_origine: upstream_repo
+      depuis: since
+      dernier_argument: last_argument
+      derniere_activite: last_activity
+      description: description
+      detail: detail
+      doublon_de: duplicate_of
+      doublon_par: duplicate_marked_by
+      doutes: doubts
+      ecart: gap
+      ecart_declare: declared_gap
+      en_cours: in_progress
+      en_relecture: in_review
+      en_retard: behind
+      encadrement: oversight
+      enfants: children
+      engage_depuis: engaged_since
+      engages: engaged
+      entretenu_par: maintained_by
+      envoi_le: sent_at
+      envois_7_jours: sent_7_days
+      essaim: swarm
+      etape_en_echec: failed_step
+      etat: state
+      execution: run
+      expire_dans_heures: expires_in_hours
+      fenetre_jours: window_days
+      fenetre_restante_heures: window_left_hours
+      fichier: file
+      fichiers: files
+      fichiers_controles: checked_files
+      fork: fork
+      frein: brake
+      fusion_sha: merge_sha
+      fuzz: fuzz
+      gain: gain
+      gain_mesure: measured_gain
+      gardiens: guardians
+      gardiens_en_fonction: guardians_in_office
+      genere_le: generated_at
+      gestes: gestures
+      guide_agent: agent_guide
+      heures: hours
+      hors_perimetre: out_of_scope
+      id: id
+      identifiant: identifier
+      incidents_ouverts: open_incidents
+      instructions: instructions
+      invitation: invitation
+      invitations: invitations
+      invitations_par_semaine: invitations_per_week
+      issue: outcome
+      jamais_integree: never_integrated
+      juge: judge
+      juges_modifies: modified_judges
+      le: at
+      levees: lifts
+      licence: license
+      lignes: lines
+      lignes_modifiees: changed_lines
+      membres: members
+      membres_actifs: active_members
+      membres_actifs_max: active_members_max
+      metrique: metric
+      metriques: metrics
+      mis_a_jour: updated_on
+      modele: model
+      motif: reason
+      motif_decision: decision_reason
+      noeud: node
+      noeud_rattache: attached_node
+      nom: name
+      non_teste: untested
+      notes: notes
+      organisation: organization
+      ouvert_le: opened_at
+      ouvert_par: opened_by
+      page: page
+      palier_mainteneur: maintainer_tier
+      par: by
+      paralleles: parallel
+      parent: parent
+      participants: participants
+      perimetre: scope
+      phase: phase
+      phase_ouverture: opening_phase
+      pistes: leads
+      places_prises_7_jours: places_taken_7_days
+      poids: weight
+      portee: reach
+      position: position
+      poste: area
+      poste_suggere: suggested_area
+      postes: areas
+      pr: pr
+      projet: project
+      projets: projects
+      propose_le: proposed_at
+      propose_par: proposed_by
+      propositions: proposals
+      protegee_jusqu_au: protected_until
+      question: question
+      question_caviardee_pour: question_redacted_for
+      raisons: reasons
+      rang: rank
+      rapporteur: rapporteur
+      reel: actual
+      reference: reference
+      registre: registry
+      relecteur: reviewer
+      relectures: reviews
+      relectures_total: reviews_total
+      repond_a: replies_to
+      reservation: reservation
+      resume: summary
+      resume_sha: summary_sha
+      retenue: kept
+      role: role
+      score: score
+      sections: sections
+      sens: direction
+      serre: tight
+      sha: sha
+      signalements: reports
+      signalements_au_plafond: reports_at_cap
+      signalements_au_plafond_ouverts: reports_at_cap_open
+      signalements_ouverts: reports_open
+      sortie_compressee: compressed_output
+      sorties_comparees: outputs_compared
+      soumise_le: submitted_at
+      sources: sources
+      statut: status
+      synthese: synthesis
+      synthese_caviardee_pour: synthesis_redacted_for
+      synthese_couvre: synthesis_covers
+      synthese_le: synthesis_at
+      synthese_par: synthesis_by
+      tache: task
+      taches: tasks
+      taille: size
+      teste: tested
+      tests: tests
+      texte: text
+      titre: title
+      total: total
+      type: type
+      unite: unit
+      utilisateur: user
+      valider: validate
+      verdict: verdict
+      verdict_exige_base_juge: verdict_requires_judge_base
+      verdicts: verdicts
+      verdicts_oublies: dropped_verdicts
+      version: version
+      vote_net: net_vote
+    values:
+      taches[]/statut: task_status
+      taches[]/type: task_type
+      taches[]/poste: area
+      taches[]/categorie: category
+      taches[]/noeud: node
+      taches[]/noeud_rattache: node
+      taches[]/role: role
+      contributions[]/statut: contribution_status
+      debats[]/statut: debate_status
+      arbre[]/id: node
+      arbre[]/parent: node
+      arbre[]/enfants[]: node
+      projets[]/statut: project_status
+    key_values:
+      arbre[]/sections: node_section
+      contributions[]/verdict/instructions: null
+      contributions[]/verdict/degradations: null
+      contributions[]/verdicts[]/instructions: null
+      cap/postes[]/gestes: gesture_label
+domains:
+  api_moment:
+    start: start
+    end: end
+  area:
+    gouvernance: governance
+    projets: projects
+    coordination: coordination
+  category:
+    compression-sans-perte: lossless-compression
+    decodage-images: image-decoding
+    parsing-serialisation: parsing-serialization
+    cryptographie: cryptography
+    encodeurs-avec-perte: lossy-encoders
+    systeme: system
+    ruche: ruche
+  category_status:
+    ouverte: open
+    exclue: excluded
+  ci:
+    verte: green
+    rouge: red
+  compressed_output:
+    identique: identical
+    peut_changer: may_change
+  contribution_status:
+    en_relecture: in_review
+    integree: integrated
+    refusee: refused
+    annulee: cancelled
+    ecartee: set_aside
+  debate_outcome:
+    proposition: proposal
+    tache: task
+    decision: decision
+    sans_suite: no_follow_up
+  debate_status:
+    ouvert: open
+    clos: closed
+  direction:
+    plus_haut: higher
+    plus_bas: lower
+  engaged_role:
+    titulaire: holder
+    en parallèle: parallel
+  fork_judge_base_rule:
+    point_de_depart: start_point
+    introduction: introduction
+    refus_point_de_depart: refused_start_point
+    refus_rebase: refused_rebase
+    refus_introduction_miniz: refused_introduction_miniz
+  gate_nature:
+    reservation: reservation
+    liberation: release
+    soumission: submission
+    mise_a_jour: update
+    note: note
+    relecture: review
+    vote: vote
+    mesure: measurement
+    inscription: registration
+    profil: profile
+    proposition: proposal
+    proposition_tache: task_proposal
+    validation_tache: task_validation
+    renommage: rename
+    inscription_parallele: parallel_registration
+    retrait_parallele: parallel_withdrawal
+    soumission_parallele: parallel_submission
+    promotion: promotion
+    ouverture_debat: debate_opening
+    argument: argument
+    prise_de_plume: pen_takeover
+    synthese: synthesis
+    doublon: duplicate
+    cloture_debat: debate_closing
+    accord_gardien: guardian_approval
+    ecartement_invitation: invitation_dismissal
+    signalement: report
+    gouvernance: governance
+    creation_tache: task_creation
+    decision: decision
+    outillage: tooling
+    incident: incident
+    caviardage: redaction
+    retrait_demande: requested_removal
+    relecture_humaine: human_review
+    agent_account: agent_account
+  gesture:
+    relecture: review
+    mesure: measurement
+    note: note
+    proposition: proposal
+    vote: vote
+    creation_tache: task_creation
+    ouverture_debat: debate_opening
+    argument: argument
+    synthese: synthesis
+  gesture_label:
+    travail en cours: work in progress
+    tâches créées ou proposées: tasks created or proposed
+    relectures: reviews
+    mesures: measurements
+    notes: notes
+    propositions de règle: rule proposals
+    votes: votes
+    débats ouverts: open debates
+    arguments: arguments
+    synthèses: syntheses
+    contributions: contributions
+  invitation_answer:
+    acceptee: accepted
+    refusee: refused
+    sans_reponse: no_answer
+  invitation_request:
+    garant: guarantor
+    gardien: guardian
+    participer: participate
+    projet: project
+  invitation_status:
+    proposee: proposed
+    decidee: decided
+    envoyee: sent
+    relancee: reminded
+    acceptee: accepted
+    refusee: refused
+    sans_reponse: no_answer
+    ecartee: set_aside
+    retiree: withdrawn
+  language:
+    fr: fr
+    en: en
+  level:
+    Nouveau: New
+    Contributeur: Contributor
+    Confirmé: Confirmed
+  maintainer_tier:
+    aucun: none
+    observateur: observer
+    partenaire: partner
+    integration: integration
+    refus: refusal
+  node_section:
+    Pourquoi cette branche existe: Why this branch exists
+    Ce qui compte ici: What matters here
+    Ce qu'on peut ignorer ici: What you can ignore here
+    Enfants: Children
+  opinion:
+    favorable: favorable
+    defavorable: unfavorable
+    abstention: abstention
+  position:
+    pour: for
+    contre: against
+    question: question
+    fait: fact
+  project_status:
+    actif: active
+    a_venir: upcoming
+    archive: archived
+  proposal_status:
+    ouverte: open
+    adoptee: adopted
+    rejetee: rejected
+    veto: veto
+  removal_channel:
+    courriel: email
+    message_prive: private_message
+    issue: issue
+    discussion: discussion
+    autre: other
+  report_outcome:
+    lies: linked
+    sans_indice: no_evidence
+    personnes_distinctes: distinct_persons
+    deja_lies: already_linked
+    doublon: duplicate
+  report_reason:
+    relectures_croisees: cross_reviews
+    votes_croises: cross_votes
+    relais_d_engagements: engagement_relay
+    copie_de_contribution: copied_contribution
+  role:
+    optimiser: optimize
+    relire: review
+    mesurer: measure
+    debattre: debate
+    garder: guard
+    proposer: propose
+    inviter: invite
+  size:
+    S: S
+    M: M
+    L: L
+  task_status:
+    proposee: proposed
+    ouverte: open
+    reservee: reserved
+    en_relecture: in_review
+    integree: integrated
+    refusee: refused
+    abandonnee: abandoned
+  task_type:
+    optimisation: optimization
+    relecture: review
+    mesure: measurement
+    test: test
+    decoupage: split
+  wait_code:
+    autre_base: other_base
+    base_changee: base_changed
+    pr_ouverte: pr_open
+    pr_fermee: pr_closed
+    base: base
+    base_juge: judge_base
+  withdrawal_cause:
+    refus: refusal
+    demande: request
+    sans_reponse: no_answer
+open_domains:
+  command:
+    python3 outils/test_bee.py && python3 outils/juge/test_juge.py: python3 tools/test_bee.py && python3 tools/judge/test_judge.py
+    python3 outils/bee.py valider: python3 tools/bee.py validate
+  council_role:
+    fondateur: founder
+  guardian_review:
+    si_juge_incomplet: if_judge_incomplete
+  login:
+    conseil: council
+  removed_marker:
+    '[retiré]': '[removed]'
+  unit:
+    Mo/s: MB/s
+    Ko: KB
+    trames/s: frames/s
+  withdrawn_text:
+    'retiré : refus': 'withdrawn: refusal'
+    'retiré : demande': 'withdrawn: request'
+    'retiré : sans réponse': 'withdrawn: no answer'
+hand:
+- files: outils/*.py
+  why: 'the tool, the site, the tests: step 1b''s renamer (P1, P1b) and the full suite'
+- files: outils/requirements.txt
+  why: names no French word
+- files: outils/juge/**
+  why: 'the common judge: judge track (judge-v4), moved by the path map'
+- files: outils/repetition/**
+  why: 'the dress-rehearsal kit: step 1b''s renamer, moved by the path map'
+- files: outils/migration/**
+  why: this map and its tools (read from the base by every proof)
+- files: schemas/*.json
+  why: 'schema properties and enums: step 1b''s renamer (P1 on the schemas), checked against this map'
+- files: .github/**
+  why: 'workflows and templates: step 1b''s renamer, the workflow tests'
+- files: .claude/**
+  why: 'the skill: prose step'
+- files: docs/**
+  why: 'docs: moved by the path map; paths, commands and names in their text by the switch, prose later'
+- files: gouvernance/consignes/*.md
+  why: 'role instructions: moved by the path map; prose by the founder'
+- files: modeles/BEE.md
+  why: template prose
+- files: '*.md'
+  why: 'root documents: moved by the path map; their text by the switch and the prose step'
+- files: .gitignore
+  why: names no French folder
+- files: COMMANDEMENTS.md
+  why: a translation, removed (plan, section 12, change 13; open question 2)
+  removed: true
+- files: AGENTS.en.md
+  why: replaced by AGENTS.md in English (plan, section 12, change 13)
+  removed: true
+new: []
