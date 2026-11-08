@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import datetime as dt
+import difflib
 import fnmatch
 import functools
 import hashlib
@@ -237,6 +238,19 @@ def ecrire_yaml(chemin, donnees):
     chemin.parent.mkdir(parents=True, exist_ok=True)
     texte = texte_yaml(donnees)
     chemin.write_text(texte, encoding="utf-8")
+    noter_ecrit(chemin)
+
+
+def noter_ecrit(chemin):
+    """ruche-0138 : consigne chaque fichier que bee écrit dans un dépôt git (.git/bee-session, chaque chemin suivi d'un NUL) ;
+    bee publier ne publie qu'eux, jamais un autre fichier de l'arbre de travail."""
+    chemin = pathlib.Path(chemin).resolve()
+    if any((p / ".git").exists() for p in chemin.parents) and (r := subprocess.run(
+            ["git", "rev-parse", "--show-toplevel", "--git-path", "bee-session"], cwd=chemin.parent, capture_output=True,
+            text=True)).returncode == 0:
+        racine, journal = r.stdout.splitlines()
+        with open(chemin.parent / journal, "a", encoding="utf-8") as f:
+            f.write(chemin.relative_to(pathlib.Path(racine).resolve()).as_posix() + "\0")
 
 
 def guillemets(valeur):
@@ -409,6 +423,7 @@ def modifier_tache(chemin, *, statut=None, reservation=_INCHANGE, paralleles=_IN
     if ajout:  # ruche-0040: the task's path, for a member's append (note, parallel registration)
         exiger_place(ajout, texte)
     pathlib.Path(chemin).write_text(texte, encoding="utf-8")
+    noter_ecrit(chemin)
 
 
 # --------------------------------------------------------------------------
@@ -7378,6 +7393,7 @@ def cmd_proposer_tache(args):
     charger_texte_yaml(texte, str(chemin))
     chemin.parent.mkdir(parents=True, exist_ok=True)
     chemin.write_text(texte, encoding="utf-8")
+    noter_ecrit(chemin)
     print(f"✓ {reg.rel(chemin)} créé (statut « proposee »). Remplacez titre, contexte, fichiers, critères et périmètre")
     print("  par des faits mesurés (docs/taches.md), puis : bee valider ; bee publier --titre "
           f"'Proposition de tâche {identifiant}'. Un gardien, le conseil ou un Confirmé la validera.")
@@ -7822,6 +7838,7 @@ def ecrire_debat(chemin, debat):
     chemin = pathlib.Path(chemin)
     chemin.parent.mkdir(parents=True, exist_ok=True)
     chemin.write_text(texte, encoding="utf-8")
+    noter_ecrit(chemin)
 
 
 def _texte_ou_fichier(args, quoi):
@@ -8306,6 +8323,7 @@ def ecrire_invitation(chemin, donnees):
     chemin = pathlib.Path(chemin)
     chemin.parent.mkdir(parents=True, exist_ok=True)
     chemin.write_text(texte, encoding="utf-8")
+    noter_ecrit(chemin)
 
 
 def cmd_inviter(args):
@@ -10094,11 +10112,21 @@ def plafonds_par_pr(reg, depot, changements):
     return [f"{comptes[k]} {k} ajoutés, au plus {n} ({cle})" for k, (cle, n) in plafonds.items() if comptes[k] > n]
 
 
+def lignes_ajoutees(depot, chemin):
+    """ruche-0138 : les lignes du fichier, et les numéros de celles que la session ajoute à son état de HEAD (toutes s'il est
+    nouveau) ; une ligne de HEAD reste à elle, même identique à une ligne ajoutée."""
+    avant = _git_brut(depot, "cat-file", "blob", f"HEAD:{chemin}")[1].decode("utf-8", "replace").splitlines(keepends=True)
+    apres = (depot / chemin).read_text(encoding="utf-8").splitlines(keepends=True)
+    return apres, [j for op, _, _, j1, j2 in difflib.SequenceMatcher(None, avant, apres, autojunk=False).get_opcodes()
+                   if op in ("replace", "insert") for j in range(j1, j2)]
+
+
 def dates_de_session(depot, changements):
-    """ruche-0129 : les (clé, instant) que la session ajoute aux fichiers de HEAD, hors engage_depuis (celui de l'engagement)."""
-    lues = lambda octets: set(MOTIF_DATE.findall(octets.decode("utf-8", "replace")))  # noqa: E731
-    return {(k, v) for c in changements if c.endswith(".yaml") and (depot / c).is_file() for k, v in
-            lues((depot / c).read_bytes()) - lues(_git_brut(depot, "cat-file", "blob", f"HEAD:{c}")[1]) if k != "engage_depuis"}
+    """ruche-0129 : les (clé, instant) des lignes que la session ajoute aux fichiers de HEAD, hors engage_depuis (celui de
+    l'engagement) ; ruche-0138 : fichier par fichier, ligne par ligne."""
+    return {m.groups() for c in changements if c.endswith(".yaml") and (depot / c).is_file()
+            for lignes, ajoutees in [lignes_ajoutees(depot, c)] for j in ajoutees
+            if (m := MOTIF_DATE.match(lignes[j])) and m[1] != "engage_depuis"}
 
 
 def remettre(depot, source, chemins):
@@ -10117,13 +10145,23 @@ def cmd_publier(args):
     if probleme := (texte_sortant_refuse(args.titre, "titre", 256, organisation)  # both leave the hive: refused before any
                     or texte_sortant_refuse(corps, "corps", 8000, organisation)):  # git or gh call; 256: GitHub's, 8000: fast
         raise ErreurBee(probleme)
-    changements = [l[3:] for l in git(depot, "status", "-z", "--porcelain", "--no-renames", "--untracked-files=all")]
-    if not changements:
-        raise ErreurBee("aucun changement à publier (avez-vous lancé bee prendre, soumettre, relire, voter… ?)")
-    interdits = [c for c in changements if not c.startswith(DOSSIERS_LIBRE_SERVICE)]
+    tous = [l[3:] for l in git(depot, "status", "-z", "--porcelain", "--no-renames", "--untracked-files=all")]
+    journal = depot / executer(["git", "rev-parse", "--git-path", "bee-session"], depot).stdout.strip()  # ruche-0138
+    ecrits = set(journal.read_text(encoding="utf-8").split("\0")) if journal.is_file() else set()
+    changements = [c for c in tous if c in ecrits]  # ce que bee a écrit pour la session, rien d'autre
+    attente = depot / executer(["git", "rev-parse", "--git-path", "bee-publier.json"], depot).stdout.strip()  # la PR qu'il suit
+    if liens := [c for c in sorted(ecrits - {""}) if any((depot / p).is_symlink() for p in [c, *pathlib.PurePosixPath(c).parents][:-1])] + [
+            str(f) for f in (journal, attente) if f.is_symlink()]:  # ruche-0138 : lstat, chaque fichier et ses dossiers
+        raise ErreurBee(f"lien symbolique refusé, bee n'écrit ni ne lit à travers : {', '.join(map(montrer, liens))}")
+    interdits = [c for c in tous if not c.startswith(DOSSIERS_LIBRE_SERVICE)]
     if interdits:
         raise ErreurBee("ces fichiers ne relèvent pas du libre-service et feraient refuser la PR : " + ", ".join(interdits[:8])
                         + ". Retirez-les (git restore ou git rm --cached) ; s'ils sont voulus, c'est une PR pour le conseil.")
+    if not changements:
+        raise ErreurBee("aucun changement à publier : bee publier ne publie que les fichiers que bee a écrits (avez-vous lancé bee "
+                        "prendre, soumettre, relire, voter… ?)")
+    if ecartes := [c for c in tous if c not in ecrits]:
+        print(f"  Laissés de côté (bee ne les a pas écrits) : {', '.join(map(montrer, ecartes[:8]))}")
     problemes = verifier_registre(Registre(depot))
     if problemes:
         raise ErreurBee("le registre n'est pas valide, la PR serait refusée :\n  " + "\n  ".join(problemes[:10]))
@@ -10131,37 +10169,64 @@ def cmd_publier(args):
         raise ErreurBee("plafonds par PR de la porte : " + " ; ".join(depasses) + ". Publiez en plusieurs fois, chaque PR sous "
                         "les plafonds.")
     prepares = engagements_prepares(depot, changements)
-    avant = ", ".join(titre for titre, _ in prepares.values())
-    attente = depot / executer(["git", "rev-parse", "--git-path", "bee-publier.json"], depot).stdout.strip()  # la PR qu'il suit
-    suivie = json.loads(attente.read_text(encoding="utf-8")) if prepares and attente.is_file() else {}
-    reprise = suivie.get("cle") == json.dumps(prepares, sort_keys=True)  # relancé pendant que la PR de l'engagement attend
+    try:  # ruche-0138 : illisible, il arrête tout, avant toute écriture
+        suivie = json.loads(attente.read_text(encoding="utf-8")) if prepares and attente.is_file() else None
+        attendus = json.loads(suivie["cle"]) if suivie is not None else {}
+        if not (isinstance(attendus, dict) and (suivie is None or isinstance(suivie["pr"][0], str) and type(suivie["pr"][1]) is int
+                                                and suivie["pr"][1] > 0)):
+            raise ValueError
+    except (OSError, ValueError, LookupError, TypeError):
+        raise ErreurBee(f"{montrer(str(attente))} est illisible : rien n'est écrit ni poussé. Supprimez-le, puis relancez bee "
+                        "publier : il retrouve sur GitHub la PR d'engagement qui attend, par sa branche.") from None
+    # Relancé pendant que la PR de l'engagement attend : il la suit ; un engagement préparé depuis part après, dans sa PR.
+    prepares_json = json.loads(json.dumps(prepares, sort_keys=True))
+    reprise = bool(attendus) and all(prepares_json.get(c) == v for c, v in attendus.items())
+    # ruche-0138 : une PR, une branche par engagement (son empreinte, avant toute redatation) ; sans fichier d'état, chacun
+    # est cherché sur GitHub, un par un
+    branche_de = lambda c, v: f"bee/engagement-{hashlib.sha256(json.dumps({c: v}, sort_keys=True).encode()).hexdigest()[:16]}"
+    if chercher := prepares and not (reprise or args.a_blanc):
+        proprietaire = proprietaire_depot(executer(["git", "remote", "get-url", "origin"], depot).stdout.strip())[0]
+        de_l_amont = proprietaire_depot(f"https://github.com/{amont}")[0]
+    for c, v in (sorted(prepares_json.items()) if chercher else []):
+        if ouvertes := json.loads(executer(["gh", "api", f"repos/{amont}/pulls?state=open&head={proprietaire or de_l_amont}:"
+                                            f"{branche_de(c, v)}"], depot).stdout or "[]"):
+            reprise, attendus = True, {c: v}
+            suivie = {"cle": json.dumps(attendus, sort_keys=True), "pr": [ouvertes[0]["html_url"], ouvertes[0]["number"]]}
+            attente.write_text(json.dumps(suivie), encoding="utf-8")
+            break
     # Revue de ruche-0129 : chaque date déclarée est l'heure de la PR, à 2 h près, celle d'un engagement préparé comprise, que sa
     # soumission reprend (engage_depuis), sauf si sa PR attend déjà ; la seconde PR part au plus --delai minutes plus tard.
     dates = dates_de_session(depot, changements) | {("engage_depuis", (r.get("reservation") or r["paralleles"][-1])["depuis"])
-                                                    for _, r in prepares.values() if not reprise}
+                                                    for c, (_, r) in prepares.items() if not (reprise and c in attendus)}
     if perimees := sorted({v for k, v in dates for m in {0, args.delai * bool(prepares)}
                            if probleme_date_pr(v, k, maintenant() + dt.timedelta(minutes=m))}):
         if args.a_blanc or not args.redater:
             raise ErreurBee(f"{', '.join(perimees)} : hors de la fenêtre de la porte (chaque date déclarée est l'heure de la PR, à "
                             f"2 h près, jamais dans le futur{' ; pour la seconde PR, --delai minutes plus tard' if prepares else ''}). "
                             f"Pour mettre les dates de la session à l'heure de maintenant : bee publier --titre \"{args.titre}\" --redater")
-        for c in (c for c in changements if c.endswith(".yaml") and (depot / c).is_file()):
-            (depot / c).write_text(MOTIF_DATE.sub(lambda m: m[0].replace(m[2], en_iso(maintenant())) if m.groups() in dates else m[0],
-                                                  (depot / c).read_text(encoding="utf-8")), encoding="utf-8")
+        for c in (c for c in changements if c.endswith(".yaml") and (depot / c).is_file()):  # ruche-0138 : ses lignes seules
+            lignes, ajoutees = lignes_ajoutees(depot, c)
+            for j in ajoutees:
+                if (m := MOTIF_DATE.match(lignes[j])) and m.groups() in dates:
+                    lignes[j] = lignes[j].replace(m[2], en_iso(maintenant()))
+            (depot / c).write_text("".join(lignes), encoding="utf-8")
         print(f"  Redaté à {en_iso(maintenant())} : {', '.join(sorted({v for _, v in dates}))}")
         prepares = engagements_prepares(depot, changements)
+    engagements = {c: v for c, v in prepares.items() if c in attendus} if reprise else dict(sorted(prepares.items())[:1])
+    avant = ", ".join(titre for titre, _ in engagements.values())
     if args.a_blanc:
         print("✓ à blanc : les fichiers relèvent du libre-service et le registre reste valide. Rien n'a été écrit ni poussé.")
         print(f"  Dépôt : {amont} — PR « {args.titre} »")
         for c in changements:
             print(f"  - {montrer(c)}")
         if prepares:
-            print(f"  En deux PR, dans l'ordre : d'abord « {avant} » seule ({', '.join(prepares)}), puis, une fois fusionnée, "
+            print(f"  En deux PR, dans l'ordre : d'abord « {avant} » seule ({', '.join(engagements)}), puis, une fois fusionnée, "
                   f"« {args.titre} » : la porte juge une soumission sur l'engagement de sa base.")
         print("  Sans --a-blanc, bee publierait : branche, commit, poussée, PR, attente de la fusion automatique.")
         return 0
     if prepares and args.sans_attendre:
         raise ErreurBee(f"« {avant} » doit être fusionnée avant « {args.titre} », qui en dépend : publiez sans --sans-attendre")
+    partiel = set(prepares) != set(engagements)
     branche_initiale = executer(["git", "rev-parse", "--abbrev-ref", "HEAD"], depot).stdout.strip()
     retour = branche_initiale if branche_initiale != "HEAD" else "main"
     base = re.sub(r"[^a-z0-9]+", "-", args.titre.lower().translate(str.maketrans("àâäéèêëîïôöùûüç", "aaaeeeeiioouuuc"))).strip("-")[:50] or "publication"
@@ -10173,48 +10238,54 @@ def cmd_publier(args):
     executer(["git", "switch", "-c", branche], depot)
     try:
         if prepares:  # ruche-0129 (E7) : d'abord un commit des engagements seuls, rejoués sur la tâche de HEAD ; puis la session
-            finaux = {c: (depot / c).read_bytes() for c in prepares}
+            finaux = {c: (depot / c).read_bytes() for c in engagements}
             try:
-                for c, (_, rejeu) in prepares.items():
+                for c, (_, rejeu) in engagements.items():
                     (depot / c).write_bytes(_git_brut(depot, "cat-file", "blob", f"HEAD:{c}")[1])
                     modifier_tache(depot / c, **rejeu)
-                executer(["git", "--literal-pathspecs", "commit", "-m", avant, "--", *prepares], depot)  # eux seuls, quel que soit l'index
+                executer(["git", "--literal-pathspecs", "commit", "-m", avant, "--", *engagements], depot)  # eux seuls, quel que soit l'index
             finally:
                 for c, octets in finaux.items():
                     (depot / c).write_bytes(octets)
         executer(["git", "--literal-pathspecs", "add", "--", *changements], depot)
-        executer(["git", "commit", "-m", args.titre], depot)
+        executer(["git", "--literal-pathspecs", "commit", "-m", args.titre, "--", *changements], depot)  # eux seuls (ruche-0138)
         if prepares:  # l'engagement part seul ; le reste attend sa fusion, sur le disque, puis est rejoué sur main
             executer(["git", "switch", retour], depot)
             remettre(depot, branche, changements)
             if reprise:
-                print(f"  « {avant} » attend déjà ({suivie['pr'][0]}) : bee publier la suit, sans en ouvrir une seconde.")
+                print(montrer(f"  « {avant} » attend déjà ({suivie['pr'][0]}) : bee publier la suit, sans en ouvrir une seconde."))
             else:
-                executer(["git", "push", "origin", f"{branche}~1:refs/heads/{branche}-engagement"], depot)
-                proprietaire = proprietaire_depot(executer(["git", "remote", "get-url", "origin"], depot).stdout.strip())[0]
-                prefixe = "" if proprietaire in (None, proprietaire_depot(f"https://github.com/{amont}")[0]) else f"{proprietaire}:"
+                branche_e, prefixe = branche_de(*min(engagements.items())), "" if proprietaire in (None, de_l_amont) else f"{proprietaire}:"
+                executer(["git", "push", "-f", "origin", f"{branche}~1:refs/heads/{branche_e}"], depot)  # sans PR : la sienne
                 pr = json.loads(executer(["gh", "api", f"repos/{amont}/pulls", "-X", "POST", "-f", f"title={avant}",
-                                          "-f", f"head={prefixe}{branche}-engagement", "-f", "base=main",
+                                          "-f", f"head={prefixe}{branche_e}", "-f", "base=main",
                                           "-f", f"body=Publié avec `bee publier`.\n\nNature : {avant}."], depot).stdout)
                 print(f"✓ PR ouverte : {pr['html_url']}")
-                suivie = {"cle": json.dumps(prepares, sort_keys=True), "pr": [pr["html_url"], pr["number"]]}
+                suivie = {"cle": json.dumps(engagements, sort_keys=True), "pr": [pr["html_url"], pr["number"]]}
                 attente.write_text(json.dumps(suivie), encoding="utf-8")
             if code := attendre_fusion(args, depot, amont, *suivie["pr"], attente=attente, ranger=(branche, changements)):
                 print(f"  « {args.titre} » en dépend : rien d'autre n'est publié, vos changements sont sur le disque. Relancez bee "
                       "publier une fois cette PR fusionnée : il la suit, sans en ouvrir une seconde.")
                 return code
-            if executer(["git", "rebase", "--onto", "main", f"{branche}~1", branche], depot, verifier=False).returncode:
+            if executer(["git", "rebase", "--autostash", "--onto", "main", f"{branche}~1", branche], depot, verifier=False).returncode:
                 executer(["git", "rebase", "--abort"], depot, verifier=False)
                 raise ErreurBee(f"« {avant} » est fusionnée, mais « {args.titre} » ne s'applique plus sur main (ses fichiers y ont "
                                 "changé entre-temps) : comparez-les à main (git diff) avant de relancer bee publier")
-        executer(["git", "push", "-u", "origin", branche], depot)
-        proprietaire, _ = proprietaire_depot(executer(["git", "remote", "get-url", "origin"], depot).stdout.strip())
-        proprietaire_amont, _ = proprietaire_depot(f"https://github.com/{amont}")
-        tete = branche if proprietaire in (None, proprietaire_amont) else f"{proprietaire}:{branche}"
-        # API REST plutôt que `gh pr create` (GraphQL) : elle fonctionne aussi dans les environnements restreints.
-        pr = json.loads(executer(["gh", "api", f"repos/{amont}/pulls", "-X", "POST", "-f", f"title={args.titre}",
-                                  "-f", f"head={tete}", "-f", "base=main", "-f", f"body={corps}"], depot).stdout)
+            if partiel:  # ruche-0138 : le reste revient sur le disque, rejoué sur main ; l'autre engagement part, dans sa PR
+                executer(["git", "switch", retour], depot)
+                remettre(depot, branche, changements)
+        if not partiel:
+            executer(["git", "push", "-u", "origin", branche], depot)
+            proprietaire, _ = proprietaire_depot(executer(["git", "remote", "get-url", "origin"], depot).stdout.strip())
+            proprietaire_amont, _ = proprietaire_depot(f"https://github.com/{amont}")
+            tete = branche if proprietaire in (None, proprietaire_amont) else f"{proprietaire}:{branche}"
+            # API REST plutôt que `gh pr create` (GraphQL) : elle fonctionne aussi dans les environnements restreints.
+            pr = json.loads(executer(["gh", "api", f"repos/{amont}/pulls", "-X", "POST", "-f", f"title={args.titre}",
+                                      "-f", f"head={tete}", "-f", "base=main", "-f", f"body={corps}"], depot).stdout)
+            ecrits.difference_update(changements)  # publiés : la session suivante repart d'un journal sans eux
+            journal.write_text("".join(f"{c}\0" for c in sorted(ecrits - {""})), encoding="utf-8")
     except BaseException as e:  # revue de ruche-0129 : à chaque échec, les changements que le disque n'a plus y reviennent
+        executer(["git", "--literal-pathspecs", "reset", "-q", "--", *changements], depot, verifier=False)  # ruche-0138 : index vidé
         executer(["git", "switch", retour], depot, verifier=False)
         if not git(depot, "--literal-pathspecs", "status", "-z", "--porcelain", "--no-renames", "--untracked-files=all", "--",
                    *changements):
@@ -10224,6 +10295,9 @@ def cmd_publier(args):
         raise
     finally:
         executer(["git", "switch", branche_initiale if branche_initiale != "HEAD" else "main"], depot, verifier=False)
+    if partiel:
+        print(f"  « {avant} » fusionnée ; l'engagement préparé depuis part maintenant, dans sa propre PR.")
+        return cmd_publier(args)
     adresse, numero = pr["html_url"], pr["number"]
     print(f"✓ PR ouverte : {adresse}")
     if args.sans_attendre:
@@ -10242,12 +10316,23 @@ def attendre_fusion(args, depot, amont, adresse, numero, attente=None, ranger=No
         infos = json.loads(executer(["gh", "api", f"repos/{amont}/pulls/{numero}"], depot).stdout or "{}")
         etat = "MERGED" if infos.get("merged") else str(infos.get("state", "")).upper()
         if etat == "MERGED":
-            if ranger:  # si rien n'a changé sur le disque pendant l'attente, tout y est dans la branche
-                executer(["git", "add", "-A"], depot)
-                if executer(["git", "diff", "-z", "--no-renames", "--cached", "--quiet", ranger[0]], depot, verifier=False).returncode:
+            if ranger:  # si rien n'a changé sur le disque pendant l'attente, tout y est dans la branche (ruche-0138 : sans index)
+                journal = depot / executer(["git", "rev-parse", "--git-path", "bee-session"], depot).stdout.strip()
+                ecrits = set(journal.read_text(encoding="utf-8").split("\0")) if journal.is_file() else set()
+                if any((depot / c).is_symlink() or _git_brut(depot, "cat-file", "blob", f"{ranger[0]}:{c}")[1] != ((depot / c).read_bytes()
+                       if (depot / c).is_file() else b"") for c in ecrits | set(ranger[1])):  # ruche-0138 : un lien, jamais suivi
                     raise ErreurBee("vos changements ont changé sur le disque pendant l'attente : ils y restent ; relancez bee publier")
-                executer(["git", "--literal-pathspecs", "restore", "--source", "HEAD", "--staged", "--worktree", "--", *ranger[1]], depot)
+                for c in ranger[1]:  # chacun remis à son état de HEAD, sans passer par l'index
+                    if (lu := _git_brut(depot, "cat-file", "blob", f"HEAD:{c}"))[0]:
+                        (depot / c).unlink(missing_ok=True)
+                    else:
+                        (depot / c).write_bytes(lu[1])
             distant = "upstream" if executer(["git", "remote", "get-url", "upstream"], depot, verifier=False).returncode == 0 else "origin"
+            executer(["git", "fetch", distant, "main"], depot)  # ruche-0138 : un fichier retouché à la main que main change
+            if retouches := sorted({l[3:] for l in git(depot, "status", "-z", "--porcelain", "--no-renames", "--untracked-files=all")}
+                                   & set(git(depot, "diff", "-z", "--name-only", "--no-renames", "main", "FETCH_HEAD"))):
+                raise ErreurBee(f"la PR est fusionnée, mais main change {', '.join(map(montrer, retouches))}, retouché(s) à la main : "
+                                "mettez-les de côté (git stash), puis relancez bee publier, qui reprend où il en est")
             executer(["git", "switch", "main"], depot, verifier=False)
             executer(["git", "pull", "--ff-only", distant, "main"], depot)
             if attente:

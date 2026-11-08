@@ -31,10 +31,8 @@ hors_perimetre:
 - COMMANDMENTS.md
 - the gate's caps (bee.yaml)
 noeud: projets/ruche/ruche
-statut: reservee
-reservation:
-  utilisateur: "bidji29"
-  depuis: "2026-11-08T10:38:36Z"
+statut: en_relecture
+contribution: ruche-0138-c1
 cree_par: conseil
 cree_le: '2026-11-02'
 notes:
