@@ -8,3 +8,114 @@ statut: en_relecture
 soumise_le: '2026-11-08T20:04:03Z'
 engage_depuis: '2026-11-08T19:03:28Z'
 relectures: []
+verdict:
+  ci: verte
+  base: 69f8054ed20edffa935f69c0f8feb7e22d2df85d
+  gain: null
+  au_dela_du_bruit: false
+  instructions:
+    instructions_analyse:
+      A: 249769850.0
+      B: 249769850.0
+      gain: 0.0
+    instructions_chargement:
+      A: 341192769.0
+      B: 341192769.0
+      gain: 0.0
+    instructions_emission:
+      A: 461725511.0
+      B: 461725511.0
+      gain: 0.0
+  degradations: {}
+  lignes_modifiees: 45
+  ecart_declare: null
+  sha: edf591b469fcd0f01bca36ace60447b9b008f510
+  arbre: 08e1eddbd48e411170315614bac90053ba1f15f2
+  fichiers_controles: true
+  juges_modifies:
+  - .github/workflows/bee-ci.yml
+  - bee/README.md
+  - bee/ci/test_verdict.py
+  - bee/ci/verdict.py
+  - bee/sandbox/sans-docker.sh
+  execution: https://github.com/Bee-ruche/libyamlBee/actions/runs/42519363922
+verdicts:
+- sha: edf591b469fcd0f01bca36ace60447b9b008f510
+  arbre: 08e1eddbd48e411170315614bac90053ba1f15f2
+  ci: verte
+  gain: null
+  au_dela_du_bruit: false
+  lignes_modifiees: 45
+  instructions:
+    instructions_analyse:
+      A: 249769850.0
+      B: 249769850.0
+      gain: 0.0
+    instructions_chargement:
+      A: 341192769.0
+      B: 341192769.0
+      gain: 0.0
+    instructions_emission:
+      A: 461725511.0
+      B: 461725511.0
+      gain: 0.0
+declare:
+  modele: Claude Opus 5.5 (claude-opus-5-5), constructeur lancé par l'architecte de La Ruche
+  gain: null
+  teste:
+  - 'In the sandbox (bee/sandbox/sans-docker.sh, this head''s), on this head: bee/ci/test_verdict.py 39
+    tests OK (33 before, 6 new); bee/bench/test_ab.py 10 OK; python3 bee/corpus/generer.py conforming
+    (40 files); bee/tests/lancer.sh OK (build inside the sandbox; determinism: 40 event streams identical;
+    round trip: 62 emitter outputs identical).'
+  - 'A PR that breaks a reader of bee/ci/ turns the verdict red, on local test branches made from this
+    head and judged with this head as their base, as a later PR would be: essai/lecteur-casse changes
+    one line of bee/ci/vocabulaire.py (the English task map reads « metrics » instead of « metric »).
+    The step, extracted from bee-ci.yml and run with the real base sandbox and /usr/bin/python3, nested
+    in an outer sandbox (sudo replaced by a witness that logs: Docker stop, apt-get), exits 1: the PR''s
+    suite ran 39 tests, 8 failures and 3 errors. essai/honnete, which only adds a comment to bee/ci/verdict.py:
+    exit 0, 39 tests OK. This head''s bee/ci/verdict.py, given needs where outillage-pr is « failure »
+    and every other job and state succeeded: ci rouge, etape_en_echec « job outillage-pr »; with « s […]'
+  - 'Nested as in CI: master''s sans-docker.sh as the outer sandbox, started from a namespace whose /run/mount/utab
+    is read-only, running this head''s full bee/ci/test_verdict.py (which starts this head''s sandbox
+    inside it): 39 tests OK. The first CI run of libyamlBee PR 4 (head f063e30) showed the job working
+    on a real runner and this case failing (38 of 39); this head fixes it.'
+  - 'New tests: the job reads only, keeps no credentials, has no output, uploads no artifact, uses no
+    secret, writes neither GITHUB_OUTPUT nor GITHUB_ENV, stops Docker before the sandbox, runs the PR''s
+    code only through the base''s sandbox, and is in the verdict''s needs (which list every other job);
+    the step on small git repositories: bee/ci/ changed, a new file in bee/ci/, the sandbox script or
+    the workflow changed, the tests run in the sandbox from pr/ after the sudo preparations (Docker stop
+    included) and their failure fails the step; only src/ changed, nothing runs; the verdict red for failure,
+    cancelled or skipped even with a planted « succes » state file, green for success.'
+  - 'The sandbox itself: the command is PID 1, its /proc shows none of the caller''s processes, its /tmp
+    is empty and does not show the caller''s, it has no network and none of the caller''s variables, and
+    it starts at the repository''s root; the same checks pass when it is started from a namespace whose
+    userspace mount table (/run/mount/utab) is read-only, as inside the job''s outer sandbox on a runner.
+    State files: for each step, the legitimate one missing and « succes » planted in another artifact,
+    another job''s folder, the right artifact''s root or a subfolder, or the legitimate one as a symbolic
+    link: the step stays without a result and the verdict red; the task copy and ab.json as symbolic links:
+    never read.'
+  - 'Mutations: with master''s workflow the 3 job tests fail; with outillage-pr removed from the verdict''s
+    needs, the structure test fails; with the PR''s tests run outside the sandbox and their failure swallowed,
+    the step and structure tests fail; without the Docker stop, the job tests fail; on the previous verdict.py
+    the state and link tests fail; with the previous sans-docker.sh the sandbox test fails; with the script
+    of f063e30 (mounts without -n), the read-only mount table case fails exactly as on the runner of libyamlBee
+    PR 4 (exit 16, « failed to update userspace mount table »).'
+  non_teste:
+  - 'GitHub Actions itself: no workflow can run here. Only the CI of this PR (it changes bee-ci.yml and
+    bee/sandbox/, so the new job runs on it) will show that ubuntu-24.04 runners allow the sandbox once
+    the sysctl is applied, that systemctl stops Docker there, that apt installs python3-yaml for /usr/bin/python3
+    (3.12 there, 3.13 here), and the job''s duration. If the sandbox were refused there, the job would
+    fail and the verdict would be red, never green.'
+  - 'The test branches were run locally, not on GitHub: the builder opens no PR.'
+  - 'The independent adversarial review by an agent of another model (second criterion): done by the architect''s
+    reviewer; its findings are addressed in this head.'
+  doutes: 'The fork''s CI judges a PR with the base''s bee/: this PR''s own run of the new job uses master''s
+    sans-docker.sh (no PID namespace, shared /tmp) with Docker stopped, and master''s verdict.py; the
+    new sandbox and the state-folder rule apply from the next PR on. The job runs only when the PR changes
+    bee/ci/, bee/sandbox/ or bee-ci.yml, like minizBee''s (bee/ci/ and its workflow); unlike minizBee,
+    libyamlBee''s manifest job does not also run the base''s tests on every PR (the tests only read bee/ci/,
+    the sandbox script and the workflow). The verdict names a failure « job outillage-pr » rather than
+    a step label. The state folders are those bee-ci.yml uploads today: a job that changes where it puts
+    its states must change DOSSIERS_ETATS with it, or its step stays without a result and the verdict
+    red. Such PRs take about half a minute more (apt-get update and python3-yaml). A local simulation
+    must put its state files at the root of --etats or in the jobs'' state folders.'
