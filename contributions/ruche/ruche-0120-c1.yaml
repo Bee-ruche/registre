@@ -1,0 +1,10 @@
+id: ruche-0120-c1
+tache: ruche-0120
+auteur: bidji29
+pr: https://github.com/Bee-ruche/registre/pull/207
+resume: One fusion pass merges every validated data PR in order, each bound to its checked head; the job
+  that reads PRs only reads, the merge job reads nothing from them.
+statut: en_relecture
+soumise_le: '2026-11-08T12:19:27Z'
+engage_depuis: '2026-11-08T11:50:22Z'
+relectures: []
