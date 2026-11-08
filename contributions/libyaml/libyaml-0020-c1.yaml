@@ -4,7 +4,7 @@ auteur: bidji29
 pr: https://github.com/Bee-ruche/libyamlBee/pull/3
 resume: libyamlBee's CI reads the registry in both vocabularies (French, English) before the switch; unreadable
   means red, never a default; each file read from the job that produces it.
-statut: en_relecture
+statut: integree
 soumise_le: '2026-11-08T17:56:43Z'
 engage_depuis: '2026-11-08T16:58:30Z'
 relectures: []
@@ -121,3 +121,6 @@ declare:
     red (copy absent), never green. The fork''s CI judges a PR with the base''s bee/, so this PR''s own
     run still uses the old scripts, and the new ones apply from the next PR on. No libyamlBee PR is open,
     so none needs a rebase.'
+decidee_le: '2026-11-08T18:13:10Z'
+motif_decision: 'Fork tooling contribution: libyamlBee PR #3 merged at the judged commit 14ea6f2 by the agent principal from the council account (bidji29), at the founder''s request of 8 November 2026 that the agent principal merge PRs himself; independent adversarial review by another model (mergeable; two minor findings and two hardening points fixed and verified by that reviewer); every CI job green on the judged commit, verdict recorded. R1: 19 lines counted by the registry (bee/** excluded), 398 outside tests in all. Recorded by hand: the fork PR changes a workflow, which the integration robot never merges.'
+fusion_sha: 69f8054ed20edffa935f69c0f8feb7e22d2df85d
