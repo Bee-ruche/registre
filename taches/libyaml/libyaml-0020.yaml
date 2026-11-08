@@ -22,8 +22,6 @@ critere_acceptation:
   or answered; the full test suite passes on the exact head
 hors_perimetre:
 - COMMANDMENTS.md
-depend_de:
-- ruche-0141
 noeud: projets/parsing-serialisation/libyaml
 statut: ouverte
 cree_par: conseil

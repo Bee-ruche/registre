@@ -421,7 +421,7 @@ ruche-0070 required before L0 is merged.
 | --- | --- | --- |
 | L1a translator and proofs, dormant | ruche-0141 | — |
 | L1b gate migration mode, `bee check-migration` | ruche-0142 | ruche-0141 |
-| F1 the forks read both layouts | miniz-0049, libyaml-0020 | ruche-0141 |
+| F1 the forks read both layouts (names from docs/english-names.md) | miniz-0049, libyaml-0020 | — |
 | Settings fail closed (before L5) | ruche-0153 | — |
 | L2 code and docs folders and files | ruche-0143 | ruche-0142, miniz-0049, libyaml-0020 |
 | L3 command line | ruche-0144 | ruche-0143 |
