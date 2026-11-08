@@ -15,6 +15,10 @@ contexte: 'docs/english-migration.md, sections 9, 12 and 13. Split from ruche-01
 fichiers:
 - outils/migration/
 - outils/test_bee.py
+- outils/juge/test_juge.py
+- outils/repetition/
+- outils/juge/
+- .github/workflows/
 portee: 0.7
 metrique: null
 critere_acceptation:
