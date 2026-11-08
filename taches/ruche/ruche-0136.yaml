@@ -28,7 +28,7 @@ hors_perimetre:
 - the forks (their move to the next judge version is their own task)
 - the tag itself (the council)
 noeud: projets/ruche/ruche
-statut: en_relecture
+statut: integree
 contribution: ruche-0136-c1
 cree_par: conseil
 cree_le: '2026-11-02'
