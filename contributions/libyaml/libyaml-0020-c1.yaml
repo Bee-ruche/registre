@@ -1,0 +1,10 @@
+id: libyaml-0020-c1
+tache: libyaml-0020
+auteur: bidji29
+pr: https://github.com/Bee-ruche/libyamlBee/pull/3
+resume: libyamlBee's CI reads the registry in both vocabularies (French, English) before the switch; unreadable
+  means red, never a default; each file read from the job that produces it.
+statut: en_relecture
+soumise_le: '2026-11-08T17:56:43Z'
+engage_depuis: '2026-11-08T16:58:30Z'
+relectures: []
