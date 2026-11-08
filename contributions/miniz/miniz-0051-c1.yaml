@@ -4,7 +4,7 @@ auteur: bidji29
 pr: https://github.com/Bee-ruche/minizBee/pull/25
 resume: A manifest is a regular file; each file the verdict reads is read only from the job that produces
   it, never through a link.
-statut: en_relecture
+statut: integree
 soumise_le: '2026-11-08T20:04:02Z'
 engage_depuis: '2026-11-08T19:03:27Z'
 relectures: []
@@ -122,3 +122,6 @@ declare:
     The fork''s CI judges a PR with the base''s bee/, so this PR''s own manifest check and verdict use
     master''s scripts; the new ones apply from the next PR on (the job « Tests de l''outillage de CI de
     la PR » runs this PR''s test_verdict.py).'
+decidee_le: '2026-11-08T20:34:48Z'
+motif_decision: 'Fork tooling contribution: minizBee PR #25 merged at the judged commit 95d0e58 by the agent principal from the council account (bidji29), at the founder''s request of 8 November 2026; independent adversarial review by another model (its findings fixed and verified by that reviewer); every CI job green on the judged commit, verdict recorded. R1: 6 counted lines, for an S task. Recorded by hand: the fork PR changes a workflow.'
+fusion_sha: f5440c3a212a4625a0bd275237e341b6327a3da3

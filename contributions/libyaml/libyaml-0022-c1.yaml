@@ -4,7 +4,7 @@ auteur: bidji29
 pr: https://github.com/Bee-ruche/libyamlBee/pull/4
 resume: The CI runs the tests of its own CI scripts in the sandbox, counted by the verdict; a stronger
   sandbox; states read from their job's folder.
-statut: en_relecture
+statut: integree
 soumise_le: '2026-11-08T20:04:03Z'
 engage_depuis: '2026-11-08T19:03:28Z'
 relectures: []
@@ -119,3 +119,6 @@ declare:
     its states must change DOSSIERS_ETATS with it, or its step stays without a result and the verdict
     red. Such PRs take about half a minute more (apt-get update and python3-yaml). A local simulation
     must put its state files at the root of --etats or in the jobs'' state folders.'
+decidee_le: '2026-11-08T20:34:48Z'
+motif_decision: 'Fork tooling contribution: libyamlBee PR #4 merged at the judged commit edf591b by the agent principal from the council account (bidji29), at the founder''s request of 8 November 2026; independent adversarial review by another model (its findings fixed and verified; a failure the new job caught on a real runner fixed and verified too); every CI job green on the judged commit, verdict recorded. R1: 45 counted lines, for an S task. Recorded by hand: the fork PR changes a workflow.'
+fusion_sha: 269d1ecab08204730efba63a3a144bce62e7edfd
