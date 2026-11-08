@@ -428,6 +428,122 @@ def modifier_tache(chemin, *, statut=None, reservation=_INCHANGE, paralleles=_IN
 
 
 # --------------------------------------------------------------------------
+# Réglages (bee.yaml), ruche-0144 : ils échouent fermés
+# --------------------------------------------------------------------------
+# The one list of the bee.yaml keys bee reads, each with its form (a check: None, or what is expected). bee valider refuses a listed key
+# missing or malformed, and any key not listed; every read goes through reglage(), which refuses (ErreurBee) what bee valider would. No
+# read falls back to a default: a setting renamed on one side only stops what reads it, never switches a safeguard off.
+
+def _forme(est, attendu):
+    return lambda v, config: None if est(v) else attendu
+
+
+_BORNE = 10 ** 5  # any count, cap or number of hours or days: a number of days taken from now stays after year 1
+
+
+def _nombre(v):  # finite and bounded: never nan, ±inf or 10**400
+    return isinstance(v, (int, float)) and not isinstance(v, bool) and -_BORNE <= v <= _BORNE
+
+
+def _instant_lisible(v):
+    try:
+        return bool(lire_instant(v, "r8_amorcage"))
+    except ErreurBee:
+        return False
+
+
+def _postes(v, config):  # R11 (docs/cap.md)
+    if not isinstance(v, dict) or not v or not all(re.fullmatch(r"[a-z][a-z0-9_]*", str(n)) and _nombre(p) and 0 <= p <= 100 for n, p in v.items()):
+        return "les postes (a-z, 0-9, _) et leur part en pourcentage, de 0 à 100, attendus (R11, docs/cap.md)"
+    return None if abs(sum(v.values()) - 100) <= 0.01 else f"les parts font {sum(v.values()):g} %, pas 100 %"
+
+
+def _reserves(v, config):  # ruche-0104: with the council and the robots, case aside
+    logins = isinstance(v, list) and all(isinstance(r, str) and re.fullmatch(rf"{PSEUDO_MOTIF}(\[bot\])?", r) for r in v)
+    robots = robots if isinstance(robots := reglage(config, "robots", brut=True), list) else []
+    return None if logins and len({r.casefold() for r in v}) == len(v) and {str(x).casefold() for x in ["conseil", *robots]} <= {
+        r.casefold() for r in v} else ("a list of distinct GitHub logins, case aside (a robot's may end in [bot]), required, naming at least "
+                                       "conseil and every robot (ruche-0104)")
+
+
+_POSITIF = _forme(lambda v: type(v) is int and 0 < v <= _BORNE, f"entier positif attendu (au plus {_BORNE})")
+_FRACTION = _forme(lambda v: _nombre(v) and 0 <= v <= 1, "nombre de 0 à 1 attendu")
+REGLAGES = {
+    "organisation": _forme(lambda v: isinstance(v, str) and re.fullmatch(PSEUDO_MOTIF, v), "le propriétaire GitHub de la ruche attendu"),
+    "phase": _POSITIF, "amorcage": _forme(lambda v: isinstance(v, bool), "true ou false attendu"),
+    "reservation_max_heures": _POSITIF, "reservations_max_par_utilisateur": _POSITIF, "fenetre_acceptation_heures": _POSITIF,
+    "reprise_apres_liberation_heures": _forme(lambda v: _nombre(v) and v >= 0, f"nombre d'heures positif ou nul attendu (R7, au plus {_BORNE})"),
+    "r8_amorcage": _forme(lambda v: isinstance(v, dict) and set(v) == {"max", "jusqu_au"} and type(v["max"]) is int and 0 < v["max"] <= _BORNE
+                          and _instant_lisible(v["jusqu_au"]), "{max: entier positif, jusqu_au: instant UTC} attendu (ruche-0096)"),
+    "gain_minimal": _FRACTION, "degradation_max_autres": _FRACTION, "majorite_requise": _FRACTION, "ecart_declare_max": _FRACTION,
+    "relectures_requises": _forme(lambda v: type(v) is int and 0 <= v <= _BORNE, f"entier positif ou nul attendu (au plus {_BORNE})"),
+    "vote_net_min": _forme(lambda v: type(v) is int and 0 <= v <= _BORNE, f"entier positif ou nul attendu (au plus {_BORNE})"),
+    "relecture_gardien_requise": _forme(lambda v: v is True or v is False or v == "si_juge_incomplet", "true, si_juge_incomplet ou false attendu"),
+    "juge_commun_min": _forme(lambda v: type(v) is int and 1 <= v <= 9999, "entier de 1 à 9999 attendu (R3, docs/juge-commun.md) ; sinon, aucun "
+                              "verdict n'est complet"),
+    "duree_vote_jours": _POSITIF, "quorum_votants": _POSITIF, "anciennete_compte_min_jours": _POSITIF,
+    "cap": {"fenetre_jours": _forme(lambda v: type(v) is int and 1 <= v <= 365, "nombre de jours entre 1 et 365 attendu"),
+            "poids_max_par_utilisateur_et_jour": _forme(lambda v: _nombre(v) and v > 0, f"nombre positif attendu (au plus {_BORNE})"), "postes": _postes},
+    "agora": dict.fromkeys(("texte_max", "synthese_max", "question_max", "sources_par_argument_max", "source_max", "arguments_max_par_24h",
+                            "arguments_max_par_24h_tous_debats", "arguments_max_par_pr", "ouvertures_max_par_24h",
+                            "silence_avant_cloture_heures", "releve_rapporteur_heures"), _POSITIF),
+    "notes": dict.fromkeys(("texte_max", "max_par_pr", "max_par_24h"), _POSITIF),
+    "creations": dict.fromkeys(("taches_max_par_pr", "taches_max_par_24h", "propositions_max_par_pr", "propositions_max_par_24h",
+                                "invitations_max_par_pr", "invitations_max_par_24h", "signalements_max_par_pr", "signalements_max_par_24h",
+                                "signalements_ouverts_max", "signalements_nommant_max", "signalements_au_plafond_par_24h", "contexte_max",
+                                "elements_max", "element_max", "fichiers_max", "chemin_max"), _POSITIF),
+    "croissance": {**dict.fromkeys(("invitations_par_semaine", "delai_relance_jours", "debat_min_heures", "membres_actifs_par_gardien_max",
+                                    "message_max", "encadrement_par_semaine_sous_frein", "expiration_jours", "membres_actifs_jours"),
+                                   _POSITIF),
+                   "relances_max": _forme(lambda v: type(v) is int and v in (0, 1), "0 ou 1 (une relance au plus, R13)")},
+    "pseudos_reserves": _reserves,
+    "robots": _forme(lambda v: isinstance(v, list) and all(isinstance(r, str) and re.fullmatch(rf"{PSEUDO_MOTIF}(\[bot\])?", r) for r in v),
+                     "une liste de logins GitHub attendue"),
+}
+
+
+def probleme_reglage(config, chemin):
+    """What bee valider and reglage() say of the setting at `chemin` ("cle" or "section.cle"), or None if it is there and well formed;
+    KeyError if REGLAGES does not list it."""
+    config = config if isinstance(config, dict) else {}
+    section, _, cle = chemin.rpartition(".")
+    lieu = config.get(section) if section else config
+    present = isinstance(lieu, dict) and cle in lieu
+    if probleme := (REGLAGES[section][cle] if section else REGLAGES[cle])(lieu[cle] if present else None, config):
+        return f"bee.yaml : {chemin} : {probleme}" + ("" if present else " (clé absente)")
+    return None
+
+
+def reglage(config, chemin, brut=False):
+    """ruche-0144: the setting at `chemin` of bee.yaml (`config`, or a Registre's); a section, as a dict of all its keys. Missing or
+    malformed: ErreurBee. brut: as written (None if missing), only for the reads that close by themselves (r8_amorcage, juge_commun_min,
+    pseudos_reserves, robots)."""
+    config = getattr(config, "config", config)
+    if isinstance(REGLAGES.get(chemin), dict):
+        return {cle: reglage(config, f"{chemin}.{cle}", brut) for cle in REGLAGES[chemin]}
+    if (probleme := probleme_reglage(config, chemin)) and not brut:
+        raise ErreurBee(probleme)
+    section, _, cle = chemin.rpartition(".")
+    lieu = config.get(section) if section and isinstance(config, dict) else config
+    return lieu.get(cle) if isinstance(lieu, dict) else None
+
+
+def problemes_reglages(config):
+    """ruche-0144 (bee valider): every key REGLAGES lists, present and well formed; no other key, at the top or in a section."""
+    config = config if isinstance(config, dict) else {}
+    problemes = [f"bee.yaml : {cle} : clé inconnue, que bee ne lit pas (ruche-0144)" for cle in config if cle not in REGLAGES]
+    for cle, forme in REGLAGES.items():
+        if not isinstance(forme, dict):
+            problemes.append(probleme_reglage(config, cle))
+        elif not isinstance(config.get(cle), dict):
+            problemes.append(f"bee.yaml : {cle} : une section attendue ({', '.join(forme)})" + ("" if cle in config else " (clé absente)"))
+        else:
+            problemes += [f"bee.yaml : {cle}.{k} : clé inconnue ({', '.join(forme)})" for k in config[cle] if k not in forme]
+            problemes += [probleme_reglage(config, f"{cle}.{k}") for k in forme]
+    return [p for p in problemes if p]
+
+
+# --------------------------------------------------------------------------
 # Chargement du registre
 # --------------------------------------------------------------------------
 
@@ -455,7 +571,7 @@ class Registre:
         self.garants = {m["pseudo"] for m in garants.get("membres", []) or []
                         if isinstance(m, dict) and isinstance(m.get("pseudo"), str) and not m.get("revoque_le")}
         self.incidents = self._lire_facultatif("gouvernance/incidents.yaml")
-        self.robots = set(self.config.get("robots") or [])
+        self.robots = set() if probleme_reglage(self.config, "robots") else set(reglage(self.config, "robots"))  # malformed: no robot
         self.fiches_agents = self._lire_facultatif(AGENT_ACCOUNTS)  # ruche-0089: {account: person}, council only
         self.comptes_agents = agent_accounts(self.fiches_agents)
         self.categories = {c["id"]: c for c in (self._lire("categories.yaml") or []) if isinstance(c, dict) and "id" in c}
@@ -565,6 +681,9 @@ class Registre:
                 resultat[chemin.stem] = (chemin, donnees)
         return resultat
 
+    def reglage(self, chemin):  # ruche-0144, for site_bee
+        return reglage(self, chemin)
+
     def rel(self, chemin):
         try:
             return str(pathlib.Path(chemin).resolve().relative_to(self.racine))
@@ -671,12 +790,10 @@ def meme_pseudo(a, b):
 
 def reserved_pseudo(config, pseudo):
     """ruche-0104: why `pseudo` may not name a member file (None if it may): bee.yaml's pseudos_reserves, the council and the robots,
-    case aside (meme_pseudo). Without a readable, non-empty list, no name is accepted."""
-    liste = config.get("pseudos_reserves") if isinstance(config, dict) else None
-    if not (isinstance(liste, list) and liste):
-        return "bee.yaml : pseudos_reserves is required and never empty : no member file is accepted without it (ruche-0104)"
-    robots = config.get("robots") if isinstance(config.get("robots"), list) else []
-    if any(meme_pseudo(pseudo, r) for r in [*liste, "conseil", *robots]):
+    case aside (meme_pseudo). Unless both lists are there and well formed, as bee valider wants them (ruche-0144), no name is accepted."""
+    if probleme_reglage(config, "pseudos_reserves") or probleme_reglage(config, "robots"):
+        return "bee.yaml : pseudos_reserves is required and well formed, robots too : no member file is accepted otherwise (ruche-0104)"
+    if any(meme_pseudo(pseudo, r) for r in [*reglage(config, "pseudos_reserves"), "conseil", *reglage(config, "robots")]):
         return f"« {pseudo} » is a reserved pseudonym (bee.yaml, pseudos_reserves) : no member takes a name the tool gives a meaning to"
     return None
 
@@ -890,10 +1007,9 @@ def r8_maximum(reg, utilisateur, taches, instant):
     """R8, one rule for bee prendre, bee valider and the gate: the most engagements `utilisateur` may hold with `taches` (ids), all counted.
     ruche-0096: if `instant` (a new engagement's; in bee valider, the latest one's) is before r8_amorcage.jusqu_au (UTC), a council member
     whose engagements are ALL on ruche tasks created by the council (while no member is named conseil) may hold r8_amorcage.max."""
-    usuel = int(reg.config.get("reservations_max_par_utilisateur", 3))
-    reglage = reg.config.get("r8_amorcage")
+    usuel, exception = reglage(reg, "reservations_max_par_utilisateur"), reglage(reg, "r8_amorcage", brut=True)
     try:
-        maximum, fin = reglage["max"], lire_instant(reglage["jusqu_au"], "r8_amorcage")
+        maximum, fin = exception["max"], lire_instant(exception["jusqu_au"], "r8_amorcage")
     except (ErreurBee, KeyError, TypeError):
         return usuel  # fails closed
     outillage = [reg.taches.get(tid, (None, None))[1] for tid in taches]
@@ -906,7 +1022,7 @@ def r8_maximum(reg, utilisateur, taches, instant):
 def engagement_expire(reg, depuis, instant):
     """R7 : une réservation ou une inscription en parallèle sans contribution prend fin après reservation_max_heures."""
     debut = _instant_ou_rien(depuis)
-    return debut is not None and instant - debut > dt.timedelta(hours=float(reg.config.get("reservation_max_heures", 72)))
+    return debut is not None and instant - debut > dt.timedelta(hours=reglage(reg, "reservation_max_heures"))
 
 
 def numeros_contributions(reg, tid, sauf=None):
@@ -1088,8 +1204,8 @@ def bornes_attente(reg, enr):
     soumise = soumission_effective(reg, enr)
     if soumise is None:
         return None, None
-    duree_r7 = dt.timedelta(hours=float(reg.config.get("reservation_max_heures", 72)))
-    fenetre = dt.timedelta(hours=float(reg.config.get("fenetre_acceptation_heures", 24)))
+    duree_r7 = dt.timedelta(hours=reglage(reg, "reservation_max_heures"))
+    fenetre = dt.timedelta(hours=reglage(reg, "fenetre_acceptation_heures"))
     return soumise + duree_r7 + fenetre, soumise + duree_r7 + 2 * fenetre
 
 
@@ -1442,8 +1558,7 @@ def poste_de(tache):
 
 def cap_cible(reg):
     """Parts visées par poste, en pourcentage (bee.yaml, clé cap.postes)."""
-    postes = (reg.config.get("cap") or {}).get("postes") or {}
-    return {str(p): float(v) for p, v in postes.items() if isinstance(v, (int, float)) and not isinstance(v, bool)}
+    return {str(p): float(v) for p, v in reglage(reg, "cap.postes").items()}
 
 
 def _instant_ou_rien(valeur):
@@ -1491,7 +1606,7 @@ def gestes_recents(reg, instant=None, jours=None, abstentions=True):
     """Les gestes de la ruche sur la fenêtre du cap, datés comme dans activite_par_poste, sans plafond : ([(instant, poste,
     poids, genre, qui)], jours). Le cap les pèse ; le frein de R13 y lit les membres actifs."""
     instant = instant or maintenant()
-    jours = int(jours or (reg.config.get("cap") or {}).get("fenetre_jours", 14))
+    jours = int(jours or reglage(reg, "cap.fenetre_jours"))
     debut, fin = instant - dt.timedelta(days=jours), instant + dt.timedelta(minutes=10)
     dates = dates_de_fusion(reg, debut)
     gestes = []  # (instant, poste, poids, genre, qui) : plafonnés ensuite par utilisateur, poste et jour
@@ -1553,9 +1668,7 @@ def gestes_recents(reg, instant=None, jours=None, abstentions=True):
 def poids_max_par_jour(reg):
     """Poids d'un même utilisateur dans un poste, par jour UTC, au-delà duquel ses gestes ne comptent plus dans le cap
     (bee.yaml : cap.poids_max_par_utilisateur_et_jour)."""
-    cap = reg.config.get("cap") if isinstance(reg.config.get("cap"), dict) else {}
-    valeur = cap.get("poids_max_par_utilisateur_et_jour", 6)
-    return float(valeur) if isinstance(valeur, (int, float)) and not isinstance(valeur, bool) and valeur > 0 else 6.0
+    return float(reglage(reg, "cap.poids_max_par_utilisateur_et_jour"))
 
 
 def etat_du_cap(reg, instant=None, jours=None):
@@ -1600,8 +1713,7 @@ def tableau_essaim(reg, instant=None, jours_notes=7):
     """Qui fait quoi : réservations et inscriptions en parallèle, contributions en relecture et courses entre
     contributions concurrentes, notes récentes, débats ouverts de l'agora et leur dernière activité (coordination, R11)."""
     instant = instant or maintenant()
-    heures_max = float(reg.config.get("reservation_max_heures", 72))
-    fenetre = float(reg.config.get("fenetre_acceptation_heures", 24))
+    heures_max, fenetre = float(reglage(reg, "reservation_max_heures")), float(reglage(reg, "fenetre_acceptation_heures"))
     heures = lambda depuis: round((instant - depuis).total_seconds() / 3600, 1)  # noqa: E731
     niveaux = calculer_niveaux(reg)
     en_cours, relecture, courses, notes = [], [], [], []
@@ -1955,7 +2067,7 @@ def depouiller_proposition(reg, identifiant, niveaux, instant):
         raise ErreurBee(f"proposition inconnue : {identifiant}")
     chemin, prop = reg.propositions[identifiant]
     ouverture = lire_instant(prop["ouverte_le"], reg.rel(chemin))
-    cloture = ouverture + dt.timedelta(days=int(reg.config.get("duree_vote_jours", 7)))
+    cloture = ouverture + dt.timedelta(days=reglage(reg, "duree_vote_jours"))
     pour = contre = 0
     votants = set()
     for vote in votes_de(reg, identifiant):  # un votant, une voix, quorum compris (sans la casse)
@@ -1967,8 +2079,7 @@ def depouiller_proposition(reg, identifiant, niveaux, instant):
             pour += poids
         elif vote["valeur"] == -1:
             contre += poids
-    quorum = int(reg.config.get("quorum_votants", 20))
-    majorite = float(reg.config.get("majorite_requise", 2 / 3))
+    quorum, majorite = reglage(reg, "quorum_votants"), float(reglage(reg, "majorite_requise"))
     part = pour / (pour + contre) if pour + contre else 0.0
     adoptee = len(votants) >= quorum and part >= majorite
     return {
@@ -1987,10 +2098,14 @@ def depouiller_proposition(reg, identifiant, niveaux, instant):
 def verifier_registre(reg):
     """bee valider. ruche-0051: history as written, account by account (a later link never makes it invalid); the gate and every
     count judge by person."""
-    personnes = reg.identites
+    personnes, reglages = reg.identites, problemes_reglages(reg.config)
     reg.adopter(personnes.par_compte())
     try:
-        return verifier_comptes(reg) + problemes_liens(reg)
+        return reglages + verifier_comptes(reg) + problemes_liens(reg)
+    except ErreurBee as e:  # ruche-0144: a setting already reported stops what reads it
+        if not reglages:
+            raise
+        return list(dict.fromkeys(reglages + [str(e)]))
     finally:
         reg.adopter(personnes)
 
@@ -2035,54 +2150,9 @@ def verifier_comptes(reg):
 
     regles = (reg.racine / "REGLES.md").read_text(encoding="utf-8") if (reg.racine / "REGLES.md").exists() else ""
 
-    # R11 : le cap de la ruche est un guide, mais il doit être lisible : des postes nommés, des parts qui font 100 %.
-    cap = reg.config.get("cap")
-    if cap is not None:
-        postes = cap.get("postes") if isinstance(cap, dict) else None
-        if not isinstance(postes, dict) or not postes:
-            ajouter("bee.yaml : cap.postes doit lister les postes et leur part en pourcentage (R11, docs/cap.md)")
-        else:
-            for nom, part in postes.items():
-                if not re.fullmatch(r"[a-z][a-z0-9_]*", str(nom)):
-                    ajouter(f"bee.yaml : cap.postes : nom de poste invalide « {nom} »")
-                if not isinstance(part, (int, float)) or isinstance(part, bool) or not 0 <= part <= 100:
-                    ajouter(f"bee.yaml : cap.postes.{nom} : part entre 0 et 100 attendue")
-            somme = sum(v for v in postes.values() if isinstance(v, (int, float)) and not isinstance(v, bool))
-            if abs(somme - 100) > 0.01:
-                ajouter(f"bee.yaml : cap.postes : les parts font {somme:g} %, pas 100 %")
-        fenetre = cap.get("fenetre_jours", 14) if isinstance(cap, dict) else 14
-        if not isinstance(fenetre, int) or isinstance(fenetre, bool) or not 1 <= fenetre <= 365:
-            ajouter("bee.yaml : cap.fenetre_jours : nombre de jours entre 1 et 365 attendu")
-        plafond = cap.get("poids_max_par_utilisateur_et_jour", 6) if isinstance(cap, dict) else 6
-        if not isinstance(plafond, (int, float)) or isinstance(plafond, bool) or plafond <= 0:
-            ajouter("bee.yaml : cap.poids_max_par_utilisateur_et_jour : nombre positif attendu")
+    # bee.yaml itself (its keys, their form, the cap, the reserved pseudonyms): problemes_reglages, in verifier_registre (ruche-0144).
     postes_connus = set(cap_cible(reg))
-
-    # Plafonds des notes (bee noter, docs/taches.md) et délai de reprise de R7 : lisibles, sinon signalés.
-    for nom_cle, defauts in (("notes", NOTES_DEFAUT), ("creations", CREATIONS_DEFAUT)):
-        plafonds = reg.config.get(nom_cle)
-        if plafonds is None:
-            continue
-        if not isinstance(plafonds, dict):
-            ajouter(f"bee.yaml : {nom_cle} doit lister ses plafonds ({', '.join(defauts)})")
-            continue
-        for cle, valeur in plafonds.items():
-            if cle not in defauts:
-                ajouter(f"bee.yaml : {nom_cle}.{cle} : clé inconnue ({', '.join(defauts)})")
-            elif not isinstance(valeur, int) or isinstance(valeur, bool) or valeur <= 0:
-                ajouter(f"bee.yaml : {nom_cle}.{cle} : entier positif attendu")
-    reprise = reg.config.get("reprise_apres_liberation_heures")
-    if reprise is not None and (not isinstance(reprise, (int, float)) or isinstance(reprise, bool) or reprise < 0):
-        ajouter("bee.yaml : reprise_apres_liberation_heures : nombre d'heures positif ou nul attendu (R7)")
-    # ruche-0086: the gate's own rule (the highest label passes iff the minimum is readable): a missing or malformed minimum, said.
-    if mode_porte(reg) == "si_juge_incomplet" and not juge_commun_suffisant(reg, {"juge": {"commun": "juge-v9999"}}):
-        ajouter("bee.yaml : juge_commun_min : entier de 1 à 9999 attendu (R3, docs/juge-commun.md) ; sinon, aucun verdict n'est complet")
-    reserves, robots = reg.config.get("pseudos_reserves"), reg.config.get("robots")  # ruche-0104: required, with the council and robots
-    if not (reserves_lisibles := isinstance(reserves, list) and all(isinstance(r, str) and re.fullmatch(rf"{PSEUDO_MOTIF}(\[bot\])?", r)
-            for r in reserves) and len({r.casefold() for r in reserves}) == len(reserves) and {str(x).casefold() for x in
-            ["conseil", *(robots if isinstance(robots, list) else [])]} <= {r.casefold() for r in reserves}):
-        ajouter("bee.yaml : pseudos_reserves : a list of distinct GitHub logins, case aside (a robot's may end in [bot]), required, "
-                "naming at least conseil and every robot (ruche-0104)")
+    reserves_lisibles = not (probleme_reglage(reg.config, "pseudos_reserves") or probleme_reglage(reg.config, "robots"))
 
     for stem, (chemin, projet) in reg.projets.items():
         if not selon_schema("projet", chemin, projet):
@@ -2557,15 +2627,9 @@ def numeros_attendus(ajoutes, suivant):
 
 # --- Notes sur les tâches : contrôlées comme les arguments de l'agora (T1, T2, T3, T15) ---
 
-NOTES_DEFAUT = {"texte_max": 1500, "max_par_pr": 10, "max_par_24h": 20}
-
-
 def config_notes(reg):
-    """Plafonds des notes : bee.yaml (clé notes), sinon les valeurs par défaut ; une valeur invalide est signalée par bee
-    valider et remplacée ici par la valeur par défaut."""
-    conf = reg.config.get("notes") if isinstance(reg.config.get("notes"), dict) else {}
-    return {cle: (v if isinstance(v := conf.get(cle), int) and not isinstance(v, bool) and v > 0 else defaut)
-            for cle, defaut in NOTES_DEFAUT.items()}
+    """Plafonds des notes : bee.yaml (clé notes), tous exigés (ruche-0144 : absent ou mal formé, refusé)."""
+    return reglage(reg, "notes")
 
 
 def notes_depuis(reg, utilisateur, debut):
@@ -2639,22 +2703,14 @@ def jours_de_la_pr(instant):
 # Une seule PR pouvait prendre tous les numéros (P-0001 à P-8999, ou 8 965 tâches) et faire basculer le cap ; un contexte de
 # 200 Ko passait. Créations plafonnées par PR et par utilisateur sur 24 h glissantes (le conseil ne l'est pas), champs courts.
 
-CREATIONS_DEFAUT = {"taches_max_par_pr": 3, "taches_max_par_24h": 5, "propositions_max_par_pr": 3, "propositions_max_par_24h": 5,
-                    "invitations_max_par_pr": 1, "invitations_max_par_24h": 2,  # R13 (bee inviter)
-                    "signalements_max_par_pr": 1, "signalements_max_par_24h": 2, "signalements_ouverts_max": 2, "signalements_nommant_max": 3,  # ruche-0118
-                    "signalements_au_plafond_par_24h": 1,  # ruche-0137: past signalements_nommant_max, per person named
-                    "contexte_max": 3000, "elements_max": 10, "element_max": 300, "fichiers_max": 30, "chemin_max": 200}
 # Ce qui est créé en libre-service, par dossier : (éléments du registre, clé de l'auteur, clé de la date déclarée).
 CREES_PAR = {"taches": ("taches", "cree_par", "cree_le"), "propositions": ("propositions", "auteur", "ouverte_le"),
              "invitations": ("invitations", "propose_par", "propose_le"), "signalements": ("signalements", "par", "le")}
 
 
 def config_creations(reg):
-    """Plafonds des créations : bee.yaml (clé creations), sinon les valeurs par défaut ; une valeur invalide est signalée par
-    bee valider et remplacée ici par la valeur par défaut."""
-    conf = reg.config.get("creations") if isinstance(reg.config.get("creations"), dict) else {}
-    return {cle: (v if isinstance(v := conf.get(cle), int) and not isinstance(v, bool) and v > 0 else defaut)
-            for cle, defaut in CREATIONS_DEFAUT.items()}
+    """Plafonds des créations : bee.yaml (clé creations), tous exigés (ruche-0144 : absent ou mal formé, refusé)."""
+    return reglage(reg, "creations")
 
 
 def creations_recentes(reg, ref, dossier, utilisateur, instant):
@@ -2715,8 +2771,7 @@ def verifier_tache_proposee(reg, chemin, tache):
 def delai_reprise(reg):
     """Heures pendant lesquelles qui a quitté une tâche sans contribution ne la reprend pas (bee.yaml :
     reprise_apres_liberation_heures ; R7, proposition P-0002)."""
-    valeur = reg.config.get("reprise_apres_liberation_heures", 24)
-    return float(valeur) if isinstance(valeur, (int, float)) and not isinstance(valeur, bool) and valeur >= 0 else 24.0
+    return float(reglage(reg, "reprise_apres_liberation_heures"))
 
 
 def engagement_sur(tache, utilisateur, qui):
@@ -2957,10 +3012,6 @@ CLES_ARGUMENT = ("id", "par", "le", "position", "repond_a", "doublon_de", "doubl
 CLES_IMMUABLES_DEBAT = ("id", "invitation", "question", "question_caviardee_pour", "ouvert_par", "ouvert_le")
 CLES_SYNTHESE = ("synthese", "synthese_par", "synthese_le", "synthese_couvre", "rapporteur")
 CLES_CLOTURE = ("statut", "clos_le", "clos_par", "issue", "reference")
-# Valeurs par défaut de bee.yaml, clé agora (docs/agora.md, « Contre le bruit »).
-AGORA_DEFAUT = {"texte_max": 1500, "synthese_max": 4000, "question_max": 1500, "arguments_max_par_24h": 5,
-                "arguments_max_par_24h_tous_debats": 15, "arguments_max_par_pr": 20, "ouvertures_max_par_24h": 3,
-                "silence_avant_cloture_heures": 24, "releve_rapporteur_heures": 72, "sources_par_argument_max": 5, "source_max": 200}
 # Les plafonds « par jour » sont des fenêtres glissantes de 24 h, jamais le jour UTC (pas de pic à minuit).
 FENETRE_PLAFOND = dt.timedelta(hours=24)
 # Sauts de ligne que YAML réinterprète (NEL, séparateurs de ligne et de paragraphe), refusés en plus des catégories Cc
@@ -2974,11 +3025,8 @@ TOLERANCE_LEVEE = dt.timedelta(minutes=5)
 
 
 def config_agora(reg):
-    """Plafonds de l'agora : bee.yaml (clé agora), sinon les valeurs par défaut. Une valeur invalide est signalée par
-    bee valider et remplacée ici par la valeur par défaut."""
-    conf = reg.config.get("agora") if isinstance(reg.config.get("agora"), dict) else {}
-    return {cle: (v if isinstance(v := conf.get(cle), int) and not isinstance(v, bool) and v > 0 else defaut)
-            for cle, defaut in AGORA_DEFAUT.items()}
+    """Plafonds de l'agora : bee.yaml (clé agora ; docs/agora.md, « Contre le bruit »), tous exigés (ruche-0144)."""
+    return reglage(reg, "agora")
 
 
 def arguments_de(debat):
@@ -3466,20 +3514,10 @@ def releve_refusee(debat, utilisateur, instant, heures, conseil=()):
 
 
 def verifier_agora_registre(reg, ajouter, selon_schema, instant_valide):
-    """Cohérence de l'agora dans tout le registre (bee valider) : plafonds lisibles, débats conformes à leur schéma,
+    """Cohérence de l'agora dans tout le registre (bee valider ; ses plafonds : problemes_reglages) : débats conformes à leur schéma,
     arguments numérotés et datés dans l'ordre, renvois vers des arguments précédents, rapporteur participant. Les
     plafonds eux-mêmes (longueurs, nombre sur 24 h) se contrôlent à l'écriture, dans verifier_pr : un plafond abaissé
     par une règle ne rend pas invalides les débats déjà écrits."""
-    agora = reg.config.get("agora")
-    if agora is not None:
-        if not isinstance(agora, dict):
-            ajouter("bee.yaml : agora doit lister les plafonds de l'agora (docs/agora.md)")
-        else:
-            for cle, valeur in agora.items():
-                if cle not in AGORA_DEFAUT:
-                    ajouter(f"bee.yaml : agora.{cle} : clé inconnue ({', '.join(AGORA_DEFAUT)})")
-                elif not isinstance(valeur, int) or isinstance(valeur, bool) or valeur <= 0:
-                    ajouter(f"bee.yaml : agora.{cle} : entier positif attendu")
     connus = set(reg.membres) | set(reg.conseil) | {x for _, m in reg.membres.values() if isinstance(m, dict) for x in logins_de(m)}  # ruche-0022
     for stem, (chemin, d) in reg.debats.items():
         if not selon_schema("debat", chemin, d):
@@ -3879,10 +3917,6 @@ def verifier_debat(reg, chemin, statut_git, ancien, nouveau, auteur, *, est_cons
 # plafonnés par semaine pour toute la ruche. Aucun code n'envoie de message :
 # l'outil ne fait aucune requête réseau et n'appelle jamais gh pour contacter quelqu'un ; il lit et écrit le registre.
 
-CROISSANCE_DEFAUT = {"invitations_par_semaine": 3, "relances_max": 1, "delai_relance_jours": 14, "debat_min_heures": 72,
-                     "membres_actifs_par_gardien_max": 20, "message_max": 2000, "encadrement_par_semaine_sous_frein": 1,
-                     "expiration_jours": 14, "membres_actifs_jours": 30,
-                     "branche_dormante_jours": 30}  # R13, par branches (outillé par ruche-0023)
 SEMAINE = dt.timedelta(days=7)
 ID_INVITATION = re.compile(r"^I-[0-9]{4}\Z")
 ID_SIGNALEMENT = re.compile(r"^S-[0-9]{4}\Z")
@@ -4024,16 +4058,13 @@ PHRASE_DEMANDE = {
 
 
 def config_croissance(reg):
-    """Valeurs de R13 : bee.yaml (clé croissance), sinon les valeurs par défaut ; une valeur invalide est signalée par bee
-    valider et remplacée ici par la valeur par défaut."""
-    conf = reg.config.get("croissance") if isinstance(reg.config.get("croissance"), dict) else {}
-    return {cle: (v if isinstance(v := conf.get(cle), int) and not isinstance(v, bool) and v >= (0 if cle == "relances_max" else 1)
-                  else d) for cle, d in CROISSANCE_DEFAUT.items()}
+    """Valeurs de R13, par branches (ruche-0023) : bee.yaml (clé croissance), toutes exigées (ruche-0144)."""
+    return reglage(reg, "croissance")
 
 
 def mentions_invitation(reg, demande="garant"):
     """{langue: mention} pour cette demande : la mention de R13, suivie de la phrase fixe de ce qui est demandé."""
-    organisation = reg.config.get("organisation", "")
+    organisation = reglage(reg, "organisation")
     adresse, doc = f"https://github.com/{organisation}", f"https://github.com/{organisation}/registre/blob/main/"
     return {langue: m.format(adresse=adresse) + " " + PHRASE_DEMANDE[langue].get(demande, PHRASE_DEMANDE[langue]["garant"]).format(doc=doc)
             for langue, m in MENTION_INVITATION.items()}
@@ -4777,7 +4808,7 @@ def retirer(inv, raison):
 def cles_d_origine(reg):
     """Commandement 8 (seconde revue adverse, E1) : ce que désignent les dépôts d'origine des projets (le propriétaire d'un dépôt
     de forge, sinon le domaine), hors de l'organisation de la ruche. On n'y invite personne."""
-    organisation = str(reg.config.get("organisation", "")).casefold()
+    organisation = reglage(reg, "organisation").casefold()
     cles = set()
     for _, p in reg.projets.values():
         if isinstance(p, dict):
@@ -4863,7 +4894,7 @@ def titre_incident_refuse(titre):
     return texte_sortant_refuse(titre, "titre", 300)
 
 
-def expiree(inv, instant, conf=None):
+def expiree(inv, instant, conf):
     """Une invitation non décidée expire (seconde revue adverse, G1) : expiration_jours après sa proposition, elle ne retient
     plus la personne et ne reçoit plus d'accord ; on en propose une nouvelle."""
     if not isinstance(inv, dict) or etat_invitation(inv) != "proposee":
@@ -4871,9 +4902,9 @@ def expiree(inv, instant, conf=None):
     return bool(fin := expiration(inv, conf)) and instant > fin
 
 
-def expiration(inv, conf=None):
+def expiration(inv, conf):
     """L'échéance d'une invitation non décidée, l'instant où elle expire (expiree ; bee voir) ; None sans date de proposition."""
-    jours = (conf or {}).get("expiration_jours", CROISSANCE_DEFAUT["expiration_jours"])
+    jours = conf["expiration_jours"]  # config_croissance: no default (ruche-0144)
     propose = _instant_ou_rien(inv.get("propose_le"))
     return propose + dt.timedelta(days=jours) if propose else None
 
@@ -5544,20 +5575,10 @@ def verifier_retrait(reg, base, tete, changements, auteur, est_conseil, instant)
 
 
 def verifier_invitations_registre(reg, ajouter, selon_schema, instant_valide):
-    """Cohérence de R13 dans tout le registre (bee valider) : valeurs de la clé croissance, incidents, liste de non-contact
+    """Cohérence de R13 dans tout le registre (bee valider ; la clé croissance : problemes_reglages) : incidents, liste de non-contact
     sans doublon, invitations conformes à leur schéma, au statut que disent leurs gestes, gestes dans l'ordre et datés dans
     l'ordre ; une invitation refusée ou restée sans réponse a son identifiant sur la liste. Qui a le droit de faire chaque geste,
     et quand, se contrôle à l'écriture (verifier_pr) : une nomination retirée plus tard ne rend pas invalide un geste déjà fait."""
-    croissance = reg.config.get("croissance")
-    if croissance is not None and not isinstance(croissance, dict):
-        ajouter(f"bee.yaml : croissance doit lister les valeurs de R13 ({', '.join(CROISSANCE_DEFAUT)})")
-    for cle, valeur in (croissance.items() if isinstance(croissance, dict) else []):
-        if cle not in CROISSANCE_DEFAUT:
-            ajouter(f"bee.yaml : croissance.{cle} : clé inconnue ({', '.join(CROISSANCE_DEFAUT)})")
-        elif cle == "relances_max" and (valeur not in (0, 1) or isinstance(valeur, bool)):
-            ajouter(f"bee.yaml : croissance.{cle} : 0 ou 1 (une relance au plus, R13)")
-        elif not isinstance(valeur, int) or isinstance(valeur, bool) or valeur < (0 if cle == "relances_max" else 1):
-            ajouter(f"bee.yaml : croissance.{cle} : entier positif attendu")
     if reg.incidents is not None and selon_schema("incidents", reg.racine / "gouvernance/incidents.yaml", reg.incidents):
         for i, incident in enumerate(reg.incidents["incidents"]):
             for cle in ("ouvert_le", "clos_le"):
@@ -5710,7 +5731,7 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
                     for f in {str(k).casefold(), str(reg.identites.compte(reg.identites.nom(k))).casefold()}:
                         liables.setdefault(f, set()).update(reg.identites.numeros.get(str(n).casefold()) for n in (autre, reg.identites.nom(autre)))
     known = auteur in reg.membres or auteur in reg.conseil  # a known person (bee valider: an agent's person is one)
-    amorcage = bool(reg.config.get("amorcage"))
+    amorcage = reglage(reg, "amorcage")
     niveaux = calculer_niveaux(reg)
     niveau = niveau_de(niveaux, auteur)
     problemes, natures = [probleme_octets(c, t) for c, t in trop_gros.items()], []
@@ -5962,7 +5983,7 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
                 expiree = False
                 try:
                     depuis = lire_instant((ancien.get("reservation") or {}).get("depuis"), chemin)
-                    expiree = maintenant() - depuis > dt.timedelta(hours=int(reg.config.get("reservation_max_heures", 72)))
+                    expiree = maintenant() - depuis > dt.timedelta(hours=reglage(reg, "reservation_max_heures"))
                 except ErreurBee:
                     pass
                 exiger(titulaire == auteur or est_conseil or (est_robot and expiree),
@@ -6357,7 +6378,7 @@ def verifier_pr_de(reg, base, tete, auteur, compte_cree_le, instant, auteurs_pr,
                     exiger((refus := refus_renommage(reg, depart, auteur, agents, instant)) is None, f"{chemin} : {refus}")
                     continue
                 exiger("anciens_logins" not in nouveau, f"{chemin} : a new member file has no former login : a renamed account moves its file (bee renommer)")
-                minimum = int(reg.config.get("anciennete_compte_min_jours", 90))
+                minimum = reglage(reg, "anciennete_compte_min_jours")
                 # Each date of the file is checked at the time of the PR: inscrit_le is the PR's day (jours_de_la_pr), and
                 # compte_cree_le is GitHub's date. The account's age runs from GitHub's date to the instant of the check.
                 jours = jours_de_la_pr(instant)
@@ -6889,7 +6910,7 @@ def lignes_calculees_tache(reg, t):
     lignes.append(f"# poste (cap de la ruche, R11) : {poste_de(t)}" + ("" if t.get("poste") else " (d'après son type)"))
     lignes.append(f"# lignes modifiées autorisées (R1) : {LIGNES_MAX[t['taille']]}")
     niveau_requis = "Confirmé" if t["type"] == "decoupage" else {"S": "Nouveau", "M": "Contributeur", "L": "Confirmé"}[t["taille"]]
-    lignes.append(f"# niveau requis : {niveau_requis}" + (" (non appliqué pendant l'amorçage)" if reg.config.get("amorcage") else ""))
+    lignes.append(f"# niveau requis : {niveau_requis}" + (" (non appliqué pendant l'amorçage)" if reglage(reg, "amorcage") else ""))
     projet = reg.projets.get(t["projet"], (None, {}))[1]
     if projet.get("fork"):
         lignes.append(f"# fork : {citer(projet['fork'])}")
@@ -6900,7 +6921,7 @@ def lignes_calculees_tache(reg, t):
     course = etat_course(reg, t["id"], calculer_niveaux(reg), instant)
     for e in course["engages"]:
         fin = _instant_ou_rien(e["depuis"])
-        echeance = en_iso(fin + dt.timedelta(hours=float(reg.config.get("reservation_max_heures", 72)))) if fin else "?"
+        echeance = en_iso(fin + dt.timedelta(hours=reglage(reg, "reservation_max_heures"))) if fin else "?"
         lignes.append(f"# {e['role']} : {citer(e['utilisateur'])}, depuis {citer(e['depuis'])} (échéance R7 : {echeance})")
     if course["contributions"]:
         lignes.append("# contributions en course (R3, de la mieux classée à la moins bien classée, par score de course = gain mesuré "
@@ -6969,7 +6990,7 @@ def cmd_inscrire(args):
         raise ErreurBee(f"the account {args.github_id} already has its file, {pris[0]} : a renamed account moves it (bee renommer)")
     aujourd_hui = maintenant().date()
     cree = lire_date(args.compte_cree_le, "--compte-cree-le")
-    minimum = int(reg.config.get("anciennete_compte_min_jours", 90))
+    minimum = reglage(reg, "anciennete_compte_min_jours")
     if (aujourd_hui - cree).days < minimum:
         raise ErreurBee(f"le compte GitHub doit avoir au moins {minimum} jours (créé le {cree})")
     donnees = {"pseudo": args.pseudo, "inscrit_le": aujourd_hui.isoformat(), "compte_cree_le": cree.isoformat(), "github_id": args.github_id}
@@ -7291,13 +7312,13 @@ def prendre_en_parallele(reg, args, chemin, t):
     if jugees:
         raise ErreurBee(message_juge(args.tache, u, jugees))
     exiger_reprise_permise(reg, chemin, t, u)
-    if not reg.config.get("amorcage") and u not in reg.conseil:
+    if not reglage(reg, "amorcage") and u not in reg.conseil:
         niveau = niveau_de(calculer_niveaux(reg), u)
         if t["taille"] not in TAILLES_PAR_NIVEAU[niveau] or (t["type"] == "decoupage" and niveau != "Confirmé"):
             raise ErreurBee(f"{args.tache} ({t['type']}, {t['taille']}) n'est pas accessible au niveau {niveau} (docs/reputation.md)")
     exiger_r8(reg, u, args.tache)
     modifier_tache(chemin, paralleles=paralleles + [{"utilisateur": u, "depuis": en_iso(maintenant())}], ajout=reg.rel(chemin))
-    heures = reg.config.get("reservation_max_heures", 72)
+    heures = reglage(reg, "reservation_max_heures")
     print(f"✓ {u} inscrit en parallèle sur {args.tache}" + (f" (titulaire : {titulaire}, dont la réservation ne change pas)." if titulaire else "."))
     print(f"  Votre inscription compte dans R8 et prend fin après {heures} h sans contribution (R7). Si le titulaire s'en va, "
           "le plus ancien inscrit devient titulaire.")
@@ -7326,13 +7347,13 @@ def cmd_prendre(args):
     if jugees:
         raise ErreurBee(message_juge(args.tache, args.utilisateur, jugees))
     exiger_reprise_permise(reg, chemin, t, args.utilisateur)
-    if not reg.config.get("amorcage") and args.utilisateur not in reg.conseil:
+    if not reglage(reg, "amorcage") and args.utilisateur not in reg.conseil:
         niveau = niveau_de(calculer_niveaux(reg), args.utilisateur)
         if t["taille"] not in TAILLES_PAR_NIVEAU[niveau] or (t["type"] == "decoupage" and niveau != "Confirmé"):
             raise ErreurBee(f"{args.tache} ({t['type']}, {t['taille']}) n'est pas accessible au niveau {niveau} (docs/reputation.md)")
     exiger_r8(reg, args.utilisateur, args.tache)
     modifier_tache(chemin, statut="reservee", reservation={"utilisateur": args.utilisateur, "depuis": en_iso(maintenant())})
-    heures = reg.config.get("reservation_max_heures", 72)
+    heures = reglage(reg, "reservation_max_heures")
     print(f"✓ {args.tache} réservée pour {args.utilisateur} ({heures} h maximum, règle R7).")
     print(f"  Publiez : bee publier --titre 'Réservation {args.tache}' (fusionnée automatiquement si elle est valide).")
     return 0
@@ -7476,7 +7497,7 @@ def cmd_liberer_expirees(args):
     inscrit restant devient titulaire (à la date de son inscription), sinon la tâche passe en relecture ou est rouverte."""
     reg = Registre(args.registre)
     instant = maintenant()
-    limite = dt.timedelta(hours=int(reg.config.get("reservation_max_heures", 72)))
+    limite = dt.timedelta(hours=reglage(reg, "reservation_max_heures"))
     liberees = []
     for tid, (chemin, t) in sorted(reg.taches.items()):
         if t.get("statut") not in ("reservee", "en_relecture"):
@@ -7783,7 +7804,7 @@ def cmd_proposer(args):
     reg = Registre(args.registre)
     reg.exiger_membre(args.utilisateur)
     niveau = niveau_de(calculer_niveaux(reg), args.utilisateur)
-    if niveau != "Confirmé" and args.utilisateur not in reg.conseil and not reg.config.get("amorcage"):
+    if niveau != "Confirmé" and args.utilisateur not in reg.conseil and not reglage(reg, "amorcage"):
         raise ErreurBee(f"proposer une règle est réservé aux Confirmés hors amorçage (niveau actuel : {niveau})")
     # Numérotation (verifier-pr l'exige) : le plus grand numéro + 1, hors des numéros réservés aux tests (un P-9999 squatté
     # ne gèle plus rien, T5) ; les fichiers présents comptent, même illisibles, et aucun n'est jamais écrasé.
@@ -7803,7 +7824,7 @@ def cmd_proposer(args):
     if probleme := next(problemes_textes(donnees, reg.rel(chemin), "propositions"), None):  # what bee valider would refuse, before writing
         raise ErreurBee(probleme)
     ecrire_yaml(chemin, donnees)
-    print(f"✓ proposition {identifiant} créée. Publiez : bee publier --titre 'Proposition {identifiant}' ; le vote dure {reg.config.get('duree_vote_jours', 7)} jours.")
+    print(f"✓ proposition {identifiant} créée. Publiez : bee publier --titre 'Proposition {identifiant}' ; le vote dure {reglage(reg, 'duree_vote_jours')} jours.")
     return 0
 
 
@@ -9402,8 +9423,8 @@ def cmd_enregistrer_verdict(args):
         raise ErreurBee(f"{args.contribution} : verdict refusé, rien n'est écrit : la contribution ne serait plus valide ({raison})")
     if coupees:
         print(f"⚠ verdict : au plus {VERDICT_MAX['cles']} scénarios et {VERDICT_MAX['cles']} métriques ; ignoré(s) : {', '.join(coupees)}")
+    seuil = float(reglage(reg, "ecart_declare_max"))
     ecrire_yaml(chemin, enr)
-    seuil = float(reg.config.get("ecart_declare_max", 0.05))
     alerte = verdict.get("ecart_declare") is not None and verdict["ecart_declare"] > seuil
     print(f"✓ verdict {verdict['ci']} enregistré pour {args.contribution}"
           + (f" ; ⚠ écart de {100 * verdict['ecart_declare']:.1f} points entre gain déclaré et mesuré" if alerte else "")
@@ -9511,12 +9532,12 @@ def raisons_course(reg, cid, niveaux, instant):
     if soumise is None or instant >= fin_attentes:
         return []  # borne dure : passé soumise_le(X) + 120 h, personne ne retient plus X
     declaree = _instant_ou_rien(enr.get("soumise_le"))  # les engagements, datés par déclaration, se comparent à la sienne (ruche-0028)
-    fenetre = dt.timedelta(hours=float(reg.config.get("fenetre_acceptation_heures", 24)))
+    fenetre = dt.timedelta(hours=reglage(reg, "fenetre_acceptation_heures"))
     raisons = []
     ma_cle = cle_classement(reg, enr, niveaux)
     jusqu = en_iso(protection)
     if instant < protection:
-        duree_r7 = dt.timedelta(hours=float(reg.config.get("reservation_max_heures", 72)))
+        duree_r7 = dt.timedelta(hours=reglage(reg, "reservation_max_heures"))
         engages = []
         r = t.get("reservation") or {}
         if t.get("statut") == "reservee" and isinstance(r, dict) and r.get("utilisateur"):
@@ -9582,7 +9603,6 @@ def raisons_r3(reg, cid, bilan=None):
     if enr.get("statut") != "en_relecture":
         raisons.append(f"statut « {enr.get('statut')} » (seule une contribution en_relecture s'intègre)")
         return chemin, enr, raisons
-    cfg = reg.config
     auteur = enr.get("auteur")
     tache = reg.taches.get(enr.get("tache"), (None, {}))[1]
     verdict = enr.get("verdict") or {}
@@ -9604,7 +9624,7 @@ def raisons_r3(reg, cid, bilan=None):
     oublies = sum(int(e.get("verdicts_oublies") or 0) for _, e in fil_de(reg, enr))
     for rang, (v, ou) in enumerate(verdicts_du_contenu(reg, enr) if tache.get("type") == "optimisation" else []):
         avant = len(raisons)
-        seuil = float(cfg.get("gain_minimal", 0.02))
+        seuil = float(reglage(reg, "gain_minimal"))
         metrique = tache.get("metrique")
         gain, bruit = v.get("gain"), bool(v.get("au_dela_du_bruit"))
         proxy = proxies.get(metrique)
@@ -9645,7 +9665,7 @@ def raisons_r3(reg, cid, bilan=None):
                    "mesure d'une autre configuration doit confirmer le gain (bee enregistrer-mesure)")
     # R5. Le chronomètre seul d'une métrique de débit est trop bruité pour bloquer : on juge son décompte
     # d'instructions. Les autres métriques (ratio, mémoire) se jugent directement.
-    tolerance = float(cfg.get("degradation_max_autres", 0.01))
+    tolerance = float(reglage(reg, "degradation_max_autres"))
     ignorees = set(proxies) | {tache.get("metrique"), proxies.get(tache.get("metrique"))}
     hors_tolerance = {m: g for m, g in (verdict.get("degradations") or {}).items()
                       if m not in ignorees and (g is None or g < -tolerance)}
@@ -9679,10 +9699,10 @@ def raisons_r3(reg, cid, bilan=None):
             exiger(any(r.get("relecteur") in privilegies or niveau_de(niveaux, r.get("relecteur")) == "Confirmé" for r in favorables),
                    f"la PR modifie des juges ({liste}) : une relecture favorable d'un gardien, du conseil ou d'un Confirmé est exigée")
     relecteurs_eligibles = {reg.identites.cle(m) for m in eligibles if relecture_comptee(reg, niveaux, m)}  # ruche-0051: persons
-    cible = int(cfg.get("relectures_requises", 2))
+    cible = reglage(reg, "relectures_requises")
     requises = min(cible, len(relecteurs_eligibles))
     plafond = lambda seuil, valeur: (f" (seuil {seuil} plafonné à ce que les membres dont l'avis compte, hors auteur, peuvent "  # noqa: E731
-                                     f"fournir{' : amorçage' if cfg.get('amorcage') else ''})" if valeur < seuil else "")
+                                     f"fournir{' : amorçage' if reglage(reg, 'amorcage') else ''})" if valeur < seuil else "")
     exiger(len(favorables) >= requises, f"{len(favorables)} relecture(s) favorable(s) sur {requises} requise(s)" + plafond(cible, requises)
            + (f" ; {len(perimees)} relecture(s) portent sur un commit antérieur ou abandonné et ne comptent plus" if perimees else "")
            + (f" ; {len(sans_commit)} relecture(s) faite(s) avant le verdict, sans commit, ne comptent pas : relisez le commit "
@@ -9720,19 +9740,20 @@ def raisons_r3(reg, cid, bilan=None):
     net = vote_net(reg, enr, niveaux)
     # Les concurrents ne peuvent plus voter sur cette contribution : leur poids ne compte pas dans le seuil atteignable.
     poids_dispo = sum({reg.identites.cle(m): poids_voix(reg, niveaux, m) for m in eligibles if m not in concurrents}.values())
-    seuil_vote = min(int(cfg.get("vote_net_min", 2)), poids_dispo)
+    cible_vote = reglage(reg, "vote_net_min")
+    seuil_vote = min(cible_vote, poids_dispo)
     exiger(net >= seuil_vote, f"vote net de la ruche {net} sous le seuil {seuil_vote} (pondéré)"
-           + plafond(int(cfg.get("vote_net_min", 2)), seuil_vote))
+           + plafond(cible_vote, seuil_vote))
     if bilan is not None:  # ce qui a réellement été réuni, pour le motif d'une intégration (ruche-0012)
         bilan.update(favorables=len(favorables), requises=requises, cible=cible, net=net, seuil_vote=seuil_vote,
-                     cible_vote=int(cfg.get("vote_net_min", 2)), sha=sha_verdict)
+                     cible_vote=cible_vote, sha=sha_verdict)
 
+    fenetre = float(reglage(reg, "fenetre_acceptation_heures"))  # ruche-0144: outside the try, never read as an unreadable date
     try:
         # ruche-0028 (6) : depuis la fusion de la PR de soumission, quand l'historique la dit, et jamais avant soumise_le.
         lire_instant(enr.get("soumise_le"), reg.rel(chemin))
         fusion = heure_de_fusion(reg, chemin)
         heures = (maintenant() - soumission_effective(reg, enr)).total_seconds() / 3600
-        fenetre = float(cfg.get("fenetre_acceptation_heures", 24))
         exiger(heures >= fenetre, f"fenêtre d'ouverture : {int(heures)} h écoulées sur {fenetre:.0f} h"
                + (f", depuis la fusion de la soumission ({en_iso(fusion)})" if fusion else ""))
     except ErreurBee:
@@ -9742,8 +9763,7 @@ def raisons_r3(reg, cid, bilan=None):
 
 def mode_porte(reg):
     """« toujours », « si_juge_incomplet » ou « jamais » (bee.yaml : relecture_gardien_requise)."""
-    cfg = reg.config
-    valeur = cfg.get("relecture_gardien_requise", cfg.get("relecture_conseil_requise"))
+    valeur = reglage(reg, "relecture_gardien_requise")  # ruche-0144: missing or malformed, refused (it used to mean « jamais »)
     if valeur == "si_juge_incomplet":
         return "si_juge_incomplet"
     return "toujours" if valeur else "jamais"
@@ -9753,7 +9773,7 @@ def juge_commun_suffisant(reg, verdict):
     """ruche-0086: was the verdict rendered by a common judge at least bee.yaml's juge_commun_min? Its label must be exactly
     "juge-vN", N in ASCII digits without a leading zero; any other label, or a minimum missing or malformed (not an int from 1 to
     9999: a bool, a string, a float), and the answer is no: the gate closes, never opens. Read at R3, so never on an integrated one."""
-    minimum, commun = reg.config.get("juge_commun_min"), (verdict.get("juge") or {}).get("commun")
+    minimum, commun = reglage(reg, "juge_commun_min", brut=True), (verdict.get("juge") or {}).get("commun")
     return bool(type(minimum) is int and 1 <= minimum <= 9999 and isinstance(commun, str)
                 and re.fullmatch(r"juge-v[1-9][0-9]{0,3}", commun) and int(commun[6:]) >= minimum)
 
@@ -9790,7 +9810,7 @@ def alertes_relecteurs(reg, enr):
     verdict = enr.get("verdict") if isinstance(enr.get("verdict"), dict) else {}
     alertes = []
     try:
-        seuil = float(reg.config.get("ecart_declare_max", 0.05))
+        seuil = float(reglage(reg, "ecart_declare_max"))
         ecart = verdict.get("ecart_declare")
         if isinstance(ecart, (int, float)) and not isinstance(ecart, bool) and ecart > seuil:
             alertes.append(f"écart de {100 * ecart:.1f} points entre le gain déclaré dans le manifeste et le gain mesuré par "
@@ -9809,7 +9829,7 @@ def resume_r3(reg, bilan):
     """Ce qu'une contribution intégrable a réellement réuni (ruche-0012) : jamais « relectures suffisantes » d'une intégration
     sans relecture, et le seuil dit s'il est plafonné (amorçage)."""
     plafond = lambda seuil, cible: (f" (cible {cible}, plafonnée aux membres dont l'avis compte"  # noqa: E731
-                                    f"{' : amorçage' if reg.config.get('amorcage') else ''})" if seuil < cible else "")
+                                    f"{' : amorçage' if reglage(reg, 'amorcage') else ''})" if seuil < cible else "")
     return (f"CI verte au commit {bilan.get('sha')} ; {bilan.get('favorables')} relecture(s) favorable(s) de ce commit pour "
             f"{bilan.get('requises')} requise(s){plafond(bilan.get('requises', 0), bilan.get('cible', 0))} ; vote net "
             f"{bilan.get('net')} pour un seuil de {bilan.get('seuil_vote')}{plafond(bilan.get('seuil_vote', 0), bilan.get('cible_vote', 0))}"
@@ -10247,7 +10267,7 @@ def cmd_publier(args):
     """Branche, commit, push, PR, puis attente de la fusion : une action du registre en une commande."""
     reg = Registre(args.registre)
     depot = reg.racine
-    organisation = reg.config.get("organisation", "")
+    organisation = reglage(reg, "organisation")
     amont = args.amont or f"{organisation}/registre"
     corps = args.corps or f"Publié avec `bee publier`.\n\nNature : {args.titre}."
     if probleme := (texte_sortant_refuse(args.titre, "titre", 256, organisation)  # both leave the hive: refused before any
@@ -11268,7 +11288,7 @@ def construire_analyseur():
     a.add_argument("debat", help="ex. D-0001")
     a.add_argument("--utilisateur", required=True)
     a.add_argument("--position", required=True, choices=POSITIONS, help="pour, contre, question, ou fait (sources obligatoires)")
-    a.add_argument("--texte", required=True, help="court : bee.yaml, agora.texte_max (1 500 caractères par défaut)")
+    a.add_argument("--texte", required=True, help="court : bee.yaml, agora.texte_max (1 500 caractères aujourd'hui)")
     a.add_argument("--repond-a", help="argument auquel vous répondez (ex. A3)")
     a.add_argument("--conteste", action="append", help="contest the duplicate marking of this argument (ex. A7), repeatable: in an "
                                                      "invitation's debate, it counts again for the synthesis")

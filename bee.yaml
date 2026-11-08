@@ -1,7 +1,7 @@
 # Configuration générale du registre Bee.
-# Modifiable uniquement par le conseil humain (voir docs/gouvernance.md).
+# Modifiable uniquement par le conseil humain (voir docs/gouvernance.md). Chaque clé que bee lit est exigée, bien formée, et
+# aucune autre n'est admise : bee valider refuse le registre sinon (ruche-0144 ; liste : REGLAGES dans outils/bee.py).
 
-nom: Bee
 organisation: Bee-ruche              # organisation GitHub qui héberge le registre et les forks (<projet>Bee)
 phase: 1                         # voir la feuille de route dans README.md
 amorcage: true                   # dispositions d'amorçage actives jusqu'à la phase 3 (REGLES.md)
@@ -12,9 +12,9 @@ reservation_max_heures: 72       # R7
 reprise_apres_liberation_heures: 24  # R7 (proposition P-0002) : qui quitte une tâche sans contribution (libération, retrait,
                                  # expiration) ne la reprend pas, ni en parallèle, avant ce délai (répétition générale, T13)
 reservations_max_par_utilisateur: 3   # R8
-# R8 during the bootstrap (ruche-0096, REGLES.md; missing or malformed: the usual cap). The agent principal may raise `max` by a
-# council PR with its reason in docs/decisions.md; only the human council moves `jusqu_au` (UTC). Lowering `max`, moving `jusqu_au`
-# earlier or deleting this key while a council member holds more than that allows makes the registry invalid: bring holdings down first.
+# R8 during the bootstrap (ruche-0096, REGLES.md; missing or malformed: the usual cap, and invalid). The agent principal may raise `max` by a
+# council PR with its reason in docs/decisions.md; only the human council moves `jusqu_au` (UTC). Lowering `max` or moving `jusqu_au`
+# earlier while a council member holds more than that allows makes the registry invalid: bring holdings down first.
 r8_amorcage: {max: 8, jusqu_au: "2026-12-01T00:00:00Z"}
 gain_minimal: 0.02               # R4
 degradation_max_autres: 0.01     # R5
@@ -26,7 +26,8 @@ relecture_gardien_requise: si_juge_incomplet  # R3 : porte de relecture TEMPORAI
                                  # si_juge_incomplet (seulement si le juge isolé du fork n'a pas tout jugé), false
 juge_commun_min: 2               # R3 (ruche-0086, docs/juge-commun.md): with si_juge_incomplet, a verdict from an older common judge than juge-v<min>,
                                  # or from none, is not entirely judged (a guardian reviews). The council raises it once the new juge-vN tag exists and
-                                 # every fork is pinned to it. Missing or malformed (not an int from 1 to 9999): no verdict is complete.
+                                 # every fork is pinned to it. Missing or malformed (not an int from 1 to 9999): no verdict is complete,
+                                 # and bee valider refuses the registry (ruche-0144).
 duree_vote_jours: 7              # R10
 quorum_votants: 20               # R10
 majorite_requise: 0.6667         # R10
@@ -81,6 +82,7 @@ creations:
   signalements_max_par_24h: 2        # signalements par personne qui signale, sur 24 h glissantes
   signalements_ouverts_max: 2        # signalements ouverts (sans décision du conseil) par personne qui signale
   signalements_nommant_max: 3        # signalements ouverts nommant une même personne
+  signalements_au_plafond_par_24h: 1 # au-delà, par personne nommée, sur 24 h glissantes : attendent le conseil (ruche-0137)
   contexte_max: 3000                 # caractères du contexte d'une tâche proposée
   elements_max: 10                   # critères d'acceptation, éléments hors périmètre, dépendances
   element_max: 300                   # caractères d'un critère ou d'un élément hors périmètre
@@ -99,7 +101,6 @@ croissance:
   encadrement_par_semaine_sous_frein: 1  # frein serré : feux verts d'invitations de garant ou de gardien sur 7 jours glissants
   expiration_jours: 14              # une invitation non décidée expire ; elle ne retient plus la personne
   membres_actifs_jours: 30          # membre actif (frein) : contribution soumise, mesure ou relecture (hors abstention) sur ces jours
-  branche_dormante_jours: 30        # sans activité, une branche dort (rien n'est supprimé)
 
 # ruche-0104 (REGLES.md) : pseudos qu'aucune fiche membres/ ne prend, sans la casse : le conseil, les noms que l'outil et les
 # workflows écrivent (par), les rôles, les comptes de la ruche. Un compte déclaré dans gouvernance/ n'est pas une fiche : il reste

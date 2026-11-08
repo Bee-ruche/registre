@@ -2074,10 +2074,14 @@ class TestRegistre(BaseTest):
                 self.assertIn("juge_commun_min : entier de 1 à 9999 attendu", texte)
         self.regler_juge_commun_min(2)
         self.valide()
-        chemin = self.dossier / "bee.yaml"  # la porte toujours fermée (true) ne lit pas le minimum : rien à signaler
+        chemin = self.dossier / "bee.yaml"  # ruche-0144 : la porte toujours fermée (true) ne lit pas le minimum, mais la clé reste exigée
         chemin.write_text(chemin.read_text(encoding="utf-8").replace("relecture_gardien_requise: si_juge_incomplet", "relecture_gardien_requise: true"),
                           encoding="utf-8")
         self.regler_juge_commun_min(None)
+        code, texte = self.bee("valider")
+        self.assertEqual(code, 1, texte)
+        self.assertIn("juge_commun_min : entier de 1 à 9999 attendu", texte)
+        self.regler_juge_commun_min(2)
         self.valide()
 
     def test_juge_commun_etiquette_chiffres_ascii_a_l_enregistrement(self):
@@ -21044,7 +21048,9 @@ class TestSignalementsRuche0137(OutilsSignalements):
         self.assertEqual([x["id"] for x in tableau["signalements_au_plafond"]], ["S-0006", "S-0005", "S-0004"])
         # The value is the council's (bee.yaml) : at 2, a second one the same day waits for the council too.
         config = self.dossier / "bee.yaml"
-        config.write_text(config.read_text(encoding="utf-8").replace("  signalements_nommant_max: 3", "  signalements_nommant_max: 3\n  signalements_au_plafond_par_24h: 2"), encoding="utf-8")
+        texte = re.sub(r"(?m)^  signalements_au_plafond_par_24h: *1\b", "  signalements_au_plafond_par_24h: 2", config.read_text(encoding="utf-8"))
+        self.assertIn("  signalements_au_plafond_par_24h: 2", texte)  # ruche-0144: the key is written in bee.yaml, with its value 1
+        config.write_text(texte, encoding="utf-8")
         self.commit("deux par 24 h")
         self.a("2026-11-01T10:03:00Z")
         self.assertEqual(self.au_conseil("dora", "alice", "hugo"), "S-0007")
@@ -21627,6 +21633,7 @@ class TestBulkPrReadsRehearsal(unittest.TestCase):
 class TestReservedPseudonyms(BaseTest):
     REFUSED = ("conseil", "Conseil", "CONSEIL", "bee", "github-actions", "mesurer", "Relire", "laruche-architect")
     ROBOT = '"github-actions[bot]"'
+    MALFORMED = "bee.yaml : pseudos_reserves is required and well formed, robots too : no member file is accepted otherwise"
 
     def setUp(self):
         super().setUp()
@@ -21654,10 +21661,10 @@ class TestReservedPseudonyms(BaseTest):
         return self.bee("verifier-pr", "--base", "main", "--tete", "HEAD", "--auteur", pseudo, "--compte-cree-le", "2021-05-05")
 
     def test_the_real_list_names_the_council_robots_roles_and_hive_accounts(self):
-        reserves = bee.lire_yaml(RACINE / "bee.yaml")["pseudos_reserves"]
+        config = bee.lire_yaml(RACINE / "bee.yaml")  # ruche-0144: the list with the robots, both required by reserved_pseudo
         for nom in ("conseil", "bee", "github-actions[bot]", "mesurer", "relire", "optimiser", "proposer", "gardien", "laruche-architect"):
-            self.assertTrue(bee.reserved_pseudo({"pseudos_reserves": reserves}, nom.upper()), nom)
-        self.assertIsNone(bee.reserved_pseudo({"pseudos_reserves": reserves}, "bidji29"), "a council member's own login is a person")
+            self.assertIn("is a reserved pseudonym", bee.reserved_pseudo(config, nom.upper()), nom)
+        self.assertIsNone(bee.reserved_pseudo(config, "bidji29"), "a council member's own login is a person")
 
     def test_bee_inscrire_refuses_a_reserved_name_whatever_its_case(self):
         for pseudo in self.REFUSED:
@@ -21721,7 +21728,7 @@ class TestReservedPseudonyms(BaseTest):
         self.assertIn("bee.yaml : pseudos_reserves : a list of distinct GitHub logins", texte)
         code, texte = self.bee("inscrire", "--pseudo", "Conseil", "--compte-cree-le", "2020-01-01")
         self.assertEqual(code, 1, texte)
-        self.assertIn("reserved pseudonym", texte)
+        self.assertIn(self.MALFORMED, texte)  # ruche-0144: a list that misses the council refuses every name, the council's too
         self.set_list("conseil", self.ROBOT, "bee")
         chemin = self.dossier / "bee.yaml"
         chemin.write_text(chemin.read_text(encoding="utf-8").replace("robots:\n", "robots:\n  - veilleur\n", 1), encoding="utf-8")
@@ -21731,11 +21738,11 @@ class TestReservedPseudonyms(BaseTest):
         self.assertIn("naming at least conseil and every robot", texte)
         code, texte = self.bee("inscrire", "--pseudo", "Veilleur", "--compte-cree-le", "2020-01-01")
         self.assertEqual(code, 1, texte)
-        self.assertIn("reserved pseudonym", texte)
+        self.assertIn(self.MALFORMED, texte)  # and one that misses a robot, the robot's too
         self.commit("main adds a robot")
         code, texte = self.member_pr("veilleur")
         self.assertEqual(code, 1, texte)
-        self.assertIn("« veilleur » is a reserved pseudonym", texte)
+        self.assertIn(f"membres/veilleur.yaml : {self.MALFORMED}", texte)
         git(self.dossier, "switch", "-qf", "main")
         self.set_list("conseil", self.ROBOT, "bee", "veilleur")
         self.valide()
@@ -21775,6 +21782,294 @@ class TestReservedPseudonyms(BaseTest):
                 self.assertEqual(code, 1, texte)
                 self.assertIn("bee.yaml : pseudos_reserves : a list of distinct GitHub logins", texte)
                 git(self.dossier, "checkout", "-q", "--", "bee.yaml")
+        self.valide()
+
+
+# --- ruche-0144: settings fail closed: each bee.yaml key bee reads is required and well formed, any other key refused, no default ---
+
+class TestReglagesRuche0144(BaseTest):
+    contribution_jugee, regler_porte, regler_juge_commun_min = (TestRegistre.contribution_jugee, TestRegistre.regler_porte,
+                                                                TestRegistre.regler_juge_commun_min)
+
+    def reglee(self, chemin, *valeur):
+        """The fixture's bee.yaml as read, the setting at `chemin` removed, or set to `valeur`."""
+        config = bee.lire_yaml(self.dossier / "bee.yaml")
+        section, _, cle = chemin.rpartition(".")
+        lieu = config[section] if section else config
+        lieu.update({cle: valeur[0]}) if valeur else lieu.pop(cle)
+        return config
+
+    def ligne(self, cle, ligne):
+        """bee.yaml with its top-level `cle` line removed, then `ligne` (if any) written at the end."""
+        chemin = self.dossier / "bee.yaml"
+        texte = re.sub(rf"(?m)^{cle}:.*\n", "", chemin.read_text(encoding="utf-8"))
+        self.assertNotIn(f"\n{cle}:", texte)
+        chemin.write_text(texte + ligne, encoding="utf-8")
+
+    def ferme(self, chemin, mal_forme, lecture):
+        """With the live setting, `lecture` reads it; missing, then malformed (`mal_forme`: a value that used to switch a check off, raise a
+        cap or lower a threshold), it refuses with ErreurBee naming the setting, as bee valider does: never a default, never the permissive."""
+        reg = bee.Registre(self.dossier)
+        lecture(reg)
+        for config in (self.reglee(chemin), self.reglee(chemin, mal_forme)):
+            with self.subTest(chemin=chemin, valeur=config.get(chemin.split(".")[0], "(absente)")):
+                reg.config = config
+                with self.assertRaisesRegex(bee.ErreurBee, rf"^bee\.yaml : {re.escape(chemin)}\b"):
+                    lecture(reg)
+                self.assertTrue([p for p in bee.problemes_reglages(config) if p.startswith(f"bee.yaml : {chemin}")], config)
+
+    # --- bee valider: one list, every key required and well formed, no other ---
+
+    def test_the_live_bee_yaml_has_every_setting_and_no_other(self):
+        self.assertEqual(bee.problemes_reglages(bee.lire_yaml(RACINE / "bee.yaml")), [])
+        self.valide()
+
+    def test_each_setting_missing_or_malformed_is_refused_by_bee_valider_and_by_its_read(self):
+        chemins = [c for c, f in bee.REGLAGES.items() if not isinstance(f, dict)] + [
+            f"{c}.{k}" for c, f in bee.REGLAGES.items() if isinstance(f, dict) for k in f]
+        self.assertGreater(len(chemins), 60)
+        for chemin in chemins:
+            for config, suffixe in ((self.reglee(chemin), " (clé absente)"), (self.reglee(chemin, [[]]), "")):
+                with self.subTest(chemin=chemin, suffixe=suffixe):
+                    probleme = bee.probleme_reglage(config, chemin)
+                    self.assertTrue(probleme and probleme.startswith(f"bee.yaml : {chemin} : ") and probleme.endswith(suffixe), probleme)
+                    self.assertIn(probleme, bee.problemes_reglages(config))
+                    with self.assertRaisesRegex(bee.ErreurBee, re.escape(probleme)):
+                        bee.reglage(config, chemin)
+        with self.assertRaises(KeyError):  # a read of a key the list does not have is a bug, never a default
+            bee.reglage(bee.lire_yaml(self.dossier / "bee.yaml"), "nom")
+
+    def test_bee_valider_refuses_a_missing_key(self):
+        chemin = self.dossier / "bee.yaml"
+        avant = chemin.read_text(encoding="utf-8")
+        for motif, attendu in ((r"(?m)^gain_minimal:.*\n", "bee.yaml : gain_minimal : nombre de 0 à 1 attendu (clé absente)"),
+                               (r"(?m)^  max_par_pr:.*\n", "bee.yaml : notes.max_par_pr : entier positif attendu (au plus 100000) (clé absente)"),
+                               (r"(?m)^notes:\n(?:  .*\n)+", "bee.yaml : notes : une section attendue (texte_max, max_par_pr, max_par_24h) (clé absente)")):
+            with self.subTest(attendu=attendu):
+                chemin.write_text(re.sub(motif, "", avant, count=1), encoding="utf-8")
+                code, texte = self.bee("valider")
+                self.assertEqual(code, 1, texte)
+                self.assertIn(attendu, texte)
+        chemin.write_text(avant, encoding="utf-8")
+        self.valide()
+
+    def test_bee_valider_refuses_an_unknown_key(self):
+        chemin = self.dossier / "bee.yaml"
+        avant = chemin.read_text(encoding="utf-8")
+        for texte_yaml, attendu in ((avant + "nom: Bee\n", "bee.yaml : nom : clé inconnue, que bee ne lit pas (ruche-0144)"),
+                                    (avant + "relecture_conseil_requise: false\n", "bee.yaml : relecture_conseil_requise : clé inconnue"),
+                                    (avant.replace("agora:\n", "agora:\n  texte_maxi: 3\n", 1), "bee.yaml : agora.texte_maxi : clé inconnue"),
+                                    (avant.replace("croissance:\n", "croissance:\n  branche_dormante_jours: 30\n", 1),  # read by nothing yet
+                                     "bee.yaml : croissance.branche_dormante_jours : clé inconnue")):
+            with self.subTest(attendu=attendu):
+                chemin.write_text(texte_yaml, encoding="utf-8")
+                code, texte = self.bee("valider")
+                self.assertEqual(code, 1, texte)
+                self.assertIn(attendu, texte)
+        chemin.write_text(avant, encoding="utf-8")
+        self.valide()
+
+    def test_one_list_for_the_reads_and_for_bee_valider(self):
+        """Every read of bee.yaml in bee and its site goes through reglage() and names a listed setting; every listed setting is read."""
+        sources = "".join((RACINE / "outils" / f).read_text(encoding="utf-8") for f in ("bee.py", "site_bee.py"))
+        self.assertEqual(re.findall(r"\.config(?:\.get\(|\[)|= *(?:reg|self)\.config\b", sources), [])
+        appels = set(re.findall(r"""reglage\((?:[^()"']*?, *)?["']([\w.]+)["']""", sources))
+        feuilles = {c for c, f in bee.REGLAGES.items() if not isinstance(f, dict)} | {
+            f"{c}.{k}" for c, f in bee.REGLAGES.items() if isinstance(f, dict) for k in f}
+        self.assertLessEqual(appels, feuilles | set(bee.REGLAGES))  # a section is read whole, or key by key
+        self.assertEqual({c for c in feuilles if c in appels or c.split(".")[0] in appels}, feuilles)
+        debut = sources.index("REGLAGES = {")
+        ailleurs = sources[:debut] + sources[sources.index("\n}\n", debut):]  # each key named where it is used, outside the list
+        construits = {f"{d}_max_par_{s}" for d in bee.CREES_PAR for s in ("pr", "24h")}  # creations' caps, named by folder:
+        self.assertIn('config_creations(reg)[f"{dossier}_max_par_24h"]', ailleurs)
+        self.assertIn('config_creations(reg)[f"{d}_max_par_pr"]', ailleurs)
+        self.assertEqual([c for c in feuilles if (cle := c.rpartition(".")[2]) not in construits
+                          and not re.search(rf"[\"'.]{re.escape(cle)}[\"']", ailleurs)], [])
+
+    # --- each read that used to fall back to a permissive value, missing then malformed ---
+
+    def test_relecture_gardien_requise_missing_or_falsy_no_longer_opens_the_gate(self):
+        # Missing, it fell back to relecture_conseil_requise, then to « jamais » ; 0, '' or null too: no guardian review was required.
+        self.regler_porte("si_juge_incomplet")
+        self.regler_juge_commun_min(2)
+        self.contributeurs("bruno", "chloe")
+        cid = self.contribution_jugee(extra_juge={"version": 3, "commun": "juge-v1"})  # under juge_commun_min: a guardian reviews
+        self.assertEqual(self.bee("voter", cid, "--utilisateur", "bruno", "--valeur", "1")[0], 0)
+        code, texte = self.bee("verifier-acceptation", cid)
+        self.assertEqual(code, 1, texte)
+        self.assertIn("porte de relecture temporaire", texte)
+        self.ferme("relecture_gardien_requise", 0, lambda reg: bee.porte_exigee(reg, {}))
+        for ligne in ("", "relecture_gardien_requise: 0\n", "relecture_gardien_requise: ''\n", "relecture_gardien_requise: null\n",
+                      "relecture_conseil_requise: false\n"):
+            with self.subTest(ligne=ligne):
+                self.ligne("relecture_gardien_requise", ligne)
+                code, texte = self.bee("verifier-acceptation", cid)
+                self.assertEqual(code, 1, texte)
+                self.assertIn("bee.yaml : relecture_gardien_requise : true, si_juge_incomplet ou false attendu", texte)
+
+    def test_amorcage_missing_or_malformed(self):
+        # A string ('false') was truthy: the bootstrap on, level checks off ; missing, robots decided and a Confirmé created open tasks.
+        tache = self.dossier / "taches/miniz/miniz-9003.yaml"
+        tache.write_text(TACHE_OPTIMISATION.replace("miniz-0099", "miniz-9003").replace("taille: S", "taille: L"), encoding="utf-8")
+        for ligne in ("", "amorcage: 'false'\n", "amorcage: 1\n"):
+            with self.subTest(ligne=ligne):
+                self.ligne("amorcage", ligne)
+                code, texte = self.bee("prendre", "miniz-9003", "--utilisateur", "alice")
+                self.assertEqual(code, 1, texte)
+                self.assertIn("bee.yaml : amorcage : true ou false attendu", texte)
+                self.assertEqual(bee.lire_yaml(tache)["statut"], "ouverte")
+        self.ligne("amorcage", "amorcage: true\n")
+        self.ferme("amorcage", "false", lambda reg: bee.resume_r3(reg, {"requises": 0, "cible": 2}))
+        self.assertEqual(self.bee("prendre", "miniz-9003", "--utilisateur", "alice")[0], 0)  # the witness: in the bootstrap, a Nouveau takes L
+
+    def test_anciennete_compte_min_jours_missing_or_malformed(self):
+        # false or '0' read as 0 days: an account created the same day passed bee inscrire and the gate.
+        for ligne in ("", "anciennete_compte_min_jours: false\n", "anciennete_compte_min_jours: '0'\n"):
+            with self.subTest(ligne=ligne):
+                self.ligne("anciennete_compte_min_jours", ligne)
+                code, texte = self.bee("inscrire", "--pseudo", "david", "--compte-cree-le", "2026-10-27")
+                self.assertEqual(code, 1, texte)
+                self.assertIn("bee.yaml : anciennete_compte_min_jours : entier positif attendu", texte)
+                self.assertFalse((self.dossier / "membres/david.yaml").exists())
+        self.ligne("anciennete_compte_min_jours", "anciennete_compte_min_jours: 90\n")
+        self.assertIn("au moins 90 jours", self.bee("inscrire", "--pseudo", "david", "--compte-cree-le", "2026-10-27")[1])
+
+    def r3(self):
+        self.contributeurs("bruno", "chloe")
+        return self.contribution_jugee()
+
+    def test_gain_minimal(self):  # false read as 0: any gain passed R4
+        cid = self.r3()
+        self.ferme("gain_minimal", False, lambda reg: bee.raisons_r3(reg, cid))
+
+    def test_degradation_max_autres(self):  # true read as 1.0: any other metric could lose 100 % (R5)
+        cid = self.r3()
+        self.ferme("degradation_max_autres", True, lambda reg: bee.raisons_r3(reg, cid))
+
+    def test_relectures_requises(self):  # false or '0' read as 0: no favourable review required (R3)
+        cid = self.r3()
+        self.ferme("relectures_requises", "0", lambda reg: bee.raisons_r3(reg, cid))
+
+    def test_vote_net_min(self):  # false read as 0: no vote required (R3)
+        cid = self.r3()
+        self.ferme("vote_net_min", False, lambda reg: bee.raisons_r3(reg, cid))
+
+    def test_fenetre_acceptation_heures(self):  # true read as 1 h: integration and the race's protection after one hour (R3)
+        cid = self.r3()
+        self.ferme("fenetre_acceptation_heures", True, lambda reg: bee.raisons_r3(reg, cid))
+        self.ferme("fenetre_acceptation_heures", True, lambda reg: bee.bornes_attente(reg, reg.enregistrement(cid)[1]))
+
+    def test_reservation_max_heures(self):  # true read as 1 h: reservations expired, the race's protection shrank (R7, R3)
+        self.ferme("reservation_max_heures", True, lambda reg: bee.engagement_expire(reg, "2026-10-27T10:00:00Z", bee.maintenant()))
+
+    def test_reservations_max_par_utilisateur(self):  # '10', a string, read as 10 (R8)
+        self.ferme("reservations_max_par_utilisateur", "10", lambda reg: bee.r8_maximum(reg, "alice", [], bee.maintenant()))
+
+    def test_reprise_apres_liberation_heures(self):  # malformed, or missing: 24 h, whatever the council had set (R7)
+        self.ferme("reprise_apres_liberation_heures", -1, bee.delai_reprise)
+
+    def test_rule_votes(self):  # true read as 1 day, false as a quorum or a majority of 0 (R10)
+        self.assertEqual(self.bee("proposer", "--utilisateur", "alice", "--regle", "R4", "--texte", "Un texte assez long.", "--motif",
+                                  "Pour le test.")[0], 0)
+        pid = next(iter(bee.Registre(self.dossier).propositions))
+        lecture = lambda reg: bee.depouiller_proposition(reg, pid, bee.calculer_niveaux(reg), bee.maintenant())  # noqa: E731
+        for chemin, mal_forme in (("duree_vote_jours", True), ("quorum_votants", False), ("majorite_requise", False)):
+            self.ferme(chemin, mal_forme, lecture)
+
+    def test_ecart_declare_max(self):  # true read as 1.0: the reviewers' alert on a declared gain off
+        self.ferme("ecart_declare_max", True, lambda reg: bee.alertes_relecteurs(reg, {"verdict": {"ecart_declare": 0.5}}))
+
+    def test_section_caps(self):  # missing or malformed, each fell back to a hard-coded cap, above any the council had lowered
+        for chemin, lecture in (("agora.texte_max", bee.config_agora), ("notes.max_par_24h", bee.config_notes),
+                                ("creations.taches_max_par_pr", bee.config_creations), ("creations.signalements_au_plafond_par_24h",
+                                bee.config_creations), ("croissance.invitations_par_semaine", bee.config_croissance),
+                                ("croissance.expiration_jours", lambda reg: bee.expiration({"propose_le": "2026-10-27T10:00:00Z"},
+                                                                                            bee.config_croissance(reg)))):
+            self.ferme(chemin, "1500", lecture)
+        for section, lecture in (("agora", bee.config_agora), ("croissance", bee.config_croissance)):
+            self.ferme(section, [], lecture)
+
+    def test_cap_organisation_and_phase(self):  # neutral reads, required all the same
+        for chemin, mal_forme, lecture in (("cap.postes", {"gouvernance": 100.5}, bee.cap_cible), ("cap.fenetre_jours", True, bee.gestes_recents),
+                                           ("cap.poids_max_par_utilisateur_et_jour", "6", bee.poids_max_par_jour),
+                                           ("organisation", ["Bee-ruche"], bee.cles_d_origine), ("phase", "1", lambda reg: reg.reglage("phase"))):
+            self.ferme(chemin, mal_forme, lecture)
+
+    def test_robots_missing_or_malformed_means_no_robot(self):
+        # A string was read as its characters: every one-letter login was a robot (verdicts, expirations, decisions out of the bootstrap).
+        self.assertEqual(bee.Registre(self.dossier).robots, {"github-actions[bot]"})
+        chemin = self.dossier / "bee.yaml"
+        avant = chemin.read_text(encoding="utf-8")
+        for ligne in ("", 'robots: "github-actions[bot]"\n', "robots: [{a: 1}]\n"):
+            with self.subTest(ligne=ligne):
+                chemin.write_text(re.sub(r"(?m)^robots:\n(?:  - .*\n)+", ligne, avant), encoding="utf-8")
+                self.assertEqual(bee.Registre(self.dossier).robots, set())
+                code, texte = self.bee("valider")
+                self.assertEqual(code, 1, texte)
+                self.assertIn("bee.yaml : robots : une liste de logins GitHub attendue", texte)
+
+    # --- after the adversarial review ---
+
+    def test_reserved_pseudo_refuses_every_name_unless_both_lists_are_well_formed(self):
+        # Before: any non-empty list passed (['x'], ['conseil', 5]) and a malformed robots list was []: bee, Bee, github-actions[bot] free.
+        refus = "bee.yaml : pseudos_reserves is required and well formed, robots too : no member file is accepted otherwise"
+        vivant = bee.lire_yaml(self.dossier / "bee.yaml")
+        self.assertIsNone(bee.reserved_pseudo(vivant, "david"))
+        self.assertIn("is a reserved pseudonym", bee.reserved_pseudo(vivant, "Bee"))
+        for config in (self.reglee("pseudos_reserves", ["x"]), self.reglee("pseudos_reserves", ["conseil", 5]),
+                       self.reglee("pseudos_reserves", ["conseil", None]), self.reglee("robots", "github-actions[bot]"),
+                       self.reglee("robots", [{"a": 1}]), self.reglee("robots")):
+            for pseudo in ("david", "bee", "Bee", "github-actions[bot]"):
+                with self.subTest(pseudos_reserves=config.get("pseudos_reserves"), robots=config.get("robots", "(absente)"), pseudo=pseudo):
+                    self.assertEqual(bee.reserved_pseudo(config, pseudo), refus + " (ruche-0104)")
+        chemin = self.dossier / "bee.yaml"
+        chemin.write_text(re.sub(r"(?m)^robots:\n(?:  - .*\n)+", 'robots: "github-actions[bot]"\n', chemin.read_text(encoding="utf-8")),
+                          encoding="utf-8")
+        for commande in (("inscrire", "--pseudo", "Bee", "--compte-cree-le", "2020-01-01"), ("renommer", "--ancien", "alice", "--pseudo", "bee"),
+                         ("inscrire", "--pseudo", "david", "--compte-cree-le", "2020-01-01")):
+            with self.subTest(commande=commande):
+                code, texte = self.bee(*commande)
+                self.assertEqual(code, 1, texte)
+                self.assertIn(refus, texte)
+        self.assertEqual([n for n in ("bee", "Bee", "david") if (self.dossier / f"membres/{n}.yaml").exists()], [])
+        self.assertTrue((self.dossier / "membres/alice.yaml").exists())
+
+    def test_huge_or_non_finite_numbers_are_malformed(self):
+        # Before: 10**23 or 10**400 hours passed bee valider, then timedelta or float raised OverflowError (a traceback) ; .inf passed
+        # for reprise_apres_liberation_heures and for cap.poids_max_par_utilisateur_et_jour (the weight cap off).
+        borne = bee._BORNE
+        for chemin, valeur in (("reservation_max_heures", 10 ** 23), ("reservation_max_heures", 10 ** 400), ("fenetre_acceptation_heures", 10 ** 23),
+                               ("reprise_apres_liberation_heures", math.inf), ("reprise_apres_liberation_heures", math.nan),
+                               ("cap.poids_max_par_utilisateur_et_jour", math.inf), ("gain_minimal", math.nan), ("relectures_requises", 10 ** 23),
+                               ("agora.texte_max", borne + 1), ("croissance.membres_actifs_jours", 10 ** 6),
+                               ("r8_amorcage", {"max": 10 ** 23, "jusqu_au": "2026-12-01T00:00:00Z"})):
+            with self.subTest(chemin=chemin, valeur=valeur):
+                config = self.reglee(chemin, valeur)
+                probleme = bee.probleme_reglage(config, chemin)
+                self.assertTrue(probleme and probleme.startswith(f"bee.yaml : {chemin} : "), probleme)
+                self.assertIn(probleme, bee.problemes_reglages(config))
+                with self.assertRaisesRegex(bee.ErreurBee, re.escape(probleme)):
+                    bee.reglage(config, chemin)
+        for chemin in ("agora.texte_max", "reservation_max_heures", "croissance.membres_actifs_jours"):  # the bound itself is well formed
+            self.assertIsNone(bee.probleme_reglage(self.reglee(chemin, borne), chemin))
+        self.ferme("reservation_max_heures", 10 ** 23, lambda reg: bee.engagement_expire(reg, "2026-10-27T10:00:00Z", bee.maintenant()))
+        self.ferme("cap.poids_max_par_utilisateur_et_jour", math.inf, bee.poids_max_par_jour)
+        self.ferme("croissance.membres_actifs_jours", 10 ** 6, lambda reg: bee.gestes_recents(
+            reg, jours=bee.config_croissance(reg)["membres_actifs_jours"]))
+        chemin = self.dossier / "bee.yaml"
+        avant = chemin.read_text(encoding="utf-8")
+        for texte_yaml, attendu, lecteur in (
+                (re.sub(r"(?m)^reservation_max_heures:.*\n", "reservation_max_heures: 100000000000000000000000\n", avant),
+                 "bee.yaml : reservation_max_heures : entier positif attendu (au plus 100000)", "essaim"),
+                (re.sub(r"(?m)^  poids_max_par_utilisateur_et_jour:.*\n", "  poids_max_par_utilisateur_et_jour: .inf\n", avant),
+                 "bee.yaml : cap.poids_max_par_utilisateur_et_jour : nombre positif attendu (au plus 100000)", "cap")):
+            for commande in ("valider", lecteur):  # refused, never a traceback
+                with self.subTest(attendu=attendu, commande=commande):
+                    chemin.write_text(texte_yaml, encoding="utf-8")
+                    code, texte = self.bee(commande)
+                    self.assertEqual(code, 1, texte)
+                    self.assertIn(attendu, texte)
+        chemin.write_text(avant, encoding="utf-8")
         self.valide()
 
 
