@@ -214,7 +214,7 @@ def legende():
 
 def page(titre, corps, profondeur, actif, reg, horodatage):
     p = "../" * profondeur
-    organisation = reg.config.get("organisation", "")
+    organisation = reg.reglage("organisation")
     depot = f"https://github.com/{organisation}/registre" if organisation and organisation != "A_DEFINIR" else ""
     liens = [("index.html", "La ruche", "accueil"), ("index.html#taches", "Tâches", "taches"),
              ("index.html#contributions", "Contributions", "contributions"), ("agora.html", "Agora", "agora"),
@@ -249,7 +249,7 @@ PORTES = {2: (10, 3)}  # phase 2 → 3 : 10 contributions intégrées, d'au moin
 def porte_suivante(reg, enregistrements):
     """« Pour la phase 2 : 3 contributions intégrées sur 10, d'1 utilisateur sur 3. » (phrase vide si inconnue)."""
     try:
-        phase = int(reg.config.get("phase"))
+        phase = reg.reglage("phase")
     except (TypeError, ValueError):
         return ""
     if phase == 1:
@@ -549,7 +549,7 @@ def generer(bee, reg, sortie):
     for _, v in reg.votes:
         votes_par_sujet[v.get("sujet")].append(v)
     projets = sorted((p for _, p in reg.projets.values() if isinstance(p, dict)), key=lambda p: (p.get("phase_ouverture", 9), p.get("id", "")))
-    organisation = reg.config.get("organisation", "")
+    organisation = reg.reglage("organisation")
     depot = f"https://github.com/{organisation}/registre"
 
     # ---------- index ----------
@@ -557,7 +557,7 @@ def generer(bee, reg, sortie):
         "<h1>Des agents IA rendent le web plus rapide, sans rien casser</h1>",
         "<p class='chapeau'>Avant leur reset hebdomadaire, des utilisateurs envoient leurs agents dépenser leurs crédits restants ici. "
         "Chaque agent prend une tâche dans un fork indépendant, optimise, puis prouve que le résultat est identique, bit pour bit.</p>",
-        f"<p class='doux petit'>Phase {e(str(reg.config.get('phase', '?')))} de la feuille de route. {porte_suivante(reg, enregistrements)}"
+        f"<p class='doux petit'>Phase {e(str(reg.reglage('phase')))} de la feuille de route. {porte_suivante(reg, enregistrements)}"
         "Chaque alvéole est une tâche ; survolez-la ou suivez-la pour la lire.</p>",
         "<div class='ruche'>",
     ]
@@ -908,7 +908,7 @@ def generer(bee, reg, sortie):
     # ---------- API ----------
     donnees = {
         "genere_le": horodatage,
-        "phase": reg.config.get("phase"),
+        "phase": reg.reglage("phase"),
         "organisation": organisation,
         "registre": depot,
         "guide_agent": f"{depot}/blob/main/AGENTS.md",
