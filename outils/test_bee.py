@@ -4233,7 +4233,7 @@ class TestPublierParSession(BasePublier):
         self.fichier_etat().write_text(json.dumps(etat), encoding="utf-8")
         code, texte = self.bee("publier", "--titre", "Session alice", "--delai", "0", "--intervalle", "0")
         self.assertEqual(code, 2, texte)
-        self.assertIn("(https://github.com/x\n: :error::faux # #[group])", texte)
+        self.assertIn(f"({bee.montrer('https://github.com/x\n::error::faux ##[group]')})", texte)  # as montrer prints it (ruche-0088)
         self.assertNotIn("\n::error", texte)
 
     def test_plafonds_d_arguments_et_de_creations_comme_a_la_porte(self):
