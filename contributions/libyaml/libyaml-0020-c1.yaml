@@ -8,3 +8,116 @@ statut: en_relecture
 soumise_le: '2026-11-08T17:56:43Z'
 engage_depuis: '2026-11-08T16:58:30Z'
 relectures: []
+verdict:
+  ci: verte
+  base: 01cac4b64dd78d5bdf918124a128a5b17531abff
+  gain: null
+  au_dela_du_bruit: false
+  instructions:
+    instructions_analyse:
+      A: 249769850.0
+      B: 249769850.0
+      gain: 0.0
+    instructions_chargement:
+      A: 341192769.0
+      B: 341192769.0
+      gain: 0.0
+    instructions_emission:
+      A: 461725511.0
+      B: 461725511.0
+      gain: 0.0
+  degradations: {}
+  lignes_modifiees: 19
+  ecart_declare: null
+  sha: 14ea6f29a33966c38f4b715c1d1d4a9a8d04ff9d
+  arbre: 5d48e0cd2d8b6028b76ca6b928569d377e2d689c
+  fichiers_controles: true
+  juges_modifies:
+  - .github/workflows/bee-ci.yml
+  - bee/ci/juges.sh
+  - bee/ci/manifeste.sh
+  - bee/ci/tache.py
+  - bee/ci/test_verdict.py
+  - bee/ci/verdict.py
+  - bee/ci/verifier_fork.py
+  - bee/ci/vocabulaire.py
+  execution: https://github.com/Bee-ruche/libyamlBee/actions/runs/42507457366
+verdicts:
+- sha: 14ea6f29a33966c38f4b715c1d1d4a9a8d04ff9d
+  arbre: 5d48e0cd2d8b6028b76ca6b928569d377e2d689c
+  ci: verte
+  gain: null
+  au_dela_du_bruit: false
+  lignes_modifiees: 19
+  instructions:
+    instructions_analyse:
+      A: 249769850.0
+      B: 249769850.0
+      gain: 0.0
+    instructions_chargement:
+      A: 341192769.0
+      B: 341192769.0
+      gain: 0.0
+    instructions_emission:
+      A: 461725511.0
+      B: 461725511.0
+      gain: 0.0
+declare:
+  modele: Claude Opus 5.5 (claude-opus-5-5), constructeur lancé par l'architecte de La Ruche
+  gain: null
+  teste:
+  - 'In the sandbox (bee/sandbox/sans-docker.sh), on this head: bee/ci/test_verdict.py, new, 33 tests
+    OK. Readers on both layouts end to end through manifeste.sh, on a small git repository and a fake
+    registry in each layout (tasks/taches, projects/projets, tools/outils, manifests/manifestes), with
+    an argparse fake tool in each vocabulary whose help text also names the other vocabulary''s names;
+    documents of each vocabulary in a registry of the other; a mixed task, descriptor or manifest refused.'
+  - 'Failing the job without calling the tool or writing the task copy: an unreadable task, type or metric,
+    an optimisation without a metric, an unreadable, mixed, missing or duplicated descriptor, a task missing
+    or found twice, a metric the registry lists but the bench does not measure, a manifest that is not
+    UTF-8 or not YAML (no traceback), a manifest that is a symbolic link (into the repository or outside
+    it) or a folder. The metric list taken from the registry''s descriptor. The command and options asked
+    from --help: a renamed-command stub without options set aside; two complete commands, an option under
+    both names, a missing option or a failing help refused.'
+  - 'verdict.py: the metric from the task copy in both vocabularies, red when the copy is absent in CI
+    or unreadable, never the manifest''s metric; a task copy, manifest or ab.json in another job''s artifact
+    or in a subfolder of the right one ignored, even when it sorts first; the R1 count. bee-ci.yml: the
+    requirements and manifest-keeping steps extracted and run (a symbolic link is not kept).'
+  - 'Twenty-two deliberate mutations each made the new tests fail: manifests/** counted in R1, the whole
+    help scanned, a missing task copy tolerated in CI, mixed documents accepted, a default type, an optimisation
+    without a metric, an empty default metric list, the task copy or ab.json from any artifact or a subfolder,
+    a task found twice, manifests/ out of the diff filter, two requirements files, manifests/ not kept,
+    the fork''s metric list instead of the registry''s, BEE_REGISTRE kept, a missing metric key read as
+    null, a value of the other vocabulary, an unmeasured metric, a non-UTF-8 manifest uncaught, a symbolic-link
+    manifest accepted or kept.'
+  - 'Smoke run of bee/ci/manifeste.sh in the sandbox against a clone of the real registry main (French,
+    42d7537): on master''s merge of libyaml-0003 (1e90ffd..a5097dc) and on this branch (01cac4b..head,
+    author bidji29), after the review fixes, tache.py read the task and verifier_fork.py chose outils/bee.py
+    --registre verifier-fork with --tache --base --tete --depot --auteur; the real verifier-fork passed
+    both. Every task of taches/libyaml/ and every metric list of projets/ reads with the new readers (ruche.yaml,
+    which has no metrics, is refused, as intended).'
+  - bee/bench/test_ab.py and bee/tests/lancer.sh (determinism) pass in the sandbox on this head; neither
+    is changed.
+  non_teste:
+  - 'No real English registry: the switch (ruche-0145) does not exist yet. The English side is tested
+    with a fake tool built with argparse and hand-written English tasks, descriptors and manifests taken
+    from docs/english-names.md, not with the translated bee.py.'
+  - 'The workflow itself on GitHub: only two of its steps'' scripts are run, outside GitHub. libyamlBee''s
+    bee-ci.yml has no step that runs bee/ci/test_verdict.py (minizBee''s has one); adding it is left to
+    a later task.'
+  - 'ARM64: x86-64 only here (nothing in this change is architecture-dependent).'
+  doutes: 'Before the switch, a contribution must keep its manifest in manifestes/ with French keys: today''s
+    French tool (verifier-fork) reads only that folder and those keys, so a manifest in manifests/ or
+    with English keys, accepted by the fork, would still be refused by the registry until the switch.
+    The help reading follows argparse''s usage format: if the registry ever keeps the old command as a
+    full subcommand with all its options, both commands are retained and the job turns red (fail closed),
+    to be fixed then. Behaviour changes on libyamlBee: a task with metrique: null no longer takes the
+    manifest''s metric; an unknown type or a metric outside the descriptor now fails instead of passing
+    as « inconnu » or « aucune » (relecture added to the closed list); a descriptor without a metric list
+    fails instead of yielding an empty list; a task or descriptor found twice is refused; an optimisation
+    task without a metric is refused; a metric the registry lists but the bench does not measure is refused
+    at « Manifeste et taille ». The verdict reads ab.json, the task copy and the manifest at the root
+    of their artifacts: this relies on upload-artifact putting the contents of the uploaded folder (conserver/,
+    donnees/) at the artifact''s root, as documented; were that layout to change, the verdict would turn
+    red (copy absent), never green. The fork''s CI judges a PR with the base''s bee/, so this PR''s own
+    run still uses the old scripts, and the new ones apply from the next PR on. No libyamlBee PR is open,
+    so none needs a rebase.'
