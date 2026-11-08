@@ -11,6 +11,8 @@
 #   retired       French names refused once the switch is merged (the switch fills the guard).
 #   hand_tokens   tokens whose English name depends on their role: renamed by hand (plan, section 12, change 7).
 #   paths         French path -> English path; an entry ending in / maps a folder prefix, the others one file.
+#   env           environment variables bee, its tests and the workflows read (english-names.md, section 5.5; ruche-0142
+#                 added BEE_PAUSE_FUSION, the auto-merge pause).
 #   tree          node ids are paths under tree/: each segment maps through `segments`; children lines are read in the
 #                 sections named in `children`.
 #   families      per file family: files (globs from the registry's root), writer (text: key and value tokens edited in
@@ -22,7 +24,8 @@
 #   domains       closed: a value outside its domain is refused. open_domains: values not listed stay as written.
 #                 The domains `path` and `node` are the path map and the tree segments.
 #   code          the code files (Python, shell, workflows), listed one by one: step 1b's proofs (P1, P1b, P3) cover their
-#                 content; P2 checks only their place (the path map) and their mode.
+#                 content (rename_code.py, with identifiers.yaml: the Python names); P2 checks only their place (the path map)
+#                 and their mode.
 #   hand          every other file no family translates, by glob, the first matching entry deciding: same (byte-identical,
 #                 at its English path), becomes (byte-identical to that file of the base) or removed. A schema of
 #                 schemas/ is translated with its family (keys, domains and schema_strings: $id, patterns), byte for byte.
@@ -176,6 +179,15 @@ paths:
   .github/workflows/integration-auto.yml: .github/workflows/auto-integration.yml
   .github/workflows/juge.yml: .github/workflows/judge.yml
   .github/workflows/juge-commun.yml: .github/workflows/judge-meta-tests.yml
+env:
+  BEE_REGISTRE: BEE_REGISTRY
+  BEE_MAINTENANT: BEE_NOW
+  BEE_SIMU: BEE_SIM
+  BEE_SIMU_ROBOT: BEE_SIM_ROBOT
+  BEE_JUGE_RESEAU: BEE_JUDGE_NETWORK
+  BEE_JUGE_INTEGRATION: BEE_JUDGE_INTEGRATION
+  BEE_FLUX_SEUL: BEE_STREAM_ONLY
+  BEE_PAUSE_FUSION: BEE_MERGE_PAUSE
 tree:
   dir:
   - arbre
@@ -274,8 +286,14 @@ cli:
     publier: publish
     en-attente: pending
     site: site
+    passe-fusion: merge-pass
+    passe-fusion preparer: merge-pass prepare
+    passe-fusion verifier: merge-pass verify
+    passe-fusion fusionner: merge-pass merge
   options:
     --registre: --registry
+    --acceptees: --accepted
+    --exclure: --exclude
     --version: --version
     --a-blanc: --dry-run
     --ab: --ab
@@ -1914,6 +1932,7 @@ code:
 - outils/juge/stats.py
 - outils/juge/test_juge.py
 - outils/migration/rename.py
+- outils/migration/rename_code.py
 - outils/repetition/bee
 - outils/repetition/ci-simulee
 - outils/repetition/ci_simulee.py
@@ -1972,4 +1991,7 @@ hand:
 - files: outils/migration/names.yaml
   same: true
   why: 'this map, moved: every proof reads it from the base'
+- files: outils/migration/identifiers.yaml
+  same: true
+  why: 'the identifier map of step 1b, moved: every proof reads it from the base'
 new: []

@@ -1,0 +1,2137 @@
+# The identifier map of the Python code (ruche-0142, step 1b of docs/english-migration.md, section 13), beside names.yaml.
+# Generated from the code (every identifier, word by word against `english`; the names of names.yaml first; argparse
+# destinations from the option map), then reviewed by hand. Read by outils/migration/rename_code.py from the base commit,
+# never from the PR; its lint checks it against the code (python3 -I outils/migration/rename_code.py lint).
+#
+#   english      words an identifier may be made of and stay as it is: English, or language-neutral (abbreviations,
+#                proper names, test logins); an identifier with another word must be in `identifiers`.
+#   identifiers  French identifier -> English identifier, one for every file: a name of names.yaml (a key, a value, a
+#                command...) gets its English there, unless that is a keyword (pour -> in_favour); an English identifier
+#                may be renamed to free a name inside one scope (status -> with_status, beside statut -> status).
+#   attributes   where an attribute differs (x.name, a string given to getattr/setattr/hasattr/vars, an argparse
+#                destination): a destination is always its option's English name (--en-parallele -> parallel).
+#   tokens       names the code holds in strings that names.yaml lacks (environment variables, CLI choices, internal
+#                keys, f-string fragments such as _max_par_pr); a French identifier is also renamed in strings.
+#   hand         tokens with two English names, by role: each has a default and a role table, by file and scope (the
+#                innermost def or class, or top-level assignment), optionally by literal; the renamer and P1 follow it.
+#   shared       two identifiers of one scope that become one name, reviewed as never live at once (read by the scope
+#                lint of a later step, with the identifiers of the test files).
+#   neutral      name literals of bee.py declared language-neutral (--names of outils/inventaire_marqueurs.py).
+#   pending      code files whose own identifiers are not mapped yet: lint and check fail on each, one line (a later step).
+#   keep         French kept on purpose: tokens in a file, or the strings of top-level scopes (the migration's own tests).
+version: 1
+english: [
+  aaaeeeeiioouuuc, ab, abandonment, abbrev, abort, abs, absent, absolute, abspath, abstention, abstentions, ac,
+  acceptance, accepted, accepts, account, accounts, across, action, actions, active, activity, acts, actual, add,
+  addaudithook, added, addition, additions, address, addresses, admissible, adopt, adopted, adverse, after, again,
+  against, age, agent, agents, agora, agreement, agreements, ahead, aimed, al, alert, alerts, alias, aliases, alice,
+  alikes, alive, all, allow, allowed, almost, alone, alpha, already, also, alternates, alternative, always, am, an,
+  analyse, analysed, analysis, ancestor, ancestry, anchor, and, annotations, another, answer, answers, any, anything,
+  anywhere, api, app, append, apply, approval, ar, architecture, architectures, archive, are, area, areas, arg,
+  argparse, args, argue, argument, arguments, argv, argvs, around, array, arrival, as, ascii, aside, ask, asks, asm,
+  assemble, assert, assertion, assessment, assign, asso, ast, astimezone, async, at, atime, attacks, attr, attribute,
+  attributes, attrs, audit, author, authorities, authority, authors, auto, autojunk, automatic, autostash, available,
+  awaits, away, back, backslashreplace, bad, balance, bar, bare, base, basename, bases, batch, bee, before, beginning,
+  beginnings, behind, best, between, beyond, big, bin, birth, bit, bitbucket, bits, blob, blobs, block, blocked,
+  blocking, blocks, blogspot, body, bool, boolean, bootstrap, both, bound, bounded, bounds, br, brake, branch,
+  branches, brief, brings, broken, bruno, bsky, budget, buffer, build, builds, built, builtins, bulk, bullet, bullets,
+  but, by, byte, bytearray, bytecode, bytes, cache, caches, call, callable, called, caller, calls, came, can,
+  cancelled, candidate, candidates, cannot, canonical, cap, capitalize, caps, caption, capture, card, cards, carriage,
+  carry, case, casefold, cases, cat, categories, category, caught, cause, causes, cc, ceil, ceiling, cell, certain,
+  chain, change, changed, changes, channel, char, character, characters, chdir, check, checked, checker, checkout,
+  checks, child, children, chloe, chmod, choice, choices, chr, chunk, chunks, ci, cid, citations, cite, class,
+  classes, classmethod, claude, clause, clean, cleanly, cleanup, clear, cli, clock, clocks, clone, close, closed,
+  closing, closure, closures, cls, cm, cmd, cn, co, code, codeberg, codec, codes, col, collection, collections,
+  collision, collisions, column, columns, com, comb, combine, combining, command, commandments, commands, comment,
+  comments, commit, commits, committer, common, comparators, compare, compared, compile, compiler, complaisance,
+  complete, completed, compose, composer, comprehension, compress, compressed, compression, compute, computed,
+  conclusion, concurrent, cond, condition, conditions, conf, config, configuration, confirm, confirmation, confirmed,
+  conflict, conflicts, const, constant, constants, construct, constructor, constructs, consts, contact, contacted,
+  container, contains, content, contents, contest, contested, context, contextlib, contextmanager, continuation,
+  continuations, continues, contradicts, contribution, contributions, control, coordination, copied, copy, copyfile,
+  copytree, core, corpus, correct, cos, council, councils, count, counted, counter, counts, cover, coverage, covered,
+  covering, covers, cp, cpu, crc, creat, create, created, creating, creation, creations, credit, criteria, criterion,
+  cs, current, cursor, cut, cuts, cv, cwd, cx, cy, daemon, data, date, dated, dates, datetime, datum, david, day,
+  days, deadline, debate, debates, decide, decided, decider, decides, decision, decisions, declaration, declarations,
+  declared, decode, decoded, decoder, decompress, deep, def, default, defaultdict, defaults, defect, defined,
+  definition, defs, degradation, degradations, delay, denominator, dep, departure, dependencies, depends, depth,
+  description, dest, destination, dests, detail, details, detector, detectors, determiners, dev, devnull, devolution,
+  df, dict, did, diff, differ, difference, differences, difflib, diffs, digit, digits, dir, direction, directory,
+  dirname, dirs, disassembler, disassembly, discord, discordapp, discussion, disguised, disk, dismiss, dismissals,
+  dispatch, dispatches, display, distant, distinct, diverged, divmod, do, doc, docker, dockerfile, docs, document,
+  documented, documents, does, dom, domain, domains, done, dont, dormancy, dot, double, doubt, doubts, down, draft,
+  draw, drawn, draws, drops, dry, dt, dump, dumper, dumps, duplicate, duplicates, duration, each, earlier, edit,
+  edited, edits, edu, effect, effective, eight, einos, el, elected, element, elements, elf, eligible, elision, else,
+  elsewhere, elts, email, empty, en, encode, encoding, end, ending, endless, ends, endswith, engaged, engagement,
+  engagements, english, enrolment, ensure, entities, entries, entry, enum, enumerate, env, environ, environment,
+  epilog, equal, equivalent, erase, error, errors, es, escape, escaped, escapes, estimate, etc, eval, evasion, event,
+  every, ex, exact, exactly, exc, exceeded, except, exception, exceptions, exclude, excluded, exclusion, exclusive,
+  exec, executable, executables, execute, execution, executor, exemption, exercised, exist, existing, exists, exit,
+  exits, expected, expiration, expire, expired, explicit, extend, extension, extensions, extra, extract, extractall,
+  extractions, facebook, fact, facts, fail, failed, fails, failure, failures, faithful, fallback, "false", falsy, fam,
+  families, family, fams, far, fast, fault, favorable, favour, fb, fd, fdopen, fetch, fetched, few, fewer, ff, ffd,
+  field, fields, file, fileno, fileobj, files, fill, filter, filters, final, finals, find, findall, finditer, finds,
+  fingerprint, fingerprints, finished, finite, first, fixed, fixes, fixture, flag, flagged, flags, flatten, flight,
+  flip, float, flow, flows, flush, fn, fnmatch, fnmatchcase, folder, folders, folds, follow, followed, following,
+  footer, for, forbidden, forced, forge, forges, forgotten, fork, form, format, formats, formatted, formatter, formed,
+  former, forms, found, fr, fraction, frame, frames, framing, free, freeze, french, fresh, friday, from, fromhex,
+  fromisoformat, fromkeys, fromtimestamp, front, frozen, frozenset, frsize, fs, fsdecode, fsencode, fstat, fstring,
+  full, fullmatch, func, function, functions, functools, future, futures, gain, gap, gaps, gaspard, gate, gates,
+  gauss, general, generate, generator, gesture, gestures, get, getattr, getcwd, geteuid, getframe, getgid, getsize,
+  getsource, getuid, getvalue, gg, gh, gina, git, github, githubusercontent, gitlab, give, gives, gl, glob, global,
+  globals, glued, gnu, good, gov, grade, graphql, greater, green, group, groups, growth, guarantor, guarantors, guard,
+  guardian, guardians, hand, happen, hard, harness, has, hasattr, hash, hashlib, have, head, header, headers, heads,
+  held, help, helper, here, hex, hexdigest, hidden, history, hit, hive, hk, hold, holder, holding, holds, holes,
+  honest, hook, host, hostile, hosts, hour, hours, how, href, ht, html, https, huge, human, id, ident, identical,
+  identifier, identifiers, identities, identity, idents, ids, ignore, ignored, ignores, iid, il, ill, image, images,
+  immutable, implicit, import, importlib, in, incident, incidents, include, incomplete, indent, indented, indents,
+  independently, index, inf, info, infos, init, initial, input, inputs, insert, inside, inspect, inst, instagram,
+  instance, instant, instants, instr, instruction, instructions, int, intact, integer, integers, integrate,
+  integrated, integration, integrations, interleave, interleaved, internal, interrupt, interval, inv, invalid,
+  invariant, inventory, inverse, invisible, invisibles, invitation, invitations, invite, io, ip, is, isabs, isalnum,
+  isalpha, isascii, isdigit, isdir, isfile, isfinite, isidentifier, isinstance, iskeyword, islink, islnk, ismount,
+  iso, isoformat, isolated, isolation, isreg, isspace, issubclass, issue, issues, isupper, it, item, items, iter,
+  iterdir, itertools, its, itself, job, jobs, join, joined, joinpath, jp, jq, json, jsonschema, judge, judged, judges,
+  judging, jumps, justified, justifies, kb, keep, keepends, keeper, keeps, kept, key, keybase, keyboard, keys,
+  keyword, keywords, kids, kill, kind, kinds, kn, known, ko, kr, kv, kwargs, label, labels, lag, lambda, language,
+  languages, large, last, launch, lead, leads, leaf, least, leaves, left, legend, len, length, lengths, less, level,
+  levels, libc, libyaml, lift, lifted, lifts, light, like, limit, limits, line, linear, lineno, lines, link, linkable,
+  linked, linkedin, links, lint, list, listdir, listed, listing, listings, lists, literal, literals, live, ljust,
+  load, loader, loading, loads, local, locale, locals, location, log, logged, login, logins, long, longer, longest,
+  look, lookalikes, lookup, lot, lots, lower, lru, ls, lstat, lstrip, machine, made, main, major, majority, make,
+  makedirs, maketrans, malformed, mallory, manifest, many, map, mapped, mapping, maps, margin, mark, markdown, marked,
+  marker, markers, master, mastodon, match, matcher, matches, math, matrix, matter, max, maximal, maximum, maxsize,
+  maxsplit, md, me, means, measured, measurement, measurements, measures, median, medium, member, members, memory,
+  mention, mentions, merge, merged, merges, merging, message, messages, messenger, meta, metavar, method, methods,
+  metric, metrics, microsecond, middle, mimics, min, minimal, minimum, miniz, minor, minutes, missing, misspelt,
+  mistake, mixed, mkdir, mkdtemp, mkfifo, mkstemp, mn, mnemonics, mock, mode, model, modes, modified, modify, module,
+  modules, moment, monday, monotonic, month, months, most, mount, mounted, mounts, moves, ms, msg, mtime, multiple,
+  mutation, mutually, mx, my, name, named, namedtuple, names, namesake, namesakes, namespace, nan, nargs, nature,
+  natures, nav, nb, need, needed, needs, neighbouring, net, netlify, network, neutral, neutralise, neutralised, never,
+  new, newest, newline, next, nfkc, nfkd, ninth, nit, nl, nm, nnnn, "no", node, nodes, nofollow, noise, non, nonblock,
+  none, nonlocal, normalize, normpath, not, note, notes, nothing, notice, now, nul, "null", number, numbered, numbers,
+  numerator, numeric, numstat, nz, obj, objdump, object, objects, oc, occurrences, oci, oct, octocat, of, "off",
+  office, offset, oid, ok, old, oldest, omitted, "on", once, one, onerror, ones, oneself, only, onto, op, opaque,
+  opcodes, open, opened, opener, opening, openings, opens, operands, opinion, opinions, ops, option, optional,
+  options, or, ord, order, ordered, ordinary, org, organization, orgs, origin, original, originals, origins, orphans,
+  os, other, others, otherwise, out, outcome, outcomes, outgoing, outlasts, output, outputs, outside, overflow,
+  oversight, own, owner, pa, pack, package, packages, page, pages, pair, pairs, paragraph, paragraphs, parallel,
+  parallels, parent, parents, parse, parser, parsers, part, partial, participants, partition, parts, party, pass,
+  passage, passages, past, patch, patched, path, pathlib, paths, pathsep, pathspecs, pattern, patterns, pause, pct,
+  peek, pen, pending, pens, per, percent, perf, permissions, permutations, person, personal, persons, perturb,
+  perturbed, pf, ph, phase, phone, pick, pid, pids, piece, pieces, pipe, pk, place, placements, places, plain, plan,
+  plans, platform, platforms, plugin, pn, point, pointer, points, poll, pool, pop, popen, porcelain, position,
+  positions, positive, posix, post, postal, pr, preamble, prefix, prefixes, prepare, prepared, present, prev,
+  previous, principal, print, printed, prints, private, privilege, privileged, problem, problems, process, processed,
+  processes, processor, product, profile, profiles, prog, program, progress, project, projects, promotion, proof,
+  prop, properties, proposal, proposals, propose, proposed, proposer, proposing, prose, protected, protection,
+  providers, proxies, proxy, prs, pseudonyms, psl, publish, published, publishes, publishing, pull, pulls,
+  punctuation, pure, purpose, push, pushed, put, pv, py, python, qualname, query, question, questions, queue, quiet,
+  quorum, quote, quoted, quotes, quoting, ra, race, races, racing, radians, radius, raises, ran, randbytes, randint,
+  random, randomness, randrange, range, rank, ranking, ranks, rapporteur, rate, ratio, raw, rdonly, rdwr, re, reach,
+  read, readable, reader, reading, readings, readline, readme, reads, real, reason, reasons, rebase, rec, recency,
+  recent, record, recorded, records, recursion, red, redact, redactable, redacted, redaction, redactions, redate,
+  redirect, reduce, reduced, ref, reference, referral, referrals, refs, refusal, refuse, refused, reg, regex, regexes,
+  register, registered, registrable, registration, registry, rehearsal, rel, relative, release, released, relpath,
+  remaining, remedy, reminder, remote, removal, removals, remove, removed, removeprefix, removesuffix, rename,
+  renamed, renames, render, rendered, renewed, repetitions, replace, replaced, replay, replies, repo, report,
+  reported, reports, repos, repository, repr, represent, representer, reproduced, reproduces, reproduction, request,
+  requested, requests, require, required, requires, rerun, res, reservation, reservations, reserved, reset, residue,
+  resolve, resolvers, resources, responses, rest, restore, result, resultclass, results, retake, retakes, retired,
+  retries, return, returncode, rev, reverse, reversed, review, reviewer, reviewers, reviews, revised, revision, rfind,
+  rglob, rindex, rival, rivals, rle, rmdir, rmtree, rn, rng, robot, robots, role, roles, room, root, roots, round,
+  rounds, rows, rpartition, rsplit, rstrip, ruche, rule, rules, run, runner, runners, running, runs, safe, said, same,
+  sample, saved, says, sb, scalar, scan, scanned, scanners, scans, scenario, scenarios, sch, schema, schemas, scope,
+  scoped, scopes, score, scores, script, search, sec, second, seconds, secrets, section, sections, security, seed,
+  seeded, seen, seg, segment, segments, self, sending, sendings, sensitive, sent, sentence, sentences, sep, separated,
+  separator, seps, sequence, sequences, service, session, set, setattr, setdefault, setitem, setting, settings,
+  severity, sg, sh, sha, shallow, shape, shapes, shard, shards, shared, shifts, shlex, short, shortened, show,
+  showable, shown, shstrndx, shuffle, shuffled, shutil, side, sided, sides, sign, signal, signs, silence, silent,
+  silently, sim, simple, sin, since, single, site, sites, six, size, sized, sizes, skip, skipped, skype, slack, sleep,
+  slice, slow, small, soft, someone, soon, sort, sorted, source, sourceforge, sourcehut, sources, space, span, spec,
+  specs, spelling, spellings, spending, split, splitext, splitlines, spy, sqrt, sr, srcset, srht, st, stack, stale,
+  stands, starred, start, started, starts, startswith, stat, state, states, staticmethod, statistics, stats, status,
+  statuses, statvfs, stay, stays, stderr, stdin, stdout, stem, stems, step, steps, still, stop, stopped, stopwatch,
+  store, str, stream, streams, streets, strengthen, strerror, strftime, strict, string, strings, strip, struct,
+  structure, style, sub, subfolders, subject, submission, submit, submitted, subparsers, subprocess, subscript,
+  substack, succeeded, succeeds, success, successes, successful, sudo, suffices, sufficient, suffix, suffixes, suite,
+  suites, sum, summary, super, suppress, suppression, sure, surrogateescape, surveillance, survey, surveys, suspect,
+  suspects, suspicious, svg, swarm, sweep, switch, sym, symbol, symbols, symlink, symlinks, syntax, synthesis,
+  synthesize, sys, system, table, tag, tail, take, taken, takes, taking, tallies, tally, tar, tarfile, target,
+  targets, task, tasks, tbody, tear, technique, techniques, telegram, temp, tempfile, template, temporary, test,
+  tests, text, textconv, texts, than, that, the, their, theirs, third, this, thousand, thousands, thread, threading,
+  threads, three, threema, threshold, tid, tids, tied, tiktok, time, timed, timedelta, timeline, timeout, times,
+  timestamp, timestamping, timezone, tip, title, tld, tmp, tmpfs, to, today, todo, together, tok, token, tokenize,
+  tokens, tolerance, too, took, tool, tooling, tools, top, toplevel, total, touch, touched, towards, trace, traceback,
+  traced, tracemalloc, transformation, translate, translated, traverse, treated, tree, trees, "true", trust, tsv,
+  tumblr, tuple, turn, turned, turns, tw, twitter, two, type, typename, types, tzinfo, ua, uk, unchanged, undeclared,
+  undefined, under, unescape, unexpected, unfavorable, unfinished, unfolding, unicode, unicodedata, unidata, uniform,
+  union, unit, units, unittest, unknown, unknowns, unless, unlink, unmapped, unpack, unreadable, unreadables, until,
+  up, update, updated, upkeep, upper, ups, upstream, url, use, used, useful, useless, user, users, uses, usual, utc,
+  utf, util, utime, val, valgrind, valid, validate, validated, validation, validations, validator, vals, value,
+  values, vararg, variable, variant, variants, vars, verbosity, vercel, verdict, verdicts, verification, verify,
+  version, versions, viber, view, views, visit, vn, voice, vote, voter, voters, votes, vouched, vulnerability, wa,
+  wait, waiting, waits, walk, wanted, warmup, warning, warnings, was, web, wechat, week, weekday, weight, weights,
+  well, wf, what, whatever, whatsapp, when, whenever, where, which, who, whole, whose, why, width, widths, window,
+  winning, wins, wiring, with, withdraw, withdrawal, withdrawn, within, without, word, wordpress, words, work,
+  workdir, workflow, workflows, worktree, wrappers, wrapping, wraps, write, writer, writes, writing, written, wronly,
+  www, yaml, year, "yes", yml, youtube, za, zero, zip, zlib, zone
+]
+identifiers:
+  _appliquer_synthese: _apply_synthesis
+  _arbre: _tree
+  _avant: _before
+  _bloc_racine: _root_block
+  _BORNE: _BOUND
+  _charger: _load
+  _ChargeurBeeC: _BeeLoaderC
+  _ChargeurHistorique: _HistoryLoader
+  _chemin: _path
+  _cle: _key
+  _dates_fusion: _merge_dates
+  _derniere_cle_presente: _last_present_key
+  _dossier: _folder
+  _DumperDebat: _DebateDumper
+  _en_retrait: _indented
+  _est_suite_de_bloc: _continues_block
+  _exiger_ouvert: _require_open
+  _exiger_recevable: _require_admissible
+  _figer: _freeze
+  _forme: _shape
+  _forme_marque: _marked_shape
+  _formes_a_controler: _shapes_to_check
+  _garder: _keep
+  _git_brut: _git_raw
+  _illisible: _unreadable
+  _INCHANGE: _UNCHANGED
+  _instant_lisible: _readable_instant
+  _instant_ou_rien: _instant_or_none
+  _JETONS_C: _C_TOKENS
+  _lien_symbolique: _symlink
+  _lire: _read
+  _lire_facultatif: _read_optional
+  _lire_fichier: _read_file
+  _lire_version: _read_version
+  _lisible_en_c: _readable_in_c
+  _liste: _list
+  _LU_AUTREMENT_EN_C: _READ_OTHERWISE_IN_C
+  _nettoyer: _clean
+  _nombre: _number
+  _noms: _names
+  _poser: _put
+  _POSITIF: _POSITIVE
+  _postes: _areas
+  _premiere: _first
+  _publier: _publish
+  _racine: _root
+  _racines: _roots
+  _rendu_fidele: _faithful_render
+  _representer_texte: _represent_text
+  _reserves: _reserved
+  _sans_lien: _no_link
+  _symbole: _symbol
+  _texte_ou_fichier: _text_or_file
+  _verifier_pr: _check_pr
+  a_blanc: dry_run
+  a_inscrire: to_register
+  a_ouvrir: to_open
+  A_REMPLIR: TO_FILL_IN
+  a_remplir: to_fill_in
+  A_REMPLIR_EN: TO_FILL_IN_EN
+  a_retirer: to_remove
+  abandon: abandonment
+  abrege: shortened
+  abreges: shortened_items
+  acceptee: accepted
+  acceptees: accepted
+  accord: approval
+  accord_conseil: council_approval
+  accord_gardien: guardian_approval
+  actif: active
+  actifs: active
+  activite: activity
+  activite_par_poste: activity_by_area
+  actuel: current
+  adoptee: adopted
+  adopter: adopt
+  adresse: address
+  ADRESSE_MAX: ADDRESS_MAX
+  ADRESSE_POSTALE: POSTAL_ADDRESS
+  ADRESSE_PR: PR_ADDRESS
+  adresse_sortante_refusee: outgoing_address_refused
+  adresses: addresses
+  afficher_tableau: show_table
+  aide: help_text
+  ajout: addition
+  ajoutees: added
+  ajoutees_ici: added_here
+  ajouter: add_to
+  ajouter_liste: add_list
+  ajoutes: added_items
+  AJOUTS: ADDITIONS
+  ajouts: additions
+  aleatoires: random_items
+  alerte: alert
+  alertes: alerts
+  alertes_croissance: growth_alerts
+  alertes_relecteurs: reviewer_alerts
+  ALIAS_PLATEFORME: PLATFORM_ALIASES
+  alveole: cell
+  amont: upstream
+  amorcage: bootstrap
+  analyse: analysis
+  analyser: analyse
+  analyseur: parser
+  ancetre: ancestor
+  ancien: old
+  ancienne: former
+  anciennes: former_ones
+  anciennes_l: former_lines
+  anciennes_notes: former_notes
+  anciens: old_items
+  ancre: anchor_node
+  anglais: english_form
+  annee: year
+  annulee: cancelled
+  anterieurs: earlier
+  aplatir: flatten
+  appels: calls
+  apres: after
+  apres_d: after_d
+  apres_l: after_l
+  apres_r: after_r
+  arbre: tree
+  arbre_base: base_tree
+  arbre_ignore: tree_ignored
+  ARCHITECTURES_ANALYSEES: ANALYSED_ARCHITECTURES
+  argumenter: argue
+  arguments_a_couvrir: arguments_to_cover
+  arguments_ajoutes: added_arguments
+  arguments_apres_synthese: arguments_after_synthesis
+  arguments_de: arguments_of
+  arguments_depuis: arguments_since
+  arret: stop
+  arrete: stopped_at
+  arreter: stop_it
+  arrivee: arrival
+  assembler: assemble
+  astuce: tip
+  attend: awaits
+  attendre_fusion: wait_for_merge
+  attendu: expected
+  attendu_ici: expected_here
+  attendus: expected_items
+  attente: waiting
+  ATTENTE_VERDICT: VERDICT_WAIT
+  attentes: waits
+  attribut: attribute
+  attribut_table: table_attribute
+  ATTRIBUT_URL: URL_ATTRIBUTE
+  attributs: attributes
+  ATTRIBUTS_REQUIS: REQUIRED_ATTRIBUTES
+  attributs_tbody: tbody_attributes
+  au_dela: beyond
+  au_dela_du_bruit: beyond_noise
+  aujourd_hui: today
+  aussi: also
+  auteur: author
+  auteur_pr: pr_author
+  AUTEUR_PR_JQ: PR_AUTHOR_JQ
+  auteurs: authors
+  auteurs_en_course: racing_authors
+  AUTEURS_PASSE: PASS_AUTHORS
+  auteurs_pr: pr_authors
+  autorise: allowed_by
+  autorite: authority
+  autorites: authorities
+  autour: around
+  autre: other
+  autre_compte: other_account
+  autre_identite: other_identity
+  autre_orthographe: other_spelling
+  autres: others
+  autres_comptes: other_accounts
+  autres_identites: other_identities
+  AUTRES_IDENTITES_MAX: OTHER_IDENTITIES_MAX
+  autres_privilegies: other_privileged
+  autres_retenues: others_kept
+  AVANCE_MAX: LEAD_MAX
+  avant: before
+  avant_l: before_l
+  avant_r: before_r
+  AVERTISSEMENT_AGORA: AGORA_WARNING
+  avertissements: warnings
+  avertissements_arbre: tree_warnings
+  avis: opinion
+  AVIS: OPINIONS
+  avis_recevable: admissible_opinion
+  balayer: sweep
+  BALISE: TAG_MARK
+  balise: html_tag
+  barre: bar_line
+  bases_declarees: declared_bases
+  BEE_MAINTENANT: BEE_NOW
+  BEE_SIMU_ROBOT: BEE_SIM_ROBOT
+  bien_formee: well_formed
+  bilan: assessment
+  bloc: block
+  bloc_de: block_of
+  bloc_retrait: removal_block
+  BLOCAGE_SIGNALEMENT: REPORT_BLOCK
+  blocs: blocks
+  bloquantes: blocking
+  bloquee: blocked
+  bloquee_par: blocked_by
+  bonne: good
+  bonnes: good_items
+  borne: bound
+  BORNE_DETECTEURS: DETECTOR_BOUND
+  borne_octets: byte_bound
+  borne_texte: text_bound
+  BORNES: BOUNDS
+  bornes_attente: wait_bounds
+  branche: branch
+  branche_de: branch_of
+  branche_e: branch_e
+  branche_initiale: initial_branch
+  branche_projets: projects_branch
+  bruit: noise
+  brut: raw
+  BUDGET_NOEUD: NODE_BUDGET
+  BUDGET_RACINE: ROOT_BUDGET
+  ca: old_contribution
+  cadre_declare: declared_frame
+  cadre_donnees: data_frame
+  cadre_donnees_tache: task_data_frame
+  cadres_declares: declared_frames
+  calcule: computed
+  calculer_niveaux: compute_levels
+  calculer_score: compute_score
+  canal: channel
+  canal_refuse: refused_channel
+  candidat: candidate
+  candidats: candidates
+  CANDIDATS: CANDIDATES
+  canonique: canonical
+  cap: balance
+  cap_cible: balance_target
+  caractere_interdit: forbidden_character
+  caractere_sortant_interdit: forbidden_outgoing_character
+  CARACTERES_PAR_JETON: CHARACTERS_PER_TOKEN
+  carte: name_map
+  categorie: category
+  CAVIARDABLES: REDACTABLE
+  caviardages: redactions
+  caviarde: redacted
+  chaine: text_string
+  CHAINE_CHIFFRES: DIGIT_STRING
+  chaines: strings
+  champ: field
+  champs: fields
+  champs_a_remplir: fields_to_fill
+  CHAMPS_DE_LA_PERSONNE: PERSON_FIELDS
+  champs_git: git_fields
+  CHAMPS_LONGS: LONG_FIELDS
+  CHAMPS_PSEUDO: LOGIN_FIELDS
+  changee: changed_one
+  changees: changed_ones
+  changement: change
+  changements: changes
+  CHANGEMENTS_DE_BASE: BASE_CHANGES
+  chapeau: lead_text
+  charger_arbre: load_tree
+  charger_corpus: load_corpus
+  charger_greffon: load_plugin
+  charger_texte_yaml: load_yaml_text
+  ChargeurBee: BeeLoader
+  chauffe: warmup
+  chemin: path
+  chemin_contexte: context_path
+  CHEMIN_DEBAT: DEBATE_PATH
+  CHEMIN_GREFFON: PLUGIN_PATH
+  CHEMIN_HISTORIQUE: HISTORY_PATH
+  chemin_html: html_path
+  CHEMIN_INVITATION: INVITATION_PATH
+  chemin_liste: list_path
+  chemin_manifeste: manifest_path
+  CHEMIN_NON_CONTACT: NO_CONTACT_PATH
+  CHEMIN_PROPOSITION: PROPOSAL_PATH
+  chemin_relatif: relative_path
+  chemin_retenue: kept_path
+  CHEMIN_RETRAITS: REMOVALS_PATH
+  CHEMIN_SIGNALEMENT: REPORT_PATH
+  CHEMIN_TACHE: TASK_PATH
+  chemin_tache: task_path
+  chemins: paths
+  chemins_de_texte: text_paths
+  CHEMINS_OUTILLAGE: TOOLING_PATHS
+  chercher: search_for
+  chiffres: digits
+  chrono: stopwatch
+  chrono_hasard: stopwatch_randomness
+  chronologie: timeline
+  chronometrees: timed
+  cible: target
+  cible_vote: vote_target
+  cibles: targets
+  cid_refus: refusal_cid
+  citer: cite
+  classe: class_name
+  classe_table: table_class
+  classees: sorted_ones
+  classement_course: race_ranking
+  cle: key
+  cle_argument: argument_key
+  cle_classement: ranking_key
+  cle_contribution: contribution_key
+  cle_creation: creation_key
+  cle_engagement: engagement_key
+  cle_etiquette: tag_key
+  cle_hote: host_key
+  cle_mesure: measurement_key
+  cle_note: note_key
+  cle_ouverture: opening_key
+  cle_personne: person_key
+  cle_proposition: proposal_key
+  cle_relecture: review_key
+  cle_synthese: synthesis_key
+  CLE_VERDICT: VERDICT_KEY
+  cle_vote: vote_key
+  cles: keys
+  CLES_ARGUMENT: ARGUMENT_KEYS
+  CLES_CLOTURE: CLOSING_KEYS
+  CLES_CONFIRMATION: CONFIRMATION_KEYS
+  cles_d_adresse: address_keys
+  cles_d_origine: original_keys
+  CLES_DEBAT: DEBATE_KEYS
+  cles_des_gestes: gesture_keys
+  CLES_ENTETE_NOEUD: NODE_HEADER_KEYS
+  CLES_IMMUABLES_DEBAT: IMMUTABLE_DEBATE_KEYS
+  CLES_INVITATION: INVITATION_KEYS
+  CLES_LIBRE_SERVICE_TACHE: SELF_SERVICE_TASK_KEYS
+  CLES_NAISSANCE: BIRTH_KEYS
+  cles_passage: passage_keys
+  CLES_SYNTHESE: SYNTHESIS_KEYS
+  clore: close
+  clos: closed
+  cloture: closing
+  cmd_bases_declarees: cmd_declared_bases
+  cmd_choisir_execution: cmd_pick_run
+  cmd_classement: cmd_ranking
+  cmd_cloturer: cmd_close
+  cmd_confirmer_defaut: cmd_confirm_defect
+  cmd_contexte: cmd_context
+  cmd_debats: cmd_debates
+  cmd_debattre: cmd_debate
+  cmd_depouiller: cmd_tally
+  cmd_ecartees: cmd_set_aside
+  cmd_en_attente: cmd_pending
+  cmd_enregistrer_mesure: cmd_record_measurement
+  cmd_enregistrer_verdict: cmd_record_verdict
+  cmd_essaim: cmd_swarm
+  cmd_inscrire: cmd_register
+  cmd_integrer: cmd_integrate
+  cmd_inviter: cmd_invite
+  cmd_liberer: cmd_release
+  cmd_liberer_expirees: cmd_release_expired
+  cmd_lier: cmd_link
+  cmd_lister: cmd_list
+  cmd_manifeste: cmd_manifest
+  cmd_niveaux: cmd_levels
+  cmd_noter: cmd_note
+  cmd_passe_fusion: cmd_merge_pass
+  cmd_prendre: cmd_take
+  cmd_proposer: cmd_propose
+  cmd_proposer_tache: cmd_propose_task
+  cmd_prs_declarees: cmd_declared_prs
+  cmd_publier: cmd_publish
+  cmd_relire: cmd_review
+  cmd_renommer: cmd_rename
+  cmd_retirer_donnees: cmd_remove_data
+  cmd_signalement: cmd_decide_report
+  cmd_signaler: cmd_report
+  cmd_soumettre: cmd_submit
+  cmd_valider: cmd_validate
+  cmd_valider_contribution: cmd_validate_manifest
+  cmd_verifier_acceptation: cmd_check_acceptance
+  cmd_verifier_fork: cmd_check_fork
+  cmd_verifier_pr: cmd_check_pr
+  cmd_voir: cmd_show
+  cmd_voter: cmd_vote
+  cn: new_contribution
+  colle: glued
+  colonne: column_of
+  colonnes: columns
+  combien: how_many
+  commande: command
+  commande_diff: diff_command
+  commandes: commands
+  commentaires: comments
+  commentaires_en_place: comments_in_place
+  commentaires_yaml: yaml_comments
+  commit_de_donnees: data_commit
+  commits_premier_parent: first_parent_commits
+  commun: common
+  communes: common_ones
+  comparees: compared_ones
+  compilateur: compiler
+  compiler_chrono: compile_stopwatch
+  compresse: compressed_one
+  compressee: compressed_data
+  compresser: compress
+  compte: account
+  compte_cree_le: account_created_on
+  compte_de: account_of
+  compter: count
+  comptes: accounts
+  comptes_agents: agent_accounts
+  comptes_de: accounts_of
+  concurrentes: rivals
+  concurrents: rivals
+  concurrents_de: rivals_of
+  confiance: trust
+  config_croissance: growth_config
+  confirme: confirmed
+  confirme_par: confirmed_by
+  confirme_par_un_tiers: confirmed_by_a_third_party
+  confirmer: confirm
+  conflits: conflicts
+  connu: known_name
+  connues: known_ones
+  connus: known_items
+  conseil: council
+  consigne_faille: vulnerability_brief
+  CONSIGNE_IDENTITES: IDENTITIES_BRIEF
+  constante: constant_name
+  constantes: constants
+  construction: build_step
+  constructions: constructs
+  constructions_du_texte: text_constructs
+  constructions_suspectes: suspicious_constructs
+  construire: build
+  CONSTRUIRE: BUILD
+  construire_analyseur: build_parser
+  construire_image: build_image
+  conteneur: container
+  contenu: content
+  conteste: contested_by
+  contestes: contested
+  contexte: context
+  CONTEXTE: CONTEXT
+  contexte_max: context_max
+  CONTEXTE_MIN: CONTEXT_MIN
+  contre: against
+  contredit: contradicts
+  contributions_de_la_pr: pr_contributions
+  contributions_en_course: racing_contributions
+  controler: check_it
+  controler_synthese: check_synthesis
+  copie: copied
+  copier: copy_to
+  copier_arbre: copy_tree
+  copier_outillage: copy_tooling
+  copier_sources: copy_sources
+  corps: body
+  correspond: matches
+  correspondance: match
+  cote: quoted_side
+  COTE_PERMIS: ALLOWED_SIDE
+  cotes: sides_of
+  COTES: SIDES
+  coupees: cut_off
+  couper: cut
+  courant: running
+  courante: current_value
+  courriel: email
+  COURRIEL: EMAIL
+  COURRIEL_DECODE: DECODED_EMAIL
+  COURRIEL_DEGUISE: DISGUISED_EMAIL
+  course: race
+  course_html: race_html
+  courses: races
+  couvertes: covered
+  couverts: covered_items
+  couvrants: covering
+  couvre: covers
+  creations_recentes: recent_creations
+  cree: created
+  cree_le: created_on
+  cree_par: created_by
+  creee: created_one
+  CREES_PAR: CREATED_BY
+  critere_acceptation: acceptance_criteria
+  croissance: growth
+  curseur: cursor
+  dans_sa_fenetre: in_its_window
+  date_compte_requise: account_date_required
+  date_recente: recent_date
+  dates_ajoutees: added_dates
+  dates_de_fusion: merge_dates
+  dates_de_session: session_dates
+  DatesDeFusion: MergeDates
+  de: of
+  de_cette_pr: of_this_pr
+  de_l_amont: of_upstream
+  de_la_pr: of_the_pr
+  de_nouveaux: new_ones
+  debat: debate
+  debat_main: main_debate
+  debat_propre: own_debate
+  debat_tenu: held_debate
+  debats: debates
+  debats_ajoutes: added_debates
+  debats_attendus: expected_debates
+  debats_ouverts: open_debates
+  debattre_argumenter: debate_argue
+  debattre_caviarder: debate_redact
+  debattre_clore: debate_close
+  debattre_doublon: debate_duplicate
+  debattre_importer_questions: debate_import_questions
+  debattre_ouvrir: debate_open
+  debattre_synthetiser: debate_synthesize
+  debut: beginning
+  DEBUT_DECLARE: DECLARED_START
+  DEBUT_DONNEES: DATA_START
+  debut_engagement: engagement_start
+  debuts: beginnings
+  DEBUTS_DEMANDE: REQUEST_STARTS
+  decalage: offset
+  decide_en_gardien: decides_as_guardian
+  DECIDE_SON_SIGNALEMENT: DECIDES_OWN_REPORT
+  decidee: decided
+  declaration_recopiee: copied_declaration
+  declare: declared
+  DECLARE_MAX: DECLARED_MAX
+  declaree: declared_one
+  decoder_courriel: decode_email
+  decoder_url: decode_url
+  decompresser: decompress
+  decomptes: tallies
+  dedans: inside_it
+  defaut: defect
+  defaut_confirme: confirmed_defect
+  defaut_signale: reported_defect
+  defavorables: unfavorable_ones
+  definis_a: defined_a
+  definition_inutile: useless_definition
+  deja: already
+  deja_lu: already_read
+  deja_nommes: already_named
+  delai: timeout_seconds
+  DELAI_GH_PRS: GH_PRS_TIMEOUT
+  delai_reprise: retake_delay
+  demande: request
+  demande_le: requested_on
+  DEMANDES: REQUESTS
+  demandes: requests
+  denominateur: denominator
+  depart: start
+  depart_du_titulaire: holder_departure
+  depasses: exceeded
+  depend_de: depends_on
+  dependances: dependencies
+  depense_api: api_spending
+  depot: repo
+  DEPOT: REPO
+  depots: repos
+  depots_de_la_ruche: hive_repos
+  depouiller_proposition: tally_proposal
+  depuis: since
+  dernier: last
+  dernier_commit_de_code: last_code_commit
+  derniere: last_one
+  derniere_activite_debat: last_debate_activity
+  dernieres: last_ones
+  dernieres_relectures: last_reviews
+  deroulement: unfolding
+  dessus: on_top
+  DETERMINANTS_EN: EN_DETERMINERS
+  disponible: available
+  disponibles: available_ones
+  dites: said
+  DOMAINE: DOMAIN
+  domaine_enregistrable: registrable_domain
+  DOMAINE_NU: BARE_DOMAIN
+  DOMAINES_FORGES: FORGE_DOMAINS
+  donnee: datum
+  donnee_agora: agora_datum
+  donnee_personnelle: personal_datum
+  donnees: data
+  dossier: folder
+  dossier_obj: obj_folder
+  dossier_ouvert: open_folder
+  dossier_schemas: schemas_folder
+  dossiers: folders
+  DOSSIERS_GESTES: GESTURE_FOLDERS
+  DOSSIERS_LIBRE_SERVICE: SELF_SERVICE_FOLDERS
+  doubles: duplicates
+  doublons: duplicate_items
+  doutes: doubts
+  drapeaux: flag_bits
+  du_commit: of_the_commit
+  duree_r7: r7_duration
+  ecart: gap
+  Ecart: Gap
+  ecartee: set_aside
+  ecarter: dismiss
+  ecartes: set_aside_ones
+  ecarts: gaps
+  ECARTS_SIGNALEMENT: REPORT_DISMISSALS
+  ECHAPPEMENT: ESCAPE
+  echeance: deadline_at
+  ECHEC: FAILURE
+  echec: failure
+  ecrire: write
+  ecrire_debat: write_debate
+  ecrire_invitation: write_invitation
+  ecrire_rapport: write_report
+  ecrire_yaml: write_yaml
+  ecrit_tel_quel: written_as_is
+  ecrite: written_one
+  ecrites: written_ones
+  ecrits: written_items
+  effacer: erase
+  eligibles: eligible
+  elu: elected
+  empreinte: fingerprint
+  EMPREINTE: FINGERPRINT
+  empreinte_greffon: plugin_fingerprint
+  empreinte_jeton: token_fingerprint
+  empreintes: fingerprints
+  empreintes_de: fingerprints_of
+  empreintes_passage: passage_fingerprints
+  empreintes_protegees: protected_fingerprints
+  empreintes_retirees: removed_fingerprints
+  en_attente: pending
+  en_cours: in_progress
+  en_course: racing
+  en_fonction: in_office
+  en_parallele: parallel_mode
+  en_relecture: in_review
+  en_retard: behind
+  EN_TETES_BASE: BASE_HEADERS
+  en_trop: extra_items
+  encadrement: oversight
+  enfant: child_of
+  ENFANT_NOEUD: NODE_CHILD
+  enfants: children
+  enfants_reels: real_children
+  engage: engaged
+  engagee_avant: engaged_before
+  engagement_expire: engagement_expired
+  engagement_sur: engagement_on
+  engagements_de: engagements_of
+  engagements_prepares: prepared_engagements
+  engages: engaged
+  engages_base: base_engaged
+  enr: rec
+  enr_vote: vote_rec
+  enregistrement: record
+  enregistrements: records
+  ensemble: together_set
+  entete: header
+  ENTETE_DECISIONS: DECISIONS_HEADER
+  entetes: headers
+  entier: integer_value
+  entier_compte: counted_integer
+  entiers: integers
+  entites_decodees: decoded_entities
+  entree: entry
+  Entree: Input
+  entrees: inputs
+  entrees_liees: linked_entries
+  entretien: upkeep
+  envoi: sent
+  envois: sendings
+  erreur: error
+  Erreur: Error
+  ErreurBee: BeeError
+  erreurs: errors
+  essaim: swarm
+  est: is_one
+  est_confirmation: is_confirmation
+  est_conseil: is_council
+  est_integree: is_integrated
+  est_robot: is_robot
+  estimer_jetons: estimate_tokens
+  etape: step
+  etapes: steps
+  etat: state
+  etat_course: race_state
+  etat_du_cap: balance_state
+  etat_frein: brake_state
+  etat_invitation: invitation_state
+  etat_tache: task_state
+  etats: states
+  ETATS: STATES
+  etats_prs: pr_states
+  ETIQUETTE: LABEL
+  etiquette: label
+  etiquettes: labels
+  etiquettes_de: labels_of
+  evenement: event
+  exclues: excluded
+  exclure: exclude
+  exclus: excluded_items
+  executer: execute
+  execution: run
+  executions: runs
+  exiger: require
+  exiger_couverture: require_coverage
+  exiger_creation_permise: require_creation_allowed
+  exiger_membre: require_member
+  exiger_note_recevable: require_admissible_note
+  exiger_orthographe: require_spelling
+  exiger_place: require_room
+  exiger_r8: require_r8
+  exiger_reprise_permise: require_retake_allowed
+  existants: existing
+  expiree: expired
+  expirees: expired_ones
+  extrait: extract
+  fait: fact
+  FAIT_MAX: FACT_MAX
+  faites: done_ones
+  faits: facts
+  faute: fault
+  favorables: favorable_ones
+  fenetre: window
+  FENETRE_PLAFOND: CAP_WINDOW
+  fermer_liste: close_list
+  fermer_paragraphe: close_paragraph
+  fermeture: closure
+  fermetures: closures
+  fermetures_sans_integration: closures_without_integration
+  feu_vert: green_light
+  feu_vert_echu: green_light_expired
+  fiche: entry_card
+  fiches: entry_cards
+  fiches_agents: agent_cards
+  fiches_gardiens: guardian_cards
+  fiches_pr: pr_cards
+  fichier: file
+  fichier_noeud: node_file
+  FICHIER_NOEUD: NODE_FILE
+  fichiers: files
+  FICHIERS_LIBRE_SERVICE: SELF_SERVICE_FILES
+  fichiers_pr: pr_files
+  fichiers_tache: task_files
+  figees: frozen_ones
+  figer: freeze
+  fil: thread
+  fil_de: thread_of
+  fils: children_of
+  filtre: filter_fn
+  fin: end
+  fin_attentes: waits_end
+  fin_de_place: room_end
+  fin_de_suite: run_end
+  FIN_DONNEES: DATA_END
+  fin_locale: local_end
+  FIN_SANS_SUITE: END_NO_FOLLOW_UP
+  finaux: finals
+  fini: finished
+  fins: ends
+  fins_d_engagement: engagement_ends
+  fixe: fixed_value
+  flux: stream
+  fonction: function
+  FONCTIONS_RE: RE_FUNCTIONS
+  forme: form_text
+  forme_comparee: compared_form
+  forme_identifiant: identifier_form
+  forme_reference: reference_form
+  forme_source: source_form
+  formes: forms
+  FOURNISSEURS: PROVIDERS
+  fraiche: fresh
+  FRANCAIS: FRENCH
+  francais: french
+  frein: brake
+  frein_calcule: computed_brake
+  fusion: merge
+  FUSION: MERGE
+  fusion_auto: auto_merge
+  fusion_sha: merge_sha
+  fusionnees: merged_ones
+  FUTUR_LOINTAIN: FAR_FUTURE
+  gabarit: template
+  gagnantes: winning
+  gain_declare: declared_gain
+  gain_mesure: measured_gain
+  gain_relatif: relative_gain
+  garant: guarantor
+  garanti_par_proposant: vouched_by_proposer
+  garants: guarantors
+  garde: keeper
+  garder: guard
+  gardes: kept_ones
+  gardien: guardian
+  gardiens: guardians
+  gardiens_en_fonction: guardians_in_office
+  generateur: generator
+  generer: generate
+  generer_site: generate_site
+  genre: kind_of
+  genre_fichier: file_kind
+  GENRES_ACTIFS: ACTIVE_KINDS
+  geste: gesture
+  gestes: gestures
+  GESTES_INVITATION: INVITATION_GESTURES
+  gestes_recents: recent_gestures
+  GH_JOURNALISE: GH_LOGGED
+  graine: seed
+  GRAVITE: SEVERITY
+  groupe: group_of
+  grouper: group_by
+  groupes: groups
+  guillemets: quotes_found
+  HARNAIS: HARNESS
+  hasard: randomness
+  HEURE: HOUR
+  heure_de_fusion: merge_time
+  heures: hours
+  heures_max: max_hours
+  hexa: hex_digits
+  historique: history
+  historique_disponible: history_available
+  HISTORIQUE_MAX: HISTORY_MAX
+  historique_requis: history_required
+  homonyme: namesake
+  homonymes: namesakes
+  homonymes_liste: namesakes_list
+  homonymes_origine: namesakes_origin
+  honnetes: honest_ones
+  horloge: clock
+  horodatage: timestamping
+  hors_du_tour: off_turn
+  HORS_NUMERO: NO_NUMBER
+  hors_perimetre: out_of_scope
+  hors_section: outside_section
+  hors_tolerance: out_of_tolerance
+  hote: host
+  hote_de: host_of
+  hotes: hosts
+  HOTES_FORGES: FORGE_HOSTS
+  HOTES_GITHUB_OPAQUES: OPAQUE_GITHUB_HOSTS
+  HOTES_PERSONNELS: PERSONAL_HOSTS
+  ici: here
+  ICI: HERE
+  ID_DEBAT: DEBATE_ID
+  ID_PROPOSITION: PROPOSAL_ID
+  ID_SIGNALEMENT: REPORT_ID
+  ID_TACHE_MOTIF: TASK_ID_PATTERN
+  id_tete: head_id
+  identifiant: identifier
+  IDENTIFIANT: IDENTIFIER
+  identifiant_de: identifier_of
+  identifiant_image: image_id
+  identifiant_tache: task_identifier
+  identifiants_de: identifiers_of
+  identique: identical
+  Identites: Identities
+  identites: identities
+  identites_de: identities_of
+  identites_lues: read_identities
+  identites_propres: own_identities
+  ignorees: ignored
+  illisible: unreadable_one
+  illisibles: unreadables
+  illisibles_a: unreadable_a
+  illisibles_b: unreadable_b
+  illisibles_base: base_unreadables
+  inattendues: unexpected_ones
+  incident_suivant: next_incident
+  incidents_ouverts: open_incidents
+  inconnues: unknowns
+  inconnus: unknown_items
+  indefinis_a: undefined_a
+  INDEFINIS_PERMIS: UNDEFINED_ALLOWED
+  inscription: registration
+  inscrire: register
+  inscrit: registered
+  inscrit_le: registered_on
+  inscrits: registered_ones
+  instant_du_geste: gesture_instant
+  instant_passe: past_instant
+  instant_pr: pr_time
+  instant_valide: valid_instant
+  integree_ici: integrated_here
+  integrees: integrated
+  integrer: integrate
+  interdit: forbidden
+  interdits: forbidden_items
+  interne: internal
+  intervalle: interval
+  inventaire: inventory
+  inventaire_marqueurs: marker_inventory
+  INVISIBLES_SORTANTS: OUTGOING_INVISIBLES
+  invitations_ajoutees: added_invitations
+  invitations_illisibles: unreadable_invitations
+  inviter: invite
+  issue: outcome
+  ISSUES_DEBAT: DEBATE_OUTCOMES
+  JAMAIS_PERMIS: NEVER_ALLOWED
+  jeton: token
+  jetons: tokens
+  jour: day
+  JOUR: DAY
+  journal: log_text
+  jours: days
+  jours_de_la_pr: pr_days
+  jours_notes: note_days
+  juge: judge
+  juge_commun_min: common_judge_min
+  juge_commun_suffisant: common_judge_sufficient
+  juge_complet: complete_judge
+  jugees: judged_ones
+  jugees_par: judged_by
+  juges: judges
+  jusqu: until
+  juste: correct
+  lancer: launch
+  lancer_bee: run_bee
+  lancer_par_cote: launch_by_side
+  langue: language
+  langues: languages
+  largeur: width_of
+  LARGEUR_NOEUD: NODE_WIDTH
+  largeurs: widths
+  le: at
+  lecture: reader
+  lecture_seule: read_only
+  legende: legend
+  legeres: light_ones
+  leurs: theirs
+  leve_dans_le_fil: lifted_in_thread
+  levee: lift
+  levee_de: lift_of
+  levees: lifts
+  liables: linkable
+  libelle: caption
+  liberees: released
+  libre: free_one
+  LIBRE_SERVICE: SELF_SERVICE
+  libres: free_ones
+  lie: linked
+  liees: linked_ones
+  lien: link
+  LIEN: LINK
+  LIEN_DEBAT: DEBATE_LINK
+  LIEN_MASQUE: HIDDEN_LINK
+  lien_noeud: node_link
+  LIEN_OU_HOTE: LINK_OR_HOST
+  LIEN_RELATIF: RELATIVE_LINK
+  lien_source: source_link
+  LIEN_SUSPECT: SUSPECT_LINK
+  LIENS: LINKS
+  liens: links
+  liens_confirmes: confirmed_links
+  lier: link
+  lies: linked
+  lieu: place_of
+  lieux: places_found
+  ligne: line_text
+  ligne_debat: debate_line
+  ligne_markdown: markdown_line
+  lignes: lines
+  lignes_ajoutees: added_lines
+  lignes_calculees_tache: task_computed_lines
+  lignes_debat_invitation: invitation_debate_lines
+  lignes_identites: identity_lines
+  LIGNES_MAX: LINES_MAX
+  limite: limit_value
+  LIMITE_COMMITS_DONNEES: DATA_COMMITS_LIMIT
+  limite_engagee: engaged_limit
+  limites: limit_values
+  lire: read
+  lire_auteurs_pr: read_pr_authors
+  lire_date: read_date
+  lire_instant: read_instant
+  lire_lot_prs: read_pr_batch
+  lire_noeud: read_node
+  lire_ou_rien: read_or_none
+  lire_sortie: read_output
+  lire_tsv: read_tsv
+  lire_verdict_json: read_verdict_json
+  lire_versions: read_versions
+  lire_yaml: read_yaml
+  lire_yaml_ref: read_yaml_ref
+  lisible: readable
+  liste: list_of
+  listes: lists_of
+  LISTES_LIEES: LINKED_LISTS
+  litteraux: literals
+  logins_de: logins_of
+  longueur: length
+  longueur_contexte: context_length
+  longueurs: lengths
+  lu: read_value
+  lues: read_ones
+  lundi: monday
+  lus: read_items
+  ma_cle: my_key
+  main_vert: main_green
+  maintenant: now_instant
+  maj: update_flag
+  majorite: majority
+  manifeste: manifest
+  manifeste_ignore: manifest_ignored
+  MANIFESTE_MAX_OCTETS: MANIFEST_MAX_BYTES
+  manquantes: missing_ones
+  manquants: missing_items
+  manquent: are_missing
+  marge: margin
+  MARGE_OCTETS: BYTE_MARGIN
+  markdown_noeud: node_markdown
+  marque: marker
+  MARQUE_COURTE: SHORT_MARKER
+  marque_doublon: duplicate_marker
+  MARQUE_ENCADRE: FRAME_MARKER
+  MARQUE_NEUTRALISEE: NEUTRALISED_MARKER
+  MARQUE_RETRAIT: REMOVAL_MARKER
+  marques: markers
+  MARQUES_A_REMPLIR: TO_FILL_IN_MARKERS
+  marques_encadre: frame_markers
+  masquees: hidden
+  meilleur: best_one
+  melange: shuffled
+  melees: interleaved
+  meler: interleave
+  membre: member
+  membres: members
+  membres_actifs: active_members
+  meme: same_one
+  meme_contenu: same_content
+  meme_mesure: same_measurement
+  meme_pseudo: same_login
+  memes_sorties: same_outputs
+  memoire_max_ko: max_memory_kb
+  message_juge: judge_message
+  message_masquees: hidden_message
+  messages_consignes: recorded_messages
+  messages_et_places: messages_and_places
+  mesure: measurement
+  mesuree: measured
+  mesurees: measured_ones
+  mesures: measurements
+  mesures_brutes: raw_measurements
+  methode: method
+  METHODE: METHOD
+  METHODES: METHODS
+  METHODES_REQUISES: REQUIRED_METHODS
+  metrique: metric
+  metriques: metrics
+  METRIQUES: METRICS
+  mettre_a_jour: update
+  mettre_a_jour_resume: update_summary
+  milliers: thousands
+  mnemoniques: mnemonics_found
+  MNEMONIQUES_SUSPECTS: SUSPICIOUS_MNEMONICS
+  mode_porte: gate_mode
+  modele: model
+  modifiees: modified
+  modifier_tache: modify_task
+  modifies: modified_items
+  module_entrees: inputs_module
+  MOIS: MONTHS
+  mois: month
+  montages: mounts
+  montrer: show_error
+  montrer_ligne: show_line
+  monture: mount_point
+  morceau: chunk
+  morceaux: chunks
+  morceaux_lus: chunks_read
+  mot: word
+  MOT_TELEPHONE: PHONE_WORD
+  motif: reason
+  MOTIF_DATE: DATE_PATTERN
+  motifs: reasons
+  MOTIFS: REASONS
+  MOTIFS_CAVIARDAGE: REDACTION_REASONS
+  MOTIFS_SIGNALEMENT: REPORT_REASONS
+  mots: words
+  MOTS_AROBASE: AT_WORDS
+  MOTS_POINT: DOT_WORDS
+  MOTS_SOURCE: SOURCE_WORDS
+  MOTS_VIDES: EMPTY_WORDS
+  muets: silent
+  n_utiles: n_useful
+  natures_arbre: tree_natures
+  natures_debat: debate_natures
+  ne_plus_contacter: do_not_contact
+  neutraliser_marques: neutralise_markers
+  neutres: neutral_ones
+  niveau: level
+  niveau_de: level_of
+  niveau_requis: required_level
+  niveaux: levels
+  Niveaux: Levels
+  noeud: node
+  noeud_cle: key_node
+  noeud_de_tache: task_node
+  noeud_du_projet: project_node
+  noeuds: nodes
+  nom: name
+  NOM: NAME
+  NOM_FORGE: FORGE_NAME
+  nom_manifeste: manifest_name
+  NOM_PERMIS: ALLOWED_NAME
+  nom_verification: verification_name
+  nombre: number
+  nommes: named
+  nommes_au_plafond: named_at_cap
+  noms: names
+  noms_de: names_of
+  noms_de_bee: bee_names
+  noms_projets: project_names
+  non_contact: no_contact
+  non_contactes: not_contacted
+  non_fini: unfinished
+  NON_LIBRE: NOT_FREE
+  noter: note
+  noter_attente: note_wait
+  noter_ecrit: note_written
+  notes_ajoutees: added_notes
+  notes_depuis: notes_since
+  notes_omises: omitted_notes
+  nouveau: new
+  nouveau_texte: new_text
+  nouveaux: new_items
+  nouvelle: new_one
+  nouvelles: new_ones_list
+  nouvelles_l: new_lines_l
+  nouvelles_lignes: new_lines
+  nouvelles_notes: new_notes
+  nu: bare
+  numerateur: numerator
+  numerique: numeric_value
+  numero: number_of
+  numero_attendu: expected_number
+  numero_execution: run_number
+  NUMERO_RESERVE: RESERVED_NUMBER
+  numero_suivant: next_number
+  numeros: numbers_of
+  numeros_attendus: expected_numbers
+  numeros_contributions: contribution_numbers
+  numeros_dans: numbers_in
+  numerote: numbered
+  nus: bare_ones
+  objet: object_name
+  OBJET: OBJECT
+  objet_git: git_object
+  objets: objects_found
+  objets_attendus: expected_objects
+  octets: bytes_count
+  octets_executables: executable_bytes
+  OCTETS_LECTURE_MAX: READ_BYTES_MAX
+  OCTETS_MAX: BYTES_MAX
+  omises: omitted_ones
+  ont_pris_part: took_part
+  operandes: operands
+  options_de: options_of
+  ordonne: ordered
+  ordre: order
+  ordre_arbre: tree_order
+  ordre_de_passe: pass_order
+  ORDRE_TAILLES: SIZE_ORDER
+  organisation: organization
+  originaux: originals
+  origine: origin_of
+  origine_des_graines: seed_origin
+  origines: origins
+  orphelines: orphans
+  ou: or_else
+  oubliees: forgotten_ones
+  oublies: forgotten
+  outil: tool
+  outillage: tooling
+  OUTILLAGE: TOOLING
+  outils: tools
+  ouvert: open
+  ouverte: open
+  ouverte_le: opened_at
+  ouvertes: open_ones
+  ouverts: open_items
+  ouverture: opening
+  ouvertures_depuis: openings_since
+  ouvreur: opener
+  ouvrir: open
+  p_unilaterale: one_sided_p
+  page_arbre: tree_page
+  page_debat: debate_page
+  PAGES_FORGES: FORGE_PAGES
+  paire: pair
+  paire_signalee: reported_pair
+  paires: pairs
+  Panne: Fault
+  panne: fault
+  panne_machine: machine_fault
+  PAQUET: PACKAGE
+  paquets: packages
+  PAQUETS: PACKAGES
+  par: by
+  par_compte: by_account
+  par_conseil: by_council
+  PAR_CONSTANTE: BY_CONSTANT
+  par_cote: by_side
+  par_fichier: by_file
+  par_numero: by_number
+  par_parallele: by_parallel
+  PAR_TEXTE: BY_TEXT
+  par_titulaire: by_holder
+  par_type: by_type
+  paragraphe: paragraph
+  paragraphes: paragraphs
+  paralleles: parallel
+  paralleles_de: parallels_of
+  PARCOURS: SCANNED
+  parent_attendu: expected_parent
+  participants_course: race_participants
+  participants_debat: debate_participants
+  participants_tour: turn_participants
+  partie: part_of
+  partiel: partial
+  parties: parts_of
+  passages_retires: removed_passages
+  PASSE: PASS_REF
+  passe: pass_ref
+  passe_fusionner: pass_merge
+  passe_preparer: pass_prepare
+  passe_verifier: pass_check
+  PAUSE_FUSION: MERGE_PAUSE
+  perime: stale_one
+  perime_a_l_envoi: stale_on_sending
+  perimees: stale_ones
+  permis: allowed_set
+  PERMIS: ALLOWED
+  PERMIS_MAX: ALLOWED_MAX
+  personne: person
+  personnels: personal_ones
+  personnes: persons
+  perturber: perturb
+  perturbes: perturbed
+  ph_nombre: ph_count
+  ph_taille: ph_size
+  phrase: sentence
+  PHRASE_DEMANDE: REQUEST_SENTENCE
+  piece: item_piece
+  pied: footer
+  pile: stack_of
+  pistes: leads
+  placer: place_at
+  plafond: cap_value
+  plafonds: caps
+  plafonds_par_pr: caps_per_pr
+  plage: span_range
+  plateforme: platform
+  PLATEFORMES: PLATFORMS
+  PLATEFORMES_PARTAGEES: SHARED_PLATFORMS
+  plis: folds
+  plume: pen
+  plumes: pens
+  plus_ancien: oldest
+  plus_longue: longest
+  plus_recentes: most_recent
+  poids: weight
+  poids_dispo: available_weight
+  POIDS_GESTES: GESTURE_WEIGHTS
+  poids_max_par_jour: max_weight_per_day
+  POIDS_TAILLE: SIZE_WEIGHT
+  poids_voix: voice_weight
+  POIDS_VOTE: VOTE_WEIGHT
+  pointe: points_to
+  pointeur: pointer
+  PONCTUATION: PUNCTUATION
+  porte_exigee: required_gate
+  porte_humaine: human_gate
+  porte_suivante: next_gate
+  portee: reach
+  PORTES: GATES
+  POSITIONS_DEBAT: DEBATE_POSITIONS
+  poste: area
+  poste_de: area_of
+  POSTE_PAR_TYPE: AREA_BY_TYPE
+  postes: areas
+  postes_connus: known_areas
+  pour: in_favour
+  pourcent: percent
+  pourquoi: why
+  POURQUOI_MAX: WHY_MAX
+  pr_canonique: canonical_pr
+  pr_du_compte: account_pr
+  PREAMBULE_VALGRIND: VALGRIND_PREAMBLE
+  precedent: previous_one
+  precedente: previous_value
+  precedentes: previous_ones
+  prefixe: prefix_text
+  PREFIXE: PREFIX
+  prefixe_nom: name_prefix
+  premier: first
+  premier_caractere_interdit: first_forbidden_character
+  premier_renvoi: first_referral
+  premiere: first_one
+  prendre: take
+  prendre_en_parallele: take_in_parallel
+  preparer: prepare
+  prepares: prepared
+  prepares_json: prepared_json
+  presentes: present_ones
+  pris: taken_one
+  prise: taking
+  privilegie: privileged
+  privilegies: privileged_ones
+  probleme: problem_text
+  probleme_date_pr: pr_date_problem
+  probleme_demande: request_problem
+  probleme_marque: marker_problem
+  probleme_octets: bytes_problem
+  probleme_passages: passages_problem
+  probleme_reference: reference_problem
+  probleme_reglage: setting_problem
+  probleme_source: source_problem
+  probleme_texte_libre: free_text_problem
+  probleme_textes_libres: free_texts_problem
+  problemes: problems_found
+  problemes_chargement: loading_problems
+  problemes_de_forme: shape_problems
+  problemes_forme: form_problems
+  problemes_liens: link_problems
+  problemes_reglages: settings_problems
+  problemes_textes: text_problems
+  problemes_textes_du_conseil: council_text_problems
+  problemes_textes_libre_service: self_service_text_problems
+  processeur: processor
+  prochain_debat: next_debate
+  prochaine_place: next_room
+  profil: profile
+  profils_seuls: profiles_only
+  profondeur: depth
+  PROFONDEUR: DEPTH
+  PROFONDEUR_C_MAX: C_DEPTH_MAX
+  projet: project
+  Projet: Project
+  projet_def: project_def
+  projets: projects
+  proposant: proposing_member
+  proposee: proposed
+  proposer: propose
+  proposition: proposal
+  propositions: proposals
+  propositions_ajoutees: added_proposals
+  propre: clean_one
+  propres: own_ones
+  proprietaire: owner
+  proprietaire_amont: upstream_owner
+  proprietaire_depot: repo_owner
+  protegees: protected
+  pseudo: login
+  PSEUDO_MOTIF: LOGIN_PATTERN
+  Pseudos: Logins
+  pseudos: logins_list
+  pseudos_mal_ecrits: misspelt_logins
+  pseudos_reserves: reserved_logins
+  publication: publishing
+  publiee: published_one
+  publiee_le: published_at
+  publiees: published_ones
+  publier: publish
+  publies: published_items
+  puce: bullet
+  puces: bullets
+  quand: when_at
+  QUESTION_NUMEROTEE: NUMBERED_QUESTION
+  questions_ouvertes: open_questions
+  qui: who_is
+  qui_est_qui: who_is_who
+  quoi: what_it
+  racine: root
+  RACINE: ROOT
+  RACINE_ARBRE: TREE_ROOT
+  racine_branche: branch_root
+  RACINE_OUTIL: TOOL_ROOT
+  racines: roots
+  raison: cause
+  raison_du_renvoi: referral_cause
+  raison_du_retrait: removal_cause
+  raisons: reasons
+  raisons_acceptation: acceptance_causes
+  raisons_course: race_causes
+  raisons_r3: r3_causes
+  rang: rank
+  RANGEMENTS_ARBRE: TREE_PLACEMENTS
+  ranger: place_in
+  rangs: ranks
+  rapport: report
+  RAPPORT_MAX: REPORT_MAX
+  rapporteur_suivant: next_rapporteur
+  rayon_svg: svg_radius
+  recence: recency
+  recentes: recent_ones
+  recents: recent_items
+  recevable: admissible
+  recopie: copied_text
+  recule: moves_back
+  recuperer_historique: fetch_history
+  redater: redate
+  reduit: reduced
+  reel: actual
+  reels: real_ones
+  REF_MOTIF: REF_PATTERN
+  reference_decodee: decoded_reference
+  refus: refusal
+  Refus: Refusal
+  refus_ailleurs: refusal_elsewhere
+  refus_arbre: tree_refusal
+  refus_caviardage: redaction_refusal
+  refus_debat_invitation: invitation_debate_refusal
+  refus_decideur: decider_refusal
+  refus_decision: decision_refusal
+  refus_garant: guarantor_refusal
+  refus_geste: gesture_refusal
+  refus_invitation: invitation_refusal
+  refus_lie: linked_refusal
+  refus_lien: link_refusal
+  refus_renommage: rename_refusal
+  refus_signalement: report_refusal
+  refus_signalement_sur_main: report_refusal_on_main
+  refusee: refused
+  refusees: refused_ones
+  refuses: refused_items
+  registre: registry
+  Registre: Registry
+  reglage: setting
+  REGLAGES: SETTINGS
+  reglages: settings
+  regle: rule
+  regles: rules
+  rejeu: replay
+  relance: reminder
+  relatif: relative_one
+  relecteur: reviewer
+  relecteurs_eligibles: eligible_reviewers
+  relecture: review
+  relecture_comptee: counted_review
+  relecture_refusee: refused_review
+  relectures: reviews
+  relectures_qui_comptent: reviews_that_count
+  releve: survey
+  releve_refusee: refused_survey
+  releve_relectures: reviews_survey
+  RELEVES: SURVEYS
+  releves: surveys
+  releves_a: surveys_a
+  releves_b: surveys_b
+  releves_dossier: surveys_folder
+  relire: review
+  remede: remedy
+  remettre: put_back
+  remplacees: replaced
+  remplacer: replace_with
+  remplacer_bloc: replace_block
+  rendu_debat: debate_render
+  rendu_invitation: invitation_render
+  rendu_noeud_contexte: context_node_render
+  RENFORCENT_ENCADREMENT: STRENGTHEN_FRAMING
+  renommer: rename
+  renouvelees: renewed_ones
+  renvoi: referral
+  renvoi_hors_ruche: referral_outside_hive
+  RENVOIS: REFERRALS
+  repetition: rehearsal
+  repli: fallback
+  repond_a: replies_to
+  reponse: answer
+  REPONSES: ANSWERS
+  reponses_api: api_answers
+  reprise: retake
+  reprise_refusee: refused_retake
+  reprises: retakes
+  REPRISES_PRS: PR_RETRIES
+  reproduit: reproduced
+  requete: query_text
+  requis: required_items
+  requises: required_ones
+  reseau: network_on
+  reserved_pseudo: reserved_login
+  reservee: reserved
+  reserves_lisibles: readable_reserved
+  resolveurs: resolvers
+  restantes: remaining_ones
+  restants: remaining_items
+  reste: rest_of
+  resultat: result
+  RESULTATS: RESULTS
+  resultats: results
+  resume: summary
+  RESUME: SUMMARY
+  resume_debat: debate_summary
+  resume_invitation: invitation_summary
+  RESUME_MAX: SUMMARY_MAX
+  resume_r3: r3_summary
+  resume_sha: summary_sha
+  retard: lag
+  retenue: kept
+  retenues: kept
+  retenus: kept_items
+  RETIRE: REMOVED
+  retiree: withdrawn
+  retiree_aussi: also_withdrawn
+  retirees: withdrawn_ones
+  retirer: withdraw
+  retouches: touch_ups
+  retour: return_value
+  retrait: withdrawal
+  retrait_de: removal_of
+  RETRAIT_PASSAGES_MAX: REMOVAL_PASSAGES_MAX
+  RETRAIT_SEMAINE_MAX: REMOVAL_WEEK_MAX
+  RETRAIT_TOTAL_MAX: REMOVAL_TOTAL_MAX
+  retraits: removals
+  retraits_justifies: justified_removals
+  retraits_lies: linked_removals
+  revisees: revised_ones
+  rivales: rival
+  RLE_INVALIDE: INVALID_RLE
+  RLE_TAMPON_TROP_PETIT: RLE_BUFFER_TOO_SMALL
+  role_de_tache: task_role
+  role_lu: read_role
+  ROLE_PAR_TYPE: ROLE_BY_TYPE
+  rouge: red
+  sa: its_own
+  sans: without_it
+  sans_attendre: no_wait
+  sans_commit: no_commit
+  sans_echappements: no_escapes
+  sans_garant: no_guarantor
+  sans_juge: no_judge
+  sans_melange: without_shuffle
+  sans_mesure: without_measurement
+  sans_suite_attendue: expected_no_follow_up
+  sauf: except_for
+  sautes: skipped_items
+  SAUTS_YAML: YAML_JUMPS
+  sauves: saved
+  SCHEMAS_TEXTES: TEXT_SCHEMAS
+  SCRIPT_FILTRES: FILTERS_SCRIPT
+  SECTIONS_COURTES: SHORT_SECTIONS
+  SECTIONS_INTERDITES: FORBIDDEN_SECTIONS
+  SECTIONS_NOEUD: NODE_SECTIONS
+  SECTIONS_NOEUD_EN: NODE_SECTIONS_EN
+  SECTIONS_PERMISES: ALLOWED_SECTIONS
+  SEGMENT_NOEUD: NODE_SEGMENT
+  selon_schema: per_schema
+  SEMAINE: WEEK
+  sens: direction
+  SENSIBLE_DOUTE: SENSITIVE_DOUBT
+  SENSIBLE_SUR: SENSITIVE_SAFE
+  SEPARATEUR_DEGUISE: DISGUISED_SEPARATOR
+  seuil: threshold
+  seuil_signe: sign_threshold
+  SEUIL_TEST_DU_SIGNE: SIGN_TEST_THRESHOLD
+  seuil_vote: vote_threshold
+  seul: alone_one
+  seuls: unmapped_ones
+  sh_nombre: sh_count
+  sh_noms: sh_names
+  sh_taille: sh_size
+  sha_verdict: verdict_sha
+  siennes: own_items_f
+  siens: own_items
+  signale_par_le_conseil: reported_by_council
+  signalement: report
+  signalements: reports
+  signalements_au_plafond: reports_at_cap
+  signaler: report
+  signe: sign_char
+  SIMU: SIM
+  soi: oneself
+  sommaire: contents
+  sorte: sort_kind
+  sorte_libre_service: self_service_kind
+  sorte_parcourue: scanned_kind
+  sortie: output_text
+  sortie_b: output_b
+  SORTIE_MAX: OUTPUT_MAX
+  sorties: outputs
+  Sorties: Outputs
+  sorties_b: outputs_b
+  sorties_de: outputs_of
+  sorties_par_entree: outputs_by_input
+  SOSIES: LOOKALIKES
+  soumettre: submit
+  soumise: submitted
+  soumise_par: submitted_by
+  soumission: submission
+  soumission_effective: effective_submission
+  SOURCES_REQUISES: REQUIRED_SOURCES
+  sous: under_it
+  sous_dossiers: subfolders
+  status: with_status
+  statut: status
+  statut_git: git_status
+  STATUTS_CLOS_SANS_INTEGRATION: STATUSES_CLOSED_WITHOUT_INTEGRATION
+  STATUTS_CONTRIBUTION: CONTRIBUTION_STATUSES
+  suffixe: suffix_text
+  SUFFIXES_DOUBLES: DOUBLE_SUFFIXES
+  SUITE_D_ADRESSE: ADDRESS_TAIL
+  suivant: following
+  suivante: next_value
+  suivants: next_ones
+  suivie: followed
+  sujet: subject
+  sujet_enr: subject_rec
+  sur: on_it
+  sur_disque: on_disk
+  sur_hotes: on_hosts
+  sur_la_liste: on_the_list
+  sur_liste: on_list
+  SUSPECTES_MAX: SUSPICIOUS_MAX
+  symboles: symbols
+  synthese: synthesis
+  synthese_a_jour: synthesis_up_to_date
+  synthetiser: synthesize
+  systeme: system
+  table_unicode_suffit: unicode_table_suffices
+  tableau: table_of
+  tableau_essaim: swarm_table
+  tache: task
+  tache_declaree: declared_task
+  tache_id: task_id
+  taches: tasks
+  taches_ajoutees: added_tasks
+  taches_tenues: held_tasks
+  taille: size
+  taille_max: max_size
+  TAILLE_MAX_SORTIE: OUTPUT_MAX_SIZE
+  taille_reelle: actual_size
+  tailles: sizes_of
+  tailles_a: sizes_a
+  tailles_objets: object_sizes
+  TAILLES_PAR_NIVEAU: SIZES_BY_LEVEL
+  telephone: phone
+  temporaire: temporary_dir
+  TEMPS: TIME
+  temps_fixes: fixed_times
+  test_du_signe: sign_test
+  tete: head
+  tete_d: head_d
+  texte: text
+  texte_a: text_a
+  texte_apres: text_after
+  TEXTE_CHAMP_MAX: FIELD_TEXT_MAX
+  texte_contexte: context_text
+  TEXTE_COURT_MAX: SHORT_TEXT_MAX
+  texte_declare: declared_text
+  TEXTE_LONG_MAX: LONG_TEXT_MAX
+  texte_propose: proposed_text
+  texte_recevable: admissible_text
+  texte_sortant_refuse: outgoing_text_refused
+  texte_yaml: yaml_text
+  textes: texts_of
+  textes_a: texts_a
+  textes_b: texts_b
+  textes_de: texts_by
+  textes_parcourus: scanned_texts
+  textes_personnels: personal_texts
+  TEXTES_PROPRES: OWN_TEXTS
+  tirage: draw
+  titre: title
+  titre_incident_refuse: incident_title_refused
+  TITRE_SUITE: SUITE_TITLE
+  titulaire: holder
+  TOLERANCE_LEVEE: LIFT_TOLERANCE
+  touchees: touched
+  toujours: always
+  tour: round_number
+  tours: rounds
+  tous: all_of
+  tous_permis: all_allowed
+  toutes: all_ones
+  traites: processed
+  tranche: slice_of
+  trop_gros: too_big
+  trop_petit: too_small
+  trous: holes
+  trouves: found_items
+  tuer: kill_it
+  types_attendus: expected_types
+  un: one_of
+  UNE_BARRE: ONE_BAR
+  une_ligne: one_line
+  UNE_SEULE_BARRE: SINGLE_BAR
+  uniforme: uniform_value
+  unite: unit
+  UNITES: UNITS
+  usuel: usual_value
+  utilisateur: user
+  utilisateurs: users_list
+  utilises: used_names
+  valeur: value
+  valeurs: values_of
+  valeurs_a: values_a
+  valeurs_b: values_b
+  valide: valid_one
+  valides: valid_ones
+  variante: variant
+  variantes: variants_of
+  veille: day_before
+  vendredi: friday
+  verdict_montrable: showable_verdict
+  verdicts_du_contenu: content_verdicts
+  VERIFICATION: VERIFICATION_CMD
+  verifie: checked_one
+  verifiees: checked_ones
+  verifier: verify
+  verifier_agora_registre: check_agora_registry
+  verifier_arbre: check_tree
+  verifier_comptes: check_accounts
+  verifier_debat: check_debate
+  verifier_engagements: check_engagements
+  verifier_entrees: check_inputs
+  verifier_fork: check_fork
+  verifier_invitation: check_invitation
+  verifier_invitations_registre: check_invitations_registry
+  verifier_manifeste: check_manifest
+  verifier_notes_ajoutees: check_added_notes
+  verifier_pr: check_pr
+  verifier_pr_arbre: check_pr_tree
+  verifier_pr_de: check_pr_for
+  verifier_registre: check_registry
+  verifier_retrait: check_removal
+  verifier_tache_proposee: check_proposed_task
+  VERS_LE_CONTACT: TOWARDS_CONTACT
+  VERSION_COMMUNE: COMMON_VERSION
+  VERSION_JUGE: JUDGE_VERSION
+  VERSIONS_LIBYAML_EXERCEES: EXERCISED_LIBYAML_VERSIONS
+  vert: green_value
+  verts: green_items
+  victoires_a: a_wins
+  victoires_b: b_wins
+  vide: empty_one
+  visee: aimed_at
+  visiter: visit
+  vivant: alive
+  VOIES_EN: EN_STREETS
+  VOIES_FR: FR_STREETS
+  voir: show
+  voir_debat: show_debate
+  votant: voter
+  votants: voters
+  vote_net: net_vote
+  vote_recevable: admissible_vote
+  voter: vote
+  votes_comptes: counted_votes
+  votes_de: votes_of
+  votes_par_sujet: votes_by_subject
+  voulues: wanted
+  vue: view
+  vue_b: view_b
+  vues: views
+  vus: seen_items
+  vus_a: seen_a
+  vus_paralleles: seen_parallels
+  vus_pseudos: seen_logins
+attributes:
+  _fusions: _merges
+  _orthographes: _spellings
+  conteste: contest
+  delai: timeout
+  disponibles: available
+  dossier: dir
+  en_parallele: parallel
+  fusionnees: merged
+  garder: keep
+  graine_ordre: order_seed
+  historique_seulement: history_only
+  identifiants_de: identifiers_from
+  image_seulement: image_only
+  memoire: memory
+  prefixe_instructions: instructions_prefix
+  processus: processes
+  rejouer: replay
+  reseau_construction: build_network
+  sans_instructions: no_instructions
+  seuil_instructions: instructions_threshold
+  sortie: output
+  source_juge: judge_source
+  suivant: next
+  travail: workdir
+tokens:
+  fusionnee_le: merged_at
+  defauts: defects
+  cle_refusee_: refused_key_
+  renouvellement_invitation: invitation_renewal
+  envoi_invitation: invitation_sending
+  relance_invitation: invitation_reminder
+  reponse_invitation: invitation_answer
+  retrait_invitation: invitation_withdrawal
+  retrait_demande_consigne: requested_removal_recorded
+  signalement_au_plafond_pour_le_conseil: report_at_cap_for_council
+  a_redecider: to_redecide
+  _ouverts: _open
+  _max_par_24h: _max_per_24h
+  _max_par_pr: _max_per_pr
+  preparer: prepare
+  fusionner: merge
+  evenements: events
+  suspectes: suspicious
+  bee-publier: bee-publish
+  trop_larges: too_wide
+  omis: omitted
+  declares: declared
+  rendu: rendered
+  element: item
+  toutes: all
+  exclure: exclude
+  acceptees: accepted
+hand:
+  issue:
+    english:
+    - issue
+    - outcome
+    default: outcome
+    roles:
+      outils/bee.py:probleme_demande: issue
+      outils/bee.py:construire_analyseur: issue
+    why: key -> outcome (debates, incidents, reports, outputs); the removal channel value « issue » stays
+  signalement:
+    english:
+    - decide-report
+    - report
+    default: report
+    roles:
+      outils/bee.py:construire_analyseur: decide-report
+    why: command -> decide-report; gate nature -> report
+  consignes:
+    english:
+    - brief
+    - briefs
+    default: briefs
+    why: the guarantors' key -> brief; the folder gouvernance/consignes/ -> governance/briefs/
+  juge-commun:
+    english:
+    - common-judge
+    - judge-meta-tests
+    default: judge-meta-tests
+    why: docs/juge-commun.md -> docs/common-judge.md; .github/workflows/juge-commun.yml -> judge-meta-tests.yml
+  archive:
+    english:
+    - archive
+    - archived
+    default: archive
+    why: the project status archive -> archived; git archive and tar archives stay
+  registre:
+    english:
+    - registre
+    - registry
+    default: registre
+    roles:
+      outils/site_bee.py:generer:registre: registry
+      outils/site_bee.py:generer:registre.json: registry
+    why: the folder outils/tests/registre/ -> tools/tests/registry/ and the identifier -> registry; the repository Bee-ruche/registre
+      keeps its name
+  contribution:
+    english:
+    - contribution
+    - manifest
+    default: contribution
+    roles:
+      outils/bee.py:verifier_manifeste: manifest
+      outils/bee.py:SCHEMAS_TEXTES: manifest
+    why: the key and value stay contribution; the schema contribution.schema.json -> manifest.schema.json (it validates
+      the forks manifest)
+  manifestes:
+    english:
+    - manifestes
+    - manifests
+    default: manifests
+    why: 'the forks manifest folder: manifests/, and manifestes/ read until date D (plan, section 3.1, R-s): by hand'
+shared:
+- scope: verifier_comptes
+  names:
+  - login
+  - pseudo
+  why: two loop variables of outils/bee.py, never live at once
+neutral:
+- vscode.dev
+- com.au
+- net.au
+- org.au
+- edu.au
+- ne.jp
+- com.tr
+- gouv.fr
+- element.io
+- reddit.com
+- herokuapp.com
+pending:
+- outils/juge/test_juge.py
+- outils/repetition/test_load_test.py
+- outils/test_bee.py
+keep:
+- files: outils/bee.py
+  tokens:
+  - COMMANDEMENTS.md
+  - succes
+  - debit_compression_n6
+  - refs/bee-passe/
+  - :refs/bee-passe/
+  - POSTE
+  - TAILLE
+  - STATUT
+  - TITRE
+  - CIBLE
+  - QUI
+  - DEPUIS
+  - CONCURRENTES
+  - MEMBRE
+  - NIVEAU
+  - RELECTURES
+  - AUTEUR
+  - LIGNES
+  - CONFIANCE
+  - DEBAT
+  - inconnue
+  - inconnu
+  - rien
+  - aucune
+  - absente
+  - toujours
+  - jamais
+  - (racine)
+  - Pourquoi cette branche existe
+  - Ce qui compte ici
+  - Ce qu'on peut ignorer ici
+  - Enfants
+  why: 'kept on purpose: the old name of an authority file (forever); a CI word the forks may write (forever); a metric
+    id (step 5); a git ref namespace the workflows share; display labels and message words (bees messages, step 3); the
+    French node headings bee reads beside the English ones until the tree is translated (plan, section 5.8)'
+- files: outils/test_bee.py
+  scopes:
+  - TACHE_PIEGE_0141
+  - TACHE_PIEGE_0141_EN
+  - NOEUD_0141
+  - ecrire_familles_0141
+  - traduction_0141
+  - TestEnglishNamesStep1a
+  - CODE_0142
+  - CODE_0142_EN
+  - traduction_0142
+  - TestEnglishNamesStep1b
+  why: 'the tests of the migration tooling: their fixtures and expectations are French on purpose (the base before the switch)'
+- files: outils/inventaire_marqueurs.py
+  scopes:
+  - FRANCAIS
+  - PAR_TEXTE
+  - CLASSES
+  why: 'the French markers the inventory detects and classifies: French on purpose (ruche-0055)'
+- files: outils/juge/juge.py
+  tokens:
+  - refs/bee/historique/
+  - :refs/bee/historique/
+  why: 'the git ref namespace the judge writes in fork clones: renamed with the judge track (judge-v4)'
+- files: outils/site_bee.py
+  tokens:
+  - Enfants
+  why: a display heading of the site (bees messages and the site, step 3)
