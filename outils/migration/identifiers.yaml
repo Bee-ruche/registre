@@ -609,7 +609,7 @@ identifiers:
   defaut: defect
   defaut_confirme: confirmed_defect
   defaut_signale: reported_defect
-  defavorables: unfavorable
+  defavorables: unfavorable_ones
   definition_inutile: useless_definition
   deja: already
   deja_lu: already_read
@@ -763,7 +763,7 @@ identifiers:
   FAIT_MAX: FACT_MAX
   faits: facts
   faute: fault
-  favorables: favorable
+  favorables: favorable_ones
   fenetre: window
   FENETRE_PLAFOND: CAP_WINDOW
   fermeture: closure
@@ -1619,6 +1619,33 @@ tokens:
   passe-fusion: merge-pass
   --acceptees: --accepted
   --exclure: --exclude
+  BEE_MAINTENANT: BEE_NOW
+  BEE_REGISTRE: BEE_REGISTRY
+  BEE_PAUSE_FUSION: BEE_MERGE_PAUSE
+  fusionnee_le: merged_at
+  defauts: defects
+  cle_refusee_: refused_key_
+  renouvellement_invitation: invitation_renewal
+  envoi_invitation: invitation_sending
+  relance_invitation: invitation_reminder
+  reponse_invitation: invitation_answer
+  retrait_invitation: invitation_withdrawal
+  retrait_demande_consigne: requested_removal_recorded
+  signalement_au_plafond_pour_le_conseil: report_at_cap_for_council
+  a_redecider: to_redecide
+  _ouverts: _open
+  _max_par_24h: _max_per_24h
+  _max_par_pr: _max_per_pr
+  preparer: prepare
+  fusionner: merge
+  evenements: events
+  suspectes: suspicious
+  bee-publier: bee-publish
+  trop_larges: too_wide
+  omis: omitted
+  declares: declared
+  rendu: rendered
+  element: item
 hand:
   issue:
     english:
@@ -1657,10 +1684,58 @@ hand:
     - manifest
     why: the key and value stay contribution; the schema contribution.schema.json -> manifest.schema.json (it validates
       the forks manifest)
+  manifestes:
+    english:
+    - manifestes
+    - manifests
+    why: 'the forks manifest folder: manifests/, and manifestes/ read until date D (plan, section 3.1, R-s): by hand'
 shared:
 - scope: verifier_comptes
   names:
   - login
   - pseudo
   why: two loop variables of outils/bee.py, never live at once
-keep: []
+neutral:
+- vscode.dev
+- com.au
+- net.au
+- org.au
+- edu.au
+- ne.jp
+- com.tr
+- gouv.fr
+- element.io
+- reddit.com
+- herokuapp.com
+keep:
+- files: outils/bee.py
+  tokens:
+  - COMMANDEMENTS.md
+  - succes
+  - debit_compression_n6
+  - refs/bee-passe/
+  - :refs/bee-passe/
+  - POSTE
+  - TAILLE
+  - STATUT
+  - TITRE
+  - CIBLE
+  - QUI
+  - DEPUIS
+  - CONCURRENTES
+  - MEMBRE
+  - NIVEAU
+  - RELECTURES
+  - AUTEUR
+  - LIGNES
+  - CONFIANCE
+  - DEBAT
+  - inconnue
+  - inconnu
+  - rien
+  - aucune
+  - absente
+  - toujours
+  - jamais
+  why: 'kept on purpose: the old name of an authority file (forever); a CI word the forks may write (forever); a metric
+    id (step 5); a git ref namespace the workflows share; display labels and message words (bees messages, step 3)'

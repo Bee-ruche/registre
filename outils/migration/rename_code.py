@@ -54,7 +54,7 @@ class CodeMap:
                       for a, b in d.items() if a.startswith("--")}  # an option's destination follows the option
         for a, b in m["tokens"].items():
             pairs[a] = {b} if pairs[a] <= {b} or a in m["hand"] else pairs[a] | {b}
-        self.hand = {t: v | set(m["hand"].get(t, {}).get("english", ())) for t, v in pairs.items() if len(v) > 1 or t in m["hand"]}
+        self.hand = {t: pairs.get(t, set()) | set(m["hand"].get(t, {}).get("english", ())) for t in {t for t, v in pairs.items() if len(v) > 1} | set(m["hand"])}
         self.named = {t: next(iter(v)) for t, v in pairs.items() if t not in self.hand}
         self.tokens = {**{t: e for t, e in self.ids.items() if t not in pairs and not self.covered(t, False)}, **self.named}  # never an English word
         self.targets = set(self.tokens.values()) | set(self.ids.values())
@@ -192,7 +192,8 @@ class CodeMap:
             if new != tok.string:
                 edits[a, b] = new
                 changes.append((tok.start[0], tok.string, new))
-        return rename.edited(source, edits), changes
+        cuts = [0, *(x for e in sorted(edits) for x in e), len(source)]  # in one pass: 20 000 edits on 1 MB stay linear
+        return "".join(source[cuts[i]:cuts[i + 1]] + (edits[cuts[i + 1], cuts[i + 2]] if i + 2 < len(cuts) else "") for i in range(0, len(cuts) - 1, 2)), changes
 
     # --- P1 ---
 
@@ -228,6 +229,9 @@ class CodeMap:
             if not isinstance(a, ast.AST):
                 return problems.append(f"line {line}: {a!r:.40} became {b!r:.40}") if a != b else None
             line = getattr(a, "lineno", line)
+            if isinstance(a, (ast.Dict, ast.Set, ast.Tuple, ast.List)):  # two keys or members of one literal never become one
+                distinct = [len({e.value for e in (n.keys if isinstance(n, ast.Dict) else n.elts) if isinstance(e, ast.Constant)}) for n in (a, b)]
+                problems.extend([f"line {line}: two strings of one literal became one"] if distinct[0] != distinct[1] else [])
             for f in (f for f in a._fields if f not in ("kind", "type_comment")):
                 x, y = getattr(a, f, None), getattr(b, f, None)
                 if isinstance(a, ast.Constant) and isinstance(x, (str, bytes)) and type(x) is type(y):

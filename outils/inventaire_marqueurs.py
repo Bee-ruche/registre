@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Inventory of the French markers bee compares human-written text against (task ruche-0055).
 
-    python3 outils/inventaire_marqueurs.py [--all]
+    python3 outils/inventaire_marqueurs.py [--all | --names]
 
 Reads outils/bee.py, outils/site_bee.py and outils/juge/*.py (tests excluded) with the ast module, and collects every
 string literal that text is compared against: operands of ==, !=, in and not in; the first argument of (or the literal
@@ -15,6 +15,9 @@ Limits: do not rely on it for what it cannot see. It misses a marker held in a l
 built from variables, or given to a function imported from re (from re import search). It takes a lowercase single word
 or a token with a dot for a name. A literal with no accent and no French function word (« Enfants », « Contre ») goes
 unchecked into the --all list: those two were found there by hand.
+--names (ruche-0142): every name literal of outils/bee.py (a string constant shaped as NOM below, f-string parts included)
+must be in the name map, its pieces between / and . each a name of outils/migration/names.yaml or identifiers.yaml (or a
+path of the path map), or made of words identifiers.yaml declares English or language-neutral; exit code 1 otherwise.
 """
 import ast
 import pathlib
@@ -131,7 +134,28 @@ def noms_de(n):
     return {x.id if isinstance(x, ast.Name) else x.attr for x in ast.walk(n) if isinstance(x, (ast.Name, ast.Attribute))}
 
 
+def noms_de_bee(racine=RACINE):
+    """--names: (every name literal of bee.py with its first line, those neither in the map nor neutral)."""
+    sys.path += [str(racine / "outils"), str(racine / "outils/migration")]
+    import rename
+    import rename_code
+    carte = rename_code.CodeMap(rename.Names((racine / rename.MAP).read_text(encoding="utf-8")),
+                                (racine / rename_code.IDS[0]).read_text(encoding="utf-8"))
+    gardes = carte.kept("outils/bee.py")[1] | set(carte.m["neutral"])  # kept on purpose, or declared language-neutral
+    connu = lambda x: x in carte.tokens or x in carte.hand or x in carte.attrs or x in gardes or carte.covered(x, False)  # noqa: E731
+    lus = {}
+    for n in ast.walk(ast.parse((racine / "outils/bee.py").read_text(encoding="utf-8"))):
+        if isinstance(n, ast.Constant) and isinstance(n.value, str) and NOM.match(n.value):
+            lus.setdefault(n.value, n.lineno)
+    return lus, sorted((x for x in lus if not (connu(x) or carte.names.path(x) != x or all(connu(p) for p in re.split(r"[/.]", x) if p))), key=lus.get)
+
+
 def principal(arguments):
+    if "--names" in arguments:
+        lus, seuls = noms_de_bee()
+        print("".join(f"NAME NEITHER MAPPED NOR NEUTRAL outils/bee.py:{lus[x]}: {x!r}\n" for x in seuls) +
+              f"## names: {len(lus)} name literals in outils/bee.py, {len(lus) - len(seuls)} in the map or language-neutral, {len(seuls)} neither")
+        return 1 if seuls else 0
     lignes, noms, inconnus, manquants, autres = inventaire()
     for classe, raison in CLASSES.items():
         print(f"\n## {classe}: {raison}")
