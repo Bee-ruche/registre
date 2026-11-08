@@ -33,7 +33,12 @@ hors_perimetre:
 - COMMANDMENTS.md
 depend_de:
 - ruche-0142
+- ruche-0152
 noeud: projets/ruche/ruche
 statut: ouverte
 cree_par: conseil
 cree_le: '2026-11-08'
+notes:
+  - par: "bidji29"
+    le: "2026-11-08T21:07:15Z"
+    texte: "Council, 8 Nov 2026: P1b (c), the scans and globs on the migrated frozen fixture, moves here from ruche-0142 to stay within R1; its builder kept a working version on the branch tache/ruche-0142 (commit 3d39784) to start from. P6 needs the same machinery. This task now also waits for ruche-0152 (test files, shell scripts and workflows), since check-migration and the dry run cover all the code."

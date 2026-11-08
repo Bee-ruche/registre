@@ -1,0 +1,38 @@
+id: ruche-0152
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: L
+titre: 'English names, step 1b-2: the test files'' identifiers, the shell scripts and the workflows'
+contexte: 'docs/english-migration.md, sections 9, 12 and 13. Split from ruche-0142 (step 1b), which did not fit in 400 lines:
+  ruche-0142 renames the Python code outside tests and proves it (P1, P1b a and b, P3, --names). This task does the rest
+  of the code: the identifiers of outils/test_bee.py, outils/juge/test_juge.py and outils/repetition/test_load_test.py (about
+  1,580, mostly test names), with every collision resolved (two French names in one scope never share an English name: relire
+  and relecture are one known case); and a token renamer with its proof P1 for the shell scripts and the workflows, with
+  their map sections (environment variables, job ids, step names, concurrency groups, robot texts) in names.yaml or identifiers.yaml.
+  The fork CI words that bee reads (verte, vert…) stay accepted until the forks write English (miniz-0050, libyaml-0021).'
+fichiers:
+- outils/migration/
+- outils/test_bee.py
+- outils/juge/test_juge.py
+- outils/repetition/
+- outils/juge/
+- .github/workflows/
+portee: 0.7
+metrique: null
+critere_acceptation:
+- 'the test files are no longer pending: the code check covers them, and the map lint finds no collision in any scope'
+- 'P1 for shell scripts and workflows: every changed token is a mapped pair; seeded mistakes (a token changed beyond the
+  map, a job id renamed without its needs, a workflow name renamed without its workflow_run listener) are refused, shown
+  by tests'
+- an independent adversarial review by an agent of another model than the builder's is attached, with every finding fixed
+  or answered; the full test suite passes on the exact head
+hors_perimetre:
+- COMMANDMENTS.md
+depend_de:
+- ruche-0142
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: '2026-11-08'
