@@ -4,7 +4,7 @@ auteur: bidji29
 pr: https://github.com/Bee-ruche/minizBee/pull/23
 resume: 'Test A/A du banc ab.py sur machine partagée : bruit de médiane 2 à 21 %, 0 faux au-delà du bruit,
   instructions identiques.'
-statut: en_relecture
+statut: integree
 soumise_le: '2026-11-06T21:33:11Z'
 engage_depuis: '2026-11-06T20:58:57Z'
 relectures: []
@@ -89,3 +89,9 @@ declare:
   doutes: Le bruit est probablement surestimé par la charge des autres agents sur la machine ; une seule
     machine, 3 passages par mode, donc le comptage de faux positifs (0 sur 6 passages) est trop faible
     pour borner leur taux.
+decidee_le: '2026-11-07T23:56:45Z'
+motif_decision: 'Intégration automatique (R3) : CI verte au commit 532b45520ee77a89fddb3738ae9388466c4b6ca7
+  ; 0 relecture(s) favorable(s) de ce commit pour 0 requise(s) (cible 2, plafonnée aux membres dont l''avis
+  compte : amorçage) ; vote net 0 pour un seuil de 0 (cible 2, plafonnée aux membres dont l''avis compte
+  : amorçage) ; fenêtre écoulée ; porte de relecture satisfaite.'
+fusion_sha: 67bf3b41fca7dc3042cea224d3fd13f0ac1fd6cf

@@ -1,0 +1,10 @@
+id: ruche-0122-c1
+tache: ruche-0122
+auteur: bidji29
+pr: https://github.com/Bee-ruche/registre/pull/200
+resume: Verdict and integration passes read pending fork PRs in bulk, user accounts only, at most one
+  pass every few minutes.
+statut: en_relecture
+soumise_le: '2026-11-07T12:25:00Z'
+engage_depuis: '2026-11-07T12:00:10Z'
+relectures: []

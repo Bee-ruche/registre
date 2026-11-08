@@ -148,6 +148,8 @@ pour toujours ; un retrait demandé retire ses données sans l'y inscrire, et el
   « retiré » ; son auteur, sa date, son identifiant et le reste du débat demeurent (R12). C'est, avec le retrait
   demandé, la seule modification d'un débat, réservée au conseil, même dans un débat clos, et elle nomme
   l'invitation (`caviarde_pour`) : sans invitation retirée, rien ne se caviarde.
+  Son débat propre ne reçoit plus d'argument : un gardien en fonction ou le conseil le clôt, issue `sans_suite`, et
+  `bee debats` le montre en attente de cette clôture ([agora.md](agora.md), ruche-0139).
 - **Un retrait demandé ne met pas sur la liste.** Quand la personne demande que ses données soient retirées, le conseil
   consigne un retrait demandé : `bee retirer-donnees --utilisateur <conseil> --identifiants-de <fichier|-> --canal courriel
   --demande-le 2026-11-01` (`--reference`, son issue ou sa discussion sur un dépôt de la ruche, pour une demande faite en public ;
