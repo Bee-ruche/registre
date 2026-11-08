@@ -1,4 +1,5 @@
 """Tests de l'outil bee : python3 -m unittest outils/test_bee.py ; en N processus : python3 outils/test_bee.py --processus N"""
+import argparse
 import ast
 import collections
 import contextlib
@@ -22265,6 +22266,285 @@ class TestEnglishNamesStep1a(unittest.TestCase):
         # dormant: nothing of the tool, the site or the workflows calls the migration tooling
         for chemin in ("outils/bee.py", "outils/site_bee.py", *(p.relative_to(RACINE).as_posix() for p in (RACINE / ".github").rglob("*.yml"))):
             self.assertNotIn("migration/", (RACINE / chemin).read_text(encoding="utf-8"), chemin)
+
+
+# --- ruche-0142: English names, step 1b: the code renamer and its proofs P1, P1b (a, b), P3 and --names (dormant) ---
+
+_SPEC_RENAME_CODE = importlib.util.spec_from_file_location("rename_code", pathlib.Path(__file__).resolve().parent / "migration" / "rename_code.py")
+rename_code = importlib.util.module_from_spec(_SPEC_RENAME_CODE)
+_SPEC_RENAME_CODE.loader.exec_module(rename_code)
+CARTE_IDENTIFIANTS = pathlib.Path(__file__).resolve().parent / "migration" / "identifiers.yaml"
+# A small file that holds every kind of name the renamer edits, and the prose, addresses and comments it must leave alone.
+CODE_0142 = '''\
+import re
+dossiers = ("taches", "propositions")  # un commentaire : taches/ statut
+
+
+def charger_arbre(racine, statut="ouverte"):
+    motif = re.compile(r"^(?P<projet>[a-z]+)-(?P<n>[0-9]{4})$")
+    chemin = racine / "taches" / f"{statut}/taches/{motif}.yaml"
+    for dossier in dossiers:
+        print(f"{dossier}_max_par_pr", motif.match("x")["projet"], getattr(racine, "en_parallele", None))
+    texte = "id: x\\nstatut: ouverte\\nnoeud: projets/compression-sans-perte/miniz\\n"
+    return chemin, texte, "lancez bee prendre --utilisateur moi, pour voir : https://github.com/Bee-ruche/registre", "BEE_MAINTENANT"
+'''
+CODE_0142_EN = '''\
+import re
+folders = ("tasks", "proposals")  # un commentaire : taches/ statut
+
+
+def load_tree(root, status="open"):
+    reason = re.compile(r"^(?P<project>[a-z]+)-(?P<n>[0-9]{4})$")
+    path = root / "tasks" / f"{status}/tasks/{reason}.yaml"
+    for folder in folders:
+        print(f"{folder}_max_per_pr", reason.match("x")["project"], getattr(root, "parallel", None))
+    text = "id: x\\nstatus: open\\nnode: projects/lossless-compression/miniz\\n"
+    return path, text, "lancez bee take --user moi, pour voir : https://github.com/Bee-ruche/registre", "BEE_NOW"
+'''
+
+
+def traduction_0142(names, carte, fichiers):
+    """The switch as ruche-0145 will make it, for the data (step 1a) and the Python code (this step): the shell scripts
+    and the workflows stay as they are (their renamer is a later step)."""
+    tete = traduction_0141(names, fichiers)
+    for chemin in (c for c in names.code if c.endswith(".py")):
+        tete[names.path(chemin)] = carte.rename_python(fichiers[chemin].decode("utf-8"), chemin)[0].encode("utf-8")
+    return tete
+
+
+class TestEnglishNamesStep1b(unittest.TestCase):
+    """ruche-0142 (docs/english-migration.md, sections 9, 12 and 13): the Python code renamer, the identifier map and the
+    proofs P1, P1b (a, b) and P3, dormant. They run here on a copy of the repository with the frozen fixture; on main, from
+    main's checkout: python3 -I outils/migration/rename_code.py check --base origin/main --head <sha>. The identifiers of
+    the three test files are pending (a later step): check fails closed on them, one line each."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.temp = tempfile.TemporaryDirectory()
+        cls.depot = pathlib.Path(cls.temp.name) / "registre"
+        shutil.copytree(RACINE, cls.depot, ignore=sans_donnees_reelles)
+        shutil.copytree(JEU_FIGE, cls.depot, dirs_exist_ok=True)
+        ecrire_familles_0141(cls.depot)
+        for argv in (["init", "-q"], ["config", "user.email", "tests@example.org"], ["config", "user.name", "tests"], ["add", "-A", "-f", "."],
+                     ["commit", "-qm", "base"]):
+            git(cls.depot, *argv)
+        cls.base = git(cls.depot, "rev-parse", "HEAD").strip()
+        modes = {}
+        cls.fichiers = rename.tree_files(cls.depot, cls.base, modes)
+        cls.names = rename_code.rename.Names(cls.fichiers[rename.MAP].decode("utf-8"))
+        cls.carte = rename_code.CodeMap(cls.names, cls.fichiers[rename_code.IDS[0]].decode("utf-8"))
+        cls.executables = {c for p, m in modes.items() if m == b"100755" for c in (p, cls.names.path(p))}
+        cls.traduits = traduction_0142(cls.names, cls.carte, cls.fichiers)
+        cls.tete = commit_fichiers_0141(cls.depot, cls.traduits, cls.base, cls.executables)
+        cls.verdict = rename_code.check(cls.depot, cls.base, cls.tete)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.temp.cleanup()
+
+    def variante(self, changer, de="tete", fichiers=None):
+        """A commit of the base's files (de=None) or of the translated head, changed by changer({path: bytes})."""
+        f = dict(fichiers or (self.fichiers if de is None else self.traduits))
+        changer(f)
+        return commit_fichiers_0141(self.depot, f, self.base if de is None else self.tete, self.executables)
+
+    def remplacer(self, chemin, avant, apres):
+        def changer(f):
+            self.assertEqual(f[chemin].count(avant.encode()), 1, avant)
+            f[chemin] = f[chemin].replace(avant.encode(), apres.encode())
+        return changer
+
+    def carte_changee(self, changer):
+        """identifiers.yaml as read, changed by changer(dict), and its CodeMap."""
+        m = yaml.safe_load(self.fichiers[rename_code.IDS[0]])
+        changer(m)
+        texte = yaml.safe_dump(m, allow_unicode=True, sort_keys=False)
+        return texte, rename_code.CodeMap(self.names, texte)
+
+    def test_the_renamer_edits_names_only_and_p1_p1b_hold_on_it(self):
+        carte = self.carte
+        nouveau, changements = carte.rename_python(CODE_0142, "outils/x.py")
+        self.assertEqual(nouveau, CODE_0142_EN)
+        nombres = collections.Counter()
+        self.assertEqual(carte.same_python(CODE_0142, nouveau, nombres), [])
+        for attendu in (("identifier", "charger_arbre", "load_tree"), ("string", "taches", "tasks"), ("string", "/taches/", "/tasks/"),
+                        ("string", "_max_par_pr", "_max_per_pr"), ("string", "en_parallele", "parallel"), ("string", "BEE_MAINTENANT", "BEE_NOW"),
+                        ("string", "prendre", "take"), ("string", "--utilisateur", "--user"), ("string", "compression-sans-perte", "lossless-compression")):
+            self.assertIn(attendu, nombres)
+        self.assertEqual(carte.residue("outils/x.py", nouveau), [])
+        # a kept scope keeps its strings (not its identifiers), a kept token is kept anywhere in its file
+        carte.keep.append((rename_code.rename.glob_re("outils/x.py"), {"charger_arbre"}, {"propositions"}))
+        try:
+            garde = carte.rename_python(CODE_0142, "outils/x.py")[0]
+        finally:
+            carte.keep.pop()
+        self.assertIn('folders = ("tasks", "propositions")', garde)
+        self.assertIn('def load_tree(root, status="ouverte"):', garde)
+        self.assertIn('"id: x\\nstatut: ouverte\\n', garde)
+        self.assertEqual(carte.residue("outils/x.py", garde)[0][:19], "line 2: « \"proposit")
+        # a name written with an escape is refused rather than rewritten
+        with self.assertRaises(rename_code.rename.Problem):
+            carte.rename_python('x = "stat\\u0075t"\n')
+
+    def test_p1_refuses_every_change_outside_the_map(self):
+        carte, refus = self.carte, {
+            "a literal changed outside the map": ('x = "statut"\n', 'x = "state"\n', "the string « statut » became « state », not through the map"),
+            "a word of a text changed outside the map": ('x = "statut: ouverte"\n', 'x = "status: opened"\n', "not through the map"),
+            "an identifier renamed otherwise": ("chemin = 1\n", "chemin_x = 1\n", "the identifier chemin became chemin_x, the map says path"),
+            "an attribute renamed as a variable": ("a.en_parallele\n", "a.in_parallel\n", "the map says parallel"),
+            "a number changed": ("x = 64 * 1024\n", "x = 65 * 1024\n", "64 became 65"),
+            "an operator changed": ("x = a + b\n", "x = a - b\n", "Add"),
+            "a statement added": ("x = 1\n", "x = 1\ny = 2\n", "1 elements became 2"),
+            "two keys of a dict become one": ('x = {"envoi": 1, "envoyee": 2}\n', 'x = {"sent": 1, "sent": 2}\n', "two strings of one literal became one"),
+        }
+        for cas, (avant, apres, message) in refus.items():
+            with self.subTest(cas):
+                self.assertTrue(any(message in p for p in carte.same_python(avant, apres, collections.Counter())), carte.same_python(avant, apres, collections.Counter()))
+        # a role-dependent token: either English name passes P1, and the renamer leaves it to the hand-made part
+        for apres in ('x = "issue"\n', 'x = "outcome"\n'):
+            self.assertEqual(carte.same_python('x = "issue"\n', apres, collections.Counter()), [])
+        self.assertEqual(carte.rename_python('x = "issue"\n')[0], 'x = "issue"\n')
+        # on the switch: a literal changed outside the map, an identifier renamed otherwise, a number changed
+        tete = self.variante(lambda f: [self.remplacer("tools/bee.py", a, b)(f) for a, b in (
+            ('p.add_argument("--status", default="open",', 'p.add_argument("--status", default="opened",'),
+            ("def build_parser():", "def make_parser():"), ("MANIFEST_MAX_BYTES = 64 * 1024", "MANIFEST_MAX_BYTES = 65 * 1024"))])
+        problemes = rename_code.check(self.depot, self.base, tete)[0]
+        for message in ("the string « ouverte » became « opened », not through the map", "the identifier construire_analyseur became make_parser, "
+                        "the map says build_parser", "64 became 65, the map says 64", "P3 and P1b (b) not run: P1 does not hold for tools/bee.py"):
+            self.assertTrue(any(p.startswith("tools/bee.py: ") and message in p or p.endswith(message) for p in problemes), (message, problemes))
+
+    def test_the_honest_switch_holds_but_for_the_pending_test_files(self):
+        problemes, nombres = self.verdict
+        attente = set(self.carte.m["pending"])
+        self.assertEqual(attente, {"outils/test_bee.py", "outils/juge/test_juge.py", "outils/repetition/test_load_test.py"})
+        self.assertTrue(problemes)
+        for p in problemes:
+            self.assertTrue(any(p.startswith(f"the map: {f}: ") for f in attente), p)
+        self.assertEqual(sum(p.endswith("not mapped yet (pending)") for p in problemes), 3)
+        for attendu in (("identifier", "construire_analyseur", "build_parser"), ("identifier", "statut", "status"), ("string", "valider", "validate"),
+                        ("string", "--utilisateur", "--user"), ("identifier", "ErreurBee", "BeeError")):
+            self.assertIn(attendu, nombres)
+        # the files the map covers, alone: every proof holds
+        def sans_les_tests(f):
+            f[rename.MAP] = re.sub(rb"\n- outils/(?:juge/test_juge|repetition/test_load_test|test_bee)\.py", b"", f[rename.MAP])
+            f[rename_code.IDS[0]] = re.sub(rb"\npending:\n(- .*\n)+", b"\npending: []\n", f[rename_code.IDS[0]])
+        base = self.variante(sans_les_tests, de=None)
+        self.assertEqual(rename_code.check(self.depot, base, self.tete)[0], [])
+        sortie = io.StringIO()
+        with contextlib.redirect_stdout(sortie):
+            self.assertEqual(rename_code.main(["check", "--repo", str(self.depot), "--base", base, "--head", self.tete]), 0)
+            self.assertEqual(rename_code.main(["check", "--repo", str(self.depot), "--base", self.base, "--head", self.tete]), 1)
+        self.assertIn(f"✓ P1, P1b and P3 hold at {base} for the head {self.tete}: ", sortie.getvalue())
+        self.assertIn("\nidentifier: construire_analyseur -> build_parser: ", sortie.getvalue())
+        self.assertIn("✗ the map: outils/test_bee.py: ", sortie.getvalue())
+
+    def test_p1b_refuses_a_french_name_left_an_attribute_name_and_a_glob(self):
+        tete = self.variante(lambda f: [self.remplacer("tools/bee.py", a, b)(f) for a, b in (
+            ('getattr(args, "parallel", False)', 'getattr(args, "en_parallele", False)'),
+            ('glob("measurements/*/*.yaml")', 'glob("mesures/*/*.yaml")'))])
+        problemes = rename_code.check(self.depot, self.base, tete)[0]
+        problemes = [p for p in problemes if not p.startswith("the map: ")]
+        self.assertEqual(sorted(p.split(": line ")[0] for p in problemes), ["P1b: tools/bee.py"] * 3, problemes)
+        for message in ("« \"en_parallele\" » is still French (it would become « \"parallel\" »)", "« en_parallele » names no attribute of the new code "
+                        "and no parser destination", "« \"mesures/*/*.yaml\" » is still French (it would become « \"measurements/*/*.yaml\" »)"):
+            self.assertTrue(any(message in p for p in problemes), (message, problemes))
+        # (b) alone: an attribute name the map does not know, in an English spelling no code defines
+        arbre = ast.parse('getattr(args, "parallel")\ngetattr(reg, "membres")\nvars(reg)["_orthographes"]\nargs.taille_max\nhasattr(reg, "anchor")\n')
+        self.assertEqual(self.carte.attribute_names(arbre, {"parallel"}), [
+            "line 2: « membres » names no attribute of the new code", "line 3: « _orthographes » names no attribute of the new code",
+            "line 4: « taille_max » names no attribute of the new code and no parser destination"])
+
+    def test_p3_refuses_a_parser_option_renamed_without_its_destination(self):
+        texte, carte = self.carte_changee(lambda m: m["attributes"].update(en_parallele="parallel_mode"))
+        self.assertIn("attribute en_parallele -> parallel_mode, its option says parallel",
+                      " ".join(carte.lint({"outils/bee.py": self.fichiers["outils/bee.py"].decode()})))
+        base = self.variante(lambda f: f.__setitem__(rename_code.IDS[0], texte.encode()), de=None)
+        tete = self.variante(lambda f: f.__setitem__("tools/bee.py", carte.rename_python(self.fichiers["outils/bee.py"].decode(), "outils/bee.py")[0].encode()))
+        problemes = rename_code.check(self.depot, base, tete)[0]
+        self.assertFalse([p for p in problemes if p.startswith("tools/bee.py: ")], "P1 holds: the head is the base's map applied")
+        self.assertIn("P3: bee command take --parallel dest: the map gives 'parallel_mode', the new parser has 'parallel'", problemes)
+        self.assertTrue(any("« parallel_mode » names no attribute of the new code and no parser destination" in p for p in problemes))
+        # P3 on its own: an option renamed, its destination kept; a choice, a default and a subcommand otherwise named
+        def analyseur(option, dest, choix, defaut, commande):
+            p = argparse.ArgumentParser()
+            s = p.add_subparsers(dest="commande" if option == "--utilisateur" else "command").add_parser(commande)
+            s.add_argument(option, dest=dest, choices=choix, default=defaut)
+            return rename_code.parser_tree(p)
+        ancien = self.carte.mapped_tree(analyseur("--utilisateur", "utilisateur", ["ouverte", "toutes"], "ouverte", "prendre"))
+        self.assertEqual(rename_code.tree_diff(ancien, analyseur("--user", "user", ["open", "all"], "open", "take")), [])
+        self.assertCountEqual(rename_code.tree_diff(ancien, analyseur("--user", "utilisateur", ["open", "all"], "opened", "take")), [
+            "bee command take --user dest: the map gives 'user', the new parser has 'utilisateur'",
+            "bee command take --user default: the map gives 'open', the new parser has 'opened'"])
+        self.assertCountEqual(rename_code.tree_diff(ancien, analyseur("--user", "user", ["open", "all"], "open", "prendre")),
+                              ["bee command take: only before the move", "bee command prendre: only after the move"])
+
+    def test_the_lint_refuses_a_map_that_would_break_the_code(self):
+        self.assertEqual([p for p in self.carte.lint({c: self.fichiers[c].decode() for c in self.names.code if c.endswith(".py")})
+                          if "(pending)" not in p and not p.startswith("outils/test_bee.py: line ")], [])
+        code = {"outils/x.py": "def verifier_comptes(chemin, path, titulaire, login, pseudo):\n    return chemin, path, titulaire, chemin_inconnu\n"}
+        cas = {
+            "an identifier neither mapped nor English": (lambda m: None, "outils/x.py: identifier chemin_inconnu is neither mapped nor made of English words"),
+            "two identifiers of one scope, one English name": (lambda m: None, "outils/x.py: line 1: chemin and path both become path"),
+            "an identifier that is a name of the name map, otherwise named": (lambda m: m["identifiers"].update(titulaire="owner"),
+                                                                              "identifier titulaire -> owner, the name map says holder"),
+            "a keyword as an identifier": (lambda m: m["identifiers"].update(pour="for"), "identifier pour -> for: not an identifier, a keyword"),
+            "an English name made of French words": (lambda m: m["identifiers"].update(chemin="chemin_anglais"), "not made of English words"),
+            "a token with two English names, undeclared": (lambda m: m["tokens"].update(taches="jobs"), "token taches: two English names ['jobs', 'tasks']"),
+        }
+        for nom, (changer, message) in cas.items():
+            with self.subTest(nom):
+                carte = self.carte_changee(changer)[1]
+                self.assertTrue(any(message in p for p in carte.lint(code)), carte.lint(code))
+        # login and pseudo share verifier_comptes: declared shared (never live at once), they pass; undeclared, they are refused
+        self.assertFalse([p for p in self.carte.lint(code) if "login and pseudo" in p])
+        carte = self.carte_changee(lambda m: m.update(shared=[]))[1]
+        self.assertIn("outils/x.py: line 1: login and pseudo both become login", carte.lint(code))
+
+    def test_the_names_inventory_covers_every_name_literal_of_bee(self):
+        lus, seuls = inventaire_marqueurs.noms_de_bee(RACINE)
+        self.assertEqual(seuls, [])
+        self.assertGreater(len(lus), 1000)
+        sortie = io.StringIO()
+        with contextlib.redirect_stdout(sortie):
+            self.assertEqual(inventaire_marqueurs.principal(["--names"]), 0)
+        self.assertIn(f"## names: {len(lus)} name literals in outils/bee.py, {len(lus)} in the map or language-neutral, 0 neither", sortie.getvalue())
+        with tempfile.TemporaryDirectory() as dossier:  # a French name literal neither mapped nor declared neutral
+            racine = pathlib.Path(dossier)
+            for chemin in ("outils/bee.py", rename.MAP, rename_code.IDS[0], "outils/migration/rename.py", "outils/migration/rename_code.py"):
+                (racine / chemin).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy(RACINE / chemin, racine / chemin)
+            with open(racine / "outils/bee.py", "a", encoding="utf-8") as f:
+                f.write('\nX = ("toutes_les_bidules", "tasks", "github.com", "COMMANDEMENTS.md")\n')
+            self.assertEqual(inventaire_marqueurs.noms_de_bee(racine)[1], ["toutes_les_bidules"])
+            with mock.patch.object(inventaire_marqueurs, "RACINE", racine), contextlib.redirect_stdout(io.StringIO()) as sortie:
+                self.assertEqual(inventaire_marqueurs.principal(["--names"]), 1)
+            self.assertIn("NAME NEITHER MAPPED NOR NEUTRAL outils/bee.py:", sortie.getvalue())
+
+    def test_the_checker_runs_only_as_the_bases_own_code_isolated_and_bee_never_calls_it(self):
+        for chemin in ("outils/migration/rename_code.py", "outils/migration/rename.py", "outils/bee.py"):
+            with self.subTest(chemin):
+                base = self.variante(lambda f: f.__setitem__(chemin, f[chemin] + b"# another one\n"), de=None)
+                problemes = rename_code.check(self.depot, base, self.tete)[0]
+                self.assertEqual(len(problemes), 1, problemes)
+                self.assertIn(f"is not the base's {chemin}: run the base's own checker, python3 -I, from its checkout", problemes[0])
+        with tempfile.TemporaryDirectory() as dossier:  # as a script: isolated or refused, and nothing shadows a module
+            racine, marque = pathlib.Path(dossier), pathlib.Path(dossier) / "marque"
+            for chemin in ("outils/bee.py", "outils/migration/rename.py", "outils/migration/rename_code.py", rename.MAP, rename_code.IDS[0],
+                           *(p for p in self.names.code if p.endswith(".py"))):
+                (racine / chemin).parent.mkdir(parents=True, exist_ok=True)
+                (racine / chemin).write_bytes(self.fichiers[chemin])
+            for module in ("outils/migration/yaml.py", "outils/migration/tokenize.py", "outils/yaml.py", "outils/argparse.py"):
+                (racine / module).write_text(f"open({str(marque)!r}, 'a').write({module!r})\n", encoding="utf-8")
+            script = str(racine / "outils/migration/rename_code.py")
+            r = subprocess.run([sys.executable, script, "lint"], capture_output=True, text=True)
+            self.assertEqual((r.returncode, marque.exists()), (1, False), r.stdout + r.stderr)
+            self.assertIn("run it isolated, python3 -I outils/migration/rename_code.py", r.stderr)
+            r = subprocess.run([sys.executable, "-I", script, "lint"], capture_output=True, text=True)
+            self.assertEqual((r.returncode, marque.exists()), (1, False), r.stdout + r.stderr)
+            self.assertIn("✗ outils/test_bee.py: ", r.stdout)
+            self.assertIn(" identifiers not mapped yet (pending)", r.stdout)
+        for chemin in ("outils/bee.py", "outils/site_bee.py", *(p.relative_to(RACINE).as_posix() for p in (RACINE / ".github").rglob("*.yml"))):
+            self.assertNotIn("rename_code", (RACINE / chemin).read_text(encoding="utf-8"), chemin)
 
 
 # --- ruche-0144: settings fail closed: each bee.yaml key bee reads is required and well formed, any other key refused, no default ---

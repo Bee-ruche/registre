@@ -3,7 +3,7 @@
 (CodeMap.rename_python) and proofs P1, P1b and P3, dormant. Run it isolated, from the base's own checkout:
     python3 -I outils/migration/rename_code.py lint | check --base REV --head REV [--repo DIR]
 lint: identifiers.yaml against the code. check reads both maps and the files from git, runs only as the base's own code
-(this script, rename.py, bee.py): P1 and P1b (a) per Python code file, then, if P1 holds for bee.py, P3 and P1b (b, c).
+(this script, rename.py, bee.py): P1 and P1b (a) per Python code file, then, if P1 holds for bee.py, P3 and P1b (b).
 Exit 0: proven, as the last line says; 1: problems, listed. Shell scripts and workflows are not renamed here.
 """
 import sys
@@ -11,8 +11,7 @@ import sys
 if __name__ == "__main__" and not sys.flags.isolated:
     sys.exit("rename_code.py: run it isolated, python3 -I outils/migration/rename_code.py …, so that nothing shadows a module")
 
-import argparse, ast, collections, contextlib, importlib.util, io, keyword, os, pathlib, re, subprocess, tempfile, tokenize  # noqa: E401, E402
-from unittest import mock  # noqa: E402
+import argparse, ast, collections, importlib.util, io, keyword, pathlib, re, subprocess, tempfile, tokenize  # noqa: E401, E402
 import yaml  # noqa: E402
 
 SELF = pathlib.Path(__file__).resolve()
@@ -20,11 +19,9 @@ sys.path += [str(SELF.parent.parent), str(SELF.parent)]  # last: never in front 
 import bee, rename  # noqa: E402, E401
 
 IDS = ("outils/migration/identifiers.yaml", "tools/migration/identifiers.yaml")
-WORD = re.compile(r"([\w.-]+)")  # the tokens P1 compares inside a text
+WORD = re.compile(r"((?<!\\)[\w.-]+)")  # the tokens P1 compares inside a text (never the letter of an escape: \\n)
 LINE = re.compile(r"([ \t]*(?:- )*)([A-Za-z_][\w-]*)(:)((?=[ \t]).*|)")  # a YAML key at a line start, and the rest
 VALUE = re.compile(r"( +)([\"']?)([\w.-]+(?:/[\w.-]+)*)(\2)([ \t]*(?:#.*)?)")  # its one-token value
-READ_ONLY = (["valider"], ["lister", "--statut", "toutes", "--json"], ["cap", "--json"], ["essaim", "--json"], ["niveaux", "--json"],
-             ["classement", "--json"], ["debats", "--json"], ["en-attente"])
 words = lambda name: [w.lower() for w in re.findall(r"[A-Z]+(?![a-z])|[A-Z]?[a-zà-ÿ]+", name)]  # noqa: E731
 idents = lambda tree: ((n, f, v) for n in ast.walk(tree) if not isinstance(n, ast.Constant) for f, v in ast.iter_fields(n)  # noqa: E731
                        for v in (v if isinstance(v, list) else [v]) if isinstance(v, str) and f not in ("kind", "type_comment"))
@@ -171,7 +168,8 @@ class CodeMap:
             elif tok.type in (tokenize.STRING, tokenize.FSTRING_MIDDLE) and not any(tok.start[0] in r for r in frozen):
                 if source[a:b] != tok.string:
                     raise rename.Problem(f"{path}:{tok.start[0]}: a string part the tokenizer does not place")
-                new = self.string(tok.string) if tok.type == tokenize.STRING else self.text(tok.string)
+                new = self.string(tok.string) if tok.type == tokenize.STRING else self.whole(tok.string) if \
+                    re.fullmatch(r"[\w./*<>~-]+", tok.string) else self.text(tok.string)  # an f-string part: f"{x}_max_par_pr"
                 if tok.start in roles and (v := ast.literal_eval(tok.string)) in self.attrs:
                     new = tok.string.replace(v, self.attrs[v])
                 if kept and len(WORD.split(new)) == len(WORD.split(tok.string)):
@@ -251,21 +249,6 @@ class CodeMap:
         return [f"line {s.lineno}: « {s.value} » names no attribute of the new code" + (" and no parser destination" if getattr(r, "id", None) == "args" else "")
                 for r, s in found if isinstance(s, ast.Constant) and isinstance(s.value, str) and bad(s.value, r)]
 
-    def scanners(self, tools, roots, argvs):
-        """P1b (c): old tool on the base's fixture, new tool on the head's: each glob, rglob, iterdir (mapped) finds as many files,
-        each Registre collection holds as many, each read-only command exits alike. Returns (problems, scans, files)."""
-        old = scan_run(tools[0], roots[0], [["--registre", str(roots[0]), *a] for a in argvs])
-        new = scan_run(tools[1], roots[1], [[self.whole("--registre"), str(roots[1]), *map(self.whole, a)] for a in argvs], lambda x: self.ids.get(x, x))
-        expected = [(self.names.path(r), self.whole(p), n) for r, p, n in old[0]]
-        problems = [f"{r}/{p}: found {n} file(s) before the move, {m} after" for (r, p, n), (_, q, m) in zip(expected, new[0]) if n != m and p == q]
-        problems += [f"scan {x[0]}/{x[1]}: made before the move, not after" for x in expected if x[:2] not in [y[:2] for y in new[0]]]
-        problems += [f"scan {x[0]}/{x[1]}: made after the move only" for x in new[0] if x[:2] not in [y[:2] for y in expected]]
-        problems += [f"registry.{k}: {n} item(s) before the move, {new[1].get(self.attrs.get(k, k))} after" for k, n in old[1].items()
-                     if new[1].get(self.attrs.get(k, k)) != n]
-        problems += [f"bee {' '.join(a)}: exit code {x} before the move, {y} after" for a, x, y in zip(argvs, old[2], new[2]) if x != y]
-        total = sum(n for _, _, n in old[0])
-        return problems + ([] if total else ["no scan finds a file on the fixture: the proof would prove nothing"]), len(old[0]), total
-
     # --- P3 ---
 
     def mapped_tree(self, t):
@@ -277,29 +260,6 @@ class CodeMap:
              "const": v(a["const"]), "type": v(a["type"]), "metavar": v(a["metavar"]), "choices": {self.whole(k): self.mapped_tree(c) for k, c in
                                                                                                    a["choices"].items()} if isinstance(a["choices"], dict) else
              v(a["choices"]) if a["choices"] is None else sorted(v(a["choices"]))} for a in t["actions"]]}
-
-
-def scan_run(tool, root, argvs, n=lambda x: x):
-    """The tool on a registry: its scans (folder, pattern, files found), its Registre's collection sizes, each command's exit code."""
-    seen, real = [], {m: getattr(pathlib.Path, m) for m in ("glob", "rglob", "iterdir")}
-
-    def spy(m):
-        def scan(path, *a, **k):
-            found = list(real[m](path, *a, **k))
-            seen.append((os.path.relpath(path, root), a[0] if a else "", len(found)))
-            return iter(found)
-        return scan
-    codes, now = [], dict.fromkeys(("BEE_MAINTENANT", "BEE_NOW"), "2026-11-08T12:00:00Z")  # the clock, before and after the move
-    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()), mock.patch.dict(os.environ, now), \
-            mock.patch.multiple(pathlib.Path, **{m: spy(m) for m in real}):
-        registry = getattr(tool, n("Registre"))(root)
-        sizes = {k: len(v) for k, v in vars(registry).items() if isinstance(v, (list, dict, set, tuple))}
-        for argv in argvs:
-            try:
-                codes.append(getattr(tool, n("principal"))(argv) or 0)
-            except SystemExit as e:
-                codes.append(e.code)
-    return seen, sizes, codes
 
 
 def identifier_strings(tree, deep=True):
@@ -342,31 +302,20 @@ def walk_trees(t):
         yield from (y for c in (a["choices"].values() if isinstance(a["choices"], dict) else []) for y in walk_trees(c))
 
 
-def checkout(files, dest, data, fixture):
-    """A commit's files as a committed registry whose data is the frozen fixture (if the commit has one, in its folder)."""
-    data = data if any(p.startswith(fixture) for p in files) else set()
-    for p, content in files.items():
-        for q in [p[len(fixture):]] * p.startswith(fixture) + [p] * (p.split("/")[0] + "/" not in data):
-            (dest / q).parent.mkdir(parents=True, exist_ok=True)
-            (dest / q).write_bytes(content)
-    who = {f"GIT_{r}_{k}": v for r in ("AUTHOR", "COMMITTER") for k, v in (("NAME", "x"), ("EMAIL", "x@x"), ("DATE", "2026-11-08T00:00:00Z"))}
-    for argv in (["init", "-q"], ["add", "-A", "-f", "."], ["commit", "-qm", "fixture"]):
-        subprocess.run(["git", "-C", str(dest), *argv], check=True, capture_output=True, env={**os.environ, **who})
-
-
 def check(repo, base, head):
-    """P1, P1b and P3 (plan, sections 9 and 12, change 2). Returns (problems, counts of each mapping, (scans, files) or None)."""
+    """P1, P1b (a, b) and P3 (plan, sections 9 and 12, change 2); P1b (c), the scans on the fixture, is step 1c's, with P6.
+    Returns (problems, counts of each mapping)."""
     files, after, none = rename.tree_files(repo, base), rename.tree_files(repo, head), collections.Counter()
     if (at := next((c for c in rename.MAPS if c in files), None)) is None or IDS[rename.MAPS.index(at)] not in files:
-        return [f"no {rename.MAP} and {IDS[0]} at the base {base}"], none, None
+        return [f"no {rename.MAP} and {IDS[0]} at the base {base}"], none
     tools_dir = at.rpartition("/migration/")[0]
     for path, live in ((f"{tools_dir}/migration/rename_code.py", SELF), (f"{tools_dir}/migration/rename.py", rename.SELF),
                        (f"{tools_dir}/bee.py", pathlib.Path(bee.__file__).resolve())):
         if files.get(path) != live.read_bytes():
-            return [f"{live} is not the base's {path}: run the base's own checker, python3 -I, from its checkout"], none, None
+            return [f"{live} is not the base's {path}: run the base's own checker, python3 -I, from its checkout"], none
     names = rename.Names(files[at].decode("utf-8"))
     cm, code = CodeMap(names, files[IDS[rename.MAPS.index(at)]].decode("utf-8")), {p: files[p].decode("utf-8") for p in names.code if p.endswith(".py")}
-    problems, counts, scans, tool = [f"the map: {x}" for x in cm.lint(code)], collections.Counter(), None, names.path(f"{tools_dir}/bee.py")
+    problems, counts, tool = [f"the map: {x}" for x in cm.lint(code)], collections.Counter(), names.path(f"{tools_dir}/bee.py")
     for p, text in code.items():
         try:
             new = after[q := names.path(p)].decode("utf-8")
@@ -374,22 +323,16 @@ def check(repo, base, head):
         except (KeyError, SyntaxError, UnicodeDecodeError, rename.Problem) as e:
             problems.append(f"{q}: {'not in the head' if isinstance(e, KeyError) else f'{type(e).__name__}: {e}'}")
     if any(x.startswith(f"{tool}: ") for x in problems):
-        return problems + [f"P3 and P1b (b, c) not run: P1 does not hold for {tool}"], counts, scans
+        return problems + [f"P3 and P1b (b) not run: P1 does not hold for {tool}"], counts
     with tempfile.TemporaryDirectory() as tmp:  # P1 holds: the new tool is the base's code modulo the map, it may run
-        roots, data, fixture = (pathlib.Path(tmp) / "base", pathlib.Path(tmp) / "head"), set(bee.DOSSIERS_LIBRE_SERVICE), f"{tools_dir}/tests/registre/"
-        checkout(files, roots[0], data, fixture)
-        checkout(after, roots[1], {names.path(d) for d in data}, names.path(fixture))
-        spec = importlib.util.spec_from_file_location("bee_after_the_move", roots[1] / tool)
+        (path := pathlib.Path(tmp) / tool).parent.mkdir(parents=True)
+        path.write_bytes(after[tool])
+        spec = importlib.util.spec_from_file_location("bee_after_the_move", path)
         spec.loader.exec_module(new := importlib.util.module_from_spec(spec))
         trees = parser_tree(bee.construire_analyseur()), parser_tree(getattr(new, cm.ids.get("construire_analyseur", "construire_analyseur"))())
         problems += [f"P3: {x}" for x in tree_diff(cm.mapped_tree(trees[0]), trees[1])]
         dests = {a["dest"] for t in walk_trees(trees[1]) for a in t["actions"]} | {k for t in walk_trees(trees[1]) for k in t["defaults"]}
-        problems += [f"P1b: {tool}: {x}" for x in cm.attribute_names(ast.parse(after[tool].decode("utf-8")), dests)]
-        try:
-            found, *scans = cm.scanners((bee, new), roots, READ_ONLY)
-        except Exception as e:  # noqa: BLE001 - whatever breaks in the new tool is a problem, never a pass
-            found, scans = [f"a tool failed on the fixture: {type(e).__name__}: {e}"], [0, 0]
-    return problems + [f"P1b: {x}" for x in found], counts, scans
+    return problems + [f"P1b: {tool}: {x}" for x in cm.attribute_names(ast.parse(after[tool].decode("utf-8")), dests)], counts
 
 
 def main(argv=None):
@@ -398,10 +341,10 @@ def main(argv=None):
     sub.add_parser("lint")
     s = sub.add_parser("check")
     [s.add_argument(o, required=o != "--repo", default=str(SELF.parents[2]) if o == "--repo" else None) for o in ("--base", "--head", "--repo")]
-    a, counts, scans = p.parse_args(argv), collections.Counter(), None
+    a, counts = p.parse_args(argv), collections.Counter()
     try:
         if a.action == "check":
-            problems, counts, scans = check(a.repo, a.base, a.head)
+            problems, counts = check(a.repo, a.base, a.head)
         else:
             names, read = rename.Names((SELF.parents[2] / rename.MAP).read_text(encoding="utf-8")), lambda q: (SELF.parents[2] / q).read_text(encoding="utf-8")
             problems = CodeMap(names, read(IDS[0])).lint({q: read(q) for q in names.code if q.endswith(".py")})
@@ -412,7 +355,7 @@ def main(argv=None):
     print("".join(f"✗ {x}\n" for x in problems) + f"{len(problems)} problem(s)." if problems else
           f"✓ P1, P1b and P3 hold at {a.base} for the head {a.head}: {len({x for k, x, _ in counts if k == 'identifier'})} identifiers and "
           f"{len({x for k, x, _ in counts if k == 'string'})} names in strings renamed through the map ({sum(counts.values())} places), nothing "
-          f"else changed; no French name left; {scans[0]} scans find the same {scans[1]} files." if a.action == "check" else
+          "else changed; no French name left, every attribute name resolves, the parser is the same." if a.action == "check" else
           "✓ the identifier map covers the code, one English name per identifier in each scope.")
     return 1 if problems else 0
 

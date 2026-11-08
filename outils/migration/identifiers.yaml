@@ -2065,3 +2065,16 @@ keep:
   - jamais
   why: 'kept on purpose: the old name of an authority file (forever); a CI word the forks may write (forever); a metric
     id (step 5); a git ref namespace the workflows share; display labels and message words (bees messages, step 3)'
+- files: outils/test_bee.py
+  scopes:
+  - TACHE_PIEGE_0141
+  - TACHE_PIEGE_0141_EN
+  - NOEUD_0141
+  - ecrire_familles_0141
+  - traduction_0141
+  - TestEnglishNamesStep1a
+  - CODE_0142
+  - CODE_0142_EN
+  - traduction_0142
+  - TestEnglishNamesStep1b
+  why: 'the tests of the migration tooling: their fixtures and expectations are French on purpose (the base before the switch)'

@@ -152,7 +152,7 @@ def noms_de_bee(racine=RACINE):
 
 def principal(arguments):
     if "--names" in arguments:
-        lus, seuls = noms_de_bee()
+        lus, seuls = noms_de_bee(RACINE)
         print("".join(f"NAME NEITHER MAPPED NOR NEUTRAL outils/bee.py:{lus[x]}: {x!r}\n" for x in seuls) +
               f"## names: {len(lus)} name literals in outils/bee.py, {len(lus) - len(seuls)} in the map or language-neutral, {len(seuls)} neither")
         return 1 if seuls else 0
