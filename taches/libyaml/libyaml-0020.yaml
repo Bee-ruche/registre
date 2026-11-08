@@ -23,6 +23,7 @@ critere_acceptation:
 hors_perimetre:
 - COMMANDMENTS.md
 noeud: projets/parsing-serialisation/libyaml
-statut: ouverte
+statut: en_relecture
+contribution: libyaml-0020-c1
 cree_par: conseil
 cree_le: '2026-11-08'

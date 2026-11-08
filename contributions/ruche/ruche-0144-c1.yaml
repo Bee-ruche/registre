@@ -1,0 +1,14 @@
+id: ruche-0144-c1
+tache: ruche-0144
+auteur: bidji29
+pr: https://github.com/Bee-ruche/registre/pull/217
+resume: 'Settings fail closed: every bee.yaml key bee reads is required and well formed, an unknown key
+  is refused, and no missing or malformed value falls back to a permissive default.'
+statut: integree
+soumise_le: '2026-11-08T17:19:03Z'
+engage_depuis: '2026-11-08T13:46:10Z'
+relectures: []
+decidee_le: '2026-11-08T17:30:26Z'
+motif_decision: 'Hive tooling contribution: registry PR #217 merged at commit e94f54f by bidji29, the
+  account of a council member, CI green on the merged commit.'
+fusion_sha: a96828ad698c847c93267138e6e1a85f8c103376

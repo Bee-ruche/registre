@@ -240,24 +240,61 @@ class TestWorkflows(unittest.TestCase):
 
 
 class TestFusionAutoNeMergeQuApresVerification(unittest.TestCase):
-    """fusion-auto.yml: the merge step runs only after the verification step ran, succeeded and returned code 0, for a PR
-    it found; a skipped verification (no PR found) never leads to `gh pr merge` (its absent output, null, equals '0')."""
+    """fusion-auto.yml: the merge step runs only after the verification step ran and succeeded; ruche-0120: the check runs
+    without a token (none in its environment, none kept by the checkout), and the pass merges only through bee passe-fusion
+    fusionner, each merge bound to its checked head."""
 
     def test_la_fusion_exige_une_verification_reussie(self):
         import yaml
         flux = yaml.safe_load((RACINE / ".github" / "workflows" / "fusion-auto.yml").read_text(encoding="utf-8"))
         etapes = [e for job in flux["jobs"].values() for e in job.get("steps", [])]
-        fusion = [e for e in etapes if re.search(r"(?m)^\s*gh pr merge ", e.get("run", ""))]
+        fusion = [e for e in etapes if "passe-fusion fusionner" in e.get("run", "")]
         self.assertEqual(len(fusion), 1)
-        condition = " ".join(str(fusion[0].get("if", "")).split())
-        self.assertEqual(condition.split(" && "), ["steps.verif.outcome == 'success'", "steps.verif.outputs.code != ''",
-                                                   "steps.verif.outputs.code == '0'", "steps.pr.outputs.numero != ''"])
-        for interdit in ("||", "!(", "${{"):
-            self.assertNotIn(interdit, condition)
-        self.assertEqual(len(re.findall(r"(?m)^\s*gh pr merge ", "\n".join(e.get("run", "") for e in etapes))), 1)
-        self.assertNotRegex("\n".join(e.get("run", "") for e in etapes), r"pulls/[^ ]*/merge", "no other way to merge")
-        self.assertIn('[[ "$NUMERO" =~ ^[0-9]+$ ]] ||', fusion[0]["run"])
-        self.assertLess(fusion[0]["run"].index("=~ ^[0-9]+$"), fusion[0]["run"].index("gh pr merge"))
+        # The merge job runs only after the check job succeeded (needs), and only if it accepted a PR.
+        job = flux["jobs"]["fusionner"]
+        self.assertEqual((job["needs"], job["if"]), ("verifier", "contains(needs.verifier.outputs.acceptees, ':')"))
+        self.assertIn(fusion[0], job["steps"])
+        verif = [e for e in etapes if e.get("id") == "verif"]
+        self.assertEqual(len(verif), 1)
+        self.assertEqual((verif[0]["run"], verif[0].get("env")), ('python3 outils/bee.py passe-fusion verifier --dossier "$RUNNER_TEMP/passe"', None))
+        self.assertIn(verif[0], flux["jobs"]["verifier"]["steps"])
+        self.assertEqual(flux["jobs"]["verifier"]["outputs"], {"acceptees": "${{ steps.verif.outputs.acceptees }}"})
+        for nom, job in flux["jobs"].items():
+            self.assertIs(job["steps"][0]["with"]["persist-credentials"], False, f"{nom}: no token left in git's configuration")
+        texte = "\n".join(e.get("run", "") for e in etapes)
+        self.assertNotRegex(texte, r"gh pr merge|pulls/[^ ]*/merge", "no other way to merge")
+        self.assertEqual(texte.count("passe-fusion fusionner"), 1)
+
+    def test_the_job_that_reads_the_prs_never_writes(self):
+        """The listing, the preparer (which parses the PRs' files) and the check run in a job whose token only reads; the job whose
+        token writes runs no step that reads a PR: it gets only the check job's output, each merge validated by bee."""
+        flux = yaml.safe_load((RACINE / ".github/workflows/fusion-auto.yml").read_text(encoding="utf-8"))
+        self.assertEqual(list(flux["jobs"]), ["verifier", "fusionner"])
+        self.assertEqual(flux["jobs"]["verifier"]["permissions"], {"contents": "read", "pull-requests": "read", "actions": "read"})
+        self.assertNotIn("permissions", flux["jobs"]["fusionner"])
+        texte = lambda nom: "\n".join(e.get("run", "") for e in flux["jobs"][nom]["steps"])  # noqa: E731
+        for etape in ("gh api graphql", "passe-fusion preparer", "passe-fusion verifier", "git fetch", "pulls?"):
+            self.assertNotIn(etape, texte("fusionner"))
+        self.assertIn("passe-fusion preparer", texte("verifier"))
+        self.assertNotIn("passe-fusion fusionner", texte("verifier"))
+        etape = next(e for e in flux["jobs"]["fusionner"]["steps"] if "passe-fusion fusionner" in e.get("run", ""))
+        self.assertEqual(etape["env"]["ACCEPTEES"], "${{ needs.verifier.outputs.acceptees }}")
+        self.assertIn('--acceptees "$ACCEPTEES"', etape["run"])
+        self.assertEqual([e.get("uses") for e in flux["jobs"]["fusionner"]["steps"] if "uses" in e], ["actions/checkout@v4", "actions/setup-python@v5"])
+        self.assertEqual(flux["jobs"]["fusionner"]["steps"][0]["with"]["ref"], "main")
+
+    def test_a_pass_can_ask_for_another(self):
+        """A pass that could not merge every accepted PR asks for another (workflow_dispatch), which leaves out the PRs listed."""
+        flux = yaml.safe_load((RACINE / ".github/workflows/fusion-auto.yml").read_text(encoding="utf-8"))
+        self.assertEqual(flux[True]["workflow_dispatch"], {"inputs": {"exclure": {"default": ""}}})
+        job = flux["jobs"]["verifier"]
+        self.assertEqual(job["env"], {"EXCLURE": "${{ inputs.exclure }}"})
+        self.assertTrue(job["if"].startswith("github.event_name == 'workflow_dispatch' || "))
+        self.assertTrue(all(isinstance(j["timeout-minutes"], int) for j in flux["jobs"].values()))
+        etapes = [e for j in flux["jobs"].values() for e in j["steps"]]
+        for etape in ("passe-fusion preparer", "passe-fusion fusionner"):
+            self.assertIn('--exclure "$EXCLURE"', next(e["run"] for e in etapes if etape in e.get("run", "")))
+        self.assertEqual(next(e for e in etapes if "passe-fusion fusionner" in e.get("run", ""))["env"]["EXCLURE"], "${{ inputs.exclure }}")
 
 
 class TestCiScope(unittest.TestCase):
@@ -533,10 +570,10 @@ class TestCiScope(unittest.TestCase):
                                 "GITHUB_REPOSITORY": "Bee-ruche/registre"})
         self.assertNotEqual(r.returncode, 0)
         self.assertNotIn("BEE", r.stdout, "the gate never runs without GitHub's record")
+        # ruche-0120: fusion-auto reads, with the PRs' validations, each run's creation (TestPasseFusion: the gate gets it).
         etape = next(s for s in yaml.safe_load((RACINE / ".github/workflows/fusion-auto.yml").read_text(encoding="utf-8"))["jobs"]
-                     ["fusionner"]["steps"] if s.get("name", "").startswith("Vérifier la fusion simulée"))
-        self.assertEqual(etape["env"]["INSTANT_PR"], "${{ github.event.workflow_run.created_at }}")
-        self.assertRegex(etape["run"], r'verifier-pr [^\n]*\\\n[^\n]*--instant-pr "\$INSTANT_PR"\n')
+                     ["verifier"]["steps"] if s.get("name", "").startswith("Lister les PR ouvertes"))
+        self.assertIn("--jq '.workflow_runs[] | [.id, .head_sha, .created_at] | @tsv'", etape["run"])
 
     def test_the_data_only_step_runs_exactly_the_tests_allowed_to_read_live_data(self):
         """One list: on a data-only PR or push, validation.yml runs TESTS_REGISTRE_REEL, the tests the audit hook lets read the
@@ -733,40 +770,43 @@ sys.exit(3 if a[:2] == ["pr", "view"] else 0)
                 self.assertIn(f"--compte-cree-le {'2020-01-01' if lue else ''} --github-id 583231 ", r.stdout)
 
     def test_fusion_auto_finds_the_pr_and_its_author_s_number_in_one_listing(self):
-        """fusion-auto.yml: one REST listing of the open PRs to main (all pages) gives the PR and its author's number; no
-        other call before the gate, but the date for a new member file."""
+        """fusion-auto.yml (ruche-0120): one GraphQL query per 100 open PRs to main (all pages) gives each PR, its head and its
+        author's number, and one REST listing per 100 the day's successful validations (all pages); no other call before
+        the gate, but what preparer reads (the date for a new member file, each declared fork PR's author)."""
         if not shutil.which("jq"):
-            self.skipTest("jq is needed to apply the listing's filter as gh --jq does")
+            self.skipTest("jq is needed to apply the listings' filters as gh --jq does")
         etapes = {s.get("name", ""): s for s in self.etapes("fusion-auto.yml")}
-        script = etapes["Retrouver la pull request"]["run"]
-        tete = "a" * 40
-        prs = [{"number": 7, "head": {"sha": "b" * 40}, "base": {"ref": "main"}, "user": {"login": "bruno", "id": 2}},
-               {"number": 8, "head": {"sha": tete}, "base": {"ref": "autre"}, "user": {"login": "chloe", "id": 3}},
-               {"number": 9, "head": {"sha": tete}, "base": {"ref": "main"}, "user": {"login": "alice", "id": 583231}, "title": "x\ny"}]
+        script = etapes["Lister les PR ouvertes et leurs validations (ruche-0120)"]["run"]
+        reponses = {"graphql": {"data": {"repository": {"pullRequests": {"nodes": [
+            {"number": 9, "headRefOid": "a" * 40, "author": {"login": "alice", "databaseId": 583231}},
+            {"number": 8, "isDraft": True, "headRefOid": "d" * 40, "author": {"login": "bruno", "databaseId": 2}},  # a draft is never merged
+            {"number": 7, "headRefOid": "b" * 40, "author": None}, {"number": 6, "headRefOid": "c" * 40, "author": {"login": "robot[bot]"}}]}}}},
+            "runs": {"workflow_runs": [{"id": 12, "head_sha": "a" * 40, "created_at": "2026-11-03T10:00:00Z", "event": "pull_request"}]}}
         dossier = pathlib.Path(tempfile.mkdtemp(dir=self.temp.name))
+        for nom, reponse in reponses.items():
+            (dossier / f"{nom}.json").write_text(json.dumps(reponse), encoding="utf-8")
         (dossier / "bin").mkdir()
-        (dossier / "bin/gh").write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$RUNNER_TEMP/gh.log"\n'
-                                        'while [ "$1" != --jq ]; do shift; done\njq -r "$2" "$RUNNER_TEMP/prs.json"\n', encoding="utf-8")
+        (dossier / "bin/gh").write_text('#!/bin/sh\n{ printf "%s" "$*" | tr "\\n" " "; echo; } >> "$RUNNER_TEMP/gh.log"\ncase "$2" in graphql) f=graphql;; *) f=runs;; esac\n'
+                                        'while [ "$1" != --jq ]; do shift; done\njq -r "$2" "$RUNNER_TEMP/$f.json"\n', encoding="utf-8")
         (dossier / "bin/gh").chmod(0o755)
-        (dossier / "prs.json").write_text(json.dumps(prs), encoding="utf-8")
-        for sha, attendu in ((tete, {"numero": "9", "auteur": "alice", "github_id": "583231"}), ("c" * 40, {})):
-            with self.subTest(sha=sha):
-                (dossier / "sortie").write_text("", encoding="utf-8")
-                (dossier / "gh.log").write_text("", encoding="utf-8")
-                r = subprocess.run(["bash", "-e", "-c", script], cwd=dossier, capture_output=True, text=True,
-                                   env={**os.environ, "PATH": f"{dossier / 'bin'}{os.pathsep}{os.environ['PATH']}", "SHA": sha,
-                                        "RUNNER_TEMP": str(dossier), "GITHUB_OUTPUT": str(dossier / "sortie"), "GITHUB_REPOSITORY": "Bee-ruche/registre"})
-                self.assertEqual(r.returncode, 0, r.stderr)
-                self.assertEqual(dict(l.split("=", 1) for l in (dossier / "sortie").read_text(encoding="utf-8").splitlines()), attendu)
-                appel = (dossier / "gh.log").read_text(encoding="utf-8").splitlines()
-                self.assertEqual(len(appel), 1)
-                self.assertTrue(appel[0].startswith("api repos/Bee-ruche/registre/pulls?state=open&base=main&per_page=100 --paginate --jq "))
-        verif = etapes["Vérifier la fusion simulée avec l'outil de confiance"]
-        self.assertEqual(verif["env"]["GITHUB_ID"], "${{ steps.pr.outputs.github_id }}")
-        self.assertNotIn("users/", verif["run"])
-        self.assertIn('if [ "$(python3 outils/bee.py --registre ../fusion needs-account-date --base origin/main --tete HEAD)" != no ]; then\n'
-                      '  cree=$(gh api "user/$GITHUB_ID" --jq \'.created_at[:10]\'); fi', verif["run"])
-        self.assertIn('--compte-cree-le "$cree" --github-id "$GITHUB_ID" ', verif["run"])
+        (dossier / "outils").mkdir()
+        (dossier / "outils/bee.py").write_text("import sys\nprint('BEE', *sys.argv[1:])\n", encoding="utf-8")
+        r = subprocess.run(["bash", "-e", "-c", script], cwd=dossier, capture_output=True, text=True,
+                           env={**os.environ, "PATH": f"{dossier / 'bin'}{os.pathsep}{os.environ['PATH']}", "RUNNER_TEMP": str(dossier),
+                                "GITHUB_REPOSITORY": "Bee-ruche/registre", "EXCLURE": "12"})
+        self.assertEqual(r.returncode, 0, r.stderr)
+        passe = dossier / "passe"
+        self.assertEqual((passe / "prs.tsv").read_text(encoding="utf-8"),
+                         f"9\t{'a' * 40}\talice\t583231\n7\t{'b' * 40}\t\t\n6\t{'c' * 40}\trobot[bot]\t\n")
+        self.assertEqual((passe / "validations.tsv").read_text(encoding="utf-8"), f"12\t{'a' * 40}\t2026-11-03T10:00:00Z\n")
+        appels = (dossier / "gh.log").read_text(encoding="utf-8").splitlines()
+        self.assertEqual(len(appels), 2)
+        self.assertTrue(appels[0].startswith("api graphql --paginate -f owner=Bee-ruche -f name=registre -f query=query($owner"), appels[0])
+        self.assertIn('pullRequests(states: OPEN, baseRefName: "main", first: 100, after: $endCursor)', appels[0])
+        self.assertRegex(appels[1], r"^api repos/Bee-ruche/registre/actions/workflows/validation\.yml/runs\?event=pull_request&status=success"
+                                    r"&per_page=100&created=%3E%3D20\d\d-\d\d-\d\dT\d\d:\d\d:\d\dZ --paginate --jq ")
+        self.assertIn("nodes { number isDraft headRefOid", appels[0])
+        self.assertEqual(r.stdout, f"BEE passe-fusion preparer --dossier {passe} --prs {passe}/prs.tsv --validations {passe}/validations.tsv --exclure 12\n")
 
     def test_content_creating_requests_of_a_gh_call(self):
         """Measured on gh 2.89 against a mock server: a merge is one query and one mutation, a closing with its comment one
@@ -866,20 +906,21 @@ sys.exit(3 if a[:2] == ["pr", "view"] else 0)
             with self.subTest(flux=nom):
                 jobs = [j.get("steps", []) for n, j in self.flux(nom)["jobs"].items() if (nom, n) != ("validation.yml", "relancer")]
                 avec_gh = [e for e in jobs if any("gh " in s.get("run", "") for s in e)]
-                self.assertEqual(len(avec_gh), 1, "one job calls gh (ruche-0132: validation.yml's controles; ruche-0133: and relancer, below)")
-                etapes = avec_gh[0]
-                noms = [s.get("name", "") for s in etapes]
-                apres = "Scope of the PR (data only, or the full suite)" if nom == "validation.yml" else "Dépendances"  # ruche-0133: after both scopes
-                debut, fin = etapes[noms.index(apres) + 1], etapes[-1]
-                options = " ".join(f"--jeton {j}" for j in jetons)
-                self.assertEqual(debut["run"], f'python3 outils/bee.py api-budget start --dossier "$RUNNER_TEMP/api-budget" {options}')
-                self.assertEqual(fin["run"], f'python3 outils/bee.py api-budget end --dossier "$RUNNER_TEMP/api-budget" {options}')
-                self.assertEqual((debut.get("if"), fin.get("if")), (None, "always()"))
-                for etape in (debut, fin):
-                    self.assertEqual(etape["env"], {j: self.JETONS[j] for j in jetons})
-                avant = etapes[:etapes.index(debut)]
-                self.assertEqual([s.get("name") for s in avant if "gh " in s.get("run", "")], ["Scope of the PR (data only, or the full suite)"] if nom == "validation.yml" else [],
-                                 "a gh call before the measure starts (validation.yml: the scope step's one read only)")
+                self.assertEqual(len(avec_gh), 2 if nom == "fusion-auto.yml" else 1, "the jobs that call gh (ruche-0132: validation.yml's "
+                                 "controles; ruche-0133: and relancer, below; ruche-0120: fusion-auto's check and merge)")
+                for etapes in avec_gh:
+                    noms = [s.get("name", "") for s in etapes]
+                    apres = "Scope of the PR (data only, or the full suite)" if nom == "validation.yml" else "Dépendances"  # ruche-0133: after both scopes
+                    debut, fin = etapes[noms.index(apres) + 1], etapes[-1]
+                    options = " ".join(f"--jeton {j}" for j in jetons)
+                    self.assertEqual(debut["run"], f'python3 outils/bee.py api-budget start --dossier "$RUNNER_TEMP/api-budget" {options}')
+                    self.assertEqual(fin["run"], f'python3 outils/bee.py api-budget end --dossier "$RUNNER_TEMP/api-budget" {options}')
+                    self.assertEqual((debut.get("if"), fin.get("if")), (None, "always()"))
+                    for etape in (debut, fin):
+                        self.assertEqual(etape["env"], {j: self.JETONS[j] for j in jetons})
+                    avant = etapes[:etapes.index(debut)]
+                    self.assertEqual([s.get("name") for s in avant if "gh " in s.get("run", "")], ["Scope of the PR (data only, or the full suite)"] if nom == "validation.yml" else [],
+                                     "a gh call before the measure starts (validation.yml: the scope step's one read only)")
                 donnes = {v for s in self.etapes(nom) for v in (s.get("env") or {}).values() if "token" in str(v).lower()}
                 self.assertEqual(donnes, {self.JETONS[j] for j in jetons}, "a token given to gh but not measured")
         # ruche-0133: site.yml's job portee measures with main's tool before the push, right after its scope step (nothing of the
@@ -958,7 +999,8 @@ sys.exit(3 if a[:2] == ["pr", "view"] else 0)
                 self.assertEqual(flux["permissions"], attendues)
                 jobs = {"site.yml": {"pause": {}, "portee": {"contents": "read", "actions": "write"}},  # ruche-0133: the push's dispatches
                         "validation.yml": {"relancer": {"actions": "write"}},
-                        "verdicts.yml": {"pause": {}}, "integration-auto.yml": {"pause": {}}}.get(nom, {})  # ruche-0122: verdicts, integration
+                        "verdicts.yml": {"pause": {}}, "integration-auto.yml": {"pause": {}},  # ruche-0122: verdicts, integration
+                        "fusion-auto.yml": {"verifier": {"contents": "read", "pull-requests": "read", "actions": "read"}}}.get(nom, {})  # ruche-0120
                 self.assertEqual({n: j["permissions"] for n, j in flux["jobs"].items() if "permissions" in j}, jobs)
                 for etape in self.etapes(nom):
                     self.assertNotIn("${{", etape.get("run", ""), etape.get("name"))
@@ -2033,10 +2075,14 @@ class TestRegistre(BaseTest):
                 self.assertIn("juge_commun_min : entier de 1 à 9999 attendu", texte)
         self.regler_juge_commun_min(2)
         self.valide()
-        chemin = self.dossier / "bee.yaml"  # la porte toujours fermée (true) ne lit pas le minimum : rien à signaler
+        chemin = self.dossier / "bee.yaml"  # ruche-0144 : la porte toujours fermée (true) ne lit pas le minimum, mais la clé reste exigée
         chemin.write_text(chemin.read_text(encoding="utf-8").replace("relecture_gardien_requise: si_juge_incomplet", "relecture_gardien_requise: true"),
                           encoding="utf-8")
         self.regler_juge_commun_min(None)
+        code, texte = self.bee("valider")
+        self.assertEqual(code, 1, texte)
+        self.assertIn("juge_commun_min : entier de 1 à 9999 attendu", texte)
+        self.regler_juge_commun_min(2)
         self.valide()
 
     def test_juge_commun_etiquette_chiffres_ascii_a_l_enregistrement(self):
@@ -2970,6 +3016,275 @@ class TestPullRequestsArbre(BaseTest):
         code, texte = self.verifier("alice", "--fusion-auto")
         self.assertEqual(code, 0, texte)
         self.assertIn("FUSION_AUTO=oui", texte)
+
+
+class TestPasseFusion(BaseTest):
+    """ruche-0120 (E1): one fusion pass takes the open PRs whose current head was validated, in the order of that validation
+    (a head pushed again goes back in the line), checks each without a token as its author's on the main the previous ones
+    left, and merges each through one REST call bound to its checked head: a refused PR or a conflict is not merged, the
+    others are; a merge that fails stops the pass (the PRs after it were checked on a main that held it)."""
+
+    INSTANT = "2026-10-27T11:59:00Z"
+
+    def setUp(self):
+        super().setUp()
+        git(self.dossier, "init", "-q", "-b", "main")
+        git(self.dossier, "add", "-A")
+        git(self.dossier, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "base")
+        self.passe = pathlib.Path(self.temp.name) / "passe"
+        self.passe.mkdir()
+
+    def pr(self, nom, *gestes):
+        """A PR branch from main: each gesture a bee command; returns its head."""
+        git(self.dossier, "switch", "-qc", nom, "main")
+        for geste in gestes:
+            code, texte = self.bee(*geste)
+            self.assertEqual(code, 0, texte)
+        git(self.dossier, "add", "-A")
+        git(self.dossier, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", nom)
+        git(self.dossier, "switch", "-q", "main")
+        return git(self.dossier, "rev-parse", nom).strip()
+
+    def note(self, tache, par, texte="Piste : profiler d'abord."):
+        return ("noter", tache, "--utilisateur", par, "--texte", texte)
+
+    def verifier(self, *candidats):
+        (self.passe / bee.CANDIDATS).write_text("".join("\t".join((n, sha, qui, str(numero_de(qui)), self.INSTANT, "")) + "\n"
+                                                        for n, sha, qui in candidats), encoding="utf-8")
+        (self.passe / bee.AUTEURS_PASSE).write_text("", encoding="utf-8")
+        (self.passe / "sortie").unlink(missing_ok=True)
+        with mock.patch.dict(os.environ, {"GITHUB_OUTPUT": str(self.passe / "sortie")}):
+            code, texte = lancer("--registre", str(self.dossier), "passe-fusion", "verifier", "--dossier", str(self.passe), "--base", "main")
+        self.assertEqual(code, 0, texte)
+        return [tuple(l) for l in bee.lire_tsv(self.passe / bee.RESULTATS)], texte
+
+    def test_the_order_of_validation_and_a_head_pushed_again(self):
+        prs = [("5", "a" * 40, "alice", "1"), ("6", "b2" * 20, "bruno", "2"), ("7", "c" * 40, "chloe", "3"), ("8", "d" * 40, "david", "4")]
+        validations = [("100", "b1" * 20, "2026-10-27T10:00:00Z"), ("101", "a" * 40, "2026-10-27T10:01:00Z"),
+                       ("102", "c" * 40, "2026-10-27T10:02:00Z"), ("103", "b2" * 20, "2026-10-27T10:03:00Z"),
+                       ("105", "b1" * 20, "2026-10-27T10:05:00Z")]  # a head validated again takes the place of its latest run
+        # 6 was validated first, then pushed again: its new head goes behind those validated before it; 8 is not validated.
+        self.assertEqual(bee.ordre_de_passe(prs, validations[:4]), [("5", "a" * 40, "alice", "1", "2026-10-27T10:01:00Z"),
+                                                                    ("7", "c" * 40, "chloe", "3", "2026-10-27T10:02:00Z"),
+                                                                    ("6", "b2" * 20, "bruno", "2", "2026-10-27T10:03:00Z")])
+        # Pushed back to its first head, 6 waits behind all the others, with the time of that head's latest validation.
+        prs[1] = ("6", "b1" * 20, "bruno", "2")
+        self.assertEqual(bee.ordre_de_passe(prs, validations), [("5", "a" * 40, "alice", "1", "2026-10-27T10:01:00Z"),
+                                                                ("7", "c" * 40, "chloe", "3", "2026-10-27T10:02:00Z"),
+                                                                ("6", "b1" * 20, "bruno", "2", "2026-10-27T10:05:00Z")])
+        prs[1] = ("6", "b2" * 20, "bruno", "2")
+        self.assertEqual(bee.ordre_de_passe(prs, validations[:3]), [("5", "a" * 40, "alice", "1", "2026-10-27T10:01:00Z"),
+                                                                    ("7", "c" * 40, "chloe", "3", "2026-10-27T10:02:00Z")],
+                         "a head pushed again and not yet validated waits")
+
+    def test_a_refused_pr_or_a_conflict_is_not_merged_the_others_are(self):
+        honnete = self.pr("honnete", self.note("miniz-0001", "alice"))
+        usurpee = self.pr("usurpee", self.note("miniz-0002", "alice"))  # bruno's PR, signed as alice
+        conflit = self.pr("conflit", self.note("miniz-0001", "chloe"))  # appends to the file the first PR changed
+        reservation = self.pr("reservation", ("prendre", "miniz-0099", "--utilisateur", "chloe"))
+        resultats, texte = self.verifier(("11", honnete, "alice"), ("12", usurpee, "bruno"), ("13", conflit, "chloe"),
+                                         ("14", reservation, "chloe"))
+        self.assertEqual(resultats, [("11", honnete, "merge"), ("12", usurpee, "refused"), ("13", conflit, "conflict"),
+                                     ("14", reservation, "merge")], texte)
+        self.assertIn("::notice title=Fusion pass::validated=4 merge=2 refused=1 conflict=1 council=0", texte)
+        self.assertEqual((self.passe / "sortie").read_text(encoding="utf-8"), f"acceptees={git(self.dossier, 'rev-parse', 'main').strip()} 11:{honnete} 14:{reservation}\n",
+                         "for the merge job: the main they were checked on, then each accepted PR and its head")
+        # Alone on main, the third PR merges: the conflict came from the main the first one left.
+        self.assertEqual(self.verifier(("13", conflit, "chloe"))[0], [("13", conflit, "merge")])
+        # The time of the PR is its validation's creation: one older than 24 hours is refused (ruche-0091: push again).
+        self.INSTANT = "2026-10-26T11:00:00Z"
+        self.assertEqual(self.verifier(("13", conflit, "chloe"))[0], [("13", conflit, "refused")])
+        # The check leaves no trace in the registry's clone (its worktree is removed).
+        self.assertEqual(git(self.dossier, "worktree", "list").count("\n"), 1)
+
+    def test_a_pr_is_checked_on_the_main_the_previous_ones_left(self):
+        """R8: three engagements at most; alice's fourth reservation is refused only once her three earlier PRs are in."""
+        taches = [f"miniz-920{i}" for i in range(4)]
+        for tache in taches:
+            (self.dossier / f"taches/miniz/{tache}.yaml").write_text(TACHE_OPTIMISATION.replace("miniz-0099", tache), encoding="utf-8")
+        git(self.dossier, "add", "-A")
+        git(self.dossier, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "tâches")
+        heads = [self.pr(f"r{i}", ("prendre", t, "--utilisateur", "alice")) for i, t in enumerate(taches)]
+        resultats, texte = self.verifier(*((str(20 + i), h, "alice") for i, h in enumerate(heads)))
+        self.assertEqual([r[2] for r in resultats], ["merge", "merge", "merge", "refused"], texte)
+        self.assertEqual([r[2] for r in self.verifier(("23", heads[3], "alice"))[0]], ["merge"], "alone, it is valid")
+
+    def test_a_check_that_outlasts_its_time_is_a_refusal(self):
+        honnete = self.pr("honnete", self.note("miniz-0001", "alice"))
+        appels, lancer_vrai = [], subprocess.run
+
+        def lancer_lent(commande, *args, **kwargs):  # the gate as `timeout` ends it
+            if "verifier-pr" not in commande:
+                return lancer_vrai(commande, *args, **kwargs)
+            appels.append(commande)
+            return subprocess.CompletedProcess(commande, 124, "", "")
+        with mock.patch.object(bee.subprocess, "run", lancer_lent):
+            resultats, texte = self.verifier(("11", honnete, "alice"))
+        self.assertEqual((resultats, appels[0][:2]), ([("11", honnete, "refused")], ["timeout", "600"]), texte)
+
+    def test_a_pass_takes_100_prs_at_most_and_a_slow_read_is_an_empty_one(self):
+        """The first 100 in the line (the others wait for the next pass); a GitHub read that outlasts its time is empty (fails closed)."""
+        prs = [(str(n), f"{n:040x}", "alice", "1") for n in range(1, 151)]
+        validations = [(str(1000 + n), f"{n:040x}", "2026-10-27T10:00:00Z") for n in range(150, 0, -1)]
+        recuperees = []
+        with mock.patch.object(bee, "_git_brut", lambda depot, *a: recuperees.extend(a[3:]) or (1, b"")):
+            bee.passe_preparer(bee.Registre(str(self.dossier)), self.passe, prs, validations, "main", "refs/pull/{}/head")
+        self.assertEqual(recuperees[:100], [f"+refs/pull/{n}/head:refs/bee-passe/{n}" for n in range(1, 101)])
+        self.assertEqual(len({r for r in recuperees if r.startswith("+")}), 100)
+        with mock.patch.object(bee.subprocess, "run", return_value=subprocess.CompletedProcess([], 124, "late", "")) as lancer_:
+            self.assertEqual(bee.gh_api("user/1"), "")
+        self.assertEqual(lancer_.call_args[0][0], ["timeout", "60", "gh", "api", "user/1"])
+
+    def faux_gh(self, script):
+        bin_ = pathlib.Path(self.temp.name) / "bin"
+        bin_.mkdir(exist_ok=True)
+        (bin_ / "gh").write_text(f'#!/bin/sh\nprintf "%s\\n" "$*" >> "{self.passe}/gh.log"\n{script}\n', encoding="utf-8")
+        (bin_ / "gh").chmod(0o755)
+        return {**os.environ, "PATH": f"{bin_}{os.pathsep}{os.environ['PATH']}", "BEE_PAUSE_FUSION": "0"}
+
+    def fusionner(self, env, *options):
+        """The merge job's step, given what the check job output: the checked main (self.passe/main), then each accepted PR."""
+        (self.passe / "gh.log").unlink(missing_ok=True)
+        acceptees = " ".join([(self.passe / "main").read_text(encoding="utf-8").strip()]
+                             + [f"{n}:{sha}" for n, sha, e in bee.lire_tsv(self.passe / bee.RESULTATS) if e == "merge"])
+        r = subprocess.run([sys.executable, str(RACINE / "outils/bee.py"), "passe-fusion", "fusionner", "--dossier", str(self.passe),
+                            "--depot", "Bee-ruche/registre", "--acceptees", acceptees, *options], capture_output=True, text=True, env=env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        journal = self.passe / "gh.log"
+        return r.stdout, journal.read_text(encoding="utf-8").splitlines() if journal.exists() else []
+
+    # A GitHub stand-in: main is m...m (or $MAIN); the squash merge of PR n answers its commit s<n>0...0, whose parent is the main
+    # before it (or $PARENT); PRs in $REFUSE are always refused, those in $MOMENT once.
+    GITHUB = r'''import os, pathlib, sys
+a, d = sys.argv[1:], pathlib.Path(os.environ["D"])
+with open(d / "gh.log", "a") as f:
+    print(*a, file=f)
+etat = d / "github"
+main, vus = (etat.read_text().split(";") if etat.exists() else ["m" * 40, ""])
+if a[1].endswith("git/ref/heads/main"):
+    print(os.environ.get("MAIN", main))
+elif "PUT" in a:
+    n = a[3].split("/")[4]
+    if n in os.environ.get("REFUSE", "").split() or (n in os.environ.get("MOMENT", "").split() and f",{n}," not in vus):
+        etat.write_text(f"{main};{vus},{n},")
+        sys.exit(1)
+    nouveau = f"s{n}".ljust(40, "0")
+    (d / f"parent{n}").write_text(main)
+    etat.write_text(f"{nouveau};{vus}")
+    print(nouveau)
+elif "/commits/" in a[1]:
+    print(os.environ.get("PARENT") or (d / f"parent{a[1].split('/commits/s')[1].rstrip('0')}").read_text())
+'''
+
+    def faux_github(self):
+        bin_ = pathlib.Path(self.temp.name) / "bin"
+        bin_.mkdir(exist_ok=True)
+        (bin_ / "gh").write_text(f"#!{sys.executable}\n{self.GITHUB}", encoding="utf-8")
+        (bin_ / "gh").chmod(0o755)
+        return {**os.environ, "PATH": f"{bin_}{os.pathsep}{os.environ['PATH']}", "BEE_PAUSE_FUSION": "0", "D": str(self.passe)}
+
+    def merges(self, appels):
+        return [a.split("/")[4] for a in appels if a.startswith("api -X PUT")]
+
+    def test_each_merge_is_one_rest_call_bound_to_its_checked_head(self):
+        a, b, c, d = ("a" * 40, "b" * 40, "c" * 40, "d" * 40)
+        (self.passe / "main").write_text("m" * 40 + "\n", encoding="utf-8")
+        (self.passe / bee.RESULTATS).write_text(f"1\t{a}\tmerge\n2\t{b}\trefused\n3\t{c}\tconflict\n4\t{d}\tmerge\n5\t{a}\tcouncil\n", encoding="utf-8")
+        env = self.faux_github()
+        sortie, appels = self.fusionner(env)
+        s1 = "s1" + "0" * 38
+        self.assertEqual(appels, ["api repos/Bee-ruche/registre/git/ref/heads/main --jq .object.sha",
+                                  f"api -X PUT repos/Bee-ruche/registre/pulls/1/merge -f sha={a} -f merge_method=squash --jq .sha",
+                                  f"api repos/Bee-ruche/registre/commits/{s1} --jq .parents[0].sha",
+                                  f"api -X PUT repos/Bee-ruche/registre/pulls/4/merge -f sha={d} -f merge_method=squash --jq .sha",
+                                  f"api repos/Bee-ruche/registre/commits/{'s4' + '0' * 38} --jq .parents[0].sha"])
+        self.assertEqual((self.passe / "fusionnees").read_text(encoding="utf-8"), "1\n4\n")
+        self.assertIn("::notice title=Fusion pass::merged=2\n", sortie)
+        # A malformed line is never sent to GitHub, and nothing after it is merged.
+        (self.passe / "github").unlink()
+        (self.passe / bee.RESULTATS).write_text(f"1 --x\t{a}\tmerge\n4\t{d}\tmerge\n", encoding="utf-8")
+        sortie, appels = self.fusionner(env)
+        self.assertEqual((self.merges(appels), (self.passe / "fusionnees").read_text(encoding="utf-8")), ([], ""))
+        # The merge job validates what it gets: a head that is not 40 hexadecimal digits is never sent, nor anything after it.
+        (self.passe / "github").unlink(missing_ok=True)
+        sortie, appels = self.fusionner(env, "--acceptees", f"{'m' * 40} 1:{'a' * 39} 4:{d}")
+        self.assertEqual((self.merges(appels), (self.passe / "fusionnees").read_text(encoding="utf-8")), ([], ""))
+
+    def resultats(self, *numeros):
+        (self.passe / "main").write_text("m" * 40 + "\n", encoding="utf-8")
+        (self.passe / bee.RESULTATS).write_text("".join(f"{n}\t{n * 40}\tmerge\n" for n in numeros), encoding="utf-8")
+        (self.passe / "github").unlink(missing_ok=True)
+
+    def test_a_merge_github_refuses_does_not_hold_the_others_back(self):
+        """A merge refused for a moment is tried again; one still refused is excluded, and the pass asks for another, which
+        checks the PRs after it on the real main; three in a row at most."""
+        env = self.faux_github()
+        self.resultats("1", "2", "3")
+        sortie, appels = self.fusionner({**env, "MOMENT": "2"})
+        self.assertEqual(self.merges(appels), ["1", "2", "2", "3"])
+        self.assertEqual((self.passe / "fusionnees").read_text(encoding="utf-8"), "1\n2\n3\n")
+        self.assertFalse([a for a in appels if "dispatches" in a])
+        self.resultats("1", "2", "3")
+        sortie, appels = self.fusionner({**env, "REFUSE": "2"}, "--exclure", "7")
+        self.assertEqual(self.merges(appels), ["1", "2", "2", "2"], "tried three times, then the PRs after it wait")
+        self.assertEqual((self.passe / "fusionnees").read_text(encoding="utf-8"), "1\n")
+        self.assertIn("PR #2: not merged: the pass stops", sortie)
+        self.assertEqual(appels[-1], "api -X POST repos/Bee-ruche/registre/actions/workflows/fusion-auto.yml/dispatches -f ref=main -f inputs[exclure]=7,2")
+        self.resultats("1", "2")
+        sortie, appels = self.fusionner({**env, "REFUSE": "1"}, "--exclure", "7,8,9")
+        self.assertFalse([a for a in appels if "dispatches" in a], "three passes in a row asked for: no more")
+        self.resultats("2")
+        self.assertFalse([a for a in self.fusionner({**env, "REFUSE": "2"})[1] if "dispatches" in a], "nothing left after it")
+
+    def test_merges_happen_only_on_the_main_that_was_checked(self):
+        env = self.faux_github()
+        self.resultats("1", "2")
+        sortie, appels = self.fusionner({**env, "MAIN": "e" * 40})
+        self.assertEqual((self.merges(appels), appels[-1]), ([], "api -X POST repos/Bee-ruche/registre/actions/workflows/fusion-auto.yml/dispatches "
+                                                                  "-f ref=main -f inputs[exclure]=0"))
+        self.assertIn("main moved since the check: the pass stops", sortie)
+        # Main moved between the first check and the merge: the PR is merged, the next ones wait for another pass.
+        sortie, appels = self.fusionner({**env, "PARENT": "e" * 40})
+        self.assertEqual(self.merges(appels), ["1"])
+        self.assertEqual((self.passe / "fusionnees").read_text(encoding="utf-8"), "1\n")
+        self.assertIn("PR #1: main moved during the pass: the pass stops", sortie)
+        self.assertTrue(appels[-1].endswith("inputs[exclure]=0"))
+
+    def test_preparer_keeps_validated_data_prs_and_reads_what_the_gate_needs(self):
+        origine = pathlib.Path(self.temp.name) / "origine.git"
+        git(self.temp.name, "clone", "-q", "--bare", str(self.dossier), str(origine))
+        git(self.dossier, "remote", "add", "origin", str(origine))
+        donnee = self.pr("donnee", self.note("miniz-0001", "alice"), ("prendre", "miniz-0099", "--utilisateur", "alice"),
+                         ("soumettre", "miniz-0099", "--utilisateur", "alice", "--pr", "https://github.com/Bee-ruche/minizBee/pull/99007", "--resume", "Essai."))
+        membre = self.pr("membre", ("inscrire", "--pseudo", "david", "--compte-cree-le", "2020-01-01"))
+        git(self.dossier, "switch", "-qc", "code", "main")
+        (self.dossier / "outils/bee.py").write_text("# x\n", encoding="utf-8")
+        git(self.dossier, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qam", "code")
+        git(self.dossier, "switch", "-q", "main")
+        code = git(self.dossier, "rev-parse", "code").strip()
+        poussee = self.pr("poussee", self.note("miniz-0002", "bruno"))
+        for n, ref in (("1", "donnee"), ("2", "membre"), ("3", "code"), ("4", "poussee")):
+            git(self.dossier, "push", "-q", str(origine), f"{ref}:refs/heads/pr/{n}")
+        git(self.dossier, "fetch", "-q", "origin")
+        (self.passe / "prs.tsv").write_text(f"1\t{donnee}\talice\t11\n2\t{membre}\tdavid\t12\n3\t{code}\tchloe\t13\n4\t{'e' * 40}\tbruno\t14\n"
+                                            "5\tnot a line\n", encoding="utf-8")
+        (self.passe / "validations.tsv").write_text(f"9\t{membre}\tT9\n8\t{donnee}\tT8\n7\t{code}\tT7\n6\t{'e' * 40}\tT6\n6\t{poussee}\tT5\n",
+                                                    encoding="utf-8")
+        env = self.faux_gh('case "$*" in "api user/12 "*) echo 2019-05-05;; *pulls/99007*) printf "alice\\t11\\n";; *) exit 1;; esac')
+        r = subprocess.run([sys.executable, str(RACINE / "outils/bee.py"), "--registre", str(self.dossier), "passe-fusion", "preparer",
+                            "--dossier", str(self.passe), "--prs", str(self.passe / "prs.tsv"), "--validations", str(self.passe / "validations.tsv"),
+                            "--ref-pr", "refs/heads/pr/{}"], capture_output=True, text=True, env=env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        # Code (3) is left out; 4's fetched head is not the validated one (pushed since); the date is read only for the new member.
+        self.assertEqual(bee.lire_tsv(self.passe / bee.CANDIDATS), [["1", donnee, "alice", "11", "T8", ""], ["2", membre, "david", "12", "T9", "2019-05-05"]])
+        self.assertEqual((self.passe / "gh.log").read_text(encoding="utf-8").splitlines(),
+                         [f"api repos/Bee-ruche/minizBee/pulls/99007 --jq {bee.AUTEUR_PR_JQ}", "api user/12 --jq .created_at[:10]"])
+        self.assertEqual(bee.lire_auteurs_pr(self.passe / bee.AUTEURS_PASSE), {"https://github.com/Bee-ruche/minizBee/pull/99007": ("alice", 11)})
+        # A pass asked for by another leaves out the PRs that one could not merge (numbers only; 0: main had moved).
+        r = subprocess.run([sys.executable, str(RACINE / "outils/bee.py"), "--registre", str(self.dossier), "passe-fusion", "preparer",
+                            "--dossier", str(self.passe), "--prs", str(self.passe / "prs.tsv"), "--validations", str(self.passe / "validations.tsv"),
+                            "--ref-pr", "refs/heads/pr/{}", "--exclure", "0,1"], capture_output=True, text=True, env=env)
+        self.assertEqual((r.returncode, [c[0] for c in bee.lire_tsv(self.passe / bee.CANDIDATS)]), (0, ["2"]), r.stderr)
 
 
 class TestPullRequests(BaseTest):
@@ -5839,12 +6154,12 @@ class TestRevueAdverse(BaseParallele):
     def verifier(self, auteur, *options):
         return self.bee("verifier-pr", "--base", "main", "--tete", "HEAD", "--auteur", auteur, *options)
 
-    def etape(self, nom, etats=None, flux="integration-auto.yml", env_en_plus=None, reussite=True):
-        """Rejoue une étape d'un workflow (integration-auto.yml par défaut) avec le faux gh : (sortie, état des PR, appels)."""
+    def etape(self, nom, etats=None, flux="integration-auto.yml", env_en_plus=None, reussite=True, script=None):
+        """Rejoue une étape d'un workflow (integration-auto.yml par défaut), ou `script`, avec le faux gh : (sortie, état des PR, appels)."""
         import yaml
         donnees = yaml.safe_load((self.dossier / ".github/workflows" / flux).read_text(encoding="utf-8"))
         etapes = [s for job in donnees["jobs"].values() for s in job["steps"]]
-        script = next(s["run"] for s in etapes if s.get("name", "").startswith(nom))
+        script = script or next(s["run"] for s in etapes if s.get("name", "").startswith(nom))
         racine = self.dossier.parent
         (racine / "bin").mkdir(exist_ok=True)
         (racine / "runner").mkdir(exist_ok=True)
@@ -5869,6 +6184,21 @@ class TestRevueAdverse(BaseParallele):
             self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         appels = [json.loads(x) for x in journal.read_text(encoding="utf-8").splitlines()[avant:]]
         return r.stdout, json.loads(etat.read_text(encoding="utf-8")), appels
+
+    def passe(self, sha, auteur, instant, etats, reussite=True):
+        """ruche-0120: fusion-auto's pass on PR 1 (head `sha`, by `auteur`, its validation created at `instant`): the listing
+        step's last line (preparer, with the stub gh) on these listings, then the check step: (what to do, output, gh calls)."""
+        etapes = {e.get("name", ""): e["run"] for job in yaml.safe_load((self.dossier / ".github/workflows/fusion-auto.yml").read_text(
+            encoding="utf-8"))["jobs"].values() for e in job["steps"] if "run" in e}
+        passe = self.dossier.parent / "runner/passe"
+        shutil.rmtree(passe, ignore_errors=True)
+        script = (f'd="$RUNNER_TEMP/passe"; mkdir -p "$d"\nprintf "1\\t{sha}\\t{auteur}\\t{numero_de(auteur)}\\n" > "$d/prs.tsv"\n'
+                  f'printf "7\\t{sha}\\t{instant}\\n" > "$d/validations.tsv"\n'
+                  + etapes["Lister les PR ouvertes et leurs validations (ruche-0120)"].strip().splitlines()[-1] + "\n"
+                  + etapes["Vérifier chaque PR sans jeton, sur le main que laissent les précédentes (ruche-0120)"] + "\n")
+        sortie, _, appels = self.etape("", etats, flux="fusion-auto.yml", reussite=reussite, script=script)
+        resultats = bee.lire_tsv(passe / bee.RESULTATS) if (passe / bee.RESULTATS).exists() else []
+        return (resultats[0][2] if resultats else None), sortie, appels
 
     @staticmethod
     def appels_de(appels, *commande):
@@ -6600,25 +6930,15 @@ class TestRevueAdverse(BaseParallele):
         git(self.dossier, "push", "-q", "origin", "squat:refs/pull/1/head")
         sha = git(self.dossier, "rev-parse", "squat").strip()
         git(self.dossier, "switch", "-q", "main")
-        (racine / "home").mkdir()
-        sortie_gh = racine / "github_output"
-        env = {"NUMERO": "1", "AUTEUR": "chloe", "GITHUB_ID": str(numero_de("chloe")), "SHA": sha, "HOME": str(racine / "home"),
-               "GITHUB_OUTPUT": str(sortie_gh), "INSTANT_PR": "2026-10-27T13:00:05Z"}  # ruche-0091: workflow_run.created_at, the validation run of the push
-        # La PR 5555 a été ouverte par david : la soumission de chloe est refusée par l'étape de fusion-auto.
-        sortie, _, appels = self.etape("Vérifier la fusion simulée", {PR_MINIZ + "5555": {"state": "OPEN", "head": "x", "auteur": "david"}},
-                                       flux="fusion-auto.yml", env_en_plus=env, reussite=False)
-        self.assertIn("code=1", sortie_gh.read_text(encoding="utf-8"))
+        # La PR 5555 a été ouverte par david : la soumission de chloe est refusée par la passe de fusion-auto (ruche-0120 ; heure
+        # de la PR : la création de l'exécution de validation que la poussée a lancée, ruche-0091).
+        etat, sortie, appels = self.passe(sha, "chloe", "2026-10-27T13:00:05Z", {PR_MINIZ + "5555": {"state": "OPEN", "head": "x", "auteur": "david"}})
+        self.assertEqual(etat, "refused", sortie)
         self.assertIn("doit avoir été ouverte par chloe sur GitHub (auteur relevé : david)", sortie)
-        self.assertEqual([a["args"][1] for a in self.appels_de(appels, "api") if "/pulls/" in a["args"][1]],
-                         ["repos/Bee-ruche/minizBee/pulls/5555"])
         self.assertEqual([a["args"][1] for a in self.appels_de(appels, "api")], ["repos/Bee-ruche/minizBee/pulls/5555"], "ruche-0121: no account read")
         # La même, ouverte par chloe : fusion automatique.
-        git(self.dossier, "worktree", "remove", "--force", "../fusion")
-        git(self.dossier, "branch", "-D", "pr-1")
-        sortie_gh.write_text("", encoding="utf-8")
-        sortie, _, _ = self.etape("Vérifier la fusion simulée", {PR_MINIZ + "5555": {"state": "OPEN", "head": "x", "auteur": "chloe"}},
-                                  flux="fusion-auto.yml", env_en_plus=env)
-        self.assertIn("code=0", sortie_gh.read_text(encoding="utf-8"))
+        etat, sortie, _ = self.passe(sha, "chloe", "2026-10-27T13:00:05Z", {PR_MINIZ + "5555": {"state": "OPEN", "head": "x", "auteur": "chloe"}})
+        self.assertEqual(etat, "merge", sortie)
         # Sans auteur relevé (PR introuvable ou sans auteur), refusée : échec fermé.
         vide = self.dossier.parent / "auteurs_vides.tsv"
         vide.write_text("", encoding="utf-8")
@@ -6628,8 +6948,8 @@ class TestRevueAdverse(BaseParallele):
         self.assertIn("auteur relevé : inconnu", texte)
 
     def test_fusion_auto_checks_the_declared_dates_at_the_push(self):
-        """ruche-0091: fusion-auto's step gives verifier-pr the creation of the validation run that the push triggered. A
-        submission written at the push merges when the step runs hours later; one dated after the push is refused, and so is
+        """ruche-0091: fusion-auto's pass gives verifier-pr the creation of the validation run that the push triggered. A
+        submission written at the push merges when the pass runs hours later; one dated after the push is refused, and so is
         the PR when that record is missing or malformed (fails closed)."""
         self.fermer_porte()
         self.assertEqual(self.bee("prendre", "miniz-0099", "--utilisateur", "alice")[0], 0)
@@ -6645,27 +6965,18 @@ class TestRevueAdverse(BaseParallele):
         git(self.dossier, "push", "-q", "origin", "soumission:refs/pull/1/head")
         sha = git(self.dossier, "rev-parse", "soumission").strip()
         git(self.dossier, "switch", "-q", "main")
-        (racine / "home").mkdir()
-        sortie_gh = racine / "github_output"
-        self.a("2026-10-27T17:30:00Z")  # the step runs 4 h 30 after the push
-        for instant_pr, code in (("2026-10-27T13:00:05Z", "0"), ("2026-10-27T12:58:00Z", "1"), ("", "1"), ("null", "1"),
-                                 ("2026-10-27 13:00:05", "1")):
+        self.a("2026-10-27T17:30:00Z")  # the pass runs 4 h 30 after the push
+        for instant_pr, attendu in (("2026-10-27T13:00:05Z", "merge"), ("2026-10-27T12:58:00Z", "refused"), ("", "refused"),
+                                    ("null", "refused"), ("2026-10-27 13:00:05", "refused")):
             with self.subTest(instant_pr=instant_pr):
-                if (racine / "fusion").exists():
-                    git(self.dossier, "worktree", "remove", "--force", "../fusion")
-                    git(self.dossier, "branch", "-D", "pr-1")
-                sortie_gh.write_text("", encoding="utf-8")
-                env = {"NUMERO": "1", "AUTEUR": "alice", "GITHUB_ID": str(numero_de("alice")), "SHA": sha, "HOME": str(racine / "home"),
-                       "GITHUB_OUTPUT": str(sortie_gh), "INSTANT_PR": instant_pr}
-                sortie, _, _ = self.etape("Vérifier la fusion simulée", {PR_MINIZ + "5555": {"state": "OPEN", "head": "x", "auteur": "alice"}},
-                                          flux="fusion-auto.yml", env_en_plus=env, reussite=code == "0")
-                self.assertIn(f"code={code}", sortie_gh.read_text(encoding="utf-8"), sortie)
+                etat, sortie, _ = self.passe(sha, "alice", instant_pr, {PR_MINIZ + "5555": {"state": "OPEN", "head": "x", "auteur": "alice"}})
+                self.assertEqual(etat, attendu, sortie)
                 if instant_pr == "2026-10-27T12:58:00Z":
                     self.assertIn("soumise_le doit être l'heure de la soumission", sortie)
 
     def test_fusion_auto_reads_the_account_date_only_for_a_registration(self):
-        """ruche-0121: fusion-auto's gate step takes the author's number from the PR listing, and reads the account's creation
-        date (one call, by that number) only for a PR that adds a member file; unreadable, the step stops: nothing merged."""
+        """ruche-0121: fusion-auto's pass takes the author's number from the PR listing, and reads the account's creation date
+        (one call, by that number) only for a PR that adds a member file; unreadable, the gate refuses: nothing merged."""
         self.init_git()
         racine = self.dossier.parent
         subprocess.run(["git", "clone", "-q", "--bare", str(self.dossier), str(racine / "origine.git")], check=True)
@@ -6678,21 +6989,12 @@ class TestRevueAdverse(BaseParallele):
         git(self.dossier, "push", "-q", "origin", "inscription:refs/pull/1/head")
         sha = git(self.dossier, "rev-parse", "inscription").strip()
         git(self.dossier, "switch", "-q", "main")
-        (racine / "home").mkdir()
-        sortie_gh = racine / "github_output"
-        for cree_le, code in (("2020-01-01", "0"), ("2026-10-01", "1"), (None, None)):
+        for cree_le, attendu in (("2020-01-01", "merge"), ("2026-10-01", "refused"), (None, "refused")):
             with self.subTest(cree_le=cree_le):
-                if (racine / "fusion").exists():
-                    git(self.dossier, "worktree", "remove", "--force", "../fusion")
-                    git(self.dossier, "branch", "-D", "pr-1")
-                sortie_gh.write_text("", encoding="utf-8")
-                env = {"NUMERO": "1", "AUTEUR": "david", "GITHUB_ID": str(numero_de("david")), "SHA": sha, "HOME": str(racine / "home"),
-                       "GITHUB_OUTPUT": str(sortie_gh), "INSTANT_PR": "2026-10-27T13:00:05Z"}
-                sortie, _, appels = self.etape("Vérifier la fusion simulée", {"cree_le": cree_le}, flux="fusion-auto.yml",
-                                               env_en_plus=env, reussite=code == "0")
+                etat, sortie, appels = self.passe(sha, "david", "2026-10-27T13:00:05Z", {"cree_le": cree_le})
                 self.assertEqual([a["args"][1:] for a in self.appels_de(appels, "api")], [[f"user/{numero_de('david')}", "--jq", ".created_at[:10]"]])
-                self.assertEqual(sortie_gh.read_text(encoding="utf-8"), f"code={code}\n" if code else "", sortie)
-                if code == "1":
+                self.assertEqual(etat, attendu, sortie)
+                if cree_le == "2026-10-01":
                     self.assertIn("compte_cree_le ne correspond pas à la date fournie par GitHub (2026-10-01)", sortie)
 
     def test_N8_une_integration_d_une_manche_anterieure_n_empeche_pas_de_clore(self):
@@ -19536,8 +19838,7 @@ class TestIdentiteParNumero(BaseRepetitionGenerale):
             self.assertIn("--github-id", erreur.getvalue())
         # The workflows take it from GitHub's record of the PR's author (ruche-0121: the event, the PR listing), read the creation
         # date by that number when the PR adds a member file, and pass both to the gate.
-        for flux, etape, source in (("fusion-auto.yml", "Vérifier la fusion simulée", "${{ steps.pr.outputs.github_id }}"),
-                                    ("validation.yml", "Règles de la pull request", "${{ github.event.pull_request.user.id }}")):
+        for flux, etape, source in (("validation.yml", "Règles de la pull request", "${{ github.event.pull_request.user.id }}"),):
             with self.subTest(flux=flux):
                 etapes = [s for job in yaml.safe_load((RACINE / ".github/workflows" / flux).read_text(encoding="utf-8"))["jobs"].values()
                           for s in job.get("steps", [])]  # ruche-0132: validation.yml's suite job calls suite.yml (no steps)
@@ -19545,9 +19846,11 @@ class TestIdentiteParNumero(BaseRepetitionGenerale):
                 self.assertEqual(etape["env"]["GITHUB_ID"], source)
                 self.assertIn('''cree=$(gh api "user/$GITHUB_ID" --jq '.created_at[:10]'); fi''', etape["run"])
                 self.assertIn('--compte-cree-le "$cree" --github-id "$GITHUB_ID" ', etape["run"])
+        # ruche-0120: fusion-auto takes it from its listing of the PRs (GitHub's record of each author), which the pass gives the
+        # gate, and reads the date by it (TestPasseFusion).
         listage = next(s["run"] for s in yaml.safe_load((RACINE / ".github/workflows/fusion-auto.yml").read_text(encoding="utf-8"))["jobs"]
-                       ["fusionner"]["steps"] if s.get("name") == "Retrouver la pull request")
-        self.assertIn('''auteur=\\(.user.login)\\ngithub_id=\\(.user.id)''', listage)
+                       ["verifier"]["steps"] if s.get("name", "").startswith("Lister les PR ouvertes"))
+        self.assertIn('''[.number, .headRefOid, (.author.login // ""), (.author.databaseId // "")] | @tsv''', listage)
 
     def test_une_pr_ne_change_pas_qui_est_qui_pour_ses_propres_controles(self):
         # eve's file says bidji29 was her login, and the same PR does what only the council does: in the PR's own state, eve
@@ -20746,7 +21049,9 @@ class TestSignalementsRuche0137(OutilsSignalements):
         self.assertEqual([x["id"] for x in tableau["signalements_au_plafond"]], ["S-0006", "S-0005", "S-0004"])
         # The value is the council's (bee.yaml) : at 2, a second one the same day waits for the council too.
         config = self.dossier / "bee.yaml"
-        config.write_text(config.read_text(encoding="utf-8").replace("  signalements_nommant_max: 3", "  signalements_nommant_max: 3\n  signalements_au_plafond_par_24h: 2"), encoding="utf-8")
+        texte = re.sub(r"(?m)^  signalements_au_plafond_par_24h: *1\b", "  signalements_au_plafond_par_24h: 2", config.read_text(encoding="utf-8"))
+        self.assertIn("  signalements_au_plafond_par_24h: 2", texte)  # ruche-0144: the key is written in bee.yaml, with its value 1
+        config.write_text(texte, encoding="utf-8")
         self.commit("deux par 24 h")
         self.a("2026-11-01T10:03:00Z")
         self.assertEqual(self.au_conseil("dora", "alice", "hugo"), "S-0007")
@@ -21329,6 +21634,7 @@ class TestBulkPrReadsRehearsal(unittest.TestCase):
 class TestReservedPseudonyms(BaseTest):
     REFUSED = ("conseil", "Conseil", "CONSEIL", "bee", "github-actions", "mesurer", "Relire", "laruche-architect")
     ROBOT = '"github-actions[bot]"'
+    MALFORMED = "bee.yaml : pseudos_reserves is required and well formed, robots too : no member file is accepted otherwise"
 
     def setUp(self):
         super().setUp()
@@ -21356,10 +21662,10 @@ class TestReservedPseudonyms(BaseTest):
         return self.bee("verifier-pr", "--base", "main", "--tete", "HEAD", "--auteur", pseudo, "--compte-cree-le", "2021-05-05")
 
     def test_the_real_list_names_the_council_robots_roles_and_hive_accounts(self):
-        reserves = bee.lire_yaml(RACINE / "bee.yaml")["pseudos_reserves"]
+        config = bee.lire_yaml(RACINE / "bee.yaml")  # ruche-0144: the list with the robots, both required by reserved_pseudo
         for nom in ("conseil", "bee", "github-actions[bot]", "mesurer", "relire", "optimiser", "proposer", "gardien", "laruche-architect"):
-            self.assertTrue(bee.reserved_pseudo({"pseudos_reserves": reserves}, nom.upper()), nom)
-        self.assertIsNone(bee.reserved_pseudo({"pseudos_reserves": reserves}, "bidji29"), "a council member's own login is a person")
+            self.assertIn("is a reserved pseudonym", bee.reserved_pseudo(config, nom.upper()), nom)
+        self.assertIsNone(bee.reserved_pseudo(config, "bidji29"), "a council member's own login is a person")
 
     def test_bee_inscrire_refuses_a_reserved_name_whatever_its_case(self):
         for pseudo in self.REFUSED:
@@ -21423,7 +21729,7 @@ class TestReservedPseudonyms(BaseTest):
         self.assertIn("bee.yaml : pseudos_reserves : a list of distinct GitHub logins", texte)
         code, texte = self.bee("inscrire", "--pseudo", "Conseil", "--compte-cree-le", "2020-01-01")
         self.assertEqual(code, 1, texte)
-        self.assertIn("reserved pseudonym", texte)
+        self.assertIn(self.MALFORMED, texte)  # ruche-0144: a list that misses the council refuses every name, the council's too
         self.set_list("conseil", self.ROBOT, "bee")
         chemin = self.dossier / "bee.yaml"
         chemin.write_text(chemin.read_text(encoding="utf-8").replace("robots:\n", "robots:\n  - veilleur\n", 1), encoding="utf-8")
@@ -21433,11 +21739,11 @@ class TestReservedPseudonyms(BaseTest):
         self.assertIn("naming at least conseil and every robot", texte)
         code, texte = self.bee("inscrire", "--pseudo", "Veilleur", "--compte-cree-le", "2020-01-01")
         self.assertEqual(code, 1, texte)
-        self.assertIn("reserved pseudonym", texte)
+        self.assertIn(self.MALFORMED, texte)  # and one that misses a robot, the robot's too
         self.commit("main adds a robot")
         code, texte = self.member_pr("veilleur")
         self.assertEqual(code, 1, texte)
-        self.assertIn("« veilleur » is a reserved pseudonym", texte)
+        self.assertIn(f"membres/veilleur.yaml : {self.MALFORMED}", texte)
         git(self.dossier, "switch", "-qf", "main")
         self.set_list("conseil", self.ROBOT, "bee", "veilleur")
         self.valide()
@@ -21959,6 +22265,294 @@ class TestEnglishNamesStep1a(unittest.TestCase):
         # dormant: nothing of the tool, the site or the workflows calls the migration tooling
         for chemin in ("outils/bee.py", "outils/site_bee.py", *(p.relative_to(RACINE).as_posix() for p in (RACINE / ".github").rglob("*.yml"))):
             self.assertNotIn("migration/", (RACINE / chemin).read_text(encoding="utf-8"), chemin)
+
+
+# --- ruche-0144: settings fail closed: each bee.yaml key bee reads is required and well formed, any other key refused, no default ---
+
+class TestReglagesRuche0144(BaseTest):
+    contribution_jugee, regler_porte, regler_juge_commun_min = (TestRegistre.contribution_jugee, TestRegistre.regler_porte,
+                                                                TestRegistre.regler_juge_commun_min)
+
+    def reglee(self, chemin, *valeur):
+        """The fixture's bee.yaml as read, the setting at `chemin` removed, or set to `valeur`."""
+        config = bee.lire_yaml(self.dossier / "bee.yaml")
+        section, _, cle = chemin.rpartition(".")
+        lieu = config[section] if section else config
+        lieu.update({cle: valeur[0]}) if valeur else lieu.pop(cle)
+        return config
+
+    def ligne(self, cle, ligne):
+        """bee.yaml with its top-level `cle` line removed, then `ligne` (if any) written at the end."""
+        chemin = self.dossier / "bee.yaml"
+        texte = re.sub(rf"(?m)^{cle}:.*\n", "", chemin.read_text(encoding="utf-8"))
+        self.assertNotIn(f"\n{cle}:", texte)
+        chemin.write_text(texte + ligne, encoding="utf-8")
+
+    def ferme(self, chemin, mal_forme, lecture):
+        """With the live setting, `lecture` reads it; missing, then malformed (`mal_forme`: a value that used to switch a check off, raise a
+        cap or lower a threshold), it refuses with ErreurBee naming the setting, as bee valider does: never a default, never the permissive."""
+        reg = bee.Registre(self.dossier)
+        lecture(reg)
+        for config in (self.reglee(chemin), self.reglee(chemin, mal_forme)):
+            with self.subTest(chemin=chemin, valeur=config.get(chemin.split(".")[0], "(absente)")):
+                reg.config = config
+                with self.assertRaisesRegex(bee.ErreurBee, rf"^bee\.yaml : {re.escape(chemin)}\b"):
+                    lecture(reg)
+                self.assertTrue([p for p in bee.problemes_reglages(config) if p.startswith(f"bee.yaml : {chemin}")], config)
+
+    # --- bee valider: one list, every key required and well formed, no other ---
+
+    def test_the_live_bee_yaml_has_every_setting_and_no_other(self):
+        self.assertEqual(bee.problemes_reglages(bee.lire_yaml(RACINE / "bee.yaml")), [])
+        self.valide()
+
+    def test_each_setting_missing_or_malformed_is_refused_by_bee_valider_and_by_its_read(self):
+        chemins = [c for c, f in bee.REGLAGES.items() if not isinstance(f, dict)] + [
+            f"{c}.{k}" for c, f in bee.REGLAGES.items() if isinstance(f, dict) for k in f]
+        self.assertGreater(len(chemins), 60)
+        for chemin in chemins:
+            for config, suffixe in ((self.reglee(chemin), " (clé absente)"), (self.reglee(chemin, [[]]), "")):
+                with self.subTest(chemin=chemin, suffixe=suffixe):
+                    probleme = bee.probleme_reglage(config, chemin)
+                    self.assertTrue(probleme and probleme.startswith(f"bee.yaml : {chemin} : ") and probleme.endswith(suffixe), probleme)
+                    self.assertIn(probleme, bee.problemes_reglages(config))
+                    with self.assertRaisesRegex(bee.ErreurBee, re.escape(probleme)):
+                        bee.reglage(config, chemin)
+        with self.assertRaises(KeyError):  # a read of a key the list does not have is a bug, never a default
+            bee.reglage(bee.lire_yaml(self.dossier / "bee.yaml"), "nom")
+
+    def test_bee_valider_refuses_a_missing_key(self):
+        chemin = self.dossier / "bee.yaml"
+        avant = chemin.read_text(encoding="utf-8")
+        for motif, attendu in ((r"(?m)^gain_minimal:.*\n", "bee.yaml : gain_minimal : nombre de 0 à 1 attendu (clé absente)"),
+                               (r"(?m)^  max_par_pr:.*\n", "bee.yaml : notes.max_par_pr : entier positif attendu (au plus 100000) (clé absente)"),
+                               (r"(?m)^notes:\n(?:  .*\n)+", "bee.yaml : notes : une section attendue (texte_max, max_par_pr, max_par_24h) (clé absente)")):
+            with self.subTest(attendu=attendu):
+                chemin.write_text(re.sub(motif, "", avant, count=1), encoding="utf-8")
+                code, texte = self.bee("valider")
+                self.assertEqual(code, 1, texte)
+                self.assertIn(attendu, texte)
+        chemin.write_text(avant, encoding="utf-8")
+        self.valide()
+
+    def test_bee_valider_refuses_an_unknown_key(self):
+        chemin = self.dossier / "bee.yaml"
+        avant = chemin.read_text(encoding="utf-8")
+        for texte_yaml, attendu in ((avant + "nom: Bee\n", "bee.yaml : nom : clé inconnue, que bee ne lit pas (ruche-0144)"),
+                                    (avant + "relecture_conseil_requise: false\n", "bee.yaml : relecture_conseil_requise : clé inconnue"),
+                                    (avant.replace("agora:\n", "agora:\n  texte_maxi: 3\n", 1), "bee.yaml : agora.texte_maxi : clé inconnue"),
+                                    (avant.replace("croissance:\n", "croissance:\n  branche_dormante_jours: 30\n", 1),  # read by nothing yet
+                                     "bee.yaml : croissance.branche_dormante_jours : clé inconnue")):
+            with self.subTest(attendu=attendu):
+                chemin.write_text(texte_yaml, encoding="utf-8")
+                code, texte = self.bee("valider")
+                self.assertEqual(code, 1, texte)
+                self.assertIn(attendu, texte)
+        chemin.write_text(avant, encoding="utf-8")
+        self.valide()
+
+    def test_one_list_for_the_reads_and_for_bee_valider(self):
+        """Every read of bee.yaml in bee and its site goes through reglage() and names a listed setting; every listed setting is read."""
+        sources = "".join((RACINE / "outils" / f).read_text(encoding="utf-8") for f in ("bee.py", "site_bee.py"))
+        self.assertEqual(re.findall(r"\.config(?:\.get\(|\[)|= *(?:reg|self)\.config\b", sources), [])
+        appels = set(re.findall(r"""reglage\((?:[^()"']*?, *)?["']([\w.]+)["']""", sources))
+        feuilles = {c for c, f in bee.REGLAGES.items() if not isinstance(f, dict)} | {
+            f"{c}.{k}" for c, f in bee.REGLAGES.items() if isinstance(f, dict) for k in f}
+        self.assertLessEqual(appels, feuilles | set(bee.REGLAGES))  # a section is read whole, or key by key
+        self.assertEqual({c for c in feuilles if c in appels or c.split(".")[0] in appels}, feuilles)
+        debut = sources.index("REGLAGES = {")
+        ailleurs = sources[:debut] + sources[sources.index("\n}\n", debut):]  # each key named where it is used, outside the list
+        construits = {f"{d}_max_par_{s}" for d in bee.CREES_PAR for s in ("pr", "24h")}  # creations' caps, named by folder:
+        self.assertIn('config_creations(reg)[f"{dossier}_max_par_24h"]', ailleurs)
+        self.assertIn('config_creations(reg)[f"{d}_max_par_pr"]', ailleurs)
+        self.assertEqual([c for c in feuilles if (cle := c.rpartition(".")[2]) not in construits
+                          and not re.search(rf"[\"'.]{re.escape(cle)}[\"']", ailleurs)], [])
+
+    # --- each read that used to fall back to a permissive value, missing then malformed ---
+
+    def test_relecture_gardien_requise_missing_or_falsy_no_longer_opens_the_gate(self):
+        # Missing, it fell back to relecture_conseil_requise, then to « jamais » ; 0, '' or null too: no guardian review was required.
+        self.regler_porte("si_juge_incomplet")
+        self.regler_juge_commun_min(2)
+        self.contributeurs("bruno", "chloe")
+        cid = self.contribution_jugee(extra_juge={"version": 3, "commun": "juge-v1"})  # under juge_commun_min: a guardian reviews
+        self.assertEqual(self.bee("voter", cid, "--utilisateur", "bruno", "--valeur", "1")[0], 0)
+        code, texte = self.bee("verifier-acceptation", cid)
+        self.assertEqual(code, 1, texte)
+        self.assertIn("porte de relecture temporaire", texte)
+        self.ferme("relecture_gardien_requise", 0, lambda reg: bee.porte_exigee(reg, {}))
+        for ligne in ("", "relecture_gardien_requise: 0\n", "relecture_gardien_requise: ''\n", "relecture_gardien_requise: null\n",
+                      "relecture_conseil_requise: false\n"):
+            with self.subTest(ligne=ligne):
+                self.ligne("relecture_gardien_requise", ligne)
+                code, texte = self.bee("verifier-acceptation", cid)
+                self.assertEqual(code, 1, texte)
+                self.assertIn("bee.yaml : relecture_gardien_requise : true, si_juge_incomplet ou false attendu", texte)
+
+    def test_amorcage_missing_or_malformed(self):
+        # A string ('false') was truthy: the bootstrap on, level checks off ; missing, robots decided and a Confirmé created open tasks.
+        tache = self.dossier / "taches/miniz/miniz-9003.yaml"
+        tache.write_text(TACHE_OPTIMISATION.replace("miniz-0099", "miniz-9003").replace("taille: S", "taille: L"), encoding="utf-8")
+        for ligne in ("", "amorcage: 'false'\n", "amorcage: 1\n"):
+            with self.subTest(ligne=ligne):
+                self.ligne("amorcage", ligne)
+                code, texte = self.bee("prendre", "miniz-9003", "--utilisateur", "alice")
+                self.assertEqual(code, 1, texte)
+                self.assertIn("bee.yaml : amorcage : true ou false attendu", texte)
+                self.assertEqual(bee.lire_yaml(tache)["statut"], "ouverte")
+        self.ligne("amorcage", "amorcage: true\n")
+        self.ferme("amorcage", "false", lambda reg: bee.resume_r3(reg, {"requises": 0, "cible": 2}))
+        self.assertEqual(self.bee("prendre", "miniz-9003", "--utilisateur", "alice")[0], 0)  # the witness: in the bootstrap, a Nouveau takes L
+
+    def test_anciennete_compte_min_jours_missing_or_malformed(self):
+        # false or '0' read as 0 days: an account created the same day passed bee inscrire and the gate.
+        for ligne in ("", "anciennete_compte_min_jours: false\n", "anciennete_compte_min_jours: '0'\n"):
+            with self.subTest(ligne=ligne):
+                self.ligne("anciennete_compte_min_jours", ligne)
+                code, texte = self.bee("inscrire", "--pseudo", "david", "--compte-cree-le", "2026-10-27")
+                self.assertEqual(code, 1, texte)
+                self.assertIn("bee.yaml : anciennete_compte_min_jours : entier positif attendu", texte)
+                self.assertFalse((self.dossier / "membres/david.yaml").exists())
+        self.ligne("anciennete_compte_min_jours", "anciennete_compte_min_jours: 90\n")
+        self.assertIn("au moins 90 jours", self.bee("inscrire", "--pseudo", "david", "--compte-cree-le", "2026-10-27")[1])
+
+    def r3(self):
+        self.contributeurs("bruno", "chloe")
+        return self.contribution_jugee()
+
+    def test_gain_minimal(self):  # false read as 0: any gain passed R4
+        cid = self.r3()
+        self.ferme("gain_minimal", False, lambda reg: bee.raisons_r3(reg, cid))
+
+    def test_degradation_max_autres(self):  # true read as 1.0: any other metric could lose 100 % (R5)
+        cid = self.r3()
+        self.ferme("degradation_max_autres", True, lambda reg: bee.raisons_r3(reg, cid))
+
+    def test_relectures_requises(self):  # false or '0' read as 0: no favourable review required (R3)
+        cid = self.r3()
+        self.ferme("relectures_requises", "0", lambda reg: bee.raisons_r3(reg, cid))
+
+    def test_vote_net_min(self):  # false read as 0: no vote required (R3)
+        cid = self.r3()
+        self.ferme("vote_net_min", False, lambda reg: bee.raisons_r3(reg, cid))
+
+    def test_fenetre_acceptation_heures(self):  # true read as 1 h: integration and the race's protection after one hour (R3)
+        cid = self.r3()
+        self.ferme("fenetre_acceptation_heures", True, lambda reg: bee.raisons_r3(reg, cid))
+        self.ferme("fenetre_acceptation_heures", True, lambda reg: bee.bornes_attente(reg, reg.enregistrement(cid)[1]))
+
+    def test_reservation_max_heures(self):  # true read as 1 h: reservations expired, the race's protection shrank (R7, R3)
+        self.ferme("reservation_max_heures", True, lambda reg: bee.engagement_expire(reg, "2026-10-27T10:00:00Z", bee.maintenant()))
+
+    def test_reservations_max_par_utilisateur(self):  # '10', a string, read as 10 (R8)
+        self.ferme("reservations_max_par_utilisateur", "10", lambda reg: bee.r8_maximum(reg, "alice", [], bee.maintenant()))
+
+    def test_reprise_apres_liberation_heures(self):  # malformed, or missing: 24 h, whatever the council had set (R7)
+        self.ferme("reprise_apres_liberation_heures", -1, bee.delai_reprise)
+
+    def test_rule_votes(self):  # true read as 1 day, false as a quorum or a majority of 0 (R10)
+        self.assertEqual(self.bee("proposer", "--utilisateur", "alice", "--regle", "R4", "--texte", "Un texte assez long.", "--motif",
+                                  "Pour le test.")[0], 0)
+        pid = next(iter(bee.Registre(self.dossier).propositions))
+        lecture = lambda reg: bee.depouiller_proposition(reg, pid, bee.calculer_niveaux(reg), bee.maintenant())  # noqa: E731
+        for chemin, mal_forme in (("duree_vote_jours", True), ("quorum_votants", False), ("majorite_requise", False)):
+            self.ferme(chemin, mal_forme, lecture)
+
+    def test_ecart_declare_max(self):  # true read as 1.0: the reviewers' alert on a declared gain off
+        self.ferme("ecart_declare_max", True, lambda reg: bee.alertes_relecteurs(reg, {"verdict": {"ecart_declare": 0.5}}))
+
+    def test_section_caps(self):  # missing or malformed, each fell back to a hard-coded cap, above any the council had lowered
+        for chemin, lecture in (("agora.texte_max", bee.config_agora), ("notes.max_par_24h", bee.config_notes),
+                                ("creations.taches_max_par_pr", bee.config_creations), ("creations.signalements_au_plafond_par_24h",
+                                bee.config_creations), ("croissance.invitations_par_semaine", bee.config_croissance),
+                                ("croissance.expiration_jours", lambda reg: bee.expiration({"propose_le": "2026-10-27T10:00:00Z"},
+                                                                                            bee.config_croissance(reg)))):
+            self.ferme(chemin, "1500", lecture)
+        for section, lecture in (("agora", bee.config_agora), ("croissance", bee.config_croissance)):
+            self.ferme(section, [], lecture)
+
+    def test_cap_organisation_and_phase(self):  # neutral reads, required all the same
+        for chemin, mal_forme, lecture in (("cap.postes", {"gouvernance": 100.5}, bee.cap_cible), ("cap.fenetre_jours", True, bee.gestes_recents),
+                                           ("cap.poids_max_par_utilisateur_et_jour", "6", bee.poids_max_par_jour),
+                                           ("organisation", ["Bee-ruche"], bee.cles_d_origine), ("phase", "1", lambda reg: reg.reglage("phase"))):
+            self.ferme(chemin, mal_forme, lecture)
+
+    def test_robots_missing_or_malformed_means_no_robot(self):
+        # A string was read as its characters: every one-letter login was a robot (verdicts, expirations, decisions out of the bootstrap).
+        self.assertEqual(bee.Registre(self.dossier).robots, {"github-actions[bot]"})
+        chemin = self.dossier / "bee.yaml"
+        avant = chemin.read_text(encoding="utf-8")
+        for ligne in ("", 'robots: "github-actions[bot]"\n', "robots: [{a: 1}]\n"):
+            with self.subTest(ligne=ligne):
+                chemin.write_text(re.sub(r"(?m)^robots:\n(?:  - .*\n)+", ligne, avant), encoding="utf-8")
+                self.assertEqual(bee.Registre(self.dossier).robots, set())
+                code, texte = self.bee("valider")
+                self.assertEqual(code, 1, texte)
+                self.assertIn("bee.yaml : robots : une liste de logins GitHub attendue", texte)
+
+    # --- after the adversarial review ---
+
+    def test_reserved_pseudo_refuses_every_name_unless_both_lists_are_well_formed(self):
+        # Before: any non-empty list passed (['x'], ['conseil', 5]) and a malformed robots list was []: bee, Bee, github-actions[bot] free.
+        refus = "bee.yaml : pseudos_reserves is required and well formed, robots too : no member file is accepted otherwise"
+        vivant = bee.lire_yaml(self.dossier / "bee.yaml")
+        self.assertIsNone(bee.reserved_pseudo(vivant, "david"))
+        self.assertIn("is a reserved pseudonym", bee.reserved_pseudo(vivant, "Bee"))
+        for config in (self.reglee("pseudos_reserves", ["x"]), self.reglee("pseudos_reserves", ["conseil", 5]),
+                       self.reglee("pseudos_reserves", ["conseil", None]), self.reglee("robots", "github-actions[bot]"),
+                       self.reglee("robots", [{"a": 1}]), self.reglee("robots")):
+            for pseudo in ("david", "bee", "Bee", "github-actions[bot]"):
+                with self.subTest(pseudos_reserves=config.get("pseudos_reserves"), robots=config.get("robots", "(absente)"), pseudo=pseudo):
+                    self.assertEqual(bee.reserved_pseudo(config, pseudo), refus + " (ruche-0104)")
+        chemin = self.dossier / "bee.yaml"
+        chemin.write_text(re.sub(r"(?m)^robots:\n(?:  - .*\n)+", 'robots: "github-actions[bot]"\n', chemin.read_text(encoding="utf-8")),
+                          encoding="utf-8")
+        for commande in (("inscrire", "--pseudo", "Bee", "--compte-cree-le", "2020-01-01"), ("renommer", "--ancien", "alice", "--pseudo", "bee"),
+                         ("inscrire", "--pseudo", "david", "--compte-cree-le", "2020-01-01")):
+            with self.subTest(commande=commande):
+                code, texte = self.bee(*commande)
+                self.assertEqual(code, 1, texte)
+                self.assertIn(refus, texte)
+        self.assertEqual([n for n in ("bee", "Bee", "david") if (self.dossier / f"membres/{n}.yaml").exists()], [])
+        self.assertTrue((self.dossier / "membres/alice.yaml").exists())
+
+    def test_huge_or_non_finite_numbers_are_malformed(self):
+        # Before: 10**23 or 10**400 hours passed bee valider, then timedelta or float raised OverflowError (a traceback) ; .inf passed
+        # for reprise_apres_liberation_heures and for cap.poids_max_par_utilisateur_et_jour (the weight cap off).
+        borne = bee._BORNE
+        for chemin, valeur in (("reservation_max_heures", 10 ** 23), ("reservation_max_heures", 10 ** 400), ("fenetre_acceptation_heures", 10 ** 23),
+                               ("reprise_apres_liberation_heures", math.inf), ("reprise_apres_liberation_heures", math.nan),
+                               ("cap.poids_max_par_utilisateur_et_jour", math.inf), ("gain_minimal", math.nan), ("relectures_requises", 10 ** 23),
+                               ("agora.texte_max", borne + 1), ("croissance.membres_actifs_jours", 10 ** 6),
+                               ("r8_amorcage", {"max": 10 ** 23, "jusqu_au": "2026-12-01T00:00:00Z"})):
+            with self.subTest(chemin=chemin, valeur=valeur):
+                config = self.reglee(chemin, valeur)
+                probleme = bee.probleme_reglage(config, chemin)
+                self.assertTrue(probleme and probleme.startswith(f"bee.yaml : {chemin} : "), probleme)
+                self.assertIn(probleme, bee.problemes_reglages(config))
+                with self.assertRaisesRegex(bee.ErreurBee, re.escape(probleme)):
+                    bee.reglage(config, chemin)
+        for chemin in ("agora.texte_max", "reservation_max_heures", "croissance.membres_actifs_jours"):  # the bound itself is well formed
+            self.assertIsNone(bee.probleme_reglage(self.reglee(chemin, borne), chemin))
+        self.ferme("reservation_max_heures", 10 ** 23, lambda reg: bee.engagement_expire(reg, "2026-10-27T10:00:00Z", bee.maintenant()))
+        self.ferme("cap.poids_max_par_utilisateur_et_jour", math.inf, bee.poids_max_par_jour)
+        self.ferme("croissance.membres_actifs_jours", 10 ** 6, lambda reg: bee.gestes_recents(
+            reg, jours=bee.config_croissance(reg)["membres_actifs_jours"]))
+        chemin = self.dossier / "bee.yaml"
+        avant = chemin.read_text(encoding="utf-8")
+        for texte_yaml, attendu, lecteur in (
+                (re.sub(r"(?m)^reservation_max_heures:.*\n", "reservation_max_heures: 100000000000000000000000\n", avant),
+                 "bee.yaml : reservation_max_heures : entier positif attendu (au plus 100000)", "essaim"),
+                (re.sub(r"(?m)^  poids_max_par_utilisateur_et_jour:.*\n", "  poids_max_par_utilisateur_et_jour: .inf\n", avant),
+                 "bee.yaml : cap.poids_max_par_utilisateur_et_jour : nombre positif attendu (au plus 100000)", "cap")):
+            for commande in ("valider", lecteur):  # refused, never a traceback
+                with self.subTest(attendu=attendu, commande=commande):
+                    chemin.write_text(texte_yaml, encoding="utf-8")
+                    code, texte = self.bee(commande)
+                    self.assertEqual(code, 1, texte)
+                    self.assertIn(attendu, texte)
+        chemin.write_text(avant, encoding="utf-8")
+        self.valide()
 
 
 if __name__ == "__main__":

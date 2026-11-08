@@ -30,7 +30,7 @@ un corpus, un outil qui servira ailleurs).
 | **En germe** | Bâtir sa maturité : oracle, juge, corpus, tests, méta-tests, nœud de l'arbre. Rien n'est intégré automatiquement ; le conseil ou un gardien intègre | Un dossier d'ouverture ([nouveau-projet.md](nouveau-projet.md) ; pour un domaine hors du logiciel, l'étude d'impact de [vision.md](vision.md)), débattu 72 h, accepté par le conseil. À tout moment, quelle que soit la maturité des autres branches |
 | **Active** | Le travail courant : R3 intègre ce que son juge a jugé | Son juge a tenu : revue adverse indépendante et méta-tests (vision, principe 6) |
 | **Mûre** | Elle invite pour elle-même, ouvre ses sous-branches, garde ses propres gardiens et garants | Un encadrement à elle (gardiens et garants qui y relisent), sans incident ouvert |
-| **Dormante** | Rien ; tout reste lisible | Sans activité pendant `branche_dormante_jours` (30) ; elle se réveille par une tâche |
+| **Dormante** | Rien ; tout reste lisible | Sans activité pendant 30 jours (`branche_dormante_jours`, que ruche-0023 mettra dans `bee.yaml` avec ce qui le lit) ; elle se réveille par une tâche |
 
 Ce qui reste commun à toute la ruche, et donc freiné pour toute la ruche : les invitations à participer
 (elles mobilisent les gardiens et les garants de tous), les minutes de CI, et l'attention que règle le cap

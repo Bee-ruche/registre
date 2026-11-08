@@ -4,7 +4,10 @@ auteur: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/203
 resume: 'bee publier, round 2: re-dating only the session''s lines, one branch per engagement found again
   without the state file, and only the files bee wrote.'
-statut: en_relecture
+statut: integree
 soumise_le: '2026-11-08T10:53:44Z'
 engage_depuis: '2026-11-08T10:38:36Z'
 relectures: []
+decidee_le: '2026-11-08T12:19:56Z'
+motif_decision: 'Hive tooling contribution: registry PR #203 merged by the founder (bidji29, council) at the judged commit d7b5c90, after an independent adversarial review by another model in a separate session (one blocking and one serious finding on files staged by hand and an engagement published twice, all fixed and verified by a reviewer of that model; one test then adapted to the new quoting of ruche-0088); CI green on the judged commit (valider, suite / tests). R1: 163 lines changed outside tests, for an M task at 200. Recorded by hand: main moved between the PR''s base and its merge. Submitted inside the code PR.'
+fusion_sha: b9a5473baa0fcced9e21f9799808c357e857c9ce

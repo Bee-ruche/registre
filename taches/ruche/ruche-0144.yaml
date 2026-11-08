@@ -24,9 +24,7 @@ critere_acceptation:
 hors_perimetre:
 - COMMANDMENTS.md
 noeud: projets/ruche/ruche
-statut: reservee
-reservation:
-  utilisateur: "bidji29"
-  depuis: "2026-11-08T13:46:10Z"
+statut: integree
+contribution: ruche-0144-c1
 cree_par: conseil
 cree_le: '2026-11-08'
