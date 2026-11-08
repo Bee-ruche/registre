@@ -63,6 +63,7 @@ PAR_CONSTANTE = {
     "TYPES_JSON": "message", "FICHIERS_LIBRE_SERVICE": "message", "SUITE_INVITATION": "message", "ATTENTE_VERDICT": "message",
     "MNEMONIQUES_SUSPECTS": "message", "MOTS_SOURCE": "message", "ETATS": "message", "STATUTS_CONTRIBUTION": "message",
     "POSITIONS_DEBAT": "message", "ISSUES_DEBAT": "message", "SECTIONS_COURTES": "message", "MOIS": "message",
+    "REGLAGES": "message", "_POSITIF": "message", "_FRACTION": "message",  # ruche-0144: the forms of bee.yaml's settings, in bee's messages
 }
 
 
