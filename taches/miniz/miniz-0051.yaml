@@ -1,0 +1,27 @@
+id: miniz-0051
+projet: miniz
+categorie: compression-sans-perte
+type: test
+poste: gouvernance
+taille: S
+titre: 'minizBee''s CI: a manifest is a regular file; each file is read only from the job that makes it'
+contexte: 'Follow-up of libyaml-0020 (review of 8 Nov 2026), which hardened libyamlBee this way. In minizBee: the manifest
+  must be a regular file (not a symbolic link or a folder) before anything reads or copies it (manifeste.sh, the workflow''s
+  keep step, tache.py), and every file the verdict reads outside CI''s fixed paths is read only from the artifact of the
+  job that produces it.'
+fichiers:
+- .github/workflows/bee-ci.yml
+- bee/ci/
+portee: 0.6
+metrique: null
+critere_acceptation:
+- 'tests: a manifest that is a symbolic link or a folder is refused before it is read or copied; a file planted in another
+  job''s artifact is ignored'
+- an independent adversarial review by an agent of another model than the builder's is attached; the fork's suites pass
+  in its sandbox
+hors_perimetre:
+- COMMANDMENTS.md
+noeud: projets/compression-sans-perte/miniz/bee
+statut: ouverte
+cree_par: conseil
+cree_le: '2026-11-08'
