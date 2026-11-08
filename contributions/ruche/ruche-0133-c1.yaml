@@ -1,0 +1,10 @@
+id: ruche-0133-c1
+tache: ruche-0133
+auteur: bidji29
+pr: https://github.com/Bee-ruche/registre/pull/202
+resume: 'Pushes to main checked like PRs: data-only pushes take the fast path, code pushes dispatch the
+  suite on main''s last code commit; main is green only once that suite passed.'
+statut: en_relecture
+soumise_le: '2026-11-08T10:53:36Z'
+engage_depuis: '2026-11-08T10:38:36Z'
+relectures: []
