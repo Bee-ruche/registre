@@ -437,8 +437,11 @@ def _forme(est, attendu):
     return lambda v, config: None if est(v) else attendu
 
 
-def _nombre(v):
-    return isinstance(v, (int, float)) and not isinstance(v, bool)
+_BORNE = 10 ** 5  # any count, cap or number of hours or days: a number of days taken from now stays after year 1
+
+
+def _nombre(v):  # finite and bounded: never nan, ±inf or 10**400
+    return isinstance(v, (int, float)) and not isinstance(v, bool) and -_BORNE <= v <= _BORNE
 
 
 def _instant_lisible(v):
@@ -462,24 +465,24 @@ def _reserves(v, config):  # ruche-0104: with the council and the robots, case a
                                        "conseil and every robot (ruche-0104)")
 
 
-_POSITIF = _forme(lambda v: type(v) is int and v > 0, "entier positif attendu")
+_POSITIF = _forme(lambda v: type(v) is int and 0 < v <= _BORNE, f"entier positif attendu (au plus {_BORNE})")
 _FRACTION = _forme(lambda v: _nombre(v) and 0 <= v <= 1, "nombre de 0 à 1 attendu")
 REGLAGES = {
     "organisation": _forme(lambda v: isinstance(v, str) and re.fullmatch(PSEUDO_MOTIF, v), "le propriétaire GitHub de la ruche attendu"),
     "phase": _POSITIF, "amorcage": _forme(lambda v: isinstance(v, bool), "true ou false attendu"),
     "reservation_max_heures": _POSITIF, "reservations_max_par_utilisateur": _POSITIF, "fenetre_acceptation_heures": _POSITIF,
-    "reprise_apres_liberation_heures": _forme(lambda v: _nombre(v) and v >= 0, "nombre d'heures positif ou nul attendu (R7)"),
-    "r8_amorcage": _forme(lambda v: isinstance(v, dict) and set(v) == {"max", "jusqu_au"} and type(v["max"]) is int and v["max"] > 0
+    "reprise_apres_liberation_heures": _forme(lambda v: _nombre(v) and v >= 0, f"nombre d'heures positif ou nul attendu (R7, au plus {_BORNE})"),
+    "r8_amorcage": _forme(lambda v: isinstance(v, dict) and set(v) == {"max", "jusqu_au"} and type(v["max"]) is int and 0 < v["max"] <= _BORNE
                           and _instant_lisible(v["jusqu_au"]), "{max: entier positif, jusqu_au: instant UTC} attendu (ruche-0096)"),
     "gain_minimal": _FRACTION, "degradation_max_autres": _FRACTION, "majorite_requise": _FRACTION, "ecart_declare_max": _FRACTION,
-    "relectures_requises": _forme(lambda v: type(v) is int and v >= 0, "entier positif ou nul attendu"),
-    "vote_net_min": _forme(lambda v: type(v) is int and v >= 0, "entier positif ou nul attendu"),
+    "relectures_requises": _forme(lambda v: type(v) is int and 0 <= v <= _BORNE, f"entier positif ou nul attendu (au plus {_BORNE})"),
+    "vote_net_min": _forme(lambda v: type(v) is int and 0 <= v <= _BORNE, f"entier positif ou nul attendu (au plus {_BORNE})"),
     "relecture_gardien_requise": _forme(lambda v: v is True or v is False or v == "si_juge_incomplet", "true, si_juge_incomplet ou false attendu"),
     "juge_commun_min": _forme(lambda v: type(v) is int and 1 <= v <= 9999, "entier de 1 à 9999 attendu (R3, docs/juge-commun.md) ; sinon, aucun "
                               "verdict n'est complet"),
     "duree_vote_jours": _POSITIF, "quorum_votants": _POSITIF, "anciennete_compte_min_jours": _POSITIF,
     "cap": {"fenetre_jours": _forme(lambda v: type(v) is int and 1 <= v <= 365, "nombre de jours entre 1 et 365 attendu"),
-            "poids_max_par_utilisateur_et_jour": _forme(lambda v: _nombre(v) and v > 0, "nombre positif attendu"), "postes": _postes},
+            "poids_max_par_utilisateur_et_jour": _forme(lambda v: _nombre(v) and v > 0, f"nombre positif attendu (au plus {_BORNE})"), "postes": _postes},
     "agora": dict.fromkeys(("texte_max", "synthese_max", "question_max", "sources_par_argument_max", "source_max", "arguments_max_par_24h",
                             "arguments_max_par_24h_tous_debats", "arguments_max_par_pr", "ouvertures_max_par_24h",
                             "silence_avant_cloture_heures", "releve_rapporteur_heures"), _POSITIF),
@@ -489,8 +492,8 @@ REGLAGES = {
                                 "signalements_ouverts_max", "signalements_nommant_max", "signalements_au_plafond_par_24h", "contexte_max",
                                 "elements_max", "element_max", "fichiers_max", "chemin_max"), _POSITIF),
     "croissance": {**dict.fromkeys(("invitations_par_semaine", "delai_relance_jours", "debat_min_heures", "membres_actifs_par_gardien_max",
-                                    "message_max", "encadrement_par_semaine_sous_frein", "expiration_jours", "membres_actifs_jours",
-                                    "branche_dormante_jours"), _POSITIF),
+                                    "message_max", "encadrement_par_semaine_sous_frein", "expiration_jours", "membres_actifs_jours"),
+                                   _POSITIF),
                    "relances_max": _forme(lambda v: type(v) is int and v in (0, 1), "0 ou 1 (une relance au plus, R13)")},
     "pseudos_reserves": _reserves,
     "robots": _forme(lambda v: isinstance(v, list) and all(isinstance(r, str) and re.fullmatch(rf"{PSEUDO_MOTIF}(\[bot\])?", r) for r in v),
@@ -786,12 +789,10 @@ def meme_pseudo(a, b):
 
 def reserved_pseudo(config, pseudo):
     """ruche-0104: why `pseudo` may not name a member file (None if it may): bee.yaml's pseudos_reserves, the council and the robots,
-    case aside (meme_pseudo). Without a readable, non-empty list, no name is accepted."""
-    liste = reglage(config, "pseudos_reserves", brut=True)
-    if not (isinstance(liste, list) and liste):
-        return "bee.yaml : pseudos_reserves is required and never empty : no member file is accepted without it (ruche-0104)"
-    robots = robots if isinstance(robots := reglage(config, "robots", brut=True), list) else []  # bee valider: all in the list
-    if any(meme_pseudo(pseudo, r) for r in [*liste, "conseil", *robots]):
+    case aside (meme_pseudo). Unless both lists are there and well formed, as bee valider wants them (ruche-0144), no name is accepted."""
+    if probleme_reglage(config, "pseudos_reserves") or probleme_reglage(config, "robots"):
+        return "bee.yaml : pseudos_reserves is required and well formed, robots too : no member file is accepted otherwise (ruche-0104)"
+    if any(meme_pseudo(pseudo, r) for r in [*reglage(config, "pseudos_reserves"), "conseil", *reglage(config, "robots")]):
         return f"« {pseudo} » is a reserved pseudonym (bee.yaml, pseudos_reserves) : no member takes a name the tool gives a meaning to"
     return None
 
@@ -2149,7 +2150,8 @@ def verifier_comptes(reg):
     regles = (reg.racine / "REGLES.md").read_text(encoding="utf-8") if (reg.racine / "REGLES.md").exists() else ""
 
     # bee.yaml itself (its keys, their form, the cap, the reserved pseudonyms): problemes_reglages, in verifier_registre (ruche-0144).
-    postes_connus, reserves_lisibles = set(cap_cible(reg)), probleme_reglage(reg.config, "pseudos_reserves") is None
+    postes_connus = set(cap_cible(reg))
+    reserves_lisibles = not (probleme_reglage(reg.config, "pseudos_reserves") or probleme_reglage(reg.config, "robots"))
 
     for stem, (chemin, projet) in reg.projets.items():
         if not selon_schema("projet", chemin, projet):
@@ -11182,7 +11184,7 @@ def construire_analyseur():
     a.add_argument("debat", help="ex. D-0001")
     a.add_argument("--utilisateur", required=True)
     a.add_argument("--position", required=True, choices=POSITIONS, help="pour, contre, question, ou fait (sources obligatoires)")
-    a.add_argument("--texte", required=True, help="court : bee.yaml, agora.texte_max (1 500 caractères par défaut)")
+    a.add_argument("--texte", required=True, help="court : bee.yaml, agora.texte_max (1 500 caractères aujourd'hui)")
     a.add_argument("--repond-a", help="argument auquel vous répondez (ex. A3)")
     a.add_argument("--conteste", action="append", help="contest the duplicate marking of this argument (ex. A7), repeatable: in an "
                                                      "invitation's debate, it counts again for the synthesis")
