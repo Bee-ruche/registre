@@ -4,7 +4,10 @@ auteur: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/198
 resume: 'Linked-account reports, round 2: past the naming cap a report waits for the council, capped per
   day; valider as strict as the gate; no one decides their own.'
-statut: en_relecture
+statut: integree
 soumise_le: '2026-11-07T12:24:44Z'
 engage_depuis: '2026-11-07T12:00:09Z'
 relectures: []
+decidee_le: '2026-11-08T11:01:51Z'
+motif_decision: 'Hive tooling contribution: registry PR #198 merged by the founder (bidji29, council) at the judged commit 81f058b, after an independent adversarial review by another model in a separate session, made with the architect''s brief (one blocking and three serious findings on reports decided near a guardian''s guarantor, the cap past which reports wait, valider''s checks and a guardian''s link, all fixed and verified by a reviewer of that model); CI green on the judged commit (valider, suite / tests). R1: 156 lines changed outside tests, for an M task at 200. Recorded by hand: main moved between the PR''s base and its merge. Submitted inside the code PR.'
+fusion_sha: a40ecc47e12aed8cd34f1dc29d51355f1b356b68
