@@ -21,7 +21,13 @@ contexte: 'R15 (docs/devolution.md, section 1): every appointed privilege (guara
 
 
   Council''s note (2 Nov 2026, from ruche-0051''s design): `gardiens_en_fonction` checks only that a guardian has a guarantor;
-  docs/croissance.md says it also checks R15''s term and trial period, which no code does yet. Include it here.'
+  docs/croissance.md says it also checks R15''s term and trial period, which no code does yet. Include it here.
+
+
+  Council''s note (8 Nov 2026, commandment 14): every power granted to a person or an agent needs a term and a way to
+  withdraw it by 31 December 2026, or it ends. Extend the same treatment to each declared agent account
+  (gouvernance/comptes-agents.yaml: an appointment date, an end date, renewal by a human council member) and to the
+  Confirmé level (how long it lasts without new verified work, and how it is withdrawn). If this outgrows L, split it.'
 fichiers:
 - outils/bee.py
 - outils/test_bee.py
@@ -29,6 +35,7 @@ fichiers:
 - schemas/
 - gouvernance/gardiens.yaml
 - gouvernance/garants.yaml
+- gouvernance/comptes-agents.yaml
 - docs/devolution.md
 - docs/garants.md
 portee: 0.7
