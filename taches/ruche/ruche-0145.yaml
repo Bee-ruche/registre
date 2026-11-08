@@ -1,0 +1,31 @@
+id: ruche-0145
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: L
+titre: 'English names, layer L4: workflow names, jobs, robot texts and environment variables'
+contexte: docs/english-migration.md, layer L4. Workflow names with their workflow_run listeners in one commit; file renames
+  (fusion-auto to auto-merge, integration-auto to auto-integration, juge to judge, juge-commun to judge-meta-tests; site.yml
+  and suite.yml keep their names); job ids, except valider, beside which a job validate identical to it is added (the founder
+  then makes validate the required check; L5 removes valider); concurrency groups; robot commit messages, PR comments and
+  notices; BEE_* variables (BEE_REGISTRE without BEE_REGISTRY is refused).
+fichiers:
+- .github/workflows/
+- outils/bee.py
+- outils/test_bee.py
+portee: 0.7
+metrique: null
+critere_acceptation:
+- 'workflow tests: listeners and names tied, ${{ never in run:, permissions unchanged'
+- a workflow_run listener never waits for a name that no longer exists (test over every pair)
+- an independent adversarial review by an agent of another model than the builder's is attached, with every finding fixed
+  or answered; the full test suite passes on the exact head
+hors_perimetre:
+- COMMANDMENTS.md
+depend_de:
+- ruche-0144
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: '2026-11-08'

@@ -34,7 +34,13 @@ hors_perimetre:
 - code comments
 - 'bee/corpus/ (test inputs: never changed)'
 - verdict and manifest keys and values (ruche-0070)
+depend_de:
+- ruche-0146
 noeud: projets/compression-sans-perte/miniz/bee
 statut: ouverte
 cree_par: conseil
 cree_le: '2026-10-31'
+notes:
+  - par: "bidji29"
+    le: "2026-11-08T13:16:40Z"
+    texte: "Council, 8 Nov 2026: scheduled after the data switch (ruche-0146), so that the translation writes the final English names; no French copy is kept (docs/english-migration.md, sections 11 and 12)."

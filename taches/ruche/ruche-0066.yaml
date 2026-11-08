@@ -35,6 +35,7 @@ hors_perimetre:
 - arbre/roles/ (ruche-0067)
 depend_de:
 - ruche-0055
+- ruche-0146
 noeud: projets/ruche/ruche
 statut: ouverte
 cree_par: conseil
@@ -43,3 +44,6 @@ notes:
   - par: "bidji29"
     le: "2026-11-01T15:16:58Z"
     texte: "1 Nov, from ruche-0055's review: bee now reads the root's vulnerability bullet in English too. When translating arbre/SENS.md, keep the whole vulnerability instruction, including telling your user, in one bullet that starts with \"- Vulnerability\", so that bee keeps printing all of it."
+  - par: "bidji29"
+    le: "2026-11-08T13:16:40Z"
+    texte: "Council, 8 Nov 2026: scheduled after the data switch (ruche-0146), so that the translation writes the final English names; no French copy is kept (docs/english-migration.md, sections 11 and 12)."

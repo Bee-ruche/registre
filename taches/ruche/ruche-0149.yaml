@@ -1,0 +1,28 @@
+id: ruche-0149
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: L
+titre: 'English names, layer L7b: bee''s messages and help, second half, and the site'
+contexte: As ruche-0148, for the second half of the commands in the parser's order, the docstrings and comments of bee.py,
+  and the site's labels (site_bee.py).
+fichiers:
+- tools/bee.py
+- tools/test_bee.py
+- tools/site_bee.py
+portee: 0.7
+metrique: null
+critere_acceptation:
+- 'P1 restricted to message literals: no name literal changes'
+- the test count does not drop
+- an independent adversarial review by an agent of another model than the builder's is attached, with every finding fixed
+  or answered; the full test suite passes on the exact head
+hors_perimetre:
+- COMMANDMENTS.md
+depend_de:
+- ruche-0147
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: '2026-11-08'

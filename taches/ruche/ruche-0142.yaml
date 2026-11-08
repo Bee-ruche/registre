@@ -1,0 +1,43 @@
+id: ruche-0142
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: L
+titre: 'English names, layer L1b: the gate''s migration mode and bee check-migration, dormant'
+contexte: 'docs/english-migration.md, section 4.2. The data switch (layer L5) moves every data file and renames every key
+  and value in one council PR; without a migration mode the gate refuses it even from the council (a debate is never deleted,
+  arguments are append-only, who-is-who is read from the base). Add an explicit third case to verifier-pr: migration, entered
+  only when the base is in the old layout and the head in the new one (read from the files that exist, never from empty
+  folders; a tree with both, or half-migrated, is refused). In it: read the map and the translator from the base; prove
+  the head''s data is exactly the translation of the base''s (P2); run the ordinary per-file rules on (translated old, new)
+  pairs as modifications, which must find no change; read who-is-who from the base at the old paths, translated; require
+  a council member acting from his own account; mark the PR as nature migration, never auto-merged. Add `bee check-migration
+  --base --head` that prints the same proof as a summary. P2 works by family (plan, section 12, change 6): canonical writers
+  for debates, invitations, incidents and removals; text level for hand-wrapped files; a Markdown-aware rule for tree nodes,
+  whose node ids change; every tracked file of the base translated by a family rule or on an explicit hand-change list.
+  No history reader changes: the freeze drains open engagements instead (change 1).'
+fichiers:
+- outils/bee.py
+- outils/test_bee.py
+- outils/migration/
+portee: 0.7
+metrique: null
+critere_acceptation:
+- 'tests: a faithful toy migration passes; each of these is refused: an extra or missing data file, a changed free text,
+  a changed number or date, a key moved into a free text, a YAML anchor or comment added, a mixed layout, an author who
+  is not a council member, an agent account'
+- every immutability rule of section 4.1 is shown to run in migration mode (a test per rule with a seeded change that it
+  refuses)
+- outside migration mode, the gate's decisions are unchanged on the whole existing suite
+- a test pins that no history reader except deja_nommes asks for a path older than the switch
+- an independent adversarial review by an agent of another model than the builder's is attached, with every finding fixed
+  or answered; the full test suite passes on the exact head
+hors_perimetre:
+- COMMANDMENTS.md
+depend_de:
+- ruche-0141
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: '2026-11-08'

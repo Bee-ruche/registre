@@ -1,0 +1,48 @@
+id: ruche-0146
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: L
+titre: 'English names, layer L5: the data switch, in a freeze'
+contexte: 'docs/english-migration.md, layer L5 and section 7.1. Every data folder, schema file and property, key and enumerated
+  value (tasks, contributions, debates, proposals, members, votes, measurements, invitations, reports, governance, projects,
+  categories, bee.yaml, the tree and its node ids, templates), the frozen fixture and test literals, the site''s paths and
+  JSON keys, conseil to council; the boundary adapters (fork documents read in either vocabulary, one per document, until
+  date D); the retired-names guard filled; job valider removed. Prepared on a branch, regenerated from current main by the
+  script during the freeze, judged by the gate in migration mode, and merged by the founder from his own account. Before
+  the freeze: every open reservation, parallel registration and race drained, at least 24 h after the last release or closure
+  without integration; the scheduled agent sessions'' prompts, the skill''s installed copies and local session state handled
+  (plan, section 12, change 12); the accepted one-time effects (change 1) recorded in docs/decisions.md. Also in this layer:
+  deja_nommes reads the old and the new paths; the boundary adapters check a fork verdict''s metric against the task''s.'
+fichiers:
+- outils/
+- schemas/
+- taches/
+- contributions/
+- debats/
+- propositions/
+- gouvernance/
+- projets/
+- arbre/
+- modeles/
+- bee.yaml
+- categories.yaml
+- .github/workflows/
+portee: 0.7
+metrique: null
+critere_acceptation:
+- P1, P2, P4 and P6 pass; main's bee check-migration summary is pasted in the PR
+- after merge, one run of each robot (auto-merge, verdicts, auto-integration, expirations, site) and one fork CI run are
+  watched and reported in the PR
+- an independent adversarial review by an agent of another model than the builder's is attached, with every finding fixed
+  or answered; the full test suite passes on the exact head
+hors_perimetre:
+- COMMANDMENTS.md
+depend_de:
+- ruche-0145
+- ruche-0153
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: '2026-11-08'

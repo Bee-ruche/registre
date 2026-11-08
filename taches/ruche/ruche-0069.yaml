@@ -39,10 +39,13 @@ hors_perimetre:
 - doing the translation itself
 - folder and key names (ruche-0070)
 noeud: projets/ruche/ruche
-statut: ouverte
+statut: abandonnee
 cree_par: conseil
 cree_le: '2026-10-31'
 notes:
   - par: "bidji29"
     le: "2026-11-01T15:16:59Z"
     texte: "1 Nov, from ruche-0055: its guard test lists ruche-0029's French messages (la clé, le titre, le résumé, the end-of-data frame) as messages for this plan. When bee's frame around member texts is translated, the refusal of an imitated frame must cover the English frame in the same change."
+  - par: "bidji29"
+    le: "2026-11-08T13:16:40Z"
+    texte: "Council, 8 Nov 2026: replaced by the plan docs/english-migration.md and its layers (ruche-0141 to ruche-0153, miniz-0049, miniz-0050, libyaml-0020, libyaml-0021), which carry over its criteria (plan, section 11). The plan had its independent adversarial review."

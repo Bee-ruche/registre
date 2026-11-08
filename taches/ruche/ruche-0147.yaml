@@ -1,0 +1,26 @@
+id: ruche-0147
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: L
+titre: 'English names, layer L6: Python identifiers'
+contexte: docs/english-migration.md, layer L6. Functions, classes, constants, variables and attributes of bee.py, site_bee.py,
+  the rehearsal kit and the tests, from a generated and reviewed identifier map. No behaviour change.
+fichiers:
+- outils/
+- tools/
+portee: 0.7
+metrique: null
+critere_acceptation:
+- 'P1 with the identifier map: the syntax trees are equal once names are mapped; the full suite passes'
+- an independent adversarial review by an agent of another model than the builder's is attached, with every finding fixed
+  or answered; the full test suite passes on the exact head
+hors_perimetre:
+- COMMANDMENTS.md
+depend_de:
+- ruche-0146
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: '2026-11-08'
