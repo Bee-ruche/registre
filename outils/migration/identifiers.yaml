@@ -1,3 +1,23 @@
+# The identifier map of the Python code (ruche-0142, step 1b of docs/english-migration.md, section 13), beside names.yaml.
+# Generated from the code (every identifier, word by word against `english`; the names of names.yaml first; argparse
+# destinations from the option map), then reviewed by hand. Read by outils/migration/rename_code.py from the base commit,
+# never from the PR; its lint checks it against the code (python3 -I outils/migration/rename_code.py lint).
+#
+#   english      words an identifier may be made of and stay as it is: English, or language-neutral (abbreviations,
+#                proper names, test logins); an identifier with another word must be in `identifiers`.
+#   identifiers  French identifier -> English identifier, one for every file: a name of names.yaml (a key, a value, a
+#                command...) gets its English there, unless that is a keyword (pour -> in_favour); an English identifier
+#                may be renamed to free a name inside one scope (status -> with_status, beside statut -> status).
+#   attributes   where an attribute differs (x.name, a string given to getattr/setattr/hasattr/vars, an argparse
+#                destination): a destination is always its option's English name (--en-parallele -> parallel).
+#   tokens       names the code holds in strings that names.yaml lacks (environment variables, CLI choices, internal
+#                keys, f-string fragments such as _max_par_pr); a French identifier is also renamed in strings.
+#   hand         tokens with two English names, by role: the renamer leaves them, P1 accepts either, the switch's
+#                hand-made part decides.
+#   shared       two identifiers of one scope that become one name, reviewed as never live at once.
+#   neutral      name literals of bee.py declared language-neutral (--names of outils/inventaire_marqueurs.py).
+#   pending      code files whose own identifiers are not mapped yet: lint and check fail on each, one line (a later step).
+#   keep         French kept on purpose: tokens in a file, or the strings of top-level scopes (the migration's own tests).
 version: 1
 english: [
   aaaeeeeiioouuuc, ab, abandonment, abbrev, abort, abs, absent, absolute, abspath, abstention, abstentions, ac,
