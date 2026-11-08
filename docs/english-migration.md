@@ -420,8 +420,9 @@ ruche-0070 required before L0 is merged.
 | Step | Task | Depends on |
 | --- | --- | --- |
 | 1a. The scoped map and the data translator (P2), dormant | ruche-0141 | — |
-| 1b. The code renamer and its proofs (P1, P1b, P3, --names), dormant | ruche-0142 | ruche-0141 |
-| 1c. The gate's path rules (P4), the outputs (P6), `bee check-migration`, its workflow, a dry run of the switch | ruche-0143 | ruche-0142 |
+| 1b. The code renamer and its proofs (P1, P1b a and b, P3, --names), Python outside tests, dormant | ruche-0142 | ruche-0141 |
+| 1b-2. The test files' identifiers, the shell scripts and the workflows (P1 for them) | ruche-0152 | ruche-0142 |
+| 1c. P1b (c), the gate's path rules (P4), the outputs (P6), `bee check-migration`, its workflow, a dry run of the switch | ruche-0143 | ruche-0142, ruche-0152 |
 | Settings fail closed (before the switch) | ruche-0144 | — |
 | The forks read both layouts (before the switch) | miniz-0049, libyaml-0020 | — |
 | 2. The switch: every name in one commit, during a freeze | ruche-0145 | ruche-0143, ruche-0144, miniz-0049, libyaml-0020 |
@@ -454,7 +455,7 @@ answers prevail over the sections above.
    as an attribute name is resolved against real attributes and parser destinations. "Non-empty family" assertions: on
    the migrated fixture, `validate` and every scanner (council-file checks, removal on request, loaders, globs) find the
    same file counts as before the move. Part of L1a.
-3. **Settings fail closed** before L5 (task ruche-0153): every bee.yaml key the tool reads is required, an unknown key is
+3. **Settings fail closed** before L5 (task ruche-0144): every bee.yaml key the tool reads is required, an unknown key is
    refused, and a missing or malformed value never means the permissive one. The audit of every `config.get(key,
    default)` is in the PR.
 4. **The forks: F1 covers every registry name they read**, including the task copy their verdict scripts read (the main
