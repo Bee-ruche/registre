@@ -22,7 +22,8 @@
 #   domains       closed: a value outside its domain is refused. open_domains: values not listed stay as written.
 #                 The domains `path` and `node` are the path map and the tree segments.
 #   code          the code files (Python, shell, workflows), listed one by one: step 1b's proofs (P1, P1b, P3) cover their
-#                 content; P2 checks only their place (the path map) and their mode.
+#                 content (rename_code.py, with identifiers.yaml: the Python names); P2 checks only their place (the path map)
+#                 and their mode.
 #   hand          every other file no family translates, by glob, the first matching entry deciding: same (byte-identical,
 #                 at its English path), becomes (byte-identical to that file of the base) or removed. A schema of
 #                 schemas/ is translated with its family (keys, domains and schema_strings: $id, patterns), byte for byte.
@@ -1914,6 +1915,7 @@ code:
 - outils/juge/stats.py
 - outils/juge/test_juge.py
 - outils/migration/rename.py
+- outils/migration/rename_code.py
 - outils/repetition/bee
 - outils/repetition/ci-simulee
 - outils/repetition/ci_simulee.py
@@ -1972,4 +1974,7 @@ hand:
 - files: outils/migration/names.yaml
   same: true
   why: 'this map, moved: every proof reads it from the base'
+- files: outils/migration/identifiers.yaml
+  same: true
+  why: 'the identifier map of step 1b, moved: every proof reads it from the base'
 new: []
