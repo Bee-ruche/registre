@@ -4,27 +4,27 @@ categorie: ruche
 type: test
 poste: gouvernance
 taille: L
-titre: 'English names, layer L4: workflow names, jobs, robot texts and environment variables'
-contexte: docs/english-migration.md, layer L4. Workflow names with their workflow_run listeners in one commit; file renames
-  (fusion-auto to auto-merge, integration-auto to auto-integration, juge to judge, juge-commun to judge-meta-tests; site.yml
-  and suite.yml keep their names); job ids, except valider, beside which a job validate identical to it is added (the founder
-  then makes validate the required check; L5 removes valider); concurrency groups; robot commit messages, PR comments and
-  notices; BEE_* variables (BEE_REGISTRE without BEE_REGISTRY is refused).
+titre: 'English names, step 4: judge-v4, the common judge in English'
+contexte: docs/english-migration.md, section 6. The judge's code in English (identifiers, CLI options, judge.json keys,
+  the artifact judge, the reusable workflow's inputs and outputs), accepting both the French and the English plugin contract,
+  since the plugin is read from the fork's base; bee accepts juge-v1 to juge-v3 and judge-v4 on, and compares the number.
+  The tag judge-v4 is the founder's.
 fichiers:
+- tools/judge/
 - .github/workflows/
-- outils/bee.py
-- outils/test_bee.py
+- tools/bee.py
+- tools/test_bee.py
 portee: 0.7
 metrique: null
 critere_acceptation:
-- 'workflow tests: listeners and names tied, ${{ never in run:, permissions unchanged'
-- a workflow_run listener never waits for a name that no longer exists (test over every pair)
+- the judge's meta-tests pass with both plugin contracts
+- a juge-v4 or judge-v2 tag is refused, by a test
 - an independent adversarial review by an agent of another model than the builder's is attached, with every finding fixed
   or answered; the full test suite passes on the exact head
 hors_perimetre:
 - COMMANDMENTS.md
 depend_de:
-- ruche-0144
+- ruche-0142
 noeud: projets/ruche/ruche
 statut: ouverte
 cree_par: conseil

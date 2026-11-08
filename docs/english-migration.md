@@ -1,6 +1,6 @@
 # The registry in English: the migration plan
 
-> Adopted by the council (docs/decisions.md, 8 November 2026) after an independent adversarial review by another model. **Section 12 lists the changes made after that review; where it differs from the sections above, section 12 prevails.** The name map is [english-names.md](english-names.md), a reviewed draft that layer L1a turns into the scoped, machine-readable `outils/migration/names.yaml`. Task ids: section 11.
+> Adopted by the council (docs/decisions.md, 8 November 2026) after an independent adversarial review by another model. **Section 13 (one switch instead of eight layers, the founder's choice of 8 November) prevails over everything above it; section 12 lists the changes made after the review and prevails over sections 0 to 11.** The name map is [english-names.md](english-names.md), a reviewed draft that layer L1a turns into the scoped, machine-readable `outils/migration/names.yaml`. Task ids: section 11.
 
 Plan for the founder's decision that everything moves to English now (texts, code, identifiers, command names, folder
 names, YAML keys, enumerated values), with only « La Ruche », « la Nuit des abeilles », « l'essaim » and « le miel »
@@ -415,25 +415,20 @@ prose, scheduled after L5 so that translators write the final names; ruche-0056 
 if question 2 is answered as recommended. This plan itself should get the independent adversarial review that
 ruche-0070 required before L0 is merged.
 
-### 11.1 The layers' tasks
+### 11.1 The tasks (as revised by section 13)
 
-| Layer | Task | Depends on |
+| Step | Task | Depends on |
 | --- | --- | --- |
-| L1a translator and proofs, dormant | ruche-0141 | — |
-| L1b gate migration mode, `bee check-migration` | ruche-0142 | ruche-0141 |
-| F1 the forks read both layouts (names from docs/english-names.md) | miniz-0049, libyaml-0020 | — |
-| Settings fail closed (before L5) | ruche-0153 | — |
-| L2 code and docs folders and files | ruche-0143 | ruche-0142, miniz-0049, libyaml-0020 |
-| L3 command line | ruche-0144 | ruche-0143 |
-| L4 workflows (then the founder swaps the required check) | ruche-0145 | ruche-0144 |
-| L5 data switch, in a freeze | ruche-0146 | ruche-0145, ruche-0153 |
-| L6 Python identifiers | ruche-0147 | ruche-0146 |
-| L7 bee's messages, help and site | ruche-0148, ruche-0149 | ruche-0147 |
-| L7 prose (existing tasks, rescheduled) | ruche-0056 to ruche-0068, ruche-0071 to ruche-0079, miniz-0045, miniz-0046, libyaml-0019 | ruche-0146 |
-| J1 judge-v4 | ruche-0150 | ruche-0147 |
-| F2 the forks write English | miniz-0050, libyaml-0021 | ruche-0150 |
-| L5b metric ids | ruche-0151 | ruche-0146 |
-| L8 contraction after date D | ruche-0152 | ruche-0151, miniz-0050, libyaml-0021 |
+| 1. The translator, its proofs and `bee check-migration`, dormant | ruche-0141 | — |
+| Settings fail closed (before the switch) | ruche-0148 | — |
+| The forks read both layouts (before the switch) | miniz-0049, libyaml-0020 | — |
+| 2. The switch: every name in one commit, during a freeze | ruche-0142 | ruche-0141, ruche-0148, miniz-0049, libyaml-0020 |
+| 3. bee's messages, help and site | ruche-0143, ruche-0144 | ruche-0142 |
+| 3. Prose (existing tasks, rescheduled) | ruche-0056 to ruche-0068, ruche-0071 to ruche-0079, miniz-0045, miniz-0046, libyaml-0019 | ruche-0142 |
+| 4. judge-v4 | ruche-0145 | ruche-0142 |
+| The forks write English | miniz-0050, libyaml-0021 | ruche-0145 |
+| 5. Metric ids | ruche-0146 | ruche-0142 |
+| 6. Remove the temporary bridges after date D | ruche-0147 | ruche-0146, miniz-0050, libyaml-0021 |
 
 ruche-0069 and ruche-0070 are closed as replaced by this plan.
 
@@ -495,3 +490,33 @@ answers prevail over the sections above.
 13. **French copies.** COMMANDEMENTS.md is a translation, not a commandment: removing it changes no commandment
     (commandment 11). L2 records that AGENTS.md, RULES.md and COMMANDMENTS.md are authoritative in English, and adds
     AGENTS.en.md to the retired names.
+
+## 13. One switch instead of eight layers (the founder's choice, 8 November 2026)
+
+Asked whether to rebuild the project from scratch in English or to translate it, the founder chose to translate, in a
+single switch rather than the layers L2 to L6 of section 7. This section prevails over everything above it.
+
+- **Why translate rather than rebuild.** The registry's value is its hardening: some seventy integrated tasks and dozens
+  of adversarial reviews of the gate, the judge, identity and invitations. A rewrite would reopen holes already closed,
+  and cost more than a translation. The new vision's core (self-governance) is what the code already does. A new
+  repository would add nothing and break the links to the history.
+- **Why one switch.** Only the founder's own agents use the hive today, so a short freeze costs nothing; one commit is
+  easy to revert; it removes the gate's migration mode (L1b), the staged fail-closed windows of L2 to L4, and most of
+  the temporary bridges. The price: the commit is too large to read by eye, and is trusted through its proofs (P1, P1b,
+  P2, P3, P4, P6) and the full test suite instead. This would no longer be acceptable once the hive is open: now is the
+  time.
+- **The steps.** (1) ruche-0141 builds the translator, the scoped map, the identifier map, the proofs and `bee
+  check-migration`, dormant, with a dry run of the whole switch on a copy of main; ruche-0148 makes the settings fail
+  closed; miniz-0049 and libyaml-0020 make the forks read both layouts. (2) ruche-0142: during a freeze (section 7.1 and
+  section 12, change 12), the script regenerates the whole switch from current main: paths, commands, workflows, data,
+  tree, schemas, tests, site and Python identifiers; the hand-made part (boundary adapters for fork documents until
+  date D, a fork verdict's metric checked against the task's, `deja_nommes` reading both paths, the refusal table and
+  the retired-names guard) stays under 400 lines and has its own independent review. (3) bee's messages and the prose,
+  in parallel PRs. (4) judge-v4, then the forks write English, then the metric ids. (5) After date D, the bridges go.
+- **How the switch is merged.** In ordinary mode the gate refuses it, as it must (debates deleted, keys changed): that
+  refusal is expected and recorded. In its place: main's `bee check-migration` (reviewed code, on main before the switch)
+  prints the proofs' summary in the PR, the full suite passes on the exact head, and the founder merges from his own
+  account, after making `validate` the required check. No gate migration mode is built.
+- **Unchanged from the sections above**: the map and its decisions (section 10 and section 12, changes 7 and 8), no
+  aliases, the forks' F1/F2 track, the accepted one-time effects of section 12, change 1, closed history kept as
+  written, and date D (the switch's merge plus six weeks, at the earliest 1 January 2027).

@@ -4,42 +4,25 @@ categorie: ruche
 type: test
 poste: gouvernance
 taille: L
-titre: 'English names, layer L2: code and docs folders and files'
-contexte: docs/english-migration.md, section 7, layer L2, with the names of docs/english-names.md and outils/migration/names.yaml.
-  Moves outils/ to tools/ (juge to judge, repetition to rehearsal, file names inside; bee.py keeps its name), the docs'
-  file names, REGLES.md to RULES.md, UTILISATEURS.md to USERS.md, MAINTENEURS.md to MAINTAINERS.md, removes COMMANDEMENTS.md
-  and AGENTS.en.md (AGENTS.md becomes the English text), the skill folder, the issue template; and every path literal in
-  code, workflows, docs, AUTHORITY_FILES (old names kept), CHEMINS_OUTILLAGE, projets/ruche.yaml's judging paths and open
-  tasks' file lists, and PYTHONPATH in the workflows. Done by the committed script; the hand-made part stays under 400 lines.
-  A docs/decisions.md row records that AGENTS.md, RULES.md and COMMANDMENTS.md are authoritative in English; AGENTS.en.md
-  joins the retired names.
+titre: 'English names, step 3a: bee''s messages and help, first half'
+contexte: 'docs/english-migration.md, layer L7. bee''s messages and help in English, in PRs of at most 400 changed lines:
+  exit codes and stderr unchanged, outputs that tools read untouched, test diff in literals only, assertions not fewer;
+  the emitted markers (TO FILL IN, the data frame, Debate:) with the refusal of an imitated frame in both languages. This
+  task takes the first half of the commands in the parser''s order; ruche-0144 the rest.'
 fichiers:
-- outils/
-- docs/
-- .github/
-- .claude/
-- REGLES.md
-- UTILISATEURS.md
-- MAINTENEURS.md
-- COMMANDEMENTS.md
-- AGENTS.md
-- AGENTS.en.md
-- projets/ruche.yaml
-- taches/
+- tools/bee.py
+- tools/test_bee.py
 portee: 0.7
 metrique: null
 critere_acceptation:
-- P1 (path literals only) and P4 pass; the script and its output are reproducible from the PR's base
-- the gate passes in ordinary mode; the base-tool steps of the workflows fail closed to the full suite, not open
-- the founder merges from his own account (authority files move)
+- 'P1 restricted to message literals: no name literal changes'
+- the test count does not drop
 - an independent adversarial review by an agent of another model than the builder's is attached, with every finding fixed
   or answered; the full test suite passes on the exact head
 hors_perimetre:
 - COMMANDMENTS.md
 depend_de:
 - ruche-0142
-- miniz-0049
-- libyaml-0020
 noeud: projets/ruche/ruche
 statut: ouverte
 cree_par: conseil

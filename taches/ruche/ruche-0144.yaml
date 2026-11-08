@@ -4,31 +4,24 @@ categorie: ruche
 type: test
 poste: gouvernance
 taille: L
-titre: 'English names, layer L3: the command line'
-contexte: 'docs/english-migration.md, layer L3. The 58 renamed subcommands and 88 options of docs/english-names.md and outils/migration/names.yaml,
-  in the parser and in every caller (workflows, rehearsal scripts, tests, docs, skill, tree nodes, AGENTS.md); the renamed-command
-  refusal table filled: an old name exits 2 with the new name on stderr and runs nothing, for three months. No aliases.'
+titre: 'English names, step 3b: bee''s messages and help, second half, and the site'
+contexte: As ruche-0143, for the second half of the commands in the parser's order, the docstrings and comments of bee.py,
+  and the site's labels (site_bee.py).
 fichiers:
-- outils/bee.py
-- outils/test_bee.py
-- .github/workflows/
-- outils/repetition/
-- docs/
-- arbre/
-- AGENTS.md
-- .claude/
+- tools/bee.py
+- tools/test_bee.py
+- tools/site_bee.py
 portee: 0.7
 metrique: null
 critere_acceptation:
-- 'P3: the parser trees are equal modulo the map (same handlers, actions, nargs, required, defaults, choices)'
-- P1 passes; the number of tests and assertions does not drop (P7)
-- a test runs every old name and checks exit 2, the message, and that nothing ran
+- 'P1 restricted to message literals: no name literal changes'
+- the test count does not drop
 - an independent adversarial review by an agent of another model than the builder's is attached, with every finding fixed
   or answered; the full test suite passes on the exact head
 hors_perimetre:
 - COMMANDMENTS.md
 depend_de:
-- ruche-0143
+- ruche-0142
 noeud: projets/ruche/ruche
 statut: ouverte
 cree_par: conseil

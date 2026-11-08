@@ -4,7 +4,7 @@ categorie: parsing-serialisation
 type: test
 poste: gouvernance
 taille: M
-titre: libyamlBee writes English (English names, layer F2)
+titre: libyamlBee writes English (English names, after the switch)
 contexte: 'As miniz-0050, for libyamlBee: judge-v4, then English verdicts, metric ids and plugin names.'
 fichiers:
 - .github/workflows/
@@ -18,7 +18,7 @@ critere_acceptation:
 hors_perimetre:
 - COMMANDMENTS.md
 depend_de:
-- ruche-0150
+- ruche-0145
 noeud: projets/parsing-serialisation/libyaml
 statut: ouverte
 cree_par: conseil

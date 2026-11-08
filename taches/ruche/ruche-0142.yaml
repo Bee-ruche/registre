@@ -4,39 +4,61 @@ categorie: ruche
 type: test
 poste: gouvernance
 taille: L
-titre: 'English names, layer L1b: the gate''s migration mode and bee check-migration, dormant'
-contexte: 'docs/english-migration.md, section 4.2. The data switch (layer L5) moves every data file and renames every key
-  and value in one council PR; without a migration mode the gate refuses it even from the council (a debate is never deleted,
-  arguments are append-only, who-is-who is read from the base). Add an explicit third case to verifier-pr: migration, entered
-  only when the base is in the old layout and the head in the new one (read from the files that exist, never from empty
-  folders; a tree with both, or half-migrated, is refused). In it: read the map and the translator from the base; prove
-  the head''s data is exactly the translation of the base''s (P2); run the ordinary per-file rules on (translated old, new)
-  pairs as modifications, which must find no change; read who-is-who from the base at the old paths, translated; require
-  a council member acting from his own account; mark the PR as nature migration, never auto-merged. Add `bee check-migration
-  --base --head` that prints the same proof as a summary. P2 works by family (plan, section 12, change 6): canonical writers
-  for debates, invitations, incidents and removals; text level for hand-wrapped files; a Markdown-aware rule for tree nodes,
-  whose node ids change; every tracked file of the base translated by a family rule or on an explicit hand-change list.
-  No history reader changes: the freeze drains open engagements instead (change 1).'
+titre: 'English names, step 2: the switch, in one commit, during a freeze'
+contexte: 'docs/english-migration.md, section 13. One commit renames everything at once: folders and files (outils/ to tools/,
+  the docs'' names, REGLES.md to RULES.md, UTILISATEURS.md to USERS.md, MAINTENEURS.md to MAINTAINERS.md; COMMANDEMENTS.md
+  and AGENTS.en.md removed, AGENTS.md becoming the English text), commands and options (no aliases; an old name prints the
+  new one and runs nothing, for three months), workflows, jobs, robot texts and environment variables, every data folder,
+  key and enumerated value, the tree and its node ids, the schemas, the frozen fixture and the tests, the site''s paths
+  and JSON keys, and the Python identifiers. Also: deja_nommes reads the old and the new paths; fork documents are read
+  in either vocabulary, one per document, until date D, and a fork verdict''s metric is checked against the task''s; the
+  retired-names guard and the refusal table filled. Generated from current main by ruche-0141''s script during the freeze;
+  the hand-made part stays under 400 lines. Before the freeze: every open reservation, parallel registration and race drained,
+  at least 24 h after the last release or closure without integration; the scheduled agent sessions'' prompts and the skill''s
+  installed copies updated (section 12, change 12).'
 fichiers:
-- outils/bee.py
-- outils/test_bee.py
-- outils/migration/
+- outils/
+- docs/
+- .github/
+- .claude/
+- schemas/
+- taches/
+- contributions/
+- debats/
+- propositions/
+- gouvernance/
+- projets/
+- arbre/
+- modeles/
+- bee.yaml
+- categories.yaml
+- REGLES.md
+- UTILISATEURS.md
+- MAINTENEURS.md
+- COMMANDEMENTS.md
+- AGENTS.md
+- AGENTS.en.md
+- README.md
+- CLAUDE.md
 portee: 0.7
 metrique: null
 critere_acceptation:
-- 'tests: a faithful toy migration passes; each of these is refused: an extra or missing data file, a changed free text,
-  a changed number or date, a key moved into a free text, a YAML anchor or comment added, a mixed layout, an author who
-  is not a council member, an agent account'
-- every immutability rule of section 4.1 is shown to run in migration mode (a test per rule with a seeded change that it
-  refuses)
-- outside migration mode, the gate's decisions are unchanged on the whole existing suite
-- a test pins that no history reader except deja_nommes asks for a path older than the switch
+- P1, P1b, P2, P3, P4 and P6 pass; main's `bee check-migration` summary is pasted in the PR
+- the full test suite passes on the exact head; the number of tests and assertions does not drop
+- the founder merges from his own account, after making `validate` the required check; the gate's refusal of the switch
+  in ordinary mode is expected and recorded, the proofs above stand in for it
+- after merge, one run of each robot (auto-merge, verdicts, auto-integration, expirations, site) and one CI run of each
+  fork are watched and reported; a docs/decisions.md row records the switch, the accepted one-time effects (section 12,
+  change 1), date D, and that AGENTS.md, RULES.md and COMMANDMENTS.md are authoritative in English
 - an independent adversarial review by an agent of another model than the builder's is attached, with every finding fixed
   or answered; the full test suite passes on the exact head
 hors_perimetre:
 - COMMANDMENTS.md
 depend_de:
 - ruche-0141
+- ruche-0148
+- miniz-0049
+- libyaml-0020
 noeud: projets/ruche/ruche
 statut: ouverte
 cree_par: conseil
