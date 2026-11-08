@@ -1,0 +1,10 @@
+id: miniz-0049-c1
+tache: miniz-0049
+auteur: bidji29
+pr: https://github.com/Bee-ruche/minizBee/pull/24
+resume: 'minizBee''s CI reads the registry in both vocabularies (French, English) before the switch: tasks,
+  manifests, tool, command, options; unreadable means red, never a default.'
+statut: en_relecture
+soumise_le: '2026-11-08T16:13:05Z'
+engage_depuis: '2026-11-08T15:16:29Z'
+relectures: []

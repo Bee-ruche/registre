@@ -28,9 +28,7 @@ critere_acceptation:
 hors_perimetre:
 - COMMANDMENTS.md
 noeud: projets/compression-sans-perte/miniz/bee
-statut: reservee
-reservation:
-  utilisateur: "bidji29"
-  depuis: "2026-11-08T15:16:29Z"
+statut: en_relecture
+contribution: miniz-0049-c1
 cree_par: conseil
 cree_le: '2026-11-08'
