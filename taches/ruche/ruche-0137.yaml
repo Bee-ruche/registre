@@ -31,7 +31,7 @@ hors_perimetre:
 - COMMANDMENTS.md
 - the caps' values in bee.yaml (the council)
 noeud: projets/ruche/ruche
-statut: en_relecture
+statut: integree
 contribution: ruche-0137-c1
 cree_par: conseil
 cree_le: '2026-11-02'
