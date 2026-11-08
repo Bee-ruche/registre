@@ -22,7 +22,10 @@ critere_acceptation:
 hors_perimetre:
 - COMMANDMENTS.md
 noeud: projets/ruche/ruche
-statut: ouverte
+statut: reservee
+reservation:
+  utilisateur: "bidji29"
+  depuis: "2026-11-08T10:38:37Z"
 cree_par: conseil
 cree_le: '2026-11-02'
 notes:
