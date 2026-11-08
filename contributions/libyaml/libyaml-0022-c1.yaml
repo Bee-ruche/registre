@@ -1,0 +1,10 @@
+id: libyaml-0022-c1
+tache: libyaml-0022
+auteur: bidji29
+pr: https://github.com/Bee-ruche/libyamlBee/pull/4
+resume: The CI runs the tests of its own CI scripts in the sandbox, counted by the verdict; a stronger
+  sandbox; states read from their job's folder.
+statut: en_relecture
+soumise_le: '2026-11-08T20:04:03Z'
+engage_depuis: '2026-11-08T19:03:28Z'
+relectures: []
