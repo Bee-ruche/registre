@@ -23,6 +23,9 @@ critere_acceptation:
 hors_perimetre:
 - COMMANDMENTS.md
 noeud: projets/parsing-serialisation/libyaml
-statut: ouverte
+statut: reservee
+reservation:
+  utilisateur: "bidji29"
+  depuis: "2026-11-08T16:58:30Z"
 cree_par: conseil
 cree_le: '2026-11-08'
