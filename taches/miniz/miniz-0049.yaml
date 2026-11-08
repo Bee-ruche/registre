@@ -28,7 +28,7 @@ critere_acceptation:
 hors_perimetre:
 - COMMANDMENTS.md
 noeud: projets/compression-sans-perte/miniz/bee
-statut: en_relecture
+statut: integree
 contribution: miniz-0049-c1
 cree_par: conseil
 cree_le: '2026-11-08'
