@@ -3,25 +3,26 @@ projet: ruche
 categorie: ruche
 type: test
 poste: gouvernance
-taille: L
-titre: 'English names, step 3b: bee''s messages and help, second half, and the site'
-contexte: As ruche-0143, for the second half of the commands in the parser's order, the docstrings and comments of bee.py,
-  and the site's labels (site_bee.py).
+taille: M
+titre: 'Settings fail closed: every bee.yaml key the tool reads is required, unknown keys refused'
+contexte: Plan for the English names, section 12, change 3, needed before the switch (ruche-0145). Every key of bee.yaml
+  that bee reads must be present and well formed, or bee valider refuses the registry; a key bee does not read is refused;
+  no missing or malformed value falls back to a permissive default anywhere (an audit of every config.get(key, default)
+  and similar reads is in the PR, each classified strict, neutral or permissive, and every permissive one changed).
 fichiers:
-- tools/bee.py
-- tools/test_bee.py
-- tools/site_bee.py
+- outils/bee.py
+- outils/test_bee.py
+- bee.yaml
+- schemas/
 portee: 0.7
 metrique: null
 critere_acceptation:
-- 'P1 restricted to message literals: no name literal changes'
-- the test count does not drop
+- the audit table is in the PR; a test per permissive default shows the strict behaviour when the key is missing or malformed
+- bee valider refuses a bee.yaml with a missing key and one with an unknown key
 - an independent adversarial review by an agent of another model than the builder's is attached, with every finding fixed
   or answered; the full test suite passes on the exact head
 hors_perimetre:
 - COMMANDMENTS.md
-depend_de:
-- ruche-0142
 noeud: projets/ruche/ruche
 statut: ouverte
 cree_par: conseil

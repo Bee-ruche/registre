@@ -48,7 +48,7 @@ hors_perimetre:
 depend_de:
 - ruche-0055
 - ruche-0056
-- ruche-0142
+- ruche-0145
 noeud: projets/ruche/ruche
 statut: ouverte
 cree_par: conseil
@@ -56,4 +56,4 @@ cree_le: '2026-10-31'
 notes:
   - par: "bidji29"
     le: "2026-11-08T13:16:40Z"
-    texte: "Council, 8 Nov 2026: scheduled after the switch (ruche-0142), so that the translation writes the final English names; no French copy is kept (docs/english-migration.md, sections 11 and 12)."
+    texte: "Council, 8 Nov 2026: scheduled after the switch (ruche-0145), so that the translation writes the final English names; no French copy is kept (docs/english-migration.md, sections 11 and 12)."

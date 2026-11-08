@@ -6,7 +6,7 @@ poste: gouvernance
 taille: M
 titre: minizBee writes English (English names, after the switch)
 contexte: 'docs/english-migration.md, section 6. minizBee moves to judge-v4 (paths, options, inputs, artifact name in the
-  same PR), then writes English: verdict.json keys and values, metric ids (with the registry''s ruche-0146), plugin names;
+  same PR), then writes English: verdict.json keys and values, metric ids (with the registry''s ruche-0149), plugin names;
   drops the French fallbacks of miniz-0049.'
 fichiers:
 - .github/workflows/
@@ -20,7 +20,7 @@ critere_acceptation:
 hors_perimetre:
 - COMMANDMENTS.md
 depend_de:
-- ruche-0145
+- ruche-0148
 noeud: projets/compression-sans-perte/miniz/bee
 statut: ouverte
 cree_par: conseil

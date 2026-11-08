@@ -18,7 +18,7 @@ critere_acceptation:
 hors_perimetre:
 - COMMANDMENTS.md
 depend_de:
-- ruche-0145
+- ruche-0148
 noeud: projets/parsing-serialisation/libyaml
 statut: ouverte
 cree_par: conseil

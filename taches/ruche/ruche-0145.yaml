@@ -4,27 +4,65 @@ categorie: ruche
 type: test
 poste: gouvernance
 taille: L
-titre: 'English names, step 4: judge-v4, the common judge in English'
-contexte: docs/english-migration.md, section 6. The judge's code in English (identifiers, CLI options, judge.json keys,
-  the artifact judge, the reusable workflow's inputs and outputs), accepting both the French and the English plugin contract,
-  since the plugin is read from the fork's base; bee accepts juge-v1 to juge-v3 and judge-v4 on, and compares the number.
-  The tag judge-v4 is the founder's.
+titre: 'English names, step 2: the switch, in one commit, during a freeze'
+contexte: 'docs/english-migration.md, section 13. One commit renames everything at once: folders and files (outils/ to tools/,
+  the docs'' names, REGLES.md to RULES.md, UTILISATEURS.md to USERS.md, MAINTENEURS.md to MAINTAINERS.md; COMMANDEMENTS.md
+  and AGENTS.en.md removed, AGENTS.md becoming the English text), commands and options (no aliases; an old name prints the
+  new one and runs nothing, for three months), workflows, jobs, robot texts and environment variables, every data folder,
+  key and enumerated value, the tree and its node ids, the schemas, the frozen fixture and the tests, the site''s paths
+  and JSON keys, and the Python identifiers. Also: deja_nommes reads the old and the new paths; fork documents are read
+  in either vocabulary, one per document, until date D, and a fork verdict''s metric is checked against the task''s; the
+  retired-names guard and the refusal table filled. Generated from current main by the script of ruche-0141 to ruche-0143
+  during the freeze; the hand-made part stays under 400 lines. Before the freeze: every open reservation, parallel registration
+  and race drained, at least 24 h after the last release or closure without integration; the scheduled agent sessions''
+  prompts and the skill''s installed copies updated (section 12, change 12).'
 fichiers:
-- tools/judge/
-- .github/workflows/
-- tools/bee.py
-- tools/test_bee.py
+- outils/
+- docs/
+- .github/
+- .claude/
+- schemas/
+- taches/
+- contributions/
+- debats/
+- propositions/
+- gouvernance/
+- projets/
+- arbre/
+- modeles/
+- bee.yaml
+- categories.yaml
+- REGLES.md
+- UTILISATEURS.md
+- MAINTENEURS.md
+- COMMANDEMENTS.md
+- AGENTS.md
+- AGENTS.en.md
+- README.md
+- CLAUDE.md
 portee: 0.7
 metrique: null
 critere_acceptation:
-- the judge's meta-tests pass with both plugin contracts
-- a juge-v4 or judge-v2 tag is refused, by a test
+- P1, P1b, P2, P3, P4 and P6 pass; main's `bee check-migration` summary is pasted in the PR
+- the full test suite passes on the exact head; the number of tests and assertions does not drop
+- the founder starts main's check-migration workflow on the PR's exact head himself, and merges that same commit from his
+  own account with a bypass of the required check limited to him (plan, section 13); the gate's refusal of the switch in
+  ordinary mode is expected and recorded, and lists only the expected reasons (deleted or moved data files, changed keys),
+  never a retired name found in the new tree
+- the robots stay disabled from the start of the freeze until after the merge; the F1 fork PRs are merged and the open fork
+  PRs rebased before the freeze starts; `validate` becomes the required check right after the merge
+- after merge, one run of each robot (auto-merge, verdicts, auto-integration, expirations, site) and one CI run of each
+  fork are watched and reported; a docs/decisions.md row records the switch, the accepted one-time effects (section 12,
+  change 1), date D, and that AGENTS.md, RULES.md and COMMANDMENTS.md are authoritative in English
 - an independent adversarial review by an agent of another model than the builder's is attached, with every finding fixed
   or answered; the full test suite passes on the exact head
 hors_perimetre:
 - COMMANDMENTS.md
 depend_de:
-- ruche-0142
+- ruche-0143
+- ruche-0144
+- miniz-0049
+- libyaml-0020
 noeud: projets/ruche/ruche
 statut: ouverte
 cree_par: conseil
