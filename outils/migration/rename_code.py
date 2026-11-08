@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """English names, step 1b (ruche-0142; docs/english-migration.md, sections 9, 12 and 13): the Python code renamer
-(CodeMap.rename_python) and proofs P1 and P1b, dormant. Run it isolated, from the base's own checkout:
+(CodeMap.rename_python) and proofs P1, P1b and P3, dormant. Run it isolated, from the base's own checkout:
     python3 -I outils/migration/rename_code.py lint | check --base REV --head REV [--repo DIR]
 lint: identifiers.yaml against the code. check reads both maps and the files from git, runs only as the base's own code
-(this script, rename.py, bee.py): P1 and P1b per Python code file. P3 and P1b (c) execute the new tool: a later step.
+(this script, rename.py, bee.py): P1 and P1b (a) per Python code file, then, if P1 holds for bee.py, P3 and P1b (b).
 Exit 0: proven, as the last line says; 1: problems, listed. Shell scripts and workflows are not renamed here.
 """
 import sys
@@ -11,7 +11,7 @@ import sys
 if __name__ == "__main__" and not sys.flags.isolated:
     sys.exit("rename_code.py: run it isolated, python3 -I outils/migration/rename_code.py …, so that nothing shadows a module")
 
-import argparse, ast, collections, io, keyword, pathlib, re, subprocess, tokenize  # noqa: E401, E402
+import argparse, ast, collections, importlib.util, io, itertools, keyword, pathlib, re, subprocess, tempfile, tokenize  # noqa: E401, E402
 import yaml  # noqa: E402
 
 SELF = pathlib.Path(__file__).resolve()
@@ -76,8 +76,7 @@ class CodeMap:
 
     def kept(self, path):
         """In one code file (French path): the top-level scopes whose strings stay as written, and the tokens kept anywhere."""
-        k = [(s, t) for r, s, t in self.keep if r.match(path)]
-        return set().union(*(s for s, _ in k)), set().union(*(t for _, t in k))
+        return tuple(set().union(*(e[i] for r, *e in self.keep if r.match(path))) for i in (0, 1))
 
     def lint(self, code):
         """The map against the code ({path: text}): each identifier mapped or English; a destination as its option, a name of
@@ -140,9 +139,8 @@ class CodeMap:
 
     def string(self, raw):
         """One string token renamed, its quoting kept: a whole literal by whole(), any other text by text()."""
-        prefix = re.match(r"[rRbBuU]*", raw)[0]
-        q = raw[len(prefix):len(prefix) + 3] if raw[len(prefix):len(prefix) + 3] in ('"""', "'''") else raw[len(prefix)]
-        body, value = raw[len(prefix) + len(q):-len(q)], ast.literal_eval(raw)
+        prefix, q, body = re.fullmatch(r"([rRbBuU]*)('''|\"\"\"|'|\")(.*)\2", raw, re.S).groups()
+        value = ast.literal_eval(raw)
         value = value.decode("utf-8", "surrogateescape") if isinstance(value, bytes) else value
         if (new := self.whole(value)) != value and body != value:
             raise rename.Problem(f"« {raw[:40]} » is written in a form the renamer does not edit")
@@ -179,7 +177,7 @@ class CodeMap:
         cuts, self.tokens = [0, *(x for e in sorted(edits) for x in e), len(source)], self.base_tokens  # one pass: 20 000 edits stay linear
         return "".join(source[cuts[i]:cuts[i + 1]] + edits.get((cuts[i + 1], cuts[i + 2]), "") for i in range(0, len(cuts) - 2, 2)) + source[cuts[-2]:], changes
 
-    # --- P1 ---
+    # --- the proofs: P1, P3, P1b ---
 
     def allowed(self, a, b):
         """A token of a text changes only to its English name (a hand token: as its role says), dot by dot if need be."""
@@ -233,7 +231,13 @@ class CodeMap:
         self.tokens = self.base_tokens
         return problems
 
-    # --- P1b ---
+    def mapped_rows(self, rows):
+        """P3: the old parser's rows as the map makes them (options by tokens, destinations by attrs, functions and set_defaults by ids)."""
+        m = lambda x: (x[0], self.ids.get(x[1], x[1])) if isinstance(x, tuple) and x[:1] == ("function",) else self.whole(x) if isinstance(x, str) else \
+            tuple(map(m, x)) if isinstance(x, tuple) else x  # noqa: E731
+        return [(tuple(map(self.whole, r[0])), "defaults", tuple(sorted((self.ids.get(k, k), m(x)) for k, x in r[2]))) if r[1] == "defaults" else
+                (tuple(map(self.whole, r[0])), tuple(self.tokens.get(o, o) for o in r[1]), self.attrs.get(r[2], r[2]), *r[3:5], *map(m, r[5:9]),
+                 None if r[9] is None else tuple(sorted(m(r[9])))) for r in rows]
 
     def residue(self, path, new):
         """P1b (a): renaming the new file again changes nothing, and no string without a space holds a French name, but kept
@@ -289,19 +293,9 @@ def scopes_of(tree):
     return out
 
 
-def data_keys(names, base, files):
-    """Every key of the data files of base, read in files at the same path or at its English one."""
-    out, todo = set(), [(f[0], files.get(p, files.get(names.path(p)))) for p in base if (f := names.families_of(p))]
-    todo = [(lambda d, w: d[0] if w == "markdown" else d)(names.parts(f, b.decode("utf-8")), names.fam[f]["writer"]) for f, b in todo if b]
-    while todo:
-        o = todo.pop()
-        out, todo = out | (set(o) if isinstance(o, dict) else set()), todo + (list(o.values()) if isinstance(o, dict) else o if isinstance(o, list) else [])
-    return out
-
-
 def check(repo, base, head):
-    """P1 and P1b (a, b, and the data the new code reads; plan, sections 9 and 12, change 2). P3 and the scans on the fixture
-    (P1b c) run the new tool: a later step. Returns (problems, counts of each mapping)."""
+    """P1, P1b (a, b) and P3 (plan, sections 9 and 12, change 2); P1b (c), the migrated fixture's scans and data, is ruche-0143's.
+    Returns (problems, counts of each mapping)."""
     files, after, none = rename.tree_files(repo, base), rename.tree_files(repo, head), collections.Counter()
     if (at := next((c for c in rename.MAPS if c in files), None)) is None or IDS[rename.MAPS.index(at)] not in files:
         return [f"no {rename.MAP} and {IDS[0]} at the base {base}"], none
@@ -312,39 +306,45 @@ def check(repo, base, head):
             return [f"{live} is not the base's {path}: run the base's own checker, python3 -I, from its checkout"], none
     names = rename.Names(files[at].decode("utf-8"))
     cm, code = CodeMap(names, files[IDS[rename.MAPS.index(at)]].decode("utf-8")), {p: files[p].decode("utf-8") for p in names.code if p.endswith(".py")}
-    problems, counts, tool = [f"the map: {x}" for x in cm.lint(code)], collections.Counter(), names.path(f"{tools_dir}/bee.py")
-    stems = [{p.split("/")[-1].split(".")[0] for p in t if p.startswith("schemas/")} for t in (files, after)]
-    retired, trees = (data_keys(names, files, files) - data_keys(names, files, after), stems[0] - stems[1]), {}
+    problems, counts, tool, trees = [f"the map: {x}" for x in cm.lint(code)], collections.Counter(), names.path(f"{tools_dir}/bee.py"), {}
     for p, text in code.items():
         try:
             if re.match(r"\ufeff|([^\n]*\n)?[ \t\f]*#.*?coding[:=]", new := after[q := names.path(p)].decode("utf-8")):
                 raise rename.Problem("a byte order mark or a coding declaration: the code is read as UTF-8, nothing else")
             problems += [f"{q}: {x}" for x in cm.same_python(text, new, counts, p)] or [f"P1b: {q}: {x}" for x in (
                 [] if p in cm.m["pending"] else cm.residue(p, new))]  # a pending file: its own names are not mapped yet
-            problems += [f"P1b: {q}: line {c.lineno}: reads the {('key', 'schema')[k]} « {c.value} », which the translated tree no longer has" for c, k in
-                         ([] if p in cm.m["pending"] else read_names(trees.setdefault(q, ast.parse(new)))) if c.value in retired[k]]
+            trees[q] = ast.parse(new)
         except (KeyError, SyntaxError, UnicodeDecodeError, rename.Problem) as e:
             problems.append(f"{q}: {'not in the head' if isinstance(e, KeyError) else f'{type(e).__name__}: {e}'}")
-    return problems + [f"P1b: {q}: {x}" for q, t in trees.items() for x in cm.attribute_names(t, parser_dests(t) if q == tool else None)], counts
+    if any(x.startswith(f"{tool}: ") for x in problems):
+        return problems + [f"P3 and P1b (b) not run: P1 does not hold for {tool}"], counts
+    with tempfile.TemporaryDirectory() as tmp:  # P1 holds: the new tool is the base's code modulo the map, it may run
+        (path := pathlib.Path(tmp) / tool).parent.mkdir(parents=True)
+        path.write_bytes(after[tool])
+        spec = importlib.util.spec_from_file_location("bee_after_the_move", path)
+        try:
+            spec.loader.exec_module(new := importlib.util.module_from_spec(spec))
+            rows = parser_rows(bee.construire_analyseur()), parser_rows(getattr(new, cm.ids.get("construire_analyseur", "construire_analyseur"))())
+        except Exception as e:  # noqa: BLE001 - a new tool that does not load is a refusal, never a crash
+            return problems + [f"P3 and P1b (b) not run: {tool} does not load: {type(e).__name__}: {e}"], counts
+    cm.scoped(f"{tools_dir}/bee.py", "construire_analyseur")  # the parser's names are that function's
+    problems += [f"P3: bee {' '.join((a or b)[0])} {'/'.join((a or b)[1]) if (a or b)[1] != 'defaults' else 'defaults'}: the map gives {a!r:.160}, the "
+                 f"new parser has {b!r:.160}" for a, b in itertools.zip_longest(cm.mapped_rows(rows[0]), rows[1]) if a != b]
+    dests = {r[2] for r in rows[1] if r[1] != "defaults"} | {k for r in rows[1] if r[1] == "defaults" for k, _ in r[2]}
+    return problems + [f"P1b: {q}: {x}" for q, t in trees.items() for x in cm.attribute_names(t, dests if q == tool else None)], counts
 
 
-def parser_dests(tree):
-    """The destinations of the parser this code builds, read in it: dest=, a long option or a positional's name, set_defaults."""
-    calls = [n for n in ast.walk(tree) if isinstance(n, ast.Call) and getattr(n.func, "attr", None) in ("add_argument", "add_subparsers", "set_defaults")]
-    return {k.arg if n.func.attr == "set_defaults" else k.value.value for n in calls for k in n.keywords if k.arg == "dest" or n.func.attr == "set_defaults"} | {
-        next((a.value[2:] for a in n.args if str(a.value).startswith("--")), n.args[0].value).replace("-", "_") for n in calls
-        if n.func.attr == "add_argument" and n.args and all(isinstance(a, ast.Constant) for a in n.args) and "dest" not in {k.arg for k in n.keywords}}
-
-
-def read_names(tree):
-    """The string constants the code reads data by: x["k"], x.get("k") and the like, "k" in x, and a schema's name."""
-    for n in ast.walk(tree):
-        f = getattr(n, "func", None)
-        found = [n.slice] if isinstance(n, ast.Subscript) else n.args[:1] if isinstance(n, ast.Call) and (getattr(f, "attr", None) in (
-            "get", "setdefault", "pop", "schema") or getattr(f, "id", None) in ("selon_schema", "per_schema")) else [n.left] if \
-            isinstance(n, ast.Compare) and isinstance(n.ops[0], (ast.In, ast.NotIn)) else []
-        yield from ((c, getattr(f, "attr", getattr(f, "id", "")) in ("schema", "selon_schema", "per_schema")) for c in found
-                    if isinstance(c, ast.Constant) and isinstance(c.value, str))
+def parser_rows(parser, path=()):
+    """P3: an argparse parser as rows, help texts aside: (subcommand path, options, destination, nargs, required, default,
+    const, type, metavar, sorted choices) per action, (path, "defaults", set_defaults) per parser."""
+    v = lambda x: ("function", x.__name__) if callable(x) and hasattr(x, "__name__") else tuple(x) if isinstance(x, (list, tuple)) else x  # noqa: E731
+    rows = [(path, "defaults", tuple(sorted((k, v(x)) for k, x in parser._defaults.items())))]
+    for a in parser._actions:
+        sub = a.choices if isinstance(a, argparse._SubParsersAction) else {}
+        rows.append((path, tuple(a.option_strings), a.dest, a.nargs, a.required, v(a.default), v(a.const), v(a.type), v(a.metavar),
+                     None if sub or a.choices is None else tuple(sorted(v(a.choices)))))
+        rows += [r for k, p in sub.items() for r in parser_rows(p, path + (k,))]
+    return rows
 
 
 def main(argv=None):
@@ -362,12 +362,11 @@ def main(argv=None):
             problems = CodeMap(names, read(IDS[0])).lint({q: read(q) for q in names.code if q.endswith(".py")})
     except (rename.Problem, bee.ErreurBee, yaml.YAMLError, subprocess.CalledProcessError, OSError, UnicodeDecodeError, KeyError, TypeError) as e:
         problems = [f"{type(e).__name__}: {e}"]
-    if a.action == "check":
-        print("".join(f"{k}: {x} -> {y}: {n}\n" for (k, x, y), n in sorted(counts.items(), key=lambda c: (-c[1], c[0]))), end="")
+    print("".join(f"{k}: {x} -> {y}: {n}\n" for (k, x, y), n in sorted(counts.items(), key=lambda c: (-c[1], c[0]))), end="")  # lint: none
     print("".join(f"✗ {x}\n" for x in problems) + f"{len(problems)} problem(s)." if problems else
-          f"✓ P1 and P1b hold at {a.base} for the head {a.head}: {len({x for k, x, _ in counts if k == 'identifier'})} identifiers and "
+          f"✓ P1, P1b and P3 hold at {a.base} for the head {a.head}: {len({x for k, x, _ in counts if k == 'identifier'})} identifiers and "
           f"{len({x for k, x, _ in counts if k == 'string'})} names in strings renamed through the map ({sum(counts.values())} places), nothing "
-          "else changed; no French name left, every attribute name resolves, the data read exists." if a.action == "check" else
+          "else changed; no French name left, every attribute name resolves, the parser is the same." if a.action == "check" else
           "✓ the identifier map covers the code.")
     return 1 if problems else 0
 

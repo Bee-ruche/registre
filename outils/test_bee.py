@@ -22268,7 +22268,7 @@ class TestEnglishNamesStep1a(unittest.TestCase):
             self.assertNotIn("migration/", (RACINE / chemin).read_text(encoding="utf-8"), chemin)
 
 
-# --- ruche-0142: English names, step 1b: the code renamer and its proofs P1, P1b (a, b, the data read) and --names (dormant) ---
+# --- ruche-0142: English names, step 1b: the code renamer and its proofs P1, P1b (a, b), P3 and --names (dormant) ---
 
 _SPEC_RENAME_CODE = importlib.util.spec_from_file_location("rename_code", pathlib.Path(__file__).resolve().parent / "migration" / "rename_code.py")
 rename_code = importlib.util.module_from_spec(_SPEC_RENAME_CODE)
@@ -22314,7 +22314,7 @@ def traduction_0142(names, carte, fichiers):
 
 class TestEnglishNamesStep1b(unittest.TestCase):
     """ruche-0142 (docs/english-migration.md, sections 9, 12 and 13): the Python code renamer, the identifier map and the
-    proofs P1 and P1b (a, b, the data read), dormant. They run here on a copy of the repository with the frozen fixture; on main, from
+    proofs P1, P1b (a, b) and P3, dormant. They run here on a copy of the repository with the frozen fixture; on main, from
     main's checkout: python3 -I outils/migration/rename_code.py check --base origin/main --head <sha>. The identifiers of
     the three test files are pending (a later step): check fails closed on them, one line each."""
 
@@ -22428,12 +22428,12 @@ class TestEnglishNamesStep1b(unittest.TestCase):
                 problemes = carte.same_python(avant, faux, collections.Counter(), chemin) or carte.residue(chemin, faux)
                 self.assertTrue(problemes and (message is None or message in problemes[0]), problemes)
         self.assertIn("token issue: two English names", " ".join(self.carte_changee(lambda m: m["hand"]["issue"].pop("default"))[1].lint({})))
-        # on the switch: a key and a schema the translated data no longer has, read by the new tool
+        # on the switch: a key and a schema name left in French where the table says English (the data side: ruche-0143)
         tete = self.variante(lambda f: [self.remplacer("tools/bee.py", a, b)(f) for a, b in (
             ('new.get("outcome") == "no_follow_up"', 'new.get("issue") == "no_follow_up"'), ('per_schema("report", path, s)', 'per_schema("signalement", path, s)'))])
         problemes = rename_code.check(self.depot, self.base, tete)[0]
-        for message in ("reads the key « issue », which the translated tree no longer has", "reads the schema « signalement », which the translated "
-                        "tree no longer has", "« \"issue\" » is still French (it would become « \"outcome\" »)"):
+        for message in ("« \"issue\" » is still French (it would become « \"outcome\" »)", "« \"signalement\" » is still French (it would become "
+                        "« \"report\" »)"):
             self.assertTrue(any(message in p for p in problemes), (message, problemes))
 
     def test_names_inside_texts_placeholders_fields_alternations_and_keys(self):
@@ -22470,6 +22470,8 @@ class TestEnglishNamesStep1b(unittest.TestCase):
                 tete = self.variante(lambda f: f.__setitem__("tools/site_bee.py", entete.encode() + f["tools/site_bee.py"].split(b"\n", 1)[1]))
                 self.assertTrue(any(p.startswith("tools/site_bee.py: Problem: a byte order mark or a coding declaration") for p in
                                     rename_code.check(self.depot, self.base, tete)[0]))
+        with mock.patch.object(rename_code, "parser_rows", side_effect=ValueError("no parser")):
+            self.assertIn("P3 and P1b (b) not run: tools/bee.py does not load: ValueError: no parser", rename_code.check(self.depot, self.base, self.tete)[0])
 
     def test_the_honest_switch_holds_but_for_the_pending_test_files(self):
         problemes, nombres = self.verdict
@@ -22492,7 +22494,7 @@ class TestEnglishNamesStep1b(unittest.TestCase):
         with contextlib.redirect_stdout(sortie):
             self.assertEqual(rename_code.main(["check", "--repo", str(self.depot), "--base", base, "--head", self.tete]), 0)
             self.assertEqual(rename_code.main(["check", "--repo", str(self.depot), "--base", self.base, "--head", self.tete]), 1)
-        self.assertIn(f"✓ P1 and P1b hold at {base} for the head {self.tete}: ", sortie.getvalue())
+        self.assertIn(f"✓ P1, P1b and P3 hold at {base} for the head {self.tete}: ", sortie.getvalue())
         self.assertIn("\nidentifier: construire_analyseur -> build_parser: ", sortie.getvalue())
         self.assertIn("✗ the map: outils/test_bee.py: ", sortie.getvalue())
 
@@ -22512,9 +22514,7 @@ class TestEnglishNamesStep1b(unittest.TestCase):
             "line 2: « membres » names no attribute of the new code", "line 3: « _orthographes » names no attribute of the new code",
             "line 4: « taille_max » names no attribute of the new code and no parser destination"])
 
-    def test_a_parser_option_renamed_without_its_destination_is_refused(self):
-        """A destination follows its option (--en-parallele -> --parallel: args.parallel): the lint refuses a map that says otherwise,
-        and P1b (b) an args.<name> that is no destination of the parser the new code builds (read in it, without running it)."""
+    def test_p3_refuses_a_parser_option_renamed_without_its_destination(self):
         texte, carte = self.carte_changee(lambda m: m["attributes"].update(en_parallele="parallel_mode"))
         self.assertIn("attribute en_parallele -> parallel_mode, its option says parallel",
                       " ".join(carte.lint({"outils/bee.py": self.fichiers["outils/bee.py"].decode()})))
@@ -22522,13 +22522,24 @@ class TestEnglishNamesStep1b(unittest.TestCase):
         tete = self.variante(lambda f: f.__setitem__("tools/bee.py", carte.rename_python(self.fichiers["outils/bee.py"].decode(), "outils/bee.py")[0].encode()))
         problemes = rename_code.check(self.depot, base, tete)[0]
         self.assertFalse([p for p in problemes if p.startswith("tools/bee.py: ")], "P1 holds: the head is the base's map applied")
-        self.assertTrue(any("« parallel_mode » names no attribute of the new code and no parser destination" in p for p in problemes), problemes)
-        # the destinations read in the code are the parser's own
-        def destinations(p):
-            return set(p._defaults) | {a.dest for a in p._actions} | {d for a in p._actions if isinstance(a, argparse._SubParsersAction)
-                                                                    for c in a.choices.values() for d in destinations(c)}
-        self.assertEqual(rename_code.parser_dests(ast.parse(self.fichiers["outils/bee.py"].decode())) - {"version"},
-                         destinations(bee.construire_analyseur()) - {"help", "version"})
+        self.assertTrue(any(p.startswith("P3: bee take --parallel: the map gives ") and "'parallel_mode'" in p for p in problemes), problemes)
+        self.assertTrue(any("« parallel_mode » names no attribute of the new code and no parser destination" in p for p in problemes))
+        # P3 on its own: an option renamed, its destination kept; a default otherwise named; a subcommand left French
+        def lignes(option, dest, choix, defaut, commande):
+            p = argparse.ArgumentParser()
+            s = p.add_subparsers(dest="commande" if option == "--utilisateur" else "command").add_parser(commande)
+            s.add_argument(option, dest=dest, choices=choix, default=defaut)
+            return rename_code.parser_rows(p)
+        self.carte.scoped("outils/bee.py", "construire_analyseur")
+        try:
+            ancien = self.carte.mapped_rows(lignes("--utilisateur", "utilisateur", ["ouverte", "toutes"], "ouverte", "prendre"))
+        finally:
+            self.carte.tokens = self.carte.base_tokens
+        self.assertEqual(ancien, lignes("--user", "user", ["open", "all"], "open", "take"))
+        for faux in (lignes("--user", "utilisateur", ["open", "all"], "open", "take"), lignes("--user", "user", ["open", "all"], "opened", "take"),
+                     lignes("--user", "user", ["open", "all"], "open", "prendre"), lignes("--utilisateur", "user", ["open", "all"], "open", "take")):
+            with self.subTest(faux):
+                self.assertNotEqual(ancien, faux)
 
     def test_the_lint_refuses_a_map_that_would_break_the_code(self):
         self.assertEqual([p for p in self.carte.lint({c: self.fichiers[c].decode() for c in self.names.code if c.endswith(".py")})
