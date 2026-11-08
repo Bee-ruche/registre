@@ -86,7 +86,7 @@ outils/bee.py                    the tool; outils/juge/ the common judge
 .github/workflows/               validation, auto-merge, auto-integration (R3), verdicts, expiries, site
 ```
 
-Folder, file and field names are still French; they move to English in the coming days.
+Folder, file and field names are still French; they are being moved to English.
 
 ## Roadmap
 

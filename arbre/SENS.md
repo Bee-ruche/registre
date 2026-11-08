@@ -1,6 +1,6 @@
 ---
 parent: null
-mis_a_jour: "2026-10-30"
+mis_a_jour: "2026-11-08"
 entretenu_par: ruche-0010
 budget_lignes: 60
 ---
