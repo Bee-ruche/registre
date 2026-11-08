@@ -12,9 +12,10 @@
 #                destination): a destination is always its option's English name (--en-parallele -> parallel).
 #   tokens       names the code holds in strings that names.yaml lacks (environment variables, CLI choices, internal
 #                keys, f-string fragments such as _max_par_pr); a French identifier is also renamed in strings.
-#   hand         tokens with two English names, by role: the renamer leaves them, P1 accepts either, the switch's
-#                hand-made part decides.
-#   shared       two identifiers of one scope that become one name, reviewed as never live at once.
+#   hand         tokens with two English names, by role: each has a default and a role table, by file and scope (the
+#                innermost def or class, or top-level assignment), optionally by literal; the renamer and P1 follow it.
+#   shared       two identifiers of one scope that become one name, reviewed as never live at once (read by the scope
+#                lint of a later step, with the identifiers of the test files).
 #   neutral      name literals of bee.py declared language-neutral (--names of outils/inventaire_marqueurs.py).
 #   pending      code files whose own identifiers are not mapped yet: lint and check fail on each, one line (a later step).
 #   keep         French kept on purpose: tokens in a file, or the strings of top-level scopes (the migration's own tests).

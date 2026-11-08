@@ -22268,7 +22268,7 @@ class TestEnglishNamesStep1a(unittest.TestCase):
             self.assertNotIn("migration/", (RACINE / chemin).read_text(encoding="utf-8"), chemin)
 
 
-# --- ruche-0142: English names, step 1b: the code renamer and its proofs P1, P1b (a, b), P3 and --names (dormant) ---
+# --- ruche-0142: English names, step 1b: the code renamer and its proofs P1, P1b (a, b, the data read) and --names (dormant) ---
 
 _SPEC_RENAME_CODE = importlib.util.spec_from_file_location("rename_code", pathlib.Path(__file__).resolve().parent / "migration" / "rename_code.py")
 rename_code = importlib.util.module_from_spec(_SPEC_RENAME_CODE)
@@ -22314,7 +22314,7 @@ def traduction_0142(names, carte, fichiers):
 
 class TestEnglishNamesStep1b(unittest.TestCase):
     """ruche-0142 (docs/english-migration.md, sections 9, 12 and 13): the Python code renamer, the identifier map and the
-    proofs P1, P1b (a, b) and P3, dormant. They run here on a copy of the repository with the frozen fixture; on main, from
+    proofs P1 and P1b (a, b, the data read), dormant. They run here on a copy of the repository with the frozen fixture; on main, from
     main's checkout: python3 -I outils/migration/rename_code.py check --base origin/main --head <sha>. The identifiers of
     the three test files are pending (a later step): check fails closed on them, one line each."""
 
@@ -22406,7 +22406,7 @@ class TestEnglishNamesStep1b(unittest.TestCase):
             ("def build_parser():", "def make_parser():"), ("MANIFEST_MAX_BYTES = 64 * 1024", "MANIFEST_MAX_BYTES = 65 * 1024"))])
         problemes = rename_code.check(self.depot, self.base, tete)[0]
         for message in ("the string « ouverte » became « opened », not through the map", "the identifier construire_analyseur became make_parser, "
-                        "the map says build_parser", "64 became 65, the map says 64", "P3 and P1b (b) not run: P1 does not hold for tools/bee.py"):
+                        "the map says build_parser", "64 became 65, the map says 64"):
             self.assertTrue(any(p.startswith("tools/bee.py: ") and message in p or p.endswith(message) for p in problemes), (message, problemes))
 
     def test_hand_tokens_take_the_role_their_table_says_and_p1_refuses_any_other(self):
@@ -22470,8 +22470,6 @@ class TestEnglishNamesStep1b(unittest.TestCase):
                 tete = self.variante(lambda f: f.__setitem__("tools/site_bee.py", entete.encode() + f["tools/site_bee.py"].split(b"\n", 1)[1]))
                 self.assertTrue(any(p.startswith("tools/site_bee.py: Problem: a byte order mark or a coding declaration") for p in
                                     rename_code.check(self.depot, self.base, tete)[0]))
-        with mock.patch.object(rename_code, "parser_tree", side_effect=ValueError("no parser")):
-            self.assertIn("P3 and P1b (b) not run: tools/bee.py does not load: ValueError: no parser", rename_code.check(self.depot, self.base, self.tete)[0])
 
     def test_the_honest_switch_holds_but_for_the_pending_test_files(self):
         problemes, nombres = self.verdict
@@ -22494,7 +22492,7 @@ class TestEnglishNamesStep1b(unittest.TestCase):
         with contextlib.redirect_stdout(sortie):
             self.assertEqual(rename_code.main(["check", "--repo", str(self.depot), "--base", base, "--head", self.tete]), 0)
             self.assertEqual(rename_code.main(["check", "--repo", str(self.depot), "--base", self.base, "--head", self.tete]), 1)
-        self.assertIn(f"✓ P1, P1b and P3 hold at {base} for the head {self.tete}: ", sortie.getvalue())
+        self.assertIn(f"✓ P1 and P1b hold at {base} for the head {self.tete}: ", sortie.getvalue())
         self.assertIn("\nidentifier: construire_analyseur -> build_parser: ", sortie.getvalue())
         self.assertIn("✗ the map: outils/test_bee.py: ", sortie.getvalue())
 
@@ -22514,7 +22512,9 @@ class TestEnglishNamesStep1b(unittest.TestCase):
             "line 2: « membres » names no attribute of the new code", "line 3: « _orthographes » names no attribute of the new code",
             "line 4: « taille_max » names no attribute of the new code and no parser destination"])
 
-    def test_p3_refuses_a_parser_option_renamed_without_its_destination(self):
+    def test_a_parser_option_renamed_without_its_destination_is_refused(self):
+        """A destination follows its option (--en-parallele -> --parallel: args.parallel): the lint refuses a map that says otherwise,
+        and P1b (b) an args.<name> that is no destination of the parser the new code builds (read in it, without running it)."""
         texte, carte = self.carte_changee(lambda m: m["attributes"].update(en_parallele="parallel_mode"))
         self.assertIn("attribute en_parallele -> parallel_mode, its option says parallel",
                       " ".join(carte.lint({"outils/bee.py": self.fichiers["outils/bee.py"].decode()})))
@@ -22522,29 +22522,20 @@ class TestEnglishNamesStep1b(unittest.TestCase):
         tete = self.variante(lambda f: f.__setitem__("tools/bee.py", carte.rename_python(self.fichiers["outils/bee.py"].decode(), "outils/bee.py")[0].encode()))
         problemes = rename_code.check(self.depot, base, tete)[0]
         self.assertFalse([p for p in problemes if p.startswith("tools/bee.py: ")], "P1 holds: the head is the base's map applied")
-        self.assertIn("P3: bee command take --parallel dest: the map gives 'parallel_mode', the new parser has 'parallel'", problemes)
-        self.assertTrue(any("« parallel_mode » names no attribute of the new code and no parser destination" in p for p in problemes))
-        # P3 on its own: an option renamed, its destination kept; a choice, a default and a subcommand otherwise named
-        def analyseur(option, dest, choix, defaut, commande):
-            p = argparse.ArgumentParser()
-            s = p.add_subparsers(dest="commande" if option == "--utilisateur" else "command").add_parser(commande)
-            s.add_argument(option, dest=dest, choices=choix, default=defaut)
-            return rename_code.parser_tree(p)
-        ancien = self.carte.mapped_tree(analyseur("--utilisateur", "utilisateur", ["ouverte", "toutes"], "ouverte", "prendre"))
-        self.assertEqual(rename_code.tree_diff(ancien, analyseur("--user", "user", ["open", "all"], "open", "take")), [])
-        self.assertCountEqual(rename_code.tree_diff(ancien, analyseur("--user", "utilisateur", ["open", "all"], "opened", "take")), [
-            "bee command take --user dest: the map gives 'user', the new parser has 'utilisateur'",
-            "bee command take --user default: the map gives 'open', the new parser has 'opened'"])
-        self.assertCountEqual(rename_code.tree_diff(ancien, analyseur("--user", "user", ["open", "all"], "open", "prendre")),
-                              ["bee command take: only before the move", "bee command prendre: only after the move"])
+        self.assertTrue(any("« parallel_mode » names no attribute of the new code and no parser destination" in p for p in problemes), problemes)
+        # the destinations read in the code are the parser's own
+        def destinations(p):
+            return set(p._defaults) | {a.dest for a in p._actions} | {d for a in p._actions if isinstance(a, argparse._SubParsersAction)
+                                                                    for c in a.choices.values() for d in destinations(c)}
+        self.assertEqual(rename_code.parser_dests(ast.parse(self.fichiers["outils/bee.py"].decode())) - {"version"},
+                         destinations(bee.construire_analyseur()) - {"help", "version"})
 
     def test_the_lint_refuses_a_map_that_would_break_the_code(self):
         self.assertEqual([p for p in self.carte.lint({c: self.fichiers[c].decode() for c in self.names.code if c.endswith(".py")})
-                          if "(pending)" not in p and not p.startswith("outils/test_bee.py: line ")], [])
+                          if "(pending)" not in p], [])
         code = {"outils/x.py": "def verifier_comptes(chemin, path, titulaire, login, pseudo):\n    return chemin, path, titulaire, chemin_inconnu\n"}
         cas = {
             "an identifier neither mapped nor English": (lambda m: None, "outils/x.py: identifier chemin_inconnu is neither mapped nor made of English words"),
-            "two identifiers of one scope, one English name": (lambda m: None, "outils/x.py: line 1: chemin and path both become path"),
             "an identifier that is a name of the name map, otherwise named": (lambda m: m["identifiers"].update(titulaire="owner"),
                                                                               "identifier titulaire -> owner, the name map says holder"),
             "a keyword as an identifier": (lambda m: m["identifiers"].update(pour="for"), "identifier pour -> for: not an identifier, a keyword"),
@@ -22555,10 +22546,6 @@ class TestEnglishNamesStep1b(unittest.TestCase):
             with self.subTest(nom):
                 carte = self.carte_changee(changer)[1]
                 self.assertTrue(any(message in p for p in carte.lint(code)), carte.lint(code))
-        # login and pseudo share verifier_comptes: declared shared (never live at once), they pass; undeclared, they are refused
-        self.assertFalse([p for p in self.carte.lint(code) if "login and pseudo" in p])
-        carte = self.carte_changee(lambda m: m.update(shared=[]))[1]
-        self.assertIn("outils/x.py: line 1: login and pseudo both become login", carte.lint(code))
 
     def test_the_names_inventory_covers_every_name_literal_of_bee(self):
         lus, seuls = inventaire_marqueurs.noms_de_bee(RACINE)

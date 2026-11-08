@@ -137,16 +137,14 @@ def noms_de(n):
 def noms_de_bee(racine=RACINE):
     """--names: (every name literal of bee.py with its first line, those neither in the map nor neutral)."""
     sys.path += [str(racine / "outils"), str(racine / "outils/migration")]
-    import rename
-    import rename_code
+    import rename, rename_code  # noqa: E401
     carte = rename_code.CodeMap(rename.Names((racine / rename.MAP).read_text(encoding="utf-8")),
                                 (racine / rename_code.IDS[0]).read_text(encoding="utf-8"))
     gardes = carte.kept("outils/bee.py")[1] | set(carte.m["neutral"])  # kept on purpose, or declared language-neutral
     connu = lambda x: x in carte.tokens or x in carte.hand or x in carte.attrs or x in gardes or carte.covered(x, False)  # noqa: E731
-    lus = {}
-    for n in ast.walk(ast.parse((racine / "outils/bee.py").read_text(encoding="utf-8"))):
-        if isinstance(n, ast.Constant) and isinstance(n.value, str) and NOM.match(n.value):
-            lus.setdefault(n.value, n.lineno)
+    lus = {}  # each name literal, with its first line
+    [lus.setdefault(n.value, n.lineno) for n in ast.walk(ast.parse((racine / "outils/bee.py").read_text(encoding="utf-8")))
+     if isinstance(n, ast.Constant) and isinstance(n.value, str) and NOM.match(n.value)]
     return lus, sorted((x for x in lus if not (connu(x) or carte.names.path(x) != x or all(connu(p) for p in re.split(r"[/.]", x) if p))), key=lus.get)
 
 

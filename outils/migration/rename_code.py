@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """English names, step 1b (ruche-0142; docs/english-migration.md, sections 9, 12 and 13): the Python code renamer
-(CodeMap.rename_python) and proofs P1, P1b and P3, dormant. Run it isolated, from the base's own checkout:
+(CodeMap.rename_python) and proofs P1 and P1b, dormant. Run it isolated, from the base's own checkout:
     python3 -I outils/migration/rename_code.py lint | check --base REV --head REV [--repo DIR]
 lint: identifiers.yaml against the code. check reads both maps and the files from git, runs only as the base's own code
-(this script, rename.py, bee.py): P1 and P1b (a) per Python code file, then, if P1 holds for bee.py, P3 and P1b (b).
+(this script, rename.py, bee.py): P1 and P1b per Python code file. P3 and P1b (c) execute the new tool: a later step.
 Exit 0: proven, as the last line says; 1: problems, listed. Shell scripts and workflows are not renamed here.
 """
 import sys
@@ -11,7 +11,7 @@ import sys
 if __name__ == "__main__" and not sys.flags.isolated:
     sys.exit("rename_code.py: run it isolated, python3 -I outils/migration/rename_code.py …, so that nothing shadows a module")
 
-import argparse, ast, collections, importlib.util, io, keyword, pathlib, re, subprocess, tempfile, tokenize  # noqa: E401, E402
+import argparse, ast, collections, io, keyword, pathlib, re, subprocess, tokenize  # noqa: E401, E402
 import yaml  # noqa: E402
 
 SELF = pathlib.Path(__file__).resolve()
@@ -81,7 +81,7 @@ class CodeMap:
 
     def lint(self, code):
         """The map against the code ({path: text}): each identifier mapped or English; a destination as its option, a name of
-        the name map as it says (unless a keyword); one English name per identifier in each scope; a pending file: one line."""
+        the name map as it says (unless a keyword); a pending file: one line. (One English name per scope: a later step.)"""
         problems = [f"identifier {a} -> {b}: not an identifier, a keyword, or not made of English words" for a, b in [*self.ids.items(),
                     *self.m["attributes"].items()] if not (isinstance(b, str) and b.isidentifier() and not keyword.iskeyword(b) and a != b and self.covered(b, False))]
         problems += [f"token {t}: two English names {sorted(v)}, not declared in hand with a default" for t, v in self.hand.items() if "default" not in self.m["hand"].get(t, {})]
@@ -99,30 +99,7 @@ class CodeMap:
                     elif x not in self.m["hand"] and (e := self.from_names.get(x, "")).isidentifier() and self.ids.get(x, x) != e and not keyword.iskeyword(e):
                         problems.append(f"{path}: identifier {x} -> {self.ids.get(x, x)}, the name map says {e}")
             problems += [f"{path}: {missing} identifiers not mapped yet (pending)"] if path in self.m["pending"] else []
-            problems += [f"{path}: {p}" for p in self.collisions(tree)]
         return problems
-
-    def collisions(self, tree):
-        """Two identifiers of one scope (module, function, lambda, class, a class's self attributes) mapped to one name, unless
-        declared shared (never live at once)."""
-        def names(scope):
-            todo, found = list(ast.iter_child_nodes(scope)), set()
-            while todo:
-                n = todo.pop()
-                found |= {n.id} if isinstance(n, ast.Name) else {n.arg} if isinstance(n, ast.arg) else set(n.names) \
-                    if isinstance(n, (ast.Global, ast.Nonlocal)) else {getattr(n, "name", None)} - {None}
-                todo += [] if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)) else list(ast.iter_child_nodes(n))
-            return found
-        scopes = [(s, names(s), self.ids) for s in ast.walk(tree) if isinstance(s, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef))]
-        scopes += [(c, {a.attr for a in ast.walk(c) if isinstance(a, ast.Attribute) and getattr(a.value, "id", None) == "self"}, self.attrs)
-                   for c in ast.walk(tree) if isinstance(c, ast.ClassDef)]
-        shared, out = {(k["scope"], frozenset(k["names"])) for k in self.m["shared"]}, []
-        for s, found, d in scopes:
-            by = collections.defaultdict(set)
-            [by[d.get(x, x)].add(x) for x in found]
-            out += [f"line {getattr(s, 'lineno', 1)}: {' and '.join(sorted(v))} both become {e}" for e, v in by.items()
-                    if len(v) > 1 and (getattr(s, "name", None), frozenset(v)) not in shared]
-        return out
 
     # --- the renamer ---
 
@@ -287,19 +264,6 @@ class CodeMap:
             f"line {n.lineno}: the template's « {{{x}}} » is given by no keyword of format()" for n, t in formats if isinstance(t, str)
             for x in sorted(set(re.findall(r"(?<!\{)\{([A-Za-z_]\w*)", t)) - {k.arg for k in n.keywords})]
 
-    # --- P3 ---
-
-    def mapped_tree(self, t):
-        """A parser tree as the map makes it (destinations by attrs, functions and set_defaults keys by ids)."""
-        v = lambda x: (x[0], self.ids.get(x[1], x[1])) if isinstance(x, tuple) else self.whole(x) if isinstance(x, str) else \
-            [v(y) for y in x] if isinstance(x, list) else x  # noqa: E731
-        return {"defaults": {self.ids.get(k, k): v(x) for k, x in t["defaults"].items()}, "actions": [
-            {**a, "options": [self.tokens.get(o, o) for o in a["options"]], "dest": self.attrs.get(a["dest"], a["dest"]), "default": v(a["default"]),
-             "const": v(a["const"]), "type": v(a["type"]), "metavar": v(a["metavar"]), "choices": {self.whole(k): self.mapped_tree(c) for k, c in
-                                                                                                   a["choices"].items()} if isinstance(a["choices"], dict) else
-             v(a["choices"]) if a["choices"] is None else sorted(v(a["choices"]))} for a in t["actions"]]}
-
-
 def identifier_strings(tree, deep=True):
     """The string constants that are attribute names: given to getattr, setattr, hasattr or delattr, a key of vars(x), the
     fields of a namedtuple or __slots__; the first argument of add_argument without dashes, and every dest= (destinations)."""
@@ -325,32 +289,6 @@ def scopes_of(tree):
     return out
 
 
-def parser_tree(parser):
-    """An argparse parser as a comparable tree, help texts aside (prose): each action's class, option strings, destination,
-    nargs, required, default, const, type, metavar and choices (sorted), each subcommand's own tree; set_defaults."""
-    v = lambda x: ("function", x.__name__) if callable(x) and hasattr(x, "__name__") else list(x) if isinstance(x, (list, tuple)) else x  # noqa: E731
-    return {"defaults": {k: v(x) for k, x in parser._defaults.items()}, "actions": [
-        {"class": type(a).__name__, "options": list(a.option_strings), "dest": a.dest, "nargs": a.nargs, "required": a.required, "default": v(a.default),
-         "const": v(a.const), "type": v(a.type), "metavar": v(a.metavar), "choices": {k: parser_tree(p) for k, p in a.choices.items()}
-         if isinstance(a, argparse._SubParsersAction) else None if a.choices is None else sorted(v(a.choices))} for a in parser._actions]}
-
-
-def tree_diff(a, b, where="bee"):
-    """Where two parser trees differ, one line each."""
-    if isinstance(a, dict) and isinstance(b, dict):
-        return [f"{where} {k}: only {'before' if k in a else 'after'} the move" for k in a.keys() ^ b.keys()] + \
-            [x for k in a.keys() & b.keys() for x in tree_diff(a[k], b[k], f"{where} {k}" if k not in ("actions", "choices") else where)]
-    if isinstance(a, list) and isinstance(b, list) and len(a) == len(b) and all(isinstance(x, dict) for x in a + b):
-        return [x for p, q in zip(a, b) for x in tree_diff(p, q, f"{where} {'/'.join(p.get('options') or [p.get('dest')])}")]
-    return [] if a == b else [f"{where}: the map gives {a!r:.80}, the new parser has {b!r:.80}"]
-
-
-def walk_trees(t):
-    yield t
-    for a in t["actions"]:
-        yield from (y for c in (a["choices"].values() if isinstance(a["choices"], dict) else []) for y in walk_trees(c))
-
-
 def data_keys(names, base, files):
     """Every key of the data files of base, read in files at the same path or at its English one."""
     out, todo = set(), [(f[0], files.get(p, files.get(names.path(p)))) for p in base if (f := names.families_of(p))]
@@ -362,8 +300,8 @@ def data_keys(names, base, files):
 
 
 def check(repo, base, head):
-    """P1, P1b (a, b, and the data the new code reads) and P3 (plan, sections 9 and 12, change 2); the scans on the fixture
-    (P1b c) are step 1c's, with P6. Returns (problems, counts of each mapping)."""
+    """P1 and P1b (a, b, and the data the new code reads; plan, sections 9 and 12, change 2). P3 and the scans on the fixture
+    (P1b c) run the new tool: a later step. Returns (problems, counts of each mapping)."""
     files, after, none = rename.tree_files(repo, base), rename.tree_files(repo, head), collections.Counter()
     if (at := next((c for c in rename.MAPS if c in files), None)) is None or IDS[rename.MAPS.index(at)] not in files:
         return [f"no {rename.MAP} and {IDS[0]} at the base {base}"], none
@@ -387,21 +325,15 @@ def check(repo, base, head):
                          ([] if p in cm.m["pending"] else read_names(trees.setdefault(q, ast.parse(new)))) if c.value in retired[k]]
         except (KeyError, SyntaxError, UnicodeDecodeError, rename.Problem) as e:
             problems.append(f"{q}: {'not in the head' if isinstance(e, KeyError) else f'{type(e).__name__}: {e}'}")
-    if any(x.startswith(f"{tool}: ") for x in problems):
-        return problems + [f"P3 and P1b (b) not run: P1 does not hold for {tool}"], counts
-    with tempfile.TemporaryDirectory() as tmp:  # P1 holds: the new tool is the base's code modulo the map, it may run
-        (path := pathlib.Path(tmp) / tool).parent.mkdir(parents=True)
-        path.write_bytes(after[tool])
-        spec = importlib.util.spec_from_file_location("bee_after_the_move", path)
-        try:
-            spec.loader.exec_module(new := importlib.util.module_from_spec(spec))
-            trees_p3 = parser_tree(bee.construire_analyseur()), parser_tree(getattr(new, cm.ids.get("construire_analyseur", "construire_analyseur"))())
-        except Exception as e:  # noqa: BLE001 - a new tool that does not load is a refusal, never a crash
-            return problems + [f"P3 and P1b (b) not run: {tool} does not load: {type(e).__name__}: {e}"], counts
-    cm.scoped(f"{tools_dir}/bee.py", "construire_analyseur")  # the parser's names are that function's
-    problems += [f"P3: {x}" for x in tree_diff(cm.mapped_tree(trees_p3[0]), trees_p3[1])]
-    dests = {a["dest"] for t in walk_trees(trees_p3[1]) for a in t["actions"]} | {k for t in walk_trees(trees_p3[1]) for k in t["defaults"]}
-    return problems + [f"P1b: {q}: {x}" for q, t in trees.items() for x in cm.attribute_names(t, dests if q == tool else None)], counts
+    return problems + [f"P1b: {q}: {x}" for q, t in trees.items() for x in cm.attribute_names(t, parser_dests(t) if q == tool else None)], counts
+
+
+def parser_dests(tree):
+    """The destinations of the parser this code builds, read in it: dest=, a long option or a positional's name, set_defaults."""
+    calls = [n for n in ast.walk(tree) if isinstance(n, ast.Call) and getattr(n.func, "attr", None) in ("add_argument", "add_subparsers", "set_defaults")]
+    return {k.arg if n.func.attr == "set_defaults" else k.value.value for n in calls for k in n.keywords if k.arg == "dest" or n.func.attr == "set_defaults"} | {
+        next((a.value[2:] for a in n.args if str(a.value).startswith("--")), n.args[0].value).replace("-", "_") for n in calls
+        if n.func.attr == "add_argument" and n.args and all(isinstance(a, ast.Constant) for a in n.args) and "dest" not in {k.arg for k in n.keywords}}
 
 
 def read_names(tree):
@@ -433,10 +365,10 @@ def main(argv=None):
     if a.action == "check":
         print("".join(f"{k}: {x} -> {y}: {n}\n" for (k, x, y), n in sorted(counts.items(), key=lambda c: (-c[1], c[0]))), end="")
     print("".join(f"✗ {x}\n" for x in problems) + f"{len(problems)} problem(s)." if problems else
-          f"✓ P1, P1b and P3 hold at {a.base} for the head {a.head}: {len({x for k, x, _ in counts if k == 'identifier'})} identifiers and "
+          f"✓ P1 and P1b hold at {a.base} for the head {a.head}: {len({x for k, x, _ in counts if k == 'identifier'})} identifiers and "
           f"{len({x for k, x, _ in counts if k == 'string'})} names in strings renamed through the map ({sum(counts.values())} places), nothing "
-          "else changed; no French name left, every attribute name resolves, the parser is the same." if a.action == "check" else
-          "✓ the identifier map covers the code, one English name per identifier in each scope.")
+          "else changed; no French name left, every attribute name resolves, the data read exists." if a.action == "check" else
+          "✓ the identifier map covers the code.")
     return 1 if problems else 0
 
 
