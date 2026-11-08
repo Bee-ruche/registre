@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-"""English names, step 1b (ruche-0142; docs/english-migration.md, sections 9, 12 and 13): the Python code renamer and the
-proofs P1, P1b and P3, dormant: bee never calls it. Run it isolated (-I), from the base's own checkout:
-    python3 -I outils/migration/rename_code.py lint | apply SOURCE DEST | check --base REV --head REV [--repo DIR]
-lint checks identifiers.yaml against the code; apply writes the Python code files of the checkout SOURCE, renamed, at their
-English paths under DEST; check reads both maps and the files from git and runs only as the base's own code (this script,
-rename.py, bee.py): P1 for each Python code file, then P1b and, if P1 holds for bee.py, P3. Exit 0: proven, as the last
-line says; 1: problems, listed. The shell scripts and the workflows are not renamed here.
+"""English names, step 1b (ruche-0142; docs/english-migration.md, sections 9, 12 and 13): the Python code renamer
+(CodeMap.rename_python) and proofs P1, P1b and P3, dormant. Run it isolated, from the base's own checkout:
+    python3 -I outils/migration/rename_code.py lint | check --base REV --head REV [--repo DIR]
+lint: identifiers.yaml against the code. check reads both maps and the files from git, runs only as the base's own code
+(this script, rename.py, bee.py): P1 and P1b (a) per Python code file, then, if P1 holds for bee.py, P3 and P1b (b, c).
+Exit 0: proven, as the last line says; 1: problems, listed. Shell scripts and workflows are not renamed here.
 """
 import sys
 
@@ -32,10 +31,9 @@ idents = lambda tree: ((n, f, v) for n in ast.walk(tree) if not isinstance(n, as
 
 
 class CodeMap:
-    """identifiers.yaml with the name map. ids: French identifier -> English; attrs: the same where an attribute (x.name, an
-    attribute-name string, a parser destination) differs; tokens: every name a string may hold (the name map's keys, values,
-    commands, options, path segments and file stems, the extra tokens, then the French identifiers); hand: a token with two
-    English names, left to the hand-made part (P1 accepts both); targets: every English name (blind spots of P1b (a))."""
+    """identifiers.yaml with the name map. ids: French identifier -> English (attrs: for x.name, attribute-name strings and
+    destinations); tokens: every name a string may hold (the name map's keys, values, commands, options, path segments and
+    stems, the extra tokens, the French identifiers); hand: two English names, by hand (P1 accepts both)."""
 
     def __init__(self, names, text):
         self.names, m = names, bee.charger_texte_yaml(text, "identifiers.yaml")
@@ -71,9 +69,8 @@ class CodeMap:
         return set().union(*(s for s, _ in k)), set().union(*(t for _, t in k))
 
     def lint(self, code):
-        """The map against the base's Python code ({path: text}): every identifier mapped or made of English words; an option's
-        destination named as its option, an identifier that is a name of the name map named by it (unless a keyword); one
-        English name per identifier in each scope; every role-dependent token declared; pending files: one line each."""
+        """The map against the code ({path: text}): each identifier mapped or English; a destination as its option, a name of
+        the name map as it says (unless a keyword); one English name per identifier in each scope; a pending file: one line."""
         problems = [f"identifier {a} -> {b}: not an identifier, a keyword, or not made of English words" for a, b in [*self.ids.items(),
                     *self.m["attributes"].items()] if not (isinstance(b, str) and b.isidentifier() and not keyword.iskeyword(b) and a != b and self.covered(b, False))]
         problems += [f"token {t}: two English names {sorted(v)}, not declared in hand" for t, v in self.hand.items() if t not in self.m["hand"]]
@@ -94,8 +91,8 @@ class CodeMap:
         return problems
 
     def collisions(self, tree):
-        """Two identifiers of one scope (module, function, lambda, class body, a class's self attributes) mapped to one name,
-        unless identifiers.yaml declares them shared (never live at once)."""
+        """Two identifiers of one scope (module, function, lambda, class, a class's self attributes) mapped to one name, unless
+        declared shared (never live at once)."""
         def names(scope):
             todo, found = list(ast.iter_child_nodes(scope)), set()
             while todo:
@@ -127,9 +124,8 @@ class CodeMap:
         return "".join(self.tokens.get(x, x) for x in re.split(r"([/.])", self.names.path(s)))
 
     def text(self, t):
-        """The names inside a text, as written: a YAML key at a line start and its one-token value, options, regex group names,
-        paths and node ids (never in an address), commands after « bee », constants and environment variables, bee.<name>;
-        every other word stays (prose is translated after the switch)."""
+        """The names in a text: a YAML key at a line start and its one-token value, options, regex group names, paths and node
+        ids (never in an address), commands after « bee », constants, bee.<name>; prose stays (translated after the switch)."""
         parts = re.split(r"(\n|\\n)", t)
         for i in range(0, len(parts), 2):
             if x := LINE.fullmatch(parts[i]):
@@ -158,9 +154,8 @@ class CodeMap:
         return prefix + q + (new if new != value else self.text(body)) + q
 
     def rename_python(self, source, path=""):
-        """A Python file renamed: each identifier of the map (attrs after a dot), the names in its strings and f-string parts
-        (attribute names and destinations by attrs) outside the kept scopes and tokens; the rest as written, comments
-        included. Returns (text, [(line, old token, new token)])."""
+        """A Python file renamed: identifiers (attrs after a dot), the names in strings and f-string parts (outside kept scopes
+        and tokens); the rest as written, comments included. Returns (text, [(line, old token, new token)])."""
         scopes, kept = self.kept(path)
         lines, starts, tree = source.split("\n"), [0], ast.parse(source)  # lines as the tokenizer counts them (not at U+2028)
         [starts.append(starts[-1] + len(x) + 1) for x in lines]
@@ -205,9 +200,8 @@ class CodeMap:
         return pairs if len(x) == len(y) and x[0::2] == y[0::2] and all(self.allowed(s, t) for s, t in pairs) else None
 
     def same_python(self, old, new, counts):
-        """P1 for one file: the two syntax trees are equal once identifiers go through the map (attributes through attrs) and
-        string constants, f-string parts included, through whole() or token by token; numbers, operators and structure
-        identical; two keys of a dict, or members of a set, never become one. counts gets each mapping applied."""
+        """P1 for one file: equal syntax trees once identifiers go through the map and strings (f-string parts included) through
+        whole() or token by token; numbers, operators, structure identical; no two dict keys merge. counts: each mapping."""
         problems = []
 
         def same(a, b, line):
@@ -242,15 +236,13 @@ class CodeMap:
     # --- P1b ---
 
     def residue(self, path, new):
-        """P1b (a) for one file of the new tree: the renamer would change nothing, outside the keep-list and the words that
-        are also an English name of the map (« voter », « status »: its blind spots)."""
+        """P1b (a): renaming the new file again changes nothing, but kept tokens and English names (« voter »: blind spots)."""
         return [f"line {n}: « {a[:50]} » is still French (it would become « {b[:50]} »)" for n, a, b in self.rename_python(new, path)[1]
                 if a not in self.targets and (len(WORD.split(a)) != len(WORD.split(b)) or any(
                     x != y and x not in self.targets for x, y in zip(WORD.split(a), WORD.split(b))))]
 
     def attribute_names(self, tree, dests):
-        """P1b (b): every string used as an attribute name (identifier_strings) and every args.<name> names an attribute of
-        the new code or a parser destination (always one for args)."""
+        """P1b (b): each attribute-name string and args.<name> names an attribute of the new code or (for args) a destination."""
         defined = {v for _, _, v in idents(tree)} | dests
         found = [((getattr(n, "args", None) or [None])[0], c) for n in ast.walk(tree) for c in identifier_strings(n, False)]
         found += [(n.value, ast.Constant(n.attr, lineno=n.lineno)) for n in ast.walk(tree) if isinstance(n, ast.Attribute) and getattr(n.value, "id", None) == "args"]
@@ -260,9 +252,8 @@ class CodeMap:
                 for r, s in found if isinstance(s, ast.Constant) and isinstance(s.value, str) and bad(s.value, r)]
 
     def scanners(self, tools, roots, argvs):
-        """P1b (c): the old tool on the base's frozen fixture and the new tool on the head's (tools, roots: old, new) scan
-        alike: each glob, rglob and iterdir, folder and pattern mapped, finds as many files; each collection of the Registre
-        holds as many; each read-only command (argvs: old names) ends with the same exit code. Returns (problems, scans, files)."""
+        """P1b (c): old tool on the base's fixture, new tool on the head's: each glob, rglob, iterdir (mapped) finds as many files,
+        each Registre collection holds as many, each read-only command exits alike. Returns (problems, scans, files)."""
         old = scan_run(tools[0], roots[0], [["--registre", str(roots[0]), *a] for a in argvs])
         new = scan_run(tools[1], roots[1], [[self.whole("--registre"), str(roots[1]), *map(self.whole, a)] for a in argvs], lambda x: self.ids.get(x, x))
         expected = [(self.names.path(r), self.whole(p), n) for r, p, n in old[0]]
@@ -278,8 +269,7 @@ class CodeMap:
     # --- P3 ---
 
     def mapped_tree(self, t):
-        """A parser tree as the map makes it: options, choices, defaults and subcommands by their names, destinations by attrs,
-        functions and set_defaults keys by ids."""
+        """A parser tree as the map makes it (destinations by attrs, functions and set_defaults keys by ids)."""
         v = lambda x: (x[0], self.ids.get(x[1], x[1])) if isinstance(x, tuple) else self.whole(x) if isinstance(x, str) else \
             [v(y) for y in x] if isinstance(x, list) else x  # noqa: E731
         return {"defaults": {self.ids.get(k, k): v(x) for k, x in t["defaults"].items()}, "actions": [
@@ -290,8 +280,7 @@ class CodeMap:
 
 
 def scan_run(tool, root, argvs, n=lambda x: x):
-    """The tool on one registry: each glob, rglob and iterdir it makes (folder, pattern, files found), the size of each
-    collection of its Registre, and each command's exit code (n: a name of the tool, as spelled in it)."""
+    """The tool on a registry: its scans (folder, pattern, files found), its Registre's collection sizes, each command's exit code."""
     seen, real = [], {m: getattr(pathlib.Path, m) for m in ("glob", "rglob", "iterdir")}
 
     def spy(m):
@@ -354,8 +343,7 @@ def walk_trees(t):
 
 
 def checkout(files, dest, data, fixture):
-    """A commit's files as a registry whose data is the frozen fixture (data: the data folders; fixture: its folder, if the
-    commit has one), committed, so that the tool reads its history as on a clone."""
+    """A commit's files as a committed registry whose data is the frozen fixture (if the commit has one, in its folder)."""
     data = data if any(p.startswith(fixture) for p in files) else set()
     for p, content in files.items():
         for q in [p[len(fixture):]] * p.startswith(fixture) + [p] * (p.split("/")[0] + "/" not in data):
@@ -407,7 +395,7 @@ def check(repo, base, head):
 def main(argv=None):
     p = argparse.ArgumentParser(prog="rename_code.py", description=__doc__.split("\n\n")[0])
     sub = p.add_subparsers(dest="action", required=True)
-    [s.add_argument(x) for s in (sub.add_parser("lint"), sub.add_parser("apply")) for x in (("source", "dest") if s.prog.endswith("apply") else ())]
+    sub.add_parser("lint")
     s = sub.add_parser("check")
     [s.add_argument(o, required=o != "--repo", default=str(SELF.parents[2]) if o == "--repo" else None) for o in ("--base", "--head", "--repo")]
     a, counts, scans = p.parse_args(argv), collections.Counter(), None
@@ -415,16 +403,8 @@ def main(argv=None):
         if a.action == "check":
             problems, counts, scans = check(a.repo, a.base, a.head)
         else:
-            root = SELF.parents[2]
-            names = rename.Names((root / rename.MAP).read_text(encoding="utf-8"))
-            cm, source = CodeMap(names, (root / IDS[0]).read_text(encoding="utf-8")), pathlib.Path(getattr(a, "source", None) or root)
-            code = {q: (source / q).read_text(encoding="utf-8") for q in names.code if q.endswith(".py")}
-            problems = [x for x in cm.lint(code) if a.action == "lint" or "(pending)" not in x]
-            for q, text in code.items() if a.action == "apply" and not problems else []:
-                (dest := pathlib.Path(a.dest) / names.path(q)).parent.mkdir(parents=True, exist_ok=True)
-                new, changes = cm.rename_python(text, q)
-                dest.write_text(new, encoding="utf-8")
-                counts.update({q: len(changes)})
+            names, read = rename.Names((SELF.parents[2] / rename.MAP).read_text(encoding="utf-8")), lambda q: (SELF.parents[2] / q).read_text(encoding="utf-8")
+            problems = CodeMap(names, read(IDS[0])).lint({q: read(q) for q in names.code if q.endswith(".py")})
     except (rename.Problem, bee.ErreurBee, yaml.YAMLError, subprocess.CalledProcessError, OSError, UnicodeDecodeError, KeyError, TypeError) as e:
         problems = [f"{type(e).__name__}: {e}"]
     if a.action == "check":
@@ -433,8 +413,7 @@ def main(argv=None):
           f"✓ P1, P1b and P3 hold at {a.base} for the head {a.head}: {len({x for k, x, _ in counts if k == 'identifier'})} identifiers and "
           f"{len({x for k, x, _ in counts if k == 'string'})} names in strings renamed through the map ({sum(counts.values())} places), nothing "
           f"else changed; no French name left; {scans[0]} scans find the same {scans[1]} files." if a.action == "check" else
-          "✓ the identifier map covers the code, one English name per identifier in each scope." if a.action == "lint" else
-          f"✓ {len(counts)} Python file(s) written, {sum(counts.values())} name(s) renamed.")
+          "✓ the identifier map covers the code, one English name per identifier in each scope.")
     return 1 if problems else 0
 
 
