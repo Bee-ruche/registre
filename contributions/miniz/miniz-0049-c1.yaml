@@ -4,7 +4,7 @@ auteur: bidji29
 pr: https://github.com/Bee-ruche/minizBee/pull/24
 resume: 'minizBee''s CI reads the registry in both vocabularies (French, English) before the switch: tasks,
   manifests, tool, command, options; unreadable means red, never a default.'
-statut: en_relecture
+statut: integree
 soumise_le: '2026-11-08T16:13:05Z'
 engage_depuis: '2026-11-08T15:16:29Z'
 relectures: []
@@ -111,3 +111,6 @@ declare:
     the merge (no conflict, checked with git merge-tree): #20 (miniz-0036), #18 (miniz-0029), #15 (miniz-0017),
     #13 (miniz-0018), all based on a2f939a; they are already asked to rebase by the greffon job, and their
     own bee-ci.yml would break on tools/requirements.txt after the switch.'
+decidee_le: '2026-11-08T16:37:00Z'
+motif_decision: 'Fork tooling contribution: minizBee PR #24 merged at the judged commit eeb059c by the agent principal from the council account (bidji29), at the founder''s request of 8 November 2026 that the agent principal merge PRs himself; independent adversarial review by another model (mergeable, four minor findings; the one fix advised, an optimisation task with a null metric now refused, made and verified by a reviewer of that model); every CI job green on the judged commit, verdict recorded. R1: about 288 lines changed outside tests, for an M task (400 at most). Recorded by hand: the fork PR changes a workflow, which the integration robot never merges.'
+fusion_sha: 92719289c1a7f300f03985a54296f4db8c17b04a
