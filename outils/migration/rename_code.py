@@ -12,7 +12,7 @@ import sys
 if __name__ == "__main__" and not sys.flags.isolated:
     sys.exit("rename_code.py: run it isolated, python3 -I outils/migration/rename_code.py …, so that nothing shadows a module")
 
-import argparse, ast, collections, importlib.util, io, itertools, json, keyword, pathlib, re, subprocess, tempfile, tokenize  # noqa: E401, E402
+import argparse, ast, collections, importlib.util, io, itertools, json, keyword, pathlib, re, subprocess, tempfile, tokenize, unittest  # noqa: E401, E402
 import yaml  # noqa: E402
 
 SELF = pathlib.Path(__file__).resolve()
@@ -29,6 +29,7 @@ TAG = re.compile(r"(</?(?:a|b|body|br|code|dd|details|div|dl|dt|em|footer|h[1-6]
                  r"pre|section|select|small|span|strong|summary|table|tbody|td|th|thead|title|tr|ul)\b[^<>]*>)")  # HTML: its text is prose
 KEY = re.compile(r"(\s*(?:- )*)([\w-]+)(:)(?=\s|$)\s*")  # a workflow's YAML key at a line start, and the blanks after it
 TESTS = re.compile(r"(?:^|/)test_\w+(?:\.py)?\Z")  # a test file (outils/test_bee.py), or a test module in a dotted name
+TEST_CASE = frozenset(dir(unittest.TestCase))  # what a test class's method must never become (ruche-0153: execution -> run)
 HEREDOC = re.compile(r"(?<!<)<<-?\s*(['\"]?)(\w+)\1\s*$")  # a here-document starts at this line's end
 BLOCK = re.compile(r"[ \t>]*(`{3,}|~{3,})")  # Markdown: a fenced code block opens or closes (in a list or a quote too)
 SPAN = re.compile(r"(?<!`)(`+)(?!`)(.+?)(?<!`)\1(?!`)", re.S)  # Markdown: a code span, inside one paragraph
@@ -133,6 +134,9 @@ class CodeMap:
             problems += [f"{path}: {x} is defined as {self.ids.get(x, x)} and read as an attribute as {self.attrs[x]}" for x in sorted({n.name for n in ast.walk(
                 tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))}) if self.attrs.get(x, self.ids.get(x, x)) != self.ids.get(x, x)]
             problems += [f"{path}: {p}" for p in self.collisions(tree, path)]
+            problems += [f"{path}: line {f.lineno}: the method {f.name} becomes {e}, an attribute of unittest.TestCase it would hide (ruche-0153)"
+                         for c in ast.walk(tree) if isinstance(c, ast.ClassDef) and TESTS.search(path) for f in c.body
+                         if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef)) and (e := self.ids.get(f.name, f.name)) != f.name and e in TEST_CASE]
         return problems + [f"identifier {x}: only a test uses it, it belongs in test_identifiers (never a string token elsewhere)"
                            for x in self.m["identifiers"] if x not in used and x in self.base_tokens and x not in self.named and self.names.code <= set(code)]
 

@@ -7242,7 +7242,7 @@ class TestVerdictsDeLaPrEnregistree(BaseParallele):
         return {"full_name": nom, "id": zlib.crc32(nom.encode()) if id_ is None else id_}
 
     @classmethod
-    def execution(cls, numero, verdict, **champs):
+    def execution_api(cls, numero, verdict, **champs):
         """Une exécution de bee-ci.yml sur abc1234 telle que l'API la décrit ; par défaut, comme celles de la PR 99007, plus
         récente (10 h 30)."""
         return {"id": numero, "event": "pull_request", "status": "completed", "head_sha": "abc1234", "head_branch": "tache/99007",
@@ -7261,16 +7261,16 @@ class TestVerdictsDeLaPrEnregistree(BaseParallele):
     def test_critere_1_seule_l_execution_de_la_pr_enregistree_vers_la_branche_par_defaut_est_retenue(self):
         """Pour le même commit, une exécution d'un autre événement, d'une autre PR, d'une autre base, d'une autre branche, d'un
         autre dépôt (même de même nom : C4, par id), ou pas terminée, n'est jamais retenue, même plus récente que celle de la PR."""
-        etrangeres = [self.execution(99901, self.FAUX, event="workflow_dispatch"),
-                      self.execution(99902, self.FAUX, event="pull_request_target"),
-                      self.execution(99903, self.FAUX, pull_requests=[{"number": 99008, "base": {"ref": "master"}}]),
-                      self.execution(99904, self.FAUX, pull_requests=[{"number": 99007, "base": {"ref": "tache/ancienne"}}]),
-                      self.execution(99905, self.FAUX, head_branch="tache/autre"),
-                      self.execution(99906, self.FAUX, head_repository=self.depot("mallory/minizBee")),
-                      self.execution(99907, self.FAUX, status="in_progress"),
-                      self.execution(99908, self.FAUX, pull_requests=[]),
-                      self.execution(99909, self.FAUX, head_sha="abc1235"),
-                      self.execution(99910, self.FAUX, head_repository=self.depot("Bee-ruche/minizBee", 4242))]
+        etrangeres = [self.execution_api(99901, self.FAUX, event="workflow_dispatch"),
+                      self.execution_api(99902, self.FAUX, event="pull_request_target"),
+                      self.execution_api(99903, self.FAUX, pull_requests=[{"number": 99008, "base": {"ref": "master"}}]),
+                      self.execution_api(99904, self.FAUX, pull_requests=[{"number": 99007, "base": {"ref": "tache/ancienne"}}]),
+                      self.execution_api(99905, self.FAUX, head_branch="tache/autre"),
+                      self.execution_api(99906, self.FAUX, head_repository=self.depot("mallory/minizBee")),
+                      self.execution_api(99907, self.FAUX, status="in_progress"),
+                      self.execution_api(99908, self.FAUX, pull_requests=[]),
+                      self.execution_api(99909, self.FAUX, head_sha="abc1235"),
+                      self.execution_api(99910, self.FAUX, head_repository=self.depot("Bee-ruche/minizBee", 4242))]
         sortie, verdict, appels = self.collecter({"executions": etrangeres})
         self.assertEqual((verdict["gain"], verdict["execution"]), (0.05, self.RUNS + "99007"), sortie)
         self.assertEqual([a["args"][2] for a in self.appels_de(appels, "run", "download")], ["99007"])
@@ -7370,7 +7370,7 @@ class TestVerdictsDeLaPrEnregistree(BaseParallele):
                 self.assertFalse(self.appels_de(appels, "run", "download"))
         fermee = {**autre, "state": "CLOSED", "branche": "tache/99007", "base": "forgee", "ouverte_le": "2026-10-27T08:30:00Z",
                   "fermee_le": "2026-10-27T09:30:00Z"}
-        forgee = self.execution(99908, self.FAUX, created_at="2026-10-27T09:00:00Z", run_started_at="2026-10-27T11:50:00Z")  # relancée
+        forgee = self.execution_api(99908, self.FAUX, created_at="2026-10-27T09:00:00Z", run_started_at="2026-10-27T11:50:00Z")  # relancée
         for nom, etats, pr in (("exécution forgée, relancée après la fermeture", {"executions": [forgee]}, {}),
                                ("exécution de la PR moins d'une heure après la fermeture", {}, {"cree_le": "2026-10-27T10:20:00Z"})):
             with self.subTest(nom):
@@ -7385,7 +7385,7 @@ class TestVerdictsDeLaPrEnregistree(BaseParallele):
         terminée, base remise à master. L'API montre alors cette exécution liée à la PR vers master : seul l'historique de la PR la
         trahit (base_ref_changed, dans l'API des événements et de la chronologie, vérifié sur minizBee #17 ; ou changement
         automatique)."""
-        ancienne = self.execution(99908, self.FAUX)
+        ancienne = self.execution_api(99908, self.FAUX)
         for evenements in ({"evenements": ["base_ref_changed"]}, {"chronologie": ["base_ref_changed"]},
                            {"evenements": ["automatic_base_change_succeeded"]}):
             with self.subTest(evenements=evenements):
@@ -7397,7 +7397,7 @@ class TestVerdictsDeLaPrEnregistree(BaseParallele):
         self.assertIsNone(verdict)
         self.attente(sortie, "autre_base")
         # Sans changement de base, la plus récente exécution de la PR est retenue (une CI relancée, par exemple).
-        sortie, verdict, _ = self.collecter({"executions": [self.execution(99908, {**self.BON, "gain": 0.04})]},
+        sortie, verdict, _ = self.collecter({"executions": [self.execution_api(99908, {**self.BON, "gain": 0.04})]},
                                             evenements=["labeled", "head_ref_force_pushed"])
         self.assertEqual((verdict["gain"], verdict["execution"]), (0.04, self.RUNS + "99908"), sortie)
 
@@ -7406,11 +7406,11 @@ class TestVerdictsDeLaPrEnregistree(BaseParallele):
         l'événement, au commit, à la branche et au dépôt de tête, par id ; une exécution d'un dépôt de même nom et d'un autre id
         (transféré ou recréé), jamais."""
         alice = self.depot("alice/minizBee")
-        for intruse in (self.execution(99908, self.FAUX, head_repository=self.depot("mallory/minizBee"), pull_requests=[]),
-                        self.execution(99909, self.FAUX, head_repository=self.depot("alice/minizBee", 4242), pull_requests=[])):
+        for intruse in (self.execution_api(99908, self.FAUX, head_repository=self.depot("mallory/minizBee"), pull_requests=[]),
+                        self.execution_api(99909, self.FAUX, head_repository=self.depot("alice/minizBee", 4242), pull_requests=[])):
             sortie, verdict, appels = self.collecter({"executions": [intruse]}, depot_tete="alice/minizBee")
             self.assertEqual((verdict["gain"], verdict["execution"]), (0.05, self.RUNS + "99007"), sortie)
-        sortie, verdict, _ = self.collecter({"executions": [self.execution(99908, self.FAUX, head_repository=alice, pull_requests=[],
+        sortie, verdict, _ = self.collecter({"executions": [self.execution_api(99908, self.FAUX, head_repository=alice, pull_requests=[],
                                                                            created_at="2026-10-27T09:00:00Z")],
                                              PR_MINIZ + "99008": {"state": "CLOSED", "head": "abc1234", "auteur": "alice",
                                                                   "depot_tete": "alice/minizBee", "branche": "tache/99007",
@@ -7542,7 +7542,7 @@ class TestVerdictsDeLaPrEnregistree(BaseParallele):
         sortie, _, _ = self.collecter({"defaut": "x\n::error::PIEGE"}, base="x\n::error::PIEGE")
         self.refus(sortie, "branche par défaut illisible, ou PR changée pendant la collecte")
         sorties.append(sortie)
-        mal_formee = {k: v for k, v in self.execution(99908, self.FAUX).items() if k != "pull_requests"}
+        mal_formee = {k: v for k, v in self.execution_api(99908, self.FAUX).items() if k != "pull_requests"}
         sortie, verdict, _ = self.collecter({"executions": [mal_formee]})
         self.assertIsNone(verdict)
         self.refus(sortie, "PR ou réponse de l'API illisible")

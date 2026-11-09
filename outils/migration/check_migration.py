@@ -302,7 +302,7 @@ class Move:
     def corpus(self, tracked):
         """{old path: its image}: every tracked path, the constants' own paths and a positive example of each shape, and their
         negative neighbours, made alike on both sides: the first folder capitalised, a folder more, another extension, a
-        number of the tests' reserve."""
+        number of the tests' reserve (a neighbour of a path the map keeps, as the map says: outils/zz/juge/ moves)."""
         o = bee
         seeds = {*tracked, *SAMPLES, *(c.replace("*", "x.md") for c in o.CHEMINS_OUTILLAGE), *o.AUTHORITY_FILES, *o.LISTES_LIEES,
                  o.CHEMIN_RETRAITS, *(d.rstrip("/") + "/x.yaml" for d in (*o.DOSSIERS_LIBRE_SERVICE, *o.DOSSIERS_GESTES, *o.PARCOURS))}
@@ -310,7 +310,7 @@ class Move:
         for f in (lambda p: (lambda h, t: h.capitalize() + "/" + t if t else p.upper())(*p.partition("/")[::2]),
                   lambda p: (lambda h, t: f"{h}/zz/{t}" if t else f"zz/{p}")(*p.partition("/")[::2]),
                   lambda p: re.sub(r"\.yaml\Z", ".yml", p), lambda p: re.sub(r"-[0-9]{4}(?=[./-])", "-9001", p)):
-            out.update({f(p): f(q) for p, q in list(out.items()) if p in seeds})
+            out.update({f(p): self.names.path(f(p)) if p == q and self.names.kept_path(p) else f(q) for p, q in list(out.items()) if p in seeds})
         return out
 
     def shape(self, x, new):

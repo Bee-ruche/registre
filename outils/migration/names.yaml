@@ -263,7 +263,7 @@ workflows:
     Récupérer les verdicts: Fetch the verdicts
     Tests de l'outil: Tool tests
     Tests unitaires du juge commun (sans Docker ; méta-tests dans juge-commun.yml): 'Unit tests of the common judge (without Docker;
-      meta-tests in juge-commun.yml)'
+      meta-tests in the judge''s own workflow)'
     Tests unitaires et méta-tests: Unit tests and meta-tests
     Tête de la PR (données ; rien n'en est exécuté hors conteneur): 'Head of the PR (data; nothing of it runs outside a container)'
     Validation complète du registre: Full validation of the registry
