@@ -378,6 +378,15 @@ class CodeMap:
                     edits[at] = "|".join(given[v] for v in code[at[0]:at[1]].split("|"))
         return rename.edited(code, {k: v for k, v in edits.items() if code[k[0]:k[1]] != v})
 
+    def bare_commands(self, text):
+        """Review of b2245cf: each code span of a Markdown text that starts with an old command name no « bee » announces
+        (« `prendre` », « `relire <contribution>` »), which neither change 10 nor old_commands sees. A word that is also an English
+        name of the map (`voter`, a key) is not one. [(line, text)]"""
+        commands = self.names.m["cli"]["commands"]
+        old = {k for k in commands if " " not in k and k not in commands.values()} - set(self.named.values())
+        return [(text.count("\n", 0, a) + 1, text[a:b][:80]) for a, b, span in code_regions(text) if span and text[a:b].split()[:1] and
+                text[a:b].split()[0] in old]
+
     def old_commands(self, text, path):
         """The scan of change 10: each old command name left after bee in the code of a file of the new tree (Markdown: its
         fenced blocks and code spans; a shell script or workflow: every region but its comments). [(line, text)]."""

@@ -23807,6 +23807,17 @@ class TestEnglishNamesStep1d(unittest.TestCase):
         files = dict(self.traduits)  # prose waits for its own tasks: an old command name there is not the scan's
         files["docs/tree.md"] += "\nEn prose : bee valider.\n".encode()
         self.assertEqual(switch.old_names(self.names, self.carte, files), {})
+        # review of b2245cf: a bare old command name in a code span (« `prendre` », no « bee » before it) is refused in AGENTS.md and
+        # .claude/**, listed elsewhere (docs and nodes wait for the prose tasks); a word that is also an English name (`voter`) is not one
+        for path, at in (("AGENTS.md", "AGENTS.md"), (".claude/skills/bee-contributor/SKILL.md", ".claude/skills/bee-contributor/SKILL.md"),
+                         ("docs/tree.md", None)):
+            with self.subTest(bare=path):
+                files = dict(self.traduits)
+                files[path] += "\nAfter `prendre`, `relire <contribution>` or `voter`.\n".encode()
+                self.assertEqual({q: [x for _, x in f] for q, f in switch.old_names(self.names, self.carte, files).items()},
+                                 {at: ["prendre", "relire <contribution>"]} if at else {})
+                listed = [x for _, x in switch.bare_elsewhere(self.names, self.carte, files).get(path, [])]
+                self.assertEqual(("prendre" in listed, "voter" in listed), (at is None, False))
 
     def test_the_common_judge_stays_as_written_and_where_it_is(self):
         judge = sorted(p for p in self.fichiers if p.startswith("outils/juge/") or re.fullmatch(r"\.github/workflows/juge(-commun)?\.yml", p))

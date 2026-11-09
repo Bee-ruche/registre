@@ -52,9 +52,19 @@ def scanned(names, new):
     return out
 
 
+BARE = re.compile(r"AGENTS\.md\Z|\.claude/.*\.md\Z")  # where a bare old command name in a code span is refused (review of b2245cf)
+
+
 def old_names(names, cm, new):
-    """Change 10's scan (plan, section 12): {path: [(line, text)]}, each old command name left after bee in the code of a scanned file."""
-    return {q: found for q in scanned(names, new) if (found := cm.old_commands(new[q].decode("utf-8"), q))}
+    """Change 10's scan (plan, section 12): {path: [(line, text)]}, each old command name left after bee in the code of a scanned file,
+    and in AGENTS.md and .claude/** each code span that starts with an old command name no « bee » announces (« `prendre` »)."""
+    return {q: found for q in scanned(names, new) if (found := cm.old_commands(new[q].decode("utf-8"), q) + (
+        cm.bare_commands(new[q].decode("utf-8")) if BARE.match(q) else []))}
+
+
+def bare_elsewhere(names, cm, new):
+    """{path: [(line, text)]}: the same bare names in the docs and the tree's nodes, which wait for the prose tasks: listed, not refused."""
+    return {q: found for q in scanned(names, new) if q.endswith(".md") and not BARE.match(q) and (found := cm.bare_commands(new[q].decode("utf-8")))}
 
 
 def own(files):
