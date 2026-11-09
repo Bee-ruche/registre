@@ -29,6 +29,7 @@ TAG = re.compile(r"(</?(?:a|b|body|br|code|dd|details|div|dl|dt|em|footer|h[1-6]
                  r"pre|section|select|small|span|strong|summary|table|tbody|td|th|thead|title|tr|ul)\b[^<>]*>)")  # HTML: its text is prose
 KEY = re.compile(r"(\s*(?:- )*)([\w-]+)(:)(?=\s|$)\s*")  # a workflow's YAML key at a line start, and the blanks after it
 TESTS = re.compile(r"(?:^|/)test_\w+(?:\.py)?\Z")  # a test file (outils/test_bee.py), or a test module in a dotted name
+GLUED = re.compile(r"(?<![\w-])[A-Za-z][A-Za-z0-9-]*[A-Za-z0-9]\Z")  # an f-string's last word, before an interpolation (ruche-0153)
 TEST_CASE = frozenset(dir(unittest.TestCase))  # what a test class's method must never become (ruche-0153: execution -> run)
 HEREDOC = re.compile(r"(?<!<)<<-?\s*(['\"]?)(\w+)\1\s*$")  # a here-document starts at this line's end
 BLOCK = re.compile(r"[ \t>]*(`{3,}|~{3,})")  # Markdown: a fenced code block opens or closes (in a list or a quote too)
@@ -73,7 +74,8 @@ class CodeMap:
         self.targets, self.inverse = set(self.tokens.values()) | set(self.attrs.values()), {e: f for f, e in self.ids.items()}
         self.tokens = self.base_tokens = collections.ChainMap({}, self.tokens)
         self.keep = [(rename.glob_re(k["files"]), set(k.get("scopes") or ()), set(k.get("tokens") or ())) for k in m["keep"]]
-        self.in_scopes = [(rename.glob_re(k["files"]), set(k["scopes"]), set(k["tokens"])) for k in m.get("kept_in_scopes") or ()]  # ruche-0153
+        self.in_scopes = [(rename.glob_re(k["files"]), set(k["scopes"]), set(k["tokens"]), set(k.get("literals") or ()))
+                          for k in m.get("kept_in_scopes") or ()]  # ruche-0153 (literals: only in those strings)
         self.declared = [(rename.glob_re(k["files"]), set(k["tokens"])) for k in m.get("strings") or ()]  # on purpose, in strings
         phrases = sorted({t for d in (nm.get("workflows") or {}).values() for t in d if " " in t}, key=len, reverse=True)  # workflows, steps, robots
         self.subcommands = re.compile(r"(?<![\w-])(?:" + "|".join(re.escape(k).replace(r"\ ", r"\s+") for k in nm["cli"]["commands"] if " " in k) + r")(?![\w-])")
@@ -93,14 +95,15 @@ class CodeMap:
         in this scope (kept_in_scopes: logins) as written."""
         scope = self.inverse.get(scope, scope)  # the new tree's scopes are English
         self.tokens, self.in_tests = collections.ChainMap({**{t: (h.get("roles") or {}).get(f"{path}:{scope}:{literal}", (h.get("roles") or {}).get(
-            f"{path}:{scope}", h.get("default", t))) for t, h in self.m["hand"].items()}, **dict.fromkeys(self.kept_here(path, scope), None)},
+            f"{path}:{scope}", h.get("default", t))) for t, h in self.m["hand"].items()}, **dict.fromkeys(self.kept_here(path, scope, literal), None)},
             self.test_tokens if TESTS.search(path) else {}, self.base_tokens), bool(TESTS.search(path))
-        self.tokens.maps[0].update({t: t for t in self.kept_here(path, scope)})
+        self.tokens.maps[0].update({t: t for t in self.kept_here(path, scope, literal)})
 
-    def kept_here(self, path, scope):
-        """The tokens kept as written in one scope of one file (kept_in_scopes; the scope as the base names it)."""
+    def kept_here(self, path, scope, literal=None):
+        """The tokens kept as written in one scope of one file (kept_in_scopes; the scope as the base names it), an entry that
+        lists literals only in a string whose value is one of them."""
         scope = self.inverse.get(scope, scope)
-        return set().union(*(t for r, s, t in self.in_scopes if r.match(path) and scope in s))
+        return set().union(*(t for r, s, t, v in self.in_scopes if r.match(path) and scope in s and (not v or literal in v)))
 
     def covered(self, name, mapped=True):
         return mapped and name in self.attrs or all(len(w) < 2 or w in self.english for w in words(name))
@@ -228,7 +231,7 @@ class CodeMap:
         t = re.sub(r"(?<=\(\?P=)\w+(?=\))|(?<=\\g<)\w+(?=>)", lambda x: self.tokens.get(x[0], x[0]), t)  # regex back-references, as m["name"]
         t = re.sub(r"(?<=\()(\?:)?([\w-]+(?:\|[\w-]+)+)(?=\)/)", lambda x: (x[1] or "") + "|".join(map(self.name, x[2].split("|"))), t)  # (a|b)/
         t = re.sub(r"(?<![\w-])[a-z_][\w-]*(?=\]?=)|(?<=\^)[a-z_][\w-]*(?=:)", lambda x: self.name(x[0]), t)
-        t = re.sub(r"(?<=\^)([ \t]*- )([a-z_][\w-]*)(?=:)", lambda x: x[1] + self.name(x[2]), t)  # a pattern's ^  - key: (ruche-0153)  # k=, x[k]=, a pattern's ^key:
+        t = re.sub(r"(?<=\^)(\((?:\?:)?|[ \t]*- )([a-z_][\w-]*)(?=:)", lambda x: x[1] + self.name(x[2]), t)  # a pattern's ^  - key:, ^(key: (ruche-0153)  # k=, x[k]=, a pattern's ^key:
         t = re.sub(r"((?<![\w/.-])bee +|(?<![\w.-])bee\.py +)([a-z][\w-]*)( +[a-z][\w-]*)?", lambda x: x[1] + self.command(x[2], x[3] or ""), t)
         t = re.sub(r"(?<=\$)\{?([A-Za-z_]\w*)", lambda x: x[0].replace(x[1], self.whole(x[1])), t)  # a shell's $variable
         t = re.sub(r"(?<=\bread -r )[A-Za-z_][\w ]*|\A ?(?!(?:for|while|until|if)\b)(?:(?!in\b)[a-z_]\w* )+[a-z_]\w*(?=; do\b)", lambda x: re.sub(r"\w+", lambda w: self.whole(w[0]), x[0]),
@@ -259,9 +262,10 @@ class CodeMap:
         t = re.sub(r"(?<![\w/.<>@#\[\]$«-])[a-z_][\w-]*(?= mot\(s\)| « )", names(self.key_names), t)  # « titre mot(s) 6 », « par « Gaspard » »
         t = re.sub(r"(?<=Niveau )[A-Z]\w+", names(self.value_names), t)  # a level
         t = re.sub(r"(?<![\w/.-])[a-z_]+(?= est déjà consigné)", lambda x: self.whole(x[0]) if x[0] in (self.key_names | self.value_names) - here else x[0], t)  # a gesture
-        t = re.sub(r"(?<=\d )(?:propositions de règle|[a-z_]+)(?= ajouté| sur 24 h)", names(set(self.named)), t)  # « 4 taches ajoutés »
+        t = re.sub(r"(?<=\d )(?:propositions de règle|[a-z_]+)(?= ajouté| sur 24 h| en 24 h)", names(set(self.named)), t)  # « 4 taches ajoutés »
+        t = re.sub(r"(?<=[\w)] : )[a-z_]+(?= \(\d)", names(self.key_names), t)  # « S-0002.yaml : le (2026-…) »
         seg = self.names.m["tree"]["segments"]
-        t = re.sub(r"(?<=--role )[a-z]+\b(?![/.-])|(?<=« )[a-z]+(?= »)|(?<=[:,] )[a-z]+(?=, | »|\Z)", lambda x: seg.get(x[0], x[0]) if x[0] not in here
+        t = re.sub(r"(?<=--role )[a-z]+\b(?![/.-])|(?<=« )[a-z]+(?= »)|(?<=[:,] )[a-z]+(?=, | ;| »|\Z)", lambda x: seg.get(x[0], x[0]) if x[0] not in here
                    else x[0], t)  # a role, a node id in « » or in a list
         return re.sub(r"(?<=nœud )[a-z_]+\b(?![/.-])|(?<![\w/.$-])[a-z_]+(?= > )|(?<= > )[a-z_]+\b(?![/.-])", lambda x: seg.get(x[0], x[0]), t)
 
@@ -385,7 +389,8 @@ class CodeMap:
         roles = {(c.lineno, len(lines[c.lineno - 1].encode()[:c.col_offset].decode())) for c in identifier_strings(tree)}  # bytes -> characters
         data = {(k.lineno, len(lines[k.lineno - 1].encode()[:k.col_offset].decode())) for k in data_keywords(tree)}  # ruche-0153
         edits, changes, prev, where = {}, [], None, scopes_of(tree)
-        for tok in tokenize.generate_tokens(io.StringIO(source).readline):
+        stream = list(tokenize.generate_tokens(io.StringIO(source).readline))
+        for k, tok in enumerate(stream):
             a, b = starts[tok.start[0] - 1] + tok.start[1], starts[tok.end[0] - 1] + tok.end[1]
             d, prev = self.attrs if prev == "." else self.ids, tok.string if tok.type not in (tokenize.NL, tokenize.COMMENT, tokenize.NEWLINE) else prev
             if tok.type == tokenize.NAME and tok.start in data:  # a keyword argument that is a data key (**kwargs): as a key
@@ -399,6 +404,9 @@ class CodeMap:
                 new = tok.string if value in kept else self.string(tok.string, path) if tok.type == tokenize.STRING else self.whole(tok.string) if \
                     re.fullmatch(NAME_SHAPE, tok.string) else self.pieces(tok.string) if not re.search(r"\s", tok.string) else self.text(tok.string)
                 new = re.sub(r"\w+", lambda x: self.attrs.get(x[0], x[0]), tok.string) if tok.start in roles else new  # attributes, fields
+                if tok.type == tokenize.FSTRING_MIDDLE and k + 1 < len(stream) and stream[k + 1].string == "{" and (g := GLUED.search(tok.string)):
+                    new = (new[:-len(g[0])] if new.endswith(g[0]) else self.pieces(tok.string[:g.start()]) if tok.string[:g.start()] else "") + g[0] \
+                        if new != tok.string else new  # a word glued to the next interpolation: part of a value (github:personne{n})
                 if kept and len(WORD.split(new)) == len(WORD.split(tok.string)):
                     new = "".join(o if o in kept else n for o, n in zip(WORD.split(tok.string), WORD.split(new)))
             else:
@@ -662,9 +670,12 @@ class CodeMap:
                if a not in self.targets and (len(WORD.split(a)) != len(WORD.split(b)) or any(
                    x != y and x not in self.targets for x, y in zip(WORD.split(a), WORD.split(b))))]
         frozen, seen, where = self.frozen(tree, scopes), {int(x.split(":")[0][5:]) for x in out}, scopes_of(tree)
+        glued = {id(v): g[0] for j in ast.walk(tree) if isinstance(j, ast.JoinedStr) for v, w in zip(j.values, j.values[1:])
+                 if isinstance(v, ast.Constant) and isinstance(w, ast.FormattedValue) and isinstance(v.value, str) and (g := GLUED.search(v.value))}
         return out + [f"line {c.lineno}: « {c.value[:50]} » holds the French name « {w} »" for c in ast.walk(tree) if isinstance(c, ast.Constant)
                       and isinstance(c.value, str) and not re.search(r"\s", c.value) and c.lineno not in frozen | seen and c.value not in kept and not self.names.kept_path(c.value) for w in dict.fromkeys(
-                          re.findall(r"[\w-]+", c.value)) if self.named.get(w, w) != w and w not in self.hand.keys() | self.targets | kept | self.kept_here(path, where[c.lineno])]
+                          re.findall(r"[\w-]+", c.value)) if self.named.get(w, w) != w and w not in self.hand.keys() | self.targets | kept | self.kept_here(path, where[c.lineno], c.value)
+                          and w != glued.get(id(c))]
 
     def attribute_names(self, tree, dests):
         """P1b (b): each attribute-name string and args.<name> (dests: the tool's) names an attribute of the new code or a

@@ -4026,6 +4026,23 @@ kept_in_scopes:
   tokens: [debats]
   why: 'the debate links of docs/questions-ouvertes.md point to ../debats/ in their prose, kept as written by the switch (only the
     commands in their code are renamed): the one setUp that strips them matches them so'
+- files: outils/test_bee.py
+  scopes: [test_ruche_0052_role_inviter_imprime_le_chemin_de_r13]
+  tokens: [docs/croissance.md]
+  why: 'the invite node''s prose (« R13, docs/croissance.md »), kept as written by the switch, which the test searches as written'
+- files: outils/test_bee.py
+  scopes: [test_refus_des_commandes]
+  tokens: [clos]
+  why: 'a word of bee''s message (« … est clos »), searched as written in its output'
+- files: outils/test_bee.py
+  scopes: [test_contexte_role]
+  tokens: [voter]
+  why: 'a word of the role node''s prose, kept as written by the switch, which the test searches as written'
+- files: outils/test_bee.py
+  scopes: [TestBulkPrReads]
+  tokens: [personne]
+  literals: ["(personne : bee acts-for, sur main).\n", " sous son nom (personne : bee acts-for).\n"]
+  why: 'a workflow comment (« (personne : bee acts-for, sur main). »), kept as written by the switch, which the test copies as written'
 strings:
 - files: outils/inventaire_marqueurs.py
   tokens: [ATTENTE_VERDICT, ETATS, FICHIERS_LIBRE_SERVICE, ISSUES_DEBAT, MNEMONIQUES_SUSPECTS, MOIS, MOTS_SOURCE, PHRASE_DEMANDE,

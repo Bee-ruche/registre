@@ -6286,16 +6286,16 @@ class TestRevueAdverse(BaseParallele):
         _, etat, appels = self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné", etats)
         self.assertEqual((self.enr(c1)["statut"], self.enr(c2)["statut"]), ("integree", "ecartee"))
         self.assertFalse(self.appels_de(appels, "pr", "close"), "aucune fermeture avant la publication du registre")
-        sortie, etat, appels = self.etape("Fermer")
+        sortie, etat, appels = self.etape("Fermer les PR des contributions écartées")
         self.assertFalse(self.appels_de(appels, "pr", "close"))
         self.assertEqual(etat[victime]["state"], "OPEN")
         self.assertIn("ouverte par mallory, pas par chloe", sortie)
         # La même PR, si elle était bien celle de chloe, serait fermée (avec le jeton des forks).
         etat[victime]["auteur"] = "chloe"
         (self.dossier.parent / "etat_pr.json").write_text(json.dumps(etat), encoding="utf-8")
-        _, etat, appels = self.etape("Fermer")
+        _, etat, appels = self.etape("Fermer les PR des contributions écartées")
         self.assertEqual([(a["args"][2], a["jeton"]) for a in self.appels_de(appels, "pr", "close")], [(victime, "jeton-forks")])
-        _, _, appels = self.etape("Fermer")
+        _, _, appels = self.etape("Fermer les PR des contributions écartées")
         self.assertFalse(self.appels_de(appels, "pr", "close"), "idempotent : une PR déjà fermée ne l'est pas deux fois")
 
     def test_B2_pas_de_soumission_sur_un_projet_sans_fork(self):
@@ -16841,12 +16841,12 @@ class TestAgentAccountsWorkflows(BaseParallele):
         self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné", {PR_MINIZ + "99007": {"state": "OPEN", "head": "abc1234", "auteur": "alice"},
                                 PR_MINIZ + "4242": {"state": "OPEN", "head": "beefcafe", "auteur": AGENT}})
         self.assertEqual((self.enr(c1)["statut"], self.enr(c2)["statut"]), ("integree", "ecartee"))
-        sortie, etat, appels = self.etape("Fermer")
+        sortie, etat, appels = self.etape("Fermer les PR des contributions écartées")
         self.assertIn(f"ouverte par {AGENT}, pas par chloe ; on ne la ferme pas", sortie)
         self.assertFalse(self.appels_de(appels, "pr", "close"))
         etat[PR_MINIZ + "4242"]["auteur"] = "chloe-agent"
         (self.dossier.parent / "etat_pr.json").write_text(json.dumps(etat), encoding="utf-8")
-        _, _, appels = self.etape("Fermer")
+        _, _, appels = self.etape("Fermer les PR des contributions écartées")
         self.assertEqual([a["args"][2] for a in self.appels_de(appels, "pr", "close")], [PR_MINIZ + "4242"])
 
     def test_verifier_fork_reads_the_manifest_of_the_person(self):
@@ -16933,10 +16933,11 @@ class TestRegistryMergeRecorded(BaseParallele):
         self.commit("PR #9201, squash-merged")
         return git(self.dossier, "rev-parse", "HEAD").strip()
 
-    def etats(self, fusion, **pr):
-        """The stub's state of PR #9201: merged into main by the agent principal's account, which opened it, at its merge commit."""
-        return {self.pr: {"state": "MERGED", "head": TETE_FUSIONNEE, "merge": fusion, "auteur": AGENT, "base": "main",
-                          "fusionnee_par": AGENT, "fusionnee_le": "2026-10-27T14:00:00Z", "changed_files": self.fichiers_de(fusion), "base_sha": self.parent_de(fusion), **pr}}
+    def etats(self, fusion_sha, **pr):
+        """The stub's state of PR #9201: merged into main by the agent principal's account, which opened it, at its merge commit
+        (fusion_sha: not fusion, whose English name is the key "merge" a test passes in pr, ruche-0153)."""
+        return {self.pr: {"state": "MERGED", "head": TETE_FUSIONNEE, "merge": fusion_sha, "auteur": AGENT, "base": "main", "fusionnee_par": AGENT,
+                          "fusionnee_le": "2026-10-27T14:00:00Z", "changed_files": self.fichiers_de(fusion_sha), "base_sha": self.parent_de(fusion_sha), **pr}}
 
     def parent_de(self, fusion):
         """GitHub's base.sha of a squash or a merge commit's PR: its first parent (the start of the history if it has none)."""
