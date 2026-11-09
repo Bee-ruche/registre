@@ -73,6 +73,7 @@ class CodeMap:
         self.targets, self.inverse = set(self.tokens.values()) | set(self.attrs.values()), {e: f for f, e in self.ids.items()}
         self.tokens = self.base_tokens = collections.ChainMap({}, self.tokens)
         self.keep = [(rename.glob_re(k["files"]), set(k.get("scopes") or ()), set(k.get("tokens") or ())) for k in m["keep"]]
+        self.in_scopes = [(rename.glob_re(k["files"]), set(k["scopes"]), set(k["tokens"])) for k in m.get("kept_in_scopes") or ()]  # ruche-0153
         self.declared = [(rename.glob_re(k["files"]), set(k["tokens"])) for k in m.get("strings") or ()]  # on purpose, in strings
         phrases = sorted({t for d in (nm.get("workflows") or {}).values() for t in d if " " in t}, key=len, reverse=True)  # workflows, steps, robots
         self.subcommands = re.compile(r"(?<![\w-])(?:" + "|".join(re.escape(k).replace(r"\ ", r"\s+") for k in nm["cli"]["commands"] if " " in k) + r")(?![\w-])")
@@ -87,11 +88,18 @@ class CodeMap:
         return self.phrases.sub(lambda x: x[0] if x[0] in self.keeping else self.named[x[0]], s)
 
     def scoped(self, path, scope, literal=""):
-        """tokens, each hand token resolved by the role table of its file and scope (and literal), else by its default."""
+        """tokens, each hand token resolved by the role table of its file and scope (and literal), else by its default; a token kept
+        in this scope (kept_in_scopes: logins) as written."""
         scope = self.inverse.get(scope, scope)  # the new tree's scopes are English
-        self.tokens, self.in_tests = collections.ChainMap({t: (h.get("roles") or {}).get(f"{path}:{scope}:{literal}", (h.get("roles") or {}).get(
-            f"{path}:{scope}", h.get("default", t))) for t, h in self.m["hand"].items()}, self.test_tokens if TESTS.search(path) else {},
-            self.base_tokens), bool(TESTS.search(path))
+        self.tokens, self.in_tests = collections.ChainMap({**{t: (h.get("roles") or {}).get(f"{path}:{scope}:{literal}", (h.get("roles") or {}).get(
+            f"{path}:{scope}", h.get("default", t))) for t, h in self.m["hand"].items()}, **dict.fromkeys(self.kept_here(path, scope), None)},
+            self.test_tokens if TESTS.search(path) else {}, self.base_tokens), bool(TESTS.search(path))
+        self.tokens.maps[0].update({t: t for t in self.kept_here(path, scope)})
+
+    def kept_here(self, path, scope):
+        """The tokens kept as written in one scope of one file (kept_in_scopes; the scope as the base names it)."""
+        scope = self.inverse.get(scope, scope)
+        return set().union(*(t for r, s, t in self.in_scopes if r.match(path) and scope in s))
 
     def covered(self, name, mapped=True):
         return mapped and name in self.attrs or all(len(w) < 2 or w in self.english for w in words(name))
@@ -225,8 +233,10 @@ class CodeMap:
         """ruche-0153: the plain words of a text in the places where bee's messages print names, renamed as the tool's output is:
         a key before French typography's « : » (« motif : »), a key or a value between « and » (« proposee »), a node id after
         « nœud » or around « > » (« racine > roles/relire »). Any other plain word stays (prose, logins)."""
-        t = re.sub(r"(?<![\w/.<>@#\[\]$«-])[a-z_][\w-]*(?= : )", lambda x: self.named.get(x[0], x[0]) if x[0] in self.key_names else x[0], t)
-        t = re.sub(r"(?<=« )[a-z_][\w-]*(?= »)", lambda x: self.named.get(x[0], x[0]) if x[0] in self.key_names | self.value_names else x[0], t)
+        here = {w for w, e in self.tokens.maps[0].items() if w == e}  # kept in this scope
+        t = re.sub(r"(?<![\w/.<>@#\[\]$«-])[a-z_][\w-]*(?= : )", lambda x: self.named.get(x[0], x[0]) if x[0] in self.key_names - here else x[0], t)
+        t = re.sub(r"(?<=« )[a-z_][\w-]*(?= »)", lambda x: self.named.get(x[0], x[0]) if x[0] in (self.key_names | self.value_names) - here else x[0], t)
+        t = re.sub(r"(?<=\[\")[\w.-]+(?=\"\])|(?<=\[')[\w.-]+(?='\])|(?<=\.get\(\")[\w.-]+(?=\")|(?<=\.get\(')[\w.-]+(?=')", lambda x: self.whole(x[0]), t)  # x["k"]
         seg = self.names.m["tree"]["segments"]
         return re.sub(r"(?<=nœud )[a-z_]+\b(?![/.-])|(?<![\w/.$-])[a-z_]+(?= > )|(?<= > )[a-z_]+\b(?![/.-])", lambda x: seg.get(x[0], x[0]), t)
 
@@ -617,10 +627,10 @@ class CodeMap:
         out = [f"line {n}: « {a[:50]} » is still French (it would become « {b[:50]} »)" for n, a, b in self.rename_python(new, path)[1]
                if a not in self.targets and (len(WORD.split(a)) != len(WORD.split(b)) or any(
                    x != y and x not in self.targets for x, y in zip(WORD.split(a), WORD.split(b))))]
-        frozen, seen = self.frozen(tree, scopes), {int(x.split(":")[0][5:]) for x in out}
+        frozen, seen, where = self.frozen(tree, scopes), {int(x.split(":")[0][5:]) for x in out}, scopes_of(tree)
         return out + [f"line {c.lineno}: « {c.value[:50]} » holds the French name « {w} »" for c in ast.walk(tree) if isinstance(c, ast.Constant)
                       and isinstance(c.value, str) and not re.search(r"\s", c.value) and c.lineno not in frozen | seen and c.value not in kept and not self.names.kept_path(c.value) for w in dict.fromkeys(
-                          re.findall(r"[\w-]+", c.value)) if self.named.get(w, w) != w and w not in self.hand.keys() | self.targets | kept]
+                          re.findall(r"[\w-]+", c.value)) if self.named.get(w, w) != w and w not in self.hand.keys() | self.targets | kept | self.kept_here(path, where[c.lineno])]
 
     def attribute_names(self, tree, dests):
         """P1b (b): each attribute-name string and args.<name> (dests: the tool's) names an attribute of the new code or a

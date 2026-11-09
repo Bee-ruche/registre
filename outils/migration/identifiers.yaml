@@ -3765,8 +3765,8 @@ locals: [
   declarer, definis, dehors, demesure, depasse, depot_tete, desassemblage, detectent, deux, dite, domaine, donnes, doute,
   drapeau, duree, durees, ECART, echappement, echappes, echecs, ecrit, ecriture, effaces, emule, entiere,
   entiers_bornes, entrees_c, env_en_plus, environnement, est_git, etrangeres, etrangers, exemples, extra_juge, faire,
-  famille, familles, fautive, faux, faux_bee, FAUX_DOCKER_ID, FAUX_DOCKER_SANS_FIN, FAUX_GH_COMPTES, FAUX_GH_DEPOT,
-  FAUX_GH_ETAT, FAUX_GH_JOURNAL, fermee, feuilles, fiche_projet, fin_de_ligne, fin_puce, fonctions, forgee, forgees,
+  famille, familles, fautive, faux, faux_bee, FAUX_DOCKER_ID, FAUX_DOCKER_SANS_FIN,
+  fermee, feuilles, fiche_projet, fin_de_ligne, fin_puce, fonctions, forgee, forgees,
   fusionnee_par, gain_parallele, gain_titulaire, garder_attente, gardé, gestes_gardes, graines, gros, harnais,
   honnete, hors, huit, identifiants, inconnue, indentee, indice, intrus, intruse, journal_, journal_docker, juge_,
   juge_commun, juge_master, juge_py, lancent_bee, lancer_, lancer_git, lancer_vrai, lecteur, LENT, lent, leurre,
@@ -3829,7 +3829,9 @@ keep:
   - Ce qui compte ici
   - Ce qu'on peut ignorer ici
   - Enfants
-  why: 'kept on purpose: the old name of an authority file (forever); a CI word the forks may write (forever); a metric
+  - docs/securite.md
+  why: 'kept on purpose: docs/securite.md, which the root node''s vulnerability line names in its prose, kept as written until the
+    tree is translated: the line is kept under --budget only when it names it (ruche-0153); the old name of an authority file (forever); a CI word the forks may write (forever); a metric
     id (step 5); a git ref namespace the workflows share; display labels and message words (bees messages, step 3); the
     French node headings bee reads beside the English ones until the tree is translated (plan, section 5.8)'
 - files: outils/test_bee.py
@@ -3857,7 +3859,9 @@ keep:
   - id='cap'
   - data-filtre='poste'
   - '[`inviter`](arbre/roles/inviter/SENS.md)'
-  why: 'the tests of the migration tooling: their fixtures and expectations are French on purpose (the base before the switch);
+  - docs/securite.md
+  - securite.md
+  why: 'docs/securite.md: the root node''s vulnerability line, quoted as written (ruche-0153); the tests of the migration tooling: their fixtures and expectations are French on purpose (the base before the switch);
     the French node headings bee reads beside the English ones until the tree is translated (plan, section 5.8); the site''s
     attributes its kept CSS and JavaScript read; a line of AGENTS.md quoted as written, the docs changing after the switch
     (ruche-0152)'
@@ -3946,6 +3950,14 @@ keep:
   - registre
   why: 'the members'' clone folder of the simulated hive (abeilles/<login>/registre, as commun.sh and load_test.py name it),
     a token the script''s variable for the registry''s clone shares'
+kept_in_scopes:
+- files: outils/test_bee.py
+  scopes: [TestReservedPseudonyms, set_list, member_pr, test_the_real_list_names_the_council_robots_roles_and_hive_accounts,
+           test_bee_inscrire_refuses_a_reserved_name_whatever_its_case, test_the_gate_refuses_a_reserved_name_and_accepts_an_honest_one,
+           test_the_gate_reads_mains_list_never_the_prs, test_the_list_is_read_from_bee_yaml, test_bee_valider_reports_an_existing_member_with_a_reserved_name,
+           test_the_council_and_the_robots_stay_reserved_whatever_the_list_says, test_a_missing_or_empty_list_refuses_every_new_member]
+  tokens: [conseil, mesurer, relire, optimiser, proposer, gardien]
+  why: 'logins: bee.yaml''s reserved logins, unchanged by the switch (plan, section 13), which these tests name as written'
 strings:
 - files: outils/inventaire_marqueurs.py
   tokens: [ATTENTE_VERDICT, ETATS, FICHIERS_LIBRE_SERVICE, ISSUES_DEBAT, MNEMONIQUES_SUSPECTS, MOIS, MOTS_SOURCE, PHRASE_DEMANDE,
