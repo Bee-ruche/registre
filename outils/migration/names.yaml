@@ -26,9 +26,9 @@
 #                 domain). Every scalar outside a domain is a leaf, kept byte for byte: free texts are never translated.
 #   domains       closed: a value outside its domain is refused. open_domains: values not listed stay as written.
 #                 The domains `path` and `node` are the path map and the tree segments.
-#   code          the code files (Python, shell, workflows), listed one by one: step 1b's proofs (P1, P1b, P3) cover their
-#                 content (rename_code.py, with identifiers.yaml: the Python names); P2 checks only their place (the path map)
-#                 and their mode.
+#   code          the code files (Python, shell, workflows), listed one by one: steps 1b and 1b-2's proofs (P1, P1b, P3, the
+#                 workflows' links) cover their content (rename_code.py, with identifiers.yaml); P2 checks only their place
+#                 (the path map) and their mode.
 #   hand          every other file no family translates, by glob, the first matching entry deciding: same (byte-identical,
 #                 at its English path), becomes (byte-identical to that file of the base) or removed. A schema of
 #                 schemas/ is translated with its family (keys, domains and schema_strings: $id, patterns), byte for byte.

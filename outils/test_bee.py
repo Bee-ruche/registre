@@ -22822,17 +22822,19 @@ class TestEnglishNamesStep1b2(unittest.TestCase):
 
     def test_programs_and_phrases_inside_strings_are_renamed_whole(self):
         """A fake tool's program in Python, written to a file by a test, is renamed as Python (a word at a time, mien[ became
-        mine[ beside mien =); a workflow's or step's name inside a text, whole (a notice that names the workflow)."""
+        mine[ beside mien =); a workflow's or step's name inside a text, whole (a notice that names the workflow); a value of
+        the data in prose stays, as all prose (« inscription en parallèle », a node heading)."""
         avant = ('P = r"""import os\nmien = {"statut": os.environ["COMPTES"]}\nprint(mien["statut"])\n"""\n'
-                 'N = "::notice title=Juge commun::code 0"\nH = "## Ce qui compte ici"\n')
+                 'N = "::notice title=Juge commun::code 0"\nH = "## Ce qui compte ici, une inscription en parallèle"\n')
         apres = ('P = r"""import os\nmine = {"status": os.environ["COMPTES"]}\nprint(mine["status"])\n"""\n'
-                 'N = "::notice title=Common judge::code 0"\nH = "## What matters here"\n')
+                 'N = "::notice title=Common judge::code 0"\nH = "## Ce qui compte ici, une inscription en parallèle"\n')
         self.assertEqual(self.carte.rename_python(avant, "outils/x.py")[0], apres)
         self.assertEqual((self.carte.same_python(avant, apres, collections.Counter(), "outils/x.py"), self.carte.residue("outils/x.py", apres)), ([], []))
         self.assertEqual(self.carte.same_python(avant, apres.replace("print(mine[", "print(mien["), collections.Counter(), "outils/x.py"),
                          ["line 1: in its program, line 3: the identifier mien became mien, the map says mine"])
-        self.assertIn('H = "## Ce qui compte ici"', self.carte.rename_python(avant, "outils/test_bee.py")[0])  # a kept heading
         self.assertTrue(self.carte.same_python(avant, apres.replace("Common judge", "Shared judge"), collections.Counter(), "outils/x.py"))
+        # a test's local variable is renamed as an identifier, never in strings: « oui » is a value the site's script compares
+        self.assertEqual(self.carte.rename_python('def f(oui):\n    return oui, "oui"\n', "outils/x.py")[0], 'def f(yes_one):\n    return yes_one, "oui"\n')
 
 
 # --- ruche-0144: settings fail closed: each bee.yaml key bee reads is required and well formed, any other key refused, no default ---

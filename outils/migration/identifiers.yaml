@@ -12,6 +12,8 @@
 #                destination): a destination is always its option's English name (--en-parallele -> parallel).
 #   tokens       names the code holds in strings that names.yaml lacks (environment variables, CLI choices, internal
 #                keys, f-string fragments such as _max_par_pr); a French identifier is also renamed in strings.
+#   shell        names of the shell scripts and of the workflows' steps that names.yaml lacks (variables, functions): renamed
+#                wherever names are, as tokens (ruche-0152).
 #   hand         tokens with two English names, by role: each has a default and a role table, by file and scope (the
 #                innermost def or class, or top-level assignment), optionally by literal; the renamer and P1 follow it.
 #   shared       two identifiers of one scope that become one name, reviewed as never live at once (the scope lint).

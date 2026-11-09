@@ -37,7 +37,8 @@ idents = lambda tree: ((n, f, v) for n in ast.walk(tree) if not isinstance(n, as
 class CodeMap:
     """identifiers.yaml with the name map. ids: French identifier -> English (attrs: for x.name, attribute-name strings and
     destinations); tokens: every name a string may hold (the name map's keys, values, commands, options, path segments and
-    stems, the extra tokens, the French identifiers); hand: two English names, by hand (P1 accepts both)."""
+    stems, the extra tokens, the French identifiers but a test's local variables); hand: two English names, by hand (P1
+    accepts both); phrases: the workflows' names of several words, renamed whole in texts; keeping: the file's kept tokens."""
 
     def __init__(self, names, text):
         self.names, m = names, bee.charger_texte_yaml(text, "identifiers.yaml")
@@ -163,7 +164,8 @@ class CodeMap:
     def text(self, t):
         """The names in a text: a YAML key at a line start and its one-token value; every compound word (with _ . / [ ] < > @ #
         inside, or a hyphen between letters: options, paths, keys, constants); placeholders; a folder group (a|b)/; k=; commands
-        after « bee » and a subcommand after its command; bee.<name>; $variable. A plain word stays: prose is translated after the switch (HTML's text too, cut from its tags)."""
+        after « bee » and a subcommand after its command; bee.<name>; $variable; a workflow's or step's name. A plain word stays:
+        prose is translated after the switch (HTML's text too, cut from its tags)."""
         parts = re.split(r"(\n|\\n)", t)
         for i in range(0, len(parts), 2):
             if x := LINE.fullmatch(parts[i]):
@@ -346,7 +348,7 @@ class CodeMap:
         each jobs.<id> of a reusable workflow's outputs, each workflow_run listener (a workflow's name), each workflow file
         named, and in the embedded Python each bee.<name> and test resolve. path_of: the file's path at the base. Returns
         {(path, what, name)} of those that do not."""
-        out, flows = set(), {p: yaml.safe_load(t) for p, t in texts.items() if p.endswith(".yml")}
+        out, flows = set(), {p: f for p, t in texts.items() if p.endswith(".yml") and isinstance(f := yaml.safe_load(t), dict)}
         names, files = {f.get("name") for f in flows.values()}, {p.rsplit("/", 1)[-1] for p in flows}
         for p, f in flows.items():
             jobs, on = f.get("jobs") or {}, f.get(True, f.get("on")) or {}
