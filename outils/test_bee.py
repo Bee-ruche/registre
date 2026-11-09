@@ -22695,7 +22695,7 @@ class TestEnglishNamesStep1b2(unittest.TestCase):
         code = {c: self.fichiers[c].decode("utf-8") for c in self.names.code}
         self.assertEqual((self.carte.m["pending"], self.carte.lint(code)), ([], []))  # relire and relecture included
         self.assertIn("identifier TestRegistreReel is neither mapped nor made of English words",
-                      " ".join(self.carte_changee(lambda m: m["identifiers"].pop("TestRegistreReel"))[1].lint(code)))
+                      " ".join(self.carte_changee(lambda m: m["test_identifiers"].pop("TestRegistreReel"))[1].lint(code)))
         exemples = {"outils/x.py": "class T:\n    def relire(self):\n        pass\n\n    def relecture(self):\n        pass\n\n\nclass A:\n"
                                    "    def relire(self):\n        pass\n\n\nclass B(A):\n    def relecture(self):\n        pass\n\n\n"
                                    "def f(fichiers, files):\n    return fichiers, files\n",
@@ -22835,6 +22835,99 @@ class TestEnglishNamesStep1b2(unittest.TestCase):
         self.assertTrue(self.carte.same_python(avant, apres.replace("Common judge", "Shared judge"), collections.Counter(), "outils/x.py"))
         # a test's local variable is renamed as an identifier, never in strings: « oui » is a value the site's script compares
         self.assertEqual(self.carte.rename_python('def f(oui):\n    return oui, "oui"\n', "outils/x.py")[0], 'def f(yes_one):\n    return yes_one, "oui"\n')
+
+    # --- review of ruche-0152 ---
+
+    def module_0152(self, texte, nom):
+        """The module a code file's text makes (bee.py or site_bee.py, at the base or renamed), run from memory."""
+        module = types.ModuleType(nom)
+        module.__file__ = str(RACINE / "outils" / f"{nom}.py")
+        sys.modules[nom] = module
+        try:
+            exec(compile(texte, f"{nom}.py", "exec"), module.__dict__)
+        finally:
+            del sys.modules[nom]
+        return module
+
+    def test_the_fingerprints_of_persons_are_the_same_with_the_renamed_bee(self):
+        """Item 1: « partage », a test's name, was made a token of every string, and cles_passage's « partage: » became « sharing: »:
+        the fingerprints of the do-not-contact list and of the removals would have stopped matching. On identities like the
+        fixtures' (shared hosts, plain logins, case variants), empreinte and cles_passage give the base's results renamed."""
+        source = self.fichiers["outils/bee.py"].decode("utf-8")
+        corpus = [*TestRetraitDemandeRuche0048.NOMS, "github:hubot", "github:fictif-cible", "gh:OCTOCAT", "github:OctoCat", "GitHub : octocat", "@octocat",
+                  "~octocat", "octocat/zlib", "Alice-Martin", "Odile  Martin", "srht:~odile", "web:exemple.org", "site:www.Exemple.org",
+                  "https://github.com/octocat", "https://WWW.GitHub.com/OctoCat/zlib", "https://api.github.com/users/octocat", "https://git.sr.ht/~odile",
+                  "https://octocat.github.io/x", "https://blog.exemple.co.uk/a", "https://www.linkedin.com/in/Odile-Martin", "linkedin.com/in/odile",
+                  "https://x.com/@odile", "https://facebook.com/odile.martin", "https://medium.com/~odile", "https://gitlab.com/Odile"]
+
+        def empreintes(texte, ids):
+            bee_ = self.module_0152(texte, "bee_0152")
+            empreinte, cles_passage = (getattr(bee_, ids.get(n, n)) for n in ("empreinte", "cles_passage"))
+            return {x: (empreinte(x), sorted(cles_passage(x)), sorted(map(empreinte, cles_passage(x)))) for x in corpus}
+        avant = empreintes(source, {})
+        self.assertIn(["partage:x.com|@odile"], [v[1] for v in avant.values()])
+        self.assertEqual(empreintes(self.carte.rename_python(source, "outils/bee.py")[0], self.carte.ids), avant)
+        # with « partage » a token of the code (as at 00f5c3e) and cles_passage out of the keep-list, the fingerprints change
+        def vieille(m):
+            m["identifiers"]["partage"] = m["test_identifiers"].pop("partage")
+            next(k for k in m["keep"] if k["files"] == "outils/bee.py" and "scopes" in k)["scopes"].remove("cles_passage")
+        texte, carte = self.carte_changee(vieille)
+        nouveau = carte.rename_python(source, "outils/bee.py")[0]
+        self.assertIn('{f"sharing:{', nouveau)
+        self.assertNotEqual(empreintes(nouveau, carte.ids), avant)
+        # P1 refuses that literal renamed by hand inside the kept scope; the lint, a test's name made a token of the code
+        faux = self.carte.rename_python(source, "outils/bee.py")[0].replace('{f"partage:{', '{f"sharing:{', 1)
+        self.assertTrue(any("« partage:" in p and "kept as written" in p for p in self.carte.same_python(source, faux, collections.Counter(), "outils/bee.py")))
+        code = {c: self.fichiers[c].decode("utf-8") for c in self.names.code}
+        self.assertIn("identifier partage: only a test uses it, it belongs in test_identifiers (never a string token elsewhere)", carte.lint(code))
+
+    def test_a_token_renamed_in_a_string_its_file_does_not_name_is_refused_unless_declared(self):
+        """Item 1, the lint: a token of identifiers.yaml changed in a string of the code, where the file's code does not name it,
+        is a value that only looks like a name (a hashed literal, a CSS class), unless declared on purpose (strings)."""
+        exemples = {"outils/x.py": 'CLASSES = ("vide", "pleine")\n', "outils/repetition/x": 'echo "$SIMU/vide"\n'}
+        for chemin in exemples:
+            self.assertIn(f"{chemin}: the token vide -> empty_one changes in a string, though this file's code does not name it: keep it, or declare it "
+                          "on purpose (identifiers.yaml, strings)", self.carte.lint(exemples))
+        self.assertEqual(self.carte.lint({"outils/x.py": 'vide = "vide"\n', "outils/test_x.py": 'CLASSES = ("vide",)\n'}), [])  # named; a test
+        declaree = self.carte_changee(lambda m: m["strings"].append({"files": "outils/**", "tokens": ["vide"], "why": "x"}))[1]
+        self.assertEqual(declaree.lint(exemples), [])
+
+    def test_every_cell_class_the_site_writes_is_defined_in_its_css_before_and_after_the_rename(self):
+        """Item 2: the renamed site wrote c-empty_one, c-blocked and c-waiting while its kept CSS defines .c-vide, .c-bloquee and
+        .c-attente: the classes are kept with the CSS."""
+        source = self.fichiers["outils/site_bee.py"].decode("utf-8")
+
+        def classes(texte, carte=None):  # carte: the map that renamed texte
+            n = lambda x: carte.ids.get(x, x) if carte else x  # noqa: E731
+            site = self.module_0152(texte, "site_0152")
+            reg = type("Reg", (), {carte.attrs["bloquee_par"] if carte else "bloquee_par": lambda self, t: t["b"]})()
+            ecrites = {getattr(site, n("etat_tache"))(reg, {"statut": s, "b": b})[1] for s in [*getattr(site, n("ETATS")), "x"] for b in (False, True)}
+            html = getattr(site, n("legende"))() + getattr(site, n("rayon_svg"))(reg, [], "") + "".join(getattr(site, n("alveole"))(0, 0, 1, c) for c in ecrites)
+            return set(re.findall(r'class="c-([\w-]+)"', html)), set(re.findall(r"\.c-([\w-]+)\{", getattr(site, n("STYLE"))))
+        for texte, carte in ((source, None), (self.carte.rename_python(source, "outils/site_bee.py")[0], self.carte)):
+            ecrites, definis = classes(texte, carte)
+            self.assertTrue({"vide", "bloquee", "attente", "pleine"} <= ecrites and ecrites <= definis, (ecrites, definis))
+        sans = self.carte_changee(lambda m: next(k for k in m["keep"] if k["files"] == "outils/site_bee.py")["tokens"].remove("vide"))[1]
+        ecrites, definis = classes(sans.rename_python(source, "outils/site_bee.py")[0], sans)
+        self.assertEqual(ecrites - definis, {"empty_one"})
+
+    def test_a_here_document_s_prose_a_double_quoted_python_and_a_quoted_jq_filter(self):
+        """Items 3 and 4: python3 -c "…" was read as prose, its names left French; a here-document's apostrophes were read as
+        quotes (c'est vide dossier -> c'is_one empty_one folder); a jq filter's key was renamed, its value not."""
+        chemin, carte = "outils/repetition/x", self.carte
+        prose = "cat > f <<'EOF'\nl'auteur dit pseudo et c'est vide dossier, sur taches/x.yaml\nEOF\necho dossier\n"
+        self.assertEqual(carte.rename_shell(prose, chemin)[0], "cat > f <<'EOF'\nl'auteur dit pseudo et c'est vide dossier, sur tasks/x.yaml\nEOF\necho folder\n")
+        script = "cat > h <<'EOF'\n#!/usr/bin/env bash\nwhile read -r ancien ref; do [ \"$ancien\" = 0 ] && echo \"l'ancien reste\"; done\nEOF\n"
+        self.assertEqual(carte.rename_shell(script, chemin)[0], script.replace("ancien ref", "old ref").replace('"$ancien"', '"$old"'))  # a script: shell
+        self.assertEqual([carte.lint_shell(t, chemin) for t in (prose, script)], [[], []])
+        double = 'python3 -c "import json, sys; print(json.load(sys.stdin)[\'statut\'])" < f\n'
+        self.assertEqual(carte.lint_shell(double, chemin), ["line 1: python3 -c with its program in double quotes: write it in single quotes or a "
+                                                            "here-document (python3 - <<'X'), as the renamer reads Python"])
+        self.assertEqual(carte.lint_shell(double.replace('"', "'").replace("['statut']", '["statut"]'), chemin), [])
+        jq = 'gh api x --jq \'.[] | select(.statut == "ouverte") | .number\' > "$d/fichiers.txt"\n'
+        self.assertEqual(carte.lint_shell(jq, chemin), [f"line 1: a quoted jq filter holds {w}, a name of the map: its keys and values cannot be told "
+                                                        "apart, read the JSON in Python" for w in ("ouverte", "statut")])
+        self.assertEqual(carte.lint_shell("gh api x --jq '.[] | .filename' > \"$d/fichiers.txt\"\n", chemin), [])
 
 
 # --- ruche-0144: settings fail closed: each bee.yaml key bee reads is required and well formed, any other key refused, no default ---

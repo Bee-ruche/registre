@@ -2412,6 +2412,7 @@ test_identifiers:
   debut_en: start_in
   decidees: decided_ones
   declarer: declare
+  definis: defined_ones
   declarer_agents: declare_agents
   dehors: outside_one
   demesure: oversized
@@ -3942,7 +3943,7 @@ locals: [
   bidon, bilingues, binaire, bizarres, bloque, bon, bornes, boucle, brouillon, cadre, caractere, cas_base, cas_tete,
   chargeur_c, chemin_config, chemin_gh, choix, code_lu, commentaire, comparaisons, complet, conflit, consignes,
   constructions_suspectes_omises, construits, controle, corrige, coupe, coupee, dans, dans_la_pr, de_bruno, debut_en,
-  declarer, dehors, demesure, depasse, depot_tete, desassemblage, detectent, deux, dite, domaine, donnes, doute,
+  declarer, definis, dehors, demesure, depasse, depot_tete, desassemblage, detectent, deux, dite, domaine, donnes, doute,
   drapeau, duree, durees, ECART, echappement, echappes, echecs, ecrit, ecriture, effaces, emule, entiere,
   entiers_bornes, entrees_c, env_en_plus, environnement, est_git, etrangeres, etrangers, exemples, extra_juge, faire,
   famille, familles, fautive, faux, faux_bee, FAUX_DOCKER_ID, FAUX_DOCKER_SANS_FIN, FAUX_GH_COMPTES, FAUX_GH_DEPOT,
