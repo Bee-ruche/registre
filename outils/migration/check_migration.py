@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
-"""English names, step 1c (ruche-0143; docs/english-migration.md, sections 3, 9, 12 and 13): proofs P1b (c), P4 and P6, the
-explicit list of section 13, and the runner of `bee check-migration`, dormant. Run it isolated, as the base's own code (bee
-check-migration runs it so, from a copy of the base):
+"""English names, step 1c (ruche-0143; docs/english-migration.md, sections 3, 9, 12 and 13): proofs P1b (c), P4, P6 and section
+13's list, run with P1, P1b (a, b), P2 and P3 by `bee check-migration`, from a copy of the base (the base's own code, isolated):
     python3 -I outils/migration/check_migration.py --base REV --head REV [--generated REV] [--repo DIR]
---generated: the commit the switch script wrote, the head's later commits being the hand-made part (default: the head).
-P1, P1b (a, b), P2 and P3 prove generated == translate(base); the hand-made part may change code only; P1b (c), P4, P6 and
-section 13's list judge the head. Exit 0: proven, as the summary's last line says; 1: problems, listed.
+--generated: the commit the switch script wrote (default: the head), which P1, P1b (a, b), P2 and P3 prove is translate(base);
+the head's later commits are the hand-made part, code only; the other proofs judge the head. Exit 0: proven; 1: problems.
 """
 import sys
 
@@ -57,29 +55,22 @@ def checkout(files, dest, data, fixture):
 
 
 class Move:
-    """The two tools and the map: o, n (modules: the base's on its fixture, the head's on the migrated one) and roots."""
+    """The two tools and the map: o, n (modules: the base's on its fixture, the head's on the migrated one) and roots. i: an
+    identifier of the old tool as the new one spells it; w: a name it holds (a text: its names), as the new one holds it."""
 
     def __init__(self, names, cm, tools, roots, tool_dir):
-        self.names, self.cm, (self.o, self.n), self.roots, self.dir = names, cm, tools, roots, tool_dir
-        cm.scoped(f"{tool_dir}/bee.py", "")
+        self.names, self.cm, (self.o, self.n), self.roots, self.dir, self.i = names, cm, tools, roots, tool_dir, lambda x: cm.ids.get(x, x)
+        self.argv = lambda argv, new: [self.w(x) if new and not x.startswith("/") else x for x in argv]  # a path stays
 
-    def i(self, x):  # an identifier of the old tool, as the new one spells it
-        return self.cm.ids.get(x, x)
-
-    def w(self, s, scope=""):  # a name the old tool holds, as the new one holds it (a text: its names only)
+    def w(self, s, scope=""):
         self.cm.scoped(f"{self.dir}/bee.py", scope)
         return self.cm.whole(s) if re.fullmatch(rename_code.NAME_SHAPE, s) else self.cm.text(s)
 
-    def argv(self, argv, new):  # a command line of the old tool, as the new one reads it (a path as it is)
-        return [self.w(x) if new and not x.startswith("/") else x for x in argv]
-
-    def mapped(self, v, scope=""):
-        """A constant of the old tool with its names mapped; a regular expression aside (the path rules test it)."""
+    def mapped(self, v, scope=None):
+        """A constant with its names mapped in its own scope (None: the new tool's, as it is); a regular expression aside."""
         f = lambda x: self.mapped(x, scope)  # noqa: E731
-        return self.w(v, scope) if isinstance(v, str) else {f(k): f(x) for k, x in v.items()} if isinstance(v, dict) else \
-            type(v)(map(f, v)) if isinstance(v, (tuple, list, set, frozenset)) else "<re>" if isinstance(v, re.Pattern) else v
-
-    # --- P1b (c) ---
+        return (v if scope is None else self.w(v, scope)) if isinstance(v, str) else {f(k): f(x) for k, x in v.items()} if isinstance(v, dict) \
+            else type(v)(map(f, v)) if isinstance(v, (tuple, list, set, frozenset)) else "<re>" if isinstance(v, re.Pattern) else v
 
     def scans(self, t, root, new):
         """The tool on its registry: each glob, rglob and iterdir (caller, folder, pattern, files found), its Registre's sizes,
@@ -88,13 +79,11 @@ class Move:
 
         def spy(m):
             def scan(path, *a, **k):
-                if inside:
+                if inside:  # rglob may glob: one scan
                     return real[m](path, *a, **k)
-                inside.append(1)
-                try:
-                    found, f = list(real[m](path, *a, **k)), sys._getframe(1)
-                finally:
-                    inside.pop()
+                inside.append(f := sys._getframe(1))
+                found = list(real[m](path, *a, **k))
+                inside.pop()
                 while f and (f.f_code.co_filename != t.__file__ or f.f_code.co_name.startswith("<")):
                     f = f.f_back
                 seen.append((f.f_code.co_name if f else "?", os.path.relpath(path, root), a[0] if a else "", len(found)))
@@ -118,9 +107,8 @@ class Move:
         (old, so, co), (new, sn, cn) = self.scans(self.o, self.roots[0], False), self.scans(self.n, self.roots[1], True)
         want = collections.Counter((self.i(c), self.names.path(d + "/")[:-1], self.w(p), k) for c, d, p, k in old)
         got, problems = collections.Counter(new), []
-        problems += [f"P1b (c): {c} scans {d}/{p}: {k} file(s) before the move, {[m for (x, e, q, m) in got if (x, e, q) == (c, d, p)] or 'no such scan'} after"
-                     for (c, d, p, k) in want - got]
-        problems += [f"P1b (c): {c} scans {d}/{p} after the move only" for (c, d, p, _) in got - want if (c, d, p) not in {x[:3] for x in want}]
+        problems += [f"P1b (c): {c} scans {d}/{p} and finds {k} file(s) only {w} the move" for x, w in ((want - got, "before"), (got - want, "after"))
+                     for c, d, p, k in x]
         problems += [f"P1b (c): the registry's {k}: {v} before the move, {sn.get(self.cm.attrs.get(k, k))} after" for k, v in so.items()
                      if sn.get(self.cm.attrs.get(k, k)) != v]
         problems += [f"P1b (c): bee {' '.join(a)}: exit code {x} before the move, {y} after" for a, x, y in zip(READ_ONLY, co, cn) if x != y]
@@ -131,8 +119,6 @@ class Move:
                  for c in ast.walk(f) if isinstance(c, ast.Call) and getattr(c.func, "attr", None) in ("glob", "rglob", "iterdir")}
         problems += [f"P1b (c): the scan in {s} is not run here, nor covered by P4" for s in sorted(sites - callers - set(WRITE_ONLY_SCANS))]
         return problems, f"{len(old)} scans in {len(callers)} functions find the same {sum(k for *_, k in old)} files, {len(so)} collections"
-
-    # --- P4 ---
 
     def classify(self, t, p, new):
         """What the path rules of the gate (plan, section 3.1) answer for one path, folder names as the old tool spells them."""
@@ -180,8 +166,7 @@ class Move:
         return out
 
     def p4(self, tracked):
-        o, n, problems = self.o, self.n, []
-        images = self.corpus(tracked)
+        o, n, problems, images = self.o, self.n, [], self.corpus(tracked)
         corpus = sorted(images)
         for label, regex in (("FICHIERS_LIBRE_SERVICE", [r for _, r in o.FICHIERS_LIBRE_SERVICE.values()]), ("CHEMIN_DEBAT", [o.CHEMIN_DEBAT]),
                              ("PARCOURS", [r for r, *_ in o.PARCOURS.values()])):
@@ -204,16 +189,9 @@ class Move:
                      if guard and bool(guard(p)) != (p in retired)] or ([] if guard else ["P4: R-q: no retired-names guard (retired_name, the hand-made part)"])
         problems += [f"P4: R-i: {a} left AUTHORITY_FILES (an old name is kept for good)" for a in o.AUTHORITY_FILES if a not in n.AUTHORITY_FILES]
         for k in KEY_SETS:  # section 3.3: map(old set) == new set, each member mapped in its constant's own scope
-            if (x := self.mapped(getattr(o, k), k)) != (y := self.mapped_new(getattr(n, self.i(k), None))):
+            if (x := self.mapped(getattr(o, k), k)) != (y := self.mapped(getattr(n, self.i(k), None))):
                 problems.append(f"P4: {k}: the map of the old set is {x!r:.300}, the new tool has {y!r:.300}")
         return problems, f"{len(corpus)} paths ({len(retired)} retired) classified alike by the rules R-a to R-u, {len(KEY_SETS)} key sets equal"
-
-    @staticmethod
-    def mapped_new(v):
-        return {k: Move.mapped_new(x) for k, x in v.items()} if isinstance(v, dict) else type(v)(map(Move.mapped_new, v)) \
-            if isinstance(v, (tuple, list, set, frozenset)) else "<re>" if isinstance(v, re.Pattern) else v
-
-    # --- P6 ---
 
     def same_json(self, x, y, where=""):
         """An output as the map makes it (x) against the new one: the same keys and values; a text, through the map's names."""
@@ -327,10 +305,9 @@ def main(argv=None):
         problems, lines = check(a.repo, a.base, a.head, a.generated)
     except (rename.Problem, bee.ErreurBee, subprocess.CalledProcessError, OSError, UnicodeDecodeError, KeyError, TypeError) as e:
         problems, lines = [f"{type(e).__name__}: {e}"], []
-    print("".join(f"✗ {x}\n" for x in problems) + "".join(f"{x}\n" for x in lines) + (
-        f"✗ {len(problems)} problem(s): the head {a.head} is not proven to be the switch of the base {a.base}." if problems else
-        f"✓ the head {a.head} is the switch of the base {a.base}" + (f" (generated {a.generated}, then the hand-made part)" if a.generated else "")
-        + ": every proof holds."))
+    print("".join(f"✗ {x}\n" for x in problems) + "".join(f"{x}\n" for x in lines) + (f"✗ {len(problems)} problem(s): the head {a.head} is not proven"
+          if problems else f"✓ the head {a.head}" + (f" (generated {a.generated}, then the hand-made part)" if a.generated else "") + " is proven")
+          + f" to be the switch of the base {a.base}.")
     return 1 if problems else 0
 
 

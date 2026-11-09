@@ -2013,6 +2013,7 @@ open_domains:
     'retiré : demande': 'withdrawn: request'
     'retiré : sans réponse': 'withdrawn: no answer'
 code:
+- .github/workflows/check-migration.yml
 - .github/workflows/expirations.yml
 - .github/workflows/fusion-auto.yml
 - .github/workflows/integration-auto.yml

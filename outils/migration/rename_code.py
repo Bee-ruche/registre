@@ -368,6 +368,12 @@ class CodeMap:
                     r"|^[\s-]*([\w-]+):" if kind != "text" else ""), x) for i, g in enumerate(m.groups()) if g for w in g.split()]
                 sh |= {w for i, w in found if i in (0, 3, 4, 5, 6) or i == 7 and w.isupper()}  # the environment's variables are keys too
                 keys |= {w for i, w in found if i in (1, 2, 7)}
+        lines = text.split("\n")  # a here-document read as prose (no shebang, not Python) whose $variables the renamer would rename alone
+        problems += [f"line {n + 2}: a here-document without a shebang names ${v}, a name of the map: it is read as prose, its $variables renamed and "
+                     "its words not; start it with #!/bin/sh, or leave the variable out" for n, line in enumerate(lines) if (h := HEREDOC.search(line))
+                     and not re.search(r"\bpython3 -(?:\s|$)", line) and not re.match(r"#!.*\b(?:ba|da)?sh\b", lines[n + 1] if n + 1 < len(lines) else "")
+                     for v in sorted(set(re.findall(r"\$\{?([A-Za-z_]\w*)", "\n".join(itertools.takewhile(lambda x: x.strip() != h[2], lines[n + 1:])))))
+                     if self.tokens.get(v, v) != v or v in self.hand]
         problems += [f"identifier {x} is neither mapped nor made of English words" for x in sorted((sh | keys) - self.kept(path)[1])
                      if self.tokens.get(x, x) == x and not self.covered(x, False)]
         problems += self.clashes([(1, path, sh, self.tokens), (1, path, keys, self.tokens)]) + [

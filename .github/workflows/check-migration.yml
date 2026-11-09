@@ -1,0 +1,41 @@
+# ruche-0143 (docs/english-migration.md, section 13): the founder starts it on the switch PR. Main's `bee check-migration` (the base's
+# own proofs, from a copy of the base) checks that PR's exact head; the summary and the SHAs checked go to the run's summary. The
+# head's code runs here (P1b (c), P3, P4, P6 import it): a read-only token, no secret, no stored credentials, no comment, no artifact.
+name: Switch check
+run-name: Switch check of PR ${{ inputs.pr }} at ${{ inputs.head_sha }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr: {description: "The switch PR's number", required: true, type: string}
+      head_sha: {description: "The PR's head, its full SHA, as you read it on the PR", required: true, type: string}
+      generated_sha: {description: "The commit the switch script wrote, if the hand-made part is on top of it", required: false, type: string}
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with: {ref: main, fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - name: Dependencies
+        run: pip install -r outils/requirements.txt
+      - name: Check the switch, if the PR's head is the commit given, on main's tip
+        env: {PR: "${{ inputs.pr }}", HEAD_SHA: "${{ inputs.head_sha }}", GENERATED_SHA: "${{ inputs.generated_sha }}"}
+        run: |
+          [[ "$PR" =~ ^[0-9]+$ && "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::a PR number and a full SHA, please"; exit 1; }
+          git fetch --no-tags origin "+refs/pull/$PR/head:refs/remotes/pr/head"
+          base=$(git rev-parse HEAD) pr_head=$(git rev-parse refs/remotes/pr/head)
+          [ "$pr_head" = "$HEAD_SHA" ] || { echo "::error::PR $PR's head is $pr_head, not $HEAD_SHA: nothing checked"; exit 1; }
+          git merge-base --is-ancestor "$base" "$HEAD_SHA" || { echo "::error::$HEAD_SHA is not on main's tip: regenerate the switch"; exit 1; }
+          code=0
+          python3 outils/bee.py check-migration --base "$base" --head "$HEAD_SHA" ${GENERATED_SHA:+--generated "$GENERATED_SHA"} > "$RUNNER_TEMP/summary.txt" 2>&1 || code=$?
+          cat "$RUNNER_TEMP/summary.txt"
+          { echo "## Switch check of PR #$PR: exit code $code"; echo; echo "Base (main): \`$base\`; head checked: \`$HEAD_SHA\`${GENERATED_SHA:+; generated: \`$GENERATED_SHA\`}"
+            echo; echo '```'; cat "$RUNNER_TEMP/summary.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          exit "$code"
