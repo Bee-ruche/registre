@@ -23054,7 +23054,9 @@ class TestEnglishNamesStep1c(unittest.TestCase):
         resume.write_text("", encoding="utf-8")
         p4, p6 = check_migration.Move.p4, check_migration.Move.p6
         with mock.patch.dict(os.environ, {"GITHUB_STEP_SUMMARY": str(resume), "SUMMARY_0143": str(resume)}):
-            problemes, lignes = check_migration.check(self.depot, self.base, tete, self.tete)
+            with mock.patch.object(check_migration.rename, "check", return_value=([], dict.fromkeys(("data", "schema", "same", "removed", "code"), 0))), \
+                    mock.patch.object(check_migration.rename_code, "check", return_value=([], {})):  # here, the head's tool alone (bee runs them all)
+                problemes, lignes = check_migration.check(self.depot, self.base, tete, self.tete)
             r = subprocess.run([sys.executable, str(RACINE / "outils/bee.py"), "--registre", str(self.depot), "check-migration", "--base", self.base,
                                 "--head", tete, "--generated", self.tete], capture_output=True, text=True, timeout=1200)
         self.assertEqual((check_migration.Move.p4, check_migration.Move.p6, resume.read_text(encoding="utf-8")), (p4, p6, ""))
@@ -23244,11 +23246,12 @@ class TestEnglishNamesStep1c(unittest.TestCase):
         for nom, changer, attendu in (("another head", lambda x: x.__setitem__("head", self.tete), "not the observations of this base and head"),
                                       ("a key changed", lambda x: x["observations"]["constants"].pop("AUTHORITY_FILES"), "P4: R-i: gouvernance/conseil.yaml left"),
                                       ("not JSON", None, "no observations (JSONDecodeError")):
-            with self.subTest(nom):
+            with self.subTest(nom), mock.patch.object(check_migration.rename, "check", return_value=(["P2 aside"], {})), \
+                    mock.patch.object(check_migration.rename_code, "check", return_value=(["P1 aside"], {})), mock.patch.object(check_migration, "work", return_value=self.o):
                 faux, y = pathlib.Path(self.temp.name, "faux-0143.json"), json.loads(json.dumps(x))
                 if changer:
                     changer(y)
-                faux.write_text(json.dumps(y) if changer else "{", encoding="utf-8")
+                faux.write_text(json.dumps(y) if changer else "{", encoding="utf-8")  # the base's observations are the honest ones (work: self.o)
                 problemes = check_migration.check(self.depot, self.base, self.main, self.tete, faux)[0]
                 self.contains(problemes, attendu)
         # it runs the base's copy of the proofs, whatever the tool's own or the head's: a base whose proofs only print
