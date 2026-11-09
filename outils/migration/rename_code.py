@@ -567,8 +567,10 @@ class CodeMap:
                 return [(x[i], y[i]) for i in changed]
 
     def through(self, a, b, role=False):
-        """string_change once a's whole phrases are renamed, else as it is (a phrase cut by a literal's end stays)."""
+        """string_change once a's whole phrases are renamed, then the names bee prints (printed: a label of several words), else
+        as it is (a phrase cut by a literal's end stays)."""
         x = self.string_change(self.phrased(a), b, role)
+        x = self.string_change(self.printed(self.phrased(a)), b, role) if x is None else x
         return self.string_change(a, b, role) if x is None else x
 
     def same_python(self, old, new, counts, path=""):
