@@ -23,7 +23,7 @@ READ_ONLY = (["valider"], ["lister", "--statut", "toutes", "--json"], ["cap", "-
 OUTPUTS = {"lister": "out_list", "cap": "out_balance", "essaim": "out_swarm", "classement": "out_ranking", "niveaux": "out_levels",
            "debats": "out_debates", "site": "site_api"}  # P6: each JSON output and its family of the map
 WRITE_ONLY_SCANS = {"cmd_proposer_tache": "R-d", "cmd_proposer": "R-d", "cmd_inviter": "R-d", "verifier_pr_de": "R-b"}  # P4 covers them
-KEY_SETS = ("CLES_LIBRE_SERVICE_TACHE", "CLES_NAISSANCE", "CLES_CONFIRMATION", "CLES_DEBAT", "CLES_ARGUMENT", "CLES_IMMUABLES_DEBAT",
+KEY_GROUPS = ("CLES_LIBRE_SERVICE_TACHE", "CLES_NAISSANCE", "CLES_CONFIRMATION", "CLES_DEBAT", "CLES_ARGUMENT", "CLES_IMMUABLES_DEBAT",
             "CLES_SYNTHESE", "CLES_CLOTURE", "CLES_INVITATION", "GESTES_INVITATION", "VERS_LE_CONTACT", "NATURES_INVITATION", "CHAMPS_PSEUDO",
             "CHAMPS_DE_LA_PERSONNE", "LIENS", "CREES_PAR", "CLES_ENTETE_NOEUD", "DECLARE_MAX", "VERDICT_MAX", "LIBRE_SERVICE", "POIDS_GESTES",
             "POSTE_PAR_TYPE", "ROLE_PAR_TYPE", "DOSSIERS_LIBRE_SERVICE", "FICHIERS_LIBRE_SERVICE", "OCTETS_MAX", "CHAMPS_LONGS",
@@ -188,10 +188,10 @@ class Move:
         problems += [f"P4: R-q: {p} is {'not refused by' if p in retired else 'refused by'} the retired-names guard" for p in [*retired, *images.values()]
                      if guard and bool(guard(p)) != (p in retired)] or ([] if guard else ["P4: R-q: no retired-names guard (retired_name, the hand-made part)"])
         problems += [f"P4: R-i: {a} left AUTHORITY_FILES (an old name is kept for good)" for a in o.AUTHORITY_FILES if a not in n.AUTHORITY_FILES]
-        for k in KEY_SETS:  # section 3.3: map(old set) == new set, each member mapped in its constant's own scope
+        for k in KEY_GROUPS:  # section 3.3: map(old set) == new set, each member mapped in its constant's own scope
             if (x := self.mapped(getattr(o, k), k)) != (y := self.mapped(getattr(n, self.i(k), None))):
                 problems.append(f"P4: {k}: the map of the old set is {x!r:.300}, the new tool has {y!r:.300}")
-        return problems, f"{len(corpus)} paths ({len(retired)} retired) classified alike by the rules R-a to R-u, {len(KEY_SETS)} key sets equal"
+        return problems, f"{len(corpus)} paths ({len(retired)} retired) classified alike by the rules R-a to R-u, {len(KEY_GROUPS)} key sets equal"
 
     def same_json(self, x, y, where=""):
         """An output as the map makes it (x) against the new one: the same keys and values; a text, through the map's names."""
@@ -258,6 +258,14 @@ def section_13(names, base, head):
                       + (f" (empty at the base: {', '.join(empty)})" if empty else ""))
 
 
+def hand_part(repo, names, generated, head, after):
+    """The head's commits on top of the generated one, the hand-made part: code files only."""
+    mid, code = rename.tree_files(repo, generated), {names.path(p) for p in names.code}
+    hand = sorted(q for q in {*mid, *after} if mid.get(q) != after.get(q))
+    return [f"the hand-made part: {generated} is not an ancestor of {head}"] * bool(subprocess.run(["git", "-C", str(repo), "merge-base", "--is-ancestor", generated, head]).returncode) + [
+        f"the hand-made part changes {q}, which is not code" for q in hand if q not in code], f"hand-made part ({generated}..{head}): {len(hand)} code file(s): {', '.join(hand)}"
+
+
 def check(repo, base, head, generated=None):
     """bee check-migration. Returns (problems, summary lines)."""
     generated, lines, files = generated or head, [], rename.tree_files(repo, base)
@@ -272,13 +280,9 @@ def check(repo, base, head, generated=None):
     problems, after = p2 + p1, rename.tree_files(repo, head)
     tool_dir, names = at.rpartition("/migration/")[0], rename.Names(files[at].decode("utf-8"))
     cm = rename_code.CodeMap(names, files[rename_code.IDS[rename.MAPS.index(at)]].decode("utf-8"))
-    if generated != head:  # the hand-made part: commits on top of the generated one, code only
-        mid, code = rename.tree_files(repo, generated), {names.path(p) for p in names.code}
-        if subprocess.run(["git", "-C", str(repo), "merge-base", "--is-ancestor", generated, head]).returncode:
-            problems.append(f"the hand-made part: {generated} is not an ancestor of {head}")
-        hand = sorted(q for q in {*mid, *after} if mid.get(q) != after.get(q))
-        problems += [f"the hand-made part changes {q}, which is not code" for q in hand if q not in code]
-        lines.append(f"hand-made part ({generated}..{head}): {len(hand)} code file(s): {', '.join(hand)}")
+    if generated != head:
+        found, said = hand_part(repo, names, generated, head, after)
+        problems, lines = problems + found, lines + [said]
     with tempfile.TemporaryDirectory() as tmp:
         fixture, data = f"{tool_dir}/tests/registre/", set(bee.DOSSIERS_LIBRE_SERVICE)
         roots = (checkout(files, pathlib.Path(tmp) / "base" / "r", data, fixture),

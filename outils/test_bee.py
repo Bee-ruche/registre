@@ -718,7 +718,7 @@ sys.exit(3 if a[:2] == ["pr", "view"] else 0)
         depot, base = self.depot()
         cas = {"a new member file": (["membres/bruno.yaml"], [], True),
                "a new member file among data": (["membres/bruno.yaml", "votes/miniz-0001-c1/bruno.yaml"], [], True),
-               "another case of the folder": (["Membres/bruno.yaml"], [], True),
+               "another case of the folder": (["membres/bruno.yaml".capitalize()], [], True),  # the switch renames the folder, then its case
                "a profile change": (["membres/alice.yaml"], [], False),
                "a deleted member file": ([], ["membres/alice.yaml"], False),
                "a reservation": (["taches/miniz/miniz-0001.yaml"], [], False),
@@ -991,7 +991,7 @@ sys.exit(3 if a[:2] == ["pr", "view"] else 0)
                        "integration-auto.yml": {"contents": "write", "pull-requests": "write", "actions": "write"},
                        "validation.yml": {"contents": "read", "actions": "read"}, "juge.yml": {"contents": "read"},
                        "juge-commun.yml": {"contents": "read"}, "site.yml": {"contents": "read", "pages": "write", "id-token": "write"},
-                       "suite.yml": {"contents": "read"}}  # ruche-0132
+                       "suite.yml": {"contents": "read"}, "check-migration.yml": {"contents": "read"}}  # ruche-0132; ruche-0143
         self.assertEqual(sorted(f.name for f in (RACINE / ".github/workflows").glob("*.yml")), sorted(permissions))
         for nom, attendues in permissions.items():
             with self.subTest(flux=nom):
@@ -18788,8 +18788,9 @@ QUOTED_CHARACTERS = {"non-ASCII": "é", "quote": '"', "backslash": "\\", "tab": 
 GIT_NON_LISTING = {"add", "branch", "cat-file", "checkout", "commit", "config", "fetch", "for-each-ref", "hash-object", "init",
                    "ls-remote", "merge", "merge-base", "pull", "push", "remote", "reset", "rev-parse", "switch",
                    "symbolic-ref", "update-index", "var", "version",
-                   "rebase", "restore"}  # not show: it prints a patch, or a tree's paths; rebase, restore: bee publier reads
+                   "rebase", "restore", "archive"}  # not show: it prints a patch, or a tree's paths; rebase, restore: bee publier reads
                                          # only their exit code (ruche-0129), as for merge and checkout
+                                         # archive: a tar of a commit, which tar unpacks; bee reads no path from it (ruche-0143)
 GIT_LISTING_OPTIONS = {"--name-only", "--name-status", "--numstat", "--raw", "--porcelain", "--objects", "--stat", "--summary",
                        "-p", "--patch", "--patch-with-raw", "--patch-with-stat", "--compact-summary", "--dirstat"}
 GIT_QUOTING_OPTIONS = {"--stat", "--summary", "-p", "--patch", "--patch-with-raw", "--patch-with-stat", "--compact-summary",
@@ -22263,9 +22264,14 @@ class TestEnglishNamesStep1a(unittest.TestCase):
             self.assertTrue((en / "tree/roles/review/MEANING.md").is_file())
             for chemin in ("taches/miniz/miniz-9050.yaml", "arbre/roles/relire/SENS.md", "bee.yaml", "debats/D-9001.yaml"):
                 self.assertEqual((retour / chemin).read_bytes(), self.fichiers[chemin])
-        # dormant: nothing of the tool, the site or the workflows calls the migration tooling
-        for chemin in ("outils/bee.py", "outils/site_bee.py", *(p.relative_to(RACINE).as_posix() for p in (RACINE / ".github").rglob("*.yml"))):
-            self.assertNotIn("migration/", (RACINE / chemin).read_text(encoding="utf-8"), chemin)
+        # dormant: nothing of the tool, the site or the workflows calls the migration tooling, but bee check-migration and the
+        # workflow the founder starts by hand to run it (ruche-0143)
+        source = (RACINE / "outils/bee.py").read_text(encoding="utf-8")
+        self.assertEqual({f.name for f in ast.parse(source).body if isinstance(f, ast.FunctionDef) and "migration" in ast.get_source_segment(source, f)},
+                         {"cmd_check_migration", "construire_analyseur"})
+        for chemin in ("outils/site_bee.py", *(p.relative_to(RACINE).as_posix() for p in (RACINE / ".github").rglob("*.yml"))):
+            if chemin != ".github/workflows/check-migration.yml":
+                self.assertNotIn("migration", (RACINE / chemin).read_text(encoding="utf-8"), chemin)
 
 
 # --- ruche-0142: English names, step 1b: the code renamer and its proofs P1, P1b (a, b), P3 and --names (dormant) ---
@@ -22928,6 +22934,269 @@ class TestEnglishNamesStep1b2(unittest.TestCase):
         self.assertEqual(carte.lint_shell(jq, chemin), [f"line 1: a quoted jq filter holds {w}, a name of the map: its keys and values cannot be told "
                                                         "apart, read the JSON in Python" for w in ("ouverte", "statut")])
         self.assertEqual(carte.lint_shell("gh api x --jq '.[] | .filename' > \"$d/fichiers.txt\"\n", chemin), [])
+
+
+# --- ruche-0143: English names, step 1c: P1b (c), P4, P6, section 13's list, bee check-migration and its workflow (dormant) ---
+
+_SPEC_CHECK = importlib.util.spec_from_file_location("check_migration", pathlib.Path(__file__).resolve().parent / "migration" / "check_migration.py")
+check_migration = importlib.util.module_from_spec(_SPEC_CHECK)
+_SPEC_CHECK.loader.exec_module(check_migration)
+# The switch's hand-made part, as far as P4 reads it (ruche-0145 writes the real one): the retired-names guard, under the name
+# P4 calls, and the old names kept in AUTHORITY_FILES (plan, section 3.1, rows R-i and R-q).
+HAND_GUARD_0143 = '''
+
+RETIRED_NAMES = {retired!r}
+
+
+def retired_name(path):
+    return f"{{path}} : a retired name (ruche-0145)" if any(path == r or r.endswith("/") and path.startswith(r) for r in RETIRED_NAMES) else None
+'''
+OLD_AUTHORITY_0143 = '"docs/organization.md", "docs/guarantors.md", "docs/devolution.md")'
+
+
+class TestEnglishNamesStep1c(unittest.TestCase):
+    """ruche-0143 (docs/english-migration.md, sections 3, 9, 12 and 13): proofs P1b (c) (the scans and globs), P4 (the gate's path
+    rules and key sets), P6 (the read-only outputs) and section 13's list, run by bee check-migration from a copy of the base;
+    its workflow; the here-document lint; every bee.<name> a workflow names exists. On the frozen fixture's switch as step 1b
+    builds it (traduction_0142), the generated commit, and a hand-made part on top of it as ruche-0145 will add it."""
+
+    @classmethod
+    def setUpClass(cls):
+        TestEnglishNamesStep1b.__dict__["setUpClass"].__func__(cls)
+        cls.retired_names = cls.names.m["retired"]
+        cls.main = TestEnglishNamesStep1b.variante(cls, cls.hand_made_part())
+        cls.apres = rename.tree_files(cls.depot, cls.main)
+        cls.honnete = cls.move_of(cls.main)
+
+    tearDownClass = TestEnglishNamesStep1b.__dict__["tearDownClass"]
+    remplacer = TestEnglishNamesStep1b.remplacer
+
+    @classmethod
+    def hand_made_part(cls, retired_names=None, *changes):
+        """A changer of the translated files: the hand-made part (the guard of `retired_names`, the old authority names), then changes."""
+        def changer(f):
+            texte = f["tools/bee.py"].decode("utf-8")
+            assert texte.count(OLD_AUTHORITY_0143) == 1
+            anciens = ", ".join(f'"{a}"' for a in bee.AUTHORITY_FILES if cls.names.path(a) != a)
+            f["tools/bee.py"] = (texte.replace(OLD_AUTHORITY_0143, OLD_AUTHORITY_0143[:-1] + f", {anciens})") + HAND_GUARD_0143.format(retired=tuple(
+                retired_names or cls.retired_names))).encode("utf-8")
+            for chemin, avant, apres in changes:
+                assert f[chemin].count(avant.encode()) == 1, avant
+                f[chemin] = f[chemin].replace(avant.encode(), apres.encode())
+        return changer
+
+    @classmethod
+    def move_of(cls, tete, names=None):
+        """check_migration.Move: the base's tool on its fixture, the head's on the migrated one, each in a scratch checkout."""
+        tmp, names, donnees = pathlib.Path(tempfile.mkdtemp(dir=cls.temp.name)), names or cls.names, set(bee.DOSSIERS_LIBRE_SERVICE)
+        racines = (check_migration.checkout(rename.tree_files(cls.depot, cls.base), tmp / "base" / "r", donnees, "outils/tests/registre/"),
+                   check_migration.checkout(rename.tree_files(cls.depot, tete), tmp / "head" / "r", {names.path(d) for d in donnees},
+                                            names.path("outils/tests/registre/")))
+        outils = [check_migration.load(r / t, f"bee_0143_{tmp.name}_{k}") for k, (r, t) in enumerate(zip(racines, ("outils/bee.py", "tools/bee.py")))]
+        return check_migration.Move(names, check_migration.rename_code.CodeMap(names, cls.fichiers[rename_code.IDS[0]].decode("utf-8")), outils,
+                                    racines, "outils")
+
+    def avec(self, *changes, retired_names=None):
+        """The Move of a head: the hand-made part and these changes (path, before, after) on top of the generated commit."""
+        return self.move_of(TestEnglishNamesStep1b.variante(self, self.hand_made_part(retired_names, *changes)))
+
+    def contains(self, problemes, *messages):
+        for message in messages:
+            self.assertTrue(any(message in p for p in problemes), (message, problemes))
+
+    # --- P1b (c) ---
+
+    def test_p1b_c_validate_the_loaders_the_council_files_and_the_removal_scan_find_the_same_files(self):
+        problemes, said = self.honnete.p1b_c()
+        self.assertEqual(problemes, [])
+        self.assertRegex(said, r"^[0-9]+ scans in 4 functions find the same [1-9][0-9]* files, [0-9]+ collections$")
+        for avant, apres, attendus in (
+                ('self.root.glob("measurements/*/*.yaml")', 'self.root.glob("mesures/*/*.yaml")',  # a loader's glob left in French
+                 ["P1b (c): __init__ scans ./measurements/*/*.yaml and finds 1 file(s) only before the move", "P1b (c): the registry's mesures: 1 before"]),
+                ('r.glob("projects/*.yaml")', 'r.glob("projets/*.yaml")', ["P1b (c): council_text_problems scans ./projects/*.yaml and finds"]),
+                ('for f in (reg.root / sort_kind).rglob("*.yaml")', 'for f in (reg.root / sort_kind).rglob("*.yml")', ["P1b (c): sweep scans tasks/*.yaml and finds"])):
+            with self.subTest(apres):
+                self.contains(self.avec(("tools/bee.py", avant, apres)).p1b_c()[0], *attendus)
+        with mock.patch.object(check_migration, "WRITE_ONLY_SCANS", {}):  # every glob literal is run here, or covered by P4
+            self.contains(self.honnete.p1b_c()[0], "P1b (c): the scan in cmd_proposer_tache is not run here, nor covered by P4")
+
+    # --- P4 ---
+
+    def test_p4_every_path_rule_gives_the_image_the_answer_of_the_path(self):
+        problemes, said = self.honnete.p4(sorted(self.fichiers))
+        self.assertEqual(problemes, [])
+        self.assertRegex(said, rf"^[0-9]+ paths \([0-9]+ retired\) classified alike by the rules R-a to R-u, {len(check_migration.KEY_GROUPS)} key sets equal$")
+        images = self.honnete.corpus(sorted(self.fichiers))
+        for p, q in (("Membres/alice.yaml", "Members/alice.yaml"), ("gouvernance/conseil.yaml", "governance/council.yaml"),  # a case, a file
+                     ("taches/zz/miniz/miniz-9050.yaml", "tasks/zz/miniz/miniz-9050.yaml"), ("REGLES.md", "RULES.md"), ("CLAUDE.md", "CLAUDE.md")):
+            self.assertEqual(images[p], q)
+        # the generated commit alone: without the hand-made part, retired names are not refused and old authority names are lost
+        self.contains(self.move_of(self.tete).p4(sorted(self.fichiers))[0], "P4: R-q: no retired-names guard (retired_name, the hand-made part)",
+                      "P4: R-i: gouvernance/conseil.yaml left AUTHORITY_FILES", "P4: R-i: docs/garants.md left AUTHORITY_FILES")
+
+    def test_p4_fails_on_seeded_mistakes(self):
+        cas = {
+            "a rule left out of the map": ([("tools/bee.py", '"invitations/",\n                          "reports/")', '"invitations/",\n                          "signalements/")')],
+                                           ["P4: signalements/S-9001.yaml -> reports/S-9001.yaml: self-service folder (R-a): True before the move, False after",
+                                            "P4: DOSSIERS_LIBRE_SERVICE: the map of the old set is"]),
+            "a folder dropped from a key set": ([("tools/bee.py", 'PERSON_FIELDS = ("person", "other_identities", "why", "message", "namesake")',
+                                                  'PERSON_FIELDS = ("person", "other_identities", "why", "message")')],
+                                                ["P4: CHAMPS_DE_LA_PERSONNE: the map of the old set is"]),
+            "a retired folder still data": ([("tools/bee.py", 'GESTURE_FOLDERS = ("tasks",', 'GESTURE_FOLDERS = ("taches", "tasks",'),
+                                             ("tools/bee.py", 'HISTORY_PATH = re.compile(r"^(?:tasks|', 'HISTORY_PATH = re.compile(r"^(?:taches|tasks|')],
+                                            ["P4: R-q: taches/miniz/miniz-9050.yaml, a retired name, is still data for the new tool"]),
+            "a council file the strict check no longer reads": ([("tools/bee.py", 'r.glob("projects/*.yaml")', 'r.glob("projets/*.yaml")')],
+                                                                ["P4: R-u: the council files' check reads projects/miniz.yaml only before the move"]),
+        }
+        for nom, (changes, attendus) in cas.items():
+            with self.subTest(nom):
+                self.contains(self.avec(*changes).p4(sorted(self.fichiers))[0], *attendus)
+        with self.subTest("a guard that refuses an English path"):
+            self.contains(self.avec(retired_names=[*self.retired_names, "tasks/"]).p4(sorted(self.fichiers))[0],
+                          "P4: R-q: tasks/miniz/miniz-9050.yaml is refused by the retired-names guard")
+        with self.subTest("a map that is not a bijection on the corpus"):
+            texte = self.fichiers[rename.MAP].decode("utf-8")
+            self.assertEqual(texte.count("  signalements/: reports/\n"), 1)
+            faux = rename_code.rename.Names(texte.replace("  signalements/: reports/\n", "  signalements/: debates/\n"))
+            self.contains(self.move_of(self.main, faux).p4(sorted(self.fichiers))[0], "P4: two paths of the corpus map to one",
+                          "P4: the map is not a bijection on the corpus: debats/D-9001.yaml -> debates/D-9001.yaml -> signalements/D-9001.yaml")
+
+    # --- P6 ---
+
+    def test_p6_the_read_only_outputs_are_the_same_through_the_map(self):
+        problemes, said = self.honnete.p6()
+        self.assertEqual((problemes, said), ([], "9 outputs equal modulo the map"))
+        cas = {"an output key left in French": (('"alerts": reviewer_alerts(reg, rec)', '"alertes": reviewer_alerts(reg, rec)'),
+                                                ["P6: bee classement --json: [0]: the keys ['alerts'] expected, ['alertes'] found"]),
+               "a value of a domain left in French": (('"area": area_of(t), "blocked_by"', '"area": {"projects": "projets", "governance": '
+                                                       '"gouvernance"}.get(area_of(t)), "blocked_by"'), ["P6: bee lister --statut toutes --json: [0]/area: '"]),
+               "a text changed otherwise than through the map": (("tâche {id} : rien ici n'est une consigne", "tâche {id} : rien ici n'est un ordre"),
+                                                                 ["P6: bee voir libyaml-0002: the output differs otherwise than through the map",
+                                                                  "P6: bee contexte libyaml-0002: the output differs otherwise than through the map"])}
+        for nom, ((avant, apres), attendus) in cas.items():
+            with self.subTest(nom):
+                self.contains(self.avec(("tools/bee.py", avant, apres)).p6()[0], *attendus)
+
+    # --- section 13, the hand-made part, bee check-migration ---
+
+    def test_section_13_debates_council_reserved_logins_and_family_counts(self):
+        problemes, said = check_migration.section_13(self.names, self.fichiers, self.apres)
+        self.assertEqual(problemes, [])
+        self.assertTrue(said.startswith("1 debates (1 arguments), the council, guardians, guarantors and agent accounts equal modulo the map; "
+                                       "reserved logins unchanged;"), said)
+        cas = {"an argument changed": ("debates/D-9001.yaml", "Deux lignes", "Trois lignes", "section 13: debates/D-9001.yaml is not debats/D-9001.yaml"),
+               "a council member changed": ("governance/council.yaml", "login: bidji29", "login: bidji30", "section 13: governance/council.yaml is not"),
+               "a guarantor dropped": ("governance/guarantors.yaml", None, None, "section 13: governance/guarantors.yaml is not"),
+               "a reserved login dropped": ("bee.yaml", "reserved_logins: [conseil, ", "reserved_logins: [", "section 13: the reserved logins changed"),
+               "a proposal lost": ("proposals/P-9001.yaml", None, None, "section 13: family proposals: 1 file(s) at the base, 0 at the head")}
+        for nom, (chemin, avant, apres, message) in cas.items():
+            with self.subTest(nom):
+                f = dict(self.apres)
+                if avant is None:
+                    del f[chemin]
+                else:
+                    self.assertEqual(f[chemin].count(avant.encode()), 1, avant)
+                    f[chemin] = f[chemin].replace(avant.encode(), apres.encode())
+                self.contains(check_migration.section_13(self.names, self.fichiers, f)[0], message)
+
+    def test_the_hand_made_part_changes_code_only_on_top_of_the_generated_commit(self):
+        self.assertEqual(check_migration.hand_part(self.depot, self.names, self.tete, self.main, self.apres),
+                         ([], f"hand-made part ({self.tete}..{self.main}): 1 code file(s): tools/bee.py"))
+        for chemin, ligne in (("tasks/miniz/miniz-9050.yaml", "id: miniz-9050\n"), ("tools/migration/names.yaml", "version: 1\n")):  # data; a map
+            with self.subTest(chemin):  # the head's own map, which no proof reads (they read the base's)
+                tete = TestEnglishNamesStep1b.variante(self, self.hand_made_part(None, (chemin, ligne, ligne + "# x\n")))
+                self.contains(check_migration.hand_part(self.depot, self.names, self.tete, tete, rename.tree_files(self.depot, tete))[0],
+                              f"the hand-made part changes {chemin}, which is not code")
+        self.contains(check_migration.hand_part(self.depot, self.names, self.main, self.tete, rename.tree_files(self.depot, self.tete))[0],
+                      f"the hand-made part: {self.main} is not an ancestor of {self.tete}")
+
+    def test_bee_check_migration_runs_the_base_own_checks_from_a_copy_of_the_base(self):
+        lancer_bee = lambda *a: subprocess.run([sys.executable, str(RACINE / "outils/bee.py"), "--registre", str(self.depot), "check-migration", *a],  # noqa: E731
+                                               capture_output=True, text=True, timeout=1200)
+        r = lancer_bee("--base", self.base, "--head", self.main, "--generated", self.tete)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        lignes = r.stdout.splitlines()
+        self.assertEqual(lignes[-1], f"✓ the head {self.main} (generated {self.tete}, then the hand-made part) is proven to be the switch of the base {self.base}.")
+        self.assertEqual([x.split(":")[0] for x in lignes[:-1]], ["P2", "P1, P1b (a, b), P3", "hand-made part (" + self.tete + ".." + self.main + ")",
+                                                                  "P1b (c)", "P4", "P6", "section 13"])
+        self.assertTrue(all("✓" in x for x in lignes if not x.startswith("hand-made")), lignes)
+        # it runs the base's copy of the proofs, whatever the tool's own or the head's: a base whose proofs only print
+        base_double = TestEnglishNamesStep1b.variante(self, self.remplacer("outils/migration/check_migration.py", '"""English names, step 1c',
+                                                                    'import sys; print("proofs of the base", sys.argv[1:]); sys.exit(3)\n"""English names, step 1c'), de=None)
+        r = lancer_bee("--base", base_double, "--head", self.main)
+        self.assertEqual((r.returncode, r.stdout), (3, f"proofs of the base ['--base', '{base_double}', '--head', '{self.main}', '--repo', '{self.depot}']\n"))
+        # run otherwise than as the base's own, the proofs refuse at once
+        self.assertTrue(check_migration.check(self.depot, base_double, self.main)[0][0].endswith(
+            "is not the base's own: run the base's checker, python3 -I, from its checkout (bee check-migration does)"))
+        self.assertEqual(lancer("--registre", str(self.depot), "check-migration", "--base", "0" * 40, "--head", self.main),
+                         (1, "bee : check-migration : --base, --head (et --generated) doivent nommer des commits du registre\n"))
+
+    # --- the workflow, the lints ---
+
+    def test_the_workflow_checks_main_s_tool_on_the_exact_head_read_only(self):
+        texte = (RACINE / ".github/workflows/check-migration.yml").read_text(encoding="utf-8")
+        flux = yaml.safe_load(texte)
+        self.assertEqual((list(flux[True]), list(flux[True]["workflow_dispatch"]["inputs"]), flux["permissions"]),
+                         (["workflow_dispatch"], ["pr", "head_sha", "generated_sha"], {"contents": "read"}))
+        (job,) = flux["jobs"].values()
+        self.assertNotIn("permissions", job)
+        self.assertEqual(job["steps"][0], {"uses": "actions/checkout@v4", "with": {"ref": "main", "fetch-depth": 0, "persist-credentials": False}})
+        etapes = json.dumps(job["steps"]).lower()
+        for interdit in ("secrets.", "github.token", "gh ", "upload-artifact", "comment", "/pulls", "/issues"):  # nothing written, nothing given
+            self.assertNotIn(interdit, etapes)
+        script = job["steps"][-1]["run"]
+        self.assertIn('python3 outils/bee.py check-migration --base "$base" --head "$HEAD_SHA"', script)
+        faux = self.temp.name + "/faux-0143"
+        os.makedirs(faux, exist_ok=True)
+        pathlib.Path(faux, "git").write_text('#!/bin/sh\ncase "$1 $2" in\n  "rev-parse HEAD") echo "$MAIN";;\n  "rev-parse refs/remotes/pr/head") echo "$PR_HEAD";;\n'
+                                             '  "merge-base --is-ancestor") exit "$ANCESTOR";;\nesac\n', encoding="utf-8")
+        pathlib.Path(faux, "python3").write_text('#!/bin/sh\necho "proofs: $*"\nexit "$CODE"\n', encoding="utf-8")
+        [os.chmod(pathlib.Path(faux, n), 0o755) for n in ("git", "python3")]
+        m, h, g = "a" * 40, "b" * 40, "c" * 40
+
+        def run_workflow(pr=7, tete=h, pr_head=h, ancestor=0, code=0, generated=""):
+            resume = pathlib.Path(faux, "resume.md")
+            resume.write_text("", encoding="utf-8")
+            r = subprocess.run(["bash", "-e", "-c", script], capture_output=True, text=True, env={
+                "PATH": f"{faux}{os.pathsep}{os.environ['PATH']}", "RUNNER_TEMP": faux, "GITHUB_STEP_SUMMARY": str(resume), "PR": str(pr),
+                "HEAD_SHA": tete, "GENERATED_SHA": generated, "MAIN": m, "PR_HEAD": pr_head, "ANCESTOR": str(ancestor), "CODE": str(code)})
+            return r.returncode, r.stdout, resume.read_text(encoding="utf-8")
+        code, sortie, resume = run_workflow(generated=g)
+        self.assertEqual(code, 0, sortie)
+        self.assertIn(f"proofs: outils/bee.py check-migration --base {m} --head {h} --generated {g}", sortie)
+        self.assertIn(f"## Switch check of PR #7: exit code 0\n\nBase (main): `{m}`; head checked: `{h}`; generated: `{g}`", resume)
+        self.assertEqual(run_workflow(code=1)[0], 1)  # the proofs' refusal is the run's
+        for nom, args, message in (("another head", {"pr_head": g}, f"::error::PR 7's head is {g}, not {h}: nothing checked"),
+                                   ("not on main's tip", {"ancestor": 1}, f"::error::{h} is not on main's tip"),
+                                   ("a short SHA", {"tete": "b" * 7}, "::error::a PR number and a full SHA"), ("a PR that is not a number", {"pr": "7; x"}, "::error::")):
+            with self.subTest(nom):
+                code, sortie, resume = run_workflow(**args)
+                self.assertEqual((code, resume), (1, ""), sortie)
+                self.assertIn(message, sortie)
+                self.assertNotIn("proofs:", sortie)
+
+    def test_a_here_document_read_as_prose_that_names_a_mapped_variable_is_refused(self):
+        """Review of ruche-0152: a here-document without a shebang is prose (its words stay) while its $variables are renamed."""
+        carte, chemin = self.carte, "outils/repetition/x"
+        self.assertEqual(carte.lint_shell('cat > f <<EOF\nla portée vaut $portee\nEOF\n', chemin),
+                         ["line 2: a here-document without a shebang names $portee, a name of the map: it is read as prose, its $variables renamed and "
+                          "its words not; start it with #!/bin/sh, or leave the variable out"])
+        for honnete in ('cat > f <<EOF\n#!/bin/sh\necho "$portee"\nEOF\n', "cat > f <<EOF\nla portée, sans variable, $HOME\nEOF\n",
+                        "python3 - <<'X'\nimport os\nprint(os.environ['HOME'])\nX\n"):
+            self.assertEqual(carte.lint_shell(honnete, chemin), [], honnete)
+
+    def test_every_bee_name_a_workflow_s_python_names_exists_before_and_after_the_switch(self):
+        """Plan, section 12, change 9: on main and on the switch, not only the names the switch changes."""
+        for fichiers, outil, tests, path_of in ((self.fichiers, "outils/bee.py", "outils/test_bee.py", str),
+                                                  (self.traduits, "tools/bee.py", "tools/test_bee.py", lambda p: self.names.path(p, True))):
+            with self.subTest(outil):
+                flux = {p: t.decode("utf-8") for p, t in fichiers.items() if p.startswith(".github/workflows/")}
+                definis = rename_code.defined_names(ast.parse(fichiers[outil].decode("utf-8")), ast.parse(fichiers[tests].decode("utf-8")))
+                self.assertGreater(sum(t.count("bee.") for t in flux.values()), 5)
+                self.assertEqual({x for x in self.carte.links(flux, path_of, definis) if x[1] == "bee"}, set())
+        definis = rename_code.defined_names(ast.parse(self.fichiers["outils/bee.py"].decode("utf-8")), ast.Module([], []))
+        self.assertEqual(self.carte.links({"x.yml": "jobs:\n  a:\n    steps:\n      - run: python3 -c 'import bee; bee.NOPE(bee.RACINE_OUTIL)'\n"}, str, definis),
+                         {("x.yml", "bee", "NOPE")})
 
 
 # --- ruche-0144: settings fail closed: each bee.yaml key bee reads is required and well formed, any other key refused, no default ---
