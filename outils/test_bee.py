@@ -21926,7 +21926,7 @@ def traduction_0141(names, fichiers):
             texte = contenu.decode("utf-8")
             tete[names.path(chemin)] = (names.schema(schema, texte, False) if schema else names.translate(familles[0], texte)).encode("utf-8")
         elif chemin in names.code or not main.get("removed"):
-            tete[names.path(chemin)] = fichiers[main.get("becomes", chemin)] if chemin not in names.code else contenu
+            tete[names.path(chemin)] = names.hand_bytes(main, chemin, fichiers) if chemin not in names.code else contenu  # change 10 (ruche-0153)
     return tete
 
 
