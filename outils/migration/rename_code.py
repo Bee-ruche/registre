@@ -368,6 +368,12 @@ class CodeMap:
                     r"|^[\s-]*([\w-]+):" if kind != "text" else ""), x) for i, g in enumerate(m.groups()) if g for w in g.split()]
                 sh |= {w for i, w in found if i in (0, 3, 4, 5, 6) or i == 7 and w.isupper()}  # the environment's variables are keys too
                 keys |= {w for i, w in found if i in (1, 2, 7)}
+        lines = text.split("\n")  # a here-document read as prose (no shebang, not Python) whose $variables the renamer would rename alone
+        problems += [f"line {n + 2}: a here-document without a shebang names ${v}, a name of the map: it is read as prose, its $variables renamed and "
+                     "its words not; start it with #!/bin/sh, or leave the variable out" for n, line in enumerate(lines) if (h := HEREDOC.search(line))
+                     and not re.search(r"\bpython3 -(?:\s|$)", line) and not re.match(r"#!.*\b(?:ba|da)?sh\b", lines[n + 1] if n + 1 < len(lines) else "")
+                     for v in sorted(set(re.findall(r"\$\{?([A-Za-z_]\w*)", "\n".join(itertools.takewhile(lambda x: x.strip() != h[2], lines[n + 1:])))))
+                     if self.tokens.get(v, v) != v or v in self.hand]
         problems += [f"identifier {x} is neither mapped nor made of English words" for x in sorted((sh | keys) - self.kept(path)[1])
                      if self.tokens.get(x, x) == x and not self.covered(x, False)]
         problems += self.clashes([(1, path, sh, self.tokens), (1, path, keys, self.tokens)]) + [
@@ -561,9 +567,10 @@ def scopes_of(tree):
     return out
 
 
-def check(repo, base, head):
+def check(repo, base, head, new_rows=None):
     """P1, P1b (a, b) and P3 (plan, sections 9 and 12, change 2); P1b (c), the migrated fixture's scans and data, is ruche-0143's.
-    Returns (problems, counts of each mapping)."""
+    new_rows(path, builder): the new tool's parser rows (default: rows_here; bee check-migration reads them in a worker, so that
+    the process that decides loads no code of the head). Returns (problems, counts of each mapping)."""
     files, after, none = rename.tree_files(repo, base), rename.tree_files(repo, head), collections.Counter()
     if (at := next((c for c in rename.MAPS if c in files), None)) is None or IDS[rename.MAPS.index(at)] not in files:
         return [f"no {rename.MAP} and {IDS[0]} at the base {base}"], none
@@ -598,10 +605,8 @@ def check(repo, base, head):
     with tempfile.TemporaryDirectory() as tmp:  # P1 holds: the new tool is the base's code modulo the map, it may run
         (path := pathlib.Path(tmp) / tool).parent.mkdir(parents=True)
         path.write_bytes(after[tool])
-        spec = importlib.util.spec_from_file_location("bee_after_the_move", path)
         try:
-            spec.loader.exec_module(new := importlib.util.module_from_spec(spec))
-            rows = parser_rows(bee.construire_analyseur()), parser_rows(getattr(new, cm.ids.get("construire_analyseur", "construire_analyseur"))())
+            rows = parser_rows(bee.construire_analyseur()), (new_rows or rows_here)(path, cm.ids.get("construire_analyseur", "construire_analyseur"))
         except Exception as e:  # noqa: BLE001 - a new tool that does not load is a refusal, never a crash
             return problems + [f"P3 and P1b (b) not run: {tool} does not load: {type(e).__name__}: {e}"], counts
     cm.scoped(f"{tools_dir}/bee.py", "construire_analyseur")  # the parser's names are that function's
@@ -609,6 +614,13 @@ def check(repo, base, head):
                  f"new parser has {b!r:.160}" for a, b in itertools.zip_longest(cm.mapped_rows(rows[0]), rows[1]) if a != b]
     dests = {r[2] for r in rows[1] if r[1] != "defaults"} | {k for r in rows[1] if r[1] == "defaults" for k, _ in r[2]}
     return problems + [f"P1b: {q}: {x}" for q, t in trees.items() for x in cm.attribute_names(t, dests if q == tool else None)], counts
+
+
+def rows_here(path, builder):
+    """P3: the parser rows of the tool at path, loaded in this process."""
+    spec = importlib.util.spec_from_file_location("bee_after_the_move", path)
+    spec.loader.exec_module(new := importlib.util.module_from_spec(spec))
+    return parser_rows(getattr(new, builder)())
 
 
 def defined_names(tool, tests):

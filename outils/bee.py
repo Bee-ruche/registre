@@ -8873,6 +8873,26 @@ def cmd_push_scope(args):
     return 0
 
 
+def cmd_check_migration(args):
+    """ruche-0143 (docs/english-migration.md, section 13): the base's own migration proofs, its map and its code (never the
+    head's), run from a copy of the base on base...head; prints their summary, returns their exit code. --observe and --observed:
+    the workflow's two jobs (the first runs the head's tool, the second decides)."""
+    import tempfile
+    racine = args.registre or os.environ.get("BEE_REGISTRE") or RACINE_OUTIL
+    commits = [x and subprocess.run(["git", "-C", str(racine), "rev-parse", "--verify", "-q", f"{x}^{{commit}}"], capture_output=True,
+                                    text=True).stdout.strip() for x in (args.base, args.head, args.generated)]
+    if not all(commits[:2]) or args.generated and not commits[2]:
+        raise ErreurBee("check-migration : --base, --head (et --generated) doivent nommer des commits du registre")
+    with tempfile.TemporaryDirectory() as copie:
+        archive = subprocess.run(["git", "-C", str(racine), "archive", "--format=tar", commits[0]], capture_output=True, check=True).stdout
+        subprocess.run(["tar", "-x", "-C", copie], input=archive, check=True)
+        if not (script := pathlib.Path(copie, "outils", "migration", "check_migration.py")).is_file():
+            raise ErreurBee(f"check-migration : la base {commits[0]} n'a pas les preuves de la migration")
+        return subprocess.run([sys.executable, "-I", str(script), "--base", commits[0], "--head", commits[1], "--repo", str(racine),
+                               *(["--generated", commits[2]] if commits[2] else []),
+                               *[x for o in ("observe", "observed") if getattr(args, o) for x in (f"--{o}", os.path.abspath(getattr(args, o)))]]).returncode
+
+
 def date_compte_requise(racine, base, tete):
     """ruche-0121 (E2): whether the gate needs the author's account creation date from GitHub: only for a PR that adds a
     member file (registering checks it). Any error: yes (one more call; without the date, a registration is refused)."""
@@ -11469,6 +11489,14 @@ def construire_analyseur():
                                               "'full', then the commit suite.yml must test (ruche-0133; used by validation.yml, site.yml).")
     p.add_argument("--avant", required=True, help="the commit main was at before the push (github.event.before)")
     p.add_argument("--apres", default="HEAD", help="the pushed commit")
+
+    p = ajouter("check-migration", cmd_check_migration, "English names (ruche-0143; docs/english-migration.md, section 13): runs the base's own "
+                                                        "proofs that the head is the switch of the base (P1 to P6), from a copy of the base.")
+    p.add_argument("--base", required=True, help="the commit of main the switch translates")
+    p.add_argument("--head", required=True, help="the switch's commit")
+    p.add_argument("--generated", help="the commit the switch script wrote, when the head adds the hand-made part on top of it")
+    p.add_argument("--observe", help="only run the head's tool, its observations to this file (the workflow's first job)")
+    p.add_argument("--observed", help="the head's observations from this file, instead of running its code (the workflow's second job)")
 
     p = ajouter("needs-account-date", lambda a: print("yes" if date_compte_requise(a.registre or os.environ.get("BEE_REGISTRE") or RACINE_OUTIL, a.base, a.tete)
                                                       else "no") or 0, "Prints 'yes' if a registry PR adds a member file (its check needs the account's "

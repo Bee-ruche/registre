@@ -39,10 +39,8 @@ depend_de:
 - ruche-0142
 - ruche-0152
 noeud: projets/ruche/ruche
-statut: reservee
-reservation:
-  utilisateur: "bidji29"
-  depuis: "2026-11-09T05:22:25Z"
+statut: en_relecture
+contribution: ruche-0143-c1
 cree_par: conseil
 cree_le: '2026-11-08'
 notes:

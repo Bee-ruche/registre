@@ -1352,6 +1352,7 @@ families:
       expire_dans_heures: expires_in_hours
       fenetre_restante_heures: window_left_hours
       frein: brake
+      fusionnee_le: merged_at
       gain_mesure: measured_gain
       gardiens: guardians
       gardiens_en_fonction: guardians_in_office
@@ -1545,6 +1546,7 @@ families:
       attentes_jusqu_au: waits_until
       au_dela_du_bruit: beyond_noise
       auteur: author
+      autres_identites: other_identities
       avis: opinion
       banc_ab: ab_bench
       base: base
@@ -1609,6 +1611,7 @@ families:
       etat: state
       execution: run
       expire_dans_heures: expires_in_hours
+      fait: fact
       fenetre_jours: window_days
       fenetre_restante_heures: window_left_hours
       fichier: file
@@ -1617,6 +1620,7 @@ families:
       fork: fork
       frein: brake
       fusion_sha: merge_sha
+      fusionnee_le: merged_at
       fuzz: fuzz
       gain: gain
       gain_mesure: measured_gain
@@ -1631,6 +1635,7 @@ families:
       identifiant: identifier
       incidents_ouverts: open_incidents
       instructions: instructions
+      integrees: integrated
       invitation: invitation
       invitations: invitations
       invitations_par_semaine: invitations_per_week
@@ -1646,12 +1651,14 @@ families:
       membres: members
       membres_actifs: active_members
       membres_actifs_max: active_members_max
+      message: message
       metrique: metric
       metriques: metrics
       mis_a_jour: updated_on
       modele: model
       motif: reason
       motif_decision: decision_reason
+      niveau: level
       noeud: node
       noeud_rattache: attached_node
       nom: name
@@ -1667,6 +1674,7 @@ families:
       parent: parent
       participants: participants
       perimetre: scope
+      personne: person
       phase: phase
       phase_ouverture: opening_phase
       pistes: leads
@@ -1677,6 +1685,7 @@ families:
       poste: area
       poste_suggere: suggested_area
       postes: areas
+      pourquoi: why
       pr: pr
       projet: project
       projets: projects
@@ -1684,8 +1693,10 @@ families:
       propose_par: proposed_by
       propositions: proposals
       protegee_jusqu_au: protected_until
+      pseudo: login
       question: question
       question_caviardee_pour: question_redacted_for
+      raison: cause
       raisons: reasons
       rang: rank
       rapporteur: rapporteur
@@ -1700,6 +1711,7 @@ families:
       resume: summary
       resume_sha: summary_sha
       retenue: kept
+      retrait: withdrawal
       role: role
       score: score
       sections: sections
@@ -1713,6 +1725,7 @@ families:
       sortie_compressee: compressed_output
       sorties_comparees: outputs_compared
       soumise_le: submitted_at
+      source: source
       sources: sources
       statut: status
       synthese: synthesis
@@ -1752,8 +1765,10 @@ families:
       arbre[]/parent: node
       arbre[]/enfants[]: node
       projets[]/statut: project_status
+      membres[]/niveau: level
     key_values:
-      arbre[]/sections: node_section
+      arbre[]/sections: null
+      contributions[]/score: null
       contributions[]/verdict/instructions: null
       contributions[]/verdict/degradations: null
       contributions[]/verdicts[]/instructions: null
@@ -1998,6 +2013,7 @@ open_domains:
     'retiré : demande': 'withdrawn: request'
     'retiré : sans réponse': 'withdrawn: no answer'
 code:
+- .github/workflows/check-migration.yml
 - .github/workflows/expirations.yml
 - .github/workflows/fusion-auto.yml
 - .github/workflows/integration-auto.yml
@@ -2083,4 +2099,7 @@ hand:
 - files: outils/migration/identifiers.yaml
   same: true
   why: 'the identifier map of step 1b, moved: every proof reads it from the base'
+- files: outils/migration/check_migration.py
+  same: true
+  why: 'step 1c''s proofs, moved: they name the old tool''s French names on purpose, and run only from the base'
 new: []

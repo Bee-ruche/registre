@@ -1,0 +1,81 @@
+# ruche-0143 (docs/english-migration.md, section 13): the founder starts it on the switch PR, with its number and head SHA (and the
+# commit the switch script wrote, if a hand-made part is on top of it). Main's `bee check-migration` checks that exact head, in two
+# jobs on two machines:
+# - observe runs the head's code (P1b (c), P4 and P6 run the head's tool): main's check-migration --observe writes what the head's
+#   tool did to a file, the artifact "observations". Nothing this job prints, writes to its summary or exits with is the check:
+#   the head's code ran there and may have written any of it.
+# - verdict runs main's code, on a fresh machine, and no code of the head's but one file (P3 reads the parser of the generated
+#   commit's tool, once P1 has proven it is main's tool through main's map, in a worker with an empty environment). Main's
+#   check-migration --observed re-derives P2, P1, P1b (a, b), P3, the hand-made part's files and lines and section 13 from git,
+#   runs main's tool on the fixture, checks the observations' shape, compares, and writes the verdict with both SHAs to its
+#   summary. Only this job's summary and exit code are the check.
+# What the verdict proves: P2, P1, P1b (a, b), P3 and section 13 hold for these exact commits, whatever the head's code does.
+# P1b (c), P4 and P6 compare main's tool with what the observe job reports of the head's tool: a head written to fool this check
+# (code that sees it is observed and answers as the base would) can fake those three. They catch honest mistakes; the hand-made
+# part's own review, from the list of its files and lines in the summary, is what stands against a hostile one.
+# Both jobs: a read-only token, no secret, no stored credentials, no comment.
+name: Switch check
+run-name: Switch check of PR ${{ inputs.pr }} at ${{ inputs.head_sha }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr: {description: "The switch PR's number", required: true, type: string}
+      head_sha: {description: "The PR's head, its full SHA, as you read it on the PR", required: true, type: string}
+      generated_sha: {description: "The commit the switch script wrote, its full SHA, if the hand-made part is on top of it", required: false, type: string}
+
+permissions:
+  contents: read
+
+jobs:
+  observe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with: {ref: main, fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - name: Dependencies
+        run: pip install -r outils/requirements.txt
+      - name: Run the head's tool (nothing here is the check)
+        env: {PR: "${{ inputs.pr }}", HEAD_SHA: "${{ inputs.head_sha }}", GENERATED_SHA: "${{ inputs.generated_sha }}"}
+        run: |
+          [[ "$PR" =~ ^[0-9]+$ && "$HEAD_SHA" =~ ^[0-9a-f]{40}$ && "$GENERATED_SHA" =~ ^([0-9a-f]{40})?$ ]] || { echo "::error::a PR number and full SHAs, please"; exit 1; }
+          git fetch --no-tags origin "+refs/pull/$PR/head:refs/remotes/pr/head"
+          base=$(git rev-parse HEAD) pr_head=$(git rev-parse refs/remotes/pr/head)
+          [ "$pr_head" = "$HEAD_SHA" ] || { echo "::error::PR $PR's head is $pr_head, not $HEAD_SHA: nothing checked"; exit 1; }
+          python3 outils/bee.py check-migration --base "$base" --head "$HEAD_SHA" --observe "$RUNNER_TEMP/observed.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with: {name: observations, path: "${{ runner.temp }}/observed.json", retention-days: 1, if-no-files-found: ignore}
+
+  verdict:
+    needs: observe
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with: {ref: main, fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - name: Dependencies
+        run: pip install -r outils/requirements.txt
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4.3.0
+        continue-on-error: true  # none: the verdict says so, and refuses
+        with: {name: observations, path: "${{ runner.temp }}/observations"}
+      - name: Check the switch, if the PR's head is the commit given, on main's tip
+        env: {PR: "${{ inputs.pr }}", HEAD_SHA: "${{ inputs.head_sha }}", GENERATED_SHA: "${{ inputs.generated_sha }}"}
+        run: |
+          [[ "$PR" =~ ^[0-9]+$ && "$HEAD_SHA" =~ ^[0-9a-f]{40}$ && "$GENERATED_SHA" =~ ^([0-9a-f]{40})?$ ]] || { echo "::error::a PR number and full SHAs, please"; exit 1; }
+          git fetch --no-tags origin "+refs/pull/$PR/head:refs/remotes/pr/head"
+          base=$(git rev-parse HEAD) pr_head=$(git rev-parse refs/remotes/pr/head)
+          [ "$pr_head" = "$HEAD_SHA" ] || { echo "::error::PR $PR's head is $pr_head, not $HEAD_SHA: nothing checked"; exit 1; }
+          git merge-base --is-ancestor "$base" "$HEAD_SHA" || { echo "::error::$HEAD_SHA is not on main's tip: regenerate the switch"; exit 1; }
+          code=0
+          python3 outils/bee.py check-migration --base "$base" --head "$HEAD_SHA" ${GENERATED_SHA:+--generated "$GENERATED_SHA"} \
+            --observed "$RUNNER_TEMP/observations/observed.json" > "$RUNNER_TEMP/summary.txt" 2>&1 || code=$?
+          cat "$RUNNER_TEMP/summary.txt"
+          { echo "## Switch check of PR #$PR: exit code $code"; echo; echo "Base (main): \`$base\`; head checked: \`$HEAD_SHA\`${GENERATED_SHA:+; generated: \`$GENERATED_SHA\`}"
+            echo; echo '```'; cat "$RUNNER_TEMP/summary.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          exit "$code"
