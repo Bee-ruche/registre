@@ -172,7 +172,7 @@ class CodeMap:
         parts = self.phrased("".join(parts))
         c = self.names.m["cli"]["commands"]  # a subcommand after its command, wherever (a fake bee's « BEE passe-fusion preparer »)
         t = self.subcommands.sub(lambda x: (lambda a, s, b: s.join(c[f"{a} {b}"].split(" ")))(*re.fullmatch(r"(\S+)(\s+)(\S+)", x[0]).groups()), parts)
-        t = "".join(RUN.sub(lambda x: self.whole(x[0]) if re.search(r"[_.\[\]<>@#/]|\w-\w|^--", x[0]) or code and x.string[x.start() - 1:x.start()] != "{"
+        t = "".join(RUN.sub(lambda x: self.whole(x[0]) if re.search(r"[_.\[\]<>@#/]|\w-\w|^--", x[0]) or code and not re.search(r"(?:\{|%\()\Z", x.string[max(x.start() - 2, 0):x.start()])
                             else x[0], p) for p in TAG.split(t))
         t = re.sub(r"(?<=\{)[A-Za-z_]\w*(?=[}!:.\[])|(?<=%\()[A-Za-z_]\w*(?=\))", lambda x: self.ids.get(x[0], x[0]), t)  # as .format(name=)
         t = re.sub(r"(?<=\(\?P=)\w+(?=\))|(?<=\\g<)\w+(?=>)", lambda x: self.tokens.get(x[0], x[0]), t)  # regex back-references, as m["name"]

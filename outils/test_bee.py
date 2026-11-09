@@ -22304,19 +22304,20 @@ def load_tree(root, status="open"):
 
 
 def traduction_0142(names, carte, fichiers):
-    """The switch as ruche-0145 will make it, for the data (step 1a) and the Python code (this step): the shell scripts
-    and the workflows stay as they are (their renamer is a later step)."""
+    """The switch as ruche-0145 will make it, for the data (step 1a) and the code (steps 1b and 1b-2): the Python files by
+    rename_python, the shell scripts and the workflows by rename_shell."""
     tete = traduction_0141(names, fichiers)
-    for chemin in (c for c in names.code if c.endswith(".py")):
-        tete[names.path(chemin)] = carte.rename_python(fichiers[chemin].decode("utf-8"), chemin)[0].encode("utf-8")
+    for chemin in names.code:
+        texte = fichiers[chemin].decode("utf-8")
+        tete[names.path(chemin)] = (carte.rename_python(texte, chemin) if chemin.endswith(".py") else carte.rename_shell(texte, chemin))[0].encode("utf-8")
     return tete
 
 
 class TestEnglishNamesStep1b(unittest.TestCase):
     """ruche-0142 (docs/english-migration.md, sections 9, 12 and 13): the Python code renamer, the identifier map and the
     proofs P1, P1b (a, b) and P3, dormant. They run here on a copy of the repository with the frozen fixture; on main, from
-    main's checkout: python3 -I outils/migration/rename_code.py check --base origin/main --head <sha>. The identifiers of
-    the three test files are pending (a later step): check fails closed on them, one line each."""
+    main's checkout: python3 -I outils/migration/rename_code.py check --base origin/main --head <sha>. ruche-0152 mapped the
+    identifiers of the three test files: no file is pending any more (a pending file makes check fail closed, one line)."""
 
     @classmethod
     def setUpClass(cls):
@@ -22473,28 +22474,24 @@ class TestEnglishNamesStep1b(unittest.TestCase):
         with mock.patch.object(rename_code, "parser_rows", side_effect=ValueError("no parser")):
             self.assertIn("P3 and P1b (b) not run: tools/bee.py does not load: ValueError: no parser", rename_code.check(self.depot, self.base, self.tete)[0])
 
-    def test_the_honest_switch_holds_but_for_the_pending_test_files(self):
+    def test_the_honest_switch_holds_on_every_code_file_and_a_pending_file_fails_closed(self):
         problemes, nombres = self.verdict
-        attente = set(self.carte.m["pending"])
-        self.assertEqual(attente, {"outils/test_bee.py", "outils/juge/test_juge.py", "outils/repetition/test_load_test.py"})
-        self.assertTrue(problemes)
-        for p in problemes:
-            self.assertTrue(any(p.startswith(f"the map: {f}: ") for f in attente), p)
-        self.assertEqual(sum(p.endswith("not mapped yet (pending)") for p in problemes), 3)
+        self.assertEqual((self.carte.m["pending"], problemes), ([], []))
         for attendu in (("identifier", "construire_analyseur", "build_parser"), ("identifier", "statut", "status"), ("string", "valider", "validate"),
-                        ("string", "--utilisateur", "--user"), ("identifier", "ErreurBee", "BeeError")):
+                        ("string", "--utilisateur", "--user"), ("identifier", "ErreurBee", "BeeError"), ("identifier", "TestRegistre", "TestRegistry"),
+                        ("string", "BEE_MAINTENANT", "BEE_NOW"), ("string", "controles", "checks")):
             self.assertIn(attendu, nombres)
-        # the files the map covers, alone: every proof holds
-        def sans_les_tests(f):
-            f[rename.MAP] = re.sub(rb"\n- outils/(?:juge/test_juge|repetition/test_load_test|test_bee)\.py", b"", f[rename.MAP])
-            f[rename_code.IDS[0]] = re.sub(rb"\npending:\n(- .*\n)+", b"\npending: []\n", f[rename_code.IDS[0]])
-        base = self.variante(sans_les_tests, de=None)
-        self.assertEqual(rename_code.check(self.depot, base, self.tete)[0], [])
+        # a file listed as pending (its identifiers not reviewed): check fails closed, one line, and says so
+        def en_attente(f):
+            f[rename_code.IDS[0]] = f[rename_code.IDS[0]].replace(b"\npending: []\n", b"\npending:\n- outils/test_bee.py\n")
+        base = self.variante(en_attente, de=None)
+        problemes = rename_code.check(self.depot, base, self.tete)[0]
+        self.assertEqual(problemes, ["the map: outils/test_bee.py: 0 identifiers not mapped yet (pending)"])
         sortie = io.StringIO()
         with contextlib.redirect_stdout(sortie):
-            self.assertEqual(rename_code.main(["check", "--repo", str(self.depot), "--base", base, "--head", self.tete]), 0)
-            self.assertEqual(rename_code.main(["check", "--repo", str(self.depot), "--base", self.base, "--head", self.tete]), 1)
-        self.assertIn(f"✓ P1, P1b and P3 hold at {base} for the head {self.tete}: ", sortie.getvalue())
+            self.assertEqual(rename_code.main(["check", "--repo", str(self.depot), "--base", self.base, "--head", self.tete]), 0)
+            self.assertEqual(rename_code.main(["check", "--repo", str(self.depot), "--base", base, "--head", self.tete]), 1)
+        self.assertIn(f"✓ P1, P1b and P3 hold at {self.base} for the head {self.tete}: ", sortie.getvalue())
         self.assertIn("\nidentifier: construire_analyseur -> build_parser: ", sortie.getvalue())
         self.assertIn("✗ the map: outils/test_bee.py: ", sortie.getvalue())
 
@@ -22588,7 +22585,7 @@ class TestEnglishNamesStep1b(unittest.TestCase):
         with tempfile.TemporaryDirectory() as dossier:  # as a script: isolated or refused, and nothing shadows a module
             racine, marque = pathlib.Path(dossier), pathlib.Path(dossier) / "marque"
             for chemin in ("outils/bee.py", "outils/migration/rename.py", "outils/migration/rename_code.py", rename.MAP, rename_code.IDS[0],
-                           *(p for p in self.names.code if p.endswith(".py"))):
+                           *self.names.code):
                 (racine / chemin).parent.mkdir(parents=True, exist_ok=True)
                 (racine / chemin).write_bytes(self.fichiers[chemin])
             for module in ("outils/migration/yaml.py", "outils/migration/tokenize.py", "outils/yaml.py", "outils/argparse.py"):
@@ -22598,11 +22595,244 @@ class TestEnglishNamesStep1b(unittest.TestCase):
             self.assertEqual((r.returncode, marque.exists()), (1, False), r.stdout + r.stderr)
             self.assertIn("run it isolated, python3 -I outils/migration/rename_code.py", r.stderr)
             r = subprocess.run([sys.executable, "-I", script, "lint"], capture_output=True, text=True)
-            self.assertEqual((r.returncode, marque.exists()), (1, False), r.stdout + r.stderr)
-            self.assertIn("✗ outils/test_bee.py: ", r.stdout)
-            self.assertIn(" identifiers not mapped yet (pending)", r.stdout)
+            self.assertEqual((r.returncode, marque.exists()), (0, False), r.stdout + r.stderr)
+            self.assertIn("✓ the identifier map covers the code.", r.stdout)
         for chemin in ("outils/bee.py", "outils/site_bee.py", *(p.relative_to(RACINE).as_posix() for p in (RACINE / ".github").rglob("*.yml"))):
             self.assertNotIn("rename_code", (RACINE / chemin).read_text(encoding="utf-8"), chemin)
+
+
+# --- ruche-0152: English names, step 1b-2: the test files' identifiers, the shell scripts and the workflows (dormant) ---
+
+# A small script and a small workflow that hold every kind of region the shell renamer cuts: comments (as written), code
+# (every name), prose (its compound names and $variables only), Python (python3 -c and a here-document), whole phrases.
+SCRIPT_0152 = '''#!/usr/bin/env bash
+# Publie le travail : un commentaire reste tel quel (taches/, bee valider, $portee)
+set -euo pipefail
+portee="$1"; sortie=$(python3 outils/bee.py --registre "$BEE_REGISTRE" valider --sortie "$BEE_SIMU/etat")
+echo "Portée de la passe : $portee ; dossier : ${sortie:-aucun}" >&2
+python3 -c 'import json, sys; print(json.load(sys.stdin)["statut"])' < "taches/$portee.json"
+case "$2" in fusionner|refuser) ;; *) echo 'usage : publier <portee> fusionner|refuser' >&2; exit 2;; esac
+python3 - "$sortie" <<'EOF'
+import sys
+etat = sys.argv[1]
+print(etat, {"auteur": etat})
+EOF
+'''
+SCRIPT_0152_EN = '''#!/usr/bin/env bash
+# Publie le travail : un commentaire reste tel quel (taches/, bee valider, $portee)
+set -euo pipefail
+reach="$1"; output_text=$(python3 tools/bee.py --registry "$BEE_REGISTRY" validate --output "$BEE_SIM/state")
+echo "Portée de la passe : $reach ; dossier : ${output_text:-aucun}" >&2
+python3 -c 'import json, sys; print(json.load(sys.stdin)["status"])' < "tasks/$reach.json"
+case "$2" in merge|refuse) ;; *) echo 'usage : publier <reach> fusionner|refuser' >&2; exit 2;; esac
+python3 - "$output_text" <<'EOF'
+import sys
+state = sys.argv[1]
+print(state, {"author": state})
+EOF
+'''
+FLUX_0152 = '''# Valide le registre : un commentaire reste tel quel (bee valider)
+name: Validation du registre
+on:
+  workflow_run:
+    workflows: ["Fusion automatique"]
+jobs:
+  controles:
+    runs-on: ubuntu-24.04
+    outputs: {portee: "${{ steps.portee_push.outputs.portee }}"}
+    steps:
+      - name: Dépendances
+        id: portee_push
+        env:
+          AVANT: ${{ github.event.before }}
+        run: |
+          portee=$(python3 outils/bee.py ci-scope --tete "$AVANT")  # la portée de la passe
+          echo "portee=$portee" >> "$GITHUB_OUTPUT"
+          git commit -qam "Verdicts des forks"
+  valider:
+    needs: [controles]
+    if: needs.controles.outputs.portee != 'data'
+    runs-on: ubuntu-24.04
+    steps:
+      - run: PYTHONPATH=outils python3 -c 'import sys, bee; sys.exit(bee.CHANGEMENTS_DE_BASE == ())'
+'''
+FLUX_0152_EN = '''# Valide le registre : un commentaire reste tel quel (bee valider)
+name: Registry validation
+on:
+  workflow_run:
+    workflows: ["Auto-merge"]
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    outputs: {reach: "${{ steps.reach_push.outputs.reach }}"}
+    steps:
+      - name: Dependencies
+        id: reach_push
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          reach=$(python3 tools/bee.py ci-scope --head "$BEFORE")  # la portée de la passe
+          echo "reach=$reach" >> "$GITHUB_OUTPUT"
+          git commit -qam "Fork verdicts"
+  validate:
+    needs: [checks]
+    if: needs.checks.outputs.reach != 'data'
+    runs-on: ubuntu-24.04
+    steps:
+      - run: PYTHONPATH=tools python3 -c 'import sys, bee; sys.exit(bee.BASE_CHANGES == ())'
+'''
+
+
+class TestEnglishNamesStep1b2(unittest.TestCase):
+    """ruche-0152 (docs/english-migration.md, sections 9, 12 and 13): the test files' identifiers mapped, no two names of one
+    scope sharing an English name; the shell scripts and the workflows renamed region by region (comments as written, prose
+    but its names, Python as Python) and proven by P1, P1b and the workflows' links; the site's CSS and JavaScript and the
+    French node headings kept, any change to them refused. On a copy of the repository with the frozen fixture, as step 1b."""
+    setUpClass, tearDownClass = TestEnglishNamesStep1b.__dict__["setUpClass"], TestEnglishNamesStep1b.__dict__["tearDownClass"]
+    variante, remplacer, carte_changee = TestEnglishNamesStep1b.variante, TestEnglishNamesStep1b.remplacer, TestEnglishNamesStep1b.carte_changee
+
+    def test_the_test_files_are_covered_and_no_scope_has_a_collision(self):
+        code = {c: self.fichiers[c].decode("utf-8") for c in self.names.code}
+        self.assertEqual((self.carte.m["pending"], self.carte.lint(code)), ([], []))  # relire and relecture included
+        self.assertIn("identifier TestRegistreReel is neither mapped nor made of English words",
+                      " ".join(self.carte_changee(lambda m: m["identifiers"].pop("TestRegistreReel"))[1].lint(code)))
+        exemples = {"outils/x.py": "class T:\n    def relire(self):\n        pass\n\n    def relecture(self):\n        pass\n\n\nclass A:\n"
+                                   "    def relire(self):\n        pass\n\n\nclass B(A):\n    def relecture(self):\n        pass\n\n\n"
+                                   "def f(fichiers, files):\n    return fichiers, files\n",
+                    "outils/x.sh": 'travail=1\nworkdir=2\nbidule_inconnu=3\necho "$travail $workdir $bidule_inconnu"\n'}
+        problemes = self.carte.lint(exemples)
+        for message in ("outils/x.py: line 1: relecture and relire both become review",  # two methods of one class
+                        "outils/x.py: line 14: relecture and relire both become review",  # a method hides its base class's
+                        "outils/x.py: line 19: fichiers and files both become files",  # a variable, an English one
+                        "outils/x.sh: line 1: travail and workdir both become workdir",  # two variables of a script
+                        "outils/x.sh: identifier bidule_inconnu is neither mapped nor made of English words"):
+            self.assertIn(message, problemes)
+        partage = self.carte_changee(lambda m: m["shared"].append({"scope": "T", "names": ["relecture", "relire"], "why": "x"}))[1]
+        self.assertNotIn("outils/x.py: line 1: relecture and relire both become review", partage.lint(exemples))
+        # a def renamed otherwise than the attribute that reads it (load_test.rejouer, read as args.rejouer: replay)
+        carte = self.carte_changee(lambda m: m["identifiers"].pop("rejouer"))[1]
+        self.assertIn("outils/x.py: rejouer is defined as rejouer and read as an attribute as replay", carte.lint({"outils/x.py": "def rejouer():\n    pass\n"}))
+
+    def test_the_shell_renamer_edits_names_only_and_p1_p1b_hold_on_it(self):
+        for texte, attendu, chemin in ((SCRIPT_0152, SCRIPT_0152_EN, "outils/repetition/x"), (FLUX_0152, FLUX_0152_EN, ".github/workflows/x.yml")):
+            with self.subTest(chemin):
+                nouveau, nombres = self.carte.rename_shell(texte, chemin)[0], collections.Counter()
+                self.assertEqual(nouveau, attendu)
+                self.assertEqual((self.carte.same_shell(texte, nouveau, nombres, chemin), self.carte.residue_shell(chemin, nouveau),
+                                  self.carte.lint_shell(texte, chemin)), ([], [], []))
+                self.assertIn(("string", "--registre" if "x.yml" not in chemin else "--tete", "--registry" if "x.yml" not in chemin else "--head"), nombres)
+        regions = [(k, SCRIPT_0152[a:b]) for a, b, k in self.carte.regions(SCRIPT_0152, "outils/repetition/x")]
+        for region in (("comment", "# Publie le travail : un commentaire reste tel quel (taches/, bee valider, $portee)"),
+                       ("text", "Portée de la passe : $portee ; dossier : ${sortie:-aucun}"), ("code", 'portee="'),
+                       ("python", 'import json, sys; print(json.load(sys.stdin)["statut"])'),
+                       ("python", 'import sys\netat = sys.argv[1]\nprint(etat, {"auteur": etat})\n')):
+            self.assertIn(region, regions)
+
+    def test_p1_refuses_every_shell_or_workflow_change_outside_the_map(self):
+        carte, chemin, flux = self.carte, "outils/repetition/x", ".github/workflows/x.yml"
+        cas = {
+            "an option beyond the map": (SCRIPT_0152, SCRIPT_0152_EN, chemin, "--output", "--out", "not through the map"),
+            "a variable renamed otherwise, once": (SCRIPT_0152, SCRIPT_0152_EN, chemin, 'reach="$1"', 'scope="$1"', "not through the map"),
+            "a word of prose": (SCRIPT_0152, SCRIPT_0152_EN, chemin, "Portée de la passe", "Portée du passage", "not through the map"),
+            "a comment": (SCRIPT_0152, SCRIPT_0152_EN, chemin, "# Publie le travail", "# Publishes the work", "but a comment stays as written"),
+            "the quoting": (SCRIPT_0152, SCRIPT_0152_EN, chemin, '"tasks/$reach.json"', "tasks/$reach.json", "its regions differ"),
+            "the embedded Python": (SCRIPT_0152, SCRIPT_0152_EN, chemin, '["status"]', '["state"]', "the string « statut » became « state »"),
+            "a workflow's name": (FLUX_0152, FLUX_0152_EN, flux, "name: Registry validation", "name: Registry check", "not through the map"),
+            "a job id": (FLUX_0152, FLUX_0152_EN, flux, "  checks:\n", "  controls:\n", "not through the map"),
+            "a robot's text": (FLUX_0152, FLUX_0152_EN, flux, '"Fork verdicts"', '"Verdicts of the forks"', "not through the map"),
+        }
+        for nom, (avant, apres, ou, a, b, message) in cas.items():
+            with self.subTest(nom):
+                faux = apres.replace(a, b, 1)
+                self.assertNotEqual(faux, apres)
+                problemes = carte.same_shell(avant, faux, collections.Counter(), ou)
+                self.assertTrue(any(message in p for p in problemes), problemes)
+        # a kept token: the forks' manifest folder, which verdicts.yml reads as they write it
+        vieux = '      - run: for e in "manifestes/$tache.yaml" CONTRIBUTION.yaml; do echo "$e"; done\n'
+        nouveau = carte.rename_shell(vieux, ".github/workflows/verdicts.yml")[0]
+        self.assertEqual(nouveau, '      - run: for e in "manifestes/$task.yaml" CONTRIBUTION.yaml; do echo "$e"; done\n')
+        self.assertIn("but it is kept as written", " ".join(carte.same_shell(vieux, nouveau.replace("manifestes", "manifests"), collections.Counter(),
+                                                                             ".github/workflows/verdicts.yml")))
+        # P1b (a): a French name left where names are, though P1 accepts an unchanged token
+        reste = SCRIPT_0152_EN.replace('reach="$1"', 'portee="$1"')
+        self.assertEqual(carte.same_shell(SCRIPT_0152, reste, collections.Counter(), chemin), [])
+        self.assertTrue(any(p.startswith("line 4: «") and "is still French" in p for p in carte.residue_shell(chemin, reste)))
+
+    def test_on_the_switch_a_job_id_without_its_needs_or_a_workflow_name_without_its_listener_is_refused(self):
+        def fautes(f):
+            for chemin, a, b in ((".github/workflows/validation.yml", "needs: [checks, suite, dispatch]", "needs: [controles, suite, dispatch]"),
+                                 (".github/workflows/auto-merge.yml", 'workflows: ["Registry validation"]', 'workflows: ["Validation du registre"]'),
+                                 (".github/workflows/validation.yml", "TestTree.test_delivered_paths_fit_in_a_short_budget",
+                                  "TestTree.test_chemins_livres_tiennent_dans_un_budget_court"),
+                                 (".github/workflows/auto-integration.yml", "bee.BASE_CHANGES", "bee.CHANGEMENTS_DE_BASE")):
+                self.remplacer(chemin, a, b)(f)
+        problemes = rename_code.check(self.depot, self.base, self.variante(fautes))[0]
+        for message in ("P1b: .github/workflows/validation.yml: the needs « controles » names nothing in the head",
+                        "P1b: .github/workflows/auto-merge.yml: the workflow_run « Validation du registre » names nothing in the head",
+                        "P1b: .github/workflows/validation.yml: the test « TestTree.test_chemins_livres_tiennent_dans_un_budget_court » names nothing in the head",
+                        "P1b: .github/workflows/auto-integration.yml: the bee « CHANGEMENTS_DE_BASE » names nothing in the head"):
+            self.assertIn(message, problemes)
+        self.assertTrue(any(p.startswith("P1b: .github/workflows/auto-merge.yml: line ") and "is still French" in p for p in problemes), problemes)
+        # links alone: a step id, a job's output and a reusable workflow's job, each named but not there
+        liens = self.carte.links({"x.yml": "name: X\non:\n  workflow_call:\n    outputs:\n      o: {value: '${{ jobs.juge.outputs.code }}'}\njobs:\n"
+                                  "  a:\n    outputs: {p: '${{ steps.s.outputs.p }}'}\n    steps:\n      - run: echo\n"
+                                  "  b:\n    needs: a\n    if: needs.a.outputs.q == 'x'\n    steps:\n      - run: echo\n"}, str, set())
+        self.assertEqual(liens, {("x.yml", "jobs", "juge"), ("x.yml", "steps", "s"), ("x.yml", "needs", "a.outputs.q")})
+
+    def test_the_site_s_css_and_javascript_stay_as_written_and_agree_with_its_html(self):
+        """Review of ruche-0142 (deferred to this task): the JavaScript in site_bee.py was renamed word by word (var champs, then
+        fields; dataset.size while the HTML writes data-taille)."""
+        chemin, source = "outils/site_bee.py", self.fichiers["outils/site_bee.py"].decode("utf-8")
+        valeurs = lambda texte: {t.id: n.value.value for n in ast.parse(texte).body if isinstance(n, ast.Assign) for t in n.targets  # noqa: E731
+                                 if getattr(t, "id", None) in ("STYLE", "SCRIPT_FILTRES", "FILTERS_SCRIPT")}
+
+        def desaccords(texte):  # what the script reads (dataset.x, [data-x]) and the HTML does not write
+            script = valeurs(texte)["FILTERS_SCRIPT"]
+            attributs = set(re.findall(r"data-([\w-]+)", texte.replace(script, "")))
+            return {d for d in re.findall(r"dataset\.(\w+)", script) if d not in attributs} | {d for d in re.findall(r"\[data-([\w-]+)", script)
+                                                                                                 if d not in attributs}
+        nouveau = self.carte.rename_python(source, chemin)[0]
+        self.assertEqual((valeurs(nouveau)["STYLE"], valeurs(nouveau)["FILTERS_SCRIPT"]), (valeurs(source)["STYLE"], valeurs(source)["SCRIPT_FILTRES"]))
+        self.assertEqual(desaccords(nouveau), set())
+        self.assertIn("<option value='S' selected>un peu (tâche S)</option>", nouveau)  # HTML's text is prose (was « one_of peu »)
+        # without the keep-list's scopes, the script is renamed word by word and reads what the HTML no longer writes
+        sans = self.carte_changee(lambda m: next(k for k in m["keep"] if k["files"] == chemin).pop("scopes"))[1].rename_python(source, chemin)[0]
+        self.assertTrue({"size", "filter_fn"} <= desaccords(sans), desaccords(sans))
+        # P1 refuses a change inside a kept scope, even one the map would make
+        faux = nouveau.replace("var champs=", "var fields=").replace("champs.forEach", "fields.forEach")
+        self.assertTrue(any("kept as written (identifiers.yaml, keep)" in p for p in self.carte.same_python(source, faux, collections.Counter(), chemin)))
+
+    def test_the_french_node_headings_stay_and_a_rename_of_them_is_refused(self):
+        """Review of ruche-0142 (deferred to this task): bee compares these headings with markdown people write, in both
+        languages until the tree is translated; the site and the tests read them too."""
+        source = self.fichiers["outils/bee.py"].decode("utf-8")
+        sections = lambda texte, nom: next(ast.literal_eval(n.value) for n in ast.parse(texte).body if isinstance(n, ast.Assign)  # noqa: E731
+                                           and getattr(n.targets[0], "id", None) == nom)
+        nouveau = self.carte.rename_python(source, "outils/bee.py")[0]
+        self.assertEqual(sections(nouveau, "NODE_SECTIONS"), ("Pourquoi cette branche existe", "Ce qui compte ici", "Ce qu'on peut ignorer ici", "Enfants"))
+        self.assertEqual(sections(nouveau, "NODE_SECTIONS_EN"), sections(source, "SECTIONS_NOEUD_EN"))
+        faux = nouveau.replace('"Ce qu\'on peut ignorer ici", "Enfants")', '"Ce qu\'on peut ignorer ici", "Children")', 1)
+        self.assertNotEqual(faux, nouveau)
+        self.assertIn(f"line {source[:source.index('SECTIONS_NOEUD = (')].count(chr(10)) + 1}: the string « Enfants » became « Children »: kept as written "
+                      "(identifiers.yaml, keep)", self.carte.same_python(source, faux, collections.Counter(), "outils/bee.py"))
+        for chemin, problemes in (("outils/test_bee.py", 1), ("outils/site_bee.py", 1), ("outils/x.py", 0)):  # kept where they are compared
+            with self.subTest(chemin):
+                self.assertEqual(self.carte.rename_python('x = {"Enfants": 1}\n', chemin)[0], 'x = {"Enfants": 1}\n' if problemes else 'x = {"Children": 1}\n')
+                self.assertEqual(len(self.carte.same_python('x = {"Enfants": 1}\n', 'x = {"Children": 1}\n', collections.Counter(), chemin)), problemes)
+
+    def test_programs_and_phrases_inside_strings_are_renamed_whole(self):
+        """A fake tool's program in Python, written to a file by a test, is renamed as Python (a word at a time, mien[ became
+        mine[ beside mien =); a workflow's or step's name inside a text, whole (a notice that names the workflow)."""
+        avant = ('P = r"""import os\nmien = {"statut": os.environ["COMPTES"]}\nprint(mien["statut"])\n"""\n'
+                 'N = "::notice title=Juge commun::code 0"\nH = "## Ce qui compte ici"\n')
+        apres = ('P = r"""import os\nmine = {"status": os.environ["COMPTES"]}\nprint(mine["status"])\n"""\n'
+                 'N = "::notice title=Common judge::code 0"\nH = "## What matters here"\n')
+        self.assertEqual(self.carte.rename_python(avant, "outils/x.py")[0], apres)
+        self.assertEqual((self.carte.same_python(avant, apres, collections.Counter(), "outils/x.py"), self.carte.residue("outils/x.py", apres)), ([], []))
+        self.assertEqual(self.carte.same_python(avant, apres.replace("print(mine[", "print(mien["), collections.Counter(), "outils/x.py"),
+                         ["line 1: in its program, line 3: the identifier mien became mien, the map says mine"])
+        self.assertIn('H = "## Ce qui compte ici"', self.carte.rename_python(avant, "outils/test_bee.py")[0])  # a kept heading
+        self.assertTrue(self.carte.same_python(avant, apres.replace("Common judge", "Shared judge"), collections.Counter(), "outils/x.py"))
 
 
 # --- ruche-0144: settings fail closed: each bee.yaml key bee reads is required and well formed, any other key refused, no default ---
