@@ -87,6 +87,7 @@ class CodeMap:
         self.subcommands = re.compile(r"(?<![\w-])(?:" + "|".join(re.escape(k).replace(r"\ ", r"\s+") for k in nm["cli"]["commands"] if " " in k) + r")(?![\w-])")
         self.in_tests, self.test_ids = False, set(m.get("test_identifiers") or {})
         self.key_names = {k for f in nm["families"].values() for k in f["keys"] if k in self.named and k not in self.hand}  # printed()
+        self.english_keys = {self.named[k] for k in self.key_names}  # a label already renamed by an earlier rule of printed()
         self.value_names = {v for d in (*nm["domains"].values(), *nm["open_domains"].values()) for v in d if isinstance(v, str) and v in self.named
                             and v not in self.hand}
         self.displayed = self.kept(next((c for c in sorted(names.code) if re.fullmatch(r"[^/]+/bee\.py", c)), ""))[1]  # bee's kept words
@@ -232,6 +233,19 @@ class CodeMap:
         t = next((i for i, y in enumerate(x) if TESTS.search(y)), len(x))
         return "".join((self.tokens if i <= t else collections.ChainMap(self.test_tokens, self.tokens)).get(y, y) for i, y in enumerate(x))
 
+    def run(self, r):
+        """A run of name characters in a text: renamed whole if compound; half a placeholder of several words (« <ta copie> ») stays
+        (ruche-0153); the end of a tag cut by the literal (« AGENTS.md'>le guide », « '>projet d'origine ») or the start of the next
+        one (« cap</a ») is a tag's, and the word beside it is prose's (review of b2245cf)."""
+        if re.fullmatch(r"<[^>]*|[^<]*>", r):
+            return r
+        if r.startswith(">") and len(r) > 1:
+            return ">" + self.run(r[1:])
+        if "</" in r.lstrip("<"):
+            i = r.index("</", 1)
+            return self.run(r[:i]) + r[i:]
+        return self.whole(r) if re.search(r"[_.\[\]<>@#/]|\w-\w|^--", r) else r
+
     def text(self, t):
         """The names in a text: a YAML key at a line start and its one-token value; every compound word (with _ . / [ ] < > @ #
         inside, or a hyphen between letters: options, paths, keys, constants); placeholders; a folder group (a|b)/; k=; commands
@@ -247,8 +261,7 @@ class CodeMap:
         parts = self.printed(parts)
         c = self.names.m["cli"]["commands"]  # a subcommand after its command, wherever (a fake bee's « BEE passe-fusion preparer »)
         t = self.subcommands.sub(lambda x: (lambda a, s, b: s.join(c[f"{a} {b}"].split(" ")))(*re.fullmatch(r"(\S+)(\s+)(\S+)", x[0]).groups()), parts)
-        t = "".join(RUN.sub(lambda x: x[0] if re.fullmatch(r"<[^>]*|[^<]*>", x[0]) else self.whole(x[0]) if re.search(r"[_.\[\]<>@#/]|\w-\w|^--", x[0])
-                            else x[0], p) for p in TAG.split(t))  # half a placeholder of several words (« <ta copie> ») stays (ruche-0153)
+        t = "".join(RUN.sub(lambda x: self.run(x[0]), p) for p in TAG.split(t))
         t = re.sub(r"(?<![\w$-])[a-z_]\w*(?=\(\) \{)", lambda x: self.ids.get(x[0], x[0]), t)  # a shell function's definition (ruche-0153)
         t = re.sub(r"(?<=\{)[A-Za-z_]\w*(?=[}!:.\[])|(?<=%\()[A-Za-z_]\w*(?=\))", lambda x: self.ids.get(x[0], x[0]), t)  # as .format(name=)
         t = re.sub(r"(?<=\(\?P=)\w+(?=\))|(?<=\\g<)\w+(?=>)", lambda x: self.tokens.get(x[0], x[0]), t)  # regex back-references, as m["name"]
@@ -262,6 +275,18 @@ class CodeMap:
         t = re.sub(r"(?<![\w$-])[a-z_]\w*(?==\$\()", lambda x: self.whole(x[0]), t)  # a shell's x=$( … ) (ruche-0153)
         return re.sub(r"(?<![\w.])bee\.([A-Za-z_]\w*)", lambda x: "bee." + self.ids.get(x[1], x[1]), t)
 
+    def label(self, w):
+        """A label bee prints before « : » (review of b2245cf): a key of the data (French, or English once renamed), a path or a key
+        path, or a closing parenthesis; never a French word of prose (« demandé », « issue » after « Seule »: the caller sees that)."""
+        return w.endswith(")") or w in self.key_names or w in self.english_keys or bool(re.search(r"[./]", w))
+
+    def after_label(self, before):
+        """A text that ends with a label and « : » (review of b2245cf): nothing else (an interpolation's), or a label as label() says,
+        which no word and blank of prose precede (« Seule issue : »), unless it opens a parenthesis. The code's own strings only: a
+        test's quotes bee's output, where a value after a label of prose comes from the data (« Poste le plus en retard : {poste} »)."""
+        m = re.search(r"(?:(?<=\()|(?<![\w'’] )(?<![\w'’()]))([\w./-]+\)?) : \Z", before)
+        return before == " : " or bool(m) and self.label(m[1])
+
     def printed(self, t, top=True):
         """ruche-0153: the plain words of a text in the places where bee's messages print names, renamed as the tool's output is:
         a key before French typography's « : » (« motif : ») or ending a label (« f.yaml : motif »), or before « de N caractères »;
@@ -274,13 +299,16 @@ class CodeMap:
         if self.joined and top:  # the literal goes on with the previous one (« … de la même " "personne : … »): a word before it
             return self.printed("a " + t, False)[2:]
         t = re.sub(r"(?<![\w/.<>@#\[\]$«'’-])(?<![\w'’] )[a-z_][\w-]*(?= : )|(?:(?<=[\w.] : )|(?<=\A : ))[a-z_][\w-]*\Z", lambda x: self.named.get(x[0], x[0]) if x[0] in self.key_names - here - self.displayed
-                   else x[0], t)  # « motif : », and a label « f.yaml : motif » the tool prints so
+                   and (x.string[x.end():].startswith(" : ") or self.in_tests or self.after_label(x.string[:x.start()])) else x[0],
+                   t)  # « motif : », and a label « f.yaml : motif » the tool prints so (never « Cause : demande »: review of b2245cf)
         t = re.sub(r"(?<=« )[a-z_][\w-]*(?= »)", lambda x: self.named.get(x[0], x[0]) if x[0] in (self.key_names | self.value_names) - here - self.displayed
                    else x[0], t)
         t = re.sub(r"(?<![\w/.<>@#\[\]$«-])[a-z_][\w-]*(?= de \d+ caractères)", lambda x: self.named.get(x[0], x[0]) if x[0] not in here | self.hand.keys()
                    else x[0], t)  # « motif de 1516 caractères », « corps de … »: a field's or an option's name
         t = re.sub(r"(?<=[\w)] : )[a-z_][\w-]*(?=\Z|[),;.\n]| ;| [\w-]*\d)", lambda x: self.named.get(x[0], x[0]) if x[0] in self.value_names - here - self.displayed
-                   else x[0], t)  # a value after « : », then the end, a mark or an id (« statut : refusee) », « close : tache ruche-0008 »)
+                   and (self.in_tests or self.after_label(x.string[:x.start()])) else x[0],
+                   t)  # a value after « : », then the end, a mark or an id (« statut : refusee) », « close : tache ruche-0008 »); in the code's
+        # strings after a label only (review of b2245cf: never « demandé : participer, », « Seule issue : refus »)
         t = re.sub(r"""((?:\[|\.get\()\\?(["']))([\w.-]+)(?=\\?\2[\]),])""", lambda x: x[1] + self.whole(x[3]), t)  # x["k"], .get("k"), escaped too
         names = lambda kinds: lambda x: self.named.get(x[0], x[0]) if x[0] in kinds - here - self.displayed else x[0]  # noqa: E731
         t = re.sub(r"(?<![\w$-])[A-Z][A-Z0-9]{3,}(?![\w-])", lambda x: self.tokens.get(x[0], x[0]) if x[0] in self.ids and x[0] not in here | self.displayed
@@ -298,8 +326,12 @@ class CodeMap:
         c = self.names.m["cli"]["commands"]  # the commands listed after « bee » (« bee prendre, soumettre, relire »)
         t = re.sub(r"((?<![\w/.-])bee )([a-z][\w-]*(?:, [a-z][\w-]*)+)", lambda x: x[1] + ", ".join(c.get(w, w) for w in x[2].split(", ")), t)
         seg = self.names.m["tree"]["segments"]
+        node = lambda w: w.split("/")[0] in seg or w.split("/")[-1] in seg  # noqa: E731
+        listed = lambda x: bool(b := re.search(r"([\w/-]+), \Z", x.string[:x.start()])) and node(b[1]) and (  # noqa: E731
+            not (a := re.match(r", ([\w/-]+)", x.string[x.end():])) or node(a[1]))  # its list's neighbours are node ids too
         t = re.sub(r"(?<=--role )[a-z]+\b(?![/.-])|(?<=« )[a-z]+(?= »)|(?<=[:,] )[a-z]+(?=, | ;| »|\Z)", lambda x: seg.get(x[0], x[0]) if x[0] not in here
-                   else x[0], t)  # a role, a node id in « » or in a list
+                   and (x.string[x.start() - 2:x.start()] != ", " or listed(x)) else x[0], t)  # a role, a node id in « » or in a
+        # list of them (« lus : racine, roles/ »), never a word of a prose list (« fait quoi, relire, reproduire »: review of b2245cf)
         return re.sub(r"(?<=nœud )[a-z_]+\b(?![/.-])|(?<![\w/.$-])[a-z_]+(?= > )|(?<= > )[a-z_]+\b(?![/.-])", lambda x: seg.get(x[0], x[0]), t)
 
     def name(self, x):

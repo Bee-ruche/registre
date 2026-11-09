@@ -21869,6 +21869,20 @@ budget_lignes: 40
 """
 
 
+def council_0153(root):
+    """ruche-0153 (review of b2245cf): the fixture as the council leaves main before the freeze: the skill's list of gestures, and the old
+    AGENTS.en.md's until the council's new guide replaces it, written with « bee » (change 10 renames them; a bare old command name in a
+    code span of AGENTS.md or .claude/** is refused). A no-op once main holds them."""
+    for path, start in ((".claude/skills/bee-contributeur/SKILL.md", "Publie ce que modifient `inscrire`"), ("AGENTS.en.md", "After `inscrire`")):
+        f = root / path
+        lines = f.read_text(encoding="utf-8").split("\n")
+        for i, line in enumerate(lines):
+            if start in line:
+                head, sep, rest = line.partition("`bee publier")
+                lines[i] = re.sub(r"`([a-z][a-z-]*)`", r"`bee \1`", head) + sep + rest
+        f.write_text("\n".join(lines), encoding="utf-8")
+
+
 def ecrire_familles_0141(racine):
     """One file of each family main does not hold yet (or not as a test may change it), written as bee writes it."""
     instant = "2026-11-01T10:00:00Z"
@@ -22340,6 +22354,7 @@ class TestEnglishNamesStep1b(unittest.TestCase):
         shutil.copytree(RACINE, cls.depot, ignore=sans_donnees_reelles)
         shutil.copytree(JEU_FIGE, cls.depot, dirs_exist_ok=True)
         ecrire_familles_0141(cls.depot)
+        council_0153(cls.depot)
         for argv in (["init", "-q"], ["config", "user.email", "tests@example.org"], ["config", "user.name", "tests"], ["add", "-A", "-f", "."],
                      ["commit", "-qm", "base"]):
             git(cls.depot, *argv)
@@ -23753,6 +23768,35 @@ class TestEnglishNamesStep1d(unittest.TestCase):
                 self.assertTrue(any(why in p for p in switch.project_paths(self.names, self.fichiers, files)),
                                 switch.project_paths(self.names, self.fichiers, files))
 
+    def test_p7_each_word_renamed_in_the_prose_of_bee_and_the_site_is_approved(self):
+        """Review of b2245cf: P7 reads the base's and the generated strings word by word (not the renamer): each « old -> new » in a
+        string part that holds a blank is approved with its count; a plain word renamed beside a French word, or French itself, is
+        approved in its context; a stale approval is refused. The committed prose.yaml holds for the fixture's switch."""
+        allowed = yaml.safe_load(self.fichiers["outils/migration/prose.yaml"])
+        self.assertEqual(check_migration.prose(self.names, self.fichiers, self.traduits, allowed)[0], [])
+        base = 'def f(x):\n    return f"{x} : statut « {x} » différent du nom de fichier", "bee publier --titre"\n'
+        new = base.replace("statut «", "status «").replace("publier --titre", "publish --title")
+        files, ok = {"outils/bee.py": base.encode()}, {"tools/bee.py": new.encode()}
+        counts = {"statut -> status": 1, "publier -> publish": 1, "--titre -> --title": 1}
+        self.assertEqual(check_migration.prose(self.names, files, ok, {"files": {"outils/bee.py": {"renamed": counts}}}), ([], 3))
+        wrong = {"tools/bee.py": new.replace("du nom de fichier", "du nom de file").encode()}  # an over-reach in prose
+        self.assertEqual(check_migration.prose(self.names, files, wrong, {"files": {"outils/bee.py": {"renamed": counts}}})[0],
+                         ["P7: tools/bee.py: « fichier -> file » renamed 1 time(s) in its prose, prose.yaml approves 0",
+                          "P7: tools/bee.py: « de [fichier] » renamed beside French words: keep it as written, or approve it (prose.yaml, beside_french)"])
+        approved = {"files": {"outils/bee.py": {"renamed": {**counts, "fichier -> file": 1}, "beside_french": ["de [fichier]"]}}}
+        self.assertEqual(check_migration.prose(self.names, files, wrong, approved), ([], 4))  # what a human approved by hand
+        self.assertEqual(check_migration.prose(self.names, files, ok, approved)[0],  # approvals the switch no longer needs
+                         ["P7: tools/bee.py: « fichier -> file » renamed 0 time(s) in its prose, prose.yaml approves 1",
+                          "P7: tools/bee.py: prose.yaml approves « de [fichier] » beside French words, which the switch no longer renames"])
+        twice = {"tools/bee.py": new.replace('"bee publish --title"', '"bee publish --title", "bee publish"').encode()}
+        self.assertIn("P7: tools/bee.py: its string parts do not align with those of outils/bee.py", check_migration.prose(self.names, files, twice, approved)[0])
+        for text, word, flagged in (("réservée par « x »", "par", "réservée [par]"), ("le guide de l'agent", "le", "[le] guide"),
+                                    ("x : statut", "statut", None), ("relancez bee prendre la tâche", "prendre", None),
+                                    ("Ce qui vous est demandé : participer, en", "participer", "demandé [participer]")):
+            with self.subTest(text):
+                [(o, w, c)] = check_migration.renamed_in_part(text, text.replace(word, "X", 1))
+                self.assertEqual((o, w, c if check_migration.suspect(o, c) else None), (word, "X", flagged))
+
     def test_change_10_renames_the_commands_in_the_code_only(self):
         self.assertEqual(self.carte.commands(CHANGE_10_0153), CHANGE_10_0153_EN)
         self.assertEqual(self.carte.commands(CHANGE_10_0153_EN, True), CHANGE_10_0153)  # and back, byte for byte
@@ -23891,9 +23935,25 @@ class TestEnglishNamesStep1d(unittest.TestCase):
                  "différent du nom de fichier « x »": "différent du nom de fichier « x »", "réservée par « a », qui": "réservée par « a », qui",
                  "python3 bee/juge/juge.py --source-a <base> --source-b <ta copie>":  # a fork's path, half a placeholder: as written
                  "python3 bee/juge/juge.py --source-a <base> --source-b <ta copie>"}
+        self.carte.scoped("outils/test_bee.py", "")  # a test's strings: they quote bee's output, data values included
         for before, after in cases.items():
             with self.subTest(before):
                 self.assertEqual(self.carte.text(before), after)
+        # review of b2245cf: in the code's own strings, a value or a key after « : » is renamed after a label only (a key, a path), never
+        # after prose; a run cut by a tag keeps the word beside the tag's end; a prose list keeps its words
+        self.carte.scoped("outils/bee.py", "")
+        for before, after in {"Ce qui vous est demandé : participer, en y": "Ce qui vous est demandé : participer, en y",
+                              "Cause : demande": "Cause : demande", "Seule issue : refus": "Seule issue : refus",
+                              "accord du gardien : aucun ; feu vert": "accord du gardien : aucun ; feu vert",
+                              "(statut : refusee)": "(status : refused)", "f.yaml : motif": "f.yaml : reason", " : motif": " : reason",
+                              "x.yaml : le (2026-10-01T10:00:00Z) doit": "x.yaml : at (2026-10-01T10:00:00Z) doit",
+                              "AGENTS.md'>le guide de l'agent</a>": "AGENTS.md'>le guide de l'agent</a>", "'>projet d'origine</a>": "'>projet d'origine</a>",
+                              "cap.md'>cap de la ruche</a>": "balance.md'>cap de la ruche</a>", ">taches/x.yaml</a": ">tasks/x.yaml</a",
+                              "fait quoi, relire, reproduire les": "fait quoi, relire, reproduire les", "lus : racine, roles/": "lus : root, roles/",
+                              "racine, relire, mesurer": "racine, review, measure"}.items():
+            with self.subTest(code=before):
+                self.assertEqual(self.carte.text(before), after)
+        self.carte.scoped("outils/test_bee.py", "")
         # a login kept as written in the scopes kept_in_scopes names, renamed elsewhere; P1 and P1b agree
         source = ('class TestReservedPseudonyms:\n    REFUSED = ("conseil", "mesurer")\n\n    def test_the_gate_reads_mains_list_never_the_prs(self):\n'
                   '        return "« mesurer » is a reserved pseudonym"\n\n\ndef other():\n    return ("mesurer", "« mesurer »")\n')

@@ -3984,6 +3984,31 @@ kept_in_scopes:
   tokens: [niveau]
   why: 'bee''s own prose (« clé de premier niveau « {clé} » »), which the key-before-« » rule would rename: prose waits for its task'
 - files: outils/bee.py
+  scopes: [cmd_voir, avertissements_arbre]
+  tokens: [aucun]
+  literals: [aucun]
+  why: 'bee''s own word for no date or no node (« accord du gardien : aucun », « (aucun) »), a lone literal whole() would take for the
+    data value aucun -> none (review of b2245cf)'
+- files: outils/test_bee.py
+  scopes: [test_3_l_echeance_est_celle_de_la_porte, test_C_voir_imprime_les_dates_relues_jamais_brutes]
+  tokens: [aucun]
+  why: 'bee''s own word, kept as written in bee (« ; feu vert du conseil : aucun »)'
+- files: outils/test_bee.py
+  scopes: [test_C1_phrase_fixe_de_la_demande, test_7_phrase_normalisee]
+  tokens: [participer]
+  literals: ["Ce qui vous est demandé : participer, en y envoyant vos agents d'IA", 'Ce qui vous est demandé : participer.']
+  why: 'bee''s French request sent to outsiders (« Ce qui vous est demandé : participer, … »), kept as written in bee: prose'
+- files: outils/bee.py
+  scopes: [MARQUE_NEUTRALISEE]
+  tokens: [marque]
+  why: 'the mark bee writes in a frame in place of a forged one (« [marque d''encadré neutralisée] »): French prose, not the key marque'
+- files: outils/test_bee.py
+  scopes: [test_a_schema_path_quotes_each_key, test_bee_valider_quotes_an_unknown_field_and_a_value_neutralised,
+           test_ruche_0088_frame_header_and_essaim_quote_an_invitation_neutralised, test_verifier_fork_quotes_each_path_with_the_mark_broken,
+           test_verifier_pr_refuses_a_path_that_does_not_print_as_written, test_voir_and_contexte_quote_the_project_and_task_texts]
+  tokens: [marque]
+  why: 'bee''s neutralised mark, kept as written in bee (« [marque d''encadré neutralisée] »), which these tests quote'
+- files: outils/bee.py
   scopes: [message_schema]
   tokens: [valeur]
   literals: ['valeur « ']
