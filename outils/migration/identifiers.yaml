@@ -3982,7 +3982,6 @@ kept_in_scopes:
 - files: outils/test_bee.py
   scopes: [test_refus_cles_yaml_non_canoniques, test_a_top_level_key_is_quoted_on_one_line]
   tokens: [niveau]
-  literals: ['clé de premier niveau « statut »', 'clé de premier niveau « statut » : elle ']
   why: 'bee''s message from a scope it keeps as written (« clé de premier niveau « {clé} » »): only the key, from the data, changes'
 - files: outils/test_bee.py
   scopes: [test_ruche0116_le_conseil_corrige_le_commentaire_comme_le_dit_la_doc]
