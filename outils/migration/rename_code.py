@@ -289,6 +289,7 @@ class CodeMap:
                    t)  # a function's name before « \( » in a pattern over the code's source (« reglage\( »), never « mot\(s\) »
         t = re.sub(r"(?<![\w/.<>@#\[\]$«-])[a-z_][\w-]*(?= mot\(s\)| « )", names(self.key_names), t)  # « titre mot(s) 6 », « par « Gaspard » »
         t = re.sub(r"(?<=Niveau )[A-Z]\w+", names(self.value_names), t)  # a level
+        t = re.sub(r"(?<=[\w)] : )[a-z_]+(?= \((?:\d|\Z))", names(self.key_names), t)  # « x.yaml : le (2026-…) », as bee's f"{chemin} : le"
         t = re.sub(r"\A[a-z_]+(?= ne change jamais)", names(self.key_names), t)  # « pourquoi ne change jamais »: a key bee prints so
         t = re.sub(r"(?<![\w/.-])[a-z_]+(?= est déjà consigné)", lambda x: self.whole(x[0]) if x[0] in (self.key_names | self.value_names) - here - self.displayed else x[0], t)  # a gesture
         t = re.sub(r"(?<=\d )(?:propositions de règle|[a-z_]+)(?= ajouté| sur 24 h| en 24 h)", names(set(self.named)), t)  # « 4 taches ajoutés »

@@ -3980,10 +3980,6 @@ keep:
     a token the script''s variable for the registry''s clone shares'
 kept_in_scopes:
 - files: outils/test_bee.py
-  scopes: [test_refus_cles_yaml_non_canoniques, test_a_top_level_key_is_quoted_on_one_line]
-  tokens: [niveau]
-  why: 'bee''s message from a scope it keeps as written (« clé de premier niveau « {clé} » »): only the key, from the data, changes'
-- files: outils/test_bee.py
   scopes: [test_ruche0116_le_conseil_corrige_le_commentaire_comme_le_dit_la_doc]
   tokens: ['[retiré]']
   literals: ['y écrit `[retiré]` à la place de']
@@ -4096,6 +4092,16 @@ kept_in_scopes:
   literals: ["(personne : bee acts-for, sur main).\n", " sous son nom (personne : bee acts-for).\n"]
   why: 'a workflow comment (« (personne : bee acts-for, sur main). »), kept as written by the switch, which the test copies as written'
 renamed_in_scopes:
+- files: outils/test_bee.py
+  scopes: [test_voir_echappe_chaque_champ]
+  tokens: {attend: awaits}
+  literals: ["demande : garant\\n: :warning::demande ; attend"]
+  why: 'a label bee prints after the value (« ; attend : … »), which the test quotes up to the label'
+- files: outils/test_bee.py
+  scopes: [test_mise_a_jour_du_resume]
+  tokens: {resume: summary}
+  literals: [resume vide]
+  why: 'the field''s label, which bee prints after the file (f"{chemin} : resume" then « vide »)'
 - files: outils/test_bee.py
   scopes: [test_un_signalement_ne_tient_que_deux_comptes_membres_et_un_motif]
   tokens: {le: at}
