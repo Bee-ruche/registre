@@ -418,7 +418,8 @@ english: [
   stopwatches, store, str, stream, streams, streets, strengthen, strerror, strftime, strict, strictly, stride, string,
   strings, strip,
   struct,
-  structure, style, sub, subfolder, subfolders, subject, submission, submissions, submit, submits, submitted,
+  structure, style, sub, subcommands, subfolder, subfolders, subject, submission, submissions, submit, submits,
+  submitted,
   subparsers,
   subprocess,
   subscript,
@@ -1710,6 +1711,7 @@ identifiers:
   lancer: launch
   lancer_: run_
   lancer_bee: run_bee
+  lancer_en_parallele: run_in_parallel
   lancer_git: run_git
   lancer_lent: run_slow
   lancer_par_cote: launch_by_side
@@ -2389,6 +2391,7 @@ identifiers:
   regler_porte_humaine: set_human_gate
   regles: rules
   rejeu: replay
+  rejouer: replay
   relais: relay
   relance: reminder
   relancer: dispatch
@@ -3881,6 +3884,7 @@ hand:
     roles:
       outils/site_bee.py:generer:registre: registry
       outils/site_bee.py:generer:registre.json: registry
+      outils/test_bee.py:JEU_FIGE: registry
     why: the folder outils/tests/registre/ -> tools/tests/registry/ and the identifier -> registry; the repository Bee-ruche/registre
       keeps its name
   contribution:

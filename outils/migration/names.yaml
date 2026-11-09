@@ -230,9 +230,9 @@ workflows:
     verifier: verify
   steps:
     deploiement: deployment
-    portee_push: push_reach
+    portee_push: reach_push
     verif: check
-    vert_push: push_green
+    vert_push: green_push
   io:
     immediat: immediate
     sans_instructions: no_instructions

@@ -66,6 +66,7 @@ class CodeMap:
         self.keep = [(rename.glob_re(k["files"]), set(k.get("scopes") or ()), set(k.get("tokens") or ())) for k in m["keep"]]
         alt = lambda d: re.compile("|".join(map(re.escape, sorted(d, key=len, reverse=True))) or r"(?!)")  # noqa: E731
         fr = {t: i for i, t in enumerate(t for t in self.named if " " in t)}  # whole phrases: names of workflows and steps, robot texts
+        self.subcommands = re.compile(r"(?<![\w-])(?:" + "|".join(re.escape(k).replace(r"\ ", r"\s+") for k in nm["cli"]["commands"] if " " in k) + r")(?![\w-])")
         self.phrases, self.sides = alt(fr), {False: (alt(fr), fr), True: (alt({self.named[t]: i for t, i in fr.items()}), {self.named[t]: i for t, i in fr.items()})}
 
     def marked(self, s, inv):
@@ -116,6 +117,8 @@ class CodeMap:
                     elif x not in self.m["hand"] and (e := self.from_names.get(x, "")).isidentifier() and self.ids.get(x, x) != e and not keyword.iskeyword(e):
                         problems.append(f"{path}: identifier {x} -> {self.ids.get(x, x)}, the name map says {e}")
             problems += [f"{path}: {missing} identifiers not mapped yet (pending)"] if path in self.m["pending"] else []
+            problems += [f"{path}: {x} is defined as {self.ids.get(x, x)} and read as an attribute as {self.attrs[x]}" for x in sorted({n.name for n in ast.walk(
+                tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))}) if self.attrs.get(x, self.ids.get(x, x)) != self.ids.get(x, x)]
             problems += [f"{path}: {p}" for p in self.collisions(tree, path)]
         return problems
 
@@ -158,22 +161,26 @@ class CodeMap:
             return "/".join(seg[x] for x in s.split("/"))
         return "".join(self.tokens.get(x, x) for x in re.split(r"([/.#@<>\[\]])", self.names.path(s)))
 
-    def text(self, t):
+    def text(self, t, code=False):
         """The names in a text: a YAML key at a line start and its one-token value; every compound word (with _ . / [ ] < > @ #
         inside, or a hyphen between letters: options, paths, keys, constants); placeholders; a folder group (a|b)/; k=; commands
-        after « bee »; bee.<name>. A plain word stays: prose is translated after the switch (HTML's text too, cut from its tags)."""
+        after « bee » and a subcommand after its command; bee.<name>; $variable. A plain word stays: prose is translated after the switch (HTML's text too, cut from its tags)."""
         parts = re.split(r"(\n|\\n)", t)
         for i in range(0, len(parts), 2):
             if x := LINE.fullmatch(parts[i]):
                 v = VALUE.fullmatch(x[4])
                 parts[i] = x[1] + self.tokens.get(x[2], x[2]) + x[3] + (f"{v[1]}{v[2]}{self.whole(v[3])}{v[4]}{v[5]}" if v and
                                                                         isinstance(yaml.safe_load(v[3]), str) else x[4])
-        t = "".join(RUN.sub(lambda x: self.whole(x[0]) if re.search(r"[_.\[\]<>@#/]|\w-\w|^--", x[0]) else x[0], p) for p in TAG.split("".join(parts)))
+        c = self.names.m["cli"]["commands"]  # a subcommand after its command, wherever (a fake bee's « BEE passe-fusion preparer »)
+        t = self.subcommands.sub(lambda x: (lambda a, s, b: s.join(c[f"{a} {b}"].split(" ")))(*re.fullmatch(r"(\S+)(\s+)(\S+)", x[0]).groups()), "".join(parts))
+        t = "".join(RUN.sub(lambda x: self.whole(x[0]) if re.search(r"[_.\[\]<>@#/]|\w-\w|^--", x[0]) or code and x.string[x.start() - 1:x.start()] != "{"
+                            else x[0], p) for p in TAG.split(t))
         t = re.sub(r"(?<=\{)[A-Za-z_]\w*(?=[}!:.\[])|(?<=%\()[A-Za-z_]\w*(?=\))", lambda x: self.ids.get(x[0], x[0]), t)  # as .format(name=)
         t = re.sub(r"(?<=\(\?P=)\w+(?=\))|(?<=\\g<)\w+(?=>)", lambda x: self.tokens.get(x[0], x[0]), t)  # regex back-references, as m["name"]
         t = re.sub(r"(?<=\()(\?:)?([\w-]+(?:\|[\w-]+)+)(?=\)/)", lambda x: (x[1] or "") + "|".join(map(self.name, x[2].split("|"))), t)  # (a|b)/
         t = re.sub(r"(?<![\w-])[a-z_][\w-]*(?=\]?=)", lambda x: self.name(x[0]), t)  # k=, x[k]=
         t = re.sub(r"((?<![\w/.-])bee +|(?<![\w.-])bee\.py +)([a-z][\w-]*)( +[a-z][\w-]*)?", lambda x: x[1] + self.command(x[2], x[3] or ""), t)
+        t = re.sub(r"(?<=\$)\{?([A-Za-z_]\w*)", lambda x: x[0].replace(x[1], self.whole(x[1])), t)  # a shell's $variable
         return re.sub(r"(?<![\w.])bee\.([A-Za-z_]\w*)", lambda x: "bee." + self.ids.get(x[1], x[1]), t)
 
     def name(self, x):
@@ -191,7 +198,7 @@ class CodeMap:
         value = value.decode("utf-8", "surrogateescape") if isinstance(value, bytes) else value
         if (new := self.whole(value)) != value and body != value:
             raise rename.Problem(f"« {raw[:40]} » is written in a form the renamer does not edit")
-        return prefix + q + (new if new != value else self.text(body)) + q
+        return prefix + q + (new if new != value else self.text(body, not re.search(r"\s", value))) + q
 
     def rename_python(self, source, path=""):
         """A Python file renamed: identifiers (attrs after a dot), the names in strings and f-string parts (outside kept scopes
@@ -212,7 +219,7 @@ class CodeMap:
                     raise rename.Problem(f"{path}:{tok.start[0]}: a string part the tokenizer does not place")
                 self.scoped(path, where[tok.start[0]], value := tok.string if tok.type != tokenize.STRING else str(ast.literal_eval(tok.string)))
                 new = tok.string if value in kept else self.string(tok.string) if tok.type == tokenize.STRING else self.whole(tok.string) if \
-                    re.fullmatch(NAME_SHAPE, tok.string) else self.text(tok.string)  # an f-string part: f"{x}_max_par_pr"
+                    re.fullmatch(NAME_SHAPE, tok.string) else self.text(tok.string, not re.search(r"\s", tok.string))  # f"{x}_max_par_pr"
                 new = re.sub(r"\w+", lambda x: self.attrs.get(x[0], x[0]), tok.string) if tok.start in roles else new  # attributes, fields
                 if kept and len(WORD.split(new)) == len(WORD.split(tok.string)):
                     new = "".join(o if o in kept else n for o, n in zip(WORD.split(tok.string), WORD.split(new)))
@@ -292,9 +299,8 @@ class CodeMap:
         for a, b, kind in self.regions(text, path):
             self.scoped(path, "")
             x = text[a:b]
-            new = self.rename_python(x, path)[0] if kind == "python" else RUN.sub(lambda m: self.whole(m[0]), x) if kind in ("code", "key") else re.sub(
-                r"(?<=\$)\{?([A-Za-z_]\w*)", lambda m: m[0].replace(m[1], self.whole(m[1])), self.text(self.phrases.sub(lambda m: self.named[m[0]], x))) \
-                if kind == "text" else x
+            new = self.rename_python(x, path)[0] if kind == "python" else RUN.sub(lambda m: self.whole(m[0]), x) if kind in ("code", "key") else \
+                self.text(self.phrases.sub(lambda m: self.named[m[0]], x)) if kind == "text" else x
             if kind != "python" and kept and len(WORD.split(new)) == len(WORD.split(x)):
                 new = "".join(o if o in kept else n for o, n in zip(WORD.split(x), WORD.split(new)))
             if new != x:
@@ -340,11 +346,11 @@ class CodeMap:
                 out |= {(p, "needs", f"{x}.outputs.{y}") for x, y in re.findall(r"needs\.([\w-]+)\.outputs\.([\w-]+)", s) if x not in needs or y not in (jobs.get(x) or {}).get("outputs", {})}
             out |= {(p, "jobs", x) for x in re.findall(r"jobs\.([\w-]+)\.outputs", json.dumps(on)) if x not in jobs}
             out |= {(p, "workflow_run", w) for w in ((on.get("workflow_run") if isinstance(on, dict) else None) or {}).get("workflows") or [] if w not in names}
-        for p, t in texts.items():
-            out |= {(p, "workflow file", w) for w in re.findall(r"workflows/([\w.-]+\.ya?ml)", t) if w not in files}
-            for x in (t[a:b] for a, b, k in self.regions(t, path_of(p)) if k == "python"):
-                out |= {(p, "bee", w) for w in re.findall(r"(?<![\w.])bee\.([A-Za-z_]\w*)", x) if w not in defined}
-            out |= {(p, "test", w) for w in re.findall(r"\b(?:outils|tools)\.test_bee\.(\w+(?:\.\w+)?)", t) if w not in defined}
+        for p, t in texts.items():  # comments aside
+            parts = [(k, t[a:b]) for a, b, k in self.regions(t, path_of(p)) if k != "comment"]
+            out |= {(p, "workflow file", w) for _, x in parts for w in re.findall(r"workflows/([\w.-]+\.ya?ml)", x) if w not in files}
+            out |= {(p, "bee", w) for k, x in parts if k == "python" for w in re.findall(r"(?<![\w.])bee\.([A-Za-z_]\w*)", x) if w not in defined}
+            out |= {(p, "test", w) for _, x in parts for w in re.findall(r"\b[\w-]+\.test_bee\.(\w+(?:\.\w+)?)", x) if w not in defined}
         return out
 
     # --- the proofs: P1, P3, P1b ---
@@ -407,7 +413,7 @@ class CodeMap:
         """P1 for a shell script or workflow: the same regions (quoting, comments, embedded Python); each comment as written;
         the Python by P1; elsewhere each token changed only to its English name (a whole phrase as one), a kept one never."""
         ra, rb, problems, kept = self.regions(old, path), self.regions(new, path), [], self.kept(path)[1]
-        if [k for *_, k in ra] != [k for *_, k in rb]:
+        if [k in ("comment", "python") and k for *_, k in ra] != [k in ("comment", "python") and k for *_, k in rb]:  # a phrase may lose its blanks
             return ["its regions differ (quoting, comments or embedded Python moved): not a renaming"]
         for (a0, a1, kind), (b0, b1, _) in zip(ra, rb):
             x, y, n = old[a0:a1], new[b0:b1], old.count("\n", 0, a0)

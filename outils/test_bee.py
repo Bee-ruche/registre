@@ -13482,7 +13482,7 @@ class TestRetraitDemandeRuche0048(BaseRevueRuche0020):
                              ("https://github.com/octocat/zlib et https://blog.exemple.org/x !", f"{m} et {m} !"),
                              ("octo cat, comme la clé canonique", f"{m}, comme la clé canonique"),
                              ("d'octocat, qu'octocat, octocat's, l’octocat", f"d'{m}, qu'{m}, {m}'s, l’{m}"),
-                             ("github.com/octocat et octocat/zlib, octocat…le", f"{m} et {m}, {m}…le"),
+                             ("github.com/octocat et octocat/zlib, octocat…so", f"{m} et {m}, {m}…so"),
                              ("octocats, octo-chat et https://github.com/hubot", "octocats, octo-chat et https://github.com/hubot")):
             self.assertEqual(bee.passages_retires(avant, empreintes), apres)
 
@@ -19339,7 +19339,7 @@ def controler(tests, tranches, rapports=None):
     return erreurs
 
 
-def en_parallele(commande, tests, processus):
+def lancer_en_parallele(commande, tests, processus):
     """Runs `tests` in `processus` processes, one shard each; 0 if every process passed and every test ran exactly once."""
     tranches = repartir(tests, processus)
     erreurs = controler(tests, tranches) or lancer_tranches(commande, tests, tranches)
@@ -19390,7 +19390,7 @@ class Lances(unittest.TextTestResult):
 
 
 def tranche(module, plan, i):
-    """One process of en_parallele: runs shard i of the plan, then writes its report (the suite it loaded, the tests it ran)."""
+    """One process of lancer_en_parallele: runs shard i of the plan, then writes its report (the suite it loaded, the tests it ran)."""
     debut, plan = time.monotonic(), pathlib.Path(plan)
     vus, tests = ids_des_tests(module), json.loads(plan.read_text(encoding="utf-8"))["tranches"][i]
     resultat = unittest.TextTestRunner(verbosity=2, resultclass=Lances).run(unittest.defaultTestLoader.loadTestsFromNames(tests, module))
@@ -19406,7 +19406,7 @@ def principal_tests(module, fichier, arguments):
     """`python3 <fichier>`: the suite, serial (unittest.main and its options); `--processus N`: in N processes;
     `--tranche <plan> <i>`: one of them."""
     if len(arguments) == 2 and arguments[0] == "--processus" and re.fullmatch(r"[1-9][0-9]*", arguments[1]):
-        return en_parallele([sys.executable, os.path.abspath(fichier)], ids_des_tests(module), int(arguments[1]))
+        return lancer_en_parallele([sys.executable, os.path.abspath(fichier)], ids_des_tests(module), int(arguments[1]))
     if len(arguments) == 3 and arguments[0] == "--tranche":
         return tranche(module, arguments[1], int(arguments[2]))
     unittest.main(module=module, argv=[fichier, *arguments])
@@ -19441,7 +19441,7 @@ class TestSuiteEnParallele(unittest.TestCase):
     def lancer(self, tests, processus=2):
         sortie = io.StringIO()
         with contextlib.redirect_stdout(sortie):
-            code = en_parallele([sys.executable, str(self.module)], tests, processus)
+            code = lancer_en_parallele([sys.executable, str(self.module)], tests, processus)
         return code, sortie.getvalue()
 
     def test_each_test_runs_exactly_once(self):
