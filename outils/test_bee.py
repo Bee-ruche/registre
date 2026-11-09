@@ -23835,7 +23835,9 @@ class TestEnglishNamesStep1d(unittest.TestCase):
                  r"reglage\((?:[^()]*?, *)?": r"setting\((?:[^()]*?, *)?",  # a function's name before \( in such a pattern
                  "journal() { sed; }": "log_text() { sed; }",  # a shell function's definition
                  "passage ouverte → en_relecture réservé": "passage open → in_review réservé",  # a transition's values
-                 "le (2026-10-01T10:00:00Z) doit": "at (2026-10-01T10:00:00Z) doit",  # a key before its value in ( )
+                 "le (2026-10-01T10:00:00Z) doit": "le (2026-10-01T10:00:00Z) doit",  # bee writes « : le ({…}) » so: no rule there
+                 "accord du gardien : aucun ; feu vert": "accord du gardien : none ; feu vert",  # a value, then « ; »
+                 " : motif": " : reason",  # a label ending a piece after its interpolation (f"{chemin} : motif")
                  "pourquoi ne change jamais sous un accord": "why ne change jamais sous un accord", "rien ne change jamais": "rien ne change jamais",
                  "(avez-vous lancé bee prendre, soumettre, relire, voter… ?)": "(avez-vous lancé bee take, submit, review, vote… ?)",
                  # and prose stays: a French word that is no name, a name elsewhere, a login, a word bee keeps in its messages

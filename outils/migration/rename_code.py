@@ -273,15 +273,16 @@ class CodeMap:
         here = {w for w, e in self.tokens.maps[0].items() if w == e}  # kept in this scope
         if self.joined and top:  # the literal goes on with the previous one (« … de la même " "personne : … »): a word before it
             return self.printed("a " + t, False)[2:]
-        t = re.sub(r"(?<![\w/.<>@#\[\]$«'’-])(?<![\w'’] )[a-z_][\w-]*(?= : )|(?<=[\w.] : )[a-z_][\w-]*\Z", lambda x: self.named.get(x[0], x[0]) if x[0] in self.key_names - here
+        t = re.sub(r"(?<![\w/.<>@#\[\]$«'’-])(?<![\w'’] )[a-z_][\w-]*(?= : )|(?:(?<=[\w.] : )|(?<=\A : ))[a-z_][\w-]*\Z", lambda x: self.named.get(x[0], x[0]) if x[0] in self.key_names - here - self.displayed
                    else x[0], t)  # « motif : », and a label « f.yaml : motif » the tool prints so
-        t = re.sub(r"(?<=« )[a-z_][\w-]*(?= »)", lambda x: self.named.get(x[0], x[0]) if x[0] in (self.key_names | self.value_names) - here else x[0], t)
+        t = re.sub(r"(?<=« )[a-z_][\w-]*(?= »)", lambda x: self.named.get(x[0], x[0]) if x[0] in (self.key_names | self.value_names) - here - self.displayed
+                   else x[0], t)
         t = re.sub(r"(?<![\w/.<>@#\[\]$«-])[a-z_][\w-]*(?= de \d+ caractères)", lambda x: self.named.get(x[0], x[0]) if x[0] not in here | self.hand.keys()
                    else x[0], t)  # « motif de 1516 caractères », « corps de … »: a field's or an option's name
-        t = re.sub(r"(?<=[\w)] : )[a-z_][\w-]*(?=\Z|[),;.\n]| [\w-]*\d)", lambda x: self.named.get(x[0], x[0]) if x[0] in self.value_names - here - self.displayed
+        t = re.sub(r"(?<=[\w)] : )[a-z_][\w-]*(?=\Z|[),;.\n]| ;| [\w-]*\d)", lambda x: self.named.get(x[0], x[0]) if x[0] in self.value_names - here - self.displayed
                    else x[0], t)  # a value after « : », then the end, a mark or an id (« statut : refusee) », « close : tache ruche-0008 »)
         t = re.sub(r"""((?:\[|\.get\()\\?(["']))([\w.-]+)(?=\\?\2[\]),])""", lambda x: x[1] + self.whole(x[3]), t)  # x["k"], .get("k"), escaped too
-        names = lambda kinds: lambda x: self.named.get(x[0], x[0]) if x[0] in kinds - here else x[0]  # noqa: E731
+        names = lambda kinds: lambda x: self.named.get(x[0], x[0]) if x[0] in kinds - here - self.displayed else x[0]  # noqa: E731
         t = re.sub(r"(?<![\w$-])[A-Z][A-Z0-9]{3,}(?![\w-])", lambda x: self.tokens.get(x[0], x[0]) if x[0] in self.ids and x[0] not in here | self.displayed
                    else x[0], t)  # a constant's name written in a text (a pattern over the code's source: « RACINE\s*/ »)
         t = re.sub(r"(?<![\w$-])[a-z_]\w*(?=\\\((?!s\\\)))", lambda x: self.ids.get(x[0], x[0]) if x[0] not in here | self.displayed else x[0],
@@ -289,9 +290,8 @@ class CodeMap:
         t = re.sub(r"(?<![\w/.<>@#\[\]$«-])[a-z_][\w-]*(?= mot\(s\)| « )", names(self.key_names), t)  # « titre mot(s) 6 », « par « Gaspard » »
         t = re.sub(r"(?<=Niveau )[A-Z]\w+", names(self.value_names), t)  # a level
         t = re.sub(r"\A[a-z_]+(?= ne change jamais)", names(self.key_names), t)  # « pourquoi ne change jamais »: a key bee prints so
-        t = re.sub(r"(?<![\w/.-])[a-z_]+(?= est déjà consigné)", lambda x: self.whole(x[0]) if x[0] in (self.key_names | self.value_names) - here else x[0], t)  # a gesture
+        t = re.sub(r"(?<![\w/.-])[a-z_]+(?= est déjà consigné)", lambda x: self.whole(x[0]) if x[0] in (self.key_names | self.value_names) - here - self.displayed else x[0], t)  # a gesture
         t = re.sub(r"(?<=\d )(?:propositions de règle|[a-z_]+)(?= ajouté| sur 24 h| en 24 h)", names(set(self.named)), t)  # « 4 taches ajoutés »
-        t = re.sub(r"(?:(?<=[\w)] : )|\A)[a-z_]+(?= \(\d)", names(self.key_names), t)  # « S-0002.yaml : le (2026-…) », « le (…) doit »
         t = re.sub(r"(?<![\w-])[a-z_]+(?= → )|(?<= → )[a-z_]+(?![\w-])", names(self.value_names), t)  # a transition « ouverte → en_relecture »
         c = self.names.m["cli"]["commands"]  # the commands listed after « bee » (« bee prendre, soumettre, relire »)
         t = re.sub(r"((?<![\w/.-])bee )([a-z][\w-]*(?:, [a-z][\w-]*)+)", lambda x: x[1] + ", ".join(c.get(w, w) for w in x[2].split(", ")), t)

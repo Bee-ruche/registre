@@ -3980,6 +3980,11 @@ keep:
     a token the script''s variable for the registry''s clone shares'
 kept_in_scopes:
 - files: outils/test_bee.py
+  scopes: [test_refus_cles_yaml_non_canoniques, test_a_top_level_key_is_quoted_on_one_line]
+  tokens: [niveau]
+  literals: ['clé de premier niveau « statut »', 'clé de premier niveau « statut » : elle ']
+  why: 'bee''s message from a scope it keeps as written (« clé de premier niveau « {clé} » »): only the key, from the data, changes'
+- files: outils/test_bee.py
   scopes: [test_ruche0116_le_conseil_corrige_le_commentaire_comme_le_dit_la_doc]
   tokens: ['[retiré]']
   literals: ['y écrit `[retiré]` à la place de']
@@ -4092,6 +4097,16 @@ kept_in_scopes:
   literals: ["(personne : bee acts-for, sur main).\n", " sous son nom (personne : bee acts-for).\n"]
   why: 'a workflow comment (« (personne : bee acts-for, sur main). »), kept as written by the switch, which the test copies as written'
 renamed_in_scopes:
+- files: outils/test_bee.py
+  scopes: [test_un_signalement_ne_tient_que_deux_comptes_membres_et_un_motif]
+  tokens: {le: at}
+  literals: ["le (2026-10-01T10:00:00Z) doit être l'heure de la PR"]
+  why: 'a report''s key, which bee prints from the data there (« {champ} ({valeur}) doit »), unlike its own « : le ({…}) » elsewhere'
+- files: outils/test_bee.py
+  scopes: [test_liste_par_empreintes]
+  tokens: {empreintes: fingerprints}
+  literals: ["une seule clé, empreintes"]
+  why: 'the list''s key, renamed in bee''s message (« une seule clé, empreintes : … »), which the test quotes up to the key'
 - files: outils/test_bee.py
   scopes: [test_un_compte_renomme_garde_son_fil_ses_refus_son_niveau_et_une_voix, test_des_comptes_lies_partagent_leurs_refus]
   tokens: {refus: refusal}
