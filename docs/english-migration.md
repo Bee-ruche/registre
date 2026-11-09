@@ -484,6 +484,9 @@ answers prevail over the sections above.
 10. **No silent no-op.** A test scans workflows, scripts, docs, tree nodes and the skill for old command names; the
     renamed-command refusal prints a GitHub `::error::` line as well, and finds the subcommand through the real parser
     (never by scanning tokens, so `--texte prendre` is not caught).
+    Council, 9 November 2026: for that scan to pass, the switch renames `bee <command>` and its options inside code spans
+    and code blocks of docs, tree nodes, the skill and AGENTS.md (names, not prose), through a hand rule in names.yaml that
+    P2 checks; prose waits for its own tasks (ruche-0153).
 11. **Migration-mode entry** keys on files that exist (P2's file set over `taches`, `debats`, `propositions`, `projets`,
     `gouvernance`, `arbre`, `modeles`), never on empty folders git does not track. P4's corpus includes every tracked
     top-level path (REGLES.md, bee.yaml, CLAUDE.md, AGENTS.en.md, categories.yaml), none of which may newly match the

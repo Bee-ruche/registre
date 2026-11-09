@@ -28,7 +28,8 @@ metrique: null
 critere_acceptation:
 - P4 and P6 fail on seeded mistakes (a rule left out of the map, a folder dropped from a key set, an output key left in French),
   shown by tests
-- 'check-migration passes on the frozen fixture''s switch and fails on seeded mistakes (a debate argument changed, a council
+- 'check-migration passes on the frozen fixture''s switch, built by the translators of ruche-0141, ruche-0142 and ruche-0152 as
+  the tests build it, and fails on seeded mistakes (a debate argument changed, a council
   member dropped, a family emptied, a proof read from the head), shown by tests'
 - an independent adversarial review by an agent of another model than the builder's is attached, with every finding fixed
   or answered; the full test suite passes on the exact head
