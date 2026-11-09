@@ -23,7 +23,7 @@ IDS = ("outils/migration/identifiers.yaml", "tools/migration/identifiers.yaml")
 NAME_SHAPE = r"[\w./*{}<>~#@\[\]-]+"  # a whole literal shaped as a name (a path, a key path, a glob, an address)
 RUN = re.compile(r"((?:[\w\[\]<>@#/-]|\.(?=[\w\[\]<>@#/-]))+)")  # a run of name characters (a sentence's final period aside)
 WORD = re.compile(r"((?<!\\)[\w.-]+)")  # the tokens P1 compares inside a text (never the letter of an escape: \\n)
-LINE = re.compile(r"([ \t]*(?:\| )?[ \t]*(?:- )*)([A-Za-z_][\w-]*)(:)((?=[ \t]).*|)")  # a YAML key at a line start (a data frame's « | » too)
+LINE = re.compile(r"([ \t]*(?:\| )?[ \t]*(?:- )*([\"']?))([A-Za-z_][\w-]*)(\2:)((?=[ \t]).*|)")  # a YAML key at a line start (quoted, in a data frame's « | »)
 VALUE = re.compile(r"( +)([\"']?)([\w.-]+(?:/[\w.-]+)*)(\2)([ \t]*(?:#.*)?)")  # its one-token value
 TAG = re.compile(r"(</?(?:a|b|body|br|code|dd|details|div|dl|dt|em|footer|h[1-6]|head|header|html|input|label|li|main|meta|nav|ol|option|p|"
                  r"pre|section|select|small|span|strong|summary|table|tbody|td|th|thead|title|tr|ul)\b[^<>]*>)")  # HTML: its text is prose
@@ -212,9 +212,9 @@ class CodeMap:
         parts = re.split(r"(\n|\\n)", t)
         for i in range(0, len(parts), 2):
             if x := LINE.fullmatch(parts[i]):
-                v = VALUE.fullmatch(x[4])
-                parts[i] = x[1] + self.tokens.get(x[2], x[2]) + x[3] + (f"{v[1]}{v[2]}{self.whole(v[3])}{v[4]}{v[5]}" if v and
-                                                                        isinstance(yaml.safe_load(v[3]), str) else x[4])
+                v = VALUE.fullmatch(x[5])
+                parts[i] = x[1] + self.tokens.get(x[3], x[3]) + x[4] + (f"{v[1]}{v[2]}{self.whole(v[3])}{v[4]}{v[5]}" if v and
+                                                                        isinstance(yaml.safe_load(v[3]), str) else x[5])
         parts = self.phrased("".join(parts))
         parts = self.printed(parts)
         c = self.names.m["cli"]["commands"]  # a subcommand after its command, wherever (a fake bee's « BEE passe-fusion preparer »)
@@ -231,12 +231,14 @@ class CodeMap:
 
     def printed(self, t):
         """ruche-0153: the plain words of a text in the places where bee's messages print names, renamed as the tool's output is:
-        a key before French typography's « : » (« motif : »), a key or a value between « and » (« proposee »), a node id after
+        a key before French typography's « : » (« motif : ») or ending a label (« f.yaml : motif »), a key or a value between « and »
+        (« proposee »), a node id after
         « nœud » or around « > » (« racine > roles/relire »). Any other plain word stays (prose, logins)."""
         here = {w for w, e in self.tokens.maps[0].items() if w == e}  # kept in this scope
-        t = re.sub(r"(?<![\w/.<>@#\[\]$«-])[a-z_][\w-]*(?= : )", lambda x: self.named.get(x[0], x[0]) if x[0] in self.key_names - here else x[0], t)
+        t = re.sub(r"(?<![\w/.<>@#\[\]$«-])[a-z_][\w-]*(?= : )|(?<=[\w.] : )[a-z_][\w-]*\Z", lambda x: self.named.get(x[0], x[0]) if x[0] in self.key_names - here
+                   else x[0], t)  # « motif : », and a label « f.yaml : motif » the tool prints so
         t = re.sub(r"(?<=« )[a-z_][\w-]*(?= »)", lambda x: self.named.get(x[0], x[0]) if x[0] in (self.key_names | self.value_names) - here else x[0], t)
-        t = re.sub(r"(?<=\[\")[\w.-]+(?=\"\])|(?<=\[')[\w.-]+(?='\])|(?<=\.get\(\")[\w.-]+(?=\")|(?<=\.get\(')[\w.-]+(?=')", lambda x: self.whole(x[0]), t)  # x["k"]
+        t = re.sub(r"""((?:\[|\.get\()\\?(["']))([\w.-]+)(?=\\?\2[\]),])""", lambda x: x[1] + self.whole(x[3]), t)  # x["k"], .get("k"), escaped too
         seg = self.names.m["tree"]["segments"]
         return re.sub(r"(?<=nœud )[a-z_]+\b(?![/.-])|(?<![\w/.$-])[a-z_]+(?= > )|(?<= > )[a-z_]+\b(?![/.-])", lambda x: seg.get(x[0], x[0]), t)
 

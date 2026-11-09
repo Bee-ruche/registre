@@ -3704,6 +3704,10 @@ hand:
       outils/test_bee.py:test_la_decision_est_d_un_tiers_du_conseil_a_l_heure_de_la_pr_et_lie_dans_la_meme_pr: decide-report
       outils/test_bee.py:test_lier_attend_la_fin_des_engagements_communs: decide-report
       outils/test_bee.py:test_nul_ne_decide_un_signalement_qu_il_a_depose: decide-report
+      outils/test_bee.py:test_lier_un_compte_deja_lie_dit_ce_que_dit_la_porte: decide-report
+      outils/test_bee.py:test_un_gardien_n_ecrit_que_le_lien_de_la_paire_decidee: decide-report
+      outils/test_bee.py:test_un_gardien_ne_decide_pas_ce_qui_touche_son_garant: decide-report
+      outils/test_bee.py:test_valider_ne_rejuge_pas_le_conseil_ni_les_gardiens_d_alors: decide-report
     why: command -> decide-report (the tests that run it, ruche-0153); gate nature -> report
   consignes:
     english:
@@ -3861,6 +3865,7 @@ keep:
   - '[`inviter`](arbre/roles/inviter/SENS.md)'
   - docs/securite.md
   - securite.md
+  - securite
   why: 'docs/securite.md: the root node''s vulnerability line, quoted as written (ruche-0153); the tests of the migration tooling: their fixtures and expectations are French on purpose (the base before the switch);
     the French node headings bee reads beside the English ones until the tree is translated (plan, section 5.8); the site''s
     attributes its kept CSS and JavaScript read; a line of AGENTS.md quoted as written, the docs changing after the switch
