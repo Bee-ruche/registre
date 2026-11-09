@@ -268,7 +268,7 @@ class CodeMap:
         a value after « : » then the end, a mark or an id (« statut : refusee) »), unless bee.py keeps it as a word of its messages; a
         key or a value between « and » (« proposee »), a node id after « nœud » or around « > » (« racine > roles/relire »), in « » or
         in a list, a role after --role;
-        a key before « mot(s) » or « « », a level after « Niveau », a gesture before « est déjà consigné », a folder's label after a
+        a key starting a label before « mot(s) » or « « » (the text's start, after « : », « ( », « , » or « ; »), a level after « Niveau », a gesture before « est déjà consigné », a folder's label after a
         count (« 4 taches ajoutés »). Any other plain word stays (prose, logins)."""
         here = {w for w, e in self.tokens.maps[0].items() if w == e}  # kept in this scope
         if self.joined and top:  # the literal goes on with the previous one (« … de la même " "personne : … »): a word before it
@@ -287,7 +287,8 @@ class CodeMap:
                    else x[0], t)  # a constant's name written in a text (a pattern over the code's source: « RACINE\s*/ »)
         t = re.sub(r"(?<![\w$-])[a-z_]\w*(?=\\\((?!s\\\)))", lambda x: self.ids.get(x[0], x[0]) if x[0] not in here | self.displayed else x[0],
                    t)  # a function's name before « \( » in a pattern over the code's source (« reglage\( »), never « mot\(s\) »
-        t = re.sub(r"(?<![\w/.<>@#\[\]$«-])[a-z_][\w-]*(?= mot\(s\)| « )", names(self.key_names), t)  # « titre mot(s) 6 », « par « Gaspard » »
+        t = re.sub(r"(?:\A|(?<=: )|(?<=\()|(?<=[;,] ))[a-z_][\w-]*(?= mot\(s\)| « )", names(self.key_names),
+                   t)  # a label's key: « x : titre mot(s) 6 », « par « Gaspard » », « (votant « x ») »; never prose (« nom de fichier « x » »)
         t = re.sub(r"(?<=Niveau )[A-Z]\w+", names(self.value_names), t)  # a level
         t = re.sub(r"(?<=[\w)] : )[a-z_]+(?= \((?:\d|\Z))", names(self.key_names), t)  # « x.yaml : le (2026-…) », as bee's f"{chemin} : le"
         t = re.sub(r"\A[a-z_]+(?= ne change jamais)", names(self.key_names), t)  # « pourquoi ne change jamais »: a key bee prints so

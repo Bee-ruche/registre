@@ -23827,6 +23827,7 @@ class TestEnglishNamesStep1d(unittest.TestCase):
                  'c.get("auteur") or c["statut"]': 'c.get("author") or c["status"]', "read -r sha auteur etat": "read -r sha author state",
                  " sha auteur etat; do": " sha author state; do", "cree=$(gh api x)": "created=$(gh api x)",  # shell quoted in a test
                  "x.yaml : titre mot(s) 6": "x.yaml : title mot(s) 6", "par « Gaspard » s'écrit gaspard": "by « Gaspard » s'écrit gaspard",
+                 "x : votant « a » non inscrit": "x : voter « a » non inscrit", "(votant « a »)": "(voter « a »)",  # a key starting a label
                  "Niveau Nouveau : votre vote": "Niveau New : votre vote", "relance est déjà consigné": "reminder est déjà consigné",
                  "4 taches ajoutés": "4 tasks ajoutés", "20 propositions de règle ajoutées": "20 rule proposals ajoutées",
                  "# bee contexte --role relire : racine": "# bee context --role review : root", "lus : racine, roles/": "lus : root, roles/",
@@ -23851,6 +23852,7 @@ class TestEnglishNamesStep1d(unittest.TestCase):
                  r"un statut\(s\) puis pullRequest\(": r"un statut\(s\) puis pullRequest\(", "bee prendre, la suite": "bee take, la suite",
                  "la même personne : à son refus": "la même personne : à son refus", "dans l'ordre : d'abord": "dans l'ordre : d'abord",
                  "un texte → deux": "un texte → deux", "le journal du runner": "le journal du runner",
+                 "différent du nom de fichier « x »": "différent du nom de fichier « x »", "réservée par « a », qui": "réservée par « a », qui",
                  "python3 bee/juge/juge.py --source-a <base> --source-b <ta copie>":  # a fork's path, half a placeholder: as written
                  "python3 bee/juge/juge.py --source-a <base> --source-b <ta copie>"}
         for before, after in cases.items():
@@ -23869,6 +23871,10 @@ class TestEnglishNamesStep1d(unittest.TestCase):
                   'def r8(t):\n    return t.get("cree_par") == "conseil"\n')
         new = self.carte.rename_python(source, "outils/bee.py")[0]
         self.assertEqual((new.count('"conseil"'), new.count('"council"')), (2, 1), new)
+        # bee's own prose where the key-before-« » rule sees a key (« premier niveau « {c} » »): kept in its scope, renamed elsewhere
+        new = self.carte.rename_python('def problemes_de_forme(c):\n    return f"clé de premier niveau « {c} »"\n\n\n'
+                                       'def other(c):\n    return f"niveau « {c} »"\n', "outils/bee.py")[0]
+        self.assertEqual((new.count('f"clé de premier niveau « {c} »"'), new.count('f"level « {c} »"')), (1, 1), new)
         # an entry of kept_in_scopes that lists literals keeps its token in those strings only
         source = ('class TestBulkPrReads:\n    A = "personne=$(x) || personne=\\"\\"\\n"\n'
                   '    B = [("(personne : bee acts-for, sur main).\\n", "x"), (" sha personne; do\\n", " sha; do\\n")]\n')

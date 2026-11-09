@@ -3979,6 +3979,24 @@ keep:
   why: 'the members'' clone folder of the simulated hive (abeilles/<login>/registre, as commun.sh and load_test.py name it),
     a token the script''s variable for the registry''s clone shares'
 kept_in_scopes:
+- files: outils/bee.py
+  scopes: [problemes_de_forme]
+  tokens: [niveau]
+  why: 'bee''s own prose (« clé de premier niveau « {clé} » »), which the key-before-« » rule would rename: prose waits for its task'
+- files: outils/bee.py
+  scopes: [message_schema]
+  tokens: [valeur]
+  literals: ['valeur « ']
+  why: 'bee''s own prose starting a message (« valeur « x » non permise »), where the key-before-« » rule sees a label'
+- files: outils/bee.py
+  scopes: [construire_analyseur]
+  tokens: [fichier, adresse]
+  literals: ['fichier « adresse<TAB>login » : auteur GitHub de chaque PR déclarée dans une contribution ']
+  why: 'an option''s help, prose starting with « fichier « adresse<TAB>login » »: the option is renamed, its help waits for its task'
+- files: outils/test_bee.py
+  scopes: [test_refus_cles_yaml_non_canoniques, test_a_top_level_key_is_quoted_on_one_line]
+  tokens: [niveau]
+  why: 'bee''s message, kept as written in bee (« clé de premier niveau « {clé} » »): only the key, from the data, changes'
 - files: outils/test_bee.py
   scopes: [test_ruche0116_le_conseil_corrige_le_commentaire_comme_le_dit_la_doc]
   tokens: ['[retiré]']
