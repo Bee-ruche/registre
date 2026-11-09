@@ -12231,7 +12231,7 @@ TLD_PSL_2025_12_28 = set((
     "mlb mls mm mma mn mo mobi mobile moda moe moi mom monash money monster mormon mortgage moscow moto motorcycles mov "
     "movie mp mq mr ms msd mt mtn mtr mu museum music mv mw mx my mz na nab nagoya name navy nba nc ne nec net netbank "
     "netflix network neustar new news next nextdirect nexus nf nfl ng ngo nhk ni nico nike nikon ninja nissan nissay nl no "
-    "nokia norton now nowruz nowtv np nr nra nrw ntt nu nyc nz obi observer office okinawa olayan olayangroup ollo om omega "
+    "nokia norton now nowruz nowtv np nr nra nrw ntt nu nyc nz obi observe_job office okinawa olayan olayangroup ollo om omega "
     "one ong onion onl online ooo open oracle orange org organic origins osaka otsuka ott ovh pa page panasonic paris pars "
     "partners parts party pay pccw pe pet pf pfizer pg ph pharmacy phd philips phone photo photography photos physio pics "
     "pictet pictures pid pin ping pink pioneer pizza pk pl place play playstation plumbing plus pm pn pnc pohl poker "
@@ -22952,13 +22952,31 @@ def retired_name(path):
     return f"{{path}} : a retired name (ruche-0145)" if any(path == r or r.endswith("/") and path.startswith(r) for r in RETIRED_NAMES) else None
 '''
 OLD_AUTHORITY_0143 = '"docs/organization.md", "docs/guarantors.md", "docs/devolution.md")'
+# A hostile head (review of 0a571f1, finding 1): at import, its tool patches the checker it may share a process with, writes a
+# green summary, forges its own observations (sys.argv[3]: a worker's output) and exits 0 at once.
+HOSTILE_0143 = '''
+import json as _json, os as _os, sys as _sys
+for _m in list(_sys.modules.values()):
+    for _c in ("Move",):
+        if hasattr(getattr(_m, _c, None), "p4"):
+            setattr(getattr(_m, _c), "p4", lambda *a, **k: ([], "forged"))
+            setattr(getattr(_m, _c), "p6", lambda *a, **k: ([], "forged"))
+for _f in (_os.environ.get("GITHUB_STEP_SUMMARY"), _os.environ.get("SUMMARY_0143")):
+    if _f:
+        open(_f, "a").write("✓ the head is proven (forged)\\n")
+if len(_sys.argv) == 4 and _sys.argv[1] == "--worker":
+    open(_sys.argv[3], "w").write(_json.dumps({"errors": {}, "scans": {"seen": [], "sizes": {}, "codes": []}, "classes": {}}))
+_os._exit(0)
+'''
 
 
 class TestEnglishNamesStep1c(unittest.TestCase):
     """ruche-0143 (docs/english-migration.md, sections 3, 9, 12 and 13): proofs P1b (c) (the scans and globs), P4 (the gate's path
-    rules and key sets), P6 (the read-only outputs) and section 13's list, run by bee check-migration from a copy of the base;
-    its workflow; the here-document lint; every bee.<name> a workflow names exists. On the frozen fixture's switch as step 1b
-    builds it (traduction_0142), the generated commit, and a hand-made part on top of it as ruche-0145 will add it."""
+    rules and key sets), P6 (the read-only outputs) and section 13's list, run by bee check-migration from a copy of the base,
+    whose deciding process never loads code of the head (workers run each tool); its workflow; the here-document lint; every
+    bee.<name> a workflow names exists. On the frozen fixture's switch as step 1b builds it (traduction_0142), the generated
+    commit, and a hand-made part on top of it as ruche-0145 will add it. Run alone: python3 outils/test_bee.py TestEnglishNamesStep1c
+    (or python3 -m unittest outils.test_bee.TestEnglishNamesStep1c, from the registry, as validation.yml runs its classes)."""
 
     @classmethod
     def setUpClass(cls):
@@ -22966,48 +22984,92 @@ class TestEnglishNamesStep1c(unittest.TestCase):
         cls.retired_names = cls.names.m["retired"]
         cls.main = TestEnglishNamesStep1b.variante(cls, cls.hand_made_part())
         cls.apres = rename.tree_files(cls.depot, cls.main)
-        cls.honnete = cls.move_of(cls.main)
+        cls.move = check_migration.Move(cls.names, rename_code.CodeMap(cls.names, cls.fichiers[rename_code.IDS[0]].decode("utf-8")), "outils", cls.fichiers)
+        cls.o, cls.n = cls.observe(None), cls.observe(cls.main)
 
     tearDownClass = TestEnglishNamesStep1b.__dict__["tearDownClass"]
     remplacer = TestEnglishNamesStep1b.remplacer
 
     @classmethod
-    def hand_made_part(cls, retired_names=None, *changes):
-        """A changer of the translated files: the hand-made part (the guard of `retired_names`, the old authority names), then changes."""
+    def hand_made_part(cls, retired_names=None, *changes, ajout=""):
+        """A changer of the translated files: the hand-made part (the guard of `retired_names`, the old authority names, ajout at the
+        tool's end), then changes (path, before, after)."""
         def changer(f):
             texte = f["tools/bee.py"].decode("utf-8")
             assert texte.count(OLD_AUTHORITY_0143) == 1
             anciens = ", ".join(f'"{a}"' for a in bee.AUTHORITY_FILES if cls.names.path(a) != a)
             f["tools/bee.py"] = (texte.replace(OLD_AUTHORITY_0143, OLD_AUTHORITY_0143[:-1] + f", {anciens})") + HAND_GUARD_0143.format(retired=tuple(
-                retired_names or cls.retired_names))).encode("utf-8")
+                retired_names or cls.retired_names)) + ajout).encode("utf-8")
             for chemin, avant, apres in changes:
                 assert f[chemin].count(avant.encode()) == 1, avant
                 f[chemin] = f[chemin].replace(avant.encode(), apres.encode())
         return changer
 
     @classmethod
-    def move_of(cls, tete, names=None):
-        """check_migration.Move: the base's tool on its fixture, the head's on the migrated one, each in a scratch checkout."""
-        tmp, names, donnees = pathlib.Path(tempfile.mkdtemp(dir=cls.temp.name)), names or cls.names, set(bee.DOSSIERS_LIBRE_SERVICE)
-        racines = (check_migration.checkout(rename.tree_files(cls.depot, cls.base), tmp / "base" / "r", donnees, "outils/tests/registre/"),
-                   check_migration.checkout(rename.tree_files(cls.depot, tete), tmp / "head" / "r", {names.path(d) for d in donnees},
-                                            names.path("outils/tests/registre/")))
-        outils = [check_migration.load(r / t, f"bee_0143_{tmp.name}_{k}") for k, (r, t) in enumerate(zip(racines, ("outils/bee.py", "tools/bee.py")))]
-        return check_migration.Move(names, check_migration.rename_code.CodeMap(names, cls.fichiers[rename_code.IDS[0]].decode("utf-8")), outils,
-                                    racines, "outils")
+    def observe(cls, tete, parts=("p1b_c", "p4", "p6"), move=None, fichiers=None):
+        """A worker's observations: the old tool's on the fixture (tete None), or those of the tool of the commit tete."""
+        move, tmp = move or cls.move, tempfile.mkdtemp(dir=cls.temp.name)
+        fichiers = fichiers or (cls.fichiers if tete is None else rename.tree_files(cls.depot, tete))
+        return check_migration.work(move.plan(move.root(fichiers, tmp, tete is not None), tete is not None, parts), tmp)
 
-    def avec(self, *changes, retired_names=None):
-        """The Move of a head: the hand-made part and these changes (path, before, after) on top of the generated commit."""
-        return self.move_of(TestEnglishNamesStep1b.variante(self, self.hand_made_part(retired_names, *changes)))
+    def avec(self, *changes, retired_names=None, parts=("p1b_c", "p4", "p6")):
+        """The observations of a head: the hand-made part and these changes (path, before, after) on top of the generated commit."""
+        return self.observe(TestEnglishNamesStep1b.variante(self, self.hand_made_part(retired_names, *changes)), parts)
 
     def contains(self, problemes, *messages):
         for message in messages:
             self.assertTrue(any(message in p for p in problemes), (message, problemes))
 
+    # --- the workers and what they write ---
+
+    def test_no_head_code_runs_where_the_verdict_is_made_and_what_its_tool_says_is_only_data(self):
+        self.assertEqual((self.o["errors"], self.n["errors"]), ({}, {}))
+        self.assertEqual(self.move.compare(self.o, self.n)[0], [])
+        # a value goes through JSON with its type, and comes back as a plain value only
+        for k in check_migration.KEY_GROUPS:
+            v = check_migration.encoded(getattr(bee, k))
+            self.assertEqual(check_migration.decoded(json.loads(json.dumps(v))), check_migration.decoded(v))
+        self.assertEqual(check_migration.decoded(check_migration.encoded({("a", 1): frozenset({"b"}), "c": [re.compile("x"), None]})),
+                         {("a", 1): frozenset({"b"}), "c": [check_migration.PATTERN, None]})
+        for faux in (["eval", "x"], ["dict", [["a"]]], ["set", [["list", []]]], {"a": 1}):
+            with self.subTest(faux=faux), self.assertRaises((ValueError, TypeError)):
+                check_migration.decoded(faux)
+        self.assertFalse(check_migration.fits({"seen": [["a", "b", "c", True]], "sizes": {}, "codes": []}, check_migration.SHAPES["scans"]))
+        # observations shaped otherwise than asked: each proof refuses, and says why
+        for nom, changer, message in (
+                ("a class missing", lambda n: n["classes"].pop(next(iter(n["classes"]))), "the new tool's observations: classes: not the corpus asked"),
+                ("a section missing", lambda n: n.pop("outputs"), "P6: the new tool's observations: no outputs"),
+                ("a count as a boolean", lambda n: n["scans"]["seen"].__setitem__(0, [*n["scans"]["seen"][0][:3], True]), "scans: not shaped as asked"),
+                ("a section unknown", lambda n: n.__setitem__("verdict", "proven"), "the new tool's observations: verdict: unknown"),
+                ("an error", lambda n: n["errors"].__setitem__("api", "Boom"), "P6: the new tool fails: api: Boom")):
+            with self.subTest(nom):
+                n = json.loads(json.dumps(self.n))
+                changer(n)
+                self.contains(self.move.compare(self.o, n)[0], message)
+
+    def test_a_hostile_head_can_neither_patch_the_checker_nor_write_the_summary_nor_exit_with_a_success(self):
+        """Review of 0a571f1, finding 1 (replayed): its head module patched Move.p4 and Move.p6 of the checker that had imported it."""
+        tete = TestEnglishNamesStep1b.variante(self, self.hand_made_part(None, ajout=HOSTILE_0143))
+        resume = pathlib.Path(self.temp.name, "resume-0143.md")
+        resume.write_text("", encoding="utf-8")
+        p4, p6 = check_migration.Move.p4, check_migration.Move.p6
+        with mock.patch.dict(os.environ, {"GITHUB_STEP_SUMMARY": str(resume), "SUMMARY_0143": str(resume)}):
+            problemes, lignes = check_migration.check(self.depot, self.base, tete, self.tete)
+            r = subprocess.run([sys.executable, str(RACINE / "outils/bee.py"), "--registre", str(self.depot), "check-migration", "--base", self.base,
+                                "--head", tete, "--generated", self.tete], capture_output=True, text=True, timeout=1200)
+        self.assertEqual((check_migration.Move.p4, check_migration.Move.p6, resume.read_text(encoding="utf-8")), (p4, p6, ""))
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertTrue(r.stdout.endswith(f"problem(s): the head {tete} is not proven to be the switch of the base {self.base}.\n"), r.stdout)
+        for sortie in (r.stdout.splitlines(), lignes):
+            self.assertEqual([x for x in sortie if x.startswith(("P1b (c): ", "P4: ", "P6: "))], ["P1b (c): 1 problem(s)", "P4: 1 problem(s)", "P6: 1 problem(s)"])
+            self.assertEqual([x.split(": ✓")[0] for x in sortie if ": ✓" in x], ["P2", "P1, P1b (a, b), P3", "section 13"])  # proven without its code
+        self.assertEqual(problemes, [f"{p}: the new tool's observations: classes: not the corpus asked" for p in ("P1b (c)", "P4", "P6")])
+        self.assertNotIn("forged", r.stdout)
+
     # --- P1b (c) ---
 
     def test_p1b_c_validate_the_loaders_the_council_files_and_the_removal_scan_find_the_same_files(self):
-        problemes, said = self.honnete.p1b_c()
+        problemes, said = self.move.p1b_c(self.o, self.n)
         self.assertEqual(problemes, [])
         self.assertRegex(said, r"^[0-9]+ scans in 4 functions find the same [1-9][0-9]* files, [0-9]+ collections$")
         for avant, apres, attendus in (
@@ -23016,29 +23078,27 @@ class TestEnglishNamesStep1c(unittest.TestCase):
                 ('r.glob("projects/*.yaml")', 'r.glob("projets/*.yaml")', ["P1b (c): council_text_problems scans ./projects/*.yaml and finds"]),
                 ('for f in (reg.root / sort_kind).rglob("*.yaml")', 'for f in (reg.root / sort_kind).rglob("*.yml")', ["P1b (c): sweep scans tasks/*.yaml and finds"])):
             with self.subTest(apres):
-                self.contains(self.avec(("tools/bee.py", avant, apres)).p1b_c()[0], *attendus)
+                self.contains(self.move.p1b_c(self.o, self.avec(("tools/bee.py", avant, apres), parts=("p1b_c",)))[0], *attendus)
         with mock.patch.object(check_migration, "WRITE_ONLY_SCANS", {}):  # every glob literal is run here, or covered by P4
-            self.contains(self.honnete.p1b_c()[0], "P1b (c): the scan in cmd_proposer_tache is not run here, nor covered by P4")
+            self.contains(self.move.p1b_c(self.o, self.n)[0], "P1b (c): the scan in cmd_proposer_tache is not run here, nor covered by P4")
         # a fixture without data: the scans agree, and prove nothing
-        dossiers = (*bee.DOSSIERS_LIBRE_SERVICE, *map(self.names.path, bee.DOSSIERS_LIBRE_SERVICE))
-        tmp, vide = pathlib.Path(tempfile.mkdtemp(dir=self.temp.name)), lambda f: {p: c for p, c in f.items() if not p.startswith(dossiers)}
-        racines = (check_migration.checkout(vide(self.fichiers), tmp / "base" / "r", set(), "-"), check_migration.checkout(vide(self.apres), tmp / "head" / "r", set(), "-"))
-        sans = check_migration.Move(self.names, self.honnete.cm, [check_migration.load(r / t, f"bee_0143_empty_{k}") for k, (r, t) in enumerate(
-            zip(racines, ("outils/bee.py", "tools/bee.py")))], racines, "outils")
-        self.assertEqual(sans.p1b_c()[0], ["P1b (c): data folders finds no file: the check would prove nothing"])
+        dossiers = (*bee.DOSSIERS_LIBRE_SERVICE, *map(self.names.path, bee.DOSSIERS_LIBRE_SERVICE), "outils/tests/registre/", "tools/tests/registry/")
+        vide = lambda f: {p: c for p, c in f.items() if not p.startswith(dossiers)}  # noqa: E731
+        sans = check_migration.Move(self.names, self.move.cm, "outils", vide(self.fichiers))
+        o, n = (self.observe(t, ("p1b_c",), sans, vide(f)) for t, f in ((None, self.fichiers), (self.main, self.apres)))
+        self.assertEqual(sans.p1b_c(o, n)[0], ["P1b (c): data folders finds no file: the check would prove nothing"])
 
     # --- P4 ---
 
     def test_p4_every_path_rule_gives_the_image_the_answer_of_the_path(self):
-        problemes, said = self.honnete.p4(sorted(self.fichiers))
+        problemes, said = self.move.p4(self.o, self.n)
         self.assertEqual(problemes, [])
         self.assertRegex(said, rf"^[0-9]+ paths \([0-9]+ retired\) classified alike by the rules R-a to R-u, {len(check_migration.KEY_GROUPS)} key sets equal$")
-        images = self.honnete.corpus(sorted(self.fichiers))
         for p, q in (("Membres/alice.yaml", "Members/alice.yaml"), ("gouvernance/conseil.yaml", "governance/council.yaml"),  # a case, a file
                      ("taches/zz/miniz/miniz-9050.yaml", "tasks/zz/miniz/miniz-9050.yaml"), ("REGLES.md", "RULES.md"), ("CLAUDE.md", "CLAUDE.md")):
-            self.assertEqual(images[p], q)
+            self.assertEqual(self.move.images[p], q)
         # the generated commit alone: without the hand-made part, retired names are not refused and old authority names are lost
-        self.contains(self.move_of(self.tete).p4(sorted(self.fichiers))[0], "P4: R-q: no retired-names guard (retired_name, the hand-made part)",
+        self.contains(self.move.p4(self.o, self.observe(self.tete, ("p4",)))[0], "P4: R-q: no retired-names guard (retired_name, the hand-made part)",
                       "P4: R-i: gouvernance/conseil.yaml left AUTHORITY_FILES", "P4: R-i: docs/garants.md left AUTHORITY_FILES")
 
     def test_p4_fails_on_seeded_mistakes(self):
@@ -23049,6 +23109,11 @@ class TestEnglishNamesStep1c(unittest.TestCase):
             "a folder dropped from a key set": ([("tools/bee.py", 'PERSON_FIELDS = ("person", "other_identities", "why", "message", "namesake")',
                                                   'PERSON_FIELDS = ("person", "other_identities", "why", "message")')],
                                                 ["P4: CHAMPS_DE_LA_PERSONNE: the map of the old set is"]),
+            # the review's notes: R-e's bounds and R-g's scans, as each set and as each path's answer
+            "an OCTETS_MAX entry dropped": ([("tools/bee.py", 'NO_CONTACT_PATH: 1024 * 1024,\n              "reports": 4 * 1024}', "NO_CONTACT_PATH: 1024 * 1024}")],
+                                            ["P4: OCTETS_MAX: the map of the old set is", "P4: signalements/S-0001.yaml -> reports/S-0001.yaml: byte bound (R-e): 4096 before"]),
+            "a PARCOURS folder dropped": ([("tools/bee.py", '            "votes": (SELF_SERVICE_FILES["votes"][1], "vote", {"reason"}),\n', "")],
+                                          ["P4: PARCOURS: the map of the old set is", "P4: votes/P-0001/alice.yaml -> votes/P-0001/alice.yaml: removal scan (R-g): 'votes' before"]),
             "a retired folder still data": ([("tools/bee.py", 'GESTURE_FOLDERS = ("tasks",', 'GESTURE_FOLDERS = ("taches", "tasks",'),
                                              ("tools/bee.py", 'HISTORY_PATH = re.compile(r"^(?:tasks|', 'HISTORY_PATH = re.compile(r"^(?:taches|tasks|')],
                                             ["P4: R-q: taches/miniz/miniz-9050.yaml, a retired name, is still data for the new tool"]),
@@ -23057,32 +23122,65 @@ class TestEnglishNamesStep1c(unittest.TestCase):
         }
         for nom, (changes, attendus) in cas.items():
             with self.subTest(nom):
-                self.contains(self.avec(*changes).p4(sorted(self.fichiers))[0], *attendus)
+                self.contains(self.move.p4(self.o, self.avec(*changes, parts=("p4",)))[0], *attendus)
         with self.subTest("a guard that refuses an English path"):
-            self.contains(self.avec(retired_names=[*self.retired_names, "tasks/"]).p4(sorted(self.fichiers))[0],
+            self.contains(self.move.p4(self.o, self.avec(retired_names=[*self.retired_names, "tasks/"], parts=("p4",)))[0],
                           "P4: R-q: tasks/miniz/miniz-9050.yaml is refused by the retired-names guard")
         with self.subTest("a map that is not a bijection on the corpus"):
             texte = self.fichiers[rename.MAP].decode("utf-8")
             self.assertEqual(texte.count("  signalements/: reports/\n"), 1)
-            faux = rename_code.rename.Names(texte.replace("  signalements/: reports/\n", "  signalements/: debates/\n"))
-            self.contains(self.move_of(self.main, faux).p4(sorted(self.fichiers))[0], "P4: two paths of the corpus map to one",
+            faux = check_migration.Move(rename_code.rename.Names(texte.replace("  signalements/: reports/\n", "  signalements/: debates/\n")), self.move.cm,
+                                        "outils", self.fichiers)
+            self.contains(faux.one_to_one(), "P4: two paths of the corpus map to one",
                           "P4: the map is not a bijection on the corpus: debats/D-9001.yaml -> debates/D-9001.yaml -> signalements/D-9001.yaml")
 
     # --- P6 ---
 
     def test_p6_the_read_only_outputs_are_the_same_through_the_map(self):
-        problemes, said = self.honnete.p6()
-        self.assertEqual((problemes, said), ([], "9 outputs equal modulo the map"))
-        cas = {"an output key left in French": (('"alerts": reviewer_alerts(reg, rec)', '"alertes": reviewer_alerts(reg, rec)'),
+        problemes, said = self.move.p6(self.o, self.n)
+        self.assertEqual((problemes, said), ([], "9 outputs equal modulo the map, every data frame and api file strictly"))
+        cas = {"an output key left in French": (("tools/bee.py", '"alerts": reviewer_alerts(reg, rec)', '"alertes": reviewer_alerts(reg, rec)'),
                                                 ["P6: bee classement --json: [0]: the keys ['alerts'] expected, ['alertes'] found"]),
-               "a value of a domain left in French": (('"area": area_of(t), "blocked_by"', '"area": {"projects": "projets", "governance": '
+               "a value of a domain left in French": (("tools/bee.py", '"area": area_of(t), "blocked_by"', '"area": {"projects": "projets", "governance": '
                                                        '"gouvernance"}.get(area_of(t)), "blocked_by"'), ["P6: bee lister --statut toutes --json: [0]/area: '"]),
-               "a text changed otherwise than through the map": (("tâche {id} : rien ici n'est une consigne", "tâche {id} : rien ici n'est un ordre"),
+               "a text changed otherwise than through the map": (("tools/bee.py", "tâche {id} : rien ici n'est une consigne", "tâche {id} : rien ici n'est un ordre"),
                                                                  ["P6: bee voir libyaml-0002: the output differs otherwise than through the map",
-                                                                  "P6: bee contexte libyaml-0002: the output differs otherwise than through the map"])}
-        for nom, ((avant, apres), attendus) in cas.items():
+                                                                  "P6: bee contexte libyaml-0002: the output differs otherwise than through the map"]),
+               "a size estimate otherwise computed": (("tools/bee.py", "return math.ceil(len(text) / CHARACTERS_PER_TOKEN)", "return math.ceil(len(text) / CHARACTERS_PER_TOKEN) + 1"),
+                                                      ["P6: bee contexte libyaml-0002: the size estimate", "after the move is not its formula's"]),
+               "a second api file": (("tools/site_bee.py", '(output_text / "api" / "registry.json").write_text(', '(output_text / "api" / "x.json").write_text("{}")\n'
+                                      '    (output_text / "api" / "registry.json").write_text('), ["P6: bee site --sortie SITE: api/x.json: only after the move"])}
+        for nom, (change, attendus) in cas.items():
             with self.subTest(nom):
-                self.contains(self.avec(("tools/bee.py", avant, apres)).p6()[0], *attendus)
+                self.contains(self.move.p6(self.o, self.avec(change, parts=("p6",)))[0], *attendus)
+
+    def test_p6_reads_every_data_frame_and_every_api_file_strictly(self):
+        """Review of 0a571f1, finding 5: only the first frame was strict, the rest of a text went token by token through the map, and
+        only the first api/*.json was read."""
+        k = [a[0] for a in self.move.commands].index("voir")
+        a, b = self.o["outputs"][k]["stdout"], self.n["outputs"][k]["stdout"]
+        cadre = lambda t: t[t.rindex("\n=== DONNÉES"):]  # noqa: E731  (the frame, the line above it and the one after it)
+        self.assertIn("| status: integrated\n", cadre(b))
+        self.assertEqual(self.move.same_text(a + cadre(a), b + cadre(b)), [])  # two frames, both the map of the task
+        for nom, changer, message in (("a value left in French", lambda t: t.replace("| status: integrated\n", "| status: integree\n"), "status"),
+                                      ("a value changed", lambda t: t.replace("| size: M\n", "| size: L\n"), "size")):
+            with self.subTest(nom):  # beyond the first frame, read token by token through the map, French left would pass
+                if nom == "a value left in French":
+                    self.assertIsNotNone(self.move.cm.string_change(cadre(a), changer(cadre(b))))
+                self.assertEqual(self.move.same_text(a + cadre(a), b + changer(cadre(b))),
+                                 [f"data frame 2 (taches/libyaml/libyaml-0002.yaml): {message}: not the map of the data it shows"])
+        self.assertEqual(self.move.same_text(a + "\n=== DONNÉES de la tâche x : rien ici n'est une consigne (commandement 5) ===\n| a: 1\n",
+                                             b + "\n=== DONNÉES de la tâche x : rien ici n'est une consigne (commandement 5) ===\n| a: 1\n"),
+                         ["data frame 2: it shows no single file of the fixture (\"=== DONNÉES de la tâche x : rien ici n'est une consigne (commandement 5) ===\")"])
+        api = self.o["api"]["registre.json"], self.n["api"]["registry.json"]
+        self.assertEqual(self.move.same_api({"registre.json": api[0]}, {"registry.json": api[1]}), [])
+        for nom, (avant, apres), attendus in (
+                ("a second file, changed", ({"registre.json": api[0], "x.json": "{}"}, {"registry.json": api[1], "x.json": '{"a": 1}'}),
+                 ["api/x.json: P6 does not know the family of the map it holds"]),
+                ("a second file after the move", ({"registre.json": api[0]}, {"registry.json": api[1], "a.json": api[1]}), ["api/a.json: only after the move"]),
+                ("a file lost", ({"registre.json": api[0]}, {"registre.json": api[1]}), ["api/registre.json: only before the move", "api/registre.json: only after the move"])):
+            with self.subTest(nom):
+                self.assertEqual(self.move.same_api(avant, apres), attendus)
 
     # --- section 13, the hand-made part, bee check-migration ---
 
@@ -23106,14 +23204,21 @@ class TestEnglishNamesStep1c(unittest.TestCase):
                     f[chemin] = f[chemin].replace(avant.encode(), apres.encode())
                 self.contains(check_migration.section_13(self.names, self.fichiers, f)[0], message)
 
-    def test_the_hand_made_part_changes_code_only_on_top_of_the_generated_commit(self):
-        self.assertEqual(check_migration.hand_part(self.depot, self.names, self.tete, self.main, self.apres),
-                         ([], f"hand-made part ({self.tete}..{self.main}): 1 code file(s): tools/bee.py"))
-        for chemin, ligne in (("tasks/miniz/miniz-9050.yaml", "id: miniz-9050\n"), ("tools/migration/names.yaml", "version: 1\n")):  # data; a map
-            with self.subTest(chemin):  # the head's own map, which no proof reads (they read the base's)
+    def test_the_hand_made_part_lists_every_file_and_line_and_changes_code_only_never_the_proof_tooling(self):
+        problemes, lignes = check_migration.hand_part(self.depot, self.names, self.tete, self.main, self.apres)
+        n = subprocess.run(["git", "-C", str(self.depot), "diff", "--numstat", self.tete, self.main], capture_output=True, text=True, check=True).stdout.split()
+        self.assertEqual((problemes, lignes), ([], [f"hand-made part ({self.tete}..{self.main}): 1 file(s), +{n[0]} -{n[1]} lines in all, for its review:",
+                                                     f"  tools/bee.py: +{n[0]} -{n[1]}"]))
+        tete = TestEnglishNamesStep1b.variante(self, self.hand_made_part(None, ("tools/test_bee.py", "import argparse\n", "import argparse\n\n")))
+        self.assertEqual(check_migration.hand_part(self.depot, self.names, self.tete, tete, rename.tree_files(self.depot, tete))[1][2], "  tools/test_bee.py: +1 -0")
+        for chemin, ligne, message in (("tasks/miniz/miniz-9050.yaml", "id: miniz-9050\n", "which is not code"),  # data
+                                       ("tools/migration/names.yaml", "version: 1\n", "the proofs' own tooling"),  # the head's own map, which no proof reads
+                                       ("tools/migration/check_migration.py", "import sys\n", "the proofs' own tooling")):
+            with self.subTest(chemin):
                 tete = TestEnglishNamesStep1b.variante(self, self.hand_made_part(None, (chemin, ligne, ligne + "# x\n")))
-                self.contains(check_migration.hand_part(self.depot, self.names, self.tete, tete, rename.tree_files(self.depot, tete))[0],
-                              f"the hand-made part changes {chemin}, which is not code")
+                problemes, lignes = check_migration.hand_part(self.depot, self.names, self.tete, tete, rename.tree_files(self.depot, tete))
+                self.assertEqual(problemes, [f"the hand-made part changes {chemin}, {message}" + " (data, or a file the switch does not write)" * (message == "which is not code")])
+                self.assertIn(f"  {chemin}: +1 -0", lignes)
         self.contains(check_migration.hand_part(self.depot, self.names, self.main, self.tete, rename.tree_files(self.depot, self.tete))[0],
                       f"the hand-made part: {self.main} is not an ancestor of {self.tete}")
 
@@ -23125,34 +23230,54 @@ class TestEnglishNamesStep1c(unittest.TestCase):
         lignes = r.stdout.splitlines()
         self.assertEqual(lignes[-1], f"✓ the head {self.main} (generated {self.tete}, then the hand-made part) is proven to be the switch of the base {self.base}.")
         self.assertEqual([x.split(":")[0] for x in lignes[:-1]], ["P2", "P1, P1b (a, b), P3", "hand-made part (" + self.tete + ".." + self.main + ")",
-                                                                  "P1b (c)", "P4", "P6", "section 13"])
-        self.assertTrue(all("✓" in x for x in lignes if not x.startswith("hand-made")), lignes)
+                                                                  "  tools/bee.py", "P1b (c)", "P4", "P6", "section 13", "note"])
+        self.assertTrue(all("✓" in x for x in lignes if not x.startswith(("hand-made", "  ", "note"))), lignes)
+        self.assertEqual(lignes[-2], check_migration.NOTE)
+        # the workflow's two jobs: the head's observations to a file, then the verdict from it, which checks it is theirs and well shaped
+        seen_file = pathlib.Path(self.temp.name, "observed-0143.json")
+        r = lancer_bee("--base", self.base, "--head", self.main, "--observe", str(seen_file))
+        self.assertEqual((r.returncode, r.stdout), (0, f"The head {self.main}'s observations are in {seen_file}: they prove nothing by themselves "
+                                                       "(check-migration --observed compares them).\n"))
+        r = lancer_bee("--base", self.base, "--head", self.main, "--generated", self.tete, "--observed", str(seen_file))
+        self.assertEqual((r.returncode, r.stdout.splitlines()[-1]), (0, lignes[-1]), r.stdout)
+        x = json.loads(seen_file.read_text(encoding="utf-8"))
+        for nom, changer, attendu in (("another head", lambda x: x.__setitem__("head", self.tete), "not the observations of this base and head"),
+                                      ("a key changed", lambda x: x["observations"]["constants"].pop("AUTHORITY_FILES"), "P4: R-i: gouvernance/conseil.yaml left"),
+                                      ("not JSON", None, "no observations (JSONDecodeError")):
+            with self.subTest(nom):
+                faux, y = pathlib.Path(self.temp.name, "faux-0143.json"), json.loads(json.dumps(x))
+                if changer:
+                    changer(y)
+                faux.write_text(json.dumps(y) if changer else "{", encoding="utf-8")
+                problemes = check_migration.check(self.depot, self.base, self.main, self.tete, faux)[0]
+                self.contains(problemes, attendu)
         # it runs the base's copy of the proofs, whatever the tool's own or the head's: a base whose proofs only print
         base_double = TestEnglishNamesStep1b.variante(self, self.remplacer("outils/migration/check_migration.py", '"""English names, step 1c',
                                                                     'import sys; print("proofs of the base", sys.argv[1:]); sys.exit(3)\n"""English names, step 1c'), de=None)
         r = lancer_bee("--base", base_double, "--head", self.main)
         self.assertEqual((r.returncode, r.stdout), (3, f"proofs of the base ['--base', '{base_double}', '--head', '{self.main}', '--repo', '{self.depot}']\n"))
         # run otherwise than as the base's own, the proofs refuse at once
-        self.assertTrue(check_migration.check(self.depot, base_double, self.main)[0][0].endswith(
-            "is not the base's own: run the base's checker, python3 -I, from its checkout (bee check-migration does)"))
+        self.assertTrue(check_migration.check(self.depot, base_double, self.main)[0][0].endswith(check_migration.NOT_OWN))
         self.assertEqual(lancer("--registre", str(self.depot), "check-migration", "--base", "0" * 40, "--head", self.main),
                          (1, "bee : check-migration : --base, --head (et --generated) doivent nommer des commits du registre\n"))
 
     # --- the workflow, the lints ---
 
-    def test_the_workflow_checks_main_s_tool_on_the_exact_head_read_only(self):
+    def test_the_workflow_runs_the_head_in_one_job_and_decides_in_another_that_runs_none_of_it(self):
         texte = (RACINE / ".github/workflows/check-migration.yml").read_text(encoding="utf-8")
         flux = yaml.safe_load(texte)
-        self.assertEqual((list(flux[True]), list(flux[True]["workflow_dispatch"]["inputs"]), flux["permissions"]),
-                         (["workflow_dispatch"], ["pr", "head_sha", "generated_sha"], {"contents": "read"}))
-        (job,) = flux["jobs"].values()
-        self.assertNotIn("permissions", job)
-        self.assertEqual(job["steps"][0], {"uses": "actions/checkout@v4", "with": {"ref": "main", "fetch-depth": 0, "persist-credentials": False}})
-        etapes = json.dumps(job["steps"]).lower()
-        for interdit in ("secrets.", "github.token", "gh ", "upload-artifact", "comment", "/pulls", "/issues"):  # nothing written, nothing given
-            self.assertNotIn(interdit, etapes)
-        script = job["steps"][-1]["run"]
-        self.assertIn('python3 outils/bee.py check-migration --base "$base" --head "$HEAD_SHA"', script)
+        self.assertEqual((list(flux[True]), list(flux[True]["workflow_dispatch"]["inputs"]), flux["permissions"], list(flux["jobs"])),
+                         (["workflow_dispatch"], ["pr", "head_sha", "generated_sha"], {"contents": "read"}, ["observe", "verdict"]))
+        observe_job, verdict = flux["jobs"]["observe"], flux["jobs"]["verdict"]
+        self.assertEqual((verdict["needs"], verdict["if"], "permissions" in observe_job or "permissions" in verdict, "outputs" in observe_job), ("observe", "${{ !cancelled() }}", False, False))
+        for job in (observe_job, verdict):
+            self.assertEqual(job["steps"][0], {"uses": "actions/checkout@v4", "with": {"ref": "main", "fetch-depth": 0, "persist-credentials": False}})
+            for interdit in ("secrets.", "github.token", "gh ", "comment", "/pulls", "/issues"):  # nothing written, nothing given
+                self.assertNotIn(interdit, json.dumps(job["steps"]).lower())
+        self.assertNotIn("SUMMARY", json.dumps(observe_job))  # the job that runs the head's code writes no summary
+        self.assertEqual([e["with"]["name"] for e in observe_job["steps"] + verdict["steps"] if "artifact@" in e.get("uses", "")], ["observations"] * 2)
+        self.assertTrue(all(re.search(r"artifact@[0-9a-f]{40}  # v", texte[m.start():m.end() + 60]) for m in re.finditer(r"artifact@", texte)))
+        self.assertIn("P1b (c), P4 and P6 compare main's tool with what the observe job reports of the head's tool", " ".join(texte.split()).replace("# ", ""))
         faux = self.temp.name + "/faux-0143"
         os.makedirs(faux, exist_ok=True)
         pathlib.Path(faux, "git").write_text('#!/bin/sh\ncase "$1 $2" in\n  "rev-parse HEAD") echo "$MAIN";;\n  "rev-parse refs/remotes/pr/head") echo "$PR_HEAD";;\n'
@@ -23161,26 +23286,33 @@ class TestEnglishNamesStep1c(unittest.TestCase):
         [os.chmod(pathlib.Path(faux, n), 0o755) for n in ("git", "python3")]
         m, h, g = "a" * 40, "b" * 40, "c" * 40
 
-        def run_workflow(pr=7, tete=h, pr_head=h, ancestor=0, code=0, generated=""):
+        def run_workflow(job, pr=7, tete=h, pr_head=h, ancestor=0, code=0, generated=""):
             resume = pathlib.Path(faux, "resume.md")
             resume.write_text("", encoding="utf-8")
-            r = subprocess.run(["bash", "-e", "-c", script], capture_output=True, text=True, env={
+            r = subprocess.run(["bash", "-e", "-c", job["steps"][-1 if job is verdict else -2]["run"]], capture_output=True, text=True, env={
                 "PATH": f"{faux}{os.pathsep}{os.environ['PATH']}", "RUNNER_TEMP": faux, "GITHUB_STEP_SUMMARY": str(resume), "PR": str(pr),
                 "HEAD_SHA": tete, "GENERATED_SHA": generated, "MAIN": m, "PR_HEAD": pr_head, "ANCESTOR": str(ancestor), "CODE": str(code)})
             return r.returncode, r.stdout, resume.read_text(encoding="utf-8")
-        code, sortie, resume = run_workflow(generated=g)
+        code, sortie, resume = run_workflow(observe_job, generated=g)
+        self.assertEqual((code, resume), (0, ""), sortie)
+        self.assertEqual(sortie, f"proofs: outils/bee.py check-migration --base {m} --head {h} --observe {faux}/observed.json\n")
+        code, sortie, resume = run_workflow(verdict, generated=g)
         self.assertEqual(code, 0, sortie)
-        self.assertIn(f"proofs: outils/bee.py check-migration --base {m} --head {h} --generated {g}", sortie)
+        self.assertIn(f"proofs: outils/bee.py check-migration --base {m} --head {h} --generated {g} --observed {faux}/observations/observed.json", sortie)
         self.assertIn(f"## Switch check of PR #7: exit code 0\n\nBase (main): `{m}`; head checked: `{h}`; generated: `{g}`", resume)
-        self.assertEqual(run_workflow(code=1)[0], 1)  # the proofs' refusal is the run's
-        for nom, args, message in (("another head", {"pr_head": g}, f"::error::PR 7's head is {g}, not {h}: nothing checked"),
-                                   ("not on main's tip", {"ancestor": 1}, f"::error::{h} is not on main's tip"),
-                                   ("a short SHA", {"tete": "b" * 7}, "::error::a PR number and a full SHA"), ("a PR that is not a number", {"pr": "7; x"}, "::error::")):
-            with self.subTest(nom):
-                code, sortie, resume = run_workflow(**args)
-                self.assertEqual((code, resume), (1, ""), sortie)
-                self.assertIn(message, sortie)
-                self.assertNotIn("proofs:", sortie)
+        self.assertEqual(run_workflow(verdict, code=1)[0], 1)  # the proofs' refusal is the run's
+        for job in (observe_job, verdict):
+            for nom, args, message in (("another head", {"pr_head": g}, f"::error::PR 7's head is {g}, not {h}: nothing checked"),
+                                       ("a short SHA", {"tete": "b" * 7}, "::error::a PR number and full SHAs"),
+                                       ("a short generated SHA", {"generated": "c" * 7}, "::error::a PR number and full SHAs"),
+                                       ("a generated SHA with more", {"generated": g + " --repo /tmp"}, "::error::a PR number and full SHAs"),
+                                       ("a PR that is not a number", {"pr": "7; x"}, "::error::")) + ((("not on main's tip", {"ancestor": 1}, f"::error::{h} is not on main's tip"),)
+                                                                                                    if job is verdict else ()):
+                with self.subTest(nom, job="verdict" if job is verdict else "observe"):
+                    code, sortie, resume = run_workflow(job, **args)
+                    self.assertEqual((code, resume), (1, ""), sortie)
+                    self.assertIn(message, sortie)
+                    self.assertNotIn("proofs:", sortie)
 
     def test_a_here_document_read_as_prose_that_names_a_mapped_variable_is_refused(self):
         """Review of ruche-0152: a here-document without a shebang is prose (its words stay) while its $variables are renamed."""
