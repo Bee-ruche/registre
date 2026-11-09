@@ -3656,6 +3656,7 @@ tokens:
   _ouverts: _open
   _max_par_24h: _max_per_24h
   _max_par_pr: _max_per_pr
+  _max_par_: _max_per_
   preparer: prepare
   fusionner: merge
   evenements: events
@@ -3973,11 +3974,32 @@ keep:
     a token the script''s variable for the registry''s clone shares'
 kept_in_scopes:
 - files: outils/test_bee.py
+  scopes: [test_refus_caracteres_invisibles]
+  tokens: [texte]
+  literals: [texte]
+  why: 'a definition''s name in schemas/debat.schema.json''s $defs, which the schema''s translation keeps (it renames the data''s keys)'
+- files: outils/test_bee.py
+  scopes: [test_I2_la_donnee_part_avant_le_role_et_le_projet]
+  tokens: [chemins_juges]
+  literals: [chemins_juges]
+  why: 'the optimize node''s prose (« `chemins_juges` »), kept as written by the switch (change 10 renames commands only)'
+- files: outils/test_bee.py
+  scopes: [test_A1_au_refus_bee_inscrit_l_identifiant_et_les_identites_declarees]
+  tokens: [manquent]
+  literals: [manquent]
+  why: 'the end of bee''s message, cut in two literals (« … déclarées) » « manquent »): a French word, not a name'
+- files: outils/bee.py
+  scopes: [_reserves, reserved_pseudo]
+  tokens: [conseil]
+  why: 'the login conseil, which bee.yaml''s reserved logins must name and no member may take: logins are unchanged by the switch
+    (plan, section 13), though the council''s key and created_by value become council'
+- files: outils/test_bee.py
   scopes: [TestReservedPseudonyms, set_list, member_pr, test_the_real_list_names_the_council_robots_roles_and_hive_accounts,
            test_bee_inscrire_refuses_a_reserved_name_whatever_its_case, test_the_gate_refuses_a_reserved_name_and_accepts_an_honest_one,
            test_the_gate_reads_mains_list_never_the_prs, test_the_list_is_read_from_bee_yaml, test_bee_valider_reports_an_existing_member_with_a_reserved_name,
-           test_the_council_and_the_robots_stay_reserved_whatever_the_list_says, test_a_missing_or_empty_list_refuses_every_new_member]
-  tokens: [conseil, mesurer, relire, optimiser, proposer, gardien]
+           test_the_council_and_the_robots_stay_reserved_whatever_the_list_says, test_a_missing_or_empty_list_refuses_every_new_member,
+           test_bee_renommer_refuses_a_reserved_name]
+  tokens: [conseil, Conseil, mesurer, relire, optimiser, proposer, gardien]
   why: 'logins: bee.yaml''s reserved logins, unchanged by the switch (plan, section 13), which these tests name as written'
 - files: outils/test_bee.py
   scopes: [test_ill_formed_declarations]
@@ -4043,6 +4065,58 @@ kept_in_scopes:
   tokens: [personne]
   literals: ["(personne : bee acts-for, sur main).\n", " sous son nom (personne : bee acts-for).\n"]
   why: 'a workflow comment (« (personne : bee acts-for, sur main). »), kept as written by the switch, which the test copies as written'
+renamed_in_scopes:
+- files: outils/test_bee.py
+  scopes: [test_un_compte_renomme_garde_son_fil_ses_refus_son_niveau_et_une_voix, test_des_comptes_lies_partagent_leurs_refus]
+  tokens: {refus: refusal}
+  literals: ["refus de bruno dans ", "refus de bidji29 dans "]
+  why: 'a review''s opinion, which bee prints from the data before « de <login> dans »'
+- files: outils/test_bee.py
+  scopes: [test_essaim_et_site_montrent_les_invitations_et_le_frein, test_ruche_0088_frame_header_and_essaim_quote_an_invitation_neutralised]
+  tokens: {garant: guarantor}
+  literals: ["I-0001 (garant, github:octocat, proposée par alice, débat D-0002) : proposee, attend l'accord du conseil", "  - I-0001 (garant, github:"]
+  why: 'an invitation''s request, which bee prints from the data after its id'
+- files: outils/test_bee.py
+  scopes: [frein_serre]
+  tokens: {participer: participate}
+  literals: ["il arrête les invitations à participer"]
+  why: 'an invitation''s request, which bee prints from the data (« les invitations à {demande} »)'
+- files: outils/test_bee.py
+  scopes: [test_a_revised_text_needs_new_agreements, test_un_refus_qui_garde_le_dossier_est_refuse]
+  tokens: {pourquoi: why, debat: debate}
+  literals: ["pourquoi ne change jamais sous un accord", "debat ne change jamais"]
+  why: 'an invitation''s key, which bee prints before « ne change jamais »'
+- files: outils/test_bee.py
+  scopes: [test_a_second_pass_records_nothing_and_a_hand_made_record_is_left_alone]
+  tokens: {integree: integrated}
+  literals: ["status integree: only a contribution in review is recorded"]
+  why: 'a contribution''s status, which bee prints from the data after « status »'
+- files: outils/test_bee.py
+  scopes: [test_bee_debats_montre_le_debat_qui_attend_sa_cloture]
+  tokens: {ouvert: open}
+  literals: ["ouvert, à clore sans suite (I-0001 : gardien ou conseil)"]
+  why: 'a debate''s status, which bee prints from the data in its table'
+- files: outils/test_bee.py
+  scopes: [test_un_engage_avant_la_soumission_retarde_jusqu_a_son_expiration]
+  tokens: {titulaire: holder}
+  literals: ["alice (titulaire)"]
+  why: 'an engagement''s role, which bee prints from the data after the login'
+- files: outils/test_bee.py
+  scopes: [test_essaim_voir_et_cap_montrent_le_travail_en_parallele]
+  tokens: {en parallèle: parallel}
+  literals: ["# en parallèle : bruno"]
+  why: 'an engagement''s role, which bee prints from the data as a label'
+- files: outils/test_bee.py
+  scopes: [test_textes_de_la_revue_refuses_dans_le_titre_et_le_corps]
+  tokens: {corps: body}
+  literals: ["corps de 8001 caractères, au plus 8000"]
+  why: 'the field''s name the test passes to bee (« corps », renamed body), which bee prints before « de N caractères »'
+- files: outils/test_bee.py
+  scopes: [test_retrait_demande_retire_partout_sans_liste_et_un_refus_y_inscrit,
+           test_S4_S8_hebergement_partage_a_blanc_et_identifiants_hors_ligne_de_commande]
+  tokens: {dossier: folder}
+  literals: ["invitations/I-0001.yaml : dossier mot(s) 1"]
+  why: 'an invitation''s key (folder; the identifier dossier is dir), which bee prints before « mot(s) »'
 strings:
 - files: outils/inventaire_marqueurs.py
   tokens: [ATTENTE_VERDICT, ETATS, FICHIERS_LIBRE_SERVICE, ISSUES_DEBAT, MNEMONIQUES_SUSPECTS, MOIS, MOTS_SOURCE, PHRASE_DEMANDE,

@@ -23807,13 +23807,23 @@ class TestEnglishNamesStep1d(unittest.TestCase):
                  "# bee contexte --role relire : racine": "# bee context --role review : root", "lus : racine, roles/": "lus : root, roles/",
                  "parent déclaré « racine »": "parent déclaré « root »", "Poste le plus en retard : gouvernance": "Poste le plus en retard : governance",
                  "RACINE\\s*/": "ROOT\\s*/",  # a constant's name in a pattern over the code's source
+                 r"reglage\((?:[^()]*?, *)?": r"setting\((?:[^()]*?, *)?",  # a function's name before \( in such a pattern
+                 "journal() { sed; }": "log_text() { sed; }",  # a shell function's definition
+                 "passage ouverte → en_relecture réservé": "passage open → in_review réservé",  # a transition's values
+                 "le (2026-10-01T10:00:00Z) doit": "at (2026-10-01T10:00:00Z) doit",  # a key before its value in ( )
+                 "(avez-vous lancé bee prendre, soumettre, relire, voter… ?)": "(avez-vous lancé bee take, submit, review, vote… ?)",
                  # and prose stays: a French word that is no name, a name elsewhere, a login, a word bee keeps in its messages
                  "la tâche : rien de public": "la tâche : rien de public", "Remarque : x": "Remarque : x", "le statut de la tâche": "le statut de la tâche",
                  "ouverte par mallory, pas par alice": "ouverte par mallory, pas par alice", "un texte > deux": "un texte > deux",
                  "x : aucune": "x : aucune", "« Gaspard » : sa fiche": "« Gaspard » : sa fiche", "le dossier « x »": "le dossier « x »",
                  "ce qui est déjà consigné": "ce qui est déjà consigné", "la racine de l'arbre": "la racine de l'arbre", "Niveau de vie": "Niveau de vie",
                  "3 jours ajoutés": "3 jours ajoutés", "for x in un deux; do": "for x in un deux; do",
-                 "(plus de 64 Kio) : aucun écart calculé": "(plus de 64 Kio) : aucun écart calculé", "STATUT  RAPPORTEUR": "STATUT  RAPPORTEUR"}
+                 "(plus de 64 Kio) : aucun écart calculé": "(plus de 64 Kio) : aucun écart calculé", "STATUT  RAPPORTEUR": "STATUT  RAPPORTEUR",
+                 r"un statut\(s\) puis pullRequest\(": r"un statut\(s\) puis pullRequest\(", "bee prendre, la suite": "bee take, la suite",
+                 "la même personne : à son refus": "la même personne : à son refus", "dans l'ordre : d'abord": "dans l'ordre : d'abord",
+                 "un texte → deux": "un texte → deux", "le journal du runner": "le journal du runner",
+                 "python3 bee/juge/juge.py --source-a <base> --source-b <ta copie>":  # a fork's path, half a placeholder: as written
+                 "python3 bee/juge/juge.py --source-a <base> --source-b <ta copie>"}
         for before, after in cases.items():
             with self.subTest(before):
                 self.assertEqual(self.carte.text(before), after)
@@ -23825,6 +23835,36 @@ class TestEnglishNamesStep1d(unittest.TestCase):
         self.assertIn('return "« mesurer » is a reserved pseudonym"', new)
         self.assertIn('return ("measure", "« measure »")', new)
         self.assertEqual((self.carte.same_python(source, new, collections.Counter(), "outils/test_bee.py"), self.carte.residue("outils/test_bee.py", new)), ([], []))
+        # the login conseil stays where bee checks the reserved logins; the council's created_by value elsewhere is renamed
+        source = ('def _reserves(v):\n    return "conseil" in v\n\n\ndef reserved_pseudo(p):\n    return p in ["conseil"]\n\n\n'
+                  'def r8(t):\n    return t.get("cree_par") == "conseil"\n')
+        new = self.carte.rename_python(source, "outils/bee.py")[0]
+        self.assertEqual((new.count('"conseil"'), new.count('"council"')), (2, 1), new)
+        # an entry of kept_in_scopes that lists literals keeps its token in those strings only
+        source = ('class TestBulkPrReads:\n    A = "personne=$(x) || personne=\\"\\"\\n"\n'
+                  '    B = [("(personne : bee acts-for, sur main).\\n", "x"), (" sha personne; do\\n", " sha; do\\n")]\n')
+        new = self.carte.rename_python(source, "outils/test_bee.py")[0]
+        self.assertIn('"(personne : bee acts-for, sur main).\\n"', new)
+        self.assertIn("person=$(x) || person=", new)
+        self.assertIn('" sha person; do\\n"', new)
+        self.assertEqual((self.carte.same_python(source, new, collections.Counter(), "outils/test_bee.py"), self.carte.residue("outils/test_bee.py", new)), ([], []))
+        # an f-string's word glued to its value stays (a login), a command glued to its options does not; a command cut from its
+        # « bee » by a literal's end is renamed in the next literal
+        source = ('def f(n, x):\n    return (f"github:personne{n}", f"# bee contexte{x} :", "Relancez bee "\n'
+                  '            "publier une fois", "lancé bee "\n            "prendre, soumettre, relire ?")\n')
+        new = self.carte.rename_python(source, "outils/bee.py")[0]
+        for written in ('f"github:personne{n}"', 'f"# bee context{x} :"', '"publish une fois"', '"take, submit, review ?"'):
+            self.assertIn(written, new)
+        self.assertEqual(self.carte.same_python(source, new, collections.Counter(), "outils/bee.py"), [])
+        # renamed_in_scopes: a word a test quotes from bee's output, renamed in the literals listed only; an entry off the map is refused
+        source = ('class T:\n    def test_un_compte_renomme_garde_son_fil_ses_refus_son_niveau_et_une_voix(self, c1):\n'
+                  '        return (f"refus de bruno dans {c1} (même auteur)", "un refus de bruno dans x", "refus")\n')
+        new = self.carte.rename_python(source, "outils/test_bee.py")[0]
+        self.assertIn('(f"refusal de bruno dans {c1} (même auteur)", "un refus de bruno dans x", "refusal")', new)
+        self.assertEqual((self.carte.same_python(source, new, collections.Counter(), "outils/test_bee.py"), self.carte.residue("outils/test_bee.py", new)), ([], []))
+        ids = self.fichiers[rename_code.IDS[0]].decode("utf-8").replace("  tokens: {refus: refusal}\n", "  tokens: {refus: denial}\n", 1)
+        with self.assertRaisesRegex(rename_code.rename.Problem, "renamed_in_scopes: not the map's: refus -> denial"):
+            rename_code.CodeMap(self.names, ids)
         # a keyword argument that is data (taken by **kwargs: a fake API's field) is renamed as a key, never as the identifier
         source = ('class T:\n    @classmethod\n    def execution_api(cls, numero, **champs):\n        return {"status": "completed", **champs}\n\n'
                   '    def t(self):\n        return self.execution_api(1, status="in_progress", auteur="x"), dict(ECHEC="1")\n')
