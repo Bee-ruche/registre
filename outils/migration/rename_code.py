@@ -23,7 +23,7 @@ IDS = ("outils/migration/identifiers.yaml", "tools/migration/identifiers.yaml")
 NAME_SHAPE = r"[\w./*{}<>~#@\[\]-]+"  # a whole literal shaped as a name (a path, a key path, a glob, an address)
 RUN = re.compile(r"((?:[\w\[\]<>@#/-]|\.(?=[\w\[\]<>@#/-]))+)")  # a run of name characters (a sentence's final period aside)
 WORD = re.compile(r"((?<!\\)[\w.-]+)")  # the tokens P1 compares inside a text (never the letter of an escape: \\n)
-LINE = re.compile(r"([ \t]*(?:\| )?[ \t]*(?:- )*([\"']?))([A-Za-z_][\w-]*)(\2:)((?=[ \t]).*|)")  # a YAML key at a line start (quoted, in a data frame's « | »)
+LINE = re.compile(r"([ \t]*(?:\| )?[ \t]*(?:- )*(\\?[\"']|))([A-Za-z_][\w-]*)(\2:)((?=[ \t]).*|)")  # a YAML key at a line start (quoted, in a data frame's « | »)
 VALUE = re.compile(r"( +)([\"']?)([\w.-]+(?:/[\w.-]+)*)(\2)([ \t]*(?:#.*)?)")  # its one-token value
 TAG = re.compile(r"(</?(?:a|b|body|br|code|dd|details|div|dl|dt|em|footer|h[1-6]|head|header|html|input|label|li|main|meta|nav|ol|option|p|"
                  r"pre|section|select|small|span|strong|summary|table|tbody|td|th|thead|title|tr|ul)\b[^<>]*>)")  # HTML: its text is prose
@@ -196,6 +196,8 @@ class CodeMap:
         """The English of a whole literal shaped as a name: a token, a node id, a path, or names joined by / or a dot."""
         if s in self.tokens or s in self.hand or not re.fullmatch(NAME_SHAPE, s):
             return self.tokens.get(s, s)
+        if (n := re.fullmatch(r"([A-Za-z_]\w*_)(\d+)", s)) and self.tokens.get(n[1], n[1]) != n[1]:  # cle_refusee_0: f"{prefix}{n}" (ruche-0153)
+            return self.tokens[n[1]] + n[2]
         if self.names.kept_path(s):  # ruche-0153: a path the switch leaves as it is (the common judge), every segment as written
             return s
         seg = self.names.m["tree"]["segments"]
@@ -235,7 +237,8 @@ class CodeMap:
     def printed(self, t):
         """ruche-0153: the plain words of a text in the places where bee's messages print names, renamed as the tool's output is:
         a key before French typography's « : » (« motif : ») or ending a label (« f.yaml : motif »), or before « de N caractères »;
-        a value after « : » (« statut : refusee »), unless bee.py keeps it as a word of its messages; a key or a value between « and »
+        a value after « : » then the end, a mark or an id (« statut : refusee) »), unless bee.py keeps it as a word of its messages; a
+        key or a value between « and »
         (« proposee »), a node id after
         « nœud » or around « > » (« racine > roles/relire »). Any other plain word stays (prose, logins)."""
         here = {w for w, e in self.tokens.maps[0].items() if w == e}  # kept in this scope
@@ -244,8 +247,8 @@ class CodeMap:
         t = re.sub(r"(?<=« )[a-z_][\w-]*(?= »)", lambda x: self.named.get(x[0], x[0]) if x[0] in (self.key_names | self.value_names) - here else x[0], t)
         t = re.sub(r"(?<![\w/.<>@#\[\]$«-])[a-z_][\w-]*(?= de \d+ caractères)", lambda x: self.named.get(x[0], x[0]) if x[0] not in here | self.hand.keys()
                    else x[0], t)  # « motif de 1516 caractères », « corps de … »: a field's or an option's name
-        t = re.sub(r"(?<=[\w)] : )[a-z_][\w-]*(?![\w/.'’«-])", lambda x: self.named.get(x[0], x[0]) if x[0] in self.value_names - here - self.displayed
-                   else x[0], t)  # a value after « : » (« statut : refusee »), not a word bee keeps in its messages
+        t = re.sub(r"(?<=[\w)] : )[a-z_][\w-]*(?=\Z|[),;.\n]| [\w-]*\d)", lambda x: self.named.get(x[0], x[0]) if x[0] in self.value_names - here - self.displayed
+                   else x[0], t)  # a value after « : », then the end, a mark or an id (« statut : refusee) », « close : tache ruche-0008 »)
         t = re.sub(r"""((?:\[|\.get\()\\?(["']))([\w.-]+)(?=\\?\2[\]),])""", lambda x: x[1] + self.whole(x[3]), t)  # x["k"], .get("k"), escaped too
         seg = self.names.m["tree"]["segments"]
         return re.sub(r"(?<=nœud )[a-z_]+\b(?![/.-])|(?<![\w/.$-])[a-z_]+(?= > )|(?<= > )[a-z_]+\b(?![/.-])", lambda x: seg.get(x[0], x[0]), t)

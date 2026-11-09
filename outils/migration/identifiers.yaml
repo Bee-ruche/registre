@@ -752,18 +752,18 @@ identifiers:
   chauffe: warmup
   chemin: path
   chemin_contexte: context_path
-  CHEMIN_DEBAT: DEBATE_PATH
-  CHEMIN_HISTORIQUE: HISTORY_PATH
+  CHEMIN_DEBAT: PATH_DEBATE
+  CHEMIN_HISTORIQUE: PATH_HISTORY
   chemin_html: html_path
-  CHEMIN_INVITATION: INVITATION_PATH
+  CHEMIN_INVITATION: PATH_INVITATION
   chemin_liste: list_path
   chemin_manifeste: manifest_path
-  CHEMIN_NON_CONTACT: NO_CONTACT_PATH
-  CHEMIN_PROPOSITION: PROPOSAL_PATH
+  CHEMIN_NON_CONTACT: PATH_NO_CONTACT
+  CHEMIN_PROPOSITION: PATH_PROPOSAL
   chemin_retenue: kept_path
-  CHEMIN_RETRAITS: REMOVALS_PATH
-  CHEMIN_SIGNALEMENT: REPORT_PATH
-  CHEMIN_TACHE: TASK_PATH
+  CHEMIN_RETRAITS: PATH_REMOVALS
+  CHEMIN_SIGNALEMENT: PATH_REPORT
+  CHEMIN_TACHE: PATH_TASK
   chemin_tache: task_path
   chemins: paths
   chemins_de_texte: text_paths
@@ -1268,9 +1268,9 @@ identifiers:
   HOTES_GITHUB_OPAQUES: OPAQUE_GITHUB_HOSTS
   HOTES_PERSONNELS: PERSONAL_HOSTS
   ici: here
-  ID_DEBAT: DEBATE_ID
-  ID_PROPOSITION: PROPOSAL_ID
-  ID_SIGNALEMENT: REPORT_ID
+  ID_DEBAT: ID_DEBATE
+  ID_PROPOSITION: ID_PROPOSAL
+  ID_SIGNALEMENT: ID_REPORT
   ID_TACHE_MOTIF: TASK_ID_PATTERN
   id_tete: head_id
   identifiant: identifier
@@ -3639,6 +3639,7 @@ attributes:
   suivant: next
   travail: workdir
 tokens:
+  CHEMIN_: PATH_
   Conseil: Council
   DECLARE_MAX: DECLARED_MAX
   fusionnee_le: merged_at
@@ -3692,6 +3693,8 @@ hand:
     roles:
       outils/bee.py:probleme_demande: issue
       outils/bee.py:construire_analyseur: issue
+      outils/test_bee.py:test_S3_la_consignation_canonique_datee_et_referencee: issue
+      outils/test_bee.py:test_un_retrait_sans_demande_consignee_est_refuse: issue
     why: key -> outcome (debates, incidents, reports, outputs); the removal channel value « issue » stays
   signalement:
     english:
@@ -4001,6 +4004,10 @@ kept_in_scopes:
   scopes: [test_soumission_en_parallele]
   tokens: [en parallèle]
   why: 'words of bee''s message (« inscrit en parallèle »), searched as written in its output'
+- files: outils/test_bee.py
+  scopes: [test_importer_les_questions_ouvertes, test_ouvertures_plafonnees_par_jour, test_refus_des_commandes]
+  tokens: [plafond]
+  why: 'a word of bee''s messages (« plafond : … »), searched as written in its output'
 - files: outils/test_bee.py
   scopes: [setUp]
   tokens: [debats]

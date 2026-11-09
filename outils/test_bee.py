@@ -22456,7 +22456,7 @@ class TestEnglishNamesStep1b(unittest.TestCase):
                  'CHEMIN_HISTORIQUE = re.compile(r"^(?:taches|debats)/x")\n\n\ndef f(x, e):\n'
                  '    return ADRESSE_PR.format(adresse=x), e.nom, f"inputs[exclure]={x}", "%(statut)s" % {"statut": x}\n')
         apres = ('import collections, re\nPR_ADDRESS = "Bee ({address})"\nIdentities = collections.namedtuple("Identities", "quoted_side name")\n'
-                 'HISTORY_PATH = re.compile(r"^(?:tasks|debates)/x")\n\n\ndef f(x, e):\n'
+                 'PATH_HISTORY = re.compile(r"^(?:tasks|debates)/x")\n\n\ndef f(x, e):\n'
                  '    return PR_ADDRESS.format(address=x), e.name, f"inputs[exclude]={x}", "%(status)s" % {"status": x}\n')
         self.assertEqual(carte.rename_python(avant, chemin)[0], apres)
         self.assertEqual((carte.same_python(avant, apres, collections.Counter(), chemin), carte.residue(chemin, apres),
@@ -23120,12 +23120,12 @@ class TestEnglishNamesStep1c(unittest.TestCase):
                                                   'PERSON_FIELDS = ("person", "other_identities", "why", "message")')],
                                                 ["P4: CHAMPS_DE_LA_PERSONNE: the map of the old set is"]),
             # the review's notes: R-e's bounds and R-g's scans, as each set and as each path's answer
-            "an OCTETS_MAX entry dropped": ([("tools/bee.py", 'NO_CONTACT_PATH: 1024 * 1024,\n              "reports": 4 * 1024}', "NO_CONTACT_PATH: 1024 * 1024}")],
+            "an OCTETS_MAX entry dropped": ([("tools/bee.py", 'PATH_NO_CONTACT: 1024 * 1024,\n              "reports": 4 * 1024}', "PATH_NO_CONTACT: 1024 * 1024}")],
                                             ["P4: OCTETS_MAX: the map of the old set is", "P4: signalements/S-0001.yaml -> reports/S-0001.yaml: byte bound (R-e): 4096 before"]),
             "a PARCOURS folder dropped": ([("tools/bee.py", '            "votes": (SELF_SERVICE_FILES["votes"][1], "vote", {"reason"}),\n', "")],
                                           ["P4: PARCOURS: the map of the old set is", "P4: votes/P-0001/alice.yaml -> votes/P-0001/alice.yaml: removal scan (R-g): 'votes' before"]),
             "a retired folder still data": ([("tools/bee.py", 'GESTURE_FOLDERS = ("tasks",', 'GESTURE_FOLDERS = ("taches", "tasks",'),
-                                             ("tools/bee.py", 'HISTORY_PATH = re.compile(r"^(?:tasks|', 'HISTORY_PATH = re.compile(r"^(?:taches|tasks|')],
+                                             ("tools/bee.py", 'PATH_HISTORY = re.compile(r"^(?:tasks|', 'PATH_HISTORY = re.compile(r"^(?:taches|tasks|')],
                                             ["P4: R-q: taches/miniz/miniz-9050.yaml, a retired name, is still data for the new tool"]),
             "a council file the strict check no longer reads": ([("tools/bee.py", 'r.glob("projects/*.yaml")', 'r.glob("projets/*.yaml")')],
                                                                 ["P4: R-u: the council files' check reads projects/miniz.yaml only before the move"]),
