@@ -23720,14 +23720,38 @@ class TestEnglishNamesStep1d(unittest.TestCase):
             moves = git(self.depot, "diff", "--name-status", "-M", self.base, first[0])
             self.assertIn("R100\toutils/requirements.txt\ttools/requirements.txt", moves)  # git mv: a file moved as it was keeps its history
             self.assertNotIn("outils/juge/", moves)  # the judge stays where it is
+            self.assertEqual(git(self.depot, "log", "-1", "--format=%an <%ae> %cn <%ce>", first[0]).strip(),  # whoever runs it
+                             "Claude <noreply@anthropic.com> Claude <noreply@anthropic.com>")
             with self.assertRaises(switch.rename.Problem):  # a new worktree only
                 switch.write(self.depot, self.base, pathlib.Path(folder) / "first")
+            with mock.patch.object(switch, "written", side_effect=OSError("disk full")), self.assertRaises(OSError):
+                switch.write(self.depot, self.base, pathlib.Path(folder) / "third")  # a failure removes the worktree it began
+            self.assertFalse((pathlib.Path(folder) / "third").exists())
+            self.assertNotIn("third", git(self.depot, "worktree", "list"))
             for name in ("first", "second"):
                 git(self.depot, "worktree", "remove", "--force", str(pathlib.Path(folder) / name))
         files = dict(self.fichiers)
         files["outils/migration/switch.py"] += b"\n"
         with self.assertRaises(switch.rename.Problem):  # it runs only as the base's own code
             switch.own(files)
+
+    def test_project_data_names_the_same_files(self):
+        """Review of b2245cf: the kept judge's paths in project data (a command, judge_paths) stay what they name."""
+        self.assertEqual(switch.project_paths(self.names, self.fichiers, self.traduits), [])
+        q = self.names.path("projets/ruche.yaml")
+        self.assertIn(b"  tests: python3 tools/test_bee.py && python3 outils/juge/test_juge.py\n", self.traduits[q])
+        seeded = {"the kept judge's test renamed in a command": ("python3 outils/juge/test_juge.py", "python3 tools/judge/test_judge.py",
+                                                                 "commands names tools/judge/test_judge.py where the base named the file outils/juge/test_juge.py"),
+                  "the kept judge left out of judge_paths": ('  - "outils/juge/**"\n', "", "judge_paths no longer matches outils/juge/"),
+                  "a glob that matches more": ('  - "schemas/**"\n', '  - "schemas/**"\n  - "templates/**"\n', "judge_paths matches templates/"),
+                  "a command's word dropped": (" && python3 outils/juge/test_juge.py", "", "commands are not commandes word for word")}
+        for name, (before, after, why) in seeded.items():
+            with self.subTest(name):
+                files = dict(self.traduits)
+                self.assertIn(before.encode(), files[q])
+                files[q] = files[q].replace(before.encode(), after.encode(), 1)
+                self.assertTrue(any(why in p for p in switch.project_paths(self.names, self.fichiers, files)),
+                                switch.project_paths(self.names, self.fichiers, files))
 
     def test_change_10_renames_the_commands_in_the_code_only(self):
         self.assertEqual(self.carte.commands(CHANGE_10_0153), CHANGE_10_0153_EN)

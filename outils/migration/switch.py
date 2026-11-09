@@ -14,7 +14,7 @@ import sys
 if __name__ == "__main__" and not sys.flags.isolated:
     sys.exit("switch.py: run it isolated, python3 -I outils/migration/switch.py …, so that nothing shadows a module")
 
-import argparse, os, pathlib, subprocess  # noqa: E401, E402
+import argparse, os, pathlib, re, subprocess  # noqa: E401, E402
 
 SELF = pathlib.Path(__file__).resolve()
 sys.path += [str(SELF.parent.parent), str(SELF.parent)]  # last: never in front of the standard library or PyYAML
@@ -72,23 +72,67 @@ def own(files):
     return names, cm
 
 
+PROJECTS = re.compile(r"projets/[a-z0-9-]+\.yaml\Z")  # the base's project files
+GLOBS = {"chemins_juges": "judge_paths", "chemins_hors_decompte": "paths_not_counted"}  # each base key, then its English
+COMMANDS = ("commandes", "commands")
+
+
+def project_paths(names, files, new):
+    """What project data names keeps naming the same files (ruche-0153, review of b2245cf): each glob list (judge_paths,
+    paths_not_counted) matches, in the new tree, exactly the images of the base files it matched (bee.correspond, the tool's own
+    matcher), and each word of a command that is a base file is that file's image, which the new tree holds. Independent of the
+    map's data rules: it reads both trees as files. [problem]"""
+    out = []
+    for p in sorted(x for x in files if PROJECTS.match(x)):
+        q = names.path(p)
+        old, now = (bee.charger_texte_yaml(t.decode("utf-8"), x) or {} for t, x in ((files[p], p), (new.get(q, b"{}"), q)))
+        for a, b in GLOBS.items():
+            before = {names.path(f) for f in files if bee.correspond(f, old.get(a) or []) and names.path(f) in new}
+            after = {f for f in new if bee.correspond(f, now.get(b) or [])}
+            out += [f"{q}: {b} matches {f}, which {a} did not match at the base" for f in sorted(after - before)[:3]]
+            out += [f"{q}: {b} no longer matches {f} ({a} matched its base path)" for f in sorted(before - after)[:3]]
+        before, after = list((old.get(COMMANDS[0]) or {}).values()), list((now.get(COMMANDS[1]) or {}).values())  # in order
+        for line, english in zip(before, after) if len(before) == len(after) else [(before, None)]:
+            words, english = str(line).split(), str(english).split() if english is not None else None
+            if english is None or len(words) != len(english):
+                out.append(f"{q}: {COMMANDS[1]} are not {COMMANDS[0]} word for word ({line})")
+                continue
+            out += [f"{q}: {COMMANDS[1]} names {e} where the base named the file {w} (its image: {names.path(w)})"
+                    for w, e in zip(words, english) if w in files and (e != names.path(w) or e not in new)]
+    return out
+
+
 def git(repo, *argv, **k):
     return subprocess.run(["git", "-C", str(repo), *argv], capture_output=True, check=True, **k).stdout.decode("utf-8").strip()
 
 
+IDENTITY = {"GIT_AUTHOR_NAME": "Claude", "GIT_AUTHOR_EMAIL": "noreply@anthropic.com", "GIT_COMMITTER_NAME": "Claude",
+            "GIT_COMMITTER_EMAIL": "noreply@anthropic.com"}  # the generated commit's SHA does not depend on who runs the script
+
+
 def write(repo, base, out):
     """The generated commit of the switch of base, in a new worktree out (detached at base): git mv for every path the map moves,
-    the translated bytes, git rm for removed files. Returns (its SHA, its tree's SHA)."""
+    the translated bytes, git rm for removed files. Returns (its SHA, its tree's SHA). A failure removes the worktree it began."""
     modes, files = {}, None
     files = rename.tree_files(repo, base, modes)
     names, cm = own(files)
     new = translated(files, names, cm)
     if left := old_names(names, cm, new):  # change 10: fail closed
         raise rename.Problem("old command names left (change 10): " + "; ".join(f"{q}:{n}: {x}" for q, f in left.items() for n, x in f[:3]))
+    if wrong := project_paths(names, files, new):  # project data names the files it named (review of b2245cf): fail closed
+        raise rename.Problem("project data no longer names the same files: " + "; ".join(wrong[:5]))
     if pathlib.Path(out).exists():
         raise rename.Problem(f"{out} exists: the switch is written in a new worktree")
     git(repo, "worktree", "add", "-q", "--detach", str(out), base)
-    out = pathlib.Path(out)
+    try:
+        return written(repo, base, pathlib.Path(out), files, modes, names, new)
+    except BaseException:
+        subprocess.run(["git", "-C", str(repo), "worktree", "remove", "--force", str(out)], capture_output=True)
+        raise
+
+
+def written(repo, base, out, files, modes, names, new):
+    """write's second half, in the worktree it added."""
     for p in sorted(files):
         q = names.path(p)
         if q not in new:
@@ -104,8 +148,8 @@ def write(repo, base, out):
     got = rename.tree_files(out, tree, (got_modes := {}))
     if got != new or any(got_modes[q] != modes[p] for p in files if (q := names.path(p)) in new):
         raise rename.Problem("the worktree does not hold exactly the translation (a file left over, or a mode changed)")
-    env = {**os.environ, **{f"GIT_{r}_DATE": git(repo, "show", "-s", "--format=%cI", base) for r in ("AUTHOR", "COMMITTER")}}
-    git(out, "commit", "-q", "--no-verify", "-m", MESSAGE.format(base=git(repo, "rev-parse", base)), env=env)
+    env = {**os.environ, **IDENTITY, **{f"GIT_{r}_DATE": git(repo, "show", "-s", "--format=%cI", base) for r in ("AUTHOR", "COMMITTER")}}
+    git(out, "-c", "commit.gpgsign=false", "commit", "-q", "--no-verify", "-m", MESSAGE.format(base=git(repo, "rev-parse", base)), env=env)
     return git(out, "rev-parse", "HEAD"), tree
 
 

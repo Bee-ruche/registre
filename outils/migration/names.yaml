@@ -499,34 +499,6 @@ cli:
     <tache>: <task>
     <verdict>: <verdict>
   scripts:
-    outils/juge/juge.py:
-      --outillage: --tooling
-      --source-a: --source-a
-      --source-b: --source-b
-      --image-seulement: --image-only
-      --historique-seulement: --history-only
-      --historique: --history
-      --source-juge: --judge-source
-      --base: --base
-      --tete: --head
-      --travail: --workdir
-      --option: --option
-      --repetitions: --repetitions
-      --chauffe: --warmup
-      --sans-instructions: --no-instructions
-      --prefixe-instructions: --instructions-prefix
-      --seuil-instructions: --instructions-threshold
-      --json: --json
-      --graine: --seed
-      --graine-ordre: --order-seed
-      --reseau-construction: --build-network
-      --memoire: --memory
-      --garder: --keep
-    outils/juge/rapport.py:
-      --code: --code
-      --verifier: --verify
-      --base: --base
-      --tete: --head
     outils/test_bee.py:
       --processus: --processes
     outils/repetition/load_test.py:
@@ -1992,7 +1964,7 @@ domains:
     sans_reponse: no_answer
 open_domains:
   command:
-    python3 outils/test_bee.py && python3 outils/juge/test_juge.py: python3 tools/test_bee.py && python3 tools/judge/test_judge.py
+    python3 outils/test_bee.py && python3 outils/juge/test_juge.py: python3 tools/test_bee.py && python3 outils/juge/test_juge.py
     python3 outils/bee.py valider: python3 tools/bee.py validate
   council_role:
     fondateur: founder
