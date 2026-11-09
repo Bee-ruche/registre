@@ -23046,6 +23046,8 @@ class TestEnglishNamesStep1c(unittest.TestCase):
                 n = json.loads(json.dumps(self.n))
                 changer(n)
                 self.contains(self.move.compare(self.o, n)[0], message)
+        with mock.patch.object(check_migration.subprocess, "run", side_effect=subprocess.TimeoutExpired("worker", 2400)):  # a worker that hangs
+            self.assertEqual(check_migration.work({}, self.temp.name), {"errors": {"*": "no observations: the worker ran out of time (40 minutes)"}})
 
     def test_a_hostile_head_can_neither_patch_the_checker_nor_write_the_summary_nor_exit_with_a_success(self):
         """Review of 0a571f1, finding 1 (replayed): its head module patched Move.p4 and Move.p6 of the checker that had imported it."""

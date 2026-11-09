@@ -201,8 +201,11 @@ def work(plan, tmp):
     d = pathlib.Path(tempfile.mkdtemp(dir=tmp))
     (d / "plan.json").write_text(json.dumps(plan), encoding="utf-8")
     env = {k: os.environ[k] for k in KEPT if k in os.environ} | NOW | {"HOME": str(d), "LANG": "C.UTF-8"}
-    r = subprocess.run([sys.executable, "-I", "-E", "-s", str(SELF), "--worker", str(d / "plan.json"), str(d / "observed.json")], env=env, cwd=d,
-                       capture_output=True, text=True, errors="replace", timeout=7200)
+    try:
+        r = subprocess.run([sys.executable, "-I", "-E", "-s", str(SELF), "--worker", str(d / "plan.json"), str(d / "observed.json")], env=env, cwd=d,
+                           capture_output=True, text=True, errors="replace", timeout=2400)
+    except subprocess.TimeoutExpired:
+        return {"errors": {"*": "no observations: the worker ran out of time (40 minutes)"}}
     return read_observations(d / "observed.json", f"the worker exited {r.returncode}" + "".join(f": {x:.200}" for x in r.stderr.strip().splitlines()[-1:]))
 
 
@@ -529,7 +532,7 @@ def context(files):
 
 NOT_OWN = "is not the base's own: run the base's checker, python3 -I, from its checkout (bee check-migration does)"
 NOTE = ("note: P1b (c), P4 and P6 compare the base's tool with what a worker saw of the head's tool; code written to fool this check can fake "
-            "what it shows there. They catch honest mistakes; the hand-made part's review, from the list above, stands against a hostile one.")
+        "what it shows there. They catch honest mistakes; the hand-made part's review, from the list above, stands against a hostile one.")
 
 
 def observe_head(repo, base, head, out):
