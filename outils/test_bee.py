@@ -23129,6 +23129,9 @@ class TestEnglishNamesStep1c(unittest.TestCase):
                                             ["P4: R-q: taches/miniz/miniz-9050.yaml, a retired name, is still data for the new tool"]),
             "a council file the strict check no longer reads": ([("tools/bee.py", 'r.glob("projects/*.yaml")', 'r.glob("projets/*.yaml")')],
                                                                 ["P4: R-u: the council files' check reads projects/miniz.yaml only before the move"]),
+            # ruche-0153: the common judge stays outils/juge/; the new tool must keep it among the tooling paths
+            "the judge left out of the tooling paths": ([("tools/bee.py", '"MAINTAINERS.md",\n                     "outils/juge/*")', '"MAINTAINERS.md")')],
+                                                        ["P4: outils/juge/juge.py -> outils/juge/juge.py: tooling (R-h): True before the move, False after"]),
         }
         for nom, (changes, attendus) in cas.items():
             with self.subTest(nom):
@@ -23635,6 +23638,190 @@ class TestReglagesRuche0144(BaseTest):
                     self.assertIn(attendu, texte)
         chemin.write_text(avant, encoding="utf-8")
         self.valide()
+
+
+# --- ruche-0153 (step 1d): the switch script, change 10, the common judge kept as written, the names bee prints ---
+
+_SPEC_SWITCH = importlib.util.spec_from_file_location("switch", pathlib.Path(__file__).resolve().parent / "migration" / "switch.py")
+switch = importlib.util.module_from_spec(_SPEC_SWITCH)
+_SPEC_SWITCH.loader.exec_module(switch)
+# Change 10: `bee <command>` and its options renamed in the code of a Markdown text (spans, fenced blocks), prose as written.
+CHANGE_10_0153 = """# Un nœud
+
+Lis `bee contexte <tâche> --role relire`, puis `python3 outils/bee.py valider` ; en prose, bee valider reste tel quel.
+Un span coupé : `bee
+lister --statut proposee` ; pas une commande : `bee/juge/projet.py`, `bee inconnue --x` ; un mot de commande en prose : prendre.
+
+```bash
+bee --registre ../registre prendre miniz-0001 --utilisateur alice --en-parallele  # puis bee noter
+bee relire miniz-0001-c1 --utilisateur alice --avis favorable|defavorable --motif "x" | head
+bee debattre argumenter D-0001 --utilisateur alice --position contre [--repond-a A3] \\
+  --texte "pour"
+```
+"""
+CHANGE_10_0153_EN = """# Un nœud
+
+Lis `bee context <tâche> --role relire`, puis `python3 outils/bee.py validate` ; en prose, bee valider reste tel quel.
+Un span coupé : `bee
+list --status proposed` ; pas une commande : `bee/juge/projet.py`, `bee inconnue --x` ; un mot de commande en prose : prendre.
+
+```bash
+bee --registry ../registre take miniz-0001 --user alice --parallel  # puis bee note
+bee review miniz-0001-c1 --user alice --opinion favorable|unfavorable --reason "x" | head
+bee debate argue D-0001 --user alice --position against [--replies-to A3] \\
+  --text "pour"
+```
+"""
+
+
+class TestEnglishNamesStep1d(unittest.TestCase):
+    """ruche-0153 (docs/english-migration.md, sections 12 and 13): the switch script writes the generated commit from a base, the
+    same every time, by git mv; change 10 renames `bee <command>` and its options in the code of docs/**, the tree's nodes,
+    .claude/** and AGENTS.md, which P2 checks, and nothing else there; no old command name is left in workflows, scripts, docs,
+    nodes or the skill; the common judge stays as written and where it is until judge-v4; the text renamer translates the names
+    bee prints in its messages, in those places only. On the frozen fixture's switch, as steps 1b and 1c build it."""
+    setUpClass, tearDownClass = TestEnglishNamesStep1b.__dict__["setUpClass"], TestEnglishNamesStep1b.__dict__["tearDownClass"]
+    variante, remplacer = TestEnglishNamesStep1b.variante, TestEnglishNamesStep1b.remplacer
+
+    def test_the_switch_script_writes_the_generated_commit_the_same_every_time(self):
+        with tempfile.TemporaryDirectory() as folder:
+            first, second = (switch.write(self.depot, self.base, pathlib.Path(folder) / name) for name in ("first", "second"))
+            self.assertEqual(first, second)  # the same base: the same commit (its dates are the base's) and the same tree
+            self.assertEqual(rename.tree_files(self.depot, first[0]), self.traduits)  # the translation the proofs check
+            self.assertEqual(git(self.depot, "rev-parse", f"{first[0]}^").strip(), self.base)
+            self.assertEqual(rename.check(self.depot, self.base, first[0])[0], [])
+            moves = git(self.depot, "diff", "--name-status", "-M", self.base, first[0])
+            self.assertIn("R100\toutils/requirements.txt\ttools/requirements.txt", moves)  # git mv: a file moved as it was keeps its history
+            self.assertNotIn("outils/juge/", moves)  # the judge stays where it is
+            with self.assertRaises(switch.rename.Problem):  # a new worktree only
+                switch.write(self.depot, self.base, pathlib.Path(folder) / "first")
+            for name in ("first", "second"):
+                git(self.depot, "worktree", "remove", "--force", str(pathlib.Path(folder) / name))
+        files = dict(self.fichiers)
+        files["outils/migration/switch.py"] += b"\n"
+        with self.assertRaises(switch.rename.Problem):  # it runs only as the base's own code
+            switch.own(files)
+
+    def test_change_10_renames_the_commands_in_the_code_only(self):
+        self.assertEqual(self.carte.commands(CHANGE_10_0153), CHANGE_10_0153_EN)
+        self.assertEqual(self.carte.commands(CHANGE_10_0153_EN, True), CHANGE_10_0153)  # and back, byte for byte
+
+    def test_p2_accepts_the_renamed_commands_and_refuses_any_other_change(self):
+        problems, counts = rename.check(self.depot, self.base, self.tete)
+        self.assertEqual(problems, [])
+        self.assertGreaterEqual(counts["commands"], 20)  # docs/**, .claude/** and AGENTS.md
+        doc, package, node = "docs/tree.md", ".claude/skills/bee-contributor/SKILL.md", "tree/MEANING.md"
+        self.assertIn("## Ce que `bee validate` vérifie", self.traduits[doc].decode("utf-8"))
+        why = {doc: "docs/tree.md: not byte-identical to docs/arbre.md, its commands renamed (change 10)",
+               package: f"{package}: not byte-identical to .claude/skills/bee-contributeur/SKILL.md, its commands renamed (change 10)",
+               node: "tree/MEANING.md: not the translation of arbre/SENS.md",
+               "AGENTS.md": "AGENTS.md: not byte-identical to AGENTS.en.md, its commands renamed (change 10)"}
+        seeded = {"an old name left in a code span": (doc, "## Ce que `bee validate` vérifie", "## Ce que `bee valider` vérifie"),
+                  "an old name left in a node": (node, "`bee context <tâche>`", "`bee contexte <tâche>`"),
+                  "an old name left in the skill": (package, "`bee validate`", "`bee valider`"),
+                  "an old option left in AGENTS.md": ("AGENTS.md", "bee take <task> --user <login>", "bee take <task> --utilisateur <login>"),
+                  "a command word renamed in prose": (doc, "Comment faire : optimiser, relire,", "Comment faire : optimiser, review,"),
+                  "any other change": (doc, "## Ce que `bee validate` vérifie", "## Ce que `bee validate` checks")}
+        for name, (path, before, after) in seeded.items():
+            with self.subTest(name):
+                self.assertEqual(rename.check(self.depot, self.base, self.variante(self.remplacer(path, before, after)))[0], [why[path]])
+        # an English command in the code of a base's file does not translate back: refused, in a doc and in a node
+        base = self.variante(lambda f: f.__setitem__("docs/cap.md", f["docs/cap.md"] + b"\n`bee balance`\n"), de=None)
+        self.assertIn(f"{self.names.path('docs/cap.md')}: its commands do not translate back to docs/cap.md byte for byte (an English command "
+                      "name in its code?)", rename.check(self.depot, base)[0])
+        base = self.variante(lambda f: f.__setitem__("arbre/SENS.md", f["arbre/SENS.md"] + b"\n`bee context`\n"), de=None)
+        self.assertIn("arbre/SENS.md: inverse(apply(f)) is not byte-identical to f", rename.check(self.depot, base)[0])
+        # the migration's own docs (both forms of each name, on purpose) and the decision log (history) stay as written
+        for path in ("docs/english-names.md", "docs/english-migration.md", "docs/decisions.md"):
+            self.assertEqual(self.traduits[self.names.path(path)], self.fichiers[path])
+
+    def test_no_old_command_name_is_left_in_any_file_the_switch_scans(self):
+        self.assertEqual(switch.old_names(self.names, self.carte, self.traduits), {})
+        scanned = switch.scanned(self.names, self.traduits)
+        for path in (".github/workflows/validation.yml", "tools/rehearsal/publish", "docs/tree.md", "tree/MEANING.md",
+                     ".claude/skills/bee-contributor/SKILL.md", "AGENTS.md"):
+            self.assertIn(path, scanned)
+        self.assertNotIn("docs/english-names.md", scanned)  # both forms on purpose: byte-identical, listed in names.yaml
+        seeded = {"a workflow": (".github/workflows/validation.yml", "tools/bee.py validate", "tools/bee.py valider"),
+                  "a node's code span": ("tree/MEANING.md", "`bee context <tâche>`", "`bee contexte <tâche>`"),
+                  "a code span cut across a line": ("docs/tree.md", "## Ce que `bee validate` vérifie", "## Ce que `bee\nvalider` vérifie"),
+                  "an old subcommand under its new command": ("docs/agora.md", "bee debate argue", "bee debate argumenter"),
+                  "the skill": (".claude/skills/bee-contributor/SKILL.md", "`bee validate`", "`bee valider`")}
+        for name, (path, before, after) in seeded.items():
+            with self.subTest(name):
+                files = dict(self.traduits)
+                self.assertIn(before.encode(), files[path])
+                files[path] = files[path].replace(before.encode(), after.encode(), 1)
+                self.assertEqual(list(switch.old_names(self.names, self.carte, files)), [path])
+        files = dict(self.traduits)  # prose waits for its own tasks: an old command name there is not the scan's
+        files["docs/tree.md"] += "\nEn prose : bee valider.\n".encode()
+        self.assertEqual(switch.old_names(self.names, self.carte, files), {})
+
+    def test_the_common_judge_stays_as_written_and_where_it_is(self):
+        judge = sorted(p for p in self.fichiers if p.startswith("outils/juge/") or re.fullmatch(r"\.github/workflows/juge(-commun)?\.yml", p))
+        self.assertGreaterEqual(len(judge), 15)
+        self.assertEqual({p: self.traduits.get(p) for p in judge}, {p: self.fichiers[p] for p in judge})
+        # its interface with the forks: the plugin's path, constants and methods, juge.yml's inputs and artifact, as a fork reads them
+        text = self.traduits["outils/juge/juge.py"].decode("utf-8")
+        for name in ('os.path.join("bee", "juge", "projet.py")', '"CONSTRUIRE"', '"COTES"', 'getattr(projet, "PERMIS", ())'):
+            self.assertIn(name, text)
+        flow = self.traduits[".github/workflows/juge.yml"].decode("utf-8")
+        for name in ("      tete_sha:\n", "      historique:\n", "      sans_instructions:\n", "name: juge\n"):
+            self.assertIn(name, flow)
+        self.assertIn('"outils/juge/*")', self.traduits["tools/bee.py"].decode("utf-8"))  # the new tool still reserves it
+        self.assertIn("run: python3 outils/juge/test_juge.py", self.traduits[".github/workflows/suite.yml"].decode("utf-8"))
+        for path, before, after in (("outils/juge/juge.py", 'os.path.join("bee", "juge", "projet.py")', 'os.path.join("bee", "judge", "project.py")'),
+                                    (".github/workflows/juge.yml", "      tete_sha:\n", "      head_sha:\n")):
+            with self.subTest(path):
+                self.assertEqual(rename.check(self.depot, self.base, self.variante(self.remplacer(path, before, after)))[0],
+                                 [f"{path}: not byte-identical to {path}"])
+        moved = self.variante(lambda f: f.__setitem__("tools/judge/judge.py", f.pop("outils/juge/juge.py")))
+        self.assertLessEqual({"outils/juge/juge.py: dropped (no outils/juge/juge.py in the head)",
+                              "tools/judge/judge.py: added (the translation of no file of the base)"}, set(rename.check(self.depot, self.base, moved)[0]))
+        # P4's corpus: a neighbour of the kept folder (outils/zz/juge/) moves as the map says, the kept folder stays
+        images = check_migration.Move(self.names, self.carte, "outils", self.fichiers).images
+        self.assertEqual((images["outils/juge/juge.py"], images["outils/zz/juge/juge.py"]), ("outils/juge/juge.py", "tools/zz/juge/juge.py"))
+
+    def test_no_test_method_is_renamed_onto_an_attribute_of_the_test_case(self):
+        code = {c: self.fichiers[c].decode("utf-8") for c in self.names.code}
+        self.assertEqual([p for p in self.carte.lint(code) if "unittest.TestCase" in p], [])
+        sample = {"outils/test_x.py": "import unittest\n\n\nclass T(unittest.TestCase):\n    @classmethod\n    def execution(cls):\n        pass\n"}
+        self.assertIn("outils/test_x.py: line 6: the method execution becomes run, an attribute of unittest.TestCase it would hide (ruche-0153)",
+                      self.carte.lint(sample))
+
+    def test_the_names_bee_prints_are_renamed_where_it_prints_them_only(self):
+        cases = {"tasks/x.yaml : motif : fausse marque": "tasks/x.yaml : reason : fausse marque",  # a key before « : »
+                 "f.yaml : motif": "f.yaml : reason",  # a key ending a label
+                 "motif de 1516 caractères, au plus 1500": "reason de 1516 caractères, au plus 1500",  # a field's name, then its length
+                 "clé « statut » en double": "clé « status » en double",  # a key or a value inside « »
+                 "(statut : refusee)": "(status : refused)",  # a value after « : »
+                 "=== nœud racine ===": "=== nœud root ===", "racine > roles/relire": "root > roles/review",  # node ids in headers
+                 "| motif: votes_croises": "| reason: cross_votes", '"statut": 1': '"status": 1',  # YAML keys: a data frame, quoted
+                 "(?ms)^  - pseudo: bidji29": "(?ms)^  - login: bidji29",  # a pattern's key
+                 'c.get("auteur") or c["statut"]': 'c.get("author") or c["status"]', "read -r sha auteur etat": "read -r sha author state",
+                 # and prose stays: a French word that is no name, a name elsewhere, a login, a word bee keeps in its messages
+                 "la tâche : rien de public": "la tâche : rien de public", "Remarque : x": "Remarque : x", "le statut de la tâche": "le statut de la tâche",
+                 "ouverte par mallory, pas par alice": "ouverte par mallory, pas par alice", "un texte > deux": "un texte > deux",
+                 "x : aucune": "x : aucune", "« Gaspard » : sa fiche": "« Gaspard » : sa fiche"}
+        for before, after in cases.items():
+            with self.subTest(before):
+                self.assertEqual(self.carte.text(before), after)
+        # a login kept as written in the scopes kept_in_scopes names, renamed elsewhere; P1 and P1b agree
+        source = ('class TestReservedPseudonyms:\n    REFUSED = ("conseil", "mesurer")\n\n    def test_the_gate_reads_mains_list_never_the_prs(self):\n'
+                  '        return "« mesurer » is a reserved pseudonym"\n\n\ndef other():\n    return ("mesurer", "« mesurer »")\n')
+        new = self.carte.rename_python(source, "outils/test_bee.py")[0]
+        self.assertIn('REFUSED = ("conseil", "mesurer")', new)
+        self.assertIn('return "« mesurer » is a reserved pseudonym"', new)
+        self.assertIn('return ("measure", "« measure »")', new)
+        self.assertEqual((self.carte.same_python(source, new, collections.Counter(), "outils/test_bee.py"), self.carte.residue("outils/test_bee.py", new)), ([], []))
+        # a keyword argument that is data (taken by **kwargs: a fake API's field) is renamed as a key, never as the identifier
+        source = ('class T:\n    @classmethod\n    def execution_api(cls, numero, **champs):\n        return {"status": "completed", **champs}\n\n'
+                  '    def t(self):\n        return self.execution_api(1, status="in_progress", auteur="x"), dict(ECHEC="1")\n')
+        new = self.carte.rename_python(source, "outils/test_x.py")[0]
+        self.assertIn('self.execution_api(1, status="in_progress", author="x")', new)
+        self.assertEqual(self.carte.same_python(source, new, collections.Counter(), "outils/test_x.py"), [])
+        self.assertIn("line 7: the identifier status became with_status, the map says status",
+                      self.carte.same_python(source, new.replace('status="in_progress"', 'with_status="in_progress"'), collections.Counter(), "outils/test_x.py"))
 
 
 if __name__ == "__main__":

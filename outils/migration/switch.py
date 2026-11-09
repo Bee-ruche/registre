@@ -40,6 +40,23 @@ def translated(files, names, cm):
     return out
 
 
+def scanned(names, new):
+    """The files of the new tree change 10's scan reads: the workflows and shell scripts the switch renames, and every file whose
+    commands it renames in its code (docs/**, the tree's nodes, .claude/**, AGENTS.md); never a file kept as written on purpose."""
+    out = []
+    for q in sorted(new):
+        p, fams = names.path(q, True), names.families_of(names.path(q, True))
+        hand = {} if fams or p in names.code else next((h for r, h in names.hand if r.match(p)), {})
+        if p in names.code and not p.endswith(".py") or hand.get("commands") or fams and names.fam[fams[0]].get("commands"):
+            out.append(q)
+    return out
+
+
+def old_names(names, cm, new):
+    """Change 10's scan (plan, section 12): {path: [(line, text)]}, each old command name left after bee in the code of a scanned file."""
+    return {q: found for q in scanned(names, new) if (found := cm.old_commands(new[q].decode("utf-8"), q))}
+
+
 def own(files):
     """The base's map and its CodeMap, if this script, the renamers and bee.py are the base's own; else rename.Problem."""
     if (at := next((c for c in rename.MAPS if c in files), None)) is None:
@@ -66,6 +83,8 @@ def write(repo, base, out):
     files = rename.tree_files(repo, base, modes)
     names, cm = own(files)
     new = translated(files, names, cm)
+    if left := old_names(names, cm, new):  # change 10: fail closed
+        raise rename.Problem("old command names left (change 10): " + "; ".join(f"{q}:{n}: {x}" for q, f in left.items() for n, x in f[:3]))
     if pathlib.Path(out).exists():
         raise rename.Problem(f"{out} exists: the switch is written in a new worktree")
     git(repo, "worktree", "add", "-q", "--detach", str(out), base)
@@ -101,7 +120,8 @@ def main(argv=None):
     except (rename.Problem, bee.ErreurBee, subprocess.CalledProcessError, OSError, UnicodeDecodeError, KeyError, TypeError) as e:
         print(f"✗ {type(e).__name__}: {e}" + (f": {e.stderr.decode('utf-8', 'replace').strip()}" if isinstance(e, subprocess.CalledProcessError) and e.stderr else ""))
         return 1
-    print(f"✓ the generated commit {sha} (tree {tree}) is the switch of the base {git(a.repo, 'rev-parse', a.base)}, in {a.out}.")
+    print(f"✓ the generated commit {sha} (tree {tree}) is the switch of the base {git(a.repo, 'rev-parse', a.base)}, in {a.out}; "
+          "no old command name is left in its workflows, scripts, docs, nodes or skill (change 10).")
     return 0
 
 

@@ -308,6 +308,7 @@ class CodeMap:
             n = 0
             while n < len(words) and words[n][2].startswith("--"):  # the global options: --registre takes a value
                 n += 1 + (words[n][2] in ("--registre", "--registry"))
+            words[n:n + 2] = [(a, a + len(c), c) for a, _, w in words[n:n + 2] for c in [name_of(w)]]  # « relire, », « prendre──▶ »
             if n >= len(words) or words[n][2] not in commands and " ".join(x[2] for x in words[n:n + 2]) not in commands:
                 continue
             command = " ".join(x[2] for x in words[n:n + 2]) if " ".join(x[2] for x in words[n:n + 2]) in commands else words[n][2]
@@ -693,10 +694,16 @@ def identifier_strings(tree, deep=True):
         yield from [n.slice] if isinstance(n, ast.Subscript) and of(n.value) else [n.left] if isinstance(n, ast.Compare) and of(n.comparators[0]) else []
 
 
+def name_of(word):
+    """A command line's word as a command's name: its leading name when the rest holds no letter (« relire, », « prendre──▶ »)."""
+    m = re.match(r"[a-z][\w-]*", word)
+    return m[0] if m and not re.search(r"\w", word[m.end():]) else word
+
+
 def code_regions(text):
-    """(start, end, span) of a Markdown text's code: each line inside a fenced block (not its fences), each code span's content
-    (spans stay inside one paragraph; span: True); the rest is prose."""
-    out, pos, opening, paragraph = [], 0, None, []
+    """(start, end, span) of a Markdown text's code: each fenced block's lines, together (not its fences: a command continued by « \\ »
+    on the next line), each code span's content (spans stay inside one paragraph; span: True); the rest is prose."""
+    out, pos, opening, paragraph, inside = [], 0, None, [], False
 
     def flush():
         if paragraph:
@@ -707,11 +714,14 @@ def code_regions(text):
         if opening is not None:
             if m and m[1][0] == opening[0] and len(m[1]) >= len(opening) and not line[m.end():].strip():
                 opening = None
+            elif out and not out[-1][2] and out[-1][1] == pos - 1 and inside:  # the block's next line
+                out[-1] = (out[-1][0], end, False)
             else:
                 out.append((pos, end, False))
+                inside = True
         elif m:
             flush()
-            opening = m[1]
+            opening, inside = m[1], False
         elif not line.strip():
             flush()
         else:
