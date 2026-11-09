@@ -217,7 +217,7 @@ class TestJeuFige(unittest.TestCase):
 
     def test_rien_ne_l_importe_ni_ne_l_execute(self):
         codes = [RACINE / "outils" / n for n in ("bee.py", "site_bee.py", "inventaire_marqueurs.py")]
-        codes += [p for p in (RACINE / "outils" / "juge").rglob("*.py") if not p.name.startswith("test_")]
+        codes += [p for p in (RACINE / "outils/juge").rglob("*.py") if not p.name.startswith("test_")]  # one literal: the judge stays (ruche-0153)
         codes += list((RACINE / "outils" / "repetition").rglob("*")) + list((RACINE / ".github").rglob("*.yml"))
         for chemin in sorted(c for c in codes if c.is_file() and "__pycache__" not in c.parts):
             with self.subTest(fichier=chemin.relative_to(RACINE).as_posix()):
@@ -20907,6 +20907,7 @@ class TestSignalementsRuche0118(OutilsSignalements):
 class TestSignalementsRuche0137(OutilsSignalements):
     """ruche-0137: past the cap on reports naming one person, a report waits for the council instead of being refused ; bee valider
     judges signalements/ on main as strictly as the gate ; no one decides a report they filed, under any of their accounts."""
+    NATURE = "signalement"  # the gate's nature (report), where a test also runs the command signalement (decide-report): ruche-0153
 
     def au_conseil(self, qui, a, b):
         """bee signaler past the cap: accepted by the gate, never merged automatically ; the council merges it."""
@@ -20980,7 +20981,7 @@ class TestSignalementsRuche0137(OutilsSignalements):
         self.branche("signalement")  # S-0003, from the agent account, in the person's name
         self.ok("signaler", "--utilisateur", "bidji29", "--comptes", "gaspard", "alice", "--motif", "votes_croises")
         self.commit()
-        self.libre_service(AGENT, "signalement")
+        self.libre_service(AGENT, self.NATURE)
         self.fusionner("signalement")
         sien = "decision/par : never the person who filed the report, under any of their accounts : it waits for another council member"
         for nom in ("S-0002", "S-0003"):
@@ -22036,7 +22037,8 @@ class TestEnglishNamesStep1a(unittest.TestCase):
                                     "invitations", "do_not_contact", "reports", "council", "guardians", "guarantors",
                                     "agent_accounts", "incidents", "removals", "projects", "categories", "config", "tree"})
         self.assertEqual((nombres["schema"], nombres["removed"], nombres["code"]), (14, 2, len(self.names.code)))
-        self.assertEqual(nombres["data"] + nombres["schema"] + nombres["same"] + nombres["removed"] + nombres["code"], len(self.fichiers))
+        self.assertEqual(nombres["data"] + nombres["schema"] + nombres["same"] + nombres["commands"] + nombres["removed"] + nombres["code"],
+                         len(self.fichiers))
         self.assertEqual(rename.check(self.depot, self.base, self.tete), ([], nombres))
         for chemin in ("tasks/miniz/miniz-9050.yaml", "debates/D-9001.yaml", "governance/council.yaml", "governance/removals.yaml",
                        "invitations/do-not-contact.yaml", "tree/MEANING.md", "tree/roles/review/MEANING.md", "templates/task.yaml",
@@ -22167,18 +22169,21 @@ class TestEnglishNamesStep1a(unittest.TestCase):
     def test_every_file_but_the_code_stays_byte_identical_and_the_schemas_are_translated(self):
         # S1 (adversarial review of 29e76b8): a file on the hand list was checked for its place only; any content passed
         for q, p in {"RULES.md": "REGLES.md", "COMMANDMENTS.md": "COMMANDMENTS.md", "CLAUDE.md": "CLAUDE.md", ".gitignore": ".gitignore",
-                     "tools/requirements.txt": "outils/requirements.txt", "tools/judge/stopwatch.c": "outils/juge/chrono.c",
-                     "tools/judge/Dockerfile.base": "outils/juge/Dockerfile.base", "docs/tree.md": "docs/arbre.md",
+                     "tools/requirements.txt": "outils/requirements.txt", "outils/juge/chrono.c": "outils/juge/chrono.c",  # the judge stays
+                     "outils/juge/Dockerfile.base": "outils/juge/Dockerfile.base", "docs/tree.md": "docs/arbre.md",  # (ruche-0153)
                      "governance/briefs/builder.md": "gouvernance/consignes/constructeur.md", "tools/migration/names.yaml": rename.MAP,
                      ".github/pull_request_template.md": ".github/pull_request_template.md", ".claude/skills/bee-contributor/SKILL.md":
                      ".claude/skills/bee-contributeur/SKILL.md"}.items():
             with self.subTest(q):
                 tete = self.variante(lambda f: f.__setitem__(q, f[q] + b"\n"), "tete")
-                self.assertEqual(rename.check(self.depot, self.base, tete)[0], [f"{q}: not byte-identical to {p}"])
-        # AGENTS.md becomes the base's AGENTS.en.md, byte for byte; kept as it was, it is refused
-        self.assertEqual(self.traduits["AGENTS.md"], self.fichiers["AGENTS.en.md"])
+                change_10 = ", its commands renamed (change 10)" * q.startswith(("docs/", ".claude/"))  # ruche-0153: their commands, nothing else
+                self.assertEqual(rename.check(self.depot, self.base, tete)[0], [f"{q}: not byte-identical to {p}{change_10}"])
+        # AGENTS.md becomes the base's AGENTS.en.md, byte for byte but its commands (change 10, ruche-0153); kept as it was, it is refused
+        en = self.fichiers["AGENTS.en.md"].decode("utf-8")
+        self.assertEqual(self.traduits["AGENTS.md"].decode("utf-8"), self.names.commands(en))
+        self.assertNotEqual(self.traduits["AGENTS.md"].decode("utf-8"), en)
         tete = self.variante(lambda f: f.__setitem__("AGENTS.md", self.fichiers["AGENTS.md"]), "tete")
-        self.assertEqual(rename.check(self.depot, self.base, tete)[0], ["AGENTS.md: not byte-identical to AGENTS.en.md"])
+        self.assertEqual(rename.check(self.depot, self.base, tete)[0], ["AGENTS.md: not byte-identical to AGENTS.en.md, its commands renamed (change 10)"])
         # a schema is its translation, byte for byte: names only, the rest (descriptions included) as written
         schema, avant = self.traduits["schemas/task.schema.json"].decode(), self.fichiers["schemas/tache.schema.json"].decode()
         for attendu in ('"status": {', '"open"', '"^(root|', '"https://bee.local/schemas/task.schema.json"', '"acceptance_criteria"',
@@ -22248,7 +22253,8 @@ class TestEnglishNamesStep1a(unittest.TestCase):
             self.assertEqual(rename.main(["lint", "--map", str(self.depot / rename.MAP)]), 0)
         n = rename.check(self.depot, self.base)[1]
         self.assertIn(f"✓ P2 holds at {self.base} for the head {self.tete}: {n['data']} data files and 14 schemas are their translation "
-                      f"byte for byte, {n['same']} files are byte-identical (moved or replaced), 2 removed; {n['code']} code files are left "
+                      f"byte for byte, {n['same']} files are byte-identical (moved or replaced), {n['commands']} with their commands renamed "
+                      f"(change 10), 2 removed; {n['code']} code files are left "
                       "to step 1b (P1, P1b, P3), checked here for their place and mode only.\n", sortie.getvalue())
         self.assertIn("✗ taches/miniz/miniz-9050.yaml: dropped (no tasks/miniz/miniz-9050.yaml in the head)", sortie.getvalue())
         with tempfile.TemporaryDirectory() as dossier:
@@ -22446,10 +22452,10 @@ class TestEnglishNamesStep1b(unittest.TestCase):
     def test_names_inside_texts_placeholders_fields_alternations_and_keys(self):
         """Review of 223391e, finding 2: names inside strings that are not names, which neither P1b (a) nor --names saw."""
         carte, chemin = self.carte, "outils/bee.py"
-        avant = ('import collections, re\nADRESSE_PR = "Bee ({adresse})"\nEntree = collections.namedtuple("Entree", "cote nom")\n'
+        avant = ('import collections, re\nADRESSE_PR = "Bee ({adresse})"\nIdentites = collections.namedtuple("Identites", "cote nom")\n'
                  'CHEMIN_HISTORIQUE = re.compile(r"^(?:taches|debats)/x")\n\n\ndef f(x, e):\n'
                  '    return ADRESSE_PR.format(adresse=x), e.nom, f"inputs[exclure]={x}", "%(statut)s" % {"statut": x}\n')
-        apres = ('import collections, re\nPR_ADDRESS = "Bee ({address})"\nInput = collections.namedtuple("Input", "quoted_side name")\n'
+        apres = ('import collections, re\nPR_ADDRESS = "Bee ({address})"\nIdentities = collections.namedtuple("Identities", "quoted_side name")\n'
                  'HISTORY_PATH = re.compile(r"^(?:tasks|debates)/x")\n\n\ndef f(x, e):\n'
                  '    return PR_ADDRESS.format(address=x), e.name, f"inputs[exclude]={x}", "%(status)s" % {"status": x}\n')
         self.assertEqual(carte.rename_python(avant, chemin)[0], apres)

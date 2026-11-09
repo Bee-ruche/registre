@@ -177,6 +177,8 @@ paths:
   .github/ISSUE_TEMPLATE/proposition-tache.md: .github/ISSUE_TEMPLATE/task-proposal.md
   .claude/skills/bee-contributeur/: .claude/skills/bee-contributor/
   .github/workflows/fusion-auto.yml: .github/workflows/auto-merge.yml
+  .github/workflows/juge.yml: .github/workflows/juge.yml
+  .github/workflows/juge-commun.yml: .github/workflows/juge-commun.yml
   .github/workflows/integration-auto.yml: .github/workflows/auto-integration.yml
 env:
   BEE_REGISTRE: BEE_REGISTRY

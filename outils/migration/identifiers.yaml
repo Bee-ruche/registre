@@ -3699,7 +3699,12 @@ hand:
     default: report
     roles:
       outils/bee.py:construire_analyseur: decide-report
-    why: command -> decide-report; gate nature -> report
+      outils/test_bee.py:decider: decide-report
+      outils/test_bee.py:test_le_conseil_voit_lie_ou_ecarte_et_une_paire_ecartee_attend_30_jours: decide-report
+      outils/test_bee.py:test_la_decision_est_d_un_tiers_du_conseil_a_l_heure_de_la_pr_et_lie_dans_la_meme_pr: decide-report
+      outils/test_bee.py:test_lier_attend_la_fin_des_engagements_communs: decide-report
+      outils/test_bee.py:test_nul_ne_decide_un_signalement_qu_il_a_depose: decide-report
+    why: command -> decide-report (the tests that run it, ruche-0153); gate nature -> report
   consignes:
     english:
     - brief
@@ -3709,9 +3714,9 @@ hand:
   juge-commun:
     english:
     - common-judge
-    - judge-meta-tests
-    default: judge-meta-tests
-    why: docs/juge-commun.md -> docs/common-judge.md; .github/workflows/juge-commun.yml -> judge-meta-tests.yml
+    - juge-commun
+    default: juge-commun
+    why: docs/juge-commun.md -> docs/common-judge.md; .github/workflows/juge-commun.yml stays, with the judge, until judge-v4 (ruche-0153)
   archive:
     english:
     - archive

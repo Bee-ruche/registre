@@ -23,7 +23,7 @@ IDS = ("outils/migration/identifiers.yaml", "tools/migration/identifiers.yaml")
 NAME_SHAPE = r"[\w./*{}<>~#@\[\]-]+"  # a whole literal shaped as a name (a path, a key path, a glob, an address)
 RUN = re.compile(r"((?:[\w\[\]<>@#/-]|\.(?=[\w\[\]<>@#/-]))+)")  # a run of name characters (a sentence's final period aside)
 WORD = re.compile(r"((?<!\\)[\w.-]+)")  # the tokens P1 compares inside a text (never the letter of an escape: \\n)
-LINE = re.compile(r"([ \t]*(?:- )*)([A-Za-z_][\w-]*)(:)((?=[ \t]).*|)")  # a YAML key at a line start, and the rest
+LINE = re.compile(r"([ \t]*(?:\| )?[ \t]*(?:- )*)([A-Za-z_][\w-]*)(:)((?=[ \t]).*|)")  # a YAML key at a line start (a data frame's « | » too)
 VALUE = re.compile(r"( +)([\"']?)([\w.-]+(?:/[\w.-]+)*)(\2)([ \t]*(?:#.*)?)")  # its one-token value
 TAG = re.compile(r"(</?(?:a|b|body|br|code|dd|details|div|dl|dt|em|footer|h[1-6]|head|header|html|input|label|li|main|meta|nav|ol|option|p|"
                  r"pre|section|select|small|span|strong|summary|table|tbody|td|th|thead|title|tr|ul)\b[^<>]*>)")  # HTML: its text is prose
@@ -77,6 +77,9 @@ class CodeMap:
         phrases = sorted({t for d in (nm.get("workflows") or {}).values() for t in d if " " in t}, key=len, reverse=True)  # workflows, steps, robots
         self.subcommands = re.compile(r"(?<![\w-])(?:" + "|".join(re.escape(k).replace(r"\ ", r"\s+") for k in nm["cli"]["commands"] if " " in k) + r")(?![\w-])")
         self.in_tests, self.test_ids = False, set(m.get("test_identifiers") or {})
+        self.key_names = {k for f in nm["families"].values() for k in f["keys"] if k in self.named and k not in self.hand}  # printed()
+        self.value_names = {v for d in (*nm["domains"].values(), *nm["open_domains"].values()) for v in d if isinstance(v, str) and v in self.named
+                            and v not in self.hand}
         self.phrases, self.keeping = re.compile(r"(?<![\w-])(?:" + "|".join(map(re.escape, phrases)) + r")(?![\w-])"), set()  # keeping: the file's kept
 
     def phrased(self, s):
@@ -205,6 +208,7 @@ class CodeMap:
                 parts[i] = x[1] + self.tokens.get(x[2], x[2]) + x[3] + (f"{v[1]}{v[2]}{self.whole(v[3])}{v[4]}{v[5]}" if v and
                                                                         isinstance(yaml.safe_load(v[3]), str) else x[4])
         parts = self.phrased("".join(parts))
+        parts = self.printed(parts)
         c = self.names.m["cli"]["commands"]  # a subcommand after its command, wherever (a fake bee's « BEE passe-fusion preparer »)
         t = self.subcommands.sub(lambda x: (lambda a, s, b: s.join(c[f"{a} {b}"].split(" ")))(*re.fullmatch(r"(\S+)(\s+)(\S+)", x[0]).groups()), parts)
         t = "".join(RUN.sub(lambda x: self.whole(x[0]) if re.search(r"[_.\[\]<>@#/]|\w-\w|^--", x[0]) else x[0], p)
@@ -216,6 +220,15 @@ class CodeMap:
         t = re.sub(r"((?<![\w/.-])bee +|(?<![\w.-])bee\.py +)([a-z][\w-]*)( +[a-z][\w-]*)?", lambda x: x[1] + self.command(x[2], x[3] or ""), t)
         t = re.sub(r"(?<=\$)\{?([A-Za-z_]\w*)", lambda x: x[0].replace(x[1], self.whole(x[1])), t)  # a shell's $variable
         return re.sub(r"(?<![\w.])bee\.([A-Za-z_]\w*)", lambda x: "bee." + self.ids.get(x[1], x[1]), t)
+
+    def printed(self, t):
+        """ruche-0153: the plain words of a text in the places where bee's messages print names, renamed as the tool's output is:
+        a key before French typography's « : » (« motif : »), a key or a value between « and » (« proposee »), a node id after
+        « nœud » or around « > » (« racine > roles/relire »). Any other plain word stays (prose, logins)."""
+        t = re.sub(r"(?<![\w/.<>@#\[\]$«-])[a-z_][\w-]*(?= : )", lambda x: self.named.get(x[0], x[0]) if x[0] in self.key_names else x[0], t)
+        t = re.sub(r"(?<=« )[a-z_][\w-]*(?= »)", lambda x: self.named.get(x[0], x[0]) if x[0] in self.key_names | self.value_names else x[0], t)
+        seg = self.names.m["tree"]["segments"]
+        return re.sub(r"(?<=nœud )[a-z_]+\b(?![/.-])|(?<![\w/.$-])[a-z_]+(?= > )|(?<= > )[a-z_]+\b(?![/.-])", lambda x: seg.get(x[0], x[0]), t)
 
     def name(self, x):
         """A name of the name map (or of the role table), never an identifier: for patterns that hold French words."""

@@ -62,8 +62,10 @@ class Names:
         self.kept = tuple(a for a, b in m["paths"].items() if a == b)  # ruche-0153: paths the switch leaves where they are (the judge)
 
     def kept_path(self, p):
-        """A path, or a folder named without its final /, that the path map keeps as it is (ruche-0153: the common judge)."""
-        return any(p == k or p == k.rstrip("/") or k.endswith("/") and p.startswith(k) for k in self.kept)
+        """A path, a folder named without its final /, or a kept file's bare name, that the path map keeps as it is (ruche-0153:
+        the common judge)."""
+        return any(p == k or p == k.rstrip("/") or k.endswith("/") and p.startswith(k) or "/" not in p and k.rpartition("/")[2] == p
+                   for k in self.kept)  # a kept file's bare name too (juge.yml)
 
     def commands(self, text, inv=False):
         """Change 10 (ruche-0153): `bee <command>` and its options renamed in the code of a Markdown text, by the code map's
