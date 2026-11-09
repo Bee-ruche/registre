@@ -4009,6 +4009,19 @@ kept_in_scopes:
   tokens: [plafond]
   why: 'a word of bee''s messages (« plafond : … »), searched as written in its output'
 - files: outils/test_bee.py
+  scopes: [test_commandement_10_et_r13_disent_le_retrait]
+  tokens: [commun, demande, empreintes]
+  why: 'quotes of the commandments'', the rules'' and docs/croissance.md''s prose, kept as written by the switch'
+- files: outils/test_bee.py
+  scopes: [test_engagement_refuse_ou_en_attente_rien_d_autre_ne_part, test_etat_perdu_et_redate_la_pr_qui_attend_est_retrouvee,
+           test_etat_perdu_et_second_engagement_le_premier_n_est_jamais_dans_deux_pr,
+           test_interrompue_pendant_l_attente_rien_n_est_cache_et_la_relance_suit_la_meme_pr, test_l_adresse_d_un_fichier_d_etat_s_imprime_neutralisee,
+           test_sans_fichier_d_etat_la_relance_retrouve_la_pr_par_sa_branche, test_un_changement_fait_pendant_l_attente_n_est_pas_perdu,
+           test_un_fichier_retouche_que_main_change_arrete_avec_un_message, test_un_lien_symbolique_n_est_jamais_suivi,
+           test_un_second_engagement_prepare_pendant_l_attente_part_apres_dans_sa_propre_pr]
+  tokens: [ouverte, fermee]
+  why: 'the modes of the publish tests'' fake gh (gh.mode), which its script matches in its own text (« ouverte) », « fermee) »)'
+- files: outils/test_bee.py
   scopes: [setUp]
   tokens: [debats]
   why: 'the debate links of docs/questions-ouvertes.md point to ../debats/ in their prose, kept as written by the switch (only the

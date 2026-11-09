@@ -231,7 +231,9 @@ class CodeMap:
         t = re.sub(r"(?<=\^)([ \t]*- )([a-z_][\w-]*)(?=:)", lambda x: x[1] + self.name(x[2]), t)  # a pattern's ^  - key: (ruche-0153)  # k=, x[k]=, a pattern's ^key:
         t = re.sub(r"((?<![\w/.-])bee +|(?<![\w.-])bee\.py +)([a-z][\w-]*)( +[a-z][\w-]*)?", lambda x: x[1] + self.command(x[2], x[3] or ""), t)
         t = re.sub(r"(?<=\$)\{?([A-Za-z_]\w*)", lambda x: x[0].replace(x[1], self.whole(x[1])), t)  # a shell's $variable
-        t = re.sub(r"(?<=\bread -r )[A-Za-z_][\w ]*", lambda x: re.sub(r"\w+", lambda w: self.whole(w[0]), x[0]), t)  # its read -r names (ruche-0153)
+        t = re.sub(r"(?<=\bread -r )[A-Za-z_][\w ]*|\A ?(?!(?:for|while|until|if)\b)(?:(?!in\b)[a-z_]\w* )+[a-z_]\w*(?=; do\b)", lambda x: re.sub(r"\w+", lambda w: self.whole(w[0]), x[0]),
+                   t)  # a shell's read -r names, and a text going on with such a list until « ; do » (ruche-0153)
+        t = re.sub(r"(?<![\w$-])[a-z_]\w*(?==\$\()", lambda x: self.whole(x[0]), t)  # a shell's x=$( … ) (ruche-0153)
         return re.sub(r"(?<![\w.])bee\.([A-Za-z_]\w*)", lambda x: "bee." + self.ids.get(x[1], x[1]), t)
 
     def printed(self, t):
