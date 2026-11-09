@@ -254,6 +254,8 @@ class CodeMap:
                    else x[0], t)  # a value after « : », then the end, a mark or an id (« statut : refusee) », « close : tache ruche-0008 »)
         t = re.sub(r"""((?:\[|\.get\()\\?(["']))([\w.-]+)(?=\\?\2[\]),])""", lambda x: x[1] + self.whole(x[3]), t)  # x["k"], .get("k"), escaped too
         names = lambda kinds: lambda x: self.named.get(x[0], x[0]) if x[0] in kinds - here else x[0]  # noqa: E731
+        t = re.sub(r"(?<![\w$-])[A-Z][A-Z0-9]{3,}(?![\w-])", lambda x: self.tokens.get(x[0], x[0]) if x[0] in self.ids and x[0] not in here | self.displayed
+                   else x[0], t)  # a constant's name written in a text (a pattern over the code's source: « RACINE\s*/ »)
         t = re.sub(r"(?<![\w/.<>@#\[\]$«-])[a-z_][\w-]*(?= mot\(s\)| « )", names(self.key_names), t)  # « titre mot(s) 6 », « par « Gaspard » »
         t = re.sub(r"(?<=Niveau )[A-Z]\w+", names(self.value_names), t)  # a level
         t = re.sub(r"(?<![\w/.-])[a-z_]+(?= est déjà consigné)", lambda x: self.whole(x[0]) if x[0] in (self.key_names | self.value_names) - here else x[0], t)  # a gesture

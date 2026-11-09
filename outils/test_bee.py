@@ -23805,13 +23805,14 @@ class TestEnglishNamesStep1d(unittest.TestCase):
                  "4 taches ajoutés": "4 tasks ajoutés", "20 propositions de règle ajoutées": "20 rule proposals ajoutées",
                  "# bee contexte --role relire : racine": "# bee context --role review : root", "lus : racine, roles/": "lus : root, roles/",
                  "parent déclaré « racine »": "parent déclaré « root »", "Poste le plus en retard : gouvernance": "Poste le plus en retard : governance",
+                 "RACINE\\s*/": "ROOT\\s*/",  # a constant's name in a pattern over the code's source
                  # and prose stays: a French word that is no name, a name elsewhere, a login, a word bee keeps in its messages
                  "la tâche : rien de public": "la tâche : rien de public", "Remarque : x": "Remarque : x", "le statut de la tâche": "le statut de la tâche",
                  "ouverte par mallory, pas par alice": "ouverte par mallory, pas par alice", "un texte > deux": "un texte > deux",
                  "x : aucune": "x : aucune", "« Gaspard » : sa fiche": "« Gaspard » : sa fiche", "le dossier « x »": "le dossier « x »",
                  "ce qui est déjà consigné": "ce qui est déjà consigné", "la racine de l'arbre": "la racine de l'arbre", "Niveau de vie": "Niveau de vie",
                  "3 jours ajoutés": "3 jours ajoutés", "for x in un deux; do": "for x in un deux; do",
-                 "(plus de 64 Kio) : aucun écart calculé": "(plus de 64 Kio) : aucun écart calculé"}
+                 "(plus de 64 Kio) : aucun écart calculé": "(plus de 64 Kio) : aucun écart calculé", "STATUT  RAPPORTEUR": "STATUT  RAPPORTEUR"}
         for before, after in cases.items():
             with self.subTest(before):
                 self.assertEqual(self.carte.text(before), after)
