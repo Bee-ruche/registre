@@ -320,7 +320,8 @@ Sizes: « hand » is the hand-written diff the reviewers read line by line (targ
 
 ### 7.1 The freeze for L5 (about an hour)
 
-1. Announce it a day ahead; merge or close every open self-service PR and every `bee/engagement-*` branch; check no
+1. Announce it a day ahead; merge or close every open self-service PR and every `bee/engagement-*` branch (an engagement's branch name hashes
+   its keys, which the switch renames, so one left open would not be found again); check no
    vote, measurement, invitation or report file exists or, if one does, that P2 covers it.
 2. Disable auto-merge, auto-integration, verdicts and expirations (`gh workflow disable`): nothing writes main.
 3. Regenerate the data part from current main with the committed script, push it to the PR branch, run main's
@@ -422,10 +423,11 @@ ruche-0070 required before L0 is merged.
 | 1a. The scoped map and the data translator (P2), dormant | ruche-0141 | — |
 | 1b. The code renamer and its proofs (P1, P1b a and b, P3, --names), Python outside tests, dormant | ruche-0142 | ruche-0141 |
 | 1b-2. The test files' identifiers, the shell scripts and the workflows (P1 for them) | ruche-0152 | ruche-0142 |
-| 1c. P1b (c), the gate's path rules (P4), the outputs (P6), `bee check-migration`, its workflow, a dry run of the switch | ruche-0143 | ruche-0142, ruche-0152 |
+| 1c. P1b (c), the gate's path rules (P4), the outputs (P6), `bee check-migration` and its workflow | ruche-0143 | ruche-0142, ruche-0152 |
+| 1d. The switch script, a dry run on a copy of main with the translated full suite, change 10, the judge's interface with the forks | ruche-0153 | ruche-0143 |
 | Settings fail closed (before the switch) | ruche-0144 | — |
 | The forks read both layouts (before the switch) | miniz-0049, libyaml-0020 | — |
-| 2. The switch: every name in one commit, during a freeze | ruche-0145 | ruche-0143, ruche-0144, miniz-0049, libyaml-0020 |
+| 2. The switch: every name in one commit, during a freeze | ruche-0145 | ruche-0143, ruche-0153, ruche-0144, miniz-0049, libyaml-0020 |
 | 3. bee's messages, help and site | ruche-0146, ruche-0147 | ruche-0145 |
 | 3. Prose (existing tasks, rescheduled) | ruche-0056 to ruche-0068, ruche-0071 to ruche-0079, miniz-0045, miniz-0046, libyaml-0019 | ruche-0145 |
 | 4. judge-v4 | ruche-0148 | ruche-0145 |
@@ -508,7 +510,7 @@ single switch rather than the layers L2 to L6 of section 7. This section prevail
   the temporary bridges. The price: the commit is too large to read by eye, and is trusted through its proofs (P1, P1b,
   P2, P3, P4, P6) and the full test suite instead. This would no longer be acceptable once the hive is open: now is the
   time.
-- **The steps.** (1) ruche-0141 to ruche-0143 build the scoped map, the translators, the proofs, `bee
+- **The steps.** (1) ruche-0141, ruche-0142, ruche-0152, ruche-0143 and ruche-0153 build the scoped map, the translators, the proofs, `bee
   check-migration` and its workflow, dormant, with a dry run of the whole switch on a copy of main; ruche-0144 makes the
   settings fail closed; miniz-0049 and libyaml-0020 make the forks read both layouts, and the open fork PRs are rebased.
   (2) ruche-0145: during a freeze (section 7.1 and
