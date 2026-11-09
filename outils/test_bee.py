@@ -22206,7 +22206,8 @@ class TestEnglishNamesStep1a(unittest.TestCase):
                                ((self.fichiers[s], contenu), (self.traduits[self.names.path(s)], self.traduits[self.names.path(chemin)]))]
                     self.assertEqual(erreurs[0], erreurs[1])
         # the code alone is left to step 1b's proofs: P2 sees only its place and mode, and its summary says so
-        code = ("tools/bee.py", ".github/workflows/validation.yml", "tools/rehearsal/publish", "tools/judge/isolate.sh")
+        code = ("tools/bee.py", ".github/workflows/validation.yml", "tools/rehearsal/publish", "tools/rehearsal/common.sh")  # a shell
+        # script: the judge's (outils/juge/isolate.sh) stays as written since ruche-0153 (TestEnglishNamesStep1d checks it)
         self.assertTrue(set(code) <= {self.names.path(p) for p in self.names.code})
         tete = self.variante(lambda f: f.update({q: f[q] + b"# step 1b\n" for q in code}), "tete")
         self.assertEqual(rename.check(self.depot, self.base, tete)[0], [])
