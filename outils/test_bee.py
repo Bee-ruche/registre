@@ -23799,10 +23799,19 @@ class TestEnglishNamesStep1d(unittest.TestCase):
                  "| motif: votes_croises": "| reason: cross_votes", '"statut": 1': '"status": 1',  # YAML keys: a data frame, quoted
                  "(?ms)^  - pseudo: bidji29": "(?ms)^  - login: bidji29",  # a pattern's key
                  'c.get("auteur") or c["statut"]': 'c.get("author") or c["status"]', "read -r sha auteur etat": "read -r sha author state",
+                 " sha auteur etat; do": " sha author state; do", "cree=$(gh api x)": "created=$(gh api x)",  # shell quoted in a test
+                 "x.yaml : titre mot(s) 6": "x.yaml : title mot(s) 6", "par « Gaspard » s'écrit gaspard": "by « Gaspard » s'écrit gaspard",
+                 "Niveau Nouveau : votre vote": "Niveau New : votre vote", "relance est déjà consigné": "reminder est déjà consigné",
+                 "4 taches ajoutés": "4 tasks ajoutés", "20 propositions de règle ajoutées": "20 rule proposals ajoutées",
+                 "# bee contexte --role relire : racine": "# bee context --role review : root", "lus : racine, roles/": "lus : root, roles/",
+                 "parent déclaré « racine »": "parent déclaré « root »", "Poste le plus en retard : gouvernance": "Poste le plus en retard : governance",
                  # and prose stays: a French word that is no name, a name elsewhere, a login, a word bee keeps in its messages
                  "la tâche : rien de public": "la tâche : rien de public", "Remarque : x": "Remarque : x", "le statut de la tâche": "le statut de la tâche",
                  "ouverte par mallory, pas par alice": "ouverte par mallory, pas par alice", "un texte > deux": "un texte > deux",
-                 "x : aucune": "x : aucune", "« Gaspard » : sa fiche": "« Gaspard » : sa fiche"}
+                 "x : aucune": "x : aucune", "« Gaspard » : sa fiche": "« Gaspard » : sa fiche", "le dossier « x »": "le dossier « x »",
+                 "ce qui est déjà consigné": "ce qui est déjà consigné", "la racine de l'arbre": "la racine de l'arbre", "Niveau de vie": "Niveau de vie",
+                 "3 jours ajoutés": "3 jours ajoutés", "for x in un deux; do": "for x in un deux; do",
+                 "(plus de 64 Kio) : aucun écart calculé": "(plus de 64 Kio) : aucun écart calculé"}
         for before, after in cases.items():
             with self.subTest(before):
                 self.assertEqual(self.carte.text(before), after)

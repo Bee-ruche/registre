@@ -240,9 +240,10 @@ class CodeMap:
         """ruche-0153: the plain words of a text in the places where bee's messages print names, renamed as the tool's output is:
         a key before French typography's « : » (« motif : ») or ending a label (« f.yaml : motif »), or before « de N caractères »;
         a value after « : » then the end, a mark or an id (« statut : refusee) »), unless bee.py keeps it as a word of its messages; a
-        key or a value between « and »
-        (« proposee »), a node id after
-        « nœud » or around « > » (« racine > roles/relire »). Any other plain word stays (prose, logins)."""
+        key or a value between « and » (« proposee »), a node id after « nœud » or around « > » (« racine > roles/relire »), in « » or
+        in a list, a role after --role;
+        a key before « mot(s) » or « « », a level after « Niveau », a gesture before « est déjà consigné », a folder's label after a
+        count (« 4 taches ajoutés »). Any other plain word stays (prose, logins)."""
         here = {w for w, e in self.tokens.maps[0].items() if w == e}  # kept in this scope
         t = re.sub(r"(?<![\w/.<>@#\[\]$«-])[a-z_][\w-]*(?= : )|(?<=[\w.] : )[a-z_][\w-]*\Z", lambda x: self.named.get(x[0], x[0]) if x[0] in self.key_names - here
                    else x[0], t)  # « motif : », and a label « f.yaml : motif » the tool prints so
@@ -252,7 +253,14 @@ class CodeMap:
         t = re.sub(r"(?<=[\w)] : )[a-z_][\w-]*(?=\Z|[),;.\n]| [\w-]*\d)", lambda x: self.named.get(x[0], x[0]) if x[0] in self.value_names - here - self.displayed
                    else x[0], t)  # a value after « : », then the end, a mark or an id (« statut : refusee) », « close : tache ruche-0008 »)
         t = re.sub(r"""((?:\[|\.get\()\\?(["']))([\w.-]+)(?=\\?\2[\]),])""", lambda x: x[1] + self.whole(x[3]), t)  # x["k"], .get("k"), escaped too
+        names = lambda kinds: lambda x: self.named.get(x[0], x[0]) if x[0] in kinds - here else x[0]  # noqa: E731
+        t = re.sub(r"(?<![\w/.<>@#\[\]$«-])[a-z_][\w-]*(?= mot\(s\)| « )", names(self.key_names), t)  # « titre mot(s) 6 », « par « Gaspard » »
+        t = re.sub(r"(?<=Niveau )[A-Z]\w+", names(self.value_names), t)  # a level
+        t = re.sub(r"(?<![\w/.-])[a-z_]+(?= est déjà consigné)", lambda x: self.whole(x[0]) if x[0] in (self.key_names | self.value_names) - here else x[0], t)  # a gesture
+        t = re.sub(r"(?<=\d )(?:propositions de règle|[a-z_]+)(?= ajouté| sur 24 h)", names(set(self.named)), t)  # « 4 taches ajoutés »
         seg = self.names.m["tree"]["segments"]
+        t = re.sub(r"(?<=--role )[a-z]+\b(?![/.-])|(?<=« )[a-z]+(?= »)|(?<=[:,] )[a-z]+(?=, | »|\Z)", lambda x: seg.get(x[0], x[0]) if x[0] not in here
+                   else x[0], t)  # a role, a node id in « » or in a list
         return re.sub(r"(?<=nœud )[a-z_]+\b(?![/.-])|(?<![\w/.$-])[a-z_]+(?= > )|(?<= > )[a-z_]+\b(?![/.-])", lambda x: seg.get(x[0], x[0]), t)
 
     def name(self, x):
