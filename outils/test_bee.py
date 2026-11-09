@@ -391,8 +391,8 @@ class TestCiScope(unittest.TestCase):
         etapes = yaml.safe_load((RACINE / ".github/workflows/validation.yml").read_text(encoding="utf-8"))["jobs"]["controles"]["steps"]
         suite = yaml.safe_load((RACINE / ".github/workflows/suite.yml").read_text(encoding="utf-8"))["jobs"]["tests"]["steps"]
         nom = lambda debut, dans=etapes: next(s for s in dans if s.get("name", "").startswith(debut))  # noqa: E731
-        return etapes, {"portee": nom("Scope of the PR"), "push": nom("Scope of the push"), "outil": nom("Tests de l'outil", suite), "juge": nom("Tests unitaires du juge", suite),
-                        "reel": nom("Tests that read the live registry"), "valider": nom("Validation complète"), "vert": nom("Main for a data-only push"),
+        return etapes, {"portee": nom("Scope of the PR"), "push": nom("Scope of the push"), "outil": nom("Tests de l'outil", suite), "juge": nom("Tests unitaires du juge commun (sans Docker ; méta-tests dans juge-commun.yml)", suite),
+                        "reel": nom("Tests that read the live registry"), "valider": nom("Validation complète du registre"), "vert": nom("Main for a data-only push"),
                         "regles": nom("Règles de la pull request")}
 
     def rejouer(self, script, env, cwd=None):
@@ -573,7 +573,7 @@ class TestCiScope(unittest.TestCase):
         self.assertNotIn("BEE", r.stdout, "the gate never runs without GitHub's record")
         # ruche-0120: fusion-auto reads, with the PRs' validations, each run's creation (TestPasseFusion: the gate gets it).
         etape = next(s for s in yaml.safe_load((RACINE / ".github/workflows/fusion-auto.yml").read_text(encoding="utf-8"))["jobs"]
-                     ["verifier"]["steps"] if s.get("name", "").startswith("Lister les PR ouvertes"))
+                     ["verifier"]["steps"] if s.get("name", "").startswith("Lister les PR ouvertes et leurs validations (ruche-0120)"))
         self.assertIn("--jq '.workflow_runs[] | [.id, .head_sha, .created_at] | @tsv'", etape["run"])
 
     def test_the_data_only_step_runs_exactly_the_tests_allowed_to_read_live_data(self):
@@ -2274,7 +2274,7 @@ class TestRegistre(BaseTest):
         # R11 : le cap de la ruche (parts visées et réelles), le filtre par poste, et le projet « ruche »
         self.assertIn("id='cap'", page)
         self.assertIn("data-filtre='poste'", page)
-        self.assertIn("data-poste='gouvernance'", page)
+        self.assertIn("data-poste='" + "gouvernance" + "'", page)  # a value of the data (ruche-0152: translated with it)
         donnees = json.loads((self.dossier / "_site/api/registre.json").read_text(encoding="utf-8"))
         self.assertEqual({l["poste"] for l in donnees["cap"]["postes"]}, {"gouvernance", "projets", "coordination"})
         self.assertIn("en_cours", donnees["essaim"])
@@ -6219,7 +6219,7 @@ class TestRevueAdverse(BaseParallele):
         etats = {PR_MINIZ + "99101": {"state": "OPEN", "head": "abc1234", "auteur": "bruno"},
                  PR_MINIZ + "99102": {"state": "OPEN", "head": "0ddba11", "auteur": "alice"}}
         self.a("2026-11-01T00:00:00Z")  # entre F et F + 24 h
-        _, etat, appels = self.etape("Intégrer", etats)
+        _, etat, appels = self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné", etats)
         self.assertFalse(self.appels_de(appels, "pr", "merge"))
         code, texte = self.acceptation(c1)
         self.assertEqual(code, 1, texte)
@@ -6227,7 +6227,7 @@ class TestRevueAdverse(BaseParallele):
         self.assertIn("2026-11-01T14:00:00Z", texte)
         self.a("2026-11-01T14:00:00Z")  # F + 24 h : plus personne ne retient c1
         self.assertEqual(self.acceptation(c1)[0], 0)
-        _, etat, appels = self.etape("Intégrer")
+        _, etat, appels = self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné")
         self.assertEqual([a["args"][2] for a in self.appels_de(appels, "pr", "merge")], [PR_MINIZ + "99101"])
         self.assertEqual((self.enr(c1)["statut"], self.enr(c2)["statut"], self.enr(c2)["retenue"]), ("integree", "ecartee", c1))
         self.assertLessEqual(bee.lire_instant("2026-11-01T14:00:00Z") - bee.lire_instant(self.enr(c1)["soumise_le"]),
@@ -6238,11 +6238,11 @@ class TestRevueAdverse(BaseParallele):
         etats = {PR_MINIZ + "99101": {"state": "OPEN", "head": "abc1234", "auteur": "bruno"},
                  PR_MINIZ + "99102": {"state": "OPEN", "head": "abc1234", "auteur": "alice", "conflit": True}}
         self.a("2026-10-31T15:00:00Z")  # entre F et F + 24 h : la mieux classée est essayée d'abord, en vain
-        _, _, appels = self.etape("Intégrer", etats)
+        _, _, appels = self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné", etats)
         self.assertEqual([a["args"][2] for a in self.appels_de(appels, "pr", "merge")], [PR_MINIZ + "99102"])
         self.assertEqual(self.enr(c1)["statut"], "en_relecture")
         self.a("2026-11-01T14:00:00Z")
-        _, etat, _ = self.etape("Intégrer")
+        _, etat, _ = self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné")
         self.assertEqual(etat[PR_MINIZ + "99101"]["state"], "MERGED")
         self.assertEqual((self.enr(c1)["statut"], self.enr(c2)["statut"]), ("integree", "ecartee"))
 
@@ -6252,7 +6252,7 @@ class TestRevueAdverse(BaseParallele):
                                       "fichiers": ["bee/ci/verdict.py", ".github/workflows/bee-ci.yml"]},
                  PR_MINIZ + "99102": {"state": "OPEN", "head": "abc1234", "auteur": "alice", "fichiers_illisibles": True}}
         self.a("2026-11-02T00:00:00Z")  # au-delà de 120 h : plus rien ne retient l'une ou l'autre
-        sortie, etat, appels = self.etape("Intégrer", etats)
+        sortie, etat, appels = self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné", etats)
         self.assertFalse(self.appels_de(appels, "pr", "merge"), "ni un workflow modifié, ni une liste de fichiers illisible")
         self.assertIn("modifie un workflow de CI", sortie)
         self.assertIn("fichiers de la PR illisibles", sortie)
@@ -6260,7 +6260,7 @@ class TestRevueAdverse(BaseParallele):
         self.assertEqual((self.enr(c1)["statut"], self.enr(c2)["statut"]), ("en_relecture", "en_relecture"))
         # Fusionnée à la main par le conseil sur le commit jugé : consignée au passage suivant.
         etat[PR_MINIZ + "99102"].update({"state": "MERGED", "merge": "e" * 40, "fichiers_illisibles": False})
-        _, _, appels = self.etape("Intégrer", etat)
+        _, _, appels = self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné", etat)
         self.assertFalse(self.appels_de(appels, "pr", "merge"))
         self.assertEqual((self.enr(c2)["statut"], self.enr(c2).get("fusion_sha")), ("integree", "e" * 40))
 
@@ -6283,7 +6283,7 @@ class TestRevueAdverse(BaseParallele):
         etats = {PR_MINIZ + "99007": {"state": "OPEN", "head": "abc1234", "auteur": "alice"},
                  victime: {"state": "OPEN", "head": "beefcafe", "auteur": "mallory"}}
         self.a("2026-10-31T12:00:00Z")
-        _, etat, appels = self.etape("Intégrer", etats)
+        _, etat, appels = self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné", etats)
         self.assertEqual((self.enr(c1)["statut"], self.enr(c2)["statut"]), ("integree", "ecartee"))
         self.assertFalse(self.appels_de(appels, "pr", "close"), "aucune fermeture avant la publication du registre")
         sortie, etat, appels = self.etape("Fermer")
@@ -6369,7 +6369,7 @@ class TestRevueAdverse(BaseParallele):
         self.init_git()
         etats = {PR_MINIZ + "99101": {"state": "OPEN", "head": "abc1234", "auteur": "bruno"},
                  PR_MINIZ + "99102": {"state": "OPEN", "head": "abc1234", "auteur": "alice"}}
-        _, etat, appels = self.etape("Intégrer", etats)
+        _, etat, appels = self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné", etats)
         self.assertEqual(etat[PR_MINIZ + "99102"]["state"], "MERGED")
         self.assertEqual(etat[PR_MINIZ + "99101"]["state"], "OPEN", "rien n'est fermé avant la publication")
         self.assertFalse(self.appels_de(appels, "pr", "close"))
@@ -6378,7 +6378,7 @@ class TestRevueAdverse(BaseParallele):
         self.assertEqual((self.enr(c1)["statut"], self.enr(c2)["statut"]), ("en_relecture", "en_relecture"))
         etat[PR_MINIZ + "99101"]["state"] = "CLOSED"
         (self.dossier.parent / "etat_pr.json").write_text(json.dumps(etat), encoding="utf-8")
-        self.etape("Intégrer")
+        self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné")
         self.assertEqual(self.enr(c2)["statut"], "integree")
         self.assertEqual((self.enr(c1)["statut"], self.enr(c1).get("retenue")), ("ecartee", c2), "écartée, pas annulée")
         self.valide()
@@ -6386,7 +6386,7 @@ class TestRevueAdverse(BaseParallele):
         self.assertEqual(niveaux["chloe"]["relectures"], 1, "+1 pour c2 intégrée, 0 pour c1 écartée")
         # Un passage de plus ne change rien.
         avant = (self.dossier / f"contributions/miniz/{c1}.yaml").read_text(encoding="utf-8")
-        self.etape("Intégrer")
+        self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné")
         self.assertEqual((self.dossier / f"contributions/miniz/{c1}.yaml").read_text(encoding="utf-8"), avant)
 
     def test_I2_cloturer_ne_clot_pas_quand_une_concurrente_est_fusionnee(self):
@@ -6685,18 +6685,18 @@ class TestRevueAdverse(BaseParallele):
         self.a("2026-10-28T13:00:00Z")
         self.assertEqual(self.acceptation(c1)[0], 0, "intégrable pour bee : seul le workflow voit à qui est la PR")
         etats = {PR_MINIZ + "99007": {"state": "OPEN", "head": "abc1234", "auteur": "mallory"}}
-        sortie, etat, appels = self.etape("Intégrer", etats)
+        sortie, etat, appels = self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné", etats)
         self.assertIn("ouverte par mallory, pas par alice ; ni fusionnée ni consignée", sortie)
         self.assertFalse(self.appels_de(appels, "pr", "merge"))
         self.assertEqual((etat[PR_MINIZ + "99007"]["state"], self.enr(c1)["statut"]), ("OPEN", "en_relecture"))
         # Déjà fusionnée à la main, elle n'est pas consignée non plus au nom d'alice.
         etats[PR_MINIZ + "99007"].update({"state": "MERGED", "merge": "e" * 40})
-        sortie, _, _ = self.etape("Intégrer", etats)
+        sortie, _, _ = self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné", etats)
         self.assertIn("ni fusionnée ni consignée", sortie)
         self.assertEqual(self.enr(c1)["statut"], "en_relecture")
         # La même PR, ouverte par alice : consignée, avec le commit de fusion.
         etats[PR_MINIZ + "99007"]["auteur"] = "alice"
-        self.etape("Intégrer", etats)
+        self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné", etats)
         self.assertEqual((self.enr(c1)["statut"], self.enr(c1)["fusion_sha"]), ("integree", "e" * 40))
         self.valide()
 
@@ -10005,7 +10005,7 @@ class TestRelireParCommitPR(BaseRepetitionGenerale):
     def relire(self, qui, avis="favorable", *options):
         self.geste(qui, "relire", self.cid, *self.lu(self.cid), "--utilisateur", qui, "--avis", avis, "--motif", "Diff du commit relu en entier.", *options)
 
-    def relecture(self, qui, avis="favorable", **champs):
+    def fiche_relecture(self, qui, avis="favorable", **champs):
         return {"relecteur": qui, "avis": avis, "motif": "Diff du commit relu en entier.", "le": os.environ["BEE_MAINTENANT"], **champs}
 
     def attaque(self, auteur, modifier, *morceaux):
@@ -10044,10 +10044,10 @@ class TestRelireParCommitPR(BaseRepetitionGenerale):
 
     def test_avant_le_verdict_ni_commit_invente_ni_seconde_relecture_ni_defaut(self):
         self.relire("gaspard")
-        self.attaque("farid", self.ajout(self.relecture("farid", sha="abc1234")), "pas de verdict ni de commit jugé")
-        self.attaque("gaspard", self.ajout(self.relecture("gaspard", "defavorable")),
+        self.attaque("farid", self.ajout(self.fiche_relecture("farid", sha="abc1234")), "pas de verdict ni de commit jugé")
+        self.attaque("gaspard", self.ajout(self.fiche_relecture("gaspard", "defavorable")),
                      "gaspard a déjà relu cette contribution : une relecture sans commit")
-        self.attaque("farid", self.ajout(self.relecture("farid", "defavorable", defaut_signale=True)),
+        self.attaque("farid", self.ajout(self.fiche_relecture("farid", "defavorable", defaut_signale=True)),
                      "un défaut se signale sur le commit jugé, jamais par une abstention")
 
     def test_detournements_des_relectures_par_commit(self):
@@ -10057,26 +10057,26 @@ class TestRelireParCommitPR(BaseRepetitionGenerale):
         self.verdict_sur_main("def5678")
         self.relire("gaspard")
         attaques = [
-            ("farid", self.ajout(self.relecture("chloe", sha="def5678")), "une relecture ajoutée doit être celle de farid"),
-            ("farid", self.ajout(self.relecture("farid", sha="1234567")), "porte le commit du verdict (def5678)"),
-            ("farid", self.ajout(self.relecture("farid", sha="abc1234")), "porte le commit du verdict (def5678)"),
-            ("farid", self.ajout(self.relecture("farid")), "porte le commit du verdict (def5678)"),
-            ("gaspard", self.ajout(self.relecture("gaspard", "defavorable", sha="def5678")), "gaspard a déjà relu le commit def5678"),
-            ("farid", self.ajout(self.relecture("farid", sha="def5678"), self.relecture("farid", "defavorable", sha="def5678")),
+            ("farid", self.ajout(self.fiche_relecture("chloe", sha="def5678")), "une relecture ajoutée doit être celle de farid"),
+            ("farid", self.ajout(self.fiche_relecture("farid", sha="1234567")), "porte le commit du verdict (def5678)"),
+            ("farid", self.ajout(self.fiche_relecture("farid", sha="abc1234")), "porte le commit du verdict (def5678)"),
+            ("farid", self.ajout(self.fiche_relecture("farid")), "porte le commit du verdict (def5678)"),
+            ("gaspard", self.ajout(self.fiche_relecture("gaspard", "defavorable", sha="def5678")), "gaspard a déjà relu le commit def5678"),
+            ("farid", self.ajout(self.fiche_relecture("farid", sha="def5678"), self.fiche_relecture("farid", "defavorable", sha="def5678")),
              "farid a déjà relu le commit def5678"),
-            ("farid", self.ajout(self.relecture("farid", sha="def5678"), self.relecture("farid", "abstention", sha="def5678")),
+            ("farid", self.ajout(self.fiche_relecture("farid", sha="def5678"), self.fiche_relecture("farid", "abstention", sha="def5678")),
              "farid a déjà relu le commit def5678"),
-            ("farid", self.ajout(self.relecture("farid", sha="def5678", le="2026-10-01T00:00:00Z")), "doit être l'heure de la PR"),
-            ("farid", self.ajout(self.relecture("farid", "abstention", sha="def5678", defaut_signale=True)),
+            ("farid", self.ajout(self.fiche_relecture("farid", sha="def5678", le="2026-10-01T00:00:00Z")), "doit être l'heure de la PR"),
+            ("farid", self.ajout(self.fiche_relecture("farid", "abstention", sha="def5678", defaut_signale=True)),
              "jamais par une abstention"),
-            ("farid", self.ajout(self.relecture("farid", "neutre", sha="def5678")), "neutre"),
+            ("farid", self.ajout(self.fiche_relecture("farid", "neutre", sha="def5678")), "neutre"),
         ]
 
         def rajeunir(enr):  # gaspard fait porter son ancienne relecture sur le commit jugé
             enr["relectures"][1]["sha"] = "def5678"
 
         def retourner(enr):  # farid relit, et change au passage l'avis d'une relecture existante
-            enr["relectures"].append(self.relecture("farid", sha="def5678"))
+            enr["relectures"].append(self.fiche_relecture("farid", sha="def5678"))
             enr["relectures"][2]["avis"] = "defavorable"
 
         def confirmer_ailleurs(enr):  # la confirmation déplace le défaut sur le commit jugé
@@ -10099,7 +10099,7 @@ class TestRelireParCommitPR(BaseRepetitionGenerale):
         self.verdict_sur_main("def5678")
         for avis, champs in (("defavorable", {}), ("abstention", {}), ("defavorable", {"defaut_signale": True})):
             with self.subTest(avis=avis, **champs):
-                self.attaque("farid", self.ajout(self.relecture("farid", avis, sha="def5678", **champs)), "farid est en course")
+                self.attaque("farid", self.ajout(self.fiche_relecture("farid", avis, sha="def5678", **champs)), "farid est en course")
         self.relire("farid")
 
     def test_levees_et_comptes_inscrits(self):
@@ -10123,7 +10123,7 @@ class TestRelireParCommitPR(BaseRepetitionGenerale):
                  "par le conseil seul"),
                 ("bidji29", lambda e: e.update(levees=[{**levee, "motif": "Motif réécrit après coup."}]), "en ajout seul"),
                 ("bidji29", lambda e: e.update(levees=e["levees"] + [{**levee, "le": "2026-10-01T00:00:00Z"}]), "doit être l'heure de la PR"),
-                ("zorro", self.ajout(self.relecture("zorro", "defavorable", sha="abc1234", defaut_signale=True)), "zorro doit d'abord s'inscrire")):
+                ("zorro", self.ajout(self.fiche_relecture("zorro", "defavorable", sha="abc1234", defaut_signale=True)), "zorro doit d'abord s'inscrire")):
             with self.subTest(auteur=auteur, morceau=morceau):
                 self.attaque(auteur, modifier, morceau)
         self.branche("vote")
@@ -10159,7 +10159,7 @@ class TestRelireParCommitPR(BaseRepetitionGenerale):
         for arbre, morceau in ((None, "porte l'arbre du verdict de la base (7ee0001)"), ("7ee0002", "porte l'arbre du verdict de la base")):
             with self.subTest(arbre=arbre):
                 champs = {"sha": "abc1234", **({"arbre": arbre} if arbre else {})}
-                self.attaque("farid", self.ajout(self.relecture("farid", **champs)), morceau)
+                self.attaque("farid", self.ajout(self.fiche_relecture("farid", **champs)), morceau)
         self.relire("farid")
         self.assertEqual(bee.lire_yaml(self.chemin)["relectures"][-1]["arbre"], "7ee0001")
         self.branche("inscription")
@@ -13482,7 +13482,7 @@ class TestRetraitDemandeRuche0048(BaseRevueRuche0020):
                              ("https://github.com/octocat/zlib et https://blog.exemple.org/x !", f"{m} et {m} !"),
                              ("octo cat, comme la clé canonique", f"{m}, comme la clé canonique"),
                              ("d'octocat, qu'octocat, octocat's, l’octocat", f"d'{m}, qu'{m}, {m}'s, l’{m}"),
-                             ("github.com/octocat et octocat/zlib, octocat…le", f"{m} et {m}, {m}…le"),
+                             ("github.com/octocat et octocat/zlib, octocat…so", f"{m} et {m}, {m}…so"),
                              ("octocats, octo-chat et https://github.com/hubot", "octocats, octo-chat et https://github.com/hubot")):
             self.assertEqual(bee.passages_retires(avant, empreintes), apres)
 
@@ -14370,7 +14370,7 @@ class TestR13SuivableRuche0052(BaseInvitations):
         """Revue de ruche-0052, C : une date du fichier est relue par bee et réécrite (en_iso), sinon « ? » ; jamais sa valeur
         brute, qui pourrait porter une séquence d'échappement du terminal."""
         self.jusqu_a("accord-gardien")
-        piege = "2026-11-02T11:00:00Z\x1b]0;titre\x07\x1b[2J"
+        piege = "2026-11-02T11:00:00Z\x1b]0;title\x07\x1b[2J"
         inv = self.invitation()
         self.ecrire_invitation({**inv, "propose_le": "2026-10-30T11:00:00+01:00", "accord_gardien": {**inv["accord_gardien"], "le": piege}})
         texte = self.ok("voir", "I-0001")
@@ -14463,7 +14463,7 @@ class TestR13SuivableRuche0052(BaseInvitations):
         ni commande de workflow (« :: » en début de ligne, « ##[ »), ni échappement du terminal, ni fausse ligne de bee."""
         self.jusqu_a("proposee")
         inv = self.invitation()
-        self.ecrire_invitation({**inv, "demande": "garant\n::warning::demande", "autres_identites": ["gitlab:y\x1b]0;titre\x07"],
+        self.ecrire_invitation({**inv, "demande": "garant\n::warning::demande", "autres_identites": ["gitlab:y\x1b]0;title\x07"],
                                 "personne": {"identifiant": "github:x\n::error::identifiant",
                                              "canal": "https://github.com/x\n##[error]canal\x1b[2J\nIdentifiant : github:leurre"}})
         texte = self.ok("voir", "I-0001")
@@ -14476,7 +14476,7 @@ class TestR13SuivableRuche0052(BaseInvitations):
                          ["Identifiant : github:x\\n: :error::identifiant ; canal : https://github.com/x\\n# #[error]canal<U+001B>[2J"
                           "\\nIdentifiant : github:leurre"], "une seule ligne d'identités, le leurre y reste visible")
         self.assertIn("demande : garant\\n: :warning::demande ; attend", avant_donnees)
-        self.assertIn("Autres identités déclarées : gitlab:y<U+001B>]0;titre<U+0007>", avant_donnees)
+        self.assertIn("Autres identités déclarées : gitlab:y<U+001B>]0;title<U+0007>", avant_donnees)
 
     def test_ruche_0088_frame_header_and_essaim_quote_an_invitation_neutralised(self):
         """ruche-0088: the identifier in bee voir's frame header and the invitation's texts in bee essaim are quoted like any other."""
@@ -14841,7 +14841,7 @@ class TestManifesteRecopie(BaseRepetitionGenerale):
         self.assertIn("::notice::PIEGE", self.enr()["declare"]["doutes"], "recopié, sur une ligne")
         self.valide()
         # bee verifier-acceptation, dans le journal de la CI : modèle et gain seuls, encadrés, « ##[ » neutralisé où qu'il soit.
-        sortie, _, _ = TestRevueAdverse.etape(self, "Intégrer", etats)
+        sortie, _, _ = TestRevueAdverse.etape(self, "Intégrer ce qui satisfait R3, clore ce qui est abandonné", etats)
         self.assertIn("| modele: ", sortie)
         self.assertIn("# #[error]PIEGE ## #[add-mask]verte", sortie)
         self.assertNotIn("##[", sortie)
@@ -15133,13 +15133,13 @@ class TestTour3(BaseParallele):
                                       "evenements": ["automatic_base_change_succeeded"]},
                  PR_MINIZ + "99102": {"state": "OPEN", "head": "abc1234", "auteur": "alice",
                                       "chronologie": [{"event": "base_ref_changed", "created_at": "2026-10-28T10:00:00Z"}]}}
-        sortie, etat, appels = TestRevueAdverse.etape(self, "Intégrer", etats)
+        sortie, etat, appels = TestRevueAdverse.etape(self, "Intégrer ce qui satisfait R3, clore ce qui est abandonné", etats)
         self.assertFalse(TestRevueAdverse.appels_de(appels, "pr", "merge"), sortie)
         self.assertEqual(sortie.count("la base de la PR a changé"), 2, sortie)
         self.assertIn("repos/Bee-ruche/minizBee/issues/99102/timeline?per_page=100", [a["args"][1] for a in appels])
         self.assertEqual((self.enr(c1)["statut"], self.enr(c2)["statut"]), ("en_relecture", "en_relecture"))
         del etats[PR_MINIZ + "99101"]["evenements"]  # parcours honnête : une base jamais changée
-        sortie, etat, appels = TestRevueAdverse.etape(self, "Intégrer", etats)
+        sortie, etat, appels = TestRevueAdverse.etape(self, "Intégrer ce qui satisfait R3, clore ce qui est abandonné", etats)
         self.assertEqual([a["args"][2] for a in TestRevueAdverse.appels_de(appels, "pr", "merge")], [PR_MINIZ + "99101"], sortie)
         self.assertEqual((self.enr(c1)["statut"], self.enr(c2)["statut"]), ("integree", "ecartee"))
 
@@ -15248,15 +15248,15 @@ class TestTour3(BaseParallele):
         self.a("2026-11-02T00:00:00Z")
         etats = {PR_MINIZ + "99101": {"state": "OPEN", "head": "abc1234", "auteur": "bruno", "base": "autre"},
                  PR_MINIZ + "99102": {"state": "OPEN", "head": "abc1234", "auteur": "alice", "base": "autre"}}
-        sortie, etats, _ = TestRevueAdverse.etape(self, "Intégrer", etats)
+        sortie, etats, _ = TestRevueAdverse.etape(self, "Intégrer ce qui satisfait R3, clore ce qui est abandonné", etats)
         self.assertEqual(sortie.count("hors de la branche par défaut du fork"), 2, sortie)
         etats[PR_MINIZ + "99102"]["base"] = etats[PR_MINIZ + "99101"]["base"] = "master"
         etats["comparaisons"] = {"f" * 40: "diverged"}  # le commit de fusion n'est pas dans master
-        sortie, etats, _ = TestRevueAdverse.etape(self, "Intégrer", etats)
+        sortie, etats, _ = TestRevueAdverse.etape(self, "Intégrer ce qui satisfait R3, clore ce qui est abandonné", etats)
         self.assertEqual(sortie.count("hors de la branche par défaut du fork"), 2, sortie)
         self.assertEqual((self.enr(c1)["statut"], self.enr(c2)["statut"]), ("en_relecture", "en_relecture"))
         del etats["comparaisons"]  # parcours honnête
-        TestRevueAdverse.etape(self, "Intégrer", etats)
+        TestRevueAdverse.etape(self, "Intégrer ce qui satisfait R3, clore ce qui est abandonné", etats)
         self.assertEqual((self.enr(c2)["statut"], self.enr(c2)["fusion_sha"], self.enr(c1)["statut"]), ("integree", "f" * 40, "ecartee"))
 
 
@@ -16789,18 +16789,18 @@ class TestAgentAccountsWorkflows(BaseParallele):
         for login in (AGENT, "Alice-Agent2", "mallory", "alice-agent-x"):
             with self.subTest(pr_by=login):
                 etats = {PR_MINIZ + "99007": {"state": "OPEN", "head": "abc1234", "auteur": login}}
-                sortie, etat, appels = self.etape("Intégrer", etats)
+                sortie, etat, appels = self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné", etats)
                 self.assertIn(f"ouverte par {login}, pas par alice ; ni fusionnée ni consignée", sortie)
                 self.assertFalse(self.appels_de(appels, "pr", "merge"))
                 self.assertEqual(self.enr(c1)["statut"], "en_relecture")
         # An unreadable declaration maps no one: the agent account's PR is then not the author's (fail closed).
         declaration = (self.dossier / bee.AGENT_ACCOUNTS).read_text(encoding="utf-8")
         (self.dossier / bee.AGENT_ACCOUNTS).write_text("accounts: [\n", encoding="utf-8")
-        sortie, _, appels = self.etape("Intégrer", {PR_MINIZ + "99007": {"state": "OPEN", "head": "abc1234", "auteur": "alice-agent"}})
+        sortie, _, appels = self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné", {PR_MINIZ + "99007": {"state": "OPEN", "head": "abc1234", "auteur": "alice-agent"}})
         self.assertIn("ouverte par alice-agent, pas par alice ; ni fusionnée ni consignée", sortie)
         self.assertFalse(self.appels_de(appels, "pr", "merge"))
         (self.dossier / bee.AGENT_ACCOUNTS).write_text(declaration, encoding="utf-8")
-        _, etat, appels = self.etape("Intégrer", {PR_MINIZ + "99007": {"state": "OPEN", "head": "abc1234", "auteur": "alice-agent"}})
+        _, etat, appels = self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné", {PR_MINIZ + "99007": {"state": "OPEN", "head": "abc1234", "auteur": "alice-agent"}})
         self.assertEqual([a["args"][2] for a in self.appels_de(appels, "pr", "merge")], [PR_MINIZ + "99007"])
         self.assertEqual(self.enr(c1)["statut"], "integree")
         self.valide()
@@ -16838,7 +16838,7 @@ class TestAgentAccountsWorkflows(BaseParallele):
         self.verdict(c1, 0.05)
         self.relire(c1, "bruno", "bidji29")
         self.a("2026-10-31T12:00:00Z")
-        self.etape("Intégrer", {PR_MINIZ + "99007": {"state": "OPEN", "head": "abc1234", "auteur": "alice"},
+        self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné", {PR_MINIZ + "99007": {"state": "OPEN", "head": "abc1234", "auteur": "alice"},
                                 PR_MINIZ + "4242": {"state": "OPEN", "head": "beefcafe", "auteur": AGENT}})
         self.assertEqual((self.enr(c1)["statut"], self.enr(c2)["statut"]), ("integree", "ecartee"))
         sortie, etat, appels = self.etape("Fermer")
@@ -16977,7 +16977,7 @@ class TestRegistryMergeRecorded(BaseParallele):
 
     def test_a_merged_registry_pr_is_recorded_from_github_s_facts(self):
         fusion = self.soumis()
-        sortie, _, appels = self.etape("Intégrer", self.etats(fusion))
+        sortie, _, appels = self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné", self.etats(fusion))
         enr = self.enr(self.cid)
         self.assertEqual((enr["statut"], enr["decidee_le"], enr["fusion_sha"]), ("integree", "2026-10-27T14:00:00Z", fusion), sortie)
         self.assertEqual(enr["motif_decision"], f"Hive tooling contribution: registry PR #9201 merged at commit c0ffee0 by {AGENT}, "
@@ -17001,7 +17001,7 @@ class TestRegistryMergeRecorded(BaseParallele):
     def test_the_record_has_the_form_of_a_hand_made_one(self):
         fusion = self.soumis()
         tache_avant = (self.dossier / "taches/ruche/ruche-9094.yaml").read_text(encoding="utf-8")
-        self.etape("Intégrer", self.etats(fusion))
+        self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné", self.etats(fusion))
         self.valide()
         # Field by field against a record the council made by hand (frozen fixture): the same fields in the same order, of the
         # same types and forms.
@@ -17155,7 +17155,7 @@ class TestRegistryMergeRecorded(BaseParallele):
     def test_a_merge_that_changes_a_workflow_is_recorded_by_hand(self):
         """N3: the CI of a PR that changes a workflow ran the PR's own version of it."""
         fusion = self.soumis(aussi=lambda: self.changer(".github/workflows/site.yml", "# changed by the PR"))
-        sortie, _, _ = self.etape("Intégrer", self.etats(fusion))
+        sortie, _, _ = self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné", self.etats(fusion))
         self.assertIn(f"::notice::{self.cid}: PR #9201 (merge commit {fusion[:7]}) changes a workflow: the council records it by hand", sortie)
         self.assertEqual(self.enr(self.cid)["statut"], "en_relecture")
         self.assertFalse(self.lignes_de(self.cid))
@@ -17174,7 +17174,7 @@ class TestRegistryMergeRecorded(BaseParallele):
                 ("CI not green", {"ci": [{"conclusion": "failure"}]}, "CI not green on the merged commit c0ffee0"),
                 ("still open", {"state": "OPEN", "fusionnee_par": None}, None)):
             with self.subTest(nom):
-                sortie, _, appels = self.etape("Intégrer", self.etats(fusion, **champs))
+                sortie, _, appels = self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné", self.etats(fusion, **champs))
                 if avis:
                     self.assertIn(avis, sortie)
                 self.assertEqual(self.fichiers(), avant)
@@ -17182,21 +17182,21 @@ class TestRegistryMergeRecorded(BaseParallele):
         # A merge that changes only self-service files (the contribution and its task): no work to record.
         git(self.dossier, "reset", "-q", "--hard", self.anterieur)
         fusion = self.soumis(travail=False)
-        sortie, _, _ = self.etape("Intégrer", self.etats(fusion))
+        sortie, _, _ = self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné", self.etats(fusion))
         self.assertIn(f"PR #9201 (merge commit {fusion[:7]}) changes only self-service files", sortie)
         self.assertEqual(self.enr(self.cid)["statut"], "en_relecture")
         # Submitted outside the PR it declares (the contribution reached main before the PR's merge commit): not recorded here.
         git(self.dossier, "reset", "-q", "--hard", self.anterieur)
         fusion = self.soumis(dans_la_pr=False)
-        sortie, _, _ = self.etape("Intégrer", self.etats(fusion))
+        sortie, _, _ = self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné", self.etats(fusion))
         self.assertIn(f"it arrived on main with commit {git(self.dossier, 'rev-parse', 'HEAD~1')[:7]}, not with PR #9201's merge", sortie)
         self.assertEqual(self.enr(self.cid)["statut"], "en_relecture")
         # A week after the merge, the same refusal is silent (no notice at every pass).
         self.a("2026-11-03T14:00:01Z")
-        sortie, _, _ = self.etape("Intégrer", self.etats(fusion))
+        sortie, _, _ = self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné", self.etats(fusion))
         self.assertNotIn(self.cid, sortie)
         # Closed without merge: the existing close (bee cloturer), never an integration record.
-        sortie, _, _ = self.etape("Intégrer", self.etats(fusion, state="CLOSED", merge=None, fusionnee_par=None))
+        sortie, _, _ = self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné", self.etats(fusion, state="CLOSED", merge=None, fusionnee_par=None))
         self.assertEqual(self.enr(self.cid)["statut"], "annulee")
         self.assertFalse(self.lignes_de(self.cid))
 
@@ -17269,10 +17269,10 @@ class TestRegistryMergeRecorded(BaseParallele):
                   "(PR #9201) | Why | Who |\n")
         decisions.write_text(decisions.read_text(encoding="utf-8").replace(bee.ENTETE_DECISIONS, bee.ENTETE_DECISIONS + leurre), encoding="utf-8")
         self.commit("a decoy row")
-        self.etape("Intégrer", self.etats(fusion))
+        self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné", self.etats(fusion))
         self.assertEqual((self.enr(self.cid)["statut"], len(self.lignes_de(self.cid))), ("integree", 1))
         apres = self.fichiers()
-        self.etape("Intégrer", self.etats(fusion))
+        self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné", self.etats(fusion))
         self.assertEqual(self.fichiers(), apres)
         code, texte = self.bee("record-merge", self.cid, "--api", self.reponses(fusion))
         self.assertEqual(code, 1, texte)
@@ -17286,13 +17286,13 @@ class TestRegistryMergeRecorded(BaseParallele):
         bee.modifier_tache(self.dossier / "taches/ruche/ruche-9094.yaml", statut="integree")
         self.commit("the council's record")
         a_la_main = self.fichiers()
-        self.etape("Intégrer", self.etats(fusion))
+        self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné", self.etats(fusion))
         self.assertEqual(self.fichiers(), a_la_main)
         # A row written by hand while the contribution is still in review: the pass records it, and adds no second row.
         git(self.dossier, "reset", "-q", "--hard", "HEAD~1")
         ligne = f"| 2026-10-27 | {self.cid} integrated (PR #9201, merged at the judged commit c0ffee0): by hand | Why | Who |\n"
         decisions.write_text(decisions.read_text(encoding="utf-8").replace(bee.ENTETE_DECISIONS, bee.ENTETE_DECISIONS + ligne), encoding="utf-8")
-        self.etape("Intégrer", self.etats(fusion))
+        self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné", self.etats(fusion))
         self.assertEqual((self.enr(self.cid)["statut"], self.lignes_de(self.cid)), ("integree", [ligne.strip()]))
 
     def test_publishing_after_a_conflict_on_main_publishes_nothing_and_succeeds(self):
@@ -17310,7 +17310,7 @@ class TestRegistryMergeRecorded(BaseParallele):
             bee.ENTETE_DECISIONS, bee.ENTETE_DECISIONS + "| 2026-10-27 | A council decision | Why | Who |\n"), encoding="utf-8")
         for args in (("add", "-A"), ("commit", "-qm", "council"), ("push", "-q", "origin", "main")):
             git(autre, "-c", "user.name=c", "-c", "user.email=c@c", *args)
-        self.etape("Intégrer", self.etats(fusion))
+        self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné", self.etats(fusion))
         self.assertEqual(self.enr(self.cid)["statut"], "integree")
         sortie, _, appels = self.etape("Publier")
         self.assertIn("::notice::main changed the same lines during this pass: nothing published", sortie)
@@ -17320,7 +17320,7 @@ class TestRegistryMergeRecorded(BaseParallele):
         self.assertEqual(self.enr(self.cid)["statut"], "en_relecture")
         self.assertFalse([a for a in appels if "site.yml" in " ".join(a["args"])], "no site dispatch")
         # The next pass, from main, records it; main moves elsewhere meanwhile: rebased over and published, as before.
-        self.etape("Intégrer", self.etats(fusion))
+        self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné", self.etats(fusion))
         (autre / "README.md").write_text((autre / "README.md").read_text(encoding="utf-8") + "\nelsewhere\n", encoding="utf-8")
         for args in (("add", "-A"), ("commit", "-qm", "elsewhere"), ("push", "-q", "origin", "main")):
             git(autre, "-c", "user.name=c", "-c", "user.email=c@c", *args)
@@ -19339,7 +19339,7 @@ def controler(tests, tranches, rapports=None):
     return erreurs
 
 
-def en_parallele(commande, tests, processus):
+def lancer_en_parallele(commande, tests, processus):
     """Runs `tests` in `processus` processes, one shard each; 0 if every process passed and every test ran exactly once."""
     tranches = repartir(tests, processus)
     erreurs = controler(tests, tranches) or lancer_tranches(commande, tests, tranches)
@@ -19390,7 +19390,7 @@ class Lances(unittest.TextTestResult):
 
 
 def tranche(module, plan, i):
-    """One process of en_parallele: runs shard i of the plan, then writes its report (the suite it loaded, the tests it ran)."""
+    """One process of lancer_en_parallele: runs shard i of the plan, then writes its report (the suite it loaded, the tests it ran)."""
     debut, plan = time.monotonic(), pathlib.Path(plan)
     vus, tests = ids_des_tests(module), json.loads(plan.read_text(encoding="utf-8"))["tranches"][i]
     resultat = unittest.TextTestRunner(verbosity=2, resultclass=Lances).run(unittest.defaultTestLoader.loadTestsFromNames(tests, module))
@@ -19406,7 +19406,7 @@ def principal_tests(module, fichier, arguments):
     """`python3 <fichier>`: the suite, serial (unittest.main and its options); `--processus N`: in N processes;
     `--tranche <plan> <i>`: one of them."""
     if len(arguments) == 2 and arguments[0] == "--processus" and re.fullmatch(r"[1-9][0-9]*", arguments[1]):
-        return en_parallele([sys.executable, os.path.abspath(fichier)], ids_des_tests(module), int(arguments[1]))
+        return lancer_en_parallele([sys.executable, os.path.abspath(fichier)], ids_des_tests(module), int(arguments[1]))
     if len(arguments) == 3 and arguments[0] == "--tranche":
         return tranche(module, arguments[1], int(arguments[2]))
     unittest.main(module=module, argv=[fichier, *arguments])
@@ -19441,7 +19441,7 @@ class TestSuiteEnParallele(unittest.TestCase):
     def lancer(self, tests, processus=2):
         sortie = io.StringIO()
         with contextlib.redirect_stdout(sortie):
-            code = en_parallele([sys.executable, str(self.module)], tests, processus)
+            code = lancer_en_parallele([sys.executable, str(self.module)], tests, processus)
         return code, sortie.getvalue()
 
     def test_each_test_runs_exactly_once(self):
@@ -19557,11 +19557,11 @@ class TestSuiteEnParallele(unittest.TestCase):
             "continue-on-error on the tests": lambda f, s: t(f, s)["steps"][place(t(f, s), "Tests de l'outil")].update({"continue-on-error": True}),
             "continue-on-error on the suite's job": lambda f, s: t(f, s).update({"continue-on-error": True}),
             "continue-on-error on the checks job": lambda f, s: c(f, s).update({"continue-on-error": True}),
-            "the judge's tests above the tool's": lambda f, s: deplacer(t(f, s), "Tests unitaires du juge", "Tests de l'outil"),
-            "the PR rules above bee valider": lambda f, s: deplacer(c(f, s), "Règles de la pull request", "Validation complète"),
-            "bee valider twice": lambda f, s: c(f, s)["steps"].append(c(f, s)["steps"][place(c(f, s), "Validation complète")]),
+            "the judge's tests above the tool's": lambda f, s: deplacer(t(f, s), "Tests unitaires du juge commun (sans Docker ; méta-tests dans juge-commun.yml)", "Tests de l'outil"),
+            "the PR rules above bee valider": lambda f, s: deplacer(c(f, s), "Règles de la pull request", "Validation complète du registre"),
+            "bee valider twice": lambda f, s: c(f, s)["steps"].append(c(f, s)["steps"][place(c(f, s), "Validation complète du registre")]),
             "the tests in the checks job too": lambda f, s: c(f, s)["steps"].append(t(f, s)["steps"][place(t(f, s), "Tests de l'outil")]),
-            "no judge tests": lambda f, s: t(f, s)["steps"].pop(place(t(f, s), "Tests unitaires du juge")),
+            "no judge tests": lambda f, s: t(f, s)["steps"].pop(place(t(f, s), "Tests unitaires du juge commun (sans Docker ; méta-tests dans juge-commun.yml)")),
         }
         for nom, alterer in alterations.items():
             with self.subTest(alteration=nom):
@@ -19850,7 +19850,7 @@ class TestIdentiteParNumero(BaseRepetitionGenerale):
         # ruche-0120: fusion-auto takes it from its listing of the PRs (GitHub's record of each author), which the pass gives the
         # gate, and reads the date by it (TestPasseFusion).
         listage = next(s["run"] for s in yaml.safe_load((RACINE / ".github/workflows/fusion-auto.yml").read_text(encoding="utf-8"))["jobs"]
-                       ["verifier"]["steps"] if s.get("name", "").startswith("Lister les PR ouvertes"))
+                       ["verifier"]["steps"] if s.get("name", "").startswith("Lister les PR ouvertes et leurs validations (ruche-0120)"))
         self.assertIn('''[.number, .headRefOid, (.author.login // ""), (.author.databaseId // "")] | @tsv''', listage)
 
     def test_une_pr_ne_change_pas_qui_est_qui_pour_ses_propres_controles(self):
@@ -21185,7 +21185,7 @@ class TestChargeurCRuche0130(unittest.TestCase):
         "TestChargeurCRuche0130.test_differentiel_des_deux_analyseurs",
     )
     # name: (text, part of the refusal, whether libyaml's loader alone accepts it)
-    REFUS = {
+    REFUS_DU_CHARGEUR = {
         "ancre": ("statut: &s reservee\n", "ancre YAML (&…) refusée", True),
         "ancre et alias": ("statut: &s reservee\ntitre: *s\n", "ancre YAML (&…) refusée", True),
         "alias seul": ("statut: reservee\ntitre: *s\n", "alias YAML (*…) refusé", False),
@@ -21233,8 +21233,8 @@ class TestChargeurCRuche0130(unittest.TestCase):
 
     def test_chaque_refus_du_chargeur_avec_son_message(self):
         if hasattr(sys, "set_int_max_str_digits"):  # Python 3.11 and later: an integer too long is refused too (ruche-0040)
-            self.REFUS = {**self.REFUS, "entier démesuré": ("motif: " + "9" * 5000 + "\n", "Exceeds the limit", False)}
-        for nom, (texte, refus, seul_c_accepte) in self.REFUS.items():
+            self.REFUS_DU_CHARGEUR = {**self.REFUS_DU_CHARGEUR, "entier démesuré": ("motif: " + "9" * 5000 + "\n", "Exceeds the limit", False)}
+        for nom, (texte, refus, seul_c_accepte) in self.REFUS_DU_CHARGEUR.items():
             messages = {}
             for analyseur, chargeur_c in analyseurs():
                 with self.subTest(nom, analyseur=analyseur), mock.patch.object(bee, "_ChargeurBeeC", chargeur_c):
@@ -21394,7 +21394,7 @@ class TestBulkPrReads(BaseParallele):
         vus = set()
         for nom, etats in cas.items():
             with self.subTest(nom):
-                (sortie, diff, ecrits, _), appels = self.passes("Intégrer", "integration-auto.yml", etats)
+                (sortie, diff, ecrits, _), appels = self.passes("Intégrer ce qui satisfait R3, clore ce qui est abandonné", "integration-auto.yml", etats)
                 self.assertFalse(self.appels_de(appels, "pr", "view")[1:], "no per-PR read, but the merge commit after a merge")
                 self.assertEqual(len(self.appels_de(appels, "api", "graphql")), 1)
                 vus.add((bool(ecrits), "integree" in diff, "annulee" in diff))
@@ -21476,7 +21476,7 @@ class TestBulkPrReads(BaseParallele):
         c1, c2 = self.course_relue()
         self.init_git()
         self.a("2026-11-02T00:00:00Z")
-        for flux, etape in (("integration-auto.yml", "Intégrer"), ("verdicts.yml", "Récupérer les verdicts")):
+        for flux, etape in (("integration-auto.yml", "Intégrer ce qui satisfait R3, clore ce qui est abandonné"), ("verdicts.yml", "Récupérer les verdicts")):
             _, _, appels = self.etape(etape, {"graphql_illisible": True, PR_MINIZ + "99101": {"state": "CLOSED", "head": "abc1235", "auteur": "bruno"},
                                               PR_MINIZ + "99102": {"state": "OPEN", "head": "abc1236", "auteur": "alice"}}, flux=flux)
             self.assertEqual({tuple(a["args"][:2]) for a in appels}, {("api", "graphql")})
@@ -21499,7 +21499,7 @@ class TestBulkPrReads(BaseParallele):
         c1, c2 = self.course_relue()  # c2 (alice, 99102) ranked first, c1 (bruno, 99101)
         self.init_git()
         self.a("2026-11-02T00:00:00Z")
-        for flux, etape in (("integration-auto.yml", "Intégrer"), ("verdicts.yml", "Récupérer les verdicts")):
+        for flux, etape in (("integration-auto.yml", "Intégrer ce qui satisfait R3, clore ce qui est abandonné"), ("verdicts.yml", "Récupérer les verdicts")):
             git(self.dossier, "checkout", "-q", "--", ".")
             _, _, appels = self.etape(etape, {PR_MINIZ + "99101": {"state": "CLOSED", "head": "abc1235", "auteur": "bruno", "type_auteur": "Bot"},
                                               PR_MINIZ + "99102": {"state": "OPEN", "head": "abc1236", "auteur": "alice", "type_auteur": "Bot"}}, flux=flux)
@@ -21541,7 +21541,7 @@ class TestBulkPrReads(BaseParallele):
     def test_the_passes_read_no_pr_one_by_one(self):
         """No gh pr view and no bee acts-for per contribution in either pass (but the merge commit read after a merge)."""
         import yaml
-        for flux, job, etape in (("verdicts.yml", "verdicts", "Récupérer"), ("integration-auto.yml", "integrer", "Intégrer")):
+        for flux, job, etape in (("verdicts.yml", "verdicts", "Récupérer les verdicts"), ("integration-auto.yml", "integrer", "Intégrer ce qui satisfait R3, clore ce qui est abandonné")):
             pas = yaml.safe_load((RACINE / ".github/workflows" / flux).read_text(encoding="utf-8"))["jobs"][job]["steps"]
             script = next(s["run"] for s in pas if s.get("name", "").startswith(etape))
             self.assertEqual(script.count("python3 outils/bee.py en-attente --pr-states"), 1)
@@ -21618,14 +21618,14 @@ class TestBulkPrReadsRehearsal(unittest.TestCase):
 
     def test_criterion_1_300_pending_contributions_6_listing_calls(self):
         self.assertEqual(len(self.prs), 300)
-        sortie, appels = self.passe("verdicts.yml", "verdicts", "Récupérer", None)
+        sortie, appels = self.passe("verdicts.yml", "verdicts", "Récupérer les verdicts", None)
         self.assertEqual(appels.count("api graphql"), 6)
         lues = {a.split()[1] for a in appels if a != "api graphql"}
         self.assertEqual(lues, {f"repos/{u[19:]}".replace("/pull/", "/pulls/") for u in self.prs}, "each PR read, its author's own")
         self.assertFalse([a for a in appels if a.startswith("pr ")])
 
     def test_criterion_1_prs_of_someone_else_turned_away(self):
-        sortie, appels = self.passe("integration-auto.yml", "integrer", "Intégrer", "intrus")
+        sortie, appels = self.passe("integration-auto.yml", "integrer", "Intégrer ce qui satisfait R3, clore ce qui est abandonné", "intrus")
         self.assertEqual(appels, ["api graphql"] * 6)
         self.assertEqual(sortie.count("a été ouverte par intrus"), 300)
 
@@ -22304,19 +22304,20 @@ def load_tree(root, status="open"):
 
 
 def traduction_0142(names, carte, fichiers):
-    """The switch as ruche-0145 will make it, for the data (step 1a) and the Python code (this step): the shell scripts
-    and the workflows stay as they are (their renamer is a later step)."""
+    """The switch as ruche-0145 will make it, for the data (step 1a) and the code (steps 1b and 1b-2): the Python files by
+    rename_python, the shell scripts and the workflows by rename_shell."""
     tete = traduction_0141(names, fichiers)
-    for chemin in (c for c in names.code if c.endswith(".py")):
-        tete[names.path(chemin)] = carte.rename_python(fichiers[chemin].decode("utf-8"), chemin)[0].encode("utf-8")
+    for chemin in names.code:
+        texte = fichiers[chemin].decode("utf-8")
+        tete[names.path(chemin)] = (carte.rename_python(texte, chemin) if chemin.endswith(".py") else carte.rename_shell(texte, chemin))[0].encode("utf-8")
     return tete
 
 
 class TestEnglishNamesStep1b(unittest.TestCase):
     """ruche-0142 (docs/english-migration.md, sections 9, 12 and 13): the Python code renamer, the identifier map and the
     proofs P1, P1b (a, b) and P3, dormant. They run here on a copy of the repository with the frozen fixture; on main, from
-    main's checkout: python3 -I outils/migration/rename_code.py check --base origin/main --head <sha>. The identifiers of
-    the three test files are pending (a later step): check fails closed on them, one line each."""
+    main's checkout: python3 -I outils/migration/rename_code.py check --base origin/main --head <sha>. ruche-0152 mapped the
+    identifiers of the three test files: no file is pending any more (a pending file makes check fail closed, one line)."""
 
     @classmethod
     def setUpClass(cls):
@@ -22473,28 +22474,24 @@ class TestEnglishNamesStep1b(unittest.TestCase):
         with mock.patch.object(rename_code, "parser_rows", side_effect=ValueError("no parser")):
             self.assertIn("P3 and P1b (b) not run: tools/bee.py does not load: ValueError: no parser", rename_code.check(self.depot, self.base, self.tete)[0])
 
-    def test_the_honest_switch_holds_but_for_the_pending_test_files(self):
+    def test_the_honest_switch_holds_on_every_code_file_and_a_pending_file_fails_closed(self):
         problemes, nombres = self.verdict
-        attente = set(self.carte.m["pending"])
-        self.assertEqual(attente, {"outils/test_bee.py", "outils/juge/test_juge.py", "outils/repetition/test_load_test.py"})
-        self.assertTrue(problemes)
-        for p in problemes:
-            self.assertTrue(any(p.startswith(f"the map: {f}: ") for f in attente), p)
-        self.assertEqual(sum(p.endswith("not mapped yet (pending)") for p in problemes), 3)
+        self.assertEqual((self.carte.m["pending"], problemes), ([], []))
         for attendu in (("identifier", "construire_analyseur", "build_parser"), ("identifier", "statut", "status"), ("string", "valider", "validate"),
-                        ("string", "--utilisateur", "--user"), ("identifier", "ErreurBee", "BeeError")):
+                        ("string", "--utilisateur", "--user"), ("identifier", "ErreurBee", "BeeError"), ("identifier", "TestRegistre", "TestRegistry"),
+                        ("string", "BEE_MAINTENANT", "BEE_NOW"), ("string", "controles", "checks")):
             self.assertIn(attendu, nombres)
-        # the files the map covers, alone: every proof holds
-        def sans_les_tests(f):
-            f[rename.MAP] = re.sub(rb"\n- outils/(?:juge/test_juge|repetition/test_load_test|test_bee)\.py", b"", f[rename.MAP])
-            f[rename_code.IDS[0]] = re.sub(rb"\npending:\n(- .*\n)+", b"\npending: []\n", f[rename_code.IDS[0]])
-        base = self.variante(sans_les_tests, de=None)
-        self.assertEqual(rename_code.check(self.depot, base, self.tete)[0], [])
+        # a file listed as pending (its identifiers not reviewed): check fails closed, one line, and says so
+        def en_attente(f):
+            f[rename_code.IDS[0]] = f[rename_code.IDS[0]].replace(b"\npending: []\n", b"\npending:\n- outils/test_bee.py\n")
+        base = self.variante(en_attente, de=None)
+        problemes = rename_code.check(self.depot, base, self.tete)[0]
+        self.assertEqual(problemes, ["the map: outils/test_bee.py: 0 identifiers not mapped yet (pending)"])
         sortie = io.StringIO()
         with contextlib.redirect_stdout(sortie):
-            self.assertEqual(rename_code.main(["check", "--repo", str(self.depot), "--base", base, "--head", self.tete]), 0)
-            self.assertEqual(rename_code.main(["check", "--repo", str(self.depot), "--base", self.base, "--head", self.tete]), 1)
-        self.assertIn(f"✓ P1, P1b and P3 hold at {base} for the head {self.tete}: ", sortie.getvalue())
+            self.assertEqual(rename_code.main(["check", "--repo", str(self.depot), "--base", self.base, "--head", self.tete]), 0)
+            self.assertEqual(rename_code.main(["check", "--repo", str(self.depot), "--base", base, "--head", self.tete]), 1)
+        self.assertIn(f"✓ P1, P1b and P3 hold at {self.base} for the head {self.tete}: ", sortie.getvalue())
         self.assertIn("\nidentifier: construire_analyseur -> build_parser: ", sortie.getvalue())
         self.assertIn("✗ the map: outils/test_bee.py: ", sortie.getvalue())
 
@@ -22588,7 +22585,7 @@ class TestEnglishNamesStep1b(unittest.TestCase):
         with tempfile.TemporaryDirectory() as dossier:  # as a script: isolated or refused, and nothing shadows a module
             racine, marque = pathlib.Path(dossier), pathlib.Path(dossier) / "marque"
             for chemin in ("outils/bee.py", "outils/migration/rename.py", "outils/migration/rename_code.py", rename.MAP, rename_code.IDS[0],
-                           *(p for p in self.names.code if p.endswith(".py"))):
+                           *self.names.code):
                 (racine / chemin).parent.mkdir(parents=True, exist_ok=True)
                 (racine / chemin).write_bytes(self.fichiers[chemin])
             for module in ("outils/migration/yaml.py", "outils/migration/tokenize.py", "outils/yaml.py", "outils/argparse.py"):
@@ -22598,11 +22595,339 @@ class TestEnglishNamesStep1b(unittest.TestCase):
             self.assertEqual((r.returncode, marque.exists()), (1, False), r.stdout + r.stderr)
             self.assertIn("run it isolated, python3 -I outils/migration/rename_code.py", r.stderr)
             r = subprocess.run([sys.executable, "-I", script, "lint"], capture_output=True, text=True)
-            self.assertEqual((r.returncode, marque.exists()), (1, False), r.stdout + r.stderr)
-            self.assertIn("✗ outils/test_bee.py: ", r.stdout)
-            self.assertIn(" identifiers not mapped yet (pending)", r.stdout)
+            self.assertEqual((r.returncode, marque.exists()), (0, False), r.stdout + r.stderr)
+            self.assertIn("✓ the identifier map covers the code.", r.stdout)
         for chemin in ("outils/bee.py", "outils/site_bee.py", *(p.relative_to(RACINE).as_posix() for p in (RACINE / ".github").rglob("*.yml"))):
             self.assertNotIn("rename_code", (RACINE / chemin).read_text(encoding="utf-8"), chemin)
+
+
+# --- ruche-0152: English names, step 1b-2: the test files' identifiers, the shell scripts and the workflows (dormant) ---
+
+# A small script and a small workflow that hold every kind of region the shell renamer cuts: comments (as written), code
+# (every name), prose (its compound names and $variables only), Python (python3 -c and a here-document), whole phrases.
+SCRIPT_0152 = '''#!/usr/bin/env bash
+# Publie le travail : un commentaire reste tel quel (taches/, bee valider, $portee)
+set -euo pipefail
+portee="$1"; sortie=$(python3 outils/bee.py --registre "$BEE_REGISTRE" valider --sortie "$BEE_SIMU/etat")
+echo "Portée de la passe : $portee ; dossier : ${sortie:-aucun}" >&2
+python3 -c 'import json, sys; print(json.load(sys.stdin)["statut"])' < "taches/$portee.json"
+case "$2" in fusionner|refuser) ;; *) echo 'usage : publier <portee> fusionner|refuser' >&2; exit 2;; esac
+python3 - "$sortie" <<'EOF'
+import sys
+etat = sys.argv[1]
+print(etat, {"auteur": etat})
+EOF
+'''
+SCRIPT_0152_EN = '''#!/usr/bin/env bash
+# Publie le travail : un commentaire reste tel quel (taches/, bee valider, $portee)
+set -euo pipefail
+reach="$1"; output_text=$(python3 tools/bee.py --registry "$BEE_REGISTRY" validate --output "$BEE_SIM/state")
+echo "Portée de la passe : $reach ; dossier : ${output_text:-aucun}" >&2
+python3 -c 'import json, sys; print(json.load(sys.stdin)["status"])' < "tasks/$reach.json"
+case "$2" in merge|refuse) ;; *) echo 'usage : publier <reach> fusionner|refuser' >&2; exit 2;; esac
+python3 - "$output_text" <<'EOF'
+import sys
+state = sys.argv[1]
+print(state, {"author": state})
+EOF
+'''
+FLUX_0152 = '''# Valide le registre : un commentaire reste tel quel (bee valider)
+name: Validation du registre
+on:
+  workflow_run:
+    workflows: ["Fusion automatique"]
+jobs:
+  controles:
+    runs-on: ubuntu-24.04
+    outputs: {portee: "${{ steps.portee_push.outputs.portee }}"}
+    steps:
+      - name: Dépendances
+        id: portee_push
+        env:
+          AVANT: ${{ github.event.before }}
+        run: |
+          portee=$(python3 outils/bee.py ci-scope --tete "$AVANT")  # la portée de la passe
+          echo "portee=$portee" >> "$GITHUB_OUTPUT"
+          git commit -qam "Verdicts des forks"
+  valider:
+    needs: [controles]
+    if: needs.controles.outputs.portee != 'data'
+    runs-on: ubuntu-24.04
+    steps:
+      - run: PYTHONPATH=outils python3 -c 'import sys, bee; sys.exit(bee.CHANGEMENTS_DE_BASE == ())'
+'''
+FLUX_0152_EN = '''# Valide le registre : un commentaire reste tel quel (bee valider)
+name: Registry validation
+on:
+  workflow_run:
+    workflows: ["Auto-merge"]
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    outputs: {reach: "${{ steps.reach_push.outputs.reach }}"}
+    steps:
+      - name: Dependencies
+        id: reach_push
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          reach=$(python3 tools/bee.py ci-scope --head "$BEFORE")  # la portée de la passe
+          echo "reach=$reach" >> "$GITHUB_OUTPUT"
+          git commit -qam "Fork verdicts"
+  validate:
+    needs: [checks]
+    if: needs.checks.outputs.reach != 'data'
+    runs-on: ubuntu-24.04
+    steps:
+      - run: PYTHONPATH=tools python3 -c 'import sys, bee; sys.exit(bee.BASE_CHANGES == ())'
+'''
+
+
+class TestEnglishNamesStep1b2(unittest.TestCase):
+    """ruche-0152 (docs/english-migration.md, sections 9, 12 and 13): the test files' identifiers mapped, no two names of one
+    scope sharing an English name; the shell scripts and the workflows renamed region by region (comments as written, prose
+    but its names, Python as Python) and proven by P1, P1b and the workflows' links; the site's CSS and JavaScript and the
+    French node headings kept, any change to them refused. On a copy of the repository with the frozen fixture, as step 1b."""
+    setUpClass, tearDownClass = TestEnglishNamesStep1b.__dict__["setUpClass"], TestEnglishNamesStep1b.__dict__["tearDownClass"]
+    variante, remplacer, carte_changee = TestEnglishNamesStep1b.variante, TestEnglishNamesStep1b.remplacer, TestEnglishNamesStep1b.carte_changee
+
+    def test_the_test_files_are_covered_and_no_scope_has_a_collision(self):
+        code = {c: self.fichiers[c].decode("utf-8") for c in self.names.code}
+        self.assertEqual((self.carte.m["pending"], self.carte.lint(code)), ([], []))  # relire and relecture included
+        self.assertIn("identifier TestRegistreReel is neither mapped nor made of English words",
+                      " ".join(self.carte_changee(lambda m: m["test_identifiers"].pop("TestRegistreReel"))[1].lint(code)))
+        exemples = {"outils/x.py": "class T:\n    def relire(self):\n        pass\n\n    def relecture(self):\n        pass\n\n\nclass A:\n"
+                                   "    def relire(self):\n        pass\n\n\nclass B(A):\n    def relecture(self):\n        pass\n\n\n"
+                                   "def f(fichiers, files):\n    return fichiers, files\n",
+                    "outils/x.sh": 'travail=1\nworkdir=2\nbidule_inconnu=3\necho "$travail $workdir $bidule_inconnu"\n'}
+        problemes = self.carte.lint(exemples)
+        for message in ("outils/x.py: line 1: relecture and relire both become review",  # two methods of one class
+                        "outils/x.py: line 14: relecture and relire both become review",  # a method hides its base class's
+                        "outils/x.py: line 19: fichiers and files both become files",  # a variable, an English one
+                        "outils/x.sh: line 1: travail and workdir both become workdir",  # two variables of a script
+                        "outils/x.sh: identifier bidule_inconnu is neither mapped nor made of English words"):
+            self.assertIn(message, problemes)
+        partage = self.carte_changee(lambda m: m["shared"].append({"scope": "T", "names": ["relecture", "relire"], "why": "x"}))[1]
+        self.assertNotIn("outils/x.py: line 1: relecture and relire both become review", partage.lint(exemples))
+        # a def renamed otherwise than the attribute that reads it (load_test.rejouer, read as args.rejouer: replay)
+        carte = self.carte_changee(lambda m: m["identifiers"].pop("rejouer"))[1]
+        self.assertIn("outils/x.py: rejouer is defined as rejouer and read as an attribute as replay", carte.lint({"outils/x.py": "def rejouer():\n    pass\n"}))
+
+    def test_the_shell_renamer_edits_names_only_and_p1_p1b_hold_on_it(self):
+        for texte, attendu, chemin in ((SCRIPT_0152, SCRIPT_0152_EN, "outils/repetition/x"), (FLUX_0152, FLUX_0152_EN, ".github/workflows/x.yml")):
+            with self.subTest(chemin):
+                nouveau, nombres = self.carte.rename_shell(texte, chemin)[0], collections.Counter()
+                self.assertEqual(nouveau, attendu)
+                self.assertEqual((self.carte.same_shell(texte, nouveau, nombres, chemin), self.carte.residue_shell(chemin, nouveau),
+                                  self.carte.lint_shell(texte, chemin)), ([], [], []))
+                self.assertIn(("string", "--registre" if "x.yml" not in chemin else "--tete", "--registry" if "x.yml" not in chemin else "--head"), nombres)
+        regions = [(k, SCRIPT_0152[a:b]) for a, b, k in self.carte.regions(SCRIPT_0152, "outils/repetition/x")]
+        for region in (("comment", "# Publie le travail : un commentaire reste tel quel (taches/, bee valider, $portee)"),
+                       ("text", "Portée de la passe : $portee ; dossier : ${sortie:-aucun}"), ("code", 'portee="'),
+                       ("python", 'import json, sys; print(json.load(sys.stdin)["statut"])'),
+                       ("python", 'import sys\netat = sys.argv[1]\nprint(etat, {"auteur": etat})\n')):
+            self.assertIn(region, regions)
+
+    def test_p1_refuses_every_shell_or_workflow_change_outside_the_map(self):
+        carte, chemin, flux = self.carte, "outils/repetition/x", ".github/workflows/x.yml"
+        cas = {
+            "an option beyond the map": (SCRIPT_0152, SCRIPT_0152_EN, chemin, "--output", "--out", "not through the map"),
+            "a variable renamed otherwise, once": (SCRIPT_0152, SCRIPT_0152_EN, chemin, 'reach="$1"', 'scope="$1"', "not through the map"),
+            "a word of prose": (SCRIPT_0152, SCRIPT_0152_EN, chemin, "Portée de la passe", "Portée du passage", "not through the map"),
+            "a comment": (SCRIPT_0152, SCRIPT_0152_EN, chemin, "# Publie le travail", "# Publishes the work", "but a comment stays as written"),
+            "the quoting": (SCRIPT_0152, SCRIPT_0152_EN, chemin, '"tasks/$reach.json"', "tasks/$reach.json", "its regions differ"),
+            "the embedded Python": (SCRIPT_0152, SCRIPT_0152_EN, chemin, '["status"]', '["state"]', "the string « statut » became « state »"),
+            "a workflow's name": (FLUX_0152, FLUX_0152_EN, flux, "name: Registry validation", "name: Registry check", "not through the map"),
+            "a job id": (FLUX_0152, FLUX_0152_EN, flux, "  checks:\n", "  controls:\n", "not through the map"),
+            "a robot's text": (FLUX_0152, FLUX_0152_EN, flux, '"Fork verdicts"', '"Verdicts of the forks"', "not through the map"),
+        }
+        for nom, (avant, apres, ou, a, b, message) in cas.items():
+            with self.subTest(nom):
+                faux = apres.replace(a, b, 1)
+                self.assertNotEqual(faux, apres)
+                problemes = carte.same_shell(avant, faux, collections.Counter(), ou)
+                self.assertTrue(any(message in p for p in problemes), problemes)
+        # a kept token: the forks' manifest folder, which verdicts.yml reads as they write it
+        vieux = '      - run: for e in "manifestes/$tache.yaml" CONTRIBUTION.yaml; do echo "$e"; done\n'
+        nouveau = carte.rename_shell(vieux, ".github/workflows/verdicts.yml")[0]
+        self.assertEqual(nouveau, '      - run: for e in "manifestes/$task.yaml" CONTRIBUTION.yaml; do echo "$e"; done\n')
+        self.assertIn("but it is kept as written", " ".join(carte.same_shell(vieux, nouveau.replace("manifestes", "manifests"), collections.Counter(),
+                                                                             ".github/workflows/verdicts.yml")))
+        # P1b (a): a French name left where names are, though P1 accepts an unchanged token
+        reste = SCRIPT_0152_EN.replace('reach="$1"', 'portee="$1"')
+        self.assertEqual(carte.same_shell(SCRIPT_0152, reste, collections.Counter(), chemin), [])
+        self.assertTrue(any(p.startswith("line 4: «") and "is still French" in p for p in carte.residue_shell(chemin, reste)))
+
+    def test_on_the_switch_a_job_id_without_its_needs_or_a_workflow_name_without_its_listener_is_refused(self):
+        def fautes(f):
+            for chemin, a, b in ((".github/workflows/validation.yml", "needs: [checks, suite, dispatch]", "needs: [controles, suite, dispatch]"),
+                                 (".github/workflows/auto-merge.yml", 'workflows: ["Registry validation"]', 'workflows: ["Validation du registre"]'),
+                                 (".github/workflows/validation.yml", "TestTree.test_delivered_paths_fit_in_a_short_budget",
+                                  "TestTree.test_chemins_livres_tiennent_dans_un_budget_court"),
+                                 (".github/workflows/auto-integration.yml", "bee.BASE_CHANGES", "bee.CHANGEMENTS_DE_BASE")):
+                self.remplacer(chemin, a, b)(f)
+        problemes = rename_code.check(self.depot, self.base, self.variante(fautes))[0]
+        for message in ("P1b: .github/workflows/validation.yml: the needs « controles » names nothing in the head",
+                        "P1b: .github/workflows/auto-merge.yml: the workflow_run « Validation du registre » names nothing in the head",
+                        "P1b: .github/workflows/validation.yml: the test « TestTree.test_chemins_livres_tiennent_dans_un_budget_court » names nothing in the head",
+                        "P1b: .github/workflows/auto-integration.yml: the bee « CHANGEMENTS_DE_BASE » names nothing in the head"):
+            self.assertIn(message, problemes)
+        self.assertTrue(any(p.startswith("P1b: .github/workflows/auto-merge.yml: line ") and "is still French" in p for p in problemes), problemes)
+        # links alone: a step id, a job's output and a reusable workflow's job, each named but not there
+        liens = self.carte.links({"x.yml": "name: X\non:\n  workflow_call:\n    outputs:\n      o: {value: '${{ jobs.juge.outputs.code }}'}\njobs:\n"
+                                  "  a:\n    outputs: {p: '${{ steps.s.outputs.p }}'}\n    steps:\n      - run: echo\n"
+                                  "  b:\n    needs: a\n    if: needs.a.outputs.q == 'x'\n    steps:\n      - run: echo\n"}, str, set())
+        self.assertEqual(liens, {("x.yml", "jobs", "juge"), ("x.yml", "steps", "s"), ("x.yml", "needs", "a.outputs.q")})
+
+    def test_the_site_s_css_and_javascript_stay_as_written_and_agree_with_its_html(self):
+        """Review of ruche-0142 (deferred to this task): the JavaScript in site_bee.py was renamed word by word (var champs, then
+        fields; dataset.size while the HTML writes data-taille)."""
+        chemin, source = "outils/site_bee.py", self.fichiers["outils/site_bee.py"].decode("utf-8")
+        valeurs = lambda texte: {t.id: n.value.value for n in ast.parse(texte).body if isinstance(n, ast.Assign) for t in n.targets  # noqa: E731
+                                 if getattr(t, "id", None) in ("STYLE", "SCRIPT_FILTRES", "FILTERS_SCRIPT")}
+
+        def desaccords(texte):  # what the script reads (dataset.x, [data-x]) and the HTML does not write
+            script = valeurs(texte)["FILTERS_SCRIPT"]
+            attributs = set(re.findall(r"data-([\w-]+)", texte.replace(script, "")))
+            return {d for d in re.findall(r"dataset\.(\w+)", script) if d not in attributs} | {d for d in re.findall(r"\[data-([\w-]+)", script)
+                                                                                                 if d not in attributs}
+        nouveau = self.carte.rename_python(source, chemin)[0]
+        self.assertEqual((valeurs(nouveau)["STYLE"], valeurs(nouveau)["FILTERS_SCRIPT"]), (valeurs(source)["STYLE"], valeurs(source)["SCRIPT_FILTRES"]))
+        self.assertEqual(desaccords(nouveau), set())
+        self.assertIn("<option value='S' selected>un peu (tâche S)</option>", nouveau)  # HTML's text is prose (was « one_of peu »)
+        # without the keep-list's scopes, the script is renamed word by word and reads what the HTML no longer writes
+        sans = self.carte_changee(lambda m: next(k for k in m["keep"] if k["files"] == chemin).pop("scopes"))[1].rename_python(source, chemin)[0]
+        self.assertTrue({"size", "filter_fn"} <= desaccords(sans), desaccords(sans))
+        # P1 refuses a change inside a kept scope, even one the map would make
+        faux = nouveau.replace("var champs=", "var fields=").replace("champs.forEach", "fields.forEach")
+        self.assertTrue(any("kept as written (identifiers.yaml, keep)" in p for p in self.carte.same_python(source, faux, collections.Counter(), chemin)))
+
+    def test_the_french_node_headings_stay_and_a_rename_of_them_is_refused(self):
+        """Review of ruche-0142 (deferred to this task): bee compares these headings with markdown people write, in both
+        languages until the tree is translated; the site and the tests read them too."""
+        source = self.fichiers["outils/bee.py"].decode("utf-8")
+        sections = lambda texte, nom: next(ast.literal_eval(n.value) for n in ast.parse(texte).body if isinstance(n, ast.Assign)  # noqa: E731
+                                           and getattr(n.targets[0], "id", None) == nom)
+        nouveau = self.carte.rename_python(source, "outils/bee.py")[0]
+        self.assertEqual(sections(nouveau, "NODE_SECTIONS"), ("Pourquoi cette branche existe", "Ce qui compte ici", "Ce qu'on peut ignorer ici", "Enfants"))
+        self.assertEqual(sections(nouveau, "NODE_SECTIONS_EN"), sections(source, "SECTIONS_NOEUD_EN"))
+        faux = nouveau.replace('"Ce qu\'on peut ignorer ici", "Enfants")', '"Ce qu\'on peut ignorer ici", "Children")', 1)
+        self.assertNotEqual(faux, nouveau)
+        self.assertIn(f"line {source[:source.index('SECTIONS_NOEUD = (')].count(chr(10)) + 1}: the string « Enfants » became « Children »: kept as written "
+                      "(identifiers.yaml, keep)", self.carte.same_python(source, faux, collections.Counter(), "outils/bee.py"))
+        for chemin, problemes in (("outils/test_bee.py", 1), ("outils/site_bee.py", 1), ("outils/x.py", 0)):  # kept where they are compared
+            with self.subTest(chemin):
+                self.assertEqual(self.carte.rename_python('x = {"Enfants": 1}\n', chemin)[0], 'x = {"Enfants": 1}\n' if problemes else 'x = {"Children": 1}\n')
+                self.assertEqual(len(self.carte.same_python('x = {"Enfants": 1}\n', 'x = {"Children": 1}\n', collections.Counter(), chemin)), problemes)
+
+    def test_programs_and_phrases_inside_strings_are_renamed_whole(self):
+        """A fake tool's program in Python, written to a file by a test, is renamed as Python (a word at a time, mien[ became
+        mine[ beside mien =); a workflow's or step's name inside a text, whole (a notice that names the workflow); a value of
+        the data in prose stays, as all prose (« inscription en parallèle », a node heading)."""
+        avant = ('P = r"""import os\nmien = {"statut": os.environ["COMPTES"]}\nprint(mien["statut"])\n"""\n'
+                 'N = "::notice title=Juge commun::code 0"\nH = "## Ce qui compte ici, une inscription en parallèle"\n')
+        apres = ('P = r"""import os\nmine = {"status": os.environ["COMPTES"]}\nprint(mine["status"])\n"""\n'
+                 'N = "::notice title=Common judge::code 0"\nH = "## Ce qui compte ici, une inscription en parallèle"\n')
+        self.assertEqual(self.carte.rename_python(avant, "outils/x.py")[0], apres)
+        self.assertEqual((self.carte.same_python(avant, apres, collections.Counter(), "outils/x.py"), self.carte.residue("outils/x.py", apres)), ([], []))
+        self.assertEqual(self.carte.same_python(avant, apres.replace("print(mine[", "print(mien["), collections.Counter(), "outils/x.py"),
+                         ["line 1: in its program, line 3: the identifier mien became mien, the map says mine"])
+        self.assertTrue(self.carte.same_python(avant, apres.replace("Common judge", "Shared judge"), collections.Counter(), "outils/x.py"))
+        # a test's local variable is renamed as an identifier, never in strings: « oui » is a value the site's script compares
+        self.assertEqual(self.carte.rename_python('def f(oui):\n    return oui, "oui"\n', "outils/x.py")[0], 'def f(yes_one):\n    return yes_one, "oui"\n')
+
+    # --- review of ruche-0152 ---
+
+    def module_0152(self, texte, nom):
+        """The module a code file's text makes (bee.py or site_bee.py, at the base or renamed), run from memory."""
+        module = types.ModuleType(nom)
+        module.__file__ = str(RACINE / "outils" / f"{nom}.py")
+        sys.modules[nom] = module
+        try:
+            exec(compile(texte, f"{nom}.py", "exec"), module.__dict__)
+        finally:
+            del sys.modules[nom]
+        return module
+
+    def test_the_fingerprints_of_persons_are_the_same_with_the_renamed_bee(self):
+        """Item 1: « partage », a test's name, was made a token of every string, and cles_passage's « partage: » became « sharing: »:
+        the fingerprints of the do-not-contact list and of the removals would have stopped matching. On identities like the
+        fixtures' (shared hosts, plain logins, case variants), empreinte and cles_passage give the base's results renamed."""
+        source = self.fichiers["outils/bee.py"].decode("utf-8")
+        corpus = [*TestRetraitDemandeRuche0048.NOMS, "github:hubot", "github:fictif-cible", "gh:OCTOCAT", "github:OctoCat", "GitHub : octocat", "@octocat",
+                  "~octocat", "octocat/zlib", "Alice-Martin", "Odile  Martin", "srht:~odile", "web:exemple.org", "site:www.Exemple.org",
+                  "https://github.com/octocat", "https://WWW.GitHub.com/OctoCat/zlib", "https://api.github.com/users/octocat", "https://git.sr.ht/~odile",
+                  "https://octocat.github.io/x", "https://blog.exemple.co.uk/a", "https://www.linkedin.com/in/Odile-Martin", "linkedin.com/in/odile",
+                  "https://x.com/@odile", "https://facebook.com/odile.martin", "https://medium.com/~odile", "https://gitlab.com/Odile"]
+
+        def empreintes(texte, ids):
+            bee_ = self.module_0152(texte, "bee_0152")
+            empreinte, cles_passage = (getattr(bee_, ids.get(n, n)) for n in ("empreinte", "cles_passage"))
+            return {x: (empreinte(x), sorted(cles_passage(x)), sorted(map(empreinte, cles_passage(x)))) for x in corpus}
+        avant = empreintes(source, {})
+        self.assertIn(["partage:x.com|@odile"], [v[1] for v in avant.values()])
+        self.assertEqual(empreintes(self.carte.rename_python(source, "outils/bee.py")[0], self.carte.ids), avant)
+        # with « partage » a token of the code (as at 00f5c3e) and cles_passage out of the keep-list, the fingerprints change
+        def vieille(m):
+            m["identifiers"]["partage"] = m["test_identifiers"].pop("partage")
+            next(k for k in m["keep"] if k["files"] == "outils/bee.py" and "scopes" in k)["scopes"].remove("cles_passage")
+        texte, carte = self.carte_changee(vieille)
+        nouveau = carte.rename_python(source, "outils/bee.py")[0]
+        self.assertIn('{f"sharing:{', nouveau)
+        self.assertNotEqual(empreintes(nouveau, carte.ids), avant)
+        # P1 refuses that literal renamed by hand inside the kept scope; the lint, a test's name made a token of the code
+        faux = self.carte.rename_python(source, "outils/bee.py")[0].replace('{f"partage:{', '{f"sharing:{', 1)
+        self.assertTrue(any("« partage:" in p and "kept as written" in p for p in self.carte.same_python(source, faux, collections.Counter(), "outils/bee.py")))
+        code = {c: self.fichiers[c].decode("utf-8") for c in self.names.code}
+        self.assertIn("identifier partage: only a test uses it, it belongs in test_identifiers (never a string token elsewhere)", carte.lint(code))
+
+    def test_a_token_renamed_in_a_string_its_file_does_not_name_is_refused_unless_declared(self):
+        """Item 1, the lint: a token of identifiers.yaml changed in a string of the code, where the file's code does not name it,
+        is a value that only looks like a name (a hashed literal, a CSS class), unless declared on purpose (strings)."""
+        exemples = {"outils/x.py": 'CLASSES = ("vide", "pleine")\n', "outils/repetition/x": 'echo "$SIMU/vide"\n'}
+        for chemin in exemples:
+            self.assertIn(f"{chemin}: the token vide -> empty_one changes in a string, though this file's code does not name it: keep it, or declare it "
+                          "on purpose (identifiers.yaml, strings)", self.carte.lint(exemples))
+        self.assertEqual(self.carte.lint({"outils/x.py": 'vide = "vide"\n', "outils/test_x.py": 'CLASSES = ("vide",)\n'}), [])  # named; a test
+        declaree = self.carte_changee(lambda m: m["strings"].append({"files": "outils/**", "tokens": ["vide"], "why": "x"}))[1]
+        self.assertEqual(declaree.lint(exemples), [])
+
+    def test_every_cell_class_the_site_writes_is_defined_in_its_css_before_and_after_the_rename(self):
+        """Item 2: the renamed site wrote c-empty_one, c-blocked and c-waiting while its kept CSS defines .c-vide, .c-bloquee and
+        .c-attente: the classes are kept with the CSS."""
+        source = self.fichiers["outils/site_bee.py"].decode("utf-8")
+
+        def classes(texte, carte=None):  # carte: the map that renamed texte
+            n = lambda x: carte.ids.get(x, x) if carte else x  # noqa: E731
+            site = self.module_0152(texte, "site_0152")
+            reg = type("Reg", (), {carte.attrs["bloquee_par"] if carte else "bloquee_par": lambda self, t: t["b"]})()
+            ecrites = {getattr(site, n("etat_tache"))(reg, {"statut": s, "b": b})[1] for s in [*getattr(site, n("ETATS")), "x"] for b in (False, True)}
+            html = getattr(site, n("legende"))() + getattr(site, n("rayon_svg"))(reg, [], "") + "".join(getattr(site, n("alveole"))(0, 0, 1, c) for c in ecrites)
+            return set(re.findall(r'class="c-([\w-]+)"', html)), set(re.findall(r"\.c-([\w-]+)\{", getattr(site, n("STYLE"))))
+        for texte, carte in ((source, None), (self.carte.rename_python(source, "outils/site_bee.py")[0], self.carte)):
+            ecrites, definis = classes(texte, carte)
+            self.assertTrue({"vide", "bloquee", "attente", "pleine"} <= ecrites and ecrites <= definis, (ecrites, definis))
+        sans = self.carte_changee(lambda m: next(k for k in m["keep"] if k["files"] == "outils/site_bee.py")["tokens"].remove("vide"))[1]
+        ecrites, definis = classes(sans.rename_python(source, "outils/site_bee.py")[0], sans)
+        self.assertEqual(ecrites - definis, {"empty_one"})
+
+    def test_a_here_document_s_prose_a_double_quoted_python_and_a_quoted_jq_filter(self):
+        """Items 3 and 4: python3 -c "…" was read as prose, its names left French; a here-document's apostrophes were read as
+        quotes (c'est vide dossier -> c'is_one empty_one folder); a jq filter's key was renamed, its value not."""
+        chemin, carte = "outils/repetition/x", self.carte
+        prose = "cat > f <<'EOF'\nl'auteur dit pseudo et c'est vide dossier, sur taches/x.yaml\nEOF\necho dossier\n"
+        self.assertEqual(carte.rename_shell(prose, chemin)[0], "cat > f <<'EOF'\nl'auteur dit pseudo et c'est vide dossier, sur tasks/x.yaml\nEOF\necho folder\n")
+        script = "cat > h <<'EOF'\n#!/usr/bin/env bash\nwhile read -r ancien ref; do [ \"$ancien\" = 0 ] && echo \"l'ancien reste\"; done\nEOF\n"
+        self.assertEqual(carte.rename_shell(script, chemin)[0], script.replace("ancien ref", "old ref").replace('"$ancien"', '"$old"'))  # a script: shell
+        self.assertEqual([carte.lint_shell(t, chemin) for t in (prose, script)], [[], []])
+        double = 'python3 -c "import json, sys; print(json.load(sys.stdin)[\'statut\'])" < f\n'
+        self.assertEqual(carte.lint_shell(double, chemin), ["line 1: python3 -c with its program in double quotes: write it in single quotes or a "
+                                                            "here-document (python3 - <<'X'), as the renamer reads Python"])
+        self.assertEqual(carte.lint_shell(double.replace('"', "'").replace("['statut']", '["statut"]'), chemin), [])
+        jq = 'gh api x --jq \'.[] | select(.statut == "ouverte") | .number\' > "$d/fichiers.txt"\n'
+        self.assertEqual(carte.lint_shell(jq, chemin), [f"line 1: a quoted jq filter holds {w}, a name of the map: its keys and values cannot be told "
+                                                        "apart, read the JSON in Python" for w in ("ouverte", "statut")])
+        self.assertEqual(carte.lint_shell("gh api x --jq '.[] | .filename' > \"$d/fichiers.txt\"\n", chemin), [])
 
 
 # --- ruche-0144: settings fail closed: each bee.yaml key bee reads is required and well formed, any other key refused, no default ---

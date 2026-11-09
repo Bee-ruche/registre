@@ -12,7 +12,10 @@
 #   hand_tokens   tokens whose English name depends on their role: renamed by hand (plan, section 12, change 7).
 #   paths         French path -> English path; an entry ending in / maps a folder prefix, the others one file.
 #   env           environment variables bee, its tests and the workflows read (english-names.md, section 5.5; ruche-0142
-#                 added BEE_PAUSE_FUSION, the auto-merge pause).
+#                 added BEE_PAUSE_FUSION, the auto-merge pause; ruche-0152, those of the workflows' steps).
+#   workflows     the names the workflows and scripts hold (ruche-0152): workflow names (what workflow_run listens to),
+#                 job ids (needs), step ids (steps.<id>.outputs), inputs and outputs, concurrency groups, step names, and
+#                 the robots' texts (commit messages); each section one-to-one; a name already mapped elsewhere, as there.
 #   tree          node ids are paths under tree/: each segment maps through `segments`; children lines are read in the
 #                 sections named in `children`.
 #   families      per file family: files (globs from the registry's root), writer (text: key and value tokens edited in
@@ -23,9 +26,9 @@
 #                 domain). Every scalar outside a domain is a leaf, kept byte for byte: free texts are never translated.
 #   domains       closed: a value outside its domain is refused. open_domains: values not listed stay as written.
 #                 The domains `path` and `node` are the path map and the tree segments.
-#   code          the code files (Python, shell, workflows), listed one by one: step 1b's proofs (P1, P1b, P3) cover their
-#                 content (rename_code.py, with identifiers.yaml: the Python names); P2 checks only their place (the path map)
-#                 and their mode.
+#   code          the code files (Python, shell, workflows), listed one by one: steps 1b and 1b-2's proofs (P1, P1b, P3, the
+#                 workflows' links) cover their content (rename_code.py, with identifiers.yaml); P2 checks only their place
+#                 (the path map) and their mode.
 #   hand          every other file no family translates, by glob, the first matching entry deciding: same (byte-identical,
 #                 at its English path), becomes (byte-identical to that file of the base) or removed. A schema of
 #                 schemas/ is translated with its family (keys, domains and schema_strings: $id, patterns), byte for byte.
@@ -130,6 +133,7 @@ paths:
   outils/juge/jouet/bee/juge/: tools/judge/toy/bee/judge/
   outils/juge/jouet/bee/juge/projet.py: tools/judge/toy/bee/judge/project.py
   outils/juge/jouet/bee/juge/construire.sh: tools/judge/toy/bee/judge/build.sh
+  outils/juge/jouet/bee/juge/execution.c: tools/judge/toy/bee/judge/run.c
   outils/repetition/: tools/rehearsal/
   outils/repetition/LISEZMOI-modele.md: tools/rehearsal/README-template.md
   outils/repetition/ci-simulee: tools/rehearsal/simulated-ci
@@ -188,6 +192,91 @@ env:
   BEE_JUGE_INTEGRATION: BEE_JUDGE_INTEGRATION
   BEE_FLUX_SEUL: BEE_STREAM_ONLY
   BEE_PAUSE_FUSION: BEE_MERGE_PAUSE
+  ACCEPTEES: ACCEPTED
+  APRES: AFTER
+  AUTEUR: AUTHOR
+  AVANT: BEFORE
+  BASE_EVENEMENT: EVENT_BASE
+  CONTROLES: CHECKS
+  DEPOT: REPO
+  EXCLURE: EXCLUDE
+  HISTORIQUE: HISTORY
+  PORTEE: REACH
+  RELANCE: DISPATCH
+  SANS_INSTRUCTIONS: NO_INSTRUCTIONS
+  TETE: HEAD
+  TETE_EVENEMENT: EVENT_HEAD
+workflows:
+  names:
+    Fusion automatique: Auto-merge
+    Intégration automatique: Auto-integration
+    Juge commun: Common judge
+    Juge commun (méta-tests): Common judge (meta-tests)
+    Réservations expirées: Expired reservations
+    Suite complète: Full suite
+    Validation du registre: Registry validation
+    Verdicts des forks: Fork verdicts
+  jobs:
+    construire: build
+    controles: checks
+    deployer: deploy
+    fusionner: merge
+    integrer: integrate
+    juge: judge
+    liberer: release
+    portee: reach
+    relancer: dispatch
+    valider: validate
+    verifier: verify
+  steps:
+    deploiement: deployment
+    portee_push: reach_push
+    verif: check
+    vert_push: green_push
+  io:
+    immediat: immediate
+    sans_instructions: no_instructions
+    tete_sha: head_sha
+  concurrency:
+    ecriture-main: main-write
+    fusion-auto: auto-merge
+  step_names:
+    Base de la PR (greffon, harnais, corpus): Base of the PR (plugin, harness, corpus)
+    Code de confiance (branche principale): Trusted code (main branch)
+    Commit de ce workflow, sur la branche principale du registre (le code du juge y est lu): This workflow's commit, on the registry's
+      main branch (the judge's code is read there)
+    Conserver le rapport: Keep the report
+    Dossier de travail du juge, borné (tmpfs ; tout ce que les conteneurs écrivent y reste): 'The judge''s work folder, bounded (tmpfs;
+      everything the containers write stays there)'
+    Dépendances: Dependencies
+    Entrées de l'appelant, avant tout usage (un appel qui ne laisse pas un jugement complet s'arrête ici): The caller's inputs, before
+      any use (a call that does not leave a complete judgment stops here)
+    Fermer les PR des contributions écartées: Close the PRs of the contributions set aside
+    Fusionner, chaque PR liée à sa tête vérifiée et au main vérifié (ruche-0120): Merge, each PR bound to its checked head and to the
+      checked main (ruche-0120)
+    Générer: Generate
+    Historique déclaré (ancêtres de la base ; seul appel de juge.py avec le jeton, avant le greffon et la PR): 'Declared history (ancestors
+      of the base; the only call of judge.py with the token, before the plugin and the PR)'
+    Image du juge (avec réseau, avant tout fichier de la PR): The judge's image (with network, before any file of the PR)
+    Intégrer ce qui satisfait R3, clore ce qui est abandonné: Integrate what satisfies R3, close what is abandoned
+    Juge commun (registre, au commit de ce workflow): Common judge (registry, at this workflow's commit)
+    Juger: Judge
+    Libérer: Release
+    Lister les PR ouvertes et leurs validations (ruche-0120): List the open PRs and their validations (ruche-0120)
+    Publier: Publish
+    Règles de la pull request: Pull request rules
+    Récupérer les verdicts: Fetch the verdicts
+    Tests de l'outil: Tool tests
+    Tests unitaires du juge commun (sans Docker ; méta-tests dans juge-commun.yml): 'Unit tests of the common judge (without Docker;
+      meta-tests in judge-meta-tests.yml)'
+    Tests unitaires et méta-tests: Unit tests and meta-tests
+    Tête de la PR (données ; rien n'en est exécuté hors conteneur): 'Head of the PR (data; nothing of it runs outside a container)'
+    Validation complète du registre: Full validation of the registry
+    Vérifier chaque PR sans jeton, sur le main que laissent les précédentes (ruche-0120): Check each PR without a token, on the main the
+      previous ones leave (ruche-0120)
+  texts:
+    Intégrations et clôtures automatiques (R3): Automatic integrations and closures (R3)
+    Libération des réservations expirées (R7): Release of expired reservations (R7)
 tree:
   dir:
   - arbre

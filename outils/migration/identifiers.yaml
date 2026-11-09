@@ -7,175 +7,495 @@
 #                proper names, test logins); an identifier with another word must be in `identifiers`.
 #   identifiers  French identifier -> English identifier, one for every file: a name of names.yaml (a key, a value, a
 #                command...) gets its English there, unless that is a keyword (pour -> in_favour); an English identifier
-#                may be renamed to free a name inside one scope (status -> with_status, beside statut -> status).
+#                may be renamed to free a name inside one scope (status -> with_status, beside statut -> status). Only
+#                names the code but the tests uses: each is also renamed in strings (lint, ruche-0152).
+#   test_identifiers  the names only the test files use: renamed as identifiers everywhere, in strings only in a test
+#                file and in a test's dotted name (outils.test_bee.TestX.test_y), never in the code's strings (ruche-0152).
 #   attributes   where an attribute differs (x.name, a string given to getattr/setattr/hasattr/vars, an argparse
 #                destination): a destination is always its option's English name (--en-parallele -> parallel).
 #   tokens       names the code holds in strings that names.yaml lacks (environment variables, CLI choices, internal
 #                keys, f-string fragments such as _max_par_pr); a French identifier is also renamed in strings.
+#   shell        names of the shell scripts and of the workflows' steps that names.yaml lacks (variables, functions): renamed
+#                wherever names are, as tokens (ruche-0152).
 #   hand         tokens with two English names, by role: each has a default and a role table, by file and scope (the
 #                innermost def or class, or top-level assignment), optionally by literal; the renamer and P1 follow it.
-#   shared       two identifiers of one scope that become one name, reviewed as never live at once (read by the scope
-#                lint of a later step, with the identifiers of the test files).
+#   shared       two identifiers of one scope that become one name, reviewed as never live at once (the scope lint).
+#   locals       identifiers of the test files that are only local variables: renamed as identifiers, never in strings
+#                (oui, deux, faux… are words of texts and data too; ruche-0152).
 #   neutral      name literals of bee.py declared language-neutral (--names of outils/inventaire_marqueurs.py).
 #   pending      code files whose own identifiers are not mapped yet: lint and check fail on each, one line (a later step).
-#   keep         French kept on purpose: tokens in a file, or the strings of top-level scopes (the migration's own tests).
+#   keep         French kept on purpose: tokens in a file, or the strings of top-level scopes (the migration's own tests,
+#                what is hashed into a stored fingerprint or id).
+#   strings      tokens of `identifiers` renamed on purpose in a file's strings though its code does not name them (lint):
+#                each a name another file's code reads; anything else that only looks like a name is kept (ruche-0152).
 version: 1
 english: [
-  aaaeeeeiioouuuc, ab, abandonment, abbrev, abort, abs, absent, absolute, abspath, abstention, abstentions, ac,
+  aaaeeeeiioouuuc, ab, abandon, abandonment, abbrev, abort, about, abs, absent, absolute, abspath, abstention,
+  abstentions,
+  ac,
   acceptance, accepted, accepts, account, accounts, across, action, actions, active, activity, acts, actual, add,
-  addaudithook, added, addition, additions, address, addresses, admissible, adopt, adopted, adverse, after, again,
-  against, age, agent, agents, agora, agreement, agreements, ahead, aimed, al, alert, alerts, alias, aliases, alice,
-  alikes, alive, all, allow, allowed, almost, alone, alpha, already, also, alternates, alternative, always, am, an,
-  analyse, analysed, analysis, ancestor, ancestry, anchor, and, annotations, another, answer, answers, any, anything,
-  anywhere, api, app, append, apply, approval, ar, architecture, architectures, archive, are, area, areas, arg,
-  argparse, args, argue, argument, arguments, argv, argvs, around, array, arrival, as, ascii, aside, ask, asks, asm,
-  assemble, assert, assertion, assessment, assign, asso, ast, astimezone, async, at, atime, attacks, attr, attribute,
-  attributes, attrs, audit, author, authorities, authority, authors, auto, autojunk, automatic, autostash, available,
-  awaits, away, back, backslashreplace, bad, balance, bar, bare, base, basename, bases, batch, bee, before, beginning,
-  beginnings, behind, best, between, beyond, big, bin, birth, bit, bitbucket, bits, blob, blobs, block, blocked,
-  blocking, blocks, blogspot, body, bool, boolean, bootstrap, both, bound, bounded, bounds, br, brake, branch,
-  branches, brief, brings, broken, bruno, bsky, budget, buffer, build, builds, built, builtins, bulk, bullet, bullets,
-  but, by, byte, bytearray, bytecode, bytes, cache, caches, call, callable, called, caller, calls, came, can,
-  cancelled, candidate, candidates, cannot, canonical, cap, capitalize, caps, caption, capture, card, cards, carriage,
-  carry, case, casefold, cases, cat, categories, category, caught, cause, causes, cc, ceil, ceiling, cell, certain,
-  chain, change, changed, changes, channel, char, character, characters, chdir, check, checked, checker, checkout,
-  checks, child, children, chloe, chmod, choice, choices, chr, chunk, chunks, ci, cid, citations, cite, class,
+  addaudithook, added, adding, addition, additions, address, addresses, adds, admissible, adopt, adopted,
+  adversarial, adverse,
+  after,
+  afterwards, again,
+  against, age, agent, agents, ages, ago, agora, agree, agreement, agreements, ahead, aimed, al, alert, alerts, alias,
+  aliases,
+  alice,
+  alikes, alive, all, allow, allowed, allows, almost, alone, alpha, already, also, alt, alter, alteration,
+  alterations,
+  alternates,
+  alternations, alternative,
+  always,
+  am, amend, amended, an,
+  analyse, analysed, analysis, ancestor, ancestry, anchor, and, ann, annotations, announcements, announces, another,
+  answer, answers,
+  any, anything,
+  anywhere, apart, api, app, appears, append, applied, apply, approval, ar, architecture, architectures, archive,
+  are, area,
+  areas, arg,
+  argparse, args, argue, arguer, argument, arguments, argv, argvs, around, array, arrival, as, ascii, aside, ask,
+  asked, asks, asm,
+  assemble, assert, assertion, assessment, assign, asso, ast, astimezone, async, at, atime, attached, attack,
+  attacks, attempt, attr,
+  attribute,
+  attributes, attrs, audit, author, authorities, authority, authorization, authors, auto, autojunk, automatic,
+  automatically, autostash, available,
+  awaiting, awaits, away, back, backdate, backdated, backslashreplace, backwards, bad, balance, bar, bare, base,
+  basename,
+  bases, batch,
+  bee, been, before,
+  beginning,
+  beginnings, behind, being, below, best, between, beyond, big, bilingual, bin, binary, birth, bit, bitbucket, bits,
+  blob,
+  blobs, block,
+  blocked,
+  blocking, blocks, blogspot, body, bool, boolean, bootstrap, born, both, bound, bounded, bounds, br, brake, branch,
+  branches, break, breaks, brief, brings, broken, bruno, bsky, budget, buffer, build, builds, built, builtins, bulk,
+  bullet,
+  bullets,
+  but, buy, by, bypass, bypassed, byte, bytearray, bytecode, bytes, cache, caches, call, callable, called, caller,
+  callers, calls, came,
+  can,
+  cancel, cancelled, candidate, candidates, cannot, canonical, cap, capitalize, capped, caps, caption, capture, card,
+  cards,
+  carriage,
+  carries, carry, case, casefold, cases, cat, categories, category, caught, cause, causes, cc, ceil, ceiling, cell,
+  certain,
+  chain, change, changed, changes, changing, channel, channels, char, character, characters, charter, chdir, cheat,
+  check,
+  checked,
+  checker,
+  checkout,
+  checks, child, children, chloe, chmod, choice, choices, chr, chunk, chunks, ci, cid, citations, cite, cited,
+  clashes, class,
   classes, classmethod, claude, clause, clean, cleanly, cleanup, clear, cli, clock, clocks, clone, close, closed,
-  closing, closure, closures, cls, cm, cmd, cn, co, code, codeberg, codec, codes, col, collection, collections,
-  collision, collisions, column, columns, com, comb, combine, combining, command, commandments, commands, comment,
-  comments, commit, commits, committer, common, comparators, compare, compared, compile, compiler, complaisance,
-  complete, completed, compose, composer, comprehension, compress, compressed, compression, compute, computed,
-  conclusion, concurrent, cond, condition, conditions, conf, config, configuration, confirm, confirmation, confirmed,
-  conflict, conflicts, const, constant, constants, construct, constructor, constructs, consts, contact, contacted,
-  container, contains, content, contents, contest, contested, context, contextlib, contextmanager, continuation,
-  continuations, continues, contradicts, contribution, contributions, control, coordination, copied, copy, copyfile,
-  copytree, core, corpus, correct, cos, council, councils, count, counted, counter, counts, cover, coverage, covered,
-  covering, covers, cp, cpu, crc, creat, create, created, creating, creation, creations, credit, criteria, criterion,
-  cs, current, cursor, cut, cuts, cv, cwd, cx, cy, daemon, data, date, dated, dates, datetime, datum, david, day,
+  closes, closing, closure, closures, cls, cm, cmd, cn, co, code, codeberg, codec, codes, col, collect, collection,
+  collections,
+  collision, collisions, column, columns, com, comb, combine, combining, come, comes, command, commandment,
+  commandments, commands,
+  comment,
+  comments, commit, commits, committer, common, comparators, compare, compared, compares, comparisons, competing,
+  competitor, compile,
+  compiler,
+  complaisance,
+  complete, completed, compose, composer, compound, comprehension, compress, compressed, compression, computation,
+  compute,
+  computed,
+  concludes, conclusion, concurrency, concurrent, cond, condition, conditions, conf, config, configuration, confirm,
+  confirmation, confirmed,
+  conflict, conflicting, conflicts, conforming, const, constant, constants, construct, constructor, constructs,
+  consts, contact,
+  contacted,
+  container, containers, contains, content, contents, contest, contested, contests, context, contextlib,
+  contextmanager,
+  continuation,
+  continuations, continues, contradicts, contribution, contributions, contributor, contributors, control,
+  coordination, copied,
+  copies, copy, copyfile,
+  copytree, core, corpus, correct, corrected, corrects, cos, costs, council, councils, count, counted, counter,
+  counters, counts,
+  course, cover,
+  coverage, covered,
+  covering, covers, cp, cpu, crc, creat, create, created, creates, creating, creation, creations, credentials, credit,
+  criteria, criterion,
+  cron, crossed, cs, css, current, cursor, cut, cuts, cv, cwd, cx, cy, daemon, daily, data, date, dated, dates,
+  datetime,
+  datum,
+  david,
+  day,
   days, deadline, debate, debates, decide, decided, decider, decides, decision, decisions, declaration, declarations,
-  declared, decode, decoded, decoder, decompress, deep, def, default, defaultdict, defaults, defect, defined,
-  definition, defs, degradation, degradations, delay, denominator, dep, departure, dependencies, depends, depth,
-  description, dest, destination, dests, detail, details, detector, detectors, determiners, dev, devnull, devolution,
-  df, dict, did, diff, differ, difference, differences, difflib, diffs, digit, digits, dir, direction, directory,
-  dirname, dirs, disassembler, disassembly, discord, discordapp, discussion, disguised, disk, dismiss, dismissals,
-  dispatch, dispatches, display, distant, distinct, diverged, divmod, do, doc, docker, dockerfile, docs, document,
-  documented, documents, does, dom, domain, domains, done, dont, dormancy, dot, double, doubt, doubts, down, draft,
-  draw, drawn, draws, drops, dry, dt, dump, dumper, dumps, duplicate, duplicates, duration, each, earlier, edit,
+  declare, declared, declares, decode, decoded, decoder, decompress, decoy, deep, def, default, defaultdict, defaults,
+  defect, defined,
+  definition, defs, degradation, degradations, delay, delays, deleted, deletion, delivered, denominator, dep,
+  departure,
+  depend, dependencies,
+  dependency, depends,
+  deploy, depth,
+  depths, derives, desc, description, despite, dest, destination, dests, detail, details, detect, detected, detector,
+  detectors,
+  detects, determiners,
+  deterministic, detours, dev,
+  devnull,
+  devolution,
+  df, dict, did, diff, differ, difference, differences, differential, difflib, diffs, digit, digits, dir, direction,
+  directory,
+  dirname, dirs, disagreements, disassembler, disassembly, discord, discordapp, discussion, disguised, disk, dismiss,
+  dismissal,
+  dismissals,
+  dismissed, dismissing, dispatch, dispatches, display, displayed, distant, distinct, distracted, diverged, divmod,
+  do, doc,
+  docker,
+  dockerfile, docs,
+  doctored, document,
+  documented, documents, does, dom, domain, domains, done, dont, dormancy, dot, double, doubles, doubt, doubtful,
+  doubts, down,
+  draft,
+  draw, drawn, draws, dress, drop, drops, drown, drowning, dry, dt, dummy, dump, dumper, dumps, duplicate, duplicates,
+  duration, durations, during, each,
+  earlier,
+  earliest, early, edit,
   edited, edits, edu, effect, effective, eight, einos, el, elected, element, elements, elf, eligible, elision, else,
-  elsewhere, elts, email, empty, en, encode, encoding, end, ending, endless, ends, endswith, engaged, engagement,
-  engagements, english, enrolment, ensure, entities, entries, entry, enum, enumerate, env, environ, environment,
-  epilog, equal, equivalent, erase, error, errors, es, escape, escaped, escapes, estimate, etc, eval, evasion, event,
-  every, ex, exact, exactly, exc, exceeded, except, exception, exceptions, exclude, excluded, exclusion, exclusive,
+  elsewhere, elts, email, emails, empty, emulated, en, encode, encoded, encoding, end, ending, endless, ends,
+  endswith,
+  engaged,
+  engagement,
+  engagements, engages, english, enrolment, ensure, enters, entities, entries, entry, enum, enumerate, env, environ,
+  environment,
+  epilog, equal, equivalent, erase, erased, erases, erasing, error, errors, es, escape, escaped, escapes, escaping,
+  established, estimate,
+  etc, eval,
+  evasion, even, event,
+  events, every, everything, everywhere, ex, exact, exactly, examples, exc, exceeded, exceeds, except, exception,
+  exceptions,
+  exclude,
+  excluded,
+  exclusion,
+  exclusive,
   exec, executable, executables, execute, execution, executor, exemption, exercised, exist, existing, exists, exit,
-  exits, expected, expiration, expire, expired, explicit, extend, extension, extensions, extra, extract, extractall,
-  extractions, facebook, fact, facts, fail, failed, fails, failure, failures, faithful, fallback, "false", falsy, fam,
-  families, family, fams, far, fast, fault, favorable, favour, fb, fd, fdopen, fetch, fetched, few, fewer, ff, ffd,
-  field, fields, file, fileno, fileobj, files, fill, filter, filters, final, finals, find, findall, finditer, finds,
-  fingerprint, fingerprints, finished, finite, first, fixed, fixes, fixture, flag, flagged, flags, flatten, flight,
-  flip, float, flow, flows, flush, fn, fnmatch, fnmatchcase, folder, folders, folds, follow, followed, following,
-  footer, for, forbidden, forced, forge, forges, forgotten, fork, form, format, formats, formatted, formatter, formed,
-  former, forms, found, fr, fraction, frame, frames, framing, free, freeze, french, fresh, friday, from, fromhex,
+  exits, expected, expiration, expire, expired, expiry, explained, explicit, extend, extension, extensions, extra,
+  extract,
+  extractall,
+  extractions, facebook, fact, facts, fail, failed, fails, failure, failures, faithful, fake, fallback, falls,
+  "false",
+  falsy, fam,
+  families, family, fams, far, fast, fault, faulty, favorable, favour, fb, fd, fdopen, fetch, fetched, few, fewer,
+  ff, ffd,
+  field, fields, fifteen, figures, file, filed, fileno, fileobj, files, fill, filled, filter, filters, final, finals,
+  find,
+  findall,
+  finditer, finds,
+  fingerprint, fingerprints, finish, finished, finite, first, fit, fits, fix, fixed, fixes, fixture, flag, flagged,
+  flags,
+  flat, flatten,
+  flight,
+  flip, float, flow, flows, flush, fn, fnmatch, fnmatchcase, folder, folders, folds, follow, followable, followed,
+  following,
+  follows, footer, for, forbidden, forced, foreign, forge, forged, forges, forgotten, fork, form, format, formats,
+  formatted,
+  formatter, formed,
+  former, forms, forty, found, four, fr, fraction, frame, framed, frames, framing, free, freeze, freezes, french,
+  fresh,
+  freshness, friday, from,
+  fromhex,
   fromisoformat, fromkeys, fromtimestamp, front, frozen, frozenset, frsize, fs, fsdecode, fsencode, fstat, fstring,
   full, fullmatch, func, function, functions, functools, future, futures, gain, gap, gaps, gaspard, gate, gates,
-  gauss, general, generate, generator, gesture, gestures, get, getattr, getcwd, geteuid, getframe, getgid, getsize,
-  getsource, getuid, getvalue, gg, gh, gina, git, github, githubusercontent, gitlab, give, gives, gl, glob, global,
-  globals, glued, gnu, good, gov, grade, graphql, greater, green, group, groups, growth, guarantor, guarantors, guard,
-  guardian, guardians, hand, happen, hard, harness, has, hasattr, hash, hashlib, have, head, header, headers, heads,
-  held, help, helper, here, hex, hexdigest, hidden, history, hit, hive, hk, hold, holder, holding, holds, holes,
-  honest, hook, host, hostile, hosts, hour, hours, how, href, ht, html, https, huge, human, id, ident, identical,
-  identifier, identifiers, identities, identity, idents, ids, ignore, ignored, ignores, iid, il, ill, image, images,
-  immutable, implicit, import, importlib, in, incident, incidents, include, incomplete, indent, indented, indents,
-  independently, index, inf, info, infos, init, initial, input, inputs, insert, inside, inspect, inst, instagram,
-  instance, instant, instants, instr, instruction, instructions, int, intact, integer, integers, integrate,
-  integrated, integration, integrations, interleave, interleaved, internal, interrupt, interval, inv, invalid,
-  invariant, inventory, inverse, invisible, invisibles, invitation, invitations, invite, io, ip, is, isabs, isalnum,
+  gauss, gave, general, generate, generator, gesture, gestures, get, getattr, getcwd, geteuid, getframe, getgid,
+  getsize,
+  getsource, getuid, getvalue, gg, gh, gina, git, github, githubusercontent, gitlab, give, given, gives, gl, glob,
+  global,
+  globals, glued, gnu, go, goes, going, good, gov, governance, grade, granted, graphql, greater, green, group,
+  groups, growth,
+  guarantor,
+  guarantors,
+  guard,
+  guardian, guardians, hand, happen, hard, harm, harness, has, hasattr, hash, hashlib, hasty, have, having, head,
+  header,
+  headers,
+  headings, heads,
+  held, help, helper, her, here, heredoc, hex, hexdigest, hidden, him, hint, his, history, hit, hive, hk, hold,
+  holder,
+  holding,
+  holds,
+  holes,
+  home, homonym, homonyms, honest, hook, host, hostile, hosting, hosts, hour, hours, how, href, ht, html, https,
+  huge, human,
+  id, ident,
+  identical,
+  identifier, identifiers, identities, identity, idents, ids, if, ifs, ignore, ignored, ignores, iid, il, ill, image,
+  images,
+  immediate, immutable, implicit, import, imported, importlib, imports, imposed, in, inadmissible, incident,
+  incidents, include,
+  incomplete,
+  inconsistent, indent,
+  indented,
+  indents,
+  independently, index, indexed, inf, info, infos, inherits, init, initial, input, inputs, insert, inserted, inside,
+  inspect,
+  inst,
+  instagram,
+  instance, instant, instants, instr, instruction, instructions, int, intact, integer, integers, integrable,
+  integrate,
+  integrated, integrates, integration, integrations, interleave, interleaved, internal, interrupt, interrupted,
+  interval, into, intruder, inv,
+  invalid,
+  invariant, invented, inventory, inverse, invisible, invisibles, invitation, invitations, invite, invited, inviting,
+  io, ip,
+  is, isabs,
+  isalnum,
   isalpha, isascii, isdigit, isdir, isfile, isfinite, isidentifier, isinstance, iskeyword, islink, islnk, ismount,
   iso, isoformat, isolated, isolation, isreg, isspace, issubclass, issue, issues, isupper, it, item, items, iter,
-  iterdir, itertools, its, itself, job, jobs, join, joined, joinpath, jp, jq, json, jsonschema, judge, judged, judges,
-  judging, jumps, justified, justifies, kb, keep, keepends, keeper, keeps, kept, key, keybase, keyboard, keys,
-  keyword, keywords, kids, kill, kind, kinds, kn, known, ko, kr, kv, kwargs, label, labels, lag, lambda, language,
-  languages, large, last, launch, lead, leads, leaf, least, leaves, left, legend, len, length, lengths, less, level,
-  levels, libc, libyaml, lift, lifted, lifts, light, like, limit, limits, line, linear, lineno, lines, link, linkable,
-  linked, linkedin, links, lint, list, listdir, listed, listing, listings, lists, literal, literals, live, ljust,
-  load, loader, loading, loads, local, locale, locals, location, log, logged, login, logins, long, longer, longest,
-  look, lookalikes, lookup, lot, lots, lower, lru, ls, lstat, lstrip, machine, made, main, major, majority, make,
-  makedirs, maketrans, malformed, mallory, manifest, many, map, mapped, mapping, maps, margin, mark, markdown, marked,
-  marker, markers, master, mastodon, match, matcher, matches, math, matrix, matter, max, maximal, maximum, maxsize,
-  maxsplit, md, me, means, measured, measurement, measurements, measures, median, medium, member, members, memory,
-  mention, mentions, merge, merged, merges, merging, message, messages, messenger, meta, metavar, method, methods,
-  metric, metrics, microsecond, middle, mimics, min, minimal, minimum, miniz, minor, minutes, missing, misspelt,
-  mistake, mixed, mkdir, mkdtemp, mkfifo, mkstemp, mn, mnemonics, mock, mode, model, modes, modified, modify, module,
-  modules, moment, monday, monotonic, month, months, most, mount, mounted, mounts, moves, ms, msg, mtime, multiple,
-  mutation, mutually, mx, my, name, named, namedtuple, names, namesake, namesakes, namespace, nan, nargs, nature,
-  natures, nav, nb, need, needed, needs, neighbouring, net, netlify, network, neutral, neutralise, neutralised, never,
-  new, newest, newline, next, nfkc, nfkd, ninth, nit, nl, nm, nnnn, "no", node, nodes, nofollow, noise, non, nonblock,
-  none, nonlocal, normalize, normpath, not, note, notes, nothing, notice, now, nul, "null", number, numbered, numbers,
-  numerator, numeric, numstat, nz, obj, objdump, object, objects, oc, occurrences, oci, oct, octocat, of, "off",
-  office, offset, oid, ok, old, oldest, omitted, "on", once, one, onerror, ones, oneself, only, onto, op, opaque,
-  opcodes, open, opened, opener, opening, openings, opens, operands, opinion, opinions, ops, option, optional,
-  options, or, ord, order, ordered, ordinary, org, organization, orgs, origin, original, originals, origins, orphans,
-  os, other, others, otherwise, out, outcome, outcomes, outgoing, outlasts, output, outputs, outside, overflow,
-  oversight, own, owner, pa, pack, package, packages, page, pages, pair, pairs, paragraph, paragraphs, parallel,
-  parallels, parent, parents, parse, parser, parsers, part, partial, participants, partition, parts, party, pass,
-  passage, passages, past, patch, patched, path, pathlib, paths, pathsep, pathspecs, pattern, patterns, pause, pct,
-  peek, pen, pending, pens, per, percent, perf, permissions, permutations, person, personal, persons, perturb,
-  perturbed, pf, ph, phase, phone, pick, pid, pids, piece, pieces, pipe, pk, place, placements, places, plain, plan,
-  plans, platform, platforms, plugin, pn, point, pointer, points, poll, pool, pop, popen, porcelain, position,
-  positions, positive, posix, post, postal, pr, preamble, prefix, prefixes, prepare, prepared, present, prev,
-  previous, principal, print, printed, prints, private, privilege, privileged, problem, problems, process, processed,
-  processes, processor, product, profile, profiles, prog, program, progress, project, projects, promotion, proof,
-  prop, properties, proposal, proposals, propose, proposed, proposer, proposing, prose, protected, protection,
-  providers, proxies, proxy, prs, pseudonyms, psl, publish, published, publishes, publishing, pull, pulls,
-  punctuation, pure, purpose, push, pushed, put, pv, py, python, qualname, query, question, questions, queue, quiet,
+  iterdir, itertools, its, itself, javascript, job, jobs, join, joined, joinpath, jp, jq, json, jsonschema, judge,
+  judged, judges,
+  judging, jumps, justified, justifies, kb, keep, keepends, keeper, keeping, keeps, kept, key, keybase, keyboard,
+  keys,
+  keyword, keywords, kids, kill, kind, kinds, kn, known, ko, kr, kv, kwargs, label, labels, lag, lagging, lambda,
+  landmarks, language,
+  languages, large, largest, last, late, later, launch, launched, laundered, lay, lc, lead, leads, leaf, least,
+  leaves,
+  left, legend,
+  len,
+  length,
+  lengths,
+  less,
+  lets, level,
+  levels, libc, libyaml, lift, lifted, lifting, liftings, lifts, light, lights, like, limit, limits, line, lineage,
+  linear,
+  lineno,
+  lines, link,
+  linkable,
+  linked, linkedin, linking, links, lint, list, listdir, listed, listener, listing, listings, lists, literal,
+  literals, live,
+  ljust,
+  load, loader, loaders, loading, loads, local, locale, locals, location, log, logged, login, logins, lone, long,
+  longer,
+  longest,
+  look, lookalike, lookalikes, lookup, loop, lose, loses, lost, lot, lots, lower, lru, ls, lstat, lstrip, machine,
+  made,
+  main,
+  mains, major,
+  majority, make,
+  makedirs, makes, maketrans, malformed, mallory, manifest, many, map, mapped, mapping, maps, margin, mark, markdown,
+  marked,
+  marker, markers, marking, markings, marks, master, mastodon, match, matcher, matches, math, matrix, matter, max,
+  maximal,
+  maximum,
+  maxsize,
+  maxsplit, may, md, me, means, measured, measurement, measurements, measures, median, medium, member, members,
+  memory,
+  mention, mentions, merge, mergeable, merged, merges, merging, message, messages, messenger, meta, metavar, method,
+  methods,
+  metric, metrics, microsecond, middle, midnight, mimics, min, mine, minimal, minimum, miniz, minor, minutes, missed,
+  missing,
+  misspelt,
+  mistake, mistakes, mistyped, misuses, mix, mixed, mkdir, mkdtemp, mkfifo, mkstemp, mn, mnemonics, mock, mode,
+  model, modes,
+  modified,
+  modify, module,
+  modules, moment, monday, monotonic, month, months, more, most, mount, mounted, mounts, move, moved, moves, ms, msg,
+  mtime,
+  multiple,
+  mutation, mutually, mx, my, name, named, namedtuple, names, namesake, namesakes, namespace, naming, nan, nargs,
+  natives, nature,
+  natures, nav, nb, nearby, need, needed, needs, negative, neighbor, neighbors, neighbouring, neither, nest, net,
+  netlify,
+  network,
+  neutral,
+  neutralise,
+  neutralised, neutralized, neutralizes, never,
+  new, newcomers, newest, newline, next, nfkc, nfkd, ninth, nit, nl, nm, nnnn, "no", nobody, node, nodes, nofollow,
+  noise,
+  noisy, non, nonblock,
+  none, nonlocal, nor, normalize, normalized, normpath, not, note, notes, nothing, notice, now, nul, "null", number,
+  numbered,
+  numbers,
+  numerator, numeric, numstat, nz, obj, objdump, object, objects, oc, occurrences, oci, oct, octocat, odd, of, "off",
+  office, offline, offset, often, oid, ok, old, oldest, omission, omitted, "on", once, one, onerror, ones, oneself,
+  only, onto,
+  op,
+  opaque,
+  opcodes, open, opened, opener, opening, openings, opens, operands, opinion, opinions, ops, optimization, option,
+  optional,
+  options, or, ord, order, ordered, orders, ordinary, org, organization, orgs, origin, original, originals, origins,
+  orphan, orphans,
+  os, other, others, otherwise, out, outcome, outcomes, outgoing, outlasts, output, outputs, outside, over, overflow,
+  oversight, oversized, overwritten, own, owner, pa, pack, package, packages, page, pages, pair, pairs, paragraph,
+  paragraphs,
+  parallel,
+  parallels, parameters, parent, parents, parse, parser, parsers, part, partial, participant, participants,
+  partition, parts,
+  party, pass,
+  passage, passages, passed, passes, past, patch, patched, path, pathlib, paths, pathsep, pathspecs, pattern,
+  patterns,
+  pause, payload, pays, pct,
+  peak, peek, pen, pending, pens, per, percent, perf, permissions, permutations, persist, person, personal, persons,
+  perturb,
+  perturbed, pf, ph, phase, phone, phones, phrased, phrases, pick, pid, pids, piece, pieces, pipe, pipes, pk, place,
+  placeholders,
+  placements, places,
+  plain, plan,
+  plans, plant, platform, platforms, plugin, plus, pn, point, pointer, points, poll, pool, pooled, pop, popen,
+  porcelain,
+  pos, position,
+  positions, positive, posix, post, postal, pr, preamble, precomputed, prefilled, prefix, prefixes, preparation,
+  prepare,
+  prepared, present,
+  prev,
+  prevent, previous, principal, print, printed, prints, private, privilege, privileged, probe, problem, problems,
+  process,
+  processed,
+  processes, processor, product, profile, profiles, prog, program, programs, progress, project, projects, promote,
+  promotion,
+  proof,
+  prop, properties, proposal, proposals, propose, proposed, proposer, proposes, proposing, prose, protected,
+  protection,
+  providers, proxies, proxy, prs, pseudonyms, psl, publication, publish, published, publishes, publishing, pull,
+  pulls,
+  punctuation, pure, purpose, push, pushed, put, pv, py, python, pythonpath, qualname, query, question, questions,
+  queue, quiet,
   quorum, quote, quoted, quotes, quoting, ra, race, races, racing, radians, radius, raises, ran, randbytes, randint,
-  random, randomness, randrange, range, rank, ranking, ranks, rapporteur, rate, ratio, raw, rdonly, rdwr, re, reach,
-  read, readable, reader, reading, readings, readline, readme, reads, real, reason, reasons, rebase, rec, recency,
-  recent, record, recorded, records, recursion, red, redact, redactable, redacted, redaction, redactions, redate,
-  redirect, reduce, reduced, ref, reference, referral, referrals, refs, refusal, refuse, refused, reg, regex, regexes,
-  register, registered, registrable, registration, registry, rehearsal, rel, relative, release, released, relpath,
-  remaining, remedy, reminder, remote, removal, removals, remove, removed, removeprefix, removesuffix, rename,
-  renamed, renames, render, rendered, renewed, repetitions, replace, replaced, replay, replies, repo, report,
-  reported, reports, repos, repository, repr, represent, representer, reproduced, reproduces, reproduction, request,
-  requested, requests, require, required, requires, rerun, res, reservation, reservations, reserved, reset, residue,
-  resolve, resolvers, resources, responses, rest, restore, result, resultclass, results, retake, retakes, retired,
-  retries, return, returncode, rev, reverse, reversed, review, reviewer, reviewers, reviews, revised, revision, rfind,
-  rglob, rindex, rival, rivals, rle, rmdir, rmtree, rn, rng, robot, robots, role, roles, room, root, roots, round,
+  random, randomness, randrange, range, rank, ranked, ranking, ranks, rapporteur, rate, ratio, raw, rb, rdonly, rdwr,
+  re,
+  reach,
+  read, readable, reader, readers, reading, readings, readline, readme, reads, real, reason, reasons, rebase, rec,
+  receives, recency,
+  recent, recognized, record, recorded, recording, records, recovered, recursion, red, redact, redactable, redacted,
+  redacting, redaction,
+  redactions,
+  redate,
+  redated, redirect, reduce, reduced, ref, reference, referenced, referral, referrals, refers, reformatting, refs,
+  refusal, refusals, refuse,
+  refused, refuses, reg,
+  regex, regexes,
+  region, regions, register, registered, registering, registers, registrable, registration, registrations, registry,
+  regular,
+  rehearsal, rel,
+  relative,
+  relay, release,
+  released, releases, relief, relpath,
+  remaining, remedy, reminder, reminders, remote, removable, removal, removals, remove, removed, removeprefix,
+  removes, removesuffix,
+  removing, rename,
+  renamed, renamer, renames, renaming, render, rendered, renew, renewed, renews, reopens, repeated, repetitions,
+  replace,
+  replaced,
+  replacement, replaces, replacing, replay,
+  replays, replies,
+  repo, report,
+  reported, reporter, reporting, reports, repos, repository, repr, represent, representer, reprints, reproduced,
+  reproduces,
+  reproducible, reproduction,
+  request,
+  requested, requests, require, required, requires, rerun, rerunning, res, reservation, reservations, reserve,
+  reserved,
+  reserves, reset, residue,
+  resolve, resolvers, resources, respects, responses, rest, restore, resubmit, result, resultclass, results, retake,
+  retakes,
+  retired,
+  retries, retroactive, return, returncode, rev, reverse, reversed, review, reviewed, reviewer, reviewers, reviewing,
+  reviews,
+  revise, revised,
+  revision, revoke, revoked, rewritten, rfind,
+  rglob, rindex, risk, rival, rivals, rle, rmdir, rmtree, rn, rng, robot, robots, role, roles, room, root, roots,
+  rotating, round,
   rounds, rows, rpartition, rsplit, rstrip, ruche, rule, rules, run, runner, runners, running, runs, safe, said, same,
-  sample, saved, says, sb, scalar, scan, scanned, scanners, scans, scenario, scenarios, sch, schema, schemas, scope,
+  sample, satisfied, saved, says, sb, scalar, scan, scanned, scanners, scans, scenario, scenarios, sch, schedule,
+  schema,
+  schemas, scope,
   scoped, scopes, score, scores, script, search, sec, second, seconds, secrets, section, sections, security, seed,
-  seeded, seen, seg, segment, segments, self, sending, sendings, sensitive, sent, sentence, sentences, sep, separated,
-  separator, seps, sequence, sequences, service, session, set, setattr, setdefault, setitem, setting, settings,
-  severity, sg, sh, sha, shallow, shape, shapes, shard, shards, shared, shifts, shlex, short, shortened, show,
-  showable, shown, shstrndx, shuffle, shuffled, shutil, side, sided, sides, sign, signal, signs, silence, silent,
-  silently, sim, simple, sin, since, single, site, sites, six, size, sized, sizes, skip, skipped, skype, slack, sleep,
-  slice, slow, small, soft, someone, soon, sort, sorted, source, sourceforge, sourcehut, sources, space, span, spec,
-  specs, spelling, spellings, spending, split, splitext, splitlines, spy, sqrt, sr, srcset, srht, st, stack, stale,
+  seeded, seeds, seen, sees, seg, segment, segments, self, sending, sendings, sends, seniority, sensitive, sent,
+  sentence,
+  sentences,
+  sep,
+  separated,
+  separator, separators, seps, sequence, sequences, series, serious, service, serving, session, set, setattr,
+  setdefault,
+  setitem,
+  setting,
+  settings,
+  several, severity, sg, sh, sha, shallow, shape, shapes, shard, shards, share, shared, sharing, shell, shifts,
+  shlex, short,
+  shortened,
+  show,
+  showable, shown, shows, shstrndx, shuffle, shuffled, shutil, side, sided, sides, sign, signal, signed, signs,
+  silence,
+  silent,
+  silently, sim, simple, simulate, simulated, sin, since, single, site, sites, six, sixth, size, sized, sizes, skip,
+  skipped, skips, skype,
+  slack, sleep,
+  slice, slices, sliding, slipped, slow, small, so, soft, sole, someone, soon, sort, sorted, source, sourceforge,
+  sourcehut,
+  sources,
+  space,
+  span, speaks, spec,
+  specs, spelling, spellings, spending, spied, split, splitext, splitlines, spy, sqrt, squat, sr, srcset, srht, st,
+  stack,
+  stale,
   stands, starred, start, started, starts, startswith, stat, state, states, staticmethod, statistics, stats, status,
-  statuses, statvfs, stay, stays, stderr, stdin, stdout, stem, stems, step, steps, still, stop, stopped, stopwatch,
-  store, str, stream, streams, streets, strengthen, strerror, strftime, strict, string, strings, strip, struct,
-  structure, style, sub, subfolders, subject, submission, submit, submitted, subparsers, subprocess, subscript,
+  statuses, statvfs, stay, stays, stderr, stdin, stdout, stem, stems, step, steps, still, stop, stopped, stops,
+  stopwatch,
+  stopwatches, store, str, stray, stream, streams, streets, strengthen, strerror, strftime, strict, strictly, stride,
+  string,
+  strings, strip,
+  struct,
+  structure, style, sub, subcommands, subfolder, subfolders, subject, submission, submissions, submit, submits,
+  submitted,
+  subparsers,
+  subprocess,
+  subscript,
   substack, succeeded, succeeds, success, successes, successful, sudo, suffices, sufficient, suffix, suffixes, suite,
-  suites, sum, summary, super, suppress, suppression, sure, surrogateescape, surveillance, survey, surveys, suspect,
-  suspects, suspicious, svg, swarm, sweep, switch, sym, symbol, symbols, symlink, symlinks, syntax, synthesis,
+  suites, sum, summary, sums, super, supervision, suppress, suppression, sure, surrogateescape, surveillance, survey,
+  surveys,
+  suspect,
+  suspects, suspicious, svg, swarm, sweep, switch, sym, symbol, symbolic, symbols, symlink, symlinks, syntax,
+  synthesis,
   synthesize, sys, system, table, tag, tail, take, taken, takes, taking, tallies, tally, tar, tarfile, target,
-  targets, task, tasks, tbody, tear, technique, techniques, telegram, temp, tempfile, template, temporary, test,
-  tests, text, textconv, texts, than, that, the, their, theirs, third, this, thousand, thousands, thread, threading,
-  threads, three, threema, threshold, tid, tids, tied, tiktok, time, timed, timedelta, timeline, timeout, times,
-  timestamp, timestamping, timezone, tip, title, tld, tmp, tmpfs, to, today, todo, together, tok, token, tokenize,
-  tokens, tolerance, too, took, tool, tooling, tools, top, toplevel, total, touch, touched, towards, trace, traceback,
-  traced, tracemalloc, transformation, translate, translated, traverse, treated, tree, trees, "true", trust, tsv,
-  tumblr, tuple, turn, turned, turns, tw, twitter, two, type, typename, types, tzinfo, ua, uk, unchanged, undeclared,
-  undefined, under, unescape, unexpected, unfavorable, unfinished, unfolding, unicode, unicodedata, unidata, uniform,
-  union, unit, units, unittest, unknown, unknowns, unless, unlink, unmapped, unpack, unreadable, unreadables, until,
-  up, update, updated, upkeep, upper, ups, upstream, url, use, used, useful, useless, user, users, uses, usual, utc,
+  targeted, targets, task, tasks, tbody, tear, technical, technique, techniques, telegram, temp, tempfile, template,
+  temporary,
+  ten, test,
+  tests, text, textconv, texts, than, that, the, theft, their, theirs, them, then, there, third, this, those,
+  thousand,
+  thousands,
+  thread,
+  threading,
+  threads, three, threema, threshold, through, tid, tids, tied, tiers, tiktok, time, timed, timedelta, timeline,
+  timeout,
+  times,
+  timestamp, timestamping, timezone, tip, title, titles, tld, tmp, tmpfs, to, today, todo, together, tok, token,
+  tokenize,
+  tokens, tolerance, too, took, tool, tooling, tools, top, toplevel, total, touch, touched, touches, towards, toy,
+  trace,
+  traceback,
+  traced, tracemalloc, transformation, translate, translated, translation, trap, traps, travel, traverse, treated,
+  tree,
+  trees,
+  trip, "true",
+  trust, try, tsv,
+  tumblr, tuple, turn, turned, turns, tw, twitter, two, type, typename, types, tzinfo, ua, uk, unauthorized,
+  unchanged, unchecked, uncommitted, undeclared,
+  undefined, under, unescape, unexpected, unfavorable, unfinished, unfold, unfolding, unicode, unicodedata, unidata,
+  uniform,
+  union, unique, unit, units, unittest, unknown, unknowns, unless, unlink, unmapped, unpack, unreadable, unreadables,
+  until,
+  up, update, updated, upkeep, upper, ups, upstream, url, use, used, useful, useless, user, users, uses, usual,
+  usurped, utc,
   utf, util, utime, val, valgrind, valid, validate, validated, validation, validations, validator, vals, value,
-  values, vararg, variable, variant, variants, vars, verbosity, vercel, verdict, verdicts, verification, verify,
-  version, versions, viber, view, views, visit, vn, voice, vote, voter, voters, votes, vouched, vulnerability, wa,
-  wait, waiting, waits, walk, wanted, warmup, warning, warnings, was, web, wechat, week, weekday, weight, weights,
-  well, wf, what, whatever, whatsapp, when, whenever, where, which, who, whole, whose, why, width, widths, window,
-  winning, wins, wiring, with, withdraw, withdrawal, withdrawn, within, without, word, wordpress, words, work,
-  workdir, workflow, workflows, worktree, wrappers, wrapping, wraps, write, writer, writes, writing, written, wronly,
-  www, yaml, year, "yes", yml, youtube, za, zero, zip, zlib, zone
+  values, vanished, vararg, variable, variant, variants, vars, verbosity, vercel, verdict, verdicts, verification,
+  verify,
+  version, versions, viber, victim, view, views, visit, vn, voice, vote, voted, voter, voters, votes, vouched,
+  vulnerability, wa,
+  wait, waiting, waits, walk, walks, wanted, warmup, warned, warning, warnings, warns, was, web, wechat, week,
+  weekday,
+  weighs, weight,
+  weights,
+  well, wf, what, whatever, whatsapp, when, whenever, where, which, while, who, whole, whose, why, wide, wider, width,
+  widths,
+  window,
+  winning, wins, wiring, with, withdraw, withdrawal, withdrawn, withdraws, within, without, word, wordpress, words,
+  work,
+  workdir, workflow, workflows, working, worktree, worth, would, wrappers, wrapping, wraps, write, writer, writes,
+  writing,
+  written, wrong, wronly,
+  www, yaml, year, "yes", yml, younger, youtube, za, zero, zip, zlib, zone
 ]
 identifiers:
   _appliquer_synthese: _apply_synthesis
@@ -357,6 +677,7 @@ identifiers:
   autres_retenues: others_kept
   AVANCE_MAX: LEAD_MAX
   avant: before
+  AVANT: BEFORE
   avant_l: before_l
   avant_r: before_r
   AVERTISSEMENT_AGORA: AGORA_WARNING
@@ -369,8 +690,10 @@ identifiers:
   BALISE: TAG_MARK
   balise: html_tag
   barre: bar_line
+  BASE_EVENEMENT: EVENT_BASE
   bases_declarees: declared_bases
   BEE_MAINTENANT: BEE_NOW
+  BEE_SIMU: BEE_SIM
   BEE_SIMU_ROBOT: BEE_SIM_ROBOT
   bien_formee: well_formed
   bilan: assessment
@@ -626,6 +949,7 @@ identifiers:
   contributions_en_course: racing_contributions
   controler: check_it
   controler_synthese: check_synthesis
+  controles: checks
   copie: copied
   copier: copy_to
   copier_arbre: copy_tree
@@ -731,6 +1055,7 @@ identifiers:
   depend_de: depends_on
   dependances: dependencies
   depense_api: api_spending
+  deployer: deploy
   depot: repo
   DEPOT: REPO
   depots: repos
@@ -847,6 +1172,7 @@ identifiers:
   Erreur: Error
   ErreurBee: BeeError
   erreurs: errors
+  essai: attempt
   essaim: swarm
   est: is_one
   est_confirmation: is_confirmation
@@ -870,6 +1196,7 @@ identifiers:
   etiquettes: labels
   etiquettes_de: labels_of
   evenement: event
+  evenements: events
   exclues: excluded
   exclure: exclude
   exclus: excluded_items
@@ -954,6 +1281,7 @@ identifiers:
   fusion_auto: auto_merge
   fusion_sha: merge_sha
   fusionnees: merged_ones
+  fusionner: merge
   FUTUR_LOINTAIN: FAR_FUTURE
   gabarit: template
   gagnantes: winning
@@ -994,6 +1322,7 @@ identifiers:
   heures_max: max_hours
   hexa: hex_digits
   historique: history
+  HISTORIQUE: HISTORY
   historique_disponible: history_available
   HISTORIQUE_MAX: HISTORY_MAX
   historique_requis: history_required
@@ -1040,6 +1369,7 @@ identifiers:
   illisibles_a: unreadable_a
   illisibles_b: unreadable_b
   illisibles_base: base_unreadables
+  immediat: immediate
   inattendues: unexpected_ones
   incident_suivant: next_incident
   incidents_ouverts: open_incidents
@@ -1327,6 +1657,7 @@ identifiers:
   octets_executables: executable_bytes
   OCTETS_LECTURE_MAX: READ_BYTES_MAX
   OCTETS_MAX: BYTES_MAX
+  omis: omitted
   omises: omitted_ones
   ont_pris_part: took_part
   operandes: operands
@@ -1598,6 +1929,7 @@ identifiers:
   refus_signalement_sur_main: report_refusal_on_main
   refusee: refused
   refusees: refused_ones
+  refuser: refuse
   refuses: refused_items
   registre: registry
   Registre: Registry
@@ -1607,7 +1939,9 @@ identifiers:
   regle: rule
   regles: rules
   rejeu: replay
+  rejouer: replay
   relance: reminder
+  relancer: dispatch
   relatif: relative_one
   relecteur: reviewer
   relecteurs_eligibles: eligible_reviewers
@@ -1704,6 +2038,8 @@ identifiers:
   sans_commit: no_commit
   sans_echappements: no_escapes
   sans_garant: no_guarantor
+  sans_instructions: no_instructions
+  SANS_INSTRUCTIONS: NO_INSTRUCTIONS
   sans_juge: no_judge
   sans_melange: without_shuffle
   sans_mesure: without_measurement
@@ -1815,7 +2151,10 @@ identifiers:
   temps_fixes: fixed_times
   test_du_signe: sign_test
   tete: head
+  TETE: HEAD
   tete_d: head_d
+  TETE_EVENEMENT: EVENT_HEAD
+  tetes: heads
   texte: text
   texte_a: text_a
   texte_apres: text_after
@@ -1879,6 +2218,7 @@ identifiers:
   vendredi: friday
   verdict_montrable: showable_verdict
   verdicts_du_contenu: content_verdicts
+  verif: check
   VERIFICATION: VERIFICATION_CMD
   verifie: checked_one
   verifiees: checked_ones
@@ -1932,6 +2272,1533 @@ identifiers:
   vus_a: seen_a
   vus_paralleles: seen_parallels
   vus_pseudos: seen_logins
+test_identifiers:
+  _numeros_lies: _linked_numbers
+  a_la_main: by_hand
+  a_la_poussee: at_the_push
+  a_la_verification: at_the_check
+  a_soumettre: to_submit
+  abandonner: abandon
+  acceptation: acceptance
+  accepte: accepted_one
+  accord_a_la_main: agreement_by_hand
+  accordees: granted
+  accueil: home_page
+  ADRESSES_0047: ADDRESSES_0047
+  ailleurs: elsewhere
+  ajouter_a_la_main: add_by_hand
+  ajouter_brut: add_raw
+  ajouter_relecture: add_review
+  ajouter_zone: add_zone
+  aller_retour: round_trip
+  alterer: alter
+  analyse_de: analysis_of
+  analyseurs: parsers
+  ancien_maintenant: old_now
+  ancien_path: old_path
+  ancien_retrait: old_removal
+  anciennete: seniority
+  anglaise: english_one
+  annonces: announcements
+  anterieur: earlier
+  appel: call
+  appel_blanchi_par_prefixe: call_laundered_by_prefix
+  appelants: callers
+  appels_de: calls_of
+  arguments_a_la_main: arguments_by_hand
+  AROBASES_0047: AT_SIGNS_0047
+  attaque: attack
+  attaques: attacks
+  attend_le_conseil: awaits_the_council
+  attendue: expected_one
+  attendues: expected_ones
+  au_conseil: to_the_council
+  AUTRES_PR: OTHER_PRS
+  avant_: before_
+  avant_donnees: before_data
+  avec: with_
+  avec_gh: with_gh
+  avec_jeton: with_token
+  avec_retour: with_return
+  avec_saut: with_break
+  base_modifiee: changed_base
+  base_qui_dit_le_mode: base_that_states_the_mode
+  BaseParallele: BaseParallel
+  BasePublier: BasePublish
+  BaseRepetitionGenerale: BaseDressRehearsal
+  BaseRevueRuche0020: BaseReviewRuche0020
+  bee_faux: bee_fake
+  bidon: dummy
+  bilingues: bilingual
+  binaire: binary
+  bizarres: odd_ones
+  bloque: blocked
+  BON: GOOD
+  bon: good
+  bornes: bounds
+  boucle: loop
+  brouillon: draft
+  BRUIT: NOISE
+  cadre: frame
+  caractere: character
+  carte_changee: changed_map
+  CARTE_IDENTIFIANTS: IDENTIFIERS_MAP
+  CARTE_NOMS: NAMES_MAP
+  cas: case_of
+  cas_base: base_case
+  cas_tete: head_case
+  champs_texte: text_fields
+  changer: change
+  changer_puis_refuser: change_then_refuse
+  charger: load
+  chargeur_c: c_loader
+  chargeurs_utilises: loaders_used
+  chemin_0047: path_0047
+  chemin_config: config_path
+  chemin_debat: debate_path
+  chemin_gh: gh_path
+  chemin_invitation: invitation_path
+  chemins_lus: paths_read
+  choix: choice
+  CIBLE: TARGET
+  CLES_REFUSEES: REFUSED_KEYS
+  code_lu: code_read
+  collecter: collect
+  commandes_docker: docker_commands
+  commandes_du_runner: runner_commands
+  commandes_workflow: workflow_commands
+  commentaire: comment
+  commit_fichiers_0141: commit_files_0141
+  comparaisons: comparisons
+  complet: full_one
+  compteurs: counters
+  COMPTEURS: COUNTERS
+  confirmer_ailleurs: confirm_elsewhere
+  conflit: conflict
+  conseil_et_fenetre: council_and_window
+  CONSIGNE_FAILLE: VULNERABILITY_INSTRUCTION
+  consignes: instructions_given
+  constructions_suspectes_omises: omitted_suspicious_constructs
+  construire_jouet: build_toy
+  construits: built_ones
+  conteneurs: containers
+  contributeurs: contributors
+  contributeurs_chloe_et_david: contributors_chloe_and_david
+  contribution_d_alice_sur_main: alice_s_contribution_on_main
+  contribution_de_chloe: chloe_s_contribution
+  contribution_jugee: judged_contribution
+  contribution_relue: reviewed_contribution
+  controle: control
+  COORDONNEES_VOISINES_0044: NEARBY_CONTACT_DETAILS_0044
+  corrige: corrected
+  coupe: cut_one
+  coupee: cut
+  COURRIELS_0047: EMAILS_0047
+  course_a_deux: race_of_two
+  course_relue: reviewed_race
+  dans: in_
+  dans_la_pr: in_the_pr
+  date_d_accord: agreement_date
+  date_de_mesure: measurement_date
+  date_de_proposition: proposal_date
+  date_de_relecture: review_date
+  date_de_vote: vote_date
+  dater: date_it
+  de_bruno: from_bruno
+  debat_a_la_main: debate_by_hand
+  debat_a_trois: debate_of_three
+  debattre_invitation: debate_invitation
+  DEBUT_COMPRESSER: COMPRESS_START
+  debut_en: start_in
+  decidees: decided_ones
+  declarer: declare
+  definis: defined_ones
+  declarer_agents: declare_agents
+  dehors: outside_one
+  demesure: oversized
+  depasse: exceeds
+  deplacer: move
+  deplacer_mesure: move_measurement
+  deplier: unfold
+  depot_jouet_avec_historique: toy_repo_with_history
+  depot_tete: head_repo
+  depuis_la_racine: from_the_root
+  desaccords: disagreements
+  desassemblage: disassembly
+  DESASSEMBLAGE_A: DISASSEMBLY_A
+  detectent: detect
+  deux: two
+  disque: disk_state
+  dite: said
+  DOCKER_CHRONO: DOCKER_STOPWATCH
+  DOCKER_EN_PANNE: BROKEN_DOCKER
+  DockerEmule: EmulatedDocker
+  domaine: domain
+  DONNEES_REGISTRE: REGISTRY_DATA
+  donnes: given
+  dossier_ouvert_vide: empty_open_folder
+  DOSSIERS_REELS: LIVE_FOLDERS
+  doute: doubt
+  DOUTES_TECHNIQUES_0047: TECHNICAL_DOUBTS_0047
+  drapeau: flag
+  duree: duration
+  durees: durations
+  ECART: GAP
+  echappement: escaping
+  echappes: escaped_ones
+  echecs: failures_seen
+  ecrire_donnees: write_data
+  ecrire_familles_0141: write_families_0141
+  ecrire_zone: write_zone
+  ecrit: written
+  ecriture: writing
+  effaces: erased
+  emule: emulated
+  encadre: framed
+  ENORME: HUGE
+  enr_auteur: author_record
+  enregistrer: record
+  enregistrer_verdict_vert: record_green_verdict
+  entiere: whole_one
+  entiers_bornes: bounded_integers
+  entree_a_la_main: entry_by_hand
+  ENTREES: INPUTS
+  entrees_c: c_inputs
+  env_en_plus: extra_env
+  environnement: environment
+  espion: spy
+  ESPION: SPY
+  espion_montures: mounts_spy
+  espionner: spy_on
+  essayer: try_it
+  est_argv: is_argv
+  est_git: is_git
+  ETAPES: STEPS
+  etrangeres: foreign
+  etrangers: foreign_ones
+  executer_modes: run_modes
+  execution_tete: head_run
+  exemples: examples
+  extra_juge: extra_judge
+  faire: make
+  faire_relire_et_voter: have_reviewed_and_voted
+  famille: family
+  familles: families
+  FAMILLES_CACHEES: HIDDEN_FAMILIES
+  FausseExecution: FakeRun
+  FAUSSES_MARQUES: FAKE_MARKS
+  fautes: mistakes
+  fautive: faulty
+  FAUX: WRONG
+  faux: fake
+  faux_bee: fake_bee
+  faux_chronos: fake_stopwatches
+  FAUX_DOCKER: FAKE_DOCKER
+  FAUX_DOCKER_ID: FAKE_DOCKER_ID
+  FAUX_DOCKER_SANS_FIN: FAKE_DOCKER_ENDLESS
+  faux_gh: fake_gh
+  FAUX_GH: FAKE_GH
+  FAUX_GH_COMPTES: FAKE_GH_ACCOUNTS
+  FAUX_GH_DEPOT: FAKE_GH_REPO
+  FAUX_GH_ETAT: FAKE_GH_STATE
+  FAUX_GH_JOURNAL: FAKE_GH_LOG
+  faux_github: fake_github
+  faux_resume: fake_summary
+  FauxDocker: FakeDocker
+  ferme: closed_one
+  fermee: closed
+  fermer: close_it
+  fermer_porte: close_gate
+  feuilles: leaves
+  fiche_projet: project_record
+  fiche_relecture: review_record
+  fichier_etat: state_file
+  FICHIERS: FILES
+  fichiers_de: files_of
+  figee: frozen_one
+  figer_avec_a2: freeze_with_a2
+  FIGER_SANS_PRIVILEGE: FREEZE_WITHOUT_PRIVILEGE
+  figer_sans_privilege: freeze_without_privilege
+  FIN: END
+  fin_de_ligne: end_of_line
+  fin_du_vote: end_of_vote
+  fin_puce: bullet_end
+  finir: finish
+  FLUX_0152: WORKFLOW_0152
+  FLUX_0152_EN: WORKFLOW_0152_EN
+  fonctions: functions_list
+  forgee: forged
+  forgees: forged_ones
+  frein_par_les_membres: brake_by_the_members
+  frein_serre: brake_applied
+  fusionnee_par: merged_by
+  fusionner_dans_main: merge_into_main
+  fusions: merges
+  gain_parallele: parallel_gain
+  gain_titulaire: holder_gain
+  garde_donnees_reelles: live_data_guard
+  garder_attente: keep_waiting
+  gardé: kept_one
+  geste_verifie: checked_gesture
+  gestes_gardes: kept_gestures
+  GH_REEL: REAL_GH
+  graines: seeds
+  greffon_jouet: toy_plugin
+  greffon_modifie: changed_plugin
+  gros: big_one
+  harnais: harness
+  harnais_jouet: toy_harness
+  HONNETE: HONEST
+  honnete: honest_one
+  HONNETES: HONEST_ONES
+  hors: outside
+  HORS_CONTROLE_COMMUN: OUTSIDE_COMMON_CHECK
+  HORS_DU_RETRAIT: OUTSIDE_THE_REMOVAL
+  HORS_LISTE: OUTSIDE_LIST
+  huit: eight
+  humain: human_one
+  identifiants: identifiers_list
+  ids_des_tests: test_ids
+  imbriquer: nest
+  inconnue: unknown
+  indentee: indented
+  indice: index_hint
+  intrus: intruder
+  intruse: intruder_one
+  invitation_expiree: expired_invitation
+  inviter_brut: invite_raw
+  ISO_3166_SANS_DOMAINE: ISO_3166_WITHOUT_DOMAIN
+  JETONS: TOKENS
+  jetons_scindes: split_tokens
+  JEU_FIGE: FROZEN_FIXTURE
+  JOUET: TOY
+  jouet_a_quatre_scenarios: toy_with_four_scenarios
+  journal_: log_
+  journal_docker: docker_log
+  journal_gh: gh_log
+  juge_: judge_
+  juge_borne: bounded_judge
+  juge_commun: common_judge
+  JUGE_COMMUN_YML: COMMON_JUDGE_YML
+  juge_master: master_judge
+  juge_py: judge_py
+  JUGE_YML: JUDGE_YML
+  juger: run_the_judge
+  juger_espionne: spied_judge_run
+  jusqu_a: up_to
+  lancent_bee: bee_runs
+  lancer_: run_
+  lancer_en_parallele: run_in_parallel
+  lancer_git: run_git
+  lancer_lent: run_slow
+  lancer_pr: run_pr
+  lancer_tranches: run_slices
+  lancer_vrai: run_real
+  Lances: Launched
+  lances: runs_launched
+  Lecteur: Reader
+  lecteur: reader_name
+  lectures: readings
+  lent: slow
+  LENT: SLOW
+  leurre: decoy
+  liberer_et_fusionner: release_and_merge
+  libre_service: self_service
+  lieu_de: location_of
+  LIGNE_FORGEE: FORGED_LINE
+  lignes_de: lines_of
+  lignes_forgees: forged_lines
+  lignes_yaml: yaml_lines
+  lire_depot: read_repository
+  lire_version: read_version
+  lisent: readers
+  listage: listing
+  lister2: list2
+  lit: reads
+  lit_en_c: reads_in_c
+  litteral: literal
+  longue: long_one
+  lue: read_one
+  lui: him
+  LUNDI: MONDAY
+  main_avec_debat: main_with_debate
+  main_avec_debat_sans_rapporteur: main_with_debate_without_rapporteur
+  main_avec_liste: main_with_list
+  main_reservee_avec_inscrits: main_reserved_with_registered
+  mal_forme: malformed_one
+  mal_formee: malformed
+  MANIFESTE_REMPLI: FILLED_MANIFEST
+  manque_r4: missing_r4
+  marcher: walk_through
+  MARQUE: MARK
+  marque_debat: debate_mark
+  marque_tache: task_mark
+  marquer_les_commentaires: mark_the_comments
+  MARQUES_HONNETES: HONEST_MARKS
+  MARQUES_SOSIES: LOOKALIKE_MARKS
+  mauvais: wrong_one
+  mauvaise: bad_one
+  MEME_PR: SAME_PR
+  MEMES_ENTREES: SAME_INPUTS
+  mien: mine
+  mienne: my_one
+  modif: change_made
+  modifie: changed_one
+  modifier: modify
+  montes: mounted
+  MONTURES: MOUNTS
+  MONTURES_DOCKER: DOCKER_MOUNTS
+  MONTURES_DU_JUGE: JUDGE_MOUNTS
+  MOTIF: REASON
+  natifs: natives
+  neutre: neutral
+  niveaux_avant: levels_before
+  NOEUD_0141: NODE_0141
+  NOEUD_ZONE: ZONE_NODE
+  nom_du_test: test_name
+  NOM_HOSTILE: HOSTILE_NAME
+  nombres: numbers
+  nommer: name_it
+  NOMS: NAMES
+  noms_non_utf8_permis: allowed_non_utf8_names
+  note_de_bruno: bruno_s_note
+  note_de_tache_proposee: proposed_task_note
+  noter_a_la_main: note_by_hand
+  nouveau_debat: new_debate
+  numero_de: number_from
+  numero_main_0047: main_number_0047
+  NUMEROS_LIES: LINKED_NUMBERS
+  octets_asm: asm_bytes
+  ok_voir: ok_show
+  ordres: orders
+  ote: taken_out
+  oui: yes_one
+  outil_avant: before_tool
+  outil_base: base_tool
+  OUTILS_LOCAUX: LOCAL_TOOLS
+  OutilsSignalements: ReportTools
+  ouvrir_debats: open_debates
+  par_job: per_job
+  par_nom: by_name
+  parallele: parallel_one
+  parametres: parameters
+  parent_de: parent_of
+  partage: sharing
+  pas: step_list
+  passees: passed_ones
+  passes: passes_run
+  pendant_l_attente: while_waiting
+  PHRASES_HONNETES_0044: HONEST_SENTENCES_0044
+  piege: trap_one
+  PIEGE_WORKFLOW: WORKFLOW_TRAP
+  pieger: trap
+  pieges: traps
+  plafond_24h: cap_24h
+  planter_0047: plant_0047
+  plat: flat
+  plein: full
+  plus_tard: later_on
+  porte: gate
+  poser: lay_down
+  pousse: pushed
+  poussee: pushed_one
+  pr_a_la_main: pr_by_hand
+  pr_de_gaspard: gaspard_s_pr
+  PR_REGISTRE: REGISTRY_PR
+  PREFIXES_OCTETS: BYTE_PREFIXES
+  premiere_ligne: first_line
+  premieres: first_ones
+  prendre_et_fusionner: take_and_merge
+  preparer_contribution_verte: prepare_green_contribution
+  preparer_defaut: prepare_defect
+  preparer_reservation_et_soumission: prepare_reservation_and_submission
+  problemes_arbre: tree_problems
+  profond: deep
+  programme: program
+  promouvoir: promote
+  proposee_et_refusee: proposed_and_refused
+  proposees: proposed_ones
+  proposer_brut: propose_raw
+  proposer_sur_main: propose_on_main
+  proposer_tache: propose_task
+  publie: published
+  publiees_: published_
+  quatre: four
+  quatre_contributeurs: four_contributors
+  QUATRE_SCENARIOS: FOUR_SCENARIOS
+  QUI_AGENT: AGENT_WHO
+  quotent: quote
+  r7_parallele: r7_parallel
+  R8_AMORCAGE: R8_BOOTSTRAP
+  r8_fin: r8_end
+  R8_SANS_EXCEPTION: R8_WITHOUT_EXCEPTION
+  racine_temp: temp_root
+  rajeunir: make_younger
+  RAPPORT: REPORT
+  rapport_: report_
+  rapport_ab: ab_report
+  rapports: reports
+  recuperees: recovered
+  reecrite: rewritten
+  refus_confirme_de_x: confirmed_refusal_from_x
+  refus_consigne: recorded_refusal
+  REFUS_DU_CHARGEUR: LOADER_REFUSALS
+  refusee_a_la_main: refused_by_hand
+  REFUSEES_EXPRES_0044: REFUSED_ON_PURPOSE_0044
+  registre_source: source_registry
+  reglee: set_one
+  regler_expiration: set_expiry
+  regler_juge_commun_min: set_common_judge_min
+  regler_porte: set_gate
+  regler_porte_humaine: set_human_gate
+  relais: relay
+  relecteurs: reviewers
+  releve_agora: agora_relief
+  releve_espion: spy_reading
+  releve_montures: mounts_reading
+  relire_: review_
+  relire_tous: review_all
+  remplacement: replacement
+  rempli: filled
+  remplir: fill_in
+  renommer_et_fusionner: rename_and_merge
+  renommer_par_le_conseil: rename_by_the_council
+  repartir: split_up
+  reperes: landmarks
+  reponses: answers
+  requete_valgrind: valgrind_request
+  reserver: reserve
+  reserver_sur_main: reserve_on_main
+  RESTE: REST
+  RESTE_INSTRUCTIONS: REST_INSTRUCTIONS
+  RESTE_PREFIXES: REST_PREFIXES
+  RESUME_9094: SUMMARY_9094
+  retire: removed
+  retouche: touched_up
+  retourner: turn_back
+  retrait_en_pr: removal_in_pr
+  reussite: success
+  reviser: revise
+  REVUE_0047: REVIEW_0047
+  REVUE_REFUSES: REVIEW_REFUSED
+  rivale: rival
+  sans_code: without_code
+  sans_donnees_reelles: without_live_data
+  sans_fin: endless
+  sans_les_tests: without_the_tests
+  sans_portee: without_reach
+  sans_ratio: without_ratio
+  sans_role: without_role
+  sans_suspects: without_suspects
+  sans_tache: without_task
+  SansParcours: WithoutCourse
+  scenarios_voisins: neighbor_scenarios
+  SCHEMAS_LIBRE_SERVICE: SELF_SERVICE_SCHEMAS
+  SECONDE_REVUE_HONNETES: SECOND_REVIEW_HONEST
+  SECONDE_REVUE_REFUSES: SECOND_REVIEW_REFUSED
+  secondes: seconds
+  SENSIBLES_DOUTEUSES_0047: SENSITIVE_DOUBTFUL_0047
+  SENSIBLES_SURES_0047: SENSITIVE_SURE_0047
+  separateurs: separators
+  SEPARATEURS_0047: SEPARATORS_0047
+  seul_c_accepte: only_c_accepts
+  seulement: only_this
+  sien: his
+  signale: reported
+  signaleur: reporter
+  simples: simple_ones
+  simu: sim
+  simuler: simulate
+  sonde: probe
+  sortant: outgoing
+  SORTANTS_HONNETES: OUTGOING_HONEST
+  SORTANTS_REFUSES: OUTGOING_REFUSED
+  SORTANTS_REFUSES_EXPRES_0047: OUTGOING_REFUSED_ON_PURPOSE_0047
+  SORTES: KINDS
+  sortie_anticipee: early_exit
+  sortie_fausse_chronometree: wrong_output_timed
+  sortie_h: header_output
+  sorties_c: c_outputs
+  SORTIES_DU_JOB: JOB_OUTPUTS
+  SOSIES_HONNETES: HONEST_LOOKALIKES
+  soumettre_: submit_
+  soumettre_0099: submit_0099
+  soumettre_avec_pr: submit_with_pr
+  soumettre_et_fusionner: submit_and_merge
+  soumettre_ruche: submit_hive
+  soumis: submitted_one
+  soumise_sur_main: submitted_on_main
+  soumises: submitted_ones
+  SOUMISSION: SUBMISSION
+  sous_valgrind: under_valgrind
+  statuts: statuses
+  statuts_affiches: displayed_statuses
+  succes: successes
+  supprimes: deleted
+  sur_le_disque: on_disk
+  sur_main: on_main
+  SYNTHESE_0141: SYNTHESIS_0141
+  synthese_brute: raw_synthesis
+  table_precalculee: precomputed_table
+  TACHE: TASK
+  tache_avant: task_before
+  tache_main: main_task
+  TACHE_OPTIMISATION: OPTIMIZATION_TASK
+  TACHE_PIEGE_0141: TRAP_TASK_0141
+  TACHE_PIEGE_0141_EN: TRAP_TASK_0141_EN
+  taches_brutes: raw_tasks
+  TELEPHONES_0047: PHONES_0047
+  TEMOIN_HONNETE: HONEST_CONTROL
+  tenir: hold_it
+  tenus: held
+  test_0_fusion_de_main_garde_r13_et_r14: test_0_merge_of_main_keeps_r13_and_r14
+  test_10_membres_actifs: test_10_active_members
+  test_11_fichier_scalaire: test_11_scalar_file
+  test_12_homonyme_controle: test_12_homonym_checked
+  test_1_7_historique_et_levees_ne_s_ecrivent_ni_par_l_auteur_ni_par_un_membre: test_1_7_history_and_liftings_are_written_neither_by_the_author_nor_by_a_member
+  test_1_decision_du_commandement_10: test_1_decision_of_commandment_10
+  test_1_l_historique_est_borne_et_un_oubli_exige_une_autre_configuration: test_1_the_history_is_bounded_and_an_omission_requires_another_configuration
+  test_1_relancer_la_ci_sur_le_meme_contenu_ne_peut_que_nuire: test_1_rerunning_the_ci_on_the_same_content_can_only_harm
+  test_2_agents_md_renvoie_a_croissance_la_ou_il_parle_d_inviter: test_2_agents_md_refers_to_growth_where_it_speaks_of_inviting
+  test_2_r1_est_reverifiee_par_le_registre: test_2_r1_is_checked_again_by_the_registry
+  test_2_un_refus_retire_toutes_ses_invitations: test_2_a_refusal_removes_all_its_invitations
+  test_2_une_invitation_acceptee_reste: test_2_an_accepted_invitation_stays
+  test_3_agora_par_numero_sans_donnee_personnelle: test_3_agora_by_number_without_personal_data
+  test_3_caviarder_un_argument: test_3_redact_an_argument
+  test_3_l_echeance_est_celle_de_la_porte: test_3_the_deadline_is_the_gate_s
+  test_3_regle_ecrite: test_3_written_rule
+  test_3_une_relecture_porte_sur_le_commit_lu: test_3_a_review_is_about_the_commit_read
+  test_3_voir_donne_les_dates_et_l_echeance: test_3_show_gives_the_dates_and_the_deadline
+  test_4_autres_identites_controlees: test_4_other_identities_checked
+  test_4_le_gain_declare_est_borne_avant_tout_calcul: test_4_the_declared_gain_is_bounded_before_any_computation
+  test_4_un_tiers_cite_en_source_n_est_pas_inscrit: test_4_a_third_party_cited_as_source_is_not_recorded
+  test_5_deja_invitee_par_toutes_les_identites: test_5_already_invited_by_all_the_identities
+  test_5_qui_ne_peut_pas_signaler_et_ce_que_la_porte_refuse: test_5_who_cannot_report_and_what_the_gate_refuses
+  test_5_un_contenu_refuse_est_signale_toutes_taches_confondues: test_5_a_refused_content_is_reported_across_all_tasks
+  test_5_un_gardien_en_fonction_signale_un_incident_et_le_frein_le_compte: test_5_a_serving_guardian_reports_an_incident_and_the_brake_counts_it
+  test_6_la_fenetre_de_r3_part_de_la_fusion_de_la_soumission: test_6_the_r3_window_starts_at_the_merge_of_the_submission
+  test_6_proprietaire_d_origine_sous_toute_forge: test_6_origin_owner_under_any_forge
+  test_7_les_pseudos_se_comparent_sans_la_casse: test_7_the_logins_compare_without_the_case
+  test_7_phrase_normalisee: test_7_normalized_sentence
+  test_8_feux_verts_concurrents_signales: test_8_competing_green_lights_reported
+  test_8_l_integration_relit_la_base_de_la_pr_avant_de_fusionner: test_8_the_integration_reads_the_base_of_the_pr_again_before_merging
+  test_9_feu_vert_echu: test_9_expired_green_light
+  test_A1_au_refus_bee_inscrit_l_identifiant_et_les_identites_declarees: test_A1_on_refusal_bee_records_the_identifier_and_the_declared_identities
+  test_A1_meme_personne_sous_une_autre_adresse: test_A1_same_person_under_another_address
+  test_A1_non_contact_et_variantes_de_plateforme: test_A1_no_contact_and_platform_variants
+  test_A2_deja_invitee_sous_une_variante: test_A2_already_invited_under_a_variant
+  test_A2_sites_partages_refuses: test_A2_shared_sites_refused
+  test_A_a_trois_jours_l_invitation_a_expire_partout: test_A_at_three_days_the_invitation_expired_everywhere
+  test_a_blanc_n_ecrit_rien: test_dry_run_writes_nothing
+  test_a_file_written_by_bee_inscrire_is_accepted: test_a_file_written_by_bee_register_is_accepted
+  test_A_l_echeance_de_bee_yaml_partout_comme_a_la_porte: test_A_the_deadline_of_bee_yaml_everywhere_as_at_the_gate
+  test_a_remplir_anglais_refuse_comme_le_francais: test_english_to_fill_in_refused_like_the_french
+  test_a_remplir_memes_variantes_dans_les_deux_langues: test_to_fill_in_same_variants_in_both_languages
+  test_a_resume_is_required_and_cut_at_300_characters: test_a_summary_is_required_and_cut_at_300_characters
+  test_a_sa_marque_un_fichier_ne_recoit_plus_d_ajout_mais_se_clot: test_at_its_mark_a_file_receives_no_more_addition_but_closes
+  test_acceptation_automatique: test_automatic_acceptance
+  test_acceptee_puis_retiree_reste_ouverte_aux_arguments: test_accepted_then_withdrawn_stays_open_to_arguments
+  test_accord_du_conseil_par_un_membre_ou_par_le_gardien: test_council_agreement_by_a_member_or_by_the_guardian
+  test_accord_du_gardien_avant_72_h_ou_sur_sa_propre_invitation: test_guardian_agreement_before_72_h_or_on_its_own_invitation
+  test_accord_forge_par_un_non_gardien: test_agreement_forged_by_a_non_guardian
+  test_accords_refuses_si_le_debat_est_clos_ou_si_un_argument_suit_ce_que_sa_synthese_couvre: test_agreements_refused_if_the_debate_is_closed_or_if_an_argument_follows_what_its_synthesis_covers
+  test_adverse_pr_deja_liee: test_adverse_pr_already_linked
+  test_adverse_r3_defavorable_du_conseil_bloque: test_adverse_r3_unfavorable_from_the_council_blocks
+  test_adverse_r3_defavorables_non_ignores: test_adverse_r3_unfavorable_ones_not_ignored
+  test_adverse_r3_optimisation_qui_modifie_son_workflow: test_adverse_r3_optimization_that_changes_its_workflow
+  test_adverse_r3_relectures_d_un_ancien_commit: test_adverse_r3_reviews_of_an_old_commit
+  test_adverse_r3_verdict_non_controle: test_adverse_r3_unchecked_verdict
+  test_adverse_r4_instructions_sans_confirmation_du_chronometre: test_adverse_r4_instructions_without_confirmation_from_the_stopwatch
+  test_adverse_relecture_retroactive: test_adverse_retroactive_review
+  test_adverse_soumission_antidatee: test_adverse_backdated_submission
+  test_adverse_soumission_sans_reservation: test_adverse_submission_without_reservation
+  test_adverse_verdict_incoherent_refuse: test_adverse_inconsistent_verdict_refused
+  test_ajout_non_lu: test_addition_not_read
+  test_ajouter_une_mesure_reste_en_libre_service: test_adding_a_measurement_stays_self_service
+  test_aller_retour: test_round_trip
+  test_amorcage_accord_du_conseil_seul_apres_72_h: test_bootstrap_council_agreement_alone_after_72_h
+  test_amorcage_missing_or_malformed: test_bootstrap_missing_or_malformed
+  test_ancien_manifeste_d_une_autre_tache_ignore: test_old_manifest_of_another_task_ignored
+  test_anciennete_compte_min_jours_missing_or_malformed: test_min_account_age_days_missing_or_malformed
+  test_annulee_sans_avoir_ete_integree_ne_coute_rien_a_ses_relecteurs: test_cancelled_without_having_been_integrated_costs_its_reviewers_nothing
+  test_appel_interdit: test_forbidden_call
+  test_apres_la_cloture_seules_les_integrables_restent_en_course: test_after_the_closure_only_the_integrable_ones_stay_in_the_race
+  test_arbre_des_relectures_et_casse_des_pseudos: test_tree_of_the_reviews_and_case_of_the_logins
+  test_arbre_livre_valide_et_taches_rattachees: test_delivered_tree_valid_and_tasks_attached
+  test_argument_libre_service: test_self_service_argument
+  test_argumenter_annonce_l_id_et_le_risque_de_conflit: test_argue_announces_the_id_and_the_risk_of_conflict
+  test_attaque_allonger_l_echeance_par_promotion: test_attack_extend_the_deadline_by_promotion
+  test_attaque_antidater_son_inscription: test_attack_backdate_own_registration
+  test_attaque_clore_une_concurrente_a_la_main: test_attack_close_a_competitor_by_hand
+  test_attaque_concurrent_qui_juge_sa_concurrente: test_attack_competitor_judging_its_competitor
+  test_attaque_le_titulaire_s_inscrit_en_parallele: test_attack_the_holder_registers_in_parallel
+  test_attaque_promouvoir_un_autre_que_le_plus_ancien: test_attack_promote_someone_other_than_the_earliest
+  test_attaque_reserver_en_inscrivant_d_autres: test_attack_reserve_by_registering_others
+  test_attaque_retirer_la_reservation_d_un_autre: test_attack_withdraw_the_reservation_of_another
+  test_attaque_s_inscrire_avant_la_reservation_dans_la_tolerance: test_attack_register_before_the_reservation_within_the_tolerance
+  test_attaque_se_promouvoir_titulaire: test_attack_promote_oneself_holder
+  test_attaque_soumettre_au_nom_d_un_autre: test_attack_submit_in_the_name_of_another
+  test_attaque_soumettre_sans_etre_inscrit: test_attack_submit_without_being_registered
+  test_attaque_soumission_anterieure_a_son_inscription: test_attack_submission_earlier_than_own_registration
+  test_attaque_soumission_repetee: test_attack_repeated_submission
+  test_attaque_vieillir_une_inscription_existante: test_attack_age_an_existing_registration
+  test_attente_de_fusion_expliquee: test_waiting_for_merge_explained
+  test_au_dela_de_64_cles_de_premier_niveau_un_seul_refus_tout_de_suite: test_beyond_64_top_level_keys_a_single_refusal_at_once
+  test_au_dela_du_plafond_nommant_le_signalement_attend_le_conseil: test_beyond_the_naming_cap_the_report_awaits_the_council
+  test_au_dela_du_plafond_nommant_un_par_24_h_et_a_part_dans_essaim: test_beyond_the_naming_cap_one_per_24_h_and_apart_in_swarm
+  test_au_plus_deux_ouverts_par_personne_qui_signale_et_trois_nommant_une_personne: test_at_most_two_open_per_reporting_person_and_three_naming_a_person
+  test_aucun_code_n_envoie_de_message: test_no_code_sends_a_message
+  test_aucune_donnee_du_fork_n_entre_dans_une_commande_ni_dans_le_journal_sans_motif: test_no_fork_data_enters_a_command_or_the_log_without_reason
+  test_avant_le_verdict_ni_commit_invente_ni_seconde_relecture_ni_defaut: test_before_the_verdict_neither_invented_commit_nor_second_review_nor_defect
+  test_B1_caracteres_invisibles_refuses_dans_le_message: test_B1_invisible_characters_refused_in_the_message
+  test_B1_en_attente_liste_la_mieux_classee_d_abord: test_B1_pending_lists_the_best_ranked_first
+  test_B1_la_consigne_des_failles_est_sur_chaque_chemin: test_B1_the_vulnerability_instruction_is_on_every_path
+  test_B1_propositions_plafonnees_par_pr_et_sur_24_h: test_B1_proposals_capped_per_pr_and_over_24_h
+  test_B1_S6_ni_suppression_ni_ajout_ni_lien_ni_mode: test_B1_S6_neither_deletion_nor_addition_nor_link_nor_mode
+  test_B1_soumettre_refuse_un_resume_sur_plusieurs_lignes_avant_d_ecrire: test_B1_submit_refuses_a_summary_on_several_lines_before_writing
+  test_B1_taches_proposees_plafonnees_par_pr_et_sur_24_h: test_B1_proposed_tasks_capped_per_pr_and_over_24_h
+  test_b1_un_engagement_se_compare_a_la_soumission_declaree: test_b1_an_engagement_compares_to_the_declared_submission
+  test_b1_un_geste_verifie_30_minutes_apres_sa_date_passe: test_b1_a_gesture_checked_30_minutes_after_its_date_passes
+  test_B1_un_utilisateur_ne_fait_pas_basculer_le_cap: test_B1_one_user_does_not_tip_the_balance
+  test_B1_une_concurrente_en_conflit_ne_retient_plus_apres_cloture_plus_24h: test_B1_a_conflicting_competitor_no_longer_holds_after_closure_plus_24h
+  test_B1_une_concurrente_jamais_fusionnable_ne_retient_plus_apres_cloture_plus_24h: test_B1_a_never_mergeable_competitor_no_longer_holds_after_closure_plus_24h
+  test_b1_une_panne_de_compare_n_ecrit_aucune_attente: test_b1_a_compare_failure_writes_no_wait
+  test_b2_b3_une_autre_pr_ne_bloque_que_si_la_ci_a_pu_venir_d_elle: test_b2_b3_another_pr_blocks_only_if_the_ci_may_have_come_from_it
+  test_B2_charge_cachee_refusee_par_bee_inviter: test_B2_hidden_payload_refused_by_bee_invite
+  test_B2_la_clause_cn_suit_la_table_unicode_de_la_ci: test_B2_the_cn_clause_follows_the_unicode_table_of_the_ci
+  test_B2_la_pr_d_un_autre_n_est_jamais_fermee: test_B2_the_pr_of_another_is_never_closed
+  test_B2_ni_mot_courant_ni_pseudo_de_la_ruche_ni_numero: test_B2_neither_common_word_nor_hive_login_nor_number
+  test_B2_pas_de_soumission_sur_un_projet_sans_fork: test_B2_no_submission_on_a_project_without_fork
+  test_B2_S2_le_message_d_une_autre_invitation_demeure_ses_faits_et_sources_se_retirent: test_B2_S2_the_message_of_another_invitation_stays_its_facts_and_sources_are_removed
+  test_B3_la_marque_courte_quand_la_marque_deborderait: test_B3_the_short_mark_when_the_mark_would_overflow
+  test_b5_la_fraicheur_ne_tient_pas_compte_d_un_evenement_date_par_github: test_b5_the_freshness_ignores_an_event_dated_by_github
+  test_b6_l_attente_porte_un_code_et_la_phrase_se_rend_a_l_affichage: test_b6_the_wait_carries_a_code_and_the_sentence_is_rendered_on_display
+  test_B_feu_vert_envoi_consignation_et_ecart: test_B_green_light_sending_record_and_dismissal
+  test_B_la_sortie_du_feu_vert_dit_l_ordre: test_B_the_green_light_output_states_the_order
+  test_balance_au_retour_a_un_commit_refuse: test_balance_on_return_to_a_refused_commit
+  test_base_contre_elle_meme: test_base_against_itself
+  test_bee_debats_montre_le_debat_qui_attend_sa_cloture: test_bee_debates_shows_the_debate_awaiting_its_closure
+  test_bee_enregistrer_mesure_refuses_outil_and_ab_json_texts_before_writing: test_bee_record_measurement_refuses_tool_and_ab_json_texts_before_writing
+  test_bee_essaim_montre_le_nombre_et_les_dix_premiers: test_bee_swarm_shows_the_number_and_the_first_ten
+  test_bee_incident_dit_que_les_commentaires_sont_perdus: test_bee_incident_says_that_the_comments_are_lost
+  test_bee_inscrire_refuses_a_reserved_name_whatever_its_case: test_bee_register_refuses_a_reserved_name_whatever_its_case
+  test_bee_inviter_respecte_le_plafond_d_ouvertures_avant_d_ecrire: test_bee_invite_respects_the_openings_cap_before_writing
+  test_bee_proposer_refuses_before_writing: test_bee_propose_refuses_before_writing
+  test_bee_renommer_refuses_a_reserved_name: test_bee_rename_refuses_a_reserved_name
+  test_bee_valider_checks_the_lists_shape: test_bee_validate_checks_the_lists_shape
+  test_bee_valider_quotes_an_unknown_field_and_a_value_neutralised: test_bee_validate_quotes_an_unknown_field_and_a_value_neutralised
+  test_bee_valider_refuses_a_missing_key: test_bee_validate_refuses_a_missing_key
+  test_bee_valider_refuses_an_unknown_key: test_bee_validate_refuses_an_unknown_key
+  test_bee_valider_reports_an_existing_member_with_a_reserved_name: test_bee_validate_reports_an_existing_member_with_a_reserved_name
+  test_bee_verifier_pr_refuse_chaque_famille_et_laisse_passer_le_temoin_honnete: test_bee_check_pr_refuses_each_family_and_lets_the_honest_control_pass
+  test_bee_without_registre: test_bee_without_registry
+  test_branche_conforme: test_conforming_branch
+  test_budget_plus_large_que_le_plafond: test_budget_wider_than_the_cap
+  test_c1_base_juge_exigee_quand_le_projet_le_dit: test_c1_judge_base_required_when_the_project_says_so
+  test_C1_donnees_personnelles_dans_le_message: test_C1_personal_data_in_the_message
+  test_C1_phrase_fixe_de_la_demande: test_C1_fixed_sentence_of_the_request
+  test_C1_plafond_d_encadrement_sous_frein: test_C1_supervision_cap_under_brake
+  test_c2_c3_c4_les_autres_pr_de_la_meme_tete: test_c2_c3_c4_the_other_prs_of_the_same_head
+  test_C2_donnees_personnelles_hors_du_message: test_C2_personal_data_outside_the_message
+  test_C3_motif_d_ecart_controle_comme_un_message: test_C3_dismissal_reason_checked_as_a_message
+  test_c5_une_pr_du_fork_fusionnee_ou_fermee_avant_la_collecte_recoit_son_verdict: test_c5_a_fork_pr_merged_or_closed_before_the_collection_receives_its_verdict
+  test_c6_un_verdict_rouge_sans_base_est_enregistre_tel_quel: test_c6_a_red_verdict_without_base_is_recorded_as_is
+  test_C_voir_imprime_les_dates_relues_jamais_brutes: test_C_show_prints_the_dates_quoted_never_raw
+  test_cap_compte_l_agora_en_coordination: test_balance_counts_the_agora_in_coordination
+  test_cap_compte_reservations_et_propositions_a_leur_fusion: test_balance_counts_reservations_and_proposals_at_their_merge
+  test_cap_et_essaim_datent_les_gestes_par_leur_fusion: test_balance_and_swarm_date_the_gestures_by_their_merge
+  test_cap_invalide_refuse: test_invalid_balance_refused
+  test_cap_livre_valide_et_somme_a_100: test_delivered_balance_valid_and_sums_to_100
+  test_cap_mesure_l_activite_et_designe_le_poste_en_retard: test_balance_measures_the_activity_and_names_the_lagging_area
+  test_cap_organisation_and_phase: test_balance_organization_and_phase
+  test_caractere_invisible_refuse: test_invisible_character_refused
+  test_chaque_champ_texte_de_chaque_schema_passe_le_controle_commun_et_sa_borne: test_each_text_field_of_each_schema_passes_the_common_check_and_its_bound
+  test_chaque_famille_refusee_dans_chaque_sorte_de_texte_libre_par_bee_valider: test_each_family_refused_in_each_kind_of_free_text_by_bee_validate
+  test_chaque_famille_refusee_le_message_nomme_le_point_de_code_jamais_le_caractere: test_each_family_refused_the_message_names_the_code_point_never_the_character
+  test_chaque_refus_du_chargeur_avec_son_message: test_each_loader_refusal_with_its_message
+  test_chaque_test_du_chargeur_passe_avec_les_deux_analyseurs: test_each_loader_test_passes_with_both_parsers
+  test_chaque_texte_est_retirable_ou_nomme_hors_du_retrait: test_each_text_is_removable_or_named_outside_the_removal
+  test_chemin_honnete_recopie_puis_imprime_encadre: test_honest_path_copied_then_printed_framed
+  test_chemins_livres_tiennent_dans_un_budget_court: test_delivered_paths_fit_in_a_short_budget
+  test_classement_deterministe_vote_puis_anciennete: test_deterministic_ranking_vote_then_seniority
+  test_cloture_anticipee_par_un_gardien_ou_le_conseil: test_early_closure_by_a_guardian_or_the_council
+  test_cloture_libre_service: test_self_service_closure
+  test_cloture_par_le_rapporteur_apres_silence: test_closure_by_the_rapporteur_after_silence
+  test_cloturer_pendant_la_course: test_close_during_the_race
+  test_cloturer_rouvre_la_tache: test_close_reopens_the_task
+  test_commandement_10_et_r13_disent_le_retrait: test_commandment_10_and_r13_state_the_removal
+  test_commandements_reserves_au_conseil: test_commandments_reserved_for_the_council
+  test_commandments_anglais_reserves_au_conseil: test_english_commandments_reserved_for_the_council
+  test_commentaires_et_consignation_mal_formee: test_comments_and_malformed_record
+  test_comptes_de_lit_chaque_personne_une_fois: test_accounts_of_reads_each_person_once
+  test_confiance_et_essaim_comptent_comme_r3: test_trust_and_swarm_count_as_r3
+  test_conflit_apres_l_engagement_les_changements_reviennent_sur_le_disque: test_conflict_after_the_engagement_the_changes_come_back_to_disk
+  test_consigne_des_failles_en_anglais: test_vulnerability_instruction_in_english
+  test_constructeur_et_instructions: test_constructor_and_instructions
+  test_constructions_suspectes_exigent_un_gardien: test_suspicious_constructs_require_a_guardian
+  test_constructions_suspectes_meme_pour_un_auteur_privilegie: test_suspicious_constructs_even_for_a_privileged_author
+  test_contexte_budget_garde_la_racine_et_la_tache: test_context_budget_keeps_the_root_and_the_task
+  test_contexte_imprime_le_chemin_dans_l_ordre: test_context_prints_the_path_in_order
+  test_contexte_role: test_context_role
+  test_contexte_zone_et_noeud_ailleurs: test_context_zone_and_node_elsewhere
+  test_continuation_de_ligne: test_line_continuation
+  test_contribution_du_conseil_quand_les_autres_sont_nouveaux: test_council_contribution_when_the_others_are_newcomers
+  test_controle_encode_refuse_comme_le_caractere: test_encoded_control_refused_like_the_character
+  test_cote_sans_melange: test_side_without_shuffle
+  test_critere_1_one_query_per_50_prs_whatever_the_addresses: test_criterion_1_one_query_per_50_prs_whatever_the_addresses
+  test_critere_1_seule_l_execution_de_la_pr_enregistree_vers_la_branche_par_defaut_est_retenue: test_criterion_1_only_the_run_of_the_recorded_pr_to_the_default_branch_is_kept
+  test_critere_2_integrations_and_closures_as_today: test_criterion_2_integrations_and_closures_as_today
+  test_critere_2_un_verdict_dont_la_base_n_est_pas_sur_la_branche_par_defaut_n_est_pas_enregistre: test_criterion_2_a_verdict_whose_base_is_not_on_the_default_branch_is_not_recorded
+  test_critere_2_verdicts_as_today: test_criterion_2_verdicts_as_today
+  test_D1_caviarder_exige_une_invitation_retiree: test_D1_redacting_requires_a_removed_invitation
+  test_D1_garant_proposant: test_D1_proposing_guarantor
+  test_D1b_question_controlee_et_caviardable: test_D1b_question_checked_and_redactable
+  test_D3_autres_identites_affichees: test_D3_other_identities_displayed
+  test_D4_retrait_refus_sans_refus_refuse: test_D4_refusal_removal_without_refusal_refused
+  test_D5_arguments_hors_du_frein: test_D5_arguments_outside_the_brake
+  test_date_future_ignoree: test_future_date_ignored
+  test_decide_par_sur_autorisation_du_conseil: test_decided_by_on_council_authorization
+  test_degradation_max_autres: test_max_other_degradation
+  test_deja_lu_ne_reimprime_ni_la_racine_ni_le_role: test_already_read_reprints_neither_the_root_nor_the_role
+  test_dependance_non_integree_bloque: test_dependency_not_integrated_blocks
+  test_des_comptes_lies_comptent_pour_un_dans_r7_et_r8: test_linked_accounts_count_as_one_in_r7_and_r8
+  test_des_comptes_lies_partagent_leurs_refus: test_linked_accounts_share_their_refusals
+  test_des_soumissions_repetees_ne_retardent_pas_au_dela_de_96_h: test_repeated_submissions_do_not_delay_beyond_96_h
+  test_detournements_des_relectures_par_commit: test_misuses_of_the_reviews_by_commit
+  test_deux_nouveaux_ne_noient_pas_l_avis_d_un_contributeur: test_two_newcomers_do_not_drown_the_opinion_of_a_contributor
+  test_deux_relectures_deux_votes_et_une_note_en_une_pr_que_la_porte_accepte: test_two_reviews_two_votes_and_a_note_in_one_pr_the_gate_accepts
+  test_diff_n_existe_plus: test_diff_no_longer_exists
+  test_differentiel_des_deux_analyseurs: test_differential_of_the_two_parsers
+  test_disque_plein: test_full_disk
+  test_donnee_personnelle_dans_chaque_lecture: test_personal_data_in_every_reading
+  test_dossier_sans_noeud_et_fichier_etranger: test_folder_without_node_and_foreign_file
+  test_doublon_libre_service_par_le_rapporteur_ou_un_gardien: test_self_service_duplicate_by_the_rapporteur_or_a_guardian
+  test_doublon_marque_sans_rien_effacer: test_duplicate_marked_without_erasing_anything
+  test_E1_accord_d_un_gardien_dont_le_garant_est_revoque: test_E1_agreement_of_a_guardian_whose_guarantor_is_revoked
+  test_E1_projet_d_origine: test_E1_origin_project
+  test_each_setting_missing_or_malformed_is_refused_by_bee_valider_and_by_its_read: test_each_setting_missing_or_malformed_is_refused_by_bee_validate_and_by_its_read
+  test_ecart_declare_max: test_max_declared_gap
+  test_ecartement_dans_le_meme_commit_que_l_integration: test_setting_aside_in_the_same_commit_as_the_integration
+  test_ecarter_par_le_proposant_ou_un_gardien: test_dismiss_by_the_proposer_or_a_guardian
+  test_ecarter_par_un_gardien_en_fonction_seulement: test_dismiss_by_a_serving_guardian_only
+  test_ecarter_une_proposition_exige_une_note: test_dismissing_a_proposal_requires_a_note
+  test_ecriture: test_writing
+  test_ecriture_sans_fin: test_endless_writing
+  test_empreinte: test_fingerprint
+  test_en_tete_manquant_ou_incomplet: test_header_missing_or_incomplete
+  test_engagement_refuse_ou_en_attente_rien_d_autre_ne_part: test_engagement_refused_or_pending_nothing_else_goes
+  test_engagements_dates_de_l_heure_de_la_pr: test_engagements_dated_at_the_time_of_the_pr
+  test_envoi_consigne_par_un_non_conseil_ou_avant_les_accords: test_sending_recorded_by_a_non_council_or_before_the_agreements
+  test_envoi_hors_plafond_consigne_et_signale: test_sending_over_the_cap_recorded_and_reported
+  test_essaim_et_site_montrent_les_invitations_et_le_frein: test_swarm_and_site_show_the_invitations_and_the_brake
+  test_essaim_montre_qui_fait_quoi: test_swarm_shows_who_does_what
+  test_essaim_quotes_each_text_neutralised: test_swarm_quotes_each_text_neutralised
+  test_essaim_voir_et_cap_montrent_le_travail_en_parallele: test_swarm_show_and_balance_show_the_parallel_work
+  test_etat_perdu_et_redate_la_pr_qui_attend_est_retrouvee: test_lost_state_and_redated_the_waiting_pr_is_found
+  test_etat_perdu_et_second_engagement_le_premier_n_est_jamais_dans_deux_pr: test_lost_state_and_second_engagement_the_first_is_never_in_two_prs
+  test_expiration_d_une_inscription_seule: test_expiration_of_a_lone_registration
+  test_expiration_r7_des_inscriptions_et_promotion: test_r7_expiration_of_registrations_and_promotion
+  test_F1_proposition_hors_libre_service_et_detecteurs: test_F1_proposal_outside_self_service_and_detectors
+  test_F1_revoquer_un_gardien_qui_a_donne_un_accord: test_F1_revoke_a_guardian_who_gave_an_agreement
+  test_fausse_marque_refusee_dans_une_note_un_motif_et_un_resume: test_fake_mark_refused_in_a_note_a_reason_and_a_summary
+  test_fausse_marque_refusee_et_neutralisee_au_point_fixe: test_fake_mark_refused_and_neutralized_at_the_fixed_point
+  test_faux_chronos: test_fake_stopwatches
+  test_faux_resume: test_fake_summary
+  test_fenetre_acceptation_heures: test_acceptance_window_hours
+  test_fichier_hors_libre_service_refuse: test_file_outside_self_service_refused
+  test_fichier_hors_tache_et_base_inconnue: test_file_outside_task_and_unknown_base
+  test_fichier_inattendu_ou_forme_non_canonique: test_unexpected_file_or_non_canonical_form
+  test_fichier_ordinaire_et_absent: test_regular_and_absent_file
+  test_flux_invalides_reconnus: test_invalid_streams_recognized
+  test_fraicheur_une_pr_modifiee_il_y_a_moins_de_5_minutes_est_jugee_au_passage_suivant: test_freshness_a_pr_changed_less_than_5_minutes_ago_is_judged_at_the_next_pass
+  test_frein_aucun_gardien_amorcage: test_brake_no_guardian_bootstrap
+  test_frein_gardien_sans_garant: test_brake_guardian_without_guarantor
+  test_frein_incident_ouvert: test_brake_open_incident
+  test_frein_trop_de_membres_actifs_par_gardien: test_brake_too_many_active_members_per_guardian
+  test_fusion_auto_checks_the_declared_dates_at_the_push: test_auto_merge_checks_the_declared_dates_at_the_push
+  test_fusion_auto_finds_the_pr_and_its_author_s_number_in_one_listing: test_auto_merge_finds_the_pr_and_its_author_s_number_in_one_listing
+  test_fusion_auto_reads_the_account_date_only_for_a_registration: test_auto_merge_reads_the_account_date_only_for_a_registration
+  test_G1_liste_illisible_sur_la_base: test_G1_unreadable_list_on_the_base
+  test_gardien_ouvre_la_porte_de_relecture: test_guardian_opens_the_review_gate
+  test_gestes_honnetes_avant_le_verdict_puis_a_chaque_commit: test_honest_gestures_before_the_verdict_then_at_each_commit
+  test_greffon_absent_ou_incomplet: test_plugin_absent_or_incomplete
+  test_greffon_de_la_pr: test_plugin_of_the_pr
+  test_greffon_distrait: test_distracted_plugin
+  test_greffon_du_jouet: test_toy_plugin
+  test_greffon_lien_refuse: test_plugin_link_refused
+  test_H1_incident_ouvert_et_invitation_de_garant: test_H1_open_incident_and_guarantor_invitation
+  test_H1_relances_dans_le_plafond: test_H1_reminders_within_the_cap
+  test_historique_declare: test_declared_history
+  test_historique_non_declare: test_undeclared_history
+  test_honnete: test_honest
+  test_hors_ligne_et_rien_hors_du_dossier: test_offline_and_nothing_outside_the_folder
+  test_I1_caractere_invisible_dans_une_tache_refuse: test_I1_invisible_character_in_a_task_refused
+  test_I1_se_retirer_juger_se_reinscrire_ne_bloque_pas_la_concurrente: test_I1_withdraw_judge_register_again_does_not_block_the_competitor
+  test_I1_soumission_close_ne_renouvelle_pas_la_reservation: test_I1_closed_submission_does_not_renew_the_reservation
+  test_I1_un_commentaire_deja_present_n_empeche_pas_une_note: test_I1_a_comment_already_there_does_not_prevent_a_note
+  test_I1_un_commentaire_yaml_ajoute_au_libre_service_est_refuse: test_I1_a_yaml_comment_added_to_self_service_is_refused
+  test_I1_un_engage_ne_retire_ni_ne_change_son_vote_sur_une_concurrente: test_I1_an_engaged_one_neither_withdraws_nor_changes_its_vote_on_a_competitor
+  test_I1_voir_et_contexte_impriment_les_donnees_relues: test_I1_show_and_context_print_the_data_quoted
+  test_I2_champs_d_une_tache_proposee_plafonnes: test_I2_fields_of_a_proposed_task_capped
+  test_I2_cloturer_ne_clot_pas_quand_une_concurrente_est_fusionnee: test_I2_close_does_not_close_when_a_competitor_is_merged
+  test_I2_la_donnee_part_avant_le_role_et_le_projet: test_I2_the_data_goes_before_the_role_and_the_project
+  test_I2_un_long_contexte_se_tronque_avant_les_paliers: test_I2_a_long_context_is_cut_before_the_tiers
+  test_I2_une_publication_manquee_ne_rend_pas_une_ecartee_annulee: test_I2_a_missed_publication_does_not_make_a_set_aside_one_cancelled
+  test_I3_le_conseil_integre_une_course_de_la_ruche: test_I3_the_council_integrates_a_hive_race
+  test_I3_le_noeud_du_role_et_la_racine_ne_partent_jamais: test_I3_the_role_node_and_the_root_never_go
+  test_I4_une_ci_lente_ne_fait_pas_perdre_la_course_a_qui_travaillait_deja: test_I4_a_slow_ci_does_not_lose_the_race_for_who_was_already_working
+  test_I5_des_relectures_de_complaisance_n_achetent_pas_le_classement: test_I5_complaisance_reviews_do_not_buy_the_ranking
+  test_I5_un_vote_negatif_ne_change_pas_le_classement: test_I5_a_negative_vote_does_not_change_the_ranking
+  test_I6_une_cle_en_double_est_refusee: test_I6_a_duplicate_key_is_refused
+  test_import_des_questions_par_une_pr_du_conseil: test_import_of_the_questions_by_a_council_pr
+  test_importer_les_questions_ouvertes: test_import_the_open_questions
+  test_importer_saute_les_questions_liees_en_anglais: test_import_skips_the_questions_linked_in_english
+  test_inscription_compte_trop_recent: test_registration_account_too_recent
+  test_inscription_en_parallele_et_soumission_preparees_ensemble: test_parallel_registration_and_submission_prepared_together
+  test_inscription_en_parallele_libre_service_et_entree_forgee: test_parallel_registration_self_service_and_forged_entry
+  test_inscription_en_parallele_refusee: test_parallel_registration_refused
+  test_inscription_en_parallele_sur_une_tache_reservee: test_parallel_registration_on_a_reserved_task
+  test_inscription_et_date_github: test_registration_and_github_date
+  test_inscription_sur_une_tache_en_relecture_et_soumissions_repetees: test_registration_on_a_task_in_review_and_repeated_submissions
+  test_instructions_sans_melange: test_instructions_without_shuffle
+  test_integrer_refuse_sans_acceptation: test_integrate_refused_without_acceptance
+  test_interrompue_pendant_l_attente_rien_n_est_cache_et_la_relance_suit_la_meme_pr: test_interrupted_while_waiting_nothing_is_hidden_and_the_rerun_follows_the_same_pr
+  test_inventaire_complet: test_full_inventory
+  test_inventaire_signale_un_marqueur_oublie: test_inventory_reports_a_forgotten_marker
+  test_jamais_permis_malgre_prefixe_ou_permis: test_never_allowed_despite_prefix_or_allowed
+  test_jetons_scindes: test_split_tokens
+  test_journal_cannot_issue_workflow_commands: test_log_cannot_issue_workflow_commands
+  test_juge_commun_enregistre_son_etiquette: test_common_judge_records_its_tag
+  test_juge_commun_etiquette_chiffres_ascii_a_l_enregistrement: test_common_judge_tag_ascii_digits_on_recording
+  test_juge_commun_etiquette_invalide_ignoree: test_common_judge_invalid_tag_ignored
+  test_juge_commun_etiquette_lue_strictement: test_common_judge_tag_read_strictly
+  test_juge_commun_min_absent_ou_mal_forme_ferme_la_porte: test_common_judge_min_absent_or_malformed_closes_the_gate
+  test_juge_commun_min_n_atteint_pas_l_historique: test_common_judge_min_does_not_reach_the_history
+  test_juge_commun_sous_le_minimum_exige_un_gardien: test_common_judge_below_the_minimum_requires_a_guardian
+  test_juge_isole_enregistre_et_borne: test_isolated_judge_recorded_and_bounded
+  test_juge_json_says_the_environment_error: test_judge_json_says_the_environment_error
+  test_juge_modifie_et_taille_depassee: test_judge_changed_and_size_exceeded
+  test_juge_sans_privilege: test_judge_without_privilege
+  test_l_abstention_ne_compte_ni_pour_ni_contre: test_the_abstention_counts_neither_for_nor_against
+  test_l_accord_d_un_gardien_se_juge_par_personne_quel_que_soit_l_ordre_des_gardiens: test_the_agreement_of_a_guardian_is_judged_by_person_whatever_the_order_of_the_guardians
+  test_l_adresse_d_un_fichier_d_etat_s_imprime_neutralisee: test_the_address_of_a_state_file_prints_neutralized
+  test_l_attente_se_lit_dans_bee_voir_et_n_est_pas_rejugee_avant_une_autre_tete: test_the_wait_reads_in_bee_show_and_is_not_judged_again_before_another_head
+  test_l_historique_est_une_suite_de_prs_avec_auteur_et_heure: test_the_history_is_a_series_of_prs_with_author_and_time
+  test_l_identite_ne_tient_pas_compte_de_la_casse: test_the_identity_ignores_the_case
+  test_la_consignation_ne_garde_aucun_identifiant_en_clair: test_the_record_keeps_no_identifier_in_clear
+  test_la_copie_d_un_autre_auteur_ne_bloque_pas_l_original: test_the_copy_of_another_author_does_not_block_the_original
+  test_la_decision_est_d_un_tiers_du_conseil_a_l_heure_de_la_pr_et_lie_dans_la_meme_pr: test_the_decision_is_by_a_council_third_party_at_the_time_of_the_pr_and_links_in_the_same_pr
+  test_la_fusion_exige_une_verification_reussie: test_the_merge_requires_a_successful_check
+  test_la_meme_graine_donne_les_memes_octets: test_the_same_seed_gives_the_same_bytes
+  test_la_mieux_classee_est_integree_et_l_autre_ecartee: test_the_best_ranked_is_integrated_and_the_other_set_aside
+  test_la_plume_du_debat_d_une_invitation_ne_passe_pas_a_un_compte_lie_au_proposant: test_the_pen_of_the_debate_of_an_invitation_does_not_go_to_an_account_linked_to_the_proposer
+  test_la_porte_refuse_un_fichier_d_incidents_illisible_sur_main: test_the_gate_refuses_an_unreadable_incidents_file_on_main
+  test_le_budget_retire_d_abord_les_declarations: test_the_budget_removes_the_declarations_first
+  test_le_cap_pese_une_personne_avec_ses_comptes_lies: test_the_balance_weighs_a_person_with_its_linked_accounts
+  test_le_conseil_voit_lie_ou_ecarte_et_une_paire_ecartee_attend_30_jours: test_the_council_sees_linked_or_dismissed_and_a_dismissed_pair_waits_30_days
+  test_le_debat_propre_d_une_invitation: test_the_own_debate_of_an_invitation
+  test_le_defaut_confirme_tient_jusqu_a_la_relecture_de_son_relecteur: test_the_confirmed_defect_holds_until_the_review_of_its_reviewer
+  test_le_fichier_est_exactement_celui_qu_ecrit_bee_signaler: test_the_file_is_exactly_the_one_bee_report_writes
+  test_le_frein_compte_des_personnes_sans_les_abstentions: test_the_brake_counts_persons_without_the_abstentions
+  test_le_gabarit_propose_les_instructions_de_la_metrique_visee: test_the_template_proposes_the_instructions_of_the_targeted_metric
+  test_le_gardien_relit_le_correctif_qu_il_a_demande: test_the_guardian_reviews_the_fix_it_asked_for
+  test_le_manifeste_recopie_montre_chaque_famille_echappee_et_neutralise_la_marque: test_the_copied_manifest_shows_each_family_escaped_and_neutralizes_the_mark
+  test_le_modele_d_activite: test_the_activity_model
+  test_le_numero_vient_de_l_api_jamais_de_la_pr: test_the_number_comes_from_the_api_never_from_the_pr
+  test_le_plus_grand_verdict_tient_dans_sa_contribution: test_the_largest_verdict_fits_in_its_contribution
+  test_le_proposant_ne_marque_pas_de_doublon_dans_le_debat_de_son_invitation: test_the_proposer_marks_no_duplicate_in_the_debate_of_its_invitation
+  test_le_rapporteur_sous_le_compte_d_agent_du_proposant_est_refuse: test_the_rapporteur_under_the_agent_account_of_the_proposer_is_refused
+  test_le_registre_livre_est_valide: test_the_delivered_registry_is_valid
+  test_le_rejeu_refuse_une_pr_qui_ne_vient_pas_de_sa_commande: test_the_replay_refuses_a_pr_that_does_not_come_from_its_command
+  test_le_robot_n_ecrit_jamais_une_contribution_que_valider_refuserait: test_the_robot_never_writes_a_contribution_that_validate_would_refuse
+  test_le_titulaire_libere_alors_qu_une_contribution_est_en_course: test_the_holder_releases_while_a_contribution_is_in_the_race
+  test_le_verdict_compare_au_manifeste_de_la_tache_jamais_a_un_ancien: test_the_verdict_compares_to_the_task_manifest_never_to_an_old_one
+  test_le_verdict_porte_l_arbre_du_commit_juge: test_the_verdict_carries_the_tree_of_the_judged_commit
+  test_le_workflow_derive_la_tache_comme_bee: test_the_workflow_derives_the_task_as_bee_does
+  test_les_bornes_d_ecriture_de_bee_yaml_restent_sous_celles_des_fichiers: test_the_write_bounds_of_bee_yaml_stay_under_those_of_the_files
+  test_les_bornes_d_une_contribution_ne_dependent_que_d_elle: test_the_bounds_of_a_contribution_depend_only_on_it
+  test_les_bornes_du_schema_sont_celles_de_bee: test_the_schema_bounds_are_bee_s
+  test_les_cles_libres_des_metriques_d_une_mesure: test_the_free_keys_of_the_metrics_of_a_measurement
+  test_les_commandes_de_lecture_tiennent_sur_le_registre_reel: test_the_read_commands_hold_on_the_live_registry
+  test_les_debats_d_avant_un_renommage_restent_valides: test_the_debates_from_before_a_renaming_stay_valid
+  test_les_fiches_et_les_listes_sans_numero_restent_valides: test_the_records_and_the_lists_without_number_stay_valid
+  test_les_metriques_d_une_mesure_sont_celles_du_projet: test_the_metrics_of_a_measurement_are_the_project_s
+  test_les_niveaux_ne_se_mettent_jamais_en_commun: test_the_levels_are_never_pooled
+  test_les_votes_et_mesures_publies_restent_valides: test_the_published_votes_and_measurements_stay_valid
+  test_les_workflows_n_impriment_ce_que_declare_le_fork_qu_encadre: test_the_workflows_print_what_the_fork_declares_only_framed
+  test_levee_du_conseil: test_council_lifting
+  test_levees_et_comptes_inscrits: test_liftings_and_registered_accounts
+  test_levees_forgees_ou_futures_ne_valent_rien: test_forged_or_future_liftings_are_worth_nothing
+  test_lien_casse_enfant_inexistant: test_broken_link_missing_child
+  test_lien_casse_parent_declare: test_broken_link_declared_parent
+  test_lien_debat_anglais_lu_comme_le_francais: test_english_debate_link_read_like_the_french
+  test_lien_symbolique: test_symbolic_link
+  test_lien_symbolique_refuse: test_symbolic_link_refused
+  test_liens_refuses: test_links_refused
+  test_liens_tubes_et_chemins_refuses: test_links_pipes_and_paths_refused
+  test_lier_attend_la_fin_des_engagements_communs: test_link_waits_for_the_end_of_the_common_engagements
+  test_lier_un_compte_deja_lie_dit_ce_que_dit_la_porte: test_linking_an_already_linked_account_says_what_the_gate_says
+  test_ligne_trop_large: test_line_too_wide
+  test_limite_r8: test_r8_limit
+  test_lire_versions_never_shifts_its_answers: test_read_versions_never_shifts_its_answers
+  test_liste_de_non_contact_en_ajout_seul_par_le_conseil: test_no_contact_list_append_only_by_the_council
+  test_liste_par_empreintes: test_list_by_fingerprints
+  test_lister_par_poste: test_list_by_area
+  test_lister_rien_a_faire: test_list_nothing_to_do
+  test_lister_signale_les_taches_masquees: test_list_reports_the_hidden_tasks
+  test_m1_changer_le_noeud_vers_un_noeud_inconnu_est_refuse_meme_au_conseil: test_m1_changing_the_node_to_an_unknown_node_is_refused_even_to_the_council
+  test_m1_clone_superficiel_ignore_une_date_future: test_m1_shallow_clone_ignores_a_future_date
+  test_M1_le_numero_de_contribution_est_impose: test_M1_the_contribution_number_is_imposed
+  test_m1_le_site_se_construit_sur_un_clone_complet: test_m1_the_site_builds_on_a_full_clone
+  test_m1_un_noeud_disparu_avertit_et_se_replie: test_m1_a_vanished_node_warns_and_falls_back
+  test_m1_un_noeud_retire_apres_coup_ne_bloque_pas_main: test_m1_a_node_removed_afterwards_does_not_block_main
+  test_m1_vote_relecture_et_mesure_dates_de_la_pr: test_m1_vote_review_and_measurement_dated_of_the_pr
+  test_m2_la_fusion_est_le_dernier_ajout_de_la_contribution: test_m2_the_merge_is_the_last_addition_of_the_contribution
+  test_m2_sans_historique_reservation_refusee: test_m2_without_history_reservation_refused
+  test_m2_un_en_tete_mal_type_est_refuse_sans_exception: test_m2_a_mistyped_header_is_refused_without_exception
+  test_M2_une_soumission_ne_se_date_pas_avant_l_inscription_d_un_autre: test_M2_a_submission_is_not_dated_before_the_registration_of_another
+  test_M3_le_conseil_reserve_et_soumet_dans_une_meme_pr: test_M3_the_council_reserves_and_submits_in_one_pr
+  test_m3_une_fusion_hors_de_la_branche_par_defaut_n_est_pas_consignee: test_m3_a_merge_outside_the_default_branch_is_not_recorded
+  test_m4_courses_juge_isole_et_commandes_dans_les_noeuds: test_m4_races_isolated_judge_and_commands_in_the_nodes
+  test_m4_la_confiance_ne_compte_pas_les_nouveaux: test_m4_the_trust_does_not_count_the_newcomers
+  test_m4_une_ecartee_vaut_zero_meme_avec_un_defaut_confirme: test_m4_a_set_aside_one_is_worth_zero_even_with_a_confirmed_defect
+  test_manifeste_a_remplir_puis_valide: test_manifest_to_fill_in_then_valid
+  test_manifeste_absent: test_manifest_absent
+  test_manifeste_chemin_explicite_cree_le_dossier: test_manifest_explicit_path_creates_the_folder
+  test_manifeste_d_une_autre_tache_refuse: test_manifest_of_another_task_refused
+  test_manifeste_ecrit_a_sa_place: test_manifest_written_in_its_place
+  test_manifeste_par_tache: test_manifest_per_task
+  test_manifeste_sans_mesure_refuse: test_manifest_without_measurement_refused
+  test_meme_commit_sous_une_autre_tache: test_same_commit_under_another_task
+  test_memes_compteurs: test_same_counters
+  test_memes_conditions: test_same_conditions
+  test_memes_montures: test_same_mounts
+  test_memes_refus_en_francais_et_en_anglais: test_same_refusals_in_french_and_in_english
+  test_message_et_gestes_immuables: test_message_and_gestures_immutable
+  test_messages_en_francais: test_messages_in_french
+  test_mesure_contribution_inconnue_refusee: test_measurement_unknown_contribution_refused
+  test_mesure_enregistree_et_valide: test_measurement_recorded_and_valid
+  test_mesure_libre_service: test_self_service_measurement
+  test_mesures_a_zero_refusees: test_zero_measurements_refused
+  test_mettre_a_jour_le_resume: test_update_the_summary
+  test_mise_a_jour_du_resume: test_summary_update
+  test_modifier_un_vote_apres_la_cloture_est_refuse: test_changing_a_vote_after_the_closure_is_refused
+  test_modifier_une_mesure_est_refuse: test_changing_a_measurement_is_refused
+  test_modifier_une_tache_reserve_au_conseil: test_changing_a_task_reserved_for_the_council
+  test_moins_de_20_membres_est_refuse: test_fewer_than_20_members_is_refused
+  test_montrer_indents_every_next_line_and_citer_keeps_one_line: test_show_error_indents_every_next_line_and_cite_keeps_one_line
+  test_montrer_is_linear_and_indents_lines_that_start_with_a_space: test_show_error_is_linear_and_indents_lines_that_start_with_a_space
+  test_motifs_courts_et_sans_caractere_cache: test_short_reasons_without_hidden_character
+  test_N10_un_bloc_coupe_n_echappe_pas_au_controle_de_forme: test_N10_a_cut_block_does_not_escape_the_form_check
+  test_N11a_un_defaut_n_est_confirme_que_par_un_tiers_dans_sa_propre_pr: test_N11a_a_defect_is_confirmed_only_by_a_third_party_in_its_own_pr
+  test_N11b_un_defaut_confirme_tient_jusqu_a_la_relecture_de_son_relecteur: test_N11b_a_confirmed_defect_holds_until_the_review_of_its_reviewer
+  test_N11c_seul_un_defaut_confirme_par_un_tiers_rapporte: test_N11c_only_a_defect_confirmed_by_a_third_party_pays
+  test_N11d_qui_a_juge_une_course_n_y_revient_pas: test_N11d_who_judged_a_race_does_not_come_back_to_it
+  test_n1_l_accord_de_gardien_ne_contourne_pas_sa_propre_invitation: test_n1_the_guardian_agreement_does_not_bypass_its_own_invitation
+  test_n1_le_plafond_de_creations_ne_se_contourne_pas_par_la_casse: test_n1_the_creations_cap_is_not_bypassed_by_the_case
+  test_n1_le_plafond_de_notes_ne_se_contourne_pas_par_la_casse: test_n1_the_notes_cap_is_not_bypassed_by_the_case
+  test_N1_seule_la_forme_que_les_robots_editent_est_acceptee: test_N1_only_the_form_the_robots_edit_is_accepted
+  test_n1_une_invitation_se_propose_sous_l_orthographe_de_sa_fiche: test_n1_an_invitation_is_proposed_under_the_spelling_of_its_record
+  test_N2_un_defaut_confirme_compte_meme_si_son_relecteur_s_engage: test_N2_a_confirmed_defect_counts_even_if_its_reviewer_engages
+  test_N3_une_contribution_bidon_d_un_engage_tardif_ne_retarde_que_sa_fenetre: test_N3_a_dummy_contribution_of_a_late_engaged_one_delays_only_its_window
+  test_N3b_une_vieille_contribution_sans_verdict_ne_retarde_pas_chaque_nouvelle: test_N3b_an_old_contribution_without_verdict_does_not_delay_each_new_one
+  test_N4_une_date_dans_le_futur_est_refusee_et_ne_bloque_personne: test_N4_a_date_in_the_future_is_refused_and_blocks_nobody
+  test_N5_un_gain_non_fini_est_refuse: test_N5_a_non_finite_gain_is_refused
+  test_N6_jamais_integree_refusee_avec_un_commit_de_fusion: test_N6_never_integrated_refused_with_a_merge_commit
+  test_N7_on_ne_squatte_pas_la_pr_d_un_autre: test_N7_one_does_not_squat_the_pr_of_another
+  test_N8_une_integration_d_une_manche_anterieure_n_empeche_pas_de_clore: test_N8_an_integration_of_an_earlier_round_does_not_prevent_closing
+  test_N9_une_vieille_contribution_ne_supprime_pas_la_protection_d_une_course: test_N9_an_old_contribution_does_not_remove_the_protection_of_a_race
+  test_nettoyer_uses_the_current_character_test_and_texte_sortant_refuse_still_refuses: test_clean_up_uses_the_current_character_test_and_outgoing_text_refused_still_refuses
+  test_ni_l_un_des_deux_ni_un_second_ouvert_ni_au_dela_du_plafond: test_neither_one_of_the_two_nor_a_second_open_nor_beyond_the_cap
+  test_NIT_identifiant_vide_jamais_repete_et_consignation_seule: test_NIT_empty_identifier_never_repeated_and_record_alone
+  test_niveaux: test_levels
+  test_no_line_of_bee_valider_is_a_workflow_command: test_no_line_of_bee_validate_is_a_workflow_command
+  test_noeud_d_un_projet_inconnu: test_node_of_an_unknown_project
+  test_noeud_hors_budget: test_node_over_budget
+  test_noeud_orphelin: test_orphan_node
+  test_noeuds_en_anglais_lus_comme_en_francais: test_english_nodes_read_like_french_ones
+  test_non_contact_par_variante_de_casse_ou_d_espaces: test_no_contact_by_case_or_space_variant
+  test_noter: test_note
+  test_notes_plafonnees_sur_24_h_et_ajoutees_dans_l_ordre: test_notes_capped_over_24_h_and_added_in_order
+  test_nul_ne_decide_un_signalement_qu_il_a_depose: test_nobody_decides_a_report_it_filed
+  test_numero_reserve_aux_tests: test_number_reserved_for_the_tests
+  test_objet_oublie: test_forgotten_object
+  test_one_list_for_the_reads_and_for_bee_valider: test_one_list_for_the_reads_and_for_bee_validate
+  test_ordre_tire_et_temps_processeur: test_drawn_order_and_processor_time
+  test_outillage_du_conseil_non_bloque: test_council_tooling_not_blocked
+  test_outillage_propose_par_un_membre_jamais_fusionne_seul: test_tooling_proposed_by_a_member_never_merged_alone
+  test_ouverture_libre_service: test_self_service_opening
+  test_ouvertures_plafonnees_par_jour: test_openings_capped_per_day
+  test_panne_de_la_machine: test_machine_failure
+  test_panne_simulee: test_simulated_failure
+  test_paquets: test_packages
+  test_parcours_complet_jusqu_au_refus_definitif: test_full_course_until_the_final_refusal
+  test_parcours_et_synthese_lue_d_abord: test_course_and_synthesis_read_first
+  test_passages_unitaires: test_unit_passages
+  test_past_missing_or_malformed_setting_gives_the_usual_cap_in_prendre_valider_and_the_gate: test_past_missing_or_malformed_setting_gives_the_usual_cap_in_take_validate_and_the_gate
+  test_permis_jamais_permis: test_allowed_never_allowed
+  test_perturber_reproductible: test_reproducible_perturb
+  test_pic_de_minuit_refuse_par_la_commande: test_midnight_peak_refused_by_the_command
+  test_plafond_au_feu_vert_et_envoi_toujours_consigne: test_cap_at_the_green_light_and_sending_always_recorded
+  test_plafonds_d_arguments_et_de_creations_comme_a_la_porte: test_argument_and_creation_caps_as_at_the_gate
+  test_plateformes_et_canaux: test_platforms_and_channels
+  test_plus_de_doublon: test_no_more_duplicate
+  test_plus_de_synthese_ni_de_releve: test_no_more_synthesis_nor_relief
+  test_plusieurs_invitations_dans_une_pr_et_sur_24_h: test_several_invitations_in_one_pr_and_over_24_h
+  test_points_seulement_sur_le_commit_decide: test_points_only_on_the_decided_commit
+  test_porte_auteur_du_conseil_relu_des_qu_un_gardien_existe: test_gate_council_author_reviewed_once_a_guardian_exists
+  test_porte_humaine_fermee: test_human_gate_closed
+  test_porte_humaine_satisfaite_par_un_auteur_du_conseil: test_human_gate_satisfied_by_a_council_author
+  test_porte_si_juge_incomplet: test_gate_if_judge_incomplete
+  test_porte_si_juge_incomplet_juge_sans_sorties: test_gate_if_judge_incomplete_judge_without_outputs
+  test_porte_si_juge_incomplet_sans_juge: test_gate_if_judge_incomplete_without_judge
+  test_poste_d_apres_le_type: test_area_from_the_type
+  test_poste_inconnu_refuse: test_unknown_area_refused
+  test_poussee_refusee_les_changements_reviennent_sur_le_disque: test_push_refused_the_changes_come_back_to_disk
+  test_pr_canonique: test_canonical_pr
+  test_pr_fermee_ou_en_attente: test_pr_closed_or_pending
+  test_pr_hors_fork_refusee: test_pr_outside_fork_refused
+  test_prefixes_et_permis_du_greffon: test_prefixes_and_allowed_of_the_plugin
+  test_prefixes_vides_ou_courts_refuses: test_empty_or_short_prefixes_refused
+  test_premier_argument_prend_la_plume: test_first_argument_takes_the_pen
+  test_preparer_keeps_validated_data_prs_and_reads_what_the_gate_needs: test_prepare_keeps_validated_data_prs_and_reads_what_the_gate_needs
+  test_prise_de_plume_libre_service: test_self_service_pen_taking
+  test_profondeurs: test_depths
+  test_projet_sans_metrique_reserve_a_la_ruche: test_project_without_metric_reserved_for_the_hive
+  test_projet_sans_noeud_rend_ses_taches_orphelines: test_project_without_node_makes_its_tasks_orphans
+  test_promotion_deterministe: test_deterministic_promotion
+  test_promotion_du_plus_ancien_inscrit: test_promotion_of_the_earliest_registered
+  test_promotion_libre_service: test_self_service_promotion
+  test_promotion_par_le_robot_apres_expiration: test_promotion_by_the_robot_after_expiry
+  test_proposition_au_nom_d_un_autre_ou_qui_nait_decidee: test_proposal_in_the_name_of_another_or_born_decided
+  test_proposition_de_regle_par_un_membre_en_amorcage: test_rule_proposal_by_a_member_in_bootstrap
+  test_proposition_de_tache_par_un_membre: test_task_proposal_by_a_member
+  test_proposition_en_libre_service_et_numerotee: test_self_service_and_numbered_proposal
+  test_proposition_et_depouillement: test_proposal_and_tally
+  test_propre: test_clean
+  test_publier_accepte_les_debats: test_publish_accepts_the_debates
+  test_publier_names_a_path_as_it_is: test_publish_names_a_path_as_it_is
+  test_publier_prints_a_hostile_name_escaped: test_publish_prints_a_hostile_name_escaped
+  test_que_des_donnees_yaml: test_only_yaml_data
+  test_r3_demande_les_relectures_de_personnes: test_r3_asks_for_the_reviews_of_persons
+  test_r4_chronometre_qui_recule_bloque: test_r4_stopwatch_going_backwards_blocks
+  test_r4_chronometre_seul_exige_une_reproduction: test_r4_stopwatch_alone_requires_a_reproduction
+  test_r4_gain_etabli_par_les_instructions: test_r4_gain_established_by_the_instructions
+  test_r4_reproduction_par_une_autre_personne_qui_dit_sa_configuration: test_r4_reproduction_by_another_person_who_states_their_configuration
+  test_r5_chronometre_bruite_ignore_instructions_jugees: test_r5_noisy_stopwatch_ignored_instructions_judged
+  test_R7_expiration_retrait_en_parallele_et_soumission: test_R7_expiry_parallel_withdrawal_and_submission
+  test_r8_compte_les_inscriptions_en_parallele: test_r8_counts_the_parallel_registrations
+  test_rapport_du_job: test_job_report
+  test_redater_laisse_une_ligne_existante_de_la_meme_seconde: test_redate_leaves_an_existing_line_of_the_same_second
+  test_refus_ajout_dans_un_debat_clos: test_refusal_addition_in_a_closed_debate
+  test_refus_argument_au_nom_d_un_autre: test_refusal_argument_in_the_name_of_another
+  test_refus_argument_insere_au_milieu: test_refusal_argument_inserted_in_the_middle
+  test_refus_argument_modifie: test_refusal_changed_argument
+  test_refus_argument_retire: test_refusal_removed_argument
+  test_refus_caracteres_invisibles: test_refusal_invisible_characters
+  test_refus_cles_yaml_non_canoniques: test_refusal_non_canonical_yaml_keys
+  test_refus_cloture_hative_du_rapporteur: test_refusal_hasty_closure_by_the_rapporteur
+  test_refus_cloture_par_un_non_autorise: test_refusal_closure_by_an_unauthorized_one
+  test_refus_cloture_sans_issue: test_refusal_closure_without_outcome
+  test_refus_commentaire_glisse_dans_l_argument_d_un_autre: test_refusal_comment_slipped_into_the_argument_of_another
+  test_refus_consigne_par_le_conseil_avec_la_liste: test_refusal_recorded_by_the_council_with_the_list
+  test_refus_date_forgee: test_refusal_forged_date
+  test_refus_debat_ne_sans_rapporteur_avec_un_argument: test_refusal_debate_born_without_rapporteur_with_an_argument
+  test_refus_debat_ouvert_au_nom_d_un_autre: test_refusal_debate_opened_in_the_name_of_another
+  test_refus_des_commandes: test_refusals_of_the_commands
+  test_refus_doublon_par_un_simple_membre: test_refusal_duplicate_by_a_plain_member
+  test_refus_fait_sans_source: test_refusal_fact_without_source
+  test_refus_id_forge: test_refusal_forged_id
+  test_refus_lien_symbolique: test_refusal_symbolic_link
+  test_refus_nomme_le_mot_et_reference_demesuree: test_refusal_names_the_word_and_oversized_reference
+  test_refus_numero_de_debat_qui_saute: test_refusal_debate_number_that_skips
+  test_refus_ouvertures_au_dela_du_plafond: test_refusal_openings_beyond_the_cap
+  test_refus_pic_de_minuit: test_refusal_midnight_peak
+  test_refus_plafond_par_jour: test_refusal_daily_cap
+  test_refus_plafond_par_pr: test_refusal_per_pr_cap
+  test_refus_plafonds_de_taille: test_refusal_size_caps
+  test_refus_prise_de_plume_dans_un_debat_qui_a_un_rapporteur: test_refusal_pen_taking_in_a_debate_that_has_a_rapporteur
+  test_refus_prise_de_plume_pour_un_autre_ou_sans_argument: test_refusal_pen_taking_for_another_or_without_argument
+  test_refus_question_ou_auteur_reecrits: test_refusal_question_or_author_rewritten
+  test_refus_rapporteur_qui_se_redesigne: test_refusal_rapporteur_who_names_itself_again
+  test_refus_reformatage_et_source_maquillee: test_refusal_reformatting_and_disguised_source
+  test_refus_releve_par_l_auteur_de_la_derniere_synthese_ou_sans_attente: test_refusal_relief_by_the_author_of_the_last_synthesis_or_without_waiting
+  test_refus_releve_par_un_non_participant: test_refusal_relief_by_a_non_participant
+  test_refus_releve_trop_tot: test_refusal_relief_too_early
+  test_refus_sauts_de_ligne_yaml_dans_un_argument: test_refusal_yaml_line_breaks_in_an_argument
+  test_refus_sources_hors_plafond: test_refusal_sources_over_the_cap
+  test_refus_suppression_et_fichier_hors_format: test_refusal_deletion_and_file_out_of_format
+  test_refus_synthese_par_un_non_rapporteur: test_refusal_synthesis_by_a_non_rapporteur
+  test_refusee_plus_d_argument_mais_le_caviardage_reste: test_refused_no_more_argument_but_the_redaction_stays
+  test_registre_dot: test_registry_dot
+  test_registre_of_the_repository: test_registry_of_the_repository
+  test_regles_et_cap_restent_au_conseil: test_rules_and_balance_stay_with_the_council
+  test_relance_une_seule_pas_avant_14_jours_par_le_conseil: test_reminder_only_one_not_before_14_days_by_the_council
+  test_relecture_avant_le_verdict_avertie_et_non_comptee: test_review_before_the_verdict_warned_and_not_counted
+  test_relecture_et_note_falsifiees: test_forged_review_and_note
+  test_relecture_gardien_requise_missing_or_falsy_no_longer_opens_the_gate: test_guardian_review_required_missing_or_falsy_no_longer_opens_the_gate
+  test_relectures_comptees_d_un_contributeur_et_du_conseil: test_counted_reviews_of_a_contributor_and_of_the_council
+  test_relectures_requises: test_reviews_required
+  test_releve_acceptee_apres_le_delai: test_relief_accepted_after_the_delay
+  test_releve_du_rapporteur_absent: test_relief_of_the_absent_rapporteur
+  test_releve_du_rapporteur_par_le_conseil_jamais_automatique: test_relief_of_the_rapporteur_by_the_council_never_automatic
+  test_releves_vides: test_empty_readings
+  test_remplacer_son_vote_avant_la_cloture_reste_permis: test_replacing_own_vote_before_the_closure_stays_allowed
+  test_rendu_enfants_sur_le_chemin: test_children_rendered_on_the_path
+  test_renommer_son_vote_est_refuse: test_renaming_own_vote_is_refused
+  test_reponses_acceptee_et_sans_reponse: test_answers_accepted_and_without_answer
+  test_reprise_apres_liberation_heures: test_retake_after_release_hours
+  test_requete_valgrind: test_valgrind_request
+  test_reservation_et_soumission_preparees_ensemble_deux_pr_dans_l_ordre: test_reservation_and_submission_prepared_together_two_prs_in_order
+  test_reservation_libre_service: test_self_service_reservation
+  test_reservation_max_heures: test_reservation_max_hours
+  test_reservation_publiee_et_fusionnee: test_reservation_published_and_merged
+  test_reservations_max_par_utilisateur: test_reservations_max_per_user
+  test_reserved_pseudo_refuses_every_name_unless_both_lists_are_well_formed: test_reserved_login_refuses_every_name_unless_both_lists_are_well_formed
+  test_reserver_puis_liberer_avec_note: test_reserve_then_release_with_note
+  test_resoumettre_ou_amender_n_efface_ni_refus_ni_defaut: test_resubmit_or_amend_erases_neither_refusal_nor_defect
+  test_resume_et_gain: test_summary_and_gain
+  test_retiree_plus_d_argument: test_withdrawn_no_more_argument
+  test_retirer_renommer_ou_changer_le_mode_d_une_mesure_est_refuse: test_removing_renaming_or_changing_the_mode_of_a_measurement_is_refused
+  test_retirer_un_vote_est_refuse_avant_comme_apres_la_cloture: test_removing_a_vote_is_refused_before_as_after_the_closure
+  test_retour_a_un_ancien_commit: test_return_to_an_old_commit
+  test_retour_a_un_commit_refuse_par_le_gardien: test_return_to_a_commit_refused_by_the_guardian
+  test_retrait_a_la_demande_de_la_personne: test_removal_at_the_person_s_request
+  test_retrait_apres_acceptation_sans_liste: test_removal_after_acceptance_without_list
+  test_retrait_apres_un_ecart_ou_une_acceptation: test_removal_after_a_dismissal_or_an_acceptance
+  test_retrait_demande_retire_partout_sans_liste_et_un_refus_y_inscrit: test_requested_removal_removes_everywhere_without_list_and_a_refusal_records_it
+  test_retrait_en_parallele_de_soi_seulement: test_parallel_withdrawal_of_oneself_only
+  test_retrait_libre_service_et_retrait_d_un_autre: test_self_service_withdrawal_and_withdrawal_of_another
+  test_rien_a_publier: test_nothing_to_publish
+  test_rien_d_autre_sur_la_personne: test_nothing_else_about_the_person
+  test_rien_n_est_recopie_d_un_manifeste_d_une_autre_tache_d_un_autre_auteur_ou_trop_gros: test_nothing_is_copied_from_a_manifest_of_another_task_of_another_author_or_too_big
+  test_rien_ne_l_importe_ni_ne_l_execute: test_nothing_imports_or_runs_it
+  test_ruche0116_le_conseil_corrige_le_commentaire_comme_le_dit_la_doc: test_ruche0116_the_council_corrects_the_comment_as_the_doc_says
+  test_ruche0116_revue_la_fenetre_part_de_l_heure_de_la_pr: test_ruche0116_review_the_window_starts_at_the_time_of_the_pr
+  test_ruche0116_revue_les_commentaires_comptent_dans_les_trois_plafonds: test_ruche0116_review_the_comments_count_in_the_three_caps
+  test_ruche0116_revue_seul_un_commentaire_signale_s_ote_ou_se_marque_une_fois: test_ruche0116_review_only_a_reported_comment_is_removed_or_marked_once
+  test_ruche0116_revue_un_nom_seulement_en_commentaire_la_commande_et_la_porte_d_accord: test_ruche0116_review_a_name_only_in_a_comment_the_command_and_the_gate_agree
+  test_ruche0116_seuls_les_arguments_qui_existent_sont_proteges: test_ruche0116_only_the_arguments_that_exist_are_protected
+  test_ruche0116_trois_retraits_bornes_refuses_ensemble_au_dela_du_plafond_glissant: test_ruche0116_three_bounded_removals_refused_together_beyond_the_sliding_cap
+  test_ruche0116_une_source_retiree_est_la_marque_entiere: test_ruche0116_a_removed_source_is_the_whole_mark
+  test_ruche0140_chaque_symbole_ascii_autour_d_un_nom: test_ruche0140_each_ascii_symbol_around_a_name
+  test_ruche0140_commentaires_en_place_a_la_borne_de_taille: test_ruche0140_comments_in_place_at_the_size_bound
+  test_ruche0140_commentaires_en_place_unitaire: test_ruche0140_comments_in_place_unit
+  test_ruche0140_un_commentaire_d_en_tete_de_bloc_est_un_commentaire_a_sa_place: test_ruche0140_a_block_header_comment_is_a_comment_in_its_place
+  test_ruche0140_un_commentaire_d_en_tete_de_bloc_qui_la_nomme_est_signale_et_compte: test_ruche0140_a_block_header_comment_that_names_her_is_reported_and_counted
+  test_ruche0140_un_commentaire_ne_change_que_la_ou_il_est: test_ruche0140_a_comment_changes_only_where_it_is
+  test_ruche0140_un_mot_qui_la_nomme_souvent_est_lu_en_temps_borne: test_ruche0140_a_word_that_names_her_often_is_read_in_bounded_time
+  test_ruche0140_un_nom_colle_a_un_diese_retire_et_compte: test_ruche0140_a_name_glued_to_a_hash_removed_and_counted
+  test_ruche0140_un_nom_compose_n_est_jamais_coupe: test_ruche0140_a_compound_name_is_never_cut
+  test_ruche0140_un_nom_trouve_hors_ascii_et_au_milieu_d_un_mot: test_ruche0140_a_name_found_outside_ascii_and_in_the_middle_of_a_word
+  test_ruche_0052_role_inviter_imprime_le_chemin_de_r13: test_ruche_0052_role_invite_prints_the_path_of_r13
+  test_ruche_0088_frame_header_and_essaim_quote_an_invitation_neutralised: test_ruche_0088_frame_header_and_swarm_quote_an_invitation_neutralised
+  test_s1_le_meme_contenu_mesure_se_reconnait_a_ses_decomptes_dans_tout_le_fil: test_s1_the_same_measured_content_is_recognized_by_its_counts_in_the_whole_thread
+  test_S1_S2_la_porte_ne_touche_que_ce_que_parcourt_la_commande_jusqu_au_bout: test_S1_S2_the_gate_touches_only_what_the_command_walks_to_the_end
+  test_s1_une_instruction_de_plus_ne_redonne_pas_de_tirage: test_s1_one_more_instruction_does_not_give_another_draw
+  test_s2_le_commit_lu_se_donne_en_entier: test_s2_the_commit_read_is_given_in_full
+  test_S2_les_chaines_du_verdict_json_sont_montrees_jamais_perdues: test_S2_the_strings_of_the_verdict_json_are_shown_never_lost
+  test_S3_la_consignation_canonique_datee_et_referencee: test_S3_the_canonical_record_dated_and_referenced
+  test_s3_le_relecteur_lit_le_diff_du_commit_juge: test_s3_the_reviewer_reads_the_diff_of_the_judged_commit
+  test_S4_S8_hebergement_partage_a_blanc_et_identifiants_hors_ligne_de_commande: test_S4_S8_shared_hosting_dry_run_and_identifiers_outside_command_line
+  test_s4_un_votant_n_a_qu_une_voix_quelle_que_soit_la_casse: test_s4_a_voter_has_only_one_voice_whatever_the_case
+  test_s4_une_fiche_ne_double_pas_un_pseudo_par_la_casse: test_s4_a_record_does_not_double_a_login_by_the_case
+  test_S5_non_contact_a_la_demande_et_signal_d_une_nouvelle_invitation: test_S5_no_contact_on_request_and_signal_of_a_new_invitation
+  test_S5_une_nouvelle_invitation_de_la_personne_est_signalee: test_S5_a_new_invitation_of_the_person_is_reported
+  test_sans_fichier_d_etat_la_relance_retrouve_la_pr_par_sa_branche: test_without_state_file_the_rerun_finds_the_pr_by_its_branch
+  test_sans_reponse_apres_la_relance: test_without_answer_after_the_reminder
+  test_sans_reponse_plus_d_argument: test_without_answer_no_more_argument
+  test_scenario_hors_cotes: test_scenario_outside_sides
+  test_scenarios_voisins: test_neighbor_scenarios
+  test_score_de_la_charte: test_charter_score
+  test_seconde_releve_dans_un_debat_importe: test_second_relief_in_an_imported_debate
+  test_section_manquante_ou_vide: test_section_missing_or_empty
+  test_section_vide: test_empty_section
+  test_sections_dans_le_desordre_ou_inattendues: test_sections_out_of_order_or_unexpected
+  test_seuil_du_signe: test_sign_threshold
+  test_seul_le_fige_se_lit: test_only_the_frozen_one_reads
+  test_seul_participant_reste_rapporteur: test_sole_participant_stays_rapporteur
+  test_seule_une_version_exercee_de_libyaml_lit: test_only_an_exercised_libyaml_version_reads
+  test_seuls_la_ci_et_le_conseil_ecrivent_declare: test_only_the_ci_and_the_council_write_declared
+  test_seuls_un_gardien_en_fonction_ou_le_conseil_le_closent_sans_suite: test_only_a_serving_guardian_or_the_council_close_it_without_follow_up
+  test_seuls_un_gardien_ou_le_conseil_closent_le_debat_d_une_invitation_decidee: test_only_a_guardian_or_the_council_close_the_debate_of_a_decided_invitation
+  test_site_agora_echappe_le_contenu: test_site_agora_escapes_the_content
+  test_site_et_api_montrent_l_arbre: test_site_and_api_show_the_tree
+  test_site_juge_isole_et_integration: test_site_isolated_judge_and_integration
+  test_site_montre_les_paralleles_et_la_course: test_site_shows_the_parallels_and_the_race
+  test_sortie_anticipee: test_early_exit
+  test_sortie_changeante_chronometree: test_changing_output_timed
+  test_sortie_fausse_chronometree: test_wrong_output_timed
+  test_sorties_changees_apres_empreinte: test_outputs_changed_after_fingerprint
+  test_sorties_lues_et_couverture: test_outputs_read_and_coverage
+  test_soumettre_refuse_une_pr_deja_declaree: test_submit_refuses_a_pr_already_declared
+  test_soumission_du_titulaire_et_liberation_vers_la_relecture: test_submission_by_the_holder_and_release_to_review
+  test_soumission_en_parallele: test_parallel_submission
+  test_soumission_en_parallele_libre_service: test_parallel_submission_self_service
+  test_soumission_relecture_vote_verdict_score: test_submission_review_vote_verdict_score
+  test_sous_dossier: test_subfolder
+  test_suspectes_les_plus_graves_d_abord: test_suspicious_most_serious_first
+  test_symbole_qui_remplace_la_libc: test_symbol_that_replaces_the_libc
+  test_synthese_libre_service_et_rapporteur_tournant: test_self_service_synthesis_and_rotating_rapporteur
+  test_T10_sixieme_argument_dans_un_debat_ecrit_a_la_main: test_T10_sixth_argument_in_a_debate_written_by_hand
+  test_T13_liberer_puis_reprendre_ne_renouvelle_pas_la_reservation: test_T13_release_then_take_again_does_not_renew_the_reservation
+  test_T15_note_de_40_ko: test_T15_note_of_40_kb
+  test_T1_tache_proposee_avec_une_note_signee_du_conseil: test_T1_task_proposed_with_a_note_signed_by_the_council
+  test_T2_quinze_notes_datees_de_2099: test_T2_fifteen_notes_dated_2099
+  test_T3_quarante_notes_antidatees: test_T3_forty_backdated_notes
+  test_T4_proposition_antidatee_et_resultat_prerempli: test_T4_backdated_proposal_and_prefilled_result
+  test_T5_proposition_P_9999_refusee_et_ne_gele_plus_bee_proposer: test_T5_proposal_P_9999_refused_and_no_longer_freezes_bee_propose
+  test_T6_taches_miniz_8999_et_9000_refusees_et_jamais_ecrasees: test_T6_tasks_miniz_8999_and_9000_refused_and_never_overwritten
+  test_T7_fichier_libre_sous_membres: test_T7_free_file_under_members
+  test_T8_binaire_sous_propositions: test_T8_binary_under_proposals
+  test_T9_noyade_de_l_agora_dans_plusieurs_debats: test_T9_drowning_the_agora_in_several_debates
+  test_table_precalculee: test_precomputed_table
+  test_tache_creee_avec_engagements_dates_de_l_heure_de_la_pr: test_task_created_with_engagements_dated_at_the_time_of_the_pr
+  test_tache_d_outillage_qui_modifie_les_juges_exige_le_conseil: test_tooling_task_that_changes_the_judges_requires_the_council
+  test_tache_orpheline: test_orphan_task
+  test_tache_proposee_datee_du_jour_et_notes_datees_de_la_pr: test_task_proposed_dated_of_the_day_and_notes_dated_of_the_pr
+  test_taille_bornee_et_statut: test_bounded_size_and_status
+  test_test_du_signe: test_sign_test
+  test_texte_maquille_ou_sans_mention: test_disguised_text_or_without_mention
+  test_textes_de_la_revue_refuses_dans_le_titre_et_le_corps: test_texts_of_the_review_refused_in_the_title_and_the_body
+  test_the_end_instant_is_excluded_and_a_member_named_conseil_turns_the_exception_off: test_the_end_instant_is_excluded_and_a_member_named_council_turns_the_exception_off
+  test_titre_et_corps_honnetes_passent: test_honest_title_and_body_pass
+  test_titre_ou_corps_sortant_refuse_avant_tout_appel: test_outgoing_title_or_body_refused_before_any_call
+  test_tour2_champs_libres_bornes_resume_mesure_profil: test_round2_free_fields_bounded_summary_measurement_profile
+  test_travail_deplace: test_moved_workdir
+  test_travail_non_commite: test_uncommitted_work
+  test_un_accord_se_juge_sur_le_debat_de_main_et_ne_voyage_pas_avec_un_marquage: test_an_agreement_is_judged_on_the_debate_of_main_and_does_not_travel_with_a_marking
+  test_un_ancien_login_ne_donne_aucun_statut: test_an_old_login_gives_no_status
+  test_un_argument_conteste_plusieurs_marquages_et_les_formes_illisibles_sont_refusees: test_an_argument_contests_several_markings_and_the_unreadable_forms_are_refused
+  test_un_argumenteur_seul_dans_un_debat_importe_garde_la_plume: test_a_sole_arguer_in_an_imported_debate_keeps_the_pen
+  test_un_auteur_hors_du_conseil_est_refuse: test_an_author_outside_the_council_is_refused
+  test_un_avis_defavorable_ne_compte_pas_tant_que_son_auteur_est_en_course: test_an_unfavorable_opinion_does_not_count_while_its_author_is_in_the_race
+  test_un_avis_non_recevable_ne_fait_rien_revenir: test_an_inadmissible_opinion_brings_nothing_back
+  test_un_changement_fait_pendant_l_attente_n_est_pas_perdu: test_a_change_made_while_waiting_is_not_lost
+  test_un_commit_amende_reste_le_contenu_refuse: test_an_amended_commit_stays_the_refused_content
+  test_un_commit_vide_ne_fait_pas_tomber_le_defavorable_du_gardien: test_an_empty_commit_does_not_drop_the_guardian_s_unfavorable
+  test_un_compte_renomme_garde_r7_et_r8: test_a_renamed_account_keeps_r7_and_r8
+  test_un_compte_renomme_garde_son_fil_ses_refus_son_niveau_et_une_voix: test_a_renamed_account_keeps_its_thread_its_refusals_its_level_and_one_voice
+  test_un_concurrent_n_ajoute_qu_un_favorable_a_chaque_commit: test_a_competitor_adds_only_one_favorable_at_each_commit
+  test_un_concurrent_ne_juge_pas_sa_concurrente: test_a_competitor_does_not_judge_its_competitor
+  test_un_conseil_qui_a_tenu_la_plume_reste_dans_le_tour: test_a_council_that_held_the_pen_stays_in_the_turn
+  test_un_contenu_refuse_ailleurs_est_signale_sans_bloquer: test_a_content_refused_elsewhere_is_reported_without_blocking
+  test_un_debat_d_invitation_dont_le_rapporteur_est_le_proposant_est_refuse: test_an_invitation_debate_whose_rapporteur_is_the_proposer_is_refused
+  test_un_debat_general_garde_les_regles_de_main: test_a_general_debate_keeps_the_rules_of_main
+  test_un_dossier_qui_existe_est_refuse_intact: test_an_existing_folder_is_refused_intact
+  test_un_doublon_se_conteste_et_la_contestation_parait_dans_bee_voir_et_au_feu_vert: test_a_duplicate_is_contested_and_the_contest_appears_in_bee_show_and_at_the_green_light
+  test_un_engage_avant_la_soumission_retarde_jusqu_a_son_expiration: test_an_engaged_one_before_the_submission_delays_until_its_expiry
+  test_un_envoi_sur_une_synthese_perimee_est_consigne_et_signale: test_a_sending_on_a_stale_synthesis_is_recorded_and_reported
+  test_un_feu_vert_se_renouvelle_sur_un_debat_clos_si_sa_synthese_couvrait_tout: test_a_green_light_renews_on_a_closed_debate_if_its_synthesis_covered_everything
+  test_un_fichier_au_dela_de_sa_borne_est_refuse_sans_etre_lu: test_a_file_beyond_its_bound_is_refused_without_being_read
+  test_un_fichier_d_etat_illisible_arrete_tout_avant_d_ecrire: test_an_unreadable_state_file_stops_everything_before_writing
+  test_un_fichier_deja_indexe_n_est_jamais_publie: test_an_already_indexed_file_is_never_published
+  test_un_fichier_du_libre_service_garde_son_mode: test_a_self_service_file_keeps_its_mode
+  test_un_fichier_etranger_n_est_jamais_publie: test_a_foreign_file_is_never_published
+  test_un_fichier_honnete_se_lit_pareil: test_an_honest_file_reads_the_same
+  test_un_fichier_retouche_que_main_change_arrete_avec_un_message: test_a_touched_up_file_that_main_changes_stops_with_a_message
+  test_un_gardien_et_ses_comptes_lies: test_a_guardian_and_its_linked_accounts
+  test_un_gardien_garanti_par_le_proposant_ou_avec_lui_ne_le_clot_pas: test_a_guardian_vouched_for_by_the_proposer_or_with_it_does_not_close_it
+  test_un_gardien_n_ecrit_que_le_lien_de_la_paire_decidee: test_a_guardian_writes_only_the_link_of_the_decided_pair
+  test_un_gardien_ne_decide_pas_ce_qui_touche_son_garant: test_a_guardian_does_not_decide_what_touches_its_guarantor
+  test_un_geste_de_chaque_sorte_se_rejoue: test_a_gesture_of_each_kind_replays
+  test_un_incident_clos_desserre_le_frein: test_a_closed_incident_releases_the_brake
+  test_un_lien_attend_que_la_plume_du_debat_d_une_invitation_soit_passee: test_a_link_waits_until_the_pen_of_the_debate_of_an_invitation_has_passed
+  test_un_lien_entre_fiches_qui_nomment_leur_pseudo: test_a_link_between_records_that_name_their_login
+  test_un_lien_ne_rend_jamais_main_invalide: test_a_link_never_makes_main_invalid
+  test_un_lien_se_declare_des_deux_cotes_par_numero: test_a_link_is_declared_on_both_sides_by_number
+  test_un_lien_symbolique_n_est_jamais_suivi: test_a_symbolic_link_is_never_followed
+  test_un_login_nomme_dans_gouvernance_est_renomme_par_le_conseil: test_a_login_named_in_governance_is_renamed_by_the_council
+  test_un_login_repris_par_un_autre_compte_n_herite_de_rien: test_a_login_taken_back_by_another_account_inherits_nothing
+  test_un_manifeste_hostile_n_ecrit_aucune_commande_de_workflow: test_a_hostile_manifest_writes_no_workflow_command
+  test_un_manifeste_hostile_ne_recopie_que_des_donnees_bornees_et_encadrees: test_a_hostile_manifest_copies_only_bounded_and_framed_data
+  test_un_manifeste_mal_forme_ne_fait_ni_perdre_le_verdict_ni_un_ecart_non_fini: test_a_malformed_manifest_loses_neither_the_verdict_nor_a_non_finite_gap
+  test_un_noeud_de_l_arbre_au_dela_de_sa_borne_n_est_pas_lu: test_a_tree_node_beyond_its_bound_is_not_read
+  test_un_noeud_modifie_par_un_membre_est_de_l_outillage: test_a_node_changed_by_a_member_is_tooling
+  test_un_noeud_ne_melange_pas_les_langues: test_a_node_does_not_mix_the_languages
+  test_un_nom_de_traverse_au_dela_de_la_borne_de_son_dossier_n_est_pas_lu: test_a_name_crossed_beyond_the_bound_of_its_folder_is_not_read
+  test_un_numero_est_un_entier: test_a_number_is_an_integer
+  test_un_refus_qui_garde_le_dossier_est_refuse: test_a_refusal_that_keeps_the_file_is_refused
+  test_un_refus_retire_le_dossier: test_a_refusal_removes_the_file
+  test_un_renommage_est_seul_dans_sa_pr: test_a_renaming_is_alone_in_its_pr
+  test_un_renommage_par_30_jours_et_5_anciens_logins_au_plus: test_one_renaming_per_30_days_and_5_old_logins_at_most
+  test_un_retrait_ne_touche_que_les_passages_qui_nomment_la_personne: test_a_removal_touches_only_the_passages_that_name_the_person
+  test_un_retrait_sans_demande_consignee_est_refuse: test_a_removal_without_recorded_request_is_refused
+  test_un_second_engagement_prepare_pendant_l_attente_part_apres_dans_sa_propre_pr: test_a_second_engagement_prepared_while_waiting_goes_after_in_its_own_pr
+  test_un_signalement_ne_tient_que_deux_comptes_membres_et_un_motif: test_a_report_holds_only_two_member_accounts_and_a_reason
+  test_un_statut_ne_suit_jamais_un_lien: test_a_status_never_follows_a_link
+  test_un_texte_au_dela_de_sa_borne_est_refuse: test_a_text_beyond_its_bound_is_refused
+  test_un_verdict_json_au_dela_de_sa_borne_n_est_pas_lu: test_a_verdict_json_beyond_its_bound_is_not_read
+  test_un_vote_d_un_compte_lie_ne_compte_pas_dans_le_score: test_a_vote_of_a_linked_account_does_not_count_in_the_score
+  test_un_vote_et_une_mesure_par_personne: test_one_vote_and_one_measurement_per_person
+  test_un_vote_sur_une_contribution_se_clot_quand_elle_quitte_la_relecture: test_a_vote_on_a_contribution_closes_when_it_leaves_review
+  test_une_abstention_plus_recente_retire_le_poids_de_la_precedente: test_a_more_recent_abstention_removes_the_weight_of_the_previous_one
+  test_une_ci_qui_ne_conclut_jamais_retarde_au_plus_de_96_h: test_a_ci_that_never_concludes_delays_at_most_96_h
+  test_une_contribution_de_la_ruche_n_arrete_pas_la_collecte_des_verdicts: test_a_hive_contribution_does_not_stop_the_verdict_collection
+  test_une_contribution_nait_avec_les_seules_cles_de_bee_soumettre: test_a_contribution_is_born_with_only_the_keys_of_bee_submit
+  test_une_date_hors_de_la_fenetre_de_la_porte_est_refusee_avec_la_commande_pour_la_redater: test_a_date_outside_the_gate_window_is_refused_with_the_command_to_redate_it
+  test_une_fiche_a_un_numero_deja_pris_est_refusee: test_a_record_with_a_number_already_taken_is_refused
+  test_une_inscription_apres_la_soumission_ne_retarde_pas: test_a_registration_after_the_submission_does_not_delay
+  test_une_invitation_liee_a_un_debat_qui_n_a_pas_ete_ouvert_pour_elle_est_refusee: test_an_invitation_linked_to_a_debate_not_opened_for_it_is_refused
+  test_une_levee_du_fil_permet_de_relire: test_a_lifting_of_the_thread_allows_reviewing
+  test_une_levee_vaut_pour_le_fil: test_a_lifting_holds_for_the_thread
+  test_une_paire_se_compare_par_personnes_et_une_paire_liee_ne_se_signale_pas: test_a_pair_compares_by_persons_and_a_linked_pair_is_not_reported
+  test_une_pr_dont_la_base_a_change_ne_recoit_aucun_verdict: test_a_pr_whose_base_changed_receives_no_verdict
+  test_une_pr_ne_change_pas_qui_est_qui_pour_ses_propres_controles: test_a_pr_does_not_change_who_is_who_for_its_own_checks
+  test_une_pr_qui_modifie_un_workflow_de_ci_n_est_jamais_fusionnee_automatiquement: test_a_pr_that_changes_a_ci_workflow_is_never_merged_automatically
+  test_une_pr_venue_d_un_autre_depot_est_reconnue_par_sa_tete: test_a_pr_from_another_repository_is_recognized_by_its_head
+  test_une_proposition_porte_des_textes_recevables: test_a_proposal_carries_admissible_texts
+  test_une_session_au_dela_d_un_plafond_par_pr_est_refusee_avant_toute_pr: test_a_session_beyond_a_per_pr_cap_is_refused_before_any_pr
+  test_une_synthese_ecrite_sans_avoir_lu_un_argument_ne_le_couvre_pas: test_a_synthesis_written_without_reading_an_argument_does_not_cover_it
+  test_une_tache_a_sa_marque_se_reserve_se_soumet_et_s_integre: test_a_task_at_its_mark_is_reserved_submitted_and_integrated
+  test_une_tache_de_la_ruche_ne_nait_pas_optimisation: test_a_hive_task_is_not_born_optimization
+  test_une_tache_proposee_vers_un_noeud_inconnu_est_refusee: test_a_task_proposed_to_an_unknown_node_is_refused
+  test_une_voix_un_relecteur_et_jamais_pour_soi: test_one_voice_one_reviewer_and_never_for_oneself
+  test_unites_et_homonymes: test_units_and_homonyms
+  test_validation_d_une_proposition: test_validation_of_a_proposal
+  test_valide_a_100_300_et_1000_membres_sans_rien_retirer: test_valid_at_100_300_and_1000_members_without_removing_anything
+  test_valider_detecte_un_debat_incoherent: test_validate_detects_an_inconsistent_debate
+  test_valider_garde_une_relecture_par_commit: test_validate_keeps_one_review_per_commit
+  test_valider_ne_depend_pas_de_l_horloge_a_la_seconde: test_validate_does_not_depend_on_the_clock_to_the_second
+  test_valider_ne_rejuge_pas_le_conseil_ni_les_gardiens_d_alors: test_validate_does_not_judge_again_the_council_nor_the_guardians_of_then
+  test_valider_refuse_les_etats_incoherents: test_validate_refuses_the_inconsistent_states
+  test_valider_refuse_sur_main_ce_que_la_porte_refuse: test_validate_refuses_on_main_what_the_gate_refuses
+  test_valider_refuse_un_statut_ou_des_gestes_incoherents: test_validate_refuses_an_inconsistent_status_or_gestures
+  test_valider_refuse_une_semaine_trafiquee: test_validate_refuses_a_doctored_week
+  test_valider_signale_un_juge_commun_min_absent_ou_mal_forme: test_validate_reports_a_common_judge_min_absent_or_malformed
+  test_verifier_fork_quotes_each_path_with_the_mark_broken: test_check_fork_quotes_each_path_with_the_mark_broken
+  test_verifier_fork_reads_the_manifest_of_the_person: test_check_fork_reads_the_manifest_of_the_person
+  test_verifier_pr_et_valider_une_pr_par_contribution: test_check_pr_and_validate_one_pr_per_contribution
+  test_verifier_pr_quotes_a_declared_pr_and_task_on_one_line: test_check_pr_quotes_a_declared_pr_and_task_on_one_line
+  test_verifier_pr_refuses_a_path_that_does_not_print_as_written: test_check_pr_refuses_a_path_that_does_not_print_as_written
+  test_verifier_requires_code_0_and_the_pull_request_commits: test_verify_requires_code_0_and_the_pull_request_commits
+  test_voir_and_contexte_quote_the_project_and_task_texts: test_show_and_context_quote_the_project_and_task_texts
+  test_voir_echappe_chaque_champ: test_show_escapes_each_field
+  test_vol_de_credit_aucun_verdict_pour_la_pr_d_un_autre: test_credit_theft_no_verdict_for_the_pr_of_another
+  test_vol_de_credit_ni_fusion_ni_consignation: test_credit_theft_neither_merge_nor_record
+  test_vote_pour_sa_contribution_detecte_par_valider: test_vote_for_own_contribution_detected_by_validate
+  test_workflows_lisibles: test_readable_workflows
+  test_yaml_trop_profond_ou_entier_demesure_refuse_sans_trace: test_yaml_too_deep_or_oversized_integer_refused_without_trace
+  TestAgentAccountsValider: TestAgentAccountsValidate
+  TestAjoutSeulRuche0042: TestAppendOnlyRuche0042
+  TestArbre: TestTree
+  TestBornes: TestBounds
+  TestBornesLibreService: TestSelfServiceBounds
+  TestBornesLibreServiceRegistre: TestSelfServiceBoundsRegistry
+  TestBornesVerdictEtMarque: TestVerdictAndMarkBounds
+  TestCapEtEssaim: TestBalanceAndSwarm
+  TestCapSansHistorique: TestBalanceWithoutHistory
+  TestChargeurCRuche0130: TestCLoaderRuche0130
+  TestCodecDeReference: TestReferenceCodec
+  TestComptesLiesRuche0051: TestLinkedAccountsRuche0051
+  TestControleTexteLibre: TestFreeTextCheck
+  TestCopieDesSources: TestSourceCopy
+  TestCourse: TestRace
+  TestCouverture: TestCoverage
+  TestDebatInvitationRuche0050: TestInvitationDebateRuche0050
+  TestDebatSansSuiteRuche0139: TestDebateWithoutFollowUpRuche0139
+  TestDossierRetireRuche0020: TestRemovedFolderRuche0020
+  TestEntrees: TestInputs
+  TestEssaiDeCharge: TestLoadTest
+  TestFigees: TestFrozen
+  TestFusionAutoNeMergeQuApresVerification: TestAutoMergeMergesOnlyAfterCheck
+  TestGreffon: TestPlugin
+  TestHistorique: TestHistory
+  TestIdentiteParNumero: TestIdentityByNumber
+  TestIdentiteParNumeroFil: TestIdentityByNumberThread
+  TestJeuFige: TestFrozenFixture
+  TestJugeContreVariantes: TestJudgeAgainstVariants
+  TestLecteursBilingues: TestBilingualReaders
+  TestLectureSure: TestSafeReading
+  TestMainVert: TestMainGreen
+  TestManifesteRecopie: TestCopiedManifest
+  TestMelange: TestShuffle
+  TestMemesConditions: TestSameConditions
+  TestObjetsAttendus: TestExpectedObjects
+  TestOrdreEtEmpreintes: TestOrderAndFingerprints
+  TestOrthographe: TestSpelling
+  TestPasseFusion: TestMergePass
+  TestPublier: TestPublish
+  TestPublierParSession: TestPublishBySession
+  TestPullRequestsArbre: TestTreePullRequests
+  TestPullRequestsEnParallele: TestParallelPullRequests
+  TestR13SuivableRuche0052: TestR13FollowableRuche0052
+  TestRapport: TestReport
+  TestRegistre: TestRegistry
+  TestRegistreReel: TestLiveRegistry
+  TestReglagesRuche0144: TestSettingsRuche0144
+  TestRelecturesDesNouveaux: TestReviewsByNewcomers
+  TestRelireParCommit: TestReviewByCommit
+  TestRelireParCommitPR: TestReviewByCommitPR
+  TestRepetitionGenerale: TestDressRehearsal
+  TestRetraitDemandeChampsRuche0048: TestRequestedRemovalFieldsRuche0048
+  TestRetraitDemandeRuche0048: TestRequestedRemovalRuche0048
+  TestRevueAdverse: TestAdversarialReview
+  TestRevueAdverseRuche0011: TestAdversarialReviewRuche0011
+  TestRevueAdverseRuche0020: TestAdversarialReviewRuche0020
+  TESTS_CHARGEUR: LOADER_TESTS
+  TESTS_REGISTRE_REEL: LIVE_REGISTRY_TESTS
+  TestSecondeRevueRuche0020: TestSecondReviewRuche0020
+  TestSignalementsRuche0118: TestReportsRuche0118
+  TestSignalementsRuche0137: TestReportsRuche0137
+  TestStatistiques: TestStatistics
+  TestSuiteEnParallele: TestParallelSuite
+  TestTextesLibresRevue2Ruche0029: TestFreeTextsReview2Ruche0029
+  TestTextesLibresRuche0029: TestFreeTextsRuche0029
+  TestTour3: TestRound3
+  TestTour3PR: TestRound3PR
+  TestTravailEnParallele: TestParallelWork
+  TestTroisiemeRevueRuche0020: TestThirdReviewRuche0020
+  TestVerdictsDeLaPrEnregistree: TestVerdictsOfTheRecordedPr
+  TestWorkflowJuge: TestJudgeWorkflow
+  tete_avec_sa_carte: head_with_its_map
+  TETE_FUSIONNEE: MERGED_HEAD
+  tete_pr: pr_head
+  tete_vieille: old_head
+  texte_v: text_v
+  textes_invitations: invitation_texts
+  textes_libres_des_schemas_0047: schema_free_texts_0047
+  tiennent: hold
+  tiers: third_party
+  TIERS: THIRD_PARTY
+  tirages: draws
+  tires: drawn
+  titres: titles
+  titres_en_anglais: english_titles
+  touches: touched
+  tourne: runs_now
+  tous_les_textes: all_the_texts
+  tout: everything
+  traduction_0141: translation_0141
+  traduction_0142: translation_0142
+  traduits: translated
+  tranches: slices
+  TRAVAIL: WORKDIR
+  travail_deplace: moved_workdir
+  triche: cheat
+  trois: three
+  TROP_LONGUES: TOO_LONG
+  trouvees: found_ones
+  UNICODE_DE_PYTHON: PYTHON_UNICODE
+  uniques: unique_ones
+  usurpee: usurped
+  v_et_vote_net: v_and_net_vote
+  valeur_option: option_value
+  variante_emulee: emulated_variant
+  variantes_courriel_0047: email_variants_0047
+  VARIANTES_OCTOCAT: OCTOCAT_VARIANTS
+  variantes_telephone_0047: phone_variants_0047
+  verdict_au: verdict_at
+  verdict_sur_main: verdict_on_main
+  verifier_les_graines: check_the_seeds
+  victime: victim
+  vieille: old_one
+  vieux: old
+  VOISINS: NEIGHBORS
+  vote_a_la_main: vote_by_hand
+  VOTE_CLOS: CLOSED_VOTE
+  vrai: true_one
+  workflow_juge: judge_workflow
 attributes:
   _fusions: _merges
   _orthographes: _spellings
@@ -1958,6 +3825,7 @@ attributes:
   suivant: next
   travail: workdir
 tokens:
+  DECLARE_MAX: DECLARED_MAX
   fusionnee_le: merged_at
   defauts: defects
   cle_refusee_: refused_key_
@@ -1985,6 +3853,21 @@ tokens:
   toutes: all
   exclure: exclude
   acceptees: accepted
+shell:
+  ci_connue: known_ci
+  compte_pr: pr_account
+  dans_son_clone: in_own_clone
+  emplacement: location
+  essai: attempt
+  etat_pr: pr_state
+  manque: missing
+  memoire: memory
+  pseudo_valide: valid_login
+  refuser: refuse
+  sha_connu: known_sha
+  tetes: heads
+  texte_valide: valid_text
+  travail: workdir
 hand:
   issue:
     english:
@@ -2029,6 +3912,7 @@ hand:
     roles:
       outils/site_bee.py:generer:registre: registry
       outils/site_bee.py:generer:registre.json: registry
+      outils/test_bee.py:JEU_FIGE: registry
     why: the folder outils/tests/registre/ -> tools/tests/registry/ and the identifier -> registry; the repository Bee-ruche/registre
       keeps its name
   contribution:
@@ -2053,6 +3937,31 @@ shared:
   - login
   - pseudo
   why: two loop variables of outils/bee.py, never live at once
+locals: [
+  a_la_poussee, a_la_verification, a_soumettre, accueil, aller_retour, alterer, anglaise, annonces, appel, appelants,
+  attaques, attendue, attendues, avant_, avant_donnees, avec, avec_gh, avec_jeton, avec_retour, avec_saut, bee_faux,
+  bidon, bilingues, binaire, bizarres, bloque, bon, bornes, boucle, brouillon, cadre, caractere, cas_base, cas_tete,
+  chargeur_c, chemin_config, chemin_gh, choix, code_lu, commentaire, comparaisons, complet, conflit, consignes,
+  constructions_suspectes_omises, construits, controle, corrige, coupe, coupee, dans, dans_la_pr, de_bruno, debut_en,
+  declarer, definis, dehors, demesure, depasse, depot_tete, desassemblage, detectent, deux, dite, domaine, donnes, doute,
+  drapeau, duree, durees, ECART, echappement, echappes, echecs, ecrit, ecriture, effaces, emule, entiere,
+  entiers_bornes, entrees_c, env_en_plus, environnement, est_git, etrangeres, etrangers, exemples, extra_juge, faire,
+  famille, familles, fautive, faux, faux_bee, FAUX_DOCKER_ID, FAUX_DOCKER_SANS_FIN, FAUX_GH_COMPTES, FAUX_GH_DEPOT,
+  FAUX_GH_ETAT, FAUX_GH_JOURNAL, fermee, feuilles, fiche_projet, fin_de_ligne, fin_puce, fonctions, forgee, forgees,
+  fusionnee_par, gain_parallele, gain_titulaire, garder_attente, gardé, gestes_gardes, graines, gros, harnais,
+  honnete, hors, huit, identifiants, inconnue, indentee, indice, intrus, intruse, journal_, journal_docker, juge_,
+  juge_commun, juge_master, juge_py, lancent_bee, lancer_, lancer_git, lancer_vrai, lecteur, LENT, lent, leurre,
+  lignes_yaml, lire_version, lisent, listage, lister2, lit_en_c, longue, lue, lui, mal_forme, mal_formee,
+  marque_debat, marque_tache, mauvais, mauvaise, mien, mienne, modif, modifie, montes, natifs, neutre, niveaux_avant,
+  nombres, nommer, note_de_bruno, ote, oui, outil_avant, outil_base, par_job, par_nom, parametres, pas, passees,
+  piege, pieges, plein, pousse, poussee, premieres, profond, programme, proposees, publiees_, quatre, quotent,
+  rapport_, rapports, recuperees, reecrite, relecteurs, remplacement, rempli, reperes, reserver, retire, retouche,
+  reussite, rivale, sans_code, sans_les_tests, sans_portee, sans_ratio, sans_role, sans_suspects, sans_tache,
+  secondes, separateurs, seul_c_accepte, seulement, sien, signale, signaleur, simples, sonde, sortant, sortie_h,
+  sorties_c, soumises, sous_valgrind, statuts, succes, supprimes, sur_le_disque, tache_avant, tache_main, tenus,
+  tete_pr, tete_vieille, texte_v, tiennent, tiers, tirages, titres, touches, tout, tranches, triche, trois, trouvees,
+  uniques, usurpee, victime, vieille, vieux, vrai
+]
 neutral:
 - vscode.dev
 - com.au
@@ -2065,10 +3974,7 @@ neutral:
 - element.io
 - reddit.com
 - herokuapp.com
-pending:
-- outils/juge/test_juge.py
-- outils/repetition/test_load_test.py
-- outils/test_bee.py
+pending: []
 keep:
 - files: outils/bee.py
   tokens:
@@ -2119,7 +4025,23 @@ keep:
   - CODE_0142_EN
   - traduction_0142
   - TestEnglishNamesStep1b
-  why: 'the tests of the migration tooling: their fixtures and expectations are French on purpose (the base before the switch)'
+  - SCRIPT_0152
+  - SCRIPT_0152_EN
+  - FLUX_0152
+  - FLUX_0152_EN
+  - TestEnglishNamesStep1b2
+  tokens:
+  - Pourquoi cette branche existe
+  - Ce qui compte ici
+  - Ce qu'on peut ignorer ici
+  - Enfants
+  - id='cap'
+  - data-filtre='poste'
+  - '[`inviter`](arbre/roles/inviter/SENS.md)'
+  why: 'the tests of the migration tooling: their fixtures and expectations are French on purpose (the base before the switch);
+    the French node headings bee reads beside the English ones until the tree is translated (plan, section 5.8); the site''s
+    attributes its kept CSS and JavaScript read; a line of AGENTS.md quoted as written, the docs changing after the switch
+    (ruche-0152)'
 - files: outils/inventaire_marqueurs.py
   scopes:
   - FRANCAIS
@@ -2132,6 +4054,98 @@ keep:
   - :refs/bee/historique/
   why: 'the git ref namespace the judge writes in fork clones: renamed with the judge track (judge-v4)'
 - files: outils/site_bee.py
+  scopes:
+  - STYLE
+  - SCRIPT_FILTRES
   tokens:
   - Enfants
-  why: a display heading of the site (bees messages and the site, step 3)
+  - pleine
+  - moitie
+  - vide
+  - bloquee
+  - close
+  - attente
+  - Registre
+  - journal
+  why: 'a display heading of the site and display words of its links (bees messages and the site, step 3); the site''s CSS and
+    JavaScript, as written: their class names, variables and data-* attributes agree with the HTML the code writes, which
+    keeps them too, the cells'' classes (c-vide…) included (ruche-0152)'
+- files: outils/bee.py
+  scopes:
+  - PLATEFORMES
+  - ALIAS_PLATEFORME
+  - HOTES_FORGES
+  - DOMAINES_FORGES
+  - PAGES_FORGES
+  - SUFFIXES_DOUBLES
+  - PLATEFORMES_PARTAGEES
+  - SAUTS_YAML
+  - INVISIBLES_SORTANTS
+  - caractere_interdit
+  - caractere_sortant_interdit
+  - decoder_url
+  - hote_de
+  - sur_hotes
+  - domaine_enregistrable
+  - cle_hote
+  - cles_d_adresse
+  - cle_personne
+  - empreinte
+  - cles_passage
+  - empreintes_passage
+  tokens:
+  - bee/engagement-
+  why: 'what is hashed into a stored fingerprint: the keys of a person (cle_personne, cles_passage: partage:, site:, a forge''s
+    name, its aliases, users/repos/orgs, www., in/) and all they read, whose SHA-256 the do-not-contact list and the
+    removals keep; and the engagement branches'' prefix, hashed with what it names (ruche-0152 review)'
+- files: outils/juge/conteneur.py
+  scopes:
+  - dockerfile
+  - construire_image
+  why: 'the Dockerfile''s text, whose SHA-256 names the judge''s image (bee-juge-commun:…): renamed, every image would be built
+    again (ruche-0152 review)'
+- files: outils/juge/entrees.py
+  tokens:
+  - liste
+  - entier
+  why: 'the format the harnesses read (/entrees/liste, « <côté> <nom> <entier> »), in the forks'' C code, never renamed here'
+- files: outils/juge/test_juge.py
+  tokens:
+  - liste
+  why: 'the harnesses'' input list, as entrees.py keeps it'
+- files: outils/juge/rapport.py
+  tokens:
+  - erreur
+  why: 'a word of its French messages, as « REFUS » beside it'
+- files: .github/workflows/verdicts.yml
+  tokens:
+  - manifestes
+  why: 'the forks'' manifest folder, which they write until they write English (miniz-0050, libyaml-0021): the switch''s hand
+    part reads manifests/ beside it (plan, section 13)'
+- files: outils/repetition/monter.sh
+  tokens:
+  - registre
+  why: 'the members'' clone folder of the simulated hive (abeilles/<login>/registre, as commun.sh and load_test.py name it),
+    a token the script''s variable for the registry''s clone shares'
+strings:
+- files: outils/inventaire_marqueurs.py
+  tokens: [ATTENTE_VERDICT, ETATS, FICHIERS_LIBRE_SERVICE, ISSUES_DEBAT, MNEMONIQUES_SUSPECTS, MOIS, MOTS_SOURCE, PHRASE_DEMANDE,
+           POIDS_VOTE, POSITIONS_DEBAT, REGLAGES, RETIRE, SECTIONS_COURTES, STATUTS_CONTRIBUTION, TAILLES_PAR_NIVEAU, VOIES_EN,
+           VOIES_FR, _POSITIF]
+  why: the names of bee.py's and site_bee.py's constants, by which the inventory classifies their strings
+- files: outils/juge/*.py
+  tokens: [objets, octets, symboles, juste, empreinte, donnee]
+  why: 'the judge''s own keys and values, written and read by its files and juge.yml in one run: the surveys (objets, symboles,
+    symboles.txt), a suspect construction''s type (octets), juge.json''s issue (juste) and seed origin (donnee), the SHA-256
+    output (empreinte, juge.yml''s); a value, never a hash''s input'
+- files: outils/juge/jouet/bee/juge/projet.py
+  tokens: [historique]
+  why: juge.yml's input of that name (renamed there), and the toy's verification key
+- files: outils/repetition/**
+  tokens: [confiance, fusion, debut, dossier, cree]
+  why: 'the simulation''s folders and files of one run (its clones confiance/ and fusion/, etat/debut) and a member''s key (cree)
+    in load_test.py: named the same by each of its scripts; dossier: the usage line''s <dossier>, the argument'
+- files: .github/workflows/*.yml
+  tokens: [passe, fusionnees, chronologie, resultats, sorties]
+  why: 'a job''s scratch folders (passe/, passe/fusionnees, resultats/, resultats/sorties), named in that job only; chronologie:
+    a kind of bee''s API answers, as bee.reponses_api names it'

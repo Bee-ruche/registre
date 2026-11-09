@@ -1,0 +1,11 @@
+id: ruche-0152-c1
+tache: ruche-0152
+auteur: bidji29
+pr: https://github.com/Bee-ruche/registre/pull/229
+resume: 'Step 1b-2 of the English switch, dormant: test identifiers, shell and workflow renamer with P1,
+  residue, lint and links checks, hashed literals kept with an invariance test; 325 code lines; full suite
+  green; adversarial review fixed and verified.'
+statut: en_relecture
+soumise_le: '2026-11-09T04:55:24Z'
+engage_depuis: '2026-11-08T23:44:09Z'
+relectures: []
