@@ -64,15 +64,13 @@ class CodeMap:
         self.targets, self.inverse = set(self.tokens.values()) | set(self.attrs.values()), {e: f for f, e in self.ids.items()}
         self.tokens = self.base_tokens = collections.ChainMap({}, self.tokens)
         self.keep = [(rename.glob_re(k["files"]), set(k.get("scopes") or ()), set(k.get("tokens") or ())) for k in m["keep"]]
-        alt = lambda d: re.compile("|".join(map(re.escape, sorted(d, key=len, reverse=True))) or r"(?!)")  # noqa: E731
-        fr = {t: i for i, t in enumerate(t for t in self.named if " " in t)}  # whole phrases: names of workflows and steps, robot texts
+        phrases = sorted((t for t in self.named if " " in t), key=len, reverse=True)  # names of workflows and steps, robots' texts
         self.subcommands = re.compile(r"(?<![\w-])(?:" + "|".join(re.escape(k).replace(r"\ ", r"\s+") for k in nm["cli"]["commands"] if " " in k) + r")(?![\w-])")
-        self.phrases, self.sides = alt(fr), {False: (alt(fr), fr), True: (alt({self.named[t]: i for t, i in fr.items()}), {self.named[t]: i for t, i in fr.items()})}
+        self.phrases, self.keeping = re.compile(r"(?<![\w-])(?:" + "|".join(map(re.escape, phrases)) + r")(?![\w-])"), set()  # keeping: the file's kept
 
-    def marked(self, s, inv):
-        """s with each whole phrase (French, or English if inv) as a numbered mark: P1 compares phrases as single tokens."""
-        r, d = self.sides[inv]
-        return r.sub(lambda x: f"\0{d[x[0]]}\0", s)
+    def phrased(self, s):
+        """s with each whole phrase renamed, a kept one aside (P1 compares a text so, then token by token)."""
+        return self.phrases.sub(lambda x: x[0] if x[0] in self.keeping else self.named[x[0]], s)
 
     def scoped(self, path, scope, literal=""):
         """tokens, each hand token resolved by the role table of its file and scope (and literal), else by its default."""
@@ -171,8 +169,9 @@ class CodeMap:
                 v = VALUE.fullmatch(x[4])
                 parts[i] = x[1] + self.tokens.get(x[2], x[2]) + x[3] + (f"{v[1]}{v[2]}{self.whole(v[3])}{v[4]}{v[5]}" if v and
                                                                         isinstance(yaml.safe_load(v[3]), str) else x[4])
+        parts = self.phrased("".join(parts))
         c = self.names.m["cli"]["commands"]  # a subcommand after its command, wherever (a fake bee's « BEE passe-fusion preparer »)
-        t = self.subcommands.sub(lambda x: (lambda a, s, b: s.join(c[f"{a} {b}"].split(" ")))(*re.fullmatch(r"(\S+)(\s+)(\S+)", x[0]).groups()), "".join(parts))
+        t = self.subcommands.sub(lambda x: (lambda a, s, b: s.join(c[f"{a} {b}"].split(" ")))(*re.fullmatch(r"(\S+)(\s+)(\S+)", x[0]).groups()), parts)
         t = "".join(RUN.sub(lambda x: self.whole(x[0]) if re.search(r"[_.\[\]<>@#/]|\w-\w|^--", x[0]) or code and x.string[x.start() - 1:x.start()] != "{"
                             else x[0], p) for p in TAG.split(t))
         t = re.sub(r"(?<=\{)[A-Za-z_]\w*(?=[}!:.\[])|(?<=%\()[A-Za-z_]\w*(?=\))", lambda x: self.ids.get(x[0], x[0]), t)  # as .format(name=)
@@ -191,11 +190,14 @@ class CodeMap:
         c = self.names.m["cli"]["commands"]
         return c[f"{a} {b.strip()}"].replace(" ", b[:len(b) - len(b.lstrip())], 1) if b and f"{a} {b.strip()}" in c else c.get(a, a) + b
 
-    def string(self, raw):
-        """One string token renamed, its quoting kept: a whole literal by whole(), any other text by text()."""
+    def string(self, raw, path=""):
+        """One string token renamed, its quoting kept: a program in Python as Python (if written as its value), a whole literal
+        by whole(), any other text by text()."""
         prefix, q, body = re.fullmatch(r"([rRbBuU]*)('''|\"\"\"|'|\")(.*)\2", raw, re.S).groups()
         value = ast.literal_eval(raw)
         value = value.decode("utf-8", "surrogateescape") if isinstance(value, bytes) else value
+        if is_python(value, raw):  # a fake tool's program, written to a file: its names as Python's (ruche-0152)
+            return prefix + q + self.rename_python(value, path)[0] + q
         if (new := self.whole(value)) != value and body != value:
             raise rename.Problem(f"« {raw[:40]} » is written in a form the renamer does not edit")
         return prefix + q + (new if new != value else self.text(body, not re.search(r"\s", value))) + q
@@ -203,8 +205,8 @@ class CodeMap:
     def rename_python(self, source, path=""):
         """A Python file renamed: identifiers (attrs after a dot), the names in strings and f-string parts (outside kept scopes
         and tokens); the rest as written, comments included. Returns (text, [(line, old token, new token)])."""
-        scopes, kept = self.kept(path)
-        lines, starts, tree = source.split("\n"), [0], ast.parse(source)  # lines as the tokenizer counts them (not at U+2028)
+        (scopes, kept), keeping = self.kept(path), self.keeping
+        lines, starts, tree, self.keeping = source.split("\n"), [0], ast.parse(source), kept  # lines as the tokenizer counts them (not at U+2028)
         [starts.append(starts[-1] + len(x) + 1) for x in lines]
         frozen = self.frozen(tree, scopes)
         roles = {(c.lineno, len(lines[c.lineno - 1].encode()[:c.col_offset].decode())) for c in identifier_strings(tree)}  # bytes -> characters
@@ -218,7 +220,7 @@ class CodeMap:
                 if source[a:b] != tok.string:
                     raise rename.Problem(f"{path}:{tok.start[0]}: a string part the tokenizer does not place")
                 self.scoped(path, where[tok.start[0]], value := tok.string if tok.type != tokenize.STRING else str(ast.literal_eval(tok.string)))
-                new = tok.string if value in kept else self.string(tok.string) if tok.type == tokenize.STRING else self.whole(tok.string) if \
+                new = tok.string if value in kept else self.string(tok.string, path) if tok.type == tokenize.STRING else self.whole(tok.string) if \
                     re.fullmatch(NAME_SHAPE, tok.string) else self.text(tok.string, not re.search(r"\s", tok.string))  # f"{x}_max_par_pr"
                 new = re.sub(r"\w+", lambda x: self.attrs.get(x[0], x[0]), tok.string) if tok.start in roles else new  # attributes, fields
                 if kept and len(WORD.split(new)) == len(WORD.split(tok.string)):
@@ -228,7 +230,7 @@ class CodeMap:
             if new != tok.string:
                 edits[a, b] = new
                 changes.append((tok.start[0], tok.string, new))
-        cuts, self.tokens = [0, *(x for e in sorted(edits) for x in e), len(source)], self.base_tokens  # one pass: 20 000 edits stay linear
+        cuts, self.tokens, self.keeping = [0, *(x for e in sorted(edits) for x in e), len(source)], self.base_tokens, keeping  # linear
         return "".join(source[cuts[i]:cuts[i + 1]] + edits.get((cuts[i + 1], cuts[i + 2]), "") for i in range(0, len(cuts) - 2, 2)) + source[cuts[-2]:], changes
 
     # --- shell scripts and workflows (ruche-0152): every name through the same map, region by region ---
@@ -298,15 +300,16 @@ class CodeMap:
         kept, edits, changes = self.kept(path)[1], {}, []
         for a, b, kind in self.regions(text, path):
             self.scoped(path, "")
+            self.keeping = kept
             x = text[a:b]
             new = self.rename_python(x, path)[0] if kind == "python" else RUN.sub(lambda m: self.whole(m[0]), x) if kind in ("code", "key") else \
-                self.text(self.phrases.sub(lambda m: self.named[m[0]], x)) if kind == "text" else x
+                self.text(x) if kind == "text" else x
             if kind != "python" and kept and len(WORD.split(new)) == len(WORD.split(x)):
                 new = "".join(o if o in kept else n for o, n in zip(WORD.split(x), WORD.split(new)))
             if new != x:
                 edits[a, b] = new
                 changes.append((text.count("\n", 0, a) + 1, x, new))
-        self.tokens = self.base_tokens
+        self.tokens, self.keeping = self.base_tokens, set()
         return rename.edited(text, edits), changes
 
     def lint_shell(self, text, path):
@@ -365,16 +368,22 @@ class CodeMap:
         if a == b or (re.sub(r"\w+", lambda x: self.attrs.get(x[0], x[0]), a) if role else self.whole(a)) == b:
             return [(a, b)] if a != b else []
         for x, y in ((p.split(a), p.split(b)) for p in (WORD, RUN)):  # word by word, else name run by name run
-            changed, c = [i for i in range(1, len(x), 2) if x[i] != y[i]], self.names.m["cli"]["commands"]  # a command after « bee »: a command
+            changed, c = [i for i in range(1, min(len(x), len(y)), 2) if x[i] != y[i]], self.names.m["cli"]["commands"]  # a command after « bee »: a command
             if len(x) == len(y) and x[0::2] == y[0::2] and all(self.allowed(x[i], y[i]) or self.whole(x[i]) == y[i] or i > 1 and x[i - 1].isspace()
                                                                 and y[i] == c.get(x[i]) and re.fullmatch(r"(?:.*/)?bee(?:\.py)?", x[i - 2]) for i in changed):
                 return [(x[i], y[i]) for i in changed]
 
+    def through(self, a, b, role=False):
+        """string_change once a's whole phrases are renamed, else as it is (a phrase cut by a literal's end stays)."""
+        x = self.string_change(self.phrased(a), b, role)
+        return self.string_change(a, b, role) if x is None else x
+
     def same_python(self, old, new, counts, path=""):
         """P1 for one file: equal syntax trees once identifiers go through the map and strings (f-string parts included) through
         whole() or token by token; numbers, operators, structure identical; no two dict keys merge. counts: each mapping."""
-        problems, tree, (scopes, kept) = [], ast.parse(old), self.kept(path)
+        problems, tree, (scopes, kept), keeping = [], ast.parse(old), self.kept(path), self.keeping
         where, roles, frozen = scopes_of(tree), {(c.lineno, c.col_offset) for c in identifier_strings(tree)}, self.frozen(tree, scopes)
+        self.keeping = kept
 
         def same(a, b, line):
             if type(a) is not type(b):
@@ -394,7 +403,11 @@ class CodeMap:
                 if isinstance(a, ast.Constant) and isinstance(x, (str, bytes)) and type(x) is type(y):
                     s, t = (x.decode("utf-8", "surrogateescape"), y.decode("utf-8", "surrogateescape")) if isinstance(x, bytes) else (x, y)
                     self.scoped(path, where[line], s)
-                    if (pairs := self.string_change(s, t, (a.lineno, a.col_offset) in roles)) is None:
+                    if line not in frozen and s != t and "\n" in s.strip() and is_python(s, ast.get_source_segment(old, a)):  # a program: P1
+                        problems.extend(f"line {line}: in its program, {p}" for p in self.same_python(s, t, counts, path))
+                        self.scoped(path, where[line], s)
+                        pairs = []
+                    elif (pairs := [] if line in frozen else self.through(s, t, (a.lineno, a.col_offset) in roles)) is None:
                         problems.append(f"line {line}: the string « {s[:60]} » became « {t[:60]} », not through the map")
                     elif s != t and (line in frozen or any(p in kept for p, _ in pairs + [(s, t)])):  # a kept scope, a kept name
                         problems.append(f"line {line}: the string « {s[:60]} » became « {t[:60]} »: kept as written (identifiers.yaml, keep)")
@@ -406,7 +419,7 @@ class CodeMap:
                 else:
                     same(x, y, line)
         same(tree, ast.parse(new), 1)
-        self.tokens = self.base_tokens
+        self.tokens, self.keeping = self.base_tokens, keeping
         return problems
 
     def same_shell(self, old, new, counts, path):
@@ -418,15 +431,16 @@ class CodeMap:
         for (a0, a1, kind), (b0, b1, _) in zip(ra, rb):
             x, y, n = old[a0:a1], new[b0:b1], old.count("\n", 0, a0)
             self.scoped(path, "")
+            self.keeping = kept
             if kind == "python":
                 problems += [re.sub(r"^line (\d+)", lambda m: f"line {int(m[1]) + n}", p) for p in self.same_python(x, y, counts, path)]
-            elif x != y and (kind == "comment" or (pairs := self.string_change(self.marked(x, False), self.marked(y, True))) is None or
+            elif x != y and (kind == "comment" or (pairs := self.through(x, y)) is None or
                              any(p in kept for p, _ in pairs)):
                 problems.append(f"line {n + 1}: « {x.strip()[:60]} » became « {y.strip()[:60]} », " + (
                     "but a comment stays as written" if kind == "comment" else "not through the map" if pairs is None else "but it is kept as written"))
             elif x != y:
                 counts.update(("string", p, q) for p, q in pairs)
-        self.tokens = self.base_tokens
+        self.tokens, self.keeping = self.base_tokens, set()
         return problems
 
     def residue_shell(self, path, new):
@@ -484,6 +498,15 @@ def identifier_strings(tree, deep=True):
             yield from n.args[:1] if isinstance(n.func, ast.Attribute) and of(n.func.value) else n.args[1:2] if name == "namedtuple" else []
         yield from n.value.elts if isinstance(n, ast.Assign) and getattr(n.targets[0], "id", None) == "__slots__" and hasattr(n.value, "elts") else []
         yield from [n.slice] if isinstance(n, ast.Subscript) and of(n.value) else [n.left] if isinstance(n, ast.Compare) and of(n.comparators[0]) else []
+
+
+def is_python(text, raw):
+    """A program in Python inside a string, written as its value in one literal (raw): lines, at least one import, def or
+    assignment, and no syntax error."""
+    try:
+        return "\n" in text.strip() and re.fullmatch(r"[rRuU]*('\'\'|\"\"\"|'|\")(.*)\1", raw or "", re.S)[2] == text and any(isinstance(n, (ast.Import, ast.ImportFrom, ast.FunctionDef, ast.Assign)) for n in ast.parse(text).body)
+    except (SyntaxError, ValueError, TypeError):
+        return False
 
 
 def scopes_of(tree):
