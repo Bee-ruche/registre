@@ -14,8 +14,9 @@
 #                keys, f-string fragments such as _max_par_pr); a French identifier is also renamed in strings.
 #   hand         tokens with two English names, by role: each has a default and a role table, by file and scope (the
 #                innermost def or class, or top-level assignment), optionally by literal; the renamer and P1 follow it.
-#   shared       two identifiers of one scope that become one name, reviewed as never live at once (read by the scope
-#                lint of a later step, with the identifiers of the test files).
+#   shared       two identifiers of one scope that become one name, reviewed as never live at once (the scope lint).
+#   locals       identifiers of the test files that are only local variables: renamed as identifiers, never in strings
+#                (oui, deux, faux… are words of texts and data too; ruche-0152).
 #   neutral      name literals of bee.py declared language-neutral (--names of outils/inventaire_marqueurs.py).
 #   pending      code files whose own identifiers are not mapped yet: lint and check fail on each, one line (a later step).
 #   keep         French kept on purpose: tokens in a file, or the strings of top-level scopes (the migration's own tests).
@@ -2369,7 +2370,6 @@ identifiers:
   reference_decodee: decoded_reference
   refus: refusal
   Refus: Refusal
-  REFUS: REFUSALS
   refus_ailleurs: refusal_elsewhere
   refus_arbre: tree_refusal
   refus_caviardage: redaction_refusal
@@ -2378,6 +2378,7 @@ identifiers:
   refus_debat_invitation: invitation_debate_refusal
   refus_decideur: decider_refusal
   refus_decision: decision_refusal
+  REFUS_DU_CHARGEUR: LOADER_REFUSALS
   refus_garant: guarantor_refusal
   refus_geste: gesture_refusal
   refus_invitation: invitation_refusal
@@ -3924,6 +3925,32 @@ shared:
   - login
   - pseudo
   why: two loop variables of outils/bee.py, never live at once
+locals: [
+  a_la_poussee, a_la_verification, a_soumettre, accueil, aller_retour, alterer, anglaise, annonces, appel, appelants,
+  attaques, attendue, attendues, avant_, avant_donnees, avec, avec_gh, avec_jeton, avec_retour, avec_saut,
+  BASE_EVENEMENT, bee_faux, BEE_SIMU, bidon, bilingues, binaire, bizarres, bloque, bon, bornes, boucle, brouillon,
+  cadre, caractere, cas_base, cas_tete, chargeur_c, chemin_config, chemin_gh, choix, code_lu, commentaire,
+  comparaisons, complet, conflit, consignes, constructions_suspectes_omises, construits, controle, controles, corrige,
+  coupe, coupee, dans, dans_la_pr, de_bruno, debut_en, declarer, dehors, demesure, depasse, deployer, depot_tete,
+  desassemblage, detectent, deux, dite, domaine, donnes, doute, drapeau, duree, durees, ECART, echappement, echappes,
+  echecs, ecrit, ecriture, effaces, emule, entiere, entiers_bornes, entrees_c, env_en_plus, environnement, essai,
+  est_git, etrangeres, etrangers, evenements, exemples, extra_juge, faire, famille, familles, fautive, faux, faux_bee,
+  FAUX_DOCKER_ID, FAUX_DOCKER_SANS_FIN, FAUX_GH_COMPTES, FAUX_GH_DEPOT, FAUX_GH_ETAT, FAUX_GH_JOURNAL, fermee,
+  feuilles, fiche_projet, fin_de_ligne, fin_puce, fonctions, forgee, forgees, fusionnee_par, gain_parallele,
+  gain_titulaire, garder_attente, gardé, gestes_gardes, graines, gros, harnais, honnete, hors, huit, identifiants,
+  immediat, inconnue, indentee, indice, intrus, intruse, journal_, journal_docker, juge_, juge_commun, juge_master,
+  juge_py, lancent_bee, lancer_, lancer_git, lancer_vrai, lecteur, LENT, lent, leurre, lignes_yaml, lire_version,
+  lisent, listage, lister2, lit_en_c, longue, lue, lui, mal_forme, mal_formee, marque_debat, marque_tache, mauvais,
+  mauvaise, mien, mienne, modif, modifie, montes, natifs, neutre, niveaux_avant, nombres, nommer, note_de_bruno, omis,
+  ote, oui, outil_avant, outil_base, par_job, par_nom, parametres, pas, passees, piege, pieges, plein, pousse,
+  poussee, premieres, profond, programme, proposees, publiees_, quatre, quotent, rapport_, rapports, recuperees,
+  reecrite, relancer, relecteurs, remplacement, rempli, reperes, reserver, retire, retouche, reussite, rivale,
+  sans_code, SANS_INSTRUCTIONS, sans_les_tests, sans_portee, sans_ratio, sans_role, sans_suspects, sans_tache,
+  secondes, separateurs, seul_c_accepte, seulement, sien, signale, signaleur, simples, sonde, sortant, sortie_h,
+  sorties_c, soumises, sous_valgrind, statuts, succes, supprimes, sur_le_disque, tache_avant, tache_main, tenus, TETE,
+  TETE_EVENEMENT, tete_pr, tete_vieille, tetes, texte_v, tiennent, tiers, tirages, titres, touches, tout, tranches,
+  triche, trois, trouvees, uniques, usurpee, verif, victime, vieille, vieux, vrai
+]
 neutral:
 - vscode.dev
 - com.au
@@ -3997,8 +4024,13 @@ keep:
   - Ce qui compte ici
   - Ce qu'on peut ignorer ici
   - Enfants
+  - id='cap'
+  - data-filtre='poste'
+  - '[`inviter`](arbre/roles/inviter/SENS.md)'
   why: 'the tests of the migration tooling: their fixtures and expectations are French on purpose (the base before the switch);
-    the French node headings bee reads beside the English ones until the tree is translated (plan, section 5.8; ruche-0152)'
+    the French node headings bee reads beside the English ones until the tree is translated (plan, section 5.8); the site''s
+    attributes its kept CSS and JavaScript read; a line of AGENTS.md quoted as written, the docs changing after the switch
+    (ruche-0152)'
 - files: outils/inventaire_marqueurs.py
   scopes:
   - FRANCAIS

@@ -2274,7 +2274,7 @@ class TestRegistre(BaseTest):
         # R11 : le cap de la ruche (parts visées et réelles), le filtre par poste, et le projet « ruche »
         self.assertIn("id='cap'", page)
         self.assertIn("data-filtre='poste'", page)
-        self.assertIn("data-poste='gouvernance'", page)
+        self.assertIn("data-poste='" + "gouvernance" + "'", page)  # a value of the data (ruche-0152: translated with it)
         donnees = json.loads((self.dossier / "_site/api/registre.json").read_text(encoding="utf-8"))
         self.assertEqual({l["poste"] for l in donnees["cap"]["postes"]}, {"gouvernance", "projets", "coordination"})
         self.assertIn("en_cours", donnees["essaim"])
@@ -14370,7 +14370,7 @@ class TestR13SuivableRuche0052(BaseInvitations):
         """Revue de ruche-0052, C : une date du fichier est relue par bee et réécrite (en_iso), sinon « ? » ; jamais sa valeur
         brute, qui pourrait porter une séquence d'échappement du terminal."""
         self.jusqu_a("accord-gardien")
-        piege = "2026-11-02T11:00:00Z\x1b]0;titre\x07\x1b[2J"
+        piege = "2026-11-02T11:00:00Z\x1b]0;title\x07\x1b[2J"
         inv = self.invitation()
         self.ecrire_invitation({**inv, "propose_le": "2026-10-30T11:00:00+01:00", "accord_gardien": {**inv["accord_gardien"], "le": piege}})
         texte = self.ok("voir", "I-0001")
@@ -14463,7 +14463,7 @@ class TestR13SuivableRuche0052(BaseInvitations):
         ni commande de workflow (« :: » en début de ligne, « ##[ »), ni échappement du terminal, ni fausse ligne de bee."""
         self.jusqu_a("proposee")
         inv = self.invitation()
-        self.ecrire_invitation({**inv, "demande": "garant\n::warning::demande", "autres_identites": ["gitlab:y\x1b]0;titre\x07"],
+        self.ecrire_invitation({**inv, "demande": "garant\n::warning::demande", "autres_identites": ["gitlab:y\x1b]0;title\x07"],
                                 "personne": {"identifiant": "github:x\n::error::identifiant",
                                              "canal": "https://github.com/x\n##[error]canal\x1b[2J\nIdentifiant : github:leurre"}})
         texte = self.ok("voir", "I-0001")
@@ -14476,7 +14476,7 @@ class TestR13SuivableRuche0052(BaseInvitations):
                          ["Identifiant : github:x\\n: :error::identifiant ; canal : https://github.com/x\\n# #[error]canal<U+001B>[2J"
                           "\\nIdentifiant : github:leurre"], "une seule ligne d'identités, le leurre y reste visible")
         self.assertIn("demande : garant\\n: :warning::demande ; attend", avant_donnees)
-        self.assertIn("Autres identités déclarées : gitlab:y<U+001B>]0;titre<U+0007>", avant_donnees)
+        self.assertIn("Autres identités déclarées : gitlab:y<U+001B>]0;title<U+0007>", avant_donnees)
 
     def test_ruche_0088_frame_header_and_essaim_quote_an_invitation_neutralised(self):
         """ruche-0088: the identifier in bee voir's frame header and the invitation's texts in bee essaim are quoted like any other."""
@@ -21185,7 +21185,7 @@ class TestChargeurCRuche0130(unittest.TestCase):
         "TestChargeurCRuche0130.test_differentiel_des_deux_analyseurs",
     )
     # name: (text, part of the refusal, whether libyaml's loader alone accepts it)
-    REFUS = {
+    REFUS_DU_CHARGEUR = {
         "ancre": ("statut: &s reservee\n", "ancre YAML (&…) refusée", True),
         "ancre et alias": ("statut: &s reservee\ntitre: *s\n", "ancre YAML (&…) refusée", True),
         "alias seul": ("statut: reservee\ntitre: *s\n", "alias YAML (*…) refusé", False),
@@ -21233,8 +21233,8 @@ class TestChargeurCRuche0130(unittest.TestCase):
 
     def test_chaque_refus_du_chargeur_avec_son_message(self):
         if hasattr(sys, "set_int_max_str_digits"):  # Python 3.11 and later: an integer too long is refused too (ruche-0040)
-            self.REFUS = {**self.REFUS, "entier démesuré": ("motif: " + "9" * 5000 + "\n", "Exceeds the limit", False)}
-        for nom, (texte, refus, seul_c_accepte) in self.REFUS.items():
+            self.REFUS_DU_CHARGEUR = {**self.REFUS_DU_CHARGEUR, "entier démesuré": ("motif: " + "9" * 5000 + "\n", "Exceeds the limit", False)}
+        for nom, (texte, refus, seul_c_accepte) in self.REFUS_DU_CHARGEUR.items():
             messages = {}
             for analyseur, chargeur_c in analyseurs():
                 with self.subTest(nom, analyseur=analyseur), mock.patch.object(bee, "_ChargeurBeeC", chargeur_c):
