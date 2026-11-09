@@ -59,6 +59,11 @@ class Names:
         self.schemas = {f"schemas/{f['schema']}": n for n, f in self.fam.items() if f.get("schema")}
         self.hand, self.code = [(glob_re(h["files"]), h) for h in m["hand"]], set(m["code"])
         self.new, self.sides, self.cli = [glob_re(g) for g in m.get("new") or []], {}, None
+        self.kept = tuple(a for a, b in m["paths"].items() if a == b)  # ruche-0153: paths the switch leaves where they are (the judge)
+
+    def kept_path(self, p):
+        """A path, or a folder named without its final /, that the path map keeps as it is (ruche-0153: the common judge)."""
+        return any(p == k or p == k.rstrip("/") or k.endswith("/") and p.startswith(k) for k in self.kept)
 
     def commands(self, text, inv=False):
         """Change 10 (ruche-0153): `bee <command>` and its options renamed in the code of a Markdown text, by the code map's
@@ -287,8 +292,8 @@ class Names:
         problems += [f"hand entry {h['files']}: one of same, becomes, removed" + " (commands: with same or becomes)" * bool(h.get("commands"))
                      for _, h in self.hand if sum(bool(h.get(k)) for k in ("same", "becomes", "removed")) != 1 or h.get("commands") and h.get("removed")]
         removed = {h["files"] for h in m["hand"] if h.get("removed")}
-        problems += [f"retired name {r}: neither a French path of the map nor a removed file" for r in m["retired"]
-                     if r not in m["paths"] and r not in removed or r in m["paths"].values()]
+        problems += [f"retired name {r}: neither a path the map moves nor a removed file" for r in m["retired"]
+                     if self.path(r) == r and r not in removed or r in m["paths"].values()]
         if len(self.schemas) != sum(bool(f.get("schema")) for f in self.fam.values()) or self.path(MAPS[0]) != MAPS[1]:
             problems.append(f"a schema serves two families, or the map does not move {MAPS[0]} to {MAPS[1]}")
         if not (re.fullmatch(r"\d{4}-\d\d-\d\d", str(m["date_d"])) and str(m["date_d"]) >= "2027-01-01"):

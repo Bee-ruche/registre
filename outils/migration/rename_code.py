@@ -55,7 +55,7 @@ class CodeMap:
             [pairs[str(a)].add(str(b)) for a, b in d.items()]
         for a, b in nm["cli"]["commands"].items():  # a subcommand's own name: « invitation accord-conseil » -> council-approval
             [pairs[a.split(" ")[1]].add(b.split(" ")[1]) for _ in [1] if " " in a]
-        for a, b in nm["paths"].items():  # each folder and file name of the path map, and a file's stem (a schema's name)
+        for a, b in ((a, b) for a, b in nm["paths"].items() if a != b):  # each folder and file name the path map moves, and a file's stem
             for x, y in zip(a.strip("/").split("/"), b.strip("/").split("/")):
                 pairs[x].add(y)
                 [pairs[x.split(".")[0]].add(y.split(".")[0]) for _ in [1] if "." in x and x.partition(".")[2] == y.partition(".")[2]]
@@ -180,6 +180,8 @@ class CodeMap:
         """The English of a whole literal shaped as a name: a token, a node id, a path, or names joined by / or a dot."""
         if s in self.tokens or s in self.hand or not re.fullmatch(NAME_SHAPE, s):
             return self.tokens.get(s, s)
+        if self.names.kept_path(s):  # ruche-0153: a path the switch leaves as it is (the common judge), every segment as written
+            return s
         seg = self.names.m["tree"]["segments"]
         if "/" in s and s.split("/")[0] in ("racine", "roles", "projets") and all(x in seg for x in s.split("/")):
             return "/".join(seg[x] for x in s.split("/"))
@@ -600,7 +602,7 @@ class CodeMap:
                    x != y and x not in self.targets for x, y in zip(WORD.split(a), WORD.split(b))))]
         frozen, seen = self.frozen(tree, scopes), {int(x.split(":")[0][5:]) for x in out}
         return out + [f"line {c.lineno}: « {c.value[:50]} » holds the French name « {w} »" for c in ast.walk(tree) if isinstance(c, ast.Constant)
-                      and isinstance(c.value, str) and not re.search(r"\s", c.value) and c.lineno not in frozen | seen and c.value not in kept for w in dict.fromkeys(
+                      and isinstance(c.value, str) and not re.search(r"\s", c.value) and c.lineno not in frozen | seen and c.value not in kept and not self.names.kept_path(c.value) for w in dict.fromkeys(
                           re.findall(r"[\w-]+", c.value)) if self.named.get(w, w) != w and w not in self.hand.keys() | self.targets | kept]
 
     def attribute_names(self, tree, dests):
