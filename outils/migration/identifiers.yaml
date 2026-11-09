@@ -248,7 +248,7 @@ english: [
   judged, judges,
   judging, jumps, justified, justifies, kb, keep, keepends, keeper, keeping, keeps, kept, key, keybase, keyboard,
   keys,
-  keyword, keywords, kids, kill, kind, kinds, kn, known, ko, kr, kv, kwargs, label, labels, lag, lagging, lambda,
+  keyword, keywords, kids, kill, kind, kinds, kn, known, ko, kr, kv, kwarg, kwargs, label, labels, lag, lagging, lambda,
   landmarks, language,
   languages, large, largest, last, late, later, launch, launched, laundered, lay, lc, lead, leads, leaf, least,
   leaves,
@@ -3639,6 +3639,7 @@ attributes:
   suivant: next
   travail: workdir
 tokens:
+  Conseil: Council
   DECLARE_MAX: DECLARED_MAX
   fusionnee_le: merged_at
   defauts: defects
@@ -3963,6 +3964,23 @@ kept_in_scopes:
            test_the_council_and_the_robots_stay_reserved_whatever_the_list_says, test_a_missing_or_empty_list_refuses_every_new_member]
   tokens: [conseil, mesurer, relire, optimiser, proposer, gardien]
   why: 'logins: bee.yaml''s reserved logins, unchanged by the switch (plan, section 13), which these tests name as written'
+- files: outils/test_bee.py
+  scopes: [test_ill_formed_declarations]
+  tokens: [comptes]
+  why: 'a seeded mistake: an unknown top-level key, which the old name stays after the switch'
+- files: outils/test_bee.py
+  scopes: [test_un_fichier_au_dela_de_sa_borne_est_refuse_sans_etre_lu, test_un_nom_de_traverse_au_dela_de_la_borne_de_son_dossier_n_est_pas_lu,
+           test_a_name_ending_with_a_carriage_return_is_sized_exactly]
+  tokens: [ENORME]
+  why: 'a filler whose length the bounds tests count (bound // 7 + 1 copies of a 7-byte word)'
+- files: outils/test_bee.py
+  scopes: [TestSuiteEnParallele, setUp, lancer, test_each_test_runs_exactly_once, test_a_test_added_or_removed_after_the_split_fails_the_run,
+           test_a_split_that_drops_or_doubles_a_test_or_leaves_a_shard_empty_runs_nothing_and_fails,
+           test_a_shard_that_ran_nothing_or_reported_nothing_fails_the_run, test_a_failed_shard_fails_the_run,
+           test_a_bad_number_of_processes_runs_nothing, test_a_skip_an_expected_failure_or_an_unexpected_success_fails_the_run,
+           test_each_shards_log_prints_as_soon_as_it_ends]
+  tokens: [ECART, ECHEC, LENT]
+  why: 'the environment variables of the parallel runner''s fixture module, which reads them in its own text'
 strings:
 - files: outils/inventaire_marqueurs.py
   tokens: [ATTENTE_VERDICT, ETATS, FICHIERS_LIBRE_SERVICE, ISSUES_DEBAT, MNEMONIQUES_SUSPECTS, MOIS, MOTS_SOURCE, PHRASE_DEMANDE,

@@ -224,7 +224,8 @@ class CodeMap:
         t = re.sub(r"(?<=\{)[A-Za-z_]\w*(?=[}!:.\[])|(?<=%\()[A-Za-z_]\w*(?=\))", lambda x: self.ids.get(x[0], x[0]), t)  # as .format(name=)
         t = re.sub(r"(?<=\(\?P=)\w+(?=\))|(?<=\\g<)\w+(?=>)", lambda x: self.tokens.get(x[0], x[0]), t)  # regex back-references, as m["name"]
         t = re.sub(r"(?<=\()(\?:)?([\w-]+(?:\|[\w-]+)+)(?=\)/)", lambda x: (x[1] or "") + "|".join(map(self.name, x[2].split("|"))), t)  # (a|b)/
-        t = re.sub(r"(?<![\w-])[a-z_][\w-]*(?=\]?=)|(?<=\^)[a-z_][\w-]*(?=:)", lambda x: self.name(x[0]), t)  # k=, x[k]=, a pattern's ^key:
+        t = re.sub(r"(?<![\w-])[a-z_][\w-]*(?=\]?=)|(?<=\^)[a-z_][\w-]*(?=:)", lambda x: self.name(x[0]), t)
+        t = re.sub(r"(?<=\^)([ \t]*- )([a-z_][\w-]*)(?=:)", lambda x: x[1] + self.name(x[2]), t)  # a pattern's ^  - key: (ruche-0153)  # k=, x[k]=, a pattern's ^key:
         t = re.sub(r"((?<![\w/.-])bee +|(?<![\w.-])bee\.py +)([a-z][\w-]*)( +[a-z][\w-]*)?", lambda x: x[1] + self.command(x[2], x[3] or ""), t)
         t = re.sub(r"(?<=\$)\{?([A-Za-z_]\w*)", lambda x: x[0].replace(x[1], self.whole(x[1])), t)  # a shell's $variable
         return re.sub(r"(?<![\w.])bee\.([A-Za-z_]\w*)", lambda x: "bee." + self.ids.get(x[1], x[1]), t)
@@ -359,11 +360,14 @@ class CodeMap:
         [starts.append(starts[-1] + len(x) + 1) for x in lines]
         frozen = self.frozen(tree, scopes)
         roles = {(c.lineno, len(lines[c.lineno - 1].encode()[:c.col_offset].decode())) for c in identifier_strings(tree)}  # bytes -> characters
+        data = {(k.lineno, len(lines[k.lineno - 1].encode()[:k.col_offset].decode())) for k in data_keywords(tree)}  # ruche-0153
         edits, changes, prev, where = {}, [], None, scopes_of(tree)
         for tok in tokenize.generate_tokens(io.StringIO(source).readline):
             a, b = starts[tok.start[0] - 1] + tok.start[1], starts[tok.end[0] - 1] + tok.end[1]
             d, prev = self.attrs if prev == "." else self.ids, tok.string if tok.type not in (tokenize.NL, tokenize.COMMENT, tokenize.NEWLINE) else prev
-            if tok.type == tokenize.NAME and tok.string in d:
+            if tok.type == tokenize.NAME and tok.start in data:  # a keyword argument that is a data key (**kwargs): as a key
+                new = w if (w := self.whole(tok.string)).isidentifier() and not keyword.iskeyword(w) else tok.string
+            elif tok.type == tokenize.NAME and tok.string in d:
                 new = d[tok.string]
             elif tok.type in (tokenize.STRING, tokenize.FSTRING_MIDDLE) and tok.start[0] not in frozen:
                 if source[a:b] != tok.string:
@@ -549,6 +553,7 @@ class CodeMap:
         whole() or token by token; numbers, operators, structure identical; no two dict keys merge. counts: each mapping."""
         problems, tree, (scopes, kept), keeping = [], ast.parse(old), self.kept(path), self.keeping
         where, roles, frozen = scopes_of(tree), {(c.lineno, c.col_offset) for c in identifier_strings(tree)}, self.frozen(tree, scopes)
+        data = data_keywords(tree)  # ruche-0153: keyword arguments that are data keys, renamed as keys
         self.keeping = kept
 
         def same(a, b, line):
@@ -580,6 +585,8 @@ class CodeMap:
                     counts.update(("string", p, q) for p, q in pairs or [])
                 elif isinstance(x, str) and isinstance(y, str):
                     e = ".".join(self.ids.get(p, p) for p in x.split(".")) if f == "module" else (self.attrs if f == "attr" else self.ids).get(x, x)
+                    if a in data and f == "arg":
+                        e = w if (w := self.whole(x)).isidentifier() and not keyword.iskeyword(w) else x
                     problems.extend([f"line {line}: the identifier {x} became {y}, the map says {e}"] if y != e else [])
                     counts.update([("identifier", x, y)] if x != y else [])
                 else:
@@ -650,6 +657,19 @@ class CodeMap:
                 for r, s in found if isinstance(s, ast.Constant) and isinstance(s.value, str) and bad(s.value, r)] + [
             f"line {n.lineno}: the template's « {{{x}}} » is given by no keyword of format()" for n, t in formats if isinstance(t, str)
             for x in sorted(set(re.findall(r"(?<!\{)\{([A-Za-z_]\w*)", t)) - {k.arg for k in n.keywords})]
+
+def data_keywords(tree):
+    """ruche-0153: the keyword arguments that are data, not names of the code: given to dict(), patch.dict() or .update() (keys,
+    environment variables), or to a function of this file, called by its name, that takes them in **kwargs (every def of that name
+    lacks that parameter), as a fake API's fields (status="in_progress")."""
+    defs = collections.defaultdict(list)
+    for n in ast.walk(tree):
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):  # (takes **kwargs, its parameters)
+            defs[n.name].append((n.args.kwarg is not None, {x.arg for x in ast.walk(n.args) if isinstance(x, ast.arg)}))
+    return {k for c in ast.walk(tree) if isinstance(c, ast.Call) for k in c.keywords if k.arg and (
+        (n := c.func.id if isinstance(c.func, ast.Name) else getattr(c.func, "attr", None)) in ("dict", "update") and n not in defs or
+        defs.get(n) and all(takes and k.arg not in p for takes, p in defs[n]))}
+
 
 def identifier_strings(tree, deep=True):
     """The string constants that are attribute names: given to getattr, setattr, hasattr or delattr, a key of vars(x), the
