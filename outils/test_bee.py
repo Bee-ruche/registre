@@ -391,8 +391,8 @@ class TestCiScope(unittest.TestCase):
         etapes = yaml.safe_load((RACINE / ".github/workflows/validation.yml").read_text(encoding="utf-8"))["jobs"]["controles"]["steps"]
         suite = yaml.safe_load((RACINE / ".github/workflows/suite.yml").read_text(encoding="utf-8"))["jobs"]["tests"]["steps"]
         nom = lambda debut, dans=etapes: next(s for s in dans if s.get("name", "").startswith(debut))  # noqa: E731
-        return etapes, {"portee": nom("Scope of the PR"), "push": nom("Scope of the push"), "outil": nom("Tests de l'outil", suite), "juge": nom("Tests unitaires du juge", suite),
-                        "reel": nom("Tests that read the live registry"), "valider": nom("Validation complète"), "vert": nom("Main for a data-only push"),
+        return etapes, {"portee": nom("Scope of the PR"), "push": nom("Scope of the push"), "outil": nom("Tests de l'outil", suite), "juge": nom("Tests unitaires du juge commun (sans Docker ; méta-tests dans juge-commun.yml)", suite),
+                        "reel": nom("Tests that read the live registry"), "valider": nom("Validation complète du registre"), "vert": nom("Main for a data-only push"),
                         "regles": nom("Règles de la pull request")}
 
     def rejouer(self, script, env, cwd=None):
@@ -573,7 +573,7 @@ class TestCiScope(unittest.TestCase):
         self.assertNotIn("BEE", r.stdout, "the gate never runs without GitHub's record")
         # ruche-0120: fusion-auto reads, with the PRs' validations, each run's creation (TestPasseFusion: the gate gets it).
         etape = next(s for s in yaml.safe_load((RACINE / ".github/workflows/fusion-auto.yml").read_text(encoding="utf-8"))["jobs"]
-                     ["verifier"]["steps"] if s.get("name", "").startswith("Lister les PR ouvertes"))
+                     ["verifier"]["steps"] if s.get("name", "").startswith("Lister les PR ouvertes et leurs validations (ruche-0120)"))
         self.assertIn("--jq '.workflow_runs[] | [.id, .head_sha, .created_at] | @tsv'", etape["run"])
 
     def test_the_data_only_step_runs_exactly_the_tests_allowed_to_read_live_data(self):
@@ -6219,7 +6219,7 @@ class TestRevueAdverse(BaseParallele):
         etats = {PR_MINIZ + "99101": {"state": "OPEN", "head": "abc1234", "auteur": "bruno"},
                  PR_MINIZ + "99102": {"state": "OPEN", "head": "0ddba11", "auteur": "alice"}}
         self.a("2026-11-01T00:00:00Z")  # entre F et F + 24 h
-        _, etat, appels = self.etape("Intégrer", etats)
+        _, etat, appels = self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné", etats)
         self.assertFalse(self.appels_de(appels, "pr", "merge"))
         code, texte = self.acceptation(c1)
         self.assertEqual(code, 1, texte)
@@ -6227,7 +6227,7 @@ class TestRevueAdverse(BaseParallele):
         self.assertIn("2026-11-01T14:00:00Z", texte)
         self.a("2026-11-01T14:00:00Z")  # F + 24 h : plus personne ne retient c1
         self.assertEqual(self.acceptation(c1)[0], 0)
-        _, etat, appels = self.etape("Intégrer")
+        _, etat, appels = self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné")
         self.assertEqual([a["args"][2] for a in self.appels_de(appels, "pr", "merge")], [PR_MINIZ + "99101"])
         self.assertEqual((self.enr(c1)["statut"], self.enr(c2)["statut"], self.enr(c2)["retenue"]), ("integree", "ecartee", c1))
         self.assertLessEqual(bee.lire_instant("2026-11-01T14:00:00Z") - bee.lire_instant(self.enr(c1)["soumise_le"]),
@@ -6238,11 +6238,11 @@ class TestRevueAdverse(BaseParallele):
         etats = {PR_MINIZ + "99101": {"state": "OPEN", "head": "abc1234", "auteur": "bruno"},
                  PR_MINIZ + "99102": {"state": "OPEN", "head": "abc1234", "auteur": "alice", "conflit": True}}
         self.a("2026-10-31T15:00:00Z")  # entre F et F + 24 h : la mieux classée est essayée d'abord, en vain
-        _, _, appels = self.etape("Intégrer", etats)
+        _, _, appels = self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné", etats)
         self.assertEqual([a["args"][2] for a in self.appels_de(appels, "pr", "merge")], [PR_MINIZ + "99102"])
         self.assertEqual(self.enr(c1)["statut"], "en_relecture")
         self.a("2026-11-01T14:00:00Z")
-        _, etat, _ = self.etape("Intégrer")
+        _, etat, _ = self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné")
         self.assertEqual(etat[PR_MINIZ + "99101"]["state"], "MERGED")
         self.assertEqual((self.enr(c1)["statut"], self.enr(c2)["statut"]), ("integree", "ecartee"))
 
@@ -6252,7 +6252,7 @@ class TestRevueAdverse(BaseParallele):
                                       "fichiers": ["bee/ci/verdict.py", ".github/workflows/bee-ci.yml"]},
                  PR_MINIZ + "99102": {"state": "OPEN", "head": "abc1234", "auteur": "alice", "fichiers_illisibles": True}}
         self.a("2026-11-02T00:00:00Z")  # au-delà de 120 h : plus rien ne retient l'une ou l'autre
-        sortie, etat, appels = self.etape("Intégrer", etats)
+        sortie, etat, appels = self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné", etats)
         self.assertFalse(self.appels_de(appels, "pr", "merge"), "ni un workflow modifié, ni une liste de fichiers illisible")
         self.assertIn("modifie un workflow de CI", sortie)
         self.assertIn("fichiers de la PR illisibles", sortie)
@@ -6260,7 +6260,7 @@ class TestRevueAdverse(BaseParallele):
         self.assertEqual((self.enr(c1)["statut"], self.enr(c2)["statut"]), ("en_relecture", "en_relecture"))
         # Fusionnée à la main par le conseil sur le commit jugé : consignée au passage suivant.
         etat[PR_MINIZ + "99102"].update({"state": "MERGED", "merge": "e" * 40, "fichiers_illisibles": False})
-        _, _, appels = self.etape("Intégrer", etat)
+        _, _, appels = self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné", etat)
         self.assertFalse(self.appels_de(appels, "pr", "merge"))
         self.assertEqual((self.enr(c2)["statut"], self.enr(c2).get("fusion_sha")), ("integree", "e" * 40))
 
@@ -6283,7 +6283,7 @@ class TestRevueAdverse(BaseParallele):
         etats = {PR_MINIZ + "99007": {"state": "OPEN", "head": "abc1234", "auteur": "alice"},
                  victime: {"state": "OPEN", "head": "beefcafe", "auteur": "mallory"}}
         self.a("2026-10-31T12:00:00Z")
-        _, etat, appels = self.etape("Intégrer", etats)
+        _, etat, appels = self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné", etats)
         self.assertEqual((self.enr(c1)["statut"], self.enr(c2)["statut"]), ("integree", "ecartee"))
         self.assertFalse(self.appels_de(appels, "pr", "close"), "aucune fermeture avant la publication du registre")
         sortie, etat, appels = self.etape("Fermer")
@@ -6369,7 +6369,7 @@ class TestRevueAdverse(BaseParallele):
         self.init_git()
         etats = {PR_MINIZ + "99101": {"state": "OPEN", "head": "abc1234", "auteur": "bruno"},
                  PR_MINIZ + "99102": {"state": "OPEN", "head": "abc1234", "auteur": "alice"}}
-        _, etat, appels = self.etape("Intégrer", etats)
+        _, etat, appels = self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné", etats)
         self.assertEqual(etat[PR_MINIZ + "99102"]["state"], "MERGED")
         self.assertEqual(etat[PR_MINIZ + "99101"]["state"], "OPEN", "rien n'est fermé avant la publication")
         self.assertFalse(self.appels_de(appels, "pr", "close"))
@@ -6378,7 +6378,7 @@ class TestRevueAdverse(BaseParallele):
         self.assertEqual((self.enr(c1)["statut"], self.enr(c2)["statut"]), ("en_relecture", "en_relecture"))
         etat[PR_MINIZ + "99101"]["state"] = "CLOSED"
         (self.dossier.parent / "etat_pr.json").write_text(json.dumps(etat), encoding="utf-8")
-        self.etape("Intégrer")
+        self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné")
         self.assertEqual(self.enr(c2)["statut"], "integree")
         self.assertEqual((self.enr(c1)["statut"], self.enr(c1).get("retenue")), ("ecartee", c2), "écartée, pas annulée")
         self.valide()
@@ -6386,7 +6386,7 @@ class TestRevueAdverse(BaseParallele):
         self.assertEqual(niveaux["chloe"]["relectures"], 1, "+1 pour c2 intégrée, 0 pour c1 écartée")
         # Un passage de plus ne change rien.
         avant = (self.dossier / f"contributions/miniz/{c1}.yaml").read_text(encoding="utf-8")
-        self.etape("Intégrer")
+        self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné")
         self.assertEqual((self.dossier / f"contributions/miniz/{c1}.yaml").read_text(encoding="utf-8"), avant)
 
     def test_I2_cloturer_ne_clot_pas_quand_une_concurrente_est_fusionnee(self):
@@ -6685,18 +6685,18 @@ class TestRevueAdverse(BaseParallele):
         self.a("2026-10-28T13:00:00Z")
         self.assertEqual(self.acceptation(c1)[0], 0, "intégrable pour bee : seul le workflow voit à qui est la PR")
         etats = {PR_MINIZ + "99007": {"state": "OPEN", "head": "abc1234", "auteur": "mallory"}}
-        sortie, etat, appels = self.etape("Intégrer", etats)
+        sortie, etat, appels = self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné", etats)
         self.assertIn("ouverte par mallory, pas par alice ; ni fusionnée ni consignée", sortie)
         self.assertFalse(self.appels_de(appels, "pr", "merge"))
         self.assertEqual((etat[PR_MINIZ + "99007"]["state"], self.enr(c1)["statut"]), ("OPEN", "en_relecture"))
         # Déjà fusionnée à la main, elle n'est pas consignée non plus au nom d'alice.
         etats[PR_MINIZ + "99007"].update({"state": "MERGED", "merge": "e" * 40})
-        sortie, _, _ = self.etape("Intégrer", etats)
+        sortie, _, _ = self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné", etats)
         self.assertIn("ni fusionnée ni consignée", sortie)
         self.assertEqual(self.enr(c1)["statut"], "en_relecture")
         # La même PR, ouverte par alice : consignée, avec le commit de fusion.
         etats[PR_MINIZ + "99007"]["auteur"] = "alice"
-        self.etape("Intégrer", etats)
+        self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné", etats)
         self.assertEqual((self.enr(c1)["statut"], self.enr(c1)["fusion_sha"]), ("integree", "e" * 40))
         self.valide()
 
@@ -10005,7 +10005,7 @@ class TestRelireParCommitPR(BaseRepetitionGenerale):
     def relire(self, qui, avis="favorable", *options):
         self.geste(qui, "relire", self.cid, *self.lu(self.cid), "--utilisateur", qui, "--avis", avis, "--motif", "Diff du commit relu en entier.", *options)
 
-    def relecture(self, qui, avis="favorable", **champs):
+    def fiche_relecture(self, qui, avis="favorable", **champs):
         return {"relecteur": qui, "avis": avis, "motif": "Diff du commit relu en entier.", "le": os.environ["BEE_MAINTENANT"], **champs}
 
     def attaque(self, auteur, modifier, *morceaux):
@@ -10044,10 +10044,10 @@ class TestRelireParCommitPR(BaseRepetitionGenerale):
 
     def test_avant_le_verdict_ni_commit_invente_ni_seconde_relecture_ni_defaut(self):
         self.relire("gaspard")
-        self.attaque("farid", self.ajout(self.relecture("farid", sha="abc1234")), "pas de verdict ni de commit jugé")
-        self.attaque("gaspard", self.ajout(self.relecture("gaspard", "defavorable")),
+        self.attaque("farid", self.ajout(self.fiche_relecture("farid", sha="abc1234")), "pas de verdict ni de commit jugé")
+        self.attaque("gaspard", self.ajout(self.fiche_relecture("gaspard", "defavorable")),
                      "gaspard a déjà relu cette contribution : une relecture sans commit")
-        self.attaque("farid", self.ajout(self.relecture("farid", "defavorable", defaut_signale=True)),
+        self.attaque("farid", self.ajout(self.fiche_relecture("farid", "defavorable", defaut_signale=True)),
                      "un défaut se signale sur le commit jugé, jamais par une abstention")
 
     def test_detournements_des_relectures_par_commit(self):
@@ -10057,26 +10057,26 @@ class TestRelireParCommitPR(BaseRepetitionGenerale):
         self.verdict_sur_main("def5678")
         self.relire("gaspard")
         attaques = [
-            ("farid", self.ajout(self.relecture("chloe", sha="def5678")), "une relecture ajoutée doit être celle de farid"),
-            ("farid", self.ajout(self.relecture("farid", sha="1234567")), "porte le commit du verdict (def5678)"),
-            ("farid", self.ajout(self.relecture("farid", sha="abc1234")), "porte le commit du verdict (def5678)"),
-            ("farid", self.ajout(self.relecture("farid")), "porte le commit du verdict (def5678)"),
-            ("gaspard", self.ajout(self.relecture("gaspard", "defavorable", sha="def5678")), "gaspard a déjà relu le commit def5678"),
-            ("farid", self.ajout(self.relecture("farid", sha="def5678"), self.relecture("farid", "defavorable", sha="def5678")),
+            ("farid", self.ajout(self.fiche_relecture("chloe", sha="def5678")), "une relecture ajoutée doit être celle de farid"),
+            ("farid", self.ajout(self.fiche_relecture("farid", sha="1234567")), "porte le commit du verdict (def5678)"),
+            ("farid", self.ajout(self.fiche_relecture("farid", sha="abc1234")), "porte le commit du verdict (def5678)"),
+            ("farid", self.ajout(self.fiche_relecture("farid")), "porte le commit du verdict (def5678)"),
+            ("gaspard", self.ajout(self.fiche_relecture("gaspard", "defavorable", sha="def5678")), "gaspard a déjà relu le commit def5678"),
+            ("farid", self.ajout(self.fiche_relecture("farid", sha="def5678"), self.fiche_relecture("farid", "defavorable", sha="def5678")),
              "farid a déjà relu le commit def5678"),
-            ("farid", self.ajout(self.relecture("farid", sha="def5678"), self.relecture("farid", "abstention", sha="def5678")),
+            ("farid", self.ajout(self.fiche_relecture("farid", sha="def5678"), self.fiche_relecture("farid", "abstention", sha="def5678")),
              "farid a déjà relu le commit def5678"),
-            ("farid", self.ajout(self.relecture("farid", sha="def5678", le="2026-10-01T00:00:00Z")), "doit être l'heure de la PR"),
-            ("farid", self.ajout(self.relecture("farid", "abstention", sha="def5678", defaut_signale=True)),
+            ("farid", self.ajout(self.fiche_relecture("farid", sha="def5678", le="2026-10-01T00:00:00Z")), "doit être l'heure de la PR"),
+            ("farid", self.ajout(self.fiche_relecture("farid", "abstention", sha="def5678", defaut_signale=True)),
              "jamais par une abstention"),
-            ("farid", self.ajout(self.relecture("farid", "neutre", sha="def5678")), "neutre"),
+            ("farid", self.ajout(self.fiche_relecture("farid", "neutre", sha="def5678")), "neutre"),
         ]
 
         def rajeunir(enr):  # gaspard fait porter son ancienne relecture sur le commit jugé
             enr["relectures"][1]["sha"] = "def5678"
 
         def retourner(enr):  # farid relit, et change au passage l'avis d'une relecture existante
-            enr["relectures"].append(self.relecture("farid", sha="def5678"))
+            enr["relectures"].append(self.fiche_relecture("farid", sha="def5678"))
             enr["relectures"][2]["avis"] = "defavorable"
 
         def confirmer_ailleurs(enr):  # la confirmation déplace le défaut sur le commit jugé
@@ -10099,7 +10099,7 @@ class TestRelireParCommitPR(BaseRepetitionGenerale):
         self.verdict_sur_main("def5678")
         for avis, champs in (("defavorable", {}), ("abstention", {}), ("defavorable", {"defaut_signale": True})):
             with self.subTest(avis=avis, **champs):
-                self.attaque("farid", self.ajout(self.relecture("farid", avis, sha="def5678", **champs)), "farid est en course")
+                self.attaque("farid", self.ajout(self.fiche_relecture("farid", avis, sha="def5678", **champs)), "farid est en course")
         self.relire("farid")
 
     def test_levees_et_comptes_inscrits(self):
@@ -10123,7 +10123,7 @@ class TestRelireParCommitPR(BaseRepetitionGenerale):
                  "par le conseil seul"),
                 ("bidji29", lambda e: e.update(levees=[{**levee, "motif": "Motif réécrit après coup."}]), "en ajout seul"),
                 ("bidji29", lambda e: e.update(levees=e["levees"] + [{**levee, "le": "2026-10-01T00:00:00Z"}]), "doit être l'heure de la PR"),
-                ("zorro", self.ajout(self.relecture("zorro", "defavorable", sha="abc1234", defaut_signale=True)), "zorro doit d'abord s'inscrire")):
+                ("zorro", self.ajout(self.fiche_relecture("zorro", "defavorable", sha="abc1234", defaut_signale=True)), "zorro doit d'abord s'inscrire")):
             with self.subTest(auteur=auteur, morceau=morceau):
                 self.attaque(auteur, modifier, morceau)
         self.branche("vote")
@@ -10159,7 +10159,7 @@ class TestRelireParCommitPR(BaseRepetitionGenerale):
         for arbre, morceau in ((None, "porte l'arbre du verdict de la base (7ee0001)"), ("7ee0002", "porte l'arbre du verdict de la base")):
             with self.subTest(arbre=arbre):
                 champs = {"sha": "abc1234", **({"arbre": arbre} if arbre else {})}
-                self.attaque("farid", self.ajout(self.relecture("farid", **champs)), morceau)
+                self.attaque("farid", self.ajout(self.fiche_relecture("farid", **champs)), morceau)
         self.relire("farid")
         self.assertEqual(bee.lire_yaml(self.chemin)["relectures"][-1]["arbre"], "7ee0001")
         self.branche("inscription")
@@ -14841,7 +14841,7 @@ class TestManifesteRecopie(BaseRepetitionGenerale):
         self.assertIn("::notice::PIEGE", self.enr()["declare"]["doutes"], "recopié, sur une ligne")
         self.valide()
         # bee verifier-acceptation, dans le journal de la CI : modèle et gain seuls, encadrés, « ##[ » neutralisé où qu'il soit.
-        sortie, _, _ = TestRevueAdverse.etape(self, "Intégrer", etats)
+        sortie, _, _ = TestRevueAdverse.etape(self, "Intégrer ce qui satisfait R3, clore ce qui est abandonné", etats)
         self.assertIn("| modele: ", sortie)
         self.assertIn("# #[error]PIEGE ## #[add-mask]verte", sortie)
         self.assertNotIn("##[", sortie)
@@ -15133,13 +15133,13 @@ class TestTour3(BaseParallele):
                                       "evenements": ["automatic_base_change_succeeded"]},
                  PR_MINIZ + "99102": {"state": "OPEN", "head": "abc1234", "auteur": "alice",
                                       "chronologie": [{"event": "base_ref_changed", "created_at": "2026-10-28T10:00:00Z"}]}}
-        sortie, etat, appels = TestRevueAdverse.etape(self, "Intégrer", etats)
+        sortie, etat, appels = TestRevueAdverse.etape(self, "Intégrer ce qui satisfait R3, clore ce qui est abandonné", etats)
         self.assertFalse(TestRevueAdverse.appels_de(appels, "pr", "merge"), sortie)
         self.assertEqual(sortie.count("la base de la PR a changé"), 2, sortie)
         self.assertIn("repos/Bee-ruche/minizBee/issues/99102/timeline?per_page=100", [a["args"][1] for a in appels])
         self.assertEqual((self.enr(c1)["statut"], self.enr(c2)["statut"]), ("en_relecture", "en_relecture"))
         del etats[PR_MINIZ + "99101"]["evenements"]  # parcours honnête : une base jamais changée
-        sortie, etat, appels = TestRevueAdverse.etape(self, "Intégrer", etats)
+        sortie, etat, appels = TestRevueAdverse.etape(self, "Intégrer ce qui satisfait R3, clore ce qui est abandonné", etats)
         self.assertEqual([a["args"][2] for a in TestRevueAdverse.appels_de(appels, "pr", "merge")], [PR_MINIZ + "99101"], sortie)
         self.assertEqual((self.enr(c1)["statut"], self.enr(c2)["statut"]), ("integree", "ecartee"))
 
@@ -15248,15 +15248,15 @@ class TestTour3(BaseParallele):
         self.a("2026-11-02T00:00:00Z")
         etats = {PR_MINIZ + "99101": {"state": "OPEN", "head": "abc1234", "auteur": "bruno", "base": "autre"},
                  PR_MINIZ + "99102": {"state": "OPEN", "head": "abc1234", "auteur": "alice", "base": "autre"}}
-        sortie, etats, _ = TestRevueAdverse.etape(self, "Intégrer", etats)
+        sortie, etats, _ = TestRevueAdverse.etape(self, "Intégrer ce qui satisfait R3, clore ce qui est abandonné", etats)
         self.assertEqual(sortie.count("hors de la branche par défaut du fork"), 2, sortie)
         etats[PR_MINIZ + "99102"]["base"] = etats[PR_MINIZ + "99101"]["base"] = "master"
         etats["comparaisons"] = {"f" * 40: "diverged"}  # le commit de fusion n'est pas dans master
-        sortie, etats, _ = TestRevueAdverse.etape(self, "Intégrer", etats)
+        sortie, etats, _ = TestRevueAdverse.etape(self, "Intégrer ce qui satisfait R3, clore ce qui est abandonné", etats)
         self.assertEqual(sortie.count("hors de la branche par défaut du fork"), 2, sortie)
         self.assertEqual((self.enr(c1)["statut"], self.enr(c2)["statut"]), ("en_relecture", "en_relecture"))
         del etats["comparaisons"]  # parcours honnête
-        TestRevueAdverse.etape(self, "Intégrer", etats)
+        TestRevueAdverse.etape(self, "Intégrer ce qui satisfait R3, clore ce qui est abandonné", etats)
         self.assertEqual((self.enr(c2)["statut"], self.enr(c2)["fusion_sha"], self.enr(c1)["statut"]), ("integree", "f" * 40, "ecartee"))
 
 
@@ -16789,18 +16789,18 @@ class TestAgentAccountsWorkflows(BaseParallele):
         for login in (AGENT, "Alice-Agent2", "mallory", "alice-agent-x"):
             with self.subTest(pr_by=login):
                 etats = {PR_MINIZ + "99007": {"state": "OPEN", "head": "abc1234", "auteur": login}}
-                sortie, etat, appels = self.etape("Intégrer", etats)
+                sortie, etat, appels = self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné", etats)
                 self.assertIn(f"ouverte par {login}, pas par alice ; ni fusionnée ni consignée", sortie)
                 self.assertFalse(self.appels_de(appels, "pr", "merge"))
                 self.assertEqual(self.enr(c1)["statut"], "en_relecture")
         # An unreadable declaration maps no one: the agent account's PR is then not the author's (fail closed).
         declaration = (self.dossier / bee.AGENT_ACCOUNTS).read_text(encoding="utf-8")
         (self.dossier / bee.AGENT_ACCOUNTS).write_text("accounts: [\n", encoding="utf-8")
-        sortie, _, appels = self.etape("Intégrer", {PR_MINIZ + "99007": {"state": "OPEN", "head": "abc1234", "auteur": "alice-agent"}})
+        sortie, _, appels = self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné", {PR_MINIZ + "99007": {"state": "OPEN", "head": "abc1234", "auteur": "alice-agent"}})
         self.assertIn("ouverte par alice-agent, pas par alice ; ni fusionnée ni consignée", sortie)
         self.assertFalse(self.appels_de(appels, "pr", "merge"))
         (self.dossier / bee.AGENT_ACCOUNTS).write_text(declaration, encoding="utf-8")
-        _, etat, appels = self.etape("Intégrer", {PR_MINIZ + "99007": {"state": "OPEN", "head": "abc1234", "auteur": "alice-agent"}})
+        _, etat, appels = self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné", {PR_MINIZ + "99007": {"state": "OPEN", "head": "abc1234", "auteur": "alice-agent"}})
         self.assertEqual([a["args"][2] for a in self.appels_de(appels, "pr", "merge")], [PR_MINIZ + "99007"])
         self.assertEqual(self.enr(c1)["statut"], "integree")
         self.valide()
@@ -16838,7 +16838,7 @@ class TestAgentAccountsWorkflows(BaseParallele):
         self.verdict(c1, 0.05)
         self.relire(c1, "bruno", "bidji29")
         self.a("2026-10-31T12:00:00Z")
-        self.etape("Intégrer", {PR_MINIZ + "99007": {"state": "OPEN", "head": "abc1234", "auteur": "alice"},
+        self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné", {PR_MINIZ + "99007": {"state": "OPEN", "head": "abc1234", "auteur": "alice"},
                                 PR_MINIZ + "4242": {"state": "OPEN", "head": "beefcafe", "auteur": AGENT}})
         self.assertEqual((self.enr(c1)["statut"], self.enr(c2)["statut"]), ("integree", "ecartee"))
         sortie, etat, appels = self.etape("Fermer")
@@ -16977,7 +16977,7 @@ class TestRegistryMergeRecorded(BaseParallele):
 
     def test_a_merged_registry_pr_is_recorded_from_github_s_facts(self):
         fusion = self.soumis()
-        sortie, _, appels = self.etape("Intégrer", self.etats(fusion))
+        sortie, _, appels = self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné", self.etats(fusion))
         enr = self.enr(self.cid)
         self.assertEqual((enr["statut"], enr["decidee_le"], enr["fusion_sha"]), ("integree", "2026-10-27T14:00:00Z", fusion), sortie)
         self.assertEqual(enr["motif_decision"], f"Hive tooling contribution: registry PR #9201 merged at commit c0ffee0 by {AGENT}, "
@@ -17001,7 +17001,7 @@ class TestRegistryMergeRecorded(BaseParallele):
     def test_the_record_has_the_form_of_a_hand_made_one(self):
         fusion = self.soumis()
         tache_avant = (self.dossier / "taches/ruche/ruche-9094.yaml").read_text(encoding="utf-8")
-        self.etape("Intégrer", self.etats(fusion))
+        self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné", self.etats(fusion))
         self.valide()
         # Field by field against a record the council made by hand (frozen fixture): the same fields in the same order, of the
         # same types and forms.
@@ -17155,7 +17155,7 @@ class TestRegistryMergeRecorded(BaseParallele):
     def test_a_merge_that_changes_a_workflow_is_recorded_by_hand(self):
         """N3: the CI of a PR that changes a workflow ran the PR's own version of it."""
         fusion = self.soumis(aussi=lambda: self.changer(".github/workflows/site.yml", "# changed by the PR"))
-        sortie, _, _ = self.etape("Intégrer", self.etats(fusion))
+        sortie, _, _ = self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné", self.etats(fusion))
         self.assertIn(f"::notice::{self.cid}: PR #9201 (merge commit {fusion[:7]}) changes a workflow: the council records it by hand", sortie)
         self.assertEqual(self.enr(self.cid)["statut"], "en_relecture")
         self.assertFalse(self.lignes_de(self.cid))
@@ -17174,7 +17174,7 @@ class TestRegistryMergeRecorded(BaseParallele):
                 ("CI not green", {"ci": [{"conclusion": "failure"}]}, "CI not green on the merged commit c0ffee0"),
                 ("still open", {"state": "OPEN", "fusionnee_par": None}, None)):
             with self.subTest(nom):
-                sortie, _, appels = self.etape("Intégrer", self.etats(fusion, **champs))
+                sortie, _, appels = self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné", self.etats(fusion, **champs))
                 if avis:
                     self.assertIn(avis, sortie)
                 self.assertEqual(self.fichiers(), avant)
@@ -17182,21 +17182,21 @@ class TestRegistryMergeRecorded(BaseParallele):
         # A merge that changes only self-service files (the contribution and its task): no work to record.
         git(self.dossier, "reset", "-q", "--hard", self.anterieur)
         fusion = self.soumis(travail=False)
-        sortie, _, _ = self.etape("Intégrer", self.etats(fusion))
+        sortie, _, _ = self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné", self.etats(fusion))
         self.assertIn(f"PR #9201 (merge commit {fusion[:7]}) changes only self-service files", sortie)
         self.assertEqual(self.enr(self.cid)["statut"], "en_relecture")
         # Submitted outside the PR it declares (the contribution reached main before the PR's merge commit): not recorded here.
         git(self.dossier, "reset", "-q", "--hard", self.anterieur)
         fusion = self.soumis(dans_la_pr=False)
-        sortie, _, _ = self.etape("Intégrer", self.etats(fusion))
+        sortie, _, _ = self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné", self.etats(fusion))
         self.assertIn(f"it arrived on main with commit {git(self.dossier, 'rev-parse', 'HEAD~1')[:7]}, not with PR #9201's merge", sortie)
         self.assertEqual(self.enr(self.cid)["statut"], "en_relecture")
         # A week after the merge, the same refusal is silent (no notice at every pass).
         self.a("2026-11-03T14:00:01Z")
-        sortie, _, _ = self.etape("Intégrer", self.etats(fusion))
+        sortie, _, _ = self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné", self.etats(fusion))
         self.assertNotIn(self.cid, sortie)
         # Closed without merge: the existing close (bee cloturer), never an integration record.
-        sortie, _, _ = self.etape("Intégrer", self.etats(fusion, state="CLOSED", merge=None, fusionnee_par=None))
+        sortie, _, _ = self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné", self.etats(fusion, state="CLOSED", merge=None, fusionnee_par=None))
         self.assertEqual(self.enr(self.cid)["statut"], "annulee")
         self.assertFalse(self.lignes_de(self.cid))
 
@@ -17269,10 +17269,10 @@ class TestRegistryMergeRecorded(BaseParallele):
                   "(PR #9201) | Why | Who |\n")
         decisions.write_text(decisions.read_text(encoding="utf-8").replace(bee.ENTETE_DECISIONS, bee.ENTETE_DECISIONS + leurre), encoding="utf-8")
         self.commit("a decoy row")
-        self.etape("Intégrer", self.etats(fusion))
+        self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné", self.etats(fusion))
         self.assertEqual((self.enr(self.cid)["statut"], len(self.lignes_de(self.cid))), ("integree", 1))
         apres = self.fichiers()
-        self.etape("Intégrer", self.etats(fusion))
+        self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné", self.etats(fusion))
         self.assertEqual(self.fichiers(), apres)
         code, texte = self.bee("record-merge", self.cid, "--api", self.reponses(fusion))
         self.assertEqual(code, 1, texte)
@@ -17286,13 +17286,13 @@ class TestRegistryMergeRecorded(BaseParallele):
         bee.modifier_tache(self.dossier / "taches/ruche/ruche-9094.yaml", statut="integree")
         self.commit("the council's record")
         a_la_main = self.fichiers()
-        self.etape("Intégrer", self.etats(fusion))
+        self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné", self.etats(fusion))
         self.assertEqual(self.fichiers(), a_la_main)
         # A row written by hand while the contribution is still in review: the pass records it, and adds no second row.
         git(self.dossier, "reset", "-q", "--hard", "HEAD~1")
         ligne = f"| 2026-10-27 | {self.cid} integrated (PR #9201, merged at the judged commit c0ffee0): by hand | Why | Who |\n"
         decisions.write_text(decisions.read_text(encoding="utf-8").replace(bee.ENTETE_DECISIONS, bee.ENTETE_DECISIONS + ligne), encoding="utf-8")
-        self.etape("Intégrer", self.etats(fusion))
+        self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné", self.etats(fusion))
         self.assertEqual((self.enr(self.cid)["statut"], self.lignes_de(self.cid)), ("integree", [ligne.strip()]))
 
     def test_publishing_after_a_conflict_on_main_publishes_nothing_and_succeeds(self):
@@ -17310,7 +17310,7 @@ class TestRegistryMergeRecorded(BaseParallele):
             bee.ENTETE_DECISIONS, bee.ENTETE_DECISIONS + "| 2026-10-27 | A council decision | Why | Who |\n"), encoding="utf-8")
         for args in (("add", "-A"), ("commit", "-qm", "council"), ("push", "-q", "origin", "main")):
             git(autre, "-c", "user.name=c", "-c", "user.email=c@c", *args)
-        self.etape("Intégrer", self.etats(fusion))
+        self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné", self.etats(fusion))
         self.assertEqual(self.enr(self.cid)["statut"], "integree")
         sortie, _, appels = self.etape("Publier")
         self.assertIn("::notice::main changed the same lines during this pass: nothing published", sortie)
@@ -17320,7 +17320,7 @@ class TestRegistryMergeRecorded(BaseParallele):
         self.assertEqual(self.enr(self.cid)["statut"], "en_relecture")
         self.assertFalse([a for a in appels if "site.yml" in " ".join(a["args"])], "no site dispatch")
         # The next pass, from main, records it; main moves elsewhere meanwhile: rebased over and published, as before.
-        self.etape("Intégrer", self.etats(fusion))
+        self.etape("Intégrer ce qui satisfait R3, clore ce qui est abandonné", self.etats(fusion))
         (autre / "README.md").write_text((autre / "README.md").read_text(encoding="utf-8") + "\nelsewhere\n", encoding="utf-8")
         for args in (("add", "-A"), ("commit", "-qm", "elsewhere"), ("push", "-q", "origin", "main")):
             git(autre, "-c", "user.name=c", "-c", "user.email=c@c", *args)
@@ -19557,11 +19557,11 @@ class TestSuiteEnParallele(unittest.TestCase):
             "continue-on-error on the tests": lambda f, s: t(f, s)["steps"][place(t(f, s), "Tests de l'outil")].update({"continue-on-error": True}),
             "continue-on-error on the suite's job": lambda f, s: t(f, s).update({"continue-on-error": True}),
             "continue-on-error on the checks job": lambda f, s: c(f, s).update({"continue-on-error": True}),
-            "the judge's tests above the tool's": lambda f, s: deplacer(t(f, s), "Tests unitaires du juge", "Tests de l'outil"),
-            "the PR rules above bee valider": lambda f, s: deplacer(c(f, s), "Règles de la pull request", "Validation complète"),
-            "bee valider twice": lambda f, s: c(f, s)["steps"].append(c(f, s)["steps"][place(c(f, s), "Validation complète")]),
+            "the judge's tests above the tool's": lambda f, s: deplacer(t(f, s), "Tests unitaires du juge commun (sans Docker ; méta-tests dans juge-commun.yml)", "Tests de l'outil"),
+            "the PR rules above bee valider": lambda f, s: deplacer(c(f, s), "Règles de la pull request", "Validation complète du registre"),
+            "bee valider twice": lambda f, s: c(f, s)["steps"].append(c(f, s)["steps"][place(c(f, s), "Validation complète du registre")]),
             "the tests in the checks job too": lambda f, s: c(f, s)["steps"].append(t(f, s)["steps"][place(t(f, s), "Tests de l'outil")]),
-            "no judge tests": lambda f, s: t(f, s)["steps"].pop(place(t(f, s), "Tests unitaires du juge")),
+            "no judge tests": lambda f, s: t(f, s)["steps"].pop(place(t(f, s), "Tests unitaires du juge commun (sans Docker ; méta-tests dans juge-commun.yml)")),
         }
         for nom, alterer in alterations.items():
             with self.subTest(alteration=nom):
@@ -19850,7 +19850,7 @@ class TestIdentiteParNumero(BaseRepetitionGenerale):
         # ruche-0120: fusion-auto takes it from its listing of the PRs (GitHub's record of each author), which the pass gives the
         # gate, and reads the date by it (TestPasseFusion).
         listage = next(s["run"] for s in yaml.safe_load((RACINE / ".github/workflows/fusion-auto.yml").read_text(encoding="utf-8"))["jobs"]
-                       ["verifier"]["steps"] if s.get("name", "").startswith("Lister les PR ouvertes"))
+                       ["verifier"]["steps"] if s.get("name", "").startswith("Lister les PR ouvertes et leurs validations (ruche-0120)"))
         self.assertIn('''[.number, .headRefOid, (.author.login // ""), (.author.databaseId // "")] | @tsv''', listage)
 
     def test_une_pr_ne_change_pas_qui_est_qui_pour_ses_propres_controles(self):
@@ -21394,7 +21394,7 @@ class TestBulkPrReads(BaseParallele):
         vus = set()
         for nom, etats in cas.items():
             with self.subTest(nom):
-                (sortie, diff, ecrits, _), appels = self.passes("Intégrer", "integration-auto.yml", etats)
+                (sortie, diff, ecrits, _), appels = self.passes("Intégrer ce qui satisfait R3, clore ce qui est abandonné", "integration-auto.yml", etats)
                 self.assertFalse(self.appels_de(appels, "pr", "view")[1:], "no per-PR read, but the merge commit after a merge")
                 self.assertEqual(len(self.appels_de(appels, "api", "graphql")), 1)
                 vus.add((bool(ecrits), "integree" in diff, "annulee" in diff))
@@ -21476,7 +21476,7 @@ class TestBulkPrReads(BaseParallele):
         c1, c2 = self.course_relue()
         self.init_git()
         self.a("2026-11-02T00:00:00Z")
-        for flux, etape in (("integration-auto.yml", "Intégrer"), ("verdicts.yml", "Récupérer les verdicts")):
+        for flux, etape in (("integration-auto.yml", "Intégrer ce qui satisfait R3, clore ce qui est abandonné"), ("verdicts.yml", "Récupérer les verdicts")):
             _, _, appels = self.etape(etape, {"graphql_illisible": True, PR_MINIZ + "99101": {"state": "CLOSED", "head": "abc1235", "auteur": "bruno"},
                                               PR_MINIZ + "99102": {"state": "OPEN", "head": "abc1236", "auteur": "alice"}}, flux=flux)
             self.assertEqual({tuple(a["args"][:2]) for a in appels}, {("api", "graphql")})
@@ -21499,7 +21499,7 @@ class TestBulkPrReads(BaseParallele):
         c1, c2 = self.course_relue()  # c2 (alice, 99102) ranked first, c1 (bruno, 99101)
         self.init_git()
         self.a("2026-11-02T00:00:00Z")
-        for flux, etape in (("integration-auto.yml", "Intégrer"), ("verdicts.yml", "Récupérer les verdicts")):
+        for flux, etape in (("integration-auto.yml", "Intégrer ce qui satisfait R3, clore ce qui est abandonné"), ("verdicts.yml", "Récupérer les verdicts")):
             git(self.dossier, "checkout", "-q", "--", ".")
             _, _, appels = self.etape(etape, {PR_MINIZ + "99101": {"state": "CLOSED", "head": "abc1235", "auteur": "bruno", "type_auteur": "Bot"},
                                               PR_MINIZ + "99102": {"state": "OPEN", "head": "abc1236", "auteur": "alice", "type_auteur": "Bot"}}, flux=flux)
@@ -21541,7 +21541,7 @@ class TestBulkPrReads(BaseParallele):
     def test_the_passes_read_no_pr_one_by_one(self):
         """No gh pr view and no bee acts-for per contribution in either pass (but the merge commit read after a merge)."""
         import yaml
-        for flux, job, etape in (("verdicts.yml", "verdicts", "Récupérer"), ("integration-auto.yml", "integrer", "Intégrer")):
+        for flux, job, etape in (("verdicts.yml", "verdicts", "Récupérer les verdicts"), ("integration-auto.yml", "integrer", "Intégrer ce qui satisfait R3, clore ce qui est abandonné")):
             pas = yaml.safe_load((RACINE / ".github/workflows" / flux).read_text(encoding="utf-8"))["jobs"][job]["steps"]
             script = next(s["run"] for s in pas if s.get("name", "").startswith(etape))
             self.assertEqual(script.count("python3 outils/bee.py en-attente --pr-states"), 1)
@@ -21618,14 +21618,14 @@ class TestBulkPrReadsRehearsal(unittest.TestCase):
 
     def test_criterion_1_300_pending_contributions_6_listing_calls(self):
         self.assertEqual(len(self.prs), 300)
-        sortie, appels = self.passe("verdicts.yml", "verdicts", "Récupérer", None)
+        sortie, appels = self.passe("verdicts.yml", "verdicts", "Récupérer les verdicts", None)
         self.assertEqual(appels.count("api graphql"), 6)
         lues = {a.split()[1] for a in appels if a != "api graphql"}
         self.assertEqual(lues, {f"repos/{u[19:]}".replace("/pull/", "/pulls/") for u in self.prs}, "each PR read, its author's own")
         self.assertFalse([a for a in appels if a.startswith("pr ")])
 
     def test_criterion_1_prs_of_someone_else_turned_away(self):
-        sortie, appels = self.passe("integration-auto.yml", "integrer", "Intégrer", "intrus")
+        sortie, appels = self.passe("integration-auto.yml", "integrer", "Intégrer ce qui satisfait R3, clore ce qui est abandonné", "intrus")
         self.assertEqual(appels, ["api graphql"] * 6)
         self.assertEqual(sortie.count("a été ouverte par intrus"), 300)
 

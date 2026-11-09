@@ -248,7 +248,8 @@ class Names:
                 "options": m["cli"]["options"], **{f"options of {s}": o for s, o in m["cli"]["scripts"].items()},
                 **{f"keys of the family {n}": f["keys"] for n, f in self.fam.items()},
                 **{f"schema strings of the family {n}": f.get("schema_strings") or {} for n, f in self.fam.items()},
-                **{f"domain {n}": d for n, d in {**m["domains"], **m["open_domains"]}.items()}}
+                **{f"domain {n}": d for n, d in {**m["domains"], **m["open_domains"]}.items()}, "environment variables": m.get("env") or {},
+                **{f"workflow {n}": d for n, d in (m.get("workflows") or {}).items()}}  # ruche-0152: the workflows' names, one-to-one
         for label, d in maps.items():
             seen = {}
             for fr, en in d.items():
