@@ -113,8 +113,9 @@ class Move:
                      if sn.get(self.cm.attrs.get(k, k)) != v]
         problems += [f"P1b (c): bee {' '.join(a)}: exit code {x} before the move, {y} after" for a, x, y in zip(READ_ONLY, co, cn) if x != y]
         callers = {c for c, *_ in old}
-        problems += [f"P1b (c): {c} finds no file: the check would prove nothing" for c in ("problemes_textes_du_conseil", "balayer", "__init__")
-                     if not sum(k for x, _, _, k in old if x == c)]
+        data = sum(k for _, d, p, k in old if f"{d}/{p}".removeprefix("./").split("/")[0] + "/" in self.o.DOSSIERS_LIBRE_SERVICE)
+        problems += [f"P1b (c): {c} finds no file: the check would prove nothing" for c, n in (("problemes_textes_du_conseil", None), ("balayer", None),
+                     ("data folders", data)) if not (n if n is not None else sum(k for x, _, _, k in old if x == c))]
         sites = {f.name for f in ast.walk(ast.parse(pathlib.Path(self.o.__file__).read_text(encoding="utf-8"))) if isinstance(f, ast.FunctionDef)
                  for c in ast.walk(f) if isinstance(c, ast.Call) and getattr(c.func, "attr", None) in ("glob", "rglob", "iterdir")}
         problems += [f"P1b (c): the scan in {s} is not run here, nor covered by P4" for s in sorted(sites - callers - set(WRITE_ONLY_SCANS))]

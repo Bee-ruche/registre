@@ -23019,6 +23019,13 @@ class TestEnglishNamesStep1c(unittest.TestCase):
                 self.contains(self.avec(("tools/bee.py", avant, apres)).p1b_c()[0], *attendus)
         with mock.patch.object(check_migration, "WRITE_ONLY_SCANS", {}):  # every glob literal is run here, or covered by P4
             self.contains(self.honnete.p1b_c()[0], "P1b (c): the scan in cmd_proposer_tache is not run here, nor covered by P4")
+        # a fixture without data: the scans agree, and prove nothing
+        dossiers = (*bee.DOSSIERS_LIBRE_SERVICE, *map(self.names.path, bee.DOSSIERS_LIBRE_SERVICE))
+        tmp, vide = pathlib.Path(tempfile.mkdtemp(dir=self.temp.name)), lambda f: {p: c for p, c in f.items() if not p.startswith(dossiers)}
+        racines = (check_migration.checkout(vide(self.fichiers), tmp / "base" / "r", set(), "-"), check_migration.checkout(vide(self.apres), tmp / "head" / "r", set(), "-"))
+        sans = check_migration.Move(self.names, self.honnete.cm, [check_migration.load(r / t, f"bee_0143_empty_{k}") for k, (r, t) in enumerate(
+            zip(racines, ("outils/bee.py", "tools/bee.py")))], racines, "outils")
+        self.assertEqual(sans.p1b_c()[0], ["P1b (c): data folders finds no file: the check would prove nothing"])
 
     # --- P4 ---
 
