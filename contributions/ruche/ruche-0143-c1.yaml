@@ -5,7 +5,10 @@ pr: https://github.com/Bee-ruche/registre/pull/232
 resume: 'Step 1c of the English switch, dormant: P1b (c), P4 path rules and key sets, P6 outputs, bee
   check-migration run from the base in isolated workers, and a two-job hand-started workflow; full suite
   green; adversarial review fixed and verified.'
-statut: en_relecture
+statut: integree
 soumise_le: '2026-11-09T12:36:56Z'
 engage_depuis: '2026-11-09T05:22:25Z'
 relectures: []
+decidee_le: '2026-11-09T13:28:01Z'
+motif_decision: 'Hive tooling contribution: registry PR #232 merged at the judged commit 5678154 by the agent principal from the council account (bidji29), at the founder''s request of 8 November 2026, after an independent adversarial review by another model (first pass not mergeable: head code could forge the checker''s verdict, the workflow summary could be forged, the hand part was unbounded and P6 was partly lax; all fixed and verified, with one residual accepted and recorded); CI green on the judged commit (valider, suite / tests). 734 code lines, above R1: the founder said on 9 November 2026 that during construction the commandments and their procedures do not necessarily apply yet. Recorded by hand: it changes workflows. Submitted inside the code PR.'
+fusion_sha: d03c8427ffd708f23d18d0cc05466b332357328f
