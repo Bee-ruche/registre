@@ -30,6 +30,9 @@ TAG = re.compile(r"(</?(?:a|b|body|br|code|dd|details|div|dl|dt|em|footer|h[1-6]
 KEY = re.compile(r"(\s*(?:- )*)([\w-]+)(:)(?=\s|$)\s*")  # a workflow's YAML key at a line start, and the blanks after it
 TESTS = re.compile(r"(?:^|/)test_\w+(?:\.py)?\Z")  # a test file (outils/test_bee.py), or a test module in a dotted name
 HEREDOC = re.compile(r"(?<!<)<<-?\s*(['\"]?)(\w+)\1\s*$")  # a here-document starts at this line's end
+FENCE = re.compile(r"[ \t>]*(`{3,}|~{3,})")  # Markdown: a fenced code block opens or closes (in a list or a quote too)
+SPAN = re.compile(r"(?<!`)(`+)(?!`)(.+?)(?<!`)\1(?!`)", re.S)  # Markdown: a code span, inside one paragraph
+BEE = re.compile(r"(?<![\w.-])(?:[\w.-]+/)*bee(?:\.py)?(?=[ \t])")  # change 10: bee, or a path to bee.py, then a blank
 words = lambda name: [w.lower() for w in re.findall(r"[A-Z]+(?![a-z])|[A-Z]?[a-zà-ÿ]+", name)]  # noqa: E731
 idents = lambda tree: ((n, f, v) for n in ast.walk(tree) if not isinstance(n, ast.Constant) for f, v in ast.iter_fields(n)  # noqa: E731
                        for v in (v if isinstance(v, list) else [v]) if isinstance(v, str) and f not in ("kind", "type_comment"))
@@ -214,6 +217,88 @@ class CodeMap:
     def command(self, a, b):
         c = self.names.m["cli"]["commands"]
         return c[f"{a} {b.strip()}"].replace(" ", b[:len(b) - len(b.lstrip())], 1) if b and f"{a} {b.strip()}" in c else c.get(a, a) + b
+
+    # --- change 10 (ruche-0153; plan, section 12): `bee <command>` and its options in the code of Markdown ---
+
+    def cli(self, inv):
+        """The command line's names on one side: (commands, options, {(command, option): {choice: its other name}}), the
+        choices of the base's own parser (bee.construire_analyseur) named as P3 maps them (whole, in that function's scope)."""
+        if not hasattr(self, "_cli"):
+            nm, tool = self.names.m["cli"], next(p for p in sorted(self.names.code) if re.fullmatch(r"[^/]+/bee\.py", p))
+            self.scoped(tool, "construire_analyseur")
+            choices = {}
+            for r in parser_rows(bee.construire_analyseur()):
+                for o in (o for o in (r[1] if r[1] != "defaults" and r[0] and r[9] else ()) if o.startswith("--")):
+                    choices[" ".join(r[0]), o] = {v: self.whole(v) for v in r[9] if isinstance(v, str)}
+            self.tokens = self.base_tokens
+            flip = lambda d: {b: a for a, b in d.items()}  # noqa: E731
+            opts = {a: b for a, b in nm["options"].items() if a.startswith("--")}
+            self._cli = {False: (nm["commands"], opts, choices),
+                         True: (flip(nm["commands"]), flip(opts), {(" ".join(nm["commands"].get(c, c) for c in [k]), opts.get(o, o)): flip(d)
+                                                                   for (k, o), d in choices.items()})}
+        return self._cli[inv]
+
+    def commands(self, text, inv=False):
+        """Change 10: a Markdown text with each `bee <command>` (or a path to bee.py) inside its code, fenced blocks and code
+        spans, renamed with its options and their choices (inv: back to French); prose, and everything else, as written."""
+        out, pos = [], 0
+        for a, b in code_regions(text):
+            out += [text[pos:a], self.invocations(text[a:b], inv)]
+            pos = b
+        return "".join(out) + text[pos:]
+
+    def invocations(self, code, inv):
+        """One region of code: each invocation of bee renamed (up to a line's end, unless continued, a pipe, ;, &, ), a comment
+        or the next bee), its global options, its command (a subcommand too), then each option and the choice it is given."""
+        commands, opts, choices = self.cli(inv)
+        edits, found = {}, list(BEE.finditer(code))
+        for k, m in enumerate(found):
+            words, j, stop = [], m.end(), found[k + 1].start() if k + 1 < len(found) else len(code)
+            while j < stop:
+                if code[j] in " \t" or code.startswith("\\\n", j):
+                    j += 1 + (code[j] == "\\")
+                    continue
+                if code[j] in "\n|;&)" or code[j] == "#" and code[j - 1] in " \t":
+                    break
+                w = re.match(r"(?:'[^'\n]*'|\"[^\"\n]*\"|[^\s'\"|;&)])+", code[j:])
+                if not w:
+                    break
+                words.append((j, j + len(w[0]), w[0]))
+                j += len(w[0])
+            n = 0
+            while n < len(words) and words[n][2].startswith("--"):  # the global options: --registre takes a value
+                n += 1 + (words[n][2] in ("--registre", "--registry"))
+            if n >= len(words) or words[n][2] not in commands and " ".join(x[2] for x in words[n:n + 2]) not in commands:
+                continue
+            command = " ".join(x[2] for x in words[n:n + 2]) if " ".join(x[2] for x in words[n:n + 2]) in commands else words[n][2]
+            new = commands[command].split(" ")
+            edits.update({words[n + x][:2]: y for x, y in enumerate(new) if words[n + x][2] != y})
+            edits.update({w[:2]: opts[w[2]] for w in words[:n] if w[2] in opts})
+            for x, (a, b, w) in enumerate(words[n + len(new):], n + len(new)):
+                name, eq, value = w.partition("=")
+                given = choices.get((command, name), {})
+                if name in opts:
+                    edits[a, a + len(name)] = opts[name]
+                if eq and value in given:
+                    edits[a + len(name) + 1, b] = given[value]
+                elif name.startswith("--") and not eq and x + 1 < len(words) and words[x + 1][2] in given:
+                    edits[words[x + 1][:2]] = given[words[x + 1][2]]
+        return rename.edited(code, {k: v for k, v in edits.items() if code[k[0]:k[1]] != v})
+
+    def old_commands(self, text, path):
+        """The scan of change 10: each old command name left after bee in the code of a file of the new tree (Markdown: its
+        fenced blocks and code spans; a shell script or workflow: every region but its comments). [(line, text)]."""
+        commands = self.names.m["cli"]["commands"]
+        old = {k for k in commands if " " not in k and k not in commands.values()}
+        subs = {(v.split(" ")[0], k.split(" ")[1]) for k, v in commands.items() if " " in k and k.split(" ")[1] != v.split(" ")[1]}
+        regions = code_regions(text) if path.endswith(".md") else [(a, b) for a, b, k in self.regions(text, path) if k != "comment"]
+        found = []
+        for a, b in regions:
+            for m in BEE.finditer(code := text[a:b]):
+                if (w := re.match(r"[ \t]+(?:--registr[ey][ \t]+\S+[ \t]+)?([a-z][\w-]*)(?:[ \t]+([a-z][\w-]*))?", code[m.end():])) and (
+                        w[1] in old or (w[1], w[2]) in subs):
+                    found.append((text.count("\n", 0, a + m.start()) + 1, (m[0] + w[0])[:80]))
+        return found
 
     def string(self, raw, path=""):
         """One string token renamed, its quoting kept: a program in Python as Python (if written as its value), a whole literal
@@ -546,6 +631,34 @@ def identifier_strings(tree, deep=True):
             yield from n.args[:1] if isinstance(n.func, ast.Attribute) and of(n.func.value) else n.args[1:2] if name == "namedtuple" else []
         yield from n.value.elts if isinstance(n, ast.Assign) and getattr(n.targets[0], "id", None) == "__slots__" and hasattr(n.value, "elts") else []
         yield from [n.slice] if isinstance(n, ast.Subscript) and of(n.value) else [n.left] if isinstance(n, ast.Compare) and of(n.comparators[0]) else []
+
+
+def code_regions(text):
+    """(start, end) of a Markdown text's code: each line inside a fenced block (not its fences), each code span's content (spans
+    stay inside one paragraph); the rest is prose."""
+    out, pos, fence, para = [], 0, None, []
+
+    def flush():
+        if para:
+            out.extend((para[0] + m.start(2), para[0] + m.end(2)) for m in SPAN.finditer(text[para[0]:para[1]]))
+        para.clear()
+    for line in text.split("\n"):
+        end, m = pos + len(line), FENCE.match(line)
+        if fence is not None:
+            if m and m[1][0] == fence[0] and len(m[1]) >= len(fence) and not line[m.end():].strip():
+                fence = None
+            else:
+                out.append((pos, end))
+        elif m:
+            flush()
+            fence = m[1]
+        elif not line.strip():
+            flush()
+        else:
+            para[:] = [para[0] if para else pos, end]
+        pos = end + 1
+    flush()
+    return out
 
 
 def is_python(text, raw):

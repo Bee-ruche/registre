@@ -556,8 +556,10 @@ def check(repo, base, head, generated=None, observed=None):
     names, cm, tool_dir = ctx
     with tempfile.TemporaryDirectory() as tmp:
         p2, n2 = rename.check(repo, base, generated)
+        n2 = collections.Counter(n2)
         lines.append(f"P2: {len(p2)} problem(s)" if p2 else f"P2: ✓ {n2['data']} data files and {n2['schema']} schemas are their translation, "
-                     f"{n2['same']} files byte-identical, {n2['removed']} removed, {n2['code']} code files placed")
+                     f"{n2['same']} files byte-identical, {n2['commands']} with their commands renamed (change 10), {n2['removed']} removed, "
+                     f"{n2['code']} code files placed")
         p1, n1 = rename_code.check(repo, base, generated, worker_rows(tmp))
         lines.append(f"P1, P1b (a, b), P3: {len(p1)} problem(s)" if p1 else f"P1, P1b (a, b), P3: ✓ {sum(n1.values())} names renamed through the map, "
                      "nothing else changed, no French name left, every attribute name resolves, the parser is the same")
