@@ -81,6 +81,7 @@ class CodeMap:
         self.key_names = {k for f in nm["families"].values() for k in f["keys"] if k in self.named and k not in self.hand}  # printed()
         self.value_names = {v for d in (*nm["domains"].values(), *nm["open_domains"].values()) for v in d if isinstance(v, str) and v in self.named
                             and v not in self.hand}
+        self.displayed = self.kept(next((c for c in sorted(names.code) if re.fullmatch(r"[^/]+/bee\.py", c)), ""))[1]  # bee's kept words
         self.phrases, self.keeping = re.compile(r"(?<![\w-])(?:" + "|".join(map(re.escape, phrases)) + r")(?![\w-])"), set()  # keeping: the file's kept
 
     def phrased(self, s):
@@ -228,17 +229,23 @@ class CodeMap:
         t = re.sub(r"(?<=\^)([ \t]*- )([a-z_][\w-]*)(?=:)", lambda x: x[1] + self.name(x[2]), t)  # a pattern's ^  - key: (ruche-0153)  # k=, x[k]=, a pattern's ^key:
         t = re.sub(r"((?<![\w/.-])bee +|(?<![\w.-])bee\.py +)([a-z][\w-]*)( +[a-z][\w-]*)?", lambda x: x[1] + self.command(x[2], x[3] or ""), t)
         t = re.sub(r"(?<=\$)\{?([A-Za-z_]\w*)", lambda x: x[0].replace(x[1], self.whole(x[1])), t)  # a shell's $variable
+        t = re.sub(r"(?<=\bread -r )[A-Za-z_][\w ]*", lambda x: re.sub(r"\w+", lambda w: self.whole(w[0]), x[0]), t)  # its read -r names (ruche-0153)
         return re.sub(r"(?<![\w.])bee\.([A-Za-z_]\w*)", lambda x: "bee." + self.ids.get(x[1], x[1]), t)
 
     def printed(self, t):
         """ruche-0153: the plain words of a text in the places where bee's messages print names, renamed as the tool's output is:
-        a key before French typography's « : » (« motif : ») or ending a label (« f.yaml : motif »), a key or a value between « and »
+        a key before French typography's « : » (« motif : ») or ending a label (« f.yaml : motif »), or before « de N caractères »;
+        a value after « : » (« statut : refusee »), unless bee.py keeps it as a word of its messages; a key or a value between « and »
         (« proposee »), a node id after
         « nœud » or around « > » (« racine > roles/relire »). Any other plain word stays (prose, logins)."""
         here = {w for w, e in self.tokens.maps[0].items() if w == e}  # kept in this scope
         t = re.sub(r"(?<![\w/.<>@#\[\]$«-])[a-z_][\w-]*(?= : )|(?<=[\w.] : )[a-z_][\w-]*\Z", lambda x: self.named.get(x[0], x[0]) if x[0] in self.key_names - here
                    else x[0], t)  # « motif : », and a label « f.yaml : motif » the tool prints so
         t = re.sub(r"(?<=« )[a-z_][\w-]*(?= »)", lambda x: self.named.get(x[0], x[0]) if x[0] in (self.key_names | self.value_names) - here else x[0], t)
+        t = re.sub(r"(?<![\w/.<>@#\[\]$«-])[a-z_][\w-]*(?= de \d+ caractères)", lambda x: self.named.get(x[0], x[0]) if x[0] not in here | self.hand.keys()
+                   else x[0], t)  # « motif de 1516 caractères », « corps de … »: a field's or an option's name
+        t = re.sub(r"(?<=[\w)] : )[a-z_][\w-]*(?![\w/.'’«-])", lambda x: self.named.get(x[0], x[0]) if x[0] in self.value_names - here - self.displayed
+                   else x[0], t)  # a value after « : » (« statut : refusee »), not a word bee keeps in its messages
         t = re.sub(r"""((?:\[|\.get\()\\?(["']))([\w.-]+)(?=\\?\2[\]),])""", lambda x: x[1] + self.whole(x[3]), t)  # x["k"], .get("k"), escaped too
         seg = self.names.m["tree"]["segments"]
         return re.sub(r"(?<=nœud )[a-z_]+\b(?![/.-])|(?<![\w/.$-])[a-z_]+(?= > )|(?<= > )[a-z_]+\b(?![/.-])", lambda x: seg.get(x[0], x[0]), t)

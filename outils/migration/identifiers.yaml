@@ -3737,6 +3737,13 @@ hand:
       outils/site_bee.py:generer:registre: registry
       outils/site_bee.py:generer:registre.json: registry
       outils/test_bee.py:JEU_FIGE: registry
+      outils/test_bee.py:test_site:_site/api/registre.json: registry
+      outils/test_bee.py:test_site_et_api_montrent_l_arbre:_site/api/registre.json: registry
+      outils/test_bee.py:test_site_montre_les_paralleles_et_la_course:_site/api/registre.json: registry
+      outils/test_bee.py:test_site_agora_echappe_le_contenu:_site/api/registre.json: registry
+      outils/test_bee.py:test_essaim_et_site_montrent_les_invitations_et_le_frein:_site/api/registre.json: registry
+      outils/test_bee.py:statuts_affiches:_site/api/registre.json: registry
+      outils/test_bee.py:test_noeuds_en_anglais_lus_comme_en_francais:_site/api/registre.json: registry
     why: the folder outils/tests/registre/ -> tools/tests/registry/ and the identifier -> registry; the repository Bee-ruche/registre
       keeps its name
   contribution:
@@ -3779,7 +3786,7 @@ locals: [
   marque_debat, marque_tache, mauvais, mauvaise, mien, mienne, modif, modifie, montes, natifs, neutre, niveaux_avant,
   nombres, nommer, note_de_bruno, ote, oui, outil_avant, outil_base, par_job, par_nom, parametres, pas, passees,
   piege, pieges, plein, pousse, poussee, premieres, profond, programme, proposees, publiees_, quatre, quotent,
-  rapport_, rapports, recuperees, reecrite, relecteurs, remplacement, rempli, reperes, reserver, retire, retouche,
+  rapport_, rapports, recuperees, reecrite, relecteurs, remplacement, rempli, reperes, retire, retouche,
   reussite, rivale, sans_code, sans_les_tests, sans_portee, sans_ratio, sans_role, sans_suspects, sans_tache,
   secondes, separateurs, seul_c_accepte, seulement, sien, signale, signaleur, simples, sonde, sortant, sortie_h,
   sorties_c, soumises, sous_valgrind, statuts, succes, supprimes, sur_le_disque, tache_avant, tache_main, tenus,
@@ -3835,7 +3842,8 @@ keep:
   - Ce qu'on peut ignorer ici
   - Enfants
   - docs/securite.md
-  why: 'kept on purpose: docs/securite.md, which the root node''s vulnerability line names in its prose, kept as written until the
+  - illisible
+  why: 'kept on purpose: illisible, a word of its messages (bees messages, step 3); docs/securite.md, which the root node''s vulnerability line names in its prose, kept as written until the
     tree is translated: the line is kept under --budget only when it names it (ruche-0153); the old name of an authority file (forever); a CI word the forks may write (forever); a metric
     id (step 5); a git ref namespace the workflows share; display labels and message words (bees messages, step 3); the
     French node headings bee reads beside the English ones until the tree is translated (plan, section 5.8)'
@@ -3867,7 +3875,8 @@ keep:
   - docs/securite.md
   - securite.md
   - securite
-  why: 'docs/securite.md: the root node''s vulnerability line, quoted as written (ruche-0153); the tests of the migration tooling: their fixtures and expectations are French on purpose (the base before the switch);
+  - illisible
+  why: 'illisible: a word of bee''s messages, kept there (ruche-0153); docs/securite.md: the root node''s vulnerability line, quoted as written (ruche-0153); the tests of the migration tooling: their fixtures and expectations are French on purpose (the base before the switch);
     the French node headings bee reads beside the English ones until the tree is translated (plan, section 5.8); the site''s
     attributes its kept CSS and JavaScript read; a line of AGENTS.md quoted as written, the docs changing after the switch
     (ruche-0152)'
@@ -3981,6 +3990,19 @@ kept_in_scopes:
            test_each_shards_log_prints_as_soon_as_it_ends]
   tokens: [ECART, ECHEC, LENT]
   why: 'the environment variables of the parallel runner''s fixture module, which reads them in its own text'
+- files: outils/test_bee.py
+  scopes: [test_inscription_en_parallele_refusee]
+  tokens: [titulaire]
+  why: 'a word of bee''s message (« alice est déjà titulaire »), searched as written in its output'
+- files: outils/test_bee.py
+  scopes: [test_soumission_en_parallele]
+  tokens: [en parallèle]
+  why: 'words of bee''s message (« inscrit en parallèle »), searched as written in its output'
+- files: outils/test_bee.py
+  scopes: [setUp]
+  tokens: [debats]
+  why: 'the debate links of docs/questions-ouvertes.md point to ../debats/ in their prose, kept as written by the switch (only the
+    commands in their code are renamed): the one setUp that strips them matches them so'
 strings:
 - files: outils/inventaire_marqueurs.py
   tokens: [ATTENTE_VERDICT, ETATS, FICHIERS_LIBRE_SERVICE, ISSUES_DEBAT, MNEMONIQUES_SUSPECTS, MOIS, MOTS_SOURCE, PHRASE_DEMANDE,
