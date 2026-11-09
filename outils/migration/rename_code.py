@@ -28,6 +28,7 @@ VALUE = re.compile(r"( +)([\"']?)([\w.-]+(?:/[\w.-]+)*)(\2)([ \t]*(?:#.*)?)")  #
 TAG = re.compile(r"(</?(?:a|b|body|br|code|dd|details|div|dl|dt|em|footer|h[1-6]|head|header|html|input|label|li|main|meta|nav|ol|option|p|"
                  r"pre|section|select|small|span|strong|summary|table|tbody|td|th|thead|title|tr|ul)\b[^<>]*>)")  # HTML: its text is prose
 KEY = re.compile(r"(\s*(?:- )*)([\w-]+)(:)(?=\s|$)\s*")  # a workflow's YAML key at a line start, and the blanks after it
+TESTS = re.compile(r"(?:^|/)test_\w+(?:\.py)?\Z")  # a test file (outils/test_bee.py), or a test module in a dotted name
 HEREDOC = re.compile(r"(?<!<)<<-?\s*(['\"]?)(\w+)\1\s*$")  # a here-document starts at this line's end
 words = lambda name: [w.lower() for w in re.findall(r"[A-Z]+(?![a-z])|[A-Z]?[a-zà-ÿ]+", name)]  # noqa: E731
 idents = lambda tree: ((n, f, v) for n in ast.walk(tree) if not isinstance(n, ast.Constant) for f, v in ast.iter_fields(n)  # noqa: E731
@@ -42,7 +43,7 @@ class CodeMap:
 
     def __init__(self, names, text):
         self.names, m = names, bee.charger_texte_yaml(text, "identifiers.yaml")
-        self.m, self.ids, self.english, nm = m, m["identifiers"], set(m["english"]), names.m
+        self.m, self.ids, self.english, nm = m, {**m["identifiers"], **(m.get("test_identifiers") or {})}, set(m["english"]), names.m
         self.attrs, pairs = {**self.ids, **m["attributes"]}, collections.defaultdict(set)
         for d in [*(f["keys"] for f in nm["families"].values()), *(f.get("schema_strings") or {} for f in nm["families"].values()),
                   *nm["domains"].values(), *nm["open_domains"].values(), nm["cli"]["commands"], nm["cli"]["options"],
@@ -61,13 +62,16 @@ class CodeMap:
             pairs[a] = {b} if pairs[a] <= {b} else pairs[a] | {b}
         self.hand = {t: pairs.get(t, set()) | set(m["hand"].get(t, {}).get("english", ())) for t in {t for t, v in pairs.items() if len(v) > 1} | set(m["hand"])}
         self.named = {t: next(iter(v)) for t, v in pairs.items() if t not in self.hand}
-        self.tokens = {**{t: e for t, e in self.ids.items() if t not in pairs and t not in set(m.get("locals") or ()) and not self.covered(t, False)},
-                       **self.named}  # never an English word; a test's local variable, never in strings (oui, deux...)
+        mine = lambda d, skip=(): {t: e for t, e in d.items() if t not in pairs and t not in skip and not self.covered(t, False)}  # noqa: E731
+        self.tokens = {**mine(m["identifiers"]), **self.named}  # never an English word
+        self.test_tokens = mine(m.get("test_identifiers") or {}, set(m.get("locals") or ()))  # in a test file, a unittest name only
         self.targets, self.inverse = set(self.tokens.values()) | set(self.attrs.values()), {e: f for f, e in self.ids.items()}
         self.tokens = self.base_tokens = collections.ChainMap({}, self.tokens)
         self.keep = [(rename.glob_re(k["files"]), set(k.get("scopes") or ()), set(k.get("tokens") or ())) for k in m["keep"]]
+        self.declared = [(rename.glob_re(k["files"]), set(k["tokens"])) for k in m.get("strings") or ()]  # on purpose, in strings
         phrases = sorted({t for d in (nm.get("workflows") or {}).values() for t in d if " " in t}, key=len, reverse=True)  # workflows, steps, robots
         self.subcommands = re.compile(r"(?<![\w-])(?:" + "|".join(re.escape(k).replace(r"\ ", r"\s+") for k in nm["cli"]["commands"] if " " in k) + r")(?![\w-])")
+        self.in_tests, self.test_ids = False, set(m.get("test_identifiers") or {})
         self.phrases, self.keeping = re.compile(r"(?<![\w-])(?:" + "|".join(map(re.escape, phrases)) + r")(?![\w-])"), set()  # keeping: the file's kept
 
     def phrased(self, s):
@@ -77,8 +81,9 @@ class CodeMap:
     def scoped(self, path, scope, literal=""):
         """tokens, each hand token resolved by the role table of its file and scope (and literal), else by its default."""
         scope = self.inverse.get(scope, scope)  # the new tree's scopes are English
-        self.tokens = collections.ChainMap({t: (h.get("roles") or {}).get(f"{path}:{scope}:{literal}", (h.get("roles") or {}).get(
-            f"{path}:{scope}", h.get("default", t))) for t, h in self.m["hand"].items()}, self.base_tokens)
+        self.tokens, self.in_tests = collections.ChainMap({t: (h.get("roles") or {}).get(f"{path}:{scope}:{literal}", (h.get("roles") or {}).get(
+            f"{path}:{scope}", h.get("default", t))) for t, h in self.m["hand"].items()}, self.test_tokens if TESTS.search(path) else {},
+            self.base_tokens), bool(TESTS.search(path))
 
     def covered(self, name, mapped=True):
         return mapped and name in self.attrs or all(len(w) < 2 or w in self.english for w in words(name))
@@ -100,10 +105,11 @@ class CodeMap:
                                                                                                   not keyword.iskeyword(b) and a != b and self.covered(b, False))]
         problems += [f"token {t}: two English names {sorted(v)}, not declared in hand with a default" for t, v in self.hand.items() if "default" not in self.m["hand"].get(t, {})]
         problems += [f"token {t}: an option or environment variable, its English belongs in names.yaml" for t in {**self.m["tokens"], **(self.m.get(
-            "shell") or {})} if re.match(r"-|BEE_", t)] + [f"local {t}: not an identifier of the map" for t in self.m.get("locals") or () if t not in self.ids]
+            "shell") or {})} if re.match(r"-|BEE_", t)] + [f"local {t}: not a test identifier" for t in self.m.get("locals") or () if t not in self.test_ids]
+        used = set()  # the names the code but the tests uses
         for path, text in sorted(code.items()):
             if not path.endswith(".py"):
-                problems += [f"{path}: {p}" for p in self.lint_shell(text, path)]
+                problems += [f"{path}: {p}" for p in self.lint_shell(text, path, used)]
                 continue
             tree, seen, missing = ast.parse(text), set(), 0
             for _, f, v in [*idents(tree), *((c, "attr", w) for c in identifier_strings(tree) for w in re.findall(r"\w+", str(getattr(c, "value", ""))))]:
@@ -117,10 +123,24 @@ class CodeMap:
                     elif x not in self.m["hand"] and (e := self.from_names.get(x, "")).isidentifier() and self.ids.get(x, x) != e and not keyword.iskeyword(e):
                         problems.append(f"{path}: identifier {x} -> {self.ids.get(x, x)}, the name map says {e}")
             problems += [f"{path}: {missing} identifiers not mapped yet (pending)"] if path in self.m["pending"] else []
+            problems += [] if TESTS.search(path) else [f"{path}: identifier {x} is in test_identifiers: a name of the code belongs in identifiers"
+                                                       for x in sorted(seen & self.test_ids)] + self.stray(text, path, seen)
+            used |= set() if TESTS.search(path) else seen
             problems += [f"{path}: {x} is defined as {self.ids.get(x, x)} and read as an attribute as {self.attrs[x]}" for x in sorted({n.name for n in ast.walk(
                 tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))}) if self.attrs.get(x, self.ids.get(x, x)) != self.ids.get(x, x)]
             problems += [f"{path}: {p}" for p in self.collisions(tree, path)]
-        return problems
+        return problems + [f"identifier {x}: only a test uses it, it belongs in test_identifiers (never a string token elsewhere)"
+                           for x in self.m["identifiers"] if x not in used and x in self.base_tokens and x not in self.named and self.names.code <= set(code)]
+
+    def stray(self, text, path, own):
+        """In a file but the tests: each token of identifiers.yaml (not of names.yaml) the renamer changes in a string though
+        the file's code does not name it, unless declared on purpose (strings): a value that only looks like a name (a hashed
+        literal, a CSS class) would change with it."""
+        declared = set().union(*(t for r, t in self.declared if r.match(path)))
+        return [f"{path}: the token {x} -> {y} changes in a string, though this file's code does not name it: keep it, or declare it on purpose "
+                "(identifiers.yaml, strings)" for x, y in sorted({(x, y) for _, a, b in (self.rename_python if path.endswith(".py") else self.rename_shell)(
+                    text, path)[1] for x, y in zip(WORD.split(self.phrased(a))[1::2], WORD.split(b)[1::2]) if x != y and x in self.base_tokens and x not in self.named})
+                if x not in own | declared]
 
     def collisions(self, tree, path):
         """Two names of one scope (module, function, lambda, class with its bases in the file, a class's self attributes) that
@@ -159,7 +179,9 @@ class CodeMap:
         seg = self.names.m["tree"]["segments"]
         if "/" in s and s.split("/")[0] in ("racine", "roles", "projets") and all(x in seg for x in s.split("/")):
             return "/".join(seg[x] for x in s.split("/"))
-        return "".join(self.tokens.get(x, x) for x in re.split(r"([/.#@<>\[\]])", self.names.path(s)))
+        x = re.split(r"([/.#@<>\[\]])", self.names.path(s))  # after a test module (outils.test_bee.TestX.test_y), the tests' names
+        t = next((i for i, y in enumerate(x) if TESTS.search(y)), len(x))
+        return "".join((self.tokens if i <= t else collections.ChainMap(self.test_tokens, self.tokens)).get(y, y) for i, y in enumerate(x))
 
     def text(self, t):
         """The names in a text: a YAML key at a line start and its one-token value; every compound word (with _ . / [ ] < > @ #
@@ -246,16 +268,18 @@ class CodeMap:
 
     def regions(self, text, path):
         """(start, end, kind) of a shell script or workflow: comment (as written), key (a workflow's YAML key), code (every name),
-        text (prose: compound names, $variables and whole phrases only), python (python3 -c '…', python3 - <<'X' documents)."""
+        text (prose: compound names, $variables and whole phrases only), python (python3 -c '…', python3 - <<'X' documents). A
+        here-document's quotes are characters: its lines are prose, a script's (#!…sh) shell, line by line."""
         out, pos, block, here, q, yml = [], 0, None, None, None, path.endswith((".yml", ".yaml"))
         for line in text.split("\n"):
             end, indent, sh = pos + len(line), len(line) - len(line.lstrip()), False
             block = None if block is not None and line.strip() and indent <= block[0] and here is None else block
             if here is not None and line.strip() == here[0]:  # the end of a here-document
-                out += [(here[2], pos, "python")] * here[1] + [(pos, end, "code")]
+                out += [(here[2], pos, "python")] * (here[1] == "python") + [(pos, end, "code")]
                 here = None
             elif here is not None:
-                None if here[1] else self.shell(line, pos, None, out)  # a script a script writes: shell
+                here[1] = here[1] or ("sh" if re.match(r"#!.*\b(?:ba|da)?sh\b", line) else "text")  # a script a script writes: shell
+                self.shell(line, pos, None, out) if here[1] == "sh" else None if here[1] == "python" else out.append((pos, end, "text"))
             elif block is not None or not yml:
                 q, sh = (self.shell(line, pos, q, out), True) if block is None or block[1] else (out.append((pos, end, "text")), False)
             elif line.lstrip().startswith("#"):
@@ -274,7 +298,7 @@ class CodeMap:
             else:
                 out.append((pos, end, "text"))
             if sh and here is None and q is None and (h := HEREDOC.search(line)):
-                here = (h[2], bool(re.search(r"\bpython3 -(?:\s|$)", line)), end + 1)
+                here = [h[2], "python" if re.search(r"\bpython3 -(?:\s|$)", line) else None, end + 1]
             pos = end + 1
         return out
 
@@ -321,13 +345,21 @@ class CodeMap:
         self.tokens, self.keeping = self.base_tokens, set()
         return rename.edited(text, edits), changes
 
-    def lint_shell(self, text, path):
+    def lint_shell(self, text, path, used=None):
         """A shell script or workflow against the map: each name it defines or reads (variables, functions, YAML keys, step and
         job ids, expression names, the embedded Python's identifiers) mapped or English; one English name per name in each of
-        its namespaces (the shell's and the Python's variables and functions with the environment; the workflow's keys and ids)."""
+        its namespaces (the shell's and the Python's variables and functions with the environment; the workflow's keys and ids);
+        no program in python3 -c "…" (read as prose), no name of the map in a quoted jq filter (its keys and values are one text)."""
         sh, keys = set(), set(re.findall(r"^\s*(?:- )*id: *([\w-]+)", text, re.M)) if path.endswith(".yml") else set()  # step ids
+        self.scoped(path, "")
+        problems = []
         for a, b, kind in self.regions(text, path):
-            x = text[a:b]
+            x, before = text[a:b], text[text.rfind("\n", 0, a) + 1:a]
+            problems += [f"line {text.count(chr(10), 0, a) + 1}: python3 -c with its program in double quotes: write it in single quotes or a "
+                         "here-document (python3 - <<'X'), as the renamer reads Python"] if kind == "code" and re.search(r'\bpython3\s+-c\s*"', x) else []
+            problems += [f"line {text.count(chr(10), 0, a) + 1}: a quoted jq filter holds {w}, a name of the map: its keys and values cannot be told "
+                         "apart, read the JSON in Python" for w in sorted(set(re.findall(r"[A-Za-z_][\w-]*", x))) if (self.tokens.get(w, w) != w or w in self.hand)
+                         and kind != "comment" and (re.search(r"\bjq\b(?:[^'\"|>;)&]|\"[^\"]*\")*['\"]$", before) or "select(" in x)]
             if kind == "python":
                 sh |= {w for _, f, v in idents(ast.parse(x)) for w in (v.split(".") if f == "module" else [v])}
             elif kind != "comment":
@@ -336,12 +368,13 @@ class CodeMap:
                     r"|^[\s-]*([\w-]+):" if kind != "text" else ""), x) for i, g in enumerate(m.groups()) if g for w in g.split()]
                 sh |= {w for i, w in found if i in (0, 3, 4, 5, 6) or i == 7 and w.isupper()}  # the environment's variables are keys too
                 keys |= {w for i, w in found if i in (1, 2, 7)}
-        self.scoped(path, "")
-        problems = [f"identifier {x} is neither mapped nor made of English words" for x in sorted((sh | keys) - self.kept(path)[1])
-                    if self.tokens.get(x, x) == x and not self.covered(x, False)]
-        problems += self.clashes([(1, path, sh, self.tokens), (1, path, keys, self.tokens)])
+        problems += [f"identifier {x} is neither mapped nor made of English words" for x in sorted((sh | keys) - self.kept(path)[1])
+                     if self.tokens.get(x, x) == x and not self.covered(x, False)]
+        problems += self.clashes([(1, path, sh, self.tokens), (1, path, keys, self.tokens)]) + [
+            f"identifier {x} is in test_identifiers: a name of the code belongs in identifiers" for x in sorted((sh | keys) & self.test_ids)]
         self.tokens = self.base_tokens
-        return problems
+        (used if used is not None else set()).update(sh | keys)
+        return problems + [p.partition(": ")[2] for p in self.stray(text, path, sh | keys)]
 
     def links(self, texts, path_of, defined):
         """P1b (b) for workflows and scripts ({path: text}): each job's needs and needs.<job>.outputs.<name>, each steps.<id>,
@@ -369,7 +402,7 @@ class CodeMap:
 
     def allowed(self, a, b):
         """A token of a text changes only to its English name (a hand token: as its role says), dot by dot if need be."""
-        return b == self.tokens.get(a) or a not in self.hand and b in (self.ids.get(a), self.attrs.get(a)) or \
+        return b == self.tokens.get(a) or a not in self.hand and (self.in_tests or a not in self.test_ids) and b in (self.ids.get(a), self.attrs.get(a)) or \
             "." in a and a.count(".") == b.count(".") and all(x == y or self.allowed(x, y) for x, y in zip(a.split("."), b.split(".")))
 
     def string_change(self, a, b, role=False):

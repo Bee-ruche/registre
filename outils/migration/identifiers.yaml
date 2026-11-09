@@ -7,7 +7,10 @@
 #                proper names, test logins); an identifier with another word must be in `identifiers`.
 #   identifiers  French identifier -> English identifier, one for every file: a name of names.yaml (a key, a value, a
 #                command...) gets its English there, unless that is a keyword (pour -> in_favour); an English identifier
-#                may be renamed to free a name inside one scope (status -> with_status, beside statut -> status).
+#                may be renamed to free a name inside one scope (status -> with_status, beside statut -> status). Only
+#                names the code but the tests uses: each is also renamed in strings (lint, ruche-0152).
+#   test_identifiers  the names only the test files use: renamed as identifiers everywhere, in strings only in a test
+#                file and in a test's dotted name (outils.test_bee.TestX.test_y), never in the code's strings (ruche-0152).
 #   attributes   where an attribute differs (x.name, a string given to getattr/setattr/hasattr/vars, an argparse
 #                destination): a destination is always its option's English name (--en-parallele -> parallel).
 #   tokens       names the code holds in strings that names.yaml lacks (environment variables, CLI choices, internal
@@ -21,7 +24,10 @@
 #                (oui, deux, faux… are words of texts and data too; ruche-0152).
 #   neutral      name literals of bee.py declared language-neutral (--names of outils/inventaire_marqueurs.py).
 #   pending      code files whose own identifiers are not mapped yet: lint and check fail on each, one line (a later step).
-#   keep         French kept on purpose: tokens in a file, or the strings of top-level scopes (the migration's own tests).
+#   keep         French kept on purpose: tokens in a file, or the strings of top-level scopes (the migration's own tests,
+#                what is hashed into a stored fingerprint or id).
+#   strings      tokens of `identifiers` renamed on purpose in a file's strings though its code does not name them (lint):
+#                each a name another file's code reads; anything else that only looks like a name is kept (ruche-0152).
 version: 1
 english: [
   aaaeeeeiioouuuc, ab, abandon, abandonment, abbrev, abort, about, abs, absent, absolute, abspath, abstention,
@@ -427,7 +433,8 @@ english: [
   stands, starred, start, started, starts, startswith, stat, state, states, staticmethod, statistics, stats, status,
   statuses, statvfs, stay, stays, stderr, stdin, stdout, stem, stems, step, steps, still, stop, stopped, stops,
   stopwatch,
-  stopwatches, store, str, stream, streams, streets, strengthen, strerror, strftime, strict, strictly, stride, string,
+  stopwatches, store, str, stray, stream, streams, streets, strengthen, strerror, strftime, strict, strictly, stride,
+  string,
   strings, strip,
   struct,
   structure, style, sub, subcommands, subfolder, subfolders, subject, submission, submissions, submit, submits,
@@ -531,7 +538,6 @@ identifiers:
   _nettoyer: _clean
   _nombre: _number
   _noms: _names
-  _numeros_lies: _linked_numbers
   _poser: _put
   _POSITIF: _POSITIVE
   _postes: _areas
@@ -548,29 +554,19 @@ identifiers:
   _verifier_pr: _check_pr
   a_blanc: dry_run
   a_inscrire: to_register
-  a_la_main: by_hand
-  a_la_poussee: at_the_push
-  a_la_verification: at_the_check
   a_ouvrir: to_open
   A_REMPLIR: TO_FILL_IN
   a_remplir: to_fill_in
   A_REMPLIR_EN: TO_FILL_IN_EN
   a_retirer: to_remove
-  a_soumettre: to_submit
   abandon: abandonment
-  abandonner: abandon
   abrege: shortened
   abreges: shortened_items
-  acceptation: acceptance
-  accepte: accepted_one
   acceptee: accepted
   acceptees: accepted
   accord: approval
-  accord_a_la_main: agreement_by_hand
   accord_conseil: council_approval
   accord_gardien: guardian_approval
-  accordees: granted
-  accueil: home_page
   actif: active
   actifs: active
   activite: activity
@@ -584,19 +580,13 @@ identifiers:
   ADRESSE_PR: PR_ADDRESS
   adresse_sortante_refusee: outgoing_address_refused
   adresses: addresses
-  ADRESSES_0047: ADDRESSES_0047
   afficher_tableau: show_table
   aide: help_text
-  ailleurs: elsewhere
   ajout: addition
   ajoutees: added
   ajoutees_ici: added_here
   ajouter: add_to
-  ajouter_a_la_main: add_by_hand
-  ajouter_brut: add_raw
   ajouter_liste: add_list
-  ajouter_relecture: add_review
-  ajouter_zone: add_zone
   ajoutes: added_items
   AJOUTS: ADDITIONS
   ajouts: additions
@@ -606,41 +596,26 @@ identifiers:
   alertes_croissance: growth_alerts
   alertes_relecteurs: reviewer_alerts
   ALIAS_PLATEFORME: PLATFORM_ALIASES
-  aller_retour: round_trip
-  alterer: alter
   alveole: cell
   amont: upstream
   amorcage: bootstrap
   analyse: analysis
-  analyse_de: analysis_of
   analyser: analyse
   analyseur: parser
-  analyseurs: parsers
   ancetre: ancestor
   ancien: old
-  ancien_maintenant: old_now
-  ancien_path: old_path
-  ancien_retrait: old_removal
   ancienne: former
   anciennes: former_ones
   anciennes_l: former_lines
   anciennes_notes: former_notes
-  anciennete: seniority
   anciens: old_items
   ancre: anchor_node
   anglais: english_form
-  anglaise: english_one
   annee: year
-  annonces: announcements
   annulee: cancelled
-  anterieur: earlier
   anterieurs: earlier
   aplatir: flatten
-  appel: call
-  appel_blanchi_par_prefixe: call_laundered_by_prefix
-  appelants: callers
   appels: calls
-  appels_de: calls_of
   apres: after
   apres_d: after_d
   apres_l: after_l
@@ -651,27 +626,20 @@ identifiers:
   ARCHITECTURES_ANALYSEES: ANALYSED_ARCHITECTURES
   argumenter: argue
   arguments_a_couvrir: arguments_to_cover
-  arguments_a_la_main: arguments_by_hand
   arguments_ajoutes: added_arguments
   arguments_apres_synthese: arguments_after_synthesis
   arguments_de: arguments_of
   arguments_depuis: arguments_since
-  AROBASES_0047: AT_SIGNS_0047
   arret: stop
   arrete: stopped_at
   arreter: stop_it
   arrivee: arrival
   assembler: assemble
   astuce: tip
-  attaque: attack
-  attaques: attacks
   attend: awaits
-  attend_le_conseil: awaits_the_council
   attendre_fusion: wait_for_merge
   attendu: expected
   attendu_ici: expected_here
-  attendue: expected_one
-  attendues: expected_ones
   attendus: expected_items
   attente: waiting
   ATTENTE_VERDICT: VERDICT_WAIT
@@ -682,7 +650,6 @@ identifiers:
   attributs: attributes
   ATTRIBUTS_REQUIS: REQUIRED_ATTRIBUTES
   attributs_tbody: tbody_attributes
-  au_conseil: to_the_council
   au_dela: beyond
   au_dela_du_bruit: beyond_noise
   aujourd_hui: today
@@ -706,21 +673,13 @@ identifiers:
   autres_comptes: other_accounts
   autres_identites: other_identities
   AUTRES_IDENTITES_MAX: OTHER_IDENTITIES_MAX
-  AUTRES_PR: OTHER_PRS
   autres_privilegies: other_privileged
   autres_retenues: others_kept
   AVANCE_MAX: LEAD_MAX
   avant: before
   AVANT: BEFORE
-  avant_: before_
-  avant_donnees: before_data
   avant_l: before_l
   avant_r: before_r
-  avec: with_
-  avec_gh: with_gh
-  avec_jeton: with_token
-  avec_retour: with_return
-  avec_saut: with_break
   AVERTISSEMENT_AGORA: AGORA_WARNING
   avertissements: warnings
   avertissements_arbre: tree_warnings
@@ -732,34 +691,20 @@ identifiers:
   balise: html_tag
   barre: bar_line
   BASE_EVENEMENT: EVENT_BASE
-  base_modifiee: changed_base
-  base_qui_dit_le_mode: base_that_states_the_mode
-  BaseParallele: BaseParallel
-  BasePublier: BasePublish
-  BaseRepetitionGenerale: BaseDressRehearsal
-  BaseRevueRuche0020: BaseReviewRuche0020
   bases_declarees: declared_bases
-  bee_faux: bee_fake
   BEE_MAINTENANT: BEE_NOW
   BEE_SIMU: BEE_SIM
   BEE_SIMU_ROBOT: BEE_SIM_ROBOT
-  bidon: dummy
   bien_formee: well_formed
   bilan: assessment
-  bilingues: bilingual
-  binaire: binary
-  bizarres: odd_ones
   bloc: block
   bloc_de: block_of
   bloc_retrait: removal_block
   BLOCAGE_SIGNALEMENT: REPORT_BLOCK
   blocs: blocks
   bloquantes: blocking
-  bloque: blocked
   bloquee: blocked
   bloquee_par: blocked_by
-  BON: GOOD
-  bon: good
   bonne: good
   bonnes: good_items
   borne: bound
@@ -767,22 +712,17 @@ identifiers:
   borne_octets: byte_bound
   borne_texte: text_bound
   BORNES: BOUNDS
-  bornes: bounds
   bornes_attente: wait_bounds
-  boucle: loop
   branche: branch
   branche_de: branch_of
   branche_e: branch_e
   branche_initiale: initial_branch
   branche_projets: projects_branch
-  brouillon: draft
   bruit: noise
-  BRUIT: NOISE
   brut: raw
   BUDGET_NOEUD: NODE_BUDGET
   BUDGET_RACINE: ROOT_BUDGET
   ca: old_contribution
-  cadre: frame
   cadre_declare: declared_frame
   cadre_donnees: data_frame
   cadre_donnees_tache: task_data_frame
@@ -798,17 +738,10 @@ identifiers:
   canonique: canonical
   cap: balance
   cap_cible: balance_target
-  caractere: character
   caractere_interdit: forbidden_character
   caractere_sortant_interdit: forbidden_outgoing_character
   CARACTERES_PAR_JETON: CHARACTERS_PER_TOKEN
   carte: name_map
-  carte_changee: changed_map
-  CARTE_IDENTIFIANTS: IDENTIFIERS_MAP
-  CARTE_NOMS: NAMES_MAP
-  cas: case_of
-  cas_base: base_case
-  cas_tete: head_case
   categorie: category
   CAVIARDABLES: REDACTABLE
   caviardages: redactions
@@ -823,36 +756,25 @@ identifiers:
   champs_git: git_fields
   CHAMPS_LONGS: LONG_FIELDS
   CHAMPS_PSEUDO: LOGIN_FIELDS
-  champs_texte: text_fields
   changee: changed_one
   changees: changed_ones
   changement: change
   changements: changes
   CHANGEMENTS_DE_BASE: BASE_CHANGES
-  changer: change
-  changer_puis_refuser: change_then_refuse
   chapeau: lead_text
-  charger: load
   charger_arbre: load_tree
   charger_corpus: load_corpus
   charger_greffon: load_plugin
   charger_texte_yaml: load_yaml_text
-  chargeur_c: c_loader
   ChargeurBee: BeeLoader
-  chargeurs_utilises: loaders_used
   chauffe: warmup
   chemin: path
-  chemin_0047: path_0047
-  chemin_config: config_path
   chemin_contexte: context_path
   CHEMIN_DEBAT: DEBATE_PATH
-  chemin_debat: debate_path
-  chemin_gh: gh_path
   CHEMIN_GREFFON: PLUGIN_PATH
   CHEMIN_HISTORIQUE: HISTORY_PATH
   chemin_html: html_path
   CHEMIN_INVITATION: INVITATION_PATH
-  chemin_invitation: invitation_path
   chemin_liste: list_path
   chemin_manifeste: manifest_path
   CHEMIN_NON_CONTACT: NO_CONTACT_PATH
@@ -865,17 +787,14 @@ identifiers:
   chemin_tache: task_path
   chemins: paths
   chemins_de_texte: text_paths
-  chemins_lus: paths_read
   CHEMINS_OUTILLAGE: TOOLING_PATHS
   chercher: search_for
   chiffres: digits
-  choix: choice
   chrono: stopwatch
   chrono_hasard: stopwatch_randomness
   chronologie: timeline
   chronometrees: timed
   cible: target
-  CIBLE: TARGET
   cible_vote: vote_target
   cibles: targets
   cid_refus: refusal_cid
@@ -915,7 +834,6 @@ identifiers:
   CLES_LIBRE_SERVICE_TACHE: SELF_SERVICE_TASK_KEYS
   CLES_NAISSANCE: BIRTH_KEYS
   cles_passage: passage_keys
-  CLES_REFUSEES: REFUSED_KEYS
   CLES_SYNTHESE: SYNTHESIS_KEYS
   clore: close
   clos: closed
@@ -964,32 +882,23 @@ identifiers:
   cmd_voir: cmd_show
   cmd_voter: cmd_vote
   cn: new_contribution
-  code_lu: code_read
   colle: glued
-  collecter: collect
   colonne: column_of
   colonnes: columns
   combien: how_many
   commande: command
   commande_diff: diff_command
   commandes: commands
-  commandes_docker: docker_commands
-  commandes_du_runner: runner_commands
-  commandes_workflow: workflow_commands
-  commentaire: comment
   commentaires: comments
   commentaires_en_place: comments_in_place
   commentaires_yaml: yaml_comments
   commit_de_donnees: data_commit
-  commit_fichiers_0141: commit_files_0141
   commits_premier_parent: first_parent_commits
   commun: common
   communes: common_ones
-  comparaisons: comparisons
   comparees: compared_ones
   compilateur: compiler
   compiler_chrono: compile_stopwatch
-  complet: full_one
   compresse: compressed_one
   compressee: compressed_data
   compresser: compress
@@ -1000,8 +909,6 @@ identifiers:
   comptes: accounts
   comptes_agents: agent_accounts
   comptes_de: accounts_of
-  compteurs: counters
-  COMPTEURS: COUNTERS
   concurrentes: rivals
   concurrents: rivals
   concurrents_de: rivals_of
@@ -1011,33 +918,24 @@ identifiers:
   confirme_par: confirmed_by
   confirme_par_un_tiers: confirmed_by_a_third_party
   confirmer: confirm
-  confirmer_ailleurs: confirm_elsewhere
-  conflit: conflict
   conflits: conflicts
   connu: known_name
   connues: known_ones
   connus: known_items
   conseil: council
-  conseil_et_fenetre: council_and_window
   consigne_faille: vulnerability_brief
-  CONSIGNE_FAILLE: VULNERABILITY_INSTRUCTION
   CONSIGNE_IDENTITES: IDENTITIES_BRIEF
-  consignes: instructions_given
   constante: constant_name
   constantes: constants
   construction: build_step
   constructions: constructs
   constructions_du_texte: text_constructs
   constructions_suspectes: suspicious_constructs
-  constructions_suspectes_omises: omitted_suspicious_constructs
   construire: build
   CONSTRUIRE: BUILD
   construire_analyseur: build_parser
   construire_image: build_image
-  construire_jouet: build_toy
-  construits: built_ones
   conteneur: container
-  conteneurs: containers
   contenu: content
   conteste: contested_by
   contestes: contested
@@ -1047,19 +945,11 @@ identifiers:
   CONTEXTE_MIN: CONTEXT_MIN
   contre: against
   contredit: contradicts
-  contributeurs: contributors
-  contributeurs_chloe_et_david: contributors_chloe_and_david
-  contribution_d_alice_sur_main: alice_s_contribution_on_main
-  contribution_de_chloe: chloe_s_contribution
-  contribution_jugee: judged_contribution
-  contribution_relue: reviewed_contribution
   contributions_de_la_pr: pr_contributions
   contributions_en_course: racing_contributions
-  controle: control
   controler: check_it
   controler_synthese: check_synthesis
   controles: checks
-  COORDONNEES_VOISINES_0044: NEARBY_CONTACT_DETAILS_0044
   copie: copied
   copier: copy_to
   copier_arbre: copy_tree
@@ -1068,13 +958,10 @@ identifiers:
   corps: body
   correspond: matches
   correspondance: match
-  corrige: corrected
   cote: quoted_side
   COTE_PERMIS: ALLOWED_SIDE
   cotes: sides_of
   COTES: SIDES
-  coupe: cut_one
-  coupee: cut
   coupees: cut_off
   couper: cut
   courant: running
@@ -1083,11 +970,8 @@ identifiers:
   COURRIEL: EMAIL
   COURRIEL_DECODE: DECODED_EMAIL
   COURRIEL_DEGUISE: DISGUISED_EMAIL
-  COURRIELS_0047: EMAILS_0047
   course: race
-  course_a_deux: race_of_two
   course_html: race_html
-  course_relue: reviewed_race
   courses: races
   couvertes: covered
   couverts: covered_items
@@ -1102,30 +986,19 @@ identifiers:
   critere_acceptation: acceptance_criteria
   croissance: growth
   curseur: cursor
-  dans: in_
-  dans_la_pr: in_the_pr
   dans_sa_fenetre: in_its_window
   date_compte_requise: account_date_required
-  date_d_accord: agreement_date
-  date_de_mesure: measurement_date
-  date_de_proposition: proposal_date
-  date_de_relecture: review_date
-  date_de_vote: vote_date
   date_recente: recent_date
-  dater: date_it
   dates_ajoutees: added_dates
   dates_de_fusion: merge_dates
   dates_de_session: session_dates
   DatesDeFusion: MergeDates
   de: of
-  de_bruno: from_bruno
   de_cette_pr: of_this_pr
   de_l_amont: of_upstream
   de_la_pr: of_the_pr
   de_nouveaux: new_ones
   debat: debate
-  debat_a_la_main: debate_by_hand
-  debat_a_trois: debate_of_three
   debat_main: main_debate
   debat_propre: own_debate
   debat_tenu: held_debate
@@ -1138,14 +1011,11 @@ identifiers:
   debattre_clore: debate_close
   debattre_doublon: debate_duplicate
   debattre_importer_questions: debate_import_questions
-  debattre_invitation: debate_invitation
   debattre_ouvrir: debate_open
   debattre_synthetiser: debate_synthesize
   debut: beginning
-  DEBUT_COMPRESSER: COMPRESS_START
   DEBUT_DECLARE: DECLARED_START
   DEBUT_DONNEES: DATA_START
-  debut_en: start_in
   debut_engagement: engagement_start
   debuts: beginnings
   DEBUTS_DEMANDE: REQUEST_STARTS
@@ -1153,13 +1023,10 @@ identifiers:
   decide_en_gardien: decides_as_guardian
   DECIDE_SON_SIGNALEMENT: DECIDES_OWN_REPORT
   decidee: decided
-  decidees: decided_ones
   declaration_recopiee: copied_declaration
   declare: declared
   DECLARE_MAX: DECLARED_MAX
   declaree: declared_one
-  declarer: declare
-  declarer_agents: declare_agents
   decoder_courriel: decode_email
   decoder_url: decode_url
   decompresser: decompress
@@ -1171,7 +1038,6 @@ identifiers:
   defavorables: unfavorable_ones
   definis_a: defined_a
   definition_inutile: useless_definition
-  dehors: outside_one
   deja: already
   deja_lu: already_read
   deja_nommes: already_named
@@ -1182,28 +1048,20 @@ identifiers:
   demande_le: requested_on
   DEMANDES: REQUESTS
   demandes: requests
-  demesure: oversized
   denominateur: denominator
   depart: start
   depart_du_titulaire: holder_departure
-  depasse: exceeds
   depasses: exceeded
   depend_de: depends_on
   dependances: dependencies
   depense_api: api_spending
-  deplacer: move
-  deplacer_mesure: move_measurement
-  deplier: unfold
   deployer: deploy
   depot: repo
   DEPOT: REPO
-  depot_jouet_avec_historique: toy_repo_with_history
-  depot_tete: head_repo
   depots: repos
   depots_de_la_ruche: hive_repos
   depouiller_proposition: tally_proposal
   depuis: since
-  depuis_la_racine: from_the_root
   dernier: last
   dernier_commit_de_code: last_code_commit
   derniere: last_one
@@ -1211,23 +1069,12 @@ identifiers:
   dernieres: last_ones
   dernieres_relectures: last_reviews
   deroulement: unfolding
-  desaccords: disagreements
-  desassemblage: disassembly
-  DESASSEMBLAGE_A: DISASSEMBLY_A
   dessus: on_top
-  detectent: detect
   DETERMINANTS_EN: EN_DETERMINERS
-  deux: two
   disponible: available
   disponibles: available_ones
-  disque: disk_state
-  dite: said
   dites: said
-  DOCKER_CHRONO: DOCKER_STOPWATCH
-  DOCKER_EN_PANNE: BROKEN_DOCKER
-  DockerEmule: EmulatedDocker
   DOMAINE: DOMAIN
-  domaine: domain
   domaine_enregistrable: registrable_domain
   DOMAINE_NU: BARE_DOMAIN
   DOMAINES_FORGES: FORGE_DOMAINS
@@ -1235,59 +1082,40 @@ identifiers:
   donnee_agora: agora_datum
   donnee_personnelle: personal_datum
   donnees: data
-  DONNEES_REGISTRE: REGISTRY_DATA
-  donnes: given
   dossier: folder
   dossier_obj: obj_folder
   dossier_ouvert: open_folder
-  dossier_ouvert_vide: empty_open_folder
   dossier_schemas: schemas_folder
   dossiers: folders
   DOSSIERS_GESTES: GESTURE_FOLDERS
   DOSSIERS_LIBRE_SERVICE: SELF_SERVICE_FOLDERS
-  DOSSIERS_REELS: LIVE_FOLDERS
   doubles: duplicates
   doublons: duplicate_items
-  doute: doubt
   doutes: doubts
-  DOUTES_TECHNIQUES_0047: TECHNICAL_DOUBTS_0047
-  drapeau: flag
   drapeaux: flag_bits
   du_commit: of_the_commit
-  duree: duration
   duree_r7: r7_duration
-  durees: durations
   ecart: gap
   Ecart: Gap
-  ECART: GAP
   ecartee: set_aside
   ecarter: dismiss
   ecartes: set_aside_ones
   ecarts: gaps
   ECARTS_SIGNALEMENT: REPORT_DISMISSALS
   ECHAPPEMENT: ESCAPE
-  echappement: escaping
-  echappes: escaped_ones
   echeance: deadline_at
   ECHEC: FAILURE
   echec: failure
-  echecs: failures_seen
   ecrire: write
   ecrire_debat: write_debate
-  ecrire_donnees: write_data
-  ecrire_familles_0141: write_families_0141
   ecrire_invitation: write_invitation
   ecrire_rapport: write_report
   ecrire_yaml: write_yaml
-  ecrire_zone: write_zone
-  ecrit: written
   ecrit_tel_quel: written_as_is
   ecrite: written_one
   ecrites: written_ones
   ecrits: written_items
-  ecriture: writing
   effacer: erase
-  effaces: erased
   eligibles: eligible
   elu: elected
   empreinte: fingerprint
@@ -1299,7 +1127,6 @@ identifiers:
   empreintes_passage: passage_fingerprints
   empreintes_protegees: protected_fingerprints
   empreintes_retirees: removed_fingerprints
-  emule: emulated
   en_attente: pending
   en_cours: in_progress
   en_course: racing
@@ -1309,7 +1136,6 @@ identifiers:
   en_retard: behind
   EN_TETES_BASE: BASE_HEADERS
   en_trop: extra_items
-  encadre: framed
   encadrement: oversight
   enfant: child_of
   ENFANT_NOEUD: NODE_CHILD
@@ -1323,58 +1149,39 @@ identifiers:
   engagements_prepares: prepared_engagements
   engages: engaged
   engages_base: base_engaged
-  ENORME: HUGE
   enr: rec
-  enr_auteur: author_record
   enr_vote: vote_rec
   enregistrement: record
   enregistrements: records
-  enregistrer: record
-  enregistrer_verdict_vert: record_green_verdict
   ensemble: together_set
   entete: header
   ENTETE_DECISIONS: DECISIONS_HEADER
   entetes: headers
   entier: integer_value
   entier_compte: counted_integer
-  entiere: whole_one
   entiers: integers
-  entiers_bornes: bounded_integers
   entites_decodees: decoded_entities
   entree: entry
   Entree: Input
-  entree_a_la_main: entry_by_hand
   entrees: inputs
-  ENTREES: INPUTS
-  entrees_c: c_inputs
   entrees_liees: linked_entries
   entretien: upkeep
-  env_en_plus: extra_env
-  environnement: environment
   envoi: sent
   envois: sendings
   erreur: error
   Erreur: Error
   ErreurBee: BeeError
   erreurs: errors
-  espion: spy
-  ESPION: SPY
-  espion_montures: mounts_spy
-  espionner: spy_on
   essai: attempt
   essaim: swarm
-  essayer: try_it
   est: is_one
-  est_argv: is_argv
   est_confirmation: is_confirmation
   est_conseil: is_council
-  est_git: is_git
   est_integree: is_integrated
   est_robot: is_robot
   estimer_jetons: estimate_tokens
   etape: step
   etapes: steps
-  ETAPES: STEPS
   etat: state
   etat_course: race_state
   etat_du_cap: balance_state
@@ -1388,19 +1195,14 @@ identifiers:
   etiquette: label
   etiquettes: labels
   etiquettes_de: labels_of
-  etrangeres: foreign
-  etrangers: foreign_ones
   evenement: event
   evenements: events
   exclues: excluded
   exclure: exclude
   exclus: excluded_items
   executer: execute
-  executer_modes: run_modes
   execution: run
-  execution_tete: head_run
   executions: runs
-  exemples: examples
   exiger: require
   exiger_couverture: require_coverage
   exiger_creation_permise: require_creation_allowed
@@ -1413,105 +1215,55 @@ identifiers:
   existants: existing
   expiree: expired
   expirees: expired_ones
-  extra_juge: extra_judge
   extrait: extract
-  faire: make
-  faire_relire_et_voter: have_reviewed_and_voted
   fait: fact
   FAIT_MAX: FACT_MAX
   faites: done_ones
   faits: facts
-  famille: family
-  familles: families
-  FAMILLES_CACHEES: HIDDEN_FAMILIES
-  FausseExecution: FakeRun
-  FAUSSES_MARQUES: FAKE_MARKS
   faute: fault
-  fautes: mistakes
-  fautive: faulty
-  FAUX: WRONG
-  faux: fake
-  faux_bee: fake_bee
-  faux_chronos: fake_stopwatches
-  FAUX_DOCKER: FAKE_DOCKER
-  FAUX_DOCKER_ID: FAKE_DOCKER_ID
-  FAUX_DOCKER_SANS_FIN: FAKE_DOCKER_ENDLESS
-  faux_gh: fake_gh
-  FAUX_GH: FAKE_GH
-  FAUX_GH_COMPTES: FAKE_GH_ACCOUNTS
-  FAUX_GH_DEPOT: FAKE_GH_REPO
-  FAUX_GH_ETAT: FAKE_GH_STATE
-  FAUX_GH_JOURNAL: FAKE_GH_LOG
-  faux_github: fake_github
-  faux_resume: fake_summary
-  FauxDocker: FakeDocker
   favorables: favorable_ones
   fenetre: window
   FENETRE_PLAFOND: CAP_WINDOW
-  ferme: closed_one
-  fermee: closed
-  fermer: close_it
   fermer_liste: close_list
   fermer_paragraphe: close_paragraph
-  fermer_porte: close_gate
   fermeture: closure
   fermetures: closures
   fermetures_sans_integration: closures_without_integration
   feu_vert: green_light
   feu_vert_echu: green_light_expired
-  feuilles: leaves
   fiche: entry_card
-  fiche_projet: project_record
-  fiche_relecture: review_record
   fiches: entry_cards
   fiches_agents: agent_cards
   fiches_gardiens: guardian_cards
   fiches_pr: pr_cards
   fichier: file
-  fichier_etat: state_file
   fichier_noeud: node_file
   FICHIER_NOEUD: NODE_FILE
   fichiers: files
-  FICHIERS: FILES
-  fichiers_de: files_of
   FICHIERS_LIBRE_SERVICE: SELF_SERVICE_FILES
   fichiers_pr: pr_files
   fichiers_tache: task_files
-  figee: frozen_one
   figees: frozen_ones
   figer: freeze
-  figer_avec_a2: freeze_with_a2
-  FIGER_SANS_PRIVILEGE: FREEZE_WITHOUT_PRIVILEGE
-  figer_sans_privilege: freeze_without_privilege
   fil: thread
   fil_de: thread_of
   fils: children_of
   filtre: filter_fn
   fin: end
-  FIN: END
   fin_attentes: waits_end
-  fin_de_ligne: end_of_line
   fin_de_place: room_end
   fin_de_suite: run_end
   FIN_DONNEES: DATA_END
-  fin_du_vote: end_of_vote
   fin_locale: local_end
-  fin_puce: bullet_end
   FIN_SANS_SUITE: END_NO_FOLLOW_UP
   finaux: finals
   fini: finished
-  finir: finish
   fins: ends
   fins_d_engagement: engagement_ends
   fixe: fixed_value
   flux: stream
-  FLUX_0152: WORKFLOW_0152
-  FLUX_0152_EN: WORKFLOW_0152_EN
   fonction: function
-  fonctions: functions_list
   FONCTIONS_RE: RE_FUNCTIONS
-  forgee: forged
-  forgees: forged_ones
   forme: form_text
   forme_comparee: compared_form
   forme_identifiant: identifier_form
@@ -1524,37 +1276,27 @@ identifiers:
   francais: french
   frein: brake
   frein_calcule: computed_brake
-  frein_par_les_membres: brake_by_the_members
-  frein_serre: brake_applied
   fusion: merge
   FUSION: MERGE
   fusion_auto: auto_merge
   fusion_sha: merge_sha
-  fusionnee_par: merged_by
   fusionnees: merged_ones
   fusionner: merge
-  fusionner_dans_main: merge_into_main
-  fusions: merges
   FUTUR_LOINTAIN: FAR_FUTURE
   gabarit: template
   gagnantes: winning
   gain_declare: declared_gain
   gain_mesure: measured_gain
-  gain_parallele: parallel_gain
   gain_relatif: relative_gain
-  gain_titulaire: holder_gain
   garant: guarantor
   garanti_par_proposant: vouched_by_proposer
   garants: guarantors
   garde: keeper
-  garde_donnees_reelles: live_data_guard
   garder: guard
-  garder_attente: keep_waiting
   gardes: kept_ones
   gardien: guardian
   gardiens: guardians
   gardiens_en_fonction: guardians_in_office
-  gardé: kept_one
   generateur: generator
   generer: generate
   generer_site: generate_site
@@ -1562,26 +1304,17 @@ identifiers:
   genre_fichier: file_kind
   GENRES_ACTIFS: ACTIVE_KINDS
   geste: gesture
-  geste_verifie: checked_gesture
   gestes: gestures
-  gestes_gardes: kept_gestures
   GESTES_INVITATION: INVITATION_GESTURES
   gestes_recents: recent_gestures
   GH_JOURNALISE: GH_LOGGED
-  GH_REEL: REAL_GH
   graine: seed
-  graines: seeds
   GRAVITE: SEVERITY
-  greffon_jouet: toy_plugin
-  greffon_modifie: changed_plugin
-  gros: big_one
   groupe: group_of
   grouper: group_by
   groupes: groups
   guillemets: quotes_found
   HARNAIS: HARNESS
-  harnais: harness
-  harnais_jouet: toy_harness
   hasard: randomness
   HEURE: HOUR
   heure_de_fusion: merge_time
@@ -1597,17 +1330,10 @@ identifiers:
   homonymes: namesakes
   homonymes_liste: namesakes_list
   homonymes_origine: namesakes_origin
-  HONNETE: HONEST
-  honnete: honest_one
   honnetes: honest_ones
-  HONNETES: HONEST_ONES
   horloge: clock
   horodatage: timestamping
-  hors: outside
-  HORS_CONTROLE_COMMUN: OUTSIDE_COMMON_CHECK
-  HORS_DU_RETRAIT: OUTSIDE_THE_REMOVAL
   hors_du_tour: off_turn
-  HORS_LISTE: OUTSIDE_LIST
   HORS_NUMERO: NO_NUMBER
   hors_perimetre: out_of_scope
   hors_section: outside_section
@@ -1618,8 +1344,6 @@ identifiers:
   HOTES_FORGES: FORGE_HOSTS
   HOTES_GITHUB_OPAQUES: OPAQUE_GITHUB_HOSTS
   HOTES_PERSONNELS: PERSONAL_HOSTS
-  huit: eight
-  humain: human_one
   ici: here
   ICI: HERE
   ID_DEBAT: DEBATE_ID
@@ -1632,7 +1356,6 @@ identifiers:
   identifiant_de: identifier_of
   identifiant_image: image_id
   identifiant_tache: task_identifier
-  identifiants: identifiers_list
   identifiants_de: identifiers_of
   identique: identical
   Identites: Identities
@@ -1640,25 +1363,20 @@ identifiers:
   identites_de: identities_of
   identites_lues: read_identities
   identites_propres: own_identities
-  ids_des_tests: test_ids
   ignorees: ignored
   illisible: unreadable_one
   illisibles: unreadables
   illisibles_a: unreadable_a
   illisibles_b: unreadable_b
   illisibles_base: base_unreadables
-  imbriquer: nest
   immediat: immediate
   inattendues: unexpected_ones
   incident_suivant: next_incident
   incidents_ouverts: open_incidents
-  inconnue: unknown
   inconnues: unknowns
   inconnus: unknown_items
   indefinis_a: undefined_a
   INDEFINIS_PERMIS: UNDEFINED_ALLOWED
-  indentee: indented
-  indice: index_hint
   inscription: registration
   inscrire: register
   inscrit: registered
@@ -1675,84 +1393,45 @@ identifiers:
   interdits: forbidden_items
   interne: internal
   intervalle: interval
-  intrus: intruder
-  intruse: intruder_one
   inventaire: inventory
   inventaire_marqueurs: marker_inventory
   INVISIBLES_SORTANTS: OUTGOING_INVISIBLES
-  invitation_expiree: expired_invitation
   invitations_ajoutees: added_invitations
   invitations_illisibles: unreadable_invitations
   inviter: invite
-  inviter_brut: invite_raw
-  ISO_3166_SANS_DOMAINE: ISO_3166_WITHOUT_DOMAIN
   issue: outcome
   ISSUES_DEBAT: DEBATE_OUTCOMES
   JAMAIS_PERMIS: NEVER_ALLOWED
   jeton: token
   jetons: tokens
-  JETONS: TOKENS
-  jetons_scindes: split_tokens
-  JEU_FIGE: FROZEN_FIXTURE
-  JOUET: TOY
-  jouet_a_quatre_scenarios: toy_with_four_scenarios
   jour: day
   JOUR: DAY
   journal: log_text
-  journal_: log_
-  journal_docker: docker_log
-  journal_gh: gh_log
   jours: days
   jours_de_la_pr: pr_days
   jours_notes: note_days
   juge: judge
-  juge_: judge_
-  juge_borne: bounded_judge
-  juge_commun: common_judge
   juge_commun_min: common_judge_min
   juge_commun_suffisant: common_judge_sufficient
-  JUGE_COMMUN_YML: COMMON_JUDGE_YML
   juge_complet: complete_judge
-  juge_master: master_judge
-  juge_py: judge_py
-  JUGE_YML: JUDGE_YML
   jugees: judged_ones
   jugees_par: judged_by
-  juger: run_the_judge
-  juger_espionne: spied_judge_run
   juges: judges
   jusqu: until
-  jusqu_a: up_to
   juste: correct
-  lancent_bee: bee_runs
   lancer: launch
-  lancer_: run_
   lancer_bee: run_bee
-  lancer_en_parallele: run_in_parallel
-  lancer_git: run_git
-  lancer_lent: run_slow
   lancer_par_cote: launch_by_side
-  lancer_pr: run_pr
-  lancer_tranches: run_slices
-  lancer_vrai: run_real
-  Lances: Launched
-  lances: runs_launched
   langue: language
   langues: languages
   largeur: width_of
   LARGEUR_NOEUD: NODE_WIDTH
   largeurs: widths
   le: at
-  Lecteur: Reader
-  lecteur: reader_name
   lecture: reader
   lecture_seule: read_only
-  lectures: readings
   legende: legend
   legeres: light_ones
-  lent: slow
-  LENT: SLOW
-  leurre: decoy
   leurs: theirs
   leve_dans_le_fil: lifted_in_thread
   levee: lift
@@ -1761,10 +1440,8 @@ identifiers:
   liables: linkable
   libelle: caption
   liberees: released
-  liberer_et_fusionner: release_and_merge
   libre: free_one
   LIBRE_SERVICE: SELF_SERVICE
-  libre_service: self_service
   libres: free_ones
   lie: linked
   liees: linked_ones
@@ -1783,21 +1460,16 @@ identifiers:
   lier: link
   lies: linked
   lieu: place_of
-  lieu_de: location_of
   lieux: places_found
   ligne: line_text
   ligne_debat: debate_line
-  LIGNE_FORGEE: FORGED_LINE
   ligne_markdown: markdown_line
   lignes: lines
   lignes_ajoutees: added_lines
   lignes_calculees_tache: task_computed_lines
-  lignes_de: lines_of
   lignes_debat_invitation: invitation_debate_lines
-  lignes_forgees: forged_lines
   lignes_identites: identity_lines
   LIGNES_MAX: LINES_MAX
-  lignes_yaml: yaml_lines
   limite: limit_value
   LIMITE_COMMITS_DONNEES: DATA_COMMITS_LIMIT
   limite_engagee: engaged_limit
@@ -1805,7 +1477,6 @@ identifiers:
   lire: read
   lire_auteurs_pr: read_pr_authors
   lire_date: read_date
-  lire_depot: read_repository
   lire_instant: read_instant
   lire_lot_prs: read_pr_batch
   lire_noeud: read_node
@@ -1813,74 +1484,46 @@ identifiers:
   lire_sortie: read_output
   lire_tsv: read_tsv
   lire_verdict_json: read_verdict_json
-  lire_version: read_version
   lire_versions: read_versions
   lire_yaml: read_yaml
   lire_yaml_ref: read_yaml_ref
-  lisent: readers
   lisible: readable
-  listage: listing
   liste: list_of
-  lister2: list2
   listes: lists_of
   LISTES_LIEES: LINKED_LISTS
-  lit: reads
-  lit_en_c: reads_in_c
-  litteral: literal
   litteraux: literals
   logins_de: logins_of
-  longue: long_one
   longueur: length
   longueur_contexte: context_length
   longueurs: lengths
   lu: read_value
-  lue: read_one
   lues: read_ones
-  lui: him
   lundi: monday
-  LUNDI: MONDAY
   lus: read_items
   ma_cle: my_key
-  main_avec_debat: main_with_debate
-  main_avec_debat_sans_rapporteur: main_with_debate_without_rapporteur
-  main_avec_liste: main_with_list
-  main_reservee_avec_inscrits: main_reserved_with_registered
   main_vert: main_green
   maintenant: now_instant
   maj: update_flag
   majorite: majority
-  mal_forme: malformed_one
-  mal_formee: malformed
   manifeste: manifest
   manifeste_ignore: manifest_ignored
   MANIFESTE_MAX_OCTETS: MANIFEST_MAX_BYTES
-  MANIFESTE_REMPLI: FILLED_MANIFEST
   manquantes: missing_ones
   manquants: missing_items
-  manque_r4: missing_r4
   manquent: are_missing
-  marcher: walk_through
   marge: margin
   MARGE_OCTETS: BYTE_MARGIN
   markdown_noeud: node_markdown
   marque: marker
-  MARQUE: MARK
   MARQUE_COURTE: SHORT_MARKER
-  marque_debat: debate_mark
   marque_doublon: duplicate_marker
   MARQUE_ENCADRE: FRAME_MARKER
   MARQUE_NEUTRALISEE: NEUTRALISED_MARKER
   MARQUE_RETRAIT: REMOVAL_MARKER
-  marque_tache: task_mark
-  marquer_les_commentaires: mark_the_comments
   marques: markers
   MARQUES_A_REMPLIR: TO_FILL_IN_MARKERS
   marques_encadre: frame_markers
-  MARQUES_HONNETES: HONEST_MARKS
-  MARQUES_SOSIES: LOOKALIKE_MARKS
   masquees: hidden
-  mauvais: wrong_one
-  mauvaise: bad_one
   meilleur: best_one
   melange: shuffled
   melees: interleaved
@@ -1891,9 +1534,7 @@ identifiers:
   meme: same_one
   meme_contenu: same_content
   meme_mesure: same_measurement
-  MEME_PR: SAME_PR
   meme_pseudo: same_login
-  MEMES_ENTREES: SAME_INPUTS
   memes_sorties: same_outputs
   memoire_max_ko: max_memory_kb
   message_juge: judge_message
@@ -1914,37 +1555,27 @@ identifiers:
   METRIQUES: METRICS
   mettre_a_jour: update
   mettre_a_jour_resume: update_summary
-  mien: mine
-  mienne: my_one
   milliers: thousands
   mnemoniques: mnemonics_found
   MNEMONIQUES_SUSPECTS: SUSPICIOUS_MNEMONICS
   mode_porte: gate_mode
   modele: model
-  modif: change_made
-  modifie: changed_one
   modifiees: modified
-  modifier: modify
   modifier_tache: modify_task
   modifies: modified_items
   module_entrees: inputs_module
   MOIS: MONTHS
   mois: month
   montages: mounts
-  montes: mounted
   montrer: show_error
   montrer_ligne: show_line
   monture: mount_point
-  MONTURES: MOUNTS
-  MONTURES_DOCKER: DOCKER_MOUNTS
-  MONTURES_DU_JUGE: JUDGE_MOUNTS
   morceau: chunk
   morceaux: chunks
   morceaux_lus: chunks_read
   mot: word
   MOT_TELEPHONE: PHONE_WORD
   motif: reason
-  MOTIF: REASON
   MOTIF_DATE: DATE_PATTERN
   motifs: reasons
   MOTIFS: REASONS
@@ -1957,60 +1588,45 @@ identifiers:
   MOTS_VIDES: EMPTY_WORDS
   muets: silent
   n_utiles: n_useful
-  natifs: natives
   natures_arbre: tree_natures
   natures_debat: debate_natures
   ne_plus_contacter: do_not_contact
   neutraliser_marques: neutralise_markers
-  neutre: neutral
   neutres: neutral_ones
   niveau: level
   niveau_de: level_of
   niveau_requis: required_level
   niveaux: levels
   Niveaux: Levels
-  niveaux_avant: levels_before
   noeud: node
-  NOEUD_0141: NODE_0141
   noeud_cle: key_node
   noeud_de_tache: task_node
   noeud_du_projet: project_node
-  NOEUD_ZONE: ZONE_NODE
   noeuds: nodes
   nom: name
   NOM: NAME
-  nom_du_test: test_name
   NOM_FORGE: FORGE_NAME
-  NOM_HOSTILE: HOSTILE_NAME
   nom_manifeste: manifest_name
   NOM_PERMIS: ALLOWED_NAME
   nom_verification: verification_name
   nombre: number
-  nombres: numbers
-  nommer: name_it
   nommes: named
   nommes_au_plafond: named_at_cap
   noms: names
-  NOMS: NAMES
   noms_de: names_of
   noms_de_bee: bee_names
-  noms_non_utf8_permis: allowed_non_utf8_names
   noms_projets: project_names
   non_contact: no_contact
   non_contactes: not_contacted
   non_fini: unfinished
   NON_LIBRE: NOT_FREE
-  note_de_bruno: bruno_s_note
-  note_de_tache_proposee: proposed_task_note
   noter: note
-  noter_a_la_main: note_by_hand
   noter_attente: note_wait
   noter_ecrit: note_written
   notes_ajoutees: added_notes
   notes_depuis: notes_since
   notes_omises: omitted_notes
   nouveau: new
-  nouveau_debat: new_debate
   nouveau_texte: new_text
   nouveaux: new_items
   nouvelle: new_one
@@ -2023,16 +1639,13 @@ identifiers:
   numerique: numeric_value
   numero: number_of
   numero_attendu: expected_number
-  numero_de: number_from
   numero_execution: run_number
-  numero_main_0047: main_number_0047
   NUMERO_RESERVE: RESERVED_NUMBER
   numero_suivant: next_number
   numeros: numbers_of
   numeros_attendus: expected_numbers
   numeros_contributions: contribution_numbers
   numeros_dans: numbers_in
-  NUMEROS_LIES: LINKED_NUMBERS
   numerote: numbered
   nus: bare_ones
   objet: object_name
@@ -2041,11 +1654,9 @@ identifiers:
   objets: objects_found
   objets_attendus: expected_objects
   octets: bytes_count
-  octets_asm: asm_bytes
   octets_executables: executable_bytes
   OCTETS_LECTURE_MAX: READ_BYTES_MAX
   OCTETS_MAX: BYTES_MAX
-  ok_voir: ok_show
   omis: omitted
   omises: omitted_ones
   ont_pris_part: took_part
@@ -2056,26 +1667,19 @@ identifiers:
   ordre_arbre: tree_order
   ordre_de_passe: pass_order
   ORDRE_TAILLES: SIZE_ORDER
-  ordres: orders
   organisation: organization
   originaux: originals
   origine: origin_of
   origine_des_graines: seed_origin
   origines: origins
   orphelines: orphans
-  ote: taken_out
   ou: or_else
   oubliees: forgotten_ones
   oublies: forgotten
-  oui: yes_one
   outil: tool
-  outil_avant: before_tool
-  outil_base: base_tool
   outillage: tooling
   OUTILLAGE: TOOLING
   outils: tools
-  OUTILS_LOCAUX: LOCAL_TOOLS
-  OutilsSignalements: ReportTools
   ouvert: open
   ouverte: open
   ouverte_le: opened_at
@@ -2085,7 +1689,6 @@ identifiers:
   ouvertures_depuis: openings_since
   ouvreur: opener
   ouvrir: open
-  ouvrir_debats: open_debates
   p_unilaterale: one_sided_p
   page_arbre: tree_page
   page_debat: debate_page
@@ -2105,8 +1708,6 @@ identifiers:
   PAR_CONSTANTE: BY_CONSTANT
   par_cote: by_side
   par_fichier: by_file
-  par_job: per_job
-  par_nom: by_name
   par_numero: by_number
   par_parallele: by_parallel
   PAR_TEXTE: BY_TEXT
@@ -2114,31 +1715,23 @@ identifiers:
   par_type: by_type
   paragraphe: paragraph
   paragraphes: paragraphs
-  parallele: parallel_one
   paralleles: parallel
   paralleles_de: parallels_of
-  parametres: parameters
   PARCOURS: SCANNED
   parent_attendu: expected_parent
-  parent_de: parent_of
-  partage: sharing
   participants_course: race_participants
   participants_debat: debate_participants
   participants_tour: turn_participants
   partie: part_of
   partiel: partial
   parties: parts_of
-  pas: step_list
   passages_retires: removed_passages
   PASSE: PASS_REF
   passe: pass_ref
   passe_fusionner: pass_merge
   passe_preparer: pass_prepare
   passe_verifier: pass_check
-  passees: passed_ones
-  passes: passes_run
   PAUSE_FUSION: MERGE_PAUSE
-  pendant_l_attente: while_waiting
   perime: stale_one
   perime_a_l_envoi: stale_on_sending
   perimees: stale_ones
@@ -2154,34 +1747,24 @@ identifiers:
   ph_taille: ph_size
   phrase: sentence
   PHRASE_DEMANDE: REQUEST_SENTENCE
-  PHRASES_HONNETES_0044: HONEST_SENTENCES_0044
   piece: item_piece
   pied: footer
-  piege: trap_one
-  PIEGE_WORKFLOW: WORKFLOW_TRAP
-  pieger: trap
-  pieges: traps
   pile: stack_of
   pistes: leads
   placer: place_at
   plafond: cap_value
-  plafond_24h: cap_24h
   plafonds: caps
   plafonds_par_pr: caps_per_pr
   plage: span_range
-  planter_0047: plant_0047
-  plat: flat
   plateforme: platform
   PLATEFORMES: PLATFORMS
   PLATEFORMES_PARTAGEES: SHARED_PLATFORMS
-  plein: full
   plis: folds
   plume: pen
   plumes: pens
   plus_ancien: oldest
   plus_longue: longest
   plus_recentes: most_recent
-  plus_tard: later_on
   poids: weight
   poids_dispo: available_weight
   POIDS_GESTES: GESTURE_WEIGHTS
@@ -2192,13 +1775,11 @@ identifiers:
   pointe: points_to
   pointeur: pointer
   PONCTUATION: PUNCTUATION
-  porte: gate
   porte_exigee: required_gate
   porte_humaine: human_gate
   porte_suivante: next_gate
   portee: reach
   PORTES: GATES
-  poser: lay_down
   POSITIONS_DEBAT: DEBATE_POSITIONS
   poste: area
   poste_de: area_of
@@ -2209,13 +1790,8 @@ identifiers:
   pourcent: percent
   pourquoi: why
   POURQUOI_MAX: WHY_MAX
-  pousse: pushed
-  poussee: pushed_one
-  pr_a_la_main: pr_by_hand
   pr_canonique: canonical_pr
-  pr_de_gaspard: gaspard_s_pr
   pr_du_compte: account_pr
-  PR_REGISTRE: REGISTRY_PR
   PREAMBULE_VALGRIND: VALGRIND_PREAMBLE
   precedent: previous_one
   precedente: previous_value
@@ -2223,20 +1799,13 @@ identifiers:
   prefixe: prefix_text
   PREFIXE: PREFIX
   prefixe_nom: name_prefix
-  PREFIXES_OCTETS: BYTE_PREFIXES
   premier: first
   premier_caractere_interdit: first_forbidden_character
   premier_renvoi: first_referral
   premiere: first_one
-  premiere_ligne: first_line
-  premieres: first_ones
   prendre: take
   prendre_en_parallele: take_in_parallel
-  prendre_et_fusionner: take_and_merge
   preparer: prepare
-  preparer_contribution_verte: prepare_green_contribution
-  preparer_defaut: prepare_defect
-  preparer_reservation_et_soumission: prepare_reservation_and_submission
   prepares: prepared
   prepares_json: prepared_json
   presentes: present_ones
@@ -2256,7 +1825,6 @@ identifiers:
   probleme_texte_libre: free_text_problem
   probleme_textes_libres: free_texts_problem
   problemes: problems_found
-  problemes_arbre: tree_problems
   problemes_chargement: loading_problems
   problemes_de_forme: shape_problems
   problemes_forme: form_problems
@@ -2270,24 +1838,16 @@ identifiers:
   prochaine_place: next_room
   profil: profile
   profils_seuls: profiles_only
-  profond: deep
   profondeur: depth
   PROFONDEUR: DEPTH
   PROFONDEUR_C_MAX: C_DEPTH_MAX
-  programme: program
   projet: project
   Projet: Project
   projet_def: project_def
   projets: projects
-  promouvoir: promote
   proposant: proposing_member
   proposee: proposed
-  proposee_et_refusee: proposed_and_refused
-  proposees: proposed_ones
   proposer: propose
-  proposer_brut: propose_raw
-  proposer_sur_main: propose_on_main
-  proposer_tache: propose_task
   proposition: proposal
   propositions: proposals
   propositions_ajoutees: added_proposals
@@ -2304,36 +1864,24 @@ identifiers:
   pseudos_mal_ecrits: misspelt_logins
   pseudos_reserves: reserved_logins
   publication: publishing
-  publie: published
   publiee: published_one
   publiee_le: published_at
   publiees: published_ones
-  publiees_: published_
   publier: publish
   publies: published_items
   puce: bullet
   puces: bullets
   quand: when_at
-  quatre: four
-  quatre_contributeurs: four_contributors
-  QUATRE_SCENARIOS: FOUR_SCENARIOS
   QUESTION_NUMEROTEE: NUMBERED_QUESTION
   questions_ouvertes: open_questions
   qui: who_is
-  QUI_AGENT: AGENT_WHO
   qui_est_qui: who_is_who
   quoi: what_it
-  quotent: quote
-  r7_parallele: r7_parallel
-  R8_AMORCAGE: R8_BOOTSTRAP
-  r8_fin: r8_end
-  R8_SANS_EXCEPTION: R8_WITHOUT_EXCEPTION
   racine: root
   RACINE: ROOT
   RACINE_ARBRE: TREE_ROOT
   racine_branche: branch_root
   RACINE_OUTIL: TOOL_ROOT
-  racine_temp: temp_root
   racines: roots
   raison: cause
   raison_du_renvoi: referral_cause
@@ -2342,18 +1890,13 @@ identifiers:
   raisons_acceptation: acceptance_causes
   raisons_course: race_causes
   raisons_r3: r3_causes
-  rajeunir: make_younger
   rang: rank
   RANGEMENTS_ARBRE: TREE_PLACEMENTS
   ranger: place_in
   rangs: ranks
   rapport: report
-  RAPPORT: REPORT
-  rapport_: report_
-  rapport_ab: ab_report
   RAPPORT_MAX: REPORT_MAX
   rapporteur_suivant: next_rapporteur
-  rapports: reports
   rayon_svg: svg_radius
   recence: recency
   recentes: recent_ones
@@ -2361,11 +1904,9 @@ identifiers:
   recevable: admissible
   recopie: copied_text
   recule: moves_back
-  recuperees: recovered
   recuperer_historique: fetch_history
   redater: redate
   reduit: reduced
-  reecrite: rewritten
   reel: actual
   reels: real_ones
   REF_MOTIF: REF_PATTERN
@@ -2375,12 +1916,9 @@ identifiers:
   refus_ailleurs: refusal_elsewhere
   refus_arbre: tree_refusal
   refus_caviardage: redaction_refusal
-  refus_confirme_de_x: confirmed_refusal_from_x
-  refus_consigne: recorded_refusal
   refus_debat_invitation: invitation_debate_refusal
   refus_decideur: decider_refusal
   refus_decision: decision_refusal
-  REFUS_DU_CHARGEUR: LOADER_REFUSALS
   refus_garant: guarantor_refusal
   refus_geste: gesture_refusal
   refus_invitation: invitation_refusal
@@ -2390,32 +1928,22 @@ identifiers:
   refus_signalement: report_refusal
   refus_signalement_sur_main: report_refusal_on_main
   refusee: refused
-  refusee_a_la_main: refused_by_hand
   refusees: refused_ones
-  REFUSEES_EXPRES_0044: REFUSED_ON_PURPOSE_0044
   refuser: refuse
   refuses: refused_items
   registre: registry
   Registre: Registry
-  registre_source: source_registry
   reglage: setting
   REGLAGES: SETTINGS
   reglages: settings
   regle: rule
-  reglee: set_one
-  regler_expiration: set_expiry
-  regler_juge_commun_min: set_common_judge_min
-  regler_porte: set_gate
-  regler_porte_humaine: set_human_gate
   regles: rules
   rejeu: replay
   rejouer: replay
-  relais: relay
   relance: reminder
   relancer: dispatch
   relatif: relative_one
   relecteur: reviewer
-  relecteurs: reviewers
   relecteurs_eligibles: eligible_reviewers
   relecture: review
   relecture_comptee: counted_review
@@ -2423,9 +1951,6 @@ identifiers:
   relectures: reviews
   relectures_qui_comptent: reviews_that_count
   releve: survey
-  releve_agora: agora_relief
-  releve_espion: spy_reading
-  releve_montures: mounts_reading
   releve_refusee: refused_survey
   releve_relectures: reviews_survey
   RELEVES: SURVEYS
@@ -2434,35 +1959,25 @@ identifiers:
   releves_b: surveys_b
   releves_dossier: surveys_folder
   relire: review
-  relire_: review_
-  relire_tous: review_all
   remede: remedy
   remettre: put_back
   remplacees: replaced
-  remplacement: replacement
   remplacer: replace_with
   remplacer_bloc: replace_block
-  rempli: filled
-  remplir: fill_in
   rendu_debat: debate_render
   rendu_invitation: invitation_render
   rendu_noeud_contexte: context_node_render
   RENFORCENT_ENCADREMENT: STRENGTHEN_FRAMING
   renommer: rename
-  renommer_et_fusionner: rename_and_merge
-  renommer_par_le_conseil: rename_by_the_council
   renouvelees: renewed_ones
   renvoi: referral
   renvoi_hors_ruche: referral_outside_hive
   RENVOIS: REFERRALS
-  repartir: split_up
-  reperes: landmarks
   repetition: rehearsal
   repli: fallback
   repond_a: replies_to
   reponse: answer
   REPONSES: ANSWERS
-  reponses: answers
   reponses_api: api_answers
   reprise: retake
   reprise_refusee: refused_retake
@@ -2470,28 +1985,21 @@ identifiers:
   REPRISES_PRS: PR_RETRIES
   reproduit: reproduced
   requete: query_text
-  requete_valgrind: valgrind_request
   requis: required_items
   requises: required_ones
   reseau: network_on
   reserved_pseudo: reserved_login
   reservee: reserved
-  reserver: reserve
-  reserver_sur_main: reserve_on_main
   reserves_lisibles: readable_reserved
   resolveurs: resolvers
   restantes: remaining_ones
   restants: remaining_items
   reste: rest_of
-  RESTE: REST
-  RESTE_INSTRUCTIONS: REST_INSTRUCTIONS
-  RESTE_PREFIXES: REST_PREFIXES
   resultat: result
   RESULTATS: RESULTS
   resultats: results
   resume: summary
   RESUME: SUMMARY
-  RESUME_9094: SUMMARY_9094
   resume_debat: debate_summary
   resume_invitation: invitation_summary
   RESUME_MAX: SUMMARY_MAX
@@ -2502,30 +2010,21 @@ identifiers:
   retenues: kept
   retenus: kept_items
   RETIRE: REMOVED
-  retire: removed
   retiree: withdrawn
   retiree_aussi: also_withdrawn
   retirees: withdrawn_ones
   retirer: withdraw
-  retouche: touched_up
   retouches: touch_ups
   retour: return_value
-  retourner: turn_back
   retrait: withdrawal
   retrait_de: removal_of
-  retrait_en_pr: removal_in_pr
   RETRAIT_PASSAGES_MAX: REMOVAL_PASSAGES_MAX
   RETRAIT_SEMAINE_MAX: REMOVAL_WEEK_MAX
   RETRAIT_TOTAL_MAX: REMOVAL_TOTAL_MAX
   retraits: removals
   retraits_justifies: justified_removals
   retraits_lies: linked_removals
-  reussite: success
   revisees: revised_ones
-  reviser: revise
-  REVUE_0047: REVIEW_0047
-  REVUE_REFUSES: REVIEW_REFUSED
-  rivale: rival
   rivales: rival
   RLE_INVALIDE: INVALID_RLE
   RLE_TAMPON_TROP_PETIT: RLE_BUFFER_TOO_SMALL
@@ -2536,36 +2035,21 @@ identifiers:
   sa: its_own
   sans: without_it
   sans_attendre: no_wait
-  sans_code: without_code
   sans_commit: no_commit
-  sans_donnees_reelles: without_live_data
   sans_echappements: no_escapes
-  sans_fin: endless
   sans_garant: no_guarantor
-  SANS_INSTRUCTIONS: NO_INSTRUCTIONS
   sans_instructions: no_instructions
+  SANS_INSTRUCTIONS: NO_INSTRUCTIONS
   sans_juge: no_judge
-  sans_les_tests: without_the_tests
   sans_melange: without_shuffle
   sans_mesure: without_measurement
-  sans_portee: without_reach
-  sans_ratio: without_ratio
-  sans_role: without_role
   sans_suite_attendue: expected_no_follow_up
-  sans_suspects: without_suspects
-  sans_tache: without_task
-  SansParcours: WithoutCourse
   sauf: except_for
   sautes: skipped_items
   SAUTS_YAML: YAML_JUMPS
   sauves: saved
-  scenarios_voisins: neighbor_scenarios
-  SCHEMAS_LIBRE_SERVICE: SELF_SERVICE_SCHEMAS
   SCHEMAS_TEXTES: TEXT_SCHEMAS
   SCRIPT_FILTRES: FILTERS_SCRIPT
-  SECONDE_REVUE_HONNETES: SECOND_REVIEW_HONEST
-  SECONDE_REVUE_REFUSES: SECOND_REVIEW_REFUSED
-  secondes: seconds
   SECTIONS_COURTES: SHORT_SECTIONS
   SECTIONS_INTERDITES: FORBIDDEN_SECTIONS
   SECTIONS_NOEUD: NODE_SECTIONS
@@ -2577,90 +2061,53 @@ identifiers:
   sens: direction
   SENSIBLE_DOUTE: SENSITIVE_DOUBT
   SENSIBLE_SUR: SENSITIVE_SAFE
-  SENSIBLES_DOUTEUSES_0047: SENSITIVE_DOUBTFUL_0047
-  SENSIBLES_SURES_0047: SENSITIVE_SURE_0047
   SEPARATEUR_DEGUISE: DISGUISED_SEPARATOR
-  separateurs: separators
-  SEPARATEURS_0047: SEPARATORS_0047
   seuil: threshold
   seuil_signe: sign_threshold
   SEUIL_TEST_DU_SIGNE: SIGN_TEST_THRESHOLD
   seuil_vote: vote_threshold
   seul: alone_one
-  seul_c_accepte: only_c_accepts
-  seulement: only_this
   seuls: unmapped_ones
   sh_nombre: sh_count
   sh_noms: sh_names
   sh_taille: sh_size
   sha_verdict: verdict_sha
-  sien: his
   siennes: own_items_f
   siens: own_items
-  signale: reported
   signale_par_le_conseil: reported_by_council
   signalement: report
   signalements: reports
   signalements_au_plafond: reports_at_cap
   signaler: report
-  signaleur: reporter
   signe: sign_char
-  simples: simple_ones
   SIMU: SIM
-  simu: sim
-  simuler: simulate
   soi: oneself
   sommaire: contents
-  sonde: probe
-  sortant: outgoing
-  SORTANTS_HONNETES: OUTGOING_HONEST
-  SORTANTS_REFUSES: OUTGOING_REFUSED
-  SORTANTS_REFUSES_EXPRES_0047: OUTGOING_REFUSED_ON_PURPOSE_0047
   sorte: sort_kind
   sorte_libre_service: self_service_kind
   sorte_parcourue: scanned_kind
-  SORTES: KINDS
   sortie: output_text
-  sortie_anticipee: early_exit
   sortie_b: output_b
-  sortie_fausse_chronometree: wrong_output_timed
-  sortie_h: header_output
   SORTIE_MAX: OUTPUT_MAX
   sorties: outputs
   Sorties: Outputs
   sorties_b: outputs_b
-  sorties_c: c_outputs
   sorties_de: outputs_of
-  SORTIES_DU_JOB: JOB_OUTPUTS
   sorties_par_entree: outputs_by_input
   SOSIES: LOOKALIKES
-  SOSIES_HONNETES: HONEST_LOOKALIKES
   soumettre: submit
-  soumettre_: submit_
-  soumettre_0099: submit_0099
-  soumettre_avec_pr: submit_with_pr
-  soumettre_et_fusionner: submit_and_merge
-  soumettre_ruche: submit_hive
-  soumis: submitted_one
   soumise: submitted
   soumise_par: submitted_by
-  soumise_sur_main: submitted_on_main
-  soumises: submitted_ones
   soumission: submission
-  SOUMISSION: SUBMISSION
   soumission_effective: effective_submission
   SOURCES_REQUISES: REQUIRED_SOURCES
   sous: under_it
   sous_dossiers: subfolders
-  sous_valgrind: under_valgrind
   status: with_status
   statut: status
   statut_git: git_status
-  statuts: statuses
-  statuts_affiches: displayed_statuses
   STATUTS_CLOS_SANS_INTEGRATION: STATUSES_CLOSED_WITHOUT_INTEGRATION
   STATUTS_CONTRIBUTION: CONTRIBUTION_STATUSES
-  succes: successes
   suffixe: suffix_text
   SUFFIXES_DOUBLES: DOUBLE_SUFFIXES
   SUITE_D_ADRESSE: ADDRESS_TAIL
@@ -2670,38 +2117,25 @@ identifiers:
   suivie: followed
   sujet: subject
   sujet_enr: subject_rec
-  supprimes: deleted
   sur: on_it
   sur_disque: on_disk
   sur_hotes: on_hosts
   sur_la_liste: on_the_list
-  sur_le_disque: on_disk
   sur_liste: on_list
-  sur_main: on_main
   SUSPECTES_MAX: SUSPICIOUS_MAX
   symboles: symbols
   synthese: synthesis
-  SYNTHESE_0141: SYNTHESIS_0141
   synthese_a_jour: synthesis_up_to_date
-  synthese_brute: raw_synthesis
   synthetiser: synthesize
   systeme: system
-  table_precalculee: precomputed_table
   table_unicode_suffit: unicode_table_suffices
   tableau: table_of
   tableau_essaim: swarm_table
   tache: task
-  TACHE: TASK
-  tache_avant: task_before
   tache_declaree: declared_task
   tache_id: task_id
-  tache_main: main_task
-  TACHE_OPTIMISATION: OPTIMIZATION_TASK
-  TACHE_PIEGE_0141: TRAP_TASK_0141
-  TACHE_PIEGE_0141_EN: TRAP_TASK_0141_EN
   taches: tasks
   taches_ajoutees: added_tasks
-  taches_brutes: raw_tasks
   taches_tenues: held_tasks
   taille: size
   taille_max: max_size
@@ -2712,11 +2146,708 @@ identifiers:
   tailles_objets: object_sizes
   TAILLES_PAR_NIVEAU: SIZES_BY_LEVEL
   telephone: phone
-  TELEPHONES_0047: PHONES_0047
-  TEMOIN_HONNETE: HONEST_CONTROL
   temporaire: temporary_dir
   TEMPS: TIME
   temps_fixes: fixed_times
+  test_du_signe: sign_test
+  tete: head
+  TETE: HEAD
+  tete_d: head_d
+  TETE_EVENEMENT: EVENT_HEAD
+  tetes: heads
+  texte: text
+  texte_a: text_a
+  texte_apres: text_after
+  TEXTE_CHAMP_MAX: FIELD_TEXT_MAX
+  texte_contexte: context_text
+  TEXTE_COURT_MAX: SHORT_TEXT_MAX
+  texte_declare: declared_text
+  TEXTE_LONG_MAX: LONG_TEXT_MAX
+  texte_propose: proposed_text
+  texte_recevable: admissible_text
+  texte_sortant_refuse: outgoing_text_refused
+  texte_yaml: yaml_text
+  textes: texts_of
+  textes_a: texts_a
+  textes_b: texts_b
+  textes_de: texts_by
+  textes_parcourus: scanned_texts
+  textes_personnels: personal_texts
+  TEXTES_PROPRES: OWN_TEXTS
+  tirage: draw
+  titre: title
+  titre_incident_refuse: incident_title_refused
+  TITRE_SUITE: SUITE_TITLE
+  titulaire: holder
+  TOLERANCE_LEVEE: LIFT_TOLERANCE
+  touchees: touched
+  toujours: always
+  tour: round_number
+  tours: rounds
+  tous: all_of
+  tous_permis: all_allowed
+  toutes: all_ones
+  traites: processed
+  tranche: slice_of
+  trop_gros: too_big
+  trop_petit: too_small
+  trous: holes
+  trouves: found_items
+  tuer: kill_it
+  types_attendus: expected_types
+  un: one_of
+  UNE_BARRE: ONE_BAR
+  une_ligne: one_line
+  UNE_SEULE_BARRE: SINGLE_BAR
+  uniforme: uniform_value
+  unite: unit
+  UNITES: UNITS
+  usuel: usual_value
+  utilisateur: user
+  utilisateurs: users_list
+  utilises: used_names
+  valeur: value
+  valeurs: values_of
+  valeurs_a: values_a
+  valeurs_b: values_b
+  valide: valid_one
+  valides: valid_ones
+  variante: variant
+  variantes: variants_of
+  veille: day_before
+  vendredi: friday
+  verdict_montrable: showable_verdict
+  verdicts_du_contenu: content_verdicts
+  verif: check
+  VERIFICATION: VERIFICATION_CMD
+  verifie: checked_one
+  verifiees: checked_ones
+  verifier: verify
+  verifier_agora_registre: check_agora_registry
+  verifier_arbre: check_tree
+  verifier_comptes: check_accounts
+  verifier_debat: check_debate
+  verifier_engagements: check_engagements
+  verifier_entrees: check_inputs
+  verifier_fork: check_fork
+  verifier_invitation: check_invitation
+  verifier_invitations_registre: check_invitations_registry
+  verifier_manifeste: check_manifest
+  verifier_notes_ajoutees: check_added_notes
+  verifier_pr: check_pr
+  verifier_pr_arbre: check_pr_tree
+  verifier_pr_de: check_pr_for
+  verifier_registre: check_registry
+  verifier_retrait: check_removal
+  verifier_tache_proposee: check_proposed_task
+  VERS_LE_CONTACT: TOWARDS_CONTACT
+  VERSION_COMMUNE: COMMON_VERSION
+  VERSION_JUGE: JUDGE_VERSION
+  VERSIONS_LIBYAML_EXERCEES: EXERCISED_LIBYAML_VERSIONS
+  vert: green_value
+  verts: green_items
+  victoires_a: a_wins
+  victoires_b: b_wins
+  vide: empty_one
+  visee: aimed_at
+  visiter: visit
+  vivant: alive
+  VOIES_EN: EN_STREETS
+  VOIES_FR: FR_STREETS
+  voir: show
+  voir_debat: show_debate
+  votant: voter
+  votants: voters
+  vote_net: net_vote
+  vote_recevable: admissible_vote
+  voter: vote
+  votes_comptes: counted_votes
+  votes_de: votes_of
+  votes_par_sujet: votes_by_subject
+  voulues: wanted
+  vue: view
+  vue_b: view_b
+  vues: views
+  vus: seen_items
+  vus_a: seen_a
+  vus_paralleles: seen_parallels
+  vus_pseudos: seen_logins
+test_identifiers:
+  _numeros_lies: _linked_numbers
+  a_la_main: by_hand
+  a_la_poussee: at_the_push
+  a_la_verification: at_the_check
+  a_soumettre: to_submit
+  abandonner: abandon
+  acceptation: acceptance
+  accepte: accepted_one
+  accord_a_la_main: agreement_by_hand
+  accordees: granted
+  accueil: home_page
+  ADRESSES_0047: ADDRESSES_0047
+  ailleurs: elsewhere
+  ajouter_a_la_main: add_by_hand
+  ajouter_brut: add_raw
+  ajouter_relecture: add_review
+  ajouter_zone: add_zone
+  aller_retour: round_trip
+  alterer: alter
+  analyse_de: analysis_of
+  analyseurs: parsers
+  ancien_maintenant: old_now
+  ancien_path: old_path
+  ancien_retrait: old_removal
+  anciennete: seniority
+  anglaise: english_one
+  annonces: announcements
+  anterieur: earlier
+  appel: call
+  appel_blanchi_par_prefixe: call_laundered_by_prefix
+  appelants: callers
+  appels_de: calls_of
+  arguments_a_la_main: arguments_by_hand
+  AROBASES_0047: AT_SIGNS_0047
+  attaque: attack
+  attaques: attacks
+  attend_le_conseil: awaits_the_council
+  attendue: expected_one
+  attendues: expected_ones
+  au_conseil: to_the_council
+  AUTRES_PR: OTHER_PRS
+  avant_: before_
+  avant_donnees: before_data
+  avec: with_
+  avec_gh: with_gh
+  avec_jeton: with_token
+  avec_retour: with_return
+  avec_saut: with_break
+  base_modifiee: changed_base
+  base_qui_dit_le_mode: base_that_states_the_mode
+  BaseParallele: BaseParallel
+  BasePublier: BasePublish
+  BaseRepetitionGenerale: BaseDressRehearsal
+  BaseRevueRuche0020: BaseReviewRuche0020
+  bee_faux: bee_fake
+  bidon: dummy
+  bilingues: bilingual
+  binaire: binary
+  bizarres: odd_ones
+  bloque: blocked
+  BON: GOOD
+  bon: good
+  bornes: bounds
+  boucle: loop
+  brouillon: draft
+  BRUIT: NOISE
+  cadre: frame
+  caractere: character
+  carte_changee: changed_map
+  CARTE_IDENTIFIANTS: IDENTIFIERS_MAP
+  CARTE_NOMS: NAMES_MAP
+  cas: case_of
+  cas_base: base_case
+  cas_tete: head_case
+  champs_texte: text_fields
+  changer: change
+  changer_puis_refuser: change_then_refuse
+  charger: load
+  chargeur_c: c_loader
+  chargeurs_utilises: loaders_used
+  chemin_0047: path_0047
+  chemin_config: config_path
+  chemin_debat: debate_path
+  chemin_gh: gh_path
+  chemin_invitation: invitation_path
+  chemins_lus: paths_read
+  choix: choice
+  CIBLE: TARGET
+  CLES_REFUSEES: REFUSED_KEYS
+  code_lu: code_read
+  collecter: collect
+  commandes_docker: docker_commands
+  commandes_du_runner: runner_commands
+  commandes_workflow: workflow_commands
+  commentaire: comment
+  commit_fichiers_0141: commit_files_0141
+  comparaisons: comparisons
+  complet: full_one
+  compteurs: counters
+  COMPTEURS: COUNTERS
+  confirmer_ailleurs: confirm_elsewhere
+  conflit: conflict
+  conseil_et_fenetre: council_and_window
+  CONSIGNE_FAILLE: VULNERABILITY_INSTRUCTION
+  consignes: instructions_given
+  constructions_suspectes_omises: omitted_suspicious_constructs
+  construire_jouet: build_toy
+  construits: built_ones
+  conteneurs: containers
+  contributeurs: contributors
+  contributeurs_chloe_et_david: contributors_chloe_and_david
+  contribution_d_alice_sur_main: alice_s_contribution_on_main
+  contribution_de_chloe: chloe_s_contribution
+  contribution_jugee: judged_contribution
+  contribution_relue: reviewed_contribution
+  controle: control
+  COORDONNEES_VOISINES_0044: NEARBY_CONTACT_DETAILS_0044
+  corrige: corrected
+  coupe: cut_one
+  coupee: cut
+  COURRIELS_0047: EMAILS_0047
+  course_a_deux: race_of_two
+  course_relue: reviewed_race
+  dans: in_
+  dans_la_pr: in_the_pr
+  date_d_accord: agreement_date
+  date_de_mesure: measurement_date
+  date_de_proposition: proposal_date
+  date_de_relecture: review_date
+  date_de_vote: vote_date
+  dater: date_it
+  de_bruno: from_bruno
+  debat_a_la_main: debate_by_hand
+  debat_a_trois: debate_of_three
+  debattre_invitation: debate_invitation
+  DEBUT_COMPRESSER: COMPRESS_START
+  debut_en: start_in
+  decidees: decided_ones
+  declarer: declare
+  declarer_agents: declare_agents
+  dehors: outside_one
+  demesure: oversized
+  depasse: exceeds
+  deplacer: move
+  deplacer_mesure: move_measurement
+  deplier: unfold
+  depot_jouet_avec_historique: toy_repo_with_history
+  depot_tete: head_repo
+  depuis_la_racine: from_the_root
+  desaccords: disagreements
+  desassemblage: disassembly
+  DESASSEMBLAGE_A: DISASSEMBLY_A
+  detectent: detect
+  deux: two
+  disque: disk_state
+  dite: said
+  DOCKER_CHRONO: DOCKER_STOPWATCH
+  DOCKER_EN_PANNE: BROKEN_DOCKER
+  DockerEmule: EmulatedDocker
+  domaine: domain
+  DONNEES_REGISTRE: REGISTRY_DATA
+  donnes: given
+  dossier_ouvert_vide: empty_open_folder
+  DOSSIERS_REELS: LIVE_FOLDERS
+  doute: doubt
+  DOUTES_TECHNIQUES_0047: TECHNICAL_DOUBTS_0047
+  drapeau: flag
+  duree: duration
+  durees: durations
+  ECART: GAP
+  echappement: escaping
+  echappes: escaped_ones
+  echecs: failures_seen
+  ecrire_donnees: write_data
+  ecrire_familles_0141: write_families_0141
+  ecrire_zone: write_zone
+  ecrit: written
+  ecriture: writing
+  effaces: erased
+  emule: emulated
+  encadre: framed
+  ENORME: HUGE
+  enr_auteur: author_record
+  enregistrer: record
+  enregistrer_verdict_vert: record_green_verdict
+  entiere: whole_one
+  entiers_bornes: bounded_integers
+  entree_a_la_main: entry_by_hand
+  ENTREES: INPUTS
+  entrees_c: c_inputs
+  env_en_plus: extra_env
+  environnement: environment
+  espion: spy
+  ESPION: SPY
+  espion_montures: mounts_spy
+  espionner: spy_on
+  essayer: try_it
+  est_argv: is_argv
+  est_git: is_git
+  ETAPES: STEPS
+  etrangeres: foreign
+  etrangers: foreign_ones
+  executer_modes: run_modes
+  execution_tete: head_run
+  exemples: examples
+  extra_juge: extra_judge
+  faire: make
+  faire_relire_et_voter: have_reviewed_and_voted
+  famille: family
+  familles: families
+  FAMILLES_CACHEES: HIDDEN_FAMILIES
+  FausseExecution: FakeRun
+  FAUSSES_MARQUES: FAKE_MARKS
+  fautes: mistakes
+  fautive: faulty
+  FAUX: WRONG
+  faux: fake
+  faux_bee: fake_bee
+  faux_chronos: fake_stopwatches
+  FAUX_DOCKER: FAKE_DOCKER
+  FAUX_DOCKER_ID: FAKE_DOCKER_ID
+  FAUX_DOCKER_SANS_FIN: FAKE_DOCKER_ENDLESS
+  faux_gh: fake_gh
+  FAUX_GH: FAKE_GH
+  FAUX_GH_COMPTES: FAKE_GH_ACCOUNTS
+  FAUX_GH_DEPOT: FAKE_GH_REPO
+  FAUX_GH_ETAT: FAKE_GH_STATE
+  FAUX_GH_JOURNAL: FAKE_GH_LOG
+  faux_github: fake_github
+  faux_resume: fake_summary
+  FauxDocker: FakeDocker
+  ferme: closed_one
+  fermee: closed
+  fermer: close_it
+  fermer_porte: close_gate
+  feuilles: leaves
+  fiche_projet: project_record
+  fiche_relecture: review_record
+  fichier_etat: state_file
+  FICHIERS: FILES
+  fichiers_de: files_of
+  figee: frozen_one
+  figer_avec_a2: freeze_with_a2
+  FIGER_SANS_PRIVILEGE: FREEZE_WITHOUT_PRIVILEGE
+  figer_sans_privilege: freeze_without_privilege
+  FIN: END
+  fin_de_ligne: end_of_line
+  fin_du_vote: end_of_vote
+  fin_puce: bullet_end
+  finir: finish
+  FLUX_0152: WORKFLOW_0152
+  FLUX_0152_EN: WORKFLOW_0152_EN
+  fonctions: functions_list
+  forgee: forged
+  forgees: forged_ones
+  frein_par_les_membres: brake_by_the_members
+  frein_serre: brake_applied
+  fusionnee_par: merged_by
+  fusionner_dans_main: merge_into_main
+  fusions: merges
+  gain_parallele: parallel_gain
+  gain_titulaire: holder_gain
+  garde_donnees_reelles: live_data_guard
+  garder_attente: keep_waiting
+  gardé: kept_one
+  geste_verifie: checked_gesture
+  gestes_gardes: kept_gestures
+  GH_REEL: REAL_GH
+  graines: seeds
+  greffon_jouet: toy_plugin
+  greffon_modifie: changed_plugin
+  gros: big_one
+  harnais: harness
+  harnais_jouet: toy_harness
+  HONNETE: HONEST
+  honnete: honest_one
+  HONNETES: HONEST_ONES
+  hors: outside
+  HORS_CONTROLE_COMMUN: OUTSIDE_COMMON_CHECK
+  HORS_DU_RETRAIT: OUTSIDE_THE_REMOVAL
+  HORS_LISTE: OUTSIDE_LIST
+  huit: eight
+  humain: human_one
+  identifiants: identifiers_list
+  ids_des_tests: test_ids
+  imbriquer: nest
+  inconnue: unknown
+  indentee: indented
+  indice: index_hint
+  intrus: intruder
+  intruse: intruder_one
+  invitation_expiree: expired_invitation
+  inviter_brut: invite_raw
+  ISO_3166_SANS_DOMAINE: ISO_3166_WITHOUT_DOMAIN
+  JETONS: TOKENS
+  jetons_scindes: split_tokens
+  JEU_FIGE: FROZEN_FIXTURE
+  JOUET: TOY
+  jouet_a_quatre_scenarios: toy_with_four_scenarios
+  journal_: log_
+  journal_docker: docker_log
+  journal_gh: gh_log
+  juge_: judge_
+  juge_borne: bounded_judge
+  juge_commun: common_judge
+  JUGE_COMMUN_YML: COMMON_JUDGE_YML
+  juge_master: master_judge
+  juge_py: judge_py
+  JUGE_YML: JUDGE_YML
+  juger: run_the_judge
+  juger_espionne: spied_judge_run
+  jusqu_a: up_to
+  lancent_bee: bee_runs
+  lancer_: run_
+  lancer_en_parallele: run_in_parallel
+  lancer_git: run_git
+  lancer_lent: run_slow
+  lancer_pr: run_pr
+  lancer_tranches: run_slices
+  lancer_vrai: run_real
+  Lances: Launched
+  lances: runs_launched
+  Lecteur: Reader
+  lecteur: reader_name
+  lectures: readings
+  lent: slow
+  LENT: SLOW
+  leurre: decoy
+  liberer_et_fusionner: release_and_merge
+  libre_service: self_service
+  lieu_de: location_of
+  LIGNE_FORGEE: FORGED_LINE
+  lignes_de: lines_of
+  lignes_forgees: forged_lines
+  lignes_yaml: yaml_lines
+  lire_depot: read_repository
+  lire_version: read_version
+  lisent: readers
+  listage: listing
+  lister2: list2
+  lit: reads
+  lit_en_c: reads_in_c
+  litteral: literal
+  longue: long_one
+  lue: read_one
+  lui: him
+  LUNDI: MONDAY
+  main_avec_debat: main_with_debate
+  main_avec_debat_sans_rapporteur: main_with_debate_without_rapporteur
+  main_avec_liste: main_with_list
+  main_reservee_avec_inscrits: main_reserved_with_registered
+  mal_forme: malformed_one
+  mal_formee: malformed
+  MANIFESTE_REMPLI: FILLED_MANIFEST
+  manque_r4: missing_r4
+  marcher: walk_through
+  MARQUE: MARK
+  marque_debat: debate_mark
+  marque_tache: task_mark
+  marquer_les_commentaires: mark_the_comments
+  MARQUES_HONNETES: HONEST_MARKS
+  MARQUES_SOSIES: LOOKALIKE_MARKS
+  mauvais: wrong_one
+  mauvaise: bad_one
+  MEME_PR: SAME_PR
+  MEMES_ENTREES: SAME_INPUTS
+  mien: mine
+  mienne: my_one
+  modif: change_made
+  modifie: changed_one
+  modifier: modify
+  montes: mounted
+  MONTURES: MOUNTS
+  MONTURES_DOCKER: DOCKER_MOUNTS
+  MONTURES_DU_JUGE: JUDGE_MOUNTS
+  MOTIF: REASON
+  natifs: natives
+  neutre: neutral
+  niveaux_avant: levels_before
+  NOEUD_0141: NODE_0141
+  NOEUD_ZONE: ZONE_NODE
+  nom_du_test: test_name
+  NOM_HOSTILE: HOSTILE_NAME
+  nombres: numbers
+  nommer: name_it
+  NOMS: NAMES
+  noms_non_utf8_permis: allowed_non_utf8_names
+  note_de_bruno: bruno_s_note
+  note_de_tache_proposee: proposed_task_note
+  noter_a_la_main: note_by_hand
+  nouveau_debat: new_debate
+  numero_de: number_from
+  numero_main_0047: main_number_0047
+  NUMEROS_LIES: LINKED_NUMBERS
+  octets_asm: asm_bytes
+  ok_voir: ok_show
+  ordres: orders
+  ote: taken_out
+  oui: yes_one
+  outil_avant: before_tool
+  outil_base: base_tool
+  OUTILS_LOCAUX: LOCAL_TOOLS
+  OutilsSignalements: ReportTools
+  ouvrir_debats: open_debates
+  par_job: per_job
+  par_nom: by_name
+  parallele: parallel_one
+  parametres: parameters
+  parent_de: parent_of
+  partage: sharing
+  pas: step_list
+  passees: passed_ones
+  passes: passes_run
+  pendant_l_attente: while_waiting
+  PHRASES_HONNETES_0044: HONEST_SENTENCES_0044
+  piege: trap_one
+  PIEGE_WORKFLOW: WORKFLOW_TRAP
+  pieger: trap
+  pieges: traps
+  plafond_24h: cap_24h
+  planter_0047: plant_0047
+  plat: flat
+  plein: full
+  plus_tard: later_on
+  porte: gate
+  poser: lay_down
+  pousse: pushed
+  poussee: pushed_one
+  pr_a_la_main: pr_by_hand
+  pr_de_gaspard: gaspard_s_pr
+  PR_REGISTRE: REGISTRY_PR
+  PREFIXES_OCTETS: BYTE_PREFIXES
+  premiere_ligne: first_line
+  premieres: first_ones
+  prendre_et_fusionner: take_and_merge
+  preparer_contribution_verte: prepare_green_contribution
+  preparer_defaut: prepare_defect
+  preparer_reservation_et_soumission: prepare_reservation_and_submission
+  problemes_arbre: tree_problems
+  profond: deep
+  programme: program
+  promouvoir: promote
+  proposee_et_refusee: proposed_and_refused
+  proposees: proposed_ones
+  proposer_brut: propose_raw
+  proposer_sur_main: propose_on_main
+  proposer_tache: propose_task
+  publie: published
+  publiees_: published_
+  quatre: four
+  quatre_contributeurs: four_contributors
+  QUATRE_SCENARIOS: FOUR_SCENARIOS
+  QUI_AGENT: AGENT_WHO
+  quotent: quote
+  r7_parallele: r7_parallel
+  R8_AMORCAGE: R8_BOOTSTRAP
+  r8_fin: r8_end
+  R8_SANS_EXCEPTION: R8_WITHOUT_EXCEPTION
+  racine_temp: temp_root
+  rajeunir: make_younger
+  RAPPORT: REPORT
+  rapport_: report_
+  rapport_ab: ab_report
+  rapports: reports
+  recuperees: recovered
+  reecrite: rewritten
+  refus_confirme_de_x: confirmed_refusal_from_x
+  refus_consigne: recorded_refusal
+  REFUS_DU_CHARGEUR: LOADER_REFUSALS
+  refusee_a_la_main: refused_by_hand
+  REFUSEES_EXPRES_0044: REFUSED_ON_PURPOSE_0044
+  registre_source: source_registry
+  reglee: set_one
+  regler_expiration: set_expiry
+  regler_juge_commun_min: set_common_judge_min
+  regler_porte: set_gate
+  regler_porte_humaine: set_human_gate
+  relais: relay
+  relecteurs: reviewers
+  releve_agora: agora_relief
+  releve_espion: spy_reading
+  releve_montures: mounts_reading
+  relire_: review_
+  relire_tous: review_all
+  remplacement: replacement
+  rempli: filled
+  remplir: fill_in
+  renommer_et_fusionner: rename_and_merge
+  renommer_par_le_conseil: rename_by_the_council
+  repartir: split_up
+  reperes: landmarks
+  reponses: answers
+  requete_valgrind: valgrind_request
+  reserver: reserve
+  reserver_sur_main: reserve_on_main
+  RESTE: REST
+  RESTE_INSTRUCTIONS: REST_INSTRUCTIONS
+  RESTE_PREFIXES: REST_PREFIXES
+  RESUME_9094: SUMMARY_9094
+  retire: removed
+  retouche: touched_up
+  retourner: turn_back
+  retrait_en_pr: removal_in_pr
+  reussite: success
+  reviser: revise
+  REVUE_0047: REVIEW_0047
+  REVUE_REFUSES: REVIEW_REFUSED
+  rivale: rival
+  sans_code: without_code
+  sans_donnees_reelles: without_live_data
+  sans_fin: endless
+  sans_les_tests: without_the_tests
+  sans_portee: without_reach
+  sans_ratio: without_ratio
+  sans_role: without_role
+  sans_suspects: without_suspects
+  sans_tache: without_task
+  SansParcours: WithoutCourse
+  scenarios_voisins: neighbor_scenarios
+  SCHEMAS_LIBRE_SERVICE: SELF_SERVICE_SCHEMAS
+  SECONDE_REVUE_HONNETES: SECOND_REVIEW_HONEST
+  SECONDE_REVUE_REFUSES: SECOND_REVIEW_REFUSED
+  secondes: seconds
+  SENSIBLES_DOUTEUSES_0047: SENSITIVE_DOUBTFUL_0047
+  SENSIBLES_SURES_0047: SENSITIVE_SURE_0047
+  separateurs: separators
+  SEPARATEURS_0047: SEPARATORS_0047
+  seul_c_accepte: only_c_accepts
+  seulement: only_this
+  sien: his
+  signale: reported
+  signaleur: reporter
+  simples: simple_ones
+  simu: sim
+  simuler: simulate
+  sonde: probe
+  sortant: outgoing
+  SORTANTS_HONNETES: OUTGOING_HONEST
+  SORTANTS_REFUSES: OUTGOING_REFUSED
+  SORTANTS_REFUSES_EXPRES_0047: OUTGOING_REFUSED_ON_PURPOSE_0047
+  SORTES: KINDS
+  sortie_anticipee: early_exit
+  sortie_fausse_chronometree: wrong_output_timed
+  sortie_h: header_output
+  sorties_c: c_outputs
+  SORTIES_DU_JOB: JOB_OUTPUTS
+  SOSIES_HONNETES: HONEST_LOOKALIKES
+  soumettre_: submit_
+  soumettre_0099: submit_0099
+  soumettre_avec_pr: submit_with_pr
+  soumettre_et_fusionner: submit_and_merge
+  soumettre_ruche: submit_hive
+  soumis: submitted_one
+  soumise_sur_main: submitted_on_main
+  soumises: submitted_ones
+  SOUMISSION: SUBMISSION
+  sous_valgrind: under_valgrind
+  statuts: statuses
+  statuts_affiches: displayed_statuses
+  succes: successes
+  supprimes: deleted
+  sur_le_disque: on_disk
+  sur_main: on_main
+  SYNTHESE_0141: SYNTHESIS_0141
+  synthese_brute: raw_synthesis
+  table_precalculee: precomputed_table
+  TACHE: TASK
+  tache_avant: task_before
+  tache_main: main_task
+  TACHE_OPTIMISATION: OPTIMIZATION_TASK
+  TACHE_PIEGE_0141: TRAP_TASK_0141
+  TACHE_PIEGE_0141_EN: TRAP_TASK_0141_EN
+  taches_brutes: raw_tasks
+  TELEPHONES_0047: PHONES_0047
+  TEMOIN_HONNETE: HONEST_CONTROL
   tenir: hold_it
   tenus: held
   test_0_fusion_de_main_garde_r13_et_r14: test_0_merge_of_main_keeps_r13_and_r14
@@ -2942,7 +3073,6 @@ identifiers:
   test_dossier_sans_noeud_et_fichier_etranger: test_folder_without_node_and_foreign_file
   test_doublon_libre_service_par_le_rapporteur_ou_un_gardien: test_self_service_duplicate_by_the_rapporteur_or_a_guardian
   test_doublon_marque_sans_rien_effacer: test_duplicate_marked_without_erasing_anything
-  test_du_signe: sign_test
   test_E1_accord_d_un_gardien_dont_le_garant_est_revoque: test_E1_agreement_of_a_guardian_whose_guarantor_is_revoked
   test_E1_projet_d_origine: test_E1_origin_project
   test_each_setting_missing_or_malformed_is_refused_by_bee_valider_and_by_its_read: test_each_setting_missing_or_malformed_is_refused_by_bee_validate_and_by_its_read
@@ -3620,175 +3750,53 @@ identifiers:
   TestTroisiemeRevueRuche0020: TestThirdReviewRuche0020
   TestVerdictsDeLaPrEnregistree: TestVerdictsOfTheRecordedPr
   TestWorkflowJuge: TestJudgeWorkflow
-  tete: head
-  TETE: HEAD
   tete_avec_sa_carte: head_with_its_map
-  tete_d: head_d
-  TETE_EVENEMENT: EVENT_HEAD
   TETE_FUSIONNEE: MERGED_HEAD
   tete_pr: pr_head
   tete_vieille: old_head
-  tetes: heads
-  texte: text
-  texte_a: text_a
-  texte_apres: text_after
-  TEXTE_CHAMP_MAX: FIELD_TEXT_MAX
-  texte_contexte: context_text
-  TEXTE_COURT_MAX: SHORT_TEXT_MAX
-  texte_declare: declared_text
-  TEXTE_LONG_MAX: LONG_TEXT_MAX
-  texte_propose: proposed_text
-  texte_recevable: admissible_text
-  texte_sortant_refuse: outgoing_text_refused
   texte_v: text_v
-  texte_yaml: yaml_text
-  textes: texts_of
-  textes_a: texts_a
-  textes_b: texts_b
-  textes_de: texts_by
   textes_invitations: invitation_texts
   textes_libres_des_schemas_0047: schema_free_texts_0047
-  textes_parcourus: scanned_texts
-  textes_personnels: personal_texts
-  TEXTES_PROPRES: OWN_TEXTS
   tiennent: hold
   tiers: third_party
   TIERS: THIRD_PARTY
-  tirage: draw
   tirages: draws
   tires: drawn
-  titre: title
-  titre_incident_refuse: incident_title_refused
-  TITRE_SUITE: SUITE_TITLE
   titres: titles
   titres_en_anglais: english_titles
-  titulaire: holder
-  TOLERANCE_LEVEE: LIFT_TOLERANCE
-  touchees: touched
   touches: touched
-  toujours: always
-  tour: round_number
   tourne: runs_now
-  tours: rounds
-  tous: all_of
   tous_les_textes: all_the_texts
-  tous_permis: all_allowed
   tout: everything
-  toutes: all_ones
   traduction_0141: translation_0141
   traduction_0142: translation_0142
   traduits: translated
-  traites: processed
-  tranche: slice_of
   tranches: slices
   TRAVAIL: WORKDIR
   travail_deplace: moved_workdir
   triche: cheat
   trois: three
-  trop_gros: too_big
   TROP_LONGUES: TOO_LONG
-  trop_petit: too_small
-  trous: holes
   trouvees: found_ones
-  trouves: found_items
-  tuer: kill_it
-  types_attendus: expected_types
-  un: one_of
-  UNE_BARRE: ONE_BAR
-  une_ligne: one_line
-  UNE_SEULE_BARRE: SINGLE_BAR
   UNICODE_DE_PYTHON: PYTHON_UNICODE
-  uniforme: uniform_value
   uniques: unique_ones
-  unite: unit
-  UNITES: UNITS
-  usuel: usual_value
   usurpee: usurped
-  utilisateur: user
-  utilisateurs: users_list
-  utilises: used_names
   v_et_vote_net: v_and_net_vote
-  valeur: value
   valeur_option: option_value
-  valeurs: values_of
-  valeurs_a: values_a
-  valeurs_b: values_b
-  valide: valid_one
-  valides: valid_ones
-  variante: variant
   variante_emulee: emulated_variant
-  variantes: variants_of
   variantes_courriel_0047: email_variants_0047
   VARIANTES_OCTOCAT: OCTOCAT_VARIANTS
   variantes_telephone_0047: phone_variants_0047
-  veille: day_before
-  vendredi: friday
   verdict_au: verdict_at
-  verdict_montrable: showable_verdict
   verdict_sur_main: verdict_on_main
-  verdicts_du_contenu: content_verdicts
-  verif: check
-  VERIFICATION: VERIFICATION_CMD
-  verifie: checked_one
-  verifiees: checked_ones
-  verifier: verify
-  verifier_agora_registre: check_agora_registry
-  verifier_arbre: check_tree
-  verifier_comptes: check_accounts
-  verifier_debat: check_debate
-  verifier_engagements: check_engagements
-  verifier_entrees: check_inputs
-  verifier_fork: check_fork
-  verifier_invitation: check_invitation
-  verifier_invitations_registre: check_invitations_registry
   verifier_les_graines: check_the_seeds
-  verifier_manifeste: check_manifest
-  verifier_notes_ajoutees: check_added_notes
-  verifier_pr: check_pr
-  verifier_pr_arbre: check_pr_tree
-  verifier_pr_de: check_pr_for
-  verifier_registre: check_registry
-  verifier_retrait: check_removal
-  verifier_tache_proposee: check_proposed_task
-  VERS_LE_CONTACT: TOWARDS_CONTACT
-  VERSION_COMMUNE: COMMON_VERSION
-  VERSION_JUGE: JUDGE_VERSION
-  VERSIONS_LIBYAML_EXERCEES: EXERCISED_LIBYAML_VERSIONS
-  vert: green_value
-  verts: green_items
   victime: victim
-  victoires_a: a_wins
-  victoires_b: b_wins
-  vide: empty_one
   vieille: old_one
   vieux: old
-  visee: aimed_at
-  visiter: visit
-  vivant: alive
-  VOIES_EN: EN_STREETS
-  VOIES_FR: FR_STREETS
-  voir: show
-  voir_debat: show_debate
   VOISINS: NEIGHBORS
-  votant: voter
-  votants: voters
   vote_a_la_main: vote_by_hand
   VOTE_CLOS: CLOSED_VOTE
-  vote_net: net_vote
-  vote_recevable: admissible_vote
-  voter: vote
-  votes_comptes: counted_votes
-  votes_de: votes_of
-  votes_par_sujet: votes_by_subject
-  voulues: wanted
   vrai: true_one
-  vue: view
-  vue_b: view_b
-  vues: views
-  vus: seen_items
-  vus_a: seen_a
-  vus_paralleles: seen_parallels
-  vus_pseudos: seen_logins
   workflow_juge: judge_workflow
 attributes:
   _fusions: _merges
@@ -3816,6 +3824,7 @@ attributes:
   suivant: next
   travail: workdir
 tokens:
+  DECLARE_MAX: DECLARED_MAX
   fusionnee_le: merged_at
   defauts: defects
   cle_refusee_: refused_key_
@@ -3929,29 +3938,28 @@ shared:
   why: two loop variables of outils/bee.py, never live at once
 locals: [
   a_la_poussee, a_la_verification, a_soumettre, accueil, aller_retour, alterer, anglaise, annonces, appel, appelants,
-  attaques, attendue, attendues, avant_, avant_donnees, avec, avec_gh, avec_jeton, avec_retour, avec_saut,
-  BASE_EVENEMENT, bee_faux, BEE_SIMU, bidon, bilingues, binaire, bizarres, bloque, bon, bornes, boucle, brouillon,
-  cadre, caractere, cas_base, cas_tete, chargeur_c, chemin_config, chemin_gh, choix, code_lu, commentaire,
-  comparaisons, complet, conflit, consignes, constructions_suspectes_omises, construits, controle, controles, corrige,
-  coupe, coupee, dans, dans_la_pr, de_bruno, debut_en, declarer, dehors, demesure, depasse, deployer, depot_tete,
-  desassemblage, detectent, deux, dite, domaine, donnes, doute, drapeau, duree, durees, ECART, echappement, echappes,
-  echecs, ecrit, ecriture, effaces, emule, entiere, entiers_bornes, entrees_c, env_en_plus, environnement, essai,
-  est_git, etrangeres, etrangers, evenements, exemples, extra_juge, faire, famille, familles, fautive, faux, faux_bee,
-  FAUX_DOCKER_ID, FAUX_DOCKER_SANS_FIN, FAUX_GH_COMPTES, FAUX_GH_DEPOT, FAUX_GH_ETAT, FAUX_GH_JOURNAL, fermee,
-  feuilles, fiche_projet, fin_de_ligne, fin_puce, fonctions, forgee, forgees, fusionnee_par, gain_parallele,
-  gain_titulaire, garder_attente, gardé, gestes_gardes, graines, gros, harnais, honnete, hors, huit, identifiants,
-  immediat, inconnue, indentee, indice, intrus, intruse, journal_, journal_docker, juge_, juge_commun, juge_master,
-  juge_py, lancent_bee, lancer_, lancer_git, lancer_vrai, lecteur, LENT, lent, leurre, lignes_yaml, lire_version,
-  lisent, listage, lister2, lit_en_c, longue, lue, lui, mal_forme, mal_formee, marque_debat, marque_tache, mauvais,
-  mauvaise, mien, mienne, modif, modifie, montes, natifs, neutre, niveaux_avant, nombres, nommer, note_de_bruno, omis,
-  ote, oui, outil_avant, outil_base, par_job, par_nom, parametres, pas, passees, piege, pieges, plein, pousse,
-  poussee, premieres, profond, programme, proposees, publiees_, quatre, quotent, rapport_, rapports, recuperees,
-  reecrite, relancer, relecteurs, remplacement, rempli, reperes, reserver, retire, retouche, reussite, rivale,
-  sans_code, SANS_INSTRUCTIONS, sans_les_tests, sans_portee, sans_ratio, sans_role, sans_suspects, sans_tache,
+  attaques, attendue, attendues, avant_, avant_donnees, avec, avec_gh, avec_jeton, avec_retour, avec_saut, bee_faux,
+  bidon, bilingues, binaire, bizarres, bloque, bon, bornes, boucle, brouillon, cadre, caractere, cas_base, cas_tete,
+  chargeur_c, chemin_config, chemin_gh, choix, code_lu, commentaire, comparaisons, complet, conflit, consignes,
+  constructions_suspectes_omises, construits, controle, corrige, coupe, coupee, dans, dans_la_pr, de_bruno, debut_en,
+  declarer, dehors, demesure, depasse, depot_tete, desassemblage, detectent, deux, dite, domaine, donnes, doute,
+  drapeau, duree, durees, ECART, echappement, echappes, echecs, ecrit, ecriture, effaces, emule, entiere,
+  entiers_bornes, entrees_c, env_en_plus, environnement, est_git, etrangeres, etrangers, exemples, extra_juge, faire,
+  famille, familles, fautive, faux, faux_bee, FAUX_DOCKER_ID, FAUX_DOCKER_SANS_FIN, FAUX_GH_COMPTES, FAUX_GH_DEPOT,
+  FAUX_GH_ETAT, FAUX_GH_JOURNAL, fermee, feuilles, fiche_projet, fin_de_ligne, fin_puce, fonctions, forgee, forgees,
+  fusionnee_par, gain_parallele, gain_titulaire, garder_attente, gardé, gestes_gardes, graines, gros, harnais,
+  honnete, hors, huit, identifiants, inconnue, indentee, indice, intrus, intruse, journal_, journal_docker, juge_,
+  juge_commun, juge_master, juge_py, lancent_bee, lancer_, lancer_git, lancer_vrai, lecteur, LENT, lent, leurre,
+  lignes_yaml, lire_version, lisent, listage, lister2, lit_en_c, longue, lue, lui, mal_forme, mal_formee,
+  marque_debat, marque_tache, mauvais, mauvaise, mien, mienne, modif, modifie, montes, natifs, neutre, niveaux_avant,
+  nombres, nommer, note_de_bruno, ote, oui, outil_avant, outil_base, par_job, par_nom, parametres, pas, passees,
+  piege, pieges, plein, pousse, poussee, premieres, profond, programme, proposees, publiees_, quatre, quotent,
+  rapport_, rapports, recuperees, reecrite, relecteurs, remplacement, rempli, reperes, reserver, retire, retouche,
+  reussite, rivale, sans_code, sans_les_tests, sans_portee, sans_ratio, sans_role, sans_suspects, sans_tache,
   secondes, separateurs, seul_c_accepte, seulement, sien, signale, signaleur, simples, sonde, sortant, sortie_h,
-  sorties_c, soumises, sous_valgrind, statuts, succes, supprimes, sur_le_disque, tache_avant, tache_main, tenus, TETE,
-  TETE_EVENEMENT, tete_pr, tete_vieille, tetes, texte_v, tiennent, tiers, tirages, titres, touches, tout, tranches,
-  triche, trois, trouvees, uniques, usurpee, verif, victime, vieille, vieux, vrai
+  sorties_c, soumises, sous_valgrind, statuts, succes, supprimes, sur_le_disque, tache_avant, tache_main, tenus,
+  tete_pr, tete_vieille, texte_v, tiennent, tiers, tirages, titres, touches, tout, tranches, triche, trois, trouvees,
+  uniques, usurpee, victime, vieille, vieux, vrai
 ]
 neutral:
 - vscode.dev
@@ -4050,8 +4058,64 @@ keep:
   - SCRIPT_FILTRES
   tokens:
   - Enfants
-  why: 'a display heading of the site (bees messages and the site, step 3); the site''s CSS and JavaScript, as written: their
-    class names, variables and data-* attributes agree with the HTML the code writes, which keeps them too (ruche-0152)'
+  - pleine
+  - moitie
+  - vide
+  - bloquee
+  - close
+  - attente
+  - Registre
+  - journal
+  why: 'a display heading of the site and display words of its links (bees messages and the site, step 3); the site''s CSS and
+    JavaScript, as written: their class names, variables and data-* attributes agree with the HTML the code writes, which
+    keeps them too, the cells'' classes (c-vide…) included (ruche-0152)'
+- files: outils/bee.py
+  scopes:
+  - PLATEFORMES
+  - ALIAS_PLATEFORME
+  - HOTES_FORGES
+  - DOMAINES_FORGES
+  - PAGES_FORGES
+  - SUFFIXES_DOUBLES
+  - PLATEFORMES_PARTAGEES
+  - SAUTS_YAML
+  - INVISIBLES_SORTANTS
+  - caractere_interdit
+  - caractere_sortant_interdit
+  - decoder_url
+  - hote_de
+  - sur_hotes
+  - domaine_enregistrable
+  - cle_hote
+  - cles_d_adresse
+  - cle_personne
+  - empreinte
+  - cles_passage
+  - empreintes_passage
+  tokens:
+  - bee/engagement-
+  why: 'what is hashed into a stored fingerprint: the keys of a person (cle_personne, cles_passage: partage:, site:, a forge''s
+    name, its aliases, users/repos/orgs, www., in/) and all they read, whose SHA-256 the do-not-contact list and the
+    removals keep; and the engagement branches'' prefix, hashed with what it names (ruche-0152 review)'
+- files: outils/juge/conteneur.py
+  scopes:
+  - dockerfile
+  - construire_image
+  why: 'the Dockerfile''s text, whose SHA-256 names the judge''s image (bee-juge-commun:…): renamed, every image would be built
+    again (ruche-0152 review)'
+- files: outils/juge/entrees.py
+  tokens:
+  - liste
+  - entier
+  why: 'the format the harnesses read (/entrees/liste, « <côté> <nom> <entier> »), in the forks'' C code, never renamed here'
+- files: outils/juge/test_juge.py
+  tokens:
+  - liste
+  why: 'the harnesses'' input list, as entrees.py keeps it'
+- files: outils/juge/rapport.py
+  tokens:
+  - erreur
+  why: 'a word of its French messages, as « REFUS » beside it'
 - files: .github/workflows/verdicts.yml
   tokens:
   - manifestes
@@ -4062,3 +4126,25 @@ keep:
   - registre
   why: 'the members'' clone folder of the simulated hive (abeilles/<login>/registre, as commun.sh and load_test.py name it),
     a token the script''s variable for the registry''s clone shares'
+strings:
+- files: outils/inventaire_marqueurs.py
+  tokens: [ATTENTE_VERDICT, ETATS, FICHIERS_LIBRE_SERVICE, ISSUES_DEBAT, MNEMONIQUES_SUSPECTS, MOIS, MOTS_SOURCE, PHRASE_DEMANDE,
+           POIDS_VOTE, POSITIONS_DEBAT, REGLAGES, RETIRE, SECTIONS_COURTES, STATUTS_CONTRIBUTION, TAILLES_PAR_NIVEAU, VOIES_EN,
+           VOIES_FR, _POSITIF]
+  why: the names of bee.py's and site_bee.py's constants, by which the inventory classifies their strings
+- files: outils/juge/*.py
+  tokens: [objets, octets, symboles, juste, empreinte, donnee]
+  why: 'the judge''s own keys and values, written and read by its files and juge.yml in one run: the surveys (objets, symboles,
+    symboles.txt), a suspect construction''s type (octets), juge.json''s issue (juste) and seed origin (donnee), the SHA-256
+    output (empreinte, juge.yml''s); a value, never a hash''s input'
+- files: outils/juge/jouet/bee/juge/projet.py
+  tokens: [historique]
+  why: juge.yml's input of that name (renamed there), and the toy's verification key
+- files: outils/repetition/**
+  tokens: [confiance, fusion, debut, dossier, cree]
+  why: 'the simulation''s folders and files of one run (its clones confiance/ and fusion/, etat/debut) and a member''s key (cree)
+    in load_test.py: named the same by each of its scripts; dossier: the usage line''s <dossier>, the argument'
+- files: .github/workflows/*.yml
+  tokens: [passe, fusionnees, chronologie, resultats, sorties]
+  why: 'a job''s scratch folders (passe/, passe/fusionnees, resultats/, resultats/sorties), named in that job only; chronologie:
+    a kind of bee''s API answers, as bee.reponses_api names it'
