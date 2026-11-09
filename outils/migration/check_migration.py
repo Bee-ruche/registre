@@ -215,12 +215,12 @@ class Move:
         """Each read-only command on the fixture, then on the migrated fixture: the same output modulo the map (a JSON output
         through its family, strictly; a text, token by token through the map, and its data frame strictly)."""
         problems, task = [], next(p.stem for p in sorted((self.roots[0] / "taches").glob("*/*.yaml")))
-        argvs = [*([a[0], *a[1:]] for a in READ_ONLY[1:]), ["voir", task], ["contexte", task], ["site", "--sortie", "SITE"]]
+        argvs = [*READ_ONLY[1:], ["voir", task], ["contexte", task], ["site", "--sortie", "SITE"]]
         for argv in argvs:
             (x, a), (y, b) = (self.run(r, [str(r.parent / f"site-{k}") if v == "SITE" else v for v in argv], k) for k, r in enumerate(self.roots))
             if argv[0] == "site":
                 a, b = (next((r.parent / f"site-{k}/api").glob("*.json")).read_text(encoding="utf-8") for k, r in enumerate(self.roots))
-            if x != y:
+            if x or y:  # a failure on both sides proves nothing
                 problems.append(f"P6: bee {' '.join(argv)}: exit code {x} before the move, {y} after")
             elif argv[0] in OUTPUTS:
                 try:
@@ -228,7 +228,7 @@ class Move:
                 except (rename.Problem, ValueError, KeyError) as e:
                     problems.append(f"P6: bee {' '.join(argv)}: {type(e).__name__}: {e}")
             else:
-                frames = [[bee.charger_texte_yaml("\n".join(x[2:] for x in t.split("\n") if x.startswith("| ")) + "\n")] for t in (a, b)]
+                frames = [[bee.charger_texte_yaml(re.sub(r"(?m)^\| ?", "", (re.search(r"(?m)^(?:\|(?: .*)?\n)+", t) or [""])[0]))] for t in (a, b)]  # the first
                 fam = self.names.families_of(f"taches/{task.rsplit('-', 1)[0]}/{task}.yaml")[0]
                 size = lambda t: re.sub(r"(?<=Environ )[0-9]+(?= jetons)", "N", t)  # noqa: E731  (contexte's size counts renamed names)
                 if self.names.data(fam, frames[0][0], False) != frames[1][0] or self.cm.string_change(size(a), size(b)) is None:
