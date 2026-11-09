@@ -32,7 +32,8 @@ TESTS = re.compile(r"(?:^|/)test_\w+(?:\.py)?\Z")  # a test file (outils/test_be
 HEREDOC = re.compile(r"(?<!<)<<-?\s*(['\"]?)(\w+)\1\s*$")  # a here-document starts at this line's end
 FENCE = re.compile(r"[ \t>]*(`{3,}|~{3,})")  # Markdown: a fenced code block opens or closes (in a list or a quote too)
 SPAN = re.compile(r"(?<!`)(`+)(?!`)(.+?)(?<!`)\1(?!`)", re.S)  # Markdown: a code span, inside one paragraph
-BEE = re.compile(r"(?<![\w.-])(?:[\w.-]+/)*bee(?:\.py)?(?=[ \t])")  # change 10: bee, or a path to bee.py, then a blank
+BEE = re.compile(r"(?<![\w.-])(?:[\w.-]+/)*bee(?:\.py)?(?=\s)")  # change 10: bee, or a path to bee.py, then a blank
+ARG = re.compile(r"(?:'[^'\n]*'|\"[^\"\n]*\"|[^\s'\"|;&)]|(?<=[^\s|])\|(?=[^\s|]))+")  # a word of a command line (a|b: alternatives)
 words = lambda name: [w.lower() for w in re.findall(r"[A-Z]+(?![a-z])|[A-Z]?[a-zà-ÿ]+", name)]  # noqa: E731
 idents = lambda tree: ((n, f, v) for n in ast.walk(tree) if not isinstance(n, ast.Constant) for f, v in ast.iter_fields(n)  # noqa: E731
                        for v in (v if isinstance(v, list) else [v]) if isinstance(v, str) and f not in ("kind", "type_comment"))
@@ -242,26 +243,26 @@ class CodeMap:
         """Change 10: a Markdown text with each `bee <command>` (or a path to bee.py) inside its code, fenced blocks and code
         spans, renamed with its options and their choices (inv: back to French); prose, and everything else, as written."""
         out, pos = [], 0
-        for a, b in code_regions(text):
-            out += [text[pos:a], self.invocations(text[a:b], inv)]
+        for a, b, span in code_regions(text):
+            out += [text[pos:a], self.invocations(text[a:b], inv, span)]
             pos = b
         return "".join(out) + text[pos:]
 
-    def invocations(self, code, inv):
+    def invocations(self, code, inv, span=False):
         """One region of code: each invocation of bee renamed (up to a line's end, unless continued, a pipe, ;, &, ), a comment
-        or the next bee), its global options, its command (a subcommand too), then each option and the choice it is given."""
+        or the next bee; in a code span, a line's end is a blank), its global options, its command (a subcommand too), then
+        each option and the choice it is given (each of a|b too)."""
         commands, opts, choices = self.cli(inv)
-        edits, found = {}, list(BEE.finditer(code))
+        edits, found, blank = {}, list(BEE.finditer(code)), " \t\n" if span else " \t"
         for k, m in enumerate(found):
             words, j, stop = [], m.end(), found[k + 1].start() if k + 1 < len(found) else len(code)
             while j < stop:
-                if code[j] in " \t" or code.startswith("\\\n", j):
+                if code[j] in blank or code.startswith("\\\n", j):
                     j += 1 + (code[j] == "\\")
                     continue
-                if code[j] in "\n|;&)" or code[j] == "#" and code[j - 1] in " \t":
+                if code[j] in "\n|;&)" or code[j] == "#" and code[j - 1] in blank:
                     break
-                w = re.match(r"(?:'[^'\n]*'|\"[^\"\n]*\"|[^\s'\"|;&)])+", code[j:])
-                if not w:
+                if not (w := ARG.match(code, j)):
                     break
                 words.append((j, j + len(w[0]), w[0]))
                 j += len(w[0])
@@ -275,14 +276,14 @@ class CodeMap:
             edits.update({words[n + x][:2]: y for x, y in enumerate(new) if words[n + x][2] != y})
             edits.update({w[:2]: opts[w[2]] for w in words[:n] if w[2] in opts})
             for x, (a, b, w) in enumerate(words[n + len(new):], n + len(new)):
+                a += len(w) - len(w := w.lstrip("["))  # an optional option, written [--name value]
                 name, eq, value = w.partition("=")
                 given = choices.get((command, name), {})
                 if name in opts:
                     edits[a, a + len(name)] = opts[name]
-                if eq and value in given:
-                    edits[a + len(name) + 1, b] = given[value]
-                elif name.startswith("--") and not eq and x + 1 < len(words) and words[x + 1][2] in given:
-                    edits[words[x + 1][:2]] = given[words[x + 1][2]]
+                at = (a + len(name) + 1, b) if eq else words[x + 1][:2] if name.startswith("--") and x + 1 < len(words) else None
+                if at and given and all(v in given for v in code[at[0]:at[1]].split("|")):
+                    edits[at] = "|".join(given[v] for v in code[at[0]:at[1]].split("|"))
         return rename.edited(code, {k: v for k, v in edits.items() if code[k[0]:k[1]] != v})
 
     def old_commands(self, text, path):
@@ -291,11 +292,12 @@ class CodeMap:
         commands = self.names.m["cli"]["commands"]
         old = {k for k in commands if " " not in k and k not in commands.values()}
         subs = {(v.split(" ")[0], k.split(" ")[1]) for k, v in commands.items() if " " in k and k.split(" ")[1] != v.split(" ")[1]}
-        regions = code_regions(text) if path.endswith(".md") else [(a, b) for a, b, k in self.regions(text, path) if k != "comment"]
+        regions = code_regions(text) if path.endswith(".md") else [(a, b, False) for a, b, k in self.regions(text, path) if k != "comment"]
         found = []
-        for a, b in regions:
+        for a, b, span in regions:
             for m in BEE.finditer(code := text[a:b]):
-                if (w := re.match(r"[ \t]+(?:--registr[ey][ \t]+\S+[ \t]+)?([a-z][\w-]*)(?:[ \t]+([a-z][\w-]*))?", code[m.end():])) and (
+                s = r"\s" if span else r"[ \t]"
+                if (w := re.match(rf"{s}+(?:--registr[ey]{s}+\S+{s}+)?([a-z][\w-]*)(?:{s}+([a-z][\w-]*))?", code[m.end():])) and (
                         w[1] in old or (w[1], w[2]) in subs):
                     found.append((text.count("\n", 0, a + m.start()) + 1, (m[0] + w[0])[:80]))
         return found
@@ -634,13 +636,13 @@ def identifier_strings(tree, deep=True):
 
 
 def code_regions(text):
-    """(start, end) of a Markdown text's code: each line inside a fenced block (not its fences), each code span's content (spans
-    stay inside one paragraph); the rest is prose."""
+    """(start, end, span) of a Markdown text's code: each line inside a fenced block (not its fences), each code span's content
+    (spans stay inside one paragraph; span: True); the rest is prose."""
     out, pos, fence, para = [], 0, None, []
 
     def flush():
         if para:
-            out.extend((para[0] + m.start(2), para[0] + m.end(2)) for m in SPAN.finditer(text[para[0]:para[1]]))
+            out.extend((para[0] + m.start(2), para[0] + m.end(2), True) for m in SPAN.finditer(text[para[0]:para[1]]))
         para.clear()
     for line in text.split("\n"):
         end, m = pos + len(line), FENCE.match(line)
@@ -648,7 +650,7 @@ def code_regions(text):
             if m and m[1][0] == fence[0] and len(m[1]) >= len(fence) and not line[m.end():].strip():
                 fence = None
             else:
-                out.append((pos, end))
+                out.append((pos, end, False))
         elif m:
             flush()
             fence = m[1]

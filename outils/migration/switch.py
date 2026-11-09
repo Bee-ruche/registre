@@ -50,7 +50,9 @@ def own(files):
         if files.get(path) != live.read_bytes():
             raise rename.Problem(f"{live} is not the base's {path}: run the base's own switch script, python3 -I, from its checkout")
     names = rename.Names(files[at].decode("utf-8"))
-    return names, rename_code.CodeMap(names, files[rename_code.IDS[rename.MAPS.index(at)]].decode("utf-8"))
+    cm = rename_code.CodeMap(names, files[rename_code.IDS[rename.MAPS.index(at)]].decode("utf-8"))
+    names.cli = cm.commands  # change 10: the base's command table, as P2 reads it
+    return names, cm
 
 
 def git(repo, *argv, **k):

@@ -30,8 +30,12 @@
 #                 workflows' links) cover their content (rename_code.py, with identifiers.yaml); P2 checks only their place
 #                 (the path map) and their mode.
 #   hand          every other file no family translates, by glob, the first matching entry deciding: same (byte-identical,
-#                 at its English path), becomes (byte-identical to that file of the base) or removed. A schema of
-#                 schemas/ is translated with its family (keys, domains and schema_strings: $id, patterns), byte for byte.
+#                 at its English path), becomes (byte-identical to that file of the base) or removed. With same or becomes,
+#                 commands: true (change 10, ruche-0153) allows exactly one change: each `bee <command>` and its options
+#                 inside the file's code spans and fenced code blocks, renamed by the command table (rename_code.py,
+#                 CodeMap.commands); prose stays, and the result must translate back to the base's file byte for byte.
+#                 A tree node family with commands: true, the same for its text. A schema of schemas/ is translated
+#                 with its family (keys, domains and schema_strings: $id, patterns), byte for byte.
 #   new           globs of files the switch may add.
 version: 1
 date_d: '2027-01-01'
@@ -1127,11 +1131,12 @@ families:
       cap/postes: area
   tree:
     note: 'tree nodes: the front matter is translated as YAML, node ids change in parent and in the children lines;
-      the rest of the Markdown is prose and stays'
+      the rest of the Markdown stays, but `bee <command>` and its options in its code (commands: true, change 10)'
     files:
     - arbre/SENS.md
     - arbre/**/SENS.md
     writer: markdown
+    commands: true
     keys:
       parent: parent
       mis_a_jour: updated_on
@@ -2062,16 +2067,25 @@ hand:
   why: its text becomes AGENTS.md (plan, section 12, change 13)
 - files: AGENTS.md
   becomes: AGENTS.en.md
-  why: 'the front door in English: the base''s AGENTS.en.md, byte for byte'
+  commands: true
+  why: 'the front door in English: the base''s AGENTS.en.md, its commands renamed in its code (change 10)'
 - files: '*.md'
   same: true
   why: root documents, moved by the path map; their text changes after the switch, by council PRs
 - files: .gitignore
   same: true
   why: names no French folder
+- files: docs/english-*.md
+  same: true
+  why: 'the migration plan and the name map: they name each command in both languages on purpose (change 10 would make
+    them say the opposite), byte-identical'
+- files: docs/decisions.md
+  same: true
+  why: 'the decision log: closed history, kept as written (plan, section 8), its old command names included'
 - files: docs/**
   same: true
-  why: moved by the path map; names in their text change after the switch, by council PRs
+  commands: true
+  why: moved by the path map, the commands renamed in their code (change 10); their prose after the switch, by council PRs
 - files: gouvernance/consignes/*.md
   same: true
   why: role instructions, moved; their text by the founder, after the switch
@@ -2080,7 +2094,8 @@ hand:
   why: template prose, moved
 - files: .claude/**
   same: true
-  why: the skill, moved; its text after the switch
+  commands: true
+  why: the skill, moved, the commands renamed in its code (change 10); its prose after the switch
 - files: .github/**
   same: true
   why: templates, moved (the workflows are code)
@@ -2102,4 +2117,7 @@ hand:
 - files: outils/migration/check_migration.py
   same: true
   why: 'step 1c''s proofs, moved: they name the old tool''s French names on purpose, and run only from the base'
+- files: outils/migration/switch.py
+  same: true
+  why: 'step 1d''s switch script, moved: it runs only from the base (ruche-0145 reruns it from main during the freeze)'
 new: []
