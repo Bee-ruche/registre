@@ -351,7 +351,7 @@ def check(repo, base, head=None):
                 problems.append(f"{p}: becomes {source}, which is not a file of the base")
                 continue
             counts[kind := "code" if code else "removed" if h.get("removed") else "commands" if h.get("commands") else "same"] += 1
-            new = {"code": None, "removed": REMOVED}.get(kind) or names.hand_bytes(h, p, files)
+            new = None if kind == "code" else REMOVED if kind == "removed" else names.hand_bytes(h, p, files)
             if kind == "commands" and names.commands(new.decode("utf-8"), True).encode("utf-8") != files[source]:  # change 10, both ways
                 problems.append(f"{q}: its commands do not translate back to {source} byte for byte (an English command name in its code?)")
             images[q] = (p, new, f"byte-identical to {source}" + ", its commands renamed (change 10)" * (kind == "commands"))

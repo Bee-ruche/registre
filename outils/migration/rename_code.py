@@ -30,7 +30,7 @@ TAG = re.compile(r"(</?(?:a|b|body|br|code|dd|details|div|dl|dt|em|footer|h[1-6]
 KEY = re.compile(r"(\s*(?:- )*)([\w-]+)(:)(?=\s|$)\s*")  # a workflow's YAML key at a line start, and the blanks after it
 TESTS = re.compile(r"(?:^|/)test_\w+(?:\.py)?\Z")  # a test file (outils/test_bee.py), or a test module in a dotted name
 HEREDOC = re.compile(r"(?<!<)<<-?\s*(['\"]?)(\w+)\1\s*$")  # a here-document starts at this line's end
-FENCE = re.compile(r"[ \t>]*(`{3,}|~{3,})")  # Markdown: a fenced code block opens or closes (in a list or a quote too)
+BLOCK = re.compile(r"[ \t>]*(`{3,}|~{3,})")  # Markdown: a fenced code block opens or closes (in a list or a quote too)
 SPAN = re.compile(r"(?<!`)(`+)(?!`)(.+?)(?<!`)\1(?!`)", re.S)  # Markdown: a code span, inside one paragraph
 BEE = re.compile(r"(?<![\w.-])(?:[\w.-]+/)*bee(?:\.py)?(?=\s)")  # change 10: bee, or a path to bee.py, then a blank
 ARG = re.compile(r"(?:'[^'\n]*'|\"[^\"\n]*\"|[^\s'\"|;&)]|(?<=[^\s|])\|(?=[^\s|]))+")  # a word of a command line (a|b: alternatives)
@@ -233,9 +233,9 @@ class CodeMap:
                     choices[" ".join(r[0]), o] = {v: self.whole(v) for v in r[9] if isinstance(v, str)}
             self.tokens = self.base_tokens
             flip = lambda d: {b: a for a, b in d.items()}  # noqa: E731
-            opts = {a: b for a, b in nm["options"].items() if a.startswith("--")}
-            self._cli = {False: (nm["commands"], opts, choices),
-                         True: (flip(nm["commands"]), flip(opts), {(" ".join(nm["commands"].get(c, c) for c in [k]), opts.get(o, o)): flip(d)
+            options = {a: b for a, b in nm["options"].items() if a.startswith("--")}
+            self._cli = {False: (nm["commands"], options, choices),
+                         True: (flip(nm["commands"]), flip(options), {(" ".join(nm["commands"].get(c, c) for c in [k]), options.get(o, o)): flip(d)
                                                                    for (k, o), d in choices.items()})}
         return self._cli[inv]
 
@@ -244,23 +244,23 @@ class CodeMap:
         spans, renamed with its options and their choices (inv: back to French); prose, and everything else, as written."""
         out, pos = [], 0
         for a, b, span in code_regions(text):
-            out += [text[pos:a], self.invocations(text[a:b], inv, span)]
+            out += [text[pos:a], self.calls(text[a:b], inv, span)]
             pos = b
         return "".join(out) + text[pos:]
 
-    def invocations(self, code, inv, span=False):
+    def calls(self, code, inv, span=False):
         """One region of code: each invocation of bee renamed (up to a line's end, unless continued, a pipe, ;, &, ), a comment
         or the next bee; in a code span, a line's end is a blank), its global options, its command (a subcommand too), then
         each option and the choice it is given (each of a|b too)."""
-        commands, opts, choices = self.cli(inv)
-        edits, found, blank = {}, list(BEE.finditer(code)), " \t\n" if span else " \t"
+        commands, options, choices = self.cli(inv)
+        edits, found, space = {}, list(BEE.finditer(code)), " \t\n" if span else " \t"
         for k, m in enumerate(found):
             words, j, stop = [], m.end(), found[k + 1].start() if k + 1 < len(found) else len(code)
             while j < stop:
-                if code[j] in blank or code.startswith("\\\n", j):
+                if code[j] in space or code.startswith("\\\n", j):
                     j += 1 + (code[j] == "\\")
                     continue
-                if code[j] in "\n|;&)" or code[j] == "#" and code[j - 1] in blank:
+                if code[j] in "\n|;&)" or code[j] == "#" and code[j - 1] in space:
                     break
                 if not (w := ARG.match(code, j)):
                     break
@@ -274,14 +274,14 @@ class CodeMap:
             command = " ".join(x[2] for x in words[n:n + 2]) if " ".join(x[2] for x in words[n:n + 2]) in commands else words[n][2]
             new = commands[command].split(" ")
             edits.update({words[n + x][:2]: y for x, y in enumerate(new) if words[n + x][2] != y})
-            edits.update({w[:2]: opts[w[2]] for w in words[:n] if w[2] in opts})
+            edits.update({w[:2]: options[w[2]] for w in words[:n] if w[2] in options})
             for x, (a, b, w) in enumerate(words[n + len(new):], n + len(new)):
                 a += len(w) - len(w := w.lstrip("["))  # an optional option, written [--name value]
-                name, eq, value = w.partition("=")
+                name, equal, value = w.partition("=")
                 given = choices.get((command, name), {})
-                if name in opts:
-                    edits[a, a + len(name)] = opts[name]
-                at = (a + len(name) + 1, b) if eq else words[x + 1][:2] if name.startswith("--") and x + 1 < len(words) else None
+                if name in options:
+                    edits[a, a + len(name)] = options[name]
+                at = (a + len(name) + 1, b) if equal else words[x + 1][:2] if name.startswith("--") and x + 1 < len(words) else None
                 if at and given and all(v in given for v in code[at[0]:at[1]].split("|")):
                     edits[at] = "|".join(given[v] for v in code[at[0]:at[1]].split("|"))
         return rename.edited(code, {k: v for k, v in edits.items() if code[k[0]:k[1]] != v})
@@ -291,14 +291,14 @@ class CodeMap:
         fenced blocks and code spans; a shell script or workflow: every region but its comments). [(line, text)]."""
         commands = self.names.m["cli"]["commands"]
         old = {k for k in commands if " " not in k and k not in commands.values()}
-        subs = {(v.split(" ")[0], k.split(" ")[1]) for k, v in commands.items() if " " in k and k.split(" ")[1] != v.split(" ")[1]}
+        subcommands = {(v.split(" ")[0], k.split(" ")[1]) for k, v in commands.items() if " " in k and k.split(" ")[1] != v.split(" ")[1]}
         regions = code_regions(text) if path.endswith(".md") else [(a, b, False) for a, b, k in self.regions(text, path) if k != "comment"]
         found = []
         for a, b, span in regions:
             for m in BEE.finditer(code := text[a:b]):
                 s = r"\s" if span else r"[ \t]"
                 if (w := re.match(rf"{s}+(?:--registr[ey]{s}+\S+{s}+)?([a-z][\w-]*)(?:{s}+([a-z][\w-]*))?", code[m.end():])) and (
-                        w[1] in old or (w[1], w[2]) in subs):
+                        w[1] in old or (w[1], w[2]) in subcommands):
                     found.append((text.count("\n", 0, a + m.start()) + 1, (m[0] + w[0])[:80]))
         return found
 
@@ -638,26 +638,26 @@ def identifier_strings(tree, deep=True):
 def code_regions(text):
     """(start, end, span) of a Markdown text's code: each line inside a fenced block (not its fences), each code span's content
     (spans stay inside one paragraph; span: True); the rest is prose."""
-    out, pos, fence, para = [], 0, None, []
+    out, pos, opening, paragraph = [], 0, None, []
 
     def flush():
-        if para:
-            out.extend((para[0] + m.start(2), para[0] + m.end(2), True) for m in SPAN.finditer(text[para[0]:para[1]]))
-        para.clear()
+        if paragraph:
+            out.extend((paragraph[0] + m.start(2), paragraph[0] + m.end(2), True) for m in SPAN.finditer(text[paragraph[0]:paragraph[1]]))
+        paragraph.clear()
     for line in text.split("\n"):
-        end, m = pos + len(line), FENCE.match(line)
-        if fence is not None:
-            if m and m[1][0] == fence[0] and len(m[1]) >= len(fence) and not line[m.end():].strip():
-                fence = None
+        end, m = pos + len(line), BLOCK.match(line)
+        if opening is not None:
+            if m and m[1][0] == opening[0] and len(m[1]) >= len(opening) and not line[m.end():].strip():
+                opening = None
             else:
                 out.append((pos, end, False))
         elif m:
             flush()
-            fence = m[1]
+            opening = m[1]
         elif not line.strip():
             flush()
         else:
-            para[:] = [para[0] if para else pos, end]
+            paragraph[:] = [paragraph[0] if paragraph else pos, end]
         pos = end + 1
     flush()
     return out
