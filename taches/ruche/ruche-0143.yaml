@@ -4,18 +4,20 @@ categorie: ruche
 type: test
 poste: gouvernance
 taille: L
-titre: 'English names, step 1c: gate path rules, outputs, bee check-migration, and a dry run of the switch'
-contexte: 'docs/english-migration.md, sections 3, 9, 12 and 13. Step 1c of three. P4: every path rule of the gate (section
-  3.1, rows R-a to R-u, and the key sets of section 3.3) classifies map(path) as it classified path, on a corpus generated
-  from the old tool''s constants plus every tracked top-level path; P6: read-only commands (list, balance, swarm, ranking,
-  levels, debates with --json, show, context, the site''s api) print the same output modulo the map on the frozen fixture;
-  `bee check-migration --base --head`, which runs P1, P1b, P2, P3, P4 and P6 and prints their summary; tests that every
-  bee.<attribute> a workflow''s inline Python names exists, and that no old command name is left in workflows, scripts,
-  docs, tree nodes or the skill after a rename. Then a dry run of the whole switch on a copy of main. check-migration asserts
-  explicitly, beyond head == translate(base): debates and their arguments equal modulo the map; the same council, guardians,
-  guarantors and agent accounts; reserved logins unchanged; per-family file counts equal and non-empty. A workflow on main,
-  started by hand (workflow_dispatch) with a PR number and its head SHA, runs main''s check-migration on that exact head
-  and posts the summary with the SHA it checked, so the founder verifies the switch first-hand with reviewed code.'
+titre: 'English names, step 1c: P1b (c), gate path rules (P4), outputs (P6) and bee check-migration'
+contexte: 'docs/english-migration.md, sections 3, 9, 12 and 13. Step 1c, split on 9 November 2026 (the switch script, the dry
+  run on a copy of main and change 10 go to ruche-0153). P1b (c): on the migrated frozen fixture, validate and every scanner
+  (council-file checks, removal on request, loaders, globs) find the same non-zero file counts as before. P4: every path rule
+  of the gate (section 3.1, rows R-a to R-u, and the key sets of section 3.3) classifies map(path) as it classified path, on
+  a corpus generated from the old tool''s constants plus every tracked top-level path; retired paths are refused and never
+  data; map is a bijection on the corpus. P6: read-only commands (list, balance, swarm, ranking, levels, debates with --json,
+  show, context, the site''s api) print the same output modulo the map on the frozen fixture. `bee check-migration --base
+  --head`, which runs P1, P1b, P2, P3, P4 and P6 from the base''s own code and prints their summary, and asserts explicitly,
+  beyond head == translate(base): debates and their arguments equal modulo the map; the same council, guardians, guarantors
+  and agent accounts; reserved logins unchanged; per-family file counts equal and non-empty. A test that every bee.<attribute>
+  a workflow''s inline Python names exists. A workflow on main, started by hand (workflow_dispatch) with a PR number and its
+  head SHA, runs main''s check-migration on that exact head, read-only, and writes the summary with the SHA it checked, so
+  the founder verifies the switch first-hand with reviewed code.'
 fichiers:
 - outils/migration/
 - outils/bee.py
@@ -24,9 +26,11 @@ fichiers:
 portee: 0.7
 metrique: null
 critere_acceptation:
-- P4 and P6 fail on seeded mistakes, shown by tests
-- the dry run of the whole switch on a copy of main passes every proof and the full test suite; its summary, the size of
-  the generated diff and the list of hand-made changes still needed are in the PR
+- P4 and P6 fail on seeded mistakes (a rule left out of the map, a folder dropped from a key set, an output key left in French),
+  shown by tests
+- 'check-migration passes on the frozen fixture''s switch, built by the translators of ruche-0141, ruche-0142 and ruche-0152 as
+  the tests build it, and fails on seeded mistakes (a debate argument changed, a council
+  member dropped, a family emptied, a proof read from the head), shown by tests'
 - an independent adversarial review by an agent of another model than the builder's is attached, with every finding fixed
   or answered; the full test suite passes on the exact head
 hors_perimetre:
@@ -45,3 +49,9 @@ notes:
   - par: "bidji29"
     le: "2026-11-08T21:07:15Z"
     texte: "Council, 8 Nov 2026: P1b (c), the scans and globs on the migrated frozen fixture, moves here from ruche-0142 to stay within R1; its builder kept a working version on the branch tache/ruche-0142 (commit 3d39784) to start from. P6 needs the same machinery. This task now also waits for ruche-0152 (test files, shell scripts and workflows), since check-migration and the dry run cover all the code."
+  - par: "bidji29"
+    le: "2026-11-09T05:59:00Z"
+    texte: "Council, 9 Nov 2026: split, as its builder proposed before writing code (estimate about 600 lines, commandment
+      4). This task keeps P1b (c), P4, P6, check-migration, its workflow and the bee.<attribute> test, tested on the frozen
+      fixture's switch. The switch script, the dry run on a copy of main with the translated full suite, change 10 of section
+      12 and the judge's interface with the forks move to ruche-0153 (step 1d)."

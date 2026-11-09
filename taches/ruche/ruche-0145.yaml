@@ -12,8 +12,8 @@ contexte: 'docs/english-migration.md, section 13. One commit renames everything 
   key and enumerated value, the tree and its node ids, the schemas, the frozen fixture and the tests, the site''s paths
   and JSON keys, and the Python identifiers. Also: deja_nommes reads the old and the new paths; fork documents are read
   in either vocabulary, one per document, until date D, and a fork verdict''s metric is checked against the task''s; the
-  retired-names guard and the refusal table filled. Generated from current main by the script of ruche-0141 to ruche-0143
-  during the freeze; the hand-made part stays under 400 lines. Before the freeze: every open reservation, parallel registration
+  retired-names guard and the refusal table filled. Generated from current main by the script and proofs of ruche-0141, ruche-0142,
+  ruche-0152, ruche-0143 and ruche-0153 during the freeze; the hand-made part stays under 400 lines. Before the freeze: every open reservation, parallel registration
   and race drained, at least 24 h after the last release or closure without integration; the scheduled agent sessions''
   prompts and the skill''s installed copies updated (section 12, change 12).'
 fichiers:
@@ -60,6 +60,7 @@ hors_perimetre:
 - COMMANDMENTS.md
 depend_de:
 - ruche-0143
+- ruche-0153
 - ruche-0144
 - miniz-0049
 - libyaml-0020
