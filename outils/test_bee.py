@@ -23811,6 +23811,7 @@ class TestEnglishNamesStep1d(unittest.TestCase):
                  "journal() { sed; }": "log_text() { sed; }",  # a shell function's definition
                  "passage ouverte → en_relecture réservé": "passage open → in_review réservé",  # a transition's values
                  "le (2026-10-01T10:00:00Z) doit": "at (2026-10-01T10:00:00Z) doit",  # a key before its value in ( )
+                 "pourquoi ne change jamais sous un accord": "why ne change jamais sous un accord", "rien ne change jamais": "rien ne change jamais",
                  "(avez-vous lancé bee prendre, soumettre, relire, voter… ?)": "(avez-vous lancé bee take, submit, review, vote… ?)",
                  # and prose stays: a French word that is no name, a name elsewhere, a login, a word bee keeps in its messages
                  "la tâche : rien de public": "la tâche : rien de public", "Remarque : x": "Remarque : x", "le statut de la tâche": "le statut de la tâche",
@@ -23853,7 +23854,9 @@ class TestEnglishNamesStep1d(unittest.TestCase):
         source = ('def f(n, x):\n    return (f"github:personne{n}", f"# bee contexte{x} :", "Relancez bee "\n'
                   '            "publier une fois", "lancé bee "\n            "prendre, soumettre, relire ?")\n')
         new = self.carte.rename_python(source, "outils/bee.py")[0]
-        for written in ('f"github:personne{n}"', 'f"# bee context{x} :"', '"publish une fois"', '"take, submit, review ?"'):
+        source = source.replace('"lancé bee "', '"de la même "\n            "personne : à son refus", "lancé bee "')  # prose goes on
+        new = self.carte.rename_python(source, "outils/bee.py")[0]
+        for written in ('f"github:personne{n}"', 'f"# bee context{x} :"', '"publish une fois"', '"take, submit, review ?"', '"personne : à son refus"'):
             self.assertIn(written, new)
         self.assertEqual(self.carte.same_python(source, new, collections.Counter(), "outils/bee.py"), [])
         # renamed_in_scopes: a word a test quotes from bee's output, renamed in the literals listed only; an entry off the map is refused

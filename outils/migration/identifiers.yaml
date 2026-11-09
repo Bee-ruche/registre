@@ -3758,6 +3758,7 @@ hand:
     roles:
       outils/bee.py:verifier_manifeste: manifest
       outils/bee.py:SCHEMAS_TEXTES: manifest
+      outils/test_bee.py:test_every_free_text_of_every_schema_is_checked:contribution: manifest
     why: the key and value stay contribution; the schema contribution.schema.json -> manifest.schema.json (it validates
       the forks manifest)
   manifestes:
@@ -3967,12 +3968,37 @@ keep:
   - manifestes
   why: 'the forks'' manifest folder, which they write until they write English (miniz-0050, libyaml-0021): the switch''s hand
     part reads manifests/ beside it (plan, section 13)'
+- files: outils/test_bee.py
+  tokens:
+  - de
+  why: 'a top-level domain (carol-x@beispiel.de) in the contact-detail fixtures (ruche-0047): the identifier de is renamed, the
+    word stays'
 - files: outils/repetition/monter.sh
   tokens:
   - registre
   why: 'the members'' clone folder of the simulated hive (abeilles/<login>/registre, as commun.sh and load_test.py name it),
     a token the script''s variable for the registry''s clone shares'
 kept_in_scopes:
+- files: outils/test_bee.py
+  scopes: [test_ruche0116_le_conseil_corrige_le_commentaire_comme_le_dit_la_doc]
+  tokens: ['[retiré]']
+  literals: ['y écrit `[retiré]` à la place de']
+  why: 'docs/croissance.md''s prose, kept as written by the switch (the marker bee writes becomes [removed])'
+- files: outils/test_bee.py
+  scopes: [test_inventaire_signale_un_marqueur_oublie]
+  tokens: [A_REMPLIR, TITRES, ligne]
+  why: 'a French program the test writes in pieces for the inventory to read (a fake bee.py): kept whole, as one program'
+- files: outils/test_bee.py
+  scopes: [test_the_scan_finds_each_evasion]
+  tokens: [outil, lister, fichiers]
+  literals: [outil, lister, fichiers]
+  why: 'the functions of a program the test writes line by line, kept as written (prose to the renamer): their names as written'
+- files: outils/test_bee.py
+  scopes: [test_ruche_0052_role_inviter_imprime_le_chemin_de_r13]
+  tokens: [voir, essaim]
+  literals: ['voir I-<nnnn>', essaim]
+  why: 'the invite node''s prose (« Commandes : inviter, voir I-<nnnn> …, essaim »), kept as written by the switch (change 10
+    renames commands in code only)'
 - files: outils/test_bee.py
   scopes: [test_refus_caracteres_invisibles]
   tokens: [texte]
@@ -4082,10 +4108,20 @@ renamed_in_scopes:
   literals: ["il arrête les invitations à participer"]
   why: 'an invitation''s request, which bee prints from the data (« les invitations à {demande} »)'
 - files: outils/test_bee.py
-  scopes: [test_a_revised_text_needs_new_agreements, test_un_refus_qui_garde_le_dossier_est_refuse]
-  tokens: {pourquoi: why, debat: debate}
-  literals: ["pourquoi ne change jamais sous un accord", "debat ne change jamais"]
-  why: 'an invitation''s key, which bee prints before « ne change jamais »'
+  scopes: [test_envoi_hors_plafond_consigne_et_signale]
+  tokens: {envoi: sent}
+  literals: ["⚠ I-0004 : envoi du 2026-10-30T10:00:00Z : 4 messages ou places réservées en 7 jours glissants, au plus 3"]
+  why: 'a gesture''s key, which bee prints before « du <date> »'
+- files: outils/test_bee.py
+  scopes: [test_a_quoted_name_is_treated_as_its_plain_equivalent]
+  tokens: {optimisation: optimization}
+  literals: ["bee/tests/<name>.sh : une tâche optimisation ne peut pas modifier ce qui la juge (commandement 3)"]
+  why: 'a task''s type, which bee prints from the data (« une tâche {type} »)'
+- files: outils/test_bee.py
+  scopes: [test_aucune_donnee_du_fork_n_entre_dans_une_commande_ni_dans_le_journal_sans_motif]
+  tokens: {journal: log_text}
+  literals: ["\njournal"]
+  why: 'a call of verdicts.yml''s shell function journal (renamed log_text there), in the script the test runs'
 - files: outils/test_bee.py
   scopes: [test_a_second_pass_records_nothing_and_a_hand_made_record_is_left_alone]
   tokens: {integree: integrated}
@@ -4103,8 +4139,8 @@ renamed_in_scopes:
   why: 'an engagement''s role, which bee prints from the data after the login'
 - files: outils/test_bee.py
   scopes: [test_essaim_voir_et_cap_montrent_le_travail_en_parallele]
-  tokens: {en parallèle: parallel}
-  literals: ["# en parallèle : bruno"]
+  tokens: {en parallèle: parallel, titulaire: holder}
+  literals: ["# en parallèle : bruno", "# titulaire : alice"]
   why: 'an engagement''s role, which bee prints from the data as a label'
 - files: outils/test_bee.py
   scopes: [test_textes_de_la_revue_refuses_dans_le_titre_et_le_corps]

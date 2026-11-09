@@ -32,6 +32,7 @@ TESTS = re.compile(r"(?:^|/)test_\w+(?:\.py)?\Z")  # a test file (outils/test_be
 GLUED = re.compile(r"(?:(?<=[:/@#=.])|\A)[A-Za-z][A-Za-z0-9-]*[A-Za-z0-9]\Z")  # an f-string's last word, glued to the interpolation
 # after a separator or alone (github:personne{n}), never after a blank (« # bee contexte{…} ») (ruche-0153)
 BEE_TAIL = re.compile(r"(?<![\w/.-])bee (?:'{3}|\"{3}|['\"])?\Z")  # a literal that ends on « bee »: its command is in the next one
+CONT = re.compile(r"[\w'’] (?:'{3}|\"{3}|['\"])?\Z")  # a literal that ends inside a sentence: the next one goes on with it
 LEAD = re.compile(r"\A([rRbBuU]*(?:'{3}|\"{3}|['\"])?)([a-z][\w-]*(?:, [a-z][\w-]*)*)")  # that next literal's command(s)
 TEST_CASE = frozenset(dir(unittest.TestCase))  # what a test class's method must never become (ruche-0153: execution -> run)
 HEREDOC = re.compile(r"(?<!<)<<-?\s*(['\"]?)(\w+)\1\s*$")  # a here-document starts at this line's end
@@ -80,7 +81,7 @@ class CodeMap:
         self.in_scopes = [(rename.glob_re(k["files"]), set(k["scopes"]), set(k["tokens"]), set(k.get("literals") or ()))
                           for k in m.get("kept_in_scopes") or ()]  # ruche-0153 (literals: only in those strings)
         self.declared = [(rename.glob_re(k["files"]), set(k["tokens"])) for k in m.get("strings") or ()]  # on purpose, in strings
-        self.out_scopes, self.renaming = [(rename.glob_re(k["files"]), set(k["scopes"]), dict(k["tokens"]), set(k.get("literals") or ()))
+        self.continued, self.out_scopes, self.renaming = False, [(rename.glob_re(k["files"]), set(k["scopes"]), dict(k["tokens"]), set(k.get("literals") or ()))
                                           for k in m.get("renamed_in_scopes") or ()], {}  # ruche-0153: words a test quotes from bee's output
         phrases = sorted({t for d in (nm.get("workflows") or {}).values() for t in d if " " in t}, key=len, reverse=True)  # workflows, steps, robots
         self.subcommands = re.compile(r"(?<![\w-])(?:" + "|".join(re.escape(k).replace(r"\ ", r"\s+") for k in nm["cli"]["commands"] if " " in k) + r")(?![\w-])")
@@ -261,7 +262,7 @@ class CodeMap:
         t = re.sub(r"(?<![\w$-])[a-z_]\w*(?==\$\()", lambda x: self.whole(x[0]), t)  # a shell's x=$( … ) (ruche-0153)
         return re.sub(r"(?<![\w.])bee\.([A-Za-z_]\w*)", lambda x: "bee." + self.ids.get(x[1], x[1]), t)
 
-    def printed(self, t):
+    def printed(self, t, top=True):
         """ruche-0153: the plain words of a text in the places where bee's messages print names, renamed as the tool's output is:
         a key before French typography's « : » (« motif : ») or ending a label (« f.yaml : motif »), or before « de N caractères »;
         a value after « : » then the end, a mark or an id (« statut : refusee) »), unless bee.py keeps it as a word of its messages; a
@@ -270,6 +271,8 @@ class CodeMap:
         a key before « mot(s) » or « « », a level after « Niveau », a gesture before « est déjà consigné », a folder's label after a
         count (« 4 taches ajoutés »). Any other plain word stays (prose, logins)."""
         here = {w for w, e in self.tokens.maps[0].items() if w == e}  # kept in this scope
+        if self.continued and top:  # the literal goes on with the previous one (« … de la même " "personne : … »): a word before it
+            return self.printed("a " + t, False)[2:]
         t = re.sub(r"(?<![\w/.<>@#\[\]$«'’-])(?<![\w'’] )[a-z_][\w-]*(?= : )|(?<=[\w.] : )[a-z_][\w-]*\Z", lambda x: self.named.get(x[0], x[0]) if x[0] in self.key_names - here
                    else x[0], t)  # « motif : », and a label « f.yaml : motif » the tool prints so
         t = re.sub(r"(?<=« )[a-z_][\w-]*(?= »)", lambda x: self.named.get(x[0], x[0]) if x[0] in (self.key_names | self.value_names) - here else x[0], t)
@@ -285,6 +288,7 @@ class CodeMap:
                    t)  # a function's name before « \( » in a pattern over the code's source (« reglage\( »), never « mot\(s\) »
         t = re.sub(r"(?<![\w/.<>@#\[\]$«-])[a-z_][\w-]*(?= mot\(s\)| « )", names(self.key_names), t)  # « titre mot(s) 6 », « par « Gaspard » »
         t = re.sub(r"(?<=Niveau )[A-Z]\w+", names(self.value_names), t)  # a level
+        t = re.sub(r"\A[a-z_]+(?= ne change jamais)", names(self.key_names), t)  # « pourquoi ne change jamais »: a key bee prints so
         t = re.sub(r"(?<![\w/.-])[a-z_]+(?= est déjà consigné)", lambda x: self.whole(x[0]) if x[0] in (self.key_names | self.value_names) - here else x[0], t)  # a gesture
         t = re.sub(r"(?<=\d )(?:propositions de règle|[a-z_]+)(?= ajouté| sur 24 h| en 24 h)", names(set(self.named)), t)  # « 4 taches ajoutés »
         t = re.sub(r"(?:(?<=[\w)] : )|\A)[a-z_]+(?= \(\d)", names(self.key_names), t)  # « S-0002.yaml : le (2026-…) », « le (…) doit »
@@ -430,6 +434,7 @@ class CodeMap:
                 if source[a:b] != tok.string:
                     raise rename.Problem(f"{path}:{tok.start[0]}: a string part the tokenizer does not place")
                 self.scoped(path, where[tok.start[0]], value := tok.string if tok.type != tokenize.STRING else str(ast.literal_eval(tok.string)))
+                self.continued = bool(CONT.search(before))  # ruche-0153
                 new = tok.string if value in kept else self.string(tok.string, path) if tok.type == tokenize.STRING else self.whole(tok.string) if \
                     re.fullmatch(NAME_SHAPE, tok.string) else self.pieces(tok.string) if not re.search(r"\s", tok.string) else self.text(tok.string)
                 new = re.sub(r"\w+", lambda x: self.attrs.get(x[0], x[0]), tok.string) if tok.start in roles else new  # attributes, fields
@@ -441,6 +446,7 @@ class CodeMap:
                         if new != tok.string else new  # a word glued to the next interpolation: part of a value (github:personne{n})
                 if kept and len(WORD.split(new)) == len(WORD.split(tok.string)):
                     new = "".join(o if o in kept else n for o, n in zip(WORD.split(tok.string), WORD.split(new)))
+                self.continued = False
             else:
                 continue
             if new != tok.string:
@@ -707,7 +713,7 @@ class CodeMap:
                  if isinstance(v, ast.Constant) and isinstance(w, ast.FormattedValue) and isinstance(v.value, str) and (g := GLUED.search(v.value))}
         return out + [f"line {c.lineno}: « {c.value[:50]} » holds the French name « {w} »" for c in ast.walk(tree) if isinstance(c, ast.Constant)
                       and isinstance(c.value, str) and not re.search(r"\s", c.value) and c.lineno not in frozen | seen and c.value not in kept | self.kept_here(path, where[c.lineno], c.value)
-                      and not self.names.kept_path(c.value) for w in dict.fromkeys(
+                      and not self.names.kept_path(c.value) and not c.value.startswith("bee/") for w in dict.fromkeys(
                           re.findall(r"[\w-]+", c.value)) if self.named.get(w, w) != w and w not in self.hand.keys() | self.targets | kept | self.kept_here(path, where[c.lineno], c.value)
                           and w != glued.get(id(c))]
 
