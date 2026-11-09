@@ -1,0 +1,51 @@
+id: ruche-0153
+projet: ruche
+categorie: ruche
+type: test
+poste: gouvernance
+taille: L
+titre: 'English names, step 1d: the switch script, a dry run on a copy of main and the translated full suite'
+contexte: 'docs/english-migration.md, sections 12 and 13. Split from ruche-0143 (step 1c), which did not fit in 400 lines:
+  ruche-0143 builds P1b (c), P4, P6, bee check-migration and its workflow, tested on the frozen fixture. This task builds
+  one committed entry point (for instance outils/migration/switch.py) that regenerates the whole switch from a given main:
+  path moves, data, Python, tests, shell scripts and workflows, schemas, the tree and the site, so that ruche-0145 only
+  reruns it during the freeze. It runs it on a copy of main, runs check-migration on the result, then the translated full
+  test suite and the judge''s tests, and fixes what they show. Change 10 of section 12: the switch renames `bee <command>`
+  and its options inside code spans and code blocks of docs/**, the tree''s nodes, .claude/** and AGENTS.md (names, not
+  prose; prose waits for its own tasks): the hand rules of outils/migration/names.yaml that keep docs/** and .claude/**
+  byte-identical and make AGENTS.md the base''s AGENTS.en.md byte for byte become a rule that allows exactly those renames,
+  which P2 checks; and a scan that no old command name is left in workflows, scripts, docs, tree nodes or the skill. The judge''s interface with the forks (the plugin constants juge.py
+  reads by name, the inputs of the reusable juge.yml, which the forks call pinned to a SHA) is either kept as written until
+  juge-v4 (ruche-0148) or read in both forms, with a proof that a fork pinned to the current judge and one moved to the
+  translated judge both work. Every literal that reaches a hash, a stored fingerprint, a branch or tag name another component
+  matches, or a file name a fork, the judge or a harness reads keeps its bytes: the invariance test of ruche-0152 is extended
+  to each one the dry run finds. Metric ids stay as written until ruche-0149 (ruche-0143''s trial switch found bee manifeste
+  writing English ids). ruche-0143''s builder kept its trial translation of main and its notes on the 15 failing tests
+  it sampled, to start from.'
+fichiers:
+- outils/migration/
+- outils/bee.py
+- outils/test_bee.py
+- outils/juge/
+- outils/repetition/
+- .github/workflows/
+portee: 0.7
+metrique: null
+critere_acceptation:
+- the dry run on a copy of main passes check-migration and every proof, then the translated full test suite and the judge's
+  tests; the PR gives its summary, the size of the generated diff and the list of hand-made changes still needed for ruche-0145
+  (boundary adapters until date D, a fork verdict's metric checked against the task's, deja_nommes reading both paths, the
+  refusal table, the retired-names guard, the old names kept in AUTHORITY_FILES, the judge's interface with the forks)
+- 'change 10: after the dry run no old command name is left in workflows, scripts, docs, tree nodes or the skill; P2 accepts
+  the renamed command names in those files (and AGENTS.en.md becoming AGENTS.md) and nothing else; seeded mistakes (an old
+  name left in a code span, a command word renamed in prose, any other change to those files) are refused, shown by tests'
+- an independent adversarial review by an agent of another model than the builder's is attached, with every finding fixed
+  or answered; the full test suite passes on the exact head
+hors_perimetre:
+- COMMANDMENTS.md
+depend_de:
+- ruche-0143
+noeud: projets/ruche/ruche
+statut: ouverte
+cree_par: conseil
+cree_le: '2026-11-09'
