@@ -3990,8 +3990,8 @@ kept_in_scopes:
   why: 'a French program the test writes in pieces for the inventory to read (a fake bee.py): kept whole, as one program'
 - files: outils/test_bee.py
   scopes: [test_the_scan_finds_each_evasion]
-  tokens: [outil, lister, fichiers]
-  literals: [outil, lister, fichiers]
+  tokens: [outil, lister, fichiers, historique]
+  literals: [outil, lister, fichiers, historique]
   why: 'the functions of a program the test writes line by line, kept as written (prose to the renamer): their names as written'
 - files: outils/test_bee.py
   scopes: [test_ruche_0052_role_inviter_imprime_le_chemin_de_r13]
