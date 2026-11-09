@@ -22894,6 +22894,31 @@ class TestEnglishNamesStep1b2(unittest.TestCase):
         code = {c: self.fichiers[c].decode("utf-8") for c in self.names.code}
         self.assertIn("identifier partage: only a test uses it, it belongs in test_identifiers (never a string token elsewhere)", carte.lint(code))
 
+    def test_the_literals_readers_match_byte_for_byte_keep_their_bytes_metric_ids_and_the_vulnerability_marker_too(self):
+        """ruche-0153, extending the fingerprints' test: what a fork, a verdict or a reader matches byte for byte reads the same
+        through the switch. The metric ids bee manifeste writes (the fork's verdict is compared with the task's metric by its id:
+        ruche-0143), from the task's metric and the project's, and the root's vulnerability bullet that --deja-lu reprints (its
+        marker and docs/securite.md, by which bee finds it: else the root prints whole, or the instruction drops out)."""
+        cli = self.names.m["cli"]
+        en = lambda *a: [cli["commands"].get(x, cli["options"].get(x, x)) for x in a]  # noqa: E731
+        with tempfile.TemporaryDirectory() as folder:
+            head = pathlib.Path(folder) / "head"
+            git(self.depot, "worktree", "add", "-q", "--detach", str(head), self.tete)
+            try:
+                outputs = [[subprocess.run([sys.executable, tool, *arguments], cwd=place, capture_output=True, text=True, timeout=120)
+                            for arguments in (args("manifeste", "libyaml-0010", "--utilisateur", "alice"), args("contexte", "libyaml-0010", "--deja-lu"))]
+                           for place, tool, args in ((self.depot, "outils/bee.py", lambda *a: list(a)), (head, self.names.path("outils/bee.py"), en))]
+            finally:
+                git(self.depot, "worktree", "remove", "--force", str(head))
+        for (manifest_run, context_run), place in zip(outputs, ("base", "head")):
+            self.assertEqual((manifest_run.returncode, context_run.returncode), (0, 0), (place, manifest_run.stderr, context_run.stderr))
+        ids = [re.findall(r"(?m)^    ([\w.-]+):", m.stdout) for m, _ in outputs]
+        self.assertIn("debit_analyse", ids[0])
+        self.assertEqual(ids[1], ids[0], "the metric ids of the manifest, byte for byte")
+        reminders = [c.stdout[c.stdout.index("# Rappel de la racine :"):].split("\n# Environ ")[0] for _, c in outputs]
+        self.assertIn("docs/securite.md", reminders[0])
+        self.assertEqual(reminders[1], reminders[0], "the root's vulnerability bullet, reprinted with --deja-lu, byte for byte")
+
     def test_a_token_renamed_in_a_string_its_file_does_not_name_is_refused_unless_declared(self):
         """Item 1, the lint: a token of identifiers.yaml changed in a string of the code, where the file's code does not name it,
         is a value that only looks like a name (a hashed literal, a CSS class), unless declared on purpose (strings)."""
