@@ -18000,7 +18000,7 @@ class TestCitationsRuche0088(BaseTest):
 
     def test_a_manifest_path_quotes_each_key(self):
         manifest = pathlib.Path(self.temp.name) / "CONTRIBUTION.yaml"
-        for key, expected in (("temps", "measurements/before/temps : "), ("k" + FORGED_LINE, "measurements/before/k\\n✓ registre valide")):
+        for key, expected in (("temps", "measurements/before/temps: "), ("k" + FORGED_LINE, "measurements/before/k\\n✓ registre valide")):
             with self.subTest(key=key[:5]):
                 manifest.write_text(FILLED_MANIFEST.replace("before: {", "before: {" + json.dumps(key) + ": [1], "), encoding="utf-8")
                 code, output_text = self.bee("validate-manifest", str(manifest))
@@ -20677,7 +20677,7 @@ class TestReportsRuche0118(ReportTools):
             self.bee("decide-report", "S-0003", "--user", "bidji29", "--dismiss", "inconnu")
         s = self.read("reports/S-0003.yaml")
         bee.write_yaml(self.dir / "reports/S-0003.yaml", {**s, "decision": {"by": "bidji29", "at": s["at"], "outcome": "inconnu"}})
-        self.ko("reports/S-0003.yaml : decision/outcome", "validate")
+        self.ko("reports/S-0003.yaml: decision/outcome", "validate")
 
     def test_neither_one_of_the_two_nor_a_second_open_nor_beyond_the_cap(self):
         self.a("2026-10-30T10:00:00Z")
