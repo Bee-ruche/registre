@@ -23,6 +23,9 @@ out_of_scope:
 depends_on:
 - ruche-0145
 node: projects/ruche/ruche
-status: open
+status: reserved
+reservation:
+  user: "bidji29"
+  since: "2026-11-10T22:11:45Z"
 created_by: council
 created_on: '2026-11-08'
