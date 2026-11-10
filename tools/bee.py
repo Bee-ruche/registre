@@ -11108,7 +11108,7 @@ def context_text(reg, task_identifier=None, role=None, budget=None, registry=Non
         body = "\n\n".join(blocks)
 
         def size(tokens):
-            return (f"# About {tokens} tokens ({CHARACTERS_PER_TOKEN} characters per token); nothing else to read unless referred to; "
+            return (f"# About {tokens} tokens ({CHARACTERS_PER_TOKEN} characters per token); nothing else to read unless pointed to; "
                     "node <n>: tree/<n>/MEANING.md.")
         tokens = estimate_tokens("\n".join(head + [size(0)]) + "\n\n" + body + "\n")
         return "\n".join(head + [size(tokens)]) + "\n\n" + body + "\n", tokens
