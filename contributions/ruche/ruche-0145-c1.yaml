@@ -1,0 +1,12 @@
+id: ruche-0145-c1
+task: ruche-0145
+author: bidji29
+pr: https://github.com/Bee-ruche/registre/pull/238
+summary: 'The English switch: every name of the registry moved from French to English in one generated
+  commit proven by bee check-migration, plus nine hand-made commits (retired names refused, renamed commands
+  refused with their new name, fork documents read in both vocabularies until date D, a fork verdict''s
+  metric checked).'
+status: in_review
+submitted_at: '2026-11-10T15:06:07Z'
+engaged_since: '2026-11-10T04:20:36Z'
+reviews: []

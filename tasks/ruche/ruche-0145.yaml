@@ -65,9 +65,7 @@ depends_on:
 - miniz-0049
 - libyaml-0020
 node: projects/ruche/ruche
-status: reserved
-reservation:
-  user: "bidji29"
-  since: "2026-11-10T04:20:36Z"
+status: in_review
+contribution: ruche-0145-c1
 created_by: council
 created_on: '2026-11-08'
