@@ -19890,7 +19890,7 @@ class TestIdentityByNumber(BaseDressRehearsal):
                     self.assertIn(f"la PR {address} doit avoir été ouverte par gaspard2 sur GitHub", text)
 
     def test_a_record_with_a_number_already_taken_is_refused(self):
-        self.ko("the account %d already has its file, gaspard : a renamed account moves it (bee rename)" % number_from("gaspard"),
+        self.ko("the account %d already has its file, gaspard: a renamed account moves it (bee rename)" % number_from("gaspard"),
                 "register", "--login", "gaspard-bis", "--account-created-on", "2020-01-01", "--github-id", str(number_from("gaspard")))
         self.branch("double")
         bee.write_yaml(self.dir / "members/gaspard-bis.yaml", {"login": "gaspard-bis", "registered_on": "2026-10-29",
@@ -20064,7 +20064,7 @@ class TestLinkedAccountsRuche0051(BaseInvitations):
         self.link("alice", "--other-account", number_from("farid"))
         self.assertFalse(bee.Registry(self.dir).identities.same_one("alice", "farid"))  # one side only: nothing yet
         # The other side confirms a file that lists it, by its own PR, never someone else's.
-        self.ko(f"account_of {number_from('bruno')} : that member file lists this account in other_accounts first", "link",
+        self.ko(f"account_of {number_from('bruno')}: that member file lists this account in other_accounts first", "link",
                 "--user", "chloe", "--account-of", str(number_from("bruno")))
         self.branch("usurpation")
         self.by_hand("farid", account_of=number_from("alice"))
@@ -20114,7 +20114,7 @@ class TestLinkedAccountsRuche0051(BaseInvitations):
         self.abandon("agent")
         # A declared number is a member file's, itself linked to no one (a number without a file fails closed), 5 at most.
         for number_of in (4242, number_from("farid")):
-            self.ko("other_accounts : 5 at most, each the number of a member file linked to no one", "link", "--user", "bruno",
+            self.ko("other_accounts: 5 at most, each the number of a member file linked to no one", "link", "--user", "bruno",
                     "--other-account", str(number_of))
         for n in range(1, 5):
             self.ok("register", "--login", f"compte{n}", "--account-created-on", "2020-01-01")
@@ -20124,14 +20124,14 @@ class TestLinkedAccountsRuche0051(BaseInvitations):
                 self.branch(name)
                 self.by_hand("bruno", other_accounts=numbers_of)
                 self.commit()
-                self.refused("bruno", "other_accounts : 5 at most, each the number of a member file linked to no one (a number without a file is refused)")
+                self.refused("bruno", "other_accounts: 5 at most, each the number of a member file linked to no one (a number without a file is refused)")
                 self.abandon(name)
         # bee valider: a link is one step, confirmed from both sides, never to oneself.
         chloe = bee.read_yaml(self.dir / "members/chloe.yaml")
         for fields in ({"account_of": number_from("bruno")}, {"other_accounts": [number_from("chloe")]}):
             with self.subTest(fields=fields):
                 bee.write_yaml(self.dir / "members/chloe.yaml", {**chloe, **fields})
-                self.ko("members/chloe.yaml : a link is one step, confirmed from both sides by account numbers, never to oneself", "validate")
+                self.ko("members/chloe.yaml: a link is one step, confirmed from both sides by account numbers, never to oneself", "validate")
 
     def test_linked_accounts_count_as_one_in_r7_and_r8(self):
         self.a("2026-10-30T10:00:00Z")
@@ -20558,10 +20558,10 @@ class TestLinkedAccountsRuche0051(BaseInvitations):
         alice = bee.read_yaml(self.dir / "members/alice.yaml")
         for option in ("--other-account", "--account-of"):
             with self.subTest(option=option):
-                self.ko("0 : a GitHub account's number is a positive integer", "link", "--user", "bruno", option, "0")
+                self.ko("0: a GitHub account's number is a positive integer", "link", "--user", "bruno", option, "0")
                 self.assertNotIn("account_of", bee.read_yaml(self.dir / "members/bruno.yaml"))
         bee.write_yaml(self.dir / "members/alice.yaml", {k: v for k, v in alice.items() if k != "login"})
-        text = self.ko("members/farid.yaml : a link is one step, confirmed from both sides by account numbers, never to oneself, "
+        text = self.ko("members/farid.yaml: a link is one step, confirmed from both sides by account numbers, never to oneself, "
                         "between two member files that name their pseudo", "validate")
         self.assertNotIn("Traceback", text)
 
@@ -20657,13 +20657,13 @@ class TestReportsRuche0118(ReportTools):
         self.valid_one()
         form_text = ("a report holds by, at, accounts and reason, nothing else (no free text); reason: cross_reviews, cross_votes, "
                  "engagement_relay, copied_contribution")
-        outside = "accounts : the logins of two member accounts, as members/ names them, each file with its github_id (no one outside the hive)"
+        outside = "accounts: the logins of two member accounts, as members/ names them, each file with its github_id (no one outside the hive)"
         for fields, chunk in (({"text": "Ils votent toujours ensemble."}, form_text), ({"reason": "Ils votent toujours ensemble."}, form_text),
                                 ({"reason": "other"}, form_text), ({"reason": ["cross_votes"]}, form_text), ({"accounts": ["farid", "inconnu"]}, outside),
                                 ({"accounts": ["farid", "hector"]}, outside), ({"accounts": ["farid", "bidji29"]}, outside),
                                 ({"accounts": ["farid", "Gaspard"]}, outside), ({"accounts": ["farid", "farid"]}, outside),
                                 ({"accounts": ["farid", "gaspard", "alice"]}, outside), ({"accounts": "farid gaspard"}, outside),
-                                ({"by": "farid"}, "by : a member reports in their own name (chloe)"),
+                                ({"by": "farid"}, "by: a member reports in their own name (chloe)"),
                                 ({"at": "2026-10-01T10:00:00Z"}, "at (2026-10-01T10:00:00Z) must be the time of the PR")):
             with self.subTest(fields=fields):
                 self.branch()
@@ -20697,7 +20697,7 @@ class TestReportsRuche0118(ReportTools):
         self.assertIn("S-0001: open: the council links the two accounts or dismisses it", show)
         self.assertIn("| reason: cross_votes", show)
         # Only the council decides: a member's command, decision or withdrawal is refused.
-        self.ko("S-0001 : the council alone decides an open report", "decide-report", "S-0001", "--user", "gaspard", "--dismiss", "no_evidence")
+        self.ko("S-0001: the council alone decides an open report", "decide-report", "S-0001", "--user", "gaspard", "--dismiss", "no_evidence")
         s = self.read("reports/S-0001.yaml")
         for name, gesture in (("decision", lambda c: bee.write_yaml(c, {**s, "decision": {"by": "gaspard", "at": s["at"], "outcome": "no_evidence"}})),
                            ("withdrawal", pathlib.Path.unlink)):
@@ -20717,7 +20717,7 @@ class TestReportsRuche0118(ReportTools):
         self.valid_one()
         self.assertNotIn("S-0001", self.ok("swarm"))
         self.assertIn("S-0001: decided", self.ok("show", "S-0001"))
-        self.ko("S-0001 : the council alone decides an open report", "decide-report", "S-0001", "--user", "bidji29", "--dismiss", "duplicate")
+        self.ko("S-0001: the council alone decides an open report", "decide-report", "S-0001", "--user", "bidji29", "--dismiss", "duplicate")
         # A dismissal with a code blocks the same pair for 30 days, by person: renamed, in the other order, by another.
         self.report("gaspard", "chloe", "farid")
         self.decider("S-0002", "--dismiss", "distinct_persons")
@@ -20725,7 +20725,7 @@ class TestReportsRuche0118(ReportTools):
         self.a("2026-11-29T11:59:00Z")
         self.ok("rename", "--old", "chloe", "--login", "chloe-b")
         self.commit("chloe renommée")
-        blocked = "S-0002 was dismissed on 2026-10-30T12:00:00Z : this pair is not reported again for 30 days after (by person"
+        blocked = "S-0002 was dismissed on 2026-10-30T12:00:00Z: this pair is not reported again for 30 days after (by person"
         self.ko(blocked, "report", "--user", "alice", "--accounts", "farid", "chloe-b", "--reason", "cross_reviews")
         self.branch()
         self.by_hand("S-0003", by="alice", accounts=["farid", "chloe-b"], reason="cross_reviews")
@@ -20744,7 +20744,7 @@ class TestReportsRuche0118(ReportTools):
     def test_neither_one_of_the_two_nor_a_second_open_nor_beyond_the_cap(self):
         self.a("2026-10-30T10:00:00Z")
         # The reporter is neither account, nor the account linked to one of them.
-        him = "the reporter is neither account : one's own accounts are linked with bee link"
+        him = "the reporter is neither account: one's own accounts are linked with bee link"
         self.ko(him, "report", "--user", "gaspard", "--accounts", "alice", "gaspard", "--reason", "cross_votes")
         bee.write_yaml(self.dir / "members/gaspard.yaml", {**self.read("members/gaspard.yaml"), "other_accounts": [number_from("farid")]})
         bee.write_yaml(self.dir / "members/farid.yaml", {**self.read("members/farid.yaml"), "account_of": number_from("gaspard")})
@@ -20759,7 +20759,7 @@ class TestReportsRuche0118(ReportTools):
                 self.abandon()
         # One open report per pair, by person: whoever files it, in whatever order.
         self.report("chloe", "alice", "bruno")
-        open = "S-0001 already reports these two persons, and is open : one open report per pair (by person"
+        open = "S-0001 already reports these two persons, and is open: one open report per pair (by person"
         self.ko(open, "report", "--user", "gaspard", "--accounts", "bruno", "alice", "--reason", "cross_reviews")
         self.branch()
         self.by_hand("S-0002", accounts=["bruno", "alice"])
@@ -20802,15 +20802,15 @@ class TestReportsRuche0118(ReportTools):
         (identities.key), so the linked account of either side changes nothing ; a pair already linked is not reported."""
         self.a("2026-10-30T10:00:00Z")
         self.link("gaspard", "farid")
-        already = "accounts : these two accounts are already linked (one person) : nothing to report"
+        already = "accounts: these two accounts are already linked (one person): nothing to report"
         self.ko(already, "report", "--user", "alice", "--accounts", "farid", "gaspard", "--reason", "cross_votes")
         self.refused_by_hand("alice", "S-0001", already, accounts=["gaspard", "farid"])
         self.report("chloe", "alice", "farid")
-        open = "S-0001 already reports these two persons, and is open : one open report per pair (by person"
+        open = "S-0001 already reports these two persons, and is open: one open report per pair (by person"
         self.ko(open, "report", "--user", "bruno", "--accounts", "gaspard", "alice", "--reason", "cross_votes")
         self.refused_by_hand("bruno", "S-0002", open, accounts=["gaspard", "alice"])
         self.decider("S-0001", "--dismiss", "no_evidence")
-        blocked = "S-0001 was dismissed on 2026-10-30T10:00:00Z : this pair is not reported again for 30 days after (by person"
+        blocked = "S-0001 was dismissed on 2026-10-30T10:00:00Z: this pair is not reported again for 30 days after (by person"
         self.ko(blocked, "report", "--user", "bruno", "--accounts", "alice", "gaspard", "--reason", "cross_votes")
         self.refused_by_hand("bruno", "S-0002", blocked, accounts=["alice", "gaspard"])
         self.a("2026-11-29T10:01:00Z")
@@ -20919,10 +20919,10 @@ class TestReportsRuche0118(ReportTools):
         self.link("alice", "farid")
         self.report("chloe", "alice", "bruno")  # S-0001 : alice is one of the two accounts
         self.report("bruno", "farid", "chloe")  # S-0002 : alice is linked to farid
-        part_of = "decision/by : the council member who authors this PR, neither of the two accounts nor linked to one"
+        part_of = "decision/by: the council member who authors this PR, neither of the two accounts nor linked to one"
         for name in ("S-0001", "S-0002"):
             with self.subTest(report=name):
-                self.ko(f"{name} : the council alone decides an open report, never one naming its own account or a linked one",
+                self.ko(f"{name}: the council alone decides an open report, never one naming its own account or a linked one",
                         "decide-report", name, "--user", "alice", "--dismiss", "no_evidence")
                 self.assertNotIn("decision", self.read(f"reports/{name}.yaml"))
                 s = self.read(f"reports/{name}.yaml")
@@ -20938,10 +20938,10 @@ class TestReportsRuche0118(ReportTools):
         for decision, members, chunk in (
                 ({"by": "gaspard"}, {}, part_of),
                 ({"at": "2026-10-30T09:00:00Z"}, {}, "decision/at (2026-10-30T09:00:00Z) must be the time of the PR"),
-                ({"at": "20261030T120000Z"}, {}, "decision/at (20261030T120000Z) : the time of the PR as bee writes it (2026-10-30T12:00:00Z)"),
-                ({"outcome": "linked"}, {}, "decision lies : this PR links the two member files"),
+                ({"at": "20261030T120000Z"}, {}, "decision/at (20261030T120000Z): the time of the PR as bee writes it (2026-10-30T12:00:00Z)"),
+                ({"outcome": "linked"}, {}, "decision lies: this PR links the two member files"),
                 ({"outcome": "linked"}, {"alice": {**alice, "other_accounts": [*alice["other_accounts"], number_from("bruno")]}},
-                 "decision lies : this PR links the two member files")):
+                 "decision lies: this PR links the two member files")):
             with self.subTest(decision=decision, members=list(members)):
                 self.branch("decision")
                 bee.write_yaml(self.dir / "reports/S-0001.yaml",
@@ -20966,17 +20966,17 @@ class TestReportsRuche0118(ReportTools):
         self.take_and_merge("gaspard", "miniz-0099", "--parallel")
         self.report("chloe", "alice", "bruno", "engagement_relay")
         hold = "the two accounts both hold miniz-0099 (an engagement or a contribution in the race)"
-        self.ko(f"S-0001 : {hold}", "decide-report", "S-0001", "--user", "bidji29", "--link", "alice")
+        self.ko(f"S-0001: {hold}", "decide-report", "S-0001", "--user", "bidji29", "--link", "alice")
         self.assertNotIn("decision", self.read("reports/S-0001.yaml"))
         self.assertNotIn("other_accounts", self.read("members/alice.yaml"))
         self.submit_and_merge("gaspard", "miniz-0099", 77010)
         c_alice = self.submit_and_merge("alice", "miniz-0099", 77011)
         self.report("chloe", "alice", "gaspard", "copied_contribution")
-        self.ko(f"S-0002 : {hold}", "decide-report", "S-0002", "--user", "bidji29", "--link", "alice")
+        self.ko(f"S-0002: {hold}", "decide-report", "S-0002", "--user", "bidji29", "--link", "alice")
         # bruno leaves the task: the first link is written ; once alice's contribution has left the race, the second.
         self.release_and_merge("bruno")
         self.decider("S-0001", "--link", "alice")
-        self.ko(f"S-0002 : {hold}", "decide-report", "S-0002", "--user", "bidji29", "--link", "alice")
+        self.ko(f"S-0002: {hold}", "decide-report", "S-0002", "--user", "bidji29", "--link", "alice")
         self.ok("close", c_alice, "--reason", "PR fermée sans fusion.")
         self.commit("la PR d'alice est fermée")
         self.decider("S-0002", "--link", "alice")
@@ -21017,20 +21017,20 @@ class TestReportsRuche0137(ReportTools):
         self.assertEqual(self.read("reports/S-0005.yaml")["decision"]["outcome"], "no_evidence")
         self.valid_one()
         # Past the cap, every other check still refuses : not in one's own name, nor a pair already open.
-        self.refused_by_hand("farid", "S-0006", "by : a member reports in their own name (chloe)", author="chloe", accounts=["dora", "alice"])
+        self.refused_by_hand("farid", "S-0006", "by: a member reports in their own name (chloe)", author="chloe", accounts=["dora", "alice"])
         self.refused_by_hand("dora", "S-0006", "S-0001 already reports these two persons, and is open", accounts=["farid", "alice"])
         self.ko("S-0001 already reports these two persons", "report", "--user", "dora", "--accounts", "alice", "farid", "--reason", "cross_votes")
 
     def test_validate_refuses_on_main_what_the_gate_refuses(self):
         self.a("2026-10-30T10:00:00Z")
         decision = {"by": "bidji29", "at": "2026-10-30T10:00:00Z", "outcome": "no_evidence"}
-        for fields, chunk in (({"by": "inconnu"}, "by : inconnu is not a member"),
+        for fields, chunk in (({"by": "inconnu"}, "by: inconnu is not a member"),
                                 ({"by": "alice"}, "the reporter is neither account"),
-                                ({"accounts": ["alice", "inconnu"]}, "accounts : the logins of two member accounts"),
-                                ({"decision": {**decision, "by": "inconnu"}}, "decision/by : inconnu is not a known account"),
-                                ({"decision": {**decision, "by": "gaspard"}}, "decision/by : neither the reporter nor one of the two accounts"),
-                                ({"decision": {**decision, "by": "bruno"}}, "decision/by : neither the reporter nor one of the two accounts"),
-                                ({"decision": {**decision, "outcome": "linked"}}, "decision lies : the two member files are linked")):
+                                ({"accounts": ["alice", "inconnu"]}, "accounts: the logins of two member accounts"),
+                                ({"decision": {**decision, "by": "inconnu"}}, "decision/by: inconnu is not a known account"),
+                                ({"decision": {**decision, "by": "gaspard"}}, "decision/by: neither the reporter nor one of the two accounts"),
+                                ({"decision": {**decision, "by": "bruno"}}, "decision/by: neither the reporter nor one of the two accounts"),
+                                ({"decision": {**decision, "outcome": "linked"}}, "decision lies: the two member files are linked")):
             with self.subTest(fields=fields):
                 self.by_hand("S-0001", **fields)
                 self.ko(f"reports/S-0001.yaml : {chunk}", "validate")
@@ -21062,10 +21062,10 @@ class TestReportsRuche0137(ReportTools):
         self.commit()
         self.self_service(AGENT, self.NATURE)
         self.merge("decide-report")
-        his = "decision/by : never the person who filed the report, under any of their accounts : it waits for another council member"
+        his = "decision/by: never the person who filed the report, under any of their accounts: it waits for another council member"
         for name in ("S-0002", "S-0003"):
             with self.subTest(report=name):
-                self.ko(f"{name} : {his}", "decide-report", name, "--user", "bidji29", "--dismiss", "no_evidence")
+                self.ko(f"{name}: {his}", "decide-report", name, "--user", "bidji29", "--dismiss", "no_evidence")
                 s = self.read(f"reports/{name}.yaml")
                 for author in ("bidji29", AGENT):
                     self.branch("decision")
@@ -21075,7 +21075,7 @@ class TestReportsRuche0137(ReportTools):
                     self.abandon("decision")
         # A guardian in office decides a report a council member filed, never another ; it links as the council does.
         self.report("gaspard", "dora", "chloe")  # S-0004
-        self.ko("S-0004 : the council alone decides an open report", "decide-report", "S-0004", "--user", "gina", "--dismiss", "no_evidence")
+        self.ko("S-0004: the council alone decides an open report", "decide-report", "S-0004", "--user", "gina", "--dismiss", "no_evidence")
         self.branch("decision")
         s = self.read("reports/S-0004.yaml")
         bee.write_yaml(self.dir / "reports/S-0004.yaml", {**s, "decision": {"by": "gina", "at": s["at"], "outcome": "no_evidence"}})
@@ -21114,7 +21114,7 @@ class TestReportsRuche0137(ReportTools):
         self.report("gaspard", "alice", "chloe")
         self.assertEqual(self.to_the_council("chloe", "alice", "bruno"), "S-0004")
         # Past the cap, one more per 24 h waits for the council ; a second is refused, by bee and by the gate.
-        day = "alice is already named in reports_naming_max open reports : past it, at most 1 over 24 h wait for the council"
+        day = "alice is already named in reports_naming_max open reports: past it, at most 1 over 24 h wait for the council"
         self.ko(day, "report", "--user", "chloe", "--accounts", "alice", "dora", "--reason", "cross_votes")
         self.refused_by_hand("bruno", "S-0005", day, accounts=["alice", "dora"])
         self.a("2026-10-31T10:01:00Z")
@@ -21147,10 +21147,10 @@ class TestReportsRuche0137(ReportTools):
         council.write_text(council.read_text(encoding="utf-8") + "  - login: hector\n    role: member\n", encoding="utf-8")
         self.commit("hector au conseil")
         self.report("hector", "bruno", "chloe")  # S-0002, he files it
-        guarantor = "decision/by : a guardian never decides a report filed by, or naming, the person of their guarantor"
+        guarantor = "decision/by: a guardian never decides a report filed by, or naming, the person of their guarantor"
         for name in ("S-0001", "S-0002"):
             with self.subTest(report=name):
-                self.ko(f"{name} : {guarantor}", "decide-report", name, "--user", "gina", "--dismiss", "no_evidence")
+                self.ko(f"{name}: {guarantor}", "decide-report", name, "--user", "gina", "--dismiss", "no_evidence")
                 s = self.read(f"reports/{name}.yaml")
                 self.branch("decision")
                 bee.write_yaml(self.dir / f"reports/{name}.yaml", {**s, "decision": {"by": "gina", "at": s["at"], "outcome": "no_evidence"}})
@@ -21178,7 +21178,7 @@ class TestReportsRuche0137(ReportTools):
         # Written by hand on main, signed by the reporter : refused.
         s = self.read("reports/S-0001.yaml")
         bee.write_yaml(self.dir / "reports/S-0001.yaml", {**s, "decision": {**s["decision"], "by": "bidji29"}})
-        self.ko("reports/S-0001.yaml : decision/by : neither the reporter nor one of the two accounts", "validate")
+        self.ko("reports/S-0001.yaml : decision/by: neither the reporter nor one of the two accounts", "validate")
 
     def test_a_guardian_writes_only_the_link_of_the_decided_pair(self):
         self.a("2026-10-30T10:00:00Z")
@@ -21207,14 +21207,14 @@ class TestReportsRuche0137(ReportTools):
         self.a("2026-10-30T10:00:00Z")
         self.link("gaspard", "farid")
         self.report("chloe", "alice", "farid")
-        self.ko("S-0001 : other_accounts : 5 at most, each the number of a member file linked to no one", "decide-report", "S-0001",
+        self.ko("S-0001: other_accounts: 5 at most, each the number of a member file linked to no one", "decide-report", "S-0001",
                 "--user", "bidji29", "--link", "alice")
         s, alice = self.read("reports/S-0001.yaml"), self.read("members/alice.yaml")
         self.branch("decision")
         bee.write_yaml(self.dir / "reports/S-0001.yaml", {**s, "decision": {"by": "bidji29", "at": s["at"], "outcome": "linked"}})
         bee.write_yaml(self.dir / "members/alice.yaml", {**alice, "other_accounts": [number_from("farid")]})
         self.commit()
-        self.refused("bidji29", "reports/S-0001.yaml : decision lies : this PR links the two member files")
+        self.refused("bidji29", "reports/S-0001.yaml : decision lies: this PR links the two member files")
         self.abandon("decision")
         self.decider("S-0001", "--link", "farid")
         self.assertEqual(self.read("members/gaspard.yaml")["other_accounts"], [number_from("farid"), number_from("alice")])
@@ -21716,7 +21716,7 @@ class TestBulkPrReadsRehearsal(unittest.TestCase):
 class TestReservedPseudonyms(BaseTest):
     REFUSED = ("conseil", "Conseil", "CONSEIL", "bee", "github-actions", "mesurer", "Relire", "laruche-architect")
     ROBOT = '"github-actions[bot]"'
-    MALFORMED = "bee.yaml : reserved_logins is required and well formed, robots too : no member file is accepted otherwise"
+    MALFORMED = "bee.yaml: reserved_logins is required and well formed, robots too: no member file is accepted otherwise"
 
     def setUp(self):
         super().setUp()
@@ -22111,7 +22111,7 @@ class TestSettingsRuche0144(BaseTest):
 
     def test_reserved_login_refuses_every_name_unless_both_lists_are_well_formed(self):
         # Before: any non-empty list passed (['x'], ['conseil', 5]) and a malformed robots list was []: bee, Bee, github-actions[bot] free.
-        refusal = "bee.yaml : reserved_logins is required and well formed, robots too : no member file is accepted otherwise"
+        refusal = "bee.yaml: reserved_logins is required and well formed, robots too: no member file is accepted otherwise"
         alive = bee.read_yaml(self.dir / "bee.yaml")
         self.assertIsNone(bee.reserved_login(alive, "david"))
         self.assertIn("is a reserved pseudonym", bee.reserved_login(alive, "Bee"))
