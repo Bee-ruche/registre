@@ -22151,5 +22151,72 @@ class TestRetiredNamesRuche0145(BaseDressRehearsal):
         self.assertEqual(self.verify("bidji29")[0], 0)
         self.refused("gaspard", "REGLES.md : modification réservée au conseil humain")
 
+
+class TestRenamedCommandsRuche0145(BaseTest):
+    """No aliases (plan, section 2; section 12, change 10): an old command name, where the parser reads a command, prints the new
+    one (and a GitHub ::error:: line), exits 2 and runs nothing; the same word anywhere else is what it was."""
+
+    def test_the_table_is_the_maps_and_names_real_commands(self):
+        cli = yaml.safe_load((ROOT / "tools/migration/names.yaml").read_text(encoding="utf-8"))["cli"]["commands"]
+        want = {f"bee {o}": n for o, n in cli.items() if " " not in o and o != n}
+        want |= {f"bee {n.split()[0]} {o.split()[1]}": n.split()[1] for o, n in cli.items() if " " in o and o.split()[1] != n.split()[1]}
+        self.assertEqual(bee.RENAMED_COMMANDS, want)
+
+        def choices(parser):  # {prog: the names it reads in a command's place}
+            out = {}
+            for a in parser._actions:
+                if not a.option_strings and a.choices is not None:
+                    out.setdefault(parser.prog, set()).update(a.choices)
+                    for sub in (a.choices.values() if isinstance(a.choices, dict) else ()):
+                        out |= choices(sub)
+            return out
+        real = choices(bee.build_parser())
+        for old, new in bee.RENAMED_COMMANDS.items():
+            prog, word = old.rsplit(" ", 1)
+            with self.subTest(old=old):
+                self.assertIn(new, real[prog])  # the new name runs
+                self.assertNotIn(word, real[prog])  # the old one is no command of that parser
+
+    def test_an_old_command_is_refused_with_its_new_name_and_runs_nothing(self):
+        path = self.dir / "tasks/miniz/miniz-0099.yaml"
+        before = path.read_bytes()
+        for argv, old, new in ((["prendre", "miniz-0099", "--utilisateur", "alice"], "bee prendre", "bee take"),
+                               (["prendre", "--help"], "bee prendre", "bee take"),
+                               (["debate", "argumenter", "D-0001", "--user", "alice", "--position", "pour"], "bee debate argumenter", "bee debate argue"),
+                               (["invitation", "ecarter", "I-0001"], "bee invitation ecarter", "bee invitation dismiss"),
+                               (["merge-pass", "preparer", "--dir", str(self.dir / "passe")], "bee merge-pass preparer", "bee merge-pass prepare")):
+            with self.subTest(argv=argv):
+                code, text = self.bee(*argv)
+                self.assertEqual(code, 2, text)
+                self.assertIn(f"::error title=bee::« {old} » was renamed « {new} » by the switch to English (ruche-0145) : nothing was run", text)
+                self.assertIn(f"bee : « {old} » was renamed « {new} »", text)
+                self.assertNotIn("usage:", text)  # not --help: the forks' check-fork probe sees a failure, never an old command's usage
+        self.assertEqual(path.read_bytes(), before, "nothing written")
+        self.assertFalse((self.dir / "passe").exists())
+        self.assertEqual(self.bee("take", "miniz-0099", "--user", "alice")[0], 0)  # the new name runs
+        self.assertEqual(self.task("miniz-0099")["reservation"]["user"], "alice")
+        # the same word elsewhere than in a command's place: a text, an option's value, a mistyped command
+        code, text = self.bee("note", "miniz-0099", "--user", "alice", "--text", "prendre")
+        self.assertEqual(code, 0, text)
+        self.assertEqual(self.task("miniz-0099")["notes"][-1]["text"], "prendre")
+        with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()) as err:
+            bee.principal(["--registry", str(self.dir), "list", "--status", "prendre"])
+        self.assertIn("invalid choice", err.getvalue())
+        with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()) as err:
+            bee.principal(["--registry", str(self.dir), "prendr"])
+        self.assertIn("invalid choice", err.getvalue())
+
+    def test_bee_registre_alone_is_refused_never_the_tools_own_registry(self):
+        env = {k: v for k, v in os.environ.items() if k not in ("BEE_REGISTRY", "BEE_REGISTRE")}
+        with mock.patch.dict(os.environ, {**env, "BEE_REGISTRE": str(self.dir)}, clear=True):
+            out = io.StringIO()
+            with contextlib.redirect_stderr(out), contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(bee.principal(["validate"]), 2)
+            self.assertIn("BEE_REGISTRE was renamed BEE_REGISTRY", out.getvalue())
+            self.assertEqual(self.bee("validate")[0], 0)  # --registry given: nothing falls back
+        with mock.patch.dict(os.environ, {**env, "BEE_REGISTRE": "/nowhere", "BEE_REGISTRY": str(self.dir)}, clear=True):
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(bee.principal(["validate"]), 0)
+
 if __name__ == "__main__":
     sys.exit(principal_tests(sys.modules[__name__], __file__, sys.argv[1:]))
