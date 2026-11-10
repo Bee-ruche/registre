@@ -8738,7 +8738,7 @@ def cmd_ranking(args):
                        f"{l['C']:.2f}" if l.get("C") is not None else "—", f"{l['V']:.2f}" if l.get("V") is not None else "—"] for l in lines])
     for l in lines:
         for a in l["alerts"]:
-            print(f"⚠ {l['id']} : {a}.")
+            print(f"⚠ {l['id']}: {a}.")
     return 0
 
 
@@ -9950,7 +9950,7 @@ def cmd_check_acceptance(args):
     assessment = {}
     _, rec, reasons = acceptance_causes(reg, args.contribution, assessment=assessment)
     for a in reviewer_alerts(reg, rec or {}):
-        print(f"⚠ {args.contribution} : {a}.")
+        print(f"⚠ {args.contribution}: {a}.")
     print(declared_frame(args.contribution, rec or {}, shortened=True))
     print(diff_command(args.contribution, rec or {}))
     if reasons:

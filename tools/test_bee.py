@@ -1580,7 +1580,7 @@ class TestRegistry(BaseTest):
         self.valid_one()
         # L'alerte se lit aussi là où le relecteur regarde, pas seulement dans le journal de la CI (tour 2).
         for command in (["check-acceptance", cid], ["ranking"]):
-            self.assertIn(f"⚠ {cid} : gap of 7.0 points", self.bee(*command)[1], command[0])
+            self.assertIn(f"⚠ {cid}: gap of 7.0 points", self.bee(*command)[1], command[0])
         # Le manifeste d'une autre tâche (CONTRIBUTION.yaml resté sur master) n'est jamais comparé : pas d'écart inventé.
         manifest.write_text(FILLED_MANIFEST.replace("task: miniz-0099", "task: miniz-0098"), encoding="utf-8")
         self.assertIn("task: miniz-0098", manifest.read_text(encoding="utf-8"))
