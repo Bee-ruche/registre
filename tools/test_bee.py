@@ -1571,7 +1571,7 @@ class TestRegistry(BaseTest):
         manifest.write_text(FILLED_MANIFEST, encoding="utf-8")
         code, text = self.bee("record-verdict", cid, "--verdict", str(verdict), "--manifest", str(manifest), "--sha", "abc1234")
         self.assertEqual(code, 0, text)
-        self.assertIn("écart", text, "gain déclaré 10 % contre 3 % mesuré : alerte")
+        self.assertIn("gap", text, "gain déclaré 10 % contre 3 % mesuré : alerte")
         # ruche-0012 : la relecture d'avant le verdict ne compte ni pour R3 ni pour la confiance C ; bruno relit le commit jugé.
         self.assertEqual(self.bee("review", cid, *self.read_value(cid), "--user", "bruno", "--opinion", "favorable", "--reason", "Commit jugé relu.")[0], 0)
         rec = bee.read_yaml(self.dir / f"contributions/miniz/{cid}.yaml")
@@ -1580,19 +1580,19 @@ class TestRegistry(BaseTest):
         self.valid_one()
         # L'alerte se lit aussi là où le relecteur regarde, pas seulement dans le journal de la CI (tour 2).
         for command in (["check-acceptance", cid], ["ranking"]):
-            self.assertIn(f"⚠ {cid} : gap of 7.0 points", self.bee(*command)[1], command[0])
+            self.assertIn(f"⚠ {cid}: gap of 7.0 points", self.bee(*command)[1], command[0])
         # Le manifeste d'une autre tâche (CONTRIBUTION.yaml resté sur master) n'est jamais comparé : pas d'écart inventé.
         manifest.write_text(FILLED_MANIFEST.replace("task: miniz-0099", "task: miniz-0098"), encoding="utf-8")
         self.assertIn("task: miniz-0098", manifest.read_text(encoding="utf-8"))
         code, text = self.bee("record-verdict", cid, "--verdict", str(verdict), "--manifest", str(manifest), "--sha", "abc1235")
         self.assertEqual(code, 0, text)
-        self.assertIn("manifeste ignoré (tâche miniz-0098, pas miniz-0099)", text)
+        self.assertIn("manifest ignored (task miniz-0098, not miniz-0099)", text)
         self.assertNotIn("declared_gap", bee.read_yaml(self.dir / f"contributions/miniz/{cid}.yaml")["verdict"])
         for unreadable_one in ("- une liste\n", "\x00\x9e\xe9"):
             manifest.write_text(unreadable_one, encoding="utf-8")
             code, text = self.bee("record-verdict", cid, "--verdict", str(verdict), "--manifest", str(manifest), "--sha", "abc1236")
             self.assertEqual(code, 0, text)
-            self.assertIn("manifeste ignoré (tâche illisible", text)
+            self.assertIn("manifest ignored (task unreadable", text)
         code, text = self.bee("record-verdict", cid, "--verdict", str(verdict), "--manifest", str(self.dir / "MANIFESTE_ABSENT.yaml"), "--sha", "abc1237")
         self.assertEqual(code, 0, text)
         manifest.write_text(FILLED_MANIFEST, encoding="utf-8")
@@ -1656,12 +1656,12 @@ class TestRegistry(BaseTest):
         os.environ["BEE_NOW"] = "2026-10-29T12:00:00Z"
         code, text = self.bee("check-acceptance", cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("porte de relecture", text)
+        self.assertIn("review gate", text)
         self.assertEqual(self.bee("review", cid, *self.read_value(cid), "--user", "bidji29", "--opinion", "favorable",
                                   "--reason", "Relu par le conseil, diff conforme.")[0], 0)
         code, text = self.bee("check-acceptance", cid)
         self.assertEqual(code, 0, text)
-        self.assertIn("intégrable", text)
+        self.assertIn("integrable", text)
         # integrer applique la décision mécanique : contribution et tâche passent en « integree ».
         code, text = self.bee("integrate", cid, "--merge-sha", "deadbee")
         self.assertEqual(code, 0, text)
@@ -1697,7 +1697,7 @@ class TestRegistry(BaseTest):
         cid = self.prepare_green_contribution("bidji29", ("chloe",))
         code, text = self.bee("check-acceptance", cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("porte de relecture", text)
+        self.assertIn("review gate", text)
         self.assertEqual(self.bee("review", cid, *self.read_value(cid), "--user", "bruno", "--opinion", "favorable",
                                   "--reason", "Relu par le gardien : diff et tests rejoués.")[0], 0)
         code, text = self.bee("check-acceptance", cid)
@@ -1711,7 +1711,7 @@ class TestRegistry(BaseTest):
         self.assertEqual(self.bee("vote", cid, "--user", "bruno", "--value", "1")[0], 0)
         code, text = self.bee("check-acceptance", cid)
         self.assertEqual(code, 0, text)
-        self.assertIn("Aucune relecture privilégiée requise", text)
+        self.assertIn("No privileged review required", text)
 
     # --- Tests adverses de R3 (revue du 27/10) ---
 
@@ -1721,7 +1721,7 @@ class TestRegistry(BaseTest):
                                   "--reason", "Lecture hors limites possible ligne 120.")[0], 0)
         code, text = self.bee("check-acceptance", cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("défavorable de bidji29", text)
+        self.assertIn("unfavorable review by bidji29", text)
 
     def test_adverse_r3_unfavorable_ones_not_ignored(self):
         self.set_human_gate(False)
@@ -1731,7 +1731,7 @@ class TestRegistry(BaseTest):
                                   "--reason", "Le gain disparaît sur ARM64.")[0], 0)
         code, text = self.bee("check-acceptance", cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("défavorable(s) contre", text)
+        self.assertIn("unfavorable review(s) against", text)
 
     def test_adverse_r3_r5_degradation(self):
         self.set_human_gate(False)
@@ -1756,7 +1756,7 @@ class TestRegistry(BaseTest):
         self.assertEqual(self.bee("record-verdict", cid, "--verdict", str(verdict), "--sha", "def5678", "--files", self.pr_files())[0], 0)
         code, text = self.bee("check-acceptance", cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("commit antérieur", text)
+        self.assertIn("earlier or abandoned commit", text)
 
     def record_green_verdict(self, cid, *files, control=True):
         verdict = self.dir / "verdict.json"
@@ -1772,7 +1772,7 @@ class TestRegistry(BaseTest):
         os.environ["BEE_NOW"] = "2026-10-29T12:00:00Z"
         code, text = self.bee("check-acceptance", cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("verdict non contrôlé", text)
+        self.assertIn("verdict not checked", text)
 
     def test_adverse_r3_optimization_that_changes_its_workflow(self):
         cid = self.submit_0099()
@@ -1782,8 +1782,8 @@ class TestRegistry(BaseTest):
         os.environ["BEE_NOW"] = "2026-10-29T12:00:00Z"
         code, text = self.bee("check-acceptance", cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("modifie des juges", text)
-        self.assertIn("commandement 3", text)
+        self.assertIn("modifies judges", text)
+        self.assertIn("commandment 3", text)
 
     def test_tooling_task_that_changes_the_judges_requires_the_council(self):
         self.set_human_gate(False)
@@ -1802,7 +1802,7 @@ class TestRegistry(BaseTest):
         os.environ["BEE_NOW"] = "2026-10-29T12:00:00Z"
         code, text = self.bee("check-acceptance", cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("conseil ou d'un Confirmé", text)
+        self.assertIn("the council or a Confirmed member", text)
         self.assertEqual(self.bee("review", cid, *self.read_value(cid), "--user", "bidji29", "--opinion", "favorable",
                                   "--reason", "Juge renforcé, relu par le conseil.")[0], 0)
         code, text = self.bee("check-acceptance", cid)
@@ -1857,7 +1857,7 @@ class TestRegistry(BaseTest):
         cid = self.reviewed_contribution(0.005, False, 0.04)
         code, text = self.bee("check-acceptance", cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("ne le confirme pas", text)
+        self.assertIn("does not confirm it", text)
         report = self.dir / "ab.json"
         report.write_text(json.dumps({"base": {"commit": "2948eeb"}, "candidate": {"commit": "abc1234"},
                                        "machine": {"architecture": "arm64", "compiler": "clang 17"},
@@ -1871,13 +1871,13 @@ class TestRegistry(BaseTest):
         cid = self.reviewed_contribution(-0.05, True, 0.04)
         code, text = self.bee("check-acceptance", cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("le chronomètre recule", text)
+        self.assertIn("the stopwatch goes back", text)
 
     def test_r4_stopwatch_alone_requires_a_reproduction(self):
         cid = self.reviewed_contribution(0.06, True, 0.0)  # +6 % au chronomètre, instructions inchangées
         code, text = self.bee("check-acceptance", cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("reproduit par une mesure", text)
+        self.assertIn("reproduced by a measurement", text)
         report = self.dir / "ab.json"
         report.write_text(json.dumps({"base": {"commit": "2948eeb"}, "candidate": {"commit": "abc1234"},
                                        "machine": {"architecture": "arm64", "compiler": "clang 17"},
@@ -1901,7 +1901,7 @@ class TestRegistry(BaseTest):
             shutil.rmtree(folder, ignore_errors=True)
             bee.write_yaml(folder / f"{submitted_by}.yaml",
                             {k: v for k, v in {**measurement, "submitted_by": submitted_by, **fields}.items() if v is not None})
-            return [r for r in bee.r3_causes(bee.Registry(self.dir), cid)[2] if "reproduit par une mesure" in r]
+            return [r for r in bee.r3_causes(bee.Registry(self.dir), cid)[2] if "reproduced by a measurement" in r]
 
         for submitted_by, fields in (("alice", {}), ("Alice", {}), ("alice-agent", {}), ("ALICE-AGENT", {}), ("bruno", {"config": None}),
                                     ("bruno", {"config": {"architecture": " "}}), ("bruno", {"config": {"compiler": "gcc 13"}}),
@@ -1994,7 +1994,7 @@ class TestRegistry(BaseTest):
         cid = self.judged_contribution([{"type": "instruction", "detail": "préambule_valgrind : 4 occurrence(s)"}])
         code, text = self.bee("check-acceptance", cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("construction(s) suspecte(s)", text)
+        self.assertIn("suspicious construct(s)", text)
         self.assertEqual(self.bee("review", cid, *self.read_value(cid), "--user", "bidji29", "--opinion", "favorable",
                                   "--reason", "Relu : la détection SIMD est légitime, mesures rejouées.")[0], 0)
         code, text = self.bee("check-acceptance", cid)
@@ -2004,7 +2004,7 @@ class TestRegistry(BaseTest):
         cid = self.judged_contribution([{"type": "appel_externe", "detail": "execve (miniz.o)"}], author="bidji29")
         code, text = self.bee("check-acceptance", cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("construction(s) suspecte(s)", text)
+        self.assertIn("suspicious construct(s)", text)
 
     def set_common_judge_min(self, value):
         """ruche-0086 : la ligne common_judge_min de bee.yaml, quelle que soit la valeur réelle ; None : la clé est retirée."""
@@ -2030,7 +2030,7 @@ class TestRegistry(BaseTest):
         self.assertEqual(self.bee("vote", cid, "--user", "bruno", "--value", "1")[0], 0)
         code, text = self.bee("check-acceptance", cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("pas entièrement jugé cette contribution, juge commun absent ou sous common_judge_min", text)
+        self.assertIn("did not fully judge this contribution, common judge missing or below common_judge_min", text)
         self.assertEqual(self.bee("review", cid, *self.read_value(cid), "--user", "bidji29", "--opinion", "favorable",
                                   "--reason", "Relu : jugé par juge-v1, sorties et objets relus à la main.")[0], 0)
         code, text = self.bee("check-acceptance", cid)
@@ -2048,7 +2048,7 @@ class TestRegistry(BaseTest):
                 code, text = self.bee("check-acceptance", cid)
                 self.assertEqual(code, 0 if value == "2" else 1, text)
                 if value != "2":
-                    self.assertIn("aucun juge n'y suffit", text)
+                    self.assertIn("no judge is enough", text)
 
     def test_common_judge_tag_read_strictly(self):
         # ruche-0086 : seul « juge-vN » exact (chiffres ASCII, sans zéro de tête) compte ; tout autre libellé est incomplet.
@@ -2111,14 +2111,14 @@ class TestRegistry(BaseTest):
         self.assertEqual(self.bee("vote", cid, "--user", "bidji29", "--value", "1")[0], 0)
         code, text = self.bee("check-acceptance", cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("pas entièrement jugé", text)
+        self.assertIn("did not fully judge", text)
 
     def test_gate_if_judge_incomplete_judge_without_outputs(self):
         self.set_gate("if_judge_incomplete")
         cid = self.judged_contribution(outputs=0)
         code, text = self.bee("check-acceptance", cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("pas entièrement jugé", text)
+        self.assertIn("did not fully judge", text)
 
     def test_adverse_inconsistent_verdict_refused(self):
         cid = self.submit_0099()
@@ -2147,7 +2147,7 @@ class TestRegistry(BaseTest):
         cid = self.submit_0099()  # pas de verdict, pas de relecture, fenêtre non écoulée
         code, text = self.bee("integrate", cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("pas intégrable", text)
+        self.assertIn("not integrable", text)
         # Rien n'a été écrit : la contribution reste en relecture.
         _, rec = bee.Registry(self.dir).record(cid)
         self.assertEqual(rec["status"], "in_review")
@@ -4852,7 +4852,7 @@ class TestFork(BaseTest):
         self.commit()
         code, text = self.verify()
         self.assertEqual(code, 0, text)
-        self.assertIn("2 lignes", text)
+        self.assertIn("2 changed lines", text)
 
     def test_judge_changed_and_size_exceeded(self):
         (self.fork / "bee/tests/juge.sh").write_text("exit 0 # toujours vert\n", encoding="utf-8")
@@ -4861,7 +4861,7 @@ class TestFork(BaseTest):
         self.commit()
         code, text = self.verify()
         self.assertEqual(code, 1)
-        self.assertIn("commandement 3", text)
+        self.assertIn("commandment 3", text)
         self.assertIn("R1", text)
 
     def test_manifest_absent(self):
@@ -4869,15 +4869,15 @@ class TestFork(BaseTest):
         self.commit()
         code, text = self.verify()
         self.assertEqual(code, 1)
-        self.assertIn("manifests/miniz-0099.yaml absent", text)
+        self.assertIn("manifests/miniz-0099.yaml missing", text)
 
     def test_uncommitted_work(self):
         (self.fork / "miniz_tdef.c").write_text("modifié\n", encoding="utf-8")
         (self.fork / "CONTRIBUTION.yaml").write_text(FILLED_MANIFEST, encoding="utf-8")
         code, text = self.verify()
         self.assertEqual(code, 1)
-        self.assertIn("non commité", text)
-        self.assertIn("existe sur le disque", text)
+        self.assertIn("not committed", text)
+        self.assertIn("exists on disk", text)
 
     def test_manifest_written_in_its_place(self):
         code, text = self.bee("manifest", "miniz-0099", "--user", "alice", "--output", str(self.fork))
@@ -4904,7 +4904,7 @@ class TestFork(BaseTest):
         self.commit()
         code, text = self.verify()
         self.assertEqual(code, 0, text)
-        self.assertIn("2 lignes", text)
+        self.assertIn("2 changed lines", text)
 
     def test_manifest_of_another_task_refused(self):
         (self.fork / "manifests").mkdir()
@@ -4915,7 +4915,7 @@ class TestFork(BaseTest):
         self.commit()
         code, text = self.verify()
         self.assertEqual(code, 1, text)
-        self.assertIn("une PR, une tâche", text)
+        self.assertIn("one PR, one task", text)
 
     def test_old_manifest_of_another_task_ignored(self):
         (self.fork / "CONTRIBUTION.yaml").write_text(FILLED_MANIFEST.replace("miniz-0099", "miniz-0016"), encoding="utf-8")
@@ -4924,7 +4924,7 @@ class TestFork(BaseTest):
         self.commit()
         code, text = self.verify()
         self.assertEqual(code, 1, text)
-        self.assertIn("manifests/miniz-0099.yaml absent", text)
+        self.assertIn("manifests/miniz-0099.yaml missing", text)
 
     def test_file_outside_task_and_unknown_base(self):
         path = self.fork / "miniz_tdef.c"
@@ -4934,7 +4934,7 @@ class TestFork(BaseTest):
         self.commit()
         code, text = self.verify()
         self.assertEqual(code, 0, text)
-        self.assertIn("⚠ miniz_zip.c : hors des fichiers de la tâche", text)
+        self.assertIn("⚠ miniz_zip.c: outside the task's files", text)
         code, text = self.bee("check-fork", "--task", "miniz-0099", "--base", "upstream/master", "--repo", str(self.fork))
         self.assertEqual(code, 1)
         self.assertIn("git fetch upstream", text)
@@ -5277,7 +5277,7 @@ class TestRace(BaseParallel):
         self.a("2026-10-28T18:00:00Z")  # les deux fenêtres sont écoulées
         code, text = self.acceptance(c1)
         self.assertEqual(code, 1, text)
-        self.assertIn(f"la concurrente {c2} est mieux classée", text)
+        self.assertIn(f"the rival {c2} is ranked better", text)
         code, text = self.acceptance(c2)
         self.assertEqual(code, 0, text)
         # Faire intégrer la moins bonne : refusé, rien n'est écrit.
@@ -5292,7 +5292,7 @@ class TestRace(BaseParallel):
         self.assertIn(c2, set_aside["decision_reason"])
         t = self.task("miniz-0099")
         self.assertEqual((t["status"], t["contribution"]), ("integrated", c2))
-        self.assertIn(f"Contribution retenue : {c2}", t["notes"][-1]["text"])
+        self.assertIn(f"Contribution kept: {c2}", t["notes"][-1]["text"])
         self.valid_one()
         # Écartée n'est pas refusée : ni l'auteur ni ses relecteurs ne perdent quoi que ce soit.
         levels = bee.compute_levels(bee.Registry(self.dir))
@@ -5317,7 +5317,7 @@ class TestRace(BaseParallel):
         code, text = self.acceptance(c1)
         self.assertEqual(code, 1, text)
         self.assertIn("alice (holder)", text)
-        self.assertIn("avant cette soumission", text)
+        self.assertIn("before this submission", text)
         self.a("2026-10-30T12:01:00Z")  # la réservation d'alice a expiré (R7), même avant le passage du robot
         code, text = self.acceptance(c1)
         self.assertEqual(code, 0, text)
@@ -5341,7 +5341,7 @@ class TestRace(BaseParallel):
         t = self.task("miniz-0099")
         self.assertEqual(t["status"], "integrated")
         self.assertNotIn("parallel", t)
-        self.assertIn("chloe (en parallèle)", t["notes"][-1]["text"], "l'engagement qui prend fin est dit")
+        self.assertIn("chloe (in parallel)", t["notes"][-1]["text"], "l'engagement qui prend fin est dit")
         self.valid_one()
 
     def test_a_ci_that_never_concludes_delays_at_most_96_h(self):
@@ -5362,7 +5362,7 @@ class TestRace(BaseParallel):
         self.a("2026-10-29T12:00:00Z")  # les deux fenêtres sont écoulées
         code, text = self.acceptance(c1)
         self.assertEqual(code, 1, text)
-        self.assertIn(f"la concurrente {c2} attend le verdict de sa CI", text)
+        self.assertIn(f"the rival {c2} awaits the verdict of its CI", text)
         self.assertIn("2026-10-31T12:00:00Z", text)
         self.a("2026-10-31T11:59:00Z")
         self.assertEqual(self.acceptance(c1)[0], 1)
@@ -5412,7 +5412,7 @@ class TestRace(BaseParallel):
         self.a("2026-10-28T18:00:00Z")
         code, text = self.acceptance(c1)
         self.assertEqual(code, 1, text)
-        self.assertIn(f"{c2} est mieux classée", text)
+        self.assertIn(f"{c2} is ranked better", text)
         self.a("2026-10-31T14:00:00Z")  # clôture de la course
         code, text = self.acceptance(c1)
         self.assertEqual(code, 0, text)
@@ -5420,7 +5420,7 @@ class TestRace(BaseParallel):
         self.review(c2, "bidji29")
         code, text = self.acceptance(c1)
         self.assertEqual(code, 1, text)
-        self.assertIn(f"la concurrente {c2}, intégrable, est mieux classée", text)
+        self.assertIn(f"the rival {c2}, integrable, is ranked better", text)
         self.assertEqual(self.acceptance(c2)[0], 0)
 
     def test_deterministic_ranking_vote_then_seniority(self):
@@ -5457,7 +5457,7 @@ class TestRace(BaseParallel):
         bee.write_yaml(self.dir / f"votes/{c1}/alice.yaml", {"voter": "alice", "subject": c1, "value": -1, "at": "2026-10-27T18:00:00Z"})
         reg = bee.Registry(self.dir)
         reasons = bee.r3_causes(reg, c1)[2]
-        self.assertFalse([r for r in reasons if "alice" in r or "défavorable" in r], reasons)
+        self.assertFalse([r for r in reasons if "alice" in r or "unfavorable" in r], reasons)
         self.assertEqual(bee.net_vote(reg, reg.record(c1)[1], bee.compute_levels(reg)), 0)
 
 
@@ -5469,7 +5469,7 @@ class TestRace(BaseParallel):
         self.a("2026-10-27T18:00:00Z")
         code, text = self.bee("review", c1, *self.read_value(c1), "--user", "chloe", "--opinion", "unfavorable", "--reason", "Lecture hors limites avec une entrée vide.")
         self.assertEqual(code, 0, text)
-        blocked = lambda: [r for r in bee.r3_causes(bee.Registry(self.dir), c1)[2] if "défavorable de chloe" in r]  # noqa: E731
+        blocked = lambda: [r for r in bee.r3_causes(bee.Registry(self.dir), c1)[2] if "unfavorable review by chloe" in r]  # noqa: E731
         self.assertTrue(blocked(), "pas encore engagée : son avis bloque")
         self.a("2026-10-27T19:00:00Z")
         self.parallel_one("miniz-0099", "chloe", expected=1)  # qui a jugé la course n'y entre plus
@@ -6232,7 +6232,7 @@ class TestAdversarialReview(BaseParallel):
         self.assertFalse(self.calls_of(calls, "pr", "merge"))
         code, text = self.acceptance(c1)
         self.assertEqual(code, 1, text)
-        self.assertIn(f"la concurrente {c2}, intégrable, est mieux classée", text)
+        self.assertIn(f"the rival {c2}, integrable, is ranked better", text)
         self.assertIn("2026-11-01T14:00:00Z", text)
         self.a("2026-11-01T14:00:00Z")  # F + 24 h : plus personne ne retient c1
         self.assertEqual(self.acceptance(c1)[0], 0)
@@ -6404,7 +6404,7 @@ class TestAdversarialReview(BaseParallel):
         merged_ones.write_text(f"{c2}\n", encoding="utf-8")
         code, text = self.bee("close", c1, "--reason", "PR fermée sans fusion.", "--merged", str(merged_ones))
         self.assertEqual(code, 1, text)
-        self.assertIn("l'écartera", text)
+        self.assertIn("will set it aside", text)
         self.assertEqual(self.rec(c1)["status"], "in_review")
         self.assertEqual(self.bee("close", c1, "--reason", "PR fermée sans fusion.")[0], 0, "sans concurrente gagnante, on clôt")
 
@@ -6476,13 +6476,13 @@ class TestAdversarialReview(BaseParallel):
         self.a("2026-10-28T13:00:00Z")
         code, text = self.acceptance(c1)
         self.assertEqual(code, 1, text)
-        self.assertIn(f"la concurrente {c2} attend le verdict de sa CI", text)
+        self.assertIn(f"the rival {c2} awaits the verdict of its CI", text)
         self.assertEqual(self.bee("integrate", c1)[0], 1)
         self.a("2026-10-28T14:00:00Z")
         self.verdict(c2, 0.10)
         code, text = self.acceptance(c1)
         self.assertEqual(code, 1, text)
-        self.assertIn(f"la concurrente {c2} est mieux classée", text)
+        self.assertIn(f"the rival {c2} is ranked better", text)
 
     # --- I5 : le classement suit le gain mesuré, pas les relectures ni les votes ---
 
@@ -6495,7 +6495,7 @@ class TestAdversarialReview(BaseParallel):
         self.assertEqual(self.acceptance(c1)[0], 0)
         code, text = self.acceptance(c2)
         self.assertEqual(code, 1, text)
-        self.assertIn(f"la concurrente {c1} est mieux classée", text)
+        self.assertIn(f"the rival {c1} is ranked better", text)
 
     def test_I5_a_negative_vote_does_not_change_the_ranking(self):
         self.assertEqual(self.bee("register", "--login", "david", "--account-created-on", "2020-01-01")[0], 0)
@@ -6639,13 +6639,13 @@ class TestAdversarialReview(BaseParallel):
         states = {PR_MINIZ + "99007": {"state": "OPEN", "head": "abc1234", "author": "alice", "verdict": verdict},
                  "contenus": {"abc1234": {"CONTRIBUTION.yaml": old}}}
         output_text, _, _ = self.step("Fetch the verdicts", states, stream="verdicts.yml")
-        self.assertIn("manifeste ignoré (tâche miniz-0016, pas miniz-0099)", output_text)
+        self.assertIn("manifest ignored (task miniz-0016, not miniz-0099)", output_text)
         self.assertNotIn("declared_gap", self.rec(c1)["verdict"])
         # Le manifeste de la tâche, à sa place, est celui qui compte (gain déclaré 10 %, mesuré 3 %).
         states[PR_MINIZ + "99007"]["head"] = "abc1235"
         states["contenus"] = {"abc1235": {"CONTRIBUTION.yaml": old, "manifests/miniz-0099.yaml": FILLED_MANIFEST}}
         output_text, _, _ = self.step("Fetch the verdicts", states, stream="verdicts.yml")
-        self.assertIn("écart de 7.0 points", output_text)
+        self.assertIn("gap of 7.0 points", output_text)
         self.assertEqual(self.rec(c1)["verdict"]["declared_gap"], 0.07)
         self.valid_one()
 
@@ -6659,7 +6659,7 @@ class TestAdversarialReview(BaseParallel):
                  "contenus": {"abc1234": {"manifests/miniz-0099.yaml": hostile}}}
         output_text, _, _ = self.step("Fetch the verdicts", states, stream="verdicts.yml")
         self.assertFalse([l for l in output_text.splitlines() if l.lstrip().startswith("::")], output_text)
-        self.assertIn("manifeste ignoré (tâche illisible, pas miniz-0099)", output_text)
+        self.assertIn("manifest ignored (task unreadable, not miniz-0099)", output_text)
         self.assertEqual(self.rec(c1)["verdict"]["ci"], "green", "le verdict, lui, est enregistré")
 
     def test_the_workflow_derives_the_task_as_bee_does(self):
@@ -6777,7 +6777,7 @@ class TestAdversarialReview(BaseParallel):
                          "les bornes de X ne dépendent que de X, pas de la vieille contribution")
         code, text = self.acceptance(x)
         self.assertEqual(code, 1, text)
-        self.assertIn(f"la concurrente {y}", text)
+        self.assertIn(f"the rival {y}", text)
         self.assertEqual(self.bee("integrate", x)[0], 1)
         self.assertEqual((self.rec(y)["status"], self.rec(old_one)["status"]), ("in_review", "in_review"))
 
@@ -6830,7 +6830,7 @@ class TestAdversarialReview(BaseParallel):
                            parallel=[{"user": "bruno", "since": "2026-10-28T13:00:00Z"}])
         code, text = self.acceptance(c1)
         self.assertEqual(code, 1, text)
-        self.assertIn("un défaut confirmé reste à résoudre", text)
+        self.assertIn("a confirmed defect remains to be resolved", text)
         self.assertEqual(self.bee("integrate", c1)[0], 1)
 
     def test_N3_a_dummy_contribution_of_a_late_engaged_one_delays_only_its_window(self):
@@ -6901,7 +6901,7 @@ class TestAdversarialReview(BaseParallel):
             v.write_text('{"ci": "verte", "gain": %s, "beyond_noise": true, "changed_lines": 10}' % gain, encoding="utf-8")
             code, text = self.bee("record-verdict", c1, "--verdict", str(v), "--sha", "abc1234", "--files", self.pr_files())
             self.assertEqual(code, 1, text)
-            self.assertIn("non fini", text)
+            self.assertIn("non-finite", text)
         self.assertNotIn("verdict", self.rec(c1))
         reg = bee.Registry(self.dir)
         base = {"task": "miniz-0099", "verdict": {"ci": "green", "gain": 0.05, "changed_lines": 10, "checked_files": True}}
@@ -7146,7 +7146,7 @@ class TestAdversarialReview(BaseParallel):
         self.a("2026-10-29T15:00:00Z")
         code, text = self.acceptance(c1)
         self.assertEqual(code, 1, text)
-        self.assertIn("un défaut confirmé reste à résoudre", text)
+        self.assertIn("a confirmed defect remains to be resolved", text)
         # alice corrige : nouveau commit jugé, relu à nouveau. Revue adverse de ruche-0012 : le défaut ne tombe plus avec un
         # nouveau commit (un commit vide, ou un retour à un ancien commit, l'effaçait) ; il tient jusqu'à ce que david relise.
         verdict = json.loads((self.dir / "verdict.json").read_text(encoding="utf-8"))
@@ -7160,7 +7160,7 @@ class TestAdversarialReview(BaseParallel):
         bee.write_yaml(path, rec)
         code, text = self.acceptance(c1)
         self.assertEqual(code, 1, text)
-        self.assertIn("un défaut confirmé reste à résoudre (signalé par david", text)
+        self.assertIn("a confirmed defect remains to be resolved (reported by david", text)
         self.assertEqual(self.bee("review", c1, *self.read_value(c1), "--user", "david", "--opinion", "favorable", "--reason",
                                   "Correctif relu : le défaut est corrigé.")[0], 0)
         code, text = self.acceptance(c1)
@@ -7260,7 +7260,7 @@ class TestVerdictsOfTheRecordedPr(BaseParallel):
                 "verdict": verdict, **fields}
 
     def refusal(self, output_text, reason, prs=""):
-        self.assertIn(f"  | {self.cid} : PR #99007 : {reason} ; aucun verdict n'est enregistré{prs}.", output_text)
+        self.assertIn(f"  | {self.cid}: PR #99007: {reason}; no verdict is recorded{prs}.", output_text)
 
     def waiting(self, output_text, code, prs="", sha="abc1234"):
         """Refus pour raison de sécurité : dit dans le journal et écrit dans la contribution (phrase fixe, tête)."""
@@ -7289,7 +7289,7 @@ class TestVerdictsOfTheRecordedPr(BaseParallel):
         output_text, verdict, calls = self.collect({"runs": foreign}, verdict=None)
         self.assertIsNone(verdict)
         self.assertFalse(self.calls_of(calls, "run", "download"))
-        self.refusal(output_text, "10 exécution(s) de bee-ci.yml sur ce commit, aucune de cette PR vers master (événement pull_request)")
+        self.refusal(output_text, "10 run(s) of bee-ci.yml on this commit, none of this PR to master (pull_request event)")
         self.assertNotIn("awaiting_verdict", self.rec(self.cid))
         output_text, verdict, _ = self.collect({}, verdict=None)
         self.assertEqual((verdict, output_text.strip()), (None, ""))
@@ -7303,16 +7303,16 @@ class TestVerdictsOfTheRecordedPr(BaseParallel):
         master_judge = {"judge_base": {"base": master, "commit": master}}
         for declared_one, said in ((declare(old_one), f"{old_one} (diverged)"), (declare(other), f"{other} (behind)"),
                                (declare(master, old_one), f"{master} (ahead), {old_one} (diverged)"),
-                               (declare(unknown), f"{unknown} (non vérifiée)"),
-                               ({"details": {"base": "0bad;touch PIEGE ##[error]"}, **master_judge}, f"illisible (non vérifiée), {master} (ahead)"),
-                               ({"details": {"base": [old_one]}, **master_judge}, f"illisible (non vérifiée), {master} (ahead)")):
+                               (declare(unknown), f"{unknown} (not verified)"),
+                               ({"details": {"base": "0bad;touch PIEGE ##[error]"}, **master_judge}, f"unreadable (not verified), {master} (ahead)"),
+                               ({"details": {"base": [old_one]}, **master_judge}, f"unreadable (not verified), {master} (ahead)")):
             with self.subTest(said=said):
                 output_text, verdict, calls = self.collect({"defect": "main", "comparaisons": comparisons}, base="main",
                                                          verdict={**self.GOOD, **declared_one})
                 self.assertIsNone(verdict, output_text)
-                certain = "diverged" in said or "behind" in said or "illisible" in said
-                self.assertIn(f"  | bee : {self.cid} : verdict refusé, {bee.VERDICT_WAIT['base']} (base déclarée : {said}) ; "
-                              "aucun verdict n'est enregistré" + ("\n" if certain else ", rejugé au passage suivant\n"), output_text)
+                certain = "diverged" in said or "behind" in said or "unreadable" in said
+                self.assertIn(f"  | bee : {self.cid}: verdict refused, {bee.VERDICT_WAIT['base']} (declared base: {said}); "
+                              "no verdict is recorded" + ("\n" if certain else ", judged again at the next pass\n"), output_text)
                 self.assertEqual(self.rec(self.cid).get("awaiting_verdict"), {"reason": "base", "sha": "abc1234"} if certain else None)
                 compared_ones = [a["args"][1] for a in calls if "/compare/" in a["args"][1]]
                 self.assertTrue(all(re.fullmatch(r"repos/Bee-ruche/minizBee/compare/[0-9a-f]{40}\.\.\.main", c) for c in compared_ones))
@@ -7346,7 +7346,7 @@ class TestVerdictsOfTheRecordedPr(BaseParallel):
             with self.subTest(declared_one=declared_one):
                 output_text, verdict, _ = self.collect({"comparaisons": {old_head: "ahead"}}, verdict={**self.WRONG, **declared_one})
                 self.assertIsNone(verdict, output_text)
-                self.assertIn(f"  | bee : {self.cid} : verdict refusé, {bee.VERDICT_WAIT['judge_base']}", output_text)
+                self.assertIn(f"  | bee : {self.cid}: verdict refused, {bee.VERDICT_WAIT['judge_base']}", output_text)
                 self.assertEqual(self.rec(self.cid)["awaiting_verdict"]["reason"], "judge_base")
         path = self.dir / "projects/miniz.yaml"
         path.write_text(path.read_text(encoding="utf-8").replace("verdict_requires_judge_base: true\n", ""), encoding="utf-8")
@@ -7354,7 +7354,7 @@ class TestVerdictsOfTheRecordedPr(BaseParallel):
         self.assertEqual(verdict["gain"], 0.05, output_text)
         output_text, verdict, _ = self.collect({}, verdict={**self.GOOD, "details": {}, "judge_base": None})
         self.assertIsNone(verdict, output_text)
-        self.assertIn("(base déclarée : absente)", output_text)
+        self.assertIn("(declared base: absent)", output_text)
 
     def test_c2_c3_c4_the_other_prs_of_the_same_head(self):
         """C2 : une PR d'une autre branche ou d'un autre dépôt, même de même commit, ne bloque rien (son exécution n'est jamais
@@ -7479,7 +7479,7 @@ class TestVerdictsOfTheRecordedPr(BaseParallel):
         s'enregistre. Seul un statut certain (behind, diverged, base absente ou illisible, judge_base absent) écrit l'attente."""
         output_text, verdict, _ = self.collect({"comparaisons": {self.MASTER: None}})
         self.assertIsNone(verdict, output_text)
-        self.assertIn(f"(base déclarée : {self.MASTER} (non vérifiée)) ; aucun verdict n'est enregistré, rejugé au passage suivant", output_text)
+        self.assertIn(f"(declared base: {self.MASTER} (not verified)); no verdict is recorded, judged again at the next pass", output_text)
         self.assertNotIn("awaiting_verdict", self.rec(self.cid))
         output_text, verdict, _ = self.collect({}, keep_waiting=True)
         self.assertEqual(verdict["gain"], 0.05, output_text)
@@ -7488,8 +7488,8 @@ class TestVerdictsOfTheRecordedPr(BaseParallel):
         """B2 : une autre PR P de la même tête ne bloque que si l'exécution retenue R a pu venir d'elle : R créée après P - 1 min,
         et, P fermée, avant sa fermeture + 1 h. Un tiers qui ouvre (et ferme) une PR après la CI ne bloque donc rien. B3 : la
         phrase demande au conseil de fermer une PR ouverte, et dit le délai d'une heure."""
-        self.assertIn("demandez au conseil de la fermer", bee.VERDICT_WAIT["pr_open"])
-        self.assertIn("une heure après sa fermeture", bee.VERDICT_WAIT["pr_open"])
+        self.assertIn("ask the council to close it", bee.VERDICT_WAIT["pr_open"])
+        self.assertIn("one hour after it is closed", bee.VERDICT_WAIT["pr_open"])
         third_party = {"head": "abc1234", "author": "mallory", "branch": "task/99007", "opened_at": "2026-10-27T11:00:00Z"}
         for head_repo in ("Bee-ruche/minizBee", "alice/minizBee"):
             for state in ({"state": "OPEN"}, {"state": "CLOSED", "fermee_le": "2026-10-27T11:05:00Z"}):
@@ -7516,7 +7516,7 @@ class TestVerdictsOfTheRecordedPr(BaseParallel):
             with self.subTest(timeline=timeline):
                 output_text, verdict, _ = self.collect({}, update_flag="2026-10-27T11:57:00Z", timeline=timeline)
                 self.assertEqual(verdict is None, awaits, output_text)
-                self.assertEqual("jugée au passage suivant" in output_text, awaits, output_text)
+                self.assertEqual("judged at the next pass" in output_text, awaits, output_text)
 
     def test_b6_the_wait_carries_a_code_and_the_sentence_is_rendered_on_display(self):
         """B6 : awaiting_verdict stocke le code du motif ; reformuler une phrase demain n'invalide aucune contribution."""
@@ -7531,7 +7531,7 @@ class TestVerdictsOfTheRecordedPr(BaseParallel):
     def test_freshness_a_pr_changed_less_than_5_minutes_ago_is_judged_at_the_next_pass(self):
         output_text, verdict, _ = self.collect({}, update_flag="2026-10-27T11:56:00Z")
         self.assertIsNone(verdict)
-        self.assertIn(f"  | {self.cid} : PR #99007 : PR modifiée il y a moins de 5 minutes, jugée au passage suivant.", output_text)
+        self.assertIn(f"  | {self.cid}: PR #99007: PR modified less than 5 minutes ago, judged at the next pass.", output_text)
         self.assertNotIn("awaiting_verdict", self.rec(self.cid))
         output_text, verdict, _ = self.collect({}, update_flag="2026-10-27T11:54:59Z")
         self.assertEqual(verdict["gain"], 0.05, output_text)
@@ -7549,12 +7549,12 @@ class TestVerdictsOfTheRecordedPr(BaseParallel):
         self.waiting(output_text, "other_base")
         outputs.append(output_text)
         output_text, _, _ = self.collect({"defect": "x\n::error::PIEGE"}, base="x\n::error::PIEGE")
-        self.refusal(output_text, "branche par défaut illisible, ou PR changée pendant la collecte")
+        self.refusal(output_text, "default branch unreadable, or PR changed during the collection")
         outputs.append(output_text)
         malformed = {k: v for k, v in self.execution_api(99908, self.WRONG).items() if k != "pull_requests"}
         output_text, verdict, _ = self.collect({"runs": [malformed]})
         self.assertIsNone(verdict)
-        self.refusal(output_text, "PR ou réponse de l'API illisible")
+        self.refusal(output_text, "PR or API answer unreadable")
         for output_text in outputs:
             self.assertNotIn("PIEGE", output_text)
             self.assertFalse([l for l in output_text.splitlines() if l and not l.startswith("  | ")], output_text)
@@ -9297,9 +9297,9 @@ class TestReviewsByNewcomers(BaseParallel):
         self.a("2026-10-29T12:00:00Z")
         code, text = self.acceptance(cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("0 relecture(s) favorable(s) sur 2 requise(s)", text)
-        self.assertIn("2 relecture(s) de Nouveau, enregistrée(s) mais non comptée(s) pour R3", text)
-        self.assertIn("1 relecture(s) défavorable(s) contre 0 favorable(s)", text)
+        self.assertIn("0 favorable review(s) of 2 required", text)
+        self.assertIn("2 review(s) by a New member, recorded but not counted for R3", text)
+        self.assertIn("1 unfavorable review(s) against 0 favorable", text)
         self.valid_one()
 
     def test_counted_reviews_of_a_contributor_and_of_the_council(self):
@@ -9365,18 +9365,18 @@ class TestReviewByCommit(BaseParallel):
         self.assertIn("no verdict yet: review recorded without a commit; if favorable, it will not count for R3", text)
         self.assertIn("only one review before the verdict", self.review_("bruno", "unfavorable", expected=1))
         self.assertIn("no verdict yet", self.review_("chloe", "unfavorable", "--defect", expected=1), "un défaut vise un commit")
-        self.assertIn("R4 : debit_compression_n6 non mesuré (pas encore de verdict)", self.acceptance(self.cid)[1])
+        self.assertIn("R4: debit_compression_n6 not measured (no verdict yet)", self.acceptance(self.cid)[1])
         self.verdict_at("abc1234")
         self.council_and_window()
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("1 relecture(s) favorable(s) sur 2 requise(s) ; 1 relecture(s) faite(s) avant le verdict, sans commit, ne "
-                      "comptent pas", text)
+        self.assertIn("1 favorable review(s) of 2 required; 1 review(s) made before the verdict, without a commit, do "
+                      "not count", text)
         self.assertNotIn("no verdict yet", self.review_("bruno", "favorable"))
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 0, text)
-        self.assertIn("2 relecture(s) favorable(s) de ce commit pour 2 requise(s) ; vote net 1 pour un seuil de 1 (cible 2, "
-                      "plafonnée aux membres dont l'avis compte : amorçage)", text)
+        self.assertIn("2 favorable review(s) of this commit for 2 required; net vote 1 for a threshold of 1 (target 2, "
+                      "capped at the members whose opinion counts: bootstrap)", text)
         self.valid_one()
 
     def test_the_guardian_reviews_the_fix_it_asked_for(self):
@@ -9386,13 +9386,13 @@ class TestReviewByCommit(BaseParallel):
         self.review_("chloe", "favorable")
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("relecture défavorable de bruno", text)
+        self.assertIn("unfavorable review by bruno", text)
         self.assertIn("at commit abc1234, and it is their most recent review", self.review_("bruno", "favorable", expected=1))
         self.verdict_at("def5678")  # le correctif demandé : le défavorable du gardien tient jusqu'à sa relecture
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("0 relecture(s) favorable(s) sur 2 requise(s) ; 1 relecture(s) portent sur un commit antérieur", text)
-        self.assertIn("relecture défavorable de bruno (gardien, conseil ou Confirmé) : elle bloque, quel que soit le commit", text)
+        self.assertIn("0 favorable review(s) of 2 required; 1 review(s) concern an earlier", text)
+        self.assertIn("unfavorable review by bruno (guardian, council or Confirmed member): it blocks, whatever the commit", text)
         self.assertIn("For R3, it replaces your previous review (abc1234)", self.review_("bruno", "favorable"))
         self.review_("chloe", "favorable")
         self.review_("bidji29", "favorable")
@@ -9400,7 +9400,7 @@ class TestReviewByCommit(BaseParallel):
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 0, text)
         self.assertEqual(self.bee("integrate", self.cid)[0], 0)
-        self.assertIn("Auto-integration (R3) : CI verte au commit def5678 ; 2 relecture(s) favorable(s) de ce commit",
+        self.assertIn("Auto-integration (R3): CI green at commit def5678; 2 favorable review(s) of this commit",
                       self.rec(self.cid)["decision_reason"])
         levels = bee.compute_levels(bee.Registry(self.dir))
         self.assertEqual((levels["bruno"]["reviews"], levels["chloe"]["reviews"]), (1, 1),
@@ -9427,9 +9427,9 @@ class TestReviewByCommit(BaseParallel):
         self.verdict_at("aaaaaaa")  # retour à X
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("un défaut confirmé reste à résoudre (signalé par david", text)
-        self.assertIn("relecture défavorable de bruno", text)
-        self.assertIn("1 relecture(s) favorable(s) sur 2 requise(s)", text, "seule chloe a pour plus récente une favorable de X")
+        self.assertIn("a confirmed defect remains to be resolved (reported by david", text)
+        self.assertIn("unfavorable review by bruno", text)
+        self.assertIn("1 favorable review(s) of 2 required", text, "seule chloe a pour plus récente une favorable de X")
         self.assertIn("For R3, it replaces your previous review (bbbbbbb)", self.review_("bruno", "unfavorable"))
         self.valid_one()
         self.verdict_at("ccccccc")  # le vrai correctif
@@ -9454,7 +9454,7 @@ class TestReviewByCommit(BaseParallel):
         self.verdict_at("aaaaaaa")
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("relecture défavorable de bruno", text)
+        self.assertIn("unfavorable review by bruno", text)
         self.review_("bruno", "favorable")  # il relit X : le refus est levé, par lui
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 0, text)
@@ -9474,7 +9474,7 @@ class TestReviewByCommit(BaseParallel):
         self.review_("david", "favorable")
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("relecture défavorable de bruno", text)
+        self.assertIn("unfavorable review by bruno", text)
         self.review_("bruno", "favorable")
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 0, text)
@@ -9490,7 +9490,7 @@ class TestReviewByCommit(BaseParallel):
         self.review_("chloe", "favorable")
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 0, f"ni contre : deux abstentions ne bloquent rien : {text}")
-        self.assertIn("2 relecture(s) favorable(s) de ce commit pour 2 requise(s)", text, "ni pour : le seuil ne baisse pas")
+        self.assertIn("2 favorable review(s) of this commit for 2 required", text, "ni pour : le seuil ne baisse pas")
         rec, reg = self.rec(self.cid), bee.Registry(self.dir)
         self.assertAlmostEqual(bee.compute_score(reg, rec, bee.compute_levels(reg))["C"], 2 / 3, msg="bidji29 et chloe seulement")
         # Sans la relecture du conseil, le gardien qui s'abstient n'ouvre pas la porte, et l'abstention ne remplace aucune favorable.
@@ -9498,8 +9498,8 @@ class TestReviewByCommit(BaseParallel):
         bee.write_yaml(path, {**rec, "reviews": [r for r in rec["reviews"] if r["reviewer"] != "bidji29"]})
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("porte de relecture", text)
-        self.assertIn("1 relecture(s) favorable(s) sur 2 requise(s) ; 2 abstention(s), ni pour ni contre", text)
+        self.assertIn("review gate", text)
+        self.assertIn("1 favorable review(s) of 2 required; 2 abstention(s), neither for nor against", text)
         bee.write_yaml(path, rec)
         self.assertEqual(self.bee("integrate", self.cid)[0], 0)
         levels = bee.compute_levels(bee.Registry(self.dir))
@@ -9516,20 +9516,20 @@ class TestReviewByCommit(BaseParallel):
         self.verdict_at("aaaaaaa")
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("0 relecture(s) favorable(s) sur 2 requise(s)", text)
-        self.assertIn("1 abstention(s), ni pour ni contre", text)
+        self.assertIn("0 favorable review(s) of 2 required", text)
+        self.assertIn("1 abstention(s), neither for nor against", text)
 
     def test_the_confirmed_defect_holds_until_the_review_of_its_reviewer(self):
         self.verdict_at("abc1234")
         self.council_and_window()
         self.review_("chloe", "unfavorable", "--defect")
         self.ok_("confirm-defect", self.cid, "--reviewer", "chloe", "--user", "bruno")
-        self.assertIn("un défaut confirmé reste à résoudre", self.acceptance(self.cid)[1])
+        self.assertIn("a confirmed defect remains to be resolved", self.acceptance(self.cid)[1])
         self.review_("chloe", "favorable", expected=1)  # même commit : sa relecture, et son défaut, restent
         self.verdict_at("def5678")
         self.review_("bruno", "favorable")
         self.review_("bidji29", "favorable")
-        self.assertIn("un défaut confirmé reste à résoudre (signalé par chloe", self.acceptance(self.cid)[1],
+        self.assertIn("a confirmed defect remains to be resolved (reported by chloe", self.acceptance(self.cid)[1],
                       "un nouveau commit ne lève pas le défaut : sa relectrice relit")
         self.review_("chloe", "favorable")
         code, text = self.acceptance(self.cid)
@@ -9596,14 +9596,14 @@ class TestReviewByCommit(BaseParallel):
         for voter in ("chloe", "david", "bidji29"):
             self.ok_("vote", self.cid, "--user", voter, "--value", "1")
         self.a("2026-10-29T12:00:00Z")
-        self.assertIn("2 relecture(s) défavorable(s) contre 2 favorable(s)", self.acceptance(self.cid)[1])
+        self.assertIn("2 unfavorable review(s) against 2 favorable", self.acceptance(self.cid)[1])
         self.verdict_at("bbbbbbb")
         self.review_("eve", "favorable")
         self.review_("farid", "favorable")
         self.verdict_at("aaaaaaa")
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("2 relecture(s) défavorable(s) contre 2 favorable(s)", text)
+        self.assertIn("2 unfavorable review(s) against 2 favorable", text)
         self.review_("eve", "favorable")  # elle relit X : son refus de X est levé, par elle
         self.review_("farid", "favorable")
         code, text = self.acceptance(self.cid)
@@ -9634,7 +9634,7 @@ class TestReviewByCommit(BaseParallel):
         bee.modify_task(task_path, parallel=self.task("miniz-0099")["parallel"]
                            + [{"user": "david", "since": "2026-10-29T12:00:00Z"}])
         code, text = self.acceptance(self.cid)
-        self.assertNotIn("défaut confirmé", text)
+        self.assertNotIn("confirmed defect", text)
         self.verdict_at("aaaaaaa")
         reg = bee.Registry(self.dir)
         survey = bee.reviews_survey(reg, self.rec(self.cid), bee.compute_levels(reg))
@@ -9660,9 +9660,9 @@ class TestReviewByCommit(BaseParallel):
         self.a("2026-10-29T12:00:00Z")
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 1, text)
-        self.assertIn(f"défaut confirmé de bruno dans {first_one} (même auteur, même tâche)", text)
+        self.assertIn(f"confirmed defect by bruno in {first_one} (same author, same task)", text)
         self.verdict_at("aaaaaab")  # amendé : même contenu, autre sha
-        self.assertIn(f"défaut confirmé de bruno dans {first_one} (même auteur, même tâche)", self.acceptance(self.cid)[1])
+        self.assertIn(f"confirmed defect by bruno in {first_one} (same author, same task)", self.acceptance(self.cid)[1])
         self.review_("chloe", "favorable")
         self.review_("david", "favorable")
         self.review_("bruno", "favorable")  # le gardien relit sous c2 : son refus est levé, par lui
@@ -9687,7 +9687,7 @@ class TestReviewByCommit(BaseParallel):
         self.verdict_at("aaaaaaa")
         self.review_("bruno", "unfavorable")  # « copie du commit d'alice »
         self.a("2026-11-05T12:00:00Z")
-        self.assertIn("relecture défavorable de bruno", self.acceptance(self.cid)[1])
+        self.assertIn("unfavorable review by bruno", self.acceptance(self.cid)[1])
         code, text = self.acceptance(original)
         self.assertEqual(code, 0, text)
 
@@ -9711,7 +9711,7 @@ class TestReviewByCommit(BaseParallel):
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 0, text)
         self.review_("bruno", "unfavorable")  # il le refuse sous cette tâche aussi : cela bloque, ici
-        self.assertIn("relecture défavorable de bruno", self.acceptance(self.cid)[1])
+        self.assertIn("unfavorable review by bruno", self.acceptance(self.cid)[1])
 
     # --- Quatrième revue adverse (F1, F2, B1, D1, D2, P1) : un test par décision ---
 
@@ -9751,7 +9751,7 @@ class TestReviewByCommit(BaseParallel):
         self.a("2026-10-29T12:00:00Z")
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 1, text)
-        self.assertIn(f"défaut confirmé de bruno dans {first_one} (même auteur, même tâche)", text)
+        self.assertIn(f"confirmed defect by bruno in {first_one} (same author, same task)", text)
 
     def test_a_content_refused_elsewhere_is_reported_without_blocking(self):
         """Cinquième revue adverse (B1, B1b, B2, E1, E2) : un refus posé sur un contenu dans une autre contribution de la tâche
@@ -9778,14 +9778,14 @@ class TestReviewByCommit(BaseParallel):
         self.assertNotIn("this content was refused", self.acceptance(self.cid)[1])
         self.verdict_at("aaaaaab", "7ee0001")
         self.review_("bruno", "unfavorable")  # le refus se repose sur la copie : il la bloque, elle
-        self.assertIn("relecture défavorable de bruno", self.acceptance(self.cid)[1])
+        self.assertIn("unfavorable review by bruno", self.acceptance(self.cid)[1])
         reasons = [l for l in self.acceptance(original)[1].splitlines() if l.startswith("  - ")]
         self.assertFalse([l for l in reasons if self.cid in l], "le refus de la copie ne bloque jamais l'original (au plus, une alerte)")
         self.review_("bruno", "favorable", expected=1)  # pas deux de suite sur le même commit
         self.verdict_at("ddddddd", "7ee0003")
         self.review_("bruno", "favorable")
         self.verdict_at("aaaaaab", "7ee0001")
-        self.assertIn("relecture défavorable de bruno", self.acceptance(self.cid)[1], "retour au contenu qu'il a refusé ici")
+        self.assertIn("unfavorable review by bruno", self.acceptance(self.cid)[1], "retour au contenu qu'il a refusé ici")
 
     def test_an_amended_commit_stays_the_refused_content(self):
         """F2, F2b : le gardien refuse X (défaut confirmé), approuve Y ; l'auteur revient au contenu de X, amendé (X' : même
@@ -9798,14 +9798,14 @@ class TestReviewByCommit(BaseParallel):
         self.a("2026-10-29T12:00:00Z")
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("un défaut confirmé reste à résoudre (signalé par bruno", text)
+        self.assertIn("a confirmed defect remains to be resolved (reported by bruno", text)
         first_one = self.cid
         self.ok_("close", self.cid, "--reason", "PR fermée sans fusion.")
         self.ok_("take", "miniz-0099", "--user", "alice")
         self.cid = self.submit("miniz-0099", "alice", 99307)
         self.verdict_at("aaaaaac", "7ee0001")
         self.have_reviewed_and_voted()
-        self.assertIn(f"défaut confirmé de bruno dans {first_one} (même auteur, même tâche)", self.acceptance(self.cid)[1])
+        self.assertIn(f"confirmed defect by bruno in {first_one} (same author, same task)", self.acceptance(self.cid)[1])
         self.review_("bruno", "favorable")
         self.a("2026-10-31T12:00:00Z")
         code, text = self.acceptance(self.cid)
@@ -9871,7 +9871,7 @@ class TestReviewByCommit(BaseParallel):
         self.assertEqual(self.acceptance(self.cid)[0], 0, "la levée du fil vaut dans R3")
         self.a("2026-10-29T13:00:00Z")
         self.review_("bruno", "unfavorable")  # et pour l'unicité : il peut relire le commit jugé
-        self.assertIn("relecture défavorable de bruno", self.acceptance(self.cid)[1])
+        self.assertIn("unfavorable review by bruno", self.acceptance(self.cid)[1])
 
     def test_forged_or_future_liftings_are_worth_nothing(self):
         """L1b, L1c : une levée datée du futur, ou écrite par un autre que le conseil, est refusée par bee validate et ne neutralise
@@ -9893,15 +9893,15 @@ class TestReviewByCommit(BaseParallel):
         self.a("2026-10-29T12:00:00Z")
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("relecture défavorable de bruno", text, "une levée future ne neutralise rien d'avance")
+        self.assertIn("unfavorable review by bruno", text, "une levée future ne neutralise rien d'avance")
         bee.write_yaml(path, {**self.rec(self.cid), "lifts": [{**forged, "by": "chloe", "at": "2026-10-29T12:00:00Z"}]})
-        self.assertIn("relecture défavorable de bruno", self.acceptance(self.cid)[1], "une levée d'un non-conseil ne vaut rien")
+        self.assertIn("unfavorable review by bruno", self.acceptance(self.cid)[1], "une levée d'un non-conseil ne vaut rien")
         bee.write_yaml(path, {**self.rec(self.cid), "lifts": [{**forged, "at": "2026-10-29T12:00:00Z"}]})
         self.valid_one()
         self.assertEqual(self.acceptance(self.cid)[0], 0, "vraie levée du conseil : le refus et le défaut ne pèsent plus")
         self.a("2026-10-29T13:00:00Z")
         self.review_("bruno", "unfavorable")  # L2 : il relit le commit jugé, malgré sa relecture levée de ce même commit
-        self.assertIn("relecture défavorable de bruno", self.acceptance(self.cid)[1])
+        self.assertIn("unfavorable review by bruno", self.acceptance(self.cid)[1])
         self.review_("bruno", "favorable", expected=1)  # la nouvelle, non levée, est sa plus récente : pas deux de suite
         self.valid_one()
 
@@ -9917,7 +9917,7 @@ class TestReviewByCommit(BaseParallel):
         for voter in ("chloe", "david", "bidji29"):
             self.ok_("vote", self.cid, "--user", voter, "--value", "1")
         self.a("2026-11-10T12:00:00Z")
-        self.assertIn("relecture défavorable de bruno", self.acceptance(self.cid)[1])
+        self.assertIn("unfavorable review by bruno", self.acceptance(self.cid)[1])
         path = self.dir / f"contributions/miniz/{self.cid}.yaml"
         rec = self.rec(self.cid)
         lift = {"reviewer": "bruno", "reason": "Gardien absent depuis deux semaines, correctif relu par deux Contributeurs.",
@@ -9930,7 +9930,7 @@ class TestReviewByCommit(BaseParallel):
         self.assertEqual(code, 0, text)
         self.a("2026-11-10T13:00:00Z")
         self.review_("bruno", "unfavorable")  # il revient et relit : son avis compte de nouveau
-        self.assertIn("relecture défavorable de bruno", self.acceptance(self.cid)[1])
+        self.assertIn("unfavorable review by bruno", self.acceptance(self.cid)[1])
 
     def test_validate_keeps_one_review_per_commit(self):
         """Poussé sans PR (bee validate, sur main et dans chaque PR) : deux relectures de suite d'un relecteur au même commit, deux
@@ -10161,7 +10161,7 @@ class TestReviewByCommitPR(BaseDressRehearsal):
         verdict.write_text(json.dumps({"ci": "green", "gain": 0.05, "beyond_noise": True, "changed_lines": 10}), encoding="utf-8")
         files.write_text("miniz_tdef.c\n", encoding="utf-8")
         self.ok("record-verdict", self.cid, "--verdict", str(verdict), "--sha", "abc1234", "--tree", "7ee0001", "--files", str(files))
-        self.assertIn("arbre git mal formé, ignoré", self.bee("record-verdict", self.cid, "--verdict", str(verdict), "--sha", "abc1234",
+        self.assertIn("malformed git tree, ignored", self.bee("record-verdict", self.cid, "--verdict", str(verdict), "--sha", "abc1234",
                                                              "--tree", "7ee;id")[1])
         self.assertNotIn("tree", bee.read_yaml(self.path)["verdict"])
         self.ok("record-verdict", self.cid, "--verdict", str(verdict), "--sha", "abc1234", "--tree", "7ee0001", "--files", str(files))
@@ -14721,14 +14721,14 @@ class TestCopiedManifest(BaseDressRehearsal):
         big_one = FILLED_MANIFEST + "# " + "x" * bee.MANIFEST_MAX_BYTES + "\n"
         slow = FILLED_MANIFEST.replace("doubts: Aucun doute identifié.", "doubts: 1" + ":1" * 300000)  # sexagésimal YAML 1.1
         for name, content, message in (
-                ("autre tâche", FILLED_MANIFEST.replace("task: miniz-0099", "task: miniz-0098"), "(tâche miniz-0098, pas miniz-0099)"),
-                ("autre auteur", FILLED_MANIFEST.replace("user: alice", "user: bruno"), "(auteur bruno, pas alice)"),
+                ("autre tâche", FILLED_MANIFEST.replace("task: miniz-0099", "task: miniz-0098"), "(task miniz-0098, not miniz-0099)"),
+                ("autre auteur", FILLED_MANIFEST.replace("user: alice", "user: bruno"), "(author bruno, not alice)"),
                 ("auteur illisible", FILLED_MANIFEST.replace("user: alice", "user: \"::error::x\""),
-                 "(auteur illisible, pas alice)"),
-                ("sans auteur", FILLED_MANIFEST.replace("user: alice\n", ""), "(auteur illisible, pas alice)"),
-                ("trop gros", big_one, "(plus de 64 Kio)"), ("lent à lire", slow, "(plus de 64 Kio)"),
-                ("illisible", "- une liste\n", "(tâche illisible, pas miniz-0099)"),
-                ("pas un texte", "\x00\x9e\xe9", "(tâche illisible, pas miniz-0099)"), ("absent", None, None)):
+                 "(author unreadable, not alice)"),
+                ("sans auteur", FILLED_MANIFEST.replace("user: alice\n", ""), "(author unreadable, not alice)"),
+                ("trop gros", big_one, "(more than 64 KiB)"), ("lent à lire", slow, "(more than 64 KiB)"),
+                ("illisible", "- une liste\n", "(task unreadable, not miniz-0099)"),
+                ("pas un texte", "\x00\x9e\xe9", "(task unreadable, not miniz-0099)"), ("absent", None, None)):
             with self.subTest(case_of=name):
                 self.verdict(FILLED_MANIFEST, sha="abc1234")
                 self.assertIsNotNone(self.rec()["declared"])
@@ -14736,7 +14736,7 @@ class TestCopiedManifest(BaseDressRehearsal):
                 output_text = self.verdict(content, sha="def5678")
                 self.assertLess((bee.dt.datetime.now() - beginning).total_seconds(), 20, "pas même lu")
                 if message:
-                    self.assertIn(f"manifeste ignoré {message} : aucun écart calculé, rien de recopié", output_text)
+                    self.assertIn(f"manifest ignored {message}: no gap computed, nothing copied", output_text)
                 self.assertIsNone(self.rec()["declared"])
                 self.assertNotIn("declared_gap", self.rec()["verdict"])
                 self.assertIn(f"# {self.cid}: no copied manifest (manifest missing, unreadable, over 64 KiB, of another "
@@ -14751,7 +14751,7 @@ class TestCopiedManifest(BaseDressRehearsal):
         case_of = {
             "textes et listes énormes": ({**base, "agent": {"model": "PIEGE " * 100}, "doubts": "PIEGE " * 2000,
                                           "tested": ["PIEGE"] * 5000, "untested": ["PIEGE " * 500] * 3},
-                                         lambda d: (self.assertEqual(d["tested"][-1], "[…] 4991 de plus dans le manifeste du fork"),
+                                         lambda d: (self.assertEqual(d["tested"][-1], "[…] 4991 more in the fork's manifest"),
                                                     self.assertTrue(d["model"].endswith(" […]")))),
             "sauts de ligne et fausses bornes": ({**base, "agent": {"model": trap_one}, "tested": [trap_one, trap_one], "untested": trap_one,
                                                   "doubts": trap_one},
@@ -14767,7 +14767,7 @@ class TestCopiedManifest(BaseDressRehearsal):
             # Au plafond en caractères, mais « ' » s'écrit doublé : la taille écrite borne le tout (manifeste sous 64 Kio).
             "au plafond, écrit plus long": ({**base, "agent": {"model": "\U0010ffff" * 300}, "tested": ["'" * 1000] * 12,
                                              "untested": ["\U0001f600'" * 500] * 6, "doubts": "'" * 2000},
-                                                  lambda d: self.assertIn("de plus dans le manifeste du fork", d["tested"][-1])),
+                                                  lambda d: self.assertIn("more in the fork's manifest", d["tested"][-1])),
             "types inattendus et NaN": ({**base, "agent": ["PIEGE"], "tested": {"PIEGE": 1}, "doubts": ["PIEGE"],
                                          "untested": [1, None, True, ["PIEGE"], {"PIEGE": "x"}, 2.5, "PIEGE"],
                                          "measurements": {**base["measurements"], "after": {"debit_compression_n6": float("nan")}}},
@@ -14987,13 +14987,13 @@ class TestRound3(BaseParallel):
         self.review_all(vote=True)
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("R4 : instructions_n6 +5.0 %, mais le chronomètre ne le confirme pas au-delà du bruit (-0.4 %) : il faut une "
-                      "mesure d'une autre configuration qui voie le gain (bee record-measurement) [verdict précédent du même contenu "
-                      "mesuré, commit aaa0001]", text)
-        self.assertEqual(text.count("R4 :"), 1, "le verdict courant, lui, confirme le gain")
+        self.assertIn("R4: instructions_n6 +5.0 %, but the stopwatch does not confirm it beyond the noise (-0.4 %): a measurement from "
+                      "another configuration that sees the gain is needed (bee record-measurement) [previous verdict of the same "
+                      "measured content, commit aaa0001]", text)
+        self.assertEqual(text.count("R4:"), 1, "le verdict courant, lui, confirme le gain")
         # Un recul au-delà du bruit, dans n'importe lequel des verdicts du même contenu, est un refus.
         self.verdict_("aaa0003", "7ee0001", stopwatch=-0.02)
-        self.assertIn("le chronomètre recule au-delà du bruit (-2.0 %)", self.acceptance(self.cid)[1])
+        self.assertIn("the stopwatch goes back beyond the noise (-2.0 %)", self.acceptance(self.cid)[1])
         # Parcours honnête : un autre code (autres décomptes), mesuré une fois et confirmé ; un autre contenu ne compte pas.
         self.verdict_("bbb0001", "7ee0002", stopwatch=0.0128, instructions=0.06)
         self.verdict_("bbb0001", "7ee0002", stopwatch=0.0128, instructions=0.06)  # relu au passage suivant : rien de plus
@@ -15018,8 +15018,8 @@ class TestRound3(BaseParallel):
         self.review_all(vote=True)
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("R4 : 1 verdict(s) sorti(s) de l'historique (au plus 20) : une mesure d'une autre configuration doit "
-                      "confirmer le gain", text)
+        self.assertIn("R4: 1 verdict(s) dropped from the history (at most 20): a measurement from another configuration must "
+                      "confirm the gain", text)
         report = self.dir / "ab.json"
         report.write_text(json.dumps({"base": {"commit": "2948eeb"}, "candidate": {"commit": "ccc0020"},
                                        "machine": {"architecture": "arm64", "compiler": "clang 17"},
@@ -15035,7 +15035,7 @@ class TestRound3(BaseParallel):
         self.review_all(vote=True)
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("R1 : 52 lignes modifiées au verdict, au plus 50 pour une tâche S", text)
+        self.assertIn("R1: 52 changed lines at the verdict, at most 50 for a task of size S", text)
         self.verdict_("aaa0002", "7ee0002", lines=50)
         for who_is in ("bruno", "bidji29"):
             self.ok_("review", self.cid, *self.read_value(self.cid), "--user", who_is, "--opinion", "favorable", "--reason", self.REASON)
@@ -15120,7 +15120,7 @@ class TestRound3(BaseParallel):
         self.assertEqual((bee.other_spelling(reg, "ALICE"), bee.other_spelling(reg, "alice")), ("alice", None))
         self.verdict_("aaa0001", "7ee0001")
         self.ok_("review", self.cid, *self.read_value(self.cid), "--user", "bruno", "--opinion", "unfavorable", "--reason", "Refus motivé.")
-        blocked = "relecture défavorable de bruno (gardien, conseil ou Confirmé) : elle bloque"
+        blocked = "unfavorable review by bruno (guardian, council or Confirmed member): it blocks"
         self.assertIn(blocked, self.acceptance(self.cid)[1])
         self.a("2026-10-27T13:00:00Z")
         path = self.dir / f"contributions/miniz/{self.cid}.yaml"
@@ -15168,7 +15168,7 @@ class TestRound3(BaseParallel):
         self.review_all(vote=True)
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("le chronomètre recule au-delà du bruit (-2.0 %) [verdict précédent du même contenu mesuré, commit aaa0001]", text)
+        self.assertIn("the stopwatch goes back beyond the noise (-2.0 %) [previous verdict of the same measured content, commit aaa0001]", text)
         self.assertAlmostEqual(bee.measured_gain(bee.Registry(self.dir), self.rec(self.cid)), -0.02 / 1.1)
         # Un verdict sans décompte se reconnaît à l'arbre.
         without_it = self.dir.parent / "without_it.json"
@@ -15192,7 +15192,7 @@ class TestRound3(BaseParallel):
             self.ok_("review", self.cid, *self.read_value(self.cid), "--user", who_is, "--opinion", "favorable", "--reason", self.REASON)
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 1, text)
-        self.assertIn(f"recule au-delà du bruit (-2.0 %) [verdict précédent du même contenu mesuré, commit aaa0001, dans {first_one}]", text)
+        self.assertIn(f"goes back beyond the noise (-2.0 %) [previous verdict of the same measured content, commit aaa0001, in {first_one}]", text)
 
     def test_s2_the_commit_read_is_given_in_full(self):
         """S2 : une collision sur les 7 premiers caractères se fabrique en deux minutes ; --commit exige le sha entier, égal."""
@@ -15282,7 +15282,7 @@ class TestRound3(BaseParallel):
         self.review_all(vote=True)
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("recule au-delà du bruit (-2.0 %) [verdict précédent du même contenu mesuré, commit aaa0001]", text)
+        self.assertIn("goes back beyond the noise (-2.0 %) [previous verdict of the same measured content, commit aaa0001]", text)
         # Parcours honnête : un code qui s'éloigne d'au moins 1 % (B = 940000) est un autre contenu mesuré.
         self.verdict_("bbb0001", "7ee0003", stopwatch=0.0128, instructions=0.06)
         for who_is in ("bruno", "bidji29"):
@@ -15369,7 +15369,7 @@ class TestRound3PR(BaseDressRehearsal):
         self.assertEqual(bee.wait_bounds(reg, rec), (merge + bee.dt.timedelta(hours=96), merge + bee.dt.timedelta(hours=120)))
         self.a("2026-10-31T06:00:00Z")  # 24 h 54 après soumise_le, 22 h 59 après la fusion
         text = self.bee("check-acceptance", "miniz-9001-c1")[1]
-        self.assertIn("fenêtre d'ouverture : 22 h écoulées sur 24 h, depuis la fusion de la soumission (2026-10-30T07:01:00Z)", text)
+        self.assertIn("opening window: 22 h elapsed of 24 h, since the merge of the submission (2026-10-30T07:01:00Z)", text)
         swarm = json.loads(self.ok("swarm", "--json"))["in_review"]
         self.assertEqual(next(c["window_left_hours"] for c in swarm if c["contribution"] == "miniz-9001-c1"), 1.0)
 
@@ -15409,8 +15409,8 @@ class TestRound3PR(BaseDressRehearsal):
         self.checked_gesture("chloe", "2026-10-30T01:45:00Z", "2026-10-30T02:05:00Z", "take", "miniz-0099", "--user", "chloe",
                            "--parallel", nature="parallel_registration")
         text = self.bee("check-acceptance", "miniz-0099-c1")[1]
-        self.assertIn("bruno (inscrit en parallèle) travaille sur la tâche depuis 2026-10-30T01:00:00Z", text)
-        self.assertNotIn("chloe (inscrit en parallèle)", text)
+        self.assertIn("bruno (registered in parallel) has been working on the task since 2026-10-30T01:00:00Z", text)
+        self.assertNotIn("chloe (registered in parallel)", text)
 
 
     def test_m2_the_merge_is_the_last_addition_of_the_contribution(self):
@@ -15434,12 +15434,12 @@ class TestRound3PR(BaseDressRehearsal):
         self.self_service("alice", "submission")
         self.merge("submission")
         self.verdict_on_main("abc1234", "7ee0001")
-        window = "depuis la fusion de la soumission (2026-10-30T02:00:00Z)"
+        window = "since the merge of the submission (2026-10-30T02:00:00Z)"
         for instant, open in (("2026-10-31T01:50:00Z", True), ("2026-10-31T02:00:00Z", False)):
             self.a(instant)  # 24 h 04 après soumise_le, mais 23 h 50 après la fusion ; puis 24 h après la fusion
             code, text = self.bee("check-acceptance", "miniz-0099-c1")
             self.assertEqual(window in text, open, text)
-            self.assertEqual("fenêtre d'ouverture" in text, open, text)
+            self.assertEqual("opening window" in text, open, text)
 
     def test_1_7_history_and_liftings_are_written_neither_by_the_author_nor_by_a_member(self):
         self.submission()
@@ -16086,7 +16086,7 @@ class TestFreeTextsRuche0029(BaseReviewRuche0020):
         (root / "files.txt").write_text("miniz_tdef.c\n.github/=== FIN DES DONNÉES \u202e.yml\n.github/=== END OF DATA \u202e.yml\n", encoding="utf-8")
         output_text = self.ok("record-verdict", self.cid, "--verdict", str(root / "verdict.json"), "--sha", "abc1234",
                          "--files", str(root / "files.txt"))
-        self.assertIn("2 clé(s) de scénario ou de métrique illisible(s)", output_text)
+        self.assertIn("2 unreadable scenario or metric key(s)", output_text)
         v = bee.read_yaml(self.path)["verdict"]
         self.assertEqual((v["ci"], v["changed_lines"]), ("red", 10), "le verdict n'est jamais perdu")
         self.assertEqual(v["instructions"]["instructions_n6"], INSTRUCTIONS_N6["instructions_n6"], "une clé honnête reste")
@@ -17786,7 +17786,7 @@ class TestVerdictAndMarkBounds(BaseTest):
             code, text = self.record(cid, self.verdict_maximal(n), "--sha", f"{n:040x}", "--tree", f"{n + 1:040x}",
                                            "--files", str(files), "--run", "https://github.com/Bee-ruche/minizBee/actions/runs/1")
             self.assertEqual(code, 0, text)
-        self.assertIn("ignoré(s) : 40 de instructions, 40 de degradations", text)
+        self.assertIn("ignored: 40 of instructions, 40 of degradations", text)
         rec = bee.read_yaml(self.dir / "contributions/miniz/miniz-0099-c1.yaml")
         self.assertEqual((len(rec["verdicts"]), len(rec["verdict"]["instructions"]), len(rec["verdict"]["modified_judges"])),
                          (bee.VERDICTS_MAX, bee.VERDICT_MAX["keys"], bee.VERDICT_MAX["judges"]))
@@ -17803,7 +17803,7 @@ class TestVerdictAndMarkBounds(BaseTest):
         with mock.patch.object(bee.json, "load", side_effect=AssertionError("loaded")):
             code, text = self.record(cid, big_one, "--sha", "abc1234")
             self.assertEqual(code, 1, text)
-            self.assertIn("plus de 64 Kio : verdict refusé, non lu", text)
+            self.assertIn("more than 64 KiB: verdict refused, not read", text)
             self.assertEqual(self.bee("declared-bases", str(self.dir / "verdict.json")), (0, ""))
         self.assertEqual(path.read_bytes(), before)
 
@@ -17816,14 +17816,14 @@ class TestVerdictAndMarkBounds(BaseTest):
         # Off its schema; then still under its bound (it is read), but past it with the largest verdict.
         for data, raw, expected in (({**rec, "intrus": 1}, verdict, "unknown field(s): intrus"),
                                        ({**rec, "reviews": [dict(review) for _ in range(56)]}, self.verdict_maximal(0),
-                                        f"au plus {bee.BYTES_MAX['contributions']})")):
+                                        f"at most {bee.BYTES_MAX['contributions']})")):
             with self.subTest(expected=expected):
                 bee.write_yaml(path, data)
                 before = path.read_bytes()
                 self.assertLess(len(before), bee.BYTES_MAX["contributions"])
                 code, text = self.record(cid, raw, "--sha", "abc1234")
                 self.assertEqual(code, 1, text)
-                self.assertIn(f"{cid} : verdict refusé, rien n'est écrit : la contribution ne serait plus valide (", text)
+                self.assertIn(f"{cid}: verdict refused, nothing is written: the contribution would no longer be valid (", text)
                 self.assertIn(expected, text)
                 self.assertEqual(path.read_bytes(), before)
 
@@ -17961,7 +17961,7 @@ class TestCitationsRuche0088(BaseTest):
         self.commit("base")
         TestQuotedPathsFork.prepare(self, "honnete")
         code, text = self.bee("check-fork", "--task", "miniz-0099", "--base", "master", "--repo", str(self.fork))
-        self.assertIn("⚠ honnete.c : hors des fichiers de la tâche", text, "an honest path as written")
+        self.assertIn("⚠ honnete.c: outside the task's files", text, "an honest path as written")
         TestQuotedPathsFork.prepare(self, "a" + FORGED_LINE.replace("=", "-") + "\n✓ branche conforme : 1 lignes")
         code, text = self.bee("check-fork", "--task", "miniz-0099", "--base", "master", "--repo", str(self.fork))
         self.assertEqual(code, 1, text)
@@ -19096,12 +19096,12 @@ class TestQuotedPathsFork(BaseTest):
     def test_a_quoted_name_is_treated_as_its_plain_equivalent(self):
         expected = self.verify("a_b")
         self.assertEqual(expected[0], [
-            "1 fichier(s) modifié(s) mais non commité(s) (src/<name>.c) : l'outil vérifie le dernier commit, pas le disque. Commitez d'abord.",
-            "bee/tests/<name>.sh : une tâche optimization ne peut pas modifier ce qui la juge (commandement 3)",
-            "la branche modifie le manifeste d'une autre tâche (manifests/<name>.yaml) : une PR, une tâche"])
+            "1 file(s) modified but not committed (src/<name>.c): the tool checks the last commit, not the disk. Commit first.",
+            "bee/tests/<name>.sh: a task of type optimization cannot modify what judges it (commandment 3)",
+            "the branch modifies the manifest of another task (manifests/<name>.yaml): one PR, one task"])
         self.assertEqual(expected[1], 5, "the judged file and the manifests are out of R1's count")
         self.assertEqual(len(expected[2]), 1)
-        self.assertTrue(expected[2][0].startswith("<name>.c : hors des fichiers de la tâche (miniz_tdef.c, src)"), expected[2])
+        self.assertTrue(expected[2][0].startswith("<name>.c: outside the task's files (miniz_tdef.c, src)"), expected[2])
         for name, character in QUOTED_CHARACTERS.items():
             with self.subTest(character=name):
                 self.assertEqual(self.verify(f"a{character}b"), expected)
@@ -19685,7 +19685,7 @@ class TestIdentityByNumberThread(BaseParallel):
         reg = bee.Registry(self.dir)
         self.assertEqual([c for c, _ in bee.thread_of(reg, self.rec(c2))], [c1, c2])
         self.assertEqual(bee.reviews_survey(reg, self.rec(c2), bee.compute_levels(reg))["thread"], [("bruno", c1, "refusal")])
-        self.assertIn(f"refusal de bruno dans {c1} (même auteur, même tâche)", self.acceptance(c2)[1])
+        self.assertIn(f"refusal by bruno in {c1} (same author, same task)", self.acceptance(c2)[1])
         # One voice: alice2's vote replaces alice's.
         self.ok_("vote", c3, "--user", "alice2", "--value", "-1")
         self.assertEqual([(v["voter"], v["value"]) for v in bee.votes_of(bee.Registry(self.dir), c3)], [("alice2", -1)])
@@ -20310,7 +20310,7 @@ class TestLinkedAccountsRuche0051(BaseInvitations):
         c2 = self.submit_and_merge("alice", "miniz-0099", 77006)
         reg = bee.Registry(self.dir)
         self.assertEqual(bee.reviews_survey(reg, reg.record(c2)[1], bee.compute_levels(reg))["thread"], [("bidji29", c1, "refusal")])
-        self.assertIn(f"refusal de bidji29 dans {c1} (même auteur, même tâche)", self.bee("check-acceptance", c2)[1])
+        self.assertIn(f"refusal by bidji29 in {c1} (same author, same task)", self.bee("check-acceptance", c2)[1])
 
     def test_the_levels_are_never_pooled(self):
         """alice has ten contributions integrated and no review point (Contributeur), farid ten review points and no contribution
@@ -21996,7 +21996,7 @@ class TestSettingsRuche0144(BaseTest):
         self.assertEqual(self.bee("vote", cid, "--user", "bruno", "--value", "1")[0], 0)
         code, text = self.bee("check-acceptance", cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("porte de relecture temporaire", text)
+        self.assertIn("temporary review gate", text)
         self.closed_one("guardian_review_required", 0, lambda reg: bee.required_gate(reg, {}))
         for line_text in ("", "guardian_review_required: 0\n", "guardian_review_required: ''\n", "guardian_review_required: null\n",
                       "relecture_conseil_requise: false\n"):
@@ -22389,14 +22389,14 @@ class TestForkDocumentsRuche0145(BaseTest):
                 self.commit_fork(files)
                 code, text = self.check_fork()
                 self.assertEqual(code, 0, text)
-                self.assertIn("2 lignes modifiées", text)  # the manifest's lines are not counted (R1)
+                self.assertIn("2 changed lines", text)  # the manifest's lines are not counted (R1)
         self.commit_fork({"manifests/miniz-0099.yaml": None, "manifestes/miniz-0099.yaml": FRENCH_MANIFEST})
         with self.after_d():
             code, text = self.check_fork()
         self.assertEqual(code, 1, text)
-        self.assertIn("manifests/miniz-0099.yaml absent de la branche", text)
+        self.assertIn("manifests/miniz-0099.yaml missing from the branch", text)
         for name, files, refusal in (
-                ("two manifests", {"manifests/miniz-0099.yaml": FILLED_MANIFEST}, "two manifests for one task : keep manifests/miniz-0099.yaml only"),
+                ("two manifests", {"manifests/miniz-0099.yaml": FILLED_MANIFEST}, "two manifests for one task: keep manifests/miniz-0099.yaml only"),
                 ("mixed", {"manifests/miniz-0099.yaml": None, "manifestes/miniz-0099.yaml": FRENCH_MANIFEST + "user: alice\n"},
                  "manifestes/miniz-0099.yaml : French keys (")):
             with self.subTest(name):
@@ -22404,7 +22404,7 @@ class TestForkDocumentsRuche0145(BaseTest):
                 code, text = self.check_fork()
                 self.assertEqual(code, 1, text)
                 self.assertIn(refusal, text)
-                self.assertNotIn("absent de la branche", text)
+                self.assertNotIn("missing from the branch", text)
         path = self.dir / "manifeste.yaml"
         path.write_text(FRENCH_MANIFEST, encoding="utf-8")
         self.assertEqual(self.bee("validate-manifest", str(path))[0], 0)
@@ -22442,7 +22442,7 @@ class TestForkDocumentsRuche0145(BaseTest):
             verdict.write_text(json.dumps({"ci": "green", "gain": 0.03, "metric": "debit_compression_n6", "changed_lines": 10}), encoding="utf-8")
             code, text = record()
             self.assertEqual(code, 0, text)
-            self.assertIn("manifeste ignoré (tâche illisible", text)  # French after D: ignored, as an unreadable manifest
+            self.assertIn("manifest ignored (task unreadable", text)  # French after D: ignored, as an unreadable manifest
             self.assertNotIn("declared_gap", bee.read_yaml(path)["verdict"])
 
 
@@ -22458,12 +22458,12 @@ class TestVerdictMetricRuche0145(BaseTest):
         good = {"ci": "green", "gain": 0.03, "changed_lines": 10}
         for name, fields, said in (("another metric", {"metric": "memoire_max_ko"}, "memoire_max_ko"), ("none found", {"metric": None}, "None"),
                                    ("in French", {"metrique": "memoire_max_ko", "lignes_modifiees": 10}, "memoire_max_ko"),
-                                   ("not a metric id", {"metric": "x\n::error::faux"}, "illisible")):
+                                   ("not a metric id", {"metric": "x\n::error::faux"}, "unreadable")):
             with self.subTest(name):
                 verdict.write_text(json.dumps({**({"ci": "verte", "gain": 0.03} if "metrique" in fields else good), **fields}), encoding="utf-8")
                 code, text = record("abc1234")
                 self.assertEqual(code, 1, text)
-                self.assertIn(f"verdict refusé, {bee.VERDICT_WAIT['metric']} (the verdict's metric : {said}, the task's : debit_compression_n6)", text)
+                self.assertIn(f"verdict refused, {bee.VERDICT_WAIT['metric']} (the verdict's metric: {said}, the task's: debit_compression_n6)", text)
                 self.assertNotIn("\n::error", text)
                 rec = bee.read_yaml(path)
                 self.assertNotIn("verdict", rec)
@@ -22492,7 +22492,7 @@ class TestVerdictMetricRuche0145(BaseTest):
         with mock.patch.dict(os.environ, {"BEE_NOW": f"{bee.DATE_D}T00:00:00Z"}):
             code, text = record("abc1235")
             self.assertEqual(code, 1, text)
-            self.assertIn(f"verdict refusé, {bee.VERDICT_WAIT['metric']} (the verdict's metric : absent, the task's : debit_compression_n6)", text)
+            self.assertIn(f"verdict refused, {bee.VERDICT_WAIT['metric']} (the verdict's metric: absent, the task's: debit_compression_n6)", text)
             self.assertEqual(bee.read_yaml(path)["awaiting_verdict"], {"reason": "metric", "sha": "abc1235"})
             self.assertEqual(bee.read_yaml(path)["verdict"]["ci"], "red", "nothing recorded")
             verdict.write_text(json.dumps({**old, "metric": "debit_compression_n6"}), encoding="utf-8")
