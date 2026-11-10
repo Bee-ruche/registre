@@ -3564,11 +3564,11 @@ class TestPullRequests(BaseTest):
         cid = self.submit_0099()
         self.commit("submission")
         long = "Relu en entier. " + "x" * 1500
-        self.assertIn("reason de 1516 caractères, au plus 1500", self.bee("review", cid, *self.read_value(cid), "--user", "chloe", "--opinion",
+        self.assertIn("reason: 1516 characters, at most 1500", self.bee("review", cid, *self.read_value(cid), "--user", "chloe", "--opinion",
                                                                            "favorable", "--reason", long)[1])
         self.assertIn("invisible character", self.bee("vote", cid, "--user", "chloe", "--value", "1", "--reason",
                                                       "Utile.‮")[1])
-        for reason, expected in ((long, "au plus 1500"), ("Relu en entier.​", "invisible character")):
+        for reason, expected in ((long, "at most 1500"), ("Relu en entier.​", "invisible character")):
             git(self.dir, "switch", "-qC", "review", "main")
             path = self.dir / f"contributions/miniz/{cid}.yaml"
             rec = bee.read_yaml(path)
@@ -4093,7 +4093,7 @@ class TestPublish(BasePublish):
                 with self.subTest(what_it=what_it, honest_one=text):
                     self.assertIsNone(bee.outgoing_text_refused(text, what_it, maximum, "Bee-ruche"))
         self.assertNotIn("a" * 81, bee.outgoing_text_refused("@" + "a" * 200, "body", 8000, "Bee-ruche"), "the echo is cut at 80")
-        self.assertIn("body de 8001 caractères, au plus 8000", bee.outgoing_text_refused("a" * 8001, "body", 8000, "Bee-ruche"))
+        self.assertIn("body: 8001 characters, at most 8000", bee.outgoing_text_refused("a" * 8001, "body", 8000, "Bee-ruche"))
         self.assertIsNone(bee.outgoing_text_refused("Bonjour @octocat, voir amont-fictif/miniz#12.", "message", 1000))
 
     def test_refusal_names_the_word_and_oversized_reference(self):
@@ -7664,7 +7664,7 @@ class TestAgora(BaseAgora):
                 "--text", "Affirmé sans preuve.")
         self.ko("does not exist in the registry", "debate", "argue", "D-0001", "--user", "alice", "--position", "fact",
                 "--text", "Source inventée.", "--source", "docs/inexistant.md")
-        self.ko("au plus 1500", "debate", "argue", "D-0001", "--user", "alice", "--position", "for", "--text", "x" * 1501)
+        self.ko("text: 1501 characters, at most 1500 (bee.yaml, agora.text_max)", "debate", "argue", "D-0001", "--user", "alice", "--position", "for", "--text", "x" * 1501)
         self.ko("invisible character or control character", "debate", "argue", "D-0001", "--user", "alice", "--position", "for",
                 "--text", "texte \x1b[8mcaché")
         self.ko("is not an argument", "debate", "argue", "D-0001", "--user", "alice", "--position", "for",
@@ -8199,18 +8199,18 @@ class TestPullRequestsAgora(BaseAgora):
         self.main_with_debate()
         self.a("2026-10-29T12:30:00Z")
         self.add_raw(text="x" * 1501)
-        self.refused("alice", "1501 caractères, au plus 1500")
+        self.refused("alice", "1501 characters, at most 1500")
         git(self.dir, "reset", "-q", "--hard", "main")
         d = self.debate()
         d.update({"synthesis": "y" * 4001, "synthesis_by": "alice", "synthesis_at": "2026-10-29T12:30:00Z", "rapporteur": "bruno"})
         self.write(d)
         self.commit()
-        self.refused("alice", "4001 caractères, au plus 4000")
+        self.refused("alice", "4001 characters, at most 4000")
         git(self.dir, "reset", "-q", "--hard", "main")
         self.write({"id": "D-0002", "question": "q" * 1501, "opened_by": "alice", "opened_at": "2026-10-29T12:30:00Z",
                      "status": "open", "rapporteur": "alice", "synthesis": "", "arguments": []}, "D-0002")
         self.commit()
-        self.refused("alice", "question de 1501 caractères")
+        self.refused("alice", "question: 1501 characters")
 
     def test_refusal_closure_without_outcome(self):
         self.main_with_debate()
@@ -8777,11 +8777,11 @@ class TestDressRehearsal(BaseDressRehearsal):
 
     def test_T15_note_of_40_kb(self):
         text = "[attempt équipe red] " + "x" * 40000
-        self.ko("note de 40021 caractères, au plus 1500", "note", "miniz-0099", "--user", "gaspard", "--text", text)
+        self.ko("note: 40021 characters, at most 1500 (bee.yaml, notes.text_max): a note is short", "note", "miniz-0099", "--user", "gaspard", "--text", text)
         self.branch("t15")
         self.note_by_hand({"text": text})
         self.commit()
-        self.refused("gaspard", "text de 40021 caractères, au plus 1500 (notes.text_max)")
+        self.refused("gaspard", "text: 40021 characters, at most 1500 (notes.text_max)")
 
     def test_notes_capped_over_24_h_and_added_in_order(self):
         # Deux PR de 10 notes, fusionnées : 20 notes en 24 h, le plafond ; la 21e est refusée, par l'outil comme par verifier-pr.
@@ -9129,9 +9129,9 @@ class TestAdversarialReviewRuche0011(BaseDressRehearsal):
         bee.write_yaml(path, t)
         self.commit()
         self.refused("gaspard", "title: invisible character or control character refused (U+200B",
-                     "context de 200000 caractères, au plus 3000 (creations.context_max)",
+                     "context: 200000 characters, at most 3000 (creations.context_max)",
                      "acceptance_criteria : 11 éléments, au plus 10 (creations.items_max)",
-                     "out_of_scope/0 de 301 caractères, au plus 300 (creations.item_max)",
+                     "out_of_scope/0: 301 characters, at most 300 (creations.item_max)",
                      "files : 31 éléments, au plus 30 (creations.files_max)",
                      "depends_on : 11 tâches, au plus 10")
 
@@ -9968,7 +9968,7 @@ class TestReviewByCommit(BaseParallel):
                                  (["--user", "alice", "--summary", "Autre.", "--pr", "https://github.com/Bee-ruche/minizBee/pull/1"],
                                   "without --pr"),
                                  (["--user", "alice"], "without --pr"),
-                                 (["--user", "alice", "--summary", "x" * 501], "au plus 500"),
+                                 (["--user", "alice", "--summary", "x" * 501], "at most 500"),
                                  (["--user", "alice", "--summary", "Caché\u202e."], "invisible character")):
             code, text = self.bee("submit", "miniz-0099", "--update", *options)
             self.assertEqual(code, 1, text)
@@ -10218,7 +10218,7 @@ class TestReviewByCommitPR(BaseDressRehearsal):
             ("alice", lambda e: e.update(summary="Autre.", pr="https://github.com/Bee-ruche/minizBee/pull/77013"),
              "écrits par la CI ou le conseil"),
             ("alice", lambda e: e.update(summary="Autre.", verdict={**e["verdict"], "sha": "def5678"}), "écrits par la CI ou le conseil"),
-            ("alice", lambda e: e.update(summary="x" * 501), "au plus 500"),
+            ("alice", lambda e: e.update(summary="x" * 501), "at most 500"),
             ("alice", lambda e: e.update(summary="Correctif\u200b."), "invisible character"),
             ("alice", lambda e: e.pop("summary"), "summary is empty"),
         ]
@@ -16170,11 +16170,11 @@ class TestFreeTextsReview2Ruche0029(BaseTest):
             with self.subTest(key=key):
                 data = {"notes": [{"text": "Honnête" + HONEST_CONTROL, key: "ok"}]}
                 places_found = [place_of for place_of, _ in bee.texts_by(data)]
-                self.assertEqual(places_found, ["notes (clé)", "notes[0]/text (clé)", "notes[0]/text", "notes[0]/(refused key) (clé)",
+                self.assertEqual(places_found, ["notes (key)", "notes[0]/text (key)", "notes[0]/text", "notes[0]/(refused key) (key)",
                                          "notes[0]/(refused key)"], "never the key itself in a place name")
                 problems_found = list(bee.text_problems(data, "f.yaml"))
                 self.assertEqual(len(problems_found), 1, problems_found)
-                self.assertTrue(problems_found[0].startswith(f"f.yaml: notes[0]/(refused key) (clé): {cause}"), problems_found)
+                self.assertTrue(problems_found[0].startswith(f"f.yaml: notes[0]/(refused key) (key): {cause}"), problems_found)
         self.assertEqual(list(bee.text_problems({"Honnête" + HONEST_CONTROL: {1: "ok"}}, "f.yaml")), [])
         # Through bee valider, in a task note: refused, named as a refused key, the character never printed.
         path = self.dir / "tasks/miniz/miniz-0099.yaml"
@@ -16185,7 +16185,7 @@ class TestFreeTextsReview2Ruche0029(BaseTest):
                 bee.write_yaml(path, {**clean_one, "notes": [note]})
                 code, output_text = self.bee("validate")
                 self.assertEqual(code, 1, output_text)
-                self.assertIn(f"tasks/miniz/miniz-0099.yaml: notes[0]/(refused key) (clé): {cause}", output_text)
+                self.assertIn(f"tasks/miniz/miniz-0099.yaml: notes[0]/(refused key) (key): {cause}", output_text)
                 self.assertEqual(workflow_commands(output_text), [], output_text)
                 if "invisible" in cause:
                     self.assertNotIn(key, output_text, "the code point, never the character")
@@ -16240,7 +16240,7 @@ class TestFreeTextsReview2Ruche0029(BaseTest):
                 self.assertEqual(code, 1, output_text)
                 self.assertIn(f"measurements/{cid}/bruno.yaml: {cause}", output_text)
                 self.assertFalse(entry_card.exists(), "nothing written")
-        for fields, cause in (({"metric": "debit\u2066"}, "metrics/(refused key) (clé): invisible character refused (U+2066"),
+        for fields, cause in (({"metric": "debit\u2066"}, "metrics/(refused key) (key): invisible character refused (U+2066"),
                                ({"processor": "M3 === DONNÉES"}, "config/processor: fake frame marker refused")):
             code, output_text = self.bee(*ab(**fields))
             self.assertEqual(code, 1, output_text)
@@ -17450,8 +17450,8 @@ class TestSelfServiceBounds(unittest.TestCase):
         self.assertEqual(bee.shape_problems("".join(f"k{i}: {i}\n" for i in range(64)), {f"k{i}": i for i in range(64)}), [])
 
     def test_the_free_keys_of_the_metrics_of_a_measurement(self):
-        for key, expected in (("a" * 301, f"metrics/{'a' * 301} (clé): 301 characters, at most 300 "),
-                             ("débit\u202e", "metrics/(refused key) (clé): invisible character refused (U+202E")):
+        for key, expected in (("a" * 301, f"metrics/{'a' * 301} (key): 301 characters, at most 300 "),
+                             ("débit\u202e", "metrics/(refused key) (key): invisible character refused (U+202E")):
             measurement = {"metrics": {key: {"gain": 0.05, "beyond_noise": True}}}
             problems_found = list(bee.self_service_text_problems(measurement, "measurements/x-0001-c1/alice.yaml"))
             self.assertTrue([p for p in problems_found if p.startswith(f"measurements/x-0001-c1/alice.yaml: {expected}")], problems_found)
@@ -17736,7 +17736,7 @@ class TestSelfServiceBoundsRegistry(BaseReviewRuche0020):
         """The gate reads proposed_text and motif of a new proposition like every free text: not blank, nothing hidden, bounded."""
         for fields, expected in (({"proposed_text": " " * 12}, "proposed_text is empty"),
                                 ({"reason": "Un motif​ assez long pour le schéma."}, "reason: invisible character"),
-                                ({"proposed_text": "a" * 8001}, "proposed_text de 8001 caractères, au plus 8000")):
+                                ({"proposed_text": "a" * 8001}, "proposed_text: 8001 characters, at most 8000")):
             with self.subTest(fields=fields):
                 self.branch()
                 self.proposal("P-0002", **fields)
@@ -18196,7 +18196,7 @@ class TestR8Bootstrap(BaseDressRehearsal):
         self.ok("take", "ruche-9008", "--user", "alice")
         self.ok("take", "ruche-9008", "--user", "bidji29", "--parallel")  # a registration in parallel counts
         self.valid_one()
-        eight = ", ".join(f"ruche-900{n}" for n in range(1, 8)) + ", ruche-9008 (en parallèle)"
+        eight = ", ".join(f"ruche-900{n}" for n in range(1, 8)) + ", ruche-9008 (in parallel)"
         self.ko(f"rule R8: bidji29 already has 8 reservations or parallel registrations ({eight}), maximum 8",
                 "take", "ruche-9009", "--user", "bidji29")
         for other in ("miniz-9001", "miniz-9003", "ruche-9013"):  # another category, or not created by the council

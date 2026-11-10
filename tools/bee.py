@@ -475,7 +475,7 @@ SETTINGS = {
     "reservation_max_hours": _POSITIVE, "reservations_max_per_user": _POSITIVE, "acceptance_window_hours": _POSITIVE,
     "retake_after_release_hours": _shape(lambda v: _number(v) and v >= 0, f"non-negative number of hours expected (R7, at most {_BOUND})"),
     "r8_bootstrap": _shape(lambda v: isinstance(v, dict) and set(v) == {"max", "until"} and type(v["max"]) is int and 0 < v["max"] <= _BOUND
-                          and _readable_instant(v["until"]), "{max: entier positif, until: instant UTC} attendu (ruche-0096)"),
+                          and _readable_instant(v["until"]), "{max: positive integer, until: UTC instant} expected (ruche-0096)"),
     "min_gain": _FRACTION, "max_other_degradation": _FRACTION, "required_majority": _FRACTION, "max_declared_gap": _FRACTION,
     "reviews_required": _shape(lambda v: type(v) is int and 0 <= v <= _BOUND, f"non-negative integer expected (at most {_BOUND})"),
     "min_net_vote": _shape(lambda v: type(v) is int and 0 <= v <= _BOUND, f"non-negative integer expected (at most {_BOUND})"),
@@ -2256,7 +2256,7 @@ def check_accounts(reg):
         for i, p in enumerate(task.get("parallel") or []):
             who_is = p["user"]
             valid_instant(path, p["since"], f"parallel/{i}/since")
-            reservations[reg.identities.name(who_is)].append((task["id"], " (en parallèle)", p["since"]))
+            reservations[reg.identities.name(who_is)].append((task["id"], " (in parallel)", p["since"]))
             if not reg.registered(who_is):
                 add_to(f"{place_of}: parallel/{i}: « {who_is} » is not registered")
             if who_is in Logins(seen_parallels, reg.identities):
@@ -3176,7 +3176,7 @@ def admissible_text(text, what_it, maximum):
         return (f"{what_it}: invisible character or control character refused (U+{ord(c):04X}, category {unicodedata.category(c)}): "
                 "it would hide or disguise the text, or make the debate impossible to rewrite")
     if len(text) > maximum:
-        return f"{what_it} de {len(text)} caractères, au plus {maximum}"
+        return f"{what_it}: {len(text)} characters, at most {maximum}"
     return free_text_problem(text, what_it)
 
 
@@ -3257,7 +3257,7 @@ def texts_by(value, place_of="", depth=0):
     elif isinstance(value, dict):
         for key, under_it in value.items():
             name = f"{place_of}/{key if free_text_problem(key, '', 'the key') is None else '(refused key)'}".lstrip("/")
-            yield f"{name} (clé)", str(key)
+            yield f"{name} (key)", str(key)
             yield from texts_by(under_it, name, depth + 1)
 
 
@@ -3265,7 +3265,7 @@ def text_problems(data, prefix_text, sort_kind=None):
     """Each refusal of the common check in `donnees` (values and keys), as bee validate reports it, so that a command can refuse
     before writing what bee validate would refuse after: a title, a summary and a key fit on one line; with `sorte`, its bounds."""
     for place_of, text in texts_by(data):
-        one_line = "the key" if place_of.endswith(" (clé)") else {"title": "the title", "summary": "the summary"}.get(place_of)
+        one_line = "the key" if place_of.endswith(" (key)") else {"title": "the title", "summary": "the summary"}.get(place_of)
         bound = text_bound(sort_kind, place_of) if sort_kind and text is not None and len(text) > FIELD_TEXT_MAX else None  # the least bound
         problem_text = (f"{prefix_text}: {place_of}: nested deeper than 20 levels, refused" if text is None
                     else f"{prefix_text}: {place_of}: {len(text)} characters, at most {bound} (docs/governance.md, « Dossiers du "
@@ -3341,7 +3341,7 @@ def free_texts_problem(value, place_of, maximum, depth=0):
         return f"{place_of}: {len(value)} characters, at most {maximum}" if len(value) > maximum else free_text_problem(value, place_of)
     if isinstance(value, dict):
         for key, under_it in value.items():
-            problem_text = (free_texts_problem(str(key), f"{place_of} (clé)", maximum, depth + 1)
+            problem_text = (free_texts_problem(str(key), f"{place_of} (key)", maximum, depth + 1)
                         or free_texts_problem(under_it, f"{place_of}/{key}", maximum, depth + 1))
             if problem_text:
                 return problem_text
@@ -4300,13 +4300,13 @@ def personal_texts(reg, path, old, new):
     free_ones, seen_items = text_paths(schema := reg.schema(name).schema, schema), {t for _, t in texts_by(old)}
     seen_items |= {*getattr(reg, "members", ()), *getattr(reg, "council", ()), *getattr(reg, "tasks", ()), *getattr(reg, "records", ())}
     texts_of = [(place_of, t[:DETECTOR_BOUND]) for place_of, t in texts_by(new) if t is not None and t not in seen_items and not NOT_FREE.fullmatch(t)
-              and (place_of.endswith(" (clé)") or free_ones.get(field := re.sub(r"\[\d+\]", "[]", place_of), free_ones.get(re.sub(r"[^/]*$", "*", field)
+              and (place_of.endswith(" (key)") or free_ones.get(field := re.sub(r"\[\d+\]", "[]", place_of), free_ones.get(re.sub(r"[^/]*$", "*", field)
                                                                                                          if "/" in field else "*", True)))]
     refusal, review = [], any(personal_datum(t, 2) or SENSITIVE_DOUBT.search(t) for _, t in texts_of)
     notes = old.get("notes") if name == "task" and isinstance(old, dict) and isinstance(old.get("notes"), list) else []
     end = str(notes[-1].get("text"))[-60:] if notes and isinstance(notes[-1], dict) else ""
     values_of = [("notes[]/text", end)] * bool(end and not (personal_datum(end, 3) or SENSITIVE_SAFE.search(end))) + [
-        (re.sub(r"\[\d+\]", "[]", l), t) for l, t in texts_of if not l.endswith(" (clé)")]
+        (re.sub(r"\[\d+\]", "[]", l), t) for l, t in texts_of if not l.endswith(" (key)")]
     for place_of, text in texts_of + [("(all the texts together)", "\n;;;;\n".join(t for _, t in v)[:DETECTOR_BOUND])
                                  for v in (values_of, sorted(values_of, key=lambda x: x[0]))]:
         datum = personal_datum(text, 3) or (SENSITIVE_SAFE.search(text) and "sensitive data (health, opinions, age)")
@@ -7361,7 +7361,7 @@ def require_r8(reg, user, task):
     already = engagements_of(reg, user)
     maximum = r8_maximum(reg, user, [tid for tid, _ in already] + [task], now_instant())
     if len(already) >= maximum:
-        list_of = ", ".join(tid + (" (en parallèle)" if kind_of == "parallel" else "") for tid, kind_of in already)
+        list_of = ", ".join(tid + (" (in parallel)" if kind_of == "parallel" else "") for tid, kind_of in already)
         raise BeeError(f"rule R8: {user} already has {len(already)} reservations or parallel registrations ({list_of}), maximum {maximum}")
 
 
@@ -7548,7 +7548,7 @@ def require_admissible_note(reg, user, text, instant):
     problem_text = admissible_text(text, "note", conf["text_max"])
     if problem_text:
         raise BeeError(f"{problem_text} (bee.yaml, notes.text_max): a note is short; the detail goes in a debate of the agora"
-                        if "caractères" in problem_text else problem_text)
+                        if "characters" in problem_text else problem_text)
     if user not in reg.council and user not in reg.robots \
             and notes_since(reg, user, instant - CAP_WINDOW) >= conf["max_per_24h"]:
         own_items_f = [m for _, t in reg.tasks.values() if isinstance(t, dict) for n in _list(t.get("notes"))
@@ -7959,7 +7959,7 @@ def _text_or_file(args, what_it):
 def _require_admissible(text, what_it, maximum, key):
     problem_text = admissible_text(text, what_it, maximum)
     if problem_text:
-        raise BeeError(f"{problem_text} (bee.yaml, agora.{key})" if "caractères" in problem_text else problem_text)
+        raise BeeError(f"{problem_text} (bee.yaml, agora.{key})" if "characters" in problem_text else problem_text)
 
 
 def _require_open(identifier, d):
