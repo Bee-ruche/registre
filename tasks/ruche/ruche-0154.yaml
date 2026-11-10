@@ -1,0 +1,29 @@
+id: ruche-0154
+project: ruche
+category: ruche
+type: test
+area: governance
+size: M
+title: 'The rehearsal after the English switch: the load test with the English commands and options'
+context: 'tools/rehearsal/load_test.py and tools/rehearsal/test_load_test.py still replay or expect some pre-switch command
+  names and options (bee voter, --utilisateur, --pseudo…): bee refuses an old command name with its new one and exit
+  code 2, so a replayed vote never reaches bee vote, and test_load_test.py expects the old options (it is not run by CI,
+  so this went unnoticed). Bring both to the post-switch names (tools/migration/names.yaml), check that each replayed
+  step really runs the command it means (not a refusal that happens to satisfy the test), and run test_load_test.py in
+  the suite (tools/test_bee.py or suite.yml), offline.'
+files:
+- tools/rehearsal/load_test.py
+- tools/rehearsal/test_load_test.py
+- tools/test_bee.py
+reach: 0.5
+metric: null
+acceptance_criteria:
+- every replayed step runs the command it names, shown by a test that fails if the command is refused
+- test_load_test.py runs in the full suite and passes
+- an independent adversarial review by an agent of another model than the builder's is attached
+out_of_scope:
+- COMMANDMENTS.md
+node: projects/ruche/ruche
+status: open
+created_by: council
+created_on: '2026-11-10'

@@ -41,3 +41,6 @@ notes:
   - by: "bidji29"
     at: "2026-11-08T13:16:40Z"
     text: "Council, 8 Nov 2026: scheduled after the switch (ruche-0145), so that the translation writes the final English names; no French copy is kept (docs/english-migration.md, sections 11 and 12)."
+  - by: "bidji29"
+    at: "2026-11-10T23:19:46Z"
+    text: "Council, 10 Nov 2026: the role nodes still show the suggested PR titles in French ('Réservation …', 'Soumission …'); bee prints them in English since ruche-0146 (Reservation, Submission, Review, Vote, Measurement…). NODE_SECTIONS and SHORT_SECTIONS in tools/bee.py name the French headings of the MEANING.md files: change them in the same PR as the headings (ruche-0066 for the root and project nodes)."
