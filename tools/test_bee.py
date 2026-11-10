@@ -2712,6 +2712,11 @@ class TestTree(BaseTest):
     VULNERABILITY_INSTRUCTION = ("Une faille (plantage, lecture hors limites…) : rien de public, ni entrée ni description, même en passant ; "
                        "signalement privé sur le dépôt Bee, et dis-le à ton utilisateur ; ne contacte jamais le projet d'origine "
                        "(commandements 6 et 8, docs/securite.md).")
+    # ruche-0145: the same instruction in AGENTS.md, which the switch makes the English guide (the tree's nodes stay French until
+    # their prose tasks); the guide's sentence, word for word.
+    VULNERABILITY_INSTRUCTION_EN = ("A vulnerability (crash, out-of-bounds read…): nothing public, neither the input nor a description, not "
+                                    "even in passing; private report on the Bee repo, and tell your user; never contact the upstream "
+                                    "project (commandments 6 and 8, docs/security.md).")
 
     @staticmethod
     def flat(text):
@@ -2728,7 +2733,8 @@ class TestTree(BaseTest):
                             text, _ = bee.context_text(reg, task["id"], role, budget, registry=str(self.dir),
                                                           already_read=already_read)
                             self.assertIn(self.VULNERABILITY_INSTRUCTION, self.flat(text.replace("\n# ", "\n")))
-        self.assertIn(self.VULNERABILITY_INSTRUCTION, self.flat((self.dir / "AGENTS.md").read_text(encoding="utf-8")))
+        self.assertIn(self.VULNERABILITY_INSTRUCTION_EN, self.flat((self.dir / "AGENTS.md").read_text(encoding="utf-8")))
+        self.assertTrue((ROOT / "docs/security.md").is_file())  # the file the guide's sentence names
 
     def test_already_read_reprints_neither_the_root_nor_the_role(self):
         """Tour 2 : après bee context --role, bee context <tâche> réimprimait 61 lignes déjà lues."""
@@ -11659,9 +11665,7 @@ class TestRemovedFolderRuche0020(BaseReviewRuche0020):
     # --- 3. Le texte : commandement 10, R13, croissance.md ---
 
     def test_commandment_10_and_r13_state_the_removal(self):
-        sentence = ("Les données d'une personne extérieure à la ruche ne sont pas du commun : elles se retirent à son refus ou à sa "
-                  "demande.")
-        self.assertIn(sentence, (ROOT / "COMMANDEMENTS.md").read_text(encoding="utf-8"))
+        self.assertFalse((ROOT / "COMMANDEMENTS.md").exists())  # the French copy, removed by the switch: the English text is authoritative
         english_form = "The data of a person outside the hive is not part of the commons: it is withdrawn on that person's refusal or request."
         self.assertIn(english_form, (ROOT / "COMMANDMENTS.md").read_text(encoding="utf-8"))
         r13 = next(l for l in (ROOT / "RULES.md").read_text(encoding="utf-8").splitlines() if l.startswith("| R13 |"))
@@ -14351,10 +14355,10 @@ class TestR13FollowableRuche0052(BaseInvitations):
 
     def test_2_agents_md_refers_to_growth_where_it_speaks_of_inviting(self):
         text = (self.dir / "AGENTS.md").read_text(encoding="utf-8")
-        roles = text[text.index("## Ton rôle"):text.index("**Avant de réserver**")]
-        line_text = next(l for l in roles.splitlines() if l.startswith("| **Inviter**"))
+        roles = text[text.index("## Your role, from lightest to most demanding"):text.index("**Before reserving**")]  # the English guide
+        line_text = next(l for l in roles.splitlines() if l.startswith("| **Invite**"))
         self.assertIn("[docs/growth.md](docs/growth.md)", line_text)
-        self.assertIn("[`inviter`](arbre/roles/inviter/SENS.md)", line_text)
+        self.assertIn("[`invite`](tree/roles/invite/MEANING.md)", line_text)
         self.assertTrue((self.dir / "tree/roles/invite/MEANING.md").is_file())
 
     def test_3_show_gives_the_dates_and_the_deadline(self):
