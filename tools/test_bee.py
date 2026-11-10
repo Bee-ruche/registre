@@ -16606,8 +16606,8 @@ class TestAgentAccounts(BaseDressRehearsal):
                 self.commit()
                 expected(path)
                 expected(path, "--auto-merge")
-                self.assertEqual(self.verify("bidji29")[0], 0)
-                self.assertEqual(self.verify("bidji29", "--auto-merge")[0], 3)
+                council = (1, 1) if path in old_names else (0, 3)  # an old name is retired: refused to the council too (R-q)
+                self.assertEqual((self.verify("bidji29")[0], self.verify("bidji29", "--auto-merge")[0]), council)
         git(self.dir, "switch", "-q", "main")
         (self.dir / "governance/briefs/brouillon.md").write_text("Brouillon.\n", encoding="utf-8")
         self.commit("a draft of the council")
@@ -22110,6 +22110,46 @@ class TestSettingsRuche0144(BaseTest):
 # --- ruche-0153 (step 1d): the switch script, change 10, the common judge kept as written, the names bee prints ---
 # TestEnglishNamesStep1d and its fixtures: retired by the switch (ruche-0145): they translate the repository they run in, which is now English.
 
+
+# --- ruche-0145: the switch's hand-made part (docs/english-migration.md, sections 12 and 13), one class per piece ---
+
+class TestRetiredNamesRuche0145(BaseDressRehearsal):
+    """R-q: a path the switch retired is refused by the gate to everyone (the council too), and never read as data."""
+
+    def test_the_guard_is_the_maps_list_and_refuses_retired_paths_only(self):
+        names = yaml.safe_load((ROOT / "tools/migration/names.yaml").read_text(encoding="utf-8"))
+        self.assertEqual(list(bee.RETIRED_NAMES), names["retired"])
+        for path in ("taches/miniz/miniz-0099.yaml", "REGLES.md", "COMMANDEMENTS.md", "outils/bee.py", "outils/migration/names.yaml",
+                     "gouvernance/conseil.yaml", "invitations/ne-plus-contacter.yaml", "docs/securite.md", "arbre/SENS.md"):
+            self.assertIn(f"{path} : a name retired by the switch to English", bee.retired_name(path) or "", path)
+        for path in ("tasks/miniz/miniz-0099.yaml", "RULES.md", "COMMANDMENTS.md", "tools/bee.py", "tools/migration/names.yaml",
+                     "outils/juge/juge.py", "invitations/do-not-contact.yaml", "docs/security.md", "taches", "Taches/x.yaml", "docs/decisions.md"):
+            self.assertIsNone(bee.retired_name(path), path)
+        tracked = subprocess.run(["git", "-C", str(ROOT), "ls-files", "-z"], capture_output=True, check=True).stdout.decode().split("\0")
+        self.assertEqual([p for p in tracked if p and bee.retired_name(p)], [])  # the switch left none
+
+    def test_the_gate_refuses_a_retired_path_to_everyone_and_the_english_path_passes(self):
+        for who in ("bidji29", "gaspard"):
+            with self.subTest(who=who):
+                self.branch(f"ancien-{who}")
+                (self.dir / "taches/miniz").mkdir(parents=True, exist_ok=True)
+                shutil.copy(self.task_path(), self.dir / "taches/miniz/miniz-0099.yaml")
+                (self.dir / "REGLES.md").write_text("x\n", encoding="utf-8")
+                self.commit()
+                for path in ("taches/miniz/miniz-0099.yaml", "REGLES.md"):
+                    self.refused(who, f"{path} : a name retired by the switch to English (ruche-0145)")
+        self.branch("honnete")
+        self.ok("note", "miniz-0099", "--user", "gaspard", "--text", "Une piste.")
+        self.commit()
+        self.self_service("gaspard", "note")
+        git(self.dir, "switch", "-q", "main")  # a stale retired file on main: deleting it is the council's, as any council file
+        (self.dir / "REGLES.md").write_text("x\n", encoding="utf-8")
+        self.commit("a stale file")
+        self.branch("suppression")
+        git(self.dir, "rm", "-q", "REGLES.md")
+        self.commit()
+        self.assertEqual(self.verify("bidji29")[0], 0)
+        self.refused("gaspard", "REGLES.md : modification réservée au conseil humain")
 
 if __name__ == "__main__":
     sys.exit(principal_tests(sys.modules[__name__], __file__, sys.argv[1:]))
