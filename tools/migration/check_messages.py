@@ -25,8 +25,8 @@ literal. --prose waives a text for the whole file, not one place. A string insid
 ''}") is code: translating it is refused as a code change, unless --inner (the hand-made part) sets those literals aside
 too, paired in the order written: with --inner an f-string's interpolations keep their order. As elsewhere, a literal with
 letters and a blank passed to a function inside an interpolation (an argument, a getattr name) is taken for a message:
-the review reads each one. An inner literal that becomes the text of another inner literal of the base (a swap, a move)
-is refused. A docstring read by the
+the review reads each one. An inner literal that becomes the text of another literal of the base (a swap, a move) is
+refused. A docstring read by the
 code (__doc__) is not looked for; bee.py reads none today. A marker reaching a comparison through a function's return value
 (f() in s) or a global assigned inside a function is missed.
 """
@@ -230,13 +230,13 @@ def check(repo, base, head, files, markers, prose=(), inner=False):
             problems.append(f"{path}: the code changed, not only string literals (P1 restricted to message literals): "
                             f"top-level statements at {', '.join(changed) or 'the end (one added or removed)'}")
             continue
-        old_inner = {a for kind, a, _ in old if kind == "inner"}
+        old_texts = {a for kind, a, _ in old if kind in ("inner", "str")}
         for (kind, a, line), (_, b, new_line) in zip(old, new):
             if a == b:
                 continue
-            if kind == "inner" and b in old_inner and a not in prose:
-                problems.append(f"{path}:{line}->{new_line}: a literal inside an interpolation became another one of the "
-                                f"file's (moved or swapped, not translated): {a!r} -> {b!r}")
+            if kind == "inner" and b in old_texts and a not in prose:
+                problems.append(f"{path}:{line}->{new_line}: a literal inside an interpolation became the text of another "
+                                f"literal of the file (moved or swapped, not translated; --prose if a coincidence): {a!r} -> {b!r}")
                 continue
             where = f"{path}:{line}->{new_line}"
             counts["docstrings" if kind == "doc" else f"{path} messages"] += 1
