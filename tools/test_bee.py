@@ -21061,7 +21061,7 @@ class TestReportsRuche0137(ReportTools):
         swarm = self.ok("swarm")
         self.assertIn("Signalements ouverts, pour le conseil: 3 (", swarm)
         self.assertIn("Signalements au-delà du plafond nommant une personne: 3 (", swarm)
-        self.assertLess(swarm.index("S-0006 : alice et emile"), swarm.index("S-0005 : alice et dora"))
+        self.assertLess(swarm.index("S-0006: alice et emile"), swarm.index("S-0005: alice et dora"))
         self.assertLess(swarm.index("S-0005: alice et dora"), swarm.index("S-0004: alice et bruno"))
         table_of = json.loads(self.ok("swarm", "--json"))
         self.assertEqual([x["id"] for x in table_of["reports_at_cap"]], ["S-0006", "S-0005", "S-0004"])
