@@ -128,7 +128,7 @@ class TestLoadTest(unittest.TestCase):
         path.write_text(yaml.safe_dump(rec, allow_unicode=True, sort_keys=False, width=100), encoding="utf-8")
         r = load_test.run_bee(reg, END, "validate")
         self.assertEqual(r.returncode, 1)
-        self.assertIn("l'auteur ne peut pas relire sa propre contribution", r.stdout)
+        self.assertIn("the author cannot review their own contribution", r.stdout)
 
     def test_the_activity_model(self):
         """Par membre actif et par semaine : une contribution, deux relectures, deux votes, une note ; une tâche proposée pour

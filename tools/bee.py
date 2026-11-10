@@ -2200,7 +2200,7 @@ def check_accounts(reg):
                     "count): one member file per account")
         seen_logins.setdefault(stem.casefold(), stem)
         if readable_reserved and (refusal := reserved_login(reg.config, stem)):  # ruche-0104: the council renames it, or leaves the name off the list
-            add_to(f"{reg.rel(path)}: {refusal}")
+            add_to(f"{reg.rel(path)} : {refusal}")
         for login in logins_of(member) if isinstance(member, dict) else []:
             if logins.setdefault(login.casefold(), stem).casefold() != stem.casefold():
                 add_to(f"{reg.rel(path)}: the login « {login} » is already {logins[login.casefold()]}'s (one account, one file)")
@@ -2405,7 +2405,7 @@ def check_accounts(reg):
             if x:
                 valid_instant(path, x["at"], what_it)
         for refusal in report_refusal_on_main(reg, s) if form_text else ():  # ruche-0137
-            add_to(f"{reg.rel(path)}: {refusal}")
+            add_to(f"{reg.rel(path)} : {refusal}")
 
     # ruche-0029 : le contrôle commun de tout texte libre, dans chaque valeur et chaque clé des données que bee imprime, même
     # échappé en YAML ; un titre et un résumé tiennent sur une ligne. Le verdict, écrit par la CI, a ses propres bornes.

@@ -10587,10 +10587,10 @@ class TestPullRequestsInvitations(BaseInvitations):
         self.a("2026-10-30T10:00:00Z")
         mention = bee.mentions_invitation(bee.Registry(self.dir))["fr"]
         case_of = {
-            "caractère invisible ou de contrôle refusé (U+202E": MESSAGE_INVITATION + "‮" + "\n\n" + mention,
+            "invisible character or control character refused (U+202E": MESSAGE_INVITATION + "‮" + "\n\n" + mention,
             "il porte, mot pour mot, la mention de R13": MESSAGE_INVITATION,
             # La mention maquillée : un espace de largeur nulle, ou un « а » cyrillique dans « agents ».
-            "caractère invisible ou de contrôle refusé (U+200B": MESSAGE_INVITATION + "\n\n" + mention.replace("agents", "agen​ts"),
+            "invisible character or control character refused (U+200B": MESSAGE_INVITATION + "\n\n" + mention.replace("agents", "agen​ts"),
             "mot pour mot, la mention de R13": MESSAGE_INVITATION + "\n\n" + mention.replace("agents", "аgents"),
             "une adresse de courriel : aucune donnée personnelle": "Écrivez-moi à jean.dupont@example.org.\n\n" + mention,
             "un numéro de téléphone : aucune donnée personnelle": "Son numéro : +33 6 12 34 56 78.\n\n" + mention,
@@ -10790,7 +10790,7 @@ class TestPullRequestsInvitations(BaseInvitations):
         self.write_invitation({**self.invitation("I-0004"), "status": "decided",
                                 "council_approval": {"by": "bidji29", "at": "2026-10-25T10:00:00Z"}}, "I-0004")
         self.commit()
-        self.refused("bidji29", "council_approval.at (2026-10-25T10:00:00Z) doit être l'heure de la PR")
+        self.refused("bidji29", "council_approval.at (2026-10-25T10:00:00Z) must be the time of the PR")
         self.abandon()
         # L'envoi d'une invitation décidée se consigne toujours : c'est un fait. Une place ne compte qu'une fois (feu vert puis envoi).
         self.a("2026-11-02T14:00:00Z")
@@ -13038,7 +13038,7 @@ class TestRequestedRemovalRuche0048(BaseReviewRuche0020):
                           encoding="utf-8")
         self.commit()
         text = self.refused("bidji29", "(removals/0/fingerprints/3)")
-        self.assertIn("fingerprints/3 : format incorrect", self.bee("validate")[1])
+        self.assertIn("fingerprints/3: wrong format", self.bee("validate")[1])
 
     # --- Revue adverse de ruche-0048 (B1 à B3, S1 à S8, NIT) ---
 
