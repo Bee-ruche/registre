@@ -9260,7 +9260,8 @@ VERDICT_WAIT = {
                   "poussez un nouveau commit une heure après sa fermeture",
     "pr_closed": "une PR fermée de la même branche a pu produire la CI jugée : poussez un nouveau commit, une heure après sa fermeture",
     "base": "la base déclarée par la CI n'est pas un ancêtre de la branche par défaut du fork : poussez un nouveau commit",
-    "judge_base": "le verdict n'a pas de judge_base lisible, exigée pour ce projet : poussez un nouveau commit"}
+    "judge_base": "le verdict n'a pas de judge_base lisible, exigée pour ce projet : poussez un nouveau commit",
+    "metric": "the verdict measures another metric than the task's : push a new commit once the fork's CI reads the task's metric"}
 
 
 def note_wait(reg, cid, code, sha):
@@ -9380,6 +9381,11 @@ def cmd_record_verdict(args):
 
     if unfinished(raw):
         raise BeeError(f"{args.verdict} : nombre non fini (NaN ou infini) dans le verdict : refusé")
+    # ruche-0145 (plan, section 12, change 4): a verdict that names its metric names the task's, or its gain is another metric's
+    if "metric" in raw and raw["metric"] != (want := reg.task(rec["task"])[1].get("metric")):
+        said = raw["metric"] if raw["metric"] is None or isinstance(raw["metric"], str) and re.fullmatch(r"[a-z0-9_]{1,60}", raw["metric"]) else "illisible"
+        raise BeeError(f"{args.contribution} : verdict refusé, {note_wait(reg, args.contribution, 'metric', args.sha)} (the verdict's metric : "
+                        f"{said}, the task's : {want}) ; aucun verdict n'est enregistré")
     ci = str(raw.get("ci", "")).lower()
     verdict = {"ci": "green" if ci in ("green", "success", "verte", "vert", "succes", "succès") else "red"}  # both languages, for good
     if verdict["ci"] == "red":
