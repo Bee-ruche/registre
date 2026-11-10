@@ -1571,7 +1571,7 @@ class TestRegistry(BaseTest):
         manifest.write_text(FILLED_MANIFEST, encoding="utf-8")
         code, text = self.bee("record-verdict", cid, "--verdict", str(verdict), "--manifest", str(manifest), "--sha", "abc1234")
         self.assertEqual(code, 0, text)
-        self.assertIn("écart", text, "gain déclaré 10 % contre 3 % mesuré : alerte")
+        self.assertIn("gap", text, "gain déclaré 10 % contre 3 % mesuré : alerte")
         # ruche-0012 : la relecture d'avant le verdict ne compte ni pour R3 ni pour la confiance C ; bruno relit le commit jugé.
         self.assertEqual(self.bee("review", cid, *self.read_value(cid), "--user", "bruno", "--opinion", "favorable", "--reason", "Commit jugé relu.")[0], 0)
         rec = bee.read_yaml(self.dir / f"contributions/miniz/{cid}.yaml")
@@ -1580,19 +1580,19 @@ class TestRegistry(BaseTest):
         self.valid_one()
         # L'alerte se lit aussi là où le relecteur regarde, pas seulement dans le journal de la CI (tour 2).
         for command in (["check-acceptance", cid], ["ranking"]):
-            self.assertIn(f"⚠ {cid} : gap of 7.0 points", self.bee(*command)[1], command[0])
+            self.assertIn(f"⚠ {cid}: gap of 7.0 points", self.bee(*command)[1], command[0])
         # Le manifeste d'une autre tâche (CONTRIBUTION.yaml resté sur master) n'est jamais comparé : pas d'écart inventé.
         manifest.write_text(FILLED_MANIFEST.replace("task: miniz-0099", "task: miniz-0098"), encoding="utf-8")
         self.assertIn("task: miniz-0098", manifest.read_text(encoding="utf-8"))
         code, text = self.bee("record-verdict", cid, "--verdict", str(verdict), "--manifest", str(manifest), "--sha", "abc1235")
         self.assertEqual(code, 0, text)
-        self.assertIn("manifeste ignoré (tâche miniz-0098, pas miniz-0099)", text)
+        self.assertIn("manifest ignored (task miniz-0098, not miniz-0099)", text)
         self.assertNotIn("declared_gap", bee.read_yaml(self.dir / f"contributions/miniz/{cid}.yaml")["verdict"])
         for unreadable_one in ("- une liste\n", "\x00\x9e\xe9"):
             manifest.write_text(unreadable_one, encoding="utf-8")
             code, text = self.bee("record-verdict", cid, "--verdict", str(verdict), "--manifest", str(manifest), "--sha", "abc1236")
             self.assertEqual(code, 0, text)
-            self.assertIn("manifeste ignoré (tâche illisible", text)
+            self.assertIn("manifest ignored (task unreadable", text)
         code, text = self.bee("record-verdict", cid, "--verdict", str(verdict), "--manifest", str(self.dir / "MANIFESTE_ABSENT.yaml"), "--sha", "abc1237")
         self.assertEqual(code, 0, text)
         manifest.write_text(FILLED_MANIFEST, encoding="utf-8")
@@ -1656,12 +1656,12 @@ class TestRegistry(BaseTest):
         os.environ["BEE_NOW"] = "2026-10-29T12:00:00Z"
         code, text = self.bee("check-acceptance", cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("porte de relecture", text)
+        self.assertIn("review gate", text)
         self.assertEqual(self.bee("review", cid, *self.read_value(cid), "--user", "bidji29", "--opinion", "favorable",
                                   "--reason", "Relu par le conseil, diff conforme.")[0], 0)
         code, text = self.bee("check-acceptance", cid)
         self.assertEqual(code, 0, text)
-        self.assertIn("intégrable", text)
+        self.assertIn("integrable", text)
         # integrer applique la décision mécanique : contribution et tâche passent en « integree ».
         code, text = self.bee("integrate", cid, "--merge-sha", "deadbee")
         self.assertEqual(code, 0, text)
@@ -1697,7 +1697,7 @@ class TestRegistry(BaseTest):
         cid = self.prepare_green_contribution("bidji29", ("chloe",))
         code, text = self.bee("check-acceptance", cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("porte de relecture", text)
+        self.assertIn("review gate", text)
         self.assertEqual(self.bee("review", cid, *self.read_value(cid), "--user", "bruno", "--opinion", "favorable",
                                   "--reason", "Relu par le gardien : diff et tests rejoués.")[0], 0)
         code, text = self.bee("check-acceptance", cid)
@@ -1711,7 +1711,7 @@ class TestRegistry(BaseTest):
         self.assertEqual(self.bee("vote", cid, "--user", "bruno", "--value", "1")[0], 0)
         code, text = self.bee("check-acceptance", cid)
         self.assertEqual(code, 0, text)
-        self.assertIn("Aucune relecture privilégiée requise", text)
+        self.assertIn("No privileged review required", text)
 
     # --- Tests adverses de R3 (revue du 27/10) ---
 
@@ -1721,7 +1721,7 @@ class TestRegistry(BaseTest):
                                   "--reason", "Lecture hors limites possible ligne 120.")[0], 0)
         code, text = self.bee("check-acceptance", cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("défavorable de bidji29", text)
+        self.assertIn("unfavorable review by bidji29", text)
 
     def test_adverse_r3_unfavorable_ones_not_ignored(self):
         self.set_human_gate(False)
@@ -1731,7 +1731,7 @@ class TestRegistry(BaseTest):
                                   "--reason", "Le gain disparaît sur ARM64.")[0], 0)
         code, text = self.bee("check-acceptance", cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("défavorable(s) contre", text)
+        self.assertIn("unfavorable review(s) against", text)
 
     def test_adverse_r3_r5_degradation(self):
         self.set_human_gate(False)
@@ -1756,7 +1756,7 @@ class TestRegistry(BaseTest):
         self.assertEqual(self.bee("record-verdict", cid, "--verdict", str(verdict), "--sha", "def5678", "--files", self.pr_files())[0], 0)
         code, text = self.bee("check-acceptance", cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("commit antérieur", text)
+        self.assertIn("earlier or abandoned commit", text)
 
     def record_green_verdict(self, cid, *files, control=True):
         verdict = self.dir / "verdict.json"
@@ -1772,7 +1772,7 @@ class TestRegistry(BaseTest):
         os.environ["BEE_NOW"] = "2026-10-29T12:00:00Z"
         code, text = self.bee("check-acceptance", cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("verdict non contrôlé", text)
+        self.assertIn("verdict not checked", text)
 
     def test_adverse_r3_optimization_that_changes_its_workflow(self):
         cid = self.submit_0099()
@@ -1782,8 +1782,8 @@ class TestRegistry(BaseTest):
         os.environ["BEE_NOW"] = "2026-10-29T12:00:00Z"
         code, text = self.bee("check-acceptance", cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("modifie des juges", text)
-        self.assertIn("commandement 3", text)
+        self.assertIn("modifies judges", text)
+        self.assertIn("commandment 3", text)
 
     def test_tooling_task_that_changes_the_judges_requires_the_council(self):
         self.set_human_gate(False)
@@ -1802,7 +1802,7 @@ class TestRegistry(BaseTest):
         os.environ["BEE_NOW"] = "2026-10-29T12:00:00Z"
         code, text = self.bee("check-acceptance", cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("conseil ou d'un Confirmé", text)
+        self.assertIn("the council or a Confirmed member", text)
         self.assertEqual(self.bee("review", cid, *self.read_value(cid), "--user", "bidji29", "--opinion", "favorable",
                                   "--reason", "Juge renforcé, relu par le conseil.")[0], 0)
         code, text = self.bee("check-acceptance", cid)
@@ -1857,7 +1857,7 @@ class TestRegistry(BaseTest):
         cid = self.reviewed_contribution(0.005, False, 0.04)
         code, text = self.bee("check-acceptance", cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("ne le confirme pas", text)
+        self.assertIn("does not confirm it", text)
         report = self.dir / "ab.json"
         report.write_text(json.dumps({"base": {"commit": "2948eeb"}, "candidate": {"commit": "abc1234"},
                                        "machine": {"architecture": "arm64", "compiler": "clang 17"},
@@ -1871,13 +1871,13 @@ class TestRegistry(BaseTest):
         cid = self.reviewed_contribution(-0.05, True, 0.04)
         code, text = self.bee("check-acceptance", cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("le chronomètre recule", text)
+        self.assertIn("the stopwatch goes back", text)
 
     def test_r4_stopwatch_alone_requires_a_reproduction(self):
         cid = self.reviewed_contribution(0.06, True, 0.0)  # +6 % au chronomètre, instructions inchangées
         code, text = self.bee("check-acceptance", cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("reproduit par une mesure", text)
+        self.assertIn("reproduced by a measurement", text)
         report = self.dir / "ab.json"
         report.write_text(json.dumps({"base": {"commit": "2948eeb"}, "candidate": {"commit": "abc1234"},
                                        "machine": {"architecture": "arm64", "compiler": "clang 17"},
@@ -1901,7 +1901,7 @@ class TestRegistry(BaseTest):
             shutil.rmtree(folder, ignore_errors=True)
             bee.write_yaml(folder / f"{submitted_by}.yaml",
                             {k: v for k, v in {**measurement, "submitted_by": submitted_by, **fields}.items() if v is not None})
-            return [r for r in bee.r3_causes(bee.Registry(self.dir), cid)[2] if "reproduit par une mesure" in r]
+            return [r for r in bee.r3_causes(bee.Registry(self.dir), cid)[2] if "reproduced by a measurement" in r]
 
         for submitted_by, fields in (("alice", {}), ("Alice", {}), ("alice-agent", {}), ("ALICE-AGENT", {}), ("bruno", {"config": None}),
                                     ("bruno", {"config": {"architecture": " "}}), ("bruno", {"config": {"compiler": "gcc 13"}}),
@@ -1994,7 +1994,7 @@ class TestRegistry(BaseTest):
         cid = self.judged_contribution([{"type": "instruction", "detail": "préambule_valgrind : 4 occurrence(s)"}])
         code, text = self.bee("check-acceptance", cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("construction(s) suspecte(s)", text)
+        self.assertIn("suspicious construct(s)", text)
         self.assertEqual(self.bee("review", cid, *self.read_value(cid), "--user", "bidji29", "--opinion", "favorable",
                                   "--reason", "Relu : la détection SIMD est légitime, mesures rejouées.")[0], 0)
         code, text = self.bee("check-acceptance", cid)
@@ -2004,7 +2004,7 @@ class TestRegistry(BaseTest):
         cid = self.judged_contribution([{"type": "appel_externe", "detail": "execve (miniz.o)"}], author="bidji29")
         code, text = self.bee("check-acceptance", cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("construction(s) suspecte(s)", text)
+        self.assertIn("suspicious construct(s)", text)
 
     def set_common_judge_min(self, value):
         """ruche-0086 : la ligne common_judge_min de bee.yaml, quelle que soit la valeur réelle ; None : la clé est retirée."""
@@ -2030,7 +2030,7 @@ class TestRegistry(BaseTest):
         self.assertEqual(self.bee("vote", cid, "--user", "bruno", "--value", "1")[0], 0)
         code, text = self.bee("check-acceptance", cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("pas entièrement jugé cette contribution, juge commun absent ou sous common_judge_min", text)
+        self.assertIn("did not fully judge this contribution, common judge missing or below common_judge_min", text)
         self.assertEqual(self.bee("review", cid, *self.read_value(cid), "--user", "bidji29", "--opinion", "favorable",
                                   "--reason", "Relu : jugé par juge-v1, sorties et objets relus à la main.")[0], 0)
         code, text = self.bee("check-acceptance", cid)
@@ -2048,7 +2048,7 @@ class TestRegistry(BaseTest):
                 code, text = self.bee("check-acceptance", cid)
                 self.assertEqual(code, 0 if value == "2" else 1, text)
                 if value != "2":
-                    self.assertIn("aucun juge n'y suffit", text)
+                    self.assertIn("no judge is enough", text)
 
     def test_common_judge_tag_read_strictly(self):
         # ruche-0086 : seul « juge-vN » exact (chiffres ASCII, sans zéro de tête) compte ; tout autre libellé est incomplet.
@@ -2111,14 +2111,14 @@ class TestRegistry(BaseTest):
         self.assertEqual(self.bee("vote", cid, "--user", "bidji29", "--value", "1")[0], 0)
         code, text = self.bee("check-acceptance", cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("pas entièrement jugé", text)
+        self.assertIn("did not fully judge", text)
 
     def test_gate_if_judge_incomplete_judge_without_outputs(self):
         self.set_gate("if_judge_incomplete")
         cid = self.judged_contribution(outputs=0)
         code, text = self.bee("check-acceptance", cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("pas entièrement jugé", text)
+        self.assertIn("did not fully judge", text)
 
     def test_adverse_inconsistent_verdict_refused(self):
         cid = self.submit_0099()
@@ -2147,7 +2147,7 @@ class TestRegistry(BaseTest):
         cid = self.submit_0099()  # pas de verdict, pas de relecture, fenêtre non écoulée
         code, text = self.bee("integrate", cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("pas intégrable", text)
+        self.assertIn("not integrable", text)
         # Rien n'a été écrit : la contribution reste en relecture.
         _, rec = bee.Registry(self.dir).record(cid)
         self.assertEqual(rec["status"], "in_review")
@@ -3955,19 +3955,19 @@ class TestPublish(BasePublish):
     # --- ruche-0049: the title and body leave the hive, checked like any outgoing text ---
 
     OUTGOING_REFUSED = {
-        "mention": ("Merci @octocat", "la mention « @octocat » notifierait"),
-        "mention d'équipe": ("cc @Bee-ruche/council", "la mention « @Bee-ruche/council »"),
-        "mention entre parenthèses": ("Relu (@octocat).", "la mention « @octocat »"),
-        "mention pleine chasse": ("Merci ＠octocat", "la mention « @octocat »"),
-        "issue d'un autre dépôt": ("Voir amont-fictif/miniz#12", "« amont-fictif/miniz#12 » renvoie à un dépôt hors de Bee-ruche"),
-        "commit d'un autre dépôt": ("Voir amont-fictif/miniz@a5c3785", "« amont-fictif/miniz@a5c3785 » renvoie"),
-        "commit d'un fork": ("Voir amont-fictif@a5c37851d", "« amont-fictif@a5c37851d » renvoie"),
+        "mention": ("Merci @octocat", "the mention « @octocat » would notify"),
+        "mention d'équipe": ("cc @Bee-ruche/council", "the mention « @Bee-ruche/council »"),
+        "mention entre parenthèses": ("Relu (@octocat).", "the mention « @octocat »"),
+        "mention pleine chasse": ("Merci ＠octocat", "the mention « @octocat »"),
+        "issue d'un autre dépôt": ("Voir amont-fictif/miniz#12", "« amont-fictif/miniz#12 » refers to a repository outside Bee-ruche"),
+        "commit d'un autre dépôt": ("Voir amont-fictif/miniz@a5c3785", "« amont-fictif/miniz@a5c3785 » refers"),
+        "commit d'un fork": ("Voir amont-fictif@a5c37851d", "« amont-fictif@a5c37851d » refers"),
         "adresse d'une issue": ("Voir https://github.com/amont-fictif/miniz/issues/12", "« https://github.com/amont-fictif/miniz/issues/12 »"),
         "adresse d'une PR, en lien": ("[here](https://github.com/amont-fictif/miniz/pull/3)", "« https://github.com/amont-fictif/miniz/pull/3 »"),
-        "adresse d'un commit": ("https://github.com/amont-fictif/miniz/commit/a5c3785", "mène hors de Bee-ruche"),
+        "adresse d'un commit": ("https://github.com/amont-fictif/miniz/commit/a5c3785", "leads outside Bee-ruche"),
         "adresse sans schéma": ("Voir github.com/amont-fictif/miniz", "« github.com/amont-fictif/miniz »"),
         "autre forge": ("Voir https://gitlab.com/amont-fictif/miniz", "« https://gitlab.com/amont-fictif/miniz »"),
-        "page de forge": ("Voir https://amont-fictif.github.io/miniz", "mène hors de Bee-ruche"),
+        "page de forge": ("Voir https://amont-fictif.github.io/miniz", "leads outside Bee-ruche"),
         "email": ("Écrire à jean.dupont@example.org", "an email address"),
         "téléphone": ("Au 06 12 34 56 78", "a phone number"),
         "caractère invisible": ("Réservation\u2060 miniz-0099", "(U+2060, category Cf)"),
@@ -4056,7 +4056,7 @@ class TestPublish(BasePublish):
                             self.assertIn(cause, output_text)
         code, output_text = self.bee("publish", "--title", "Merci @octocat", "--interval", "0")  # the real thing, real git
         self.assertEqual(code, 1, output_text)
-        self.assertIn("commandements 8 et 13", output_text)
+        self.assertIn("commandments 8 and 13", output_text)
         self.assertFalse(self.log_text.exists(), "aucun appel à gh")
         self.assertEqual((git(self.dir, "rev-parse", "HEAD"), git(self.dir, "branch").split()), (before, ["*", "main"]))
         self.assertNotIn("bee/", git(self.dir, "ls-remote", "--heads", "origin"))
@@ -4087,7 +4087,7 @@ class TestPublish(BasePublish):
             for group_of, texts_of in {**self.REVIEW_REFUSED, **self.SECOND_REVIEW_REFUSED}.items():
                 for text in texts_of:
                     with self.subTest(what_it=what_it, group_of=group_of, text=text):
-                        self.assertIn("ce texte sort de la ruche",  # (commandements 8 et 13), or a hidden character
+                        self.assertIn("this text leaves the hive",  # (commandments 8 and 13), or a hidden character
                                       bee.outgoing_text_refused(text, what_it, maximum, "Bee-ruche") or "accepté")
             for text in self.OUTGOING_HONEST + self.SECOND_REVIEW_HONEST:
                 with self.subTest(what_it=what_it, honest_one=text):
@@ -4100,18 +4100,18 @@ class TestPublish(BasePublish):
         """The refusal names the offending word and says why; a numeric reference too long for int() is refused, not a crash
         (N3), and only a text that GitHub renders is decoded."""
         refuse = lambda text: bee.outgoing_text_refused(text, "body", 8000, "Bee-ruche")  # noqa: E731
-        for text, expected in (("Voir upstream/repo\\#12.", "« upstream/repo#12 » renvoie à un dépôt hors de Bee-ruche"),
-                               ("[x](https:/upstream/repo)", "« https:/upstream/repo » n'a qu'une barre"),
-                               ("[x](//Bee-ruche/x)", "« ](//Bee-ruche/x » est un lien relatif"),
-                               ('<img srcset="/Bee-ruche/a.png">', "« srcset=\"/Bee-ruche/a.png » liste plusieurs adresses"),
-                               ("https://github.com/Bee-ruche/%2e%2e/upstream", "cache où il mène"),
-                               ("[here](https://github.com/upstream/repo).", "« https://github.com/upstream/repo » mène hors de Bee-ruche")):
+        for text, expected in (("Voir upstream/repo\\#12.", "« upstream/repo#12 » refers to a repository outside Bee-ruche"),
+                               ("[x](https:/upstream/repo)", "« https:/upstream/repo » has only one slash"),
+                               ("[x](//Bee-ruche/x)", "« ](//Bee-ruche/x » is a relative link"),
+                               ('<img srcset="/Bee-ruche/a.png">', "« srcset=\"/Bee-ruche/a.png » lists several addresses"),
+                               ("https://github.com/Bee-ruche/%2e%2e/upstream", "hides where it leads"),
+                               ("[here](https://github.com/upstream/repo).", "« https://github.com/upstream/repo » leads outside Bee-ruche")):
             with self.subTest(text=text):
                 self.assertIn(expected, refuse(text))
-        self.assertIn("« /upstream/repo » est un lien relatif", refuse("[x][1]\n\n[1]: /upstream/repo"), "a definition names its target")
+        self.assertIn("« /upstream/repo » is a relative link", refuse("[x][1]\n\n[1]: /upstream/repo"), "a definition names its target")
         oversized = "&#" + "0" * 4400 + "64;upstream"
-        self.assertIn("référence de caractère démesurée", refuse(oversized))
-        self.assertNotIn("démesurée", bee.outgoing_text_refused(oversized, "message", 8000) or "")  # not decoded: no crash
+        self.assertIn("oversized character reference", refuse(oversized))
+        self.assertNotIn("oversized", bee.outgoing_text_refused(oversized, "message", 8000) or "")  # not decoded: no crash
 
     def test_personal_data_in_every_reading(self):
         """An address split by a reference that a renderer shows as nothing, or as a hidden character, is refused: a hidden
@@ -4119,7 +4119,7 @@ class TestPublish(BasePublish):
         for reference in ("&#1;", "&#0;", "&#127;", "&#128;", "&#xD800;", "&#x110000;"):
             for text in (f"bob@exa{reference}mple.com", f"bob@example{reference}.com", f"bob@{reference}example.com"):
                 with self.subTest(text=text):
-                    expected = "an email address" if reference == "&#x110000;" else "caractère invisible refusé"
+                    expected = "an email address" if reference == "&#x110000;" else "invisible character refused"
                     self.assertIn(expected, bee.outgoing_text_refused(text, "body", 8000, "Bee-ruche"))
         self.assertIsNone(bee.outgoing_text_refused("https://github.dev/Bee-ruche/registre, &#233;t&#233;", "body", 8000, "Bee-ruche"))
 
@@ -4129,7 +4129,7 @@ class TestPublish(BasePublish):
         for code in (0, 1, 8, 11, 12, 13, 27, 127, 128, 159):
             for reference in (f"&#{code};", f"&#x{code:x};"):
                 with self.subTest(reference=reference):
-                    self.assertIn(f"caractère invisible refusé (U+{code:04X}",
+                    self.assertIn(f"invisible character refused (U+{code:04X}",
                                   bee.outgoing_text_refused(f"bonjour{reference}monde", "body", 8000, "Bee-ruche"))
                     self.assertIsNotNone(bee.admissible_text(f"bonjour{chr(code)}monde", "body", 8000), "the typed one is refused too")
         for reference in ("&#9;", "&#10;", "&#x9;", "&#xA;"):
@@ -4852,7 +4852,7 @@ class TestFork(BaseTest):
         self.commit()
         code, text = self.verify()
         self.assertEqual(code, 0, text)
-        self.assertIn("2 lignes", text)
+        self.assertIn("2 changed lines", text)
 
     def test_judge_changed_and_size_exceeded(self):
         (self.fork / "bee/tests/juge.sh").write_text("exit 0 # toujours vert\n", encoding="utf-8")
@@ -4861,7 +4861,7 @@ class TestFork(BaseTest):
         self.commit()
         code, text = self.verify()
         self.assertEqual(code, 1)
-        self.assertIn("commandement 3", text)
+        self.assertIn("commandment 3", text)
         self.assertIn("R1", text)
 
     def test_manifest_absent(self):
@@ -4869,15 +4869,15 @@ class TestFork(BaseTest):
         self.commit()
         code, text = self.verify()
         self.assertEqual(code, 1)
-        self.assertIn("manifests/miniz-0099.yaml absent", text)
+        self.assertIn("manifests/miniz-0099.yaml missing", text)
 
     def test_uncommitted_work(self):
         (self.fork / "miniz_tdef.c").write_text("modifié\n", encoding="utf-8")
         (self.fork / "CONTRIBUTION.yaml").write_text(FILLED_MANIFEST, encoding="utf-8")
         code, text = self.verify()
         self.assertEqual(code, 1)
-        self.assertIn("non commité", text)
-        self.assertIn("existe sur le disque", text)
+        self.assertIn("not committed", text)
+        self.assertIn("exists on disk", text)
 
     def test_manifest_written_in_its_place(self):
         code, text = self.bee("manifest", "miniz-0099", "--user", "alice", "--output", str(self.fork))
@@ -4904,7 +4904,7 @@ class TestFork(BaseTest):
         self.commit()
         code, text = self.verify()
         self.assertEqual(code, 0, text)
-        self.assertIn("2 lignes", text)
+        self.assertIn("2 changed lines", text)
 
     def test_manifest_of_another_task_refused(self):
         (self.fork / "manifests").mkdir()
@@ -4915,7 +4915,7 @@ class TestFork(BaseTest):
         self.commit()
         code, text = self.verify()
         self.assertEqual(code, 1, text)
-        self.assertIn("une PR, une tâche", text)
+        self.assertIn("one PR, one task", text)
 
     def test_old_manifest_of_another_task_ignored(self):
         (self.fork / "CONTRIBUTION.yaml").write_text(FILLED_MANIFEST.replace("miniz-0099", "miniz-0016"), encoding="utf-8")
@@ -4924,7 +4924,7 @@ class TestFork(BaseTest):
         self.commit()
         code, text = self.verify()
         self.assertEqual(code, 1, text)
-        self.assertIn("manifests/miniz-0099.yaml absent", text)
+        self.assertIn("manifests/miniz-0099.yaml missing", text)
 
     def test_file_outside_task_and_unknown_base(self):
         path = self.fork / "miniz_tdef.c"
@@ -4934,7 +4934,7 @@ class TestFork(BaseTest):
         self.commit()
         code, text = self.verify()
         self.assertEqual(code, 0, text)
-        self.assertIn("⚠ miniz_zip.c : hors des fichiers de la tâche", text)
+        self.assertIn("⚠ miniz_zip.c: outside the task's files", text)
         code, text = self.bee("check-fork", "--task", "miniz-0099", "--base", "upstream/master", "--repo", str(self.fork))
         self.assertEqual(code, 1)
         self.assertIn("git fetch upstream", text)
@@ -5277,7 +5277,7 @@ class TestRace(BaseParallel):
         self.a("2026-10-28T18:00:00Z")  # les deux fenêtres sont écoulées
         code, text = self.acceptance(c1)
         self.assertEqual(code, 1, text)
-        self.assertIn(f"la concurrente {c2} est mieux classée", text)
+        self.assertIn(f"the rival {c2} is ranked better", text)
         code, text = self.acceptance(c2)
         self.assertEqual(code, 0, text)
         # Faire intégrer la moins bonne : refusé, rien n'est écrit.
@@ -5292,7 +5292,7 @@ class TestRace(BaseParallel):
         self.assertIn(c2, set_aside["decision_reason"])
         t = self.task("miniz-0099")
         self.assertEqual((t["status"], t["contribution"]), ("integrated", c2))
-        self.assertIn(f"Contribution retenue : {c2}", t["notes"][-1]["text"])
+        self.assertIn(f"Contribution kept: {c2}", t["notes"][-1]["text"])
         self.valid_one()
         # Écartée n'est pas refusée : ni l'auteur ni ses relecteurs ne perdent quoi que ce soit.
         levels = bee.compute_levels(bee.Registry(self.dir))
@@ -5317,7 +5317,7 @@ class TestRace(BaseParallel):
         code, text = self.acceptance(c1)
         self.assertEqual(code, 1, text)
         self.assertIn("alice (holder)", text)
-        self.assertIn("avant cette soumission", text)
+        self.assertIn("before this submission", text)
         self.a("2026-10-30T12:01:00Z")  # la réservation d'alice a expiré (R7), même avant le passage du robot
         code, text = self.acceptance(c1)
         self.assertEqual(code, 0, text)
@@ -5341,7 +5341,7 @@ class TestRace(BaseParallel):
         t = self.task("miniz-0099")
         self.assertEqual(t["status"], "integrated")
         self.assertNotIn("parallel", t)
-        self.assertIn("chloe (en parallèle)", t["notes"][-1]["text"], "l'engagement qui prend fin est dit")
+        self.assertIn("chloe (in parallel)", t["notes"][-1]["text"], "l'engagement qui prend fin est dit")
         self.valid_one()
 
     def test_a_ci_that_never_concludes_delays_at_most_96_h(self):
@@ -5362,7 +5362,7 @@ class TestRace(BaseParallel):
         self.a("2026-10-29T12:00:00Z")  # les deux fenêtres sont écoulées
         code, text = self.acceptance(c1)
         self.assertEqual(code, 1, text)
-        self.assertIn(f"la concurrente {c2} attend le verdict de sa CI", text)
+        self.assertIn(f"the rival {c2} awaits the verdict of its CI", text)
         self.assertIn("2026-10-31T12:00:00Z", text)
         self.a("2026-10-31T11:59:00Z")
         self.assertEqual(self.acceptance(c1)[0], 1)
@@ -5412,7 +5412,7 @@ class TestRace(BaseParallel):
         self.a("2026-10-28T18:00:00Z")
         code, text = self.acceptance(c1)
         self.assertEqual(code, 1, text)
-        self.assertIn(f"{c2} est mieux classée", text)
+        self.assertIn(f"{c2} is ranked better", text)
         self.a("2026-10-31T14:00:00Z")  # clôture de la course
         code, text = self.acceptance(c1)
         self.assertEqual(code, 0, text)
@@ -5420,7 +5420,7 @@ class TestRace(BaseParallel):
         self.review(c2, "bidji29")
         code, text = self.acceptance(c1)
         self.assertEqual(code, 1, text)
-        self.assertIn(f"la concurrente {c2}, intégrable, est mieux classée", text)
+        self.assertIn(f"the rival {c2}, integrable, is ranked better", text)
         self.assertEqual(self.acceptance(c2)[0], 0)
 
     def test_deterministic_ranking_vote_then_seniority(self):
@@ -5457,7 +5457,7 @@ class TestRace(BaseParallel):
         bee.write_yaml(self.dir / f"votes/{c1}/alice.yaml", {"voter": "alice", "subject": c1, "value": -1, "at": "2026-10-27T18:00:00Z"})
         reg = bee.Registry(self.dir)
         reasons = bee.r3_causes(reg, c1)[2]
-        self.assertFalse([r for r in reasons if "alice" in r or "défavorable" in r], reasons)
+        self.assertFalse([r for r in reasons if "alice" in r or "unfavorable" in r], reasons)
         self.assertEqual(bee.net_vote(reg, reg.record(c1)[1], bee.compute_levels(reg)), 0)
 
 
@@ -5469,7 +5469,7 @@ class TestRace(BaseParallel):
         self.a("2026-10-27T18:00:00Z")
         code, text = self.bee("review", c1, *self.read_value(c1), "--user", "chloe", "--opinion", "unfavorable", "--reason", "Lecture hors limites avec une entrée vide.")
         self.assertEqual(code, 0, text)
-        blocked = lambda: [r for r in bee.r3_causes(bee.Registry(self.dir), c1)[2] if "défavorable de chloe" in r]  # noqa: E731
+        blocked = lambda: [r for r in bee.r3_causes(bee.Registry(self.dir), c1)[2] if "unfavorable review by chloe" in r]  # noqa: E731
         self.assertTrue(blocked(), "pas encore engagée : son avis bloque")
         self.a("2026-10-27T19:00:00Z")
         self.parallel_one("miniz-0099", "chloe", expected=1)  # qui a jugé la course n'y entre plus
@@ -6232,7 +6232,7 @@ class TestAdversarialReview(BaseParallel):
         self.assertFalse(self.calls_of(calls, "pr", "merge"))
         code, text = self.acceptance(c1)
         self.assertEqual(code, 1, text)
-        self.assertIn(f"la concurrente {c2}, intégrable, est mieux classée", text)
+        self.assertIn(f"the rival {c2}, integrable, is ranked better", text)
         self.assertIn("2026-11-01T14:00:00Z", text)
         self.a("2026-11-01T14:00:00Z")  # F + 24 h : plus personne ne retient c1
         self.assertEqual(self.acceptance(c1)[0], 0)
@@ -6404,7 +6404,7 @@ class TestAdversarialReview(BaseParallel):
         merged_ones.write_text(f"{c2}\n", encoding="utf-8")
         code, text = self.bee("close", c1, "--reason", "PR fermée sans fusion.", "--merged", str(merged_ones))
         self.assertEqual(code, 1, text)
-        self.assertIn("l'écartera", text)
+        self.assertIn("will set it aside", text)
         self.assertEqual(self.rec(c1)["status"], "in_review")
         self.assertEqual(self.bee("close", c1, "--reason", "PR fermée sans fusion.")[0], 0, "sans concurrente gagnante, on clôt")
 
@@ -6476,13 +6476,13 @@ class TestAdversarialReview(BaseParallel):
         self.a("2026-10-28T13:00:00Z")
         code, text = self.acceptance(c1)
         self.assertEqual(code, 1, text)
-        self.assertIn(f"la concurrente {c2} attend le verdict de sa CI", text)
+        self.assertIn(f"the rival {c2} awaits the verdict of its CI", text)
         self.assertEqual(self.bee("integrate", c1)[0], 1)
         self.a("2026-10-28T14:00:00Z")
         self.verdict(c2, 0.10)
         code, text = self.acceptance(c1)
         self.assertEqual(code, 1, text)
-        self.assertIn(f"la concurrente {c2} est mieux classée", text)
+        self.assertIn(f"the rival {c2} is ranked better", text)
 
     # --- I5 : le classement suit le gain mesuré, pas les relectures ni les votes ---
 
@@ -6495,7 +6495,7 @@ class TestAdversarialReview(BaseParallel):
         self.assertEqual(self.acceptance(c1)[0], 0)
         code, text = self.acceptance(c2)
         self.assertEqual(code, 1, text)
-        self.assertIn(f"la concurrente {c1} est mieux classée", text)
+        self.assertIn(f"the rival {c1} is ranked better", text)
 
     def test_I5_a_negative_vote_does_not_change_the_ranking(self):
         self.assertEqual(self.bee("register", "--login", "david", "--account-created-on", "2020-01-01")[0], 0)
@@ -6639,13 +6639,13 @@ class TestAdversarialReview(BaseParallel):
         states = {PR_MINIZ + "99007": {"state": "OPEN", "head": "abc1234", "author": "alice", "verdict": verdict},
                  "contenus": {"abc1234": {"CONTRIBUTION.yaml": old}}}
         output_text, _, _ = self.step("Fetch the verdicts", states, stream="verdicts.yml")
-        self.assertIn("manifeste ignoré (tâche miniz-0016, pas miniz-0099)", output_text)
+        self.assertIn("manifest ignored (task miniz-0016, not miniz-0099)", output_text)
         self.assertNotIn("declared_gap", self.rec(c1)["verdict"])
         # Le manifeste de la tâche, à sa place, est celui qui compte (gain déclaré 10 %, mesuré 3 %).
         states[PR_MINIZ + "99007"]["head"] = "abc1235"
         states["contenus"] = {"abc1235": {"CONTRIBUTION.yaml": old, "manifests/miniz-0099.yaml": FILLED_MANIFEST}}
         output_text, _, _ = self.step("Fetch the verdicts", states, stream="verdicts.yml")
-        self.assertIn("écart de 7.0 points", output_text)
+        self.assertIn("gap of 7.0 points", output_text)
         self.assertEqual(self.rec(c1)["verdict"]["declared_gap"], 0.07)
         self.valid_one()
 
@@ -6659,7 +6659,7 @@ class TestAdversarialReview(BaseParallel):
                  "contenus": {"abc1234": {"manifests/miniz-0099.yaml": hostile}}}
         output_text, _, _ = self.step("Fetch the verdicts", states, stream="verdicts.yml")
         self.assertFalse([l for l in output_text.splitlines() if l.lstrip().startswith("::")], output_text)
-        self.assertIn("manifeste ignoré (tâche illisible, pas miniz-0099)", output_text)
+        self.assertIn("manifest ignored (task unreadable, not miniz-0099)", output_text)
         self.assertEqual(self.rec(c1)["verdict"]["ci"], "green", "le verdict, lui, est enregistré")
 
     def test_the_workflow_derives_the_task_as_bee_does(self):
@@ -6777,7 +6777,7 @@ class TestAdversarialReview(BaseParallel):
                          "les bornes de X ne dépendent que de X, pas de la vieille contribution")
         code, text = self.acceptance(x)
         self.assertEqual(code, 1, text)
-        self.assertIn(f"la concurrente {y}", text)
+        self.assertIn(f"the rival {y}", text)
         self.assertEqual(self.bee("integrate", x)[0], 1)
         self.assertEqual((self.rec(y)["status"], self.rec(old_one)["status"]), ("in_review", "in_review"))
 
@@ -6830,7 +6830,7 @@ class TestAdversarialReview(BaseParallel):
                            parallel=[{"user": "bruno", "since": "2026-10-28T13:00:00Z"}])
         code, text = self.acceptance(c1)
         self.assertEqual(code, 1, text)
-        self.assertIn("un défaut confirmé reste à résoudre", text)
+        self.assertIn("a confirmed defect remains to be resolved", text)
         self.assertEqual(self.bee("integrate", c1)[0], 1)
 
     def test_N3_a_dummy_contribution_of_a_late_engaged_one_delays_only_its_window(self):
@@ -6901,7 +6901,7 @@ class TestAdversarialReview(BaseParallel):
             v.write_text('{"ci": "verte", "gain": %s, "beyond_noise": true, "changed_lines": 10}' % gain, encoding="utf-8")
             code, text = self.bee("record-verdict", c1, "--verdict", str(v), "--sha", "abc1234", "--files", self.pr_files())
             self.assertEqual(code, 1, text)
-            self.assertIn("non fini", text)
+            self.assertIn("non-finite", text)
         self.assertNotIn("verdict", self.rec(c1))
         reg = bee.Registry(self.dir)
         base = {"task": "miniz-0099", "verdict": {"ci": "green", "gain": 0.05, "changed_lines": 10, "checked_files": True}}
@@ -7146,7 +7146,7 @@ class TestAdversarialReview(BaseParallel):
         self.a("2026-10-29T15:00:00Z")
         code, text = self.acceptance(c1)
         self.assertEqual(code, 1, text)
-        self.assertIn("un défaut confirmé reste à résoudre", text)
+        self.assertIn("a confirmed defect remains to be resolved", text)
         # alice corrige : nouveau commit jugé, relu à nouveau. Revue adverse de ruche-0012 : le défaut ne tombe plus avec un
         # nouveau commit (un commit vide, ou un retour à un ancien commit, l'effaçait) ; il tient jusqu'à ce que david relise.
         verdict = json.loads((self.dir / "verdict.json").read_text(encoding="utf-8"))
@@ -7160,7 +7160,7 @@ class TestAdversarialReview(BaseParallel):
         bee.write_yaml(path, rec)
         code, text = self.acceptance(c1)
         self.assertEqual(code, 1, text)
-        self.assertIn("un défaut confirmé reste à résoudre (signalé par david", text)
+        self.assertIn("a confirmed defect remains to be resolved (reported by david", text)
         self.assertEqual(self.bee("review", c1, *self.read_value(c1), "--user", "david", "--opinion", "favorable", "--reason",
                                   "Correctif relu : le défaut est corrigé.")[0], 0)
         code, text = self.acceptance(c1)
@@ -7260,7 +7260,7 @@ class TestVerdictsOfTheRecordedPr(BaseParallel):
                 "verdict": verdict, **fields}
 
     def refusal(self, output_text, reason, prs=""):
-        self.assertIn(f"  | {self.cid} : PR #99007 : {reason} ; aucun verdict n'est enregistré{prs}.", output_text)
+        self.assertIn(f"  | {self.cid}: PR #99007: {reason}; no verdict is recorded{prs}.", output_text)
 
     def waiting(self, output_text, code, prs="", sha="abc1234"):
         """Refus pour raison de sécurité : dit dans le journal et écrit dans la contribution (phrase fixe, tête)."""
@@ -7289,7 +7289,7 @@ class TestVerdictsOfTheRecordedPr(BaseParallel):
         output_text, verdict, calls = self.collect({"runs": foreign}, verdict=None)
         self.assertIsNone(verdict)
         self.assertFalse(self.calls_of(calls, "run", "download"))
-        self.refusal(output_text, "10 exécution(s) de bee-ci.yml sur ce commit, aucune de cette PR vers master (événement pull_request)")
+        self.refusal(output_text, "10 run(s) of bee-ci.yml on this commit, none of this PR to master (pull_request event)")
         self.assertNotIn("awaiting_verdict", self.rec(self.cid))
         output_text, verdict, _ = self.collect({}, verdict=None)
         self.assertEqual((verdict, output_text.strip()), (None, ""))
@@ -7303,16 +7303,16 @@ class TestVerdictsOfTheRecordedPr(BaseParallel):
         master_judge = {"judge_base": {"base": master, "commit": master}}
         for declared_one, said in ((declare(old_one), f"{old_one} (diverged)"), (declare(other), f"{other} (behind)"),
                                (declare(master, old_one), f"{master} (ahead), {old_one} (diverged)"),
-                               (declare(unknown), f"{unknown} (non vérifiée)"),
-                               ({"details": {"base": "0bad;touch PIEGE ##[error]"}, **master_judge}, f"illisible (non vérifiée), {master} (ahead)"),
-                               ({"details": {"base": [old_one]}, **master_judge}, f"illisible (non vérifiée), {master} (ahead)")):
+                               (declare(unknown), f"{unknown} (not verified)"),
+                               ({"details": {"base": "0bad;touch PIEGE ##[error]"}, **master_judge}, f"unreadable (not verified), {master} (ahead)"),
+                               ({"details": {"base": [old_one]}, **master_judge}, f"unreadable (not verified), {master} (ahead)")):
             with self.subTest(said=said):
                 output_text, verdict, calls = self.collect({"defect": "main", "comparaisons": comparisons}, base="main",
                                                          verdict={**self.GOOD, **declared_one})
                 self.assertIsNone(verdict, output_text)
-                certain = "diverged" in said or "behind" in said or "illisible" in said
-                self.assertIn(f"  | bee: {self.cid} : verdict refusé, {bee.VERDICT_WAIT['base']} (base déclarée : {said}) ; "
-                              "aucun verdict n'est enregistré" + ("\n" if certain else ", rejugé au passage suivant\n"), output_text)
+                certain = "diverged" in said or "behind" in said or "unreadable" in said
+                self.assertIn(f"  | bee: {self.cid}: verdict refused, {bee.VERDICT_WAIT['base']} (declared base: {said}); "
+                              "no verdict is recorded" + ("\n" if certain else ", judged again at the next pass\n"), output_text)
                 self.assertEqual(self.rec(self.cid).get("awaiting_verdict"), {"reason": "base", "sha": "abc1234"} if certain else None)
                 compared_ones = [a["args"][1] for a in calls if "/compare/" in a["args"][1]]
                 self.assertTrue(all(re.fullmatch(r"repos/Bee-ruche/minizBee/compare/[0-9a-f]{40}\.\.\.main", c) for c in compared_ones))
@@ -7346,7 +7346,7 @@ class TestVerdictsOfTheRecordedPr(BaseParallel):
             with self.subTest(declared_one=declared_one):
                 output_text, verdict, _ = self.collect({"comparaisons": {old_head: "ahead"}}, verdict={**self.WRONG, **declared_one})
                 self.assertIsNone(verdict, output_text)
-                self.assertIn(f"  | bee: {self.cid} : verdict refusé, {bee.VERDICT_WAIT['judge_base']}", output_text)
+                self.assertIn(f"  | bee: {self.cid}: verdict refused, {bee.VERDICT_WAIT['judge_base']}", output_text)
                 self.assertEqual(self.rec(self.cid)["awaiting_verdict"]["reason"], "judge_base")
         path = self.dir / "projects/miniz.yaml"
         path.write_text(path.read_text(encoding="utf-8").replace("verdict_requires_judge_base: true\n", ""), encoding="utf-8")
@@ -7354,7 +7354,7 @@ class TestVerdictsOfTheRecordedPr(BaseParallel):
         self.assertEqual(verdict["gain"], 0.05, output_text)
         output_text, verdict, _ = self.collect({}, verdict={**self.GOOD, "details": {}, "judge_base": None})
         self.assertIsNone(verdict, output_text)
-        self.assertIn("(base déclarée : absente)", output_text)
+        self.assertIn("(declared base: absent)", output_text)
 
     def test_c2_c3_c4_the_other_prs_of_the_same_head(self):
         """C2 : une PR d'une autre branche ou d'un autre dépôt, même de même commit, ne bloque rien (son exécution n'est jamais
@@ -7479,7 +7479,7 @@ class TestVerdictsOfTheRecordedPr(BaseParallel):
         s'enregistre. Seul un statut certain (behind, diverged, base absente ou illisible, judge_base absent) écrit l'attente."""
         output_text, verdict, _ = self.collect({"comparaisons": {self.MASTER: None}})
         self.assertIsNone(verdict, output_text)
-        self.assertIn(f"(base déclarée : {self.MASTER} (non vérifiée)) ; aucun verdict n'est enregistré, rejugé au passage suivant", output_text)
+        self.assertIn(f"(declared base: {self.MASTER} (not verified)); no verdict is recorded, judged again at the next pass", output_text)
         self.assertNotIn("awaiting_verdict", self.rec(self.cid))
         output_text, verdict, _ = self.collect({}, keep_waiting=True)
         self.assertEqual(verdict["gain"], 0.05, output_text)
@@ -7488,8 +7488,8 @@ class TestVerdictsOfTheRecordedPr(BaseParallel):
         """B2 : une autre PR P de la même tête ne bloque que si l'exécution retenue R a pu venir d'elle : R créée après P - 1 min,
         et, P fermée, avant sa fermeture + 1 h. Un tiers qui ouvre (et ferme) une PR après la CI ne bloque donc rien. B3 : la
         phrase demande au conseil de fermer une PR ouverte, et dit le délai d'une heure."""
-        self.assertIn("demandez au conseil de la fermer", bee.VERDICT_WAIT["pr_open"])
-        self.assertIn("une heure après sa fermeture", bee.VERDICT_WAIT["pr_open"])
+        self.assertIn("ask the council to close it", bee.VERDICT_WAIT["pr_open"])
+        self.assertIn("one hour after it is closed", bee.VERDICT_WAIT["pr_open"])
         third_party = {"head": "abc1234", "author": "mallory", "branch": "task/99007", "opened_at": "2026-10-27T11:00:00Z"}
         for head_repo in ("Bee-ruche/minizBee", "alice/minizBee"):
             for state in ({"state": "OPEN"}, {"state": "CLOSED", "fermee_le": "2026-10-27T11:05:00Z"}):
@@ -7516,7 +7516,7 @@ class TestVerdictsOfTheRecordedPr(BaseParallel):
             with self.subTest(timeline=timeline):
                 output_text, verdict, _ = self.collect({}, update_flag="2026-10-27T11:57:00Z", timeline=timeline)
                 self.assertEqual(verdict is None, awaits, output_text)
-                self.assertEqual("jugée au passage suivant" in output_text, awaits, output_text)
+                self.assertEqual("judged at the next pass" in output_text, awaits, output_text)
 
     def test_b6_the_wait_carries_a_code_and_the_sentence_is_rendered_on_display(self):
         """B6 : awaiting_verdict stocke le code du motif ; reformuler une phrase demain n'invalide aucune contribution."""
@@ -7531,7 +7531,7 @@ class TestVerdictsOfTheRecordedPr(BaseParallel):
     def test_freshness_a_pr_changed_less_than_5_minutes_ago_is_judged_at_the_next_pass(self):
         output_text, verdict, _ = self.collect({}, update_flag="2026-10-27T11:56:00Z")
         self.assertIsNone(verdict)
-        self.assertIn(f"  | {self.cid} : PR #99007 : PR modifiée il y a moins de 5 minutes, jugée au passage suivant.", output_text)
+        self.assertIn(f"  | {self.cid}: PR #99007: PR modified less than 5 minutes ago, judged at the next pass.", output_text)
         self.assertNotIn("awaiting_verdict", self.rec(self.cid))
         output_text, verdict, _ = self.collect({}, update_flag="2026-10-27T11:54:59Z")
         self.assertEqual(verdict["gain"], 0.05, output_text)
@@ -7549,12 +7549,12 @@ class TestVerdictsOfTheRecordedPr(BaseParallel):
         self.waiting(output_text, "other_base")
         outputs.append(output_text)
         output_text, _, _ = self.collect({"defect": "x\n::error::PIEGE"}, base="x\n::error::PIEGE")
-        self.refusal(output_text, "branche par défaut illisible, ou PR changée pendant la collecte")
+        self.refusal(output_text, "default branch unreadable, or PR changed during the collection")
         outputs.append(output_text)
         malformed = {k: v for k, v in self.execution_api(99908, self.WRONG).items() if k != "pull_requests"}
         output_text, verdict, _ = self.collect({"runs": [malformed]})
         self.assertIsNone(verdict)
-        self.refusal(output_text, "PR ou réponse de l'API illisible")
+        self.refusal(output_text, "PR or API answer unreadable")
         for output_text in outputs:
             self.assertNotIn("PIEGE", output_text)
             self.assertFalse([l for l in output_text.splitlines() if l and not l.startswith("  | ")], output_text)
@@ -9297,9 +9297,9 @@ class TestReviewsByNewcomers(BaseParallel):
         self.a("2026-10-29T12:00:00Z")
         code, text = self.acceptance(cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("0 relecture(s) favorable(s) sur 2 requise(s)", text)
-        self.assertIn("2 relecture(s) de Nouveau, enregistrée(s) mais non comptée(s) pour R3", text)
-        self.assertIn("1 relecture(s) défavorable(s) contre 0 favorable(s)", text)
+        self.assertIn("0 favorable review(s) of 2 required", text)
+        self.assertIn("2 review(s) by a New member, recorded but not counted for R3", text)
+        self.assertIn("1 unfavorable review(s) against 0 favorable", text)
         self.valid_one()
 
     def test_counted_reviews_of_a_contributor_and_of_the_council(self):
@@ -9365,18 +9365,18 @@ class TestReviewByCommit(BaseParallel):
         self.assertIn("no verdict yet: review recorded without a commit; if favorable, it will not count for R3", text)
         self.assertIn("only one review before the verdict", self.review_("bruno", "unfavorable", expected=1))
         self.assertIn("no verdict yet", self.review_("chloe", "unfavorable", "--defect", expected=1), "un défaut vise un commit")
-        self.assertIn("R4 : debit_compression_n6 non mesuré (pas encore de verdict)", self.acceptance(self.cid)[1])
+        self.assertIn("R4: debit_compression_n6 not measured (no verdict yet)", self.acceptance(self.cid)[1])
         self.verdict_at("abc1234")
         self.council_and_window()
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("1 relecture(s) favorable(s) sur 2 requise(s) ; 1 relecture(s) faite(s) avant le verdict, sans commit, ne "
-                      "comptent pas", text)
+        self.assertIn("1 favorable review(s) of 2 required; 1 review(s) made before the verdict, without a commit, do "
+                      "not count", text)
         self.assertNotIn("no verdict yet", self.review_("bruno", "favorable"))
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 0, text)
-        self.assertIn("2 relecture(s) favorable(s) de ce commit pour 2 requise(s) ; vote net 1 pour un seuil de 1 (cible 2, "
-                      "plafonnée aux membres dont l'avis compte : amorçage)", text)
+        self.assertIn("2 favorable review(s) of this commit for 2 required; net vote 1 for a threshold of 1 (target 2, "
+                      "capped at the members whose opinion counts: bootstrap)", text)
         self.valid_one()
 
     def test_the_guardian_reviews_the_fix_it_asked_for(self):
@@ -9386,13 +9386,13 @@ class TestReviewByCommit(BaseParallel):
         self.review_("chloe", "favorable")
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("relecture défavorable de bruno", text)
+        self.assertIn("unfavorable review by bruno", text)
         self.assertIn("at commit abc1234, and it is their most recent review", self.review_("bruno", "favorable", expected=1))
         self.verdict_at("def5678")  # le correctif demandé : le défavorable du gardien tient jusqu'à sa relecture
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("0 relecture(s) favorable(s) sur 2 requise(s) ; 1 relecture(s) portent sur un commit antérieur", text)
-        self.assertIn("relecture défavorable de bruno (gardien, conseil ou Confirmé) : elle bloque, quel que soit le commit", text)
+        self.assertIn("0 favorable review(s) of 2 required; 1 review(s) concern an earlier", text)
+        self.assertIn("unfavorable review by bruno (guardian, council or Confirmed member): it blocks, whatever the commit", text)
         self.assertIn("For R3, it replaces your previous review (abc1234)", self.review_("bruno", "favorable"))
         self.review_("chloe", "favorable")
         self.review_("bidji29", "favorable")
@@ -9400,7 +9400,7 @@ class TestReviewByCommit(BaseParallel):
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 0, text)
         self.assertEqual(self.bee("integrate", self.cid)[0], 0)
-        self.assertIn("Auto-integration (R3) : CI verte au commit def5678 ; 2 relecture(s) favorable(s) de ce commit",
+        self.assertIn("Auto-integration (R3): CI green at commit def5678; 2 favorable review(s) of this commit",
                       self.rec(self.cid)["decision_reason"])
         levels = bee.compute_levels(bee.Registry(self.dir))
         self.assertEqual((levels["bruno"]["reviews"], levels["chloe"]["reviews"]), (1, 1),
@@ -9427,9 +9427,9 @@ class TestReviewByCommit(BaseParallel):
         self.verdict_at("aaaaaaa")  # retour à X
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("un défaut confirmé reste à résoudre (signalé par david", text)
-        self.assertIn("relecture défavorable de bruno", text)
-        self.assertIn("1 relecture(s) favorable(s) sur 2 requise(s)", text, "seule chloe a pour plus récente une favorable de X")
+        self.assertIn("a confirmed defect remains to be resolved (reported by david", text)
+        self.assertIn("unfavorable review by bruno", text)
+        self.assertIn("1 favorable review(s) of 2 required", text, "seule chloe a pour plus récente une favorable de X")
         self.assertIn("For R3, it replaces your previous review (bbbbbbb)", self.review_("bruno", "unfavorable"))
         self.valid_one()
         self.verdict_at("ccccccc")  # le vrai correctif
@@ -9454,7 +9454,7 @@ class TestReviewByCommit(BaseParallel):
         self.verdict_at("aaaaaaa")
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("relecture défavorable de bruno", text)
+        self.assertIn("unfavorable review by bruno", text)
         self.review_("bruno", "favorable")  # il relit X : le refus est levé, par lui
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 0, text)
@@ -9474,7 +9474,7 @@ class TestReviewByCommit(BaseParallel):
         self.review_("david", "favorable")
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("relecture défavorable de bruno", text)
+        self.assertIn("unfavorable review by bruno", text)
         self.review_("bruno", "favorable")
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 0, text)
@@ -9490,7 +9490,7 @@ class TestReviewByCommit(BaseParallel):
         self.review_("chloe", "favorable")
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 0, f"ni contre : deux abstentions ne bloquent rien : {text}")
-        self.assertIn("2 relecture(s) favorable(s) de ce commit pour 2 requise(s)", text, "ni pour : le seuil ne baisse pas")
+        self.assertIn("2 favorable review(s) of this commit for 2 required", text, "ni pour : le seuil ne baisse pas")
         rec, reg = self.rec(self.cid), bee.Registry(self.dir)
         self.assertAlmostEqual(bee.compute_score(reg, rec, bee.compute_levels(reg))["C"], 2 / 3, msg="bidji29 et chloe seulement")
         # Sans la relecture du conseil, le gardien qui s'abstient n'ouvre pas la porte, et l'abstention ne remplace aucune favorable.
@@ -9498,8 +9498,8 @@ class TestReviewByCommit(BaseParallel):
         bee.write_yaml(path, {**rec, "reviews": [r for r in rec["reviews"] if r["reviewer"] != "bidji29"]})
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("porte de relecture", text)
-        self.assertIn("1 relecture(s) favorable(s) sur 2 requise(s) ; 2 abstention(s), ni pour ni contre", text)
+        self.assertIn("review gate", text)
+        self.assertIn("1 favorable review(s) of 2 required; 2 abstention(s), neither for nor against", text)
         bee.write_yaml(path, rec)
         self.assertEqual(self.bee("integrate", self.cid)[0], 0)
         levels = bee.compute_levels(bee.Registry(self.dir))
@@ -9516,20 +9516,20 @@ class TestReviewByCommit(BaseParallel):
         self.verdict_at("aaaaaaa")
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("0 relecture(s) favorable(s) sur 2 requise(s)", text)
-        self.assertIn("1 abstention(s), ni pour ni contre", text)
+        self.assertIn("0 favorable review(s) of 2 required", text)
+        self.assertIn("1 abstention(s), neither for nor against", text)
 
     def test_the_confirmed_defect_holds_until_the_review_of_its_reviewer(self):
         self.verdict_at("abc1234")
         self.council_and_window()
         self.review_("chloe", "unfavorable", "--defect")
         self.ok_("confirm-defect", self.cid, "--reviewer", "chloe", "--user", "bruno")
-        self.assertIn("un défaut confirmé reste à résoudre", self.acceptance(self.cid)[1])
+        self.assertIn("a confirmed defect remains to be resolved", self.acceptance(self.cid)[1])
         self.review_("chloe", "favorable", expected=1)  # même commit : sa relecture, et son défaut, restent
         self.verdict_at("def5678")
         self.review_("bruno", "favorable")
         self.review_("bidji29", "favorable")
-        self.assertIn("un défaut confirmé reste à résoudre (signalé par chloe", self.acceptance(self.cid)[1],
+        self.assertIn("a confirmed defect remains to be resolved (reported by chloe", self.acceptance(self.cid)[1],
                       "un nouveau commit ne lève pas le défaut : sa relectrice relit")
         self.review_("chloe", "favorable")
         code, text = self.acceptance(self.cid)
@@ -9596,14 +9596,14 @@ class TestReviewByCommit(BaseParallel):
         for voter in ("chloe", "david", "bidji29"):
             self.ok_("vote", self.cid, "--user", voter, "--value", "1")
         self.a("2026-10-29T12:00:00Z")
-        self.assertIn("2 relecture(s) défavorable(s) contre 2 favorable(s)", self.acceptance(self.cid)[1])
+        self.assertIn("2 unfavorable review(s) against 2 favorable", self.acceptance(self.cid)[1])
         self.verdict_at("bbbbbbb")
         self.review_("eve", "favorable")
         self.review_("farid", "favorable")
         self.verdict_at("aaaaaaa")
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("2 relecture(s) défavorable(s) contre 2 favorable(s)", text)
+        self.assertIn("2 unfavorable review(s) against 2 favorable", text)
         self.review_("eve", "favorable")  # elle relit X : son refus de X est levé, par elle
         self.review_("farid", "favorable")
         code, text = self.acceptance(self.cid)
@@ -9634,7 +9634,7 @@ class TestReviewByCommit(BaseParallel):
         bee.modify_task(task_path, parallel=self.task("miniz-0099")["parallel"]
                            + [{"user": "david", "since": "2026-10-29T12:00:00Z"}])
         code, text = self.acceptance(self.cid)
-        self.assertNotIn("défaut confirmé", text)
+        self.assertNotIn("confirmed defect", text)
         self.verdict_at("aaaaaaa")
         reg = bee.Registry(self.dir)
         survey = bee.reviews_survey(reg, self.rec(self.cid), bee.compute_levels(reg))
@@ -9660,9 +9660,9 @@ class TestReviewByCommit(BaseParallel):
         self.a("2026-10-29T12:00:00Z")
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 1, text)
-        self.assertIn(f"défaut confirmé de bruno dans {first_one} (même auteur, même tâche)", text)
+        self.assertIn(f"confirmed defect by bruno in {first_one} (same author, same task)", text)
         self.verdict_at("aaaaaab")  # amendé : même contenu, autre sha
-        self.assertIn(f"défaut confirmé de bruno dans {first_one} (même auteur, même tâche)", self.acceptance(self.cid)[1])
+        self.assertIn(f"confirmed defect by bruno in {first_one} (same author, same task)", self.acceptance(self.cid)[1])
         self.review_("chloe", "favorable")
         self.review_("david", "favorable")
         self.review_("bruno", "favorable")  # le gardien relit sous c2 : son refus est levé, par lui
@@ -9687,7 +9687,7 @@ class TestReviewByCommit(BaseParallel):
         self.verdict_at("aaaaaaa")
         self.review_("bruno", "unfavorable")  # « copie du commit d'alice »
         self.a("2026-11-05T12:00:00Z")
-        self.assertIn("relecture défavorable de bruno", self.acceptance(self.cid)[1])
+        self.assertIn("unfavorable review by bruno", self.acceptance(self.cid)[1])
         code, text = self.acceptance(original)
         self.assertEqual(code, 0, text)
 
@@ -9711,7 +9711,7 @@ class TestReviewByCommit(BaseParallel):
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 0, text)
         self.review_("bruno", "unfavorable")  # il le refuse sous cette tâche aussi : cela bloque, ici
-        self.assertIn("relecture défavorable de bruno", self.acceptance(self.cid)[1])
+        self.assertIn("unfavorable review by bruno", self.acceptance(self.cid)[1])
 
     # --- Quatrième revue adverse (F1, F2, B1, D1, D2, P1) : un test par décision ---
 
@@ -9751,7 +9751,7 @@ class TestReviewByCommit(BaseParallel):
         self.a("2026-10-29T12:00:00Z")
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 1, text)
-        self.assertIn(f"défaut confirmé de bruno dans {first_one} (même auteur, même tâche)", text)
+        self.assertIn(f"confirmed defect by bruno in {first_one} (same author, same task)", text)
 
     def test_a_content_refused_elsewhere_is_reported_without_blocking(self):
         """Cinquième revue adverse (B1, B1b, B2, E1, E2) : un refus posé sur un contenu dans une autre contribution de la tâche
@@ -9778,14 +9778,14 @@ class TestReviewByCommit(BaseParallel):
         self.assertNotIn("this content was refused", self.acceptance(self.cid)[1])
         self.verdict_at("aaaaaab", "7ee0001")
         self.review_("bruno", "unfavorable")  # le refus se repose sur la copie : il la bloque, elle
-        self.assertIn("relecture défavorable de bruno", self.acceptance(self.cid)[1])
+        self.assertIn("unfavorable review by bruno", self.acceptance(self.cid)[1])
         reasons = [l for l in self.acceptance(original)[1].splitlines() if l.startswith("  - ")]
         self.assertFalse([l for l in reasons if self.cid in l], "le refus de la copie ne bloque jamais l'original (au plus, une alerte)")
         self.review_("bruno", "favorable", expected=1)  # pas deux de suite sur le même commit
         self.verdict_at("ddddddd", "7ee0003")
         self.review_("bruno", "favorable")
         self.verdict_at("aaaaaab", "7ee0001")
-        self.assertIn("relecture défavorable de bruno", self.acceptance(self.cid)[1], "retour au contenu qu'il a refusé ici")
+        self.assertIn("unfavorable review by bruno", self.acceptance(self.cid)[1], "retour au contenu qu'il a refusé ici")
 
     def test_an_amended_commit_stays_the_refused_content(self):
         """F2, F2b : le gardien refuse X (défaut confirmé), approuve Y ; l'auteur revient au contenu de X, amendé (X' : même
@@ -9798,14 +9798,14 @@ class TestReviewByCommit(BaseParallel):
         self.a("2026-10-29T12:00:00Z")
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("un défaut confirmé reste à résoudre (signalé par bruno", text)
+        self.assertIn("a confirmed defect remains to be resolved (reported by bruno", text)
         first_one = self.cid
         self.ok_("close", self.cid, "--reason", "PR fermée sans fusion.")
         self.ok_("take", "miniz-0099", "--user", "alice")
         self.cid = self.submit("miniz-0099", "alice", 99307)
         self.verdict_at("aaaaaac", "7ee0001")
         self.have_reviewed_and_voted()
-        self.assertIn(f"défaut confirmé de bruno dans {first_one} (même auteur, même tâche)", self.acceptance(self.cid)[1])
+        self.assertIn(f"confirmed defect by bruno in {first_one} (same author, same task)", self.acceptance(self.cid)[1])
         self.review_("bruno", "favorable")
         self.a("2026-10-31T12:00:00Z")
         code, text = self.acceptance(self.cid)
@@ -9871,7 +9871,7 @@ class TestReviewByCommit(BaseParallel):
         self.assertEqual(self.acceptance(self.cid)[0], 0, "la levée du fil vaut dans R3")
         self.a("2026-10-29T13:00:00Z")
         self.review_("bruno", "unfavorable")  # et pour l'unicité : il peut relire le commit jugé
-        self.assertIn("relecture défavorable de bruno", self.acceptance(self.cid)[1])
+        self.assertIn("unfavorable review by bruno", self.acceptance(self.cid)[1])
 
     def test_forged_or_future_liftings_are_worth_nothing(self):
         """L1b, L1c : une levée datée du futur, ou écrite par un autre que le conseil, est refusée par bee validate et ne neutralise
@@ -9893,15 +9893,15 @@ class TestReviewByCommit(BaseParallel):
         self.a("2026-10-29T12:00:00Z")
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("relecture défavorable de bruno", text, "une levée future ne neutralise rien d'avance")
+        self.assertIn("unfavorable review by bruno", text, "une levée future ne neutralise rien d'avance")
         bee.write_yaml(path, {**self.rec(self.cid), "lifts": [{**forged, "by": "chloe", "at": "2026-10-29T12:00:00Z"}]})
-        self.assertIn("relecture défavorable de bruno", self.acceptance(self.cid)[1], "une levée d'un non-conseil ne vaut rien")
+        self.assertIn("unfavorable review by bruno", self.acceptance(self.cid)[1], "une levée d'un non-conseil ne vaut rien")
         bee.write_yaml(path, {**self.rec(self.cid), "lifts": [{**forged, "at": "2026-10-29T12:00:00Z"}]})
         self.valid_one()
         self.assertEqual(self.acceptance(self.cid)[0], 0, "vraie levée du conseil : le refus et le défaut ne pèsent plus")
         self.a("2026-10-29T13:00:00Z")
         self.review_("bruno", "unfavorable")  # L2 : il relit le commit jugé, malgré sa relecture levée de ce même commit
-        self.assertIn("relecture défavorable de bruno", self.acceptance(self.cid)[1])
+        self.assertIn("unfavorable review by bruno", self.acceptance(self.cid)[1])
         self.review_("bruno", "favorable", expected=1)  # la nouvelle, non levée, est sa plus récente : pas deux de suite
         self.valid_one()
 
@@ -9917,7 +9917,7 @@ class TestReviewByCommit(BaseParallel):
         for voter in ("chloe", "david", "bidji29"):
             self.ok_("vote", self.cid, "--user", voter, "--value", "1")
         self.a("2026-11-10T12:00:00Z")
-        self.assertIn("relecture défavorable de bruno", self.acceptance(self.cid)[1])
+        self.assertIn("unfavorable review by bruno", self.acceptance(self.cid)[1])
         path = self.dir / f"contributions/miniz/{self.cid}.yaml"
         rec = self.rec(self.cid)
         lift = {"reviewer": "bruno", "reason": "Gardien absent depuis deux semaines, correctif relu par deux Contributeurs.",
@@ -9930,7 +9930,7 @@ class TestReviewByCommit(BaseParallel):
         self.assertEqual(code, 0, text)
         self.a("2026-11-10T13:00:00Z")
         self.review_("bruno", "unfavorable")  # il revient et relit : son avis compte de nouveau
-        self.assertIn("relecture défavorable de bruno", self.acceptance(self.cid)[1])
+        self.assertIn("unfavorable review by bruno", self.acceptance(self.cid)[1])
 
     def test_validate_keeps_one_review_per_commit(self):
         """Poussé sans PR (bee validate, sur main et dans chaque PR) : deux relectures de suite d'un relecteur au même commit, deux
@@ -10161,7 +10161,7 @@ class TestReviewByCommitPR(BaseDressRehearsal):
         verdict.write_text(json.dumps({"ci": "green", "gain": 0.05, "beyond_noise": True, "changed_lines": 10}), encoding="utf-8")
         files.write_text("miniz_tdef.c\n", encoding="utf-8")
         self.ok("record-verdict", self.cid, "--verdict", str(verdict), "--sha", "abc1234", "--tree", "7ee0001", "--files", str(files))
-        self.assertIn("arbre git mal formé, ignoré", self.bee("record-verdict", self.cid, "--verdict", str(verdict), "--sha", "abc1234",
+        self.assertIn("malformed git tree, ignored", self.bee("record-verdict", self.cid, "--verdict", str(verdict), "--sha", "abc1234",
                                                              "--tree", "7ee;id")[1])
         self.assertNotIn("tree", bee.read_yaml(self.path)["verdict"])
         self.ok("record-verdict", self.cid, "--verdict", str(verdict), "--sha", "abc1234", "--tree", "7ee0001", "--files", str(files))
@@ -10417,7 +10417,7 @@ class TestInvitations(BaseInvitations):
         self.valid_one()
         # Un refus est définitif, quelle que soit la casse ou la forme de l'identifiant.
         self.branch()
-        self.ko("est sur la liste de non-contact", "invite", "--user", "bruno", "--identifier", "github:OctoCat",
+        self.ko("is on the do-not-contact list", "invite", "--user", "bruno", "--identifier", "github:OctoCat",
                 "--channel", "https://github.com/octocat", "--request", "participate", "--fact", "Un fait.", "--source",
                 "https://github.com/octocat", "--message", MESSAGE_INVITATION)
         self.assertEqual(json.loads(self.ok("swarm", "--json"))["invitations"], [], "une invitation close n'est plus en cours")
@@ -10425,7 +10425,7 @@ class TestInvitations(BaseInvitations):
     def test_answers_accepted_and_without_answer(self):
         self.up_to("record-sent")
         self.a("2026-11-03T09:00:00Z")
-        self.ko("se consigne 14 jours après le dernier message", "invitation", "record-answer", "I-0001", "--user",
+        self.ko("is recorded 14 days after the last message", "invitation", "record-answer", "I-0001", "--user",
                 "bidji29", "--value", "no_answer")
         self.branch()
         self.gesture("record-answer", "bidji29", "--value", "accepted")
@@ -10436,7 +10436,7 @@ class TestInvitations(BaseInvitations):
     def test_without_answer_after_the_reminder(self):
         self.up_to("record-reminder")
         self.a("2026-11-20T09:00:00Z")
-        self.ko("se consigne 14 jours après le dernier message", "invitation", "record-answer", "I-0001", "--user",
+        self.ko("is recorded 14 days after the last message", "invitation", "record-answer", "I-0001", "--user",
                 "bidji29", "--value", "no_answer")
         self.a("2026-11-30T15:00:00Z")
         self.branch()
@@ -10449,7 +10449,7 @@ class TestInvitations(BaseInvitations):
     def test_dismiss_by_the_proposer_or_a_guardian(self):
         self.up_to("proposed")
         self.a("2026-10-30T12:00:00Z")
-        self.ko("seuls le proposant, un gardien en fonction ou le conseil", "invitation", "dismiss", "I-0001", "--user", "bruno",
+        self.ko("only the proposer, a guardian in office or the council", "invitation", "dismiss", "I-0001", "--user", "bruno",
                 "--reason", "Je ne suis pas d'accord.")
         self.branch()
         self.gesture("dismiss", "gina", "--reason", "Les faits cités ne disent pas pourquoi cette personne.")
@@ -10547,19 +10547,19 @@ class TestPullRequestsInvitations(BaseInvitations):
         self.refused("alice", "numbers 9000 and above are reserved for the tool's tests")
         self.write_invitation({**inv, "id": "I-9000", "proposed_by": "bidji29", "message": MESSAGE_INVITATION}, "I-9000")
         self.commit()
-        self.refused("bidji29", "mot pour mot, la mention de R13")
+        self.refused("bidji29", "word for word, the mention of R13")
 
     def test_proposal_in_the_name_of_another_or_born_decided(self):
         self.a("2026-10-30T10:00:00Z")
         self.branch()
         self.invite()
         self.commit()
-        self.refused("bruno", "on ne propose une invitation qu'en son nom (bruno)")
+        self.refused("bruno", "an invitation is proposed only in one's own name (bruno)")
         inv = self.invitation()
         self.write_invitation({**inv, "status": "decided", "guardian_approval": {"by": "gina", "at": self.now_instant()},
                                 "council_approval": {"by": "bidji29", "at": self.now_instant()}})
         self.commit()
-        self.refused("alice", "une invitation naît proposée, sans accord, envoi ni réponse")
+        self.refused("alice", "an invitation is born proposed, without approval, sending or answer")
 
     def test_several_invitations_in_one_pr_and_over_24_h(self):
         self.a("2026-10-30T10:00:00Z")
@@ -10590,12 +10590,12 @@ class TestPullRequestsInvitations(BaseInvitations):
         mention = bee.mentions_invitation(bee.Registry(self.dir))["fr"]
         case_of = {
             "invisible character or control character refused (U+202E": MESSAGE_INVITATION + "‮" + "\n\n" + mention,
-            "il porte, mot pour mot, la mention de R13": MESSAGE_INVITATION,
+            "it carries, word for word, the mention of R13": MESSAGE_INVITATION,
             # La mention maquillée : un espace de largeur nulle, ou un « а » cyrillique dans « agents ».
             "invisible character or control character refused (U+200B": MESSAGE_INVITATION + "\n\n" + mention.replace("agents", "agen​ts"),
-            "mot pour mot, la mention de R13": MESSAGE_INVITATION + "\n\n" + mention.replace("agents", "аgents"),
-            "an email address : aucune donnée personnelle": "Écrivez-moi à jean.dupont@example.org.\n\n" + mention,
-            "a phone number : aucune donnée personnelle": "Son numéro : +33 6 12 34 56 78.\n\n" + mention,
+            "word for word, the mention of R13": MESSAGE_INVITATION + "\n\n" + mention.replace("agents", "аgents"),
+            "an email address: no personal data": "Écrivez-moi à jean.dupont@example.org.\n\n" + mention,
+            "a phone number: no personal data": "Son numéro : +33 6 12 34 56 78.\n\n" + mention,
             "message: 2": "x" * 2000 + "\n\n" + mention,
         }
         for chunk, message in case_of.items():
@@ -10608,7 +10608,7 @@ class TestPullRequestsInvitations(BaseInvitations):
                 self.abandon()
                 shutil.rmtree(self.dir / "invitations", ignore_errors=True)
         # bee inviter les refuse aussi, avant d'écrire.
-        self.ko("a phone number : aucune donnée personnelle", "invite", "--user", "alice", "--identifier", "github:octocat",
+        self.ko("a phone number: no personal data", "invite", "--user", "alice", "--identifier", "github:octocat",
                 "--channel", "https://github.com/octocat", "--request", "guarantor", "--fact", "Joignable au 06 12 34 56 78.",
                 "--source", "https://github.com/octocat", "--message", MESSAGE_INVITATION)
         self.assertFalse(self.invitation_path().exists())
@@ -10621,14 +10621,14 @@ class TestPullRequestsInvitations(BaseInvitations):
         inv["person"]["name"] = "Jean Dupont"
         self.write_invitation(inv)
         self.commit()
-        self.refused("alice", "son identifiant public et le canal qu'elle publie elle-même, rien d'autre")
+        self.refused("alice", "their public identifier and the channel they publish themselves, nothing else")
 
     def test_no_contact_by_case_or_space_variant(self):
         self.main_with_list("github:octocat")
         self.a("2026-10-30T10:00:00Z")
         for identifier in ("github:OctoCat", "GitHub:octocat", "github:@octocat/"):
             with self.subTest(identifier=identifier):
-                self.ko("est sur la liste de non-contact", "invite", "--user", "alice", "--identifier", identifier,
+                self.ko("is on the do-not-contact list", "invite", "--user", "alice", "--identifier", identifier,
                         "--channel", "https://github.com/octocat", "--request", "guarantor", "--fact", "Un fait.", "--source",
                         "https://github.com/octocat", "--message", MESSAGE_INVITATION)
         # Écrites à la main, en contournant bee inviter : refusées par verifier-pr, avec ou sans espaces.
@@ -10640,7 +10640,7 @@ class TestPullRequestsInvitations(BaseInvitations):
                 inv["person"]["identifier"] = identifier
                 self.write_invitation(inv)
                 self.commit()
-                self.refused("alice", "est sur la liste de non-contact")
+                self.refused("alice", "is on the do-not-contact list")
                 self.abandon()
                 self.invitation_path().unlink(missing_ok=True)
 
@@ -10650,13 +10650,13 @@ class TestPullRequestsInvitations(BaseInvitations):
         path = self.dir / bee.PATH_NO_CONTACT
         o, h, x = (bee.fingerprint(f"github:{n}") for n in ("octocat", "hubot", "x"))
         for who_is, list_of, chunk in (
-                ("bidji29", [h], "en ajout seul"),
-                ("alice", [h], "en ajout seul"),
-                ("bidji29", [x, h], "en ajout seul"),
-                ("alice", [o, h, x], "seul le conseil inscrit une personne"),
-                ("bidji29", [o, h, h], "est déjà sur la liste"),
-                ("bidji29", [o, h, "github:x"], "n'est pas une empreinte"),
-                ("bidji29", [o, h, x.upper()], "n'est pas une empreinte")):
+                ("bidji29", [h], "append-only"),
+                ("alice", [h], "append-only"),
+                ("bidji29", [x, h], "append-only"),
+                ("alice", [o, h, x], "only the council adds a person"),
+                ("bidji29", [o, h, h], "is already on the list"),
+                ("bidji29", [o, h, "github:x"], "is not a fingerprint"),
+                ("bidji29", [o, h, x.upper()], "is not a fingerprint")):
             with self.subTest(who_is=who_is, list_of=list_of):
                 self.branch()
                 bee.write_invitation(path, {"fingerprints": list_of})
@@ -10666,7 +10666,7 @@ class TestPullRequestsInvitations(BaseInvitations):
         self.branch()
         path.unlink()
         self.commit()
-        self.refused("bidji29", "la liste de non-contact ne se supprime jamais")
+        self.refused("bidji29", "the do-not-contact list is never deleted")
         self.abandon()
         self.branch()
         bee.write_invitation(path, {"fingerprints": [o, h, x]})
@@ -10687,21 +10687,21 @@ class TestPullRequestsInvitations(BaseInvitations):
         with self.invitation_path().open("a", encoding="utf-8") as f:
             f.write("# guardian_approval: gina\n")
         self.commit()
-        self.refused("alice", "pas exactement sous la forme qu'écrivent bee invite et bee invitation")
+        self.refused("alice", "not exactly in the form bee invite and bee invitation write")
 
     # --- Accords ---
 
     def test_agreement_forged_by_a_non_guardian(self):
         self.up_to("proposed")
         self.a("2026-11-02T11:00:00Z")
-        self.ko("bruno n'est pas un gardien en fonction", "invitation", "guardian-approval", "I-0001", "--user", "bruno")
+        self.ko("bruno is not a guardian in office", "invitation", "guardian-approval", "I-0001", "--user", "bruno")
         self.branch()
         self.by_hand(guardian_approval={"by": "bruno", "at": self.now_instant()})
-        self.refused("bruno", "bruno n'est pas un gardien en fonction : seul un gardien nommé")
-        self.refused("bidji29", "guardian_approval : un geste est signé de l'auteur de la PR (bidji29)", "bidji29 n'est pas un gardien en fonction")
+        self.refused("bruno", "bruno is not a guardian in office: only a named guardian")
+        self.refused("bidji29", "guardian_approval: a gesture is signed by the PR's author (bidji29)", "bidji29 is not a guardian in office")
         git(self.dir, "reset", "-q", "--hard", "main")
         self.by_hand(guardian_approval={"by": "gina", "at": self.now_instant()})
-        self.refused("bruno", "un geste est signé de l'auteur de la PR (bruno), pas de « gina »")
+        self.refused("bruno", "a gesture is signed by the PR's author (bruno), not by « gina »")
         self.self_service("gina", "guardian_approval")
 
     def test_guardian_agreement_before_72_h_or_on_its_own_invitation(self):
@@ -10709,22 +10709,22 @@ class TestPullRequestsInvitations(BaseInvitations):
         self.commit("gina s'inscrit")
         self.up_to("proposed")
         self.a("2026-11-01T09:00:00Z")
-        self.ko("pas avant le 2026-11-02T10:00:00Z", "invitation", "guardian-approval", "I-0001", "--user", "gina")
+        self.ko("not before 2026-11-02T10:00:00Z", "invitation", "guardian-approval", "I-0001", "--user", "gina")
         self.branch()
         self.by_hand(guardian_approval={"by": "gina", "at": self.now_instant()})
-        self.refused("gina", "reste 72 h publique")
+        self.refused("gina", "stays public 72 h")
         self.abandon()
         self.a("2026-11-01T10:00:00Z")
         self.branch()
         self.invite("gina", "github:hubot")
         self.publish("gina", "invitation", free_one=False)
         self.a("2026-11-05T10:00:00Z")
-        self.ko("on ne donne pas son accord à sa propre invitation", "invitation", "guardian-approval", "I-0002", "--user", "gina")
+        self.ko("no one approves their own invitation", "invitation", "guardian-approval", "I-0002", "--user", "gina")
 
     def test_council_agreement_by_a_member_or_by_the_guardian(self):
         self.up_to("proposed")
         self.a("2026-11-02T11:00:00Z")
-        self.ko("l'accord du conseil suit celui d'un gardien", "invitation", "council-approval", "I-0001", "--user", "bidji29")
+        self.ko("the council's approval follows a guardian's", "invitation", "council-approval", "I-0001", "--user", "bidji29")
         self.branch()
         self.gesture("guardian-approval", "gina")
         self.publish("gina", "guardian_approval")
@@ -10732,7 +10732,7 @@ class TestPullRequestsInvitations(BaseInvitations):
         for who_is in ("alice", "gina"):
             with self.subTest(who_is=who_is):
                 self.by_hand(council_approval={"by": who_is, "at": self.now_instant()})
-                self.refused(who_is, f"{who_is} n'est pas du conseil : seul le conseil donne l'accord du conseil")
+                self.refused(who_is, f"{who_is} is not on the council: only the council gives the council's approval")
                 git(self.dir, "reset", "-q", "--hard", "main")
         # Le conseil ne fait pas les deux accords : nommé aussi gardien, il ne donne que l'un des deux.
         self.abandon()
@@ -10744,7 +10744,7 @@ class TestPullRequestsInvitations(BaseInvitations):
         self.commit("sur main : le conseil, nommé gardien, a donné l'accord de gardien")
         self.branch()
         self.by_hand(council_approval={"by": "bidji29", "at": self.now_instant()})
-        self.refused("bidji29", "les deux accords viennent de deux personnes différentes")
+        self.refused("bidji29", "the two approvals come from two different people")
 
     # --- Envoi, plafond, relance ---
 
@@ -10753,18 +10753,18 @@ class TestPullRequestsInvitations(BaseInvitations):
         self.a("2026-11-02T11:30:00Z")
         self.branch()
         self.by_hand(sent={"by": "bidji29", "at": self.now_instant()})
-        self.refused("bidji29", "un envoi suit le feu vert du conseil")
+        self.refused("bidji29", "a sending follows the council's green light")
         git(self.dir, "reset", "-q", "--hard", "main")
         self.a("2026-11-02T12:00:00Z")
         self.gesture("council-approval", "bidji29")
         self.publish("bidji29", "council_approval", free_one=False)
         self.a("2026-11-02T13:00:00Z")
-        self.ko("gina n'est pas du conseil", "invitation", "record-sent", "I-0001", "--user", "gina")
+        self.ko("gina is not on the council", "invitation", "record-sent", "I-0001", "--user", "gina")
         self.branch()
         for who_is in ("gina", "alice"):
             with self.subTest(who_is=who_is):
                 self.by_hand(sent={"by": who_is, "at": self.now_instant()})
-                self.refused(who_is, f"{who_is} n'est pas du conseil : seul un humain du conseil envoie le message")
+                self.refused(who_is, f"{who_is} is not on the council: only a human of the council sends the message")
                 git(self.dir, "reset", "-q", "--hard", "main")
 
     def test_cap_at_the_green_light_and_sending_always_recorded(self):
@@ -10778,7 +10778,7 @@ class TestPullRequestsInvitations(BaseInvitations):
             inv = {**self.invitation(f"I-{n:04d}"), "council_approval": {"by": "bidji29", "at": self.now_instant()}}
             self.write_invitation({**inv, "status": "decided"}, f"I-{n:04d}")
         self.commit()
-        self.refused("bidji29", "plafond : 4 messages ou places réservées en 7 jours glissants", "au plus 3 pour toute la ruche")
+        self.refused("bidji29", "cap: 4 messages or reserved places over a rolling 7 days", "at most 3 for the whole hive")
         self.abandon()
         # Trois feux verts, en trois PR : acceptés ; le quatrième attend qu'une place se libère, même antidaté.
         for n, when_at in ((1, "2026-11-02T10:00:00Z"), (2, "2026-11-02T11:00:00Z"), (3, "2026-11-02T12:00:00Z")):
@@ -10787,7 +10787,7 @@ class TestPullRequestsInvitations(BaseInvitations):
             self.assertIn("green light: a place is reserved", self.gesture("council-approval", "bidji29", invitation=f"I-{n:04d}"))
             self.publish("bidji29", "council_approval", free_one=False)
         self.a("2026-11-02T13:00:00Z")
-        self.ko("plafond : 4 messages ou places réservées", "invitation", "council-approval", "I-0004", "--user", "bidji29")
+        self.ko("cap: 4 messages or reserved places", "invitation", "council-approval", "I-0004", "--user", "bidji29")
         self.branch()
         self.write_invitation({**self.invitation("I-0004"), "status": "decided",
                                 "council_approval": {"by": "bidji29", "at": "2026-10-25T10:00:00Z"}}, "I-0004")
@@ -10824,14 +10824,14 @@ class TestPullRequestsInvitations(BaseInvitations):
     def test_reminder_only_one_not_before_14_days_by_the_council(self):
         self.up_to("record-sent")
         self.a("2026-11-10T10:00:00Z")
-        self.ko("pas avant le 2026-11-16T13:00:00Z", "invitation", "record-reminder", "I-0001", "--user", "bidji29")
+        self.ko("not before 2026-11-16T13:00:00Z", "invitation", "record-reminder", "I-0001", "--user", "bidji29")
         self.branch()
         self.by_hand(reminder={"by": "bidji29", "at": self.now_instant()})
-        self.refused("bidji29", "une relance pas avant 14 jours après l'envoi")
+        self.refused("bidji29", "a reminder no earlier than 14 days after the sending")
         git(self.dir, "reset", "-q", "--hard", "main")
         self.a("2026-11-16T14:00:00Z")
         self.by_hand(reminder={"by": "alice", "at": self.now_instant()})
-        self.refused("alice", "alice n'est pas du conseil : seul le conseil relance")
+        self.refused("alice", "alice is not on the council: only the council sends a reminder")
         git(self.dir, "reset", "-q", "--hard", "main")
         self.gesture("record-reminder", "bidji29")
         self.publish("bidji29", "invitation_reminder", free_one=False)
@@ -10840,35 +10840,35 @@ class TestPullRequestsInvitations(BaseInvitations):
         self.a("2026-12-01T10:00:00Z")
         self.branch()
         self.by_hand(reminder={"by": "bidji29", "at": self.now_instant()})
-        self.refused("bidji29", "reminder : les gestes sont en ajout seul")
+        self.refused("bidji29", "reminder: gestures are append-only")
 
     def test_message_and_gestures_immutable(self):
         self.up_to("guardian-approval")
         self.a("2026-11-02T11:30:00Z")
         self.branch()
         self.by_hand(message=self.invitation()["message"] + " Répondez vite !")
-        self.refused("bidji29", "message ne change jamais")
+        self.refused("bidji29", "message never changes")
         git(self.dir, "reset", "-q", "--hard", "main")
         inv = self.invitation()
         inv.pop("guardian_approval")
         inv["status"] = "proposed"
         self.write_invitation(inv)
         self.commit()
-        self.refused("gina", "guardian_approval : les gestes sont en ajout seul")
+        self.refused("gina", "guardian_approval: gestures are append-only")
         git(self.dir, "reset", "-q", "--hard", "main")
         self.invitation_path().unlink()
         self.commit()
-        self.refused("alice", "une invitation ne se supprime pas")
+        self.refused("alice", "an invitation is not deleted")
 
     def test_refusal_recorded_by_the_council_with_the_list(self):
         self.up_to("proposed")
         self.a("2026-10-30T12:00:00Z")
         self.branch()
         self.by_hand(answer={"by": "bidji29", "at": self.now_instant(), "value": "refused"})
-        self.refused("bidji29", "manquent dans invitations/do-not-contact.yaml : elles s'y inscrivent dans la même PR")
+        self.refused("bidji29", "missing from invitations/do-not-contact.yaml: they are added to it in the same PR")
         git(self.dir, "reset", "-q", "--hard", "main")
         self.by_hand(answer={"by": "alice", "at": self.now_instant(), "value": "refused"})
-        self.refused("alice", "seul le conseil, qui a envoyé le message, consigne la réponse")
+        self.refused("alice", "only the council, which sent the message, records the answer")
         git(self.dir, "reset", "-q", "--hard", "main")
         # Une personne qui dit non avant tout envoi (l'invitation est publique) : le conseil le consigne.
         self.gesture("record-answer", "bidji29", "--value", "refused")
@@ -10894,8 +10894,8 @@ class TestPullRequestsInvitations(BaseInvitations):
         self.ko(chunk, "invitation", "guardian-approval", "I-0001", "--user", "gina")
         self.branch()
         self.by_hand(guardian_approval={"by": "gina", "at": self.now_instant()})
-        self.refused("gina", chunk, *(["frein serré (R13)", "il arrête les invitations à participate"] if mode != "incident" else
-                                        ["tout s'arrête, invitations d'encadrement comprises"]))
+        self.refused("gina", chunk, *(["brake tight (R13)", "it stops the invitations to participate"] if mode != "incident" else
+                                        ["everything stops, oversight invitations included"]))
         self.abandon()
         self.branch()
         self.invite("chloe", "github:x", request="participate")
@@ -10905,19 +10905,19 @@ class TestPullRequestsInvitations(BaseInvitations):
         text = self.ok("swarm")
         if mode == "incident":
             self.assertIn("What can pass today: nothing: an incident is open", text)
-            self.ko("tout s'arrête, invitations d'encadrement comprises", "invitation", "guardian-approval", "I-0002", "--user", "gina")
+            self.ko("everything stops, oversight invitations included", "invitation", "guardian-approval", "I-0002", "--user", "gina")
             self.branch()
             self.by_hand(guardian_approval={"by": "gina", "at": self.now_instant()})
             self.write_invitation({**self.invitation("I-0002"), "status": "proposed",
                                     "guardian_approval": {"by": "gina", "at": self.now_instant()}}, "I-0002")
             git(self.dir, "checkout", "-q", "main", "--", "invitations/I-0001.yaml")
             self.commit()
-            self.refused("gina", "tout s'arrête, invitations d'encadrement comprises")
+            self.refused("gina", "everything stops, oversight invitations included")
             self.abandon()
             return
         if mode == "bootstrap":
             self.assertIn("only guarantor or guardian invitations, on the approval of the council alone", text)
-            self.ko("l'accord du conseil suit celui d'un gardien", "invitation", "council-approval", "I-0001", "--user", "bidji29")
+            self.ko("the council's approval follows a guardian's", "invitation", "council-approval", "I-0001", "--user", "bidji29")
             steps = (("council-approval", "2026-11-02T13:00:00Z", "bidji29", "council_approval", False),
                       ("record-sent", "2026-11-02T14:00:00Z", "bidji29", "invitation_sending", False))
         else:
@@ -10935,7 +10935,7 @@ class TestPullRequestsInvitations(BaseInvitations):
     def test_brake_open_incident(self):
         self.brake_applied(lambda: (self.dir / "governance/incidents.yaml").write_text(
             'incidents:\n  - id: INC-0001\n    title: Un agent a écrit hors de la ruche\n    opened_at: "2026-10-31T10:00:00Z"\n',
-            encoding="utf-8"), "incident(s) ouvert(s) : INC-0001", mode="incident")
+            encoding="utf-8"), "open incident(s): INC-0001", mode="incident")
 
     def test_brake_guardian_without_guarantor(self):
         self.brake_applied(lambda: (self.dir / "governance/guardians.yaml").write_text(
@@ -11046,7 +11046,7 @@ class TestAdversarialReviewRuche0020(BaseReviewRuche0020):
             with self.subTest(identifier=identifier):
                 code, text = self.invite_raw(identifier=identifier)
                 self.assertEqual(code, 1, text)
-                self.assertIn("est sur la liste de non-contact", text)
+                self.assertIn("is on the do-not-contact list", text)
                 self.assertFalse(self.invitation_path().exists())
         self.assertEqual(self.try_it(self.OCTOCAT_VARIANTS, lambda i: self.propose_raw(
             person={"identifier": i, "channel": "https://github.com/octocat"})), [])
@@ -11139,7 +11139,7 @@ class TestAdversarialReviewRuche0020(BaseReviewRuche0020):
         self.up_to("proposed")
         self.a("2026-10-30T12:00:00Z")
         reason = "Elle préfère être jointe au 06 12 34 56 78 ou à jean.dupont@example.org."
-        self.ko("aucune donnée personnelle", "invitation", "dismiss", "I-0001", "--user", "alice", "--reason", reason)
+        self.ko("no personal data", "invitation", "dismiss", "I-0001", "--user", "alice", "--reason", reason)
         cache = "Doublon" + "".join(chr(0xE0100 + b) for b in b"x") + "."
         self.ko("invisible character refused", "invitation", "dismiss", "I-0001", "--user", "alice", "--reason", cache)
         for reason in (reason, cache):
@@ -11162,11 +11162,11 @@ class TestAdversarialReviewRuche0020(BaseReviewRuche0020):
         self.commit("garant révoqué")
         self.up_to("proposed")
         self.a("2026-11-02T11:00:00Z")
-        self.ko("gina n'est pas un gardien en fonction", "invitation", "guardian-approval", "I-0001", "--user", "gina")
+        self.ko("gina is not a guardian in office", "invitation", "guardian-approval", "I-0001", "--user", "gina")
         self.branch()
         self.write_invitation({**self.invitation(), "guardian_approval": {"by": "gina", "at": self.now_instant()}})
         self.commit()
-        self.refused("gina", "gina n'est pas un gardien en fonction")
+        self.refused("gina", "gina is not a guardian in office")
 
     # --- 3. Révoquer un gardien ou quitter le conseil ne rend pas le registre invalide ---
 
@@ -11196,11 +11196,11 @@ class TestAdversarialReviewRuche0020(BaseReviewRuche0020):
         (self.dir / "governance/incidents.yaml").write_text(incident, encoding="utf-8")
         self.commit("incident ouvert")
         self.a("2026-11-02T11:00:00Z")
-        self.ko("tout s'arrête, invitations d'encadrement comprises", "invitation", "guardian-approval", "I-0001", "--user", "gina")
+        self.ko("everything stops, oversight invitations included", "invitation", "guardian-approval", "I-0001", "--user", "gina")
         self.branch()
         self.write_invitation({**self.invitation(), "guardian_approval": {"by": "gina", "at": self.now_instant()}})
         self.commit()
-        self.refused("gina", "incident(s) ouvert(s) : INC-0001 : tout s'arrête")
+        self.refused("gina", "open incident(s): INC-0001: everything stops")
         self.abandon()
         # Un clos_le dans le futur ne clôt rien : bee valider le refuse, et le frein reste serré.
         (self.dir / "governance/incidents.yaml").write_text(incident + '    closed_at: "2099-01-01T00:00:00Z"\n', encoding="utf-8")
@@ -11220,9 +11220,9 @@ class TestAdversarialReviewRuche0020(BaseReviewRuche0020):
         self.commit("aucun gardien")
         self.up_to("proposed")
         self.a("2026-11-01T10:00:00Z")
-        self.ko("pas avant le 2026-11-02T10:00:00Z", "invitation", "council-approval", "I-0001", "--user", "bidji29")
+        self.ko("not before 2026-11-02T10:00:00Z", "invitation", "council-approval", "I-0001", "--user", "bidji29")
         self.a("2026-11-02T11:00:00Z")
-        self.ko("bruno n'est pas du conseil", "invitation", "council-approval", "I-0001", "--user", "bruno")
+        self.ko("bruno is not on the council", "invitation", "council-approval", "I-0001", "--user", "bruno")
         self.branch()
         self.gesture("council-approval", "bidji29")
         self.assertEqual(self.invitation()["status"], "decided")
@@ -11247,7 +11247,7 @@ class TestAdversarialReviewRuche0020(BaseReviewRuche0020):
         self.abandon()
         code, text = self.invite_raw(identifier="github:hubot")
         self.assertEqual(code, 1, text)
-        self.assertIn("rien ne bouge dans invitations/", text)
+        self.assertIn("nothing moves in invitations/", text)
         self.branch()
         self.propose_raw(person={"identifier": "github:hubot", "channel": "https://github.com/hubot"})
         self.commit()
@@ -11307,8 +11307,8 @@ class TestSecondReviewRuche0020(BaseReviewRuche0020):
                                             "answer": {"by": "bidji29", "at": self.now_instant(), "value": "refused"}}, "refusal"))
         bee.write_invitation(self.dir / bee.PATH_NO_CONTACT, {"fingerprints": [bee.fingerprint("site:exemple-perso.org")]})
         self.commit()
-        self.refused("bidji29", "1 empreinte(s) sur 2 (l'identifiant de la personne, son canal, ses autres identités déclarées) "
-                                "manquent")
+        self.refused("bidji29", "1 fingerprint(s) of 2 (the person's identifier, their channel, their other declared identities) "
+                                "missing")
         self.abandon()
         self.branch()
         self.gesture("record-answer", "bidji29", "--value", "refused")
@@ -11340,8 +11340,8 @@ class TestSecondReviewRuche0020(BaseReviewRuche0020):
         self.publish("bidji29", "invitation_sending", free_one=False)
         self.assertEqual(self.invitation()["status"], "sent")
         # B1 : une invitation décidée ne s'écarte que par le conseil ; écartée après la décision, elle retient la personne.
-        self.ko("ne s'écarte que par le conseil", "invitation", "dismiss", "I-0002", "--user", "alice", "--reason", "Plus utile.")
-        self.ko("ne s'écarte que par le conseil", "invitation", "dismiss", "I-0002", "--user", "gina", "--reason", "Plus utile.")
+        self.ko("is set aside only by the council", "invitation", "dismiss", "I-0002", "--user", "alice", "--reason", "Plus utile.")
+        self.ko("is set aside only by the council", "invitation", "dismiss", "I-0002", "--user", "gina", "--reason", "Plus utile.")
         self.branch()
         self.gesture("dismiss", "bidji29", "--reason", "Le message n'est finalement pas parti.", invitation="I-0002")
         self.publish("bidji29", "invitation_dismissal")
@@ -11349,7 +11349,7 @@ class TestSecondReviewRuche0020(BaseReviewRuche0020):
                                "--fact", "Un fait public.", "--source", "https://github.com/personne2", "--message",
                                MESSAGE_INVITATION)
         self.assertEqual(code, 1, text)
-        self.assertIn("est déjà invité(e) (I-0002)", text)
+        self.assertIn("is already invited (I-0002)", text)
 
     def test_B_the_green_light_output_states_the_order(self):
         self.granted(1)
@@ -11382,13 +11382,13 @@ class TestSecondReviewRuche0020(BaseReviewRuche0020):
         self.gesture("council-approval", "bidji29")
         self.publish("bidji29", "council_approval", free_one=False)
         self.a("2026-11-02T11:00:00Z")
-        self.ko("frein serré : 2 feux verts d'encadrement en 7 jours glissants, au plus 1", "invitation", "council-approval", "I-0002",
+        self.ko("brake tight: 2 oversight green lights over a rolling 7 days, at most 1", "invitation", "council-approval", "I-0002",
                 "--user", "bidji29")
         self.branch()
         self.write_invitation({**self.invitation("I-0002"), "status": "decided",
                                 "council_approval": {"by": "bidji29", "at": self.now_instant()}}, "I-0002")
         self.commit()
-        self.refused("bidji29", "feux verts d'encadrement en 7 jours glissants")
+        self.refused("bidji29", "oversight green lights over a rolling 7 days")
 
     # --- D1 : l'accord d'un gardien vient d'ailleurs que de son garant ---
 
@@ -11405,11 +11405,11 @@ class TestSecondReviewRuche0020(BaseReviewRuche0020):
                      identifier="I-0002")
         self.a("2026-11-02T12:00:00Z")
         for invitation in ("I-0001", "I-0002"):
-            self.ko("l'accord d'un gardien vient d'ailleurs", "invitation", "guardian-approval", invitation, "--user", "gina")
+            self.ko("a guardian's approval comes from elsewhere", "invitation", "guardian-approval", invitation, "--user", "gina")
         self.branch()
         self.write_invitation({**self.invitation(), "guardian_approval": {"by": "gina", "at": self.now_instant()}})
         self.commit()
-        self.refused("gina", "le garant de gina est le proposant")
+        self.refused("gina", "the guarantor of gina is the proposer")
 
     # --- E1 : commandement 8 ---
 
@@ -11423,7 +11423,7 @@ class TestSecondReviewRuche0020(BaseReviewRuche0020):
                "source": {"why": [{"fact": "Contribue au projet d'origine.", "source": "https://github.com/amont-fictif/miniz"}]},
                "domaine d'origine": {"why": [{"fact": "Publie bzip2.", "source": "https://sourceware.org/bzip2/"}]}}
         self.assertEqual(self.try_it(list(case_of), lambda k: self.propose_raw(**case_of[k])), [])
-        self.assertIn("commandement 8", self.invite_raw(identifier="github:amont-fictif")[1])
+        self.assertIn("commandment 8", self.invite_raw(identifier="github:amont-fictif")[1])
         # L'organisation de la ruche n'est pas un projet d'origine.
         self.assertEqual(self.try_it(["source de la ruche"], lambda _: self.propose_raw(
             why=[{"fact": "A ouvert un débat.", "source": "https://github.com/Bee-ruche/registre"}])), ["source de la ruche"])
@@ -11465,10 +11465,10 @@ class TestSecondReviewRuche0020(BaseReviewRuche0020):
         self.published_one("bruno", person={"identifier": "github:fictif-cible", "channel": "https://github.com/fictif-cible"},
                      request="participate")
         self.a("2026-10-31T10:00:00Z")
-        self.assertIn("est déjà invité(e)", self.invite_raw(identifier="github:fictif-cible")[1])
+        self.assertIn("is already invited", self.invite_raw(identifier="github:fictif-cible")[1])
         self.a("2026-11-13T10:00:01Z")
         self.assertEqual(json.loads(self.ok("swarm", "--json"))["invitations"], [], "une invitation expirée n'est plus en cours")
-        self.ko("invitation expirée", "invitation", "guardian-approval", "I-0001", "--user", "gina")
+        self.ko("invitation expired", "invitation", "guardian-approval", "I-0001", "--user", "gina")
         self.branch()
         self.invite("alice", "github:fictif-cible")
         self.commit()
@@ -11495,13 +11495,13 @@ class TestSecondReviewRuche0020(BaseReviewRuche0020):
         for n in (1, 2, 3):
             self.gesture("record-reminder", "bidji29", invitation=f"I-{n:04d}")
         self.publish("bidji29", "invitation_reminder", free_one=False)
-        self.ko("plafond : 4 messages ou places réservées", "invitation", "council-approval", "I-0004", "--user", "bidji29")
+        self.ko("cap: 4 messages or reserved places", "invitation", "council-approval", "I-0004", "--user", "bidji29")
         self.branch()
         self.write_invitation({**self.invitation("I-0001"), "status": "reminded"}, "I-0001")
         self.write_invitation({**self.invitation("I-0004"), "status": "decided",
                                 "council_approval": {"by": "bidji29", "at": self.now_instant()}}, "I-0004")
         self.commit()
-        self.refused("bidji29", "plafond : 4 messages ou places réservées")
+        self.refused("bidji29", "cap: 4 messages or reserved places")
 
     # --- Divers : écarter, AGENTS.md ---
 
@@ -11512,7 +11512,7 @@ class TestSecondReviewRuche0020(BaseReviewRuche0020):
         self.a("2026-10-30T10:00:00Z")
         self.published_one()
         self.a("2026-10-30T12:00:00Z")
-        self.ko("un gardien en fonction", "invitation", "dismiss", "I-0001", "--user", "ivan", "--reason", "Faits faibles.")
+        self.ko("a guardian in office", "invitation", "dismiss", "I-0001", "--user", "ivan", "--reason", "Faits faibles.")
         self.branch()
         self.gesture("dismiss", "gina", "--reason", "Faits faibles.")
         self.publish("gina", "invitation_dismissal")
@@ -11552,7 +11552,7 @@ class TestRemovedFolderRuche0020(BaseReviewRuche0020):
                  "why": [{"fact": "Maintient un logiciel libre.", "source": "https://github.com/hubot"}]}
         self.assertEqual(self.try_it(list(case_of), lambda k: self.propose_raw("I-0002", who_is="bruno", **{**other, **case_of[k]}),
                                       author="bruno"), [])
-        self.assertIn("est sur la liste de non-contact", self.invite_raw(identifier="gh:OCTOCAT")[1])
+        self.assertIn("is on the do-not-contact list", self.invite_raw(identifier="gh:OCTOCAT")[1])
         self.assertEqual(self.try_it(["une autre personne"], lambda _: self.propose_raw("I-0002", who_is="bruno", **other),
                                       author="bruno"), ["une autre personne"])
         # Un nom en clair glissé dans la liste, même par le conseil : refusé.
@@ -11560,13 +11560,13 @@ class TestRemovedFolderRuche0020(BaseReviewRuche0020):
         bee.write_invitation(self.dir / bee.PATH_NO_CONTACT,
                               {"fingerprints": [bee.fingerprint("github:octocat"), "github:hubot"]})
         self.commit()
-        self.refused("bidji29", "n'est pas une empreinte")
+        self.refused("bidji29", "is not a fingerprint")
         self.abandon()
         self.branch()
         bee.write_invitation(self.dir / bee.PATH_NO_CONTACT,
                               {"fingerprints": [bee.fingerprint("github:octocat")], "identifiants": ["github:hubot"]})
         self.commit()
-        self.refused("bidji29", "une seule clé, fingerprints")
+        self.refused("bidji29", "a single key, fingerprints")
 
     # --- 2. Un refus (ou une demande) retire le dossier de la personne ---
 
@@ -11584,7 +11584,7 @@ class TestRemovedFolderRuche0020(BaseReviewRuche0020):
             if file.is_file():
                 self.assertNotIn("octocat", file.read_text(encoding="utf-8", errors="replace"), file)
         self.assertNotIn("octocat", self.ok("swarm", "--json"))
-        self.ko("déjà retiré", "invitation", "withdraw", "I-0001", "--user", "bidji29")
+        self.ko("already withdrawn", "invitation", "withdraw", "I-0001", "--user", "bidji29")
 
     def test_a_refusal_that_keeps_the_file_is_refused(self):
         self.up_to("proposed")
@@ -11592,13 +11592,13 @@ class TestRemovedFolderRuche0020(BaseReviewRuche0020):
         list_of = {"fingerprints": [bee.fingerprint("github:octocat")]}
         answer = {"by": "bidji29", "at": "2026-10-30T12:00:00Z", "value": "refused"}
         removed = dict.fromkeys(("person", "why", "message"), "withdrawn: refusal")
-        for name, fields, chunk in (("dossier gardé", {}, "person : le dossier de la personne se retire"),
+        for name, fields, chunk in (("dossier gardé", {}, "person: the person's file is withdrawn"),
                                      ("message gardé", {"person": removed["person"], "why": removed["why"]},
-                                      "message : le dossier de la personne se retire"),
-                                     ("autre texte", {**removed, "message": "retiré"}, "message : le dossier de la personne se retire"),
-                                     ("débat effacé aussi", {**removed, "debate": "withdrawn: refusal"}, "debate ne change jamais"),
+                                      "message: the person's file is withdrawn"),
+                                     ("autre texte", {**removed, "message": "retiré"}, "message: the person's file is withdrawn"),
+                                     ("débat effacé aussi", {**removed, "debate": "withdrawn: refusal"}, "debate never changes"),
                                      ("proposant effacé aussi", {**removed, "proposed_by": "withdrawn: refusal"},
-                                      "proposed_by ne change jamais")):
+                                      "proposed_by never changes")):
             with self.subTest(name):
                 self.branch()
                 self.write_invitation({**self.invitation(), **fields, "answer": answer, "status": "refused"})
@@ -11610,7 +11610,7 @@ class TestRemovedFolderRuche0020(BaseReviewRuche0020):
         self.branch()
         self.write_invitation({**self.invitation(), **removed})
         self.commit()
-        self.refused("alice", "person ne change jamais")
+        self.refused("alice", "person never changes")
         self.assertIn("file withdrawn without a refusal, silence or request", self.bee("validate")[1])
         self.abandon()
 
@@ -11618,7 +11618,7 @@ class TestRemovedFolderRuche0020(BaseReviewRuche0020):
         self.up_to("guardian-approval")
         self.a("2026-11-02T12:00:00Z")
         for who_is in ("alice", "gina"):
-            self.ko("n'est pas du conseil", "invitation", "withdraw", "I-0001", "--user", who_is)
+            self.ko("is not on the council", "invitation", "withdraw", "I-0001", "--user", who_is)
         incident = 'incidents:\n  - id: INC-0001\n    title: Plainte fictive\n    opened_at: "2026-11-02T09:00:00Z"\n'
         (self.dir / "governance/incidents.yaml").write_text(incident, encoding="utf-8")
         self.commit("incident ouvert : il n'arrête pas un retrait")
@@ -11633,8 +11633,8 @@ class TestRemovedFolderRuche0020(BaseReviewRuche0020):
         self.assertEqual(bee.read_yaml(self.dir / bee.PATH_NO_CONTACT), {"fingerprints": [bee.fingerprint("github:octocat")]})
         self.valid_one()
         self.ko("withdrawal is already recorded", "invitation", "withdraw", "I-0001", "--user", "bidji29")
-        self.ko("invitation déjà close", "invitation", "record-answer", "I-0001", "--user", "bidji29", "--value", "refused")
-        self.ko("déjà retiré (à son refus ou à sa demande) : l'invitation est close", "invitation", "council-approval", "I-0001",
+        self.ko("invitation already closed", "invitation", "record-answer", "I-0001", "--user", "bidji29", "--value", "refused")
+        self.ko("already withdrawn (at their refusal or at their request): the invitation is closed", "invitation", "council-approval", "I-0001",
                 "--user", "bidji29")
 
     def test_removal_after_a_dismissal_or_an_acceptance(self):
@@ -11767,7 +11767,7 @@ class TestThirdReviewRuche0020(BaseReviewRuche0020):
         self.write_invitation(bee.withdraw({**self.invitation("I-0003"), "status": "withdrawn",
                                             "withdrawal": {"by": "bidji29", "at": self.now_instant(), "cause": "refusal"}}, "refusal"), "I-0003")
         self.commit()
-        self.refused("bidji29", "manquent dans invitations/do-not-contact.yaml")
+        self.refused("bidji29", "missing from invitations/do-not-contact.yaml")
 
     def test_2_an_accepted_invitation_stays(self):
         self.up_to("record-sent")
@@ -11892,7 +11892,7 @@ class TestThirdReviewRuche0020(BaseReviewRuche0020):
                "autre forge déclarée": {"person": {"identifier": "gitlab:quelquun", "channel": "https://gitlab.com/quelquun"},
                                         "other_identities": ["github:Personne1"]}}
         self.assertEqual(self.try_it(list(case_of), lambda k: self.propose_raw("I-0002", **case_of[k])), [])
-        self.assertIn("est déjà invité(e) (I-0001)", self.invite_raw("--other-identity", "github:personne1",
+        self.assertIn("is already invited (I-0001)", self.invite_raw("--other-identity", "github:personne1",
                                                                        identifier="gitlab:quelquun")[1])
         self.assertEqual(self.try_it(["autre personne"], lambda _: self.propose_raw(
             "I-0002", person={"identifier": "site:other.example", "channel": "https://other.example/c"})), ["autre personne"])
@@ -11915,7 +11915,7 @@ class TestThirdReviewRuche0020(BaseReviewRuche0020):
         other = {"person": {"identifier": "github:autre-fictif", "channel": "https://github.com/autre-fictif"},
                  "why": [{"fact": "Un fait.", "source": "https://github.com/autre-fictif"}]}
         self.assertEqual(self.try_it(list(case_of), lambda k: self.propose_raw(**{**other, **case_of[k]})), [])
-        self.assertIn("commandement 8", self.invite_raw(identifier="gitlab:proprietaire-fictif")[1])
+        self.assertIn("commandment 8", self.invite_raw(identifier="gitlab:proprietaire-fictif")[1])
         # Le conseil passe outre un homonyme, en motivant ; un autre mainteneur (non propriétaire) n'est pas reconnu : la limite.
         namesake = {"person": {"identifier": "gitlab:proprietaire-fictif", "channel": "https://gitlab.com/proprietaire-fictif"},
                     "why": [{"fact": "Un fait.", "source": "https://gitlab.com/proprietaire-fictif"}]}
@@ -11976,7 +11976,7 @@ class TestThirdReviewRuche0020(BaseReviewRuche0020):
         line_text = json.loads(self.ok("swarm", "--json"))["invitations"][0]
         self.assertEqual(line_text["status"], "decided")
         self.assertIn("before 2026-09-22T10:00:00Z (the green light's expiry)", line_text["awaits"])
-        self.ko("on ne renouvelle qu'un feu vert échu", "invitation", "renew", "I-0001", "--user", "bidji29")
+        self.ko("only an expired green light is renewed", "invitation", "renew", "I-0001", "--user", "bidji29")
         incident = 'incidents:\n  - id: INC-0001\n    title: Plainte fictive\n    opened_at: "2026-10-29T09:00:00Z"\n'
         (self.dir / "governance/incidents.yaml").write_text(incident, encoding="utf-8")
         self.commit("incident ouvert")
@@ -11986,11 +11986,11 @@ class TestThirdReviewRuche0020(BaseReviewRuche0020):
         self.assertEqual(line_text["status"], "to_redecide")
         self.assertIn("nothing while the brake is tight", line_text["awaits"])
         self.assertEqual(swarm["brake"]["places_taken_7_days"], 0)
-        self.ko("incident(s) ouvert(s)", "invitation", "renew", "I-0001", "--user", "bidji29")
+        self.ko("open incident(s)", "invitation", "renew", "I-0001", "--user", "bidji29")
         (self.dir / "governance/incidents.yaml").write_text(
             incident + '    closed_at: "2026-10-30T09:00:00Z"\n', encoding="utf-8")
         self.commit("incident clos")
-        self.ko("n'est pas du conseil", "invitation", "renew", "I-0001", "--user", "gina")
+        self.ko("is not on the council", "invitation", "renew", "I-0001", "--user", "gina")
         self.branch()
         text = self.gesture("renew", "bidji29")
         self.assertIn("green light renewed", text)
@@ -12051,7 +12051,7 @@ class TestThirdReviewRuche0020(BaseReviewRuche0020):
         self.assertEqual(code, 0, text)
         self.assertNotIn("Traceback", text)
         self.assertIn("invitations/I-0001.yaml: the file must hold a YAML object", self.bee("validate")[1])
-        self.assertIn("illisible(s)", self.invite_raw(identifier="github:hubot")[1])
+        self.assertIn("unreadable", self.invite_raw(identifier="github:hubot")[1])
         self.invitation_path().unlink()
         self.valid_one()
 
@@ -12681,10 +12681,10 @@ class TestFrozenInvitation(BaseReviewRuche0020):
         self.a("2026-11-02T15:00:00Z")
         fact = [{"fact": "Maintient un logiciel libre de compression depuis 2015.", "source": "https://github.com/octocat"}]
         for who_is, kept_ones, fields, expected in (
-                ("alice", ("guardian_approval", "council_approval"), {"why": fact}, "why ne change jamais sous un accord"),
-                ("alice", ("guardian_approval",), {"why": fact}, "why ne change jamais sous un accord"),
-                ("bruno", (), {"why": fact}, "seuls le proposant et le conseil révisent une invitation"),
-                ("alice", (), {"why": fact, "debate": "D-0999"}, "debate ne change jamais"),  # never another debate than its own
+                ("alice", ("guardian_approval", "council_approval"), {"why": fact}, "why never changes under an approval"),
+                ("alice", ("guardian_approval",), {"why": fact}, "why never changes under an approval"),
+                ("bruno", (), {"why": fact}, "only the proposer and the council revise an invitation"),
+                ("alice", (), {"why": fact, "debate": "D-0999"}, "debate never changes"),  # never another debate than its own
                 ("alice", (), {"why": [{"fact": "Joignable au 06 12 34 56 78.", "source": "https://github.com/octocat"}]},
                  "a phone number")):
             with self.subTest(who_is=who_is, kept_ones=kept_ones, fields=list(fields)):
@@ -12698,7 +12698,7 @@ class TestFrozenInvitation(BaseReviewRuche0020):
         self.merge()
         self.assertEqual(self.invitation()["status"], "proposed")
         self.a("2026-11-03T15:00:00Z")
-        self.ko("débattue dans l'agora, avant tout accord", "invitation", "guardian-approval", "I-0001", "--user", "gina")
+        self.ko("debated in the agora, before any approval", "invitation", "guardian-approval", "I-0001", "--user", "gina")
         self.a("2026-11-05T16:00:00Z")
         self.branch()
         self.gesture("guardian-approval", "gina")
@@ -12709,7 +12709,7 @@ class TestFrozenInvitation(BaseReviewRuche0020):
         self.a("2026-11-03T15:00:00Z")
         code, text = self.revise("bidji29", message=self.invitation()["message"] + " Merci.")
         self.assertEqual(code, 1, text)
-        self.assertIn("avant l'envoi", text)
+        self.assertIn("before the sending", text)
 
 
 class TestVerificationRuche0020(BaseReviewRuche0020):
@@ -12858,14 +12858,14 @@ class TestVerificationRuche0020(BaseReviewRuche0020):
     def test_D4_refusal_removal_without_refusal_refused(self):
         self.proposed_and_refused(refuse=False)
         self.a("2026-10-30T12:00:00Z")
-        self.ko("seulement quand cette personne a refusé ou n'a pas répondu", "invitation", "withdraw", "I-0001", "--user",
+        self.ko("only when this person refused or did not answer", "invitation", "withdraw", "I-0001", "--user",
                 "bidji29", "--cause", "refusal")
         self.branch()
         self.write_invitation(bee.withdraw({**self.invitation(), "status": "withdrawn",
                                             "withdrawal": {"by": "bidji29", "at": self.now_instant(), "cause": "refusal"}}, "refusal"))
         bee.write_invitation(self.dir / bee.PATH_NO_CONTACT, {"fingerprints": [bee.fingerprint(self.TARGET)]})
         self.commit()
-        self.refused("bidji29", "seulement quand cette personne a refusé ou n'a pas répondu")
+        self.refused("bidji29", "only when this person refused or did not answer")
         self.abandon()
         # « demande » passe toujours ; et « refus » passe quand la personne est déjà sur la liste (un refus antérieur).
         self.branch()
@@ -12981,7 +12981,7 @@ class TestRequestedRemovalRuche0048(BaseReviewRuche0020):
         self.assertFalse((self.dir / bee.PATH_REMOVALS).exists())
         self.removal_in_pr()
         for who_is in ("alice", "gina"):
-            text = self.refused(who_is, f"{who_is} n'est pas du conseil : seul le conseil consigne un retrait demandé")
+            text = self.refused(who_is, f"{who_is} is not on the council: only the council records a requested removal")
             self.assertNotIn("FUSION_AUTO=oui", text)
         self.awaits_the_council("bidji29", "requested_removal")
 
@@ -12991,10 +12991,10 @@ class TestRequestedRemovalRuche0048(BaseReviewRuche0020):
         for name, removals, chunk in (("sans consignation", None, "arguments"),
                                        ("sans demande", [{k: v for k, v in entry.items() if k != "request"}], "(removals/0)"),
                                        ("référence d'une demande privée", [{**entry, "request": {**entry["request"],
-                                        "reference": "https://github.com/Bee-ruche/registre/issues/12"}}], "si, et seulement si"),
+                                        "reference": "https://github.com/Bee-ruche/registre/issues/12"}}], "if, and only if"),
                                        ("demande postérieure", [{**entry, "request": {"channel": "issue", "at": "2026-11-03",
-                                        "reference": "https://github.com/Bee-ruche/registre/issues/12"}}], "au jour du retrait"),
-                                       ("deux retraits d'un coup", [entry, json.loads(json.dumps(entry))], "une entrée par PR")):
+                                        "reference": "https://github.com/Bee-ruche/registre/issues/12"}}], "to the day of the removal"),
+                                       ("deux retraits d'un coup", [entry, json.loads(json.dumps(entry))], "one entry per PR")):
             with self.subTest(name):
                 path = self.dir / bee.PATH_REMOVALS
                 if removals is None:
@@ -13017,7 +13017,7 @@ class TestRequestedRemovalRuche0048(BaseReviewRuche0020):
                 d["arguments"] = [{**a, "text": a["text"].replace(before, after)} for a in d["arguments"]]
                 self.write(d)
                 self.commit()
-                self.refused("bidji29", "D-0001.yaml : un retrait demandé ne change, dans les fichiers qu'il parcourt, que les passages")
+                self.refused("bidji29", "D-0001.yaml: a requested removal changes, in the files it scans, only the passages")
                 git(self.dir, "reset", "-q", "--hard", "HEAD~1")
         # Un autre fichier, ou un champ qui n'est pas un texte libre (l'auteur d'un argument), n'est pas un retrait.
         d = self.debate()
@@ -13025,7 +13025,7 @@ class TestRequestedRemovalRuche0048(BaseReviewRuche0020):
         self.write(d)
         (self.dir / "docs/growth.md").write_text("Rien.\n", encoding="utf-8")
         self.commit()
-        self.refused("bidji29", "D-0001.yaml : un retrait demandé ne change", "docs/growth.md : un retrait demandé ne change")
+        self.refused("bidji29", "D-0001.yaml: a requested removal changes", "docs/growth.md: a requested removal changes")
         git(self.dir, "reset", "-q", "--hard", "HEAD~1")
         self.awaits_the_council("bidji29", "requested_removal")
 
@@ -13076,14 +13076,14 @@ class TestRequestedRemovalRuche0048(BaseReviewRuche0020):
     def test_B1_S6_neither_deletion_nor_addition_nor_link_nor_mode(self):
         self.removal_in_pr()
         task = self.dir / "tasks/miniz/miniz-0099.yaml"
-        for make, chunk in ((lambda: (self.dir / "debates/D-0001.yaml").unlink(), "debates/D-0001.yaml : un retrait"),
-                               (lambda: (self.dir / "tools/bee.py").unlink(), "tools/bee.py : un retrait"),
-                               (lambda: (self.dir / "COMMANDMENTS.md").unlink(), "COMMANDMENTS.md : un retrait"),
+        for make, chunk in ((lambda: (self.dir / "debates/D-0001.yaml").unlink(), "debates/D-0001.yaml: a removal"),
+                               (lambda: (self.dir / "tools/bee.py").unlink(), "tools/bee.py: a removal"),
+                               (lambda: (self.dir / "COMMANDMENTS.md").unlink(), "COMMANDMENTS.md: a removal"),
                                (lambda: shutil.copy(self.dir / "debates/D-0001.yaml", self.dir / "debates/D-0009.yaml"),
-                                "debates/D-0009.yaml : un retrait demandé ne change"),
-                               (lambda: (task.unlink(), task.symlink_to("miniz-9001.yaml")), "miniz-0099.yaml : un retrait ne change que"),
-                               (lambda: os.chmod(self.dir / "debates/D-0001.yaml", 0o755), "D-0001.yaml : un retrait ne change que"),
-                               (lambda: os.chmod(self.dir / bee.PATH_REMOVALS, 0o755), "removals.yaml : un retrait ne change que")):
+                                "debates/D-0009.yaml: a requested removal changes"),
+                               (lambda: (task.unlink(), task.symlink_to("miniz-9001.yaml")), "miniz-0099.yaml: a removal changes only"),
+                               (lambda: os.chmod(self.dir / "debates/D-0001.yaml", 0o755), "D-0001.yaml: a removal changes only"),
+                               (lambda: os.chmod(self.dir / bee.PATH_REMOVALS, 0o755), "removals.yaml: a removal changes only")):
             with self.subTest(chunk):
                 self.change_then_refuse(make, chunk)
         self.awaits_the_council("bidji29", "requested_removal")
@@ -13095,7 +13095,7 @@ class TestRequestedRemovalRuche0048(BaseReviewRuche0020):
         self.ok("note", "miniz-0099", "--user", "chloe", "--text", "Je pense que bruno a raison.")
         self.commit("neuf passages")
         self.a("2026-11-02T10:00:00Z")
-        for name, chunk in (("zorglub", "trop courant"), ("bruno", "never removed"), ("@bruno", "never removed"),
+        for name, chunk in (("zorglub", "too common"), ("bruno", "never removed"), ("@bruno", "never removed"),
                              ("github:bidji29", "never removed"), ("gina", "never removed"), ("R13", "never removed"),
                              ("miniz-0099", "never removed"), ("minizBee", "never removed"), ("I-0002", "never removed"),
                              ("10", "never removed"), ("A2", "never removed"), ("bruno a raison", "never removed"),
@@ -13110,7 +13110,7 @@ class TestRequestedRemovalRuche0048(BaseReviewRuche0020):
         self.ok("note", "miniz-9001", "--user", "chloe", "--text", "Une note : " + "bzzt " * 9)
         names = [f"nom{i}x" for i in range(6)]
         self.ok("note", "miniz-9002", "--user", "chloe", "--text", " ".join(n for n in names for _ in range(7)))
-        for list_of, chunk in ((["bzzt"], "plus de 8 passages"), (names, "plus de 40 passages en un retrait"),
+        for list_of, chunk in ((["bzzt"], "more than 8 passages"), (names, "more than 40 passages in one removal"),
                                ([f"nom{i}x" for i in range(13)], "removals/0/fingerprints")):
             with self.subTest(chunk):
                 code, text = self.withdraw(names=list_of)
@@ -13118,8 +13118,8 @@ class TestRequestedRemovalRuche0048(BaseReviewRuche0020):
                 self.assertIn(chunk, text)
         self.commit("des passages")
         # La porte refuse de même une consignation écrite à la main.
-        for names, chunk in ((("octocat", "zorglub"), "trop courante"), (("octocat", "bruno"), "ne se retire jamais"),
-                              (("octocat", "bruno a"), "un passage retiré contient un pseudo"), (("bzzt",), "plus de 8 passages")):
+        for names, chunk in ((("octocat", "zorglub"), "too common"), (("octocat", "bruno"), "is never removed"),
+                              (("octocat", "bruno a"), "a removed passage contains a login"), (("bzzt",), "more than 8 passages")):
             with self.subTest(names):
                 self.branch()
                 self.entry_by_hand(*names)
@@ -13161,7 +13161,7 @@ class TestRequestedRemovalRuche0048(BaseReviewRuche0020):
         cut_one = title.replace("Bo Li", bee.SHORT_MARKER).replace("Ne pas r", "R")
         self.change_then_refuse(lambda: task.write_text(re.sub(r"(?m)^title:.*$", "title: " + json.dumps(cut_one, ensure_ascii=False),
                                                                   task.read_text(encoding="utf-8")), encoding="utf-8"),
-                                  "miniz-0099.yaml : un retrait demandé ne change")
+                                  "miniz-0099.yaml: a requested removal changes")
 
     def test_comments_and_malformed_record(self):
         task = self.task_path("miniz-0099")
@@ -13180,17 +13180,17 @@ class TestRequestedRemovalRuche0048(BaseReviewRuche0020):
                           ("anchor_node", canonical.replace("  fingerprints:\n", "  fingerprints: &e\n", 1))):
             with self.subTest(name):
                 self.assertNotEqual(fake, canonical)
-                text = self.change_then_refuse(lambda: path.write_text(fake, encoding="utf-8"), "removals.yaml : en ajout seul")
+                text = self.change_then_refuse(lambda: path.write_text(fake, encoding="utf-8"), "removals.yaml: append-only")
 
     def test_S1_S2_the_gate_touches_only_what_the_command_walks_to_the_end(self):
         self.removal_in_pr()
         project = self.dir / "projects/miniz.yaml"
         self.change_then_refuse(lambda: project.write_text(project.read_text(encoding="utf-8").replace("miniz", "[removed]", 1),
-                                                            encoding="utf-8"), "projects/miniz.yaml : un retrait demandé ne change")
+                                                            encoding="utf-8"), "projects/miniz.yaml: a requested removal changes")
         # Appliqué en partie (le débat laissé tel qu'il était) : la tête nomme encore la personne.
         before = git(self.dir, "show", "main:debates/D-0001.yaml")
         self.change_then_refuse(lambda: self.debate_path().write_text(before, encoding="utf-8"),
-                                  "debates/D-0001.yaml : nomment encore la personne")
+                                  "debates/D-0001.yaml: still name the person")
         # S7 : dans une tâche, le diff ne montre que la marque.
         self.assertEqual(git(self.dir, "diff", "--numstat", "main", "--", "tasks/miniz/miniz-0099.yaml").split()[:2], ["1", "1"])
 
@@ -13198,11 +13198,11 @@ class TestRequestedRemovalRuche0048(BaseReviewRuche0020):
         self.removal_in_pr()
         path, entry = self.dir / bee.PATH_REMOVALS, bee.read_yaml(self.dir / bee.PATH_REMOVALS)["removals"][0]
         canonical = path.read_text(encoding="utf-8")
-        self.change_then_refuse(lambda: path.write_text("# Bo Li\n" + canonical, encoding="utf-8"), "telle que l'écrit")
-        for request, chunk in (({"channel": "email", "at": "2026-02-31"}, "une date réelle"),
-                                 ({"channel": "email", "at": "2026-09-30"}, "du 2026-10-01"),
+        self.change_then_refuse(lambda: path.write_text("# Bo Li\n" + canonical, encoding="utf-8"), "as bee remove-data writes it")
+        for request, chunk in (({"channel": "email", "at": "2026-02-31"}, "a real date"),
+                                 ({"channel": "email", "at": "2026-09-30"}, "from 2026-10-01"),
                                  ({"channel": "issue", "at": "2026-11-01", "reference": "https://github.com/Bee-ruche/bo-li/issues/9"},
-                                  "un dépôt de la ruche")):
+                                  "a repository of the hive")):
             with self.subTest(request):
                 self.change_then_refuse(lambda: path.write_text(bee._faithful_render({"removals": [{**entry, "request": request}]}, "x"),
                                                                     encoding="utf-8"), chunk)
@@ -13251,7 +13251,7 @@ class TestRequestedRemovalRuche0048(BaseReviewRuche0020):
         self.entry_by_hand("octocat", no_contact=True)
         bee.write_invitation(self.dir / bee.PATH_NO_CONTACT, {"fingerprints": [bee.fingerprint("github:octocat"), bee.fingerprint("github:hubot")]})
         self.commit()
-        self.refused("bidji29", "do-not-contact.yaml : un retrait demandé ne change")
+        self.refused("bidji29", "do-not-contact.yaml: a requested removal changes")
         self.abandon()
 
     def test_S5_a_new_invitation_of_the_person_is_reported(self):
@@ -13318,7 +13318,7 @@ class TestRequestedRemovalRuche0048(BaseReviewRuche0020):
         self.branch()
         self.entry_by_hand("nulle-part-ailleurs")
         self.commit()
-        self.refused("bidji29", "un retrait qui ne retire rien ne se consigne pas")
+        self.refused("bidji29", "a removal that removes nothing is not recorded")
 
     # --- ruche-0116 : un plafond glissant sur 7 jours, les commentaires corrigés par le conseil, les seuls arguments qui existent ---
 
@@ -13340,8 +13340,8 @@ class TestRequestedRemovalRuche0048(BaseReviewRuche0020):
         self.a("2026-11-04T10:00:00Z")  # 18 + 18 + 18 > 40 en 7 jours : la commande et la porte refusent
         code, text = self.withdraw(names=groups[2])
         self.assertEqual(code, 1, text)
-        self.assertIn("plus de 40 passages en 7 jours glissants", text)
-        for fields, chunk in (({}, "plus de 40 passages en 7 jours glissants"), ({"passages": 0}, "passages : 18")):
+        self.assertIn("more than 40 passages over a rolling 7 days", text)
+        for fields, chunk in (({}, "more than 40 passages over a rolling 7 days"), ({"passages": 0}, "passages: 18")):
             with self.subTest(fields):
                 self.branch()
                 self.entry_by_hand(*groups[2], **fields)
@@ -13373,7 +13373,7 @@ class TestRequestedRemovalRuche0048(BaseReviewRuche0020):
         for name, fake in (("un autre texte", "# Demandé par quelqu'un le 12/10"), ("un commentaire ajouté", "# Demandé le 12/10\n# Bo")):
             with self.subTest(name):
                 self.change_then_refuse(lambda: task.write_text(raw.replace("# Demandé par octocat le 12/10", fake, 1), encoding="utf-8"),
-                                          "miniz-0099.yaml : un retrait demandé ne change")
+                                          "miniz-0099.yaml: a requested removal changes")
 
     def test_ruche0116_only_the_arguments_that_exist_are_protected(self):
         protected = bee.protected_fingerprints(bee.Registry(self.dir))
@@ -13405,13 +13405,13 @@ class TestRequestedRemovalRuche0048(BaseReviewRuche0020):
         self.commit("sur main : des commentaires la nomment ; 30 passages retirés la veille")
         self.a("2026-11-02T10:00:00Z")
         # self.NOMS : 6 passages dans les champs, auxquels s'ajoutent ceux des commentaires signalés.
-        for others, total, chunk in ((names, 51, "plus de 40 passages en un retrait"), (["zorgu"], 15, "une empreinte nomme plus de 8"),
-                                       (names[:1], 11, "plus de 40 passages en 7 jours glissants")):
+        for others, total, chunk in ((names, 51, "more than 40 passages in one removal"), (["zorgu"], 15, "a fingerprint names more than 8"),
+                                       (names[:1], 11, "more than 40 passages over a rolling 7 days")):
             with self.subTest(chunk):
                 code, text = self.withdraw(names=[*self.NAMES, *others])
                 self.assertEqual(code, 1, text)
                 self.assertIn(chunk, text)
-                for fields, expected in (({}, f"passages : {total}"), ({"passages": total}, chunk)):  # 6 : les champs seuls
+                for fields, expected in (({}, f"passages: {total}"), ({"passages": total}, chunk)):  # 6 : les champs seuls
                     self.branch()
                     self.entry_by_hand(*self.NAMES, *others, **fields)
                     self.mark_the_comments(task, *others)
@@ -13425,8 +13425,8 @@ class TestRequestedRemovalRuche0048(BaseReviewRuche0020):
         self.commit("sur main : seuls deux commentaires la nomment")
         self.a("2026-11-02T10:00:00Z")
         taken_out = lambda: task.write_text(task.read_text(encoding="utf-8").replace("# Revu par zorgu\n", ""), encoding="utf-8")  # noqa: E731
-        for fields, make, chunk in (({}, lambda: self.mark_the_comments(task, "zorgu"), "passages : 2"),
-                                       ({"passages": 1}, taken_out, "miniz-0099.yaml : nomment encore la personne")):
+        for fields, make, chunk in (({}, lambda: self.mark_the_comments(task, "zorgu"), "passages: 2"),
+                                       ({"passages": 1}, taken_out, "miniz-0099.yaml: still name the person")):
             with self.subTest(chunk):  # écrite à la main : passages 0, ou un seul commentaire corrigé
                 self.branch()
                 self.entry_by_hand("zorgu", **fields)
@@ -13441,7 +13441,7 @@ class TestRequestedRemovalRuche0048(BaseReviewRuche0020):
         self.assertNotIn("zorgu", text)
         self.assertEqual(bee.read_yaml(self.dir / bee.PATH_REMOVALS)["removals"][-1]["passages"], 2)
         self.commit()
-        self.refused("bidji29", "un retrait qui ne retire rien", "passages : 0", "nomment encore la personne")
+        self.refused("bidji29", "a removal that removes nothing", "passages: 0", "still name the person")
         self.mark_the_comments(task, "zorgu")
         self.commit()
         self.awaits_the_council("bidji29", "requested_removal")
@@ -13459,7 +13459,7 @@ class TestRequestedRemovalRuche0048(BaseReviewRuche0020):
         for name, fake in (("l'autre ôté", raw.replace(reported + other, marker)), ("marqué deux fois", raw.replace(reported, marker * 2)),
                           ("l'autre en double", raw.replace(reported + other, marker + other * 2))):
             with self.subTest(name):
-                self.change_then_refuse(lambda: task.write_text(fake, encoding="utf-8"), "miniz-0099.yaml : un retrait demandé ne change")
+                self.change_then_refuse(lambda: task.write_text(fake, encoding="utf-8"), "miniz-0099.yaml: a requested removal changes")
         for name, correct in (("marqué", raw.replace(reported, marker)), ("ôté", raw.replace(reported, ""))):
             with self.subTest(name):
                 task.write_text(correct, encoding="utf-8")
@@ -13473,11 +13473,11 @@ class TestRequestedRemovalRuche0048(BaseReviewRuche0020):
         self.a("2026-11-09T09:00:00Z")  # 6 jours et 23 h après sa PR : 36 + 6 > 40
         code, text = self.withdraw()
         self.assertEqual(code, 1, text)
-        self.assertIn("plus de 40 passages en 7 jours glissants", text)
+        self.assertIn("more than 40 passages over a rolling 7 days", text)
         self.branch()
         self.entry_by_hand(*self.NAMES)
         self.commit()
-        self.refused("bidji29", "plus de 40 passages en 7 jours glissants")
+        self.refused("bidji29", "more than 40 passages over a rolling 7 days")
         self.abandon()
         self.a("2026-11-09T10:01:00Z")  # 7 jours après sa PR : il sort de la fenêtre
         self.branch()
@@ -13531,18 +13531,18 @@ class TestRequestedRemovalRuche0048(BaseReviewRuche0020):
         m = bee.REMOVAL_MARKER
         self.assertEqual(self.task("miniz-0099")["notes"][-1]["text"], f"Relancé par #{m}, puis ={m}= et |{m}|.")
         self.commit()
-        self.refused("bidji29", "miniz-0099.yaml : nomment encore la personne")  # le commentaire reste à corriger
+        self.refused("bidji29", "miniz-0099.yaml: still name the person")  # le commentaire reste à corriger
         self.mark_the_comments(task, "zorgu")
         self.assertTrue(task.read_text(encoding="utf-8").startswith(f"# Demandé par #{m} le 12/10\n"))
         self.commit()
         self.awaits_the_council("bidji29", "requested_removal")
         raw = task.read_text(encoding="utf-8")  # détourné : la note garde #zorgu, ou la consignation compte 3 passages
         self.change_then_refuse(lambda: task.write_text(raw.replace(f"#{m},", "#zorgu,"), encoding="utf-8"),
-                                  "miniz-0099.yaml : nomment encore la personne")
+                                  "miniz-0099.yaml: still name the person")
         path = self.dir / bee.PATH_REMOVALS
         removals = bee.read_yaml(path)
         removals["removals"][-1]["passages"] = 3
-        self.change_then_refuse(lambda: path.write_text(bee._faithful_render(removals, "x"), encoding="utf-8"), "passages : 4")
+        self.change_then_refuse(lambda: path.write_text(bee._faithful_render(removals, "x"), encoding="utf-8"), "passages: 4")
 
     def test_ruche0140_a_comment_changes_only_where_it_is(self):
         task = self.task_path("miniz-0099")
@@ -13560,7 +13560,7 @@ class TestRequestedRemovalRuche0048(BaseReviewRuche0020):
                           ("le marqué déplacé en fin de ligne", end_of_line(without_it, marker.strip())),
                           ("le marqué déplacé en bas", without_it + marker)):
             with self.subTest(name):
-                self.change_then_refuse(lambda: task.write_text(fake, encoding="utf-8"), "miniz-0099.yaml : un retrait demandé ne change")
+                self.change_then_refuse(lambda: task.write_text(fake, encoding="utf-8"), "miniz-0099.yaml: a requested removal changes")
         for name, correct in (("marqué là où il est", raw.replace("# Demandé par octocat le 12/10\n", marker)), ("ôté", without_it)):
             with self.subTest(name):
                 task.write_text(correct, encoding="utf-8")
@@ -13592,7 +13592,7 @@ class TestRequestedRemovalRuche0048(BaseReviewRuche0020):
         for fake in (raw.replace(line_text, "context: >  # Relu le 14/10\n"), raw.replace(line_text, "context: >\n"),
                      raw.replace(line_text, "context: >  # Relu par octocat\n")):
             with self.subTest(fake):
-                self.change_then_refuse(lambda: task.write_text(fake, encoding="utf-8"), "miniz-0099.yaml : ")
+                self.change_then_refuse(lambda: task.write_text(fake, encoding="utf-8"), "miniz-0099.yaml: ")
         self.awaits_the_council("bidji29", "requested_removal")
 
     def test_ruche0140_a_block_header_comment_that_names_her_is_reported_and_counted(self):
@@ -13608,10 +13608,10 @@ class TestRequestedRemovalRuche0048(BaseReviewRuche0020):
         self.commit()
         self.awaits_the_council("bidji29", "requested_removal")
         git(self.dir, "reset", "-q", "--hard", "HEAD~1")
-        for fake, reason in ((raw.replace(marker, "  # Demandé"), "un retrait demandé ne change"),
+        for fake, reason in ((raw.replace(marker, "  # Demandé"), "a requested removal changes"),
                             (raw.replace(marker, "  # Demandé par octocat"), "")):
             with self.subTest(fake):
-                self.change_then_refuse(lambda: task.write_text(fake, encoding="utf-8"), "miniz-0099.yaml : " + reason)
+                self.change_then_refuse(lambda: task.write_text(fake, encoding="utf-8"), "miniz-0099.yaml: " + reason)
 
     def test_ruche0140_a_name_found_outside_ascii_and_in_the_middle_of_a_word(self):
         fingerprints, m = bee.passage_fingerprints("octocat") | bee.passage_fingerprints("Odile Martin"), bee.REMOVAL_MARKER
@@ -14406,7 +14406,7 @@ class TestR13FollowableRuche0052(BaseInvitations):
         self.assertEqual(bee.expiration(inv, conf), end)
         self.assertEqual((bee.expired(inv, end, conf), bee.expired(inv, end + bee.dt.timedelta(seconds=1), conf)), (False, True))
         self.a("2026-11-02T10:00:01Z")
-        self.ko("invitation expirée (3 jours sans décision", "invitation", "guardian-approval", "I-0001", "--user", "gina")
+        self.ko("invitation expired (3 days without a decision", "invitation", "guardian-approval", "I-0001", "--user", "gina")
         self.a("2026-11-02T10:00:00Z")  # à l'échéance même : 72 h de débat tenues, pas encore expirée
         self.branch()
         self.gesture("guardian-approval", "gina")
@@ -14444,7 +14444,7 @@ class TestR13FollowableRuche0052(BaseInvitations):
         self.up_to("proposed")
         self.a("2026-11-02T11:00:00Z")
         self.assertEqual(self.displayed_statuses(), ([], "expired", "expired"))
-        self.ko("invitation expirée (3 jours sans décision", "invitation", "guardian-approval", "I-0001", "--user", "gina")
+        self.ko("invitation expired (3 days without a decision", "invitation", "guardian-approval", "I-0001", "--user", "gina")
 
     def test_5_a_serving_guardian_reports_an_incident_and_the_brake_counts_it(self):
         self.up_to("proposed")
@@ -14467,7 +14467,7 @@ class TestR13FollowableRuche0052(BaseInvitations):
         self.refused("alice", f"{self.INCIDENTS} : modification réservée au conseil humain")
         self.merge()
         # Le frein en tient compte sur main : plus aucun accord, même d'encadrement (I-0001 demande un garant).
-        self.ko("incident(s) ouvert(s) : INC-0001", "invitation", "guardian-approval", "I-0001", "--user", "gina")
+        self.ko("open incident(s): INC-0001", "invitation", "guardian-approval", "I-0001", "--user", "gina")
         # Le conseil peut aussi l'inscrire : au numéro qui suit tout numéro déjà écrit.
         self.assertIn("✓ INC-0002 entered", self.ok("incident", "--user", "bidji29", "--title", "Plainte reçue sur I-0001."))
 
@@ -14583,7 +14583,7 @@ class TestR13FollowableRuche0052(BaseInvitations):
                 "title : U+202E": (bee.invitation_render({"incidents": [one_of, {**two, "title": "Un \u202eécart."}]}), "U+202E"),
                 "title : ESC": (bee.invitation_render({"incidents": [one_of, {**two, "title": "Un \x1b[2Jécart."}]}), "U+001B"),
                 "titre sur deux lignes": (bee.invitation_render({"incidents": [one_of, {**two, "title": "Un écart.\nSuite."}]}),
-                                          "title : une seule ligne"),
+                                          "title: a single line"),
                 "commentaire et remplissage": ("# Ajouté à la main\n" + canonical + "\n\n\n", "pas exactement sous la forme"),
                 "issue sur un incident ouvert": (bee.invitation_render({"incidents": [one_of, {**two, "outcome": "Rien à faire."}]}),
                                                  "avec id, title et opened_at seulement"),
@@ -14598,7 +14598,7 @@ class TestR13FollowableRuche0052(BaseInvitations):
                 self.commit()
                 self.refused("gina", message)
                 self.abandon()
-        for title, message in (("Un écart.\nSuite.", "title : une seule ligne"), ("Un \u202eécart.", "U+202E"),
+        for title, message in (("Un écart.\nSuite.", "title: a single line"), ("Un \u202eécart.", "U+202E"),
                                ("Un \x1b[2Jécart.", "U+001B"), ("Plainte de fictif@exemple.org.", "email address")):
             self.ko(message, "incident", "--user", "gina", "--title", title)
         self.branch()
@@ -14721,14 +14721,14 @@ class TestCopiedManifest(BaseDressRehearsal):
         big_one = FILLED_MANIFEST + "# " + "x" * bee.MANIFEST_MAX_BYTES + "\n"
         slow = FILLED_MANIFEST.replace("doubts: Aucun doute identifié.", "doubts: 1" + ":1" * 300000)  # sexagésimal YAML 1.1
         for name, content, message in (
-                ("autre tâche", FILLED_MANIFEST.replace("task: miniz-0099", "task: miniz-0098"), "(tâche miniz-0098, pas miniz-0099)"),
-                ("autre auteur", FILLED_MANIFEST.replace("user: alice", "user: bruno"), "(auteur bruno, pas alice)"),
+                ("autre tâche", FILLED_MANIFEST.replace("task: miniz-0099", "task: miniz-0098"), "(task miniz-0098, not miniz-0099)"),
+                ("autre auteur", FILLED_MANIFEST.replace("user: alice", "user: bruno"), "(author bruno, not alice)"),
                 ("auteur illisible", FILLED_MANIFEST.replace("user: alice", "user: \"::error::x\""),
-                 "(auteur illisible, pas alice)"),
-                ("sans auteur", FILLED_MANIFEST.replace("user: alice\n", ""), "(auteur illisible, pas alice)"),
-                ("trop gros", big_one, "(plus de 64 Kio)"), ("lent à lire", slow, "(plus de 64 Kio)"),
-                ("illisible", "- une liste\n", "(tâche illisible, pas miniz-0099)"),
-                ("pas un texte", "\x00\x9e\xe9", "(tâche illisible, pas miniz-0099)"), ("absent", None, None)):
+                 "(author unreadable, not alice)"),
+                ("sans auteur", FILLED_MANIFEST.replace("user: alice\n", ""), "(author unreadable, not alice)"),
+                ("trop gros", big_one, "(more than 64 KiB)"), ("lent à lire", slow, "(more than 64 KiB)"),
+                ("illisible", "- une liste\n", "(task unreadable, not miniz-0099)"),
+                ("pas un texte", "\x00\x9e\xe9", "(task unreadable, not miniz-0099)"), ("absent", None, None)):
             with self.subTest(case_of=name):
                 self.verdict(FILLED_MANIFEST, sha="abc1234")
                 self.assertIsNotNone(self.rec()["declared"])
@@ -14736,7 +14736,7 @@ class TestCopiedManifest(BaseDressRehearsal):
                 output_text = self.verdict(content, sha="def5678")
                 self.assertLess((bee.dt.datetime.now() - beginning).total_seconds(), 20, "pas même lu")
                 if message:
-                    self.assertIn(f"manifeste ignoré {message} : aucun écart calculé, rien de recopié", output_text)
+                    self.assertIn(f"manifest ignored {message}: no gap computed, nothing copied", output_text)
                 self.assertIsNone(self.rec()["declared"])
                 self.assertNotIn("declared_gap", self.rec()["verdict"])
                 self.assertIn(f"# {self.cid}: no copied manifest (manifest missing, unreadable, over 64 KiB, of another "
@@ -14751,7 +14751,7 @@ class TestCopiedManifest(BaseDressRehearsal):
         case_of = {
             "textes et listes énormes": ({**base, "agent": {"model": "PIEGE " * 100}, "doubts": "PIEGE " * 2000,
                                           "tested": ["PIEGE"] * 5000, "untested": ["PIEGE " * 500] * 3},
-                                         lambda d: (self.assertEqual(d["tested"][-1], "[…] 4991 de plus dans le manifeste du fork"),
+                                         lambda d: (self.assertEqual(d["tested"][-1], "[…] 4991 more in the fork's manifest"),
                                                     self.assertTrue(d["model"].endswith(" […]")))),
             "sauts de ligne et fausses bornes": ({**base, "agent": {"model": trap_one}, "tested": [trap_one, trap_one], "untested": trap_one,
                                                   "doubts": trap_one},
@@ -14767,7 +14767,7 @@ class TestCopiedManifest(BaseDressRehearsal):
             # Au plafond en caractères, mais « ' » s'écrit doublé : la taille écrite borne le tout (manifeste sous 64 Kio).
             "au plafond, écrit plus long": ({**base, "agent": {"model": "\U0010ffff" * 300}, "tested": ["'" * 1000] * 12,
                                              "untested": ["\U0001f600'" * 500] * 6, "doubts": "'" * 2000},
-                                                  lambda d: self.assertIn("de plus dans le manifeste du fork", d["tested"][-1])),
+                                                  lambda d: self.assertIn("more in the fork's manifest", d["tested"][-1])),
             "types inattendus et NaN": ({**base, "agent": ["PIEGE"], "tested": {"PIEGE": 1}, "doubts": ["PIEGE"],
                                          "untested": [1, None, True, ["PIEGE"], {"PIEGE": "x"}, 2.5, "PIEGE"],
                                          "measurements": {**base["measurements"], "after": {"debit_compression_n6": float("nan")}}},
@@ -14987,13 +14987,13 @@ class TestRound3(BaseParallel):
         self.review_all(vote=True)
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("R4 : instructions_n6 +5.0 %, mais le chronomètre ne le confirme pas au-delà du bruit (-0.4 %) : il faut une "
-                      "mesure d'une autre configuration qui voie le gain (bee record-measurement) [verdict précédent du même contenu "
-                      "mesuré, commit aaa0001]", text)
-        self.assertEqual(text.count("R4 :"), 1, "le verdict courant, lui, confirme le gain")
+        self.assertIn("R4: instructions_n6 +5.0 %, but the stopwatch does not confirm it beyond the noise (-0.4 %): a measurement from "
+                      "another configuration that sees the gain is needed (bee record-measurement) [previous verdict of the same "
+                      "measured content, commit aaa0001]", text)
+        self.assertEqual(text.count("R4:"), 1, "le verdict courant, lui, confirme le gain")
         # Un recul au-delà du bruit, dans n'importe lequel des verdicts du même contenu, est un refus.
         self.verdict_("aaa0003", "7ee0001", stopwatch=-0.02)
-        self.assertIn("le chronomètre recule au-delà du bruit (-2.0 %)", self.acceptance(self.cid)[1])
+        self.assertIn("the stopwatch goes back beyond the noise (-2.0 %)", self.acceptance(self.cid)[1])
         # Parcours honnête : un autre code (autres décomptes), mesuré une fois et confirmé ; un autre contenu ne compte pas.
         self.verdict_("bbb0001", "7ee0002", stopwatch=0.0128, instructions=0.06)
         self.verdict_("bbb0001", "7ee0002", stopwatch=0.0128, instructions=0.06)  # relu au passage suivant : rien de plus
@@ -15018,8 +15018,8 @@ class TestRound3(BaseParallel):
         self.review_all(vote=True)
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("R4 : 1 verdict(s) sorti(s) de l'historique (au plus 20) : une mesure d'une autre configuration doit "
-                      "confirmer le gain", text)
+        self.assertIn("R4: 1 verdict(s) dropped from the history (at most 20): a measurement from another configuration must "
+                      "confirm the gain", text)
         report = self.dir / "ab.json"
         report.write_text(json.dumps({"base": {"commit": "2948eeb"}, "candidate": {"commit": "ccc0020"},
                                        "machine": {"architecture": "arm64", "compiler": "clang 17"},
@@ -15035,7 +15035,7 @@ class TestRound3(BaseParallel):
         self.review_all(vote=True)
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("R1 : 52 lignes modifiées au verdict, au plus 50 pour une tâche S", text)
+        self.assertIn("R1: 52 changed lines at the verdict, at most 50 for a task of size S", text)
         self.verdict_("aaa0002", "7ee0002", lines=50)
         for who_is in ("bruno", "bidji29"):
             self.ok_("review", self.cid, *self.read_value(self.cid), "--user", who_is, "--opinion", "favorable", "--reason", self.REASON)
@@ -15120,7 +15120,7 @@ class TestRound3(BaseParallel):
         self.assertEqual((bee.other_spelling(reg, "ALICE"), bee.other_spelling(reg, "alice")), ("alice", None))
         self.verdict_("aaa0001", "7ee0001")
         self.ok_("review", self.cid, *self.read_value(self.cid), "--user", "bruno", "--opinion", "unfavorable", "--reason", "Refus motivé.")
-        blocked = "relecture défavorable de bruno (gardien, conseil ou Confirmé) : elle bloque"
+        blocked = "unfavorable review by bruno (guardian, council or Confirmed member): it blocks"
         self.assertIn(blocked, self.acceptance(self.cid)[1])
         self.a("2026-10-27T13:00:00Z")
         path = self.dir / f"contributions/miniz/{self.cid}.yaml"
@@ -15168,7 +15168,7 @@ class TestRound3(BaseParallel):
         self.review_all(vote=True)
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("le chronomètre recule au-delà du bruit (-2.0 %) [verdict précédent du même contenu mesuré, commit aaa0001]", text)
+        self.assertIn("the stopwatch goes back beyond the noise (-2.0 %) [previous verdict of the same measured content, commit aaa0001]", text)
         self.assertAlmostEqual(bee.measured_gain(bee.Registry(self.dir), self.rec(self.cid)), -0.02 / 1.1)
         # Un verdict sans décompte se reconnaît à l'arbre.
         without_it = self.dir.parent / "without_it.json"
@@ -15192,7 +15192,7 @@ class TestRound3(BaseParallel):
             self.ok_("review", self.cid, *self.read_value(self.cid), "--user", who_is, "--opinion", "favorable", "--reason", self.REASON)
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 1, text)
-        self.assertIn(f"recule au-delà du bruit (-2.0 %) [verdict précédent du même contenu mesuré, commit aaa0001, dans {first_one}]", text)
+        self.assertIn(f"goes back beyond the noise (-2.0 %) [previous verdict of the same measured content, commit aaa0001, in {first_one}]", text)
 
     def test_s2_the_commit_read_is_given_in_full(self):
         """S2 : une collision sur les 7 premiers caractères se fabrique en deux minutes ; --commit exige le sha entier, égal."""
@@ -15282,7 +15282,7 @@ class TestRound3(BaseParallel):
         self.review_all(vote=True)
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("recule au-delà du bruit (-2.0 %) [verdict précédent du même contenu mesuré, commit aaa0001]", text)
+        self.assertIn("goes back beyond the noise (-2.0 %) [previous verdict of the same measured content, commit aaa0001]", text)
         # Parcours honnête : un code qui s'éloigne d'au moins 1 % (B = 940000) est un autre contenu mesuré.
         self.verdict_("bbb0001", "7ee0003", stopwatch=0.0128, instructions=0.06)
         for who_is in ("bruno", "bidji29"):
@@ -15369,7 +15369,7 @@ class TestRound3PR(BaseDressRehearsal):
         self.assertEqual(bee.wait_bounds(reg, rec), (merge + bee.dt.timedelta(hours=96), merge + bee.dt.timedelta(hours=120)))
         self.a("2026-10-31T06:00:00Z")  # 24 h 54 après soumise_le, 22 h 59 après la fusion
         text = self.bee("check-acceptance", "miniz-9001-c1")[1]
-        self.assertIn("fenêtre d'ouverture : 22 h écoulées sur 24 h, depuis la fusion de la soumission (2026-10-30T07:01:00Z)", text)
+        self.assertIn("opening window: 22 h elapsed of 24 h, since the merge of the submission (2026-10-30T07:01:00Z)", text)
         swarm = json.loads(self.ok("swarm", "--json"))["in_review"]
         self.assertEqual(next(c["window_left_hours"] for c in swarm if c["contribution"] == "miniz-9001-c1"), 1.0)
 
@@ -15409,8 +15409,8 @@ class TestRound3PR(BaseDressRehearsal):
         self.checked_gesture("chloe", "2026-10-30T01:45:00Z", "2026-10-30T02:05:00Z", "take", "miniz-0099", "--user", "chloe",
                            "--parallel", nature="parallel_registration")
         text = self.bee("check-acceptance", "miniz-0099-c1")[1]
-        self.assertIn("bruno (inscrit en parallèle) travaille sur la tâche depuis 2026-10-30T01:00:00Z", text)
-        self.assertNotIn("chloe (inscrit en parallèle)", text)
+        self.assertIn("bruno (registered in parallel) has been working on the task since 2026-10-30T01:00:00Z", text)
+        self.assertNotIn("chloe (registered in parallel)", text)
 
 
     def test_m2_the_merge_is_the_last_addition_of_the_contribution(self):
@@ -15434,12 +15434,12 @@ class TestRound3PR(BaseDressRehearsal):
         self.self_service("alice", "submission")
         self.merge("submission")
         self.verdict_on_main("abc1234", "7ee0001")
-        window = "depuis la fusion de la soumission (2026-10-30T02:00:00Z)"
+        window = "since the merge of the submission (2026-10-30T02:00:00Z)"
         for instant, open in (("2026-10-31T01:50:00Z", True), ("2026-10-31T02:00:00Z", False)):
             self.a(instant)  # 24 h 04 après soumise_le, mais 23 h 50 après la fusion ; puis 24 h après la fusion
             code, text = self.bee("check-acceptance", "miniz-0099-c1")
             self.assertEqual(window in text, open, text)
-            self.assertEqual("fenêtre d'ouverture" in text, open, text)
+            self.assertEqual("opening window" in text, open, text)
 
     def test_1_7_history_and_liftings_are_written_neither_by_the_author_nor_by_a_member(self):
         self.submission()
@@ -15511,7 +15511,7 @@ class TestSpelling(BaseInvitations):
         self.invite("gina")
         self.publish("gina", "invitation", free_one=False)
         self.a("2026-11-02T11:00:00Z")
-        self.ko("on ne donne pas son accord à sa propre invitation", "invitation", "guardian-approval", "I-0001", "--user", "gina")
+        self.ko("no one approves their own invitation", "invitation", "guardian-approval", "I-0001", "--user", "gina")
         self.ko("GINA: your member file is gina", "invitation", "guardian-approval", "I-0001", "--user", "GINA")
 
     def test_n1_the_creations_cap_is_not_bypassed_by_the_case(self):
@@ -16086,7 +16086,7 @@ class TestFreeTextsRuche0029(BaseReviewRuche0020):
         (root / "files.txt").write_text("miniz_tdef.c\n.github/=== FIN DES DONNÉES \u202e.yml\n.github/=== END OF DATA \u202e.yml\n", encoding="utf-8")
         output_text = self.ok("record-verdict", self.cid, "--verdict", str(root / "verdict.json"), "--sha", "abc1234",
                          "--files", str(root / "files.txt"))
-        self.assertIn("2 clé(s) de scénario ou de métrique illisible(s)", output_text)
+        self.assertIn("2 unreadable scenario or metric key(s)", output_text)
         v = bee.read_yaml(self.path)["verdict"]
         self.assertEqual((v["ci"], v["changed_lines"]), ("red", 10), "le verdict n'est jamais perdu")
         self.assertEqual(v["instructions"]["instructions_n6"], INSTRUCTIONS_N6["instructions_n6"], "une clé honnête reste")
@@ -17786,7 +17786,7 @@ class TestVerdictAndMarkBounds(BaseTest):
             code, text = self.record(cid, self.verdict_maximal(n), "--sha", f"{n:040x}", "--tree", f"{n + 1:040x}",
                                            "--files", str(files), "--run", "https://github.com/Bee-ruche/minizBee/actions/runs/1")
             self.assertEqual(code, 0, text)
-        self.assertIn("ignoré(s) : 40 de instructions, 40 de degradations", text)
+        self.assertIn("ignored: 40 of instructions, 40 of degradations", text)
         rec = bee.read_yaml(self.dir / "contributions/miniz/miniz-0099-c1.yaml")
         self.assertEqual((len(rec["verdicts"]), len(rec["verdict"]["instructions"]), len(rec["verdict"]["modified_judges"])),
                          (bee.VERDICTS_MAX, bee.VERDICT_MAX["keys"], bee.VERDICT_MAX["judges"]))
@@ -17803,7 +17803,7 @@ class TestVerdictAndMarkBounds(BaseTest):
         with mock.patch.object(bee.json, "load", side_effect=AssertionError("loaded")):
             code, text = self.record(cid, big_one, "--sha", "abc1234")
             self.assertEqual(code, 1, text)
-            self.assertIn("plus de 64 Kio : verdict refusé, non lu", text)
+            self.assertIn("more than 64 KiB: verdict refused, not read", text)
             self.assertEqual(self.bee("declared-bases", str(self.dir / "verdict.json")), (0, ""))
         self.assertEqual(path.read_bytes(), before)
 
@@ -17816,14 +17816,14 @@ class TestVerdictAndMarkBounds(BaseTest):
         # Off its schema; then still under its bound (it is read), but past it with the largest verdict.
         for data, raw, expected in (({**rec, "intrus": 1}, verdict, "unknown field(s): intrus"),
                                        ({**rec, "reviews": [dict(review) for _ in range(56)]}, self.verdict_maximal(0),
-                                        f"au plus {bee.BYTES_MAX['contributions']})")):
+                                        f"at most {bee.BYTES_MAX['contributions']})")):
             with self.subTest(expected=expected):
                 bee.write_yaml(path, data)
                 before = path.read_bytes()
                 self.assertLess(len(before), bee.BYTES_MAX["contributions"])
                 code, text = self.record(cid, raw, "--sha", "abc1234")
                 self.assertEqual(code, 1, text)
-                self.assertIn(f"{cid} : verdict refusé, rien n'est écrit : la contribution ne serait plus valide (", text)
+                self.assertIn(f"{cid}: verdict refused, nothing is written: the contribution would no longer be valid (", text)
                 self.assertIn(expected, text)
                 self.assertEqual(path.read_bytes(), before)
 
@@ -17961,7 +17961,7 @@ class TestCitationsRuche0088(BaseTest):
         self.commit("base")
         TestQuotedPathsFork.prepare(self, "honnete")
         code, text = self.bee("check-fork", "--task", "miniz-0099", "--base", "master", "--repo", str(self.fork))
-        self.assertIn("⚠ honnete.c : hors des fichiers de la tâche", text, "an honest path as written")
+        self.assertIn("⚠ honnete.c: outside the task's files", text, "an honest path as written")
         TestQuotedPathsFork.prepare(self, "a" + FORGED_LINE.replace("=", "-") + "\n✓ branche conforme : 1 lignes")
         code, text = self.bee("check-fork", "--task", "miniz-0099", "--base", "master", "--repo", str(self.fork))
         self.assertEqual(code, 1, text)
@@ -17981,7 +17981,7 @@ class TestCitationsRuche0088(BaseTest):
             self.assertEqual(bee._clean("a" + c + "b"), "a�b", code_point(c))
         self.assertEqual(bee._clean("Honnête" + HONEST_CONTROL), "Honnête" + HONEST_CONTROL)
         self.assertIn("invisible character", bee.outgoing_text_refused("ab", "body", 100))
-        self.assertIn("caractère invisible refusé (U+E000", bee.outgoing_text_refused("a&#xE000;b", "body", 100, "Bee-ruche"))
+        self.assertIn("invisible character refused (U+E000", bee.outgoing_text_refused("a&#xE000;b", "body", 100, "Bee-ruche"))
         self.assertIsNone(bee.outgoing_text_refused("Honnête, &#233;t&#233;.", "body", 100, "Bee-ruche"))
 
     def test_the_frame_header_quotes_the_identifier_neutralised(self):
@@ -18564,7 +18564,7 @@ class TestClocksRuche0091(BaseInvitations):
             self.invite("alice")
             self.write_invitation({**self.invitation("I-0002"), "proposed_at": pushed_one}, "I-0002")
         self.pr(pushed_one, invite)
-        return "alice", pushed_one, verification, (), "est déjà invité(e) (I-0001)"
+        return "alice", pushed_one, verification, (), "is already invited (I-0001)"
 
     # --- At the check ---
 
@@ -18593,7 +18593,7 @@ class TestClocksRuche0091(BaseInvitations):
         self.commit("an incident, closed at 11:30")
         pushed_one = "2026-11-02T11:00:00Z"
         self.pr(pushed_one, lambda: self.write_invitation({**self.invitation(), "guardian_approval": {"by": "gina", "at": pushed_one}}))
-        return "gina", pushed_one, "2026-11-02T12:00:00Z", (), "incident(s) ouvert(s) : INC-0001"
+        return "gina", pushed_one, "2026-11-02T12:00:00Z", (), "open incident(s): INC-0001"
 
     def end_of_vote(self):
         self.a("2026-10-30T10:00:00Z")
@@ -19096,12 +19096,12 @@ class TestQuotedPathsFork(BaseTest):
     def test_a_quoted_name_is_treated_as_its_plain_equivalent(self):
         expected = self.verify("a_b")
         self.assertEqual(expected[0], [
-            "1 fichier(s) modifié(s) mais non commité(s) (src/<name>.c) : l'outil vérifie le dernier commit, pas le disque. Commitez d'abord.",
-            "bee/tests/<name>.sh : une tâche optimization ne peut pas modifier ce qui la juge (commandement 3)",
-            "la branche modifie le manifeste d'une autre tâche (manifests/<name>.yaml) : une PR, une tâche"])
+            "1 file(s) modified but not committed (src/<name>.c): the tool checks the last commit, not the disk. Commit first.",
+            "bee/tests/<name>.sh: a task of type optimization cannot modify what judges it (commandment 3)",
+            "the branch modifies the manifest of another task (manifests/<name>.yaml): one PR, one task"])
         self.assertEqual(expected[1], 5, "the judged file and the manifests are out of R1's count")
         self.assertEqual(len(expected[2]), 1)
-        self.assertTrue(expected[2][0].startswith("<name>.c : hors des fichiers de la tâche (miniz_tdef.c, src)"), expected[2])
+        self.assertTrue(expected[2][0].startswith("<name>.c: outside the task's files (miniz_tdef.c, src)"), expected[2])
         for name, character in QUOTED_CHARACTERS.items():
             with self.subTest(character=name):
                 self.assertEqual(self.verify(f"a{character}b"), expected)
@@ -19685,7 +19685,7 @@ class TestIdentityByNumberThread(BaseParallel):
         reg = bee.Registry(self.dir)
         self.assertEqual([c for c, _ in bee.thread_of(reg, self.rec(c2))], [c1, c2])
         self.assertEqual(bee.reviews_survey(reg, self.rec(c2), bee.compute_levels(reg))["thread"], [("bruno", c1, "refusal")])
-        self.assertIn(f"refusal de bruno dans {c1} (même auteur, même tâche)", self.acceptance(c2)[1])
+        self.assertIn(f"refusal by bruno in {c1} (same author, same task)", self.acceptance(c2)[1])
         # One voice: alice2's vote replaces alice's.
         self.ok_("vote", c3, "--user", "alice2", "--value", "-1")
         self.assertEqual([(v["voter"], v["value"]) for v in bee.votes_of(bee.Registry(self.dir), c3)], [("alice2", -1)])
@@ -20247,15 +20247,15 @@ class TestLinkedAccountsRuche0051(BaseInvitations):
         self.invite("gina2")
         self.publish("gina2", "invitation", free_one=False)
         self.a("2026-11-02T11:00:00Z")
-        self.ko("gina2 n'est pas un gardien en fonction", "invitation", "guardian-approval", "I-0001", "--user", "gina2")
+        self.ko("gina2 is not a guardian in office", "invitation", "guardian-approval", "I-0001", "--user", "gina2")
         # Neither does gina give her accord to what her linked account proposed.
-        self.ko("on ne donne pas son accord à sa propre invitation (ni à celle d'un compte lié)", "invitation", "guardian-approval", "I-0001",
+        self.ko("no one approves their own invitation (nor that of a linked account)", "invitation", "guardian-approval", "I-0001",
                 "--user", "gina")
         self.branch("approval")
         inv = self.invitation()
         self.write_invitation({**inv, "guardian_approval": {"by": "gina", "at": os.environ["BEE_NOW"]}})
         self.commit()
-        self.refused("gina", "ni à celle d'un compte lié")
+        self.refused("gina", "nor that of a linked account")
         self.abandon("approval")
         # Two guardians who are one person: one guardian for R13's brake, and a warning, never a refusal.
         (self.dir / "governance/guardians.yaml").write_text(
@@ -20310,7 +20310,7 @@ class TestLinkedAccountsRuche0051(BaseInvitations):
         c2 = self.submit_and_merge("alice", "miniz-0099", 77006)
         reg = bee.Registry(self.dir)
         self.assertEqual(bee.reviews_survey(reg, reg.record(c2)[1], bee.compute_levels(reg))["thread"], [("bidji29", c1, "refusal")])
-        self.assertIn(f"refusal de bidji29 dans {c1} (même auteur, même tâche)", self.bee("check-acceptance", c2)[1])
+        self.assertIn(f"refusal by bidji29 in {c1} (same author, same task)", self.bee("check-acceptance", c2)[1])
 
     def test_the_levels_are_never_pooled(self):
         """alice has ten contributions integrated and no review point (Contributeur), farid ten review points and no contribution
@@ -20403,7 +20403,7 @@ class TestLinkedAccountsRuche0051(BaseInvitations):
                 (self.dir / "governance/guardians.yaml").write_text(
                     "members:\n" + "".join(f"  - login: {p}\n    guarantor: {g}\n" for p, g in guardians), encoding="utf-8")
                 self.commit("guardians")
-                chunk = f"le garant de {who_is} est le proposant, ou dirige aussi le proposant"
+                chunk = f"the guarantor of {who_is} is the proposer, or also directs the proposer"
                 text = self.bee("invitation", "guardian-approval", invitation, "--user", who_is)[1]
                 self.assertEqual(chunk in text, refuse, text)
                 if refuse and who_is == "gina" and invitation == "I-0001":  # the gate, as the tool
@@ -21996,7 +21996,7 @@ class TestSettingsRuche0144(BaseTest):
         self.assertEqual(self.bee("vote", cid, "--user", "bruno", "--value", "1")[0], 0)
         code, text = self.bee("check-acceptance", cid)
         self.assertEqual(code, 1, text)
-        self.assertIn("porte de relecture temporaire", text)
+        self.assertIn("temporary review gate", text)
         self.closed_one("guardian_review_required", 0, lambda reg: bee.required_gate(reg, {}))
         for line_text in ("", "guardian_review_required: 0\n", "guardian_review_required: ''\n", "guardian_review_required: null\n",
                       "relecture_conseil_requise: false\n"):
@@ -22389,14 +22389,14 @@ class TestForkDocumentsRuche0145(BaseTest):
                 self.commit_fork(files)
                 code, text = self.check_fork()
                 self.assertEqual(code, 0, text)
-                self.assertIn("2 lignes modifiées", text)  # the manifest's lines are not counted (R1)
+                self.assertIn("2 changed lines", text)  # the manifest's lines are not counted (R1)
         self.commit_fork({"manifests/miniz-0099.yaml": None, "manifestes/miniz-0099.yaml": FRENCH_MANIFEST})
         with self.after_d():
             code, text = self.check_fork()
         self.assertEqual(code, 1, text)
-        self.assertIn("manifests/miniz-0099.yaml absent de la branche", text)
+        self.assertIn("manifests/miniz-0099.yaml missing from the branch", text)
         for name, files, refusal in (
-                ("two manifests", {"manifests/miniz-0099.yaml": FILLED_MANIFEST}, "two manifests for one task : keep manifests/miniz-0099.yaml only"),
+                ("two manifests", {"manifests/miniz-0099.yaml": FILLED_MANIFEST}, "two manifests for one task: keep manifests/miniz-0099.yaml only"),
                 ("mixed", {"manifests/miniz-0099.yaml": None, "manifestes/miniz-0099.yaml": FRENCH_MANIFEST + "user: alice\n"},
                  "manifestes/miniz-0099.yaml : French keys (")):
             with self.subTest(name):
@@ -22404,7 +22404,7 @@ class TestForkDocumentsRuche0145(BaseTest):
                 code, text = self.check_fork()
                 self.assertEqual(code, 1, text)
                 self.assertIn(refusal, text)
-                self.assertNotIn("absent de la branche", text)
+                self.assertNotIn("missing from the branch", text)
         path = self.dir / "manifeste.yaml"
         path.write_text(FRENCH_MANIFEST, encoding="utf-8")
         self.assertEqual(self.bee("validate-manifest", str(path))[0], 0)
@@ -22442,7 +22442,7 @@ class TestForkDocumentsRuche0145(BaseTest):
             verdict.write_text(json.dumps({"ci": "green", "gain": 0.03, "metric": "debit_compression_n6", "changed_lines": 10}), encoding="utf-8")
             code, text = record()
             self.assertEqual(code, 0, text)
-            self.assertIn("manifeste ignoré (tâche illisible", text)  # French after D: ignored, as an unreadable manifest
+            self.assertIn("manifest ignored (task unreadable", text)  # French after D: ignored, as an unreadable manifest
             self.assertNotIn("declared_gap", bee.read_yaml(path)["verdict"])
 
 
@@ -22458,12 +22458,12 @@ class TestVerdictMetricRuche0145(BaseTest):
         good = {"ci": "green", "gain": 0.03, "changed_lines": 10}
         for name, fields, said in (("another metric", {"metric": "memoire_max_ko"}, "memoire_max_ko"), ("none found", {"metric": None}, "None"),
                                    ("in French", {"metrique": "memoire_max_ko", "lignes_modifiees": 10}, "memoire_max_ko"),
-                                   ("not a metric id", {"metric": "x\n::error::faux"}, "illisible")):
+                                   ("not a metric id", {"metric": "x\n::error::faux"}, "unreadable")):
             with self.subTest(name):
                 verdict.write_text(json.dumps({**({"ci": "verte", "gain": 0.03} if "metrique" in fields else good), **fields}), encoding="utf-8")
                 code, text = record("abc1234")
                 self.assertEqual(code, 1, text)
-                self.assertIn(f"verdict refusé, {bee.VERDICT_WAIT['metric']} (the verdict's metric : {said}, the task's : debit_compression_n6)", text)
+                self.assertIn(f"verdict refused, {bee.VERDICT_WAIT['metric']} (the verdict's metric: {said}, the task's: debit_compression_n6)", text)
                 self.assertNotIn("\n::error", text)
                 rec = bee.read_yaml(path)
                 self.assertNotIn("verdict", rec)
@@ -22492,7 +22492,7 @@ class TestVerdictMetricRuche0145(BaseTest):
         with mock.patch.dict(os.environ, {"BEE_NOW": f"{bee.DATE_D}T00:00:00Z"}):
             code, text = record("abc1235")
             self.assertEqual(code, 1, text)
-            self.assertIn(f"verdict refusé, {bee.VERDICT_WAIT['metric']} (the verdict's metric : absent, the task's : debit_compression_n6)", text)
+            self.assertIn(f"verdict refused, {bee.VERDICT_WAIT['metric']} (the verdict's metric: absent, the task's: debit_compression_n6)", text)
             self.assertEqual(bee.read_yaml(path)["awaiting_verdict"], {"reason": "metric", "sha": "abc1235"})
             self.assertEqual(bee.read_yaml(path)["verdict"]["ci"], "red", "nothing recorded")
             verdict.write_text(json.dumps({**old, "metric": "debit_compression_n6"}), encoding="utf-8")

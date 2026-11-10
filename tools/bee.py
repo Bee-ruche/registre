@@ -1940,7 +1940,7 @@ def reviews_survey(reg, rec, levels):
         privileged = p in privileged_ones or level_of(levels, p) == "Confirmed"
         for r in (last_one, of_the_commit):
             if r and (r.get("confirmed_defect") or (privileged and r.get("opinion") == "unfavorable")) and not here(r):
-                survey["thread"].append((p, origin_of[id(r)], "défaut confirmé" if r.get("confirmed_defect") else "refusal"))
+                survey["thread"].append((p, origin_of[id(r)], "confirmed defect" if r.get("confirmed_defect") else "refusal"))
                 break
         if any(r.get("confirmed_defect") and here(r) for r in (last_one, of_the_commit) if r):
             survey["defects"].append(p)
@@ -4328,17 +4328,17 @@ def outgoing_text_refused(text, what_it, maximum, organization=None):
             read_items += [html.unescape(text.replace("\\&", "&amp;")), decoded_entities(text, "")]  # once, an escaped & kept
             text = decoded_entities(text, "\ufffd")
         except ValueError:  # a numeric reference longer than int() reads (&#000…64;)
-            return f"{what_it} : référence de caractère démesurée (&#…;) : écrivez le caractère lui-même"
+            return f"{what_it}: oversized character reference (&#…;): write the character itself"
     # The text as typed passed texte_recevable (probleme_texte_libre): only what its entities decode to is left to check.
     c = next((c for c in text if forbidden_outgoing_character(c)), None) if organization is not None else None
     if c is not None:
-        return (f"{what_it} : caractère invisible refusé (U+{ord(c):04X}, catégorie {unicodedata.category(c)}) : ce texte sort de la "
-                "ruche, il ne cache rien")
+        return (f"{what_it}: invisible character refused (U+{ord(c):04X}, category {unicodedata.category(c)}): this text leaves the "
+                "hive, it hides nothing")
     datum = next(filter(None, map(personal_datum, dict.fromkeys([text] + read_items[2:]))), None)  # U+FFFD, or dropped
     referral = (next(filter(None, (referral_outside_hive(read_value, organization) for read_value in read_items + [text])), None)
               if organization is not None and not datum else None)
-    return (f"{what_it} : {datum} : aucune donnée personnelle au-delà de l'identifiant public et du canal (R13)" if datum
-            else f"{what_it} : {referral} : ce texte sort de la ruche (commandements 8 et 13)" if referral else None)
+    return (f"{what_it}: {datum}: no personal data beyond the public identifier and the channel (R13)" if datum
+            else f"{what_it}: {referral}: this text leaves the hive (commandments 8 and 13)" if referral else None)
 
 
 def decoded_entities(text, abandonment):
@@ -4404,7 +4404,7 @@ def first_referral(form_text, organization):
     token = lambda m: next((word for word in (w.rstrip(")]>\"'.,;:!?") for w in form_text[m.start():].split(maxsplit=2)[:2]) if word),
                            "")[:80]  # noqa: E731  the word it starts, or the next one (a definition's target after ]:)
     if mention := MENTION_GITHUB.search(form_text):
-        return f"la mention « {mention[0][:80]} » notifierait quelqu'un sur GitHub (écrivez le nom sans @)"
+        return f"the mention « {mention[0][:80]} » would notify someone on GitHub (write the name without @)"
     labels = None
     for reason in REFERRALS:
         for m in reason.finditer(form_text):
@@ -4421,16 +4421,16 @@ def first_referral(form_text, organization):
     for m in LINK_OR_HOST.finditer(form_text):
         address = decode_url(re.sub(r"(?i)^(?!https?://)", "https://", m[0])).replace("\\", "/")  # as a browser reads it
         if on_hosts(host_of(address), OPAQUE_GITHUB_HOSTS):
-            return f"« {token(m)} » mène vers GitHub sans dire où (raccourci ou éditeur) : donnez l'adresse github.com/…"
+            return f"« {token(m)} » leads to GitHub without saying where (shortener or editor): give the github.com/… address"
         forges = {c for c in address_keys(address) if not c.startswith("site:")}
         if forges - {f"github:{organization.casefold()}"}:
-            return f"« {token(m)} » mène hors de {organization} (seul son propriétaire GitHub est dans la ruche)"
+            return f"« {token(m)} » leads outside {organization} (only its GitHub owner is in the hive)"
         forge = forges or on_hosts(host_of(address), tuple(FORGE_DOMAINS))  # even if a < or a blank hides the owner
         if forge and SUSPECT_LINK.search(m[1]):
-            return f"« {token(m)} » cache où il mène (%xx, \\, /../ ou hôte suivi d'un point)"
+            return f"« {token(m)} » hides where it leads (%xx, \\, /../ or a host followed by a dot)"
         if forge and (end := run_end(form_text, m.start(1), seen_items)) is not None:  # the rest of its run, once
             if SUSPECT_LINK.search(form_text[m.start(1):end].replace("\x0b", "")):
-                return f"« {token(m)} » cache où il mène (%xx, \\, /../ ou hôte suivi d'un point)"
+                return f"« {token(m)} » hides where it leads (%xx, \\, /../ or a host followed by a dot)"
     return None
 
 
@@ -4446,14 +4446,14 @@ def run_end(form_text, beginning, seen_items):
 def referral_cause(reason, organization):
     """Why a pattern of REFERRALS refuses what it found, said to the bee."""
     if reason is REFERENCE_GITHUB:
-        return f"renvoie à un dépôt hors de {organization}"
+        return f"refers to a repository outside {organization}"
     if reason is RELATIVE_LINK:
-        return f"est un lien relatif qui mène hors de {organization} ou cache où il mène (.., %xx, ])"
+        return f"is a relative link that leads outside {organization} or hides where it leads (.., %xx, ])"
     if reason is HIDDEN_LINK:
-        return "cache son hôte (%xx ou \\)"
+        return "hides its host (%xx or \\)"
     if reason is SINGLE_BAR:
-        return "n'a qu'une barre : un navigateur y lit github.com/…"
-    return "liste plusieurs adresses : une image par src"
+        return "has only one slash: a browser reads github.com/… there"
+    return "lists several addresses: one image per src"
 
 
 def tag_key(label):
@@ -4525,39 +4525,39 @@ def outgoing_address_refused(address, what_it):
     ADDRESS_MAX caractères, sans identifiant dans l'autorité ni chaîne de requête, ni messagerie personnelle, ni donnée
     personnelle (une fois décodée) ; sinon la raison."""
     if not (isinstance(address, str) and re.fullmatch(r"https://[\x21-\x7e]+", address)):
-        return f"{what_it} : une adresse https://, en ASCII imprimable"
+        return f"{what_it}: an https:// address, in printable ASCII"
     authority = re.match(r"https://([^/?#]*)", address)[1]
     if len(address) > ADDRESS_MAX or "@" in authority or source_form(address):
-        return f"{what_it} : adresse invalide ou trop longue ({ADDRESS_MAX} caractères au plus, sans identifiant avant l'hôte)"
+        return f"{what_it}: invalid or too long address ({ADDRESS_MAX} characters at most, no user name before the host)"
     if "?" in address:
-        return f"{what_it} : pas de chaîne de requête (?…) : l'adresse de la page, rien d'autre"
+        return f"{what_it}: no query string (?…): the page's address, nothing else"
     if on_hosts(host_of(address), PERSONAL_HOSTS):
-        return f"{what_it} : {host_of(address)} mène à une messagerie personnelle (R13 : aucune donnée personnelle)"
+        return f"{what_it}: {host_of(address)} leads to a personal messaging service (R13: no personal data)"
     datum = personal_datum(decode_url(address))
-    return f"{what_it} : {datum} dans l'adresse (R13 : aucune donnée personnelle)" if datum else None
+    return f"{what_it}: {datum} in the address (R13: no personal data)" if datum else None
 
 
 def identifier_form(identifier):
     """(forme canonique, None) d'un identifiant public bien écrit, alias de plateforme compris (gh:octocat -> github:octocat),
     ou (None, raison)."""
     if not (isinstance(identifier, str) and re.fullmatch(r"[\x21-\x7e]+", identifier)):
-        return None, "un identifiant public s'écrit <platform>:<name>, en ASCII, sans espace (github:octocat)"
+        return None, "a public identifier is written <platform>:<name>, in ASCII, without a blank (github:octocat)"
     platform, _, name = identifier.partition(":")
     canonical = PLATFORM_ALIASES.get(platform.lower())
     if canonical is None:
-        return None, (f"plateforme « {platform} » inconnue : {', '.join(PLATFORMS)} (ni courriel, ni téléphone, ni messagerie : "
-                      "aucune donnée personnelle)")
+        return None, (f"unknown platform « {platform} »: {', '.join(PLATFORMS)} (no email, no phone, no messaging service: "
+                      "no personal data)")
     if canonical != "site":
         name = name.removeprefix("~") if canonical == "sourcehut" else name
         if not FORGE_NAME.match(name):
-            return None, f"{canonical} : un nom d'un seul segment (lettres, chiffres, - _ .), sans / ni @ (github:octocat)"
+            return None, f"{canonical}: a name of a single segment (letters, digits, - _ .), without / or @ (github:octocat)"
         return f"{canonical}:{name}", None
     name = name.lower().removeprefix("www.")
     pages = any(name.endswith("." + p) for p in FORGE_PAGES)
     if (not DOMAIN.match(name) or on_hosts(name, tuple(FORGE_HOSTS) + PERSONAL_HOSTS) or "mastodon" in name.split(".")
             or (on_hosts(name, SHARED_PLATFORMS) and not pages)):
-        return None, ("site : un nom de domaine à soi (site:exemple.org), ni une forge (github:, gitlab:, codeberg:, sourcehut:), "
-                      "ni une messagerie ou un réseau partagé (une personne qui n'est que là passe par une forge ou son domaine)")
+        return None, ("site: a domain name of one's own (site:example.org), not a forge (github:, gitlab:, codeberg:, sourcehut:), "
+                      "nor a messaging service or a shared network (a person who is only there goes through a forge or their domain)")
     return f"site:{name}", None
 
 
@@ -4570,11 +4570,11 @@ def refused_channel(identifier, channel):
     platform, _, name = canonical.partition(":")
     model = PLATFORMS[platform][1]
     if model:
-        return None if channel == model.format(name) else f"channel : {model.format(name)}, l'adresse publique de {canonical}, rien d'autre"
+        return None if channel == model.format(name) else f"channel: {model.format(name)}, the public address of {canonical}, nothing else"
     problem_text = outgoing_address_refused(channel, "channel")
     if problem_text:
         return problem_text
-    return None if host_of(channel) == name else f"channel : une page de {name}, le site de la personne"
+    return None if host_of(channel) == name else f"channel: a page of {name}, the person's site"
 
 
 def person_key(identifier):
@@ -4912,7 +4912,7 @@ def incident_title_refused(title):
     une seule ligne, 300 caractères au plus, rien de caché ni de personnel, contrôlé comme ce qui sort de la ruche ; sinon la
     raison. Limite : un nom de personne n'est pas reconnu ; une invitation se désigne par son numéro."""
     if isinstance(title, str) and re.search(r"[\r\n]", title):
-        return "title : une seule ligne"
+        return "title: a single line"
     return outgoing_text_refused(title, "title", 300)
 
 
@@ -5086,15 +5086,15 @@ def invitation_refusal(reg, inv, council=False, instant=None):
     identifier = person.get("identifier")
     canonical, problem_text = identifier_form(identifier)
     if problem_text or canonical != identifier:
-        refusal.append(f"identifier « {_clean(identifier)} » : {problem_text or f'il s’écrit {canonical}'}")
+        refusal.append(f"identifier « {_clean(identifier)} »: {problem_text or f'it is written {canonical}'}")
     if set(person) != {"identifier", "channel"}:
-        refusal.append("person : son identifiant public et le canal qu'elle publie elle-même, rien d'autre (R13)")
+        refusal.append("person: their public identifier and the channel they publish themselves, nothing else (R13)")
     problem_text = refused_channel(identifier, person.get("channel"))
     if problem_text:
         refusal.append(problem_text)
     why = inv.get("why") if isinstance(inv.get("why"), list) else []
     if not 1 <= len(why) <= WHY_MAX:
-        refusal.append(f"why : de 1 à {WHY_MAX} faits publics, chacun avec sa source")
+        refusal.append(f"why: 1 to {WHY_MAX} public facts, each with its source")
     texts_of = [("message", inv.get("message"), conf["message_max"])]
     for i, f in enumerate(why[:WHY_MAX]):
         f = f if isinstance(f, dict) else {}
@@ -5108,46 +5108,46 @@ def invitation_refusal(reg, inv, council=False, instant=None):
             refusal.append(problem_text)
     request, message = inv.get("request"), inv.get("message")
     if request not in REQUESTS:
-        refusal.append(f"request : {', '.join(REQUESTS)}")
+        refusal.append(f"request: {', '.join(REQUESTS)}")
     elif isinstance(message, str):
         if not any(m in message for m in mentions_invitation(reg, request).values()):
-            refusal.append(f"message : il porte, mot pour mot, la mention de R13 et la phrase de sa demande (« {request} ») : bee "
-                         "invite les ajoute")
+            refusal.append(f"message: it carries, word for word, the mention of R13 and the sentence of its request (« {request} »): "
+                         "bee invite adds them")
         # Une seule phrase « Ce qui vous est demandé », celle de la mention, sous aucune autre variante (espaces insécables,
         # espaces autour des deux-points, casse, accents, abrégée : troisième revue adverse, C6).
         compare = compared_form(message)
         n = sum(compare.count(beginning) for beginning in REQUEST_STARTS)
         if n > 1:
-            refusal.append(f"message : {n} phrases « Ce qui vous est demandé » (sous une forme ou une autre) : une seule, la phrase fixe "
-                         f"de sa demande (« {request} »), que bee invite ajoute")
+            refusal.append(f"message: {n} sentences « Ce qui vous est demandé » (in one form or another): only one, the fixed sentence "
+                         f"of its request (« {request} »), which bee invite adds")
     other_identities = inv.get("other_identities")
     if other_identities is not None:
         # Les autres identités de la personne, déclarées explicitement (troisième revue adverse, C3) : identifiants publics sous
         # leur forme canonique, distincts, au plus AUTRES_IDENTITES_MAX ; inscrits sur la liste à son refus.
         if not (isinstance(other_identities, list) and 1 <= len(other_identities) <= OTHER_IDENTITIES_MAX):
-            refusal.append(f"other_identities : de 1 à {OTHER_IDENTITIES_MAX} identifiants publics de la même personne, ou rien")
+            refusal.append(f"other_identities: 1 to {OTHER_IDENTITIES_MAX} public identifiers of the same person, or nothing")
         else:
             views = {person_key(identifier)}
             for x in other_identities:
                 form_text, problem_text = identifier_form(x)
                 if problem_text or form_text != x:
-                    refusal.append(f"other_identities : « {_clean(x)} » : {problem_text or f'il s’écrit {form_text}'}")
+                    refusal.append(f"other_identities: « {_clean(x)} »: {problem_text or f'it is written {form_text}'}")
                 elif person_key(x) in views:
-                    refusal.append(f"other_identities : « {_clean(x)} » désigne une identité déjà déclarée")
+                    refusal.append(f"other_identities: « {_clean(x)} » names an identity already declared")
                 views.add(person_key(x))
     refusal += invitation_debate_refusal(reg, inv, approval=False)
     unreadables = unreadable_invitations(reg)
     if unreadables:
-        refusal.append(f"illisible(s) : {', '.join(unreadables)} : rien ne bouge dans invitations/ tant que le conseil ne l'a pas réparé")
+        refusal.append(f"unreadable: {', '.join(unreadables)}: nothing moves in invitations/ until the council has repaired it")
     identities, own_ones, list_of, origins = identities_of(inv), own_identities(inv), not_contacted(reg), original_keys(reg)
     # Comparée par empreintes : celles de l'identifiant, du canal, des autres identités et de ce que désignent les sources.
     if on_the_list(identities, list_of):
-        refusal.append(f"{', '.join(on_the_list(identities, list_of))} : la personne est sur la liste de non-contact ({PATH_NO_CONTACT}), "
-                     "par une identité, son canal ou une source : un refus est définitif (R13)")
+        refusal.append(f"{', '.join(on_the_list(identities, list_of))}: the person is on the do-not-contact list ({PATH_NO_CONTACT}), "
+                     "through an identity, their channel or a source: a refusal is final (R13)")
     origin_of = identities & origins
     if origin_of:
-        refusal.append(f"{', '.join(sorted(origin_of))} : tient à un projet d'origine (upstream_repo de projects/) : aucun contact sans son "
-                     "accord explicite (commandement 8)")
+        refusal.append(f"{', '.join(sorted(origin_of))}: belongs to an upstream project (upstream_repo of projects/): no contact without its "
+                     "explicit agreement (commandment 8)")
     # Homonymes : un nom de la liste, ou d'un propriétaire de dépôt d'origine, sous une autre forge (troisième revue, C5) ; seul
     # le conseil passe outre, en motivant pourquoi ce n'est pas la même personne.
     variants_of = {f"{p}:{c.partition(':')[2]}" for c in own_ones if not c.startswith("site:") and c.partition(":")[2]
@@ -5157,19 +5157,19 @@ def invitation_refusal(reg, inv, council=False, instant=None):
     if namesakes:
         if not council:
             if namesakes_list:
-                refusal.append(f"{', '.join(namesakes_list)} : ce nom est sur la liste de non-contact sous une autre forge ; seul le "
-                             "conseil peut passer outre, en motivant (homonyme)")
+                refusal.append(f"{', '.join(namesakes_list)}: this name is on the do-not-contact list under another forge; only the "
+                             "council can override it, giving its reason (namesake)")
             if namesakes_origin:
-                refusal.append(f"{', '.join(namesakes_origin)} : ce nom tient à un projet d'origine sous une autre forge (commandement "
-                             "8) ; seul le conseil peut passer outre, en motivant (homonyme)")
+                refusal.append(f"{', '.join(namesakes_origin)}: this name belongs to an upstream project under another forge (commandment "
+                             "8); only the council can override it, giving its reason (namesake)")
         elif not isinstance(inv.get("namesake"), str):
-            refusal.append("namesake : le conseil qui passe outre motive pourquoi ce n'est pas la même personne")
+            refusal.append("namesake: the council that overrides it says why it is not the same person")
     elif "namesake" in inv:
-        refusal.append("namesake : seulement quand le nom est sur la liste ou tient à un projet d'origine sous une autre forge, et par "
-                     "le conseil")
+        refusal.append("namesake: only when the name is on the list or belongs to an upstream project under another forge, and by "
+                     "the council")
     if "namesake" in inv:
         if not council:
-            refusal.append("namesake : seul le conseil passe outre la liste de non-contact ou le commandement 8")
+            refusal.append("namesake: only the council overrides the do-not-contact list or commandment 8")
         # Le motif est publié avec l'invitation : contrôlé comme un message (troisième revue adverse).
         problem_text = outgoing_text_refused(inv.get("namesake"), "namesake", config_notes(reg)["text_max"])
         if problem_text:
@@ -5180,8 +5180,8 @@ def invitation_refusal(reg, inv, council=False, instant=None):
                   and not (invitation_state(x) == "accepted" or (invitation_state(x) == "set_aside" and "council_approval" not in x)
                            or expired(x, instant, conf)))
     if already:
-        refusal.append(f"{_clean(identifier)} est déjà invité(e) ({', '.join(already)}) : une invitation à la fois ; après un feu vert, "
-                     "un refus ou un silence, plus jamais")
+        refusal.append(f"{_clean(identifier)} is already invited ({', '.join(already)}): one invitation at a time; after a green light, "
+                     "a refusal or a silence, never again")
     return refusal
 
 
@@ -5241,106 +5241,106 @@ def gesture_refusal(reg, old, new, gesture, author, instant, publishing=None, br
     oversight = old.get("request") in STRENGTHEN_FRAMING
     in_office = guardians_in_office(reg)
     unreadables = unreadable_invitations(reg)
-    require(not unreadables, f"illisible(s) : {', '.join(unreadables)} : aucun geste d'invitation tant que le conseil ne l'a pas réparé")
-    require(not withdrawn(old), "le dossier de cette personne est déjà retiré (à son refus ou à sa demande) : l'invitation est close, "
-                                "plus aucun geste")
+    require(not unreadables, f"unreadable: {', '.join(unreadables)}: no invitation gesture until the council has repaired it")
+    require(not withdrawn(old), "this person's file is already withdrawn (at their refusal or at their request): the invitation is closed, "
+                                "no more gestures")
     if gesture in TOWARDS_CONTACT:
-        brake = brake if isinstance(brake, dict) else {"tight": True, "oversight": ["état du frein inconnu"], "open_incidents": ["?"]}
-        require(not brake.get("open_incidents"), f"incident(s) ouvert(s) : {', '.join(brake.get('open_incidents') or [])} : tout "
-                                                   "s'arrête, invitations d'encadrement comprises (R13)")
+        brake = brake if isinstance(brake, dict) else {"tight": True, "oversight": ["brake state unknown"], "open_incidents": ["?"]}
+        require(not brake.get("open_incidents"), f"open incident(s): {', '.join(brake.get('open_incidents') or [])}: everything "
+                                                   "stops, oversight invitations included (R13)")
         require(not brake.get("oversight") or oversight,
-               "frein serré (R13) : " + " ; ".join(brake.get("oversight") or [])
-               + f" ; il arrête les invitations à {old.get('request')}, jamais celles qui renforcent l'encadrement (garant, gardien)")
+               "brake tight (R13): " + "; ".join(brake.get("oversight") or [])
+               + f"; it stops the invitations to {old.get('request')}, never those that strengthen oversight (guarantor, guardian)")
         on_list = on_the_list(identities_of(old), not_contacted(reg))
-        require(not on_list, f"{', '.join(sorted(on_list))} : la personne est sur la liste de non-contact : plus rien ne part vers "
-                              "elle (R13)")
-        require(not expired(old, moment, conf), f"invitation expirée ({conf['expiry_days']} jours sans décision, "
-                                                  "growth.expiry_days) : proposez-en une nouvelle")
+        require(not on_list, f"{', '.join(sorted(on_list))}: the person is on the do-not-contact list: nothing goes to "
+                              "them any more (R13)")
+        require(not expired(old, moment, conf), f"invitation expired ({conf['expiry_days']} days without a decision, "
+                                                  "growth.expiry_days): propose a new one")
     if gesture in ("council_approval", "renewal", "reminder"):
         # Le feu vert du conseil réserve une place pour 7 jours ; une relance en prend une : messages et places, relances comprises.
         n = messages_and_places(reg, moment - WEEK, except_for=old.get("id")) + 1
         require(n <= conf["invitations_per_week"],
-               f"plafond : {n} messages ou places réservées en 7 jours glissants, au plus {conf['invitations_per_week']} pour toute "
-               "la ruche (growth.invitations_per_week, R13) : attendez qu'une place se libère (bee swarm)")
+               f"cap: {n} messages or reserved places over a rolling 7 days, at most {conf['invitations_per_week']} for the whole "
+               "hive (growth.invitations_per_week, R13): wait for a place to free up (bee swarm)")
     if gesture in ("council_approval", "renewal") and oversight and (brake or {}).get("oversight"):
         n = 1 + sum(1 for iid, (_, x) in reg.invitations.items() if iid != old.get("id") and isinstance(x, dict)
                     and x.get("request") in STRENGTHEN_FRAMING for g in ("council_approval", "renewal")
                     if (m := _instant_or_none(block_of(x, g).get("at"))) and m > moment - WEEK)
         require(n <= conf["oversight_per_week_under_brake"],
-               f"frein serré : {n} feux verts d'encadrement en 7 jours glissants, au plus {conf['oversight_per_week_under_brake']} "
+               f"brake tight: {n} oversight green lights over a rolling 7 days, at most {conf['oversight_per_week_under_brake']} "
                "(growth.oversight_per_week_under_brake)")
     deadline_at = publishing + dt.timedelta(hours=conf["debate_min_hours"]) if publishing else None
     held_debate = (deadline_at is not None and moment >= deadline_at,
-                  f"une invitation reste {conf['debate_min_hours']} h publique, débattue dans l'agora, avant tout accord "
-                  f"(growth.debate_min_hours) : pas avant le {en_iso(deadline_at) if deadline_at else '(pas encore publiée)'}")
+                  f"an invitation stays public {conf['debate_min_hours']} h, debated in the agora, before any approval "
+                  f"(growth.debate_min_hours): not before {en_iso(deadline_at) if deadline_at else '(not published yet)'}")
     if gesture in ("guardian_approval", "council_approval", "renewal"):  # the green light and its renewal (ruche-0050)
         refusal += invitation_debate_refusal(reg, old, closed=gesture == "renewal", before=main_debate)  # renewed on the closing synthesis
     if gesture == "guardian_approval":
-        require(before == "proposed", f"un accord de gardien se donne à une invitation proposée (status : {before})")
-        require(with_status and author in in_office, f"{author} n'est pas un gardien en fonction : seul un gardien nommé (governance/guardians.yaml), "
-                                      "dont le garant n'est pas révoqué, donne l'accord de gardien")
+        require(before == "proposed", f"a guardian's approval is given to a proposed invitation (status: {before})")
+        require(with_status and author in in_office, f"{author} is not a guardian in office: only a named guardian (governance/guardians.yaml), "
+                                      "whose guarantor is not revoked, gives the guardian's approval")
         who_is = reg.identities  # ruche-0051: by person, every guardian entry of each person, whatever their order in the file
-        require(not who_is.same_one(author, proposing_member), "on ne donne pas son accord à sa propre invitation (ni à celle d'un compte lié)")
+        require(not who_is.same_one(author, proposing_member), "no one approves their own invitation (nor that of a linked account)")
         require(not vouched_by_proposer(reg, author, proposing_member),
-               f"le garant de {author} est le proposant, ou dirige aussi le proposant : l'accord d'un gardien vient d'ailleurs "
+               f"the guarantor of {author} is the proposer, or also directs the proposer: a guardian's approval comes from elsewhere "
                "(docs/guarantors.md)")
         require(*held_debate)
     elif gesture == "council_approval":
-        require(council, f"{author} n'est pas du conseil : seul le conseil donne l'accord du conseil")
+        require(council, f"{author} is not on the council: only the council gives the council's approval")
         # Amorçage : sans gardien en fonction, une invitation d'encadrement n'attend que le conseil (il n'y a personne d'autre).
         bootstrap = oversight and not (brake or {}).get("guardians_in_office", 1)
         require(before == "proposed" and ("guardian_approval" in old or bootstrap),
-               "l'accord du conseil suit celui d'un gardien (sans gardien en fonction, seule une invitation de garant ou de gardien "
-               "s'en passe)")
+               "the council's approval follows a guardian's (with no guardian in office, only a guarantor or guardian invitation "
+               "goes without it)")
         require(not reg.identities.same_one(block_of(old, "guardian_approval").get("by"), author),
-               "les deux accords viennent de deux personnes différentes")
+               "the two approvals come from two different people")
         if "guardian_approval" not in old:
             require(*held_debate)
     elif gesture == "renewal":
         # Un feu vert échu (7 jours sans envoi) se renouvelle une fois, contrôlé comme le feu vert (troisième revue adverse, C8).
-        require(council, f"{author} n'est pas du conseil : seul le conseil renouvelle son feu vert")
-        require(green_light_expired(old, moment), "on ne renouvelle qu'un feu vert échu (7 jours sans envoi consigné) : "
-                                              f"status {before}, feu vert du {en_iso(green_light(old)) if green_light(old) else '?'}")
+        require(council, f"{author} is not on the council: only the council renews its green light")
+        require(green_light_expired(old, moment), "only an expired green light is renewed (7 days without a recorded sending): "
+                                              f"status {before}, green light of {en_iso(green_light(old)) if green_light(old) else '?'}")
     elif gesture == "sent":
-        require(council, f"{author} n'est pas du conseil : seul un humain du conseil envoie le message, lui-même, et le consigne")
-        require(before == "decided", f"un envoi suit le feu vert du conseil (accord du conseil) ; status : {before}")
+        require(council, f"{author} is not on the council: only a human of the council sends the message, themselves, and records it")
+        require(before == "decided", f"a sending follows the council's green light (council approval); status: {before}")
     elif gesture == "reminder":
-        require(council, f"{author} n'est pas du conseil : seul le conseil relance, et le consigne")
-        require(before == "sent" and conf["reminders_max"] >= 1, f"une relance au plus, après l'envoi (status : {before})")
+        require(council, f"{author} is not on the council: only the council sends a reminder, and records it")
+        require(before == "sent" and conf["reminders_max"] >= 1, f"one reminder at most, after the sending (status: {before})")
         sent = _instant_or_none(block_of(old, "sent").get("at"))
-        require(sent is not None and moment >= sent + timeout_seconds, f"une relance pas avant {conf['reminder_delay_days']} jours après "
-               f"l'envoi (growth.reminder_delay_days) : pas avant le {en_iso(sent + timeout_seconds) if sent else '?'}")
+        require(sent is not None and moment >= sent + timeout_seconds, f"a reminder no earlier than {conf['reminder_delay_days']} days after "
+               f"the sending (growth.reminder_delay_days): not before {en_iso(sent + timeout_seconds) if sent else '?'}")
     elif gesture == "answer":
-        require(council, f"{author} n'est pas du conseil : seul le conseil, qui a envoyé le message, consigne la réponse")
+        require(council, f"{author} is not on the council: only the council, which sent the message, records the answer")
         value = block.get("value")
         if value == "refused":
-            require(before not in ANSWERS + ("set_aside", "withdrawn"), f"invitation déjà close (status : {before})")
-        elif require(value in ANSWERS, f"réponse : {', '.join(ANSWERS)}"):
-            require(before in ("sent", "reminded"), f"« {value} » se consigne après l'envoi (status : {before})")
+            require(before not in ANSWERS + ("set_aside", "withdrawn"), f"invitation already closed (status: {before})")
+        elif require(value in ANSWERS, f"answer: {', '.join(ANSWERS)}"):
+            require(before in ("sent", "reminded"), f"« {value} » is recorded after the sending (status: {before})")
             last = _instant_or_none((block_of(old, "reminder") or block_of(old, "sent")).get("at"))
             require(value == "accepted" or (last is not None and moment >= last + timeout_seconds),
-                   f"« sans réponse » se consigne {conf['reminder_delay_days']} jours après le dernier message (relance ou envoi)")
+                   f"« no_answer » is recorded {conf['reminder_delay_days']} days after the last message (reminder or sending)")
     elif gesture == "set_aside":
         if before == "decided":
-            require(council, "une invitation décidée (feu vert donné) ne s'écarte que par le conseil")
+            require(council, "a decided invitation (green light given) is set aside only by the council")
         else:
             require(author == proposing_member or (with_status and author in in_office) or council,
-                   "seuls le proposant, un gardien en fonction ou le conseil écartent une invitation")
-        require(before in ("proposed", "decided"), f"on n'écarte une invitation qu'avant son envoi (status : {before})")
+                   "only the proposer, a guardian in office or the council set an invitation aside")
+        require(before in ("proposed", "decided"), f"an invitation is set aside only before its sending (status: {before})")
         # Le motif est publié avec l'invitation : contrôlé comme un message (revue adverse, C3).
         problem_text = outgoing_text_refused(block.get("reason"), "reason", config_notes(reg)["text_max"])
-        require(problem_text is None, f"{problem_text} : on écarte en motivant, court (notes.text_max)")
+        require(problem_text is None, f"{problem_text}: set aside with a short reason (notes.text_max)")
     elif gesture == "withdrawal":
         # À la demande de la personne, à tout moment : son dossier se retire (commandement 10). Ni frein, ni incident ne l'arrêtent.
-        require(council, f"{author} n'est pas du conseil : le conseil retire le dossier d'une personne, à sa demande")
-        require(block.get("cause") in REMOVED, f"withdrawal : cause {', '.join(REMOVED)} (bee invitation withdraw l'écrit)")
+        require(council, f"{author} is not on the council: the council withdraws a person's file, at their request")
+        require(block.get("cause") in REMOVED, f"withdrawal: cause {', '.join(REMOVED)} (bee invitation withdraw writes it)")
         require(block.get("cause") == "request" or before != "accepted",
-               "une invitation acceptée ne se retire qu'à la demande de la personne")
+               "an accepted invitation is withdrawn only at the person's request")
         # Vérification de cdbcf36, D4 : « refus » ou « sans réponse » suit un refus ou un silence réel de la même personne, sur
         # cette invitation ou une autre (dans la même PR, ou déjà sur la liste) ; sinon, le seul motif est « demande ».
         require(block.get("cause") not in ("refusal", "no_answer") or linked_refusal,
-               f"withdrawal « {block.get('cause')} » : seulement quand cette personne a refusé ou n'a pas répondu, sur cette invitation ou "
-               "une autre (la même PR, ou la liste de non-contact) ; sinon, le seul motif est « request »")
+               f"withdrawal « {block.get('cause')} »: only when this person refused or did not answer, on this invitation or "
+               "another (the same PR, or the do-not-contact list); otherwise, the only cause is « request »")
     return refusal
 
 
@@ -5365,55 +5365,55 @@ def check_invitation(reg, path, git_status, old, new, author, *, is_council, ins
     ici (qui, quand, dans quel état, sous quel frein), le reste est refusé. `frein` : fonction qui renvoie brake_state (calculé
     seulement s'il le faut). Renvoie (natures, problèmes, [] : le plafond se juge dans gesture_refusal)."""
     natures, problems_found, sendings = [], [], []
-    require = lambda condition, message: condition or problems_found.append(f"{path} : {message}")  # noqa: E731
+    require = lambda condition, message: condition or problems_found.append(f"{path}: {message}")  # noqa: E731
     list_of = path == PATH_NO_CONTACT
     if git_status == "D":
         natures.append("governance")
-        require(is_council and not list_of, "la liste de non-contact ne se supprime jamais (un refus est définitif, R13)" if list_of
-               else "une invitation ne se supprime pas (commandement 10) ; seul le conseil le peut")
+        require(is_council and not list_of, "the do-not-contact list is never deleted (a refusal is final, R13)" if list_of
+               else "an invitation is not deleted (commandment 10); only the council can")
         return natures, problems_found, sendings
     try:
         canonical = invitation_render(new, path).encode("utf-8")
     except BeeError:
         canonical = None
-    require(raw == canonical, "le fichier n'est pas exactement sous la forme qu'écrivent bee invite et bee invitation (commentaire, "
-                              "autre mise en forme) : écrivez-le avec bee")
+    require(raw == canonical, "the file is not exactly in the form bee invite and bee invitation write (a comment, "
+                              "other formatting): write it with bee")
     if list_of:
         # Ajout seul, par le conseil (avec la réponse qu'il consigne, ou le retrait demandé par la personne) ; jamais une entrée
         # retirée. Des empreintes seulement, jamais un identifiant en clair (répétition générale n° 3).
         natures.append("no_contact")
         old_items = fingerprints_of(old) if git_status == "M" else []
         new_items = fingerprints_of(new)
-        require(set(new) == {"fingerprints"}, "une seule clé, fingerprints : la liste ne garde que des empreintes (bee les écrit)")
+        require(set(new) == {"fingerprints"}, "a single key, fingerprints: the list keeps only fingerprints (bee writes them)")
         if require(old_items is not None and new_items is not None and new_items[:len(old_items)] == old_items,
-                  "la liste de non-contact est en ajout seul : on n'en retire ni n'en modifie aucune entrée (un refus est définitif)"):
-            require(is_council or new_items == old_items, "seul le conseil inscrit une personne sur la liste de non-contact")
+                  "the do-not-contact list is append-only: no entry is removed from it or changed (a refusal is final)"):
+            require(is_council or new_items == old_items, "only the council adds a person to the do-not-contact list")
             seen_items = set(old_items)
             for x in new_items[len(old_items):]:
-                require(bool(FINGERPRINT.match(x)), f"« {_clean(x)[:80]} » n'est pas une empreinte (SHA-256 en hexadécimal, 64 "
-                                                 "caractères de 0-9 a-f) : jamais un identifiant en clair (bee l'écrit)")
-                require(x not in seen_items, f"« {x} » est déjà sur la liste")
+                require(bool(FINGERPRINT.match(x)), f"« {_clean(x)[:80]} » is not a fingerprint (SHA-256 in hexadecimal, 64 "
+                                                 "characters of 0-9 a-f): never a plain-text identifier (bee writes it)")
+                require(x not in seen_items, f"« {x} » is already on the list")
                 seen_items.add(x)
         return natures, problems_found, sendings
     if git_status == "A":
         natures.append("invitation")
-        require(author in reg.members or author in reg.council, f"{author} doit d'abord s'inscrire (bee register)")
-        require(new.get("proposed_by") == author, f"on ne propose une invitation qu'en son nom ({author})")
-        require(new.get("id") == pathlib.PurePosixPath(path).stem, "id différent du nom de fichier")
+        require(author in reg.members or author in reg.council, f"{author} must register first (bee register)")
+        require(new.get("proposed_by") == author, f"an invitation is proposed only in one's own name ({author})")
+        require(new.get("id") == pathlib.PurePosixPath(path).stem, "id different from the file name")
         require(new.get("status") == "proposed" and not any(g in new for g in INVITATION_GESTURES),
-               "une invitation naît proposée, sans accord, envoi ni réponse")
+               "an invitation is born proposed, without approval, sending or answer")
         problem_text = pr_date_problem(new.get("proposed_at"), "proposed_at", instant)
-        require(problem_text is None, f"{problem_text} : relancez bee invite")
+        require(problem_text is None, f"{problem_text}: run bee invite again")
         for refusal in invitation_refusal(reg, new, council=is_council, instant=instant):
             require(False, refusal)
         if {fingerprint(c) for c in own_identities(new)} & removed_fingerprints(reg):
             natures.append("requested_removal_recorded")  # ruche-0048 : un signal neutre pour le conseil, jamais un refus
         return natures, problems_found, sendings
-    if not require(isinstance(old, dict), "fichier illisible dans la base"):
+    if not require(isinstance(old, dict), "file unreadable in the base"):
         return natures, problems_found, sendings
     if old == new:
         natures.append("governance")
-        require(is_council, "rien ne change dans les données : une PR ne reformate pas une invitation")
+        require(is_council, "nothing changes in the data: a PR does not reformat an invitation")
         return natures, problems_found, sendings
     added_items = [g for g in INVITATION_GESTURES if g in new and g not in old]
     # Au refus ou à la demande de la personne, son dossier se retire dans la même PR (commandement 10) : c'est la seule
@@ -5426,37 +5426,37 @@ def check_invitation(reg, path, git_status, old, new, author, *, is_council, ins
     revised_ones = [c for c in ("why", "message", "namesake") if not cause and old.get(c) != new.get(c)]
     if revised_ones:  # ruche-0047: a granted invitation is frozen; a revision drops its agreements, given again after 72 h
         natures.append("invitation")
-        require(not any(g in new for g in INVITATION_GESTURES), f"{', '.join(revised_ones)} ne change jamais sous un accord : la PR qui "
-               "révise une invitation retire l'accord du gardien et le feu vert du conseil, qui se redonnent ensuite")
+        require(not any(g in new for g in INVITATION_GESTURES), f"{', '.join(revised_ones)} never changes under an approval: the PR that "
+               "revises an invitation removes the guardian's approval and the council's green light, given again afterwards")
         require(invitation_state(old) in ("proposed", "decided") and not expired(old, instant, growth_config(reg))
-               and (author == old.get("proposed_by") or is_council), "seuls le proposant et le conseil révisent une invitation, avant l'envoi")
+               and (author == old.get("proposed_by") or is_council), "only the proposer and the council revise an invitation, before the sending")
         problem_text = pr_date_problem(new.get("proposed_at"), "proposed_at", instant)
-        require(problem_text is None and new.get("status") == "proposed", f"{problem_text or 'status'} : révisée, elle est proposée de nouveau")
-        problems_found += [f"{path} : {r}" for r in invitation_refusal(reg, new, council=is_council, instant=instant)]
+        require(problem_text is None and new.get("status") == "proposed", f"{problem_text or 'status'}: revised, it is proposed again")
+        problems_found += [f"{path}: {r}" for r in invitation_refusal(reg, new, council=is_council, instant=instant)]
     for key in sorted(set(old) | set(new)):
         if revised_ones and key in ("why", "message", "namesake", "status", "proposed_at") + INVITATION_GESTURES:
             continue
         if key != "status" and key not in INVITATION_GESTURES:
             require(reference.get(key) == new.get(key),
-                   f"{key} : le dossier de la personne se retire, à son refus, à son silence ou à sa demande (« {REMOVED[cause]} », "
-                   "bee l'écrit)"
+                   f"{key}: the person's file is withdrawn, at their refusal, their silence or their request (« {REMOVED[cause]} », "
+                   "bee writes it)"
                    if cause and key in PERSON_FIELDS else
-                   f"{key} ne change jamais : pour un autre message, écartez l'invitation et proposez-en une nouvelle")
+                   f"{key} never changes: for another message, set the invitation aside and propose a new one")
         elif key in old and key != "status":
-            require(reference[key] == new.get(key), f"{key} : les gestes sont en ajout seul, on n'en modifie ni n'en retire aucun"
-                   + (f" (seul le motif d'un écart se retire : « {REMOVED[cause]} »)" if cause else ""))
+            require(reference[key] == new.get(key), f"{key}: gestures are append-only, none is changed or removed"
+                   + (f" (only a dismissal's reason is withdrawn: « {REMOVED[cause]} »)" if cause else ""))
     if revised_ones:
         return natures, problems_found, sendings
-    if not require(len(added_items) == 1, f"un geste par PR et par invitation ({', '.join(added_items) or 'aucun'}) : bee invitation l'écrit"):
+    if not require(len(added_items) == 1, f"one gesture per PR and per invitation ({', '.join(added_items) or 'none'}): bee invitation writes it"):
         natures.append("governance")
         return natures, problems_found, sendings
     gesture = added_items[0]
     natures.append(NATURES_INVITATION[gesture])
     block = block_of(new, gesture)
-    require(block.get("by") == author, f"{gesture} : un geste est signé de l'auteur de la PR ({author}), pas de « {block.get('by')} »")
+    require(block.get("by") == author, f"{gesture}: a gesture is signed by the PR's author ({author}), not by « {block.get('by')} »")
     problem_text = pr_date_problem(block.get("at"), f"{gesture}.at", instant)
-    require(problem_text is None, f"{problem_text} : relancez bee invitation")
-    require(new.get("status") == invitation_state(new), f"status « {new.get('status')} » au lieu de "
+    require(problem_text is None, f"{problem_text}: run bee invitation again")
+    require(new.get("status") == invitation_state(new), f"status « {new.get('status')} » instead of "
                                                               f"« {invitation_state(new)} »")
     publishing = published_at(reg, base, path, old) if gesture in ("guardian_approval", "council_approval") else None
     try:  # ruche-0050: an accord is judged on its debate as it is on main (a closure or a marking in the same PR changes nothing)
@@ -5471,9 +5471,9 @@ def check_invitation(reg, path, git_status, old, new, author, *, is_council, ins
         # Les identifiants ne sont pas nommés ici : le journal de la PR est public (répétition générale n° 3).
         expected_items = to_register(old)
         are_missing = [x for x in expected_items if fingerprint(x) not in not_contacted(reg)]
-        require(not are_missing, f"{len(are_missing)} empreinte(s) sur {len(expected_items)} (l'identifiant de la personne, son canal, ses autres "
-                             f"identités déclarées) manquent dans {PATH_NO_CONTACT} : elles s'y inscrivent dans la même PR (bee invitation "
-                             f"{'withdraw' if gesture == 'withdrawal' else 'record-answer'} le fait) : on ne la contactera plus jamais")
+        require(not are_missing, f"{len(are_missing)} fingerprint(s) of {len(expected_items)} (the person's identifier, their channel, their other "
+                             f"declared identities) missing from {PATH_NO_CONTACT}: they are added to it in the same PR (bee invitation "
+                             f"{'withdraw' if gesture == 'withdrawal' else 'record-answer'} does it): the person will never be contacted again")
     return natures, problems_found, sendings
 
 
@@ -5516,13 +5516,13 @@ def request_problem(reg, entry):
     try:
         day, withdrawal = dt.date.fromisoformat(str(request["at"])), dt.date.fromisoformat(str(entry["at"])[:10])
     except ValueError:
-        return "request.at : une date réelle (AAAA-MM-JJ)"
+        return "request.at: a real date (YYYY-MM-DD)"
     if not dt.date(2026, 10, 1) <= day <= withdrawal:
-        return "request.at : du 2026-10-01 au jour du retrait"
+        return "request.at: from 2026-10-01 to the day of the removal"
     if ("reference" in request) != (request["channel"] in ("issue", "discussion")):
-        return "une référence publique (--reference) si, et seulement si, la demande a été faite en public (canal issue ou discussion)"
+        return "a public reference (--reference) if, and only if, the request was made in public (channel issue or discussion)"
     if "reference" in request and request["reference"].split("/")[4] not in hive_repos(reg):
-        return "reference : une issue ou une discussion d'un dépôt de la ruche (le registre, un fork de projects/)"
+        return "reference: an issue or a discussion of a repository of the hive (the registry, a fork of projects/)"
     return None
 
 
@@ -5530,17 +5530,17 @@ def passages_problem(reg, found_items, entry, old_items, instant):
     """None, ou pourquoi ces passages ({place_of: passages} par fichier) ne se retirent pas : la commande et la porte en jugent de même."""
     passages = [p for t in found_items for v in t.values() for p in v]
     if entry.get("passages") != len(passages):  # ruche-0116 : ceux des commentaires signalés compris
-        return f"passages : {len(passages)}, le nombre de passages que retire la PR"
+        return f"passages: {len(passages)}, the number of passages the PR removes"
     if max((sum(e in p[1] for p in passages) for e in {e for p in passages for e in p[1]}), default=0) > REMOVAL_PASSAGES_MAX:
-        return f"une empreinte nomme plus de {REMOVAL_PASSAGES_MAX} passages : trop courante pour une personne"
+        return f"a fingerprint names more than {REMOVAL_PASSAGES_MAX} passages: too common for a person"
     if len(passages) > REMOVAL_TOTAL_MAX:
-        return f"plus de {REMOVAL_TOTAL_MAX} passages en un retrait"
+        return f"more than {REMOVAL_TOTAL_MAX} passages in one removal"
     beginning = en_iso(instant - dt.timedelta(days=7) - TOLERANCE_DATE)  # depuis l'heure de la PR ; un `le` antérieur a pu être antidaté de 2 h
     if len(passages) + sum(r.get("passages", 0) for r in old_items if str(r.get("at")) > beginning) > REMOVAL_WEEK_MAX:
-        return f"plus de {REMOVAL_WEEK_MAX} passages en 7 jours glissants, tous retraits confondus ({PATH_REMOVALS})"
+        return f"more than {REMOVAL_WEEK_MAX} passages over a rolling 7 days, all removals together ({PATH_REMOVALS})"
     protected = protected_fingerprints(reg)
     if any(passage_fingerprints(m.strip(PUNCTUATION)) & protected for p in passages for m in p[2].split()):
-        return "un passage retiré contient un pseudo de la ruche, un projet ou un numéro"
+        return "a removed passage contains a login of the hive, a project or a number"
     return None
 
 
@@ -5548,7 +5548,7 @@ def check_removal(reg, base, head, changes, author, is_council, instant):
     """Un retrait demandé (ruche-0048) : du conseil, une entrée canonique ajoutée ; tout autre fichier, parcouru et ordinaire, est
     exactement removal_of de sa base ; des passages permis (passages_problem) ; plus rien ne la nomme dans la tête."""
     if not is_council:  # avant de lire quoi que ce soit
-        return [f"{PATH_REMOVALS} : {author} n'est pas du conseil : seul le conseil consigne un retrait demandé"]
+        return [f"{PATH_REMOVALS}: {author} is not on the council: only the council records a requested removal"]
     read = lambda ref, c: (s.stdout.decode("utf-8", "replace") if (s := subprocess.run(  # noqa: E731
         ["git", "-C", str(reg.root), "cat-file", "blob", f"{ref}:{c}"], capture_output=True)).returncode == 0 else None)
     before = after = None  # mal formé (clé en double, ancre…) : un refus net
@@ -5562,16 +5562,16 @@ def check_removal(reg, base, head, changes, author, is_council, instant):
     errors = ["/".join(map(str, e.absolute_path)) for e in reg.schema("removals").iter_errors(after)] if after is not None else ["?"]
     if (errors or not canonical or not isinstance(old_items, list) or len(after["removals"]) != len(old_items) + 1
             or after["removals"][:-1] != old_items):
-        return [f"{PATH_REMOVALS} : en ajout seul, une entrée par PR, telle que l'écrit bee remove-data ({', '.join(errors[:3])})"]
+        return [f"{PATH_REMOVALS}: append-only, one entry per PR, as bee remove-data writes it ({', '.join(errors[:3])})"]
     entry = after["removals"][-1]
     fingerprints, found_items, others = set(entry["fingerprints"]), [], 0
-    problems_found = [f"{PATH_REMOVALS} : {p}" for p in (
-        None if entry["by"] == author else f"by : l'auteur de la PR ({author})", request_problem(reg, entry),
-        pr_date_problem(entry["at"], "at", instant), "un pseudo de la ruche, un projet ou un numéro ne se retire jamais"
+    problems_found = [f"{PATH_REMOVALS}: {p}" for p in (
+        None if entry["by"] == author else f"by: the PR's author ({author})", request_problem(reg, entry),
+        pr_date_problem(entry["at"], "at", instant), "a login of the hive, a project or a number is never removed"
         if fingerprints & protected_fingerprints(reg) else None) if p]
     for meta, path in git(reg.root, "diff", "-z", "--raw", "--no-renames", f"{base}...{head}"):  # ruche-0043 : ni lien ni mode
         if meta.split()[1] != "100644" or meta.split()[0] not in (":100644", ":000000"):
-            problems_found.append(f"{path} : un retrait ne change que le texte d'un fichier ordinaire (100644), ni lien, ni mode, ni suppression")
+            problems_found.append(f"{path}: a removal changes only the text of a regular file (100644), no link, no mode, no deletion")
     for git_status, path in (c for c in changes if c[1] != PATH_REMOVALS):
         old, new, others, ok = read(base, path), read(head, path), others + 1, False
         with contextlib.suppress(BeeError, TypeError, AttributeError, KeyError, IndexError):
@@ -5585,14 +5585,14 @@ def check_removal(reg, base, head, changes, author, is_council, instant):
                 ok = head_d == after_d and comments_in_place(old, new, fingerprints, t.setdefault("#", [])) and (  # ruche-0140
                     scanned_kind(path) not in ("debates", "invitations") or new == text_after(path, old, None, head_d, set()))
         if not ok:
-            problems_found.append(f"{path} : un retrait demandé ne change, dans les fichiers qu'il parcourt, que les passages qui nomment "
-                             f"la personne (une empreinte consignée), chacun devenu {REMOVAL_MARKER} (bee remove-data l'écrit)")
+            problems_found.append(f"{path}: a requested removal changes, in the files it scans, only the passages that name "
+                             f"the person (a recorded fingerprint), each turned into {REMOVAL_MARKER} (bee remove-data writes it)")
     if not others:
-        problems_found.append(f"{PATH_REMOVALS} : un retrait qui ne retire rien ne se consigne pas")
+        problems_found.append(f"{PATH_REMOVALS}: a removal that removes nothing is not recorded")
     if problem_text := passages_problem(reg, found_items, entry, old_items, instant):
-        problems_found.append(f"{PATH_REMOVALS} : {problem_text}")
+        problems_found.append(f"{PATH_REMOVALS}: {problem_text}")
     if rest_of := sorted({*(b := sweep(reg, entry))[0], *(c for c, _ in b[1])}):  # ruche-0116 : un commentaire compris
-        problems_found.append(f"{', '.join(rest_of[:5])} : nomment encore la personne (une empreinte consignée) : bee remove-data les retire")
+        problems_found.append(f"{', '.join(rest_of[:5])}: still name the person (a recorded fingerprint): bee remove-data removes them")
     return problems_found
 
 
@@ -6674,31 +6674,31 @@ def check_fork(reg, repo, base, head, task_identifier, author=None):
     total = 0
     for ref in (base, head):
         if subprocess.run(["git", "-C", str(repo), "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}"], capture_output=True).returncode != 0:
-            council = " Lancez d'abord : git fetch upstream" if "upstream" in ref else ""
-            raise BeeError(f"révision « {ref} » introuvable dans {repo}.{council}")
+            council = " Run first: git fetch upstream" if "upstream" in ref else ""
+            raise BeeError(f"revision « {ref} » not found in {repo}.{council}")
     if head == "HEAD":
         pending = [l[3:] for l in git(repo, "status", "-z", "--porcelain", "--no-renames", "--untracked-files=no")]
         if pending:
-            problems_found.append(f"{len(pending)} fichier(s) modifié(s) mais non commité(s) ({', '.join(map(cite, pending[:5]))}"
-                             f"{'…' if len(pending) > 5 else ''}) : l'outil vérifie le dernier commit, pas le disque. Commitez d'abord.")
+            problems_found.append(f"{len(pending)} file(s) modified but not committed ({', '.join(map(cite, pending[:5]))}"
+                             f"{'…' if len(pending) > 5 else ''}): the tool checks the last commit, not the disk. Commit first.")
     task_files = [f.rstrip("/") for f in task.get("files") or []]
     for line_text in git(repo, "diff", "-z", "--numstat", "--no-renames", f"{base}...{head}"):
         added, withdrawn_ones, path = line_text.split("\t", 2)
         if matches(path, excluded_items):
             continue
         if added == "-":
-            problems_found.append(f"{cite(path)} : fichier binaire modifié (commandement 7 : pas de binaire opaque)")
+            problems_found.append(f"{cite(path)}: binary file modified (commandment 7: no opaque binary)")
             continue
         total += int(added) + int(withdrawn_ones)
         if task_files and not any(path == f or path.startswith(f + "/") for f in task_files):
-            warnings.append(f"{cite(path)} : hors des fichiers de la tâche ({', '.join(map(cite, task_files))}) ; justifiez-le dans le manifeste, les relecteurs jugeront")
+            warnings.append(f"{cite(path)}: outside the task's files ({', '.join(map(cite, task_files))}); justify it in the manifest, the reviewers will judge")
     maximum = LINES_MAX[task["size"]]
     if total > maximum:
-        problems_found.append(f"R1 : {total} lignes modifiées, maximum {maximum} pour une tâche {task['size']}")
+        problems_found.append(f"R1: {total} changed lines, at most {maximum} for a task of size {task['size']}")
     if task["type"] in ("optimization", "review"):
         for path in git(repo, "diff", "-z", "--name-only", "--no-renames", f"{base}...{head}"):
             if matches(path, judges):
-                problems_found.append(f"{cite(path)} : une tâche {task['type']} ne peut pas modifier ce qui la juge (commandement 3)")
+                problems_found.append(f"{cite(path)}: a task of type {task['type']} cannot modify what judges it (commandment 3)")
     # Manifeste : manifestes/<tâche>.yaml (un fichier par tâche, donc pas de conflit entre deux PR), sinon
     # l'ancien emplacement CONTRIBUTION.yaml à la racine. ruche-0145: manifests/<task>.yaml, else, until DATE_D, manifestes/<task>.yaml
     # (both: refused), else CONTRIBUTION.yaml; a French manifest is translated until DATE_D (fork_document).
@@ -6706,7 +6706,7 @@ def check_fork(reg, repo, base, head, task_identifier, author=None):
     manifest, old, refused = read_yaml_ref(repo, head, manifest_name), None, False
     if old_places and (french := read_yaml_ref(repo, head, before_switch)) is not None:
         if manifest is not None:
-            problems_found.append(f"{manifest_name} and {before_switch} : two manifests for one task : keep {manifest_name} only")
+            problems_found.append(f"{manifest_name} and {before_switch}: two manifests for one task: keep {manifest_name} only")
         else:
             manifest_name, manifest = before_switch, french
     if manifest is None and old_places:
@@ -6724,20 +6724,20 @@ def check_fork(reg, repo, base, head, task_identifier, author=None):
         candidates = [manifest_name] + (["CONTRIBUTION.yaml"] if old is None and old_places else [])
         on_disk = [n for n in candidates if (pathlib.Path(repo) / n).exists()]
         if on_disk:
-            problems_found.append(f"{on_disk[0]} existe sur le disque mais n'est pas commité : git add {on_disk[0]} puis commit")
+            problems_found.append(f"{on_disk[0]} exists on disk but is not committed: git add {on_disk[0]} then commit")
         else:
-            problems_found.append(f"{manifest_name} absent de la branche (bee manifest {task_identifier} … --output <fork>/{manifest_name})")
+            problems_found.append(f"{manifest_name} missing from the branch (bee manifest {task_identifier} … --output <fork>/{manifest_name})")
     else:
         problems_found += check_manifest(reg, manifest, manifest_name, person_of(reg.agent_accounts, author))  # ruche-0089
         if isinstance(manifest, dict) and manifest.get("task") != task_identifier:
-            problems_found.append(f"{manifest_name} : tâche « {cite(manifest.get('task'))} » au lieu de « {task_identifier} »")
+            problems_found.append(f"{manifest_name}: task « {cite(manifest.get('task'))} » instead of « {task_identifier} »")
     others = [c for c in git(repo, "diff", "-z", "--name-only", "--no-renames", f"{base}...{head}")
               if matches(c, ["manifests/**"] + ["manifestes/**"] * old_places) and c not in (manifest_path(task_identifier), before_switch)]
     if others:
-        problems_found.append(f"la branche modifie le manifeste d'une autre tâche ({', '.join(map(cite, others[:3]))}) : une PR, une tâche")
+        problems_found.append(f"the branch modifies the manifest of another task ({', '.join(map(cite, others[:3]))}): one PR, one task")
     if total == 0 and not problems_found and task["type"] == "optimization":
         # Normal pour une tâche de mesure ou d'outillage, qui ne touche que bee/ et tests/.
-        warnings.append("aucune ligne de code modifiée hors tests et bancs pour une optimisation : est-ce bien la bonne branche ?")
+        warnings.append("no line of code changed outside tests and benches for an optimization: is it really the right branch?")
     return problems_found, total, warnings
 
 
@@ -8738,7 +8738,7 @@ def cmd_ranking(args):
                        f"{l['C']:.2f}" if l.get("C") is not None else "—", f"{l['V']:.2f}" if l.get("V") is not None else "—"] for l in lines])
     for l in lines:
         for a in l["alerts"]:
-            print(f"⚠ {l['id']} : {a}.")
+            print(f"⚠ {l['id']}: {a}.")
     return 0
 
 
@@ -9163,7 +9163,7 @@ def cmd_check_fork(args):
         print(f"✗ {show_error(p)}")
     if problems_found:
         return 1
-    print(f"✓ branche conforme : {total} lignes modifiées (hors tests et bancs), manifeste valide.")
+    print(f"✓ branch compliant: {total} changed lines (outside tests and benches), manifest valid.")
     return 0
 
 
@@ -9228,7 +9228,7 @@ def copied_declaration(manifest, gain):
         declaration = {"model": declared_text(agent.get("model"), DECLARED_MAX["model"]),
                        "gain": round(gain, 4) if gain is not None and abs(gain) <= 1e6 else None,
                        **{c: [t for t in texts_of[c][:kept_ones[c]] if t] + (
-                           [f"[…] {len(l) - kept_ones[c]} de plus dans le manifeste du fork"] if len(l) > kept_ones[c] else [])
+                           [f"[…] {len(l) - kept_ones[c]} more in the fork's manifest"] if len(l) > kept_ones[c] else [])
                           for c, l in lists_of.items()},
                        "doubts": declared_text(manifest.get("doubts"), DECLARED_MAX["doubts"])}
         longest = max(kept_ones, key=kept_ones.get)
@@ -9245,14 +9245,14 @@ def copied_declaration(manifest, gain):
 REF_PATTERN = r"[A-Za-z0-9._/-]{1,200}"
 BASE_CHANGES = ("base_ref_changed", "automatic_base_change_succeeded")
 VERDICT_WAIT = {
-    "other_base": "la PR vise une autre branche que la branche par défaut du fork : ouvrez une nouvelle PR vers celle-ci",
-    "base_changed": "la base de la PR a changé au moins une fois : ouvrez une nouvelle PR vers la branche par défaut du fork",
-    "pr_open": "une autre PR ouverte de la même branche a pu produire la CI jugée : demandez au conseil de la fermer, puis "
-                  "poussez un nouveau commit une heure après sa fermeture",
-    "pr_closed": "une PR fermée de la même branche a pu produire la CI jugée : poussez un nouveau commit, une heure après sa fermeture",
-    "base": "la base déclarée par la CI n'est pas un ancêtre de la branche par défaut du fork : poussez un nouveau commit",
-    "judge_base": "le verdict n'a pas de judge_base lisible, exigée pour ce projet : poussez un nouveau commit",
-    "metric": "the verdict does not measure the task's metric (or, from date D, does not name it) : push a new commit once the fork's CI "
+    "other_base": "the PR targets a branch other than the fork's default branch: open a new PR to the default branch",
+    "base_changed": "the PR's base changed at least once: open a new PR to the fork's default branch",
+    "pr_open": "another open PR from the same branch may have produced the judged CI: ask the council to close it, then "
+                  "push a new commit one hour after it is closed",
+    "pr_closed": "a closed PR from the same branch may have produced the judged CI: push a new commit, one hour after it was closed",
+    "base": "the base declared by the CI is not an ancestor of the fork's default branch: push a new commit",
+    "judge_base": "the verdict has no readable judge_base, required for this project: push a new commit",
+    "metric": "the verdict does not measure the task's metric (or, from date D, does not name it): push a new commit once the fork's CI "
               "reads and names the task's metric"}
 
 
@@ -9286,8 +9286,8 @@ def cmd_pick_run(args):
     encore d'exécution) et code 1. Lit les réponses de l'API que verdicts.yml a rangées dans --api."""
     reg = Registry(args.registry)
     m = re.fullmatch(r"https://github\.com/[A-Za-z0-9-]+/[A-Za-z0-9_.-]+/pull/([0-9]+)", str(reg.record(args.contribution)[1].get("pr")))
-    name = f"{args.contribution} : PR #{m[1] if m else '?'}"
-    refusal = lambda reason, prs=(): print(f"{name} : {reason} ; aucun verdict n'est enregistré" + (  # noqa: E731
+    name = f"{args.contribution}: PR #{m[1] if m else '?'}"
+    refusal = lambda reason, prs=(): print(f"{name}: {reason}; no verdict is recorded" + (  # noqa: E731
         f" ({', '.join(f'#{n}' if isinstance(n, int) else '#?' for n in prs)})." if prs else ".")) or 1
     waiting = lambda code, prs=(): refusal(note_wait(reg, args.contribution, code, args.sha), prs)  # noqa: E731
     try:
@@ -9314,21 +9314,21 @@ def cmd_pick_run(args):
                     and (all(p["base"]["ref"] == defect for p in linked_ones) if linked_ones else fallback))
         kept = sorted((e["id"], e["html_url"], read_instant(e["created_at"])) for e in runs if of_this_pr(e))
     except (OSError, ValueError, LookupError, TypeError, AttributeError, BeeError):
-        return refusal("PR ou réponse de l'API illisible")
+        return refusal("PR or API answer unreadable")
     if not (isinstance(defect, str) and re.fullmatch(REF_PATTERN, defect)) or pr.get("number") != number_of or head.get("sha") != args.sha:
-        return refusal("branche par défaut illisible, ou PR changée pendant la collecte")
+        return refusal("default branch unreadable, or PR changed during the collection")
     if fresh:
-        return print(f"{name} : PR modifiée il y a moins de 5 minutes, jugée au passage suivant.") or 1
+        return print(f"{name}: PR modified less than 5 minutes ago, judged at the next pass.") or 1
     if base != defect or changed_one:
         return waiting("base_changed" if changed_one else "other_base")
     if not kept:
-        return refusal(f"{len(runs)} exécution(s) de bee-ci.yml sur ce commit, aucune de cette PR vers {defect} "
-                     "(événement pull_request)") if runs else 1
+        return refusal(f"{len(runs)} run(s) of bee-ci.yml on this commit, none of this PR to {defect} "
+                     "(pull_request event)") if runs else 1
     run_number, address, created_one = kept[-1]  # une relance garde created_at (vérifié sur l'API)
     if blocking := [(n, open) for n, open, beginning, end in others if beginning <= created_one and (open or created_one < end)]:
         return waiting("pr_open" if any(o for _, o in blocking) else "pr_closed", sorted(n for n, _ in blocking))
     if not (isinstance(run_number, int) and re.fullmatch(r"https://github\.com/[A-Za-z0-9_./-]+", str(address))):
-        return refusal("exécution illisible")
+        return refusal("run unreadable")
     print(run_number, address, defect)
     return 0
 
@@ -9348,12 +9348,12 @@ VERDICT_MAX = {"bytes_count": 64 * 1024, "keys": 20, "suspicious": 50, "judges":
 
 def read_verdict_json(path):
     if os.path.getsize(path) > VERDICT_MAX["bytes_count"]:
-        raise BeeError(f"{path} : plus de {VERDICT_MAX['bytes_count'] // 1024} Kio : verdict refusé, non lu")
+        raise BeeError(f"{path}: more than {VERDICT_MAX['bytes_count'] // 1024} KiB: verdict refused, not read")
     try:
         with open(path, encoding="utf-8") as f:
             raw = json.load(f)
     except (ValueError, RecursionError) as e:
-        raise BeeError(f"{path} : JSON illisible ({type(e).__name__}) : verdict refusé") from None
+        raise BeeError(f"{path}: unreadable JSON ({type(e).__name__}): verdict refused") from None
     return fork_document("verdict", raw, path)  # ruche-0145: the forks write French until F2, read until DATE_D
 
 
@@ -9372,7 +9372,7 @@ def cmd_record_verdict(args):
         return False
 
     if unfinished(raw):
-        raise BeeError(f"{args.verdict} : nombre non fini (NaN ou infini) dans le verdict : refusé")
+        raise BeeError(f"{args.verdict}: non-finite number (NaN or infinity) in the verdict: refused")
     ci = str(raw.get("ci", "")).lower()
     verdict = {"ci": "green" if ci in ("green", "success", "verte", "vert", "succes", "succès") else "red"}  # both languages, for good
     # ruche-0145 (plan, section 12, change 4): a green verdict that names its metric names the task's, or its gain is another metric's;
@@ -9380,16 +9380,16 @@ def cmd_record_verdict(args):
     want = reg.task(rec["task"])[1].get("metric")
     if verdict["ci"] == "green" and ("metric" in raw or want is not None and not before_date_d()) and raw.get("metric") != want:
         said = "absent" if "metric" not in raw else raw["metric"] if raw["metric"] is None or isinstance(raw["metric"], str) and re.fullmatch(
-            r"[a-z0-9_]{1,60}", raw["metric"]) else "illisible"
-        raise BeeError(f"{args.contribution} : verdict refusé, {note_wait(reg, args.contribution, 'metric', args.sha)} (the verdict's metric : "
-                        f"{said}, the task's : {want}) ; aucun verdict n'est enregistré")
+            r"[a-z0-9_]{1,60}", raw["metric"]) else "unreadable"
+        raise BeeError(f"{args.contribution}: verdict refused, {note_wait(reg, args.contribution, 'metric', args.sha)} (the verdict's metric: "
+                        f"{said}, the task's: {want}); no verdict is recorded")
     if verdict["ci"] == "red":
         verdict["failed_step"] = str(raw.get("failed_step") or "inconnue")
     elif args.bases is not None:  # ruche-0025 : verdicts.yml passe toujours --bases (« sha statut » de l'API compare) ; un rouge n'intègre rien
         with open(args.bases, encoding="utf-8") as f:
             checked_ones = {l.split()[0]: l.split()[1] for l in f if len(l.split()) == 2}
         bases, judge = declared_bases(raw), raw.get("judge_base")
-        said = [f"{b or 'illisible'} ({checked_ones.get(b) if checked_ones.get(b) in ('identical', 'ahead', 'behind', 'diverged') else 'non vérifiée'})"
+        said = [f"{b or 'unreadable'} ({checked_ones.get(b) if checked_ones.get(b) in ('identical', 'ahead', 'behind', 'diverged') else 'not verified'})"
                  for b in bases]
         no_judge = reg.projects.get(reg.task(rec["task"])[1].get("project"), (None, {}))[1].get("verdict_requires_judge_base") and not (
             isinstance(judge, dict) and all(re.fullmatch(r"[0-9a-f]{40}", str(judge.get(c))) for c in ("base", "commit")))
@@ -9397,9 +9397,9 @@ def cmd_record_verdict(args):
             # Attente seulement pour un refus certain ; une base non vérifiée (panne de l'API, quota) est rejugée au passage suivant.
             certain = no_judge or not bases or any(b is None or checked_ones.get(b) in ("behind", "diverged") for b in bases)
             code = "judge_base" if no_judge else "base"
-            raise BeeError(f"{args.contribution} : verdict refusé, {note_wait(reg, args.contribution, code, args.sha) if certain else VERDICT_WAIT[code]}"
-                            f" (base déclarée : {', '.join(said) or 'absente'}) ; aucun verdict n'est enregistré"
-                            + ("" if certain else ", rejugé au passage suivant"))
+            raise BeeError(f"{args.contribution}: verdict refused, {note_wait(reg, args.contribution, code, args.sha) if certain else VERDICT_WAIT[code]}"
+                            f" (declared base: {', '.join(said) or 'absent'}); no verdict is recorded"
+                            + ("" if certain else ", judged again at the next pass"))
         verdict["base"] = bases[0]  # vérifiée (ancêtre de la branche par défaut) : le relecteur lit compare/<base>...<sha> (ruche-0028)
     gain = raw.get("gain")
     verdict["gain"] = float(gain) if gain is not None else None
@@ -9410,7 +9410,7 @@ def cmd_record_verdict(args):
     cut_off = []  # ruche-0040: what the bounds of VERDICT_MAX leave out, said in the log
     for key in ("instructions", "degradations"):
         if isinstance(raw.get(key), dict) and len(raw[key]) > VERDICT_MAX["keys"]:
-            cut_off.append(f"{len(raw[key]) - VERDICT_MAX['keys']} de {key}")
+            cut_off.append(f"{len(raw[key]) - VERDICT_MAX['keys']} of {key}")
             raw[key] = dict(list(raw[key].items())[:VERDICT_MAX["keys"]])
     instructions = raw.get("instructions")
     if isinstance(instructions, dict):
@@ -9429,7 +9429,7 @@ def cmd_record_verdict(args):
         # mesure de l'intérieur (R3 exige alors un gardien). Donnée : bornée et typée ici.
         suspects = judge.get("suspicious_constructs")
         if not isinstance(suspects, list):
-            suspects = [{"type": "illisible", "detail": "liste des constructions suspectes absente ou illisible"}]
+            suspects = [{"type": "illisible", "detail": "list of suspicious constructs missing or unreadable"}]
         integer_value = lambda v: v if isinstance(v, int) and not isinstance(v, bool) and v >= 0 else None  # noqa: E731
         verdict["judge"] = {
             "version": integer_value(judge.get("version")),
@@ -9441,16 +9441,16 @@ def cmd_record_verdict(args):
         }
     lines = args.lines if args.lines is not None else raw.get("changed_lines")
     if lines is None:
-        raise BeeError("nombre de lignes modifiées inconnu : passez --lines ou fournissez changed_lines dans le verdict")
+        raise BeeError("number of changed lines unknown: pass --lines or provide changed_lines in the verdict")
     try:
         lines = int(lines)
     except (TypeError, ValueError):
-        raise BeeError(f"changed_lines illisible : {lines!r}")
+        raise BeeError(f"changed_lines unreadable: {lines!r}")
     if lines < 0:
-        raise BeeError(f"changed_lines négatif ({lines}) : verdict refusé")
+        raise BeeError(f"changed_lines negative ({lines}): verdict refused")
     verdict["changed_lines"] = lines
     if replaced := showable_verdict(verdict):
-        print(f"⚠ {replaced} clé(s) de scénario ou de métrique illisible(s) dans le verdict : remplacée(s) par refused_key_<n>")
+        print(f"⚠ {replaced} unreadable scenario or metric key(s) in the verdict: replaced by refused_key_<n>")
     manifest_ignored, copied_text = None, None
     if args.manifest:
         try:  # donnée venue du fork : illisible ou trop grosse (pas même lue), elle n'empêche pas d'enregistrer le verdict
@@ -9468,13 +9468,13 @@ def cmd_record_verdict(args):
         # Imprimée dans le journal de la CI : seulement si c'est un identifiant de tâche, jamais le texte du fork (un saut
         # de ligne suivi de « :: » y deviendrait une commande de workflow GitHub ; revue adverse du tour 2).
         if too_big:
-            manifest_ignored = f"plus de {MANIFEST_MAX_BYTES // 1024} Kio"
+            manifest_ignored = f"more than {MANIFEST_MAX_BYTES // 1024} KiB"
         elif declared_task != rec.get("task"):
             readable = isinstance(declared_task, str) and re.fullmatch(TASK_ID_PATTERN, declared_task)
-            manifest_ignored = f"tâche {declared_task if readable else 'illisible'}, pas {rec.get('task')}"
+            manifest_ignored = f"task {declared_task if readable else 'unreadable'}, not {rec.get('task')}"
         elif not (isinstance(user, str) and user.lower() == str(rec.get("author") or "").lower()):  # ni d'un autre auteur
             readable = isinstance(user, str) and re.fullmatch(LOGIN_PATTERN, user)
-            manifest_ignored = f"auteur {user if readable else 'illisible'}, pas {rec.get('author')}"
+            manifest_ignored = f"author {user if readable else 'unreadable'}, not {rec.get('author')}"
         else:
             declared = declared_gain(reg, manifest, reg.task(rec["task"])[1])
             verdict["declared_gap"] = (round(abs(declared - verdict["gain"]), 4)
@@ -9524,17 +9524,17 @@ def cmd_record_verdict(args):
     errors = sorted({message_schema(e) for e in reg.schema("contribution-record").iter_errors(rec)})[:3]
     size = len(yaml_text(rec).encode("utf-8"))
     if errors or size > BYTES_MAX["contributions"]:
-        cause = "; ".join(errors) or f"{size} octets, au plus {BYTES_MAX['contributions']}"
-        raise BeeError(f"{args.contribution} : verdict refusé, rien n'est écrit : la contribution ne serait plus valide ({cause})")
+        cause = "; ".join(errors) or f"{size} bytes, at most {BYTES_MAX['contributions']}"
+        raise BeeError(f"{args.contribution}: verdict refused, nothing is written: the contribution would no longer be valid ({cause})")
     if cut_off:
-        print(f"⚠ verdict : au plus {VERDICT_MAX['keys']} scénarios et {VERDICT_MAX['keys']} métriques ; ignoré(s) : {', '.join(cut_off)}")
+        print(f"⚠ verdict: at most {VERDICT_MAX['keys']} scenarios and {VERDICT_MAX['keys']} metrics; ignored: {', '.join(cut_off)}")
     threshold = float(setting(reg, "max_declared_gap"))
     write_yaml(path, rec)
     alert = verdict.get("declared_gap") is not None and verdict["declared_gap"] > threshold
-    print(f"✓ verdict {verdict['ci']} enregistré pour {args.contribution}"
-          + (f" ; ⚠ écart de {100 * verdict['declared_gap']:.1f} points entre gain déclaré et mesuré" if alert else "")
-          + (f" ; manifeste ignoré ({manifest_ignored}) : aucun écart calculé, rien de recopié" if manifest_ignored else "")
-          + (" ; arbre git mal formé, ignoré (comparaison par sha)" if tree_ignored else "") + ".")
+    print(f"✓ verdict {verdict['ci']} recorded for {args.contribution}"
+          + (f"; ⚠ gap of {100 * verdict['declared_gap']:.1f} points between the declared and the measured gain" if alert else "")
+          + (f"; manifest ignored ({manifest_ignored}): no gap computed, nothing copied" if manifest_ignored else "")
+          + ("; malformed git tree, ignored (comparison by sha)" if tree_ignored else "") + ".")
     return 0
 
 
@@ -9647,13 +9647,13 @@ def race_causes(reg, cid, levels, instant):
         r = t.get("reservation") or {}
         if t.get("status") == "reserved" and isinstance(r, dict) and r.get("user"):
             engaged.append((r.get("user"), "holder", r.get("since")))
-        engaged += [(p.get("user"), "inscrit en parallèle", p.get("since")) for p in parallels_of(t)]
+        engaged += [(p.get("user"), "registered in parallel", p.get("since")) for p in parallels_of(t)]
         for who_is, role, since in engaged:
             beginning = _instant_or_none(since)
             if not reg.identities.same_one(who_is, rec.get("author")) and beginning is not None and beginning <= declared_one and not engagement_expired(reg, since, instant):
-                reasons.append(f"course (R3) : {who_is} ({role}) travaille sur la tâche depuis {since}, avant cette soumission : "
-                               f"on attend sa contribution, son retrait ou son expiration (R7, {en_iso(beginning + r7_duration)}), "
-                               f"au plus tard jusqu'au {until}")
+                reasons.append(f"race (R3): {who_is} ({role}) has been working on the task since {since}, before this submission: "
+                               f"waiting for their contribution, their withdrawal or their expiry (R7, {en_iso(beginning + r7_duration)}), "
+                               f"at the latest until {until}")
         for c, e in rival:
             beginning = effective_submission(reg, e)
             in_its_window = beginning is None or instant - beginning < window
@@ -9663,20 +9663,20 @@ def race_causes(reg, cid, levels, instant):
             engaged_limit = min(wait_bounds(reg, e)[0], protection) if beginning is not None else protection
             if not e.get("verdict") and (in_its_window or (engaged_before and instant < engaged_limit)):
                 limit_value = engaged_limit if engaged_before or beginning is None else min(beginning + window, protection)
-                reasons.append(f"course (R3) : la concurrente {c} attend le verdict de sa CI et pourrait être mieux classée ; "
-                               + ("son auteur travaillait sur la tâche avant cette soumission : " if engaged_before else "")
-                               + f"on l'attend au plus tard jusqu'au {en_iso(limit_value)}")
+                reasons.append(f"race (R3): the rival {c} awaits the verdict of its CI and could be ranked better; "
+                               + ("its author was working on the task before this submission: " if engaged_before else "")
+                               + f"it is awaited at the latest until {en_iso(limit_value)}")
             elif e.get("verdict") and in_its_window:
-                reasons.append(f"course (R3) : la concurrente {c} est encore dans sa fenêtre de relecture et de vote (jusqu'au "
-                               f"{en_iso(min(beginning + window, protection)) if beginning else until}) et pourrait être mieux classée")
+                reasons.append(f"race (R3): the rival {c} is still in its review and vote window (until "
+                               f"{en_iso(min(beginning + window, protection)) if beginning else until}) and could be ranked better")
             elif ranking_key(reg, e, levels) < my_key:
-                reasons.append(f"course (R3) : la concurrente {c} est mieux classée (score de course, sinon vote net, puis "
-                               f"ancienneté) ; si elle n'est pas intégrable le {until}, elle ne retiendra plus cette contribution")
+                reasons.append(f"race (R3): the rival {c} is ranked better (race score, else net vote, then "
+                               f"seniority); if it is not integrable on {until}, it will no longer hold this contribution back")
     else:
         for c, e in rival:
             if ranking_key(reg, e, levels) < my_key and not r3_causes(reg, c)[2]:
-                reasons.append(f"course (R3) : la concurrente {c}, intégrable, est mieux classée : c'est elle qui doit être "
-                               f"intégrée ; si elle ne l'est pas d'ici le {en_iso(waits_end)}, plus rien ne retient celle-ci")
+                reasons.append(f"race (R3): the rival {c}, integrable, is ranked better: it is the one to be "
+                               f"integrated; if it is not by {en_iso(waits_end)}, nothing holds this one back any more")
     return reasons
 
 
@@ -9706,7 +9706,7 @@ def r3_causes(reg, cid, assessment=None):
     path, rec = reg.record(cid)
     reasons = []
     if rec.get("status") != "in_review":
-        reasons.append(f"status « {rec.get('status')} » (seule une contribution in_review s'intègre)")
+        reasons.append(f"status « {rec.get('status')} » (only a contribution in_review is integrated)")
         return path, rec, reasons
     author = rec.get("author")
     task = reg.tasks.get(rec.get("task"), (None, {}))[1]
@@ -9718,11 +9718,11 @@ def r3_causes(reg, cid, assessment=None):
         if not cond:
             reasons.append(msg)
 
-    require(verdict.get("ci") == "green", f"CI non verte (verdict : {verdict.get('ci', 'absent')})")
+    require(verdict.get("ci") == "green", f"CI not green (verdict: {verdict.get('ci', 'absent')})")
     # R1 revérifiée par le registre (ruche-0028, tour 3 : 52 lignes pour une tâche S, CI du fork verte).
     lines, maximum = verdict.get("changed_lines"), LINES_MAX.get(task.get("size"))
     require(not (isinstance(lines, int) and maximum and lines > maximum),
-           f"R1 : {lines} lignes modifiées au verdict, au plus {maximum} pour une tâche {task.get('size')}")
+           f"R1: {lines} changed lines at the verdict, at most {maximum} for a task of size {task.get('size')}")
     metrics = reg.metrics(task.get("project"))
     proxies = {m: d.get("instructions") for m, d in metrics.items() if d.get("instructions")}
     # ruche-0028 (1) : R4 juge chaque verdict vert du même contenu mesuré, dans le fil (verdicts_du_contenu) : relancer ne peut que nuire.
@@ -9747,107 +9747,107 @@ def r3_causes(reg, cid, assessment=None):
             # du bruit), sinon une autre configuration doit le reproduire. Revue adverse du 27/10 : moins
             # d'instructions ne veut pas toujours dire plus rapide (mélange d'instructions, travail déplacé).
             moves_back = isinstance(gain, (int, float)) and gain < 0 and noise
-            require(not moves_back, f"R4 : {proxy} {percent(gain_inst)}, mais le chronomètre recule au-delà du bruit ({percent(gain)})")
+            require(not moves_back, f"R4: {proxy} {percent(gain_inst)}, but the stopwatch goes back beyond the noise ({percent(gain)})")
             confirmed = isinstance(gain, (int, float)) and gain > 0 and noise
             if not moves_back and not confirmed:
-                require(reproduced(0.0), f"R4 : {proxy} {percent(gain_inst)}, mais le chronomètre ne le confirme pas au-delà "
-                       f"du bruit ({percent(gain)}) : il faut une mesure d'une autre configuration qui voie le gain "
+                require(reproduced(0.0), f"R4: {proxy} {percent(gain_inst)}, but the stopwatch does not confirm it beyond "
+                       f"the noise ({percent(gain)}): a measurement from another configuration that sees the gain is needed "
                        "(bee record-measurement)")
         else:
             require(isinstance(gain, (int, float)) and gain >= threshold and noise,
-                   (f"R4 : {metric} non mesuré (" + ("pas encore de verdict" if not verdict else "aucun gain dans le verdict") + ")"
-                    if not isinstance(gain, (int, float)) else f"R4 : {metric} {percent(gain)}" + ("" if noise else " (dans le bruit)"))
-                   + f" ; il faut au moins {percent(threshold)} au-delà du bruit"
-                   + (f", ou au moins {percent(threshold)} sur {proxy} ({percent(gain_inst)})" if proxy else ""))
+                   (f"R4: {metric} not measured (" + ("no verdict yet" if not verdict else "no gain in the verdict") + ")"
+                    if not isinstance(gain, (int, float)) else f"R4: {metric} {percent(gain)}" + ("" if noise else " (within the noise)"))
+                   + f"; at least {percent(threshold)} beyond the noise is needed"
+                   + (f", or at least {percent(threshold)} on {proxy} ({percent(gain_inst)})" if proxy else ""))
             if proxy:
-                require(reproduced(threshold - 1e-12), f"R4 : sans gain d'instructions sur {proxy}, le gain au chronomètre doit être "
-                       "reproduit par une mesure d'une autre configuration (bee record-measurement)")
+                require(reproduced(threshold - 1e-12), f"R4: without an instruction gain on {proxy}, the stopwatch gain must be "
+                       "reproduced by a measurement from another configuration (bee record-measurement)")
         if rank:  # un verdict précédent du même contenu mesuré : la relance de la CI ne l'efface pas
-            reasons[before:] = [f"{r} [verdict précédent du même contenu mesuré, commit {v.get('sha')}" + (f", dans {or_else}" if or_else != cid else "")
+            reasons[before:] = [f"{r} [previous verdict of the same measured content, commit {v.get('sha')}" + (f", in {or_else}" if or_else != cid else "")
                                + "]" for r in reasons[before:]]
         elif forgotten:
-            require(reproduced(0.0), f"R4 : {forgotten} verdict(s) sorti(s) de l'historique (au plus {VERDICTS_MAX}) : une "
-                   "mesure d'une autre configuration doit confirmer le gain (bee record-measurement)")
+            require(reproduced(0.0), f"R4: {forgotten} verdict(s) dropped from the history (at most {VERDICTS_MAX}): a "
+                   "measurement from another configuration must confirm the gain (bee record-measurement)")
     # R5. Le chronomètre seul d'une métrique de débit est trop bruité pour bloquer : on juge son décompte
     # d'instructions. Les autres métriques (ratio, mémoire) se jugent directement.
     tolerance = float(setting(reg, "max_other_degradation"))
     ignored = set(proxies) | {task.get("metric"), proxies.get(task.get("metric"))}
     out_of_tolerance = {m: g for m, g in (verdict.get("degradations") or {}).items()
                       if m not in ignored and (g is None or g < -tolerance)}
-    require(not out_of_tolerance, "R5 : métrique(s) dégradée(s) au-delà de la tolérance : "
+    require(not out_of_tolerance, "R5: metric(s) degraded beyond the tolerance: "
            + ", ".join(f"{m} ({'?' if g is None else f'{100 * g:+.1f} %'})" for m, g in out_of_tolerance.items()))
 
     # Course entre contributions d'une même tâche : un concurrent de l'auteur ne peut que reconnaître sa contribution
     # (seul son avis favorable compte) et ne vote pas sur elle (commandement 3). Sans concurrence, rien ne change.
     rivals = rivals_of(reg, rec)
     verdict_sha = verdict.get("sha")
-    require(not verdict or verdict_sha, "verdict sans commit (sha) : aucune relecture ne peut s'y rattacher, rien n'est fusionné")
+    require(not verdict or verdict_sha, "verdict without a commit (sha): no review can attach to it, nothing is merged")
     # Une relecture par relecteur et par commit jugé (ruche-0012) ; seule sa plus récente compte (releve_relectures) : une
     # favorable sur le commit jugé seulement ; un défavorable d'un gardien, du conseil ou d'un Confirmé et un défaut confirmé
     # tiennent jusqu'à une relecture plus récente du même relecteur, même si l'auteur pousse un commit ou revient à un ancien
     # (revue adverse). Un Nouveau ne compte pas pour R3 (docs/reputation.md, répétition générale du 29/10, F12) ; une
     # abstention ne compte ni pour ni contre, n'ouvre aucune porte et n'abaisse aucun seuil.
     survey = reviews_survey(reg, rec, levels)
-    require(not survey["defects"], f"un défaut confirmé reste à résoudre (signalé par {', '.join(sorted(survey['defects']))} : il "
-                                  "tient jusqu'à sa relecture d'un commit qui le corrige)")
+    require(not survey["defects"], f"a confirmed defect remains to be resolved (reported by {', '.join(sorted(survey['defects']))}: it "
+                                  "holds until their review of a commit that fixes it)")
     privileged_ones = reg.privileged_ones()
     favorable_ones, unfavorable_ones, abstentions = survey["favorable_ones"], survey["unfavorable_ones"], survey["abstentions"]
     stale_ones, no_commit, new_ones = survey["stale_ones"], survey["no_commit"], survey["new_ones"]
     require(bool(verdict.get("checked_files")),
-           "verdict non contrôlé : la liste des fichiers de la PR n'a pas été vérifiée par le workflow du registre")
+           "verdict not checked: the list of the PR's files was not verified by the registry's workflow")
     judges = verdict.get("modified_judges") or []
     if judges:
         list_of = ", ".join(judges[:5]) + (" …" if len(judges) > 5 else "")
         if task.get("type") not in ("test", "measurement"):
-            require(False, f"la PR modifie des juges ({list_of}) : interdit pour une tâche {task.get('type')} (commandement 3)")
+            require(False, f"the PR modifies judges ({list_of}): forbidden for a task of type {task.get('type')} (commandment 3)")
         elif author not in privileged_ones:  # un auteur du conseil ou gardien répond lui-même de ses juges
             require(any(r.get("reviewer") in privileged_ones or level_of(levels, r.get("reviewer")) == "Confirmed" for r in favorable_ones),
-                   f"la PR modifie des juges ({list_of}) : une relecture favorable d'un gardien, du conseil ou d'un Confirmé est exigée")
+                   f"the PR modifies judges ({list_of}): a favorable review by a guardian, the council or a Confirmed member is required")
     eligible_reviewers = {reg.identities.key(m) for m in eligible if counted_review(reg, levels, m)}  # ruche-0051: persons
     target = setting(reg, "reviews_required")
     required_ones = min(target, len(eligible_reviewers))
-    cap_value = lambda threshold, value: (f" (seuil {threshold} plafonné à ce que les membres dont l'avis compte, hors auteur, peuvent "  # noqa: E731
-                                     f"fournir{' : amorçage' if setting(reg, 'bootstrap') else ''})" if value < threshold else "")
-    require(len(favorable_ones) >= required_ones, f"{len(favorable_ones)} relecture(s) favorable(s) sur {required_ones} requise(s)" + cap_value(target, required_ones)
-           + (f" ; {len(stale_ones)} relecture(s) portent sur un commit antérieur ou abandonné et ne comptent plus" if stale_ones else "")
-           + (f" ; {len(no_commit)} relecture(s) faite(s) avant le verdict, sans commit, ne comptent pas : relisez le commit "
-              "jugé" if no_commit else "")
-           + (f" ; {len(abstentions)} abstention(s), ni pour ni contre" if abstentions else "")
-           + (f" ; {len(new_ones)} relecture(s) de Nouveau, enregistrée(s) mais non comptée(s) pour R3 (docs/reputation.md)"
+    cap_value = lambda threshold, value: (f" (threshold {threshold} capped at what the members whose opinion counts, apart from the author, can "  # noqa: E731
+                                     f"provide{': bootstrap' if setting(reg, 'bootstrap') else ''})" if value < threshold else "")
+    require(len(favorable_ones) >= required_ones, f"{len(favorable_ones)} favorable review(s) of {required_ones} required" + cap_value(target, required_ones)
+           + (f"; {len(stale_ones)} review(s) concern an earlier or abandoned commit and no longer count" if stale_ones else "")
+           + (f"; {len(no_commit)} review(s) made before the verdict, without a commit, do not count: review the judged "
+              "commit" if no_commit else "")
+           + (f"; {len(abstentions)} abstention(s), neither for nor against" if abstentions else "")
+           + (f"; {len(new_ones)} review(s) by a New member, recorded but not counted for R3 (docs/reputation.md)"
               if new_ones else ""))
     require(not unfavorable_ones or len(favorable_ones) > len(unfavorable_ones),
-           f"{len(unfavorable_ones)} relecture(s) défavorable(s) contre {len(favorable_ones)} favorable(s)")
+           f"{len(unfavorable_ones)} unfavorable review(s) against {len(favorable_ones)} favorable")
     blocking = sorted(survey["blocking"])
-    require(not blocking, f"relecture défavorable de {', '.join(blocking)} (gardien, conseil ou Confirmé) : elle bloque, quel "
-           "que soit le commit, jusqu'à ce que ce relecteur relise le commit jugé")
+    require(not blocking, f"unfavorable review by {', '.join(blocking)} (guardian, council or Confirmed member): it blocks, whatever "
+           "the commit, until this reviewer reviews the judged commit")
     for who_is, refusal_cid, what_it in survey["thread"]:
-        require(False, f"{what_it} de {who_is} dans {refusal_cid} (même auteur, même tâche) : re-soumettre ou amender n'efface ni un refus "
-                      f"ni un défaut ; {who_is} relit cette contribution, ou le conseil lève (levees, motivée, dans une PR relue)")
+        require(False, f"{what_it} by {who_is} in {refusal_cid} (same author, same task): resubmitting or amending erases neither a refusal "
+                      f"nor a defect; {who_is} reviews this contribution, or the council lifts it (lifts, with a reason, in a reviewed PR)")
     if [m for m in eligible if level_of(levels, m) == "Confirmed"]:
         require(any(level_of(levels, r.get("reviewer")) == "Confirmed" for r in favorable_ones),
-               "aucune relecture favorable d'un Confirmé (il en faut une quand un Confirmé est disponible)")
+               "no favorable review by a Confirmed member (one is needed when a Confirmed member is available)")
     # Un auteur privilégié ne se dispense de la porte que s'il n'existe aucun autre privilégié pour relire
     # (amorçage) : dès qu'un gardien est nommé, le conseil aussi est relu.
     other_privileged = [m for m in privileged_ones if not reg.identities.same_one(m, author)]
     if required_gate(reg, verdict) and (author not in privileged_ones or other_privileged):
         require(any(r.get("reviewer") in privileged_ones for r in favorable_ones),
-               "porte de relecture temporaire : une relecture favorable d'un gardien ou du conseil est exigée "
-               + ("tant que le juge de la CI n'est pas sûr" if gate_mode(reg) == "toujours"
-                  else "car le juge isolé n'a pas entièrement jugé cette contribution" + ("" if common_judge_sufficient(reg, verdict) else
-                       ", juge commun absent ou sous common_judge_min (minimum absent ou mal formé : aucun juge n'y suffit)"))
-               + " (bee.yaml : guardian_review_required)")
+               "temporary review gate: a favorable review by a guardian or the council is required "
+               + ("as long as the CI's judge is not safe" if gate_mode(reg) == "toujours"
+                  else "because the isolated judge did not fully judge this contribution" + ("" if common_judge_sufficient(reg, verdict) else
+                       ", common judge missing or below common_judge_min (minimum missing or malformed: no judge is enough)"))
+               + " (bee.yaml: guardian_review_required)")
     suspects = ((verdict.get("judge") or {}).get("suspicious_constructs")) or []
     if suspects:
         require(any(r.get("reviewer") in privileged_ones for r in favorable_ones),
-               f"{len(suspects)} construction(s) suspecte(s) relevée(s) par le juge isolé "
-               f"({suspects[0].get('detail', '')[:80]}…) : une relecture favorable d'un gardien ou du conseil est exigée")
+               f"{len(suspects)} suspicious construct(s) found by the isolated judge "
+               f"({suspects[0].get('detail', '')[:80]}…): a favorable review by a guardian or the council is required")
 
     net = net_vote(reg, rec, levels)
     # Les concurrents ne peuvent plus voter sur cette contribution : leur poids ne compte pas dans le seuil atteignable.
     available_weight = sum({reg.identities.key(m): voice_weight(reg, levels, m) for m in eligible if m not in rivals}.values())
     vote_target = setting(reg, "min_net_vote")
     vote_threshold = min(vote_target, available_weight)
-    require(net >= vote_threshold, f"vote net de la ruche {net} sous le seuil {vote_threshold} (pondéré)"
+    require(net >= vote_threshold, f"the hive's net vote {net} below the threshold {vote_threshold} (weighted)"
            + cap_value(vote_target, vote_threshold))
     if assessment is not None:  # ce qui a réellement été réuni, pour le motif d'une intégration (ruche-0012)
         assessment.update(favorable_ones=len(favorable_ones), required_ones=required_ones, target=target, net=net, vote_threshold=vote_threshold,
@@ -9859,10 +9859,10 @@ def r3_causes(reg, cid, assessment=None):
         read_instant(rec.get("submitted_at"), reg.rel(path))
         merge = merge_time(reg, path)
         hours = (now_instant() - effective_submission(reg, rec)).total_seconds() / 3600
-        require(hours >= window, f"fenêtre d'ouverture : {int(hours)} h écoulées sur {window:.0f} h"
-               + (f", depuis la fusion de la soumission ({en_iso(merge)})" if merge else ""))
+        require(hours >= window, f"opening window: {int(hours)} h elapsed of {window:.0f} h"
+               + (f", since the merge of the submission ({en_iso(merge)})" if merge else ""))
     except BeeError:
-        reasons.append("date de soumission illisible")
+        reasons.append("submission date unreadable")
     return path, rec, reasons
 
 
@@ -9933,12 +9933,12 @@ def reviewer_alerts(reg, rec):
 def r3_summary(reg, assessment):
     """Ce qu'une contribution intégrable a réellement réuni (ruche-0012) : jamais « relectures suffisantes » d'une intégration
     sans relecture, et le seuil dit s'il est plafonné (amorçage)."""
-    cap_value = lambda threshold, target: (f" (cible {target}, plafonnée aux membres dont l'avis compte"  # noqa: E731
-                                    f"{' : amorçage' if setting(reg, 'bootstrap') else ''})" if threshold < target else "")
-    return (f"CI verte au commit {assessment.get('sha')} ; {assessment.get('favorable_ones')} relecture(s) favorable(s) de ce commit pour "
-            f"{assessment.get('required_ones')} requise(s){cap_value(assessment.get('required_ones', 0), assessment.get('target', 0))} ; vote net "
-            f"{assessment.get('net')} pour un seuil de {assessment.get('vote_threshold')}{cap_value(assessment.get('vote_threshold', 0), assessment.get('vote_target', 0))}"
-            " ; fenêtre écoulée" + (" ; porte de relecture satisfaite" if human_gate(reg) else " ; sans relecture privilégiée"))
+    cap_value = lambda threshold, target: (f" (target {target}, capped at the members whose opinion counts"  # noqa: E731
+                                    f"{': bootstrap' if setting(reg, 'bootstrap') else ''})" if threshold < target else "")
+    return (f"CI green at commit {assessment.get('sha')}; {assessment.get('favorable_ones')} favorable review(s) of this commit for "
+            f"{assessment.get('required_ones')} required{cap_value(assessment.get('required_ones', 0), assessment.get('target', 0))}; net vote "
+            f"{assessment.get('net')} for a threshold of {assessment.get('vote_threshold')}{cap_value(assessment.get('vote_threshold', 0), assessment.get('vote_target', 0))}"
+            "; window elapsed" + ("; review gate satisfied" if human_gate(reg) else "; without a privileged review"))
 
 
 def cmd_check_acceptance(args):
@@ -9950,16 +9950,16 @@ def cmd_check_acceptance(args):
     assessment = {}
     _, rec, reasons = acceptance_causes(reg, args.contribution, assessment=assessment)
     for a in reviewer_alerts(reg, rec or {}):
-        print(f"⚠ {args.contribution} : {a}.")
+        print(f"⚠ {args.contribution}: {a}.")
     print(declared_frame(args.contribution, rec or {}, shortened=True))
     print(diff_command(args.contribution, rec or {}))
     if reasons:
-        print(f"✗ {args.contribution} : pas encore intégrable.")
+        print(f"✗ {args.contribution}: not integrable yet.")
         for r in reasons:
             print("  - " + show_error(r))
         return 1
-    print(f"✓ {args.contribution} est intégrable automatiquement (R3) : {r3_summary(reg, assessment)}."
-          + ("" if human_gate(reg) else " Aucune relecture privilégiée requise."))
+    print(f"✓ {args.contribution} is integrable automatically (R3): {r3_summary(reg, assessment)}."
+          + ("" if human_gate(reg) else " No privileged review required."))
     return 0
 
 
@@ -9974,13 +9974,13 @@ def cmd_integrate(args):
     assessment = {}
     path, rec, reasons = acceptance_causes(reg, args.contribution, assessment=assessment)
     if reasons:
-        print(f"✗ {args.contribution} n'est pas intégrable automatiquement :")
+        print(f"✗ {args.contribution} is not integrable automatically:")
         for r in reasons:
             print("  - " + show_error(r))
         return 1
     rival = [(c, e) for c, e in racing_contributions(reg, rec["task"]) if c != args.contribution]
-    return integrate(reg, args, path, rec, en_iso(now_instant()), f"Auto-integration (R3) : {r3_summary(reg, assessment)}"
-                    + (f" ; meilleure de sa course devant {', '.join(c for c, _ in rival)}." if rival else "."))
+    return integrate(reg, args, path, rec, en_iso(now_instant()), f"Auto-integration (R3): {r3_summary(reg, assessment)}"
+                    + (f"; best of its race, ahead of {', '.join(c for c, _ in rival)}." if rival else "."))
 
 
 def integrate(reg, args, path, rec, instant, reason, message=None):
@@ -10002,8 +10002,8 @@ def integrate(reg, args, path, rec, instant, reason, message=None):
         e["status"] = "set_aside"
         e["kept"] = args.contribution
         e["decided_at"] = instant
-        e["decision_reason"] = (f"Écartée au profit de {args.contribution}, retenue par R3 (course entre contributions concurrentes "
-                               f"de {tid}). Ce n'est pas un refus : rien ne compte contre son auteur ni ses relecteurs.")
+        e["decision_reason"] = (f"Set aside in favour of {args.contribution}, kept by R3 (race between rival contributions "
+                               f"of {tid}). This is not a refusal: nothing counts against its author or its reviewers.")
         write_yaml(reg.records[c][0], e)
     task_path, task = reg.task(tid)
     changes = {}
@@ -10012,18 +10012,18 @@ def integrate(reg, args, path, rec, instant, reason, message=None):
     ends = []
     if (task.get("reservation") or {}).get("user"):
         changes["reservation"] = None
-        ends.append(f"{task['reservation']['user']} (titulaire)")
+        ends.append(f"{task['reservation']['user']} (holder)")
     if parallels_of(task):
         changes["parallel"] = None
-        ends += [f"{p['user']} (en parallèle)" for p in parallels_of(task)]
+        ends += [f"{p['user']} (in parallel)" for p in parallels_of(task)]
     texts_of = []
     if rival:
-        texts_of.append(f"Contribution retenue : {args.contribution} (R3). Écartée(s) à son profit : {', '.join(c for c, _ in rival)}.")
+        texts_of.append(f"Contribution kept: {args.contribution} (R3). Set aside in its favour: {', '.join(c for c, _ in rival)}.")
     if ends:
-        texts_of.append(f"La tâche est intégrée : les engagements de {', '.join(ends)} prennent fin.")
+        texts_of.append(f"The task is integrated: the engagements of {', '.join(ends)} end.")
     note = {"by": "github-actions[bot]", "at": instant, "text": " ".join(texts_of)} if texts_of else None
     modify_task(task_path, status="integrated", note=note, **changes)
-    print(message or f"✓ {args.contribution} intégrée automatiquement (R3).\n  PR du projet à fusionner : {rec.get('pr', '(inconnue)')}")
+    print(message or f"✓ {args.contribution} integrated automatically (R3).\n  Project PR to merge: {rec.get('pr', '(unknown)')}")
     for c, e in rival:
         # La PR de chaque concurrente écartée est fermée par le workflow, après la publication du registre (bee ecartees),
         # si elle est encore ouverte et que son auteur GitHub est bien celui de la contribution.
@@ -10137,7 +10137,7 @@ def cmd_close(args):
     reg = Registry(args.registry)
     path, rec = reg.record(args.contribution)
     if rec.get("status") != "in_review":
-        print(f"{args.contribution} n'est pas en relecture (status : {rec.get('status')}) ; rien à clore.")
+        print(f"{args.contribution} is not in review (status: {rec.get('status')}); nothing to close.")
         return 1
     # R3 : si une concurrente de la même tâche est intégrée, ou si sa PR est fusionnée (le passage d'intégration va
     # l'intégrer), cette contribution a perdu la course : elle sera écartée, pas annulée. On la laisse au passage
@@ -10153,8 +10153,8 @@ def cmd_close(args):
                        and ((e.get("status") == "integrated" and (_instant_or_none(e.get("decided_at")) or PASS_REF) >= submitted)
                             or (c in merged_ones and e.get("status") == "in_review")))
     if winning:
-        print(f"{args.contribution} n'est pas close : sa concurrente {', '.join(winning)} est intégrée ou fusionnée ; "
-              "le passage d'intégration l'écartera (R3).")
+        print(f"{args.contribution} is not closed: its rival {', '.join(winning)} is integrated or merged; "
+              "the integration pass will set it aside (R3).")
         return 1
     rec = dict(rec)
     rec["status"] = "cancelled"
@@ -10165,27 +10165,27 @@ def cmd_close(args):
     task_path, task = reg.task(rec["task"])
     remaining_ones = [c for c, _ in racing_contributions(reg, rec["task"]) if c != args.contribution]
     parallel = parallels_of(task)
-    text = f"{args.contribution} close sans intégration : {args.reason}"
+    text = f"{args.contribution} closed without integration: {args.reason}"
     note = lambda suite: {"by": args.by, "at": en_iso(now_instant()), "text": f"{text} {suite}"}  # noqa: E731
     pointer = {"contribution": remaining_ones[-1] if remaining_ones else None} if task.get("contribution") == args.contribution else {}
     if remaining_ones or (task.get("status") == "reserved" and task.get("contribution") == args.contribution):
         # Course : les autres contributions restent en relecture, ou le titulaire travaille encore.
-        modify_task(task_path, note=note("La course continue" + (f" : {', '.join(remaining_ones)}." if remaining_ones else ".")), **pointer)
-        print(f"✓ {args.contribution} close (annulee) ; tâche {rec['task']} toujours {task.get('status')}.")
+        modify_task(task_path, note=note("The race goes on" + (f": {', '.join(remaining_ones)}." if remaining_ones else ".")), **pointer)
+        print(f"✓ {args.contribution} closed (cancelled); task {rec['task']} still {task.get('status')}.")
     elif task.get("status") == "in_review" and parallel:
         elected = oldest(parallel)
         modify_task(task_path, status="reserved", reservation={"user": elected["user"], "since": elected["since"]},
                        parallel=without_it(parallel, elected["user"]), contribution=None,
-                       note=note(f"{elected['user']}, inscrit en parallèle depuis {elected['since']}, devient titulaire à cette date "
-                                 "(R7 : l'échéance ne s'allonge pas)."))
-        print(f"✓ {args.contribution} close (annulee) ; {elected['user']} devient titulaire de {rec['task']}.")
+                       note=note(f"{elected['user']}, registered in parallel since {elected['since']}, becomes the holder as of that date "
+                                 "(R7: the deadline is not extended)."))
+        print(f"✓ {args.contribution} closed (cancelled); {elected['user']} becomes the holder of {rec['task']}.")
     elif task.get("contribution") == args.contribution and task.get("status") == "in_review":
         modify_task(task_path, status="open", reservation=None, contribution=None,
                        note={"by": args.by, "at": en_iso(now_instant()),
-                             "text": f"{args.contribution} close sans intégration : {args.reason} Tâche rouverte."})
-        print(f"✓ {args.contribution} close (annulee) ; tâche {rec['task']} rouverte.")
+                             "text": f"{args.contribution} closed without integration: {args.reason} Task reopened."})
+        print(f"✓ {args.contribution} closed (cancelled); task {rec['task']} reopened.")
     else:
-        print(f"✓ {args.contribution} close (annulee).")
+        print(f"✓ {args.contribution} closed (cancelled).")
     return 0
 
 

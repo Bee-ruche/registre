@@ -4,7 +4,10 @@ author: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/252
 summary: 'bee''s messages and help in English for the first half of the commands, in nine registry PRs
   (#242 to #252), each proven by the message-literal check and reviewed by another model'
-status: in_review
+status: integrated
 submitted_at: '2026-11-10T21:55:07Z'
 engaged_since: '2026-11-10T15:59:46Z'
 reviews: []
+decided_at: '2026-11-10T23:19:46Z'
+decision_reason: 'bee''s messages and help in English for the first half of the commands (validate to debates, with every helper they reach), in nine registry PRs merged by the agent principal at their checked heads: #242, #245 and #251 (the message-literal check, tools/migration/check_messages.py, with --prose-file, {…} holes and --inner); #243 (the help and the tree and context messages); #244 (the markers: the data frame in English, an imitated frame refused in both languages for good, TO FILL IN written, Debate: written); #246 (the agora); #247 (validate to release-expired); #248 and #249 (the validation); #250 (manifest to record-measurement); #252 (the hand-made remainder: words inside interpolations, and four messages changed with the code that compares them, each with a test that fails if the comparison is left in French). Each PR attached the check''s output (P1 restricted to message literals, every waiver listed with its reason), was reviewed adversarially by another model with every finding fixed or answered, and passed the full suite in CI on its exact head; the test count never dropped. Recorded by hand: one task over several PRs; submitted after the last merge (#253).'
+merge_sha: 36d9b6fb13052242f46672c86c7489c9828e3cfd
