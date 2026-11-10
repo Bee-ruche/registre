@@ -68,7 +68,7 @@ def main():
                    "judge": {"version": 3, "common": "juge-v1", "outputs_compared": 7868, "suspicious_constructs": []}}
         if verdict["ci"] == "red":
             verdict["failed_step"] = randomness.choice(["tests", "fuzzing", "tests-arm64"])
-        metric = task.get("metric")
+        metric = verdict["metric"] = task.get("metric")  # ruche-0145: a fork's verdict names its task's metric (required from date D)
         scenario = None
         if metric:
             project_def = yaml.safe_load((travail / f"projects/{project}.yaml").read_text(encoding="utf-8"))
