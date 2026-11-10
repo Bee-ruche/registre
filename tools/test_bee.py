@@ -22246,5 +22246,140 @@ class TestAlreadyNamedRuche0145(unittest.TestCase):
             commit({"docs/x.md": "membres:\n- pseudo: eve\n"}, "another file")
             self.assertNotIn("eve", bee.already_named(types.SimpleNamespace(root=root)))  # only the two lists
 
+
+# The forks' manifest before the switch: FILLED_MANIFEST with its French keys (english-names.md, section 6), a line at a time.
+FRENCH_MANIFEST = re.sub(r"(?m)^( *)(task|user|model|summary|change|measurements|command|before|after|tested|untested|doubts|actual_size):",
+                         lambda m: m[1] + {"task": "tache", "user": "utilisateur", "model": "modele", "summary": "resume", "change": "changement",
+                                           "measurements": "mesures", "command": "commande", "before": "avant", "after": "apres", "tested": "teste",
+                                           "untested": "non_teste", "doubts": "doutes", "actual_size": "taille_reelle"}[m[2]] + ":", FILLED_MANIFEST)
+# A fork's verdict.json before F2 (bee/ci/verdict.py of minizBee): the French keys bee reads, and some it does not.
+FRENCH_VERDICT = {"ci": "verte", "gain": 0.03, "metrique": "debit_compression_n6", "au_dela_du_bruit": True, "lignes_modifiees": 10,
+                  "amorcage": True, "mesures": {"A": {"debit_compression_n6": 50.0}, "B": {"debit_compression_n6": 51.5}},
+                  "degradations": {"memoire_max_ko": -0.02}, "instructions": {"instructions_n6": {"A": 100, "B": 90, "gain": 0.1}},
+                  "base_juge": {"base": "a" * 40, "commit": "b" * 40, "regle": "point_de_depart"}, "etapes": {"juge": "succes"},
+                  "juge": {"version": 2, "commun": "juge-v2", "sorties_comparees": 12, "constructions_suspectes": [{"type": "x", "detail": "y"}]},
+                  "details": {"base": "c" * 40, "tete": "d" * 40, "origine_metrique": "tâche du registre"}}
+
+
+class TestForkDocumentsRuche0145(BaseTest):
+    """Until date D, a fork's manifest (manifests/, else manifestes/, else CONTRIBUTION.yaml) and its verdict.json are read in either
+    vocabulary, one per document, and translated before any check; from D on, English only (plan, sections 6 and 10)."""
+
+    def setUp(self):
+        super().setUp()
+        self.fork = pathlib.Path(self.temp.name) / "fork"
+        self.fork.mkdir()
+        (self.fork / "miniz_tdef.c").write_text("".join(f"ligne {i}\n" for i in range(100)), encoding="utf-8")
+        git(self.fork, "init", "-q", "-b", "master")
+        self.commit_fork()
+        git(self.fork, "switch", "-qc", "task/miniz-0099")
+        (self.fork / "miniz_tdef.c").write_text("".join(f"ligne {i}\n" for i in range(99)) + "ligne cent\n", encoding="utf-8")
+        self.commit_fork()
+
+    def commit_fork(self, files=None):
+        for path, text in (files or {}).items():
+            (self.fork / path).parent.mkdir(parents=True, exist_ok=True)
+            (self.fork / path).write_text(text, encoding="utf-8") if text is not None else (self.fork / path).unlink()
+        git(self.fork, "-c", "user.name=t", "-c", "user.email=t@t", "add", "-A")
+        git(self.fork, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "travail", "--allow-empty")
+
+    def check_fork(self):
+        return self.bee("check-fork", "--task", "miniz-0099", "--base", "master", "--repo", str(self.fork))
+
+    def after_d(self):
+        return mock.patch.dict(os.environ, {"BEE_NOW": f"{bee.DATE_D}T00:00:00Z"})
+
+    def test_the_keys_are_the_maps_and_date_d_is_a_date_at_the_earliest_2027(self):
+        families = yaml.safe_load((ROOT / "tools/migration/names.yaml").read_text(encoding="utf-8"))["families"]
+        for kind, family in (("manifest", "manifest"), ("verdict", "fork_verdict")):
+            self.assertEqual(bee.FORK_KEYS[kind], {k: v for k, v in families[family]["keys"].items() if k != v}, kind)
+        self.assertRegex(bee.DATE_D, r"\A[0-9]{4}-[0-9]{2}-[0-9]{2}\Z")
+        self.assertGreaterEqual(bee.DATE_D, "2027-01-01")
+
+    def test_one_vocabulary_per_document_translated_until_date_d(self):
+        english, french = yaml.safe_load(FILLED_MANIFEST), yaml.safe_load(FRENCH_MANIFEST)
+        self.assertIn("non_teste", french)
+        self.assertEqual(bee.fork_document("manifest", french, "m"), english)  # metric ids (avant, apres) kept
+        self.assertIs(bee.fork_document("manifest", english, "m"), english)
+        verdict = bee.fork_document("verdict", FRENCH_VERDICT, "v")
+        self.assertEqual((verdict["changed_lines"], verdict["judge"]["outputs_compared"], verdict["judge_base"]["rule"], verdict["metric"]),
+                         (10, 12, "point_de_depart", "debit_compression_n6"))
+        for key in ("measurements", "degradations", "instructions", "steps", "details"):  # data-keyed, or not bee's: as written
+            self.assertEqual(verdict[key], FRENCH_VERDICT[{"measurements": "mesures", "steps": "etapes"}.get(key, key)])
+        for name, doc, kind in (("top", {**french, "user": "alice"}, "manifest"), ("nested", {**english, "agent": {"modele": "x"}}, "manifest"),
+                                ("verdict", {**FRENCH_VERDICT, "changed_lines": 10}, "verdict")):
+            with self.subTest(mixed=name), self.assertRaisesRegex(bee.BeeError, "one vocabulary per document"):
+                bee.fork_document(kind, doc, "d")
+        with self.after_d():
+            for kind, doc in (("manifest", french), ("verdict", FRENCH_VERDICT)):
+                with self.subTest(after_d=kind), self.assertRaisesRegex(bee.BeeError, f"read until {bee.DATE_D} only"):
+                    bee.fork_document(kind, doc, "d")
+            self.assertIs(bee.fork_document("manifest", english, "m"), english)
+        self.assertEqual(bee.fork_document("manifest", ["a list"], "m"), ["a list"])  # left to the manifest's own checks
+
+    def test_check_fork_reads_the_former_places_and_french_until_date_d(self):
+        for name, files in (("manifestes/", {"manifestes/miniz-0099.yaml": FRENCH_MANIFEST}),
+                            ("CONTRIBUTION.yaml in French", {"manifestes/miniz-0099.yaml": None, "CONTRIBUTION.yaml": FRENCH_MANIFEST}),
+                            ("manifests/", {"CONTRIBUTION.yaml": None, "manifests/miniz-0099.yaml": FILLED_MANIFEST})):
+            with self.subTest(name):
+                self.commit_fork(files)
+                code, text = self.check_fork()
+                self.assertEqual(code, 0, text)
+                self.assertIn("2 lignes modifiées", text)  # the manifest's lines are not counted (R1)
+        self.commit_fork({"manifests/miniz-0099.yaml": None, "manifestes/miniz-0099.yaml": FRENCH_MANIFEST})
+        with self.after_d():
+            code, text = self.check_fork()
+        self.assertEqual(code, 1, text)
+        self.assertIn("manifests/miniz-0099.yaml absent de la branche", text)
+        for name, files, refusal in (
+                ("two manifests", {"manifests/miniz-0099.yaml": FILLED_MANIFEST}, "two manifests for one task : keep manifests/miniz-0099.yaml only"),
+                ("mixed", {"manifests/miniz-0099.yaml": None, "manifestes/miniz-0099.yaml": FRENCH_MANIFEST + "user: alice\n"},
+                 "manifestes/miniz-0099.yaml : French keys (")):
+            with self.subTest(name):
+                self.commit_fork(files)
+                code, text = self.check_fork()
+                self.assertEqual(code, 1, text)
+                self.assertIn(refusal, text)
+                self.assertNotIn("absent de la branche", text)
+        path = self.dir / "manifeste.yaml"
+        path.write_text(FRENCH_MANIFEST, encoding="utf-8")
+        self.assertEqual(self.bee("validate-manifest", str(path))[0], 0)
+        with self.after_d():
+            self.assertIn("French keys", self.bee("validate-manifest", str(path))[1])
+
+    def test_record_verdict_reads_a_french_verdict_and_manifest_until_date_d(self):
+        cid = self.submit_0099()
+        verdict, manifest, path = self.dir / "verdict.json", self.dir / "manifeste.yaml", self.dir / f"contributions/miniz/{cid}.yaml"
+        record = lambda *more: self.bee("record-verdict", cid, "--verdict", str(verdict), "--manifest", str(manifest), "--sha", "abc1234", *more)  # noqa: E731
+        verdict.write_text(json.dumps(FRENCH_VERDICT), encoding="utf-8")
+        manifest.write_text(FRENCH_MANIFEST, encoding="utf-8")
+        code, text = record()
+        self.assertEqual(code, 0, text)
+        v = bee.read_yaml(path)["verdict"]
+        self.assertEqual((v["ci"], v["changed_lines"], v["beyond_noise"], v["bootstrap"], v["declared_gap"], v["judge"]["outputs_compared"]),
+                         ("green", 10, True, True, 0.07, 12))
+        self.assertEqual(bee.read_yaml(path)["declared"]["model"], "modèle d'essai 1.0")
+        self.valid_one()
+        for word, ci in (("vert", "green"), ("succès", "green"), ("green_value", "red"), ("rouge", "red")):
+            with self.subTest(ci=word):
+                verdict.write_text(json.dumps({**FRENCH_VERDICT, "ci": word}), encoding="utf-8")
+                self.assertEqual(record()[0], 0)
+                self.assertEqual(bee.read_yaml(path)["verdict"]["ci"], ci)
+        before = path.read_bytes()
+        verdict.write_text(json.dumps({**FRENCH_VERDICT, "changed_lines": 10}), encoding="utf-8")
+        code, text = record()
+        self.assertEqual(code, 1, text)
+        self.assertIn("one vocabulary per document", text)
+        self.assertEqual(path.read_bytes(), before, "nothing written")
+        with self.after_d():
+            verdict.write_text(json.dumps(FRENCH_VERDICT), encoding="utf-8")
+            self.assertIn(f"read until {bee.DATE_D} only", record()[1])
+            self.assertEqual(path.read_bytes(), before, "nothing written")
+            verdict.write_text(json.dumps({"ci": "green", "gain": 0.03, "metric": "debit_compression_n6", "changed_lines": 10}), encoding="utf-8")
+            code, text = record()
+            self.assertEqual(code, 0, text)
+            self.assertIn("manifeste ignoré (tâche illisible", text)  # French after D: ignored, as an unreadable manifest
+            self.assertNotIn("declared_gap", bee.read_yaml(path)["verdict"])
+
 if __name__ == "__main__":
     sys.exit(principal_tests(sys.modules[__name__], __file__, sys.argv[1:]))
