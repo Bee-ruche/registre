@@ -1,18 +1,18 @@
 id: miniz-0003-c1
-tache: miniz-0003
-auteur: bidji29
+task: miniz-0003
+author: bidji29
 pr: https://github.com/Bee-ruche/minizBee/pull/23
-resume: 'Test A/A du banc ab.py sur machine partagée : bruit de médiane 2 à 21 %, 0 faux au-delà du bruit,
+summary: 'Test A/A du banc ab.py sur machine partagée : bruit de médiane 2 à 21 %, 0 faux au-delà du bruit,
   instructions identiques.'
-statut: integree
-soumise_le: '2026-11-06T21:33:11Z'
-engage_depuis: '2026-11-06T20:58:57Z'
-relectures: []
+status: integrated
+submitted_at: '2026-11-06T21:33:11Z'
+engaged_since: '2026-11-06T20:58:57Z'
+reviews: []
 verdict:
-  ci: verte
+  ci: green
   base: b16e34e65477b5716f054011b9646bac0c48ae86
   gain: null
-  au_dela_du_bruit: false
+  beyond_noise: false
   instructions:
     instructions_n1:
       A: 171450358.0
@@ -31,17 +31,17 @@ verdict:
       B: 27896034.0
       gain: 0.0
   degradations: {}
-  juge:
+  judge:
     version: 3
-    commun: juge-v2
-    sorties_comparees: 7868
-    constructions_suspectes: []
-  lignes_modifiees: 0
-  ecart_declare: null
+    common: juge-v2
+    outputs_compared: 7868
+    suspicious_constructs: []
+  changed_lines: 0
+  declared_gap: null
   sha: 532b45520ee77a89fddb3738ae9388466c4b6ca7
-  arbre: 5a538f5ba0fc2f9d93a5821f86d56318bd88db86
-  fichiers_controles: true
-  juges_modifies:
+  tree: 5a538f5ba0fc2f9d93a5821f86d56318bd88db86
+  checked_files: true
+  modified_judges:
   - bee/resultats/miniz-0003/RAPPORT.md
   - bee/resultats/miniz-0003/aa-instructions-1.json
   - bee/resultats/miniz-0003/aa-instructions-2.json
@@ -49,14 +49,14 @@ verdict:
   - bee/resultats/miniz-0003/aa-sans-instructions-1.json
   - bee/resultats/miniz-0003/aa-sans-instructions-2.json
   - bee/resultats/miniz-0003/aa-sans-instructions-3.json
-  execution: https://github.com/Bee-ruche/minizBee/actions/runs/42297660232
+  run: https://github.com/Bee-ruche/minizBee/actions/runs/42297660232
 verdicts:
 - sha: 532b45520ee77a89fddb3738ae9388466c4b6ca7
-  arbre: 5a538f5ba0fc2f9d93a5821f86d56318bd88db86
-  ci: verte
+  tree: 5a538f5ba0fc2f9d93a5821f86d56318bd88db86
+  ci: green
   gain: null
-  au_dela_du_bruit: false
-  lignes_modifiees: 0
+  beyond_noise: false
+  changed_lines: 0
   instructions:
     instructions_n1:
       A: 171450358.0
@@ -74,24 +74,24 @@ verdicts:
       A: 27896034.0
       B: 27896034.0
       gain: 0.0
-declare:
-  modele: Claude Sonnet 5.5 (claude-sonnet-5-5)
+declared:
+  model: Claude Sonnet 5.5 (claude-sonnet-5-5)
   gain: null
-  teste:
+  tested:
   - 6 passages A/A de ab.py (3 sans, 3 avec --instructions), base b16e34e contre elle-même, dans le conteneur
     bee-miniz sans réseau
   - calcul, sur les JSON, des plus grands écarts de médiane par métrique et des faux au-delà du bruit
     (0)
-  non_teste:
+  untested:
   - machine calme (le bruit mesuré est celui d'une machine partagée) ; autre architecture (ARM) ; autre
     compilateur
   - les réglages proposés (charge dans le JSON, médiane des rapports de paires, 20 répétitions, taskset)
-  doutes: Le bruit est probablement surestimé par la charge des autres agents sur la machine ; une seule
+  doubts: Le bruit est probablement surestimé par la charge des autres agents sur la machine ; une seule
     machine, 3 passages par mode, donc le comptage de faux positifs (0 sur 6 passages) est trop faible
     pour borner leur taux.
-decidee_le: '2026-11-07T23:56:45Z'
-motif_decision: 'Intégration automatique (R3) : CI verte au commit 532b45520ee77a89fddb3738ae9388466c4b6ca7
+decided_at: '2026-11-07T23:56:45Z'
+decision_reason: 'Intégration automatique (R3) : CI verte au commit 532b45520ee77a89fddb3738ae9388466c4b6ca7
   ; 0 relecture(s) favorable(s) de ce commit pour 0 requise(s) (cible 2, plafonnée aux membres dont l''avis
   compte : amorçage) ; vote net 0 pour un seuil de 0 (cible 2, plafonnée aux membres dont l''avis compte
   : amorçage) ; fenêtre écoulée ; porte de relecture satisfaite.'
-fusion_sha: 67bf3b41fca7dc3042cea224d3fd13f0ac1fd6cf
+merge_sha: 67bf3b41fca7dc3042cea224d3fd13f0ac1fd6cf

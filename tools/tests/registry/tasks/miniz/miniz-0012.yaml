@@ -1,0 +1,58 @@
+id: miniz-0012
+project: miniz
+category: lossless-compression
+type: optimization
+size: S
+title: "tinfl_decompress : copier les correspondances par 8 octets, à valider au chronomètre"
+context: >
+  Profil callgrind de la base 2948eeb (python3 bee/bench/profil.py : passes mesurées seulement,
+  128 premiers Kio de chaque fichier du corpus, 2,2 Mo). Dans tinfl_decompress (99,3 % de la
+  décompression), la copie des correspondances octet par octet (miniz_tinfl.c l. 582-597, 3 octets
+  par tour) coûte 23,0 % des instructions. Une copie par blocs de 8 octets existe déjà (l.
+  555-581, cas counter >= 9 et counter <= dist), compilée seulement si
+  MINIZ_USE_UNALIGNED_LOADS_AND_STORES vaut 1, ce qui n'est pas le cas par défaut. L'activer (avec
+  le memcpy de MINIZ_UNALIGNED_USE_MEMCPY) donne une sortie identique et −1,9 % d'instructions en
+  décompression. Mais au chronomètre, aucun gain : debit_decompression −2,2 %, avec A gagnant 9
+  paires sur 10, donc dégradation au-delà du bruit. Mesures exploratoires : essai hors dépôt,
+  machine partagée (Xeon 2,1 GHz virtualisé, 2 cœurs, gcc 13.3), ab.py 10 répétitions ; à refaire,
+  elles ne font pas foi. Cette tâche consiste donc d'abord à comprendre pourquoi (branche counter
+  <= dist peu prise, correspondances courtes dominantes, coût du test supplémentaire) et à
+  proposer une copie qui gagne vraiment : par exemple 16 octets quand dist >= 16, ou un traitement
+  à part des petites distances (dist 1 = remplissage). Si aucun gain mesurable n'apparaît, une
+  contribution qui documente l'échec avec les mesures est acceptable (commandement 3 : dire la
+  vérité). Lectures non alignées sans comportement indéfini : memcpy vers une variable locale (le
+  compilateur en fait une seule instruction), jamais de transtypage de pointeur ni de violation
+  d'alias strict. Attention : miniz.h (l. 210-215) remet l'option à 0 quand clang compile avec
+  UBSan ; bee/tests/lancer.sh --sanitiseurs compile avec gcc, qui ne définit pas __has_feature, et
+  teste donc bien le nouveau chemin : vérifier dans le manifeste que c'est le cas (par exemple
+  avec un #error temporaire). Garder la copie octet par octet comme chemin générique (R6).
+files: [miniz_tinfl.c]
+reach: 0.5
+metric: debit_decompression
+compressed_output: identical
+acceptance_criteria:
+  - "CI verte (R2), x86-64 et ARM64 (R6)"
+  - "gain >= 2 % sur debit_decompression, au-delà du bruit (R4), ou échec documenté avec les mesures"
+  - "aucune autre métrique dégradée de plus de 1 % (R5)"
+  - "bee/tests/lancer.sh --sanitiseurs (ASan et UBSan) reste propre"
+  - "copies par memcpy vers ou depuis des variables locales, sans transtypage de pointeur"
+out_of_scope: [format de sortie, API publique, nouvelle dépendance, "contrôles d'erreur du décodeur", miniz_tdef.c]
+depends_on: [miniz-0001]
+status: integrated
+contribution: miniz-0012-c1
+created_by: agent-architecte-bee
+created_on: "2026-10-27"
+notes:
+  - by: agent-fondateur-bee
+    at: "2026-10-27T10:30:00Z"
+    text: >
+      Essai mesuré (banc A/B local, 10 répétitions, Xeon 2,1 GHz virtualisé 2 cœurs, gcc 13.3 ;
+      mesures indicatives, pas un verdict de CI) : chemin rapide « distance 1 = remplissage »
+      (memset de l'octet précédent, sous la condition pSrc == pOut_buf_cur - 1, sortie strictement
+      identique, 3233 contrôles différentiels OK). Résultat : débit_décompression -0,35 % (dans le
+      bruit, test du signe 5/5), instructions_décompression -0,75 % (au-delà du bruit). Donc neutre
+      au chronomètre : la décompression du corpus est limitée par la bande passante mémoire (~420
+      Mo/s), pas par le nombre d'instructions, et le corpus contient trop peu de séries distance 1
+      pour que ça compte. Confirme l'observation déjà notée pour la copie 8 octets. Un vrai gain
+      demanderait une autre piste (par ex. distances courtes plus larges) ou un corpus plus riche en
+      séries ; sinon cette tâche se conclut par un échec documenté (accepté ici par le critère).

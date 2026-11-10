@@ -3,7 +3,7 @@
 # Sécurité : seul l'outil bee de la branche principale s'exécute ici. verdict.json et
 # le manifeste viennent des forks et sont traités comme des données. Une contribution dont la PR
 # n'a pas été ouverte par son auteur ne reçoit aucun verdict (pas de crédit pour le travail d'un autre).
-name: Verdicts des forks
+name: Fork verdicts
 
 on:
   schedule:
@@ -13,7 +13,7 @@ on:
   # vote…) déclenche aussi une collecte. En pratique, GitHub espace les cron de plusieurs heures.
   # Seul le code de main s'exécute ; l'événement ne sert que de signal.
   workflow_run:
-    workflows: ["Fusion automatique"]
+    workflows: ["Auto-merge"]
     types: [completed]
 
 permissions:
@@ -37,108 +37,110 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Dépendances
-        run: pip install -r outils/requirements.txt
+      - name: Dependencies
+        run: pip install -r tools/requirements.txt
       - name: API budget, start (ruche-0121; puts first on PATH a gh that logs each call)
         env: {GITHUB_TOKEN: "${{ github.token }}"}
-        run: python3 outils/bee.py api-budget start --dossier "$RUNNER_TEMP/api-budget" --jeton GITHUB_TOKEN
-      - name: Récupérer les verdicts
+        run: python3 tools/bee.py api-budget start --dir "$RUNNER_TEMP/api-budget" --token GITHUB_TOKEN
+      - name: Fetch the verdicts
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          journal() { sed -e 's/##\[/# #[/g' -e 's/^/  | /'; }  # ruche-0025 : ce que bee imprime, jamais en tête de ligne du journal
+          log_text() { sed -e 's/##\[/# #[/g' -e 's/^/  | /'; }  # ruche-0025 : ce que bee imprime, jamais en tête de ligne du journal
           # ruche-0122: every PR is read in bulk (bee en-attente --pr-states, one GraphQL query per 50 PRs), as gh pr view reads one; a
           # PR whose answer is unreadable, or whose author is not a user, is left out of the pass; the person its author acts for is
           # bee acts-for's (ruche-0089), compte_pr the author's account number.
-          python3 outils/bee.py en-attente --pr-states \
-            | python3 -c 'import json, sys; [print(c["id"], c["pr"], c.get("sha_verdict") or "-", c.get("ci_verdict") or "-", c.get("auteur") or "-", c.get("sha_attente") or "-", c["pr_head"], c["pr_author"], c["pr_author_id"], c["pr_person"], sep="\t") for c in json.load(sys.stdin) if c.get("pr_head")]' \
+          python3 tools/bee.py pending --pr-states \
+            | python3 -c 'import json, sys; [print(c["id"], c["pr"], c.get("verdict_sha") or "-", c.get("verdict_ci") or "-", c.get("author") or "-", c.get("awaiting_sha") or "-", c["pr_head"], c["pr_author"], c["pr_author_id"], c["pr_person"], sep="\t") for c in json.load(sys.stdin) if c.get("pr_head")]' \
             > a_traiter.tsv
-          while IFS=$'\t' read -r id pr sha_connu ci_connue auteur sha_attente sha auteur_pr compte_pr personne; do
-            depot=$(printf '%s' "$pr" | sed -E 's#^https://github\.com/([A-Za-z0-9-]+/[A-Za-z0-9_.-]+)/pull/[0-9]+$#\1#')
+          while IFS=$'\t' read -r id pr known_sha known_ci author awaiting_sha sha pr_author pr_account person; do
+            repo=$(printf '%s' "$pr" | sed -E 's#^https://github\.com/([A-Za-z0-9-]+/[A-Za-z0-9_.-]+)/pull/[0-9]+$#\1#')
             # Contribution de la ruche (PR sur le registre lui-même) : pas de CI de fork ni de verdict à collecter ; elle
             # est relue et fusionnée par le conseil. Ne jamais arrêter la collecte des autres pour elle.
-            [ "$depot" = "$GITHUB_REPOSITORY" ] && continue
+            [ "$repo" = "$GITHUB_REPOSITORY" ] && continue
             # Le champ pr d'une contribution est déclaré par son auteur : la PR doit être la sienne (le pseudo d'un membre
             # est son login GitHub). Sinon, aucun verdict : on ne juge pas le travail d'un autre sous son nom.
             # ruche-0089 : une PR ouverte par son compte d'agent déclaré compte comme la sienne (personne : bee acts-for, sur main).
-            if [ "${personne,,}" != "${auteur,,}" ]; then
-              echo "::notice::$id : la PR $pr a été ouverte par $auteur_pr, pas par $auteur ; aucun verdict n'est enregistré."; continue
+            if [ "${person,,}" != "${author,,}" ]; then
+              echo "::notice::$id : la PR $pr a été ouverte par $pr_author, pas par $author ; aucun verdict n'est enregistré."; continue
             fi
             # Un verdict vert sur ce commit est définitif ; un rouge peut venir d'une panne passagère
             # (runner indisponible) : on relit la dernière exécution terminée, qui a pu être relancée.
-            [ "$sha" = "$sha_connu" ] && [ "$ci_connue" = "verte" ] && continue
+            [ "$sha" = "$known_sha" ] && [ "$known_ci" = "green" ] && continue
             # ruche-0025 (revues adverses de minizBee #16) : seulement la CI de CETTE PR, par l'événement pull_request, vers la
             # branche par défaut du fork, jamais changée de base, sans autre PR de la même tête (dépôt et branche) qui la précède :
             # sinon aucun verdict, et la contribution le dit (attente_verdict) ; pas rejugée avant une autre tête (1 000 requêtes
             # par heure). bee juge les réponses de l'API.
-            [ "$sha" = "$sha_attente" ] && continue
+            [ "$sha" = "$awaiting_sha" ] && continue
             n=${pr##*/}; api="$RUNNER_TEMP/api"; rm -rf "$api" && mkdir -p "$api"
-            [[ "$sha" =~ ^[0-9a-f]{7,40}$ && "$n" =~ ^[0-9]+$ ]] && gh api "repos/$depot/pulls/$n" > "$api/pr.json" \
-              && gh api "repos/$depot" > "$api/depot.json" \
-              && gh api "repos/$depot/pulls?state=all&per_page=100" --paginate > "$api/pulls.json" \
-              && gh api "repos/$depot/issues/$n/events?per_page=100" --paginate > "$api/evenements.json" \
-              && gh api "repos/$depot/issues/$n/timeline?per_page=100" --paginate > "$api/chronologie.json" \
-              && gh api "repos/$depot/actions/workflows/bee-ci.yml/runs?head_sha=$sha&event=pull_request&status=completed&per_page=100" \
-                   --paginate > "$api/executions.json" || continue
-            if ! execution=$(python3 outils/bee.py choisir-execution "$id" --sha "$sha" --api "$api"); then
-              [ -n "$execution" ] && printf '%s\n' "$execution" | journal; continue
+            [[ "$sha" =~ ^[0-9a-f]{7,40}$ && "$n" =~ ^[0-9]+$ ]] && gh api "repos/$repo/pulls/$n" > "$api/pr.json" \
+              && gh api "repos/$repo" > "$api/repo.json" \
+              && gh api "repos/$repo/pulls?state=all&per_page=100" --paginate > "$api/pulls.json" \
+              && gh api "repos/$repo/issues/$n/events?per_page=100" --paginate > "$api/events.json" \
+              && gh api "repos/$repo/issues/$n/timeline?per_page=100" --paginate > "$api/timeline.json" \
+              && gh api "repos/$repo/actions/workflows/bee-ci.yml/runs?head_sha=$sha&event=pull_request&status=completed&per_page=100" \
+                   --paginate > "$api/runs.json" || continue
+            if ! run=$(python3 tools/bee.py pick-run "$id" --sha "$sha" --api "$api"); then
+              [ -n "$run" ] && printf '%s\n' "$run" | log_text; continue
             fi
-            read -r numero adresse defaut <<< "$execution"
+            read -r number_of address defect <<< "$run"
             rm -rf "$RUNNER_TEMP/verdict" && mkdir -p "$RUNNER_TEMP/verdict"
-            gh run download "$numero" -R "$depot" -n verdict -D "$RUNNER_TEMP/verdict" || continue
+            gh run download "$number_of" -R "$repo" -n verdict -D "$RUNNER_TEMP/verdict" || continue
             # La base que déclare verdict.json (donnée du fork) n'est jamais crue : l'API dit si elle est un ancêtre de la branche
             # par défaut (compare : identical ou ahead) ; bee enregistrer-verdict refuse sinon.
             : > "$RUNNER_TEMP/verdict/bases.txt"
-            for base in $(python3 outils/bee.py bases-declarees "$RUNNER_TEMP/verdict/verdict.json"); do
-              statut=$(gh api "repos/$depot/compare/$base...$defaut" --jq .status) \
-                && printf '%s %s\n' "$base" "$statut" >> "$RUNNER_TEMP/verdict/bases.txt" || true
+            for base in $(python3 tools/bee.py declared-bases "$RUNNER_TEMP/verdict/verdict.json"); do
+              status=$(gh api "repos/$repo/compare/$base...$defect" --jq .status) \
+                && printf '%s %s\n' "$base" "$status" >> "$RUNNER_TEMP/verdict/bases.txt" || true
             done
             # Contrôle de confiance : les fichiers modifiés par la PR, lus auprès de l'API GitHub. Une PR qui
             # touche son workflow ou ses juges a pu fabriquer son verdict ; R3 la refuse (optimisation) ou
             # exige une relecture du conseil ou d'un Confirmé (tâche d'outillage).
-            gh api "repos/$depot/pulls/${pr##*/}/files" --paginate \
-              --jq '.[] | .filename, (.previous_filename // empty)' > "$RUNNER_TEMP/verdict/fichiers.txt" || continue
-            options=(--fichiers "$RUNNER_TEMP/verdict/fichiers.txt" --bases "$RUNNER_TEMP/verdict/bases.txt")
+            gh api "repos/$repo/pulls/${pr##*/}/files" --paginate \
+              --jq '.[] | .filename, (.previous_filename // empty)' > "$RUNNER_TEMP/verdict/files.txt" || continue
+            options=(--files "$RUNNER_TEMP/verdict/files.txt" --bases "$RUNNER_TEMP/verdict/bases.txt")
             # Le manifeste de CETTE tâche : manifestes/<tâche>.yaml (bee manifeste), sinon CONTRIBUTION.yaml à la racine
             # (ancien emplacement). Un CONTRIBUTION.yaml resté sur master d'une contribution précédente a déjà servi à
             # calculer un écart contre le mauvais manifeste (miniz-0018-c1, tour 2) : bee enregistrer-verdict ignore un
             # manifeste dont la tâche n'est pas celle de la contribution.
-            tache=$(printf '%s' "$id" | sed -nE 's/^([a-z0-9]+(-[a-z0-9]+)*-[0-9]{4})-c[0-9]+$/\1/p')  # ID_CONTRIBUTION de bee
-            for emplacement in ${tache:+"manifestes/$tache.yaml"} CONTRIBUTION.yaml; do
+            task=$(printf '%s' "$id" | sed -nE 's/^([a-z0-9]+(-[a-z0-9]+)*-[0-9]{4})-c[0-9]+$/\1/p')  # ID_CONTRIBUTION de bee
+            # ruche-0145: manifests/<task>.yaml (bee manifest, from the switch on) first; the forks' former places until date D,
+            # after which bee record-verdict ignores a French manifest (DATE_D in bee).
+            for location in ${task:+"manifests/$task.yaml"} ${task:+"manifestes/$task.yaml"} CONTRIBUTION.yaml; do
               # Fichier absent : gh échoue (son corps d'erreur ne doit jamais passer pour un manifeste).
-              if contenu=$(gh api "repos/$depot/contents/$emplacement?ref=$sha" --jq .content 2>/dev/null) \
-                 && printf '%s' "$contenu" | base64 -d > "$RUNNER_TEMP/verdict/manifeste.yaml" 2>/dev/null \
-                 && [ -s "$RUNNER_TEMP/verdict/manifeste.yaml" ]; then
-                options+=(--manifeste "$RUNNER_TEMP/verdict/manifeste.yaml"); break
+              if content=$(gh api "repos/$repo/contents/$location?ref=$sha" --jq .content 2>/dev/null) \
+                 && printf '%s' "$content" | base64 -d > "$RUNNER_TEMP/verdict/manifest.yaml" 2>/dev/null \
+                 && [ -s "$RUNNER_TEMP/verdict/manifest.yaml" ]; then
+                options+=(--manifest "$RUNNER_TEMP/verdict/manifest.yaml"); break
               fi
             done
             # Même contenu (revue adverse de ruche-0012) : l'arbre git du commit jugé, lu auprès de l'API. Un commit amendé (même
             # arbre, autre sha) n'efface pas un refus. ruche-0028 (revue adverse, M1) : sans arbre lisible (une ligne, 7 à 40
             # caractères hexadécimaux), aucun verdict ; il est rejugé au passage suivant.
-            if ! { arbre=$(gh api "repos/$depot/git/commits/$sha" --jq .tree.sha 2>/dev/null) && [[ "$arbre" =~ ^[0-9a-f]{7,40}$ ]]; }; then
+            if ! { tree=$(gh api "repos/$repo/git/commits/$sha" --jq .tree.sha 2>/dev/null) && [[ "$tree" =~ ^[0-9a-f]{7,40}$ ]]; }; then
               echo "::notice::$id : arbre git du commit $sha illisible auprès de l'API ; aucun verdict, rejugé au passage suivant."; continue
             fi
-            options+=(--arbre "$arbre")
-            python3 outils/bee.py enregistrer-verdict "$id" --verdict "$RUNNER_TEMP/verdict/verdict.json" \
-              --sha "$sha" --execution "$adresse" "${options[@]}" 2>&1 | journal || true
+            options+=(--tree "$tree")
+            python3 tools/bee.py record-verdict "$id" --verdict "$RUNNER_TEMP/verdict/verdict.json" \
+              --sha "$sha" --run "$address" "${options[@]}" 2>&1 | log_text || true
           done < a_traiter.tsv
           rm -f a_traiter.tsv
-      - name: Publier
+      - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           if ! git diff --quiet; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git commit -qam "Verdicts des forks"
+            git commit -qam "Fork verdicts"
             # main a pu avancer pendant ce passage (fusions libre-service) : se rebaser, revalider, réessayer.
-            for essai in 1 2 3; do
-              if git pull -q --rebase origin main && python3 outils/bee.py valider && git push origin HEAD:main; then
+            for attempt in 1 2 3; do
+              if git pull -q --rebase origin main && python3 tools/bee.py validate && git push origin HEAD:main; then
                 gh api -X POST "repos/$GITHUB_REPOSITORY/actions/workflows/site.yml/dispatches" -f ref=main || true  # ruche-0121: one call
                 exit 0
               fi
               git rebase --abort 2>/dev/null || true
-              sleep $((essai * 10))
+              sleep $((attempt * 10))
             done
             echo "::error::publication impossible après 3 essais ; le prochain passage refera le travail (idempotent)."
             exit 1
@@ -146,7 +148,7 @@ jobs:
       - name: API budget, end (ruche-0121)
         if: always()
         env: {GITHUB_TOKEN: "${{ github.token }}"}
-        run: python3 outils/bee.py api-budget end --dossier "$RUNNER_TEMP/api-budget" --jeton GITHUB_TOKEN
+        run: python3 tools/bee.py api-budget end --dir "$RUNNER_TEMP/api-budget" --token GITHUB_TOKEN
   pause:
     # ruche-0122: holds the group a few minutes after each pass but a manual one: merges start at most one pass every few minutes,
     # and the newest pending run replaces an older one, so the last trigger is always served.

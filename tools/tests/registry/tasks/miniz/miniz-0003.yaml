@@ -1,0 +1,31 @@
+id: miniz-0003
+project: miniz
+category: lossless-compression
+type: measurement
+size: S
+title: "Mesurer le bruit du banc A/B sur d'autres machines"
+context: >
+  R4 exige que le chronomètre confirme un gain d'instructions au-delà du bruit, sinon qu'une
+  mesure d'une autre configuration voie le gain. Le bruit d'ab.py n'a été mesuré que sur la
+  machine qui a créé le banc (bee/README.md du fork : A/A de −1,4 % à +0,5 %, Xeon 2,1 GHz
+  virtualisé, base 2948eeb) ; celui du juge isolé de la CI, depuis, sur les machines de GitHub :
+  environ ±0,4 % au chronomètre (note du 28/10 de miniz-0018). Lancez bee/bench/ab.py en comparant la base à
+  elle-même (test A/A) sur votre machine : au moins 3 passages sans --instructions et 3 avec
+  (10 répétitions chacun). Rapportez, pour chaque métrique, le plus grand écart relatif de médiane
+  observé entre A et A (le « gain » que rapporte ab.py), le nombre de passages jugés « au-delà du
+  bruit » à tort, et la configuration (processeur, système, compilateur, charge de la machine).
+  Joignez les rapports JSON dans bee/resultats/miniz-0003/ du fork. Si le bruit dépasse 2 % sur une métrique,
+  proposez dans une note un réglage (nombre de répétitions, sous-corpus, méthode de seuil).
+files: [bee/resultats/miniz-0003/]
+reach: 0.8
+metric: null
+acceptance_criteria:
+  - "rapports JSON des 6 passages A/A dans bee/resultats/miniz-0003/, avec la configuration de la machine"
+  - "plus grand écart relatif de médiane par métrique et nombre de faux « au-delà du bruit », calculés et non estimés"
+  - "aucune modification de bee/bench/ab.py dans cette contribution (mesure seule)"
+out_of_scope: [modifier le banc, modifier miniz]
+depends_on: [miniz-0001]
+node: projects/lossless-compression/miniz/bee
+status: open
+created_by: council
+created_on: "2026-10-27"

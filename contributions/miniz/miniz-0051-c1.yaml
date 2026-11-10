@@ -1,18 +1,18 @@
 id: miniz-0051-c1
-tache: miniz-0051
-auteur: bidji29
+task: miniz-0051
+author: bidji29
 pr: https://github.com/Bee-ruche/minizBee/pull/25
-resume: A manifest is a regular file; each file the verdict reads is read only from the job that produces
+summary: A manifest is a regular file; each file the verdict reads is read only from the job that produces
   it, never through a link.
-statut: integree
-soumise_le: '2026-11-08T20:04:02Z'
-engage_depuis: '2026-11-08T19:03:27Z'
-relectures: []
+status: integrated
+submitted_at: '2026-11-08T20:04:02Z'
+engaged_since: '2026-11-08T19:03:27Z'
+reviews: []
 verdict:
-  ci: verte
+  ci: green
   base: 92719289c1a7f300f03985a54296f4db8c17b04a
   gain: null
-  au_dela_du_bruit: false
+  beyond_noise: false
   instructions:
     instructions_n1:
       A: 171449816.0
@@ -31,31 +31,31 @@ verdict:
       B: 27896379.0
       gain: 0.0
   degradations: {}
-  juge:
+  judge:
     version: 3
-    commun: juge-v2
-    sorties_comparees: 7868
-    constructions_suspectes: []
-  lignes_modifiees: 6
-  ecart_declare: null
+    common: juge-v2
+    outputs_compared: 7868
+    suspicious_constructs: []
+  changed_lines: 6
+  declared_gap: null
   sha: 95d0e583faa260990e3c9622e9b3706ee242ed5c
-  arbre: d73ce18fe093de4e62d26da286bae88c1eff9d43
-  fichiers_controles: true
-  juges_modifies:
+  tree: d73ce18fe093de4e62d26da286bae88c1eff9d43
+  checked_files: true
+  modified_judges:
   - .github/workflows/bee-ci.yml
   - bee/README.md
   - bee/ci/manifeste.sh
   - bee/ci/tache.py
   - bee/ci/test_verdict.py
   - bee/ci/verdict.py
-  execution: https://github.com/Bee-ruche/minizBee/actions/runs/42518180042
+  run: https://github.com/Bee-ruche/minizBee/actions/runs/42518180042
 verdicts:
 - sha: 95d0e583faa260990e3c9622e9b3706ee242ed5c
-  arbre: d73ce18fe093de4e62d26da286bae88c1eff9d43
-  ci: verte
+  tree: d73ce18fe093de4e62d26da286bae88c1eff9d43
+  ci: green
   gain: null
-  au_dela_du_bruit: false
-  lignes_modifiees: 6
+  beyond_noise: false
+  changed_lines: 6
   instructions:
     instructions_n1:
       A: 171449816.0
@@ -73,10 +73,10 @@ verdicts:
       A: 27896379.0
       B: 27896379.0
       gain: 0.0
-declare:
-  modele: Claude Opus 5.5 (claude-opus-5-5), constructeur lancé par l'architecte de La Ruche
+declared:
+  model: Claude Opus 5.5 (claude-opus-5-5), constructeur lancé par l'architecte de La Ruche
   gain: null
-  teste:
+  tested:
   - 'In the sandbox (bee/sandbox/sans-docker.sh), on this head: bee/ci/test_verdict.py 74 tests OK (67
     before, 7 new); bee/bench/test_ab.py 10 OK; bee/bench/test_profil.py 4 OK; python3 bee/corpus/generer.py
     conforming (61 files, 12021783 bytes); bee/tests/lancer.sh OK (exit 0: 3843 differential checks, 0
@@ -104,7 +104,7 @@ declare:
   - 'Mutations: on master''s scripts the first five new tests fail (13 sub-checks); with tache.py hardened
     but manifeste.sh not, the manifeste.sh test still fails (5 sub-checks); on the previous verdict.py
     (19e9b05) the two state and link tests fail (every step''s sub-check).'
-  non_teste:
+  untested:
   - 'GitHub Actions itself: the keep step runs here extracted from the workflow, outside GitHub. The verdict
     reads the task copy and the manifest at the root of etat-manifeste and juge-ancien.json at the root
     of etat-juge-ancien, which relies on upload-artifact putting the contents of donnees/ and conserver/
@@ -114,7 +114,7 @@ declare:
     rerun here; ARM64: x86-64 only (nothing here depends on the architecture).'
   - 'The independent adversarial review by an agent of another model (second criterion): not part of the
     builder''s work.'
-  doutes: 'Behaviour change for a local simulation only: one that relied on verdict.py finding an ab.json
+  doubts: 'Behaviour change for a local simulation only: one that relied on verdict.py finding an ab.json
     somewhere under --artefacts must now pass --ab (or put juge.json in --juge), and its state files go
     at the root of --etats or in the jobs'' state folders (no longer anywhere under --artefacts). The
     state folders are those bee-ci.yml uploads today: a job that changes where it puts its states must
@@ -122,6 +122,6 @@ declare:
     The fork''s CI judges a PR with the base''s bee/, so this PR''s own manifest check and verdict use
     master''s scripts; the new ones apply from the next PR on (the job « Tests de l''outillage de CI de
     la PR » runs this PR''s test_verdict.py).'
-decidee_le: '2026-11-08T20:34:48Z'
-motif_decision: 'Fork tooling contribution: minizBee PR #25 merged at the judged commit 95d0e58 by the agent principal from the council account (bidji29), at the founder''s request of 8 November 2026; independent adversarial review by another model (its findings fixed and verified by that reviewer); every CI job green on the judged commit, verdict recorded. R1: 6 counted lines, for an S task. Recorded by hand: the fork PR changes a workflow.'
-fusion_sha: f5440c3a212a4625a0bd275237e341b6327a3da3
+decided_at: '2026-11-08T20:34:48Z'
+decision_reason: 'Fork tooling contribution: minizBee PR #25 merged at the judged commit 95d0e58 by the agent principal from the council account (bidji29), at the founder''s request of 8 November 2026; independent adversarial review by another model (its findings fixed and verified by that reviewer); every CI job green on the judged commit, verdict recorded. R1: 6 counted lines, for an S task. Recorded by hand: the fork PR changes a workflow.'
+merge_sha: f5440c3a212a4625a0bd275237e341b6327a3da3

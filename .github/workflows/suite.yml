@@ -1,7 +1,7 @@
 # ruche-0132 (E25a): the full test suite, in its own workflow. A code PR's validation calls it (validation.yml), and it can
 # be dispatched on a commit of a branch (`commit`: its full SHA; default, the dispatched ref's tip). The PR fast path reads
 # its dispatched runs on main by their title (bee main-green). Read-only and without secrets: it can write nothing.
-name: Suite complète
+name: Full suite
 run-name: Full suite on ${{ inputs.commit || github.sha }}
 
 on:
@@ -27,14 +27,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Dépendances
-        run: pip install -r outils/requirements.txt
-      - name: Tests de l'outil
+      - name: Dependencies
+        run: pip install -r tools/requirements.txt
+      - name: Tool tests
         # ruche-0092: in parallel processes inside this job, not in more jobs (the organisation's concurrent jobs are the scarce
         # resource); the number is set here only: GitHub's hosted runners for public repositories have 4 vCPUs (the log
         # prints the count). Every test runs exactly once, or the step fails.
         # Timeout: about 3 times the step's time on CI on 2 Nov 2026 (about 10 minutes); a hang stops here, not after 360.
         timeout-minutes: 30
-        run: python3 outils/test_bee.py --processus 4
-      - name: "Tests unitaires du juge commun (sans Docker ; méta-tests dans juge-commun.yml)"
+        run: python3 tools/test_bee.py --processes 4
+      - name: "Unit tests of the common judge (without Docker; meta-tests in the judge's own workflow)"
         run: python3 outils/juge/test_juge.py

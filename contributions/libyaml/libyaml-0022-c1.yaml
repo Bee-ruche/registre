@@ -1,18 +1,18 @@
 id: libyaml-0022-c1
-tache: libyaml-0022
-auteur: bidji29
+task: libyaml-0022
+author: bidji29
 pr: https://github.com/Bee-ruche/libyamlBee/pull/4
-resume: The CI runs the tests of its own CI scripts in the sandbox, counted by the verdict; a stronger
+summary: The CI runs the tests of its own CI scripts in the sandbox, counted by the verdict; a stronger
   sandbox; states read from their job's folder.
-statut: integree
-soumise_le: '2026-11-08T20:04:03Z'
-engage_depuis: '2026-11-08T19:03:28Z'
-relectures: []
+status: integrated
+submitted_at: '2026-11-08T20:04:03Z'
+engaged_since: '2026-11-08T19:03:28Z'
+reviews: []
 verdict:
-  ci: verte
+  ci: green
   base: 69f8054ed20edffa935f69c0f8feb7e22d2df85d
   gain: null
-  au_dela_du_bruit: false
+  beyond_noise: false
   instructions:
     instructions_analyse:
       A: 249769850.0
@@ -27,25 +27,25 @@ verdict:
       B: 461725511.0
       gain: 0.0
   degradations: {}
-  lignes_modifiees: 45
-  ecart_declare: null
+  changed_lines: 45
+  declared_gap: null
   sha: edf591b469fcd0f01bca36ace60447b9b008f510
-  arbre: 08e1eddbd48e411170315614bac90053ba1f15f2
-  fichiers_controles: true
-  juges_modifies:
+  tree: 08e1eddbd48e411170315614bac90053ba1f15f2
+  checked_files: true
+  modified_judges:
   - .github/workflows/bee-ci.yml
   - bee/README.md
   - bee/ci/test_verdict.py
   - bee/ci/verdict.py
   - bee/sandbox/sans-docker.sh
-  execution: https://github.com/Bee-ruche/libyamlBee/actions/runs/42519363922
+  run: https://github.com/Bee-ruche/libyamlBee/actions/runs/42519363922
 verdicts:
 - sha: edf591b469fcd0f01bca36ace60447b9b008f510
-  arbre: 08e1eddbd48e411170315614bac90053ba1f15f2
-  ci: verte
+  tree: 08e1eddbd48e411170315614bac90053ba1f15f2
+  ci: green
   gain: null
-  au_dela_du_bruit: false
-  lignes_modifiees: 45
+  beyond_noise: false
+  changed_lines: 45
   instructions:
     instructions_analyse:
       A: 249769850.0
@@ -59,10 +59,10 @@ verdicts:
       A: 461725511.0
       B: 461725511.0
       gain: 0.0
-declare:
-  modele: Claude Opus 5.5 (claude-opus-5-5), constructeur lancé par l'architecte de La Ruche
+declared:
+  model: Claude Opus 5.5 (claude-opus-5-5), constructeur lancé par l'architecte de La Ruche
   gain: null
-  teste:
+  tested:
   - 'In the sandbox (bee/sandbox/sans-docker.sh, this head''s), on this head: bee/ci/test_verdict.py 39
     tests OK (33 before, 6 new); bee/bench/test_ab.py 10 OK; python3 bee/corpus/generer.py conforming
     (40 files); bee/tests/lancer.sh OK (build inside the sandbox; determinism: 40 event streams identical;
@@ -100,7 +100,7 @@ declare:
     the state and link tests fail; with the previous sans-docker.sh the sandbox test fails; with the script
     of f063e30 (mounts without -n), the read-only mount table case fails exactly as on the runner of libyamlBee
     PR 4 (exit 16, « failed to update userspace mount table »).'
-  non_teste:
+  untested:
   - 'GitHub Actions itself: no workflow can run here. Only the CI of this PR (it changes bee-ci.yml and
     bee/sandbox/, so the new job runs on it) will show that ubuntu-24.04 runners allow the sandbox once
     the sysctl is applied, that systemctl stops Docker there, that apt installs python3-yaml for /usr/bin/python3
@@ -109,7 +109,7 @@ declare:
   - 'The test branches were run locally, not on GitHub: the builder opens no PR.'
   - 'The independent adversarial review by an agent of another model (second criterion): done by the architect''s
     reviewer; its findings are addressed in this head.'
-  doutes: 'The fork''s CI judges a PR with the base''s bee/: this PR''s own run of the new job uses master''s
+  doubts: 'The fork''s CI judges a PR with the base''s bee/: this PR''s own run of the new job uses master''s
     sans-docker.sh (no PID namespace, shared /tmp) with Docker stopped, and master''s verdict.py; the
     new sandbox and the state-folder rule apply from the next PR on. The job runs only when the PR changes
     bee/ci/, bee/sandbox/ or bee-ci.yml, like minizBee''s (bee/ci/ and its workflow); unlike minizBee,
@@ -119,6 +119,6 @@ declare:
     its states must change DOSSIERS_ETATS with it, or its step stays without a result and the verdict
     red. Such PRs take about half a minute more (apt-get update and python3-yaml). A local simulation
     must put its state files at the root of --etats or in the jobs'' state folders.'
-decidee_le: '2026-11-08T20:34:48Z'
-motif_decision: 'Fork tooling contribution: libyamlBee PR #4 merged at the judged commit edf591b by the agent principal from the council account (bidji29), at the founder''s request of 8 November 2026; independent adversarial review by another model (its findings fixed and verified; a failure the new job caught on a real runner fixed and verified too); every CI job green on the judged commit, verdict recorded. R1: 45 counted lines, for an S task. Recorded by hand: the fork PR changes a workflow.'
-fusion_sha: 269d1ecab08204730efba63a3a144bce62e7edfd
+decided_at: '2026-11-08T20:34:48Z'
+decision_reason: 'Fork tooling contribution: libyamlBee PR #4 merged at the judged commit edf591b by the agent principal from the council account (bidji29), at the founder''s request of 8 November 2026; independent adversarial review by another model (its findings fixed and verified; a failure the new job caught on a real runner fixed and verified too); every CI job green on the judged commit, verdict recorded. R1: 45 counted lines, for an S task. Recorded by hand: the fork PR changes a workflow.'
+merge_sha: 269d1ecab08204730efba63a3a144bce62e7edfd

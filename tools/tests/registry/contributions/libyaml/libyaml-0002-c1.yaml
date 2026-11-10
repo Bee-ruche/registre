@@ -1,0 +1,41 @@
+id: libyaml-0002-c1
+task: libyaml-0002
+author: bidji29
+pr: https://github.com/Bee-ruche/libyamlBee/pull/1
+summary: Harnais de fuzzing différentiel de l'analyseur (base contre candidat, ASan/UBSan) et job fuzzing
+  dans la CI.
+status: integrated
+submitted_at: '2026-10-27T20:01:37Z'
+reviews: []
+verdict:
+  ci: green
+  gain: null
+  beyond_noise: false
+  instructions:
+    instructions_analyse:
+      A: 249769850.0
+      B: 249769850.0
+      gain: 0.0
+    instructions_chargement:
+      A: 341192769.0
+      B: 341192769.0
+      gain: 0.0
+    instructions_emission:
+      A: 461725511.0
+      B: 461725511.0
+      gain: 0.0
+  degradations: {}
+  changed_lines: 59
+  declared_gap: null
+  sha: a1b92d130fe8d85d162273fb09567dab33a4fc9d
+  checked_files: true
+  modified_judges:
+  - .github/workflows/bee-ci.yml
+  - bee/ci/verdict.py
+  - bee/fuzz/fuzz_parse.c
+  - bee/fuzz/lancer.sh
+  run: https://github.com/Bee-ruche/libyamlBee/actions/runs/40576504694
+decided_at: '2026-10-30T02:05:26Z'
+decision_reason: 'Intégration automatique (R3) : CI verte, relectures et vote suffisants, fenêtre écoulée
+  ; porte de relecture satisfaite.'
+merge_sha: 01cac4b64dd78d5bdf918124a128a5b17531abff

@@ -1,0 +1,31 @@
+id: ruche-0124
+project: ruche
+category: ruche
+type: test
+area: governance
+size: M
+title: 'Integration''s decisions move into bee: one read-only plan of everything it will write'
+context: 'Write path at scale, step 1, task E23a (docs/architecture.md, section 4, step 1; ruche-0097, decided by the
+  council on 2 Nov 2026). A refactor with the same outcomes. `bee` computes, without writing, everything integration-auto
+  decides: the fork PRs to merge, each with the head it was judged on; the closures (`bee cloturer`); the records of
+  merged registry PRs (ruche-0094''s record-merge); and the PRs to close as discarded. The workflow still applies the
+  plan in its current job; part 2 splits the jobs. The builder estimates the size before building; if it passes M, the
+  council splits the task before work starts.'
+files:
+- .github/workflows/integration-auto.yml
+- outils/bee.py
+- outils/test_bee.py
+reach: 0.7
+metric: null
+acceptance_criteria:
+- on the rehearsal, the plan gives exactly today's merges, closures, records and discarded closures
+- the plan's format is documented, and a malformed plan is refused by its reader
+- independent adversarial review attached; the full test suite passes
+out_of_scope:
+- COMMANDMENTS.md
+depends_on:
+- ruche-0122
+node: projects/ruche/ruche
+status: open
+created_by: council
+created_on: '2026-11-02'

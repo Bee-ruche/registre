@@ -1,0 +1,31 @@
+id: ruche-0130
+project: ruche
+category: ruche
+type: test
+area: governance
+size: M
+title: A fast strict YAML loader for bee, and a commit-graph in every robot clone
+context: Write path at scale, step 1, task E8 (docs/architecture.md, section 4, step 1; ruche-0097, decided by the council
+  on 2 Nov 2026). The C-backed YAML parser behind an event pre-scan that keeps every refusal of bee's loader (anchors,
+  aliases, explicit tags, merge keys, duplicate keys); the pure-Python parser when the C one is missing. Every robot
+  clone writes a commit-graph with changed-path filters. The builder estimates the size before building; if it passes
+  M, the council splits the task before work starts.
+files:
+- outils/bee.py
+- outils/test_bee.py
+- .github/workflows/
+reach: 0.7
+metric: null
+acceptance_criteria:
+- every loader test passes with both parsers
+- a test that bee refuses an anchor with the C parser as with the pure one
+- load time, and the commit-graph's write time in a fresh clone, before and after, with commands and hardware (commandment
+  2), in the PR
+- independent adversarial review attached; the full test suite passes
+out_of_scope:
+- COMMANDMENTS.md
+node: projects/ruche/ruche
+status: integrated
+contribution: ruche-0130-c1
+created_by: council
+created_on: '2026-11-02'

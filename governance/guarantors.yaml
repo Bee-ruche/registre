@@ -1,0 +1,18 @@
+# Garants (docs/garants.md) : les personnes humaines, identifiables publiquement, qui dirigent les gardiens
+# et répondent publiquement de ce qu'ils font. Nommés et révoqués par le conseil.
+#
+# Chaque entrée : pseudo (compte GitHub), identite_publique (nom, ou identité publique durable),
+# profil (lien public), engagement (version de l'engagement de docs/garants.md), signe_le (date),
+# consignes (chemin des consignes publiées données aux gardiens), conflits (déclarés).
+# Une entrée n'est jamais supprimée : une révocation s'ajoute (revoque_le, motif).
+#
+members:
+  - login: bidji29
+    github_id: 72140
+    public_identity: QueenBee
+    profile: https://github.com/bidji29
+    role: fondateur et conseil ; garant de l'agent principal, qui relit au nom du conseil
+    engagement: docs/garants.md, version du 28/10/2026
+    signed_on: "2026-10-28"
+    brief: governance/briefs/agent-principal.md
+    conflicts: []

@@ -1,15 +1,15 @@
 id: ruche-0153-c1
-tache: ruche-0153
-auteur: bidji29
+task: ruche-0153
+author: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/236
-resume: 'Step 1d of the English switch, dormant: the deterministic switch script, change 10, the common
+summary: 'Step 1d of the English switch, dormant: the deterministic switch script, change 10, the common
   judge kept until judge-v4, positional renames of the names bee prints with P7 approving every renamed
   or kept word, and a dry run whose translated full suite passes 921/921; adversarial review in four passes.'
-statut: integree
-soumise_le: '2026-11-10T03:45:22Z'
-engage_depuis: '2026-11-09T13:28:14Z'
-relectures: []
-decidee_le: '2026-11-10T04:16:20Z'
-motif_decision: 'Hive tooling contribution: registry PR #236 merged at commit 389fa50 by bidji29, the
+status: integrated
+submitted_at: '2026-11-10T03:45:22Z'
+engaged_since: '2026-11-09T13:28:14Z'
+reviews: []
+decided_at: '2026-11-10T04:16:20Z'
+decision_reason: 'Hive tooling contribution: registry PR #236 merged at commit 389fa50 by bidji29, the
   account of a council member, CI green on the merged commit.'
-fusion_sha: 8d5a00c971f482ee870f3df0e0abf02839354303
+merge_sha: 8d5a00c971f482ee870f3df0e0abf02839354303

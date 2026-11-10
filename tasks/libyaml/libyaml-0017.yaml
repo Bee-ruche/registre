@@ -1,0 +1,44 @@
+id: libyaml-0017
+project: libyaml
+category: parsing-serialization
+type: test
+size: M
+title: "Juge isolé de libyaml, étape 5/6 : scénarios et mesures"
+context: >
+  Découpage de libyaml-0005 (juge isolé pour libyaml), étape 5 sur 6 ; utile seule : un banc isolé, au bruit
+  du juge commun (environ ±0,4 %), qu'on peut lancer à la main avant même qu'il soit branché à la CI.
+  Jusqu'ici (libyaml-0013 à libyaml-0016) le greffon vérifie sans mesurer (SCENARIOS vide). Cette étape
+  ajoute au harnais les modes analyse, chargement, emission et memoire, et au greffon SCENARIOS,
+  INSTRUCTIONS, METRIQUES et les méthodes repetition, instructions et scenario, avec les identifiants de
+  métriques de projets/libyaml.yaml (debit_analyse, debit_chargement, debit_emission, memoire_max_ko, et
+  instructions_analyse, instructions_chargement, instructions_emission pour R4). Le juge commun mesure par
+  wait4 dans son propre lanceur, compte les instructions de tout le processus et analyse les objets
+  (constructions suspectes). Modèles : le greffon jouet du registre et celui de minizBee. Jusqu'à
+  libyaml-0018, la CI n'appelle pas bee/juge/ : cette étape ne change aucun verdict. Elle touche les juges :
+  relue par un gardien ou par le conseil.
+files: [bee/juge/execution.c, bee/juge/projet.py, bee/juge/test_juge.py]
+reach: 0.8
+metric: null
+acceptance_criteria:
+  - "les métriques portent les identifiants de projets/libyaml.yaml (debit_analyse, debit_chargement, debit_emission, memoire_max_ko, et instructions_* pour R4)"
+  - "sur une PR honnête, les décomptes d'instructions de A et de B sont identiques et aucune construction suspecte n'est relevée"
+  - "méta-tests : faux chronos, requête client Valgrind et faux résumé sont signalés"
+out_of_scope:
+  - "sources de libyaml"
+  - "outils/juge/ du registre"
+  - "changement des métriques suivies"
+  - "nouvelle dépendance hors image"
+  - ".github/workflows/bee-ci.yml (le branchement à la CI est libyaml-0018)"
+depends_on: [libyaml-0015, libyaml-0016]
+node: projects/parsing-serialization/libyaml
+status: open
+created_by: council
+created_on: "2026-10-31"
+notes:
+- by: bidji29
+  at: '2026-11-02T09:13:03Z'
+  text: 'Council''s note (2 Nov 2026): the common judge''s next version (juge-v3: ruche-0036, 0037, 0038, 0117) changes
+    the harness and plugin contract. Write libyamlBee''s harness and plugin to it directly: the harness reads its parameters
+    as one fixed-length record from descriptor 0 and erases them before calling the library, writes the same outputs
+    at the same paths in every mode; the plugin checks every output, and fixed metrics are computed from timed outputs
+    too. See docs/juge-commun.md once ruche-0037 is merged.'

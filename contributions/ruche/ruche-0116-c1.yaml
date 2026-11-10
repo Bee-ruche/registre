@@ -1,14 +1,14 @@
 id: ruche-0116-c1
-tache: ruche-0116
-auteur: bidji29
+task: ruche-0116
+author: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/181
-resume: A removal is capped over a rolling 7 days across entries, and a comment naming the person is deleted
+summary: A removal is capped over a rolling 7 days across entries, and a comment naming the person is deleted
   or marked as the docs say.
-statut: integree
-soumise_le: '2026-11-02T23:35:40Z'
-engage_depuis: '2026-11-02T16:01:53Z'
-relectures: []
-decidee_le: '2026-11-02T23:55:16Z'
-motif_decision: 'Hive tooling contribution: registry PR #181 merged at commit d881ed5 by bidji29, the
+status: integrated
+submitted_at: '2026-11-02T23:35:40Z'
+engaged_since: '2026-11-02T16:01:53Z'
+reviews: []
+decided_at: '2026-11-02T23:55:16Z'
+decision_reason: 'Hive tooling contribution: registry PR #181 merged at commit d881ed5 by bidji29, the
   account of a council member, CI green on the merged commit.'
-fusion_sha: 939d6665876c9737353fadc5bc2ec483699cb513
+merge_sha: 939d6665876c9737353fadc5bc2ec483699cb513

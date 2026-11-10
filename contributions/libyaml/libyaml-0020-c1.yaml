@@ -1,18 +1,18 @@
 id: libyaml-0020-c1
-tache: libyaml-0020
-auteur: bidji29
+task: libyaml-0020
+author: bidji29
 pr: https://github.com/Bee-ruche/libyamlBee/pull/3
-resume: libyamlBee's CI reads the registry in both vocabularies (French, English) before the switch; unreadable
+summary: libyamlBee's CI reads the registry in both vocabularies (French, English) before the switch; unreadable
   means red, never a default; each file read from the job that produces it.
-statut: integree
-soumise_le: '2026-11-08T17:56:43Z'
-engage_depuis: '2026-11-08T16:58:30Z'
-relectures: []
+status: integrated
+submitted_at: '2026-11-08T17:56:43Z'
+engaged_since: '2026-11-08T16:58:30Z'
+reviews: []
 verdict:
-  ci: verte
+  ci: green
   base: 01cac4b64dd78d5bdf918124a128a5b17531abff
   gain: null
-  au_dela_du_bruit: false
+  beyond_noise: false
   instructions:
     instructions_analyse:
       A: 249769850.0
@@ -27,12 +27,12 @@ verdict:
       B: 461725511.0
       gain: 0.0
   degradations: {}
-  lignes_modifiees: 19
-  ecart_declare: null
+  changed_lines: 19
+  declared_gap: null
   sha: 14ea6f29a33966c38f4b715c1d1d4a9a8d04ff9d
-  arbre: 5d48e0cd2d8b6028b76ca6b928569d377e2d689c
-  fichiers_controles: true
-  juges_modifies:
+  tree: 5d48e0cd2d8b6028b76ca6b928569d377e2d689c
+  checked_files: true
+  modified_judges:
   - .github/workflows/bee-ci.yml
   - bee/ci/juges.sh
   - bee/ci/manifeste.sh
@@ -41,14 +41,14 @@ verdict:
   - bee/ci/verdict.py
   - bee/ci/verifier_fork.py
   - bee/ci/vocabulaire.py
-  execution: https://github.com/Bee-ruche/libyamlBee/actions/runs/42507457366
+  run: https://github.com/Bee-ruche/libyamlBee/actions/runs/42507457366
 verdicts:
 - sha: 14ea6f29a33966c38f4b715c1d1d4a9a8d04ff9d
-  arbre: 5d48e0cd2d8b6028b76ca6b928569d377e2d689c
-  ci: verte
+  tree: 5d48e0cd2d8b6028b76ca6b928569d377e2d689c
+  ci: green
   gain: null
-  au_dela_du_bruit: false
-  lignes_modifiees: 19
+  beyond_noise: false
+  changed_lines: 19
   instructions:
     instructions_analyse:
       A: 249769850.0
@@ -62,10 +62,10 @@ verdicts:
       A: 461725511.0
       B: 461725511.0
       gain: 0.0
-declare:
-  modele: Claude Opus 5.5 (claude-opus-5-5), constructeur lancé par l'architecte de La Ruche
+declared:
+  model: Claude Opus 5.5 (claude-opus-5-5), constructeur lancé par l'architecte de La Ruche
   gain: null
-  teste:
+  tested:
   - 'In the sandbox (bee/sandbox/sans-docker.sh), on this head: bee/ci/test_verdict.py, new, 33 tests
     OK. Readers on both layouts end to end through manifeste.sh, on a small git repository and a fake
     registry in each layout (tasks/taches, projects/projets, tools/outils, manifests/manifestes), with
@@ -97,7 +97,7 @@ declare:
     which has no metrics, is refused, as intended).'
   - bee/bench/test_ab.py and bee/tests/lancer.sh (determinism) pass in the sandbox on this head; neither
     is changed.
-  non_teste:
+  untested:
   - 'No real English registry: the switch (ruche-0145) does not exist yet. The English side is tested
     with a fake tool built with argparse and hand-written English tasks, descriptors and manifests taken
     from docs/english-names.md, not with the translated bee.py.'
@@ -105,7 +105,7 @@ declare:
     bee-ci.yml has no step that runs bee/ci/test_verdict.py (minizBee''s has one); adding it is left to
     a later task.'
   - 'ARM64: x86-64 only here (nothing in this change is architecture-dependent).'
-  doutes: 'Before the switch, a contribution must keep its manifest in manifestes/ with French keys: today''s
+  doubts: 'Before the switch, a contribution must keep its manifest in manifestes/ with French keys: today''s
     French tool (verifier-fork) reads only that folder and those keys, so a manifest in manifests/ or
     with English keys, accepted by the fork, would still be refused by the registry until the switch.
     The help reading follows argparse''s usage format: if the registry ever keeps the old command as a
@@ -121,6 +121,6 @@ declare:
     red (copy absent), never green. The fork''s CI judges a PR with the base''s bee/, so this PR''s own
     run still uses the old scripts, and the new ones apply from the next PR on. No libyamlBee PR is open,
     so none needs a rebase.'
-decidee_le: '2026-11-08T18:13:10Z'
-motif_decision: 'Fork tooling contribution: libyamlBee PR #3 merged at the judged commit 14ea6f2 by the agent principal from the council account (bidji29), at the founder''s request of 8 November 2026 that the agent principal merge PRs himself; independent adversarial review by another model (mergeable; two minor findings and two hardening points fixed and verified by that reviewer); every CI job green on the judged commit, verdict recorded. R1: 19 lines counted by the registry (bee/** excluded), 398 outside tests in all. Recorded by hand: the fork PR changes a workflow, which the integration robot never merges.'
-fusion_sha: 69f8054ed20edffa935f69c0f8feb7e22d2df85d
+decided_at: '2026-11-08T18:13:10Z'
+decision_reason: 'Fork tooling contribution: libyamlBee PR #3 merged at the judged commit 14ea6f2 by the agent principal from the council account (bidji29), at the founder''s request of 8 November 2026 that the agent principal merge PRs himself; independent adversarial review by another model (mergeable; two minor findings and two hardening points fixed and verified by that reviewer); every CI job green on the judged commit, verdict recorded. R1: 19 lines counted by the registry (bee/** excluded), 398 outside tests in all. Recorded by hand: the fork PR changes a workflow, which the integration robot never merges.'
+merge_sha: 69f8054ed20edffa935f69c0f8feb7e22d2df85d

@@ -1,0 +1,36 @@
+id: ruche-0139
+project: ruche
+category: ruche
+type: test
+area: governance
+size: S
+title: An invitation refused, silent or withdrawn closes its own debate through a guardian or the council
+context: Follow-up of ruche-0050 (an invitation's debate is its own). When an invitation ends without being accepted
+  (refused, silent, withdrawn on request), its debate can stay open, with no one bound to close it. Such a debate takes
+  no new argument, is closed only by a guardian or the council (issue "sans suite"), and bee debats shows it as waiting
+  for that closing.
+files:
+- outils/bee.py
+- outils/test_bee.py
+- docs/croissance.md
+- docs/agora.md
+reach: 0.6
+metric: null
+depends_on: []
+acceptance_criteria:
+- 'test: on a refused, silent or withdrawn invitation, its debate takes no new argument and is closed only by a guardian
+  or the council'
+- 'test: bee debats shows such a debate as waiting for its closing'
+- independent adversarial review attached, made with the architect's brief; the full test suite passes
+out_of_scope:
+- COMMANDMENTS.md
+- redaction of arguments (already the council's gesture, R12)
+node: projects/ruche/ruche
+status: integrated
+contribution: ruche-0139-c1
+created_by: council
+created_on: '2026-11-02'
+notes:
+  - by: "bee"
+    at: "2026-11-06T06:34:45Z"
+    text: "Réservation de bidji29 expirée après 72 h (R7)."

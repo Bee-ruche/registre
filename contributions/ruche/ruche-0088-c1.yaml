@@ -1,13 +1,13 @@
 id: ruche-0088-c1
-tache: ruche-0088
-auteur: bidji29
+task: ruche-0088
+author: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/193
-resume: Every text bee prints from a member or a fork goes through one neutralisation; council-only files
+summary: Every text bee prints from a member or a fork goes through one neutralisation; council-only files
   get the strict check; look-alike marks refused.
-statut: integree
-soumise_le: '2026-11-07T05:14:44Z'
-engage_depuis: '2026-11-06T20:44:18Z'
-relectures: []
-decidee_le: '2026-11-08T10:40:22Z'
-motif_decision: 'Hive tooling contribution: registry PR #193 merged by the founder (bidji29, council) at the judged commit 3808933, after an independent adversarial review by another model in a separate session, made with the architect''s brief (three blocking and three serious findings in the first round, all fixed; a second round''s findings fixed; a known residual accepted and left to a follow-up task), each fix round verified by a reviewer of that model; CI green on the judged commit (valider, suite / tests). R1: 198 lines changed outside tests, for an M task at 200. Recorded by hand: main moved between the PR''s base and its merge (#192 merged first). Submitted inside the code PR.'
-fusion_sha: 2c71d9bda9dd33c230638a0f9afde1b4ac4fe847
+status: integrated
+submitted_at: '2026-11-07T05:14:44Z'
+engaged_since: '2026-11-06T20:44:18Z'
+reviews: []
+decided_at: '2026-11-08T10:40:22Z'
+decision_reason: 'Hive tooling contribution: registry PR #193 merged by the founder (bidji29, council) at the judged commit 3808933, after an independent adversarial review by another model in a separate session, made with the architect''s brief (three blocking and three serious findings in the first round, all fixed; a second round''s findings fixed; a known residual accepted and left to a follow-up task), each fix round verified by a reviewer of that model; CI green on the judged commit (valider, suite / tests). R1: 198 lines changed outside tests, for an M task at 200. Recorded by hand: main moved between the PR''s base and its merge (#192 merged first). Submitted inside the code PR.'
+merge_sha: 2c71d9bda9dd33c230638a0f9afde1b4ac4fe847

@@ -1,0 +1,38 @@
+id: ruche-0128
+project: ruche
+category: ruche
+type: test
+area: governance
+size: M
+title: 'Robots on the GitHub App: a short-lived token minted only in the step that writes'
+context: Write path at scale, step 1, task E5c (docs/architecture.md, section 4, step 1; ruche-0097, decided by the
+  council on 2 Nov 2026). Reserve it only once the founder has created the real App with the least permissions (contents,
+  pull requests, actions), installed it, and stored its key as an environment secret restricted to `main` (decision C1).
+  Each robot mints the App's token only in the step that writes or calls the API, with the least permissions it needs.
+  After merge, on the council's word, the PR-only rule is turned on for `main` with the App alone in the bypass list.
+files:
+- .github/workflows/
+- outils/test_bee.py
+- docs/securite.md
+- docs/gouvernance.md
+reach: 0.7
+metric: null
+acceptance_criteria:
+- a static test that only the writing steps mint the App's token, each with the permissions it lists
+- 'before merge, a dress rehearsal on the scratch repository or a fork, with the throwaway test App and the PR-only rule
+  on: each robot''s write lands, run ids in the PR'
+- 'after merge, one night with the PR-only rule on: every robot''s write lands, and data merges start no full suite and
+  no per-merge site build (R-push, counted from the Actions API); recorded as a note on this task within 3 days, a shortfall
+  becoming its own task'
+- independent adversarial review attached; the full test suite passes
+out_of_scope:
+- COMMANDMENTS.md
+- the App's key and settings (the founder)
+depends_on:
+- ruche-0127
+- ruche-0122
+- ruche-0133
+node: projects/ruche/ruche
+status: open
+created_by: council
+created_on: '2026-11-02'

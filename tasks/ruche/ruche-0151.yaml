@@ -1,0 +1,29 @@
+id: ruche-0151
+project: ruche
+category: ruche
+type: split
+area: governance
+size: L
+title: 'Verdicts bound to the job that produced them: design and split'
+context: 'Hardening of the judge''s chain (the common judge and both forks). Today the registry and the forks find a report
+  (the judge''s juge.json, the bench''s ab.json, the jobs'' state files) by an artifact''s name and path. Design how each
+  report is instead bound to the job that produced it: the producing job publishes, in its own outputs, the artifact''s
+  identifier and the report''s digest, and every reader (the fork''s verdict, the registry''s enregistrer-verdict) fetches
+  by that identifier and checks the digest, never by name. Write the design (docs/juge-commun.md, a new section) and split
+  it into tasks of about 200 lines each, for the registry, the common judge and each fork; no code in this task.'
+files:
+- docs/juge-commun.md
+- taches/
+reach: 0.8
+metric: null
+acceptance_criteria:
+- the design names every report a verdict reads, its producing job, how its identifier and digest travel, and what a reader
+  does when they are missing or do not match (refuse, never fall back to a name)
+- the follow-up tasks are proposed with sizes and dependencies, ordered after the switch to English names
+- an independent adversarial review by an agent of another model is attached
+out_of_scope:
+- COMMANDMENTS.md
+node: projects/ruche/ruche
+status: open
+created_by: council
+created_on: '2026-11-08'

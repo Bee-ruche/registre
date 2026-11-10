@@ -1,0 +1,30 @@
+id: ruche-0111
+project: ruche
+category: ruche
+type: test
+area: governance
+size: S
+title: Verdicts carry the commit of the common judge that produced them (juge.source)
+context: Follow-up of ruche-0086's review. Since ruche-0024 the judge writes juge.source (Bee-ruche/registre@<commit>)
+  in juge.json, but minizBee's verdict assembler and the registry's bee enregistrer-verdict drop it, so the registry
+  can tell a verdict's judge version (the label) but not the commit that judged. Carry juge.source into verdict.json
+  and the recorded verdict, checked as a full commit of the registry's main, and show it with the verdict.
+files:
+- outils/bee.py
+- outils/test_bee.py
+- schemas/enregistrement.schema.json
+- docs/juge-commun.md
+reach: 0.5
+metric: null
+depends_on:
+- ruche-0086
+acceptance_criteria:
+- 'test: a recorded verdict keeps its judge''s commit; a malformed one is dropped, never trusted'
+- a follow-up task for minizBee's assembler (miniz) is written; independent review attached
+out_of_scope:
+- the forks' code (their own tasks)
+- COMMANDMENTS.md
+node: projects/ruche/ruche
+status: open
+created_by: council
+created_on: '2026-11-02'

@@ -1,14 +1,14 @@
 id: ruche-0036-c1
-tache: ruche-0036
-auteur: bidji29
+task: ruche-0036
+author: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/164
-resume: The common judge runs each scenario in its own container, freezes its outputs when the container
+summary: The common judge runs each scenario in its own container, freezes its outputs when the container
   ends, draws the order at each repetition, and records each scenario's CPU time.
-statut: integree
-soumise_le: '2026-11-02T14:04:56Z'
-engage_depuis: '2026-11-02T05:39:22Z'
-relectures: []
-decidee_le: '2026-11-02T14:21:19Z'
-motif_decision: 'Hive tooling contribution: registry PR #164 merged at commit c3f696a by bidji29, the
+status: integrated
+submitted_at: '2026-11-02T14:04:56Z'
+engaged_since: '2026-11-02T05:39:22Z'
+reviews: []
+decided_at: '2026-11-02T14:21:19Z'
+decision_reason: 'Hive tooling contribution: registry PR #164 merged at commit c3f696a by bidji29, the
   account of a council member, CI green on the merged commit.'
-fusion_sha: a36050bd8d7ef9396876f135b858ceebd87206e8
+merge_sha: a36050bd8d7ef9396876f135b858ceebd87206e8

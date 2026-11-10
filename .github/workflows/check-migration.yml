@@ -37,7 +37,7 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: "3.12"}
       - name: Dependencies
-        run: pip install -r outils/requirements.txt
+        run: pip install -r tools/requirements.txt
       - name: Run the head's tool (nothing here is the check)
         env: {PR: "${{ inputs.pr }}", HEAD_SHA: "${{ inputs.head_sha }}", GENERATED_SHA: "${{ inputs.generated_sha }}"}
         run: |
@@ -45,7 +45,7 @@ jobs:
           git fetch --no-tags origin "+refs/pull/$PR/head:refs/remotes/pr/head"
           base=$(git rev-parse HEAD) pr_head=$(git rev-parse refs/remotes/pr/head)
           [ "$pr_head" = "$HEAD_SHA" ] || { echo "::error::PR $PR's head is $pr_head, not $HEAD_SHA: nothing checked"; exit 1; }
-          python3 outils/bee.py check-migration --base "$base" --head "$HEAD_SHA" --observe "$RUNNER_TEMP/observed.json"
+          python3 tools/bee.py check-migration --base "$base" --head "$HEAD_SHA" --observe "$RUNNER_TEMP/observed.json"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         with: {name: observations, path: "${{ runner.temp }}/observed.json", retention-days: 1, if-no-files-found: ignore}
 
@@ -60,7 +60,7 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: "3.12"}
       - name: Dependencies
-        run: pip install -r outils/requirements.txt
+        run: pip install -r tools/requirements.txt
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4.3.0
         continue-on-error: true  # none: the verdict says so, and refuses
         with: {name: observations, path: "${{ runner.temp }}/observations"}
@@ -73,7 +73,7 @@ jobs:
           [ "$pr_head" = "$HEAD_SHA" ] || { echo "::error::PR $PR's head is $pr_head, not $HEAD_SHA: nothing checked"; exit 1; }
           git merge-base --is-ancestor "$base" "$HEAD_SHA" || { echo "::error::$HEAD_SHA is not on main's tip: regenerate the switch"; exit 1; }
           code=0
-          python3 outils/bee.py check-migration --base "$base" --head "$HEAD_SHA" ${GENERATED_SHA:+--generated "$GENERATED_SHA"} \
+          python3 tools/bee.py check-migration --base "$base" --head "$HEAD_SHA" ${GENERATED_SHA:+--generated "$GENERATED_SHA"} \
             --observed "$RUNNER_TEMP/observations/observed.json" > "$RUNNER_TEMP/summary.txt" 2>&1 || code=$?
           cat "$RUNNER_TEMP/summary.txt"
           { echo "## Switch check of PR #$PR: exit code $code"; echo; echo "Base (main): \`$base\`; head checked: \`$HEAD_SHA\`${GENERATED_SHA:+; generated: \`$GENERATED_SHA\`}"

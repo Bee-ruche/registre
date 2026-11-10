@@ -1,16 +1,16 @@
 id: libyaml-0002-c1
-tache: libyaml-0002
-auteur: bidji29
+task: libyaml-0002
+author: bidji29
 pr: https://github.com/Bee-ruche/libyamlBee/pull/1
-resume: Harnais de fuzzing différentiel de l'analyseur (base contre candidat, ASan/UBSan) et job fuzzing
+summary: Harnais de fuzzing différentiel de l'analyseur (base contre candidat, ASan/UBSan) et job fuzzing
   dans la CI.
-statut: integree
-soumise_le: '2026-10-27T20:01:37Z'
-relectures: []
+status: integrated
+submitted_at: '2026-10-27T20:01:37Z'
+reviews: []
 verdict:
-  ci: verte
+  ci: green
   gain: null
-  au_dela_du_bruit: false
+  beyond_noise: false
   instructions:
     instructions_analyse:
       A: 249769850.0
@@ -25,17 +25,17 @@ verdict:
       B: 461725511.0
       gain: 0.0
   degradations: {}
-  lignes_modifiees: 59
-  ecart_declare: null
+  changed_lines: 59
+  declared_gap: null
   sha: a1b92d130fe8d85d162273fb09567dab33a4fc9d
-  fichiers_controles: true
-  juges_modifies:
+  checked_files: true
+  modified_judges:
   - .github/workflows/bee-ci.yml
   - bee/ci/verdict.py
   - bee/fuzz/fuzz_parse.c
   - bee/fuzz/lancer.sh
-  execution: https://github.com/Bee-ruche/libyamlBee/actions/runs/40576504694
-decidee_le: '2026-10-30T02:05:26Z'
-motif_decision: 'Intégration automatique (R3) : CI verte, relectures et vote suffisants, fenêtre écoulée
+  run: https://github.com/Bee-ruche/libyamlBee/actions/runs/40576504694
+decided_at: '2026-10-30T02:05:26Z'
+decision_reason: 'Intégration automatique (R3) : CI verte, relectures et vote suffisants, fenêtre écoulée
   ; porte de relecture satisfaite.'
-fusion_sha: 01cac4b64dd78d5bdf918124a128a5b17531abff
+merge_sha: 01cac4b64dd78d5bdf918124a128a5b17531abff

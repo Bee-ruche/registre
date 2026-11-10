@@ -1,0 +1,34 @@
+id: ruche-0104
+project: ruche
+category: ruche
+type: test
+area: governance
+size: S
+title: 'Reserved pseudonyms: no member may register a name the tool gives a meaning to'
+context: 'Follow-up of ruche-0096''s review. Some names mean something to the tool or to readers: conseil (the council,
+  and the cree_par of council tasks), the robots'' names, the names of roles and of the hive''s own accounts. A member
+  registering one of them could confuse the tool or a reader; today it fails closed, but it should simply be impossible.
+  Keep a list of reserved pseudonyms, compared case-folded like every pseudonym (meme_pseudo), and refuse them in bee
+  inscrire and in the gate.'
+files:
+- outils/bee.py
+- outils/test_bee.py
+- bee.yaml
+- REGLES.md
+reach: 0.6
+metric: null
+depends_on:
+- ruche-0096
+acceptance_criteria:
+- 'test: registering conseil, Conseil, a robot''s name or a role''s name is refused, in bee inscrire and in bee verifier-pr'
+- 'test: an existing member whose name is reserved is reported by bee valider (none today)'
+- the list lives in one place, read by the tool, and REGLES.md says so
+- independent adversarial review attached; the full test suite passes
+out_of_scope:
+- COMMANDMENTS.md
+- renaming existing members
+node: projects/ruche/ruche
+status: integrated
+contribution: ruche-0104-c1
+created_by: council
+created_on: '2026-11-01'
