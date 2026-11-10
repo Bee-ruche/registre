@@ -22219,5 +22219,32 @@ class TestRenamedCommandsRuche0145(BaseTest):
             with contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(bee.principal(["validate"]), 0)
 
+
+class TestAlreadyNamedRuche0145(unittest.TestCase):
+    """already_named (who has ever been on the council or a guardian: a report decided by them stays decided by a known account)
+    reads the lists under their pre-switch names and keys too (plan, section 12, change 1)."""
+
+    def test_someone_named_only_before_the_switch_is_still_found(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = pathlib.Path(folder)
+            git(root, "init", "-q", "-b", "main")
+
+            def commit(files, message):
+                for path, text in files.items():
+                    (root / path).parent.mkdir(parents=True, exist_ok=True)
+                    (root / path).write_text(text, encoding="utf-8") if text is not None else (root / path).unlink()
+                git(root, "add", "-A")
+                git(root, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", message)
+            commit({"gouvernance/conseil.yaml": "membres:\n- pseudo: bidji29\n", "gouvernance/gardiens.yaml": "membres:\n- pseudo: Zoe\n"},
+                   "before the switch")
+            commit({"gouvernance/gardiens.yaml": "membres: []\n"}, "Zoe leaves, before the switch")
+            commit({"gouvernance/conseil.yaml": None, "gouvernance/gardiens.yaml": None, "governance/council.yaml": "members:\n- login: bidji29\n",
+                    "governance/guardians.yaml": "members:\n- login: alice\n"}, "the switch, then a guardian")
+            self.assertEqual(bee.already_named(types.SimpleNamespace(root=root)), {"bidji29", "zoe", "alice"})
+            commit({"governance/guardians.yaml": "membres:\n- pseudo: mallory\n"}, "French keys under the English name")
+            self.assertIn("mallory", bee.already_named(types.SimpleNamespace(root=root)))  # either vocabulary, either path
+            commit({"docs/x.md": "membres:\n- pseudo: eve\n"}, "another file")
+            self.assertNotIn("eve", bee.already_named(types.SimpleNamespace(root=root)))  # only the two lists
+
 if __name__ == "__main__":
     sys.exit(principal_tests(sys.modules[__name__], __file__, sys.argv[1:]))
