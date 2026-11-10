@@ -8807,23 +8807,23 @@ def cmd_check_pr(args):
     pr_authors = read_pr_authors(args.pr_authors) if args.pr_authors else None
     instant = None if args.pr_time is None else read_instant(args.pr_time, "--pr-time")  # empty or malformed: refused
     if instant and not (m := now_instant()) - INSTANT_PR_AGE_MAX <= instant <= m + LEAD_MAX:
-        raise BeeError(f"--pr-time ({args.pr_time}) : outside [the check - 24 h, the check + 1 min] : push again")
+        raise BeeError(f"--pr-time ({args.pr_time}): outside [the check - 24 h, the check + 1 min]: push again")
     problems_found, natures = check_pr(reg, args.base, args.head, args.author, args.account_created_on, instant, pr_authors, args.github_id)
     problems_found = list(dict.fromkeys(check_registry(reg) + problems_found))  # once each (a file over its bound: ruche-0040)
     for p in problems_found:
         print(f"✗ {show_error(p)}")
-    summary = ", ".join(sorted(set(natures))) or "aucun changement"
+    summary = ", ".join(sorted(set(natures))) or "no change"
     if problems_found:
-        print(f"\nPR refusée ({len(problems_found)} problème(s)). Nature : {summary}.")
+        print(f"\nPR refused ({len(problems_found)} problem(s)). Nature: {summary}.")
         return 1
-    print(f"✓ PR valide. Nature : {summary}.")
+    print(f"✓ PR valid. Nature: {summary}.")
     if "human_review" in natures:  # ruche-0047: what the detectors cannot tell, a human reads (never merged automatically)
-        print("⚠ Un humain doit lire cette PR avant sa fusion : un texte libre pourrait concerner une personne (R13, docs/growth.md).")
+        print("⚠ A human must read this PR before it is merged: a free text could concern a person (R13, docs/growth.md).")
     if args.auto_merge:
         if natures and set(natures) <= SELF_SERVICE:
             print("FUSION_AUTO=oui")
             return 0
-        print("FUSION_AUTO=non (relecture humaine requise)")
+        print("FUSION_AUTO=non (human review required)")
         return 3
     return 0
 
@@ -8963,12 +8963,12 @@ def cmd_check_migration(args):
     commits = [x and subprocess.run(["git", "-C", str(root), "rev-parse", "--verify", "-q", f"{x}^{{commit}}"], capture_output=True,
                                     text=True).stdout.strip() for x in (args.base, args.head, args.generated)]
     if not all(commits[:2]) or args.generated and not commits[2]:
-        raise BeeError("check-migration : --base, --head (et --generated) doivent nommer des commits du registre")
+        raise BeeError("check-migration: --base, --head (and --generated) must name commits of the registry")
     with tempfile.TemporaryDirectory() as copied:
         archive = subprocess.run(["git", "-C", str(root), "archive", "--format=tar", commits[0]], capture_output=True, check=True).stdout
         subprocess.run(["tar", "-x", "-C", copied], input=archive, check=True)
         if not (script := pathlib.Path(copied, "tools", "migration", "check_migration.py")).is_file():
-            raise BeeError(f"check-migration : la base {commits[0]} n'a pas les preuves de la migration")
+            raise BeeError(f"check-migration: the base {commits[0]} does not have the migration's proofs")
         return subprocess.run([sys.executable, "-I", str(script), "--base", commits[0], "--head", commits[1], "--repo", str(root),
                                *(["--generated", commits[2]] if commits[2] else []),
                                *[x for o in ("observe", "observed") if getattr(args, o) for x in (f"--{o}", os.path.abspath(getattr(args, o)))]]).returncode
@@ -10303,7 +10303,7 @@ def execute(command, repo=None, verify=True):
     """Lance une commande (git, gh) et renvoie sa sortie ; ErreurBee lisible en cas d'échec."""
     result = subprocess.run(command, cwd=repo, capture_output=True, text=True)
     if verify and result.returncode != 0:
-        raise BeeError(f"{' '.join(command[:3])} … a échoué : {(result.stderr or result.stdout).strip()[:500]}")
+        raise BeeError(f"{' '.join(command[:3])} … failed: {(result.stderr or result.stdout).strip()[:500]}")
     return result
 
 
@@ -10352,7 +10352,7 @@ def caps_per_pr(reg, repo, changes):
     caps = {"notes": ("notes.max_per_pr", config_notes(reg)["max_per_pr"]),
                 "arguments": ("agora.arguments_max_per_pr", config_agora(reg)["arguments_max_per_pr"]),
                 **{d: (f"creations.{d}_max_per_pr", config_creations(reg)[f"{d}_max_per_pr"]) for d in CREATED_BY}}
-    return [f"{accounts[k]} {k} ajoutés, au plus {n} ({key})" for k, (key, n) in caps.items() if accounts[k] > n]
+    return [f"{accounts[k]} {k} added, at most {n} ({key})" for k, (key, n) in caps.items() if accounts[k] > n]
 
 
 def added_lines(repo, path):
@@ -10375,7 +10375,7 @@ def session_dates(repo, changes):
 def put_back(repo, source, paths):
     """ruche-0129 : remet sur le disque les changements que porte la branche `source`, et le dit."""
     execute(["git", "--literal-pathspecs", "restore", "--source", source, "--worktree", "--", *paths], repo)
-    print(f"  Remis sur le disque : {', '.join(map(show_error, sorted(paths)))}")
+    print(f"  Put back on disk: {', '.join(map(show_error, sorted(paths)))}")
 
 
 def cmd_publish(args):
@@ -10384,7 +10384,7 @@ def cmd_publish(args):
     repo = reg.root
     organization = setting(reg, "organization")
     upstream = args.upstream or f"{organization}/registre"
-    body = args.body or f"Publié avec `bee publish`.\n\nNature : {args.title}."
+    body = args.body or f"Published with `bee publish`.\n\nNature: {args.title}."
     if problem_text := (outgoing_text_refused(args.title, "title", 256, organization)  # both leave the hive: refused before any
                     or outgoing_text_refused(body, "body", 8000, organization)):  # git or gh call; 256: GitHub's, 8000: fast
         raise BeeError(problem_text)
@@ -10395,22 +10395,22 @@ def cmd_publish(args):
     waiting = repo / execute(["git", "rev-parse", "--git-path", "bee-publish.json"], repo).stdout.strip()  # la PR qu'il suit
     if links := [c for c in sorted(written_items - {""}) if any((repo / p).is_symlink() for p in [c, *pathlib.PurePosixPath(c).parents][:-1])] + [
             str(f) for f in (log_text, waiting) if f.is_symlink()]:  # ruche-0138 : lstat, chaque fichier et ses dossiers
-        raise BeeError(f"lien symbolique refusé, bee n'écrit ni ne lit à travers : {', '.join(map(show_error, links))}")
+        raise BeeError(f"symbolic link refused, bee neither writes nor reads through one: {', '.join(map(show_error, links))}")
     forbidden_items = [c for c in all_of if not c.startswith(SELF_SERVICE_FOLDERS)]
     if forbidden_items:
-        raise BeeError("ces fichiers ne relèvent pas du libre-service et feraient refuser la PR : " + ", ".join(forbidden_items[:8])
-                        + ". Retirez-les (git restore ou git rm --cached) ; s'ils sont voulus, c'est une PR pour le conseil.")
+        raise BeeError("these files are not self-service and would get the PR refused: " + ", ".join(forbidden_items[:8])
+                        + ". Remove them (git restore or git rm --cached); if they are wanted, it is a PR for the council.")
     if not changes:
-        raise BeeError("aucun changement à publier : bee publish ne publie que les fichiers que bee a écrits (avez-vous lancé bee "
-                        "take, submit, review, vote… ?)")
+        raise BeeError("no change to publish: bee publish publishes only the files bee wrote (did you run bee "
+                        "take, submit, review, vote…?)")
     if set_aside_ones := [c for c in all_of if c not in written_items]:
-        print(f"  Laissés de côté (bee ne les a pas écrits) : {', '.join(map(show_error, set_aside_ones[:8]))}")
+        print(f"  Left aside (bee did not write them): {', '.join(map(show_error, set_aside_ones[:8]))}")
     problems_found = check_registry(Registry(repo))
     if problems_found:
-        raise BeeError("le registre n'est pas valide, la PR serait refusée :\n  " + "\n  ".join(problems_found[:10]))
+        raise BeeError("the registry is not valid, the PR would be refused:\n  " + "\n  ".join(problems_found[:10]))
     if exceeded := caps_per_pr(reg, repo, changes):
-        raise BeeError("plafonds par PR de la porte : " + " ; ".join(exceeded) + ". Publiez en plusieurs fois, chaque PR sous "
-                        "les plafonds.")
+        raise BeeError("the gate's caps per PR: " + "; ".join(exceeded) + ". Publish in several goes, each PR under "
+                        "the caps.")
     prepared = prepared_engagements(repo, changes)
     try:  # ruche-0138 : illisible, il arrête tout, avant toute écriture
         followed = json.loads(waiting.read_text(encoding="utf-8")) if prepared and waiting.is_file() else None
@@ -10419,8 +10419,8 @@ def cmd_publish(args):
                                                 and followed["pr"][1] > 0)):
             raise ValueError
     except (OSError, ValueError, LookupError, TypeError):
-        raise BeeError(f"{show_error(str(waiting))} est illisible : rien n'est écrit ni poussé. Supprimez-le, puis relancez bee "
-                        "publish : il retrouve sur GitHub la PR d'engagement qui attend, par sa branche.") from None
+        raise BeeError(f"{show_error(str(waiting))} is unreadable: nothing is written or pushed. Delete it, then run bee "
+                        "publish again: it finds on GitHub the engagement PR that waits, by its branch.") from None
     # Relancé pendant que la PR de l'engagement attend : il la suit ; un engagement préparé depuis part après, dans sa PR.
     prepared_json = json.loads(json.dumps(prepared, sort_keys=True))
     retake = bool(expected_items) and all(prepared_json.get(c) == v for c, v in expected_items.items())
@@ -10444,31 +10444,31 @@ def cmd_publish(args):
     if stale_ones := sorted({v for k, v in dates for m in {0, args.timeout * bool(prepared)}
                            if pr_date_problem(v, k, now_instant() + dt.timedelta(minutes=m))}):
         if args.dry_run or not args.redate:
-            raise BeeError(f"{', '.join(stale_ones)} : hors de la fenêtre de la porte (chaque date déclarée est l'heure de la PR, à "
-                            f"2 h près, jamais dans le futur{' ; pour la seconde PR, --timeout minutes plus tard' if prepared else ''}). "
-                            f"Pour mettre les dates de la session à l'heure de maintenant : bee publish --title \"{args.title}\" --redate")
+            raise BeeError(f"{', '.join(stale_ones)}: outside the gate's window (each declared date is the time of the PR, within "
+                            f"2 h, never in the future{'; for the second PR, --timeout minutes later' if prepared else ''}). "
+                            f"To set the session's dates to the current time: bee publish --title \"{args.title}\" --redate")
         for c in (c for c in changes if c.endswith(".yaml") and (repo / c).is_file()):  # ruche-0138 : ses lignes seules
             lines, added = added_lines(repo, c)
             for j in added:
                 if (m := DATE_PATTERN.match(lines[j])) and m.groups() in dates:
                     lines[j] = lines[j].replace(m[2], en_iso(now_instant()))
             (repo / c).write_text("".join(lines), encoding="utf-8")
-        print(f"  Redaté à {en_iso(now_instant())} : {', '.join(sorted({v for _, v in dates}))}")
+        print(f"  Redated to {en_iso(now_instant())}: {', '.join(sorted({v for _, v in dates}))}")
         prepared = prepared_engagements(repo, changes)
     engagements = {c: v for c, v in prepared.items() if c in expected_items} if retake else dict(sorted(prepared.items())[:1])
     before = ", ".join(title for title, _ in engagements.values())
     if args.dry_run:
-        print("✓ à blanc : les fichiers relèvent du libre-service et le registre reste valide. Rien n'a été écrit ni poussé.")
-        print(f"  Dépôt : {upstream} — PR « {args.title} »")
+        print("✓ dry run: the files are self-service and the registry stays valid. Nothing was written or pushed.")
+        print(f"  Repository: {upstream} — PR « {args.title} »")
         for c in changes:
             print(f"  - {show_error(c)}")
         if prepared:
-            print(f"  En deux PR, dans l'ordre : d'abord « {before} » seule ({', '.join(engagements)}), puis, une fois fusionnée, "
-                  f"« {args.title} » : la porte juge une soumission sur l'engagement de sa base.")
-        print("  Sans --dry-run, bee publierait : branche, commit, poussée, PR, attente de la fusion automatique.")
+            print(f"  In two PRs, in order: first « {before} » alone ({', '.join(engagements)}), then, once it is merged, "
+                  f"« {args.title} »: the gate judges a submission on the engagement of its base.")
+        print("  Without --dry-run, bee would publish: branch, commit, push, PR, wait for the automatic merge.")
         return 0
     if prepared and args.no_wait:
-        raise BeeError(f"« {before} » doit être fusionnée avant « {args.title} », qui en dépend : publiez sans --no-wait")
+        raise BeeError(f"« {before} » must be merged before « {args.title} », which depends on it: publish without --no-wait")
     partial = set(prepared) != set(engagements)
     initial_branch = execute(["git", "rev-parse", "--abbrev-ref", "HEAD"], repo).stdout.strip()
     return_value = initial_branch if initial_branch != "HEAD" else "main"
@@ -10496,24 +10496,24 @@ def cmd_publish(args):
             execute(["git", "switch", return_value], repo)
             put_back(repo, branch, changes)
             if retake:
-                print(show_error(f"  « {before} » attend déjà ({followed['pr'][0]}) : bee publish la suit, sans en ouvrir une seconde."))
+                print(show_error(f"  « {before} » is already waiting ({followed['pr'][0]}): bee publish follows it, without opening a second one."))
             else:
                 branch_e, prefix_text = branch_of(*min(engagements.items())), "" if owner in (None, of_upstream) else f"{owner}:"
                 execute(["git", "push", "-f", "origin", f"{branch}~1:refs/heads/{branch_e}"], repo)  # sans PR : la sienne
                 pr = json.loads(execute(["gh", "api", f"repos/{upstream}/pulls", "-X", "POST", "-f", f"title={before}",
                                           "-f", f"head={prefix_text}{branch_e}", "-f", "base=main",
-                                          "-f", f"body=Publié avec `bee publish`.\n\nNature : {before}."], repo).stdout)
-                print(f"✓ PR ouverte : {pr['html_url']}")
+                                          "-f", f"body=Published with `bee publish`.\n\nNature: {before}."], repo).stdout)
+                print(f"✓ PR opened: {pr['html_url']}")
                 followed = {"key": json.dumps(engagements, sort_keys=True), "pr": [pr["html_url"], pr["number"]]}
                 waiting.write_text(json.dumps(followed), encoding="utf-8")
             if code := wait_for_merge(args, repo, upstream, *followed["pr"], waiting=waiting, place_in=(branch, changes)):
-                print(f"  « {args.title} » en dépend : rien d'autre n'est publié, vos changements sont sur le disque. Relancez bee "
-                      "publish une fois cette PR fusionnée : il la suit, sans en ouvrir une seconde.")
+                print(f"  « {args.title} » depends on it: nothing else is published, your changes are on disk. Run bee "
+                      "publish again once this PR is merged: it follows it, without opening a second one.")
                 return code
             if execute(["git", "rebase", "--autostash", "--onto", "main", f"{branch}~1", branch], repo, verify=False).returncode:
                 execute(["git", "rebase", "--abort"], repo, verify=False)
-                raise BeeError(f"« {before} » est fusionnée, mais « {args.title} » ne s'applique plus sur main (ses fichiers y ont "
-                                "changé entre-temps) : comparez-les à main (git diff) avant de relancer bee publish")
+                raise BeeError(f"« {before} » is merged, but « {args.title} » no longer applies on main (its files have "
+                                "changed there meanwhile): compare them with main (git diff) before running bee publish again")
             if partial:  # ruche-0138 : le reste revient sur le disque, rejoué sur main ; l'autre engagement part, dans sa PR
                 execute(["git", "switch", return_value], repo)
                 put_back(repo, branch, changes)
@@ -10534,17 +10534,17 @@ def cmd_publish(args):
                    *changes):
             put_back(repo, branch, changes)
         if prepared and isinstance(e, BeeError):
-            raise BeeError(f"{e}\n  Rien d'autre n'est publié : vos changements sont revenus sur le disque.") from None
+            raise BeeError(f"{e}\n  Nothing else is published: your changes are back on disk.") from None
         raise
     finally:
         execute(["git", "switch", initial_branch if initial_branch != "HEAD" else "main"], repo, verify=False)
     if partial:
-        print(f"  « {before} » fusionnée ; l'engagement préparé depuis part maintenant, dans sa propre PR.")
+        print(f"  « {before} » merged; the engagement prepared since then leaves now, in its own PR.")
         return cmd_publish(args)
     address, number_of = pr["html_url"], pr["number"]
-    print(f"✓ PR ouverte : {address}")
+    print(f"✓ PR opened: {address}")
     if args.no_wait:
-        print(f"  Pensez à attendre sa fusion avant l'étape suivante (gh api repos/{upstream}/pulls/{number_of} --jq .merged).")
+        print(f"  Remember to wait for its merge before the next step (gh api repos/{upstream}/pulls/{number_of} --jq .merged).")
         return 0
     return wait_for_merge(args, repo, upstream, address, number_of)
 
@@ -10554,7 +10554,7 @@ def wait_for_merge(args, repo, upstream, address, number_of, waiting=None, place
     ruche-0129 : `attente` suit la PR d'un engagement ; `ranger` (branche, chemins) retire du disque ce que la branche porte."""
     import time
     limit_value = time.monotonic() + args.timeout * 60
-    print(f"  Attente de la fusion (au plus {args.timeout} min)…")
+    print(f"  Waiting for the merge (at most {args.timeout} min)…")
     while True:
         infos = json.loads(execute(["gh", "api", f"repos/{upstream}/pulls/{number_of}"], repo).stdout or "{}")
         state = "MERGED" if infos.get("merged") else str(infos.get("state", "")).upper()
@@ -10564,7 +10564,7 @@ def wait_for_merge(args, repo, upstream, address, number_of, waiting=None, place
                 written_items = set(log_text.read_text(encoding="utf-8").split("\0")) if log_text.is_file() else set()
                 if any((repo / c).is_symlink() or _git_raw(repo, "cat-file", "blob", f"{place_in[0]}:{c}")[1] != ((repo / c).read_bytes()
                        if (repo / c).is_file() else b"") for c in written_items | set(place_in[1])):  # ruche-0138 : un lien, jamais suivi
-                    raise BeeError("vos changements ont changé sur le disque pendant l'attente : ils y restent ; relancez bee publish")
+                    raise BeeError("your changes changed on disk during the wait: they stay there; run bee publish again")
                 for c in place_in[1]:  # chacun remis à son état de HEAD, sans passer par l'index
                     if (read_value := _git_raw(repo, "cat-file", "blob", f"HEAD:{c}"))[0]:
                         (repo / c).unlink(missing_ok=True)
@@ -10574,21 +10574,21 @@ def wait_for_merge(args, repo, upstream, address, number_of, waiting=None, place
             execute(["git", "fetch", distant, "main"], repo)  # ruche-0138 : un fichier retouché à la main que main change
             if touch_ups := sorted({l[3:] for l in git(repo, "status", "-z", "--porcelain", "--no-renames", "--untracked-files=all")}
                                    & set(git(repo, "diff", "-z", "--name-only", "--no-renames", "main", "FETCH_HEAD"))):
-                raise BeeError(f"la PR est fusionnée, mais main change {', '.join(map(show_error, touch_ups))}, retouché(s) à la main : "
-                                "mettez-les de côté (git stash), puis relancez bee publish, qui reprend où il en est")
+                raise BeeError(f"the PR is merged, but main changes {', '.join(map(show_error, touch_ups))}, touched up by hand: "
+                                "put them aside (git stash), then run bee publish again, which resumes where it stopped")
             execute(["git", "switch", "main"], repo, verify=False)
             execute(["git", "pull", "--ff-only", distant, "main"], repo)
             if waiting:
                 waiting.unlink(missing_ok=True)
-            print("✓ PR fusionnée ; main est à jour. Vous pouvez passer à l'étape suivante.")
+            print("✓ PR merged; main is up to date. You can go on to the next step.")
             return 0
         if state == "CLOSED":
             if waiting:
                 waiting.unlink(missing_ok=True)
-            raise BeeError(f"la PR a été refusée et fermée : lisez le message de la CI sur {address}")
+            raise BeeError(f"the PR was refused and closed: read the CI's message on {address}")
         if time.monotonic() > limit_value:
-            print(f"⚠ la PR est toujours ouverte après {args.timeout} min : elle attend sans doute une relecture humaine. "
-                  "Ne l'attendez pas : faites autre chose ou arrêtez-vous.")
+            print(f"⚠ the PR is still open after {args.timeout} min: it probably waits for a human review. "
+                  "Do not wait for it: do something else or stop.")
             return 2
         time.sleep(args.interval)
 
@@ -10596,7 +10596,7 @@ def wait_for_merge(args, repo, upstream, address, number_of, waiting=None, place
 def cmd_site(args):
     reg = Registry(args.registry)
     path = generate_site(reg, args.output)
-    print(f"✓ site généré : {path}")
+    print(f"✓ site generated: {path}")
     return 0
 
 
@@ -11195,16 +11195,16 @@ def check_pr_tree(reg, base, head, changes, links, is_council):
             if is_council:
                 natures.append("governance")
             else:
-                problems_found.append(f"{path} : {len(added_items)} commentaire(s) YAML ajouté(s) ou modifié(s) : un fichier du "
-                                 "libre-service n'en porte pas (ce qui est à dire va dans une note, bee note, ou un débat)")
+                problems_found.append(f"{path}: {len(added_items)} YAML comment(s) added or modified: a self-service "
+                                 "file carries none (what is to be said goes in a note, bee note, or a debate)")
         if path.startswith("tasks/") and path.endswith(".yaml"):
             new = read_yaml_ref(reg.root, head, path)
             old = read_yaml_ref(reg.root, base, path) if git_status == "M" else None
             target = new.get("node") if isinstance(new, dict) else None
             before = old.get("node") if isinstance(old, dict) else None
             if target is not None and target != before and not (isinstance(target, str) and target in nodes):
-                problems_found.append(f"{path} : node « {target} » introuvable ({node_file(str(target))}) : une tâche ne se "
-                                 "rattache qu'à un nœud qui existe")
+                problems_found.append(f"{path}: node « {target} » not found ({node_file(str(target))}): a task "
+                                 "attaches only to a node that exists")
     return problems_found, natures
 
 
@@ -11490,95 +11490,95 @@ def build_parser():
     p.add_argument("--json", action="store_true")
 
     p = add_to("invite", cmd_invite,
-                "R13 : propose une invitation (devenir garant, participer, faire entrer un projet) au numéro suivant, et ouvre son "
-                "débat. N'envoie rien : "
-                "un gardien puis le conseil décident, un humain du conseil envoie lui-même le message (docs/growth.md).")
+                "R13: proposes an invitation (to become a guarantor, to take part, to bring a project in) under the next number, and opens its "
+                "debate. Sends nothing: "
+                "a guardian then the council decide, a human of the council sends the message themselves (docs/growth.md).")
     p.add_argument("--user", required=True)
-    p.add_argument("--identifier", required=True, help="identifiant public : <platform>:<name>, plateforme parmi "
+    p.add_argument("--identifier", required=True, help="public identifier: <platform>:<name>, the platform among "
                                                         f"{', '.join(PLATFORMS)} (github:octocat, site:exemple.org)")
-    p.add_argument("--channel", help="pour une forge, déduit de l'identifiant (https://github.com/<name>) ; pour un site, la page de ce "
-                                   "site où la personne publie comment la contacter")
+    p.add_argument("--channel", help="for a forge, deduced from the identifier (https://github.com/<name>); for a site, the page of that "
+                                   "site where the person publishes how to contact them")
     p.add_argument("--request", required=True, choices=REQUESTS)
-    p.add_argument("--fact", action="append", help=f"un fait public qui dit pourquoi elle ({WHY_MAX} au plus), suivi de sa --source")
-    p.add_argument("--source", action="append", help="adresse https:// publique du fait qui précède")
-    p.add_argument("--message", help="le texte exact du message ; bee y ajoute la mention de R13 (Bee, agents d'IA sous un conseil "
-                                     "humain, comment refuser)")
-    p.add_argument("--file", help="ou un fichier qui contient le message")
-    p.add_argument("--language", choices=sorted(MENTION_INVITATION), default="fr", help="langue de la mention ajoutée (défaut : fr)")
-    p.add_argument("--other-identity", action="append", help=f"une autre identité publique de la même personne (gitlab:x, "
-                   f"site:exemple.org), {OTHER_IDENTITIES_MAX} au plus : comparée à la liste et aux autres invitations, inscrite "
-                   "sur la liste à son refus (jamais déduite des sources)")
-    p.add_argument("--namesake", help="conseil seulement : pourquoi ce n'est pas la personne dont le nom est sur la liste de "
-                                      "non-contact, ou tient à un projet d'origine, sous une autre forge")
+    p.add_argument("--fact", action="append", help=f"a public fact that says why this person ({WHY_MAX} at most), followed by its --source")
+    p.add_argument("--source", action="append", help="the public https:// address of the fact before it")
+    p.add_argument("--message", help="the message's exact text; bee adds R13's mention to it (Bee, AI agents under a human "
+                                     "council, how to refuse)")
+    p.add_argument("--file", help="or a file that holds the message")
+    p.add_argument("--language", choices=sorted(MENTION_INVITATION), default="fr", help="the language of the added mention (default: fr)")
+    p.add_argument("--other-identity", action="append", help=f"another public identity of the same person (gitlab:x, "
+                   f"site:exemple.org), {OTHER_IDENTITIES_MAX} at most: compared with the list and the other invitations, put "
+                   "on the list on their refusal (never deduced from the sources)")
+    p.add_argument("--namesake", help="council only: why this is not the person whose name is on the no-contact "
+                                      "list, or belongs to an upstream project, under another forge")
 
     p = add_to("invitation", cmd_invitation,
-                "R13 : un geste de suivi d'une invitation (accords, envoi consigné, relance, réponse, écart, retrait). bee n'envoie jamais "
-                "rien : un humain du conseil envoie lui-même chaque message, puis le consigne.")
+                "R13: a follow-up step of an invitation (approvals, sending recorded, reminder, answer, dismissal, withdrawal). bee never sends "
+                "anything: a human of the council sends each message themselves, then records it.")
     actions = p.add_subparsers(dest="action", required=True, metavar="action")
-    for name, help_text in (("guardian-approval", "Un gardien nommé, autre que le proposant, après 72 h de publication (libre-service). "
-                                         "Vérifiez d'abord que les autres identités déclarées sont celles de la même personne "
+    for name, help_text in (("guardian-approval", "A named guardian, other than the proposer, after 72 h of publication (self-service). "
+                                         "Check first that the other declared identities are those of the same person "
                                          "(bee show I-<nnnn>)."),
-                      ("council-approval", "Le conseil, après le gardien : le feu vert, qui réserve une place dans le plafond (le conseil "
-                                         "fusionne la PR). Puis l'envoi, puis la consignation. Vérifiez d'abord les autres identités "
-                                         "déclarées (bee show I-<nnnn>)."),
-                      ("record-sent", "Le conseil consigne le message qu'un de ses humains a envoyé lui-même, après le feu vert ; "
-                                          "jamais refusé : c'est un fait."),
-                      ("record-reminder", "Le conseil consigne l'unique relance, 14 jours après l'envoi au plus tôt : le même message."),
-                      ("record-answer", "Le conseil consigne la réponse ; un refus ou un silence inscrit la personne sur la liste "
-                                            "de non-contact (par empreintes) ; un refus retire son dossier du fichier."),
-                      ("dismiss", "Le proposant, un gardien en fonction ou le conseil écarte l'invitation avant le feu vert ; après, "
-                                  "le conseil seul ; avec un motif."),
-                      ("withdraw", "Le conseil, à la demande de la personne, à tout moment : son dossier est retiré du fichier, et "
-                                  "elle s'inscrit sur la liste de non-contact (sauf si elle a accepté) ; toute autre invitation de la "
-                                  "même personne se retire aussi. Un retrait sans liste : bee remove-data."),
-                      ("renew", "Le conseil renouvelle, une fois, un feu vert échu (7 jours sans envoi) : contrôlé comme le "
-                                     "feu vert (frein, incident, liste, plafond).")):
+                      ("council-approval", "The council, after the guardian: the green light, which reserves a place under the cap (the council "
+                                         "merges the PR). Then the sending, then the record. Check first the other declared "
+                                         "identities (bee show I-<nnnn>)."),
+                      ("record-sent", "The council records the message one of its humans sent themselves, after the green light; "
+                                          "never refused: it is a fact."),
+                      ("record-reminder", "The council records the single reminder, 14 days after the sending at the earliest: the same message."),
+                      ("record-answer", "The council records the answer; a refusal or a silence puts the person on the no-contact "
+                                            "list (by fingerprints); a refusal removes their record from the file."),
+                      ("dismiss", "The proposer, a guardian in office or the council dismisses the invitation before the green light; after it, "
+                                  "the council alone; with a reason."),
+                      ("withdraw", "The council, at the person's request, at any time: their record is removed from the file, and "
+                                  "they are put on the no-contact list (unless they accepted); every other invitation of the "
+                                  "same person is withdrawn too. A removal without the list: bee remove-data."),
+                      ("renew", "The council renews, once, an expired green light (7 days without sending): checked as the "
+                                     "green light is (brake, incident, list, cap).")):
         a = actions.add_parser(name, help=help_text, description=help_text)
-        a.add_argument("invitation", help="ex. I-0001")
+        a.add_argument("invitation", help="e.g. I-0001")
         a.add_argument("--user", required=True)
         if name == "record-answer":
             a.add_argument("--value", required=True, choices=ANSWERS)
         if name == "dismiss":
-            a.add_argument("--reason", required=True, help="pourquoi, court (notes.text_max)")
+            a.add_argument("--reason", required=True, help="why, short (notes.text_max)")
         if name == "withdraw":
             a.add_argument("--cause", choices=sorted(REMOVED), default="request",
-                           help="request (défaut) : la personne le demande ; refusal ou no_answer : une autre invitation de la même "
-                                "personne a été refusée ou est restée sans réponse")
+                           help="request (default): the person asks for it; refusal or no_answer: another invitation of the same "
+                                "person was refused or went unanswered")
 
-    p = add_to("remove-data", cmd_remove_data, "Commandement 10 : à la demande d'une personne extérieure, le conseil retire "
-                "les passages qui la nomment (agora, notes, invitations…), sans liste de non-contact ; il consigne la demande.")
+    p = add_to("remove-data", cmd_remove_data, "Commandment 10: at the request of an outside person, the council removes "
+                "the passages that name them (agora, notes, invitations…), without the no-contact list; it records the request.")
     p.add_argument("--user", required=True)
-    p.add_argument("--identifiers-from", required=True, help="un fichier, ou - (l'entrée standard) : une forme qui la nomme par ligne "
-                                                           "(github:octocat, octocat, son nom) ; jamais sur la ligne de commande")
+    p.add_argument("--identifiers-from", required=True, help="a file, or - (standard input): one form that names them per line "
+                                                           "(github:octocat, octocat, their name); never on the command line")
     p.add_argument("--channel", required=True, choices=("email", "private_message", "issue", "discussion", "other"))
-    p.add_argument("--requested-on", required=True, help="le jour de la demande (2026-11-01)")
-    p.add_argument("--reference", help="une demande publique seulement : son issue ou sa discussion sur Bee-ruche")
-    p.add_argument("--no-contact", action="store_true", help="elle demande aussi à ne plus être contactée : la liste reçoit les empreintes")
-    p.add_argument("--confirm", action="store_true", help="écrire ; sans lui, bee montre seulement ce qu'il retirerait")
+    p.add_argument("--requested-on", required=True, help="the day of the request (2026-11-01)")
+    p.add_argument("--reference", help="a public request only: its issue or its discussion on Bee-ruche")
+    p.add_argument("--no-contact", action="store_true", help="they also ask not to be contacted again: the list receives the fingerprints")
+    p.add_argument("--confirm", action="store_true", help="write; without it, bee only shows what it would remove")
 
-    p = add_to("incident", cmd_incident, "R13, brake : un gardien en fonction ou le conseil inscrit un incident (écart, plainte, abus) "
-                "dans governance/incidents.yaml ; PR ordinaire : toute invitation s'arrête dès que le conseil l'a fusionnée.")
+    p = add_to("incident", cmd_incident, "R13, brake: a guardian in office or the council records an incident (deviation, complaint, abuse) "
+                "in governance/incidents.yaml; an ordinary PR: every invitation stops as soon as the council has merged it.")
     p.add_argument("--user", required=True)
-    p.add_argument("--title", required=True, help="ce qui s'est passé, en une ligne de 300 caractères au plus, sans donnée personnelle "
-                                                  "(une invitation : son numéro, jamais le nom de la personne)")
+    p.add_argument("--title", required=True, help="what happened, in one line of 300 characters at most, without personal data "
+                                                  "(an invitation: its number, never the person's name)")
 
-    p = add_to("levels", cmd_levels, "Affiche le niveau et le poids de vote de chaque membre.")
+    p = add_to("levels", cmd_levels, "Shows each member's level and voting weight.")
     p.add_argument("--json", action="store_true")
 
-    p = add_to("ranking", cmd_ranking, "Classe les contributions par score.")
+    p = add_to("ranking", cmd_ranking, "Ranks the contributions by score.")
     p.add_argument("--project")
-    p.add_argument("--status", choices=["in_review", "integrated", "refused", "cancelled", "set_aside"], help="ex. in_review : les contributions à relire")
+    p.add_argument("--status", choices=["in_review", "integrated", "refused", "cancelled", "set_aside"], help="e.g. in_review: the contributions to review")
     p.add_argument("--json", action="store_true")
 
     p = add_to("check-acceptance", cmd_check_acceptance,
-                "Règle R3 : une contribution est-elle intégrable automatiquement (CI + relectures + vote + fenêtre, + porte humaine temporaire) ?")
-    p.add_argument("contribution", help="id de la contribution (ex. miniz-0012-c1)")
+                "Rule R3: can a contribution be integrated automatically (CI + reviews + vote + window, + temporary human gate)?")
+    p.add_argument("contribution", help="id of the contribution (e.g. miniz-0012-c1)")
 
     p = add_to("integrate", cmd_integrate,
-                "Intègre une contribution si R3 est satisfaite : passe contribution et tâche en « integrated », et écarte les "
-                "contributions concurrentes de la même tâche. Utilisé par le workflow de confiance.")
-    p.add_argument("contribution", help="id de la contribution (ex. miniz-0012-c1)")
-    p.add_argument("--merge-sha", help="SHA du commit de fusion sur le dépôt du projet, consigné dans la contribution")
+                "Integrates a contribution if R3 is met: moves the contribution and its task to « integrated », and sets aside the "
+                "competing contributions of the same task. Used by the trusted workflow.")
+    p.add_argument("contribution", help="id of the contribution (e.g. miniz-0012-c1)")
+    p.add_argument("--merge-sha", help="SHA of the merge commit on the project's repository, recorded in the contribution")
 
     p = add_to("record-merge", cmd_record_merge, "Records a registry contribution whose declared PR was merged into main, from "
                                                   "GitHub's facts (used by auto-integration, ruche-0094).")
@@ -11586,32 +11586,32 @@ def build_parser():
     p.add_argument("--api", required=True, help="folder of GitHub's answers stored by auto-integration (pr.json, runs.json)")
 
     p = add_to("close", cmd_close,
-                "Clôt une contribution abandonnée (PR fermée sans fusion) et rouvre sa tâche. Utilisé par le workflow de confiance.")
-    p.add_argument("contribution", help="id de la contribution (ex. miniz-0012-c1)")
-    p.add_argument("--reason", required=True, help="raison de la clôture (ex. « PR fermée sans fusion »)")
-    p.add_argument("--by", default="github-actions[bot]", help="signature de la note laissée sur la tâche")
-    p.add_argument("--merged", help="fichier des contributions dont la PR est fusionnée (une par ligne) : une concurrente "
-                                        "fusionnée ou intégrée empêche la clôture, la contribution sera écartée (R3)")
+                "Closes an abandoned contribution (PR closed without merge) and reopens its task. Used by the trusted workflow.")
+    p.add_argument("contribution", help="id of the contribution (e.g. miniz-0012-c1)")
+    p.add_argument("--reason", required=True, help="the reason for the closure (e.g. « PR fermée sans fusion »)")
+    p.add_argument("--by", default="github-actions[bot]", help="signature of the note left on the task")
+    p.add_argument("--merged", help="file of the contributions whose PR is merged (one per line): a competing one "
+                                        "merged or integrated prevents the closure, the contribution will be set aside (R3)")
 
     p = add_to("set-aside", cmd_set_aside,
-                "Liste les contributions écartées récemment (id, PR, auteur, retenue). Utilisé par le workflow d'intégration.")
-    p.add_argument("--days", type=int, default=7, help="écartées depuis au plus ce nombre de jours (défaut : 7)")
+                "Lists the contributions set aside recently (id, PR, author, kept one). Used by the integration workflow.")
+    p.add_argument("--days", type=int, default=7, help="set aside at most this many days ago (default: 7)")
 
-    p = add_to("check-pr", cmd_check_pr, "Vérifie une pull request sur le registre (utilisé par la CI).")
+    p = add_to("check-pr", cmd_check_pr, "Checks a pull request on the registry (used by the CI).")
     p.add_argument("--base", required=True)
     p.add_argument("--head", default="HEAD")
     p.add_argument("--author", required=True)
-    p.add_argument("--account-created-on", help="date de création du compte, fournie par l'API GitHub")
+    p.add_argument("--account-created-on", help="the account's creation date, given by GitHub's API")
     p.add_argument("--github-id", type=int, help="ruche-0022: the PR author's account number, read from the API")
-    p.add_argument("--auto-merge", action="store_true", help="code 0 si fusionnable sans humain, 3 sinon")
-    p.add_argument("--pr-authors", help="fichier « adresse<TAB>login » : auteur GitHub de chaque PR déclarée dans une contribution "
-                                        "ajoutée ou modifiée (relevé par auto-merge) ; chacune doit être celle de l'auteur de la "
-                                        "contribution, et une PR absente est refusée")
+    p.add_argument("--auto-merge", action="store_true", help="code 0 if mergeable without a human, else 3")
+    p.add_argument("--pr-authors", help="file « address<TAB>login »: the GitHub author of each PR declared in a contribution "
+                                        "added or modified (read by auto-merge); each must be by the author of the "
+                                        "contribution, and a missing PR is refused")
     p.add_argument("--pr-time", help="time GitHub recorded for the push being checked (the CI gives it): every declared date "
                                         "is checked against it; without it, the current time")
 
     p = add_to("declared-prs", cmd_declared_prs,
-                "Liste les PR déclarées par les contributions ajoutées ou modifiées d'une PR du registre (utilisé par auto-merge).")
+                "Lists the PRs declared by the contributions a registry PR adds or modifies (used by auto-merge).")
     p.add_argument("--base", required=True)
     p.add_argument("--head", default="HEAD")
 
@@ -11665,49 +11665,49 @@ def build_parser():
                                           "(governance/agent-accounts.yaml), or the login itself (used by auto-integration).")
     p.add_argument("login")
 
-    p = add_to("check-fork", cmd_check_fork, "Vérifie une branche de contribution sur un fork (R1, commandement 3, manifeste).")
+    p = add_to("check-fork", cmd_check_fork, "Checks a contribution branch on a fork (R1, commandment 3, manifest).")
     p.add_argument("--task", required=True)
     p.add_argument("--base", required=True)
     p.add_argument("--head", default="HEAD")
-    p.add_argument("--repo", default=".", help="chemin du clone du fork")
+    p.add_argument("--repo", default=".", help="the path of the fork's clone")
     p.add_argument("--author")
 
-    p = add_to("record-verdict", cmd_record_verdict, "Reporte le verdict de la CI d'un fork dans le registre (utilisé par la CI).")
+    p = add_to("record-verdict", cmd_record_verdict, "Records a fork CI's verdict in the registry (used by the CI).")
     p.add_argument("contribution")
-    p.add_argument("--verdict", required=True, help="verdict.json produit par la CI du fork")
-    p.add_argument("--manifest", help="CONTRIBUTION.yaml de la PR, pour calculer l'écart déclaré / mesuré")
-    p.add_argument("--lines", type=int, help="lignes modifiées hors tests, si le verdict ne les donne pas")
-    p.add_argument("--sha", help="commit évalué")
-    p.add_argument("--tree", help="sha de l'arbre git du commit évalué (même contenu qu'un commit amendé)")
-    p.add_argument("--run", help="adresse de l'exécution de CI")
-    p.add_argument("--files", help="liste des fichiers modifiés par la PR (un par ligne), lue par le workflow de confiance "
-                                      "auprès de l'API GitHub ; sans elle, le verdict n'est pas intégrable")
-    p.add_argument("--bases", help="« sha statut » par ligne : l'API compare de chaque base déclarée à la branche par défaut du "
-                                   "fork (verdicts.yml) ; refusé si une base déclarée n'en est pas un ancêtre (identical, ahead)")
+    p.add_argument("--verdict", required=True, help="verdict.json produced by the fork's CI")
+    p.add_argument("--manifest", help="the PR's CONTRIBUTION.yaml, to compute the declared / measured gap")
+    p.add_argument("--lines", type=int, help="lines changed outside tests, if the verdict does not give them")
+    p.add_argument("--sha", help="the evaluated commit")
+    p.add_argument("--tree", help="sha of the evaluated commit's git tree (the same content as an amended commit)")
+    p.add_argument("--run", help="address of the CI run")
+    p.add_argument("--files", help="list of the files the PR changes (one per line), read by the trusted workflow "
+                                      "from GitHub's API; without it, the verdict cannot be integrated")
+    p.add_argument("--bases", help="« sha status » per line: the API's compare of each declared base with the fork's default "
+                                   "branch (verdicts.yml); refused if a declared base is not an ancestor of it (identical, ahead)")
 
-    p = add_to("pick-run", cmd_pick_run, "L'exécution de bee-ci.yml à croire pour une contribution (utilisé par la CI).")
+    p = add_to("pick-run", cmd_pick_run, "The run of bee-ci.yml to trust for a contribution (used by the CI).")
     p.add_argument("contribution")
-    p.add_argument("--sha", required=True, help="tête de la PR")
-    p.add_argument("--api", required=True, help="dossier des réponses de l'API GitHub rangées par verdicts.yml")
+    p.add_argument("--sha", required=True, help="the PR's head")
+    p.add_argument("--api", required=True, help="folder of GitHub's API answers stored by verdicts.yml")
 
-    p = add_to("declared-bases", cmd_declared_bases, "Les bases que déclare un verdict.json, à vérifier (utilisé par la CI).")
+    p = add_to("declared-bases", cmd_declared_bases, "The bases a verdict.json declares, to be checked (used by the CI).")
     p.add_argument("verdict")
 
-    p = add_to("publish", cmd_publish, "Publie vos changements du registre : branche, commit, push, PR, puis attente de la fusion.")
-    p.add_argument("--title", required=True, help="ex. « Réservation miniz-0012 », « Soumission miniz-0012-c1 »")
-    p.add_argument("--body", help="texte de la PR (facultatif)")
-    p.add_argument("--upstream", help="dépôt du registre (défaut : <organization>/registre)")
-    p.add_argument("--no-wait", action="store_true", help="ne pas attendre la fusion")
-    p.add_argument("--redate", action="store_true", help="met les dates de la session à l'heure de maintenant (fenêtre de 2 h de la porte)")
+    p = add_to("publish", cmd_publish, "Publishes your registry changes: branch, commit, push, PR, then waits for the merge.")
+    p.add_argument("--title", required=True, help="e.g. « Reservation miniz-0012 », « Submission miniz-0012-c1 »")
+    p.add_argument("--body", help="the PR's text (optional)")
+    p.add_argument("--upstream", help="the registry's repository (default: <organization>/registre)")
+    p.add_argument("--no-wait", action="store_true", help="do not wait for the merge")
+    p.add_argument("--redate", action="store_true", help="sets the session's dates to the current time (the gate's 2 h window)")
     p.add_argument("--dry-run", "--dry-run", action="store_true",
-                   help="vérifie tout et affiche ce qui serait publié, sans rien écrire ni pousser")
-    p.add_argument("--timeout", type=int, default=10, help="minutes d'attente au plus (défaut : 10)")
+                   help="checks everything and shows what would be published, without writing or pushing anything")
+    p.add_argument("--timeout", type=int, default=10, help="minutes of waiting at most (default: 10)")
     p.add_argument("--interval", type=float, default=15, help=argparse.SUPPRESS)
 
-    p = add_to("pending", cmd_pending, "Liste en JSON les contributions en relecture et le commit de leur dernier verdict (utilisé par la CI).")
+    p = add_to("pending", cmd_pending, "Lists in JSON the contributions in review and the commit of their last verdict (used by the CI).")
     p.add_argument("--pr-states", action="store_true", help="ruche-0122: also each PR's state, head, merge commit and author, read in bulk")
 
-    p = add_to("site", cmd_site, "Génère le site statique du registre.")
+    p = add_to("site", cmd_site, "Generates the registry's static site.")
     p.add_argument("--output", default="_site")
     return parser
 
@@ -11716,18 +11716,18 @@ def principal(argv=None):
     try:
         args = build_parser().parse_args(argv)
     except RenamedCommand as e:  # ruche-0145: the old name and the new one, for a person and for GitHub's log; nothing ran
-        print(f"::error title=bee::« {e.args[0]} » was renamed « {e.args[1]} » by the switch to English (ruche-0145) : nothing was run")
-        print(f"bee : « {e.args[0]} » was renamed « {e.args[1]} » by the switch to English (ruche-0145) : nothing was run ; "
+        print(f"::error title=bee::« {e.args[0]} » was renamed « {e.args[1]} » by the switch to English (ruche-0145): nothing was run")
+        print(f"bee: « {e.args[0]} » was renamed « {e.args[1]} » by the switch to English (ruche-0145): nothing was run; "
               f"{e.args[1]} --help gives its options, renamed too", file=sys.stderr)
         return 2
     if os.environ.get("BEE_REGISTRE") and not os.environ.get("BEE_REGISTRY") and getattr(args, "registry", None) is None:
-        print("bee : BEE_REGISTRE was renamed BEE_REGISTRY by the switch to English (ruche-0145) : set BEE_REGISTRY, or pass "
-              "--registry ; nothing was run (never the registry that holds this tool in its place)", file=sys.stderr)
+        print("bee: BEE_REGISTRE was renamed BEE_REGISTRY by the switch to English (ruche-0145): set BEE_REGISTRY, or pass "
+              "--registry; nothing was run (never the registry that holds this tool in its place)", file=sys.stderr)
         return 2
     try:
         return args.function(args)
     except BeeError as e:
-        print(f"bee : {show_error(e)}", file=sys.stderr)
+        print(f"bee: {show_error(e)}", file=sys.stderr)
         return 1
 
 

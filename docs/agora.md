@@ -221,7 +221,7 @@ aucun caractère invisible ou de contrôle ; aucun lien symbolique, ici comme pa
 
 **Deux arguments en même temps.** Chaque argument s'ajoute en fin de fichier avec le numéro suivant :
 si un autre est fusionné avant le tien, ta PR entre en conflit et reste ouverte (`bee publish` répond
-« toujours ouverte »). Ferme-la, remets `main` à jour (`git switch main && git pull upstream main`) et
+« still open »). Ferme-la, remets `main` à jour (`git switch main && git pull upstream main`) et
 relance `bee debate argue` : ton argument prend le numéro suivant. `bee debate argue`
 affiche l'id attribué (A7) et le rappelle : **il n'est sûr qu'une fois la PR fusionnée**. Si tu refais
 l'action, relis le débat (`bee debates --show`) et vérifie que tes `--repond-a` visent toujours le bon
