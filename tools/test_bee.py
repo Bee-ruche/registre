@@ -22496,3 +22496,108 @@ class TestVerdictMetricRuche0145(BaseTest):
 
 if __name__ == "__main__":
     sys.exit(principal_tests(sys.modules[__name__], __file__, sys.argv[1:]))
+
+
+class TestCheckMessagesRuche0146(unittest.TestCase):
+    """tools/migration/check_messages.py (ruche-0146, ruche-0147): P1 restricted to message literals, on a toy file."""
+
+    BASE = '''"""Doc en français."""
+STATUS = "open"
+MARK = "=== DONNÉES"
+
+
+def f(n, path):
+    """Doc."""
+    if path.startswith(MARK):
+        raise ValueError(f"{path} : {n} tâche(s) introuvable(s)")
+    print("Tâche %s réservée" % n, "{id} prise".format(id=n), STATUS)
+    return "introuvable"
+'''
+
+    def setUp(self):
+        spec = importlib.util.spec_from_file_location("check_messages", ROOT / "tools" / "migration" / "check_messages.py")
+        self.cm = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.cm)
+        self.repo = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.repo, ignore_errors=True)
+        (self.repo / "m.py").write_text(self.BASE, encoding="utf-8")
+        for c in (["init", "-q"], ["add", "m.py"], ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "b"]):
+            subprocess.run(["git", "-C", str(self.repo)] + c, check=True)
+
+    def run_on(self, old, new, markers=False, prose=()):
+        (self.repo / "m.py").write_text(self.BASE.replace(old, new), encoding="utf-8")
+        return self.cm.check(self.repo, "HEAD", None, ["m.py"], markers, prose)
+
+    def test_messages_reordered_interpolations_and_docstrings_pass(self):
+        text = self.BASE.replace('f"{path} : {n} tâche(s) introuvable(s)"', 'f"{n} task(s) not found: {path}"')
+        text = text.replace('"Tâche %s réservée"', '"Task %s reserved"').replace('"{id} prise"', '"{id} taken"')
+        text = text.replace('"""Doc en français."""', '"""Doc in English."""')
+        (self.repo / "m.py").write_text(text, encoding="utf-8")
+        problems, counts = self.cm.check(self.repo, "HEAD", None, ["m.py"], False)
+        self.assertEqual(problems, [])
+        self.assertEqual((counts["m.py messages"], counts["docstrings"]), (3, 1))
+
+    def test_a_name_literal_never_changes_unless_named_prose(self):
+        problems, _ = self.run_on('STATUS = "open"', 'STATUS = "opened"')
+        self.assertEqual(len(problems), 1)
+        self.assertIn("a name literal changed", problems[0])
+        self.assertEqual(len(self.run_on('return "introuvable"', 'return "not found"')[0]), 1)
+        self.assertEqual(self.run_on('return "introuvable"', 'return "not found"', prose=("introuvable",))[0], [])
+
+    def test_code_and_interpolations_never_change(self):
+        for old, new in (('if path.startswith(MARK):', 'if path.endswith(MARK):'), ('{n} tâche(s)', '{n + 1} tâche(s)'),
+                         ('return "introuvable"', 'return "introuvable" + ""')):
+            problems, _ = self.run_on(old, new)
+            self.assertEqual(len(problems), 1, new)
+            self.assertIn("the code changed", problems[0])
+
+    def test_a_compared_literal_needs_markers(self):
+        problems, _ = self.run_on('MARK = "=== DONNÉES"', 'MARK = "=== DATA"')
+        self.assertEqual(len(problems), 1)
+        self.assertIn("compares text against", problems[0])
+        self.assertEqual(self.run_on('MARK = "=== DONNÉES"', 'MARK = "=== DATA"', markers=True)[0], [])
+
+    def test_a_template_keeps_its_fields(self):
+        for old, new in (('"Tâche %s réservée"', '"Task reserved"'), ('"{id} prise"', '"{ident} taken"')):
+            problems, _ = self.run_on(old, new)
+            self.assertEqual(len(problems), 1, new)
+            self.assertIn("fields changed", problems[0])
+
+    def test_format_specs_conversions_and_percent_order(self):
+        base = 'def g(n, x):\n    return "{n:,} élément(s), {x!r}".format(n=n, x=x), "%(a)s puis %(b)s" % {"a": n, "b": x}\n'
+        (self.repo / "m.py").write_text(base, encoding="utf-8")
+        subprocess.run(["git", "-C", str(self.repo), "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qam", "g"], check=True)
+        for new, ok in (('"{n:,} item(s), {x!r}"', True), ('"{n} item(s), {x!r}"', False), ('"{n:,} item(s), {x!s}"', False),
+                        ('"%(b)s after %(a)s"', True), ('"%(a)d then %(b)s"', False)):
+            old = '"{n:,} élément(s), {x!r}"' if "{" in new else '"%(a)s puis %(b)s"'
+            (self.repo / "m.py").write_text(base.replace(old, new), encoding="utf-8")
+            problems, _ = self.cm.check(self.repo, "HEAD", None, ["m.py"], False)
+            self.assertEqual(problems == [], ok, (new, problems))
+
+    def test_markers_through_fstrings_locals_and_defaults(self):
+        base = ('def g(s, n, m="erreur xx"):\n    marque = "attendu ici"\n    return s == f"Erreur {n}", marque in s, m in s, '
+                's.startswith(f"=== FIN {n}")\n')
+        base += 'class K:\n    def __init__(self):\n        self.marque = "au début"\n\n    def k(self, s):\n        return self.marque in s\n'
+        (self.repo / "m.py").write_text(base, encoding="utf-8")
+        subprocess.run(["git", "-C", str(self.repo), "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qam", "g"], check=True)
+        for old, new in (('f"Erreur {n}"', 'f"Error {n}"'), ('"attendu ici"', '"expected here"'), ('"erreur xx"', '"error xx"'),
+                         ('"au début"', '"at the start"'),
+                         ('f"=== FIN {n}"', 'f"=== END {n}"')):
+            (self.repo / "m.py").write_text(base.replace(old, new), encoding="utf-8")
+            problems, _ = self.cm.check(self.repo, "HEAD", None, ["m.py"], False)
+            self.assertEqual(len(problems), 1, new)
+            self.assertIn("compares text against", problems[0])
+            self.assertEqual(self.cm.check(self.repo, "HEAD", None, ["m.py"], True)[0], [], new)
+
+    def test_letterless_literals_and_unreadable_heads(self):
+        base = 'def g(x):\n    return " : ".join(x), "-"\n'
+        (self.repo / "m.py").write_text(base, encoding="utf-8")
+        subprocess.run(["git", "-C", str(self.repo), "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qam", "g"], check=True)
+        (self.repo / "m.py").write_text(base.replace('" : "', '": "'), encoding="utf-8")
+        problems, _ = self.cm.check(self.repo, "HEAD", None, ["m.py"], False)
+        self.assertIn("without a letter", problems[0])
+        self.assertEqual(self.cm.check(self.repo, "HEAD", None, ["m.py"], False, (" : ",))[0], [])
+        (self.repo / "m.py").write_text("def g(:\n", encoding="utf-8")
+        self.assertIn("does not parse", self.cm.check(self.repo, "HEAD", None, ["m.py"], False)[0][0])
+        (self.repo / "m.py").unlink()
+        self.assertIn("unreadable", self.cm.check(self.repo, "HEAD", None, ["m.py"], False)[0][0])
