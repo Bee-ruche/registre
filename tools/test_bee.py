@@ -15654,7 +15654,7 @@ class TestBilingualReaders(BaseAgora):
                 lines.insert(end + 1, f"{' ' * withdrawal}{link} [D-{n:04d}](../debates/D-{n:04d}.yaml) (`bee debates --show D-{n:04d}`).")
             doc.write_text("\n".join(lines), encoding="utf-8")
             with self.subTest(link=link):
-                self.assertIn(f"{expected_ones - 2} débat(s) à ouvrir",
+                self.assertIn(f"{expected_ones - 2} debate(s) to open",
                               self.ok("debate", "import-questions", "--user", "bidji29", "--dry-run"))
 
     # --- Node headings ---
