@@ -3955,19 +3955,19 @@ class TestPublish(BasePublish):
     # --- ruche-0049: the title and body leave the hive, checked like any outgoing text ---
 
     OUTGOING_REFUSED = {
-        "mention": ("Merci @octocat", "la mention « @octocat » notifierait"),
-        "mention d'équipe": ("cc @Bee-ruche/council", "la mention « @Bee-ruche/council »"),
-        "mention entre parenthèses": ("Relu (@octocat).", "la mention « @octocat »"),
-        "mention pleine chasse": ("Merci ＠octocat", "la mention « @octocat »"),
-        "issue d'un autre dépôt": ("Voir amont-fictif/miniz#12", "« amont-fictif/miniz#12 » renvoie à un dépôt hors de Bee-ruche"),
-        "commit d'un autre dépôt": ("Voir amont-fictif/miniz@a5c3785", "« amont-fictif/miniz@a5c3785 » renvoie"),
-        "commit d'un fork": ("Voir amont-fictif@a5c37851d", "« amont-fictif@a5c37851d » renvoie"),
+        "mention": ("Merci @octocat", "the mention « @octocat » would notify"),
+        "mention d'équipe": ("cc @Bee-ruche/council", "the mention « @Bee-ruche/council »"),
+        "mention entre parenthèses": ("Relu (@octocat).", "the mention « @octocat »"),
+        "mention pleine chasse": ("Merci ＠octocat", "the mention « @octocat »"),
+        "issue d'un autre dépôt": ("Voir amont-fictif/miniz#12", "« amont-fictif/miniz#12 » refers to a repository outside Bee-ruche"),
+        "commit d'un autre dépôt": ("Voir amont-fictif/miniz@a5c3785", "« amont-fictif/miniz@a5c3785 » refers"),
+        "commit d'un fork": ("Voir amont-fictif@a5c37851d", "« amont-fictif@a5c37851d » refers"),
         "adresse d'une issue": ("Voir https://github.com/amont-fictif/miniz/issues/12", "« https://github.com/amont-fictif/miniz/issues/12 »"),
         "adresse d'une PR, en lien": ("[here](https://github.com/amont-fictif/miniz/pull/3)", "« https://github.com/amont-fictif/miniz/pull/3 »"),
-        "adresse d'un commit": ("https://github.com/amont-fictif/miniz/commit/a5c3785", "mène hors de Bee-ruche"),
+        "adresse d'un commit": ("https://github.com/amont-fictif/miniz/commit/a5c3785", "leads outside Bee-ruche"),
         "adresse sans schéma": ("Voir github.com/amont-fictif/miniz", "« github.com/amont-fictif/miniz »"),
         "autre forge": ("Voir https://gitlab.com/amont-fictif/miniz", "« https://gitlab.com/amont-fictif/miniz »"),
-        "page de forge": ("Voir https://amont-fictif.github.io/miniz", "mène hors de Bee-ruche"),
+        "page de forge": ("Voir https://amont-fictif.github.io/miniz", "leads outside Bee-ruche"),
         "email": ("Écrire à jean.dupont@example.org", "an email address"),
         "téléphone": ("Au 06 12 34 56 78", "a phone number"),
         "caractère invisible": ("Réservation\u2060 miniz-0099", "(U+2060, category Cf)"),
@@ -4056,7 +4056,7 @@ class TestPublish(BasePublish):
                             self.assertIn(cause, output_text)
         code, output_text = self.bee("publish", "--title", "Merci @octocat", "--interval", "0")  # the real thing, real git
         self.assertEqual(code, 1, output_text)
-        self.assertIn("commandements 8 et 13", output_text)
+        self.assertIn("commandments 8 and 13", output_text)
         self.assertFalse(self.log_text.exists(), "aucun appel à gh")
         self.assertEqual((git(self.dir, "rev-parse", "HEAD"), git(self.dir, "branch").split()), (before, ["*", "main"]))
         self.assertNotIn("bee/", git(self.dir, "ls-remote", "--heads", "origin"))
@@ -4087,7 +4087,7 @@ class TestPublish(BasePublish):
             for group_of, texts_of in {**self.REVIEW_REFUSED, **self.SECOND_REVIEW_REFUSED}.items():
                 for text in texts_of:
                     with self.subTest(what_it=what_it, group_of=group_of, text=text):
-                        self.assertIn("ce texte sort de la ruche",  # (commandements 8 et 13), or a hidden character
+                        self.assertIn("this text leaves the hive",  # (commandments 8 and 13), or a hidden character
                                       bee.outgoing_text_refused(text, what_it, maximum, "Bee-ruche") or "accepté")
             for text in self.OUTGOING_HONEST + self.SECOND_REVIEW_HONEST:
                 with self.subTest(what_it=what_it, honest_one=text):
@@ -4100,18 +4100,18 @@ class TestPublish(BasePublish):
         """The refusal names the offending word and says why; a numeric reference too long for int() is refused, not a crash
         (N3), and only a text that GitHub renders is decoded."""
         refuse = lambda text: bee.outgoing_text_refused(text, "body", 8000, "Bee-ruche")  # noqa: E731
-        for text, expected in (("Voir upstream/repo\\#12.", "« upstream/repo#12 » renvoie à un dépôt hors de Bee-ruche"),
-                               ("[x](https:/upstream/repo)", "« https:/upstream/repo » n'a qu'une barre"),
-                               ("[x](//Bee-ruche/x)", "« ](//Bee-ruche/x » est un lien relatif"),
-                               ('<img srcset="/Bee-ruche/a.png">', "« srcset=\"/Bee-ruche/a.png » liste plusieurs adresses"),
-                               ("https://github.com/Bee-ruche/%2e%2e/upstream", "cache où il mène"),
-                               ("[here](https://github.com/upstream/repo).", "« https://github.com/upstream/repo » mène hors de Bee-ruche")):
+        for text, expected in (("Voir upstream/repo\\#12.", "« upstream/repo#12 » refers to a repository outside Bee-ruche"),
+                               ("[x](https:/upstream/repo)", "« https:/upstream/repo » has only one slash"),
+                               ("[x](//Bee-ruche/x)", "« ](//Bee-ruche/x » is a relative link"),
+                               ('<img srcset="/Bee-ruche/a.png">', "« srcset=\"/Bee-ruche/a.png » lists several addresses"),
+                               ("https://github.com/Bee-ruche/%2e%2e/upstream", "hides where it leads"),
+                               ("[here](https://github.com/upstream/repo).", "« https://github.com/upstream/repo » leads outside Bee-ruche")):
             with self.subTest(text=text):
                 self.assertIn(expected, refuse(text))
-        self.assertIn("« /upstream/repo » est un lien relatif", refuse("[x][1]\n\n[1]: /upstream/repo"), "a definition names its target")
+        self.assertIn("« /upstream/repo » is a relative link", refuse("[x][1]\n\n[1]: /upstream/repo"), "a definition names its target")
         oversized = "&#" + "0" * 4400 + "64;upstream"
-        self.assertIn("référence de caractère démesurée", refuse(oversized))
-        self.assertNotIn("démesurée", bee.outgoing_text_refused(oversized, "message", 8000) or "")  # not decoded: no crash
+        self.assertIn("oversized character reference", refuse(oversized))
+        self.assertNotIn("oversized", bee.outgoing_text_refused(oversized, "message", 8000) or "")  # not decoded: no crash
 
     def test_personal_data_in_every_reading(self):
         """An address split by a reference that a renderer shows as nothing, or as a hidden character, is refused: a hidden
@@ -4119,7 +4119,7 @@ class TestPublish(BasePublish):
         for reference in ("&#1;", "&#0;", "&#127;", "&#128;", "&#xD800;", "&#x110000;"):
             for text in (f"bob@exa{reference}mple.com", f"bob@example{reference}.com", f"bob@{reference}example.com"):
                 with self.subTest(text=text):
-                    expected = "an email address" if reference == "&#x110000;" else "caractère invisible refusé"
+                    expected = "an email address" if reference == "&#x110000;" else "invisible character refused"
                     self.assertIn(expected, bee.outgoing_text_refused(text, "body", 8000, "Bee-ruche"))
         self.assertIsNone(bee.outgoing_text_refused("https://github.dev/Bee-ruche/registre, &#233;t&#233;", "body", 8000, "Bee-ruche"))
 
@@ -4129,7 +4129,7 @@ class TestPublish(BasePublish):
         for code in (0, 1, 8, 11, 12, 13, 27, 127, 128, 159):
             for reference in (f"&#{code};", f"&#x{code:x};"):
                 with self.subTest(reference=reference):
-                    self.assertIn(f"caractère invisible refusé (U+{code:04X}",
+                    self.assertIn(f"invisible character refused (U+{code:04X}",
                                   bee.outgoing_text_refused(f"bonjour{reference}monde", "body", 8000, "Bee-ruche"))
                     self.assertIsNotNone(bee.admissible_text(f"bonjour{chr(code)}monde", "body", 8000), "the typed one is refused too")
         for reference in ("&#9;", "&#10;", "&#x9;", "&#xA;"):
@@ -10417,7 +10417,7 @@ class TestInvitations(BaseInvitations):
         self.valid_one()
         # Un refus est définitif, quelle que soit la casse ou la forme de l'identifiant.
         self.branch()
-        self.ko("est sur la liste de non-contact", "invite", "--user", "bruno", "--identifier", "github:OctoCat",
+        self.ko("is on the do-not-contact list", "invite", "--user", "bruno", "--identifier", "github:OctoCat",
                 "--channel", "https://github.com/octocat", "--request", "participate", "--fact", "Un fait.", "--source",
                 "https://github.com/octocat", "--message", MESSAGE_INVITATION)
         self.assertEqual(json.loads(self.ok("swarm", "--json"))["invitations"], [], "une invitation close n'est plus en cours")
@@ -10425,7 +10425,7 @@ class TestInvitations(BaseInvitations):
     def test_answers_accepted_and_without_answer(self):
         self.up_to("record-sent")
         self.a("2026-11-03T09:00:00Z")
-        self.ko("se consigne 14 jours après le dernier message", "invitation", "record-answer", "I-0001", "--user",
+        self.ko("is recorded 14 days after the last message", "invitation", "record-answer", "I-0001", "--user",
                 "bidji29", "--value", "no_answer")
         self.branch()
         self.gesture("record-answer", "bidji29", "--value", "accepted")
@@ -10436,7 +10436,7 @@ class TestInvitations(BaseInvitations):
     def test_without_answer_after_the_reminder(self):
         self.up_to("record-reminder")
         self.a("2026-11-20T09:00:00Z")
-        self.ko("se consigne 14 jours après le dernier message", "invitation", "record-answer", "I-0001", "--user",
+        self.ko("is recorded 14 days after the last message", "invitation", "record-answer", "I-0001", "--user",
                 "bidji29", "--value", "no_answer")
         self.a("2026-11-30T15:00:00Z")
         self.branch()
@@ -10449,7 +10449,7 @@ class TestInvitations(BaseInvitations):
     def test_dismiss_by_the_proposer_or_a_guardian(self):
         self.up_to("proposed")
         self.a("2026-10-30T12:00:00Z")
-        self.ko("seuls le proposant, un gardien en fonction ou le conseil", "invitation", "dismiss", "I-0001", "--user", "bruno",
+        self.ko("only the proposer, a guardian in office or the council", "invitation", "dismiss", "I-0001", "--user", "bruno",
                 "--reason", "Je ne suis pas d'accord.")
         self.branch()
         self.gesture("dismiss", "gina", "--reason", "Les faits cités ne disent pas pourquoi cette personne.")
@@ -10547,19 +10547,19 @@ class TestPullRequestsInvitations(BaseInvitations):
         self.refused("alice", "numbers 9000 and above are reserved for the tool's tests")
         self.write_invitation({**inv, "id": "I-9000", "proposed_by": "bidji29", "message": MESSAGE_INVITATION}, "I-9000")
         self.commit()
-        self.refused("bidji29", "mot pour mot, la mention de R13")
+        self.refused("bidji29", "word for word, the mention of R13")
 
     def test_proposal_in_the_name_of_another_or_born_decided(self):
         self.a("2026-10-30T10:00:00Z")
         self.branch()
         self.invite()
         self.commit()
-        self.refused("bruno", "on ne propose une invitation qu'en son nom (bruno)")
+        self.refused("bruno", "an invitation is proposed only in one's own name (bruno)")
         inv = self.invitation()
         self.write_invitation({**inv, "status": "decided", "guardian_approval": {"by": "gina", "at": self.now_instant()},
                                 "council_approval": {"by": "bidji29", "at": self.now_instant()}})
         self.commit()
-        self.refused("alice", "une invitation naît proposée, sans accord, envoi ni réponse")
+        self.refused("alice", "an invitation is born proposed, without approval, sending or answer")
 
     def test_several_invitations_in_one_pr_and_over_24_h(self):
         self.a("2026-10-30T10:00:00Z")
@@ -10590,12 +10590,12 @@ class TestPullRequestsInvitations(BaseInvitations):
         mention = bee.mentions_invitation(bee.Registry(self.dir))["fr"]
         case_of = {
             "invisible character or control character refused (U+202E": MESSAGE_INVITATION + "‮" + "\n\n" + mention,
-            "il porte, mot pour mot, la mention de R13": MESSAGE_INVITATION,
+            "it carries, word for word, the mention of R13": MESSAGE_INVITATION,
             # La mention maquillée : un espace de largeur nulle, ou un « а » cyrillique dans « agents ».
             "invisible character or control character refused (U+200B": MESSAGE_INVITATION + "\n\n" + mention.replace("agents", "agen​ts"),
-            "mot pour mot, la mention de R13": MESSAGE_INVITATION + "\n\n" + mention.replace("agents", "аgents"),
-            "an email address : aucune donnée personnelle": "Écrivez-moi à jean.dupont@example.org.\n\n" + mention,
-            "a phone number : aucune donnée personnelle": "Son numéro : +33 6 12 34 56 78.\n\n" + mention,
+            "word for word, the mention of R13": MESSAGE_INVITATION + "\n\n" + mention.replace("agents", "аgents"),
+            "an email address: no personal data": "Écrivez-moi à jean.dupont@example.org.\n\n" + mention,
+            "a phone number: no personal data": "Son numéro : +33 6 12 34 56 78.\n\n" + mention,
             "message: 2": "x" * 2000 + "\n\n" + mention,
         }
         for chunk, message in case_of.items():
@@ -10608,7 +10608,7 @@ class TestPullRequestsInvitations(BaseInvitations):
                 self.abandon()
                 shutil.rmtree(self.dir / "invitations", ignore_errors=True)
         # bee inviter les refuse aussi, avant d'écrire.
-        self.ko("a phone number : aucune donnée personnelle", "invite", "--user", "alice", "--identifier", "github:octocat",
+        self.ko("a phone number: no personal data", "invite", "--user", "alice", "--identifier", "github:octocat",
                 "--channel", "https://github.com/octocat", "--request", "guarantor", "--fact", "Joignable au 06 12 34 56 78.",
                 "--source", "https://github.com/octocat", "--message", MESSAGE_INVITATION)
         self.assertFalse(self.invitation_path().exists())
@@ -10621,14 +10621,14 @@ class TestPullRequestsInvitations(BaseInvitations):
         inv["person"]["name"] = "Jean Dupont"
         self.write_invitation(inv)
         self.commit()
-        self.refused("alice", "son identifiant public et le canal qu'elle publie elle-même, rien d'autre")
+        self.refused("alice", "their public identifier and the channel they publish themselves, nothing else")
 
     def test_no_contact_by_case_or_space_variant(self):
         self.main_with_list("github:octocat")
         self.a("2026-10-30T10:00:00Z")
         for identifier in ("github:OctoCat", "GitHub:octocat", "github:@octocat/"):
             with self.subTest(identifier=identifier):
-                self.ko("est sur la liste de non-contact", "invite", "--user", "alice", "--identifier", identifier,
+                self.ko("is on the do-not-contact list", "invite", "--user", "alice", "--identifier", identifier,
                         "--channel", "https://github.com/octocat", "--request", "guarantor", "--fact", "Un fait.", "--source",
                         "https://github.com/octocat", "--message", MESSAGE_INVITATION)
         # Écrites à la main, en contournant bee inviter : refusées par verifier-pr, avec ou sans espaces.
@@ -10640,7 +10640,7 @@ class TestPullRequestsInvitations(BaseInvitations):
                 inv["person"]["identifier"] = identifier
                 self.write_invitation(inv)
                 self.commit()
-                self.refused("alice", "est sur la liste de non-contact")
+                self.refused("alice", "is on the do-not-contact list")
                 self.abandon()
                 self.invitation_path().unlink(missing_ok=True)
 
@@ -10650,13 +10650,13 @@ class TestPullRequestsInvitations(BaseInvitations):
         path = self.dir / bee.PATH_NO_CONTACT
         o, h, x = (bee.fingerprint(f"github:{n}") for n in ("octocat", "hubot", "x"))
         for who_is, list_of, chunk in (
-                ("bidji29", [h], "en ajout seul"),
-                ("alice", [h], "en ajout seul"),
-                ("bidji29", [x, h], "en ajout seul"),
-                ("alice", [o, h, x], "seul le conseil inscrit une personne"),
-                ("bidji29", [o, h, h], "est déjà sur la liste"),
-                ("bidji29", [o, h, "github:x"], "n'est pas une empreinte"),
-                ("bidji29", [o, h, x.upper()], "n'est pas une empreinte")):
+                ("bidji29", [h], "append-only"),
+                ("alice", [h], "append-only"),
+                ("bidji29", [x, h], "append-only"),
+                ("alice", [o, h, x], "only the council adds a person"),
+                ("bidji29", [o, h, h], "is already on the list"),
+                ("bidji29", [o, h, "github:x"], "is not a fingerprint"),
+                ("bidji29", [o, h, x.upper()], "is not a fingerprint")):
             with self.subTest(who_is=who_is, list_of=list_of):
                 self.branch()
                 bee.write_invitation(path, {"fingerprints": list_of})
@@ -10666,7 +10666,7 @@ class TestPullRequestsInvitations(BaseInvitations):
         self.branch()
         path.unlink()
         self.commit()
-        self.refused("bidji29", "la liste de non-contact ne se supprime jamais")
+        self.refused("bidji29", "the do-not-contact list is never deleted")
         self.abandon()
         self.branch()
         bee.write_invitation(path, {"fingerprints": [o, h, x]})
@@ -10687,21 +10687,21 @@ class TestPullRequestsInvitations(BaseInvitations):
         with self.invitation_path().open("a", encoding="utf-8") as f:
             f.write("# guardian_approval: gina\n")
         self.commit()
-        self.refused("alice", "pas exactement sous la forme qu'écrivent bee invite et bee invitation")
+        self.refused("alice", "not exactly in the form bee invite and bee invitation write")
 
     # --- Accords ---
 
     def test_agreement_forged_by_a_non_guardian(self):
         self.up_to("proposed")
         self.a("2026-11-02T11:00:00Z")
-        self.ko("bruno n'est pas un gardien en fonction", "invitation", "guardian-approval", "I-0001", "--user", "bruno")
+        self.ko("bruno is not a guardian in office", "invitation", "guardian-approval", "I-0001", "--user", "bruno")
         self.branch()
         self.by_hand(guardian_approval={"by": "bruno", "at": self.now_instant()})
-        self.refused("bruno", "bruno n'est pas un gardien en fonction : seul un gardien nommé")
-        self.refused("bidji29", "guardian_approval : un geste est signé de l'auteur de la PR (bidji29)", "bidji29 n'est pas un gardien en fonction")
+        self.refused("bruno", "bruno is not a guardian in office: only a named guardian")
+        self.refused("bidji29", "guardian_approval: a gesture is signed by the PR's author (bidji29)", "bidji29 is not a guardian in office")
         git(self.dir, "reset", "-q", "--hard", "main")
         self.by_hand(guardian_approval={"by": "gina", "at": self.now_instant()})
-        self.refused("bruno", "un geste est signé de l'auteur de la PR (bruno), pas de « gina »")
+        self.refused("bruno", "a gesture is signed by the PR's author (bruno), not by « gina »")
         self.self_service("gina", "guardian_approval")
 
     def test_guardian_agreement_before_72_h_or_on_its_own_invitation(self):
@@ -10709,22 +10709,22 @@ class TestPullRequestsInvitations(BaseInvitations):
         self.commit("gina s'inscrit")
         self.up_to("proposed")
         self.a("2026-11-01T09:00:00Z")
-        self.ko("pas avant le 2026-11-02T10:00:00Z", "invitation", "guardian-approval", "I-0001", "--user", "gina")
+        self.ko("not before 2026-11-02T10:00:00Z", "invitation", "guardian-approval", "I-0001", "--user", "gina")
         self.branch()
         self.by_hand(guardian_approval={"by": "gina", "at": self.now_instant()})
-        self.refused("gina", "reste 72 h publique")
+        self.refused("gina", "stays public 72 h")
         self.abandon()
         self.a("2026-11-01T10:00:00Z")
         self.branch()
         self.invite("gina", "github:hubot")
         self.publish("gina", "invitation", free_one=False)
         self.a("2026-11-05T10:00:00Z")
-        self.ko("on ne donne pas son accord à sa propre invitation", "invitation", "guardian-approval", "I-0002", "--user", "gina")
+        self.ko("no one approves their own invitation", "invitation", "guardian-approval", "I-0002", "--user", "gina")
 
     def test_council_agreement_by_a_member_or_by_the_guardian(self):
         self.up_to("proposed")
         self.a("2026-11-02T11:00:00Z")
-        self.ko("l'accord du conseil suit celui d'un gardien", "invitation", "council-approval", "I-0001", "--user", "bidji29")
+        self.ko("the council's approval follows a guardian's", "invitation", "council-approval", "I-0001", "--user", "bidji29")
         self.branch()
         self.gesture("guardian-approval", "gina")
         self.publish("gina", "guardian_approval")
@@ -10732,7 +10732,7 @@ class TestPullRequestsInvitations(BaseInvitations):
         for who_is in ("alice", "gina"):
             with self.subTest(who_is=who_is):
                 self.by_hand(council_approval={"by": who_is, "at": self.now_instant()})
-                self.refused(who_is, f"{who_is} n'est pas du conseil : seul le conseil donne l'accord du conseil")
+                self.refused(who_is, f"{who_is} is not on the council: only the council gives the council's approval")
                 git(self.dir, "reset", "-q", "--hard", "main")
         # Le conseil ne fait pas les deux accords : nommé aussi gardien, il ne donne que l'un des deux.
         self.abandon()
@@ -10744,7 +10744,7 @@ class TestPullRequestsInvitations(BaseInvitations):
         self.commit("sur main : le conseil, nommé gardien, a donné l'accord de gardien")
         self.branch()
         self.by_hand(council_approval={"by": "bidji29", "at": self.now_instant()})
-        self.refused("bidji29", "les deux accords viennent de deux personnes différentes")
+        self.refused("bidji29", "the two approvals come from two different people")
 
     # --- Envoi, plafond, relance ---
 
@@ -10753,18 +10753,18 @@ class TestPullRequestsInvitations(BaseInvitations):
         self.a("2026-11-02T11:30:00Z")
         self.branch()
         self.by_hand(sent={"by": "bidji29", "at": self.now_instant()})
-        self.refused("bidji29", "un envoi suit le feu vert du conseil")
+        self.refused("bidji29", "a sending follows the council's green light")
         git(self.dir, "reset", "-q", "--hard", "main")
         self.a("2026-11-02T12:00:00Z")
         self.gesture("council-approval", "bidji29")
         self.publish("bidji29", "council_approval", free_one=False)
         self.a("2026-11-02T13:00:00Z")
-        self.ko("gina n'est pas du conseil", "invitation", "record-sent", "I-0001", "--user", "gina")
+        self.ko("gina is not on the council", "invitation", "record-sent", "I-0001", "--user", "gina")
         self.branch()
         for who_is in ("gina", "alice"):
             with self.subTest(who_is=who_is):
                 self.by_hand(sent={"by": who_is, "at": self.now_instant()})
-                self.refused(who_is, f"{who_is} n'est pas du conseil : seul un humain du conseil envoie le message")
+                self.refused(who_is, f"{who_is} is not on the council: only a human of the council sends the message")
                 git(self.dir, "reset", "-q", "--hard", "main")
 
     def test_cap_at_the_green_light_and_sending_always_recorded(self):
@@ -10778,7 +10778,7 @@ class TestPullRequestsInvitations(BaseInvitations):
             inv = {**self.invitation(f"I-{n:04d}"), "council_approval": {"by": "bidji29", "at": self.now_instant()}}
             self.write_invitation({**inv, "status": "decided"}, f"I-{n:04d}")
         self.commit()
-        self.refused("bidji29", "plafond : 4 messages ou places réservées en 7 jours glissants", "au plus 3 pour toute la ruche")
+        self.refused("bidji29", "cap: 4 messages or reserved places over a rolling 7 days", "at most 3 for the whole hive")
         self.abandon()
         # Trois feux verts, en trois PR : acceptés ; le quatrième attend qu'une place se libère, même antidaté.
         for n, when_at in ((1, "2026-11-02T10:00:00Z"), (2, "2026-11-02T11:00:00Z"), (3, "2026-11-02T12:00:00Z")):
@@ -10787,7 +10787,7 @@ class TestPullRequestsInvitations(BaseInvitations):
             self.assertIn("green light: a place is reserved", self.gesture("council-approval", "bidji29", invitation=f"I-{n:04d}"))
             self.publish("bidji29", "council_approval", free_one=False)
         self.a("2026-11-02T13:00:00Z")
-        self.ko("plafond : 4 messages ou places réservées", "invitation", "council-approval", "I-0004", "--user", "bidji29")
+        self.ko("cap: 4 messages or reserved places", "invitation", "council-approval", "I-0004", "--user", "bidji29")
         self.branch()
         self.write_invitation({**self.invitation("I-0004"), "status": "decided",
                                 "council_approval": {"by": "bidji29", "at": "2026-10-25T10:00:00Z"}}, "I-0004")
@@ -10824,14 +10824,14 @@ class TestPullRequestsInvitations(BaseInvitations):
     def test_reminder_only_one_not_before_14_days_by_the_council(self):
         self.up_to("record-sent")
         self.a("2026-11-10T10:00:00Z")
-        self.ko("pas avant le 2026-11-16T13:00:00Z", "invitation", "record-reminder", "I-0001", "--user", "bidji29")
+        self.ko("not before 2026-11-16T13:00:00Z", "invitation", "record-reminder", "I-0001", "--user", "bidji29")
         self.branch()
         self.by_hand(reminder={"by": "bidji29", "at": self.now_instant()})
-        self.refused("bidji29", "une relance pas avant 14 jours après l'envoi")
+        self.refused("bidji29", "a reminder no earlier than 14 days after the sending")
         git(self.dir, "reset", "-q", "--hard", "main")
         self.a("2026-11-16T14:00:00Z")
         self.by_hand(reminder={"by": "alice", "at": self.now_instant()})
-        self.refused("alice", "alice n'est pas du conseil : seul le conseil relance")
+        self.refused("alice", "alice is not on the council: only the council sends a reminder")
         git(self.dir, "reset", "-q", "--hard", "main")
         self.gesture("record-reminder", "bidji29")
         self.publish("bidji29", "invitation_reminder", free_one=False)
@@ -10840,35 +10840,35 @@ class TestPullRequestsInvitations(BaseInvitations):
         self.a("2026-12-01T10:00:00Z")
         self.branch()
         self.by_hand(reminder={"by": "bidji29", "at": self.now_instant()})
-        self.refused("bidji29", "reminder : les gestes sont en ajout seul")
+        self.refused("bidji29", "reminder: gestures are append-only")
 
     def test_message_and_gestures_immutable(self):
         self.up_to("guardian-approval")
         self.a("2026-11-02T11:30:00Z")
         self.branch()
         self.by_hand(message=self.invitation()["message"] + " Répondez vite !")
-        self.refused("bidji29", "message ne change jamais")
+        self.refused("bidji29", "message never changes")
         git(self.dir, "reset", "-q", "--hard", "main")
         inv = self.invitation()
         inv.pop("guardian_approval")
         inv["status"] = "proposed"
         self.write_invitation(inv)
         self.commit()
-        self.refused("gina", "guardian_approval : les gestes sont en ajout seul")
+        self.refused("gina", "guardian_approval: gestures are append-only")
         git(self.dir, "reset", "-q", "--hard", "main")
         self.invitation_path().unlink()
         self.commit()
-        self.refused("alice", "une invitation ne se supprime pas")
+        self.refused("alice", "an invitation is not deleted")
 
     def test_refusal_recorded_by_the_council_with_the_list(self):
         self.up_to("proposed")
         self.a("2026-10-30T12:00:00Z")
         self.branch()
         self.by_hand(answer={"by": "bidji29", "at": self.now_instant(), "value": "refused"})
-        self.refused("bidji29", "manquent dans invitations/do-not-contact.yaml : elles s'y inscrivent dans la même PR")
+        self.refused("bidji29", "missing from invitations/do-not-contact.yaml: they are added to it in the same PR")
         git(self.dir, "reset", "-q", "--hard", "main")
         self.by_hand(answer={"by": "alice", "at": self.now_instant(), "value": "refused"})
-        self.refused("alice", "seul le conseil, qui a envoyé le message, consigne la réponse")
+        self.refused("alice", "only the council, which sent the message, records the answer")
         git(self.dir, "reset", "-q", "--hard", "main")
         # Une personne qui dit non avant tout envoi (l'invitation est publique) : le conseil le consigne.
         self.gesture("record-answer", "bidji29", "--value", "refused")
@@ -10894,8 +10894,8 @@ class TestPullRequestsInvitations(BaseInvitations):
         self.ko(chunk, "invitation", "guardian-approval", "I-0001", "--user", "gina")
         self.branch()
         self.by_hand(guardian_approval={"by": "gina", "at": self.now_instant()})
-        self.refused("gina", chunk, *(["frein serré (R13)", "il arrête les invitations à participate"] if mode != "incident" else
-                                        ["tout s'arrête, invitations d'encadrement comprises"]))
+        self.refused("gina", chunk, *(["brake tight (R13)", "it stops the invitations to participate"] if mode != "incident" else
+                                        ["everything stops, oversight invitations included"]))
         self.abandon()
         self.branch()
         self.invite("chloe", "github:x", request="participate")
@@ -10905,19 +10905,19 @@ class TestPullRequestsInvitations(BaseInvitations):
         text = self.ok("swarm")
         if mode == "incident":
             self.assertIn("What can pass today: nothing: an incident is open", text)
-            self.ko("tout s'arrête, invitations d'encadrement comprises", "invitation", "guardian-approval", "I-0002", "--user", "gina")
+            self.ko("everything stops, oversight invitations included", "invitation", "guardian-approval", "I-0002", "--user", "gina")
             self.branch()
             self.by_hand(guardian_approval={"by": "gina", "at": self.now_instant()})
             self.write_invitation({**self.invitation("I-0002"), "status": "proposed",
                                     "guardian_approval": {"by": "gina", "at": self.now_instant()}}, "I-0002")
             git(self.dir, "checkout", "-q", "main", "--", "invitations/I-0001.yaml")
             self.commit()
-            self.refused("gina", "tout s'arrête, invitations d'encadrement comprises")
+            self.refused("gina", "everything stops, oversight invitations included")
             self.abandon()
             return
         if mode == "bootstrap":
             self.assertIn("only guarantor or guardian invitations, on the approval of the council alone", text)
-            self.ko("l'accord du conseil suit celui d'un gardien", "invitation", "council-approval", "I-0001", "--user", "bidji29")
+            self.ko("the council's approval follows a guardian's", "invitation", "council-approval", "I-0001", "--user", "bidji29")
             steps = (("council-approval", "2026-11-02T13:00:00Z", "bidji29", "council_approval", False),
                       ("record-sent", "2026-11-02T14:00:00Z", "bidji29", "invitation_sending", False))
         else:
@@ -10935,7 +10935,7 @@ class TestPullRequestsInvitations(BaseInvitations):
     def test_brake_open_incident(self):
         self.brake_applied(lambda: (self.dir / "governance/incidents.yaml").write_text(
             'incidents:\n  - id: INC-0001\n    title: Un agent a écrit hors de la ruche\n    opened_at: "2026-10-31T10:00:00Z"\n',
-            encoding="utf-8"), "incident(s) ouvert(s) : INC-0001", mode="incident")
+            encoding="utf-8"), "open incident(s): INC-0001", mode="incident")
 
     def test_brake_guardian_without_guarantor(self):
         self.brake_applied(lambda: (self.dir / "governance/guardians.yaml").write_text(
@@ -11046,7 +11046,7 @@ class TestAdversarialReviewRuche0020(BaseReviewRuche0020):
             with self.subTest(identifier=identifier):
                 code, text = self.invite_raw(identifier=identifier)
                 self.assertEqual(code, 1, text)
-                self.assertIn("est sur la liste de non-contact", text)
+                self.assertIn("is on the do-not-contact list", text)
                 self.assertFalse(self.invitation_path().exists())
         self.assertEqual(self.try_it(self.OCTOCAT_VARIANTS, lambda i: self.propose_raw(
             person={"identifier": i, "channel": "https://github.com/octocat"})), [])
@@ -11139,7 +11139,7 @@ class TestAdversarialReviewRuche0020(BaseReviewRuche0020):
         self.up_to("proposed")
         self.a("2026-10-30T12:00:00Z")
         reason = "Elle préfère être jointe au 06 12 34 56 78 ou à jean.dupont@example.org."
-        self.ko("aucune donnée personnelle", "invitation", "dismiss", "I-0001", "--user", "alice", "--reason", reason)
+        self.ko("no personal data", "invitation", "dismiss", "I-0001", "--user", "alice", "--reason", reason)
         cache = "Doublon" + "".join(chr(0xE0100 + b) for b in b"x") + "."
         self.ko("invisible character refused", "invitation", "dismiss", "I-0001", "--user", "alice", "--reason", cache)
         for reason in (reason, cache):
@@ -11162,11 +11162,11 @@ class TestAdversarialReviewRuche0020(BaseReviewRuche0020):
         self.commit("garant révoqué")
         self.up_to("proposed")
         self.a("2026-11-02T11:00:00Z")
-        self.ko("gina n'est pas un gardien en fonction", "invitation", "guardian-approval", "I-0001", "--user", "gina")
+        self.ko("gina is not a guardian in office", "invitation", "guardian-approval", "I-0001", "--user", "gina")
         self.branch()
         self.write_invitation({**self.invitation(), "guardian_approval": {"by": "gina", "at": self.now_instant()}})
         self.commit()
-        self.refused("gina", "gina n'est pas un gardien en fonction")
+        self.refused("gina", "gina is not a guardian in office")
 
     # --- 3. Révoquer un gardien ou quitter le conseil ne rend pas le registre invalide ---
 
@@ -11196,11 +11196,11 @@ class TestAdversarialReviewRuche0020(BaseReviewRuche0020):
         (self.dir / "governance/incidents.yaml").write_text(incident, encoding="utf-8")
         self.commit("incident ouvert")
         self.a("2026-11-02T11:00:00Z")
-        self.ko("tout s'arrête, invitations d'encadrement comprises", "invitation", "guardian-approval", "I-0001", "--user", "gina")
+        self.ko("everything stops, oversight invitations included", "invitation", "guardian-approval", "I-0001", "--user", "gina")
         self.branch()
         self.write_invitation({**self.invitation(), "guardian_approval": {"by": "gina", "at": self.now_instant()}})
         self.commit()
-        self.refused("gina", "incident(s) ouvert(s) : INC-0001 : tout s'arrête")
+        self.refused("gina", "open incident(s): INC-0001: everything stops")
         self.abandon()
         # Un clos_le dans le futur ne clôt rien : bee valider le refuse, et le frein reste serré.
         (self.dir / "governance/incidents.yaml").write_text(incident + '    closed_at: "2099-01-01T00:00:00Z"\n', encoding="utf-8")
@@ -11220,9 +11220,9 @@ class TestAdversarialReviewRuche0020(BaseReviewRuche0020):
         self.commit("aucun gardien")
         self.up_to("proposed")
         self.a("2026-11-01T10:00:00Z")
-        self.ko("pas avant le 2026-11-02T10:00:00Z", "invitation", "council-approval", "I-0001", "--user", "bidji29")
+        self.ko("not before 2026-11-02T10:00:00Z", "invitation", "council-approval", "I-0001", "--user", "bidji29")
         self.a("2026-11-02T11:00:00Z")
-        self.ko("bruno n'est pas du conseil", "invitation", "council-approval", "I-0001", "--user", "bruno")
+        self.ko("bruno is not on the council", "invitation", "council-approval", "I-0001", "--user", "bruno")
         self.branch()
         self.gesture("council-approval", "bidji29")
         self.assertEqual(self.invitation()["status"], "decided")
@@ -11247,7 +11247,7 @@ class TestAdversarialReviewRuche0020(BaseReviewRuche0020):
         self.abandon()
         code, text = self.invite_raw(identifier="github:hubot")
         self.assertEqual(code, 1, text)
-        self.assertIn("rien ne bouge dans invitations/", text)
+        self.assertIn("nothing moves in invitations/", text)
         self.branch()
         self.propose_raw(person={"identifier": "github:hubot", "channel": "https://github.com/hubot"})
         self.commit()
@@ -11307,8 +11307,8 @@ class TestSecondReviewRuche0020(BaseReviewRuche0020):
                                             "answer": {"by": "bidji29", "at": self.now_instant(), "value": "refused"}}, "refusal"))
         bee.write_invitation(self.dir / bee.PATH_NO_CONTACT, {"fingerprints": [bee.fingerprint("site:exemple-perso.org")]})
         self.commit()
-        self.refused("bidji29", "1 empreinte(s) sur 2 (l'identifiant de la personne, son canal, ses autres identités déclarées) "
-                                "manquent")
+        self.refused("bidji29", "1 fingerprint(s) of 2 (the person's identifier, their channel, their other declared identities) "
+                                "missing")
         self.abandon()
         self.branch()
         self.gesture("record-answer", "bidji29", "--value", "refused")
@@ -11340,8 +11340,8 @@ class TestSecondReviewRuche0020(BaseReviewRuche0020):
         self.publish("bidji29", "invitation_sending", free_one=False)
         self.assertEqual(self.invitation()["status"], "sent")
         # B1 : une invitation décidée ne s'écarte que par le conseil ; écartée après la décision, elle retient la personne.
-        self.ko("ne s'écarte que par le conseil", "invitation", "dismiss", "I-0002", "--user", "alice", "--reason", "Plus utile.")
-        self.ko("ne s'écarte que par le conseil", "invitation", "dismiss", "I-0002", "--user", "gina", "--reason", "Plus utile.")
+        self.ko("is set aside only by the council", "invitation", "dismiss", "I-0002", "--user", "alice", "--reason", "Plus utile.")
+        self.ko("is set aside only by the council", "invitation", "dismiss", "I-0002", "--user", "gina", "--reason", "Plus utile.")
         self.branch()
         self.gesture("dismiss", "bidji29", "--reason", "Le message n'est finalement pas parti.", invitation="I-0002")
         self.publish("bidji29", "invitation_dismissal")
@@ -11349,7 +11349,7 @@ class TestSecondReviewRuche0020(BaseReviewRuche0020):
                                "--fact", "Un fait public.", "--source", "https://github.com/personne2", "--message",
                                MESSAGE_INVITATION)
         self.assertEqual(code, 1, text)
-        self.assertIn("est déjà invité(e) (I-0002)", text)
+        self.assertIn("is already invited (I-0002)", text)
 
     def test_B_the_green_light_output_states_the_order(self):
         self.granted(1)
@@ -11382,13 +11382,13 @@ class TestSecondReviewRuche0020(BaseReviewRuche0020):
         self.gesture("council-approval", "bidji29")
         self.publish("bidji29", "council_approval", free_one=False)
         self.a("2026-11-02T11:00:00Z")
-        self.ko("frein serré : 2 feux verts d'encadrement en 7 jours glissants, au plus 1", "invitation", "council-approval", "I-0002",
+        self.ko("brake tight: 2 oversight green lights over a rolling 7 days, at most 1", "invitation", "council-approval", "I-0002",
                 "--user", "bidji29")
         self.branch()
         self.write_invitation({**self.invitation("I-0002"), "status": "decided",
                                 "council_approval": {"by": "bidji29", "at": self.now_instant()}}, "I-0002")
         self.commit()
-        self.refused("bidji29", "feux verts d'encadrement en 7 jours glissants")
+        self.refused("bidji29", "oversight green lights over a rolling 7 days")
 
     # --- D1 : l'accord d'un gardien vient d'ailleurs que de son garant ---
 
@@ -11405,11 +11405,11 @@ class TestSecondReviewRuche0020(BaseReviewRuche0020):
                      identifier="I-0002")
         self.a("2026-11-02T12:00:00Z")
         for invitation in ("I-0001", "I-0002"):
-            self.ko("l'accord d'un gardien vient d'ailleurs", "invitation", "guardian-approval", invitation, "--user", "gina")
+            self.ko("a guardian's approval comes from elsewhere", "invitation", "guardian-approval", invitation, "--user", "gina")
         self.branch()
         self.write_invitation({**self.invitation(), "guardian_approval": {"by": "gina", "at": self.now_instant()}})
         self.commit()
-        self.refused("gina", "le garant de gina est le proposant")
+        self.refused("gina", "the guarantor of gina is the proposer")
 
     # --- E1 : commandement 8 ---
 
@@ -11423,7 +11423,7 @@ class TestSecondReviewRuche0020(BaseReviewRuche0020):
                "source": {"why": [{"fact": "Contribue au projet d'origine.", "source": "https://github.com/amont-fictif/miniz"}]},
                "domaine d'origine": {"why": [{"fact": "Publie bzip2.", "source": "https://sourceware.org/bzip2/"}]}}
         self.assertEqual(self.try_it(list(case_of), lambda k: self.propose_raw(**case_of[k])), [])
-        self.assertIn("commandement 8", self.invite_raw(identifier="github:amont-fictif")[1])
+        self.assertIn("commandment 8", self.invite_raw(identifier="github:amont-fictif")[1])
         # L'organisation de la ruche n'est pas un projet d'origine.
         self.assertEqual(self.try_it(["source de la ruche"], lambda _: self.propose_raw(
             why=[{"fact": "A ouvert un débat.", "source": "https://github.com/Bee-ruche/registre"}])), ["source de la ruche"])
@@ -11465,10 +11465,10 @@ class TestSecondReviewRuche0020(BaseReviewRuche0020):
         self.published_one("bruno", person={"identifier": "github:fictif-cible", "channel": "https://github.com/fictif-cible"},
                      request="participate")
         self.a("2026-10-31T10:00:00Z")
-        self.assertIn("est déjà invité(e)", self.invite_raw(identifier="github:fictif-cible")[1])
+        self.assertIn("is already invited", self.invite_raw(identifier="github:fictif-cible")[1])
         self.a("2026-11-13T10:00:01Z")
         self.assertEqual(json.loads(self.ok("swarm", "--json"))["invitations"], [], "une invitation expirée n'est plus en cours")
-        self.ko("invitation expirée", "invitation", "guardian-approval", "I-0001", "--user", "gina")
+        self.ko("invitation expired", "invitation", "guardian-approval", "I-0001", "--user", "gina")
         self.branch()
         self.invite("alice", "github:fictif-cible")
         self.commit()
@@ -11495,13 +11495,13 @@ class TestSecondReviewRuche0020(BaseReviewRuche0020):
         for n in (1, 2, 3):
             self.gesture("record-reminder", "bidji29", invitation=f"I-{n:04d}")
         self.publish("bidji29", "invitation_reminder", free_one=False)
-        self.ko("plafond : 4 messages ou places réservées", "invitation", "council-approval", "I-0004", "--user", "bidji29")
+        self.ko("cap: 4 messages or reserved places", "invitation", "council-approval", "I-0004", "--user", "bidji29")
         self.branch()
         self.write_invitation({**self.invitation("I-0001"), "status": "reminded"}, "I-0001")
         self.write_invitation({**self.invitation("I-0004"), "status": "decided",
                                 "council_approval": {"by": "bidji29", "at": self.now_instant()}}, "I-0004")
         self.commit()
-        self.refused("bidji29", "plafond : 4 messages ou places réservées")
+        self.refused("bidji29", "cap: 4 messages or reserved places")
 
     # --- Divers : écarter, AGENTS.md ---
 
@@ -11512,7 +11512,7 @@ class TestSecondReviewRuche0020(BaseReviewRuche0020):
         self.a("2026-10-30T10:00:00Z")
         self.published_one()
         self.a("2026-10-30T12:00:00Z")
-        self.ko("un gardien en fonction", "invitation", "dismiss", "I-0001", "--user", "ivan", "--reason", "Faits faibles.")
+        self.ko("a guardian in office", "invitation", "dismiss", "I-0001", "--user", "ivan", "--reason", "Faits faibles.")
         self.branch()
         self.gesture("dismiss", "gina", "--reason", "Faits faibles.")
         self.publish("gina", "invitation_dismissal")
@@ -11552,7 +11552,7 @@ class TestRemovedFolderRuche0020(BaseReviewRuche0020):
                  "why": [{"fact": "Maintient un logiciel libre.", "source": "https://github.com/hubot"}]}
         self.assertEqual(self.try_it(list(case_of), lambda k: self.propose_raw("I-0002", who_is="bruno", **{**other, **case_of[k]}),
                                       author="bruno"), [])
-        self.assertIn("est sur la liste de non-contact", self.invite_raw(identifier="gh:OCTOCAT")[1])
+        self.assertIn("is on the do-not-contact list", self.invite_raw(identifier="gh:OCTOCAT")[1])
         self.assertEqual(self.try_it(["une autre personne"], lambda _: self.propose_raw("I-0002", who_is="bruno", **other),
                                       author="bruno"), ["une autre personne"])
         # Un nom en clair glissé dans la liste, même par le conseil : refusé.
@@ -11560,13 +11560,13 @@ class TestRemovedFolderRuche0020(BaseReviewRuche0020):
         bee.write_invitation(self.dir / bee.PATH_NO_CONTACT,
                               {"fingerprints": [bee.fingerprint("github:octocat"), "github:hubot"]})
         self.commit()
-        self.refused("bidji29", "n'est pas une empreinte")
+        self.refused("bidji29", "is not a fingerprint")
         self.abandon()
         self.branch()
         bee.write_invitation(self.dir / bee.PATH_NO_CONTACT,
                               {"fingerprints": [bee.fingerprint("github:octocat")], "identifiants": ["github:hubot"]})
         self.commit()
-        self.refused("bidji29", "une seule clé, fingerprints")
+        self.refused("bidji29", "a single key, fingerprints")
 
     # --- 2. Un refus (ou une demande) retire le dossier de la personne ---
 
@@ -11584,7 +11584,7 @@ class TestRemovedFolderRuche0020(BaseReviewRuche0020):
             if file.is_file():
                 self.assertNotIn("octocat", file.read_text(encoding="utf-8", errors="replace"), file)
         self.assertNotIn("octocat", self.ok("swarm", "--json"))
-        self.ko("déjà retiré", "invitation", "withdraw", "I-0001", "--user", "bidji29")
+        self.ko("already withdrawn", "invitation", "withdraw", "I-0001", "--user", "bidji29")
 
     def test_a_refusal_that_keeps_the_file_is_refused(self):
         self.up_to("proposed")
@@ -11592,13 +11592,13 @@ class TestRemovedFolderRuche0020(BaseReviewRuche0020):
         list_of = {"fingerprints": [bee.fingerprint("github:octocat")]}
         answer = {"by": "bidji29", "at": "2026-10-30T12:00:00Z", "value": "refused"}
         removed = dict.fromkeys(("person", "why", "message"), "withdrawn: refusal")
-        for name, fields, chunk in (("dossier gardé", {}, "person : le dossier de la personne se retire"),
+        for name, fields, chunk in (("dossier gardé", {}, "person: the person's file is withdrawn"),
                                      ("message gardé", {"person": removed["person"], "why": removed["why"]},
-                                      "message : le dossier de la personne se retire"),
-                                     ("autre texte", {**removed, "message": "retiré"}, "message : le dossier de la personne se retire"),
-                                     ("débat effacé aussi", {**removed, "debate": "withdrawn: refusal"}, "debate ne change jamais"),
+                                      "message: the person's file is withdrawn"),
+                                     ("autre texte", {**removed, "message": "retiré"}, "message: the person's file is withdrawn"),
+                                     ("débat effacé aussi", {**removed, "debate": "withdrawn: refusal"}, "debate never changes"),
                                      ("proposant effacé aussi", {**removed, "proposed_by": "withdrawn: refusal"},
-                                      "proposed_by ne change jamais")):
+                                      "proposed_by never changes")):
             with self.subTest(name):
                 self.branch()
                 self.write_invitation({**self.invitation(), **fields, "answer": answer, "status": "refused"})
@@ -11610,7 +11610,7 @@ class TestRemovedFolderRuche0020(BaseReviewRuche0020):
         self.branch()
         self.write_invitation({**self.invitation(), **removed})
         self.commit()
-        self.refused("alice", "person ne change jamais")
+        self.refused("alice", "person never changes")
         self.assertIn("file withdrawn without a refusal, silence or request", self.bee("validate")[1])
         self.abandon()
 
@@ -11618,7 +11618,7 @@ class TestRemovedFolderRuche0020(BaseReviewRuche0020):
         self.up_to("guardian-approval")
         self.a("2026-11-02T12:00:00Z")
         for who_is in ("alice", "gina"):
-            self.ko("n'est pas du conseil", "invitation", "withdraw", "I-0001", "--user", who_is)
+            self.ko("is not on the council", "invitation", "withdraw", "I-0001", "--user", who_is)
         incident = 'incidents:\n  - id: INC-0001\n    title: Plainte fictive\n    opened_at: "2026-11-02T09:00:00Z"\n'
         (self.dir / "governance/incidents.yaml").write_text(incident, encoding="utf-8")
         self.commit("incident ouvert : il n'arrête pas un retrait")
@@ -11633,8 +11633,8 @@ class TestRemovedFolderRuche0020(BaseReviewRuche0020):
         self.assertEqual(bee.read_yaml(self.dir / bee.PATH_NO_CONTACT), {"fingerprints": [bee.fingerprint("github:octocat")]})
         self.valid_one()
         self.ko("withdrawal is already recorded", "invitation", "withdraw", "I-0001", "--user", "bidji29")
-        self.ko("invitation déjà close", "invitation", "record-answer", "I-0001", "--user", "bidji29", "--value", "refused")
-        self.ko("déjà retiré (à son refus ou à sa demande) : l'invitation est close", "invitation", "council-approval", "I-0001",
+        self.ko("invitation already closed", "invitation", "record-answer", "I-0001", "--user", "bidji29", "--value", "refused")
+        self.ko("already withdrawn (at their refusal or at their request): the invitation is closed", "invitation", "council-approval", "I-0001",
                 "--user", "bidji29")
 
     def test_removal_after_a_dismissal_or_an_acceptance(self):
@@ -11767,7 +11767,7 @@ class TestThirdReviewRuche0020(BaseReviewRuche0020):
         self.write_invitation(bee.withdraw({**self.invitation("I-0003"), "status": "withdrawn",
                                             "withdrawal": {"by": "bidji29", "at": self.now_instant(), "cause": "refusal"}}, "refusal"), "I-0003")
         self.commit()
-        self.refused("bidji29", "manquent dans invitations/do-not-contact.yaml")
+        self.refused("bidji29", "missing from invitations/do-not-contact.yaml")
 
     def test_2_an_accepted_invitation_stays(self):
         self.up_to("record-sent")
@@ -11892,7 +11892,7 @@ class TestThirdReviewRuche0020(BaseReviewRuche0020):
                "autre forge déclarée": {"person": {"identifier": "gitlab:quelquun", "channel": "https://gitlab.com/quelquun"},
                                         "other_identities": ["github:Personne1"]}}
         self.assertEqual(self.try_it(list(case_of), lambda k: self.propose_raw("I-0002", **case_of[k])), [])
-        self.assertIn("est déjà invité(e) (I-0001)", self.invite_raw("--other-identity", "github:personne1",
+        self.assertIn("is already invited (I-0001)", self.invite_raw("--other-identity", "github:personne1",
                                                                        identifier="gitlab:quelquun")[1])
         self.assertEqual(self.try_it(["autre personne"], lambda _: self.propose_raw(
             "I-0002", person={"identifier": "site:other.example", "channel": "https://other.example/c"})), ["autre personne"])
@@ -11915,7 +11915,7 @@ class TestThirdReviewRuche0020(BaseReviewRuche0020):
         other = {"person": {"identifier": "github:autre-fictif", "channel": "https://github.com/autre-fictif"},
                  "why": [{"fact": "Un fait.", "source": "https://github.com/autre-fictif"}]}
         self.assertEqual(self.try_it(list(case_of), lambda k: self.propose_raw(**{**other, **case_of[k]})), [])
-        self.assertIn("commandement 8", self.invite_raw(identifier="gitlab:proprietaire-fictif")[1])
+        self.assertIn("commandment 8", self.invite_raw(identifier="gitlab:proprietaire-fictif")[1])
         # Le conseil passe outre un homonyme, en motivant ; un autre mainteneur (non propriétaire) n'est pas reconnu : la limite.
         namesake = {"person": {"identifier": "gitlab:proprietaire-fictif", "channel": "https://gitlab.com/proprietaire-fictif"},
                     "why": [{"fact": "Un fait.", "source": "https://gitlab.com/proprietaire-fictif"}]}
@@ -11976,7 +11976,7 @@ class TestThirdReviewRuche0020(BaseReviewRuche0020):
         line_text = json.loads(self.ok("swarm", "--json"))["invitations"][0]
         self.assertEqual(line_text["status"], "decided")
         self.assertIn("before 2026-09-22T10:00:00Z (the green light's expiry)", line_text["awaits"])
-        self.ko("on ne renouvelle qu'un feu vert échu", "invitation", "renew", "I-0001", "--user", "bidji29")
+        self.ko("only an expired green light is renewed", "invitation", "renew", "I-0001", "--user", "bidji29")
         incident = 'incidents:\n  - id: INC-0001\n    title: Plainte fictive\n    opened_at: "2026-10-29T09:00:00Z"\n'
         (self.dir / "governance/incidents.yaml").write_text(incident, encoding="utf-8")
         self.commit("incident ouvert")
@@ -11986,11 +11986,11 @@ class TestThirdReviewRuche0020(BaseReviewRuche0020):
         self.assertEqual(line_text["status"], "to_redecide")
         self.assertIn("nothing while the brake is tight", line_text["awaits"])
         self.assertEqual(swarm["brake"]["places_taken_7_days"], 0)
-        self.ko("incident(s) ouvert(s)", "invitation", "renew", "I-0001", "--user", "bidji29")
+        self.ko("open incident(s)", "invitation", "renew", "I-0001", "--user", "bidji29")
         (self.dir / "governance/incidents.yaml").write_text(
             incident + '    closed_at: "2026-10-30T09:00:00Z"\n', encoding="utf-8")
         self.commit("incident clos")
-        self.ko("n'est pas du conseil", "invitation", "renew", "I-0001", "--user", "gina")
+        self.ko("is not on the council", "invitation", "renew", "I-0001", "--user", "gina")
         self.branch()
         text = self.gesture("renew", "bidji29")
         self.assertIn("green light renewed", text)
@@ -12051,7 +12051,7 @@ class TestThirdReviewRuche0020(BaseReviewRuche0020):
         self.assertEqual(code, 0, text)
         self.assertNotIn("Traceback", text)
         self.assertIn("invitations/I-0001.yaml: the file must hold a YAML object", self.bee("validate")[1])
-        self.assertIn("illisible(s)", self.invite_raw(identifier="github:hubot")[1])
+        self.assertIn("unreadable", self.invite_raw(identifier="github:hubot")[1])
         self.invitation_path().unlink()
         self.valid_one()
 
@@ -12681,10 +12681,10 @@ class TestFrozenInvitation(BaseReviewRuche0020):
         self.a("2026-11-02T15:00:00Z")
         fact = [{"fact": "Maintient un logiciel libre de compression depuis 2015.", "source": "https://github.com/octocat"}]
         for who_is, kept_ones, fields, expected in (
-                ("alice", ("guardian_approval", "council_approval"), {"why": fact}, "why ne change jamais sous un accord"),
-                ("alice", ("guardian_approval",), {"why": fact}, "why ne change jamais sous un accord"),
-                ("bruno", (), {"why": fact}, "seuls le proposant et le conseil révisent une invitation"),
-                ("alice", (), {"why": fact, "debate": "D-0999"}, "debate ne change jamais"),  # never another debate than its own
+                ("alice", ("guardian_approval", "council_approval"), {"why": fact}, "why never changes under an approval"),
+                ("alice", ("guardian_approval",), {"why": fact}, "why never changes under an approval"),
+                ("bruno", (), {"why": fact}, "only the proposer and the council revise an invitation"),
+                ("alice", (), {"why": fact, "debate": "D-0999"}, "debate never changes"),  # never another debate than its own
                 ("alice", (), {"why": [{"fact": "Joignable au 06 12 34 56 78.", "source": "https://github.com/octocat"}]},
                  "a phone number")):
             with self.subTest(who_is=who_is, kept_ones=kept_ones, fields=list(fields)):
@@ -12698,7 +12698,7 @@ class TestFrozenInvitation(BaseReviewRuche0020):
         self.merge()
         self.assertEqual(self.invitation()["status"], "proposed")
         self.a("2026-11-03T15:00:00Z")
-        self.ko("débattue dans l'agora, avant tout accord", "invitation", "guardian-approval", "I-0001", "--user", "gina")
+        self.ko("debated in the agora, before any approval", "invitation", "guardian-approval", "I-0001", "--user", "gina")
         self.a("2026-11-05T16:00:00Z")
         self.branch()
         self.gesture("guardian-approval", "gina")
@@ -12709,7 +12709,7 @@ class TestFrozenInvitation(BaseReviewRuche0020):
         self.a("2026-11-03T15:00:00Z")
         code, text = self.revise("bidji29", message=self.invitation()["message"] + " Merci.")
         self.assertEqual(code, 1, text)
-        self.assertIn("avant l'envoi", text)
+        self.assertIn("before the sending", text)
 
 
 class TestVerificationRuche0020(BaseReviewRuche0020):
@@ -12858,14 +12858,14 @@ class TestVerificationRuche0020(BaseReviewRuche0020):
     def test_D4_refusal_removal_without_refusal_refused(self):
         self.proposed_and_refused(refuse=False)
         self.a("2026-10-30T12:00:00Z")
-        self.ko("seulement quand cette personne a refusé ou n'a pas répondu", "invitation", "withdraw", "I-0001", "--user",
+        self.ko("only when this person refused or did not answer", "invitation", "withdraw", "I-0001", "--user",
                 "bidji29", "--cause", "refusal")
         self.branch()
         self.write_invitation(bee.withdraw({**self.invitation(), "status": "withdrawn",
                                             "withdrawal": {"by": "bidji29", "at": self.now_instant(), "cause": "refusal"}}, "refusal"))
         bee.write_invitation(self.dir / bee.PATH_NO_CONTACT, {"fingerprints": [bee.fingerprint(self.TARGET)]})
         self.commit()
-        self.refused("bidji29", "seulement quand cette personne a refusé ou n'a pas répondu")
+        self.refused("bidji29", "only when this person refused or did not answer")
         self.abandon()
         # « demande » passe toujours ; et « refus » passe quand la personne est déjà sur la liste (un refus antérieur).
         self.branch()
@@ -12981,7 +12981,7 @@ class TestRequestedRemovalRuche0048(BaseReviewRuche0020):
         self.assertFalse((self.dir / bee.PATH_REMOVALS).exists())
         self.removal_in_pr()
         for who_is in ("alice", "gina"):
-            text = self.refused(who_is, f"{who_is} n'est pas du conseil : seul le conseil consigne un retrait demandé")
+            text = self.refused(who_is, f"{who_is} is not on the council: only the council records a requested removal")
             self.assertNotIn("FUSION_AUTO=oui", text)
         self.awaits_the_council("bidji29", "requested_removal")
 
@@ -12991,10 +12991,10 @@ class TestRequestedRemovalRuche0048(BaseReviewRuche0020):
         for name, removals, chunk in (("sans consignation", None, "arguments"),
                                        ("sans demande", [{k: v for k, v in entry.items() if k != "request"}], "(removals/0)"),
                                        ("référence d'une demande privée", [{**entry, "request": {**entry["request"],
-                                        "reference": "https://github.com/Bee-ruche/registre/issues/12"}}], "si, et seulement si"),
+                                        "reference": "https://github.com/Bee-ruche/registre/issues/12"}}], "if, and only if"),
                                        ("demande postérieure", [{**entry, "request": {"channel": "issue", "at": "2026-11-03",
-                                        "reference": "https://github.com/Bee-ruche/registre/issues/12"}}], "au jour du retrait"),
-                                       ("deux retraits d'un coup", [entry, json.loads(json.dumps(entry))], "une entrée par PR")):
+                                        "reference": "https://github.com/Bee-ruche/registre/issues/12"}}], "to the day of the removal"),
+                                       ("deux retraits d'un coup", [entry, json.loads(json.dumps(entry))], "one entry per PR")):
             with self.subTest(name):
                 path = self.dir / bee.PATH_REMOVALS
                 if removals is None:
@@ -13017,7 +13017,7 @@ class TestRequestedRemovalRuche0048(BaseReviewRuche0020):
                 d["arguments"] = [{**a, "text": a["text"].replace(before, after)} for a in d["arguments"]]
                 self.write(d)
                 self.commit()
-                self.refused("bidji29", "D-0001.yaml : un retrait demandé ne change, dans les fichiers qu'il parcourt, que les passages")
+                self.refused("bidji29", "D-0001.yaml: a requested removal changes, in the files it scans, only the passages")
                 git(self.dir, "reset", "-q", "--hard", "HEAD~1")
         # Un autre fichier, ou un champ qui n'est pas un texte libre (l'auteur d'un argument), n'est pas un retrait.
         d = self.debate()
@@ -13025,7 +13025,7 @@ class TestRequestedRemovalRuche0048(BaseReviewRuche0020):
         self.write(d)
         (self.dir / "docs/growth.md").write_text("Rien.\n", encoding="utf-8")
         self.commit()
-        self.refused("bidji29", "D-0001.yaml : un retrait demandé ne change", "docs/growth.md : un retrait demandé ne change")
+        self.refused("bidji29", "D-0001.yaml: a requested removal changes", "docs/growth.md: a requested removal changes")
         git(self.dir, "reset", "-q", "--hard", "HEAD~1")
         self.awaits_the_council("bidji29", "requested_removal")
 
@@ -13076,14 +13076,14 @@ class TestRequestedRemovalRuche0048(BaseReviewRuche0020):
     def test_B1_S6_neither_deletion_nor_addition_nor_link_nor_mode(self):
         self.removal_in_pr()
         task = self.dir / "tasks/miniz/miniz-0099.yaml"
-        for make, chunk in ((lambda: (self.dir / "debates/D-0001.yaml").unlink(), "debates/D-0001.yaml : un retrait"),
-                               (lambda: (self.dir / "tools/bee.py").unlink(), "tools/bee.py : un retrait"),
-                               (lambda: (self.dir / "COMMANDMENTS.md").unlink(), "COMMANDMENTS.md : un retrait"),
+        for make, chunk in ((lambda: (self.dir / "debates/D-0001.yaml").unlink(), "debates/D-0001.yaml: a removal"),
+                               (lambda: (self.dir / "tools/bee.py").unlink(), "tools/bee.py: a removal"),
+                               (lambda: (self.dir / "COMMANDMENTS.md").unlink(), "COMMANDMENTS.md: a removal"),
                                (lambda: shutil.copy(self.dir / "debates/D-0001.yaml", self.dir / "debates/D-0009.yaml"),
-                                "debates/D-0009.yaml : un retrait demandé ne change"),
-                               (lambda: (task.unlink(), task.symlink_to("miniz-9001.yaml")), "miniz-0099.yaml : un retrait ne change que"),
-                               (lambda: os.chmod(self.dir / "debates/D-0001.yaml", 0o755), "D-0001.yaml : un retrait ne change que"),
-                               (lambda: os.chmod(self.dir / bee.PATH_REMOVALS, 0o755), "removals.yaml : un retrait ne change que")):
+                                "debates/D-0009.yaml: a requested removal changes"),
+                               (lambda: (task.unlink(), task.symlink_to("miniz-9001.yaml")), "miniz-0099.yaml: a removal changes only"),
+                               (lambda: os.chmod(self.dir / "debates/D-0001.yaml", 0o755), "D-0001.yaml: a removal changes only"),
+                               (lambda: os.chmod(self.dir / bee.PATH_REMOVALS, 0o755), "removals.yaml: a removal changes only")):
             with self.subTest(chunk):
                 self.change_then_refuse(make, chunk)
         self.awaits_the_council("bidji29", "requested_removal")
@@ -13095,7 +13095,7 @@ class TestRequestedRemovalRuche0048(BaseReviewRuche0020):
         self.ok("note", "miniz-0099", "--user", "chloe", "--text", "Je pense que bruno a raison.")
         self.commit("neuf passages")
         self.a("2026-11-02T10:00:00Z")
-        for name, chunk in (("zorglub", "trop courant"), ("bruno", "never removed"), ("@bruno", "never removed"),
+        for name, chunk in (("zorglub", "too common"), ("bruno", "never removed"), ("@bruno", "never removed"),
                              ("github:bidji29", "never removed"), ("gina", "never removed"), ("R13", "never removed"),
                              ("miniz-0099", "never removed"), ("minizBee", "never removed"), ("I-0002", "never removed"),
                              ("10", "never removed"), ("A2", "never removed"), ("bruno a raison", "never removed"),
@@ -13110,7 +13110,7 @@ class TestRequestedRemovalRuche0048(BaseReviewRuche0020):
         self.ok("note", "miniz-9001", "--user", "chloe", "--text", "Une note : " + "bzzt " * 9)
         names = [f"nom{i}x" for i in range(6)]
         self.ok("note", "miniz-9002", "--user", "chloe", "--text", " ".join(n for n in names for _ in range(7)))
-        for list_of, chunk in ((["bzzt"], "plus de 8 passages"), (names, "plus de 40 passages en un retrait"),
+        for list_of, chunk in ((["bzzt"], "more than 8 passages"), (names, "more than 40 passages in one removal"),
                                ([f"nom{i}x" for i in range(13)], "removals/0/fingerprints")):
             with self.subTest(chunk):
                 code, text = self.withdraw(names=list_of)
@@ -13118,8 +13118,8 @@ class TestRequestedRemovalRuche0048(BaseReviewRuche0020):
                 self.assertIn(chunk, text)
         self.commit("des passages")
         # La porte refuse de même une consignation écrite à la main.
-        for names, chunk in ((("octocat", "zorglub"), "trop courante"), (("octocat", "bruno"), "ne se retire jamais"),
-                              (("octocat", "bruno a"), "un passage retiré contient un pseudo"), (("bzzt",), "plus de 8 passages")):
+        for names, chunk in ((("octocat", "zorglub"), "too common"), (("octocat", "bruno"), "is never removed"),
+                              (("octocat", "bruno a"), "a removed passage contains a login"), (("bzzt",), "more than 8 passages")):
             with self.subTest(names):
                 self.branch()
                 self.entry_by_hand(*names)
@@ -13161,7 +13161,7 @@ class TestRequestedRemovalRuche0048(BaseReviewRuche0020):
         cut_one = title.replace("Bo Li", bee.SHORT_MARKER).replace("Ne pas r", "R")
         self.change_then_refuse(lambda: task.write_text(re.sub(r"(?m)^title:.*$", "title: " + json.dumps(cut_one, ensure_ascii=False),
                                                                   task.read_text(encoding="utf-8")), encoding="utf-8"),
-                                  "miniz-0099.yaml : un retrait demandé ne change")
+                                  "miniz-0099.yaml: a requested removal changes")
 
     def test_comments_and_malformed_record(self):
         task = self.task_path("miniz-0099")
@@ -13180,17 +13180,17 @@ class TestRequestedRemovalRuche0048(BaseReviewRuche0020):
                           ("anchor_node", canonical.replace("  fingerprints:\n", "  fingerprints: &e\n", 1))):
             with self.subTest(name):
                 self.assertNotEqual(fake, canonical)
-                text = self.change_then_refuse(lambda: path.write_text(fake, encoding="utf-8"), "removals.yaml : en ajout seul")
+                text = self.change_then_refuse(lambda: path.write_text(fake, encoding="utf-8"), "removals.yaml: append-only")
 
     def test_S1_S2_the_gate_touches_only_what_the_command_walks_to_the_end(self):
         self.removal_in_pr()
         project = self.dir / "projects/miniz.yaml"
         self.change_then_refuse(lambda: project.write_text(project.read_text(encoding="utf-8").replace("miniz", "[removed]", 1),
-                                                            encoding="utf-8"), "projects/miniz.yaml : un retrait demandé ne change")
+                                                            encoding="utf-8"), "projects/miniz.yaml: a requested removal changes")
         # Appliqué en partie (le débat laissé tel qu'il était) : la tête nomme encore la personne.
         before = git(self.dir, "show", "main:debates/D-0001.yaml")
         self.change_then_refuse(lambda: self.debate_path().write_text(before, encoding="utf-8"),
-                                  "debates/D-0001.yaml : nomment encore la personne")
+                                  "debates/D-0001.yaml: still name the person")
         # S7 : dans une tâche, le diff ne montre que la marque.
         self.assertEqual(git(self.dir, "diff", "--numstat", "main", "--", "tasks/miniz/miniz-0099.yaml").split()[:2], ["1", "1"])
 
@@ -13198,11 +13198,11 @@ class TestRequestedRemovalRuche0048(BaseReviewRuche0020):
         self.removal_in_pr()
         path, entry = self.dir / bee.PATH_REMOVALS, bee.read_yaml(self.dir / bee.PATH_REMOVALS)["removals"][0]
         canonical = path.read_text(encoding="utf-8")
-        self.change_then_refuse(lambda: path.write_text("# Bo Li\n" + canonical, encoding="utf-8"), "telle que l'écrit")
-        for request, chunk in (({"channel": "email", "at": "2026-02-31"}, "une date réelle"),
-                                 ({"channel": "email", "at": "2026-09-30"}, "du 2026-10-01"),
+        self.change_then_refuse(lambda: path.write_text("# Bo Li\n" + canonical, encoding="utf-8"), "as bee remove-data writes it")
+        for request, chunk in (({"channel": "email", "at": "2026-02-31"}, "a real date"),
+                                 ({"channel": "email", "at": "2026-09-30"}, "from 2026-10-01"),
                                  ({"channel": "issue", "at": "2026-11-01", "reference": "https://github.com/Bee-ruche/bo-li/issues/9"},
-                                  "un dépôt de la ruche")):
+                                  "a repository of the hive")):
             with self.subTest(request):
                 self.change_then_refuse(lambda: path.write_text(bee._faithful_render({"removals": [{**entry, "request": request}]}, "x"),
                                                                     encoding="utf-8"), chunk)
@@ -13251,7 +13251,7 @@ class TestRequestedRemovalRuche0048(BaseReviewRuche0020):
         self.entry_by_hand("octocat", no_contact=True)
         bee.write_invitation(self.dir / bee.PATH_NO_CONTACT, {"fingerprints": [bee.fingerprint("github:octocat"), bee.fingerprint("github:hubot")]})
         self.commit()
-        self.refused("bidji29", "do-not-contact.yaml : un retrait demandé ne change")
+        self.refused("bidji29", "do-not-contact.yaml: a requested removal changes")
         self.abandon()
 
     def test_S5_a_new_invitation_of_the_person_is_reported(self):
@@ -13318,7 +13318,7 @@ class TestRequestedRemovalRuche0048(BaseReviewRuche0020):
         self.branch()
         self.entry_by_hand("nulle-part-ailleurs")
         self.commit()
-        self.refused("bidji29", "un retrait qui ne retire rien ne se consigne pas")
+        self.refused("bidji29", "a removal that removes nothing is not recorded")
 
     # --- ruche-0116 : un plafond glissant sur 7 jours, les commentaires corrigés par le conseil, les seuls arguments qui existent ---
 
@@ -13340,8 +13340,8 @@ class TestRequestedRemovalRuche0048(BaseReviewRuche0020):
         self.a("2026-11-04T10:00:00Z")  # 18 + 18 + 18 > 40 en 7 jours : la commande et la porte refusent
         code, text = self.withdraw(names=groups[2])
         self.assertEqual(code, 1, text)
-        self.assertIn("plus de 40 passages en 7 jours glissants", text)
-        for fields, chunk in (({}, "plus de 40 passages en 7 jours glissants"), ({"passages": 0}, "passages : 18")):
+        self.assertIn("more than 40 passages over a rolling 7 days", text)
+        for fields, chunk in (({}, "more than 40 passages over a rolling 7 days"), ({"passages": 0}, "passages: 18")):
             with self.subTest(fields):
                 self.branch()
                 self.entry_by_hand(*groups[2], **fields)
@@ -13373,7 +13373,7 @@ class TestRequestedRemovalRuche0048(BaseReviewRuche0020):
         for name, fake in (("un autre texte", "# Demandé par quelqu'un le 12/10"), ("un commentaire ajouté", "# Demandé le 12/10\n# Bo")):
             with self.subTest(name):
                 self.change_then_refuse(lambda: task.write_text(raw.replace("# Demandé par octocat le 12/10", fake, 1), encoding="utf-8"),
-                                          "miniz-0099.yaml : un retrait demandé ne change")
+                                          "miniz-0099.yaml: a requested removal changes")
 
     def test_ruche0116_only_the_arguments_that_exist_are_protected(self):
         protected = bee.protected_fingerprints(bee.Registry(self.dir))
@@ -13405,13 +13405,13 @@ class TestRequestedRemovalRuche0048(BaseReviewRuche0020):
         self.commit("sur main : des commentaires la nomment ; 30 passages retirés la veille")
         self.a("2026-11-02T10:00:00Z")
         # self.NOMS : 6 passages dans les champs, auxquels s'ajoutent ceux des commentaires signalés.
-        for others, total, chunk in ((names, 51, "plus de 40 passages en un retrait"), (["zorgu"], 15, "une empreinte nomme plus de 8"),
-                                       (names[:1], 11, "plus de 40 passages en 7 jours glissants")):
+        for others, total, chunk in ((names, 51, "more than 40 passages in one removal"), (["zorgu"], 15, "a fingerprint names more than 8"),
+                                       (names[:1], 11, "more than 40 passages over a rolling 7 days")):
             with self.subTest(chunk):
                 code, text = self.withdraw(names=[*self.NAMES, *others])
                 self.assertEqual(code, 1, text)
                 self.assertIn(chunk, text)
-                for fields, expected in (({}, f"passages : {total}"), ({"passages": total}, chunk)):  # 6 : les champs seuls
+                for fields, expected in (({}, f"passages: {total}"), ({"passages": total}, chunk)):  # 6 : les champs seuls
                     self.branch()
                     self.entry_by_hand(*self.NAMES, *others, **fields)
                     self.mark_the_comments(task, *others)
@@ -13425,8 +13425,8 @@ class TestRequestedRemovalRuche0048(BaseReviewRuche0020):
         self.commit("sur main : seuls deux commentaires la nomment")
         self.a("2026-11-02T10:00:00Z")
         taken_out = lambda: task.write_text(task.read_text(encoding="utf-8").replace("# Revu par zorgu\n", ""), encoding="utf-8")  # noqa: E731
-        for fields, make, chunk in (({}, lambda: self.mark_the_comments(task, "zorgu"), "passages : 2"),
-                                       ({"passages": 1}, taken_out, "miniz-0099.yaml : nomment encore la personne")):
+        for fields, make, chunk in (({}, lambda: self.mark_the_comments(task, "zorgu"), "passages: 2"),
+                                       ({"passages": 1}, taken_out, "miniz-0099.yaml: still name the person")):
             with self.subTest(chunk):  # écrite à la main : passages 0, ou un seul commentaire corrigé
                 self.branch()
                 self.entry_by_hand("zorgu", **fields)
@@ -13441,7 +13441,7 @@ class TestRequestedRemovalRuche0048(BaseReviewRuche0020):
         self.assertNotIn("zorgu", text)
         self.assertEqual(bee.read_yaml(self.dir / bee.PATH_REMOVALS)["removals"][-1]["passages"], 2)
         self.commit()
-        self.refused("bidji29", "un retrait qui ne retire rien", "passages : 0", "nomment encore la personne")
+        self.refused("bidji29", "a removal that removes nothing", "passages: 0", "still name the person")
         self.mark_the_comments(task, "zorgu")
         self.commit()
         self.awaits_the_council("bidji29", "requested_removal")
@@ -13459,7 +13459,7 @@ class TestRequestedRemovalRuche0048(BaseReviewRuche0020):
         for name, fake in (("l'autre ôté", raw.replace(reported + other, marker)), ("marqué deux fois", raw.replace(reported, marker * 2)),
                           ("l'autre en double", raw.replace(reported + other, marker + other * 2))):
             with self.subTest(name):
-                self.change_then_refuse(lambda: task.write_text(fake, encoding="utf-8"), "miniz-0099.yaml : un retrait demandé ne change")
+                self.change_then_refuse(lambda: task.write_text(fake, encoding="utf-8"), "miniz-0099.yaml: a requested removal changes")
         for name, correct in (("marqué", raw.replace(reported, marker)), ("ôté", raw.replace(reported, ""))):
             with self.subTest(name):
                 task.write_text(correct, encoding="utf-8")
@@ -13473,11 +13473,11 @@ class TestRequestedRemovalRuche0048(BaseReviewRuche0020):
         self.a("2026-11-09T09:00:00Z")  # 6 jours et 23 h après sa PR : 36 + 6 > 40
         code, text = self.withdraw()
         self.assertEqual(code, 1, text)
-        self.assertIn("plus de 40 passages en 7 jours glissants", text)
+        self.assertIn("more than 40 passages over a rolling 7 days", text)
         self.branch()
         self.entry_by_hand(*self.NAMES)
         self.commit()
-        self.refused("bidji29", "plus de 40 passages en 7 jours glissants")
+        self.refused("bidji29", "more than 40 passages over a rolling 7 days")
         self.abandon()
         self.a("2026-11-09T10:01:00Z")  # 7 jours après sa PR : il sort de la fenêtre
         self.branch()
@@ -13531,18 +13531,18 @@ class TestRequestedRemovalRuche0048(BaseReviewRuche0020):
         m = bee.REMOVAL_MARKER
         self.assertEqual(self.task("miniz-0099")["notes"][-1]["text"], f"Relancé par #{m}, puis ={m}= et |{m}|.")
         self.commit()
-        self.refused("bidji29", "miniz-0099.yaml : nomment encore la personne")  # le commentaire reste à corriger
+        self.refused("bidji29", "miniz-0099.yaml: still name the person")  # le commentaire reste à corriger
         self.mark_the_comments(task, "zorgu")
         self.assertTrue(task.read_text(encoding="utf-8").startswith(f"# Demandé par #{m} le 12/10\n"))
         self.commit()
         self.awaits_the_council("bidji29", "requested_removal")
         raw = task.read_text(encoding="utf-8")  # détourné : la note garde #zorgu, ou la consignation compte 3 passages
         self.change_then_refuse(lambda: task.write_text(raw.replace(f"#{m},", "#zorgu,"), encoding="utf-8"),
-                                  "miniz-0099.yaml : nomment encore la personne")
+                                  "miniz-0099.yaml: still name the person")
         path = self.dir / bee.PATH_REMOVALS
         removals = bee.read_yaml(path)
         removals["removals"][-1]["passages"] = 3
-        self.change_then_refuse(lambda: path.write_text(bee._faithful_render(removals, "x"), encoding="utf-8"), "passages : 4")
+        self.change_then_refuse(lambda: path.write_text(bee._faithful_render(removals, "x"), encoding="utf-8"), "passages: 4")
 
     def test_ruche0140_a_comment_changes_only_where_it_is(self):
         task = self.task_path("miniz-0099")
@@ -13560,7 +13560,7 @@ class TestRequestedRemovalRuche0048(BaseReviewRuche0020):
                           ("le marqué déplacé en fin de ligne", end_of_line(without_it, marker.strip())),
                           ("le marqué déplacé en bas", without_it + marker)):
             with self.subTest(name):
-                self.change_then_refuse(lambda: task.write_text(fake, encoding="utf-8"), "miniz-0099.yaml : un retrait demandé ne change")
+                self.change_then_refuse(lambda: task.write_text(fake, encoding="utf-8"), "miniz-0099.yaml: a requested removal changes")
         for name, correct in (("marqué là où il est", raw.replace("# Demandé par octocat le 12/10\n", marker)), ("ôté", without_it)):
             with self.subTest(name):
                 task.write_text(correct, encoding="utf-8")
@@ -13592,7 +13592,7 @@ class TestRequestedRemovalRuche0048(BaseReviewRuche0020):
         for fake in (raw.replace(line_text, "context: >  # Relu le 14/10\n"), raw.replace(line_text, "context: >\n"),
                      raw.replace(line_text, "context: >  # Relu par octocat\n")):
             with self.subTest(fake):
-                self.change_then_refuse(lambda: task.write_text(fake, encoding="utf-8"), "miniz-0099.yaml : ")
+                self.change_then_refuse(lambda: task.write_text(fake, encoding="utf-8"), "miniz-0099.yaml: ")
         self.awaits_the_council("bidji29", "requested_removal")
 
     def test_ruche0140_a_block_header_comment_that_names_her_is_reported_and_counted(self):
@@ -13608,10 +13608,10 @@ class TestRequestedRemovalRuche0048(BaseReviewRuche0020):
         self.commit()
         self.awaits_the_council("bidji29", "requested_removal")
         git(self.dir, "reset", "-q", "--hard", "HEAD~1")
-        for fake, reason in ((raw.replace(marker, "  # Demandé"), "un retrait demandé ne change"),
+        for fake, reason in ((raw.replace(marker, "  # Demandé"), "a requested removal changes"),
                             (raw.replace(marker, "  # Demandé par octocat"), "")):
             with self.subTest(fake):
-                self.change_then_refuse(lambda: task.write_text(fake, encoding="utf-8"), "miniz-0099.yaml : " + reason)
+                self.change_then_refuse(lambda: task.write_text(fake, encoding="utf-8"), "miniz-0099.yaml: " + reason)
 
     def test_ruche0140_a_name_found_outside_ascii_and_in_the_middle_of_a_word(self):
         fingerprints, m = bee.passage_fingerprints("octocat") | bee.passage_fingerprints("Odile Martin"), bee.REMOVAL_MARKER
@@ -14406,7 +14406,7 @@ class TestR13FollowableRuche0052(BaseInvitations):
         self.assertEqual(bee.expiration(inv, conf), end)
         self.assertEqual((bee.expired(inv, end, conf), bee.expired(inv, end + bee.dt.timedelta(seconds=1), conf)), (False, True))
         self.a("2026-11-02T10:00:01Z")
-        self.ko("invitation expirée (3 jours sans décision", "invitation", "guardian-approval", "I-0001", "--user", "gina")
+        self.ko("invitation expired (3 days without a decision", "invitation", "guardian-approval", "I-0001", "--user", "gina")
         self.a("2026-11-02T10:00:00Z")  # à l'échéance même : 72 h de débat tenues, pas encore expirée
         self.branch()
         self.gesture("guardian-approval", "gina")
@@ -14444,7 +14444,7 @@ class TestR13FollowableRuche0052(BaseInvitations):
         self.up_to("proposed")
         self.a("2026-11-02T11:00:00Z")
         self.assertEqual(self.displayed_statuses(), ([], "expired", "expired"))
-        self.ko("invitation expirée (3 jours sans décision", "invitation", "guardian-approval", "I-0001", "--user", "gina")
+        self.ko("invitation expired (3 days without a decision", "invitation", "guardian-approval", "I-0001", "--user", "gina")
 
     def test_5_a_serving_guardian_reports_an_incident_and_the_brake_counts_it(self):
         self.up_to("proposed")
@@ -14467,7 +14467,7 @@ class TestR13FollowableRuche0052(BaseInvitations):
         self.refused("alice", f"{self.INCIDENTS} : modification réservée au conseil humain")
         self.merge()
         # Le frein en tient compte sur main : plus aucun accord, même d'encadrement (I-0001 demande un garant).
-        self.ko("incident(s) ouvert(s) : INC-0001", "invitation", "guardian-approval", "I-0001", "--user", "gina")
+        self.ko("open incident(s): INC-0001", "invitation", "guardian-approval", "I-0001", "--user", "gina")
         # Le conseil peut aussi l'inscrire : au numéro qui suit tout numéro déjà écrit.
         self.assertIn("✓ INC-0002 entered", self.ok("incident", "--user", "bidji29", "--title", "Plainte reçue sur I-0001."))
 
@@ -14583,7 +14583,7 @@ class TestR13FollowableRuche0052(BaseInvitations):
                 "title : U+202E": (bee.invitation_render({"incidents": [one_of, {**two, "title": "Un \u202eécart."}]}), "U+202E"),
                 "title : ESC": (bee.invitation_render({"incidents": [one_of, {**two, "title": "Un \x1b[2Jécart."}]}), "U+001B"),
                 "titre sur deux lignes": (bee.invitation_render({"incidents": [one_of, {**two, "title": "Un écart.\nSuite."}]}),
-                                          "title : une seule ligne"),
+                                          "title: a single line"),
                 "commentaire et remplissage": ("# Ajouté à la main\n" + canonical + "\n\n\n", "pas exactement sous la forme"),
                 "issue sur un incident ouvert": (bee.invitation_render({"incidents": [one_of, {**two, "outcome": "Rien à faire."}]}),
                                                  "avec id, title et opened_at seulement"),
@@ -14598,7 +14598,7 @@ class TestR13FollowableRuche0052(BaseInvitations):
                 self.commit()
                 self.refused("gina", message)
                 self.abandon()
-        for title, message in (("Un écart.\nSuite.", "title : une seule ligne"), ("Un \u202eécart.", "U+202E"),
+        for title, message in (("Un écart.\nSuite.", "title: a single line"), ("Un \u202eécart.", "U+202E"),
                                ("Un \x1b[2Jécart.", "U+001B"), ("Plainte de fictif@exemple.org.", "email address")):
             self.ko(message, "incident", "--user", "gina", "--title", title)
         self.branch()
@@ -15511,7 +15511,7 @@ class TestSpelling(BaseInvitations):
         self.invite("gina")
         self.publish("gina", "invitation", free_one=False)
         self.a("2026-11-02T11:00:00Z")
-        self.ko("on ne donne pas son accord à sa propre invitation", "invitation", "guardian-approval", "I-0001", "--user", "gina")
+        self.ko("no one approves their own invitation", "invitation", "guardian-approval", "I-0001", "--user", "gina")
         self.ko("GINA: your member file is gina", "invitation", "guardian-approval", "I-0001", "--user", "GINA")
 
     def test_n1_the_creations_cap_is_not_bypassed_by_the_case(self):
@@ -17981,7 +17981,7 @@ class TestCitationsRuche0088(BaseTest):
             self.assertEqual(bee._clean("a" + c + "b"), "a�b", code_point(c))
         self.assertEqual(bee._clean("Honnête" + HONEST_CONTROL), "Honnête" + HONEST_CONTROL)
         self.assertIn("invisible character", bee.outgoing_text_refused("ab", "body", 100))
-        self.assertIn("caractère invisible refusé (U+E000", bee.outgoing_text_refused("a&#xE000;b", "body", 100, "Bee-ruche"))
+        self.assertIn("invisible character refused (U+E000", bee.outgoing_text_refused("a&#xE000;b", "body", 100, "Bee-ruche"))
         self.assertIsNone(bee.outgoing_text_refused("Honnête, &#233;t&#233;.", "body", 100, "Bee-ruche"))
 
     def test_the_frame_header_quotes_the_identifier_neutralised(self):
@@ -18564,7 +18564,7 @@ class TestClocksRuche0091(BaseInvitations):
             self.invite("alice")
             self.write_invitation({**self.invitation("I-0002"), "proposed_at": pushed_one}, "I-0002")
         self.pr(pushed_one, invite)
-        return "alice", pushed_one, verification, (), "est déjà invité(e) (I-0001)"
+        return "alice", pushed_one, verification, (), "is already invited (I-0001)"
 
     # --- At the check ---
 
@@ -18593,7 +18593,7 @@ class TestClocksRuche0091(BaseInvitations):
         self.commit("an incident, closed at 11:30")
         pushed_one = "2026-11-02T11:00:00Z"
         self.pr(pushed_one, lambda: self.write_invitation({**self.invitation(), "guardian_approval": {"by": "gina", "at": pushed_one}}))
-        return "gina", pushed_one, "2026-11-02T12:00:00Z", (), "incident(s) ouvert(s) : INC-0001"
+        return "gina", pushed_one, "2026-11-02T12:00:00Z", (), "open incident(s): INC-0001"
 
     def end_of_vote(self):
         self.a("2026-10-30T10:00:00Z")
@@ -20247,15 +20247,15 @@ class TestLinkedAccountsRuche0051(BaseInvitations):
         self.invite("gina2")
         self.publish("gina2", "invitation", free_one=False)
         self.a("2026-11-02T11:00:00Z")
-        self.ko("gina2 n'est pas un gardien en fonction", "invitation", "guardian-approval", "I-0001", "--user", "gina2")
+        self.ko("gina2 is not a guardian in office", "invitation", "guardian-approval", "I-0001", "--user", "gina2")
         # Neither does gina give her accord to what her linked account proposed.
-        self.ko("on ne donne pas son accord à sa propre invitation (ni à celle d'un compte lié)", "invitation", "guardian-approval", "I-0001",
+        self.ko("no one approves their own invitation (nor that of a linked account)", "invitation", "guardian-approval", "I-0001",
                 "--user", "gina")
         self.branch("approval")
         inv = self.invitation()
         self.write_invitation({**inv, "guardian_approval": {"by": "gina", "at": os.environ["BEE_NOW"]}})
         self.commit()
-        self.refused("gina", "ni à celle d'un compte lié")
+        self.refused("gina", "nor that of a linked account")
         self.abandon("approval")
         # Two guardians who are one person: one guardian for R13's brake, and a warning, never a refusal.
         (self.dir / "governance/guardians.yaml").write_text(
@@ -20403,7 +20403,7 @@ class TestLinkedAccountsRuche0051(BaseInvitations):
                 (self.dir / "governance/guardians.yaml").write_text(
                     "members:\n" + "".join(f"  - login: {p}\n    guarantor: {g}\n" for p, g in guardians), encoding="utf-8")
                 self.commit("guardians")
-                chunk = f"le garant de {who_is} est le proposant, ou dirige aussi le proposant"
+                chunk = f"the guarantor of {who_is} is the proposer, or also directs the proposer"
                 text = self.bee("invitation", "guardian-approval", invitation, "--user", who_is)[1]
                 self.assertEqual(chunk in text, refuse, text)
                 if refuse and who_is == "gina" and invitation == "I-0001":  # the gate, as the tool
