@@ -23813,13 +23813,13 @@ class TestEnglishNamesStep1d(unittest.TestCase):
         files = {"outils/bee.py": base.encode()}
         found = {kind: collections.Counter(c for c, n, _ in check_migration.kept_french(self.names, honest) if n == (kind == "kept")) for kind in ("kept", "prose")}
         self.assertEqual((dict(found["kept"]), check_migration.lone_in_prose(base, honest)), ({}, []))  # all English where data is named
-        approve = lambda text: {"files": {"outils/bee.py": {  # noqa: E731 (what make_prose writes for this text, approved)
+        allow = lambda text: {"files": {"outils/bee.py": {  # noqa: E731 (what make_prose writes for this text, approved)
             "renamed": dict(collections.Counter(f"{o} -> {w}" for o, w, _ in check_migration.renamed_in_prose(base, text))),
             "beside_french": sorted({c for o, w, c in check_migration.renamed_in_prose(base, text) if check_migration.suspect(o, c)}),
             "kept": dict(collections.Counter(c for c, n, _ in check_migration.kept_french(self.names, text) if n)),
             "prose_words": dict(collections.Counter(c.split("[")[1].split("]")[0] for c, n, _ in check_migration.kept_french(self.names, text) if not n)),
             "lone": dict(collections.Counter(check_migration.lone_in_prose(base, text)))}}}
-        self.assertEqual(check_migration.prose(self.names, files, {"tools/bee.py": honest.encode()}, approve(honest))[0], [])
+        self.assertEqual(check_migration.prose(self.names, files, {"tools/bee.py": honest.encode()}, allow(honest))[0], [])
         for name, text, flagged in (
                 ("a key left at a label's start", honest.replace("declared n'", "declare n'"), "« [declare] n » keeps a French name of the map where a message names data 1"),
                 ("a key left beside its value", honest.replace(": contested_by {", ": conteste {"), "« [conteste] » keeps a French name of the map where a message names data 1"),
@@ -23828,9 +23828,9 @@ class TestEnglishNamesStep1d(unittest.TestCase):
                 ("a lone word renamed in a text", honest.replace("x or 'aucun'", "x or 'none'"), "« f [aucun -> none] » renames a lone French word where text is written 1"),
                 ("a French name added in prose", honest.replace("par le conseil", "par le conseil et le gardien"), "« gardien » is a French name of the map kept in prose 1")):
             with self.subTest(name):
-                problems = check_migration.prose(self.names, files, {"tools/bee.py": text.encode()}, approve(honest))[0]
+                problems = check_migration.prose(self.names, files, {"tools/bee.py": text.encode()}, allow(honest))[0]
                 self.assertTrue(any(flagged in x for x in problems), problems)
-                self.assertEqual(check_migration.prose(self.names, files, {"tools/bee.py": text.encode()}, approve(text))[0], [])  # approved by hand
+                self.assertEqual(check_migration.prose(self.names, files, {"tools/bee.py": text.encode()}, allow(text))[0], [])  # approved by hand
 
     def test_change_10_renames_the_commands_in_the_code_only(self):
         self.assertEqual(self.carte.commands(CHANGE_10_0153), CHANGE_10_0153_EN)
