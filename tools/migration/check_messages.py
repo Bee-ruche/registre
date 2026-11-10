@@ -10,7 +10,8 @@ streams cannot change. Then each changed literal must be a message:
   - a name literal (a key, a value, a path, a command or an option: tools/marker_inventory.py's NAME, read at the base)
     never changes, and neither does a literal without a letter (a separator, a blank, a punctuation mark: a join, an end=,
     a JSON separator), unless the old text is named with --prose (a one-word expected text of a test, « : » before a
-    message…), each one listed in the PR;
+    message…), each one listed in the PR (an f-string's interpolations written {…}, or the list in a JSON file with
+    --prose-file);
   - a literal the base compares text against changes only with --markers, for the hand-made part that changes a marker and
     its comparison together: marker_inventory's operands, and every literal reached from one through a name bound in the
     file (a constant, a local variable, an argument's default), argparse's choices, and the text parts of f-strings;
@@ -29,6 +30,7 @@ import argparse
 import ast
 import collections
 import importlib.util
+import json
 import pathlib
 import re
 import string
@@ -37,8 +39,10 @@ import sys
 import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
+OWN_RULES = ROOT / "tools" / "marker_inventory.py"
 PERCENT = re.compile(r"%(?:\([^)]*\))?[-#0 +]*(?:\d+|\*)?(?:\.(?:\d+|\*))?[diouxXeEfFgGcrsa%]")
 HOLE = "\x00"
+SHOWN_HOLE = "{…}"  # an f-string's interpolation, as --prose writes it
 
 
 class Unreadable(Exception):
@@ -66,7 +70,7 @@ def rules_at(repo, base):
     out = subprocess.run(["git", "-C", str(repo), "show", f"{base}:tools/marker_inventory.py"], capture_output=True)
     with tempfile.TemporaryDirectory() as tmp:
         path = pathlib.Path(tmp) / "marker_inventory.py"
-        path.write_bytes(out.stdout if out.returncode == 0 else (ROOT / "tools" / "marker_inventory.py").read_bytes())
+        path.write_bytes(out.stdout if out.returncode == 0 else OWN_RULES.read_bytes())
         spec = importlib.util.spec_from_file_location("marker_inventory_at_base", path)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
@@ -196,6 +200,7 @@ def lettered(text):
 
 def check(repo, base, head, files, markers, prose=()):
     problems, counts = [], collections.Counter()
+    prose = {p.replace(SHOWN_HOLE, HOLE) for p in prose}
     rules = rules_at(repo, base)
     for path in files:
         try:
@@ -225,7 +230,7 @@ def check(repo, base, head, files, markers, prose=()):
             elif kind != "doc" and a not in prose and not (lettered(a) and lettered(b)):
                 problems.append(f"{where}: a literal without a letter changed (a separator or a blank; --prose if it is "
                                 f"a message's): {a!r} -> {b!r}")
-            elif kind != "doc" and not markers and a not in prose and any(p in markers_of_base for p in parts if p):
+            elif kind != "doc" and not markers and a not in prose and any(p in markers_of_base for p in parts if lettered(p)):
                 problems.append(f"{where}: a literal the code compares text against changed (needs --markers and the "
                                 f"comparison changed with it): {a!r} -> {b!r}")
             elif kind != "f" and fields(a) != fields(b):
@@ -239,11 +244,18 @@ def main(argv=None):
     p.add_argument("--head", help="a commit (default: the working tree)")
     p.add_argument("--markers", action="store_true", help="the hand-made part: compared literals may change")
     p.add_argument("--prose", action="append", default=[], help="the old text of a name-shaped, letterless or compared "
-                   "literal that is only a message (a test's one-word expected text, « : », a constant dict's shown value): "
-                   "it may change; each one is listed in the PR")
+                   "literal that is only a message (a test's one-word expected text, « : », a constant dict's shown value), "
+                   "an f-string's interpolations written {…}: it may change; each one is listed in the PR")
+    p.add_argument("--prose-file", help="a JSON list of such old texts, as for --prose")
     p.add_argument("files", nargs="*", default=["tools/bee.py", "tools/test_bee.py"])
     a = p.parse_args(argv)
-    problems, counts = check(ROOT, a.base, a.head, a.files, a.markers, a.prose)
+    prose = list(a.prose)
+    if a.prose_file:
+        listed = json.loads(pathlib.Path(a.prose_file).read_text(encoding="utf-8"))
+        if not (isinstance(listed, list) and all(isinstance(x, str) for x in listed)):
+            p.error("--prose-file: a JSON list of strings")
+        prose += listed
+    problems, counts = check(ROOT, a.base, a.head, a.files, a.markers, prose)
     for k, v in sorted(counts.items()):
         print(f"{k}: {v} changed")
     for x in problems:
