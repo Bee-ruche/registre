@@ -6884,7 +6884,7 @@ class TestAdversarialReview(BaseParallel):
         self.commit()
         code, text = self.verify("chloe")
         self.assertEqual(code, 1, text)
-        self.assertIn("jamais dans le futur", text)
+        self.assertIn("never in the future", text)
         # Même présente dans la base (écrite sans passer par verifier-pr), elle ne bloque pas une soumission antérieure.
         self.merge("registration")
         self.a("2026-10-28T12:05:00Z")
