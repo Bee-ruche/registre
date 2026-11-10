@@ -18033,7 +18033,7 @@ class TestCitationsRuche0088(BaseTest):
                 path.write_text(forged, encoding="utf-8")
                 code, output_text = self.bee("validate")
                 self.assertEqual(code, 1, output_text)
-                self.assertRegex(output_text, rf"✗ {re.escape(relative_one)}.*fausse marque d'encadré")
+                self.assertRegex(output_text, rf"✗ {re.escape(relative_one)}.*fake frame marker")
                 path.write_text(before, encoding="utf-8")
         self.valid_one()
 
