@@ -12,7 +12,7 @@ context: 'Founder''s goal (1 Nov 2026): thousands of bees within weeks, so up to
   then compute how many judgments fit in a night at 20, 60 and 500 jobs, and what would raise the ceiling (fewer repetitions
   where noise allows, splitting x86 and ARM, caching builds, larger runners).'
 files:
-- docs/juge-commun.md
+- docs/common-judge.md
 - docs/architecture.md
 reach: 0.8
 metric: null

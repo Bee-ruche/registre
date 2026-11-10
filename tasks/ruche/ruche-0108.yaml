@@ -12,9 +12,9 @@ context: Follow-up of ruche-0042's review. R4 counts a measurement by any other 
   what the council decides.
 files:
 - docs/reputation.md
-- docs/gouvernance.md
-- outils/bee.py
-- outils/test_bee.py
+- docs/governance.md
+- tools/bee.py
+- tools/test_bee.py
 reach: 0.6
 metric: null
 depends_on:

@@ -16,8 +16,8 @@ context: 'Founder''s decision of 31/10: the hive moves to English before the fir
   merged automatically: the council merges. This part: every node under arbre/roles/ (debattre, garder, mesurer,
   optimiser, proposer, relire; about 213 lines). Node headings and budgets are checked by the tool: ruche-0055 first.'
 files:
-- arbre/roles/
-- outils/test_bee.py
+- tree/roles/
+- tools/test_bee.py
 reach: 0.5
 metric: null
 acceptance_criteria:
@@ -29,7 +29,7 @@ acceptance_criteria:
 - on merge, the council records in docs/decisions.md that these files are now authoritative in English
 out_of_scope:
 - folder names of the roles (ruche-0070)
-- arbre/projets/ (ruche-0066)
+- tree/projets/ (ruche-0066)
 depends_on:
 - ruche-0055
 - ruche-0145

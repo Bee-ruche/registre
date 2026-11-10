@@ -11,8 +11,8 @@ context: Follow-up of ruche-0086's review (details in the architect's brief). ve
   whose list may be incomplete as touching its judges.
 files:
 - .github/workflows/verdicts.yml
-- outils/bee.py
-- outils/test_bee.py
+- tools/bee.py
+- tools/test_bee.py
 reach: 0.6
 metric: null
 depends_on: []

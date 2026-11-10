@@ -12,10 +12,10 @@ context: 'Measured on 1 Nov 2026: every bee command loads and validates the whol
   against a fresh load at the end of the pass; `bee verifier-pr` validates what a PR changes and what it references,
   while a push to main still validates everything. The history checks are E24 (ruche-0131).'
 files:
-- outils/bee.py
-- outils/test_bee.py
-- .github/workflows/fusion-auto.yml
-- docs/outillage.md
+- tools/bee.py
+- tools/test_bee.py
+- .github/workflows/auto-merge.yml
+- docs/tooling.md
 reach: 0.8
 metric: null
 depends_on:

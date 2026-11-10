@@ -18,8 +18,8 @@ context: 'Founder''s decision of 31/10: the hive moves to English before the fir
 files:
 - docs/agora.md
 - docs/reputation.md
-- docs/capacites.md
-- outils/test_bee.py
+- docs/capabilities.md
+- tools/test_bee.py
 reach: 0.5
 metric: null
 acceptance_criteria:

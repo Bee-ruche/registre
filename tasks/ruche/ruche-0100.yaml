@@ -17,10 +17,10 @@ context: 'Founder''s decision of 1 Nov 2026: the hive opens by waves of invitati
   path''s, from `bee mesures-ecriture` (ruche-0134) once it lands; until then, the counts are taken by hand from the
   Actions logs.'
 files:
-- REGLES.md
-- docs/croissance.md
-- outils/bee.py
-- outils/test_bee.py
+- RULES.md
+- docs/growth.md
+- tools/bee.py
+- tools/test_bee.py
 reach: 0.8
 metric: null
 depends_on:

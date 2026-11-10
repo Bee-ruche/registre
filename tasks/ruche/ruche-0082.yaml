@@ -13,11 +13,11 @@ context: 'R15 (docs/devolution.md, sections 2 and 6): for the first four weeks a
   the first guardian''s trial runs, no guardian is in office, so R13''s bootstrap provisions keep applying. The seeded
   defects the council uses in a trial are not tooled here and stay with the council.'
 files:
-- outils/bee.py
-- outils/test_bee.py
+- tools/bee.py
+- tools/test_bee.py
 - bee.yaml
 - docs/devolution.md
-- docs/gardiens.md
+- docs/guardians.md
 reach: 0.6
 metric: null
 depends_on:

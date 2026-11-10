@@ -17,9 +17,9 @@ context: 'Founder''s decision of 31/10: the hive moves to English before the fir
   they follow the English text. Translate in place, keeping file names: docs/croissance.md, docs/garants.md (about
   334 lines).'
 files:
-- docs/croissance.md
-- docs/garants.md
-- outils/test_bee.py
+- docs/growth.md
+- docs/guarantors.md
+- tools/test_bee.py
 reach: 0.5
 metric: null
 acceptance_criteria:

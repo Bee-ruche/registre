@@ -16,12 +16,12 @@ context: 'Founder''s decision of 31/10: the hive moves to English before the fir
   merged automatically: the council merges. Translate in place, keeping file names: MAINTENEURS.md, docs/vision.md,
   docs/gouvernance.md, docs/cap.md, docs/candidats.md (about 371 lines).'
 files:
-- MAINTENEURS.md
+- MAINTAINERS.md
 - docs/vision.md
-- docs/gouvernance.md
-- docs/cap.md
-- docs/candidats.md
-- outils/test_bee.py
+- docs/governance.md
+- docs/balance.md
+- docs/candidates.md
+- tools/test_bee.py
 reach: 0.5
 metric: null
 acceptance_criteria:

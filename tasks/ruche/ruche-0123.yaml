@@ -11,8 +11,8 @@ context: Write path at scale, step 1, task E4 (docs/architecture.md, section 4, 
   the full suite into its own workflow.
 files:
 - .github/workflows/validation.yml
-- outils/bee.py
-- outils/test_bee.py
+- tools/bee.py
+- tools/test_bee.py
 reach: 0.7
 metric: null
 acceptance_criteria:

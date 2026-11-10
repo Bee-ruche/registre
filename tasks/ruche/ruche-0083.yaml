@@ -13,8 +13,8 @@ context: 'On ruche-0080''s registries, measure what the CI and the members run, 
   pull request could trigger on purpose is a weakness of our tools: it goes through the private channel of docs/securite.md,
   never into the pull request or a note.'
 files:
-- outils/repetition/load_test.py
-- docs/outillage.md
+- tools/rehearsal/load_test.py
+- docs/tooling.md
 - docs/devolution.md
 reach: 0.6
 metric: null

@@ -10,7 +10,7 @@ context: Follow-up of ruche-0092's review. A test pins the order of the `valider
   with `|| true` or a similar shell construct, and no test would notice. Also, a class-level skip in the parallel runner
   is reported as a missing report rather than as a skip (it fails closed, with a misleading message).
 files:
-- outils/test_bee.py
+- tools/test_bee.py
 - .github/workflows/validation.yml
 reach: 0.3
 metric: null

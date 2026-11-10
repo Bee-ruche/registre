@@ -12,9 +12,9 @@ context: 'Write path at scale, step 1, task E23a (docs/architecture.md, section 
   plan in its current job; part 2 splits the jobs. The builder estimates the size before building; if it passes M, the
   council splits the task before work starts.'
 files:
-- .github/workflows/integration-auto.yml
-- outils/bee.py
-- outils/test_bee.py
+- .github/workflows/auto-integration.yml
+- tools/bee.py
+- tools/test_bee.py
 reach: 0.7
 metric: null
 acceptance_criteria:

@@ -14,9 +14,9 @@ context: 'Adapted from DeepSeek''s dsh-superagent prototype (https://github.com/
   function for a privilege (one implementation each, no copy). The check is a computation at the act: it writes nothing,
   and never touches `reservation.depuis` (R7), a term''s end (ruche-0081) or a trial''s start (ruche-0082).'
 files:
-- outils/bee.py
-- outils/test_bee.py
-- docs/taches.md
+- tools/bee.py
+- tools/test_bee.py
+- docs/tasks.md
 - docs/devolution.md
 reach: 0.6
 metric: null

@@ -12,8 +12,8 @@ context: 'Hardening of the judge''s chain (the common judge and both forks). Tod
   by that identifier and checks the digest, never by name. Write the design (docs/juge-commun.md, a new section) and split
   it into tasks of about 200 lines each, for the registry, the common judge and each fork; no code in this task.'
 files:
-- docs/juge-commun.md
-- taches/
+- docs/common-judge.md
+- tasks/
 reach: 0.8
 metric: null
 acceptance_criteria:

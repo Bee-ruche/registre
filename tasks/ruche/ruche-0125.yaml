@@ -11,9 +11,9 @@ context: 'Write path at scale, step 1, task E23b (docs/architecture.md, section 
   forks), closures, discarded closures, and the records through today''s publishing step. It reads no PR or fork text
   beyond the plan and the heads it checks.'
 files:
-- .github/workflows/integration-auto.yml
-- outils/bee.py
-- outils/test_bee.py
+- .github/workflows/auto-integration.yml
+- tools/bee.py
+- tools/test_bee.py
 reach: 0.7
 metric: null
 acceptance_criteria:

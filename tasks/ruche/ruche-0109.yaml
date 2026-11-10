@@ -11,7 +11,7 @@ context: 'Follow-up of ruche-0042''s review. Votes and measurements are append-o
   what is recorded in docs/decisions.md, how the merge is done outside the gate, how the history is kept), without adding
   any bypass to the gate.'
 files:
-- docs/gouvernance.md
+- docs/governance.md
 - docs/decisions.md
 reach: 0.5
 metric: null

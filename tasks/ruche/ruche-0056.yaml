@@ -24,7 +24,7 @@ files:
 - AGENTS.fr.md
 - README.md
 - CLAUDE.md
-- outils/test_bee.py
+- tools/test_bee.py
 reach: 0.7
 metric: null
 acceptance_criteria:

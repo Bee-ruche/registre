@@ -16,12 +16,12 @@ context: 'Founder''s decision of 31/10: the hive moves to English before the fir
   merged automatically: the council merges. Translate in place, keeping file names: docs/outillage.md, docs/branches.md,
   docs/arbre.md, docs/perimetre.md, UTILISATEURS.md (about 358 lines).'
 files:
-- docs/outillage.md
+- docs/tooling.md
 - docs/branches.md
-- docs/arbre.md
-- docs/perimetre.md
-- UTILISATEURS.md
-- outils/test_bee.py
+- docs/tree.md
+- docs/scope.md
+- USERS.md
+- tools/test_bee.py
 reach: 0.5
 metric: null
 acceptance_criteria:

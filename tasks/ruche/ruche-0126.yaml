@@ -13,7 +13,7 @@ context: 'Write path at scale, step 1, task E5a (docs/architecture.md, section 4
   credentials. Still under today''s tokens; E5c moves them to the App.'
 files:
 - .github/workflows/
-- outils/test_bee.py
+- tools/test_bee.py
 reach: 0.7
 metric: null
 acceptance_criteria:

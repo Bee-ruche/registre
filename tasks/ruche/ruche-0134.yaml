@@ -10,10 +10,10 @@ context: 'Write path at scale, step 1, task E9 (docs/architecture.md, section 4,
   and conflicts by reason, passes, spending per token, push runs by scope, open data PRs, expired reservations; shown
   on the site and read by ruche-0100''s waves.'
 files:
-- outils/bee.py
-- outils/test_bee.py
-- outils/site_bee.py
-- docs/mesures.md
+- tools/bee.py
+- tools/test_bee.py
+- tools/site_bee.py
+- docs/measurements.md
 reach: 0.6
 metric: null
 acceptance_criteria:

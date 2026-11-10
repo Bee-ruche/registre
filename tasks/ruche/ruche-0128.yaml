@@ -12,9 +12,9 @@ context: Write path at scale, step 1, task E5c (docs/architecture.md, section 4,
   After merge, on the council's word, the PR-only rule is turned on for `main` with the App alone in the bypass list.
 files:
 - .github/workflows/
-- outils/test_bee.py
-- docs/securite.md
-- docs/gouvernance.md
+- tools/test_bee.py
+- docs/security.md
+- docs/governance.md
 reach: 0.7
 metric: null
 acceptance_criteria:

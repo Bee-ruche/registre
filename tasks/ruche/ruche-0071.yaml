@@ -20,9 +20,9 @@ context: 'Founder''s decision of 31/10: the hive moves to English before the fir
 files:
 - .github/pull_request_template.md
 - .github/ISSUE_TEMPLATE/
-- modeles/
+- templates/
 - schemas/
-- outils/test_bee.py
+- tools/test_bee.py
 reach: 0.4
 metric: null
 acceptance_criteria:

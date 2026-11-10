@@ -19,7 +19,7 @@ context: 'Split from ruche-0024 by the council''s decision of 2 Nov 2026, after 
 files:
 - .github/workflows/juge.yml
 - outils/juge/
-- docs/juge-commun.md
+- docs/common-judge.md
 reach: 0.6
 metric: null
 depends_on:

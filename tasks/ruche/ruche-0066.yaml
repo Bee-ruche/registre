@@ -17,9 +17,9 @@ context: 'Founder''s decision of 31/10: the hive moves to English before the fir
   part: arbre/SENS.md and every node under arbre/projets/ (about 314 lines). Node headings and budgets are checked
   by the tool: ruche-0055 first. Header keys (parent, mis_a_jour…) stay as they are (ruche-0070).'
 files:
-- arbre/SENS.md
-- arbre/projets/
-- outils/test_bee.py
+- tree/SENS.md
+- tree/projets/
+- tools/test_bee.py
 reach: 0.5
 metric: null
 acceptance_criteria:
@@ -32,7 +32,7 @@ acceptance_criteria:
 - on merge, the council records in docs/decisions.md that these files are now authoritative in English
 out_of_scope:
 - header keys (ruche-0070)
-- arbre/roles/ (ruche-0067)
+- tree/roles/ (ruche-0067)
 depends_on:
 - ruche-0055
 - ruche-0145

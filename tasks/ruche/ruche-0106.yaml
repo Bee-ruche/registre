@@ -16,10 +16,10 @@ context: 'Split from ruche-0052 (council''s decision of 2 Nov 2026: it did not f
   compared by domain. Adjust the existing tests that pin the old behaviour (A1, same person under another address) only
   where the new rule is stricter or says so.'
 files:
-- outils/bee.py
-- outils/test_bee.py
+- tools/bee.py
+- tools/test_bee.py
 - schemas/invitation.schema.json
-- docs/croissance.md
+- docs/growth.md
 reach: 0.7
 metric: null
 depends_on:
@@ -32,7 +32,7 @@ acceptance_criteria:
 - independent adversarial review attached, made with the architect's brief; the full test suite passes
 out_of_scope:
 - COMMANDMENTS.md
-- REGLES.md
+- RULES.md
 - commandment 8's origins (by domain)
 node: projects/ruche/ruche
 status: open
