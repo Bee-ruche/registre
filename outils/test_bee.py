@@ -23114,7 +23114,7 @@ class TestEnglishNamesStep1c(unittest.TestCase):
         self.assertTrue(r.stdout.endswith(f"problem(s): the head {tete} is not proven to be the switch of the base {self.base}.\n"), r.stdout)
         for sortie in (r.stdout.splitlines(), lignes):
             self.assertEqual([x for x in sortie if x.startswith(("P1b (c): ", "P4: ", "P6: "))], ["P1b (c): 1 problem(s)", "P4: 1 problem(s)", "P6: 1 problem(s)"])
-            self.assertEqual([x.split(": ✓")[0] for x in sortie if ": ✓" in x], ["P2", "P1, P1b (a, b), P3", "section 13"])  # proven without its code
+            self.assertEqual([x.split(": ✓")[0] for x in sortie if ": ✓" in x], ["P2", "P1, P1b (a, b), P3", "P7", "section 13"])  # proven without its code
         self.assertEqual(problemes, [f"{p}: the new tool's observations: classes: not the corpus asked" for p in ("P1b (c)", "P4", "P6")])
         self.assertNotIn("forged", r.stdout)
 
@@ -23284,7 +23284,7 @@ class TestEnglishNamesStep1c(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         lignes = r.stdout.splitlines()
         self.assertEqual(lignes[-1], f"✓ the head {self.main} (generated {self.tete}, then the hand-made part) is proven to be the switch of the base {self.base}.")
-        self.assertEqual([x.split(":")[0] for x in lignes[:-1]], ["P2", "P1, P1b (a, b), P3", "hand-made part (" + self.tete + ".." + self.main + ")",
+        self.assertEqual([x.split(":")[0] for x in lignes[:-1]], ["P2", "P1, P1b (a, b), P3", "P7", "hand-made part (" + self.tete + ".." + self.main + ")",
                                                                   "  tools/bee.py", "P1b (c)", "P4", "P6", "section 13", "note"])
         self.assertTrue(all("✓" in x for x in lignes if not x.startswith(("hand-made", "  ", "note"))), lignes)
         self.assertEqual(lignes[-2], check_migration.NOTE)
@@ -23768,7 +23768,7 @@ class TestEnglishNamesStep1d(unittest.TestCase):
                 self.assertTrue(any(why in p for p in switch.project_paths(self.names, self.fichiers, files)),
                                 switch.project_paths(self.names, self.fichiers, files))
 
-    def test_p7_each_word_renamed_in_the_prose_of_bee_and_the_site_is_approved(self):
+    def test_p7_each_word_renamed_in_the_prose_of_bee_and_the_site_is_accepted(self):
         """Review of b2245cf: P7 reads the base's and the generated strings word by word (not the renamer): each « old -> new » in a
         string part that holds a blank is approved with its count; a plain word renamed beside a French word, or French itself, is
         approved in its context; a stale approval is refused. The committed prose.yaml holds for the fixture's switch."""
@@ -23783,13 +23783,13 @@ class TestEnglishNamesStep1d(unittest.TestCase):
         self.assertEqual(check_migration.prose(self.names, files, wrong, {"files": {"outils/bee.py": {"renamed": counts}}})[0],
                          ["P7: tools/bee.py: « fichier -> file » renamed 1 time(s) in its prose, prose.yaml approves 0",
                           "P7: tools/bee.py: « de [fichier] » renamed beside French words: keep it as written, or approve it (prose.yaml, beside_french)"])
-        approved = {"files": {"outils/bee.py": {"renamed": {**counts, "fichier -> file": 1}, "beside_french": ["de [fichier]"]}}}
-        self.assertEqual(check_migration.prose(self.names, files, wrong, approved), ([], 4))  # what a human approved by hand
-        self.assertEqual(check_migration.prose(self.names, files, ok, approved)[0],  # approvals the switch no longer needs
+        accepted = {"files": {"outils/bee.py": {"renamed": {**counts, "fichier -> file": 1}, "beside_french": ["de [fichier]"]}}}
+        self.assertEqual(check_migration.prose(self.names, files, wrong, accepted), ([], 4))  # what a human approved by hand
+        self.assertEqual(check_migration.prose(self.names, files, ok, accepted)[0],  # approvals the switch no longer needs
                          ["P7: tools/bee.py: « fichier -> file » renamed 0 time(s) in its prose, prose.yaml approves 1",
                           "P7: tools/bee.py: prose.yaml approves « de [fichier] » beside French words, which the switch no longer renames"])
-        twice = {"tools/bee.py": new.replace('"bee publish --title"', '"bee publish --title", "bee publish"').encode()}
-        self.assertIn("P7: tools/bee.py: its string parts do not align with those of outils/bee.py", check_migration.prose(self.names, files, twice, approved)[0])
+        two = {"tools/bee.py": new.replace('"bee publish --title"', '"bee publish --title", "bee publish"').encode()}
+        self.assertIn("P7: tools/bee.py: its string parts do not align with those of outils/bee.py", check_migration.prose(self.names, files, two, accepted)[0])
         for text, word, flagged in (("réservée par « x »", "par", "réservée [par]"), ("le guide de l'agent", "le", "[le] guide"),
                                     ("x : statut", "statut", None), ("relancez bee prendre la tâche", "prendre", None),
                                     ("Ce qui vous est demandé : participer, en", "participer", "demandé [participer]")):

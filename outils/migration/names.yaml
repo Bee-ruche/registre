@@ -2078,4 +2078,7 @@ hand:
 - files: outils/migration/switch.py
   same: true
   why: 'step 1d''s switch script, moved: it runs only from the base (ruche-0145 reruns it from main during the freeze)'
+- files: outils/migration/prose.yaml
+  same: true
+  why: 'P7''s approvals (ruche-0153, review of b2245cf), moved: check-migration reads them from the base'
 new: []
