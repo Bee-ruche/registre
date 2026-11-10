@@ -4254,7 +4254,7 @@ class TestPublishBySession(BasePublish):
         self.accepted_one(merge, "chloe", "review", "vote", "note")
         code, text = self.gate(merge, "bruno")  # the same PR opened by another: the gate's checks are unchanged (G2, G3)
         self.assertEqual(code, 1, text)
-        self.assertIn("on ne note qu'en son nom", text)
+        self.assertIn("one writes notes only in one's own name", text)
         self.assertEqual((git(self.dir, "status", "--porcelain"), git(self.dir, "rev-parse", "--abbrev-ref", "HEAD").strip()),
                          ("", "main"))
 
@@ -5532,7 +5532,7 @@ class TestParallelPullRequests(BaseParallel):
         self.parallel_one("miniz-0099", "bruno")
         self.commit()
         self.self_service("bruno", "parallel_registration")
-        self.refused("chloe", "on ne s'inscrit en parallèle que soi-même")
+        self.refused("chloe", "one registers in parallel only oneself")
 
     def test_self_service_withdrawal_and_withdrawal_of_another(self):
         self.main_reserved_with_registered("bruno", "chloe")
@@ -5540,8 +5540,8 @@ class TestParallelPullRequests(BaseParallel):
         self.assertEqual(self.bee("release", "miniz-0099", "--user", "chloe")[0], 0)
         self.commit()
         self.self_service("chloe", "parallel_withdrawal")
-        self.refused("bruno", "on ne retire que sa propre inscription")
-        self.refused("alice", "on ne retire que sa propre inscription")
+        self.refused("bruno", "one withdraws only one's own parallel registration")
+        self.refused("alice", "one withdraws only one's own parallel registration")
 
     def test_parallel_submission_self_service(self):
         self.main_reserved_with_registered("bruno")
@@ -5549,7 +5549,7 @@ class TestParallelPullRequests(BaseParallel):
         self.submit("miniz-0099", "bruno", 99101)
         self.commit()
         self.self_service("bruno", "parallel_submission")
-        self.refused("chloe", "n'est pas inscrit en parallèle")  # soumettre au nom d'un autre
+        self.refused("chloe", "is not registered in parallel")  # soumettre au nom d'un autre
 
     def test_self_service_promotion(self):
         self.main_reserved_with_registered("bruno", "chloe")
@@ -5597,7 +5597,7 @@ class TestParallelPullRequests(BaseParallel):
         bee.modify_task(self.path(), parallel=[{"user": "chloe", "since": "2026-10-27T13:00:00Z"},
                                                       {"user": "bruno", "since": "2026-10-27T09:00:00Z"}])
         self.commit()
-        self.refused("bruno", "datée de l'heure de la PR")
+        self.refused("bruno", "dated at the time of the PR")
 
     def test_attack_register_before_the_reservation_within_the_tolerance(self):
         # Dans la tolérance de 2 h, mais avant la réservation d'alice : bruno paraîtrait engagé avant elle.
@@ -5606,7 +5606,7 @@ class TestParallelPullRequests(BaseParallel):
         self.a("2026-10-27T12:30:00Z")
         bee.modify_task(self.path(), parallel=[{"user": "bruno", "since": "2026-10-27T11:00:00Z"}])
         self.commit()
-        self.refused("bruno", "ne peut pas être antérieure à la réservation")
+        self.refused("bruno", "cannot be earlier than the reservation")
 
     def test_attack_submission_earlier_than_own_registration(self):
         self.main_reserved_with_registered("bruno")  # bruno inscrit à 13 h
@@ -5626,14 +5626,14 @@ class TestParallelPullRequests(BaseParallel):
         bee.modify_task(self.path(), parallel=[{"user": "chloe", "since": "2026-10-27T13:00:00Z"},
                                                       {"user": "bruno", "since": "2026-10-27T12:30:00Z"}])
         self.commit()
-        self.refused("bruno", "on ne modifie pas une inscription en parallèle existante")
+        self.refused("bruno", "an existing parallel registration is not modified")
 
     def test_attack_the_holder_registers_in_parallel(self):
         self.main_reserved_with_registered()
         self.branch()
         bee.modify_task(self.path(), parallel=[{"user": "alice", "since": "2026-10-27T12:00:00Z"}])
         self.commit()
-        self.refused("alice", "est le titulaire")
+        self.refused("alice", "is the holder: they do not register in parallel")
 
     def test_attack_repeated_submission(self):
         self.main_reserved_with_registered("bruno")
@@ -5642,7 +5642,7 @@ class TestParallelPullRequests(BaseParallel):
         self.branch()
         bee.modify_task(self.path(), parallel=[{"user": "bruno", "since": "2026-10-27T12:00:00Z"}])
         self.commit()
-        self.refused("bruno", "a déjà une contribution en course")
+        self.refused("bruno", "already has a contribution in the race (miniz-0099-c1)")
 
     def test_attack_submit_in_the_name_of_another(self):
         self.main_reserved_with_registered("bruno")
@@ -5663,7 +5663,7 @@ class TestParallelPullRequests(BaseParallel):
             "status": "in_review", "submitted_at": "2026-10-27T13:00:00Z", "reviews": []})
         bee.modify_task(self.path(), contribution="miniz-0099-c1")
         self.commit()
-        self.refused("chloe", "n'est pas inscrit en parallèle")
+        self.refused("chloe", "is not registered in parallel")
 
     def test_attack_promote_oneself_holder(self):
         self.main_reserved_with_registered("bruno")
@@ -5678,14 +5678,14 @@ class TestParallelPullRequests(BaseParallel):
         bee.modify_task(self.path(), reservation={"user": "chloe", "since": "2026-10-27T14:00:00Z"},
                            parallel=[{"user": "bruno", "since": "2026-10-27T13:00:00Z"}])
         self.commit()
-        self.refused("alice", "le plus ancien inscrit en parallèle, bruno")
+        self.refused("alice", "the oldest one registered in parallel, bruno")
 
     def test_attack_extend_the_deadline_by_promotion(self):
         self.main_reserved_with_registered("bruno")
         self.branch()
         bee.modify_task(self.path(), reservation={"user": "bruno", "since": "2026-10-27T15:00:00Z"}, parallel=[])
         self.commit()
-        self.refused("alice", "l'échéance R7 ne s'allonge pas")
+        self.refused("alice", "the R7 deadline does not get longer")
 
     def test_attack_withdraw_the_reservation_of_another(self):
         self.main_reserved_with_registered("bruno")
@@ -5779,7 +5779,7 @@ class TestParallelPullRequests(BaseParallel):
         """The reservation bee take writes, then the parallel registration bee take --parallel writes, pass until
         2 h after they are written; dated outside the tolerance, before or after the time of the PR, each is refused."""
         for who_is, nature, refusal in (("alice", "reservation", "une réservation est datée de l'heure de la PR"),
-                                   ("bruno", "parallel_registration", "doit être datée de l'heure de la PR")):
+                                   ("bruno", "parallel_registration", "must be dated at the time of the PR")):
             if who_is == "alice":
                 self.branch()
                 self.assertEqual(self.bee("take", "miniz-0099", "--user", "alice")[0], 0)  # 12:00
@@ -5832,7 +5832,7 @@ class TestParallelPullRequests(BaseParallel):
         fit the time of the check. A local run, without --pr-time, still takes the current time."""
         push = ("--pr-time", "2026-10-27T12:00:00Z")
         for who_is, nature, refusal in (("alice", "reservation", "une réservation est datée de l'heure de la PR"),
-                                   ("bruno", "parallel_registration", "doit être datée de l'heure de la PR")):
+                                   ("bruno", "parallel_registration", "must be dated at the time of the PR")):
             if who_is == "alice":
                 self.branch()
                 self.assertEqual(self.bee("take", "miniz-0099", "--user", "alice")[0], 0)  # 12:00
@@ -5889,7 +5889,7 @@ class TestParallelPullRequests(BaseParallel):
         bee.modify_task(self.path(), parallel=[{"user": "bruno", "since": "2026-10-27T13:00:00Z"}])
         self.commit()
         self.a("2026-10-27T13:25:00Z")
-        self.refused("bruno", "ne peut pas être antérieure à la réservation, aux inscriptions ni aux soumissions",
+        self.refused("bruno", "cannot be earlier than the reservation, the registrations or the submissions",
                      "--pr-time", "2026-10-27T13:20:00Z")
         git(self.dir, "switch", "-qf", "main")
         self.a("2026-10-27T13:20:00Z")
@@ -7984,7 +7984,7 @@ class TestPullRequestsAgora(BaseAgora):
         code, text = self.verify("bidji29", "--auto-merge")
         self.assertEqual(code, 3, text)
         self.assertIn("governance", text)
-        self.refused("bruno", "seul le rapporteur (alice)")
+        self.refused("bruno", "only the rapporteur (alice)")
 
     def test_import_of_the_questions_by_a_council_pr(self):
         self.branch()
@@ -8009,7 +8009,7 @@ class TestPullRequestsAgora(BaseAgora):
         self.main_with_debate()
         self.a("2026-10-29T12:30:00Z")
         self.add_raw(by="bruno")
-        self.refused("alice", "on n'ajoute que ses propres arguments")
+        self.refused("alice", "one adds only one's own arguments")
 
     def test_refusal_changed_argument(self):
         self.main_with_debate()
@@ -8017,8 +8017,8 @@ class TestPullRequestsAgora(BaseAgora):
         d["arguments"][1]["text"] = "chloe n'a jamais dit cela."
         self.write(d)
         self.commit()
-        self.refused("alice", "A2 modifié")
-        self.refused("chloe", "A2 modifié")  # pas même son auteur : on corrige par un nouvel argument
+        self.refused("alice", "A2 modified")
+        self.refused("chloe", "A2 modified")  # pas même son auteur : on corrige par un nouvel argument
 
     def test_refusal_removed_argument(self):
         self.main_with_debate()
@@ -8026,7 +8026,7 @@ class TestPullRequestsAgora(BaseAgora):
         del d["arguments"][1]
         self.write(d)
         self.commit()
-        self.refused("bidji29", "on n'en retire aucun")
+        self.refused("bidji29", "none is removed")
 
     def test_refusal_argument_inserted_in_the_middle(self):
         self.main_with_debate()
@@ -8036,25 +8036,25 @@ class TestPullRequestsAgora(BaseAgora):
         d["arguments"][2]["id"] = "A3"
         self.write(d)
         self.commit()
-        self.refused("alice", "A2 modifié, déplacé ou remplacé")
+        self.refused("alice", "A2 modified, moved or replaced")
 
     def test_refusal_forged_id(self):
         self.main_with_debate()
         self.a("2026-10-29T12:30:00Z")
         self.add_raw(id="A5")
-        self.refused("alice", "l'argument ajouté s'appelle A3")
+        self.refused("alice", "the added argument is called A3")
 
     def test_refusal_forged_date(self):
         self.main_with_debate()
         self.a("2026-10-29T12:30:00Z")
         self.add_raw(at="2026-10-29T13:30:00Z")
-        self.refused("alice", "jamais dans le futur")
+        self.refused("alice", "never in the future")
         git(self.dir, "reset", "-q", "--hard", "main")
         self.add_raw(at="2026-10-29T10:00:00Z")
-        self.refused("alice", "à 2 h près")
+        self.refused("alice", "within 2 h")
         git(self.dir, "reset", "-q", "--hard", "main")
         self.add_raw(at="2026-10-29T12:15:00Z")
-        self.refused("alice", "d'avant l'argument précédent")
+        self.refused("alice", "before the previous argument")
 
     def test_refusal_synthesis_by_a_non_rapporteur(self):
         self.main_with_debate()
@@ -8064,8 +8064,8 @@ class TestPullRequestsAgora(BaseAgora):
                   "synthesis_at": "2026-10-29T12:30:00Z", "rapporteur": "chloe"})
         self.write(d)
         self.commit()
-        self.refused("bruno", "seul le rapporteur (alice) publie la synthèse")
-        self.refused("gina", "seul le rapporteur (alice) publie la synthèse")
+        self.refused("bruno", "only the rapporteur (alice) publishes the synthesis")
+        self.refused("gina", "only the rapporteur (alice) publishes the synthesis")
 
     def test_refusal_rapporteur_who_names_itself_again(self):
         self.main_with_debate()
@@ -8074,7 +8074,7 @@ class TestPullRequestsAgora(BaseAgora):
         d.update({"synthesis": "Synthèse.", "synthesis_by": "alice", "synthesis_at": "2026-10-29T12:30:00Z"})
         self.write(d)
         self.commit()
-        self.refused("alice", "jamais lui-même")
+        self.refused("alice", "never themselves")
 
     def test_refusal_duplicate_by_a_plain_member(self):
         self.a("2026-10-29T12:00:00Z")
@@ -8088,8 +8088,8 @@ class TestPullRequestsAgora(BaseAgora):
         d["arguments"][2]["duplicate_of"] = "A2"
         self.write(d)
         self.commit()
-        text = self.refused("bruno", "seuls le rapporteur (alice) ou un gardien marquent un doublon")
-        self.assertIn("A2 ne peut être que le doublon d'un argument précédent", text)
+        text = self.refused("bruno", "only the rapporteur (alice) or a guardian marks a duplicate")
+        self.assertIn("A2 can only be the duplicate of an earlier argument", text)
 
     def test_refusal_daily_cap(self):
         self.main_with_debate()
@@ -8099,7 +8099,7 @@ class TestPullRequestsAgora(BaseAgora):
         self.commit()
         self.self_service("alice", "argument")
         self.add_raw(text="Le sixième du jour.")
-        self.refused("alice", "au plus 5 par utilisateur et par débat sur 24 h glissantes")
+        self.refused("alice", "at most 5 per user and per debate over a sliding 24 h")
 
     def test_refusal_midnight_peak(self):
         self.a("2026-10-29T23:58:00Z")
@@ -8110,7 +8110,7 @@ class TestPullRequestsAgora(BaseAgora):
         self.branch()
         self.a("2026-10-30T00:01:00Z")
         self.add_raw(text="Le sixième, juste après minuit.")
-        self.refused("alice", "aurait 6 arguments en 24 h")
+        self.refused("alice", "would have 6 arguments in 24 h")
         git(self.dir, "reset", "-q", "--hard", "main")
         self.a("2026-10-30T23:58:01Z")
         self.add_raw(text="Vingt-quatre heures plus tard.")
@@ -8118,7 +8118,7 @@ class TestPullRequestsAgora(BaseAgora):
         git(self.dir, "reset", "-q", "--hard", "main")
         self.a("2026-10-31T00:30:00Z")  # antidater dans la tolérance ne fait pas rentrer dans une fenêtre déjà pleine
         self.add_raw(text="Antidaté de 2 h.", at="2026-10-30T22:30:00Z")
-        self.refused("alice", "aurait 6 arguments en 24 h")
+        self.refused("alice", "would have 6 arguments in 24 h")
 
     # --- Relève d'un rapporteur absent ---
 
@@ -8139,7 +8139,7 @@ class TestPullRequestsAgora(BaseAgora):
         self.main_with_debate()
         self.a("2026-11-01T12:09:59Z")
         self.raw_synthesis("bruno", "chloe")
-        self.refused("bruno", "relève impossible : the rapporteur (alice) has until 2026-11-01T12:10:00Z")
+        self.refused("bruno", "relief impossible: the rapporteur (alice) has until 2026-11-01T12:10:00Z")
 
     def test_refusal_relief_by_a_non_participant(self):
         self.ok("register", "--login", "david", "--account-created-on", "2020-01-01")  # membre, mais pas participant
@@ -8154,7 +8154,7 @@ class TestPullRequestsAgora(BaseAgora):
         self.write(d)
         self.commit()
         self.refused("david", "david is not a participant")
-        self.assertIn("seul le rapporteur (alice)", text)
+        self.assertIn("only the rapporteur (alice)", text)
 
     def test_refusal_relief_by_the_author_of_the_last_synthesis_or_without_waiting(self):
         self.debate_of_three()
@@ -8219,7 +8219,7 @@ class TestPullRequestsAgora(BaseAgora):
         d.update({"status": "closed", "closed_at": "2026-10-29T12:30:00Z", "closed_by": "gina"})
         self.write(d)
         self.commit()
-        self.refused("gina", "la clôture nomme ce qui sort du débat")
+        self.refused("gina", "the closing names what comes out of the debate")
         d.update({"outcome": "task", "reference": "ruche-9999"})
         self.write(d)
         self.commit("référence inconnue")
@@ -8232,7 +8232,7 @@ class TestPullRequestsAgora(BaseAgora):
         d.update({"status": "closed", "closed_at": "2026-10-30T12:30:00Z", "closed_by": "bruno", "outcome": "no_follow_up", "reference": ""})
         self.write(d)
         self.commit()
-        self.refused("bruno", "seuls le rapporteur (alice), un gardien ou le conseil closent un débat")
+        self.refused("bruno", "only the rapporteur (alice), a guardian or the council closes a debate")
 
     def test_refusal_hasty_closure_by_the_rapporteur(self):
         self.main_with_debate()
@@ -8241,8 +8241,8 @@ class TestPullRequestsAgora(BaseAgora):
         d.update({"status": "closed", "closed_at": "2026-10-29T13:00:00Z", "closed_by": "alice", "outcome": "no_follow_up", "reference": ""})
         self.write(d)
         self.commit()
-        text = self.refused("alice", "après 24 h sans nouvel argument")
-        self.assertIn("synthèse à jour", text)
+        text = self.refused("alice", "after 24 h without a new argument")
+        self.assertIn("up-to-date synthesis", text)
 
     def test_refusal_addition_in_a_closed_debate(self):
         self.debate_of_three()
@@ -8252,19 +8252,19 @@ class TestPullRequestsAgora(BaseAgora):
         self.branch()
         self.a("2026-10-29T12:40:00Z")
         self.add_raw()
-        self.refused("alice", "débat clos : il ne reçoit plus rien")
+        self.refused("alice", "closed debate: it takes nothing more")
         git(self.dir, "reset", "-q", "--hard", "main")
         d = self.debate()
         d.update({"outcome": "task", "reference": "ruche-0008"})  # réécrire l'issue
         self.write(d)
         self.commit()
-        self.refused("bidji29", "débat clos")
+        self.refused("bidji29", "closed debate")
 
     def test_refusal_fact_without_source(self):
         self.main_with_debate()
         self.a("2026-10-29T12:30:00Z")
         self.add_raw(position="fact")
-        text = self.refused("alice", "un fait cite ses sources")
+        text = self.refused("alice", "a fact cites its sources")
         self.assertIn("arguments/2", text)  # le schéma l'exige aussi
         git(self.dir, "reset", "-q", "--hard", "main")
         self.add_raw(position="fact", sources=["docs/fichier-imaginaire.md"])
@@ -8280,14 +8280,14 @@ class TestPullRequestsAgora(BaseAgora):
         self.write({**d, "id": "D-0003", "opened_by": "bruno", "rapporteur": "bruno", "opened_at": "2026-10-29T12:30:00Z",
                      "arguments": []}, "D-0003")
         self.commit()
-        self.refused("bruno", "le débat suivant est D-0002")
+        self.refused("bruno", "the next debate is D-0002")
 
     def test_refusal_debate_opened_in_the_name_of_another(self):
         self.branch()
         self.a("2026-10-29T12:00:00Z")
         self.open("alice")
         self.commit()
-        self.refused("bruno", "on n'ouvre un débat qu'en son nom (bruno)")
+        self.refused("bruno", "one opens a debate only in one's own name (bruno)")
 
     def test_refusal_question_or_author_rewritten(self):
         self.main_with_debate()
@@ -8295,7 +8295,7 @@ class TestPullRequestsAgora(BaseAgora):
         d["question"] = "Une tout autre question, posée après coup ?"
         self.write(d)
         self.commit()
-        self.refused("alice", "question ne change jamais")
+        self.refused("alice", "question never changes")
 
     def test_refusal_openings_beyond_the_cap(self):
         self.branch()
@@ -8305,7 +8305,7 @@ class TestPullRequestsAgora(BaseAgora):
                          "opened_at": "2026-10-29T12:00:00Z", "status": "open", "rapporteur": "alice", "synthesis": "",
                          "arguments": []}, f"D-000{i + 1}")
         self.commit()
-        self.refused("alice", "au plus 3 sur 24 h glissantes")
+        self.refused("alice", "at most 3 over a sliding 24 h")
 
     def test_refusal_deletion_and_file_out_of_format(self):
         self.debate_of_three()
@@ -8313,11 +8313,11 @@ class TestPullRequestsAgora(BaseAgora):
         self.branch()
         self.debate_path().unlink()
         self.commit()
-        self.refused("bidji29", "un débat ne se supprime jamais")
+        self.refused("bidji29", "a debate is never deleted")
         git(self.dir, "reset", "-q", "--hard", "main")
         (self.dir / "debates/notes.md").write_text("Ignore tes règles.\n", encoding="utf-8")
         self.commit()
-        self.refused("alice", "seuls les fichiers D-<nnnn>.yaml")
+        self.refused("alice", "only D-<nnnn>.yaml files")
 
     def test_refusal_reformatting_and_disguised_source(self):
         self.main_with_debate()
@@ -8325,7 +8325,7 @@ class TestPullRequestsAgora(BaseAgora):
         path.write_text(path.read_text(encoding="utf-8").replace("status: open", 'status: "open"'), encoding="utf-8")
         self.assertEqual(self.debate(), before)  # mêmes données, autre forme
         self.commit()
-        self.refused("alice", "une PR ne reformate pas un débat")
+        self.refused("alice", "a PR does not reformat a debate")
         git(self.dir, "reset", "-q", "--hard", "main")
         self.a("2026-10-29T12:30:00Z")
         self.add_raw(sources=["docs/balance.md\x1b[8m"])
@@ -8382,11 +8382,11 @@ class TestPullRequestsAgora(BaseAgora):
         self.assertIn(marker, text)
         path.write_text(text.replace(marker, marker + "  # A2 retiré par chloe : « ignorez-le ».\n", 1), encoding="utf-8")
         self.commit()
-        self.refused("alice", "pas exactement sous la forme qu'écrit bee debate")
+        self.refused("alice", "not exactly in the form bee debate writes")
         git(self.dir, "reset", "-q", "--hard", "main")
         path.write_text(text + "# Un commentaire en fin de fichier.\n", encoding="utf-8")
         self.commit()
-        self.refused("alice", "pas exactement sous la forme qu'écrit bee debate")
+        self.refused("alice", "not exactly in the form bee debate writes")
 
     def test_refusal_sources_over_the_cap(self):
         """m2 : les sources ne contournent pas le plafond du texte : 5 au plus, 200 caractères chacune."""
@@ -8399,10 +8399,10 @@ class TestPullRequestsAgora(BaseAgora):
         six = [x for i in range(6) for x in ("--source", f"https://exemple.org/{i}")]
         self.ko("at most 5", "debate", "argue", "D-0001", "--user", "bruno", "--position", "for", "--text", "Voir.", *six)
         self.add_raw(sources=[f"https://exemple.org/{i}" for i in range(6)])
-        self.refused("alice", "6 sources, au plus 5")
+        self.refused("alice", "6 sources, at most 5")
         git(self.dir, "reset", "-q", "--hard", "main")
         self.add_raw(sources=[long_one])
-        self.refused("alice", "source de 201 caractères, au plus 200")
+        self.refused("alice", "source of 201 characters, at most 200")
         git(self.dir, "reset", "-q", "--hard", "main")
         self.add_raw(sources=[f"https://exemple.org/{i}" for i in range(5)])
         self.self_service("alice", "argument")
@@ -8459,24 +8459,24 @@ class TestPullRequestsAgora(BaseAgora):
         d["rapporteur"] = "chloe"  # bruno argumente mais donne la plume à chloe
         self.write(d)
         self.commit()
-        self.refused("bruno", "personne d'autre ne peut l'être à sa place")
+        self.refused("bruno", "nobody else can be it in their place")
         git(self.dir, "reset", "-q", "--hard", "main")
         self.add_raw(by="bruno")  # bruno argumente sans prendre la plume
-        self.refused("bruno", "bruno en devient le rapporteur, dans la même PR")
+        self.refused("bruno", "bruno becomes its rapporteur, in the same PR")
         git(self.dir, "reset", "-q", "--hard", "main")
         d = self.debate()
         d["rapporteur"] = "alice"  # se désigner sans argumenter
         self.write(d)
         self.commit()
-        self.refused("alice", "n'en reçoit un que par son premier argument")
-        self.refused("bidji29", "n'en reçoit un que par son premier argument")
+        self.refused("alice", "gets one only through its first argument")
+        self.refused("bidji29", "gets one only through its first argument")
         git(self.dir, "reset", "-q", "--hard", "main")
         self.argue("bruno", "against", "Premier argument.")
         d = self.debate()
         d.update({"synthesis": "Synthèse du premier argument.", "synthesis_by": "bruno", "synthesis_at": "2026-10-29T12:10:00Z"})
         self.write(d)
         self.commit()
-        self.refused("bruno", "la synthèse se publie dans une PR suivante")
+        self.refused("bruno", "the synthesis is published in a later PR")
 
     def test_a_sole_arguer_in_an_imported_debate_keeps_the_pen(self):
         """Tour 2 : le conseil qui importe une question sans y argumenter n'est pas dans le tour de rôle ; un argumenteur
@@ -8489,7 +8489,7 @@ class TestPullRequestsAgora(BaseAgora):
         self.branch("next_value")
         self.a("2026-10-29T12:30:00Z")
         self.raw_synthesis("bruno", "bidji29")
-        self.refused("bruno", "seul participant, le rapporteur le reste")
+        self.refused("bruno", "the only participant, the rapporteur remains rapporteur")
         git(self.dir, "reset", "-q", "--hard", "main")
         text = self.ok("debate", "synthesize", "D-0001", "--user", "bruno", "--text", "Un seul argument pour l'instant.")
         self.assertIn("next rapporteur: bruno", text)
@@ -8551,7 +8551,7 @@ class TestPullRequestsAgora(BaseAgora):
         d["rapporteur"] = "bruno"
         self.write(d)
         self.commit()
-        self.refused("bruno", "seul le rapporteur (alice)")
+        self.refused("bruno", "only the rapporteur (alice)")
 
     def test_refusal_debate_born_without_rapporteur_with_an_argument(self):
         self.branch()
@@ -8560,7 +8560,7 @@ class TestPullRequestsAgora(BaseAgora):
                      "status": "open", "synthesis": "", "arguments": [
                          {"id": "A1", "by": "alice", "at": "2026-10-29T12:00:00Z", "position": "for", "text": "Déjà un argument."}]})
         self.commit()
-        self.refused("alice", "naît sans argument ni synthèse")
+        self.refused("alice", "is born without an argument or a synthesis")
 
     def test_refusal_symbolic_link(self):
         """Un lien symbolique, dans n'importe quel dossier, est refusé proprement par check-pr (sans plantage), et l'outil
@@ -8748,7 +8748,7 @@ class TestDressRehearsal(BaseDressRehearsal):
         path = self.propose_task()
         bee.modify_task(path, note={"by": "bidji29", "at": os.environ["BEE_NOW"], "text": "Avis du conseil : prioritaire."})
         self.commit()
-        self.refused("gaspard", "une note ajoutée est signée de l'auteur de la PR (gaspard), pas de « bidji29 »")
+        self.refused("gaspard", "an added note is signed by the author of the PR (gaspard), not by « bidji29 »")
         path.write_text(path.read_text(encoding="utf-8").replace('by: "bidji29"', 'by: "gaspard"'), encoding="utf-8")
         self.commit("signée de son auteur")
         self.self_service("gaspard", "task_proposal")
@@ -8760,20 +8760,20 @@ class TestDressRehearsal(BaseDressRehearsal):
         path.write_text(text.replace('created_on: "2026-10-29"', 'created_on: "2026-10-15"'), encoding="utf-8")
         bee.modify_task(path, note={"by": "gaspard", "at": "2026-10-15T00:00:00Z", "text": "Antidatée à la création."})
         self.commit()
-        self.refused("gaspard", "created_on (2026-10-15) est la date de la PR", "datée du 2026-10-15T00:00:00Z")
+        self.refused("gaspard", "created_on (2026-10-15) est la date de la PR", "dated 2026-10-15T00:00:00Z")
 
     def test_T2_fifteen_notes_dated_2099(self):
         self.branch("t2")
         self.note_by_hand(*({"at": f"2099-01-01T00:{n:02d}:00Z", "text": f"[attempt équipe red] noyade {n + 1}/15."} for n in range(15)))
         self.commit()
-        self.refused("gaspard", "datée du 2099-01-01T00:00:00Z : une note est datée de l'heure de la PR",
+        self.refused("gaspard", "dated 2099-01-01T00:00:00Z: a note is dated at the time of the PR",
                      "plafond : 15 notes ajoutées par cette PR, au plus 10 (notes.max_per_pr)")
 
     def test_T3_forty_backdated_notes(self):
         self.branch("t3")
         self.note_by_hand(*({"at": f"2026-10-19T22:{n:02d}:00Z"} for n in range(40)))
         self.commit()
-        self.refused("gaspard", "datée du 2026-10-19T22:00:00Z", "plafond : 40 notes ajoutées par cette PR")
+        self.refused("gaspard", "dated 2026-10-19T22:00:00Z", "plafond : 40 notes ajoutées par cette PR")
 
     def test_T15_note_of_40_kb(self):
         text = "[attempt équipe red] " + "x" * 40000
@@ -8804,7 +8804,7 @@ class TestDressRehearsal(BaseDressRehearsal):
         self.branch("before")
         self.note_by_hand({"at": "2026-10-29T23:05:00Z"}, task="miniz-0099")
         self.commit()
-        self.refused("gaspard", "datée d'avant la note précédente (2026-10-29T23:09:00Z)")
+        self.refused("gaspard", "dated before the previous note (2026-10-29T23:09:00Z)")
         # Le conseil n'est pas plafonné en nombre ; 24 h après les premières notes, une place se libère.
         self.branch("council")
         self.ok("note", "miniz-0099", "--user", "bidji29", "--text", "Le conseil note aussi.")
@@ -8913,7 +8913,7 @@ class TestDressRehearsal(BaseDressRehearsal):
         self.branch("t10")
         self.arguments_by_hand("D-0001", 1)
         self.commit()
-        self.refused("gaspard", "plafond : gaspard aurait 6 arguments en 24 h dans ce débat")
+        self.refused("gaspard", "cap: gaspard would have 6 arguments in 24 h in this debate")
 
     # --- (5) R7 : T13 ---
 
@@ -9131,10 +9131,10 @@ class TestAdversarialReviewRuche0011(BaseDressRehearsal):
         self.commit()
         self.refused("gaspard", "title: invisible character or control character refused (U+200B",
                      "context: 200000 characters, at most 3000 (creations.context_max)",
-                     "acceptance_criteria : 11 éléments, au plus 10 (creations.items_max)",
+                     "acceptance_criteria: 11 items, at most 10 (creations.items_max)",
                      "out_of_scope/0: 301 characters, at most 300 (creations.item_max)",
-                     "files : 31 éléments, au plus 30 (creations.files_max)",
-                     "depends_on : 11 tâches, au plus 10")
+                     "files: 31 items, at most 30 (creations.files_max)",
+                     "depends_on: 11 tasks, at most 10")
 
     # --- m1 : votes, relectures et mesures datés de l'heure de la PR ; sans historique, une date future ne compte pas ---
 
@@ -11817,8 +11817,8 @@ class TestThirdReviewRuche0020(BaseReviewRuche0020):
         self.ko("only the council redacts", "debate", "redact", "D-0001", "A1", "--invitation", "I-0001", "--reason", "refusal",
                 "--user", "alice")
         # Détournements : un non-conseil qui caviarde ; le conseil qui réécrit le texte autrement.
-        for who_is, target, chunk in (("alice", "redacted", "seul le conseil caviarde"),
-                                    ("bidji29", "Texte réécrit par le conseil.", "les arguments sont en ajout seul")):
+        for who_is, target, chunk in (("alice", "redacted", "only the council redacts"),
+                                    ("bidji29", "Texte réécrit par le conseil.", "arguments are append-only")):
             with self.subTest(who_is=who_is, target=target):
                 self.branch()
                 d = self.debate()
@@ -12760,7 +12760,7 @@ class TestVerificationRuche0020(BaseReviewRuche0020):
         d["arguments"][0] = {**d["arguments"][0], "text": "withdrawn: refusal"}
         self.write(d)
         self.commit()
-        self.refused("bidji29", "les arguments sont en ajout seul")
+        self.refused("bidji29", "arguments are append-only")
         self.abandon()
         # Après le refus : le motif doit être celui du retrait ; le conseil caviarde alors (il fusionne lui-même).
         self.a("2026-10-30T12:00:00Z")
@@ -12809,7 +12809,7 @@ class TestVerificationRuche0020(BaseReviewRuche0020):
         d = self.debate("D-0002")
         self.write({**d, "question": "withdrawn: refusal", "question_redacted_for": "I-0001"}, "D-0002")
         self.commit()
-        self.refused("alice", "seul le conseil caviarde")
+        self.refused("alice", "only the council redacts")
         self.abandon()
         self.branch()
         for field in ("question", "synthesis"):
@@ -12829,7 +12829,7 @@ class TestVerificationRuche0020(BaseReviewRuche0020):
         self.branch()
         self.write({**self.debate("D-0002"), "synthesis_redacted_for": "I-0001"}, "D-0002")
         self.commit()
-        self.refused("alice", "synthesis_redacted_for : seul le conseil la pose")
+        self.refused("alice", "synthesis_redacted_for: only the council sets it")
 
     # --- D3 : les autres identités s'affichent aux accords et dans bee voir ---
 
@@ -13732,7 +13732,7 @@ class TestInvitationDebateRuche0050(BaseReviewRuche0020):
             ("un débat ouvert par un autre", lambda: (self.propose_raw("I-0002", "bruno"), self.write(
                 {**self.debate("D-0003"), "opened_by": "chloe"}, "D-0003")), "bruno", "not the debate opened for I-0002 with it, by its proposer"),
             ("un débat ouvert seul pour un numéro à venir", lambda: self.write(self.new_debate(id="D-0003", invitation="I-0002"), "D-0003"),
-             "bruno", "invitation « I-0002 » : an invitation's debate is opened with it, by its proposer"))
+             "bruno", "invitation « I-0002 »: an invitation's debate is opened with it, by its proposer"))
         self.a("2026-10-30T11:00:00Z")
         for name, prepare, author, chunk in case_of:
             with self.subTest(name):
@@ -13758,7 +13758,7 @@ class TestInvitationDebateRuche0050(BaseReviewRuche0020):
         self.invite()
         self.write({**self.debate("D-0002"), "rapporteur": "alice"}, "D-0002")
         self.commit()
-        self.refused("alice", "rapporteur « alice » : the proposer of the invitation never holds the pen of its debate")
+        self.refused("alice", "rapporteur « alice »: the proposer of the invitation never holds the pen of its debate")
         self.abandon()
         self.branch()
         self.invite()
@@ -13788,7 +13788,7 @@ class TestInvitationDebateRuche0050(BaseReviewRuche0020):
                 self.branch()
                 self.write({**self.debate("D-0002"), **fields}, "D-0002")
                 self.commit()
-                self.refused(who_is, "rapporteur « alice » : the proposer of the invitation never holds the pen of its debate")
+                self.refused(who_is, "rapporteur « alice »: the proposer of the invitation never holds the pen of its debate")
                 self.abandon()
         # Ni en relevant un rapporteur absent, 72 h après un argument que la synthèse ne couvre pas.
         self.branch()
@@ -13822,7 +13822,7 @@ class TestInvitationDebateRuche0050(BaseReviewRuche0020):
         self.branch()
         self.write({**self.debate("D-0002"), "rapporteur": "alice-agent"}, "D-0002")
         self.commit()
-        self.refused("bidji29", "rapporteur « alice-agent » : the proposer of the invitation never holds the pen of its debate")
+        self.refused("bidji29", "rapporteur « alice-agent »: the proposer of the invitation never holds the pen of its debate")
 
     def test_a_duplicate_is_contested_and_the_contest_appears_in_bee_show_and_at_the_green_light(self):
         self.up_to("proposed")  # D-0002 : A1 (bruno), sa synthèse à 10 h 40 ; bruno est rapporteur
@@ -13903,7 +13903,7 @@ class TestInvitationDebateRuche0050(BaseReviewRuche0020):
                 self.write({**d, "arguments": d["arguments"] + [{"id": "A6", "by": "gaspard", "at": self.now_instant(), "position": "question",
                                                                   "contested_by": contested_by, "text": "Une contestation mal formée."}]}, "D-0002")
                 self.commit()
-                self.refused("gaspard", "A6 : contested_by : a list of earlier arguments marked as duplicates")
+                self.refused("gaspard", "A6: contested_by: a list of earlier arguments marked as duplicates")
                 self.abandon()
         d = self.debate("D-0002")
         self.write({**d, "arguments": d["arguments"] + [{"by": "gaspard", "at": self.now_instant(), "position": "question",
@@ -13929,7 +13929,7 @@ class TestInvitationDebateRuche0050(BaseReviewRuche0020):
         d = self.debate("D-0002")
         for who_is, marker, chunk in (
                 ("bidji29", {"duplicate_of": "A1", "duplicate_marked_by": "bidji29"}, "never by the proposer"),
-                ("bruno", {"duplicate_of": "A1"}, "A2 modifié, déplacé ou remplacé"),  # sans doublon_par : pas un marquage
+                ("bruno", {"duplicate_of": "A1"}, "A2 modified, moved or replaced"),  # sans doublon_par : pas un marquage
                 ("bruno", {"duplicate_of": "A1", "duplicate_marked_by": "gina"}, "signed by its author (duplicate_marked_by: bruno)")):
             with self.subTest(who_is=who_is, marker=marker):
                 self.branch()
@@ -14041,7 +14041,7 @@ class TestInvitationDebateRuche0050(BaseReviewRuche0020):
         self.merge("pr1")
         git(self.dir, "switch", "-q", "pr2")
         git(self.dir, "-c", "user.name=t", "-c", "user.email=t@t", "merge", "-q", "--no-edit", "main")
-        self.refused("chloe", "synthesis_covers : an invitation's synthesis covers the last argument of the debate as merged (A3)")
+        self.refused("chloe", "synthesis_covers: an invitation's synthesis covers the last argument of the debate as merged (A3)")
         self.merge("pr2")  # fusionnée quand même, sur sa vérification d'avant : la course
         d = self.debate("D-0002")
         self.assertEqual((d["synthesis_covers"], d["arguments"][-1]["id"], d["rapporteur"]), ("A2", "A3", "bruno"))
@@ -14120,7 +14120,7 @@ class TestInvitationDebateRuche0050(BaseReviewRuche0020):
         self.branch()
         self.write({**d, "status": "closed", "closed_at": self.now_instant(), "closed_by": "bruno", "outcome": "no_follow_up", "reference": ""}, "D-0002")
         self.commit()
-        self.refused("bruno", "le rapporteur clôt sur une synthèse à jour, postérieure au dernier argument")
+        self.refused("bruno", "the rapporteur closes on an up-to-date synthesis, later than the last argument")
 
     def test_a_sending_on_a_stale_synthesis_is_recorded_and_reported(self):
         self.decided_ones(1, when_at="2026-10-29T10:00:00Z")  # D-0002 : A1 et une synthèse qui le couvre
@@ -18463,12 +18463,12 @@ class TestClocksRuche0091(BaseInvitations):
             self.ok("debate", "close", debate, "--user", "alice", "--outcome", "no_follow_up", "--synthesis", "Rien n'en sort.")
             self.write({**self.debate(debate), "synthesis_at": pushed_one, "closed_at": pushed_one}, debate)
         self.pr(pushed_one, close)
-        return "alice", pushed_one, verification, (), "le rapporteur ne clôt qu'après 24 h sans nouvel argument"
+        return "alice", pushed_one, verification, (), "the rapporteur closes only after 24 h without a new argument"
 
     def note(self):
         pushed_one = "2026-10-30T10:00:00Z"
         self.pr(pushed_one, lambda: self.note_by_hand({"at": pushed_one}))
-        return "gaspard", pushed_one, "2026-10-30T13:00:00Z", (), "une note est datée de l'heure de la PR"
+        return "gaspard", pushed_one, "2026-10-30T13:00:00Z", (), "a note is dated at the time of the PR"
 
     def agora_relief(self):
         self.a("2026-10-30T12:00:00Z")
@@ -18489,7 +18489,7 @@ class TestClocksRuche0091(BaseInvitations):
         pushed_one = "2026-10-30T10:00:00Z"
         self.pr(pushed_one, lambda: bee.modify_task(self.propose_task("gaspard"), note={
             "by": "gaspard", "at": pushed_one, "text": "Une note dès la proposition."}))
-        return "gaspard", pushed_one, "2026-10-30T13:00:00Z", (), "une note est datée de l'heure de la PR"
+        return "gaspard", pushed_one, "2026-10-30T13:00:00Z", (), "a note is dated at the time of the PR"
 
     def submitted_on_main(self):
         """On main: alice takes miniz-0099 and submits miniz-0099-c1 at 2026-10-30T09:00."""
@@ -18508,7 +18508,7 @@ class TestClocksRuche0091(BaseInvitations):
         pushed_one = "2026-10-30T13:00:00Z"
         self.pr(pushed_one, lambda: self.argue("bruno", "fact", "R8 plafonne déjà les engagements à 3 par utilisateur.", "--source",
                                                  "RULES.md", debate=debate))
-        return "bruno", pushed_one, "2026-10-30T16:00:00Z", (), "relancez la commande bee debate"
+        return "bruno", pushed_one, "2026-10-30T16:00:00Z", (), "run the bee debate command again"
 
     def agreement_date(self):
         self.up_to("proposed")  # I-0001, published 2026-10-30T10:00: a guardian may agree from 2026-11-02T10:00
@@ -18581,7 +18581,7 @@ class TestClocksRuche0091(BaseInvitations):
             self.take_and_merge("bruno", "miniz-0099", "--parallel")
         verification = "2026-11-02T09:30:00Z" if gesture != "withdrawal" else "2026-11-02T10:30:00Z"
         self.pr(verification, lambda: self.ok("release-expired"))
-        refusal = ("on ne retire que sa propre inscription en parallèle (bruno" if gesture == "withdrawal" else
+        refusal = ("one withdraws only one's own parallel registration (bruno" if gesture == "withdrawal" else
                  "seul le titulaire (alice) libère sa réservation avant expiration")
         return "github-actions[bot]", "2026-11-02T08:30:00Z" if gesture != "withdrawal" else "2026-11-02T09:30:00Z", verification, (), refusal
 
@@ -19339,7 +19339,7 @@ class TestGitHelper(unittest.TestCase):
             self.assertIsNone(bee.object_sizes(self.repo, with_break))
             self.assertIsNone(bee.object_sizes(self.repo, with_return))
             for name in ("tasks/b\n.yaml", "tasks/a.yaml\r"):
-                with self.subTest(name=name), self.assertRaisesRegex(bee.BeeError, r"illisible ; rien n'est lu \(a name that holds a "
+                with self.subTest(name=name), self.assertRaisesRegex(bee.BeeError, r"are unreadable; nothing is read \(a name that holds a "
                                                                    r"newline or a carriage return needs git 2\.42 or later\)"):
                     bee.sizes_a(self.repo, "HEAD", ["tasks/a.yaml", name])
 
@@ -20152,7 +20152,7 @@ class TestLinkedAccountsRuche0051(BaseInvitations):
         self.branch("parallel_one")
         bee.modify_task(self.task_path("miniz-9001"), parallel=[{"user": "farid", "since": os.environ["BEE_NOW"]}])
         self.commit()
-        self.refused("farid", "farid est le titulaire")
+        self.refused("farid", "farid is the holder: they do not register in parallel")
         self.abandon("parallel_one")
         # R8: one quota for the two accounts.
         self.take_and_merge("alice", "miniz-9003")
@@ -20503,7 +20503,7 @@ class TestLinkedAccountsRuche0051(BaseInvitations):
         self.write({**self.debate("D-0002"), "synthesis": "Pour (A1), une objection (A2).", "synthesis_by": "chloe",
                      "synthesis_at": os.environ["BEE_NOW"], "rapporteur": "bruno"}, "D-0002")
         self.commit()
-        self.refused("chloe", "rapporteur « bruno » : the proposer of the invitation never holds the pen of its debate, nor under "
+        self.refused("chloe", "rapporteur « bruno »: the proposer of the invitation never holds the pen of its debate, nor under "
                      "an agent account or a linked account")
 
     def test_a_link_waits_until_the_pen_of_the_debate_of_an_invitation_has_passed(self):
