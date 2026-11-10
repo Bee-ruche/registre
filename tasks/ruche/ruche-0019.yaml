@@ -24,7 +24,7 @@ acceptance_criteria:
   - "chaque geste ajouté est réservé aux gardiens et au conseil, motivé, daté, public, et testé côté bee verifier-pr (accepté pour un gardien, refusé pour un autre membre)"
   - "aucun geste ne supprime de donnée : ce qui est masqué ou clos reste lisible dans le registre"
   - "une proposition de règle (R10) pour ce qui change R3 ou R7 ; revue adverse indépendante jointe"
-out_of_scope: [COMMANDEMENTS.md, les workflows de .github/, le choix des gardiens]
+out_of_scope: [COMMANDMENTS.md, les workflows de .github/, le choix des gardiens]
 depends_on: []
 node: projects/ruche
 status: open

@@ -26,7 +26,7 @@ acceptance_criteria:
   - "bee valider passe ; tâches proposées au statut proposee, propositions de règle au statut ouverte"
   - "chaque prérequis de l'étape 3 de docs/architecture.md a une réponse ou une tâche"
   - "au moins deux formes de gouvernance comparables, avec les mesures qui les départageraient"
-out_of_scope: [COMMANDEMENTS.md, RULES.md et bee.yaml (par proposition seulement), implémentation]
+out_of_scope: [COMMANDMENTS.md, RULES.md et bee.yaml (par proposition seulement), implémentation]
 depends_on: []
 status: open
 created_by: council

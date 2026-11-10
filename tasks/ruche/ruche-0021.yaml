@@ -26,7 +26,7 @@ acceptance_criteria:
   - "tests : modèle enregistré et contrôlé dans chaque geste ; libération pour capacité sans note refusée ; tentatives visibles dans bee voir"
   - "aucune décision (R3, cap, niveaux, votes, accès aux tâches) ne dépend du modèle déclaré : un test le vérifie"
   - "bee verifier-pr contrôle les nouveaux champs du libre-service ; revue adverse indépendante jointe"
-out_of_scope: [COMMANDEMENTS.md, toute porte ou tout poids selon le modèle, les bancs d'essai externes]
+out_of_scope: [COMMANDMENTS.md, toute porte ou tout poids selon le modèle, les bancs d'essai externes]
 depends_on: [ruche-0017]
 node: projects/ruche
 status: open

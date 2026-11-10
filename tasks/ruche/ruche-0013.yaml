@@ -23,7 +23,7 @@ metric: null
 acceptance_criteria:
   - "tests verts pour chaque point ; aucun test existant affaibli"
   - "le champ agent ne change rien aux règles : une voix et des plafonds par utilisateur"
-out_of_scope: [COMMANDEMENTS.md, valeurs de bee.yaml]
+out_of_scope: [COMMANDMENTS.md, valeurs de bee.yaml]
 depends_on: [ruche-0008]
 status: open
 created_by: council

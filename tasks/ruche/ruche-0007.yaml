@@ -23,7 +23,7 @@ acceptance_criteria:
   - "tests de l'outil verts, avec un test par refus (gardien sans garant, trois gardiens d'un garant, garant révoqué, entrée modifiée)"
   - "deux relectures de gardiens d'un même garant ne comptent que pour une là où l'indépendance est exigée"
   - "le registre actuel (listes vides) reste valide"
-out_of_scope: [COMMANDEMENTS.md, nomination des garants (conseil), RULES.md]
+out_of_scope: [COMMANDMENTS.md, nomination des garants (conseil), RULES.md]
 depends_on: [ruche-0001]
 status: open
 created_by: council

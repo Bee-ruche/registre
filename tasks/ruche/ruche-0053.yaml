@@ -24,7 +24,7 @@ acceptance_criteria:
   - "le rejeu ne lit que le registre (aucun appel réseau) et tient en moins de 10 minutes en CI ; la durée est donnée dans la PR"
   - "revue adverse indépendante jointe"
 out_of_scope:
-  - "COMMANDEMENTS.md"
+  - "COMMANDMENTS.md"
   - "les règles elles-mêmes (le rejeu ne change aucune décision)"
 node: projects/ruche/ruche
 status: open

@@ -22,8 +22,8 @@ acceptance_criteria:
   - "test : un écart entre gain déclaré et mesuré au-delà du seuil est signalé avec les deux valeurs"
   - "aucun workflow qui lit cette commande ne change de comportement (code de sortie et lignes lues par la machine inchangés)"
 out_of_scope:
-  - "COMMANDEMENTS.md"
-  - "REGLES.md"
+  - "COMMANDMENTS.md"
+  - "RULES.md"
   - "les forks"
 node: projects/ruche/ruche
 status: open

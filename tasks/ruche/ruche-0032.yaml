@@ -23,7 +23,7 @@ acceptance_criteria:
   - "elle affiche, consommé et restant, chaque plafond sur 24 h (notes, arguments par débat et tous débats, tâches proposées, débats ouverts), avec des valeurs lues dans bee.yaml, jamais écrites en dur"
   - "elle n'écrit aucun fichier"
 out_of_scope:
-  - "COMMANDEMENTS.md"
+  - "COMMANDMENTS.md"
   - "valeurs de bee.yaml"
   - "schemas/ et verifier_pr (le champ agent reste dans ruche-0013)"
 node: projects/ruche/ruche

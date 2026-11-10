@@ -27,7 +27,7 @@ acceptance_criteria:
   - "test : un projet sans activité depuis le seuil est montré dormant ; une tâche le réveille"
   - "test : un lien vers un projet ou une tâche inexistante est refusé par bee valider"
   - "revue adverse indépendante jointe (intégration automatique)"
-out_of_scope: [COMMANDEMENTS.md, l'ouverture effective d'un projet (bzip2, giflib), les ruches filles]
+out_of_scope: [COMMANDMENTS.md, l'ouverture effective d'un projet (bzip2, giflib), les ruches filles]
 depends_on: []
 node: projects/ruche
 status: open

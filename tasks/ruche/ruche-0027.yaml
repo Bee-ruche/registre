@@ -27,7 +27,7 @@ acceptance_criteria:
   - "test : une dérogation adoptée s'imprime dans bee contexte d'une tâche de sa branche, et seulement là"
   - "test : une dérogation échue ne s'applique plus ; une contribution sur deux branches suit la règle la plus stricte"
   - "revue adverse indépendante jointe"
-out_of_scope: [COMMANDEMENTS.md, une dérogation réelle (elle passe par l'agora et le conseil)]
+out_of_scope: [COMMANDMENTS.md, une dérogation réelle (elle passe par l'agora et le conseil)]
 depends_on: [ruche-0026]
 node: projects/ruche
 status: open

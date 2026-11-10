@@ -24,7 +24,7 @@ acceptance_criteria:
   - "tests de l'outil verts ; bee nouveautes --depuis 2026-10-27 liste au moins R11, P-0001 et les commandements adaptés"
   - "bee bilan reproduit à l'identique ses chiffres à partir du seul registre"
   - "une proposition de règle (statut ouverte) pour les dates de réexamen"
-out_of_scope: [COMMANDEMENTS.md, valeurs des règles, outils/juge/]
+out_of_scope: [COMMANDMENTS.md, valeurs des règles, outils/juge/]
 depends_on: []
 status: open
 created_by: council

@@ -17,8 +17,8 @@ context: 'Founder''s decision of 31/10: the hive moves to English before the fir
   part: arbre/SENS.md and every node under arbre/projets/ (about 314 lines). Node headings and budgets are checked
   by the tool: ruche-0055 first. Header keys (parent, mis_a_jour…) stay as they are (ruche-0070).'
 files:
-- tree/SENS.md
-- tree/projets/
+- tree/MEANING.md
+- tree/projects/
 - tools/test_bee.py
 reach: 0.5
 metric: null

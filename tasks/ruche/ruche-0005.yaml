@@ -27,7 +27,7 @@ acceptance_criteria:
   - "bee valider passe ; chaque tâche proposée a le statut proposee et un contexte factuel"
   - "le dossier cite une source pour chaque fait sur les outils, dépôts et licences"
   - "le dossier dit comment le juge refuse un sorry, un axiome ajouté et un énoncé modifié"
-out_of_scope: [création du fork et du projet (conseil), COMMANDEMENTS.md, outils/juge/]
+out_of_scope: [création du fork et du projet (conseil), COMMANDMENTS.md, outils/juge/]
 depends_on: []
 status: open
 created_by: council

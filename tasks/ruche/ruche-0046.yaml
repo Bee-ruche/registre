@@ -22,8 +22,8 @@ acceptance_criteria:
   - "test : un recul sur le même arbre reste traité comme le fait ruche-0028"
   - "revue adverse indépendante jointe"
 out_of_scope:
-  - "COMMANDEMENTS.md"
-  - "REGLES.md"
+  - "COMMANDMENTS.md"
+  - "RULES.md"
   - "les forks"
 depends_on: [ruche-0028]
 node: projects/ruche/ruche

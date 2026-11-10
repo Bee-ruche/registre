@@ -28,7 +28,7 @@ acceptance_criteria:
   - "test : un changement du nœud d'une tâche par un membre ou un gardien de branche est refusé par verifier-pr"
   - "test : sans champ portee, rien ne change (tous les tests existants passent)"
   - "revue adverse indépendante jointe (R3 et l'intégration en dépendent)"
-out_of_scope: [COMMANDEMENTS.md, les règles locales (ruche-0027), la réputation par domaine (ruche-0006)]
+out_of_scope: [COMMANDMENTS.md, les règles locales (ruche-0027), la réputation par domaine (ruche-0006)]
 depends_on: [ruche-0020]
 node: projects/ruche
 status: open

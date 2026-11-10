@@ -29,7 +29,7 @@ acceptance_criteria:
 - on merge, the council records in docs/decisions.md that these files are now authoritative in English
 out_of_scope:
 - folder names of the roles (ruche-0070)
-- tree/projets/ (ruche-0066)
+- tree/projects/ (ruche-0066)
 depends_on:
 - ruche-0055
 - ruche-0145

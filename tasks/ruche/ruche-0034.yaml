@@ -21,7 +21,7 @@ acceptance_criteria:
   - "un texte différent n'en déclenche aucune"
   - "c'est une alerte, jamais un refus : R12 ne change pas"
 out_of_scope:
-  - "COMMANDEMENTS.md"
+  - "COMMANDMENTS.md"
   - "valeurs de bee.yaml"
   - "R12"
   - "schemas/ et verifier_pr (le champ agent reste dans ruche-0013)"

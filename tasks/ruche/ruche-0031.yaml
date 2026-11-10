@@ -26,7 +26,7 @@ acceptance_criteria:
   - "test : ARM64 recule au-delà du bruit : refus, même si x86-64 confirme"
   - "test : un verdict sans chronomètre ARM64 se juge comme aujourd'hui"
   - "revue adverse indépendante jointe (R4 décide de l'intégration)"
-out_of_scope: [COMMANDEMENTS.md, juge.yml et outils/juge/ (ruche-0024), les forks]
+out_of_scope: [COMMANDMENTS.md, juge.yml et outils/juge/ (ruche-0024), les forks]
 depends_on: [ruche-0105]
 node: projects/ruche
 status: open

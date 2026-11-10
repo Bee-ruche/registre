@@ -26,7 +26,7 @@ acceptance_criteria:
   - "bee valider passe ; chaque tâche proposée a le statut proposee et un critère d'acceptation vérifiable"
   - "pour chaque famille : au moins une triche plausible décrite, avec ce qui la bloque, et des méta-tests"
   - "les sources externes sont citées"
-out_of_scope: [COMMANDEMENTS.md, code du juge commun (les tâches proposées s'en chargeront), RULES.md]
+out_of_scope: [COMMANDMENTS.md, code du juge commun (les tâches proposées s'en chargeront), RULES.md]
 depends_on: []
 status: open
 created_by: council
