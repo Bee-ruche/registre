@@ -1,21 +1,21 @@
 id: miniz-0015-c1
-tache: miniz-0015
-auteur: bidji29
+task: miniz-0015
+author: bidji29
 pr: https://github.com/Bee-ruche/minizBee/pull/5
-resume: Comparaison des correspondances par mots de 64 bits.
-statut: integree
-soumise_le: '2026-10-27T11:21:07Z'
-relectures: []
+summary: Comparaison des correspondances par mots de 64 bits.
+status: integrated
+submitted_at: '2026-10-27T11:21:07Z'
+reviews: []
 verdict:
-  ci: verte
+  ci: green
   gain: 0.043226431258613696
-  au_dela_du_bruit: true
-  lignes_modifiees: 48
-  ecart_declare: 0.0212
+  beyond_noise: true
+  changed_lines: 48
+  declared_gap: 0.0212
   sha: e786b0a42420f1c320cc5cf042307d6815b7244e
-  execution: https://github.com/Bee-ruche/minizBee/actions/runs/40515310301
-decidee_le: '2026-10-27T14:10:00Z'
-motif_decision: >
+  run: https://github.com/Bee-ruche/minizBee/actions/runs/40515310301
+decided_at: '2026-10-27T14:10:00Z'
+decision_reason: >
   Intégrée par le conseil (amorçage) : CI verte en mode de confiance (débit_compression_n6 +4,3 %,
   au-delà du bruit), rebasée au-dessus de miniz-0011 (la PR #3 d'origine avait été revertée à cause
   d'un conflit de macro) et fusionnée via la PR du fork #5. Sortie compressée identique.

@@ -1,15 +1,15 @@
 id: ruche-0152-c1
-tache: ruche-0152
-auteur: bidji29
+task: ruche-0152
+author: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/229
-resume: 'Step 1b-2 of the English switch, dormant: test identifiers, shell and workflow renamer with P1,
+summary: 'Step 1b-2 of the English switch, dormant: test identifiers, shell and workflow renamer with P1,
   residue, lint and links checks, hashed literals kept with an invariance test; 325 code lines; full suite
   green; adversarial review fixed and verified.'
-statut: integree
-soumise_le: '2026-11-09T04:55:24Z'
-engage_depuis: '2026-11-08T23:44:09Z'
-relectures: []
-decidee_le: '2026-11-09T05:18:11Z'
-motif_decision: 'Hive tooling contribution: registry PR #229 merged at commit 82e4bdf by bidji29, the
+status: integrated
+submitted_at: '2026-11-09T04:55:24Z'
+engaged_since: '2026-11-08T23:44:09Z'
+reviews: []
+decided_at: '2026-11-09T05:18:11Z'
+decision_reason: 'Hive tooling contribution: registry PR #229 merged at commit 82e4bdf by bidji29, the
   account of a council member, CI green on the merged commit.'
-fusion_sha: 3d6521425d82570be72cf3b6c4aac1645369f89e
+merge_sha: 3d6521425d82570be72cf3b6c4aac1645369f89e

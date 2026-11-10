@@ -1,0 +1,37 @@
+id: miniz-0001
+project: miniz
+category: lossless-compression
+type: measurement
+size: L
+title: "Outillage d'évaluation du fork : corpus, tests différentiels, fuzzing, banc A/B et CI"
+context: >
+  Aucune optimisation ne peut être jugée tant que le fork n'a pas d'outillage commun.
+  Cette tâche crée, dans le dossier bee/ du fork, tout ce qui juge les contributions
+  suivantes : un corpus de référence déterministe régénérable (bee/corpus/generer.py,
+  avec SHA256SUMS), des tests différentiels contre la zlib système dans les deux sens
+  et en flux, un contrôle de déterminisme (empreintes SHA-256 des sorties compressées
+  par fichier et par niveau), deux harnais libFuzzer, un banc A/B entrelacé
+  (bee/bench/ab.py) qui produit les six métriques du projet, un Dockerfile de sandbox
+  sans réseau, et le workflow .github/workflows/bee-ci.yml qui produit verdict.json.
+  Le code de miniz lui-même n'est pas modifié.
+files: [bee/, .github/workflows/bee-ci.yml]
+reach: 1.0
+metric: null
+acceptance_criteria:
+  - "bee/tests/lancer.sh passe sur la version de base, en x86-64 et en ARM64"
+  - "chaque harnais de fuzzing tourne 60 s sans plantage dû au harnais lui-même"
+  - "bee/bench/ab.py comparant la base à elle-même rapporte un gain dans le bruit sur les 6 métriques"
+  - "verdict.json contient ci, etape_en_echec, gain, au_dela_du_bruit et les mesures A et B"
+  - "aucune ligne de la bibliothèque miniz n'est modifiée"
+out_of_scope: [code de la bibliothèque miniz, archives ZIP, écriture PNG]
+status: integrated
+contribution: miniz-0001-c1
+created_by: council
+created_on: "2026-10-27"
+notes:
+  - by: "bee"
+    at: "2026-10-27T01:40:00Z"
+    text: "En cours de réalisation par l'agent fondateur de Bee ; sera soumise comme première contribution (porte de la phase 1)."
+  - by: "bidji29"
+    at: "2026-10-27T02:51:52Z"
+    text: "Avancée : outillage en construction dans le fork (briques communes du corpus et de l'empreinte SHA-256 écrites ; tests différentiels, fuzzing, banc A/B et CI à suivre)."

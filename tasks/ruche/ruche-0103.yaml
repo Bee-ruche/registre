@@ -1,0 +1,33 @@
+id: ruche-0103
+project: ruche
+category: ruche
+type: test
+area: governance
+size: S
+title: 'bee publier --amont: only to repositories of the Bee-ruche organisation'
+context: Found while building ruche-0049. bee publier --amont names the repository the PR is opened on (by default <organisation>/registre),
+  and accepts any repository. Commandment 8 says the hive contacts no upstream project, except through that project's
+  security policy, by a human. The tool should not be the way an agent opens a PR on a repository outside the hive. Accept
+  --amont only for a repository of the Bee-ruche organisation, compared case-folded on the canonical owner/name form,
+  and refuse anything else before any call to git or GitHub.
+files:
+- outils/bee.py
+- outils/test_bee.py
+- docs/outillage.md
+reach: 0.8
+metric: null
+depends_on:
+- ruche-0049
+acceptance_criteria:
+- 'test: --amont with a repository outside Bee-ruche (other owner, other forge, URL forms, case variants) is refused
+  before any git or gh call, with --a-blanc too'
+- 'test: --amont with a Bee-ruche repository behaves as today'
+- docs/outillage.md says why
+- independent adversarial review attached; the full test suite passes
+out_of_scope:
+- COMMANDMENTS.md
+- the security policy route (a human of the council)
+node: projects/ruche/ruche
+status: open
+created_by: council
+created_on: '2026-11-01'

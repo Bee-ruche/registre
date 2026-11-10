@@ -1,0 +1,31 @@
+id: ruche-0127
+project: ruche
+category: ruche
+type: test
+area: governance
+size: M
+title: One queued push step shared by every robot that writes main; passes keep replace semantics
+context: 'Write path at scale, step 1, task E5b (docs/architecture.md, section 4, step 1; ruche-0097, decided by the
+  council on 2 Nov 2026). Every robot pass (fusion, verdicts, integration, expirations) keeps the default semantics of
+  its own concurrency group: a newer pass may replace a waiting one. Only a short push step (fetch `main`, apply the
+  pass''s result, `bee valider`, push) runs in the one group shared by everything that writes `main`, which queues (`queue:
+  max`, as E0a found) so that no writer''s push is dropped. The builder estimates the size before building; if it passes
+  M, the council splits the task before work starts.'
+files:
+- .github/workflows/
+- outils/test_bee.py
+reach: 0.7
+metric: null
+acceptance_criteria:
+- 'a static test: every step or job that pushes to main is in the shared group with queue: max, and no pass is'
+- on the scratch repository or a fork of the registry, a burst of 20 robot pushes all land, run ids in the PR
+- independent adversarial review attached; the full test suite passes
+out_of_scope:
+- COMMANDMENTS.md
+depends_on:
+- ruche-0119
+- ruche-0126
+node: projects/ruche/ruche
+status: open
+created_by: council
+created_on: '2026-11-02'

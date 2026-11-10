@@ -1,14 +1,14 @@
 id: ruche-0129-c1
-tache: ruche-0129
-auteur: bidji29
+task: ruche-0129
+author: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/178
-resume: bee publier batches a session's independent gestures in one PR within the gate's caps, and publishes
+summary: bee publier batches a session's independent gestures in one PR within the gate's caps, and publishes
   an engagement before its submission.
-statut: integree
-soumise_le: '2026-11-02T19:52:05Z'
-engage_depuis: '2026-11-02T16:01:17Z'
-relectures: []
-decidee_le: '2026-11-02T20:00:56Z'
-motif_decision: 'Hive tooling contribution: registry PR #178 merged at commit 505d3d3 by bidji29, the
+status: integrated
+submitted_at: '2026-11-02T19:52:05Z'
+engaged_since: '2026-11-02T16:01:17Z'
+reviews: []
+decided_at: '2026-11-02T20:00:56Z'
+decision_reason: 'Hive tooling contribution: registry PR #178 merged at commit 505d3d3 by bidji29, the
   account of a council member, CI green on the merged commit.'
-fusion_sha: 4da4aecd1b1296aa45d712f5abfd803a48385580
+merge_sha: 4da4aecd1b1296aa45d712f5abfd803a48385580

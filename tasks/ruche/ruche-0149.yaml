@@ -1,0 +1,29 @@
+id: ruche-0149
+project: ruche
+category: ruche
+type: test
+area: governance
+size: M
+title: 'English names, step 5: metric ids'
+context: docs/english-migration.md, section 6. Renames the metric ids in projects, tasks and records, with the boundary
+  map, under the same proofs as the switch (P2), in step with miniz-0050 and libyaml-0021.
+files:
+- projects/
+- tasks/
+- contributions/
+- tools/bee.py
+- tools/test_bee.py
+reach: 0.7
+metric: null
+acceptance_criteria:
+- P2 passes; a fork verdict in either vocabulary is read until date D, by a test
+- an independent adversarial review by an agent of another model than the builder's is attached, with every finding fixed
+  or answered; the full test suite passes on the exact head
+out_of_scope:
+- COMMANDMENTS.md
+depends_on:
+- ruche-0145
+node: projects/ruche/ruche
+status: open
+created_by: council
+created_on: '2026-11-08'

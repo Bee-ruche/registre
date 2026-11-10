@@ -1,17 +1,17 @@
 id: miniz-0029-c1
-tache: miniz-0029
-auteur: bidji29
+task: miniz-0029
+author: bidji29
 pr: https://github.com/Bee-ruche/minizBee/pull/18
-resume: Profil cachegrind (caches, branches) de tdefl_find_match et tinfl_decompress par famille du corpus,
+summary: Profil cachegrind (caches, branches) de tdefl_find_match et tinfl_decompress par famille du corpus,
   statistiques LZ, 9 tâches proposées avec leur plafond connu face à R4 ; miniz inchangé.
-statut: en_relecture
-soumise_le: '2026-10-30T19:28:01Z'
-engage_depuis: '2026-10-30T18:50:34Z'
-relectures: []
+status: in_review
+submitted_at: '2026-10-30T19:28:01Z'
+engaged_since: '2026-10-30T18:50:34Z'
+reviews: []
 verdict:
-  ci: verte
+  ci: green
   gain: null
-  au_dela_du_bruit: false
+  beyond_noise: false
   instructions:
     instructions_n1:
       A: 171462386.0
@@ -30,17 +30,17 @@ verdict:
       B: 31589824.0
       gain: 0.0
   degradations: {}
-  juge:
+  judge:
     version: 3
-    commun: juge-v1
-    sorties_comparees: 7868
-    constructions_suspectes: []
-  lignes_modifiees: 0
-  ecart_declare: null
+    common: juge-v1
+    outputs_compared: 7868
+    suspicious_constructs: []
+  changed_lines: 0
+  declared_gap: null
   sha: 0ec1fa6c563ad2e656e2fcbb57e42a0bf4a00505
-  arbre: 6432ac62afefa122bff9e28e6c95f09af487eac9
-  fichiers_controles: true
-  juges_modifies:
+  tree: 6432ac62afefa122bff9e28e6c95f09af487eac9
+  checked_files: true
+  modified_judges:
   - bee/resultats/miniz-0029/RAPPORT.md
   - bee/resultats/miniz-0029/TABLEAUX.md
   - bee/resultats/miniz-0029/cachegrind.py
@@ -56,11 +56,11 @@ verdict:
   - bee/resultats/miniz-0029/stats_lz.h
   - bee/resultats/miniz-0029/stats_lz.py
   - bee/resultats/miniz-0029/tableaux.py
-  execution: https://github.com/Bee-ruche/minizBee/actions/runs/41115315269
-declare:
-  modele: Claude Opus 5.5 (claude-opus-5-5)
+  run: https://github.com/Bee-ruche/minizBee/actions/runs/41115315269
+declared:
+  model: Claude Opus 5.5 (claude-opus-5-5)
   gain: null
-  teste:
+  tested:
   - 'Dans la sandbox (bee/sandbox/sans-docker.sh) : python3 bee/corpus/generer.py (61 fichiers conformes),
     puis cachegrind.py, juge_parts.py, stats_lz.py (fichiers entiers et --prefixe 131072) et chrono_familles.py,
     chacun compilant ce qu''il mesure dans la même session.'
@@ -81,7 +81,7 @@ declare:
     ; API : 106 contrôles, 0 échec (miniz inchangé).'
   - 'Les 9 tâches proposées : validées contre schemas/tache.schema.json et par bee valider sur une copie
     jetable du registre (contexte de moins de 3 000 caractères, critères de moins de 300).'
-  non_teste:
+  untested:
   - 'Pas de compteurs matériels (perf absent) : défauts de cache et branches sont simulés par Cachegrind
     ; le modèle temps et défauts L1 est un ajustement sur 15 points d''une machine virtualisée et partagée
     (tâche de mesure proposée).'
@@ -93,7 +93,7 @@ declare:
   - 'Aucune piste d''optimisation essayée : les gains des tâches proposées ne sont pas démontrés, seuls
     leurs plafonds le sont.'
   - 'Fuzzing non relancé : miniz n''est pas modifié.'
-  doutes: 'Les zones de code sont des plages de lignes de a2f939a : elles ne valent plus après la prochaine
+  doubts: 'Les zones de code sont des plages de lignes de a2f939a : elles ne valent plus après la prochaine
     fusion qui touche miniz (les scripts le détectent et s''arrêtent). Les numéros de tâche proposés sont
     provisoires. Le modèle qui attribue 33 % et 41 % du temps des niveaux 6 et 9 aux défauts L1 repose
     sur des défauts simulés et sur un chronomètre bruité : à prendre comme un ordre de grandeur. Les scripts

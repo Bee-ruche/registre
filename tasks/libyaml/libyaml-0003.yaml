@@ -1,0 +1,24 @@
+id: libyaml-0003
+project: libyaml
+category: parsing-serialization
+type: test
+size: S
+title: "Oracle d'aller-retour de l'émetteur (événements → YAML → événements)"
+context: >
+  L'oracle actuel couvre l'analyse. Pour juger les optimisations de l'émetteur (dumper.c,
+  emitter.c), ajouter un contrôle d'aller-retour : charger chaque document du corpus, le ré-émettre
+  en YAML, le ré-analyser, et exiger un flux d'événements identique (aux normalisations de forme
+  documentées près). Écrire bee/tests/aller_retour.c et l'intégrer à bee/tests/lancer.sh, avec ses
+  propres empreintes de référence. Garder la durée totale des tests raisonnable (< 30 s en CI).
+files: [bee/tests/aller_retour.c, bee/tests/lancer.sh, bee/Makefile]
+reach: 0.7
+metric: null
+acceptance_criteria:
+  - "CI verte (R2), x86-64 et ARM64"
+  - "l'aller-retour est stable sur tout le corpus ; les normalisations tolérées sont listées"
+  - "une mutation de l'émetteur qui change la structure ré-analysée fait échouer le test"
+out_of_scope: [sources de libyaml]
+status: integrated
+contribution: libyaml-0003-c1
+created_by: council
+created_on: "2026-10-27"

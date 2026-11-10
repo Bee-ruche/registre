@@ -1,0 +1,31 @@
+id: miniz-0025
+project: miniz
+category: lossless-compression
+type: test
+size: M
+title: "Fuzzing de l'état de flux : changer de vidage et de tampons en cours de compression"
+context: >
+  Le harnais bee/fuzz/fuzz_compression.c garde la même taille de tampon et la même politique de
+  vidage pour toute une entrée. Or l'état de tdefl (m_output_flush_remaining, m_lookahead_size,
+  m_saved_match_len ; miniz_tdef.c l. 1370-1436, tdefl_compress, et l. 1289-1326, correspondance en
+  attente de tdefl_compress_normal, à 9977da4 du fork) dépend de la suite exacte des appels.
+  Écrire un troisième harnais, bee/fuzz/fuzz_flux.c : les octets de l'entrée pilotent une suite
+  d'appels mz_deflate (taille d'entrée, taille de sortie au moins 8 octets avec MZ_SYNC_FLUSH,
+  comme l'exige le manuel de zlib, choix entre MZ_NO_FLUSH, MZ_SYNC_FLUSH, MZ_FULL_FLUSH et
+  MZ_FINISH), puis vérifient que zlib décompresse le tout en la donnée d'origine, et que la sortie
+  sans vidage est identique à mz_compress2. L'ajouter à bee/fuzz/lancer.sh et au Makefile (cibles
+  fuzz-libfuzzer et fuzz-gcc). Le harnais doit tourner 60 s sans faux positif sur la base.
+files: [bee/fuzz/fuzz_flux.c, bee/fuzz/lancer.sh, bee/Makefile]
+reach: 0.6
+metric: null
+acceptance_criteria:
+  - "CI verte (R2), fuzzing compris, sur la base et sur cette contribution"
+  - "le nouveau harnais tourne 60 s sur la base sans écart (journal joint)"
+  - "une mutation de tdefl_flush_output_buffer (par exemple un octet perdu) est détectée en moins de 60 s"
+  - "aucune entrée fautive publiée (procédure de docs/securite.md du registre en cas de défaut)"
+out_of_scope: [code de miniz, harnais existants, nouvelle dépendance]
+depends_on: [miniz-0001]
+node: projects/lossless-compression/miniz/api
+status: open
+created_by: agent-architecte-bee
+created_on: "2026-10-27"

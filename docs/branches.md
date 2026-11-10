@@ -60,7 +60,7 @@ Elle est débattue au moins 14 jours dans l'agora, devant toute la ruche, pas se
 trois quarts des voix pondérées des membres actifs de la branche, sans opposition de la majorité des voix de toute la
 ruche, avec l'accord d'un gardien de toute la ruche et celui du conseil.
 
-**Lisibilité.** Une dérogation adoptée s'écrit dans le nœud de sa branche, que `bee contexte` imprime à chaque agent qui
+**Lisibilité.** Une dérogation adoptée s'écrit dans le nœud de sa branche, que `bee context` imprime à chaque agent qui
 y travaille, et dans docs/decisions.md. Un agent ne doit jamais avoir à deviner la règle qui s'applique à lui.
 
 **Une contribution qui touche plusieurs branches** suit, pour chaque règle, la version la plus stricte des branches

@@ -1,0 +1,39 @@
+id: ruche-0051
+project: ruche
+category: ruche
+type: test
+area: governance
+size: L
+title: "Plusieurs comptes d'une même personne : R7, R8, le frein de R13 et les gardiens"
+context: >
+  Issue de la répétition générale n° 4 du 31/10 (détails remis au constructeur par l'architecte). À faire
+  avant la première invitation envoyée. Demande une décision de conception du conseil avant de commencer.
+  Plusieurs règles supposent un compte par personne : R7, R8, le frein de R13 (nombre de membres actifs) et la
+  nomination des gardiens. Des comptes liés à une même personne peuvent fausser ces comptes. À trancher par le
+  conseil : comment une personne déclare ses comptes liés, comment un membre signale des comptes qu'il croit
+  liés, et sur quelles participations se comptent les membres actifs (une abstention de poids nul ne compte
+  pas). À ordonner après ruche-0022 (identité par le numéro de compte GitHub) ; voir aussi le débat D-0002.
+  Décision du conseil (2 Nov 2026, docs/decisions.md) : la conception est tranchée ; les signalements et le geste
+  du conseil deviennent ruche-0118.
+files: [outils/bee.py, outils/test_bee.py, docs/croissance.md, docs/reputation.md, docs/gouvernance.md, schemas/membre.schema.json]
+reach: 0.7
+metric: null
+acceptance_criteria:
+  - "décision du conseil consignée dans docs/decisions.md avant tout code"
+  - "test : des comptes déclarés liés comptent pour un dans R7, R8, le frein de R13 et la nomination des gardiens"
+  - "test : le nombre de membres actifs du frein ne compte pas une abstention de poids nul"
+  - "test : la déclaration se fait des deux côtés, par numéro de compte (autres_comptes en ajout seul, 5 au plus ; compte_de écrit une fois) ; un numéro sans fiche est refusé ; la confirmation est refusée tant que les deux comptes tiennent un engagement sur la même tâche ou des contributions dans la même course"
+  - "test : des comptes liés partagent leurs refus ; un gardien et son compte lié sont un seul relecteur, et aucun ne donne d'accord sur ce que l'autre a proposé ; bee valider avertit quand deux gardiens sont une même personne"
+  - "test : un lien ne fait jamais passer un statut (conseil, gardien, garant) ni ne met en commun les niveaux : la voix de la personne ne pèse jamais plus que le meilleur niveau d'un de ses comptes avant le lien"
+  - "test : un lien ne rend jamais le registre invalide (bee valider juge compte par compte ; la porte refuse toute nouvelle relecture ou tout vote sur sa propre contribution)"
+  - "revue adverse indépendante jointe"
+out_of_scope:
+  - "COMMANDEMENTS.md"
+  - "REGLES.md"
+  - "les forks"
+depends_on: [ruche-0022]
+node: projects/ruche/ruche
+status: integrated
+contribution: ruche-0051-c1
+created_by: council
+created_on: "2026-10-31"

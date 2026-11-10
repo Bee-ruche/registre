@@ -1,0 +1,31 @@
+id: ruche-0045
+project: ruche
+category: ruche
+type: test
+area: governance
+size: S
+title: "bee verifier-acceptation : des sorties qui ne trompent pas"
+context: >
+  Issue de la répétition générale n° 4 du 31/10 (détails remis au constructeur par l'architecte). À faire
+  avant le premier participant extérieur. bee verifier-acceptation dit si une contribution est intégrable, et
+  agents, relecteurs et conseil le lisent tel quel. Pendant la répétition, ses sorties ont pu induire en
+  erreur. À construire : (1) quand la CI du fork est verte mais le verdict non intégrable, la sortie le dit en
+  clair, avec la raison ; (2) le seuil de relecture s'écrit lisiblement (relectures requises, obtenues,
+  manquantes) ; (3) l'écart entre gain déclaré et gain mesuré est signalé, avec les deux valeurs, dès qu'il
+  dépasse le seuil de docs/contributions.md.
+files: [outils/bee.py, outils/test_bee.py, docs/contributions.md]
+reach: 0.9
+metric: null
+acceptance_criteria:
+  - "test : un verdict non intégrable avec une CI verte donne une sortie qui dit « non intégrable » et sa raison"
+  - "test : la sortie donne les relectures requises, obtenues et manquantes, d'après bee.yaml"
+  - "test : un écart entre gain déclaré et mesuré au-delà du seuil est signalé avec les deux valeurs"
+  - "aucun workflow qui lit cette commande ne change de comportement (code de sortie et lignes lues par la machine inchangés)"
+out_of_scope:
+  - "COMMANDEMENTS.md"
+  - "REGLES.md"
+  - "les forks"
+node: projects/ruche/ruche
+status: open
+created_by: council
+created_on: "2026-10-31"

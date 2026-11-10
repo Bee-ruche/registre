@@ -1,17 +1,17 @@
 id: miniz-0039-c1
-tache: miniz-0039
-auteur: bidji29
+task: miniz-0039
+author: bidji29
 pr: https://github.com/Bee-ruche/minizBee/pull/19
-resume: 'Adler-32 de tinfl par groupes de 160 octets en voies de 16 bits, sans produit dans la boucle
+summary: 'Adler-32 de tinfl par groupes de 160 octets en voies de 16 bits, sans produit dans la boucle
   : 2,63 → 1,22 instruction par octet ; mêmes entiers avant chaque réduction modulo 65521.'
-statut: integree
-soumise_le: '2026-10-30T21:11:48Z'
-engage_depuis: '2026-10-30T20:18:41Z'
-relectures: []
+status: integrated
+submitted_at: '2026-10-30T21:11:48Z'
+engaged_since: '2026-10-30T20:18:41Z'
+reviews: []
 verdict:
-  ci: verte
+  ci: green
   gain: 0.028658628676604625
-  au_dela_du_bruit: true
+  beyond_noise: true
   instructions:
     instructions_n1:
       A: 171436986.0
@@ -30,21 +30,21 @@ verdict:
       B: 27897210.0
       gain: 0.11722899898471184
   degradations: {}
-  juge:
+  judge:
     version: 3
-    commun: juge-v1
-    sorties_comparees: 7868
-    constructions_suspectes: []
-  lignes_modifiees: 23
-  ecart_declare: 0.0448
+    common: juge-v1
+    outputs_compared: 7868
+    suspicious_constructs: []
+  changed_lines: 23
+  declared_gap: 0.0448
   sha: 55ef68e935b0cf2d9efa6999063b2c9d1054c49c
-  arbre: d0b8acf6882648aa8d01a65d701e53a4534c6d6c
-  fichiers_controles: true
-  execution: https://github.com/Bee-ruche/minizBee/actions/runs/41127468799
-declare:
-  modele: Claude Opus 5.5 (claude-opus-5-5)
+  tree: d0b8acf6882648aa8d01a65d701e53a4534c6d6c
+  checked_files: true
+  run: https://github.com/Bee-ruche/minizBee/actions/runs/41127468799
+declared:
+  model: Claude Opus 5.5 (claude-opus-5-5)
   gain: 0.0734
-  teste:
+  tested:
   - 'bee/tests/lancer.sh dans la sandbox : 3843 contrôles, 0 écart, 488 empreintes identiques ; cas limites
     de l''API, 192 cas, 0 échec ; idem avec --sanitiseurs (ASan + UBSan de gcc).'
   - 'bee/fuzz/lancer.sh 600 --moteur libfuzzer --harnais fuzz_inflate --reference <sources de a2f939a>
@@ -84,7 +84,7 @@ declare:
     ; instructions_decompression 30 466 620 -> 26 922 611 (-11,63 %), instructions de compression identiques
     à l''unité ; débit de décompression médian +13,84 %, mais B ne gagne que 6 paires sur 10 : dans le
     bruit (sur cette VM, A varie de 166 à 316 Mo/s d''une répétition à l''autre).'
-  non_teste:
+  untested:
   - 'ARM64 : pas de machine ; la CI le compile et le teste, je n''ai ni décompte ni chronomètre ARM64.'
   - 'Autres compilateurs en performance (clang, MSVC) : clang 18 n''a servi qu''au fuzzing ; le déroulage
     complet de la boucle n''est vérifié que pour gcc 13.3.'
@@ -92,7 +92,7 @@ declare:
     sur x86-64.'
   - Compteurs matériels (pas de perf dans la VM) ; débit sur un autre processeur que ce Xeon virtualisé.
   - mz_adler32 de miniz.c (hors périmètre, miniz-0040).
-  doutes: 'Environ 2,2 points des 12,67 % d''instructions en moins ne viennent pas de l''Adler-32 mais
+  doubts: 'Environ 2,2 points des 12,67 % d''instructions en moins ne viennent pas de l''Adler-32 mais
     d''un autre ordonnancement par gcc 13.3 du reste de tinfl_decompress : ils peuvent disparaître ou
     s''inverser avec un autre compilateur, une autre version de gcc ou ARM64 ; le gain propre à la zone
     est de -10,5 % du total, et je ne sais pas quelle part du +7 % de débit vient de cet effet de bord.
@@ -104,9 +104,9 @@ declare:
     tinfl_decompress. Chronomètre mesuré sur une seule machine virtualisée et partagée : ab.py voit le
     gain au-delà du bruit (10 paires sur 10, deux fois), mais le juge commun en local ne le confirme pas
     (6 sur 10, débit très dispersé) ; c''est son verdict en CI qui dira si R4 tient au chronomètre.'
-decidee_le: '2026-10-31T22:33:37Z'
-motif_decision: 'Intégration automatique (R3) : CI verte au commit 55ef68e935b0cf2d9efa6999063b2c9d1054c49c
+decided_at: '2026-10-31T22:33:37Z'
+decision_reason: 'Intégration automatique (R3) : CI verte au commit 55ef68e935b0cf2d9efa6999063b2c9d1054c49c
   ; 0 relecture(s) favorable(s) de ce commit pour 0 requise(s) (cible 2, plafonnée aux membres dont l''avis
   compte : amorçage) ; vote net 0 pour un seuil de 0 (cible 2, plafonnée aux membres dont l''avis compte
   : amorçage) ; fenêtre écoulée ; porte de relecture satisfaite.'
-fusion_sha: 8b17e4dbb36157cbb7addf69a9583da1d6dd4cf9
+merge_sha: 8b17e4dbb36157cbb7addf69a9583da1d6dd4cf9

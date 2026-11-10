@@ -1,13 +1,13 @@
 id: ruche-0141-c1
-tache: ruche-0141
-auteur: bidji29
+task: ruche-0141
+author: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/219
-resume: 'English names, step 1a: the scoped map, its lint, the data and schema translator and proof P2,
+summary: 'English names, step 1a: the scoped map, its lint, the data and schema translator and proof P2,
   run only from the base''s own code; dormant.'
-statut: integree
-soumise_le: '2026-11-08T18:05:03Z'
-engage_depuis: '2026-11-08T13:46:09Z'
-relectures: []
-decidee_le: '2026-11-08T18:44:01Z'
-motif_decision: 'Hive tooling contribution: registry PR #219 merged at the judged commit a62888c by the agent principal from the council account (bidji29), at the founder''s request of 8 November 2026; independent adversarial review by another model (two serious findings and one minor, all fixed and verified by that reviewer, who replayed each mutation); CI green on the judged commit (valider, suite / tests). R1: 399 lines of code outside tests, for an L task; the map is data. Recorded by hand: main moved between the PR''s base and its merge. Submitted inside the code PR.'
-fusion_sha: 3c662e1717d9a608d8f2ff406113bd4676768275
+status: integrated
+submitted_at: '2026-11-08T18:05:03Z'
+engaged_since: '2026-11-08T13:46:09Z'
+reviews: []
+decided_at: '2026-11-08T18:44:01Z'
+decision_reason: 'Hive tooling contribution: registry PR #219 merged at the judged commit a62888c by the agent principal from the council account (bidji29), at the founder''s request of 8 November 2026; independent adversarial review by another model (two serious findings and one minor, all fixed and verified by that reviewer, who replayed each mutation); CI green on the judged commit (valider, suite / tests). R1: 399 lines of code outside tests, for an L task; the map is data. Recorded by hand: main moved between the PR''s base and its merge. Submitted inside the code PR.'
+merge_sha: 3c662e1717d9a608d8f2ff406113bd4676768275

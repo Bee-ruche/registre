@@ -1,0 +1,45 @@
+id: ruche-0101
+project: ruche
+category: ruche
+type: test
+area: governance
+size: M
+title: 'Bounds, round 2: robot writes, verdict numbers, whole-PR size and every file the tool reads'
+context: 'Follow-up of ruche-0040''s review (details in the architect''s brief). ruche-0040 bounds every self-service
+  file and field, the verdicts a fork can send, and the tree''s nodes, and keeps a reserve for closes, reservations and
+  robot writes. Left over: a robot write (an expiry note, an integration) must never produce a file over its bound, so
+  that one task can never block the robot for all the others; every number a fork''s verdict can carry is bounded and
+  finite; a verdict with more scenarios than the bound is refused rather than cut; the total size of a PR is bounded
+  before the registry is loaded; the message listing unknown keys is truncated; every file the tool reads (rules, decisions,
+  schemas, docs it parses) is read with a bound; the workflows of the gate have a time limit; and bee liberer, at the
+  reserve''s mark, does not add the automatic note naming the new holder (or the gate accepts that robot-like note).'
+files:
+- outils/bee.py
+- outils/test_bee.py
+- schemas/
+- .github/workflows/fusion-auto.yml
+- .github/workflows/validation.yml
+- .github/workflows/expirations.yml
+- .github/workflows/verdicts.yml
+- docs/gouvernance.md
+reach: 0.8
+metric: null
+depends_on:
+- ruche-0040
+acceptance_criteria:
+- 'test: a task at its bound, then an expiry or an integration: the robot refuses or shortens its note and the registry
+  stays valid; the robot''s other work goes on'
+- 'test: a verdict with an out-of-range or non-finite number, or more scenarios than the bound, is refused and nothing
+  is written; bee classement and bee site never fail on a recorded verdict'
+- 'test: a PR whose files are each under their bound but whose total is over the PR bound is refused before the registry
+  is loaded'
+- every file the tool reads is read through one bounded helper; a test lists the reads
+- the gate's workflows have timeout-minutes
+- independent adversarial review attached, made with the architect's brief; the full test suite passes
+out_of_scope:
+- COMMANDMENTS.md
+- REGLES.md
+node: projects/ruche/ruche
+status: open
+created_by: council
+created_on: '2026-11-01'

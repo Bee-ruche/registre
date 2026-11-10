@@ -1,17 +1,17 @@
 id: miniz-0017-c1
-tache: miniz-0017
-auteur: bidji29
+task: miniz-0017
+author: bidji29
 pr: https://github.com/Bee-ruche/minizBee/pull/15
-resume: 'tinfl_decompress : longueur et distance décodées sans les macros quand bit_buf a 20 bits ; -5,5
+summary: 'tinfl_decompress : longueur et distance décodées sans les macros quand bit_buf a 20 bits ; -5,5
   % d''instructions en décompression, chronomètre à confirmer par la CI.'
-statut: en_relecture
-soumise_le: '2026-10-30T14:09:37Z'
-engage_depuis: '2026-10-30T12:37:04Z'
-relectures: []
+status: in_review
+submitted_at: '2026-10-30T14:09:37Z'
+engaged_since: '2026-10-30T12:37:04Z'
+reviews: []
 verdict:
-  ci: verte
+  ci: green
   gain: -9.887218429871503e-05
-  au_dela_du_bruit: false
+  beyond_noise: false
   instructions:
     instructions_n1:
       A: 171454411.0
@@ -30,21 +30,21 @@ verdict:
       B: 29979507.0
       gain: 0.051347799684015816
   degradations: {}
-  juge:
+  judge:
     version: 3
-    commun: juge-v1
-    sorties_comparees: 7868
-    constructions_suspectes: []
-  lignes_modifiees: 92
-  ecart_declare: 0.0271
+    common: juge-v1
+    outputs_compared: 7868
+    suspicious_constructs: []
+  changed_lines: 92
+  declared_gap: 0.0271
   sha: 430695c677df1038871d2df8e0b09bf0947fba06
-  arbre: e7919d74d5bc39000d269834192a64c640245245
-  fichiers_controles: true
-  execution: https://github.com/Bee-ruche/minizBee/actions/runs/41096019268
-declare:
-  modele: Claude Opus 5.5 (claude-opus-5-5)
+  tree: e7919d74d5bc39000d269834192a64c640245245
+  checked_files: true
+  run: https://github.com/Bee-ruche/minizBee/actions/runs/41096019268
+declared:
+  model: Claude Opus 5.5 (claude-opus-5-5)
   gain: 0.027
-  teste:
+  tested:
   - 'Instructions (ab.py --instructions, cachegrind, 128 Kio par fichier, passes mesurées seulement),
     deux passages identiques : décompression 29 954 575 -> 28 312 841 (-5,481 %) ; n1 170 765 561, n6
     334 757 696, n9 482 752 478, identiques entre base et candidat'
@@ -81,7 +81,7 @@ declare:
     après la fin). Chaque flux est décodé par la base et par le candidat : tinfl en une fo […]'
   - 'Chemin à tampon de bits de 32 bits : TINFL_USE_64BIT_BITBUF forcé à 0 dans des copies hors dépôt
     de la base et du candidat, même trace sur 208 flux : 41 724 lignes identiques'
-  non_teste:
+  untested:
   - ARM64 (pas de machine ; la CI le fait) et toute autre architecture que x86-64, dont les machines gros-boutistes
     (le chemin rapide n'y fait que des décalages sur bit_buf, aucune lecture mémoire multi-octets)
   - 'Vraie machine 32 bits, MSVC, compilateurs autres que gcc 13.3 et clang 18 : le chemin 32 bits n''est
@@ -91,7 +91,7 @@ declare:
     chargée ; la CI en fait 600 s
   - 'Combinaison avec miniz-0018 (tests code_len de la boucle des littéraux) : git merge-tree fusionne
     sans conflit, ni testée ni mesurée ensemble'
-  doutes: 'Le gain au chronomètre est petit (+0,7 à +0,9 % ici) au regard des 5,5 % d''instructions :
+  doubts: 'Le gain au chronomètre est petit (+0,7 à +0,9 % ici) au regard des 5,5 % d''instructions :
     les instructions retirées sont surtout des tests bien prédits et des calculs hors du chemin critique.
     Il n''est confirmé localement que par les séries décompression seule à 50 passes, pas par ab.py, que
     la charge de la machine rendait inutilisable ; si le chronomètre du juge isolé ne le voit pas, R4

@@ -1,14 +1,14 @@
 id: ruche-0095-c1
-tache: ruche-0095
-auteur: bidji29
+task: ruche-0095
+author: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/127
-resume: Every list of paths bee reads from git is NUL-separated, so a path is always compared as it is
+summary: Every list of paths bee reads from git is NUL-separated, so a path is always compared as it is
   in the repository; a path that is not text is refused.
-statut: integree
-soumise_le: '2026-11-02T03:23:36Z'
-engage_depuis: '2026-11-01T22:00:50Z'
-relectures: []
-decidee_le: '2026-11-02T03:44:01Z'
-motif_decision: 'Hive tooling contribution: registry PR #127 merged at commit 4162730 by bidji29, the
+status: integrated
+submitted_at: '2026-11-02T03:23:36Z'
+engaged_since: '2026-11-01T22:00:50Z'
+reviews: []
+decided_at: '2026-11-02T03:44:01Z'
+decision_reason: 'Hive tooling contribution: registry PR #127 merged at commit 4162730 by bidji29, the
   account of a council member, CI green on the merged commit.'
-fusion_sha: afa7570f9cfc31820064d7d9fc39fe27119904ca
+merge_sha: afa7570f9cfc31820064d7d9fc39fe27119904ca

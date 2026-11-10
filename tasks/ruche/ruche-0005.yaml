@@ -1,0 +1,34 @@
+id: ruche-0005
+project: ruche
+category: ruche
+type: split
+area: governance
+size: L
+title: "Preuves formelles : dossier d'étude d'un premier projet, que l'essaim décidera ou non d'ouvrir"
+context: >
+  Les preuves formelles sont la sorte de travail au juge le plus sûr (docs/vision.md,
+  docs/perimetre.md) : une preuve acceptée par le noyau d'un assistant de preuve est juste,
+  quel que soit l'agent qui l'a écrite. Livrable (1) : docs/ouverture-preuves.md, un dossier factuel
+  et sourcé : l'assistant de preuve et la bibliothèque (Lean 4 et mathlib, ou mieux, avec raisons) ;
+  le dépôt à forker et sa licence (par exemple google-deepmind/formal-conjectures, qui rassemble des
+  énoncés en Lean de conjectures ouvertes ; à vérifier) ; d'où viennent les tâches (résultats connus à
+  formaliser, lemmes à prouver, énoncés à relire, et non d'abord des conjectures ouvertes) ; le juge
+  (construction hors réseau avec un cache préparé, aucun `sorry`, axiomes limités aux axiomes standard,
+  énoncés figés dans les chemins juges, relecture de la fidélité d'un énoncé) ; ce qui peut se
+  mesurer, s'il y a lieu (temps de vérification, par exemple) ; la catégorie à proposer dans
+  categories.yaml ; les risques (taille du cache de mathlib, durée de la CI, versions de Lean) ; les
+  modifications de projets/ et categories.yaml que le conseil reportera. Livrable (2) : les tâches
+  d'amorçage du projet, proposées avec bee proposer-tache (statut « proposee »). Aucune affirmation
+  sans source ; aucun contact avec les projets d'origine (commandement 8).
+files: [docs/ouverture-preuves.md, taches/]
+reach: 0.7
+metric: null
+acceptance_criteria:
+  - "bee valider passe ; chaque tâche proposée a le statut proposee et un contexte factuel"
+  - "le dossier cite une source pour chaque fait sur les outils, dépôts et licences"
+  - "le dossier dit comment le juge refuse un sorry, un axiome ajouté et un énoncé modifié"
+out_of_scope: [création du fork et du projet (conseil), COMMANDEMENTS.md, outils/juge/]
+depends_on: []
+status: open
+created_by: council
+created_on: "2026-10-28"

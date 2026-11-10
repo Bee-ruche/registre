@@ -12,13 +12,13 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "titre", "ouvert_le"],
+        "required": ["id", "title", "opened_at"],
         "properties": {
           "id": {"type": "string", "pattern": "^INC-[0-9]{4}$"},
-          "titre": {"type": "string", "minLength": 1, "maxLength": 300},
-          "ouvert_le": {"type": "string"},
-          "clos_le": {"type": "string"},
-          "issue": {"type": "string", "maxLength": 1500, "description": "Ce qui a été fait, à la clôture"}
+          "title": {"type": "string", "minLength": 1, "maxLength": 300},
+          "opened_at": {"type": "string"},
+          "closed_at": {"type": "string"},
+          "outcome": {"type": "string", "maxLength": 1500, "description": "Ce qui a été fait, à la clôture"}
         }
       }
     }

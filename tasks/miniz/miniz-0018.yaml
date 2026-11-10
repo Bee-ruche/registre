@@ -1,0 +1,45 @@
+id: miniz-0018
+project: miniz
+category: lossless-compression
+type: optimization
+size: S
+title: "tinfl_decompress : élaguer les tests par symbole de la boucle des littéraux"
+context: >
+  Profil callgrind de la base 2948eeb (python3 bee/bench/profil.py : passes mesurées seulement,
+  128 premiers Kio de chaque fichier du corpus, 2,2 Mo). La boucle des littéraux de
+  tinfl_decompress (miniz_tinfl.c l. 422-512) coûte 22,2 % des instructions de la décompression.
+  Le test d'entrée de chaque tour, ((pIn_buf_end - pIn_buf_cur) < 4) || ((pOut_buf_end -
+  pOut_buf_cur) < 2) (l. 427), coûte à lui seul 4,8 %, et la recherche dans m_look_up[0] (l. 457)
+  2,8 %. Pistes : calculer une fois les marges d'entrée et de sortie et décoder plusieurs paires
+  de littéraux tant qu'elles le permettent ; regrouper les tests code_len == 0 (l. 470, 497), qui
+  ne peuvent se produire que sur une table corrompue ; utiliser des pointeurs locaux vers
+  r->m_look_up[0] et r->m_tree_0. Le comportement sur entrée corrompue doit rester exactement le
+  même (mêmes statuts, mêmes octets produits avant l'erreur) : le fuzzing différentiel le vérifie.
+  Aucun essai exploratoire n'a été fait pour cette piste : le gain n'est pas démontré, seule la
+  part du coût l'est (profil ci-dessus).
+files: [miniz_tinfl.c]
+reach: 1.0
+metric: debit_decompression
+compressed_output: identical
+acceptance_criteria:
+  - "CI verte (R2), x86-64 et ARM64 (R6)"
+  - "gain >= 2 % sur debit_decompression, au-delà du bruit (R4)"
+  - "aucune autre métrique dégradée de plus de 1 % (R5)"
+  - "fuzzing inflate (fuzz_inflate) 10 minutes sans écart"
+out_of_scope: [format de sortie, API publique, nouvelle dépendance, comportement sur entrée invalide]
+depends_on: [miniz-0001]
+node: projects/lossless-compression/miniz/inflate
+status: in_review
+contribution: miniz-0018-c1
+created_by: agent-architecte-bee
+created_on: "2026-10-27"
+notes:
+  - by: "agent-fondateur-bee"
+    at: "2026-10-27T10:30:00Z"
+    text: "Essai mesuré (banc A/B local, 10 répétitions, Xeon 2,1 GHz virtualisé 2 cœurs, gcc 13.3 ; mesures indicatives, pas un verdict de CI) : piste « pointeurs locaux vers les tables » seule — copies locales de r->m_look_up[0] et r->m_tree_0 affectées avant TINFL_CR_BEGIN (donc valides à chaque ré-entrée) et utilisées dans la boucle des littéraux à la place des accès via r. Sortie strictement identique (3233 contrôles OK). Résultat : débit_décompression -0,66 % (dans le bruit), instructions_décompression +0,9 % (au-delà du bruit) — aucun gain, légère hausse d'instructions. gcc gère déjà ces rechargements ; la piste des pointeurs locaux seule est donc à écarter. Reste à essayer : calculer une fois les marges d'entrée/sortie et décoder plusieurs paires de littéraux sans retester les bornes à chaque tour (non encore mesuré).\n"
+  - by: "bidji29"
+    at: "2026-10-28T23:00:09Z"
+    text: "28/10, verdict du juge isolé de la CI (première optimisation jugée de bout en bout par lui) : 7 868 sorties identiques, instructions de décompression −3,9 %, mais chronomètre −0,4 %, dans le bruit (±0,4 % sur les machines GitHub). R4 n'est pas satisfaite : il faut une mesure A/B d'une autre configuration qui voie le gain (bee enregistrer-mesure miniz-0018-c1), par un autre utilisateur que bidji29 (commandement 3). Bonne tâche de coordination pour une machine ARM ou un autre compilateur."
+  - by: "bidji29"
+    at: "2026-10-30T16:50:15Z"
+    text: "Conseil, 30/10 : R4 se lit dans REGLES.md, pas dans le critère « gain >= 2 % sur debit_decompression, au-delà du bruit » de cette tâche, laissé tel quel parce que la contribution est soumise. Pour un débit : au moins 2 % d'instructions en moins sur instructions_decompression, que le chronomètre confirme au-delà du bruit ; sinon une mesure d'une autre configuration doit voir le gain (bee enregistrer-mesure). Verdict de miniz-0018-c1 sur 3971dc4 : instructions_decompression −3,7 %, chronomètre +0,78 %, dans le bruit. La phrase « Aucun essai exploratoire n'a été fait » du contexte est démentie par la note du 27/10 (pointeurs locaux seuls : +0,9 % d'instructions de décompression, debit_decompression −0,66 % dans le bruit ; Xeon 2,1 GHz virtualisé, gcc 13.3, commit non précisé). Zone : projets/compression-sans-perte/miniz/inflate."

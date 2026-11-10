@@ -1,0 +1,28 @@
+id: ruche-0147
+project: ruche
+category: ruche
+type: test
+area: governance
+size: L
+title: 'English names, step 3b: bee''s messages and help, second half, and the site'
+context: As ruche-0146, for the second half of the commands in the parser's order, the docstrings and comments of bee.py,
+  and the site's labels (site_bee.py).
+files:
+- tools/bee.py
+- tools/test_bee.py
+- tools/site_bee.py
+reach: 0.7
+metric: null
+acceptance_criteria:
+- 'P1 restricted to message literals: no name literal changes'
+- the test count does not drop
+- an independent adversarial review by an agent of another model than the builder's is attached, with every finding fixed
+  or answered; the full test suite passes on the exact head
+out_of_scope:
+- COMMANDMENTS.md
+depends_on:
+- ruche-0145
+node: projects/ruche/ruche
+status: open
+created_by: council
+created_on: '2026-11-08'

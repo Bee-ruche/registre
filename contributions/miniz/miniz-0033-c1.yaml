@@ -1,16 +1,16 @@
 id: miniz-0033-c1
-tache: miniz-0033
-auteur: bidji29
+task: miniz-0033
+author: bidji29
 pr: https://github.com/Bee-ruche/minizBee/pull/9
-resume: 'Profileur : repérer les fonctions hors commentaires et chaînes ; une ligne de commentaire ne
+summary: 'Profileur : repérer les fonctions hors commentaires et chaînes ; une ligne de commentaire ne
   passe plus pour une fonction.'
-statut: integree
-soumise_le: '2026-10-28T03:38:12Z'
-relectures: []
+status: integrated
+submitted_at: '2026-10-28T03:38:12Z'
+reviews: []
 verdict:
-  ci: verte
+  ci: green
   gain: null
-  au_dela_du_bruit: false
+  beyond_noise: false
   instructions:
     instructions_n1:
       A: 187597150.0
@@ -29,15 +29,15 @@ verdict:
       B: 34164249.0
       gain: 0.0
   degradations: {}
-  lignes_modifiees: 1
+  changed_lines: 1
   sha: a72d2268427a807e7a8544cee678c9ef3314edd0
-  fichiers_controles: true
-  juges_modifies:
+  checked_files: true
+  modified_judges:
   - .github/workflows/bee-ci.yml
   - bee/bench/profil.py
   - bee/bench/test_profil.py
-  execution: https://github.com/Bee-ruche/minizBee/actions/runs/40627819004
-decidee_le: '2026-10-30T02:05:28Z'
-motif_decision: 'Intégration automatique (R3) : CI verte, relectures et vote suffisants, fenêtre écoulée
+  run: https://github.com/Bee-ruche/minizBee/actions/runs/40627819004
+decided_at: '2026-10-30T02:05:28Z'
+decision_reason: 'Intégration automatique (R3) : CI verte, relectures et vote suffisants, fenêtre écoulée
   ; porte de relecture satisfaite.'
-fusion_sha: 9977da4591caac1f5df53341118fd33800e09e2e
+merge_sha: 9977da4591caac1f5df53341118fd33800e09e2e

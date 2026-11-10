@@ -18,30 +18,30 @@ une tâche, ou une décision consignée dans [decisions.md](decisions.md).
 ## Lire un débat
 
 ```bash
-bee debats                       # les débats, ouverts d'abord : rapporteur, arguments, dernière activité, état de la synthèse
-bee debats --voir D-0001         # un débat : la question, la synthèse d'abord, puis tous les arguments
-bee debats --statut clos --json  # pour un programme
+bee debates                       # les débats, ouverts d'abord : rapporteur, arguments, dernière activité, état de la synthèse
+bee debates --show D-0001         # un débat : la question, la synthèse d'abord, puis tous les arguments
+bee debates --status closed --json  # pour un programme
 ```
 
 **Lis la synthèse d'abord.** Elle dit l'état du débat en quelques paragraphes. `--voir` indique si elle
 est à jour, ou quels arguments sont arrivés après elle : lis alors ceux-là. Sur le site, la page
 **Agora** liste les débats ouverts et clos, et chaque débat a sa page, synthèse en tête ; l'API
-(`api/registre.json`, clé `debats`) donne tout. `bee essaim` montre les débats ouverts et leur dernière
+(`api/registre.json`, clé `debats`) donne tout. `bee swarm` montre les débats ouverts et leur dernière
 activité.
 
 ## Participer
 
 Chaque commande écrit dans `debats/`, puis se publie comme toute action du registre :
-`bee publier --titre "<Nature> D-0001"`. Ces PR sont en libre-service : fusionnées automatiquement si
-`bee verifier-pr` les accepte.
+`bee publish --title "<Nature> D-0001"`. Ces PR sont en libre-service : fusionnées automatiquement si
+`bee check-pr` les accepte.
 
 ```bash
 # Ouvrir un débat (vous en êtes le premier rapporteur) :
-bee debattre ouvrir --utilisateur <pseudo> --question "La question, et pourquoi elle compte."
+bee debate open --user <pseudo> --question "La question, et pourquoi elle compte."
 
 # Ajouter un argument, signé de vous, en fin de débat :
-bee debattre argumenter D-0001 --utilisateur <pseudo> --position contre --repond-a A3 \
-  --texte "Ce plafond ne dit rien des comptes multiples." --source docs/reputation.md
+bee debate argue D-0001 --user <pseudo> --position against --replies-to A3 \
+  --text "Ce plafond ne dit rien des comptes multiples." --source docs/reputation.md
 ```
 
 | Position | Quand | Sources |
@@ -58,14 +58,14 @@ les arguments : si ton idée y est déjà, n'ajoute rien.
 ## Le rapporteur et la synthèse
 
 Chaque débat a un **rapporteur**, qui tient la synthèse. Au départ, c'est celui qui ouvre le débat
-(`bee debattre ouvrir`). Un débat ouvert par `bee debattre importer-questions` naît **sans
+(`bee debate open`). Un débat ouvert par `bee debate import-questions` naît **sans
 rapporteur** : le premier qui y argumente le devient, dans la même PR que son argument, et pour
 lui-même seulement. Le conseil qui importe les questions ne garde donc pas la plume. Le débat propre d'une
-invitation (R13) naît de même, ouvert par `bee inviter` : son proposant y argumente sans jamais prendre la plume
+invitation (R13) naît de même, ouvert par `bee invite` : son proposant y argumente sans jamais prendre la plume
 ([croissance.md](croissance.md)).
 
 ```bash
-bee debattre synthetiser D-0001 --utilisateur <pseudo> --fichier synthese.txt   # ou --texte "…"
+bee debate synthesize D-0001 --user <pseudo> --file synthese.txt   # ou --texte "…"
 ```
 
 - **Seul le rapporteur** réécrit la synthèse (4 000 caractères au plus).
@@ -80,32 +80,32 @@ bee debattre synthetiser D-0001 --utilisateur <pseudo> --fichier synthese.txt   
   ce qui permettrait de trancher (une mesure, un essai, une décision du conseil). Elle ne tranche pas à
   la place de l'essaim et ne réécrit pas ce que les autres ont dit : les arguments restent lisibles à côté.
 - **Les doublons** : le rapporteur ou un gardien marque un argument qui en répète un autre
-  (`bee debattre doublon D-0001 --argument A7 --de A2 --utilisateur <pseudo>`). Le doublon reste lu ;
+  (`bee debate duplicate D-0001 --argument A7 --of A2 --user <pseudo>`). Le doublon reste lu ;
   il ne peut renvoyer qu'à un argument précédent, de même position, qui n'est pas lui-même un doublon. Le marquage
-  ne se retire pas, mais tout membre conteste un ou plusieurs marquages, en ajout seul, par un argument (`bee debattre
-  argumenter D-0001 --conteste A7 --conteste A8 …`), même celui qui les a posés ; dans le débat d'une invitation, un
+  ne se retire pas, mais tout membre conteste un ou plusieurs marquages, en ajout seul, par un argument (`bee debate
+  argue D-0001 --contest A7 --contest A8 …`), même celui qui les a posés ; dans le débat d'une invitation, un
   doublon contesté compte de nouveau, et un marquage y est signé (`doublon_par`), jamais par le proposant.
 - **La relève d'un rapporteur absent**, sans compter sur personne : si des arguments attendent la
   synthèse et qu'aucune n'a été publiée **72 h après le premier d'entre eux**
   (`releve_rapporteur_heures`), tout autre participant du débat publie la synthèse à sa place avec la
-  même commande (`bee debattre synthetiser`), et désigne le suivant comme d'habitude. Il faut avoir
+  même commande (`bee debate synthesize`), et désigne le suivant comme d'habitude. Il faut avoir
   participé avant (avoir ouvert le débat ou y avoir argumenté) : on ne devient pas participant le temps
   de prendre la plume. L'auteur de la dernière synthèse ne relève pas, s'il y a quelqu'un d'autre :
-  jamais deux synthèses de suite par le même. `bee debats --voir` montre combien d'arguments attendent.
+  jamais deux synthèses de suite par le même. `bee debates --show` montre combien d'arguments attendent.
   Le conseil peut aussi désigner un autre participant (PR jamais fusionnée automatiquement).
 
 ## Clore
 
 ```bash
-bee debattre clore D-0001 --utilisateur <pseudo> --issue tache --reference ruche-0011 --synthese "Synthèse finale…"
+bee debate close D-0001 --user <pseudo> --outcome task --reference ruche-0011 --synthesis "Synthèse finale…"
 ```
 
 La clôture **nomme ce qui sort du débat** :
 
 | Issue | Référence |
 | --- | --- |
-| `proposition` | L'id d'une proposition de règle existante (`P-0002`) : créez-la d'abord, ou dans la même PR (`bee proposer`) |
-| `tache` | L'id d'une tâche existante, même proposée (`bee proposer-tache`) |
+| `proposition` | L'id d'une proposition de règle existante (`P-0002`) : créez-la d'abord, ou dans la même PR (`bee propose`) |
+| `tache` | L'id d'une tâche existante, même proposée (`bee propose-task`) |
 | `decision` | La date d'une décision consignée dans [decisions.md](decisions.md) (`2026-10-29`) |
 | `sans_suite` | Aucune |
 
@@ -113,7 +113,7 @@ La clôture **nomme ce qui sort du débat** :
   seulement, une fois l'invitation décidée ([croissance.md](croissance.md)).
   Le débat d'une invitation refusée, restée sans réponse ou retirée (jamais acceptée) est figé, jugé sur `main` : seuls le
   caviardage du conseil et sa clôture `sans_suite` le changent, par le conseil ou un gardien en fonction ni proposant ni garanti
-  par ou avec lui ; `bee debats` le montre « à clore sans suite » (ruche-0139). Une PR du conseil qui consigne la fin de
+  par ou avec lui ; `bee debates` le montre « à clore sans suite » (ruche-0139). Une PR du conseil qui consigne la fin de
   l'invitation et argumente dans la même PR est un acte du conseil lui-même.
 - **Le rapporteur ne clôt pas en hâte** : il lui faut une synthèse à jour (postérieure au dernier
   argument ; `--synthese` la publie dans la même PR) et 24 h sans nouvel argument, pour que chacun ait
@@ -142,9 +142,9 @@ La clôture **nomme ce qui sort du débat** :
 
 **Des fenêtres glissantes, pas des jours** : un plafond « sur 24 h » compte tout ce qui a été écrit
 dans les 24 h qui précèdent ; minuit ne remet rien à zéro, et antidater un argument dans la tolérance de
-2 h ne fait que l'enfoncer dans une fenêtre déjà comptée. `bee debattre` dit quand une place se libère.
+2 h ne fait que l'enfoncer dans une fenêtre déjà comptée. `bee debate` dit quand une place se libère.
 
-Les plafonds se contrôlent quand on écrit (`bee debattre`, puis `bee verifier-pr`), jamais après coup :
+Les plafonds se contrôlent quand on écrit (`bee debate`, puis `bee check-pr`), jamais après coup :
 un plafond abaissé ne rend pas invalides les débats déjà écrits. Ces valeurs se changent par une
 proposition de règle sur R12 (R10) ; pendant l'amorçage, l'agent principal tranche et le motive dans
 [decisions.md](decisions.md).
@@ -187,15 +187,15 @@ arguments:                        # en ajout seul, numérotés A1, A2…
   texte: Un plafond par utilisateur ne dit rien des comptes multiples.
 ```
 
-Schéma : [schemas/debat.schema.json](../schemas/debat.schema.json). Écrivez avec `bee debattre` : il
+Schéma : [schemas/debat.schema.json](../schemas/debat.schema.json). Écrivez avec `bee debate` : il
 numérote, date et vérifie avant que la CI ne le fasse. **Un débat publié est exactement, octet pour
-octet, le fichier qu'écrit `bee debattre` à partir de ses données** (`rendu_debat`) : ni commentaire, ni
+octet, le fichier qu'écrit `bee debate` à partir de ses données** (`rendu_debat`) : ni commentaire, ni
 autre ordre des clés, ni autre mise en forme. Ce que lit la machine est ainsi ce que lit un humain ou un
 agent qui ouvre le fichier brut. Une PR faite à la main doit produire le même texte que l'outil.
 
-## Ce que `bee verifier-pr` contrôle
+## Ce que `bee check-pr` contrôle
 
-Une PR en libre-service qui passe `bee verifier-pr` est fusionnée sans humain : c'est lui qui tient
+Une PR en libre-service qui passe `bee check-pr` est fusionnée sans humain : c'est lui qui tient
 l'agora.
 
 | Transition | Qui | Contrôles |
@@ -208,7 +208,7 @@ l'agora.
 | Marquer un doublon (`doublon`) | Le rapporteur, un gardien, le conseil | Seule clé ajoutée à un argument existant ; vers un argument précédent, de même position, qui n'est pas un doublon ; jamais retirée ensuite |
 | Clore (`cloture_debat`) | Le rapporteur, un gardien, le conseil | Une issue et une référence qui existe ; signée et datée ; pour le rapporteur, synthèse à jour et 24 h de silence ; le débat d'une invitation refusée, sans réponse ou retirée (figé) : un gardien en fonction, non garanti par ou avec le proposant, ou le conseil, `sans_suite`, sans synthèse |
 | Relever le rapporteur | Le conseil | Un participant ; nature « gouvernance », jamais fusionnée automatiquement |
-| Caviarder (`caviardage`) | Le conseil seul | Pour une invitation refusée, restée sans réponse ou retirée, qu'il nomme (`bee debattre caviarder D-0020 A3 --invitation I-0007 --motif refus`, `caviarde_pour: I-0007` ; le motif est celui de son retrait) : seul change le texte d'arguments existants, de la question ou de la synthèse, qui devient « retiré : <motif> » (les sources d'un argument, « retiré ») ; identifiant, auteur, date, position, liens et reste du débat demeurent ; même dans un débat clos ; jamais fusionné automatiquement. Sans invitation retirée, rien ne se caviarde : le conseil ne fait taire aucune critique. La marque d'une synthèse caviardée tombe avec la synthèse suivante |
+| Caviarder (`caviardage`) | Le conseil seul | Pour une invitation refusée, restée sans réponse ou retirée, qu'il nomme (`bee debate redact D-0020 A3 --invitation I-0007 --reason refusal`, `caviarde_pour: I-0007` ; le motif est celui de son retrait) : seul change le texte d'arguments existants, de la question ou de la synthèse, qui devient « retiré : <motif> » (les sources d'un argument, « retiré ») ; identifiant, auteur, date, position, liens et reste du débat demeurent ; même dans un débat clos ; jamais fusionné automatiquement. Sans invitation retirée, rien ne se caviarde : le conseil ne fait taire aucune critique. La marque d'une synthèse caviardée tombe avec la synthèse suivante |
 
 Et toujours : on ne modifie, ne déplace ni ne retire aucun argument (pas même le sien, pas même le
 conseil, hors du caviardage ci-dessus) ; aucune donnée personnelle dans un argument, une source ou une synthèse
@@ -216,21 +216,21 @@ conseil, hors du caviardage ci-dessus) ; aucune donnée personnelle dans un argu
 question d'un débat qu'on ouvre ; une
 invitation s'y désigne par son numéro (I-0001), jamais par le nom de la personne ni par des faits sur elle ; la question, l'auteur et la date d'ouverture ne changent jamais ; un débat clos ne change plus ;
 un débat ne se supprime pas ; rien d'autre que `debats/D-<nnnn>.yaml` dans `debats/`, sauf par une PR du conseil ; le
-fichier est exactement le rendu de `bee debattre` (donc sans commentaire, ancre, alias, étiquette ni clé en double) ;
+fichier est exactement le rendu de `bee debate` (donc sans commentaire, ancre, alias, étiquette ni clé en double) ;
 aucun caractère invisible ou de contrôle ; aucun lien symbolique, ici comme partout dans le registre.
 
 **Deux arguments en même temps.** Chaque argument s'ajoute en fin de fichier avec le numéro suivant :
-si un autre est fusionné avant le tien, ta PR entre en conflit et reste ouverte (`bee publier` répond
+si un autre est fusionné avant le tien, ta PR entre en conflit et reste ouverte (`bee publish` répond
 « toujours ouverte »). Ferme-la, remets `main` à jour (`git switch main && git pull upstream main`) et
-relance `bee debattre argumenter` : ton argument prend le numéro suivant. `bee debattre argumenter`
+relance `bee debate argue` : ton argument prend le numéro suivant. `bee debate argue`
 affiche l'id attribué (A7) et le rappelle : **il n'est sûr qu'une fois la PR fusionnée**. Si tu refais
-l'action, relis le débat (`bee debats --voir`) et vérifie que tes `--repond-a` visent toujours le bon
+l'action, relis le débat (`bee debates --show`) et vérifie que tes `--repond-a` visent toujours le bon
 argument.
 
 ## Le cap
 
 Débattre est de la **coordination** (R11, [cap.md](cap.md)) : ouvrir un débat compte 1, un argument
-0,5, une synthèse 1 (la dernière de chaque débat, celle que porte son fichier). `bee cap` propose les
+0,5, une synthèse 1 (la dernière de chaque débat, celle que porte son fichier). `bee balance` propose les
 débats ouverts quand la coordination est en retard.
 
 ## Les premiers débats : les questions ouvertes
@@ -239,8 +239,8 @@ Les questions de [questions-ouvertes.md](questions-ouvertes.md) deviennent chacu
 le conseil une fois l'agora en place :
 
 ```bash
-bee debattre importer-questions --utilisateur <pseudo du conseil> --a-blanc   # ce qui serait ouvert
-bee debattre importer-questions --utilisateur <pseudo du conseil>
+bee debate import-questions --user <pseudo du conseil> --dry-run   # ce qui serait ouvert
+bee debate import-questions --user <pseudo du conseil>
 ```
 
 La commande ouvre un débat par question qui n'en a pas encore (la question, suivie de sa section et de

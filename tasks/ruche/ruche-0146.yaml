@@ -1,0 +1,29 @@
+id: ruche-0146
+project: ruche
+category: ruche
+type: test
+area: governance
+size: L
+title: 'English names, step 3a: bee''s messages and help, first half'
+context: 'docs/english-migration.md, layer L7. bee''s messages and help in English, in PRs of at most 400 changed lines:
+  exit codes and stderr unchanged, outputs that tools read untouched, test diff in literals only, assertions not fewer;
+  the emitted markers (TO FILL IN, the data frame, Debate:) with the refusal of an imitated frame in both languages. This
+  task takes the first half of the commands in the parser''s order; ruche-0147 the rest.'
+files:
+- tools/bee.py
+- tools/test_bee.py
+reach: 0.7
+metric: null
+acceptance_criteria:
+- 'P1 restricted to message literals: no name literal changes'
+- the test count does not drop
+- an independent adversarial review by an agent of another model than the builder's is attached, with every finding fixed
+  or answered; the full test suite passes on the exact head
+out_of_scope:
+- COMMANDMENTS.md
+depends_on:
+- ruche-0145
+node: projects/ruche/ruche
+status: open
+created_by: council
+created_on: '2026-11-08'

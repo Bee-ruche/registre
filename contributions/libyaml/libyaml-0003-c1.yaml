@@ -1,16 +1,16 @@
 id: libyaml-0003-c1
-tache: libyaml-0003
-auteur: bidji29
+task: libyaml-0003
+author: bidji29
 pr: https://github.com/Bee-ruche/libyamlBee/pull/2
-resume: 'Oracle d''aller-retour de l''émetteur : chaque document est ré-émis puis ré-analysé, et doit
+summary: 'Oracle d''aller-retour de l''émetteur : chaque document est ré-émis puis ré-analysé, et doit
   redonner le même flux d''événements aux normalisations documentées près.'
-statut: integree
-soumise_le: '2026-10-28T03:17:08Z'
-relectures: []
+status: integrated
+submitted_at: '2026-10-28T03:17:08Z'
+reviews: []
 verdict:
-  ci: verte
+  ci: green
   gain: null
-  au_dela_du_bruit: false
+  beyond_noise: false
   instructions:
     instructions_analyse:
       A: 249769850.0
@@ -25,16 +25,16 @@ verdict:
       B: 461725511.0
       gain: 0.0
   degradations: {}
-  lignes_modifiees: 0
+  changed_lines: 0
   sha: a5097dc395362503c4ec4bfb5f2facf9a3de2804
-  fichiers_controles: true
-  juges_modifies:
+  checked_files: true
+  modified_judges:
   - bee/Makefile
   - bee/tests/aller_retour.c
   - bee/tests/empreintes-aller-retour.txt
   - bee/tests/lancer.sh
-  execution: https://github.com/Bee-ruche/libyamlBee/actions/runs/40625791846
-decidee_le: '2026-10-29T05:40:12Z'
-motif_decision: 'Intégration automatique (R3) : CI verte, relectures et vote suffisants, fenêtre écoulée
+  run: https://github.com/Bee-ruche/libyamlBee/actions/runs/40625791846
+decided_at: '2026-10-29T05:40:12Z'
+decision_reason: 'Intégration automatique (R3) : CI verte, relectures et vote suffisants, fenêtre écoulée
   ; porte de relecture satisfaite.'
-fusion_sha: 6ca5a94979687bc2097d9ce2c587c1445bfb322a
+merge_sha: 6ca5a94979687bc2097d9ce2c587c1445bfb322a

@@ -1,0 +1,35 @@
+id: ruche-0107
+project: ruche
+category: ruche
+type: test
+area: governance
+size: M
+title: 'R4: a measurement counts for the commit it measured, and a measurer can measure a later commit'
+context: 'Follow-up of ruche-0042''s review. A measurement of a contribution (mesures/<contribution>/<login>.yaml) counts
+  for R4''s reproduction whatever commits it says it measured, and since ruche-0042 it is final: one file per person
+  and contribution, never changed. So a measurement of an earlier commit counts for a later one, and an honest measurer
+  can never measure the author''s next commit. Bind a measurement to the commit it measured: one file per person and
+  measured commit, and R4 counts only a measurement whose candidate commit is the judged one (the verdict''s sha) and
+  whose base is the verdict''s base. Measurements already on main stay valid.'
+files:
+- outils/bee.py
+- outils/test_bee.py
+- schemas/mesure.schema.json
+- docs/mesures.md
+- docs/gouvernance.md
+reach: 0.8
+metric: null
+depends_on:
+- ruche-0042
+acceptance_criteria:
+- 'test: a measurement of another commit than the judged one does not count for R4; one of the judged commit does'
+- 'test: a measurer records a measurement of a later commit of the same contribution; still one per person and commit,
+  append-only'
+- existing measurements stay valid; independent adversarial review attached; the full test suite passes
+out_of_scope:
+- COMMANDMENTS.md
+- who may measure (ruche-0108)
+node: projects/ruche/ruche
+status: open
+created_by: council
+created_on: '2026-11-02'

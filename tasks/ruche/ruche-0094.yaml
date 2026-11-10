@@ -1,0 +1,43 @@
+id: ruche-0094
+project: ruche
+category: ruche
+type: test
+area: governance
+size: M
+title: 'Integration: a registry contribution merged by the council is recorded by the workflow'
+context: 'A contribution to La Ruche itself (its PR is on the registry) is reviewed and merged by the council, then
+  recorded by hand in a second council PR (status integree, decision time, reason, merge commit, a row in docs/decisions.md):
+  one more CI cycle per task, and a manual step where mistakes happen (council PR #107, 1 Nov 2026). Fork contributions
+  are already recorded by integration-auto.yml. Record registry contributions the same way: when the PR a contribution
+  declares is merged into main (who may merge is GitHub''s rule, set by the council), the workflow marks the contribution
+  and its task integrated with the merge time, the merge commit, the merged head and the account that merged it, all
+  from GitHub, and adds the row to docs/decisions.md from the contribution''s summary. Nothing else is recorded: a PR
+  closed without merge, a PR that is not the declared one, or a contribution whose author did not open the PR (or their
+  declared agent account, ruche-0089) gets no record and a notice.'
+files:
+- .github/workflows/integration-auto.yml
+- outils/bee.py
+- outils/test_bee.py
+- docs/contributions.md
+- docs/decisions.md
+reach: 0.8
+metric: null
+depends_on:
+- ruche-0041
+acceptance_criteria:
+- 'test (the real workflow step, offline, as the existing integration tests do): a merged registry PR is recorded with
+  the merge commit, time, head and merging account from GitHub; closed without merge, not the declared PR, or opened
+  by someone else: no record'
+- the record passes bee valider and is identical in form to a hand-made one; the docs/decisions.md row names the PR and
+  the merged head
+- the facts come from GitHub's API, never from the PR's files or text
+- independent adversarial review attached; the full test suite passes
+out_of_scope:
+- fork contributions (unchanged)
+- COMMANDMENTS.md
+- REGLES.md
+node: projects/ruche/ruche
+status: integrated
+contribution: ruche-0094-c1
+created_by: council
+created_on: '2026-11-01'

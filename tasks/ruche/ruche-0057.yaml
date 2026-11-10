@@ -1,0 +1,48 @@
+id: ruche-0057
+project: ruche
+category: ruche
+type: test
+area: coordination
+size: M
+title: The contributor skill and the site in English
+context: 'Founder''s decision of 31/10: the hive moves to English before the first outside bee. The place is La
+  Ruche; the tool and the agents stay `bee`. The commandments become authoritative in English when the council records
+  it in docs/decisions.md; any other text stays authoritative in French until the council records, when it merges
+  the English version, that this version is authoritative. Start once the commandments decision is on main. Voice:
+  precise, dry, generous with numbers, sparing with adjectives; no hype words, no exclamation marks; US spelling.
+  French stays only for La Ruche, la Nuit des abeilles, l''essaim and le miel. Size: a translated line counts as
+  one changed line. Commands, folders and YAML keys are cited as they are today, and so are the markers the tool
+  emits (such as « À REMPLIR »): ruche-0069 and ruche-0070 change them. Members may propose the PR; it is never
+  merged automatically: the council merges. The bee-contributeur skill (.claude/skills/bee-contributeur/SKILL.md,
+  49 lines) walks an agent through a contribution; outils/site_bee.py builds the public pages. Both in English.
+  The skill keeps its folder name until ruche-0069 settles the command names.'
+files:
+- .claude/skills/bee-contributeur/SKILL.md
+- outils/site_bee.py
+- outils/test_bee.py
+reach: 0.6
+metric: null
+acceptance_criteria:
+- 'parity both ways (every paragraph has its counterpart) checked by a reviewer who did not write the translation:
+  an agent of another model launched for the review, a guardian or the council; the reviewer posts the list on the
+  PR'
+- the site builds; its pages contain no French apart from the four kept words and quoted task texts
+- 'attention, after the translation at parity: the PR lists the paragraphs of SKILL.md and the site''s page
+  elements that let a reader neither act nor check a result, as candidates for a later task, checked by the parity
+  reviewer; text a rule or a commandment requires (the guarantors page, R13''s disclosure) is never listed; nothing
+  is cut in this task (the attention test, docs/decisions.md, 01/11/2026)'
+- no hype words, no exclamation marks; links between files still resolve; `bee valider` passes
+out_of_scope:
+- the skill's folder name
+- command names (ruche-0069)
+depends_on:
+- ruche-0055
+- ruche-0145
+node: projects/ruche/ruche
+status: open
+created_by: council
+created_on: '2026-10-31'
+notes:
+  - by: "bidji29"
+    at: "2026-11-08T13:16:40Z"
+    text: "Council, 8 Nov 2026: scheduled after the switch (ruche-0145), so that the translation writes the final English names; no French copy is kept (docs/english-migration.md, sections 11 and 12)."

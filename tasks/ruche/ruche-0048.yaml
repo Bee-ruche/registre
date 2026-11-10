@@ -1,0 +1,34 @@
+id: ruche-0048
+project: ruche
+category: ruche
+type: test
+area: governance
+size: L
+title: "Commandement 10 : retirer les données d'une personne à sa demande, sans la mettre en non-contact"
+context: >
+  Issue de la répétition générale n° 4 du 31/10 (détails remis au constructeur par l'architecte). À faire
+  avant la première invitation envoyée. Le commandement 10 dit que les données d'une personne extérieure se
+  retirent à son refus ou à sa demande. Ce sont deux gestes distincts : un refus d'invitation met la personne
+  sur la liste de non-contact ; une demande de retrait ne doit pas le faire. Le retrait doit aussi atteindre
+  une personne nommée hors de toute invitation, dans l'agora ou dans une note. À construire : (1) un geste du
+  conseil « retrait demandé », distinct du refus, qui retire les données de la personne des textes du registre
+  où elle est nommée ; (2) ce geste est consigné et lié à une demande vérifiable (où et quand elle a été
+  faite), sans recopier de donnée de la personne, et il ne touche qu'aux passages qui la nomment ; (3)
+  docs/croissance.md décrit les deux gestes.
+files: [outils/bee.py, outils/test_bee.py, docs/croissance.md]
+reach: 0.9
+metric: null
+acceptance_criteria:
+  - "test : un retrait demandé retire les données de la personne de l'agora, des notes et des invitations, sans l'ajouter à la liste de non-contact ; un refus d'invitation l'y ajoute comme aujourd'hui"
+  - "test : un retrait sans demande vérifiable consignée est refusé par bee verifier-pr"
+  - "test : un retrait ne modifie que les passages qui nomment la personne"
+  - "docs/croissance.md décrit les deux gestes ; revue adverse indépendante jointe (le geste ne doit pas servir à faire taire un argument)"
+out_of_scope:
+  - "COMMANDEMENTS.md"
+  - "REGLES.md"
+  - "les forks"
+node: projects/ruche/ruche
+status: integrated
+contribution: ruche-0048-c1
+created_by: council
+created_on: "2026-10-31"

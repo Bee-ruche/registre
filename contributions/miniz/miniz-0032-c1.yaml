@@ -1,18 +1,18 @@
 id: miniz-0032-c1
-tache: miniz-0032
-auteur: bidji29
+task: miniz-0032
+author: bidji29
 pr: https://github.com/Bee-ruche/minizBee/pull/16
-resume: 'minizBee passe au juge commun (juge-v1) : greffon, harnais, choix du greffon dans la base, méta-tests
+summary: 'minizBee passe au juge commun (juge-v1) : greffon, harnais, choix du greffon dans la base, méta-tests
   ; CONTRIBUTION.yaml retiré de master.'
-statut: integree
-soumise_le: '2026-10-30T15:22:32Z'
-engage_depuis: '2026-10-30T14:19:02Z'
-relectures: []
+status: integrated
+submitted_at: '2026-10-30T15:22:32Z'
+engaged_since: '2026-10-30T14:19:02Z'
+reviews: []
 verdict:
-  ci: verte
+  ci: green
   gain: null
-  au_dela_du_bruit: false
-  amorcage: true
+  beyond_noise: false
+  bootstrap: true
   instructions:
     instructions_n1:
       A: 171446841.0
@@ -31,17 +31,17 @@ verdict:
       B: 31604510.0
       gain: 0.0
   degradations: {}
-  juge:
+  judge:
     version: 3
-    commun: juge-v1
-    sorties_comparees: 7868
-    constructions_suspectes: []
-  lignes_modifiees: 290
-  ecart_declare: null
+    common: juge-v1
+    outputs_compared: 7868
+    suspicious_constructs: []
+  changed_lines: 290
+  declared_gap: null
   sha: 7f547d4c0476c1853b165ba89d024413d7b32815
-  arbre: 048858c40658597d21e280c35dd1e27c8a79b168
-  fichiers_controles: true
-  juges_modifies:
+  tree: 048858c40658597d21e280c35dd1e27c8a79b168
+  checked_files: true
+  modified_judges:
   - .github/workflows/bee-ci.yml
   - bee/README.md
   - bee/ci/juges.sh
@@ -55,11 +55,11 @@ verdict:
   - bee/juge/juge.py
   - bee/juge/projet.py
   - bee/juge/test_juge.py
-  execution: https://github.com/Bee-ruche/minizBee/actions/runs/41093102379
-declare:
-  modele: Claude Opus 5.5 (claude-opus-5-5), sous-agent lancé par l'agent principal du projet Bee
+  run: https://github.com/Bee-ruche/minizBee/actions/runs/41093102379
+declared:
+  model: Claude Opus 5.5 (claude-opus-5-5), sous-agent lancé par l'agent principal du projet Bee
   gain: null
-  teste:
+  tested:
   - 'Comparaison à graine égale juge v2 / juge commun (Docker local, image du juge commun identique en
     paquets à celle du juge v2, gcc 13.3, valgrind 3.22) : mêmes sorties comparées (2 988) et mêmes décomptes
     d''instructions A et B sur les quatre scénarios, pour B = master et B = miniz-0017 (chiffres dans
@@ -96,14 +96,14 @@ declare:
     les trois verdicts incohérents rouges'
   - 'verdict.py simulé sur les rapports réels de la comparaison (juge commun et ancien juge) : ci verte,
     juge.commun juge-v1, juge.version 3, details.juge_ancien rempli'
-  non_teste:
+  untested:
   - le chemin d'après fusion (greffon lu dans la base, merge-base, isoler.sh et image du registre avec
     le greffon de la base) n'est exercé qu'en CI sur cette PR avec le greffon de la PR (introduction)
     ; la logique de choix du commit est testée localement sur de petits dépôts git
   - 'ARM64 et libFuzzer : seulement en CI'
   - 'le scénario de la revue adverse sur GitHub Actions lui-même (job greffon rouge) : seulement sur de
     petits dépôts git, avec le script du job extrait du workflow'
-  doutes: '1) Le greffon fait un git fetch sur l''hôte quand la base est extraite sans historique : dépendance
+  doubts: '1) Le greffon fait un git fetch sur l''hôte quand la base est extraite sans historique : dépendance
     au réseau de GitHub pendant le jugement ; la vraie correction est dans juge.yml du registre (extraction
     complète de la base), tâche d''outillage du registre. 2) Pendant l''introduction (cette PR seulement),
     le greffon de la PR est du Python exécuté sur l''hôte (image, jugement) et l''assembleur du verdict
@@ -120,9 +120,9 @@ declare:
     7) verdicts.yml du registre prend la dernière exécution de bee-ci.yml pour un SHA sans vérifier la
     PR ni la base (revue adverse, S1) : base_juge et details.base sont maintenant dans verdict.json, m
     […]'
-decidee_le: '2026-10-31T15:49:04Z'
-motif_decision: 'Intégration automatique (R3) : CI verte au commit 7f547d4c0476c1853b165ba89d024413d7b32815
+decided_at: '2026-10-31T15:49:04Z'
+decision_reason: 'Intégration automatique (R3) : CI verte au commit 7f547d4c0476c1853b165ba89d024413d7b32815
   ; 0 relecture(s) favorable(s) de ce commit pour 0 requise(s) (cible 2, plafonnée aux membres dont l''avis
   compte : amorçage) ; vote net 0 pour un seuil de 0 (cible 2, plafonnée aux membres dont l''avis compte
   : amorçage) ; fenêtre écoulée ; porte de relecture satisfaite.'
-fusion_sha: a2f939ad119c249526f1f4d2e78dcca8d0cadb75
+merge_sha: a2f939ad119c249526f1f4d2e78dcca8d0cadb75

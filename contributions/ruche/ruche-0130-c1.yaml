@@ -1,13 +1,13 @@
 id: ruche-0130-c1
-tache: ruche-0130
-auteur: bidji29
+task: ruche-0130
+author: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/176
-resume: bee reads YAML with libyaml behind a strict event pre-scan, falling back to the pure loader, and
+summary: bee reads YAML with libyaml behind a strict event pre-scan, falling back to the pure loader, and
   every robot clone writes a commit-graph.
-statut: integree
-soumise_le: '2026-11-02T19:20:34Z'
-engage_depuis: '2026-11-02T15:58:52Z'
-relectures: []
-decidee_le: '2026-11-02T19:28:39Z'
-motif_decision: 'Hive tooling contribution: registry PR #176 merged at the judged commit 4fb7b32 under the council''s permanent authorisation, after an independent adversarial review in a separate session (mergeable, nothing to fix; a differential fuzz of the two loaders found no divergence); CI green on the judged commit. R1: 75 lines changed outside tests, for an M task at 200. Recorded by hand: it changes workflows. Submitted inside the code PR.'
-fusion_sha: 72aacce07611123cc56d3ee7587dc0ced0bdc333
+status: integrated
+submitted_at: '2026-11-02T19:20:34Z'
+engaged_since: '2026-11-02T15:58:52Z'
+reviews: []
+decided_at: '2026-11-02T19:28:39Z'
+decision_reason: 'Hive tooling contribution: registry PR #176 merged at the judged commit 4fb7b32 under the council''s permanent authorisation, after an independent adversarial review in a separate session (mergeable, nothing to fix; a differential fuzz of the two loaders found no divergence); CI green on the judged commit. R1: 75 lines changed outside tests, for an M task at 200. Recorded by hand: it changes workflows. Submitted inside the code PR.'
+merge_sha: 72aacce07611123cc56d3ee7587dc0ced0bdc333

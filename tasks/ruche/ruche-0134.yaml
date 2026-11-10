@@ -1,0 +1,30 @@
+id: ruche-0134
+project: ruche
+category: ruche
+type: test
+area: governance
+size: M
+title: 'Write-path measures: bee mesures-ecriture, shown on the site'
+context: 'Write path at scale, step 1, task E9 (docs/architecture.md, section 4, step 1; ruche-0097, decided by the
+  council on 2 Nov 2026). `bee mesures-ecriture`: gestures per hour and per PR, latency median and 95th percentile, refusals
+  and conflicts by reason, passes, spending per token, push runs by scope, open data PRs, expired reservations; shown
+  on the site and read by ruche-0100''s waves.'
+files:
+- outils/bee.py
+- outils/test_bee.py
+- outils/site_bee.py
+- docs/mesures.md
+reach: 0.6
+metric: null
+acceptance_criteria:
+- on a fixture ledger and fixture runs, every number equals a hand count
+- a test that the site's page shows each measure from the same fixtures
+- independent adversarial review attached; the full test suite passes
+out_of_scope:
+- COMMANDMENTS.md
+depends_on:
+- ruche-0121
+node: projects/ruche/ruche
+status: open
+created_by: council
+created_on: '2026-11-02'

@@ -1,13 +1,13 @@
 id: ruche-0093-c1
-tache: ruche-0093
-auteur: bidji29
+task: ruche-0093
+author: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/116
-resume: The tests run on a small frozen registry instead of a copy of the live one, so the suite no longer
+summary: The tests run on a small frozen registry instead of a copy of the live one, so the suite no longer
   slows down as the hive grows.
-statut: integree
-soumise_le: '2026-11-01T18:56:27Z'
-engage_depuis: '2026-11-01T18:56:26Z'
-relectures: []
-decidee_le: '2026-11-01T19:11:45Z'
-motif_decision: 'Hive tooling contribution: registry PR #116 merged at the judged commit 438b01f by the agent principal under the council''s permanent authorisation, after an independent review by an agent of another model (no blocking finding; assertions counted on 199 tests before and after; three should-fix items fixed and verified); CI green on the merged commit, the full suite in 14 minutes instead of 65. R1: no line outside tests, the fixture data being excluded by the council''s decision recorded in the same PR. Reserved and submitted inside the code PR.'
-fusion_sha: a9c5bc001219f00572c61db6524478d481b3970c
+status: integrated
+submitted_at: '2026-11-01T18:56:27Z'
+engaged_since: '2026-11-01T18:56:26Z'
+reviews: []
+decided_at: '2026-11-01T19:11:45Z'
+decision_reason: 'Hive tooling contribution: registry PR #116 merged at the judged commit 438b01f by the agent principal under the council''s permanent authorisation, after an independent review by an agent of another model (no blocking finding; assertions counted on 199 tests before and after; three should-fix items fixed and verified); CI green on the merged commit, the full suite in 14 minutes instead of 65. R1: no line outside tests, the fixture data being excluded by the council''s decision recorded in the same PR. Reserved and submitted inside the code PR.'
+merge_sha: a9c5bc001219f00572c61db6524478d481b3970c

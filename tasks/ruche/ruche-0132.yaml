@@ -1,0 +1,35 @@
+id: ruche-0132
+project: ruche
+category: ruche
+type: test
+area: governance
+size: M
+title: The full test suite in its own workflow, and the fast path's one-call read of it
+context: 'Write path at scale, step 1, task E25a (docs/architecture.md, section 4, step 1; ruche-0097, decided by the
+  council on 2 Nov 2026). Requirement R-push, part 1. The full suite moves to its own workflow (`suite.yml`), called
+  by a code PR''s validation and dispatchable on a commit. The PR fast path''s "main is green" becomes one filtered call
+  reading `suite.yml`''s latest runs on `main`: the newest must be for `main`''s last commit that changed anything but
+  data (found locally with git), and the newest completed one must have succeeded.'
+files:
+- .github/workflows/suite.yml
+- .github/workflows/validation.yml
+- outils/bee.py
+- outils/test_bee.py
+- docs/contributions.md
+reach: 0.7
+metric: null
+acceptance_criteria:
+- 'unit tests: the fast path sends a PR to the full suite when the newest suite.yml run is not for main''s last code
+  commit, when the newest completed one failed, or when the call fails'
+- on a fork of the registry, a code PR runs the full suite through suite.yml with the same jobs and results as before,
+  run ids in the PR
+- independent adversarial review attached; the full test suite passes
+out_of_scope:
+- COMMANDMENTS.md
+depends_on:
+- ruche-0092
+node: projects/ruche/ruche
+status: integrated
+contribution: ruche-0132-c1
+created_by: council
+created_on: '2026-11-02'
