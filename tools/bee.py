@@ -6779,10 +6779,10 @@ def cmd_validate(args):
     for a in tree_warnings(reg) + growth_alerts(reg):
         print(f"⚠ {show_error(a)}")
     if problems_found:
-        print(f"\n{len(problems_found)} problème(s). Le registre n'est pas valide.")
+        print(f"\n{len(problems_found)} problem(s). The registry is not valid.")
         return 1
-    print(f"✓ registre valide : {len(reg.projects)} projets, {len(reg.tasks)} tâches, {len(reg.records)} contributions, "
-          f"{len(reg.members)} membres, {len(reg.votes)} votes, {len(reg.proposals)} propositions, {len(reg.debates)} débats.")
+    print(f"✓ registry valid: {len(reg.projects)} projects, {len(reg.tasks)} tasks, {len(reg.records)} contributions, "
+          f"{len(reg.members)} members, {len(reg.votes)} votes, {len(reg.proposals)} proposals, {len(reg.debates)} debates.")
     return 0
 
 
@@ -6814,30 +6814,30 @@ def cmd_list(args):
         return 0
     if hidden:
         waits = sorted({d for _, b in hidden for d in b})
-        hidden_message = f"{len(hidden)} tâche(s) masquée(s) car elles attendent l'intégration de : {', '.join(waits)}."
+        hidden_message = f"{len(hidden)} task(s) hidden because they wait for the integration of: {', '.join(waits)}."
     if not result:
-        print("Aucune tâche ne correspond." + (f" {hidden_message}" if hidden else ""))
+        print("No task matches." + (f" {hidden_message}" if hidden else ""))
         in_review = sum(1 for _, e in reg.records.values() if isinstance(e, dict) and e.get("status") == "in_review")
         if in_review:
-            print(f"Il y a {in_review} contribution(s) à relire : bee ranking --status in_review")
+            print(f"There are {in_review} contribution(s) to review: bee ranking --status in_review")
         else:
-            print("Rien à relire non plus : dites-le à votre utilisateur et arrêtez-vous (la racine de l'arbre : bee context).")
+            print("Nothing to review either: tell your user and stop (the root of the tree: bee context).")
         return 0
-    show_table(["ID", "POSTE", "TYPE", "TAILLE", "PORTÉE", "STATUT", "TITRE"],
+    show_table(["ID", "AREA", "TYPE", "SIZE", "REACH", "STATUS", "TITLE"],
                      [[t["id"], t["area"], t["type"], t["size"], f"{float(t['reach']):.1f}",
-                       t["status"] + (" (bloquée)" if t["blocked_by"] else ""), t["title"]] for t in result])
+                       t["status"] + (" (blocked)" if t["blocked_by"] else ""), t["title"]] for t in result])
     if hidden:
         print(f"\n{hidden_message}")
     if not args.json and balance_target(reg):
         state = balance_state(reg)
         if state["behind"]:
-            print(f"\nCap de la ruche (R11) : le poste le plus en retard sur sa cible est « {state['behind']} ». "
-                  "Un guide, pas une obligation : bee balance.")
+            print(f"\nThe hive's balance (R11): the area furthest behind its target is « {state['behind']} ». "
+                  "A guide, not an obligation: bee balance.")
     return 0
 
 
 def _pct(x):
-    return "-" if x is None else f"{x:.0f} %"
+    return "-" if x is None else f"{x:.0f}%"
 
 
 def cmd_cap(args):
@@ -6862,32 +6862,32 @@ def cmd_cap(args):
         print(json.dumps({**state, "suggested_area": area, "leads": leads}, ensure_ascii=False, indent=2))
         return 0
     if not state["areas"]:
-        print("Aucun cap défini (bee.yaml, clé balance). Voir docs/balance.md.")
+        print("No balance defined (bee.yaml, key balance). See docs/balance.md.")
         return 0
-    print(f"Cap de la ruche (R11), {state['window_days']} derniers jours. Un guide, pas une obligation : docs/balance.md.")
+    print(f"The hive's balance (R11), last {state['window_days']} days. A guide, not an obligation: docs/balance.md.")
     lines = []
     for l in state["areas"]:
         gap = "-" if l["gap"] is None else f"{l['gap']:+.0f} pts"
-        gestures = ", ".join(f"{g} {x:g}" for g, x in sorted(l["gestures"].items(), key=lambda kv: -kv[1])) or "rien"
+        gestures = ", ".join(f"{g} {x:g}" for g, x in sorted(l["gestures"].items(), key=lambda kv: -kv[1])) or "nothing"
         lines.append([l["area"], _pct(l["target"]), _pct(l["actual"]), gap, gestures])
-    show_table(["POSTE", "CIBLE", "RÉEL", "ÉCART", "ACTIVITÉ (poids)"], lines)
+    show_table(["AREA", "TARGET", "ACTUAL", "GAP", "ACTIVITY (weight)"], lines)
     if not state["total"]:
-        print("\nAucune activité sur la fenêtre : toute contribution aide ; commencez par le poste le plus en retard.")
+        print("\nNo activity in the window: every contribution helps; start with the area furthest behind.")
     if area:
-        print(f"\n{'Poste demandé' if args.area else 'Poste le plus en retard'} : {area}. Pistes :")
+        print(f"\n{'Poste demandé' if args.area else 'Poste le plus en retard'}: {area}. Leads:")
         for t in leads["tasks"]:
-            print(f"  - {t['id']} ({t['size']}) : {t['title']}")
+            print(f"  - {t['id']} ({t['size']}): {t['title']}")
         if leads["to_review"]:
-            print(f"  - contributions à relire : {', '.join(leads['to_review'])} (bee ranking --status in_review)")
+            print(f"  - contributions to review: {', '.join(leads['to_review'])} (bee ranking --status in_review)")
         if leads["proposals"]:
-            print(f"  - propositions de règle ouvertes, à débattre et voter : {', '.join(leads['proposals'])}")
+            print(f"  - open rule proposals, to debate and vote on: {', '.join(leads['proposals'])}")
         if leads["to_validate"]:
-            print(f"  - tâches proposées, à valider ou écarter par un gardien ou un Confirmé : {', '.join(leads['to_validate'])}")
+            print(f"  - proposed tasks, to validate or set aside by a guardian or a Confirmed member: {', '.join(leads['to_validate'])}")
         if leads["debates"]:
-            print(f"  - débats ouverts de l'agora, à éclairer par un argument sourcé : {', '.join(leads['debates'])} (bee debates)")
+            print(f"  - open debates of the agora, to inform with a sourced argument: {', '.join(leads['debates'])} (bee debates)")
         if not any(leads.values()):
-            print("  - aucune tâche ouverte dans ce poste : proposez-en une (bee propose-task), c'est déjà du travail utile.")
-    print("\nQui travaille sur quoi : bee swarm.")
+            print("  - no open task in this area: propose one (bee propose-task), that is already useful work.")
+    print("\nWho works on what: bee swarm.")
     return 0
 
 
@@ -6899,121 +6899,121 @@ def cmd_swarm(args):
         print(json.dumps(table_of, ensure_ascii=False, indent=2))
         return 0
     hours = lambda h: "-" if h is None else f"{h:g} h"  # noqa: E731
-    print("En cours (réservations et inscriptions en parallèle) :")
+    print("In progress (reservations and parallel registrations):")
     if table_of["in_progress"]:
-        show_table(["TÂCHE", "POSTE", "TAILLE", "QUI", "DEPUIS", "EXPIRE DANS", "EN PARALLÈLE (EXPIRE DANS)"],
+        show_table(["TASK", "AREA", "SIZE", "WHO", "SINCE", "EXPIRES IN", "PARALLEL (EXPIRES IN)"],
                          [[x["task"], x["area"], x["size"], x["user"] or f"- ({x['status']})",
                            hours(x["hours"]), hours(x["expires_in_hours"]),
                            ", ".join(f"{p['user']} ({hours(p['expires_in_hours'])})" for p in x["parallel"]) or "-"]
                           for x in table_of["in_progress"]])
     else:
-        print("  personne.")
-    print("\nEn relecture (contributions soumises) :")
+        print("  nobody.")
+    print("\nIn review (submitted contributions):")
     if table_of["in_review"]:
-        show_table(["CONTRIBUTION", "POSTE", "AUTEUR", "CI", "RELECTURES", "FENÊTRE RESTANTE", "CONCURRENTES"],
-                         [[x["contribution"], x["area"], x["author"], x["ci"] or "en attente",
-                           f"{x['reviews']} ({x['reviews_total']} au total)",
+        show_table(["CONTRIBUTION", "AREA", "AUTHOR", "CI", "REVIEWS", "WINDOW LEFT", "RIVALS"],
+                         [[x["contribution"], x["area"], x["author"], x["ci"] or "pending",
+                           f"{x['reviews']} ({x['reviews_total']} in total)",
                            hours(x["window_left_hours"]),
-                           f"rang {x['rank']} : " + ", ".join(x["rivals"]) if x["rivals"] else "-"]
+                           f"rank {x['rank']}: " + ", ".join(x["rivals"]) if x["rivals"] else "-"]
                           for x in table_of["in_review"]])
-        print("  (reviews : celles qui comptent pour R3 sur le commit jugé, puis toutes ; fenêtre restante : heures avant que "
-              "R3 puisse intégrer ; à 0 h, ce qui manque encore se lit dans bee check-acceptance <contribution>)")
+        print("  (reviews: those that count for R3 on the judged commit, then all; window left: hours before "
+              "R3 can integrate; at 0 h, what is still missing reads in bee check-acceptance <contribution>)")
     else:
-        print("  rien.")
+        print("  nothing.")
     if table_of["races"]:
-        print("\nCourses (R3 : une seule contribution par tâche est intégrée, la mieux classée : score de course = gain mesuré "
-              "× portée / (1 + lines/100), sinon vote net) :")
+        print("\nRaces (R3: a single contribution per task is integrated, the best ranked: race score = measured gain "
+              "× reach / (1 + lines/100), else net vote):")
         for c in table_of["races"]:
-            ranks = " ; ".join(f"{x['rank']}. {cite(x['contribution'])} ({cite(x['author'])}, score de course "
+            ranks = "; ".join(f"{x['rank']}. {cite(x['contribution'])} ({cite(x['author'])}, race score "
                                f"{'—' if x['measured_gain'] is None else format(x['measured_gain'], '.4f')}, vote {x['net_vote']:+d})"
                                for x in c["contributions"])
             engaged = ", ".join(f"{cite(e['user'])} ({e['role']})" for e in c["engaged"])
-            print(f"  - {cite(c['task'])} : {ranks}" + (f" ; travaillent encore : {engaged}" if engaged else "")
-                  + " ; chaque contribution attend au plus 120 h après sa soumission")
+            print(f"  - {cite(c['task'])}: {ranks}" + (f"; still working: {engaged}" if engaged else "")
+                  + "; each contribution waits at most 120 h after its submission")
     if table_of["notes"]:
-        print("\nNotes récentes (7 jours) :")
+        print("\nRecent notes (7 days):")
         for n in table_of["notes"]:
             text = n["text"] if len(n["text"]) <= 140 else n["text"][:137] + "…"
-            print(f"  - {cite(n['task'])}, {cite(n['by'])}, {cite(n['at'])} : {cite(text)}")
+            print(f"  - {cite(n['task'])}, {cite(n['by'])}, {cite(n['at'])}: {cite(text)}")
     if table_of.get("debates"):
-        print("\nDébats ouverts de l'agora (bee debates --show <débat>, synthèse d'abord) :")
+        print("\nOpen debates of the agora (bee debates --show <debate>, synthesis first):")
         # Les débats encore sans argument tiennent sur une ligne (tour 2 : 17 lignes vides noyaient les autres).
         silent = [x["id"] for x in table_of["debates"] if not x["arguments"] and not x["synthesis_at"]]
         if silent:
-            print(f"  - {len(silent)} débat(s) attendent un premier argument : {', '.join(sorted(map(cite, silent)))} ; leurs questions : "
+            print(f"  - {len(silent)} debate(s) wait for a first argument: {', '.join(sorted(map(cite, silent)))}; their questions: "
                   "bee debates")
         for x in [x for x in table_of["debates"] if x["id"] not in silent]:
             question = " ".join(_clean(x["question"]).split())
             lag = len(x["arguments_after_synthesis"])
-            state = ("synthèse à jour" if x["synthesis_at"] and not lag else
-                    f"{lag} argument(s) après la synthèse" if x["synthesis_at"] else "pas encore de synthèse")
-            print(f"  - {cite(x['id'])} (rapporteur {cite(x['rapporteur'] or RAPPORTEUR_ABSENT)}, {x['arguments']} argument(s), dernière activité "
-                  f"{x['last_activity']}, {state}) : {question if len(question) <= 90 else question[:89] + '…'}")
+            state = ("synthesis up to date" if x["synthesis_at"] and not lag else
+                    f"{lag} argument(s) after the synthesis" if x["synthesis_at"] else "no synthesis yet")
+            print(f"  - {cite(x['id'])} (rapporteur {cite(x['rapporteur'] or RAPPORTEUR_ABSENT)}, {x['arguments']} argument(s), last activity "
+                  f"{x['last_activity']}, {state}): {question if len(question) <= 90 else question[:89] + '…'}")
     for key in ("reports", "reports_at_cap"):  # ruche-0137: past the cap naming a person, apart, newest first
         if table_of[key]:
-            print(f"\n{'Signalements au-delà du plafond nommant une personne' if key != 'reports' else 'Signalements ouverts, pour le conseil'} : "
-                  f"{(n := table_of[key + '_open'])}{(', les 10 derniers' if key != 'reports' else ', les 10 premiers') * (n > 10)} (bee show <S-nnnn>, bee decide-report) :")
+            print(f"\n{'Signalements au-delà du plafond nommant une personne' if key != 'reports' else 'Signalements ouverts, pour le conseil'}: "
+                  f"{(n := table_of[key + '_open'])}{(', les 10 derniers' if key != 'reports' else ', les 10 premiers') * (n > 10)} (bee show <S-nnnn>, bee decide-report):")
         for x in table_of[key]:
-            print(f"  - {cite(x['id'])} : {cite(' et '.join(map(str, x['accounts'])) if isinstance(x['accounts'], list) else x['accounts'])} ({cite(x['reason'])}), "
-                  f"signalé par {cite(x['by'])} le {cite(x['at'])}")
+            print(f"  - {cite(x['id'])}: {cite(' et '.join(map(str, x['accounts'])) if isinstance(x['accounts'], list) else x['accounts'])} ({cite(x['reason'])}), "
+                  f"reported by {cite(x['by'])} on {cite(x['at'])}")
     brake = table_of["brake"]
-    print(f"\nGrandir (R13, docs/growth.md) : frein {'SERRÉ' if brake['tight'] else 'desserré'}"
+    print(f"\nGrowing (R13, docs/growth.md): brake {'SERRÉ' if brake['tight'] else 'desserré'}"
           + (f" ({' ; '.join(brake['reasons'])})" if brake["tight"] else "")
-          + f". Membres actifs : {brake['active_members']} pour {brake['guardians_in_office']} gardien(s) en fonction ; messages "
-          f"consignés sur 7 jours : {brake['sent_7_days']} ; places prises (messages et feux verts) : {brake['places_taken_7_days']} "
-          f"sur {brake['invitations_per_week']}.\n  Ce qui peut passer "
-          f"aujourd'hui : {brake['what_passes']}.")
+          + f". Active members: {brake['active_members']} for {brake['guardians_in_office']} guardian(s) in office; messages "
+          f"recorded over 7 days: {brake['sent_7_days']}; places taken (messages and green lights): {brake['places_taken_7_days']} "
+          f"of {brake['invitations_per_week']}.\n  What can pass "
+          f"today: {brake['what_passes']}.")
     for alert in brake["alerts"]:
         print(f"  ⚠ {alert}")
     for x in table_of["invitations"]:
-        print(f"  - {cite(x['id'])} ({cite(x['request'])}, {cite(x['identifier'])}, proposée par "
-              f"{cite(x['proposed_by'])}, débat {cite(x['debate'])}) : {cite(x['status'])}, attend {cite(x['awaits'])}")
+        print(f"  - {cite(x['id'])} ({cite(x['request'])}, {cite(x['identifier'])}, proposed by "
+              f"{cite(x['proposed_by'])}, debate {cite(x['debate'])}): {cite(x['status'])}, awaits {cite(x['awaits'])}")
     if not table_of["invitations"]:
-        print("  Aucune invitation en cours (bee invite en propose une ; rien ne part sans les accords que demande R13).")
-    print("\nAvant de choisir : évitez de reprendre seul ce qu'un autre fait déjà. Pour travailler sur une tâche déjà "
-          "réservée ou en relecture, inscrivez-vous en parallèle (bee take <tâche> --user <login> --parallel) : "
-          "tout le monde le voit, et R3 choisit la meilleure contribution. Cap de la ruche : bee balance.")
+        print("  No invitation in progress (bee invite proposes one; nothing goes out without the approvals R13 requires).")
+    print("\nBefore choosing: avoid taking up alone what another is already doing. To work on a task already "
+          "reserved or in review, register in parallel (bee take <task> --user <login> --parallel): "
+          "everyone sees it, and R3 picks the best contribution. The hive's balance: bee balance.")
     return 0
 
 
 def task_computed_lines(reg, t):
     """Ce que bee calcule pour une tâche (bee show, bee context) : jamais tiré du texte de la tâche, que bee imprime à
     part, encadré comme de la donnée (task_data_frame)."""
-    lines = ["# --- calculé par bee ---"]
+    lines = ["# --- computed by bee ---"]
     blocked = reg.blocked_by(t)
-    lines.append(f"# bloquée par : {', '.join(map(cite, blocked)) if blocked else 'rien'}")  # ruche-0088: each text quoted
-    lines.append(f"# poste (cap de la ruche, R11) : {area_of(t)}" + ("" if t.get("area") else " (d'après son type)"))
-    lines.append(f"# lignes modifiées autorisées (R1) : {LINES_MAX[t['size']]}")
+    lines.append(f"# blocked by: {', '.join(map(cite, blocked)) if blocked else 'rien'}")  # ruche-0088: each text quoted
+    lines.append(f"# area (the hive's balance, R11): {area_of(t)}" + ("" if t.get("area") else " (from its type)"))
+    lines.append(f"# changed lines allowed (R1): {LINES_MAX[t['size']]}")
     required_level = "Confirmed" if t["type"] == "split" else {"S": "New", "M": "Contributor", "L": "Confirmed"}[t["size"]]
-    lines.append(f"# niveau requis : {required_level}" + (" (non appliqué pendant l'amorçage)" if setting(reg, "bootstrap") else ""))
+    lines.append(f"# required level: {required_level}" + (" (not applied during the bootstrap)" if setting(reg, "bootstrap") else ""))
     project = reg.projects.get(t["project"], (None, {}))[1]
     if project.get("fork"):
-        lines.append(f"# fork : {cite(project['fork'])}")
+        lines.append(f"# fork: {cite(project['fork'])}")
     for name, command in (project.get("commands") or {}).items():
-        lines.append(f"# commande {cite(name)} : {cite(command)}")
+        lines.append(f"# command {cite(name)}: {cite(command)}")
     # Travail en parallèle et course (R3, R7, R11) : qui travaille encore, quelles contributions sont en concurrence.
     instant = now_instant()
     race = race_state(reg, t["id"], compute_levels(reg), instant)
     for e in race["engaged"]:
         end = _instant_or_none(e["since"])
         deadline_at = en_iso(end + dt.timedelta(hours=setting(reg, "reservation_max_hours"))) if end else "?"
-        lines.append(f"# {e['role']} : {cite(e['user'])}, depuis {cite(e['since'])} (échéance R7 : {deadline_at})")
+        lines.append(f"# {e['role']}: {cite(e['user'])}, since {cite(e['since'])} (R7 deadline: {deadline_at})")
     if race["contributions"]:
-        lines.append("# contributions en course (R3, de la mieux classée à la moins bien classée, par score de course = gain mesuré "
-                      "× portée / (1 + lines/100), sinon vote net ; chacune est protégée 96 h après sa soumission, puis n'attend "
-                      "plus, au plus 24 h, qu'une concurrente intégrable mieux classée) :")
+        lines.append("# contributions in the race (R3, from the best ranked to the worst ranked, by race score = measured gain "
+                      "× reach / (1 + lines/100), else net vote; each is protected 96 h after its submission, then waits "
+                      "only, 24 h at most, for a better-ranked rival that can be integrated):")
         for c in race["contributions"]:
             for alert in reviewer_alerts(reg, reg.records.get(c["contribution"], (None, {}))[1] or {}):
-                lines.append(f"#   ⚠ {cite(c['contribution'])} : {cite(alert)}")
-            lines.append(f"#   {c['rank']}. {cite(c['contribution'])} par {cite(c['author'])}, soumise le {cite(c['submitted_at'])}, "
+                lines.append(f"#   ⚠ {cite(c['contribution'])}: {cite(alert)}")
+            lines.append(f"#   {c['rank']}. {cite(c['contribution'])} by {cite(c['author'])}, submitted on {cite(c['submitted_at'])}, "
                           f"CI {cite(c['ci'] or 'en attente')}, "
-                          f"score de course {'—' if c['measured_gain'] is None else format(c['measured_gain'], '.4f')}, vote net {c['net_vote']:+d}, "
-                          f"protégée jusqu'au {cite(c['protected_until'])}, plus aucune attente après le {cite(c['waits_until'])}")
+                          f"race score {'—' if c['measured_gain'] is None else format(c['measured_gain'], '.4f')}, net vote {c['net_vote']:+d}, "
+                          f"protected until {cite(c['protected_until'])}, no more waiting after {cite(c['waits_until'])}")
     if t.get("status") in ("reserved", "in_review"):
-        lines.append(f"# rejoindre en parallèle : bee take {cite(t['id'])} --user <login> --parallel")
+        lines.append(f"# join in parallel: bee take {cite(t['id'])} --user <login> --parallel")
     # Le nombre de notes, dit hors des données : « aucune » se distingue d'une liste omise (tour 2).
     notes = t.get("notes") if isinstance(t.get("notes"), list) else []
-    lines.append(f"# notes : {len(notes) or 'aucune'}")
+    lines.append(f"# notes: {len(notes) or 'aucune'}")
     return lines
 
 
@@ -7026,21 +7026,21 @@ def cmd_show(args):
         _, inv = reg.invitation(args.task)
         conf = growth_config(reg)
         summary = invitation_summary(inv, conf, brake=brake_state(reg))
-        print(show_line(f"{summary['id']} : {summary['status']} ; request : {summary['request']} ; awaits : {summary['awaits']}"))
+        print(show_line(f"{summary['id']}: {summary['status']}; request: {summary['request']}; awaits: {summary['awaits']}"))
         print("\n".join(identity_lines(inv) + invitation_debate_lines(reg, inv)))
         # Les dates relues par bee (jamais la valeur brute du fichier : revue de ruche-0052, C) ; l'échéance de la porte.
         date = lambda m: en_iso(m) if m else "?"  # noqa: E731
-        print(f"proposée le {date(_instant_or_none(inv.get('proposed_at')))}"
-              + (f" (échéance sans décision : {date(expiration(inv, conf))})" if invitation_state(inv) == "proposed" else "")
-              + " ; accord du gardien : " + (date(_instant_or_none(block_of(inv, "guardian_approval").get("at"))) if "guardian_approval" in inv else "aucun")
-              + f" ; feu vert du conseil : {date(v) if (v := green_light(inv)) else 'aucun'}")
+        print(f"proposed on {date(_instant_or_none(inv.get('proposed_at')))}"
+              + (f" (deadline without a decision: {date(expiration(inv, conf))})" if invitation_state(inv) == "proposed" else "")
+              + "; guardian's approval: " + (date(_instant_or_none(block_of(inv, "guardian_approval").get("at"))) if "guardian_approval" in inv else "none")
+              + f"; council's green light: {date(v) if (v := green_light(inv)) else 'aucun'}")
         print()
         print(data_frame(inv, DATA_START.format(id=cite(inv.get("id")))))
         return 0
     if ID_REPORT.match(str(args.task)):  # ruche-0118: a report, for the council
         if not isinstance(s := (reg.reports.get(args.task) or (None, None))[1], dict):
-            raise BeeError(f"signalement inconnu : {args.task} (bee swarm liste ceux qui sont ouverts)")
-        print(f"{args.task} : " + ("décidé" if "decision" in s else "ouvert : le conseil lie les deux comptes ou l'écarte (bee decide-report)"))
+            raise BeeError(f"unknown report: {args.task} (bee swarm lists the open ones)")
+        print(f"{args.task}: " + ("decided" if "decision" in s else "open: the council links the two accounts or dismisses it (bee decide-report)"))
         print(data_frame(s, DATA_START.format(id=cite(args.task))))
         return 0
     _, t = reg.task(args.task)
@@ -7053,13 +7053,13 @@ def cmd_show(args):
 def cmd_register(args):
     reg = Registry(args.registry)
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]{0,38}", args.login):  # le motif du schéma membre, avant toute comparaison
-        raise BeeError(f"pseudo invalide : {args.login!r} (un login GitHub : lettres ASCII, chiffres et tirets, 39 caractères au plus)")
+        raise BeeError(f"invalid login: {args.login!r} (a GitHub login: ASCII letters, digits and hyphens, 39 characters at most)")
     if refusal := reserved_login(reg.config, args.login):
         raise BeeError(refusal)
     path = reg.root / "members" / f"{args.login}.yaml"
     already = [p for p in reg.members if reg.identities.same_one(p, args.login)]
     if path.exists() or already:
-        raise BeeError(f"{args.login} est déjà inscrit" + (f" (sous « {already[0]} » : un login GitHub ne tient pas compte de la casse)"
+        raise BeeError(f"{args.login} is already registered" + (f" (as « {already[0]} »: a GitHub login ignores case)"
                                                               if already and already[0] != args.login else ""))
     if taken_one := [p for p, (_, m) in reg.members.items() if isinstance(m, dict) and m.get("github_id") == args.github_id]:
         raise BeeError(f"the account {args.github_id} already has its file, {taken_one[0]} : a renamed account moves it (bee rename)")
@@ -7067,12 +7067,12 @@ def cmd_register(args):
     created = read_date(args.account_created_on, "--account-created-on")
     minimum = setting(reg, "min_account_age_days")
     if (today - created).days < minimum:
-        raise BeeError(f"le compte GitHub doit avoir au moins {minimum} jours (créé le {created})")
+        raise BeeError(f"the GitHub account must be at least {minimum} days old (created on {created})")
     data = {"login": args.login, "registered_on": today.isoformat(), "account_created_on": created.isoformat(), "github_id": args.github_id}
     if args.categories:
         data["preferred_categories"] = args.categories
     write_yaml(path, data)
-    print(f"✓ {reg.rel(path)} créé. Publiez : bee publish --title 'Inscription {args.login}'")
+    print(f"✓ {reg.rel(path)} created. Publish: bee publish --title 'Registration {args.login}'")
     return 0
 
 
@@ -7144,8 +7144,8 @@ def cmd_link(args):
     if refusal := link_refusal(reg, entry_card, new, entry_card.get("github_id")):
         raise BeeError(f"{args.user} : {refusal}")
     write_yaml(path, new)
-    print(f"✓ {reg.rel(path)}. Publiez : bee publish --title 'Comptes liés {args.user}'" + (
-        f" ; puis, depuis l'autre compte : bee link --user <son login> --account-of {entry_card.get('github_id')}" * declared))
+    print(f"✓ {reg.rel(path)}. Publish: bee publish --title 'Linked accounts {args.user}'" + (
+        f"; then, from the other account: bee link --user <its login> --account-of {entry_card.get('github_id')}" * declared))
     return 0
 
 
@@ -7164,7 +7164,7 @@ def report_refusal(reg, s, author, instant, oneself=None):
     never one of the two nor a linked pair, one open per pair, none 30 days after a dismissal, open reports capped (bee.yaml, creations)."""
     accounts, conf = s.get("accounts"), config_creations(reg)
     if set(s) != {"by", "at", "accounts", "reason"} or s["reason"] not in REPORT_REASONS:
-        return f"a report holds par, le, comptes and motif, nothing else (no free text) ; reason : {', '.join(REPORT_REASONS)}"
+        return f"a report holds by, at, accounts and reason, nothing else (no free text); reason: {', '.join(REPORT_REASONS)}"
     if s["by"] != author or author not in reg.members:
         return f"by : a member reports in their own name ({author})"
     if not (isinstance(accounts, list) and all(isinstance(c, str) and c in reg.members and c.casefold() in reg.identities.numbers_of for c in accounts) and len(set(accounts)) == len(accounts) == 2):
@@ -7190,7 +7190,7 @@ def report_refusal(reg, s, author, instant, oneself=None):
                for x in beyond) >= k:
             return (f"{c} is already named in reports_naming_max open reports : past it, at most {k} over 24 h wait for the council, per "
                     "person named (creations.reports_at_cap_per_24h)")
-    return pr_date_problem(s["at"], "at", instant) or (s["at"] != en_iso(read_instant(s["at"])) and f"le ({s['at']}) : the time of the PR as bee writes it ({en_iso(instant)})") or None
+    return pr_date_problem(s["at"], "at", instant) or (s["at"] != en_iso(read_instant(s["at"])) and f"at ({s['at']}): the time of the PR as bee writes it ({en_iso(instant)})") or None
 
 
 def named_at_cap(reg, accounts, oneself=None):
@@ -7289,9 +7289,9 @@ def cmd_report(args):
         raise BeeError(refusal)
     path = reg.root / f"reports/S-{next_number(int(n[2:]) for n in reg.reports if ID_REPORT.match(n)):04d}.yaml"
     write_yaml(path, s)
-    awaits = (f" ; {', '.join(named)} : already named in {config_creations(reg)['reports_naming_max']} open reports "
-              "(creations.reports_naming_max) : this one waits for the council, who merges it itself") if (named := named_at_cap(reg, args.accounts)) else ""
-    print(f"✓ {reg.rel(path)}. Publiez : bee publish --title 'Signalement {path.stem}' ; le conseil le lit (bee swarm) et décide{awaits}")
+    awaits = (f"; {', '.join(named)}: already named in {config_creations(reg)['reports_naming_max']} open reports "
+              "(creations.reports_naming_max): this one waits for the council, who merges it itself") if (named := named_at_cap(reg, args.accounts)) else ""
+    print(f"✓ {reg.rel(path)}. Publish: bee publish --title 'Report {path.stem}'; the council reads it (bee swarm) and decides{awaits}")
     return 0
 
 
@@ -7317,8 +7317,8 @@ def cmd_decide_report(args):
         write_yaml(cp, p2)
         write_yaml(old_contribution, a2)
     write_yaml(path, {**s, "decision": {"by": args.user, "at": en_iso(now_instant()), "outcome": args.dismiss or "linked"}})
-    print(f"✓ {reg.rel(path)}{' and both member files' * bool(args.link)}. Publiez : bee publish --title 'Décision {args.report}' "
-          "(le conseil fusionne lui-même)")
+    print(f"✓ {reg.rel(path)}{' and both member files' * bool(args.link)}. Publish: bee publish --title 'Decision {args.report}' "
+          "(the council merges it itself)")
     return 0
 
 
@@ -7361,29 +7361,29 @@ def require_r8(reg, user, task):
     maximum = r8_maximum(reg, user, [tid for tid, _ in already] + [task], now_instant())
     if len(already) >= maximum:
         list_of = ", ".join(tid + (" (en parallèle)" if kind_of == "parallel" else "") for tid, kind_of in already)
-        raise BeeError(f"règle R8 : {user} a déjà {len(already)} réservations ou inscriptions en parallèle ({list_of}), maximum {maximum}")
+        raise BeeError(f"rule R8: {user} already has {len(already)} reservations or parallel registrations ({list_of}), maximum {maximum}")
 
 
 def take_in_parallel(reg, args, path, t):
     """S'inscrire en parallèle sur une tâche réservée ou en relecture (R11) : au su de tous, sans toucher au titulaire."""
     status, u = t.get("status"), args.user
     if status == "open":
-        raise BeeError(f"{args.task} est ouverte : réservez-la normalement (bee take {args.task} --user {u}) ; "
-                        "--parallel sert à rejoindre une tâche déjà réservée ou en relecture")
+        raise BeeError(f"{args.task} is open: reserve it normally (bee take {args.task} --user {u}); "
+                        "--parallel is for joining a task already reserved or in review")
     if status not in ("reserved", "in_review"):
-        raise BeeError(f"{args.task} n'accepte pas d'inscription en parallèle (status : {status})")
+        raise BeeError(f"{args.task} accepts no parallel registration (status: {status})")
     holder = (t.get("reservation") or {}).get("user")
     if holder == u:
-        raise BeeError(f"{u} est déjà titulaire de {args.task}")
+        raise BeeError(f"{u} already holds {args.task}")
     parallel = parallels_of(t)
     if any(p.get("user") == u for p in parallel):
-        raise BeeError(f"{u} est déjà inscrit en parallèle sur {args.task}")
+        raise BeeError(f"{u} is already registered in parallel on {args.task}")
     own_items_f = [c for c, e in racing_contributions(reg, args.task) if e.get("author") == u]
     if own_items_f:
-        raise BeeError(f"{u} a déjà une contribution en course sur {args.task} ({', '.join(own_items_f)}) : améliorez-la par un "
-                        "nouveau commit sur sa PR plutôt que d'en soumettre une autre")
+        raise BeeError(f"{u} already has a contribution in the race on {args.task} ({', '.join(own_items_f)}): improve it with a "
+                        "new commit on its PR rather than submitting another")
     if reg.blocked_by(t):
-        raise BeeError(f"{args.task} attend l'intégration de : {', '.join(reg.blocked_by(t))}")
+        raise BeeError(f"{args.task} waits for the integration of: {', '.join(reg.blocked_by(t))}")
     judged_ones = judged_by(reg, args.task, u)
     if judged_ones:
         raise BeeError(judge_message(args.task, u, judged_ones))
@@ -7391,18 +7391,18 @@ def take_in_parallel(reg, args, path, t):
     if not setting(reg, "bootstrap") and u not in reg.council:
         level = level_of(compute_levels(reg), u)
         if t["size"] not in SIZES_BY_LEVEL[level] or (t["type"] == "split" and level != "Confirmed"):
-            raise BeeError(f"{args.task} ({t['type']}, {t['size']}) n'est pas accessible au niveau {level} (docs/reputation.md)")
+            raise BeeError(f"{args.task} ({t['type']}, {t['size']}) is not open to level {level} (docs/reputation.md)")
     require_r8(reg, u, args.task)
     modify_task(path, parallel=parallel + [{"user": u, "since": en_iso(now_instant())}], addition=reg.rel(path))
     hours = setting(reg, "reservation_max_hours")
-    print(f"✓ {u} inscrit en parallèle sur {args.task}" + (f" (titulaire : {holder}, dont la réservation ne change pas)." if holder else "."))
-    print(f"  Votre inscription compte dans R8 et prend fin après {hours} h sans contribution (R7). Si le titulaire s'en va, "
-          "le plus ancien inscrit devient titulaire.")
+    print(f"✓ {u} registered in parallel on {args.task}" + (f" (holder: {holder}, whose reservation does not change)." if holder else "."))
+    print(f"  Your registration counts in R8 and ends after {hours} h without a contribution (R7). If the holder leaves, "
+          "the oldest registrant becomes the holder.")
     racing = racing_contributions(reg, args.task)
     if racing:
-        print(f"  Déjà en course : {', '.join(c for c, _ in racing)}. Votre inscription, postérieure à leur soumission, ne retarde "
-              "pas leur intégration (R3) ; votre contribution les rejoindra si elle arrive à temps.")
-    print(f"  Dites votre approche dans une note (bee note), puis publiez : bee publish --title 'Inscription en parallèle {args.task}'.")
+        print(f"  Already in the race: {', '.join(c for c, _ in racing)}. Your registration, later than their submission, does not "
+              "delay their integration (R3); your contribution will join them if it arrives in time.")
+    print(f"  State your approach in a note (bee note), then publish: bee publish --title 'Parallel registration {args.task}'.")
     return 0
 
 
@@ -7413,12 +7413,12 @@ def cmd_take(args):
     if getattr(args, "parallel", False):
         return take_in_parallel(reg, args, path, t)
     if t.get("status") != "open":
-        council = (f" ; pour y travailler aussi, au su de tous : bee take {args.task} --user {args.user} --parallel"
+        council = (f"; to work on it too, in everyone's sight: bee take {args.task} --user {args.user} --parallel"
                    if t.get("status") in ("reserved", "in_review") else "")
-        raise BeeError(f"{args.task} n'est pas ouverte (status : {t.get('status')}){council}")
+        raise BeeError(f"{args.task} is not open (status: {t.get('status')}){council}")
     blocked = reg.blocked_by(t)
     if blocked:
-        raise BeeError(f"{args.task} attend l'intégration de : {', '.join(blocked)}")
+        raise BeeError(f"{args.task} waits for the integration of: {', '.join(blocked)}")
     judged_ones = judged_by(reg, args.task, args.user)
     if judged_ones:
         raise BeeError(judge_message(args.task, args.user, judged_ones))
@@ -7426,12 +7426,12 @@ def cmd_take(args):
     if not setting(reg, "bootstrap") and args.user not in reg.council:
         level = level_of(compute_levels(reg), args.user)
         if t["size"] not in SIZES_BY_LEVEL[level] or (t["type"] == "split" and level != "Confirmed"):
-            raise BeeError(f"{args.task} ({t['type']}, {t['size']}) n'est pas accessible au niveau {level} (docs/reputation.md)")
+            raise BeeError(f"{args.task} ({t['type']}, {t['size']}) is not open to level {level} (docs/reputation.md)")
     require_r8(reg, args.user, args.task)
     modify_task(path, status="reserved", reservation={"user": args.user, "since": en_iso(now_instant())})
     hours = setting(reg, "reservation_max_hours")
-    print(f"✓ {args.task} réservée pour {args.user} ({hours} h maximum, règle R7).")
-    print(f"  Publiez : bee publish --title 'Réservation {args.task}' (fusionnée automatiquement si elle est valide).")
+    print(f"✓ {args.task} reserved for {args.user} ({hours} h maximum, rule R7).")
+    print(f"  Publish: bee publish --title 'Reservation {args.task}' (merged automatically if it is valid).")
     return 0
 
 
@@ -7441,9 +7441,9 @@ def require_creation_allowed(reg, folder, user):
         return
     maximum = config_creations(reg)[f"{folder}_max_per_24h"]
     if recent_creations(reg, "HEAD", folder, user, now_instant()) >= maximum:
-        what_it = {"tasks": "tâches proposées", "proposals": "rule proposals", "reports": "reports"}.get(folder, "invitations proposées")
-        raise BeeError(f"plafond : {user} a déjà {maximum} {what_it} sur 24 h glissantes (creations.{folder}_max_per_24h) ; "
-                        "réessayez plus tard, ou rejoignez une tâche ou une proposition existante")
+        what_it = {"tasks": "proposed tasks", "proposals": "rule proposals", "reports": "reports"}.get(folder, "proposed invitations")
+        raise BeeError(f"cap: {user} already has {maximum} {what_it} over a rolling 24 h (creations.{folder}_max_per_24h); "
+                        "try again later, or join an existing task or proposal")
 
 
 def cmd_propose_task(args):
@@ -7451,7 +7451,7 @@ def cmd_propose_task(args):
     reg = Registry(args.registry)
     reg.require_member(args.user)
     if args.project not in reg.projects:
-        raise BeeError(f"projet inconnu : {args.project} (voir projects/)")
+        raise BeeError(f"unknown project: {args.project} (see projects/)")
     project = reg.projects[args.project][1]
     # Numérotation (verifier-pr l'exige) : le plus grand numéro + 1, hors des numéros réservés aux tests ; les fichiers
     # présents comptent, même illisibles, et aucun n'est jamais écrasé (T6).
@@ -7460,22 +7460,22 @@ def cmd_propose_task(args):
     numbers_of = [int(m["n"]) for f in (folder.iterdir() if folder.is_dir() else []) if (m := reason.fullmatch(f.name))]
     number_of = next_number(numbers_of)
     if number_of >= RESERVED_NUMBER:
-        raise BeeError(f"plus de numéro libre pour {args.project} sous {RESERVED_NUMBER} (le plus grand est {number_of - 1:04d}) : les "
-                        "numéros 9000 et plus sont réservés aux tests ; le conseil doit retirer la tâche qui a pris ce numéro")
+        raise BeeError(f"no free number left for {args.project} below {RESERVED_NUMBER} (the largest is {number_of - 1:04d}): "
+                        "numbers 9000 and above are reserved for tests; the council must remove the task that took this number")
     identifier = f"{args.project}-{number_of:04d}"
     path = folder / f"{identifier}.yaml"
     if path.exists():
-        raise BeeError(f"{reg.rel(path)} existe déjà : rien n'a été écrasé")
+        raise BeeError(f"{reg.rel(path)} already exists: nothing was overwritten")
     require_creation_allowed(reg, "tasks", args.user)
     metrics = [m["id"] for m in project.get("metrics") or [] if isinstance(m, dict)]
     # Type par défaut : une optimisation là où il y a des métriques, un test ailleurs (la ruche n'a rien à optimiser ; au
     # tour 2, une tâche de la ruche était née avec des critères R4 et R5 sans objet).
     args.type = args.type or ("optimization" if metrics else "test")
     if args.type == "optimization" and not metrics:
-        raise BeeError(f"{args.project} n'a pas de métrique : une optimisation n'y a pas de juge (--type test, measurement ou review)")
+        raise BeeError(f"{args.project} has no metric: an optimization has no judge there (--type test, measurement or review)")
     metric = (args.metric or (metrics[0] if metrics else None)) if args.type == "optimization" else None
     if metric and metric not in metrics:
-        raise BeeError(f"métrique inconnue pour {args.project} : {metric} ({', '.join(metrics)})")
+        raise BeeError(f"unknown metric for {args.project}: {metric} ({', '.join(metrics)})")
     lines = []
     for line_text in (TOOL_ROOT / "templates" / "task.yaml").read_text(encoding="utf-8").splitlines():
         key = line_text.split(":", 1)[0]
@@ -7496,9 +7496,9 @@ def cmd_propose_task(args):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
     note_written(path)
-    print(f"✓ {reg.rel(path)} créé (status « proposed »). Remplacez titre, contexte, fichiers, critères et périmètre")
-    print("  par des faits mesurés (docs/tasks.md), puis : bee validate ; bee publish --title "
-          f"'Proposition de tâche {identifier}'. Un gardien, le conseil ou un Confirmé la validera.")
+    print(f"✓ {reg.rel(path)} created (status « proposed »). Replace title, context, files, criteria and scope")
+    print("  with measured facts (docs/tasks.md), then: bee validate; bee publish --title "
+          f"'Task proposal {identifier}'. A guardian, the council or a Confirmed member will validate it.")
     return 0
 
 
@@ -7508,7 +7508,7 @@ def cmd_release(args):
     path, t = reg.task(args.task)
     holder = (t.get("reservation") or {}).get("user")
     parallel = parallels_of(t)
-    tip = "" if args.note else " Astuce : --note \"ce que vous avez appris\" aide l'agent suivant."
+    tip = "" if args.note else " Tip: --note \"what you learned\" helps the next agent."
     instant = now_instant()
     if args.note:
         require_admissible_note(reg, args.user, args.note, instant)
@@ -7516,12 +7516,12 @@ def cmd_release(args):
         # Un inscrit en parallèle se retire lui-même ; personne d'autre n'est touché.
         note = {"by": args.user, "at": en_iso(instant), "text": args.note} if args.note else None
         modify_task(path, parallel=without_it(parallel, args.user), note=note)
-        print(f"✓ inscription en parallèle de {args.user} sur {args.task} retirée." + tip)
+        print(f"✓ {args.user}'s parallel registration on {args.task} withdrawn." + tip)
         return 0
     if t.get("status") != "reserved":
-        raise BeeError(f"{args.task} n'est pas réservée")
+        raise BeeError(f"{args.task} is not reserved")
     if holder != args.user and args.user not in reg.council:
-        raise BeeError(f"{args.task} est réservée par {holder}, pas par {args.user}")
+        raise BeeError(f"{args.task} is reserved by {holder}, not by {args.user}")
     changes, sentence = holder_departure(reg, args.task, parallel)
     if sentence and not args.note:
         try:
@@ -7533,10 +7533,10 @@ def cmd_release(args):
         require_admissible_note(reg, args.user, text, instant)
     note = {"by": args.user, "at": en_iso(instant), "text": text} if text else None
     modify_task(path, note=note, **changes)
-    suite = {None: "", "in_review": " Elle passe en relecture (contributions en course)."}.get(changes.get("status"), "")
+    suite = {None: "", "in_review": " It moves to review (contributions in the race)."}.get(changes.get("status"), "")
     if "parallel" in changes:
-        suite = f" {changes['reservation']['user']} devient titulaire (inscrit en parallèle le plus ancien)."
-    print(f"✓ {args.task} libérée.{suite}{tip}")
+        suite = f" {changes['reservation']['user']} becomes the holder (oldest parallel registrant)."
+    print(f"✓ {args.task} released.{suite}{tip}")
     return 0
 
 
@@ -7546,14 +7546,14 @@ def require_admissible_note(reg, user, text, instant):
     conf = config_notes(reg)
     problem_text = admissible_text(text, "note", conf["text_max"])
     if problem_text:
-        raise BeeError(f"{problem_text} (bee.yaml, notes.text_max) : une note est courte ; le détail va dans un débat de l'agora"
+        raise BeeError(f"{problem_text} (bee.yaml, notes.text_max): a note is short; the detail goes in a debate of the agora"
                         if "caractères" in problem_text else problem_text)
     if user not in reg.council and user not in reg.robots \
             and notes_since(reg, user, instant - CAP_WINDOW) >= conf["max_per_24h"]:
         own_items_f = [m for _, t in reg.tasks.values() if isinstance(t, dict) for n in _list(t.get("notes"))
                    if n.get("by") == user and (m := _instant_or_none(n.get("at")))]
-        raise BeeError(f"plafond : {user} a déjà {conf['max_per_24h']} notes en 24 h, toutes tâches confondues "
-                        f"(notes.max_per_24h) ; prochaine note possible le {next_room(own_items_f, conf['max_per_24h'])}")
+        raise BeeError(f"cap: {user} already has {conf['max_per_24h']} notes in 24 h, all tasks together "
+                        f"(notes.max_per_24h); next note possible on {next_room(own_items_f, conf['max_per_24h'])}")
 
 
 def cmd_note(args):
@@ -7563,7 +7563,7 @@ def cmd_note(args):
     instant = now_instant()
     require_admissible_note(reg, args.user, args.text, instant)
     modify_task(path, note={"by": args.user, "at": en_iso(instant), "text": args.text}, addition=reg.rel(path))
-    print(f"✓ note ajoutée à {args.task}. Publiez-la : bee publish --title \"Note {args.task}\"")
+    print(f"✓ note added to {args.task}. Publish it: bee publish --title \"Note {args.task}\"")
     return 0
 
 
@@ -7581,19 +7581,19 @@ def cmd_release_expired(args):
         parallel = parallels_of(t)
         expired_ones = [p for p in parallel if instant - read_instant(p["since"], reg.rel(path)) > limit_value]
         remaining_items = [p for p in parallel if p not in expired_ones]
-        texts_of = [f"Inscription en parallèle de {p['user']} expirée après {limit_value.total_seconds() / 3600:.0f} h (R7)." for p in expired_ones]
+        texts_of = [f"{p['user']}'s parallel registration expired after {limit_value.total_seconds() / 3600:.0f} h (R7)." for p in expired_ones]
         changes = {"parallel": remaining_items} if expired_ones else {}
         if t.get("status") == "reserved":
             since = read_instant(t["reservation"]["since"], reg.rel(path))
             if instant - since > limit_value:
-                texts_of.insert(0, f"Réservation de {t['reservation']['user']} expirée après {limit_value.total_seconds() / 3600:.0f} h (R7).")
+                texts_of.insert(0, f"{t['reservation']['user']}'s reservation expired after {limit_value.total_seconds() / 3600:.0f} h (R7).")
                 suite, sentence = holder_departure(reg, tid, remaining_items)
                 changes.update(suite)
                 texts_of += [sentence] if sentence else []
         if changes:
             modify_task(path, note={"by": "bee", "at": en_iso(instant), "text": " ".join(texts_of)}, **changes)
             released.append(tid)
-    print("✓ réservations et inscriptions en parallèle expirées libérées : " + (", ".join(released) if released else "aucune"))
+    print("✓ expired reservations and parallel registrations released: " + (", ".join(released) if released else "none"))
     return 0
 
 
