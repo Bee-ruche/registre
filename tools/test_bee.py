@@ -14131,7 +14131,7 @@ class TestInvitationDebateRuche0050(BaseReviewRuche0020):
         self.a("2026-10-30T10:00:00Z")
         self.branch()
         text = self.gesture("record-sent", "bidji29")
-        self.assertIn("⚠ I-0001 : D-0002 : its synthesis is out of date (it does not cover A2)", text)
+        self.assertIn("⚠ I-0001: D-0002 : its synthesis is out of date (it does not cover A2)", text)
         self.publish("bidji29", "invitation_sending", free_one=False)
         self.assertEqual(self.invitation()["status"], "sent", "un envoi consigné reste un fait")
         alert = "I-0001: sending recorded on 2026-10-30T10:00:00Z on an out-of-date synthesis (D-0002 did not cover A2)"
