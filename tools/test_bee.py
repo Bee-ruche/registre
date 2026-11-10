@@ -22525,9 +22525,11 @@ def f(n, path):
     def test_markers_through_fstrings_locals_and_defaults(self):
         base = ('def g(s, n, m="erreur xx"):\n    marque = "attendu ici"\n    return s == f"Erreur {n}", marque in s, m in s, '
                 's.startswith(f"=== FIN {n}")\n')
+        base += 'class K:\n    def __init__(self):\n        self.marque = "au début"\n\n    def k(self, s):\n        return self.marque in s\n'
         (self.repo / "m.py").write_text(base, encoding="utf-8")
         subprocess.run(["git", "-C", str(self.repo), "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qam", "g"], check=True)
         for old, new in (('f"Erreur {n}"', 'f"Error {n}"'), ('"attendu ici"', '"expected here"'), ('"erreur xx"', '"error xx"'),
+                         ('"au début"', '"at the start"'),
                          ('f"=== FIN {n}"', 'f"=== END {n}"')):
             (self.repo / "m.py").write_text(base.replace(old, new), encoding="utf-8")
             problems, _ = self.cm.check(self.repo, "HEAD", None, ["m.py"], False)

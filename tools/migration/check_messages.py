@@ -22,7 +22,8 @@ which each PR's review checks. A literal with letters, a blank and no comparison
 encoding, a shell command line or a mode string passed to a function would pass, and the review reads every changed
 literal. --prose waives a text for the whole file, not one place. A string inside an interpolation (f"{'s' if n > 1 else
 ''}") is code: translating it is refused as a code change (rewrite the message around it instead). A docstring read by the
-code (__doc__) is not looked for; bee.py reads none today.
+code (__doc__) is not looked for; bee.py reads none today. A marker reaching a comparison through a function's return value
+(f() in s) or a global assigned inside a function is missed.
 """
 import argparse
 import ast
@@ -117,7 +118,7 @@ def compared(text, rules):
     """The literals the file compares text against: marker_inventory's operands, and what a name they use is bound to in
     its scope or an enclosing one (an assignment, an argument's default; the module's names last), argparse's choices;
     f-string parts included."""
-    found = set()
+    found, attributes, found_attributes = set(), collections.defaultdict(list), set()
 
     def own_nodes(scope_node):
         """The nodes of a scope, without the bodies of the functions and classes defined in it."""
@@ -145,6 +146,8 @@ def compared(text, rules):
                     for x in ast.walk(t):
                         if isinstance(x, ast.Name):
                             bound[x.id].append(n.value)
+                        elif isinstance(x, ast.Attribute):  # self.mark = …, compared in another method: the module's
+                            attributes[x.attr].append(n.value)
             elif isinstance(n, ast.NamedExpr):
                 bound[n.target.id].append(n.value)
             elif isinstance(n, ast.keyword) and n.arg == "choices":
@@ -153,6 +156,7 @@ def compared(text, rules):
                 children.append(n)
             for o in rules.operands(n):
                 used.update(rules.names_of(o))
+                found_attributes.update(x.attr for x in ast.walk(o) if isinstance(x, ast.Attribute))
                 found.update(c.value for c in rules.literals(o))
         chain = [bound] + chain
         seen = set()
@@ -169,6 +173,12 @@ def compared(text, rules):
             visit(child, chain)
 
     visit(ast.parse(text), [])
+    used, seen = set(found_attributes), set()  # an attribute compared anywhere (self.mark in s): what any x.mark = holds
+    while used - seen:
+        name = (used - seen).pop()
+        seen.add(name)
+        for value in attributes.get(name, []):
+            found.update(c.value for c in rules.literals(value))
     return found
 
 
