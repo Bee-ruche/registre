@@ -3397,10 +3397,10 @@ class TestPullRequests(BaseTest):
                 ("registered_on", "2020-01-01", "registered_on (2020-01-01) must be the date of the PR"),
                 ("registered_on", "2026-10-28", "registered_on (2026-10-28) must be the date of the PR"),
                 ("registered_on", "2099-01-01", "registered_on (2099-01-01) must be the date of the PR"),
-                ("account_created_on", "2021-05-04", "account_created_on ne correspond pas à la date fournie par GitHub (2021-05-05)"),
-                ("account_created_on", "2015-01-01", "account_created_on ne correspond pas à la date fournie par GitHub (2021-05-05)"),
-                ("account_created_on", "2021-05-06", "account_created_on ne correspond pas à la date fournie par GitHub (2021-05-05)"),
-                ("account_created_on", "2026-10-27", "account_created_on ne correspond pas à la date fournie par GitHub (2021-05-05)")):
+                ("account_created_on", "2021-05-04", "account_created_on does not match the date given by GitHub (2021-05-05)"),
+                ("account_created_on", "2015-01-01", "account_created_on does not match the date given by GitHub (2021-05-05)"),
+                ("account_created_on", "2021-05-06", "account_created_on does not match the date given by GitHub (2021-05-05)"),
+                ("account_created_on", "2026-10-27", "account_created_on does not match the date given by GitHub (2021-05-05)")):
             with self.subTest(field=field, value=value):
                 self.member_pr(f"{field}-{value}", **{field: value})
                 code, text = self.verify("david", "--account-created-on", "2021-05-05")
@@ -3436,7 +3436,7 @@ class TestPullRequests(BaseTest):
         self.member_pr("age-89", account_created_on=age_89)
         code, text = self.verify("david", "--account-created-on", age_89)
         self.assertEqual(code, 1, text)
-        self.assertIn("le compte GitHub doit avoir au moins 90 jours", text)
+        self.assertIn("the GitHub account must be at least 90 days old", text)
         # The next day, within 2 h of midnight: 90 days at the check, so the same file passes.
         os.environ["BEE_NOW"] = "2026-10-28T01:00:00Z"
         code, text = self.verify("david", "--account-created-on", age_89)
@@ -3447,7 +3447,7 @@ class TestPullRequests(BaseTest):
                 self.member_pr(f"age-{registered_on}", account_created_on=age_89, registered_on=registered_on)
                 code, text = self.verify("david", "--account-created-on", age_89)
                 self.assertEqual(code, 1, text)
-                self.assertIn("le compte GitHub doit avoir au moins 90 jours", text)
+                self.assertIn("the GitHub account must be at least 90 days old", text)
         self.member_pr("sans-github")
         for options in ((), ("--account-created-on", ""), ("--account-created-on", "inconnue")):
             with self.subTest(options=options):
@@ -3465,12 +3465,12 @@ class TestPullRequests(BaseTest):
         self.member_pr("utc-next-day", registered_on="2026-10-28")
         code, text = self.verify("david", "--account-created-on", "2021-05-05")
         self.assertEqual(code, 1, text)
-        self.assertIn("registered_on (2026-10-28) must be the date of the PR (2026-10-27) : delete members/david.yaml, then rerun "
+        self.assertIn("registered_on (2026-10-28) must be the date of the PR (2026-10-27): delete members/david.yaml, then rerun "
                       "bee register", text)
         self.member_pr("utc-age", account_created_on="2026-07-30")  # 89 days on 2026-10-27
         code, text = self.verify("david", "--account-created-on", "2026-07-30")
         self.assertEqual(code, 1, text)
-        self.assertIn("le compte GitHub doit avoir au moins 90 jours", text)
+        self.assertIn("the GitHub account must be at least 90 days old", text)
         os.environ["BEE_NOW"] = "2026-10-27T20:00:00-05:00"  # 2026-10-28T01:00Z
         self.member_pr("utc-west", registered_on="2026-10-28")
         code, text = self.verify("david", "--account-created-on", "2021-05-05")
@@ -3493,7 +3493,7 @@ class TestPullRequests(BaseTest):
         os.environ["BEE_NOW"] = "2026-10-27T13:00:00Z"
         code, text = self.verify("david", "--account-created-on", age_89, *push)
         self.assertEqual(code, 1, text)
-        self.assertIn("le compte GitHub doit avoir au moins 90 jours", text)
+        self.assertIn("the GitHub account must be at least 90 days old", text)
         self.member_pr("dated-after-the-push", registered_on="2026-10-28")
         os.environ["BEE_NOW"] = "2026-10-28T09:00:00Z"
         code, text = self.verify("david", "--account-created-on", "2021-05-05", *push)
@@ -3543,7 +3543,7 @@ class TestPullRequests(BaseTest):
                 self.commit()
                 code, text = self.verify("alice", "--account-created-on", "2020-01-01")
                 self.assertEqual(code, 1, text)
-                self.assertIn("seules les catégories préférées sont modifiables", text)
+                self.assertIn("only the preferred categories can be changed", text)
 
     def test_forged_review_and_note(self):
         cid = self.submit_0099()
@@ -3598,7 +3598,7 @@ class TestPullRequests(BaseTest):
         self.commit()
         code, text = self.verify("alice", "--auto-merge")
         self.assertEqual(code, 1, text)
-        self.assertIn("bee submit le fait", text)
+        self.assertIn("bee submit does it", text)
 
     def reserve_on_main(self, *tasks):
         for t in tasks:
@@ -3632,7 +3632,7 @@ class TestPullRequests(BaseTest):
         self.commit()
         code, text = self.verify("alice", "--auto-merge")
         self.assertEqual(code, 1, text)
-        self.assertIn("déjà liée", text)
+        self.assertIn("already linked", text)
 
     # --- ruche-0041: a fork PR serves one contribution, in whatever form its address is written ---
 
@@ -3724,13 +3724,13 @@ class TestPullRequests(BaseTest):
                     self.assertIn("FUSION_AUTO=oui", text)
                 elif address in self.SAME_PR:
                     self.assertEqual((code, code_v), (1, 1), text + text_v)
-                    self.assertEqual(len([p for p in own_ones if "est déjà liée à miniz-0099-c1" in p]), 1, own_ones)
+                    self.assertEqual(len([p for p in own_ones if "is already linked to miniz-0099-c1" in p]), 1, own_ones)
                     self.assertIn("is already linked to miniz-0099-c1", text_v)
                     self.assertEqual(f"miniz-9001-c1.yaml: {written_one}" in text_v, address != self.SAME_PR[0], text_v)
                     self.assertEqual(f"miniz-0099-c1.yaml: {written_one}" in text_v, base == "c1-autre", text_v)
                 else:
                     self.assertEqual((code, code_v), (1, 1), text + text_v)
-                    self.assertTrue(any("adresse de PR invalide" in p for p in own_ones), own_ones)
+                    self.assertTrue(any("invalid PR address" in p for p in own_ones), own_ones)
                     self.assertIn("miniz-9001-c1.yaml: pr: wrong format", text_v)
 
     def test_check_pr_quotes_a_declared_pr_and_task_on_one_line(self):
@@ -3746,8 +3746,8 @@ class TestPullRequests(BaseTest):
                 self.commit()
                 problems_found = bee.check_pr(bee.Registry(self.dir), "main", "HEAD", "alice", github_id=number_from("alice"),
                                             pr_authors={})[0]
-                self.assertIn(f"adresse de PR invalide : {bee.cite(address)} (attendu", "\n".join(problems_found))
-                self.assertEqual(f"la contribution suivante de {bee.cite(task)} est" in "\n".join(problems_found), task != "miniz-0099")
+                self.assertIn(f"invalid PR address: {bee.cite(address)} (expected", "\n".join(problems_found))
+                self.assertEqual(f"the next contribution of {bee.cite(task)} is" in "\n".join(problems_found), task != "miniz-0099")
                 for p in problems_found:
                     self.assertEqual((p.count("\n"), bee.frame_markers(p)), (0, []), p)
 
@@ -3766,7 +3766,7 @@ class TestPullRequests(BaseTest):
         self.commit()
         code, text = self.verify("bruno", "--auto-merge")
         self.assertEqual(code, 1, text)
-        self.assertIn("qu'une contribution en relecture", text)
+        self.assertIn("only a contribution in review", text)
 
     # --- L'essaim propose, les gardiens valident (27/10) ---
 
@@ -3847,9 +3847,9 @@ class TestPullRequests(BaseTest):
         cid = self.submit_0099()
         self.commit("submission")
         for name, metrics, expected in (
-                ("clé hors du projet", {"telephone_alice_martin": {"gain": 0.05, "beyond_noise": True}}, "métrique inconnue du projet"),
+                ("clé hors du projet", {"telephone_alice_martin": {"gain": 0.05, "beyond_noise": True}}, "metric unknown to the project"),
                 ("nombre démesuré", {"debit_compression_n6": {"gain": 0.05, "beyond_noise": True, "pairs": 612345678}},
-                 "un nombre de 9 chiffres ou plus"),
+                 "a number of 9 digits or more"),
                 ("honnête", {"debit_compression_n6": {"gain": 0.05, "beyond_noise": True, "b_wins": 9, "pairs": 10},
                              "instructions_n6": {"gain": 0.04, "beyond_noise": True}}, None)):
             with self.subTest(name=name):
@@ -4314,7 +4314,7 @@ class TestPublishBySession(BasePublish):
         self.accepted_one(submission, "alice", "submission", "note")
         code, text = self.bee("check-pr", "--base", bruno_s_note, "--head", "HEAD", "--author", "alice")
         self.assertEqual(code, 1, text)
-        self.assertIn("passage open → in_review réservé au conseil", text)
+        self.assertIn("transition open → in_review reserved for the council", text)
         task = self.task("miniz-0099")
         self.assertEqual((task["status"], task["contribution"], [n["by"] for n in task["notes"]]),
                          ("in_review", "miniz-0099-c1", ["bruno"]))
@@ -5618,7 +5618,7 @@ class TestParallelPullRequests(BaseParallel):
         rec["submitted_at"] = "2026-10-27T11:45:00Z"  # avant la réservation d'alice : pour ne pas l'attendre (R3)
         bee.write_yaml(path, rec)
         self.commit()
-        self.refused("bruno", "ne peut pas précéder l'engagement de bruno")
+        self.refused("bruno", "cannot precede bruno's engagement")
 
     def test_attack_age_an_existing_registration(self):
         self.main_reserved_with_registered("chloe", "bruno")
@@ -5653,7 +5653,7 @@ class TestParallelPullRequests(BaseParallel):
         rec["author"] = "chloe"
         bee.write_yaml(path, rec)
         self.commit()
-        self.refused("bruno", "l'auteur déclaré doit être bruno")
+        self.refused("bruno", "the declared author must be bruno")
 
     def test_attack_submit_without_being_registered(self):
         self.main_reserved_with_registered("bruno")
@@ -5694,14 +5694,14 @@ class TestParallelPullRequests(BaseParallel):
         self.commit()
         self.refused("bruno", "seul le titulaire (alice) libère sa réservation")
         # Même le titulaire ne libère pas en emportant les inscrits : le plus ancien prend sa place.
-        self.refused("alice", "la plus ancienne devient titulaire")
+        self.refused("alice", "the oldest becomes the holder")
 
     def test_attack_reserve_by_registering_others(self):
         self.branch()
         bee.modify_task(self.path(), status="reserved", reservation={"user": "alice", "since": "2026-10-27T12:00:00Z"},
                            parallel=[{"user": "bruno", "since": "2026-10-27T12:00:00Z"}])
         self.commit()
-        self.refused("alice", "une réservation n'inscrit personne en parallèle")
+        self.refused("alice", "a reservation registers no one in parallel")
 
     def test_attack_competitor_judging_its_competitor(self):
         self.main_reserved_with_registered("bruno")
@@ -5715,8 +5715,8 @@ class TestParallelPullRequests(BaseParallel):
         bee.write_yaml(path, rec)
         bee.write_yaml(self.dir / f"votes/{c2}/bruno.yaml", {"voter": "bruno", "subject": c2, "value": -1, "at": "2026-10-27T18:00:00Z"})
         self.commit()
-        self.refused("bruno", "son avis défavorable sur une concurrente ne compterait pas")
-        self.refused("bruno", "on ne vote pas sur une concurrente")
+        self.refused("bruno", "their unfavorable opinion on a rival would not count")
+        self.refused("bruno", "you do not vote on a rival")
         self.assertNotEqual(c1, c2)
 
     def test_attack_close_a_competitor_by_hand(self):
@@ -5730,10 +5730,10 @@ class TestParallelPullRequests(BaseParallel):
         rec.update({"status": "set_aside", "kept": c2, "decided_at": "2026-10-27T18:00:00Z", "decision_reason": "Écartée à la main."})
         bee.write_yaml(path, rec)
         self.commit()
-        self.refused("alice", "écrits par la CI ou le conseil")
-        self.refused("alice", "seul le robot d'intégration écarte une contribution concurrente")
-        self.refused("bidji29", "dans le même commit que l'intégration")
-        self.refused("github-actions[bot]", "dans le même commit que l'intégration")
+        self.refused("alice", "written by the CI or the council")
+        self.refused("alice", "only the integration robot sets aside a rival contribution")
+        self.refused("bidji29", "in the same commit as the integration")
+        self.refused("github-actions[bot]", "in the same commit as the integration")
         # Écartée au profit d'une contribution qui n'est pas intégrée : le registre lui-même est invalide.
         code, text = self.bee("validate")
         self.assertEqual(code, 1)
@@ -5753,12 +5753,12 @@ class TestParallelPullRequests(BaseParallel):
         bee.modify_task(self.path(), status="integrated", contribution=c2)
         self.commit()
         code, text = self.verify("github-actions[bot]")
-        self.assertNotIn("seul le robot d'intégration", text)
-        self.assertNotIn("dans le même commit", text)
+        self.assertNotIn("only the integration robot", text)
+        self.assertNotIn("in the same commit", text)
         # Revue adverse I3 : le conseil, qui intègre lui-même (tâches de la ruche), écarte aussi, dans la même PR.
         code, text = self.verify("bidji29")
         self.assertEqual(code, 0, text)
-        self.refused("alice", "seul le robot d'intégration écarte")
+        self.refused("alice", "only the integration robot sets aside")
 
     # --- ruche-0043: each declared date of a reservation or a parallel registration is the time of the PR (2 h tolerance,
     # never in the future); in the self-service folders, a file keeps the mode bee writes ---
@@ -5778,7 +5778,7 @@ class TestParallelPullRequests(BaseParallel):
     def test_engagements_dated_at_the_time_of_the_pr(self):
         """The reservation bee take writes, then the parallel registration bee take --parallel writes, pass until
         2 h after they are written; dated outside the tolerance, before or after the time of the PR, each is refused."""
-        for who_is, nature, refusal in (("alice", "reservation", "une réservation est datée de l'heure de la PR"),
+        for who_is, nature, refusal in (("alice", "reservation", "a reservation is dated at the time of the PR"),
                                    ("bruno", "parallel_registration", "doit être datée de l'heure de la PR")):
             if who_is == "alice":
                 self.branch()
@@ -5824,14 +5824,14 @@ class TestParallelPullRequests(BaseParallel):
                 code, text = self.verify("bidji29")
                 self.assertEqual(code, 0 if accepted else 1, text)
                 if not accepted:
-                    self.assertIn(f"tasks/miniz/{tid}.yaml : since ({since}) must be the time of the PR", text)
+                    self.assertIn(f"tasks/miniz/{tid}.yaml: since ({since}) must be the time of the PR", text)
 
     def test_engagement_dates_are_checked_at_the_push_whenever_the_check_runs(self):
         """ruche-0091: the reservation, then the parallel registration, written by bee at the push (12:00, --pr-time) pass
         when the check runs hours later; dated outside the tolerance around the push, each is refused, even where it would
         fit the time of the check. A local run, without --pr-time, still takes the current time."""
         push = ("--pr-time", "2026-10-27T12:00:00Z")
-        for who_is, nature, refusal in (("alice", "reservation", "une réservation est datée de l'heure de la PR"),
+        for who_is, nature, refusal in (("alice", "reservation", "a reservation is dated at the time of the PR"),
                                    ("bruno", "parallel_registration", "doit être datée de l'heure de la PR")):
             if who_is == "alice":
                 self.branch()
@@ -5927,11 +5927,11 @@ class TestParallelPullRequests(BaseParallel):
                 self.commit()
                 code, text = self.verify(author, "--account-created-on", "2020-01-01")
                 self.assertEqual(code, 1, text)
-                self.assertIn(f"mode {chunk} : a file of the self-service folders is a regular file (100644)", text)
+                self.assertIn(f"mode {chunk}: a file of the self-service folders is a regular file (100644)", text)
                 if remedy:
-                    self.assertIn(f"restore its mode : git update-index --chmod={remedy}, then commit", text)
+                    self.assertIn(f"restore its mode: git update-index --chmod={remedy}, then commit", text)
                 else:
-                    self.assertIn("only the council changes it ; restore the file as bee wrote it", text)
+                    self.assertIn("only the council changes it; restore the file as bee wrote it", text)
                     self.assertNotIn("git update-index", text)
                 code, text = self.verify("bidji29", "--auto-merge")
                 self.assertNotIn("a file of the self-service folders", text)
@@ -6368,7 +6368,7 @@ class TestAdversarialReview(BaseParallel):
         self.commit()
         code, text = self.verify("bidji29")
         self.assertEqual(code, 1, text)
-        self.assertIn("on ne change ni ne retire son vote tant qu'on est en course", text)
+        self.assertIn("you neither change nor withdraw your vote while in the race", text)
 
     # --- I2 : fermer après publication ; jamais « annulee » quand une concurrente a gagné ---
 
@@ -6449,7 +6449,7 @@ class TestAdversarialReview(BaseParallel):
         self.commit("c3 oubliée")
         code, text = self.verify("bidji29")
         self.assertEqual(code, 1, text)
-        self.assertIn("écarte toutes les concurrentes en course à son profit", text)
+        self.assertIn("sets aside all the rivals in the race in its favour", text)
         write(c3, status="set_aside", kept=c2)
         self.commit("toutes écartées")
         code, text = self.verify("bidji29")
@@ -6558,7 +6558,7 @@ class TestAdversarialReview(BaseParallel):
         self.commit()
         code, text = self.verify("chloe")
         self.assertEqual(code, 1, text)
-        self.assertIn("la contribution suivante de miniz-0099 est miniz-0099-c2", text)
+        self.assertIn("the next contribution of miniz-0099 is miniz-0099-c2", text)
         # Même face à un trou, bee soumettre prend le numéro suivant le plus grand : il n'écrase jamais un fichier.
         self.assertEqual(self.submit("miniz-0099", "alice", 99102), "miniz-0099-c4")
 
@@ -6579,7 +6579,7 @@ class TestAdversarialReview(BaseParallel):
         self.commit()
         code, text = self.verify("chloe")
         self.assertEqual(code, 1, text)
-        self.assertIn("ne peut pas précéder", text)
+        self.assertIn("cannot precede", text)
 
     def test_M3_the_council_reserves_and_submits_in_one_pr(self):
         self.init_git()
@@ -6944,7 +6944,7 @@ class TestAdversarialReview(BaseParallel):
         # de la PR : la création de l'exécution de validation que la poussée a lancée, ruche-0091).
         state, output_text, calls = self.pass_ref(sha, "chloe", "2026-10-27T13:00:05Z", {PR_MINIZ + "5555": {"state": "OPEN", "head": "x", "author": "david"}})
         self.assertEqual(state, "refused", output_text)
-        self.assertIn("doit avoir été ouverte par chloe sur GitHub (auteur relevé : david)", output_text)
+        self.assertIn("must have been opened by chloe on GitHub (author found: david)", output_text)
         self.assertEqual([a["args"][1] for a in self.calls_of(calls, "api")], ["repos/Bee-ruche/minizBee/pulls/5555"], "ruche-0121: no account read")
         # La même, ouverte par chloe : fusion automatique.
         state, output_text, _ = self.pass_ref(sha, "chloe", "2026-10-27T13:00:05Z", {PR_MINIZ + "5555": {"state": "OPEN", "head": "x", "author": "chloe"}})
@@ -6955,7 +6955,7 @@ class TestAdversarialReview(BaseParallel):
         git(self.dir, "switch", "-q", "squat")
         code, text = self.bee("check-pr", "--base", "main", "--head", "HEAD", "--author", "chloe", "--pr-authors", str(empty_one))
         self.assertEqual(code, 1, text)
-        self.assertIn("auteur relevé : inconnu", text)
+        self.assertIn("author found: unknown", text)
 
     def test_auto_merge_checks_the_declared_dates_at_the_push(self):
         """ruche-0091: auto-merge's pass gives check-pr the creation of the validation run that the push triggered. A
@@ -6982,7 +6982,7 @@ class TestAdversarialReview(BaseParallel):
                 state, output_text, _ = self.pass_ref(sha, "alice", pr_time, {PR_MINIZ + "5555": {"state": "OPEN", "head": "x", "author": "alice"}})
                 self.assertEqual(state, expected, output_text)
                 if pr_time == "2026-10-27T12:58:00Z":
-                    self.assertIn("submitted_at doit être l'heure de la soumission", output_text)
+                    self.assertIn("submitted_at must be the time of the submission", output_text)
 
     def test_auto_merge_reads_the_account_date_only_for_a_registration(self):
         """ruche-0121: auto-merge's pass takes the author's number from the PR listing, and reads the account's creation date
@@ -7005,7 +7005,7 @@ class TestAdversarialReview(BaseParallel):
                 self.assertEqual([a["args"][1:] for a in self.calls_of(calls, "api")], [[f"user/{number_from('david')}", "--jq", ".created_at[:10]"]])
                 self.assertEqual(state, expected, output_text)
                 if created_on == "2026-10-01":
-                    self.assertIn("account_created_on ne correspond pas à la date fournie par GitHub (2026-10-01)", output_text)
+                    self.assertIn("account_created_on does not match the date given by GitHub (2026-10-01)", output_text)
 
     def test_N8_an_integration_of_an_earlier_round_does_not_prevent_closing(self):
         self.close_gate()
@@ -7099,7 +7099,7 @@ class TestAdversarialReview(BaseParallel):
         self.commit()
         code, text = self.verify("bruno", "--auto-merge")
         self.assertEqual(code, 1, text)
-        self.assertIn("ne confirme pas son propre défaut", text)
+        self.assertIn("does not confirm their own defect", text)
         code, text = self.bee("validate")  # poussé sans PR, refusé aussi
         self.assertEqual(code, 1, text)
         # Il se retire et confirme le défaut de david dans la même PR : encore en course dans la base, refusé.
@@ -7110,7 +7110,7 @@ class TestAdversarialReview(BaseParallel):
         self.commit()
         code, text = self.verify("bruno", "--auto-merge")
         self.assertEqual(code, 1, text)
-        self.assertIn("est en course sur la tâche miniz-0099", text)
+        self.assertIn("is in the race on task miniz-0099", text)
         # Engagé, l'outil le lui refuse ; david ne confirme pas son propre défaut ; chloe n'est pas privilégiée.
         git(self.dir, "switch", "-q", "main")
         for who_is in ("bruno", "david", "chloe"):
@@ -7124,7 +7124,7 @@ class TestAdversarialReview(BaseParallel):
         self.commit()
         code, text = self.verify("bidji29", "--auto-merge")
         self.assertEqual(code, 1, text)
-        self.assertIn("porte le nom de l'auteur de la PR", text)
+        self.assertIn("bears the name of the PR's author", text)
         # Le conseil, tiers hors de la course, confirme dans sa propre PR : accepté.
         git(self.dir, "checkout", "-q", "--", ".")
         git(self.dir, "switch", "-q", "main")
@@ -8579,7 +8579,7 @@ class TestPullRequestsAgora(BaseAgora):
         code, text = self.verify("alice")
         self.assertEqual(code, 1, text)
         for path in ("debates/D-0001.yaml", "tasks/miniz/miniz-0098.yaml", "tasks/elsewhere", "docs/link.md"):
-            self.assertIn(f"{path} : lien symbolique refusé", text)
+            self.assertIn(f"{path}: symbolic link refused", text)
         self.assertNotIn("SECRET", text)
         self.assertNotIn("Traceback", text)
 
@@ -8700,11 +8700,11 @@ class TestDressRehearsal(BaseDressRehearsal):
         self.branch("t5")
         self.proposal("P-9999")
         self.commit()
-        self.refused("gaspard", "proposals/P-9999.yaml : les numéros 9000 et plus sont réservés aux tests")
+        self.refused("gaspard", "proposals/P-9999.yaml: numbers 9000 and above are reserved for the tool's tests")
         (self.dir / "proposals/P-9999.yaml").unlink()
         self.proposal("P-0005")
         self.commit("numéro qui saute")
-        self.refused("gaspard", "proposals/P-0005.yaml : la proposition suivante est P-0001")
+        self.refused("gaspard", "proposals/P-0005.yaml: the next proposal is P-0001")
         # Un P-9999 déjà sur main (publié avant ce contrôle) ne gèle plus bee proposer : la suivante est P-0001, pas P-10000.
         git(self.dir, "switch", "-q", "main")
         self.proposal("P-9999")
@@ -8726,8 +8726,8 @@ class TestDressRehearsal(BaseDressRehearsal):
         for tid in ("miniz-8999", "miniz-9000"):
             self.task_path(tid).write_text(text.replace("miniz-0100", tid), encoding="utf-8")
         self.commit()
-        self.refused("gaspard", "tasks/miniz/miniz-8999.yaml : la tâche proposée suivante est miniz-0100",
-                     "tasks/miniz/miniz-9000.yaml : les numéros 9000 et plus sont réservés aux tests")
+        self.refused("gaspard", "tasks/miniz/miniz-8999.yaml: the next proposed task is miniz-0100",
+                     "tasks/miniz/miniz-9000.yaml: numbers 9000 and above are reserved for the tool's tests")
         # Déjà sur main (publiées avant ce contrôle), elles bloquent bee proposer-tache miniz, qui le dit sans rien écraser ;
         # les autres projets n'en souffrent pas.
         self.merge("t6")
@@ -8760,7 +8760,7 @@ class TestDressRehearsal(BaseDressRehearsal):
         path.write_text(text.replace('created_on: "2026-10-29"', 'created_on: "2026-10-15"'), encoding="utf-8")
         bee.modify_task(path, note={"by": "gaspard", "at": "2026-10-15T00:00:00Z", "text": "Antidatée à la création."})
         self.commit()
-        self.refused("gaspard", "created_on (2026-10-15) est la date de la PR", "datée du 2026-10-15T00:00:00Z")
+        self.refused("gaspard", "created_on (2026-10-15) is the date of the PR", "datée du 2026-10-15T00:00:00Z")
 
     def test_T2_fifteen_notes_dated_2099(self):
         self.branch("t2")
@@ -8852,14 +8852,14 @@ class TestDressRehearsal(BaseDressRehearsal):
             path.parent.mkdir(exist_ok=True)
             path.write_text("# Avis du conseil\n\n[attempt équipe red] Texte libre.\n", encoding="utf-8")
         self.commit()
-        text = self.refused("gaspard", "members/gaspard.md : fichier inattendu dans members/ : seuls les fichiers members/<login>.yaml")
+        text = self.refused("gaspard", "members/gaspard.md: unexpected file in members/: only the files members/<login>.yaml")
         for name in ("gaspard.html", "gaspard ", "gaspard.yml", "under_it/gaspard.yaml"):
             self.assertIn(f"members/{name}", text)
         # Le bon nom, mais pas un objet YAML : refusé aussi.
         self.branch("list_of")
         (self.dir / "members/zoe.yaml").write_text("- login: zoe\n", encoding="utf-8")
         self.commit()
-        self.refused("zoe", "members/zoe.yaml : le fichier doit être un objet YAML")
+        self.refused("zoe", "members/zoe.yaml: the file must be a YAML object")
 
     def test_T8_binary_under_proposals(self):
         self.branch("t8")
@@ -8869,8 +8869,8 @@ class TestDressRehearsal(BaseDressRehearsal):
         (self.dir / "votes/miniz-0099-c1").mkdir(parents=True)
         (self.dir / "votes/miniz-0099-c1/gaspard.txt").write_text("value: 1\n", encoding="utf-8")
         self.commit()
-        self.refused("gaspard", "proposals/essai-equipe-rouge.bin : fichier inattendu dans proposals/",
-                     "proposals/P-0001.yaml : fichier illisible", "votes/miniz-0099-c1/gaspard.txt : fichier inattendu dans votes/")
+        self.refused("gaspard", "proposals/essai-equipe-rouge.bin: unexpected file in proposals/",
+                     "proposals/P-0001.yaml: unreadable file", "votes/miniz-0099-c1/gaspard.txt: unexpected file in votes/")
 
     # --- (6) Agora : T9, T10 ---
 
@@ -9165,7 +9165,7 @@ class TestAdversarialReviewRuche0011(BaseDressRehearsal):
         bee.write_yaml(self.dir / f"measurements/{cid}/gaspard.yaml", {**measurement, "tool": "bee 0.1.0"})
         self.commit()
         self.self_service("gaspard", "measurement")
-        for name, categories, expected in (("trop", [f"c{i}" for i in range(21)], "20 catégories préférées au plus"),
+        for name, categories, expected in (("trop", [f"c{i}" for i in range(21)], "20 preferred categories at most"),
                                          ("longue", ["x" * 300], "at most 200"), ("cachée", ["miniz\u202e"], "U+202E")):
             with self.subTest(profile=name):
                 self.branch(f"profil-{name}")
@@ -9200,9 +9200,9 @@ class TestAdversarialReviewRuche0011(BaseDressRehearsal):
             "contribution": cid, "submitted_by": "gaspard", "at": "2026-10-01T00:00:00Z", "base": "2948eeb", "candidate": "839b676",
             "config": {"architecture": "arm64"}, "metrics": {"debit_compression_n6": {"gain": 0.05, "beyond_noise": True}}})
         self.commit()
-        self.refused("gaspard", f"votes/{cid}/gaspard.yaml : at (2099-01-01T00:00:00Z) must be the time of the PR",
-                     f"relecture de gaspard, le (2099-01-01T00:00:00Z) must be the time of the PR",
-                     f"measurements/{cid}/gaspard.yaml : at (2026-10-01T00:00:00Z) must be the time of the PR")
+        self.refused("gaspard", f"votes/{cid}/gaspard.yaml: at (2099-01-01T00:00:00Z) must be the time of the PR",
+                     f"review by gaspard, at (2099-01-01T00:00:00Z) must be the time of the PR",
+                     f"measurements/{cid}/gaspard.yaml: at (2026-10-01T00:00:00Z) must be the time of the PR")
         # Les mêmes gestes, écrits par l'outil : en libre-service.
         self.branch("honnete")
         self.ok("vote", cid, "--user", "gaspard", "--value", "1")
@@ -10054,11 +10054,11 @@ class TestReviewByCommitPR(BaseDressRehearsal):
 
     def test_before_the_verdict_neither_invented_commit_nor_second_review_nor_defect(self):
         self.review("gaspard")
-        self.attack("farid", self.addition(self.review_record("farid", sha="abc1234")), "pas de verdict ni de commit jugé")
+        self.attack("farid", self.addition(self.review_record("farid", sha="abc1234")), "no verdict and no judged commit")
         self.attack("gaspard", self.addition(self.review_record("gaspard", "unfavorable")),
                      "gaspard already reviewed this contribution: a review without a commit")
         self.attack("farid", self.addition(self.review_record("farid", "unfavorable", reported_defect=True)),
-                     "un défaut se signale sur le commit jugé, jamais par une abstention")
+                     "a defect is reported on the judged commit, never by an abstention")
 
     def test_misuses_of_the_reviews_by_commit(self):
         self.review("gaspard")
@@ -10067,10 +10067,10 @@ class TestReviewByCommitPR(BaseDressRehearsal):
         self.verdict_on_main("def5678")
         self.review("gaspard")
         attacks = [
-            ("farid", self.addition(self.review_record("chloe", sha="def5678")), "une relecture ajoutée doit être celle de farid"),
-            ("farid", self.addition(self.review_record("farid", sha="1234567")), "porte le commit du verdict (def5678)"),
-            ("farid", self.addition(self.review_record("farid", sha="abc1234")), "porte le commit du verdict (def5678)"),
-            ("farid", self.addition(self.review_record("farid")), "porte le commit du verdict (def5678)"),
+            ("farid", self.addition(self.review_record("chloe", sha="def5678")), "an added review must be farid's"),
+            ("farid", self.addition(self.review_record("farid", sha="1234567")), "bears the verdict's commit (def5678)"),
+            ("farid", self.addition(self.review_record("farid", sha="abc1234")), "bears the verdict's commit (def5678)"),
+            ("farid", self.addition(self.review_record("farid")), "bears the verdict's commit (def5678)"),
             ("gaspard", self.addition(self.review_record("gaspard", "unfavorable", sha="def5678")), "gaspard already reviewed commit def5678"),
             ("farid", self.addition(self.review_record("farid", sha="def5678"), self.review_record("farid", "unfavorable", sha="def5678")),
              "farid already reviewed commit def5678"),
@@ -10078,7 +10078,7 @@ class TestReviewByCommitPR(BaseDressRehearsal):
              "farid already reviewed commit def5678"),
             ("farid", self.addition(self.review_record("farid", sha="def5678", at="2026-10-01T00:00:00Z")), "must be the time of the PR"),
             ("farid", self.addition(self.review_record("farid", "abstention", sha="def5678", reported_defect=True)),
-             "jamais par une abstention"),
+             "never by an abstention"),
             ("farid", self.addition(self.review_record("farid", "neutre", sha="def5678")), "neutre"),
         ]
 
@@ -10092,8 +10092,8 @@ class TestReviewByCommitPR(BaseDressRehearsal):
         def confirm_elsewhere(rec):  # la confirmation déplace le défaut sur le commit jugé
             rec["reviews"][1].update(confirmed_defect=True, confirmed_by="bidji29", sha="def5678")
 
-        attacks += [("gaspard", make_younger, "ajout seul"), ("farid", turn_back, "ajout seul"),
-                     ("bidji29", confirm_elsewhere, "sans rien y changer d'autre")]
+        attacks += [("gaspard", make_younger, "append-only"), ("farid", turn_back, "append-only"),
+                     ("bidji29", confirm_elsewhere, "changing nothing else")]
         for author, modify, chunk in attacks:
             with self.subTest(chunk=chunk, author=author):
                 self.attack(author, modify, chunk)
@@ -10109,7 +10109,7 @@ class TestReviewByCommitPR(BaseDressRehearsal):
         self.verdict_on_main("def5678")
         for opinion, fields in (("unfavorable", {}), ("abstention", {}), ("unfavorable", {"reported_defect": True})):
             with self.subTest(opinion=opinion, **fields):
-                self.attack("farid", self.addition(self.review_record("farid", opinion, sha="def5678", **fields)), "farid est en course")
+                self.attack("farid", self.addition(self.review_record("farid", opinion, sha="def5678", **fields)), "farid is in the race")
         self.review("farid")
 
     def test_liftings_and_registered_accounts(self):
@@ -10128,19 +10128,19 @@ class TestReviewByCommitPR(BaseDressRehearsal):
         self.assertIn("FUSION_AUTO=non", text)
         self.merge("lift")
         for author, modify, chunk in (
-                ("gaspard", lambda e: e.update(lifts=e["lifts"] + [{**lift, "by": "gaspard"}]), "par le conseil seul"),
+                ("gaspard", lambda e: e.update(lifts=e["lifts"] + [{**lift, "by": "gaspard"}]), "by the council alone"),
                 ("github-actions[bot]", lambda e: e.update(lifts=e["lifts"] + [{**lift, "by": "github-actions[bot]"}]),
-                 "par le conseil seul"),
-                ("bidji29", lambda e: e.update(lifts=[{**lift, "reason": "Motif réécrit après coup."}]), "en ajout seul"),
+                 "by the council alone"),
+                ("bidji29", lambda e: e.update(lifts=[{**lift, "reason": "Motif réécrit après coup."}]), "append-only"),
                 ("bidji29", lambda e: e.update(lifts=e["lifts"] + [{**lift, "at": "2026-10-01T00:00:00Z"}]), "must be the time of the PR"),
-                ("zorro", self.addition(self.review_record("zorro", "unfavorable", sha="abc1234", reported_defect=True)), "zorro doit d'abord s'inscrire")):
+                ("zorro", self.addition(self.review_record("zorro", "unfavorable", sha="abc1234", reported_defect=True)), "zorro must register first")):
             with self.subTest(author=author, chunk=chunk):
                 self.attack(author, modify, chunk)
         self.branch("vote")
         bee.write_yaml(self.dir / "votes" / self.cid / "zorro.yaml",
                         {"voter": "zorro", "subject": self.cid, "value": 1, "at": os.environ["BEE_NOW"]})
         self.commit()
-        self.refused("zorro", "zorro doit d'abord s'inscrire")
+        self.refused("zorro", "zorro must register first")
         git(self.dir, "switch", "-qf", "main")
         self.branch("parallel_one")
         self.ok("take", "miniz-0099", "--user", "farid", "--parallel")
@@ -10166,7 +10166,7 @@ class TestReviewByCommitPR(BaseDressRehearsal):
         self.assertNotIn("tree", bee.read_yaml(self.path)["verdict"])
         self.ok("record-verdict", self.cid, "--verdict", str(verdict), "--sha", "abc1234", "--tree", "7ee0001", "--files", str(files))
         self.commit("verdict avec arbre")
-        for tree, chunk in ((None, "porte l'arbre du verdict de la base (7ee0001)"), ("7ee0002", "porte l'arbre du verdict de la base")):
+        for tree, chunk in ((None, "bears the tree of the base's verdict (7ee0001)"), ("7ee0002", "bears the tree of the base's verdict")):
             with self.subTest(tree=tree):
                 fields = {"sha": "abc1234", **({"tree": tree} if tree else {})}
                 self.attack("farid", self.addition(self.review_record("farid", **fields)), chunk)
@@ -10192,7 +10192,7 @@ class TestReviewByCommitPR(BaseDressRehearsal):
                 self.ok("submit", "miniz-9001", "--user", "alice", "--pr", "https://github.com/Bee-ruche/minizBee/pull/77091")
                 bee.write_yaml(path, {**bee.read_yaml(path), key: value})
                 self.commit()
-                self.refused("alice", f"une contribution naît avec les seules clés qu'écrit bee submit ; refusé : {key}")
+                self.refused("alice", f"a contribution is born with only the keys bee submit writes; refused: {key}")
                 git(self.dir, "switch", "-qf", "main")
                 git(self.dir, "branch", "-qD", "submission")
         self.branch("submission")
@@ -10202,23 +10202,23 @@ class TestReviewByCommitPR(BaseDressRehearsal):
 
     def test_summary_update(self):
         # Une mise à jour par commit jugé (revue adverse, M4) : resume_sha est exactement le verdict.sha de la base.
-        self.attack("alice", lambda e: e.update(summary="Trop tôt.", summary_sha="abc1234"), "pas encore de verdict")
+        self.attack("alice", lambda e: e.update(summary="Trop tôt.", summary_sha="abc1234"), "no verdict yet")
         self.verdict_on_main("abc1234")
-        for modify, chunk in ((lambda e: e.update(summary="Sans commit."), "porte summary_sha, le commit du verdict de la base (abc1234)"),
-                                  (lambda e: e.update(summary="Inventé.", summary_sha="1234567"), "porte summary_sha"),
-                                  (lambda e: e.update(summary="Null.", summary_sha="abc1234", kept=None), "écrits par la CI ou le conseil"),
-                                  (lambda e: e.update(summary="Null.", summary_sha="abc1234", merge_sha=None), "écrits par la CI ou le conseil")):
+        for modify, chunk in ((lambda e: e.update(summary="Sans commit."), "bears summary_sha, the commit of the base's verdict (abc1234)"),
+                                  (lambda e: e.update(summary="Inventé.", summary_sha="1234567"), "bears summary_sha"),
+                                  (lambda e: e.update(summary="Null.", summary_sha="abc1234", kept=None), "written by the CI or the council"),
+                                  (lambda e: e.update(summary="Null.", summary_sha="abc1234", merge_sha=None), "written by the CI or the council")):
             with self.subTest(chunk=chunk):
                 self.attack("alice", modify, chunk)
         self.gesture("alice", "submit", "miniz-0099", "--user", "alice", "--update", "--summary", "Correctif.",
                    natures=("update",))
         self.assertEqual((bee.read_yaml(self.path)["summary"], bee.read_yaml(self.path)["summary_sha"]), ("Correctif.", "abc1234"))
         attacks = [
-            ("alice", lambda e: e.update(summary="Encore, même commit."), "déjà actualisé pour le commit abc1234"),
-            ("gaspard", lambda e: e.update(summary="Repris par un autre."), "seul l'auteur de la contribution (alice)"),
+            ("alice", lambda e: e.update(summary="Encore, même commit."), "already updated for commit abc1234"),
+            ("gaspard", lambda e: e.update(summary="Repris par un autre."), "only the contribution's author (alice)"),
             ("alice", lambda e: e.update(summary="Autre.", pr="https://github.com/Bee-ruche/minizBee/pull/77013"),
-             "écrits par la CI ou le conseil"),
-            ("alice", lambda e: e.update(summary="Autre.", verdict={**e["verdict"], "sha": "def5678"}), "écrits par la CI ou le conseil"),
+             "written by the CI or the council"),
+            ("alice", lambda e: e.update(summary="Autre.", verdict={**e["verdict"], "sha": "def5678"}), "written by the CI or the council"),
             ("alice", lambda e: e.update(summary="x" * 501), "at most 500"),
             ("alice", lambda e: e.update(summary="Correctif\u200b."), "invisible character"),
             ("alice", lambda e: e.pop("summary"), "summary is empty"),
@@ -10235,7 +10235,7 @@ class TestReviewByCommitPR(BaseDressRehearsal):
         bee.modify_task(self.task_path(), status="open", contribution=None)
         self.commit("refusée par le conseil")
         self.verdict_on_main("1111111")
-        self.attack("alice", lambda e: e.update(summary="Après coup.", summary_sha="1111111"), "contribution en relecture (status : refused)")
+        self.attack("alice", lambda e: e.update(summary="Après coup.", summary_sha="1111111"), "a contribution in review is updated (status: refused)")
 
 
 MESSAGE_INVITATION = ("Bonjour, la ruche Bee cherche des garants : des personnes qui répondent publiquement des agents gardiens "
@@ -10533,7 +10533,7 @@ class TestPullRequestsInvitations(BaseInvitations):
         inv = self.invitation("I-0002")
         self.write_invitation({**inv, "id": "I-0002"}, "I-0002")
         self.commit()
-        self.refused("alice", "l'invitation suivante est I-0001")
+        self.refused("alice", "the next invitation is I-0001")
 
     def test_number_reserved_for_the_tests(self):
         """I-9000 et plus : hors du libre-service ; même le conseil y est contrôlé (mention, données personnelles…)."""
@@ -10544,7 +10544,7 @@ class TestPullRequestsInvitations(BaseInvitations):
         self.invitation_path().unlink()
         self.write_invitation({**inv, "id": "I-9000"}, "I-9000")
         self.commit()
-        self.refused("alice", "les numéros 9000 et plus sont réservés aux tests")
+        self.refused("alice", "numbers 9000 and above are reserved for the tool's tests")
         self.write_invitation({**inv, "id": "I-9000", "proposed_by": "bidji29", "message": MESSAGE_INVITATION}, "I-9000")
         self.commit()
         self.refused("bidji29", "mot pour mot, la mention de R13")
@@ -10680,7 +10680,7 @@ class TestPullRequestsInvitations(BaseInvitations):
                 (self.dir / path).parent.mkdir(parents=True, exist_ok=True)
                 (self.dir / path).write_text("id: I-0001\n", encoding="utf-8")
                 self.commit()
-                self.refused("alice", "fichier inattendu dans invitations/")
+                self.refused("alice", "unexpected file in invitations/")
                 self.abandon()
         self.branch()
         self.invite()
@@ -14876,7 +14876,7 @@ class TestCopiedManifest(BaseDressRehearsal):
             modify(rec)
             bee.write_yaml(self.path, rec)
             self.commit()
-            self.refused(author, "écrits par la CI ou le conseil")
+            self.refused(author, "written by the CI or the council")
             git(self.dir, "switch", "-qf", "main")
             git(self.dir, "branch", "-qD", "attack")
         # À la naissance : declare n'est pas dans la liste blanche de bee soumettre (CLES_NAISSANCE).
@@ -14886,7 +14886,7 @@ class TestCopiedManifest(BaseDressRehearsal):
         path = self.dir / "contributions/miniz/miniz-9001-c1.yaml"
         bee.write_yaml(path, {**bee.read_yaml(path), "declared": self.HONEST})
         self.commit()
-        self.refused("bruno", "refusé : declared")
+        self.refused("bruno", "refused: declared")
         git(self.dir, "switch", "-qf", "main")
         git(self.dir, "branch", "-qD", "naissance")
         for declared in (self.HONEST, None):  # avant le verdict ; une clé ajoutée à null est aussi une différence
@@ -15387,8 +15387,8 @@ class TestRound3PR(BaseDressRehearsal):
         bee.write_yaml(self.dir / f"votes/{cid}/Chloe.yaml", {"subject": cid, "voter": "Chloe", "value": 1,
                                                                     "at": os.environ["BEE_NOW"]})
         self.commit()
-        self.refused("Chloe", f"votes/{cid}/Chloe.yaml : chloe existe déjà : un pseudo est un login GitHub, sans la casse",
-                     "auteur de la PR « Chloe » : sa fiche est chloe", "voter « Chloe » s'écrit chloe (sa fiche)")
+        self.refused("Chloe", f"votes/{cid}/Chloe.yaml: chloe already exists: a login is a GitHub login, case-insensitive",
+                     "PR author « Chloe »: their member file is chloe", "voter « Chloe » is written chloe (its member file)")
         git(self.dir, "switch", "-qf", "main")
         git(self.dir, "branch", "-qD", "double")
         # Parcours honnête : chloe change son vote, dans sa fiche.
@@ -15450,7 +15450,7 @@ class TestRound3PR(BaseDressRehearsal):
         self.valid_one()
         # (1) L'auteur efface le verdict qui le gêne de l'historique : refusé.
         self.pr_by_hand("alice", lambda rec: rec.update(verdicts=rec["verdicts"][1:]),
-                          "verdict, statut et confirmation de défaut sont écrits par la CI ou le conseil")
+                          "verdict, status and defect confirmation are written by the CI or the council")
         # (3) Une relecture du commit lu, par la commande, passe en libre-service.
         self.branch("review")
         self.ok("review", "miniz-0099-c1", "--commit", "aaa0002", "--user", "farid", "--opinion", "unfavorable", "--reason", "Refus motivé.")
@@ -15460,8 +15460,8 @@ class TestRound3PR(BaseDressRehearsal):
         # (7) Une levée : écrite par un membre, refusée ; par le conseil, recevable, écrite comme sa fiche (revue de 3ea3a71, N1).
         lift = lambda by: lambda rec: rec.update(lifts=[{"reviewer": "farid", "reason": "Levée motivée par le conseil.",  # noqa: E731
                                                             "by": by, "at": os.environ["BEE_NOW"]}])
-        self.pr_by_hand("bruno", lift("bidji29"), "une levée (levees) est écrite par le conseil seul")
-        self.pr_by_hand("bidji29", lift("BIDJI29"), "by « BIDJI29 » s'écrit bidji29 (sa fiche)")
+        self.pr_by_hand("bruno", lift("bidji29"), "a lift (lifts) is written by the council alone")
+        self.pr_by_hand("bidji29", lift("BIDJI29"), "by « BIDJI29 » is written bidji29 (its member file)")
         self.pr_by_hand("bidji29", lift("bidji29"), expected=0)
 
 
@@ -15490,7 +15490,7 @@ class TestSpelling(BaseInvitations):
         self.invite("gina")
         bee.write_invitation(self.invitation_path(), {**self.invitation(), "proposed_by": "Gina"})  # écrite à la main
         self.commit()
-        self.refused("Gina", "auteur de la PR « Gina » : sa fiche est gina", "proposed_by « Gina » s'écrit gina (sa fiche)")
+        self.refused("Gina", "PR author « Gina »: their member file is gina", "proposed_by « Gina » is written gina (its member file)")
         self.abandon()
         self.branch()  # témoin honnête
         self.invite("gina")
@@ -15505,7 +15505,7 @@ class TestSpelling(BaseInvitations):
         bee.write_invitation(self.invitation_path(), {**self.invitation(), "proposed_by": "Gina"})
         self.commit()
         for author in ("Gina", "bidji29"):
-            self.refused(author, "proposed_by « Gina » s'écrit gina (sa fiche)")
+            self.refused(author, "proposed_by « Gina » is written gina (its member file)")
         self.abandon()
         self.branch()
         self.invite("gina")
@@ -15523,7 +15523,7 @@ class TestSpelling(BaseInvitations):
             self.merge()
         self.ko("Alice: your member file is alice", "propose-task", "miniz", "--user", "Alice", "--type", "test")
         next_value = last.with_name(f"miniz-{int(last.stem.rsplit('-', 1)[1]) + 1:04d}.yaml")
-        for author, chunks in (("Alice", ["auteur de la PR « Alice » : sa fiche est alice", "created_by « Alice » s'écrit alice"]),
+        for author, chunks in (("Alice", ["PR author « Alice »: their member file is alice", "created_by « Alice » is written alice"]),
                                  ("alice", ["plafond : alice aurait 6"])):  # témoin honnête : le plafond d'alice tient
             self.branch()
             bee.write_yaml(next_value, {**bee.read_yaml(last), "id": next_value.stem, "created_by": author})
@@ -15542,7 +15542,7 @@ class TestSpelling(BaseInvitations):
             self.merge(f"lot{lot}")
         self.a("2026-10-30T11:30:00Z")
         self.ko("Gaspard: your member file is gaspard", "note", "miniz-0099", "--user", "Gaspard", "--text", "De trop.")
-        for author, chunks in (("Gaspard", ["auteur de la PR « Gaspard » : sa fiche est gaspard", "by « Gaspard » s'écrit gaspard"]),
+        for author, chunks in (("Gaspard", ["PR author « Gaspard »: their member file is gaspard", "by « Gaspard » is written gaspard"]),
                                  ("gaspard", ["plafond : gaspard aurait 21 notes en 24 h"])):  # témoin honnête
             self.branch("trop")
             self.note_by_hand({"by": author, "text": "De trop."})
@@ -16408,13 +16408,13 @@ class TestAgentAccounts(BaseDressRehearsal):
         self.branch("pour-alice")
         self.ok("take", "miniz-9003", "--user", "alice")
         self.commit()
-        self.refused(AGENT, "on ne réserve que pour soi (bidji29)")
+        self.refused(AGENT, "you reserve only for yourself (bidji29)")
         self.branch("taking")
         self.ok("take", "miniz-0099", "--user", "bidji29")
         self.commit()
         self.self_service("bidji29", "reservation")
         self.self_service(AGENT, "reservation")
-        self.refused("alice", "on ne réserve que pour soi (alice)")
+        self.refused("alice", "you reserve only for yourself (alice)")
         self.merge("taking")
         # Submission: bidji29's contribution; its fork PR counts as bidji29's when the agent account opened it (fusion-auto
         # relays the fork PR's author with --auteurs-pr), and when bidji29 did; for no one else.
@@ -16428,7 +16428,7 @@ class TestAgentAccounts(BaseDressRehearsal):
                 code, text = self.verify(AGENT, "--auto-merge", "--pr-authors", str(authors))
                 self.assertEqual(code, expected, text)
                 self.assertIn("submission", text)
-        self.assertIn("doit avoir été ouverte par bidji29 sur GitHub (auteur relevé : alice)", text)
+        self.assertIn("must have been opened by bidji29 on GitHub (author found: alice)", text)
         self.merge("submission")
         self.assertEqual(self.author_record("miniz-0099-c1"), "bidji29")
         # Vote: on alice's contribution, in bidji29's name, as bidji29's own vote would be; never under its own login.
@@ -16441,7 +16441,7 @@ class TestAgentAccounts(BaseDressRehearsal):
         bee.write_yaml(self.dir / f"votes/{cid}/{AGENT}.yaml",
                         {"voter": AGENT, "subject": cid, "value": 1, "at": os.environ["BEE_NOW"]})
         self.commit("the agent's own vote")
-        self.refused(AGENT, "on ne vote qu'en son nom (bidji29)", "votant déclaré différent de bidji29")
+        self.refused(AGENT, "you vote only in your own name (bidji29)", "declared voter differs from bidji29")
         code, text = self.bee("validate")
         self.assertEqual(code, 1, text)
         self.assertIn(f"votes/{cid}/{AGENT}.yaml: {AGENT} is an agent account (governance/agent-accounts.yaml): a person is "
@@ -16462,7 +16462,7 @@ class TestAgentAccounts(BaseDressRehearsal):
         self.branch("relecture-sous-son-login")
         self.add_review(cid, AGENT)
         self.commit()
-        self.refused(AGENT, "une relecture ajoutée doit être celle de bidji29", f"{AGENT} is an agent account")
+        self.refused(AGENT, "an added review must be bidji29's", f"{AGENT} is an agent account")
         # A vote: bidji29's vote, then the agent account's, are one file, one vote: the second only changes the first.
         self.published("bidji29", "vote", cid, "--user", "bidji29", "--value", "1")
         self.published(AGENT, "vote", cid, "--user", "bidji29", "--value", "-1", natures=("vote",))
@@ -16477,9 +16477,9 @@ class TestAgentAccounts(BaseDressRehearsal):
         self.branch("relecture-de-soi")
         self.add_review(my_one, "bidji29")
         self.commit()
-        self.refused(AGENT, "on ne relit pas sa propre contribution")
+        self.refused(AGENT, "you do not review your own contribution")
         # R4: its measure of its person's contribution is its person's, which R4 never counts (the author's); never its own.
-        for who_is, chunk in (("bidji29", None), (AGENT, "on ne dépose une mesure qu'en son nom (bidji29)")):
+        for who_is, chunk in (("bidji29", None), (AGENT, "you record a measurement only in your own name (bidji29)")):
             self.branch(f"mesure-{who_is}")
             bee.write_yaml(self.dir / f"measurements/{my_one}/{who_is}.yaml", {
                 "contribution": my_one, "submitted_by": who_is, "at": os.environ["BEE_NOW"], "base": "2948eeb", "candidate": "839b676",
@@ -16551,7 +16551,7 @@ class TestAgentAccounts(BaseDressRehearsal):
         path.write_text(path.read_text(encoding="utf-8").replace("governance: 50", "governance: 40")
                           .replace("projects: 30", "projects: 40"), encoding="utf-8")
         self.commit()
-        self.refused(AGENT, "on ne réserve que pour soi (bidji29)")
+        self.refused(AGENT, "you reserve only for yourself (bidji29)")
 
     def test_attacks_on_the_declaration(self):
         # A member declares an agent account in a self-service PR: the file is the council's; and the account it declares
@@ -16561,23 +16561,23 @@ class TestAgentAccounts(BaseDressRehearsal):
         self.ok("take", "miniz-0099", "--user", "alice")
         self.commit()
         self.refused("alice", "governance/agent-accounts.yaml : modification réservée au conseil humain")
-        self.refused("alice-bot", "on ne réserve que pour soi (alice-bot)")
+        self.refused("alice-bot", "you reserve only for yourself (alice-bot)")
         # The agent account repoints itself to another person in its own PR: refused (an authority file), and the base,
         # which still says bidji29, is what the gate reads.
         self.branch("repointer")
         declare_agents(self.dir, (AGENT, "alice"))
         self.ok("take", "miniz-0099", "--user", "alice")
         self.commit()
-        self.refused(AGENT, "governance/agent-accounts.yaml : changed only by a PR from the council's own account (ruche-0089)")
+        self.refused(AGENT, "governance/agent-accounts.yaml: changed only by a PR from the council's own account (ruche-0089)")
         self.assertEqual(self.verify(AGENT, "--auto-merge")[0], 1)
         # An undeclared account using the person's name, and case variants of the agent account.
         self.branch("usurpation")
         self.ok("take", "miniz-0099", "--user", "bidji29")
         self.commit()
-        self.refused("bidji29-bot", "on ne réserve que pour soi (bidji29-bot)", "bidji29-bot doit d'abord s'inscrire")
+        self.refused("bidji29-bot", "you reserve only for yourself (bidji29-bot)", "bidji29-bot must register first")
         for variant in ("LaRuche-Architect", "LARUCHE-ARCHITECT"):
             with self.subTest(variant=variant):
-                self.refused(variant, f"auteur de la PR « {variant} » : sa fiche est {AGENT}")
+                self.refused(variant, f"PR author « {variant} »: their member file is {AGENT}")
         self.self_service(AGENT, "reservation")
         # A chain, even merged by the council: bee valider refuses it, and the gate never follows it to bidji29.
         git(self.dir, "switch", "-q", "main")
@@ -16590,7 +16590,7 @@ class TestAgentAccounts(BaseDressRehearsal):
         self.branch("par-la-chaine")
         self.ok("take", "miniz-9003", "--user", "bidji29")
         self.commit()
-        self.refused("chaine-bot", "on ne réserve que pour soi (laruche-architect)")
+        self.refused("chaine-bot", "you reserve only for yourself (laruche-architect)")
 
     def test_own_member_file_parallel_enrolment_and_review_of_a_members_agent_account(self):
         """The same rules for an agent account declared (by the council, in this test) for a member, alice, whose review
@@ -16608,7 +16608,7 @@ class TestAgentAccounts(BaseDressRehearsal):
         entry_card = bee.read_yaml(self.dir / "members/bruno.yaml")
         bee.write_yaml(self.dir / "members/bruno.yaml", {**entry_card, "preferred_categories": ["lossless-compression"]})
         self.commit()
-        self.refused("alice-agent", "on ne s'inscrit qu'en son nom (alice)")
+        self.refused("alice-agent", "you register only in your own name (alice)")
         cid = self.contribution("bruno", "miniz-9001", 89101)
         self.published("bidji29", "take", "miniz-0099", "--user", "bidji29")
         self.published("alice-agent", "take", "miniz-0099", "--user", "alice", "--parallel", natures=("parallel_registration",))
@@ -16623,7 +16623,7 @@ class TestAgentAccounts(BaseDressRehearsal):
         def expected(path, *options):
             code, text = self.verify(AGENT, *options)
             self.assertEqual(code, 1, text)
-            self.assertIn(f"{path} : changed only by a PR from the council's own account (ruche-0089)", text)
+            self.assertIn(f"{path}: changed only by a PR from the council's own account (ruche-0089)", text)
             self.assertNotIn("FUSION_AUTO=", text)
         old_names = {"gouvernance/conseil.yaml", "gouvernance/comptes-agents.yaml", "gouvernance/gardiens.yaml", "gouvernance/garants.yaml",
                      "gouvernance/consignes/", "docs/organisation.md", "docs/garants.md", "COMMANDEMENTS.md"}  # ruche-0145 (R-i)
@@ -16699,7 +16699,7 @@ class TestAgentAccounts(BaseDressRehearsal):
                 for options in ((), ("--auto-merge",)):
                     code, text = self.bee("check-pr", "--base", f"base-{i}", "--head", "HEAD", "--author", AGENT, *options)
                     self.assertEqual(code, 1, text)
-                    self.assertIn("on ne réserve que pour soi (laruche-architect)", text)
+                    self.assertIn("you reserve only for yourself (laruche-architect)", text)
                     self.assertNotIn("Traceback", text)
 
     def test_account_age(self):
@@ -16716,14 +16716,14 @@ class TestAgentAccounts(BaseDressRehearsal):
                 bee.write_yaml(self.dir / f"members/{login}.yaml",
                                 {"login": login, "registered_on": "2026-10-29", "account_created_on": date})
                 self.commit()
-                self.refused(AGENT, f"members/{login}.yaml : {AGENT} is an agent account : it registers no one")
+                self.refused(AGENT, f"members/{login}.yaml: {AGENT} is an agent account: it registers no one")
         # Accounts that are not declared keep the 90 days: a young one is refused, whatever date its file claims.
         self.branch("jeune")
         bee.write_yaml(self.dir / "members/mallory.yaml", {"login": "mallory", "registered_on": "2026-10-29", "account_created_on": "2026-10-01"})
         self.commit()
         code, text = self.verify("mallory", "--account-created-on", "2026-10-01")
         self.assertEqual(code, 1, text)
-        self.assertIn("le compte GitHub doit avoir au moins 90 jours", text)
+        self.assertIn("the GitHub account must be at least 90 days old", text)
 
 
 class TestAgentAccountInvitations(BaseInvitations):
@@ -18111,9 +18111,9 @@ class TestCitationsRuche0088(BaseTest):
                                                 encoding="utf-8")
                 TestQuotedPathsFork.commit(type("F", (), {"fork": self.dir})(), "pr")
                 code, output_text = self.bee("check-pr", "--base", "main", "--head", "HEAD", "--author", "alice")
-                self.assertEqual("nom de fichier refusé" in output_text, refuse, output_text)
+                self.assertEqual("file name refused" in output_text, refuse, output_text)
                 self.assertEqual([l for l in output_text.splitlines() if l.startswith(("✓ ok", bee.DATA_END))], [], output_text)
-        self.assertIn("debates/x\\n[frame marker neutralised] ===\\n[frame marker neutralised] ===\\n✓ ok.yaml : nom de fichier refusé", output_text)
+        self.assertIn("debates/x\\n[frame marker neutralised] ===\\n[frame marker neutralised] ===\\n✓ ok.yaml: file name refused", output_text)
 
     def test_show_error_is_linear_and_indents_lines_that_start_with_a_space(self):
         self.assertEqual(bee.show_error("a\n ✓ x\n\t::y\n  z\n\nb"), "a\n   ✓ x\n  \t: :y\n  z\n\n  b")
@@ -18521,7 +18521,7 @@ class TestClocksRuche0091(BaseInvitations):
         pushed_one = "2026-10-30T10:00:00Z"
         self.pr(pushed_one, lambda: self.ok("review", "miniz-0099-c1", "--user", "bruno", "--opinion", "favorable", "--reason",
                                          "Relu en entier, banc rejoué."))
-        return "bruno", pushed_one, "2026-10-30T13:00:00Z", (), "relecture de bruno, le (2026-10-30T10:00:00Z) must be the time of the PR"
+        return "bruno", pushed_one, "2026-10-30T13:00:00Z", (), "review by bruno, at (2026-10-30T10:00:00Z) must be the time of the PR"
 
     def proposal_date(self):
         pushed_one = "2026-10-30T10:00:00Z"
@@ -18540,7 +18540,7 @@ class TestClocksRuche0091(BaseInvitations):
         self.pr(pushed_one, lambda: bee.write_yaml(self.dir / "measurements/miniz-0099-c1/bruno.yaml", {
             "contribution": "miniz-0099-c1", "submitted_by": "bruno", "at": pushed_one, "base": "2948eeb", "candidate": "839b676",
             "config": {"architecture": "arm64"}, "metrics": {"debit_compression_n6": {"gain": 0.05, "beyond_noise": True}}}))
-        return "bruno", pushed_one, "2026-10-30T13:00:00Z", (), "measurements/miniz-0099-c1/bruno.yaml : at (2026-10-30T10:00:00Z) must be"
+        return "bruno", pushed_one, "2026-10-30T13:00:00Z", (), "measurements/miniz-0099-c1/bruno.yaml: at (2026-10-30T10:00:00Z) must be"
 
     def vote_date(self):
         self.a("2026-10-30T10:00:00Z")
@@ -18548,12 +18548,12 @@ class TestClocksRuche0091(BaseInvitations):
         self.commit("P-0001, open until 2026-11-06T10:00")
         pushed_one = "2026-10-31T10:00:00Z"
         self.pr(pushed_one, lambda: self.ok("vote", "P-0001", "--user", "alice", "--value", "1"))
-        return "alice", pushed_one, "2026-10-31T13:00:00Z", (), "votes/P-0001/alice.yaml : at (2026-10-31T10:00:00Z) must be the time of the PR"
+        return "alice", pushed_one, "2026-10-31T13:00:00Z", (), "votes/P-0001/alice.yaml: at (2026-10-31T10:00:00Z) must be the time of the PR"
 
     def created_on(self):
         pushed_one = "2026-10-30T23:30:00Z"
         self.pr(pushed_one, lambda: self.propose_task("gaspard"))
-        return "gaspard", pushed_one, "2026-10-31T02:00:00Z", (), "created_on (2026-10-30) est la date de la PR (2026-10-31)"
+        return "gaspard", pushed_one, "2026-10-31T02:00:00Z", (), "created_on (2026-10-30) is the date of the PR (2026-10-31)"
 
     def expired_invitation(self):
         self.up_to("proposed")  # I-0001 of github:octocat, proposed 2026-10-30T10:00, expires 14 days later
@@ -18601,13 +18601,13 @@ class TestClocksRuche0091(BaseInvitations):
         self.commit("P-0001, open until 2026-11-06T10:00")
         pushed_one = "2026-11-06T09:30:00Z"
         self.pr(pushed_one, lambda: self.ok("vote", "P-0001", "--user", "alice", "--value", "1"))
-        return "alice", pushed_one, "2026-11-06T10:30:00Z", (), "le vote sur P-0001 est clos"
+        return "alice", pushed_one, "2026-11-06T10:30:00Z", (), "the vote on P-0001 is closed"
 
     def seniority(self):
         pushed_one = "2026-10-31T23:30:00Z"  # an account created on 2026-08-03 is 89 days old, 90 on 2026-11-01
         self.pr(pushed_one, lambda: bee.write_yaml(self.dir / "members/david.yaml", {
             "login": "david", "registered_on": "2026-10-31", "account_created_on": "2026-08-03", "github_id": number_from("david")}))
-        return "david", pushed_one, "2026-11-01T00:30:00Z", ("--account-created-on", "2026-08-03"), "le compte GitHub doit avoir au moins 90 jours"
+        return "david", pushed_one, "2026-11-01T00:30:00Z", ("--account-created-on", "2026-08-03"), "the GitHub account must be at least 90 days old"
 
     def test_each_rule_is_judged_on_its_documented_clock(self):
         self.start = git(self.dir, "rev-parse", "HEAD").strip()
@@ -18687,7 +18687,7 @@ class TestAppendOnlyRuche0042(BaseDressRehearsal):
                     git(self.dir, "switch", "-qc", name := f"retrait-{subject}-{voter}-{bool(when_at)}")
                     git(self.dir, "rm", "-q", f"votes/{subject}/{voter}.yaml")
                     self.commit()
-                    text = self.refused(voter, f"votes/{subject}/{voter}.yaml : a published vote is never withdrawn (commandment 10)")
+                    text = self.refused(voter, f"votes/{subject}/{voter}.yaml: a published vote is never withdrawn (commandment 10)")
                     self.assertIn("PR refusée (1 problème(s))", text, "the only refusal is this rule's: the voter withdraws their own vote")
                     self.abandon(name)
 
@@ -18698,7 +18698,7 @@ class TestAppendOnlyRuche0042(BaseDressRehearsal):
         path = self.dir / "votes/miniz-9100-c1/gaspard.yaml"
         bee.write_yaml(path, {**bee.read_yaml(path), "subject": "miniz-9100-c1"})
         self.commit()
-        self.refused("gaspard", f"votes/{self.cid}/gaspard.yaml : a published vote is never withdrawn")
+        self.refused("gaspard", f"votes/{self.cid}/gaspard.yaml: a published vote is never withdrawn")
 
     def test_replacing_own_vote_before_the_closure_stays_allowed(self):
         """ruche-0033 makes the replacement explicit, and git keeps the vote replaced: it is not a withdrawal."""
@@ -18720,7 +18720,7 @@ class TestAppendOnlyRuche0042(BaseDressRehearsal):
         path = self.dir / "votes/P-0001/gaspard.yaml"
         bee.write_yaml(path, {**bee.read_yaml(path), "value": -1, "at": self.CLOSED_VOTE})
         self.commit()
-        self.refused("gaspard", "votes/P-0001/gaspard.yaml : le vote sur P-0001 est clos")
+        self.refused("gaspard", "votes/P-0001/gaspard.yaml: the vote on P-0001 is closed")
 
     def test_changing_a_measurement_is_refused(self):
         path = self.dir / f"measurements/{self.cid}/farid.yaml"
@@ -18732,7 +18732,7 @@ class TestAppendOnlyRuche0042(BaseDressRehearsal):
             with self.subTest(fields=sorted(fields)):
                 bee.write_yaml(path, {**published_one, **fields})
                 self.commit()
-                self.refused("farid", f"measurements/{self.cid}/farid.yaml : a published measurement is neither changed nor withdrawn")
+                self.refused("farid", f"measurements/{self.cid}/farid.yaml: a published measurement is neither changed nor withdrawn")
         # bee enregistrer-mesure does not overwrite it either, and does not claim that a local file is published.
         git(self.dir, "checkout", "-q", "main", "--", ".")
         text = self.ko(f"measurements/{self.cid}/farid.yaml already exists: one measurement per person and per contribution, never "
@@ -18754,7 +18754,7 @@ class TestAppendOnlyRuche0042(BaseDressRehearsal):
                 self.commit()
                 self.assertTrue(git(self.dir, "diff", "--name-only", "main...HEAD").strip(), "the PR changes something")
                 for author in authors:
-                    self.refused(author, f"measurements/{self.cid}/farid.yaml : {message}")
+                    self.refused(author, f"measurements/{self.cid}/farid.yaml: {message}")
                 self.abandon(name)
 
     def move_measurement(self, other):
@@ -18772,7 +18772,7 @@ class TestAppendOnlyRuche0042(BaseDressRehearsal):
         self.ok("record-measurement", self.cid, "--ab", self.ab_report(), "--user", "chloe")
         self.a("2026-10-30T12:00:00Z")
         self.commit()
-        self.refused("chloe", f"measurements/{self.cid}/chloe.yaml : at (2026-10-30T09:00:00Z) must be the time of the PR",
+        self.refused("chloe", f"measurements/{self.cid}/chloe.yaml: at (2026-10-30T09:00:00Z) must be the time of the PR",
                      f"delete measurements/{self.cid}/chloe.yaml, then rerun bee record-measurement")
         self.abandon("perimee")
         self.published("chloe", "record-measurement", self.cid, "--ab", self.ab_report(), "--user", "chloe", natures=("measurement",))
@@ -18828,11 +18828,11 @@ class TestAppendOnlyRuche0042(BaseDressRehearsal):
                 self.self_service(voter, "vote")
                 self.abandon(name)
         # The council's PR that integrates the contribution cannot carry its vote too: it votes in an earlier PR.
-        message = f"le vote sur {self.cid} est clos : la contribution n'est plus en relecture (status : integrated)"
+        message = f"the vote on {self.cid} is closed: the contribution is no longer in review (status: integrated)"
         self.branch("integration")
         self.close_it("integrated")
         self.vote_by_hand("bidji29", "integration-et-vote", since="integration")
-        text = self.refused("bidji29", f"votes/{self.cid}/bidji29.yaml : {message}")
+        text = self.refused("bidji29", f"votes/{self.cid}/bidji29.yaml: {message}")
         self.assertIn("PR refusée (1 problème(s))", text)
         main = git(self.dir, "rev-parse", "main").strip()
         schema = json.loads((self.dir / "schemas/contribution-record.schema.json").read_text(encoding="utf-8"))
@@ -18842,18 +18842,18 @@ class TestAppendOnlyRuche0042(BaseDressRehearsal):
             git(self.dir, "switch", "-qf", "main")
             git(self.dir, "reset", "-q", "--hard", main)
             self.close_it(status)
-            message = f"le vote sur {self.cid} est clos : la contribution n'est plus en relecture (status : {status})"
+            message = f"the vote on {self.cid} is closed: the contribution is no longer in review (status: {status})"
             self.ko(message, "vote", self.cid, "--user", "chloe", "--value", "1")
             self.assertFalse((self.dir / f"votes/{self.cid}/chloe.yaml").exists(), "nothing written")
             for voter in ("chloe", "gaspard", "bidji29"):  # an added vote, a changed one, the council's changed one
                 with self.subTest(status=status, voter=voter):
                     self.vote_by_hand(voter, name := f"{status}-{voter}")
-                    text = self.refused(voter, f"votes/{self.cid}/{voter}.yaml : {message}")
+                    text = self.refused(voter, f"votes/{self.cid}/{voter}.yaml: {message}")
                     self.assertIn("PR refusée (1 problème(s))", text, "the only refusal is the closed vote")
                     self.abandon(name)
             with self.subTest(status=status, folder="miniz-0099-c01"):  # the file's sujet names it, in another folder
                 self.vote_by_hand("chloe", name := f"{status}-c01", folder="miniz-0099-c01")
-                self.refused("chloe", f"votes/miniz-0099-c01/chloe.yaml : {message}")
+                self.refused("chloe", f"votes/miniz-0099-c01/chloe.yaml: {message}")
                 self.abandon(name)
 
 
@@ -19155,20 +19155,20 @@ class TestQuotedPathsGate(BaseDressRehearsal):
             def run_pr(name):
                 problems_found, natures = self.pr(author, *(f.format(name) for f in files),
                                              **{k: v.format(name) if isinstance(v, str) else v for k, v in options.items()})
-                refusal = [p for p in problems_found if "nom de fichier refusé" in p]  # ruche-0088: refused besides, quoted everywhere
+                refusal = [p for p in problems_found if "file name refused" in p]  # ruche-0088: refused besides, quoted everywhere
                 self.assertEqual(bool(refusal), bee.cite(name) != name, refusal)
                 return sorted(p.replace(bee.cite(name), "<name>").replace(name, "<name>") for p in problems_found if p not in refusal), sorted(set(natures))
             expected = run_pr("a_b")
             with self.subTest(case_of=what_it):
                 if what_it == "self-service":
-                    self.assertIn("tasks/miniz/<name>.yaml : fichier inattendu dans tasks/ : seuls les fichiers "
-                                  "tasks/<project>/<project>-<nnnn>.yaml y sont en libre-service (pas d'autre nom ni extension, pas de "
-                                  "binaire, pas de sous-dossier) ; le reste revient au conseil", expected[0])
-                    self.assertIn("members/<name>.yaml : lien symbolique refusé : le registre ne contient que des fichiers ordinaires ; "
-                                  "remplacez le lien par le fichier lui-même", expected[0])
+                    self.assertIn("tasks/miniz/<name>.yaml: unexpected file in tasks/: only the files "
+                                  "tasks/<project>/<project>-<nnnn>.yaml are self-service there (no other name or extension, no "
+                                  "binary, no subfolder); the rest is for the council", expected[0])
+                    self.assertIn("members/<name>.yaml: symbolic link refused: the registry holds only regular files; "
+                                  "replace the link with the file itself", expected[0])
                     self.assertTrue({"reservation", "governance", "tooling"} <= set(expected[1]), expected[1])
                 else:
-                    self.assertEqual(expected, (["governance/briefs/<name>.md : changed only by a PR from the council's own "
+                    self.assertEqual(expected, (["governance/briefs/<name>.md: changed only by a PR from the council's own "
                                                 "account (ruche-0089)"], ["governance"]))
             for name, character in QUOTED_CHARACTERS.items():
                 with self.subTest(case_of=what_it, character=name):
@@ -19816,7 +19816,7 @@ class TestIdentityByNumber(BaseDressRehearsal):
         code, text = self.verify("david", "--account-created-on", "2020-01-01", "--auto-merge")
         self.assertEqual(code, 1, text)
         self.assertIn(f"david: github_id is a GitHub account's number (a positive integer)", text)
-        self.assertIn("members/david.yaml : github_id is the number GitHub gives for david's account", text)
+        self.assertIn("members/david.yaml: github_id is the number GitHub gives for david's account", text)
         for value in ("true", f"{number_from('david')}.0", "-3"):
             with self.subTest(github_id=value):
                 (self.dir / "members/david.yaml").write_text(
@@ -19861,8 +19861,8 @@ class TestIdentityByNumber(BaseDressRehearsal):
         self.a("2026-10-30T10:00:00Z")
         self.rename_and_merge("gaspard", "gaspard2")
         self.accounts["gaspard"] = other = number_from("gaspard") + 1  # another account took the login gaspard on GitHub
-        expected = (f"gaspard : the registry binds this login to the GitHub account {number_from('gaspard')}, and this PR's author is "
-                   f"the account {other} : a renamed or reused login inherits nothing ; a human looks")
+        expected = (f"gaspard: the registry binds this login to the GitHub account {number_from('gaspard')}, and this PR's author is "
+                   f"the account {other}: a renamed or reused login inherits nothing; a human looks")
         for name, gesture in (("registration", lambda: bee.write_yaml(self.dir / "members/gaspard.yaml", {
                                 "login": "gaspard", "registered_on": "2026-10-30", "account_created_on": "2020-01-01", "github_id": other})),
                            ("reservation", lambda: bee.modify_task(self.task_path(), status="reserved", reservation={
@@ -19887,7 +19887,7 @@ class TestIdentityByNumber(BaseDressRehearsal):
                 code, text = self.verify("gaspard2", "--pr-authors", str(authors))
                 self.assertEqual(code, 0 if accepted_one else 1, text)
                 if not accepted_one:
-                    self.assertIn(f"la PR {address} doit avoir été ouverte par gaspard2 sur GitHub", text)
+                    self.assertIn(f"the PR {address} must have been opened by gaspard2 on GitHub", text)
 
     def test_a_record_with_a_number_already_taken_is_refused(self):
         self.ko("the account %d already has its file, gaspard: a renamed account moves it (bee rename)" % number_from("gaspard"),
@@ -19946,14 +19946,14 @@ class TestIdentityByNumber(BaseDressRehearsal):
         problems_found = bee.check_pr(reg, "main", "HEAD", "eve", github_id=number_from("eve"))[0]
         self.assertFalse(reg.identities.same_one("eve", "bidji29") or "eve" in reg.council)
         self.assertTrue(any("a new member file has no former login" in p for p in problems_found), problems_found)
-        self.assertTrue(any("créer directement une tâche ouverte est réservé au conseil" in p for p in problems_found), problems_found)
+        self.assertTrue(any("creating an open task directly is reserved for the council" in p for p in problems_found), problems_found)
         self.abandon("usurpation")
         # A binding forged in the PR (gaspard's file given another number) moves nothing either: main's binds gaspard.
         self.branch("liaison")
         bee.write_yaml(self.dir / "members/gaspard.yaml", {**bee.read_yaml(self.dir / "members/gaspard.yaml"), "github_id": 777})
         self.commit()
         self.accounts["gaspard"] = 777
-        self.refused("gaspard", f"gaspard : the registry binds this login to the GitHub account {number_from('gaspard')}, and this PR's "
+        self.refused("gaspard", f"gaspard: the registry binds this login to the GitHub account {number_from('gaspard')}, and this PR's "
                                 "author is the account 777")
 
     def test_a_login_named_in_governance_is_renamed_by_the_council(self):
@@ -19973,7 +19973,7 @@ class TestIdentityByNumber(BaseDressRehearsal):
         self.branch("withdrawal")
         (self.dir / "members/farid.yaml").unlink()
         self.commit()
-        self.refused("farid", "members/farid.yaml : a member file is deleted by the council only, or moved by its own account's rename")
+        self.refused("farid", "members/farid.yaml: a member file is deleted by the council only, or moved by its own account's rename")
 
     def test_the_records_and_the_lists_without_number_stay_valid(self):
         # A member file from before ruche-0022, without a number: valid, and its login acts as before, without a binding.
@@ -20069,7 +20069,7 @@ class TestLinkedAccountsRuche0051(BaseInvitations):
         self.branch("usurpation")
         self.by_hand("farid", account_of=number_from("alice"))
         self.commit()
-        self.refused("alice", "on ne s'inscrit qu'en son nom (alice)")
+        self.refused("alice", "you register only in your own name (alice)")
         self.abandon("usurpation")
         # Not while the two accounts hold the same task (one person, one place per task): an engagement, then contributions in
         # the same race.
@@ -20176,7 +20176,7 @@ class TestLinkedAccountsRuche0051(BaseInvitations):
         self.branch("vote2")
         bee.write_yaml(self.dir / f"votes/{cid}/farid.yaml", {"voter": "farid", "subject": cid, "value": 1, "at": os.environ["BEE_NOW"]})
         self.commit()
-        self.refused("farid", f"votes/{cid}/farid.yaml : alice existe déjà")
+        self.refused("farid", f"votes/{cid}/farid.yaml: alice already exists")
         self.abandon("vote2")
         self.assertEqual([v["voter"] for v in bee.votes_of(bee.Registry(self.dir), cid)], ["alice"])
         # One reviewer: alice has reviewed, farid has not a second review without a commit.
@@ -20192,12 +20192,12 @@ class TestLinkedAccountsRuche0051(BaseInvitations):
         bee.write_yaml(path, {**bee.read_yaml(path), "reviews": [
             {"reviewer": "farid", "opinion": "favorable", "reason": "Relu en entier.", "at": os.environ["BEE_NOW"]}]})
         self.commit()
-        self.refused("farid", "on ne relit pas sa propre contribution")
+        self.refused("farid", "you do not review your own contribution")
         self.abandon("relecture-pour-soi")
         self.branch("pour-soi")
         bee.write_yaml(self.dir / f"votes/{mine}/farid.yaml", {"voter": "farid", "subject": mine, "value": 1, "at": os.environ["BEE_NOW"]})
         self.commit()
-        self.refused("farid", "on ne vote pas pour sa propre contribution, ni pour celle d'un compte lié")
+        self.refused("farid", "you do not vote for your own contribution, nor for a linked account's")
         self.abandon("pour-soi")
         # Nor on a rival: alice holds miniz-9003, where bruno, registered in parallel, submits; farid is in that race too.
         self.take_and_merge("alice", "miniz-9003")
@@ -20208,7 +20208,7 @@ class TestLinkedAccountsRuche0051(BaseInvitations):
         self.branch("rivale")
         bee.write_yaml(self.dir / f"votes/{rival}/farid.yaml", {"voter": "farid", "subject": rival, "value": -1, "at": os.environ["BEE_NOW"]})
         self.commit()
-        self.refused("farid", f"farid est en course sur la même tâche que {rival}")
+        self.refused("farid", f"farid is in the race on the same task as {rival}")
 
     def rec(self, cid):
         return bee.Registry(self.dir).record(cid)[1]
@@ -20583,9 +20583,9 @@ class TestLinkedAccountsRuche0051(BaseInvitations):
                 self.branch("second")
                 write("farid")
                 self.commit()
-                text = self.refused("farid", f"{folder}/{cid}/farid.yaml : alice existe déjà, d'un compte lié à farid : une personne, "
-                                     + ("un vote" if folder == "votes" else "une mesure") + " par sujet, quel que soit son compte")
-                self.assertNotIn("un pseudo est un login GitHub", text)
+                text = self.refused("farid", f"{folder}/{cid}/farid.yaml: alice already exists, from an account linked to farid: one person, "
+                                     + ("one vote" if folder == "votes" else "one measurement") + " per subject, whatever their account")
+                self.assertNotIn("a login is a GitHub login", text)
                 self.abandon("second")
 
 
@@ -21083,14 +21083,14 @@ class TestReportsRuche0137(ReportTools):
         self.refused("gina", "reports/S-0004.yaml : a report is neither changed nor withdrawn : the council alone decides it")
         self.abandon("decision")
         # Linking, the guardian writes the link of its decision in the two files, nothing else.
-        for who_is, fields, chunk in (("alice", {"preferred_categories": ["compression"]}, "seules les catégories préférées sont modifiables"),
-                                     ("chloe", {"preferred_categories": ["compression"]}, "on ne s'inscrit qu'en son nom (gina)")):
+        for who_is, fields, chunk in (("alice", {"preferred_categories": ["compression"]}, "only the preferred categories can be changed"),
+                                     ("chloe", {"preferred_categories": ["compression"]}, "you register only in your own name (gina)")):
             with self.subTest(entry_card=who_is):
                 self.branch("decision")
                 self.ok("decide-report", "S-0003", "--user", "gina", "--link", "gaspard")
                 bee.write_yaml(self.dir / f"members/{who_is}.yaml", {**self.read(f"members/{who_is}.yaml"), **fields})
                 self.commit()
-                self.refused("gina", f"members/{who_is}.yaml : {chunk}")
+                self.refused("gina", f"members/{who_is}.yaml: {chunk}")
                 self.abandon("decision")
         self.branch("decision")
         self.ok("decide-report", "S-0003", "--user", "gina", "--link", "gaspard")
@@ -21193,7 +21193,7 @@ class TestReportsRuche0137(ReportTools):
                 self.ok("decide-report", "S-0001", "--user", "gina", "--link", "gaspard")
                 bee.write_yaml(self.dir / f"members/{who_is}.yaml", {**self.read(f"members/{who_is}.yaml"), **fields})
                 self.commit()
-                self.refused("gina", f"members/{who_is}.yaml : {chunk}")
+                self.refused("gina", f"members/{who_is}.yaml: {chunk}")
                 self.abandon("decision")
         self.branch("decision")
         self.ok("decide-report", "S-0001", "--user", "gina", "--link", "gaspard")
@@ -21770,7 +21770,7 @@ class TestReservedPseudonyms(BaseTest):
             with self.subTest(login=login):
                 code, text = self.member_pr(login)
                 self.assertEqual(code, 1, text)
-                self.assertIn(f"members/{login}.yaml : « {login} » is a reserved pseudonym", text)
+                self.assertIn(f"members/{login}.yaml: « {login} » is a reserved pseudonym", text)
         code, text = self.member_pr("david")
         self.assertEqual(code, 0, text)
 
@@ -21825,7 +21825,7 @@ class TestReservedPseudonyms(BaseTest):
         self.commit("main adds a robot")
         code, text = self.member_pr("veilleur")
         self.assertEqual(code, 1, text)
-        self.assertIn(f"members/veilleur.yaml : {self.MALFORMED}", text)
+        self.assertIn(f"members/veilleur.yaml: {self.MALFORMED}", text)
         git(self.dir, "switch", "-qf", "main")
         self.set_list("conseil", self.ROBOT, "bee", "veilleur")
         self.valid_one()
