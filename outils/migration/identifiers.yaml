@@ -3984,7 +3984,7 @@ kept_in_scopes:
   tokens: [niveau]
   why: 'bee''s own prose (« clé de premier niveau « {clé} » »), which the key-before-« » rule would rename: prose waits for its task'
 - files: outils/bee.py
-  scopes: [cmd_voir, avertissements_arbre]
+  scopes: [cmd_voir, avertissements_arbre, verifier_invitation, verifier_pr_de, debattre_importer_questions]
   tokens: [aucun]
   literals: [aucun]
   why: 'bee''s own word for no date or no node (« accord du gardien : aucun », « (aucun) »), a lone literal whole() would take for the
@@ -4135,6 +4135,75 @@ kept_in_scopes:
   literals: ["(personne : bee acts-for, sur main).\n", " sous son nom (personne : bee acts-for).\n"]
   why: 'a workflow comment (« (personne : bee acts-for, sur main). »), kept as written by the switch, which the test copies as written'
 renamed_in_scopes:
+- files: outils/bee.py
+  scopes: [verifier_debat]
+  tokens: {issue: outcome, proposition: proposal, tache: task}
+  literals: ['la clôture nomme ce qui sort du débat : issue proposition, tache, decision ou ']
+  why: 'the key and the values a closure must write (review of 6efd815): the data says outcome proposal, task, decision or no_follow_up'
+- files: outils/bee.py
+  scopes: [verifier_comptes]
+  tokens: {declare: declared}
+  literals: [" : declare n'est pas tel que bee enregistrer-verdict le recopie (texte sur une ligne, sans "]
+  why: 'the key the message names (review of 6efd815), declared in the data'
+- files: outils/bee.py
+  scopes: [verifier_agora_registre]
+  tokens: {conteste: contested_by}
+  literals: [' : conteste ']
+  why: 'the key the message names before its value (review of 6efd815), contested_by in the data'
+- files: outils/bee.py
+  scopes: [verifier_comptes]
+  tokens: {gouvernance: governance, identique: identical}
+  literals: ['gouvernance : ', ' : une optimisation de compression doit préciser sortie_compressee (identique ou peut_changer)']
+  why: 'data a message names (review of 6efd815): the governance files, a value of compressed_output beside may_change'
+- files: outils/bee.py
+  scopes: [verifier_notes_ajoutees]
+  tokens: {par: by, le: at}
+  literals: [" : note illisible (par, le, texte : bee noter l'écrit)"]
+  why: 'the keys of a note, listed (review of 6efd815): by, at, text'
+- files: outils/bee.py
+  scopes: [refus_geste]
+  tokens: {statut: status, raison: cause}
+  literals: ['statut ', 'retrait : raison ']
+  why: 'a key before its value (« status {before} », « cause {values} »: review of 6efd815)'
+- files: outils/bee.py
+  scopes: [verifier_pr_de]
+  tokens: {titre: title}
+  literals: ['), avec id, titre et ouvert_le seulement (bee incident)']
+  why: 'the keys of an incident, listed (review of 6efd815): id, title and opened_at'
+- files: outils/bee.py
+  scopes: [cmd_proposer_tache]
+  tokens: {mesure: measurement, relecture: review}
+  literals: [" n'a pas de métrique : une optimisation n'y a pas de juge (--type test, mesure ou relecture)"]
+  why: 'the values of --type a message offers (review of 6efd815): test, measurement or review'
+- files: outils/bee.py
+  scopes: [cadre_declare]
+  tokens: {teste: tested, doutes: doubts}
+  literals: ['\n# teste, non_teste et doutes déclarés : bee voir ']
+  why: 'the keys of a declaration, listed (review of 6efd815): tested, untested and doubts'
+- files: outils/bee.py
+  scopes: [construire_analyseur]
+  tokens: {projets: projects, optimiser: optimize, relire: review, mesurer: measure, debattre: debate, garder: guard, proposer: propose,
+           'demande (défaut)': 'request (défaut)', refus: refusal}
+  literals: ['poste du cap de la ruche (R11) : gouvernance, projets, coordination…',
+             'rôle dont lire le nœud (optimiser, relire, mesurer, debattre, garder, proposer) ; ',
+             'demande (défaut) : la personne le demande ; refus ou sans_reponse : une autre invitation de la même ']
+  why: 'the values an option takes, listed in its help (review of 6efd815): areas, roles, causes'
+- files: outils/test_bee.py
+  scopes: [test_5_qui_ne_peut_pas_signaler_et_ce_que_la_porte_refuse]
+  tokens: {titre: title}
+  literals: ['avec id, titre et ouvert_le seulement']
+  why: 'bee''s message, which names the keys of an incident in English (review of 6efd815)'
+- files: outils/test_bee.py
+  scopes: [test_chemin_honnete_recopie_puis_imprime_encadre]
+  tokens: {teste: tested, doutes: doubts}
+  literals: ['# teste, non_teste et doutes déclarés : bee voir miniz-0099']
+  why: 'bee''s message, which names the keys of a declaration in English (review of 6efd815)'
+- files: outils/test_bee.py
+  scopes: [test_un_ancien_login_ne_donne_aucun_statut]
+  tokens: {gouvernance: governance}
+  literals: ["gouvernance : gaspard is a former login of gaspard2 : named only with that account's github_id",
+             'gouvernance : gaspard is a former login of gaspard2']
+  why: 'bee''s message, which names the governance files in English (review of 6efd815)'
 - files: outils/test_bee.py
   scopes: [test_voir_echappe_chaque_champ]
   tokens: {attend: awaits}

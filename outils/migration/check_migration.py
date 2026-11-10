@@ -594,7 +594,89 @@ def prose(names, files, generated, allowed):
         problems += [f"P7: {q}: « {c} » renamed beside French words: keep it as written, or approve it ({PROSE_FILE}, beside_french)"
                      for c in sorted(beside - listed)]
         problems += [f"P7: {q}: {PROSE_FILE} approves « {c} » beside French words, which the switch no longer renames" for c in sorted(listed - beside)]
+        kept = kept_french(names, generated[q].decode("utf-8"))
+        for kind, found_here in (("kept", [c for c, named, _ in kept if named]), ("prose_words", [c.split("[")[1].split("]")[0] for c, named, _ in kept if not named]),
+                                 ("lone", lone_in_prose(files[p].decode("utf-8"), generated[q].decode("utf-8")))):
+            counts, approved = collections.Counter(found_here), dict((entry or {}).get(kind) or {})
+            n += len(found_here)
+            problems += [f"P7: {q}: « {k} » {WHY[kind]} {counts[k]} time(s), {PROSE_FILE} ({kind}) approves {approved.get(k, 0)}"
+                         for k in sorted(set(counts) | set(approved)) if counts[k] != approved.get(k, 0)]
     return problems, n
+
+
+WHY = {"kept": "keeps a French name of the map where a message names data", "prose_words": "is a French name of the map kept in prose",
+       "lone": "renames a lone French word where text is written"}
+
+
+def french_names(names):
+    """Each French key and domain value names.yaml renames, unless some name of the map is that word in English."""
+    m = names.m
+    pairs = [(a, b) for f in m["families"].values() for a, b in (f.get("keys") or {}).items()] + [
+        (a, b) for d in (*m["domains"].values(), *m["open_domains"].values()) for a, b in d.items() if isinstance(a, str)]
+    english = {b for _, b in pairs}
+    return {a for a, b in pairs if a != b and a not in english and re.fullmatch(r"[\w-]+", a)}
+
+
+def kept_french(names, new):
+    """[(context, named, line)]: each whole word of a string of the generated text (docstrings aside) that is a French name of the map
+    (review of 6efd815).
+    named: the word stands where a message names data (« « statut » », `statut`, right before an interpolation « conteste {…} », at
+    a label's start after one « {lieu} : declare … », before « : » at a text's start, or in a list with an English name of the map
+    « proposition, tache ou no_follow_up »): its context is approved one by one (kept). Elsewhere it is French prose, approved word by
+    word (prose_words). Reads the map's data side and the generated text's syntax, not the renamer."""
+    words, m = french_names(names), names.m
+    english = {b for f in m["families"].values() for b in (f.get("keys") or {}).values()} | {
+        b for d in (*m["domains"].values(), *m["open_domains"].values()) for b in d.values() if isinstance(b, str)}
+    english -= words | {a for f in m["families"].values() for a in (f.get("keys") or {})}
+    tree, out = ast.parse(new), []
+    inside = {id(c) for n in ast.walk(tree) if isinstance(n, ast.JoinedStr) for c in n.values} | {  # and the docstrings: no message
+        id(n.body[0].value) for n in ast.walk(tree) if isinstance(n, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+        and n.body and isinstance(n.body[0], ast.Expr) and isinstance(n.body[0].value, ast.Constant)}
+    for node in ast.walk(tree):
+        parts = node.values if isinstance(node, ast.JoinedStr) else [node] if isinstance(node, ast.Constant) and isinstance(
+            node.value, str) and id(node) not in inside else []
+        for k, part in enumerate(parts):
+            if not (isinstance(part, ast.Constant) and isinstance(part.value, str)):
+                continue
+            s, interp_before, interp_after = part.value, k > 0, k + 1 < len(parts) and isinstance(parts[k + 1], ast.FormattedValue)
+            p = re.split(r"([\w-]+)", s)
+            listed = {j for x in re.finditer(r"[\w-]+(?:, [\w-]+)+(?:,? (?:ou|et|or|and) [\w-]+)?|[\w-]+ (?:ou|or) [\w-]+", s)
+                      if {w for w in re.findall(r"[\w-]+", x[0]) if w not in ("ou", "et", "or", "and")} & english
+                      for j in range(len(p)) if p[j] in words and x.start() <= len("".join(p[:j])) < x.end()}
+            for i in range(1, len(p), 2):
+                if p[i] not in words:
+                    continue
+                prev = p[i - 2] if i >= 3 and re.fullmatch(r"[ \t]+|['’]|[ \t]*:[ \t]+", p[i - 1]) else ""
+                after = p[i + 2] if i + 2 < len(p) and re.fullmatch(r"[ \t]+|['’]", p[i + 1]) else ""
+                named = bool(p[i - 1].endswith(("« ", "`")) and p[i + 1].startswith((" »", "`")) or interp_after and i == len(p) - 2 and p[i + 1] == " "
+                         or interp_before and i == 1 and re.fullmatch(r"\s*:\s+", p[0]) or i == 1 and p[0].strip() in ("", "(") and p[2].startswith(" : ")
+                         or i in listed)
+                out.append((f"{prev} [{p[i]}] {after}".strip(), named, part.lineno))
+    return out
+
+
+def lone_in_prose(old, new):
+    """[context]: each blank-less literal the switch renamed where the code writes text (review of 6efd815): inside an f-string's
+    interpolation, or added to a text by « + » or « % », through « … if … else … » and « or »; never a key, value, path or option at
+    its place (a subscript, a comparison, a dict, a call's argument). Context: « scope [old -> new] »."""
+    a, b = ast.parse(old), ast.parse(new)
+    parents = {c: n for n in ast.walk(a) for c in ast.iter_child_nodes(n)}
+    scope = {c: n.name for n in a.body if isinstance(n, (ast.FunctionDef, ast.ClassDef, ast.AsyncFunctionDef)) for c in ast.walk(n)}
+    scope.update({c: t.id for n in a.body if isinstance(n, ast.Assign) for t in n.targets if isinstance(t, ast.Name) for c in ast.walk(n)})
+    text = lambda n: isinstance(n, ast.JoinedStr) or isinstance(n, ast.Constant) and isinstance(n.value, str) or isinstance(n, ast.BinOp) and (  # noqa: E731
+        text(n.left) or text(n.right))
+    out = []
+    for x, y in zip((n for n in ast.walk(a) if isinstance(n, ast.Constant)), (n for n in ast.walk(b) if isinstance(n, ast.Constant))):
+        if not (isinstance(x.value, str) and x.value != y.value and x.value and not re.search(r"\s", x.value)) or isinstance(parents.get(x), ast.JoinedStr):
+            continue
+        n = x
+        while isinstance(parents.get(n), (ast.IfExp, ast.BoolOp)) and n is not getattr(parents[n], "test", None):
+            n = parents[n]
+        up = parents.get(n)
+        if isinstance(up, ast.FormattedValue) or isinstance(up, ast.BinOp) and isinstance(up.op, (ast.Add, ast.Mod)) and text(
+                up.right if up.left is n else up.left):
+            out.append(f"{scope.get(x, '<module>')} [{x.value} -> {y.value}]")
+    return out
 
 
 def context(files):
