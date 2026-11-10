@@ -49,8 +49,8 @@ le code de la PR) dès que **toutes** ces conditions sont réunies :
 5. **Fenêtre d'ouverture écoulée** (`fenetre_acceptation_heures`) — le temps que la ruche voie,
    relise, vote et signale, à la place de l'ancien coup d'œil humain.
 
-L'outil expose la règle exécutable : `bee check-acceptance <contribution>` répond « intégrable »
-ou « pas encore » avec la raison, et `bee integrate <contribution>` applique la décision (contribution
+L'outil expose la règle exécutable : `bee check-acceptance <contribution>` répond « integrable »
+ou « not integrable yet » avec la raison, et `bee integrate <contribution>` applique la décision (contribution
 et tâche en `integree`) **uniquement** si R3 est satisfaite. Le workflow de confiance
 [`.github/workflows/integration-auto.yml`](../.github/workflows/) enchaîne les deux : il vérifie,
 fusionne la PR du projet (fusion côté serveur — le code du fork n'est jamais exécuté là) et consigne
