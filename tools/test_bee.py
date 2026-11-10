@@ -7665,8 +7665,8 @@ class TestAgora(BaseAgora):
         self.ko("does not exist in the registry", "debate", "argue", "D-0001", "--user", "alice", "--position", "fact",
                 "--text", "Source inventée.", "--source", "docs/inexistant.md")
         self.ko("text: 1501 characters, at most 1500 (bee.yaml, agora.text_max)", "debate", "argue", "D-0001", "--user", "alice", "--position", "for", "--text", "x" * 1501)
-        self.ko("invisible character or control character", "debate", "argue", "D-0001", "--user", "alice", "--position", "for",
-                "--text", "texte \x1b[8mcaché")
+        self.assertNotIn("(bee.yaml", self.ko("invisible character or control character", "debate", "argue", "D-0001", "--user", "alice",
+                                              "--position", "for", "--text", "texte \x1b[8mcaché"), "the setting is named for a length only")
         self.ko("is not an argument", "debate", "argue", "D-0001", "--user", "alice", "--position", "for",
                 "--text", "Réponse.", "--replies-to", "A9")
         self.ko("only the rapporteur (alice)", "debate", "synthesize", "D-0001", "--user", "bruno", "--text", "Ma synthèse.")
@@ -8778,6 +8778,7 @@ class TestDressRehearsal(BaseDressRehearsal):
     def test_T15_note_of_40_kb(self):
         text = "[attempt équipe red] " + "x" * 40000
         self.ko("note: 40021 characters, at most 1500 (bee.yaml, notes.text_max): a note is short", "note", "miniz-0099", "--user", "gaspard", "--text", text)
+        self.assertNotIn("(bee.yaml", self.ko("invisible character", "note", "miniz-0099", "--user", "gaspard", "--text", "Une note\u200b."))
         self.branch("t15")
         self.note_by_hand({"text": text})
         self.commit()
@@ -12522,6 +12523,9 @@ class TestPersonalDataEveryFreeText(unittest.TestCase):
         self.assertEqual(bee.personal_texts(reg, "tasks/miniz/x.yaml", None, {"notes": [{"text": "ruche-0029 : 12 34"},
                                                                                             {"text": "56 78 90 x"}]}), ([], False),
                          "the join glues no digits")
+        self.assertEqual(bee.personal_texts(reg, "tasks/miniz/x.yaml", None, {"notes": [{"text": "example dot org, le soir.",
+                                                                                            "Pour la suite, alice at": "x"}]}), ([], False),
+                         "a key (its place ends with « (key) », as texts_by names it) is read alone, never joined with the values")
         for name in ("ruche-0028", "ruche-0100"):  # real task files, read as new, with no registry names to lean on
             with self.subTest(task=name):
                 data = bee.read_yaml(pathlib.Path(__file__).parent / "tests" / "texts-0047" / f"{name}.yaml")
@@ -18222,6 +18226,12 @@ class TestR8Bootstrap(BaseDressRehearsal):
         text = self.ko("rule R8: bidji29 has 4 reservations or parallel registrations", "validate")
         self.assertIn("rule R8: alice has 4 reservations or parallel registrations (ruche-9005, ruche-9006, ruche-9007, ruche-9008), "
                       "maximum 3", text)
+
+    def test_a_malformed_setting_is_named_by_its_form_braces_as_written(self):
+        for line_text in ("r8_bootstrap: 8", "r8_bootstrap: {max: 8}"):
+            with self.subTest(setting=line_text):
+                self.setting(line_text)
+                self.ko("bee.yaml: r8_bootstrap: {max: positive integer, until: UTC instant} expected (ruche-0096)", "validate")
 
     def test_past_missing_or_malformed_setting_gives_the_usual_cap_in_take_validate_and_the_gate(self):
         for t in ("ruche-9001", "ruche-9002", "ruche-9003"):
