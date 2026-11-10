@@ -23,7 +23,7 @@ de la tâche, et ses critères ; la CI teste x86-64 et ARM64 (R6). R4 : 2 % d'in
 scénario (`instructions_*`), que le chronomètre confirme au-delà du bruit (ou une autre configuration). Sinon ne
 soumets pas, même si la tâche accepte un échec (étape 7).
 5. Déclarer, depuis le registre : `bee manifest <t> --user <p> --model "<ton modèle exact>" --output
-../<fork>/manifestes/<t>.yaml`, chaque « À REMPLIR » par la vérité (dont `mesures`) ; `bee validate-manifest
+../<fork>/manifestes/<t>.yaml`, chaque « TO FILL IN » par la vérité (dont `mesures`) ; `bee validate-manifest
 <fichier>` ; commite dans le fork ; `bee check-fork --task <t> --base upstream/master --repo ../<fork> --author
 <p>` (un ⚠ se justifie dans `changement`).
 6. Soumettre : `git push -u origin HEAD` ; PR par l'API REST : `gh api repos/Bee-ruche/<fork>/pulls -X POST -f
