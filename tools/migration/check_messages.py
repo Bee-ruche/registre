@@ -22,7 +22,8 @@ Limits: it sees the code, not what reads bee's output (workflows, scripts, the f
 which each PR's review checks. A literal with letters, a blank and no comparison is taken for a message: a header name, an
 encoding, a shell command line or a mode string passed to a function would pass, and the review reads every changed
 literal. --prose waives a text for the whole file, not one place. A string inside an interpolation (f"{'s' if n > 1 else
-''}") is code: translating it is refused as a code change (rewrite the message around it instead). A docstring read by the
+''}") is code: translating it is refused as a code change, unless --inner (the hand-made part) sets those literals aside
+too, paired in the order written: keep the order of interpolations that hold literals. A docstring read by the
 code (__doc__) is not looked for; bee.py reads none today. A marker reaching a comparison through a function's return value
 (f() in s) or a global assigned inside a function is missed.
 """
@@ -81,8 +82,9 @@ class Masked(ast.NodeTransformer):
     """Sets every string literal aside, in order: (kind, text, line); kind is doc, str or f (an f-string's text with a hole
     for each interpolation, whose expressions stay in the tree, sorted, so a reordering is not a change)."""
 
-    def __init__(self):
+    def __init__(self, inner=False):
         self.found = []
+        self.inner = inner
 
     def _docstring(self, node):
         body = getattr(node, "body", None)
@@ -105,15 +107,17 @@ class Masked(ast.NodeTransformer):
             if isinstance(part, ast.Constant):
                 text += part.value
             else:
+                if self.inner:  # --inner: the literals of the interpolated expression, set aside in the order written
+                    part.value = self.visit(part.value)
                 text += HOLE
                 holes.append(ast.dump(part))
         self.found.append(("f", text, node.lineno))
         return ast.copy_location(ast.Constant(value=HOLE + "".join(sorted(holes))), node)
 
 
-def masked(text):
+def masked(text, inner=False):
     """Per top-level statement, (its first line, its dump with the literals set aside); and the literals, in order."""
-    m = Masked()
+    m = Masked(inner)
     tree = m.visit(ast.parse(text))
     return [(n.lineno, ast.dump(n, include_attributes=False)) for n in tree.body], m.found
 
@@ -198,14 +202,14 @@ def lettered(text):
     return any(c.isalpha() for c in text)
 
 
-def check(repo, base, head, files, markers, prose=()):
+def check(repo, base, head, files, markers, prose=(), inner=False):
     problems, counts = [], collections.Counter()
     prose = set(prose) | {p.replace(SHOWN_HOLE, HOLE) for p in prose if SHOWN_HOLE in p}  # a plain text keeps its own {…}
     rules = rules_at(repo, base)
     for path in files:
         try:
             old_text, new_text = source(repo, base, path), source(repo, head, path)
-            (old_tree, old), (new_tree, new) = masked(old_text), masked(new_text)
+            (old_tree, old), (new_tree, new) = masked(old_text, inner), masked(new_text, inner)
             markers_of_base = compared(old_text, rules)
         except Unreadable as e:
             problems.append(str(e))
@@ -246,6 +250,8 @@ def main(argv=None):
     p.add_argument("--prose", action="append", default=[], help="the old text of a name-shaped, letterless or compared "
                    "literal that is only a message (a test's one-word expected text, « : », a constant dict's shown value), "
                    "an f-string's interpolations written {…}: it may change; each one is listed in the PR")
+    p.add_argument("--inner", action="store_true", help="the hand-made part: the string literals inside an f-string's "
+                   "interpolations (a join's separator, a conditional word) are messages too, under the same rules")
     p.add_argument("--prose-file", help="a JSON list of such old texts, as for --prose")
     p.add_argument("files", nargs="*", default=["tools/bee.py", "tools/test_bee.py"])
     a = p.parse_args(argv)
@@ -258,7 +264,7 @@ def main(argv=None):
         if not (isinstance(listed, list) and all(isinstance(x, str) for x in listed)):
             p.error("--prose-file: a JSON list of strings")
         prose += listed
-    problems, counts = check(ROOT, a.base, a.head, a.files, a.markers, prose)
+    problems, counts = check(ROOT, a.base, a.head, a.files, a.markers, prose, a.inner)
     for k, v in sorted(counts.items()):
         print(f"{k}: {v} changed")
     for x in problems:
