@@ -906,6 +906,22 @@ AUTHORITY_FILES = ("COMMANDMENTS.md", "COMMANDEMENTS.md", "governance/council.ya
                    # under its old path either
                    "gouvernance/conseil.yaml", "gouvernance/comptes-agents.yaml", "gouvernance/gardiens.yaml", "gouvernance/garants.yaml",
                    "gouvernance/consignes/", "docs/organisation.md", "docs/garants.md")
+# ruche-0145 (plan, R-q): every path the switch to English retired (tools/migration/names.yaml, « retired »); a folder ends with /.
+# A path under one, or one of these files, is refused by the gate to everyone, and never read as data (no code reads it).
+RETIRED_NAMES = ("AGENTS.en.md", "COMMANDEMENTS.md", "MAINTENEURS.md", "REGLES.md", "UTILISATEURS.md", "arbre/", "debats/", "docs/arbre.md",
+                 "docs/candidats.md", "docs/cap.md", "docs/capacites.md", "docs/croissance.md", "docs/garants.md", "docs/gardiens.md",
+                 "docs/gouvernance.md", "docs/juge-commun.md", "docs/mesures.md", "docs/nouveau-projet.md", "docs/organisation.md",
+                 "docs/outillage.md", "docs/perimetre.md", "docs/questions-ouvertes.md", "docs/securite.md", "docs/taches.md", "gouvernance/",
+                 "invitations/ne-plus-contacter.yaml", "membres/", "mesures/", "modeles/", "outils/bee.py", "outils/inventaire_marqueurs.py",
+                 "outils/migration/", "outils/repetition/", "outils/requirements.txt", "outils/site_bee.py", "outils/test_bee.py", "outils/tests/",
+                 "projets/", "propositions/", "signalements/", "taches/")
+
+
+def retired_name(path):
+    """The gate's refusal of a path retired by the switch to English (RETIRED_NAMES; case as written), or None."""
+    if any(path == r or r.endswith("/") and path.startswith(r) for r in RETIRED_NAMES):
+        return f"{path} : a name retired by the switch to English (ruche-0145) : nothing reads it any more ; write the file under its English name"
+    return None
 
 
 def agent_accounts(data):
@@ -5835,6 +5851,10 @@ def check_pr_for(reg, base, head, author, account_created_on, instant, pr_author
     beginnings, additions = [], set()  # (path, its first nature), paths given notes: an append past the high-water mark is refused (ruche-0040)
     for git_status, path in changes:
         beginnings.append((path, len(natures)))
+        if git_status != "D" and (refusal := retired_name(path)):  # ruche-0145 (R-q): the council too; deleting one stays the council's
+            natures.append("governance")
+            problems_found.append(refusal)
+            continue
         if path in links:
             natures.append("governance")
             problems_found.append(f"{path} : lien symbolique refusé : le registre ne contient que des fichiers ordinaires ; remplacez "
