@@ -200,7 +200,7 @@ def lettered(text):
 
 def check(repo, base, head, files, markers, prose=()):
     problems, counts = [], collections.Counter()
-    prose = {p.replace(SHOWN_HOLE, HOLE) for p in prose}
+    prose = set(prose) | {p.replace(SHOWN_HOLE, HOLE) for p in prose if SHOWN_HOLE in p}  # a plain text keeps its own {…}
     rules = rules_at(repo, base)
     for path in files:
         try:
@@ -230,7 +230,7 @@ def check(repo, base, head, files, markers, prose=()):
             elif kind != "doc" and a not in prose and not (lettered(a) and lettered(b)):
                 problems.append(f"{where}: a literal without a letter changed (a separator or a blank; --prose if it is "
                                 f"a message's): {a!r} -> {b!r}")
-            elif kind != "doc" and not markers and a not in prose and any(p in markers_of_base for p in parts if lettered(p)):
+            elif kind != "doc" and not markers and a not in prose and any(p in markers_of_base for p in parts if p):
                 problems.append(f"{where}: a literal the code compares text against changed (needs --markers and the "
                                 f"comparison changed with it): {a!r} -> {b!r}")
             elif kind != "f" and fields(a) != fields(b):
@@ -251,7 +251,10 @@ def main(argv=None):
     a = p.parse_args(argv)
     prose = list(a.prose)
     if a.prose_file:
-        listed = json.loads(pathlib.Path(a.prose_file).read_text(encoding="utf-8"))
+        try:
+            listed = json.loads(pathlib.Path(a.prose_file).read_text(encoding="utf-8"))
+        except (OSError, ValueError) as e:
+            p.error(f"--prose-file: unreadable ({e.__class__.__name__})")
         if not (isinstance(listed, list) and all(isinstance(x, str) for x in listed)):
             p.error("--prose-file: a JSON list of strings")
         prose += listed
