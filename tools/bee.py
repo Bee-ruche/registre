@@ -3248,9 +3248,9 @@ def texts_by(value, place_of="", depth=0):
     """(lieu, texte) pour chaque texte d'une donnée lue, valeurs et clés, récursivement ; une clé refusée n'est pas recopiée.
     Past 20 levels, (lieu, None): the caller refuses it (fail closed), nothing is skipped silently."""
     if isinstance(value, str):
-        yield place_of or "(racine)", value
+        yield place_of or "(root)", value
     elif isinstance(value, (list, dict)) and depth >= 20:
-        yield place_of or "(racine)", None
+        yield place_of or "(root)", None
     elif isinstance(value, list):
         for i, under_it in enumerate(value):
             yield from texts_by(under_it, f"{place_of}[{i}]", depth + 1)
@@ -3267,10 +3267,10 @@ def text_problems(data, prefix_text, sort_kind=None):
     for place_of, text in texts_by(data):
         one_line = "la clé" if place_of.endswith(" (clé)") else {"title": "le titre", "summary": "le résumé"}.get(place_of)
         bound = text_bound(sort_kind, place_of) if sort_kind and text is not None and len(text) > FIELD_TEXT_MAX else None  # the least bound
-        problem_text = (f"{prefix_text} : {place_of} : nested deeper than 20 levels, refused" if text is None
-                    else f"{prefix_text} : {place_of} : {len(text)} caractères, au plus {bound} (docs/governance.md, « Dossiers du "
+        problem_text = (f"{prefix_text}: {place_of}: nested deeper than 20 levels, refused" if text is None
+                    else f"{prefix_text}: {place_of}: {len(text)} characters, at most {bound} (docs/governance.md, « Dossiers du "
                          "libre-service »)" if bound is not None and len(text) > bound
-                    else free_text_problem(text, f"{prefix_text} : {place_of}", one_line))
+                    else free_text_problem(text, f"{prefix_text}: {place_of}", one_line))
         if problem_text:
             yield problem_text
 
@@ -3333,12 +3333,12 @@ def free_texts_problem(value, place_of, maximum, depth=0):
     Pour les champs libres du libre-service qui n'ont pas de contrôle propre : résumé d'une soumission, description de la
     machine d'une mesure, catégories d'un profil (revue adverse du tour 2 : 5 000 caractères et U+202E passaient)."""
     if depth > 5:
-        return f"{place_of} : structure trop profonde"
+        return f"{place_of}: structure too deep"
     if isinstance(value, str):
         c = first_forbidden_character(value)
         if c is not None:
-            return f"{place_of} : caractère invisible ou de contrôle refusé (U+{ord(c):04X})"
-        return f"{place_of} : {len(value)} caractères, au plus {maximum}" if len(value) > maximum else free_text_problem(value, place_of)
+            return f"{place_of}: invisible or control character refused (U+{ord(c):04X})"
+        return f"{place_of}: {len(value)} characters, at most {maximum}" if len(value) > maximum else free_text_problem(value, place_of)
     if isinstance(value, dict):
         for key, under_it in value.items():
             problem_text = (free_texts_problem(str(key), f"{place_of} (clé)", maximum, depth + 1)
@@ -3362,15 +3362,15 @@ def source_form(source):
     s = str(source)
     c = first_forbidden_character(s)
     if c is not None:
-        return f"caractère invisible ou de contrôle refusé (U+{ord(c):04X})"
+        return f"invisible or control character refused (U+{ord(c):04X})"
     if s.startswith("https://"):
-        return None if re.fullmatch(r"https://[A-Za-z0-9.-]+\.[A-Za-z]{2,}(:[0-9]{1,5})?(/\S*)?", s) else "adresse https invalide"
+        return None if re.fullmatch(r"https://[A-Za-z0-9.-]+\.[A-Za-z]{2,}(:[0-9]{1,5})?(/\S*)?", s) else "invalid https address"
     if "://" in s or s.startswith(("/", "~", "\\")) or re.search(r"\s", s):
-        return "une source est une adresse https:// ou un chemin du registre (docs/balance.md, docs/balance.md#les-postes)"
+        return "a source is an https:// address or a path of the registry (docs/balance.md, docs/balance.md#les-postes)"
     path = s.split("#", 1)[0].rstrip("/")
     parts_of = path.split("/")
     if not path or any(p in ("", ".", "..") for p in parts_of) or parts_of[0] == ".git":
-        return "chemin du registre invalide (relatif, sans « .. »)"
+        return "invalid registry path (relative, without « .. »)"
     return None
 
 
@@ -3380,25 +3380,25 @@ def source_problem(reg, source):
     if not problem_text and str(source).startswith("https://"):
         # Les détecteurs de données personnelles de R13 valent aussi dans l'agora (troisième revue adverse de ruche-0020, C2).
         if on_hosts(host_of(source), PERSONAL_HOSTS):
-            return f"{host_of(source)} mène à une messagerie personnelle : aucune donnée personnelle dans l'agora (R13)"
+            return f"{host_of(source)} leads to a personal messaging service: no personal data in the agora (R13)"
         datum = personal_datum(decode_url(str(source)))
-        return f"{datum} dans l'adresse : aucune donnée personnelle dans l'agora (R13)" if datum else None
+        return f"{datum} in the address: no personal data in the agora (R13)" if datum else None
     if problem_text or str(source).startswith("https://"):
         return problem_text
     target = reg.root / str(source).split("#", 1)[0].rstrip("/")
     try:
         target.resolve().relative_to(reg.root)
     except (ValueError, OSError):
-        return "chemin hors du registre"
-    return None if target.exists() else f"« {reg.rel(target)} » n'existe pas dans le registre"
+        return "path outside the registry"
+    return None if target.exists() else f"« {reg.rel(target)} » does not exist in the registry"
 
 
 def agora_datum(text, what_it):
     """Les détecteurs de données personnelles de R13 sur un argument ou une synthèse de l'agora (troisième revue adverse de
     ruche-0020, C2) : None, ou la raison. Dans l'agora, une invitation se désigne par son numéro, jamais par la personne."""
     datum = personal_datum(text) if isinstance(text, str) else None
-    return (f"{what_it} : {datum} : aucune donnée personnelle dans l'agora ; une invitation s'y désigne par son numéro (I-0001), "
-            "jamais par le nom de la personne ni par des faits sur elle (R13)" if datum else None)
+    return (f"{what_it}: {datum}: no personal data in the agora; an invitation is named there by its number (I-0001), "
+            "never by the person's name nor by facts about them (R13)" if datum else None)
 
 
 REDACTION_REASONS = ("refusal", "request", "no_answer")
@@ -3452,23 +3452,23 @@ def redaction_refusal(reg, invitation, reason):
     le motif de son retrait (vérification de cdbcf36, D1 : sans invitation retirée, le conseil ne fait taire personne)."""
     inv = reg.invitations.get(str(invitation), (None, None))[1]
     if not withdrawn(inv):
-        return (f"redacted_for « {_clean(invitation)} » : une invitation refusée, restée sans réponse ou retirée ; sans elle, "
-                "rien ne se caviarde (commandement 10)")
+        return (f"redacted_for « {_clean(invitation)} »: an invitation refused, left unanswered or withdrawn; without one, "
+                "nothing is redacted (commandment 10)")
     expected = removal_cause(inv)
-    return None if reason == expected else f"reason « {reason} » : celui du retrait de {invitation} est « {expected} »"
+    return None if reason == expected else f"reason « {reason} »: the reason of {invitation}'s withdrawal is « {expected} »"
 
 
 def reference_form(outcome, reference):
     reference = "" if reference is None else str(reference)
     if outcome == "no_follow_up":
-        return None if reference == "" else "no_follow_up : la référence reste vide"
-    reasons = {"proposal": (ID_PROPOSAL, "l'id d'une proposition de règle (P-0001)"),
-              "task": (re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*-[0-9]{4}$"), "l'id d'une tâche (ruche-0011)"),
-              "decision": (re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$"), "la date d'une décision de docs/decisions.md (2026-10-29)")}
+        return None if reference == "" else "no_follow_up: the reference stays empty"
+    reasons = {"proposal": (ID_PROPOSAL, "the id of a rule proposal (P-0001)"),
+              "task": (re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*-[0-9]{4}$"), "the id of a task (ruche-0011)"),
+              "decision": (re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$"), "the date of a decision of docs/decisions.md (2026-10-29)")}
     if outcome not in reasons:
-        return f"issue « {outcome} » inconnue ({', '.join(ISSUES)})"
+        return f"outcome « {outcome} » unknown ({', '.join(ISSUES)})"
     reason, expected = reasons[outcome]
-    return None if reason.match(reference) else f"issue {outcome} : la référence est {expected}, pas « {reference} »"
+    return None if reason.match(reference) else f"outcome {outcome}: the reference is {expected}, not « {reference} »"
 
 
 def reference_problem(reg, outcome, reference):
@@ -3477,14 +3477,14 @@ def reference_problem(reg, outcome, reference):
     if problem_text or outcome == "no_follow_up":
         return problem_text
     if outcome == "proposal" and reference not in reg.proposals:
-        return f"proposal « {reference} » introuvable dans proposals/ (bee propose, dans la même PR ou avant)"
+        return f"proposal « {reference} » not found in proposals/ (bee propose, in the same PR or before)"
     if outcome == "task" and reference not in reg.tasks:
-        return f"tâche « {reference} » introuvable dans tasks/ (bee propose-task, dans la même PR ou avant)"
+        return f"task « {reference} » not found in tasks/ (bee propose-task, in the same PR or before)"
     if outcome == "decision":
         path = reg.root / "docs" / "decisions.md"
         log_text = path.read_text(encoding="utf-8") if path.exists() else ""
         if f"| {reference} |" not in log_text:
-            return f"aucune décision datée du {reference} dans docs/decisions.md : le conseil ou l'agent principal la consigne d'abord"
+            return f"no decision dated {reference} in docs/decisions.md: the council or the agent principal records it first"
     return None
 
 
@@ -3518,20 +3518,20 @@ def refused_survey(debate, user, instant, hours, council=()):
     candidates = [p for p in turn_participants(debate, council) if p != rapporteur]
     eligible = [p for p in candidates if p != debate.get("synthesis_by")] or candidates
     if user not in participants:
-        return f"{user} n'est pas un participant du débat (ni son auteur, ni l'auteur d'un argument)"
+        return f"{user} is not a participant of the debate (neither its author nor the author of an argument)"
     if user not in candidates and user != rapporteur:
-        return (f"{user} n'est pas dans le tour de rôle du débat (le conseil qui l'a ouvert sans y argumenter, ou le proposant "
-                "de son invitation) : le conseil désigne un rapporteur par une décision (docs/agora.md)")
+        return (f"{user} is not in the debate's rotation (the council that opened it without arguing in it, or the proposer "
+                "of its invitation): the council appoints a rapporteur by a decision (docs/agora.md)")
     if user not in eligible:
-        return f"{user} a écrit la dernière synthèse : un autre participant relève le rapporteur"
+        return f"{user} wrote the last synthesis: another participant relieves the rapporteur"
     waiting = [m for a in arguments_of(debate) if str(a.get("id")) in set(map(str, pending(debate)))
                and (m := _instant_or_none(a.get("at")))]
     if not waiting:
-        return "aucun argument n'attend la synthèse : le rapporteur n'est pas en retard"
+        return "no argument awaits the synthesis: the rapporteur is not late"
     deadline_at = min(waiting) + dt.timedelta(hours=hours)
     if instant < deadline_at:
-        return (f"le rapporteur ({rapporteur}) a jusqu'au {en_iso(deadline_at)} pour publier la synthèse ({hours} h après le premier "
-                "argument qu'elle ne couvre pas, agora.rapporteur_relief_hours)")
+        return (f"the rapporteur ({rapporteur}) has until {en_iso(deadline_at)} to publish the synthesis ({hours} h after the first "
+                "argument it does not cover, agora.rapporteur_relief_hours)")
     return None
 
 
@@ -3546,72 +3546,72 @@ def check_agora_registry(reg, add_to, per_schema, valid_instant):
             continue
         place_of = reg.rel(path)
         if d["id"] != stem:
-            add_to(f"{place_of} : id « {d['id']} » différent du nom de fichier « {stem} »")
+            add_to(f"{place_of}: id « {d['id']} » differs from the file name « {stem} »")
         for who_is, what_it in [(d["opened_by"], "opened_by")] + ([(d["rapporteur"], "rapporteur")] if "rapporteur" in d else []) + (
                 [(d["synthesis_by"], "synthesis_by")] if d.get("synthesis") else []):
             if who_is not in known_items:
-                add_to(f"{place_of} : {what_it} « {who_is} » n'est pas inscrit")
+                add_to(f"{place_of}: {what_it} « {who_is} » is not registered")
         proposing_member = d["opened_by"] if d.get("invitation") else None  # ruche-0050: never the pen of their invitation's debate
         if proposing_member and reg.invitations.get(d["invitation"], (None, {}))[1].get("debate") != stem:
-            add_to(f"{place_of} : invitation « {d['invitation']} » does not name this debate back (its debat)")
+            add_to(f"{place_of}: invitation « {d['invitation']} » does not name this debate back (its debate)")
         if "rapporteur" not in d:
             # Débat né sans rapporteur (importer-questions) : le premier qui argumente le devient, dans la même PR.
             if [a for a in d["arguments"] if a["by"] != proposing_member] or d.get("synthesis"):
-                add_to(f"{place_of} : débat sans rapporteur, mais avec des arguments ou une synthèse : le premier qui argumente devient "
+                add_to(f"{place_of}: debate without a rapporteur, but with arguments or a synthesis: the first to argue becomes "
                         "rapporteur (bee debate argue)")
         elif d["rapporteur"] not in debate_participants(d) or (proposing_member and same_person(reg, d["rapporteur"], proposing_member)):
-            add_to(f"{place_of} : le rapporteur « {d['rapporteur']} » doit être un participant du débat (celui qui l'a ouvert ou "
-                    "l'auteur d'un argument), jamais le proposant de son invitation")
+            add_to(f"{place_of}: the rapporteur « {d['rapporteur']} » must be a participant of the debate (the one who opened it or "
+                    "the author of an argument), never the proposer of its invitation")
         valid_instant(path, d["opened_at"], "opened_at")
         # Un caviardage dit pour quelle invitation, et le texte est « retiré : <motif> » (commandement 10, R12).
         for field, marker in REDACTABLE.items():
             if marker in d and d.get(field) not in REMOVED.values():
-                add_to(f"{place_of} : {marker}, mais {field} n'est pas caviardée (« retiré : … »)")
+                add_to(f"{place_of}: {marker}, but {field} is not redacted (« withdrawn: … »)")
         for a in d["arguments"]:
             if "redacted_for" in a and a.get("text") not in REMOVED.values():
-                add_to(f"{place_of} : {a['id']} : redacted_for, mais son texte n'est pas caviardé (« retiré : … »)")
+                add_to(f"{place_of}: {a['id']}: redacted_for, but its text is not redacted (« withdrawn: … »)")
         previous_one = _instant_or_none(d["opened_at"])
         seen_items = {}
         for i, a in enumerate(d["arguments"]):
             if a["id"] != f"A{i + 1}":
-                add_to(f"{place_of} : arguments/{i} : id « {a['id']} » au lieu de « A{i + 1} » (numérotation séquentielle, sans trou)")
+                add_to(f"{place_of}: arguments/{i}: id « {a['id']} » instead of « A{i + 1} » (sequential numbering, no gap)")
             if a["by"] not in known_items:
-                add_to(f"{place_of} : {a['id']} : « {a['by']} » n'est pas inscrit")
+                add_to(f"{place_of}: {a['id']}: « {a['by']} » is not registered")
             valid_instant(path, a["at"], f"{a['id']}.at")
             moment = _instant_or_none(a["at"])
             if moment and previous_one and moment < previous_one:
-                add_to(f"{place_of} : {a['id']} : daté d'avant l'argument précédent ou l'ouverture (les arguments sont dans l'ordre)")
+                add_to(f"{place_of}: {a['id']}: dated before the previous argument or the opening (arguments are in order)")
             previous_one = max(previous_one, moment) if moment and previous_one else (moment or previous_one)
             if a.get("replies_to") is not None and a["replies_to"] not in seen_items:
-                add_to(f"{place_of} : {a['id']} : replies_to « {a['replies_to']} » ne désigne pas un argument précédent du débat")
+                add_to(f"{place_of}: {a['id']}: replies_to « {a['replies_to']} » does not name an earlier argument of the debate")
             if a.get("duplicate_of") is not None:
                 target = seen_items.get(a["duplicate_of"])
                 if target is None or target.get("duplicate_of") or target.get("position") != a["position"]:
-                    add_to(f"{place_of} : {a['id']} : duplicate_of « {a['duplicate_of']} » doit désigner un argument précédent, de même "
-                            "position, qui n'est pas lui-même un doublon")
+                    add_to(f"{place_of}: {a['id']}: duplicate_of « {a['duplicate_of']} » must name an earlier argument, of the same "
+                            "position, which is not itself a duplicate")
             if "contested_by" in a and not all((seen_items.get(c) or {}).get("duplicate_of") for c in a["contested_by"]):
-                add_to(f"{place_of} : {a['id']} : contested_by {a['contested_by']} must name earlier arguments marked as duplicates")
+                add_to(f"{place_of}: {a['id']}: contested_by {a['contested_by']} must name earlier arguments marked as duplicates")
             if a.get("duplicate_of") and proposing_member and (not a.get("duplicate_marked_by") or same_person(reg, a["duplicate_marked_by"], proposing_member)):
-                add_to(f"{place_of} : {a['id']} : in an invitation's debate, a duplicate marking is signed (duplicate_marked_by), never by the proposer")
+                add_to(f"{place_of}: {a['id']}: in an invitation's debate, a duplicate marking is signed (duplicate_marked_by), never by the proposer")
             for s in a.get("sources") or []:
                 problem_text = source_form(s)
                 if problem_text:
-                    add_to(f"{place_of} : {a['id']} : source « {s} » : {problem_text}")
+                    add_to(f"{place_of}: {a['id']}: source « {s} »: {problem_text}")
             seen_items[a["id"]] = a
         if d.get("synthesis"):
             valid_instant(path, d["synthesis_at"], "synthesis_at")
         if "synthesis_covers" in d and not (proposing_member and d.get("synthesis") and d["synthesis_covers"] in [a["id"] for a in d["arguments"]]):
-            add_to(f"{place_of} : synthesis_covers : the last argument an invitation's synthesis has read, one of the debate's (ruche-0050)")
+            add_to(f"{place_of}: synthesis_covers: the last argument an invitation's synthesis has read, one of the debate's (ruche-0050)")
         if d["status"] == "closed":
             valid_instant(path, d["closed_at"], "closed_at")
             closed = _instant_or_none(d["closed_at"])
             if closed and previous_one and closed < previous_one:
-                add_to(f"{place_of} : closed_at est antérieur au dernier argument")
+                add_to(f"{place_of}: closed_at is earlier than the last argument")
             if d["closed_by"] not in known_items and d["closed_by"] not in reg.guardians:
-                add_to(f"{place_of} : closed_by « {d['closed_by']} » n'est ni inscrit, ni gardien")
+                add_to(f"{place_of}: closed_by « {d['closed_by']} » is neither registered nor a guardian")
             problem_text = reference_form(d["outcome"], d["reference"])
             if problem_text:
-                add_to(f"{place_of} : {problem_text}")
+                add_to(f"{place_of}: {problem_text}")
 
 
 def check_debate(reg, path, git_status, old, new, author, *, is_council, instant, expected=None, raw=None,
@@ -4220,10 +4220,10 @@ def personal_datum(text, threshold=1):
     text = re.sub(r"[\u2010-\u2015\u2212\ufe58\ufe63]", "-", unicodedata.normalize("NFKC", text))
     text = re.sub(r"[^\S\n]", " ", text)
     if email(text):
-        return "une adresse de courriel"
+        return "an email address"
     if any(POSTAL_ADDRESS.search(t) for t in (text, re.sub(r"[-_+/]", " ", text), text.translate(LOOKALIKES))):
-        return "une adresse postale"
-    return "un numéro de téléphone" if phone(text, threshold > 1) >= threshold else None
+        return "a postal address"
+    return "a phone number" if phone(text, threshold > 1) >= threshold else None
 
 
 # ruche-0047: data about a person that no free text carries (commandment 10): health, opinions, age or being a minor. Refused when a
@@ -4307,11 +4307,11 @@ def personal_texts(reg, path, old, new):
     end = str(notes[-1].get("text"))[-60:] if notes and isinstance(notes[-1], dict) else ""
     values_of = [("notes[]/text", end)] * bool(end and not (personal_datum(end, 3) or SENSITIVE_SAFE.search(end))) + [
         (re.sub(r"\[\d+\]", "[]", l), t) for l, t in texts_of if not l.endswith(" (clé)")]
-    for place_of, text in texts_of + [("(ensemble des textes)", "\n;;;;\n".join(t for _, t in v)[:DETECTOR_BOUND])
+    for place_of, text in texts_of + [("(all the texts together)", "\n;;;;\n".join(t for _, t in v)[:DETECTOR_BOUND])
                                  for v in (values_of, sorted(values_of, key=lambda x: x[0]))]:
-        datum = personal_datum(text, 3) or (SENSITIVE_SAFE.search(text) and "une donnée sensible (santé, opinions, âge)")
+        datum = personal_datum(text, 3) or (SENSITIVE_SAFE.search(text) and "sensitive data (health, opinions, age)")
         if datum and not refusal:
-            refusal.append(f"{path} : {place_of} : {datum} : aucune donnée d'une personne dans un texte libre du registre (R13)")
+            refusal.append(f"{path}: {place_of}: {datum}: no data about a person in a free text of the registry (R13)")
     return refusal, review
 
 
@@ -4895,8 +4895,8 @@ def open_incidents(reg, instant=None):
     limit_value = (instant or now_instant()) + LEAD_MAX
     list_of = reg.incidents.get("incidents") if isinstance(reg.incidents, dict) else None
     if not isinstance(list_of, list):
-        return [{"id": "governance/incidents.yaml illisible"}] if (reg.root / "governance/incidents.yaml").exists() else []
-    return [i if isinstance(i, dict) else {"id": "entrée illisible"} for i in list_of
+        return [{"id": "governance/incidents.yaml unreadable"}] if (reg.root / "governance/incidents.yaml").exists() else []
+    return [i if isinstance(i, dict) else {"id": "unreadable entry"} for i in list_of
             if not (isinstance(i, dict) and (closed := _instant_or_none(i.get("closed_at"))) and closed <= limit_value)]
 
 
@@ -4994,25 +4994,25 @@ def growth_alerts(reg):
         n = (sum(1 for m, _, _ in messages if moment - WEEK < m <= moment)
              + sum(1 for beginning, end, _, _ in places if beginning <= moment < end))
         if n > maximum:
-            alerts.append(f"{iid} : {gesture} du {en_iso(moment)} : {n} messages ou places réservées en 7 jours glissants, au plus "
-                           f"{maximum} pour toute la ruche (R13, growth.invitations_per_week) : "
-                           + ("consigné, car c'est un fait" if gesture in ("sent", "reminder") else "feux verts concurrents")
-                           + " ; le conseil revoit son rythme")
+            alerts.append(f"{iid}: {gesture} on {en_iso(moment)}: {n} messages or reserved places over a rolling 7 days, at most "
+                           f"{maximum} for the whole hive (R13, growth.invitations_per_week): "
+                           + ("recorded, since it is a fact" if gesture in ("sent", "reminder") else "concurrent green lights")
+                           + "; the council reviews its pace")
     # Un envoi consigné après l'échéance de son feu vert : c'est un fait, mais le feu vert n'était plus en vigueur (C8).
     for iid, (_, inv) in sorted(reg.invitations.items()):
         sent = _instant_or_none(block_of(inv, "sent").get("at"))
         green_items = [m for g in ("council_approval", "renewal") if (m := _instant_or_none(block_of(inv, g).get("at")))
                  and sent and m <= sent]
         if sent and green_items and sent > max(green_items) + WEEK:
-            alerts.append(f"{iid} : envoi consigné le {en_iso(sent)}, après l'échéance de son feu vert ({en_iso(max(green_items) + WEEK)}) : "
-                           "consigné, car c'est un fait ; un feu vert échu se renouvelle avant l'envoi (R13)")
+            alerts.append(f"{iid}: sending recorded on {en_iso(sent)}, after its green light expired ({en_iso(max(green_items) + WEEK)}): "
+                           "recorded, since it is a fact; an expired green light is renewed before the sending (R13)")
         # ruche-0050 : un envoi consigné alors que la synthèse de son débat ne couvrait pas un argument déjà publié.
         if sent and (read_items := stale_on_sending(reg, inv, sent)):
-            alerts.append(f"{iid} : envoi consigné le {en_iso(sent)} sur une synthèse périmée ({inv.get('debate')} ne couvrait pas "
-                           f"{', '.join(read_items)}) : consigné, car c'est un fait ; le conseil revoit l'invitation (R13)")
+            alerts.append(f"{iid}: sending recorded on {en_iso(sent)} on an out-of-date synthesis ({inv.get('debate')} did not cover "
+                           f"{', '.join(read_items)}): recorded, since it is a fact; the council reviews the invitation (R13)")
     guardians = sorted(str(g) for g in reg.guardians)  # ruche-0051: a warning, never a refusal (a link may come after a nomination)
-    alerts += [f"gardiens {a} et {b} : la même personne (comptes liés) ; ils comptent pour un gardien (R13, frein) et relisent "
-                "comme un seul" for i, a in enumerate(guardians) for b in guardians[i + 1:] if reg.identities.same_one(a, b)]
+    alerts += [f"guardians {a} and {b}: the same person (linked accounts); they count as one guardian (R13, brake) and review "
+                "as one" for i, a in enumerate(guardians) for b in guardians[i + 1:] if reg.identities.same_one(a, b)]
     return alerts
 
 
@@ -5032,29 +5032,29 @@ def brake_state(reg, instant=None):
     maximum = conf["active_members_per_guardian_max"] * len(persons)
     oversight = []
     if not in_office:
-        oversight.append("aucun gardien en fonction (nommé dans governance/guardians.yaml, avec un garant non révoqué)")
+        oversight.append("no guardian in office (named in governance/guardians.yaml, with a guarantor not revoked)")
     elif len(active) > maximum:
-        oversight.append(f"{len(active)} membres actifs pour {len(persons)} gardien(s), au plus "
-                           f"{conf['active_members_per_guardian_max']} par gardien (growth.active_members_per_guardian_max)")
+        oversight.append(f"{len(active)} active members for {len(persons)} guardian(s), at most "
+                           f"{conf['active_members_per_guardian_max']} per guardian (growth.active_members_per_guardian_max)")
     no_guarantor = sorted(str(m.get("login")) for m in reg.guardian_cards if m.get("login") not in in_office)
     if no_guarantor:
-        oversight.append(f"gardien(s) sans garant : {', '.join(no_guarantor)} (docs/guarantors.md)")
+        oversight.append(f"guardian(s) without a guarantor: {', '.join(no_guarantor)} (docs/guarantors.md)")
     incidents = [str(i.get("id") or i.get("title") or "?") for i in open_incidents(reg, instant)]
-    reasons = oversight + ([f"incident(s) ouvert(s) : {', '.join(incidents)} (governance/incidents.yaml)"] if incidents else [])
+    reasons = oversight + ([f"open incident(s): {', '.join(incidents)} (governance/incidents.yaml)"] if incidents else [])
     messages = sum(1 for m, _, _ in recorded_messages(reg) if m > instant - WEEK)
     places = messages_and_places(reg, instant - WEEK)
     if incidents:
-        pass_ref = "rien : un incident est ouvert, aucune invitation n'avance (ni accord, ni relance), pas même d'encadrement"
+        pass_ref = "nothing: an incident is open, no invitation moves forward (no approval, no reminder), not even an oversight one"
     elif not in_office:
-        pass_ref = ("seules les invitations de garant ou de gardien, sur le seul accord du conseil (amorçage : aucun gardien en "
-                 f"fonction), {conf['oversight_per_week_under_brake']} par semaine au plus ; aucune invitation à participer "
-                 "ni à faire entrer un projet")
+        pass_ref = ("only guarantor or guardian invitations, on the approval of the council alone (bootstrap: no guardian in "
+                 f"office), {conf['oversight_per_week_under_brake']} per week at most; no invitation to participate "
+                 "or to bring in a project")
     elif oversight:
-        pass_ref = ("seules les invitations de garant ou de gardien, après l'accord d'un gardien puis du conseil, "
-                 f"{conf['oversight_per_week_under_brake']} par semaine au plus")
+        pass_ref = ("only guarantor or guardian invitations, after a guardian's approval then the council's, "
+                 f"{conf['oversight_per_week_under_brake']} per week at most")
     else:
-        pass_ref = "toute invitation, après l'accord d'un gardien puis le feu vert du conseil"
-    pass_ref += f" ; feux verts encore possibles sur 7 jours glissants : {max(0, conf['invitations_per_week'] - places)}"
+        pass_ref = "any invitation, after a guardian's approval then the council's green light"
+    pass_ref += f"; green lights still possible over a rolling 7 days: {max(0, conf['invitations_per_week'] - places)}"
     return {"tight": bool(reasons), "reasons": reasons, "oversight": oversight, "open_incidents": incidents,
             "active_members": len(active), "guardians": len(reg.guardians), "guardians_in_office": len(persons),
             "active_members_max": maximum, "sent_7_days": messages, "places_taken_7_days": places,
@@ -5348,7 +5348,7 @@ def _faithful_render(ordered, origin_of):
     """Le texte YAML canonique de données ordonnées (bloc littéral pour les textes de plusieurs lignes), relu à l'identique."""
     text = yaml.dump(ordered, Dumper=_DebateDumper, allow_unicode=True, sort_keys=False, width=100)
     if load_yaml_text(text, str(origin_of)) != ordered:  # garde-fou : relu, le texte dit exactement ce qu'on a écrit
-        raise BeeError(f"{origin_of} : écriture YAML infidèle (contenu que l'outil ne sait pas réécrire), rien n'a été écrit")
+        raise BeeError(f"{origin_of}: unfaithful YAML writing (content the tool cannot rewrite), nothing was written")
     return text
 
 
@@ -5607,26 +5607,26 @@ def check_invitations_registry(reg, add_to, per_schema, valid_instant):
                 if key in incident:
                     valid_instant(reg.root / "governance/incidents.yaml", incident[key], f"incidents/{i}/{key}")
                     if (m := _instant_or_none(incident[key])) and m > now_instant() + LEAD_MAX:
-                        add_to(f"governance/incidents.yaml : incidents/{i}/{key} ({incident[key]}) est dans le futur")
+                        add_to(f"governance/incidents.yaml: incidents/{i}/{key} ({incident[key]}) is in the future")
     list_path = reg.root / PATH_NO_CONTACT
     if reg.do_not_contact is not None and per_schema("do-not-contact", list_path, reg.do_not_contact):
         fingerprints = reg.do_not_contact["fingerprints"]
         if len(fingerprints) != len(set(fingerprints)):
-            add_to(f"{PATH_NO_CONTACT} : une empreinte y figure deux fois")
+            add_to(f"{PATH_NO_CONTACT}: a fingerprint appears in it twice")
     refusal = not_contacted(reg)
     for stem, (path, inv) in reg.invitations.items():
         if not per_schema("invitation", path, inv):
             continue
         place_of = reg.rel(path)
         if inv["id"] != stem:
-            add_to(f"{place_of} : id « {inv['id']} » différent du nom de fichier « {stem} »")
+            add_to(f"{place_of}: id « {inv['id']} » differs from the file name « {stem} »")
         if inv["status"] != invitation_state(inv):
-            add_to(f"{place_of} : status « {inv['status']} » alors que ses gestes disent « {invitation_state(inv)} »")
+            add_to(f"{place_of}: status « {inv['status']} » while its gestures say « {invitation_state(inv)} »")
         if own_debate(reg, inv) is None:  # ruche-0050
-            add_to(f"{place_of} : debate « {inv['debate']} » : not the debate opened for it, with it, by its proposer (bee invite opens it)")
+            add_to(f"{place_of}: debate « {inv['debate']} »: not the debate opened for it, with it, by its proposer (bee invite opens it)")
         if "set_aside" in inv and ("sent" in inv or "answer" in inv) or (
                 (inv.get("answer") or {}).get("value") in ("accepted", "no_answer") and "sent" not in inv):
-            add_to(f"{place_of} : gestes incohérents (on n'écarte qu'avant l'envoi ; acceptée ou sans réponse suppose un envoi)")
+            add_to(f"{place_of}: inconsistent gestures (an invitation is set aside only before the sending; accepted or unanswered implies a sending)")
         # Qui a fait chaque geste a été contrôlé à son ajout (verifier_pr) : son rôle actuel n'est pas revérifié ici, pour qu'un
         # gardien révoqué ou un membre qui quitte le conseil ne rende jamais le registre invalide (revue adverse, F1).
         dates = [("proposed_at", inv["proposed_at"])] + [(f"{g}.at", inv[g]["at"]) for g in INVITATION_GESTURES if g in inv]
@@ -5635,19 +5635,19 @@ def check_invitations_registry(reg, add_to, per_schema, valid_instant):
             valid_instant(path, value, what_it)
             moment = _instant_or_none(value)
             if moment and previous_one and moment < previous_one:
-                add_to(f"{place_of} : {what_it} est antérieur au geste précédent (les gestes sont datés dans l'ordre)")
+                add_to(f"{place_of}: {what_it} is earlier than the previous gesture (gestures are dated in order)")
             previous_one = moment or previous_one
         # Le dossier d'une personne est retiré à son refus, à son silence ou par un retrait, et seulement alors (commandement 10).
         cause = removal_cause(inv)
         if cause in REMOVED and withdraw(inv, cause) != inv:
-            add_to(f"{place_of} : {inv['status']}, mais le dossier de la personne n'est pas retiré (« {REMOVED[cause]} » : identifiant, "
-                    "canal, autres identités, raisons et sources, message ; commandement 10)")
+            add_to(f"{place_of}: {inv['status']}, but the person's file is not withdrawn (« {REMOVED[cause]} »: identifier, "
+                    "channel, other identities, reasons and sources, message; commandment 10)")
         elif not cause and not isinstance(inv["person"], dict):
-            add_to(f"{place_of} : dossier retiré sans refus, silence ni demande de la personne (status : {inv['status']})")
+            add_to(f"{place_of}: file withdrawn without a refusal, silence or request from the person (status: {inv['status']})")
         elif not cause and inv["status"] != "accepted" and on_the_list(own_identities(inv), refusal):
             # Troisième revue adverse, C1 : toute invitation d'une personne de la liste se retire, quel que soit son statut.
-            add_to(f"{place_of} : la personne est sur la liste de non-contact, mais son dossier n'est pas retiré (status : "
-                    f"{inv['status']}) : bee invitation withdraw {inv['id']} --cause refusal (commandement 10, R13)")
+            add_to(f"{place_of}: the person is on the do-not-contact list, but their file is not withdrawn (status: "
+                    f"{inv['status']}): bee invitation withdraw {inv['id']} --cause refusal (commandment 10, R13)")
 
 
 SUITE_INVITATION = {"decided": "l'envoi (feu vert donné), par un humain du conseil, qui le consigne ensuite",
@@ -5662,21 +5662,21 @@ def invitation_summary(inv, conf, instant=None, brake=None):
     l'arrête, une invitation décidée n'attend rien, pas même l'envoi."""
     instant = instant or now_instant()
     state = invitation_state(inv)
-    awaits = (("l'accord du conseil" if "guardian_approval" in inv else "l'accord d'un gardien") if state == "proposed"
+    awaits = (("the council's approval" if "guardian_approval" in inv else "a guardian's approval") if state == "proposed"
               else SUITE_INVITATION.get(state))
     if state == "decided" and green_light(inv):
-        awaits = f"{awaits}, avant le {en_iso(green_light(inv) + WEEK)} (échéance du feu vert)"
+        awaits = f"{awaits}, before {en_iso(green_light(inv) + WEEK)} (the green light's expiry)"
     if expired(inv, instant, conf):
-        state, awaits = "expired", "rien : non décidée à temps, elle ne retient plus la personne"
+        state, awaits = "expired", "nothing: not decided in time, it no longer holds the person"
     elif green_light_expired(inv, instant):
         state = "to_redecide"
-        awaits = ("rien : le feu vert renouvelé a échu ; le conseil écarte l'invitation" if "renewal" in inv else
-                  f"un renouvellement du feu vert par le conseil (bee invitation renew) : le précédent a échu le "
-                  f"{en_iso(green_light(inv) + WEEK)} ; aucun envoi d'ici là")
+        awaits = ("nothing: the renewed green light expired; the council sets the invitation aside" if "renewal" in inv else
+                  f"a renewal of the green light by the council (bee invitation renew): the previous one expired on "
+                  f"{en_iso(green_light(inv) + WEEK)}; no sending until then")
     stopped_at = brake and (brake.get("open_incidents") or (brake.get("oversight") and inv.get("request") not in STRENGTHEN_FRAMING))
     if stopped_at and state in ("proposed", "decided", "to_redecide", "sent", "reminded"):
-        awaits = ("rien tant que le frein est serré (" + " ; ".join(brake.get("reasons") or []) + ") : ni accord, ni envoi, ni relance"
-                  + (" ; une réponse se consigne toujours" if state in ("sent", "reminded") else ""))
+        awaits = ("nothing while the brake is tight (" + "; ".join(brake.get("reasons") or []) + "): no approval, no sending, no reminder"
+                  + ("; an answer is always recorded" if state in ("sent", "reminded") else ""))
     return {"id": inv.get("id"), "identifier": identifier_of(inv), "request": inv.get("request"), "status": state,
             "proposed_by": inv.get("proposed_by"), "proposed_at": inv.get("proposed_at"), "debate": inv.get("debate"),
             "sent_at": block_of(inv, "sent").get("at"), "awaits": awaits}
