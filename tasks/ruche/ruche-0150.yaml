@@ -25,6 +25,10 @@ depends_on:
 - miniz-0050
 - libyaml-0021
 node: projects/ruche/ruche
+notes:
+  - by: "bidji29"
+    at: "2026-11-10T15:04:51Z"
+    text: "Council, 10 Nov 2026, after the switch (#238): what this task removes after date D, as merged: the refusal table of the 62 old command names (tools/bee.py), the French reading of fork documents and the fetch of manifestes/ and CONTRIBUTION.yaml in verdicts.yml; the retired-names guard and the old names in AUTHORITY_FILES stay for good."
 status: open
 created_by: council
 created_on: '2026-11-08'
