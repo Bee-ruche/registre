@@ -5141,7 +5141,7 @@ class TestParallelWork(BaseParallel):
         self.valid_one()
         code, text = self.bee("submit", "miniz-0099", "--user", "chloe", "--pr", "https://github.com/Bee-ruche/minizBee/pull/99103")
         self.assertEqual(code, 1, "chloe n'est ni titulaire ni inscrite")
-        self.assertIn("en parallèle", text)
+        self.assertIn("in parallel", text)
         c2 = self.submit("miniz-0099", "alice", 99102)
         t = self.task("miniz-0099")
         self.assertEqual((t["status"], t["contribution"]), ("in_review", c2))
@@ -5446,7 +5446,7 @@ class TestRace(BaseParallel):
         c1, c2 = self.race_of_two(0.03, 0.05)
         code, text = self.bee("review", c2, *self.read_value(c2), "--user", "bruno", "--opinion", "unfavorable", "--reason", "Elle est moins bonne que la mienne.")
         self.assertEqual(code, 1, text)
-        self.assertIn("en course", text)
+        self.assertIn("in the race", text)
         self.assertEqual(self.bee("vote", c2, "--user", "bruno", "--value", "-1")[0], 1)
         self.assertEqual(self.bee("review", c2, *self.read_value(c2), "--user", "bruno", "--opinion", "favorable", "--reason", "Bonne approche, je la reconnais.")[0], 0)
         # Écrits à la main, l'avis défavorable d'une gardienne concurrente et son vote ne comptent pas.
@@ -9288,9 +9288,9 @@ class TestReviewsByNewcomers(BaseParallel):
 
     def test_two_newcomers_do_not_drown_the_opinion_of_a_contributor(self):
         cid = self.chloe_s_contribution()
-        self.assertIn("ne compte pas pour R3", self.opinion(cid, "alice", "favorable"))
+        self.assertIn("does not count for R3", self.opinion(cid, "alice", "favorable"))
         self.opinion(cid, "bruno", "favorable")
-        self.assertNotIn("ne compte pas pour R3", self.opinion(cid, "david", "unfavorable"))
+        self.assertNotIn("does not count for R3", self.opinion(cid, "david", "unfavorable"))
         for voter in ("bidji29", "alice", "bruno"):
             self.assertEqual(self.bee("vote", cid, "--user", voter, "--value", "1")[0], 0)
         self.a("2026-10-29T12:00:00Z")
