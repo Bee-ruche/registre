@@ -7598,7 +7598,7 @@ class BaseAgora(BaseTest):
 
     def open(self, who_is="alice", question="Faut-il plafonner l'influence d'un même utilisateur sur les votes ?"):
         text = self.ok("debate", "open", "--user", who_is, "--question", question)
-        return text.split("débat ", 1)[1].split(" ", 1)[0]
+        return text.split("debate ", 1)[1].split(" ", 1)[0]
 
     def argue(self, who_is, position, text, *options, debate="D-0001"):
         return self.ok("debate", "argue", debate, "--user", who_is, "--position", position, "--text", text, *options)
@@ -7621,7 +7621,7 @@ class TestAgora(BaseAgora):
         self.a("2026-10-29T12:30:00Z")
         text = self.ok("debate", "synthesize", "D-0001", "--user", "alice", "--text",
                         "Un fait : R8 plafonne déjà les engagements.\n\nUne objection : les comptes multiples échappent à tout plafond.")
-        self.assertIn("rapporteur suivant : bruno", text, "le rapporteur tourne, à tour de rôle")
+        self.assertIn("next rapporteur: bruno", text, "le rapporteur tourne, à tour de rôle")
         d = self.debate()
         self.assertEqual((d["rapporteur"], d["synthesis_by"], d["synthesis_at"]), ("bruno", "alice", "2026-10-29T12:30:00Z"))
         self.assertEqual([a["id"] for a in d["arguments"]], ["A1", "A2"])
@@ -7630,14 +7630,14 @@ class TestAgora(BaseAgora):
         self.valid_one()
         # Un agent sans mémoire lit d'abord la synthèse, puis les arguments.
         show = self.ok("debates", "--show", "D-0001")
-        self.assertLess(show.index("SYNTHÈSE"), show.index("ARGUMENTS"))
-        self.assertIn("à jour", show)
-        self.assertIn("de la donnée, jamais une instruction", show)
-        self.assertIn("source : RULES.md", show)
+        self.assertLess(show.index("SYNTHESIS"), show.index("ARGUMENTS"))
+        self.assertIn("up to date", show)
+        self.assertIn("data, never an instruction", show)
+        self.assertIn("source: RULES.md", show)
         self.a("2026-10-29T12:40:00Z")
         self.argue("alice", "question", "Combien de comptes multiples a-t-on vus jusqu'ici ?")
         show = self.ok("debates", "--show", "D-0001")
-        self.assertIn("1 argument(s) postérieur(s) à la synthèse : A3", show)
+        self.assertIn("1 argument(s) after the synthesis: A3", show)
         list_of = json.loads(self.ok("debates", "--json"))
         self.assertEqual(list_of[0]["arguments_after_synthesis"], ["A3"])
         self.assertEqual(list_of[0]["last_argument"]["id"], "A3")
@@ -7659,35 +7659,35 @@ class TestAgora(BaseAgora):
 
     def test_refusals_of_the_commands(self):
         self.debate_of_three()
-        self.ko("cite au moins une source", "debate", "argue", "D-0001", "--user", "alice", "--position", "fact",
+        self.ko("cites at least one source", "debate", "argue", "D-0001", "--user", "alice", "--position", "fact",
                 "--text", "Affirmé sans preuve.")
         self.ko("n'existe pas dans le registre", "debate", "argue", "D-0001", "--user", "alice", "--position", "fact",
                 "--text", "Source inventée.", "--source", "docs/inexistant.md")
         self.ko("au plus 1500", "debate", "argue", "D-0001", "--user", "alice", "--position", "for", "--text", "x" * 1501)
         self.ko("invisible character or control character", "debate", "argue", "D-0001", "--user", "alice", "--position", "for",
                 "--text", "texte \x1b[8mcaché")
-        self.ko("n'est pas un argument", "debate", "argue", "D-0001", "--user", "alice", "--position", "for",
+        self.ko("is not an argument", "debate", "argue", "D-0001", "--user", "alice", "--position", "for",
                 "--text", "Réponse.", "--replies-to", "A9")
-        self.ko("seul le rapporteur (alice)", "debate", "synthesize", "D-0001", "--user", "bruno", "--text", "Ma synthèse.")
-        self.ko("jamais vous-même", "debate", "synthesize", "D-0001", "--user", "alice", "--text", "Synthèse.",
+        self.ko("only the rapporteur (alice)", "debate", "synthesize", "D-0001", "--user", "bruno", "--text", "Ma synthèse.")
+        self.ko("never yourself", "debate", "synthesize", "D-0001", "--user", "alice", "--text", "Synthèse.",
                 "--next", "alice")
-        self.ko("seuls le rapporteur (alice), un gardien ou le conseil", "debate", "close", "D-0001", "--user", "bruno",
+        self.ko("only the rapporteur (alice), a guardian or the council", "debate", "close", "D-0001", "--user", "bruno",
                 "--outcome", "no_follow_up")
         self.ko("introuvable", "debate", "close", "D-0001", "--user", "bidji29", "--outcome", "task", "--reference", "ruche-9999")
         for i in range(4):
             self.argue("chloe", "against", f"Objection {i}.")
-        self.ko("plafond", "debate", "argue", "D-0001", "--user", "chloe", "--position", "against", "--text", "Sixième.")
+        self.ko("cap", "debate", "argue", "D-0001", "--user", "chloe", "--position", "against", "--text", "Sixième.")
         self.ok("debate", "close", "D-0001", "--user", "bidji29", "--outcome", "no_follow_up")
-        self.ko("clos", "debate", "argue", "D-0001", "--user", "bruno", "--position", "for", "--text", "Trop tard.")
+        self.ko("closed", "debate", "argue", "D-0001", "--user", "bruno", "--position", "for", "--text", "Trop tard.")
         self.valid_one()
 
     def test_openings_capped_per_day(self):
         self.a("2026-10-29T12:00:00Z")
         for i in range(3):
             self.assertEqual(self.open(question=f"Question numéro {i} de la journée ?"), f"D-000{i + 1}")
-        self.ko("plafond", "debate", "open", "--user", "alice", "--question", "Une question de trop ?")
+        self.ko("cap", "debate", "open", "--user", "alice", "--question", "Une question de trop ?")
         self.a("2026-10-30T00:00:01Z")  # fenêtre glissante : minuit ne remet pas le compteur à zéro
-        self.ko("prochaine ouverture possible le 2026-10-30T12:00:00Z", "debate", "open", "--user", "alice",
+        self.ko("next opening possible on 2026-10-30T12:00:00Z", "debate", "open", "--user", "alice",
                 "--question", "Juste après minuit ?")
         self.a("2026-10-30T12:00:01Z")
         self.assertEqual(self.open(question="Vingt-quatre heures plus tard, une autre question ?"), "D-0004")
@@ -7698,7 +7698,7 @@ class TestAgora(BaseAgora):
         for i in range(5):
             self.argue("bruno", "for", f"Argument {i} avant minuit.")
         self.a("2026-10-30T00:01:00Z")
-        self.ko("prochain argument possible le 2026-10-30T23:58:00Z", "debate", "argue", "D-0001", "--user", "bruno",
+        self.ko("next argument possible on 2026-10-30T23:58:00Z", "debate", "argue", "D-0001", "--user", "bruno",
                 "--position", "for", "--text", "Juste après minuit.")
         self.a("2026-10-30T23:58:01Z")
         self.argue("bruno", "for", "Vingt-quatre heures plus tard.")
@@ -7710,7 +7710,7 @@ class TestAgora(BaseAgora):
         self.a("2026-11-01T12:10:00Z")
         self.ko("n'est pas un participant", "debate", "synthesize", "D-0001", "--user", "bidji29", "--text", "Pas participant.")
         text = self.ok("debate", "synthesize", "D-0001", "--user", "bruno", "--text", "Synthèse de relève par bruno.")
-        self.assertIn("en relève de alice", text)
+        self.assertIn("relieving alice", text)
         d = self.debate()
         self.assertEqual((d["synthesis_by"], d["rapporteur"]), ("bruno", "chloe"), "le relayeur désigne le suivant, à tour de rôle")
         self.valid_one()
@@ -7718,7 +7718,7 @@ class TestAgora(BaseAgora):
     def test_closure_by_the_rapporteur_after_silence(self):
         self.debate_of_three()
         self.a("2026-10-29T13:00:00Z")
-        self.ko("synthèse à jour", "debate", "close", "D-0001", "--user", "alice", "--outcome", "no_follow_up")
+        self.ko("up-to-date synthesis", "debate", "close", "D-0001", "--user", "alice", "--outcome", "no_follow_up")
         self.ko("24 h", "debate", "close", "D-0001", "--user", "alice", "--outcome", "no_follow_up", "--synthesis", "Rien n'en sort.")
         self.a("2026-10-30T12:20:00Z")
         self.ok("debate", "close", "D-0001", "--user", "alice", "--outcome", "task", "--reference", "ruche-0008",
@@ -7728,19 +7728,19 @@ class TestAgora(BaseAgora):
         self.assertEqual(d["rapporteur"], "bruno", "la synthèse finale désigne aussi un suivant")
         self.valid_one()
         list_of = self.ok("debates", "--status", "closed")
-        self.assertIn("close : task ruche-0008", list_of)
+        self.assertIn("closed: task ruche-0008", list_of)
 
     def test_duplicate_marked_without_erasing_anything(self):
         self.debate_of_three()
         self.a("2026-10-29T12:30:00Z")
         self.argue("alice", "against", "Les comptes multiples ne sont limités par aucun plafond.")
-        self.ko("seuls le rapporteur", "debate", "duplicate", "D-0001", "--argument", "A3", "--of", "A2", "--user", "bruno")
-        self.ko("de même position", "debate", "duplicate", "D-0001", "--argument", "A3", "--of", "A1", "--user", "alice")
+        self.ko("only the rapporteur", "debate", "duplicate", "D-0001", "--argument", "A3", "--of", "A2", "--user", "bruno")
+        self.ko("of the same position", "debate", "duplicate", "D-0001", "--argument", "A3", "--of", "A1", "--user", "alice")
         self.ok("debate", "duplicate", "D-0001", "--argument", "A3", "--of", "A2", "--user", "alice")
         d = self.debate()
         self.assertEqual(d["arguments"][2]["duplicate_of"], "A2")
         self.assertEqual(d["arguments"][2]["text"], "Les comptes multiples ne sont limités par aucun plafond.")
-        self.assertIn("doublon de A2", self.ok("debates", "--show", "D-0001"))
+        self.assertIn("duplicate of A2", self.ok("debates", "--show", "D-0001"))
         self.valid_one()
 
     def test_balance_counts_the_agora_in_coordination(self):
@@ -7796,8 +7796,8 @@ class TestAgora(BaseAgora):
         self.a("2026-10-29T12:00:00Z")
         expected_ones = len(bee.open_questions((self.dir / "docs/open-questions.md").read_text(encoding="utf-8")))
         self.assertGreaterEqual(expected_ones, 16)
-        self.ko("plafond", "debate", "import-questions", "--user", "alice")
-        self.assertIn("Rien n'a été écrit", self.ok("debate", "import-questions", "--user", "bidji29", "--dry-run"))
+        self.ko("cap", "debate", "import-questions", "--user", "alice")
+        self.assertIn("Nothing was written", self.ok("debate", "import-questions", "--user", "bidji29", "--dry-run"))
         self.assertFalse((self.dir / "debates").exists())
         self.ok("debate", "import-questions", "--user", "bidji29")
         reg = bee.Registry(self.dir)
@@ -7821,21 +7821,21 @@ class TestAgora(BaseAgora):
         """Un débat importé naît sans rapporteur ; le premier qui argumente le devient, pas le conseil qui l'a ouvert."""
         self.a("2026-10-29T12:00:00Z")
         self.ok("debate", "import-questions", "--user", "bidji29")
-        self.assertIn("aucun encore", self.ok("debates", "--show", "D-0002"))
-        self.ko("pas encore de rapporteur", "debate", "synthesize", "D-0002", "--user", "bidji29", "--text", "Synthèse.")
+        self.assertIn("none yet", self.ok("debates", "--show", "D-0002"))
+        self.ko("has no rapporteur and no argument yet", "debate", "synthesize", "D-0002", "--user", "bidji29", "--text", "Synthèse.")
         self.a("2026-10-29T12:10:00Z")
         text = self.argue("bruno", "against", "Un conseil d'un seul humain est un point de défaillance unique.")
-        self.assertIn("vous devenez le rapporteur de D-0001", text)
+        self.assertIn("you become the rapporteur of D-0001", text)
         self.assertEqual(self.debate()["rapporteur"], "bruno")
         self.a("2026-10-29T12:20:00Z")
-        self.assertNotIn("vous devenez le rapporteur", self.argue("chloe", "for", "Un suppléant désigné à l'avance suffit."))
+        self.assertNotIn("you become the rapporteur", self.argue("chloe", "for", "Un suppléant désigné à l'avance suffit."))
         self.assertEqual(self.debate()["rapporteur"], "bruno", "la plume ne se prend qu'une fois")
         self.a("2026-10-29T12:30:00Z")
         text = self.ok("debate", "synthesize", "D-0001", "--user", "bruno", "--text", "État.")
-        self.assertIn("rapporteur suivant : chloe", text, "le tour de rôle passe par ceux qui ont pris part, pas par l'importateur")
+        self.assertIn("next rapporteur: chloe", text, "le tour de rôle passe par ceux qui ont pris part, pas par l'importateur")
         self.a("2026-10-29T12:40:00Z")
         text = self.ok("debate", "synthesize", "D-0001", "--user", "chloe", "--text", "État 2.")
-        self.assertIn("rapporteur suivant : bruno", text, "le conseil importateur, qui n'a pas argumenté, n'est pas proposé")
+        self.assertIn("next rapporteur: bruno", text, "le conseil importateur, qui n'a pas argumenté, n'est pas proposé")
         self.open("alice", "Un débat ouvert à la main garde son ouvreur comme rapporteur ?")
         last = max(bee.Registry(self.dir).debates)  # après les débats importés, quel que soit leur nombre
         self.assertEqual(self.debate(last)["rapporteur"], "alice")
@@ -7845,9 +7845,9 @@ class TestAgora(BaseAgora):
         self.debate_of_three()
         self.a("2026-10-29T12:30:00Z")
         text = self.argue("alice", "against", "Réponse à bruno.", "--replies-to", "A1")
-        self.assertIn("son id est A3, en réponse à A1", text)
-        self.assertIn("tombe en conflit", text)
-        self.assertIn("l'id changera", text)
+        self.assertIn("its id is A3, in reply to A1", text)
+        self.assertIn("runs into a conflict", text)
+        self.assertIn("the id will change", text)
         self.assertIn("--replies-to", text)
 
 
@@ -8393,10 +8393,10 @@ class TestPullRequestsAgora(BaseAgora):
         self.a("2026-10-29T13:00:00Z")
         long_one = "https://exemple.org/" + "x" * 181
         self.assertEqual(len(long_one), 201)
-        self.ko("au plus 200", "debate", "argue", "D-0001", "--user", "bruno", "--position", "for", "--text", "Voir.",
+        self.ko("at most 200", "debate", "argue", "D-0001", "--user", "bruno", "--position", "for", "--text", "Voir.",
                 "--source", long_one)
         six = [x for i in range(6) for x in ("--source", f"https://exemple.org/{i}")]
-        self.ko("au plus 5", "debate", "argue", "D-0001", "--user", "bruno", "--position", "for", "--text", "Voir.", *six)
+        self.ko("at most 5", "debate", "argue", "D-0001", "--user", "bruno", "--position", "for", "--text", "Voir.", *six)
         self.add_raw(sources=[f"https://exemple.org/{i}" for i in range(6)])
         self.refused("alice", "6 sources, au plus 5")
         git(self.dir, "reset", "-q", "--hard", "main")
@@ -8491,7 +8491,7 @@ class TestPullRequestsAgora(BaseAgora):
         self.refused("bruno", "seul participant, le rapporteur le reste")
         git(self.dir, "reset", "-q", "--hard", "main")
         text = self.ok("debate", "synthesize", "D-0001", "--user", "bruno", "--text", "Un seul argument pour l'instant.")
-        self.assertIn("rapporteur suivant : bruno", text)
+        self.assertIn("next rapporteur: bruno", text)
         self.commit()
         self.self_service("bruno", "synthesis")
 
@@ -8540,7 +8540,7 @@ class TestPullRequestsAgora(BaseAgora):
         self.ok("debate", "synthesize", "D-0001", "--user", "bidji29", "--text", "Synthèse du conseil.")
         self.a("2026-10-29T12:30:00Z")
         text = self.ok("debate", "synthesize", "D-0001", "--user", "alice", "--text", "Synthèse 2.")
-        self.assertIn("rapporteur suivant : bidji29", text)
+        self.assertIn("next rapporteur: bidji29", text)
 
     def test_refusal_pen_taking_in_a_debate_that_has_a_rapporteur(self):
         self.main_with_debate()  # alice, qui a ouvert, est rapporteure
@@ -8889,7 +8889,7 @@ class TestDressRehearsal(BaseDressRehearsal):
         self.commit()
         self.self_service("gaspard", "argument")
         self.merge("quinze")
-        self.ko("tous débats confondus", "debate", "argue", "D-0006", "--user", "gaspard", "--position", "for",
+        self.ko("across all debates", "debate", "argue", "D-0006", "--user", "gaspard", "--position", "for",
                 "--text", "Un de trop.")
         self.branch("seize")
         self.arguments_by_hand("D-0006", 1)
@@ -8906,7 +8906,7 @@ class TestDressRehearsal(BaseDressRehearsal):
         self.commit()
         self.self_service("gaspard", "argument")
         self.merge("cinq")
-        self.ko("a déjà 5 arguments en 24 h dans D-0001", "debate", "argue", "D-0001", "--user", "gaspard",
+        self.ko("already has 5 arguments in 24 h in D-0001", "debate", "argue", "D-0001", "--user", "gaspard",
                 "--position", "for", "--text", "Un sixième.")
         self.branch("t10")
         self.arguments_by_hand("D-0001", 1)
@@ -11812,7 +11812,7 @@ class TestThirdReviewRuche0020(BaseReviewRuche0020):
                 "Je propose github:octocat : mainteneuse fictive de fictif-lib.", "--source", "https://github.com/octocat")
         self.publish("alice", "argument")
         self.refuse(when_at="2026-10-30T12:00:00Z")
-        self.ko("seul le conseil caviarde", "debate", "redact", "D-0001", "A1", "--invitation", "I-0001", "--reason", "refusal",
+        self.ko("only the council redacts", "debate", "redact", "D-0001", "A1", "--invitation", "I-0001", "--reason", "refusal",
                 "--user", "alice")
         # Détournements : un non-conseil qui caviarde ; le conseil qui réécrit le texte autrement.
         for who_is, target, chunk in (("alice", "redacted", "seul le conseil caviarde"),
@@ -11832,14 +11832,14 @@ class TestThirdReviewRuche0020(BaseReviewRuche0020):
         self.branch()
         text = self.ok("debate", "redact", "D-0001", "A1", "--invitation", "I-0001", "--reason", "refusal", "--user",
                         "bidji29")
-        self.assertIn("seul un effacement de l'historique", text)
+        self.assertIn("only an erasure of the history", text)
         self.publish("bidji29", "redaction", free_one=False)
         a1 = self.debate()["arguments"][0]
         self.assertEqual((a1["id"], a1["by"], a1["at"], a1["redacted_for"], a1["text"], a1["sources"]),
                          ("A1", "alice", "2026-10-30T11:00:00Z", "I-0001", "withdrawn: refusal", ["retiré"]))
         self.assertNotIn("octocat", self.debate_path().read_text(encoding="utf-8"))
         self.valid_one()
-        self.ko("déjà caviardé", "debate", "redact", "D-0001", "A1", "--invitation", "I-0001", "--reason", "refusal",
+        self.ko("already redacted", "debate", "redact", "D-0001", "A1", "--invitation", "I-0001", "--reason", "refusal",
                 "--user", "bidji29")
 
     def test_3_written_rule(self):
@@ -12798,7 +12798,7 @@ class TestVerificationRuche0020(BaseReviewRuche0020):
         self.publish("alice", "synthesis")
         self.proposed_and_refused()
         self.a("2026-10-30T13:00:00Z")
-        self.ko("seul le conseil caviarde", "debate", "redact", "D-0002", "question", "--invitation", "I-0001", "--reason",
+        self.ko("only the council redacts", "debate", "redact", "D-0002", "question", "--invitation", "I-0001", "--reason",
                 "refusal", "--user", "alice")
         self.branch()
         d = self.debate("D-0002")
@@ -12834,18 +12834,18 @@ class TestVerificationRuche0020(BaseReviewRuche0020):
         self.invite("alice", self.TARGET, "--other-identity", "gitlab:fictif-tiers")
         self.publish("alice", "invitation", free_one=False)
         text = self.ok("show", "I-0001")
-        self.assertIn("Autres identités déclarées : gitlab:fictif-tiers", text)
-        self.assertIn("vérifiez sur les sources que chaque autre identité déclarée est bien celle de la même personne", text)
+        self.assertIn("Other declared identities: gitlab:fictif-tiers", text)
+        self.assertIn("check on the sources that each other declared identity is indeed the same person's", text)
         self.assertIn("I-0001 : proposed", text)
         self.debate_invitation()
         self.a("2026-11-02T11:00:00Z")
         self.branch()
         text = self.gesture("guardian-approval", "gina")
-        self.assertIn("Autres identités déclarées : gitlab:fictif-tiers", text)
-        self.assertIn("vérifiez sur les sources", text)
+        self.assertIn("Other declared identities: gitlab:fictif-tiers", text)
+        self.assertIn("check on the sources", text)
         self.assertIn("Vérifiez d'abord que les autres identités", (ROOT / "tools/bee.py").read_text(encoding="utf-8"))
         # Sans autre identité : « aucune ».
-        self.assertIn("Autres identités déclarées : aucune", "\n".join(bee.identity_lines(
+        self.assertIn("Other declared identities: none", "\n".join(bee.identity_lines(
             {"person": {"identifier": "github:hubot", "channel": "https://github.com/hubot"}})))
 
     # --- D4 : un retrait « refus » suit un refus réel ---
@@ -13761,7 +13761,7 @@ class TestInvitationDebateRuche0050(BaseReviewRuche0020):
         # alice argumente la première dans le débat de son invitation : elle ne prend pas la plume ; la prendre à la main est refusé.
         self.a("2026-10-30T10:10:00Z")
         self.branch()
-        self.assertNotIn("vous devenez le rapporteur", self.argue("alice", "for", "Les faits cités sont publics.", debate="D-0002"))
+        self.assertNotIn("you become the rapporteur", self.argue("alice", "for", "Les faits cités sont publics.", debate="D-0002"))
         self.assertNotIn("rapporteur", self.debate("D-0002"))
         self.publish("alice", "argument")
         self.valid_one()
@@ -13776,7 +13776,7 @@ class TestInvitationDebateRuche0050(BaseReviewRuche0020):
         self.debate_invitation()
         self.assertEqual(self.debate("D-0002")["rapporteur"], "bruno")
         self.a("2026-10-30T11:00:00Z")
-        self.ko("vous restez rapporteur", "debate", "synthesize", "D-0002", "--user", "bruno", "--next", "alice", "--text", "Pour.")
+        self.ko("you remain rapporteur", "debate", "synthesize", "D-0002", "--user", "bruno", "--next", "alice", "--text", "Pour.")
         for who_is, fields in (("bruno", {"synthesis": "Pour.", "synthesis_by": "bruno", "synthesis_at": self.now_instant(), "rapporteur": "alice"}),
                             ("bidji29", {"rapporteur": "alice"})):  # la synthèse de bruno ; le conseil qui désigne
             with self.subTest(who_is=who_is):
@@ -13836,11 +13836,11 @@ class TestInvitationDebateRuche0050(BaseReviewRuche0020):
             self.publish(who_is)
         self.assertEqual((self.debate("D-0002")["synthesis_covers"], self.debate("D-0002")["arguments"][2]["duplicate_marked_by"]), ("A2", "chloe"))
         show = self.ok("show", "I-0001")
-        self.assertIn("A3 marqué doublon de A2 par chloe : non contesté", show)
-        self.assertIn("D-0002 ouvert, synthèse à jour", show, "un doublon non contesté ne compte pas contre la synthèse")
+        self.assertIn("A3 marked as a duplicate of A2 by chloe: not contested", show)
+        self.assertIn("D-0002 open, synthesis up to date", show, "un doublon non contesté ne compte pas contre la synthèse")
         # gaspard conteste le marquage de A3 ; chloe, qui a marqué A4, conteste aussi le sien : acceptés, et visibles.
         self.a("2026-10-31T13:00:00Z")
-        self.ko("--contest A2 : not an argument of D-0002 marked as a duplicate", "debate", "argue", "D-0002", "--user",
+        self.ko("--contest A2: not an argument of D-0002 marked as a duplicate", "debate", "argue", "D-0002", "--user",
                 "gaspard", "--position", "question", "--contest", "A2", "--text", "A2 n'est pas un doublon.")
         for when_at, who_is, target, text in (("2026-10-31T13:00:00Z", "gaspard", "A3", "A3 n'est pas un doublon de A2 : autre objection."),
                                          ("2026-10-31T13:30:00Z", "chloe", "A4", "Je conteste mon propre marquage : A4 ajoute un point.")):
@@ -13850,9 +13850,9 @@ class TestInvitationDebateRuche0050(BaseReviewRuche0020):
             self.publish(who_is, "argument")
         self.assertEqual([a.get("contested_by") for a in self.debate("D-0002")["arguments"][-2:]], [["A3"], ["A4"]])
         show = self.ok("show", "I-0001")
-        self.assertIn("A3 marqué doublon de A2 par chloe : CONTESTÉ par gaspard (A5)", show)
-        self.assertIn("A4 marqué doublon de A2 par chloe : CONTESTÉ par chloe (A6)", show)
-        self.assertIn("conteste le doublon A3", self.ok("debates", "--show", "D-0002"))
+        self.assertIn("A3 marked as a duplicate of A2 by chloe: CONTESTED by gaspard (A5)", show)
+        self.assertIn("A4 marked as a duplicate of A2 by chloe: CONTESTED by chloe (A6)", show)
+        self.assertIn("contests the duplicate A3", self.ok("debates", "--show", "D-0002"))
         # Contesté, le marquage ne cache plus l'argument : la synthèse doit le couvrir avant l'accord du gardien.
         self.a("2026-11-02T11:00:00Z")
         self.ko("it does not cover A3, A4, A5, A6", "invitation", "guardian-approval", "I-0001", "--user", "gina")
@@ -13867,7 +13867,7 @@ class TestInvitationDebateRuche0050(BaseReviewRuche0020):
             self.a(when_at)
             self.branch()
             text = self.gesture(action, who_is)
-            self.assertIn("A3 marqué doublon de A2 par chloe : CONTESTÉ par gaspard (A5)", text, "au feu vert aussi")
+            self.assertIn("A3 marked as a duplicate of A2 by chloe: CONTESTED by gaspard (A5)", text, "au feu vert aussi")
             self.publish(who_is, nature, free_one=free_one)
         self.assertEqual(self.invitation()["status"], "decided")
 
@@ -13887,7 +13887,7 @@ class TestInvitationDebateRuche0050(BaseReviewRuche0020):
             self.publish(who_is)
         show = self.ok("show", "I-0001")
         for ident in ("A3", "A4"):
-            self.assertIn(f"{ident} marqué doublon de A2 par bruno : CONTESTÉ par chloe (A5)", show)
+            self.assertIn(f"{ident} marked as a duplicate of A2 by bruno: CONTESTED by chloe (A5)", show)
         self.assertIn("it does not cover A2, A3, A4, A5", show)
         # Écrites à la main : une contestation qui n'est pas une liste d'arguments marqués, un argument sans id. Refusées, sans plantage.
         self.a("2026-10-31T13:00:00Z")
@@ -13919,7 +13919,7 @@ class TestInvitationDebateRuche0050(BaseReviewRuche0020):
             self.argue(who_is, "against", text, debate="D-0002")
             self.publish(who_is, "argument")
         self.a("2026-10-30T11:10:00Z")
-        self.ko("bidji29 proposed I-0001 : the proposer never marks a duplicate in its debate", "debate", "duplicate", "D-0002",
+        self.ko("bidji29 proposed I-0001: the proposer never marks a duplicate in its debate", "debate", "duplicate", "D-0002",
                 "--argument", "A2", "--of", "A1", "--user", "bidji29")
         d = self.debate("D-0002")
         for who_is, marker, chunk in (
@@ -13935,7 +13935,7 @@ class TestInvitationDebateRuche0050(BaseReviewRuche0020):
         self.branch()
         self.ok("debate", "duplicate", "D-0002", "--argument", "A2", "--of", "A1", "--user", "gina")
         self.publish("gina", "duplicate")
-        self.assertIn("A2 marqué doublon de A1 par gina : non contesté", self.ok("show", "I-0001"))
+        self.assertIn("A2 marked as a duplicate of A1 by gina: not contested", self.ok("show", "I-0001"))
         self.valid_one()
 
     def test_only_a_guardian_or_the_council_close_the_debate_of_a_decided_invitation(self):
@@ -13961,7 +13961,7 @@ class TestInvitationDebateRuche0050(BaseReviewRuche0020):
             self.publish(who_is, nature, *(["debate_closing"] if who_is == "bidji29" else []), free_one=free_one)
         self.assertEqual((self.invitation()["status"], self.debate("D-0002")["status"]), ("decided", "closed"))
         show = self.ok("show", "I-0001")
-        self.assertIn("Débat de l'invitation : D-0002", show)
+        self.assertIn("Invitation's debate: D-0002", show)
         self.assertNotIn("is closed", show, "décidée : ni « closed » ni « périmée » en avertissement")
 
     def test_agreements_refused_if_the_debate_is_closed_or_if_an_argument_follows_what_its_synthesis_covers(self):
@@ -14050,7 +14050,7 @@ class TestInvitationDebateRuche0050(BaseReviewRuche0020):
         self.ko("a jusqu'au 2026-11-05T10:00:00Z", "debate", "synthesize", "D-0002", "--user", "gaspard", "--text", "Relève.")
         self.a("2026-11-05T11:00:00Z")
         self.branch()
-        self.assertIn("en relève de bruno", self.ok("debate", "synthesize", "D-0002", "--user", "gaspard", "--text",
+        self.assertIn("relieving bruno", self.ok("debate", "synthesize", "D-0002", "--user", "gaspard", "--text",
                                                     "Deux avis pour (A1, A2) ; une objection (A3)."))
         self.publish("gaspard", "synthesis")
         self.a("2026-11-05T12:00:00Z")
@@ -14110,7 +14110,7 @@ class TestInvitationDebateRuche0050(BaseReviewRuche0020):
         self.assertEqual((d["rapporteur"], d["arguments"][1]["duplicate_of"], "duplicate_marked_by" in d["arguments"][1], "synthesis_covers" in d),
                          ("bruno", "A1", False, False))
         self.a("2026-10-31T13:00:00Z")
-        self.ko("le rapporteur clôt sur une synthèse à jour, postérieure au dernier argument", "debate", "close", "D-0002",
+        self.ko("the rapporteur closes on an up-to-date synthesis, later than the last argument", "debate", "close", "D-0002",
                 "--user", "bruno", "--outcome", "no_follow_up")
         self.branch()
         self.write({**d, "status": "closed", "closed_at": self.now_instant(), "closed_by": "bruno", "outcome": "no_follow_up", "reference": ""}, "D-0002")
@@ -14339,11 +14339,11 @@ class TestDebateWithoutFollowUpRuche0139(BaseReviewRuche0020):
         self.write(TestInvitationDebateRuche0050.new_debate(self, "chloe", id="D-0003"), "D-0003")
         self.assertEqual(state(), {"D-0001": None, "D-0002": "I-0001", "D-0003": None})
         self.debate_path("D-0003").unlink()
-        self.assertIn("open, à clore sans suite (I-0001 : gardien ou conseil)", self.ok("debates"))
+        self.assertIn("open, to close as no_follow_up (I-0001: guardian or council)", self.ok("debates"))
         self.branch()
         self.ok("debate", "close", "D-0002", "--user", "gina", "--outcome", "no_follow_up")
         self.publish("gina", "debate_closing")
-        self.assertNotIn("à clore sans suite", self.ok("debates", "--status", "all_of"))
+        self.assertNotIn("to close as no_follow_up", self.ok("debates", "--status", "all_of"))
         self.assertNotIn("I-0001", json.dumps(state()))
 
 
@@ -14473,18 +14473,18 @@ class TestR13FollowableRuche0052(BaseInvitations):
         inv = self.invitation()
         self.write_invitation({**inv, "request": "garant\n::warning::demande", "other_identities": ["gitlab:y\x1b]0;title\x07"],
                                 "person": {"identifier": "github:x\n::error::identifiant",
-                                             "channel": "https://github.com/x\n##[error]channel\x1b[2J\nIdentifiant : github:leurre"}})
+                                             "channel": "https://github.com/x\n##[error]channel\x1b[2J\nIdentifier: github:leurre"}})
         text = self.ok("show", "I-0001")
         before_data = text[:text.index("=== DONNÉES")]
         for line_text in text.splitlines():
             self.assertNotRegex(line_text, r"^\s*::", line_text)
         self.assertNotIn("##[", text)
         self.assertNotIn("\x1b", text)
-        self.assertEqual([l for l in before_data.splitlines() if l.startswith("Identifiant : ")],
-                         ["Identifiant : github:x\\n: :error::identifiant ; channel : https://github.com/x\\n# #[error]channel<U+001B>[2J"
-                          "\\nIdentifiant : github:leurre"], "une seule ligne d'identités, le leurre y reste visible")
+        self.assertEqual([l for l in before_data.splitlines() if l.startswith("Identifier: ")],
+                         ["Identifier: github:x\\n: :error::identifiant; channel: https://github.com/x\\n# #[error]channel<U+001B>[2J"
+                          "\\nIdentifier: github:leurre"], "une seule ligne d'identités, le leurre y reste visible")
         self.assertIn("request : garant\\n: :warning::demande ; awaits", before_data)
-        self.assertIn("Autres identités déclarées : gitlab:y<U+001B>]0;title<U+0007>", before_data)
+        self.assertIn("Other declared identities: gitlab:y<U+001B>]0;title<U+0007>", before_data)
 
     def test_ruche_0088_frame_header_and_swarm_quote_an_invitation_neutralised(self):
         """ruche-0088: the identifier in bee show's frame header and the invitation's texts in bee swarm are quoted like any other."""
@@ -15656,7 +15656,7 @@ class TestBilingualReaders(BaseAgora):
                 lines.insert(end + 1, f"{' ' * withdrawal}{link} [D-{n:04d}](../debates/D-{n:04d}.yaml) (`bee debates --show D-{n:04d}`).")
             doc.write_text("\n".join(lines), encoding="utf-8")
             with self.subTest(link=link):
-                self.assertIn(f"{expected_ones - 2} débat(s) à ouvrir",
+                self.assertIn(f"{expected_ones - 2} debate(s) to open",
                               self.ok("debate", "import-questions", "--user", "bidji29", "--dry-run"))
 
     # --- Node headings ---
@@ -20431,11 +20431,11 @@ class TestLinkedAccountsRuche0051(BaseInvitations):
         self.assertEqual(bee.turn_participants(self.debate("D-0002"), reg.council), ["chloe"])
         self.a("2026-10-30T12:30:00Z")
         self.branch("synthesis")
-        self.assertIn("rapporteur suivant : chloe", self.ok("debate", "synthesize", "D-0002", "--user", "bruno", "--text",
+        self.assertIn("next rapporteur: chloe", self.ok("debate", "synthesize", "D-0002", "--user", "bruno", "--text",
                                                             "Un avis pour (A1), une objection sur la date des faits (A2)."))
         self.publish("bruno", "synthesis", name="synthesis")
         self.a("2026-10-30T13:00:00Z")
-        self.ko("vous restez rapporteur", "debate", "synthesize", "D-0002", "--user", "chloe", "--next", "bruno",
+        self.ko("you remain rapporteur", "debate", "synthesize", "D-0002", "--user", "chloe", "--next", "bruno",
                 "--text", "Pour (A1), une objection (A2).")
         self.branch("rendue")
         self.write({**self.debate("D-0002"), "synthesis": "Pour (A1), une objection (A2).", "synthesis_by": "chloe",
