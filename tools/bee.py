@@ -5650,9 +5650,9 @@ def check_invitations_registry(reg, add_to, per_schema, valid_instant):
                     f"{inv['status']}): bee invitation withdraw {inv['id']} --cause refusal (commandment 10, R13)")
 
 
-SUITE_INVITATION = {"decided": "l'envoi (feu vert donné), par un humain du conseil, qui le consigne ensuite",
-                    "sent": "une réponse, ou une relance",
-                    "reminded": "une réponse ; sinon, sans réponse et la liste de non-contact"}
+SUITE_INVITATION = {"decided": "the sending (green light given), by a human of the council, who then records it",
+                    "sent": "an answer, or a reminder",
+                    "reminded": "an answer; otherwise, no_answer and the do-not-contact list"}
 
 
 def invitation_summary(inv, conf, instant=None, brake=None):
@@ -8431,16 +8431,16 @@ def cmd_invite(args):
     reg.require_member(u)
     facts, sources = args.fact or [], args.source or []
     if not facts or len(facts) != len(sources):
-        raise BeeError("pourquoi elle : au moins un --fact, chacun suivi de sa --source (adresse https:// publique), dans l'ordre")
+        raise BeeError("why them: at least one --fact, each followed by its --source (a public https:// address), in order")
     text = pathlib.Path(args.file).read_text(encoding="utf-8") if args.file else args.message
     if not text or not text.strip():
-        raise BeeError("le message exact : --message ou --file")
+        raise BeeError("the exact message: --message or --file")
     folder = reg.root / "invitations"
     number_of = next_number([int(m["n"]) for f in (folder.iterdir() if folder.is_dir() else [])
                              if (m := PATH_INVITATION.match(f"invitations/{f.name}"))])
     path = folder / f"I-{number_of:04d}.yaml"
     if number_of >= RESERVED_NUMBER or path.exists():
-        raise BeeError(f"pas de numéro d'invitation libre ({reg.rel(path)}) : rien n'a été écrit ni écrasé")
+        raise BeeError(f"no free invitation number ({reg.rel(path)}): nothing was written or overwritten")
     require_creation_allowed(reg, "invitations", u)
     mention = mentions_invitation(reg, args.request)[args.language]
     text = text.strip()
@@ -8449,17 +8449,17 @@ def cmd_invite(args):
     model = PLATFORMS.get(identifier.partition(":")[0], (None, None))[1]
     channel = args.channel or (model.format(identifier.partition(":")[2]) if model else None)
     if channel is None:
-        raise BeeError("--channel : pour un site, la page de ce site où la personne publie comment la contacter")
+        raise BeeError("--channel: for a site, the page of that site where the person publishes how to contact them")
     # ruche-0050: its own debate, opened with it, by its proposer, without a rapporteur (the proposer never holds its pen).
     did, instant = next_debate(reg), en_iso(now_instant())
     if u not in reg.council and openings_since(reg, u, now_instant() - CAP_WINDOW) >= config_agora(reg)["openings_max_per_24h"]:
-        raise BeeError(f"plafond : {u} a déjà ouvert {config_agora(reg)['openings_max_per_24h']} débats en 24 h "
-                        "(agora.openings_max_per_24h), et l'invitation ouvre le sien : rien n'a été écrit")
+        raise BeeError(f"cap: {u} has already opened {config_agora(reg)['openings_max_per_24h']} debates in 24 h "
+                        "(agora.openings_max_per_24h), and the invitation opens its own: nothing was written")
     if (reg.root / "debates" / f"{did}.yaml").exists():  # unreadable, so not loaded: never overwritten
-        raise BeeError(f"debates/{did}.yaml existe déjà : rien n'a été écrit ni écrasé")
+        raise BeeError(f"debates/{did}.yaml already exists: nothing was written or overwritten")
     reg.debates[did] = (reg.root / "debates" / f"{did}.yaml", {
-        "id": did, "invitation": path.stem, "question": f"Invitation {path.stem} ({args.request}) : faut-il l'envoyer ? Son débat "
-        "propre (R13) : on y désigne la personne par ce numéro, jamais par son nom.", "opened_by": u, "opened_at": instant,
+        "id": did, "invitation": path.stem, "question": f"Invitation {path.stem} ({args.request}): should it be sent? Its own "
+        "debate (R13): the person is referred to there by this number, never by name.", "opened_by": u, "opened_at": instant,
         "status": "open", "synthesis": "", "arguments": []})
     inv = {"id": path.stem, "status": "proposed", "person": {"identifier": identifier, "channel": channel},
            "request": args.request, "why": [{"fact": f, "source": s} for f, s in zip(facts, sources)],
@@ -8471,22 +8471,22 @@ def cmd_invite(args):
         inv["namesake"] = args.namesake.strip()
     refusal = invitation_refusal(reg, inv, council=u in reg.council)
     if refusal:
-        raise BeeError("invitation refusée, rien n'a été écrit :\n  " + "\n  ".join(refusal))
+        raise BeeError("invitation refused, nothing was written:\n  " + "\n  ".join(refusal))
     write_debate(*reg.debates[did])
     write_invitation(path, inv)
     brake = brake_state(reg)
-    print(f"✓ {reg.rel(path)} proposée : {inv['status']}. Rien n'est envoyé : elle reste au moins "
-          f"{growth_config(reg)['debate_min_hours']} h publique (son débat {did}, ouvert avec elle ; un autre que vous en tiendra "
-          "la synthèse, à jour avant tout accord), puis un gardien et le conseil décident, et un "
-          "humain du conseil envoie lui-même le message (R13). Pendant la phase de lancement, sa PR attend le conseil, qui la "
-          "fusionne lui-même.")
+    print(f"✓ {reg.rel(path)} proposed: {inv['status']}. Nothing is sent: it stays public for at least "
+          f"{growth_config(reg)['debate_min_hours']} h (its debate {did}, opened with it; someone other than you will hold its "
+          "synthesis, up to date before any approval), then a guardian and the council decide, and a "
+          "human of the council personally sends the message (R13). During the launch phase, its PR awaits the council, which "
+          "merges it itself.")
     if brake["tight"] and args.request not in STRENGTHEN_FRAMING:
-        print("  ⚠ frein serré aujourd'hui : aucun accord ni envoi ne passera tant qu'il l'est (" + " ; ".join(brake["reasons"]) + ").")
+        print("  ⚠ the brake is tight today: no approval or sending will pass while it is (" + "; ".join(brake["reasons"]) + ").")
     elif brake["tight"]:
-        print("  Frein serré aujourd'hui, mais il n'arrête pas une invitation qui renforce l'encadrement (garant, gardien).")
-    print(f"  Publiez : bee publish --title 'Invitation {path.stem}' ; la PR n'est pas fusionnée automatiquement.")
+        print("  The brake is tight today, but it does not stop an invitation that strengthens oversight (guarantor, guardian).")
+    print(f"  Publish: bee publish --title 'Invitation {path.stem}'; the PR is not merged automatically.")
     if {fingerprint(c) for c in own_identities(inv)} & removed_fingerprints(reg):  # ruche-0048 : un signal neutre, pas un refus
-        print("  ⚠ Une identité de cette invitation correspond à un retrait demandé consigné : le conseil le voit avant toute suite.")
+        print("  ⚠ An identity of this invitation matches a recorded requested removal: the council sees it before any next step.")
         return 3
     return 0
 
@@ -8535,11 +8535,11 @@ def cmd_invitation(args):
     path, inv = reg.invitation(args.invitation)
     gesture = ACTIONS_INVITATION[args.action]
     if unreadable_invitations(reg):
-        raise BeeError(f"illisible(s) : {', '.join(unreadable_invitations(reg))} : aucun geste d'invitation tant que le conseil ne "
-                        "l'a pas réparé")
+        raise BeeError(f"unreadable: {', '.join(unreadable_invitations(reg))}: no invitation gesture until the council has "
+                        "repaired it")
     if gesture in inv:
-        raise BeeError(f"{args.invitation} : {gesture} est déjà consigné ; un geste ne se refait ni ne se modifie" + (
-            " ; pour inscrire la personne sur la liste de non-contact : bee remove-data --no-contact" if gesture == "withdrawal" else ""))
+        raise BeeError(f"{args.invitation}: {gesture} is already recorded; a gesture is neither redone nor modified" + (
+            "; to put the person on the do-not-contact list: bee remove-data --no-contact" if gesture == "withdrawal" else ""))
     instant = now_instant()
     block = {"by": u, "at": en_iso(instant)}
     if gesture == "answer":
@@ -8559,9 +8559,9 @@ def cmd_invitation(args):
     refusal = gesture_refusal(reg, inv, new, gesture, u, instant, publishing, brake_state(reg, instant) if gesture in TOWARDS_CONTACT else None,
                         linked_refusal=bool(on_the_list(own_identities(inv), not_contacted(reg))))
     if refusal:
-        raise BeeError(f"{args.invitation} : " + " ; ".join(refusal))
+        raise BeeError(f"{args.invitation}: " + "; ".join(refusal))
     if gesture == "sent" and (stale_one := invitation_debate_refusal(reg, inv, closed=True)):  # ruche-0050 : un fait, signalé
-        print(f"⚠ {args.invitation} : {stale_one[0]}. L'envoi se consigne quand même (c'est un fait), et il sera signalé (bee validate, "
+        print(f"⚠ {args.invitation}: {stale_one[0]}. The sending is recorded anyway (it is a fact), and it will be flagged (bee validate, "
               "bee swarm).")
     identifier = identifier_of(inv)
     also = {}
@@ -8581,7 +8581,7 @@ def cmd_invitation(args):
                 also_withdrawn = withdraw({**x, "withdrawal": {**removal_block(u, instant), "cause": cause}, "status": "withdrawn"}, cause)
                 problem_text = gesture_refusal(reg, x, also_withdrawn, "withdrawal", u, instant, linked_refusal=True)
                 if problem_text:
-                    raise BeeError(f"{iid} : " + " ; ".join(problem_text))
+                    raise BeeError(f"{iid}: " + "; ".join(problem_text))
                 also[iid] = also_withdrawn
                 register(x)
         write_invitation(reg.root / PATH_NO_CONTACT, {"fingerprints": list_of})
@@ -8589,33 +8589,33 @@ def cmd_invitation(args):
     for iid, x in also.items():
         write_invitation(reg.invitations[iid][0], x)
     timeout_seconds = growth_config(reg)["reminder_delay_days"]
-    suite = {"guardian_approval": "l'accord du conseil.",
-             "council_approval": f"feu vert : une place est réservée dans le plafond jusqu'au {en_iso(instant + WEEK)}. Dans cet "
-                               "ordre : (1) le conseil fusionne cette PR ; (2) un humain du conseil envoie lui-même le message exact "
-                               f"(champ message) par le canal {_clean(block_of(inv, 'person').get('channel'))} ; (3) puis il le "
-                               f"consigne : bee invitation record-sent {args.invitation} (jamais refusé : c'est un fait).",
-             "sent": f"bee n'a rien envoyé, il consigne votre envoi. Une relance au plus, pas avant {timeout_seconds} jours.",
-             "reminder": f"une réponse ; sans réponse {timeout_seconds} jours après, record-answer --value no_answer.",
-             "renewal": f"feu vert renouvelé : une place est réservée jusqu'au {en_iso(instant + WEEK)} ; même ordre "
-                               f"(fusion, envoi par un humain du conseil, puis bee invitation record-sent {args.invitation}).",
-             "answer": (f"rien : {_clean(identifier)} ne sera plus jamais contacté(e)" + (
-                         f" ; son dossier est retiré du fichier (« {REMOVED[cause]} »), et la liste ne garde que des empreintes. "
-                         "L'historique git garde l'ancien contenu : seul un effacement de l'historique, hors de portée de la ruche, "
-                         "l'en ôterait." if cause else ".")) if getattr(args, "value", None) != "accepted"
-                        else "rien : la personne a accepté ; la suite se fait selon ce qui lui était demandé.",
-             "set_aside": "rien : l'invitation est close.",
-             "withdrawal": f"rien : le dossier de la personne est retiré du fichier (« {REMOVED.get(cause, '')} »)"
-                        + (" et elle ne sera plus contactée (empreintes sur la liste)" if invitation_state(inv) != "accepted" else "")
-                        + ". L'historique git garde l'ancien contenu : seul un effacement de l'historique, hors de portée de la "
-                          "ruche, l'en ôterait."}[gesture]
-    print(f"✓ {args.invitation} : {gesture} consigné (status : {new['status']}). Suite : {suite}")
+    suite = {"guardian_approval": "the council's approval.",
+             "council_approval": f"green light: a place is reserved in the cap until {en_iso(instant + WEEK)}. In this "
+                               "order: (1) the council merges this PR; (2) a human of the council personally sends the exact message "
+                               f"(the message field) through the channel {_clean(block_of(inv, 'person').get('channel'))}; (3) then they "
+                               f"record it: bee invitation record-sent {args.invitation} (never refused: it is a fact).",
+             "sent": f"bee sent nothing, it records your sending. One reminder at most, not before {timeout_seconds} days.",
+             "reminder": f"an answer; with no answer {timeout_seconds} days later, record-answer --value no_answer.",
+             "renewal": f"green light renewed: a place is reserved until {en_iso(instant + WEEK)}; same order "
+                               f"(merge, sending by a human of the council, then bee invitation record-sent {args.invitation}).",
+             "answer": (f"nothing: {_clean(identifier)} will never be contacted again" + (
+                         f"; their file is withdrawn from the records (« {REMOVED[cause]} »), and the list keeps only fingerprints. "
+                         "The git history keeps the old content: only an erasure of the history, beyond the hive's reach, "
+                         "would remove it." if cause else ".")) if getattr(args, "value", None) != "accepted"
+                        else "nothing: the person accepted; what follows depends on what they were asked.",
+             "set_aside": "nothing: the invitation is closed.",
+             "withdrawal": f"nothing: the person's file is withdrawn from the records (« {REMOVED.get(cause, '')} »)"
+                        + (" and they will no longer be contacted (fingerprints on the list)" if invitation_state(inv) != "accepted" else "")
+                        + ". The git history keeps the old content: only an erasure of the history, beyond the hive's reach, "
+                          "would remove it."}[gesture]
+    print(f"✓ {args.invitation}: {gesture} recorded (status: {new['status']}). Next: {suite}")
     if gesture in ("guardian_approval", "council_approval"):
         print("  " + "\n  ".join(identity_lines(inv) + invitation_debate_lines(reg, inv)))
     if also:
-        print(f"  Retirées aussi, car une identité de la même personne y figure : {', '.join(also)} (« {REMOVED[cause]} »).")
+        print(f"  Also withdrawn, because an identity of the same person appears in them: {', '.join(also)} (« {REMOVED[cause]} »).")
     if gesture in NATURES_INVITATION and NATURES_INVITATION[gesture] not in SELF_SERVICE:
-        print(f"  Publiez : bee publish --title '{gesture} {args.invitation}' ; cette PR n'est pas en libre-service, le conseil la "
-              "fusionne lui-même.")
+        print(f"  Publish: bee publish --title '{gesture} {args.invitation}'; this PR is not self-service, the council merges it "
+              "itself.")
     else:
         print(f"  {_publish(args.invitation, gesture)}")
     return 0
@@ -8627,40 +8627,40 @@ def cmd_remove_data(args):
     reg, u = Registry(args.registry), args.user
     reg.require_spelling(u)
     if u not in reg.council:
-        raise BeeError(f"{u} n'est pas du conseil : seul le conseil consigne un retrait demandé")
+        raise BeeError(f"{u} is not on the council: only the council records a requested removal")
     try:
         text = sys.stdin.read() if args.identifiers_from == "-" else pathlib.Path(args.identifiers_from).read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
-        raise BeeError("--identifiers-from : un fichier lisible, ou - (l'entrée standard)") from None
+        raise BeeError("--identifiers-from: a readable file, or - (standard input)") from None
     names, protected = [n.strip(PUNCTUATION) for n in text.splitlines() if n.strip()], protected_fingerprints(reg)
     for k, name in enumerate(names, 1):
         if not passage_keys(name) or any(person_key(c).replace(":", "") in ("", "site") for c in passage_keys(name)):
-            raise BeeError(f"identifiant n° {k} : vide ou sans nom (une forge, un site, un pseudo ou un nom)")
+            raise BeeError(f"identifier no. {k}: empty or without a name (a forge, a site, a login or a name)")
         if any(passage_fingerprints(x) & protected for x in [name, *(m.strip(PUNCTUATION) for m in name.split())]):
-            raise BeeError(f"identifiant n° {k} : un pseudo de la ruche, un projet ou un numéro (seul ou dans la phrase) : jamais retiré")
+            raise BeeError(f"identifier no. {k}: a hive login, a project or a number (alone or in the sentence): never removed")
     entry = {"at": en_iso(now_instant()), "by": u, "request": {"channel": args.channel, "at": args.requested_on, **(
         {"reference": args.reference} if args.reference else {})}, **({"no_contact": True} if args.no_contact else {}), "passages": 0,
               "fingerprints": sorted(set().union(*map(passage_fingerprints, names)))}
     data = {"removals": [*((reg.removals or {}).get("removals") or []), entry]}
     if problem_text := next(("/".join(map(str, e.absolute_path)) for e in reg.schema("removals").iter_errors(data)), None):
-        raise BeeError(f"retrait refusé : {problem_text} (voir bee remove-data --help)")
+        raise BeeError(f"removal refused: {problem_text} (see bee remove-data --help)")
     if problem_text := request_problem(reg, entry):
-        raise BeeError(f"retrait refusé : {problem_text}")
+        raise BeeError(f"removal refused: {problem_text}")
     results, comments = sweep(reg, entry)
     by_file = [r[3] for r in results.values()] + [{"#": seen_items} for c in {c for c, _ in comments} for x in yaml_comments(
         (reg.root / c).read_text(encoding="utf-8")) if removed_passages(x, set(entry["fingerprints"]), seen_items := []) != x]  # ruche-0116
     entry["passages"] = sum(len(v) for t in by_file for v in t.values())
     if problem_text := passages_problem(reg, by_file, entry, data["removals"][:-1], now_instant()):
-        raise BeeError(f"retrait refusé : {problem_text}")
+        raise BeeError(f"removal refused: {problem_text}")
     if not entry["passages"] and not args.no_contact:
-        raise BeeError("rien ne nomme ces identifiants : il n'y a rien à retirer, ni à consigner")
+        raise BeeError("nothing names these identifiers: there is nothing to remove, nor to record")
     for path, (_, _, _, found_items) in results.items():  # où, jamais le texte : le fichier, le champ, le n° du mot
-        print(f"  {path} : " + " ; ".join(f"{'/'.join(map(str, place_of))} mot(s) {', '.join(str(p[0]) for p in v)}" for place_of, v in found_items.items()))
+        print(f"  {path}: " + "; ".join(f"{'/'.join(map(str, place_of))} word(s) {', '.join(str(p[0]) for p in v)}" for place_of, v in found_items.items()))
     for path, line_text in comments:
-        print(f"  ⚠ {path}:{line_text} : un commentaire la nomme ; bee n'y touche pas : le conseil le corrige à la main "
-              f"dans cette PR (il le supprime, ou y écrit {REMOVAL_MARKER} à la place de chaque passage)")
+        print(f"  ⚠ {path}:{line_text}: a comment names them; bee does not touch it: the council corrects it by hand "
+              f"in this PR (it deletes it, or writes {REMOVAL_MARKER} there in place of each passage)")
     if not args.confirm:
-        print("À blanc : rien n'est écrit. Relisez les fichiers et les invitations ci-dessus, puis relancez avec --confirm.")
+        print("Dry run: nothing is written. Reread the files and invitations above, then run again with --confirm.")
         return 0
     for path, (text, before, after, _) in results.items():
         (reg.root / path).write_text(text_after(path, text, before, after, set(entry["fingerprints"])), encoding="utf-8")
@@ -8668,9 +8668,9 @@ def cmd_remove_data(args):
         list_of = list(fingerprints_of(reg.do_not_contact) or [])
         write_invitation(reg.root / PATH_NO_CONTACT, {"fingerprints": list_of + [e for e in entry["fingerprints"] if e not in list_of]})
     (reg.root / PATH_REMOVALS).write_text(_faithful_render(data, PATH_REMOVALS), encoding="utf-8")
-    print(f"✓ Retrait demandé consigné dans {PATH_REMOVALS}, par empreintes ; la liste de non-contact "
-          + ("reçoit ces empreintes." if args.no_contact else "n'est pas touchée.") + " L'historique git garde l'ancien contenu (le diff de "
-          "la PR le montre au conseil) ; il n'est pas réécrit.\n  Publiez par une PR du conseil (pas bee publish), sans nommer la personne.")
+    print(f"✓ Requested removal recorded in {PATH_REMOVALS}, by fingerprints; the do-not-contact list "
+          + ("receives these fingerprints." if args.no_contact else "is not touched.") + " The git history keeps the old content (the "
+          "PR's diff shows it to the council); it is not rewritten.\n  Publish through a council PR (not bee publish), without naming the person.")
     return 0
 
 
@@ -8680,22 +8680,22 @@ def cmd_incident(args):
     reg, path, u = Registry(args.registry), "governance/incidents.yaml", args.user
     list_of = reg.incidents.get("incidents") if isinstance(reg.incidents, dict) else None if (reg.root / path).exists() else []
     if u not in guardians_in_office(reg) | reg.council:
-        raise BeeError(f"{u} n'est ni un gardien en fonction ni du conseil : signalez-leur l'écart (R13)")
+        raise BeeError(f"{u} is neither a guardian in office nor on the council: report the deviation to them (R13)")
     if not isinstance(list_of, list):
-        raise BeeError(f"{path} illisible : le conseil le répare d'abord")
+        raise BeeError(f"{path} unreadable: the council repairs it first")
     ident = next_incident(list_of)
-    if problem_text := incident_title_refused(args.title) or (None if ident else "INC-9999 est le dernier numéro : le conseil décide de la suite"):
+    if problem_text := incident_title_refused(args.title) or (None if ident else "INC-9999 is the last number: the council decides what comes next"):
         raise BeeError(problem_text)
     # La réécriture canonique (la seule forme que la porte accepte d'un gardien) perd les commentaires du fichier : on le dit.
     text = (reg.root / path).read_text(encoding="utf-8") if (reg.root / path).exists() else ""
     comments = text != invitation_render({"incidents": list_of}, path) and any(
         l.lstrip().startswith("#") or " #" in l for l in text.splitlines())
     write_invitation(reg.root / path, {"incidents": list_of + [{"id": ident, "title": args.title, "opened_at": en_iso(now_instant())}]})
-    print(f"✓ {ident} inscrit dans {path}. Publiez-le par une PR ordinaire (bee publish ne l'envoie pas) : le frein s'applique dès que "
-          f"le conseil l'a fusionnée ; alors, ce qui passe : {brake_state(Registry(args.registry))['what_passes']}.")
+    print(f"✓ {ident} entered in {path}. Publish it through an ordinary PR (bee publish does not send it): the brake applies as soon as "
+          f"the council has merged it; then, what passes: {brake_state(Registry(args.registry))['what_passes']}.")
     if comments:
-        print(f"⚠ Les commentaires de {path} sont perdus : bee le réécrit sous sa forme canonique. Dites-le au conseil dans la PR ; "
-              "ses notes se gardent dans les champs des incidents (titre, issue), pas en commentaire.")
+        print(f"⚠ The comments of {path} are lost: bee rewrites it in its canonical form. Tell the council in the PR; "
+              "its notes are kept in the incidents' fields (title, outcome), not in comments.")
     return 0
 
 
@@ -8706,9 +8706,9 @@ def cmd_levels(args):
         print(json.dumps(levels, ensure_ascii=False, indent=2))
         return 0
     if not levels:
-        print("Aucun membre.")
+        print("No member.")
         return 0
-    show_table(["MEMBRE", "NIVEAU", "INTÉGRÉES", "RELECTURES", "POIDS DE VOTE"],
+    show_table(["MEMBER", "LEVEL", "INTEGRATED", "REVIEWS", "VOTE WEIGHT"],
                      [[p, n["level"], n["integrated"], n["reviews"], VOTE_WEIGHT[n["level"]]] for p, n in sorted(levels.items())])
     return 0
 
@@ -8730,9 +8730,9 @@ def cmd_ranking(args):
         print(json.dumps(lines, ensure_ascii=False, indent=2))
         return 0
     if not lines:
-        print("Aucune contribution.")
+        print("No contribution.")
         return 0
-    show_table(["SCORE", "CONTRIBUTION", "STATUT", "AUTEUR", "GAIN", "LIGNES", "CONFIANCE", "VOTE"],
+    show_table(["SCORE", "CONTRIBUTION", "STATUS", "AUTHOR", "GAIN", "LINES", "CONFIDENCE", "VOTE"],
                      [[f"{l['S']:.4f}" if l["S"] is not None else "—", l["id"], l["status"], l["author"],
                        f"{100 * l['G']:+.1f}%" if l.get("G") is not None else "—", l.get("L", "—"),
                        f"{l['C']:.2f}" if l.get("C") is not None else "—", f"{l['V']:.2f}" if l.get("V") is not None else "—"] for l in lines])
