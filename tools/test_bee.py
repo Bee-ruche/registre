@@ -12767,7 +12767,9 @@ class TestVerificationRuche0020(BaseReviewRuche0020):
         self.assertEqual(self.debate()["arguments"][0]["redacted_for"], "I-0001")
         self.valid_one()
         text = " ".join(l for l in (ROOT / "RULES.md").read_text(encoding="utf-8").splitlines() if l.startswith("| R12 |"))
-        self.assertIn("redacted_for", text)
+        # What R12 must say: the council redacts, for an invitation it names (commandment 10). The key bee writes is redacted_for,
+        # asserted on the debate above; RULES.md quotes the pre-switch key name until its own translation, which no test pins.
+        self.assertIn("le conseil caviarde, pour une invitation refusée ou retirée qu'il nomme", text)
         self.assertIn("rien ne se caviarde", (ROOT / "docs/agora.md").read_text(encoding="utf-8"))
 
     # --- D1b : la question et la synthèse ---
@@ -15578,6 +15580,7 @@ class TestBilingualReaders(BaseAgora):
         """The script fails on a French literal compared with text and not classified, and on a missing English form."""
         fake = pathlib.Path(self.temp.name) / "faux"
         (fake / "outils/juge").mkdir(parents=True)
+        (fake / "tools").mkdir()  # the judge stays in outils/juge/ (ruche-0153), the tool moves
         (fake / "tools/site_bee.py").write_text("", encoding="utf-8")
         (fake / "tools/bee.py").write_text(
             'import re\nA_REMPLIR = "À REMPLIR"\nTITRES = {"Clé à part": 1}\n\n\ndef f(ligne):\n'
@@ -16053,7 +16056,7 @@ class TestFreeTextsRuche0029(BaseReviewRuche0020):
         v = bee.read_yaml(self.path)["verdict"]
         self.assertEqual((v["ci"], v["changed_lines"]), ("red", 10), "le verdict n'est jamais perdu")
         self.assertEqual(v["instructions"]["instructions_n6"], INSTRUCTIONS_N6["instructions_n6"], "une clé honnête reste")
-        self.assertEqual(sorted(v["degradations"]), ["refused_key_0", "memoire_max_ko"])
+        self.assertEqual(sorted(v["degradations"]), ["memoire_max_ko", "refused_key_0"])  # in the English names' order
         self.assertIn("<U+202E><U+200B><U+001B>[31m ::warning::PIEGE", v["failed_step"])
         for place_of, text in bee.texts_by(v):
             self.assertFalse([c for c in text if bee.forbidden_outgoing_character(c) or c == "\n"], (place_of, text))
@@ -17796,6 +17799,10 @@ class TestVerdictAndMarkBounds(BaseTest):
                       self.bee("note", "miniz-0099", "--user", "bruno", "--text", "y" * 1500)[1])
         self.assertEqual(path.read_bytes(), before, "nothing written")
         cid = TestRegistry.prepare_green_contribution(self, "bidji29", ("bruno", "chloe"))  # reservation, submission, verdict, reviews
+        # Back at its mark (ruche-0145): fill_in stops up to one note under the mark, and these writes crossed what was left of it in
+        # French (by 20 bytes) but stop about 390 bytes under it in English (shorter keys, another remainder): small notes close the
+        # gap, so the append below meets the mark again. A fixture's sizes, not a behaviour: no bound of bee changed.
+        fill_in(self, path, "notes", lambda i: {"by": "alice", "at": "2026-10-27T12:00:00Z", "text": "x"}, bee.write_yaml)
         code, text = self.bee("take", "miniz-0099", "--user", "alice", "--parallel")
         self.assertIn(bee.marker_problem("tasks/miniz/miniz-0099.yaml"), text)
         self.assertEqual(self.bee("check-acceptance", cid)[0], 0)
