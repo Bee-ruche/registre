@@ -22496,9 +22496,6 @@ class TestVerdictMetricRuche0145(BaseTest):
             self.assertEqual(code, 0, text)
 
 
-if __name__ == "__main__":
-    sys.exit(principal_tests(sys.modules[__name__], __file__, sys.argv[1:]))
-
 
 class TestCheckMessagesRuche0146(unittest.TestCase):
     """tools/migration/check_messages.py (ruche-0146, ruche-0147): P1 restricted to message literals, on a toy file."""
@@ -22603,3 +22600,31 @@ def f(n, path):
         self.assertIn("does not parse", self.cm.check(self.repo, "HEAD", None, ["m.py"], False)[0][0])
         (self.repo / "m.py").unlink()
         self.assertIn("unreadable", self.cm.check(self.repo, "HEAD", None, ["m.py"], False)[0][0])
+
+    def test_prose_names_fstrings_with_shown_holes_and_reads_a_list(self):
+        base = 'def g(s, a, b):\n    return s.split(" | "), f"{a} | {b} introuvable", f"{a} manque"\n'
+        (self.repo / "m.py").write_text(base, encoding="utf-8")
+        subprocess.run(["git", "-C", str(self.repo), "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qam", "g"], check=True)
+        (self.repo / "m.py").write_text(base.replace('f"{a} | {b} introuvable"', 'f"{a} / {b} not found"'), encoding="utf-8")
+        problems, _ = self.cm.check(self.repo, "HEAD", None, ["m.py"], False)
+        self.assertIn("compares text against", problems[0])  # a compared part, even a lone sign, is never waived silently
+        self.assertEqual(self.cm.check(self.repo, "HEAD", None, ["m.py"], False, ("{…} | {…} introuvable",))[0], [])
+        (self.repo / "m.py").write_text(base.replace('f"{a} manque"', 'f"{a}"'), encoding="utf-8")
+        self.assertIn("name literal", self.cm.check(self.repo, "HEAD", None, ["m.py"], False)[0][0])
+        listed = self.repo / "prose.json"
+        listed.write_text(json.dumps(["{…} manque"]), encoding="utf-8")
+        with mock.patch.object(self.cm, "ROOT", self.repo), contextlib.redirect_stdout(io.StringIO()), \
+                contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(self.cm.main(["--base", "HEAD", "--prose-file", str(listed), "m.py"]), 0)
+            self.assertEqual(self.cm.main(["--base", "HEAD", "m.py"]), 1)
+            for bad in ("{", '{"a": 1}', None):
+                if bad is None:
+                    listed.unlink()
+                else:
+                    listed.write_text(bad, encoding="utf-8")
+                with self.assertRaises(SystemExit):
+                    self.cm.main(["--base", "HEAD", "--prose-file", str(listed), "m.py"])
+
+
+if __name__ == "__main__":
+    sys.exit(principal_tests(sys.modules[__name__], __file__, sys.argv[1:]))
