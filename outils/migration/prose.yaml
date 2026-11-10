@@ -104,7 +104,7 @@ files:
       "cadre_donnees_tache -> task_data_frame": 1
       "canal -> channel": 3
       "candidat -> candidate": 1
-      "cap -> balance": 12
+      "cap -> balance": 13
       "caractere_interdit -> forbidden_character": 1
       "caractere_sortant_interdit -> forbidden_outgoing_character": 2
       "caviarde_pour -> redacted_for": 3
@@ -134,6 +134,7 @@ files:
       "consigner-reponse -> record-answer": 1
       "conteste -> contested_by": 2
       "contexte -> context": 11
+      "contre -> against": 2
       "cours -> progress": 2
       "cree_le -> created_on": 3
       "cree_par -> created_by": 2
@@ -176,6 +177,7 @@ files:
       "etat_frein -> brake_state": 3
       "executions -> runs": 2
       "expiration_jours -> expiry_days": 2
+      "fait -> fact": 2
       "fenetre_jours -> window_days": 1
       "fil_de -> thread_of": 1
       "fin_locale -> local_end": 1
@@ -244,7 +246,7 @@ files:
       "montrer_ligne -> show_line": 1
       "motif -> reason": 5
       "ne-plus-contacter -> do-not-contact": 1
-      "noeud -> node": 2
+      "noeud -> node": 3
       "nom -> name": 5
       "non_teste -> untested": 3
       "noter -> note": 5
@@ -270,6 +272,7 @@ files:
       "poids_max_par_utilisateur_et_jour -> max_weight_per_user_per_day": 2
       "poste -> area": 2
       "postes -> areas": 2
+      "pour -> for": 2
       "pourquoi -> why": 1
       "prendre -> take": 10
       "preparer -> prepare": 3
@@ -298,7 +301,7 @@ files:
       "raisons_course -> race_causes": 1
       "raisons_r3 -> r3_causes": 3
       "reference_decodee -> decoded_reference": 1
-      "refus -> refusal": 4
+      "refus -> refusal": 5
       "refus_geste -> gesture_refusal": 2
       "relecteur -> reviewer": 1
       "relecture -> review": 2
@@ -381,8 +384,10 @@ files:
       "voter -> vote": 3
     beside_french:
       - "- [par]"
+      - "--position [pour]"
       - "[avant]"
       - "[chemins] touchés"
+      - "[contre]"
       - "[declare] n"
       - "[depuis]"
       - "[débats] ouverts"
@@ -393,6 +398,7 @@ files:
       - "[mesure] ou"
       - "[motif] n"
       - "[par]"
+      - "[pour]"
       - "[propositions de règle]"
       - "[publier] une"
       - "[refus] ou"
@@ -423,6 +429,7 @@ files:
       - "en [relecture]"
       - "et [doutes] déclarés"
       - "invitation [retirer] l"
+      - "ou [fait]"
       - "ou [proposées]"
       - "ou [relecture]"
       - "retiré [demande]"
@@ -455,7 +462,7 @@ files:
       "[gardiens]": 1
       "[gestes] incohérents": 1
       "[inscription] en": 1
-      "[le]": 4
+      "[le]": 5
       "[le] commit": 1
       "[le] compte": 1
       "[le] conseil": 1
@@ -545,7 +552,7 @@ files:
       "avis": 5
       "canal": 6
       "candidat": 1
-      "cap": 5
+      "cap": 4
       "caviardage": 2
       "changement": 9
       "cible": 2
@@ -558,7 +565,7 @@ files:
       "conseil": 140
       "conteste": 1
       "contexte": 3
-      "contre": 6
+      "contre": 4
       "courriel": 2
       "debat": 1
       "demande": 18
@@ -568,7 +575,7 @@ files:
       "encadrement": 5
       "enfants": 1
       "envoi": 23
-      "fait": 24
+      "fait": 22
       "fichier": 47
       "fichiers": 15
       "frein": 7
@@ -580,7 +587,7 @@ files:
       "identifiant": 14
       "inscription": 15
       "juge": 10
-      "le": 439
+      "le": 438
       "levees": 2
       "lies": 2
       "lignes": 8
@@ -589,7 +596,6 @@ files:
       "mesures": 1
       "motif": 7
       "niveau": 8
-      "noeud": 1
       "nom": 41
       "optimisation": 5
       "optimiser": 2
@@ -606,7 +612,7 @@ files:
       "poids": 2
       "poste": 7
       "postes": 1
-      "pour": 69
+      "pour": 67
       "pourquoi": 8
       "projet": 29
       "projets": 1
@@ -616,7 +622,7 @@ files:
       "pseudo": 12
       "raison": 1
       "raisons": 1
-      "refus": 17
+      "refus": 16
       "registre": 35
       "relance": 12
       "relecteur": 3
@@ -661,17 +667,23 @@ files:
       "argumenter -> argue": 1
       "cap -> balance": 2
       "contexte -> context": 2
+      "contre -> against": 1
       "debats -> debates": 3
       "debattre -> debate": 3
       "en parallèle -> parallel": 1
       "essaim -> swarm": 1
+      "fait -> fact": 1
       "outils -> tools": 6
       "ouvrir -> open": 1
+      "pour -> for": 1
       "prendre -> take": 3
       "projets -> projects": 3
+      "pseudo -> login": 1
       "taches -> tasks": 8
       "voir -> show": 1
     beside_french:
+      - "--position [pour]"
+      - "[contre]"
       - "[en parallèle]"
     kept:
       "Clos [le]": 1
@@ -709,11 +721,11 @@ files:
       "compilateur": 1
       "concurrentes": 1
       "conseil": 5
-      "contre": 2
+      "contre": 1
       "depuis": 1
       "doublon": 1
       "essaim": 1
-      "fait": 4
+      "fait": 3
       "fichier": 1
       "gardien": 6
       "identique": 2
@@ -736,12 +748,12 @@ files:
       "participer": 1
       "pistes": 1
       "poste": 6
-      "pour": 19
+      "pour": 18
       "pourquoi": 1
       "projet": 11
       "projets": 3
       "proposition": 2
-      "pseudo": 14
+      "pseudo": 13
       "refus": 3
       "registre": 9
       "relecture": 6

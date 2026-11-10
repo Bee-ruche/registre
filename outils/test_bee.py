@@ -23816,6 +23816,10 @@ class TestEnglishNamesStep1d(unittest.TestCase):
                 problems = check_migration.prose(self.names, files, {"tools/bee.py": text.encode()}, allow(honest))[0]
                 self.assertTrue(any(flagged in x for x in problems), problems)
                 self.assertEqual(check_migration.prose(self.names, files, {"tools/bee.py": text.encode()}, allow(text))[0], [])  # approved by hand
+        for text, word in (('g("bee x --cause refus (R13)")', "refus"), ('g("aucun réglage (bee.yaml, clé cap)")', "cap"),  # review of c568161
+                           ('g("par son champ noeud")', "noeud"), ('g("--position pour|contre|fait")', "contre"), ('g("la valeur ouverte")', "ouverte")):
+            with self.subTest(names_data=text):
+                self.assertIn((word, True), [(c.split("[")[1].split("]")[0], n) for c, n, _ in check_migration.kept_french(self.names, text)])
 
     def test_change_10_renames_the_commands_in_the_code_only(self):
         self.assertEqual(self.carte.commands(CHANGE_10_0153), CHANGE_10_0153_EN)

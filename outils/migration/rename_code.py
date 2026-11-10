@@ -93,8 +93,9 @@ class CodeMap:
         self.displayed = self.kept(next((c for c in sorted(names.code) if re.fullmatch(r"[^/]+/bee\.py", c)), ""))[1]  # bee's kept words
         self.phrases, self.keeping = re.compile(r"(?<![\w-])(?:" + "|".join(map(re.escape, phrases)) + r")(?![\w-])"), set()  # keeping: the file's kept
         given = lambda a: {self.named.get(a), self.base_tokens.get(a), self.ids.get(a)} | self.hand.get(a, set())  # noqa: E731 (an English the map gives)
-        wrong = [f"{a} -> {b}" for _, _, t, _ in self.out_scopes for a, b in t.items() if b not in given(a) and not (  # or its first word
-            (w := re.match(r"([\w-]+)(\W.*)", a, re.S)) and any(e and b == e + w[2] for e in given(w[1])))]  # « demande (défaut) »
+        phrase = lambda a, b: len(x := re.split(r"([\w-]+)", a)) == len(y := re.split(r"([\w-]+)", b)) and x != y and all(  # noqa: E731
+            u == v or i % 2 and v in given(u) for i, (u, v) in enumerate(zip(x, y)))  # a phrase whose changed words the map renames so
+        wrong = [f"{a} -> {b}" for _, _, t, _ in self.out_scopes for a, b in t.items() if b not in given(a) and not phrase(a, b)]  # « clé cap »
         if wrong:
             raise rename.Problem(f"identifiers.yaml, renamed_in_scopes: not the map's: {', '.join(wrong)}")
 

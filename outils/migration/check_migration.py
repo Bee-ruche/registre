@@ -621,8 +621,8 @@ def kept_french(names, new):
     """[(context, named, line)]: each whole word of a string of the generated text (docstrings aside) that is a French name of the map
     (review of 6efd815).
     named: the word stands where a message names data (« « statut » », `statut`, right before an interpolation « conteste {…} », at
-    a label's start after one « {lieu} : declare … », before « : » at a text's start, or in a list with an English name of the map
-    « proposition, tache ou no_follow_up »): its context is approved one by one (kept). Elsewhere it is French prose, approved word by
+    a label's start after one « {lieu} : declare … », before « : » at a text's start, in a list with an English name of the map
+    « proposition, tache ou no_follow_up », in « a|b|c », after « clé », « champ », « la valeur » or an option « --cause refus »): its context is approved one by one (kept). Elsewhere it is French prose, approved word by
     word (prose_words). Reads the map's data side and the generated text's syntax, not the renamer."""
     words, m = french_names(names), names.m
     english = {b for f in m["families"].values() for b in (f.get("keys") or {}).values()} | {
@@ -650,7 +650,9 @@ def kept_french(names, new):
                 after = p[i + 2] if i + 2 < len(p) and re.fullmatch(r"[ \t]+|['’]", p[i + 1]) else ""
                 named = bool(p[i - 1].endswith(("« ", "`")) and p[i + 1].startswith((" »", "`")) or interp_after and i == len(p) - 2 and p[i + 1] == " "
                          or interp_before and i == 1 and re.fullmatch(r"\s*:\s+", p[0]) or i == 1 and p[0].strip() in ("", "(") and p[2].startswith(" : ")
-                         or i in listed)
+                         or i in listed or p[i - 1] == "|" or i + 1 < len(p) and p[i + 1] == "|"  # in « a|b|c » (review of c568161)
+                         or i >= 3 and p[i - 1] == " " and (p[i - 2] in ("clé", "champ") or p[i - 2].startswith("--"))  # « clé cap », « --cause refus »
+                         or i >= 5 and p[i - 1] == p[i - 3] == " " and (p[i - 4], p[i - 2]) == ("la", "valeur"))  # « la valeur ouverte »
                 out.append((f"{prev} [{p[i]}] {after}".strip(), named, part.lineno))
     return out
 

@@ -4188,6 +4188,36 @@ renamed_in_scopes:
              'rôle dont lire le nœud (optimiser, relire, mesurer, debattre, garder, proposer) ; ',
              'demande (défaut) : la personne le demande ; refus ou sans_reponse : une autre invitation de la même ']
   why: 'the values an option takes, listed in its help (review of 6efd815): areas, roles, causes'
+- files: outils/bee.py
+  scopes: [verifier_invitations_registre]
+  tokens: {refus: refusal}
+  literals: [' --raison refus (commandement 10, R13)']
+  why: 'the value of --cause a message tells the user to run (review of c568161)'
+- files: outils/bee.py
+  scopes: [voir_debat]
+  tokens: {pour: for, contre: against, fait: fact}
+  literals: [' --utilisateur <pseudo> --position pour|contre|question|fait ']
+  why: 'the values of --position a message offers (review of c568161)'
+- files: outils/bee.py
+  scopes: [construire_analyseur]
+  tokens: {pour: for, contre: against, fait: fact}
+  literals: ['pour, contre, question, ou fait (sources obligatoires)']
+  why: 'the values of --position its help lists (review of c568161)'
+- files: outils/site_bee.py
+  scopes: [page_debat]
+  tokens: {pour: for, contre: against, fait: fact, pseudo: login}
+  literals: ['--utilisateur &lt;pseudo&gt; --position pour|contre|question|fait --texte "…" [--source …]</pre>']
+  why: 'the values of --position the site''s command shows (review of c568161)'
+- files: outils/bee.py
+  scopes: [cmd_cap]
+  tokens: {'clé cap': 'clé balance'}
+  literals: ['Aucun cap défini (bee.yaml, clé cap). Voir docs/cap.md.']
+  why: 'the key bee.yaml holds (review of c568161); « Aucun cap défini » stays prose'
+- files: outils/bee.py
+  scopes: [verifier_arbre]
+  tokens: {'champ noeud': 'champ node'}
+  literals: ['(docs/arbre.md), ou rattachez la tâche à un nœud existant par son champ noeud']
+  why: 'the field a task names its node with (review of c568161)'
 - files: outils/test_bee.py
   scopes: [test_5_qui_ne_peut_pas_signaler_et_ce_que_la_porte_refuse]
   tokens: {titre: title}
