@@ -10596,7 +10596,7 @@ class TestPullRequestsInvitations(BaseInvitations):
             "mot pour mot, la mention de R13": MESSAGE_INVITATION + "\n\n" + mention.replace("agents", "аgents"),
             "an email address : aucune donnée personnelle": "Écrivez-moi à jean.dupont@example.org.\n\n" + mention,
             "a phone number : aucune donnée personnelle": "Son numéro : +33 6 12 34 56 78.\n\n" + mention,
-            "message de 2": "x" * 2000 + "\n\n" + mention,
+            "message: 2": "x" * 2000 + "\n\n" + mention,
         }
         for chunk, message in case_of.items():
             with self.subTest(chunk=chunk):
