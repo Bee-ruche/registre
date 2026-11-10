@@ -29,15 +29,15 @@ context: 'R15 (docs/devolution.md, section 1): every appointed privilege (guaran
   (gouvernance/comptes-agents.yaml: an appointment date, an end date, renewal by a human council member) and to the
   Confirmé level (how long it lasts without new verified work, and how it is withdrawn). If this outgrows L, split it.'
 files:
-- outils/bee.py
-- outils/test_bee.py
+- tools/bee.py
+- tools/test_bee.py
 - bee.yaml
 - schemas/
-- gouvernance/gardiens.yaml
-- gouvernance/garants.yaml
-- gouvernance/comptes-agents.yaml
+- governance/guardians.yaml
+- governance/guarantors.yaml
+- governance/agent-accounts.yaml
 - docs/devolution.md
-- docs/garants.md
+- docs/guarantors.md
 reach: 0.7
 metric: null
 depends_on:

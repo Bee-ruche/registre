@@ -19,7 +19,7 @@ context: >
   l'état de chaque branche, et la date de sa dernière activité (dormante au-delà du seuil) ; (4) un champ
   liens facultatif sur une tâche (d'autres projets ou tâches qu'elle sert), contrôlé (identifiants qui
   existent), montré par bee voir et bee contexte.
-files: [outils/bee.py, outils/test_bee.py, schemas/, docs/nouveau-projet.md, docs/croissance.md, outils/site_bee.py]
+files: [tools/bee.py, tools/test_bee.py, schemas/, docs/new-project.md, docs/growth.md, tools/site_bee.py]
 reach: 0.6
 metric: null
 acceptance_criteria:
@@ -27,7 +27,7 @@ acceptance_criteria:
   - "test : un projet sans activité depuis le seuil est montré dormant ; une tâche le réveille"
   - "test : un lien vers un projet ou une tâche inexistante est refusé par bee valider"
   - "revue adverse indépendante jointe (intégration automatique)"
-out_of_scope: [COMMANDEMENTS.md, l'ouverture effective d'un projet (bzip2, giflib), les ruches filles]
+out_of_scope: [COMMANDMENTS.md, l'ouverture effective d'un projet (bzip2, giflib), les ruches filles]
 depends_on: []
 node: projects/ruche
 status: open

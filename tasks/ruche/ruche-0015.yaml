@@ -26,8 +26,8 @@ context: 'ruche-0010 a écrit la racine et les paliers des rôles, des catégori
 
   '
 files:
-- arbre/projets/parsing-serialisation/libyaml/
-- taches/libyaml/
+- tree/projects/parsing-serialization/libyaml/
+- tasks/libyaml/
 reach: 0.8
 metric: null
 acceptance_criteria:
@@ -41,7 +41,7 @@ acceptance_criteria:
 out_of_scope:
 - le code de libyamlBee
 - les autres branches de l'arbre
-- outils/
+- tools/
 depends_on:
 - ruche-0010
 node: projects/parsing-serialization/libyaml

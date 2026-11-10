@@ -14,10 +14,10 @@ context: 'Follow-up of ruche-0049''s review (details in the architect''s brief).
   stays as a first barrier; a text is refused if either refuses it. Measure the false refusals on the texts already on
   main and in the tests.'
 files:
-- outils/bee.py
-- outils/test_bee.py
-- outils/requirements.txt
-- docs/securite.md
+- tools/bee.py
+- tools/test_bee.py
+- tools/requirements.txt
+- docs/security.md
 reach: 0.7
 metric: null
 depends_on:
@@ -30,7 +30,7 @@ acceptance_criteria:
 - independent adversarial review attached, made with the architect's brief; the full test suite passes
 out_of_scope:
 - COMMANDMENTS.md
-- REGLES.md
+- RULES.md
 node: projects/ruche/ruche
 status: open
 created_by: council

@@ -24,6 +24,10 @@ out_of_scope:
 depends_on:
 - ruche-0145
 node: projects/ruche/ruche
+notes:
+  - by: "bidji29"
+    at: "2026-11-10T15:04:51Z"
+    text: "Council, 10 Nov 2026, after the switch (#238): first in line. bee's messages are still French and some may still name a key or value in French while the data is English (the switch's P7 approved them one by one in tools/migration/prose.yaml); such a slip fails closed, and this task and ruche-0147 end it. prose.yaml's kept and prose_words lists are the inventory to start from."
 status: open
 created_by: council
 created_on: '2026-11-08'

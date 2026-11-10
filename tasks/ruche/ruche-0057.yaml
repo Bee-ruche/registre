@@ -17,9 +17,9 @@ context: 'Founder''s decision of 31/10: the hive moves to English before the fir
   49 lines) walks an agent through a contribution; outils/site_bee.py builds the public pages. Both in English.
   The skill keeps its folder name until ruche-0069 settles the command names.'
 files:
-- .claude/skills/bee-contributeur/SKILL.md
-- outils/site_bee.py
-- outils/test_bee.py
+- .claude/skills/bee-contributor/SKILL.md
+- tools/site_bee.py
+- tools/test_bee.py
 reach: 0.6
 metric: null
 acceptance_criteria:

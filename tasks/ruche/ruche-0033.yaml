@@ -13,14 +13,14 @@ context: >
   encore fusionnée) fait déjà réécrire par bee voter la fiche existante d'un même votant ; cette tâche
   ajoute l'exigence de --remplacer et le message, sans défaire ce dédoublonnage. Sans schéma ni
   verifier_pr.
-files: [outils/bee.py, outils/test_bee.py]
+files: [tools/bee.py, tools/test_bee.py]
 reach: 0.6
 metric: null
 acceptance_criteria:
   - "bee voter refuse d'écraser votes/<sujet>/<pseudo>.yaml sans --remplacer, et le message donne la date et la valeur du vote existant"
   - "bee relire imprime la relecture existante du même utilisateur avant d'en écrire une autre, sans rien changer à R3"
 out_of_scope:
-  - "COMMANDEMENTS.md"
+  - "COMMANDMENTS.md"
   - "valeurs de bee.yaml"
   - "R3 et le compte des relectures"
   - "schemas/ et verifier_pr (le champ agent reste dans ruche-0013)"

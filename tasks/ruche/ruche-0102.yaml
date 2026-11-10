@@ -12,9 +12,9 @@ context: 'Found while building ruche-0044 and ruche-0049. The detectors of conta
   these honest forms pass without letting a real phone number or address through, and keep every detector''s time linear
   in the text''s length.'
 files:
-- outils/bee.py
-- outils/test_bee.py
-- docs/outillage.md
+- tools/bee.py
+- tools/test_bee.py
+- docs/tooling.md
 reach: 0.7
 metric: null
 depends_on:

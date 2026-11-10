@@ -9,8 +9,8 @@ context: Write path at scale, step 1, task E24 (docs/architecture.md, section 4,
   council on 2 Nov 2026). R7's ends of engagement and the 24-hour counts of notes and creations are read from an index
   checked against the history, instead of scanning it.
 files:
-- outils/bee.py
-- outils/test_bee.py
+- tools/bee.py
+- tools/test_bee.py
 reach: 0.7
 metric: null
 acceptance_criteria:

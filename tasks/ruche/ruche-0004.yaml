@@ -19,14 +19,14 @@ context: >
   quelles erreurs semées le juge doit attraper. Livrable (2) : les tâches qui en découlent, proposées
   avec bee proposer-tache ruche (statut « proposee »), petites et vérifiables. Toute affirmation sur un
   outil externe (Lean, tests de mutation…) cite sa source.
-files: [docs/juges.md, taches/ruche/]
+files: [docs/juges.md, tasks/ruche/]
 reach: 0.8
 metric: null
 acceptance_criteria:
   - "bee valider passe ; chaque tâche proposée a le statut proposee et un critère d'acceptation vérifiable"
   - "pour chaque famille : au moins une triche plausible décrite, avec ce qui la bloque, et des méta-tests"
   - "les sources externes sont citées"
-out_of_scope: [COMMANDEMENTS.md, code du juge commun (les tâches proposées s'en chargeront), REGLES.md]
+out_of_scope: [COMMANDMENTS.md, code du juge commun (les tâches proposées s'en chargeront), RULES.md]
 depends_on: []
 status: open
 created_by: council

@@ -6,7 +6,10 @@ summary: 'The English switch: every name of the registry moved from French to En
   commit proven by bee check-migration, plus nine hand-made commits (retired names refused, renamed commands
   refused with their new name, fork documents read in both vocabularies until date D, a fork verdict''s
   metric checked).'
-status: in_review
+status: integrated
 submitted_at: '2026-11-10T15:06:07Z'
 engaged_since: '2026-11-10T04:20:36Z'
 reviews: []
+decided_at: '2026-11-10T15:35:46Z'
+decision_reason: 'The English switch: registry PR #238 (generated commit c1299bd from 8dccda6 by outils/migration/switch.py, then nine hand-made commits, head e1c4477) merged by the founder from his account with a merge commit, after he ran the switch check himself on the exact head (workflow Switch check, both jobs green: P2, P1, P1b, P3, P7, P1b (c), P4, P6 and section 13); the full test suite passed on that head (933 tests, run by the agent principal, since CI skips the suite when validate fails); the gate refused the PR in ordinary mode, as designed. The hand-made part was reviewed adversarially by another model (mergeable; its two fixes to the metric check were made). Recorded by hand: the switch is the founder''s merge; submitted after the merge (#240).'
+merge_sha: 03a58fd4dfff0c425ae88ad70c91ae94b1d6a200

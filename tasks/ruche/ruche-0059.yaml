@@ -17,9 +17,9 @@ context: 'Founder''s decision of 31/10: the hive moves to English before the fir
   docs/mesures.md (about 289 lines).'
 files:
 - docs/contributions.md
-- docs/taches.md
-- docs/mesures.md
-- outils/test_bee.py
+- docs/tasks.md
+- docs/measurements.md
+- tools/test_bee.py
 reach: 0.5
 metric: null
 acceptance_criteria:

@@ -10,10 +10,10 @@ context: Follow-up of ruche-0086's review. Since ruche-0024 the judge writes jug
   can tell a verdict's judge version (the label) but not the commit that judged. Carry juge.source into verdict.json
   and the recorded verdict, checked as a full commit of the registry's main, and show it with the verdict.
 files:
-- outils/bee.py
-- outils/test_bee.py
-- schemas/enregistrement.schema.json
-- docs/juge-commun.md
+- tools/bee.py
+- tools/test_bee.py
+- schemas/contribution-record.schema.json
+- docs/common-judge.md
 reach: 0.5
 metric: null
 depends_on:

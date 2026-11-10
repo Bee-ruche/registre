@@ -11,9 +11,9 @@ context: Found while building ruche-0049. bee publier --amont names the reposito
   --amont only for a repository of the Bee-ruche organisation, compared case-folded on the canonical owner/name form,
   and refuse anything else before any call to git or GitHub.
 files:
-- outils/bee.py
-- outils/test_bee.py
-- docs/outillage.md
+- tools/bee.py
+- tools/test_bee.py
+- docs/tooling.md
 reach: 0.8
 metric: null
 depends_on:

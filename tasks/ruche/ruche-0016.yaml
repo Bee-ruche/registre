@@ -27,8 +27,8 @@ context: 'ruche-0010 a écrit la racine et les paliers des rôles, des catégori
 
   '
 files:
-- arbre/projets/ruche/ruche/
-- taches/ruche/
+- tree/projects/ruche/ruche/
+- tasks/ruche/
 reach: 0.8
 metric: null
 acceptance_criteria:
@@ -39,9 +39,9 @@ acceptance_criteria:
 - vérifié par un agent sans mémoire qui ne lit que bee contexte d'une tâche de la ruche (rapport joint)
 - python3 -m unittest outils.test_bee passe sans modification, garde-fou de taille compris
 out_of_scope:
-- COMMANDEMENTS.md
-- REGLES.md
-- outils/ (les nœuds décrivent le code
+- COMMANDMENTS.md
+- RULES.md
+- tools/ (les nœuds décrivent le code
 - ils ne le changent pas)
 - les autres branches de l'arbre
 depends_on:

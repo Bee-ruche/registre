@@ -16,7 +16,7 @@ context: >
   rapport lié à la proposition ; le dépouillement (R10) montre ce rapport. À ne commencer qu'après le
   durcissement de la porte (ruche-0039, ruche-0040) : l'outil candidat est du code non adopté, il tourne
   sans jeton d'écriture et son résultat n'est jamais lu comme une décision.
-files: [outils/bee.py, outils/test_bee.py, .github/workflows/, docs/gouvernance.md]
+files: [tools/bee.py, tools/test_bee.py, .github/workflows/, docs/governance.md]
 reach: 0.7
 metric: null
 acceptance_criteria:
@@ -25,7 +25,7 @@ acceptance_criteria:
   - "le dépouillement de la proposition affiche le nombre de décisions différentes et des exemples"
   - "revue adverse indépendante jointe"
 out_of_scope:
-  - "COMMANDEMENTS.md"
+  - "COMMANDMENTS.md"
   - "adoption automatique d'une règle (l'ombre informe, R10 décide)"
 depends_on: [ruche-0039, ruche-0040]
 node: projects/ruche/ruche

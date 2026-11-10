@@ -16,14 +16,14 @@ context: >
   indépendantes comptent les gardiens d'un même garant pour un seul ; (4) une page « Garants » sur le
   site, avec l'engagement de chacun et le lien vers ses consignes publiées. La liste vide d'aujourd'hui
   doit rester valide.
-files: [outils/bee.py, outils/test_bee.py, outils/site_bee.py, schemas/, gouvernance/garants.yaml, docs/garants.md]
+files: [tools/bee.py, tools/test_bee.py, tools/site_bee.py, schemas/, governance/guarantors.yaml, docs/guarantors.md]
 reach: 0.6
 metric: null
 acceptance_criteria:
   - "tests de l'outil verts, avec un test par refus (gardien sans garant, trois gardiens d'un garant, garant révoqué, entrée modifiée)"
   - "deux relectures de gardiens d'un même garant ne comptent que pour une là où l'indépendance est exigée"
   - "le registre actuel (listes vides) reste valide"
-out_of_scope: [COMMANDEMENTS.md, nomination des garants (conseil), REGLES.md]
+out_of_scope: [COMMANDMENTS.md, nomination des garants (conseil), RULES.md]
 depends_on: [ruche-0001]
 status: open
 created_by: council

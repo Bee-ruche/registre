@@ -19,9 +19,9 @@ context: 'Founder''s decision of 31/10: the hive moves to English before the fir
 files:
 - docs/architecture.md
 - docs/evaluation.md
-- docs/nouveau-projet.md
-- docs/questions-ouvertes.md
-- outils/test_bee.py
+- docs/new-project.md
+- docs/open-questions.md
+- tools/test_bee.py
 reach: 0.5
 metric: null
 acceptance_criteria:

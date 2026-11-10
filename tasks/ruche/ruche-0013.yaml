@@ -17,13 +17,13 @@ context: >
   agent du même utilisateur a déjà relu ; (4) bee debattre argumenter signale un argument du même
   utilisateur, dans n'importe quel débat, publié dans les dernières heures avec un texte proche ;
   (5) une section « Plusieurs agents pour un même utilisateur » dans AGENTS.md.
-files: [outils/bee.py, outils/test_bee.py, schemas/, AGENTS.md]
+files: [tools/bee.py, tools/test_bee.py, schemas/, AGENTS.md]
 reach: 0.8
 metric: null
 acceptance_criteria:
   - "tests verts pour chaque point ; aucun test existant affaibli"
   - "le champ agent ne change rien aux règles : une voix et des plafonds par utilisateur"
-out_of_scope: [COMMANDEMENTS.md, valeurs de bee.yaml]
+out_of_scope: [COMMANDMENTS.md, valeurs de bee.yaml]
 depends_on: [ruche-0008]
 status: open
 created_by: council

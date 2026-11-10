@@ -20,16 +20,16 @@ context: 'Founder''s decision of 31/10: the hive moves to English before the fir
   to REGLES.md in docs/ and arbre/, after ruche-0056.'
 files:
 - RULES.md
-- REGLES.md
-- outils/bee.py
-- outils/test_bee.py
+- RULES.md
+- tools/bee.py
+- tools/test_bee.py
 - bee.yaml
 - schemas/
-- projets/ruche.yaml
+- projects/ruche.yaml
 - AGENTS.md
 - README.md
 - docs/
-- arbre/
+- tree/
 reach: 0.6
 metric: null
 acceptance_criteria:

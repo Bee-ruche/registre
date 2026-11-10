@@ -16,8 +16,8 @@ context: 'Founder''s decision of 31/10: the hive moves to English before the fir
   builder, adversarial reviewer, council bee, rehearsal: about 239 lines) and docs/organisation.md (79 lines) describe
   the roles, the agent principal''s included: the founder reviews and merges this PR himself, not the agent principal.'
 files:
-- gouvernance/consignes/
-- docs/organisation.md
+- governance/briefs/
+- docs/organization.md
 reach: 0.5
 metric: null
 acceptance_criteria:

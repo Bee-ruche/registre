@@ -14,14 +14,14 @@ context: 'Follow-up of ruche-0040''s review (details in the architect''s brief).
   schemas, docs it parses) is read with a bound; the workflows of the gate have a time limit; and bee liberer, at the
   reserve''s mark, does not add the automatic note naming the new holder (or the gate accepts that robot-like note).'
 files:
-- outils/bee.py
-- outils/test_bee.py
+- tools/bee.py
+- tools/test_bee.py
 - schemas/
-- .github/workflows/fusion-auto.yml
+- .github/workflows/auto-merge.yml
 - .github/workflows/validation.yml
 - .github/workflows/expirations.yml
 - .github/workflows/verdicts.yml
-- docs/gouvernance.md
+- docs/governance.md
 reach: 0.8
 metric: null
 depends_on:
@@ -38,7 +38,7 @@ acceptance_criteria:
 - independent adversarial review attached, made with the architect's brief; the full test suite passes
 out_of_scope:
 - COMMANDMENTS.md
-- REGLES.md
+- RULES.md
 node: projects/ruche/ruche
 status: open
 created_by: council

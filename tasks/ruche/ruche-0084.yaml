@@ -17,13 +17,13 @@ context: 'Adapted from DeepSeek''s dsh-superagent prototype (https://github.com/
   no longer hold. R3 already binds a verdict to the commit it judged: this extends the idea to grants. Rebase on ruche-0082
   and ruche-0026 if they are integrated first. If the work outgrows L, stop and propose a split (commandment 4).'
 files:
-- outils/bee.py
-- outils/test_bee.py
+- tools/bee.py
+- tools/test_bee.py
 - schemas/
 - bee.yaml
-- gouvernance/gardiens.yaml
-- gouvernance/garants.yaml
-- docs/taches.md
+- governance/guardians.yaml
+- governance/guarantors.yaml
+- docs/tasks.md
 - docs/devolution.md
 reach: 0.6
 metric: null

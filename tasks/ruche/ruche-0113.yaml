@@ -12,8 +12,8 @@ context: 'Follow-ups of two reviews, test-first. (1) ruche-0091 pinned every rul
   a contribution is closed by its folder and by its `sujet` alike; make the closure of a proposition''s vote the same
   (a vote file whose folder or `sujet` names a closed proposition is refused), and test both.'
 files:
-- outils/bee.py
-- outils/test_bee.py
+- tools/bee.py
+- tools/test_bee.py
 reach: 0.4
 metric: null
 depends_on:
@@ -25,7 +25,7 @@ acceptance_criteria:
 - independent review attached; the full test suite passes
 out_of_scope:
 - COMMANDMENTS.md
-- REGLES.md
+- RULES.md
 node: projects/ruche/ruche
 status: open
 created_by: council

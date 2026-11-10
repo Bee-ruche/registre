@@ -19,7 +19,7 @@ context: >
   réexamen ; (4) au moins une règle se lit par branche dans bee (par exemple le seuil de R4,
   gain_min, pour une branche sans métrique de débit), la version la plus stricte s'appliquant à une
   contribution qui touche plusieurs branches.
-files: [outils/bee.py, outils/test_bee.py, schemas/, docs/branches.md, docs/arbre.md]
+files: [tools/bee.py, tools/test_bee.py, schemas/, docs/branches.md, docs/tree.md]
 reach: 0.6
 metric: null
 acceptance_criteria:
@@ -27,7 +27,7 @@ acceptance_criteria:
   - "test : une dérogation adoptée s'imprime dans bee contexte d'une tâche de sa branche, et seulement là"
   - "test : une dérogation échue ne s'applique plus ; une contribution sur deux branches suit la règle la plus stricte"
   - "revue adverse indépendante jointe"
-out_of_scope: [COMMANDEMENTS.md, une dérogation réelle (elle passe par l'agora et le conseil)]
+out_of_scope: [COMMANDMENTS.md, une dérogation réelle (elle passe par l'agora et le conseil)]
 depends_on: [ruche-0026]
 node: projects/ruche
 status: open

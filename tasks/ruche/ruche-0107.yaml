@@ -12,11 +12,11 @@ context: 'Follow-up of ruche-0042''s review. A measurement of a contribution (me
   measured commit, and R4 counts only a measurement whose candidate commit is the judged one (the verdict''s sha) and
   whose base is the verdict''s base. Measurements already on main stay valid.'
 files:
-- outils/bee.py
-- outils/test_bee.py
-- schemas/mesure.schema.json
-- docs/mesures.md
-- docs/gouvernance.md
+- tools/bee.py
+- tools/test_bee.py
+- schemas/measurement.schema.json
+- docs/measurements.md
+- docs/governance.md
 reach: 0.8
 metric: null
 depends_on:

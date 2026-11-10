@@ -15,14 +15,14 @@ context: >
   projet de preuve), la validation par bee valider, l'affichage sur le site et la mise à jour de
   docs/nouveau-projet.md. Le projet ruche devient un cas de ce modèle plutôt qu'une exception. Les
   projets et tâches existants doivent rester valides sans modification.
-files: [schemas/projet.schema.json, outils/bee.py, outils/site_bee.py, outils/test_bee.py, docs/nouveau-projet.md, docs/vision.md]
+files: [schemas/project.schema.json, tools/bee.py, tools/site_bee.py, tools/test_bee.py, docs/new-project.md, docs/vision.md]
 reach: 0.8
 metric: null
 acceptance_criteria:
   - "tests de l'outil verts, avec un test par type de projet et par refus (champ manquant, type de tâche interdit)"
   - "projets/*.yaml et taches/ existants valides sans aucune modification"
   - "docs/nouveau-projet.md décrit l'ouverture d'un projet de chaque type"
-out_of_scope: [COMMANDEMENTS.md, valeurs de bee.yaml, outils/juge/, création de projets réels]
+out_of_scope: [COMMANDMENTS.md, valeurs de bee.yaml, outils/juge/, création de projets réels]
 depends_on: [ruche-0001]
 status: open
 created_by: council

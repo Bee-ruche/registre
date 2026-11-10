@@ -13,7 +13,7 @@ context: >
   doit signaler un argument du même utilisateur, dans n'importe quel débat, publié dans les dernières heures
   avec un texte proche. À ordonner avec ruche-0018, qui modifie aussi l'agora : la seconde intégrée se
   rebase. Sans schéma ni verifier_pr.
-files: [outils/bee.py, outils/test_bee.py]
+files: [tools/bee.py, tools/test_bee.py]
 reach: 0.5
 metric: null
 acceptance_criteria:
@@ -21,7 +21,7 @@ acceptance_criteria:
   - "un texte différent n'en déclenche aucune"
   - "c'est une alerte, jamais un refus : R12 ne change pas"
 out_of_scope:
-  - "COMMANDEMENTS.md"
+  - "COMMANDMENTS.md"
   - "valeurs de bee.yaml"
   - "R12"
   - "schemas/ et verifier_pr (le champ agent reste dans ruche-0013)"

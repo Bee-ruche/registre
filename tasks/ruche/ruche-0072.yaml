@@ -17,7 +17,7 @@ context: 'Founder''s decision of 31/10: the hive moves to English before the fir
   notes, closed tasks and tasks in review stay as written. Values only: keys are renamed by script (ruche-0070);
   whichever lands second rebases.'
 files:
-- taches/
+- tasks/
 reach: 0.4
 metric: null
 acceptance_criteria:

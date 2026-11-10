@@ -20,6 +20,10 @@ out_of_scope:
 depends_on:
 - ruche-0148
 node: projects/parsing-serialization/libyaml
+notes:
+  - by: "bidji29"
+    at: "2026-11-10T15:04:51Z"
+    text: "Council, 10 Nov 2026, after the switch (#238): from date D (2027-01-01) the registry refuses a green fork verdict that does not name the task's metric (ruche-0145, wait code metric). The fork's verdict must write the task's metric under `metric` from then on; until D a missing metric passes and only a mismatch is caught."
 status: open
 created_by: council
 created_on: '2026-11-08'

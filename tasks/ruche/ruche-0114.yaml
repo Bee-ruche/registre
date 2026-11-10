@@ -19,10 +19,10 @@ context: 'Follow-up of ruche-0022 (a member''s identity is their GitHub account 
   them while work is in flight (rename back, or ask the council), guard `github_id` lists in valider, and make the message
   for a rename published the next day say to restore the old file and rerun.'
 files:
-- .github/workflows/integration-auto.yml
+- .github/workflows/auto-integration.yml
 - .github/workflows/verdicts.yml
-- outils/bee.py
-- outils/test_bee.py
+- tools/bee.py
+- tools/test_bee.py
 reach: 0.5
 metric: null
 depends_on:

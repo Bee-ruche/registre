@@ -8,8 +8,8 @@ title: 'Load-test the write path (extends ruche-0083): the measures of the desig
 context: Write path at scale, step 1, task E10 (docs/architecture.md, section 4, step 1; ruche-0097, decided by the
   council on 2 Nov 2026). Extend the load test to the write path and measure what section 7 of the design lists.
 files:
-- outils/repetition/
-- docs/outillage.md
+- tools/rehearsal/
+- docs/tooling.md
 - docs/architecture.md
 reach: 0.6
 metric: null
