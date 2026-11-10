@@ -30,8 +30,12 @@
 #                 workflows' links) cover their content (rename_code.py, with identifiers.yaml); P2 checks only their place
 #                 (the path map) and their mode.
 #   hand          every other file no family translates, by glob, the first matching entry deciding: same (byte-identical,
-#                 at its English path), becomes (byte-identical to that file of the base) or removed. A schema of
-#                 schemas/ is translated with its family (keys, domains and schema_strings: $id, patterns), byte for byte.
+#                 at its English path), becomes (byte-identical to that file of the base) or removed. With same or becomes,
+#                 commands: true (change 10, ruche-0153) allows exactly one change: each `bee <command>` and its options
+#                 inside the file's code spans and fenced code blocks, renamed by the command table (rename_code.py,
+#                 CodeMap.commands); prose stays, and the result must translate back to the base's file byte for byte.
+#                 A tree node family with commands: true, the same for its text. A schema of schemas/ is translated
+#                 with its family (keys, domains and schema_strings: $id, patterns), byte for byte.
 #   new           globs of files the switch may add.
 version: 1
 date_d: '2027-01-01'
@@ -65,7 +69,14 @@ retired:
 - membres/
 - mesures/
 - modeles/
-- outils/
+- outils/bee.py
+- outils/inventaire_marqueurs.py
+- outils/migration/
+- outils/repetition/
+- outils/requirements.txt
+- outils/site_bee.py
+- outils/test_bee.py
+- outils/tests/
 - projets/
 - propositions/
 - signalements/
@@ -119,21 +130,7 @@ paths:
   outils/tests/registre/: tools/tests/registry/
   outils/tests/registre/taches/: tools/tests/registry/tasks/
   outils/tests/textes-0047/: tools/tests/texts-0047/
-  outils/juge/: tools/judge/
-  outils/juge/juge.py: tools/judge/judge.py
-  outils/juge/analyse.py: tools/judge/analysis.py
-  outils/juge/chrono.c: tools/judge/stopwatch.c
-  outils/juge/conteneur.py: tools/judge/container.py
-  outils/juge/entrees.py: tools/judge/inputs.py
-  outils/juge/isoler.sh: tools/judge/isolate.sh
-  outils/juge/lecture.py: tools/judge/reader.py
-  outils/juge/rapport.py: tools/judge/report.py
-  outils/juge/test_juge.py: tools/judge/test_judge.py
-  outils/juge/jouet/: tools/judge/toy/
-  outils/juge/jouet/bee/juge/: tools/judge/toy/bee/judge/
-  outils/juge/jouet/bee/juge/projet.py: tools/judge/toy/bee/judge/project.py
-  outils/juge/jouet/bee/juge/construire.sh: tools/judge/toy/bee/judge/build.sh
-  outils/juge/jouet/bee/juge/execution.c: tools/judge/toy/bee/judge/run.c
+  outils/juge/: outils/juge/
   outils/repetition/: tools/rehearsal/
   outils/repetition/LISEZMOI-modele.md: tools/rehearsal/README-template.md
   outils/repetition/ci-simulee: tools/rehearsal/simulated-ci
@@ -180,9 +177,9 @@ paths:
   .github/ISSUE_TEMPLATE/proposition-tache.md: .github/ISSUE_TEMPLATE/task-proposal.md
   .claude/skills/bee-contributeur/: .claude/skills/bee-contributor/
   .github/workflows/fusion-auto.yml: .github/workflows/auto-merge.yml
+  .github/workflows/juge.yml: .github/workflows/juge.yml
+  .github/workflows/juge-commun.yml: .github/workflows/juge-commun.yml
   .github/workflows/integration-auto.yml: .github/workflows/auto-integration.yml
-  .github/workflows/juge.yml: .github/workflows/judge.yml
-  .github/workflows/juge-commun.yml: .github/workflows/judge-meta-tests.yml
 env:
   BEE_REGISTRE: BEE_REGISTRY
   BEE_MAINTENANT: BEE_NOW
@@ -268,7 +265,7 @@ workflows:
     Récupérer les verdicts: Fetch the verdicts
     Tests de l'outil: Tool tests
     Tests unitaires du juge commun (sans Docker ; méta-tests dans juge-commun.yml): 'Unit tests of the common judge (without Docker;
-      meta-tests in judge-meta-tests.yml)'
+      meta-tests in the judge''s own workflow)'
     Tests unitaires et méta-tests: Unit tests and meta-tests
     Tête de la PR (données ; rien n'en est exécuté hors conteneur): 'Head of the PR (data; nothing of it runs outside a container)'
     Validation complète du registre: Full validation of the registry
@@ -502,34 +499,6 @@ cli:
     <tache>: <task>
     <verdict>: <verdict>
   scripts:
-    outils/juge/juge.py:
-      --outillage: --tooling
-      --source-a: --source-a
-      --source-b: --source-b
-      --image-seulement: --image-only
-      --historique-seulement: --history-only
-      --historique: --history
-      --source-juge: --judge-source
-      --base: --base
-      --tete: --head
-      --travail: --workdir
-      --option: --option
-      --repetitions: --repetitions
-      --chauffe: --warmup
-      --sans-instructions: --no-instructions
-      --prefixe-instructions: --instructions-prefix
-      --seuil-instructions: --instructions-threshold
-      --json: --json
-      --graine: --seed
-      --graine-ordre: --order-seed
-      --reseau-construction: --build-network
-      --memoire: --memory
-      --garder: --keep
-    outils/juge/rapport.py:
-      --code: --code
-      --verifier: --verify
-      --base: --base
-      --tete: --head
     outils/test_bee.py:
       --processus: --processes
     outils/repetition/load_test.py:
@@ -1127,11 +1096,12 @@ families:
       cap/postes: area
   tree:
     note: 'tree nodes: the front matter is translated as YAML, node ids change in parent and in the children lines;
-      the rest of the Markdown is prose and stays'
+      the rest of the Markdown stays, but `bee <command>` and its options in its code (commands: true, change 10)'
     files:
     - arbre/SENS.md
     - arbre/**/SENS.md
     writer: markdown
+    commands: true
     keys:
       parent: parent
       mis_a_jour: updated_on
@@ -1994,7 +1964,7 @@ domains:
     sans_reponse: no_answer
 open_domains:
   command:
-    python3 outils/test_bee.py && python3 outils/juge/test_juge.py: python3 tools/test_bee.py && python3 tools/judge/test_judge.py
+    python3 outils/test_bee.py && python3 outils/juge/test_juge.py: python3 tools/test_bee.py && python3 outils/juge/test_juge.py
     python3 outils/bee.py valider: python3 tools/bee.py validate
   council_role:
     fondateur: founder
@@ -2017,25 +1987,12 @@ code:
 - .github/workflows/expirations.yml
 - .github/workflows/fusion-auto.yml
 - .github/workflows/integration-auto.yml
-- .github/workflows/juge-commun.yml
-- .github/workflows/juge.yml
 - .github/workflows/site.yml
 - .github/workflows/suite.yml
 - .github/workflows/validation.yml
 - .github/workflows/verdicts.yml
 - outils/bee.py
 - outils/inventaire_marqueurs.py
-- outils/juge/analyse.py
-- outils/juge/conteneur.py
-- outils/juge/entrees.py
-- outils/juge/isoler.sh
-- outils/juge/jouet/bee/juge/construire.sh
-- outils/juge/jouet/bee/juge/projet.py
-- outils/juge/juge.py
-- outils/juge/lecture.py
-- outils/juge/rapport.py
-- outils/juge/stats.py
-- outils/juge/test_juge.py
 - outils/migration/rename.py
 - outils/migration/rename_code.py
 - outils/repetition/bee
@@ -2062,16 +2019,25 @@ hand:
   why: its text becomes AGENTS.md (plan, section 12, change 13)
 - files: AGENTS.md
   becomes: AGENTS.en.md
-  why: 'the front door in English: the base''s AGENTS.en.md, byte for byte'
+  commands: true
+  why: 'the front door in English: the base''s AGENTS.en.md, its commands renamed in its code (change 10)'
 - files: '*.md'
   same: true
   why: root documents, moved by the path map; their text changes after the switch, by council PRs
 - files: .gitignore
   same: true
   why: names no French folder
+- files: docs/english-*.md
+  same: true
+  why: 'the migration plan and the name map: they name each command in both languages on purpose (change 10 would make
+    them say the opposite), byte-identical'
+- files: docs/decisions.md
+  same: true
+  why: 'the decision log: closed history, kept as written (plan, section 8), its old command names included'
 - files: docs/**
   same: true
-  why: moved by the path map; names in their text change after the switch, by council PRs
+  commands: true
+  why: moved by the path map, the commands renamed in their code (change 10); their prose after the switch, by council PRs
 - files: gouvernance/consignes/*.md
   same: true
   why: role instructions, moved; their text by the founder, after the switch
@@ -2080,7 +2046,12 @@ hand:
   why: template prose, moved
 - files: .claude/**
   same: true
-  why: the skill, moved; its text after the switch
+  commands: true
+  why: the skill, moved, the commands renamed in its code (change 10); its prose after the switch
+- files: .github/workflows/juge*.yml
+  same: true
+  why: 'the common judge''s reusable workflow and its meta-tests, as written and where they are until judge-v4 (ruche-0148):
+    the forks call juge.yml by its path at a pinned commit, with its inputs, outputs and artifact « juge » (ruche-0153)'
 - files: .github/**
   same: true
   why: templates, moved (the workflows are code)
@@ -2089,7 +2060,9 @@ hand:
   why: names no French word
 - files: outils/juge/**
   same: true
-  why: the judge's C files, header and Dockerfile, moved (its Python and shell are code)
+  why: 'the common judge, as written and where it is until judge-v4 (ruche-0148): the forks'' plugin (bee/juge/projet.py, its
+    constants and methods), the harness, the build script and juge.json are its interface with them; a fork that moves its
+    pin to the switch runs the same bytes (ruche-0153)'
 - files: outils/repetition/*.md
   same: true
   why: the rehearsal kit's README template, moved
@@ -2102,4 +2075,10 @@ hand:
 - files: outils/migration/check_migration.py
   same: true
   why: 'step 1c''s proofs, moved: they name the old tool''s French names on purpose, and run only from the base'
+- files: outils/migration/switch.py
+  same: true
+  why: 'step 1d''s switch script, moved: it runs only from the base (ruche-0145 reruns it from main during the freeze)'
+- files: outils/migration/prose.yaml
+  same: true
+  why: 'P7''s approvals (ruche-0153, review of b2245cf), moved: check-migration reads them from the base'
 new: []

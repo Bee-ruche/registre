@@ -58,7 +58,27 @@ class Names:
         self.files = {n: [glob_re(g) for g in f["files"]] for n, f in self.fam.items()}
         self.schemas = {f"schemas/{f['schema']}": n for n, f in self.fam.items() if f.get("schema")}
         self.hand, self.code = [(glob_re(h["files"]), h) for h in m["hand"]], set(m["code"])
-        self.new, self.sides = [glob_re(g) for g in m.get("new") or []], {}
+        self.new, self.sides, self.cli = [glob_re(g) for g in m.get("new") or []], {}, None
+        self.kept = tuple(a for a, b in m["paths"].items() if a == b)  # ruche-0153: paths the switch leaves where they are (the judge)
+
+    def kept_path(self, p):
+        """A path, a folder named without its final /, or a kept file's bare name, that the path map keeps as it is (ruche-0153:
+        the common judge)."""
+        return any(p == k or p == k.rstrip("/") or k.endswith("/") and p.startswith(k) or "/" not in p and k.rpartition("/")[2] == p
+                   for k in self.kept)  # a kept file's bare name too (juge.yml)
+
+    def commands(self, text, inv=False):
+        """Change 10 (ruche-0153): `bee <command>` and its options renamed in the code of a Markdown text, by the code map's
+        command table (rename_code.CodeMap.commands; check() sets the base's, else the code map beside this script)."""
+        if self.cli is None:
+            self.cli = code_map(self, (SELF.parent / "identifiers.yaml").read_text(encoding="utf-8")).commands
+        return self.cli(text, inv)
+
+    def hand_bytes(self, h, p, files):
+        """The bytes a hand entry gives the file p of the base: its own or those of the file it becomes, with its commands renamed
+        (change 10) if the entry says so."""
+        source = files[h.get("becomes", p)]
+        return self.commands(source.decode("utf-8")).encode("utf-8") if h.get("commands") else source
 
     def side(self, name, inv):
         """A family's keys, value rules, key_values and schema strings, with their paths written on one side."""
@@ -225,14 +245,16 @@ class Names:
             lines[i] = lines[i][:c.start(1)] + self.value("node", c.group(1), inv) + lines[i][c.end(1):]
         if fin:
             lines[1:fin] = self.text(name, "\n".join(lines[1:fin]) + "\n", inv).split("\n")[:-1]
+        if self.fam[name].get("commands"):  # change 10: the commands in the node's code, after its front matter
+            lines[fin + 1 if fin else 0:] = self.commands("\n".join(lines[fin + 1 if fin else 0:]), inv).split("\n")
         return "\n".join(lines)
 
     def same_values(self, name, old, new):
         """P2 for one file: the values of new are those of old once mapped, and the leaves are the same multiset."""
         a, b, problems = self.parts(name, old), self.parts(name, new), []
         if self.fam[name]["writer"] == "markdown":
-            if [self.value("node", k, False) for k in a[1]] != b[1] or a[2] != b[2]:
-                problems.append("the children or the text outside the front matter differ once node ids are mapped")
+            if [self.value("node", k, False) for k in a[1]] != b[1] or (self.commands(a[2]) if self.fam[name].get("commands") else a[2]) != b[2]:
+                problems.append("the children or the text outside the front matter differ once node ids (and the commands in its code) are mapped")
             a, b = a[0], b[0]
         if self.data(name, a, False) != b:
             problems.append("the values differ once keys and values are mapped")
@@ -269,16 +291,24 @@ class Names:
                 self.schema(n, read(chemin) or "", False)
             except (Problem, bee.ErreurBee, yaml.YAMLError, ValueError, AttributeError, KeyError) as e:
                 problems.append(f"family {n}: {chemin}: {'unknown domain ' if isinstance(e, KeyError) else ''}{e}")
-        problems += [f"hand entry {h['files']}: one of same, becomes, removed" for _, h in self.hand
-                     if sum(bool(h.get(k)) for k in ("same", "becomes", "removed")) != 1]
+        problems += [f"hand entry {h['files']}: one of same, becomes, removed" + " (commands: with same or becomes)" * bool(h.get("commands"))
+                     for _, h in self.hand if sum(bool(h.get(k)) for k in ("same", "becomes", "removed")) != 1 or h.get("commands") and h.get("removed")]
         removed = {h["files"] for h in m["hand"] if h.get("removed")}
-        problems += [f"retired name {r}: neither a French path of the map nor a removed file" for r in m["retired"]
-                     if r not in m["paths"] and r not in removed or r in m["paths"].values()]
+        problems += [f"retired name {r}: neither a path the map moves nor a removed file" for r in m["retired"]
+                     if self.path(r) == r and r not in removed or r in m["paths"].values()]
         if len(self.schemas) != sum(bool(f.get("schema")) for f in self.fam.values()) or self.path(MAPS[0]) != MAPS[1]:
             problems.append(f"a schema serves two families, or the map does not move {MAPS[0]} to {MAPS[1]}")
         if not (re.fullmatch(r"\d{4}-\d\d-\d\d", str(m["date_d"])) and str(m["date_d"]) >= "2027-01-01"):
             problems.append(f"date_d {m['date_d']}: a date, 2027-01-01 at the earliest")
         return problems
+
+
+def code_map(names, ids):
+    """The code map (rename_code.CodeMap) of the identifier map ids, for change 10's command table."""
+    if "rename_code" not in sys.modules:
+        sys.path.append(str(SELF.parent))
+    import rename_code  # noqa: E402  (here: it imports this module)
+    return rename_code.CodeMap(names, ids)
 
 
 def tree_files(repo, rev, modes=None):
@@ -304,10 +334,13 @@ def check(repo, base, head=None):
     if (carte := next((c for c in MAPS if c in files), None)) is None:
         return [f"no {MAPS[0]} at the base {base}"], {}
     outil = carte.rpartition("/migration/")[0]
-    for chemin, vivant in ((f"{outil}/migration/rename.py", SELF), (f"{outil}/bee.py", pathlib.Path(bee.__file__).resolve())):
+    names = Names(files[carte].decode("utf-8"))
+    ids = carte.replace("names.yaml", "identifiers.yaml")
+    names.cli = code_map(names, files[ids].decode("utf-8")).commands if ids in files else None  # change 10: the base's command table
+    for chemin, vivant in ((f"{outil}/migration/rename.py", SELF), (f"{outil}/bee.py", pathlib.Path(bee.__file__).resolve()),
+                           *[(f"{outil}/migration/rename_code.py", pathlib.Path(sys.modules["rename_code"].__file__).resolve())] * bool(names.cli)):
         if files.get(chemin) != vivant.read_bytes():
             return [f"{vivant} is not the base's {chemin}: run the base's own checker, python3 -I, from its checkout"], {}
-    names = Names(files[carte].decode("utf-8"))
     problems = names.lint(lambda p: files[p].decode("utf-8") if p in files else None)
     images, counts = {}, collections.Counter()
     for p in sorted(modes):
@@ -323,8 +356,12 @@ def check(repo, base, head=None):
             h = hand[0] if hand else {}
             if (source := h.get("becomes", p)) not in files:
                 problems.append(f"{p}: becomes {source}, which is not a file of the base")
-            counts[kind := "code" if code else "removed" if h.get("removed") else "same"] += 1
-            images[q] = (p, {"code": None, "removed": REMOVED}.get(kind, files.get(source)), f"byte-identical to {source}")
+                continue
+            counts[kind := "code" if code else "removed" if h.get("removed") else "commands" if h.get("commands") else "same"] += 1
+            new = None if kind == "code" else REMOVED if kind == "removed" else names.hand_bytes(h, p, files)
+            if kind == "commands" and names.commands(new.decode("utf-8"), True).encode("utf-8") != files[source]:  # change 10, both ways
+                problems.append(f"{q}: its commands do not translate back to {source} byte for byte (an English command name in its code?)")
+            images[q] = (p, new, f"byte-identical to {source}" + ", its commands renamed (change 10)" * (kind == "commands"))
             continue
         fait = (lambda t, inv=False: names.schema(schema, t, inv)) if schema else (lambda t, inv=False: names.translate(fams[0], t, inv))
         try:
@@ -388,9 +425,9 @@ def main(argv=None):
         problems = [f"{type(e).__name__}: {e}"]
     print("".join(f"✗ {x}\n" for x in problems) + f"{len(problems)} problem(s)." if problems else
           f"✓ P2 holds at {a.base}" + (f" for the head {a.head}: {n['data']} data files and {n['schema']} schemas are their translation "
-                                       f"byte for byte, {n['same']} files are byte-identical (moved or replaced), {n['removed']} removed"
+                                       f"byte for byte, {n['same']} files are byte-identical (moved or replaced), {n['commands']} with their commands renamed (change 10), {n['removed']} removed"
                                        if a.head else f" (no head): {n['data']} data files and {n['schema']} schemas translate and back "
-                                       f"byte for byte, {n['same']} files are to stay byte-identical, {n['removed']} to be removed")
+                                       f"byte for byte, {n['same']} files are to stay byte-identical, {n['commands']} to have their commands renamed, {n['removed']} to be removed")
           + f"; {n['code']} code files are left to step 1b (P1, P1b, P3), checked here for their place and mode only." if a.action == "check"
           else "✓ the map is one-to-one in every family, and its schemas translate." if a.action == "lint" else f"✓ {ecrits} file(s) written.")
     return 1 if problems else 0

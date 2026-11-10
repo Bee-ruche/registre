@@ -1,0 +1,775 @@
+# P7 of bee check-migration (ruche-0153, reviews of b2245cf and 6efd815), per base file, each list approved by hand:
+#   renamed       each word the switch renames inside the prose of its strings (a string part that holds a blank), with its count;
+#   beside_french those of them renamed beside a French word (or French themselves), one by one in their context « prev [word] next »;
+#   kept          each French name of the map (a key or a domain value it renames) left where a message names data (in « » or
+#                 backticks, beside an interpolation, at a label's start, in a list with an English name), in its context, with
+#                 its count: ordinary French there, decided by hand;
+#   prose_words   each French name of the map left elsewhere in the strings (docstrings aside), with its count: ordinary French;
+#   lone          each blank-less literal the switch renames where the code writes text (« scope [old -> new] »), with its count.
+# A new entry, one more, or one the switch no longer needs fails the check until a human updates this file: regenerate the
+# candidate, read the diff, then commit it.
+files:
+  outils/bee.py:
+    renamed:
+      "--a-blanc -> --dry-run": 1
+      "--ancien -> --old": 1
+      "--autre-compte -> --other-account": 2
+      "--canal -> --channel": 1
+      "--candidat -> --candidate": 1
+      "--compte-cree-le -> --account-created-on": 1
+      "--compte-de -> --account-of": 2
+      "--confirmer -> --confirm": 2
+      "--conteste -> --contest": 1
+      "--deja-lu -> --already-read": 6
+      "--delai -> --timeout": 2
+      "--ecarter -> --dismiss": 1
+      "--en-parallele -> --parallel": 7
+      "--fait -> --fact": 1
+      "--fichier -> --file": 2
+      "--fusion-auto -> --auto-merge": 1
+      "--identifiants-de -> --identifiers-from": 1
+      "--instant-pr -> --pr-time": 2
+      "--lier -> --link": 4
+      "--lignes -> --lines": 1
+      "--mettre-a-jour -> --update": 6
+      "--non-contact -> --no-contact": 1
+      "--pseudo -> --login": 2
+      "--raison -> --cause": 1
+      "--redater -> --redate": 1
+      "--registre -> --registry": 1
+      "--repond-a -> --replies-to": 2
+      "--resume -> --summary": 4
+      "--sans-attendre -> --no-wait": 1
+      "--sortie -> --output": 1
+      "--statut -> --status": 4
+      "--synthese -> --synthesis": 3
+      "--texte -> --text": 2
+      "--titre -> --title": 22
+      "--utilisateur -> --user": 9
+      "--valeur -> --value": 1
+      "--voir -> --show": 8
+      "ADRESSE_MAX -> ADDRESS_MAX": 1
+      "AVANT -> BEFORE": 1
+      "BEE_MAINTENANT -> BEE_NOW": 1
+      "BEE_REGISTRE -> BEE_REGISTRY": 1
+      "CHAMPS_PSEUDO -> LOGIN_FIELDS": 1
+      "CHEMIN_DEBAT -> PATH_DEBATE": 1
+      "CHEMIN_HISTORIQUE -> PATH_HISTORY": 1
+      "CLES_INVITATION -> INVITATION_KEYS": 1
+      "CLE_VERDICT -> VERDICT_KEY": 1
+      "DECLARE_MAX -> DECLARED_MAX": 1
+      "FICHIERS_LIBRE_SERVICE -> SELF_SERVICE_FILES": 1
+      "FIN_DONNEES -> DATA_END": 1
+      "Intégration automatique -> Auto-integration": 1
+      "MARGE_OCTETS -> BYTE_MARGIN": 1
+      "MARQUE_NEUTRALISEE -> NEUTRALISED_MARKER": 1
+      "NUMERO_RESERVE -> RESERVED_NUMBER": 1
+      "Nouveau -> New": 1
+      "OCTETS_MAX -> BYTES_MAX": 1
+      "PASSE -> PASS_REF": 1
+      "PROFONDEUR_C_MAX -> C_DEPTH_MAX": 1
+      "REGLAGES -> SETTINGS": 2
+      "REGLES -> RULES": 1
+      "RENVOIS -> REFERRALS": 1
+      "REPRISES_PRS -> PR_RETRIES": 1
+      "SCHEMAS_TEXTES -> TEXT_SCHEMAS": 1
+      "SENS -> MEANING": 3
+      "_JETONS_C -> _C_TOKENS": 1
+      "_forme_marque -> _marked_shape": 1
+      "_max_par_24h -> _max_per_24h": 1
+      "_max_par_pr -> _max_per_pr": 1
+      "_verifier_pr -> _check_pr": 1
+      "a_redecider -> to_redecide": 1
+      "activite_par_poste -> activity_by_area": 2
+      "adresse -> address": 4
+      "anciens_logins -> former_logins": 3
+      "annulee -> cancelled": 1
+      "apres -> after": 1
+      "arbre -> tree": 10
+      "argumenter -> argue": 6
+      "arguments_a_couvrir -> arguments_to_cover": 2
+      "arguments_max_par_24h -> arguments_max_per_24h": 2
+      "arguments_max_par_24h_tous_debats -> arguments_max_per_24h_all_debates": 2
+      "arguments_max_par_pr -> arguments_max_per_pr": 1
+      "attend -> awaits": 1
+      "attente_verdict -> awaiting_verdict": 1
+      "auteur -> author": 1
+      "auteurs_pr -> pr_authors": 1
+      "autres_comptes -> other_accounts": 7
+      "autres_identites -> other_identities": 4
+      "avant -> before": 1
+      "base_juge -> judge_base": 3
+      "bornes_attente -> wait_bounds": 1
+      "budget_lignes -> line_budget": 1
+      "cadre_donnees_tache -> task_data_frame": 1
+      "canal -> channel": 3
+      "candidat -> candidate": 1
+      "cap -> balance": 13
+      "caractere_interdit -> forbidden_character": 1
+      "caractere_sortant_interdit -> forbidden_outgoing_character": 2
+      "caviarde_pour -> redacted_for": 3
+      "caviarder -> redact": 2
+      "champs_git -> git_fields": 1
+      "changement -> change": 1
+      "chemin -> path": 1
+      "chemins -> paths": 1
+      "classement -> ranking": 3
+      "cle -> key": 3
+      "cle_classement -> ranking_key": 1
+      "cle_refusee_ -> refused_key_": 2
+      "clore -> close": 2
+      "clos_le -> closed_at": 3
+      "clos_par -> closed_by": 2
+      "commande -> command": 1
+      "commit_de_donnees -> data_commit": 1
+      "compression-sans-perte -> lossless-compression": 1
+      "compte_cree_le -> account_created_on": 1
+      "compte_de -> account_of": 6
+      "comptes -> accounts": 3
+      "comptes-agents -> agent-accounts": 2
+      "config_croissance -> growth_config": 1
+      "confirme_par -> confirmed_by": 2
+      "confirmer-defaut -> confirm-defect": 3
+      "consigner-envoi -> record-sent": 2
+      "consigner-reponse -> record-answer": 1
+      "conteste -> contested_by": 2
+      "contexte -> context": 11
+      "contre -> against": 2
+      "cours -> progress": 2
+      "cree_le -> created_on": 3
+      "cree_par -> created_by": 2
+      "critere_acceptation -> acceptance_criteria": 1
+      "croissance -> growth": 9
+      "créées -> created": 1
+      "dates_ajoutees -> added_dates": 1
+      "debat -> debate": 2
+      "debat_min_heures -> debate_min_hours": 1
+      "debat_propre -> own_debate": 1
+      "debats -> debates": 13
+      "debattre -> debate": 27
+      "declare -> declared": 1
+      "deja_lu -> already_read": 1
+      "delai_relance_jours -> reminder_delay_days": 1
+      "demande -> request": 7
+      "depend_de -> depends_on": 1
+      "depot_origine -> upstream_repo": 1
+      "depouiller -> tally": 1
+      "depuis -> since": 3
+      "dernier_commit_de_code -> last_code_commit": 2
+      "dossier -> folder": 1
+      "doublon_de -> duplicate_of": 2
+      "doublon_par -> duplicate_marked_by": 2
+      "doutes -> doubts": 2
+      "débats -> open": 1
+      "ecart_declare_max -> max_declared_gap": 1
+      "ecartee -> set_aside": 2
+      "elements_max -> items_max": 1
+      "empreintes -> fingerprints": 2
+      "en -> in": 2
+      "en parallèle -> parallel": 3
+      "en_relecture -> in_review": 6
+      "encadrement_par_semaine_sous_frein -> oversight_per_week_under_brake": 1
+      "engage_depuis -> engaged_since": 5
+      "enregistrer-mesure -> record-measurement": 5
+      "enregistrer-verdict -> record-verdict": 2
+      "entretenu_par -> maintained_by": 1
+      "essaim -> swarm": 12
+      "etat_frein -> brake_state": 3
+      "executions -> runs": 2
+      "expiration_jours -> expiry_days": 2
+      "fait -> fact": 2
+      "fenetre_jours -> window_days": 1
+      "fil_de -> thread_of": 1
+      "fin_locale -> local_end": 1
+      "forme_reference -> reference_form": 1
+      "forme_source -> source_form": 1
+      "frein -> brake": 1
+      "fusion-auto -> auto-merge": 6
+      "fusion_sha -> merge_sha": 2
+      "fusionner -> merge": 2
+      "gain_mesure -> measured_gain": 1
+      "garants -> guarantors": 5
+      "garder -> guard": 1
+      "gardiens -> guardians": 4
+      "genre -> kind_of": 1
+      "gouvernance -> governance": 16
+      "historique_requis -> history_required": 1
+      "homonyme -> namesake": 3
+      "identifiant -> identifier": 2
+      "identique -> identical": 1
+      "identites -> identities": 2
+      "importer-questions -> import-questions": 1
+      "inscrire -> register": 12
+      "inscrit_le -> registered_on": 2
+      "instant_du_geste -> gesture_instant": 1
+      "integration-auto -> auto-integration": 5
+      "integree -> integrated": 4
+      "integrer -> integrate": 1
+      "invitations_par_semaine -> invitations_per_week": 3
+      "inviter -> invite": 12
+      "issue -> outcome": 1
+      "jamais_integree -> never_integrated": 2
+      "journal -> log_text": 1
+      "juge-commun -> common-judge": 1
+      "juge_commun_min -> common_judge_min": 3
+      "juge_commun_suffisant -> common_judge_sufficient": 1
+      "juge_complet -> complete_judge": 1
+      "jusqu_au -> until": 2
+      "langue -> language": 1
+      "le -> at": 7
+      "levee_de -> lift_of": 1
+      "levees -> lifts": 2
+      "liberer -> release": 3
+      "lier -> link": 6
+      "lieu -> place_of": 2
+      "lignes -> lines": 2
+      "lignes_modifiees -> changed_lines": 3
+      "lister -> list": 1
+      "manifeste -> manifest": 1
+      "manifestes -> manifests": 2
+      "marques_encadre -> frame_markers": 1
+      "max_par_24h -> max_per_24h": 2
+      "max_par_pr -> max_per_pr": 1
+      "membres -> members": 5
+      "membres_actifs_jours -> active_member_days": 1
+      "membres_actifs_par_gardien_max -> active_members_per_guardian_max": 2
+      "meme_contenu -> same_content": 1
+      "meme_pseudo -> same_login": 3
+      "mesure -> measurement": 1
+      "mesurer -> measure": 1
+      "mesures -> measurements": 6
+      "metriques -> metrics": 2
+      "mis_a_jour -> updated_on": 1
+      "modele -> model": 1
+      "modeles -> templates": 1
+      "modifier_tache -> modify_task": 4
+      "montrer_ligne -> show_line": 1
+      "motif -> reason": 5
+      "ne-plus-contacter -> do-not-contact": 1
+      "noeud -> node": 3
+      "nom -> name": 5
+      "non_teste -> untested": 3
+      "noter -> note": 5
+      "nouveau-projet -> new-project": 2
+      "optimiser -> optimize": 1
+      "organisation -> organization": 2
+      "ou -> or": 1
+      "outils -> tools": 2
+      "ouvert_le -> opened_at": 1
+      "ouverte -> open": 3
+      "ouverte_le -> opened_at": 2
+      "ouverts -> debates": 1
+      "ouvertures_max_par_24h -> openings_max_per_24h": 4
+      "ouvrir -> open": 5
+      "par -> by": 10
+      "par_compte -> by_account": 1
+      "paralleles -> parallel": 4
+      "participants_debat -> debate_participants": 1
+      "participants_tour -> turn_participants": 1
+      "personne -> person": 1
+      "peut_changer -> may_change": 1
+      "plateforme -> platform": 2
+      "poids_max_par_utilisateur_et_jour -> max_weight_per_user_per_day": 2
+      "poste -> area": 2
+      "postes -> areas": 2
+      "pour -> for": 2
+      "pourquoi -> why": 1
+      "prendre -> take": 10
+      "preparer -> prepare": 3
+      "probleme_passages -> passages_problem": 1
+      "problemes_de_forme -> shape_problems": 1
+      "problemes_reglages -> settings_problems": 2
+      "problemes_textes -> text_problems": 1
+      "projets -> projects": 11
+      "propose_le -> proposed_at": 1
+      "propose_par -> proposed_by": 1
+      "proposee -> proposed": 4
+      "proposer -> propose": 6
+      "proposer-tache -> propose-task": 8
+      "proposition -> proposal": 2
+      "propositions -> proposals": 2
+      "propositions de règle -> rule proposals": 3
+      "proposées -> proposed": 1
+      "pseudo -> login": 7
+      "pseudos_reserves -> reserved_logins": 4
+      "publier -> publish": 35
+      "questions-ouvertes -> open-questions": 4
+      "r8_amorcage -> r8_bootstrap": 4
+      "racine -> root": 1
+      "raison -> cause": 2
+      "raisons_acceptation -> acceptance_causes": 1
+      "raisons_course -> race_causes": 1
+      "raisons_r3 -> r3_causes": 3
+      "reference_decodee -> decoded_reference": 1
+      "refus -> refusal": 5
+      "refus_geste -> gesture_refusal": 2
+      "relecteur -> reviewer": 1
+      "relecture -> review": 2
+      "relecture_gardien_requise -> guardian_review_required": 3
+      "relectures -> reviews": 5
+      "releve_rapporteur_heures -> rapporteur_relief_hours": 1
+      "relire -> review": 9
+      "rendu -> rendered": 1
+      "rendu_debat -> debate_render": 1
+      "rendu_invitation -> invitation_render": 1
+      "renommer -> rename": 6
+      "renouveler -> renew": 1
+      "renvoi_hors_ruche -> referral_outside_hive": 2
+      "repond_a -> replies_to": 3
+      "reprise_apres_liberation_heures -> retake_after_release_hours": 4
+      "reservation_max_heures -> reservation_max_hours": 1
+      "resultats -> results": 1
+      "resume -> summary": 3
+      "resume_sha -> summary_sha": 1
+      "retirer -> withdraw": 2
+      "retirer-donnees -> remove-data": 6
+      "retiré -> withdrawn": 3
+      "retrait -> withdrawal": 2
+      "retrait_de -> removal_of": 1
+      "retraits -> removals": 1
+      "réponse -> answer": 1
+      "sans -> no": 1
+      "sans_reponse -> no_answer": 3
+      "sans_suite -> no_follow_up": 4
+      "securite -> security": 1
+      "si_juge_incomplet -> if_judge_incomplete": 3
+      "signalement -> decide-report": 6
+      "signalements_au_plafond_par_24h -> reports_at_cap_per_24h": 1
+      "signalements_nommant_max -> reports_naming_max": 4
+      "signalements_ouverts_max -> reports_open_max": 1
+      "signaler -> report": 4
+      "silence_avant_cloture_heures -> silence_before_close_hours": 1
+      "sortie_compressee -> compressed_output": 1
+      "soumettre -> submit": 13
+      "soumise_le -> submitted_at": 12
+      "soumise_par -> submitted_by": 2
+      "soumission_effective -> effective_submission": 1
+      "sources_par_argument_max -> sources_per_argument_max": 2
+      "statut -> status": 30
+      "sujet -> subject": 1
+      "synthese_a_jour -> synthesis_up_to_date": 1
+      "synthese_couvre -> synthesis_covers": 3
+      "synthese_le -> synthesis_at": 1
+      "synthese_max -> synthesis_max": 2
+      "synthese_par -> synthesis_by": 1
+      "synthetiser -> synthesize": 4
+      "tache -> task": 4
+      "taches -> tasks": 4
+      "taille_reelle -> actual_size": 1
+      "teste -> tested": 1
+      "tete -> head": 1
+      "texte -> text": 6
+      "texte_contexte -> context_text": 1
+      "texte_declare -> declared_text": 2
+      "texte_max -> text_max": 13
+      "texte_recevable -> admissible_text": 1
+      "textes_de -> texts_by": 1
+      "titre -> title": 2
+      "travail -> work": 2
+      "tâches -> tasks": 1
+      "une_ligne -> one_line": 1
+      "utilisateur -> user": 5
+      "valider -> validate": 24
+      "valider-contribution -> validate-manifest": 1
+      "verdict_montrable -> showable_verdict": 1
+      "verdicts_du_contenu -> content_verdicts": 1
+      "verifier-acceptation -> check-acceptance": 4
+      "verifier-fork -> check-fork": 1
+      "verifier-pr -> check-pr": 14
+      "verifier_pr -> check_pr": 10
+      "verifier_pr_arbre -> check_pr_tree": 1
+      "verifier_registre -> check_registry": 1
+      "voir -> show": 19
+      "votant -> voter": 3
+      "voter -> vote": 3
+    beside_french:
+      - "- [par]"
+      - "--position [pour]"
+      - "[avant]"
+      - "[chemins] touchés"
+      - "[contre]"
+      - "[declare] n"
+      - "[depuis]"
+      - "[débats] ouverts"
+      - "[en parallèle]"
+      - "[identique] ou"
+      - "[inviter] les"
+      - "[le]"
+      - "[mesure] ou"
+      - "[motif] n"
+      - "[par]"
+      - "[pour]"
+      - "[propositions de règle]"
+      - "[publier] une"
+      - "[refus] ou"
+      - "[retiré]"
+      - "[titre] et"
+      - "[travail] en"
+      - "[tâches] créées"
+      - "clé [cap]"
+      - "créées [ou] proposées"
+      - "dans [debats]"
+      - "dans [gouvernance]"
+      - "dans [manifestes]"
+      - "dans [mesures]"
+      - "dans [propositions]"
+      - "dans [taches]"
+      - "de [arbre]"
+      - "de [cap]"
+      - "de [gouvernance]"
+      - "de [mesures]"
+      - "de [modeles]"
+      - "de [projets]"
+      - "debattre [argumenter] le"
+      - "debattre [ouvrir] le"
+      - "débat [issue] proposition"
+      - "débats [ouverts]"
+      - "défaut [cap]"
+      - "en [cours]"
+      - "en [relecture]"
+      - "et [doutes] déclarés"
+      - "invitation [retirer] l"
+      - "ou [fait]"
+      - "ou [proposées]"
+      - "ou [relecture]"
+      - "retiré [demande]"
+      - "retiré [refus]"
+      - "retiré [sans] réponse"
+      - "sans [réponse]"
+      - "travail [en] cours"
+      - "tâches [créées] ou"
+    kept:
+      "CONTESTÉ [par]": 1
+      "[attend]": 1
+      "[aucun]": 1
+      "[aucun] geste": 3
+      "[aucun] manifeste": 1
+      "[aucun] verdict": 1
+      "[auteur]": 1
+      "[changement] non": 1
+      "[cible]": 1
+      "[clos]": 1
+      "[commande]": 1
+      "[contre]": 1
+      "[depuis]": 1
+      "[envoi] consigné": 2
+      "[fichier] binaire": 1
+      "[fichier] illisible": 8
+      "[fichier] inattendu": 1
+      "[fichier] manquant": 1
+      "[frein]": 2
+      "[gardien] ou": 1
+      "[gardiens]": 1
+      "[gestes] incohérents": 1
+      "[inscription] en": 1
+      "[le]": 5
+      "[le] commit": 1
+      "[le] compte": 1
+      "[le] conseil": 1
+      "[le] diff": 1
+      "[le] dossier": 1
+      "[le] découpage": 1
+      "[le] fichier": 6
+      "[le] projet": 2
+      "[le] rapporteur": 1
+      "[le] vote": 2
+      "[lignes]": 1
+      "[motif] de": 3
+      "[motif] du": 1
+      "[nom] de": 2
+      "[ouvert]": 1
+      "[par]": 5
+      "[pour]": 2
+      "[pour] l": 1
+      "[processeur]": 1
+      "[projet] actif": 1
+      "[projet] inconnu": 1
+      "[proposer] une": 1
+      "[proposition]": 1
+      "[rang]": 1
+      "[relecture]": 2
+      "[relecture] de": 1
+      "[relecture] illisible": 1
+      "[sujet] de": 1
+      "[taille]": 2
+      "[taille] réelle": 1
+      "[texte] hors": 1
+      "[titre] manquant": 1
+      "[titulaire]": 1
+      "[valeur]": 2
+      "[valider] ou": 1
+      "[votant] déclaré": 1
+      "actifs [pour]": 1
+      "après [le]": 1
+      "au [niveau]": 4
+      "avant [le]": 4
+      "commit [pour]": 1
+      "consigné [le]": 2
+      "contribution [le]": 1
+      "créé [le]": 1
+      "demandé [participer]": 1
+      "depuis [le]": 4
+      "déjà [ouvert]": 2
+      "enregistré [pour]": 1
+      "ici [le]": 1
+      "incident [ouvert]": 1
+      "inconnue [pour]": 1
+      "intégrable [le]": 1
+      "intégration [le]": 1
+      "le [canal]": 1
+      "le [doublon]": 1
+      "le [projet]": 3
+      "les [fichiers]": 1
+      "libre [pour]": 1
+      "ouvert [par]": 1
+      "ouverte [par]": 2
+      "parallèle [depuis]": 2
+      "pas [avant]": 2
+      "pas [par]": 1
+      "possible [le]": 4
+      "proposée [le]": 1
+      "proposée [par]": 1
+      "réservée [par]": 3
+      "réservée [pour]": 1
+      "ses [enfants]": 1
+      "signalé [par]": 3
+      "soumise [le]": 1
+      "tâche [depuis]": 1
+      "échu [le]": 1
+    prose_words:
+      "Confirmé": 14
+      "Enfants": 5
+      "Nouveau": 1
+      "actif": 1
+      "annulee": 4
+      "arbre": 9
+      "archive": 1
+      "attend": 12
+      "aucun": 30
+      "auteur": 32
+      "autre": 58
+      "avant": 38
+      "avis": 5
+      "canal": 6
+      "candidat": 1
+      "cap": 4
+      "caviardage": 2
+      "changement": 9
+      "cible": 2
+      "clos": 8
+      "commande": 4
+      "commun": 1
+      "compilateur": 1
+      "comptes": 5
+      "concurrentes": 3
+      "conseil": 140
+      "conteste": 1
+      "contexte": 3
+      "contre": 4
+      "courriel": 2
+      "debat": 1
+      "demande": 18
+      "depuis": 10
+      "doublon": 14
+      "empreintes": 7
+      "encadrement": 5
+      "enfants": 1
+      "envoi": 23
+      "fait": 22
+      "fichier": 47
+      "fichiers": 15
+      "frein": 7
+      "garant": 11
+      "gardien": 58
+      "gestes": 3
+      "heures": 2
+      "homonyme": 2
+      "identifiant": 14
+      "inscription": 15
+      "juge": 10
+      "le": 438
+      "levees": 2
+      "lies": 2
+      "lignes": 8
+      "membres": 4
+      "mesure": 12
+      "mesures": 1
+      "motif": 7
+      "niveau": 8
+      "nom": 41
+      "optimisation": 5
+      "optimiser": 2
+      "ordre": 7
+      "outil": 6
+      "outillage": 2
+      "ouvert": 15
+      "ouverte": 16
+      "paires": 1
+      "par": 119
+      "participer": 2
+      "personne": 52
+      "pistes": 2
+      "poids": 2
+      "poste": 7
+      "postes": 1
+      "pour": 67
+      "pourquoi": 8
+      "projet": 29
+      "projets": 1
+      "proposer": 11
+      "proposition": 18
+      "propositions": 2
+      "pseudo": 12
+      "raison": 1
+      "raisons": 1
+      "refus": 16
+      "registre": 35
+      "relance": 12
+      "relecteur": 3
+      "relecture": 67
+      "relectures": 2
+      "relire": 7
+      "renouvellement": 1
+      "resultat": 2
+      "resume": 1
+      "retenue": 6
+      "retrait": 17
+      "retraits": 1
+      "sens": 3
+      "signalement": 4
+      "soumission": 16
+      "statut": 7
+      "sujet": 2
+      "synthese": 2
+      "taille": 4
+      "texte": 24
+      "titre": 4
+      "titulaire": 21
+      "utilisateur": 4
+      "valeur": 10
+      "valider": 1
+      "verte": 2
+    lone:
+      "verifier_invitation [consigner-reponse -> record-answer]": 1
+      "verifier_invitation [retirer -> withdraw]": 1
+      "verifier_invitation [statut -> status]": 1
+      "voir_debat [clos -> closed]": 1
+      "voir_debat [ouvert -> open]": 1
+  outils/site_bee.py:
+    renamed:
+      "--en-parallele -> --parallel": 2
+      "--texte -> --text": 1
+      "--utilisateur -> --user": 3
+      "--voir -> --show": 1
+      "REGLES -> RULES": 1
+      "UTILISATEURS -> USERS": 1
+      "arbre -> tree": 2
+      "argumenter -> argue": 1
+      "cap -> balance": 2
+      "contexte -> context": 2
+      "contre -> against": 1
+      "debats -> debates": 3
+      "debattre -> debate": 3
+      "en parallèle -> parallel": 1
+      "essaim -> swarm": 1
+      "fait -> fact": 1
+      "outils -> tools": 6
+      "ouvrir -> open": 1
+      "pour -> for": 1
+      "prendre -> take": 3
+      "projets -> projects": 3
+      "pseudo -> login": 1
+      "taches -> tasks": 8
+      "voir -> show": 1
+    beside_french:
+      - "--position [pour]"
+      - "[contre]"
+      - "[en parallèle]"
+    kept:
+      "Clos [le]": 1
+      "Ouvert [par]": 1
+      "Réservée [par]": 1
+      "[attend]": 1
+      "[avis]": 1
+      "[clos]": 1
+      "[le]": 5
+      "[par]": 2
+      "[pour]": 1
+      "[relecture] d": 1
+      "[taille]": 1
+      "depuis [le]": 1
+      "entretenu [par]": 1
+      "générée [le]": 1
+      "inscrit [le]": 1
+      "jour [le]": 1
+      "soumise [le]": 1
+    prose_words:
+      "Confirmé": 1
+      "Enfants": 3
+      "arbre": 4
+      "attend": 3
+      "aucun": 4
+      "auteur": 1
+      "autre": 5
+      "avant": 2
+      "cap": 6
+      "changement": 1
+      "cible": 3
+      "clos": 3
+      "commande": 2
+      "commun": 1
+      "compilateur": 1
+      "concurrentes": 1
+      "conseil": 5
+      "contre": 1
+      "depuis": 1
+      "doublon": 1
+      "essaim": 1
+      "fait": 3
+      "fichier": 1
+      "gardien": 6
+      "identique": 2
+      "inscription": 1
+      "juge": 2
+      "le": 43
+      "lignes": 4
+      "membres": 2
+      "mesure": 2
+      "mesurer": 1
+      "mesures": 1
+      "noeud": 1
+      "optimisation": 1
+      "optimiser": 2
+      "outil": 1
+      "outillage": 1
+      "ouvert": 2
+      "ouverte": 2
+      "par": 19
+      "participer": 1
+      "pistes": 1
+      "poste": 6
+      "pour": 18
+      "pourquoi": 1
+      "projet": 11
+      "projets": 3
+      "proposition": 2
+      "pseudo": 13
+      "refus": 3
+      "registre": 9
+      "relecture": 6
+      "relectures": 1
+      "relire": 2
+      "retenue": 1
+      "sens": 4
+      "soumission": 1
+      "statut": 3
+      "synthese": 3
+      "taches": 1
+      "taille": 8
+      "titulaire": 3
+      "utilisateur": 1
+      "verte": 1
+    lone:
+      "generer [actif -> active]": 1
+      "page_debat [clos -> closed]": 1
+      "page_debat [ouvert -> open]": 1

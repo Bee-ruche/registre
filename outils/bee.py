@@ -59,7 +59,8 @@ MARQUES_A_REMPLIR = (A_REMPLIR, A_REMPLIR_EN)
 CLES_LIBRE_SERVICE_TACHE = {"statut", "reservation", "paralleles", "contribution", "notes"}
 # Outillage du registre (tâches de la ruche) : un membre peut le modifier par PR, jamais fusionnée automatiquement.
 CHEMINS_OUTILLAGE = ("outils/*", "schemas/*", "modeles/*", "docs/*", ".github/*", ".claude/*", "arbre/*",
-                     "AGENTS.md", "README.md", "UTILISATEURS.md", "MAINTENEURS.md")
+                     "AGENTS.md", "README.md", "UTILISATEURS.md", "MAINTENEURS.md",
+                     "outils/juge/*")  # ruche-0153: the common judge stays outils/juge/ after the switch to English, until judge-v4
 
 
 class ErreurBee(Exception):

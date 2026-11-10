@@ -12,7 +12,7 @@ import sys
 if __name__ == "__main__" and not sys.flags.isolated:
     sys.exit("rename_code.py: run it isolated, python3 -I outils/migration/rename_code.py …, so that nothing shadows a module")
 
-import argparse, ast, collections, importlib.util, io, itertools, json, keyword, pathlib, re, subprocess, tempfile, tokenize  # noqa: E401, E402
+import argparse, ast, collections, importlib.util, io, itertools, json, keyword, pathlib, re, subprocess, tempfile, tokenize, unittest  # noqa: E401, E402
 import yaml  # noqa: E402
 
 SELF = pathlib.Path(__file__).resolve()
@@ -23,13 +23,23 @@ IDS = ("outils/migration/identifiers.yaml", "tools/migration/identifiers.yaml")
 NAME_SHAPE = r"[\w./*{}<>~#@\[\]-]+"  # a whole literal shaped as a name (a path, a key path, a glob, an address)
 RUN = re.compile(r"((?:[\w\[\]<>@#/-]|\.(?=[\w\[\]<>@#/-]))+)")  # a run of name characters (a sentence's final period aside)
 WORD = re.compile(r"((?<!\\)[\w.-]+)")  # the tokens P1 compares inside a text (never the letter of an escape: \\n)
-LINE = re.compile(r"([ \t]*(?:- )*)([A-Za-z_][\w-]*)(:)((?=[ \t]).*|)")  # a YAML key at a line start, and the rest
+LINE = re.compile(r"([ \t]*(?:\| )?[ \t]*(?:- )*(\\?[\"']|))([A-Za-z_][\w-]*)(\2:)((?=[ \t]).*|)")  # a YAML key at a line start (quoted, in a data frame's « | »)
 VALUE = re.compile(r"( +)([\"']?)([\w.-]+(?:/[\w.-]+)*)(\2)([ \t]*(?:#.*)?)")  # its one-token value
 TAG = re.compile(r"(</?(?:a|b|body|br|code|dd|details|div|dl|dt|em|footer|h[1-6]|head|header|html|input|label|li|main|meta|nav|ol|option|p|"
                  r"pre|section|select|small|span|strong|summary|table|tbody|td|th|thead|title|tr|ul)\b[^<>]*>)")  # HTML: its text is prose
 KEY = re.compile(r"(\s*(?:- )*)([\w-]+)(:)(?=\s|$)\s*")  # a workflow's YAML key at a line start, and the blanks after it
 TESTS = re.compile(r"(?:^|/)test_\w+(?:\.py)?\Z")  # a test file (outils/test_bee.py), or a test module in a dotted name
+GLUED = re.compile(r"(?:(?<=[:/@#=.])|\A)[A-Za-z][A-Za-z0-9-]*[A-Za-z0-9]\Z")  # an f-string's last word, glued to the interpolation
+# after a separator or alone (github:personne{n}), never after a blank (« # bee contexte{…} ») (ruche-0153)
+BEE_TAIL = re.compile(r"(?<![\w/.-])bee (?:'{3}|\"{3}|['\"])?\Z")  # a literal that ends on « bee »: its command is in the next one
+IN_SENTENCE = re.compile(r"[\w'’] (?:'{3}|\"{3}|['\"])?\Z")  # a literal that ends inside a sentence: the next one goes on with it
+LEAD = re.compile(r"\A([rRbBuU]*(?:'{3}|\"{3}|['\"])?)([a-z][\w-]*(?:, [a-z][\w-]*)*)")  # that next literal's command(s)
+TEST_CASE = frozenset(dir(unittest.TestCase))  # what a test class's method must never become (ruche-0153: execution -> run)
 HEREDOC = re.compile(r"(?<!<)<<-?\s*(['\"]?)(\w+)\1\s*$")  # a here-document starts at this line's end
+BLOCK = re.compile(r"[ \t>]*(`{3,}|~{3,})")  # Markdown: a fenced code block opens or closes (in a list or a quote too)
+SPAN = re.compile(r"(?<!`)(`+)(?!`)(.+?)(?<!`)\1(?!`)", re.S)  # Markdown: a code span, inside one paragraph
+BEE = re.compile(r"(?<![\w.-])(?:[\w.-]+/)*bee(?:\.py)?(?=\s)")  # change 10: bee, or a path to bee.py, then a blank
+ARG = re.compile(r"(?:'[^'\n]*'|\"[^\"\n]*\"|[^\s'\"|;&)]|(?<=[^\s|])\|(?=[^\s|]))+")  # a word of a command line (a|b: alternatives)
 words = lambda name: [w.lower() for w in re.findall(r"[A-Z]+(?![a-z])|[A-Z]?[a-zà-ÿ]+", name)]  # noqa: E731
 idents = lambda tree: ((n, f, v) for n in ast.walk(tree) if not isinstance(n, ast.Constant) for f, v in ast.iter_fields(n)  # noqa: E731
                        for v in (v if isinstance(v, list) else [v]) if isinstance(v, str) and f not in ("kind", "type_comment"))
@@ -51,7 +61,7 @@ class CodeMap:
             [pairs[str(a)].add(str(b)) for a, b in d.items()]
         for a, b in nm["cli"]["commands"].items():  # a subcommand's own name: « invitation accord-conseil » -> council-approval
             [pairs[a.split(" ")[1]].add(b.split(" ")[1]) for _ in [1] if " " in a]
-        for a, b in nm["paths"].items():  # each folder and file name of the path map, and a file's stem (a schema's name)
+        for a, b in ((a, b) for a, b in nm["paths"].items() if a != b):  # each folder and file name the path map moves, and a file's stem
             for x, y in zip(a.strip("/").split("/"), b.strip("/").split("/")):
                 pairs[x].add(y)
                 [pairs[x.split(".")[0]].add(y.split(".")[0]) for _ in [1] if "." in x and x.partition(".")[2] == y.partition(".")[2]]
@@ -68,22 +78,57 @@ class CodeMap:
         self.targets, self.inverse = set(self.tokens.values()) | set(self.attrs.values()), {e: f for f, e in self.ids.items()}
         self.tokens = self.base_tokens = collections.ChainMap({}, self.tokens)
         self.keep = [(rename.glob_re(k["files"]), set(k.get("scopes") or ()), set(k.get("tokens") or ())) for k in m["keep"]]
+        self.in_scopes = [(rename.glob_re(k["files"]), set(k["scopes"]), set(k["tokens"]), set(k.get("literals") or ()))
+                          for k in m.get("kept_in_scopes") or ()]  # ruche-0153 (literals: only in those strings)
         self.declared = [(rename.glob_re(k["files"]), set(k["tokens"])) for k in m.get("strings") or ()]  # on purpose, in strings
+        self.joined, self.out_scopes, self.renaming = False, [(rename.glob_re(k["files"]), set(k["scopes"]), dict(k["tokens"]), set(k.get("literals") or ()))
+                                          for k in m.get("renamed_in_scopes") or ()], {}  # ruche-0153: words a test quotes from bee's output
         phrases = sorted({t for d in (nm.get("workflows") or {}).values() for t in d if " " in t}, key=len, reverse=True)  # workflows, steps, robots
         self.subcommands = re.compile(r"(?<![\w-])(?:" + "|".join(re.escape(k).replace(r"\ ", r"\s+") for k in nm["cli"]["commands"] if " " in k) + r")(?![\w-])")
         self.in_tests, self.test_ids = False, set(m.get("test_identifiers") or {})
+        self.key_names = {k for f in nm["families"].values() for k in f["keys"] if k in self.named and k not in self.hand}  # printed()
+        self.english_keys = {self.named[k] for k in self.key_names}  # a label already renamed by an earlier rule of printed()
+        self.value_names = {v for d in (*nm["domains"].values(), *nm["open_domains"].values()) for v in d if isinstance(v, str) and v in self.named
+                            and v not in self.hand}
+        self.displayed = self.kept(next((c for c in sorted(names.code) if re.fullmatch(r"[^/]+/bee\.py", c)), ""))[1]  # bee's kept words
         self.phrases, self.keeping = re.compile(r"(?<![\w-])(?:" + "|".join(map(re.escape, phrases)) + r")(?![\w-])"), set()  # keeping: the file's kept
+        given = lambda a: {self.named.get(a), self.base_tokens.get(a), self.ids.get(a)} | self.hand.get(a, set())  # noqa: E731 (an English the map gives)
+        phrase = lambda a, b: len(x := re.split(r"([\w-]+)", a)) == len(y := re.split(r"([\w-]+)", b)) and x != y and all(  # noqa: E731
+            u == v or i % 2 and v in given(u) for i, (u, v) in enumerate(zip(x, y)))  # a phrase whose changed words the map renames so
+        wrong = [f"{a} -> {b}" for _, _, t, _ in self.out_scopes for a, b in t.items() if b not in given(a) and not phrase(a, b)]  # « clé cap »
+        if wrong:
+            raise rename.Problem(f"identifiers.yaml, renamed_in_scopes: not the map's: {', '.join(wrong)}")
 
     def phrased(self, s):
         """s with each whole phrase renamed, a kept one aside (P1 compares a text so, then token by token)."""
         return self.phrases.sub(lambda x: x[0] if x[0] in self.keeping else self.named[x[0]], s)
 
     def scoped(self, path, scope, literal=""):
-        """tokens, each hand token resolved by the role table of its file and scope (and literal), else by its default."""
+        """tokens, each hand token resolved by the role table of its file and scope (and literal), else by its default; a token kept
+        in this scope (kept_in_scopes: logins) as written."""
         scope = self.inverse.get(scope, scope)  # the new tree's scopes are English
-        self.tokens, self.in_tests = collections.ChainMap({t: (h.get("roles") or {}).get(f"{path}:{scope}:{literal}", (h.get("roles") or {}).get(
-            f"{path}:{scope}", h.get("default", t))) for t, h in self.m["hand"].items()}, self.test_tokens if TESTS.search(path) else {},
-            self.base_tokens), bool(TESTS.search(path))
+        self.tokens, self.in_tests = collections.ChainMap({**{t: (h.get("roles") or {}).get(f"{path}:{scope}:{literal}", (h.get("roles") or {}).get(
+            f"{path}:{scope}", h.get("default", t))) for t, h in self.m["hand"].items()}, **dict.fromkeys(self.kept_here(path, scope, literal), None)},
+            self.test_tokens if TESTS.search(path) else {}, self.base_tokens), bool(TESTS.search(path))
+        self.tokens.maps[0].update({t: t for t in self.kept_here(path, scope, literal)})
+        self.renaming = self.renamed_here(path, scope, literal)
+
+    def kept_here(self, path, scope, literal=None):
+        """The tokens kept as written in one scope of one file (kept_in_scopes; the scope as the base names it), an entry that
+        lists literals only in a string whose value is one of them."""
+        scope = self.inverse.get(scope, scope)
+        return set().union(*(t for r, s, t, v in self.in_scopes if r.match(path) and scope in s and (not v or literal in v)))
+
+    def renamed_here(self, path, scope, literal=None):
+        """renamed_in_scopes (ruche-0153): the words, each with its English, that a scope's strings quote from bee's output where no
+        rule sees a name (« refus de bruno dans », « (garant, »), renamed there only (in the literals listed, if any)."""
+        scope = self.inverse.get(scope, scope)
+        return {a: b for r, s, t, v in self.out_scopes if r.match(path) and scope in s and (not v or literal in v) for a, b in t.items()}
+
+    def renamed_words(self, s):
+        for a, b in sorted(self.renaming.items(), key=lambda x: -len(x[0])):
+            s = re.sub(r"(?:(?<![\w-])|(?<=\\[nt]))" + re.escape(a) + r"(?![\w-])", b, s)  # after a blank, or an escaped one in the source
+        return s
 
     def covered(self, name, mapped=True):
         return mapped and name in self.attrs or all(len(w) < 2 or w in self.english for w in words(name))
@@ -129,6 +174,9 @@ class CodeMap:
             problems += [f"{path}: {x} is defined as {self.ids.get(x, x)} and read as an attribute as {self.attrs[x]}" for x in sorted({n.name for n in ast.walk(
                 tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))}) if self.attrs.get(x, self.ids.get(x, x)) != self.ids.get(x, x)]
             problems += [f"{path}: {p}" for p in self.collisions(tree, path)]
+            problems += [f"{path}: line {f.lineno}: the method {f.name} becomes {e}, an attribute of unittest.TestCase it would hide (ruche-0153)"
+                         for c in ast.walk(tree) if isinstance(c, ast.ClassDef) and TESTS.search(path) for f in c.body
+                         if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef)) and (e := self.ids.get(f.name, f.name)) != f.name and e in TEST_CASE]
         return problems + [f"identifier {x}: only a test uses it, it belongs in test_identifiers (never a string token elsewhere)"
                            for x in self.m["identifiers"] if x not in used and x in self.base_tokens and x not in self.named and self.names.code <= set(code)]
 
@@ -176,12 +224,29 @@ class CodeMap:
         """The English of a whole literal shaped as a name: a token, a node id, a path, or names joined by / or a dot."""
         if s in self.tokens or s in self.hand or not re.fullmatch(NAME_SHAPE, s):
             return self.tokens.get(s, s)
+        if (n := re.fullmatch(r"([A-Za-z_]\w*_)(\d+)", s)) and self.tokens.get(n[1], n[1]) != n[1]:  # cle_refusee_0: f"{prefix}{n}" (ruche-0153)
+            return self.tokens[n[1]] + n[2]
+        if self.names.kept_path(s) or s.startswith("bee/"):  # ruche-0153: a path the switch leaves as it is (the common judge, a
+            return s  # fork's bee/ folder: the forks are not switched), every segment as written
         seg = self.names.m["tree"]["segments"]
         if "/" in s and s.split("/")[0] in ("racine", "roles", "projets") and all(x in seg for x in s.split("/")):
             return "/".join(seg[x] for x in s.split("/"))
         x = re.split(r"([/.#@<>\[\]])", self.names.path(s))  # after a test module (outils.test_bee.TestX.test_y), the tests' names
         t = next((i for i, y in enumerate(x) if TESTS.search(y)), len(x))
         return "".join((self.tokens if i <= t else collections.ChainMap(self.test_tokens, self.tokens)).get(y, y) for i, y in enumerate(x))
+
+    def run(self, r):
+        """A run of name characters in a text: renamed whole if compound; half a placeholder of several words (« <ta copie> ») stays
+        (ruche-0153); the end of a tag cut by the literal (« AGENTS.md'>le guide », « '>projet d'origine ») or the start of the next
+        one (« cap</a ») is a tag's, and the word beside it is prose's (review of b2245cf)."""
+        if re.fullmatch(r"<[^>]*|[^<]*>", r):
+            return r
+        if r.startswith(">") and len(r) > 1:
+            return ">" + self.run(r[1:])
+        if "</" in r.lstrip("<"):
+            i = r.index("</", 1)
+            return self.run(r[:i]) + r[i:]
+        return self.whole(r) if re.search(r"[_.\[\]<>@#/]|\w-\w|^--", r) else r
 
     def text(self, t):
         """The names in a text: a YAML key at a line start and its one-token value; every compound word (with _ . / [ ] < > @ #
@@ -191,21 +256,85 @@ class CodeMap:
         parts = re.split(r"(\n|\\n)", t)
         for i in range(0, len(parts), 2):
             if x := LINE.fullmatch(parts[i]):
-                v = VALUE.fullmatch(x[4])
-                parts[i] = x[1] + self.tokens.get(x[2], x[2]) + x[3] + (f"{v[1]}{v[2]}{self.whole(v[3])}{v[4]}{v[5]}" if v and
-                                                                        isinstance(yaml.safe_load(v[3]), str) else x[4])
+                v = VALUE.fullmatch(x[5])
+                parts[i] = x[1] + self.tokens.get(x[3], x[3]) + x[4] + (f"{v[1]}{v[2]}{self.whole(v[3])}{v[4]}{v[5]}" if v and
+                                                                        isinstance(yaml.safe_load(v[3]), str) else x[5])
         parts = self.phrased("".join(parts))
+        parts = self.printed(parts)
         c = self.names.m["cli"]["commands"]  # a subcommand after its command, wherever (a fake bee's « BEE passe-fusion preparer »)
         t = self.subcommands.sub(lambda x: (lambda a, s, b: s.join(c[f"{a} {b}"].split(" ")))(*re.fullmatch(r"(\S+)(\s+)(\S+)", x[0]).groups()), parts)
-        t = "".join(RUN.sub(lambda x: self.whole(x[0]) if re.search(r"[_.\[\]<>@#/]|\w-\w|^--", x[0]) else x[0], p)
-                    for p in TAG.split(t))
+        t = "".join(RUN.sub(lambda x: self.run(x[0]), p) for p in TAG.split(t))
+        t = re.sub(r"(?<![\w$-])[a-z_]\w*(?=\(\) \{)", lambda x: self.ids.get(x[0], x[0]), t)  # a shell function's definition (ruche-0153)
         t = re.sub(r"(?<=\{)[A-Za-z_]\w*(?=[}!:.\[])|(?<=%\()[A-Za-z_]\w*(?=\))", lambda x: self.ids.get(x[0], x[0]), t)  # as .format(name=)
         t = re.sub(r"(?<=\(\?P=)\w+(?=\))|(?<=\\g<)\w+(?=>)", lambda x: self.tokens.get(x[0], x[0]), t)  # regex back-references, as m["name"]
         t = re.sub(r"(?<=\()(\?:)?([\w-]+(?:\|[\w-]+)+)(?=\)/)", lambda x: (x[1] or "") + "|".join(map(self.name, x[2].split("|"))), t)  # (a|b)/
-        t = re.sub(r"(?<![\w-])[a-z_][\w-]*(?=\]?=)|(?<=\^)[a-z_][\w-]*(?=:)", lambda x: self.name(x[0]), t)  # k=, x[k]=, a pattern's ^key:
+        t = re.sub(r"(?<![\w-])[a-z_][\w-]*(?=\]?=)|(?<=\^)[a-z_][\w-]*(?=:)", lambda x: self.name(x[0]), t)
+        t = re.sub(r"(?<=\^)(\((?:\?:)?|[ \t]*- )([a-z_][\w-]*)(?=:)", lambda x: x[1] + self.name(x[2]), t)  # a pattern's ^  - key:, ^(key: (ruche-0153)  # k=, x[k]=, a pattern's ^key:
         t = re.sub(r"((?<![\w/.-])bee +|(?<![\w.-])bee\.py +)([a-z][\w-]*)( +[a-z][\w-]*)?", lambda x: x[1] + self.command(x[2], x[3] or ""), t)
         t = re.sub(r"(?<=\$)\{?([A-Za-z_]\w*)", lambda x: x[0].replace(x[1], self.whole(x[1])), t)  # a shell's $variable
+        t = re.sub(r"(?<=\bread -r )[A-Za-z_][\w ]*|\A ?(?!(?:for|while|until|if)\b)(?:(?!in\b)[a-z_]\w* )+[a-z_]\w*(?=; do\b)", lambda x: re.sub(r"\w+", lambda w: self.whole(w[0]), x[0]),
+                   t)  # a shell's read -r names, and a text going on with such a list until « ; do » (ruche-0153)
+        t = re.sub(r"(?<![\w$-])[a-z_]\w*(?==\$\()", lambda x: self.whole(x[0]), t)  # a shell's x=$( … ) (ruche-0153)
         return re.sub(r"(?<![\w.])bee\.([A-Za-z_]\w*)", lambda x: "bee." + self.ids.get(x[1], x[1]), t)
+
+    def label(self, w):
+        """A label bee prints before « : » (review of b2245cf): a key of the data (French, or English once renamed), a path or a key
+        path, or a closing parenthesis; never a French word of prose (« demandé », « issue » after « Seule »: the caller sees that)."""
+        return w.endswith(")") or w in self.key_names or w in self.english_keys or bool(re.search(r"[./]", w))
+
+    def after_label(self, before):
+        """A text that ends with a label and « : » (review of b2245cf): nothing else (an interpolation's), or a label as label() says,
+        which no word and blank of prose precede (« Seule issue : »), unless it opens a parenthesis. The code's own strings only: a
+        test's quotes bee's output, where a value after a label of prose comes from the data (« Poste le plus en retard : {poste} »)."""
+        m = re.search(r"(?:(?<=\()|(?<![\w'’] )(?<![\w'’()]))([\w./-]+\)?) : \Z", before)
+        return before == " : " or bool(m) and self.label(m[1])
+
+    def printed(self, t, top=True):
+        """ruche-0153: the plain words of a text in the places where bee's messages print names, renamed as the tool's output is:
+        a key before French typography's « : » (« motif : ») or ending a label (« f.yaml : motif »), or before « de N caractères »;
+        a value after « : » then the end, a mark or an id (« statut : refusee) »), unless bee.py keeps it as a word of its messages; a
+        key or a value between « and » (« proposee »), a node id after « nœud » or around « > » (« racine > roles/relire »), in « » or
+        in a list, a role after --role;
+        a key starting a label before « mot(s) » or « « » (the text's start, after « : », « ( », « , » or « ; »), a level after « Niveau », a gesture before « est déjà consigné », a folder's label after a
+        count (« 4 taches ajoutés »). Any other plain word stays (prose, logins)."""
+        here = {w for w, e in self.tokens.maps[0].items() if w == e}  # kept in this scope
+        if self.joined and top:  # the literal goes on with the previous one (« … de la même " "personne : … »): a word before it
+            return self.printed("a " + t, False)[2:]
+        t = re.sub(r"(?<![\w/.<>@#\[\]$«'’-])(?<![\w'’] )[a-z_][\w-]*(?= : )|(?:(?<=[\w.] : )|(?<=\A : ))[a-z_][\w-]*\Z", lambda x: self.named.get(x[0], x[0]) if x[0] in self.key_names - here - self.displayed
+                   and (x.string[x.end():].startswith(" : ") or self.in_tests or self.after_label(x.string[:x.start()])) else x[0],
+                   t)  # « motif : », and a label « f.yaml : motif » the tool prints so (never « Cause : demande »: review of b2245cf)
+        t = re.sub(r"(?<=« )[a-z_][\w-]*(?= »)", lambda x: self.named.get(x[0], x[0]) if x[0] in (self.key_names | self.value_names) - here - self.displayed
+                   else x[0], t)
+        t = re.sub(r"(?<![\w/.<>@#\[\]$«-])[a-z_][\w-]*(?= de \d+ caractères)", lambda x: self.named.get(x[0], x[0]) if x[0] not in here | self.hand.keys()
+                   else x[0], t)  # « motif de 1516 caractères », « corps de … »: a field's or an option's name
+        t = re.sub(r"(?<=[\w)] : )[a-z_][\w-]*(?=\Z|[),;.\n]| ;| [\w-]*\d)", lambda x: self.named.get(x[0], x[0]) if x[0] in self.value_names - here - self.displayed
+                   and (self.in_tests or self.after_label(x.string[:x.start()])) else x[0],
+                   t)  # a value after « : », then the end, a mark or an id (« statut : refusee) », « close : tache ruche-0008 »); in the code's
+        # strings after a label only (review of b2245cf: never « demandé : participer, », « Seule issue : refus »)
+        t = re.sub(r"""((?:\[|\.get\()\\?(["']))([\w.-]+)(?=\\?\2[\]),])""", lambda x: x[1] + self.whole(x[3]), t)  # x["k"], .get("k"), escaped too
+        names = lambda kinds: lambda x: self.named.get(x[0], x[0]) if x[0] in kinds - here - self.displayed else x[0]  # noqa: E731
+        t = re.sub(r"(?<![\w$-])[A-Z][A-Z0-9]{3,}(?![\w-])", lambda x: self.tokens.get(x[0], x[0]) if x[0] in self.ids and x[0] not in here | self.displayed
+                   else x[0], t)  # a constant's name written in a text (a pattern over the code's source: « RACINE\s*/ »)
+        t = re.sub(r"(?<![\w$-])[a-z_]\w*(?=\\\((?!s\\\)))", lambda x: self.ids.get(x[0], x[0]) if x[0] not in here | self.displayed else x[0],
+                   t)  # a function's name before « \( » in a pattern over the code's source (« reglage\( »), never « mot\(s\) »
+        t = re.sub(r"(?:\A|(?<=: )|(?<=\()|(?<=[;,] ))[a-z_][\w-]*(?= mot\(s\)| « )", names(self.key_names),
+                   t)  # a label's key: « x : titre mot(s) 6 », « par « Gaspard » », « (votant « x ») »; never prose (« nom de fichier « x » »)
+        t = re.sub(r"(?<=Niveau )[A-Z]\w+", names(self.value_names), t)  # a level
+        t = re.sub(r"(?<=[\w)] : )[a-z_]+(?= \((?:\d|\Z))", names(self.key_names), t)  # « x.yaml : le (2026-…) », as bee's f"{chemin} : le"
+        t = re.sub(r"\A[a-z_]+(?= ne change jamais)", names(self.key_names), t)  # « pourquoi ne change jamais »: a key bee prints so
+        t = re.sub(r"(?<![\w/.-])[a-z_]+(?= est déjà consigné)", lambda x: self.whole(x[0]) if x[0] in (self.key_names | self.value_names) - here - self.displayed else x[0], t)  # a gesture
+        t = re.sub(r"(?<=\d )(?:propositions de règle|[a-z_]+)(?= ajouté| sur 24 h| en 24 h)", names(set(self.named)), t)  # « 4 taches ajoutés »
+        t = re.sub(r"(?<![\w-])[a-z_]+(?= → )|(?<= → )[a-z_]+(?![\w-])", names(self.value_names), t)  # a transition « ouverte → en_relecture »
+        c = self.names.m["cli"]["commands"]  # the commands listed after « bee » (« bee prendre, soumettre, relire »)
+        t = re.sub(r"((?<![\w/.-])bee )([a-z][\w-]*(?:, [a-z][\w-]*)+)", lambda x: x[1] + ", ".join(c.get(w, w) for w in x[2].split(", ")), t)
+        seg = self.names.m["tree"]["segments"]
+        node = lambda w: w.split("/")[0] in seg or w.split("/")[-1] in seg  # noqa: E731
+        listed = lambda x: bool(b := re.search(r"([\w/-]+), \Z", x.string[:x.start()])) and node(b[1]) and (  # noqa: E731
+            not (a := re.match(r", ([\w/-]+)", x.string[x.end():])) or node(a[1]))  # its list's neighbours are node ids too
+        t = re.sub(r"(?<=--role )[a-z]+\b(?![/.-])|(?<=« )[a-z]+(?= »)|(?<=[:,] )[a-z]+(?=, | ;| »|\Z)", lambda x: seg.get(x[0], x[0]) if x[0] not in here
+                   and (x.string[x.start() - 2:x.start()] != ", " or listed(x)) else x[0], t)  # a role, a node id in « » or in a
+        # list of them (« lus : racine, roles/ »), never a word of a prose list (« fait quoi, relire, reproduire »: review of b2245cf)
+        return re.sub(r"(?<=nœud )[a-z_]+\b(?![/.-])|(?<![\w/.$-])[a-z_]+(?= > )|(?<= > )[a-z_]+\b(?![/.-])", lambda x: seg.get(x[0], x[0]), t)
 
     def name(self, x):
         """A name of the name map (or of the role table), never an identifier: for patterns that hold French words."""
@@ -214,6 +343,99 @@ class CodeMap:
     def command(self, a, b):
         c = self.names.m["cli"]["commands"]
         return c[f"{a} {b.strip()}"].replace(" ", b[:len(b) - len(b.lstrip())], 1) if b and f"{a} {b.strip()}" in c else c.get(a, a) + b
+
+    # --- change 10 (ruche-0153; plan, section 12): `bee <command>` and its options in the code of Markdown ---
+
+    def cli(self, inv):
+        """The command line's names on one side: (commands, options, {(command, option): {choice: its other name}}), the
+        choices of the base's own parser (bee.construire_analyseur) named as P3 maps them (whole, in that function's scope)."""
+        if not hasattr(self, "_cli"):
+            nm, tool = self.names.m["cli"], next(p for p in sorted(self.names.code) if re.fullmatch(r"[^/]+/bee\.py", p))
+            self.scoped(tool, "construire_analyseur")
+            choices = {}
+            for r in parser_rows(bee.construire_analyseur()):
+                for o in (o for o in (r[1] if r[1] != "defaults" and r[0] and r[9] else ()) if o.startswith("--")):
+                    choices[" ".join(r[0]), o] = {v: self.whole(v) for v in r[9] if isinstance(v, str)}
+            self.tokens = self.base_tokens
+            flip = lambda d: {b: a for a, b in d.items()}  # noqa: E731
+            options = {a: b for a, b in nm["options"].items() if a.startswith("--")}
+            self._cli = {False: (nm["commands"], options, choices),
+                         True: (flip(nm["commands"]), flip(options), {(" ".join(nm["commands"].get(c, c) for c in [k]), options.get(o, o)): flip(d)
+                                                                   for (k, o), d in choices.items()})}
+        return self._cli[inv]
+
+    def commands(self, text, inv=False):
+        """Change 10: a Markdown text with each `bee <command>` (or a path to bee.py) inside its code, fenced blocks and code
+        spans, renamed with its options and their choices (inv: back to French); prose, and everything else, as written."""
+        out, pos = [], 0
+        for a, b, span in code_regions(text):
+            out += [text[pos:a], self.calls(text[a:b], inv, span)]
+            pos = b
+        return "".join(out) + text[pos:]
+
+    def calls(self, code, inv, span=False):
+        """One region of code: each invocation of bee renamed (up to a line's end, unless continued, a pipe, ;, &, ), a comment
+        or the next bee; in a code span, a line's end is a blank), its global options, its command (a subcommand too), then
+        each option and the choice it is given (each of a|b too)."""
+        commands, options, choices = self.cli(inv)
+        edits, found, space = {}, list(BEE.finditer(code)), " \t\n" if span else " \t"
+        for k, m in enumerate(found):
+            words, j, stop = [], m.end(), found[k + 1].start() if k + 1 < len(found) else len(code)
+            while j < stop:
+                if code[j] in space or code.startswith("\\\n", j):
+                    j += 1 + (code[j] == "\\")
+                    continue
+                if code[j] in "\n|;&)" or code[j] == "#" and code[j - 1] in space:
+                    break
+                if not (w := ARG.match(code, j)):
+                    break
+                words.append((j, j + len(w[0]), w[0]))
+                j += len(w[0])
+            n = 0
+            while n < len(words) and words[n][2].startswith("--"):  # the global options: --registre takes a value
+                n += 1 + (words[n][2] in ("--registre", "--registry"))
+            words[n:n + 2] = [(a, a + len(c), c) for a, _, w in words[n:n + 2] for c in [name_of(w)]]  # « relire, », « prendre──▶ »
+            if n >= len(words) or words[n][2] not in commands and " ".join(x[2] for x in words[n:n + 2]) not in commands:
+                continue
+            command = " ".join(x[2] for x in words[n:n + 2]) if " ".join(x[2] for x in words[n:n + 2]) in commands else words[n][2]
+            new = commands[command].split(" ")
+            edits.update({words[n + x][:2]: y for x, y in enumerate(new) if words[n + x][2] != y})
+            edits.update({w[:2]: options[w[2]] for w in words[:n] if w[2] in options})
+            for x, (a, b, w) in enumerate(words[n + len(new):], n + len(new)):
+                a += len(w) - len(w := w.lstrip("["))  # an optional option, written [--name value]
+                name, equal, value = w.partition("=")
+                given = choices.get((command, name), {})
+                if name in options:
+                    edits[a, a + len(name)] = options[name]
+                at = (a + len(name) + 1, b) if equal else words[x + 1][:2] if name.startswith("--") and x + 1 < len(words) else None
+                if at and given and all(v in given for v in code[at[0]:at[1]].split("|")):
+                    edits[at] = "|".join(given[v] for v in code[at[0]:at[1]].split("|"))
+        return rename.edited(code, {k: v for k, v in edits.items() if code[k[0]:k[1]] != v})
+
+    def bare_commands(self, text):
+        """Review of b2245cf: each code span of a Markdown text that starts with an old command name no « bee » announces
+        (« `prendre` », « `relire <contribution>` »), which neither change 10 nor old_commands sees. A word that is also an English
+        name of the map (`voter`, a key) is not one. [(line, text)]"""
+        commands = self.names.m["cli"]["commands"]
+        old = {k for k in commands if " " not in k and k not in commands.values()} - set(self.named.values())
+        return [(text.count("\n", 0, a) + 1, text[a:b][:80]) for a, b, span in code_regions(text) if span and text[a:b].split()[:1] and
+                text[a:b].split()[0] in old]
+
+    def old_commands(self, text, path):
+        """The scan of change 10: each old command name left after bee in the code of a file of the new tree (Markdown: its
+        fenced blocks and code spans; a shell script or workflow: every region but its comments). [(line, text)]."""
+        commands = self.names.m["cli"]["commands"]
+        old = {k for k in commands if " " not in k and k not in commands.values()}
+        subcommands = {(v.split(" ")[0], k.split(" ")[1]) for k, v in commands.items() if " " in k and k.split(" ")[1] != v.split(" ")[1]}
+        regions = code_regions(text) if path.endswith(".md") else [(a, b, False) for a, b, k in self.regions(text, path) if k != "comment"]
+        found = []
+        for a, b, span in regions:
+            for m in BEE.finditer(code := text[a:b]):
+                s = r"\s" if span else r"[ \t]"
+                if (w := re.match(rf"{s}+(?:--registr[ey]{s}+\S+{s}+)?([a-z][\w-]*)(?:{s}+([a-z][\w-]*))?", code[m.end():])) and (
+                        w[1] in old or (w[1], w[2]) in subcommands):
+                    found.append((text.count("\n", 0, a + m.start()) + 1, (m[0] + w[0])[:80]))
+        return found
 
     def string(self, raw, path=""):
         """One string token renamed, its quoting kept: a program in Python as Python (if written as its value), a whole literal
@@ -241,21 +463,35 @@ class CodeMap:
         [starts.append(starts[-1] + len(x) + 1) for x in lines]
         frozen = self.frozen(tree, scopes)
         roles = {(c.lineno, len(lines[c.lineno - 1].encode()[:c.col_offset].decode())) for c in identifier_strings(tree)}  # bytes -> characters
-        edits, changes, prev, where = {}, [], None, scopes_of(tree)
-        for tok in tokenize.generate_tokens(io.StringIO(source).readline):
+        data = {(k.lineno, len(lines[k.lineno - 1].encode()[:k.col_offset].decode())) for k in data_keywords(tree)}  # ruche-0153
+        edits, changes, prev, where, tail, c = {}, [], None, scopes_of(tree), "", self.names.m["cli"]["commands"]
+        stream = list(tokenize.generate_tokens(io.StringIO(source).readline))
+        for k, tok in enumerate(stream):
             a, b = starts[tok.start[0] - 1] + tok.start[1], starts[tok.end[0] - 1] + tok.end[1]
             d, prev = self.attrs if prev == "." else self.ids, tok.string if tok.type not in (tokenize.NL, tokenize.COMMENT, tokenize.NEWLINE) else prev
-            if tok.type == tokenize.NAME and tok.string in d:
+            before, tail = tail, tok.string if tok.type in (tokenize.STRING, tokenize.FSTRING_MIDDLE) else tail if tok.type in (
+                tokenize.NL, tokenize.COMMENT, tokenize.FSTRING_START, tokenize.FSTRING_END) else ""  # the literal before (ruche-0153)
+            if tok.type == tokenize.NAME and tok.start in data:  # a keyword argument that is a data key (**kwargs): as a key
+                new = w if (w := self.whole(tok.string)).isidentifier() and not keyword.iskeyword(w) else tok.string
+            elif tok.type == tokenize.NAME and tok.string in d:
                 new = d[tok.string]
             elif tok.type in (tokenize.STRING, tokenize.FSTRING_MIDDLE) and tok.start[0] not in frozen:
                 if source[a:b] != tok.string:
                     raise rename.Problem(f"{path}:{tok.start[0]}: a string part the tokenizer does not place")
                 self.scoped(path, where[tok.start[0]], value := tok.string if tok.type != tokenize.STRING else str(ast.literal_eval(tok.string)))
+                self.joined = bool(IN_SENTENCE.search(before))  # ruche-0153
                 new = tok.string if value in kept else self.string(tok.string, path) if tok.type == tokenize.STRING else self.whole(tok.string) if \
                     re.fullmatch(NAME_SHAPE, tok.string) else self.pieces(tok.string) if not re.search(r"\s", tok.string) else self.text(tok.string)
                 new = re.sub(r"\w+", lambda x: self.attrs.get(x[0], x[0]), tok.string) if tok.start in roles else new  # attributes, fields
+                new = self.renamed_words(new) if self.renaming and tok.start not in roles else new  # renamed_in_scopes (ruche-0153)
+                if BEE_TAIL.search(before):  # a command cut from its « bee » by the literal's end: « Relancez bee " "publier … » (ruche-0153)
+                    new = LEAD.sub(lambda x: x[1] + ", ".join(c.get(w, w) for w in x[2].split(", ")), new, 1)
+                if tok.type == tokenize.FSTRING_MIDDLE and k + 1 < len(stream) and stream[k + 1].string == "{" and (g := GLUED.search(tok.string)):
+                    new = (new[:-len(g[0])] if new.endswith(g[0]) else self.pieces(tok.string[:g.start()]) if tok.string[:g.start()] else "") + g[0] \
+                        if new != tok.string else new  # a word glued to the next interpolation: part of a value (github:personne{n})
                 if kept and len(WORD.split(new)) == len(WORD.split(tok.string)):
                     new = "".join(o if o in kept else n for o, n in zip(WORD.split(tok.string), WORD.split(new)))
+                self.joined = False
             else:
                 continue
             if new != tok.string:
@@ -422,8 +658,11 @@ class CodeMap:
                 return [(x[i], y[i]) for i in changed]
 
     def through(self, a, b, role=False):
-        """string_change once a's whole phrases are renamed, else as it is (a phrase cut by a literal's end stays)."""
+        """string_change once a's whole phrases are renamed, then the names bee prints (printed: a label of several words), else
+        as it is (a phrase cut by a literal's end stays)."""
         x = self.string_change(self.phrased(a), b, role)
+        x = self.string_change(self.printed(self.phrased(a)), b, role) if x is None else x
+        x = self.string_change(self.renamed_words(self.printed(self.phrased(a))), b, role) if x is None and self.renaming else x
         return self.string_change(a, b, role) if x is None else x
 
     def same_python(self, old, new, counts, path=""):
@@ -431,6 +670,7 @@ class CodeMap:
         whole() or token by token; numbers, operators, structure identical; no two dict keys merge. counts: each mapping."""
         problems, tree, (scopes, kept), keeping = [], ast.parse(old), self.kept(path), self.keeping
         where, roles, frozen = scopes_of(tree), {(c.lineno, c.col_offset) for c in identifier_strings(tree)}, self.frozen(tree, scopes)
+        data = data_keywords(tree)  # ruche-0153: keyword arguments that are data keys, renamed as keys
         self.keeping = kept
 
         def same(a, b, line):
@@ -462,6 +702,8 @@ class CodeMap:
                     counts.update(("string", p, q) for p, q in pairs or [])
                 elif isinstance(x, str) and isinstance(y, str):
                     e = ".".join(self.ids.get(p, p) for p in x.split(".")) if f == "module" else (self.attrs if f == "attr" else self.ids).get(x, x)
+                    if a in data and f == "arg":
+                        e = w if (w := self.whole(x)).isidentifier() and not keyword.iskeyword(w) else x
                     problems.extend([f"line {line}: the identifier {x} became {y}, the map says {e}"] if y != e else [])
                     counts.update([("identifier", x, y)] if x != y else [])
                 else:
@@ -511,10 +753,14 @@ class CodeMap:
         out = [f"line {n}: « {a[:50]} » is still French (it would become « {b[:50]} »)" for n, a, b in self.rename_python(new, path)[1]
                if a not in self.targets and (len(WORD.split(a)) != len(WORD.split(b)) or any(
                    x != y and x not in self.targets for x, y in zip(WORD.split(a), WORD.split(b))))]
-        frozen, seen = self.frozen(tree, scopes), {int(x.split(":")[0][5:]) for x in out}
+        frozen, seen, where = self.frozen(tree, scopes), {int(x.split(":")[0][5:]) for x in out}, scopes_of(tree)
+        glued = {id(v): g[0] for j in ast.walk(tree) if isinstance(j, ast.JoinedStr) for v, w in zip(j.values, j.values[1:])
+                 if isinstance(v, ast.Constant) and isinstance(w, ast.FormattedValue) and isinstance(v.value, str) and (g := GLUED.search(v.value))}
         return out + [f"line {c.lineno}: « {c.value[:50]} » holds the French name « {w} »" for c in ast.walk(tree) if isinstance(c, ast.Constant)
-                      and isinstance(c.value, str) and not re.search(r"\s", c.value) and c.lineno not in frozen | seen and c.value not in kept for w in dict.fromkeys(
-                          re.findall(r"[\w-]+", c.value)) if self.named.get(w, w) != w and w not in self.hand.keys() | self.targets | kept]
+                      and isinstance(c.value, str) and not re.search(r"\s", c.value) and c.lineno not in frozen | seen and c.value not in kept | self.kept_here(path, where[c.lineno], c.value)
+                      and not self.names.kept_path(c.value) and not c.value.startswith("bee/") for w in dict.fromkeys(
+                          re.findall(r"[\w-]+", c.value)) if self.named.get(w, w) != w and w not in self.hand.keys() | self.targets | kept | self.kept_here(path, where[c.lineno], c.value)
+                          and w != glued.get(id(c))]
 
     def attribute_names(self, tree, dests):
         """P1b (b): each attribute-name string and args.<name> (dests: the tool's) names an attribute of the new code or a
@@ -533,6 +779,19 @@ class CodeMap:
             f"line {n.lineno}: the template's « {{{x}}} » is given by no keyword of format()" for n, t in formats if isinstance(t, str)
             for x in sorted(set(re.findall(r"(?<!\{)\{([A-Za-z_]\w*)", t)) - {k.arg for k in n.keywords})]
 
+def data_keywords(tree):
+    """ruche-0153: the keyword arguments that are data, not names of the code: given to dict(), patch.dict() or .update() (keys,
+    environment variables), or to a function of this file, called by its name, that takes them in **kwargs (every def of that name
+    lacks that parameter), as a fake API's fields (status="in_progress")."""
+    defs = collections.defaultdict(list)
+    for n in ast.walk(tree):
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):  # (takes **kwargs, its parameters)
+            defs[n.name].append((n.args.kwarg is not None, {x.arg for x in ast.walk(n.args) if isinstance(x, ast.arg)}))
+    return {k for c in ast.walk(tree) if isinstance(c, ast.Call) for k in c.keywords if k.arg and (
+        (n := c.func.id if isinstance(c.func, ast.Name) else getattr(c.func, "attr", None)) in ("dict", "update") and n not in defs or
+        defs.get(n) and all(takes and k.arg not in p for takes, p in defs[n]))}
+
+
 def identifier_strings(tree, deep=True):
     """The string constants that are attribute names: given to getattr, setattr, hasattr or delattr, a key of vars(x), the
     fields of a namedtuple or __slots__; the first argument of add_argument without dashes, and every dest= (destinations)."""
@@ -546,6 +805,43 @@ def identifier_strings(tree, deep=True):
             yield from n.args[:1] if isinstance(n.func, ast.Attribute) and of(n.func.value) else n.args[1:2] if name == "namedtuple" else []
         yield from n.value.elts if isinstance(n, ast.Assign) and getattr(n.targets[0], "id", None) == "__slots__" and hasattr(n.value, "elts") else []
         yield from [n.slice] if isinstance(n, ast.Subscript) and of(n.value) else [n.left] if isinstance(n, ast.Compare) and of(n.comparators[0]) else []
+
+
+def name_of(word):
+    """A command line's word as a command's name: its leading name when the rest holds no letter (« relire, », « prendre──▶ »)."""
+    m = re.match(r"[a-z][\w-]*", word)
+    return m[0] if m and not re.search(r"\w", word[m.end():]) else word
+
+
+def code_regions(text):
+    """(start, end, span) of a Markdown text's code: each fenced block's lines, together (not its fences: a command continued by « \\ »
+    on the next line), each code span's content (spans stay inside one paragraph; span: True); the rest is prose."""
+    out, pos, opening, paragraph, inside = [], 0, None, [], False
+
+    def flush():
+        if paragraph:
+            out.extend((paragraph[0] + m.start(2), paragraph[0] + m.end(2), True) for m in SPAN.finditer(text[paragraph[0]:paragraph[1]]))
+        paragraph.clear()
+    for line in text.split("\n"):
+        end, m = pos + len(line), BLOCK.match(line)
+        if opening is not None:
+            if m and m[1][0] == opening[0] and len(m[1]) >= len(opening) and not line[m.end():].strip():
+                opening = None
+            elif out and not out[-1][2] and out[-1][1] == pos - 1 and inside:  # the block's next line
+                out[-1] = (out[-1][0], end, False)
+            else:
+                out.append((pos, end, False))
+                inside = True
+        elif m:
+            flush()
+            opening, inside = m[1], False
+        elif not line.strip():
+            flush()
+        else:
+            paragraph[:] = [paragraph[0] if paragraph else pos, end]
+        pos = end + 1
+    flush()
+    return out
 
 
 def is_python(text, raw):

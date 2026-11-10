@@ -29,6 +29,7 @@ chemins_hors_decompte:
   - "outils/tests/registre/**"
 chemins_juges:
   - "outils/**"
+  - "outils/juge/**"
   - "schemas/**"
   - ".github/**"
 commandes:

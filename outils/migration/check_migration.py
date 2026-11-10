@@ -13,7 +13,7 @@ import sys
 if __name__ == "__main__" and not sys.flags.isolated:
     sys.exit("check_migration.py: run it isolated, python3 -I outils/migration/check_migration.py …, so that nothing shadows a module")
 
-import argparse, ast, collections, contextlib, importlib.util, io, json, math, os, pathlib, re, subprocess, tempfile, types  # noqa: E401, E402
+import argparse, ast, collections, contextlib, difflib, importlib.util, io, json, math, os, pathlib, re, subprocess, tempfile, tokenize, types  # noqa: E401, E402
 from unittest import mock  # noqa: E402
 
 SELF = pathlib.Path(__file__).resolve()
@@ -302,7 +302,7 @@ class Move:
     def corpus(self, tracked):
         """{old path: its image}: every tracked path, the constants' own paths and a positive example of each shape, and their
         negative neighbours, made alike on both sides: the first folder capitalised, a folder more, another extension, a
-        number of the tests' reserve."""
+        number of the tests' reserve (a neighbour of a path the map keeps, as the map says: outils/zz/juge/ moves)."""
         o = bee
         seeds = {*tracked, *SAMPLES, *(c.replace("*", "x.md") for c in o.CHEMINS_OUTILLAGE), *o.AUTHORITY_FILES, *o.LISTES_LIEES,
                  o.CHEMIN_RETRAITS, *(d.rstrip("/") + "/x.yaml" for d in (*o.DOSSIERS_LIBRE_SERVICE, *o.DOSSIERS_GESTES, *o.PARCOURS))}
@@ -310,7 +310,7 @@ class Move:
         for f in (lambda p: (lambda h, t: h.capitalize() + "/" + t if t else p.upper())(*p.partition("/")[::2]),
                   lambda p: (lambda h, t: f"{h}/zz/{t}" if t else f"zz/{p}")(*p.partition("/")[::2]),
                   lambda p: re.sub(r"\.yaml\Z", ".yml", p), lambda p: re.sub(r"-[0-9]{4}(?=[./-])", "-9001", p)):
-            out.update({f(p): f(q) for p, q in list(out.items()) if p in seeds})
+            out.update({f(p): self.names.path(f(p)) if p == q and self.names.kept_path(p) else f(q) for p, q in list(out.items()) if p in seeds})
         return out
 
     def shape(self, x, new):
@@ -522,6 +522,165 @@ def hand_part(repo, names, generated, head, after):
         f"hand-made part ({generated}..{head}): {len(hand)} file(s), +{total[0]} -{total[1]} lines in all, for its review:", *lines]
 
 
+# --- P7 (review of b2245cf): the words the switch renames inside the prose of bee's and the site's strings, each approved by hand ---
+# Independent of the renamers: it reads the base's and the generated file's string parts, word by word, and nothing else.
+
+FRENCH = frozenset("le la les l un une des de du d en y et ou où à au aux ce cet cette ces c qui que qu quoi dont vous nous il ils elle "
+                   "elles se s sa son ses leur leurs est sont être ont pas ne n ni par pour sur sous dans avec sans plus moins tout tous "
+                   "toute toutes si mais donc car puis alors comme chaque aucun aucune même déjà encore seul seule seuls seules votre vos "
+                   "notre nos ton ta tes lui eux ici là cela ça celui celle ceux celles avant après depuis vers chez entre contre selon "
+                   "pendant jusqu".split())
+ACCENTED = re.compile(r"[àâäçéèêëîïôöûùüÿœæ]", re.I)
+PROSE_FILE = "prose.yaml"  # beside names.yaml: per base file, its approved renames (renamed) and those beside French words (beside_french)
+
+
+def french(word):
+    return word.lower() in FRENCH or bool(ACCENTED.search(word))
+
+
+def suspect(old, context):
+    """A renamed plain word or phrase of prose (lowercase letters only: no compound, constant, option or path) beside a French word,
+    or itself French; a command after « bee » is a name."""
+    words = context.replace(f"[{old}]", " ").split()
+    return bool(re.fullmatch(r"[a-zàâäçéèêëîïôöûùüÿœæ]+(?: [a-zàâäçéèêëîïôöûùüÿœæ]+)*", old)) and not context.startswith("bee [") and (
+        any(french(w) for w in old.split()) or any(french(w) for w in words))
+
+
+def string_parts(text):
+    """The string tokens and f-string parts of a Python text, in order."""
+    kinds = {tokenize.STRING, getattr(tokenize, "FSTRING_MIDDLE", tokenize.STRING)}
+    return [t.string for t in tokenize.generate_tokens(io.StringIO(text).readline) if t.type in kinds]
+
+
+def renamed_in_prose(old, new):
+    """[(old word, new word, context)]: each word that differs between two aligned string parts that hold a blank (prose), piece by
+    piece (a phrase renamed into another number of words, as one pair); context « prev [old] next » names the neighbour words only
+    blanks separate from it (an elision's apostrophe too, and « : » before it). None if the texts' string parts do not align."""
+    a, b = string_parts(old), string_parts(new)
+    return None if len(a) != len(b) else [r for x, y in zip(a, b) if x != y and re.search(r"\s", x) for r in renamed_in_part(x, y)]
+
+
+def renamed_in_part(x, y):
+    """renamed_in_prose for one string part x and its image y."""
+    out, px, py = [], re.split(r"([\w-]+)", x), re.split(r"([\w-]+)", y)
+    wa, wb = px[1::2], py[1::2]
+    for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(None, wa, wb, autojunk=False).get_opcodes():
+        spans = [] if tag == "equal" else [(i, i + 1, j, j + 1) for i, j in zip(range(i1, i2), range(j1, j2))] if i2 - i1 == j2 - j1 else [(i1, i2, j1, j2)]
+        for s1, s2, t1, t2 in spans:
+            o = "".join(px[2 * s1 + 1:2 * s2]) if s2 > s1 else ""
+            prev = wa[s1 - 1] if s1 >= 1 and re.fullmatch(r"[ \t]+|['’]|[ \t]*:[ \t]+", px[2 * s1]) else ""
+            after = wa[s2] if s2 < len(wa) and re.fullmatch(r"[ \t]+|['’]", px[2 * s2]) else ""
+            out.append((o, "".join(py[2 * t1 + 1:2 * t2]) if t2 > t1 else "", f"{prev} [{o}] {after}".strip()))
+    return out
+
+
+def prose(names, files, generated, allowed):
+    """P7: problems and the number of words renamed in the prose of the files prose.yaml lists. Each pair « old -> new » must be
+    approved with its count (renamed: a new one, or one more, waits for a human), and a word renamed beside a French word, or itself a
+    French word, must have its context approved (beside_french); an approval the switch no longer needs is refused too."""
+    problems, n = [], 0
+    for p, entry in sorted((allowed.get("files") or {}).items()):
+        q = names.path(p)
+        found = renamed_in_prose(files[p].decode("utf-8"), generated[q].decode("utf-8")) if p in files and q in generated else None
+        if found is None:
+            problems.append(f"P7: {q}: its string parts do not align with those of {p}")
+            continue
+        n += len(found)
+        counts, approved = collections.Counter(f"{o} -> {w}" for o, w, _ in found), dict((entry or {}).get("renamed") or {})
+        problems += [f"P7: {q}: « {k} » renamed {counts[k]} time(s) in its prose, {PROSE_FILE} approves {approved.get(k, 0)}"
+                     for k in sorted(set(counts) | set(approved)) if counts[k] != approved.get(k, 0)]
+        beside = {c for o, w, c in found if suspect(o, c)}
+        listed = set((entry or {}).get("beside_french") or [])
+        problems += [f"P7: {q}: « {c} » renamed beside French words: keep it as written, or approve it ({PROSE_FILE}, beside_french)"
+                     for c in sorted(beside - listed)]
+        problems += [f"P7: {q}: {PROSE_FILE} approves « {c} » beside French words, which the switch no longer renames" for c in sorted(listed - beside)]
+        kept = kept_french(names, generated[q].decode("utf-8"))
+        for kind, found_here in (("kept", [c for c, named, _ in kept if named]), ("prose_words", [c.split("[")[1].split("]")[0] for c, named, _ in kept if not named]),
+                                 ("lone", lone_in_prose(files[p].decode("utf-8"), generated[q].decode("utf-8")))):
+            counts, approved = collections.Counter(found_here), dict((entry or {}).get(kind) or {})
+            n += len(found_here)
+            problems += [f"P7: {q}: « {k} » {WHY[kind]} {counts[k]} time(s), {PROSE_FILE} ({kind}) approves {approved.get(k, 0)}"
+                         for k in sorted(set(counts) | set(approved)) if counts[k] != approved.get(k, 0)]
+    return problems, n
+
+
+WHY = {"kept": "keeps a French name of the map where a message names data", "prose_words": "is a French name of the map kept in prose",
+       "lone": "renames a lone French word where text is written"}
+
+
+def french_names(names):
+    """Each French key and domain value names.yaml renames, unless some name of the map is that word in English."""
+    m = names.m
+    pairs = [(a, b) for f in m["families"].values() for a, b in (f.get("keys") or {}).items()] + [
+        (a, b) for d in (*m["domains"].values(), *m["open_domains"].values()) for a, b in d.items() if isinstance(a, str)]
+    english = {b for _, b in pairs}
+    return {a for a, b in pairs if a != b and a not in english and re.fullmatch(r"[\w-]+", a)}
+
+
+def kept_french(names, new):
+    """[(context, named, line)]: each whole word of a string of the generated text (docstrings aside) that is a French name of the map
+    (review of 6efd815).
+    named: the word stands where a message names data (« « statut » », `statut`, right before an interpolation « conteste {…} », at
+    a label's start after one « {lieu} : declare … », before « : » at a text's start, in a list with an English name of the map
+    « proposition, tache ou no_follow_up », in « a|b|c », after « clé », « champ », « la valeur » or an option « --cause refus »): its context is approved one by one (kept). Elsewhere it is French prose, approved word by
+    word (prose_words). Reads the map's data side and the generated text's syntax, not the renamer."""
+    words, m = french_names(names), names.m
+    english = {b for f in m["families"].values() for b in (f.get("keys") or {}).values()} | {
+        b for d in (*m["domains"].values(), *m["open_domains"].values()) for b in d.values() if isinstance(b, str)}
+    english -= words | {a for f in m["families"].values() for a in (f.get("keys") or {})}
+    tree, out = ast.parse(new), []
+    inside = {id(c) for n in ast.walk(tree) if isinstance(n, ast.JoinedStr) for c in n.values} | {  # and the docstrings: no message
+        id(n.body[0].value) for n in ast.walk(tree) if isinstance(n, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+        and n.body and isinstance(n.body[0], ast.Expr) and isinstance(n.body[0].value, ast.Constant)}
+    for node in ast.walk(tree):
+        parts = node.values if isinstance(node, ast.JoinedStr) else [node] if isinstance(node, ast.Constant) and isinstance(
+            node.value, str) and id(node) not in inside else []
+        for k, part in enumerate(parts):
+            if not (isinstance(part, ast.Constant) and isinstance(part.value, str)):
+                continue
+            s, interp_before, interp_after = part.value, k > 0, k + 1 < len(parts) and isinstance(parts[k + 1], ast.FormattedValue)
+            p = re.split(r"([\w-]+)", s)
+            listed = {j for x in re.finditer(r"[\w-]+(?:, [\w-]+)+(?:,? (?:ou|et|or|and) [\w-]+)?|[\w-]+ (?:ou|or) [\w-]+", s)
+                      if {w for w in re.findall(r"[\w-]+", x[0]) if w not in ("ou", "et", "or", "and")} & english
+                      for j in range(len(p)) if p[j] in words and x.start() <= len("".join(p[:j])) < x.end()}
+            for i in range(1, len(p), 2):
+                if p[i] not in words:
+                    continue
+                prev = p[i - 2] if i >= 3 and re.fullmatch(r"[ \t]+|['’]|[ \t]*:[ \t]+", p[i - 1]) else ""
+                after = p[i + 2] if i + 2 < len(p) and re.fullmatch(r"[ \t]+|['’]", p[i + 1]) else ""
+                named = bool(p[i - 1].endswith(("« ", "`")) and p[i + 1].startswith((" »", "`")) or interp_after and i == len(p) - 2 and p[i + 1] == " "
+                         or interp_before and i == 1 and re.fullmatch(r"\s*:\s+", p[0]) or i == 1 and p[0].strip() in ("", "(") and p[2].startswith(" : ")
+                         or i in listed or p[i - 1] == "|" or i + 1 < len(p) and p[i + 1] == "|"  # in « a|b|c » (review of c568161)
+                         or i >= 3 and p[i - 1] == " " and (p[i - 2] in ("clé", "champ") or p[i - 2].startswith("--"))  # « clé cap », « --cause refus »
+                         or i >= 5 and p[i - 1] == p[i - 3] == " " and (p[i - 4], p[i - 2]) == ("la", "valeur"))  # « la valeur ouverte »
+                out.append((f"{prev} [{p[i]}] {after}".strip(), named, part.lineno))
+    return out
+
+
+def lone_in_prose(old, new):
+    """[context]: each blank-less literal the switch renamed where the code writes text (review of 6efd815): inside an f-string's
+    interpolation, or added to a text by « + » or « % », through « … if … else … » and « or »; never a key, value, path or option at
+    its place (a subscript, a comparison, a dict, a call's argument). Context: « scope [old -> new] »."""
+    a, b = ast.parse(old), ast.parse(new)
+    parents = {c: n for n in ast.walk(a) for c in ast.iter_child_nodes(n)}
+    scope = {c: n.name for n in a.body if isinstance(n, (ast.FunctionDef, ast.ClassDef, ast.AsyncFunctionDef)) for c in ast.walk(n)}
+    scope.update({c: t.id for n in a.body if isinstance(n, ast.Assign) for t in n.targets if isinstance(t, ast.Name) for c in ast.walk(n)})
+    text = lambda n: isinstance(n, ast.JoinedStr) or isinstance(n, ast.Constant) and isinstance(n.value, str) or isinstance(n, ast.BinOp) and (  # noqa: E731
+        text(n.left) or text(n.right))
+    out = []
+    for x, y in zip((n for n in ast.walk(a) if isinstance(n, ast.Constant)), (n for n in ast.walk(b) if isinstance(n, ast.Constant))):
+        if not (isinstance(x.value, str) and x.value != y.value and x.value and not re.search(r"\s", x.value)) or isinstance(parents.get(x), ast.JoinedStr):
+            continue
+        n = x
+        while isinstance(parents.get(n), (ast.IfExp, ast.BoolOp)) and n is not getattr(parents[n], "test", None):
+            n = parents[n]
+        up = parents.get(n)
+        if isinstance(up, ast.FormattedValue) or isinstance(up, ast.BinOp) and isinstance(up.op, (ast.Add, ast.Mod)) and text(
+                up.right if up.left is n else up.left):
+            out.append(f"{scope.get(x, '<module>')} [{x.value} -> {y.value}]")
+    return out
+
+
 def context(files):
     """The base's map as its own checker reads it, (names, its CodeMap, the tools' folder); None if this checker is not the base's."""
     if (at := next((c for c in rename.MAPS if c in files), None)) is None or files.get(at.replace("names.yaml", SELF.name)) != SELF.read_bytes():
@@ -556,12 +715,19 @@ def check(repo, base, head, generated=None, observed=None):
     names, cm, tool_dir = ctx
     with tempfile.TemporaryDirectory() as tmp:
         p2, n2 = rename.check(repo, base, generated)
+        n2 = collections.Counter(n2)
         lines.append(f"P2: {len(p2)} problem(s)" if p2 else f"P2: ✓ {n2['data']} data files and {n2['schema']} schemas are their translation, "
-                     f"{n2['same']} files byte-identical, {n2['removed']} removed, {n2['code']} code files placed")
+                     f"{n2['same']} files byte-identical, {n2['commands']} with their commands renamed (change 10), {n2['removed']} removed, "
+                     f"{n2['code']} code files placed")
         p1, n1 = rename_code.check(repo, base, generated, worker_rows(tmp))
         lines.append(f"P1, P1b (a, b), P3: {len(p1)} problem(s)" if p1 else f"P1, P1b (a, b), P3: ✓ {sum(n1.values())} names renamed through the map, "
                      "nothing else changed, no French name left, every attribute name resolves, the parser is the same")
-        problems, after = p2 + p1, rename.tree_files(repo, head)
+        at = next(c for c in rename.MAPS if c in files).replace("names.yaml", PROSE_FILE)
+        allowed = bee.charger_texte_yaml(files[at].decode("utf-8"), at) if at in files else None
+        p7, n7 = prose(names, files, rename.tree_files(repo, generated), allowed) if isinstance(allowed, dict) else ([f"P7: no {at} at the base"], 0)
+        lines.append(f"P7: {len(p7)} problem(s)" if p7 else f"P7: ✓ {n7} words renamed in the prose of {', '.join(sorted(allowed['files']))}'s "
+                     f"strings, each approved by hand ({at}), none beside a French word unless approved there")
+        problems, after = p2 + p1 + p7, rename.tree_files(repo, head)
         if generated != head:
             found, said = hand_part(repo, names, generated, head, after)
             problems, lines = problems + found, lines + said
