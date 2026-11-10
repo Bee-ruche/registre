@@ -22380,5 +22380,36 @@ class TestForkDocumentsRuche0145(BaseTest):
             self.assertIn("manifeste ignoré (tâche illisible", text)  # French after D: ignored, as an unreadable manifest
             self.assertNotIn("declared_gap", bee.read_yaml(path)["verdict"])
 
+
+class TestVerdictMetricRuche0145(BaseTest):
+    """A fork verdict that names its metric names the task's (plan, section 12, change 4): its gain is that metric's, or R4 would
+    judge on another one (a fork that misread the task finds no metric, null). Refused, nothing recorded, the head set aside."""
+
+    def test_a_verdict_measuring_another_metric_is_refused_and_the_tasks_one_recorded(self):
+        cid = self.submit_0099()
+        verdict, path = self.dir / "verdict.json", self.dir / f"contributions/miniz/{cid}.yaml"
+        record = lambda sha: self.bee("record-verdict", cid, "--verdict", str(verdict), "--sha", sha)  # noqa: E731
+        good = {"ci": "green", "gain": 0.03, "changed_lines": 10}
+        for name, fields, said in (("another metric", {"metric": "memoire_max_ko"}, "memoire_max_ko"), ("none found", {"metric": None}, "None"),
+                                   ("in French", {"metrique": "memoire_max_ko", "lignes_modifiees": 10}, "memoire_max_ko"),
+                                   ("not a metric id", {"metric": "x\n::error::faux"}, "illisible")):
+            with self.subTest(name):
+                verdict.write_text(json.dumps({**({"ci": "verte", "gain": 0.03} if "metrique" in fields else good), **fields}), encoding="utf-8")
+                code, text = record("abc1234")
+                self.assertEqual(code, 1, text)
+                self.assertIn(f"verdict refusé, {bee.VERDICT_WAIT['metric']} (the verdict's metric : {said}, the task's : debit_compression_n6)", text)
+                self.assertNotIn("\n::error", text)
+                rec = bee.read_yaml(path)
+                self.assertNotIn("verdict", rec)
+                self.assertEqual(rec["awaiting_verdict"], {"reason": "metric", "sha": "abc1234"})  # not judged again at this head
+                self.valid_one()
+        self.assertIn(bee.VERDICT_WAIT["metric"], self.bee("show", "miniz-0099")[1])
+        for name, fields in (("the task's", {"metric": "debit_compression_n6"}), ("none named", {})):
+            with self.subTest(name):
+                verdict.write_text(json.dumps({**good, **fields}), encoding="utf-8")
+                code, text = record("abc1235")
+                self.assertEqual(code, 0, text)
+                self.assertEqual(bee.read_yaml(path)["verdict"]["gain"], 0.03)
+
 if __name__ == "__main__":
     sys.exit(principal_tests(sys.modules[__name__], __file__, sys.argv[1:]))
