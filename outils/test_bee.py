@@ -21869,20 +21869,6 @@ budget_lignes: 40
 """
 
 
-def council_0153(root):
-    """ruche-0153 (review of b2245cf): the fixture as the council leaves main before the freeze: the skill's list of gestures, and the old
-    AGENTS.en.md's until the council's new guide replaces it, written with « bee » (change 10 renames them; a bare old command name in a
-    code span of AGENTS.md or .claude/** is refused). A no-op once main holds them."""
-    for path, start in ((".claude/skills/bee-contributeur/SKILL.md", "Publie ce que modifient `inscrire`"), ("AGENTS.en.md", "After `inscrire`")):
-        f = root / path
-        lines = f.read_text(encoding="utf-8").split("\n")
-        for i, line in enumerate(lines):
-            if start in line:
-                head, sep, rest = line.partition("`bee publier")
-                lines[i] = re.sub(r"`([a-z][a-z-]*)`", r"`bee \1`", head) + sep + rest
-        f.write_text("\n".join(lines), encoding="utf-8")
-
-
 def ecrire_familles_0141(racine):
     """One file of each family main does not hold yet (or not as a test may change it), written as bee writes it."""
     instant = "2026-11-01T10:00:00Z"
@@ -22354,7 +22340,6 @@ class TestEnglishNamesStep1b(unittest.TestCase):
         shutil.copytree(RACINE, cls.depot, ignore=sans_donnees_reelles)
         shutil.copytree(JEU_FIGE, cls.depot, dirs_exist_ok=True)
         ecrire_familles_0141(cls.depot)
-        council_0153(cls.depot)
         for argv in (["init", "-q"], ["config", "user.email", "tests@example.org"], ["config", "user.name", "tests"], ["add", "-A", "-f", "."],
                      ["commit", "-qm", "base"]):
             git(cls.depot, *argv)
