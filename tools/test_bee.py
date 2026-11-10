@@ -13099,9 +13099,9 @@ class TestRequestedRemovalRuche0048(BaseReviewRuche0020):
                              ("github:bidji29", "never removed"), ("gina", "never removed"), ("R13", "never removed"),
                              ("miniz-0099", "never removed"), ("minizBee", "never removed"), ("I-0002", "never removed"),
                              ("10", "never removed"), ("A2", "never removed"), ("bruno a raison", "never removed"),
-                             ("Pour refuser, répondez simplement", "rien ne nomme")):
+                             ("Pour refuser, répondez simplement", "nothing names")):
             with self.subTest(name):
-                code, text = self.withdraw(names=["octocat", name] if chunk != "rien ne nomme" else [name])
+                code, text = self.withdraw(names=["octocat", name] if chunk != "nothing names" else [name])
                 self.assertEqual(code, 1, text)
                 self.assertIn(chunk, text)
                 self.assertNotIn(name, text)
