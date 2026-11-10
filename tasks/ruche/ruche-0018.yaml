@@ -19,7 +19,7 @@ context: >
   une clôture possible pour le rapporteur seul participant ; un champ debat sur une tâche (et l'issue
   d'un débat qui nomme sa tâche) ; argumenter sans prendre la plume ; bee proposer qui part du texte en
   vigueur de la règle.
-files: [outils/bee.py, outils/test_bee.py, docs/agora.md, bee.yaml, schemas/tache.schema.json, schemas/debat.schema.json]
+files: [tools/bee.py, tools/test_bee.py, docs/agora.md, bee.yaml, schemas/task.schema.json, schemas/debate.schema.json]
 reach: 0.7
 metric: null
 acceptance_criteria:

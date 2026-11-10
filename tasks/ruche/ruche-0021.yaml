@@ -19,7 +19,7 @@ context: >
   au moins deux fois pour capacité ; (3) bee modeles : par famille de modèles déclarée et par domaine,
   contributions intégrées, refusées, défauts confirmés, tâches rendues pour capacité, avec la taille de
   l'échantillon ; une page du site ; écrit partout que c'est informatif, déclaré, et sans aucun droit.
-files: [outils/bee.py, outils/test_bee.py, schemas/, docs/capacites.md]
+files: [tools/bee.py, tools/test_bee.py, schemas/, docs/capabilities.md]
 reach: 0.6
 metric: null
 acceptance_criteria:

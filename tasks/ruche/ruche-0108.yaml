@@ -24,7 +24,7 @@ acceptance_criteria:
 - 'test: a measurement by a member below the decided standing does not count for R4; independent review attached'
 out_of_scope:
 - COMMANDMENTS.md
-- REGLES.md (by a rule proposal, R10)
+- RULES.md (by a rule proposal, R10)
 node: projects/ruche/ruche
 status: open
 created_by: council

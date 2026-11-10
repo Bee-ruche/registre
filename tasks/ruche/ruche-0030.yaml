@@ -21,7 +21,7 @@ context: >
   par valider-contribution, et bee soumettre le signale aux relecteurs ; (4) un champ facultatif
   plafond_connu sur une tâche d'optimisation (fraction, avec sa source), et bee lister et bee cap marquent
   « hors de portée de R4 » une tâche dont le plafond est sous le seuil.
-files: [outils/bee.py, outils/test_bee.py, schemas/, docs/contributions.md, arbre/roles/optimiser/SENS.md]
+files: [tools/bee.py, tools/test_bee.py, schemas/, docs/contributions.md, tree/roles/optimiser/SENS.md]
 reach: 0.7
 metric: null
 acceptance_criteria:

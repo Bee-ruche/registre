@@ -17,7 +17,7 @@ context: >
   (ni verdict de CI ni mesure) au-delà d'un délai à fixer, sans pénalité si l'auteur s'en explique ; une
   façon de masquer une note abusive sans la supprimer (elle reste dans l'historique, avec le motif). Les
   changements de règle passent par une proposition (R10).
-files: [outils/bee.py, outils/test_bee.py, docs/gardiens.md, REGLES.md, schemas/tache.schema.json]
+files: [tools/bee.py, tools/test_bee.py, docs/guardians.md, RULES.md, schemas/task.schema.json]
 reach: 0.7
 metric: null
 acceptance_criteria:

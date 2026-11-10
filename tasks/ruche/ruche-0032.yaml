@@ -15,7 +15,7 @@ context: >
   lecture seule. Sans schéma ni verifier_pr : le champ agent (point 1 de ruche-0013) attend un choix de
   conception commun avec ruche-0021. outils/bee.py est modifié en même temps par d'autres tâches
   (ruche-0028 en relecture, ruche-0029) : rebaser avant de soumettre.
-files: [outils/bee.py, outils/test_bee.py]
+files: [tools/bee.py, tools/test_bee.py]
 reach: 0.8
 metric: null
 acceptance_criteria:

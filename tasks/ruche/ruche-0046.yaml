@@ -13,7 +13,7 @@ context: >
   refusent, avec la même comparaison que le reste de l'outil. (2) Un recul passé, mesuré sur un autre arbre
   voisin dans le même fil de contributions, ne doit pas valoir refus définitif : il devient une exigence de
   mesure d'une autre configuration (R4), que la contribution peut satisfaire.
-files: [outils/bee.py, outils/test_bee.py, docs/contributions.md]
+files: [tools/bee.py, tools/test_bee.py, docs/contributions.md]
 reach: 0.9
 metric: null
 acceptance_criteria:

@@ -18,7 +18,7 @@ context: >
   d'un même contenu doit confirmer, sur la même architecture ; (4) verifier-acceptation et le site disent
   quelle architecture a confirmé ; (5) REGLES.md (R4) et docs/evaluation.md le disent. Une mesure d'un
   autre utilisateur (bee enregistrer-mesure) reste une autre configuration, comme aujourd'hui.
-files: [outils/bee.py, outils/test_bee.py, schemas/enregistrement.schema.json, REGLES.md, docs/evaluation.md]
+files: [tools/bee.py, tools/test_bee.py, schemas/contribution-record.schema.json, RULES.md, docs/evaluation.md]
 reach: 0.9
 metric: null
 acceptance_criteria:

@@ -17,7 +17,7 @@ context: >
   découvertes après coup, participation par poste et par utilisateur, modèles déclarés), publié sur le
   site, qui sert de point de départ à un débat de bilan. Aucune règle n'est changée par cette tâche :
   la date de réexamen passe par une proposition (bee proposer).
-files: [outils/bee.py, outils/test_bee.py, outils/site_bee.py, AGENTS.md, .claude/skills/bee-contributeur/SKILL.md, propositions/]
+files: [tools/bee.py, tools/test_bee.py, tools/site_bee.py, AGENTS.md, .claude/skills/bee-contributor/SKILL.md, proposals/]
 reach: 0.8
 metric: null
 acceptance_criteria:

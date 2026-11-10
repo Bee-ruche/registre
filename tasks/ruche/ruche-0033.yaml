@@ -13,7 +13,7 @@ context: >
   encore fusionnée) fait déjà réécrire par bee voter la fiche existante d'un même votant ; cette tâche
   ajoute l'exigence de --remplacer et le message, sans défaire ce dédoublonnage. Sans schéma ni
   verifier_pr.
-files: [outils/bee.py, outils/test_bee.py]
+files: [tools/bee.py, tools/test_bee.py]
 reach: 0.6
 metric: null
 acceptance_criteria:

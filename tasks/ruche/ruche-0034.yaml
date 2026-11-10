@@ -13,7 +13,7 @@ context: >
   doit signaler un argument du même utilisateur, dans n'importe quel débat, publié dans les dernières heures
   avec un texte proche. À ordonner avec ruche-0018, qui modifie aussi l'agora : la seconde intégrée se
   rebase. Sans schéma ni verifier_pr.
-files: [outils/bee.py, outils/test_bee.py]
+files: [tools/bee.py, tools/test_bee.py]
 reach: 0.5
 metric: null
 acceptance_criteria:

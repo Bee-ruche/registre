@@ -20,7 +20,7 @@ context: >
   modifications de projets/ et categories.yaml que le conseil reportera. Livrable (2) : les tâches
   d'amorçage du projet, proposées avec bee proposer-tache (statut « proposee »). Aucune affirmation
   sans source ; aucun contact avec les projets d'origine (commandement 8).
-files: [docs/ouverture-preuves.md, taches/]
+files: [docs/ouverture-preuves.md, tasks/]
 reach: 0.7
 metric: null
 acceptance_criteria:

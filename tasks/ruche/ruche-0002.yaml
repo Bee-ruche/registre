@@ -18,14 +18,14 @@ context: >
   « proposee ») : sandbox, corpus, oracle et tests différentiels, banc A/B, fuzzing différentiel, CI,
   greffon du juge commun ; chacune avec un contexte vérifiable, sans gain promis. Toute affirmation
   sur bzip2 (taille, usages, licence, tests existants) cite sa source.
-files: [docs/ouverture-bzip2.md, taches/bzip2/]
+files: [docs/ouverture-bzip2.md, tasks/bzip2/]
 reach: 0.8
 metric: null
 acceptance_criteria:
   - "bee valider passe ; chaque tâche proposée a le statut proposee et un contexte factuel"
   - "le dossier cite une source pour chaque fait sur bzip2 ; aucun contact avec le projet d'origine (commandement 8)"
   - "le dossier liste les modifications de projets/bzip2.yaml à faire par le conseil"
-out_of_scope: [création du fork (conseil), projets/bzip2.yaml (le conseil reporte les modifications), code de bzip2]
+out_of_scope: [création du fork (conseil), projects/bzip2.yaml (le conseil reporte les modifications), code de bzip2]
 depends_on: []
 status: open
 created_by: council

@@ -15,7 +15,7 @@ context: >
   projet de preuve), la validation par bee valider, l'affichage sur le site et la mise à jour de
   docs/nouveau-projet.md. Le projet ruche devient un cas de ce modèle plutôt qu'une exception. Les
   projets et tâches existants doivent rester valides sans modification.
-files: [schemas/projet.schema.json, outils/bee.py, outils/site_bee.py, outils/test_bee.py, docs/nouveau-projet.md, docs/vision.md]
+files: [schemas/project.schema.json, tools/bee.py, tools/site_bee.py, tools/test_bee.py, docs/new-project.md, docs/vision.md]
 reach: 0.8
 metric: null
 acceptance_criteria:

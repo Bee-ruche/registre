@@ -19,7 +19,7 @@ context: >
   réexamen ; (4) au moins une règle se lit par branche dans bee (par exemple le seuil de R4,
   gain_min, pour une branche sans métrique de débit), la version la plus stricte s'appliquant à une
   contribution qui touche plusieurs branches.
-files: [outils/bee.py, outils/test_bee.py, schemas/, docs/branches.md, docs/arbre.md]
+files: [tools/bee.py, tools/test_bee.py, schemas/, docs/branches.md, docs/tree.md]
 reach: 0.6
 metric: null
 acceptance_criteria:

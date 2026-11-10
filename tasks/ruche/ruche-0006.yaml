@@ -19,14 +19,14 @@ context: >
   par domaine, avec la migration des points actuels ; des pistes contre la collusion entre agents.
   Livrable (2) : les tâches qui en découlent, proposées avec bee proposer-tache ruche, et les
   propositions de règle nécessaires (bee proposer), sans rien changer à REGLES.md.
-files: [docs/ruches-filles.md, taches/ruche/, propositions/]
+files: [docs/ruches-filles.md, tasks/ruche/, proposals/]
 reach: 0.8
 metric: null
 acceptance_criteria:
   - "bee valider passe ; tâches proposées au statut proposee, propositions de règle au statut ouverte"
   - "chaque prérequis de l'étape 3 de docs/architecture.md a une réponse ou une tâche"
   - "au moins deux formes de gouvernance comparables, avec les mesures qui les départageraient"
-out_of_scope: [COMMANDEMENTS.md, REGLES.md et bee.yaml (par proposition seulement), implémentation]
+out_of_scope: [COMMANDEMENTS.md, RULES.md et bee.yaml (par proposition seulement), implémentation]
 depends_on: []
 status: open
 created_by: council

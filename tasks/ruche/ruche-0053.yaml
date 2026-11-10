@@ -15,7 +15,7 @@ context: >
   refait passer les attaques archivées (celles des revues adverses et des répétitions générales, gardées
   comme tests) et exige qu'elles restent refusées. Le premier point attrape les règles devenues trop strictes
   pour un geste honnête (exemple du 31/10 : un émoji courant refusé) ; le second, les failles rouvertes.
-files: [outils/rejeu.py, outils/test_rejeu.py, .github/workflows/validation.yml, docs/outillage.md]
+files: [tools/rejeu.py, tools/test_rejeu.py, .github/workflows/validation.yml, docs/tooling.md]
 reach: 0.8
 metric: null
 acceptance_criteria:

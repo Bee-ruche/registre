@@ -13,7 +13,7 @@ context: >
   clair, avec la raison ; (2) le seuil de relecture s'écrit lisiblement (relectures requises, obtenues,
   manquantes) ; (3) l'écart entre gain déclaré et gain mesuré est signalé, avec les deux valeurs, dès qu'il
   dépasse le seuil de docs/contributions.md.
-files: [outils/bee.py, outils/test_bee.py, docs/contributions.md]
+files: [tools/bee.py, tools/test_bee.py, docs/contributions.md]
 reach: 0.9
 metric: null
 acceptance_criteria:
