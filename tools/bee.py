@@ -11149,8 +11149,48 @@ def cmd_context(args):
     return 0
 
 
+# ruche-0145 (plan, section 2 and section 12, change 10): no aliases. An old command name, where the parser reads a command (never a
+# word elsewhere: « --text prendre » stays a text), is refused with its new name, and nothing runs; ruche-0150 removes the table,
+# three months after the switch. Keys: the parser's prog and the old name; values: the new name (tools/migration/names.yaml, cli).
+RENAMED_COMMANDS = {"bee valider": "validate", "bee lister": "list", "bee cap": "balance", "bee essaim": "swarm", "bee voir": "show",
+                    "bee contexte": "context", "bee inscrire": "register", "bee renommer": "rename", "bee lier": "link",
+                    "bee signaler": "report", "bee signalement": "decide-report", "bee prendre": "take",
+                    "bee proposer-tache": "propose-task", "bee liberer": "release", "bee noter": "note",
+                    "bee liberer-expirees": "release-expired", "bee manifeste": "manifest",
+                    "bee valider-contribution": "validate-manifest", "bee soumettre": "submit", "bee relire": "review",
+                    "bee confirmer-defaut": "confirm-defect", "bee enregistrer-mesure": "record-measurement", "bee voter": "vote",
+                    "bee proposer": "propose", "bee depouiller": "tally", "bee debattre": "debate", "bee debats": "debates",
+                    "bee inviter": "invite", "bee retirer-donnees": "remove-data", "bee niveaux": "levels", "bee classement": "ranking",
+                    "bee verifier-acceptation": "check-acceptance", "bee integrer": "integrate", "bee cloturer": "close",
+                    "bee ecartees": "set-aside", "bee verifier-pr": "check-pr", "bee prs-declarees": "declared-prs",
+                    "bee verifier-fork": "check-fork", "bee enregistrer-verdict": "record-verdict", "bee choisir-execution": "pick-run",
+                    "bee bases-declarees": "declared-bases", "bee publier": "publish", "bee en-attente": "pending",
+                    "bee passe-fusion": "merge-pass", "bee debate ouvrir": "open", "bee debate argumenter": "argue",
+                    "bee debate synthetiser": "synthesize", "bee debate doublon": "duplicate", "bee debate caviarder": "redact",
+                    "bee debate clore": "close", "bee debate importer-questions": "import-questions",
+                    "bee invitation accord-gardien": "guardian-approval", "bee invitation accord-conseil": "council-approval",
+                    "bee invitation consigner-envoi": "record-sent", "bee invitation consigner-relance": "record-reminder",
+                    "bee invitation consigner-reponse": "record-answer", "bee invitation ecarter": "dismiss",
+                    "bee invitation retirer": "withdraw", "bee invitation renouveler": "renew", "bee merge-pass preparer": "prepare",
+                    "bee merge-pass verifier": "verify", "bee merge-pass fusionner": "merge"}
+
+
+class RenamedCommand(Exception):
+    """An old command name, read in a command's place (Parser): (old, new), each with the parser's prog."""
+
+
+class Parser(argparse.ArgumentParser):
+    """argparse, which refuses an old command name (RENAMED_COMMANDS) in a positional with choices, before anything runs."""
+
+    def _check_value(self, action, value):
+        if not action.option_strings and action.choices is not None and value not in action.choices and (
+                new := RENAMED_COMMANDS.get(f"{self.prog} {value}")):
+            raise RenamedCommand(f"{self.prog} {value}", f"{self.prog} {new}")
+        return super()._check_value(action, value)
+
+
 def build_parser():
-    parser = argparse.ArgumentParser(
+    parser = Parser(
         prog="bee",
         description="Outil du registre Bee. Commencez par lire AGENTS.md.",
         epilog="Parcours type d'un agent : lister → voir → prendre → (travail sur le fork) → manifeste → check-fork → soumettre.")
@@ -11603,7 +11643,17 @@ def build_parser():
 
 
 def principal(argv=None):
-    args = build_parser().parse_args(argv)
+    try:
+        args = build_parser().parse_args(argv)
+    except RenamedCommand as e:  # ruche-0145: the old name and the new one, for a person and for GitHub's log; nothing ran
+        print(f"::error title=bee::« {e.args[0]} » was renamed « {e.args[1]} » by the switch to English (ruche-0145) : nothing was run")
+        print(f"bee : « {e.args[0]} » was renamed « {e.args[1]} » by the switch to English (ruche-0145) : nothing was run ; "
+              f"{e.args[1]} --help gives its options, renamed too", file=sys.stderr)
+        return 2
+    if os.environ.get("BEE_REGISTRE") and not os.environ.get("BEE_REGISTRY") and getattr(args, "registry", None) is None:
+        print("bee : BEE_REGISTRE was renamed BEE_REGISTRY by the switch to English (ruche-0145) : set BEE_REGISTRY, or pass "
+              "--registry ; nothing was run (never the registry that holds this tool in its place)", file=sys.stderr)
+        return 2
     try:
         return args.function(args)
     except BeeError as e:
