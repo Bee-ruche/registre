@@ -65,7 +65,7 @@ depends_on:
 - miniz-0049
 - libyaml-0020
 node: projects/ruche/ruche
-status: in_review
+status: integrated
 contribution: ruche-0145-c1
 created_by: council
 created_on: '2026-11-08'
