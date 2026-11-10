@@ -22442,9 +22442,6 @@ class TestVerdictMetricRuche0145(BaseTest):
             self.assertEqual(code, 0, text)
 
 
-if __name__ == "__main__":
-    sys.exit(principal_tests(sys.modules[__name__], __file__, sys.argv[1:]))
-
 
 class TestCheckMessagesRuche0146(unittest.TestCase):
     """tools/migration/check_messages.py (ruche-0146, ruche-0147): P1 restricted to message literals, on a toy file."""
@@ -22573,3 +22570,7 @@ def f(n, path):
                     listed.write_text(bad, encoding="utf-8")
                 with self.assertRaises(SystemExit):
                     self.cm.main(["--base", "HEAD", "--prose-file", str(listed), "m.py"])
+
+
+if __name__ == "__main__":
+    sys.exit(principal_tests(sys.modules[__name__], __file__, sys.argv[1:]))
