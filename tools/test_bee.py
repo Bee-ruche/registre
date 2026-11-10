@@ -8853,7 +8853,7 @@ class TestDressRehearsal(BaseDressRehearsal):
             path.write_text("# Avis du conseil\n\n[attempt équipe red] Texte libre.\n", encoding="utf-8")
         self.commit()
         text = self.refused("gaspard", "members/gaspard.md: unexpected file in members/: only the files members/<login>.yaml")
-        for name in ("gaspard.html", "gaspard ", "gaspard.yml", "under_it/gaspard.yaml"):
+        for name in ("gaspard.html", "gaspard:", "gaspard.yml", "under_it/gaspard.yaml"):
             self.assertIn(f"members/{name}", text)
         # Le bon nom, mais pas un objet YAML : refusé aussi.
         self.branch("list_of")
