@@ -2368,7 +2368,7 @@ class TestBalanceAndSwarm(BaseTest):
         self.assertEqual(state["behind"], "governance")
         code, text = self.bee("balance")
         self.assertEqual(code, 0, text)
-        self.assertIn("Poste le plus en retard: governance", text)
+        self.assertIn("Area furthest behind: governance", text)
 
     def test_list_by_area(self):
         code, text = self.bee("list", "--area", "governance", "--json")
@@ -2746,7 +2746,7 @@ class TestTree(BaseTest):
         self.assertNotIn("=== node roles/", shortened)
         self.assertIn("Already read (--already-read), not reprinted: root, roles/", shortened)
         self.assertIn("=== DATA of task miniz-0099", shortened, "la tâche reste entière")
-        self.assertRegex(shortened, r"\n# notes: (aucune|\d+)\n", "tour 2 : « aucune note » se dit, hors des données")
+        self.assertRegex(shortened, r"\n# notes: (none|\d+)\n", "tour 2 : « aucune note » se dit, hors des données")
         self.assertIn("=== node projects/lossless-compression/miniz ===", shortened, "les paliers de projet restent")
         self.assertLess(len(shortened), len(full_one))
         self.assertIn("--already-read goes with a task", self.bee("context", "--already-read")[1])
@@ -3564,11 +3564,11 @@ class TestPullRequests(BaseTest):
         cid = self.submit_0099()
         self.commit("submission")
         long = "Relu en entier. " + "x" * 1500
-        self.assertIn("reason de 1516 caractères, au plus 1500", self.bee("review", cid, *self.read_value(cid), "--user", "chloe", "--opinion",
+        self.assertIn("reason: 1516 characters, at most 1500", self.bee("review", cid, *self.read_value(cid), "--user", "chloe", "--opinion",
                                                                            "favorable", "--reason", long)[1])
         self.assertIn("invisible character", self.bee("vote", cid, "--user", "chloe", "--value", "1", "--reason",
                                                       "Utile.‮")[1])
-        for reason, expected in ((long, "au plus 1500"), ("Relu en entier.​", "invisible character")):
+        for reason, expected in ((long, "at most 1500"), ("Relu en entier.​", "invisible character")):
             git(self.dir, "switch", "-qC", "review", "main")
             path = self.dir / f"contributions/miniz/{cid}.yaml"
             rec = bee.read_yaml(path)
@@ -4093,7 +4093,7 @@ class TestPublish(BasePublish):
                 with self.subTest(what_it=what_it, honest_one=text):
                     self.assertIsNone(bee.outgoing_text_refused(text, what_it, maximum, "Bee-ruche"))
         self.assertNotIn("a" * 81, bee.outgoing_text_refused("@" + "a" * 200, "body", 8000, "Bee-ruche"), "the echo is cut at 80")
-        self.assertIn("body de 8001 caractères, au plus 8000", bee.outgoing_text_refused("a" * 8001, "body", 8000, "Bee-ruche"))
+        self.assertIn("body: 8001 characters, at most 8000", bee.outgoing_text_refused("a" * 8001, "body", 8000, "Bee-ruche"))
         self.assertIsNone(bee.outgoing_text_refused("Bonjour @octocat, voir amont-fictif/miniz#12.", "message", 1000))
 
     def test_refusal_names_the_word_and_oversized_reference(self):
@@ -7455,7 +7455,7 @@ class TestVerdictsOfTheRecordedPr(BaseParallel):
         open = {PR_MINIZ + "99008": {"state": "OPEN", "head": "abc1234", "author": "mallory", "branch": "task/99007"}}
         output_text, verdict, _ = self.collect(open)
         self.waiting(output_text, "pr_open", " (#99008)")
-        line_text = f"# {self.cid} : aucun verdict pour la tête abc1234 : {bee.VERDICT_WAIT['pr_open']}"
+        line_text = f"# {self.cid}: no verdict for the head abc1234: {bee.VERDICT_WAIT['pr_open']}"
         self.assertIn(line_text, self.ok_show())
         self.assertIn(line_text, self.acceptance(self.cid)[1])
         self.valid_one()
@@ -7523,10 +7523,10 @@ class TestVerdictsOfTheRecordedPr(BaseParallel):
         path = self.dir / f"contributions/miniz/{self.cid}.yaml"
         bee.write_yaml(path, {**bee.read_yaml(path), "awaiting_verdict": {"reason": "pr_closed", "sha": "abc1234"}})
         self.valid_one()
-        self.assertIn(f"# {self.cid} : aucun verdict pour la tête abc1234 : {bee.VERDICT_WAIT['pr_closed']}", self.ok_show())
+        self.assertIn(f"# {self.cid}: no verdict for the head abc1234: {bee.VERDICT_WAIT['pr_closed']}", self.ok_show())
         bee.write_yaml(path, {**bee.read_yaml(path), "awaiting_verdict": {"reason": bee.VERDICT_WAIT["pr_closed"], "sha": "abc1234"}})
         self.assertIn("awaiting_verdict/reason is not a bee code", self.bee("validate")[1])
-        self.assertNotIn("aucun verdict pour la tête", self.ok_show())
+        self.assertNotIn("no verdict for the head", self.ok_show())
 
     def test_freshness_a_pr_changed_less_than_5_minutes_ago_is_judged_at_the_next_pass(self):
         output_text, verdict, _ = self.collect({}, update_flag="2026-10-27T11:56:00Z")
@@ -7664,9 +7664,9 @@ class TestAgora(BaseAgora):
                 "--text", "Affirmé sans preuve.")
         self.ko("does not exist in the registry", "debate", "argue", "D-0001", "--user", "alice", "--position", "fact",
                 "--text", "Source inventée.", "--source", "docs/inexistant.md")
-        self.ko("au plus 1500", "debate", "argue", "D-0001", "--user", "alice", "--position", "for", "--text", "x" * 1501)
-        self.ko("invisible character or control character", "debate", "argue", "D-0001", "--user", "alice", "--position", "for",
-                "--text", "texte \x1b[8mcaché")
+        self.ko("text: 1501 characters, at most 1500 (bee.yaml, agora.text_max)", "debate", "argue", "D-0001", "--user", "alice", "--position", "for", "--text", "x" * 1501)
+        self.assertNotIn("(bee.yaml", self.ko("invisible character or control character", "debate", "argue", "D-0001", "--user", "alice",
+                                              "--position", "for", "--text", "texte \x1b[8mcaché"), "the setting is named for a length only")
         self.ko("is not an argument", "debate", "argue", "D-0001", "--user", "alice", "--position", "for",
                 "--text", "Réponse.", "--replies-to", "A9")
         self.ko("only the rapporteur (alice)", "debate", "synthesize", "D-0001", "--user", "bruno", "--text", "Ma synthèse.")
@@ -7814,7 +7814,7 @@ class TestAgora(BaseAgora):
         self.assertIn("\n    Debate: [D-0010](../debates/D-0010.yaml)", doc, "retrait aligné sur l'item « 10. »")
         self.valid_one()
         text = self.ok("debate", "import-questions", "--user", "bidji29")
-        self.assertIn("0 débat(s) ouvert(s)", text, "rejouée, elle n'ouvre rien de plus")
+        self.assertIn("0 debate(s) opened", text, "rejouée, elle n'ouvre rien de plus")
         self.assertEqual(len(bee.Registry(self.dir).debates), expected_ones)
 
 
@@ -8199,18 +8199,18 @@ class TestPullRequestsAgora(BaseAgora):
         self.main_with_debate()
         self.a("2026-10-29T12:30:00Z")
         self.add_raw(text="x" * 1501)
-        self.refused("alice", "1501 caractères, au plus 1500")
+        self.refused("alice", "1501 characters, at most 1500")
         git(self.dir, "reset", "-q", "--hard", "main")
         d = self.debate()
         d.update({"synthesis": "y" * 4001, "synthesis_by": "alice", "synthesis_at": "2026-10-29T12:30:00Z", "rapporteur": "bruno"})
         self.write(d)
         self.commit()
-        self.refused("alice", "4001 caractères, au plus 4000")
+        self.refused("alice", "4001 characters, at most 4000")
         git(self.dir, "reset", "-q", "--hard", "main")
         self.write({"id": "D-0002", "question": "q" * 1501, "opened_by": "alice", "opened_at": "2026-10-29T12:30:00Z",
                      "status": "open", "rapporteur": "alice", "synthesis": "", "arguments": []}, "D-0002")
         self.commit()
-        self.refused("alice", "question de 1501 caractères")
+        self.refused("alice", "question: 1501 characters")
 
     def test_refusal_closure_without_outcome(self):
         self.main_with_debate()
@@ -8777,11 +8777,12 @@ class TestDressRehearsal(BaseDressRehearsal):
 
     def test_T15_note_of_40_kb(self):
         text = "[attempt équipe red] " + "x" * 40000
-        self.ko("note de 40021 caractères, au plus 1500", "note", "miniz-0099", "--user", "gaspard", "--text", text)
+        self.ko("note: 40021 characters, at most 1500 (bee.yaml, notes.text_max): a note is short", "note", "miniz-0099", "--user", "gaspard", "--text", text)
+        self.assertNotIn("(bee.yaml", self.ko("invisible character", "note", "miniz-0099", "--user", "gaspard", "--text", "Une note\u200b."))
         self.branch("t15")
         self.note_by_hand({"text": text})
         self.commit()
-        self.refused("gaspard", "text de 40021 caractères, au plus 1500 (notes.text_max)")
+        self.refused("gaspard", "text: 40021 characters, at most 1500 (notes.text_max)")
 
     def test_notes_capped_over_24_h_and_added_in_order(self):
         # Deux PR de 10 notes, fusionnées : 20 notes en 24 h, le plafond ; la 21e est refusée, par l'outil comme par verifier-pr.
@@ -9129,9 +9130,9 @@ class TestAdversarialReviewRuche0011(BaseDressRehearsal):
         bee.write_yaml(path, t)
         self.commit()
         self.refused("gaspard", "title: invisible character or control character refused (U+200B",
-                     "context de 200000 caractères, au plus 3000 (creations.context_max)",
+                     "context: 200000 characters, at most 3000 (creations.context_max)",
                      "acceptance_criteria : 11 éléments, au plus 10 (creations.items_max)",
-                     "out_of_scope/0 de 301 caractères, au plus 300 (creations.item_max)",
+                     "out_of_scope/0: 301 characters, at most 300 (creations.item_max)",
                      "files : 31 éléments, au plus 30 (creations.files_max)",
                      "depends_on : 11 tâches, au plus 10")
 
@@ -9767,7 +9768,7 @@ class TestReviewByCommit(BaseParallel):
         self.verdict_at("aaaaaab", "7ee0001")  # même arbre, autre sha
         self.have_reviewed_and_voted()
         self.a("2026-11-01T15:00:00Z")
-        alert = f"this content was refused par bruno in {original} (same tree, other contribution of the task)"
+        alert = f"this content was refused by bruno in {original} (same tree, other contribution of the task)"
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 0, f"pas un blocage : {text}")
         self.assertIn(alert, text)
@@ -9968,7 +9969,7 @@ class TestReviewByCommit(BaseParallel):
                                  (["--user", "alice", "--summary", "Autre.", "--pr", "https://github.com/Bee-ruche/minizBee/pull/1"],
                                   "without --pr"),
                                  (["--user", "alice"], "without --pr"),
-                                 (["--user", "alice", "--summary", "x" * 501], "au plus 500"),
+                                 (["--user", "alice", "--summary", "x" * 501], "at most 500"),
                                  (["--user", "alice", "--summary", "Caché\u202e."], "invisible character")):
             code, text = self.bee("submit", "miniz-0099", "--update", *options)
             self.assertEqual(code, 1, text)
@@ -10218,7 +10219,7 @@ class TestReviewByCommitPR(BaseDressRehearsal):
             ("alice", lambda e: e.update(summary="Autre.", pr="https://github.com/Bee-ruche/minizBee/pull/77013"),
              "écrits par la CI ou le conseil"),
             ("alice", lambda e: e.update(summary="Autre.", verdict={**e["verdict"], "sha": "def5678"}), "écrits par la CI ou le conseil"),
-            ("alice", lambda e: e.update(summary="x" * 501), "au plus 500"),
+            ("alice", lambda e: e.update(summary="x" * 501), "at most 500"),
             ("alice", lambda e: e.update(summary="Correctif\u200b."), "invisible character"),
             ("alice", lambda e: e.pop("summary"), "summary is empty"),
         ]
@@ -10469,7 +10470,7 @@ class TestInvitations(BaseInvitations):
         self.assertFalse(swarm["brake"]["tight"], swarm["brake"])
         self.assertEqual((swarm["brake"]["guardians"], swarm["brake"]["invitations_per_week"]), (1, 3))
         text = self.ok("swarm")
-        self.assertIn("brake desserré", text)
+        self.assertIn("brake released", text)
         self.assertIn("I-0001 (guarantor, github:octocat, proposed by alice, debate D-0002): proposed, awaits the council's approval", text)
         self.ok("site", "--output", str(self.dir / "_site"))
         page = (self.dir / "_site/index.html").read_text(encoding="utf-8")
@@ -10483,7 +10484,7 @@ class TestInvitations(BaseInvitations):
         (self.dir / "governance/incidents.yaml").write_text(
             'incidents:\n  - id: INC-0001\n    title: Messages en nombre\n    opened_at: "2026-11-02T10:30:00Z"\n', encoding="utf-8")
         self.valid_one()
-        self.assertIn("brake SERRÉ (open incident(s): INC-0001", self.ok("swarm"))
+        self.assertIn("brake TIGHT (open incident(s): INC-0001", self.ok("swarm"))
         self.ok("site", "--output", str(self.dir / "_site"))
         self.assertIn("Frein serré", (self.dir / "_site/index.html").read_text(encoding="utf-8"))
 
@@ -10595,7 +10596,7 @@ class TestPullRequestsInvitations(BaseInvitations):
             "mot pour mot, la mention de R13": MESSAGE_INVITATION + "\n\n" + mention.replace("agents", "аgents"),
             "an email address : aucune donnée personnelle": "Écrivez-moi à jean.dupont@example.org.\n\n" + mention,
             "a phone number : aucune donnée personnelle": "Son numéro : +33 6 12 34 56 78.\n\n" + mention,
-            "message de 2": "x" * 2000 + "\n\n" + mention,
+            "message: 2": "x" * 2000 + "\n\n" + mention,
         }
         for chunk, message in case_of.items():
             with self.subTest(chunk=chunk):
@@ -12522,6 +12523,9 @@ class TestPersonalDataEveryFreeText(unittest.TestCase):
         self.assertEqual(bee.personal_texts(reg, "tasks/miniz/x.yaml", None, {"notes": [{"text": "ruche-0029 : 12 34"},
                                                                                             {"text": "56 78 90 x"}]}), ([], False),
                          "the join glues no digits")
+        self.assertEqual(bee.personal_texts(reg, "tasks/miniz/x.yaml", None, {"notes": [{"text": "example dot org, le soir.",
+                                                                                            "Pour la suite, alice at": "x"}]}), ([], False),
+                         "a key (its place ends with « (key) », as texts_by names it) is read alone, never joined with the values")
         for name in ("ruche-0028", "ruche-0100"):  # real task files, read as new, with no registry names to lean on
             with self.subTest(task=name):
                 data = bee.read_yaml(pathlib.Path(__file__).parent / "tests" / "texts-0047" / f"{name}.yaml")
@@ -14385,7 +14389,7 @@ class TestR13FollowableRuche0052(BaseInvitations):
         text = self.ok("show", "I-0001")
         line_text = next(l for l in text.splitlines() if l.startswith("proposed on "))
         self.assertEqual(line_text, "proposed on 2026-10-30T10:00:00Z (deadline without a decision: 2026-11-13T10:00:00Z); guardian's approval: ?"
-                                "; council's green light: aucun")
+                                "; council's green light: none")
         self.assertNotIn("\x1b", line_text)
 
     def test_3_the_deadline_is_the_gate_s(self):
@@ -14396,7 +14400,7 @@ class TestR13FollowableRuche0052(BaseInvitations):
         self.commit("expiration en 3 jours")
         self.up_to("proposed")
         self.assertIn("proposed on 2026-10-30T10:00:00Z (deadline without a decision: 2026-11-02T10:00:00Z); guardian's approval: none; "
-                      "council's green light: aucun", self.ok("show", "I-0001"))
+                      "council's green light: none", self.ok("show", "I-0001"))
         reg = bee.Registry(self.dir)
         inv, conf, end = reg.invitation("I-0001")[1], bee.growth_config(reg), bee.read_instant("2026-11-02T10:00:00Z", "test")
         self.assertEqual(bee.expiration(inv, conf), end)
@@ -14456,7 +14460,7 @@ class TestR13FollowableRuche0052(BaseInvitations):
         self.valid_one()
         brake = bee.brake_state(bee.Registry(self.dir))
         self.assertEqual((brake["tight"], brake["open_incidents"]), (True, ["INC-0001"]))
-        self.assertIn("brake SERRÉ (open incident(s): INC-0001", self.ok("swarm"))
+        self.assertIn("brake TIGHT (open incident(s): INC-0001", self.ok("swarm"))
         # La porte : gina, gardienne en fonction à l'heure de la PR, passe, et le conseil fusionne ; un membre est refusé.
         self.commit()
         self.awaits_the_council("gina", "incident")
@@ -14703,17 +14707,17 @@ class TestCopiedManifest(BaseDressRehearsal):
             self.assertIn(expected, readings[command], command)
         # verifier-acceptation (journal de la CI à chaque passage d'intégration) : modèle et gain seuls, et un renvoi.
         self.assertIn("\n".join([header, "| model: modèle d'essai 1.0", "| gain: 0.1", bee.DATA_END,
-                                 "# tested, untested et doubts déclarés : bee show miniz-0099"]), readings["check-acceptance"])
+                                 "# tested, untested and doubts declared: bee show miniz-0099"]), readings["check-acceptance"])
         self.assertNotIn("fuzzing 2 min", readings["check-acceptance"])
         self.assertNotIn("=== DATA of the manifest", self.ok("context", "miniz-0099"), "le chemin d'un autre rôle n'en paie pas le prix")
 
     def test_nothing_is_copied_from_a_manifest_of_another_task_of_another_author_or_too_big(self):
         """Revue adverse (points 3, 5 et 6) : la déclaration est celle du manifeste de la tâche et de l'auteur au commit jugé ;
         sinon declare: null, aucun écart, et la sortie dit pourquoi sans imprimer le texte du fork."""
-        self.assertIn(f"# {self.cid} : aucun manifeste recopié (pas encore de verdict)", self.readings()["show"])
+        self.assertIn(f"# {self.cid}: no copied manifest (no verdict yet)", self.readings()["show"])
         rec = self.rec()
         bee.write_yaml(self.path, {**rec, "verdict": {"ci": "green", "gain": 0.03, "changed_lines": 10, "sha": "abc1234"}})
-        self.assertIn("aucun manifeste recopié (verdict antérieur à la recopie (ruche-0017))", self.readings()["show"])
+        self.assertIn("no copied manifest (verdict older than the copy (ruche-0017))", self.readings()["show"])
         big_one = FILLED_MANIFEST + "# " + "x" * bee.MANIFEST_MAX_BYTES + "\n"
         slow = FILLED_MANIFEST.replace("doubts: Aucun doute identifié.", "doubts: 1" + ":1" * 300000)  # sexagésimal YAML 1.1
         for name, content, message in (
@@ -14735,8 +14739,8 @@ class TestCopiedManifest(BaseDressRehearsal):
                     self.assertIn(f"manifeste ignoré {message} : aucun écart calculé, rien de recopié", output_text)
                 self.assertIsNone(self.rec()["declared"])
                 self.assertNotIn("declared_gap", self.rec()["verdict"])
-                self.assertIn(f"# {self.cid} : aucun manifeste recopié (manifeste absent, illisible, de plus de 64 Kio, d'une "
-                              "autre tâche ou d'un autre auteur)", self.readings()["show"])
+                self.assertIn(f"# {self.cid}: no copied manifest (manifest missing, unreadable, over 64 KiB, of another "
+                              "task or of another author)", self.readings()["show"])
                 self.valid_one()
 
     def test_a_hostile_manifest_copies_only_bounded_and_framed_data(self):
@@ -15091,7 +15095,7 @@ class TestRound3(BaseParallel):
         self.ok_("take", "miniz-9001", "--user", "chloe")
         copied = self.submit("miniz-9001", "chloe", 99329)
         self.verdict_("bbb0001", "7ee0001", cid=copied)
-        alert = f"this content was refused par bruno in {self.cid} (same tree, other task: miniz-0099)"
+        alert = f"this content was refused by bruno in {self.cid} (same tree, other task: miniz-0099)"
         code, text = self.acceptance(copied)
         self.assertIn(alert, text)
         self.assertIn(alert, self.ok_("ranking"))
@@ -15843,10 +15847,10 @@ class TestFreeTextCheck(unittest.TestCase):
                 self.assertEqual(bee.declared_text("a" + c + "b", 100), f"a<{code_point(c)}>b")
         for c in "\n\t":
             self.assertIsNone(bee.free_text_problem(f"deux{c}lines", "context"))
-            self.assertEqual(bee.free_text_problem(f"deux{c}lines", "summary", "le résumé"),
-                             "summary: le résumé fits on one line (no line break or tab)")
+            self.assertEqual(bee.free_text_problem(f"deux{c}lines", "summary", "the summary"),
+                             "summary: the summary fits on one line (no line break or tab)")
         self.assertIsNone(bee.free_text_problem("Honnête" + HONEST_CONTROL, "reason"))
-        self.assertIsNone(bee.free_text_problem("Honnête" + HONEST_CONTROL, "title", "le titre"))
+        self.assertIsNone(bee.free_text_problem("Honnête" + HONEST_CONTROL, "title", "the title"))
         # Revue adverse (a) : U+FE0F reste refusé (⚠ suivi de lui), et le message dit le remède.
         self.assertIn("remove U+FE0F, the emoji variation selector", bee.free_text_problem("Attention \u26a0\ufe0f", "note"))
         self.assertIsNone(bee.free_text_problem("Attention \u26a0", "note"))
@@ -15994,7 +15998,7 @@ class TestFreeTextsRuche0029(BaseReviewRuche0020):
                 self.assertNotIn(c, output_text, "le point de code, jamais le caractère")
         # Un titre et un résumé tiennent sur une ligne ; un contexte, une note ou un motif peuvent en avoir plusieurs (setUp).
         for file, keys in self.KINDS[:1] + self.KINDS[4:5]:
-            output_text = self.refuse(f"{file}: {self.trap(file, keys, chr(10))}: {'le titre' if keys == ('title',) else 'le résumé'} "
+            output_text = self.refuse(f"{file}: {self.trap(file, keys, chr(10))}: {'the title' if keys == ('title',) else 'the summary'} "
                                  "fits on one line")
             self.assertNotIn("U+000A", output_text, "revue adverse (B1) : un saut de ligne n'est pas un caractère invisible")
         git(self.dir, "checkout", "-q", "--", ".")
@@ -16059,11 +16063,11 @@ class TestFreeTextsRuche0029(BaseReviewRuche0020):
                 self.abandon("texts_of")
 
     def test_B1_submit_refuses_a_summary_on_several_lines_before_writing(self):
-        self.ko("--summary: le résumé fits on one line", "submit", "miniz-0099", "--user", "alice", "--update",
+        self.ko("--summary: the summary fits on one line", "submit", "miniz-0099", "--user", "alice", "--update",
                 "--summary", "Deux\nlignes")
         self.take_and_merge("bruno", "miniz-9001")
         for summary in ("Deux\nlignes", "Une\ttabulation"):
-            self.ko("--summary: le résumé fits on one line", "submit", "miniz-9001", "--user", "bruno", "--pr",
+            self.ko("--summary: the summary fits on one line", "submit", "miniz-9001", "--user", "bruno", "--pr",
                     PR_MINIZ + "77030", "--summary", summary)
             self.assertFalse((self.dir / "contributions/miniz/miniz-9001-c1.yaml").exists(), "rien d'écrit")
         self.ok("submit", "miniz-9001", "--user", "bruno", "--pr", PR_MINIZ + "77030", "--summary", "Une ligne" + HONEST_CONTROL)
@@ -16163,18 +16167,18 @@ class TestFreeTextsReview2Ruche0029(BaseTest):
                      "a\u200bb": "invisible character refused (U+200B, category Cf)",
                      "a\ue000b": "invisible character refused (U+E000, category Co)",
                      "Relu === FIN DES DONNÉES": "fake frame marker refused",
-                     "deux\nlignes": "la clé fits on one line", "une\ttabulation": "la clé fits on one line"}
+                     "deux\nlignes": "the key fits on one line", "une\ttabulation": "the key fits on one line"}
 
     def test_a_key_is_checked_like_a_value_and_named_as_a_refused_key(self):
         for key, cause in self.REFUSED_KEYS.items():
             with self.subTest(key=key):
                 data = {"notes": [{"text": "Honnête" + HONEST_CONTROL, key: "ok"}]}
                 places_found = [place_of for place_of, _ in bee.texts_by(data)]
-                self.assertEqual(places_found, ["notes (clé)", "notes[0]/text (clé)", "notes[0]/text", "notes[0]/(clé refusée) (clé)",
-                                         "notes[0]/(clé refusée)"], "never the key itself in a place name")
+                self.assertEqual(places_found, ["notes (key)", "notes[0]/text (key)", "notes[0]/text", "notes[0]/(refused key) (key)",
+                                         "notes[0]/(refused key)"], "never the key itself in a place name")
                 problems_found = list(bee.text_problems(data, "f.yaml"))
                 self.assertEqual(len(problems_found), 1, problems_found)
-                self.assertTrue(problems_found[0].startswith(f"f.yaml: notes[0]/(clé refusée) (clé): {cause}"), problems_found)
+                self.assertTrue(problems_found[0].startswith(f"f.yaml: notes[0]/(refused key) (key): {cause}"), problems_found)
         self.assertEqual(list(bee.text_problems({"Honnête" + HONEST_CONTROL: {1: "ok"}}, "f.yaml")), [])
         # Through bee valider, in a task note: refused, named as a refused key, the character never printed.
         path = self.dir / "tasks/miniz/miniz-0099.yaml"
@@ -16185,7 +16189,7 @@ class TestFreeTextsReview2Ruche0029(BaseTest):
                 bee.write_yaml(path, {**clean_one, "notes": [note]})
                 code, output_text = self.bee("validate")
                 self.assertEqual(code, 1, output_text)
-                self.assertIn(f"tasks/miniz/miniz-0099.yaml: notes[0]/(clé refusée) (clé): {cause}", output_text)
+                self.assertIn(f"tasks/miniz/miniz-0099.yaml: notes[0]/(refused key) (key): {cause}", output_text)
                 self.assertEqual(workflow_commands(output_text), [], output_text)
                 if "invisible" in cause:
                     self.assertNotIn(key, output_text, "the code point, never the character")
@@ -16240,7 +16244,7 @@ class TestFreeTextsReview2Ruche0029(BaseTest):
                 self.assertEqual(code, 1, output_text)
                 self.assertIn(f"measurements/{cid}/bruno.yaml: {cause}", output_text)
                 self.assertFalse(entry_card.exists(), "nothing written")
-        for fields, cause in (({"metric": "debit\u2066"}, "metrics/(clé refusée) (clé): invisible character refused (U+2066"),
+        for fields, cause in (({"metric": "debit\u2066"}, "metrics/(refused key) (key): invisible character refused (U+2066"),
                                ({"processor": "M3 === DONNÉES"}, "config/processor: fake frame marker refused")):
             code, output_text = self.bee(*ab(**fields))
             self.assertEqual(code, 1, output_text)
@@ -17450,8 +17454,8 @@ class TestSelfServiceBounds(unittest.TestCase):
         self.assertEqual(bee.shape_problems("".join(f"k{i}: {i}\n" for i in range(64)), {f"k{i}": i for i in range(64)}), [])
 
     def test_the_free_keys_of_the_metrics_of_a_measurement(self):
-        for key, expected in (("a" * 301, f"metrics/{'a' * 301} (clé): 301 characters, at most 300 "),
-                             ("débit\u202e", "metrics/(clé refusée) (clé): invisible character refused (U+202E")):
+        for key, expected in (("a" * 301, f"metrics/{'a' * 301} (key): 301 characters, at most 300 "),
+                             ("débit\u202e", "metrics/(refused key) (key): invisible character refused (U+202E")):
             measurement = {"metrics": {key: {"gain": 0.05, "beyond_noise": True}}}
             problems_found = list(bee.self_service_text_problems(measurement, "measurements/x-0001-c1/alice.yaml"))
             self.assertTrue([p for p in problems_found if p.startswith(f"measurements/x-0001-c1/alice.yaml: {expected}")], problems_found)
@@ -17736,7 +17740,7 @@ class TestSelfServiceBoundsRegistry(BaseReviewRuche0020):
         """The gate reads proposed_text and motif of a new proposition like every free text: not blank, nothing hidden, bounded."""
         for fields, expected in (({"proposed_text": " " * 12}, "proposed_text is empty"),
                                 ({"reason": "Un motif​ assez long pour le schéma."}, "reason: invisible character"),
-                                ({"proposed_text": "a" * 8001}, "proposed_text de 8001 caractères, au plus 8000")):
+                                ({"proposed_text": "a" * 8001}, "proposed_text: 8001 characters, at most 8000")):
             with self.subTest(fields=fields):
                 self.branch()
                 self.proposal("P-0002", **fields)
@@ -18196,7 +18200,7 @@ class TestR8Bootstrap(BaseDressRehearsal):
         self.ok("take", "ruche-9008", "--user", "alice")
         self.ok("take", "ruche-9008", "--user", "bidji29", "--parallel")  # a registration in parallel counts
         self.valid_one()
-        eight = ", ".join(f"ruche-900{n}" for n in range(1, 8)) + ", ruche-9008 (en parallèle)"
+        eight = ", ".join(f"ruche-900{n}" for n in range(1, 8)) + ", ruche-9008 (in parallel)"
         self.ko(f"rule R8: bidji29 already has 8 reservations or parallel registrations ({eight}), maximum 8",
                 "take", "ruche-9009", "--user", "bidji29")
         for other in ("miniz-9001", "miniz-9003", "ruche-9013"):  # another category, or not created by the council
@@ -18222,6 +18226,12 @@ class TestR8Bootstrap(BaseDressRehearsal):
         text = self.ko("rule R8: bidji29 has 4 reservations or parallel registrations", "validate")
         self.assertIn("rule R8: alice has 4 reservations or parallel registrations (ruche-9005, ruche-9006, ruche-9007, ruche-9008), "
                       "maximum 3", text)
+
+    def test_a_malformed_setting_is_named_by_its_form_braces_as_written(self):
+        for line_text in ("r8_bootstrap: 8", "r8_bootstrap: {max: 8}"):
+            with self.subTest(setting=line_text):
+                self.setting(line_text)
+                self.ko("bee.yaml: r8_bootstrap: {max: positive integer, until: UTC instant} expected (ruche-0096)", "validate")
 
     def test_past_missing_or_malformed_setting_gives_the_usual_cap_in_take_validate_and_the_gate(self):
         for t in ("ruche-9001", "ruche-9002", "ruche-9003"):
@@ -19880,7 +19890,7 @@ class TestIdentityByNumber(BaseDressRehearsal):
                     self.assertIn(f"la PR {address} doit avoir été ouverte par gaspard2 sur GitHub", text)
 
     def test_a_record_with_a_number_already_taken_is_refused(self):
-        self.ko("the account %d already has its file, gaspard : a renamed account moves it (bee rename)" % number_from("gaspard"),
+        self.ko("the account %d already has its file, gaspard: a renamed account moves it (bee rename)" % number_from("gaspard"),
                 "register", "--login", "gaspard-bis", "--account-created-on", "2020-01-01", "--github-id", str(number_from("gaspard")))
         self.branch("double")
         bee.write_yaml(self.dir / "members/gaspard-bis.yaml", {"login": "gaspard-bis", "registered_on": "2026-10-29",
@@ -20054,7 +20064,7 @@ class TestLinkedAccountsRuche0051(BaseInvitations):
         self.link("alice", "--other-account", number_from("farid"))
         self.assertFalse(bee.Registry(self.dir).identities.same_one("alice", "farid"))  # one side only: nothing yet
         # The other side confirms a file that lists it, by its own PR, never someone else's.
-        self.ko(f"account_of {number_from('bruno')} : that member file lists this account in other_accounts first", "link",
+        self.ko(f"account_of {number_from('bruno')}: that member file lists this account in other_accounts first", "link",
                 "--user", "chloe", "--account-of", str(number_from("bruno")))
         self.branch("usurpation")
         self.by_hand("farid", account_of=number_from("alice"))
@@ -20104,7 +20114,7 @@ class TestLinkedAccountsRuche0051(BaseInvitations):
         self.abandon("agent")
         # A declared number is a member file's, itself linked to no one (a number without a file fails closed), 5 at most.
         for number_of in (4242, number_from("farid")):
-            self.ko("other_accounts : 5 at most, each the number of a member file linked to no one", "link", "--user", "bruno",
+            self.ko("other_accounts: 5 at most, each the number of a member file linked to no one", "link", "--user", "bruno",
                     "--other-account", str(number_of))
         for n in range(1, 5):
             self.ok("register", "--login", f"compte{n}", "--account-created-on", "2020-01-01")
@@ -20114,14 +20124,14 @@ class TestLinkedAccountsRuche0051(BaseInvitations):
                 self.branch(name)
                 self.by_hand("bruno", other_accounts=numbers_of)
                 self.commit()
-                self.refused("bruno", "other_accounts : 5 at most, each the number of a member file linked to no one (a number without a file is refused)")
+                self.refused("bruno", "other_accounts: 5 at most, each the number of a member file linked to no one (a number without a file is refused)")
                 self.abandon(name)
         # bee valider: a link is one step, confirmed from both sides, never to oneself.
         chloe = bee.read_yaml(self.dir / "members/chloe.yaml")
         for fields in ({"account_of": number_from("bruno")}, {"other_accounts": [number_from("chloe")]}):
             with self.subTest(fields=fields):
                 bee.write_yaml(self.dir / "members/chloe.yaml", {**chloe, **fields})
-                self.ko("members/chloe.yaml : a link is one step, confirmed from both sides by account numbers, never to oneself", "validate")
+                self.ko("members/chloe.yaml: a link is one step, confirmed from both sides by account numbers, never to oneself", "validate")
 
     def test_linked_accounts_count_as_one_in_r7_and_r8(self):
         self.a("2026-10-30T10:00:00Z")
@@ -20548,10 +20558,10 @@ class TestLinkedAccountsRuche0051(BaseInvitations):
         alice = bee.read_yaml(self.dir / "members/alice.yaml")
         for option in ("--other-account", "--account-of"):
             with self.subTest(option=option):
-                self.ko("0 : a GitHub account's number is a positive integer", "link", "--user", "bruno", option, "0")
+                self.ko("0: a GitHub account's number is a positive integer", "link", "--user", "bruno", option, "0")
                 self.assertNotIn("account_of", bee.read_yaml(self.dir / "members/bruno.yaml"))
         bee.write_yaml(self.dir / "members/alice.yaml", {k: v for k, v in alice.items() if k != "login"})
-        text = self.ko("members/farid.yaml : a link is one step, confirmed from both sides by account numbers, never to oneself, "
+        text = self.ko("members/farid.yaml: a link is one step, confirmed from both sides by account numbers, never to oneself, "
                         "between two member files that name their pseudo", "validate")
         self.assertNotIn("Traceback", text)
 
@@ -20647,13 +20657,13 @@ class TestReportsRuche0118(ReportTools):
         self.valid_one()
         form_text = ("a report holds by, at, accounts and reason, nothing else (no free text); reason: cross_reviews, cross_votes, "
                  "engagement_relay, copied_contribution")
-        outside = "accounts : the logins of two member accounts, as members/ names them, each file with its github_id (no one outside the hive)"
+        outside = "accounts: the logins of two member accounts, as members/ names them, each file with its github_id (no one outside the hive)"
         for fields, chunk in (({"text": "Ils votent toujours ensemble."}, form_text), ({"reason": "Ils votent toujours ensemble."}, form_text),
                                 ({"reason": "other"}, form_text), ({"reason": ["cross_votes"]}, form_text), ({"accounts": ["farid", "inconnu"]}, outside),
                                 ({"accounts": ["farid", "hector"]}, outside), ({"accounts": ["farid", "bidji29"]}, outside),
                                 ({"accounts": ["farid", "Gaspard"]}, outside), ({"accounts": ["farid", "farid"]}, outside),
                                 ({"accounts": ["farid", "gaspard", "alice"]}, outside), ({"accounts": "farid gaspard"}, outside),
-                                ({"by": "farid"}, "by : a member reports in their own name (chloe)"),
+                                ({"by": "farid"}, "by: a member reports in their own name (chloe)"),
                                 ({"at": "2026-10-01T10:00:00Z"}, "at (2026-10-01T10:00:00Z) must be the time of the PR")):
             with self.subTest(fields=fields):
                 self.branch()
@@ -20680,14 +20690,14 @@ class TestReportsRuche0118(ReportTools):
         self.report("gaspard", "alice", "bruno")
         # Recorded for the council: bee essaim and bee voir show it.
         swarm = self.ok("swarm")
-        self.assertIn("Signalements ouverts, pour le conseil", swarm)
-        self.assertIn("S-0001: alice et bruno (cross_votes), reported by gaspard on 2026-10-30T10:00:00Z", swarm)
+        self.assertIn("Open reports, for the council", swarm)
+        self.assertIn("S-0001: alice and bruno (cross_votes), reported by gaspard on 2026-10-30T10:00:00Z", swarm)
         self.assertEqual([x["id"] for x in json.loads(self.ok("swarm", "--json"))["reports"]], ["S-0001"])
         show = self.ok("show", "S-0001")
         self.assertIn("S-0001: open: the council links the two accounts or dismisses it", show)
         self.assertIn("| reason: cross_votes", show)
         # Only the council decides: a member's command, decision or withdrawal is refused.
-        self.ko("S-0001 : the council alone decides an open report", "decide-report", "S-0001", "--user", "gaspard", "--dismiss", "no_evidence")
+        self.ko("S-0001: the council alone decides an open report", "decide-report", "S-0001", "--user", "gaspard", "--dismiss", "no_evidence")
         s = self.read("reports/S-0001.yaml")
         for name, gesture in (("decision", lambda c: bee.write_yaml(c, {**s, "decision": {"by": "gaspard", "at": s["at"], "outcome": "no_evidence"}})),
                            ("withdrawal", pathlib.Path.unlink)):
@@ -20707,7 +20717,7 @@ class TestReportsRuche0118(ReportTools):
         self.valid_one()
         self.assertNotIn("S-0001", self.ok("swarm"))
         self.assertIn("S-0001: decided", self.ok("show", "S-0001"))
-        self.ko("S-0001 : the council alone decides an open report", "decide-report", "S-0001", "--user", "bidji29", "--dismiss", "duplicate")
+        self.ko("S-0001: the council alone decides an open report", "decide-report", "S-0001", "--user", "bidji29", "--dismiss", "duplicate")
         # A dismissal with a code blocks the same pair for 30 days, by person: renamed, in the other order, by another.
         self.report("gaspard", "chloe", "farid")
         self.decider("S-0002", "--dismiss", "distinct_persons")
@@ -20715,7 +20725,7 @@ class TestReportsRuche0118(ReportTools):
         self.a("2026-11-29T11:59:00Z")
         self.ok("rename", "--old", "chloe", "--login", "chloe-b")
         self.commit("chloe renommée")
-        blocked = "S-0002 was dismissed on 2026-10-30T12:00:00Z : this pair is not reported again for 30 days after (by person"
+        blocked = "S-0002 was dismissed on 2026-10-30T12:00:00Z: this pair is not reported again for 30 days after (by person"
         self.ko(blocked, "report", "--user", "alice", "--accounts", "farid", "chloe-b", "--reason", "cross_reviews")
         self.branch()
         self.by_hand("S-0003", by="alice", accounts=["farid", "chloe-b"], reason="cross_reviews")
@@ -20734,7 +20744,7 @@ class TestReportsRuche0118(ReportTools):
     def test_neither_one_of_the_two_nor_a_second_open_nor_beyond_the_cap(self):
         self.a("2026-10-30T10:00:00Z")
         # The reporter is neither account, nor the account linked to one of them.
-        him = "the reporter is neither account : one's own accounts are linked with bee link"
+        him = "the reporter is neither account: one's own accounts are linked with bee link"
         self.ko(him, "report", "--user", "gaspard", "--accounts", "alice", "gaspard", "--reason", "cross_votes")
         bee.write_yaml(self.dir / "members/gaspard.yaml", {**self.read("members/gaspard.yaml"), "other_accounts": [number_from("farid")]})
         bee.write_yaml(self.dir / "members/farid.yaml", {**self.read("members/farid.yaml"), "account_of": number_from("gaspard")})
@@ -20749,7 +20759,7 @@ class TestReportsRuche0118(ReportTools):
                 self.abandon()
         # One open report per pair, by person: whoever files it, in whatever order.
         self.report("chloe", "alice", "bruno")
-        open = "S-0001 already reports these two persons, and is open : one open report per pair (by person"
+        open = "S-0001 already reports these two persons, and is open: one open report per pair (by person"
         self.ko(open, "report", "--user", "gaspard", "--accounts", "bruno", "alice", "--reason", "cross_reviews")
         self.branch()
         self.by_hand("S-0002", accounts=["bruno", "alice"])
@@ -20792,15 +20802,15 @@ class TestReportsRuche0118(ReportTools):
         (identities.key), so the linked account of either side changes nothing ; a pair already linked is not reported."""
         self.a("2026-10-30T10:00:00Z")
         self.link("gaspard", "farid")
-        already = "accounts : these two accounts are already linked (one person) : nothing to report"
+        already = "accounts: these two accounts are already linked (one person): nothing to report"
         self.ko(already, "report", "--user", "alice", "--accounts", "farid", "gaspard", "--reason", "cross_votes")
         self.refused_by_hand("alice", "S-0001", already, accounts=["gaspard", "farid"])
         self.report("chloe", "alice", "farid")
-        open = "S-0001 already reports these two persons, and is open : one open report per pair (by person"
+        open = "S-0001 already reports these two persons, and is open: one open report per pair (by person"
         self.ko(open, "report", "--user", "bruno", "--accounts", "gaspard", "alice", "--reason", "cross_votes")
         self.refused_by_hand("bruno", "S-0002", open, accounts=["gaspard", "alice"])
         self.decider("S-0001", "--dismiss", "no_evidence")
-        blocked = "S-0001 was dismissed on 2026-10-30T10:00:00Z : this pair is not reported again for 30 days after (by person"
+        blocked = "S-0001 was dismissed on 2026-10-30T10:00:00Z: this pair is not reported again for 30 days after (by person"
         self.ko(blocked, "report", "--user", "bruno", "--accounts", "alice", "gaspard", "--reason", "cross_votes")
         self.refused_by_hand("bruno", "S-0002", blocked, accounts=["alice", "gaspard"])
         self.a("2026-11-29T10:01:00Z")
@@ -20860,8 +20870,8 @@ class TestReportsRuche0118(ReportTools):
         config.write_text(re.sub(r"(?m)^  reports_naming_max: *3\b", "  reports_naming_max: 20", config.read_text(encoding="utf-8")), encoding="utf-8")
         self.commit("douze signalements ouverts")
         swarm = self.ok("swarm")
-        self.assertIn("Signalements ouverts, pour le conseil: 12, les 10 premiers", swarm)
-        self.assertIn("S-0010: alice et bruno", swarm)
+        self.assertIn("Open reports, for the council: 12, the first 10", swarm)
+        self.assertIn("S-0010: alice and bruno", swarm)
         self.assertNotIn("S-0011", swarm)
         table_of = json.loads(self.ok("swarm", "--json"))
         self.assertEqual(([x["id"] for x in table_of["reports"]], table_of["reports_open"]),
@@ -20909,10 +20919,10 @@ class TestReportsRuche0118(ReportTools):
         self.link("alice", "farid")
         self.report("chloe", "alice", "bruno")  # S-0001 : alice is one of the two accounts
         self.report("bruno", "farid", "chloe")  # S-0002 : alice is linked to farid
-        part_of = "decision/by : the council member who authors this PR, neither of the two accounts nor linked to one"
+        part_of = "decision/by: the council member who authors this PR, neither of the two accounts nor linked to one"
         for name in ("S-0001", "S-0002"):
             with self.subTest(report=name):
-                self.ko(f"{name} : the council alone decides an open report, never one naming its own account or a linked one",
+                self.ko(f"{name}: the council alone decides an open report, never one naming its own account or a linked one",
                         "decide-report", name, "--user", "alice", "--dismiss", "no_evidence")
                 self.assertNotIn("decision", self.read(f"reports/{name}.yaml"))
                 s = self.read(f"reports/{name}.yaml")
@@ -20928,10 +20938,10 @@ class TestReportsRuche0118(ReportTools):
         for decision, members, chunk in (
                 ({"by": "gaspard"}, {}, part_of),
                 ({"at": "2026-10-30T09:00:00Z"}, {}, "decision/at (2026-10-30T09:00:00Z) must be the time of the PR"),
-                ({"at": "20261030T120000Z"}, {}, "decision/at (20261030T120000Z) : the time of the PR as bee writes it (2026-10-30T12:00:00Z)"),
-                ({"outcome": "linked"}, {}, "decision lies : this PR links the two member files"),
+                ({"at": "20261030T120000Z"}, {}, "decision/at (20261030T120000Z): the time of the PR as bee writes it (2026-10-30T12:00:00Z)"),
+                ({"outcome": "linked"}, {}, "decision lies: this PR links the two member files"),
                 ({"outcome": "linked"}, {"alice": {**alice, "other_accounts": [*alice["other_accounts"], number_from("bruno")]}},
-                 "decision lies : this PR links the two member files")):
+                 "decision lies: this PR links the two member files")):
             with self.subTest(decision=decision, members=list(members)):
                 self.branch("decision")
                 bee.write_yaml(self.dir / "reports/S-0001.yaml",
@@ -20956,17 +20966,17 @@ class TestReportsRuche0118(ReportTools):
         self.take_and_merge("gaspard", "miniz-0099", "--parallel")
         self.report("chloe", "alice", "bruno", "engagement_relay")
         hold = "the two accounts both hold miniz-0099 (an engagement or a contribution in the race)"
-        self.ko(f"S-0001 : {hold}", "decide-report", "S-0001", "--user", "bidji29", "--link", "alice")
+        self.ko(f"S-0001: {hold}", "decide-report", "S-0001", "--user", "bidji29", "--link", "alice")
         self.assertNotIn("decision", self.read("reports/S-0001.yaml"))
         self.assertNotIn("other_accounts", self.read("members/alice.yaml"))
         self.submit_and_merge("gaspard", "miniz-0099", 77010)
         c_alice = self.submit_and_merge("alice", "miniz-0099", 77011)
         self.report("chloe", "alice", "gaspard", "copied_contribution")
-        self.ko(f"S-0002 : {hold}", "decide-report", "S-0002", "--user", "bidji29", "--link", "alice")
+        self.ko(f"S-0002: {hold}", "decide-report", "S-0002", "--user", "bidji29", "--link", "alice")
         # bruno leaves the task: the first link is written ; once alice's contribution has left the race, the second.
         self.release_and_merge("bruno")
         self.decider("S-0001", "--link", "alice")
-        self.ko(f"S-0002 : {hold}", "decide-report", "S-0002", "--user", "bidji29", "--link", "alice")
+        self.ko(f"S-0002: {hold}", "decide-report", "S-0002", "--user", "bidji29", "--link", "alice")
         self.ok("close", c_alice, "--reason", "PR fermée sans fusion.")
         self.commit("la PR d'alice est fermée")
         self.decider("S-0002", "--link", "alice")
@@ -20997,7 +21007,7 @@ class TestReportsRuche0137(ReportTools):
         self.report("gaspard", "alice", "chloe")
         self.assertEqual(self.to_the_council("chloe", "alice", "bruno"), "S-0004")
         self.valid_one()
-        self.assertIn("S-0004: alice et bruno (cross_votes), reported by chloe", self.ok("swarm"))
+        self.assertIn("S-0004: alice and bruno (cross_votes), reported by chloe", self.ok("swarm"))
         # The council decides it like any other : it links...
         self.decider("S-0004", "--link", "alice")
         self.assertTrue(bee.Registry(self.dir).identities.same_one("alice", "bruno"))
@@ -21007,20 +21017,20 @@ class TestReportsRuche0137(ReportTools):
         self.assertEqual(self.read("reports/S-0005.yaml")["decision"]["outcome"], "no_evidence")
         self.valid_one()
         # Past the cap, every other check still refuses : not in one's own name, nor a pair already open.
-        self.refused_by_hand("farid", "S-0006", "by : a member reports in their own name (chloe)", author="chloe", accounts=["dora", "alice"])
+        self.refused_by_hand("farid", "S-0006", "by: a member reports in their own name (chloe)", author="chloe", accounts=["dora", "alice"])
         self.refused_by_hand("dora", "S-0006", "S-0001 already reports these two persons, and is open", accounts=["farid", "alice"])
         self.ko("S-0001 already reports these two persons", "report", "--user", "dora", "--accounts", "alice", "farid", "--reason", "cross_votes")
 
     def test_validate_refuses_on_main_what_the_gate_refuses(self):
         self.a("2026-10-30T10:00:00Z")
         decision = {"by": "bidji29", "at": "2026-10-30T10:00:00Z", "outcome": "no_evidence"}
-        for fields, chunk in (({"by": "inconnu"}, "by : inconnu is not a member"),
+        for fields, chunk in (({"by": "inconnu"}, "by: inconnu is not a member"),
                                 ({"by": "alice"}, "the reporter is neither account"),
-                                ({"accounts": ["alice", "inconnu"]}, "accounts : the logins of two member accounts"),
-                                ({"decision": {**decision, "by": "inconnu"}}, "decision/by : inconnu is not a known account"),
-                                ({"decision": {**decision, "by": "gaspard"}}, "decision/by : neither the reporter nor one of the two accounts"),
-                                ({"decision": {**decision, "by": "bruno"}}, "decision/by : neither the reporter nor one of the two accounts"),
-                                ({"decision": {**decision, "outcome": "linked"}}, "decision lies : the two member files are linked")):
+                                ({"accounts": ["alice", "inconnu"]}, "accounts: the logins of two member accounts"),
+                                ({"decision": {**decision, "by": "inconnu"}}, "decision/by: inconnu is not a known account"),
+                                ({"decision": {**decision, "by": "gaspard"}}, "decision/by: neither the reporter nor one of the two accounts"),
+                                ({"decision": {**decision, "by": "bruno"}}, "decision/by: neither the reporter nor one of the two accounts"),
+                                ({"decision": {**decision, "outcome": "linked"}}, "decision lies: the two member files are linked")):
             with self.subTest(fields=fields):
                 self.by_hand("S-0001", **fields)
                 self.ko(f"reports/S-0001.yaml : {chunk}", "validate")
@@ -21052,10 +21062,10 @@ class TestReportsRuche0137(ReportTools):
         self.commit()
         self.self_service(AGENT, self.NATURE)
         self.merge("decide-report")
-        his = "decision/by : never the person who filed the report, under any of their accounts : it waits for another council member"
+        his = "decision/by: never the person who filed the report, under any of their accounts: it waits for another council member"
         for name in ("S-0002", "S-0003"):
             with self.subTest(report=name):
-                self.ko(f"{name} : {his}", "decide-report", name, "--user", "bidji29", "--dismiss", "no_evidence")
+                self.ko(f"{name}: {his}", "decide-report", name, "--user", "bidji29", "--dismiss", "no_evidence")
                 s = self.read(f"reports/{name}.yaml")
                 for author in ("bidji29", AGENT):
                     self.branch("decision")
@@ -21065,7 +21075,7 @@ class TestReportsRuche0137(ReportTools):
                     self.abandon("decision")
         # A guardian in office decides a report a council member filed, never another ; it links as the council does.
         self.report("gaspard", "dora", "chloe")  # S-0004
-        self.ko("S-0004 : the council alone decides an open report", "decide-report", "S-0004", "--user", "gina", "--dismiss", "no_evidence")
+        self.ko("S-0004: the council alone decides an open report", "decide-report", "S-0004", "--user", "gina", "--dismiss", "no_evidence")
         self.branch("decision")
         s = self.read("reports/S-0004.yaml")
         bee.write_yaml(self.dir / "reports/S-0004.yaml", {**s, "decision": {"by": "gina", "at": s["at"], "outcome": "no_evidence"}})
@@ -21104,7 +21114,7 @@ class TestReportsRuche0137(ReportTools):
         self.report("gaspard", "alice", "chloe")
         self.assertEqual(self.to_the_council("chloe", "alice", "bruno"), "S-0004")
         # Past the cap, one more per 24 h waits for the council ; a second is refused, by bee and by the gate.
-        day = "alice is already named in reports_naming_max open reports : past it, at most 1 over 24 h wait for the council"
+        day = "alice is already named in reports_naming_max open reports: past it, at most 1 over 24 h wait for the council"
         self.ko(day, "report", "--user", "chloe", "--accounts", "alice", "dora", "--reason", "cross_votes")
         self.refused_by_hand("bruno", "S-0005", day, accounts=["alice", "dora"])
         self.a("2026-10-31T10:01:00Z")
@@ -21113,10 +21123,10 @@ class TestReportsRuche0137(ReportTools):
         self.assertEqual(self.to_the_council("bruno", "alice", "emile"), "S-0006")
         # bee essaim lists them apart, newest first, so that a flood never hides the others.
         swarm = self.ok("swarm")
-        self.assertIn("Signalements ouverts, pour le conseil: 3 (", swarm)
-        self.assertIn("Signalements au-delà du plafond nommant une personne: 3 (", swarm)
-        self.assertLess(swarm.index("S-0006: alice et emile"), swarm.index("S-0005: alice et dora"))
-        self.assertLess(swarm.index("S-0005: alice et dora"), swarm.index("S-0004: alice et bruno"))
+        self.assertIn("Open reports, for the council: 3 (", swarm)
+        self.assertIn("Reports past the cap naming a person: 3 (", swarm)
+        self.assertLess(swarm.index("S-0006: alice and emile"), swarm.index("S-0005: alice and dora"))
+        self.assertLess(swarm.index("S-0005: alice and dora"), swarm.index("S-0004: alice and bruno"))
         table_of = json.loads(self.ok("swarm", "--json"))
         self.assertEqual([x["id"] for x in table_of["reports_at_cap"]], ["S-0006", "S-0005", "S-0004"])
         # The value is the council's (bee.yaml) : at 2, a second one the same day waits for the council too.
@@ -21137,10 +21147,10 @@ class TestReportsRuche0137(ReportTools):
         council.write_text(council.read_text(encoding="utf-8") + "  - login: hector\n    role: member\n", encoding="utf-8")
         self.commit("hector au conseil")
         self.report("hector", "bruno", "chloe")  # S-0002, he files it
-        guarantor = "decision/by : a guardian never decides a report filed by, or naming, the person of their guarantor"
+        guarantor = "decision/by: a guardian never decides a report filed by, or naming, the person of their guarantor"
         for name in ("S-0001", "S-0002"):
             with self.subTest(report=name):
-                self.ko(f"{name} : {guarantor}", "decide-report", name, "--user", "gina", "--dismiss", "no_evidence")
+                self.ko(f"{name}: {guarantor}", "decide-report", name, "--user", "gina", "--dismiss", "no_evidence")
                 s = self.read(f"reports/{name}.yaml")
                 self.branch("decision")
                 bee.write_yaml(self.dir / f"reports/{name}.yaml", {**s, "decision": {"by": "gina", "at": s["at"], "outcome": "no_evidence"}})
@@ -21168,7 +21178,7 @@ class TestReportsRuche0137(ReportTools):
         # Written by hand on main, signed by the reporter : refused.
         s = self.read("reports/S-0001.yaml")
         bee.write_yaml(self.dir / "reports/S-0001.yaml", {**s, "decision": {**s["decision"], "by": "bidji29"}})
-        self.ko("reports/S-0001.yaml : decision/by : neither the reporter nor one of the two accounts", "validate")
+        self.ko("reports/S-0001.yaml : decision/by: neither the reporter nor one of the two accounts", "validate")
 
     def test_a_guardian_writes_only_the_link_of_the_decided_pair(self):
         self.a("2026-10-30T10:00:00Z")
@@ -21197,14 +21207,14 @@ class TestReportsRuche0137(ReportTools):
         self.a("2026-10-30T10:00:00Z")
         self.link("gaspard", "farid")
         self.report("chloe", "alice", "farid")
-        self.ko("S-0001 : other_accounts : 5 at most, each the number of a member file linked to no one", "decide-report", "S-0001",
+        self.ko("S-0001: other_accounts: 5 at most, each the number of a member file linked to no one", "decide-report", "S-0001",
                 "--user", "bidji29", "--link", "alice")
         s, alice = self.read("reports/S-0001.yaml"), self.read("members/alice.yaml")
         self.branch("decision")
         bee.write_yaml(self.dir / "reports/S-0001.yaml", {**s, "decision": {"by": "bidji29", "at": s["at"], "outcome": "linked"}})
         bee.write_yaml(self.dir / "members/alice.yaml", {**alice, "other_accounts": [number_from("farid")]})
         self.commit()
-        self.refused("bidji29", "reports/S-0001.yaml : decision lies : this PR links the two member files")
+        self.refused("bidji29", "reports/S-0001.yaml : decision lies: this PR links the two member files")
         self.abandon("decision")
         self.decider("S-0001", "--link", "farid")
         self.assertEqual(self.read("members/gaspard.yaml")["other_accounts"], [number_from("farid"), number_from("alice")])
@@ -21706,7 +21716,7 @@ class TestBulkPrReadsRehearsal(unittest.TestCase):
 class TestReservedPseudonyms(BaseTest):
     REFUSED = ("conseil", "Conseil", "CONSEIL", "bee", "github-actions", "mesurer", "Relire", "laruche-architect")
     ROBOT = '"github-actions[bot]"'
-    MALFORMED = "bee.yaml : reserved_logins is required and well formed, robots too : no member file is accepted otherwise"
+    MALFORMED = "bee.yaml: reserved_logins is required and well formed, robots too: no member file is accepted otherwise"
 
     def setUp(self):
         super().setUp()
@@ -22101,7 +22111,7 @@ class TestSettingsRuche0144(BaseTest):
 
     def test_reserved_login_refuses_every_name_unless_both_lists_are_well_formed(self):
         # Before: any non-empty list passed (['x'], ['conseil', 5]) and a malformed robots list was []: bee, Bee, github-actions[bot] free.
-        refusal = "bee.yaml : reserved_logins is required and well formed, robots too : no member file is accepted otherwise"
+        refusal = "bee.yaml: reserved_logins is required and well formed, robots too: no member file is accepted otherwise"
         alive = bee.read_yaml(self.dir / "bee.yaml")
         self.assertIsNone(bee.reserved_login(alive, "david"))
         self.assertIn("is a reserved pseudonym", bee.reserved_login(alive, "Bee"))

@@ -305,7 +305,7 @@ def message_schema(error):
         return f"value « {cite(value)} » not allowed (expected: {expected})"
     if v == "type":
         types = expected if isinstance(expected, list) else [expected]
-        return f"« {cite(value)} » should be {' ou '.join(TYPES_JSON.get(t, t) for t in types)}"
+        return f"« {cite(value)} » should be {' or '.join(TYPES_JSON.get(t, t) for t in types)}"
     if v == "minLength":
         return f"text too short ({len(value)} characters, minimum {expected})"
     if v == "maxLength":
@@ -475,7 +475,7 @@ SETTINGS = {
     "reservation_max_hours": _POSITIVE, "reservations_max_per_user": _POSITIVE, "acceptance_window_hours": _POSITIVE,
     "retake_after_release_hours": _shape(lambda v: _number(v) and v >= 0, f"non-negative number of hours expected (R7, at most {_BOUND})"),
     "r8_bootstrap": _shape(lambda v: isinstance(v, dict) and set(v) == {"max", "until"} and type(v["max"]) is int and 0 < v["max"] <= _BOUND
-                          and _readable_instant(v["until"]), "{max: entier positif, until: instant UTC} attendu (ruche-0096)"),
+                          and _readable_instant(v["until"]), "{max: positive integer, until: UTC instant} expected (ruche-0096)"),
     "min_gain": _FRACTION, "max_other_degradation": _FRACTION, "required_majority": _FRACTION, "max_declared_gap": _FRACTION,
     "reviews_required": _shape(lambda v: type(v) is int and 0 <= v <= _BOUND, f"non-negative integer expected (at most {_BOUND})"),
     "min_net_vote": _shape(lambda v: type(v) is int and 0 <= v <= _BOUND, f"non-negative integer expected (at most {_BOUND})"),
@@ -793,9 +793,9 @@ def reserved_login(config, login):
     """ruche-0104: why `pseudo` may not name a member file (None if it may): bee.yaml's reserved_logins, the council and the robots,
     case aside (same_login). Unless both lists are there and well formed, as bee validate wants them (ruche-0144), no name is accepted."""
     if setting_problem(config, "reserved_logins") or setting_problem(config, "robots"):
-        return "bee.yaml : reserved_logins is required and well formed, robots too : no member file is accepted otherwise (ruche-0104)"
+        return "bee.yaml: reserved_logins is required and well formed, robots too: no member file is accepted otherwise (ruche-0104)"
     if any(same_login(login, r) for r in [*setting(config, "reserved_logins"), "conseil", *setting(config, "robots")]):
-        return f"« {login} » is a reserved pseudonym (bee.yaml, reserved_logins) : no member takes a name the tool gives a meaning to"
+        return f"« {login} » is a reserved pseudonym (bee.yaml, reserved_logins): no member takes a name the tool gives a meaning to"
     return None
 
 
@@ -2133,8 +2133,8 @@ def check_registry(reg):
 
 def link_problems(reg):  # ruche-0051: a declaration alone does nothing; compte_de always confirms one, and no file lists itself
     linked = {id(f) for f, _ in confirmed_links([m for _, m in reg.members.values() if isinstance(m, dict)])}
-    return [f"members/{stem}.yaml : a link is one step, confirmed from both sides by account numbers, never to oneself, between two "
-            "member files that name their pseudo (other_accounts, then account_of ; only the council unlinks, in both files : ruche-0051)"
+    return [f"members/{stem}.yaml: a link is one step, confirmed from both sides by account numbers, never to oneself, between two "
+            "member files that name their pseudo (other_accounts, then account_of; only the council unlinks, in both files: ruche-0051)"
             for stem, (_, m) in reg.members.items() if isinstance(m, dict) and (("account_of" in m and id(m) not in linked) or (
                 isinstance(m.get("other_accounts"), list) and m.get("github_id") in m["other_accounts"]))]
 
@@ -2256,7 +2256,7 @@ def check_accounts(reg):
         for i, p in enumerate(task.get("parallel") or []):
             who_is = p["user"]
             valid_instant(path, p["since"], f"parallel/{i}/since")
-            reservations[reg.identities.name(who_is)].append((task["id"], " (en parallèle)", p["since"]))
+            reservations[reg.identities.name(who_is)].append((task["id"], " (in parallel)", p["since"]))
             if not reg.registered(who_is):
                 add_to(f"{place_of}: parallel/{i}: « {who_is} » is not registered")
             if who_is in Logins(seen_parallels, reg.identities):
@@ -3176,7 +3176,7 @@ def admissible_text(text, what_it, maximum):
         return (f"{what_it}: invisible character or control character refused (U+{ord(c):04X}, category {unicodedata.category(c)}): "
                 "it would hide or disguise the text, or make the debate impossible to rewrite")
     if len(text) > maximum:
-        return f"{what_it} de {len(text)} caractères, au plus {maximum}"
+        return f"{what_it}: {len(text)} characters, at most {maximum}"
     return free_text_problem(text, what_it)
 
 
@@ -3256,8 +3256,8 @@ def texts_by(value, place_of="", depth=0):
             yield from texts_by(under_it, f"{place_of}[{i}]", depth + 1)
     elif isinstance(value, dict):
         for key, under_it in value.items():
-            name = f"{place_of}/{key if free_text_problem(key, '', 'la clé') is None else '(clé refusée)'}".lstrip("/")
-            yield f"{name} (clé)", str(key)
+            name = f"{place_of}/{key if free_text_problem(key, '', 'the key') is None else '(refused key)'}".lstrip("/")
+            yield f"{name} (key)", str(key)
             yield from texts_by(under_it, name, depth + 1)
 
 
@@ -3265,7 +3265,7 @@ def text_problems(data, prefix_text, sort_kind=None):
     """Each refusal of the common check in `donnees` (values and keys), as bee validate reports it, so that a command can refuse
     before writing what bee validate would refuse after: a title, a summary and a key fit on one line; with `sorte`, its bounds."""
     for place_of, text in texts_by(data):
-        one_line = "la clé" if place_of.endswith(" (clé)") else {"title": "le titre", "summary": "le résumé"}.get(place_of)
+        one_line = "the key" if place_of.endswith(" (key)") else {"title": "the title", "summary": "the summary"}.get(place_of)
         bound = text_bound(sort_kind, place_of) if sort_kind and text is not None and len(text) > FIELD_TEXT_MAX else None  # the least bound
         problem_text = (f"{prefix_text}: {place_of}: nested deeper than 20 levels, refused" if text is None
                     else f"{prefix_text}: {place_of}: {len(text)} characters, at most {bound} (docs/governance.md, « Dossiers du "
@@ -3341,7 +3341,7 @@ def free_texts_problem(value, place_of, maximum, depth=0):
         return f"{place_of}: {len(value)} characters, at most {maximum}" if len(value) > maximum else free_text_problem(value, place_of)
     if isinstance(value, dict):
         for key, under_it in value.items():
-            problem_text = (free_texts_problem(str(key), f"{place_of} (clé)", maximum, depth + 1)
+            problem_text = (free_texts_problem(str(key), f"{place_of} (key)", maximum, depth + 1)
                         or free_texts_problem(under_it, f"{place_of}/{key}", maximum, depth + 1))
             if problem_text:
                 return problem_text
@@ -4300,13 +4300,13 @@ def personal_texts(reg, path, old, new):
     free_ones, seen_items = text_paths(schema := reg.schema(name).schema, schema), {t for _, t in texts_by(old)}
     seen_items |= {*getattr(reg, "members", ()), *getattr(reg, "council", ()), *getattr(reg, "tasks", ()), *getattr(reg, "records", ())}
     texts_of = [(place_of, t[:DETECTOR_BOUND]) for place_of, t in texts_by(new) if t is not None and t not in seen_items and not NOT_FREE.fullmatch(t)
-              and (place_of.endswith(" (clé)") or free_ones.get(field := re.sub(r"\[\d+\]", "[]", place_of), free_ones.get(re.sub(r"[^/]*$", "*", field)
+              and (place_of.endswith(" (key)") or free_ones.get(field := re.sub(r"\[\d+\]", "[]", place_of), free_ones.get(re.sub(r"[^/]*$", "*", field)
                                                                                                          if "/" in field else "*", True)))]
     refusal, review = [], any(personal_datum(t, 2) or SENSITIVE_DOUBT.search(t) for _, t in texts_of)
     notes = old.get("notes") if name == "task" and isinstance(old, dict) and isinstance(old.get("notes"), list) else []
     end = str(notes[-1].get("text"))[-60:] if notes and isinstance(notes[-1], dict) else ""
     values_of = [("notes[]/text", end)] * bool(end and not (personal_datum(end, 3) or SENSITIVE_SAFE.search(end))) + [
-        (re.sub(r"\[\d+\]", "[]", l), t) for l, t in texts_of if not l.endswith(" (clé)")]
+        (re.sub(r"\[\d+\]", "[]", l), t) for l, t in texts_of if not l.endswith(" (key)")]
     for place_of, text in texts_of + [("(all the texts together)", "\n;;;;\n".join(t for _, t in v)[:DETECTOR_BOUND])
                                  for v in (values_of, sorted(values_of, key=lambda x: x[0]))]:
         datum = personal_datum(text, 3) or (SENSITIVE_SAFE.search(text) and "sensitive data (health, opinions, age)")
@@ -6875,7 +6875,7 @@ def cmd_cap(args):
     if not state["total"]:
         print("\nNo activity in the window: every contribution helps; start with the area furthest behind.")
     if area:
-        print(f"\n{'Poste demandé' if args.area else 'Poste le plus en retard'}: {area}. Leads:")
+        print(f"\n{'Requested area' if args.area else 'Area furthest behind'}: {area}. Leads:")
         for t in leads["tasks"]:
             print(f"  - {t['id']} ({t['size']}): {t['title']}")
         if leads["to_review"]:
@@ -6952,14 +6952,14 @@ def cmd_swarm(args):
                   f"{x['last_activity']}, {state}): {question if len(question) <= 90 else question[:89] + '…'}")
     for key in ("reports", "reports_at_cap"):  # ruche-0137: past the cap naming a person, apart, newest first
         if table_of[key]:
-            print(f"\n{'Signalements au-delà du plafond nommant une personne' if key != 'reports' else 'Signalements ouverts, pour le conseil'}: "
-                  f"{(n := table_of[key + '_open'])}{(', les 10 derniers' if key != 'reports' else ', les 10 premiers') * (n > 10)} (bee show <S-nnnn>, bee decide-report):")
+            print(f"\n{'Reports past the cap naming a person' if key != 'reports' else 'Open reports, for the council'}: "
+                  f"{(n := table_of[key + '_open'])}{(', the latest 10' if key != 'reports' else ', the first 10') * (n > 10)} (bee show <S-nnnn>, bee decide-report):")
         for x in table_of[key]:
-            print(f"  - {cite(x['id'])}: {cite(' et '.join(map(str, x['accounts'])) if isinstance(x['accounts'], list) else x['accounts'])} ({cite(x['reason'])}), "
+            print(f"  - {cite(x['id'])}: {cite(' and '.join(map(str, x['accounts'])) if isinstance(x['accounts'], list) else x['accounts'])} ({cite(x['reason'])}), "
                   f"reported by {cite(x['by'])} on {cite(x['at'])}")
     brake = table_of["brake"]
-    print(f"\nGrowing (R13, docs/growth.md): brake {'SERRÉ' if brake['tight'] else 'desserré'}"
-          + (f" ({' ; '.join(brake['reasons'])})" if brake["tight"] else "")
+    print(f"\nGrowing (R13, docs/growth.md): brake {'TIGHT' if brake['tight'] else 'released'}"
+          + (f" ({'; '.join(brake['reasons'])})" if brake["tight"] else "")
           + f". Active members: {brake['active_members']} for {brake['guardians_in_office']} guardian(s) in office; messages "
           f"recorded over 7 days: {brake['sent_7_days']}; places taken (messages and green lights): {brake['places_taken_7_days']} "
           f"of {brake['invitations_per_week']}.\n  What can pass "
@@ -6982,7 +6982,7 @@ def task_computed_lines(reg, t):
     part, encadré comme de la donnée (task_data_frame)."""
     lines = ["# --- computed by bee ---"]
     blocked = reg.blocked_by(t)
-    lines.append(f"# blocked by: {', '.join(map(cite, blocked)) if blocked else 'rien'}")  # ruche-0088: each text quoted
+    lines.append(f"# blocked by: {', '.join(map(cite, blocked)) if blocked else 'nothing'}")  # ruche-0088: each text quoted
     lines.append(f"# area (the hive's balance, R11): {area_of(t)}" + ("" if t.get("area") else " (from its type)"))
     lines.append(f"# changed lines allowed (R1): {LINES_MAX[t['size']]}")
     required_level = "Confirmed" if t["type"] == "split" else {"S": "New", "M": "Contributor", "L": "Confirmed"}[t["size"]]
@@ -7007,14 +7007,14 @@ def task_computed_lines(reg, t):
             for alert in reviewer_alerts(reg, reg.records.get(c["contribution"], (None, {}))[1] or {}):
                 lines.append(f"#   ⚠ {cite(c['contribution'])}: {cite(alert)}")
             lines.append(f"#   {c['rank']}. {cite(c['contribution'])} by {cite(c['author'])}, submitted on {cite(c['submitted_at'])}, "
-                          f"CI {cite(c['ci'] or 'en attente')}, "
+                          f"CI {cite(c['ci'] or 'pending')}, "
                           f"race score {'—' if c['measured_gain'] is None else format(c['measured_gain'], '.4f')}, net vote {c['net_vote']:+d}, "
                           f"protected until {cite(c['protected_until'])}, no more waiting after {cite(c['waits_until'])}")
     if t.get("status") in ("reserved", "in_review"):
         lines.append(f"# join in parallel: bee take {cite(t['id'])} --user <login> --parallel")
     # Le nombre de notes, dit hors des données : « aucune » se distingue d'une liste omise (tour 2).
     notes = t.get("notes") if isinstance(t.get("notes"), list) else []
-    lines.append(f"# notes: {len(notes) or 'aucune'}")
+    lines.append(f"# notes: {len(notes) or 'none'}")
     return lines
 
 
@@ -7034,7 +7034,7 @@ def cmd_show(args):
         print(f"proposed on {date(_instant_or_none(inv.get('proposed_at')))}"
               + (f" (deadline without a decision: {date(expiration(inv, conf))})" if invitation_state(inv) == "proposed" else "")
               + "; guardian's approval: " + (date(_instant_or_none(block_of(inv, "guardian_approval").get("at"))) if "guardian_approval" in inv else "none")
-              + f"; council's green light: {date(v) if (v := green_light(inv)) else 'aucun'}")
+              + f"; council's green light: {date(v) if (v := green_light(inv)) else 'none'}")
         print()
         print(data_frame(inv, DATA_START.format(id=cite(inv.get("id")))))
         return 0
@@ -7063,7 +7063,7 @@ def cmd_register(args):
         raise BeeError(f"{args.login} is already registered" + (f" (as « {already[0]} »: a GitHub login ignores case)"
                                                               if already and already[0] != args.login else ""))
     if taken_one := [p for p, (_, m) in reg.members.items() if isinstance(m, dict) and m.get("github_id") == args.github_id]:
-        raise BeeError(f"the account {args.github_id} already has its file, {taken_one[0]} : a renamed account moves it (bee rename)")
+        raise BeeError(f"the account {args.github_id} already has its file, {taken_one[0]}: a renamed account moves it (bee rename)")
     today = now_instant().date()
     created = read_date(args.account_created_on, "--account-created-on")
     minimum = setting(reg, "min_account_age_days")
@@ -7110,25 +7110,25 @@ def link_refusal(reg, before, after, number_of):
     if type(oneself) is not int or number_of != oneself:
         return "links are declared by the account itself, by its own PR (its GitHub account number), never by an agent or another"
     if after_l[:len(before_l)] != before_l or ("account_of" in before and of != before["account_of"]):
-        return "links are added, never changed or removed : only the council unlinks, in both member files"
+        return "links are added, never changed or removed: only the council unlinks, in both member files"
     if oneself in after_l or oneself == of or (after_l and "account_of" in after):
-        return "one step : an account never lists itself, and an account linked to a person lists no account of its own"
+        return "one step: an account never lists itself, and an account linked to a person lists no account of its own"
     entry_cards = {m["github_id"]: m for _, m in reg.members.values() if isinstance(m, dict) and type(m.get("github_id")) is int}
     if len(after_l) > 5 or any(type(x) is not int or x not in entry_cards or set(LINKS) & set(entry_cards[x]) for x in after_l[len(before_l):]):
-        return "other_accounts : 5 at most, each the number of a member file linked to no one (a number without a file is refused)"
+        return "other_accounts: 5 at most, each the number of a member file linked to no one (a number without a file is refused)"
     if "account_of" in after and "account_of" not in before:
         p = entry_cards.get(of, {}) if type(of) is int else {}
         if "account_of" in p or not (isinstance(p.get("other_accounts"), list) and oneself in p["other_accounts"]):
-            return f"account_of {of} : that member file lists this account in other_accounts first (bee link --other-account), and is linked to no one"
+            return f"account_of {of}: that member file lists this account in other_accounts first (bee link --other-account), and is linked to no one"
         if common_ones := held_tasks(reg, after.get("login")) & held_tasks(reg, p.get("login")):
-            return (f"the two accounts both hold {', '.join(sorted(map(str, common_ones)))} (an engagement or a contribution in the race) : one "
-                    "person, one place per task ; leave it with one account first")
+            return (f"the two accounts both hold {', '.join(sorted(map(str, common_ones)))} (an engagement or a contribution in the race): one "
+                    "person, one place per task; leave it with one account first")
         a, b = after.get("login"), p.get("login")
         if pens := sorted(str(i) for i, (_, d) in reg.debates.items() if isinstance(d, dict) and d.get("invitation")
                             and d.get("status") != "closed" and any(same_person(reg, d.get("rapporteur"), x)
                                                                  and same_person(reg, d.get("opened_by"), y) for x, y in ((a, b), (b, a)))):
-            return (f"one account holds the pen of {', '.join(pens)}, the debate of an invitation the other proposed : the proposer never "
-                    "holds it ; pass the pen first (bee debate synthesize)")
+            return (f"one account holds the pen of {', '.join(pens)}, the debate of an invitation the other proposed: the proposer never "
+                    "holds it; pass the pen first (bee debate synthesize)")
     return None
 
 
@@ -7140,10 +7140,10 @@ def cmd_link(args):
     path, entry_card = reg.members.get(args.user) or (None, {})
     declared = args.other_account is not None
     if (number_of := args.other_account if declared else args.account_of) < 1:
-        raise BeeError(f"{number_of} : a GitHub account's number is a positive integer (gh api users/<login> --jq .id)")
+        raise BeeError(f"{number_of}: a GitHub account's number is a positive integer (gh api users/<login> --jq .id)")
     new = {**entry_card, "other_accounts": [*(entry_card.get("other_accounts") or []), number_of]} if declared else {**entry_card, "account_of": number_of}
     if refusal := link_refusal(reg, entry_card, new, entry_card.get("github_id")):
-        raise BeeError(f"{args.user} : {refusal}")
+        raise BeeError(f"{args.user}: {refusal}")
     write_yaml(path, new)
     print(f"✓ {reg.rel(path)}. Publish: bee publish --title 'Linked accounts {args.user}'" + (
         f"; then, from the other account: bee link --user <its login> --account-of {entry_card.get('github_id')}" * declared))
@@ -7167,29 +7167,29 @@ def report_refusal(reg, s, author, instant, oneself=None):
     if set(s) != {"by", "at", "accounts", "reason"} or s["reason"] not in REPORT_REASONS:
         return f"a report holds by, at, accounts and reason, nothing else (no free text); reason: {', '.join(REPORT_REASONS)}"
     if s["by"] != author or author not in reg.members:
-        return f"by : a member reports in their own name ({author})"
+        return f"by: a member reports in their own name ({author})"
     if not (isinstance(accounts, list) and all(isinstance(c, str) and c in reg.members and c.casefold() in reg.identities.numbers_of for c in accounts) and len(set(accounts)) == len(accounts) == 2):
-        return "accounts : the logins of two member accounts, as members/ names them, each file with its github_id (no one outside the hive)"
+        return "accounts: the logins of two member accounts, as members/ names them, each file with its github_id (no one outside the hive)"
     if len(pair := reported_pair(reg, accounts)) < 2:
-        return "accounts : these two accounts are already linked (one person) : nothing to report"
+        return "accounts: these two accounts are already linked (one person): nothing to report"
     if any(reg.identities.same_one(author, c) for c in accounts):
-        return "the reporter is neither account : one's own accounts are linked with bee link"
+        return "the reporter is neither account: one's own accounts are linked with bee link"
     open_items = [x for name, (_, x) in sorted(reg.reports.items()) if name != oneself and isinstance(x, dict) and "decision" not in x]
     for name, (_, x) in sorted(reg.reports.items()):
         if name == oneself or not isinstance(x, dict) or reported_pair(reg, x.get("accounts")) != pair:
             continue
         if "decision" not in x:
-            return f"{name} already reports these two persons, and is open : one open report per pair (by person : linked accounts and former logins too)"
+            return f"{name} already reports these two persons, and is open: one open report per pair (by person: linked accounts and former logins too)"
         d = x["decision"] if isinstance(x["decision"], dict) else {}  # unreadable: as a dismissal that never ends (fails closed)
         if d.get("outcome") != "linked" and ((m := _instant_or_none(d.get("at"))) is None or m > instant - REPORT_BLOCK):
-            return f"{name} was dismissed on {d.get('at')} : this pair is not reported again for 30 days after (by person : linked accounts and former logins too)"
+            return f"{name} was dismissed on {d.get('at')}: this pair is not reported again for 30 days after (by person: linked accounts and former logins too)"
     if sum(reg.identities.same_one(x.get("by"), author) for x in open_items) >= (m := conf["reports_open_max"]):
         return f"{reg.identities.name(author)} already has {m} open reports, at most {m} per person who reports (creations.reports_open_max)"
     beyond, k = reports_at_cap(reg, oneself).values(), conf["reports_at_cap_per_24h"]  # ruche-0137
     for c in named_at_cap(reg, accounts, oneself):
         if sum(reg.identities.key(c) in reported_pair(reg, x["accounts"]) and ((t := _instant_or_none(x.get("at"))) is None or t > instant - CAP_WINDOW)
                for x in beyond) >= k:
-            return (f"{c} is already named in reports_naming_max open reports : past it, at most {k} over 24 h wait for the council, per "
+            return (f"{c} is already named in reports_naming_max open reports: past it, at most {k} over 24 h wait for the council, per "
                     "person named (creations.reports_at_cap_per_24h)")
     return pr_date_problem(s["at"], "at", instant) or (s["at"] != en_iso(read_instant(s["at"])) and f"at ({s['at']}): the time of the PR as bee writes it ({en_iso(instant)})") or None
 
@@ -7222,7 +7222,7 @@ def decider_refusal(reg, s, who_is):
     filed ; never one of the two accounts nor the person who filed it, under any of their accounts (linked, agent)."""
     if not (who_is in reg.council or (who_is in guardians_in_office(reg) and reported_by_council(reg, s))) or any(
             same_person(reg, who_is, c) for c in s.get("accounts") or ()):
-        return "the council alone decides an open report, never one naming its own account or a linked one ; a guardian in office, one a council member filed"
+        return "the council alone decides an open report, never one naming its own account or a linked one; a guardian in office, one a council member filed"
     return DECIDES_OWN_REPORT if same_person(reg, who_is, s.get("by")) else guarantor_refusal(reg, s, who_is)
 
 
@@ -7230,11 +7230,11 @@ def guarantor_refusal(reg, s, who_is):
     """ruche-0137: a guardian (outside the council) never decides a report filed by, or naming, the person of their guarantor."""
     guarantors = [] if who_is in reg.council else [m.get("guarantor") for m in reg.guardian_cards if reg.identities.same_one(m.get("login"), who_is)]
     names = [s.get("by"), *(s.get("accounts") if isinstance(s.get("accounts"), list) else [])]
-    return next(("decision/by : a guardian never decides a report filed by, or naming, the person of their guarantor"
+    return next(("decision/by: a guardian never decides a report filed by, or naming, the person of their guarantor"
                  for g in guarantors for x in names if same_person(reg, g, x)), None)
 
 
-DECIDES_OWN_REPORT = ("decision/by : never the person who filed the report, under any of their accounts : it waits for another "
+DECIDES_OWN_REPORT = ("decision/by: never the person who filed the report, under any of their accounts: it waits for another "
                           "council member or a guardian in office")
 
 
@@ -7243,13 +7243,13 @@ def report_refusal_on_main(reg, s):
     who_is, d, by, accounts = reg.read_identities, s.get("decision") or {}, s["by"], s["accounts"]
     account = lambda x: who_is.account(x).casefold() if isinstance(x, str) else x  # noqa: E731
     return [m for fault, m in (
-        (by not in reg.members and by.casefold() not in who_is.accounts, f"by : {by} is not a member : a member reports in their own name"),
+        (by not in reg.members and by.casefold() not in who_is.accounts, f"by: {by} is not a member: a member reports in their own name"),
         (any(who_is.account(by).casefold() == who_is.account(c).casefold() for c in accounts), "the reporter is neither account"),
-        (not all(c.casefold() in who_is.accounts for c in accounts), "accounts : the logins of two member accounts, each file with its github_id"),
+        (not all(c.casefold() in who_is.accounts for c in accounts), "accounts: the logins of two member accounts, each file with its github_id"),
         (d and not (str(d["by"]).casefold() in {*who_is.numbers_of, *already_named(reg)} or d["by"] in reg.council or d["by"] in reg.guardians),
-         f"decision/by : {d.get('by')} is not a known account"),  # by account : a later change of council or guardians changes nothing
-        (d and account(d["by"]) in {account(x) for x in [by, *accounts]}, "decision/by : neither the reporter nor one of the two accounts"),
-        (d.get("outcome") == "linked" and not who_is.same_one(*accounts), "decision lies : the two member files are linked (bee decide-report --link writes both)")) if fault]
+         f"decision/by: {d.get('by')} is not a known account"),  # by account : a later change of council or guardians changes nothing
+        (d and account(d["by"]) in {account(x) for x in [by, *accounts]}, "decision/by: neither the reporter nor one of the two accounts"),
+        (d.get("outcome") == "linked" and not who_is.same_one(*accounts), "decision lies: the two member files are linked (bee decide-report --link writes both)")) if fault]
 
 
 def already_named(reg):
@@ -7270,14 +7270,14 @@ def decision_refusal(reg, before, after, author, instant):
     if not (isinstance(accounts, list) and len(accounts) == 2 and isinstance(d, dict) and after == {**before, "decision": d}):
         return "the council adds its decision to an open report, nothing else (bee decide-report)"
     if d.get("by") != author or any(reg.identities.same_one(author, c) for c in accounts):
-        return "decision/by : the council member who authors this PR, neither of the two accounts nor linked to one"
+        return "decision/by: the council member who authors this PR, neither of the two accounts nor linked to one"
     if same_person(reg, author, before.get("by")):  # ruche-0137
         return DECIDES_OWN_REPORT
     if refusal := guarantor_refusal(reg, before, author):
         return refusal
     if d.get("outcome") == "linked" and (reg.identities.same_one(*accounts) or not reg.read_identities.same_one(*accounts)):
-        return "decision lies : this PR links the two member files (bee decide-report --link writes both)"
-    return pr_date_problem(d.get("at"), "decision/at", instant) or (d["at"] != en_iso(read_instant(d["at"])) and f"decision/at ({d['at']}) : the time of the PR as bee writes it ({en_iso(instant)})") or None
+        return "decision lies: this PR links the two member files (bee decide-report --link writes both)"
+    return pr_date_problem(d.get("at"), "decision/at", instant) or (d["at"] != en_iso(read_instant(d["at"])) and f"decision/at ({d['at']}): the time of the PR as bee writes it ({en_iso(instant)})") or None
 
 
 def cmd_report(args):
@@ -7303,18 +7303,18 @@ def cmd_decide_report(args):
     path, s = reg.reports.get(args.report) or (None, None)
     refusal = "the council alone decides an open report" if not isinstance(s, dict) or "decision" in s or not isinstance(s.get("accounts"), list) else None
     if refusal := refusal or decider_refusal(reg, s, args.user):
-        raise BeeError(f"{args.report} : {refusal} (bee swarm)")
+        raise BeeError(f"{args.report}: {refusal} (bee swarm)")
     if args.link:  # ruche-0137: the file of --lier's person (an account already linked: its person's), as the gate links them
         names = [reg.identities.account(c) for c in s["accounts"]]
         person = reg.identities.account(reg.identities.name(next((n for n in names if reg.identities.same_one(n, args.link)), args.link)))
         if sum(reg.identities.same_one(n, args.link) for n in names) != 1 or len(set(names)) != 2 or not all(n in reg.members for n in [*names, person]):
-            raise BeeError(f"--link : one of the two accounts of {args.report} ({', '.join(map(str, names))}), each with its member file")
+            raise BeeError(f"--link: one of the two accounts of {args.report} ({', '.join(map(str, names))}), each with its member file")
         (cp, p), (old_contribution, a) = reg.members[person], reg.members[next(n for n in names if not reg.identities.same_one(n, args.link))]
         p2, a2 = {**p, "other_accounts": [*(p.get("other_accounts") or []), a.get("github_id")]}, {**a, "account_of": p.get("github_id")}
         refusal = link_refusal(reg, p, p2, p.get("github_id"))
         reg.members[person] = (cp, p2)  # the other side confirms a file that lists it
         if refusal := refusal or link_refusal(reg, a, a2, a.get("github_id")):
-            raise BeeError(f"{args.report} : {refusal}")
+            raise BeeError(f"{args.report}: {refusal}")
         write_yaml(cp, p2)
         write_yaml(old_contribution, a2)
     write_yaml(path, {**s, "decision": {"by": args.user, "at": en_iso(now_instant()), "outcome": args.dismiss or "linked"}})
@@ -7361,7 +7361,7 @@ def require_r8(reg, user, task):
     already = engagements_of(reg, user)
     maximum = r8_maximum(reg, user, [tid for tid, _ in already] + [task], now_instant())
     if len(already) >= maximum:
-        list_of = ", ".join(tid + (" (en parallèle)" if kind_of == "parallel" else "") for tid, kind_of in already)
+        list_of = ", ".join(tid + (" (in parallel)" if kind_of == "parallel" else "") for tid, kind_of in already)
         raise BeeError(f"rule R8: {user} already has {len(already)} reservations or parallel registrations ({list_of}), maximum {maximum}")
 
 
@@ -7548,7 +7548,7 @@ def require_admissible_note(reg, user, text, instant):
     problem_text = admissible_text(text, "note", conf["text_max"])
     if problem_text:
         raise BeeError(f"{problem_text} (bee.yaml, notes.text_max): a note is short; the detail goes in a debate of the agora"
-                        if "caractères" in problem_text else problem_text)
+                        if "characters" in problem_text else problem_text)
     if user not in reg.council and user not in reg.robots \
             and notes_since(reg, user, instant - CAP_WINDOW) >= conf["max_per_24h"]:
         own_items_f = [m for _, t in reg.tasks.values() if isinstance(t, dict) for n in _list(t.get("notes"))
@@ -7694,7 +7694,7 @@ def update_summary(reg, args):
 def cmd_submit(args):
     reg = Registry(args.registry)
     reg.require_member(args.user)
-    if args.summary and (problem_text := free_text_problem(args.summary, "--summary", "le résumé")):  # avant d'écrire (ruche-0029)
+    if args.summary and (problem_text := free_text_problem(args.summary, "--summary", "the summary")):  # avant d'écrire (ruche-0029)
         raise BeeError(problem_text)
     if args.update:
         return update_summary(reg, args)
@@ -7808,7 +7808,7 @@ def cmd_review(args):
               "unfavorable one from a guardian, the council or a Confirmed member does block, until your next review). Review the "
               "judged commit when the verdict is there (bee show); only one review without a commit per reviewer.")
     elif own_items_f:
-        print(f"  For R3, it replaces your previous review ({own_items_f[-1].get('sha') or 'sans commit'}): only the most "
+        print(f"  For R3, it replaces your previous review ({own_items_f[-1].get('sha') or 'without a commit'}): only the most "
               "recent one counts.")
     if args.opinion == "abstention":
         print("  Abstention: neither for nor against (R3, score), opens no gate and earns no points.")
@@ -7959,7 +7959,7 @@ def _text_or_file(args, what_it):
 def _require_admissible(text, what_it, maximum, key):
     problem_text = admissible_text(text, what_it, maximum)
     if problem_text:
-        raise BeeError(f"{problem_text} (bee.yaml, agora.{key})" if "caractères" in problem_text else problem_text)
+        raise BeeError(f"{problem_text} (bee.yaml, agora.{key})" if "characters" in problem_text else problem_text)
 
 
 def _require_open(identifier, d):
@@ -8030,7 +8030,7 @@ def debate_open(args):
         _apply_synthesis(reg, d, u, args.synthesis, None, instant)
     write_debate(reg.root / "debates" / f"{identifier}.yaml", d)
     print(f"✓ debate {identifier} opened; you are its rapporteur (you hold the synthesis, then you hand over).")
-    print(f"  {_publish(identifier, 'Débat')}")
+    print(f"  {_publish(identifier, 'Debate')}")
     return 0
 
 
@@ -8121,7 +8121,7 @@ def debate_synthesize(args):
     print(f"✓ synthesis of {args.debate} published" + (f" relieving {absent} (absent rapporteur)" if absent else "")
           + f"; next rapporteur: {following}"
           + (" (you remain the only participant)." if following == u else " (the rapporteur rotates: never the same one twice in a row)."))
-    print(f"  {_publish(args.debate, 'Synthèse')}")
+    print(f"  {_publish(args.debate, 'Synthesis')}")
     return 0
 
 
@@ -8152,7 +8152,7 @@ def debate_duplicate(args):
         arguments[rank]["duplicate_marked_by"] = u
     write_debate(path, {**d, "arguments": arguments})
     print(f"✓ {args.argument} marked as a duplicate of {args.of} in {args.debate}: it is still read, nothing is erased.")
-    print(f"  {_publish(args.debate, 'Doublon')}")
+    print(f"  {_publish(args.debate, 'Duplicate')}")
     return 0
 
 
@@ -8231,7 +8231,7 @@ def debate_close(args):
     write_debate(path, d)
     print(f"✓ {args.debate} closed: {args.outcome}{' ' + reference if reference else ''}. It will take nothing more; to take it up "
           "again, one opens a new debate that cites it.")
-    print(f"  {_publish(args.debate, 'Clôture')}")
+    print(f"  {_publish(args.debate, 'Closing')}")
     return 0
 
 
@@ -8310,8 +8310,8 @@ def debate_import_questions(args):
         identifier, withdrawal = links[end]
         lines.insert(end + 1, f"{' ' * withdrawal}Debate: [{identifier}](../debates/{identifier}.yaml) (`bee debates --show {identifier}`).")
     source.write_text("\n".join(lines), encoding="utf-8")
-    print(f"✓ {len(to_open)} débat(s) ouvert(s) ({', '.join(i for i, _ in to_open) or 'aucun'}) ; {len(links)} lien(s) écrit(s) "
-          f"dans {args.source}.")
+    print(f"✓ {len(to_open)} debate(s) opened ({', '.join(i for i, _ in to_open) or 'none'}); {len(links)} link(s) written "
+          f"in {args.source}.")
     print("  The PR touches docs/: it is not self-service; the council publishes it (docs/agora.md).")
     return 0
 
@@ -9934,7 +9934,7 @@ def reviewer_alerts(reg, rec):
         pass
     for who_is, cid in refusal_elsewhere(reg, rec):
         task = reg.records[cid][1].get("task")
-        alerts.append(f"this content was refused {f'par {who_is} ' if who_is else ''}in {cid} (same tree, " + ("other contribution of the "
+        alerts.append(f"this content was refused {f'by {who_is} ' if who_is else ''}in {cid} (same tree, " + ("other contribution of the "
                        f"task" if task == rec.get("task") else f"other task: {task}") + ("" if who_is else ", contribution refused")
                        + "): this refusal does not block this contribution; review it knowing that")
     return alerts
@@ -10804,7 +10804,7 @@ def check_tree(reg, add_to):
         expected = expected_parent(identifier)
         if "parent" in header and header["parent"] != expected:
             add_to(f"{place_of}: broken link: declared parent « {header['parent']} », but the node is placed under "
-                    f"« {expected or 'rien (c’est la racine : parent: null)'} »")
+                    f"« {expected or 'nothing (it is the root: parent: null)'} »")
         if "updated_on" in header:
             try:
                 read_date(header["updated_on"], f"{place_of} (updated_on)")
@@ -10838,8 +10838,8 @@ def check_tree(reg, add_to):
         # The same checks in either language; headings are named in the node's own language (ruche-0055).
         names = dict(zip(NODE_SECTIONS, NODE_SECTIONS_EN if n["languages"] == ["en"] else NODE_SECTIONS))
         if len(n["languages"]) > 1:
-            add_to(f"{place_of}: headings in both French and English: one language per node ({' ; '.join(NODE_SECTIONS)}, "
-                    f"or {' ; '.join(NODE_SECTIONS_EN)})")
+            add_to(f"{place_of}: headings in both French and English: one language per node ({'; '.join(NODE_SECTIONS)}, "
+                    f"or {'; '.join(NODE_SECTIONS_EN)})")
         for name in NODE_SECTIONS:
             if name not in n["sections"]:
                 add_to(f"{place_of}: missing section: « ## {names[name]} »")
@@ -10848,9 +10848,9 @@ def check_tree(reg, add_to):
         unexpected_ones = [s for s in n["order"] if s not in NODE_SECTIONS]
         if unexpected_ones:
             add_to(f"{place_of}: unexpected section(s): {', '.join(unexpected_ones)} (the four fixed sections: "
-                    f"{' ; '.join(names.values())})")
+                    f"{'; '.join(names.values())})")
         elif set(n["order"]) == set(NODE_SECTIONS) and n["order"] != list(NODE_SECTIONS):
-            add_to(f"{place_of}: the four sections, once each, in this order: {' ; '.join(names.values())}")
+            add_to(f"{place_of}: the four sections, once each, in this order: {'; '.join(names.values())}")
         lists_of, real_ones = n["children"], real_children(nodes, identifier)
         for e in sorted(set(lists_of) - set(real_ones)):
             add_to(f"{place_of}: broken link: the child « {e} » is listed, but {node_file(e)} does not exist under this node")
@@ -11018,18 +11018,18 @@ def declared_frame(cid, rec, shortened=False):
     pas. abrege (check-acceptance, dont la sortie va au journal de la CI) : modèle et gain seuls."""
     verdict = rec.get("verdict") if isinstance(rec.get("verdict"), dict) else {}
     m = ID_CONTRIBUTION.fullmatch(str(cid))
-    ident, task = (cid, m["task"]) if m else ("?", "<tâche>")
+    ident, task = (cid, m["task"]) if m else ("?", "<task>")
     a = rec.get("awaiting_verdict") if isinstance(rec.get("awaiting_verdict"), dict) else {}  # ruche-0025 : écrit par la CI
-    waiting = (f"# {ident} : aucun verdict pour la tête {a['sha']} : {VERDICT_WAIT[a['reason']]}\n" if a.get("reason") in VERDICT_WAIT
+    waiting = (f"# {ident}: no verdict for the head {a['sha']}: {VERDICT_WAIT[a['reason']]}\n" if a.get("reason") in VERDICT_WAIT
                and re.fullmatch(r"[0-9a-f]{7,40}", str(a.get("sha"))) else "")
     if not isinstance(rec.get("declared"), dict):
-        why = ("pas encore de verdict" if not verdict else "verdict antérieur à la recopie (ruche-0017)" if "declared" not in rec
-                    else "manifeste absent, illisible, de plus de 64 Kio, d'une autre tâche ou d'un autre auteur")
-        return f"{waiting}# {ident} : aucun manifeste recopié ({why})"
+        why = ("no verdict yet" if not verdict else "verdict older than the copy (ruche-0017)" if "declared" not in rec
+                    else "manifest missing, unreadable, over 64 KiB, of another task or of another author")
+        return f"{waiting}# {ident}: no copied manifest ({why})"
     sha = verdict.get("sha") if re.fullmatch(r"[0-9a-f]{7,40}", str(verdict.get("sha"))) else "?"
     data = {c: rec["declared"].get(c) for c in ("model", "gain")} if shortened else rec["declared"]
     return (waiting + data_frame(data, DECLARED_START.format(id=ident, sha=sha))
-            + (f"\n# tested, untested et doubts déclarés : bee show {task}" if shortened else ""))
+            + (f"\n# tested, untested and doubts declared: bee show {task}" if shortened else ""))
 
 
 def diff_command(cid, rec):
