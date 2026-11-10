@@ -7644,7 +7644,7 @@ def cmd_manifest(args):
             # Le dossier manifestes/ du fork peut ne pas exister encore (premier manifeste par tâche).
             output_text.parent.mkdir(parents=True, exist_ok=True)
         if output_text.exists():
-            raise BeeError(f"{output_text} existe déjà : supprimez-le ou choisissez un autre fichier (rien n'a été écrasé)")
+            raise BeeError(f"{output_text} already exists: delete it or choose another file (nothing was overwritten)")
         output_text.write_text(text, encoding="utf-8")
         print(f"✓ {output_text} written. Replace each « {TO_FILL_IN_EN} », then: bee validate-manifest {output_text}")
     else:
@@ -7664,7 +7664,7 @@ def cmd_validate_manifest(args):
         print(f"✗ {show_error(p)}")
     if problems_found:
         return 1
-    print(f"✓ {args.file} est valide.")
+    print(f"✓ {args.file} is valid.")
     return 0
 
 
@@ -7672,22 +7672,22 @@ def update_summary(reg, args):
     """bee submit --update (ruche-0012) : après un nouveau commit, l'auteur actualise le résumé de sa contribution
     en relecture ; rien d'autre ne change (check-pr le contrôle : l'auteur seul, ce seul champ, court, sans caractère caché)."""
     if args.pr or not args.summary:
-        raise BeeError("--update ne change que le résumé : --summary, sans --pr (la PR d'une contribution ne change pas)")
+        raise BeeError("--update changes only the summary: --summary, without --pr (a contribution's PR does not change)")
     problem_text = admissible_text(args.summary, "--summary", SUMMARY_MAX)
     if problem_text:
-        raise BeeError(f"{problem_text} : un résumé tient en une phrase")
+        raise BeeError(f"{problem_text}: a summary fits in one sentence")
     own_items_f = [c for c, e in racing_contributions(reg, args.task) if e.get("author") == args.user]
     if not own_items_f:
-        raise BeeError(f"{args.user} n'a pas de contribution en relecture sur {args.task}")
+        raise BeeError(f"{args.user} has no contribution in review on {args.task}")
     path, rec = reg.records[own_items_f[-1]]
     # Une mise à jour par commit jugé (revue adverse) : après le verdict du nouveau commit, jamais deux fois pour le même.
     sha = (rec.get("verdict") or {}).get("sha")
     if not sha:
-        raise BeeError(f"{own_items_f[-1]} n'a pas encore de verdict : le résumé s'actualise après le verdict du nouveau commit (bee show)")
+        raise BeeError(f"{own_items_f[-1]} has no verdict yet: the summary is updated after the new commit's verdict (bee show)")
     if rec.get("summary_sha") == sha:
-        raise BeeError(f"résumé déjà actualisé pour le commit {sha} : une mise à jour par commit jugé")
+        raise BeeError(f"summary already updated for commit {sha}: one update per judged commit")
     write_yaml(path, {**rec, "summary": args.summary, "summary_sha": sha})
-    print(f"✓ résumé de {own_items_f[-1]} actualisé. Publiez : bee publish --title 'Mise à jour {own_items_f[-1]}'")
+    print(f"✓ summary of {own_items_f[-1]} updated. Publish: bee publish --title 'Update {own_items_f[-1]}'")
     return 0
 
 
@@ -7699,24 +7699,24 @@ def cmd_submit(args):
     if args.update:
         return update_summary(reg, args)
     if not args.pr:
-        raise BeeError("--pr est exigé : l'adresse de la PR ouverte sur le fork")
+        raise BeeError("--pr is required: the address of the PR opened on the fork")
     path, t = reg.task(args.task)
     holder = (t.get("reservation") or {}).get("user")
     parallel = parallels_of(t)
     parallel_mode = t.get("status") in ("reserved", "in_review") and any(p.get("user") == args.user for p in parallel)
     if not parallel_mode and (t.get("status") != "reserved" or holder != args.user):
-        raise BeeError(f"{args.task} doit être réservée par {args.user}, ou {args.user} doit y être inscrit en parallèle "
-                        f"(status : {t.get('status')}, titulaire : {holder}). "
-                        "Si votre PR de réservation est ouverte, attendez sa fusion puis : git switch main && git pull upstream main")
+        raise BeeError(f"{args.task} must be reserved by {args.user}, or {args.user} must be registered on it in parallel "
+                        f"(status: {t.get('status')}, holder: {holder}). "
+                        "If your reservation PR is open, wait for its merge, then: git switch main && git pull upstream main")
     fork = (reg.projects.get(t["project"], (None, {}))[1].get("fork") or "").rstrip("/")
     if not fork:
-        raise BeeError(f"le projet {t['project']} n'a pas encore de fork : aucune contribution ne peut y être soumise")
+        raise BeeError(f"project {t['project']} has no fork yet: no contribution can be submitted to it")
     if canonical_pr(args.pr) is None:
-        raise BeeError(f"adresse de PR invalide : {args.pr} (attendu : https://github.com/<organization>/<dépôt>/pull/<numéro>)")
+        raise BeeError(f"invalid PR address: {args.pr} (expected: https://github.com/<organization>/<repository>/pull/<number>)")
     if not args.pr.lower().startswith(fork.lower() + "/pull/"):
-        raise BeeError(f"la PR doit être ouverte sur le fork du projet : {fork}/pull/<numéro> (reçu : {args.pr})")
+        raise BeeError(f"the PR must be opened on the project's fork: {fork}/pull/<number> (received: {args.pr})")
     if already := [c for c, (_, e) in reg.records.items() if canonical_pr(e.get("pr")) == canonical_pr(args.pr)]:
-        raise BeeError(f"la PR {args.pr} est déjà liée à {', '.join(already)}")  # ruche-0041: one PR, one contribution
+        raise BeeError(f"PR {args.pr} is already linked to {', '.join(already)}")  # ruche-0041: one PR, one contribution
     # Numéro suivant le plus grand déjà pris (verifier_pr l'exige) : jamais un fichier existant écrasé.
     rank = 1 + max(contribution_numbers(reg, args.task), default=0)
     identifier = f"{args.task}-c{rank}"
@@ -7724,7 +7724,7 @@ def cmd_submit(args):
     if args.summary:
         problem_text = free_texts_problem(args.summary, "--summary", SUMMARY_MAX)
         if problem_text:
-            raise BeeError(f"{problem_text} : un résumé tient en une phrase")
+            raise BeeError(f"{problem_text}: a summary fits in one sentence")
         data["summary"] = args.summary
     # Début de l'engagement de l'auteur (sa réservation ou son inscription en parallèle) : R3 s'en sert pour savoir s'il
     # travaillait déjà sur la tâche avant la soumission d'une concurrente (raisons_course, 2) ; verifier-pr le contrôle.
@@ -7733,25 +7733,25 @@ def cmd_submit(args):
     data.update({"status": "in_review", "submitted_at": en_iso(now_instant()), "engaged_since": engagement, "reviews": []})
     target = reg.root / "contributions" / t["project"] / f"{identifier}.yaml"
     if target.exists():  # un fichier illisible n'est pas dans le registre chargé : on ne l'écrase pas pour autant
-        raise BeeError(f"{reg.rel(target)} existe déjà : rien n'a été écrasé")
+        raise BeeError(f"{reg.rel(target)} already exists: nothing was overwritten")
     write_yaml(target, data)
     if parallel_mode:
         # Soumission d'un inscrit en parallèle : il quitte la liste, sa contribution entre en course ; la réservation
         # du titulaire et le statut de la tâche ne changent pas (R3, course entre contributions concurrentes).
         modify_task(path, parallel=without_it(parallel, args.user), contribution=identifier)
         others = [c for c, _ in racing_contributions(reg, args.task)]
-        print(f"✓ contribution {identifier} enregistrée, en course sur {args.task}"
-              + (f" avec {', '.join(others)}" if others else "")
-              + (f" ; {holder} reste titulaire et peut encore soumettre." if holder else "."))
-        print("  R3 n'intégrera que la mieux classée (bee show, bee swarm). Publiez : "
-              f"bee publish --title 'Soumission {identifier}' ; après un correctif sur la même PR : bee submit {args.task} "
-              f"--user {args.user} --update --summary \"<une phrase>\".")
+        print(f"✓ contribution {identifier} recorded, in the race on {args.task}"
+              + (f" with {', '.join(others)}" if others else "")
+              + (f"; {holder} remains the holder and can still submit." if holder else "."))
+        print("  R3 will integrate only the best-ranked one (bee show, bee swarm). Publish: "
+              f"bee publish --title 'Submission {identifier}'; after a fix on the same PR: bee submit {args.task} "
+              f"--user {args.user} --update --summary \"<one sentence>\".")
         return 0
     modify_task(path, status="in_review", reservation=None, contribution=identifier)
-    print(f"✓ contribution {identifier} enregistrée, tâche {args.task} en relecture.")
-    print(f"  Publiez : bee publish --title 'Soumission {identifier}'")
-    print(f"  Après un correctif poussé sur la même PR : bee submit {args.task} --user {args.user} --update "
-          "--summary \"<une phrase>\", puis bee publish.")
+    print(f"✓ contribution {identifier} recorded, task {args.task} in review.")
+    print(f"  Publish: bee publish --title 'Submission {identifier}'")
+    print(f"  After a fix pushed to the same PR: bee submit {args.task} --user {args.user} --update "
+          "--summary \"<one sentence>\", then bee publish.")
     return 0
 
 
@@ -7760,37 +7760,37 @@ def cmd_review(args):
     reg.require_member(args.user)
     path, rec = reg.record(args.contribution)
     if reg.identities.same_one(rec.get("author"), args.user):
-        raise BeeError("on ne relit pas sa propre contribution (commandement 3)")
+        raise BeeError("you do not review your own contribution (commandment 3)")
     if rec.get("status") != "in_review":
-        raise BeeError(f"{args.contribution} n'est plus en relecture (status : {rec.get('status')})")
+        raise BeeError(f"{args.contribution} is no longer in review (status: {rec.get('status')})")
     # Une relecture par relecteur et par commit jugé (ruche-0012) : relire le correctif, c'est en ajouter une nouvelle, sur un
     # autre commit que sa plus récente (X, Y, puis X redevient possible).
     sha = (rec.get("verdict") or {}).get("sha")
     # ruche-0028 (3) : le commit que le relecteur a lu, jamais celui du verdict au moment d'écrire (l'auteur a pu pousser entre-temps).
     # Le sha entier, égal (revue adverse, S2 : une collision sur 7 caractères se fabrique en deux minutes).
     if sha and args.commit != sha:
-        raise BeeError(f"le verdict courant de {args.contribution} porte sur le commit {sha} : " + (
-            "donnez le sha entier du commit lu (40 caractères) : un préfixe peut désigner un autre commit" if args.commit
-            and sha.startswith(args.commit) else f"vous avez lu {args.commit}, l'auteur a poussé depuis ; relisez le diff de {sha} "
-            "(bee check-acceptance imprime la commande)" if args.commit else "dites quel commit vous avez lu (--commit <sha>) ; "
-            "une relecture ne compte que sur ce commit"))
+        raise BeeError(f"the current verdict of {args.contribution} is on commit {sha}: " + (
+            "give the full sha of the commit you read (40 characters): a prefix can designate another commit" if args.commit
+            and sha.startswith(args.commit) else f"you read {args.commit}, the author has pushed since; review the diff of {sha} "
+            "(bee check-acceptance prints the command)" if args.commit else "say which commit you read (--commit <sha>); "
+            "a review counts only on that commit"))
     if args.commit and not sha:
-        raise BeeError(f"{args.contribution} n'a pas encore de verdict : la relecture s'enregistre sans commit (sans --commit), et une "
-                        "favorable ne comptera pas ; relisez quand le verdict sera là (bee show)")
+        raise BeeError(f"{args.contribution} has no verdict yet: the review is recorded without a commit (without --commit), and a "
+                        "favorable one will not count; review when the verdict is there (bee show)")
     own_items_f = [r for r in rec.get("reviews") or [] if isinstance(r, dict) and reg.identities.same_one(r.get("reviewer"), args.user)]
     if refused_review(own_items_f, {"reviewer": args.user, "sha": sha}, reg.identities, lambda x: lifted_in_thread(reg, rec, x)):
-        raise BeeError(f"{args.user} a déjà relu {args.contribution} " + (f"au commit {sha}, et c'est sa relecture la plus "
-                        "récente : relisez au prochain commit jugé" if sha else "sans commit : une seule relecture avant le "
-                        "verdict ; relisez quand il sera là (bee show)"))
+        raise BeeError(f"{args.user} has already reviewed {args.contribution} " + (f"at commit {sha}, and it is their most "
+                        "recent review: review at the next judged commit" if sha else "without a commit: only one review before the "
+                        "verdict; review when it is there (bee show)"))
     problem_text = admissible_text(args.reason, "reason", config_notes(reg)["text_max"])
     if problem_text:
-        raise BeeError(f"{problem_text} (bee.yaml, notes.text_max) : un motif est court ; le détail va dans une note ou un débat")
+        raise BeeError(f"{problem_text} (bee.yaml, notes.text_max): a reason is short; the detail goes in a note or a debate")
     if args.user in rivals_of(reg, rec) and (args.opinion != "favorable" or args.defect):
-        raise BeeError(f"{args.user} est en course sur la même tâche ({rec.get('task')}) : seul un avis favorable sur une "
-                        "concurrente compterait (commandement 3). Laissez un autre relire, ou retirez-vous de la course.")
+        raise BeeError(f"{args.user} is in the race on the same task ({rec.get('task')}): only a favorable opinion on a "
+                        "rival would count (commandment 3). Let someone else review, or withdraw from the race.")
     if args.defect and (args.opinion == "abstention" or not sha):
-        raise BeeError("un défaut se signale sur le commit jugé : " + ("pas par une abstention"
-                        if sha else "pas encore de verdict ; attendez-le, ou laissez une note (bee note)"))
+        raise BeeError("a defect is reported on the judged commit: " + ("not by an abstention"
+                        if sha else "no verdict yet; wait for it, or leave a note (bee note)"))
     review = {"reviewer": args.user, "opinion": args.opinion, "reason": args.reason, "at": en_iso(now_instant())}
     if sha:
         review["sha"] = sha  # la relecture porte sur ce commit ; un nouveau commit jugé la rend caduque (R3)
@@ -7802,19 +7802,19 @@ def cmd_review(args):
     rec["reviews"] = list(rec.get("reviews") or []) + [review]
     require_room(reg.rel(path), yaml_text(rec))
     write_yaml(path, rec)
-    print(f"✓ relecture {args.opinion} ajoutée à {args.contribution}. Publiez : bee publish --title 'Relecture {args.contribution}'")
+    print(f"✓ {args.opinion} review added to {args.contribution}. Publish: bee publish --title 'Review {args.contribution}'")
     if not sha:
-        print("⚠ pas encore de verdict : relecture enregistrée sans commit ; favorable, elle ne comptera pas pour R3 (un "
-              "défavorable d'un gardien, du conseil ou d'un Confirmé bloque, lui, jusqu'à votre relecture suivante). Relisez le "
-              "commit jugé quand le verdict sera là (bee show) ; une seule relecture sans commit par relecteur.")
+        print("⚠ no verdict yet: review recorded without a commit; if favorable, it will not count for R3 (an "
+              "unfavorable one from a guardian, the council or a Confirmed member does block, until your next review). Review the "
+              "judged commit when the verdict is there (bee show); only one review without a commit per reviewer.")
     elif own_items_f:
-        print(f"  Elle remplace, pour R3, votre relecture précédente ({own_items_f[-1].get('sha') or 'sans commit'}) : seule la plus "
-              "récente compte.")
+        print(f"  For R3, it replaces your previous review ({own_items_f[-1].get('sha') or 'sans commit'}): only the most "
+              "recent one counts.")
     if args.opinion == "abstention":
-        print("  Abstention : ni pour ni contre (R3, score), n'ouvre aucune porte et ne rapporte aucun point.")
+        print("  Abstention: neither for nor against (R3, score), opens no gate and earns no points.")
     if not counted_review(reg, compute_levels(reg), args.user):
-        print("  Niveau New : votre relecture est publique et lue, mais elle ne compte pas pour R3 (ni parmi les favorables "
-              "exigées, ni contre une défavorable) tant que vous n'avez pas une contribution intégrée (docs/reputation.md).")
+        print("  Level New: your review is public and read, but it does not count for R3 (neither among the required favorable "
+              "ones, nor against an unfavorable one) until you have an integrated contribution (docs/reputation.md).")
     return 0
 
 
@@ -7827,23 +7827,23 @@ def cmd_confirm_defect(args):
         reg.require_member(u)
     path, rec = reg.record(args.contribution)
     if rec.get("status") != "in_review":
-        raise BeeError(f"{args.contribution} n'est plus en relecture (status : {rec.get('status')})")
+        raise BeeError(f"{args.contribution} is no longer in review (status: {rec.get('status')})")
     if not (u in reg.robots or u in reg.council or u in reg.guardians or level_of(compute_levels(reg), u) == "Confirmed"):
-        raise BeeError("un défaut n'est confirmé que par la CI, le conseil, un gardien ou un Confirmé")
+        raise BeeError("a defect is confirmed only by the CI, the council, a guardian or a Confirmed member")
     if u == args.reviewer:
-        raise BeeError("on ne confirme pas son propre défaut : un tiers le confirme")
+        raise BeeError("you do not confirm your own defect: a third party confirms it")
     if reg.identities.same_one(u, rec.get("author")) or u in race_participants(reg, rec.get("task")):
-        raise BeeError(f"{u} est en course sur la tâche {rec.get('task')} : il n'y confirme pas de défaut (commandement 3)")
+        raise BeeError(f"{u} is in the race on task {rec.get('task')}: they confirm no defect there (commandment 3)")
     reviews = list(rec.get("reviews") or [])
     for i, r in reversed(list(enumerate(reviews))):  # son défaut le plus récent, attaché au commit où il l'a signalé
         if r.get("reviewer") == args.reviewer and r.get("reported_defect") and not r.get("confirmed_defect"):
             reviews[i] = {**r, "confirmed_defect": True, "confirmed_by": u}
             break
     else:
-        raise BeeError(f"{args.reviewer} n'a pas signalé de défaut à confirmer sur {args.contribution}")
+        raise BeeError(f"{args.reviewer} has reported no defect to confirm on {args.contribution}")
     write_yaml(path, {**rec, "reviews": reviews})
-    print(f"✓ défaut signalé par {args.reviewer} confirmé sur {args.contribution}. "
-          f"Publiez : bee publish --title 'Défaut confirmé {args.contribution}'")
+    print(f"✓ defect reported by {args.reviewer} confirmed on {args.contribution}. "
+          f"Publish: bee publish --title 'Confirmed defect {args.contribution}'")
     return 0
 
 
@@ -7852,18 +7852,18 @@ def cmd_vote(args):
     reg.require_member(args.user)
     if args.subject in reg.records:
         if reg.identities.same_one(reg.records[args.subject][1].get("author"), args.user):
-            raise BeeError("on ne vote pas pour sa propre contribution (commandement 3)")
+            raise BeeError("you do not vote for your own contribution (commandment 3)")
         if args.user in rivals_of(reg, reg.records[args.subject][1]):
-            raise BeeError(f"{args.user} est en course sur la même tâche que {args.subject} : on ne vote pas sur une "
-                            "concurrente (commandement 3)")
+            raise BeeError(f"{args.user} is in the race on the same task as {args.subject}: you do not vote on a "
+                            "rival (commandment 3)")
         if (status := reg.records[args.subject][1].get("status")) != "in_review":  # ruche-0042, as verifier-pr
             raise BeeError(f"le vote sur {args.subject} est clos : la contribution n'est plus en relecture (status : {status})")
     elif args.subject in reg.proposals:
         result = tally_proposal(reg, args.subject, compute_levels(reg), now_instant())
         if result["finished"] or reg.proposals[args.subject][1].get("status") != "open":
-            raise BeeError(f"le vote sur {args.subject} est clos")
+            raise BeeError(f"the vote on {args.subject} is closed")
     else:
-        raise BeeError(f"sujet de vote inconnu : {args.subject}")
+        raise BeeError(f"unknown vote subject: {args.subject}")
     data = {"voter": args.user, "subject": args.subject, "value": args.value, "at": en_iso(now_instant())}
     if args.reason:
         problem_text = admissible_text(args.reason, "reason", config_notes(reg)["text_max"])
@@ -7872,12 +7872,12 @@ def cmd_vote(args):
         data["reason"] = args.reason
     path = reg.root / "votes" / args.subject / f"{args.user}.yaml"
     write_yaml(path, data)
-    print(f"✓ vote {args.value:+d} enregistré ({reg.rel(path)}). Publiez : bee publish --title 'Vote {args.subject}'")
+    print(f"✓ vote {args.value:+d} recorded ({reg.rel(path)}). Publish: bee publish --title 'Vote {args.subject}'")
     level = (levels := compute_levels(reg)).get(args.user, {}).get("level", "New")
     if voice_weight(reg, levels, args.user) == 0:  # ruche-0051: the person's voice
         # Comme bee relire (tour 2 : une Nouvelle croyait avoir pesé, dans le classement comme dans le quorum de R10).
-        print(f"  Niveau {level} : votre vote est public, mais il pèse 0 (ni dans le classement, ni dans le quorum de R10) tant "
-              "que vous n'avez pas une contribution intégrée (docs/reputation.md).")
+        print(f"  Level {level}: your vote is public, but it weighs 0 (neither in the ranking nor in R10's quorum) until "
+              "you have an integrated contribution (docs/reputation.md).")
     return 0
 
 
@@ -7886,26 +7886,26 @@ def cmd_propose(args):
     reg.require_member(args.user)
     level = level_of(compute_levels(reg), args.user)
     if level != "Confirmed" and args.user not in reg.council and not setting(reg, "bootstrap"):
-        raise BeeError(f"proposer une règle est réservé aux Confirmés hors amorçage (niveau actuel : {level})")
+        raise BeeError(f"proposing a rule is reserved to Confirmed members outside bootstrap (current level: {level})")
     # Numérotation (verifier-pr l'exige) : le plus grand numéro + 1, hors des numéros réservés aux tests (un P-9999 squatté
     # ne gèle plus rien, T5) ; les fichiers présents comptent, même illisibles, et aucun n'est jamais écrasé.
     folder = reg.root / "proposals"
     numbers_of = [int(m["n"]) for f in (folder.iterdir() if folder.is_dir() else []) if (m := PATH_PROPOSAL.match(f"proposals/{f.name}"))]
     number_of = next_number(numbers_of)
     if number_of >= RESERVED_NUMBER:
-        raise BeeError(f"plus de numéro de proposition libre sous P-{RESERVED_NUMBER} : le conseil doit retirer la proposition qui a "
-                        f"pris P-{number_of - 1:04d}")
+        raise BeeError(f"no free proposal number left below P-{RESERVED_NUMBER}: the council must remove the proposal that "
+                        f"took P-{number_of - 1:04d}")
     identifier = f"P-{number_of:04d}"
     path = folder / f"{identifier}.yaml"
     if path.exists():
-        raise BeeError(f"{reg.rel(path)} existe déjà : rien n'a été écrasé")
+        raise BeeError(f"{reg.rel(path)} already exists: nothing was overwritten")
     require_creation_allowed(reg, "proposals", args.user)
     data = {"id": identifier, "author": args.user, "rule": args.rule, "proposed_text": args.text,
                "reason": args.reason, "opened_at": en_iso(now_instant()), "status": "open"}
     if problem_text := next(text_problems(data, reg.rel(path), "proposals"), None):  # what bee valider would refuse, before writing
         raise BeeError(problem_text)
     write_yaml(path, data)
-    print(f"✓ proposition {identifier} créée. Publiez : bee publish --title 'Proposition {identifier}' ; le vote dure {setting(reg, 'vote_duration_days')} jours.")
+    print(f"✓ proposal {identifier} created. Publish: bee publish --title 'Proposal {identifier}'; the vote lasts {setting(reg, 'vote_duration_days')} days.")
     return 0
 
 
@@ -9554,14 +9554,14 @@ def cmd_record_measurement(args):
     reg.require_member(args.user)
     reg.record(args.contribution)  # lève une erreur si la contribution est inconnue
     if (already := reg.root / "measurements" / args.contribution / f"{args.user}.yaml").exists():  # ruche-0042, as verifier-pr
-        raise BeeError(f"{reg.rel(already)} already exists : one measurement per person and per contribution, never changed once "
-                        "published (commandment 10) ; if this file is not published yet, delete it, then rerun")
+        raise BeeError(f"{reg.rel(already)} already exists: one measurement per person and per contribution, never changed once "
+                        "published (commandment 10); if this file is not published yet, delete it, then rerun")
     with open(args.ab, encoding="utf-8") as f:
         raw = json.load(f)
     machine = raw.get("machine") or {}
     config = {k: machine[k] for k in ("processor", "architecture", "cores", "system", "compiler") if machine.get(k) is not None}
     if not config.get("architecture"):
-        raise BeeError(f"{args.ab} : champ machine/architecture absent ; est-ce bien une sortie de bee/bench/ab.py ?")
+        raise BeeError(f"{args.ab}: field machine/architecture missing; is it really an output of bee/bench/ab.py?")
     metrics = {}
     for name, m in (raw.get("metrics") or {}).items():
         if not isinstance(m, dict) or "gain" not in m:
@@ -9574,7 +9574,7 @@ def cmd_record_measurement(args):
             entry["pairs"] = int(sign_char["useful_pairs"])
         metrics[name] = entry
     if not metrics:
-        raise BeeError(f"{args.ab} : aucune métrique exploitable dans le rapport ab.py")
+        raise BeeError(f"{args.ab}: no usable metric in the ab.py report")
     entry_card = {
         "contribution": args.contribution,
         "submitted_by": args.user,
@@ -9594,15 +9594,15 @@ def cmd_record_measurement(args):
             raise BeeError(f"{problem_text} (bee.yaml, notes.text_max)")
         entry_card["reason"] = args.reason
     if len(entry_card["base"]) < 7 or len(entry_card["candidate"]) < 7:
-        raise BeeError("sha base/candidate absents du rapport ; précisez --base et --candidate (les commits comparés)")
+        raise BeeError("base/candidate sha missing from the report; give --base and --candidate (the compared commits)")
     path = reg.root / "measurements" / args.contribution / f"{args.user}.yaml"
     if problem_text := next(text_problems(entry_card, reg.rel(path), "measurements"), None):  # --outil, and what ab.json gave, before writing
         raise BeeError(problem_text)
     write_yaml(path, entry_card)
     aimed_at = ", ".join(f"{n} {100 * e['gain']:+.1f}%{'*' if e['beyond_noise'] else ''}" for n, e in metrics.items())
-    print(f"✓ mesure enregistrée ({reg.rel(path)}) sur {config.get('architecture')} / {config.get('compiler', '?')}.")
-    print(f"  {aimed_at}   (* = au-delà du bruit)")
-    print(f"  Publiez-la : bee publish --title \"Mesure {args.contribution} ({config.get('architecture')})\".")
+    print(f"✓ measurement recorded ({reg.rel(path)}) on {config.get('architecture')} / {config.get('compiler', '?')}.")
+    print(f"  {aimed_at}   (* = beyond noise)")
+    print(f"  Publish it: bee publish --title \"Measurement {args.contribution} ({config.get('architecture')})\".")
     return 0
 
 
@@ -9928,15 +9928,15 @@ def reviewer_alerts(reg, rec):
         threshold = float(setting(reg, "max_declared_gap"))
         gap = verdict.get("declared_gap")
         if isinstance(gap, (int, float)) and not isinstance(gap, bool) and gap > threshold:
-            alerts.append(f"écart de {100 * gap:.1f} points entre le gain déclaré dans le manifeste et le gain mesuré par "
-                           f"la CI (tolérance : {100 * threshold:.0f}) : demandez d'où vient le chiffre déclaré")
+            alerts.append(f"gap of {100 * gap:.1f} points between the gain declared in the manifest and the gain measured by "
+                           f"the CI (tolerance: {100 * threshold:.0f}): ask where the declared figure comes from")
     except (TypeError, ValueError):
         pass
     for who_is, cid in refusal_elsewhere(reg, rec):
         task = reg.records[cid][1].get("task")
-        alerts.append(f"ce contenu a été refusé {f'par {who_is} ' if who_is else ''}dans {cid} (même arbre, " + ("autre contribution de la "
-                       f"tâche" if task == rec.get("task") else f"autre tâche : {task}") + ("" if who_is else ", contribution refusée")
-                       + ") : ce refus ne bloque pas cette contribution ; relisez-la en le sachant")
+        alerts.append(f"this content was refused {f'par {who_is} ' if who_is else ''}in {cid} (same tree, " + ("other contribution of the "
+                       f"task" if task == rec.get("task") else f"other task: {task}") + ("" if who_is else ", contribution refused")
+                       + "): this refusal does not block this contribution; review it knowing that")
     return alerts
 
 
