@@ -7606,31 +7606,31 @@ def cmd_manifest(args):
         f"task: {t['id']}",
         f"user: {args.user}",
         "agent:",
-        f"  model: {quotes_found(args.model or TO_FILL_IN + ' : nom et version du modèle')}",
+        f"  model: {quotes_found(args.model or TO_FILL_IN_EN + ': name and version of the model')}",
         f"  client: bee {VERSION}",
-        f"summary: \"{TO_FILL_IN}: one sentence on the change (200 characters at most)\"",
+        f"summary: \"{TO_FILL_IN_EN}: one sentence on the change (200 characters at most)\"",
         "change: >",
-        f"  {TO_FILL_IN}: what was changed, and why it is better.",
+        f"  {TO_FILL_IN_EN}: what was changed, and why it is better.",
     ]
     if t["type"] in ("optimization", "measurement"):
         # R4 se juge sur le décompte d'instructions de la métrique visée (clé instructions de projets/*.yaml, ruche-0017).
         instructions = reg.metrics(t["project"]).get(t.get("metric"), {}).get("instructions")
         metrics = ([t["metric"]] if t.get("metric") else []) + ([instructions] if isinstance(instructions, str) else [])
         metrics += [m for m in reg.metrics(t["project"]) if m not in metrics]
-        values_of = [f"    {m}: \"{TO_FILL_IN}" + (": Cachegrind count (ab.py --instructions), or remove the line"
+        values_of = [f"    {m}: \"{TO_FILL_IN_EN}" + (": Cachegrind count (ab.py --instructions), or remove the line"
                                                  if m == instructions else "") + "\"" for m in metrics]
         lines += [
             "measurements:",
-            f"  machine: \"{TO_FILL_IN}: processor, system, compiler\"",
-            f"  command: {quotes_found((project.get('commands') or {}).get('ab_bench', TO_FILL_IN))}",
-            f"  repetitions: \"{TO_FILL_IN}: number of repetitions actually run\"",
+            f"  machine: \"{TO_FILL_IN_EN}: processor, system, compiler\"",
+            f"  command: {quotes_found((project.get('commands') or {}).get('ab_bench', TO_FILL_IN_EN))}",
+            f"  repetitions: \"{TO_FILL_IN_EN}: number of repetitions actually run\"",
             "  before:",
         ] + values_of + ["  after:"] + values_of
     lines += [
         "tested:",
-        f"  - \"{TO_FILL_IN}: what you actually ran (tests, differential, fuzzing…)\"",
+        f"  - \"{TO_FILL_IN_EN}: what you actually ran (tests, differential, fuzzing…)\"",
         "untested: []",
-        f"doubts: \"{TO_FILL_IN}: what could go wrong. « No doubt identified » is an acceptable answer if it is true.\"",
+        f"doubts: \"{TO_FILL_IN_EN}: what could go wrong. « No doubt identified » is an acceptable answer if it is true.\"",
         f"actual_size: {t['size']}",
         "",
     ]
@@ -7646,7 +7646,7 @@ def cmd_manifest(args):
         if output_text.exists():
             raise BeeError(f"{output_text} existe déjà : supprimez-le ou choisissez un autre fichier (rien n'a été écrasé)")
         output_text.write_text(text, encoding="utf-8")
-        print(f"✓ {output_text} written. Replace each « {TO_FILL_IN} », then: bee validate-manifest {output_text}")
+        print(f"✓ {output_text} written. Replace each « {TO_FILL_IN_EN} », then: bee validate-manifest {output_text}")
     else:
         sys.stdout.write(text)
     return 0
