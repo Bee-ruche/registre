@@ -211,7 +211,7 @@ class TestLoadTest(unittest.TestCase):
             gaps[number_of] = gaps.get(number_of, "") + cause
         self.assertEqual(sorted(gaps), [n + 1, n + 2])
         self.assertIn("n'écrit pas ce que porte la PR", gaps[n + 1])
-        self.assertIn("on ne vote pas pour sa propre contribution", gaps[n + 2])
+        self.assertIn("you do not vote for your own contribution", gaps[n + 2])
 
     # Critère 3 : déterministe.
     def test_the_same_seed_gives_the_same_bytes(self):
