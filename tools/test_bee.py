@@ -12848,7 +12848,7 @@ class TestVerificationRuche0020(BaseReviewRuche0020):
         text = self.gesture("guardian-approval", "gina")
         self.assertIn("Other declared identities: gitlab:fictif-tiers", text)
         self.assertIn("check on the sources", text)
-        self.assertIn("Vérifiez d'abord que les autres identités", (ROOT / "tools/bee.py").read_text(encoding="utf-8"))
+        self.assertIn("Check first that the other declared identities", (ROOT / "tools/bee.py").read_text(encoding="utf-8"))
         # Sans autre identité : « aucune ».
         self.assertIn("Other declared identities: none", "\n".join(bee.identity_lines(
             {"person": {"identifier": "github:hubot", "channel": "https://github.com/hubot"}})))
