@@ -4328,17 +4328,17 @@ def outgoing_text_refused(text, what_it, maximum, organization=None):
             read_items += [html.unescape(text.replace("\\&", "&amp;")), decoded_entities(text, "")]  # once, an escaped & kept
             text = decoded_entities(text, "\ufffd")
         except ValueError:  # a numeric reference longer than int() reads (&#000…64;)
-            return f"{what_it} : référence de caractère démesurée (&#…;) : écrivez le caractère lui-même"
+            return f"{what_it}: oversized character reference (&#…;): write the character itself"
     # The text as typed passed texte_recevable (probleme_texte_libre): only what its entities decode to is left to check.
     c = next((c for c in text if forbidden_outgoing_character(c)), None) if organization is not None else None
     if c is not None:
-        return (f"{what_it} : caractère invisible refusé (U+{ord(c):04X}, catégorie {unicodedata.category(c)}) : ce texte sort de la "
-                "ruche, il ne cache rien")
+        return (f"{what_it}: invisible character refused (U+{ord(c):04X}, category {unicodedata.category(c)}): this text leaves the "
+                "hive, it hides nothing")
     datum = next(filter(None, map(personal_datum, dict.fromkeys([text] + read_items[2:]))), None)  # U+FFFD, or dropped
     referral = (next(filter(None, (referral_outside_hive(read_value, organization) for read_value in read_items + [text])), None)
               if organization is not None and not datum else None)
-    return (f"{what_it} : {datum} : aucune donnée personnelle au-delà de l'identifiant public et du canal (R13)" if datum
-            else f"{what_it} : {referral} : ce texte sort de la ruche (commandements 8 et 13)" if referral else None)
+    return (f"{what_it}: {datum}: no personal data beyond the public identifier and the channel (R13)" if datum
+            else f"{what_it}: {referral}: this text leaves the hive (commandments 8 and 13)" if referral else None)
 
 
 def decoded_entities(text, abandonment):
@@ -4404,7 +4404,7 @@ def first_referral(form_text, organization):
     token = lambda m: next((word for word in (w.rstrip(")]>\"'.,;:!?") for w in form_text[m.start():].split(maxsplit=2)[:2]) if word),
                            "")[:80]  # noqa: E731  the word it starts, or the next one (a definition's target after ]:)
     if mention := MENTION_GITHUB.search(form_text):
-        return f"la mention « {mention[0][:80]} » notifierait quelqu'un sur GitHub (écrivez le nom sans @)"
+        return f"the mention « {mention[0][:80]} » would notify someone on GitHub (write the name without @)"
     labels = None
     for reason in REFERRALS:
         for m in reason.finditer(form_text):
@@ -4421,16 +4421,16 @@ def first_referral(form_text, organization):
     for m in LINK_OR_HOST.finditer(form_text):
         address = decode_url(re.sub(r"(?i)^(?!https?://)", "https://", m[0])).replace("\\", "/")  # as a browser reads it
         if on_hosts(host_of(address), OPAQUE_GITHUB_HOSTS):
-            return f"« {token(m)} » mène vers GitHub sans dire où (raccourci ou éditeur) : donnez l'adresse github.com/…"
+            return f"« {token(m)} » leads to GitHub without saying where (shortener or editor): give the github.com/… address"
         forges = {c for c in address_keys(address) if not c.startswith("site:")}
         if forges - {f"github:{organization.casefold()}"}:
-            return f"« {token(m)} » mène hors de {organization} (seul son propriétaire GitHub est dans la ruche)"
+            return f"« {token(m)} » leads outside {organization} (only its GitHub owner is in the hive)"
         forge = forges or on_hosts(host_of(address), tuple(FORGE_DOMAINS))  # even if a < or a blank hides the owner
         if forge and SUSPECT_LINK.search(m[1]):
-            return f"« {token(m)} » cache où il mène (%xx, \\, /../ ou hôte suivi d'un point)"
+            return f"« {token(m)} » hides where it leads (%xx, \\, /../ or a host followed by a dot)"
         if forge and (end := run_end(form_text, m.start(1), seen_items)) is not None:  # the rest of its run, once
             if SUSPECT_LINK.search(form_text[m.start(1):end].replace("\x0b", "")):
-                return f"« {token(m)} » cache où il mène (%xx, \\, /../ ou hôte suivi d'un point)"
+                return f"« {token(m)} » hides where it leads (%xx, \\, /../ or a host followed by a dot)"
     return None
 
 
@@ -4446,14 +4446,14 @@ def run_end(form_text, beginning, seen_items):
 def referral_cause(reason, organization):
     """Why a pattern of REFERRALS refuses what it found, said to the bee."""
     if reason is REFERENCE_GITHUB:
-        return f"renvoie à un dépôt hors de {organization}"
+        return f"refers to a repository outside {organization}"
     if reason is RELATIVE_LINK:
-        return f"est un lien relatif qui mène hors de {organization} ou cache où il mène (.., %xx, ])"
+        return f"is a relative link that leads outside {organization} or hides where it leads (.., %xx, ])"
     if reason is HIDDEN_LINK:
-        return "cache son hôte (%xx ou \\)"
+        return "hides its host (%xx or \\)"
     if reason is SINGLE_BAR:
-        return "n'a qu'une barre : un navigateur y lit github.com/…"
-    return "liste plusieurs adresses : une image par src"
+        return "has only one slash: a browser reads github.com/… there"
+    return "lists several addresses: one image per src"
 
 
 def tag_key(label):
@@ -4525,39 +4525,39 @@ def outgoing_address_refused(address, what_it):
     ADDRESS_MAX caractères, sans identifiant dans l'autorité ni chaîne de requête, ni messagerie personnelle, ni donnée
     personnelle (une fois décodée) ; sinon la raison."""
     if not (isinstance(address, str) and re.fullmatch(r"https://[\x21-\x7e]+", address)):
-        return f"{what_it} : une adresse https://, en ASCII imprimable"
+        return f"{what_it}: an https:// address, in printable ASCII"
     authority = re.match(r"https://([^/?#]*)", address)[1]
     if len(address) > ADDRESS_MAX or "@" in authority or source_form(address):
-        return f"{what_it} : adresse invalide ou trop longue ({ADDRESS_MAX} caractères au plus, sans identifiant avant l'hôte)"
+        return f"{what_it}: invalid or too long address ({ADDRESS_MAX} characters at most, no user name before the host)"
     if "?" in address:
-        return f"{what_it} : pas de chaîne de requête (?…) : l'adresse de la page, rien d'autre"
+        return f"{what_it}: no query string (?…): the page's address, nothing else"
     if on_hosts(host_of(address), PERSONAL_HOSTS):
-        return f"{what_it} : {host_of(address)} mène à une messagerie personnelle (R13 : aucune donnée personnelle)"
+        return f"{what_it}: {host_of(address)} leads to a personal messaging service (R13: no personal data)"
     datum = personal_datum(decode_url(address))
-    return f"{what_it} : {datum} dans l'adresse (R13 : aucune donnée personnelle)" if datum else None
+    return f"{what_it}: {datum} in the address (R13: no personal data)" if datum else None
 
 
 def identifier_form(identifier):
     """(forme canonique, None) d'un identifiant public bien écrit, alias de plateforme compris (gh:octocat -> github:octocat),
     ou (None, raison)."""
     if not (isinstance(identifier, str) and re.fullmatch(r"[\x21-\x7e]+", identifier)):
-        return None, "un identifiant public s'écrit <platform>:<name>, en ASCII, sans espace (github:octocat)"
+        return None, "a public identifier is written <platform>:<name>, in ASCII, without a blank (github:octocat)"
     platform, _, name = identifier.partition(":")
     canonical = PLATFORM_ALIASES.get(platform.lower())
     if canonical is None:
-        return None, (f"plateforme « {platform} » inconnue : {', '.join(PLATFORMS)} (ni courriel, ni téléphone, ni messagerie : "
-                      "aucune donnée personnelle)")
+        return None, (f"unknown platform « {platform} »: {', '.join(PLATFORMS)} (no email, no phone, no messaging service: "
+                      "no personal data)")
     if canonical != "site":
         name = name.removeprefix("~") if canonical == "sourcehut" else name
         if not FORGE_NAME.match(name):
-            return None, f"{canonical} : un nom d'un seul segment (lettres, chiffres, - _ .), sans / ni @ (github:octocat)"
+            return None, f"{canonical}: a name of a single segment (letters, digits, - _ .), without / or @ (github:octocat)"
         return f"{canonical}:{name}", None
     name = name.lower().removeprefix("www.")
     pages = any(name.endswith("." + p) for p in FORGE_PAGES)
     if (not DOMAIN.match(name) or on_hosts(name, tuple(FORGE_HOSTS) + PERSONAL_HOSTS) or "mastodon" in name.split(".")
             or (on_hosts(name, SHARED_PLATFORMS) and not pages)):
-        return None, ("site : un nom de domaine à soi (site:exemple.org), ni une forge (github:, gitlab:, codeberg:, sourcehut:), "
-                      "ni une messagerie ou un réseau partagé (une personne qui n'est que là passe par une forge ou son domaine)")
+        return None, ("site: a domain name of one's own (site:example.org), not a forge (github:, gitlab:, codeberg:, sourcehut:), "
+                      "nor a messaging service or a shared network (a person who is only there goes through a forge or their domain)")
     return f"site:{name}", None
 
 
@@ -4570,11 +4570,11 @@ def refused_channel(identifier, channel):
     platform, _, name = canonical.partition(":")
     model = PLATFORMS[platform][1]
     if model:
-        return None if channel == model.format(name) else f"channel : {model.format(name)}, l'adresse publique de {canonical}, rien d'autre"
+        return None if channel == model.format(name) else f"channel: {model.format(name)}, the public address of {canonical}, nothing else"
     problem_text = outgoing_address_refused(channel, "channel")
     if problem_text:
         return problem_text
-    return None if host_of(channel) == name else f"channel : une page de {name}, le site de la personne"
+    return None if host_of(channel) == name else f"channel: a page of {name}, the person's site"
 
 
 def person_key(identifier):
@@ -4912,7 +4912,7 @@ def incident_title_refused(title):
     une seule ligne, 300 caractères au plus, rien de caché ni de personnel, contrôlé comme ce qui sort de la ruche ; sinon la
     raison. Limite : un nom de personne n'est pas reconnu ; une invitation se désigne par son numéro."""
     if isinstance(title, str) and re.search(r"[\r\n]", title):
-        return "title : une seule ligne"
+        return "title: a single line"
     return outgoing_text_refused(title, "title", 300)
 
 
@@ -5086,15 +5086,15 @@ def invitation_refusal(reg, inv, council=False, instant=None):
     identifier = person.get("identifier")
     canonical, problem_text = identifier_form(identifier)
     if problem_text or canonical != identifier:
-        refusal.append(f"identifier « {_clean(identifier)} » : {problem_text or f'il s’écrit {canonical}'}")
+        refusal.append(f"identifier « {_clean(identifier)} »: {problem_text or f'it is written {canonical}'}")
     if set(person) != {"identifier", "channel"}:
-        refusal.append("person : son identifiant public et le canal qu'elle publie elle-même, rien d'autre (R13)")
+        refusal.append("person: their public identifier and the channel they publish themselves, nothing else (R13)")
     problem_text = refused_channel(identifier, person.get("channel"))
     if problem_text:
         refusal.append(problem_text)
     why = inv.get("why") if isinstance(inv.get("why"), list) else []
     if not 1 <= len(why) <= WHY_MAX:
-        refusal.append(f"why : de 1 à {WHY_MAX} faits publics, chacun avec sa source")
+        refusal.append(f"why: 1 to {WHY_MAX} public facts, each with its source")
     texts_of = [("message", inv.get("message"), conf["message_max"])]
     for i, f in enumerate(why[:WHY_MAX]):
         f = f if isinstance(f, dict) else {}
@@ -5108,46 +5108,46 @@ def invitation_refusal(reg, inv, council=False, instant=None):
             refusal.append(problem_text)
     request, message = inv.get("request"), inv.get("message")
     if request not in REQUESTS:
-        refusal.append(f"request : {', '.join(REQUESTS)}")
+        refusal.append(f"request: {', '.join(REQUESTS)}")
     elif isinstance(message, str):
         if not any(m in message for m in mentions_invitation(reg, request).values()):
-            refusal.append(f"message : il porte, mot pour mot, la mention de R13 et la phrase de sa demande (« {request} ») : bee "
-                         "invite les ajoute")
+            refusal.append(f"message: it carries, word for word, the mention of R13 and the sentence of its request (« {request} »): "
+                         "bee invite adds them")
         # Une seule phrase « Ce qui vous est demandé », celle de la mention, sous aucune autre variante (espaces insécables,
         # espaces autour des deux-points, casse, accents, abrégée : troisième revue adverse, C6).
         compare = compared_form(message)
         n = sum(compare.count(beginning) for beginning in REQUEST_STARTS)
         if n > 1:
-            refusal.append(f"message : {n} phrases « Ce qui vous est demandé » (sous une forme ou une autre) : une seule, la phrase fixe "
-                         f"de sa demande (« {request} »), que bee invite ajoute")
+            refusal.append(f"message: {n} sentences « Ce qui vous est demandé » (in one form or another): only one, the fixed sentence "
+                         f"of its request (« {request} »), which bee invite adds")
     other_identities = inv.get("other_identities")
     if other_identities is not None:
         # Les autres identités de la personne, déclarées explicitement (troisième revue adverse, C3) : identifiants publics sous
         # leur forme canonique, distincts, au plus AUTRES_IDENTITES_MAX ; inscrits sur la liste à son refus.
         if not (isinstance(other_identities, list) and 1 <= len(other_identities) <= OTHER_IDENTITIES_MAX):
-            refusal.append(f"other_identities : de 1 à {OTHER_IDENTITIES_MAX} identifiants publics de la même personne, ou rien")
+            refusal.append(f"other_identities: 1 to {OTHER_IDENTITIES_MAX} public identifiers of the same person, or nothing")
         else:
             views = {person_key(identifier)}
             for x in other_identities:
                 form_text, problem_text = identifier_form(x)
                 if problem_text or form_text != x:
-                    refusal.append(f"other_identities : « {_clean(x)} » : {problem_text or f'il s’écrit {form_text}'}")
+                    refusal.append(f"other_identities: « {_clean(x)} »: {problem_text or f'it is written {form_text}'}")
                 elif person_key(x) in views:
-                    refusal.append(f"other_identities : « {_clean(x)} » désigne une identité déjà déclarée")
+                    refusal.append(f"other_identities: « {_clean(x)} » names an identity already declared")
                 views.add(person_key(x))
     refusal += invitation_debate_refusal(reg, inv, approval=False)
     unreadables = unreadable_invitations(reg)
     if unreadables:
-        refusal.append(f"illisible(s) : {', '.join(unreadables)} : rien ne bouge dans invitations/ tant que le conseil ne l'a pas réparé")
+        refusal.append(f"unreadable: {', '.join(unreadables)}: nothing moves in invitations/ until the council has repaired it")
     identities, own_ones, list_of, origins = identities_of(inv), own_identities(inv), not_contacted(reg), original_keys(reg)
     # Comparée par empreintes : celles de l'identifiant, du canal, des autres identités et de ce que désignent les sources.
     if on_the_list(identities, list_of):
-        refusal.append(f"{', '.join(on_the_list(identities, list_of))} : la personne est sur la liste de non-contact ({PATH_NO_CONTACT}), "
-                     "par une identité, son canal ou une source : un refus est définitif (R13)")
+        refusal.append(f"{', '.join(on_the_list(identities, list_of))}: the person is on the do-not-contact list ({PATH_NO_CONTACT}), "
+                     "through an identity, their channel or a source: a refusal is final (R13)")
     origin_of = identities & origins
     if origin_of:
-        refusal.append(f"{', '.join(sorted(origin_of))} : tient à un projet d'origine (upstream_repo de projects/) : aucun contact sans son "
-                     "accord explicite (commandement 8)")
+        refusal.append(f"{', '.join(sorted(origin_of))}: belongs to an upstream project (upstream_repo of projects/): no contact without its "
+                     "explicit agreement (commandment 8)")
     # Homonymes : un nom de la liste, ou d'un propriétaire de dépôt d'origine, sous une autre forge (troisième revue, C5) ; seul
     # le conseil passe outre, en motivant pourquoi ce n'est pas la même personne.
     variants_of = {f"{p}:{c.partition(':')[2]}" for c in own_ones if not c.startswith("site:") and c.partition(":")[2]
@@ -5157,19 +5157,19 @@ def invitation_refusal(reg, inv, council=False, instant=None):
     if namesakes:
         if not council:
             if namesakes_list:
-                refusal.append(f"{', '.join(namesakes_list)} : ce nom est sur la liste de non-contact sous une autre forge ; seul le "
-                             "conseil peut passer outre, en motivant (homonyme)")
+                refusal.append(f"{', '.join(namesakes_list)}: this name is on the do-not-contact list under another forge; only the "
+                             "council can override it, giving its reason (namesake)")
             if namesakes_origin:
-                refusal.append(f"{', '.join(namesakes_origin)} : ce nom tient à un projet d'origine sous une autre forge (commandement "
-                             "8) ; seul le conseil peut passer outre, en motivant (homonyme)")
+                refusal.append(f"{', '.join(namesakes_origin)}: this name belongs to an upstream project under another forge (commandment "
+                             "8); only the council can override it, giving its reason (namesake)")
         elif not isinstance(inv.get("namesake"), str):
-            refusal.append("namesake : le conseil qui passe outre motive pourquoi ce n'est pas la même personne")
+            refusal.append("namesake: the council that overrides it says why it is not the same person")
     elif "namesake" in inv:
-        refusal.append("namesake : seulement quand le nom est sur la liste ou tient à un projet d'origine sous une autre forge, et par "
-                     "le conseil")
+        refusal.append("namesake: only when the name is on the list or belongs to an upstream project under another forge, and by "
+                     "the council")
     if "namesake" in inv:
         if not council:
-            refusal.append("namesake : seul le conseil passe outre la liste de non-contact ou le commandement 8")
+            refusal.append("namesake: only the council overrides the do-not-contact list or commandment 8")
         # Le motif est publié avec l'invitation : contrôlé comme un message (troisième revue adverse).
         problem_text = outgoing_text_refused(inv.get("namesake"), "namesake", config_notes(reg)["text_max"])
         if problem_text:
@@ -5180,8 +5180,8 @@ def invitation_refusal(reg, inv, council=False, instant=None):
                   and not (invitation_state(x) == "accepted" or (invitation_state(x) == "set_aside" and "council_approval" not in x)
                            or expired(x, instant, conf)))
     if already:
-        refusal.append(f"{_clean(identifier)} est déjà invité(e) ({', '.join(already)}) : une invitation à la fois ; après un feu vert, "
-                     "un refus ou un silence, plus jamais")
+        refusal.append(f"{_clean(identifier)} is already invited ({', '.join(already)}): one invitation at a time; after a green light, "
+                     "a refusal or a silence, never again")
     return refusal
 
 
@@ -5241,106 +5241,106 @@ def gesture_refusal(reg, old, new, gesture, author, instant, publishing=None, br
     oversight = old.get("request") in STRENGTHEN_FRAMING
     in_office = guardians_in_office(reg)
     unreadables = unreadable_invitations(reg)
-    require(not unreadables, f"illisible(s) : {', '.join(unreadables)} : aucun geste d'invitation tant que le conseil ne l'a pas réparé")
-    require(not withdrawn(old), "le dossier de cette personne est déjà retiré (à son refus ou à sa demande) : l'invitation est close, "
-                                "plus aucun geste")
+    require(not unreadables, f"unreadable: {', '.join(unreadables)}: no invitation gesture until the council has repaired it")
+    require(not withdrawn(old), "this person's file is already withdrawn (at their refusal or at their request): the invitation is closed, "
+                                "no more gestures")
     if gesture in TOWARDS_CONTACT:
-        brake = brake if isinstance(brake, dict) else {"tight": True, "oversight": ["état du frein inconnu"], "open_incidents": ["?"]}
-        require(not brake.get("open_incidents"), f"incident(s) ouvert(s) : {', '.join(brake.get('open_incidents') or [])} : tout "
-                                                   "s'arrête, invitations d'encadrement comprises (R13)")
+        brake = brake if isinstance(brake, dict) else {"tight": True, "oversight": ["brake state unknown"], "open_incidents": ["?"]}
+        require(not brake.get("open_incidents"), f"open incident(s): {', '.join(brake.get('open_incidents') or [])}: everything "
+                                                   "stops, oversight invitations included (R13)")
         require(not brake.get("oversight") or oversight,
-               "frein serré (R13) : " + " ; ".join(brake.get("oversight") or [])
-               + f" ; il arrête les invitations à {old.get('request')}, jamais celles qui renforcent l'encadrement (garant, gardien)")
+               "brake tight (R13): " + "; ".join(brake.get("oversight") or [])
+               + f"; it stops the invitations to {old.get('request')}, never those that strengthen oversight (guarantor, guardian)")
         on_list = on_the_list(identities_of(old), not_contacted(reg))
-        require(not on_list, f"{', '.join(sorted(on_list))} : la personne est sur la liste de non-contact : plus rien ne part vers "
-                              "elle (R13)")
-        require(not expired(old, moment, conf), f"invitation expirée ({conf['expiry_days']} jours sans décision, "
-                                                  "growth.expiry_days) : proposez-en une nouvelle")
+        require(not on_list, f"{', '.join(sorted(on_list))}: the person is on the do-not-contact list: nothing goes to "
+                              "them any more (R13)")
+        require(not expired(old, moment, conf), f"invitation expired ({conf['expiry_days']} days without a decision, "
+                                                  "growth.expiry_days): propose a new one")
     if gesture in ("council_approval", "renewal", "reminder"):
         # Le feu vert du conseil réserve une place pour 7 jours ; une relance en prend une : messages et places, relances comprises.
         n = messages_and_places(reg, moment - WEEK, except_for=old.get("id")) + 1
         require(n <= conf["invitations_per_week"],
-               f"plafond : {n} messages ou places réservées en 7 jours glissants, au plus {conf['invitations_per_week']} pour toute "
-               "la ruche (growth.invitations_per_week, R13) : attendez qu'une place se libère (bee swarm)")
+               f"cap: {n} messages or reserved places over a rolling 7 days, at most {conf['invitations_per_week']} for the whole "
+               "hive (growth.invitations_per_week, R13): wait for a place to free up (bee swarm)")
     if gesture in ("council_approval", "renewal") and oversight and (brake or {}).get("oversight"):
         n = 1 + sum(1 for iid, (_, x) in reg.invitations.items() if iid != old.get("id") and isinstance(x, dict)
                     and x.get("request") in STRENGTHEN_FRAMING for g in ("council_approval", "renewal")
                     if (m := _instant_or_none(block_of(x, g).get("at"))) and m > moment - WEEK)
         require(n <= conf["oversight_per_week_under_brake"],
-               f"frein serré : {n} feux verts d'encadrement en 7 jours glissants, au plus {conf['oversight_per_week_under_brake']} "
+               f"brake tight: {n} oversight green lights over a rolling 7 days, at most {conf['oversight_per_week_under_brake']} "
                "(growth.oversight_per_week_under_brake)")
     deadline_at = publishing + dt.timedelta(hours=conf["debate_min_hours"]) if publishing else None
     held_debate = (deadline_at is not None and moment >= deadline_at,
-                  f"une invitation reste {conf['debate_min_hours']} h publique, débattue dans l'agora, avant tout accord "
-                  f"(growth.debate_min_hours) : pas avant le {en_iso(deadline_at) if deadline_at else '(pas encore publiée)'}")
+                  f"an invitation stays public {conf['debate_min_hours']} h, debated in the agora, before any approval "
+                  f"(growth.debate_min_hours): not before {en_iso(deadline_at) if deadline_at else '(not published yet)'}")
     if gesture in ("guardian_approval", "council_approval", "renewal"):  # the green light and its renewal (ruche-0050)
         refusal += invitation_debate_refusal(reg, old, closed=gesture == "renewal", before=main_debate)  # renewed on the closing synthesis
     if gesture == "guardian_approval":
-        require(before == "proposed", f"un accord de gardien se donne à une invitation proposée (status : {before})")
-        require(with_status and author in in_office, f"{author} n'est pas un gardien en fonction : seul un gardien nommé (governance/guardians.yaml), "
-                                      "dont le garant n'est pas révoqué, donne l'accord de gardien")
+        require(before == "proposed", f"a guardian's approval is given to a proposed invitation (status: {before})")
+        require(with_status and author in in_office, f"{author} is not a guardian in office: only a named guardian (governance/guardians.yaml), "
+                                      "whose guarantor is not revoked, gives the guardian's approval")
         who_is = reg.identities  # ruche-0051: by person, every guardian entry of each person, whatever their order in the file
-        require(not who_is.same_one(author, proposing_member), "on ne donne pas son accord à sa propre invitation (ni à celle d'un compte lié)")
+        require(not who_is.same_one(author, proposing_member), "no one approves their own invitation (nor that of a linked account)")
         require(not vouched_by_proposer(reg, author, proposing_member),
-               f"le garant de {author} est le proposant, ou dirige aussi le proposant : l'accord d'un gardien vient d'ailleurs "
+               f"the guarantor of {author} is the proposer, or also directs the proposer: a guardian's approval comes from elsewhere "
                "(docs/guarantors.md)")
         require(*held_debate)
     elif gesture == "council_approval":
-        require(council, f"{author} n'est pas du conseil : seul le conseil donne l'accord du conseil")
+        require(council, f"{author} is not on the council: only the council gives the council's approval")
         # Amorçage : sans gardien en fonction, une invitation d'encadrement n'attend que le conseil (il n'y a personne d'autre).
         bootstrap = oversight and not (brake or {}).get("guardians_in_office", 1)
         require(before == "proposed" and ("guardian_approval" in old or bootstrap),
-               "l'accord du conseil suit celui d'un gardien (sans gardien en fonction, seule une invitation de garant ou de gardien "
-               "s'en passe)")
+               "the council's approval follows a guardian's (with no guardian in office, only a guarantor or guardian invitation "
+               "goes without it)")
         require(not reg.identities.same_one(block_of(old, "guardian_approval").get("by"), author),
-               "les deux accords viennent de deux personnes différentes")
+               "the two approvals come from two different people")
         if "guardian_approval" not in old:
             require(*held_debate)
     elif gesture == "renewal":
         # Un feu vert échu (7 jours sans envoi) se renouvelle une fois, contrôlé comme le feu vert (troisième revue adverse, C8).
-        require(council, f"{author} n'est pas du conseil : seul le conseil renouvelle son feu vert")
-        require(green_light_expired(old, moment), "on ne renouvelle qu'un feu vert échu (7 jours sans envoi consigné) : "
-                                              f"status {before}, feu vert du {en_iso(green_light(old)) if green_light(old) else '?'}")
+        require(council, f"{author} is not on the council: only the council renews its green light")
+        require(green_light_expired(old, moment), "only an expired green light is renewed (7 days without a recorded sending): "
+                                              f"status {before}, green light of {en_iso(green_light(old)) if green_light(old) else '?'}")
     elif gesture == "sent":
-        require(council, f"{author} n'est pas du conseil : seul un humain du conseil envoie le message, lui-même, et le consigne")
-        require(before == "decided", f"un envoi suit le feu vert du conseil (accord du conseil) ; status : {before}")
+        require(council, f"{author} is not on the council: only a human of the council sends the message, themselves, and records it")
+        require(before == "decided", f"a sending follows the council's green light (council approval); status: {before}")
     elif gesture == "reminder":
-        require(council, f"{author} n'est pas du conseil : seul le conseil relance, et le consigne")
-        require(before == "sent" and conf["reminders_max"] >= 1, f"une relance au plus, après l'envoi (status : {before})")
+        require(council, f"{author} is not on the council: only the council sends a reminder, and records it")
+        require(before == "sent" and conf["reminders_max"] >= 1, f"one reminder at most, after the sending (status: {before})")
         sent = _instant_or_none(block_of(old, "sent").get("at"))
-        require(sent is not None and moment >= sent + timeout_seconds, f"une relance pas avant {conf['reminder_delay_days']} jours après "
-               f"l'envoi (growth.reminder_delay_days) : pas avant le {en_iso(sent + timeout_seconds) if sent else '?'}")
+        require(sent is not None and moment >= sent + timeout_seconds, f"a reminder no earlier than {conf['reminder_delay_days']} days after "
+               f"the sending (growth.reminder_delay_days): not before {en_iso(sent + timeout_seconds) if sent else '?'}")
     elif gesture == "answer":
-        require(council, f"{author} n'est pas du conseil : seul le conseil, qui a envoyé le message, consigne la réponse")
+        require(council, f"{author} is not on the council: only the council, which sent the message, records the answer")
         value = block.get("value")
         if value == "refused":
-            require(before not in ANSWERS + ("set_aside", "withdrawn"), f"invitation déjà close (status : {before})")
-        elif require(value in ANSWERS, f"réponse : {', '.join(ANSWERS)}"):
-            require(before in ("sent", "reminded"), f"« {value} » se consigne après l'envoi (status : {before})")
+            require(before not in ANSWERS + ("set_aside", "withdrawn"), f"invitation already closed (status: {before})")
+        elif require(value in ANSWERS, f"answer: {', '.join(ANSWERS)}"):
+            require(before in ("sent", "reminded"), f"« {value} » is recorded after the sending (status: {before})")
             last = _instant_or_none((block_of(old, "reminder") or block_of(old, "sent")).get("at"))
             require(value == "accepted" or (last is not None and moment >= last + timeout_seconds),
-                   f"« sans réponse » se consigne {conf['reminder_delay_days']} jours après le dernier message (relance ou envoi)")
+                   f"« no_answer » is recorded {conf['reminder_delay_days']} days after the last message (reminder or sending)")
     elif gesture == "set_aside":
         if before == "decided":
-            require(council, "une invitation décidée (feu vert donné) ne s'écarte que par le conseil")
+            require(council, "a decided invitation (green light given) is set aside only by the council")
         else:
             require(author == proposing_member or (with_status and author in in_office) or council,
-                   "seuls le proposant, un gardien en fonction ou le conseil écartent une invitation")
-        require(before in ("proposed", "decided"), f"on n'écarte une invitation qu'avant son envoi (status : {before})")
+                   "only the proposer, a guardian in office or the council set an invitation aside")
+        require(before in ("proposed", "decided"), f"an invitation is set aside only before its sending (status: {before})")
         # Le motif est publié avec l'invitation : contrôlé comme un message (revue adverse, C3).
         problem_text = outgoing_text_refused(block.get("reason"), "reason", config_notes(reg)["text_max"])
-        require(problem_text is None, f"{problem_text} : on écarte en motivant, court (notes.text_max)")
+        require(problem_text is None, f"{problem_text}: set aside with a short reason (notes.text_max)")
     elif gesture == "withdrawal":
         # À la demande de la personne, à tout moment : son dossier se retire (commandement 10). Ni frein, ni incident ne l'arrêtent.
-        require(council, f"{author} n'est pas du conseil : le conseil retire le dossier d'une personne, à sa demande")
-        require(block.get("cause") in REMOVED, f"withdrawal : cause {', '.join(REMOVED)} (bee invitation withdraw l'écrit)")
+        require(council, f"{author} is not on the council: the council withdraws a person's file, at their request")
+        require(block.get("cause") in REMOVED, f"withdrawal: cause {', '.join(REMOVED)} (bee invitation withdraw writes it)")
         require(block.get("cause") == "request" or before != "accepted",
-               "une invitation acceptée ne se retire qu'à la demande de la personne")
+               "an accepted invitation is withdrawn only at the person's request")
         # Vérification de cdbcf36, D4 : « refus » ou « sans réponse » suit un refus ou un silence réel de la même personne, sur
         # cette invitation ou une autre (dans la même PR, ou déjà sur la liste) ; sinon, le seul motif est « demande ».
         require(block.get("cause") not in ("refusal", "no_answer") or linked_refusal,
-               f"withdrawal « {block.get('cause')} » : seulement quand cette personne a refusé ou n'a pas répondu, sur cette invitation ou "
-               "une autre (la même PR, ou la liste de non-contact) ; sinon, le seul motif est « request »")
+               f"withdrawal « {block.get('cause')} »: only when this person refused or did not answer, on this invitation or "
+               "another (the same PR, or the do-not-contact list); otherwise, the only cause is « request »")
     return refusal
 
 
@@ -5365,55 +5365,55 @@ def check_invitation(reg, path, git_status, old, new, author, *, is_council, ins
     ici (qui, quand, dans quel état, sous quel frein), le reste est refusé. `frein` : fonction qui renvoie brake_state (calculé
     seulement s'il le faut). Renvoie (natures, problèmes, [] : le plafond se juge dans gesture_refusal)."""
     natures, problems_found, sendings = [], [], []
-    require = lambda condition, message: condition or problems_found.append(f"{path} : {message}")  # noqa: E731
+    require = lambda condition, message: condition or problems_found.append(f"{path}: {message}")  # noqa: E731
     list_of = path == PATH_NO_CONTACT
     if git_status == "D":
         natures.append("governance")
-        require(is_council and not list_of, "la liste de non-contact ne se supprime jamais (un refus est définitif, R13)" if list_of
-               else "une invitation ne se supprime pas (commandement 10) ; seul le conseil le peut")
+        require(is_council and not list_of, "the do-not-contact list is never deleted (a refusal is final, R13)" if list_of
+               else "an invitation is not deleted (commandment 10); only the council can")
         return natures, problems_found, sendings
     try:
         canonical = invitation_render(new, path).encode("utf-8")
     except BeeError:
         canonical = None
-    require(raw == canonical, "le fichier n'est pas exactement sous la forme qu'écrivent bee invite et bee invitation (commentaire, "
-                              "autre mise en forme) : écrivez-le avec bee")
+    require(raw == canonical, "the file is not exactly in the form bee invite and bee invitation write (a comment, "
+                              "other formatting): write it with bee")
     if list_of:
         # Ajout seul, par le conseil (avec la réponse qu'il consigne, ou le retrait demandé par la personne) ; jamais une entrée
         # retirée. Des empreintes seulement, jamais un identifiant en clair (répétition générale n° 3).
         natures.append("no_contact")
         old_items = fingerprints_of(old) if git_status == "M" else []
         new_items = fingerprints_of(new)
-        require(set(new) == {"fingerprints"}, "une seule clé, fingerprints : la liste ne garde que des empreintes (bee les écrit)")
+        require(set(new) == {"fingerprints"}, "a single key, fingerprints: the list keeps only fingerprints (bee writes them)")
         if require(old_items is not None and new_items is not None and new_items[:len(old_items)] == old_items,
-                  "la liste de non-contact est en ajout seul : on n'en retire ni n'en modifie aucune entrée (un refus est définitif)"):
-            require(is_council or new_items == old_items, "seul le conseil inscrit une personne sur la liste de non-contact")
+                  "the do-not-contact list is append-only: no entry is removed from it or changed (a refusal is final)"):
+            require(is_council or new_items == old_items, "only the council adds a person to the do-not-contact list")
             seen_items = set(old_items)
             for x in new_items[len(old_items):]:
-                require(bool(FINGERPRINT.match(x)), f"« {_clean(x)[:80]} » n'est pas une empreinte (SHA-256 en hexadécimal, 64 "
-                                                 "caractères de 0-9 a-f) : jamais un identifiant en clair (bee l'écrit)")
-                require(x not in seen_items, f"« {x} » est déjà sur la liste")
+                require(bool(FINGERPRINT.match(x)), f"« {_clean(x)[:80]} » is not a fingerprint (SHA-256 in hexadecimal, 64 "
+                                                 "characters of 0-9 a-f): never a plain-text identifier (bee writes it)")
+                require(x not in seen_items, f"« {x} » is already on the list")
                 seen_items.add(x)
         return natures, problems_found, sendings
     if git_status == "A":
         natures.append("invitation")
-        require(author in reg.members or author in reg.council, f"{author} doit d'abord s'inscrire (bee register)")
-        require(new.get("proposed_by") == author, f"on ne propose une invitation qu'en son nom ({author})")
-        require(new.get("id") == pathlib.PurePosixPath(path).stem, "id différent du nom de fichier")
+        require(author in reg.members or author in reg.council, f"{author} must register first (bee register)")
+        require(new.get("proposed_by") == author, f"an invitation is proposed only in one's own name ({author})")
+        require(new.get("id") == pathlib.PurePosixPath(path).stem, "id different from the file name")
         require(new.get("status") == "proposed" and not any(g in new for g in INVITATION_GESTURES),
-               "une invitation naît proposée, sans accord, envoi ni réponse")
+               "an invitation is born proposed, without approval, sending or answer")
         problem_text = pr_date_problem(new.get("proposed_at"), "proposed_at", instant)
-        require(problem_text is None, f"{problem_text} : relancez bee invite")
+        require(problem_text is None, f"{problem_text}: run bee invite again")
         for refusal in invitation_refusal(reg, new, council=is_council, instant=instant):
             require(False, refusal)
         if {fingerprint(c) for c in own_identities(new)} & removed_fingerprints(reg):
             natures.append("requested_removal_recorded")  # ruche-0048 : un signal neutre pour le conseil, jamais un refus
         return natures, problems_found, sendings
-    if not require(isinstance(old, dict), "fichier illisible dans la base"):
+    if not require(isinstance(old, dict), "file unreadable in the base"):
         return natures, problems_found, sendings
     if old == new:
         natures.append("governance")
-        require(is_council, "rien ne change dans les données : une PR ne reformate pas une invitation")
+        require(is_council, "nothing changes in the data: a PR does not reformat an invitation")
         return natures, problems_found, sendings
     added_items = [g for g in INVITATION_GESTURES if g in new and g not in old]
     # Au refus ou à la demande de la personne, son dossier se retire dans la même PR (commandement 10) : c'est la seule
@@ -5426,37 +5426,37 @@ def check_invitation(reg, path, git_status, old, new, author, *, is_council, ins
     revised_ones = [c for c in ("why", "message", "namesake") if not cause and old.get(c) != new.get(c)]
     if revised_ones:  # ruche-0047: a granted invitation is frozen; a revision drops its agreements, given again after 72 h
         natures.append("invitation")
-        require(not any(g in new for g in INVITATION_GESTURES), f"{', '.join(revised_ones)} ne change jamais sous un accord : la PR qui "
-               "révise une invitation retire l'accord du gardien et le feu vert du conseil, qui se redonnent ensuite")
+        require(not any(g in new for g in INVITATION_GESTURES), f"{', '.join(revised_ones)} never changes under an approval: the PR that "
+               "revises an invitation removes the guardian's approval and the council's green light, given again afterwards")
         require(invitation_state(old) in ("proposed", "decided") and not expired(old, instant, growth_config(reg))
-               and (author == old.get("proposed_by") or is_council), "seuls le proposant et le conseil révisent une invitation, avant l'envoi")
+               and (author == old.get("proposed_by") or is_council), "only the proposer and the council revise an invitation, before the sending")
         problem_text = pr_date_problem(new.get("proposed_at"), "proposed_at", instant)
-        require(problem_text is None and new.get("status") == "proposed", f"{problem_text or 'status'} : révisée, elle est proposée de nouveau")
-        problems_found += [f"{path} : {r}" for r in invitation_refusal(reg, new, council=is_council, instant=instant)]
+        require(problem_text is None and new.get("status") == "proposed", f"{problem_text or 'status'}: revised, it is proposed again")
+        problems_found += [f"{path}: {r}" for r in invitation_refusal(reg, new, council=is_council, instant=instant)]
     for key in sorted(set(old) | set(new)):
         if revised_ones and key in ("why", "message", "namesake", "status", "proposed_at") + INVITATION_GESTURES:
             continue
         if key != "status" and key not in INVITATION_GESTURES:
             require(reference.get(key) == new.get(key),
-                   f"{key} : le dossier de la personne se retire, à son refus, à son silence ou à sa demande (« {REMOVED[cause]} », "
-                   "bee l'écrit)"
+                   f"{key}: the person's file is withdrawn, at their refusal, their silence or their request (« {REMOVED[cause]} », "
+                   "bee writes it)"
                    if cause and key in PERSON_FIELDS else
-                   f"{key} ne change jamais : pour un autre message, écartez l'invitation et proposez-en une nouvelle")
+                   f"{key} never changes: for another message, set the invitation aside and propose a new one")
         elif key in old and key != "status":
-            require(reference[key] == new.get(key), f"{key} : les gestes sont en ajout seul, on n'en modifie ni n'en retire aucun"
-                   + (f" (seul le motif d'un écart se retire : « {REMOVED[cause]} »)" if cause else ""))
+            require(reference[key] == new.get(key), f"{key}: gestures are append-only, none is changed or removed"
+                   + (f" (only a dismissal's reason is withdrawn: « {REMOVED[cause]} »)" if cause else ""))
     if revised_ones:
         return natures, problems_found, sendings
-    if not require(len(added_items) == 1, f"un geste par PR et par invitation ({', '.join(added_items) or 'aucun'}) : bee invitation l'écrit"):
+    if not require(len(added_items) == 1, f"one gesture per PR and per invitation ({', '.join(added_items) or 'none'}): bee invitation writes it"):
         natures.append("governance")
         return natures, problems_found, sendings
     gesture = added_items[0]
     natures.append(NATURES_INVITATION[gesture])
     block = block_of(new, gesture)
-    require(block.get("by") == author, f"{gesture} : un geste est signé de l'auteur de la PR ({author}), pas de « {block.get('by')} »")
+    require(block.get("by") == author, f"{gesture}: a gesture is signed by the PR's author ({author}), not by « {block.get('by')} »")
     problem_text = pr_date_problem(block.get("at"), f"{gesture}.at", instant)
-    require(problem_text is None, f"{problem_text} : relancez bee invitation")
-    require(new.get("status") == invitation_state(new), f"status « {new.get('status')} » au lieu de "
+    require(problem_text is None, f"{problem_text}: run bee invitation again")
+    require(new.get("status") == invitation_state(new), f"status « {new.get('status')} » instead of "
                                                               f"« {invitation_state(new)} »")
     publishing = published_at(reg, base, path, old) if gesture in ("guardian_approval", "council_approval") else None
     try:  # ruche-0050: an accord is judged on its debate as it is on main (a closure or a marking in the same PR changes nothing)
@@ -5471,9 +5471,9 @@ def check_invitation(reg, path, git_status, old, new, author, *, is_council, ins
         # Les identifiants ne sont pas nommés ici : le journal de la PR est public (répétition générale n° 3).
         expected_items = to_register(old)
         are_missing = [x for x in expected_items if fingerprint(x) not in not_contacted(reg)]
-        require(not are_missing, f"{len(are_missing)} empreinte(s) sur {len(expected_items)} (l'identifiant de la personne, son canal, ses autres "
-                             f"identités déclarées) manquent dans {PATH_NO_CONTACT} : elles s'y inscrivent dans la même PR (bee invitation "
-                             f"{'withdraw' if gesture == 'withdrawal' else 'record-answer'} le fait) : on ne la contactera plus jamais")
+        require(not are_missing, f"{len(are_missing)} fingerprint(s) of {len(expected_items)} (the person's identifier, their channel, their other "
+                             f"declared identities) missing from {PATH_NO_CONTACT}: they are added to it in the same PR (bee invitation "
+                             f"{'withdraw' if gesture == 'withdrawal' else 'record-answer'} does it): the person will never be contacted again")
     return natures, problems_found, sendings
 
 
@@ -5516,13 +5516,13 @@ def request_problem(reg, entry):
     try:
         day, withdrawal = dt.date.fromisoformat(str(request["at"])), dt.date.fromisoformat(str(entry["at"])[:10])
     except ValueError:
-        return "request.at : une date réelle (AAAA-MM-JJ)"
+        return "request.at: a real date (YYYY-MM-DD)"
     if not dt.date(2026, 10, 1) <= day <= withdrawal:
-        return "request.at : du 2026-10-01 au jour du retrait"
+        return "request.at: from 2026-10-01 to the day of the removal"
     if ("reference" in request) != (request["channel"] in ("issue", "discussion")):
-        return "une référence publique (--reference) si, et seulement si, la demande a été faite en public (canal issue ou discussion)"
+        return "a public reference (--reference) if, and only if, the request was made in public (channel issue or discussion)"
     if "reference" in request and request["reference"].split("/")[4] not in hive_repos(reg):
-        return "reference : une issue ou une discussion d'un dépôt de la ruche (le registre, un fork de projects/)"
+        return "reference: an issue or a discussion of a repository of the hive (the registry, a fork of projects/)"
     return None
 
 
@@ -5530,17 +5530,17 @@ def passages_problem(reg, found_items, entry, old_items, instant):
     """None, ou pourquoi ces passages ({place_of: passages} par fichier) ne se retirent pas : la commande et la porte en jugent de même."""
     passages = [p for t in found_items for v in t.values() for p in v]
     if entry.get("passages") != len(passages):  # ruche-0116 : ceux des commentaires signalés compris
-        return f"passages : {len(passages)}, le nombre de passages que retire la PR"
+        return f"passages: {len(passages)}, the number of passages the PR removes"
     if max((sum(e in p[1] for p in passages) for e in {e for p in passages for e in p[1]}), default=0) > REMOVAL_PASSAGES_MAX:
-        return f"une empreinte nomme plus de {REMOVAL_PASSAGES_MAX} passages : trop courante pour une personne"
+        return f"a fingerprint names more than {REMOVAL_PASSAGES_MAX} passages: too common for a person"
     if len(passages) > REMOVAL_TOTAL_MAX:
-        return f"plus de {REMOVAL_TOTAL_MAX} passages en un retrait"
+        return f"more than {REMOVAL_TOTAL_MAX} passages in one removal"
     beginning = en_iso(instant - dt.timedelta(days=7) - TOLERANCE_DATE)  # depuis l'heure de la PR ; un `le` antérieur a pu être antidaté de 2 h
     if len(passages) + sum(r.get("passages", 0) for r in old_items if str(r.get("at")) > beginning) > REMOVAL_WEEK_MAX:
-        return f"plus de {REMOVAL_WEEK_MAX} passages en 7 jours glissants, tous retraits confondus ({PATH_REMOVALS})"
+        return f"more than {REMOVAL_WEEK_MAX} passages over a rolling 7 days, all removals together ({PATH_REMOVALS})"
     protected = protected_fingerprints(reg)
     if any(passage_fingerprints(m.strip(PUNCTUATION)) & protected for p in passages for m in p[2].split()):
-        return "un passage retiré contient un pseudo de la ruche, un projet ou un numéro"
+        return "a removed passage contains a login of the hive, a project or a number"
     return None
 
 
@@ -5548,7 +5548,7 @@ def check_removal(reg, base, head, changes, author, is_council, instant):
     """Un retrait demandé (ruche-0048) : du conseil, une entrée canonique ajoutée ; tout autre fichier, parcouru et ordinaire, est
     exactement removal_of de sa base ; des passages permis (passages_problem) ; plus rien ne la nomme dans la tête."""
     if not is_council:  # avant de lire quoi que ce soit
-        return [f"{PATH_REMOVALS} : {author} n'est pas du conseil : seul le conseil consigne un retrait demandé"]
+        return [f"{PATH_REMOVALS}: {author} is not on the council: only the council records a requested removal"]
     read = lambda ref, c: (s.stdout.decode("utf-8", "replace") if (s := subprocess.run(  # noqa: E731
         ["git", "-C", str(reg.root), "cat-file", "blob", f"{ref}:{c}"], capture_output=True)).returncode == 0 else None)
     before = after = None  # mal formé (clé en double, ancre…) : un refus net
@@ -5562,16 +5562,16 @@ def check_removal(reg, base, head, changes, author, is_council, instant):
     errors = ["/".join(map(str, e.absolute_path)) for e in reg.schema("removals").iter_errors(after)] if after is not None else ["?"]
     if (errors or not canonical or not isinstance(old_items, list) or len(after["removals"]) != len(old_items) + 1
             or after["removals"][:-1] != old_items):
-        return [f"{PATH_REMOVALS} : en ajout seul, une entrée par PR, telle que l'écrit bee remove-data ({', '.join(errors[:3])})"]
+        return [f"{PATH_REMOVALS}: append-only, one entry per PR, as bee remove-data writes it ({', '.join(errors[:3])})"]
     entry = after["removals"][-1]
     fingerprints, found_items, others = set(entry["fingerprints"]), [], 0
-    problems_found = [f"{PATH_REMOVALS} : {p}" for p in (
-        None if entry["by"] == author else f"by : l'auteur de la PR ({author})", request_problem(reg, entry),
-        pr_date_problem(entry["at"], "at", instant), "un pseudo de la ruche, un projet ou un numéro ne se retire jamais"
+    problems_found = [f"{PATH_REMOVALS}: {p}" for p in (
+        None if entry["by"] == author else f"by: the PR's author ({author})", request_problem(reg, entry),
+        pr_date_problem(entry["at"], "at", instant), "a login of the hive, a project or a number is never removed"
         if fingerprints & protected_fingerprints(reg) else None) if p]
     for meta, path in git(reg.root, "diff", "-z", "--raw", "--no-renames", f"{base}...{head}"):  # ruche-0043 : ni lien ni mode
         if meta.split()[1] != "100644" or meta.split()[0] not in (":100644", ":000000"):
-            problems_found.append(f"{path} : un retrait ne change que le texte d'un fichier ordinaire (100644), ni lien, ni mode, ni suppression")
+            problems_found.append(f"{path}: a removal changes only the text of a regular file (100644), no link, no mode, no deletion")
     for git_status, path in (c for c in changes if c[1] != PATH_REMOVALS):
         old, new, others, ok = read(base, path), read(head, path), others + 1, False
         with contextlib.suppress(BeeError, TypeError, AttributeError, KeyError, IndexError):
@@ -5585,14 +5585,14 @@ def check_removal(reg, base, head, changes, author, is_council, instant):
                 ok = head_d == after_d and comments_in_place(old, new, fingerprints, t.setdefault("#", [])) and (  # ruche-0140
                     scanned_kind(path) not in ("debates", "invitations") or new == text_after(path, old, None, head_d, set()))
         if not ok:
-            problems_found.append(f"{path} : un retrait demandé ne change, dans les fichiers qu'il parcourt, que les passages qui nomment "
-                             f"la personne (une empreinte consignée), chacun devenu {REMOVAL_MARKER} (bee remove-data l'écrit)")
+            problems_found.append(f"{path}: a requested removal changes, in the files it scans, only the passages that name "
+                             f"the person (a recorded fingerprint), each turned into {REMOVAL_MARKER} (bee remove-data writes it)")
     if not others:
-        problems_found.append(f"{PATH_REMOVALS} : un retrait qui ne retire rien ne se consigne pas")
+        problems_found.append(f"{PATH_REMOVALS}: a removal that removes nothing is not recorded")
     if problem_text := passages_problem(reg, found_items, entry, old_items, instant):
-        problems_found.append(f"{PATH_REMOVALS} : {problem_text}")
+        problems_found.append(f"{PATH_REMOVALS}: {problem_text}")
     if rest_of := sorted({*(b := sweep(reg, entry))[0], *(c for c, _ in b[1])}):  # ruche-0116 : un commentaire compris
-        problems_found.append(f"{', '.join(rest_of[:5])} : nomment encore la personne (une empreinte consignée) : bee remove-data les retire")
+        problems_found.append(f"{', '.join(rest_of[:5])}: still name the person (a recorded fingerprint): bee remove-data removes them")
     return problems_found
 
 
