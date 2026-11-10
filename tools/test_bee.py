@@ -1548,7 +1548,7 @@ class TestRegistry(BaseTest):
         path.write_text(FILLED_MANIFEST.split("measurements:")[0] + "tested: [tests]\nuntested: []\ndoubts: Aucun.\nactual_size: S\n", encoding="utf-8")
         code, text = self.bee("validate-manifest", str(path))
         self.assertEqual(code, 1)
-        self.assertIn("commandement 2", text)
+        self.assertIn("commandment 2", text)
 
     def test_submission_review_vote_verdict_score(self):
         self.contributors("bruno")  # sa relecture compte pour la confiance C (pas celle d'un Nouveau)
@@ -2072,7 +2072,7 @@ class TestRegistry(BaseTest):
                 self.set_common_judge_min(value)
                 code, text = self.bee("validate")
                 self.assertEqual(code, 1, text)
-                self.assertIn("common_judge_min : entier de 1 à 9999 attendu", text)
+                self.assertIn("common_judge_min: integer from 1 to 9999 expected", text)
         self.set_common_judge_min(2)
         self.valid_one()
         path = self.dir / "bee.yaml"  # ruche-0144 : la porte toujours fermée (true) ne lit pas le minimum, mais la clé reste exigée
@@ -2081,7 +2081,7 @@ class TestRegistry(BaseTest):
         self.set_common_judge_min(None)
         code, text = self.bee("validate")
         self.assertEqual(code, 1, text)
-        self.assertIn("common_judge_min : entier de 1 à 9999 attendu", text)
+        self.assertIn("common_judge_min: integer from 1 to 9999 expected", text)
         self.set_common_judge_min(2)
         self.valid_one()
 
@@ -2215,7 +2215,7 @@ class TestRegistry(BaseTest):
                         {"voter": "alice", "subject": cid, "value": 1, "at": "2026-10-27T12:00:00Z"})
         code, text = self.bee("validate")
         self.assertEqual(code, 1)
-        self.assertIn("commandement 3", text)
+        self.assertIn("commandment 3", text)
 
     def test_pr_outside_fork_refused(self):
         self.bee("take", "miniz-0099", "--user", "alice")
@@ -2228,20 +2228,20 @@ class TestRegistry(BaseTest):
                          "status": "in_review", "submitted_at": "2026-10-27T12:00:00Z", "reviews": []})
         code, text = self.bee("validate")
         self.assertEqual(code, 1)
-        self.assertIn("fork du projet", text)
+        self.assertIn("project's fork", text)
 
     def test_zero_measurements_refused(self):
         path = self.dir / "CONTRIBUTION.yaml"
         path.write_text(FILLED_MANIFEST.replace("debit_compression_n6: 55.0", "debit_compression_n6: 0"), encoding="utf-8")
         code, text = self.bee("validate-manifest", str(path))
         self.assertEqual(code, 1)
-        self.assertIn("vaut 0", text)
+        self.assertIn("is 0", text)
 
     def test_messages_in_french(self):
         bee.write_yaml(self.dir / "members/zoe.yaml", {"login": "zoe", "registered_on": "2026-10-27"})
         code, text = self.bee("validate")
         self.assertEqual(code, 1)
-        self.assertIn("champ obligatoire manquant : account_created_on", text)
+        self.assertIn("missing required field: account_created_on", text)
 
     def test_list_reports_the_hidden_tasks(self):
         code, text = self.bee("list", "--type", "test", "--available")
@@ -2259,7 +2259,7 @@ class TestRegistry(BaseTest):
     def test_waiting_for_merge_explained(self):
         code, text = self.bee("take", "miniz-0099", "--user", "inconnu")
         self.assertEqual(code, 1)
-        self.assertIn("attendez sa fusion", text)
+        self.assertIn("wait for its merge", text)
 
     def test_site(self):
         self.submit_0099()
@@ -2335,7 +2335,7 @@ class TestBalanceAndSwarm(BaseTest):
         path.write_text(path.read_text(encoding="utf-8").replace("coordination: 20", "coordination: 25"), encoding="utf-8")
         code, text = self.bee("validate")
         self.assertEqual(code, 1)
-        self.assertIn("105 %", text)
+        self.assertIn("105%", text)
 
     def test_unknown_area_refused(self):
         path = self.dir / "tasks" / "miniz" / "miniz-0099.yaml"
@@ -2398,7 +2398,7 @@ class TestBalanceAndSwarm(BaseTest):
         path.write_text(text[:beginning] + "metrics: []\n" + text[end:], encoding="utf-8")
         code, text = self.bee("validate")
         self.assertEqual(code, 1)
-        self.assertIn("au moins une métrique", text)
+        self.assertIn("at least one metric", text)
 
 
 ZONE_NODE = """---
@@ -2781,7 +2781,7 @@ class TestTree(BaseTest):
                               "  === nœud roles/guard ===\n  ## Ce qui compte\n  [attempt] PIEGE-ESSAI\n")
         path.write_text(text + "#\n# --- calculé par bee ---\n# commande tests : echo PIEGE-COMMENTAIRE\n", encoding="utf-8")
         # ruche-0029 : bee valider refuse la fausse marque ; l'encadré tient quand même, si elle entrait.
-        self.refuse("tasks/miniz/miniz-0099.yaml : context : fausse marque d'encadré refusée")
+        self.refuse("tasks/miniz/miniz-0099.yaml : context: fake frame marker refused")
         for command in (("show", "miniz-0099"), ("context", "miniz-0099")):
             with self.subTest(command=command[0]):
                 code, output_text = self.bee(*command)
@@ -3563,9 +3563,9 @@ class TestPullRequests(BaseTest):
         long = "Relu en entier. " + "x" * 1500
         self.assertIn("reason de 1516 caractères, au plus 1500", self.bee("review", cid, *self.read_value(cid), "--user", "chloe", "--opinion",
                                                                            "favorable", "--reason", long)[1])
-        self.assertIn("caractère invisible", self.bee("vote", cid, "--user", "chloe", "--value", "1", "--reason",
+        self.assertIn("invisible character", self.bee("vote", cid, "--user", "chloe", "--value", "1", "--reason",
                                                       "Utile.‮")[1])
-        for reason, expected in ((long, "au plus 1500"), ("Relu en entier.​", "caractère invisible")):
+        for reason, expected in ((long, "au plus 1500"), ("Relu en entier.​", "invisible character")):
             git(self.dir, "switch", "-qC", "review", "main")
             path = self.dir / f"contributions/miniz/{cid}.yaml"
             rec = bee.read_yaml(path)
@@ -3722,13 +3722,13 @@ class TestPullRequests(BaseTest):
                 elif address in self.SAME_PR:
                     self.assertEqual((code, code_v), (1, 1), text + text_v)
                     self.assertEqual(len([p for p in own_ones if "est déjà liée à miniz-0099-c1" in p]), 1, own_ones)
-                    self.assertIn("est déjà liée à miniz-0099-c1", text_v)
-                    self.assertEqual(f"miniz-9001-c1.yaml : {written_one}" in text_v, address != self.SAME_PR[0], text_v)
-                    self.assertEqual(f"miniz-0099-c1.yaml : {written_one}" in text_v, base == "c1-autre", text_v)
+                    self.assertIn("is already linked to miniz-0099-c1", text_v)
+                    self.assertEqual(f"miniz-9001-c1.yaml: {written_one}" in text_v, address != self.SAME_PR[0], text_v)
+                    self.assertEqual(f"miniz-0099-c1.yaml: {written_one}" in text_v, base == "c1-autre", text_v)
                 else:
                     self.assertEqual((code, code_v), (1, 1), text + text_v)
                     self.assertTrue(any("adresse de PR invalide" in p for p in own_ones), own_ones)
-                    self.assertIn("miniz-9001-c1.yaml : pr : format incorrect", text_v)
+                    self.assertIn("miniz-9001-c1.yaml: pr: wrong format", text_v)
 
     def test_check_pr_quotes_a_declared_pr_and_task_on_one_line(self):
         """ruche-0088: the PR address and the task a contribution declares are quoted in check-pr's messages, neutralised."""
@@ -3967,7 +3967,7 @@ class TestPublish(BasePublish):
         "page de forge": ("Voir https://amont-fictif.github.io/miniz", "mène hors de Bee-ruche"),
         "email": ("Écrire à jean.dupont@example.org", "une adresse de courriel"),
         "téléphone": ("Au 06 12 34 56 78", "un numéro de téléphone"),
-        "caractère invisible": ("Réservation\u2060 miniz-0099", "(U+2060, catégorie Cf)"),
+        "caractère invisible": ("Réservation\u2060 miniz-0099", "(U+2060, category Cf)"),
     }
     # The adversarial review's texts (31/10 fix round): read in code too (B1), entities decoded (B2), raw and NFKC forms (B3), only
     # the GitHub owner Bee-ruche is inside (S1), no link that hides where it leads and no relative link outside (S2).
@@ -4049,7 +4049,7 @@ class TestPublish(BasePublish):
                         with self.subTest(name=name, options=options[::2], dry_run=dry_run):
                             code, output_text = self.bee("publish", *options, *dry_run)
                             self.assertEqual(code, 1, output_text)
-                            self.assertIn(f"{'body' if '--body' in options else 'title'} : ", output_text)
+                            self.assertIn(f"bee : {'body' if '--body' in options else 'title'}", output_text)
                             self.assertIn(cause, output_text)
         code, output_text = self.bee("publish", "--title", "Merci @octocat", "--interval", "0")  # the real thing, real git
         self.assertEqual(code, 1, output_text)
@@ -5016,7 +5016,7 @@ class TestParallelWork(BaseParallel):
         self.assertIn("titulaire", self.parallel_one("miniz-0099", "alice", expected=1))
         self.parallel_one("miniz-0099", "bruno")
         self.assertIn("déjà inscrit", self.parallel_one("miniz-0099", "bruno", expected=1))
-        self.assertIn("attendez sa fusion", self.parallel_one("miniz-0099", "inconnu", expected=1))
+        self.assertIn("wait for its merge", self.parallel_one("miniz-0099", "inconnu", expected=1))
         code, text = self.bee("take", "miniz-0099", "--user", "chloe")
         self.assertEqual(code, 1)
         self.assertIn("--parallel", text, "une réservation refusée indique comment travailler aussi sur la tâche")
@@ -5252,16 +5252,16 @@ class TestParallelWork(BaseParallel):
         bee.modify_task(path, parallel=[{"user": "bruno", "since": "2026-10-27T12:00:00Z"}])
         code, text = self.bee("validate")
         self.assertEqual(code, 1, "pas d'inscription en parallèle sur une tâche ouverte")
-        self.assertIn("champ non permis", text)
+        self.assertIn("field not allowed", text)
         bee.modify_task(path, status="reserved", reservation={"user": "bruno", "since": "2026-10-27T12:00:00Z"})
         code, text = self.bee("validate")
         self.assertEqual(code, 1)
-        self.assertIn("est le titulaire", text)
+        self.assertIn("is the holder", text)
         bee.modify_task(path, parallel=[{"user": "chloe", "since": "2026-10-27T12:00:00Z"},
                                                {"user": "chloe", "since": "2026-10-27T12:30:00Z"}])
         code, text = self.bee("validate")
         self.assertEqual(code, 1)
-        self.assertIn("déjà inscrit en parallèle", text)
+        self.assertIn("already registered in parallel", text)
 
 
 class TestRace(BaseParallel):
@@ -5734,7 +5734,7 @@ class TestParallelPullRequests(BaseParallel):
         # Écartée au profit d'une contribution qui n'est pas intégrée : le registre lui-même est invalide.
         code, text = self.bee("validate")
         self.assertEqual(code, 1)
-        self.assertIn("qui n'est pas une contribution intégrée de la même tâche", text)
+        self.assertIn("which is not an integrated contribution of the same task", text)
 
     def test_setting_aside_in_the_same_commit_as_the_integration(self):
         self.main_reserved_with_registered("bruno")
@@ -5821,7 +5821,7 @@ class TestParallelPullRequests(BaseParallel):
                 code, text = self.verify("bidji29")
                 self.assertEqual(code, 0 if accepted else 1, text)
                 if not accepted:
-                    self.assertIn(f"tasks/miniz/{tid}.yaml : since ({since}) doit être l'heure de la PR", text)
+                    self.assertIn(f"tasks/miniz/{tid}.yaml : since ({since}) must be the time of the PR", text)
 
     def test_engagement_dates_are_checked_at_the_push_whenever_the_check_runs(self):
         """ruche-0091: the reservation, then the parallel registration, written by bee at the push (12:00, --pr-time) pass
@@ -6324,7 +6324,7 @@ class TestAdversarialReview(BaseParallel):
                            contribution="bzip2-9001-c1")
         code, text = self.bee("validate")
         self.assertEqual(code, 1)
-        self.assertIn("n'a pas de fork", text)
+        self.assertIn("has no fork", text)
 
     # --- I1 : un participant engagé ne juge pas, quelle que soit la date ---
 
@@ -6519,7 +6519,7 @@ class TestAdversarialReview(BaseParallel):
         self.commit()
         code, text = self.bee("validate")
         self.assertEqual(code, 1, text)
-        self.assertIn("clé « parallel » en double", text)
+        self.assertIn("duplicate key « parallel »", text)
         code, text = self.verify("chloe", "--auto-merge")
         self.assertEqual(code, 1, text)
         with self.assertRaises(bee.BeeError):
@@ -6532,7 +6532,7 @@ class TestAdversarialReview(BaseParallel):
         self.commit()
         code, text = self.verify("alice", "--auto-merge")
         self.assertEqual(code, 1, text)
-        self.assertIn("clé « reservation » en double", text)
+        self.assertIn("duplicate key « reservation »", text)
 
     # --- M1, M2, M3, m4 ---
 
@@ -7049,7 +7049,7 @@ class TestAdversarialReview(BaseParallel):
                 self.commit()
                 code, output_text = self.bee("validate")
                 self.assertEqual(code, 1, output_text)
-                self.assertIn("ne se relit pas seul", output_text)
+                self.assertIn("does not read back alone", output_text)
                 code, output_text = self.verify("chloe", "--auto-merge")
                 self.assertEqual(code, 1, output_text)
         # Un commentaire en colonne 0 entre deux clés reste permis, et les robots écrivent toujours une forme acceptée.
@@ -7181,7 +7181,7 @@ class TestAdversarialReview(BaseParallel):
         self.a("2026-10-27T16:00:00Z")
         code, text = self.bee("take", "miniz-0099", "--user", "bruno", "--parallel")
         self.assertEqual(code, 1, text)
-        self.assertIn("n'y entre plus", text)
+        self.assertIn("does not enter it", text)
         # Écrite à la main, l'inscription est refusée par verifier-pr.
         self.branch("return_value")
         bee.modify_task(self.dir / "tasks/miniz/miniz-0099.yaml",
@@ -7189,7 +7189,7 @@ class TestAdversarialReview(BaseParallel):
         self.commit()
         code, text = self.verify("bruno", "--auto-merge")
         self.assertEqual(code, 1, text)
-        self.assertIn("n'y entre plus", text)
+        self.assertIn("does not enter it", text)
         # Même règle pour david, qui a donné l'avis défavorable ; chloe, qui n'a rien jugé, s'inscrit.
         git(self.dir, "switch", "-q", "main")
         self.assertEqual(self.bee("take", "miniz-0099", "--user", "david", "--parallel")[0], 1)
@@ -7213,7 +7213,7 @@ class TestAdversarialReview(BaseParallel):
         self.assertEqual(code, 1, text)
         self.assertIn("reviews/1", text)
         self.assertIn("reviews/2", text)
-        self.assertNotIn("reviews/0 : un défaut", text)
+        self.assertNotIn("reviews/0: a confirmed defect", text)
 
 
 class TestVerdictsOfTheRecordedPr(BaseParallel):
@@ -7463,7 +7463,7 @@ class TestVerdictsOfTheRecordedPr(BaseParallel):
         self.assertNotIn("awaiting_verdict", self.rec(self.cid))
         path = self.dir / f"contributions/miniz/{self.cid}.yaml"
         bee.write_yaml(path, {**bee.read_yaml(path), "awaiting_verdict": {"reason": "::error::écrit à la main", "sha": "abc1235"}})
-        self.assertIn("awaiting_verdict/reason n'est pas un code de bee", self.bee("validate")[1])
+        self.assertIn("awaiting_verdict/reason is not a bee code", self.bee("validate")[1])
         self.assertNotIn("écrit à la main", self.ok_show())
 
     def ok_show(self):
@@ -7522,7 +7522,7 @@ class TestVerdictsOfTheRecordedPr(BaseParallel):
         self.valid_one()
         self.assertIn(f"# {self.cid} : aucun verdict pour la tête abc1234 : {bee.VERDICT_WAIT['pr_closed']}", self.ok_show())
         bee.write_yaml(path, {**bee.read_yaml(path), "awaiting_verdict": {"reason": bee.VERDICT_WAIT["pr_closed"], "sha": "abc1234"}})
-        self.assertIn("awaiting_verdict/reason n'est pas un code de bee", self.bee("validate")[1])
+        self.assertIn("awaiting_verdict/reason is not a bee code", self.bee("validate")[1])
         self.assertNotIn("aucun verdict pour la tête", self.ok_show())
 
     def test_freshness_a_pr_changed_less_than_5_minutes_ago_is_judged_at_the_next_pass(self):
@@ -7662,7 +7662,7 @@ class TestAgora(BaseAgora):
         self.ko("n'existe pas dans le registre", "debate", "argue", "D-0001", "--user", "alice", "--position", "fact",
                 "--text", "Source inventée.", "--source", "docs/inexistant.md")
         self.ko("au plus 1500", "debate", "argue", "D-0001", "--user", "alice", "--position", "for", "--text", "x" * 1501)
-        self.ko("caractère invisible ou de contrôle", "debate", "argue", "D-0001", "--user", "alice", "--position", "for",
+        self.ko("invisible character or control character", "debate", "argue", "D-0001", "--user", "alice", "--position", "for",
                 "--text", "texte \x1b[8mcaché")
         self.ko("n'est pas un argument", "debate", "argue", "D-0001", "--user", "alice", "--position", "for",
                 "--text", "Réponse.", "--replies-to", "A9")
@@ -7765,7 +7765,7 @@ class TestAgora(BaseAgora):
         self.assertIn("doit être un participant", text)
         path = self.dir / "bee.yaml"
         path.write_text(path.read_text(encoding="utf-8").replace("text_max: 1500", "text_max: 0"), encoding="utf-8")
-        self.assertIn("agora.text_max : entier positif attendu", self.bee("validate")[1])
+        self.assertIn("agora.text_max: positive integer expected", self.bee("validate")[1])
 
     def test_site_agora_escapes_the_content(self):
         self.debate_of_three()
@@ -8335,7 +8335,7 @@ class TestPullRequestsAgora(BaseAgora):
         text = path.read_text(encoding="utf-8")
         path.write_text(text.replace("\nstatus: open", "\n\"status\": open"), encoding="utf-8")
         self.commit("clé entre guillemets")
-        self.refused("alice", "clé de premier niveau « status »")
+        self.refused("alice", "top-level key « status »")
         git(self.dir, "reset", "-q", "--hard", "main")
         path.write_text(text + "- id: A3\n  by: alice\n  at: '2026-10-29T12:30:00Z'\n  position: for\n  text: &t Copie.\n"
                           "- id: A4\n  by: alice\n  at: '2026-10-29T12:30:00Z'\n  position: for\n  text: *t\n", encoding="utf-8")
@@ -8344,7 +8344,7 @@ class TestPullRequestsAgora(BaseAgora):
         git(self.dir, "reset", "-q", "--hard", "main")
         path.write_text(text.replace("\nrapporteur: alice", "\nrapporteur: alice\nrapporteur: bruno"), encoding="utf-8")
         self.commit("clé en double")
-        self.refused("bruno", "en double")
+        self.refused("bruno", "duplicate")
 
     # --- Revue adverse de l'agora (B1, m1, m2, m3) et liens symboliques : chaque constat est désormais refusé ---
 
@@ -8362,7 +8362,7 @@ class TestPullRequestsAgora(BaseAgora):
             with self.subTest(escaping=escaping):
                 self.add_by_hand("- id: A3\n  by: chloe\n  at: '2026-10-29T13:00:00Z'\n  position: against\n"
                                        f'  text: "Et les comptes multiples ?{escaping}"\n')
-                self.refused("chloe", "caractère invisible ou de contrôle")
+                self.refused("chloe", "invisible character or control character")
                 git(self.dir, "reset", "-q", "--hard", "main")
         self.argue("bruno", "for", "Une réponse.")  # le débat reste écrivable par l'outil
         self.commit()
@@ -8919,14 +8919,14 @@ class TestDressRehearsal(BaseDressRehearsal):
         self.a("2026-10-29T23:06:45Z")
         self.release_and_merge("gaspard")
         self.a("2026-10-29T23:06:54Z")
-        self.ko("R7 : gaspard a quitté cette tâche sans contribution le 2026-10-29T23:06:45Z", "take", "miniz-0099",
+        self.ko("R7: gaspard left this task without a contribution on 2026-10-29T23:06:45Z", "take", "miniz-0099",
                 "--user", "gaspard")
         # Écrite à la main, la reprise est refusée par verifier-pr, qui lit la libération dans l'historique de main.
         self.branch("t13")
         bee.modify_task(self.task_path(), status="reserved", reservation={"user": "gaspard", "since": "2026-10-29T23:06:54Z"})
         self.commit()
-        self.refused("gaspard", "R7 : gaspard a quitté cette tâche sans contribution le 2026-10-29T23:06:45Z",
-                     "il ne la reprend pas avant le 2026-10-30T23:06:45Z")
+        self.refused("gaspard", "R7: gaspard left this task without a contribution on 2026-10-29T23:06:45Z",
+                     "they do not take it back before 2026-10-30T23:06:45Z")
         # Un autre la prend aussitôt ; gaspard, 24 h après sa libération.
         self.branch("bruno")
         self.ok("take", "miniz-0099", "--user", "bruno")
@@ -8943,20 +8943,20 @@ class TestDressRehearsal(BaseDressRehearsal):
         self.ok("release-expired")
         self.commit("expirations (robot)")
         self.a("2026-10-29T12:00:00Z")
-        self.ko("R7 : gaspard a quitté cette tâche sans contribution le 2026-10-29T11:00:00Z", "take", "miniz-0099",
+        self.ko("R7: gaspard left this task without a contribution on 2026-10-29T11:00:00Z", "take", "miniz-0099",
                 "--user", "gaspard")
         # Retrait d'une inscription en parallèle : pas de réinscription avant 24 h.
         self.take_and_merge("alice", "miniz-9001")
         self.take_and_merge("gaspard", "miniz-9001", "--parallel")
         self.a("2026-10-29T12:30:00Z")
         self.release_and_merge("gaspard", "miniz-9001")
-        self.ko("R7 : gaspard a quitté", "take", "miniz-9001", "--user", "gaspard", "--parallel")
+        self.ko("R7: gaspard left", "take", "miniz-9001", "--user", "gaspard", "--parallel")
         self.branch("reinscription")
         t = self.task("miniz-9001")
         bee.modify_task(self.task_path("miniz-9001"), parallel=[{"user": "gaspard", "since": "2026-10-29T12:30:00Z"}])
         self.assertEqual(t.get("parallel"), None)
         self.commit()
-        self.refused("gaspard", "R7 : gaspard a quitté cette tâche sans contribution le 2026-10-29T12:30:00Z")
+        self.refused("gaspard", "R7: gaspard left this task without a contribution on 2026-10-29T12:30:00Z")
         # Une réservation finie par une soumission n'est pas une libération ; mais si la contribution est close sans
         # intégration, c'en est une (revue adverse, I1) : l'auteur ne reprend la tâche rouverte que 24 h après la clôture.
         self.take_and_merge("bruno", "miniz-0099")
@@ -8968,7 +8968,7 @@ class TestDressRehearsal(BaseDressRehearsal):
         self.ok("close", "miniz-0099-c1", "--reason", "PR fermée sans fusion.")
         self.commit("clôture (robot)")
         self.a("2026-10-29T12:40:00Z")
-        self.ko("la contribution miniz-0099-c1 de bruno sur cette tâche a été close sans intégration le 2026-10-29T12:30:00Z",
+        self.ko("the contribution miniz-0099-c1 of bruno on this task was closed without integration on 2026-10-29T12:30:00Z",
                 "take", "miniz-0099", "--user", "bruno")
         self.a("2026-10-30T12:31:00Z")
         self.take_and_merge("bruno", "miniz-0099")
@@ -9106,12 +9106,12 @@ class TestAdversarialReviewRuche0011(BaseDressRehearsal):
         self.ok("close", "miniz-0099-c1", "--reason", "PR fermée sans fusion.")
         self.commit("Automatic integrations and closures (R3)")
         self.a("2026-10-29T23:41:00Z")
-        reason = "R7 : la contribution miniz-0099-c1 de gaspard sur cette tâche a été close sans intégration le 2026-10-29T23:40:00Z"
+        reason = "R7: the contribution miniz-0099-c1 of gaspard on this task was closed without integration on 2026-10-29T23:40:00Z"
         self.ko(reason, "take", "miniz-0099", "--user", "gaspard")
         self.branch("retake")
         bee.modify_task(self.task_path(), status="reserved", reservation={"user": "gaspard", "since": "2026-10-29T23:41:00Z"})
         self.commit()
-        self.refused("gaspard", reason, "il ne la reprend pas avant le 2026-10-30T23:40:00Z")
+        self.refused("gaspard", reason, "they do not take it back before 2026-10-30T23:40:00Z")
         self.a("2026-10-30T23:41:00Z")
         self.take_and_merge("gaspard")
 
@@ -9125,7 +9125,7 @@ class TestAdversarialReviewRuche0011(BaseDressRehearsal):
                  out_of_scope=["y" * 301], files=[f"f{i}.c" for i in range(31)], depends_on=["miniz-0099"] * 11)
         bee.write_yaml(path, t)
         self.commit()
-        self.refused("gaspard", "title : caractère invisible ou de contrôle refusé (U+200B",
+        self.refused("gaspard", "title: invisible character or control character refused (U+200B",
                      "context de 200000 caractères, au plus 3000 (creations.context_max)",
                      "acceptance_criteria : 11 éléments, au plus 10 (creations.items_max)",
                      "out_of_scope/0 de 301 caractères, au plus 300 (creations.item_max)",
@@ -9151,7 +9151,7 @@ class TestAdversarialReviewRuche0011(BaseDressRehearsal):
                   "config": {"architecture": "arm64"}, "metrics": {"debit_compression_n6": {"gain": 0.05, "beyond_noise": True}}}
         for name, hostile, expected in (("tool", {"tool": "bee " + "x" * 300}, "au plus 200"),
                                       ("processor", {"config": {"architecture": "arm64", "processor": "Xeon\u200b"}}, "U+200B"),
-                                      ("reason", {"reason": "Mesure.\u202e"}, "caractère invisible")):
+                                      ("reason", {"reason": "Mesure.\u202e"}, "invisible character")):
             with self.subTest(field=name):
                 self.branch(f"mesure-{name}")
                 bee.write_yaml(self.dir / f"measurements/{cid}/gaspard.yaml", {**measurement, **hostile})
@@ -9176,7 +9176,7 @@ class TestAdversarialReviewRuche0011(BaseDressRehearsal):
         self.commit()
         self.merge("summary")
         self.branch("resume-hostile")
-        self.assertIn("caractère invisible", self.bee("submit", "miniz-9001", "--user", "gaspard", "--pr",
+        self.assertIn("invisible character", self.bee("submit", "miniz-9001", "--user", "gaspard", "--pr",
                                                       "https://github.com/Bee-ruche/minizBee/pull/77003", "--summary", "Essai.\u202e")[1])
         self.ok("submit", "miniz-9001", "--user", "gaspard", "--pr", "https://github.com/Bee-ruche/minizBee/pull/77003")
         path = self.dir / "contributions/miniz/miniz-9001-c1.yaml"
@@ -9196,9 +9196,9 @@ class TestAdversarialReviewRuche0011(BaseDressRehearsal):
             "contribution": cid, "submitted_by": "gaspard", "at": "2026-10-01T00:00:00Z", "base": "2948eeb", "candidate": "839b676",
             "config": {"architecture": "arm64"}, "metrics": {"debit_compression_n6": {"gain": 0.05, "beyond_noise": True}}})
         self.commit()
-        self.refused("gaspard", f"votes/{cid}/gaspard.yaml : at (2099-01-01T00:00:00Z) doit être l'heure de la PR",
-                     f"relecture de gaspard, le (2099-01-01T00:00:00Z) doit être l'heure de la PR",
-                     f"measurements/{cid}/gaspard.yaml : at (2026-10-01T00:00:00Z) doit être l'heure de la PR")
+        self.refused("gaspard", f"votes/{cid}/gaspard.yaml : at (2099-01-01T00:00:00Z) must be the time of the PR",
+                     f"relecture de gaspard, le (2099-01-01T00:00:00Z) must be the time of the PR",
+                     f"measurements/{cid}/gaspard.yaml : at (2026-10-01T00:00:00Z) must be the time of the PR")
         # Les mêmes gestes, écrits par l'outil : en libre-service.
         self.branch("honnete")
         self.ok("vote", cid, "--user", "gaspard", "--value", "1")
@@ -9235,8 +9235,8 @@ class TestAdversarialReviewRuche0011(BaseDressRehearsal):
         code, text = launch("--registry", str(clone), "check-pr", "--base", "main", "--head", "HEAD", "--author", "gaspard",
                              "--auto-merge")
         self.assertEqual(code, 1, text)
-        self.assertIn("l'historique git de main est indisponible", text)
-        self.assertIn("échec fermé", text)
+        self.assertIn("main's git history is unavailable", text)
+        self.assertIn("fail closed", text)
 
     # --- m4 : la confiance C du score ne compte pas les relectures des Nouveaux ---
 
@@ -9624,7 +9624,7 @@ class TestReviewByCommit(BaseParallel):
         self.a("2026-10-29T12:00:00Z")
         self.assertEqual(self.acceptance(self.cid)[0], 0)
         self.parallel_one("miniz-0099", "chloe")
-        self.assertIn("signalé ou confirmé un défaut", self.parallel_one("miniz-0099", "david", expected=1), "signaler est juger")
+        self.assertIn("reported or confirmed a defect", self.parallel_one("miniz-0099", "david", expected=1), "signaler est juger")
         # Écrit hors de l'outil : david en course malgré tout. Son abstention n'est pas recevable ; son défaut de X ne revient pas.
         task_path = self.dir / "tasks/miniz/miniz-0099.yaml"
         bee.modify_task(task_path, parallel=self.task("miniz-0099")["parallel"]
@@ -9735,8 +9735,8 @@ class TestReviewByCommit(BaseParallel):
         first_one = self.cid
         self.ok_("close", self.cid, "--reason", "PR fermée sans fusion.")
         bee.write_yaml(self.dir / "members/Alice.yaml", {**bee.read_yaml(self.dir / "members/alice.yaml"), "login": "Alice"})
-        self.assertIn("« alice » et « Alice » sont le même login GitHub", self.bee("validate")[1].replace("« Alice » et « alice »",
-                                                                                                         "« alice » et « Alice »"))
+        self.assertIn("« alice » and « Alice » are the same GitHub login", self.bee("validate")[1].replace("« Alice » and « alice »",
+                                                                                                         "« alice » and « Alice »"))
         self.ok_("take", "miniz-0099", "--user", "Alice")
         reg = bee.Registry(self.dir)
         self.assertEqual(bee.engagements_of(reg, "ALICE"), [("miniz-0099", "réservation")])
@@ -9836,7 +9836,7 @@ class TestReviewByCommit(BaseParallel):
             self.a(instant)
             self.valid_one()
         self.a("2026-10-28T09:00:00Z")
-        self.assertIn("est dans le futur", self.bee("validate")[1])
+        self.assertIn("is in the future", self.bee("validate")[1])
         # Une levée (jamais en libre-service) n'a que 5 min d'avance : datée dans le futur, elle neutraliserait d'avance.
         self.a("2026-10-28T13:00:00Z")
         path = self.dir / f"contributions/miniz/{self.cid}.yaml"
@@ -9878,7 +9878,7 @@ class TestReviewByCommit(BaseParallel):
         forged = {"reviewer": "bruno", "reason": "Gardien absent, levée motivée par le conseil (forgée).", "by": "bidji29",
                   "at": "2099-01-01T00:00:00Z"}
         bee.write_yaml(path, {**self.rec(self.cid), "lifts": [forged]})
-        self.assertIn("lifts/0/at (2099-01-01T00:00:00Z) est dans le futur", self.bee("validate")[1])
+        self.assertIn("lifts/0/at (2099-01-01T00:00:00Z) is in the future", self.bee("validate")[1])
         self.verdict_at("aaaaaaa")
         for who_is in ("chloe", "david"):
             self.review_(who_is, "favorable")
@@ -9919,7 +9919,7 @@ class TestReviewByCommit(BaseParallel):
         lift = {"reviewer": "bruno", "reason": "Gardien absent depuis deux semaines, correctif relu par deux Contributeurs.",
                  "by": "bidji29", "at": "2026-11-10T12:00:00Z"}
         bee.write_yaml(path, {**rec, "lifts": [{**lift, "by": "chloe"}]})
-        self.assertIn("une levée est écrite par le conseil", self.bee("validate")[1])
+        self.assertIn("a lift is written by the council", self.bee("validate")[1])
         bee.write_yaml(path, {**rec, "lifts": [lift]})
         self.valid_one()
         code, text = self.acceptance(self.cid)
@@ -9936,17 +9936,17 @@ class TestReviewByCommit(BaseParallel):
         path = self.dir / f"contributions/miniz/{self.cid}.yaml"
         rec = self.rec(self.cid)
         base = {"reason": "Écrite à la main.", "at": "2026-10-27T12:00:00Z"}
-        for addition, chunk in (({"reviewer": "chloe", "opinion": "unfavorable", "sha": "abc1234", **base}, "chloe a déjà relu le commit abc1234"),
-                               ({"reviewer": "chloe", "opinion": "unfavorable", **base}, "chloe a déjà relu cette contribution"),
+        for addition, chunk in (({"reviewer": "chloe", "opinion": "unfavorable", "sha": "abc1234", **base}, "chloe already reviewed commit abc1234"),
+                               ({"reviewer": "chloe", "opinion": "unfavorable", **base}, "chloe already reviewed this contribution"),
                                ({"reviewer": "bruno", "opinion": "abstention", "sha": "abc1234", "reported_defect": True, **base},
-                                "une abstention ne signale pas de défaut")):
+                                "an abstention does not report a defect")):
             bee.write_yaml(path, {**rec, "reviews": rec["reviews"] + [addition]})
             code, text = self.bee("validate")
             self.assertEqual(code, 1, text)
             self.assertIn(chunk, text)
         without_it = {"reviewer": "bruno", "opinion": "favorable", **base}
         bee.write_yaml(path, {**rec, "reviews": [without_it, dict(without_it)] + rec["reviews"]})
-        self.assertIn("bruno a déjà relu cette contribution : une relecture sans commit", self.bee("validate")[1])
+        self.assertIn("bruno already reviewed this contribution: a review without a commit", self.bee("validate")[1])
         round_trip = [{"reviewer": "bruno", "opinion": a, "sha": s, **base} for a, s in (("favorable", "abc1234"), ("unfavorable", "def5678"),
                                                                                        ("unfavorable", "abc1234"))]
         bee.write_yaml(path, {**rec, "reviews": rec["reviews"] + round_trip})
@@ -9966,7 +9966,7 @@ class TestReviewByCommit(BaseParallel):
                                   "sans --pr"),
                                  (["--user", "alice"], "sans --pr"),
                                  (["--user", "alice", "--summary", "x" * 501], "au plus 500"),
-                                 (["--user", "alice", "--summary", "Caché\u202e."], "caractère invisible")):
+                                 (["--user", "alice", "--summary", "Caché\u202e."], "invisible character")):
             code, text = self.bee("submit", "miniz-0099", "--update", *options)
             self.assertEqual(code, 1, text)
             self.assertIn(chunk, text)
@@ -10052,7 +10052,7 @@ class TestReviewByCommitPR(BaseDressRehearsal):
         self.review("gaspard")
         self.attack("farid", self.addition(self.review_record("farid", sha="abc1234")), "pas de verdict ni de commit jugé")
         self.attack("gaspard", self.addition(self.review_record("gaspard", "unfavorable")),
-                     "gaspard a déjà relu cette contribution : une relecture sans commit")
+                     "gaspard already reviewed this contribution: a review without a commit")
         self.attack("farid", self.addition(self.review_record("farid", "unfavorable", reported_defect=True)),
                      "un défaut se signale sur le commit jugé, jamais par une abstention")
 
@@ -10067,12 +10067,12 @@ class TestReviewByCommitPR(BaseDressRehearsal):
             ("farid", self.addition(self.review_record("farid", sha="1234567")), "porte le commit du verdict (def5678)"),
             ("farid", self.addition(self.review_record("farid", sha="abc1234")), "porte le commit du verdict (def5678)"),
             ("farid", self.addition(self.review_record("farid")), "porte le commit du verdict (def5678)"),
-            ("gaspard", self.addition(self.review_record("gaspard", "unfavorable", sha="def5678")), "gaspard a déjà relu le commit def5678"),
+            ("gaspard", self.addition(self.review_record("gaspard", "unfavorable", sha="def5678")), "gaspard already reviewed commit def5678"),
             ("farid", self.addition(self.review_record("farid", sha="def5678"), self.review_record("farid", "unfavorable", sha="def5678")),
-             "farid a déjà relu le commit def5678"),
+             "farid already reviewed commit def5678"),
             ("farid", self.addition(self.review_record("farid", sha="def5678"), self.review_record("farid", "abstention", sha="def5678")),
-             "farid a déjà relu le commit def5678"),
-            ("farid", self.addition(self.review_record("farid", sha="def5678", at="2026-10-01T00:00:00Z")), "doit être l'heure de la PR"),
+             "farid already reviewed commit def5678"),
+            ("farid", self.addition(self.review_record("farid", sha="def5678", at="2026-10-01T00:00:00Z")), "must be the time of the PR"),
             ("farid", self.addition(self.review_record("farid", "abstention", sha="def5678", reported_defect=True)),
              "jamais par une abstention"),
             ("farid", self.addition(self.review_record("farid", "neutre", sha="def5678")), "neutre"),
@@ -10128,7 +10128,7 @@ class TestReviewByCommitPR(BaseDressRehearsal):
                 ("github-actions[bot]", lambda e: e.update(lifts=e["lifts"] + [{**lift, "by": "github-actions[bot]"}]),
                  "par le conseil seul"),
                 ("bidji29", lambda e: e.update(lifts=[{**lift, "reason": "Motif réécrit après coup."}]), "en ajout seul"),
-                ("bidji29", lambda e: e.update(lifts=e["lifts"] + [{**lift, "at": "2026-10-01T00:00:00Z"}]), "doit être l'heure de la PR"),
+                ("bidji29", lambda e: e.update(lifts=e["lifts"] + [{**lift, "at": "2026-10-01T00:00:00Z"}]), "must be the time of the PR"),
                 ("zorro", self.addition(self.review_record("zorro", "unfavorable", sha="abc1234", reported_defect=True)), "zorro doit d'abord s'inscrire")):
             with self.subTest(author=author, chunk=chunk):
                 self.attack(author, modify, chunk)
@@ -10146,7 +10146,7 @@ class TestReviewByCommitPR(BaseDressRehearsal):
         self.branch("judge")
         bee.modify_task(self.task_path(), parallel=[{"user": "gaspard", "since": os.environ["BEE_NOW"]}])
         self.commit()
-        self.refused("gaspard", "signalé ou confirmé un défaut")
+        self.refused("gaspard", "reported or confirmed a defect")
         git(self.dir, "switch", "-qf", "main")
 
     def test_tree_of_the_reviews_and_case_of_the_logins(self):
@@ -10172,7 +10172,7 @@ class TestReviewByCommitPR(BaseDressRehearsal):
         self.assertIn("déjà inscrit", self.bee("register", "--login", "Gaspard", "--account-created-on", "2020-01-01")[1])
         bee.write_yaml(self.dir / "members/Gaspard.yaml", {**bee.read_yaml(self.dir / "members/gaspard.yaml"), "login": "Gaspard"})
         self.commit()
-        self.refused("Gaspard", "sont le même login GitHub")
+        self.refused("Gaspard", "are the same GitHub login")
         git(self.dir, "switch", "-qf", "main")
 
     def test_a_contribution_is_born_with_only_the_keys_of_bee_submit(self):
@@ -10216,8 +10216,8 @@ class TestReviewByCommitPR(BaseDressRehearsal):
              "écrits par la CI ou le conseil"),
             ("alice", lambda e: e.update(summary="Autre.", verdict={**e["verdict"], "sha": "def5678"}), "écrits par la CI ou le conseil"),
             ("alice", lambda e: e.update(summary="x" * 501), "au plus 500"),
-            ("alice", lambda e: e.update(summary="Correctif\u200b."), "caractère invisible"),
-            ("alice", lambda e: e.pop("summary"), "summary vide"),
+            ("alice", lambda e: e.update(summary="Correctif\u200b."), "invisible character"),
+            ("alice", lambda e: e.pop("summary"), "summary is empty"),
         ]
         for author, modify, chunk in attacks:
             with self.subTest(chunk=chunk, author=author):
@@ -11099,7 +11099,7 @@ class TestAdversarialReviewRuche0020(BaseReviewRuche0020):
         for options in ({"fact": "Un fait" + cache + "."}, {"message": "Bonjour" + cache + "."}):
             code, text = self.invite_raw(**options)
             self.assertEqual(code, 1, text)
-            self.assertIn("caractère invisible refusé (U+E01", text)
+            self.assertIn("invisible character refused (U+E01", text)
         self.assertFalse(self.invitation_path().exists())
 
     # --- 4. Données personnelles ---
@@ -11137,14 +11137,14 @@ class TestAdversarialReviewRuche0020(BaseReviewRuche0020):
         reason = "Elle préfère être jointe au 06 12 34 56 78 ou à jean.dupont@example.org."
         self.ko("aucune donnée personnelle", "invitation", "dismiss", "I-0001", "--user", "alice", "--reason", reason)
         cache = "Doublon" + "".join(chr(0xE0100 + b) for b in b"x") + "."
-        self.ko("caractère invisible refusé", "invitation", "dismiss", "I-0001", "--user", "alice", "--reason", cache)
+        self.ko("invisible character refused", "invitation", "dismiss", "I-0001", "--user", "alice", "--reason", cache)
         for reason in (reason, cache):
             with self.subTest(reason=reason):
                 self.branch()
                 inv = {**self.invitation(), "set_aside": {"by": "alice", "at": self.now_instant(), "reason": reason}}
                 self.write_invitation({**inv, "status": "set_aside"})
                 self.commit()
-                self.refused("alice", "reason : ")
+                self.refused("alice", "set_aside/reason")
                 self.abandon()
         self.branch()
         self.gesture("dismiss", "alice", "--reason", "Doublon d'une invitation en préparation.")
@@ -12046,7 +12046,7 @@ class TestThirdReviewRuche0020(BaseReviewRuche0020):
         code, text = self.bee("swarm")
         self.assertEqual(code, 0, text)
         self.assertNotIn("Traceback", text)
-        self.assertIn("invitations/I-0001.yaml : le fichier doit contenir un objet YAML", self.bee("validate")[1])
+        self.assertIn("invitations/I-0001.yaml: the file must hold a YAML object", self.bee("validate")[1])
         self.assertIn("illisible(s)", self.invite_raw(identifier="github:hubot")[1])
         self.invitation_path().unlink()
         self.valid_one()
@@ -14583,7 +14583,7 @@ class TestR13FollowableRuche0052(BaseInvitations):
                 "numéro en double": (bee.invitation_render({"incidents": [one_of, {**two, "id": "INC-0001"}]}), "au numéro suivant (INC-0002)"),
                 "numéro sauté": (bee.invitation_render({"incidents": [one_of, {**two, "id": "INC-0007"}]}), "au numéro suivant (INC-0002)"),
                 "date d'hier": (bee.invitation_render({"incidents": [one_of, {**two, "opened_at": "2026-11-01T11:00:00Z"}]}),
-                                "doit être l'heure de la PR")}
+                                "must be the time of the PR")}
         for name, (text, message) in raw.items():
             with self.subTest(name):
                 self.branch()
@@ -14802,12 +14802,12 @@ class TestCopiedManifest(BaseDressRehearsal):
                     frame = output_text[output_text.index("=== DONNÉES du manifeste"):]
                     self.assertLessEqual(len(frame), bee.DECLARED_MAX["rendered"] + 1000, command)
         # bee valider refuse ce qu'une écriture à la main laisserait passer : invisible, échappé, non fini, trop d'éléments, trop écrit.
-        for change_made, chunk in (({"doubts": "a\u202eb"}, "tel que bee record-verdict le recopie"),
-                               ({"doubts": "a\U0010ffffb"}, "tel que bee record-verdict le recopie"),
-                               ({"doubts": "a\nb"}, "tel que bee record-verdict le recopie"),
-                               ({"gain": float("nan")}, "tel que bee record-verdict le recopie"),
+        for change_made, chunk in (({"doubts": "a\u202eb"}, "as bee record-verdict copies it"),
+                               ({"doubts": "a\U0010ffffb"}, "as bee record-verdict copies it"),
+                               ({"doubts": "a\nb"}, "as bee record-verdict copies it"),
+                               ({"gain": float("nan")}, "as bee record-verdict copies it"),
                                ({"tested": ["x"] * 11}, "declared/tested"),
-                               ({"tested": ["'" * 790] * 10}, "tel que bee record-verdict le recopie")):
+                               ({"tested": ["'" * 790] * 10}, "as bee record-verdict copies it")):
             with self.subTest(chunk=chunk, change_made=str(change_made)[:40]):
                 bee.write_yaml(self.path, {**self.rec(), "declared": {**self.HONEST, **change_made}})
                 self.assertIn(chunk, self.bee("validate")[1])
@@ -14916,8 +14916,8 @@ class TestCopiedManifest(BaseDressRehearsal):
                   .replace("{debit_compression_n6: 55.0,", "{debit_compression_n6: 55.0, instructions_n6: 500000,"))
         path.write_text(filled, encoding="utf-8")
         self.ok("validate-manifest", str(path))
-        for text, chunk in ((filled.replace("instructions_n6", "instructions_zz"), "measurements/before/instructions_zz : métrique inconnue"),
-                               (filled.replace("instructions_n6: 500000", "instructions_n6: 0"), "measurements/after/instructions_n6 vaut 0")):
+        for text, chunk in ((filled.replace("instructions_n6", "instructions_zz"), "measurements/before/instructions_zz: metric unknown"),
+                               (filled.replace("instructions_n6: 500000", "instructions_n6: 0"), "measurements/after/instructions_n6 is 0")):
             path.write_text(text, encoding="utf-8")
             self.ko(chunk, "validate-manifest", str(path))
         # Le gain déclaré reste celui de la métrique visée : 10 % de débit, pas les 50 % d'instructions.
@@ -15232,7 +15232,7 @@ class TestRound3(BaseParallel):
         self.submit_()
         self.ok_("vote", self.cid, "--user", "chloe", "--value", "1")
         self.a("2026-10-27T13:00:00Z")
-        self.assertIn("Chloe : votre fiche est chloe", self.bee("vote", self.cid, "--user", "Chloe", "--value", "-1")[1])
+        self.assertIn("Chloe: your member file is chloe", self.bee("vote", self.cid, "--user", "Chloe", "--value", "-1")[1])
         self.assertEqual([c.name for c in (self.dir / f"votes/{self.cid}").glob("*.yaml")], ["chloe.yaml"])
         bee.write_yaml(self.dir / f"votes/{self.cid}/CHLOE.yaml", {"subject": self.cid, "voter": "CHLOE", "value": -1,
                                                                         "at": "2026-10-27T12:30:00Z"})  # écrit à la main
@@ -15476,7 +15476,7 @@ class TestSpelling(BaseInvitations):
 
     def test_n1_an_invitation_is_proposed_under_the_spelling_of_its_record(self):
         source = "https://github.com/octocat"
-        self.ko("Gina : votre fiche est gina", "invite", "--user", "Gina", "--identifier", "github:octocat", "--request",
+        self.ko("Gina: your member file is gina", "invite", "--user", "Gina", "--identifier", "github:octocat", "--request",
                 "guarantor", "--fact", "Maintient un logiciel libre de compression depuis dix ans.", "--source", source,
                 "--message", MESSAGE_INVITATION)
         self.branch()
@@ -15505,7 +15505,7 @@ class TestSpelling(BaseInvitations):
         self.publish("gina", "invitation", free_one=False)
         self.a("2026-11-02T11:00:00Z")
         self.ko("on ne donne pas son accord à sa propre invitation", "invitation", "guardian-approval", "I-0001", "--user", "gina")
-        self.ko("GINA : votre fiche est gina", "invitation", "guardian-approval", "I-0001", "--user", "GINA")
+        self.ko("GINA: your member file is gina", "invitation", "guardian-approval", "I-0001", "--user", "GINA")
 
     def test_n1_the_creations_cap_is_not_bypassed_by_the_case(self):
         last = None
@@ -15514,7 +15514,7 @@ class TestSpelling(BaseInvitations):
             last = self.propose_task("alice")
             self.commit()
             self.merge()
-        self.ko("Alice : votre fiche est alice", "propose-task", "miniz", "--user", "Alice", "--type", "test")
+        self.ko("Alice: your member file is alice", "propose-task", "miniz", "--user", "Alice", "--type", "test")
         next_value = last.with_name(f"miniz-{int(last.stem.rsplit('-', 1)[1]) + 1:04d}.yaml")
         for author, chunks in (("Alice", ["auteur de la PR « Alice » : sa fiche est alice", "created_by « Alice » s'écrit alice"]),
                                  ("alice", ["plafond : alice aurait 6"])):  # témoin honnête : le plafond d'alice tient
@@ -15534,7 +15534,7 @@ class TestSpelling(BaseInvitations):
             self.self_service("gaspard", "note")
             self.merge(f"lot{lot}")
         self.a("2026-10-30T11:30:00Z")
-        self.ko("Gaspard : votre fiche est gaspard", "note", "miniz-0099", "--user", "Gaspard", "--text", "De trop.")
+        self.ko("Gaspard: your member file is gaspard", "note", "miniz-0099", "--user", "Gaspard", "--text", "De trop.")
         for author, chunks in (("Gaspard", ["auteur de la PR « Gaspard » : sa fiche est gaspard", "by « Gaspard » s'écrit gaspard"]),
                                  ("gaspard", ["plafond : gaspard aurait 21 notes en 24 h"])):  # témoin honnête
             self.branch("trop")
@@ -15606,7 +15606,7 @@ class TestBilingualReaders(BaseAgora):
             path.write_text(model.replace(bee.TO_FILL_IN, marker), encoding="utf-8")
             code, outputs[marker] = self.bee("validate-manifest", str(path))
             self.assertEqual(code, 1, outputs[marker])
-        self.assertIn("il reste des champs", outputs[bee.TO_FILL_IN_EN])
+        self.assertIn("fields left at", outputs[bee.TO_FILL_IN_EN])
         self.assertIn("doubts", outputs[bee.TO_FILL_IN_EN])
         self.assertEqual(outputs[bee.TO_FILL_IN_EN], outputs[bee.TO_FILL_IN], "the same refusal, field for field")
         path.write_text(FILLED_MANIFEST, encoding="utf-8")
@@ -15625,8 +15625,8 @@ class TestBilingualReaders(BaseAgora):
                 results.append([p.replace(f"{marker} : x", "<value>") for p in bee.check_manifest(reg, data)])
             with self.subTest(fr=fr, en=en):
                 self.assertEqual(results[1], results[0])
-                self.assertEqual(any("il reste des champs" in p for p in results[0]), refuse, results[0])
-                self.assertEqual(any("repetitions : « <value> » devrait être" in p for p in results[0]), not refuse)
+                self.assertEqual(any("fields left at" in p for p in results[0]), refuse, results[0])
+                self.assertEqual(any("repetitions: « <value> » should be" in p for p in results[0]), not refuse)
 
     # --- Debate links in docs/questions-ouvertes.md ---
 
@@ -15830,18 +15830,18 @@ class TestFreeTextCheck(unittest.TestCase):
         for family, c in HIDDEN_FAMILIES.items():
             with self.subTest(family=family):
                 problem_text = bee.free_text_problem("Un texte" + c + " ordinaire", "f.yaml : reason")
-                self.assertIn(f"f.yaml : reason : caractère invisible refusé ({code_point(c)}, catégorie ", problem_text)
+                self.assertIn(f"f.yaml : reason: invisible character refused ({code_point(c)}, category ", problem_text)
                 self.assertNotIn(c, problem_text)
                 self.assertTrue(bee.forbidden_outgoing_character(c), "au moins aussi strict que forbidden_outgoing_character")
                 self.assertEqual(bee.declared_text("a" + c + "b", 100), f"a<{code_point(c)}>b")
         for c in "\n\t":
             self.assertIsNone(bee.free_text_problem(f"deux{c}lines", "context"))
             self.assertEqual(bee.free_text_problem(f"deux{c}lines", "summary", "le résumé"),
-                             "summary : le résumé tient sur une ligne (ni saut de ligne ni tabulation)")
+                             "summary: le résumé fits on one line (no line break or tab)")
         self.assertIsNone(bee.free_text_problem("Honnête" + HONEST_CONTROL, "reason"))
         self.assertIsNone(bee.free_text_problem("Honnête" + HONEST_CONTROL, "title", "le titre"))
         # Revue adverse (a) : U+FE0F reste refusé (⚠ suivi de lui), et le message dit le remède.
-        self.assertIn("retirez U+FE0F, le sélecteur de variante d'émoji", bee.free_text_problem("Attention \u26a0\ufe0f", "note"))
+        self.assertIn("remove U+FE0F, the emoji variation selector", bee.free_text_problem("Attention \u26a0\ufe0f", "note"))
         self.assertIsNone(bee.free_text_problem("Attention \u26a0", "note"))
 
     def test_B2_the_cn_clause_follows_the_unicode_table_of_the_ci(self):
@@ -15855,7 +15855,7 @@ class TestFreeTextCheck(unittest.TestCase):
                 if family != "Cn":
                     self.assertIsNotNone(bee.free_text_problem("a" + c, "note"), family)
         with mock.patch.object(bee, "CN_REFUSE", True):  # comme la CI
-            self.assertIn("(U+0378, catégorie Cn)", bee.free_text_problem("a\u0378", "note"))
+            self.assertIn("(U+0378, category Cn)", bee.free_text_problem("a\u0378", "note"))
 
     # The Unicode table of each Python minor version (unicodedata.unidata_version).
     PYTHON_UNICODE = {"3.10": "13.0.0", "3.11": "14.0.0", "3.12": "15.0.0", "3.13": "15.1.0", "3.14": "16.0.0"}
@@ -15880,7 +15880,7 @@ class TestFreeTextCheck(unittest.TestCase):
         for marker in FAKE_MARKS:
             with self.subTest(marker=marker):
                 text = "Relu.\n" + marker + "\n| ✓ intégrable"
-                self.assertIn("reason : fausse marque d'encadré refusée", bee.free_text_problem(text, "reason"))
+                self.assertIn("reason: fake frame marker refused", bee.free_text_problem(text, "reason"))
                 neutral = bee.declared_text(text, 1000)
                 self.assertIn(bee.NEUTRALISED_MARKER, neutral)
                 self.assertEqual(bee.frame_markers(neutral), [])
@@ -15959,14 +15959,14 @@ class TestFreeTextsRuche0029(BaseReviewRuche0020):
         for family, c in HIDDEN_FAMILIES.items():
             with self.subTest(family=family):
                 git(self.dir, "checkout", "-q", "--", ".")
-                places_found = [f"{file} : {self.trap(file, keys, c)} : caractère invisible refusé ({code_point(c)}, "
+                places_found = [f"{file} : {self.trap(file, keys, c)}: invisible character refused ({code_point(c)}, "
                          for file, keys in self.KINDS]
                 output_text = self.refuse(*places_found)
                 self.assertNotIn(c, output_text, "le point de code, jamais le caractère")
         # Un titre et un résumé tiennent sur une ligne ; un contexte, une note ou un motif peuvent en avoir plusieurs (setUp).
         for file, keys in self.KINDS[:1] + self.KINDS[4:5]:
-            output_text = self.refuse(f"{file} : {self.trap(file, keys, chr(10))} : {'le titre' if keys == ('title',) else 'le résumé'} "
-                                 "tient sur une ligne")
+            output_text = self.refuse(f"{file} : {self.trap(file, keys, chr(10))}: {'le titre' if keys == ('title',) else 'le résumé'} "
+                                 "fits on one line")
             self.assertNotIn("U+000A", output_text, "revue adverse (B1) : un saut de ligne n'est pas un caractère invisible")
         git(self.dir, "checkout", "-q", "--", ".")
         self.valid_one()
@@ -15995,9 +15995,9 @@ class TestFreeTextsRuche0029(BaseReviewRuche0020):
                              ["debate", "argue", "D-0001", "--position", "for", "--text", "Un argument" + trap_one]):
                 code, text = self.bee(*command, "--user", "bruno")
                 self.assertEqual(code, 1, (command[0], text))
-                self.assertTrue("caractère invisible" in text or "fausse marque d'encadré refusée" in text, text)
-        return ["tasks/miniz/miniz-0099.yaml : notes[1]/text : ", "votes/miniz-0099-c1/gaspard.yaml : reason : ",
-                "measurements/miniz-0099-c1/gaspard.yaml : reason : ", "debates/D-0001.yaml : arguments[1]/text : "]
+                self.assertTrue("invisible character" in text or "fake frame marker refused" in text, text)
+        return ["tasks/miniz/miniz-0099.yaml : notes[1]/text: ", "votes/miniz-0099-c1/gaspard.yaml : reason: ",
+                "measurements/miniz-0099-c1/gaspard.yaml : reason: ", "debates/D-0001.yaml : arguments[1]/text: "]
 
     def test_bee_check_pr_refuses_each_family_and_lets_the_honest_control_pass(self):
         self.gaspard_s_pr(HONEST_CONTROL, bee_refuse=False)
@@ -16006,7 +16006,7 @@ class TestFreeTextsRuche0029(BaseReviewRuche0020):
         for family, c in HIDDEN_FAMILIES.items():
             with self.subTest(family=family):
                 places_found = self.gaspard_s_pr(" caché" + c + " ici")
-                output_text = self.refused("gaspard", *[f"{place_of}caractère invisible refusé ({code_point(c)}, " for place_of in places_found])
+                output_text = self.refused("gaspard", *[f"{place_of}invisible character refused ({code_point(c)}, " for place_of in places_found])
                 self.assertNotIn(c, output_text)
                 self.abandon("texts_of")
 
@@ -16014,14 +16014,14 @@ class TestFreeTextsRuche0029(BaseReviewRuche0020):
         for marker in FAKE_MARKS:
             with self.subTest(marker=marker):
                 places_found = self.gaspard_s_pr("\n" + marker)
-                self.refused("gaspard", *[f"{place_of}fausse marque d'encadré refusée" for place_of in places_found])
+                self.refused("gaspard", *[f"{place_of}fake frame marker refused" for place_of in places_found])
                 self.abandon("texts_of")
-                self.ko("fausse marque d'encadré refusée", "review", self.cid, "--user", "gaspard", "--opinion", "favorable",
+                self.ko("fake frame marker refused", "review", self.cid, "--user", "gaspard", "--opinion", "favorable",
                         "--reason", "Relu. " + marker)
-                self.ko("fausse marque d'encadré refusée", "submit", "miniz-0099", "--user", "alice", "--update",
+                self.ko("fake frame marker refused", "submit", "miniz-0099", "--user", "alice", "--update",
                         "--summary", "Mise à jour. " + marker)
                 self.trap("contributions/miniz/miniz-0099-c1.yaml", ("summary",), " " + marker.strip())
-                self.refuse("contributions/miniz/miniz-0099-c1.yaml : summary : fausse marque d'encadré refusée")
+                self.refuse("contributions/miniz/miniz-0099-c1.yaml : summary: fake frame marker refused")
                 git(self.dir, "checkout", "-q", "--", ".")
         for honest_one in HONEST_MARKS:
             with self.subTest(honest_one=honest_one):
@@ -16030,11 +16030,11 @@ class TestFreeTextsRuche0029(BaseReviewRuche0020):
                 self.abandon("texts_of")
 
     def test_B1_submit_refuses_a_summary_on_several_lines_before_writing(self):
-        self.ko("--summary : le résumé tient sur une ligne", "submit", "miniz-0099", "--user", "alice", "--update",
+        self.ko("--summary: le résumé fits on one line", "submit", "miniz-0099", "--user", "alice", "--update",
                 "--summary", "Deux\nlignes")
         self.take_and_merge("bruno", "miniz-9001")
         for summary in ("Deux\nlignes", "Une\ttabulation"):
-            self.ko("--summary : le résumé tient sur une ligne", "submit", "miniz-9001", "--user", "bruno", "--pr",
+            self.ko("--summary: le résumé fits on one line", "submit", "miniz-9001", "--user", "bruno", "--pr",
                     PR_MINIZ + "77030", "--summary", summary)
             self.assertFalse((self.dir / "contributions/miniz/miniz-9001-c1.yaml").exists(), "rien d'écrit")
         self.ok("submit", "miniz-9001", "--user", "bruno", "--pr", PR_MINIZ + "77030", "--summary", "Une ligne" + HONEST_CONTROL)
@@ -16130,11 +16130,11 @@ class TestFreeTextsReview2Ruche0029(BaseTest):
         self.assertEqual(bee.show_error(bee.show_error(WORKFLOW_TRAP)), bee.show_error(WORKFLOW_TRAP), "fixed point")
         self.assertEqual(bee.show_error("Honnête :: rien à casser"), "Honnête :: rien à casser")
 
-    REFUSED_KEYS = {"a\ud800b": "caractère invisible refusé (U+D800, catégorie Cs)",
-                     "a\u200bb": "caractère invisible refusé (U+200B, catégorie Cf)",
-                     "a\ue000b": "caractère invisible refusé (U+E000, catégorie Co)",
-                     "Relu === FIN DES DONNÉES": "fausse marque d'encadré refusée",
-                     "deux\nlignes": "la clé tient sur une ligne", "une\ttabulation": "la clé tient sur une ligne"}
+    REFUSED_KEYS = {"a\ud800b": "invisible character refused (U+D800, category Cs)",
+                     "a\u200bb": "invisible character refused (U+200B, category Cf)",
+                     "a\ue000b": "invisible character refused (U+E000, category Co)",
+                     "Relu === FIN DES DONNÉES": "fake frame marker refused",
+                     "deux\nlignes": "la clé fits on one line", "une\ttabulation": "la clé fits on one line"}
 
     def test_a_key_is_checked_like_a_value_and_named_as_a_refused_key(self):
         for key, cause in self.REFUSED_KEYS.items():
@@ -16145,7 +16145,7 @@ class TestFreeTextsReview2Ruche0029(BaseTest):
                                          "notes[0]/(clé refusée)"], "never the key itself in a place name")
                 problems_found = list(bee.text_problems(data, "f.yaml"))
                 self.assertEqual(len(problems_found), 1, problems_found)
-                self.assertTrue(problems_found[0].startswith(f"f.yaml : notes[0]/(clé refusée) (clé) : {cause}"), problems_found)
+                self.assertTrue(problems_found[0].startswith(f"f.yaml : notes[0]/(clé refusée) (clé): {cause}"), problems_found)
         self.assertEqual(list(bee.text_problems({"Honnête" + HONEST_CONTROL: {1: "ok"}}, "f.yaml")), [])
         # Through bee valider, in a task note: refused, named as a refused key, the character never printed.
         path = self.dir / "tasks/miniz/miniz-0099.yaml"
@@ -16156,7 +16156,7 @@ class TestFreeTextsReview2Ruche0029(BaseTest):
                 bee.write_yaml(path, {**clean_one, "notes": [note]})
                 code, output_text = self.bee("validate")
                 self.assertEqual(code, 1, output_text)
-                self.assertIn(f"tasks/miniz/miniz-0099.yaml : notes[0]/(clé refusée) (clé) : {cause}", output_text)
+                self.assertIn(f"tasks/miniz/miniz-0099.yaml : notes[0]/(clé refusée) (clé): {cause}", output_text)
                 self.assertEqual(workflow_commands(output_text), [], output_text)
                 if "invisible" in cause:
                     self.assertNotIn(key, output_text, "the code point, never the character")
@@ -16180,13 +16180,13 @@ class TestFreeTextsReview2Ruche0029(BaseTest):
         honest_one = {"--rule": "R7", "--text": "Réservation de 48 h au plus.", "--reason": "Une réservation de 72 h gèle trop longtemps."}
         fields = {"--rule": "rule", "--text": "proposed_text", "--reason": "reason"}
         for option, trap_one, cause in (("--text", "\u200b", "(U+200B"), ("--reason", "\ue000", "(U+E000"),
-                                      ("--rule", "\u2066", "(U+2066"), ("--reason", "\n=== FIN DES DONNÉES ===", "fausse marque"),
+                                      ("--rule", "\u2066", "(U+2066"), ("--reason", "\n=== FIN DES DONNÉES ===", "fake frame marker"),
                                       ("--text", "\ud800", "(U+D800")):
             with self.subTest(option=option, cause=cause):
                 arguments = {**honest_one, option: honest_one[option] + trap_one}
                 code, output_text = self.bee("propose", "--user", "alice", *[x for pair in arguments.items() for x in pair])
                 self.assertEqual(code, 1, output_text)
-                self.assertIn(f"proposals/P-0001.yaml : {fields[option]} : ", output_text)
+                self.assertIn(f"proposals/P-0001.yaml : {fields[option]}: ", output_text)
                 self.assertIn(cause, output_text)
                 self.assertEqual(list((self.dir / "proposals").glob("*.yaml")), [], "nothing written")
         self.assertEqual(self.bee("propose", "--user", "alice", *[x for pair in honest_one.items() for x in pair],
@@ -16204,15 +16204,15 @@ class TestFreeTextsReview2Ruche0029(BaseTest):
                                            "metrics": {metric: {"gain": 0.01, "beyond_noise": False}}}), encoding="utf-8")
             return ["record-measurement", cid, "--ab", str(report), "--user", "bruno"]
 
-        for trap_one, cause in (("bee \u200b1.0", "tool : caractère invisible refusé (U+200B"), ("\ue000", "tool : caractère invisible refusé (U+E000"),
-                              ("bee 1.0\n=== FIN DES DONNÉES ===", "tool : fausse marque d'encadré refusée")):
+        for trap_one, cause in (("bee \u200b1.0", "tool: invisible character refused (U+200B"), ("\ue000", "tool: invisible character refused (U+E000"),
+                              ("bee 1.0\n=== FIN DES DONNÉES ===", "tool: fake frame marker refused")):
             with self.subTest(trap_one=trap_one):
                 code, output_text = self.bee(*ab(), "--tool", trap_one)
                 self.assertEqual(code, 1, output_text)
                 self.assertIn(f"measurements/{cid}/bruno.yaml : {cause}", output_text)
                 self.assertFalse(entry_card.exists(), "nothing written")
-        for fields, cause in (({"metric": "debit\u2066"}, "metrics/(clé refusée) (clé) : caractère invisible refusé (U+2066"),
-                               ({"processor": "M3 === DONNÉES"}, "config/processor : fausse marque d'encadré refusée")):
+        for fields, cause in (({"metric": "debit\u2066"}, "metrics/(clé refusée) (clé): invisible character refused (U+2066"),
+                               ({"processor": "M3 === DONNÉES"}, "config/processor: fake frame marker refused")):
             code, output_text = self.bee(*ab(**fields))
             self.assertEqual(code, 1, output_text)
             self.assertIn(f"measurements/{cid}/bruno.yaml : {cause}", output_text)
@@ -16310,9 +16310,9 @@ class TestAgentAccountsValidate(BaseTest):
                 ({"accounts": [{k: v for k, v in entry.items() if k != "purpose"}]}, "an entry has exactly account, acts_for"),
                 ({"accounts": [{**entry, "council": True}]}, "an entry has exactly account, acts_for"),
                 ({"accounts": [{**entry, "acts_for": ["alice"]}]}, "an entry has exactly account, acts_for"),
-                ({"accounts": [{**entry, "declared_on": "hier"}]}, "accounts/0 : declared_on : date invalide « hier »"),
-                ({"accounts": [{**entry, "purpose": "Agent‮ caché."}]}, "accounts/0 : purpose : caractère invisible"),
-                ({"accounts": [{**entry, "purpose": " "}]}, "accounts/0 : purpose vide")):
+                ({"accounts": [{**entry, "declared_on": "hier"}]}, "accounts/0 : declared_on: invalid date « hier »"),
+                ({"accounts": [{**entry, "purpose": "Agent‮ caché."}]}, "accounts/0 : purpose: invisible character"),
+                ({"accounts": [{**entry, "purpose": " "}]}, "accounts/0 : purpose is empty")):
             with self.subTest(data=data):
                 bee.write_yaml(path, data)
                 self.refuse(chunk)
@@ -16326,8 +16326,8 @@ class TestAgentAccountsValidate(BaseTest):
         path = self.dir / "tasks/miniz/miniz-0099.yaml"
         bee.modify_task(path, reservation={"user": AGENT, "since": "2026-10-27T12:00:00Z"},
                            note={"by": "LaRuche-Architect", "at": "2026-10-27T12:00:00Z", "text": "Une note."})
-        self.refuse(f"tasks/miniz/miniz-0099.yaml : {AGENT} is an agent account", "tasks/miniz/miniz-0099.yaml : LaRuche-Architect is an "
-                    "agent account", f"réservée par « {AGENT} », qui n'est pas inscrit")
+        self.refuse(f"tasks/miniz/miniz-0099.yaml: {AGENT} is an agent account", "tasks/miniz/miniz-0099.yaml: LaRuche-Architect is an "
+                    "agent account", f"reserved by « {AGENT} », who is not registered")
 
 
 class TestAgentAccounts(BaseDressRehearsal):
@@ -16411,7 +16411,7 @@ class TestAgentAccounts(BaseDressRehearsal):
         self.refused(AGENT, "on ne vote qu'en son nom (bidji29)", "votant déclaré différent de bidji29")
         code, text = self.bee("validate")
         self.assertEqual(code, 1, text)
-        self.assertIn(f"votes/{cid}/{AGENT}.yaml : {AGENT} is an agent account (governance/agent-accounts.yaml) : a person is "
+        self.assertIn(f"votes/{cid}/{AGENT}.yaml: {AGENT} is an agent account (governance/agent-accounts.yaml): a person is "
                       "written by their own pseudo", text)
 
     def author_record(self, cid):
@@ -16425,7 +16425,7 @@ class TestAgentAccounts(BaseDressRehearsal):
         self.branch("seconde-relecture")
         self.add_review(cid, "bidji29", "unfavorable")
         self.commit()
-        self.refused(AGENT, "bidji29 a déjà relu cette contribution")
+        self.refused(AGENT, "bidji29 already reviewed this contribution")
         self.branch("relecture-sous-son-login")
         self.add_review(cid, AGENT)
         self.commit()
@@ -16440,7 +16440,7 @@ class TestAgentAccounts(BaseDressRehearsal):
         bee.write_yaml(self.dir / f"votes/{my_one}/bidji29.yaml",
                         {"voter": "bidji29", "subject": my_one, "value": 1, "at": os.environ["BEE_NOW"]})
         self.commit()
-        self.refused(AGENT, "on ne vote pas pour sa propre contribution (commandement 3)")
+        self.refused(AGENT, "no one votes for their own contribution (commandment 3)")
         self.branch("relecture-de-soi")
         self.add_review(my_one, "bidji29")
         self.commit()
@@ -16465,7 +16465,7 @@ class TestAgentAccounts(BaseDressRehearsal):
         bee.modify_task(self.task_path("miniz-9006"), status="reserved",
                            reservation={"user": "bidji29", "since": os.environ["BEE_NOW"]})
         self.commit()
-        self.refused(AGENT, "règle R8 : bidji29 a 4 réservations ou inscriptions en parallèle")
+        self.refused(AGENT, "rule R8: bidji29 has 4 reservations or parallel registrations")
 
     def test_no_council_path_and_no_council_exemption(self):
         # A council file: refused to a member, valid for the council, and for the council's agent account a human must look.
@@ -16875,7 +16875,7 @@ class TestAgentAccountsWorkflows(BaseParallel):
             with self.subTest(author=author):
                 code, text = self.bee("check-fork", "--task", "miniz-0099", "--base", "master", "--repo", str(fork), "--author", author)
                 self.assertEqual(code, expected, text)
-        self.assertIn("user « bidji29 » différent de l'auteur de la PR « LaRuche-Architect »", text)
+        self.assertIn("user « bidji29 » differs from the PR's author « LaRuche-Architect »", text)
 
 
 # --- ruche-0094: a registry contribution merged into main is recorded by the integration workflow ---
@@ -17404,9 +17404,9 @@ class TestSelfServiceBounds(unittest.TestCase):
                     continue
                 place_of, bound = location_of(path), bee.text_bound(sort_kind, location_of(path))
                 with self.subTest(sort_kind=sort_kind, field=place_of):
-                    refusal = [(f"a{c}b", f"{relative_one} : {place_of} : caractère invisible refusé ({code_point(c)}, ")
+                    refusal = [(f"a{c}b", f"{relative_one} : {place_of}: invisible character refused ({code_point(c)}, ")
                              for c in HIDDEN_FAMILIES.values()]
-                    refusal += [(f"a {FAKE_MARKS[0]}", f"{relative_one} : {place_of} : fausse marque d'encadré refusée"),
+                    refusal += [(f"a {FAKE_MARKS[0]}", f"{relative_one} : {place_of}: fake frame marker refused"),
                               ("a" * (bound + 1), f"{relative_one} : {place_of} : {bound + 1} caractères, au plus {bound} ")]
                     for value, expected in refusal:
                         problems_found = list(bee.self_service_text_problems(nest(path, value), relative_one))
@@ -17417,12 +17417,12 @@ class TestSelfServiceBounds(unittest.TestCase):
     def test_beyond_64_top_level_keys_a_single_refusal_at_once(self):
         data = {f"k{i}": i for i in range(20000)}
         text = "".join(f"k{i}: {i}\n" for i in range(20000))
-        self.assertEqual(bee.shape_problems(text, data), ["20000 clés de premier niveau, au plus 64 : ce n'est pas un fichier qu'écrit bee"])
+        self.assertEqual(bee.shape_problems(text, data), ["20000 top-level keys, at most 64: this is not a file bee writes"])
         self.assertEqual(bee.shape_problems("".join(f"k{i}: {i}\n" for i in range(64)), {f"k{i}": i for i in range(64)}), [])
 
     def test_the_free_keys_of_the_metrics_of_a_measurement(self):
         for key, expected in (("a" * 301, f"metrics/{'a' * 301} (clé) : 301 caractères, au plus 300 "),
-                             ("débit\u202e", "metrics/(clé refusée) (clé) : caractère invisible refusé (U+202E")):
+                             ("débit\u202e", "metrics/(clé refusée) (clé): invisible character refused (U+202E")):
             measurement = {"metrics": {key: {"gain": 0.05, "beyond_noise": True}}}
             problems_found = list(bee.self_service_text_problems(measurement, "measurements/x-0001-c1/alice.yaml"))
             self.assertTrue([p for p in problems_found if p.startswith(f"measurements/x-0001-c1/alice.yaml : {expected}")], problems_found)
@@ -17542,10 +17542,10 @@ class TestSelfServiceBoundsRegistry(BaseReviewRuche0020):
             relative_one = self.lay_down(sort_kind, " ".join(["ENORME"] * (bound // 7 + 1)))
             size = (self.dir / relative_one).stat().st_size
             self.assertGreater(size, bound)
-            expected_items.append(f"{relative_one} : {size} octets, au plus {bound} pour ce fichier (docs/governance.md")
+            expected_items.append(f"{relative_one}: {size} bytes, at most {bound} for this file (docs/governance.md")
         project = self.dir / "projects/zz.yaml"  # any other file bee reads or the gate parses: the largest bound
         project.write_text("name: " + " ".join(["ENORME"] * (bee.READ_BYTES_MAX // 7 + 1)) + "\n", encoding="utf-8")
-        expected_items.append(f"projects/zz.yaml : {project.stat().st_size} octets, au plus {bee.READ_BYTES_MAX} pour ce fichier")
+        expected_items.append(f"projects/zz.yaml: {project.stat().st_size} bytes, at most {bee.READ_BYTES_MAX} for this file")
         self.commit()
         with self.readings() as read_items:
             code, output_text = self.bee("validate")
@@ -17588,14 +17588,14 @@ class TestSelfServiceBoundsRegistry(BaseReviewRuche0020):
                 path = self.dir / folder / name
                 path.write_text("text: " + " ".join(["ENORME"] * (bound // 7 + 1)) + "\n", encoding="utf-8")
                 if name.isascii():
-                    expected_items.append(f"{folder}/{name} : {path.stat().st_size} octets, au plus {bound} pour ce fichier")
+                    expected_items.append(f"{folder}/{name}: {path.stat().st_size} bytes, at most {bound} for this file")
         self.commit()
         with self.readings() as read_items:
             code, output_text = self.bee("validate")
             text = self.refused("gaspard", *expected_items)
         self.assertEqual(code, 1, output_text)
         for name in ("tasks/miniz/é.yaml", "debates/é.yaml"):  # globbed from the filesystem: bounded by its folder too
-            self.assertIn(f"{name} : ", output_text)
+            self.assertIn(f"{name}: ", output_text)
         self.assertNotIn("Traceback", output_text + text)
         self.assertEqual([t[:100] for t in read_items if "ENORME" in t], [], "read whole, or parsed")
         self.abandon()
@@ -17611,7 +17611,7 @@ class TestSelfServiceBoundsRegistry(BaseReviewRuche0020):
         for name in ("members/a.yaml\r", "members/b\r\r"):
             path = self.dir / name
             path.write_text("text: " + " ".join(["ENORME"] * (bound // 7 + 1)) + "\n", encoding="utf-8")
-            expected_items.append(bee.show_error(f"{name} : {path.stat().st_size} octets, au plus {bound} pour ce fichier"))
+            expected_items.append(bee.show_error(f"{name}: {path.stat().st_size} bytes, at most {bound} for this file"))
         self.commit()
         with self.readings() as read_items:
             text = self.refused("gaspard", *expected_items)
@@ -17693,9 +17693,9 @@ class TestSelfServiceBoundsRegistry(BaseReviewRuche0020):
         code, output_text = self.bee("validate")
         text = self.refused("gaspard", "votes/miniz-0099-c1/chloe.yaml")
         self.assertEqual(code, 1, output_text)
-        self.assertIn("chloe.yaml : YAML invalide (maximum recursion depth", output_text)
+        self.assertIn("chloe.yaml: invalid YAML (maximum recursion depth", output_text)
         if bounded_integers:
-            self.assertIn("farid.yaml : YAML invalide (Exceeds the limit", output_text)
+            self.assertIn("farid.yaml: invalid YAML (Exceeds the limit", output_text)
         self.assertNotIn("Traceback", output_text + text)
         versions = bee.read_versions(self.dir, [("HEAD", c) for c in ("votes/miniz-0099-c1/chloe.yaml", "measurements/miniz-0099-c1/farid.yaml")])
         read_ones = [bee._read_version(v) for v in versions.values()]  # history: never a traceback (libyaml, if there, reads the depth)
@@ -17705,8 +17705,8 @@ class TestSelfServiceBoundsRegistry(BaseReviewRuche0020):
 
     def test_a_proposal_carries_admissible_texts(self):
         """The gate reads proposed_text and motif of a new proposition like every free text: not blank, nothing hidden, bounded."""
-        for fields, expected in (({"proposed_text": " " * 12}, "proposed_text vide"),
-                                ({"reason": "Un motif​ assez long pour le schéma."}, "reason : caractère invisible"),
+        for fields, expected in (({"proposed_text": " " * 12}, "proposed_text is empty"),
+                                ({"reason": "Un motif​ assez long pour le schéma."}, "reason: invisible character"),
                                 ({"proposed_text": "a" * 8001}, "proposed_text de 8001 caractères, au plus 8000")):
             with self.subTest(fields=fields):
                 self.branch()
@@ -17781,7 +17781,7 @@ class TestVerdictAndMarkBounds(BaseTest):
         verdict = {"ci": "green", "gain": 0.05, "beyond_noise": True, "instructions": INSTRUCTIONS_N6, "changed_lines": 10}
         review = {"reviewer": "bruno", "opinion": "favorable", "reason": "x" * 4000, "at": "2026-10-27T12:00:00Z"}
         # Off its schema; then still under its bound (it is read), but past it with the largest verdict.
-        for data, raw, expected in (({**rec, "intrus": 1}, verdict, "champ(s) inconnu(s) : intrus"),
+        for data, raw, expected in (({**rec, "intrus": 1}, verdict, "unknown field(s): intrus"),
                                        ({**rec, "reviews": [dict(review) for _ in range(56)]}, self.verdict_maximal(0),
                                         f"au plus {bee.BYTES_MAX['contributions']})")):
             with self.subTest(expected=expected):
@@ -17861,7 +17861,7 @@ class TestCitationsRuche0088(BaseTest):
     def test_look_alikes_of_the_mark_are_refused_and_neutralised(self):
         for marker in LOOKALIKE_MARKS:
             with self.subTest(marker=marker):
-                self.assertIn("reason : fausse marque d'encadré refusée", bee.free_text_problem("Relu.\n" + marker, "reason") or "")
+                self.assertIn("reason: fake frame marker refused", bee.free_text_problem("Relu.\n" + marker, "reason") or "")
                 neutral = bee.declared_text(marker, 1000)
                 self.assertIn(bee.NEUTRALISED_MARKER, neutral)
                 self.assertEqual(bee.declared_text(neutral, len(neutral)), neutral, "fixed point")
@@ -17894,7 +17894,7 @@ class TestCitationsRuche0088(BaseTest):
         bee.write_yaml(path, {**clean_one, "inconnue": "x"})
         code, output_text = self.bee("validate")
         self.assertEqual(code, 1, output_text)
-        self.assertIn("champ(s) inconnu(s) : inconnue", output_text, "an honest key as written")
+        self.assertIn("unknown field(s): inconnue", output_text, "an honest key as written")
         for data in ({**clean_one, "inconnue" + FORGED_LINE: "x"}, {**clean_one, "status": "open" + FORGED_LINE}):
             with self.subTest(data=sorted(data)):
                 bee.write_yaml(path, data)
@@ -17904,7 +17904,7 @@ class TestCitationsRuche0088(BaseTest):
                 self.assertEqual(self.forged_lines(output_text), [], output_text)
 
     def test_a_top_level_key_is_quoted_on_one_line(self):
-        self.assertEqual(bee.shape_problems('"status": 1\n', {"status": 1})[0][:40], "clé de premier niveau « status » : elle ")
+        self.assertEqual(bee.shape_problems('"status": 1\n', {"status": 1})[0][:40], "top-level key « status »: it is written ")
         key = "key" + FORGED_LINE
         problems_found = bee.shape_problems(json.dumps({key: 1}) + "\n", {key: 1})
         self.assertTrue(problems_found)
@@ -17939,7 +17939,7 @@ class TestCitationsRuche0088(BaseTest):
         for c in HIDDEN_FAMILIES.values():
             self.assertEqual(bee._clean("a" + c + "b"), "a�b", code_point(c))
         self.assertEqual(bee._clean("Honnête" + HONEST_CONTROL), "Honnête" + HONEST_CONTROL)
-        self.assertIn("caractère invisible", bee.outgoing_text_refused("ab", "body", 100))
+        self.assertIn("invisible character", bee.outgoing_text_refused("ab", "body", 100))
         self.assertIn("caractère invisible refusé (U+E000", bee.outgoing_text_refused("a&#xE000;b", "body", 100, "Bee-ruche"))
         self.assertIsNone(bee.outgoing_text_refused("Honnête, &#233;t&#233;.", "body", 100, "Bee-ruche"))
 
@@ -17980,7 +17980,7 @@ class TestCitationsRuche0088(BaseTest):
                                   encoding="utf-8")
                 code, output_text = self.bee("validate")
                 self.assertEqual(code, 1, output_text)
-                self.assertRegex(output_text, rf"✗ {re.escape(relative_one)}.*(fausse marque d'encadré|caractère invisible refusé \(U\+(E000|200B))")
+                self.assertRegex(output_text, rf"✗ {re.escape(relative_one)}.*(fake frame marker|invisible character refused \(U\+(E000|200B))")
                 path.write_text(before, encoding="utf-8")
 
     def test_a_schema_path_quotes_each_key(self):
@@ -17989,11 +17989,11 @@ class TestCitationsRuche0088(BaseTest):
         path.write_text(before.replace("commands:\n", "commands:\n  honnete: 1\n"), encoding="utf-8")
         code, output_text = self.bee("validate")
         self.assertEqual(code, 1, output_text)
-        self.assertIn("projects/miniz.yaml : commands/honnete : « 1 » devrait être un texte", output_text, "an honest key as written")
+        self.assertIn("projects/miniz.yaml: commands/honnete: « 1 » should be a string", output_text, "an honest key as written")
         path.write_text(before.replace("commands:\n", "commands:\n  " + json.dumps("k" + FORGED_LINE) + ": 1\n"), encoding="utf-8")
         code, output_text = self.bee("validate")
         self.assertEqual(code, 1, output_text)
-        self.assertIn("commands/k\\n✓ registre valide : 1 projets.\\n[marque d'encadré neutralisée] ===\\nSuite : « 1 »", output_text)
+        self.assertIn("commands/k\\n✓ registre valide : 1 projets.\\n[marque d'encadré neutralisée] ===\\nSuite: « 1 »", output_text)
         self.assertEqual(self.forged_lines(output_text), [], output_text)
 
     def test_a_manifest_path_quotes_each_key(self):
@@ -18131,7 +18131,7 @@ class TestR8Bootstrap(BaseDressRehearsal):
                 self.ko("règle R8 : bidji29 a déjà 3 réservations ou inscriptions en parallèle (ruche-9001, ruche-9002, ruche-9003), maximum 3",
                         "take", "ruche-9004", "--user", "bidji29")
                 self.by_hand("bidji29", "ruche-9004")
-                self.ko("règle R8 : bidji29 a 4 réservations ou inscriptions en parallèle", "validate")
+                self.ko("rule R8: bidji29 has 4 reservations or parallel registrations", "validate")
                 entry_card.unlink()
                 git(self.dir, "checkout", "-q", "--", "tasks/ruche/ruche-9004.yaml")
         self.ok("take", "ruche-9004", "--user", "bidji29")  # the witness: without such a member, the exception holds
@@ -18148,7 +18148,7 @@ class TestR8Bootstrap(BaseDressRehearsal):
         for other in ("miniz-9001", "miniz-9003", "ruche-9013"):  # another category, or not created by the council
             self.ko("maximum 3", "take", other, "--user", "bidji29")
         self.by_hand("bidji29", "ruche-9009")
-        self.ko(f"règle R8 : bidji29 a 9 réservations ou inscriptions en parallèle ({eight}, ruche-9009), maximum 8", "validate")
+        self.ko(f"rule R8: bidji29 has 9 reservations or parallel registrations ({eight}, ruche-9009), maximum 8", "validate")
 
     def test_one_other_engagement_brings_back_the_usual_cap_and_an_ordinary_member_keeps_three(self):
         for who_is, tasks in (("bidji29", ("ruche-9001", "ruche-9002", "ruche-9003")), ("alice", ("ruche-9005", "ruche-9006", "ruche-9007"))):
@@ -18165,8 +18165,8 @@ class TestR8Bootstrap(BaseDressRehearsal):
         self.valid_one()
         self.by_hand("bidji29", "ruche-9004")
         self.by_hand("alice", "ruche-9008")
-        text = self.ko("règle R8 : bidji29 a 4 réservations ou inscriptions en parallèle", "validate")
-        self.assertIn("règle R8 : alice a 4 réservations ou inscriptions en parallèle (ruche-9005, ruche-9006, ruche-9007, ruche-9008), "
+        text = self.ko("rule R8: bidji29 has 4 reservations or parallel registrations", "validate")
+        self.assertIn("rule R8: alice has 4 reservations or parallel registrations (ruche-9005, ruche-9006, ruche-9007, ruche-9008), "
                       "maximum 3", text)
 
     def test_past_missing_or_malformed_setting_gives_the_usual_cap_in_take_validate_and_the_gate(self):
@@ -18184,7 +18184,7 @@ class TestR8Bootstrap(BaseDressRehearsal):
                 self.branch("quatrieme")
                 self.by_hand("bidji29", "ruche-9004")
                 self.commit()
-                refusal = f"règle R8 : bidji29 a 4 réservations ou inscriptions en parallèle ({three}, ruche-9004), maximum 3"
+                refusal = f"rule R8: bidji29 has 4 reservations or parallel registrations ({three}, ruche-9004), maximum 3"
                 self.ko(refusal, "validate")
                 self.refused("bidji29", refusal)
                 self.refused(AGENT, refusal)
@@ -18212,7 +18212,7 @@ class TestR8Bootstrap(BaseDressRehearsal):
         self.branch("neuvieme")
         self.by_hand("bidji29", "ruche-9009")
         self.commit()
-        self.refused(AGENT, "règle R8 : bidji29 a 9 réservations ou inscriptions en parallèle", "maximum 3")
+        self.refused(AGENT, "rule R8: bidji29 has 9 reservations or parallel registrations", "maximum 3")
         self.abandon("neuvieme")
         # Releases still pass, from bidji29's own PR as from bee liberer.
         self.branch("release")
@@ -18231,7 +18231,7 @@ class TestR8Bootstrap(BaseDressRehearsal):
         for author in (AGENT, "bidji29"):
             text = self.refused(author, "règle R8 : bidji29 prend un engagement après la fin de r8_bootstrap : 4 réservations ou inscriptions "
                                          "en parallèle, maximum 3 (un nouvel engagement se juge à l'heure de la PR)")
-            self.assertNotIn("règle R8 : bidji29 a 4", text)
+            self.assertNotIn("rule R8: bidji29 has 4", text)
         self.abandon("antidatee")
         self.ko("règle R8 : bidji29 a déjà 3 réservations ou inscriptions en parallèle (ruche-9001, ruche-9002, ruche-9003), maximum 3",
                 "take", "ruche-9009", "--user", "bidji29")
@@ -18275,7 +18275,7 @@ class TestR8Bootstrap(BaseDressRehearsal):
         for since in ("hier", "2026-10-29T22:00:00"):  # unreadable, or without a zone: fails closed
             with self.subTest(since=since):
                 bee.modify_task(self.task_path("ruche-9004"), reservation={"user": "bidji29", "since": since})
-                self.ko("règle R8 : bidji29 a 4 réservations ou inscriptions en parallèle (ruche-9001, ruche-9002, ruche-9003, ruche-9004), "
+                self.ko("rule R8: bidji29 has 4 reservations or parallel registrations (ruche-9001, ruche-9002, ruche-9003, ruche-9004), "
                         "maximum 3", "validate")
 
     def test_in_the_gate_an_agent_account_counts_as_its_person(self):
@@ -18290,7 +18290,7 @@ class TestR8Bootstrap(BaseDressRehearsal):
             self.by_hand(who_is, task)
             self.commit()
             for author in authors:
-                text = self.refused(author, f"règle R8 : {who_is} a 4 réservations ou inscriptions en parallèle", "maximum 3")
+                text = self.refused(author, f"rule R8: {who_is} has 4 reservations or parallel registrations", "maximum 3")
                 self.assertNotIn("après la fin de r8_bootstrap", text, "the end date is not what refuses it: one refusal")
             self.abandon("quatrieme")
         # Tooling tasks created by the council: the agent account reserves them for bidji29, as self-service, up to the 8th.
@@ -18306,7 +18306,7 @@ class TestR8Bootstrap(BaseDressRehearsal):
         self.by_hand("bidji29", "ruche-9009")
         self.commit()
         for author in (AGENT, "bidji29"):
-            self.refused(author, "règle R8 : bidji29 a 9 réservations ou inscriptions en parallèle", "maximum 8")
+            self.refused(author, "rule R8: bidji29 has 9 reservations or parallel registrations", "maximum 8")
 
 
 class TestClocksRuche0091(BaseInvitations):
@@ -18349,7 +18349,7 @@ class TestClocksRuche0091(BaseInvitations):
         self.release_and_merge("alice")  # alice may take it again from 2026-10-31T10:00
         pushed_one = "2026-10-31T09:30:00Z"
         self.pr(pushed_one, lambda: self.modify(status="reserved", reservation={"user": "alice", "since": pushed_one}))
-        return "alice", pushed_one, "2026-10-31T10:30:00Z", (), "R7 : alice a quitté cette tâche sans contribution"
+        return "alice", pushed_one, "2026-10-31T10:30:00Z", (), "R7: alice left this task without a contribution"
 
     def r7_parallel(self):
         self.a("2026-10-30T09:00:00Z")
@@ -18360,7 +18360,7 @@ class TestClocksRuche0091(BaseInvitations):
         self.take_and_merge("bruno")
         pushed_one = "2026-10-31T09:30:00Z"
         self.pr(pushed_one, lambda: self.modify(parallel=[{"user": "alice", "since": pushed_one}]))
-        return "alice", pushed_one, "2026-10-31T10:30:00Z", (), "R7 : alice a quitté cette tâche sans contribution"
+        return "alice", pushed_one, "2026-10-31T10:30:00Z", (), "R7: alice left this task without a contribution"
 
     def cap_24h(self):
         self.a("2026-10-30T09:00:00Z")
@@ -18450,14 +18450,14 @@ class TestClocksRuche0091(BaseInvitations):
         self.up_to("proposed")  # I-0001, published 2026-10-30T10:00: a guardian may agree from 2026-11-02T10:00
         pushed_one = "2026-11-02T11:00:00Z"
         self.pr(pushed_one, lambda: self.gesture("guardian-approval", "gina"))
-        return "gina", pushed_one, "2026-11-02T14:00:00Z", (), "guardian_approval.at (2026-11-02T11:00:00Z) doit être l'heure de la PR"
+        return "gina", pushed_one, "2026-11-02T14:00:00Z", (), "guardian_approval.at (2026-11-02T11:00:00Z) must be the time of the PR"
 
     def review_date(self):
         self.submitted_on_main()
         pushed_one = "2026-10-30T10:00:00Z"
         self.pr(pushed_one, lambda: self.ok("review", "miniz-0099-c1", "--user", "bruno", "--opinion", "favorable", "--reason",
                                          "Relu en entier, banc rejoué."))
-        return "bruno", pushed_one, "2026-10-30T13:00:00Z", (), "relecture de bruno, le (2026-10-30T10:00:00Z) doit être l'heure de la PR"
+        return "bruno", pushed_one, "2026-10-30T13:00:00Z", (), "relecture de bruno, le (2026-10-30T10:00:00Z) must be the time of the PR"
 
     def proposal_date(self):
         pushed_one = "2026-10-30T10:00:00Z"
@@ -18468,7 +18468,7 @@ class TestClocksRuche0091(BaseInvitations):
     def date_d_invitation(self):
         pushed_one = "2026-10-30T10:00:00Z"
         self.pr(pushed_one, lambda: self.invite("alice"))
-        return "alice", pushed_one, "2026-10-30T13:00:00Z", (), "proposed_at (2026-10-30T10:00:00Z) doit être l'heure de la PR"
+        return "alice", pushed_one, "2026-10-30T13:00:00Z", (), "proposed_at (2026-10-30T10:00:00Z) must be the time of the PR"
 
     def measurement_date(self):
         self.submitted_on_main()
@@ -18476,7 +18476,7 @@ class TestClocksRuche0091(BaseInvitations):
         self.pr(pushed_one, lambda: bee.write_yaml(self.dir / "measurements/miniz-0099-c1/bruno.yaml", {
             "contribution": "miniz-0099-c1", "submitted_by": "bruno", "at": pushed_one, "base": "2948eeb", "candidate": "839b676",
             "config": {"architecture": "arm64"}, "metrics": {"debit_compression_n6": {"gain": 0.05, "beyond_noise": True}}}))
-        return "bruno", pushed_one, "2026-10-30T13:00:00Z", (), "measurements/miniz-0099-c1/bruno.yaml : at (2026-10-30T10:00:00Z) doit être"
+        return "bruno", pushed_one, "2026-10-30T13:00:00Z", (), "measurements/miniz-0099-c1/bruno.yaml : at (2026-10-30T10:00:00Z) must be"
 
     def vote_date(self):
         self.a("2026-10-30T10:00:00Z")
@@ -18484,7 +18484,7 @@ class TestClocksRuche0091(BaseInvitations):
         self.commit("P-0001, open until 2026-11-06T10:00")
         pushed_one = "2026-10-31T10:00:00Z"
         self.pr(pushed_one, lambda: self.ok("vote", "P-0001", "--user", "alice", "--value", "1"))
-        return "alice", pushed_one, "2026-10-31T13:00:00Z", (), "votes/P-0001/alice.yaml : at (2026-10-31T10:00:00Z) doit être l'heure de la PR"
+        return "alice", pushed_one, "2026-10-31T13:00:00Z", (), "votes/P-0001/alice.yaml : at (2026-10-31T10:00:00Z) must be the time of the PR"
 
     def created_on(self):
         pushed_one = "2026-10-30T23:30:00Z"
@@ -18708,7 +18708,7 @@ class TestAppendOnlyRuche0042(BaseDressRehearsal):
         self.ok("record-measurement", self.cid, "--ab", self.ab_report(), "--user", "chloe")
         self.a("2026-10-30T12:00:00Z")
         self.commit()
-        self.refused("chloe", f"measurements/{self.cid}/chloe.yaml : at (2026-10-30T09:00:00Z) doit être l'heure de la PR",
+        self.refused("chloe", f"measurements/{self.cid}/chloe.yaml : at (2026-10-30T09:00:00Z) must be the time of the PR",
                      f"delete measurements/{self.cid}/chloe.yaml, then rerun bee record-measurement")
         self.abandon("perimee")
         self.published("chloe", "record-measurement", self.cid, "--ab", self.ab_report(), "--user", "chloe", natures=("measurement",))
@@ -19699,12 +19699,12 @@ class TestIdentityByNumber(BaseDressRehearsal):
         self.ok("validate")
         self.a("2026-10-30T10:20:00Z")
         # R7: gaspard2 is gaspard, who left miniz-0099 15 minutes ago.
-        self.ko("R7 : gaspard2 a quitté cette tâche sans contribution le 2026-10-30T10:05:00Z", "take", "miniz-0099",
+        self.ko("R7: gaspard2 left this task without a contribution on 2026-10-30T10:05:00Z", "take", "miniz-0099",
                 "--user", "gaspard2")
         self.branch("retake")
         bee.modify_task(self.task_path(), status="reserved", reservation={"user": "gaspard2", "since": "2026-10-30T10:20:00Z"})
         self.commit()
-        self.refused("gaspard2", "R7 : gaspard2 a quitté cette tâche sans contribution le 2026-10-30T10:05:00Z")
+        self.refused("gaspard2", "R7: gaspard2 left this task without a contribution on 2026-10-30T10:05:00Z")
         self.abandon("retake")
         # R8: gaspard's three reservations are gaspard2's.
         self.ko("règle R8 : gaspard2 a déjà 3 réservations ou inscriptions en parallèle", "take", "miniz-9005", "--user", "gaspard2")
@@ -19712,7 +19712,7 @@ class TestIdentityByNumber(BaseDressRehearsal):
         bee.modify_task(self.task_path("miniz-9005"), status="reserved",
                            reservation={"user": "gaspard2", "since": os.environ["BEE_NOW"]})
         self.commit()
-        self.refused("gaspard2", "règle R8 : gaspard2 a 4 réservations ou inscriptions en parallèle")
+        self.refused("gaspard2", "rule R8: gaspard2 has 4 reservations or parallel registrations")
         self.abandon("quatrieme")
         # A 24 h cap (notes) is not reset by a rename either.
         conf = bee.config_notes(bee.Registry(self.dir))
@@ -19738,8 +19738,8 @@ class TestIdentityByNumber(BaseDressRehearsal):
         self.branch("nomination")
         guardians.write_text("members:\n  - login: gaspard\n", encoding="utf-8")
         self.commit()
-        self.refused("bidji29", "governance : gaspard is a former login of gaspard2 : named only with that account's github_id")
-        self.ko("governance : gaspard is a former login of gaspard2", "validate")
+        self.refused("bidji29", "governance: gaspard is a former login of gaspard2: named only with that account's github_id")
+        self.ko("governance: gaspard is a former login of gaspard2", "validate")
         guardians.write_text(f"members:\n  - login: gaspard\n    github_id: {number_from('gaspard')}\n", encoding="utf-8")
         self.ok("validate")  # the council names that very account: its status follows it
 
@@ -19751,7 +19751,7 @@ class TestIdentityByNumber(BaseDressRehearsal):
         self.commit()
         code, text = self.verify("david", "--account-created-on", "2020-01-01", "--auto-merge")
         self.assertEqual(code, 1, text)
-        self.assertIn(f"david : github_id is a GitHub account's number (a positive integer)", text)
+        self.assertIn(f"david: github_id is a GitHub account's number (a positive integer)", text)
         self.assertIn("members/david.yaml : github_id is the number GitHub gives for david's account", text)
         for value in ("true", f"{number_from('david')}.0", "-3"):
             with self.subTest(github_id=value):
@@ -19833,7 +19833,7 @@ class TestIdentityByNumber(BaseDressRehearsal):
                                                                     "account_created_on": "2020-01-01", "github_id": number_from("gaspard")})
         self.commit()
         self.accounts["gaspard-bis"] = number_from("gaspard")  # gaspard's account, renamed on GitHub, enrols anew
-        self.refused("gaspard-bis", f"members/gaspard-bis.yaml : github_id {number_from('gaspard')} is already gaspard's : one account, one file")
+        self.refused("gaspard-bis", f"members/gaspard-bis.yaml: github_id {number_from('gaspard')} is already gaspard's: one account, one file")
         self.ko(f"github_id {number_from('gaspard')} is already gaspard's", "validate")
 
     def test_the_number_comes_from_the_api_never_from_the_pr(self):
@@ -19945,7 +19945,7 @@ class TestIdentityByNumber(BaseDressRehearsal):
         for value in ('"5"', "0", "true"):
             with self.subTest(github_id=value):
                 council.write_text(re.sub(r"github_id: .*", f"github_id: {value}", council.read_text(encoding="utf-8")), encoding="utf-8")
-                self.ko("bidji29 : github_id is a GitHub account's number (a positive integer)", "validate")
+                self.ko("bidji29: github_id is a GitHub account's number (a positive integer)", "validate")
         council.write_text(re.sub(r"github_id: .*", "github_id: 5", council.read_text(encoding="utf-8")), encoding="utf-8")
         (self.dir / "governance/guardians.yaml").write_text("members:\n  - login: gaspard\n    github_id: 99\n", encoding="utf-8")
         self.ko(f"« gaspard » is bound to two GitHub accounts ({number_from('gaspard')} and 99)", "validate")
@@ -20077,11 +20077,11 @@ class TestLinkedAccountsRuche0051(BaseInvitations):
         self.a("2026-10-30T11:05:00Z")
         self.release_and_merge("alice")
         # R7: farid is alice, who left miniz-0099 five minutes ago.
-        self.ko("a quitté cette tâche sans contribution le 2026-10-30T11:05:00Z", "take", "miniz-0099", "--user", "farid")
+        self.ko("left this task without a contribution on 2026-10-30T11:05:00Z", "take", "miniz-0099", "--user", "farid")
         self.branch("retake")
         bee.modify_task(self.task_path(), status="reserved", reservation={"user": "farid", "since": os.environ["BEE_NOW"]})
         self.commit()
-        self.refused("farid", "R7 : farid a quitté cette tâche sans contribution le 2026-10-30T11:05:00Z")
+        self.refused("farid", "R7: farid left this task without a contribution on 2026-10-30T11:05:00Z")
         self.abandon("retake")
         # R11: farid does not join alice's own task in parallel.
         self.take_and_merge("alice", "miniz-9001")
@@ -20211,7 +20211,7 @@ class TestLinkedAccountsRuche0051(BaseInvitations):
         rec["reviews"].append({**rec["reviews"][0], "reviewer": "gina2"})
         reg = bee.Registry(self.dir)
         self.assertEqual([r["reviewer"] for r in bee.last_reviews(rec, reg.identities).values()], ["gina2"])
-        self.assertIn("gina2 a déjà relu le commit abc1234", bee.refused_review(rec["reviews"][:1], rec["reviews"][1], reg.identities))
+        self.assertIn("gina2 already reviewed commit abc1234", bee.refused_review(rec["reviews"][:1], rec["reviews"][1], reg.identities))
 
     def test_a_status_never_follows_a_link(self):
         """The council may link by hand (ruche-0118): bidji29 with chloe, the guarantor hector with gaspard. Neither chloe nor
@@ -20240,7 +20240,7 @@ class TestLinkedAccountsRuche0051(BaseInvitations):
         self.ok("close", c1, "--reason", "PR fermée sans fusion.")
         self.commit("refus du conseil, PR fermée")
         self.a("2026-10-30T12:00:00Z")
-        self.ko("R7 :", "take", "miniz-0099", "--user", "alice")  # farid's contribution closed: alice is farid
+        self.ko("R7:", "take", "miniz-0099", "--user", "alice")  # farid's contribution closed: alice is farid
         self.a("2026-10-31T13:00:00Z")
         self.take_and_merge("alice")
         c2 = self.submit_and_merge("alice", "miniz-0099", 77006)
@@ -20600,7 +20600,7 @@ class TestReportsRuche0118(ReportTools):
                                 ({"accounts": ["farid", "Gaspard"]}, outside), ({"accounts": ["farid", "farid"]}, outside),
                                 ({"accounts": ["farid", "gaspard", "alice"]}, outside), ({"accounts": "farid gaspard"}, outside),
                                 ({"by": "farid"}, "by : a member reports in their own name (chloe)"),
-                                ({"at": "2026-10-01T10:00:00Z"}, "at (2026-10-01T10:00:00Z) doit être l'heure de la PR")):
+                                ({"at": "2026-10-01T10:00:00Z"}, "at (2026-10-01T10:00:00Z) must be the time of the PR")):
             with self.subTest(fields=fields):
                 self.branch()
                 self.by_hand("S-0002", **{"by": "chloe", "accounts": ["farid", "gaspard"], **fields})
@@ -20614,7 +20614,7 @@ class TestReportsRuche0118(ReportTools):
         self.assertFalse((self.dir / "reports/S-0002.yaml").exists())
         # bee valider: the schema, whoever wrote it.
         self.by_hand("S-0002", by="chloe", accounts=["farid", "gaspard"], text="Ils votent toujours ensemble.")
-        self.ko("reports/S-0002.yaml : (racine)", "validate")
+        self.ko("reports/S-0002.yaml: (root)", "validate")
         # The honest file, written by hand as bee writes it, passes and is merged without a human.
         self.branch()
         self.by_hand("S-0002", by="chloe", accounts=["farid", "gaspard"])
@@ -20873,7 +20873,7 @@ class TestReportsRuche0118(ReportTools):
         alice = self.read("members/alice.yaml")
         for decision, members, chunk in (
                 ({"by": "gaspard"}, {}, part_of),
-                ({"at": "2026-10-30T09:00:00Z"}, {}, "decision/at (2026-10-30T09:00:00Z) doit être l'heure de la PR"),
+                ({"at": "2026-10-30T09:00:00Z"}, {}, "decision/at (2026-10-30T09:00:00Z) must be the time of the PR"),
                 ({"at": "20261030T120000Z"}, {}, "decision/at (20261030T120000Z) : the time of the PR as bee writes it (2026-10-30T12:00:00Z)"),
                 ({"outcome": "linked"}, {}, "decision lies : this PR links the two member files"),
                 ({"outcome": "linked"}, {"alice": {**alice, "other_accounts": [*alice["other_accounts"], number_from("bruno")]}},
@@ -21203,16 +21203,16 @@ class TestCLoaderRuche0130(unittest.TestCase):
     )
     # name: (text, part of the refusal, whether libyaml's loader alone accepts it)
     LOADER_REFUSALS = {
-        "anchor_node": ("status: &s reservee\n", "ancre YAML (&…) refusée", True),
-        "ancre et alias": ("status: &s reservee\ntitle: *s\n", "ancre YAML (&…) refusée", True),
-        "alias seul": ("status: reserved\ntitle: *s\n", "alias YAML (*…) refusé", False),
-        "ancre sur une liste": ("notes: &n\n  - a\n", "ancre YAML (&…) refusée", True),
-        "étiquette explicite": ("status: !!str reservee\n", "étiquette YAML explicite (tag:yaml.org,2002:str) refusée", True),
-        "étiquette non spécifique": ("status: ! reservee\n", "étiquette YAML explicite (!) refusée", True),
-        "étiquette sur une valeur vide": ("status: !\n", "étiquette YAML explicite (!) refusée", True),
-        "étiquette sur le document": ("--- !!map\nstatus: reserved\n", "étiquette YAML explicite (tag:yaml.org,2002:map)", True),
-        "clé de fusion": ("<<: {status: reservee}\ntitle: t\n", "clé de fusion YAML (<<) refusée", False),
-        "clé en double": ("status: open\ntitle: t\nstatus: reserved\n", "clé « status » en double", False),
+        "anchor_node": ("status: &s reservee\n", "YAML anchor (&…) refused", True),
+        "ancre et alias": ("status: &s reservee\ntitle: *s\n", "YAML anchor (&…) refused", True),
+        "alias seul": ("status: reserved\ntitle: *s\n", "YAML alias (*…) refused", False),
+        "ancre sur une liste": ("notes: &n\n  - a\n", "YAML anchor (&…) refused", True),
+        "étiquette explicite": ("status: !!str reservee\n", "explicit YAML tag (tag:yaml.org,2002:str) refused", True),
+        "étiquette non spécifique": ("status: ! reservee\n", "explicit YAML tag (!) refused", True),
+        "étiquette sur une valeur vide": ("status: !\n", "explicit YAML tag (!) refused", True),
+        "étiquette sur le document": ("--- !!map\nstatus: reserved\n", "explicit YAML tag (tag:yaml.org,2002:map)", True),
+        "clé de fusion": ("<<: {status: reservee}\ntitle: t\n", "YAML merge key (<<) refused", False),
+        "clé en double": ("status: open\ntitle: t\nstatus: reserved\n", "duplicate key « status »", False),
         "deux documents": ("status: open\n---\nstatus: reserved\n", "expected a single document", False),
         "trop profond": ("reason: " + "[" * 5000 + "]" * 5000 + "\n", "maximum recursion depth", None),
         "tabulation (lue par libyaml)": ("status: reservee\ttitre\n", "found character '\\t' that cannot start any token", True),
@@ -21258,7 +21258,7 @@ class TestCLoaderRuche0130(unittest.TestCase):
                     sort_kind, messages[parser] = reader(text)
                     self.assertEqual(sort_kind, "refusal", messages[parser])
                     self.assertIn(refusal, messages[parser])
-                    self.assertTrue(messages[parser].startswith("f.yaml : YAML invalide ("), messages[parser])
+                    self.assertTrue(messages[parser].startswith("f.yaml: invalid YAML ("), messages[parser])
             self.assertEqual(len(set(messages.values())), 1, messages)  # the same message, word for word
             if bee._BeeLoaderC is not None and only_c_accepts:  # without the pre-scan, libyaml's loader takes it
                 with self.subTest(name, parser="C sans pré-examen"):
@@ -21744,7 +21744,7 @@ class TestReservedPseudonyms(BaseTest):
         self.set_list(self.ROBOT, "bee")
         code, text = self.bee("validate")
         self.assertEqual(code, 1, text)
-        self.assertIn("bee.yaml : reserved_logins : a list of distinct GitHub logins", text)
+        self.assertIn("bee.yaml: reserved_logins: a list of distinct GitHub logins", text)
         code, text = self.bee("register", "--login", "Conseil", "--account-created-on", "2020-01-01")
         self.assertEqual(code, 1, text)
         self.assertIn(self.MALFORMED, text)  # ruche-0144: a list that misses the council refuses every name, the council's too
@@ -21775,7 +21775,7 @@ class TestReservedPseudonyms(BaseTest):
                 self.assertFalse(bee.read_yaml(path).get("reserved_logins"))
                 code, text = self.bee("validate")
                 self.assertEqual(code, 1, text)
-                self.assertIn("bee.yaml : reserved_logins : a list of distinct GitHub logins", text)
+                self.assertIn("bee.yaml: reserved_logins: a list of distinct GitHub logins", text)
                 for login in ("conseil", "david"):
                     code, text = self.bee("register", "--login", login, "--account-created-on", "2020-01-01")
                     self.assertEqual(code, 1, text)
@@ -21799,7 +21799,7 @@ class TestReservedPseudonyms(BaseTest):
                                   encoding="utf-8")
                 code, text = self.bee("validate")
                 self.assertEqual(code, 1, text)
-                self.assertIn("bee.yaml : reserved_logins : a list of distinct GitHub logins", text)
+                self.assertIn("bee.yaml: reserved_logins: a list of distinct GitHub logins", text)
                 git(self.dir, "checkout", "-q", "--", "bee.yaml")
         self.valid_one()
 
@@ -21849,9 +21849,9 @@ class TestSettingsRuche0144(BaseTest):
         for config in (self.set_one(path), self.set_one(path, malformed_one)):
             with self.subTest(path=path, value=config.get(path.split(".")[0], "(absente)")):
                 reg.config = config
-                with self.assertRaisesRegex(bee.BeeError, rf"^bee\.yaml : {re.escape(path)}\b"):
+                with self.assertRaisesRegex(bee.BeeError, rf"^bee\.yaml: {re.escape(path)}\b"):
                     reader(reg)
-                self.assertTrue([p for p in bee.settings_problems(config) if p.startswith(f"bee.yaml : {path}")], config)
+                self.assertTrue([p for p in bee.settings_problems(config) if p.startswith(f"bee.yaml: {path}")], config)
 
     # --- bee valider: one list, every key required and well formed, no other ---
 
@@ -21864,10 +21864,10 @@ class TestSettingsRuche0144(BaseTest):
             f"{c}.{k}" for c, f in bee.SETTINGS.items() if isinstance(f, dict) for k in f]
         self.assertGreater(len(paths), 60)
         for path in paths:
-            for config, suffix_text in ((self.set_one(path), " (clé absente)"), (self.set_one(path, [[]]), "")):
+            for config, suffix_text in ((self.set_one(path), " (key missing)"), (self.set_one(path, [[]]), "")):
                 with self.subTest(path=path, suffix_text=suffix_text):
                     problem_text = bee.setting_problem(config, path)
-                    self.assertTrue(problem_text and problem_text.startswith(f"bee.yaml : {path} : ") and problem_text.endswith(suffix_text), problem_text)
+                    self.assertTrue(problem_text and problem_text.startswith(f"bee.yaml: {path}: ") and problem_text.endswith(suffix_text), problem_text)
                     self.assertIn(problem_text, bee.settings_problems(config))
                     with self.assertRaisesRegex(bee.BeeError, re.escape(problem_text)):
                         bee.setting(config, path)
@@ -21877,9 +21877,9 @@ class TestSettingsRuche0144(BaseTest):
     def test_bee_validate_refuses_a_missing_key(self):
         path = self.dir / "bee.yaml"
         before = path.read_text(encoding="utf-8")
-        for reason, expected in ((r"(?m)^min_gain:.*\n", "bee.yaml : min_gain : nombre de 0 à 1 attendu (clé absente)"),
-                               (r"(?m)^  max_per_pr:.*\n", "bee.yaml : notes.max_per_pr : entier positif attendu (au plus 100000) (clé absente)"),
-                               (r"(?m)^notes:\n(?:  .*\n)+", "bee.yaml : notes : une section attendue (text_max, max_per_pr, max_per_24h) (clé absente)")):
+        for reason, expected in ((r"(?m)^min_gain:.*\n", "bee.yaml: min_gain: number from 0 to 1 expected (key missing)"),
+                               (r"(?m)^  max_per_pr:.*\n", "bee.yaml: notes.max_per_pr: positive integer expected (at most 100000) (key missing)"),
+                               (r"(?m)^notes:\n(?:  .*\n)+", "bee.yaml: notes: a section expected (text_max, max_per_pr, max_per_24h) (key missing)")):
             with self.subTest(expected=expected):
                 path.write_text(re.sub(reason, "", before, count=1), encoding="utf-8")
                 code, text = self.bee("validate")
@@ -21891,11 +21891,11 @@ class TestSettingsRuche0144(BaseTest):
     def test_bee_validate_refuses_an_unknown_key(self):
         path = self.dir / "bee.yaml"
         before = path.read_text(encoding="utf-8")
-        for yaml_text, expected in ((before + "name: Bee\n", "bee.yaml : name : clé inconnue, que bee ne lit pas (ruche-0144)"),
-                                    (before + "relecture_conseil_requise: false\n", "bee.yaml : relecture_conseil_requise : clé inconnue"),
-                                    (before.replace("agora:\n", "agora:\n  texte_maxi: 3\n", 1), "bee.yaml : agora.texte_maxi : clé inconnue"),
+        for yaml_text, expected in ((before + "name: Bee\n", "bee.yaml: name: unknown key, which bee does not read (ruche-0144)"),
+                                    (before + "relecture_conseil_requise: false\n", "bee.yaml: relecture_conseil_requise: unknown key"),
+                                    (before.replace("agora:\n", "agora:\n  texte_maxi: 3\n", 1), "bee.yaml: agora.texte_maxi: unknown key"),
                                     (before.replace("growth:\n", "growth:\n  dormant_branch_days: 30\n", 1),  # read by nothing yet
-                                     "bee.yaml : growth.dormant_branch_days : clé inconnue")):
+                                     "bee.yaml: growth.dormant_branch_days: unknown key")):
             with self.subTest(expected=expected):
                 path.write_text(yaml_text, encoding="utf-8")
                 code, text = self.bee("validate")
@@ -21940,7 +21940,7 @@ class TestSettingsRuche0144(BaseTest):
                 self.line_text("guardian_review_required", line_text)
                 code, text = self.bee("check-acceptance", cid)
                 self.assertEqual(code, 1, text)
-                self.assertIn("bee.yaml : guardian_review_required : true, if_judge_incomplete ou false attendu", text)
+                self.assertIn("bee.yaml: guardian_review_required: true, if_judge_incomplete or false expected", text)
 
     def test_bootstrap_missing_or_malformed(self):
         # A string ('false') was truthy: the bootstrap on, level checks off ; missing, robots decided and a Confirmé created open tasks.
@@ -21951,7 +21951,7 @@ class TestSettingsRuche0144(BaseTest):
                 self.line_text("bootstrap", line_text)
                 code, text = self.bee("take", "miniz-9003", "--user", "alice")
                 self.assertEqual(code, 1, text)
-                self.assertIn("bee.yaml : bootstrap : true ou false attendu", text)
+                self.assertIn("bee.yaml: bootstrap: true or false expected", text)
                 self.assertEqual(bee.read_yaml(task)["status"], "open")
         self.line_text("bootstrap", "bootstrap: true\n")
         self.closed_one("bootstrap", "false", lambda reg: bee.r3_summary(reg, {"required_ones": 0, "target": 2}))
@@ -21964,7 +21964,7 @@ class TestSettingsRuche0144(BaseTest):
                 self.line_text("min_account_age_days", line_text)
                 code, text = self.bee("register", "--login", "david", "--account-created-on", "2026-10-27")
                 self.assertEqual(code, 1, text)
-                self.assertIn("bee.yaml : min_account_age_days : entier positif attendu", text)
+                self.assertIn("bee.yaml: min_account_age_days: positive integer expected", text)
                 self.assertFalse((self.dir / "members/david.yaml").exists())
         self.line_text("min_account_age_days", "min_account_age_days: 90\n")
         self.assertIn("au moins 90 jours", self.bee("register", "--login", "david", "--account-created-on", "2026-10-27")[1])
@@ -22041,7 +22041,7 @@ class TestSettingsRuche0144(BaseTest):
                 self.assertEqual(bee.Registry(self.dir).robots, set())
                 code, text = self.bee("validate")
                 self.assertEqual(code, 1, text)
-                self.assertIn("bee.yaml : robots : une liste de logins GitHub attendue", text)
+                self.assertIn("bee.yaml: robots: a list of GitHub logins expected", text)
 
     # --- after the adversarial review ---
 
@@ -22081,7 +22081,7 @@ class TestSettingsRuche0144(BaseTest):
             with self.subTest(path=path, value=value):
                 config = self.set_one(path, value)
                 problem_text = bee.setting_problem(config, path)
-                self.assertTrue(problem_text and problem_text.startswith(f"bee.yaml : {path} : "), problem_text)
+                self.assertTrue(problem_text and problem_text.startswith(f"bee.yaml: {path}: "), problem_text)
                 self.assertIn(problem_text, bee.settings_problems(config))
                 with self.assertRaisesRegex(bee.BeeError, re.escape(problem_text)):
                     bee.setting(config, path)
@@ -22095,9 +22095,9 @@ class TestSettingsRuche0144(BaseTest):
         before = path.read_text(encoding="utf-8")
         for yaml_text, expected, reader_name in (
                 (re.sub(r"(?m)^reservation_max_hours:.*\n", "reservation_max_hours: 100000000000000000000000\n", before),
-                 "bee.yaml : reservation_max_hours : entier positif attendu (au plus 100000)", "swarm"),
+                 "bee.yaml: reservation_max_hours: positive integer expected (at most 100000)", "swarm"),
                 (re.sub(r"(?m)^  max_weight_per_user_per_day:.*\n", "  max_weight_per_user_per_day: .inf\n", before),
-                 "bee.yaml : balance.max_weight_per_user_per_day : nombre positif attendu (au plus 100000)", "balance")):
+                 "bee.yaml: balance.max_weight_per_user_per_day: positive number expected (at most 100000)", "balance")):
             for command in ("validate", reader_name):  # refused, never a traceback
                 with self.subTest(expected=expected, command=command):
                     path.write_text(yaml_text, encoding="utf-8")

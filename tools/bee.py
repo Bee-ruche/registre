@@ -83,18 +83,18 @@ class BeeLoader(yaml.SafeLoader):
         # écrite, et celle que les robots éditent ligne à ligne.
         event = self.peek_event()
         if isinstance(event, yaml.AliasEvent):
-            raise yaml.composer.ComposerError(None, None, "alias YAML (*…) refusé", event.start_mark)
+            raise yaml.composer.ComposerError(None, None, "YAML alias (*…) refused", event.start_mark)
         if getattr(event, "anchor", None) is not None:
-            raise yaml.composer.ComposerError(None, None, "ancre YAML (&…) refusée", event.start_mark)
+            raise yaml.composer.ComposerError(None, None, "YAML anchor (&…) refused", event.start_mark)
         if getattr(event, "tag", None) is not None:
-            raise yaml.composer.ComposerError(None, None, f"étiquette YAML explicite ({event.tag}) refusée", event.start_mark)
+            raise yaml.composer.ComposerError(None, None, f"explicit YAML tag ({event.tag}) refused", event.start_mark)
         return super().compose_node(parent, index)
 
     def construct_mapping(self, node, deep=False):
         views = set()
         for key_node, _ in node.value:
             if key_node.tag == "tag:yaml.org,2002:merge":
-                raise yaml.constructor.ConstructorError(None, None, "clé de fusion YAML (<<) refusée", key_node.start_mark)
+                raise yaml.constructor.ConstructorError(None, None, "YAML merge key (<<) refused", key_node.start_mark)
             key = self.construct_object(key_node, deep=deep)
             try:
                 already = key in views
@@ -102,7 +102,7 @@ class BeeLoader(yaml.SafeLoader):
             except TypeError:  # clé non hachable : la construction elle-même la refusera
                 continue
             if already:
-                raise yaml.constructor.ConstructorError(None, None, f"clé « {key} » en double", key_node.start_mark)
+                raise yaml.constructor.ConstructorError(None, None, f"duplicate key « {key} »", key_node.start_mark)
         return yaml.constructor.SafeConstructor.construct_mapping(self, node, deep=deep)  # named: _ChargeurBeeC shares it
 
 
@@ -181,7 +181,7 @@ def load_yaml_text(text, origin_of="<text>"):
     try:
         return yaml.load(text, Loader=BeeLoader)
     except (yaml.YAMLError, RecursionError, ValueError) as e:  # ruche-0040: too deep, or an integer too long, is refused too
-        raise BeeError(f"{origin_of} : YAML invalide ({e})") from None
+        raise BeeError(f"{origin_of}: invalid YAML ({e})") from None
 
 
 def read_yaml(path):
@@ -195,13 +195,13 @@ def shape_problems(text, data):
     if not isinstance(data, dict):
         return []
     if len(data) > 64:  # ruche-0040: the checks below are quadratic in the keys (no schema has more than about 25)
-        return [f"{len(data)} clés de premier niveau, au plus 64 : ce n'est pas un fichier qu'écrit bee"]
+        return [f"{len(data)} top-level keys, at most 64: this is not a file bee writes"]
     problems_found = []
     for key in data:
         reason = re.compile(r"^" + re.escape(str(key)) + r":(?=\s|$)", re.M)
         if len(reason.findall(text)) != 1:
-            problems_found.append(f"clé de premier niveau « {cite(key)} » : elle s'écrit `{cite(key)}:` en colonne 0, une seule fois, sans "
-                             "guillemets ni espace avant les deux-points")
+            problems_found.append(f"top-level key « {cite(key)} »: it is written `{cite(key)}:` in column 0, once, without "
+                             "quotes or a space before the colon")
     if problems_found:
         return problems_found
     # Le bloc que les robots éditent (_bloc_racine) doit être exactement la valeur lue : relu seul, il donne
@@ -212,7 +212,7 @@ def shape_problems(text, data):
     for key, value in data.items():
         position = _root_block(lines, str(key))
         if position is None:
-            problems_found.append(f"clé de premier niveau « {cite(key)} » : bloc introuvable")
+            problems_found.append(f"top-level key « {cite(key)} »: block not found")
             continue
         beginning, end = position
         covered.update(range(beginning, end))
@@ -221,13 +221,13 @@ def shape_problems(text, data):
         except BeeError:
             alone_one = None
         if not (isinstance(alone_one, dict) and list(alone_one) == [key] and alone_one[key] == value):
-            problems_found.append(f"clé de premier niveau « {cite(key)} » : son bloc (lignes {beginning + 1} à {end}) ne se relit pas seul avec "
-                             "la valeur du fichier ; ses lignes suivantes s'écrivent indentées (ni commentaire en colonne 0 "
-                             "dans le bloc, ni valeur en ligne continuée en colonne 0)")
+            problems_found.append(f"top-level key « {cite(key)} »: its block (lines {beginning + 1} to {end}) does not read back alone as "
+                             "the file's value; its following lines are written indented (no comment in column 0 "
+                             "inside the block, no inline value continued in column 0)")
     orphans = [i + 1 for i, line_text in enumerate(lines)
                   if i not in covered and line_text.strip() and not line_text.lstrip().startswith("#")]
     if orphans:
-        problems_found.append(f"ligne(s) {', '.join(map(str, orphans[:5]))} hors de tout bloc de premier niveau")
+        problems_found.append(f"line(s) {', '.join(map(str, orphans[:5]))} outside any top-level block")
     return problems_found
 
 
@@ -276,9 +276,9 @@ def read_instant(text, origin_of=""):
     try:
         instant = dt.datetime.fromisoformat(str(text).replace("Z", "+00:00"))
     except ValueError:
-        raise BeeError(f"{origin_of} : instant invalide « {text} » (attendu : 2026-10-27T01:30:00Z)") from None
+        raise BeeError(f"{origin_of}: invalid instant « {text} » (expected: 2026-10-27T01:30:00Z)") from None
     if instant.tzinfo is None:
-        raise BeeError(f"{origin_of} : instant sans fuseau « {text} » (ajoutez Z pour UTC)")
+        raise BeeError(f"{origin_of}: instant without a time zone « {text} » (add Z for UTC)")
     return instant
 
 
@@ -286,11 +286,11 @@ def read_date(text, origin_of=""):
     try:
         return dt.date.fromisoformat(str(text))
     except ValueError:
-        raise BeeError(f"{origin_of} : date invalide « {text} » (attendu : 2026-10-27)") from None
+        raise BeeError(f"{origin_of}: invalid date « {text} » (expected: 2026-10-27)") from None
 
 
-TYPES_JSON = {"string": "un texte", "number": "un nombre", "integer": "un entier", "array": "une liste",
-              "object": "un objet", "null": "null", "boolean": "vrai ou faux"}
+TYPES_JSON = {"string": "a string", "number": "a number", "integer": "an integer", "array": "a list",
+              "object": "an object", "null": "null", "boolean": "true or false"}
 
 
 def message_schema(error):
@@ -298,34 +298,34 @@ def message_schema(error):
     v, expected, value = error.validator, error.validator_value, error.instance
     if v == "required":
         missing_items = [c for c in expected if isinstance(value, dict) and c not in value]
-        return f"champ obligatoire manquant : {', '.join(missing_items) or ', '.join(expected)}"
+        return f"missing required field: {', '.join(missing_items) or ', '.join(expected)}"
     if v == "enum":
-        return f"valeur « {cite(value)} » non permise (attendu : {', '.join(str(x) for x in expected)})"
+        return f"value « {cite(value)} » not allowed (expected: {', '.join(str(x) for x in expected)})"
     if v == "const":
-        return f"valeur « {cite(value)} » non permise (attendu : {expected})"
+        return f"value « {cite(value)} » not allowed (expected: {expected})"
     if v == "type":
         types = expected if isinstance(expected, list) else [expected]
-        return f"« {cite(value)} » devrait être {' ou '.join(TYPES_JSON.get(t, t) for t in types)}"
+        return f"« {cite(value)} » should be {' ou '.join(TYPES_JSON.get(t, t) for t in types)}"
     if v == "minLength":
-        return f"texte trop court ({len(value)} caractères, minimum {expected})"
+        return f"text too short ({len(value)} characters, minimum {expected})"
     if v == "maxLength":
-        return f"texte trop long ({len(value)} caractères, maximum {expected})"
+        return f"text too long ({len(value)} characters, maximum {expected})"
     if v == "pattern":
-        return f"format incorrect : « {cite(value)} »"
+        return f"wrong format: « {cite(value)} »"
     if v == "format":
-        return f"« {cite(value)} » n'est pas au format {expected}"
+        return f"« {cite(value)} » is not in the {expected} format"
     if v == "additionalProperties":
         known_items = set((error.schema or {}).get("properties", {}))
-        return f"champ(s) inconnu(s) : {', '.join(sorted(map(cite, set(value) - known_items)) if isinstance(value, dict) else cite(value))}"
+        return f"unknown field(s): {', '.join(sorted(map(cite, set(value) - known_items)) if isinstance(value, dict) else cite(value))}"
     if v == "minimum":
-        return f"valeur {value} inférieure au minimum {expected}"
+        return f"value {value} below the minimum {expected}"
     if v == "maximum":
-        return f"valeur {value} supérieure au maximum {expected}"
+        return f"value {value} above the maximum {expected}"
     if v == "minItems":
-        return f"liste trop courte (au moins {expected} élément(s))"
+        return f"list too short (at least {expected} item(s))"
     if v == "not":
-        return "champ non permis dans cet état (par exemple une réservation sur une tâche qui n'est pas réservée)"
-    return f"valeur non conforme au schéma (règle {v}) : {cite(error.message)[:80]}"  # ruche-0088: quoted, bounded
+        return "field not allowed in this state (for example a reservation on a task that is not reserved)"
+    return f"value not conforming to the schema (rule {v}): {cite(error.message)[:80]}"  # ruche-0088: quoted, bounded
 
 
 def fields_to_fill(data, path=""):
@@ -334,7 +334,7 @@ def fields_to_fill(data, path=""):
         return [c for key, val in data.items() for c in fields_to_fill(val, f"{path}/{key}" if path else str(key))]
     if isinstance(data, list):
         return [c for i, val in enumerate(data) for c in fields_to_fill(val, f"{path}/{i}")]
-    return [path or "(racine)"] if isinstance(data, str) and any(m in data for m in TO_FILL_IN_MARKERS) else []
+    return [path or "(root)"] if isinstance(data, str) and any(m in data for m in TO_FILL_IN_MARKERS) else []
 
 
 # --------------------------------------------------------------------------
@@ -455,8 +455,8 @@ def _readable_instant(v):
 
 def _areas(v, config):  # R11 (docs/cap.md)
     if not isinstance(v, dict) or not v or not all(re.fullmatch(r"[a-z][a-z0-9_]*", str(n)) and _number(p) and 0 <= p <= 100 for n, p in v.items()):
-        return "les postes (a-z, 0-9, _) et leur part en pourcentage, de 0 à 100, attendus (R11, docs/balance.md)"
-    return None if abs(sum(v.values()) - 100) <= 0.01 else f"les parts font {sum(v.values()):g} %, pas 100 %"
+        return "the areas (a-z, 0-9, _) and their share as a percentage, from 0 to 100, expected (R11, docs/balance.md)"
+    return None if abs(sum(v.values()) - 100) <= 0.01 else f"the shares add up to {sum(v.values()):g}%, not 100%"
 
 
 def _reserved(v, config):  # ruche-0104: with the council and the robots, case aside
@@ -467,24 +467,24 @@ def _reserved(v, config):  # ruche-0104: with the council and the robots, case a
                                        "conseil and every robot (ruche-0104)")
 
 
-_POSITIVE = _shape(lambda v: type(v) is int and 0 < v <= _BOUND, f"entier positif attendu (au plus {_BOUND})")
-_FRACTION = _shape(lambda v: _number(v) and 0 <= v <= 1, "nombre de 0 à 1 attendu")
+_POSITIVE = _shape(lambda v: type(v) is int and 0 < v <= _BOUND, f"positive integer expected (at most {_BOUND})")
+_FRACTION = _shape(lambda v: _number(v) and 0 <= v <= 1, "number from 0 to 1 expected")
 SETTINGS = {
-    "organization": _shape(lambda v: isinstance(v, str) and re.fullmatch(LOGIN_PATTERN, v), "le propriétaire GitHub de la ruche attendu"),
-    "phase": _POSITIVE, "bootstrap": _shape(lambda v: isinstance(v, bool), "true ou false attendu"),
+    "organization": _shape(lambda v: isinstance(v, str) and re.fullmatch(LOGIN_PATTERN, v), "the hive's GitHub owner expected"),
+    "phase": _POSITIVE, "bootstrap": _shape(lambda v: isinstance(v, bool), "true or false expected"),
     "reservation_max_hours": _POSITIVE, "reservations_max_per_user": _POSITIVE, "acceptance_window_hours": _POSITIVE,
-    "retake_after_release_hours": _shape(lambda v: _number(v) and v >= 0, f"nombre d'heures positif ou nul attendu (R7, au plus {_BOUND})"),
+    "retake_after_release_hours": _shape(lambda v: _number(v) and v >= 0, f"non-negative number of hours expected (R7, at most {_BOUND})"),
     "r8_bootstrap": _shape(lambda v: isinstance(v, dict) and set(v) == {"max", "until"} and type(v["max"]) is int and 0 < v["max"] <= _BOUND
                           and _readable_instant(v["until"]), "{max: entier positif, until: instant UTC} attendu (ruche-0096)"),
     "min_gain": _FRACTION, "max_other_degradation": _FRACTION, "required_majority": _FRACTION, "max_declared_gap": _FRACTION,
-    "reviews_required": _shape(lambda v: type(v) is int and 0 <= v <= _BOUND, f"entier positif ou nul attendu (au plus {_BOUND})"),
-    "min_net_vote": _shape(lambda v: type(v) is int and 0 <= v <= _BOUND, f"entier positif ou nul attendu (au plus {_BOUND})"),
-    "guardian_review_required": _shape(lambda v: v is True or v is False or v == "if_judge_incomplete", "true, if_judge_incomplete ou false attendu"),
-    "common_judge_min": _shape(lambda v: type(v) is int and 1 <= v <= 9999, "entier de 1 à 9999 attendu (R3, docs/common-judge.md) ; sinon, aucun "
-                              "verdict n'est complet"),
+    "reviews_required": _shape(lambda v: type(v) is int and 0 <= v <= _BOUND, f"non-negative integer expected (at most {_BOUND})"),
+    "min_net_vote": _shape(lambda v: type(v) is int and 0 <= v <= _BOUND, f"non-negative integer expected (at most {_BOUND})"),
+    "guardian_review_required": _shape(lambda v: v is True or v is False or v == "if_judge_incomplete", "true, if_judge_incomplete or false expected"),
+    "common_judge_min": _shape(lambda v: type(v) is int and 1 <= v <= 9999, "integer from 1 to 9999 expected (R3, docs/common-judge.md); otherwise, no "
+                              "verdict is complete"),
     "vote_duration_days": _POSITIVE, "voter_quorum": _POSITIVE, "min_account_age_days": _POSITIVE,
-    "balance": {"window_days": _shape(lambda v: type(v) is int and 1 <= v <= 365, "nombre de jours entre 1 et 365 attendu"),
-            "max_weight_per_user_per_day": _shape(lambda v: _number(v) and v > 0, f"nombre positif attendu (au plus {_BOUND})"), "areas": _areas},
+    "balance": {"window_days": _shape(lambda v: type(v) is int and 1 <= v <= 365, "number of days between 1 and 365 expected"),
+            "max_weight_per_user_per_day": _shape(lambda v: _number(v) and v > 0, f"positive number expected (at most {_BOUND})"), "areas": _areas},
     "agora": dict.fromkeys(("text_max", "synthesis_max", "question_max", "sources_per_argument_max", "source_max", "arguments_max_per_24h",
                             "arguments_max_per_24h_all_debates", "arguments_max_per_pr", "openings_max_per_24h",
                             "silence_before_close_hours", "rapporteur_relief_hours"), _POSITIVE),
@@ -496,10 +496,10 @@ SETTINGS = {
     "growth": {**dict.fromkeys(("invitations_per_week", "reminder_delay_days", "debate_min_hours", "active_members_per_guardian_max",
                                     "message_max", "oversight_per_week_under_brake", "expiry_days", "active_member_days"),
                                    _POSITIVE),
-                   "reminders_max": _shape(lambda v: type(v) is int and v in (0, 1), "0 ou 1 (une relance au plus, R13)")},
+                   "reminders_max": _shape(lambda v: type(v) is int and v in (0, 1), "0 or 1 (one reminder at most, R13)")},
     "reserved_logins": _reserved,
     "robots": _shape(lambda v: isinstance(v, list) and all(isinstance(r, str) and re.fullmatch(rf"{LOGIN_PATTERN}(\[bot\])?", r) for r in v),
-                     "une liste de logins GitHub attendue"),
+                     "a list of GitHub logins expected"),
 }
 
 
@@ -511,7 +511,7 @@ def setting_problem(config, path):
     place_of = config.get(section) if section else config
     present = isinstance(place_of, dict) and key in place_of
     if problem_text := (SETTINGS[section][key] if section else SETTINGS[key])(place_of[key] if present else None, config):
-        return f"bee.yaml : {path} : {problem_text}" + ("" if present else " (clé absente)")
+        return f"bee.yaml: {path}: {problem_text}" + ("" if present else " (key missing)")
     return None
 
 
@@ -532,14 +532,14 @@ def setting(config, path, raw=False):
 def settings_problems(config):
     """ruche-0144 (bee validate): every key SETTINGS lists, present and well formed; no other key, at the top or in a section."""
     config = config if isinstance(config, dict) else {}
-    problems_found = [f"bee.yaml : {key} : clé inconnue, que bee ne lit pas (ruche-0144)" for key in config if key not in SETTINGS]
+    problems_found = [f"bee.yaml: {key}: unknown key, which bee does not read (ruche-0144)" for key in config if key not in SETTINGS]
     for key, form_text in SETTINGS.items():
         if not isinstance(form_text, dict):
             problems_found.append(setting_problem(config, key))
         elif not isinstance(config.get(key), dict):
-            problems_found.append(f"bee.yaml : {key} : une section attendue ({', '.join(form_text)})" + ("" if key in config else " (clé absente)"))
+            problems_found.append(f"bee.yaml: {key}: a section expected ({', '.join(form_text)})" + ("" if key in config else " (key missing)"))
         else:
-            problems_found += [f"bee.yaml : {key}.{k} : clé inconnue ({', '.join(form_text)})" for k in config[key] if k not in form_text]
+            problems_found += [f"bee.yaml: {key}.{k}: unknown key ({', '.join(form_text)})" for k in config[key] if k not in form_text]
             problems_found += [setting_problem(config, f"{key}.{k}") for k in form_text]
     return [p for p in problems_found if p]
 
@@ -552,7 +552,7 @@ class Registry:
     def __init__(self, root=None, schemas=None):
         self.root = pathlib.Path(root or os.environ.get("BEE_REGISTRY") or TOOL_ROOT).resolve()
         if not (self.root / "bee.yaml").exists():
-            raise BeeError(f"{self.root} n'est pas un registre Bee (bee.yaml introuvable). Utilisez --registry.")
+            raise BeeError(f"{self.root} is not a Bee registry (bee.yaml not found). Use --registry.")
         # Les schémas viennent de l'outil lui-même, jamais des données vérifiées :
         # une pull request ne peut pas assouplir les schémas qui la jugent.
         self.schemas_folder = pathlib.Path(schemas or TOOL_ROOT / "schemas")
@@ -589,7 +589,7 @@ class Registry:
             if isinstance(inv, dict):
                 self.invitations[stem] = (path, inv)
             else:
-                self.loading_problems.append(f"{self.rel(path)} : le fichier doit contenir un objet YAML (clé: valeur)")
+                self.loading_problems.append(f"{self.rel(path)}: the file must hold a YAML object (key: value)")
         self.do_not_contact = self._read_optional("invitations/do-not-contact.yaml")
         self.removals = self._read_optional(PATH_REMOVALS)  # retraits demandés (ruche-0048), par empreintes
         self.reports = self._folder("reports/S-*.yaml")  # ruche-0118: comptes qu'un membre croit liés
@@ -615,7 +615,7 @@ class Registry:
     def _read(self, relative_one):
         path = self.root / relative_one
         if not path.exists():
-            self.loading_problems.append(f"{relative_one} : fichier manquant")
+            self.loading_problems.append(f"{relative_one}: missing file")
             return None
         return self._read_file(path)
 
@@ -652,7 +652,7 @@ class Registry:
                 place_of = str(pathlib.Path(path).relative_to(self.root))
             except ValueError:
                 place_of = str(path)
-            self.loading_problems.append(f"{place_of} : lien symbolique refusé (le registre ne contient que des fichiers ordinaires)")
+            self.loading_problems.append(f"{place_of}: symbolic link refused (the registry holds only regular files)")
             return None
         try:
             with open(path, encoding="utf-8") as file:  # ruche-0040: any file's size first, its content only under its bound
@@ -665,14 +665,14 @@ class Registry:
             self.loading_problems.append(str(e))
             return None
         except (OSError, UnicodeDecodeError) as e:  # un dossier nommé x.yaml, un fichier qui n'est pas de l'UTF-8…
-            self.loading_problems.append(f"{self.rel(path)} : fichier illisible ({type(e).__name__})")
+            self.loading_problems.append(f"{self.rel(path)}: unreadable file ({type(e).__name__})")
             return None
         self._shapes_to_check.append((path, text, data))
         return data
 
     def form_problems(self):
         """Forme des fichiers lus (shape_problems) : coûteuse, elle n'est contrôlée que par check_registry."""
-        return [f"{self.rel(c)} : {p}" for c, text, data in self._shapes_to_check for p in shape_problems(text, data)]
+        return [f"{self.rel(c)}: {p}" for c, text, data in self._shapes_to_check for p in shape_problems(text, data)]
 
     def _folder(self, reason):
         result = {}
@@ -699,33 +699,33 @@ class Registry:
 
     def task(self, identifier):
         if identifier not in self.tasks:
-            raise BeeError(f"tâche inconnue : {identifier} (bee list --status toutes)")
+            raise BeeError(f"unknown task: {identifier} (bee list --status all)")
         return self.tasks[identifier]
 
     def record(self, identifier):
         if identifier not in self.records:
-            raise BeeError(f"contribution inconnue : {identifier} (bee ranking)")
+            raise BeeError(f"unknown contribution: {identifier} (bee ranking)")
         return self.records[identifier]
 
     def debate(self, identifier):
         if identifier not in self.debates or not isinstance(self.debates[identifier][1], dict):
-            raise BeeError(f"débat inconnu : {identifier} (bee debates --status tous)")
+            raise BeeError(f"unknown debate: {identifier} (bee debates --status all_of)")
         return self.debates[identifier]
 
     def invitation(self, identifier):
         if identifier not in self.invitations or not isinstance(self.invitations[identifier][1], dict):
-            raise BeeError(f"invitation inconnue : {identifier} (bee swarm les liste)")
+            raise BeeError(f"unknown invitation: {identifier} (bee swarm lists them)")
         return self.invitations[identifier]
 
     def require_spelling(self, login):
         if good := other_spelling(self, login):  # ruche-0028 (revue, N1) : une seule orthographe, dès l'entrée
-            raise BeeError(f"{login} : votre fiche est {good} ; un pseudo s'écrit comme sa fiche, casse comprise")
+            raise BeeError(f"{login}: your member file is {good}; a login is written as its file is, case included")
 
     def require_member(self, login):
         self.require_spelling(login)
         if login not in self.members and login not in self.council:
-            raise BeeError(f"{login} n'est pas inscrit dans ce registre. Si votre PR d'inscription est ouverte, attendez sa fusion, "
-                            f"puis : git switch main && git pull upstream main. Sinon : bee register --login {login} --account-created-on AAAA-MM-JJ --github-id N")
+            raise BeeError(f"{login} is not registered in this registry. If your registration PR is open, wait for its merge, "
+                            f"then: git switch main && git pull upstream main. Otherwise: bee register --login {login} --account-created-on YYYY-MM-DD --github-id N")
 
     def is_integrated(self, identifier):
         return identifier in self.tasks and self.tasks[identifier][1].get("status") == "integrated"
@@ -1107,8 +1107,8 @@ def judged_by(reg, tid, login):
 
 
 def judge_message(tid, login, judged_ones):
-    return (f"{login} a jugé défavorablement, signalé ou confirmé un défaut sur {', '.join(judged_ones)}, encore en course sur {tid} : "
-            "qui a jugé une course n'y entre plus tant que ces contributions sont en course (commandement 3)")
+    return (f"{login} judged unfavorably, reported or confirmed a defect on {', '.join(judged_ones)}, still in the race on {tid}: "
+            "whoever judged a race does not enter it while these contributions are in the race (commandment 3)")
 
 
 def admissible_opinion(review, rivals):
@@ -1136,11 +1136,11 @@ def refused_review(previous_ones, review, who_is, lift_of=lambda r: False):
     if not own_items_f:
         return None
     if not review.get("sha"):
-        return (f"{review.get('reviewer')} a déjà relu cette contribution : une relecture sans commit (avant le verdict) ne vient "
-                "qu'en premier, une seule fois")
+        return (f"{review.get('reviewer')} already reviewed this contribution: a review without a commit (before the verdict) comes "
+                "only first, and only once")
     if own_items_f[-1].get("sha") == review.get("sha"):
-        return (f"{review.get('reviewer')} a déjà relu le commit {review.get('sha')} (sa relecture la plus récente) : une "
-                "nouvelle relecture porte sur un autre commit jugé")
+        return (f"{review.get('reviewer')} already reviewed commit {review.get('sha')} (their most recent review): a "
+                "new review is on another judged commit")
     return None
 
 
@@ -1239,13 +1239,13 @@ def holder_departure(reg, tid, parallel):
     if elected:
         rest_of = without_it(parallel, elected["user"])
         return ({"reservation": {"user": elected["user"], "since": elected["since"]}, "parallel": rest_of},
-                f"{elected['user']}, inscrit en parallèle depuis {elected['since']}, devient titulaire à cette date "
-                "(R7 : l'échéance ne s'allonge pas).")
+                f"{elected['user']}, in parallel since {elected['since']}, becomes the holder as of that date "
+                "(R7: the deadline is not extended).")
     racing = racing_contributions(reg, tid)
     if racing:
         last_one = racing[-1][0]
         return ({"status": "in_review", "reservation": None, "contribution": last_one},
-                f"La tâche passe en relecture : contribution(s) en course : {', '.join(c for c, _ in racing)}.")
+                f"The task goes into review: contribution(s) in the race: {', '.join(c for c, _ in racing)}.")
     return {"status": "open", "reservation": None}, ""
 
 
@@ -2085,7 +2085,7 @@ def compute_score(reg, rec, levels):
 
 def tally_proposal(reg, identifier, levels, instant):
     if identifier not in reg.proposals:
-        raise BeeError(f"proposition inconnue : {identifier}")
+        raise BeeError(f"unknown proposal: {identifier}")
     path, prop = reg.proposals[identifier]
     opening = read_instant(prop["opened_at"], reg.rel(path))
     closing = opening + dt.timedelta(days=setting(reg, "vote_duration_days"))
@@ -2145,12 +2145,12 @@ def check_accounts(reg):
 
     def per_schema(name, path, data):
         if not isinstance(data, dict):
-            add_to(f"{reg.rel(path)} : le fichier doit contenir un objet YAML (clé: valeur)")
+            add_to(f"{reg.rel(path)}: the file must hold a YAML object (key: value)")
             return False
         valid_one = True
         for error in sorted(reg.schema(name).iter_errors(data), key=lambda e: [str(x) for x in e.absolute_path]):
-            place_of = "/".join(cite(x) for x in error.absolute_path) or "(racine)"
-            add_to(f"{reg.rel(path)} : {place_of} : {message_schema(error)}")
+            place_of = "/".join(cite(x) for x in error.absolute_path) or "(root)"
+            add_to(f"{reg.rel(path)}: {place_of}: {message_schema(error)}")
             valid_one = False
         return valid_one
 
@@ -2165,7 +2165,7 @@ def check_accounts(reg):
         une levée datée de 2099 neutralisait d'avance toute relecture ; bee validate ne dépend pas de l'horloge à la seconde)."""
         try:
             if read_instant(value, f"{reg.rel(path)} ({what_it})") > now_instant() + tolerance:
-                add_to(f"{reg.rel(path)} : {what_it} ({value}) est dans le futur")
+                add_to(f"{reg.rel(path)}: {what_it} ({value}) is in the future")
         except BeeError as e:
             add_to(str(e))
 
@@ -2179,41 +2179,41 @@ def check_accounts(reg):
         if not per_schema("project", path, project):
             continue
         if project["id"] != stem:
-            add_to(f"{reg.rel(path)} : id « {project['id']} » différent du nom de fichier « {stem} »")
+            add_to(f"{reg.rel(path)}: id « {project['id']} » differs from the file name « {stem} »")
         category = reg.categories.get(project["category"])
         if not category:
-            add_to(f"{reg.rel(path)} : catégorie inconnue « {project['category']} » (voir categories.yaml)")
+            add_to(f"{reg.rel(path)}: unknown category « {project['category']} » (see categories.yaml)")
         elif category.get("status") != "open" and project["status"] == "active":
-            add_to(f"{reg.rel(path)} : projet actif dans une catégorie {category.get('status')}")
+            add_to(f"{reg.rel(path)}: active project in a category that is {category.get('status')}")
         ids = [m["id"] for m in project["metrics"]]
         if len(ids) != len(set(ids)):
-            add_to(f"{reg.rel(path)} : métriques en double")
+            add_to(f"{reg.rel(path)}: duplicate metrics")
         if not ids and project["category"] != "ruche":
-            add_to(f"{reg.rel(path)} : un projet à optimiser déclare au moins une métrique (seule la ruche elle-même n'en a pas)")
+            add_to(f"{reg.rel(path)}: a project to optimize declares at least one metric (only the hive itself has none)")
 
     seen_logins, logins, numbers_of = {}, {}, {}  # ruche-0022: one member file per login, current or former, and per number
     for stem, (path, member) in sorted(reg.members.items()):
         if per_schema("member", path, member) and member["login"] != stem:
-            add_to(f"{reg.rel(path)} : login « {member['login']} » différent du nom de fichier")
+            add_to(f"{reg.rel(path)}: login « {member['login']} » differs from the file name")
         if stem.casefold() in seen_logins:  # un login GitHub ne tient pas compte de la casse : un seul compte, une seule fiche
-            add_to(f"{reg.rel(path)} : « {stem} » et « {seen_logins[stem.casefold()]} » sont le même login GitHub (la casse ne "
-                    "compte pas) : une seule fiche par compte")
+            add_to(f"{reg.rel(path)}: « {stem} » and « {seen_logins[stem.casefold()]} » are the same GitHub login (case does not "
+                    "count): one member file per account")
         seen_logins.setdefault(stem.casefold(), stem)
         if readable_reserved and (refusal := reserved_login(reg.config, stem)):  # ruche-0104: the council renames it, or leaves the name off the list
-            add_to(f"{reg.rel(path)} : {refusal}")
+            add_to(f"{reg.rel(path)}: {refusal}")
         for login in logins_of(member) if isinstance(member, dict) else []:
             if logins.setdefault(login.casefold(), stem).casefold() != stem.casefold():
-                add_to(f"{reg.rel(path)} : the login « {login} » is already {logins[login.casefold()]}'s (one account, one file)")
+                add_to(f"{reg.rel(path)}: the login « {login} » is already {logins[login.casefold()]}'s (one account, one file)")
         if isinstance(member, dict) and (n := member.get("github_id")) is not None and numbers_of.setdefault(n, stem) != stem:
-            add_to(f"{reg.rel(path)} : github_id {n} is already {numbers_of[n]}'s : one account, one file (a renamed account: bee rename)")
+            add_to(f"{reg.rel(path)}: github_id {n} is already {numbers_of[n]}'s: one account, one file (a renamed account: bee rename)")
     for e in [*reg.linked_entries, *(m for _, m in reg.members.values() if isinstance(m, dict))]:  # an int: never a bool or a float
         if "github_id" in e and not (type(e["github_id"]) is int and e["github_id"] > 0):
-            add_to(f"{(logins_of(e) or ['?'])[0]} : github_id is a GitHub account's number (a positive integer)")
+            add_to(f"{(logins_of(e) or ['?'])[0]}: github_id is a GitHub account's number (a positive integer)")
     for e in reg.linked_entries:  # a login renamed away from never hands its former holder a status
         if "github_id" not in e and reg.read_identities.account(login := (logins_of(e) or ["?"])[0]).casefold() != login.casefold():
-            add_to(f"governance : {login} is a former login of {reg.read_identities.account(login)} : named only with that account's github_id")
+            add_to(f"governance: {login} is a former login of {reg.read_identities.account(login)}: named only with that account's github_id")
     for login, one_of, other in reg.read_identities.conflicts:
-        add_to(f"« {login} » is bound to two GitHub accounts ({one_of} and {other}) : a login is one account's (ruche-0022)")
+        add_to(f"« {login} » is bound to two GitHub accounts ({one_of} and {other}): a login is one account's (ruche-0022)")
 
     reservations = defaultdict(list)
     for stem, (path, task) in reg.tasks.items():
@@ -2221,35 +2221,35 @@ def check_accounts(reg):
             continue
         place_of = reg.rel(path)
         if task["id"] != stem:
-            add_to(f"{place_of} : id « {task['id']} » différent du nom de fichier « {stem} »")
+            add_to(f"{place_of}: id « {task['id']} » differs from the file name « {stem} »")
         if path.parent.name != task["project"]:
-            add_to(f"{place_of} : rangée dans tasks/{path.parent.name}/ mais projet « {task['project']} »")
+            add_to(f"{place_of}: filed in tasks/{path.parent.name}/ but project « {task['project']} »")
         if not task["id"].startswith(task["project"] + "-"):
-            add_to(f"{place_of} : l'id doit commencer par le nom du projet ({task['project']}-NNNN)")
+            add_to(f"{place_of}: the id must start with the project's name ({task['project']}-NNNN)")
         project = reg.projects.get(task["project"])
         if not project:
-            add_to(f"{place_of} : projet inconnu « {task['project']} »")
+            add_to(f"{place_of}: unknown project « {task['project']} »")
         else:
             if project[1].get("category") != task["category"]:
-                add_to(f"{place_of} : catégorie « {task['category']} » différente de celle du projet « {project[1].get('category')} »")
+                add_to(f"{place_of}: category « {task['category']} » differs from the project's « {project[1].get('category')} »")
             if task["metric"] is not None and task["metric"] not in reg.metrics(task["project"]):
-                add_to(f"{place_of} : métrique « {task['metric']} » absente de projects/{task['project']}.yaml")
+                add_to(f"{place_of}: metric « {task['metric']} » missing from projects/{task['project']}.yaml")
         if task.get("area") and known_areas and task["area"] not in known_areas:
-            add_to(f"{place_of} : area « {task['area']} » absent du cap de la ruche (bee.yaml, balance.areas : {', '.join(sorted(known_areas))})")
+            add_to(f"{place_of}: area « {task['area']} » missing from the hive's balance (bee.yaml, balance.areas: {', '.join(sorted(known_areas))})")
         if task.get("project") == "ruche" and task.get("type") == "optimization":
-            add_to(f"{place_of} : la ruche n'a pas de métrique à optimiser : une tâche de la ruche est un test, une relecture, une mesure ou un découpage")
+            add_to(f"{place_of}: the hive has no metric to optimize: a hive task is a test, a review, a measurement or a split")
         if task["category"] == "lossless-compression" and task["type"] == "optimization" and "compressed_output" not in task:
-            add_to(f"{place_of} : une optimisation de compression doit préciser compressed_output (identical ou may_change)")
+            add_to(f"{place_of}: a compression optimization must state compressed_output (identical or may_change)")
         for dep in task.get("depends_on") or []:
             if dep == task["id"]:
-                add_to(f"{place_of} : une tâche ne peut pas dépendre d'elle-même")
+                add_to(f"{place_of}: a task cannot depend on itself")
             elif dep not in reg.tasks:
-                add_to(f"{place_of} : dépend de la tâche inconnue « {dep} »")
+                add_to(f"{place_of}: depends on the unknown task « {dep} »")
         if "reservation" in task:
             valid_instant(path, task["reservation"]["since"], "reservation.since")
             reservations[reg.identities.name(task["reservation"]["user"])].append((task["id"], "", task["reservation"]["since"]))
             if not reg.registered(task["reservation"]["user"]):
-                add_to(f"{place_of} : réservée par « {task['reservation']['user']} », qui n'est pas inscrit")
+                add_to(f"{place_of}: reserved by « {task['reservation']['user']} », who is not registered")
         # Travail en parallèle (R11) : chacun une fois, jamais le titulaire, jamais l'auteur d'une contribution en course.
         seen_parallels = set()
         racing_authors = {e.get("author") for _, e in racing_contributions(reg, task["id"])}
@@ -2258,34 +2258,34 @@ def check_accounts(reg):
             valid_instant(path, p["since"], f"parallel/{i}/since")
             reservations[reg.identities.name(who_is)].append((task["id"], " (en parallèle)", p["since"]))
             if not reg.registered(who_is):
-                add_to(f"{place_of} : parallel/{i} : « {who_is} » n'est pas inscrit")
+                add_to(f"{place_of}: parallel/{i}: « {who_is} » is not registered")
             if who_is in Logins(seen_parallels, reg.identities):
-                add_to(f"{place_of} : parallel/{i} : {who_is} est déjà inscrit en parallèle")
+                add_to(f"{place_of}: parallel/{i}: {who_is} is already registered in parallel")
             if reg.identities.same_one(who_is, (task.get("reservation") or {}).get("user")):
-                add_to(f"{place_of} : parallel/{i} : {who_is} est le titulaire ; il ne s'inscrit pas en parallèle sur sa propre tâche")
+                add_to(f"{place_of}: parallel/{i}: {who_is} is the holder; they do not register in parallel on their own task")
             if who_is in Logins(racing_authors, reg.identities):
-                add_to(f"{place_of} : parallel/{i} : {who_is} a déjà une contribution en course sur cette tâche")
+                add_to(f"{place_of}: parallel/{i}: {who_is} already has a contribution in the race on this task")
             seen_parallels.add(who_is)
         if "contribution" in task:
             if task["contribution"] not in reg.records:
-                add_to(f"{place_of} : contribution « {task['contribution']} » introuvable dans contributions/")
+                add_to(f"{place_of}: contribution « {task['contribution']} » not found in contributions/")
             elif not task["contribution"].startswith(task["id"] + "-c"):
-                add_to(f"{place_of} : la contribution « {task['contribution']} » ne correspond pas à cette tâche")
+                add_to(f"{place_of}: the contribution « {task['contribution']} » does not belong to this task")
             elif task["status"] in ("reserved", "in_review") and reg.records[task["contribution"]][1].get("status") != "in_review":
-                add_to(f"{place_of} : tâche {task['status']}, mais sa contribution « {task['contribution']} » n'est plus en relecture")
+                add_to(f"{place_of}: task {task['status']}, but its contribution « {task['contribution']} » is no longer in review")
         if task["status"] in ("integrated", "open", "proposed", "abandoned"):
             # R3 : une fois une contribution intégrée, ses concurrentes sont écartées dans le même commit ; une tâche
             # ouverte n'a plus de contribution en course.
             remaining_ones = [c for c, _ in racing_contributions(reg, task["id"])]
             if remaining_ones:
-                add_to(f"{place_of} : tâche {task['status']}, mais contribution(s) encore en relecture : {', '.join(remaining_ones)}")
+                add_to(f"{place_of}: task {task['status']}, but contribution(s) still in review: {', '.join(remaining_ones)}")
         for i, note in enumerate(task.get("notes") or []):
             valid_instant(path, note["at"], f"notes/{i}/at")
 
     for login, ids in sorted(reservations.items()):
         when_at = max(_instant_or_none(d) or FAR_FUTURE for _, _, d in ids)  # ruche-0096: the latest engagement's, never the clock
         if len(ids) > (maximum := r8_maximum(reg, login, [tid for tid, _, _ in ids], when_at)):
-            add_to(f"règle R8 : {login} a {len(ids)} réservations ou inscriptions en parallèle ({', '.join(t + g for t, g, _ in ids)}), maximum {maximum}")
+            add_to(f"rule R8: {login} has {len(ids)} reservations or parallel registrations ({', '.join(t + g for t, g, _ in ids)}), maximum {maximum}")
 
     prs = {}  # ruche-0041: canonical PR -> the first contribution that declares it
     for stem, (path, rec) in reg.records.items():
@@ -2293,78 +2293,78 @@ def check_accounts(reg):
             continue
         place_of, key = reg.rel(path), canonical_pr(rec["pr"])
         if key in prs:
-            add_to(f"{place_of} : la PR {rec['pr']} est déjà liée à {prs[key]}")
+            add_to(f"{place_of}: the PR {rec['pr']} is already linked to {prs[key]}")
         elif key is not None:
             prs[key] = rec["id"]
         if rec["id"] != stem:
-            add_to(f"{place_of} : id « {rec['id']} » différent du nom de fichier")
+            add_to(f"{place_of}: id « {rec['id']} » differs from the file name")
         match = ID_CONTRIBUTION.match(rec["id"])
         if not match or match["task"] != rec["task"]:
-            add_to(f"{place_of} : l'id doit être <task>-c<n> avec la tâche « {rec['task']} »")
+            add_to(f"{place_of}: the id must be <task>-c<n> with the task « {rec['task']} »")
         task = reg.tasks.get(rec["task"])
         if not task:
-            add_to(f"{place_of} : tâche inconnue « {rec['task']} »")
+            add_to(f"{place_of}: unknown task « {rec['task']} »")
         else:
             if path.parent.name != task[1].get("project"):
-                add_to(f"{place_of} : rangée dans contributions/{path.parent.name}/ au lieu de contributions/{task[1].get('project')}/")
+                add_to(f"{place_of}: filed in contributions/{path.parent.name}/ instead of contributions/{task[1].get('project')}/")
             fork = reg.projects.get(task[1].get("project"), (None, {}))[1].get("fork")
             if not fork:
-                add_to(f"{place_of} : le projet {task[1].get('project')} n'a pas de fork : aucune contribution n'y est possible")
+                add_to(f"{place_of}: the project {task[1].get('project')} has no fork: no contribution to it is possible")
             elif key is None:
-                add_to(f"{place_of} : adresse de PR invalide : {rec['pr']} (attendu : {fork.rstrip('/')}/pull/<numéro>)")
+                add_to(f"{place_of}: invalid PR address: {rec['pr']} (expected: {fork.rstrip('/')}/pull/<number>)")
             elif not rec["pr"].lower().startswith(fork.lower().rstrip("/") + "/pull/"):
-                add_to(f"{place_of} : la PR doit être ouverte sur le fork du projet ({fork})")
+                add_to(f"{place_of}: the PR must be opened on the project's fork ({fork})")
             elif rec["pr"] != f"{fork.rstrip('/')}/pull/{key[2]}":
-                add_to(f"{place_of} : the PR address is written {fork.rstrip('/')}/pull/{key[2]} (the project's fork as written, then "
-                        "the number without leading zeros) : bee submit writes it")
+                add_to(f"{place_of}: the PR address is written {fork.rstrip('/')}/pull/{key[2]} (the project's fork as written, then "
+                        "the number without leading zeros): bee submit writes it")
         if not reg.registered(rec["author"]):
-            add_to(f"{place_of} : author « {rec['author']} » non inscrit")
+            add_to(f"{place_of}: author « {rec['author']} » not registered")
         if rec["status"] == "set_aside":
             # R3 : une contribution n'est écartée qu'au profit d'une concurrente de la même tâche, intégrée (ou intégrée
             # puis annulée par le conseil).
             kept = reg.records.get(rec.get("kept"), (None, {}))[1] or {}
             if rec.get("kept") == rec["id"] or kept.get("task") != rec["task"] or kept.get("status") not in ("integrated", "cancelled"):
-                add_to(f"{place_of} : écartée au profit de « {rec.get('kept')} », qui n'est pas une contribution intégrée de la même tâche")
+                add_to(f"{place_of}: set aside in favor of « {rec.get('kept')} », which is not an integrated contribution of the same task")
         if rec.get("never_integrated") and rec.get("merge_sha"):
-            add_to(f"{place_of} : never_integrated contredit merge_sha : une contribution fusionnée a été intégrée, "
-                    "ses relecteurs en répondent si elle est annulée")
+            add_to(f"{place_of}: never_integrated contradicts merge_sha: a merged contribution was integrated, "
+                    "its reviewers answer for it if it is cancelled")
         if isinstance(a := rec.get("awaiting_verdict"), dict) and a.get("reason") not in VERDICT_WAIT:  # ruche-0025
-            add_to(f"{place_of} : awaiting_verdict/reason n'est pas un code de bee ({', '.join(VERDICT_WAIT)})")
+            add_to(f"{place_of}: awaiting_verdict/reason is not a bee code ({', '.join(VERDICT_WAIT)})")
         if isinstance(d := rec.get("declared"), dict):  # recopié au verdict (ruche-0017) : le reste des bornes au schéma
             if any(declared_text(t, len(t)) != t for t in [d["model"], d["doubts"], *d["tested"], *d["untested"]] if t) or (
                     not math.isfinite(d["gain"] or 0) or len(yaml.safe_dump({"declared": d}, allow_unicode=True, width=100)) > DECLARED_MAX["rendered"]):
-                add_to(f"{place_of} : declared n'est pas tel que bee record-verdict le recopie (texte sur une ligne, sans "
-                        f"caractère invisible ni échappé, gain fini, {DECLARED_MAX['rendered']} caractères écrits au plus)")
+                add_to(f"{place_of}: declared is not as bee record-verdict copies it (text on one line, with no invisible "
+                        f"or escaped character, finite gain, at most {DECLARED_MAX['rendered']} characters written)")
         valid_instant(path, rec["submitted_at"], "submitted_at")
         if "engaged_since" in rec:
             valid_instant(path, rec["engaged_since"], "engaged_since")
             beginning, submitted = _instant_or_none(rec["engaged_since"]), _instant_or_none(rec["submitted_at"])
             if beginning and submitted and beginning > submitted:
-                add_to(f"{place_of} : engaged_since ({rec['engaged_since']}) est postérieur à la soumission")
+                add_to(f"{place_of}: engaged_since ({rec['engaged_since']}) is after the submission")
         for i, l in enumerate(rec.get("lifts") or []):
             if l["by"] not in reg.council:
-                add_to(f"{place_of} : lifts/{i} : une levée est écrite par le conseil, pas par « {l['by']} »")
+                add_to(f"{place_of}: lifts/{i}: a lift is written by the council, not by « {l['by']} »")
             past_instant(path, l["at"], f"lifts/{i}/at", LIFT_TOLERANCE)  # jamais en libre-service : 5 min suffisent
         for i, r in enumerate(rec["reviews"]):
             if reg.identities.same_one(r["reviewer"], rec["author"]):
-                add_to(f"{place_of} : reviews/{i} : l'auteur ne peut pas relire sa propre contribution (commandement 3)")
+                add_to(f"{place_of}: reviews/{i}: the author cannot review their own contribution (commandment 3)")
             refusal = refused_review(rec["reviews"][:i], r, reg.identities, lambda x: lifted_in_thread(reg, rec, x))  # un autre commit que sa plus récente
             if refusal:
-                add_to(f"{place_of} : reviews/{i} : {refusal}")
+                add_to(f"{place_of}: reviews/{i}: {refusal}")
             if r.get("reported_defect") and r["opinion"] == "abstention":  # sans commit : refusé à l'ajout (relire, verifier-pr)
-                add_to(f"{place_of} : reviews/{i} : une abstention ne signale pas de défaut")
+                add_to(f"{place_of}: reviews/{i}: an abstention does not report a defect")
             past_instant(path, r["at"], f"reviews/{i}/at")
             if (r.get("confirmed_defect") or "confirmed_by" in r) and not (r.get("reported_defect") and confirmed_by_a_third_party(r, reg.identities)):
-                add_to(f"{place_of} : reviews/{i} : un défaut confirmé est un défaut signalé, confirmé par un tiers nommé dans "
-                        "confirmed_by (la CI, le conseil, un gardien ou un Confirmé), jamais par son relecteur")
+                add_to(f"{place_of}: reviews/{i}: a confirmed defect is a reported defect, confirmed by a third party named in "
+                        "confirmed_by (the CI, the council, a guardian or a Confirmed member), never by its reviewer")
 
     for stem, (path, prop) in reg.proposals.items():
         if not per_schema("proposal", path, prop):
             continue
         if prop["id"] != stem:
-            add_to(f"{reg.rel(path)} : id « {prop['id']} » différent du nom de fichier")
+            add_to(f"{reg.rel(path)}: id « {prop['id']} » differs from the file name")
         if f"| {prop['rule']} |" not in rules:
-            add_to(f"{reg.rel(path)} : la règle {prop['rule']} n'existe pas dans RULES.md")
+            add_to(f"{reg.rel(path)}: rule {prop['rule']} does not exist in RULES.md")
         valid_instant(path, prop["opened_at"], "opened_at")
 
     for path, vote in reg.votes:
@@ -2372,17 +2372,17 @@ def check_accounts(reg):
             continue
         place_of = reg.rel(path)
         if vote["voter"] != path.stem:
-            add_to(f"{place_of} : le fichier doit s'appeler <voter>.yaml (voter « {vote['voter']} »)")
+            add_to(f"{place_of}: the file must be named <voter>.yaml (voter « {vote['voter']} »)")
         if vote["subject"] != path.parent.name:
-            add_to(f"{place_of} : subject « {vote['subject']} » différent du dossier « {path.parent.name} »")
+            add_to(f"{place_of}: subject « {vote['subject']} » differs from the folder « {path.parent.name} »")
         if not reg.registered(vote["voter"]):
-            add_to(f"{place_of} : voter « {vote['voter']} » non inscrit")
+            add_to(f"{place_of}: voter « {vote['voter']} » not registered")
         valid_instant(path, vote["at"], "at")
         if vote["subject"] in reg.records:
             if reg.identities.same_one(reg.records[vote["subject"]][1].get("author"), vote["voter"]):
-                add_to(f"{place_of} : on ne vote pas pour sa propre contribution (commandement 3)")
+                add_to(f"{place_of}: no one votes for their own contribution (commandment 3)")
         elif vote["subject"] not in reg.proposals:
-            add_to(f"{place_of} : sujet de vote inconnu « {vote['subject']} »")
+            add_to(f"{place_of}: unknown vote subject « {vote['subject']} »")
 
     for path, measurement in reg.measurements:
         place_of = reg.rel(path)
@@ -2391,13 +2391,13 @@ def check_accounts(reg):
         stem = pathlib.PurePosixPath(path).stem
         folder = pathlib.PurePosixPath(path).parent.name
         if measurement["submitted_by"] != stem:
-            add_to(f"{place_of} : submitted_by « {measurement['submitted_by']} » différent du nom de fichier « {stem} »")
+            add_to(f"{place_of}: submitted_by « {measurement['submitted_by']} » differs from the file name « {stem} »")
         if measurement["contribution"] != folder:
-            add_to(f"{place_of} : rangée dans measurements/{folder}/ au lieu de measurements/{measurement['contribution']}/")
+            add_to(f"{place_of}: filed in measurements/{folder}/ instead of measurements/{measurement['contribution']}/")
         if measurement["contribution"] not in reg.records:
-            add_to(f"{place_of} : contribution inconnue « {measurement['contribution']} »")
+            add_to(f"{place_of}: unknown contribution « {measurement['contribution']} »")
         if not reg.registered(measurement["submitted_by"]):
-            add_to(f"{place_of} : soumise par « {measurement['submitted_by']} », qui n'est pas inscrit")
+            add_to(f"{place_of}: submitted by « {measurement['submitted_by']} », who is not registered")
         valid_instant(path, measurement["at"], "at")
 
     for path, s in reg.reports.values():  # ruche-0118: written by bee signaler, decided by the council (bee signalement)
@@ -2405,7 +2405,7 @@ def check_accounts(reg):
             if x:
                 valid_instant(path, x["at"], what_it)
         for refusal in report_refusal_on_main(reg, s) if form_text else ():  # ruche-0137
-            add_to(f"{reg.rel(path)} : {refusal}")
+            add_to(f"{reg.rel(path)}: {refusal}")
 
     # ruche-0029 : le contrôle commun de tout texte libre, dans chaque valeur et chaque clé des données que bee imprime, même
     # échappé en YAML ; un titre et un résumé tiennent sur une ligne. Le verdict, écrit par la CI, a ses propres bornes.
@@ -2417,7 +2417,7 @@ def check_accounts(reg):
         for problem_text in self_service_text_problems(data, reg.rel(path)):
             add_to(problem_text)
         for p in sorted({p for p in identity_values(data) if p in reg.agents}):  # ruche-0089: never a second person
-            add_to(f"{reg.rel(path)} : {p} is an agent account ({AGENT_ACCOUNTS}) : a person is written by their own pseudo")
+            add_to(f"{reg.rel(path)}: {p} is an agent account ({AGENT_ACCOUNTS}): a person is written by their own pseudo")
 
     check_agent_accounts(reg, add_to)
     check_agora_registry(reg, add_to, per_schema, valid_instant)
@@ -2431,32 +2431,32 @@ def check_accounts(reg):
 def check_manifest(reg, data, origin_of="CONTRIBUTION.yaml", user=None):
     problems_found = []
     if not isinstance(data, dict):
-        return [f"{origin_of} : le fichier doit contenir un objet YAML"]
+        return [f"{origin_of}: the file must hold a YAML object"]
     to_fill_in = fields_to_fill(data)
     if to_fill_in:
-        problems_found.append(f"{origin_of} : il reste des champs « {TO_FILL_IN} » / « {TO_FILL_IN_EN} » : {', '.join(to_fill_in)}")
+        problems_found.append(f"{origin_of}: fields left at « {TO_FILL_IN} » / « {TO_FILL_IN_EN} »: {', '.join(to_fill_in)}")
     problems_found += [p.replace("CONTRIBUTION.yaml", origin_of, 1) for p in personal_texts(reg, "CONTRIBUTION.yaml", None, data)[0]]
     for error in sorted(reg.schema("manifest").iter_errors(data), key=lambda e: [str(x) for x in e.absolute_path]):
         if isinstance(error.instance, str) and any(m in error.instance for m in TO_FILL_IN_MARKERS):
             continue  # déjà signalé ci-dessus
-        place_of = "/".join(cite(x) for x in error.absolute_path) or "(racine)"
-        problems_found.append(f"{origin_of} : {place_of} : {message_schema(error)}")
+        place_of = "/".join(cite(x) for x in error.absolute_path) or "(root)"
+        problems_found.append(f"{origin_of}: {place_of}: {message_schema(error)}")
     raw_measurements = data.get("measurements") if isinstance(data.get("measurements"), dict) else {}
     for quoted_side in ("before", "after"):
         block = raw_measurements.get(quoted_side)
         for key, value in (block.items() if isinstance(block, dict) else []):
             if isinstance(value, (int, float)) and value == 0:
-                problems_found.append(f"{origin_of} : measurements/{quoted_side}/{key} vaut 0 : indiquez la valeur réellement mesurée (commandement 2)")
+                problems_found.append(f"{origin_of}: measurements/{quoted_side}/{key} is 0: give the value actually measured (commandment 2)")
     task = reg.tasks.get(data.get("task"))
     if not task:
-        problems_found.append(f"{origin_of} : tâche inconnue « {data.get('task')} »")
+        problems_found.append(f"{origin_of}: unknown task « {data.get('task')} »")
         return problems_found
     task = task[1]
     if user and data.get("user") != user:
-        problems_found.append(f"{origin_of} : user « {data.get('user')} » différent de l'auteur de la PR « {user} »")
+        problems_found.append(f"{origin_of}: user « {data.get('user')} » differs from the PR's author « {user} »")
     if task.get("type") in ("optimization", "measurement") and "measurements" not in data:
-        problems_found.append(f"{origin_of} : une tâche de type {task['type']} exige le bloc mesures (commandement 2). "
-                         "Sans mesure réelle, ne soumettez pas : libérez la tâche avec une note.")
+        problems_found.append(f"{origin_of}: a task of type {task['type']} requires the measurements block (commandment 2). "
+                         "Without a real measurement, do not submit: release the task with a note.")
     measurements = raw_measurements
     known_ones = reg.metrics(task.get("project"))
     # Et le décompte d'instructions d'une métrique (instructions_<scénario>), sur lequel R4 juge (ruche-0017).
@@ -2465,17 +2465,17 @@ def check_manifest(reg, data, origin_of="CONTRIBUTION.yaml", user=None):
         block = measurements.get(quoted_side) if isinstance(measurements.get(quoted_side), dict) else {}
         for key in block:
             if known_ones and key not in known_ones:
-                problems_found.append(f"{origin_of} : measurements/{quoted_side}/{key} : métrique inconnue du projet ({', '.join(known_ones)})")
+                problems_found.append(f"{origin_of}: measurements/{quoted_side}/{key}: metric unknown to the project ({', '.join(known_ones)})")
     metric = task.get("metric")
     if task.get("type") == "optimization" and measurements and metric:
         for quoted_side in ("before", "after"):
             block = measurements.get(quoted_side) if isinstance(measurements.get(quoted_side), dict) else {}
             if metric not in block:
-                problems_found.append(f"{origin_of} : measurements/{quoted_side} doit contenir la métrique visée « {metric} »")
+                problems_found.append(f"{origin_of}: measurements/{quoted_side} must hold the target metric « {metric} »")
     actual_size = data.get("actual_size")
     if actual_size in SIZE_ORDER and task.get("size") in SIZE_ORDER:
         if SIZE_ORDER.index(actual_size) > SIZE_ORDER.index(task["size"]):
-            problems_found.append(f"{origin_of} : taille réelle {actual_size} au-delà de la taille de la tâche ({task['size']}) : découpez ou libérez la tâche")
+            problems_found.append(f"{origin_of}: actual size {actual_size} beyond the task's size ({task['size']}): split or release the task")
     return problems_found
 
 
@@ -2512,7 +2512,7 @@ def read_yaml_ref(repo, ref, path):
         text = result.stdout.decode("utf-8")
     except UnicodeDecodeError:
         # Un binaire glissé sous un nom en .yaml : illisible, donc refusé, sans faire tomber la vérification.
-        raise BeeError(f"{ref}:{path} : ce n'est pas du texte UTF-8 (binaire ?)") from None
+        raise BeeError(f"{ref}:{path}: this is not UTF-8 text (binary?)") from None
     return load_yaml_text(text, f"{ref}:{path}")
 
 
@@ -2575,8 +2575,8 @@ def byte_bound(relative_one):
 
 def bytes_problem(relative_one, size):
     """The refusal of a file over its bound in bytes, the same from bee validate and check-pr."""
-    return (f"{relative_one} : {size} octets, au plus {byte_bound(relative_one)} pour ce fichier (docs/governance.md, « Dossiers du "
-            "libre-service ») : il n'est pas lu")
+    return (f"{relative_one}: {size} bytes, at most {byte_bound(relative_one)} for this file (docs/governance.md, « Dossiers du "
+            "libre-service »): it is not read")
 
 
 def require_room(relative_one, text):
@@ -2708,7 +2708,7 @@ def pr_date_problem(value, what_it, instant):
     except BeeError as e:
         return str(e)
     if not instant - TOLERANCE_DATE <= moment <= instant + LEAD_MAX:
-        return f"{what_it} ({value}) doit être l'heure de la PR (à 2 h près, jamais dans le futur)"
+        return f"{what_it} ({value}) must be the time of the PR (within 2 h, never in the future)"
     return None
 
 
@@ -2863,9 +2863,9 @@ def refused_retake(reg, ref, relative_one, user, instant, local_end=None, histor
     if not hours:
         return None
     if history_required and not history_available(reg.root):
-        return ("R7 : l'historique git de main est indisponible (clone superficiel, ou pas de dépôt git) : impossible de vérifier "
-                f"que {user} n'a pas quitté cette tâche depuis moins de {hours:g} h ; check-pr refuse une réservation "
-                "ou une inscription en parallèle sans lui (échec fermé) et se lance sur un clone complet (fetch-depth: 0)")
+        return ("R7: main's git history is unavailable (shallow clone, or no git repository): there is no way to check "
+                f"that {user} has not left this task less than {hours:g} h ago; check-pr refuses a reservation "
+                "or a parallel registration without it (fail closed) and runs on a full clone (fetch-depth: 0)")
     timeout_seconds = dt.timedelta(hours=hours)
     ends = [(f, None) for f in engagement_ends(reg, ref, relative_one, user, instant - timeout_seconds) + ([local_end] if local_end else [])]
     ends += closures_without_integration(reg, ref, pathlib.PurePosixPath(relative_one).stem, user, instant)
@@ -2873,12 +2873,12 @@ def refused_retake(reg, ref, relative_one, user, instant, local_end=None, histor
     if not recent_ones:
         return None
     end, cid = max(recent_ones, key=lambda x: x[0])
-    comment = (f"la contribution {cid} de {user} sur cette tâche a été close sans intégration le {en_iso(end)} (PR fermée, "
-               "contribution annulée ou écartée)" if cid else
-               f"{user} a quitté cette tâche sans contribution le {en_iso(end)} (libération, retrait ou expiration)")
-    return (f"R7 : {comment} ; il ne la reprend pas avant le {en_iso(end + timeout_seconds)} ({hours:g} h, retake_after_release_hours) : "
-            "une réservation ne se renouvelle pas en la rendant, ou en laissant fermer une soumission, puis en la reprenant ; un "
-            "autre peut la prendre")
+    comment = (f"the contribution {cid} of {user} on this task was closed without integration on {en_iso(end)} (PR closed, "
+               "contribution cancelled or set aside)" if cid else
+               f"{user} left this task without a contribution on {en_iso(end)} (release, removal or expiry)")
+    return (f"R7: {comment}; they do not take it back before {en_iso(end + timeout_seconds)} ({hours:g} h, retake_after_release_hours): "
+            "a reservation is not renewed by giving it back, or by letting a submission close, then taking it back; someone "
+            "else may take it")
 
 
 def check_engagements(reg, path, old, new, differences, author, *, is_council, is_robot, instant, added,
@@ -3170,11 +3170,11 @@ def admissible_text(text, what_it, maximum):
     """None si le texte d'utilisateur est recevable : non vide, au plus `maximum` caractères, sans caractère invisible ni
     de contrôle (forbidden_character) ; sinon la raison du refus."""
     if not isinstance(text, str) or not text.strip():
-        return f"{what_it} vide"
+        return f"{what_it} is empty"
     c = first_forbidden_character(text)
     if c is not None:
-        return (f"{what_it} : caractère invisible ou de contrôle refusé (U+{ord(c):04X}, catégorie {unicodedata.category(c)}) : "
-                "il cacherait ou maquillerait le texte, ou rendrait le débat impossible à réécrire")
+        return (f"{what_it}: invisible character or control character refused (U+{ord(c):04X}, category {unicodedata.category(c)}): "
+                "it would hide or disguise the text, or make the debate impossible to rewrite")
     if len(text) > maximum:
         return f"{what_it} de {len(text)} caractères, au plus {maximum}"
     return free_text_problem(text, what_it)
@@ -3230,16 +3230,16 @@ def free_text_problem(text, what_it, one_line=None):
     de code, jamais le caractère."""
     text = str(text)
     if one_line and ("\n" in text or "\t" in text):
-        return f"{what_it} : {one_line} tient sur une ligne (ni saut de ligne ni tabulation)"
+        return f"{what_it}: {one_line} fits on one line (no line break or tab)"
     refused_items = {c for c in set(text) if forbidden_outgoing_character(c)}  # chacun une fois
     c = next((c for c in text if c in refused_items), None) if refused_items else None
     if c is not None:
-        return (f"{what_it} : caractère invisible refusé (U+{ord(c):04X}, catégorie {unicodedata.category(c)}) : "
-                + ("retirez U+FE0F, le sélecteur de variante d'émoji (l'émoji reste lisible sans lui)" if c == "\ufe0f"
-                   else "il cacherait ou maquillerait le texte à l'affichage"))
+        return (f"{what_it}: invisible character refused (U+{ord(c):04X}, category {unicodedata.category(c)}): "
+                + ("remove U+FE0F, the emoji variation selector (the emoji stays readable without it)" if c == "\ufe0f"
+                   else "it would hide or disguise the text on display"))
     if frame_markers(text):
-        return (f"{what_it} : fausse marque d'encadré refusée (« === DONNÉES », « === FIN DES DONNÉES ») : seul bee encadre les "
-                "données qu'il imprime ; to mention it, write it without three consecutive equals signs")
+        return (f"{what_it}: fake frame marker refused (« === DATA », « === END OF DATA », or their French forms): only bee "
+                "frames the data it prints; to mention it, write it without three consecutive equals signs")
     return None
 
 
