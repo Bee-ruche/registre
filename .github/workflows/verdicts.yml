@@ -104,7 +104,9 @@ jobs:
             # calculer un écart contre le mauvais manifeste (miniz-0018-c1, tour 2) : bee enregistrer-verdict ignore un
             # manifeste dont la tâche n'est pas celle de la contribution.
             task=$(printf '%s' "$id" | sed -nE 's/^([a-z0-9]+(-[a-z0-9]+)*-[0-9]{4})-c[0-9]+$/\1/p')  # ID_CONTRIBUTION de bee
-            for location in ${task:+"manifestes/$task.yaml"} CONTRIBUTION.yaml; do
+            # ruche-0145: manifests/<task>.yaml (bee manifest, from the switch on) first; the forks' former places until date D,
+            # after which bee record-verdict ignores a French manifest (DATE_D in bee).
+            for location in ${task:+"manifests/$task.yaml"} ${task:+"manifestes/$task.yaml"} CONTRIBUTION.yaml; do
               # Fichier absent : gh échoue (son corps d'erreur ne doit jamais passer pour un manifeste).
               if content=$(gh api "repos/$repo/contents/$location?ref=$sha" --jq .content 2>/dev/null) \
                  && printf '%s' "$content" | base64 -d > "$RUNNER_TEMP/verdict/manifest.yaml" 2>/dev/null \

@@ -6630,6 +6630,43 @@ SELF_SERVICE = {"reservation", "release", "submission", "update", "note", "revie
 # Vérification d'une branche de contribution sur un fork (règle R1, commandement 3)
 # --------------------------------------------------------------------------
 
+# ruche-0145 (plan, sections 6 and 10, question 10): until DATE_D, the forks' documents (a manifest, verdict.json) are read in either
+# vocabulary, one per document, and a manifest also from manifestes/<task>.yaml or CONTRIBUTION.yaml; from DATE_D on, English only.
+# The switch's merge plus six weeks, 2027-01-01 at the earliest: the council sets it at the freeze, and moves it only by a PR.
+DATE_D = "2027-01-01"
+# The forks' French keys and their English names (tools/migration/names.yaml, families manifest and fork_verdict; the others are the
+# same in both), read at the top of a document and in the mappings named in FORK_NESTED, never in data-keyed ones (metric ids).
+FORK_KEYS = {"manifest": {"tache": "task", "utilisateur": "user", "modele": "model", "resume": "summary", "changement": "change",
+                          "mesures": "measurements", "commande": "command", "avant": "before", "apres": "after", "teste": "tested",
+                          "non_teste": "untested", "doutes": "doubts", "taille_reelle": "actual_size"},
+             "verdict": {"etape_en_echec": "failed_step", "metrique": "metric", "au_dela_du_bruit": "beyond_noise", "mesures": "measurements",
+                         "lignes_modifiees": "changed_lines", "amorcage": "bootstrap", "base_juge": "judge_base", "regle": "rule",
+                         "depart": "start", "juge": "judge", "commun": "common", "projet": "project", "greffon": "plugin", "graine": "seed",
+                         "sorties_comparees": "outputs_compared", "constructions_suspectes": "suspicious_constructs", "etapes": "steps"}}
+FORK_NESTED = {"manifest": ("agent", "measurements"), "verdict": ("judge", "judge_base")}
+
+
+def before_date_d():
+    return now_instant().date().isoformat() < DATE_D
+
+
+def fork_document(kind, data, where):
+    """A fork's manifest or verdict.json (kind) in English, or BeeError: all English, as it is; all French, translated, until DATE_D;
+    French from DATE_D on, or both vocabularies in one document, refused. A document that is not a mapping is left to its checks."""
+    if not isinstance(data, dict):
+        return data
+    table, nested = FORK_KEYS[kind], FORK_NESTED[kind]
+    keys = {k for k in data} | {k for x, v in data.items() if table.get(x, x) in nested and isinstance(v, dict) for k in v}
+    french, english = sorted(k for k in keys if k in table), sorted(k for k in keys if k in set(table.values()))
+    if french and english:
+        raise BeeError(f"{where} : French keys ({', '.join(french[:3])}) and English keys ({', '.join(english[:3])}) : one vocabulary per document")
+    if french and not before_date_d():
+        raise BeeError(f"{where} : French keys ({', '.join(french[:3])}) : read until {DATE_D} only (the switch to English, ruche-0145) ; "
+                       "write it again in English (bee manifest writes English)")
+    return {table.get(k, k): {table.get(x, x): y for x, y in v.items()} if table.get(k, k) in nested and isinstance(v, dict) else v
+            for k, v in data.items()} if french else data
+
+
 def manifest_path(task_identifier):
     """Emplacement du manifeste d'une contribution dans le fork."""
     return f"manifests/{task_identifier}.yaml"
@@ -6639,7 +6676,8 @@ def check_fork(reg, repo, base, head, task_identifier, author=None):
     """Renvoie (problèmes, lignes modifiées, avertissements) pour une branche de contribution."""
     _, task = reg.task(task_identifier)
     _, project = reg.projects[task["project"]]
-    excluded_items = list(project.get("paths_not_counted") or []) + ["CONTRIBUTION.yaml", "manifests/**"]
+    old_places = before_date_d()  # ruche-0145: manifestes/ and CONTRIBUTION.yaml, until DATE_D (plan, R-s)
+    excluded_items = list(project.get("paths_not_counted") or []) + ["manifests/**"] + ["manifestes/**", "CONTRIBUTION.yaml"] * old_places
     judges = list(project.get("judge_paths") or [])
     problems_found, warnings = [], []
     total = 0
@@ -6671,16 +6709,28 @@ def check_fork(reg, repo, base, head, task_identifier, author=None):
             if matches(path, judges):
                 problems_found.append(f"{cite(path)} : une tâche {task['type']} ne peut pas modifier ce qui la juge (commandement 3)")
     # Manifeste : manifestes/<tâche>.yaml (un fichier par tâche, donc pas de conflit entre deux PR), sinon
-    # l'ancien emplacement CONTRIBUTION.yaml à la racine.
-    manifest_name = manifest_path(task_identifier)
-    manifest = read_yaml_ref(repo, head, manifest_name)
-    old = None
-    if manifest is None:
+    # l'ancien emplacement CONTRIBUTION.yaml à la racine. ruche-0145: manifests/<task>.yaml, else, until DATE_D, manifestes/<task>.yaml
+    # (both: refused), else CONTRIBUTION.yaml; a French manifest is translated until DATE_D (fork_document).
+    manifest_name, before_switch = manifest_path(task_identifier), f"manifestes/{task_identifier}.yaml"
+    manifest, old, refused = read_yaml_ref(repo, head, manifest_name), None, False
+    if old_places and (french := read_yaml_ref(repo, head, before_switch)) is not None:
+        if manifest is not None:
+            problems_found.append(f"{manifest_name} and {before_switch} : two manifests for one task : keep {manifest_name} only")
+        else:
+            manifest_name, manifest = before_switch, french
+    if manifest is None and old_places:
         old = read_yaml_ref(repo, head, "CONTRIBUTION.yaml")
-        if old is not None and isinstance(old, dict) and old.get("task") == task_identifier:
+        if isinstance(old, dict) and (old.get("task") or old.get("tache")) == task_identifier:
             manifest_name, manifest = "CONTRIBUTION.yaml", old
-    if manifest is None:
-        candidates = [manifest_name] + (["CONTRIBUTION.yaml"] if old is None else [])
+    try:
+        manifest = fork_document("manifest", manifest, manifest_name)
+    except BeeError as e:
+        problems_found.append(str(e))
+        refused = True
+    if refused:
+        pass
+    elif manifest is None:
+        candidates = [manifest_name] + (["CONTRIBUTION.yaml"] if old is None and old_places else [])
         on_disk = [n for n in candidates if (pathlib.Path(repo) / n).exists()]
         if on_disk:
             problems_found.append(f"{on_disk[0]} existe sur le disque mais n'est pas commité : git add {on_disk[0]} puis commit")
@@ -6691,7 +6741,7 @@ def check_fork(reg, repo, base, head, task_identifier, author=None):
         if isinstance(manifest, dict) and manifest.get("task") != task_identifier:
             problems_found.append(f"{manifest_name} : tâche « {cite(manifest.get('task'))} » au lieu de « {task_identifier} »")
     others = [c for c in git(repo, "diff", "-z", "--name-only", "--no-renames", f"{base}...{head}")
-              if matches(c, ["manifests/**"]) and c != manifest_path(task_identifier)]
+              if matches(c, ["manifests/**"] + ["manifestes/**"] * old_places) and c not in (manifest_path(task_identifier), before_switch)]
     if others:
         problems_found.append(f"la branche modifie le manifeste d'une autre tâche ({', '.join(map(cite, others[:3]))}) : une PR, une tâche")
     if total == 0 and not problems_found and task["type"] == "optimization":
@@ -7603,7 +7653,11 @@ def cmd_manifest(args):
 
 def cmd_validate_manifest(args):
     reg = Registry(args.registry)
-    data = read_yaml(args.file)
+    try:
+        data = fork_document("manifest", read_yaml(args.file), args.file)  # ruche-0145: French until DATE_D
+    except BeeError as e:
+        print(f"✗ {show_error(e)}")
+        return 1
     problems_found = check_manifest(reg, data, args.file)
     for p in problems_found:
         print(f"✗ {show_error(p)}")
@@ -9307,7 +9361,7 @@ def read_verdict_json(path):
             raw = json.load(f)
     except (ValueError, RecursionError) as e:
         raise BeeError(f"{path} : JSON illisible ({type(e).__name__}) : verdict refusé") from None
-    return raw
+    return fork_document("verdict", raw, path)  # ruche-0145: the forks write French until F2, read until DATE_D
 
 
 def cmd_record_verdict(args):
@@ -9327,7 +9381,7 @@ def cmd_record_verdict(args):
     if unfinished(raw):
         raise BeeError(f"{args.verdict} : nombre non fini (NaN ou infini) dans le verdict : refusé")
     ci = str(raw.get("ci", "")).lower()
-    verdict = {"ci": "green" if ci in ("green", "green_value", "green", "success", "succes", "succès") else "red"}
+    verdict = {"ci": "green" if ci in ("green", "success", "verte", "vert", "succes", "succès") else "red"}  # both languages, for good
     if verdict["ci"] == "red":
         verdict["failed_step"] = str(raw.get("failed_step") or "inconnue")
     elif args.bases is not None:  # ruche-0025 : verdicts.yml passe toujours --bases (« sha statut » de l'API compare) ; un rouge n'intègre rien
@@ -9403,6 +9457,10 @@ def cmd_record_verdict(args):
             manifest = None if too_big else read_yaml(args.manifest)
         except Exception:
             too_big, manifest = False, None
+        try:  # ruche-0145: a French manifest, until DATE_D; refused (mixed, or French after it): ignored, as an unreadable one
+            manifest = fork_document("manifest", manifest, "manifest")
+        except BeeError:
+            manifest = None
         # Le manifeste d'une autre tâche (un CONTRIBUTION.yaml resté sur master) ne dit rien de cette contribution : un écart
         # calculé contre lui serait faux (miniz-0018-c1 contre le manifeste de miniz-0016, tour 2).
         declared_task, user = (manifest.get("task"), manifest.get("user")) if isinstance(manifest, dict) else (None, None)
