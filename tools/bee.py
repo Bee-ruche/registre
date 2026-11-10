@@ -8297,7 +8297,7 @@ def debate_import_questions(args):
                         "(agora.openings_max_per_24h); the council is not capped")
     if args.dry_run:
         for identifier, question in to_open:
-            print(f"  {identifier} : {question}")
+            print(f"  {identifier}: {question}")
         print(f"✓ dry run: {len(to_open)} debate(s) to open, {len(links)} link(s) to write in {args.source}. Nothing was written.")
         return 0
     for identifier, question in to_open:
