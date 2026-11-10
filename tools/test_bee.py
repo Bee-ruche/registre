@@ -16591,14 +16591,17 @@ class TestAgentAccounts(BaseDressRehearsal):
             self.assertEqual(code, 1, text)
             self.assertIn(f"{path} : changed only by a PR from the council's own account (ruche-0089)", text)
             self.assertNotIn("FUSION_AUTO=", text)
-        self.assertEqual(len(bee.AUTHORITY_FILES), 10)
+        old_names = {"gouvernance/conseil.yaml", "gouvernance/comptes-agents.yaml", "gouvernance/gardiens.yaml", "gouvernance/garants.yaml",
+                     "gouvernance/consignes/", "docs/organisation.md", "docs/garants.md", "COMMANDEMENTS.md"}  # ruche-0145 (R-i)
+        self.assertEqual((len(bee.AUTHORITY_FILES), old_names - set(bee.AUTHORITY_FILES)), (17, set()))  # 9 English names and 8 old ones
         files = [a for a in bee.AUTHORITY_FILES if not a.endswith("/")] + [f"governance/briefs/{n}.md" for n in (
             "agent-principal", "adversarial-reviewer", "builder")]
         for i, path in enumerate(sorted(files)):
             with self.subTest(path=path):
                 self.branch(f"autorite-{i}")
                 file = self.dir / path
-                file.write_text(file.read_text(encoding="utf-8") + ("# test\n" if path.endswith(".yaml") else "\nTest.\n"),
+                file.parent.mkdir(parents=True, exist_ok=True)  # an old name: the switch removed it, the PR adds it back
+                file.write_text((file.read_text(encoding="utf-8") if file.exists() else "") + ("# test\n" if path.endswith(".yaml") else "\nTest.\n"),
                                    encoding="utf-8")
                 self.commit()
                 expected(path)
@@ -16614,7 +16617,7 @@ class TestAgentAccounts(BaseDressRehearsal):
                  "governance/guarantors.yaml"),
                 ("renommage-vers", lambda: git(self.dir, "mv", "-f", "governance/briefs/brouillon.md",
                                                "governance/briefs/agent-principal.md"), "governance/briefs/agent-principal.md"),
-                ("mode", lambda: (self.dir / "COMMANDEMENTS.md").chmod(0o755), "COMMANDEMENTS.md"),
+                ("mode", lambda: (self.dir / "COMMANDMENTS.md").chmod(0o755), "COMMANDMENTS.md"),  # the French copy is gone
                 ("nouvelle-consigne", lambda: (self.dir / "governance/briefs/other.md").write_text("x\n", encoding="utf-8"),
                  "governance/briefs/other.md"),
                 ("casse", lambda: (self.dir / "governance/Council.yaml").write_text("x: 1\n", encoding="utf-8"),
