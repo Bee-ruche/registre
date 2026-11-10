@@ -22510,3 +22510,40 @@ def f(n, path):
             problems, _ = self.run_on(old, new)
             self.assertEqual(len(problems), 1, new)
             self.assertIn("fields changed", problems[0])
+
+    def test_format_specs_conversions_and_percent_order(self):
+        base = 'def g(n, x):\n    return "{n:,} élément(s), {x!r}".format(n=n, x=x), "%(a)s puis %(b)s" % {"a": n, "b": x}\n'
+        (self.repo / "m.py").write_text(base, encoding="utf-8")
+        subprocess.run(["git", "-C", str(self.repo), "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qam", "g"], check=True)
+        for new, ok in (('"{n:,} item(s), {x!r}"', True), ('"{n} item(s), {x!r}"', False), ('"{n:,} item(s), {x!s}"', False),
+                        ('"%(b)s after %(a)s"', True), ('"%(a)d then %(b)s"', False)):
+            old = '"{n:,} élément(s), {x!r}"' if "{" in new else '"%(a)s puis %(b)s"'
+            (self.repo / "m.py").write_text(base.replace(old, new), encoding="utf-8")
+            problems, _ = self.cm.check(self.repo, "HEAD", None, ["m.py"], False)
+            self.assertEqual(problems == [], ok, (new, problems))
+
+    def test_markers_through_fstrings_locals_and_defaults(self):
+        base = ('def g(s, n, m="erreur xx"):\n    marque = "attendu ici"\n    return s == f"Erreur {n}", marque in s, m in s, '
+                's.startswith(f"=== FIN {n}")\n')
+        (self.repo / "m.py").write_text(base, encoding="utf-8")
+        subprocess.run(["git", "-C", str(self.repo), "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qam", "g"], check=True)
+        for old, new in (('f"Erreur {n}"', 'f"Error {n}"'), ('"attendu ici"', '"expected here"'), ('"erreur xx"', '"error xx"'),
+                         ('f"=== FIN {n}"', 'f"=== END {n}"')):
+            (self.repo / "m.py").write_text(base.replace(old, new), encoding="utf-8")
+            problems, _ = self.cm.check(self.repo, "HEAD", None, ["m.py"], False)
+            self.assertEqual(len(problems), 1, new)
+            self.assertIn("compares text against", problems[0])
+            self.assertEqual(self.cm.check(self.repo, "HEAD", None, ["m.py"], True)[0], [], new)
+
+    def test_letterless_literals_and_unreadable_heads(self):
+        base = 'def g(x):\n    return " : ".join(x), "-"\n'
+        (self.repo / "m.py").write_text(base, encoding="utf-8")
+        subprocess.run(["git", "-C", str(self.repo), "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qam", "g"], check=True)
+        (self.repo / "m.py").write_text(base.replace('" : "', '": "'), encoding="utf-8")
+        problems, _ = self.cm.check(self.repo, "HEAD", None, ["m.py"], False)
+        self.assertIn("without a letter", problems[0])
+        self.assertEqual(self.cm.check(self.repo, "HEAD", None, ["m.py"], False, (" : ",))[0], [])
+        (self.repo / "m.py").write_text("def g(:\n", encoding="utf-8")
+        self.assertIn("does not parse", self.cm.check(self.repo, "HEAD", None, ["m.py"], False)[0][0])
+        (self.repo / "m.py").unlink()
+        self.assertIn("unreadable", self.cm.check(self.repo, "HEAD", None, ["m.py"], False)[0][0])
