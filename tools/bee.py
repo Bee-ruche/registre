@@ -7202,13 +7202,14 @@ def report_refusal_on_main(reg, s):
 
 
 def already_named(reg):
-    """ruche-0137: the logins the council and guardian lists have ever named (git history, casefolded), read once."""
+    """ruche-0137: the logins the council and guardian lists have ever named (git history, casefolded), read once. ruche-0145
+    (plan, section 12, change 1): under their names before and after the switch to English, in either vocabulary, for good."""
     if not hasattr(reg, "already_named"):
-        lists_of = ("governance/council.yaml", "governance/guardians.yaml")
+        lists_of = ("governance/council.yaml", "governance/guardians.yaml", "gouvernance/conseil.yaml", "gouvernance/gardiens.yaml")
         code, output_text = _git_raw(reg.root, "log", "-z", "--no-renames", "--format=%H", "--", *lists_of)
-        reg.already_named = {m["login"].casefold() for h in ([] if code else output_text.decode("ascii", "replace").split("\0")) if h.strip() for c in lists_of
-                           if isinstance(f := read_or_none(reg.root, h.strip(), c), dict) and isinstance(f.get("members"), list)
-                           for m in f["members"] if isinstance(m, dict) and isinstance(m.get("login"), str)}
+        reg.already_named = {m[login].casefold() for h in ([] if code else output_text.decode("ascii", "replace").split("\0")) if h.strip() for c in lists_of
+                           if isinstance(f := read_or_none(reg.root, h.strip(), c), dict) for members, login in (("members", "login"), ("membres", "pseudo"))
+                           if isinstance(f.get(members), list) for m in f[members] if isinstance(m, dict) and isinstance(m.get(login), str)}
     return reg.already_named
 
 
