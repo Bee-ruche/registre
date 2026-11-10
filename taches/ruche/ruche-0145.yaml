@@ -65,6 +65,9 @@ depend_de:
 - miniz-0049
 - libyaml-0020
 noeud: projets/ruche/ruche
-statut: ouverte
+statut: reservee
+reservation:
+  utilisateur: "bidji29"
+  depuis: "2026-11-10T04:20:36Z"
 cree_par: conseil
 cree_le: '2026-11-08'
