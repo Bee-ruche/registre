@@ -901,7 +901,11 @@ def misspelt_logins(reg, data, depth=0):
 # without the person's council or guardian status), and only the person's own pseudo is ever written in the registry.
 AGENT_ACCOUNTS = "governance/agent-accounts.yaml"
 AUTHORITY_FILES = ("COMMANDMENTS.md", "COMMANDEMENTS.md", "governance/council.yaml", AGENT_ACCOUNTS, "governance/guardians.yaml",  # path prefixes, any case
-                   "governance/guarantors.yaml", "governance/briefs/", "docs/organization.md", "docs/guarantors.md", "docs/devolution.md")
+                   "governance/guarantors.yaml", "governance/briefs/", "docs/organization.md", "docs/guarantors.md", "docs/devolution.md",
+                   # ruche-0145 (plan, R-i): the pre-switch names, kept for good: an agent account never touches an authority file
+                   # under its old path either
+                   "gouvernance/conseil.yaml", "gouvernance/comptes-agents.yaml", "gouvernance/gardiens.yaml", "gouvernance/garants.yaml",
+                   "gouvernance/consignes/", "docs/organisation.md", "docs/garants.md")
 
 
 def agent_accounts(data):
