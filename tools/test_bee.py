@@ -12834,7 +12834,7 @@ class TestVerificationRuche0020(BaseReviewRuche0020):
         text = self.ok("show", "I-0001")
         self.assertIn("Autres identités déclarées : gitlab:fictif-tiers", text)
         self.assertIn("vérifiez sur les sources que chaque autre identité déclarée est bien celle de la même personne", text)
-        self.assertIn("I-0001 : proposed", text)
+        self.assertIn("I-0001: proposed", text)
         self.debate_invitation()
         self.a("2026-11-02T11:00:00Z")
         self.branch()
@@ -21967,7 +21967,7 @@ class TestSettingsRuche0144(BaseTest):
                 self.assertIn("bee.yaml : min_account_age_days : entier positif attendu", text)
                 self.assertFalse((self.dir / "members/david.yaml").exists())
         self.line_text("min_account_age_days", "min_account_age_days: 90\n")
-        self.assertIn("au moins 90 jours", self.bee("register", "--login", "david", "--account-created-on", "2026-10-27")[1])
+        self.assertIn("at least 90 days", self.bee("register", "--login", "david", "--account-created-on", "2026-10-27")[1])
 
     def r3(self):
         self.contributors("bruno", "chloe")
