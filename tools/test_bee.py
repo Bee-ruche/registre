@@ -2368,7 +2368,7 @@ class TestBalanceAndSwarm(BaseTest):
         self.assertEqual(state["behind"], "governance")
         code, text = self.bee("balance")
         self.assertEqual(code, 0, text)
-        self.assertIn("Poste le plus en retard: governance", text)
+        self.assertIn("Area furthest behind: governance", text)
 
     def test_list_by_area(self):
         code, text = self.bee("list", "--area", "governance", "--json")
@@ -2746,7 +2746,7 @@ class TestTree(BaseTest):
         self.assertNotIn("=== node roles/", shortened)
         self.assertIn("Already read (--already-read), not reprinted: root, roles/", shortened)
         self.assertIn("=== DATA of task miniz-0099", shortened, "la tâche reste entière")
-        self.assertRegex(shortened, r"\n# notes: (aucune|\d+)\n", "tour 2 : « aucune note » se dit, hors des données")
+        self.assertRegex(shortened, r"\n# notes: (none|\d+)\n", "tour 2 : « aucune note » se dit, hors des données")
         self.assertIn("=== node projects/lossless-compression/miniz ===", shortened, "les paliers de projet restent")
         self.assertLess(len(shortened), len(full_one))
         self.assertIn("--already-read goes with a task", self.bee("context", "--already-read")[1])
@@ -7455,7 +7455,7 @@ class TestVerdictsOfTheRecordedPr(BaseParallel):
         open = {PR_MINIZ + "99008": {"state": "OPEN", "head": "abc1234", "author": "mallory", "branch": "task/99007"}}
         output_text, verdict, _ = self.collect(open)
         self.waiting(output_text, "pr_open", " (#99008)")
-        line_text = f"# {self.cid} : aucun verdict pour la tête abc1234 : {bee.VERDICT_WAIT['pr_open']}"
+        line_text = f"# {self.cid}: no verdict for the head abc1234: {bee.VERDICT_WAIT['pr_open']}"
         self.assertIn(line_text, self.ok_show())
         self.assertIn(line_text, self.acceptance(self.cid)[1])
         self.valid_one()
@@ -7523,10 +7523,10 @@ class TestVerdictsOfTheRecordedPr(BaseParallel):
         path = self.dir / f"contributions/miniz/{self.cid}.yaml"
         bee.write_yaml(path, {**bee.read_yaml(path), "awaiting_verdict": {"reason": "pr_closed", "sha": "abc1234"}})
         self.valid_one()
-        self.assertIn(f"# {self.cid} : aucun verdict pour la tête abc1234 : {bee.VERDICT_WAIT['pr_closed']}", self.ok_show())
+        self.assertIn(f"# {self.cid}: no verdict for the head abc1234: {bee.VERDICT_WAIT['pr_closed']}", self.ok_show())
         bee.write_yaml(path, {**bee.read_yaml(path), "awaiting_verdict": {"reason": bee.VERDICT_WAIT["pr_closed"], "sha": "abc1234"}})
         self.assertIn("awaiting_verdict/reason is not a bee code", self.bee("validate")[1])
-        self.assertNotIn("aucun verdict pour la tête", self.ok_show())
+        self.assertNotIn("no verdict for the head", self.ok_show())
 
     def test_freshness_a_pr_changed_less_than_5_minutes_ago_is_judged_at_the_next_pass(self):
         output_text, verdict, _ = self.collect({}, update_flag="2026-10-27T11:56:00Z")
@@ -7814,7 +7814,7 @@ class TestAgora(BaseAgora):
         self.assertIn("\n    Debate: [D-0010](../debates/D-0010.yaml)", doc, "retrait aligné sur l'item « 10. »")
         self.valid_one()
         text = self.ok("debate", "import-questions", "--user", "bidji29")
-        self.assertIn("0 débat(s) ouvert(s)", text, "rejouée, elle n'ouvre rien de plus")
+        self.assertIn("0 debate(s) opened", text, "rejouée, elle n'ouvre rien de plus")
         self.assertEqual(len(bee.Registry(self.dir).debates), expected_ones)
 
 
@@ -9767,7 +9767,7 @@ class TestReviewByCommit(BaseParallel):
         self.verdict_at("aaaaaab", "7ee0001")  # même arbre, autre sha
         self.have_reviewed_and_voted()
         self.a("2026-11-01T15:00:00Z")
-        alert = f"this content was refused par bruno in {original} (same tree, other contribution of the task)"
+        alert = f"this content was refused by bruno in {original} (same tree, other contribution of the task)"
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 0, f"pas un blocage : {text}")
         self.assertIn(alert, text)
@@ -10469,7 +10469,7 @@ class TestInvitations(BaseInvitations):
         self.assertFalse(swarm["brake"]["tight"], swarm["brake"])
         self.assertEqual((swarm["brake"]["guardians"], swarm["brake"]["invitations_per_week"]), (1, 3))
         text = self.ok("swarm")
-        self.assertIn("brake desserré", text)
+        self.assertIn("brake released", text)
         self.assertIn("I-0001 (guarantor, github:octocat, proposed by alice, debate D-0002): proposed, awaits the council's approval", text)
         self.ok("site", "--output", str(self.dir / "_site"))
         page = (self.dir / "_site/index.html").read_text(encoding="utf-8")
@@ -10483,7 +10483,7 @@ class TestInvitations(BaseInvitations):
         (self.dir / "governance/incidents.yaml").write_text(
             'incidents:\n  - id: INC-0001\n    title: Messages en nombre\n    opened_at: "2026-11-02T10:30:00Z"\n', encoding="utf-8")
         self.valid_one()
-        self.assertIn("brake SERRÉ (open incident(s): INC-0001", self.ok("swarm"))
+        self.assertIn("brake TIGHT (open incident(s): INC-0001", self.ok("swarm"))
         self.ok("site", "--output", str(self.dir / "_site"))
         self.assertIn("Frein serré", (self.dir / "_site/index.html").read_text(encoding="utf-8"))
 
@@ -14385,7 +14385,7 @@ class TestR13FollowableRuche0052(BaseInvitations):
         text = self.ok("show", "I-0001")
         line_text = next(l for l in text.splitlines() if l.startswith("proposed on "))
         self.assertEqual(line_text, "proposed on 2026-10-30T10:00:00Z (deadline without a decision: 2026-11-13T10:00:00Z); guardian's approval: ?"
-                                "; council's green light: aucun")
+                                "; council's green light: none")
         self.assertNotIn("\x1b", line_text)
 
     def test_3_the_deadline_is_the_gate_s(self):
@@ -14396,7 +14396,7 @@ class TestR13FollowableRuche0052(BaseInvitations):
         self.commit("expiration en 3 jours")
         self.up_to("proposed")
         self.assertIn("proposed on 2026-10-30T10:00:00Z (deadline without a decision: 2026-11-02T10:00:00Z); guardian's approval: none; "
-                      "council's green light: aucun", self.ok("show", "I-0001"))
+                      "council's green light: none", self.ok("show", "I-0001"))
         reg = bee.Registry(self.dir)
         inv, conf, end = reg.invitation("I-0001")[1], bee.growth_config(reg), bee.read_instant("2026-11-02T10:00:00Z", "test")
         self.assertEqual(bee.expiration(inv, conf), end)
@@ -14456,7 +14456,7 @@ class TestR13FollowableRuche0052(BaseInvitations):
         self.valid_one()
         brake = bee.brake_state(bee.Registry(self.dir))
         self.assertEqual((brake["tight"], brake["open_incidents"]), (True, ["INC-0001"]))
-        self.assertIn("brake SERRÉ (open incident(s): INC-0001", self.ok("swarm"))
+        self.assertIn("brake TIGHT (open incident(s): INC-0001", self.ok("swarm"))
         # La porte : gina, gardienne en fonction à l'heure de la PR, passe, et le conseil fusionne ; un membre est refusé.
         self.commit()
         self.awaits_the_council("gina", "incident")
@@ -14703,17 +14703,17 @@ class TestCopiedManifest(BaseDressRehearsal):
             self.assertIn(expected, readings[command], command)
         # verifier-acceptation (journal de la CI à chaque passage d'intégration) : modèle et gain seuls, et un renvoi.
         self.assertIn("\n".join([header, "| model: modèle d'essai 1.0", "| gain: 0.1", bee.DATA_END,
-                                 "# tested, untested et doubts déclarés : bee show miniz-0099"]), readings["check-acceptance"])
+                                 "# tested, untested and doubts declared: bee show miniz-0099"]), readings["check-acceptance"])
         self.assertNotIn("fuzzing 2 min", readings["check-acceptance"])
         self.assertNotIn("=== DATA of the manifest", self.ok("context", "miniz-0099"), "le chemin d'un autre rôle n'en paie pas le prix")
 
     def test_nothing_is_copied_from_a_manifest_of_another_task_of_another_author_or_too_big(self):
         """Revue adverse (points 3, 5 et 6) : la déclaration est celle du manifeste de la tâche et de l'auteur au commit jugé ;
         sinon declare: null, aucun écart, et la sortie dit pourquoi sans imprimer le texte du fork."""
-        self.assertIn(f"# {self.cid} : aucun manifeste recopié (pas encore de verdict)", self.readings()["show"])
+        self.assertIn(f"# {self.cid}: no copied manifest (no verdict yet)", self.readings()["show"])
         rec = self.rec()
         bee.write_yaml(self.path, {**rec, "verdict": {"ci": "green", "gain": 0.03, "changed_lines": 10, "sha": "abc1234"}})
-        self.assertIn("aucun manifeste recopié (verdict antérieur à la recopie (ruche-0017))", self.readings()["show"])
+        self.assertIn("no copied manifest (verdict older than the copy (ruche-0017))", self.readings()["show"])
         big_one = FILLED_MANIFEST + "# " + "x" * bee.MANIFEST_MAX_BYTES + "\n"
         slow = FILLED_MANIFEST.replace("doubts: Aucun doute identifié.", "doubts: 1" + ":1" * 300000)  # sexagésimal YAML 1.1
         for name, content, message in (
@@ -14735,8 +14735,8 @@ class TestCopiedManifest(BaseDressRehearsal):
                     self.assertIn(f"manifeste ignoré {message} : aucun écart calculé, rien de recopié", output_text)
                 self.assertIsNone(self.rec()["declared"])
                 self.assertNotIn("declared_gap", self.rec()["verdict"])
-                self.assertIn(f"# {self.cid} : aucun manifeste recopié (manifeste absent, illisible, de plus de 64 Kio, d'une "
-                              "autre tâche ou d'un autre auteur)", self.readings()["show"])
+                self.assertIn(f"# {self.cid}: no copied manifest (manifest missing, unreadable, over 64 KiB, of another "
+                              "task or of another author)", self.readings()["show"])
                 self.valid_one()
 
     def test_a_hostile_manifest_copies_only_bounded_and_framed_data(self):
@@ -15091,7 +15091,7 @@ class TestRound3(BaseParallel):
         self.ok_("take", "miniz-9001", "--user", "chloe")
         copied = self.submit("miniz-9001", "chloe", 99329)
         self.verdict_("bbb0001", "7ee0001", cid=copied)
-        alert = f"this content was refused par bruno in {self.cid} (same tree, other task: miniz-0099)"
+        alert = f"this content was refused by bruno in {self.cid} (same tree, other task: miniz-0099)"
         code, text = self.acceptance(copied)
         self.assertIn(alert, text)
         self.assertIn(alert, self.ok_("ranking"))
@@ -15843,10 +15843,10 @@ class TestFreeTextCheck(unittest.TestCase):
                 self.assertEqual(bee.declared_text("a" + c + "b", 100), f"a<{code_point(c)}>b")
         for c in "\n\t":
             self.assertIsNone(bee.free_text_problem(f"deux{c}lines", "context"))
-            self.assertEqual(bee.free_text_problem(f"deux{c}lines", "summary", "le résumé"),
-                             "summary: le résumé fits on one line (no line break or tab)")
+            self.assertEqual(bee.free_text_problem(f"deux{c}lines", "summary", "the summary"),
+                             "summary: the summary fits on one line (no line break or tab)")
         self.assertIsNone(bee.free_text_problem("Honnête" + HONEST_CONTROL, "reason"))
-        self.assertIsNone(bee.free_text_problem("Honnête" + HONEST_CONTROL, "title", "le titre"))
+        self.assertIsNone(bee.free_text_problem("Honnête" + HONEST_CONTROL, "title", "the title"))
         # Revue adverse (a) : U+FE0F reste refusé (⚠ suivi de lui), et le message dit le remède.
         self.assertIn("remove U+FE0F, the emoji variation selector", bee.free_text_problem("Attention \u26a0\ufe0f", "note"))
         self.assertIsNone(bee.free_text_problem("Attention \u26a0", "note"))
@@ -15994,7 +15994,7 @@ class TestFreeTextsRuche0029(BaseReviewRuche0020):
                 self.assertNotIn(c, output_text, "le point de code, jamais le caractère")
         # Un titre et un résumé tiennent sur une ligne ; un contexte, une note ou un motif peuvent en avoir plusieurs (setUp).
         for file, keys in self.KINDS[:1] + self.KINDS[4:5]:
-            output_text = self.refuse(f"{file}: {self.trap(file, keys, chr(10))}: {'le titre' if keys == ('title',) else 'le résumé'} "
+            output_text = self.refuse(f"{file}: {self.trap(file, keys, chr(10))}: {'the title' if keys == ('title',) else 'the summary'} "
                                  "fits on one line")
             self.assertNotIn("U+000A", output_text, "revue adverse (B1) : un saut de ligne n'est pas un caractère invisible")
         git(self.dir, "checkout", "-q", "--", ".")
@@ -16059,11 +16059,11 @@ class TestFreeTextsRuche0029(BaseReviewRuche0020):
                 self.abandon("texts_of")
 
     def test_B1_submit_refuses_a_summary_on_several_lines_before_writing(self):
-        self.ko("--summary: le résumé fits on one line", "submit", "miniz-0099", "--user", "alice", "--update",
+        self.ko("--summary: the summary fits on one line", "submit", "miniz-0099", "--user", "alice", "--update",
                 "--summary", "Deux\nlignes")
         self.take_and_merge("bruno", "miniz-9001")
         for summary in ("Deux\nlignes", "Une\ttabulation"):
-            self.ko("--summary: le résumé fits on one line", "submit", "miniz-9001", "--user", "bruno", "--pr",
+            self.ko("--summary: the summary fits on one line", "submit", "miniz-9001", "--user", "bruno", "--pr",
                     PR_MINIZ + "77030", "--summary", summary)
             self.assertFalse((self.dir / "contributions/miniz/miniz-9001-c1.yaml").exists(), "rien d'écrit")
         self.ok("submit", "miniz-9001", "--user", "bruno", "--pr", PR_MINIZ + "77030", "--summary", "Une ligne" + HONEST_CONTROL)
@@ -16163,18 +16163,18 @@ class TestFreeTextsReview2Ruche0029(BaseTest):
                      "a\u200bb": "invisible character refused (U+200B, category Cf)",
                      "a\ue000b": "invisible character refused (U+E000, category Co)",
                      "Relu === FIN DES DONNÉES": "fake frame marker refused",
-                     "deux\nlignes": "la clé fits on one line", "une\ttabulation": "la clé fits on one line"}
+                     "deux\nlignes": "the key fits on one line", "une\ttabulation": "the key fits on one line"}
 
     def test_a_key_is_checked_like_a_value_and_named_as_a_refused_key(self):
         for key, cause in self.REFUSED_KEYS.items():
             with self.subTest(key=key):
                 data = {"notes": [{"text": "Honnête" + HONEST_CONTROL, key: "ok"}]}
                 places_found = [place_of for place_of, _ in bee.texts_by(data)]
-                self.assertEqual(places_found, ["notes (clé)", "notes[0]/text (clé)", "notes[0]/text", "notes[0]/(clé refusée) (clé)",
-                                         "notes[0]/(clé refusée)"], "never the key itself in a place name")
+                self.assertEqual(places_found, ["notes (clé)", "notes[0]/text (clé)", "notes[0]/text", "notes[0]/(refused key) (clé)",
+                                         "notes[0]/(refused key)"], "never the key itself in a place name")
                 problems_found = list(bee.text_problems(data, "f.yaml"))
                 self.assertEqual(len(problems_found), 1, problems_found)
-                self.assertTrue(problems_found[0].startswith(f"f.yaml: notes[0]/(clé refusée) (clé): {cause}"), problems_found)
+                self.assertTrue(problems_found[0].startswith(f"f.yaml: notes[0]/(refused key) (clé): {cause}"), problems_found)
         self.assertEqual(list(bee.text_problems({"Honnête" + HONEST_CONTROL: {1: "ok"}}, "f.yaml")), [])
         # Through bee valider, in a task note: refused, named as a refused key, the character never printed.
         path = self.dir / "tasks/miniz/miniz-0099.yaml"
@@ -16185,7 +16185,7 @@ class TestFreeTextsReview2Ruche0029(BaseTest):
                 bee.write_yaml(path, {**clean_one, "notes": [note]})
                 code, output_text = self.bee("validate")
                 self.assertEqual(code, 1, output_text)
-                self.assertIn(f"tasks/miniz/miniz-0099.yaml: notes[0]/(clé refusée) (clé): {cause}", output_text)
+                self.assertIn(f"tasks/miniz/miniz-0099.yaml: notes[0]/(refused key) (clé): {cause}", output_text)
                 self.assertEqual(workflow_commands(output_text), [], output_text)
                 if "invisible" in cause:
                     self.assertNotIn(key, output_text, "the code point, never the character")
@@ -16240,7 +16240,7 @@ class TestFreeTextsReview2Ruche0029(BaseTest):
                 self.assertEqual(code, 1, output_text)
                 self.assertIn(f"measurements/{cid}/bruno.yaml: {cause}", output_text)
                 self.assertFalse(entry_card.exists(), "nothing written")
-        for fields, cause in (({"metric": "debit\u2066"}, "metrics/(clé refusée) (clé): invisible character refused (U+2066"),
+        for fields, cause in (({"metric": "debit\u2066"}, "metrics/(refused key) (clé): invisible character refused (U+2066"),
                                ({"processor": "M3 === DONNÉES"}, "config/processor: fake frame marker refused")):
             code, output_text = self.bee(*ab(**fields))
             self.assertEqual(code, 1, output_text)
@@ -17451,7 +17451,7 @@ class TestSelfServiceBounds(unittest.TestCase):
 
     def test_the_free_keys_of_the_metrics_of_a_measurement(self):
         for key, expected in (("a" * 301, f"metrics/{'a' * 301} (clé): 301 characters, at most 300 "),
-                             ("débit\u202e", "metrics/(clé refusée) (clé): invisible character refused (U+202E")):
+                             ("débit\u202e", "metrics/(refused key) (clé): invisible character refused (U+202E")):
             measurement = {"metrics": {key: {"gain": 0.05, "beyond_noise": True}}}
             problems_found = list(bee.self_service_text_problems(measurement, "measurements/x-0001-c1/alice.yaml"))
             self.assertTrue([p for p in problems_found if p.startswith(f"measurements/x-0001-c1/alice.yaml: {expected}")], problems_found)
@@ -20680,8 +20680,8 @@ class TestReportsRuche0118(ReportTools):
         self.report("gaspard", "alice", "bruno")
         # Recorded for the council: bee essaim and bee voir show it.
         swarm = self.ok("swarm")
-        self.assertIn("Signalements ouverts, pour le conseil", swarm)
-        self.assertIn("S-0001: alice et bruno (cross_votes), reported by gaspard on 2026-10-30T10:00:00Z", swarm)
+        self.assertIn("Open reports, for the council", swarm)
+        self.assertIn("S-0001: alice and bruno (cross_votes), reported by gaspard on 2026-10-30T10:00:00Z", swarm)
         self.assertEqual([x["id"] for x in json.loads(self.ok("swarm", "--json"))["reports"]], ["S-0001"])
         show = self.ok("show", "S-0001")
         self.assertIn("S-0001: open: the council links the two accounts or dismisses it", show)
@@ -20860,8 +20860,8 @@ class TestReportsRuche0118(ReportTools):
         config.write_text(re.sub(r"(?m)^  reports_naming_max: *3\b", "  reports_naming_max: 20", config.read_text(encoding="utf-8")), encoding="utf-8")
         self.commit("douze signalements ouverts")
         swarm = self.ok("swarm")
-        self.assertIn("Signalements ouverts, pour le conseil: 12, les 10 premiers", swarm)
-        self.assertIn("S-0010: alice et bruno", swarm)
+        self.assertIn("Open reports, for the council: 12, the first 10", swarm)
+        self.assertIn("S-0010: alice and bruno", swarm)
         self.assertNotIn("S-0011", swarm)
         table_of = json.loads(self.ok("swarm", "--json"))
         self.assertEqual(([x["id"] for x in table_of["reports"]], table_of["reports_open"]),
@@ -20997,7 +20997,7 @@ class TestReportsRuche0137(ReportTools):
         self.report("gaspard", "alice", "chloe")
         self.assertEqual(self.to_the_council("chloe", "alice", "bruno"), "S-0004")
         self.valid_one()
-        self.assertIn("S-0004: alice et bruno (cross_votes), reported by chloe", self.ok("swarm"))
+        self.assertIn("S-0004: alice and bruno (cross_votes), reported by chloe", self.ok("swarm"))
         # The council decides it like any other : it links...
         self.decider("S-0004", "--link", "alice")
         self.assertTrue(bee.Registry(self.dir).identities.same_one("alice", "bruno"))
@@ -21113,10 +21113,10 @@ class TestReportsRuche0137(ReportTools):
         self.assertEqual(self.to_the_council("bruno", "alice", "emile"), "S-0006")
         # bee essaim lists them apart, newest first, so that a flood never hides the others.
         swarm = self.ok("swarm")
-        self.assertIn("Signalements ouverts, pour le conseil: 3 (", swarm)
-        self.assertIn("Signalements au-delà du plafond nommant une personne: 3 (", swarm)
-        self.assertLess(swarm.index("S-0006: alice et emile"), swarm.index("S-0005: alice et dora"))
-        self.assertLess(swarm.index("S-0005: alice et dora"), swarm.index("S-0004: alice et bruno"))
+        self.assertIn("Open reports, for the council: 3 (", swarm)
+        self.assertIn("Reports past the cap naming a person: 3 (", swarm)
+        self.assertLess(swarm.index("S-0006: alice and emile"), swarm.index("S-0005: alice and dora"))
+        self.assertLess(swarm.index("S-0005: alice and dora"), swarm.index("S-0004: alice and bruno"))
         table_of = json.loads(self.ok("swarm", "--json"))
         self.assertEqual([x["id"] for x in table_of["reports_at_cap"]], ["S-0006", "S-0005", "S-0004"])
         # The value is the council's (bee.yaml) : at 2, a second one the same day waits for the council too.

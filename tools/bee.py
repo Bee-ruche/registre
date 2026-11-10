@@ -305,7 +305,7 @@ def message_schema(error):
         return f"value « {cite(value)} » not allowed (expected: {expected})"
     if v == "type":
         types = expected if isinstance(expected, list) else [expected]
-        return f"« {cite(value)} » should be {' ou '.join(TYPES_JSON.get(t, t) for t in types)}"
+        return f"« {cite(value)} » should be {' or '.join(TYPES_JSON.get(t, t) for t in types)}"
     if v == "minLength":
         return f"text too short ({len(value)} characters, minimum {expected})"
     if v == "maxLength":
@@ -3256,7 +3256,7 @@ def texts_by(value, place_of="", depth=0):
             yield from texts_by(under_it, f"{place_of}[{i}]", depth + 1)
     elif isinstance(value, dict):
         for key, under_it in value.items():
-            name = f"{place_of}/{key if free_text_problem(key, '', 'la clé') is None else '(clé refusée)'}".lstrip("/")
+            name = f"{place_of}/{key if free_text_problem(key, '', 'the key') is None else '(refused key)'}".lstrip("/")
             yield f"{name} (clé)", str(key)
             yield from texts_by(under_it, name, depth + 1)
 
@@ -3265,7 +3265,7 @@ def text_problems(data, prefix_text, sort_kind=None):
     """Each refusal of the common check in `donnees` (values and keys), as bee validate reports it, so that a command can refuse
     before writing what bee validate would refuse after: a title, a summary and a key fit on one line; with `sorte`, its bounds."""
     for place_of, text in texts_by(data):
-        one_line = "la clé" if place_of.endswith(" (clé)") else {"title": "le titre", "summary": "le résumé"}.get(place_of)
+        one_line = "the key" if place_of.endswith(" (clé)") else {"title": "the title", "summary": "the summary"}.get(place_of)
         bound = text_bound(sort_kind, place_of) if sort_kind and text is not None and len(text) > FIELD_TEXT_MAX else None  # the least bound
         problem_text = (f"{prefix_text}: {place_of}: nested deeper than 20 levels, refused" if text is None
                     else f"{prefix_text}: {place_of}: {len(text)} characters, at most {bound} (docs/governance.md, « Dossiers du "
@@ -6875,7 +6875,7 @@ def cmd_cap(args):
     if not state["total"]:
         print("\nNo activity in the window: every contribution helps; start with the area furthest behind.")
     if area:
-        print(f"\n{'Poste demandé' if args.area else 'Poste le plus en retard'}: {area}. Leads:")
+        print(f"\n{'Requested area' if args.area else 'Area furthest behind'}: {area}. Leads:")
         for t in leads["tasks"]:
             print(f"  - {t['id']} ({t['size']}): {t['title']}")
         if leads["to_review"]:
@@ -6952,14 +6952,14 @@ def cmd_swarm(args):
                   f"{x['last_activity']}, {state}): {question if len(question) <= 90 else question[:89] + '…'}")
     for key in ("reports", "reports_at_cap"):  # ruche-0137: past the cap naming a person, apart, newest first
         if table_of[key]:
-            print(f"\n{'Signalements au-delà du plafond nommant une personne' if key != 'reports' else 'Signalements ouverts, pour le conseil'}: "
-                  f"{(n := table_of[key + '_open'])}{(', les 10 derniers' if key != 'reports' else ', les 10 premiers') * (n > 10)} (bee show <S-nnnn>, bee decide-report):")
+            print(f"\n{'Reports past the cap naming a person' if key != 'reports' else 'Open reports, for the council'}: "
+                  f"{(n := table_of[key + '_open'])}{(', the latest 10' if key != 'reports' else ', the first 10') * (n > 10)} (bee show <S-nnnn>, bee decide-report):")
         for x in table_of[key]:
-            print(f"  - {cite(x['id'])}: {cite(' et '.join(map(str, x['accounts'])) if isinstance(x['accounts'], list) else x['accounts'])} ({cite(x['reason'])}), "
+            print(f"  - {cite(x['id'])}: {cite(' and '.join(map(str, x['accounts'])) if isinstance(x['accounts'], list) else x['accounts'])} ({cite(x['reason'])}), "
                   f"reported by {cite(x['by'])} on {cite(x['at'])}")
     brake = table_of["brake"]
-    print(f"\nGrowing (R13, docs/growth.md): brake {'SERRÉ' if brake['tight'] else 'desserré'}"
-          + (f" ({' ; '.join(brake['reasons'])})" if brake["tight"] else "")
+    print(f"\nGrowing (R13, docs/growth.md): brake {'TIGHT' if brake['tight'] else 'released'}"
+          + (f" ({'; '.join(brake['reasons'])})" if brake["tight"] else "")
           + f". Active members: {brake['active_members']} for {brake['guardians_in_office']} guardian(s) in office; messages "
           f"recorded over 7 days: {brake['sent_7_days']}; places taken (messages and green lights): {brake['places_taken_7_days']} "
           f"of {brake['invitations_per_week']}.\n  What can pass "
@@ -6982,7 +6982,7 @@ def task_computed_lines(reg, t):
     part, encadré comme de la donnée (task_data_frame)."""
     lines = ["# --- computed by bee ---"]
     blocked = reg.blocked_by(t)
-    lines.append(f"# blocked by: {', '.join(map(cite, blocked)) if blocked else 'rien'}")  # ruche-0088: each text quoted
+    lines.append(f"# blocked by: {', '.join(map(cite, blocked)) if blocked else 'nothing'}")  # ruche-0088: each text quoted
     lines.append(f"# area (the hive's balance, R11): {area_of(t)}" + ("" if t.get("area") else " (from its type)"))
     lines.append(f"# changed lines allowed (R1): {LINES_MAX[t['size']]}")
     required_level = "Confirmed" if t["type"] == "split" else {"S": "New", "M": "Contributor", "L": "Confirmed"}[t["size"]]
@@ -7007,14 +7007,14 @@ def task_computed_lines(reg, t):
             for alert in reviewer_alerts(reg, reg.records.get(c["contribution"], (None, {}))[1] or {}):
                 lines.append(f"#   ⚠ {cite(c['contribution'])}: {cite(alert)}")
             lines.append(f"#   {c['rank']}. {cite(c['contribution'])} by {cite(c['author'])}, submitted on {cite(c['submitted_at'])}, "
-                          f"CI {cite(c['ci'] or 'en attente')}, "
+                          f"CI {cite(c['ci'] or 'pending')}, "
                           f"race score {'—' if c['measured_gain'] is None else format(c['measured_gain'], '.4f')}, net vote {c['net_vote']:+d}, "
                           f"protected until {cite(c['protected_until'])}, no more waiting after {cite(c['waits_until'])}")
     if t.get("status") in ("reserved", "in_review"):
         lines.append(f"# join in parallel: bee take {cite(t['id'])} --user <login> --parallel")
     # Le nombre de notes, dit hors des données : « aucune » se distingue d'une liste omise (tour 2).
     notes = t.get("notes") if isinstance(t.get("notes"), list) else []
-    lines.append(f"# notes: {len(notes) or 'aucune'}")
+    lines.append(f"# notes: {len(notes) or 'none'}")
     return lines
 
 
@@ -7034,7 +7034,7 @@ def cmd_show(args):
         print(f"proposed on {date(_instant_or_none(inv.get('proposed_at')))}"
               + (f" (deadline without a decision: {date(expiration(inv, conf))})" if invitation_state(inv) == "proposed" else "")
               + "; guardian's approval: " + (date(_instant_or_none(block_of(inv, "guardian_approval").get("at"))) if "guardian_approval" in inv else "none")
-              + f"; council's green light: {date(v) if (v := green_light(inv)) else 'aucun'}")
+              + f"; council's green light: {date(v) if (v := green_light(inv)) else 'none'}")
         print()
         print(data_frame(inv, DATA_START.format(id=cite(inv.get("id")))))
         return 0
@@ -7694,7 +7694,7 @@ def update_summary(reg, args):
 def cmd_submit(args):
     reg = Registry(args.registry)
     reg.require_member(args.user)
-    if args.summary and (problem_text := free_text_problem(args.summary, "--summary", "le résumé")):  # avant d'écrire (ruche-0029)
+    if args.summary and (problem_text := free_text_problem(args.summary, "--summary", "the summary")):  # avant d'écrire (ruche-0029)
         raise BeeError(problem_text)
     if args.update:
         return update_summary(reg, args)
@@ -7808,7 +7808,7 @@ def cmd_review(args):
               "unfavorable one from a guardian, the council or a Confirmed member does block, until your next review). Review the "
               "judged commit when the verdict is there (bee show); only one review without a commit per reviewer.")
     elif own_items_f:
-        print(f"  For R3, it replaces your previous review ({own_items_f[-1].get('sha') or 'sans commit'}): only the most "
+        print(f"  For R3, it replaces your previous review ({own_items_f[-1].get('sha') or 'without a commit'}): only the most "
               "recent one counts.")
     if args.opinion == "abstention":
         print("  Abstention: neither for nor against (R3, score), opens no gate and earns no points.")
@@ -8030,7 +8030,7 @@ def debate_open(args):
         _apply_synthesis(reg, d, u, args.synthesis, None, instant)
     write_debate(reg.root / "debates" / f"{identifier}.yaml", d)
     print(f"✓ debate {identifier} opened; you are its rapporteur (you hold the synthesis, then you hand over).")
-    print(f"  {_publish(identifier, 'Débat')}")
+    print(f"  {_publish(identifier, 'Debate')}")
     return 0
 
 
@@ -8121,7 +8121,7 @@ def debate_synthesize(args):
     print(f"✓ synthesis of {args.debate} published" + (f" relieving {absent} (absent rapporteur)" if absent else "")
           + f"; next rapporteur: {following}"
           + (" (you remain the only participant)." if following == u else " (the rapporteur rotates: never the same one twice in a row)."))
-    print(f"  {_publish(args.debate, 'Synthèse')}")
+    print(f"  {_publish(args.debate, 'Synthesis')}")
     return 0
 
 
@@ -8152,7 +8152,7 @@ def debate_duplicate(args):
         arguments[rank]["duplicate_marked_by"] = u
     write_debate(path, {**d, "arguments": arguments})
     print(f"✓ {args.argument} marked as a duplicate of {args.of} in {args.debate}: it is still read, nothing is erased.")
-    print(f"  {_publish(args.debate, 'Doublon')}")
+    print(f"  {_publish(args.debate, 'Duplicate')}")
     return 0
 
 
@@ -8231,7 +8231,7 @@ def debate_close(args):
     write_debate(path, d)
     print(f"✓ {args.debate} closed: {args.outcome}{' ' + reference if reference else ''}. It will take nothing more; to take it up "
           "again, one opens a new debate that cites it.")
-    print(f"  {_publish(args.debate, 'Clôture')}")
+    print(f"  {_publish(args.debate, 'Closing')}")
     return 0
 
 
@@ -8310,8 +8310,8 @@ def debate_import_questions(args):
         identifier, withdrawal = links[end]
         lines.insert(end + 1, f"{' ' * withdrawal}Debate: [{identifier}](../debates/{identifier}.yaml) (`bee debates --show {identifier}`).")
     source.write_text("\n".join(lines), encoding="utf-8")
-    print(f"✓ {len(to_open)} débat(s) ouvert(s) ({', '.join(i for i, _ in to_open) or 'aucun'}) ; {len(links)} lien(s) écrit(s) "
-          f"dans {args.source}.")
+    print(f"✓ {len(to_open)} debate(s) opened ({', '.join(i for i, _ in to_open) or 'none'}); {len(links)} link(s) written "
+          f"in {args.source}.")
     print("  The PR touches docs/: it is not self-service; the council publishes it (docs/agora.md).")
     return 0
 
@@ -9934,7 +9934,7 @@ def reviewer_alerts(reg, rec):
         pass
     for who_is, cid in refusal_elsewhere(reg, rec):
         task = reg.records[cid][1].get("task")
-        alerts.append(f"this content was refused {f'par {who_is} ' if who_is else ''}in {cid} (same tree, " + ("other contribution of the "
+        alerts.append(f"this content was refused {f'by {who_is} ' if who_is else ''}in {cid} (same tree, " + ("other contribution of the "
                        f"task" if task == rec.get("task") else f"other task: {task}") + ("" if who_is else ", contribution refused")
                        + "): this refusal does not block this contribution; review it knowing that")
     return alerts
@@ -10804,7 +10804,7 @@ def check_tree(reg, add_to):
         expected = expected_parent(identifier)
         if "parent" in header and header["parent"] != expected:
             add_to(f"{place_of}: broken link: declared parent « {header['parent']} », but the node is placed under "
-                    f"« {expected or 'rien (c’est la racine : parent: null)'} »")
+                    f"« {expected or 'nothing (it is the root: parent: null)'} »")
         if "updated_on" in header:
             try:
                 read_date(header["updated_on"], f"{place_of} (updated_on)")
@@ -10838,8 +10838,8 @@ def check_tree(reg, add_to):
         # The same checks in either language; headings are named in the node's own language (ruche-0055).
         names = dict(zip(NODE_SECTIONS, NODE_SECTIONS_EN if n["languages"] == ["en"] else NODE_SECTIONS))
         if len(n["languages"]) > 1:
-            add_to(f"{place_of}: headings in both French and English: one language per node ({' ; '.join(NODE_SECTIONS)}, "
-                    f"or {' ; '.join(NODE_SECTIONS_EN)})")
+            add_to(f"{place_of}: headings in both French and English: one language per node ({'; '.join(NODE_SECTIONS)}, "
+                    f"or {'; '.join(NODE_SECTIONS_EN)})")
         for name in NODE_SECTIONS:
             if name not in n["sections"]:
                 add_to(f"{place_of}: missing section: « ## {names[name]} »")
@@ -11018,18 +11018,18 @@ def declared_frame(cid, rec, shortened=False):
     pas. abrege (check-acceptance, dont la sortie va au journal de la CI) : modèle et gain seuls."""
     verdict = rec.get("verdict") if isinstance(rec.get("verdict"), dict) else {}
     m = ID_CONTRIBUTION.fullmatch(str(cid))
-    ident, task = (cid, m["task"]) if m else ("?", "<tâche>")
+    ident, task = (cid, m["task"]) if m else ("?", "<task>")
     a = rec.get("awaiting_verdict") if isinstance(rec.get("awaiting_verdict"), dict) else {}  # ruche-0025 : écrit par la CI
-    waiting = (f"# {ident} : aucun verdict pour la tête {a['sha']} : {VERDICT_WAIT[a['reason']]}\n" if a.get("reason") in VERDICT_WAIT
+    waiting = (f"# {ident}: no verdict for the head {a['sha']}: {VERDICT_WAIT[a['reason']]}\n" if a.get("reason") in VERDICT_WAIT
                and re.fullmatch(r"[0-9a-f]{7,40}", str(a.get("sha"))) else "")
     if not isinstance(rec.get("declared"), dict):
-        why = ("pas encore de verdict" if not verdict else "verdict antérieur à la recopie (ruche-0017)" if "declared" not in rec
-                    else "manifeste absent, illisible, de plus de 64 Kio, d'une autre tâche ou d'un autre auteur")
-        return f"{waiting}# {ident} : aucun manifeste recopié ({why})"
+        why = ("no verdict yet" if not verdict else "verdict older than the copy (ruche-0017)" if "declared" not in rec
+                    else "manifest missing, unreadable, over 64 KiB, of another task or of another author")
+        return f"{waiting}# {ident}: no copied manifest ({why})"
     sha = verdict.get("sha") if re.fullmatch(r"[0-9a-f]{7,40}", str(verdict.get("sha"))) else "?"
     data = {c: rec["declared"].get(c) for c in ("model", "gain")} if shortened else rec["declared"]
     return (waiting + data_frame(data, DECLARED_START.format(id=ident, sha=sha))
-            + (f"\n# tested, untested et doubts déclarés : bee show {task}" if shortened else ""))
+            + (f"\n# tested, untested and doubts declared: bee show {task}" if shortened else ""))
 
 
 def diff_command(cid, rec):
