@@ -22641,6 +22641,12 @@ def f(n, path):
         self.assertIn("without a letter", self.cm.check(self.repo, "HEAD", None, ["m.py"], False, ("SERRÉ", "desserré"), True)[0][0])
         (self.repo / "m.py").write_text(new.replace("if ok", "if not ok"), encoding="utf-8")
         self.assertIn("the code changed", self.cm.check(self.repo, "HEAD", None, ["m.py"], False, ("SERRÉ", "desserré"), True)[0][0])
+        swap = 'def f(a, b):\n    return f"{a(\'un mot\')} {b(\'deux mots\')}"\n'
+        (self.repo / "m.py").write_text(swap, encoding="utf-8")
+        subprocess.run(["git", "-C", str(self.repo), "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qam", "s"], check=True)
+        (self.repo / "m.py").write_text(swap.replace("'un mot'", "'X'").replace("'deux mots'", "'un mot'").replace("'X'", "'deux mots'"),
+                                        encoding="utf-8")
+        self.assertIn("moved or swapped", self.cm.check(self.repo, "HEAD", None, ["m.py"], False, (), True)[0][0])  # a swap
 
 if __name__ == "__main__":
     sys.exit(principal_tests(sys.modules[__name__], __file__, sys.argv[1:]))

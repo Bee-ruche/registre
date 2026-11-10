@@ -23,7 +23,10 @@ which each PR's review checks. A literal with letters, a blank and no comparison
 encoding, a shell command line or a mode string passed to a function would pass, and the review reads every changed
 literal. --prose waives a text for the whole file, not one place. A string inside an interpolation (f"{'s' if n > 1 else
 ''}") is code: translating it is refused as a code change, unless --inner (the hand-made part) sets those literals aside
-too, paired in the order written: keep the order of interpolations that hold literals. A docstring read by the
+too, paired in the order written: with --inner an f-string's interpolations keep their order. As elsewhere, a literal with
+letters and a blank passed to a function inside an interpolation (an argument, a getattr name) is taken for a message:
+the review reads each one. An inner literal that becomes the text of another inner literal of the base (a swap, a move)
+is refused. A docstring read by the
 code (__doc__) is not looked for; bee.py reads none today. A marker reaching a comparison through a function's return value
 (f() in s) or a global assigned inside a function is missed.
 """
@@ -85,6 +88,7 @@ class Masked(ast.NodeTransformer):
     def __init__(self, inner=False):
         self.found = []
         self.inner = inner
+        self.depth = 0  # > 0 inside an interpolated expression (--inner)
 
     def _docstring(self, node):
         body = getattr(node, "body", None)
@@ -97,7 +101,7 @@ class Masked(ast.NodeTransformer):
 
     def visit_Constant(self, node):
         if isinstance(node.value, str) and node.value != HOLE:
-            self.found.append(("str", node.value, node.lineno))
+            self.found.append(("inner" if self.depth else "str", node.value, node.lineno))
             return ast.copy_location(ast.Constant(value=HOLE), node)
         return node
 
@@ -108,11 +112,15 @@ class Masked(ast.NodeTransformer):
                 text += part.value
             else:
                 if self.inner:  # --inner: the literals of the interpolated expression, set aside in the order written
+                    self.depth += 1
                     part.value = self.visit(part.value)
+                    self.depth -= 1
                 text += HOLE
                 holes.append(ast.dump(part))
         self.found.append(("f", text, node.lineno))
-        return ast.copy_location(ast.Constant(value=HOLE + "".join(sorted(holes))), node)
+        # Without --inner, the interpolations may be reordered (English word order). With --inner their literals are paired
+        # in the order written, so the order must hold too: a swap of literals between two expressions is then a change.
+        return ast.copy_location(ast.Constant(value=HOLE + "".join(holes if self.inner else sorted(holes))), node)
 
 
 def masked(text, inner=False):
@@ -222,8 +230,13 @@ def check(repo, base, head, files, markers, prose=(), inner=False):
             problems.append(f"{path}: the code changed, not only string literals (P1 restricted to message literals): "
                             f"top-level statements at {', '.join(changed) or 'the end (one added or removed)'}")
             continue
+        old_inner = {a for kind, a, _ in old if kind == "inner"}
         for (kind, a, line), (_, b, new_line) in zip(old, new):
             if a == b:
+                continue
+            if kind == "inner" and b in old_inner and a not in prose:
+                problems.append(f"{path}:{line}->{new_line}: a literal inside an interpolation became another one of the "
+                                f"file's (moved or swapped, not translated): {a!r} -> {b!r}")
                 continue
             where = f"{path}:{line}->{new_line}"
             counts["docstrings" if kind == "doc" else f"{path} messages"] += 1
