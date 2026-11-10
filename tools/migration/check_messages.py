@@ -230,7 +230,7 @@ def check(repo, base, head, files, markers, prose=(), inner=False):
             problems.append(f"{path}: the code changed, not only string literals (P1 restricted to message literals): "
                             f"top-level statements at {', '.join(changed) or 'the end (one added or removed)'}")
             continue
-        old_texts = {a for kind, a, _ in old if kind in ("inner", "str")}
+        old_texts = {p for kind, a, _ in old for p in (a.split(HOLE) if kind == "f" else [a]) if p}  # docstrings and f-string parts too
         for (kind, a, line), (_, b, new_line) in zip(old, new):
             if a == b:
                 continue
