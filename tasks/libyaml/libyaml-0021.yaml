@@ -1,0 +1,25 @@
+id: libyaml-0021
+project: libyaml
+category: parsing-serialization
+type: test
+area: governance
+size: M
+title: libyamlBee writes English (English names, after the switch)
+context: 'As miniz-0050, for libyamlBee: judge-v4, then English verdicts, metric ids and plugin names.'
+files:
+- .github/workflows/
+- bee/
+reach: 0.8
+metric: null
+acceptance_criteria:
+- fork tests pass on the English layout only; the judge's verdict on a known PR is unchanged
+- an independent adversarial review by an agent of another model than the builder's is attached, with every finding fixed
+  or answered; the full test suite passes on the exact head
+out_of_scope:
+- COMMANDMENTS.md
+depends_on:
+- ruche-0148
+node: projects/parsing-serialization/libyaml
+status: open
+created_by: council
+created_on: '2026-11-08'

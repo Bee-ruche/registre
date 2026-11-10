@@ -1,0 +1,237 @@
+# Intègre les contributions qui satisfont la règle R3, et clôt celles qui ont été abandonnées.
+#
+# Pour chaque contribution en relecture, l'outil bee de la branche principale décide seul
+# (bee verifier-acceptation : CI verte, R4/R5, relectures sur le commit jugé, avis défavorables,
+# vote pondéré, fenêtre, porte humaine temporaire). Si c'est bon :
+#   - la PR n'est fusionnée QUE sur le commit que la CI a jugé (--match-head-commit) ;
+#   - une PR déjà fusionnée à la main (par le conseil, pendant la porte humaine) est consignée si et
+#     seulement si elle l'a été sur ce même commit ;
+#   - puis bee integrer passe la contribution et sa tâche en « integree », et écarte dans le même commit les
+#     contributions concurrentes de la même tâche (R3 : seule la mieux classée s'intègre ; bee en-attente
+#     liste chaque course de la mieux classée à la moins bien classée, qui est donc essayée d'abord).
+# Une PR fermée sans fusion fait clore la contribution (bee cloturer) et rouvrir sa tâche, sauf si la course
+# continue (autres contributions en relecture, titulaire ou inscrits en parallèle). Les clôtures passent APRÈS
+# les intégrations du passage, et jamais quand une concurrente est intégrée ou fusionnée : une contribution qui
+# a perdu la course est écartée, pas annulée.
+# ruche-0094: a registry contribution (its PR on this repository) is never merged here; once the council or its agent principal
+# has merged it into main, it is recorded as the council would by hand, from GitHub's API and main's history (bee record-merge).
+# Les PR des contributions écartées ne sont fermées qu'APRÈS la publication réussie du registre (étape « Fermer
+# les PR des contributions écartées »), et seulement si elles sont ouvertes et ouvertes par l'auteur de la
+# contribution. Si un passage échoue au milieu, le suivant refait tout : rien n'est perdu ni fait deux fois.
+#
+# Sécurité : seul l'outil bee de main s'exécute ; les fichiers des forks sont des données, et la
+# fusion se fait côté serveur (le code du fork n'est jamais exécuté ici). Une PR qui n'a pas été ouverte
+# par l'auteur de la contribution n'est ni fusionnée ni consignée, ni fermée si la contribution est écartée.
+# ruche-0089 : une PR ouverte par son compte d'agent déclaré compte comme la sienne (bee acts-for, qui lit
+# gouvernance/comptes-agents.yaml sur main) ; rien d'autre. Si bee échoue, personne n'est reconnu (échec fermé).
+#
+# Jeton de fusion : PR dans ce dépôt → jeton par défaut ; PR sur un fork → secret
+# BEE_INTEGRATION_TOKEN (jeton à accès fin, écriture sur les forks). Sûr tant que la porte de relecture
+# de R3 est ouverte : un gardien a relu exactement le commit fusionné. Sans lui, une contribution
+# intégrable attend une fusion à la main ; le passage suivant de ce workflow consigne alors l'intégration.
+name: Auto-integration
+
+on:
+  schedule:
+    - cron: "26,56 * * * *"
+  workflow_dispatch:
+  # Activité du registre (relectures et votes fusionnés, verdicts reportés) : voir verdicts.yml. GitHub
+  # n'enchaîne pas plus de trois workflow_run : la collecte des verdicts lancée par la fusion automatique
+  # ne relance pas ce workflow, d'où les deux sources. Seul le code de main s'exécute.
+  workflow_run:
+    workflows: ["Auto-merge", "Fork verdicts"]
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+# ruche-0122: passes replace (a newer pending run replaces an older one; the job « pause » spaces them a few minutes apart);
+# the job that writes main keeps the group it shares with expirations.yml.
+concurrency:
+  group: integration
+  cancel-in-progress: false
+
+jobs:
+  integrate:
+    runs-on: ubuntu-24.04
+    concurrency:
+      group: main-write
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0   # ruche-0028 : la fenêtre de R3 part de l'heure de fusion de la soumission, lue dans l'historique
+                           # ruche-0094: main before a registry PR's merge commit, and the PR's base (bee record-merge)
+      - name: Commit-graph (ruche-0130)
+        run: git commit-graph write --reachable --changed-paths
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Dependencies
+        run: pip install -r tools/requirements.txt
+      - name: API budget, start (ruche-0121; puts first on PATH a gh that logs each call)
+        env: {GITHUB_TOKEN: "${{ github.token }}", BEE_INTEGRATION_TOKEN: "${{ secrets.BEE_INTEGRATION_TOKEN }}"}
+        run: python3 tools/bee.py api-budget start --dir "$RUNNER_TEMP/api-budget" --token GITHUB_TOKEN --token BEE_INTEGRATION_TOKEN
+      - name: Integrate what satisfies R3, close what is abandoned
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BEE_INTEGRATION_TOKEN: ${{ secrets.BEE_INTEGRATION_TOKEN }}
+        run: |
+          tmp="${RUNNER_TEMP:-$(mktemp -d)}"
+          # ruche-0122: every PR read in bulk, as in verdicts.yml (an unreadable one, or one not a user's, is left out of the pass).
+          python3 tools/bee.py pending --pr-states \
+            | python3 -c 'import json, sys; [print(c["id"], c["pr"], c.get("verdict_sha") or "-", c.get("author") or "-", c["pr_state"], c["pr_head"], c["pr_merge"], c["pr_author"], c["pr_author_id"], c["pr_person"], sep="\t") for c in json.load(sys.stdin) if c.get("pr") and c.get("pr_state")]' \
+            > "$tmp/a_integrer.tsv"
+          : > "$tmp/a_clore.txt"
+          : > "$tmp/merged_ones.txt"
+          while IFS=$'\t' read -r id pr sha author state head merge pr_author pr_account person; do
+            repo=$(printf '%s' "$pr" | sed -E 's#^https://github\.com/([A-Za-z0-9-]+/[A-Za-z0-9_.-]+)/pull/[0-9]+$#\1#')
+            if [ "$state" = "CLOSED" ]; then
+              # Clôturée après les intégrations de ce passage (une concurrente intégrée l'écarte au lieu de l'annuler).
+              printf '%s\n' "$id" >> "$tmp/a_clore.txt"; continue
+            fi
+            # La PR doit être celle de l'auteur de la contribution (le pseudo d'un membre est son login GitHub) : sinon
+            # rien n'est fusionné ni consigné, on n'intègre pas le travail d'un autre sous son nom (personne : bee acts-for).
+            if [ "${person,,}" != "${author,,}" ]; then
+              echo "::notice::$id : la PR $pr a été ouverte par $pr_author, pas par $author ; ni fusionnée ni consignée."; continue
+            fi
+            [ "$state" = "MERGED" ] && printf '%s\n' "$id" >> "$tmp/merged_ones.txt"
+            # ruche-0094: a registry contribution (its PR is on this repository) is never merged here. Once the council (or its
+            # agent principal) has merged its PR into main, bee record-merge records it from GitHub's REST answers alone (the PR,
+            # and the Actions runs of its merged head) and main's history, as a hand-made record; anything else: a notice.
+            if [ "${repo,,}" = "${GITHUB_REPOSITORY,,}" ]; then
+              [ "$state" = "MERGED" ] || continue
+              api="$tmp/api"; rm -rf "$api" && mkdir -p "$api"
+              if ! { [[ "$head" =~ ^[0-9a-f]{40}$ ]] && gh api "repos/${repo}/pulls/${pr##*/}" > "$api/pr.json" \
+                     && gh api "repos/${repo}/actions/runs?head_sha=${head}&event=pull_request&per_page=100" --paginate > "$api/runs.json"; } < /dev/null; then
+                echo "::notice::$id : PR $pr merged, but GitHub's answers are unreadable; nothing recorded, the next pass retries."; continue
+              fi
+              if output_text=$(python3 tools/bee.py record-merge "$id" --api "$api" < /dev/null 2>&1); then printf '%s\n' "$output_text"
+              elif [ -n "$output_text" ]; then echo "::notice::$(printf '%s' "$output_text" | tr '\n' ' ')"; fi  # silent a week after the merge
+              continue
+            fi
+            python3 tools/bee.py check-acceptance "$id" || continue
+            if [ "$sha" = "-" ]; then
+              echo "::notice::$id : verdict sans commit associé ; laissée en relecture."; continue
+            fi
+            if [ "$head" != "$sha" ]; then
+              echo "::notice::$id : la PR est sur $head, le verdict sur $sha ; on attend le verdict du nouveau commit."; continue
+            fi
+            if [ "$state" != "MERGED" ]; then
+              if [ "$repo" = "$GITHUB_REPOSITORY" ]; then token="$GH_TOKEN"; else token="$BEE_INTEGRATION_TOKEN"; fi
+              if [ -z "$token" ]; then
+                echo "::notice::$id : intégrable ; la PR $pr attend sa fusion (pas de jeton d'intégration)."; continue
+              fi
+              # Une fusion automatique ne change jamais un workflow de CI (le juge d'un fork) : une PR qui en modifie un est
+              # fusionnée par le conseil, puis consignée ici. Règle écrite dans le code, quels que soient les droits du jeton ;
+              # si la liste des fichiers ne peut pas être lue, on ne fusionne pas (échec fermé).
+              number_of="${pr##*/}"
+              if ! files=$(gh api "repos/${repo}/pulls/${number_of}/files" --paginate --jq '.[].filename' < /dev/null); then
+                echo "::warning::$id : fichiers de la PR illisibles ; laissée en relecture."; continue
+              fi
+              if printf '%s\n' "$files" | grep -q '^\.github/workflows/'; then
+                echo "::notice::$id : intégrable, mais sa PR modifie un workflow de CI : jamais fusionnée automatiquement. Au conseil de la fusionner ; elle sera consignée au passage suivant."
+                continue
+              fi
+              # ruche-0028 : la base de la PR relue juste avant de fusionner, longtemps après tout retard de l'API (même lecture que
+              # verdicts.yml) ; une base changée n'est jamais fusionnée, une réponse illisible non plus (échec fermé).
+              api="$tmp/api"; rm -rf "$api" && mkdir -p "$api"
+              if ! { gh api "repos/${repo}/issues/${number_of}/events?per_page=100" --paginate > "$api/events.json" \
+                     && gh api "repos/${repo}/issues/${number_of}/timeline?per_page=100" --paginate > "$api/timeline.json" \
+                     && PYTHONPATH=tools python3 -c 'import sys, bee; sys.exit(any(e.get("event") in bee.BASE_CHANGES for n in ("events", "timeline") for e in bee.api_answers(sys.argv[1], n)))' "$api"; } < /dev/null; then
+                echo "::notice::$id : la base de la PR a changé, ou ses événements sont illisibles : jamais fusionnée ; ouvrez une nouvelle PR vers la branche par défaut du fork."
+                continue
+              fi
+              if ! output_text=$(GH_TOKEN="$token" gh pr merge "$pr" --merge --match-head-commit "$sha" --delete-branch=false 2>&1); then
+                echo "::warning::$id : fusion refusée (conflit à rebaser, nouveau commit ou droits) ; laissée en relecture. Réponse de GitHub :"
+                printf '%s\n' "$output_text" | sed 's/::/: :/g; s/^/  /'
+                continue
+              fi
+              printf '%s\n' "$id" >> "$tmp/merged_ones.txt"
+              merge=$(GH_TOKEN="$token" gh pr view "$pr" --json mergeCommit --jq '.mergeCommit.oid // "-"')
+            fi
+            # ruche-0028 (revue adverse, M3) : consignée seulement si la PR vise la branche par défaut du fork et que le commit de
+            # fusion en est un ancêtre ; sinon, ou si ce n'est pas vérifiable, rien n'est consigné.
+            number_of="${pr##*/}"
+            if ! { [[ "$merge" =~ ^[0-9a-f]{40}$ ]] && gh api "repos/${repo}/pulls/${number_of}" > "$tmp/pr.json" && gh api "repos/${repo}" > "$tmp/repo.json" \
+                   && target=$(python3 -c 'import json, sys; p, d = (json.load(open(f)) for f in sys.argv[1:]); print(d["default_branch"] if p["base"]["ref"] == d["default_branch"] else "")' "$tmp/pr.json" "$tmp/repo.json") \
+                   && [[ "$target" =~ ^[A-Za-z0-9._/-]{1,200}$ ]] && status=$(gh api "repos/${repo}/compare/${merge}...${target}" --jq .status) \
+                   && [[ "$status" =~ ^(identical|ahead)$ ]]; } < /dev/null; then
+              echo "::notice::$id : PR fusionnée hors de la branche par défaut du fork, ou commit de fusion invérifiable : intégration non consignée."; continue
+            fi
+            python3 tools/bee.py integrate "$id" --merge-sha "$merge" || true
+          done < "$tmp/a_integrer.tsv"
+          while read -r id; do
+            python3 tools/bee.py close "$id" --reason "PR fermée sans fusion." --merged "$tmp/merged_ones.txt" || true
+          done < "$tmp/a_clore.txt"
+          rm -f "$tmp/a_integrer.tsv" "$tmp/a_clore.txt" "$tmp/merged_ones.txt"
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! git diff --quiet; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -qam "Automatic integrations and closures (R3)"
+            # main a pu avancer pendant ce passage (fusions libre-service) : se rebaser, revalider, réessayer.
+            for attempt in 1 2 3; do
+              if ! git pull -q --rebase origin main; then
+                if git rebase --abort 2>/dev/null; then
+                  # ruche-0094: main changed the same lines during this pass; the same commit would conflict at every try. Nothing is
+                  # published (the next step then reads main only), and the next pass redoes the work from main (idempotent).
+                  git reset -q --hard origin/main
+                  echo "::notice::main changed the same lines during this pass: nothing published; the next pass redoes the work."
+                  exit 0
+                fi
+              elif python3 tools/bee.py validate && git push origin HEAD:main; then
+                gh api -X POST "repos/$GITHUB_REPOSITORY/actions/workflows/site.yml/dispatches" -f ref=main || true  # ruche-0121: one call
+                exit 0
+              fi
+              sleep $((attempt * 10))
+            done
+            echo "::error::publication impossible après 3 essais ; le prochain passage refera le travail (idempotent)."
+            exit 1
+          fi
+      - name: Close the PRs of the contributions set aside
+        # Seulement après une publication réussie (cette étape ne tourne pas si « Publier » a échoué) : une PR n'est
+        # fermée que si l'écartement est sur main. Idempotent : on repasse sur les écartées des 7 derniers jours et
+        # on ne ferme que les PR encore ouvertes, ouvertes par l'auteur de la contribution (le champ pr d'une
+        # contribution est déclaré par son auteur : il ne doit pas faire fermer la PR de quelqu'un d'autre).
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BEE_INTEGRATION_TOKEN: ${{ secrets.BEE_INTEGRATION_TOKEN }}
+        run: |
+          tmp="${RUNNER_TEMP:-$(mktemp -d)}"
+          python3 tools/bee.py set-aside --days 7 > "$tmp/set-aside.tsv"
+          while IFS=$'\t' read -r id pr author kept; do
+            repo=$(printf '%s' "$pr" | sed -E 's#^https://github\.com/([A-Za-z0-9-]+/[A-Za-z0-9_.-]+)/pull/[0-9]+$#\1#')
+            if [ "$repo" = "$GITHUB_REPOSITORY" ]; then token="$GH_TOKEN"; else token="$BEE_INTEGRATION_TOKEN"; fi
+            [ -n "$token" ] || { echo "::notice::$id écartée : sa PR $pr reste à fermer (pas de jeton d'intégration)."; continue; }
+            infos=$(GH_TOKEN="$token" gh pr view "$pr" --json state,author --jq '"\(.state) \(.author.login)"' < /dev/null) \
+              || { echo "::notice::$id écartée : PR $pr illisible, on ne la ferme pas."; continue; }
+            read -r pr_state pr_author <<< "$infos"
+            [ "$pr_state" = "OPEN" ] || continue
+            person=$(python3 tools/bee.py acts-for -- "$pr_author" < /dev/null) || person=""
+            if [ "${person,,}" != "${author,,}" ]; then
+              echo "::notice::$id écartée : la PR $pr a été ouverte par $pr_author, pas par $author ; on ne la ferme pas."; continue
+            fi
+            GH_TOKEN="$token" gh pr close "$pr" < /dev/null \
+              --comment "Écartée au profit de $kept, retenue par la règle R3 (course entre contributions concurrentes de la même tâche). Ce n'est pas un refus : rien ne compte contre son auteur ni ses relecteurs." \
+              || echo "::warning::$id : fermeture de la PR $pr impossible ; le prochain passage réessaiera."
+          done < "$tmp/set-aside.tsv"
+          rm -f "$tmp/set-aside.tsv"
+      - name: API budget, end (ruche-0121)
+        if: always()
+        env: {GITHUB_TOKEN: "${{ github.token }}", BEE_INTEGRATION_TOKEN: "${{ secrets.BEE_INTEGRATION_TOKEN }}"}
+        run: python3 tools/bee.py api-budget end --dir "$RUNNER_TEMP/api-budget" --token GITHUB_TOKEN --token BEE_INTEGRATION_TOKEN
+  pause:
+    # ruche-0122: as in verdicts.yml, at most one pass every few minutes when merges trigger them; it holds « integration » only.
+    if: always() && github.event_name != 'workflow_dispatch'
+    needs: integrate
+    runs-on: ubuntu-24.04
+    permissions: {}
+    steps:
+      - run: sleep 180

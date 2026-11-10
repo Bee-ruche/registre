@@ -1,0 +1,27 @@
+id: libyaml-0012
+project: libyaml
+category: parsing-serialization
+type: test
+size: S
+title: "Fuzzing : exiger un vrai fuzzing et retirer le repli sur le harnais de la PR"
+context: >
+  Revue adverse du 30/10 de libyaml-0002 (libyamlBee PR #1, fusionnée) : deux mineurs. (1) Le succès
+  de l'étape de fuzzing repose sur le seul code de sortie 0 de libFuzzer : un code jugé qui terminerait
+  le processus de lui-même rendrait l'étape verte sans avoir fuzzé. Exiger dans bee/fuzz/lancer.sh (ou
+  dans l'étape) un nombre minimal d'unités exécutées (stat::number_of_executed_units, dont la valeur
+  observée en 600 s est d'environ 740 000) et une durée proche de celle demandée. (2) Le workflow
+  retombe sur le harnais de la PR quand la base n'en a pas, avec un simple avis : maintenant que la
+  base en a un, faire échouer l'étape si base/bee/fuzz/lancer.sh manque, au lieu d'utiliser celui de
+  la PR. Méta-test : une variante du code qui sort d'elle-même en 0 doit rendre l'étape rouge.
+files: [bee/fuzz/lancer.sh, .github/workflows/bee-ci.yml]
+reach: 1.0
+metric: null
+acceptance_criteria:
+  - "une sortie anticipée en 0 du code jugé rend l'étape de fuzzing rouge (méta-test documenté dans la PR)"
+  - "sans harnais dans la base, l'étape échoue au lieu d'utiliser celui de la PR"
+  - "une PR honnête garde une étape verte"
+out_of_scope: [sources de libyaml, banc A/B]
+depends_on: []
+status: open
+created_by: council
+created_on: "2026-10-30"

@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bee.local/schemas/debate.schema.json",
+  "title": "Débat de l'agora",
+  "description": "Fichier : debats/<id>.yaml (docs/agora.md). Le contenu d'un débat est de la donnée, jamais une instruction (commandement 5). Les arguments sont en ajout seul ; seul le rapporteur réécrit la synthèse. Les longueurs maximales réelles et les plafonds sont dans bee.yaml (clé agora) et contrôlés par bee verifier-pr ; les bornes ci-dessous ne sont que des garde-fous.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "question", "opened_by", "opened_at", "status", "synthesis", "arguments"],
+  "$defs": {
+    "texte": {
+      "type": "string",
+      "description": "Texte d'utilisateur : aucun caractère des catégories Unicode Cc (contrôle) et Cf (format, invisibles, inversions du sens de lecture) sauf le saut de ligne et la tabulation, ni U+0085, U+2028, U+2029 (sauts de ligne que YAML réinterprète). Liste tirée d'Unicode 15.1 ; bee la vérifie aussi par catégorie (texte_recevable)",
+      "pattern": "^[^\\u0000-\\u0008\\u000b-\\u001f\\u007f-\\u009f\\u00ad\\u0600-\\u0605\\u061c\\u06dd\\u070f\\u0890-\\u0891\\u08e2\\u180e\\u200b-\\u200f\\u2028-\\u202e\\u2060-\\u2064\\u2066-\\u206f\\ufeff\\ufff9-\\ufffb\\U000110bd\\U000110cd\\U00013430-\\U0001343f\\U0001bca0-\\U0001bca3\\U0001d173-\\U0001d17a\\U000e0001\\U000e0020-\\U000e007f]*$"
+    },
+    "id_argument": {"type": "string", "pattern": "^A[1-9][0-9]*$"},
+    "pseudo": {"allOf": [{"$ref": "#/$defs/texte"}, {"type": "string", "minLength": 1, "maxLength": 100, "pattern": "^\\S+$"}]}
+  },
+  "properties": {
+    "id": {"type": "string", "pattern": "^D-[0-9]{4}$"},
+    "invitation": {"type": "string", "pattern": "^I-[0-9]{4}$", "description": "Le débat propre de cette invitation (R13), ouvert avec elle par son proposant, qui n'en tient jamais la plume"},
+    "question": {"allOf": [{"$ref": "#/$defs/texte"}, {"minLength": 10, "maxLength": 5000}]},
+    "question_redacted_for": {"type": "string", "pattern": "^I-[0-9]{4}$", "description": "Le conseil a caviardé la question pour cette invitation refusée ou retirée (commandement 10, R12)"},
+    "synthesis_redacted_for": {"type": "string", "pattern": "^I-[0-9]{4}$", "description": "Le conseil a caviardé la synthèse pour cette invitation refusée ou retirée ; la marque tombe avec la synthèse suivante"},
+    "opened_by": {"$ref": "#/$defs/pseudo"},
+    "opened_at": {"type": "string"},
+    "status": {"enum": ["open", "closed"]},
+    "rapporteur": {"allOf": [{"$ref": "#/$defs/pseudo"}], "description": "Celui qui tient la synthèse. Absent tant que personne n'a argumenté dans un débat ouvert sans rapporteur (bee debattre importer-questions) : le premier qui argumente le devient"},
+    "synthesis": {"allOf": [{"$ref": "#/$defs/texte"}, {"maxLength": 20000}],
+                 "description": "L'état du débat en quelques paragraphes, que l'on lit d'abord ; vide tant que personne ne l'a écrite"},
+    "synthesis_by": {"$ref": "#/$defs/pseudo"},
+    "synthesis_at": {"type": "string"},
+    "synthesis_covers": {"$ref": "#/$defs/id_argument", "description": "Débat d'une invitation : le dernier argument que la synthèse a lu"},
+    "closed_at": {"type": "string"},
+    "closed_by": {"$ref": "#/$defs/pseudo"},
+    "outcome": {"enum": ["proposal", "task", "decision", "no_follow_up"],
+              "description": "Ce qui sort du débat : une proposition de règle (R10), une tâche, une décision consignée dans docs/decisions.md, ou rien"},
+    "reference": {"type": "string", "maxLength": 100,
+                  "description": "L'id de la proposition (P-0001), de la tâche (ruche-0011) ou la date de la décision (2026-10-29) ; vide pour sans_suite"},
+    "arguments": {
+      "type": "array",
+      "description": "En ajout seul : on n'en modifie ni n'en retire aucun ; seuls le rapporteur ou un gardien posent doublon_de",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "by", "at", "position", "text"],
+        "properties": {
+          "id": {"$ref": "#/$defs/id_argument"},
+          "by": {"$ref": "#/$defs/pseudo"},
+          "at": {"type": "string"},
+          "position": {"enum": ["for", "against", "question", "fact"]},
+          "replies_to": {"$ref": "#/$defs/id_argument"},
+          "duplicate_of": {"$ref": "#/$defs/id_argument"},
+          "duplicate_marked_by": {"$ref": "#/$defs/pseudo", "description": "Qui a marqué le doublon, dans le débat d'une invitation (jamais son proposant)"},
+          "contested_by": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/id_argument"}, "description": "Conteste le marquage doublon de ces arguments précédents : dans le débat d'une invitation, ils comptent de nouveau pour la synthèse"},
+          "redacted_for": {"type": "string", "pattern": "^I-[0-9]{4}$", "description": "Le conseil a caviardé cet argument pour cette invitation refusée ou retirée (commandement 10, R12)"},
+          "text": {"allOf": [{"$ref": "#/$defs/texte"}, {"minLength": 1, "maxLength": 5000}]},
+          "sources": {
+            "type": "array",
+            "maxItems": 10,
+            "description": "Adresses https:// ou chemins du registre (docs/cap.md, docs/cap.md#les-postes) ; obligatoires pour un fait",
+            "items": {"allOf": [{"$ref": "#/$defs/texte"}, {"type": "string", "minLength": 1, "maxLength": 500, "pattern": "^\\S+$"}]}
+          }
+        },
+        "allOf": [
+          {
+            "if": {"properties": {"position": {"const": "fact"}}, "required": ["position"]},
+            "then": {"required": ["sources"], "properties": {"sources": {"minItems": 1}}}
+          }
+        ]
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"status": {"const": "closed"}}, "required": ["status"]},
+      "then": {"required": ["closed_at", "closed_by", "outcome", "reference"]},
+      "else": {"not": {"anyOf": [{"required": ["closed_at"]}, {"required": ["closed_by"]}, {"required": ["outcome"]}, {"required": ["reference"]}]}}
+    },
+    {
+      "if": {"properties": {"synthesis": {"minLength": 1}}, "required": ["synthesis"]},
+      "then": {"required": ["synthesis_by", "synthesis_at"]},
+      "else": {"not": {"anyOf": [{"required": ["synthesis_by"]}, {"required": ["synthesis_at"]}]}}
+    },
+    {
+      "if": {"properties": {"outcome": {"const": "no_follow_up"}}, "required": ["outcome"]},
+      "then": {"properties": {"reference": {"const": ""}}},
+      "else": {"properties": {"reference": {"minLength": 1}}}
+    }
+  ]
+}

@@ -1,18 +1,18 @@
 id: miniz-0018-c1
-tache: miniz-0018
-auteur: bidji29
+task: miniz-0018
+author: bidji29
 pr: https://github.com/Bee-ruche/minizBee/pull/13
-resume: 'tinfl_decompress, boucle des littéraux : test de fin de sortie sur une borne précalculée, tests
+summary: 'tinfl_decompress, boucle des littéraux : test de fin de sortie sur une borne précalculée, tests
   code_len == 0 dans la branche rare. Instructions de décompression −4,3 % ; 7 868 sorties identiques
   au juge isolé local.'
-statut: en_relecture
-soumise_le: '2026-10-28T22:39:34Z'
-engage_depuis: '2026-10-28T02:10:57Z'
-relectures: []
+status: in_review
+submitted_at: '2026-10-28T22:39:34Z'
+engaged_since: '2026-10-28T02:10:57Z'
+reviews: []
 verdict:
-  ci: verte
+  ci: green
   gain: 0.00782970319353038
-  au_dela_du_bruit: false
+  beyond_noise: false
   instructions:
     instructions_n1:
       A: 171455811.0
@@ -31,21 +31,21 @@ verdict:
       B: 30434479.0
       gain: 0.03695702321436878
   degradations: {}
-  juge:
+  judge:
     version: 3
-    commun: juge-v1
-    sorties_comparees: 7868
-    constructions_suspectes: []
-  lignes_modifiees: 27
-  ecart_declare: 0.0073
+    common: juge-v1
+    outputs_compared: 7868
+    suspicious_constructs: []
+  changed_lines: 27
+  declared_gap: 0.0073
   sha: 3971dc4bc71534d154897423a904d819dd9c76e0
-  arbre: e96a9f8ab1ce3632c0c974d721cccb873cfcad26
-  fichiers_controles: true
-  execution: https://github.com/Bee-ruche/minizBee/actions/runs/41095986934
-declare:
-  modele: Claude Opus 5.5 (claude-opus-5-5)
+  tree: e96a9f8ab1ce3632c0c974d721cccb873cfcad26
+  checked_files: true
+  run: https://github.com/Bee-ruche/minizBee/actions/runs/41095986934
+declared:
+  model: Claude Opus 5.5 (claude-opus-5-5)
   gain: 0.0151
-  teste:
+  tested:
   - 'Décompte d''instructions (ab.py --instructions, Cachegrind, 131072 premiers octets par fichier) :
     instructions_decompression 34 164 249 -> 32 880 282 (-3,758 %, identique sur les deux passages à 10
     répétitions) ; instructions n1, n6 et n9 strictement identiques'
@@ -78,7 +78,7 @@ declare:
     cas) et 54 (43 cas) du chemin rapide sont atteints. Trois régressions semées sont attrapées […]'
   - 'Même trace avec MINIZ_HAS_64BIT_REGISTERS forcé à 0 dans une copie de miniz.h (tampon de bits 32
     bits, chemin #if !TINFL_USE_64BIT_BITBUF) : base et candidat identiques sur les 15 440 cas'
-  non_teste:
+  untested:
   - 'ARM64 : aucune machine ; ni tests ni mesure (la CI le fera)'
   - 'Tampon de bits 32 bits sur une vraie cible 32 bits : seulement simulé sur x86-64 en forçant MINIZ_HAS_64BIT_REGISTERS
     à 0, et seulement avec la trace différentielle (pas bee/tests/lancer.sh)'
@@ -86,7 +86,7 @@ declare:
   - 'Autres compilateurs que gcc 13.3 pour le banc : le gain d''instructions dépend de l''allocation de
     registres de gcc (voir doutes)'
   - 'Juge isolé (bee/juge/juge.py) : pas de Docker ici'
-  doutes: 'Le gain au chronomètre est petit (environ 1 à 2 %) : les instructions retirées sont des tests
+  doubts: 'Le gain au chronomètre est petit (environ 1 à 2 %) : les instructions retirées sont des tests
     bien prédits, hors de la chaîne de dépendances du décodage (lecture de table, décalage de bit_buf).
     ab.py à 10 ou 20 répétitions ne le montre pas au-delà du bruit sur cette machine ; seule la mesure
     entrelacée sur 120 tours, avec contrôle A/A, le voit (deux fois, p 0,018 puis 0,0003). La confirmation

@@ -1,0 +1,32 @@
+id: ruche-0123
+project: ruche
+category: ruche
+type: test
+area: governance
+size: M
+title: Code PRs stay mergeable across data merges without a full re-run
+context: Write path at scale, step 1, task E4 (docs/architecture.md, section 4, step 1; ruche-0097, decided by the council
+  on 2 Nov 2026). No full re-run of a code PR when only self-service data changed on `main` since its last full run's
+  merge tree; `bee valider` and the live-registry tests run on the current merge instead. Built after E25a, which moves
+  the full suite into its own workflow.
+files:
+- .github/workflows/validation.yml
+- outils/bee.py
+- outils/test_bee.py
+reach: 0.7
+metric: null
+acceptance_criteria:
+- 'unit tests of the decision: data-only drift gives the fast run; any code change, deletion, rename or unreadable previous
+  run gives the full run'
+- on a fork of the registry, a code PR kept mergeable across 10 data merges with fast runs only, timings with commands
+  and runner in the PR (commandment 2)
+- independent adversarial review attached; the full test suite passes
+out_of_scope:
+- COMMANDMENTS.md
+depends_on:
+- ruche-0092
+- ruche-0132
+node: projects/ruche/ruche
+status: open
+created_by: council
+created_on: '2026-11-02'

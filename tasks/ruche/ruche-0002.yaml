@@ -1,0 +1,36 @@
+id: ruche-0002
+project: ruche
+category: ruche
+type: split
+area: governance
+size: L
+title: "Expansion : dossier d'ouverture de bzip2 et tâches d'amorçage proposées"
+context: >
+  bzip2 est le prochain projet prévu (docs/candidats.md, phase 3 ; projets/bzip2.yaml, statut
+  a_venir). Ouvrir un projet suit docs/nouveau-projet.md : le conseil crée le fork, la ruche prépare
+  tout le reste. Livrables : (1) docs/ouverture-bzip2.md, un dossier factuel et sourcé : dépôt
+  d'origine à jour (sourceware, pas le miroir figé), licence et fichier de licence, oracles (sortie
+  d'origine octet pour octet, corpus bzip2-tests, Wuffs, libbzip2-rs) et ce que chacun permet de
+  vérifier, métriques et scénarios d'instructions proposés (compression -1 et -9, décompression,
+  mémoire), corpus envisagé, chemins_juges, commandes, risques (code de 1996, options de compilation,
+  rapidité des tests) ; il dit aussi les modifications à apporter à projets/bzip2.yaml, que le conseil
+  reportera ; (2) les tâches d'amorçage du guide, proposées avec bee proposer-tache bzip2 (statut
+  « proposee ») : sandbox, corpus, oracle et tests différentiels, banc A/B, fuzzing différentiel, CI,
+  greffon du juge commun ; chacune avec un contexte vérifiable, sans gain promis. Toute affirmation
+  sur bzip2 (taille, usages, licence, tests existants) cite sa source.
+files: [docs/ouverture-bzip2.md, taches/bzip2/]
+reach: 0.8
+metric: null
+acceptance_criteria:
+  - "bee valider passe ; chaque tâche proposée a le statut proposee et un contexte factuel"
+  - "le dossier cite une source pour chaque fait sur bzip2 ; aucun contact avec le projet d'origine (commandement 8)"
+  - "le dossier liste les modifications de projets/bzip2.yaml à faire par le conseil"
+out_of_scope: [création du fork (conseil), projets/bzip2.yaml (le conseil reporte les modifications), code de bzip2]
+depends_on: []
+status: open
+created_by: council
+created_on: "2026-10-28"
+notes:
+  - by: "bidji29"
+    at: "2026-10-31T09:17:59Z"
+    text: "31/10, décision du fondateur : le premier vrai projet d'une branche se choisit parmi ceux qui publient un canal de sécurité (politique, signalement privé) et dont la licence est compatible (commandement 9). Leçon de miniz : deux comportements dangereux connus et aucun canal pour les signaler. Avant tout dossier d'ouverture de bzip2 : vérifier et citer son canal de sécurité."

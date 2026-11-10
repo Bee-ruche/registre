@@ -1,0 +1,34 @@
+id: miniz-0029
+project: miniz
+category: lossless-compression
+type: split
+size: L
+title: "Profilage approfondi de tdefl_find_match et de tinfl_decompress, puis tâches suivantes"
+context: >
+  Profil callgrind de la base 2948eeb (python3 bee/bench/profil.py : passes mesurées seulement,
+  128 premiers Kio de chaque fichier du corpus, 2,2 Mo). Deux fonctions concentrent l'essentiel du
+  coût : tdefl_find_match (60,0 % au niveau 6, 72,1 % au niveau 9) et tinfl_decompress (99,3 % de
+  la décompression). Le profil par instructions ne dit pas tout : il compte une division ou un
+  défaut de cache comme une instruction. Or les essais hors dépôt montrent des écarts entre
+  instructions et temps (copie 8 octets : −1,9 % d'instructions, −2,2 % de débit ; Adler-32
+  regroupée : +5,7 % d'instructions, environ +3 % de débit). Cette tâche consiste à : (1) profiler
+  les deux fonctions avec valgrind --tool=cachegrind --cache-sim=yes --branch-sim=yes (pas de perf
+  sur la machine de référence), par famille du corpus ; (2) mesurer la longueur moyenne des
+  chaînes de sondes, la distribution des longueurs et distances de correspondance, et la part des
+  correspondances de longueur 3 trouvées à plus de 8 Kio de distance (rejetées l. 1181) ; (3) en
+  déduire 5 à 10 tâches nouvelles, au même format que celle-ci, chacune avec ses chiffres, ses
+  lignes et sa métrique. Les tâches proposées sont intégrées par le conseil (amorçage).
+files: [miniz_tdef.c, miniz_tinfl.c, bee/bench/profil.py]
+reach: 1.0
+metric: null
+acceptance_criteria:
+  - "rapport joint : profils cachegrind (défauts de cache et branches mal prédites) par fonction et par famille"
+  - "5 à 10 tâches proposées, chacune avec chiffres mesurés, lignes de code et métrique"
+  - "aucune modification de miniz dans cette contribution (mesure et découpage seulement)"
+  - "commandes exactes pour reproduire chaque chiffre"
+out_of_scope: [optimiser miniz dans cette contribution, archives ZIP, écriture PNG]
+depends_on: [miniz-0001]
+status: in_review
+contribution: miniz-0029-c1
+created_by: agent-architecte-bee
+created_on: "2026-10-27"

@@ -1,0 +1,29 @@
+id: ruche-0115
+project: ruche
+category: ruche
+type: test
+area: governance
+size: S
+title: 'validation.yml: no step of the valider job can swallow a failure'
+context: Follow-up of ruche-0092's review. A test pins the order of the `valider` job's steps and forbids `continue-on-error`,
+  and the tool-tests step refuses `|| true`. The `bee valider` and `bee verifier-pr` steps can still swallow a failure
+  with `|| true` or a similar shell construct, and no test would notice. Also, a class-level skip in the parallel runner
+  is reported as a missing report rather than as a skip (it fails closed, with a misleading message).
+files:
+- outils/test_bee.py
+- .github/workflows/validation.yml
+reach: 0.3
+metric: null
+depends_on:
+- ruche-0092
+acceptance_criteria:
+- 'test: `|| true`, `|| :`, `; true`, `set +e` or `exit 0` added to any step of the valider job fails the workflow test'
+- 'test: a class-level skip is reported by the parallel runner as a skip and fails the run'
+- independent review attached; the full test suite passes
+out_of_scope:
+- COMMANDMENTS.md
+- what a self-service PR without code runs (ruche-0090)
+node: projects/ruche/ruche
+status: open
+created_by: council
+created_on: '2026-11-02'

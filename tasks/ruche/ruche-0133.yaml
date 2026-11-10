@@ -1,0 +1,43 @@
+id: ruche-0133
+project: ruche
+category: ruche
+type: test
+area: governance
+size: M
+title: 'Pushes to main checked like PRs: data-only pushes take the fast path, code pushes the suite'
+context: 'Write path at scale, step 1, task E25b (docs/architecture.md, section 4, step 1; ruche-0097, decided by the
+  council on 2 Nov 2026). Requirement R-push, part 2. Once robots push under the App, pushes start `push` workflows.
+  `validation.yml` and `site.yml` run `ci_scope` on the range a push moved: a data-only range runs `bee valider` and
+  the live-registry tests; a code range, an unreadable range or a new branch dispatches `suite.yml` on the pushed commit;
+  the site is rebuilt at once for a code push (data-only pushes follow E2''s interval).'
+files:
+- .github/workflows/validation.yml
+- .github/workflows/site.yml
+- outils/bee.py
+- outils/test_bee.py
+reach: 0.7
+metric: null
+acceptance_criteria:
+- 'unit tests: a data-only push range gives the fast path; a code range, a new branch or an unreadable range gives the
+  full suite'
+- on a fork of the registry, a data-only push runs the fast path and a code push dispatches suite.yml, run ids and timings
+  in the PR
+- after merge, the same measure on main is added as a note on this task within 3 days; a shortfall becomes its own task
+- independent adversarial review attached; the full test suite passes
+out_of_scope:
+- COMMANDMENTS.md
+depends_on:
+- ruche-0132
+- ruche-0121
+node: projects/ruche/ruche
+status: integrated
+contribution: ruche-0133-c1
+created_by: council
+created_on: '2026-11-02'
+notes:
+  - by: "bidji29"
+    at: "2026-11-02T23:43:12Z"
+    text: "Council's note (2 Nov 2026), from the review of ruche-0132: two tests of the full suite read docs/decisions.md as it stands (TestTroisiemeRevueRuche0020.test_1_decision_du_commandement_10 and TestVerificationRuche0020.test_decide_par_sur_autorisation_du_conseil). Since ruche-0132, a commit that only adds rows at the top of that file counts as data and skips the full suite, so such a row could turn these tests red on main without anyone seeing it. E25b keeps the full suite's verdict true for those commits: these tests read a fixed copy, or such a commit runs them. Also from that review: suite.yml's workflow_call input 'commit' is never passed; use it or remove it."
+  - by: "bee"
+    at: "2026-11-06T06:34:45Z"
+    text: "Réservation de bidji29 expirée après 72 h (R7)."

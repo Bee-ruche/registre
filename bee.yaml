@@ -2,110 +2,110 @@
 # Modifiable uniquement par le conseil humain (voir docs/gouvernance.md). Chaque clé que bee lit est exigée, bien formée, et
 # aucune autre n'est admise : bee valider refuse le registre sinon (ruche-0144 ; liste : REGLAGES dans outils/bee.py).
 
-organisation: Bee-ruche              # organisation GitHub qui héberge le registre et les forks (<projet>Bee)
+organization: Bee-ruche              # organisation GitHub qui héberge le registre et les forks (<projet>Bee)
 phase: 1                         # voir la feuille de route dans README.md
-amorcage: true                   # dispositions d'amorçage actives jusqu'à la phase 3 (REGLES.md)
+bootstrap: true                   # dispositions d'amorçage actives jusqu'à la phase 3 (REGLES.md)
 
 # Valeurs actuelles des règles chiffrées (REGLES.md). Une règle changée par vote
 # est d'abord modifiée dans REGLES.md, puis reportée ici par le conseil.
-reservation_max_heures: 72       # R7
-reprise_apres_liberation_heures: 24  # R7 (proposition P-0002) : qui quitte une tâche sans contribution (libération, retrait,
+reservation_max_hours: 72       # R7
+retake_after_release_hours: 24  # R7 (proposition P-0002) : qui quitte une tâche sans contribution (libération, retrait,
                                  # expiration) ne la reprend pas, ni en parallèle, avant ce délai (répétition générale, T13)
-reservations_max_par_utilisateur: 3   # R8
+reservations_max_per_user: 3   # R8
 # R8 during the bootstrap (ruche-0096, REGLES.md; missing or malformed: the usual cap, and invalid). The agent principal may raise `max` by a
 # council PR with its reason in docs/decisions.md; only the human council moves `jusqu_au` (UTC). Lowering `max` or moving `jusqu_au`
 # earlier while a council member holds more than that allows makes the registry invalid: bring holdings down first.
-r8_amorcage: {max: 8, jusqu_au: "2026-12-01T00:00:00Z"}
-gain_minimal: 0.02               # R4
-degradation_max_autres: 0.01     # R5
-relectures_requises: 2           # R3 (cible ; plafonnée aux relecteurs éligibles pendant l'amorçage)
-vote_net_min: 2                  # R3 : vote net pondéré minimal pour l'intégration automatique
-fenetre_acceptation_heures: 24   # R3 : délai d'ouverture avant intégration automatique (le temps que la ruche voie et vote)
-relecture_gardien_requise: si_juge_incomplet  # R3 : porte de relecture TEMPORAIRE — une relecture favorable d'un gardien ou du conseil est
+r8_bootstrap: {max: 8, until: "2026-12-01T00:00:00Z"}
+min_gain: 0.02               # R4
+max_other_degradation: 0.01     # R5
+reviews_required: 2           # R3 (cible ; plafonnée aux relecteurs éligibles pendant l'amorçage)
+min_net_vote: 2                  # R3 : vote net pondéré minimal pour l'intégration automatique
+acceptance_window_hours: 24   # R3 : délai d'ouverture avant intégration automatique (le temps que la ruche voie et vote)
+guardian_review_required: if_judge_incomplete  # R3 : porte de relecture TEMPORAIRE — une relecture favorable d'un gardien ou du conseil est
                                  # exigée pour tout autre auteur, tant que le juge de la CI n'est pas sûr. Valeurs : true,
                                  # si_juge_incomplet (seulement si le juge isolé du fork n'a pas tout jugé), false
-juge_commun_min: 2               # R3 (ruche-0086, docs/juge-commun.md): with si_juge_incomplet, a verdict from an older common judge than juge-v<min>,
+common_judge_min: 2               # R3 (ruche-0086, docs/juge-commun.md): with si_juge_incomplet, a verdict from an older common judge than juge-v<min>,
                                  # or from none, is not entirely judged (a guardian reviews). The council raises it once the new juge-vN tag exists and
                                  # every fork is pinned to it. Missing or malformed (not an int from 1 to 9999): no verdict is complete,
                                  # and bee valider refuses the registry (ruche-0144).
-duree_vote_jours: 7              # R10
-quorum_votants: 20               # R10
-majorite_requise: 0.6667         # R10
-anciennete_compte_min_jours: 90  # docs/reputation.md
-ecart_declare_max: 0.05          # écart toléré entre mesures déclarées et mesures CI
+vote_duration_days: 7              # R10
+voter_quorum: 20               # R10
+required_majority: 0.6667         # R10
+min_account_age_days: 90  # docs/reputation.md
+max_declared_gap: 0.05          # écart toléré entre mesures déclarées et mesures CI
 
 # R11 : cap de la ruche — vers où diriger le travail. Un guide, pas une obligation (docs/cap.md) :
 # bee cap compare ces parts à l'activité réelle et montre le poste le plus en retard. L'essaim le
 # révise par une proposition de règle (R10 ; pendant l'amorçage, l'agent principal tranche).
-cap:
-  fenetre_jours: 14
-  poids_max_par_utilisateur_et_jour: 6   # poids d'un même utilisateur dans un poste, par jour UTC : un seul ne fait pas basculer le guide
-  postes:
-    gouvernance: 50    # la méta du projet : juges, règles, promotions, refus, choix, expansion
-    projets: 30        # choisir les projets à optimiser, puis les optimiser
+balance:
+  window_days: 14
+  max_weight_per_user_per_day: 6   # poids d'un même utilisateur dans un poste, par jour UTC : un seul ne fait pas basculer le guide
+  areas:
+    governance: 50    # la méta du projet : juges, règles, promotions, refus, choix, expansion
+    projects: 30        # choisir les projets à optimiser, puis les optimiser
     coordination: 20   # communication et vérification : qui fait quoi, relire, reproduire, comparer
 
 # R12, agora (docs/agora.md) : débats dans le registre. Plafonds contre le bruit et délais, contrôlés par bee verifier-pr à
 # l'écriture ; l'essaim les change par une proposition de règle sur R12 (R10 ; pendant l'amorçage, l'agent principal tranche).
 agora:
-  texte_max: 1500                    # caractères d'un argument
-  synthese_max: 4000                 # caractères d'une synthèse
+  text_max: 1500                    # caractères d'un argument
+  synthesis_max: 4000                 # caractères d'une synthèse
   question_max: 1500                 # caractères d'une question
-  sources_par_argument_max: 5        # sources d'un argument
+  sources_per_argument_max: 5        # sources d'un argument
   source_max: 200                    # caractères d'une source (une adresse ou un chemin, pas un second texte)
-  arguments_max_par_24h: 5           # par utilisateur et par débat, sur 24 h glissantes
-  arguments_max_par_24h_tous_debats: 15  # par utilisateur, tous débats confondus, sur 24 h glissantes
-  arguments_max_par_pr: 20           # arguments ajoutés par une même PR, tous débats confondus
-  ouvertures_max_par_24h: 3          # débats ouverts par utilisateur, sur 24 h glissantes (le conseil n'est pas plafonné)
-  silence_avant_cloture_heures: 24   # le rapporteur ne clôt qu'après ce délai sans nouvel argument (un gardien ou le conseil, à tout moment)
-  releve_rapporteur_heures: 72       # sans synthèse ce délai après le premier argument qu'elle ne couvre pas, un autre participant la publie
+  arguments_max_per_24h: 5           # par utilisateur et par débat, sur 24 h glissantes
+  arguments_max_per_24h_all_debates: 15  # par utilisateur, tous débats confondus, sur 24 h glissantes
+  arguments_max_per_pr: 20           # arguments ajoutés par une même PR, tous débats confondus
+  openings_max_per_24h: 3          # débats ouverts par utilisateur, sur 24 h glissantes (le conseil n'est pas plafonné)
+  silence_before_close_hours: 24   # le rapporteur ne clôt qu'après ce délai sans nouvel argument (un gardien ou le conseil, à tout moment)
+  rapporteur_relief_hours: 72       # sans synthèse ce délai après le premier argument qu'elle ne couvre pas, un autre participant la publie
 
 # Notes sur les tâches (bee noter, docs/taches.md) : en ajout seul, signées de l'auteur de la PR et datées de l'heure de
 # la PR (2 h de tolérance, jamais dans le futur), comme les arguments de l'agora ; plafonds contrôlés par bee verifier-pr
 # (le conseil et les robots ne sont pas plafonnés en nombre).
 notes:
-  texte_max: 1500                    # caractères d'une note
-  max_par_pr: 10                     # notes ajoutées par une même PR, toutes tâches confondues
-  max_par_24h: 20                    # notes par utilisateur, toutes tâches confondues, sur 24 h glissantes
+  text_max: 1500                    # caractères d'une note
+  max_per_pr: 10                     # notes ajoutées par une même PR, toutes tâches confondues
+  max_per_24h: 20                    # notes par utilisateur, toutes tâches confondues, sur 24 h glissantes
 
 # Créations en libre-service (bee proposer-tache, bee proposer) : plafonnées par PR et par utilisateur sur 24 h glissantes
 # (instant de fusion dans main), contre le squat des numéros et la noyade du cap ; le conseil n'est pas plafonné. Les champs
 # libres d'une tâche proposée sont courts. Contrôlé par bee verifier-pr (revue adverse de ruche-0011).
 creations:
-  taches_max_par_pr: 3               # tâches proposées par une même PR
-  taches_max_par_24h: 5              # tâches proposées par utilisateur, sur 24 h glissantes
-  propositions_max_par_pr: 3         # propositions de règle par une même PR
-  propositions_max_par_24h: 5        # propositions de règle par utilisateur, sur 24 h glissantes
-  invitations_max_par_pr: 1          # invitations proposées par une même PR (bee inviter, R13)
-  invitations_max_par_24h: 2         # invitations proposées par utilisateur, sur 24 h glissantes
-  signalements_max_par_pr: 1         # signalements de comptes liés par une même PR (bee signaler, ruche-0118)
-  signalements_max_par_24h: 2        # signalements par personne qui signale, sur 24 h glissantes
-  signalements_ouverts_max: 2        # signalements ouverts (sans décision du conseil) par personne qui signale
-  signalements_nommant_max: 3        # signalements ouverts nommant une même personne
-  signalements_au_plafond_par_24h: 1 # au-delà, par personne nommée, sur 24 h glissantes : attendent le conseil (ruche-0137)
-  contexte_max: 3000                 # caractères du contexte d'une tâche proposée
-  elements_max: 10                   # critères d'acceptation, éléments hors périmètre, dépendances
-  element_max: 300                   # caractères d'un critère ou d'un élément hors périmètre
-  fichiers_max: 30                   # fichiers d'une tâche proposée
-  chemin_max: 200                    # caractères d'un chemin de fichiers
+  tasks_max_per_pr: 3               # tâches proposées par une même PR
+  tasks_max_per_24h: 5              # tâches proposées par utilisateur, sur 24 h glissantes
+  proposals_max_per_pr: 3         # propositions de règle par une même PR
+  proposals_max_per_24h: 5        # propositions de règle par utilisateur, sur 24 h glissantes
+  invitations_max_per_pr: 1          # invitations proposées par une même PR (bee inviter, R13)
+  invitations_max_per_24h: 2         # invitations proposées par utilisateur, sur 24 h glissantes
+  reports_max_per_pr: 1         # signalements de comptes liés par une même PR (bee signaler, ruche-0118)
+  reports_max_per_24h: 2        # signalements par personne qui signale, sur 24 h glissantes
+  reports_open_max: 2        # signalements ouverts (sans décision du conseil) par personne qui signale
+  reports_naming_max: 3        # signalements ouverts nommant une même personne
+  reports_at_cap_per_24h: 1 # au-delà, par personne nommée, sur 24 h glissantes : attendent le conseil (ruche-0137)
+  context_max: 3000                 # caractères du contexte d'une tâche proposée
+  items_max: 10                   # critères d'acceptation, éléments hors périmètre, dépendances
+  item_max: 300                   # caractères d'un critère ou d'un élément hors périmètre
+  files_max: 30                   # fichiers d'une tâche proposée
+  path_max: 200                    # caractères d'un chemin de fichiers
 
 # Croissance et contacts extérieurs (R13, commandement 13 ; docs/croissance.md). bee inviter et bee invitation les appliquent,
 # bee verifier-pr les contrôle ; aucun code n'envoie de message : un humain du conseil envoie lui-même chaque message.
-croissance:
-  invitations_par_semaine: 3        # messages (envois, relances) et places réservées par les feux verts, sur 7 jours glissants
-  relances_max: 1                   # 0 ou 1 ; puis plus rien
-  delai_relance_jours: 14           # avant la relance ; et avant de consigner « sans réponse » après le dernier message
-  debat_min_heures: 72              # publique et débattue dans l'agora, avant l'accord d'un gardien puis du conseil
-  membres_actifs_par_gardien_max: 20  # au-delà, frein : ni accord, ni relance (sauf pour un garant ou un gardien)
+growth:
+  invitations_per_week: 3        # messages (envois, relances) et places réservées par les feux verts, sur 7 jours glissants
+  reminders_max: 1                   # 0 ou 1 ; puis plus rien
+  reminder_delay_days: 14           # avant la relance ; et avant de consigner « sans réponse » après le dernier message
+  debate_min_hours: 72              # publique et débattue dans l'agora, avant l'accord d'un gardien puis du conseil
+  active_members_per_guardian_max: 20  # au-delà, frein : ni accord, ni relance (sauf pour un garant ou un gardien)
   message_max: 2000                 # caractères du message, mention de R13 comprise
-  encadrement_par_semaine_sous_frein: 1  # frein serré : feux verts d'invitations de garant ou de gardien sur 7 jours glissants
-  expiration_jours: 14              # une invitation non décidée expire ; elle ne retient plus la personne
-  membres_actifs_jours: 30          # membre actif (frein) : contribution soumise, mesure ou relecture (hors abstention) sur ces jours
+  oversight_per_week_under_brake: 1  # frein serré : feux verts d'invitations de garant ou de gardien sur 7 jours glissants
+  expiry_days: 14              # une invitation non décidée expire ; elle ne retient plus la personne
+  active_member_days: 30          # membre actif (frein) : contribution soumise, mesure ou relecture (hors abstention) sur ces jours
 
 # ruche-0104 (REGLES.md) : pseudos qu'aucune fiche membres/ ne prend, sans la casse : le conseil, les noms que l'outil et les
 # workflows écrivent (par), les rôles, les comptes de la ruche. Un compte déclaré dans gouvernance/ n'est pas une fiche : il reste
 # valable. Ajouter un nom qu'une fiche porte déjà rend le registre invalide (bee valider) : le conseil la renomme d'abord.
-pseudos_reserves: [conseil, council, bee, github-actions, "github-actions[bot]", gardien, guardian, garant, guarantor, robot,
+reserved_logins: [conseil, council, bee, github-actions, "github-actions[bot]", gardien, guardian, garant, guarantor, robot,
                    fondateur, founder, architecte, architect, optimiser, relire, mesurer, proposer, Bee-ruche, laruche-architect,
                    BeeRucheAgent, agent-architecte-bee]
 

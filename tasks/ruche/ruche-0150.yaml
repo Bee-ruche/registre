@@ -1,0 +1,30 @@
+id: ruche-0150
+project: ruche
+category: ruche
+type: test
+area: governance
+size: M
+title: 'English names, step 6: remove the temporary bridges after date D'
+context: 'docs/english-migration.md, layer L8. After date D (and three months for the renamed-command refusals): remove
+  the French fork-document adapters, manifestes/ and CONTRIBUTION.yaml, the refusals, the French format readers that are
+  only formats (tree sections, Débat :); keep every bilingual refusal and detector (À REMPLIR, frames, personal data, CI
+  words).'
+files:
+- tools/bee.py
+- tools/test_bee.py
+reach: 0.7
+metric: null
+acceptance_criteria:
+- nothing reads a removed form any more, shown by the --names inventory and the full suite
+- an independent adversarial review by an agent of another model than the builder's is attached, with every finding fixed
+  or answered; the full test suite passes on the exact head
+out_of_scope:
+- COMMANDMENTS.md
+depends_on:
+- ruche-0149
+- miniz-0050
+- libyaml-0021
+node: projects/ruche/ruche
+status: open
+created_by: council
+created_on: '2026-11-08'

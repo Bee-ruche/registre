@@ -1,0 +1,94 @@
+# Fusionne sans humain les pull requests en libre-service (réservation, libération,
+# soumission, relecture, vote, inscription, proposition) une fois validées.
+#
+# Sécurité : ce job a un jeton en écriture, donc il n'exécute JAMAIS le code de la PR.
+# Il utilise l'outil bee de la branche principale et lit les fichiers de la PR comme
+# des données, sur une fusion simulée avec main (pour voir l'état réel après fusion).
+name: Auto-merge
+
+on:
+  workflow_run:
+    workflows: ["Registry validation"]
+    types: [completed]
+  workflow_dispatch: {inputs: {exclude: {default: ""}}}  # ruche-0120: a pass that could not merge every accepted PR asks for another
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+concurrency:
+  group: auto-merge
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions: {contents: read, pull-requests: read, actions: read}  # ruche-0120: the job that reads the PRs never writes
+    env: {EXCLUDE: "${{ inputs.exclude }}"}  # ruche-0120: the PRs the passes before this one could not merge
+    outputs: {accepted: "${{ steps.check.outputs.accepted }}"}  # main's checked commit, then « number:head » of each accepted PR
+    steps:
+      - name: Trusted code (main branch)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false  # ruche-0120: the check runs without a token
+      - name: Commit-graph (ruche-0130)
+        run: git commit-graph write --reachable --changed-paths
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Dependencies
+        run: pip install -r tools/requirements.txt
+      - name: API budget, start (ruche-0121; puts first on PATH a gh that logs each call)
+        env: {GITHUB_TOKEN: "${{ github.token }}"}
+        run: python3 tools/bee.py api-budget start --dir "$RUNNER_TEMP/api-budget" --token GITHUB_TOKEN
+      - name: List the open PRs and their validations (ruche-0120)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          d="$RUNNER_TEMP/pass_ref"; mkdir -p "$d"
+          # One GraphQL query per 100 open PRs to main, all pages: number, head, author and its account number (no other call); no draft.
+          gh api graphql --paginate -f owner="${GITHUB_REPOSITORY%/*}" -f name="${GITHUB_REPOSITORY#*/}" -f query='query($owner: String!, $name: String!, $endCursor: String) {
+            repository(owner: $owner, name: $name) { pullRequests(states: OPEN, baseRefName: "main", first: 100, after: $endCursor) {
+              pageInfo { hasNextPage endCursor } nodes { number isDraft headRefOid author { login ... on User { databaseId } } } } } }' \
+            --jq '.data.repository.pullRequests.nodes[] | select(.isDraft | not) | [.number, .headRefOid, (.author.login // ""), (.author.databaseId // "")] | @tsv' > "$d/prs.tsv"
+          # Successful validations of the last 24 hours (older: refused, ruche-0091), 100 a page: the order and time of each PR.
+          since=$(date -u -d '-24 hours' +%Y-%m-%dT%H:%M:%SZ)
+          gh api "repos/$GITHUB_REPOSITORY/actions/workflows/validation.yml/runs?event=pull_request&status=success&per_page=100&created=%3E%3D$since" \
+            --paginate --jq '.workflow_runs[] | [.id, .head_sha, .created_at] | @tsv' > "$d/validations.tsv"
+          python3 tools/bee.py merge-pass prepare --dir "$d" --prs "$d/prs.tsv" --validations "$d/validations.tsv" --exclude "$EXCLUDE"  # heads fetched without a token
+      - name: Check each PR without a token, on the main the previous ones leave (ruche-0120)
+        id: check
+        run: python3 tools/bee.py merge-pass verify --dir "$RUNNER_TEMP/pass_ref"
+      - name: API budget, end (ruche-0121)
+        if: always()
+        env: {GITHUB_TOKEN: "${{ github.token }}"}
+        run: python3 tools/bee.py api-budget end --dir "$RUNNER_TEMP/api-budget" --token GITHUB_TOKEN
+  merge:  # reads nothing from the PRs: only the numbers and heads the check accepted, and the main it checked
+    needs: verify
+    if: contains(needs.verify.outputs.accepted, ':')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with: {ref: main, persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - name: Dependencies
+        run: pip install -r tools/requirements.txt
+      - name: API budget, start (ruche-0121; puts first on PATH a gh that logs each call)
+        env: {GITHUB_TOKEN: "${{ github.token }}"}
+        run: python3 tools/bee.py api-budget start --dir "$RUNNER_TEMP/api-budget" --token GITHUB_TOKEN
+      - name: Merge, each PR bound to its checked head and to the checked main (ruche-0120)
+        env: {GH_TOKEN: "${{ github.token }}", ACCEPTED: "${{ needs.verify.outputs.accepted }}", EXCLUDE: "${{ inputs.exclude }}"}
+        run: |
+          python3 tools/bee.py merge-pass merge --dir "$RUNNER_TEMP/pass_ref" --repo "$GITHUB_REPOSITORY" --accepted "$ACCEPTED" --exclude "$EXCLUDE"
+          [ ! -s "$RUNNER_TEMP/pass_ref/merged_ones" ] || gh api -X POST "repos/$GITHUB_REPOSITORY/actions/workflows/site.yml/dispatches" -f ref=main || true  # ruche-0121: one call
+      - name: API budget, end (ruche-0121)
+        if: always()
+        env: {GITHUB_TOKEN: "${{ github.token }}"}
+        run: python3 tools/bee.py api-budget end --dir "$RUNNER_TEMP/api-budget" --token GITHUB_TOKEN

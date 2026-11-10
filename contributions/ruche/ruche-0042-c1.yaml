@@ -1,14 +1,14 @@
 id: ruche-0042-c1
-tache: ruche-0042
-auteur: bidji29
+task: ruche-0042
+author: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/133
-resume: Votes and measurements are append-only; R4 counts a measurement only from another person who states
+summary: Votes and measurements are append-only; R4 counts a measurement only from another person who states
   their configuration.
-statut: integree
-soumise_le: '2026-11-02T04:00:56Z'
-engage_depuis: '2026-11-01T22:00:46Z'
-relectures: []
-decidee_le: '2026-11-02T04:30:08Z'
-motif_decision: 'Hive tooling contribution: registry PR #133 merged at commit 158d7da by bidji29, the
+status: integrated
+submitted_at: '2026-11-02T04:00:56Z'
+engaged_since: '2026-11-01T22:00:46Z'
+reviews: []
+decided_at: '2026-11-02T04:30:08Z'
+decision_reason: 'Hive tooling contribution: registry PR #133 merged at commit 158d7da by bidji29, the
   account of a council member, CI green on the merged commit.'
-fusion_sha: 26fb58ee5a57ab326913a7db9464bb236086305a
+merge_sha: 26fb58ee5a57ab326913a7db9464bb236086305a

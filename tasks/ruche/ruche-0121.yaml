@@ -1,0 +1,30 @@
+id: ruche-0121
+project: ruche
+category: ruche
+type: test
+area: governance
+size: M
+title: Count and cut the API calls each registry gesture costs
+context: Write path at scale, step 1, task E2 (docs/architecture.md, section 4, step 1; ruche-0097, decided by the council
+  on 2 Nov 2026). Each workflow logs the REST calls, GraphQL points and content-creating requests it spent, per token.
+  The account creation date is read only for a new member file. The site is built at most once every few minutes for
+  data-only changes, and at once for a code change.
+files:
+- .github/workflows/
+- outils/bee.py
+- outils/test_bee.py
+reach: 0.6
+metric: null
+acceptance_criteria:
+- calls per gesture from the logs of 20 data gestures on a fork of the registry or the rehearsal, set against today's
+  counts in section 1 of the design, in the PR
+- unit test of the account-date decision (read only for a new member file)
+- after merge, the same measure on main is added as a note on this task within 3 days; a shortfall becomes its own task
+- independent adversarial review attached; the full test suite passes
+out_of_scope:
+- COMMANDMENTS.md
+node: projects/ruche/ruche
+status: integrated
+contribution: ruche-0121-c1
+created_by: council
+created_on: '2026-11-02'

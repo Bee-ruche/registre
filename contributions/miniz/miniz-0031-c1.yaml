@@ -1,17 +1,17 @@
 id: miniz-0031-c1
-tache: miniz-0031
-auteur: bidji29
+task: miniz-0031
+author: bidji29
 pr: https://github.com/Bee-ruche/minizBee/pull/7
-resume: 'Juge isolé : code de la PR en conteneur sans réseau, sorties vérifiées de l''extérieur, temps
+summary: 'Juge isolé : code de la PR en conteneur sans réseau, sorties vérifiées de l''extérieur, temps
   et instructions relevés hors du processus mesuré'
-statut: integree
-soumise_le: '2026-10-27T22:05:47Z'
-relectures: []
+status: integrated
+submitted_at: '2026-10-27T22:05:47Z'
+reviews: []
 verdict:
-  ci: verte
+  ci: green
   gain: null
-  au_dela_du_bruit: false
-  amorcage: true
+  beyond_noise: false
+  bootstrap: true
   instructions:
     instructions_n1:
       A: 188277281.0
@@ -30,14 +30,14 @@ verdict:
       B: 35798150.0
       gain: 0.0
   degradations: {}
-  juge:
+  judge:
     version: 2
-    sorties_comparees: 7868
-    constructions_suspectes: []
-  lignes_modifiees: 162
+    outputs_compared: 7868
+    suspicious_constructs: []
+  changed_lines: 162
   sha: 4bdbd92a21b3fc53231b043b00a7685ab105dee7
-  fichiers_controles: true
-  juges_modifies:
+  checked_files: true
+  modified_judges:
   - .github/workflows/bee-ci.yml
   - bee/README.md
   - bee/ci/juges.sh
@@ -53,8 +53,8 @@ verdict:
   - bee/juge/isoler.sh
   - bee/juge/juge.py
   - bee/juge/test_juge.py
-  execution: https://github.com/Bee-ruche/minizBee/actions/runs/40599150007
-decidee_le: '2026-10-28T22:26:11Z'
-motif_decision: 'Intégration automatique (R3) : CI verte, relectures et vote suffisants, fenêtre écoulée
+  run: https://github.com/Bee-ruche/minizBee/actions/runs/40599150007
+decided_at: '2026-10-28T22:26:11Z'
+decision_reason: 'Intégration automatique (R3) : CI verte, relectures et vote suffisants, fenêtre écoulée
   ; porte de relecture satisfaite.'
-fusion_sha: 978d90ebee05d0a5a9af6f957de5c42f9ea48472
+merge_sha: 978d90ebee05d0a5a9af6f957de5c42f9ea48472

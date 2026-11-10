@@ -1,0 +1,39 @@
+id: ruche-0029
+project: ruche
+category: ruche
+type: test
+area: governance
+size: M
+title: "Textes libres : aucun caractère caché ni fausse marque de fin de données dans le registre (tour 3)"
+context: >
+  Répétition générale n° 3 (30/10) : seules les catégories Unicode Cc et Cf sont refusées dans les textes
+  libres. Sélecteurs de variante (U+FE00 à U+FE0F, U+E0100 à U+E01EF), remplissages hangul (U+115F,
+  U+1160, U+3164, U+FFA0), braille vide (U+2800), usage privé (Co) et caractères non attribués (Cn) passent
+  invisibles dans les encadrés de données : manifeste recopié au verdict, notes, motifs de relecture,
+  résumés de contribution ; un message entier caché est passé (jules, PR 57). Une fausse marque de fin (trois signes
+  égal, puis « FIN DES DONNÉES ») est acceptée dans un résumé (hugo, miniz-0010-c1) : préfixée de « | », elle ne sort pas
+  de l'encadré, mais elle trompe l'œil. ruche-0020 crée caractere_sortant_interdit pour ce qui sort de la
+  ruche. À construire : (1) un seul contrôle des caractères pour tout texte libre du registre (tâches,
+  notes, contributions, relectures, votes, mesures, débats, propositions, manifeste recopié), au moins
+  aussi strict que caractere_sortant_interdit ; (2) les marques d'encadré (trois signes égal, puis « DONNÉES » ou
+  « FIN DES DONNÉES ») refusées dans un texte libre ; (3) bee valider et bee verifier-pr refusent, enregistrer-verdict
+  neutralise (le manifeste vient du fork : il ne bloque pas le verdict, il est montré « <U+…> »).
+files: [outils/bee.py, outils/test_bee.py, docs/securite.md]
+reach: 0.8
+metric: null
+acceptance_criteria:
+  - "test : chaque famille de caractères du tour 3 est refusée dans chaque sorte de texte libre, et montrée échappée dans le manifeste recopié"
+  - "test : une fausse marque de fin de données est refusée dans une note, un motif et un résumé"
+  - "aucun texte libre existant du registre ne devient invalide (sinon, le dire et le corriger dans la même PR)"
+  - "revue adverse indépendante jointe"
+out_of_scope: [COMMANDEMENTS.md, les forks]
+depends_on: [ruche-0020]
+node: projects/ruche
+status: integrated
+contribution: ruche-0029-c1
+created_by: council
+created_on: "2026-10-30"
+notes:
+  - by: "bidji29"
+    at: "2026-10-31T04:11:29Z"
+    text: "31/10, état de la branche tache/ruche-0029 (tête 2464821, réservée pour bidji29) : construite, revue adverse indépendante d'un autre modèle (deux bloquants, deux sérieux), corrections poussées ; reste la suite complète, la vérification des corrections par le même relecteur, puis la fusion. Laissé hors périmètre, à reprendre dans une autre tâche : homoglyphes de la marque d'encadré (trois signes égal imités par d'autres caractères), quelques invisibles hors de la liste, fichiers réservés au conseil non parcourus (projets, arbre, gouvernance), commandes de workflow neutralisées seulement à l'impression. La clause Cn ne s'applique que si la table Unicode locale est au moins celle de la CI (15.0) ; ailleurs, la CI tranche."

@@ -1,0 +1,30 @@
+id: ruche-0144
+project: ruche
+category: ruche
+type: test
+area: governance
+size: M
+title: 'Settings fail closed: every bee.yaml key the tool reads is required, unknown keys refused'
+context: Plan for the English names, section 12, change 3, needed before the switch (ruche-0145). Every key of bee.yaml
+  that bee reads must be present and well formed, or bee valider refuses the registry; a key bee does not read is refused;
+  no missing or malformed value falls back to a permissive default anywhere (an audit of every config.get(key, default)
+  and similar reads is in the PR, each classified strict, neutral or permissive, and every permissive one changed).
+files:
+- outils/bee.py
+- outils/test_bee.py
+- bee.yaml
+- schemas/
+reach: 0.7
+metric: null
+acceptance_criteria:
+- the audit table is in the PR; a test per permissive default shows the strict behaviour when the key is missing or malformed
+- bee valider refuses a bee.yaml with a missing key and one with an unknown key
+- an independent adversarial review by an agent of another model than the builder's is attached, with every finding fixed
+  or answered; the full test suite passes on the exact head
+out_of_scope:
+- COMMANDMENTS.md
+node: projects/ruche/ruche
+status: integrated
+contribution: ruche-0144-c1
+created_by: council
+created_on: '2026-11-08'

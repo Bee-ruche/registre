@@ -1,14 +1,14 @@
 id: ruche-0142-c1
-tache: ruche-0142
-auteur: bidji29
+task: ruche-0142
+author: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/227
-resume: 'English names, step 1b: the identifier map, the Python code renamer and proofs P1, P1b (a, b),
+summary: 'English names, step 1b: the identifier map, the Python code renamer and proofs P1, P1b (a, b),
   P3 and --names, run only from the base''s own code; dormant.'
-statut: integree
-soumise_le: '2026-11-08T23:17:22Z'
-engage_depuis: '2026-11-08T19:01:21Z'
-relectures: []
-decidee_le: '2026-11-08T23:39:49Z'
-motif_decision: 'Hive tooling contribution: registry PR #227 merged at commit 36adfd4 by bidji29, the
+status: integrated
+submitted_at: '2026-11-08T23:17:22Z'
+engaged_since: '2026-11-08T19:01:21Z'
+reviews: []
+decided_at: '2026-11-08T23:39:49Z'
+decision_reason: 'Hive tooling contribution: registry PR #227 merged at commit 36adfd4 by bidji29, the
   account of a council member, CI green on the merged commit.'
-fusion_sha: ebc54de549862a313f36bc20d403e8479c516dbb
+merge_sha: ebc54de549862a313f36bc20d403e8479c516dbb

@@ -1,0 +1,29 @@
+id: miniz-0026
+project: miniz
+category: lossless-compression
+type: test
+size: S
+title: "Tests des cas limites de l'API compatible zlib (paramètres, tampons trop petits, erreurs)"
+context: >
+  La couverture de miniz.c par les tests différentiels est de 75,3 % des lignes et 55,0 % des
+  branches prises (gcc --coverage). Les retours d'erreur de l'API compatible zlib ne sont jamais
+  exécutés : mz_deflateInit2 avec un window_bits ou un mem_level invalide (miniz.c l. 203-204),
+  mz_deflate sans next_out ou avec avail_out = 0 (l. 247-250), mz_compress2 avec un tampon trop
+  petit (l. 337-341, doit rendre MZ_BUF_ERROR), mz_uncompress2 sur une sortie trop petite (l.
+  580-586), mz_deflateReset et mz_inflateReset (l. 232-238, 412-435). Comparer, pour chaque cas,
+  le code de retour de miniz à celui de zlib (même appel), et documenter les écarts de code
+  tolérés plutôt que de les masquer. C'est un garde-fou pour les optimisations de miniz.c et de
+  tdefl_compress.
+files: [bee/tests/api.c, bee/tests/lancer.sh, bee/Makefile]
+reach: 0.4
+metric: null
+acceptance_criteria:
+  - "CI verte (R2) sur la base et sur cette contribution"
+  - "couverture des branches de miniz.c en hausse (rapport gcov avant et après joint au manifeste)"
+  - "chaque écart de code de retour entre miniz et zlib listé et justifié dans le manifeste"
+out_of_scope: [code de miniz, archives ZIP, nouvelle dépendance]
+depends_on: [miniz-0001]
+status: integrated
+contribution: miniz-0026-c1
+created_by: agent-architecte-bee
+created_on: "2026-10-27"

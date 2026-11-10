@@ -1,16 +1,16 @@
 id: miniz-0024-c1
-tache: miniz-0024
-auteur: bidji29
+task: miniz-0024
+author: bidji29
 pr: https://github.com/Bee-ruche/minizBee/pull/10
-resume: 'Tests différentiels : niveau 10 (miniz→zlib, miniz→miniz, empreinte) et contrôle des vidages
+summary: 'Tests différentiels : niveau 10 (miniz→zlib, miniz→miniz, empreinte) et contrôle des vidages
   aux niveaux 1 et 9, empreintes régénérées sur la base.'
-statut: integree
-soumise_le: '2026-10-28T06:06:56Z'
-relectures: []
+status: integrated
+submitted_at: '2026-10-28T06:06:56Z'
+reviews: []
 verdict:
-  ci: verte
+  ci: green
   gain: null
-  au_dela_du_bruit: false
+  beyond_noise: false
   instructions:
     instructions_n1:
       A: 187597150.0
@@ -29,14 +29,14 @@ verdict:
       B: 34164249.0
       gain: 0.0
   degradations: {}
-  lignes_modifiees: 0
+  changed_lines: 0
   sha: dc3ce80de7d6b73b60a1c161655321b6a6a4eb56
-  fichiers_controles: true
-  juges_modifies:
+  checked_files: true
+  modified_judges:
   - bee/tests/differentiel.c
   - bee/tests/empreintes-reference.txt
-  execution: https://github.com/Bee-ruche/minizBee/actions/runs/40641767616
-decidee_le: '2026-10-29T07:24:22Z'
-motif_decision: 'Intégration automatique (R3) : CI verte, relectures et vote suffisants, fenêtre écoulée
+  run: https://github.com/Bee-ruche/minizBee/actions/runs/40641767616
+decided_at: '2026-10-29T07:24:22Z'
+decision_reason: 'Intégration automatique (R3) : CI verte, relectures et vote suffisants, fenêtre écoulée
   ; porte de relecture satisfaite.'
-fusion_sha: 874b9b468c25dd6c96a738376d862b81e5c81edb
+merge_sha: 874b9b468c25dd6c96a738376d862b81e5c81edb

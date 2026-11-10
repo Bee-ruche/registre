@@ -1,0 +1,41 @@
+id: ruche-0120
+project: ruche
+category: ruche
+type: test
+area: governance
+size: L
+title: One fusion pass merges every validated data PR, in order, each bound to its head
+context: 'Write path at scale, step 1, task E1 (docs/architecture.md, section 4, step 1; ruche-0097, decided by the
+  council on 2 Nov 2026). Builds on PR #141''s fix of fusion-auto. One fusion run lists the open data PRs (one GraphQL
+  query per 100, no bound on their number), takes those whose validation succeeded on their current head, in the order
+  of that validation (a head changed after its validation goes back in the line), checks each with the gate as its author''s
+  on the `main` the previous ones left, and merges each through one REST call bound to its head. Passes keep replace
+  semantics. Build the check and the merge as separate steps from the start: the check without a token, the merge bound
+  to the checked head (E5a requires it). Its merges stay under the workflows'' own token until E5c.'
+files:
+- .github/workflows/fusion-auto.yml
+- outils/bee.py
+- outils/test_bee.py
+- outils/repetition/
+reach: 0.7
+metric: null
+acceptance_criteria:
+- 'unit tests: a head changed after its validation goes back in the line; a refused PR or a conflict is not merged, the
+  others are'
+- on the rehearsal (outils/repetition), 30 data PRs opened within a minute are merged in passes, none by hand
+- after merge, one real night's count (validated data PRs, merged by a pass, merged by hand, from fusion-auto's logs)
+  is added as a note on this task within 3 days; a shortfall becomes its own task
+- independent adversarial review attached; the full test suite passes
+out_of_scope:
+- COMMANDMENTS.md
+depends_on:
+- ruche-0121
+node: projects/ruche/ruche
+status: integrated
+contribution: ruche-0120-c1
+created_by: council
+created_on: '2026-11-02'
+notes:
+  - by: "bee"
+    at: "2026-11-06T06:34:45Z"
+    text: "Réservation de bidji29 expirée après 72 h (R7)."

@@ -1,0 +1,37 @@
+id: miniz-0019
+project: miniz
+category: lossless-compression
+type: optimization
+size: S
+title: "tdefl_compress_normal : simplifier l'avancement et la décision de vidage après chaque symbole"
+context: >
+  Profil callgrind de la base 2948eeb (python3 bee/bench/profil.py : passes mesurées seulement,
+  128 premiers Kio de chaque fichier du corpus, 2,2 Mo). À chaque littéral ou correspondance,
+  tdefl_compress_normal avance la fenêtre (miniz_tdef.c l. 1224-1227 : m_lookahead_pos,
+  m_lookahead_size, m_dict_size via MZ_MIN) puis décide s'il faut vider le bloc (l. 1229-1237 :
+  deux comparaisons, dont une multiplication par 115 et un décalage). Ces lignes coûtent 5,7 % des
+  instructions au niveau 1, 3,2 % au niveau 6 et 2,2 % au niveau 9. Tout passe par le pointeur d,
+  alors que tdefl_compress_fast (l. 885-1056) garde ces compteurs dans des variables locales et ne
+  les recopie dans d qu'avant tdefl_flush_block. Piste : la même technique dans
+  tdefl_compress_normal (lookahead_pos, lookahead_size, dict_size et total_lz_bytes en local),
+  plus un seuil de vidage précalculé. Le moment exact de chaque vidage doit rester identique : il
+  fixe le découpage en blocs, donc la sortie. Un essai de cette piste est mesuré dans la note du
+  28/10 de miniz-0020 : l'état LZ en locales dans tdefl_compress_normal y donne +0,22 %, avec des
+  débordements de registres ; la note ne dit ni la grandeur mesurée (instructions ou débit), ni la
+  machine, ni le commit : à remesurer. Le gain n'est donc pas démontré ; seule la part du coût l'est
+  (profil ci-dessus).
+files: [miniz_tdef.c]
+reach: 1.0
+metric: debit_compression_n1
+compressed_output: identical
+acceptance_criteria:
+  - "CI verte (R2), x86-64 et ARM64 (R6)"
+  - "R4 : au moins 2 % d'instructions en moins sur debit_compression_n1 (instructions_n1), que le chronomètre confirme au-delà du bruit (sinon une mesure d'une autre configuration)"
+  - "aucune autre métrique dégradée de plus de 1 % (R5)"
+  - "empreintes identiques, y compris « 6v » (vidages SYNC et FULL)"
+out_of_scope: [format de sortie, API publique, nouvelle dépendance, règle de découpage en blocs]
+depends_on: [miniz-0001]
+node: projects/lossless-compression/miniz/deflate
+status: open
+created_by: agent-architecte-bee
+created_on: "2026-10-27"

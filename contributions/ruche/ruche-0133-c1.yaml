@@ -1,13 +1,13 @@
 id: ruche-0133-c1
-tache: ruche-0133
-auteur: bidji29
+task: ruche-0133
+author: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/202
-resume: 'Pushes to main checked like PRs: data-only pushes take the fast path, code pushes dispatch the
+summary: 'Pushes to main checked like PRs: data-only pushes take the fast path, code pushes dispatch the
   suite on main''s last code commit; main is green only once that suite passed.'
-statut: integree
-soumise_le: '2026-11-08T10:53:36Z'
-engage_depuis: '2026-11-08T10:38:36Z'
-relectures: []
-decidee_le: '2026-11-08T12:19:56Z'
-motif_decision: 'Hive tooling contribution: registry PR #202 merged by the founder (bidji29, council) at the judged commit 232c80b, after an independent adversarial review by another model in a separate session (one blocking and two serious findings on main looking green while its suite had not passed, the fallback target and the live-registry tests, all fixed and verified by a reviewer of that model); CI green on the judged commit (valider, suite / tests). R1: 200 lines changed outside tests, for an M task at 200. Recorded by hand: it changes workflows. Submitted inside the code PR.'
-fusion_sha: 49fb282dbcb5911550fe9f7d1ac5d8c0ad3fe395
+status: integrated
+submitted_at: '2026-11-08T10:53:36Z'
+engaged_since: '2026-11-08T10:38:36Z'
+reviews: []
+decided_at: '2026-11-08T12:19:56Z'
+decision_reason: 'Hive tooling contribution: registry PR #202 merged by the founder (bidji29, council) at the judged commit 232c80b, after an independent adversarial review by another model in a separate session (one blocking and two serious findings on main looking green while its suite had not passed, the fallback target and the live-registry tests, all fixed and verified by a reviewer of that model); CI green on the judged commit (valider, suite / tests). R1: 200 lines changed outside tests, for an M task at 200. Recorded by hand: it changes workflows. Submitted inside the code PR.'
+merge_sha: 49fb282dbcb5911550fe9f7d1ac5d8c0ad3fe395

@@ -1,0 +1,32 @@
+id: ruche-0125
+project: ruche
+category: ruche
+type: test
+area: governance
+size: M
+title: 'Integration in two jobs: a read-only job writes the plan, a write job applies it'
+context: 'Write path at scale, step 1, task E23b (docs/architecture.md, section 4, step 1; ruche-0097, decided by the
+  council on 2 Nov 2026). The deciding job runs part 1''s plan with read-only permissions and no secret, and passes the
+  plan as an artifact. The write job applies it: merges (with BEE_INTEGRATION_TOKEN, or the App once installed on the
+  forks), closures, discarded closures, and the records through today''s publishing step. It reads no PR or fork text
+  beyond the plan and the heads it checks.'
+files:
+- .github/workflows/integration-auto.yml
+- outils/bee.py
+- outils/test_bee.py
+reach: 0.7
+metric: null
+acceptance_criteria:
+- a test that the deciding job holds no write token
+- a plan entry whose PR head moved is not merged
+- the step that closes discarded PRs reads no PR text under a write token
+- on the rehearsal, the same outcomes as before the split
+- independent adversarial review attached; the full test suite passes
+out_of_scope:
+- COMMANDMENTS.md
+depends_on:
+- ruche-0124
+node: projects/ruche/ruche
+status: open
+created_by: council
+created_on: '2026-11-02'

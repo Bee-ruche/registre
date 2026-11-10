@@ -1,0 +1,40 @@
+id: ruche-0100
+project: ruche
+category: ruche
+type: test
+area: governance
+size: M
+title: 'Invitations by waves: tens of people per wave, each wave measured before the next'
+context: 'Founder''s decision of 1 Nov 2026: the hive opens by waves of invitations, once the protections of outside
+  people are in place (ruche-0047 to ruche-0052), instead of one invitation at a time. Today R13 has the council send
+  every invitation itself. Propose and tool a wave: a list of people (each with a guarantor or a public reason), the
+  checks R13 asks for each, one decision of the council for the whole wave, the messages prepared and sent by a human
+  of the council, and the measures that must hold before the next wave (regressions, refusals by the gate, guardians''
+  load, CI queue). The rule change goes to the council; the founder merges it.'
+files:
+- REGLES.md
+- docs/croissance.md
+- outils/bee.py
+- outils/test_bee.py
+reach: 0.8
+metric: null
+depends_on:
+- ruche-0047
+- ruche-0048
+- ruche-0049
+- ruche-0050
+- ruche-0051
+- ruche-0052
+acceptance_criteria:
+- a wave is one file the council approves; every check R13 makes for one person is made for each person of the wave;
+  tested
+- the measures that open the next wave are written, read by bee, and shown on the site
+- no message is sent by an agent; a human of the council sends them
+- independent adversarial review attached; the full test suite passes; the founder merges the rule change
+out_of_scope:
+- COMMANDMENTS.md
+- public opening (phase 3)
+node: projects/ruche/ruche
+status: open
+created_by: council
+created_on: '2026-11-01'

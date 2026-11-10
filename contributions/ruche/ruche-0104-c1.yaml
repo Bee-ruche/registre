@@ -1,14 +1,14 @@
 id: ruche-0104-c1
-tache: ruche-0104
-auteur: bidji29
+task: ruche-0104
+author: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/192
-resume: 'Reserved pseudonyms: one required list in bee.yaml, always covering the council and the robots,
+summary: 'Reserved pseudonyms: one required list in bee.yaml, always covering the council and the robots,
   refused at registration, rename and in the gate.'
-statut: integree
-soumise_le: '2026-11-07T05:11:46Z'
-engage_depuis: '2026-11-06T20:44:18Z'
-relectures: []
-decidee_le: '2026-11-07T11:58:09Z'
-motif_decision: 'Hive tooling contribution: registry PR #192 merged at commit a8b0379 by bidji29, the
+status: integrated
+submitted_at: '2026-11-07T05:11:46Z'
+engaged_since: '2026-11-06T20:44:18Z'
+reviews: []
+decided_at: '2026-11-07T11:58:09Z'
+decision_reason: 'Hive tooling contribution: registry PR #192 merged at commit a8b0379 by bidji29, the
   account of a council member, CI green on the merged commit.'
-fusion_sha: 9bd707181abd638ee061ecba8fb53547ee6ce383
+merge_sha: 9bd707181abd638ee061ecba8fb53547ee6ce383
