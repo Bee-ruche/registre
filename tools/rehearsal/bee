@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Outil bee de la ruche simulée : l'horloge simulée (etat/horloge) est appliquée à chaque appel.
+# À lancer depuis son propre clone du registre simulé. Rien ne part vers GitHub : `bee publier` est remplacé par
+# `publier`, et le `gh` de la simulation refuse tout.
+set -euo pipefail
+source "$(dirname "$(realpath "$0")")/common.sh"
+if printf '%s\n' "$@" | grep -qx publish; then
+  echo "Dans la ruche simulée, publiez avec : publier <votre pseudo> \"<title>\" (voir LISEZMOI.md)." >&2; exit 2
+fi
+export BEE_NOW="$(python3 "$SIM/tools/clock.py")"
+export PATH="$SIM/tools:$PATH"   # le faux gh d'abord, même si l'appelant a changé son PATH
+root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+case "$(realpath -m "${root:-/}")/" in
+  "$SIM"/abeilles/*/registre/) ;;
+  *) echo "Lancez bee depuis votre clone de la simulation ($SIM/abeilles/<login>/registre)." >&2; exit 2;;
+esac
+exec python3 "$root/tools/bee.py" --registry "$root" "$@"

@@ -1,0 +1,40 @@
+id: ruche-0106
+project: ruche
+category: ruche
+type: test
+area: governance
+size: S
+title: 'R13 identities: a personal page on a shared domain is its own identity, the domain alone is nobody'
+context: 'Split from ruche-0052 (council''s decision of 2 Nov 2026: it did not fit in its size). Today an invitation''s
+  `site:` identifier names a whole domain, so two people with personal pages on one shared domain (a university''s people
+  pages) are one identity, and the domain alone designates someone. Make the identity the page: `site:` accepts a domain
+  and a path, normalised (decoded, `.`/`..` resolved, host case-folded, no trailing slash, default port, http and https
+  alike), in forme_identifiant, the invitation schema, cles_d_adresse, cle_personne, canal_refuse and sur_la_liste. Two
+  pages on one domain are two identities, and a bare domain never counts as already invited with a page. The do-not-contact
+  list fails closed: a listed page excludes itself and the pages under it; a listed bare domain still excludes every
+  page under it (a shared domain is listed only if someone invited the domain itself). Commandment 8''s origins stay
+  compared by domain. Adjust the existing tests that pin the old behaviour (A1, same person under another address) only
+  where the new rule is stricter or says so.'
+files:
+- outils/bee.py
+- outils/test_bee.py
+- schemas/invitation.schema.json
+- docs/croissance.md
+reach: 0.7
+metric: null
+depends_on:
+- ruche-0052
+acceptance_criteria:
+- 'test: two personal pages on one shared domain are two identities; the domain alone designates nobody as already invited'
+- 'test: every spelling of a listed page (trailing slash, host case, http/https, default port, percent-encoding, dot
+  segments) is still matched by the do-not-contact list, and the pages under it too; a listed bare domain still excludes
+  every page under it'
+- independent adversarial review attached, made with the architect's brief; the full test suite passes
+out_of_scope:
+- COMMANDMENTS.md
+- REGLES.md
+- commandment 8's origins (by domain)
+node: projects/ruche/ruche
+status: open
+created_by: council
+created_on: '2026-11-02'

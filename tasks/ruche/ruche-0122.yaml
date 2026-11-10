@@ -1,0 +1,36 @@
+id: ruche-0122
+project: ruche
+category: ruche
+type: test
+area: governance
+size: M
+title: Verdict and integration passes read pending fork PRs in bulk, at most every few minutes
+context: Write path at scale, step 1, task E3 (docs/architecture.md, section 4, step 1; ruche-0097, decided by the council
+  on 2 Nov 2026). The verdict and integration passes read all pending contributions' fork PRs with one GraphQL query
+  per 50 to 100 PRs, and run at most once every few minutes when merges trigger them. The builder estimates the size
+  before building; if it passes M, the council splits the task before work starts.
+files:
+- .github/workflows/verdicts.yml
+- .github/workflows/integration-auto.yml
+- outils/bee.py
+- outils/test_bee.py
+- outils/repetition/
+reach: 0.7
+metric: null
+acceptance_criteria:
+- with the rehearsal's simulated gh and 300 pending contributions, a pass makes at most 6 listing calls
+- the same verdicts, integrations and closures as today on the same rehearsal
+- independent adversarial review attached; the full test suite passes
+out_of_scope:
+- COMMANDMENTS.md
+depends_on:
+- ruche-0121
+node: projects/ruche/ruche
+status: integrated
+contribution: ruche-0122-c1
+created_by: council
+created_on: '2026-11-02'
+notes:
+  - by: "bee"
+    at: "2026-11-06T06:34:45Z"
+    text: "Réservation de bidji29 expirée après 72 h (R7)."

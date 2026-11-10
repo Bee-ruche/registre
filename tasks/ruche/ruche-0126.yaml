@@ -1,0 +1,35 @@
+id: ruche-0126
+project: ruche
+category: ruche
+type: test
+area: governance
+size: M
+title: 'Robots'' workflows: actions pinned by SHA, and no write credential where PR content is parsed'
+context: 'Write path at scale, step 1, task E5a (docs/architecture.md, section 4, step 1; ruche-0097, decided by the
+  council on 2 Nov 2026). In every job that writes, actions are pinned by commit SHA and every checkout sets `persist-credentials:
+  false`. A step that parses PR or fork content (files, titles, bodies, branch names; not numbers, SHAs or states) gets
+  no write credential in its environment or inputs: fusion checks in a step without a token, then merges in a step bound
+  to the checked head (E1''s call). Steps that pull or push pass their token explicitly instead of relying on persisted
+  credentials. Still under today''s tokens; E5c moves them to the App.'
+files:
+- .github/workflows/
+- outils/test_bee.py
+reach: 0.7
+metric: null
+acceptance_criteria:
+- 'a static test over .github/workflows/: every action in a writing job is pinned to a 40-character SHA, and every checkout
+  sets persist-credentials to false'
+- 'a static test: no step that parses PR or fork content receives a write token in its environment or inputs; fusion,
+  verdicts, integration and expirations pass it'
+- on the rehearsal, the same outcomes as before; on a fork of the registry, every robot's push still lands, run ids in
+  the PR
+- independent adversarial review attached; the full test suite passes
+out_of_scope:
+- COMMANDMENTS.md
+depends_on:
+- ruche-0120
+- ruche-0125
+node: projects/ruche/ruche
+status: open
+created_by: council
+created_on: '2026-11-02'

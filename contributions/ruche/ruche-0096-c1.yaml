@@ -1,13 +1,13 @@
 id: ruche-0096-c1
-tache: ruche-0096
-auteur: bidji29
+task: ruche-0096
+author: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/122
-resume: During the bootstrap, a council member may hold up to 8 engagements on the hive's own tooling
+summary: During the bootstrap, a council member may hold up to 8 engagements on the hive's own tooling
   tasks until 1 December 2026; the clock never makes the registry invalid.
-statut: integree
-soumise_le: '2026-11-01T21:43:02Z'
-engage_depuis: '2026-11-01T21:43:01Z'
-relectures: []
-decidee_le: '2026-11-01T21:59:22Z'
-motif_decision: 'Hive tooling contribution: registry PR #122 merged at the judged commit 7842a48 by the founder (human council), as it changes the agent principal''s own pace, after an independent adversarial review by an agent of another model (no blocking finding; four should-fix items fixed and verified; one more, a member registering the pseudonym conseil switches the exception off, accepted for the month as it fails closed and left to a follow-up); CI green on the merged commit. R1: 47 lines excluding tests for an S task at 50. Reserved and submitted inside the code PR.'
-fusion_sha: 21bc2c5862cc3919a9240aed9e4940075770ebbb
+status: integrated
+submitted_at: '2026-11-01T21:43:02Z'
+engaged_since: '2026-11-01T21:43:01Z'
+reviews: []
+decided_at: '2026-11-01T21:59:22Z'
+decision_reason: 'Hive tooling contribution: registry PR #122 merged at the judged commit 7842a48 by the founder (human council), as it changes the agent principal''s own pace, after an independent adversarial review by an agent of another model (no blocking finding; four should-fix items fixed and verified; one more, a member registering the pseudonym conseil switches the exception off, accepted for the month as it fails closed and left to a follow-up); CI green on the merged commit. R1: 47 lines excluding tests for an S task at 50. Reserved and submitted inside the code PR.'
+merge_sha: 21bc2c5862cc3919a9240aed9e4940075770ebbb

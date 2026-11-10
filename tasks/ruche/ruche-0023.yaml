@@ -1,0 +1,39 @@
+id: ruche-0023
+project: ruche
+category: ruche
+type: test
+area: governance
+size: M
+title: "Les états d'une branche dans bee : en germe, active, dormante, et les liens entre branches"
+context: >
+  Décision du 30/10 sur une idée du fondateur (commandement 13 complété, R13 « par branches »,
+  docs/croissance.md) : la maturité se juge branche par branche ; une branche (projet, domaine) s'ouvre à
+  tout moment, quelle que soit la maturité des autres, naît en germe (rien n'y est intégré
+  automatiquement avant que son juge ait tenu), devient active, et dort après 30 jours sans activité
+  (bee.yaml, croissance.branche_dormante_jours). Aujourd'hui, un projet n'a que les statuts actif, a_venir
+  et archive (schemas/projet.schema.json), et son ouverture suit une phase globale (phase_ouverture :
+  bzip2 et giflib à la phase 3) ; rien ne dit qu'une tâche ou un juge sert plusieurs branches. À
+  construire : (1) un statut germe (et dormante) pour un projet, que bee valider accepte, avec les tâches
+  d'amorçage permises en germe ; (2) bee verifier-acceptation et integration-auto n'intègrent jamais
+  automatiquement une contribution d'un projet en germe ; (3) bee essaim, bee cap et le site montrent
+  l'état de chaque branche, et la date de sa dernière activité (dormante au-delà du seuil) ; (4) un champ
+  liens facultatif sur une tâche (d'autres projets ou tâches qu'elle sert), contrôlé (identifiants qui
+  existent), montré par bee voir et bee contexte.
+files: [outils/bee.py, outils/test_bee.py, schemas/, docs/nouveau-projet.md, docs/croissance.md, outils/site_bee.py]
+reach: 0.6
+metric: null
+acceptance_criteria:
+  - "test : une contribution d'un projet en germe n'est jamais intégrable automatiquement (verifier-acceptation code 1, raison dite)"
+  - "test : un projet sans activité depuis le seuil est montré dormant ; une tâche le réveille"
+  - "test : un lien vers un projet ou une tâche inexistante est refusé par bee valider"
+  - "revue adverse indépendante jointe (intégration automatique)"
+out_of_scope: [COMMANDEMENTS.md, l'ouverture effective d'un projet (bzip2, giflib), les ruches filles]
+depends_on: []
+node: projects/ruche
+status: open
+created_by: council
+created_on: "2026-10-30"
+notes:
+  - by: "bidji29"
+    at: "2026-10-31T09:17:58Z"
+    text: "31/10, décision du fondateur (ouvrir une branche en trois étages : simulation des parcours, juge calibré sur un projet-école aux réponses connues, vrai projet en germe) : le passage de germe à active demande un critère mesurable et connu dès l'ouverture : le projet-école de la famille passé sans manque (tricheries, régressions et optimisations semées), une revue adverse indépendante du juge, et un nombre fixé de contributions réelles où le verdict du juge et la décision humaine ont concordé, sans tricherie passée. La revue adverse de R14 du 31/10 a relevé qu'aucun texte ne dit aujourd'hui qui déclare qu'un juge a tenu."

@@ -1,0 +1,40 @@
+id: ruche-0096
+project: ruche
+category: ruche
+type: test
+area: governance
+size: S
+title: 'R8 during the bootstrap: up to 8 engagements on the hive''s own tooling tasks, until 1 Dec 2026'
+context: 'Founder''s decision of 1 Nov 2026, to prepare for thousands of bees within weeks: during the bootstrap, all
+  the hive''s own work goes through the founder''s agents, and R8 (3 engagements per user) lets them run three tasks
+  at a time. Add a temporary exception, set in bee.yaml: a member of the council may hold up to 8 engagements on tasks
+  of the ruche category created by the council, until 2026-12-01 (UTC); every other task keeps the usual count and cap,
+  counting all engagements. The agent principal may raise the number when needed, by a council PR with its reason recorded
+  in docs/decisions.md; the end date is moved only by the human council. A missing, malformed or past setting means the
+  usual cap for everything (fails closed). REGLES.md says it in R8''s row. The founder merges: it changes the agent principal''s
+  own pace.'
+files:
+- outils/bee.py
+- outils/test_bee.py
+- bee.yaml
+- REGLES.md
+- docs/decisions.md
+reach: 0.8
+metric: null
+depends_on: []
+acceptance_criteria:
+- 'test: a council member reserves an 8th tooling task of the ruche category created by the council and is refused a
+  9th; a 4th engagement on any other task is refused as before; an ordinary member keeps 3 everywhere'
+- 'test: after the end date, or with the setting missing or malformed, the usual cap applies to everything, in bee prendre,
+  bee verifier-pr and bee valider'
+- a declared agent account (ruche-0089) counts as its person here too
+- independent adversarial review attached; the full test suite passes; the founder merges
+out_of_scope:
+- COMMANDMENTS.md
+- R7 (deadlines)
+- the caps of other users
+node: projects/ruche/ruche
+status: integrated
+contribution: ruche-0096-c1
+created_by: council
+created_on: '2026-11-01'

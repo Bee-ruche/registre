@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bee.local/schemas/project.schema.json",
+  "title": "Projet forké par Bee",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "name", "category", "upstream_repo", "license", "fork", "reference", "scope", "out_of_scope", "status", "opening_phase", "maintainer_tier", "metrics", "paths_not_counted", "judge_paths"],
+  "properties": {
+    "id": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"},
+    "name": {"type": "string"},
+    "category": {"type": "string"},
+    "upstream_repo": {"type": "string", "pattern": "^https://"},
+    "license": {"type": "string"},
+    "fork": {"type": ["string", "null"], "pattern": "^https://"},
+    "reference": {"type": "string", "minLength": 3},
+    "scope": {"type": "array", "items": {"type": "string"}},
+    "out_of_scope": {"type": "array", "items": {"type": "string"}},
+    "status": {"enum": ["active", "upcoming", "archived"]},
+    "opening_phase": {"type": "integer", "minimum": 1},
+    "maintainer_tier": {"enum": ["none", "observer", "partner", "integration", "refusal"]},
+    "metrics": {
+      "type": "array",
+      "description": "au moins une pour un projet à optimiser ; aucune pour la ruche elle-même (vérifié par bee valider)",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "description", "unit", "direction"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-z0-9_]+$"},
+          "description": {"type": "string"},
+          "unit": {"type": "string"},
+          "direction": {"enum": ["higher", "lower"]},
+          "instructions": {"type": "string", "pattern": "^instructions_[a-z0-9_]+$", "description": "R4 : scénario du décompte d'instructions (Cachegrind) qui juge le gain de cette métrique de débit"}
+        }
+      }
+    },
+    "paths_not_counted": {"type": "array", "items": {"type": "string"}},
+    "judge_paths": {"type": "array", "items": {"type": "string"}},
+    "verdict_requires_judge_base": {"type": "boolean", "description": "ruche-0025 : un verdict vert sans base_juge lisible (base et commit) est refusé, quoi que dise details.base"},
+    "commands": {
+      "type": "object",
+      "additionalProperties": {"type": "string"}
+    }
+  }
+}

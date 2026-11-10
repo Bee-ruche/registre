@@ -1,0 +1,34 @@
+id: miniz-0049
+project: miniz
+category: lossless-compression
+type: test
+area: governance
+size: M
+title: minizBee reads the registry in both layouts (English names, before the switch)
+context: 'docs/english-migration.md, sections 6 and 12. minizBee''s « Manifeste et taille » job reads registry main, unpinned:
+  the tool and its requirements, verifier-fork and its options, taches/**, the task keys type, metrique, sortie_compressee
+  and their values. Before the switch, minizBee must read both: tasks/ or taches/, English or French keys and values (mapped
+  to its internal French ones), tools/bee.py or outils/bee.py, check-fork --task --head --repo --author or the French command
+  and options (asked from bee.py --help, never guessed), whichever requirements file exists, and the manifest under manifests/
+  or manifestes/ with English or French keys (one vocabulary per document; mixed is refused). Also: the task copy the verdict
+  script reads for the main metric (English or French key), the manifest folder in the R1 exclusions (manifests/** beside
+  manifestes/**), and the global --registre option and BEE_REGISTRE (or their English names). A task, metric or type it
+  cannot read stops the job with an error: never a default. Names: docs/english-names.md.'
+files:
+- .github/workflows/bee-ci.yml
+- bee/ci/
+reach: 0.8
+metric: null
+acceptance_criteria:
+- tests in bee/ci/ run the job's readers on both layouts and on a mixed document (refused)
+- an unreadable task, type or metric fails the job, shown by a test
+- the open fork PRs are listed in the PR with what each needs to rebase
+- an independent adversarial review by an agent of another model than the builder's is attached, with every finding fixed
+  or answered; the full test suite passes on the exact head
+out_of_scope:
+- COMMANDMENTS.md
+node: projects/lossless-compression/miniz/bee
+status: integrated
+contribution: miniz-0049-c1
+created_by: council
+created_on: '2026-11-08'

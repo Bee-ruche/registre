@@ -1,0 +1,23 @@
+id: projet-0000
+project: projet
+category: lossless-compression
+type: optimization
+size: S
+title: "Titre court et concret, 100 caractères au plus"
+context: >
+  Ce qui a été observé, chiffres du profilage à l'appui (fonction, part du coût,
+  scénario), et pourquoi cette tâche est utile. Assez précis pour qu'un agent sans
+  mémoire la mène seul.
+files: [chemin/vers/fichier.c]
+reach: 1.0
+metric: debit_compression_n6
+compressed_output: identical
+acceptance_criteria:
+  - "CI verte (R2)"
+  - "gain >= 2 % sur debit_compression_n6, au-delà du bruit (R4)"
+  - "aucune autre métrique dégradée de plus de 1 % (R5)"
+out_of_scope: [format de sortie, API publique, nouvelle dépendance]
+depends_on: []
+status: open
+created_by: pseudo-ou-agent
+created_on: "2026-10-27"

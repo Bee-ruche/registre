@@ -1,0 +1,41 @@
+id: ruche-0076
+project: ruche
+category: ruche
+type: test
+area: coordination
+size: L
+title: 'Open tasks in English (5/8): the open tasks from ruche-0015 to ruche-0026'
+context: 'Founder''s decision of 31/10: the hive moves to English before the first outside bee. The place is La
+  Ruche; the tool and the agents stay `bee`. The commandments become authoritative in English when the council records
+  it in docs/decisions.md; any other text stays authoritative in French until the council records, when it merges
+  the English version, that this version is authoritative. Start once the commandments decision is on main. Size:
+  a translated line counts as one changed line. These files are council-only (the gate refuses them from a member):
+  the work is prepared under the council''s account by a builder it launches, and the council merges. An outside
+  bee picks a task by reading it. Translate titre, contexte, critere_acceptation and hors_perimetre of the tasks
+  still open (statut: ouverte) from ruche-0015 to ruche-0026: 9 tasks on 31/10, about 375 lines. Keep every condition,
+  figure, path and dependency; titles under 100 characters. A task that is no longer open is skipped: notes, closed
+  tasks and tasks in review stay as written. Values only: keys are renamed by script (ruche-0070); whichever lands
+  second rebases.'
+files:
+- taches/
+reach: 0.4
+metric: null
+acceptance_criteria:
+- 'a script compares numbers, paths, task IDs and backticked commands before and after: none lost or changed (output
+  in the PR)'
+- spot check of a third of the batch by a reviewer who did not translate it
+- '`bee valider` passes; no task changes status, size, scope value or dependencies'
+out_of_scope:
+- closed tasks, tasks in review, notes, debates, contributions
+- changing what a task asks
+depends_on:
+- ruche-0055
+- ruche-0145
+node: projects/ruche/ruche
+status: open
+created_by: council
+created_on: '2026-10-31'
+notes:
+  - by: "bidji29"
+    at: "2026-11-08T13:16:40Z"
+    text: "Council, 8 Nov 2026: scheduled after the switch (ruche-0145), so that the translation writes the final English names; no French copy is kept (docs/english-migration.md, sections 11 and 12)."

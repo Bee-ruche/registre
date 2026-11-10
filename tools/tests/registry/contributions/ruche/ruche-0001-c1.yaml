@@ -1,0 +1,15 @@
+id: ruche-0001-c1
+task: ruche-0001
+author: bidji29
+pr: https://github.com/Bee-ruche/registre/pull/28
+summary: Travail en parallèle déclaré (bee prendre --en-parallele), contributions concurrentes et choix
+  de la mieux classée avec attentes bornées, conflit d'intérêts des participants, PR liée à son auteur,
+  clés YAML canoniques ; P-0001 adoptée. 176 tests ; trois revues adverses, tout fermé.
+status: integrated
+submitted_at: '2026-10-28T16:27:15Z'
+reviews: []
+decided_at: '2026-10-28T17:45:00Z'
+decision_reason: 'Contribution d''outillage de la ruche, jamais intégrée automatiquement : PR #28 du registre
+  fusionnée par le conseil (« Fusionne », 28/10), après trois revues adverses indépendantes ; CI de validation
+  verte sur le commit fusionné.'
+merge_sha: 7605de0f3248a3b5444acb97c7b4e4dd4b280050

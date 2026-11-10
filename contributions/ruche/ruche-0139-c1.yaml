@@ -1,13 +1,13 @@
 id: ruche-0139-c1
-tache: ruche-0139
-auteur: bidji29
+task: ruche-0139
+author: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/199
-resume: An invitation refused, silent or withdrawn freezes its own debate until a guardian in office or
+summary: An invitation refused, silent or withdrawn freezes its own debate until a guardian in office or
   the council closes it without follow-up.
-statut: integree
-soumise_le: '2026-11-07T12:24:52Z'
-engage_depuis: '2026-11-07T12:00:10Z'
-relectures: []
-decidee_le: '2026-11-08T11:01:51Z'
-motif_decision: 'Hive tooling contribution: registry PR #199 merged by the founder (bidji29, council) at the judged commit ece0f32, after an independent adversarial review by another model in a separate session, made with the architect''s brief (three blocking findings on syntheses, duplicate markings and a closing guardian guaranteed by the proposer, all fixed and verified by a reviewer of that model); CI green on the judged commit (valider, suite / tests). R1: 49 lines changed outside tests, for an S task at 50. Recorded by hand: main moved between the PR''s base and its merge. Submitted inside the code PR.'
-fusion_sha: 9f3cf0059ce586e1fe6c526bb5c576c5b89ebf7c
+status: integrated
+submitted_at: '2026-11-07T12:24:52Z'
+engaged_since: '2026-11-07T12:00:10Z'
+reviews: []
+decided_at: '2026-11-08T11:01:51Z'
+decision_reason: 'Hive tooling contribution: registry PR #199 merged by the founder (bidji29, council) at the judged commit ece0f32, after an independent adversarial review by another model in a separate session, made with the architect''s brief (three blocking findings on syntheses, duplicate markings and a closing guardian guaranteed by the proposer, all fixed and verified by a reviewer of that model); CI green on the judged commit (valider, suite / tests). R1: 49 lines changed outside tests, for an S task at 50. Recorded by hand: main moved between the PR''s base and its merge. Submitted inside the code PR.'
+merge_sha: 9f3cf0059ce586e1fe6c526bb5c576c5b89ebf7c

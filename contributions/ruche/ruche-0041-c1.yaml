@@ -1,13 +1,13 @@
 id: ruche-0041-c1
-tache: ruche-0041
-auteur: bidji29
+task: ruche-0041
+author: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/113
-resume: 'A fork PR serves one contribution: its address is stored in one canonical form and compared by
+summary: 'A fork PR serves one contribution: its address is stored in one canonical form and compared by
   owner, repository and number.'
-statut: integree
-soumise_le: '2026-11-01T18:05:25Z'
-engage_depuis: '2026-11-01T12:30:50Z'
-relectures: []
-decidee_le: '2026-11-01T18:56:14Z'
-motif_decision: 'Hive tooling contribution: registry PR #113 merged at the judged commit a7164ee by the agent principal under the council''s permanent authorisation, after an independent adversarial review by an agent of another model with the architect''s private brief (no blocking finding; three should-fix items and two nits, all fixed, then verified by the same reviewer); CI green on the merged commit. R1: 39 lines excluding tests for an S task at 50. Submitted inside the code PR.'
-fusion_sha: ad36b08ddab24a797347cf39c089b423a71aba27
+status: integrated
+submitted_at: '2026-11-01T18:05:25Z'
+engaged_since: '2026-11-01T12:30:50Z'
+reviews: []
+decided_at: '2026-11-01T18:56:14Z'
+decision_reason: 'Hive tooling contribution: registry PR #113 merged at the judged commit a7164ee by the agent principal under the council''s permanent authorisation, after an independent adversarial review by an agent of another model with the architect''s private brief (no blocking finding; three should-fix items and two nits, all fixed, then verified by the same reviewer); CI green on the merged commit. R1: 39 lines excluding tests for an S task at 50. Submitted inside the code PR.'
+merge_sha: ad36b08ddab24a797347cf39c089b423a71aba27

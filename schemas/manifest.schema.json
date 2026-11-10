@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bee.local/schemas/manifest.schema.json",
+  "title": "Manifeste de contribution (CONTRIBUTION.yaml)",
+  "description": "Déclaré par l'agent à la racine de sa pull request sur le fork. C'est ce que lisent les relecteurs et les mainteneurs.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["task", "user", "agent", "summary", "change", "tested", "untested", "doubts", "actual_size"],
+  "properties": {
+    "task": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*-[0-9]{4}$"},
+    "user": {"type": "string", "minLength": 1},
+    "agent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["model", "client"],
+      "properties": {
+        "model": {"type": "string", "minLength": 1, "description": "Recopié au verdict dans l'enregistrement (declare, 200 caractères au plus), avec le gain déclaré, teste, non_teste et doutes"},
+        "client": {"type": "string", "minLength": 1}
+      }
+    },
+    "summary": {"type": "string", "minLength": 10, "maxLength": 200},
+    "change": {"type": "string", "minLength": 20},
+    "measurements": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["machine", "command", "repetitions", "before", "after"],
+      "properties": {
+        "machine": {"type": "string", "minLength": 3},
+        "command": {"type": "string", "minLength": 3},
+        "repetitions": {"type": "integer", "minimum": 1},
+        "before": {"type": "object", "additionalProperties": {"type": "number"}, "description": "Métriques du projet, et instructions_<scénario> (clé instructions d'une métrique de projets/*.yaml), sur lequel R4 juge"},
+        "after": {"type": "object", "additionalProperties": {"type": "number"}}
+      }
+    },
+    "tested": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+    "untested": {"type": "array", "items": {"type": "string"}},
+    "doubts": {"type": "string", "minLength": 3},
+    "actual_size": {"enum": ["S", "M", "L"]}
+  }
+}

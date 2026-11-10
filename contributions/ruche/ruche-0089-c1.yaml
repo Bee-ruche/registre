@@ -1,13 +1,13 @@
 id: ruche-0089-c1
-tache: ruche-0089
-auteur: bidji29
+task: ruche-0089
+author: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/115
-resume: A declared agent account acts as its person everywhere, never as the council; authority files
+summary: A declared agent account acts as its person everywhere, never as the council; authority files
   change only by the council's own account.
-statut: integree
-soumise_le: '2026-11-01T19:11:55Z'
-engage_depuis: '2026-11-01T16:06:00Z'
-relectures: []
-decidee_le: '2026-11-01T19:57:05Z'
-motif_decision: 'Hive tooling contribution: registry PR #115 merged at the judged commit 9d91d38 by the founder (human council), as it changes what the agent principal''s account can do, after an independent adversarial review by an agent of another model in three passes (no code defect in the first; the architect decided that an agent account never changes the authority files; should-fix items, then a quoted-path gap, fixed and verified); CI green on the merged commit. R1: 195 lines excluding tests for an M task at 200. Submitted inside the code PR.'
-fusion_sha: fcd8e69673497ab33e7aa9bae22d56f29b8ea4af
+status: integrated
+submitted_at: '2026-11-01T19:11:55Z'
+engaged_since: '2026-11-01T16:06:00Z'
+reviews: []
+decided_at: '2026-11-01T19:57:05Z'
+decision_reason: 'Hive tooling contribution: registry PR #115 merged at the judged commit 9d91d38 by the founder (human council), as it changes what the agent principal''s account can do, after an independent adversarial review by an agent of another model in three passes (no code defect in the first; the architect decided that an agent account never changes the authority files; should-fix items, then a quoted-path gap, fixed and verified); CI green on the merged commit. R1: 195 lines excluding tests for an M task at 200. Submitted inside the code PR.'
+merge_sha: fcd8e69673497ab33e7aa9bae22d56f29b8ea4af

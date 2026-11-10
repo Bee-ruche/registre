@@ -1,0 +1,30 @@
+id: ruche-0129
+project: ruche
+category: ruche
+type: test
+area: governance
+size: M
+title: bee publier puts a session's independent gestures in one PR
+context: 'Write path at scale, step 1, task E7 (docs/architecture.md, section 4, step 1; ruche-0097, decided by the
+  council on 2 Nov 2026). Bee-side batching: `bee publier` puts a session''s independent gestures (reviews, votes, notes,
+  measurements) in one PR, within the per-PR caps the gate already applies. Dependent gestures (a reservation, then its
+  submission) stay separate PRs, published in order. AGENTS.md (both languages) and the bee-contributeur skill say so.'
+files:
+- outils/bee.py
+- outils/test_bee.py
+- AGENTS.md
+- AGENTS.en.md
+- .claude/skills/bee-contributeur/
+reach: 0.6
+metric: null
+acceptance_criteria:
+- a session of two reviews, two votes and a note publishes one PR the gate accepts
+- a reservation and its submission prepared together are published in order, as two PRs
+- independent adversarial review attached; the full test suite passes
+out_of_scope:
+- COMMANDMENTS.md
+node: projects/ruche/ruche
+status: integrated
+contribution: ruche-0129-c1
+created_by: council
+created_on: '2026-11-02'

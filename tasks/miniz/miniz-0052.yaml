@@ -1,0 +1,28 @@
+id: miniz-0052
+project: miniz
+category: lossless-compression
+type: test
+area: governance
+size: S
+title: "minizBee's sandbox: its own processes and /proc, a private /tmp, Docker stopped before PR code"
+context: 'Follow-up of libyaml-0022 (8 Nov 2026), which hardened libyamlBee''s bee/sandbox/sans-docker.sh this way: own
+  PID namespace and /proc, an empty private /tmp, every mount with -n so it also works nested, and Docker stopped before
+  any PR code runs in a CI job. minizBee''s script is the old one: bring it to the same level, with the same tests (run
+  normally and nested), and stop Docker in every minizBee job that runs PR code through the sandbox.'
+files:
+- bee/sandbox/sans-docker.sh
+- .github/workflows/bee-ci.yml
+- bee/ci/
+reach: 0.6
+metric: null
+acceptance_criteria:
+- the isolation test of libyamlBee passes on minizBee's script, normally and nested
+- every minizBee job that runs PR code through the sandbox stops Docker first, checked by a test of the workflow
+- an independent adversarial review by an agent of another model than the builder's is attached; the fork's suites pass
+  in its sandbox
+out_of_scope:
+- COMMANDMENTS.md
+node: projects/lossless-compression/miniz/bee
+status: open
+created_by: council
+created_on: '2026-11-08'

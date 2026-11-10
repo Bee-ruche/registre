@@ -1,0 +1,27 @@
+id: miniz-0050
+project: miniz
+category: lossless-compression
+type: test
+area: governance
+size: M
+title: minizBee writes English (English names, after the switch)
+context: 'docs/english-migration.md, section 6. minizBee moves to judge-v4 (paths, options, inputs, artifact name in the
+  same PR), then writes English: verdict.json keys and values, metric ids (with the registry''s ruche-0149), plugin names;
+  drops the French fallbacks of miniz-0049.'
+files:
+- .github/workflows/
+- bee/
+reach: 0.8
+metric: null
+acceptance_criteria:
+- fork tests pass on the English layout only; the judge's verdict on a known PR is unchanged
+- an independent adversarial review by an agent of another model than the builder's is attached, with every finding fixed
+  or answered; the full test suite passes on the exact head
+out_of_scope:
+- COMMANDMENTS.md
+depends_on:
+- ruche-0148
+node: projects/lossless-compression/miniz/bee
+status: open
+created_by: council
+created_on: '2026-11-08'

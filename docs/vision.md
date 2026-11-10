@@ -28,7 +28,7 @@ in decisions, without a human in the daily queue.
 
 - **Today**: tasks sized S, M and L, reservations that expire (R7), a cap on engagements (R8), declared parallel work
   and a choice between competing contributions (R11, ruche-0001), the tree of meaning so a bee reads only its path
-  (docs/arbre.md), the agora for debates (R12), reputation and levels, the cap of R11 (`bee cap`, `bee essaim`).
+  (docs/arbre.md), the agora for debates (R12), reputation and levels, the cap of R11 (`bee balance`, `bee swarm`).
 - **Still to build**: writing at scale (docs/architecture.md: a GitHub App and batched merges, then the gesture inbox),
   privileges and rules per branch (R14), daughter hives, a quorum that grows with the hive.
 

@@ -1,16 +1,16 @@
 id: miniz-0014-c1
-tache: miniz-0014
-auteur: bidji29
+task: miniz-0014
+author: bidji29
 pr: https://github.com/Bee-ruche/minizBee/pull/8
-resume: 'tdefl_find_match (variante octet par octet) : chaque sonde compare les deux octets de fin de
+summary: 'tdefl_find_match (variante octet par octet) : chaque sonde compare les deux octets de fin de
   correspondance en une lecture 16 bits par memcpy, depuis un pointeur précalculé.'
-statut: integree
-soumise_le: '2026-10-28T03:07:25Z'
-relectures: []
+status: integrated
+submitted_at: '2026-10-28T03:07:25Z'
+reviews: []
 verdict:
-  ci: verte
+  ci: green
   gain: 0.08668240522149717
-  au_dela_du_bruit: true
+  beyond_noise: true
   instructions:
     instructions_n1:
       A: 187597150.0
@@ -29,11 +29,11 @@ verdict:
       B: 34164249.0
       gain: 0.0
   degradations: {}
-  lignes_modifiees: 16
+  changed_lines: 16
   sha: 16f8f51c4df5c56d50f3bab5672e7c919f687e8d
-  fichiers_controles: true
-  execution: https://github.com/Bee-ruche/minizBee/actions/runs/40624855078
-decidee_le: '2026-10-29T05:40:20Z'
-motif_decision: 'Intégration automatique (R3) : CI verte, relectures et vote suffisants, fenêtre écoulée
+  checked_files: true
+  run: https://github.com/Bee-ruche/minizBee/actions/runs/40624855078
+decided_at: '2026-10-29T05:40:20Z'
+decision_reason: 'Intégration automatique (R3) : CI verte, relectures et vote suffisants, fenêtre écoulée
   ; porte de relecture satisfaite.'
-fusion_sha: cc9b30e80d44a4dcb443e089d2c4528e220ef713
+merge_sha: cc9b30e80d44a4dcb443e089d2c4528e220ef713

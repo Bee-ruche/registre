@@ -1,18 +1,18 @@
 id: miniz-0049-c1
-tache: miniz-0049
-auteur: bidji29
+task: miniz-0049
+author: bidji29
 pr: https://github.com/Bee-ruche/minizBee/pull/24
-resume: 'minizBee''s CI reads the registry in both vocabularies (French, English) before the switch: tasks,
+summary: 'minizBee''s CI reads the registry in both vocabularies (French, English) before the switch: tasks,
   manifests, tool, command, options; unreadable means red, never a default.'
-statut: integree
-soumise_le: '2026-11-08T16:13:05Z'
-engage_depuis: '2026-11-08T15:16:29Z'
-relectures: []
+status: integrated
+submitted_at: '2026-11-08T16:13:05Z'
+engaged_since: '2026-11-08T15:16:29Z'
+reviews: []
 verdict:
-  ci: verte
+  ci: green
   base: 67bf3b41fca7dc3042cea224d3fd13f0ac1fd6cf
   gain: null
-  au_dela_du_bruit: false
+  beyond_noise: false
   instructions:
     instructions_n1:
       A: 171451902.0
@@ -31,17 +31,17 @@ verdict:
       B: 27912876.0
       gain: 0.0
   degradations: {}
-  juge:
+  judge:
     version: 3
-    commun: juge-v2
-    sorties_comparees: 7868
-    constructions_suspectes: []
-  lignes_modifiees: 22
-  ecart_declare: null
+    common: juge-v2
+    outputs_compared: 7868
+    suspicious_constructs: []
+  changed_lines: 22
+  declared_gap: null
   sha: eeb059cc67f197edc61818eea49b07e402ac90f8
-  arbre: dad13c7a64060fab0048387239df0ca5e67645de
-  fichiers_controles: true
-  juges_modifies:
+  tree: dad13c7a64060fab0048387239df0ca5e67645de
+  checked_files: true
+  modified_judges:
   - .github/workflows/bee-ci.yml
   - bee/README.md
   - bee/ci/manifeste.sh
@@ -50,14 +50,14 @@ verdict:
   - bee/ci/verdict.py
   - bee/ci/verifier_fork.py
   - bee/ci/vocabulaire.py
-  execution: https://github.com/Bee-ruche/minizBee/actions/runs/42498739949
+  run: https://github.com/Bee-ruche/minizBee/actions/runs/42498739949
 verdicts:
 - sha: eeb059cc67f197edc61818eea49b07e402ac90f8
-  arbre: dad13c7a64060fab0048387239df0ca5e67645de
-  ci: verte
+  tree: dad13c7a64060fab0048387239df0ca5e67645de
+  ci: green
   gain: null
-  au_dela_du_bruit: false
-  lignes_modifiees: 22
+  beyond_noise: false
+  changed_lines: 22
   instructions:
     instructions_n1:
       A: 171451902.0
@@ -75,10 +75,10 @@ verdicts:
       A: 27912876.0
       B: 27912876.0
       gain: 0.0
-declare:
-  modele: Claude Opus 5.5 (claude-opus-5-5), constructeur lancé par l'architecte de La Ruche
+declared:
+  model: Claude Opus 5.5 (claude-opus-5-5), constructeur lancé par l'architecte de La Ruche
   gain: null
-  teste:
+  tested:
   - 'In the sandbox (bee/sandbox/sans-docker.sh), on this head: bee/ci/test_verdict.py 67 tests OK (23
     new: the readers on both layouts end to end through manifeste.sh, with an argparse fake tool in each
     vocabulary whose help text also names the other vocabulary''s names; a mixed task and a mixed manifest
@@ -94,13 +94,13 @@ declare:
     on master''s merge of miniz-0003 (b16e34e..532b455): tache.py read the task, verifier_fork.py chose
     outils/bee.py --registre verifier-fork with --tache --base --tete --depot --auteur, and the real verifier-fork
     passed.'
-  non_teste:
+  untested:
   - 'No real English registry: the switch (ruche-0145) does not exist yet. The English side is tested
     with a fake tool built with argparse and hand-written English tasks and manifests taken from docs/english-names.md,
     not with the translated bee.py.'
   - The plugin's meta-tests with Docker (BEE_JUGE_INTEGRATION=1), which the CI runs because bee-ci.yml
     changes; the « Conserver le manifeste » step's case pattern is not exercised outside GitHub.
-  doutes: 'Before the switch, a contribution must keep its manifest in manifestes/ with French keys: today''s
+  doubts: 'Before the switch, a contribution must keep its manifest in manifestes/ with French keys: today''s
     French tool (verifier-fork) reads only that folder, so a manifest in manifests/, accepted by the fork,
     would still be refused by the registry until the switch. The help reading follows argparse''s usage
     format: if the registry ever keeps the old command as a full subcommand with all its options, both
@@ -111,6 +111,6 @@ declare:
     the merge (no conflict, checked with git merge-tree): #20 (miniz-0036), #18 (miniz-0029), #15 (miniz-0017),
     #13 (miniz-0018), all based on a2f939a; they are already asked to rebase by the greffon job, and their
     own bee-ci.yml would break on tools/requirements.txt after the switch.'
-decidee_le: '2026-11-08T16:37:00Z'
-motif_decision: 'Fork tooling contribution: minizBee PR #24 merged at the judged commit eeb059c by the agent principal from the council account (bidji29), at the founder''s request of 8 November 2026 that the agent principal merge PRs himself; independent adversarial review by another model (mergeable, four minor findings; the one fix advised, an optimisation task with a null metric now refused, made and verified by a reviewer of that model); every CI job green on the judged commit, verdict recorded. R1: about 288 lines changed outside tests, for an M task (400 at most). Recorded by hand: the fork PR changes a workflow, which the integration robot never merges.'
-fusion_sha: 92719289c1a7f300f03985a54296f4db8c17b04a
+decided_at: '2026-11-08T16:37:00Z'
+decision_reason: 'Fork tooling contribution: minizBee PR #24 merged at the judged commit eeb059c by the agent principal from the council account (bidji29), at the founder''s request of 8 November 2026 that the agent principal merge PRs himself; independent adversarial review by another model (mergeable, four minor findings; the one fix advised, an optimisation task with a null metric now refused, made and verified by a reviewer of that model); every CI job green on the judged commit, verdict recorded. R1: about 288 lines changed outside tests, for an M task (400 at most). Recorded by hand: the fork PR changes a workflow, which the integration robot never merges.'
+merge_sha: 92719289c1a7f300f03985a54296f4db8c17b04a

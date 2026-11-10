@@ -1,13 +1,13 @@
 id: ruche-0140-c1
-tache: ruche-0140
-auteur: bidji29
+task: ruche-0140
+author: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/204
-resume: 'Removal of a person''s data, round 2: a name found whatever surrounds it but never cut out of
+summary: 'Removal of a person''s data, round 2: a name found whatever surrounds it but never cut out of
   a compound word; flagged comments changed where they stand.'
-statut: integree
-soumise_le: '2026-11-08T10:53:52Z'
-engage_depuis: '2026-11-08T10:38:37Z'
-relectures: []
-decidee_le: '2026-11-08T12:19:56Z'
-motif_decision: 'Hive tooling contribution: registry PR #204 merged by the founder (bidji29, council) at the judged commit 3356438, after an independent adversarial review by another model in a separate session (two blocking and one serious finding, then one more serious finding in the verification, all fixed and verified by a reviewer of that model); CI green on the judged commit (valider, suite / tests). R1: 50 lines changed outside tests, for an S task at 50. Recorded by hand: main moved between the PR''s base and its merge. Submitted inside the code PR.'
-fusion_sha: 373f70e9d4484cab9361110d3a9a6d4459ae24c7
+status: integrated
+submitted_at: '2026-11-08T10:53:52Z'
+engaged_since: '2026-11-08T10:38:37Z'
+reviews: []
+decided_at: '2026-11-08T12:19:56Z'
+decision_reason: 'Hive tooling contribution: registry PR #204 merged by the founder (bidji29, council) at the judged commit 3356438, after an independent adversarial review by another model in a separate session (two blocking and one serious finding, then one more serious finding in the verification, all fixed and verified by a reviewer of that model); CI green on the judged commit (valider, suite / tests). R1: 50 lines changed outside tests, for an S task at 50. Recorded by hand: main moved between the PR''s base and its merge. Submitted inside the code PR.'
+merge_sha: 373f70e9d4484cab9361110d3a9a6d4459ae24c7
