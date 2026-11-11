@@ -13,7 +13,7 @@ context: >
   record); a release for insufficient capability is only a free-text note; nothing shows that a task
   has already been given back twice. To build: (1) an optional model field, short and checked (no
   invisible character), in a reservation, a review, and a release (bee take, bee review, bee release
-  --model); (2) bee release --cause capacity (with a mandatory --note: what was tried and why one
+  --model); (2) bee release --cause capability (with a mandatory --note: what was tried and why one
   stops), kept in the task; bee show and bee context show the attempts given back (model, cause,
   date), and bee list flags a task given back at least twice for capability; (3) bee models: per
   declared model family and per field, contributions integrated, refused, defects confirmed, tasks

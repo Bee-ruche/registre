@@ -41,8 +41,7 @@ acceptance_criteria:
 out_of_scope:
 - COMMANDMENTS.md
 - RULES.md
-- tools/ (the nodes describe the code
-- they do not change it)
+- tools/ (the nodes describe the code, they do not change it)
 - the other branches of the tree
 depends_on:
 - ruche-0010

@@ -27,7 +27,7 @@ acceptance_criteria:
   - "test: a project without activity since the threshold is shown as dormant; a task wakes it up"
   - "test: a link to a project or a task that does not exist is refused by bee validate"
   - "independent adversarial review attached (automatic integration)"
-out_of_scope: [COMMANDMENTS.md, the actual opening of a project (bzip2, giflib), daughter hives]
+out_of_scope: [COMMANDMENTS.md, "the actual opening of a project (bzip2, giflib)", daughter hives]
 depends_on: []
 node: projects/ruche
 status: open

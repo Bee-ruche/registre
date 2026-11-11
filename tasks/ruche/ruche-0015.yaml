@@ -10,7 +10,7 @@ context: 'ruche-0010 wrote the root and the levels of the roles, categories and 
   describing them. Facts: of the 9 libyaml tasks, 7 build the fork''s tooling (oracle, round trip, fuzzing,
   isolated judge) and 2 target the code, both blocked by the tooling: libyaml-0010 (src/reader.c, yaml_parser_update_buffer,
   UTF-8 decoding) and libyaml-0011 (src/scanner.c, yaml_parser_scan_plain_scalar). The fork''s bee/README.md
-  (l. 60) notes that parsing is CPU-bound: a drop in instructions shows on the stopwatch (miniz''s node
+  (line 60) notes that parsing is CPU-bound: a drop in instructions shows on the stopwatch (miniz''s node
   says the opposite for its decompression, which is memory-bound). To do: one node per area under tree/projects/parsing-serialization/libyaml/
   (reading and decoding, scanner, parser, loader, emitter), in the format of docs/tree.md (40 lines at
   most): why the area exists; what matters there (hot functions and their share of the instructions according
