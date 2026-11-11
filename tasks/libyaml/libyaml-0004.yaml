@@ -20,7 +20,7 @@ acceptance_criteria:
   - "green CI (R2); the fuzzing job runs 10 min with no new discrepancy on the base"
   - "three seeded regressions in the escapes and the indicators (including \\0 rendered as '0' in scanner.c), each found in less than 120 s of libFuzzer in at least 2 runs out of 3; figures before and after in the manifest"
   - "no faulty input or trace published (discreet mode unchanged)"
-  - "the fuzzing throughput (inputs per second) does not drop by more than 10 %"
+  - "the fuzzing throughput (inputs per second) does not drop by more than 10%"
 out_of_scope: [libyaml's sources, bee/fuzz/fuzz_parse.c, serialization of the event stream]
 depends_on: [libyaml-0002]
 status: open

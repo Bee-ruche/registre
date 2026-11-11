@@ -6,7 +6,7 @@ size: M
 title: "yaml_parser_update_buffer: an ASCII fast path in UTF-8 decoding"
 context: >
   Callgrind profile of the base (parsing bench, first 128 KiB of each file): yaml_parser_update_buffer
-  (src/reader.c) costs 16.6 % of the parsing instructions. It fills the buffer and decodes UTF-8
+  (src/reader.c) costs 16.6% of the parsing instructions. It fills the buffer and decodes UTF-8
   byte by byte, with a validity check per character, even when the input is pure ASCII (the common
   case: keys, indentation, simple scalars). Lead: detect runs of bytes < 0x80 and copy/validate them
   in bulk, falling back to the general path at the first byte >= 0x80. The result must be STRICTLY
@@ -18,8 +18,8 @@ reach: 1.0
 metric: debit_analyse
 acceptance_criteria:
   - "green CI (R2), x86-64 and ARM64; event stream unchanged (identical fingerprints)"
-  - "gain >= 2 % on debit_analyse, beyond the noise (R4)"
-  - "no other metric degraded by more than 1 % (R5)"
+  - "gain >= 2% on debit_analyse, beyond the noise (R4)"
+  - "no other metric degraded by more than 1% (R5)"
   - "invalid UTF-8 inputs are still rejected, at the same place (test cases in the manifest)"
 out_of_scope: [output format, public API (yaml.h), new dependency, UTF-8 validation (same refusals)]
 # No optimization of the parser before the fuzzing (libyaml-0002) and the isolated judge wired into CI (libyaml-0018), which R3 requires.
