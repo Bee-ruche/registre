@@ -1,8 +1,9 @@
 # Common judge: one isolated judge for every project (specification)
 
-Status: version 3 in service since 2 November 2026, tag `juge-v3`; version 2 from 2 November 2026, tag `juge-v2`;
+Status: version 4, tag `judge-v4` (ruche-0148: the judge in English, both plugin contracts), for the founder to tag; version 3 in
+service since 2 November 2026, tag `juge-v3`; version 2 from 2 November 2026, tag `juge-v2`;
 version 1 from 28 October 2026, tag `juge-v1` (merge decided by the council). The forks move to it through the tasks miniz-0032 (after miniz-0031 is integrated) and
-libyaml-0005 (after libyaml-0002).
+libyaml-0005 (after libyaml-0002), then to version 4 through miniz-0050 and libyaml-0021 (section « Version 4 » below).
 
 ## The problem
 
@@ -19,33 +20,37 @@ review of 27 October showed it: a flaw in the judge is fixed once, or it stays o
 
 ## The split
 
-| In the registry (`tools/judge/`, tagged `juge-vN`) | In each fork (`bee/juge/`) |
+| In the registry (`tools/judge/`, tagged `juge-vN`, `judge-vN` from version 4) | In each fork (`bee/juge/`, or `bee/judge/`) |
 | --- | --- |
 | `Dockerfile.base` (pinned image, common packages) and the isolation (`isoler.sh`) | The project's own packages (one `RUN` line added to the common image) |
 | `chrono.c`: launcher, measurements through `wait4`, token, reading of Valgrind's summary | `execution.c`: the harness, which reads `entrees/liste` and writes `sorties/` |
-| `lecture.py`: safe reading of outputs (no link, no special file, bounded size) | `projet.py`: the plugin described below |
-| `analyse.py`: suspicious constructs (list of allowed functions supplied by the plugin) | The corpus and its generator (`bee/corpus/`) |
-| `juge.py`: the orchestration (build A and B, analyze, draw the seed, verify, measure, instructions, report in `ab.py`'s format + a `juge` section) | The project's own meta-tests (malicious variants of the project's code) |
-| The common judge's meta-tests (on a toy project) and the reusable workflow `juge.yml` (`workflow_call`) | The workflow call, pinned to a tag's commit: `uses: Bee-ruche/registre/.github/workflows/juge.yml@<commit> # juge-vN` |
+| `lecture.py`: safe reading of outputs (no link, no special file, bounded size) | `project.py` (or `projet.py`): the plugin described below |
+| `analysis.py`: suspicious constructs (list of allowed functions supplied by the plugin) | The corpus and its generator (`bee/corpus/`) |
+| `judge.py`: the orchestration (build A and B, analyze, draw the seed, verify, measure, instructions, report in `ab.py`'s format + a `judge` section); `report.py`: the report's figures and their check | The project's own meta-tests (malicious variants of the project's code) |
+| The common judge's meta-tests (on a toy project, workflow `judge-meta-tests.yml`) and the reusable workflow `judge.yml` (`workflow_call`) | The workflow call, pinned to a tag's commit: `uses: Bee-ruche/registre/.github/workflows/judge.yml@<commit> # judge-vN` |
 
-## A project's plugin (`bee/juge/projet.py`)
+## A project's plugin (`bee/judge/project.py`, or `bee/juge/projet.py`)
 
-A `Projet` class with no state of its own (it receives the options `--option KEY=VALUE` when it is created),
-read by the common judge **from the PR's base** (never from the PR). Full, commented model:
-`tools/judge/jouet/bee/juge/projet.py` (the meta-tests' toy project).
+A `Project` class (`Projet` in French) with no state of its own (it receives the options `--option KEY=VALUE` when it is created),
+read by the common judge **from the PR's base** (never from the PR). Full, commented models, the meta-tests' toy project in
+both contracts: `tools/judge/toy/bee/judge/project.py` and `tools/judge/jouet/bee/juge/projet.py`. **Two contracts
+(ruche-0148)**: from version 4 on, the judge reads `bee/judge/project.py` with the English names or `bee/juge/projet.py` with
+the French ones, never both in one base nor a name of the other contract in a plugin; the French contract is read until
+judge-v5. Below, each French name is followed by its English one where they differ; the modules `lecture` and `entrees`,
+which plugins import, keep their names.
 
 | Element | Role |
 | --- | --- |
-| `NOM`, `PAQUETS` | the project's name; packages added to the common image (one `RUN` line, names checked) |
-| `SOURCES`, `SOURCES_REQUISES` | glob patterns of the project's files copied into the container and compiled (`miniz.c`, `src/*.c`…); any symbolic link is refused; the text analysis reads these same files, whole |
-| `OUTILLAGE`, `EN_TETES_BASE`, `CONSTRUIRE` | folders of the base mounted on `/outillage`; headers of the base copied into `/outillage/base/` (the harness is compiled with them); build script, which must produce `execution` and leave **each object of the project in `obj/`**, one `obj/<name>.o` per translation unit of `SOURCES` (`.c`, `.S`, `.cc`…), two units with the same name being refused (otherwise the judge stops) |
-| `PREFIXES`, `PERMIS` | the project's namespace (at least one prefix, each a word ending in `_`: `mz_`, `yaml_`) and external functions allowed on top of the common list (64 at most). The functions that serve to fool the measurement (clock, processes, environment, signals, system calls: `analyse.JAMAIS_PERMIS`) are never allowed and are flagged by their exact name, before any exemption |
-| `COTES` | input sides (`f`, `z`…): never two sides mounted together; in verification, one container per side; in the measurements, one per scenario (below) |
-| `SCENARIOS`, `INSTRUCTIONS`, `METRIQUES`, `METHODE` | scenarios measured on the timer and their side; those whose instructions are counted; metrics (name, direction, unit); method texts added to the report |
+| `NOM` (`NAME`), `PAQUETS` (`PACKAGES`) | the project's name; packages added to the common image (one `RUN` line, names checked) |
+| `SOURCES`, `SOURCES_REQUISES` (`REQUIRED_SOURCES`) | glob patterns of the project's files copied into the container and compiled (`miniz.c`, `src/*.c`…); any symbolic link is refused; the text analysis reads these same files, whole |
+| `OUTILLAGE` (`TOOLING`), `EN_TETES_BASE` (`BASE_HEADERS`), `CONSTRUIRE` (`BUILD`) | folders of the base mounted on `/outillage`; headers of the base copied into `/outillage/base/` (the harness is compiled with them); build script, which must produce `execution` and leave **each object of the project in `obj/`**, one `obj/<name>.o` per translation unit of `SOURCES` (`.c`, `.S`, `.cc`…), two units with the same name being refused (otherwise the judge stops) |
+| `PREFIXES`, `PERMIS` (`ALLOWED`) | the project's namespace (at least one prefix, each a word ending in `_`: `mz_`, `yaml_`) and external functions allowed on top of the common list (64 at most). The functions that serve to fool the measurement (clock, processes, environment, signals, system calls: `analysis.NEVER_ALLOWED`) are never allowed and are flagged by their exact name, before any exemption |
+| `COTES` (`SIDES`) | input sides (`f`, `z`…): never two sides mounted together; in verification, one container per side; in the measurements, one per scenario (below) |
+| `SCENARIOS`, `INSTRUCTIONS`, `METRIQUES` (`METRICS`), `METHODE` (`METHOD`) | scenarios measured on the timer and their side; those whose instructions are counted; metrics (name, direction `plus_haut` or `plus_bas`, in English `higher` or `lower`, unit); method texts added to the report |
 | `corpus(outillage)` | the base's corpus, `[(name, bytes)]` (helper: `entrees.charger_corpus`) |
 | `verification(rng, corpus)` | verification inputs (`entrees.Entree`): corpus, randomly drawn data, derived data (streams produced by the host), invalid inputs |
-| `verifier(a, b, entrees)` | correctness rule on the outputs of the `verifier` mode; raises `Refus` at the first discrepancy, `Erreur` if the base itself is wrong; returns the number of outputs compared |
-| `fixes(sorties, corpus)` | metrics that do not depend on time (compression ratio…), read on the verification outputs |
+| `verifier(a, b, entrees)` (`verify`) | correctness rule on the outputs of the `verifier` mode; raises `Refus` at the first discrepancy, `Erreur` if the base itself is wrong; returns the number of outputs compared |
+| `fixes(sorties, corpus)` (`fixed`) | metrics that do not depend on time (compression ratio…), read on the verification outputs |
 | `repetition(rng, corpus)`, `instructions(rng, corpus, prefixe)` | inputs of the measurements, perturbed at each call (the common judge mixes verification inputs into them, then renames everything) |
 | `scenario(s, a, b, entrees, mesure)` | checks **each** output of a measured scenario by `verifier`'s rule, mixed-in verification inputs included (invalid ones too), and derives the metrics from them (from chrono's measurement); returns `(values, outputs compared)` |
 
@@ -66,25 +71,25 @@ also mixed into the measured ones and spread over the repetitions (⌈n/r⌉ per
 order drawn from the judge's seed; as many in the instruction count, within its prefix), the same for A and B. A wrong output
 fails the judgement whatever the mode, and B's output of a mixed-in input must be, byte for byte, its own output in
 verification. A measured side without verification inputs is an error. A scenario may return a fixed metric computed on its
-timed outputs (the toy's ratio); it replaces the value `fixes()` reads on verification. `juge.json`:
-`juge.verification.entrees_melees` (total), `melees_par_repetition` (per side), `instructions_sans_melange` (instruction-count
+timed outputs (the toy's ratio); it replaces the value `fixes()` reads on verification. `judge.json`:
+`judge.verification.inputs_mixed` (total), `mixed_per_repetition` (per side), `instructions_without_mixing` (instruction-count
 scenarios that got none). Since ruche-0117, the byte-for-byte check wants a comparable output in each scenario of the side, and
-a fixed metric that no scenario returns, read on verification alone, is named in `fixes_sans_mesure`, marked
-`verification_seulement` in `metriques` and never `au_dela_du_bruit`: its value is the same at every repetition.
+a fixed metric that no scenario returns, read on verification alone, is named in `fixed_without_measurement`, marked
+`verification_only` in `metrics` and never `beyond_noise`: its value is the same at every repetition.
 
 **Each execution on its own tmpfs (ruche-0117).** Nothing the judge's setup shows a container depends on the run's progress
 (its position, the variant pass, the repetition, the mode). Just before each container, the judge mounts a fresh tmpfs
-(`conteneur.TMPFS`: 4 GiB, 262,144 files; as root or through `sudo -n`, as on juge.yml's runner, an error otherwise) and creates
+(`container.TMPFS`: 4 GiB, 262,144 files; as root or through `sudo -n`, as on judge.yml's runner, an error otherwise) and creates
 there anew, in a fixed order with fixed access and modification times, all the container sees of it: `chrono`, the harness,
 the inputs, `/etc/hostname`, `/etc/hosts`, `/etc/resolv.conf` (which Docker would write on the host's disk) and the outputs
 folder; once the container ends, the outputs are copied out and the tmpfs unmounted. Docker (up to 29.0) mounts folders of equal
 depth in an order drawn for each container: since ruche-0136, each folder the judge mounts, in every container (executions and
-builds), is given at a depth that no other mount of the container shares, from `conteneur.PROFONDEUR` (8) on, deeper than any
+builds), is given at a depth that no other mount of the container shares, from `container.DEPTH` (8) on, deeper than any
 of Docker's own (4 at most: `/sys/fs/cgroup/cpu` under cgroup v1), through the image's link to its root
 (`/.racine/…/.racine/variante` is `/variante`), so all are mounted in one order, whatever order Docker draws
-(test_one_mount_order_whatever_docker_draws; with Docker, test_profondeurs). `/etc`'s three files stay at their depth. Identical scenarios thus find the same
+(test_one_mount_order_whatever_docker_draws; with Docker, test_depths). `/etc`'s three files stay at their depth. Identical scenarios thus find the same
 inodes, devices, links, sizes, directory order, free space and mount lines, change and birth times as old (`f_fsid` is drawn by
-the kernel at each mount), and no container's outputs share space with another's while it runs (test_memes_montures). What
+the kernel at each mount), and no container's outputs share space with another's while it runs (test_same_mounts). What
 still follows the progress, as the clock does: the container's root, Docker's overlay on the host's disk (its inode, free
 space and, with the containerd image store, its layers' numbers in `/proc/self/mountinfo`), and kernel-wide counters (unique
 mount ids, the inode numbers of each container's cgroup and message queues, the host's process count in `/proc`'s links).
@@ -99,8 +104,8 @@ own. Verification still runs one container per side, not per scenario.
   the check that ends each step; so is anything the judge cannot read while freezing (root or not).
 - **Drawn order**: the order of the scenarios is drawn anew at each repetition (warm-up included) and for the instruction
   count, the same for A and B.
-- **`juge.json`**: `juge.scenarios.graine_ordre` is the seed of that draw (from `secrets`, apart from the inputs' seed and
-  generator; `--graine-ordre` reruns it); `juge.scenarios.deroulement` gives, per step (`chauffe`, `mesure`,
+- **`judge.json`**: `judge.scenarios.order_seed` is the seed of that draw (from `secrets`, separate from the inputs' seed and
+  generator; `--order-seed` reruns it); `judge.scenarios.steps` gives, per step (`warmup`, `measurement`,
   `instructions`), the order of the variants and of the scenarios, and **each scenario's CPU time** for A and B (user +
   system, read by `chrono` with `wait4`; under Valgrind for `instructions`).
 - Meta-test, on a copy of the toy with two scenarios per side: a candidate each of whose scenarios tries to read and to
@@ -122,42 +127,43 @@ Safety rules, checked by the common judge (adversarial review of 28 October):
   and surrounding bytes; undecodable bytes and writable and executable memory count too. A failure of `nm` or of
   the disassembler stops the judge (refusal or error), and unreadable bytes make it incomplete: never complete;
 - the judged files (`SOURCES`) are scanned whole, each file of B against A's, line splices joined, without
-  git: only a net, the objects show the code produced. A PR that modifies `bee/juge/` is a tooling
+  git: only a net, the objects show the code produced. A PR that modifies `bee/juge/` or `bee/judge/` is a tooling
   task: the registry detects it and requires a guardian (R3).
 
 **Machine failures and seeds (ruche-0136).** A failure of the machine that judges is an error of the environment, never a
 refusal of the judged code: after each container, the judge reads Docker's own record of it (`docker inspect`, then the container
 is removed), never its code or error stream, which the judged code writes; a container that was not created (daemon out of reach,
 image or runtime missing), that its runtime failed to start, or whose recorded state is not « exited » with its process's code
-stops the judge with code 2 (`lecture.Panne`, whose motif never quotes the container's error stream); at its deadline, a
-container that never started is one too, one that ran a refusal. With `--json`, `juge.json` is written whole or not at all
-(renamed into place) whatever the outcome: `juge.code` and `juge.issue` (`juste` 0, `refus` 1, `erreur_environnement` 2), and on a
-stop `juge.motif` and `juge.panne_machine`, a refusal staying a refusal whatever its message holds; `rapport.py --code` publishes
+stops the judge with code 2 (`lecture.Panne`, whose reason never quotes the container's error stream); at its deadline, a
+container that never started is one too, one that ran a refusal. With `--json`, `judge.json` is written whole or not at all
+(renamed into place) whatever the outcome: `judge.code` and `judge.outcome` (`correct` 0, `refusal` 1, `environment_error` 2), and on a
+stop `judge.reason` and `judge.machine_failure`, a refusal staying a refusal whatever its message holds; `report.py --code` publishes
 0 only with its report, whole and checked, and a code only if the report does not say another (code 2 otherwise; a refusal needs
-no report), and juge.yml's judging step annotates it: a notice for 0, a warning for a refusal of B, an error for an error of the
+no report), and judge.yml's judging step annotates it: a notice for 0, a warning for a refusal of B, an error for an error of the
 environment, which judges nothing.
-`juge.origine_des_graines` says for each seed (`graine`, `graine_ordre`) whether the judge drew it (`tiree`) or it was given on
-the command line (`donnee`, `--graine`, `--graine-ordre`: a local reproduction). `rapport.py --verifier` refuses any report
+`judge.seed_origin` says for each seed (`seed`, `order_seed`) whether the judge drew it (`drawn`) or it was given on
+the command line (`given`, `--seed`, `--order-seed`: a local reproduction). `report.py --verify` refuses any report
 whose seeds were not both drawn, or that does not say: a reproduction is never taken for a judgement (its seed is no longer drawn
 after the build). Refusing rather than marking keeps one rule on the verdict side: only a judgement passes.
 
 ## Versions
 
-- The common judge is versioned by tag (`juge-v1`, `juge-v2`…) in the registry. A change
-  goes through a tooling PR on the registry, with the common meta-tests (workflow
-  `juge-commun.yml`) and those of each project that uses it, and the review of two guardians.
-- The reusable workflow `.github/workflows/juge.yml` reads the common judge at the very commit of the called
+- The common judge is versioned by tag in the registry: `juge-v1` to `juge-v3`, then `judge-v4`, `judge-v5`… (each number
+  has one name; ruche-0148). A change goes through a tooling PR on the registry, with the common meta-tests (workflow
+  `judge-meta-tests.yml`) and those of each project that uses it, and the review of two guardians.
+- The reusable workflow `.github/workflows/judge.yml` (`juge.yml` up to version 3) reads the common judge at the very commit of the called
   workflow (`job.workflow_sha`), never at a tag or a branch: the workflow must be
   `Bee-ruche/registre`'s (`job.workflow_repository`) and that commit must be on its main branch (compare API:
-  `identical` or `behind`), otherwise the judge stops (checked by a test); `juge.json` names it (`juge.source`).
+  `identical` or `behind`), otherwise the judge stops (checked by a test); `judge.json` names it (`judge.source`).
 - Each fork pins a version in its workflow; it moves up a version through a PR (a tooling task
   of the fork), judged by the old version and by the new one.
 - `verdict.json` carries `judge.version` (an integer: 2 for minizBee's judge of miniz-0031, 3 for the
-  common judge, v1 to v3), `judge.common` (« juge-v1 », « juge-v2 », « juge-v3 »), `judge.project` and `judge.plugin` (SHA-256 fingerprint of the
+  common judge, from v1 on), `judge.common` (« juge-v1 » to « juge-v3 », then « judge-v4 »…), `judge.project` and `judge.plugin` (SHA-256 fingerprint of the
   plugin): the registry knows by which judge each verdict was rendered, and requires a minimum
   version (`bee.yaml`, below).
 - **Minimum version** (`common_judge_min` in `bee.yaml`, ruche-0086): with R3's gate at `if_judge_incomplete`, a verdict whose
-  `judge.common` is not exactly `juge-vN` (N in ASCII digits, no leading zero) with N at least this minimum is not entirely
+  `judge.common` is not exactly `juge-vN` (N from 1 to 3) or `judge-vN` (N from 4 on), N in ASCII digits without a leading zero,
+  with N at least this minimum, is not entirely
   judged: a guardian or the council must review it, as for any incomplete judge. Missing or malformed (not an integer from 1
   to 9999), no verdict is complete: the gate closes, never opens. It is read when R3 is checked, so it reaches contributions
   still in review, judged by an older judge, never those already integrated. **The council raises it**, after it has tagged
@@ -166,9 +172,28 @@ after the build). Refusing rather than marking keeps one rule on the verdict sid
   not the commit a fork pins: the council bumps `COMMON_VERSION` whenever a change to the judge or to its workflow's
   protections ships, then raises the minimum. `bee validate` reports a missing or malformed minimum.
 
-## The `juge.yml` workflow, version 2 (ruche-0024)
+## Version 4 (ruche-0148): the judge in English
 
-- **Declared history**: the input `historique` (16 full commits at most, separated by blanks) names the
+Version 4 is version 3's judge under English names; what it checks does not change.
+- **Code and options**: `tools/judge/` (`judge.py`, `analysis.py`, `container.py`, `report.py`, `stats.py`; `lecture.py` and
+  `entrees.py` keep their names) and English options (`--tooling`, `--image-only`, `--history-only`, `--history`,
+  `--judge-source`, `--head`, `--workdir`, `--seed`, `--order-seed`).
+- **The plugin**: either contract (above), until judge-v5 drops the French one.
+- **`judge.json`** (`juge.json` up to version 3): its keys and closed values in English (`outcome`, `seed_origin`, a metric's
+  `direction`…), and its texts: a stop's `reason`, each suspicious construct's `detail`, the method's texts. The construct
+  types stay as written (ruche-0149, miniz-0050). `report.py` also reads a French `juge.json` until 2027-01-01.
+- **The workflow**: `judge.yml`, its inputs `head_sha`, `history`, `no_instructions` or, until judge-v5, their French names
+  (`tete_sha`, `historique`, `sans_instructions`), one of the two; its outputs under their English names and, until judge-v5,
+  their French ones; the artifact « judge »: `results/judge.json`, `code`, `log.txt`, `outputs`.
+- **The image**: its label, the fingerprint of the Dockerfile's whole text, changes with version 4's English comments.
+- **The transition**: a fork pinned to `juge-v2` or `juge-v3` keeps working: its `uses: …/juge.yml@<sha>` runs that commit's
+  workflow, judge, image and artifact « juge ». It moves to version 4 in one tooling PR (the workflow's path, inputs and
+  artifact, the paths and options of the steps that call `tools/judge/` themselves, `judge.json`'s English keys in its
+  verdict), judged by the old version and by the new one; its plugin can stay French until judge-v5.
+
+## The `judge.yml` workflow (version 2 on, ruche-0024)
+
+- **Declared history**: the input `history` (`historique` until judge-v5; 16 full commits at most, separated by blanks) names the
   commits whose git objects the plugin reads. Each must be an ancestor of the base (compare API of the calling
   repository: `identical` or `behind`), checked before any fetch; the workflow then fetches them into the
   base's copy, each with its tree and without its history, in a separate step, the only one to receive the token,
@@ -177,23 +202,24 @@ after the build). Refusing rather than marking keeps one rule on the verdict sid
 - **Safe log**: the last 40 lines of the log, which the PR can fill, are printed between
   `::stop-commands::<token>` and `::<token>::`, a token drawn after the judgement, and `##[` becomes `# #[` in them
   (ruche-0025): none of them becomes a workflow command.
-- **The caller's inputs** (ruche-0038), checked first: `base_sha` and `tete_sha` are the event's pull request's
-  (`github.event.pull_request.base.sha`, `.head.sha`, 40 hexadecimal digits), `repetitions` 10 to 50, `sans_instructions`
-  false (a verdict needs the instruction count); otherwise the job fails before anything is checked out or judged.
-- **Job outputs tied to the report** (ruche-0038): `code`, `empreinte` (SHA-256 of `juge.json`), `suspectes` (all of them),
-  `sorties_comparees`, `greffon`, `graine`, `base`, `tete` (`tools/judge/report.py`; empty without a report). The verdict
-  job reads `juge.json` from the artifact « juge » and checks it against them, `python3 rapport.py juge.json --verifier
-  sorties.json --base <the PR's base> --tete <its head>` (`toJSON(needs.<judging job>.outputs)`), refused (code 1) at any
+- **The caller's inputs** (ruche-0038), checked first: `base_sha` and `head_sha` (or `tete_sha`) are the event's pull request's
+  (`github.event.pull_request.base.sha`, `.head.sha`, 40 hexadecimal digits), `repetitions` 10 to 50, `no_instructions` (or
+  `sans_instructions`) false (a verdict needs the instruction count); otherwise the job fails before anything is checked out or judged.
+- **Job outputs tied to the report** (ruche-0038): `code`, `fingerprint` (SHA-256 of `judge.json`), `suspects` (all of them),
+  `outputs_compared`, `plugin`, `seed`, `base`, `head` (`tools/judge/report.py`; empty without a report; until judge-v5, also
+  `empreinte`, `suspectes`, `sorties_comparees`, `greffon`, `graine`, `tete`). The verdict job reads `results/judge.json` from
+  the artifact « judge » and checks it against them, `python3 report.py judge.json --verify outputs.json --base <the PR's base>
+  --head <its head>` (`toJSON(needs.<judging job>.outputs)`), refused (code 1) at any
   difference, a code other than 0 or other commits than the PR's (ruche-0117); any non-zero exit blocks the verdict. The judging
-  step publishes the code only with the figures, once `rapport.py --code` has checked the report: code 2 if the report fails
-  (none for a code 0, malformed). `juge.json` names `juge.base`,
-  `juge.tete` and `juge.image_id`, the image's id, by which every container runs it.
-- **Disk and reads bounded** (ruche-0038): the work folder is a tmpfs of 4 GiB and 262,144 files (`--travail`); containers
+  step publishes the code only with the figures, once `report.py --code` has checked the report: code 2 if the report fails
+  (none for a code 0, malformed). `judge.json` names `judge.base`,
+  `judge.head` and `judge.image_id`, the image's id, by which every container runs it.
+- **Disk and reads bounded** (ruche-0038): the work folder is a tmpfs of 4 GiB and 262,144 files (`--workdir`); containers
   run with `--ulimit fsize` at `lecture.TAILLE_MAX_SORTIE` (256 MiB) and no log on the host's disk, which keeps the first MiB
   of their standard output and the last of their error; no output is read beyond that size. Writing without end or filling the
-  folder fails the judgement. `juge.json` lists 100 suspicious constructs at most (the rest: `constructions_suspectes_omises`),
-  the most serious first (`juge.GRAVITE`), each kind counted (`constructions_suspectes_par_type`), each detail cut to 300
-  characters as `analyse.analyser` builds the list (ruche-0117).
+  folder fails the judgement. `judge.json` lists 100 suspicious constructs at most (the rest: `suspicious_constructs_omitted`),
+  the most serious first (`judge.SEVERITY`), each kind counted (`suspicious_constructs_by_type`), each detail cut to 300
+  characters as `analysis.analyse` builds the list (ruche-0117).
 
 ## Three plugins side by side
 
@@ -203,8 +229,8 @@ results of miniz-0031's judge) and on the toy; for libyaml (libyaml-0005), it is
 | Element | toy | miniz | libyaml (planned) |
 | --- | --- | --- | --- |
 | `SOURCES` | `rle.c`, `rle.h` | `miniz*.c`, `miniz*.h` | `src/*.c`, `src/*.h`, `include/yaml.h` |
-| `EN_TETES_BASE` | `rle.h` | `miniz*.h` | `include/yaml.h` (harness compiled with `-I/outillage/base/include`) |
-| `COTES` | `f` raw, `z` streams | `f` raw, `z` zlib streams | `f` documents (no derived data) |
+| `EN_TETES_BASE` (`BASE_HEADERS`) | `rle.h` | `miniz*.h` | `include/yaml.h` (harness compiled with `-I/outillage/base/include`) |
+| `COTES` (`SIDES`) | `f` raw, `z` streams | `f` raw, `z` zlib streams | `f` documents (no derived data) |
 | `SCENARIOS` | compression, decompression | n1, n6, n9, decompression, memory | parsing, loading, emitting, memory |
 | correctness | output identical to the base, reference codec in Python | identical to the base, the host's zlib | serialized event stream and emitter output identical to the base; invalid inputs: same error, same positions |
 | `PREFIXES` | `rle_` | `mz_`, `tdefl_`, `tinfl_`, `miniz_`, `MZ_` | `yaml_` |
@@ -218,3 +244,4 @@ results of miniz-0031's judge) and on the toy; for libyaml (libyaml-0005), it is
    of miniz-0031's judge.
 4. libyaml (task libyaml-0005) writes its plugin and its harness instead of a copy.
 5. New projects (giflib, bzip2) arrive directly with a plugin.
+6. Version 4 (ruche-0148): the judge in English, both plugin contracts; the forks move to it with miniz-0050 and libyaml-0021.

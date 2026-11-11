@@ -989,7 +989,7 @@ sys.exit(3 if a[:2] == ["pr", "view"] else 0)
                        "auto-merge.yml": {"contents": "write", "pull-requests": "write", "actions": "write"},
                        "auto-integration.yml": {"contents": "write", "pull-requests": "write", "actions": "write"},
                        "validation.yml": {"contents": "read", "actions": "read"}, "judge.yml": {"contents": "read"},
-                       "juge-commun.yml": {"contents": "read"}, "site.yml": {"contents": "read", "pages": "write", "id-token": "write"},
+                       "judge-meta-tests.yml": {"contents": "read"}, "site.yml": {"contents": "read", "pages": "write", "id-token": "write"},
                        "suite.yml": {"contents": "read"}, "check-migration.yml": {"contents": "read"}}  # ruche-0132; ruche-0143
         self.assertEqual(sorted(f.name for f in (ROOT / ".github/workflows").glob("*.yml")), sorted(permissions))
         for name, expected_ones in permissions.items():
@@ -17118,7 +17118,7 @@ REGISTRY_PR = "https://github.com/Bee-ruche/registre/pull/"
 MERGED_HEAD = "c0ffee" + "0" * 34
 SUMMARY_9094 = "Merged registry contributions are recorded by the integration workflow | from GitHub's facts."
 AGENT_WHO = f"{AGENT} (declared agent account of bidji29, a council member), by merging"
-VALIDATION_YML, COMMON_JUDGE_YML = ".github/workflows/validation.yml", ".github/workflows/juge-commun.yml"
+VALIDATION_YML, COMMON_JUDGE_YML = ".github/workflows/validation.yml", ".github/workflows/judge-meta-tests.yml"
 
 
 def head_run(**fields):

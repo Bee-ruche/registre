@@ -1,0 +1,28 @@
+# Meta-tests of the common judge (tools/judge/): the whole judge, in containers, against the honest toy
+# project and its malicious variants (tools/judge/test_judge.py). Run when the common judge changes.
+# The variants' code runs only in the judge's containers (without network, read-only).
+name: Common judge (meta-tests)
+
+on:
+  pull_request:
+    paths: ["tools/judge/**", ".github/workflows/judge.yml", ".github/workflows/judge-meta-tests.yml"]
+  push:
+    branches: [main]
+    paths: ["tools/judge/**", ".github/workflows/judge.yml", ".github/workflows/judge-meta-tests.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  meta-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Unit tests and meta-tests
+        env:
+          BEE_JUGE_INTEGRATION: "1"
+        run: python3 tools/judge/test_judge.py

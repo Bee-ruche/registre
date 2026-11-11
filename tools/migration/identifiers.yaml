@@ -3916,7 +3916,7 @@ hand:
     - common-judge
     - juge-commun
     default: juge-commun
-    why: docs/juge-commun.md -> docs/common-judge.md; .github/workflows/juge-commun.yml stays, with the judge, until judge-v4 (ruche-0153)
+    why: docs/juge-commun.md -> docs/common-judge.md; .github/workflows/juge-commun.yml -> judge-meta-tests.yml with judge-v4 (ruche-0148)
   archive:
     english:
     - archive
