@@ -510,6 +510,18 @@ class TestPlugin(unittest.TestCase):
                         f"{cls}.__init__ = _init_too\n")
             self.assertEqual(judge.load_plugin(root, {})[0].NOM, "jouet")
 
+    def test_other_contract_names_a_base_class_defines_are_refused(self):
+        """A name of the other contract defined in a base class of the plugin's class counts as the class body's: refused, each way."""
+        base = english_toy(os.path.join(self.base, "en"))
+        for root, cls, name in ((self.base, "Projet", "fixed"), (base, "Project", "NOM")):
+            with open(toy_file(TOY if root == self.base else ENGLISH_TOY, "plugin"), encoding="utf-8") as f:
+                text = f.read()
+            with self.subTest(cls=cls), open(toy_file(root, "plugin"), "w", encoding="utf-8") as f:
+                f.write(f"{text}\n\nclass _Base:\n    {name} = None\n\n\nclass {cls}({cls}, _Base):\n    pass\n")
+            with self.assertRaises(lecture.Erreur) as e:
+                judge.load_plugin(root, {})
+            self.assertIn(f"({name}): one contract per plugin", str(e.exception))
+
     def test_one_contract_per_plugin(self):
         """A plugin that also bears a name of the other contract (the class, a constant, a method) is refused, each way."""
         base = english_toy(os.path.join(self.base, "en"))

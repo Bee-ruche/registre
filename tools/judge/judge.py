@@ -137,9 +137,11 @@ def load_plugin(tooling, options):
         raise Erreur(f"le greffon ne définit pas de classe {names.get('Projet', 'Projet')}")
     cls = getattr(module, names.get("Projet", "Projet"))
     plugin = cls(dict(options))
-    # Names of the other contract defined in the module or in the class body (not those an instance or __getattr__ answers).
+    # Names of the other contract defined in the module, in the class body or in a base class's (not those an instance or a
+    # __getattr__ answers).
+    defined = {n for c in type(plugin).__mro__ if c is not object for n in vars(c)}
     other = [n for n in (PLUGIN_NAMES if english else PLUGIN_NAMES.values())
-             if n in (vars(module) if n in ("Projet", "Project") else getattr(cls, "__dict__", {}))]
+             if n in (vars(module) if n in ("Projet", "Project") else defined)]
     if other:
         raise Erreur(f"plugin {relative}: names of the {'French' if english else 'English'} contract "
                      f"({', '.join(other)}): one contract per plugin")
