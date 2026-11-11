@@ -3,7 +3,7 @@
 The hive grows by branches: a project, a field, an area, later a daughter hive ([growth.md](growth.md)). Today, a
 guardian reviews for the whole hive and a rule holds everywhere. As branches multiply, this becomes wrong in two ways:
 - a guardian who knows compression has no reason to be able to block a proof in Lean;
-- a rule made to optimize C (R4: a measured gain of 2 %) makes no sense for a branch that proves theorems, and would
+- a rule made to optimize C (R4: a measured gain of 2%) makes no sense for a branch that proves theorems, and would
   keep it from existing.
 
 This page says how a privilege can have a **scope**, and how a branch can have **local rules**. The rule is R14. What
