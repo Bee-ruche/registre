@@ -667,7 +667,7 @@ class TestApiBudget(unittest.TestCase):
     (bee api-budget); the account's creation date is read only for a PR that adds a member file; the site is rebuilt at once
     for a push (code), at most every few minutes for the robots' dispatches (data); the workflows' security is unchanged."""
 
-    # The workflows that call gh with the registry's tokens, and the tokens each gives gh (juge.yml runs under a fork's token).
+    # The workflows that call gh with the registry's tokens, and the tokens each gives gh (judge.yml runs under a fork's token).
     ROBOTS = {"validation.yml": ["GITHUB_TOKEN"], "auto-merge.yml": ["GITHUB_TOKEN"], "verdicts.yml": ["GITHUB_TOKEN"],
               "auto-integration.yml": ["GITHUB_TOKEN", "BEE_INTEGRATION_TOKEN"], "expirations.yml": ["GITHUB_TOKEN"]}
     TOKENS = {"GITHUB_TOKEN": "${{ github.token }}", "BEE_INTEGRATION_TOKEN": "${{ secrets.BEE_INTEGRATION_TOKEN }}"}
@@ -901,7 +901,7 @@ sys.exit(3 if a[:2] == ["pr", "view"] else 0)
         even after a failure (if: always()); its other jobs call no gh."""
         callers = {f.name for f in (ROOT / ".github/workflows").glob("*.yml")
                      if any(re.search(r"(^|[\s(;|&])gh ", s.get("run", "")) for s in self.steps(f.name))}
-        self.assertEqual(callers, {*self.ROBOTS, "juge.yml", "site.yml"})
+        self.assertEqual(callers, {*self.ROBOTS, "judge.yml", "site.yml"})
         for name, tokens in self.ROBOTS.items():
             with self.subTest(stream=name):
                 jobs = [j.get("steps", []) for n, j in self.stream(name)["jobs"].items() if (name, n) != ("validation.yml", "dispatch")]
@@ -988,7 +988,7 @@ sys.exit(3 if a[:2] == ["pr", "view"] else 0)
         permissions = {"expirations.yml": {"contents": "write", "actions": "write"}, "verdicts.yml": {"contents": "write", "actions": "write"},
                        "auto-merge.yml": {"contents": "write", "pull-requests": "write", "actions": "write"},
                        "auto-integration.yml": {"contents": "write", "pull-requests": "write", "actions": "write"},
-                       "validation.yml": {"contents": "read", "actions": "read"}, "juge.yml": {"contents": "read"},
+                       "validation.yml": {"contents": "read", "actions": "read"}, "judge.yml": {"contents": "read"},
                        "juge-commun.yml": {"contents": "read"}, "site.yml": {"contents": "read", "pages": "write", "id-token": "write"},
                        "suite.yml": {"contents": "read"}, "check-migration.yml": {"contents": "read"}}  # ruche-0132; ruche-0143
         self.assertEqual(sorted(f.name for f in (ROOT / ".github/workflows").glob("*.yml")), sorted(permissions))
@@ -23222,7 +23222,7 @@ def f(n, path):
         self.assertIn("fields changed", self.cm.check(self.repo, "HEAD", None, ["m.py"], False)[0][0])  # a template still may not
 
 
-# --- ruche-0148 (J2): judge-v4's English contracts beside the French ones (the plugin, judge.json, juge.yml's inputs and outputs) ---
+# --- ruche-0148 (J2): judge-v4's English contracts beside the French ones (the plugin, judge.json, judge.yml's inputs and outputs) ---
 
 def common_judge_module(name):
     """A module of tools/judge/, loaded with its folder first on the path, as the judge loads its own."""
@@ -23242,7 +23242,7 @@ class TestJudgeContractsRuche0148(unittest.TestCase):
         cls.ids = yaml.safe_load((ROOT / "tools/migration/identifiers.yaml").read_text(encoding="utf-8"))
         cls.names = yaml.safe_load((ROOT / "tools/migration/names.yaml").read_text(encoding="utf-8"))
         cls.judge = common_judge_module("judge")
-        workflow = yaml.safe_load((ROOT / ".github/workflows/juge.yml").read_text(encoding="utf-8"))
+        workflow = yaml.safe_load((ROOT / ".github/workflows/judge.yml").read_text(encoding="utf-8"))
         cls.call = workflow[True]["workflow_call"]  # YAML 1.1: the key « on » reads as true
 
     def test_the_plugin_names_are_the_map(self):
@@ -23257,7 +23257,7 @@ class TestJudgeContractsRuche0148(unittest.TestCase):
         self.assertEqual(self.judge.DIRECTIONS, self.names["domains"]["direction"])
 
     def test_each_french_input_has_its_english_twin(self):
-        """juge.yml takes each French input (tete_sha, historique, sans_instructions) and its English name in names.yaml (workflows: io),
+        """judge.yml takes each French input (tete_sha, historique, sans_instructions) and its English name in names.yaml (workflows: io),
         of the same type, neither required."""
         io, inputs = self.names["workflows"]["io"], self.call["inputs"]
         french = [k for k in inputs if k in io]
@@ -23268,15 +23268,15 @@ class TestJudgeContractsRuche0148(unittest.TestCase):
         self.assertEqual(set(inputs) - set(french) - {io[k] for k in french}, {"base_sha", "options", "repetitions"})
 
     def test_each_output_by_its_english_name_and_its_french_one(self):
-        """juge.yml's outputs are report.py's figures (FORMATS) and the code, by their English names; each French name (names.yaml,
+        """judge.yml's outputs are report.py's figures (FORMATS) and the code, by their English names; each French name (names.yaml,
         workflows: io) gives the same job output, until judge-v5. The artifact is judge (judge.json)."""
         report, io, outputs = common_judge_module("report"), self.names["workflows"]["io"], self.call["outputs"]
         english = ["code", *report.FORMATS]
         french = {fr: en for fr, en in io.items() if en in english and fr != en}
         self.assertEqual(sorted(french), ["empreinte", "graine", "greffon", "sorties_comparees", "suspectes", "tete"])
         self.assertEqual({k: v["value"] for k, v in outputs.items()},
-                         {k: "${{ jobs.juge.outputs.%s }}" % french.get(k, k) for k in english + list(french)})
-        text = (ROOT / ".github/workflows/juge.yml").read_text(encoding="utf-8")
+                         {k: "${{ jobs.judge.outputs.%s }}" % french.get(k, k) for k in english + list(french)})
+        text = (ROOT / ".github/workflows/judge.yml").read_text(encoding="utf-8")
         self.assertIn("          name: judge\n          path: results/\n", text)
         self.assertIn("--json results/judge.json", text)
 

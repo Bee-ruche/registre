@@ -1402,9 +1402,9 @@ class TestOrderAndFingerprints(unittest.TestCase):
             self.assertIn("après leur empreinte" if nom == "ajoutée" else "après son empreinte", str(e.exception))
 
 
-# ------------------------------------------------------------------ juge.yml (ruche-0024): read and run its scripts
+# ------------------------------------------------------------------ judge.yml (ruche-0024): read and run its scripts
 
-JUDGE_YML = os.path.join(os.path.dirname(os.path.dirname(HERE)), ".github", "workflows", "juge.yml")
+JUDGE_YML = os.path.join(os.path.dirname(os.path.dirname(HERE)), ".github", "workflows", "judge.yml")
 try:
     import yaml
 except ImportError:  # the registry's CI (validation.yml) installs PyYAML; the Docker meta-test job may not have it
@@ -1457,17 +1457,17 @@ def judge_workflow():
 
 
 def step(data, nom):
-    found_ones = [e for e in data["jobs"]["juge"]["steps"] if e.get("name") == nom]
+    found_ones = [e for e in data["jobs"]["judge"]["steps"] if e.get("name") == nom]
     if len(found_ones) != 1:
-        raise AssertionError(f"step {nom!r} not found exactly once in juge.yml")
+        raise AssertionError(f"step {nom!r} not found exactly once in judge.yml")
     return found_ones[0]
 
 
-PREPARATION = "Commit de ce workflow, sur la branche principale du registre (le code du juge y est lu)"
-HISTORY = "Historique déclaré (ancêtres de la base ; seul appel de judge.py avec le jeton, avant le greffon et la PR)"
-IMAGE = "Image du juge (avec réseau, avant tout fichier de la PR)"
-INPUTS = "Entrées de l'appelant, avant tout usage (un appel qui ne laisse pas un jugement complet s'arrête ici)"
-WORKDIR = "Dossier de travail du juge, borné (tmpfs ; tout ce que les conteneurs écrivent y reste)"
+PREPARATION = "This workflow's commit, on the registry's main branch (the judge's code is read there)"
+HISTORY = "Declared history (ancestors of the base; the only call of judge.py with the token, before the plugin and the PR)"
+IMAGE = "The judge's image (with network, before any file of the PR)"
+INPUTS = "The caller's inputs, before any use (a call that does not leave a complete judgment stops here)"
+WORKDIR = "The judge's work folder, bounded (tmpfs; everything the containers write stays there)"
 JOB_OUTPUTS = ["code"] + list(report.FORMATS)
 
 
@@ -1521,24 +1521,24 @@ class TestJudgeWorkflow(unittest.TestCase):
             return r, f.read()
 
     def test_one_judging_job_whose_step_writes_the_code(self):
-        self.assertEqual(list(self.wf["jobs"]), ["juge"])
-        self.assertEqual(self.wf["on"]["workflow_call"]["outputs"]["code"]["value"], "${{ jobs.juge.outputs.code }}")
+        self.assertEqual(list(self.wf["jobs"]), ["judge"])
+        self.assertEqual(self.wf["on"]["workflow_call"]["outputs"]["code"]["value"], "${{ jobs.judge.outputs.code }}")
         # ruche-0038: the report's SHA-256 and key figures too, all written by the judging step
         # ruche-0148 (J2b): under their English names, and under their French ones until judge-v5
         french = {"empreinte": "fingerprint", "suspectes": "suspects", "sorties_comparees": "outputs_compared", "greffon": "plugin",
                   "graine": "seed", "tete": "head"}
         self.assertEqual({k: v["value"] for k, v in self.wf["on"]["workflow_call"]["outputs"].items()},
-                         {k: "${{ jobs.juge.outputs.%s }}" % french.get(k, k) for k in JOB_OUTPUTS + list(french)})
-        self.assertEqual(self.wf["jobs"]["juge"]["outputs"], {k: "${{ steps.juge.outputs.%s }}" % k for k in JOB_OUTPUTS})
-        self.assertEqual(step(self.wf, "Juger")["id"], "juge")
-        self.assertIn('report.py results/judge.json --code "$code" > results/outputs\n', step(self.wf, "Juger")["run"])
-        self.assertIn('cat results/outputs >> "$GITHUB_OUTPUT"', step(self.wf, "Juger")["run"])
+                         {k: "${{ jobs.judge.outputs.%s }}" % french.get(k, k) for k in JOB_OUTPUTS + list(french)})
+        self.assertEqual(self.wf["jobs"]["judge"]["outputs"], {k: "${{ steps.judge.outputs.%s }}" % k for k in JOB_OUTPUTS})
+        self.assertEqual(step(self.wf, "Judge")["id"], "judge")
+        self.assertIn('report.py results/judge.json --code "$code" > results/outputs\n', step(self.wf, "Judge")["run"])
+        self.assertIn('cat results/outputs >> "$GITHUB_OUTPUT"', step(self.wf, "Judge")["run"])
 
     def test_judge_code_read_at_the_workflow_commit(self):
         """No tag, no branch: the registry is checked out at the commit the preparation step checked."""
         self.assertNotIn("JUGE_COMMUN_REF", self.text)
         self.assertIn(judge.common_tag(), self.text)  # the version label stays named in the usage comment
-        steps = self.wf["jobs"]["juge"]["steps"]
+        steps = self.wf["jobs"]["judge"]["steps"]
         self.assertEqual([steps[0]["name"], steps[1]["name"]], [INPUTS, PREPARATION])  # the caller's inputs first (ruche-0038)
         self.assertEqual(steps[1]["env"], {"DEPOT": "${{ job.workflow_repository }}", "COMMIT": "${{ job.workflow_sha }}",
                                             "GH_TOKEN": "${{ github.token }}"})
@@ -1550,7 +1550,7 @@ class TestJudgeWorkflow(unittest.TestCase):
         for e in extractions:
             if e is not common_judge[0]:
                 self.assertNotIn("repository", e["with"], "only the judge comes from another repository")
-        self.assertEqual(step(self.wf, "Juger")["env"]["SOURCE"], "Bee-ruche/registre@${{ steps.preparation.outputs.commit }}")
+        self.assertEqual(step(self.wf, "Judge")["env"]["SOURCE"], "Bee-ruche/registre@${{ steps.preparation.outputs.commit }}")
 
     def test_preparation_requires_a_commit_of_the_registry_main(self):
         """S2: the workflow must be Bee-ruche/registre's (owner/name compared without case) at a full commit that the
@@ -1584,7 +1584,7 @@ class TestJudgeWorkflow(unittest.TestCase):
         """The declared history is checked and fetched in its own step, the only call of judge.py given GH_TOKEN, before
         the image (which loads the plugin) and before the PR; it is never interpolated into a script."""
         self.assertEqual([self.wf["on"]["workflow_call"]["inputs"][i]["type"] for i in ("history", "historique")], ["string", "string"])
-        steps = self.wf["jobs"]["juge"]["steps"]
+        steps = self.wf["jobs"]["judge"]["steps"]
         names = [e.get("name") for e in steps]
         history, image = step(self.wf, HISTORY), step(self.wf, IMAGE)
         self.assertEqual(history["env"], {"HISTORIQUE": "${{ inputs.history || inputs.historique }}", "GH_TOKEN": "${{ github.token }}"})
@@ -1592,9 +1592,9 @@ class TestJudgeWorkflow(unittest.TestCase):
                                             '--history "$HISTORIQUE"')
         self.assertNotIn("env", image)
         self.assertEqual(image["run"], "python3 juge-commun/tools/judge/judge.py --tooling base --image-only")
-        self.assertLess(names.index("Base de la PR (greffon, harnais, corpus)"), names.index(HISTORY))
+        self.assertLess(names.index("Base of the PR (plugin, harness, corpus)"), names.index(HISTORY))
         self.assertLess(names.index(HISTORY), names.index(IMAGE))
-        self.assertLess(names.index(IMAGE), names.index("Tête de la PR (données ; rien n'en est exécuté hors conteneur)"))
+        self.assertLess(names.index(IMAGE), names.index("Head of the PR (data; nothing of it runs outside a container)"))
         with_token = [e["name"] for e in steps if "GH_TOKEN" in (e.get("env") or {}) or "github.token" in str(e.get("with"))]
         self.assertEqual(with_token, [PREPARATION, HISTORY])  # the pin step runs gh alone, before the base exists
         self.assertNotIn("github.token", self.text.replace("GH_TOKEN: ${{ github.token }}", ""))
@@ -1604,7 +1604,7 @@ class TestJudgeWorkflow(unittest.TestCase):
     def test_log_cannot_issue_workflow_commands(self):
         """The judged PR fills the journal; printed between ::stop-commands::<token> and ::<token>::, with ##[ made
         # #[ (ruche-0025), none of its lines is a workflow command for the runner (a line ::error:: among others)."""
-        script = step(self.wf, "Juger")["run"]
+        script = step(self.wf, "Judge")["run"]
         hostile = ("juge : début\n::error::injected annotation\n  ::add-mask::abc\n::stop-commands::faux\n::faux::\n"
                    "::error::after a forged resume\n##[error]old syntax\nx\r::warning::after a carriage return\n"
                    "::set-output name=code::0\n::warning file=rle.c,line=1::props\nend ##[group]x")
@@ -1625,7 +1625,7 @@ class TestJudgeWorkflow(unittest.TestCase):
         self.assertGreaterEqual(len([c for c in runner_commands(journal) if c != "<resume>"]), 6)  # the simulator sees them
         lines = r.stdout.splitlines()
         token = re.fullmatch(r"::stop-commands::([0-9a-f]{64})", lines[0]).group(1)
-        self.assertEqual(lines[-2:], [f"::{token}::", "::warning title=Juge commun::code 1 : refus du code jugé (B)"])  # ruche-0136
+        self.assertEqual(lines[-2:], [f"::{token}::", "::warning title=Common judge::code 1: refusal of the judged code (B)"])  # ruche-0136
         self.assertNotIn(token, journal)
         self.assertEqual(r.stdout.count(token), 2)
         self.assertNotIn("##[", r.stdout)
@@ -1636,7 +1636,7 @@ class TestJudgeWorkflow(unittest.TestCase):
         """ruche-0038, the call as workflow_call makes it (github.event is the caller's): the first step, which nothing
         precedes and after whose failure only the upload of results/ runs, accepts only the event's pull request as base
         and head (full commits), 10 to 50 repetitions and the instruction count; anything else ends the job, nothing judged."""
-        steps = self.wf["jobs"]["juge"]["steps"]
+        steps = self.wf["jobs"]["judge"]["steps"]
         entrees = steps[0]
         self.assertEqual(entrees["name"], INPUTS)
         self.assertEqual(entrees["env"], {"BASE": "${{ inputs.base_sha }}", "HEAD_SHA": "${{ inputs.head_sha }}", "TETE": "${{ inputs.tete_sha }}",
@@ -1649,8 +1649,8 @@ class TestJudgeWorkflow(unittest.TestCase):
         self.assertEqual(sorted(set(re.findall(r"inputs\.\w+(?: \|\| inputs\.\w+)?", json.dumps(steps[1:])))),
                          ["inputs.base_sha", "inputs.head_sha || inputs.tete_sha", "inputs.history || inputs.historique", "inputs.options",
                           "inputs.repetitions"])
-        self.assertEqual([e["name"] for e in steps if "if" in e or "continue-on-error" in e], ["Conserver le rapport"])
-        self.assertNotIn("continue-on-error", self.wf["jobs"]["juge"])
+        self.assertEqual([e["name"] for e in steps if "if" in e or "continue-on-error" in e], ["Keep the report"])
+        self.assertNotIn("continue-on-error", self.wf["jobs"]["judge"])
         self.assertNotIn("--no-instructions", self.text)  # the judging step never skips the instruction count
         base, head = "0123456789abcdef0123456789abcdef01234567", "89abcdef0123456789abcdef0123456789abcdef"
         call = {"BASE": base, "HEAD_SHA": "", "TETE": head, "BASE_EVENEMENT": base, "TETE_EVENEMENT": head, "HISTORY": "", "HISTORIQUE": "",
@@ -1694,14 +1694,14 @@ class TestJudgeWorkflow(unittest.TestCase):
         good = json.dumps(REPORT, indent=2)
         refusal, fault = ({"judge": dict(REPORT["judge"], code=c, outcome=i, reason="m")} for c, i in ((1, "refusal"), (2, "environment_error")))
         refusal, fault, fake = json.dumps(refusal), json.dumps(fault), json.dumps({"judge": dict(REPORT["judge"], code=1, outcome="correct")})
-        announcements = {"0": "::notice title=Juge commun::code 0 :", "1": "::warning title=Juge commun::code 1 : refus du code jugé",
-                    "2": "::error title=Juge commun::code 2 : erreur d'environnement"}
+        announcements = {"0": "::notice title=Common judge::code 0:", "1": "::warning title=Common judge::code 1: refusal of the judged code",
+                    "2": "::error title=Common judge::code 2: error of the environment"}
         for code, report_, expected in ((0, good, "0"), (0, "", "2"), (0, "{}", "2"), (0, good[:-1], "2"), (1, "", "1"), (2, "", "2"),
                                         (1, "{}", "1"), (1, refusal[:-9], "1"), (1, refusal, "1"), (2, fault, "2"), (1, fault, "2"), (2, refusal, "2"), (0, fault, "2"),
                                         (1, fake, "2"), (1, good, "2")):
             with self.subTest(code=code, report=report_[:20]):
                 shutil.rmtree(os.path.join(self.dir, "results"), ignore_errors=True)
-                r, output_text = self.launch(step(self.wf, "Juger")["run"], {"OPTIONS": "", "REPETITIONS": "10", "BASE": "2" * 40,
+                r, output_text = self.launch(step(self.wf, "Judge")["run"], {"OPTIONS": "", "REPETITIONS": "10", "BASE": "2" * 40,
                                         "TETE": "3" * 40, "SOURCE": "x", "RUNNER_TEMP": "/rt", "FAUX_CODE": str(code),
                                         "FAUX_RAPPORT": report_})
                 self.assertEqual(r.returncode, 0, r.stderr)
@@ -1717,13 +1717,13 @@ class TestJudgeWorkflow(unittest.TestCase):
     def test_work_folder_bounded(self):
         """ruche-0038: the judge works in a size-bounded tmpfs that juge.yml mounts just before judging (executable: the
         harness runs from it)."""
-        names = [e.get("name") for e in self.wf["jobs"]["juge"]["steps"]]
-        self.assertEqual(names.index(WORKDIR) + 1, names.index("Juger"))
+        names = [e.get("name") for e in self.wf["jobs"]["judge"]["steps"]]
+        self.assertEqual(names.index(WORKDIR) + 1, names.index("Judge"))
         script = step(self.wf, WORKDIR)["run"]
         self.assertIn('sudo mount -t tmpfs -o "size=4g,nr_inodes=262144,mode=0755,nosuid,nodev,uid=$(id -u),gid=$(id -g)" '
                       'tmpfs "$RUNNER_TEMP/juge"', script)
         self.assertNotIn("noexec", script)
-        self.assertIn('--base "$BASE" --head "$TETE" --workdir "$RUNNER_TEMP/juge"', step(self.wf, "Juger")["run"])
+        self.assertIn('--base "$BASE" --head "$TETE" --workdir "$RUNNER_TEMP/juge"', step(self.wf, "Judge")["run"])
 
     def test_report_tied_to_the_judging_job(self):
         """ruche-0038: the judging step publishes juge.json's SHA-256 and key figures as job outputs; on the verdict side,
@@ -1734,7 +1734,7 @@ class TestJudgeWorkflow(unittest.TestCase):
         with open(os.path.join(common_judge, "judge.py"), "w", encoding="utf-8") as f:
             f.write("import json, sys\nopen('arguments.json', 'w').write(json.dumps(sys.argv[1:]))\n"
                     f"open(sys.argv[sys.argv.index('--json') + 1], 'w').write({json.dumps(REPORT, indent=2)!r})\n")
-        r, output_text = self.launch(step(self.wf, "Juger")["run"], {"OPTIONS": "", "REPETITIONS": "10", "BASE": REPORT["judge"]["base"],
+        r, output_text = self.launch(step(self.wf, "Judge")["run"], {"OPTIONS": "", "REPETITIONS": "10", "BASE": REPORT["judge"]["base"],
                                                                  "TETE": REPORT["judge"]["head"], "SOURCE": "x", "RUNNER_TEMP": "/rt"})
         self.assertEqual(r.returncode, 0, r.stderr)
         with open(os.path.join(self.dir, "arguments.json")) as f:
