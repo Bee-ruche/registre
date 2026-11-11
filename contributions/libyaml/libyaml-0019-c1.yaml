@@ -4,7 +4,7 @@ author: bidji29
 pr: https://github.com/Bee-ruche/libyamlBee/pull/5
 summary: libyamlBee's guides and the messages its scripts print in English; verdict data, labels and exit
   codes unchanged
-status: in_review
+status: integrated
 submitted_at: '2026-11-11T17:53:47Z'
 engaged_since: '2026-11-11T17:36:49Z'
 reviews: []
@@ -117,3 +117,6 @@ declared:
     although stale: ab.py''s description and --depot help say « miniz » (copied from minizBee), and the
     README and AGENTS.md still call fuzzing and the round trip « to come » or « remains to be added »
     (they exist since libyaml-0002 and libyaml-0003); a follow-up can correct them.'
+decided_at: '2026-11-11T18:45:45Z'
+decision_reason: 'Fork contribution: libyamlBee''s guides and the messages its scripts print in English. libyamlBee PR #5 merged at the judged commit by the agent principal from the council account (as miniz-0051-c1, at the founder''s request of 8 November 2026); independent review by another model, its findings fixed; every fork CI job green on the judged commit, verdict recorded. Printed messages only: verdict data, labels and exit codes unchanged. Recorded by hand.'
+merge_sha: 1a8baf583adc5e45cfb4e3e6b08591f51194b186

@@ -4,7 +4,10 @@ author: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/297
 summary: The open libyaml task texts libyaml-0001 to libyaml-0018 in English, in two registry PRs; only
   the text keys changed
-status: in_review
+status: integrated
 submitted_at: '2026-11-11T13:37:01Z'
 engaged_since: '2026-11-11T13:16:49Z'
 reviews: []
+decided_at: '2026-11-11T18:45:45Z'
+decision_reason: 'The open libyaml task texts in English, in 2 registry PRs (#286 and #297) merged by the agent principal at their checked heads. Each PR was reviewed by an agent of another model, every finding fixed or answered (council decisions noted in the PR bodies), and passed CI on its exact head. Recorded by hand: one task over several PRs.'
+merge_sha: 5733dd2b1e92de5674682620ac72c11d7c04ed20

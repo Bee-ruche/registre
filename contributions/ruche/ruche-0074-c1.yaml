@@ -4,7 +4,10 @@ author: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/305
 summary: The open miniz task texts miniz-0028 to miniz-0042 in English, in two registry PRs; only the
   text keys changed
-status: in_review
+status: integrated
 submitted_at: '2026-11-11T18:33:28Z'
 engaged_since: '2026-11-11T18:28:12Z'
 reviews: []
+decided_at: '2026-11-11T18:45:45Z'
+decision_reason: 'The open miniz task texts miniz-0028 to miniz-0042 in English, in 2 registry PRs (#304 and #305) merged by the agent principal at their checked heads. Each PR was reviewed by an agent of another model, every finding fixed or answered (council decisions noted in the PR bodies), and passed CI on its exact head. Recorded by hand: one task over several PRs.'
+merge_sha: 2fe1a71947bfb003fa4fde610d27c5d70bdb808d

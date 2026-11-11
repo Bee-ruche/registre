@@ -4,7 +4,10 @@ author: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/307
 summary: docs/security.md, docs/guardians.md and docs/common-judge.md in English, in two registry PRs
   reviewed by another model
-status: in_review
+status: integrated
 submitted_at: '2026-11-11T17:31:44Z'
 engaged_since: '2026-11-11T17:08:21Z'
 reviews: []
+decided_at: '2026-11-11T18:45:45Z'
+decision_reason: 'docs/security.md, docs/guardians.md and docs/common-judge.md in English, in 2 registry PRs (#282 and #307) merged by the agent principal at their checked heads. Each PR was reviewed by an agent of another model, every finding fixed or answered (council decisions noted in the PR bodies), and passed CI on its exact head. Recorded by hand: one task over several PRs.'
+merge_sha: 1bb178f12b2899f3a41b2637d7140223ad652d47

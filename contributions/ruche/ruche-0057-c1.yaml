@@ -4,7 +4,10 @@ author: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/283
 summary: The contributor skill in English, aligned with AGENTS.md in its own words, reviewed both ways
   by another model
-status: in_review
+status: integrated
 submitted_at: '2026-11-11T13:37:00Z'
 engaged_since: '2026-11-11T13:16:47Z'
 reviews: []
+decided_at: '2026-11-11T18:45:45Z'
+decision_reason: 'The contributor skill in English, in 1 registry PR (#283) merged by the agent principal at their checked heads. Each PR was reviewed by an agent of another model, every finding fixed or answered (council decisions noted in the PR bodies), and passed CI on its exact head. Recorded by hand: one task over several PRs.'
+merge_sha: a265c7eac0c2f602a884046eab9680c1ee80d775

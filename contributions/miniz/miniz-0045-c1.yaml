@@ -4,7 +4,7 @@ author: bidji29
 pr: https://github.com/Bee-ruche/minizBee/pull/26
 summary: minizBee's guides (AGENTS.md, CLAUDE.md, bee/README.md) in English, with the registry's current
   commands and paths
-status: in_review
+status: integrated
 submitted_at: '2026-11-11T17:53:46Z'
 engaged_since: '2026-11-11T17:36:49Z'
 reviews: []
@@ -106,3 +106,6 @@ declared:
     and bee/resultats/; bee-ci.yml''s header cites the README section « Juge commun et greffon » (now
     "Common judge and plugin") and bee/juge/execution.c a section « Juge isolé » that no longer existed
     before this PR; both files are outside this task.'
+decided_at: '2026-11-11T18:45:45Z'
+decision_reason: 'Fork contribution: minizBee''s guides (AGENTS.md, CLAUDE.md, bee/README.md) in English. minizBee PR #26 merged at the judged commit by the agent principal from the council account (as miniz-0051-c1, at the founder''s request of 8 November 2026); independent review by another model, its findings fixed; every fork CI job green on the judged commit, verdict recorded. Printed messages only: verdict data, labels and exit codes unchanged. Recorded by hand.'
+merge_sha: 178b6c02808e31657fdc61eaf6060965bfba7b5a

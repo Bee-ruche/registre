@@ -4,7 +4,10 @@ author: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/296
 summary: docs/tooling.md, tree.md, branches.md, scope.md and USERS.md in English, in two registry PRs,
   each reviewed by another model
-status: in_review
+status: integrated
 submitted_at: '2026-11-11T13:37:01Z'
 engaged_since: '2026-11-11T13:16:48Z'
 reviews: []
+decided_at: '2026-11-11T18:45:45Z'
+decision_reason: 'docs/branches.md, docs/scope.md, USERS.md, docs/tooling.md and docs/tree.md in English, in 2 registry PRs (#284 and #296) merged by the agent principal at their checked heads. Each PR was reviewed by an agent of another model, every finding fixed or answered (council decisions noted in the PR bodies), and passed CI on its exact head. Recorded by hand: one task over several PRs.'
+merge_sha: 9b0370cbbe3bb1fca08a36a08595a360eaf8b944

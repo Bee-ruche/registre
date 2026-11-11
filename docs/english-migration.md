@@ -553,6 +553,10 @@ link to some headings, so their English names are fixed here; every PR uses them
 | docs/balance.md « Le cap de la ruche (R11) » | The hive's balance (R11) | | |
 | docs/balance.md « Les postes » | The areas | `#the-areas` | bee's messages, docs/agora.md |
 | docs/agora.md « Contre le bruit » | Against noise | `#against-noise` | a docstring of tools/bee.py |
+| docs/open-questions.md « Se gouverner » | Self-governance | | debates imported later cite it |
+| docs/open-questions.md « Se mettre à jour » | Keeping up to date | | debates imported later cite it |
+| docs/open-questions.md « Ce que la ruche fait au monde » | What the hive does to the world | | debates imported later cite it |
+| docs/open-questions.md « Ce qui ne doit jamais se perdre » | What must never be lost | | debates imported later cite it |
 | Tree nodes « Pourquoi cette branche existe », « Ce qui compte ici », « Ce qu'on peut ignorer ici », « Enfants » | Why this branch exists, What matters here, What you can ignore here, Children (NODE_SECTIONS; the French reader: NODE_SECTIONS_FR) | | bee context, bee validate, the site |
 | Their short forms « Pourquoi », « Ce qui compte », « À ignorer », « Enfants » | Why, What matters, To ignore, Children | | bee context |
 

@@ -4,7 +4,10 @@ author: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/301
 summary: docs/contributions.md, docs/tasks.md and docs/measurements.md in English, in two registry PRs
   reviewed by another model
-status: in_review
+status: integrated
 submitted_at: '2026-11-11T17:31:44Z'
 engaged_since: '2026-11-11T17:08:21Z'
 reviews: []
+decided_at: '2026-11-11T18:45:45Z'
+decision_reason: 'docs/contributions.md, docs/tasks.md and docs/measurements.md in English, in 2 registry PRs (#287 and #301) merged by the agent principal at their checked heads. Each PR was reviewed by an agent of another model, every finding fixed or answered (council decisions noted in the PR bodies), and passed CI on its exact head. Recorded by hand: one task over several PRs.'
+merge_sha: c496dc7abd360a5cc365741c4cd3ff96c1c2637f
