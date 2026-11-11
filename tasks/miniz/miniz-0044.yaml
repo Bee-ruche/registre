@@ -3,39 +3,39 @@ project: miniz
 category: lossless-compression
 type: measurement
 size: S
-title: "Profileur : rendre les memcpy en ligne à leur fonction et simuler caches et branches en option"
+title: "Profiler: give inline memcpy back to their function and simulate caches and branches as an option"
 context: >
-  Source : rapport de miniz-0029 (bee/resultats/miniz-0029/RAPPORT.md, TABLEAUX.md et cachegrind.py du
-  fork, branche tache/miniz-0029, PR #18 ; sources de master a2f939a). bee/bench/profil.py range dans
-  « hors miniz (libc : memset, memcpy…) » tout coût que callgrind_annotate n'attribue pas à une
-  ligne de miniz_tdef.c, miniz_tinfl.c ou miniz.c. Or Ubuntu compile avec _FORTIFY_SOURCE : chaque
-  memcpy de taille fixe de miniz (lectures non alignées, copie par mots de tinfl) est incorporé et
-  ses instructions portent la ligne de /usr/include/…/bits/string_fortified.h, avec la fonction de
-  miniz pour nom. Mesuré : 3,83 % du décompte du juge en décompression (tinfl_decompress : lectures
-  de l'Adler-32 et de la copie par mots) et 1,44 % au niveau 1 (tdefl_compress_normal) sont du code
-  de miniz présenté comme de la libc. À l'inverse, le memset des remises à zéro de tdefl_init
-  (m_hash 64 Kio et m_dict 33 Kio par flux, 61 flux) compte 6 014 295 instructions, 3,51 % du
-  décompte du juge au niveau 1, parce que Valgrind compte rep stosb à peu près une instruction par
-  octet : la famille petits tourne à 0,05 ns par instruction contre 0,117 pour tout le corpus au
-  niveau 1 (TABLEAUX.md section 4). Un « gain » d'instructions sur ces memset serait un artefact de
-  la mesure, que le profil doit signaler. Enfin, profil.py ne compte que les instructions, alors que
-  miniz-0029 montre que les défauts L1 pèsent sur le temps des niveaux 6 et 9. Tâche de mesure
-  (outillage) : dans profil.py, rendre les lignes de string_fortified.h à la fonction nommée par
-  callgrind (nom sans suffixe .constprop), sous une étiquette « memcpy en ligne » ; signaler à part
-  les memset et memcpy de la libc ; option --cache qui lance Cachegrind avec --cache-sim=yes
-  --branch-sim=yes et des caches explicites, et ajoute défauts L1, défauts LL et branches mal
-  prédites par fonction (bee/resultats/miniz-0029/cachegrind.py montre une façon de lire le fichier
-  cachegrind.out) ; tests sans Valgrind dans test_profil.py ; README à jour (tableau de profil
-  refait sur le master du moment). Touche les mêmes fichiers que miniz-0034 : en dépend.
+  Source: miniz-0029's report (bee/resultats/miniz-0029/RAPPORT.md, TABLEAUX.md and cachegrind.py in
+  the fork, branch tache/miniz-0029, PR #18; sources of master a2f939a). bee/bench/profil.py files
+  under « hors miniz (libc : memset, memcpy…) » any cost that callgrind_annotate does not attribute
+  to a line of miniz_tdef.c, miniz_tinfl.c or miniz.c. Yet Ubuntu compiles with _FORTIFY_SOURCE:
+  every fixed-size memcpy of miniz (unaligned reads, tinfl's copy by words) is inlined, and its
+  instructions carry the line of /usr/include/…/bits/string_fortified.h, with miniz's function as
+  their name. Measured: 3.83% of the judge's count in decompression (tinfl_decompress: reads of the
+  Adler-32 and of the copy by words) and 1.44% at level 1 (tdefl_compress_normal) are miniz code
+  shown as libc. Conversely, the memset with which tdefl_init resets to zero (m_hash 64 KiB and
+  m_dict 33 KiB per stream, 61 streams) counts 6,014,295 instructions, 3.51% of the judge's count at
+  level 1, because Valgrind counts rep stosb at roughly one instruction per byte: the petits family
+  runs at 0.05 ns per instruction against 0.117 for the whole corpus at level 1 (TABLEAUX.md section
+  4). An instruction "gain" on these memset calls would be an artifact of the measurement, which the
+  profile must flag. Finally, profil.py counts only instructions, while miniz-0029 shows that L1
+  misses weigh on the time of levels 6 and 9. Measurement task (tooling): in profil.py, give the
+  lines of string_fortified.h back to the function named by callgrind (name without the .constprop
+  suffix), under a label « inline memcpy »; flag the libc's memset and memcpy separately; an option
+  --cache that runs Cachegrind with --cache-sim=yes --branch-sim=yes and explicit caches, and adds
+  L1 misses, LL misses and mispredicted branches per function
+  (bee/resultats/miniz-0029/cachegrind.py shows one way to read the cachegrind.out file); tests
+  without Valgrind in test_profil.py; README up to date (profile table redone on the master of the
+  day). Touches the same files as miniz-0034: depends on it.
 files: [bee/bench/profil.py, bee/bench/test_profil.py, bee/README.md]
 reach: 0.6
 metric: null
 acceptance_criteria:
-  - "profil.py attribue les lignes de string_fortified.h à la fonction de miniz qui les incorpore ; vérifié par un test sur un fichier callgrind ou cachegrind d'exemple"
-  - "option --cache : défauts L1, défauts LL et branches mal prédites par fonction, caches explicites, documentée dans bee/README.md"
-  - "sortie actuelle de profil.py inchangée sans --cache, hormis le déplacement des memcpy en ligne, montré avant et après dans le manifeste"
-  - "test_profil.py passe sans Valgrind ; aucune modification de miniz"
-out_of_scope: [code de miniz, format de sortie de ab.py, juge commun, nouvelle dépendance]
+  - "profil.py attributes the lines of string_fortified.h to the miniz function that inlines them; checked by a test on a sample callgrind or cachegrind file"
+  - "option --cache: L1 misses, LL misses and mispredicted branches per function, explicit caches, documented in bee/README.md"
+  - "profil.py's current output unchanged without --cache, apart from the move of the inline memcpy, shown before and after in the manifest"
+  - "test_profil.py passes without Valgrind; no change to miniz"
+out_of_scope: [miniz's code, ab.py's output format, common judge, new dependency]
 depends_on: [miniz-0034]
 node: projects/lossless-compression/miniz/bee
 status: open
