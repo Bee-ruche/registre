@@ -14713,7 +14713,7 @@ class TestR13FollowableRuche0052(BaseInvitations):
                 self.abandon()
 
     def test_bee_incident_says_that_the_comments_are_lost(self):
-        """Dernière revue de ruche-0052 (3) : la réécriture canonique perd les commentaires du conseil ; bee incident le dit."""
+        """Last review of ruche-0052 (3): the canonical rewrite loses the council's comments; bee incident says so."""
         self.a("2026-11-02T11:00:00Z")
         one_of = {"id": "INC-0001", "title": "Un écart.", "opened_at": "2026-11-02T11:00:00Z"}
         (self.dir / self.INCIDENTS).write_text("# Tenu par le conseil.\n" + bee.invitation_render({"incidents": [one_of]}), encoding="utf-8")
@@ -14721,7 +14721,7 @@ class TestR13FollowableRuche0052(BaseInvitations):
         text = self.ok("incident", "--user", "gina", "--title", "Un second écart (I-0001).")
         self.assertIn("⚠ The comments of governance/incidents.yaml are lost", text)
         self.assertNotIn("# Tenu par le conseil", (self.dir / self.INCIDENTS).read_text(encoding="utf-8"))
-        # Un fichier sans commentaire : aucun avertissement, même quand un titre porte « # ».
+        # A file without a comment: no warning, even when a title carries « # ».
         for title in ("Suite du ticket #12 (I-0001).", "Encore une suite (I-0001)."):
             with self.subTest(title):
                 self.assertNotIn("comments", self.ok("incident", "--user", "gina", "--title", title))
@@ -14737,7 +14737,7 @@ class TestR13FollowableRuche0052(BaseInvitations):
         self.ko("unreadable", "incident", "--user", "gina", "--title", "Un écart.")
         self.assertEqual((self.dir / self.INCIDENTS).read_text(encoding="utf-8"), "incidents: [\n", "nothing is rewritten")
         (self.dir / self.INCIDENTS).unlink()
-        # Un gardien sans garant (ivan), ou dont le garant est révoqué, n'est pas en fonction.
+        # A guardian without a guarantor (ivan), or whose guarantor is revoked, is not in office.
         (self.dir / "governance/guardians.yaml").write_text("members:\n  - login: gina\n    guarantor: hector\n  - login: ivan\n",
                                                                encoding="utf-8")
         self.commit("ivan, gardien sans garant")
@@ -14750,7 +14750,7 @@ class TestR13FollowableRuche0052(BaseInvitations):
         self.abandon("ivan")
         bee.write_invitation(self.dir / self.INCIDENTS, {"incidents": [one_of]})
         self.commit("INC-0001, par le conseil")
-        # Un gardien en fonction n'y fait rien d'autre qu'ajouter un incident ouvert, en fin de liste.
+        # A guardian in office does nothing there but add an open incident, at the end of the list.
         two = {**one_of, "id": "INC-0002"}
         case_of = {"close": [{**one_of, "closed_at": "2026-11-02T11:00:00Z", "outcome": "Réglé."}], "modify": [{**one_of, "title": "Autre."}],
                "withdraw": [], "clos d'emblée": [one_of, {**two, "closed_at": "2026-11-02T11:00:00Z"}],
@@ -14767,7 +14767,7 @@ class TestR13FollowableRuche0052(BaseInvitations):
         self.commit()
         self.refused("gina", "a guardian adds only one open incident to it, at the end of the list")
         self.abandon()
-        # Revue de ruche-0052, B : ce qu'ajoute un gardien est ce qu'écrit bee incident, et rien d'autre.
+        # Review of ruche-0052, B: what a guardian adds is what bee incident writes, and nothing else.
         canonical = bee.invitation_render({"incidents": [one_of, two]})
         raw = {"title : email": (bee.invitation_render({"incidents": [one_of, {**two, "title": "Plainte de fictif@exemple.org."}]}),
                                      "email address"),
@@ -14795,9 +14795,9 @@ class TestR13FollowableRuche0052(BaseInvitations):
         self.branch()
         (self.dir / self.INCIDENTS).write_text(canonical, encoding="utf-8")
         self.commit()
-        self.awaits_the_council("gina", "incident")  # ce que bee incident écrirait : accepté, le conseil fusionne
+        self.awaits_the_council("gina", "incident")  # what bee incident would write: accepted, the council merges
         self.abandon()
-        # INC-9999 est le dernier numéro : bee incident s'arrête là, et la porte refuse INC-10000.
+        # INC-9999 is the last number: bee incident stops there, and the gate refuses INC-10000.
         last = {**one_of, "id": "INC-9999"}
         bee.write_invitation(self.dir / self.INCIDENTS, {"incidents": [one_of, last]})
         self.commit("INC-9999, par le conseil")
@@ -14810,7 +14810,7 @@ class TestR13FollowableRuche0052(BaseInvitations):
         self.abandon()
         bee.write_invitation(self.dir / self.INCIDENTS, {"incidents": [one_of]})
         self.commit("retour à INC-0001, par le conseil")
-        # Révoqué sur main, le garant de gina ne la tient plus en fonction : sa PR va au conseil seul, refusée par la porte.
+        # Revoked on main, gina's guarantor no longer keeps her in office: her PR goes to the council alone, refused by the gate.
         (self.dir / "governance/guarantors.yaml").write_text(
             "members:\n  - login: hector\n    public_identity: Hector\n    revoked_on: \"2026-11-02\"\n", encoding="utf-8")
         self.commit("garant révoqué")
@@ -14822,10 +14822,10 @@ class TestR13FollowableRuche0052(BaseInvitations):
 
 
 class TestCopiedManifest(BaseDressRehearsal):
-    """ruche-0017 : au verdict, le registre recopie du manifeste ce que le relecteur doit voir (modèle, gain déclaré, teste,
-    untested, doutes), borné et typé, et bee l'imprime encadré comme de la donnée. Revue adverse : ce sont des données du
-    fork ; rien de ce qu'elles contiennent ne fait perdre le verdict, ne sort de l'encadré, n'écrit une commande de
-    workflow dans le journal de la CI, n'entre sans borne dans le registre, ni ne s'y écrit en libre-service."""
+    """ruche-0017: at the verdict, the registry copies from the manifest what the reviewer must see (model, declared gain,
+    tested, untested, doubts), bounded and typed, and bee prints it framed as data. Adversarial review: these are the fork's
+    data; nothing they contain loses the verdict, leaves the frame, writes a workflow command into the CI log, enters the
+    registry without a bound, or is written there as self-service."""
 
     PR = PR_MINIZ + "77017"
     MARK = "PIEGE"
@@ -14845,7 +14845,7 @@ class TestCopiedManifest(BaseDressRehearsal):
         return bee.read_yaml(self.path)
 
     def verdict(self, manifest=None, sha="abc1234"):
-        """Le robot de la CI enregistre un verdict sur main (verdicts.yml), avec ce manifeste (texte, ou objet à écrire)."""
+        """The CI's robot records a verdict on main (verdicts.yml), with this manifest (text, or an object to write)."""
         git(self.dir, "switch", "-q", "main")
         root = self.dir.parent
         (root / "verdict.json").write_text(json.dumps({"ci": "green", "gain": 0.03, "beyond_noise": True, "changed_lines": 10}),
@@ -14860,8 +14860,8 @@ class TestCopiedManifest(BaseDressRehearsal):
         return output_text
 
     def framed(self, output_text):
-        """Ce qui vient du fork (la MARK) n'est imprimé qu'entre les bornes des données, chaque ligne précédée de « | » ;
-        aucune ligne ne commence par « :: » avec lui. splitlines coupe aussi aux sauts que GitHub pourrait voir (\\r, U+2028…)."""
+        """What comes from the fork (the MARK) is printed only between the data's bounds, each line preceded by « | »; no line
+        starts with « :: » with it. splitlines also cuts at the breaks GitHub could see (\\r, U+2028…)."""
         inside_it = False
         for line_text in output_text.splitlines():
             self.assertFalse(line_text.lstrip().startswith("::") and self.MARK in line_text, line_text)
@@ -14876,13 +14876,13 @@ class TestCopiedManifest(BaseDressRehearsal):
         self.assertFalse(inside_it, "frame never closed")
 
     def readings(self):
-        """Là où le relecteur lit la déclaration (bee show, bee context --role review, bee check-acceptance)."""
+        """Where the reviewer reads the declaration (bee show, bee context --role review, bee check-acceptance)."""
         return {c[0]: self.bee(*c)[1] for c in (["show", "miniz-0099"], ["context", "miniz-0099", "--role", "review"],
                                                 ["check-acceptance", self.cid])}
 
     def test_honest_path_copied_then_printed_framed(self):
-        full, long = "Trace différentielle " + "x" * 779, "Trace différentielle " + "x" * 1568  # 800, puis 1 589 caractères
-        manifest = yaml.safe_load(FILLED_MANIFEST.replace("user: alice", "user: Alice"))  # sans la casse
+        full, long = "Trace différentielle " + "x" * 779, "Trace différentielle " + "x" * 1568  # 800, then 1,589 characters
+        manifest = yaml.safe_load(FILLED_MANIFEST.replace("user: alice", "user: Alice"))  # ignoring case
         manifest["tested"] += [full, long]
         self.verdict(manifest)
         cut_one = long[:796] + " […]"
@@ -14896,21 +14896,21 @@ class TestCopiedManifest(BaseDressRehearsal):
         readings = self.readings()
         for command in ("show", "context"):
             self.assertIn(expected, readings[command], command)
-        # verifier-acceptation (journal de la CI à chaque passage d'intégration) : modèle et gain seuls, et un renvoi.
+        # check-acceptance (the CI log at each integration pass): model and gain alone, and a pointer.
         self.assertIn("\n".join([header, "| model: modèle d'essai 1.0", "| gain: 0.1", bee.DATA_END,
                                  "# tested, untested and doubts declared: bee show miniz-0099"]), readings["check-acceptance"])
         self.assertNotIn("fuzzing 2 min", readings["check-acceptance"])
         self.assertNotIn("=== DATA of the manifest", self.ok("context", "miniz-0099"), "another role's path does not pay the price")
 
     def test_nothing_is_copied_from_a_manifest_of_another_task_of_another_author_or_too_big(self):
-        """Revue adverse (points 3, 5 et 6) : la déclaration est celle du manifeste de la tâche et de l'auteur au commit jugé ;
-        sinon declare: null, aucun écart, et la sortie dit pourquoi sans imprimer le texte du fork."""
+        """Adversarial review (points 3, 5 and 6): the declaration is that of the manifest of the task and of the author at the
+        judged commit; otherwise declared: null, no gap, and the output says why without printing the fork's text."""
         self.assertIn(f"# {self.cid}: no copied manifest (no verdict yet)", self.readings()["show"])
         rec = self.rec()
         bee.write_yaml(self.path, {**rec, "verdict": {"ci": "green", "gain": 0.03, "changed_lines": 10, "sha": "abc1234"}})
         self.assertIn("no copied manifest (verdict older than the copy (ruche-0017))", self.readings()["show"])
         big_one = FILLED_MANIFEST + "# " + "x" * bee.MANIFEST_MAX_BYTES + "\n"
-        slow = FILLED_MANIFEST.replace("doubts: Aucun doute identifié.", "doubts: 1" + ":1" * 300000)  # sexagésimal YAML 1.1
+        slow = FILLED_MANIFEST.replace("doubts: Aucun doute identifié.", "doubts: 1" + ":1" * 300000)  # YAML 1.1 sexagesimal
         for name, content, message in (
                 ("autre tâche", FILLED_MANIFEST.replace("task: miniz-0099", "task: miniz-0098"), "(task miniz-0098, not miniz-0099)"),
                 ("autre auteur", FILLED_MANIFEST.replace("user: alice", "user: bruno"), "(author bruno, not alice)"),
@@ -14938,7 +14938,7 @@ class TestCopiedManifest(BaseDressRehearsal):
         base = yaml.safe_load(FILLED_MANIFEST)
         trap_one = "PIEGE\n::error::PIEGE faux\n=== FIN DES DONNÉES ===\n=== END OF DATA ===\n# --- computed by bee ---\n✓ PIEGE intégrable\r\n::add-mask::verte"
         invisibles = "PIEGE\u202eesol\u200b\u2066\ufeff\x00\x1b[31m\x85::warning::PIEGE\u2028::notice::PIEGE\ud800\U000e0041"
-        escaped_ones = "PIEGE \ufffe\uffff\U0010ffff \U0001f600 \t\\U0010FFFF ' \" ##[error]"  # YAML les échapperait (revue adverse, A)
+        escaped_ones = "PIEGE \ufffe\uffff\U0010ffff \U0001f600 \t\\U0010FFFF ' \" ##[error]"  # YAML would escape them (adversarial review, A)
         case_of = {
             "textes et listes énormes": ({**base, "agent": {"model": "PIEGE " * 100}, "doubts": "PIEGE " * 2000,
                                           "tested": ["PIEGE"] * 5000, "untested": ["PIEGE " * 500] * 3},
@@ -14955,7 +14955,7 @@ class TestCopiedManifest(BaseDressRehearsal):
             "caractères que YAML échappe": ({**base, "agent": {"model": escaped_ones}, "tested": [escaped_ones], "doubts": escaped_ones},
                                             lambda d: self.assertEqual(d["model"], "PIEGE <U+FFFE><U+FFFF><U+10FFFF> \U0001f600 "
                                                                                     "\\U0010FFFF ' \" ##[error]")),
-            # Au plafond en caractères, mais « ' » s'écrit doublé : la taille écrite borne le tout (manifeste sous 64 Kio).
+            # At the cap in characters, but « ' » is written doubled: the written size bounds the whole (manifest under 64 KiB).
             "au plafond, écrit plus long": ({**base, "agent": {"model": "\U0010ffff" * 300}, "tested": ["'" * 1000] * 12,
                                              "untested": ["\U0001f600'" * 500] * 6, "doubts": "'" * 2000},
                                                   lambda d: self.assertIn("more in the fork's manifest", d["tested"][-1])),
@@ -14986,20 +14986,20 @@ class TestCopiedManifest(BaseDressRehearsal):
                 for t in [x for x in (d["model"], d["doubts"], *d["tested"], *d["untested"]) if x]:
                     self.assertEqual(t, " ".join(t.split()), "on one line")
                     self.assertFalse([c for c in t if bee.forbidden_outgoing_character(c) or not bee.written_as_is(c)], repr(t))
-                # Ce qui est écrit, pas seulement des caractères comptés : jamais entre guillemets doubles (aucun échappement),
-                # et la taille écrite bornée, dans le registre comme dans l'encadré.
+                # What is written, not only counted characters: never between double quotes (no escaping), and the written size
+                # bounded, in the registry as in the frame.
                 block = self.path.read_text(encoding="utf-8").split("\ndeclared:", 1)[1]
                 self.assertFalse(re.search(r'(?m)^\s*(- |[a-z_]+: )"', block), block[:300])
                 self.assertLessEqual(len("declared:" + block), bee.DECLARED_MAX["rendered"] + 1)
                 clean_one(d)
-                self.valid_one()  # verdicts.yml ne publie qu'après bee valider : un verdict refusé là serait perdu
+                self.valid_one()  # verdicts.yml publishes only after bee validate: a verdict refused there would be lost
                 for command, output_text in self.readings().items():
                     self.framed(output_text)
                     self.assertNotIn("##[", output_text)
                     self.assertIn(bee.DECLARED_START.format(id=self.cid, sha="abc1234"), output_text, command)
                     frame = output_text[output_text.index("=== DATA of the manifest"):]
                     self.assertLessEqual(len(frame), bee.DECLARED_MAX["rendered"] + 1000, command)
-        # bee valider refuse ce qu'une écriture à la main laisserait passer : invisible, échappé, non fini, trop d'éléments, trop écrit.
+        # bee validate refuses what a hand-written change would let through: invisible, escaped, not finite, too many items, too much written.
         for change_made, chunk in (({"doubts": "a\u202eb"}, "as bee record-verdict copies it"),
                                ({"doubts": "a\U0010ffffb"}, "as bee record-verdict copies it"),
                                ({"doubts": "a\nb"}, "as bee record-verdict copies it"),
@@ -15011,8 +15011,8 @@ class TestCopiedManifest(BaseDressRehearsal):
                 self.assertIn(chunk, self.bee("validate")[1])
 
     def test_the_budget_removes_the_declarations_first(self):
-        """Revue adverse (point 2) : --budget retire d'abord les déclarations (une ligne renvoie à bee show), avant notes,
-        contexte et paliers de projet ; « plus petit que la racine, le rôle et la tâche » ne ment plus."""
+        """Adversarial review (point 2): --budget removes the declarations first (a line points to bee show), before notes,
+        context and project levels; « smaller than the root, the role and the task » no longer lies."""
         manifest = {**yaml.safe_load(FILLED_MANIFEST), "tested": ["y" * 800] * 10, "doubts": "z" * 1600}
         self.verdict(manifest)
         self.ok("note", "miniz-0099", "--user", "gaspard", "--text", "Une note sur la tâche.")
@@ -15044,14 +15044,14 @@ class TestCopiedManifest(BaseDressRehearsal):
         self.assertFalse([l for l in output_text.splitlines() if l.lstrip().startswith("::") or "##[" in l], output_text)
         self.assertIn("::notice::PIEGE", self.rec()["declared"]["doubts"], "copied, on one line")
         self.valid_one()
-        # bee verifier-acceptation, dans le journal de la CI : modèle et gain seuls, encadrés, « ##[ » neutralisé où qu'il soit.
+        # bee check-acceptance, in the CI log: model and gain alone, framed, « ##[ » neutralized wherever it is.
         output_text, _, _ = TestAdversarialReview.step(self, "Integrate what satisfies R3, close what is abandoned", states)
         self.assertIn("| model: ", output_text)
         self.assertIn("# #[error]PIEGE ## #[add-mask]green", output_text)
         self.assertNotIn("##[", output_text)
         self.assertNotIn("| doubts: ", output_text)
         self.framed(output_text)
-        # Toute donnée encadrée, tâche comprise.
+        # All data framed, the task included.
         path = self.task_path()
         path.write_text(path.read_text(encoding="utf-8").replace("context: >\n", "context: >\n  ##[error]PIEGE de tâche\n"),
                           encoding="utf-8")
@@ -15070,7 +15070,7 @@ class TestCopiedManifest(BaseDressRehearsal):
             self.refused(author, "written by the CI or the council")
             git(self.dir, "switch", "-qf", "main")
             git(self.dir, "branch", "-qD", "attack")
-        # À la naissance : declare n'est pas dans la liste blanche de bee soumettre (CLES_NAISSANCE).
+        # At birth: declared is not in bee submit's allowlist (BIRTH_KEYS).
         self.take_and_merge("bruno", "miniz-9001")
         self.branch("naissance")
         self.ok("submit", "miniz-9001", "--user", "bruno", "--pr", PR_MINIZ + "77018")
@@ -15080,7 +15080,7 @@ class TestCopiedManifest(BaseDressRehearsal):
         self.refused("bruno", "refused: declared")
         git(self.dir, "switch", "-qf", "main")
         git(self.dir, "branch", "-qD", "naissance")
-        for declared in (self.HONEST, None):  # avant le verdict ; une clé ajoutée à null est aussi une différence
+        for declared in (self.HONEST, None):  # before the verdict; a key added as null is also a difference
             attack("alice", lambda e: e.update(declared=declared))
         self.verdict(FILLED_MANIFEST)
         review = {"reviewer": "gaspard", "opinion": "favorable", "reason": "Diff du commit relu en entier.",
@@ -15091,7 +15091,7 @@ class TestCopiedManifest(BaseDressRehearsal):
                                  ("gaspard", lambda e: (e["reviews"].append(review), e["declared"]["tested"].append("relu")))):
             with self.subTest(author=author):
                 attack(author, modify)
-        # La relecture honnête passe toujours en libre-service ; le conseil corrige dans une PR relue, jamais fusionnée seule.
+        # The honest review always passes as self-service; the council corrects in a reviewed PR, never merged on its own.
         self.branch("review")
         self.ok("review", self.cid, *self.read_value(self.cid), "--user", "gaspard", "--opinion", "favorable", "--reason", "Diff du commit relu en entier.")
         self.commit()
@@ -15118,7 +15118,7 @@ class TestCopiedManifest(BaseDressRehearsal):
                                (filled.replace("instructions_n6: 500000", "instructions_n6: 0"), "measurements/after/instructions_n6 is 0")):
             path.write_text(text, encoding="utf-8")
             self.ko(chunk, "validate-manifest", str(path))
-        # Le gain déclaré reste celui de la métrique visée : 10 % de débit, pas les 50 % d'instructions.
+        # The declared gain stays that of the targeted metric: 10% of throughput, not the 50% of instructions.
         self.verdict(filled)
         self.assertEqual((self.rec()["declared"]["gain"], self.rec()["verdict"]["declared_gap"]), (0.1, 0.07))
 
@@ -15127,14 +15127,14 @@ class TestCopiedManifest(BaseDressRehearsal):
         p = schema["properties"]["declared"]["properties"]
         self.assertEqual((p["model"]["maxLength"], p["doubts"]["maxLength"], p["tested"]["maxItems"], p["tested"]["items"]["maxLength"]),
                          tuple(bee.DECLARED_MAX[c] for c in ("model", "doubts", "elements", "item")))
-        # Revue adverse (A) : plafonds resserrés ; le texte entier reste dans le fork.
+        # Adversarial review (A): tightened caps; the whole text stays in the fork.
         self.assertEqual(bee.DECLARED_MAX, {"model": 200, "item": 800, "elements": 10, "doubts": 1600, "rendered": 12000})
         self.assertEqual(p["tested"], p["untested"])
 
 
 class TestRound3(BaseParallel):
-    """ruche-0028 : la répétition générale n° 3 (30/10 ; journaux de jules, ines et hugo) a confirmé des failles du jugement.
-    Pour chacune, le parcours honnête passe et le détournement du tour 3 est refusé, ou signalé aux relecteurs."""
+    """ruche-0028: dress rehearsal no. 3 (30 Oct; the logs of jules, ines and hugo) confirmed flaws in the judgment.
+    For each, the honest path passes and the misuse of round 3 is refused, or reported to the reviewers."""
 
     REASON = "Diff du commit relu en entier."
 
@@ -15144,14 +15144,14 @@ class TestRound3(BaseParallel):
         return text
 
     def submit_(self):
-        """bruno est gardien ; alice réserve et soumet miniz-0099 (27/10 12 h)."""
+        """bruno is a guardian; alice reserves and submits miniz-0099 (27 Oct 12:00)."""
         (self.dir / "governance/guardians.yaml").write_text("members:\n  - login: bruno\n", encoding="utf-8")
         self.close_gate()
         self.ok_("take", "miniz-0099", "--user", "alice")
         self.cid = self.submit("miniz-0099", "alice", 99328)
 
     def verdict_(self, sha, tree, stopwatch=0.012, noise=True, instructions=0.05, lines=10, cid=None):
-        """Un verdict de la CI (verdicts.yml) sur le commit sha, d'arbre git arbre."""
+        """A verdict of the CI (verdicts.yml) on commit sha, of git tree tree."""
         verdict = self.dir.parent / "verdict.json"
         verdict.write_text(json.dumps({"ci": "green", "gain": stopwatch, "beyond_noise": noise, "changed_lines": lines,
                                        "instructions": {"instructions_n6": {"A": 1000000, "B": 1000000 * (1 - instructions),
@@ -15160,7 +15160,7 @@ class TestRound3(BaseParallel):
                  "--files", self.pr_files())
 
     def review_all(self, vote=False):
-        """Le gardien et le conseil relisent favorablement le commit jugé, qu'ils ont lu ; la fenêtre de R3 est écoulée."""
+        """The guardian and the council review the judged commit favorably, having read it; R3's window has elapsed."""
         self.a("2026-10-29T12:00:00Z")
         for who_is in ("bruno", "bidji29"):
             self.ok_("review", self.cid, *self.read_value(self.cid), "--user", who_is, "--opinion", "favorable", "--reason", self.REASON)
@@ -15168,11 +15168,11 @@ class TestRound3(BaseParallel):
             self.ok_("vote", self.cid, "--user", "bidji29", "--value", "1")
 
     def test_1_rerunning_the_ci_on_the_same_content_can_only_harm(self):
-        """(1) ines : chronomètre −0,39 % puis +1,28 % au même arbre, et seul le dernier verdict restait : on relançait la CI
-        jusqu'à passer R4. Chaque verdict s'ajoute à l'historique, et R4 juge chacun de ceux du même contenu."""
+        """(1) ines: stopwatch −0.39% then +1.28% at the same tree, and only the last verdict remained: one reran the CI until R4
+        passed. Each verdict is added to the history, and R4 judges each of those of the same content."""
         self.submit_()
         self.verdict_("aaa0001", "7ee0001", stopwatch=-0.0039, noise=False)
-        self.verdict_("aaa0002", "7ee0001", stopwatch=0.0128)  # commit amendé, même arbre : cette fois le chronomètre passe
+        self.verdict_("aaa0002", "7ee0001", stopwatch=0.0128)  # amended commit, same tree: this time the stopwatch passes
         self.assertEqual([(h["sha"], h["tree"], h["gain"]) for h in self.rec(self.cid)["verdicts"]],
                          [("aaa0001", "7ee0001", -0.0039), ("aaa0002", "7ee0001", 0.0128)])
         self.review_all(vote=True)
@@ -15182,19 +15182,19 @@ class TestRound3(BaseParallel):
                       "another configuration that sees the gain is needed (bee record-measurement) [previous verdict of the same "
                       "measured content, commit aaa0001]", text)
         self.assertEqual(text.count("R4:"), 1, "the current verdict, for its part, confirms the gain")
-        # Un recul au-delà du bruit, dans n'importe lequel des verdicts du même contenu, est un refus.
+        # A regression beyond the noise, in any of the verdicts of the same content, is a refusal.
         self.verdict_("aaa0003", "7ee0001", stopwatch=-0.02)
         self.assertIn("the stopwatch goes back beyond the noise (-2.0%)", self.acceptance(self.cid)[1])
-        # Parcours honnête : un autre code (autres décomptes), mesuré une fois et confirmé ; un autre contenu ne compte pas.
+        # Honest path: another code (other counts), measured once and confirmed; another content does not count.
         self.verdict_("bbb0001", "7ee0002", stopwatch=0.0128, instructions=0.06)
-        self.verdict_("bbb0001", "7ee0002", stopwatch=0.0128, instructions=0.06)  # relu au passage suivant : rien de plus
+        self.verdict_("bbb0001", "7ee0002", stopwatch=0.0128, instructions=0.06)  # read again at the next pass: nothing more
         self.assertEqual(len(self.rec(self.cid)["verdicts"]), 4)
         for who_is in ("bruno", "bidji29"):
             self.ok_("review", self.cid, *self.read_value(self.cid), "--user", who_is, "--opinion", "favorable", "--reason", self.REASON)
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 0, text)
         self.valid_one()
-        # Le classement d'une course garde le gain le moins favorable du même contenu : relancer ne fait pas monter.
+        # A race's ranking keeps the least favorable gain of the same content: rerunning does not move it up.
         self.assertAlmostEqual(bee.measured_gain(bee.Registry(self.dir), self.rec(self.cid)), 0.0128 / 1.1)
         self.verdict_("bbb0002", "7ee0002", stopwatch=0.04, instructions=0.06)
         self.assertAlmostEqual(bee.measured_gain(bee.Registry(self.dir), self.rec(self.cid)), 0.0128 / 1.1)
@@ -15220,7 +15220,7 @@ class TestRound3(BaseParallel):
         self.assertEqual(code, 0, text)
 
     def test_2_r1_is_checked_again_by_the_registry(self):
-        """(2) ines et hugo : un verdict de 52 lignes pour une tâche S (50 au plus) était intégrable, la CI du fork étant verte."""
+        """(2) ines and hugo: a 52-line verdict for an S task (50 at most) was integrable, the fork's CI being green."""
         self.submit_()
         self.verdict_("aaa0001", "7ee0001", lines=52)
         self.review_all(vote=True)
@@ -15234,8 +15234,8 @@ class TestRound3(BaseParallel):
         self.assertEqual(code, 0, text)
 
     def test_3_a_review_is_about_the_commit_read(self):
-        """(3) jules, PR 54 : il lit ca78d1a, l'auteur pousse 76a34cf, et bee review inscrivait 76a34cf : une favorable comptait sur
-        un commit jamais lu. bee review exige --commit <sha lu> et refuse s'il n'est plus le commit du verdict courant."""
+        """(3) jules, PR 54: he reads ca78d1a, the author pushes 76a34cf, and bee review recorded 76a34cf: a favorable counted on
+        a commit never read. bee review requires --commit <sha read> and refuses if it is no longer the current verdict's commit."""
         self.submit_()
         review = lambda *options: self.bee("review", self.cid, "--user", "chloe", "--opinion", "favorable",  # noqa: E731
                                            "--reason", self.REASON, *options)
@@ -15244,7 +15244,7 @@ class TestRound3(BaseParallel):
         self.assertIn("has no verdict yet: the review is recorded without a commit (without --commit)", text)
         self.verdict_("ca78d1a", "7ee0001")
         new = "76a34cf" + "0" * 33
-        self.verdict_(new, "7ee0002")  # l'auteur pousse entre la lecture et l'écriture
+        self.verdict_(new, "7ee0002")  # the author pushes between the reading and the writing
         code, text = review("--commit", "ca78d1a")
         self.assertEqual(code, 1, text)
         self.assertIn(f"you read ca78d1a, the author has pushed since; review the diff of {new}", text)
@@ -15258,8 +15258,8 @@ class TestRound3(BaseParallel):
         self.valid_one()
 
     def test_4_the_declared_gain_is_bounded_before_any_computation(self):
-        """(4) jules, manifeste b7 : un gain déclaré de 1e300 était mis à null, mais l'écart se calculait (2,5e298, imprimé en
-        300 chiffres)."""
+        """(4) jules, manifest b7: a declared gain of 1e300 was set to null, but the gap was computed (2.5e298, printed in
+        300 digits)."""
         self.submit_()
         verdict, manifest = self.dir / "verdict.json", self.dir / "manifest.yaml"
         verdict.write_text(json.dumps({"ci": "green", "gain": 0.03, "beyond_noise": True, "changed_lines": 10}), encoding="utf-8")
@@ -15276,13 +15276,13 @@ class TestRound3(BaseParallel):
         self.valid_one()
 
     def test_5_a_refused_content_is_reported_across_all_tasks(self):
-        """(5) jules soumet sous miniz-0019 l'arbre que hugo avait refusé sous miniz-0021 : ni refus ni alerte, et la copie se
-        classait devant le travail honnête d'ines. L'alerte compare l'arbre à toutes les contributions du registre."""
+        """(5) jules submits under miniz-0019 the tree that hugo had refused under miniz-0021: neither refusal nor alert, and the
+        copy ranked ahead of ines's honest work. The alert compares the tree with all the contributions of the registry."""
         self.submit_()
         self.verdict_("aaa0001", "7ee0001")
         self.ok_("review", self.cid, *self.read_value(self.cid), "--user", "bruno", "--opinion", "unfavorable", "--reason",
                  "Change la sortie compressée, hors périmètre.")
-        self.verdict_("aaa0002", "7ee0003")  # un autre contenu, que personne ne relit
+        self.verdict_("aaa0002", "7ee0003")  # another content, which no one reviews
         self.ok_("take", "miniz-9001", "--user", "chloe")
         copied = self.submit("miniz-9001", "chloe", 99329)
         self.verdict_("bbb0001", "7ee0001", cid=copied)
@@ -15291,10 +15291,10 @@ class TestRound3(BaseParallel):
         self.assertIn(alert, text)
         self.assertIn(alert, self.ok_("ranking"))
         self.assertIn(f"⚠ {copied}: {alert}", self.ok_("show", "miniz-9001"))
-        # Parcours honnête : un autre contenu, jamais refusé, n'est pas signalé.
+        # Honest path: another content, never refused, is not reported.
         self.verdict_("bbb0002", "7ee0002", cid=copied)
         self.assertNotIn("this content was refused", self.acceptance(copied)[1])
-        # Une contribution refusée (statut posé par le conseil) dont un verdict a porté ce contenu est signalée aussi.
+        # A refused contribution (status set by the council) one of whose verdicts carried this content is reported too.
         self.verdict_("bbb0003", "7ee0003", cid=copied)
         self.assertNotIn("this content was refused", self.acceptance(copied)[1])
         path = self.dir / f"contributions/miniz/{self.cid}.yaml"
@@ -15303,7 +15303,7 @@ class TestRound3(BaseParallel):
                       self.acceptance(copied)[1])
 
     def test_7_the_logins_compare_without_the_case(self):
-        """(7) jules : une levée « par: BIDJI29 » ne valait rien, alors qu'un pseudo est un login GitHub, sans la casse."""
+        """(7) jules: a lift « by: BIDJI29 » was worth nothing, although a handle is a GitHub login, ignoring case."""
         self.submit_()
         reg = bee.Registry(self.dir)
         self.assertTrue("BIDJI29" in reg.council and "Bruno" in reg.guardians and "Bruno" in reg.privileged_ones())
@@ -15315,12 +15315,12 @@ class TestRound3(BaseParallel):
         self.assertIn(blocked, self.acceptance(self.cid)[1])
         self.a("2026-10-27T13:00:00Z")
         path = self.dir / f"contributions/miniz/{self.cid}.yaml"
-        for by, lift in (("BRUNO", False), ("chloe", False), ("BIDJI29", True)):  # le conseil seul lève, quelle que soit la casse
+        for by, lift in (("BRUNO", False), ("chloe", False), ("BIDJI29", True)):  # only the council lifts, whatever the case
             bee.write_yaml(path, {**bee.read_yaml(path), "lifts": [{"reviewer": "Bruno", "reason": "Levée motivée par le conseil.",
                                                                         "by": by, "at": "2026-10-27T13:00:00Z"}]})
             self.assertEqual(blocked not in self.acceptance(self.cid)[1], lift, by)
         self.valid_one()
-        # Un participant en course ne juge pas une concurrente, quelle que soit la casse de son nom.
+        # A participant in the race does not judge a competitor, whatever the case of their name.
         self.parallel_one("miniz-0099", "chloe")
         rivals = bee.rivals_of(bee.Registry(self.dir), self.rec(self.cid))
         self.assertFalse(bee.admissible_opinion({"reviewer": "CHLOE", "opinion": "unfavorable"}, rivals))
@@ -15328,11 +15328,11 @@ class TestRound3(BaseParallel):
         self.assertNotIn("Alice", rivals, "the author is not their own rival")
 
     def test_8_the_integration_reads_the_base_of_the_pr_again_before_merging(self):
-        """(8) note du 30/10 : si l'API servait base_ref_changed en retard, le verdict de l'ancienne base serait enregistré ;
-        auto-integration.yml relit les événements de la PR du fork juste avant de fusionner, et ne fusionne pas si la base a
-        changé (même lecture que verdicts.yml : issues/<n>/events et timeline)."""
+        """(8) note of 30 Oct: if the API served base_ref_changed late, the verdict of the old base would be recorded;
+        auto-integration.yml reads the events of the fork's PR again just before merging, and does not merge if the base has
+        changed (the same reading as verdicts.yml: issues/<n>/events and timeline)."""
         c1, c2 = TestAdversarialReview.reviewed_race(self)
-        self.a("2026-11-02T00:00:00Z")  # au-delà de 120 h : chacune est intégrable seule
+        self.a("2026-11-02T00:00:00Z")  # beyond 120 h: each is integrable alone
         states = {PR_MINIZ + "99101": {"state": "OPEN", "head": "abc1234", "author": "bruno",
                                       "events": ["automatic_base_change_succeeded"]},
                  PR_MINIZ + "99102": {"state": "OPEN", "head": "abc1234", "author": "alice",
@@ -15342,36 +15342,36 @@ class TestRound3(BaseParallel):
         self.assertEqual(output_text.count("the PR's base changed"), 2, output_text)
         self.assertIn("repos/Bee-ruche/minizBee/issues/99102/timeline?per_page=100", [a["args"][1] for a in calls])
         self.assertEqual((self.rec(c1)["status"], self.rec(c2)["status"]), ("in_review", "in_review"))
-        del states[PR_MINIZ + "99101"]["events"]  # parcours honnête : une base jamais changée
+        del states[PR_MINIZ + "99101"]["events"]  # honest path: a base never changed
         output_text, state, calls = TestAdversarialReview.step(self, "Integrate what satisfies R3, close what is abandoned", states)
         self.assertEqual([a["args"][2] for a in TestAdversarialReview.calls_of(calls, "pr", "merge")], [PR_MINIZ + "99101"], output_text)
         self.assertEqual((self.rec(c1)["status"], self.rec(c2)["status"]), ("integrated", "set_aside"))
 
-    # --- Revue adverse de e0eb641 ---
+    # --- Adversarial review of e0eb641 ---
 
     def test_s1_the_same_measured_content_is_recognized_by_its_counts_in_the_whole_thread(self):
-        """S1 : retoucher le manifeste (un octet hors du code mesuré) changeait l'arbre et redonnait un tirage du chronomètre ;
-        re-soumettre le même commit repartait d'un historique vierge. Le contenu mesuré se reconnaît aux décomptes B, exacts,
-        dans la contribution et son fil (même auteur, même tâche)."""
+        """S1: touching up the manifest (one byte outside the measured code) changed the tree and gave another draw of the
+        stopwatch; resubmitting the same commit started again from a blank history. The measured content is recognized by the
+        B counts, exact, in the contribution and its thread (same author, same task)."""
         self.submit_()
-        self.verdict_("aaa0001", "7ee0001", stopwatch=-0.02)  # recul au-delà du bruit
-        self.verdict_("aaa0002", "7ee0002", stopwatch=0.0128)  # manifeste retouché : autre arbre, mêmes décomptes
+        self.verdict_("aaa0001", "7ee0001", stopwatch=-0.02)  # regression beyond the noise
+        self.verdict_("aaa0002", "7ee0002", stopwatch=0.0128)  # manifest touched up: another tree, same counts
         self.review_all(vote=True)
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 1, text)
         self.assertIn("the stopwatch goes back beyond the noise (-2.0%) [previous verdict of the same measured content, commit aaa0001]", text)
         self.assertAlmostEqual(bee.measured_gain(bee.Registry(self.dir), self.rec(self.cid)), -0.02 / 1.1)
-        # Un verdict sans décompte se reconnaît à l'arbre.
+        # A verdict without counts is recognized by the tree.
         without_it = self.dir.parent / "without_it.json"
         without_it.write_text(json.dumps({"ci": "green", "gain": 0.05, "beyond_noise": True, "changed_lines": 10}), encoding="utf-8")
         self.ok_("record-verdict", self.cid, "--verdict", str(without_it), "--sha", "aaa0003", "--tree", "7ee0001", "--files", self.pr_files())
         self.assertEqual([v.get("sha") for v, _ in bee.content_verdicts(bee.Registry(self.dir), self.rec(self.cid))], ["aaa0003", "aaa0001"])
-        # Parcours honnête : un autre code, d'autres décomptes ; ses verdicts seuls comptent.
+        # Honest path: another code, other counts; its verdicts alone count.
         self.verdict_("bbb0001", "7ee0004", stopwatch=0.0128, instructions=0.06)
         for who_is in ("bruno", "bidji29"):
             self.ok_("review", self.cid, *self.read_value(self.cid), "--user", who_is, "--opinion", "favorable", "--reason", self.REASON)
         self.assertEqual(self.acceptance(self.cid)[0], 0)
-        # Re-soumettre le contenu refusé : la PR est fermée, alice reprend la tâche, mêmes décomptes que aaa0001.
+        # Resubmitting the refused content: the PR is closed, alice takes the task again, same counts as aaa0001.
         self.a("2026-10-29T13:00:00Z")
         self.ok_("close", self.cid, "--reason", "PR closed without merge.")
         self.a("2026-10-30T14:00:00Z")
@@ -15386,11 +15386,11 @@ class TestRound3(BaseParallel):
         self.assertIn(f"goes back beyond the noise (-2.0%) [previous verdict of the same measured content, commit aaa0001, in {first_one}]", text)
 
     def test_s2_the_commit_read_is_given_in_full(self):
-        """S2 : une collision sur les 7 premiers caractères se fabrique en deux minutes ; --commit exige le sha entier, égal."""
+        """S2: a collision on the first 7 characters can be fabricated in two minutes; --commit requires the whole sha, equal."""
         self.submit_()
         read_value, pushed = "abcdef1" + "0" * 33, "abcdef1" + "9" * 33
         self.verdict_(read_value, "7ee0001")
-        self.verdict_(pushed, "7ee0002")  # fabriqué pour commencer comme le commit lu
+        self.verdict_(pushed, "7ee0002")  # fabricated to start like the commit read
         review = lambda commit: self.bee("review", self.cid, "--commit", commit, "--user", "bruno", "--opinion",  # noqa: E731
                                          "favorable", "--reason", self.REASON)
         code, text = review("abcdef1")
@@ -15401,8 +15401,8 @@ class TestRound3(BaseParallel):
         self.assertEqual(review(pushed)[0], 0, "honest path: the reviewer reviews the judged commit, in full")
 
     def test_s3_the_reviewer_reads_the_diff_of_the_judged_commit(self):
-        """S3 : le nœud review faisait lire la tête de la PR, qui a pu bouger. check-acceptance et contexte --role review
-        impriment le diff du commit jugé contre la base vérifiée du verdict, et --commit <ce sha>."""
+        """S3: the review node had the reviewer read the PR's head, which may have moved. check-acceptance and context --role
+        review print the diff of the judged commit against the verdict's checked base, and --commit <that sha>."""
         self.submit_()
         self.assertIn(f"# {self.cid}: no judged commit to review yet", self.acceptance(self.cid)[1])
         sha, base = "abcdef1" + "2" * 33, "ba5e" * 10
@@ -15424,8 +15424,8 @@ class TestRound3(BaseParallel):
         self.valid_one()
 
     def test_s4_a_voter_has_only_one_voice_whatever_the_case(self):
-        """S4 : GitHub laisse changer la seule casse d'un login ; « Alice » votait une seconde fois après « alice ». net_vote et le
-        dépouillement de R10 (quorum compris) comptent un vote par votant, sans la casse : son plus récent."""
+        """S4: GitHub lets one change only the case of a login; « Alice » voted a second time after « alice ». net_vote and R10's
+        count (quorum included) count one vote per voter, ignoring case: their most recent."""
         self.contributors("alice", "chloe")
         self.submit_()
         self.ok_("vote", self.cid, "--user", "chloe", "--value", "1")
@@ -15433,7 +15433,7 @@ class TestRound3(BaseParallel):
         self.assertIn("Chloe: your member file is chloe", self.bee("vote", self.cid, "--user", "Chloe", "--value", "-1")[1])
         self.assertEqual([c.name for c in (self.dir / f"votes/{self.cid}").glob("*.yaml")], ["chloe.yaml"])
         bee.write_yaml(self.dir / f"votes/{self.cid}/CHLOE.yaml", {"subject": self.cid, "voter": "CHLOE", "value": -1,
-                                                                        "at": "2026-10-27T12:30:00Z"})  # écrit à la main
+                                                                        "at": "2026-10-27T12:30:00Z"})  # written by hand
         reg = bee.Registry(self.dir)
         self.assertEqual(bee.net_vote(reg, self.rec(self.cid), bee.compute_levels(reg)), -1, "one vote, the most recent")
         bee.write_yaml(self.dir / "proposals/P-0001.yaml", {"id": "P-0001", "author": "alice", "rule": "R8",
@@ -15446,8 +15446,8 @@ class TestRound3(BaseParallel):
         self.assertEqual((result["weighted_voters"], result["for"]), (2, 2))
 
     def test_m3_a_merge_outside_the_default_branch_is_not_recorded(self):
-        """M3 : après gh pr merge, l'intégration n'est consignée que si la PR vise la branche par défaut du fork et que le commit
-        de fusion en est un ancêtre."""
+        """M3: after gh pr merge, the integration is recorded only if the PR targets the fork's default branch and the merge
+        commit is an ancestor of it."""
         c1, c2 = TestAdversarialReview.reviewed_race(self)
         self.a("2026-11-02T00:00:00Z")
         states = {PR_MINIZ + "99101": {"state": "OPEN", "head": "abc1234", "author": "bruno", "base": "other"},
@@ -15455,18 +15455,18 @@ class TestRound3(BaseParallel):
         output_text, states, _ = TestAdversarialReview.step(self, "Integrate what satisfies R3, close what is abandoned", states)
         self.assertEqual(output_text.count("outside the fork's default branch"), 2, output_text)
         states[PR_MINIZ + "99102"]["base"] = states[PR_MINIZ + "99101"]["base"] = "master"
-        states["comparaisons"] = {"f" * 40: "diverged"}  # le commit de fusion n'est pas dans master
+        states["comparaisons"] = {"f" * 40: "diverged"}  # the merge commit is not in master
         output_text, states, _ = TestAdversarialReview.step(self, "Integrate what satisfies R3, close what is abandoned", states)
         self.assertEqual(output_text.count("outside the fork's default branch"), 2, output_text)
         self.assertEqual((self.rec(c1)["status"], self.rec(c2)["status"]), ("in_review", "in_review"))
-        del states["comparaisons"]  # parcours honnête
+        del states["comparaisons"]  # honest path
         TestAdversarialReview.step(self, "Integrate what satisfies R3, close what is abandoned", states)
         self.assertEqual((self.rec(c2)["status"], self.rec(c2)["merge_sha"], self.rec(c1)["status"]), ("integrated", "f" * 40, "set_aside"))
 
 
     def test_s1_one_more_instruction_does_not_give_another_draw(self):
-        """Vérification de 3ea3a71 (S1) : B 950000 et recul du chronomètre, puis B 950001 et +1,28 % : la retouche d'une instruction
-        redonnait un tirage. Dans le fil, des décomptes à moins de 1 % sont le même contenu mesuré."""
+        """Check of 3ea3a71 (S1): B 950000 and a stopwatch regression, then B 950001 and +1.28%: touching up one instruction
+        gave another draw. In the thread, counts less than 1% apart are the same measured content."""
         self.submit_()
         self.verdict_("aaa0001", "7ee0001", stopwatch=-0.02, instructions=0.05)  # B = 950000
         self.verdict_("aaa0002", "7ee0002", stopwatch=0.0128, instructions=0.049999)  # B = 950001
@@ -15474,7 +15474,7 @@ class TestRound3(BaseParallel):
         code, text = self.acceptance(self.cid)
         self.assertEqual(code, 1, text)
         self.assertIn("goes back beyond the noise (-2.0%) [previous verdict of the same measured content, commit aaa0001]", text)
-        # Parcours honnête : un code qui s'éloigne d'au moins 1 % (B = 940000) est un autre contenu mesuré.
+        # Honest path: a code that moves at least 1% away (B = 940000) is another measured content.
         self.verdict_("bbb0001", "7ee0003", stopwatch=0.0128, instructions=0.06)
         for who_is in ("bruno", "bidji29"):
             self.ok_("review", self.cid, *self.read_value(self.cid), "--user", who_is, "--opinion", "favorable", "--reason", self.REASON)
@@ -15482,8 +15482,8 @@ class TestRound3(BaseParallel):
 
 
 class TestRound3PR(BaseDressRehearsal):
-    """ruche-0028, côté historique de main et check-pr : fenêtre de R3 et bornes de course depuis la fusion de la soumission,
-    historique des verdicts et levées écrits par la CI ou le conseil seuls, fiches sans double par la casse."""
+    """ruche-0028, on the side of main's history and check-pr: R3's window and race bounds from the merge of the submission,
+    history of verdicts and lifts written by the CI or the council alone, records without a duplicate by case."""
 
     def setUp(self):
         super().setUp()
@@ -15491,7 +15491,7 @@ class TestRound3PR(BaseDressRehearsal):
         self.commit("guardian")
 
     def submission(self, to_submit="2026-10-30T01:46:00Z", reserve=True):
-        """alice réserve le 29/10 à 22 h ; sa soumission, datée de a_soumettre, est vérifiée le 30/10 à 2 h."""
+        """alice reserves on 29 Oct at 22:00; her submission, dated to_submit, is checked on 30 Oct at 02:00."""
         if reserve:
             self.a("2026-10-29T22:00:00Z")
             self.take_and_merge("alice")
@@ -15523,7 +15523,7 @@ class TestRound3PR(BaseDressRehearsal):
         git(self.dir, "branch", "-qD", "main_a_la_main")
 
     def checked_gesture(self, who_is, date, checked_one, *command, nature):
-        """Un geste fait à `date`, vérifié par check-pr à `verifie` (Registry validation, puis auto-merge), fusionné."""
+        """A gesture made at `date`, checked by check-pr at `checked_one` (Registry validation, then auto-merge), merged."""
         self.branch("gesture")
         self.a(date)
         self.ok(*command)
@@ -15533,9 +15533,9 @@ class TestRound3PR(BaseDressRehearsal):
         self.merge("gesture")
 
     def test_b1_a_gesture_checked_30_minutes_after_its_date_passes(self):
-        """B1 (revue adverse) : « Registry validation » prend 12 à 34 min avant check-pr ; à 15 min de tolérance, presque
-        tout le libre-service était refusé. La tolérance reste de 2 h ; la fenêtre de R3 et les bornes de course partent de la
-        fusion de la soumission : antidater (bruno, PR 49 et 50, 1 h 55) n'y rogne plus rien."""
+        """B1 (adversarial review): « Registry validation » takes 12 to 34 min before check-pr; with a 15 min tolerance, almost
+        all self-service was refused. The tolerance stays at 2 h; R3's window and the race bounds start from the merge of the
+        submission: backdating (bruno, PRs 49 and 50, 1 h 55 min) no longer trims anything from them."""
         self.contributors("chloe")
         self.commit("chloe contributrice")
         cid = "miniz-0099-c1"
@@ -15548,7 +15548,7 @@ class TestRound3PR(BaseDressRehearsal):
                            "chloe", "--opinion", "favorable", "--reason", "Diff du commit relu en entier.", nature="review")
         self.checked_gesture("chloe", "2026-10-30T02:45:00Z", "2026-10-30T03:15:00Z", "vote", cid, "--user", "chloe", "--value", "1",
                            nature="vote")
-        # Le détournement du tour 3 : réservation et soumission antidatées de 1 h 55, acceptées, mais fusionnées à 7 h et 7 h 01.
+        # The misuse of round 3: reservation and submission backdated by 1 h 55 min, accepted, but merged at 07:00 and 07:01.
         self.checked_gesture("bruno", "2026-10-30T05:05:00Z", "2026-10-30T07:00:00Z", "take", "miniz-9001", "--user", "bruno",
                            nature="reservation")
         self.checked_gesture("bruno", "2026-10-30T05:06:00Z", "2026-10-30T07:01:00Z", "submit", "miniz-9001", "--user", "bruno",
@@ -15558,14 +15558,14 @@ class TestRound3PR(BaseDressRehearsal):
         rec = reg.record("miniz-9001-c1")[1]
         self.assertEqual(rec["submitted_at"], "2026-10-30T05:06:00Z")
         self.assertEqual(bee.wait_bounds(reg, rec), (merge + bee.dt.timedelta(hours=96), merge + bee.dt.timedelta(hours=120)))
-        self.a("2026-10-31T06:00:00Z")  # 24 h 54 après soumise_le, 22 h 59 après la fusion
+        self.a("2026-10-31T06:00:00Z")  # 24 h 54 min after submitted_at, 22 h 59 min after the merge
         text = self.bee("check-acceptance", "miniz-9001-c1")[1]
         self.assertIn("opening window: 22 h elapsed of 24 h, since the merge of the submission (2026-10-30T07:01:00Z)", text)
         swarm = json.loads(self.ok("swarm", "--json"))["in_review"]
         self.assertEqual(next(c["window_left_hours"] for c in swarm if c["contribution"] == "miniz-9001-c1"), 1.0)
 
     def test_s4_a_record_does_not_double_a_login_by_the_case(self):
-        """S4 : « Chloe » (le même compte GitHub, casse changée) déposait un second vote à côté de celui de « chloe »."""
+        """S4: « Chloe » (the same GitHub account, case changed) filed a second vote beside « chloe »'s."""
         self.contributors("chloe")
         self.commit("chloe contributrice")
         self.submission()
@@ -15582,15 +15582,15 @@ class TestRound3PR(BaseDressRehearsal):
                      "PR author « Chloe »: their member file is chloe", "voter « Chloe » is written chloe (its member file)")
         git(self.dir, "switch", "-qf", "main")
         git(self.dir, "branch", "-qD", "double")
-        # Parcours honnête : chloe change son vote, dans sa fiche.
+        # Honest path: chloe changes her vote, in her record.
         self.checked_gesture("chloe", "2026-10-30T02:10:00Z", "2026-10-30T02:10:00Z", "vote", cid, "--user", "chloe", "--value", "-1",
                            nature="vote")
         self.assertEqual(sorted(c.name for c in (self.dir / f"votes/{cid}").glob("*.yaml")), ["chloe.yaml"])
 
     def test_b1_an_engagement_compares_to_the_declared_submission(self):
-        """Vérification de 3ea3a71 (B1) : X était daté par sa fusion, les engagements des autres par leur déclaration ; une
-        inscription datée entre submitted_at(X) et sa fusion retenait X jusqu'à l'expiration R7. Les engagements se comparent à
-        submitted_at(X) ; un engagement d'avant la soumission retient toujours X."""
+        """Check of 3ea3a71 (B1): X was dated by its merge, the others' engagements by their declaration; a registration dated
+        between submitted_at(X) and its merge held X back until the R7 expiry. The engagements are compared with
+        submitted_at(X); an engagement from before the submission still holds X back."""
         self.checked_gesture("alice", "2026-10-29T22:00:00Z", "2026-10-29T22:30:00Z", "take", "miniz-0099", "--user", "alice",
                            nature="reservation")
         self.checked_gesture("bruno", "2026-10-30T01:00:00Z", "2026-10-30T01:00:00Z", "take", "miniz-0099", "--user", "bruno",
@@ -15605,10 +15605,10 @@ class TestRound3PR(BaseDressRehearsal):
 
 
     def test_m2_the_merge_is_the_last_addition_of_the_contribution(self):
-        """M2 : un identifiant réutilisé (fichier retiré puis rajouté) retombait sur son premier ajout, donc sur submitted_at."""
+        """M2: a reused identifier (file removed then added again) fell back on its first addition, hence on submitted_at."""
         self.submission()
         self.self_service("alice", "submission")
-        self.merge("submission")  # premier ajout, à 2 h
+        self.merge("submission")  # first addition, at 02:00
         path = self.dir / "contributions/miniz/miniz-0099-c1.yaml"
         text = path.read_text(encoding="utf-8")
         self.a("2026-10-30T03:00:00Z")
@@ -15621,13 +15621,13 @@ class TestRound3PR(BaseDressRehearsal):
         self.assertEqual(bee.effective_submission(reg, reg.record("miniz-0099-c1")[1]), bee.read_instant("2026-10-30T04:00:00Z"))
 
     def test_6_the_r3_window_starts_at_the_merge_of_the_submission(self):
-        self.submission()  # soumise_le 1 h 46, dans la tolérance ; fusionnée à 2 h
+        self.submission()  # submitted_at 01:46, within the tolerance; merged at 02:00
         self.self_service("alice", "submission")
         self.merge("submission")
         self.verdict_on_main("abc1234", "7ee0001")
         window = "since the merge of the submission (2026-10-30T02:00:00Z)"
         for instant, open in (("2026-10-31T01:50:00Z", True), ("2026-10-31T02:00:00Z", False)):
-            self.a(instant)  # 24 h 04 après soumise_le, mais 23 h 50 après la fusion ; puis 24 h après la fusion
+            self.a(instant)  # 24 h 04 min after submitted_at, but 23 h 50 min after the merge; then 24 h after the merge
             code, text = self.bee("check-acceptance", "miniz-0099-c1")
             self.assertEqual(window in text, open, text)
             self.assertEqual("opening window" in text, open, text)
@@ -15639,16 +15639,16 @@ class TestRound3PR(BaseDressRehearsal):
         self.verdict_on_main("aaa0001", "7ee0001")
         self.verdict_on_main("aaa0002", "7ee0001")
         self.valid_one()
-        # (1) L'auteur efface le verdict qui le gêne de l'historique : refusé.
+        # (1) The author erases the verdict that bothers them from the history: refused.
         self.pr_by_hand("alice", lambda rec: rec.update(verdicts=rec["verdicts"][1:]),
                           "verdict, status and defect confirmation are written by the CI or the council")
-        # (3) Une relecture du commit lu, par la commande, passe en libre-service.
+        # (3) A review of the commit read, through the command, passes as self-service.
         self.branch("review")
         self.ok("review", "miniz-0099-c1", "--commit", "aaa0002", "--user", "farid", "--opinion", "unfavorable", "--reason", "Refus motivé.")
         self.commit()
         self.self_service("farid", "review")
         self.merge("review")
-        # (7) Une levée : écrite par un membre, refusée ; par le conseil, recevable, écrite comme sa fiche (revue de 3ea3a71, N1).
+        # (7) A lift: written by a member, refused; by the council, admissible, written like its record (review of 3ea3a71, N1).
         lift = lambda by: lambda rec: rec.update(lifts=[{"reviewer": "farid", "reason": "Levée motivée par le conseil.",  # noqa: E731
                                                             "by": by, "at": os.environ["BEE_NOW"]}])
         self.pr_by_hand("bruno", lift("bidji29"), "a lift (lifts) is written by the council alone")
@@ -15657,10 +15657,10 @@ class TestRound3PR(BaseDressRehearsal):
 
 
 class TestSpelling(BaseInvitations):
-    """Vérification de 3ea3a71 (N1) : ruche-0028 avait rendu les fiches members/ sans la casse, alors que R13 et les plafonds
-    comparent les pseudos avec elle ; « Gina » proposait une invitation, puis gina y donnait l'accord de gardien. Une seule
-    orthographe, dès l'entrée : un pseudo qui ne suit sa fiche qu'à la casse près est refusé (--user, auteur de la PR,
-    champs d'identité d'un fichier), avec l'orthographe de la fiche ; jamais ramené en silence."""
+    """Check of 3ea3a71 (N1): ruche-0028 had made the members/ records case-insensitive, while R13 and the caps compare
+    handles with case; « Gina » proposed an invitation, then gina gave the guardian's agreement on it. A single spelling,
+    from the entry: a handle that matches its record only up to case is refused (--user, the PR's author, a file's identity
+    fields), with the record's spelling; never brought back silently."""
 
     def setUp(self):
         super().setUp()
@@ -15679,18 +15679,18 @@ class TestSpelling(BaseInvitations):
                 "--message", MESSAGE_INVITATION)
         self.branch()
         self.invite("gina")
-        bee.write_invitation(self.invitation_path(), {**self.invitation(), "proposed_by": "Gina"})  # écrite à la main
+        bee.write_invitation(self.invitation_path(), {**self.invitation(), "proposed_by": "Gina"})  # written by hand
         self.commit()
         self.refused("Gina", "PR author « Gina »: their member file is gina", "proposed_by « Gina » is written gina (its member file)")
         self.abandon()
-        self.branch()  # témoin honnête
+        self.branch()  # honest control
         self.invite("gina")
         self.commit()
         self.awaits_the_council("gina", "invitation")
 
     def test_n1_the_guardian_agreement_does_not_bypass_its_own_invitation(self):
-        """Le détournement : l'invitation de gina porterait « Gina », et gina y donnerait l'accord de gardien (comparaison exacte
-        en aval). Ni « Gina », ni le conseil n'écrivent ce proposed_by ; écrite gina, l'accord de gina est refusé."""
+        """The misuse: gina's invitation would carry « Gina », and gina would give the guardian's agreement on it (exact
+        comparison downstream). Neither « Gina » nor the council write that proposed_by; written gina, gina's agreement is refused."""
         self.branch()
         self.invite("gina")
         bee.write_invitation(self.invitation_path(), {**self.invitation(), "proposed_by": "Gina"})
@@ -15715,7 +15715,7 @@ class TestSpelling(BaseInvitations):
         self.ko("Alice: your member file is alice", "propose-task", "miniz", "--user", "Alice", "--type", "test")
         next_value = last.with_name(f"miniz-{int(last.stem.rsplit('-', 1)[1]) + 1:04d}.yaml")
         for author, chunks in (("Alice", ["PR author « Alice »: their member file is alice", "created_by « Alice » is written alice"]),
-                                 ("alice", ["cap: alice would have 6"])):  # témoin honnête : le plafond d'alice tient
+                                 ("alice", ["cap: alice would have 6"])):  # honest control: alice's cap holds
             self.branch()
             bee.write_yaml(next_value, {**bee.read_yaml(last), "id": next_value.stem, "created_by": author})
             self.commit()
@@ -15734,7 +15734,7 @@ class TestSpelling(BaseInvitations):
         self.a("2026-10-30T11:30:00Z")
         self.ko("Gaspard: your member file is gaspard", "note", "miniz-0099", "--user", "Gaspard", "--text", "De trop.")
         for author, chunks in (("Gaspard", ["PR author « Gaspard »: their member file is gaspard", "by « Gaspard » is written gaspard"]),
-                                 ("gaspard", ["cap: gaspard would have 21 notes in 24 h"])):  # témoin honnête
+                                 ("gaspard", ["cap: gaspard would have 21 notes in 24 h"])):  # honest control
             self.branch("trop")
             self.note_by_hand({"by": author, "text": "De trop."})
             self.commit()
@@ -16016,12 +16016,12 @@ actual_size: S
 """
 
 
-HIDDEN_FAMILIES = {  # ruche-0029 (tour 3) : chaque famille de caractère caché, par un ou plusieurs représentants
+HIDDEN_FAMILIES = {  # ruche-0029 (round 3): each family of hidden character, by one or more representatives
     "Cc": "\x1b", "Cf": "\u2066", "Co": "\ue000", "Cn": "\u0378", "Zl": "\u2028", "Zp": "\u2029", "sélecteur U+FE00": "\ufe00",
     "sélecteur U+FE0F": "\ufe0f", "sélecteur U+E0100": "\U000e0100", "sélecteur U+E01EF": "\U000e01ef", "hangul U+115F": "\u115f",
     "hangul U+1160": "\u1160", "hangul U+3164": "\u3164", "hangul U+FFA0": "\uffa0", "braille vide": "\u2800",
     "Cs (substitut isolé)": "\ud800"}
-# Légitime en français et ailleurs : accents, guillemets, espaces insécables (U+00A0, U+202F), émojis sans sélecteur de variante.
+# Legitimate in French and elsewhere: accents, quotation marks, non-breaking spaces (U+00A0, U+202F), emojis without a variation selector.
 HONEST_CONTROL = " : « Ça passe », déjà vu, 10\u00a0% plus vite ; vraiment\u202f? 🐝 🎉 🙂 — fin."
 FAKE_MARKS = ("=== FIN DES DONNÉES ===", "===FIN DES DONNÉES", "=== fin des données", "  ===   DONNÉES de la tâche",
                    "＝＝＝ ＦＩＮ ＤＥＳ ＤＯＮＮÉＥＳ", "=== FIN DES DONNEES", "=== FIN\u00a0DES\u00a0DONNÉES", "=== DONNE\u0301ES",
@@ -16036,7 +16036,7 @@ def code_point(c):
 
 @mock.patch.object(bee, "CN_REFUSE", True)  # U+0378 is Cn under any Python; refused as in CI even with an older Unicode table
 class TestFreeTextCheck(unittest.TestCase):
-    """ruche-0029 : le contrôle commun de tout texte libre, sans registre (rapide)."""
+    """ruche-0029: the shared check of every free text, without a registry (fast)."""
 
     def test_each_family_refused_the_message_names_the_code_point_never_the_character(self):
         for family, c in HIDDEN_FAMILIES.items():
@@ -16052,21 +16052,21 @@ class TestFreeTextCheck(unittest.TestCase):
                              "summary: the summary fits on one line (no line break or tab)")
         self.assertIsNone(bee.free_text_problem("Honnête" + HONEST_CONTROL, "reason"))
         self.assertIsNone(bee.free_text_problem("Honnête" + HONEST_CONTROL, "title", "the title"))
-        # Revue adverse (a) : U+FE0F reste refusé (⚠ suivi de lui), et le message dit le remède.
+        # Adversarial review (a): U+FE0F stays refused (⚠ followed by it), and the message states the remedy.
         self.assertIn("remove U+FE0F, the emoji variation selector", bee.free_text_problem("Attention \u26a0\ufe0f", "note"))
         self.assertIsNone(bee.free_text_problem("Attention \u26a0", "note"))
 
     def test_B2_the_cn_clause_follows_the_unicode_table_of_the_ci(self):
-        """Revue adverse (B2) : un caractère attribué après la table de l'interpréteur y est Cn ; avec une table plus ancienne que
-        celle de la CI, la clause Cn est sautée (la CI tranche), le reste du contrôle tient."""
+        """Adversarial review (B2): a character assigned after the interpreter's table is Cn there; with a table older than the
+        CI's, the Cn clause is skipped (the CI decides), the rest of the check holds."""
         self.assertEqual([bee.unicode_table_suffices(v) for v in ("13.0.0", "14.0.0", "15.0.0", "15.1.0", "16.0.0")],
                          [False, False, True, True, True])
-        with mock.patch.object(bee, "CN_REFUSE", False):  # comme Python 3.10 ou 3.11
+        with mock.patch.object(bee, "CN_REFUSE", False):  # like Python 3.10 or 3.11
             self.assertIsNone(bee.free_text_problem("Rose \U0001fa77 et \u0378", "note"))
             for family, c in HIDDEN_FAMILIES.items():
                 if family != "Cn":
                     self.assertIsNotNone(bee.free_text_problem("a" + c, "note"), family)
-        with mock.patch.object(bee, "CN_REFUSE", True):  # comme la CI
+        with mock.patch.object(bee, "CN_REFUSE", True):  # like the CI
             self.assertIn("(U+0378, category Cn)", bee.free_text_problem("a\u0378", "note"))
 
     # The Unicode table of each Python minor version (unicodedata.unidata_version).
@@ -16126,12 +16126,12 @@ class TestFreeTextCheck(unittest.TestCase):
 
 @mock.patch.object(bee, "CN_REFUSE", True)  # U+0378 is Cn under any Python; refused as in CI even with an older Unicode table
 class TestFreeTextsRuche0029(BaseReviewRuche0020):
-    """ruche-0029 : un seul contrôle pour tout texte libre du registre ; bee validate et bee check-pr refusent un caractère
-    caché ou une fausse marque d'encadré, dans chaque sorte de texte ; record-verdict montre le manifeste échappé."""
+    """ruche-0029: a single check for every free text of the registry; bee validate and bee check-pr refuse a hidden
+    character or a fake frame marker, in each kind of text; record-verdict shows the manifest escaped."""
 
     PR = PR_MINIZ + "77029"
     MARK = "PIEGE"
-    # (fichier, clés jusqu'au texte) : chaque sorte de texte libre du registre, dans le registre honnête de setUp.
+    # (file, keys down to the text): each kind of free text of the registry, in setUp's honest registry.
     KINDS = (("tasks/miniz/miniz-0099.yaml", ("title",)), ("tasks/miniz/miniz-0099.yaml", ("context",)),
               ("tasks/miniz/miniz-0099.yaml", ("acceptance_criteria", 0)), ("tasks/miniz/miniz-0099.yaml", ("notes", 0, "text")),
               ("contributions/miniz/miniz-0099-c1.yaml", ("summary",)),
@@ -16180,7 +16180,7 @@ class TestFreeTextsRuche0029(BaseReviewRuche0020):
         write(path, data)
 
     def trap(self, file, keys, trap_one):
-        """Insère `piege` dans le texte au bout de `cles` ; renvoie le lieu que nomme bee (« notes[0]/text »)."""
+        """Inserts `trap_one` into the text at the end of `keys`; returns the place bee names (« notes[0]/text »)."""
         data = bee.read_yaml(self.dir / file)
         parent = data
         for key in keys[:-1]:
@@ -16197,7 +16197,7 @@ class TestFreeTextsRuche0029(BaseReviewRuche0020):
                          for file, keys in self.KINDS]
                 output_text = self.refuse(*places_found)
                 self.assertNotIn(c, output_text, "the code point, never the character")
-        # Un titre et un résumé tiennent sur une ligne ; un contexte, une note ou un motif peuvent en avoir plusieurs (setUp).
+        # A title and a summary fit on one line; a context, a note or a reason may have several (setUp).
         for file, keys in self.KINDS[:1] + self.KINDS[4:5]:
             output_text = self.refuse(f"{file}: {self.trap(file, keys, chr(10))}: {'the title' if keys == ('title',) else 'the summary'} "
                                  "fits on one line")
@@ -16206,11 +16206,11 @@ class TestFreeTextsRuche0029(BaseReviewRuche0020):
         self.valid_one()
 
     def gaspard_s_pr(self, trap_one, *, bee_refuse=True):
-        """Une PR en libre-service de gaspard : une note, un vote, une mesure et un argument, chacun portant `piege`."""
+        """A self-service PR by gaspard: a note, a vote, a measurement and an argument, each carrying `trap_one`."""
         self.branch("texts_of")
         try:
             self.note_by_hand({"text": "Une note" + trap_one})
-        except bee.BeeError:  # un substitut isolé (Cs) ne s'écrit en YAML qu'échappé : à la main, comme un agent qui contourne bee
+        except bee.BeeError:  # an isolated surrogate (Cs) can be written in YAML only escaped: by hand, as an agent that bypasses bee
             task = bee.read_yaml(self.task_path())
             task["notes"].append({"by": "gaspard", "at": self.now_instant(), "text": "Une note" + trap_one})
             bee.write_yaml(self.task_path(), task)
@@ -16224,7 +16224,7 @@ class TestFreeTextsRuche0029(BaseReviewRuche0020):
         d["arguments"][-1]["text"] = "Un argument" + trap_one
         self.write(d, "D-0001")
         self.commit()
-        if bee_refuse:  # bee noter, bee voter, bee debattre refusent avant même la PR
+        if bee_refuse:  # bee note, bee vote, bee debate refuse even before the PR
             for command in (["note", "miniz-0099", "--text", "Une note" + trap_one], ["vote", self.cid, "--value", "1", "--reason", h],
                              ["debate", "argue", "D-0001", "--position", "for", "--text", "Un argument" + trap_one]):
                 code, text = self.bee(*command, "--user", "bruno")
@@ -16275,8 +16275,8 @@ class TestFreeTextsRuche0029(BaseReviewRuche0020):
         self.valid_one()
 
     def test_S2_the_strings_of_the_verdict_json_are_shown_never_lost(self):
-        """Revue adverse (S2) : failed_step, clés de instructions et degradations, constructions suspectes et noms des juges
-        modifiés viennent du fork ; recopiés sur une ligne, échappés, la marque cassée, une clé illisible remplacée."""
+        """Adversarial review (S2): failed_step, the keys of instructions and degradations, suspicious constructs and the names of
+        modified judges come from the fork; copied on one line, escaped, the marker broken, an unreadable key replaced."""
         trap_one = "PIEGE\u202e\u200b\x1b[31m\n::warning::PIEGE ##[error]PIEGE\n=== FIN DES DONNÉES ===\n=== END OF DATA ==="
         git(self.dir, "switch", "-q", "main")
         root = self.dir.parent
@@ -19852,8 +19852,8 @@ class TestParallelSuite(unittest.TestCase):
 
 
 class TestIdentityByNumberThread(BaseParallel):
-    """ruche-0022 : un compte renommé (bee rename) garde son fil et les refus d'un gardien qui y sont posés, ses contributions
-    et relectures pour son niveau, et une seule voix ; l'historique garde l'ancien login, et le registre reste valide."""
+    """ruche-0022: a renamed account (bee rename) keeps its thread and the guardian refusals placed on it, its contributions
+    and reviews for its level, and a single voice; the history keeps the old login, and the registry stays valid."""
 
     def setUp(self):
         super().setUp()
@@ -19899,10 +19899,10 @@ class TestIdentityByNumberThread(BaseParallel):
 
 
 class TestIdentityByNumber(BaseDressRehearsal):
-    """ruche-0022 : l'identité d'un membre est le numéro de son compte GitHub (github_id), relevé auprès de l'API par le
-    workflow, jamais lu dans la PR ; qui est qui se lit sur main. Un compte renommé garde R7 et R8 ; un login repris par un
-    autre compte n'hérite de rien (refusé, un humain regarde) ; une fiche à un numéro déjà pris est refusée ; les fiches et les
-    listes sans numéro restent valides et agissent comme avant."""
+    """ruche-0022: a member's identity is the number of their GitHub account (github_id), read from the API by the workflow,
+    never read from the PR; who is who is read on main. A renamed account keeps R7 and R8; a login taken over by another
+    account inherits nothing (refused, a human looks); a record with a number already taken is refused; records and lists
+    without a number remain valid and act as before."""
 
     def setUp(self):
         super().setUp()
@@ -20217,10 +20217,10 @@ class TestIdentityByNumber(BaseDressRehearsal):
 
 
 class TestLinkedAccountsRuche0051(BaseInvitations):
-    """ruche-0051 : plusieurs comptes d'une même personne. Une fiche déclare un autre compte par son numéro (other_accounts), ce
-    compte confirme par sa propre fiche (account_of) : liés, ils sont une personne partout où l'on compte des personnes (R7, R8,
-    une voix, un relecteur, le frein de R13, les gardiens) ; un statut ne suit jamais un lien ; un lien ne rend jamais main
-    invalide (bee validate juge l'histoire compte par compte, la porte et les décomptes par personne)."""
+    """ruche-0051: several accounts of one person. A record declares another account by its number (other_accounts), that
+    account confirms through its own record (account_of): linked, they are one person wherever people are counted (R7, R8,
+    one voice, one reviewer, R13's brake, the guardians); a status never follows a link; a link never makes main invalid
+    (bee validate judges the history account by account, the gate and the counts by person)."""
 
     def setUp(self):
         super().setUp()
@@ -20799,19 +20799,19 @@ class ReportTools(BaseInvitations):
         git(self.dir, "branch", "-qD", name)
 
     def report(self, who_is, a, b, reason="cross_votes"):
-        """bee report, publié et fusionné sans humain ; renvoie le nom du signalement."""
+        """bee report, published and merged without a human; returns the report's name."""
         self.branch("report")
         text = self.ok("report", "--user", who_is, "--accounts", a, b, "--reason", reason)
         self.publish(who_is, "report", name="report")
         return text.split("reports/", 1)[1].split(".yaml", 1)[0]
 
     def by_hand(self, name, **fields):
-        """Un signalement écrit sans bee report, comme le ferait un agent qui le contourne."""
+        """A report written without bee report, as an agent that bypasses it would."""
         bee.write_yaml(self.dir / f"reports/{name}.yaml", {"by": "gaspard", "at": os.environ["BEE_NOW"],
                                                                       "accounts": ["alice", "bruno"], "reason": "cross_votes", **fields})
 
     def decider(self, name, *options):
-        """La décision du conseil, par sa propre PR : contrôlée, jamais fusionnée sans humain."""
+        """The council's decision, through its own PR: checked, never merged without a human."""
         self.branch("decision")
         self.ok("decide-report", name, "--user", "bidji29", *options)
         self.publish("bidji29", "governance", free_one=False, name="decision")
@@ -20846,9 +20846,10 @@ class ReportTools(BaseInvitations):
 
 
 class TestReportsRuche0118(ReportTools):
-    """ruche-0118 : un membre signale deux comptes membres qu'il croit être une personne : leurs deux logins et un motif d'une liste
-    fermée, rien d'autre. Le signalement est fusionné sans humain, sous un plafond par signaleur, et montré au conseil, qui lie les
-    deux fiches (ruche-0051) ou l'écarte avec un code : une paire écartée ne se signale plus pendant 30 jours, par numéros de compte."""
+    """ruche-0118: a member reports two member accounts they believe to be one person: their two logins and a reason from a
+    closed list, nothing else. The report is merged without a human, under a per-reporter cap, and shown to the council,
+    which links the two records (ruche-0051) or dismisses it with a code: a dismissed pair cannot be reported again for 30
+    days, by account numbers."""
 
     def test_a_report_holds_only_two_member_accounts_and_a_reason(self):
         self.a("2026-10-30T10:00:00Z")
