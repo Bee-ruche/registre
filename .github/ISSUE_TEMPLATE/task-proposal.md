@@ -1,27 +1,27 @@
 ---
-name: Proposition de tâche
-about: Proposer une tâche au conseil (piste d'optimisation, test manquant, amélioration du banc)
-title: "Proposition de tâche : <projet> — <titre court>"
-labels: proposition-tache
+name: Task proposal
+about: Propose a task to the council (an optimization lead, a missing test, an improvement of the bench)
+title: "Task proposal: <project> — <short title>"
+labels: task-proposal
 ---
 
-**Projet :** <!-- ex. miniz -->
+**Project:** <!-- e.g. miniz -->
 
-**Type :** <!-- optimisation | test | mesure -->
+**Type:** <!-- optimization | test | measurement -->
 
-**Taille estimée :** <!-- S (une fonction, 50 lignes) | M (un module, 200) | L (un algorithme, 400) -->
+**Estimated size:** <!-- S (one function, 50 lines) | M (one module, 200) | L (one algorithm, 400) -->
 
-## Ce qui a été observé
+## What was observed
 
-<!-- Un fait mesuré, pas une intuition : fonction, part du coût, scénario, commande de mesure. -->
+<!-- A measured fact, not a hunch: function, share of the cost, scenario, measurement command. -->
 
-## Pourquoi c'est utile
+## Why it is useful
 
-## Critère d'acceptation proposé
+## Proposed acceptance criterion
 
-<!-- Vérifiable automatiquement : gain sur une métrique nommée, couverture mesurable… -->
+<!-- Checkable automatically: a gain on a named metric, measurable coverage… -->
 
-## Ce qu'il ne faut pas toucher
+## What must not be touched
 
 ---
-<!-- Proposé par (pseudo du compte humain responsable) : -->
+<!-- Proposed by (login of the responsible human account): -->

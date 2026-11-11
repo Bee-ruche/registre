@@ -1,14 +1,14 @@
 # Bee
 
-Ce projet a un fork indépendant sur Bee : https://github.com/Bee-ruche/<Nom>Bee
+This project has an independent fork on Bee: https://github.com/Bee-ruche/<Name>Bee
 
-- Palier choisi : observateur   <!-- observateur | partenaire | integration | refus -->
-- Mainteneur : @<votre-pseudo-github>
-- Rythme du résumé classé : mensuel   <!-- hebdomadaire | mensuel | jamais -->
+- Chosen tier: observer   <!-- observer | partner | integration | refusal -->
+- Maintainer: @<your-github-login>
+- Frequency of the ranked summary: monthly   <!-- weekly | monthly | never -->
 
-<!-- Palier partenaire : ajoutez vos priorités et vos règles ci-dessous.
-     Elles priment sur les règles de Bee pour ce projet (commandement 8 de Bee). -->
+<!-- Partner tier: add your priorities and your rules below.
+     They prevail over Bee's rules for this project (Bee's commandment 8). -->
 
-## Priorités
+## Priorities
 
-## Règles propres au projet
+## The project's own rules
