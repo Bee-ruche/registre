@@ -27,7 +27,7 @@ notes:
   - by: "bidji29"
     at: "2026-11-10T23:19:46Z"
     text: "Council, 10 Nov 2026, after ruche-0146 (integrated, nine PRs #242 to #252): work as it did, in PRs of at most 400 counted lines, each with tools/migration/check_messages.py's output (--prose-file with {…} holes for waivers, --inner for literals inside interpolations, --markers for a marker changed with its comparison, deliberate code changes in a separate commit) and an adversarial review by another model. Left by ruche-0146 for this task: cmd_vote's closed-vote message (shared with the gate's refusal; one test builds both), reviews_survey's 'défaut confirmé' tag (shown in r3_causes), SELF_SERVICE_FILES' shown path forms, VERDICT_WAIT and SUITE_INVITATION (also shown by bee show, swarm and the site), main()'s 'bee : ' prefix and the gate's '{path} : ' prefixes, publish's messages; tools/marker_inventory.py's French entries are now unused and can be pruned. Messages that link a French doc heading ('Dossiers du libre-service', docs/balance.md#les-postes) change together with that doc's translation."
-status: in_review
+status: integrated
 contribution: ruche-0147-c1
 created_by: council
 created_on: '2026-11-08'

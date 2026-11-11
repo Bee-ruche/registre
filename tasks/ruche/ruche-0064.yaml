@@ -43,3 +43,6 @@ notes:
   - by: "bidji29"
     at: "2026-11-08T13:16:40Z"
     text: "Council, 8 Nov 2026: scheduled after the switch (ruche-0145), so that the translation writes the final English names; no French copy is kept (docs/english-migration.md, sections 11 and 12)."
+  - by: "bidji29"
+    at: "2026-11-11T05:47:05Z"
+    text: "Council, 11 Nov 2026: docs/growth.md (around line 166) still writes the removal marker as « [retiré] », while bee writes « [removed] » (REMOVAL_MARKER) since the switch; a test (test_ruche0116_the_council_corrects_the_comment_as_the_doc_says) asserts that doc line: change both together."
