@@ -2609,7 +2609,7 @@ def sizes_a(repo, ref, paths):
     paths = [c for c in paths if self_service_kind(c) or c.lower().endswith((".yaml", ".yml"))]
     sizes_of = object_sizes(repo, [f"{ref}:{c}" for c in paths]) if paths else []
     if sizes_of is None:
-        raise BeeError(f"git cat-file : taille des fichiers de {ref} illisible ; rien n'est lu"
+        raise BeeError(f"git cat-file: the sizes of the files of {ref} are unreadable; nothing is read"
                         + (" (a name that holds a newline or a carriage return needs git 2.42 or later)"
                            if any(c in n for n in paths for c in "\n\r") else ""))
     return {c: t for c, t in zip(paths, sizes_of) if t is not None}
@@ -2670,13 +2670,13 @@ def check_added_notes(reg, path, previous_ones, added, author, instant):
     previous_one = max((m for n in _list(previous_ones) if (m := _instant_or_none(n.get("at"))) and m <= instant + LEAD_MAX),
                     default=None)
     for k, note in enumerate(added):
-        place_of = f"{path} : notes/{len(previous_ones) + k}"
+        place_of = f"{path}: notes/{len(previous_ones) + k}"
         if not isinstance(note, dict):
-            problems_found.append(f"{place_of} : note illisible (by, at, text : bee note l'écrit)")
+            problems_found.append(f"{place_of}: unreadable note (by, at, text: bee note writes it)")
             continue
         if note.get("by") != author:
-            problems_found.append(f"{place_of} : une note ajoutée est signée de l'auteur de la PR ({author}), pas de « {note.get('by')} » : "
-                             "on ne note qu'en son nom")
+            problems_found.append(f"{place_of}: an added note is signed by the author of the PR ({author}), not by « {note.get('by')} »: "
+                             "one writes notes only in one's own name")
         try:
             moment = read_instant(note.get("at"), place_of)
         except BeeError as e:
@@ -2684,18 +2684,18 @@ def check_added_notes(reg, path, previous_ones, added, author, instant):
             moment = None
         if moment is not None:
             if not instant - TOLERANCE_DATE <= moment <= instant + LEAD_MAX:
-                problems_found.append(f"{place_of} : datée du {note.get('at')} : une note est datée de l'heure de la PR (à 2 h près, jamais "
-                                 "dans le futur) ; relancez bee note")
+                problems_found.append(f"{place_of}: dated {note.get('at')}: a note is dated at the time of the PR (within 2 h, never "
+                                 "in the future); run bee note again")
             else:
                 if previous_one and moment < previous_one:
-                    problems_found.append(f"{place_of} : datée d'avant la note précédente ({en_iso(previous_one)}) : une note s'ajoute en fin "
-                                     "de liste, à l'heure de la PR")
+                    problems_found.append(f"{place_of}: dated before the previous note ({en_iso(previous_one)}): a note is added at the end "
+                                     "of the list, at the time of the PR")
                 instants.append(moment)
                 previous_one = max(previous_one, moment) if previous_one else moment
         problem_text = admissible_text(note.get("text"), "text", conf["text_max"])
         if problem_text:
-            problems_found.append(f"{place_of} : {problem_text} (notes.text_max) : une note est courte ; résumez, et renvoyez à un débat de "
-                             "l'agora ou à un fichier pour le détail")
+            problems_found.append(f"{place_of}: {problem_text} (notes.text_max): a note is short; summarize, and refer to an agora "
+                             "debate or to a file for the details")
     return problems_found, instants
 
 
@@ -2768,22 +2768,22 @@ def check_proposed_task(reg, path, task):
     def text(value, what_it, maximum, key):
         problem_text = admissible_text(value, what_it, maximum)
         if problem_text:
-            problems_found.append(f"{path} : {problem_text} ({key}) : une tâche proposée est courte ; le détail va dans un débat de "
-                             "l'agora ou un document")
+            problems_found.append(f"{path}: {problem_text} ({key}): a proposed task is short; the details go in an agora "
+                             "debate or a document")
 
-    text(task.get("title"), "title", 100, "100 caractères au plus")
+    text(task.get("title"), "title", 100, "100 characters at most")
     text(task.get("context"), "context", conf["context_max"], "creations.context_max")
     for key, number, length, names in (("acceptance_criteria", conf["items_max"], conf["item_max"], ("items_max", "item_max")),
                                         ("out_of_scope", conf["items_max"], conf["item_max"], ("items_max", "item_max")),
                                         ("files", conf["files_max"], conf["path_max"], ("files_max", "path_max"))):
         values_of = task.get(key) if isinstance(task.get(key), list) else []
         if len(values_of) > number:
-            problems_found.append(f"{path} : {key} : {len(values_of)} éléments, au plus {number} (creations.{names[0]})")
+            problems_found.append(f"{path}: {key}: {len(values_of)} items, at most {number} (creations.{names[0]})")
         for i, value in enumerate(values_of[:number]):
             text(value, f"{key}/{i}", length, f"creations.{names[1]}")
     dependencies = task.get("depends_on") if isinstance(task.get("depends_on"), list) else []
     if len(dependencies) > conf["items_max"]:
-        problems_found.append(f"{path} : depends_on : {len(dependencies)} tâches, au plus {conf['items_max']} (creations.items_max)")
+        problems_found.append(f"{path}: depends_on: {len(dependencies)} tasks, at most {conf['items_max']} (creations.items_max)")
     return problems_found
 
 
@@ -2893,7 +2893,7 @@ def check_engagements(reg, path, old, new, differences, author, *, is_council, i
 
     def require(condition, message):
         if not condition:
-            problems_found.append(f"{path} : {message}")
+            problems_found.append(f"{path}: {message}")
         return condition
 
     pa, pn = parallels_of(old), parallels_of(new)
@@ -2904,15 +2904,15 @@ def check_engagements(reg, path, old, new, differences, author, *, is_council, i
     if ra != rn:
         # Le titulaire s'en va (libération, ou expiration constatée par le robot) : le plus ancien inscrit prend sa place.
         require(differences <= {"reservation", "parallel", "notes"},
-               "une promotion ne change que la réservation et la liste des inscrits en parallèle")
+               "a promotion changes only the reservation and the list of those registered in parallel")
         elected = oldest(pa)
         if require(elected is not None and bool(rn),
-                  f"la réservation de {holder} ne change de main que par la promotion du plus ancien inscrit en parallèle "
-                  "(bee release le fait)"):
+                  f"the reservation of {holder} changes hands only by the promotion of the oldest one registered in parallel "
+                  "(bee release does it)"):
             require(rn == {"user": elected.get("user"), "since": elected.get("since")},
-                   f"le nouveau titulaire doit être le plus ancien inscrit en parallèle, {elected.get('user')}, à la date de "
-                   f"son inscription ({elected.get('since')}) : l'échéance R7 ne s'allonge pas")
-            require(pn == without_it(pa, elected.get("user")), "seul le nouveau titulaire quitte la liste des inscrits en parallèle")
+                   f"the new holder must be the oldest one registered in parallel, {elected.get('user')}, as of the date of "
+                   f"their registration ({elected.get('since')}): the R7 deadline does not get longer")
+            require(pn == without_it(pa, elected.get("user")), "only the new holder leaves the list of those registered in parallel")
         require(holder == author or is_council or (is_robot and engagement_expired(reg, ra.get("since"), now_instant())),
                f"seul le titulaire ({holder}) libère sa réservation avant expiration")
         return "promotion", problems_found
@@ -2920,30 +2920,30 @@ def check_engagements(reg, path, old, new, differences, author, *, is_council, i
     if old_contribution != new_contribution:
         # Soumission d'un inscrit en parallèle : sa contribution entre en course, la réservation du titulaire ne bouge pas.
         require(differences <= {"parallel", "contribution", "notes"},
-               "une soumission en parallèle ne change que la liste des inscrits et la contribution de la tâche")
+               "a parallel submission changes only the list of those registered and the task's contribution")
         registered = any(p.get("user") == author for p in pa)
-        require(registered, f"{author} n'est pas inscrit en parallèle sur cette tâche : on ne soumet en parallèle que si l'on y est "
-                        "inscrit (bee take --parallel)")
-        require(pn == without_it(pa, author), "une soumission en parallèle ne retire de la liste que son auteur")
+        require(registered, f"{author} is not registered in parallel on this task: one submits in parallel only when "
+                        "registered (bee take --parallel)")
+        require(pn == without_it(pa, author), "a parallel submission removes only its author from the list")
         rec = reg.records.get(new_contribution or "", (None, {}))[1] or {}
         require(new_contribution in added and rec.get("author") == author,
-               f"la contribution {new_contribution} doit être créée dans cette PR, au nom de {author} : bee submit le fait")
+               f"the contribution {new_contribution} must be created in this PR, in the name of {author}: bee submit does it")
         return "parallel_submission", problems_found
 
-    require(differences <= {"parallel", "notes"}, "changement non autorisé sans changement de statut")
+    require(differences <= {"parallel", "notes"}, "change not allowed without a change of status")
     additions = [p for p in pn if p not in pa]
     removals = [p for p in pa if p not in pn]
     if additions and not removals:
-        require(len(additions) == 1 and pn[:len(pa)] == pa, "une inscription en parallèle à la fois, en fin de liste")
+        require(len(additions) == 1 and pn[:len(pa)] == pa, "one parallel registration at a time, at the end of the list")
         p = additions[0]
         who_is = p.get("user")
-        require(who_is == author, f"on ne s'inscrit en parallèle que soi-même ({author}), pas {who_is}")
-        require(author in reg.members or author in reg.council, f"{author} doit d'abord s'inscrire (bee register)")
-        require(not reg.identities.same_one(who_is, holder), f"{who_is} est le titulaire : il ne s'inscrit pas en parallèle sur sa propre tâche")
-        require(len({reg.identities.key(x.get("user")) for x in pn}) == len(pn), f"{who_is} est déjà inscrit en parallèle")
+        require(who_is == author, f"one registers in parallel only oneself ({author}), not {who_is}")
+        require(author in reg.members or author in reg.council, f"{author} must register first (bee register)")
+        require(not reg.identities.same_one(who_is, holder), f"{who_is} is the holder: they do not register in parallel on their own task")
+        require(len({reg.identities.key(x.get("user")) for x in pn}) == len(pn), f"{who_is} is already registered in parallel")
         racing = [c for c, e in racing_contributions(reg, new.get("id")) if reg.identities.same_one(e.get("author"), who_is)]
-        require(not racing, f"{who_is} a déjà une contribution en course ({', '.join(racing)}) : on l'améliore par un nouveau "
-                              "commit sur sa PR, on n'en soumet pas une autre")
+        require(not racing, f"{who_is} already has a contribution in the race ({', '.join(racing)}): it is improved by a new "
+                              "commit on its PR, another one is not submitted")
         judged_ones = judged_by(reg, new.get("id"), who_is)
         require(not judged_ones, judge_message(new.get("id"), who_is, judged_ones))
         if base is not None:
@@ -2955,30 +2955,30 @@ def check_engagements(reg, path, old, new, differences, author, *, is_council, i
             # la tâche (on s'inscrit après la réservation, après les inscrits et après les soumissions en course).
             since = read_instant(p.get("since"), path)
             require(instant - dt.timedelta(hours=2) <= since <= instant + LEAD_MAX,
-                   "l'inscription en parallèle doit être datée de l'heure de la PR (à 2 h près, jamais dans le futur) ; "
-                   "relancez bee take --parallel")
+                   "the parallel registration must be dated at the time of the PR (within 2 h, never in the future); "
+                   "run bee take --parallel again")
             existing = [ra.get("since")] + [x.get("since") for x in pa] + [
                 e.get("submitted_at") for _, e in racing_contributions(reg, new.get("id"))]
             require(all(since >= i for i in (_instant_or_none(x) for x in existing) if i and i <= instant),
-                   "une inscription en parallèle ne peut pas être antérieure à la réservation, aux inscriptions ni aux "
-                   "soumissions déjà sur la tâche")
+                   "a parallel registration cannot be earlier than the reservation, the registrations or the "
+                   "submissions already on the task")
         except BeeError as e:
             problems_found.append(str(e))
-        require(not reg.blocked_by(new), f"la tâche dépend de {', '.join(reg.blocked_by(new))}, pas encore intégrée(s)")
+        require(not reg.blocked_by(new), f"the task depends on {', '.join(reg.blocked_by(new))}, not yet integrated")
         if not bootstrap:
-            require(new.get("size") in SIZES_BY_LEVEL[level], f"taille {new.get('size')} non accessible au niveau {level}")
-            require(new.get("type") != "split" or level == "Confirmed", "le découpage est réservé aux Confirmés")
+            require(new.get("size") in SIZES_BY_LEVEL[level], f"size {new.get('size')} not available at level {level}")
+            require(new.get("type") != "split" or level == "Confirmed", "a split is reserved for Confirmed members")
         return "parallel_registration", problems_found
     if removals and not additions:
         require(len(removals) == 1 and pn == [x for x in pa if x != removals[0]],
-               "une PR ne retire qu'une inscription en parallèle, la sienne, sans réordonner les autres")
+               "a PR removes only one parallel registration, its own, without reordering the others")
         p = removals[0]
         who_is = p.get("user")
         require(who_is == author or is_council or (is_robot and engagement_expired(reg, p.get("since"), now_instant())),
-               f"on ne retire que sa propre inscription en parallèle ({who_is} n'est pas {author})")
+               f"one withdraws only one's own parallel registration ({who_is} is not {author})")
         return "parallel_withdrawal", problems_found
     if pa != pn:
-        problems_found.append(f"{path} : on ne modifie pas une inscription en parallèle existante ; on s'inscrit ou on se retire")
+        problems_found.append(f"{path}: an existing parallel registration is not modified; one registers or withdraws")
     return "parallel_registration" if pa != pn else "note", problems_found
 
 
@@ -3627,7 +3627,7 @@ def check_debate(reg, path, git_status, old, new, author, *, is_council, instant
 
     def require(condition, message):
         if not condition:
-            problems_found.append(f"{path} : {message}")
+            problems_found.append(f"{path}: {message}")
         return condition
 
     def recent_date(value, what_it):
@@ -3638,18 +3638,18 @@ def check_debate(reg, path, git_status, old, new, author, *, is_council, instant
             problems_found.append(str(e))
             return None
         require(instant - TOLERANCE_DATE <= moment <= instant + LEAD_MAX,
-               f"{what_it} ({value}) doit être l'heure de la PR (à 2 h près, jamais dans le futur) : relancez la commande bee debate")
+               f"{what_it} ({value}) must be the time of the PR (within 2 h, never in the future): run the bee debate command again")
         return moment
 
     if not PATH_DEBATE.match(path):
         natures.append("governance")
-        require(is_council, "dans debates/, seuls les fichiers D-<nnnn>.yaml (bee debate open) ; le reste revient au conseil")
+        require(is_council, "in debates/, only D-<nnnn>.yaml files (bee debate open); the rest belongs to the council")
         return natures, problems_found, 0
     if git_status == "D":
         natures.append("governance")
-        require(False, "un débat ne se supprime jamais, même clos (commandement 10) ; pour le reprendre, ouvrez-en un nouveau qui le cite")
+        require(False, "a debate is never deleted, even closed (commandment 10); to take it up again, open a new one that cites it")
         return natures, problems_found, 0
-    if not require(isinstance(new, dict), "fichier illisible"):
+    if not require(isinstance(new, dict), "unreadable file"):
         return natures, problems_found, 0
     if raw is not None:
         # Forme canonique, octet pour octet : ce que la machine lit est exactement ce que voit un humain ou un agent qui
@@ -3659,93 +3659,93 @@ def check_debate(reg, path, git_status, old, new, author, *, is_council, instant
             canonical = debate_render(new, path).encode("utf-8")
         except BeeError:
             canonical = None
-        require(raw == canonical, "le fichier n'est pas exactement sous la forme qu'écrit bee debate (commentaire, autre mise en "
-                                  "forme, ou contenu que l'outil ne sait pas réécrire) : écrivez-le avec bee debate")
+        require(raw == canonical, "the file is not exactly in the form bee debate writes (a comment, other "
+                                  "formatting, or content the tool cannot rewrite): write it with bee debate")
     member = author in reg.members or author in reg.council
     privileged = with_status and author in reg.privileged_ones()  # status: see verifier_pr (ruche-0089)
 
     def check_synthesis(previous_value=None):
         text = new.get("synthesis")
-        problem_text = admissible_text(text, "synthèse", conf["synthesis_max"])
-        require(problem_text is None, f"{problem_text} (agora.synthesis_max) : une synthèse publiée n'est jamais vide, et reste courte")
-        problem_text = agora_datum(text, "synthèse")
+        problem_text = admissible_text(text, "synthesis", conf["synthesis_max"])
+        require(problem_text is None, f"{problem_text} (agora.synthesis_max): a published synthesis is never empty, and stays short")
+        problem_text = agora_datum(text, "synthesis")
         require(problem_text is None, problem_text)
-        require(new.get("synthesis_by") == author, f"synthesis_by : la synthèse est signée de son auteur ({author})")
+        require(new.get("synthesis_by") == author, f"synthesis_by: the synthesis is signed by its author ({author})")
         moment = recent_date(new.get("synthesis_at"), "synthesis_at")
         if moment and previous_value:
-            require(moment > previous_value, "synthesis_at : publier une synthèse, c'est la dater de maintenant")
+            require(moment > previous_value, "synthesis_at: publishing a synthesis means dating it now")
         last = ([a.get("id") for a in arguments_of(new)] or [None])[-1]
-        require(not new.get("invitation") or new.get("synthesis_covers") == last, f"synthesis_covers : an invitation's synthesis "
-               f"covers the last argument of the debate as merged ({_clean(last)}) : update main and synthesize again (ruche-0050)")
+        require(not new.get("invitation") or new.get("synthesis_covers") == last, f"synthesis_covers: an invitation's synthesis "
+               f"covers the last argument of the debate as merged ({_clean(last)}): update main and synthesize again (ruche-0050)")
 
     # Caviardage (commandement 10, phrase ajoutée ; R12) : le conseil seul retire d'un débat, même clos, le texte d'un argument
     # qui désigne ou décrit une personne extérieure, à son refus ou à sa demande ; c'est la seule modification d'un argument.
     if git_status == "M" and redactions(old, new):
         natures.append("redaction")
         for what_it, in_favour, reason in redactions(old, new):
-            require(is_council, f"{what_it} : seul le conseil caviarde, au refus ou à la demande d'une personne extérieure (bee debate "
-                                "caviarder)")
+            require(is_council, f"{what_it}: only the council redacts, on the refusal or at the request of an outside person (bee debate "
+                                "redact)")
             problem_text = redaction_refusal(reg, in_favour, reason)
-            require(problem_text is None, f"{what_it} : {problem_text}")
+            require(problem_text is None, f"{what_it}: {problem_text}")
         return natures, problems_found, 0
 
     if git_status == "A":
         natures.append("debate_opening")
         identifier = PATH_DEBATE.match(path)[1]
         require(expected is None or path == expected,
-               f"le débat suivant est {pathlib.PurePosixPath(expected or path).stem} (le plus grand numéro + 1, sans trou) : "
-               "bee debate open le numérote")
-        require(new.get("id") == identifier, f"id « {new.get('id')} » différent du nom de fichier « {identifier} »")
-        require(member, f"{author} doit d'abord s'inscrire (bee register)")
-        require(new.get("opened_by") == author, f"on n'ouvre un débat qu'en son nom ({author}), pas au nom de {new.get('opened_by')}")
+               f"the next debate is {pathlib.PurePosixPath(expected or path).stem} (the highest number + 1, no gap): "
+               "bee debate open numbers it")
+        require(new.get("id") == identifier, f"id « {new.get('id')} » differs from the file name « {identifier} »")
+        require(member, f"{author} must register first (bee register)")
+        require(new.get("opened_by") == author, f"one opens a debate only in one's own name ({author}), not in the name of {new.get('opened_by')}")
         if "invitation" in new:  # ruche-0050: opened for its invitation, by its proposer, in the PR that proposes it
             inv = reg.invitations.get(str(new.get("invitation")), (None, {}))[1]
             require(inv.get("debate") == identifier and inv.get("proposed_by") == author,
-                   f"invitation « {_clean(new.get('invitation'))} » : an invitation's debate is opened with it, by its proposer, "
+                   f"invitation « {_clean(new.get('invitation'))} »: an invitation's debate is opened with it, by its proposer, "
                    "and the invitation names it (bee invite does both)")
         if "rapporteur" in new:
-            require(new.get("rapporteur") == author, f"le premier rapporteur est celui qui ouvre le débat ({author}), ou personne")
+            require(new.get("rapporteur") == author, f"the first rapporteur is the one who opens the debate ({author}), or nobody")
         else:
             # Né sans rapporteur (bee debattre importer-questions) : le premier qui argumente le deviendra.
             require(not new.get("arguments") and not new.get("synthesis"),
-                   "un débat né sans rapporteur naît sans argument ni synthèse : le premier qui argumente devient rapporteur")
-        require(new.get("status") == "open", "un débat naît ouvert")
-        require(not any(c in new for c in CLOSING_KEYS if c != "status"), "un débat naît sans clôture")
+                   "a debate born without a rapporteur is born without an argument or a synthesis: the first to argue becomes rapporteur")
+        require(new.get("status") == "open", "a debate is born open")
+        require(not any(c in new for c in CLOSING_KEYS if c != "status"), "a debate is born without a closing")
         problem_text = admissible_text(new.get("question"), "question", conf["question_max"])
         require(problem_text is None, f"{problem_text} (agora.question_max)")
         problem_text = agora_datum(new.get("question"), "question")
         require(problem_text is None, problem_text)
-        require(not any(c in new for c in REDACTABLE.values()), "un débat naît sans caviardage")
+        require(not any(c in new for c in REDACTABLE.values()), "a debate is born without a redaction")
         open = recent_date(new.get("opened_at"), "opened_at")
         if open and not is_council:
             # Fenêtre glissante : tout ce que l'auteur a ouvert depuis 24 h avant cette ouverture, y compris après elle
             # (une ouverture antidatée dans la tolérance ne fait pas sortir de la fenêtre une ouverture récente).
             n = openings_since(reg, author, open - CAP_WINDOW)
             require(n <= conf["openings_max_per_24h"],
-                   f"plafond : {author} aurait {n} débats ouverts en 24 h (depuis le {en_iso(open - CAP_WINDOW)}), au plus "
-                   f"{conf['openings_max_per_24h']} sur 24 h glissantes (agora.openings_max_per_24h)")
+                   f"cap: {author} would have {n} debates opened in 24 h (since {en_iso(open - CAP_WINDOW)}), at most "
+                   f"{conf['openings_max_per_24h']} over a sliding 24 h (agora.openings_max_per_24h)")
         if new.get("synthesis"):
             check_synthesis()
         base = {"arguments": [], "rapporteur": new.get("rapporteur"), "opened_at": new.get("opened_at")}
     else:
-        if not require(isinstance(old, dict), "fichier illisible dans la base"):
+        if not require(isinstance(old, dict), "unreadable file in the base"):
             return natures, problems_found, 0
         if old == new:
             natures.append("governance")
-            require(is_council, "rien ne change dans les données : une PR ne reformate pas un débat")
+            require(is_council, "nothing changes in the data: a PR does not reformat a debate")
             return natures, problems_found, 0
         if old.get("status") != "open":
             natures.append("argument")
-            require(False, "débat clos : il ne reçoit plus rien (ni argument, ni synthèse, ni changement). Pour le reprendre, "
-                          "ouvrez un nouveau débat qui le cite (bee debate open)")
+            require(False, "closed debate: it takes nothing more (no argument, no synthesis, no change). To take it up again, "
+                          "open a new debate that cites it (bee debate open)")
             return natures, problems_found, 0
         for key in IMMUTABLE_DEBATE_KEYS:
-            require(old.get(key) == new.get(key), f"{key} ne change jamais : un débat garde sa question, son auteur et sa date")
+            require(old.get(key) == new.get(key), f"{key} never changes: a debate keeps its question, its author and its date")
         # La marque d'une synthèse caviardée ne s'ajoute que par un caviardage ; elle tombe avec la synthèse suivante.
         marker = "synthesis_redacted_for"
         require(new.get(marker) in (None, old.get(marker)) and (new.get(marker) is None
                                                                      or new.get("synthesis") == old.get("synthesis")),
-               f"{marker} : seul le conseil la pose, en caviardant (bee debate redact) ; elle tombe avec la synthèse suivante")
+               f"{marker}: only the council sets it, by redacting (bee debate redact); it falls with the next synthesis")
         base = old
 
     # --- Arguments : ajout seul ; seul doublon_de peut être posé sur un argument existant. ---
@@ -3756,70 +3756,70 @@ def check_debate(reg, path, git_status, old, new, author, *, is_council, instant
     old_items = base.get("arguments") if isinstance(base.get("arguments"), list) else []
     new_items = new.get("arguments") if isinstance(new.get("arguments"), list) else []
     added_items = []
-    if require(len(new_items) >= len(old_items), "les arguments sont en ajout seul : on n'en retire aucun (commandement 10)"):
+    if require(len(new_items) >= len(old_items), "arguments are append-only: none is removed (commandment 10)"):
         for i, (a, n) in enumerate(zip(old_items, new_items)):
             if a == n:
                 continue
             ident = a.get("id") if isinstance(a, dict) else f"arguments/{i}"
             duplicate_marker = (isinstance(a, dict) and isinstance(n, dict) and "duplicate_of" not in a
                       and set(n) == set(a) | {"duplicate_of", *(["duplicate_marked_by"] if proposing_member else [])} and all(n[k] == a[k] for k in a))
-            if not require(duplicate_marker, f"{ident} modifié, déplacé ou remplacé : les arguments sont en ajout seul, on n'en modifie aucun "
-                                  "(pour répondre ou corriger, ajoutez-en un avec replies_to)"):
+            if not require(duplicate_marker, f"{ident} modified, moved or replaced: arguments are append-only, none is modified "
+                                  "(to reply or correct, add one with replies_to)"):
                 continue
             natures.append("duplicate")
-            require(author == rapporteur or privileged, f"{ident} : seuls le rapporteur ({rapporteur}) ou un gardien marquent un doublon")
+            require(author == rapporteur or privileged, f"{ident}: only the rapporteur ({rapporteur}) or a guardian marks a duplicate")
             if proposing_member:
-                require(n.get("duplicate_marked_by") == author and not same_person(reg, author, proposing_member), f"{ident} : in an invitation's debate, "
+                require(n.get("duplicate_marked_by") == author and not same_person(reg, author, proposing_member), f"{ident}: in an invitation's debate, "
                        f"a duplicate marking is signed by its author (duplicate_marked_by: {author}), never by the proposer")
             target = next((x for x in new_items[:i] if isinstance(x, dict) and x.get("id") == n.get("duplicate_of")), None)
             require(target is not None and not target.get("duplicate_of") and target.get("position") == n.get("position"),
-                   f"{ident} ne peut être que le doublon d'un argument précédent, de même position, qui n'est pas lui-même un doublon")
+                   f"{ident} can only be the duplicate of an earlier argument, of the same position, that is not itself a duplicate")
         added_items = new_items[len(old_items):]
     if added_items:
         natures.append("argument")
-        require(member, f"{author} doit d'abord s'inscrire (bee register)")
+        require(member, f"{author} must register first (bee register)")
     previous_one = _instant_or_none(base.get("opened_at"))
     for x in old_items:
         moment = _instant_or_none(x.get("at")) if isinstance(x, dict) else None
         previous_one = max(previous_one, moment) if moment and previous_one else (moment or previous_one)
     for k, arg in enumerate(added_items):
         rank = len(old_items) + k
-        if not require(isinstance(arg, dict), f"arguments/{rank} illisible"):
+        if not require(isinstance(arg, dict), f"arguments/{rank} unreadable"):
             continue
         ident = f"A{rank + 1}"
-        require(arg.get("id") == ident, f"l'argument ajouté s'appelle {ident} (numérotation séquentielle, sans trou), pas « {arg.get('id')} »")
-        require(arg.get("by") == author, f"{ident} : on n'ajoute que ses propres arguments, signés de soi ({author}), pas au nom de "
+        require(arg.get("id") == ident, f"the added argument is called {ident} (sequential numbering, no gap), not « {arg.get('id')} »")
+        require(arg.get("by") == author, f"{ident}: one adds only one's own arguments, signed by oneself ({author}), not in the name of "
                                          f"{arg.get('by')}")
         moment = recent_date(arg.get("at"), f"{ident}.at")
         if moment and previous_one:
-            require(moment >= previous_one, f"{ident} : un argument n'est pas daté d'avant l'argument précédent ni d'avant l'ouverture")
+            require(moment >= previous_one, f"{ident}: an argument is not dated before the previous argument or before the opening")
         if "contested_by" in arg:  # ruche-0050: one argument may contest several markings
             markers = [x.get("id") for x in new_items[:rank] if isinstance(x, dict) and x.get("duplicate_of")]
             targets = arg["contested_by"] if isinstance(arg["contested_by"], list) else []
             require(targets and all(isinstance(c, str) and c in markers for c in targets),
-                   f"{ident} : contested_by : a list of earlier arguments marked as duplicates ({_clean(arg['contested_by'])})")
+                   f"{ident}: contested_by: a list of earlier arguments marked as duplicates ({_clean(arg['contested_by'])})")
         previous_one = max(previous_one, moment) if moment and previous_one else (moment or previous_one)
-        problem_text = admissible_text(arg.get("text"), f"{ident} : text", conf["text_max"])
-        require(problem_text is None, f"{problem_text} (agora.text_max) : un argument est court ; découpez-le, ou résumez et citez vos sources")
-        problem_text = agora_datum(arg.get("text"), f"{ident} : text")
+        problem_text = admissible_text(arg.get("text"), f"{ident}: text", conf["text_max"])
+        require(problem_text is None, f"{problem_text} (agora.text_max): an argument is short; split it, or summarize and cite your sources")
+        problem_text = agora_datum(arg.get("text"), f"{ident}: text")
         require(problem_text is None, problem_text)
-        require("duplicate_of" not in arg, f"{ident} : un argument naît sans duplicate_of (le rapporteur ou un gardien le pose ensuite)")
-        require("redacted_for" not in arg, f"{ident} : un argument naît sans caviardage")
+        require("duplicate_of" not in arg, f"{ident}: an argument is born without duplicate_of (the rapporteur or a guardian sets it later)")
+        require("redacted_for" not in arg, f"{ident}: an argument is born without a redaction")
         if arg.get("replies_to") is not None:
             require(any(isinstance(x, dict) and x.get("id") == arg.get("replies_to") for x in new_items[:rank]),
-                   f"{ident} : replies_to « {arg.get('replies_to')} » ne désigne pas un argument précédent de ce débat")
+                   f"{ident}: replies_to « {arg.get('replies_to')} » does not name an earlier argument of this debate")
         sources = arg.get("sources") if isinstance(arg.get("sources"), list) else []
         if arg.get("position") == "fact":
-            require(bool(sources), f"{ident} : un fait cite ses sources (adresse https:// ou chemin du registre) : on argumente sur "
-                                  "preuves (commandement 12)")
+            require(bool(sources), f"{ident}: a fact cites its sources (an https:// address or a registry path): we argue from "
+                                  "evidence (commandment 12)")
         # Les sources ne sont pas un second texte : peu nombreuses et courtes (sinon le plafond du texte se contourne).
         require(len(sources) <= conf["sources_per_argument_max"],
-               f"{ident} : {len(sources)} sources, au plus {conf['sources_per_argument_max']} (agora.sources_per_argument_max)")
+               f"{ident}: {len(sources)} sources, at most {conf['sources_per_argument_max']} (agora.sources_per_argument_max)")
         for s in sources:
             require(len(str(s)) <= conf["source_max"],
-                   f"{ident} : source de {len(str(s))} caractères, au plus {conf['source_max']} (agora.source_max)")
+                   f"{ident}: source of {len(str(s))} characters, at most {conf['source_max']} (agora.source_max)")
             problem_text = source_problem(reg, s)
-            require(problem_text is None, f"{ident} : source « {_clean(s)[:80]} » : {problem_text}")
+            require(problem_text is None, f"{ident}: source « {_clean(s)[:80]} »: {problem_text}")
     dates = [m for a in added_items if isinstance(a, dict) and (m := _instant_or_none(a.get("at")))]
     if added_dates is not None:
         added_dates.extend(dates)
@@ -3829,13 +3829,13 @@ def check_debate(reg, path, git_status, old, new, author, *, is_council, instant
         beginning = min(dates) - CAP_WINDOW
         n = arguments_since(new, author, beginning, reg.identities)
         require(n <= conf["arguments_max_per_24h"],
-               f"plafond : {author} aurait {n} arguments en 24 h dans ce débat (depuis le {en_iso(beginning)}), au plus "
-               f"{conf['arguments_max_per_24h']} par utilisateur et par débat sur 24 h glissantes (agora.arguments_max_per_24h) : "
-               "laissez les autres répondre")
+               f"cap: {author} would have {n} arguments in 24 h in this debate (since {en_iso(beginning)}), at most "
+               f"{conf['arguments_max_per_24h']} per user and per debate over a sliding 24 h (agora.arguments_max_per_24h): "
+               "let the others answer")
 
     pen = old.get("rapporteur") if git_status == "M" and isinstance(old, dict) else None  # judged when the pen changes hands
     if proposing_member and "rapporteur" in new and new.get("rapporteur") != pen:
-        require(not same_person(reg, new.get("rapporteur"), proposing_member), f"rapporteur « {_clean(new.get('rapporteur'))} » : the "
+        require(not same_person(reg, new.get("rapporteur"), proposing_member), f"rapporteur « {_clean(new.get('rapporteur'))} »: the "
                "proposer of the invitation never holds the pen of its debate, nor under an agent account or a linked account")
     if git_status == "M":
         if "rapporteur" not in old:
@@ -3844,13 +3844,13 @@ def check_debate(reg, path, git_status, old, new, author, *, is_council, instant
             if added_items and not (proposing_member and same_person(reg, author, proposing_member)):
                 natures.append("pen_takeover")
                 require(new.get("rapporteur") == author,
-                       f"premier à argumenter dans ce débat sans rapporteur, {author} en devient le rapporteur, dans la même PR "
-                       "(bee debate argue le fait) ; personne d'autre ne peut l'être à sa place")
+                       f"first to argue in this debate without a rapporteur, {author} becomes its rapporteur, in the same PR "
+                       "(bee debate argue does it); nobody else can be it in their place")
             else:
-                require("rapporteur" not in new, "un débat sans rapporteur n'en reçoit un que par son premier argument, pour "
-                                                    "l'auteur de cet argument")
+                require("rapporteur" not in new, "a debate without a rapporteur gets one only through its first argument, for "
+                                                    "the author of that argument")
             require(all(old.get(c) == new.get(c) for c in ("synthesis", "synthesis_by", "synthesis_at", "synthesis_covers")),
-                   "la synthèse se publie dans une PR suivante, une fois rapporteur (bee debate synthesize)")
+                   "the synthesis is published in a later PR, once rapporteur (bee debate synthesize)")
         else:
             # --- Synthèse : le rapporteur seul, qui désigne le suivant parmi les autres participants. ---
             changed_ones = [c for c in SYNTHESIS_KEYS if old.get(c) != new.get(c)]
@@ -3862,31 +3862,31 @@ def check_debate(reg, path, git_status, old, new, author, *, is_council, instant
                 if author == rapporteur or (survey is None and "synthesis_at" in changed_ones):
                     natures.append("synthesis")
                     check_synthesis(_instant_or_none(old.get("synthesis_at")) if old.get("synthesis") else None)
-                    require("synthesis_at" in changed_ones, "désigner le rapporteur suivant se fait en publiant la synthèse (bee debate synthesize)")
+                    require("synthesis_at" in changed_ones, "the next rapporteur is designated by publishing the synthesis (bee debate synthesize)")
                     if others:
                         require(new.get("rapporteur") in others,
-                               f"en publiant la synthèse, le rapporteur désigne le suivant parmi les autres participants "
-                               f"({', '.join(others)}), jamais lui-même : le rapporteur tourne")
+                               f"by publishing the synthesis, the rapporteur designates the next one among the other participants "
+                               f"({', '.join(others)}), never themselves: the rapporteur rotates")
                     else:
-                        require(new.get("rapporteur") == author, "seul participant, le rapporteur le reste")
+                        require(new.get("rapporteur") == author, "the only participant, the rapporteur remains rapporteur")
                 elif is_council and changed_ones == ["rapporteur"]:
                     # Relève d'un rapporteur absent par le conseil : jamais fusionnée automatiquement.
                     natures.append("governance")
                     require(new.get("rapporteur") in debate_participants(new),
-                           "le nouveau rapporteur est un participant du débat (celui qui l'a ouvert ou l'auteur d'un argument)")
+                           "the new rapporteur is a participant of the debate (the one who opened it or the author of an argument)")
                 else:
                     natures.append("synthesis")
-                    require(False, f"seul le rapporteur ({rapporteur}) publie la synthèse et désigne le suivant ; relève impossible : "
-                                  f"{survey or 'elle se fait en publiant la synthèse'} ; {author} peut ajouter un argument "
+                    require(False, f"only the rapporteur ({rapporteur}) publishes the synthesis and designates the next one; relief impossible: "
+                                  f"{survey or 'it is done by publishing the synthesis'}; {author} can add an argument "
                                   "(bee debate argue)")
 
         # --- Clôture : le rapporteur, un gardien ou le conseil, en nommant ce qui sort du débat. ---
         changed_ones = [c for c in CLOSING_KEYS if old.get(c) != new.get(c)]
         if changed_ones:
             natures.append("debate_closing")
-            require(new.get("status") == "closed", "un débat ouvert ne change de statut que pour être clos (bee debate close)")
+            require(new.get("status") == "closed", "an open debate changes status only to be closed (bee debate close)")
             require(author == rapporteur or privileged,
-                   f"seuls le rapporteur ({rapporteur or RAPPORTEUR_ABSENT}), un gardien ou le conseil closent un débat")
+                   f"only the rapporteur ({rapporteur or RAPPORTEUR_ABSENT}), a guardian or the council closes a debate")
             if proposing_member:  # ruche-0050
                 inv = reg.invitations.get(str(new.get("invitation")), (None, {}))[1]
                 require(privileged and invitation_state(inv) != "proposed", "an invitation's debate is closed by a guardian or the "
@@ -3894,9 +3894,9 @@ def check_debate(reg, path, git_status, old, new, author, *, is_council, instant
             if finished:
                 require((is_council or (with_status and author in guardians_in_office(reg) and not same_person(reg, author, proposing_member)
                         and not vouched_by_proposer(reg, author, proposing_member))) and new.get("outcome") == "no_follow_up", END_NO_FOLLOW_UP.format(finished))
-            require(new.get("closed_by") == author, f"closed_by : la clôture est signée de son auteur ({author})")
+            require(new.get("closed_by") == author, f"closed_by: the closing is signed by its author ({author})")
             recent_date(new.get("closed_at"), "closed_at")
-            if require(new.get("outcome") in ISSUES, "la clôture nomme ce qui sort du débat : outcome proposal, task, decision ou "
+            if require(new.get("outcome") in ISSUES, "the closing names what comes out of the debate: outcome proposal, task, decision or "
                                                        "no_follow_up"):
                 problem_text = reference_problem(reg, new.get("outcome"), new.get("reference"))
                 require(problem_text is None, f"{problem_text}")
@@ -3905,12 +3905,12 @@ def check_debate(reg, path, git_status, old, new, author, *, is_council, instant
                 last_one = previous_one
                 synthesis = _instant_or_none(new.get("synthesis_at")) if new.get("synthesis") else None
                 require(synthesis is not None and last_one is not None and synthesis >= last_one,
-                       "le rapporteur clôt sur une synthèse à jour, postérieure au dernier argument : publiez-la d'abord, ou dans la "
-                       "même PR (bee debate close --synthesis)")
+                       "the rapporteur closes on an up-to-date synthesis, later than the last argument: publish it first, or in the "
+                       "same PR (bee debate close --synthesis)")
                 silence = conf["silence_before_close_hours"]
                 require(last_one is not None and instant - last_one >= dt.timedelta(hours=silence),
-                       f"le rapporteur ne clôt qu'après {silence} h sans nouvel argument (agora.silence_before_close_hours), pour "
-                       "que chacun ait le temps de répondre ; un gardien ou le conseil peut clore plus tôt")
+                       f"the rapporteur closes only after {silence} h without a new argument (agora.silence_before_close_hours), so "
+                       "that everyone has time to answer; a guardian or the council can close earlier")
     return natures, problems_found, len(added_items)
 
 
