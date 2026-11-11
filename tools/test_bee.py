@@ -6133,9 +6133,9 @@ class TestParallelPullRequests(BaseParallel):
         self.assertIn("tooling", text)
 
 
-# Faux `gh` pour rejouer les étapes d'integration-auto.yml et de verdicts.yml hors ligne : état des PR dans FAUX_GH_ETAT
-# ({url: {state, head, auteur, merge, conflit, verdict}}), chaque appel journalisé dans FAUX_GH_JOURNAL. Une PR qui porte
-# un « verdict » a une exécution de CI terminée sur sa tête (numéro de run = numéro de PR).
+# Fake `gh` to replay the steps of auto-integration.yml and verdicts.yml offline: the PRs' state in FAKE_GH_STATE
+# ({url: {state, head, author, merge, conflit, verdict}}), each call logged in FAKE_GH_LOG. A PR that carries
+# a « verdict » has a finished CI run on its head (run number = PR number).
 FAKE_GH = r'''
 import json, os, sys
 etat_chemin, log_text, args = os.environ["FAKE_GH_STATE"], os.environ["FAKE_GH_LOG"], sys.argv[1:]
@@ -6327,7 +6327,7 @@ PR_MINIZ = "https://github.com/Bee-ruche/minizBee/pull/"
 
 
 class TestAdversarialReview(BaseParallel):
-    """Revue adverse indépendante de ruche-0001 : chaque constat est désormais refusé (ou borné)."""
+    """Independent adversarial review of ruche-0001: each finding is now refused (or bounded)."""
 
     def init_git(self):
         git(self.dir, "init", "-q", "-b", "main")
@@ -6348,7 +6348,7 @@ class TestAdversarialReview(BaseParallel):
         return self.bee("check-pr", "--base", "main", "--head", "HEAD", "--author", author, *options)
 
     def step(self, name, states=None, stream="auto-integration.yml", extra_env=None, success=True, script=None):
-        """Rejoue une étape d'un workflow (auto-integration.yml par défaut), ou `script`, avec le faux gh : (sortie, état des PR, appels)."""
+        """Replays a step of a workflow (auto-integration.yml by default), or `script`, with the fake gh: (output, PR states, calls)."""
         import yaml
         data = yaml.safe_load((self.dir / ".github/workflows" / stream).read_text(encoding="utf-8"))
         steps = [s for job in data["jobs"].values() for s in job["steps"]]
@@ -6398,26 +6398,26 @@ class TestAdversarialReview(BaseParallel):
         return [a for a in calls if a["args"][:len(command)] == list(command)]
 
     def reviewed_race(self, parallel_gain=0.03, holder_gain=0.05):
-        c1, c2 = self.race_of_two(parallel_gain, holder_gain)  # c1 bruno 14 h, c2 alice 17 h ; F = 31/10 14 h
+        c1, c2 = self.race_of_two(parallel_gain, holder_gain)  # c1 bruno 14:00, c2 alice 17:00; F = 31 Oct 14:00
         self.review(c1, "chloe", "bidji29")
         self.review(c2, "chloe", "bidji29")
         return c1, c2
 
-    # --- B1 : borne dure, F + 24 h ---
+    # --- B1: hard bound, F + 24 h ---
 
     def test_B1_a_never_mergeable_competitor_no_longer_holds_after_closure_plus_24h(self):
-        c1, c2 = self.reviewed_race()  # c2 (alice) mieux classée
-        # L'auteur de c2 pousse un commit sans CI après son verdict : bee la croit intégrable, le workflow ne la fusionne pas.
+        c1, c2 = self.reviewed_race()  # c2 (alice) ranked higher
+        # c2's author pushes a commit without CI after its verdict: bee believes it integrable, the workflow does not merge it.
         states = {PR_MINIZ + "99101": {"state": "OPEN", "head": "abc1234", "author": "bruno"},
                  PR_MINIZ + "99102": {"state": "OPEN", "head": "0ddba11", "author": "alice"}}
-        self.a("2026-11-01T00:00:00Z")  # entre F et F + 24 h
+        self.a("2026-11-01T00:00:00Z")  # between F and F + 24 h
         _, state, calls = self.step("Integrate what satisfies R3, close what is abandoned", states)
         self.assertFalse(self.calls_of(calls, "pr", "merge"))
         code, text = self.acceptance(c1)
         self.assertEqual(code, 1, text)
         self.assertIn(f"the rival {c2}, integrable, is ranked better", text)
         self.assertIn("2026-11-01T14:00:00Z", text)
-        self.a("2026-11-01T14:00:00Z")  # F + 24 h : plus personne ne retient c1
+        self.a("2026-11-01T14:00:00Z")  # F + 24 h: no one holds c1 back any more
         self.assertEqual(self.acceptance(c1)[0], 0)
         _, state, calls = self.step("Integrate what satisfies R3, close what is abandoned")
         self.assertEqual([a["args"][2] for a in self.calls_of(calls, "pr", "merge")], [PR_MINIZ + "99101"])
@@ -6429,7 +6429,7 @@ class TestAdversarialReview(BaseParallel):
         c1, c2 = self.reviewed_race()
         states = {PR_MINIZ + "99101": {"state": "OPEN", "head": "abc1234", "author": "bruno"},
                  PR_MINIZ + "99102": {"state": "OPEN", "head": "abc1234", "author": "alice", "conflit": True}}
-        self.a("2026-10-31T15:00:00Z")  # entre F et F + 24 h : la mieux classée est essayée d'abord, en vain
+        self.a("2026-10-31T15:00:00Z")  # between F and F + 24 h: the higher-ranked one is tried first, in vain
         _, _, calls = self.step("Integrate what satisfies R3, close what is abandoned", states)
         self.assertEqual([a["args"][2] for a in self.calls_of(calls, "pr", "merge")], [PR_MINIZ + "99102"])
         self.assertEqual(self.rec(c1)["status"], "in_review")
@@ -6443,14 +6443,14 @@ class TestAdversarialReview(BaseParallel):
         states = {PR_MINIZ + "99101": {"state": "OPEN", "head": "abc1234", "author": "bruno",
                                       "files": ["bee/ci/verdict.py", ".github/workflows/bee-ci.yml"]},
                  PR_MINIZ + "99102": {"state": "OPEN", "head": "abc1234", "author": "alice", "fichiers_illisibles": True}}
-        self.a("2026-11-02T00:00:00Z")  # au-delà de 120 h : plus rien ne retient l'une ou l'autre
+        self.a("2026-11-02T00:00:00Z")  # beyond 120 h: nothing holds either one back any more
         output_text, state, calls = self.step("Integrate what satisfies R3, close what is abandoned", states)
         self.assertFalse(self.calls_of(calls, "pr", "merge"), "neither a modified workflow nor an unreadable file list")
         self.assertIn("modifies a CI workflow", output_text)
         self.assertIn("the PR's files are unreadable", output_text)
         self.assertEqual((state[PR_MINIZ + "99101"]["state"], state[PR_MINIZ + "99102"]["state"]), ("OPEN", "OPEN"))
         self.assertEqual((self.rec(c1)["status"], self.rec(c2)["status"]), ("in_review", "in_review"))
-        # Fusionnée à la main par le conseil sur le commit jugé : consignée au passage suivant.
+        # Merged by hand by the council on the judged commit: recorded at the next pass.
         state[PR_MINIZ + "99102"].update({"state": "MERGED", "merge": "e" * 40, "fichiers_illisibles": False})
         _, _, calls = self.step("Integrate what satisfies R3, close what is abandoned", state)
         self.assertFalse(self.calls_of(calls, "pr", "merge"))
@@ -6461,14 +6461,14 @@ class TestAdversarialReview(BaseParallel):
         order = [c["id"] for c in json.loads(self.bee("pending")[1]) if c["id"].startswith("miniz-0099-")]
         self.assertEqual(order, [c2, c1])
 
-    # --- B2 : jamais la PR d'un autre ; jamais de soumission sans fork ---
+    # --- B2: never someone else's PR; never a submission without a fork ---
 
     def test_B2_the_pr_of_another_is_never_closed(self):
         self.close_gate()
-        c1 = self.submit_0099("alice")  # 27/10 12 h, PR 99007 ; clôture le 31/10 12 h
+        c1 = self.submit_0099("alice")  # 27 Oct 12:00, PR 99007; close on 31 Oct 12:00
         self.a("2026-10-27T13:00:00Z")
         self.parallel_one("miniz-0099", "chloe")
-        victim = PR_MINIZ + "4242"  # PR ouverte sur le fork par quelqu'un d'autre
+        victim = PR_MINIZ + "4242"  # PR opened on the fork by someone else
         c2 = self.submit("miniz-0099", "chloe", 4242)
         self.verdict(c1, 0.05)
         self.review(c1, "bruno", "bidji29")
@@ -6482,7 +6482,7 @@ class TestAdversarialReview(BaseParallel):
         self.assertFalse(self.calls_of(calls, "pr", "close"))
         self.assertEqual(state[victim]["state"], "OPEN")
         self.assertIn("opened by mallory, not by chloe", output_text)
-        # La même PR, si elle était bien celle de chloe, serait fermée (avec le jeton des forks).
+        # The same PR, if it really were chloe's, would be closed (with the forks' token).
         state[victim]["author"] = "chloe"
         (self.dir.parent / "pr_state.json").write_text(json.dumps(state), encoding="utf-8")
         _, state, calls = self.step("Close the PRs of the contributions set aside")
@@ -6496,7 +6496,7 @@ class TestAdversarialReview(BaseParallel):
             OPTIMIZATION_TASK.replace("miniz-0099", "bzip2-9001").replace("project: miniz", "project: bzip2")
             .replace("type: optimization", "type: test").replace("metric: debit_compression_n6", "metric: null")
             .replace("compressed_output: identical\n", "")
-            # bzip2 n'a pas encore de nœud dans l'arbre du sens : la tâche se rattache à sa catégorie (docs/arbre.md).
+            # bzip2 has no node in the tree of meaning yet: the task attaches to its category (docs/tree.md).
             .replace("status: open", "node: projects/lossless-compression\nstatus: open"), encoding="utf-8")
         self.valid_one()
         self.assertEqual(self.bee("take", "bzip2-9001", "--user", "alice")[0], 0)
@@ -6512,7 +6512,7 @@ class TestAdversarialReview(BaseParallel):
         self.assertEqual(code, 1)
         self.assertIn("has no fork", text)
 
-    # --- I1 : un participant engagé ne juge pas, quelle que soit la date ---
+    # --- I1: an engaged participant does not judge, whatever the date ---
 
     def test_I1_withdraw_judge_register_again_does_not_block_the_competitor(self):
         (self.dir / "governance/guardians.yaml").write_text("members:\n  - login: bruno\n", encoding="utf-8")
@@ -6527,8 +6527,8 @@ class TestAdversarialReview(BaseParallel):
         self.assertEqual(self.bee("release", "miniz-0099", "--user", "bruno")[0], 0)
         self.assertEqual(self.bee("review", c1, *self.read_value(c1), "--user", "bruno", "--opinion", "unfavorable", "--reason", "Je préfère la mienne.")[0], 0)
         self.a("2026-10-27T15:05:00Z")
-        self.parallel_one("miniz-0099", "bruno", expected=1)  # qui a jugé la course n'y entre plus
-        # Réinscrit malgré tout (écrit hors de l'outil) : son avis défavorable ne bloque pas la concurrente.
+        self.parallel_one("miniz-0099", "bruno", expected=1)  # whoever has judged the race no longer enters it
+        # Registered again anyway (written outside the tool): his unfavorable opinion does not block the competitor.
         bee.modify_task(self.dir / "tasks/miniz/miniz-0099.yaml",
                            parallel=[{"user": "bruno", "since": "2026-10-27T15:05:00Z"}])
         self.review(c1, "chloe", "bidji29")
@@ -6539,7 +6539,7 @@ class TestAdversarialReview(BaseParallel):
     def test_I1_an_engaged_one_neither_withdraws_nor_changes_its_vote_on_a_competitor(self):
         self.close_gate()
         c1 = self.submit_0099("alice")
-        self.assertEqual(self.bee("vote", c1, "--user", "bidji29", "--value", "1")[0], 0)  # avant tout engagement
+        self.assertEqual(self.bee("vote", c1, "--user", "bidji29", "--value", "1")[0], 0)  # before any engagement
         self.init_git()
         self.a("2026-10-27T13:00:00Z")
         self.parallel_one("miniz-0099", "bidji29")
@@ -6553,10 +6553,10 @@ class TestAdversarialReview(BaseParallel):
         self.assertEqual(code, 1, text)
         self.assertIn("you neither change nor withdraw your vote while in the race", text)
 
-    # --- I2 : fermer après publication ; jamais « annulee » quand une concurrente a gagné ---
+    # --- I2: closing after publication; never « cancelled » when a competitor has won ---
 
     def test_I2_a_missed_publication_does_not_make_a_set_aside_one_cancelled(self):
-        c1, c2 = self.reviewed_race()  # c2 (alice) mieux classée
+        c1, c2 = self.reviewed_race()  # c2 (alice) ranked higher
         self.a("2026-10-28T18:00:00Z")
         self.init_git()
         states = {PR_MINIZ + "99101": {"state": "OPEN", "head": "abc1234", "author": "bruno"},
@@ -6565,7 +6565,7 @@ class TestAdversarialReview(BaseParallel):
         self.assertEqual(state[PR_MINIZ + "99102"]["state"], "MERGED")
         self.assertEqual(state[PR_MINIZ + "99101"]["state"], "OPEN", "nothing is closed before publication")
         self.assertFalse(self.calls_of(calls, "pr", "close"))
-        # La publication échoue : le registre revient à main ; entre-temps, bruno ferme lui-même sa PR.
+        # Publication fails: the registry goes back to main; meanwhile, bruno closes his PR himself.
         git(self.dir, "checkout", "-q", "--", ".")
         self.assertEqual((self.rec(c1)["status"], self.rec(c2)["status"]), ("in_review", "in_review"))
         state[PR_MINIZ + "99101"]["state"] = "CLOSED"
@@ -6576,7 +6576,7 @@ class TestAdversarialReview(BaseParallel):
         self.valid_one()
         levels = bee.compute_levels(bee.Registry(self.dir))
         self.assertEqual(levels["chloe"]["reviews"], 1, "+1 for c2 integrated, 0 for c1 set aside")
-        # Un passage de plus ne change rien.
+        # One more pass changes nothing.
         before = (self.dir / f"contributions/miniz/{c1}.yaml").read_text(encoding="utf-8")
         self.step("Integrate what satisfies R3, close what is abandoned")
         self.assertEqual((self.dir / f"contributions/miniz/{c1}.yaml").read_text(encoding="utf-8"), before)
@@ -6591,7 +6591,7 @@ class TestAdversarialReview(BaseParallel):
         self.assertEqual(self.rec(c1)["status"], "in_review")
         self.assertEqual(self.bee("close", c1, "--reason", "PR closed without merge.")[0], 0, "with no winning rival, it is closed")
 
-    # --- I3 : le conseil intègre lui-même une course de la ruche ---
+    # --- I3: the council integrates a hive race itself ---
 
     def submit_hive(self, who_is, number_of):
         code, text = self.bee("submit", "ruche-0001", "--user", who_is, "--pr", f"https://github.com/Bee-ruche/registre/pull/{number_of}")
@@ -6599,7 +6599,7 @@ class TestAdversarialReview(BaseParallel):
         return text.split("contribution ", 1)[1].split(" ", 1)[0]
 
     def test_I3_the_council_integrates_a_hive_race(self):
-        # ruche-0001 (jeu figé) est intégrée : on repart d'une tâche ouverte, sans contribution.
+        # ruche-0001 (frozen fixture) is integrated: the test starts again from an open task, without a contribution.
         task_path = self.dir / "tasks/ruche/ruche-0001.yaml"
         task = bee.read_yaml(task_path)
         for key in ("reservation", "contribution", "parallel"):
@@ -6641,14 +6641,14 @@ class TestAdversarialReview(BaseParallel):
         code, text = self.verify("alice")
         self.assertEqual(code, 1, "a member does not set aside")
 
-    # --- I4 : une CI lente ne fait pas perdre la course ---
+    # --- I4: a slow CI does not lose the race ---
 
     def test_I4_a_slow_ci_does_not_lose_the_race_for_who_was_already_working(self):
         self.close_gate()
         self.a("2026-10-27T11:00:00Z")
         self.assertEqual(self.bee("take", "miniz-0099", "--user", "alice")[0], 0)
         self.a("2026-10-27T11:30:00Z")
-        self.parallel_one("miniz-0099", "chloe")  # engagée avant la soumission de c1 (N3)
+        self.parallel_one("miniz-0099", "chloe")  # engaged before c1's submission (N3)
         self.a("2026-10-27T12:00:00Z")
         c1 = self.submit("miniz-0099", "alice", 99007)
         self.a("2026-10-27T13:00:00Z")
@@ -6667,11 +6667,11 @@ class TestAdversarialReview(BaseParallel):
         self.assertEqual(code, 1, text)
         self.assertIn(f"the rival {c2} is ranked better", text)
 
-    # --- I5 : le classement suit le gain mesuré, pas les relectures ni les votes ---
+    # --- I5: the ranking follows the measured gain, not the reviews or the votes ---
 
     def test_I5_complaisance_reviews_do_not_buy_the_ranking(self):
         self.assertEqual(self.bee("register", "--login", "david", "--account-created-on", "2020-01-01")[0], 0)
-        c1, c2 = self.race_of_two(0.07, 0.05)  # c1 (bruno) 7 %, c2 (alice) 5 %
+        c1, c2 = self.race_of_two(0.07, 0.05)  # c1 (bruno) 7%, c2 (alice) 5%
         self.review(c1, "chloe", "bidji29")
         self.review(c2, "chloe", "bidji29", "david")
         self.a("2026-10-28T18:00:00Z")
@@ -6690,7 +6690,7 @@ class TestAdversarialReview(BaseParallel):
         self.assertEqual([c for c, _ in bee.race_ranking(reg, "miniz-0099", levels)], [c1, c2])
         self.assertAlmostEqual(bee.measured_gain(reg, self.rec(c1)), 0.07 / 1.1)
 
-    # --- I6 : clé YAML en double ---
+    # --- I6: duplicate YAML key ---
 
     def test_I6_a_duplicate_key_is_refused(self):
         self.init_git()
@@ -6710,7 +6710,7 @@ class TestAdversarialReview(BaseParallel):
         self.assertEqual(code, 1, text)
         with self.assertRaises(bee.BeeError):
             bee.load_yaml_text("a: 1\nb: 2\na: 3\n")
-        # La même classe d'attaque existait avec la clé reservation (outil de base) : refusée aussi.
+        # The same class of attack existed with the reservation key (base tool): refused too.
         git(self.dir, "switch", "-q", "main")
         self.branch("doublon-reservation")
         text = OPTIMIZATION_TASK.replace("status: open", 'status: reserved\nreservation:\n  user: "bruno"\n  since: "2020-01-01T00:00:00Z"')
@@ -6742,13 +6742,13 @@ class TestAdversarialReview(BaseParallel):
         code, text = self.verify("chloe")
         self.assertEqual(code, 1, text)
         self.assertIn("the next contribution of miniz-0099 is miniz-0099-c2", text)
-        # Même face à un trou, bee soumettre prend le numéro suivant le plus grand : il n'écrase jamais un fichier.
+        # Even facing a gap, bee submit takes the number after the largest: it never overwrites a file.
         self.assertEqual(self.submit("miniz-0099", "alice", 99102), "miniz-0099-c4")
 
     def test_M2_a_submission_is_not_dated_before_the_registration_of_another(self):
         self.close_gate()
         self.init_git()
-        self.submit_0099("alice")  # 12 h
+        self.submit_0099("alice")  # 12:00
         self.a("2026-10-27T12:30:00Z")
         self.parallel_one("miniz-0099", "chloe")
         self.a("2026-10-27T13:00:00Z")
@@ -6774,25 +6774,25 @@ class TestAdversarialReview(BaseParallel):
         self.assertEqual(self.verify("bidji29", "--auto-merge")[0], 3, "council decision: no automatic merge")
         self.assertEqual(self.verify("alice")[0], 1)
 
-    # --- Vol de crédit : la PR d'une contribution doit être celle de son auteur ---
+    # --- Credit theft: a contribution's PR must be its author's ---
 
     def test_credit_theft_no_verdict_for_the_pr_of_another(self):
-        c1 = self.submit_0099("alice")  # PR 99007, ouverte en réalité par mallory
+        c1 = self.submit_0099("alice")  # PR 99007, actually opened by mallory
         verdict = {"ci": "green", "gain": 0.05, "beyond_noise": True, "changed_lines": 10, "instructions": INSTRUCTIONS_N6}
         states = {PR_MINIZ + "99007": {"state": "OPEN", "head": "abc1234", "author": "mallory", "verdict": verdict}}
         output_text, _, calls = self.step("Fetch the verdicts", states, stream="verdicts.yml")
         self.assertIn(f"{c1}: PR {PR_MINIZ}99007 was opened by mallory, not by alice; no verdict", output_text)
         self.assertNotIn("verdict", self.rec(c1))
         self.assertFalse(self.calls_of(calls, "run"), "no CI run is even read")
-        states[PR_MINIZ + "99007"]["author"] = "Alice"  # le login GitHub ne tient pas compte de la casse
+        states[PR_MINIZ + "99007"]["author"] = "Alice"  # the GitHub login ignores case
         self.step("Fetch the verdicts", states, stream="verdicts.yml")
         rec = self.rec(c1)
         self.assertEqual((rec["verdict"]["ci"], rec["verdict"]["sha"], rec["verdict"]["checked_files"]), ("green", "abc1234", True))
         self.valid_one()
 
     def test_the_verdict_carries_the_tree_of_the_judged_commit(self):
-        """ruche-0012 (revue adverse) : verdicts.yml lit l'arbre git du commit jugé auprès de l'API et l'écrit au verdict.
-        ruche-0028 (revue adverse, M1) : sans réponse lisible, aucun verdict ; il est rejugé au passage suivant."""
+        """ruche-0012 (adversarial review): verdicts.yml reads the git tree of the judged commit from the API and writes it into
+        the verdict. ruche-0028 (adversarial review, M1): without a readable answer, no verdict; it is judged again at the next pass."""
         c1 = self.submit_0099("alice")
         verdict = {"ci": "green", "gain": 0.05, "beyond_noise": True, "changed_lines": 10, "instructions": INSTRUCTIONS_N6}
         states = {PR_MINIZ + "99007": {"state": "OPEN", "head": "abc1234", "author": "alice", "verdict": verdict},
@@ -6800,11 +6800,11 @@ class TestAdversarialReview(BaseParallel):
         output_text, _, _ = self.step("Fetch the verdicts", states, stream="verdicts.yml")
         self.assertNotIn("verdict", self.rec(c1), "the API did not give the tree: nothing is recorded")
         self.assertIn(f"::notice::{c1}: git tree of commit abc1234 unreadable from the API; no verdict", output_text)
-        states["arbres"] = {"abc1234": "7ee0001"}  # le passage suivant
+        states["arbres"] = {"abc1234": "7ee0001"}  # the next pass
         _, _, calls = self.step("Fetch the verdicts", states, stream="verdicts.yml")
         self.assertTrue([a for a in calls if a["args"][:2] == ["api", "repos/Bee-ruche/minizBee/git/commits/abc1234"]])
         self.assertEqual((self.rec(c1)["verdict"]["sha"], self.rec(c1)["verdict"]["tree"]), ("abc1234", "7ee0001"))
-        # Réponses mal formées (hostile, plusieurs lignes, trop longue) : aucun verdict, le précédent reste.
+        # Malformed answers (hostile, several lines, too long): no verdict, the previous one stays.
         for number_of, malformed_one in enumerate(("pas-un-sha;id", "7ee0003\nabc1234", "7ee0" + "0" * 40)):
             sha = f"abc124{number_of}"
             states[PR_MINIZ + "99007"]["head"] = sha
@@ -6814,8 +6814,8 @@ class TestAdversarialReview(BaseParallel):
         self.valid_one()
 
     def test_the_verdict_compares_to_the_task_manifest_never_to_an_old_one(self):
-        """Tour 2 : un CONTRIBUTION.yaml resté sur master (miniz-0016) avait servi d'étalon à miniz-0018-c1 (9,1 points
-        d'écart inventés). Le workflow lit d'abord manifests/<tâche>.yaml ; bee ignore un manifeste d'une autre tâche."""
+        """Round 2: a CONTRIBUTION.yaml left on master (miniz-0016) had served as the yardstick for miniz-0018-c1 (9.1 points of
+        invented gap). The workflow reads manifests/<task>.yaml first; bee ignores a manifest of another task."""
         c1 = self.submit_0099("alice")
         verdict = {"ci": "green", "gain": 0.03, "beyond_noise": True, "changed_lines": 10, "instructions": INSTRUCTIONS_N6}
         old = FILLED_MANIFEST.replace("task: miniz-0099", "task: miniz-0016")
@@ -6824,7 +6824,7 @@ class TestAdversarialReview(BaseParallel):
         output_text, _, _ = self.step("Fetch the verdicts", states, stream="verdicts.yml")
         self.assertIn("manifest ignored (task miniz-0016, not miniz-0099)", output_text)
         self.assertNotIn("declared_gap", self.rec(c1)["verdict"])
-        # Le manifeste de la tâche, à sa place, est celui qui compte (gain déclaré 10 %, mesuré 3 %).
+        # The task's manifest, in its place, is the one that counts (declared gain 10%, measured 3%).
         states[PR_MINIZ + "99007"]["head"] = "abc1235"
         states["contenus"] = {"abc1235": {"CONTRIBUTION.yaml": old, "manifests/miniz-0099.yaml": FILLED_MANIFEST}}
         output_text, _, _ = self.step("Fetch the verdicts", states, stream="verdicts.yml")
@@ -6833,8 +6833,8 @@ class TestAdversarialReview(BaseParallel):
         self.valid_one()
 
     def test_a_hostile_manifest_writes_no_workflow_command(self):
-        """Revue adverse du tour 2 : la tâche déclarée par le manifeste (donnée du fork) était imprimée telle quelle ; un
-        saut de ligne suivi de « :: » devenait une commande de workflow GitHub (::add-mask::, ::error::…)."""
+        """Adversarial review of round 2: the task declared by the manifest (data from the fork) was printed as is; a line
+        break followed by « :: » became a GitHub workflow command (::add-mask::, ::error::…)."""
         c1 = self.submit_0099("alice")
         verdict = {"ci": "green", "gain": 0.03, "beyond_noise": True, "changed_lines": 10, "instructions": INSTRUCTIONS_N6}
         hostile = FILLED_MANIFEST.replace("task: miniz-0099", 'task: "x\\n::add-mask::verte\\n::error::faux"')
@@ -6846,18 +6846,18 @@ class TestAdversarialReview(BaseParallel):
         self.assertEqual(self.rec(c1)["verdict"]["ci"], "green", "the verdict itself is recorded")
 
     def test_the_workflow_derives_the_task_as_bee_does(self):
-        """Revue adverse du tour 2 : le sed de verdicts.yml doit reconnaître les projets à tiret, comme ID_CONTRIBUTION."""
+        """Adversarial review of round 2: verdicts.yml's sed must recognize projects with a hyphen, like ID_CONTRIBUTION."""
         stream = (ROOT / ".github/workflows/verdicts.yml").read_text(encoding="utf-8")
         line_text = next(l for l in stream.splitlines() if "task=$(printf" in l)
-        command = line_text.split("task=", 1)[1].split("  #")[0].strip()[2:-1]  # le contenu de $( … )
+        command = line_text.split("task=", 1)[1].split("  #")[0].strip()[2:-1]  # the content of $( … )
         for cid in ("miniz-0018-c1", "zlib-ng-0001-c12", "a-0001-c1;id", "../miniz-0018-c1", "miniz-0018"):
             expected = bee.ID_CONTRIBUTION.match(cid)
             output_text = subprocess.run(["bash", "-c", command], env={**os.environ, "id": cid}, capture_output=True, text=True).stdout
             self.assertEqual(output_text, expected["task"] if expected else "", cid)
 
     def test_a_hive_contribution_does_not_stop_the_verdict_collection(self):
-        """Une contribution dont la PR est sur le registre lui-même (projet ruche) n'a pas de CI de fork : la collecte la
-        passe, sans appel à GitHub, et continue pour les autres (incident du 30/10 : HTTP 404 sur bee-ci.yml)."""
+        """A contribution whose PR is on the registry itself (project ruche) has no fork CI: the collection skips it, without a
+        call to GitHub, and goes on for the others (incident of 30 Oct: HTTP 404 on bee-ci.yml)."""
         c1 = self.submit_0099("alice")
         path = self.dir / f"contributions/miniz/{c1}.yaml"
         rec = bee.read_yaml(path)
@@ -6881,18 +6881,18 @@ class TestAdversarialReview(BaseParallel):
         self.assertIn("opened by mallory, not by alice; neither merged nor recorded", output_text)
         self.assertFalse(self.calls_of(calls, "pr", "merge"))
         self.assertEqual((state[PR_MINIZ + "99007"]["state"], self.rec(c1)["status"]), ("OPEN", "in_review"))
-        # Déjà fusionnée à la main, elle n'est pas consignée non plus au nom d'alice.
+        # Already merged by hand, it is not recorded in alice's name either.
         states[PR_MINIZ + "99007"].update({"state": "MERGED", "merge": "e" * 40})
         output_text, _, _ = self.step("Integrate what satisfies R3, close what is abandoned", states)
         self.assertIn("neither merged nor recorded", output_text)
         self.assertEqual(self.rec(c1)["status"], "in_review")
-        # La même PR, ouverte par alice : consignée, avec le commit de fusion.
+        # The same PR, opened by alice: recorded, with the merge commit.
         states[PR_MINIZ + "99007"]["author"] = "alice"
         self.step("Integrate what satisfies R3, close what is abandoned", states)
         self.assertEqual((self.rec(c1)["status"], self.rec(c1)["merge_sha"]), ("integrated", "e" * 40))
         self.valid_one()
 
-    # --- annulee : seuls les relecteurs d'une contribution intégrée puis annulée perdent un point ---
+    # --- cancelled: only the reviewers of a contribution integrated and then cancelled lose a point ---
 
     def test_cancelled_without_having_been_integrated_costs_its_reviewers_nothing(self):
         c1 = self.submit_0099("alice")
@@ -6902,12 +6902,12 @@ class TestAdversarialReview(BaseParallel):
         self.assertEqual((rec["status"], rec["never_integrated"]), ("cancelled", True))
         self.valid_one()
         self.assertEqual(bee.compute_levels(bee.Registry(self.dir))["bruno"]["reviews"], 0)
-        # Intégrée puis annulée (par le conseil, sans la marque) : −1, comme le dit docs/reputation.md.
+        # Integrated and then cancelled (by the council, without the marker): −1, as docs/reputation.md says.
         path = self.dir / f"contributions/miniz/{c1}.yaml"
         rec.pop("never_integrated")
         bee.write_yaml(path, rec)
         self.assertEqual(bee.compute_levels(bee.Registry(self.dir))["bruno"]["reviews"], -1)
-        # La marque n'a de sens que pour une contribution annulée.
+        # The marker only makes sense for a cancelled contribution.
         rec.update({"status": "in_review", "never_integrated": True})
         bee.write_yaml(path, rec)
         code, text = self.bee("validate")
@@ -6930,29 +6930,29 @@ class TestAdversarialReview(BaseParallel):
         self.assertEqual(levels["bruno"]["integrated"], 0)
 
     # ------------------------------------------------------------------------------------------------
-    # Seconde revue adverse (N1 à N9)
+    # Second adversarial review (N1 to N9)
     # ------------------------------------------------------------------------------------------------
 
     def test_N9_an_old_contribution_does_not_remove_the_protection_of_a_race(self):
         self.close_gate()
         self.assertEqual(self.bee("register", "--login", "david", "--account-created-on", "2020-01-01")[0], 0)
-        self.assertEqual(self.bee("take", "miniz-0099", "--user", "alice")[0], 0)  # 27/10 12 h
+        self.assertEqual(self.bee("take", "miniz-0099", "--user", "alice")[0], 0)  # 27 Oct 12:00
         self.a("2026-10-27T12:30:00Z")
         self.parallel_one("miniz-0099", "chloe")
         self.a("2026-10-27T13:00:00Z")
-        old_one = self.submit("miniz-0099", "chloe", 999999)  # jamais de verdict, jamais close
+        old_one = self.submit("miniz-0099", "chloe", 999999)  # never a verdict, never closed
         self.a("2026-10-27T13:30:00Z")
         self.assertEqual(self.bee("release", "miniz-0099", "--user", "alice")[0], 0)
-        self.a("2026-11-05T10:00:00Z")  # dix jours plus tard, une vraie course
+        self.a("2026-11-05T10:00:00Z")  # ten days later, a real race
         self.parallel_one("miniz-0099", "bruno")
         self.a("2026-11-05T11:00:00Z")
         self.parallel_one("miniz-0099", "david")
         self.a("2026-11-05T12:00:00Z")
-        x = self.submit("miniz-0099", "bruno", 99101)  # 3 %
+        x = self.submit("miniz-0099", "bruno", 99101)  # 3%
         self.verdict(x, 0.03)
         self.review(x, "alice", "bidji29")
         self.a("2026-11-06T11:00:00Z")
-        y = self.submit("miniz-0099", "david", 99102)  # 5 %, david inscrit avant X
+        y = self.submit("miniz-0099", "david", 99102)  # 5%, david registered before X
         self.verdict(y, 0.05)
         self.a("2026-11-06T12:00:00Z")
         bounds = bee.wait_bounds(bee.Registry(self.dir), self.rec(x))
@@ -7003,13 +7003,13 @@ class TestAdversarialReview(BaseParallel):
         code, text = self.bee("review", c1, *self.read_value(c1), "--user", "bruno", "--opinion", "unfavorable", "--reason",
                                "Lecture hors limites sur une entrée vide.", "--defect")
         self.assertEqual(code, 0, text)
-        path = self.dir / f"contributions/miniz/{c1}.yaml"  # le conseil confirme le défaut
+        path = self.dir / f"contributions/miniz/{c1}.yaml"  # the council confirms the defect
         rec = bee.read_yaml(path)
         rec["reviews"][-1].update({"confirmed_defect": True, "confirmed_by": "bidji29"})
         bee.write_yaml(path, rec)
         self.a("2026-10-28T13:00:00Z")
-        self.parallel_one("miniz-0099", "bruno", expected=1)  # qui a jugé la course n'y entre plus
-        bee.modify_task(self.dir / "tasks/miniz/miniz-0099.yaml",  # engagé malgré tout, écrit hors de l'outil
+        self.parallel_one("miniz-0099", "bruno", expected=1)  # whoever has judged the race no longer enters it
+        bee.modify_task(self.dir / "tasks/miniz/miniz-0099.yaml",  # engaged anyway, written outside the tool
                            parallel=[{"user": "bruno", "since": "2026-10-28T13:00:00Z"}])
         code, text = self.acceptance(c1)
         self.assertEqual(code, 1, text)
@@ -7018,12 +7018,12 @@ class TestAdversarialReview(BaseParallel):
 
     def test_N3_a_dummy_contribution_of_a_late_engaged_one_delays_only_its_window(self):
         self.close_gate()
-        c1 = self.submit_0099("alice")  # seule, 27/10 12 h
+        c1 = self.submit_0099("alice")  # alone, 27 Oct 12:00
         self.verdict(c1, 0.05)
         self.review(c1, "bruno", "bidji29")
         self.a("2026-10-28T11:00:00Z")
-        self.parallel_one("miniz-0099", "chloe")  # après la soumission de c1
-        dummy = self.submit("miniz-0099", "chloe", 999999)  # jamais de verdict
+        self.parallel_one("miniz-0099", "chloe")  # after c1's submission
+        dummy = self.submit("miniz-0099", "chloe", 999999)  # never a verdict
         self.assertEqual(self.rec(dummy)["engaged_since"], "2026-10-28T11:00:00Z")
         self.a("2026-10-28T12:00:00Z")
         code, text = self.acceptance(c1)
@@ -7035,21 +7035,21 @@ class TestAdversarialReview(BaseParallel):
 
     def test_N3b_an_old_contribution_without_verdict_does_not_delay_each_new_one(self):
         self.close_gate()
-        self.assertEqual(self.bee("take", "miniz-0099", "--user", "alice")[0], 0)  # 27/10 12 h
+        self.assertEqual(self.bee("take", "miniz-0099", "--user", "alice")[0], 0)  # 27 Oct 12:00
         self.a("2026-10-27T12:30:00Z")
         self.parallel_one("miniz-0099", "chloe")
         self.a("2026-10-27T13:00:00Z")
-        z = self.submit("miniz-0099", "chloe", 999999)  # Z : jamais de verdict, auteur engagé bien avant X
+        z = self.submit("miniz-0099", "chloe", 999999)  # Z: never a verdict, author engaged well before X
         self.a("2026-10-27T13:30:00Z")
         self.assertEqual(self.bee("release", "miniz-0099", "--user", "alice")[0], 0)
-        self.a("2026-11-06T10:00:00Z")  # dix jours plus tard
+        self.a("2026-11-06T10:00:00Z")  # ten days later
         self.parallel_one("miniz-0099", "bruno")
         self.a("2026-11-06T12:00:00Z")
         x = self.submit("miniz-0099", "bruno", 99101)
         self.verdict(x, 0.03)
         self.review(x, "alice", "bidji29")
         self.assertLessEqual(bee.engagement_start(self.rec(z)), bee._instant_or_none(self.rec(x)["submitted_at"]))
-        self.a("2026-11-07T12:00:00Z")  # fin de la fenêtre de X, bien avant X + 96 h
+        self.a("2026-11-07T12:00:00Z")  # end of X's window, well before X + 96 h
         code, text = self.acceptance(x)
         self.assertEqual(code, 0, text)
         self.assertNotIn(z, text)
@@ -7068,7 +7068,7 @@ class TestAdversarialReview(BaseParallel):
         code, text = self.verify("chloe")
         self.assertEqual(code, 1, text)
         self.assertIn("never in the future", text)
-        # Même présente dans la base (écrite sans passer par verifier-pr), elle ne bloque pas une soumission antérieure.
+        # Even present in the base (written without going through check-pr), it does not block an earlier submission.
         self.merge("registration")
         self.a("2026-10-28T12:05:00Z")
         self.branch("submission")
@@ -7123,16 +7123,16 @@ class TestAdversarialReview(BaseParallel):
         git(self.dir, "push", "-q", "origin", "squat:refs/pull/1/head")
         sha = git(self.dir, "rev-parse", "squat").strip()
         git(self.dir, "switch", "-q", "main")
-        # La PR 5555 a été ouverte par david : la soumission de chloe est refusée par la passe de fusion-auto (ruche-0120 ; heure
-        # de la PR : la création de l'exécution de validation que la poussée a lancée, ruche-0091).
+        # PR 5555 was opened by david: chloe's submission is refused by the auto-merge pass (ruche-0120; time of the
+        # PR: the creation of the validation run that the push started, ruche-0091).
         state, output_text, calls = self.pass_ref(sha, "chloe", "2026-10-27T13:00:05Z", {PR_MINIZ + "5555": {"state": "OPEN", "head": "x", "author": "david"}})
         self.assertEqual(state, "refused", output_text)
         self.assertIn("must have been opened by chloe on GitHub (author found: david)", output_text)
         self.assertEqual([a["args"][1] for a in self.calls_of(calls, "api")], ["repos/Bee-ruche/minizBee/pulls/5555"], "ruche-0121: no account read")
-        # La même, ouverte par chloe : fusion automatique.
+        # The same, opened by chloe: automatic merge.
         state, output_text, _ = self.pass_ref(sha, "chloe", "2026-10-27T13:00:05Z", {PR_MINIZ + "5555": {"state": "OPEN", "head": "x", "author": "chloe"}})
         self.assertEqual(state, "merge", output_text)
-        # Sans auteur relevé (PR introuvable ou sans auteur), refusée : échec fermé.
+        # With no author found (PR not found or without an author), refused: fail closed.
         empty_one = self.dir.parent / "auteurs_vides.tsv"
         empty_one.write_text("", encoding="utf-8")
         git(self.dir, "switch", "-q", "squat")
@@ -7197,7 +7197,7 @@ class TestAdversarialReview(BaseParallel):
         rec = bee.read_yaml(path)
         rec.update({"status": "integrated", "decided_at": "2026-10-28T12:00:00Z", "decision_reason": "Intégrée."})
         bee.write_yaml(path, rec)
-        bee.modify_task(self.dir / "tasks/miniz/miniz-0099.yaml", status="open", contribution=None)  # rouverte
+        bee.modify_task(self.dir / "tasks/miniz/miniz-0099.yaml", status="open", contribution=None)  # reopened
         self.valid_one()
         self.a("2026-11-02T12:00:00Z")
         self.assertEqual(self.bee("take", "miniz-0099", "--user", "bruno")[0], 0)
@@ -7208,7 +7208,7 @@ class TestAdversarialReview(BaseParallel):
         self.valid_one()
 
     # ------------------------------------------------------------------------------------------------
-    # Troisième revue adverse (N10, N11)
+    # Third adversarial review (N10, N11)
     # ------------------------------------------------------------------------------------------------
 
     def test_N10_a_cut_block_does_not_escape_the_form_check(self):
@@ -7231,14 +7231,14 @@ class TestAdversarialReview(BaseParallel):
                 git(self.dir, "switch", "-q", "main")
                 self.branch(f"forme-{i}")
                 path.write_text(text, encoding="utf-8")
-                self.assertIsInstance(bee.load_yaml_text(text), dict)  # du YAML valide, lu sans erreur
+                self.assertIsInstance(bee.load_yaml_text(text), dict)  # valid YAML, read without error
                 self.commit()
                 code, output_text = self.bee("validate")
                 self.assertEqual(code, 1, output_text)
                 self.assertIn("does not read back alone", output_text)
                 code, output_text = self.verify("chloe", "--auto-merge")
                 self.assertEqual(code, 1, output_text)
-        # Un commentaire en colonne 0 entre deux clés reste permis, et les robots écrivent toujours une forme acceptée.
+        # A comment in column 0 between two keys stays allowed, and the robots always write an accepted form.
         git(self.dir, "switch", "-q", "main")
         path.write_text(clean_one.replace("\nreservation:", "\n# titulaire\nreservation:", 1), encoding="utf-8")
         self.valid_one()
@@ -7252,7 +7252,7 @@ class TestAdversarialReview(BaseParallel):
         self.valid_one()
 
     def prepare_defect(self):
-        """bruno, gardien, inscrit en parallèle ; c1 d'alice en course ; david lui a signalé un défaut (commité)."""
+        """bruno, guardian, registered in parallel; alice's c1 in the race; david has reported a defect on it (committed)."""
         (self.dir / "governance/guardians.yaml").write_text("members:\n  - login: bruno\n", encoding="utf-8")
         self.close_gate()
         self.assertEqual(self.bee("register", "--login", "david", "--account-created-on", "2020-01-01")[0], 0)
@@ -7271,7 +7271,7 @@ class TestAdversarialReview(BaseParallel):
 
     def test_N11a_a_defect_is_confirmed_only_by_a_third_party_in_its_own_pr(self):
         c1, path = self.prepare_defect()
-        # Le gardien bruno se retire et, dans la même PR, signale et confirme son propre défaut : refusé.
+        # The guardian bruno withdraws and, in the same PR, reports and confirms his own defect: refused.
         self.branch("auto-confirmation")
         self.assertEqual(self.bee("release", "miniz-0099", "--user", "bruno")[0], 0)
         rec = bee.read_yaml(path)
@@ -7283,9 +7283,9 @@ class TestAdversarialReview(BaseParallel):
         code, text = self.verify("bruno", "--auto-merge")
         self.assertEqual(code, 1, text)
         self.assertIn("does not confirm their own defect", text)
-        code, text = self.bee("validate")  # poussé sans PR, refusé aussi
+        code, text = self.bee("validate")  # pushed without a PR, refused too
         self.assertEqual(code, 1, text)
-        # Il se retire et confirme le défaut de david dans la même PR : encore en course dans la base, refusé.
+        # He withdraws and confirms david's defect in the same PR: still in the race in the base, refused.
         git(self.dir, "switch", "-q", "main")
         self.branch("esquive")
         self.assertEqual(self.bee("release", "miniz-0099", "--user", "bruno")[0], 0)
@@ -7294,12 +7294,12 @@ class TestAdversarialReview(BaseParallel):
         code, text = self.verify("bruno", "--auto-merge")
         self.assertEqual(code, 1, text)
         self.assertIn("is in the race on task miniz-0099", text)
-        # Engagé, l'outil le lui refuse ; david ne confirme pas son propre défaut ; chloe n'est pas privilégiée.
+        # Engaged, the tool refuses it to him; david does not confirm his own defect; chloe is not privileged.
         git(self.dir, "switch", "-q", "main")
         for who_is in ("bruno", "david", "chloe"):
             code, text = self.bee("confirm-defect", c1, "--reviewer", "david", "--user", who_is)
             self.assertEqual(code, 1, f"{who_is} : {text}")
-        # Le conseil confirme au nom d'un autre : refusé.
+        # The council confirms in someone else's name: refused.
         self.branch("au-nom-d-un-autre")
         rec = bee.read_yaml(path)
         rec["reviews"][0].update({"confirmed_defect": True, "confirmed_by": "bruno"})
@@ -7308,7 +7308,7 @@ class TestAdversarialReview(BaseParallel):
         code, text = self.verify("bidji29", "--auto-merge")
         self.assertEqual(code, 1, text)
         self.assertIn("bears the name of the PR's author", text)
-        # Le conseil, tiers hors de la course, confirme dans sa propre PR : accepté.
+        # The council, a third party outside the race, confirms in its own PR: accepted.
         git(self.dir, "checkout", "-q", "--", ".")
         git(self.dir, "switch", "-q", "main")
         self.branch("confirmation")
@@ -7321,7 +7321,7 @@ class TestAdversarialReview(BaseParallel):
 
     def test_N11b_a_confirmed_defect_holds_until_the_review_of_its_reviewer(self):
         c1, path = self.prepare_defect()
-        self.contributors("chloe")  # sa relecture compte pour R3 ; son vote pèse
+        self.contributors("chloe")  # her review counts for R3; her vote weighs
         self.assertEqual(self.bee("release", "miniz-0099", "--user", "bruno")[0], 0)
         self.review(c1, "chloe", "bruno")
         self.assertEqual(self.bee("vote", c1, "--user", "chloe", "--value", "1")[0], 0)
@@ -7330,8 +7330,8 @@ class TestAdversarialReview(BaseParallel):
         code, text = self.acceptance(c1)
         self.assertEqual(code, 1, text)
         self.assertIn("a confirmed defect remains to be resolved", text)
-        # alice corrige : nouveau commit jugé, relu à nouveau. Revue adverse de ruche-0012 : le défaut ne tombe plus avec un
-        # nouveau commit (un commit vide, ou un retour à un ancien commit, l'effaçait) ; il tient jusqu'à ce que david relise.
+        # alice fixes it: a new judged commit, reviewed again. Adversarial review of ruche-0012: the defect no longer falls with a
+        # new commit (an empty commit, or a return to an old commit, erased it); it holds until david reviews again.
         verdict = json.loads((self.dir / "verdict.json").read_text(encoding="utf-8"))
         (self.dir / "verdict.json").write_text(json.dumps(verdict), encoding="utf-8")
         self.assertEqual(self.bee("record-verdict", c1, "--verdict", str(self.dir / "verdict.json"), "--sha", "def5678",
@@ -7351,7 +7351,7 @@ class TestAdversarialReview(BaseParallel):
 
     def test_N11d_who_judged_a_race_does_not_come_back_to_it(self):
         c1, path = self.prepare_defect()
-        # Le gardien bruno se retire (PR 1), confirme le défaut signalé par david (PR 2), puis veut revenir (PR 3).
+        # The guardian bruno withdraws (PR 1), confirms the defect reported by david (PR 2), then wants to come back (PR 3).
         self.branch("withdrawal")
         self.assertEqual(self.bee("release", "miniz-0099", "--user", "bruno")[0], 0)
         self.commit()
@@ -7368,7 +7368,7 @@ class TestAdversarialReview(BaseParallel):
         code, text = self.bee("take", "miniz-0099", "--user", "bruno", "--parallel")
         self.assertEqual(code, 1, text)
         self.assertIn("does not enter it", text)
-        # Écrite à la main, l'inscription est refusée par verifier-pr.
+        # Written by hand, the registration is refused by check-pr.
         self.branch("return_value")
         bee.modify_task(self.dir / "tasks/miniz/miniz-0099.yaml",
                            parallel=[{"user": "bruno", "since": "2026-10-27T16:00:00Z"}])
@@ -7376,7 +7376,7 @@ class TestAdversarialReview(BaseParallel):
         code, text = self.verify("bruno", "--auto-merge")
         self.assertEqual(code, 1, text)
         self.assertIn("does not enter it", text)
-        # Même règle pour david, qui a donné l'avis défavorable ; chloe, qui n'a rien jugé, s'inscrit.
+        # The same rule for david, who gave the unfavorable opinion; chloe, who judged nothing, registers.
         git(self.dir, "switch", "-q", "main")
         self.assertEqual(self.bee("take", "miniz-0099", "--user", "david", "--parallel")[0], 1)
         self.parallel_one("miniz-0099", "chloe")
@@ -7403,25 +7403,25 @@ class TestAdversarialReview(BaseParallel):
 
 
 class TestVerdictsOfTheRecordedPr(BaseParallel):
-    """ruche-0025 (revues adverses de minizBee #16) : verdicts.yml ne croit que la CI de la PR enregistrée, par l'événement
-    pull_request, vers la branche par défaut du fork ; base changée, autre PR ouverte de la même tête (dépôt par id, branche sans
-    la casse) ou PR fermée qui précède la CI jugée : aucun verdict (échec fermé), et la contribution le dit (awaiting_verdict) ;
-    la base que déclare verdict.json n'est jamais crue. Rejoué avec le faux gh, qui ignore les filtres head_sha, event et status
-    de l'API : bee doit les refaire. Horloge : 2026-10-27T12:00:00Z ; exécutions de la PR créées à 10 h."""
+    """ruche-0025 (adversarial reviews of minizBee #16): verdicts.yml believes only the CI of the recorded PR, by the
+    pull_request event, to the fork's default branch; a changed base, another open PR of the same head (repository by id,
+    branch ignoring case) or a closed PR that precedes the judged CI: no verdict (fail closed), and the contribution says so
+    (awaiting_verdict); the base verdict.json declares is never believed. Replayed with the fake gh, which ignores the API's
+    head_sha, event and status filters: bee must redo them. Clock: 2026-10-27T12:00:00Z; the PR's runs created at 10:00."""
 
     step, calls_of = TestAdversarialReview.step, staticmethod(TestAdversarialReview.calls_of)
     PR, RUNS = PR_MINIZ + "99007", "https://github.com/Bee-ruche/minizBee/actions/runs/"
     GOOD = {"ci": "green", "gain": 0.05, "beyond_noise": True, "changed_lines": 10, "instructions": INSTRUCTIONS_N6}
-    WRONG = {**GOOD, "gain": 0.5}  # ce que fabrique une CI qui n'est pas celle de master
-    MASTER = "ba5e" * 10  # la base de master que déclarent par défaut les verdicts du faux gh
+    WRONG = {**GOOD, "gain": 0.5}  # what a CI that is not master's produces
+    MASTER = "ba5e" * 10  # the master base that the fake gh's verdicts declare by default
 
     def setUp(self):
         super().setUp()
         self.cid = self.submit_0099("alice")
 
     def collect(self, states, keep_waiting=False, **pr):
-        """Un passage de verdicts.yml, sans verdict connu : la PR 99007 (alice, tête abc1234, branche task/99007, vers master,
-        sa CI terminée avec BON), modifiée par `pr` ; `etats` ajoute d'autres PR et les clés globales du faux gh."""
+        """One pass of verdicts.yml, with no known verdict: PR 99007 (alice, head abc1234, branch task/99007, to master, its CI
+        finished with GOOD), modified by `pr`; `states` adds other PRs and the fake gh's global keys."""
         path = self.dir / f"contributions/miniz/{self.cid}.yaml"
         erased = {"verdict", "declared"} | (set() if keep_waiting else {"awaiting_verdict"})
         bee.write_yaml(path, {k: v for k, v in bee.read_yaml(path).items() if k not in erased})
@@ -7435,8 +7435,8 @@ class TestVerdictsOfTheRecordedPr(BaseParallel):
 
     @classmethod
     def execution_api(cls, number_of, verdict, **fields):
-        """Une exécution de bee-ci.yml sur abc1234 telle que l'API la décrit ; par défaut, comme celles de la PR 99007, plus
-        récente (10 h 30)."""
+        """A run of bee-ci.yml on abc1234 as the API describes it; by default, like those of PR 99007, more recent
+        (10:30)."""
         return {"id": number_of, "event": "pull_request", "status": "completed", "head_sha": "abc1234", "head_branch": "task/99007",
                 "head_repository": cls.repo("Bee-ruche/minizBee"), "html_url": f"https://github.com/Bee-ruche/minizBee/actions/runs/{number_of}",
                 "created_at": "2026-10-27T10:30:00Z", "pull_requests": [{"number": 99007, "base": {"ref": "master"}}],
@@ -7446,13 +7446,13 @@ class TestVerdictsOfTheRecordedPr(BaseParallel):
         self.assertIn(f"  | {self.cid}: PR #99007: {reason}; no verdict is recorded{prs}.", output_text)
 
     def waiting(self, output_text, code, prs="", sha="abc1234"):
-        """Refus pour raison de sécurité : dit dans le journal et écrit dans la contribution (phrase fixe, tête)."""
+        """Refusal for a security reason: stated in the log and written into the contribution (fixed sentence, head)."""
         self.refusal(output_text, bee.VERDICT_WAIT[code], prs)
         self.assertEqual(self.rec(self.cid).get("awaiting_verdict"), {"reason": code, "sha": sha})
 
     def test_criterion_1_only_the_run_of_the_recorded_pr_to_the_default_branch_is_kept(self):
-        """Pour le même commit, une exécution d'un autre événement, d'une autre PR, d'une autre base, d'une autre branche, d'un
-        autre dépôt (même de même nom : C4, par id), ou pas terminée, n'est jamais retenue, même plus récente que celle de la PR."""
+        """For the same commit, a run of another event, of another PR, of another base, of another branch, of another
+        repository (even one of the same name: C4, by id), or not finished, is never kept, even if more recent than the PR's."""
         foreign = [self.execution_api(99901, self.WRONG, event="workflow_dispatch"),
                       self.execution_api(99902, self.WRONG, event="pull_request_target"),
                       self.execution_api(99903, self.WRONG, pull_requests=[{"number": 99008, "base": {"ref": "master"}}]),
@@ -7468,7 +7468,7 @@ class TestVerdictsOfTheRecordedPr(BaseParallel):
         self.assertEqual([a["args"][2] for a in self.calls_of(calls, "run", "download")], ["99007"])
         self.assertTrue([a for a in calls if a["args"][1].startswith("repos/Bee-ruche/minizBee/actions/workflows/bee-ci.yml/runs?"
                                                                       "head_sha=abc1234&event=pull_request&status=completed")])
-        # Sans l'exécution de la PR : aucune n'est retenue, et le journal le dit (sans attente : elle peut encore venir).
+        # Without the PR's run: none is kept, and the log says so (without waiting: it may still come).
         output_text, verdict, calls = self.collect({"runs": foreign}, verdict=None)
         self.assertIsNone(verdict)
         self.assertFalse(self.calls_of(calls, "run", "download"))
@@ -7478,10 +7478,10 @@ class TestVerdictsOfTheRecordedPr(BaseParallel):
         self.assertEqual((verdict, output_text.strip()), (None, ""))
 
     def test_criterion_2_a_verdict_whose_base_is_not_on_the_default_branch_is_not_recorded(self):
-        """La base déclarée (details.base, judge_base.base) n'est jamais crue : l'API compare dit si elle est un ancêtre de la
-        branche par défaut, elle-même lue auprès de l'API (ici main) ; sinon aucun verdict, la sortie et la contribution le disent."""
+        """The declared base (details.base, judge_base.base) is never believed: the compare API says whether it is an ancestor of
+        the default branch, itself read from the API (here main); otherwise no verdict, and the output and the contribution say so."""
         old_one, master, other, unknown = "0bad" * 10, self.MASTER, "c0de" * 10, "dead" * 10
-        comparisons = {old_one: "diverged", master: "ahead", other: "behind", unknown: None}  # None : 404
+        comparisons = {old_one: "diverged", master: "ahead", other: "behind", unknown: None}  # None: 404
         declare = lambda d, j=None: {"details": {"base": d}, "judge_base": {"base": j or d, "commit": master}}  # noqa: E731
         master_judge = {"judge_base": {"base": master, "commit": master}}
         for declared_one, said in ((declare(old_one), f"{old_one} (diverged)"), (declare(other), f"{other} (behind)"),
@@ -7505,7 +7505,7 @@ class TestVerdictsOfTheRecordedPr(BaseParallel):
                                                      verdict={**self.GOOD, **declare(base)})
             self.assertEqual(verdict["gain"], 0.05, output_text)
             self.assertIn(["api", f"repos/Bee-ruche/minizBee/compare/{base}...main", "--jq", ".status"], [a["args"] for a in calls])
-        # bee seul : --bases est ce que le workflow a lu auprès de l'API ; sans lui (hors CI), rien ne change.
+        # bee alone: --bases is what the workflow read from the API; without it (outside CI), nothing changes.
         file, bases = self.dir.parent / "v.json", self.dir.parent / "bases.txt"
         file.write_text(json.dumps({**self.GOOD, **declare(old_one)}), encoding="utf-8")
         for content, expected in ((f"{old_one} behind\n", 1), (f"{old_one}\n{old_one} ahead extra\n", 1), (f"{old_one} identical\n", 0)):
@@ -7517,10 +7517,11 @@ class TestVerdictsOfTheRecordedPr(BaseParallel):
         self.assertEqual(launch("declared-bases", str(file)), (0, old_one + "\n"))
 
     def test_c1_judge_base_required_when_the_project_says_so(self):
-        """C1 : 13 des 18 vieilles branches de minizBee ont une tête ancêtre de master, et leur verdict.py déclare details.base égal
-        à cette tête (compare : ahead) sans jamais émettre judge_base. Pour miniz (verdict_requires_judge_base), un verdict vert sans
-        judge_base lisible (base et commit) est refusé, quoi que dise details.base ; libyaml n'a pas la clé."""
-        projects = bee.Registry(self.dir).projects  # les projets réels, copiés tels quels
+        """C1: 13 of minizBee's 18 old branches have a head that is an ancestor of master, and their verdict.py declares
+        details.base equal to that head (compare: ahead) without ever emitting judge_base. For miniz (verdict_requires_judge_base),
+        a green verdict without a readable judge_base (base and commit) is refused, whatever details.base says; libyaml does not
+        have the key."""
+        projects = bee.Registry(self.dir).projects  # the real projects, copied as they are
         self.assertEqual((projects["miniz"][1].get("verdict_requires_judge_base"), "verdict_requires_judge_base" in projects["libyaml"][1]),
                          (True, False))
         old_head = "0ld0" * 10
@@ -7540,10 +7541,10 @@ class TestVerdictsOfTheRecordedPr(BaseParallel):
         self.assertIn("(declared base: absent)", output_text)
 
     def test_c2_c3_c4_the_other_prs_of_the_same_head(self):
-        """C2 : une PR d'une autre branche ou d'un autre dépôt, même de même commit, ne bloque rien (son exécution n'est jamais
-        retenue). C4 : même tête = même dépôt, par id, et même branche, sans la casse. Une autre PR ouverte de la même tête bloque.
-        C3 : une PR fermée de la même tête ne bloque que si l'exécution retenue a été créée avant sa fermeture + 1 h (une relance
-        garde created_at : vérifié sur l'API) ; sinon, poussez un nouveau commit."""
+        """C2: a PR from another branch or another repository, even of the same commit, blocks nothing (its run is never kept).
+        C4: same head = same repository, by id, and same branch, ignoring case. Another open PR of the same head blocks. C3: a
+        closed PR of the same head blocks only if the kept run was created before its closing + 1 h (a rerun keeps created_at:
+        checked on the API); otherwise, push a new commit."""
         other = {"head": "abc1234", "author": "mallory", "verdict": self.WRONG}
         for name, pr in (("même commit, autre branche, base forgée", {"state": "OPEN", "branch": "copied", "base": "forgee"}),
                         ("même commit et branche, autre dépôt", {"state": "OPEN", "branch": "task/99007", "depot_tete": "mallory/minizBee"}),
@@ -7562,7 +7563,7 @@ class TestVerdictsOfTheRecordedPr(BaseParallel):
                 self.assertFalse(self.calls_of(calls, "run", "download"))
         closed = {**other, "state": "CLOSED", "branch": "task/99007", "base": "forgee", "opened_at": "2026-10-27T08:30:00Z",
                   "fermee_le": "2026-10-27T09:30:00Z"}
-        forged = self.execution_api(99908, self.WRONG, created_at="2026-10-27T09:00:00Z", run_started_at="2026-10-27T11:50:00Z")  # relancée
+        forged = self.execution_api(99908, self.WRONG, created_at="2026-10-27T09:00:00Z", run_started_at="2026-10-27T11:50:00Z")  # rerun
         for name, states, pr in (("exécution forgée, relancée après la fermeture", {"runs": [forged]}, {}),
                                ("exécution de la PR moins d'une heure après la fermeture", {}, {"created_on": "2026-10-27T10:20:00Z"})):
             with self.subTest(name):
@@ -7573,10 +7574,10 @@ class TestVerdictsOfTheRecordedPr(BaseParallel):
         self.assertEqual(verdict["gain"], 0.05, output_text)
 
     def test_a_pr_whose_base_changed_receives_no_verdict(self):
-        """Attaques 1 et 3 : PR ouverte vers une vieille branche (ou une base forgée, dont le workflow se déclenche sur edited), CI
-        terminée, base remise à master. L'API montre alors cette exécution liée à la PR vers master : seul l'historique de la PR la
-        trahit (base_ref_changed, dans l'API des événements et de la chronologie, vérifié sur minizBee #17 ; ou changement
-        automatique)."""
+        """Attacks 1 and 3: a PR opened to an old branch (or a forged base, whose workflow triggers on edited), CI finished, base
+        set back to master. The API then shows that run linked to the PR to master: only the PR's history gives it away
+        (base_ref_changed, in the events and timeline API, checked on minizBee #17; or an automatic
+        change)."""
         former = self.execution_api(99908, self.WRONG)
         for events in ({"events": ["base_ref_changed"]}, {"timeline": ["base_ref_changed"]},
                            {"events": ["automatic_base_change_succeeded"]}):
@@ -7588,15 +7589,15 @@ class TestVerdictsOfTheRecordedPr(BaseParallel):
         output_text, verdict, _ = self.collect({}, base="task/former")
         self.assertIsNone(verdict)
         self.waiting(output_text, "other_base")
-        # Sans changement de base, la plus récente exécution de la PR est retenue (une CI relancée, par exemple).
+        # Without a change of base, the PR's most recent run is kept (a CI run again, for example).
         output_text, verdict, _ = self.collect({"runs": [self.execution_api(99908, {**self.GOOD, "gain": 0.04})]},
                                             events=["labeled", "head_ref_force_pushed"])
         self.assertEqual((verdict["gain"], verdict["run"]), (0.04, self.RUNS + "99908"), output_text)
 
     def test_a_pr_from_another_repository_is_recognized_by_its_head(self):
-        """GitHub laisse pull_requests vide pour une PR venue d'un autre dépôt (un fork du fork) : son exécution se reconnaît à
-        l'événement, au commit, à la branche et au dépôt de tête, par id ; une exécution d'un dépôt de même nom et d'un autre id
-        (transféré ou recréé), jamais."""
+        """GitHub leaves pull_requests empty for a PR coming from another repository (a fork of the fork): its run is recognized
+        by the event, the commit, the head branch and the head repository, by id; a run of a repository with the same name and
+        another id (transferred or recreated), never."""
         alice = self.repo("alice/minizBee")
         for intruder_one in (self.execution_api(99908, self.WRONG, head_repository=self.repo("mallory/minizBee"), pull_requests=[]),
                         self.execution_api(99909, self.WRONG, head_repository=self.repo("alice/minizBee", 4242), pull_requests=[])):
@@ -7612,8 +7613,8 @@ class TestVerdictsOfTheRecordedPr(BaseParallel):
         self.waiting(output_text, "pr_closed", " (#99008)")
 
     def test_c5_a_fork_pr_merged_or_closed_before_the_collection_receives_its_verdict(self):
-        """C5 : GitHub ne lie plus d'exécution à une PR fusionnée ou fermée (pull_requests vide, vu sur minizBee #16) : elle se
-        reconnaît alors à sa tête, comme une PR d'un autre dépôt, sous les mêmes conditions (base jamais changée)."""
+        """C5: GitHub no longer links a run to a merged or closed PR (pull_requests empty, seen on minizBee #16): it is then
+        recognized by its head, like a PR from another repository, under the same conditions (base never changed)."""
         for state in ("MERGED", "CLOSED"):
             with self.subTest(state=state):
                 output_text, verdict, _ = self.collect({}, state=state)
@@ -7623,8 +7624,8 @@ class TestVerdictsOfTheRecordedPr(BaseParallel):
         self.waiting(output_text, "base_changed")
 
     def test_c6_a_red_verdict_without_base_is_recorded_as_is(self):
-        """C6 : un verdict rouge n'intègre rien ; sans base (verdict de repli de bee-ci.yml) ou d'une base douteuse, il est
-        enregistré, et dit au contributeur pourquoi sa CI a échoué."""
+        """C6: a red verdict integrates nothing; without a base (bee-ci.yml's fallback verdict) or with a doubtful base, it is
+        recorded, and tells the contributor why their CI failed."""
         red = {"ci": "red", "failed_step": "Juges (base sans bee/)", "gain": None, "changed_lines": None}
         for declared_one in ({"details": {}, "judge_base": None}, {"details": {"base": "0bad" * 10}, "judge_base": None}):
             output_text, verdict, _ = self.collect({"comparaisons": {"0bad" * 10: "diverged"}}, verdict={**red, **declared_one, "changed_lines": 0})
@@ -7632,9 +7633,9 @@ class TestVerdictsOfTheRecordedPr(BaseParallel):
             self.assertNotIn("awaiting_verdict", self.rec(self.cid))
 
     def test_the_wait_reads_in_bee_show_and_is_not_judged_again_before_another_head(self):
-        """Refus pour raison de sécurité : awaiting_verdict (phrase fixe, tête), lue par bee show et bee check-acceptance ;
-        tant que la tête ne change pas, aucun appel d'API de plus pour cette contribution ; une autre tête est rejugée, et son
-        verdict efface l'attente. Seuls la CI et le conseil l'écrivent (bee check-pr) ; bee validate exige une phrase de bee."""
+        """Refusal for a security reason: awaiting_verdict (fixed sentence, head), read by bee show and bee check-acceptance;
+        as long as the head does not change, no more API calls for this contribution; another head is judged again, and its
+        verdict clears the wait. Only the CI and the council write it (bee check-pr); bee validate requires a sentence of bee's."""
         open = {PR_MINIZ + "99008": {"state": "OPEN", "head": "abc1234", "author": "mallory", "branch": "task/99007"}}
         output_text, verdict, _ = self.collect(open)
         self.waiting(output_text, "pr_open", " (#99008)")
@@ -7658,8 +7659,8 @@ class TestVerdictsOfTheRecordedPr(BaseParallel):
         return text
 
     def test_b1_a_compare_failure_writes_no_wait(self):
-        """B1 : compare en panne (5xx, quota) : verdict refusé, sans attente ; au passage suivant, l'API répond et le verdict
-        s'enregistre. Seul un statut certain (behind, diverged, base absente ou illisible, judge_base absent) écrit l'attente."""
+        """B1: compare down (5xx, quota): verdict refused, without a wait; at the next pass, the API answers and the verdict is
+        recorded. Only a certain status (behind, diverged, base absent or unreadable, judge_base absent) writes the wait."""
         output_text, verdict, _ = self.collect({"comparaisons": {self.MASTER: None}})
         self.assertIsNone(verdict, output_text)
         self.assertIn(f"(declared base: {self.MASTER} (not verified)); no verdict is recorded, judged again at the next pass", output_text)
@@ -7668,9 +7669,9 @@ class TestVerdictsOfTheRecordedPr(BaseParallel):
         self.assertEqual(verdict["gain"], 0.05, output_text)
 
     def test_b2_b3_another_pr_blocks_only_if_the_ci_may_have_come_from_it(self):
-        """B2 : une autre PR P de la même tête ne bloque que si l'exécution retenue R a pu venir d'elle : R créée après P - 1 min,
-        et, P fermée, avant sa fermeture + 1 h. Un tiers qui ouvre (et ferme) une PR après la CI ne bloque donc rien. B3 : la
-        phrase demande au conseil de fermer une PR ouverte, et dit le délai d'une heure."""
+        """B2: another PR P of the same head blocks only if the kept run R may have come from it: R created after P - 1 min,
+        and, with P closed, before its closing + 1 h. A third party who opens (and closes) a PR after the CI therefore blocks
+        nothing. B3: the sentence asks the council to close an open PR, and states the one-hour delay."""
         self.assertIn("ask the council to close it", bee.VERDICT_WAIT["pr_open"])
         self.assertIn("one hour after it is closed", bee.VERDICT_WAIT["pr_open"])
         third_party = {"head": "abc1234", "author": "mallory", "branch": "task/99007", "opened_at": "2026-10-27T11:00:00Z"}
@@ -7680,7 +7681,7 @@ class TestVerdictsOfTheRecordedPr(BaseParallel):
                     output_text, verdict, _ = self.collect({PR_MINIZ + "99008": {**third_party, **state, "depot_tete": head_repo}},
                                                         depot_tete=head_repo)
                     self.assertEqual(verdict["gain"], 0.05, output_text)
-        # Ouverte une minute au plus après la CI (horloges), ou avant : elle a pu la produire.
+        # Opened at most one minute after the CI (clocks), or before: it may have produced it.
         for open, code in (("2026-10-27T10:00:30Z", "pr_open"), ("2026-10-27T09:00:00Z", "pr_open")):
             output_text, verdict, _ = self.collect({PR_MINIZ + "99008": {**third_party, "state": "OPEN", "opened_at": open}})
             self.assertIsNone(verdict, output_text)
@@ -7689,9 +7690,9 @@ class TestVerdictsOfTheRecordedPr(BaseParallel):
         self.assertEqual(verdict["gain"], 0.05, output_text)
 
     def test_b5_the_freshness_ignores_an_event_dated_by_github(self):
-        """B5 : une PR modifiée il y a moins de 5 minutes n'attend que si aucun événement daté par GitHub (commentaire, revue,
-        changement de base…) n'explique cette modification : un commentaire répété ne repousse pas le verdict. Les dates des
-        commits, que leur auteur choisit, ne comptent pas."""
+        """B5: a PR modified less than 5 minutes ago waits only if no event dated by GitHub (comment, review, change of
+        base…) explains that modification: a repeated comment does not push the verdict back. The commits' dates, which their
+        author chooses, do not count."""
         comment = {"event": "commented", "created_at": "2026-10-27T11:57:00Z"}
         for timeline, awaits in (([comment], False), ([{**comment, "created_at": "2026-10-27T11:50:00Z"}], True),
                                     ([{"event": "reviewed", "submitted_at": "2026-10-27T11:57:03Z"}], False),
@@ -7702,7 +7703,7 @@ class TestVerdictsOfTheRecordedPr(BaseParallel):
                 self.assertEqual("judged at the next pass" in output_text, awaits, output_text)
 
     def test_b6_the_wait_carries_a_code_and_the_sentence_is_rendered_on_display(self):
-        """B6 : awaiting_verdict stocke le code du motif ; reformuler une phrase demain n'invalide aucune contribution."""
+        """B6: awaiting_verdict stores the reason's code; rewording a sentence tomorrow invalidates no contribution."""
         path = self.dir / f"contributions/miniz/{self.cid}.yaml"
         bee.write_yaml(path, {**bee.read_yaml(path), "awaiting_verdict": {"reason": "pr_closed", "sha": "abc1234"}})
         self.valid_one()
@@ -7720,12 +7721,12 @@ class TestVerdictsOfTheRecordedPr(BaseParallel):
         self.assertEqual(verdict["gain"], 0.05, output_text)
 
     def test_no_fork_data_enters_a_command_or_the_log_without_reason(self):
-        """C7 : chaque ligne que bee imprime passe au journal derrière « | » (le runner lit une commande après les espaces de
-        tête, Unicode compris) ; aucune donnée du fork n'entre dans une commande ; une réponse mal formée échoue fermé."""
+        """C7: each line bee prints goes to the log behind « | » (the runner reads a command after leading spaces, Unicode
+        included); no fork data enters a command; a malformed answer fails closed."""
         trap_one = '$(touch PIEGE)";\n::error::PIEGE ##[error]PIEGE'
         outputs = []
         output_text, verdict, calls = self.collect({}, branch="x" + trap_one)
-        self.assertEqual(verdict["gain"], 0.05, output_text)  # la branche n'est comparée que dans bee
+        self.assertEqual(verdict["gain"], 0.05, output_text)  # the branch is compared only in bee
         self.assertFalse([a for a in calls if "PIEGE" in " ".join(a["args"])])
         outputs.append(output_text)
         output_text, _, _ = self.collect({}, base="::error::PIEGE")
@@ -7748,13 +7749,13 @@ class TestVerdictsOfTheRecordedPr(BaseParallel):
             r = subprocess.run(["bash", "-c", log_text + "\nlog_text"], input=prefix_text + "::error::PIEGE ##[warning]x\nsuite\n",
                                capture_output=True, text=True)
             self.assertEqual(r.stdout, f"  | {prefix_text}::error::PIEGE # #[warning]x\n  | suite\n", repr(prefix_text))
-        # gh api --paginate met les pages bout à bout : chacune est lue, les listes dépliées.
+        # gh api --paginate puts the pages end to end: each is read, the lists unfolded.
         (self.dir.parent / "pages.json").write_text('[{"event": "a"}][{"event": "b"}]\n{"x": 1}\n', encoding="utf-8")
         self.assertEqual(bee.api_answers(self.dir.parent, "pages"), [{"event": "a"}, {"event": "b"}, {"x": 1}])
 
 
 class BaseAgora(BaseTest):
-    """Outils communs aux tests de l'agora (ruche-0008) : débats, arguments, synthèse, clôture."""
+    """Tools shared by the agora's tests (ruche-0008): debates, arguments, synthesis, closing."""
 
     def a(self, instant):
         os.environ["BEE_NOW"] = instant
@@ -7766,7 +7767,7 @@ class BaseAgora(BaseTest):
         return bee.read_yaml(self.debate_path(identifier))
 
     def write(self, debate, identifier="D-0001"):
-        """Écrit un débat tel quel, comme le ferait un agent qui contourne bee debate."""
+        """Writes a debate as is, as an agent that bypasses bee debate would."""
         bee.write_debate(self.debate_path(identifier), debate)
 
     def ok(self, *arguments):
@@ -7788,7 +7789,7 @@ class BaseAgora(BaseTest):
         return self.ok("debate", "argue", debate, "--user", who_is, "--position", position, "--text", text, *options)
 
     def debate_of_three(self):
-        """alice ouvre D-0001 à 12 h ; bruno y affirme un fait sourcé (A1, 12 h 10) ; chloe répond contre (A2, 12 h 20)."""
+        """alice opens D-0001 at 12:00; bruno asserts a sourced fact in it (A1, 12:10); chloe answers against (A2, 12:20)."""
         self.a("2026-10-29T12:00:00Z")
         self.open()
         self.a("2026-10-29T12:10:00Z")
@@ -7798,7 +7799,7 @@ class BaseAgora(BaseTest):
 
 
 class TestAgora(BaseAgora):
-    """ruche-0008 : les commandes de l'agora, leur affichage, le cap, le site et l'import des questions ouvertes."""
+    """ruche-0008: the agora's commands, their display, the balance, the site and the import of the open questions."""
 
     def test_course_and_synthesis_read_first(self):
         self.debate_of_three()
@@ -7812,7 +7813,7 @@ class TestAgora(BaseAgora):
         self.assertEqual(d["arguments"][1]["replies_to"], "A1")
         self.assertIn("synthesis: |-\n  Un fait", self.debate_path().read_text(encoding="utf-8"), "un texte de plusieurs lignes reste lisible")
         self.valid_one()
-        # Un agent sans mémoire lit d'abord la synthèse, puis les arguments.
+        # An agent without memory reads the synthesis first, then the arguments.
         show = self.ok("debates", "--show", "D-0001")
         self.assertLess(show.index("SYNTHESIS"), show.index("ARGUMENTS"))
         self.assertIn("up to date", show)
@@ -7828,13 +7829,13 @@ class TestAgora(BaseAgora):
         self.assertIn("D-0001", self.ok("debates"))
         detail = json.loads(self.ok("debates", "--show", "D-0001", "--json"))
         self.assertEqual(detail["participants"], ["alice", "bruno", "chloe"])
-        # bee essaim montre les débats ouverts et leur dernière activité.
+        # bee swarm shows the open debates and their latest activity.
         swarm = json.loads(self.ok("swarm", "--json"))
         self.assertEqual(swarm["debates"][0]["last_activity"], "2026-10-29T12:40:00Z")
         text = self.ok("swarm")
         self.assertIn("Open debates of the agora", text)
         self.assertIn("  - D-0001 (rapporteur", text, "a live debate has its line")
-        # Tour 2 : les débats encore sans argument tiennent sur une seule ligne.
+        # Round 2: the debates still without an argument fit on a single line.
         self.open("bruno", "Une deuxième question, encore sans argument ?")
         self.open("chloe", "Une troisième question, encore sans argument ?")
         text = self.ok("swarm")
@@ -7870,7 +7871,7 @@ class TestAgora(BaseAgora):
         for i in range(3):
             self.assertEqual(self.open(question=f"Question numéro {i} de la journée ?"), f"D-000{i + 1}")
         self.ko("cap", "debate", "open", "--user", "alice", "--question", "Une question de trop ?")
-        self.a("2026-10-30T00:00:01Z")  # fenêtre glissante : minuit ne remet pas le compteur à zéro
+        self.a("2026-10-30T00:00:01Z")  # sliding window: midnight does not reset the counter
         self.ko("next opening possible on 2026-10-30T12:00:00Z", "debate", "open", "--user", "alice",
                 "--question", "Juste après minuit ?")
         self.a("2026-10-30T12:00:01Z")
@@ -7888,7 +7889,7 @@ class TestAgora(BaseAgora):
         self.argue("bruno", "for", "Vingt-quatre heures plus tard.")
 
     def test_relief_of_the_absent_rapporteur(self):
-        self.debate_of_three()  # alice rapporteur ; A1 (bruno) à 12 h 10, A2 (chloe) à 12 h 20 ; aucune synthèse
+        self.debate_of_three()  # alice rapporteur; A1 (bruno) at 12:10, A2 (chloe) at 12:20; no synthesis
         self.a("2026-11-01T12:09:00Z")
         self.ko("has until 2026-11-01T12:10:00Z", "debate", "synthesize", "D-0001", "--user", "bruno", "--text", "Trop tôt.")
         self.a("2026-11-01T12:10:00Z")
@@ -8002,7 +8003,7 @@ class TestAgora(BaseAgora):
 
 
     def test_first_argument_takes_the_pen(self):
-        """Un débat importé naît sans rapporteur ; le premier qui argumente le devient, pas le conseil qui l'a ouvert."""
+        """An imported debate is born without a rapporteur; the first one who argues becomes it, not the council that opened it."""
         self.a("2026-10-29T12:00:00Z")
         self.ok("debate", "import-questions", "--user", "bidji29")
         self.assertIn("none yet", self.ok("debates", "--show", "D-0002"))
@@ -8021,7 +8022,7 @@ class TestAgora(BaseAgora):
         text = self.ok("debate", "synthesize", "D-0001", "--user", "chloe", "--text", "État 2.")
         self.assertIn("next rapporteur: bruno", text, "the importing council, which did not argue, is not proposed")
         self.open("alice", "Un débat ouvert à la main garde son ouvreur comme rapporteur ?")
-        last = max(bee.Registry(self.dir).debates)  # après les débats importés, quel que soit leur nombre
+        last = max(bee.Registry(self.dir).debates)  # after the imported debates, whatever their number
         self.assertEqual(self.debate(last)["rapporteur"], "alice")
         self.valid_one()
 
@@ -8036,7 +8037,7 @@ class TestAgora(BaseAgora):
 
 
 class TestPullRequestsAgora(BaseAgora):
-    """check_pr et l'agora : chaque transition est en libre-service et contrôlée ; chaque attaque est refusée."""
+    """check_pr and the agora: each transition is self-service and checked; each attack is refused."""
 
     def setUp(self):
         super().setUp()
@@ -8074,14 +8075,14 @@ class TestPullRequestsAgora(BaseAgora):
         self.branch()
 
     def add_raw(self, **argument):
-        """Ajoute un argument écrit à la main (sans bee debate), au nom et à la date voulus."""
+        """Adds an argument written by hand (without bee debate), in the name and at the date wanted."""
         d = self.debate()
         d["arguments"].append({"id": f"A{len(d['arguments']) + 1}", "by": "alice", "at": os.environ["BEE_NOW"],
                                "position": "for", "text": "Argument écrit à la main.", **argument})
         self.write(d)
         self.commit()
 
-    # --- Transitions légitimes : fusion automatique ---
+    # --- Legitimate transitions: automatic merge ---
 
     def test_self_service_opening(self):
         self.branch()
@@ -8175,7 +8176,7 @@ class TestPullRequestsAgora(BaseAgora):
         self.ok("debate", "import-questions", "--user", "bidji29")
         self.commit()
         code, text = self.verify("bidji29", "--auto-merge")
-        self.assertEqual(code, 3, text)  # docs/ touché : relue et publiée par le conseil, jamais fusionnée seule
+        self.assertEqual(code, 3, text)  # docs/ touched: reviewed and published by the council, never merged on its own
         self.assertIn("debate_opening", text)
         self.assertIn("FUSION_AUTO=non", text)
 
@@ -8186,7 +8187,7 @@ class TestPullRequestsAgora(BaseAgora):
         text = self.ok("publish", "--title", "Débat D-0001", "--dry-run")
         self.assertIn("debates/D-0001.yaml", text)
 
-    # --- Refus : chaque attaque ---
+    # --- Refusals: each attack ---
 
     def test_refusal_argument_in_the_name_of_another(self):
         self.main_with_debate()
@@ -8201,7 +8202,7 @@ class TestPullRequestsAgora(BaseAgora):
         self.write(d)
         self.commit()
         self.refused("alice", "A2 modified")
-        self.refused("chloe", "A2 modified")  # pas même son auteur : on corrige par un nouvel argument
+        self.refused("chloe", "A2 modified")  # not even its author: one corrects with a new argument
 
     def test_refusal_removed_argument(self):
         self.main_with_debate()
@@ -8267,7 +8268,7 @@ class TestPullRequestsAgora(BaseAgora):
         self.commit("A3")
         self.branch()
         d = self.debate()
-        d["arguments"][1]["duplicate_of"] = "A3"  # et même vers un argument postérieur
+        d["arguments"][1]["duplicate_of"] = "A3"  # and even toward a later argument
         d["arguments"][2]["duplicate_of"] = "A2"
         self.write(d)
         self.commit()
@@ -8299,11 +8300,11 @@ class TestPullRequestsAgora(BaseAgora):
         self.add_raw(text="Vingt-quatre heures plus tard.")
         self.self_service("alice", "argument")
         git(self.dir, "reset", "-q", "--hard", "main")
-        self.a("2026-10-31T00:30:00Z")  # antidater dans la tolérance ne fait pas rentrer dans une fenêtre déjà pleine
+        self.a("2026-10-31T00:30:00Z")  # backdating within the tolerance does not get back into a window already full
         self.add_raw(text="Antidaté de 2 h.", at="2026-10-30T22:30:00Z")
         self.refused("alice", "would have 6 arguments in 24 h")
 
-    # --- Relève d'un rapporteur absent ---
+    # --- Taking over from an absent rapporteur ---
 
     def raw_synthesis(self, who_is, next_rapporteur):
         d = self.debate()
@@ -8313,7 +8314,7 @@ class TestPullRequestsAgora(BaseAgora):
         self.commit()
 
     def test_relief_accepted_after_the_delay(self):
-        self.main_with_debate()  # A1 à 12 h 10, sans synthèse : relève possible à partir du 01/11 12 h 10
+        self.main_with_debate()  # A1 at 12:10, without a synthesis: takeover possible from 1 Nov 12:10
         self.a("2026-11-01T12:10:00Z")
         self.raw_synthesis("bruno", "chloe")
         self.self_service("bruno", "synthesis")
@@ -8325,13 +8326,13 @@ class TestPullRequestsAgora(BaseAgora):
         self.refused("bruno", "relief impossible: the rapporteur (alice) has until 2026-11-01T12:10:00Z")
 
     def test_refusal_relief_by_a_non_participant(self):
-        self.ok("register", "--login", "david", "--account-created-on", "2020-01-01")  # membre, mais pas participant
+        self.ok("register", "--login", "david", "--account-created-on", "2020-01-01")  # a member, but not a participant
         self.main_with_debate()
         self.a("2026-11-02T12:00:00Z")
         self.raw_synthesis("david", "bruno")
         text = self.refused("david", "david is not a participant")
         git(self.dir, "reset", "-q", "--hard", "main")
-        d = self.debate()  # devenir participant dans la même PR ne suffit pas : la relève se juge sur la base
+        d = self.debate()  # becoming a participant in the same PR is not enough: the takeover is judged on the base
         d["arguments"].append({"id": "A3", "by": "david", "at": "2026-11-02T12:00:00Z", "position": "for", "text": "J'arrive."})
         d.update({"synthesis": "Synthèse de david.", "synthesis_by": "david", "synthesis_at": "2026-11-02T12:00:00Z", "rapporteur": "bruno"})
         self.write(d)
@@ -8347,7 +8348,7 @@ class TestPullRequestsAgora(BaseAgora):
         self.branch()
         self.a("2026-11-05T12:00:00Z")
         self.raw_synthesis("chloe", "alice")
-        self.refused("chloe", "no argument awaits the synthesis")  # rien de neuf depuis : bruno n'est pas en retard
+        self.refused("chloe", "no argument awaits the synthesis")  # nothing new since: bruno is not late
         git(self.dir, "switch", "-q", "main")
         self.a("2026-10-29T12:40:00Z")
         self.argue("chloe", "against", "Objection restée sans synthèse.")
@@ -8355,19 +8356,19 @@ class TestPullRequestsAgora(BaseAgora):
         git(self.dir, "switch", "-qC", "pr")
         self.a("2026-11-05T12:00:00Z")
         self.raw_synthesis("alice", "chloe")
-        self.refused("alice", "alice wrote the last synthesis")  # jamais deux synthèses de suite par le même
+        self.refused("alice", "alice wrote the last synthesis")  # never two syntheses in a row by the same person
         git(self.dir, "reset", "-q", "--hard", "main")
         self.raw_synthesis("chloe", "alice")
         self.self_service("chloe", "synthesis")
 
     def test_refusal_per_pr_cap(self):
-        # Le plafond par PR se teste seul : celui tous débats confondus (15 sur 24 h, ruche-0011) est relevé ici.
+        # The per-PR cap is tested alone: the one across all debates (15 in 24 h, ruche-0011) is raised here.
         path = self.dir / "bee.yaml"
         path.write_text(path.read_text(encoding="utf-8").replace("arguments_max_per_24h_all_debates: 15",
                                                                      "arguments_max_per_24h_all_debates: 30"), encoding="utf-8")
         self.a("2026-10-29T12:00:00Z")
         for i in range(5):
-            self.open(who_is="bidji29", question=f"Question {i} ouverte par le conseil ?")  # le conseil n'est pas plafonné
+            self.open(who_is="bidji29", question=f"Question {i} ouverte par le conseil ?")  # the council is not capped
         self.commit("cinq débats")
         self.branch()
         for i in range(20):
