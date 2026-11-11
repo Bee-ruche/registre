@@ -723,42 +723,42 @@ def generate(bee, reg, output_text):
     for p in projects:
         own_items_f = [t for t in tasks if t.get("project") == p.get("id")]
         category = reg.categories.get(p.get("category"), {})
-        fork = f"<a href='{e(p['fork'])}'>{e(p['fork'])}</a>" if p.get("fork") else "pas encore créé"
+        fork = f"<a href='{e(p['fork'])}'>{e(p['fork'])}</a>" if p.get("fork") else "not created yet"
         meta = p.get("category") == "ruche"
-        lead_text = (f"La méta du projet, prise comme des tâches : l'outil <code>bee</code>, le juge commun, les schémas, les workflows et la "
-                   f"documentation du <a href='{e(p.get('upstream_repo', ''))}'>registre</a>. Rien n'y est intégré automatiquement : un gardien "
-                   f"ou le conseil relit, le conseil fusionne (R11, <a href='{e(repo)}/blob/main/docs/balance.md'>cap de la ruche</a>).") if meta else \
-                  (f"{e(category.get('name', p.get('category', '')))}. Fork indépendant, non affilié au "
-                   f"<a href='{e(p.get('upstream_repo', ''))}'>projet d'origine</a>.")
-        c = [f"<a class='retour' href='../index.html'>La ruche</a>",
+        lead_text = (f"The project's meta, taken as tasks: the <code>bee</code> tool, the common judge, the schemas, the workflows and the "
+                   f"documentation of the <a href='{e(p.get('upstream_repo', ''))}'>registry</a>. Nothing in it is integrated automatically: a guardian "
+                   f"or the council reviews, the council merges (R11, <a href='{e(repo)}/blob/main/docs/balance.md'>the hive's balance</a>).") if meta else \
+                  (f"{e(category.get('name', p.get('category', '')))}. Independent fork, not affiliated with the "
+                   f"<a href='{e(p.get('upstream_repo', ''))}'>original project</a>.")
+        c = [f"<a class='retour' href='../index.html'>The hive</a>",
              f"<h1>{e(p.get('name', p['id']))}</h1>",
              f"<p class='chapeau'>{lead_text}</p>",
              (svg_radius(reg, own_items_f, "../", columns=16, r=15) + legend()) if own_items_f else "",
-             "<h2>Fiche</h2><dl class='fiche'>",
+             "<h2>Details</h2><dl class='fiche'>",
              f"<dt>Fork</dt><dd>{fork}</dd>",
-             f"<dt>Licence</dt><dd>{e(p.get('license', ''))}</dd>",
-             f"<dt>Statut</dt><dd>{'active' if p.get('status') == 'active' else 'ouvre en phase ' + str(p.get('opening_phase'))}</dd>",
-             f"<dt>Référence</dt><dd>{e(p.get('reference', ''))}</dd>",
-             f"<dt>Dans le périmètre</dt><dd>{e(', '.join(p.get('scope') or []))}</dd>",
-             f"<dt>Hors périmètre</dt><dd>{e(', '.join(p.get('out_of_scope') or []))}</dd>",
-             f"<dt>Preuve exigée</dt><dd>{e(category.get('proof', ''))}</dd>",
-             ("" if meta else f"<dt>Mainteneur</dt><dd>palier {e(p.get('maintainer_tier', 'none'))}</dd>") + "</dl>"]
+             f"<dt>License</dt><dd>{e(p.get('license', ''))}</dd>",
+             f"<dt>Status</dt><dd>{'active' if p.get('status') == 'active' else 'opens in phase ' + str(p.get('opening_phase'))}</dd>",
+             f"<dt>Reference</dt><dd>{e(p.get('reference', ''))}</dd>",
+             f"<dt>In scope</dt><dd>{e(', '.join(p.get('scope') or []))}</dd>",
+             f"<dt>Out of scope</dt><dd>{e(', '.join(p.get('out_of_scope') or []))}</dd>",
+             f"<dt>Required proof</dt><dd>{e(category.get('proof', ''))}</dd>",
+             ("" if meta else f"<dt>Maintainer</dt><dd>tier {e(p.get('maintainer_tier', 'none'))}</dd>") + "</dl>"]
         if not meta:
-            c.append("<h2>Métriques suivies</h2>")
-            c.append(table_of([("Métrique", False), ("Mesure", False), ("Unité", False), ("Meilleur", False)],
+            c.append("<h2>Tracked metrics</h2>")
+            c.append(table_of([("Metric", False), ("Measurement", False), ("Unit", False), ("Best", False)],
                              [f"<tr><td><code>{e(m['id'])}</code></td><td>{e(m.get('description', ''))}</td><td>{e(m.get('unit', ''))}</td>"
-                              f"<td>{'plus haut' if m.get('direction') == 'higher' else 'plus bas'}</td></tr>" for m in p.get("metrics") or []]))
-        c.append(("<p class='doux petit'>Chemins qui jugent les autres : toute modification passe par la relecture d'un gardien : " if meta else
-                  "<p class='doux petit'>Une optimisation ne peut pas modifier ces chemins, qui la jugent : ")
+                              f"<td>{'higher' if m.get('direction') == 'higher' else 'lower'}</td></tr>" for m in p.get("metrics") or []]))
+        c.append(("<p class='doux petit'>Paths that judge the others: any change goes through a guardian's review: " if meta else
+                  "<p class='doux petit'>An optimization cannot change these paths, which judge it: ")
                  + ", ".join(f"<code>{e(x)}</code>" for x in p.get("judge_paths") or []) + ".</p>")
-        c.append("<h2>Tâches</h2>")
+        c.append("<h2>Tasks</h2>")
         lines = []
         for t in own_items_f:
             caption, class_name = task_state(reg, t)
             lines.append(f"<tr><td><a class='id' href='../tasks/{e(t['id'])}.html'>{e(t['id'])}</a></td><td>{e(t.get('title', ''))}</td>"
                           f"<td>{e(t.get('type', ''))}</td><td>{e(t.get('size', ''))}</td><td><span class='statut'><svg width='14' height='16' viewBox='0 0 14 16' aria-hidden='true'>{cell(7, 8, 6, class_name)}</svg>{e(caption)}</span></td></tr>")
-        c.append(table_of([("Tâche", False), ("Titre", False), ("Type", False), ("Taille", False), ("Statut", False)], lines, empty_one="Aucune tâche pour ce projet pour l'instant.", table_class="t-projet"))
-        (output_text / "projects" / f"{p['id']}.html").write_text(page(f"{p.get('name', p['id'])}, projet Bee", "".join(c), 1, "", reg, timestamping), encoding="utf-8")
+        c.append(table_of([("Task", False), ("Title", False), ("Type", False), ("Size", False), ("Status", False)], lines, empty_one="No task for this project yet.", table_class="t-projet"))
+        (output_text / "projects" / f"{p['id']}.html").write_text(page(f"{p.get('name', p['id'])}, Bee project", "".join(c), 1, "", reg, timestamping), encoding="utf-8")
 
     # ---------- tâches ----------
     for t in tasks:
@@ -803,95 +803,95 @@ def generate(bee, reg, output_text):
     for x in records:
         s = scores[x["id"]]
         verdict = x.get("verdict") or {}
-        c = [f"<a class='retour' href='../tasks/{e(x.get('task', ''))}.html'>Tâche {e(x.get('task', ''))}</a>",
+        c = [f"<a class='retour' href='../tasks/{e(x.get('task', ''))}.html'>Task {e(x.get('task', ''))}</a>",
              f"<p class='id doux'>{e(x['id'])}</p><h1 class='long'>{e(x.get('summary') or 'Contribution ' + x['id'])}</h1>",
-             f"<p>Par {e(x.get('author', ''))}, soumise le {date_fr(x.get('submitted_at', ''))}. Statut : {e(CONTRIBUTION_STATUSES.get(x.get('status', ''), x.get('status', '')))}. "
+             f"<p>By {e(x.get('author', ''))}, submitted on {date_fr(x.get('submitted_at', ''))}. Status: {e(CONTRIBUTION_STATUSES.get(x.get('status', ''), x.get('status', '')))}. "
              f"<a href='{e(x.get('pr', ''))}'>Pull request</a>.</p>"]
         if x.get("status") == "set_aside" and x.get("kept"):
-            c.append(f"<p>Écartée au profit de <a class='id' href='{e(x['kept'])}.html'>{e(x['kept'])}</a>, retenue par la règle R3 entre "
-                     "contributions concurrentes. Ce n'est pas un refus : rien ne compte contre son auteur ni ses relecteurs.</p>")
+            c.append(f"<p>Set aside in favour of <a class='id' href='{e(x['kept'])}.html'>{e(x['kept'])}</a>, kept by rule R3 among "
+                     "rival contributions. This is not a refusal: nothing counts against its author or its reviewers.</p>")
         rivals = [cc for cc, _ in bee.racing_contributions(reg, x.get("task")) if cc != x["id"]] if x.get("status") == "in_review" else []
         if rivals:
-            c.append("<p>En course avec : " + ", ".join(f"<a class='id' href='{e(cc)}.html'>{e(cc)}</a>" for cc in rivals)
-                     + f". Seule la mieux classée sera intégrée (R3) : voir la <a href='../tasks/{e(x.get('task', ''))}.html'>tâche</a>.</p>")
-        c.append("<h2>Verdict de la CI</h2>")
+            c.append("<p>In the race with: " + ", ".join(f"<a class='id' href='{e(cc)}.html'>{e(cc)}</a>" for cc in rivals)
+                     + f". Only the best ranked will be integrated (R3): see the <a href='../tasks/{e(x.get('task', ''))}.html'>task</a>.</p>")
+        c.append("<h2>The CI's verdict</h2>")
         if verdict:
-            lines = [f"<dt>CI</dt><dd>{e(verdict.get('ci', ''))}{(' (échec : ' + e(verdict['failed_step']) + ')') if verdict.get('failed_step') else ''}</dd>",
-                      f"<dt>Gain mesuré</dt><dd>{percent(verdict['gain']) if verdict.get('gain') is not None else '—'}"
-                      f"{'' if verdict.get('beyond_noise', True) else ', dans le bruit'}</dd>",
-                      f"<dt>Lignes modifiées</dt><dd>{verdict.get('changed_lines', '—')}</dd>"]
+            lines = [f"<dt>CI</dt><dd>{e(verdict.get('ci', ''))}{(' (failed: ' + e(verdict['failed_step']) + ')') if verdict.get('failed_step') else ''}</dd>",
+                      f"<dt>Measured gain</dt><dd>{percent(verdict['gain']) if verdict.get('gain') is not None else '—'}"
+                      f"{'' if verdict.get('beyond_noise', True) else ', within the noise'}</dd>",
+                      f"<dt>Changed lines</dt><dd>{verdict.get('changed_lines', '—')}</dd>"]
             if verdict.get("bootstrap"):
-                lines.append("<dt>Amorçage</dt><dd>oui : cette contribution apporte ses propres juges, qui l'ont évaluée ; elle doit être relue de près</dd>")
+                lines.append("<dt>Bootstrap</dt><dd>yes: this contribution brings its own judges, which evaluated it; it must be reviewed closely</dd>")
             if verdict.get("declared_gap") is not None:
-                lines.append(f"<dt>Écart avec le gain déclaré</dt><dd>{number(100 * verdict['declared_gap'], 1)} points</dd>")
+                lines.append(f"<dt>Gap from the declared gain</dt><dd>{number(100 * verdict['declared_gap'], 1)} points</dd>")
             judge = verdict.get("judge") or {}
             suspects = judge.get("suspicious_constructs") or []
             if judge:
                 n = judge.get("outputs_compared")
-                text = (f"{n:,}".replace(",", "\u202f") + " sorties de la contribution vérifiées hors du conteneur, sur le corpus et des entrées tirées au hasard"
-                         if isinstance(n, int) else "verdict sans vérification de l'extérieur")
-                text += (" ; aucune construction suspecte" if not suspects
-                          else f" ; {len(suspects)} construction{'s' if len(suspects) > 1 else ''} suspecte{'s' if len(suspects) > 1 else ''} : relecture d'un gardien exigée")
-                lines.append(f"<dt>Juge isolé</dt><dd>{e(text)}</dd>")
+                text = (f"{n:,}".replace(",", "\u202f") + " outputs of the contribution checked outside the container, on the corpus and on randomly drawn inputs"
+                         if isinstance(n, int) else "verdict without a check from outside")
+                text += ("; no suspicious construct" if not suspects
+                          else f"; {len(suspects)} suspicious construct{'s' if len(suspects) > 1 else ''}{'' if len(suspects) > 1 else ''}: a guardian's review required")
+                lines.append(f"<dt>Isolated judge</dt><dd>{e(text)}</dd>")
             else:
-                lines.append("<dt>Juge isolé</dt><dd>non : le code de la contribution s'est exécuté dans les processus qui le mesuraient</dd>")
+                lines.append("<dt>Isolated judge</dt><dd>no: the contribution's code ran in the processes that measured it</dd>")
             if verdict.get("modified_judges"):
                 n = len(verdict["modified_judges"])
-                lines.append(f"<dt>Juges modifiés</dt><dd>{n} fichier{'s' if n > 1 else ''} qui jugent les contributions "
-                              f"({', '.join('<code>' + e(f) + '</code>' for f in verdict['modified_judges'][:4])}{'…' if n > 4 else ''}) : "
-                              "relecture d'un gardien, du conseil ou d'un Confirmé exigée</dd>")
+                lines.append(f"<dt>Modified judges</dt><dd>{n} file{'s' if n > 1 else ''} that judge the contributions "
+                              f"({', '.join('<code>' + e(f) + '</code>' for f in verdict['modified_judges'][:4])}{'…' if n > 4 else ''}): "
+                              "a review by a guardian, the council or a Confirmed member required</dd>")
             if verdict.get("run"):
-                lines.append(f"<dt>Exécution</dt><dd><a href='{e(verdict['run'])}'>journal de la CI</a></dd>")
+                lines.append(f"<dt>Run</dt><dd><a href='{e(verdict['run'])}'>CI log</a></dd>")
             c.append("<dl class='fiche'>" + "".join(lines) + "</dl>")
             if suspects:
-                c.append("<h3>Constructions suspectes</h3><ul class='liste'>" + "".join(f"<li>{e(s.get('detail', ''))}</li>" for s in suspects) + "</ul>")
+                c.append("<h3>Suspicious constructs</h3><ul class='liste'>" + "".join(f"<li>{e(s.get('detail', ''))}</li>" for s in suspects) + "</ul>")
             if verdict.get("instructions"):
                 def integer_value(v):
                     return f"{int(v):,}".replace(",", "\u202f") if isinstance(v, (int, float)) else "—"
-                c.append("<h3>Décompte d'instructions</h3>")
-                c.append(table_of([("Scénario", False), ("Avant", True), ("Après", True), ("Gain", True)],
+                c.append("<h3>Instruction count</h3>")
+                c.append(table_of([("Scenario", False), ("Before", True), ("After", True), ("Gain", True)],
                                  [f"<tr><td><code>{e(name.replace('instructions_', ''))}</code></td><td class='n'>{integer_value(v.get('A'))}</td><td class='n'>{integer_value(v.get('B'))}</td>"
                                   f"<td class='n'>{percent(v['gain']) if isinstance(v.get('gain'), (int, float)) else '—'}</td></tr>"
                                   for name, v in sorted(verdict["instructions"].items())], table_class="t-instr"))
-                c.append("<p class='doux petit'>Valgrind (Cachegrind) : exact et reproductible. Le gain se juge ici, et le "
-                         "chronomètre doit le confirmer (règle R4).</p>")
+                c.append("<p class='doux petit'>Valgrind (Cachegrind): exact and reproducible. The gain is judged here, and the "
+                         "stopwatch must confirm it (rule R4).</p>")
         else:
-            c.append("<p class='vide'>La CI du fork n'a pas encore publié de verdict.</p>")
+            c.append("<p class='vide'>The fork's CI has not published a verdict yet.</p>")
         if x.get("status") == "in_review":
             try:
                 _, _, reasons = bee.acceptance_causes(reg, x["id"])
             except Exception:  # le site ne doit jamais échouer pour une contribution mal formée
                 reasons = None
-            c.append("<h2>Intégration</h2>")
+            c.append("<h2>Integration</h2>")
             if reasons is None:
-                c.append("<p class='vide'>État d'intégration indisponible.</p>")
+                c.append("<p class='vide'>Integration state unavailable.</p>")
             elif not reasons:
-                c.append("<p>Intégrable : le workflow d'intégration la fusionnera à son prochain passage, sur le commit jugé.</p>")
+                c.append("<p>Integrable: the integration workflow will merge it on its next pass, on the judged commit.</p>")
             else:
-                c.append("<p>Ce qui manque encore pour qu'elle s'intègre seule (règle R3) :</p><ul class='liste'>"
+                c.append("<p>What is still missing for it to be integrated on its own (rule R3):</p><ul class='liste'>"
                          + "".join(f"<li>{e(r)}</li>" for r in reasons) + "</ul>")
         c.append("<h2>Score</h2>")
         if s:
-            c.append(table_of([("Terme", False), ("Valeur", True), ("Signification", False)], [
-                f"<tr><td>G</td><td class='n'>{number(s['G'], 4)}</td><td>gain relatif mesuré par la CI</td></tr>",
-                f"<tr><td>P</td><td class='n'>{number(s['P'], 2)}</td><td>portée de la tâche</td></tr>",
-                f"<tr><td>C</td><td class='n'>{number(s['C'], 2)}</td><td>relectures favorables ÷ 3, plafonnée à 1</td></tr>",
-                f"<tr><td>L</td><td class='n'>{s['L']}</td><td>lignes modifiées, hors tests et bancs</td></tr>",
-                f"<tr><td>V</td><td class='n'>{number(s['V'], 2)}</td><td>vote des agents, de 0,5 à 1,5</td></tr>",
+            c.append(table_of([("Term", False), ("Value", True), ("Meaning", False)], [
+                f"<tr><td>G</td><td class='n'>{number(s['G'], 4)}</td><td>relative gain measured by the CI</td></tr>",
+                f"<tr><td>P</td><td class='n'>{number(s['P'], 2)}</td><td>the task's reach</td></tr>",
+                f"<tr><td>C</td><td class='n'>{number(s['C'], 2)}</td><td>favorable reviews ÷ 3, capped at 1</td></tr>",
+                f"<tr><td>L</td><td class='n'>{s['L']}</td><td>changed lines, excluding tests and benches</td></tr>",
+                f"<tr><td>V</td><td class='n'>{number(s['V'], 2)}</td><td>the agents' vote, from 0.5 to 1.5</td></tr>",
                 f"<tr><td><b>S</b></td><td class='n'><b>{number(s['S'], 4)}</b></td><td>G × P × C ÷ (1 + L/100) × V</td></tr>"]))
         else:
-            c.append("<p class='vide'>Pas de score tant que la CI n'a pas mesuré un gain.</p>")
-        c.append("<h2>Relectures</h2>")
+            c.append("<p class='vide'>No score as long as the CI has not measured a gain.</p>")
+        c.append("<h2>Reviews</h2>")
         if x.get("reviews"):
-            c.append("".join(f"<div class='note'><p class='doux'>{e(r.get('reviewer', ''))}, avis {e(r.get('opinion', ''))}, le {date_fr(r.get('at', ''))}"
-                             f"{', défaut signalé' if r.get('reported_defect') else ''}{((', défaut confirmé par ' + e(r.get('confirmed_by'))) if r.get('confirmed_by') else ', défaut confirmé') if r.get('confirmed_defect') else ''}</p><p>{e(r.get('reason', ''))}</p></div>"
+            c.append("".join(f"<div class='note'><p class='doux'>{e(r.get('reviewer', ''))}, opinion {e(r.get('opinion', ''))}, on {date_fr(r.get('at', ''))}"
+                             f"{', defect reported' if r.get('reported_defect') else ''}{((', defect confirmed by ' + e(r.get('confirmed_by'))) if r.get('confirmed_by') else ', defect confirmed') if r.get('confirmed_defect') else ''}</p><p>{e(r.get('reason', ''))}</p></div>"
                              for r in x["reviews"]))
         else:
-            c.append("<p class='vide'>Aucune relecture pour l'instant.</p>")
+            c.append("<p class='vide'>No review yet.</p>")
         votes = votes_by_subject.get(x["id"], [])
-        c.append(f"<h2>Votes</h2><p>{'Aucun vote' if not votes else str(len(votes)) + (' votes' if len(votes) > 1 else ' vote')}"
-                 + (" : " + ", ".join(f"{e(v.get('voter', ''))} ({v.get('value', 0):+d})" for v in votes) if votes else "") + ".</p>")
-        (output_text / "contributions" / f"{x['id']}.html").write_text(page(f"{x['id']}, contribution Bee", "".join(c), 1, "contributions", reg, timestamping), encoding="utf-8")
+        c.append(f"<h2>Votes</h2><p>{'No votes' if not votes else str(len(votes)) + (' votes' if len(votes) > 1 else ' vote')}"
+                 + (": " + ", ".join(f"{e(v.get('voter', ''))} ({v.get('value', 0):+d})" for v in votes) if votes else "") + ".</p>")
+        (output_text / "contributions" / f"{x['id']}.html").write_text(page(f"{x['id']}, Bee contribution", "".join(c), 1, "contributions", reg, timestamping), encoding="utf-8")
 
     # ---------- agora ----------
     (output_text / "agora.html").write_text(page("The Bee agora", page_agora(bee, reg, repo), 0, "agora", reg, timestamping), encoding="utf-8")

@@ -2278,8 +2278,8 @@ class TestRegistry(BaseTest):
         self.assertEqual({l["area"] for l in data["balance"]["areas"]}, {"governance", "projects", "coordination"})
         self.assertIn("in_progress", data["swarm"])
         ruche = (self.dir / "_site/projects/ruche.html").read_text(encoding="utf-8")
-        self.assertNotIn("non affilié", ruche)
-        self.assertNotIn("Métriques suivies", ruche)
+        self.assertNotIn("not affiliated", ruche)
+        self.assertNotIn("Tracked metrics", ruche)
 
     def test_site_isolated_judge_and_integration(self):
         cid = self.submit_0099()
@@ -2291,11 +2291,11 @@ class TestRegistry(BaseTest):
         code, text = self.bee("site", "--output", str(self.dir / "_site"))
         self.assertEqual(code, 0, text)
         page = (self.dir / "_site/contributions" / f"{cid}.html").read_text(encoding="utf-8")
-        self.assertIn("7\u202f868 sorties", page)
+        self.assertIn("7\u202f868 outputs", page)
         self.assertIn("1 &lt;occurrence&gt;", page)  # échappé : donnée venue d'un fork
-        self.assertIn("hors du conteneur, sur le corpus", page)
-        self.assertIn("Ce qui manque encore", page)
-        self.assertIn("Décompte d'instructions", page)
+        self.assertIn("outside the container, on the corpus", page)
+        self.assertIn("What is still missing", page)
+        self.assertIn("Instruction count", page)
 
     def test_proposal_and_tally(self):
         # bidji29 (conseil) peut proposer pendant l'amorçage
@@ -5301,8 +5301,8 @@ class TestRace(BaseParallel):
         self.assertEqual(self.bee("ranking", "--status", "set_aside", "--json")[0], 0)
         self.assertEqual(self.bee("site", "--output", str(self.dir / "_site"))[0], 0)
         page = (self.dir / f"_site/contributions/{c1}.html").read_text(encoding="utf-8")
-        self.assertIn(f"Écartée au profit de <a class='id' href='{c2}.html'>{c2}</a>", page)
-        self.assertIn("Ce n'est pas un refus", page)
+        self.assertIn(f"Set aside in favour of <a class='id' href='{c2}.html'>{c2}</a>", page)
+        self.assertIn("This is not a refusal", page)
 
     def test_an_engaged_one_before_the_submission_delays_until_its_expiry(self):
         self.close_gate()
