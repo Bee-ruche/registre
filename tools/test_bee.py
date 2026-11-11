@@ -5558,7 +5558,7 @@ class TestParallelPullRequests(BaseParallel):
         self.assertEqual(self.bee("release", "miniz-0099", "--user", "alice")[0], 0)
         self.commit()
         self.self_service("alice", "promotion")
-        self.refused("bruno", "seul le titulaire (alice) libère sa réservation")  # se promouvoir soi-même
+        self.refused("bruno", "only the holder (alice) releases their reservation")  # se promouvoir soi-même
 
     def test_promotion_by_the_robot_after_expiry(self):
         self.main_reserved_with_registered("bruno")
@@ -5568,7 +5568,7 @@ class TestParallelPullRequests(BaseParallel):
         self.commit()
         self.assertEqual(self.task("miniz-0099")["reservation"]["user"], "bruno")
         self.assertEqual(self.verify("github-actions[bot]")[0], 0)
-        self.refused("bruno", "seul le titulaire (alice)")  # même après l'expiration, seul le robot la constate
+        self.refused("bruno", "only the holder (alice)")  # même après l'expiration, seul le robot la constate
 
     def test_submission_by_the_holder_and_release_to_review(self):
         self.main_reserved_with_registered("bruno")
@@ -5579,7 +5579,7 @@ class TestParallelPullRequests(BaseParallel):
         self.commit()
         self.assertEqual(self.task("miniz-0099")["status"], "in_review")
         self.self_service("alice", "release")
-        self.refused("bruno", "seul le titulaire")
+        self.refused("bruno", "only the holder")
         git(self.dir, "switch", "-q", "main")
         self.parallel_one("miniz-0099", "chloe")
         self.commit("chloe s'inscrit")
@@ -5670,7 +5670,7 @@ class TestParallelPullRequests(BaseParallel):
         self.branch()
         bee.modify_task(self.path(), reservation={"user": "bruno", "since": "2026-10-27T13:00:00Z"}, parallel=[])
         self.commit()
-        self.refused("bruno", "seul le titulaire (alice) libère sa réservation")
+        self.refused("bruno", "only the holder (alice) releases their reservation")
 
     def test_attack_promote_someone_other_than_the_earliest(self):
         self.main_reserved_with_registered("bruno", "chloe")
@@ -5692,7 +5692,7 @@ class TestParallelPullRequests(BaseParallel):
         self.branch()
         bee.modify_task(self.path(), status="open", reservation=None, parallel=[])
         self.commit()
-        self.refused("bruno", "seul le titulaire (alice) libère sa réservation")
+        self.refused("bruno", "only the holder (alice) releases their reservation")
         # Même le titulaire ne libère pas en emportant les inscrits : le plus ancien prend sa place.
         self.refused("alice", "the oldest becomes the holder")
 
@@ -18582,7 +18582,7 @@ class TestClocksRuche0091(BaseInvitations):
         verification = "2026-11-02T09:30:00Z" if gesture != "withdrawal" else "2026-11-02T10:30:00Z"
         self.pr(verification, lambda: self.ok("release-expired"))
         refusal = ("on ne retire que sa propre inscription en parallèle (bruno" if gesture == "withdrawal" else
-                 "seul le titulaire (alice) libère sa réservation avant expiration")
+                 "only the holder (alice) releases their reservation before it expires")
         return "github-actions[bot]", "2026-11-02T08:30:00Z" if gesture != "withdrawal" else "2026-11-02T09:30:00Z", verification, (), refusal
 
     def brake(self):

@@ -2914,7 +2914,7 @@ def check_engagements(reg, path, old, new, differences, author, *, is_council, i
                    f"son inscription ({elected.get('since')}) : l'échéance R7 ne s'allonge pas")
             require(pn == without_it(pa, elected.get("user")), "seul le nouveau titulaire quitte la liste des inscrits en parallèle")
         require(holder == author or is_council or (is_robot and engagement_expired(reg, ra.get("since"), now_instant())),
-               f"seul le titulaire ({holder}) libère sa réservation avant expiration")
+               f"only the holder ({holder}) releases their reservation before it expires")
         return "promotion", problems_found
 
     if old_contribution != new_contribution:
@@ -6012,7 +6012,7 @@ def check_pr_for(reg, base, head, author, account_created_on, instant, pr_author
                 except BeeError:
                     pass
                 require(holder == author or is_council or (is_robot and expired),
-                       f"{path} : seul le titulaire ({holder}) libère sa réservation avant expiration")
+                       f"{path}: only the holder ({holder}) releases their reservation before it expires")
                 require(not pa, f"{path}: bees are registered in parallel ({', '.join(p.get('user', '?') for p in pa)}): "
                                "the oldest becomes the holder, the task stays reserved (bee release does it)")
                 racing = [c for c, _ in racing_contributions(reg, tid)]
