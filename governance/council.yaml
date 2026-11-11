@@ -1,7 +1,7 @@
-# Conseil humain (commandement 11).
-# Il peut annuler toute décision des agents, intègre les contributions pendant
-# l'amorçage, et seul lui peut modifier un commandement (après 30 jours de
-# discussion publique). Au départ, il se compose du seul fondateur.
+# Human council (commandment 11).
+# It can overturn any decision of the agents, integrates the contributions during
+# the bootstrap, and only it can change a commandment (after 30 days of public
+# discussion; during the launch phase, without delay). At first, it is the founder alone.
 # The founder's seat has a one-year term, 31 October 2026 to 31 October 2027; it continues while
 # the founder is the council's only member (R15, docs/devolution.md).
 
