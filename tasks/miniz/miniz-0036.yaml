@@ -3,47 +3,46 @@ project: miniz
 category: lossless-compression
 type: optimization
 size: S
-title: "tdefl_find_match : moins d'instructions par sonde, exactement les mêmes sondes"
+title: "tdefl_find_match: fewer instructions per probe, exactly the same probes"
 context: >
-  Source : rapport de miniz-0029 (bee/resultats/miniz-0029/RAPPORT.md et TABLEAUX.md du fork, branche
-  tache/miniz-0029, PR #18 ; sources de master a2f939a ; Cachegrind, 128 premiers Kio de chaque fichier).
-  La boucle des sondes de tdefl_find_match (miniz_tdef.c l. 878-893 à a2f939a : budget
-  --num_probes_left l. 880, macro TDEFL_PROBE l. 882-889 déroulée trois fois l. 890-892) pèse,
-  dans le décompte d'instructions du juge (juge_parts.py : tout le processus de
-  bee/juge/execution.c), 63,9 % au niveau 9 (sondes 60,4 % + budget 3,5 %) et 49,5 % au niveau 6
-  (46,6 % + 3,0 %). Plafond connu : 63,9 % de instructions_n9, très au-dessus du seuil de 2 % de
-  R4. Le niveau 9 fait 40,7 sondes par appel (médiane 4, p90 98, p99 762 ; budget 768) et 22,7
-  millions de sondes sur le sous-corpus, à 13,6 instructions chacune, budget compris
-  (stats_lz.py et cachegrind.py). Désassemblage (gcc 13.3 -O3, objet du banc) : 13 instructions
-  par sonde : lecture de m_next ; test du zéro (test, je) ; copie, soustraction, extension movzwl,
-  comparaison et saut pour dist > max_dist ; le masque TDEFL_LZ_DICT_SIZE_MASK calculé deux fois
-  (mov, and, and) ; comparaison des 2 octets de fin et saut. Déjà intégré dans cette boucle :
-  miniz-0014 (2 octets de fin lus en 16 bits depuis pTail). Déjà essayé sans gain (manifeste de
-  miniz-0014 du fork, instructions n9) : probe_pos ou next_probe_pos en size_t, test de distance
-  réordonné, dist recalculé après la boucle, lookahead_pos tronqué une fois : code identique ou plus
-  lent ; la sonde ratée y coûtait déjà 13 instructions (copie inutile de probe_pos). Pistes non
-  essayées : un seul masque ; (mz_uint16)(lookahead_pos - next) > max_dist équivaut à
-  (mz_uint16)(next - (lookahead_pos - max_dist)) > max_dist, base calculée une fois par appel,
-  sans copie ni extension ; le test du zéro n'est redondant que si (mz_uint16)lookahead_pos >
-  max_dist (environ la moitié des positions d'un long flux), d'où une seconde version de la
-  boucle pour ce cas. dist ne sert qu'aux candidats (5,3 % des sondes au niveau 6, 3,9 % au
-  niveau 9). Touche la même fonction que miniz-0038 : la seconde intégrée se rebase. Invariants : exactement les mêmes
-  sondes, le même décompte de num_probes_left (il dépend aussi du nombre de candidats, qui
-  relancent la boucle intérieure) et les mêmes correspondances ; m_next nul reste une fin de
-  chaîne. Le chronomètre suivra moins que les instructions : 0,64 défaut L1 simulé par sonde au
-  niveau 9 (90 % des défauts L1 du scénario), et un modèle ajusté sur le banc attribue environ 41 %
-  du temps du niveau 9 aux défauts L1 (TABLEAUX.md, section 4).
+  Source: miniz-0029's report (bee/resultats/miniz-0029/RAPPORT.md and TABLEAUX.md in the fork,
+  branch tache/miniz-0029, PR #18; sources of master a2f939a; Cachegrind, first 128 KiB of each
+  file). The probe loop of tdefl_find_match (miniz_tdef.c l. 878-893 at a2f939a: budget
+  --num_probes_left l. 880, macro TDEFL_PROBE l. 882-889 unrolled three times l. 890-892) weighs, in
+  the judge's instruction count (juge_parts.py: the whole process of bee/juge/execution.c), 63.9% at
+  level 9 (probes 60.4% + budget 3.5%) and 49.5% at level 6 (46.6% + 3.0%). Known ceiling: 63.9% of
+  instructions_n9, far above R4's 2% threshold. Level 9 makes 40.7 probes per call (median 4, p90
+  98, p99 762; budget 768) and 22.7 million probes on the sub-corpus, at 13.6 instructions each,
+  budget included (stats_lz.py and cachegrind.py). Disassembly (gcc 13.3 -O3, the bench's object):
+  13 instructions per probe: read of m_next; zero test (test, je); copy, subtraction, movzwl
+  extension, comparison and jump for dist > max_dist; the mask TDEFL_LZ_DICT_SIZE_MASK computed
+  twice (mov, and, and); comparison of the 2 tail bytes and jump. Already integrated in this loop:
+  miniz-0014 (the 2 tail bytes read as 16 bits from pTail). Already tried without gain (miniz-0014's
+  manifest in the fork, n9 instructions): probe_pos or next_probe_pos as size_t, distance test
+  reordered, dist recomputed after the loop, lookahead_pos truncated once: identical or slower code;
+  the missed probe already cost 13 instructions there (a useless copy of probe_pos). Leads not
+  tried: a single mask; (mz_uint16)(lookahead_pos - next) > max_dist is equivalent to
+  (mz_uint16)(next - (lookahead_pos - max_dist)) > max_dist, with the base computed once per call,
+  without copy or extension; the zero test is redundant only if (mz_uint16)lookahead_pos > max_dist
+  (about half of the positions of a long stream), hence a second version of the loop for that case.
+  dist serves only the candidates (5.3% of the probes at level 6, 3.9% at level 9). Touches the same
+  function as miniz-0038: whichever is integrated second rebases. Invariants: exactly the same
+  probes, the same count of num_probes_left (it also depends on the number of candidates, which
+  restart the inner loop) and the same matches; a null m_next stays an end of chain. The stopwatch
+  will follow less than the instructions: 0.64 simulated L1 miss per probe at level 9 (90% of the
+  scenario's L1 misses), and a model fitted on the bench attributes about 41% of level 9's time to
+  L1 misses (TABLEAUX.md, section 4).
 files: [miniz_tdef.c]
 reach: 1.0
 metric: debit_compression_n9
 compressed_output: identical
 acceptance_criteria:
-  - "CI verte (R2), x86-64 et ARM64 (R6)"
-  - "R4 : au moins 2 % d'instructions en moins sur debit_compression_n9 (instructions_n9), que le chronomètre confirme au-delà du bruit (sinon une mesure d'une autre configuration)"
-  - "aucune autre métrique dégradée de plus de 1 % (R5) ; instructions_n6 et instructions_n1 déclarées dans le manifeste"
-  - "empreintes identiques, niveaux 1, 6, 9, 10 et vidages compris"
-  - "manifeste : instructions par sonde avant et après (désassemblage de la boucle, gcc -O3)"
-out_of_scope: [format de sortie, API publique, nouvelle dépendance, fonction de hachage et nombre de sondes, variante MINIZ_USE_UNALIGNED_LOADS_AND_STORES]
+  - "green CI (R2), x86-64 and ARM64 (R6)"
+  - "R4: at least 2% fewer instructions on debit_compression_n9 (instructions_n9), confirmed by the stopwatch beyond the noise (otherwise a measurement from another configuration)"
+  - "no other metric degraded by more than 1% (R5); instructions_n6 and instructions_n1 declared in the manifest"
+  - "identical fingerprints, levels 1, 6, 9, 10 and flushes included"
+  - "manifest: instructions per probe before and after (disassembly of the loop, gcc -O3)"
+out_of_scope: [output format, public API, new dependency, hash function and number of probes, the MINIZ_USE_UNALIGNED_LOADS_AND_STORES variant]
 depends_on: [miniz-0001]
 node: projects/lossless-compression/miniz/deflate
 status: open

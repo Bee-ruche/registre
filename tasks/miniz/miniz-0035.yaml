@@ -3,34 +3,36 @@ project: miniz
 category: lossless-compression
 type: test
 size: S
-title: "bee-ci.yml : sorties sans commandes de workflow, SHA du juge vérifié, tests de la PR sans sudo"
+title: "bee-ci.yml: outputs without workflow commands, judge SHA verified, PR tests without sudo"
 context: >
-  Seconde revue adverse de minizBee PR #16 (miniz-0032, 30/10). M-4 : la sortie des binaires de la PR
-  (tests d'origine et fuzzing, par bee/ci/etape.sh) arrive telle quelle dans le journal de la CI ; une
-  ligne « ::error:: », « ::add-mask:: » ou « ::stop-commands:: » écrite par la PR y devient une commande de
-  workflow (fausses annotations, masquage). Le code de sortie passe par GITHUB_OUTPUT et reste intact.
-  À faire : entourer ces sorties de ::stop-commands::<jeton aléatoire> (un jeton tiré à chaque étape).
-  M-5 : le test qui compare le SHA du uses: de juge.yml et celui des extractions ne vérifie que sa forme ;
-  une mise à jour pourrait viser un commit qui n'existe que dans un fork du registre. À faire : le test
-  vérifie auprès de l'API que ce SHA est un ancêtre de main de Bee-ruche/registre, ou qu'une étiquette
-  juge-v* le désigne. Vérification de la PR #16 (30/10), deux points mineurs : (1) sur les machines hébergées
-  de GitHub, sudo ne demande pas de mot de passe ; le code d'une PR qui tourne dans un job (outillage-pr,
-  meta-juge, quand la PR modifie bee/ci, bee/juge ou bee-ci.yml) peut lire la mémoire du Runner.Worker, y
-  prendre ACTIONS_RUNTIME_TOKEN et remplacer un artefact d'un autre job du même run. Le registre marque déjà
-  ces PR juges_modifies (relecture exigée, R3). À faire : lancer pr/bee/ci/test_verdict.py sous un
-  utilisateur sans sudo ; à terme, chaque artefact lu par verdict.py est lié à une empreinte SHA-256
-  publiée en sortie de son job ; nuancer le commentaire du workflow qui dit qu'aucune écriture de la PR
-  n'atteint le verdict. (2) En règle « introduction », l'assembleur du verdict est celui de la PR : le
-  drapeau amorcage y est déclaratif ; l'écrire dans bee/README.md.
+  Second adversarial review of minizBee PR #16 (miniz-0032, 30 Oct). M-4: the output of the PR's
+  binaries (upstream tests and fuzzing, through bee/ci/etape.sh) reaches the CI log as it is; a line
+  « ::error:: », « ::add-mask:: » or « ::stop-commands:: » written by the PR becomes a workflow
+  command there (fake annotations, masking). The exit code goes through GITHUB_OUTPUT and stays
+  intact. To do: wrap these outputs in ::stop-commands::<random token> (a token drawn at each step).
+  M-5: the test that compares the SHA in the uses: of juge.yml with the one of the checkouts only
+  checks its form; an update could point to a commit that exists only in a fork of the registry. To
+  do: the test checks with the API that this SHA is an ancestor of main of Bee-ruche/registre, or
+  that a juge-v* tag designates it. Verification of PR #16 (30 Oct), two minor points: (1) on
+  GitHub-hosted machines, sudo does not ask for a password; the code of a PR that runs in a job
+  (outillage-pr, meta-juge, when the PR changes bee/ci, bee/juge or bee-ci.yml) can read the memory
+  of the Runner.Worker, take ACTIONS_RUNTIME_TOKEN from it and replace an artifact of another job of
+  the same run. The registry already marks these PRs modified_judges (review required, R3). To do:
+  run pr/bee/ci/test_verdict.py under a user without sudo; eventually, each artifact read by
+  verdict.py is bound to a SHA-256 fingerprint published as an output of its job; qualify the
+  workflow comment that says no write by the PR reaches the verdict. (2) Under the `introduction`
+  rule, the verdict's assembler is the PR's own: the bootstrap flag (`amorcage` in minizBee's
+  verdict.json until miniz-0050, which bee reads only before 2027-01-01; `bootstrap` from then on)
+  is declarative there; write this in bee/README.md.
 files: [bee/ci/etape.sh, .github/workflows/bee-ci.yml, bee/ci/test_verdict.py]
 reach: 0.5
 metric: null
 acceptance_criteria:
-  - "CI verte (R2) sur la base et sur cette contribution"
-  - "test : un binaire qui écrit ::error:: et ::add-mask:: ne produit ni annotation ni masque (journal de la CI joint)"
-  - "test : un SHA absent de main du registre fait échouer la vérification"
-  - "test_verdict.py de la PR tourne sous un utilisateur sans sudo ; README : le drapeau amorcage est déclaratif en introduction"
-out_of_scope: [code de miniz, juge.yml du registre (ruche-0024)]
+  - "green CI (R2) on the base and on this contribution"
+  - "test: a binary that writes ::error:: and ::add-mask:: produces neither an annotation nor a mask (CI log attached)"
+  - "test: a SHA absent from the registry's main makes the check fail"
+  - "the PR's test_verdict.py runs under a user without sudo; README: the bootstrap flag (`amorcage: true` in verdict.json until miniz-0050) is declarative under the `introduction` rule"
+out_of_scope: [miniz code, the registry's juge.yml (ruche-0024)]
 depends_on: [miniz-0032]
 node: projects/lossless-compression/miniz/bee
 status: open
