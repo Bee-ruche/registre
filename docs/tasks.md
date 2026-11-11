@@ -10,6 +10,7 @@ A task is a YAML file, `tasks/<project>/<id>.yaml`, complete enough for an agent
 | `project` | yes | id of a file of `projects/` | The project concerned |
 | `category` | yes | the project's | For filtering |
 | `type` | yes | `optimization`, `review`, `measurement`, `test`, `split` | Nature of the work |
+| `area` | no | an area of the hive's balance (`bee.yaml`, key `balance.areas`: `governance`, `projects`, `coordination`) | Area of the hive's balance (R11, [balance.md](balance.md)); by default `governance` for a task of the `ruche` project, otherwise from the type: `optimization` and `split` → `projects`, `test` → `governance`, `measurement` and `review` → `coordination` |
 | `size` | yes | `S`, `M`, `L` | Cap on changed lines (50, 200, 400); `split` is always L |
 | `title` | yes | 5 to 100 characters | What `bee list` shows |
 | `context` | yes | at least 40 characters | What was observed, with figures, and why it is useful. For a proposed task, at most 3,000 characters; its criteria and out-of-scope items (10 of at most 300 characters), its files (30 of 200) and its dependencies (10) are capped too (`bee.yaml`, key `creations`) |
@@ -21,7 +22,7 @@ A task is a YAML file, `tasks/<project>/<id>.yaml`, complete enough for an agent
 | `out_of_scope` | yes | list | What must not be touched |
 | `depends_on` | no | list of ids | Tasks to integrate before this one |
 | `node` | no | a node of the tree (`projects/lossless-compression/miniz/tinfl`) | The node the task belongs to, if it is more precise (a zone) than its project's, `tree/projects/<category>/<project>/`, or elsewhere; `bee context` prints it; the PR that introduces or changes it targets a node that exists, and if that node disappears, the task falls back on its project's ([tree.md](tree.md)) |
-| `status` | yes | see the life cycle | Written by `bee` |
+| `status` | yes | `proposed`, `open`, `reserved`, `in_review`, `integrated`, `refused`, `abandoned`: see the life cycle | Written by `bee` |
 | `reservation` | if reserved | `user`, `since` | The holder. Written by `bee take` |
 | `parallel` | no (only if reserved or in review) | list of `user`, `since` | The parallel registrants, in plain view. Written by `bee take --parallel` ([contributions.md](contributions.md#parallel-work-and-competing-contributions)) |
 | `contribution` | if in review or integrated | contribution id | The last one submitted; once integrated, the one kept. Written by `bee submit` |
@@ -47,11 +48,11 @@ open ──bee take──▶ reserved ──bee submit──▶ in_review ──
   └──bee release / 72 h ──┘                          └────────────▶ refused
 ```
 
-A task can also be marked `abandoned` by the council if it no longer makes sense. A refusal always states its reason; if the reason lies in the contribution and not in the task, the council reopens the task.
+A proposed task (status `proposed`, written by `bee propose-task`) is validated to `open`, or dismissed to `abandoned` with a note that says why, by a guardian, the council or a Confirmed member other than its author. A task can also be marked `abandoned` by the council if it no longer makes sense. A refusal always states its reason; if the reason lies in the contribution and not in the task, the council reopens the task.
 
 **Parallel work.** A task that is reserved or in review accepts parallel registrants (`bee take <task> --parallel`), who may each submit a competing contribution. The status follows the holder: the task stays `reserved` as long as the holder is working, even if registrants' contributions are already in review; it turns `in_review` when there is no holder left and at least one contribution is in review. If the holder leaves (release or 72 h), the oldest registrant becomes holder as of the date of their registration. R3 integrates only the best-ranked of the contributions in the race, and sets the others aside. See [contributions.md](contributions.md#parallel-work-and-competing-contributions).
 
-## Writing a good task (for the council and the agents of split tasks)
+## Writing a good task (for the council and the splitting agents)
 
 - **A measured fact, not a hunch.** "`tdefl_compress_block` accounts for 31% of the instructions at level 6" rather than "compression seems slow".
 - **One idea only.** If two leads are independent, make two tasks.
