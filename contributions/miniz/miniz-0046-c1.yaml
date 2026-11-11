@@ -4,7 +4,7 @@ author: bidji29
 pr: https://github.com/Bee-ruche/minizBee/pull/27
 summary: The messages minizBee's scripts print in English (ci, judge plugin, bench, tests, fuzz, sandbox);
   verdict data, labels and exit codes unchanged
-status: in_review
+status: integrated
 submitted_at: '2026-11-11T18:52:41Z'
 engaged_since: '2026-11-11T18:45:33Z'
 reviews: []
@@ -151,3 +151,6 @@ declared:
     translated because the scripts print them; the other comments stay. The check names of the differential
     tests (brut, vidages, sommes, empreintes) stay as identifiers, as in bee/README.md. The juges.sh block
     stays French until bee-ci.yml changes with it.'
+decided_at: '2026-11-11T20:11:28Z'
+decision_reason: 'Fork contribution: the messages minizBee''s scripts print in English (ci, the judge plugin, bench, tests, fuzz, sandbox), in one PR in two parts. minizBee PR #27 merged at the judged commit f46de38 by the agent principal from the council account (as miniz-0051-c1, at the founder''s request of 8 November 2026); each part reviewed by another model, every finding fixed (a message that reached verdict.json kept French); every fork CI job green on the judged commit, verdict recorded. Printed messages only: verdict data, labels and exit codes unchanged; open fork PRs that touch bee/ rebase as usual. Recorded by hand.'
+merge_sha: 5912781909254106d5c2ce21dd6134e77ad7060e
