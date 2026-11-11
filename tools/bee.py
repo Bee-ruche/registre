@@ -765,7 +765,7 @@ INSTANT_PR_AGE_MAX = dt.timedelta(hours=24)  # ruche-0091: --instant-pr is refus
 
 
 def parallels_of(task):
-    """Parallel registrations of a task, in the file's order: [{user, since}]."""
+    """Parallel registrations of a task, in the file's order: a list of mappings with user and since."""
     list_of = (task or {}).get("parallel") if isinstance(task, dict) else None
     return [p for p in list_of or [] if isinstance(p, dict)]
 
@@ -1123,7 +1123,7 @@ OPINIONS = ("favorable", "unfavorable", "abstention")
 
 
 def last_reviews(rec, who_is):
-    """{reviewer: their most recent review} (append only: the list's order is that of publication)."""
+    """A dict, reviewer -> their most recent review (append only: the list's order is that of publication)."""
     return {who_is.name(r.get("reviewer")): r for r in rec.get("reviews") or [] if isinstance(r, dict)}
 
 
@@ -1341,8 +1341,8 @@ def first_parent_commits(root, ref, *paths, filter_fn=None):
 
 
 def read_versions(root, requests):
-    """Content of files at given revisions, in a single call (git cat-file --batch): {(sha, path): text, or None
-    if the file does not exist at that revision or is not UTF-8 text}. Only the paths of PATH_HISTORY are read.
+    """Content of files at given revisions, in a single call (git cat-file --batch): a dict (sha, path) -> text, or None
+    if the file does not exist at that revision or is not UTF-8 text. Only the paths of PATH_HISTORY are read.
     ruche-0095: never a request that holds a newline or a carriage return (cat-file --batch reads one per line, and drops a
     final carriage return: it would read another file, or shift every answer after it)."""
     requests = [d for d in dict.fromkeys(requests) if PATH_HISTORY.match(d[1]) and not set("\n\r") & set(f"{d[0]}:{d[1]}")]
