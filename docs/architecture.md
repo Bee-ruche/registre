@@ -252,12 +252,12 @@ workflows tell a data-only push from a code push (step 1's requirement R-push).
 | --- | --- | --- |
 | `GITHUB_TOKEN`, REST | 1,000 requests per hour **per repository**, shared by all of its workflows (15,000 on Enterprise Cloud) | 1 |
 | `GITHUB_TOKEN`, GraphQL | 1,000 points per hour per repository (15,000 on Enterprise Cloud) | 2 |
-| Other tokens | A person: 5,000 requests per hour. A GitHub App installation: 5,000, plus 50 per repository and per organisation user beyond 20, up to 12,500 | 1 |
+| Other tokens | A person: 5,000 requests per hour. A GitHub App installation: 5,000, plus 50 per repository and per organization user beyond 20, up to 12,500 | 1 |
 | Secondary limits | 100 concurrent requests; 900 REST points per minute (a read 1 point, a write 5); 2,000 GraphQL points per minute; **80 content-creating requests per minute and 500 per hour** (the documentation does not say per token or per account); "subject to change without notice"; past them, 403 or 429 and a wait | 1, 2 |
 | Concurrent jobs, standard hosted runners | Free 20, Pro 40, **Team 60**, Enterprise 500 (macOS 5, 5, 5, 50); a job runs 6 hours at most | 3 |
 | Workflow triggers | 1,500 triggering events per 10 s per repository; 500 queued workflow runs per 10 s, beyond which webhook-triggered runs are blocked | 3 |
-| Concurrency groups | By default one pending run per group: a newer pending run cancels the older one. Since 7 May 2026, `queue: max` keeps up to 100 queued runs per group (with `cancel-in-progress` false); beyond that, further runs are cancelled (the concurrency how-to, as quoted by the review; E0b checks) | 3, 4, 14 |
-| Merge queue | Available in any public repository owned by an organisation (and private ones on Enterprise Cloud); enabled by "Require merge queue" in the branch rules or a ruleset | 6, 7 |
+| Concurrency groups | By default one pending run per group: a newer pending run cancels the older one. Since 7 May 2026, `queue: max` keeps up to 100 queued runs per group (with `cancel-in-progress` false); beyond that, further runs are canceled (the concurrency how-to, as quoted by the review; E0b checks) | 3, 4, 14 |
+| Merge queue | Available in any public repository owned by an organization (and private ones on Enterprise Cloud); enabled by "Require merge queue" in the branch rules or a ruleset | 6, 7 |
 | Merge queue, how it checks | Each queued PR is checked on a temporary branch (`gh-readonly-queue/...`) holding the latest base, the PRs ahead of it and itself; workflows must run on `merge_group`; a failed check or a conflict removes the PR and the queue rebuilds the groups behind it | 7, 8 |
 | Merge queue, settings | Merge method (merge, rebase, squash); build concurrency 1 to 100; group size, minimum and maximum, 1 to 100, with a wait time; "only merge non-failing pull requests"; a status-check timeout | 8 |
 | Merge queue, who adds | A user with write access; `gh pr merge` adds a PR whose checks passed; the GraphQL mutation `enqueuePullRequest` adds it only if it can be added at once, and takes an expected head commit | 6, 9, 10 |
@@ -298,7 +298,7 @@ task E9 to measure (ruche-0080's model also puts half of a week's contributions 
    argument for the inbox, and the load test must measure it (E10).
 5. **Code PRs re-run after each data merge.** 77 runs for 21 code PRs in under 10 hours, 28.5 runner-hours for the
    71 that completed: each refresh re-runs the whole suite although only data changed.
-6. **Jobs.** Two jobs per data PR (validation, fusion) plus the site, out of the organisation's 60 (Team), shared
+6. **Jobs.** Two jobs per data PR (validation, fusion) plus the site, out of the organization's 60 (Team), shared
    with the judges of the forks (ruche-0098).
 7. **History size.** One commit per gesture and full clones in each robot run.
 
@@ -321,7 +321,7 @@ PR, and its PRs are merged by a pass rather than one by one.
   minted per job, with only the permissions the job needs, in the step that uses them; no step that reads PR or fork
   data holds a write token (integration is first split in two jobs, E23, since it merges fork PRs inside its read
   loop today). The App is in `main`'s bypass list, in "always" mode (E0a confirms GitHub allows it). Its rate limit
-  (5,000 calls an hour, more as the organisation grows) is separate from the 1,000 of the workflows' token. Its
+  (5,000 calls an hour, more as the organization grows) is separate from the 1,000 of the workflows' token. Its
   private key is a long-lived write secret: an environment secret restricted to `main`, held by the council (C1),
   like the existing `BEE_INTEGRATION_TOKEN`, a long-lived write token on the forks.
 - **Robot pushes do not start the full suite** (requirement R-push: task E25, checked by E5). A push or merge under
@@ -506,7 +506,7 @@ key in `bee.yaml` that the council sets re-opens them, so that stopping the inbo
   posting; if E0b shows that unsubscribing by the API is impossible, issues rotate faster (still pre-created) and
   `bee publish` tells its user how to mute the issue. Comment bodies pass ruche-0049's outgoing-text check before
   posting (client) and before applying (sequencer). Inbox comments are outgoing text: commandments 12 and 13 apply.
-- **Council levers.** GitHub's interaction limits on the inbox, blocking an account at the organisation's level, and
+- **Council levers.** GitHub's interaction limits on the inbox, blocking an account at the organization's level, and
   the switch below, used by the people named under C6. Every use is
   recorded in docs/decisions.md.
 
@@ -598,8 +598,8 @@ the tool in another). *Cost:* medium to large: the gate must read the constituti
 guardians) at the version the data was checked with, across repositories, which is where the 27 October attempt
 failed. *For a bee:* two clones. *Benefit:* code PRs no longer see data merges, which E4 gives cheaply. Rejected.
 
-**f. An Enterprise plan** (not chosen; a lever for the council). Price: $21 per member of the organisation and month,
-against $4 on the Team plan (source 16); bees are not members of the organisation, so only its own members are
+**f. An Enterprise plan** (not chosen; a lever for the council). Price: $21 per member of the organization and month,
+against $4 on the Team plan (source 16); bees are not members of the organization, so only its own members are
 billed. It buys: the workflows' token raised from 1,000 to 15,000 REST calls and GraphQL points an hour per
 repository, an App installation from 5,000 to 15,000 calls, and concurrent jobs from 60 to 500. With the App, that is
 about three times step 1's API ceiling, so some weeks of growth; it moves neither the conflicts, nor the gate's cost,
@@ -672,7 +672,7 @@ robots and block an outside account (below).
 
 **C6. Who may stop the robots and block outside accounts** (needed before step 2 goes live).
 - *What is at stake.* Stopping the robots (the switch) needs administration rights on the registry, and blocking an
-  outside account needs ownership of the organisation. Whoever holds these rights can do much more than stop and
+  outside account needs ownership of the organization. Whoever holds these rights can do much more than stop and
   block, and a stop must be possible at any hour.
 - *The choice.* Which people hold them.
 - *Recommendation:* at least two humans of the council, so that one is always reachable; never the agent principal
@@ -722,7 +722,7 @@ robots and block an outside account (below).
   for E0b, the dual run and the shadow week. Building now also means choosing C3 (b), unstamped robot commits, at
   go-live: step 2 cannot go live without it. The cost: more work in flight at once (more reviews, more of the
   architect's attention), and E0b's findings may force rework of tasks already done. If step 2 slips, the Enterprise
-  plan (option f, $21 per member of the organisation and month) buys some weeks.
+  plan (option f, $21 per member of the organization and month) buys some weeks.
 
 ### 7. What to measure
 
@@ -790,7 +790,7 @@ Task files (council record, 2 November 2026): E0a ruche-0119, E1 ruche-0120, E2 
 | E17 | Job B's rebuild and the audit: commits rebuilt from the recorded gestures with the recorded tool and compared with job A's trees, trailers, `bee validate`; `bee replay-ledger` with GitHub's comment data while it exists | M | E15a | A changed file, author, date, trailer or gesture stops the push; a clean pass goes through; a deleted comment is reported, not failed |
 | E18 | The inbox workflows: job A read-only (GraphQL cursor listing, apply, gate, announce), job B with a read-only workflows' token (E17, then the short push step under the App in the writers' group), job-level concurrency with a condition on the inbox issues, schedule and dispatch, dispatches of verdicts, integration, the site and the audit | M | E15b, E16, E17, E5, E0b | A test that no `run:` or expression reads an event's comment, issue title, head ref or similar field, that only the push step mints a write token, that write jobs pin actions by SHA; on the rehearsal, 200 gestures from 20 accounts in 10 minutes reach the ledger once each, latency in the PR |
 | E19 | Inbox issues and outgoing text: hourly issues pre-created a day ahead and listed on `main` (where E0b decided, with faster rotation if unsubscribing is impossible); ruche-0049's check on every body before anything is applied | M | E0b, ruche-0049 | The issues of the next 24 hours always exist; a body with a mention or a disallowed link is refused before any gesture is applied |
-| E20 | `bee publish` through the inbox: the outgoing-text check, the post, unsubscribing, waiting for the outcome and printing it, the retry advice; AGENTS.md (both languages) and the `bee-contributor` skill | M | E18, E19, E12 | With the simulated `gh`, accepted and refused gestures print exactly what the ledger says; the identity check (`gh api user`) unchanged; a refused text is never posted |
+| E20 | `bee publish` through the inbox: the outgoing-text check, the post, unsubscribing, waiting for the outcome and printing it, the retry advice; AGENTS.md (English only) and the `bee-contributor` skill | M | E18, E19, E12 | With the simulated `gh`, accepted and refused gestures print exactly what the ledger says; the identity check (`gh api user`) unchanged; a refused text is never posted |
 | E21 | Going live: the shadow week (data PRs without a record, or whose record does not reproduce their files, refused for that gesture), the dual run on a scratch inbox and a mirror of `main`, then, on the council's decisions, the gate refusing self-service data PRs from non-council accounts, with a `bee.yaml` key that re-opens them | M | E12, E16, E18 | Seven consecutive days with at least 200 data gestures and no fault traced to the engine or the workflows; the dual run's ledger matches the PR path's outcomes but for listed differences of order; a data PR refused with the pointer, and accepted again when the key re-opens the path; council, code and invitation PRs unchanged |
 
 **Step 3**
