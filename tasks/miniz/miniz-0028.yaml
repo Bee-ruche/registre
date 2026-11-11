@@ -4,27 +4,26 @@ category: lossless-compression
 type: measurement
 area: governance
 size: M
-title: "Corpus : ajouter des familles réalistes absentes (HTML, journaux compressés, binaires exécutables)"
+title: "Corpus: add missing realistic families (HTML, compressed logs, executable binaries)"
 context: >
-  Le corpus de référence (bee/corpus/generer.py, 61 fichiers, 12,0 Mo) est entièrement
-  synthétique, à part les sources de miniz. Il lui manque des familles qui dominent le trafic web
-  : HTML et CSS, JavaScript minifié, binaire exécutable (code machine), et données déjà
-  compressées (PNG, gzip), sur lesquelles le bloc brut de repli de tdefl_flush_block (miniz_tdef.c
-  l. 657-676) est le chemin principal. La répartition actuelle par famille (texte 3,6 Mo,
-  structuré 3,4 Mo, binaire 2,1 Mo, répétitif 1,6 Mo, code 1,3 Mo, petits 10 Ko) favorise les
-  données très compressibles. Ajouter 2 à 4 Mo de ces familles, de façon déterministe : sources
-  libres figées par identifiant d'objet git (comme SOURCES_FIGEES) ou générateurs à graine fixe,
-  sans téléchargement au moment de la génération. Régénérer SHA256SUMS et les empreintes de
-  référence sur la base. Taille totale sous 16 Mo.
+  The reference corpus (bee/corpus/generer.py, 61 files, 12.0 MB) is entirely synthetic, apart from
+  miniz's sources. It lacks families that dominate web traffic: HTML and CSS, minified JavaScript,
+  executable binary (machine code), and already compressed data (PNG, gzip), on which the raw
+  fallback block of tdefl_flush_block (miniz_tdef.c l. 657-676) is the main path. The current split
+  by family (text 3.6 MB, structured 3.4 MB, binary 2.1 MB, repetitive 1.6 MB, code 1.3 MB, small
+  files 10 KB) favors highly compressible data. Add 2 to 4 MB of these families, deterministically:
+  free sources pinned by git object ID (like SOURCES_FIGEES) or generators with a fixed seed, with
+  no download at generation time. Regenerate SHA256SUMS and the reference fingerprints on the base.
+  Total size under 16 MB.
 files: [bee/corpus/generer.py, bee/corpus/SHA256SUMS, bee/tests/empreintes-reference.txt]
 reach: 0.7
 metric: null
 acceptance_criteria:
-  - "CI verte (R2) sur la base et sur cette contribution"
-  - "génération identique sous Python 3.10, 3.11, 3.12 et 3.13 (sommes jointes)"
-  - "chaque source reprise : licence compatible et identifiant figé indiqués dans le manifeste"
-  - "corpus total entre 12 et 16 Mo, test A/A d'ab.py dans le bruit sur le nouveau corpus"
-out_of_scope: [code de miniz, banc, fichiers sans licence libre, téléchargement au moment de la génération]
+  - "green CI (R2) on the base and on this contribution"
+  - "identical generation under Python 3.10, 3.11, 3.12 and 3.13 (checksums attached)"
+  - "each source taken in: compatible license and pinned identifier stated in the manifest"
+  - "total corpus between 12 and 16 MB, ab.py's A/A test within the noise on the new corpus"
+out_of_scope: [miniz code, bench, files without a free license, download at generation time]
 depends_on: [miniz-0001]
 node: projects/lossless-compression/miniz/bee
 status: open
