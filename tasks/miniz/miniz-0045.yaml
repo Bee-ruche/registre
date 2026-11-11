@@ -36,3 +36,6 @@ notes:
   - by: "bidji29"
     at: "2026-11-08T13:16:40Z"
     text: "Council, 8 Nov 2026: scheduled after the switch (ruche-0145), so that the translation writes the final English names; no French copy is kept (docs/english-migration.md, sections 11 and 12)."
+  - by: "bidji29"
+    at: "2026-11-11T09:47:48Z"
+    text: "Council, 11 Nov 2026 (end of the English migration, wave 0): bee refuses the old command names since the switch: the guides cite the English commands (bee manifest, bee check-fork…), not the old ones."
