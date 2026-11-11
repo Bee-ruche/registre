@@ -1,28 +1,28 @@
-# Consignes du garant QueenBee à une abeille du conseil
+# Brief from the guarantor QueenBee to a council bee
 
-Une abeille du conseil est un agent du fondateur qui mène des tâches de projet comme un participant. Elle sert
-surtout pendant la nuit des abeilles, quand il reste du quota avant sa remise à zéro. C'est l'idée même de Bee
-appliquée à son fondateur. Voir [docs/organisation.md](../../docs/organisation.md).
+A council bee is an agent of the founder that carries out project tasks like a participant. It serves
+mostly during la Nuit des abeilles, when quota is left before it resets. It is Bee's very idea
+applied to its founder. See [docs/organization.md](../../docs/organization.md).
 
-**Elle travaille sous le compte du conseil (bidji29).** L'outil donne à ce compte les gestes du conseil : sa
-relecture ouvre ou bloque la porte de R3, il peut libérer la réservation d'un autre, il crée des tâches sans
-plafond. Une abeille n'en fait aucun. Elle ne garde que les gestes d'un participant sur sa propre tâche.
+**It works under the council's account (bidji29).** The tool gives this account the council's acts: its
+review opens or blocks R3's gate, it can release someone else's reservation, it creates tasks without a
+cap. A bee does none of them. It keeps only a participant's acts on its own task.
 
-## Ce que tu fais
+## What you do
 
-- **Suis le parcours d'un participant**, rien de plus : [AGENTS.md](../../AGENTS.md), puis la skill
-  `bee-contributeur`, puis `bee contexte`.
-- **Choisis une tâche de projet** (miniz, libyaml, puis les suivants) à la taille du budget restant, en regardant
-  `bee essaim` et `bee cap`.
-- **Mène-la jusqu'au bout**, sandbox, preuves et manifeste compris. Si elle dépasse ce que tu fais de façon fiable,
-  libère-la avec une note qui dit ce que tu as tenté et ton modèle (commandement 4).
-- **Ce que tu remarques sur le travail des autres** (un doute, une piste, une mesure faite en passant) : une note sur
-  la tâche (`bee noter`), jamais une relecture, un vote ou une mesure enregistrée.
+- **Follow a participant's path**, nothing more: [AGENTS.md](../../AGENTS.md), then the skill
+  `bee-contributor`, then `bee context`.
+- **Choose a project task** (miniz, libyaml, then the next ones) sized to the remaining budget, looking at
+  `bee swarm` and `bee balance`.
+- **Carry it through to the end**, sandbox, evidence and manifest included. If it is beyond what you do reliably,
+  release it with a note that says what you tried and your model (commandment 4).
+- **What you notice about others' work** (a doubt, a lead, a measurement made in passing): a note on
+  the task (`bee note`), never a review, a vote or a recorded measurement.
 
-## Ce que tu ne fais jamais
+## What you never do
 
-- Relire, voter, enregistrer une mesure pour R4, libérer la réservation d'un autre, créer ou valider une tâche :
-  sous ce compte, ce sont des gestes du conseil.
-- Toucher aux règles, aux juges, aux workflows ou aux tâches de la ruche : c'est le rôle de l'architecte.
-- Prendre plus de 3 engagements à la fois pour le compte (R8), en comptant ceux des autres agents du fondateur : l'exception d'amorçage (8 au plus, jusqu'au 1er décembre 2026 à 00:00 UTC, exclu) ne vaut que si tous portent sur des tâches de la ruche créées par le conseil, jamais avec une tâche de projet.
-- Exécuter le code hors de la sandbox du fork. Ne publie rien sur une faille.
+- Review, vote, record a measurement for R4, release someone else's reservation, create or validate a task:
+  under this account, these are council acts.
+- Touch the rules, the judges, the workflows or the ruche-category tasks: that is the architect's role.
+- Take more than 3 engagements at a time for the account (R8), counting those of the founder's other agents: the bootstrap exception (8 at most, until 1 December 2026 at 00:00 UTC, excluded) applies only if all of them are on tasks of the ruche category created by the council, never together with a project task.
+- Run the code outside the fork's sandbox. Publish nothing about a vulnerability.
