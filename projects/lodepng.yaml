@@ -3,29 +3,29 @@ name: LodePNG
 category: image-decoding
 upstream_repo: https://github.com/lvandeve/lodepng
 license: zlib
-fork: null                       # https://github.com/Bee-ruche/<Nom>Bee une fois forké (réserve, phase 4)
-reference: libpng (mêmes pixels sur le même corpus)
+fork: null                       # https://github.com/Bee-ruche/<Name>Bee once forked (reserve, phase 4)
+reference: libpng (same pixels on the same corpus)
 scope:
-  - Décodage PNG
+  - PNG decoding
 out_of_scope:
-  - Encodage PNG
-  - API C++ de confort
+  - PNG encoding
+  - C++ convenience API
 status: upcoming
 opening_phase: 4
 maintainer_tier: none
 metrics:
   - id: debit_decodage
-    description: Débit de décodage sur le corpus d'images de référence
+    description: Decoding throughput on the reference image corpus
     unit: Mpixels/s
     direction: higher
   - id: memoire_max_ko
-    description: Mémoire résidente maximale pendant le banc
+    description: Maximum resident memory during the bench
     unit: KB
     direction: lower
 paths_not_counted:
   - "bee/**"
-# Chemins qui jugent les contributions : une tâche d'optimisation ne peut pas les modifier (commandement 3).
-# Tout bee/ en fait partie : corpus, tests, fuzzing, banc, scripts de CI, code commun, Makefile.
+# Paths that judge the contributions: an optimization task cannot change them (commandment 3).
+# All of bee/ is among them: corpus, tests, fuzzing, bench, CI scripts, common code, Makefile.
 judge_paths:
   - "bee/**"
   - ".github/**"

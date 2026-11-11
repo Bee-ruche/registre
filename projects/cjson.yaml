@@ -3,11 +3,11 @@ name: cJSON
 category: parsing-serialization
 upstream_repo: https://github.com/DaveGamble/cJSON
 license: MIT
-fork: null                       # https://github.com/Bee-ruche/<Nom>Bee une fois forké (réserve, phase 4)
-reference: une suite de conformité JSON publique et un second parseur (même arbre, mêmes refus)
+fork: null                       # https://github.com/Bee-ruche/<Name>Bee once forked (reserve, phase 4)
+reference: a public JSON conformance suite and a second parser (same tree, same refusals)
 scope:
-  - Analyse (parsing) JSON
-  - Sérialisation (impression) JSON
+  - JSON parsing
+  - JSON serialization (printing)
 out_of_scope:
   - cJSON_Utils (JSON Patch, JSON Pointer)
 status: upcoming
@@ -15,22 +15,22 @@ opening_phase: 4
 maintainer_tier: none
 metrics:
   - id: debit_analyse
-    description: Débit d'analyse sur le corpus JSON de référence
+    description: Parsing throughput on the reference JSON corpus
     unit: MB/s
     direction: higher
   - id: debit_serialisation
-    description: Débit de sérialisation sur le corpus JSON de référence
+    description: Serialization throughput on the reference JSON corpus
     unit: MB/s
     direction: higher
   - id: memoire_max_ko
-    description: Mémoire résidente maximale pendant le banc
+    description: Maximum resident memory during the bench
     unit: KB
     direction: lower
 paths_not_counted:
   - "bee/**"
   - "tests/**"
-# Chemins qui jugent les contributions : une tâche d'optimisation ne peut pas les modifier (commandement 3).
-# Tout bee/ en fait partie : corpus, tests, fuzzing, banc, scripts de CI, code commun, Makefile.
+# Paths that judge the contributions: an optimization task cannot change them (commandment 3).
+# All of bee/ is among them: corpus, tests, fuzzing, bench, CI scripts, common code, Makefile.
 judge_paths:
   - "bee/**"
   - "tests/**"

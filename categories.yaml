@@ -1,36 +1,36 @@
-# Catégories de la v0. Les nouvelles catégories sont proposées et votées en phase 4.
+# The v0 categories. New categories are proposed and voted on in phase 4.
 
 - id: lossless-compression
-  name: Compression sans perte
+  name: Lossless compression
   status: open
-  proof: Aller-retour bit à bit, et compatibilité croisée avec l'implémentation de référence dans les deux sens.
+  proof: Bit-for-bit round trip, and cross-compatibility with the reference implementation in both directions.
 
 - id: image-decoding
-  name: Décodage d'images
+  name: Image decoding
   status: open
-  proof: Pixels identiques à ceux d'un décodeur de référence, sur un corpus d'images valides et corrompues.
+  proof: Pixels identical to those of a reference decoder, on a corpus of valid and corrupted images.
 
 - id: parsing-serialization
-  name: Parsing et sérialisation
+  name: Parsing and serialization
   status: open
-  proof: Même arbre que la référence sur une suite de conformité, et mêmes refus sur les entrées invalides.
+  proof: The same tree as the reference on a conformance suite, and the same refusals on invalid inputs.
 
 - id: cryptography
-  name: Cryptographie
+  name: Cryptography
   status: excluded
-  proof: Aucune en v0. Une accélération peut casser le temps constant et ouvrir une fuite que ni test ni benchmark ne détecte.
+  proof: None in v0. A speed-up can break constant time and open a leak that neither a test nor a benchmark detects.
 
 - id: lossy-encoders
-  name: Encodeurs avec perte et vidéo
+  name: Lossy encoders and video
   status: excluded
-  proof: Aucune en v0. La non-régression exige des métriques de qualité perceptuelle discutables.
+  proof: None in v0. Proving no regression requires perceptual quality metrics that are open to debate.
 
 - id: system
-  name: Réseau, noyau, pilotes
+  name: Network, kernel, drivers
   status: excluded
-  proof: Aucune en v0. Difficiles à isoler en sandbox et à mesurer de façon reproductible.
+  proof: None in v0. Hard to isolate in a sandbox and to measure reproducibly.
 
 - id: ruche
-  name: La ruche elle-même
+  name: The hive itself
   status: open
-  proof: Tests de l'outil bee et méta-tests du juge commun ; relecture d'un gardien ou du conseil, puis fusion par le conseil (jamais d'intégration automatique de l'outillage du registre).
+  proof: The bee tool's tests and the common judge's meta-tests; review by a guardian or the council, then merge by the council (the registry's tooling is never integrated automatically).

@@ -2268,7 +2268,7 @@ class TestRegistry(BaseTest):
         page = (self.dir / "_site/index.html").read_text(encoding="utf-8")
         self.assertIn("miniz-0001", page)
         self.assertIn("miniz-0099-c1", page)
-        self.assertIn("Compression sans perte", page)
+        self.assertIn("Lossless compression", page)
         self.assertIn("<html lang='en'>", page)  # ruche-0147: every label is English (data may stay French)
         self.assertIn("id='c-pseudo'", page)  # consigne qui se remplit
         # R11 : le cap de la ruche (parts visées et réelles), le filtre par poste, et le projet « ruche »
