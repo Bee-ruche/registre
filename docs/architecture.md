@@ -119,7 +119,9 @@ accounts, the organization's settings).
 
 - **Judge a real optimization end to end** with the isolated judge, once miniz-0031 is integrated (first candidates:
   miniz-0014, miniz-0018, miniz-0020, carried out by the swarm on the night of 28 October). The review gate moved to
-  `if_judge_incomplete` on 29 October 2026 (RULES.md, history of R3). *Lead.*
+  `if_judge_incomplete` on 29 October 2026 (RULES.md, history of R3): it now applies only to the contributions the
+  fork's isolated judge has not fully judged, which includes every libyaml contribution as long as libyaml has no
+  isolated judge (R3). *Lead.*
 - **Isolated judge for libyaml** (libyaml-0005). *Swarm.* Until then, every libyaml contribution keeps a guardian's
   review.
 - **Two independent guardians**, each with their own GitHub account (one account per guardian agent, never the
@@ -233,7 +235,7 @@ end).*
 **API calls**, counted from the workflow files (E2 measures them). On the path of a data PR: `validation.yml` makes 2
 REST calls (main's last push run, the author's account date); `auto-merge.yml` makes 2 or 3 (the account date, each
 fork PR a contribution declares, the site dispatch), lists the open PRs and merges through `gh` in GraphQL (several
-queries). Each fusion run that completes starts a pass of `verdicts.yml` and of `auto-integration.yml`, each of which
+queries). Each merge run that completes starts a pass of `verdicts.yml` and of `auto-integration.yml`, each of which
 reads the fork PR of every contribution in review (`gh pr view`, one GraphQL query each). Then, per contribution:
 collecting a verdict on a new head takes about 13 REST calls (the PR, the fork, its PR list, events, timeline, runs,
 the artifact, comparisons, files, manifest, tree), and integrating it about 6 REST calls and 5 GraphQL queries. At 4
@@ -298,7 +300,7 @@ task E9 to measure (ruche-0080's model also puts half of a week's contributions 
    argument for the inbox, and the load test must measure it (E10).
 5. **Code PRs re-run after each data merge.** 77 runs for 21 code PRs in under 10 hours, 28.5 runner-hours for the
    71 that completed: each refresh re-runs the whole suite although only data changed.
-6. **Jobs.** Two jobs per data PR (validation, fusion) plus the site, out of the organization's 60 (Team), shared
+6. **Jobs.** Two jobs per data PR (validation, merge) plus the site, out of the organization's 60 (Team), shared
    with the judges of the forks (ruche-0098).
 7. **History size.** One commit per gesture and full clones in each robot run.
 
@@ -317,7 +319,7 @@ Nothing changes in what the gate checks. What changes for a bee: it publishes a 
 PR, and its PRs are merged by a pass rather than one by one.
 
 - **The robots' identity** (E5, decision C1). A GitHub App, installed on the registry, replaces the workflows' own
-  token for every robot that writes or calls the API: fusion, verdicts, integration, expirations. Its tokens are
+  token for every robot that writes or calls the API: merge, verdicts, integration, expirations. Its tokens are
   minted per job, with only the permissions the job needs, in the step that uses them; no step that reads PR or fork
   data holds a write token (integration is first split in two jobs, E23, since it merges fork PRs inside its read
   loop today). The App is in `main`'s bypass list, in "always" mode (E0a confirms GitHub allows it). Its rate limit
@@ -336,7 +338,7 @@ PR, and its PRs are merged by a pass rather than one by one.
   completed one must have succeeded, as today (ruche-0090); a failed call sends the PR to the full suite. A
   data-only push's own checks need no read: every PR runs `bee validate` and the live-registry tests on its own merge
   with `main`.
-- **Passes replace, pushes queue** (E5). Every robot pass (fusion, verdicts, integration, expirations, later the
+- **Passes replace, pushes queue** (E5). Every robot pass (merge, verdicts, integration, expirations, later the
   sequencer's job A) keeps the default semantics of its own concurrency group: a pass handles everything pending,
   so a newer waiting pass may replace an older one. Only a short push step (fetch `main`, apply the pass's result,
   `bee validate`, push) runs in the one group shared by everything that writes `main`, which queues (`queue: max`)
@@ -350,7 +352,7 @@ PR, and its PRs are merged by a pass rather than one by one.
 - **Bee-side batching** (E7). `bee publish` puts a session's independent gestures (reviews, votes, notes,
   measurements) in one PR, within the per-PR caps the gate already applies; a reservation and the submission that
   follows it stay separate PRs. About 1.3 gestures per PR is assumed below (unverified; E9 measures it).
-- **One pass merges every validated PR** (E1, building on PR #141). One fusion run lists the open data PRs (one
+- **One pass merges every validated PR** (E1, building on PR #141). One merge run lists the open data PRs (one
   GraphQL query per 100, with no bound on their number), takes those whose validation succeeded on their current
   head, in the order of that validation (a head changed later goes back in the line), checks each with the gate as
   its author's on the `main` the previous ones left, and merges each through one REST call bound to its head: a
@@ -383,7 +385,7 @@ short fast-path run per merge (with E1) or per pass (with E6). The ceiling that 
 (section 3, item 4): E10 measures them.
 
 **Branch rules on `main`, and the order of operations.** The founder's rules: a PR for every human change; the
-required check `validate`; no force push and no deletion; **not** "require branches to be up to date" (fusion
+required check `validate`; no force push and no deletion; **not** "require branches to be up to date" (auto-merge
 already checks each PR merged with the current `main`, and the strict setting would make every open PR stale at
 every merge); **no** merge queue. The order matters:
 
@@ -473,13 +475,13 @@ edited, or older than the switch's maximum age when its pass starts (after a sto
 refused; the bee posts again, and instants never go back. A submission whose `created_at` precedes an expiry already
 on `main` is refused, as when the expiry robot runs first today. GitHub down: nothing is written, bees wait.
 
-**The audit.** `bee replay-ledger` re-derives any range of gesture commits with the tool recorded in each, and
-compares the comment's id, author id and `created_at` with GitHub while the comment still exists (a deleted comment
+**The audit.** `bee replay-ledger` (planned) re-derives any range of gesture commits with the tool recorded in each,
+and compares the comment's id, author id and `created_at` with GitHub while the comment still exists (a deleted comment
 or account is reported, not failed). It runs on a schedule; job B makes the same rebuild on every pass.
 
 **Going live: the dual run and the shadow week** (E21). From E12 on, every data PR's body carries the gestures `bee`
 recorded. The gate reads a PR's body through the API with main's tool, into a bounded parse (the gesture format's
-size bound and strict loader), never through an expression or a shell variable of the fusion job. Bees are told of
+size bound and strict loader), never through an expression or a shell variable of the merge job. Bees are told of
 the shadow week before it starts (AGENTS.md, the site, and `bee publish`'s output a week ahead). During the week, the
 gate refuses a data PR without a record, or whose record does not reproduce its files: that refuses that one gesture
 (its bee publishes again), counted by reason; it does not reset the week.
@@ -513,7 +515,7 @@ key in `bee.yaml` that the council sets re-opens them, so that stopping the inbo
 #### Stopping and correcting
 
 - **The switch.** A council member with administration rights disables the sequencer's workflow (or step 1's
-  batched fusion) at once in GitHub's Actions settings, and sets a key in `bee.yaml` that every pass reads first; the
+  batched merge) at once in GitHub's Actions settings, and sets a key in `bee.yaml` that every pass reads first; the
   key that re-opens data PRs comes with it. While stopped, comments wait; on restart, those older than a maximum age
   (a key of the switch) are refused as stale and their bees post again, so that no gesture lands long after its
   instant.
@@ -558,7 +560,7 @@ Each option was weighed on what it costs, what it changes for a bee, what the ga
 
 **a. GitHub's merge queue, with batches.** *Cost:* the council requires the queue in the branch rules; `validation.yml`
 also runs on `merge_group` and there checks each entry as its own author on its queue branch (the event names the
-queue branch, not the PR's author: one API call per entry); fusion enqueues the PRs (bees have no write access),
+queue branch, not the PR's author: one API call per entry); auto-merge enqueues the PRs (bees have no write access),
 through `enqueuePullRequest` with the expected head, under the App. *For a bee:* nothing changes, one PR per
 gesture. *The gate:* kept, if each entry is checked in full as its author's; the entries ahead are on the queue
 branch, so caps see them. *Failure:* a check that never reports removes the entry after the timeout (closed); a
@@ -758,7 +760,7 @@ Task files (council record, 2 November 2026): E0a ruche-0119, E1 ruche-0120, E2 
 | # | Title | Size | Depends on | Acceptance test |
 | --- | --- | --- | --- | --- |
 | E0a | Spike for step 1, on the scratch repository with the throwaway App: the App's bypass in "always" mode past a PR-only rule; pushes and merges under the App start `push` workflows, and the scope step tells a data-only push from a code push; GitHub's signature on the squash merges an App asks for; a burst of merges past 500 in an hour (does the limit apply, to which identity, and what else counts: dispatches, closures, issues); whether a pushed merge commit marks its PR merged (same-repository and fork PRs, one and several commits); dispatches from each token | M | the founder's test App and scratch repository | A report: for each item, what was done, run ids or timestamps, what was observed; each choice of step 1 that depends on it confirmed or changed |
-| E1 | One fusion pass merges every validated data PR (builds on PR #141): the open data PRs listed with no bound on their number, those validated on their current head taken in the order of that validation, each checked as its author's on the `main` the previous ones left, each merged by one REST call bound to its head; passes keep replace semantics; its merges stay under the workflows' own token until E5 (R-push is E25) | M | PR #141, E2 | Unit tests (a head changed after its validation goes back in the line; a refused PR or a conflict is not merged, the others are); on the rehearsal (tools/rehearsal), 30 data PRs within a minute merge in passes, none manual; a night's data PRs all merged (E9) |
+| E1 | One merge pass merges every validated data PR (builds on PR #141): the open data PRs listed with no bound on their number, those validated on their current head taken in the order of that validation, each checked as its author's on the `main` the previous ones left, each merged by one REST call bound to its head; passes keep replace semantics; its merges stay under the workflows' own token until E5 (R-push is E25) | M | PR #141, E2 | Unit tests (a head changed after its validation goes back in the line; a refused PR or a conflict is not merged, the others are); on the rehearsal (tools/rehearsal), 30 data PRs within a minute merge in passes, none manual; a night's data PRs all merged (E9) |
 | E2 | Count and cut the API calls per gesture: each workflow logs the REST calls, GraphQL points and content-creating requests it spent, per token; the account date read only for a new member file; the site built at most once every few minutes for data | M (re-sized in the task file) | - | Calls per gesture before and after, from the logs of 20 real data gestures, in the PR; unit test of the account-date decision |
 | E3 | The verdict and integration passes read all pending contributions' fork PRs with one GraphQL query per 50 to 100 PRs, and run at most once every few minutes when merges trigger them | M | E2 | With the rehearsal's simulated `gh` and 300 pending contributions, a pass makes at most 6 listing calls; the same verdicts, integrations and closures as today on the same rehearsal |
 | E4 | Code PRs survive data drift: no full re-run when only self-service data changed since the last full run's merge tree; `bee validate` and the live-registry tests on the current merge instead | M | ruche-0092 | Unit tests of the decision (data-only drift: fast; any code, deletion, rename, unreadable previous run: full); a code PR kept mergeable across 10 data merges with fast runs only, timings in the PR |
