@@ -68,7 +68,7 @@
       "description": "Copied by the CI at the verdict (bee record-verdict --manifest, ruche-0017) from the manifest of the task and the author at the judged commit: fork data, bounded and typed (one line, invisible characters and what YAML would escape shown as <U+XXXX>, a finite gain, 12,000 characters written at most: bee validate); null if nothing was copied for this verdict; never written by a member",
       "properties": {
         "model": {"type": ["string", "null"], "minLength": 1, "maxLength": 200},
-        "gain": {"type": ["number", "null"], "minimum": -1000000, "maximum": 1000000, "description": "Declared gain on the target metric (0.05 for 5 %)"},
+        "gain": {"type": ["number", "null"], "minimum": -1000000, "maximum": 1000000, "description": "Declared gain on the target metric (0.05 for 5%)"},
         "tested": {"type": "array", "maxItems": 10, "items": {"type": "string", "minLength": 1, "maxLength": 800}},
         "untested": {"type": "array", "maxItems": 10, "items": {"type": "string", "minLength": 1, "maxLength": 800}},
         "doubts": {"type": ["string", "null"], "minLength": 1, "maxLength": 1600}

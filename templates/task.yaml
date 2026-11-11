@@ -14,8 +14,8 @@ metric: debit_compression_n6
 compressed_output: identical
 acceptance_criteria:
   - "green CI (R2)"
-  - "gain >= 2 % on debit_compression_n6, beyond the noise (R4)"
-  - "no other metric degraded by more than 1 % (R5)"
+  - "gain >= 2% on debit_compression_n6, beyond the noise (R4)"
+  - "no other metric degraded by more than 1% (R5)"
 out_of_scope: [output format, public API, new dependency]
 depends_on: []
 status: open
