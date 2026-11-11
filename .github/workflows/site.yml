@@ -1,5 +1,5 @@
-# Génère et publie le site du registre sur GitHub Pages.
-# Pages doit être activé dans les réglages du dépôt (source : GitHub Actions).
+# Generates and publishes the registry's site on GitHub Pages.
+# Pages must be enabled in the repository's settings (source: GitHub Actions).
 name: Site
 
 on:
@@ -21,8 +21,8 @@ permissions:
 # ruche-0121: a code change builds at once, cancelling the run in progress; a dispatch (a robot, after data) waits its turn,
 # and dispatches meanwhile collapse into one pending run, the newest. After a data build, the job « pause » holds the group:
 # data rebuilds the site at most once every few minutes, and the last change is always built. ruche-0133 (R-push): a push
-# builds nothing itself, outside the group (job « portee »): its range scoped like validation.yml's, it dispatches this
-# workflow, with « immediat » unless the push is data only (a robot's push under the App then follows the interval).
+# builds nothing itself, outside the group (job « reach »): its range scoped like validation.yml's, it dispatches this
+# workflow, with « immediate » unless the push is data only (a robot's push under the App then follows the interval).
 concurrency:
   group: ${{ github.event_name == 'push' && format('site-push-{0}', github.run_id) || 'pages' }}
   cancel-in-progress: ${{ github.event_name != 'push' && inputs.immediate == true }}
@@ -50,11 +50,11 @@ jobs:
         run: |
           # ruche-0133: main's tool and dependencies before the push (never the pushed ones) read the range; no « before »,
           # an error or any output but « data|full <commit> »: full, on the pushed commit. Same script in site.yml, validation.yml.
-          mkdir -p "$RUNNER_TEMP/outil-avant"
-          output_text=$([[ "$BEFORE" =~ ^[0-9a-f]{40}$ ]] && git show "$BEFORE:tools/bee.py" > "$RUNNER_TEMP/outil-avant/bee.py" &&
-                   git show "$BEFORE:tools/requirements.txt" > "$RUNNER_TEMP/outil-avant/requirements.txt" &&
-                   pip install -q -r "$RUNNER_TEMP/outil-avant/requirements.txt" >&2 &&
-                   python3 "$RUNNER_TEMP/outil-avant/bee.py" --registry . push-scope --before "$BEFORE" --after "$AFTER") || output_text=
+          mkdir -p "$RUNNER_TEMP/tool-before"
+          output_text=$([[ "$BEFORE" =~ ^[0-9a-f]{40}$ ]] && git show "$BEFORE:tools/bee.py" > "$RUNNER_TEMP/tool-before/bee.py" &&
+                   git show "$BEFORE:tools/requirements.txt" > "$RUNNER_TEMP/tool-before/requirements.txt" &&
+                   pip install -q -r "$RUNNER_TEMP/tool-before/requirements.txt" >&2 &&
+                   python3 "$RUNNER_TEMP/tool-before/bee.py" --registry . push-scope --before "$BEFORE" --after "$AFTER") || output_text=
           commit=${output_text#* }
           if [[ "$output_text" =~ ^(data|full)\ [0-9a-f]{40}$ ]]; then reach=${output_text%% *}; else reach=full commit=$AFTER; fi
           echo "reach=$reach" >> "$GITHUB_OUTPUT"
@@ -62,7 +62,7 @@ jobs:
           echo "Scope: $reach $commit"
       - name: API budget, start (ruche-0121; by main's tool before the push, so nothing pushed runs with this token)
         env: {GITHUB_TOKEN: "${{ github.token }}"}
-        run: python3 "$RUNNER_TEMP/outil-avant/bee.py" api-budget start --dir "$RUNNER_TEMP/api-budget" --token GITHUB_TOKEN || true
+        run: python3 "$RUNNER_TEMP/tool-before/bee.py" api-budget start --dir "$RUNNER_TEMP/api-budget" --token GITHUB_TOKEN || true
       - name: Dispatch the build (one call)
         env:
           REACH: ${{ steps.reach_push.outputs.reach }}
@@ -73,14 +73,14 @@ jobs:
       - name: API budget, end (ruche-0121)
         if: always()
         env: {GITHUB_TOKEN: "${{ github.token }}"}
-        run: python3 "$RUNNER_TEMP/outil-avant/bee.py" api-budget end --dir "$RUNNER_TEMP/api-budget" --token GITHUB_TOKEN || true
+        run: python3 "$RUNNER_TEMP/tool-before/bee.py" api-budget end --dir "$RUNNER_TEMP/api-budget" --token GITHUB_TOKEN || true
   build:
     if: github.event_name != 'push'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # historique complet : le cap date les gestes par le commit qui les a fusionnés
+          fetch-depth: 0   # full history: the balance dates the gestures by the commit that merged them
       - name: Commit-graph (ruche-0130)
         run: git commit-graph write --reachable --changed-paths
       - uses: actions/setup-python@v5
@@ -94,7 +94,7 @@ jobs:
         with:
           path: _site
   deploy:
-    # Prérequis : Settings > Pages > Source : GitHub Actions.
+    # Prerequisite: Settings > Pages > Source: GitHub Actions.
     needs: build
     runs-on: ubuntu-24.04
     environment:

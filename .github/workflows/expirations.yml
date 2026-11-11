@@ -1,4 +1,4 @@
-# Libère chaque heure les réservations de plus de 72 h (règle R7).
+# Releases every hour the reservations older than 72 h (rule R7).
 name: Expired reservations
 
 on:
@@ -39,7 +39,7 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -qam "Release of expired reservations (R7)"
-            # main a pu avancer pendant ce passage (fusions libre-service) : se rebaser, revalider, réessayer.
+            # main may have moved during this pass (self-service merges): rebase, validate again, retry.
             for attempt in 1 2 3; do
               if git pull -q --rebase origin main && python3 tools/bee.py validate && git push origin HEAD:main; then
                 gh api -X POST "repos/$GITHUB_REPOSITORY/actions/workflows/site.yml/dispatches" -f ref=main || true  # ruche-0121: one call
@@ -48,7 +48,7 @@ jobs:
               git rebase --abort 2>/dev/null || true
               sleep $((attempt * 10))
             done
-            echo "::error::publication impossible après 3 essais ; le prochain passage refera le travail (idempotent)."
+            echo "::error::could not publish after 3 attempts; the next pass will redo the work (idempotent)."
             exit 1
           fi
       - name: API budget, end (ruche-0121)
