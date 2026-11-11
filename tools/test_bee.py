@@ -3366,7 +3366,7 @@ class TestPullRequests(BaseTest):
         self.commit()
         code, text = self.verify("alice")
         self.assertEqual(code, 1)
-        self.assertIn("30 jours", text)
+        self.assertIn("30 days", text)
 
     def test_registration_and_github_date(self):
         git(self.dir, "switch", "-qc", "i")
@@ -18355,7 +18355,7 @@ class TestR8Bootstrap(BaseDressRehearsal):
             self.commit()
             for author in authors:
                 text = self.refused(author, f"rule R8: {who_is} has 4 reservations or parallel registrations", "maximum 3")
-                self.assertNotIn("après la fin de r8_bootstrap", text, "the end date is not what refuses it: one refusal")
+                self.assertNotIn("after the end of r8_bootstrap", text, "the end date is not what refuses it: one refusal")
             self.abandon("quatrieme")
         # Tooling tasks created by the council: the agent account reserves them for bidji29, as self-service, up to the 8th.
         for n in range(9004, 9008):
