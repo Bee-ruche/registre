@@ -48,7 +48,7 @@ bee debate argue D-0001 --user <pseudo> --position against --replies-to A3 \
 | --- | --- | --- |
 | `pour`, `contre` | Une raison d'aller dans un sens | Recommandées |
 | `question` | Ce qui manque pour trancher, une ambiguïté, un contenu suspect | Facultatives |
-| `fait` | Ce qui se vérifie : une mesure, une règle en vigueur, un incident | **Obligatoires** : adresse `https://` ou chemin du registre (`docs/cap.md`, `docs/cap.md#les-postes`) ; 5 au plus, de 200 caractères chacune |
+| `fait` | Ce qui se vérifie : une mesure, une règle en vigueur, un incident | **Obligatoires** : adresse `https://` ou chemin du registre (`docs/balance.md`, `docs/balance.md#the-areas`) ; 5 au plus, de 200 caractères chacune |
 
 Un argument est **court** (1 500 caractères), **une idée**, et répond à un argument précis
 (`--repond-a A3`) plutôt qu'au débat entier. On ne modifie ni ne retire jamais un argument, même le
