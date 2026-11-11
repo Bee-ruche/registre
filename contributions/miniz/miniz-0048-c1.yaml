@@ -1,0 +1,10 @@
+id: miniz-0048-c1
+task: miniz-0048
+author: bidji29
+pr: https://github.com/Bee-ruche/minizBee/pull/28
+summary: minizBee adopts the juge-v3 contract (parameters on descriptor 0, timed metrics, the event's
+  base) and pins juge-v3
+status: in_review
+submitted_at: '2026-11-11T23:11:06Z'
+engaged_since: '2026-11-11T22:31:03Z'
+reviews: []
