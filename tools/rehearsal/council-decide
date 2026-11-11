@@ -1,36 +1,36 @@
 #!/usr/bin/env bash
-# Le conseil simulé décide d'une PR réservée au conseil (code 3 de verifier-pr) : il la fusionne ou la refuse.
-# Usage : decider-conseil <numéro> fusionner|refuser "<motif>"
-# La validation passe par l'outil de main (le code de confiance), jamais par celui de la PR jugée.
+# The simulated council decides on a PR reserved to the council (check-pr's code 3): it merges or refuses it.
+# Usage: council-decide <number> merge|refuse "<reason>"
+# The validation goes through main's tool (the trusted code), never through the judged PR's.
 set -euo pipefail
 source "$(dirname "$(realpath "$0")")/common.sh"
-case "${1:-}" in -h|--help|"") echo 'usage : council-decide <numéro> fusionner|refuser "<reason>"' >&2; exit 2;; esac
-n="${1:?numéro}"; decision="${2:?fusionner ou refuser}"; reason="${3:-}"
-[[ "$n" =~ ^[0-9]+$ ]] || { echo "numéro de PR invalide : $n" >&2; exit 2; }
-case "$decision" in merge|refuse) ;; *) echo "décision : fusionner ou refuser" >&2; exit 2;; esac
-valid_text "${reason:-sans motif}"
+case "${1:-}" in -h|--help|"") echo 'usage: council-decide <number> merge|refuse "<reason>"' >&2; exit 2;; esac
+n="${1:?number}"; decision="${2:?merge or refuse}"; reason="${3:-}"
+[[ "$n" =~ ^[0-9]+$ ]] || { echo "invalid PR number: $n" >&2; exit 2; }
+case "$decision" in merge|refuse) ;; *) echo "decision: merge or refuse" >&2; exit 2;; esac
+valid_text "${reason:-no reason}"
 export BEE_NOW="$(python3 "$SIM/tools/clock.py")"
 exec 9>"$SIM/state/verrou"; flock 9
 conf="$SIM/trust"
-git -C "$conf" fetch -q origin "refs/heads/pr/$n:refs/remotes/origin/pr/$n" 2>/dev/null || { echo "PR $n inconnue" >&2; exit 1; }
+git -C "$conf" fetch -q origin "refs/heads/pr/$n:refs/remotes/origin/pr/$n" 2>/dev/null || { echo "unknown PR $n" >&2; exit 1; }
 git -C "$conf" fetch -q origin && git -C "$conf" checkout -q --detach origin/main
-# Le conseil ne décide que des PR que l'outil de main a jugées valides et réservées au conseil (état « conseil »).
+# The council decides only on the PRs that main's tool judged valid and reserved to the council (state « council »).
 last=$(awk -F'\t' -v n="$n" '$2==n {e=$5} END {print e}' "$SIM/state/prs.tsv")
-[ "$last" = council ] || { echo "PR $n : état « ${last:-inconnu} », pas en attente du conseil ; rien à décider." >&2; exit 1; }
+[ "$last" = council ] || { echo "PR $n: state « ${last:-unknown} », not waiting for the council; nothing to decide." >&2; exit 1; }
 if [ "$decision" = refuse ]; then
-  printf '%s\t%s\t%s\t%s\t%s\n' "$BEE_NOW" "$n" "council" "décision : $reason" "refusee_conseil" >> "$SIM/state/prs.tsv"
-  echo "PR $n refusée par le conseil."; exit 0
+  printf '%s\t%s\t%s\t%s\t%s\n' "$BEE_NOW" "$n" "council" "decision: $reason" "refusee_conseil" >> "$SIM/state/prs.tsv"
+  echo "PR $n refused by the council."; exit 0
 fi
 rm -rf "$SIM/merge"; git -C "$conf" worktree prune
 git -C "$conf" worktree add -q --detach "$SIM/merge" origin/main
 if ! git -C "$SIM/merge" -c user.name=council -c user.email=council@simu.bee merge -q --no-edit --no-ff "origin/pr/$n" >/dev/null 2>&1; then
-  echo "PR $n : conflit avec main ; l'auteur doit la refaire."; git -C "$SIM/merge" merge --abort 2>/dev/null || true
+  echo "PR $n: conflict with main; the author must redo it."; git -C "$SIM/merge" merge --abort 2>/dev/null || true
   git -C "$conf" worktree remove --force "$SIM/merge"; exit 1
 fi
 if ! python3 "$conf/tools/bee.py" --registry "$SIM/merge" validate >/dev/null 2>&1; then
-  echo "PR $n : le registre ne serait plus valide ; refusée."; git -C "$conf" worktree remove --force "$SIM/merge"; exit 1
+  echo "PR $n: the registry would no longer be valid; refused."; git -C "$conf" worktree remove --force "$SIM/merge"; exit 1
 fi
 BEE_SIM_ROBOT=1 git -C "$SIM/merge" push -q origin HEAD:main
-printf '%s\t%s\t%s\t%s\t%s\n' "$BEE_NOW" "$n" "council" "décision : $reason" "fusionnee_conseil" >> "$SIM/state/prs.tsv"
+printf '%s\t%s\t%s\t%s\t%s\n' "$BEE_NOW" "$n" "council" "decision: $reason" "fusionnee_conseil" >> "$SIM/state/prs.tsv"
 git -C "$conf" worktree remove --force "$SIM/merge"
-echo "PR $n fusionnée par le conseil."
+echo "PR $n merged by the council."

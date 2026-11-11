@@ -1,12 +1,12 @@
-"""CI simulée d'un fork : rend le verdict du dernier commit poussé sur une PR « sur papier » et l'enregistre dans le
-registre simulé, comme le fait le workflow des verdicts (bee record-verdict, poussé sur main par le robot).
+"""A fork's simulated CI: gives the verdict of the last commit pushed to an "on paper" PR and records it in the
+simulated registry, as the verdicts workflow does (bee record-verdict, pushed to main by the robot).
 
-Les chiffres sont tirés au hasard, l'auteur ne choisit pas son verdict. Comme dans un vrai fork, ce qui dépend du code
-(CI verte ou rouge, lignes, décomptes d'instructions, constructions suspectes) est tiré du code du commit, c'est-à-dire
-de sa description : le même code, repoussé ou relancé, avec ou sans manifeste corrigé, donne les mêmes décomptes. Seul le chronomètre est
-tiré à nouveau à chaque exécution : relancer la CI jusqu'à passer le seuil de R4 est donc possible ici comme en vrai, et
-c'est à la ruche de ne pas s'y laisser prendre (ruche-0028).
-Usage : python3 simulated_ci.py <url_pr_fork> [--relance]
+The numbers are drawn at random: the author does not choose the verdict. As in a real fork, what depends on the code
+(green or red CI, lines, instruction counts, suspicious constructs) is drawn from the commit's code, that is from its
+description: the same code, pushed again or rerun, with or without a corrected manifest, gives the same counts. Only the
+stopwatch is drawn again at each run: rerunning the CI until it passes R4's threshold is therefore possible here as in
+reality, and it is up to the hive not to be taken in by it (ruche-0028).
+Usage: python3 simulated_ci.py <fork_pr_url> [--rerun]
 """
 import json, os, pathlib, random, subprocess, sys, tempfile
 
@@ -23,12 +23,12 @@ def sh(*cmd, cwd=None, env=None, check=True):
 def main():
     url = sys.argv[1]
     if not url.startswith("https://github.com/Bee-ruche/"):
-        print(f"adresse de PR invalide : {url}")
+        print(f"invalid PR address: {url}")
         return 2
     commits = [l.rstrip("\n").split("\t") for l in (SIM / "state/commits_fork.tsv").read_text(encoding="utf-8").splitlines() if l.strip()]
-    commits = [c for c in commits if len(c) == 5 and c[1] == url]   # une ligne abîmée n'arrête pas la CI des autres
+    commits = [c for c in commits if len(c) == 5 and c[1] == url]   # a damaged line does not stop the others' CI
     if not commits:
-        print(f"Aucun commit poussé sur {url} : push-fork-pr d'abord.")
+        print(f"No commit pushed to {url}: push-fork-pr first.")
         return 1
     _, _, sha, tree, code = commits[-1]
     number_of = url.rsplit("/", 1)[1]
@@ -49,19 +49,19 @@ def main():
             if rec.get("pr") == url and rec.get("status") == "in_review":
                 contribution = rec
         if contribution is None:
-            print(f"La CI a tourné sur {sha[:7]}, mais le registre n'a aucune contribution en relecture pour {url}. "
-                  f"Soumettez (bee submit <t> --user <p> --pr {url}), publiez, puis relancez : simulated-ci {url}")
+            print(f"The CI ran on {sha[:7]}, but the registry has no contribution in review for {url}. "
+                  f"Submit (bee submit <task> --user <login> --pr {url}), publish, then rerun: simulated-ci {url}")
             return 0
         task_id = contribution["task"]
         project = task_id.rsplit("-", 1)[0]
         task = yaml.safe_load((travail / f"tasks/{project}/{task_id}.yaml").read_text(encoding="utf-8"))
-        # Une exécution de plus pour ce commit : le chronomètre est tiré à nouveau, le reste suit le contenu.
+        # One more run for this commit: the stopwatch is drawn again, the rest follows the content.
         runs = SIM / "state/executions_fork.tsv"
         rank = sum(1 for l in runs.read_text(encoding="utf-8").splitlines() if l == sha) if runs.exists() else 0
         with runs.open("a", encoding="utf-8") as f:
             f.write(sha + "\n")
-        # Le « code » du commit est sa description : le manifeste fait partie de l'arbre, mais le corriger ne change pas
-        # ce que la CI mesure.
+        # The commit's « code » is its description: the manifest is part of the tree, but correcting it does not change
+        # what the CI measures.
         randomness = random.Random(f"code:{code}")
         stopwatch_randomness = random.Random(f"run:{sha}:{rank}")
         verdict = {"ci": "green" if randomness.random() < 0.9 else "red", "changed_lines": randomness.randint(12, 60),
@@ -86,7 +86,7 @@ def main():
         else:
             verdict["gain"] = None
         if randomness.random() < 0.1:
-            verdict["judge"]["suspicious_constructs"] = [{"type": "clock", "detail": "appel à clock_gettime dans le code jugé"}]
+            verdict["judge"]["suspicious_constructs"] = [{"type": "clock", "detail": "call to clock_gettime in the judged code"}]
         files = [f for f in task.get("files", []) if not f.endswith("/")] + [f"manifests/{task_id}.yaml"]
         with tempfile.TemporaryDirectory() as tmp:
             pv = pathlib.Path(tmp) / "verdict.json"
@@ -103,13 +103,13 @@ def main():
                 return r.returncode
         sh("git", "add", "-A", cwd=travail)
         sh("git", "-c", "user.name=robot", "-c", "user.email=robot@simu.bee", "commit", "-qm",
-           f"Verdict simulé de {contribution['id']} ({sha[:7]})", cwd=travail)
+           f"Simulated verdict of {contribution['id']} ({sha[:7]})", cwd=travail)
         r = subprocess.run(["git", "push", "-q", "origin", "HEAD:main"], cwd=travail, text=True, capture_output=True,
                            env=dict(os.environ, BEE_SIM_ROBOT="1"))
         if r.returncode != 0:
-            print("main a avancé pendant la CI : relancez simulated-ci.")
+            print("main moved during the CI: rerun simulated-ci.")
             return 1
-        print(f"Verdict de {contribution['id']} au commit {sha[:7]} enregistré : CI {verdict['ci']}, gain {verdict.get('gain')}.")
+        print(f"Verdict of {contribution['id']} at commit {sha[:7]} recorded: CI {verdict['ci']}, gain {verdict.get('gain')}.")
         return 0
     finally:
         sh("git", "worktree", "remove", "--force", str(travail), cwd=CONF, check=False)

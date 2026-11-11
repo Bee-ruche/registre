@@ -1,16 +1,17 @@
-"""Essai de charge, partie 1 (ruche-0080 ; le modèle d'activité : docs/tooling.md) : une ruche jetable de N membres
-actifs et une semaine de leur activité, tirée d'un modèle fixe et d'une graine, sans agent d'IA ni réseau. ruche-0083 y
-mesure bee et les règles.
+"""Load test, part 1 (ruche-0080; the activity model: docs/tooling.md): a throwaway hive of N active members and a
+week of their activity, drawn from a fixed model and a seed, with no AI agent and no network. ruche-0083 measures bee
+and the rules on it.
 
   python3 tools/rehearsal/load_test.py <dir> --members 100 [--seed 1] [--registry <clone>] [--base main]
-  python3 tools/rehearsal/load_test.py <dir> --replay [<numéro de PR>...]
+  python3 tools/rehearsal/load_test.py <dir> --replay [<PR number>...]
 
-Comme une ruche de répétition (setup.sh), tout part d'un commit du registre (`main` par défaut) et tout s'écrit dans
-<dir>, qui ne doit pas exister : confiance (le registre, au dernier commit de la semaine), central.git (son clone nu, qui
-joue GitHub) et state/ (base, fin, prs.tsv, pr_authors.tsv). L'historique : la base en un commit, puis une PR par geste,
-fusionnée en squash comme auto-merge (auteur et heure du geste, fusion une minute après). Chaque fichier est écrit par les
-fonctions d'écriture de l'outil bee de la base, comme la commande que nomme le message de sa PR ; --replay relance ces
-commandes sur l'état d'avant chaque PR, compare les octets, puis fait juger la PR par bee check-pr --auto-merge.
+Like a rehearsal hive (setup.sh), everything starts from a commit of the registry (`main` by default) and everything is
+written in <dir>, which must not exist: trust (the registry, at the week's last commit), central.git (its bare clone,
+which plays GitHub) and state/ (base, end, prs.tsv, pr_authors.tsv). The history: the base in one commit, then one PR
+per action, squash-merged as auto-merge does (the action's author and time, merged one minute later). Each file is
+written by the writing functions of the base's bee tool, as the command named in its PR's message would write it;
+--replay reruns these commands on the state before each PR, compares the bytes, then has bee check-pr --auto-merge judge
+the PR.
 """
 import argparse
 import datetime as dt
