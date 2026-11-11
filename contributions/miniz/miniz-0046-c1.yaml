@@ -1,0 +1,10 @@
+id: miniz-0046-c1
+task: miniz-0046
+author: bidji29
+pr: https://github.com/Bee-ruche/minizBee/pull/27
+summary: The messages minizBee's scripts print in English (ci, judge plugin, bench, tests, fuzz, sandbox);
+  verdict data, labels and exit codes unchanged
+status: in_review
+submitted_at: '2026-11-11T18:52:41Z'
+engaged_since: '2026-11-11T18:45:33Z'
+reviews: []
