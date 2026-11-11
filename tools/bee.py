@@ -9461,7 +9461,7 @@ def cmd_record_verdict(args):
         verdict["judge"] = {
             "version": integer_value(judge.get("version")),
             # The registry's common judge (tools/judge/, docs/common-judge.md): the tag that rendered the verdict.
-            "common": judge.get("common") if isinstance(judge.get("common"), str) and re.fullmatch(r"juge-v[0-9]{1,4}", judge.get("common")) else None,
+            "common": judge.get("common") if isinstance(judge.get("common"), str) and re.fullmatch(r"(juge|judge)-v[0-9]{1,4}", judge.get("common")) else None,
             "outputs_compared": integer_value(judge.get("outputs_compared")),
             "suspicious_constructs": [{"type": str(s.get("type", ""))[:40], "detail": str(s.get("detail", ""))[:300]}
                                         for s in suspects[:VERDICT_MAX["suspicious"]] if isinstance(s, dict)],
@@ -9901,13 +9901,19 @@ def gate_mode(reg):
     return "toujours" if value else "jamais"
 
 
+def common_judge_number(label):
+    """ruche-0148: the number of a common judge's tag, juge-v1 to juge-v3, then judge-v4 on (N in ASCII digits without a leading zero,
+    up to 9999); None for any other label, juge-v4 and judge-v3 included: each number has one name."""
+    m = re.fullmatch(r"(juge-v([1-3])|judge-v([4-9]|[1-9][0-9]{1,3}))", label) if isinstance(label, str) else None
+    return int(m.group(2) or m.group(3)) if m else None
+
+
 def common_judge_sufficient(reg, verdict):
     """ruche-0086: was the verdict rendered by a common judge at least bee.yaml's common_judge_min? Its label must be exactly
-    "juge-vN", N in ASCII digits without a leading zero; any other label, or a minimum missing or malformed (not an int from 1 to
-    9999: a bool, a string, a float), and the answer is no: the gate closes, never opens. Read at R3, so never on an integrated one."""
-    minimum, common = setting(reg, "common_judge_min", raw=True), (verdict.get("judge") or {}).get("common")
-    return bool(type(minimum) is int and 1 <= minimum <= 9999 and isinstance(common, str)
-                and re.fullmatch(r"juge-v[1-9][0-9]{0,3}", common) and int(common[6:]) >= minimum)
+    one common_judge_number reads; any other label, or a minimum missing or malformed (not an int from 1 to 9999: a bool, a
+    string, a float), and the answer is no: the gate closes, never opens. Read at R3, so never on an integrated one."""
+    minimum, number = setting(reg, "common_judge_min", raw=True), common_judge_number((verdict.get("judge") or {}).get("common"))
+    return bool(type(minimum) is int and 1 <= minimum <= 9999 and number is not None and number >= minimum)
 
 
 def complete_judge(reg, verdict):

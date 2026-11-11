@@ -1985,6 +1985,35 @@ class TestRegistry(BaseTest):
         self.assertEqual((judge["version"], judge["common"]), (3, "juge-v1"))
         self.valid_one()
 
+    def judged_with_tag(self, common, full_one):
+        """ruche-0148: a verdict under the label `common`, recorded as written; with common_judge_min 2, complete or a guardian reviews."""
+        self.set_gate("if_judge_incomplete")
+        self.set_common_judge_min(2)
+        self.contributors("bruno", "chloe")
+        cid = self.judged_contribution(extra_judge={"version": 3, "common": common})
+        self.assertEqual(bee.Registry(self.dir).record(cid)[1]["verdict"]["judge"]["common"], common)
+        self.valid_one()
+        self.assertEqual(self.bee("vote", cid, "--user", "bruno", "--value", "1")[0], 0)
+        code, text = self.bee("check-acceptance", cid)
+        self.assertEqual(code, 0 if full_one else 1, text)
+        if not full_one:
+            self.assertIn("common judge missing or below common_judge_min", text)
+
+    def test_judge_v4_tag_recorded_and_sufficient(self):
+        # ruche-0148: judge-v4 is a common judge's; so is the label judge.py writes, under the name of its number.
+        text = (ROOT / "tools/judge/judge.py").read_text(encoding="utf-8")
+        number = int(re.search(r"^COMMON_VERSION = ([0-9]+)", text, re.M).group(1))
+        labels = re.findall(r'"commun": f"([a-z]+-v)\{COMMON_VERSION\}"', text)
+        self.assertEqual(len(labels), 2)
+        self.assertEqual({bee.common_judge_number(f"{p}{number}") for p in labels}, {number})
+        self.judged_with_tag("judge-v4", True)
+
+    def test_juge_v4_tag_refused(self):
+        self.judged_with_tag("juge-v4", False)  # ruche-0148: 4 on is judge-vN
+
+    def test_judge_v2_tag_refused(self):
+        self.judged_with_tag("judge-v2", False)  # ruche-0148: 1 to 3 are juge-vN
+
     def test_common_judge_invalid_tag_ignored(self):
         cid = self.judged_contribution(extra_judge={"common": "juge-v1; rm -rf /"})
         self.assertIsNone(bee.Registry(self.dir).record(cid)[1]["verdict"]["judge"]["common"])
@@ -2052,9 +2081,13 @@ class TestRegistry(BaseTest):
 
     def test_common_judge_tag_read_strictly(self):
         # ruche-0086 : seul « juge-vN » exact (chiffres ASCII, sans zéro de tête) compte ; tout autre libellé est incomplet.
+        # ruche-0148: juge-v1 to juge-v3, then judge-v4 on; juge-v4 on and judge-v1 to judge-v3 are no tag.
         self.set_common_judge_min(2)
         reg = bee.Registry(self.dir)
-        for common, full_one in (("juge-v2", True), ("juge-v3", True), ("juge-v10", True), ("juge-v9999", True), ("juge-v1", False),
+        for common, full_one in (("juge-v2", True), ("juge-v3", True), ("judge-v4", True), ("judge-v10", True), ("judge-v9999", True),
+                                ("juge-v1", False), ("juge-v4", False), ("juge-v10", False), ("juge-v9999", False), ("judge-v1", False),
+                                ("judge-v2", False), ("judge-v3", False), ("judge-v0", False), ("judge-v04", False), ("judge-v10000", False),
+                                ("judge-v4\n", False), ("Judge-v4", False), ("judge-v٤", False), ("jugde-v4", False), ("judge-v", False),
                                 ("juge-v0", False), ("juge-v02", False), ("juge-v2\n", False), ("juge-v", False), ("JUGE-V2", False),
                                 ("juge-v2.1", False), (" juge-v2", False), ("juge-v٢", False), ("juge-v10000", False),
                                 ("juge-v-2", False), (None, False), (2, False), (["juge-v2"], False)):
