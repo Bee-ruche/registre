@@ -4,31 +4,32 @@ category: ruche
 type: test
 area: governance
 size: M
-title: "La portée d'un privilège dans bee : un gardien ou un garant pour une branche seulement (R14)"
+title: "The scope of a privilege in bee: a guardian or a guarantor for one branch only (R14)"
 context: >
-  Décision du 30/10 sur une idée du fondateur (R14, docs/branches.md) : un privilège (gardien, garant,
-  relecteur Confirmé, droit d'agir hors de la ruche) s'exerce sur toute la ruche ou sur une branche (un
-  nœud de l'arbre et ce qui est en dessous), et seulement sur ce qui relève entièrement de sa portée.
-  Aujourd'hui, gouvernance/gardiens.yaml et gouvernance/garants.yaml ne connaissent que des pseudos : tout
-  privilège vaut partout. À construire : (1) un champ portee facultatif (liste de nœuds de l'arbre ;
-  absent = toute la ruche) pour un gardien et un garant, contrôlé par bee valider (nœuds existants) ;
-  (2) bee compte un privilège seulement sur ce qui relève entièrement de sa portée : la porte de relecture
-  et le refus qui bloque (R3), la validation et la correction des tâches proposées, la clôture et les
-  doublons de l'agora, l'accord d'une invitation (R13, après ruche-0020) ; ce qui touche plusieurs branches
-  demande un privilégié de chacune ou de toute la ruche ; (3) les juges et l'outillage communs (outils/,
-  .github/, le juge commun) et les invitations à participer relèvent de toute la ruche ; (4) changer le
-  nœud d'une tâche existante est refusé à verifier-pr, sauf au conseil et à un gardien de toute la ruche ;
-  (5) bee essaim et le site montrent la portée de chaque privilégié.
+  Decision of 30 Oct on an idea of the founder (R14, docs/branches.md): a privilege (guardian,
+  guarantor, Confirmed reviewer, right to act outside the hive) is exercised over the whole hive or
+  over a branch (a node of the tree and what is below it), and only over what falls entirely within
+  its scope. Today, governance/guardians.yaml and governance/guarantors.yaml know only logins: every
+  privilege holds everywhere. To build: (1) an optional scope field (a list of nodes of the tree;
+  absent = the whole hive) for a guardian and a guarantor, checked by bee validate (existing nodes);
+  (2) bee counts a privilege only over what falls entirely within its scope: the review gate and the
+  refusal that blocks (R3), the validation and the correction of proposed tasks, the closing and the
+  duplicates of the agora, the approval of an invitation (R13, after ruche-0020); what touches
+  several branches requires a privileged member from each of them or from the whole hive; (3) the
+  common judges and tooling (tools/, .github/, the common judge) and the invitations to participate
+  fall under the whole hive; (4) changing the node of an existing task is refused by check-pr,
+  except for the council and a guardian of the whole hive; (5) bee swarm and the site show the scope
+  of each privileged member.
 files: [tools/bee.py, tools/test_bee.py, schemas/, governance/guardians.yaml, governance/guarantors.yaml, docs/guardians.md, docs/guarantors.md, docs/branches.md, tools/site_bee.py]
 reach: 0.6
 metric: null
 acceptance_criteria:
-  - "test : la relecture d'un gardien de la branche A ne compte pas (ni pour, ni pour bloquer) sur une contribution de la branche B ; un gardien de toute la ruche compte partout"
-  - "test : une contribution qui touche deux branches exige un privilégié de chacune ou de toute la ruche"
-  - "test : un changement du nœud d'une tâche par un membre ou un gardien de branche est refusé par verifier-pr"
-  - "test : sans champ portee, rien ne change (tous les tests existants passent)"
-  - "revue adverse indépendante jointe (R3 et l'intégration en dépendent)"
-out_of_scope: [COMMANDMENTS.md, les règles locales (ruche-0027), la réputation par domaine (ruche-0006)]
+  - "test: the review of a guardian of branch A does not count (neither for, nor to block) on a contribution of branch B; a guardian of the whole hive counts everywhere"
+  - "test: a contribution that touches two branches requires a privileged member from each of them or from the whole hive"
+  - "test: a change of a task's node by a member or a branch guardian is refused by check-pr"
+  - "test: without a scope field, nothing changes (all existing tests pass)"
+  - "independent adversarial review attached (R3 and integration depend on it)"
+out_of_scope: [COMMANDMENTS.md, local rules (ruche-0027), reputation by field (ruche-0006)]
 depends_on: [ruche-0020]
 node: projects/ruche
 status: open
