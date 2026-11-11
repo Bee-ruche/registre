@@ -3,32 +3,32 @@ project: libyaml
 category: parsing-serialization
 type: test
 size: M
-title: "Juge isolé de libyaml, étape 5/6 : scénarios et mesures"
+title: "libyaml's isolated judge, step 5/6: scenarios and measurements"
 context: >
-  Découpage de libyaml-0005 (juge isolé pour libyaml), étape 5 sur 6 ; utile seule : un banc isolé, au bruit
-  du juge commun (environ ±0,4 %), qu'on peut lancer à la main avant même qu'il soit branché à la CI.
-  Jusqu'ici (libyaml-0013 à libyaml-0016) le greffon vérifie sans mesurer (SCENARIOS vide). Cette étape
-  ajoute au harnais les modes analyse, chargement, emission et memoire, et au greffon SCENARIOS,
-  INSTRUCTIONS, METRIQUES et les méthodes repetition, instructions et scenario, avec les identifiants de
-  métriques de projets/libyaml.yaml (debit_analyse, debit_chargement, debit_emission, memoire_max_ko, et
-  instructions_analyse, instructions_chargement, instructions_emission pour R4). Le juge commun mesure par
-  wait4 dans son propre lanceur, compte les instructions de tout le processus et analyse les objets
-  (constructions suspectes). Modèles : le greffon jouet du registre et celui de minizBee. Jusqu'à
-  libyaml-0018, la CI n'appelle pas bee/juge/ : cette étape ne change aucun verdict. Elle touche les juges :
-  relue par un gardien ou par le conseil.
+  Split of libyaml-0005 (an isolated judge for libyaml), step 5 of 6; useful on its own: an isolated bench, with
+  the common judge's noise (about ±0.4%), that can be run by hand even before it is wired into CI. So far
+  (libyaml-0013 to libyaml-0016) the plugin verifies without measuring (SCENARIOS empty). This step adds to
+  the harness the modes analyse, chargement, emission and memoire, and to the plugin SCENARIOS,
+  INSTRUCTIONS, METRIQUES and the methods repetition, instructions and scenario, with the metric ids of
+  projects/libyaml.yaml (debit_analyse, debit_chargement, debit_emission, memoire_max_ko, and
+  instructions_analyse, instructions_chargement, instructions_emission for R4). The common judge measures
+  with wait4 in its own launcher, counts the instructions of the whole process and analyzes the objects
+  (suspicious constructs). Models: the registry's toy plugin and minizBee's. Until libyaml-0018, CI does
+  not call bee/juge/: this step changes no verdict. It touches the judges: reviewed by a guardian or by
+  the council.
 files: [bee/juge/execution.c, bee/juge/projet.py, bee/juge/test_juge.py]
 reach: 0.8
 metric: null
 acceptance_criteria:
-  - "les métriques portent les identifiants de projets/libyaml.yaml (debit_analyse, debit_chargement, debit_emission, memoire_max_ko, et instructions_* pour R4)"
-  - "sur une PR honnête, les décomptes d'instructions de A et de B sont identiques et aucune construction suspecte n'est relevée"
-  - "méta-tests : faux chronos, requête client Valgrind et faux résumé sont signalés"
+  - "the metrics carry the ids of projects/libyaml.yaml (debit_analyse, debit_chargement, debit_emission, memoire_max_ko, and instructions_* for R4)"
+  - "on an honest PR, the instruction counts of A and B are identical and no suspicious construct is reported"
+  - "meta-tests: fake timers, a Valgrind client request and a fake summary are flagged"
 out_of_scope:
-  - "sources de libyaml"
-  - "outils/juge/ du registre"
-  - "changement des métriques suivies"
-  - "nouvelle dépendance hors image"
-  - ".github/workflows/bee-ci.yml (le branchement à la CI est libyaml-0018)"
+  - "libyaml's sources"
+  - "the registry's outils/juge/"
+  - "change to the tracked metrics"
+  - "new dependency outside the image"
+  - ".github/workflows/bee-ci.yml (wiring into CI is libyaml-0018)"
 depends_on: [libyaml-0015, libyaml-0016]
 node: projects/parsing-serialization/libyaml
 status: open

@@ -3,33 +3,33 @@ project: libyaml
 category: parsing-serialization
 type: test
 size: M
-title: "Juge isolé de libyaml, étape 1/6 : harnais de vérification et script de construction"
+title: "libyaml's isolated judge, step 1/6: verification harness and build script"
 context: >
-  Découpage de libyaml-0005 (juge isolé pour libyaml, environ 800 lignes hors tests en tout), étape 1 sur 6 ;
-  utile seule : un harnais isolé qu'on peut lancer à la main, sur lequel reposent toutes les étapes suivantes.
-  Le juge commun du registre (outils/juge/, docs/juge-commun.md, étiquette juge-v1) exécute le code C de la
-  PR en conteneur sans réseau, en lecture seule, sans privilège ; le projet lui fournit un harnais
-  (bee/juge/execution.c), un script de construction (bee/juge/construire.sh) et un greffon
-  (bee/juge/projet.py, libyaml-0014). Modèles : le projet jouet du registre (outils/juge/jouet/bee/juge/ :
-  execution.c 137 lignes, construire.sh 17) et minizBee (bee/juge/execution.c 510 lignes, construire.sh 32).
-  Le sérialiseur bee_flux de bee/fuzz/fuzz_parse.c (libyaml-0002, intégrée) écrit déjà le flux d'événements
-  strict, erreurs et positions comprises ; compilé avec -DBEE_FLUX_SEUL, il ne définit que bee_flux : à
-  vérifier, puis à réutiliser plutôt qu'à copier. Le mode verifier écrit, pour chaque entrée, le flux
-  sérialisé et le statut (ok ou err). Jusqu'à libyaml-0018, la CI n'appelle pas bee/juge/ : cette étape ne
-  change aucun verdict. Elle touche les juges : relue par un gardien ou par le conseil.
+  Split of libyaml-0005 (an isolated judge for libyaml, about 800 lines outside tests in all), step 1 of 6;
+  useful on its own: an isolated harness that can be run by hand, on which all the following steps rest.
+  The registry's common judge (outils/juge/, docs/common-judge.md, tag juge-v1) runs the PR's C code in a
+  container with no network, read-only, without privileges; the project gives it a harness
+  (bee/juge/execution.c), a build script (bee/juge/construire.sh) and a plugin (bee/juge/projet.py,
+  libyaml-0014). Models: the registry's toy project (outils/juge/jouet/bee/juge/: execution.c 137 lines,
+  construire.sh 17) and minizBee (bee/juge/execution.c 510 lines, construire.sh 32). The bee_flux
+  serializer of bee/fuzz/fuzz_parse.c (libyaml-0002, merged) already writes the strict event stream, errors
+  and positions included; compiled with -DBEE_FLUX_SEUL, it defines only bee_flux: to be checked, then
+  reused rather than copied. The verifier mode writes, for each input, the serialized stream and the status
+  (ok or err). Until libyaml-0018, CI does not call bee/juge/: this step changes no verdict. It touches the
+  judges: reviewed by a guardian or by the council.
 files: [bee/juge/execution.c, bee/juge/construire.sh]
 reach: 1.0
 metric: null
 acceptance_criteria:
-  - "compilé dans la sandbox sur la base, deux exécutions de execution verifier sur le corpus écrivent des sorties identiques octet pour octet, et le statut de chaque fichier (ok ou err) est celui de bee/tests/empreintes-reference.txt"
-  - "construire.sh laisse un obj/<nom>.o par fichier de src/*.c, sans homonyme"
-  - "aucun tampon n'est dimensionné d'après le seul code jugé"
+  - "compiled in the sandbox on the base, two runs of execution verifier on the corpus write byte-for-byte identical outputs, and each file's status (ok or err) is the one in bee/tests/empreintes-reference.txt"
+  - "construire.sh leaves one obj/<name>.o per file of src/*.c, with no name clash"
+  - "no buffer is sized from the judged code alone"
 out_of_scope:
-  - "sources de libyaml"
-  - "outils/juge/ du registre"
-  - "changement des métriques suivies"
-  - "nouvelle dépendance hors image"
-  - ".github/workflows/bee-ci.yml (le branchement à la CI est libyaml-0018)"
+  - "libyaml's sources"
+  - "the registry's outils/juge/"
+  - "change to the tracked metrics"
+  - "new dependency outside the image"
+  - ".github/workflows/bee-ci.yml (wiring into CI is libyaml-0018)"
 node: projects/parsing-serialization/libyaml
 status: open
 created_by: council
