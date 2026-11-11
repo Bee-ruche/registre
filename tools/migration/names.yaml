@@ -1224,7 +1224,7 @@ families:
       mesures: null
   judge_report:
     note: 'juge.json of the common judge, judge.json from judge-v4 on (ruche-0148, J2b): what judge.py writes, report.py reads (until
-      date D in either vocabulary, one per document) and the forks'' verdict jobs read. Keys that are data stay as written: metric ids,
+      date D in either vocabulary, one per document among the keys it reads) and the forks'' verdict jobs read. Keys that are data stay as written: metric ids,
       scenarios, sides, variants, construct types, and the keys a plugin adds to method and verification (open domains)'
     files: []
     writer: json

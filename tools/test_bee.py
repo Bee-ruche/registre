@@ -22990,8 +22990,8 @@ class TestJudgeContractsRuche0148(unittest.TestCase):
         """report.py's French keys and values are names.yaml's judge_report (keys, the verification keys, the domains), and it reads
         French until bee's DATE_D."""
         report, family = common_judge_module("report"), self.names["families"]["judge_report"]
-        known = {**family["keys"], **self.names["open_domains"]["judge_verification_keys"]}
-        self.assertEqual({k: known.get(k) for k in report.FRENCH}, report.FRENCH)
+        self.assertEqual({k: family["keys"].get(k) for k in report.FRENCH}, report.FRENCH)
+        self.assertEqual(report.VERIFICATION_KEYS, self.names["open_domains"]["judge_verification_keys"])
         self.assertTrue(all(k != v for k, v in report.FRENCH.items()))
         self.assertEqual(sorted(k for k, v in family["keys"].items() if k != v and k not in report.FRENCH),
                          sorted(["coeurs", "compilateur", "degradation_au_dela_du_bruit", "deroulement", "egalites", "etape", "au_dela_du_bruit",

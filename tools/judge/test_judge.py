@@ -1862,7 +1862,7 @@ class TestReport(unittest.TestCase):
 
     def test_french_report_read_until_date_d_never_mixed(self):
         """ruche-0148 (J2b): juge.json as juge-v1 to juge-v3 wrote it (French) gives the same figures, code and check as judge.json,
-        until DATE_D; from DATE_D on, or with keys of both vocabularies anywhere report.py looks, it is refused (code 2 published)."""
+        until DATE_D; from DATE_D on, or with keys of both vocabularies among those report.py reads, it is refused (code 2 published)."""
         english, french = json.dumps(REPORT).encode(), json.dumps(FRENCH_REPORT).encode()
         figures = report.digits(english)
         self.assertEqual(dict(report.digits(french), fingerprint=figures["fingerprint"]), figures)
@@ -1877,6 +1877,13 @@ class TestReport(unittest.TestCase):
                       dict(REPORT, judge=dict(REPORT["judge"], seed_origin={"graine": "tiree", "graine_ordre": "tiree"}))):
             with self.subTest(mixed=json.dumps(mixed)[:60]), self.assertRaisesRegex(ValueError, "one vocabulary per report"):
                 report.digits(json.dumps(mixed).encode())
+        # A plugin's own keys in verification stay as written: one that is spelled as a key of the judge's other vocabulary is data.
+        for doc, key in ((REPORT, "motif"), (FRENCH_REPORT, "reason")):
+            section = doc["judge" if doc is REPORT else "juge"]
+            plugin_key = dict(doc, **{"judge" if doc is REPORT else "juge": dict(section, verification=dict(section["verification"], **{key: "x"}))})
+            with self.subTest(plugin_key=key):
+                self.assertEqual(dict(report.digits(json.dumps(plugin_key).encode()), fingerprint=figures["fingerprint"]), figures)
+                self.assertEqual(report.judge_of(json.dumps(plugin_key).encode())["verification"], {"outputs_compared": 57, key: "x"})
         with mock.patch.object(report, "today", return_value=report.DATE_D), contextlib.redirect_stderr(io.StringIO()):
             with self.assertRaisesRegex(ValueError, f"read until {report.DATE_D} only"):
                 report.digits(french)
