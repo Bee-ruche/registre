@@ -41,10 +41,8 @@ out_of_scope:
 depends_on:
 - ruche-0145
 node: projects/parsing-serialization/libyaml
-status: reserved
-reservation:
-  user: "bidji29"
-  since: "2026-11-11T17:36:49Z"
+status: in_review
+contribution: libyaml-0019-c1
 created_by: council
 created_on: '2026-10-31'
 notes:
