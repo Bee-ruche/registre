@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://bee.local/schemas/proposal.schema.json",
-  "title": "Proposition de changement de règle",
-  "description": "Fichier : propositions/<id>.yaml. Seules les règles de REGLES.md peuvent être changées ainsi ; les commandements, jamais.",
+  "title": "Rule change proposal",
+  "description": "File: proposals/<id>.yaml. Only the rules of RULES.md can be changed this way; the commandments, never.",
   "type": "object",
   "additionalProperties": false,
   "required": ["id", "author", "rule", "proposed_text", "reason", "opened_at", "status"],

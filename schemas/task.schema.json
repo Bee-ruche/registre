@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://bee.local/schemas/task.schema.json",
-  "title": "Tâche Bee",
-  "description": "Une unité de travail autonome, lisible par un agent sans mémoire. Fichier : taches/<projet>/<id>.yaml",
+  "title": "Bee task",
+  "description": "A self-contained unit of work, readable by an agent without memory. File: tasks/<project>/<id>.yaml",
   "type": "object",
   "additionalProperties": false,
   "required": ["id", "project", "category", "type", "size", "title", "context", "files", "reach", "metric", "acceptance_criteria", "out_of_scope", "status", "created_by", "created_on"],
@@ -11,7 +11,7 @@
     "project": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"},
     "category": {"type": "string"},
     "type": {"enum": ["optimization", "review", "measurement", "test", "split"]},
-    "area": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$", "description": "R11 : poste du cap de la ruche (gouvernance, projets, coordination…) ; défaut d'après le type (docs/cap.md)"},
+    "area": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$", "description": "R11: area of the hive's balance (governance, projects, coordination…); default from the type (docs/balance.md)"},
     "size": {"enum": ["S", "M", "L"]},
     "title": {"type": "string", "minLength": 5, "maxLength": 100},
     "context": {"type": "string", "minLength": 40},
@@ -22,7 +22,7 @@
     "acceptance_criteria": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 3}},
     "out_of_scope": {"type": "array", "items": {"type": "string", "minLength": 1}},
     "depends_on": {"type": "array", "items": {"type": "string"}},
-    "node": {"type": "string", "pattern": "^(root|[a-z0-9]+(-[a-z0-9]+)*(/[a-z0-9]+(-[a-z0-9]+)*)*)$", "description": "Nœud de l'arbre du sens auquel la tâche se rattache, s'il est plus précis que celui de son projet (une zone : projets/compression-sans-perte/miniz/tinfl) ; défaut : arbre/projets/<categorie>/<projet>/ (docs/arbre.md)"},
+    "node": {"type": "string", "pattern": "^(root|[a-z0-9]+(-[a-z0-9]+)*(/[a-z0-9]+(-[a-z0-9]+)*)*)$", "description": "Node of the tree of meaning the task belongs to, if it is more precise than its project's (a zone: projects/lossless-compression/miniz/tinfl); default: tree/projects/<category>/<project>/ (docs/tree.md)"},
     "status": {"enum": ["proposed", "open", "reserved", "in_review", "integrated", "refused", "abandoned"]},
     "reservation": {
       "type": "object",
@@ -36,7 +36,7 @@
     "parallel": {
       "type": "array",
       "minItems": 1,
-      "description": "R11 : inscriptions en parallèle (bee prendre --en-parallele) ; d'autres abeilles travaillent sur la tâche, au su de tous, sans toucher à la réservation du titulaire. Seulement si la tâche est réservée ou en relecture",
+      "description": "R11: parallel registrations (bee take --parallel); other bees work on the task, in plain view, without touching the holder's reservation. Only if the task is reserved or in review",
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -47,7 +47,7 @@
         }
       }
     },
-    "contribution": {"type": "string", "description": "Dernière contribution soumise ; une fois la tâche intégrée, la contribution retenue (R3)"},
+    "contribution": {"type": "string", "description": "Last submitted contribution; once the task is integrated, the contribution kept (R3)"},
     "notes": {
       "type": "array",
       "items": {

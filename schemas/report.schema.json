@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://bee.local/schemas/report.schema.json",
-  "title": "Signalement",
-  "description": "Fichier : signalements/S-<nnnn>.yaml (ruche-0118). Un membre signale deux comptes membres qu'il croit être une personne (bee signaler) : leurs deux logins et un motif d'une liste fermée, aucun texte libre. Le conseil seul ajoute sa décision (bee signalement) : lies (les deux fiches liées, ruche-0051) ou un code d'écart.",
+  "title": "Report",
+  "description": "File: reports/S-<nnnn>.yaml (ruche-0118). A member reports two member accounts they believe to be one person (bee report): their two logins and a reason from a closed list, no free text. The council alone adds its decision (bee decide-report): linked (the two member files linked, ruche-0051) or a dismissal code.",
   "type": "object",
   "additionalProperties": false,
   "required": ["by", "at", "accounts", "reason"],
