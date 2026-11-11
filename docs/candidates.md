@@ -1,52 +1,52 @@
-# Projets candidats
+# Candidate projects
 
-Recherche du 27 octobre 2026, faite par un agent de recherche de Bee sans rien cloner ni exécuter. Les licences ont été lues dans les fichiers de licence officiels. La présence dans OSS-Fuzz a été vérifiée par le fichier `projects/<nom>/project.yaml` de google/oss-fuzz. Les chiffres d'usage viennent de Debian (popcon, et nombre de paquets de trixie qui dépendent directement de la bibliothèque). Les tailles comptent les lignes du cœur, commentaires compris. Ce qui n'a pas pu être vérifié est marqué « estimé ».
+Research of 27 October 2026, done by a Bee research agent without cloning or running anything. The licenses were read in the official license files. Presence in OSS-Fuzz was checked through the `projects/<name>/project.yaml` file of google/oss-fuzz. The usage figures come from Debian (popcon, and the number of trixie packages that depend directly on the library). The sizes count the lines of the core, comments included. What could not be checked is marked "estimated".
 
-## Retenus pour la phase 3
+## Selected for phase 3
 
-| Projet | Catégorie | Licence | Référence différentielle | Cœur | Usage | Pourquoi |
+| Project | Category | License | Differential reference | Core | Usage | Why |
 | --- | --- | --- | --- | --- | --- | --- |
-| [giflib](https://sourceforge.net/p/giflib/code/) | Décodage d'images | MIT | Wuffs std/gif, stb_image, libnsgif | ~3 700 lignes, décodeur ~2 400 (estimé) | OpenJDK, Android, GDAL, Emacs, Krita ; 138 000 installations Debian | Tout petit, trois références indépendantes, aucune vectorisation ; Wuffs annonce un décodage 2 à 6 fois plus rapide |
-| [libyaml](https://github.com/yaml/libyaml) | Parsing et sérialisation | MIT | yaml-test-suite (flux d'événements), libfyaml | ~13 000 lignes | Chargeur C de PyYAML, Psych (Ruby), appstream, netplan ; 202 000 installations | Oracle le plus strict ; aucune version depuis 2020 ; écart d'environ 6,5 fois avec rapidyaml sur leur banc |
-| [bzip2](https://sourceware.org/git/?p=bzip2.git) | Compression sans perte | BSD propre à bzip2 | Sortie d'origine octet pour octet, corpus bzip2-tests, Wuffs, libbzip2-rs | ~5 200 lignes | dpkg, apt, bibliothèque standard de Python ; 6ᵉ paquet le plus installé de Debian | Usage massif, aucune vectorisation, réutilise tout l'outillage de miniz |
+| [giflib](https://sourceforge.net/p/giflib/code/) | Image decoding | MIT | Wuffs std/gif, stb_image, libnsgif | ~3,700 lines, decoder ~2,400 (estimated) | OpenJDK, Android, GDAL, Emacs, Krita; 138,000 Debian installations | Very small, three independent references, no vectorization; Wuffs claims decoding 2 to 6 times faster |
+| [libyaml](https://github.com/yaml/libyaml) | Parsing and serialization | MIT | yaml-test-suite (event stream), libfyaml | ~13,000 lines | PyYAML's C loader, Psych (Ruby), appstream, netplan; 202,000 installations | Strictest oracle; no release since 2020; a gap of about 6.5 times with rapidyaml on their bench |
+| [bzip2](https://sourceware.org/git/?p=bzip2.git) | Lossless compression | BSD variant specific to bzip2 | Original output byte for byte, bzip2-tests corpus, Wuffs, libbzip2-rs | ~5,200 lines | dpkg, apt, Python's standard library; 6th most installed package in Debian | Very wide usage, no vectorization, reuses all of miniz's tooling |
 
-Points d'attention :
-- **giflib.** Wuffs compose les trames animées alors que giflib rend les trames brutes : le harnais doit recomposer avant de comparer.
-- **bzip2.** Partir de sourceware : le miroir GitLab est figé depuis mai 2023.
+Points to watch:
+- **giflib.** Wuffs composites the animated frames whereas giflib renders the raw frames: the harness must recomposite before comparing.
+- **bzip2.** Start from sourceware: the GitLab mirror has been frozen since May 2023.
 
-## En réserve (phase 4 ou plus tard)
+## In reserve (phase 4 or later)
 
-| Projet | Catégorie | Licence | Note |
+| Project | Category | License | Note |
 | --- | --- | --- | --- |
-| [LodePNG](https://github.com/lvandeve/lodepng) | Décodage d'images | zlib | Prévu à l'origine pour la phase 3 ; recoupe giflib pour le harnais image |
-| [cJSON](https://github.com/DaveGamble/cJSON) | Parsing JSON | MIT | Prévu à l'origine pour la phase 3 ; très présent dans l'embarqué, que les chiffres Debian sous-estiment |
-| [zopfli](https://github.com/google/zopfli) | Compression | Apache-2.0 | Très lent par conception, donc grande marge ; oracle trivial (sortie déterministe) |
-| [md4c](https://github.com/mity/md4c) | Parsing Markdown | MIT | Spécification CommonMark comme oracle ; l'auteur optimise déjà, donc moins de marge |
-| [jansson](https://github.com/akheron/jansson) | Parsing JSON | MIT | Réutiliserait le harnais JSON ; binutils, apache2, nftables |
-| [libcbor](https://github.com/PJK/libcbor) | Sérialisation CBOR | MIT | Petit et propre ; messages FIDO minuscules, gain perçu faible (estimé) |
-| [Expat](https://github.com/libexpat/libexpat) | Parsing XML | MIT | Usage énorme (dbus, fontconfig, CPython) mais 16 800 lignes, et le fork devrait suivre les correctifs de sécurité de l'amont |
-| [nanopb](https://github.com/nanopb/nanopb) | Sérialisation Protobuf | zlib | Intéressant pour l'objectif « plus léger » (ROM, RAM, pile) |
-| [stb_image](https://github.com/nothings/stb) | Décodage d'images | MIT ou domaine public | JPEG déjà partiellement vectorisé |
-| [QOI](https://github.com/phoboslab/qoi) | Décodage d'images | MIT | 649 lignes : bon projet d'école pour former les agents, impact faible |
+| [LodePNG](https://github.com/lvandeve/lodepng) | Image decoding | zlib | Originally planned for phase 3; overlaps giflib for the image harness |
+| [cJSON](https://github.com/DaveGamble/cJSON) | JSON parsing | MIT | Originally planned for phase 3; widely used in embedded systems, which the Debian figures underestimate |
+| [zopfli](https://github.com/google/zopfli) | Compression | Apache-2.0 | Very slow by design, hence a large margin; trivial oracle (deterministic output) |
+| [md4c](https://github.com/mity/md4c) | Markdown parsing | MIT | CommonMark specification as the oracle; the author already optimizes, hence less margin |
+| [jansson](https://github.com/akheron/jansson) | JSON parsing | MIT | Would reuse the JSON harness; binutils, apache2, nftables |
+| [libcbor](https://github.com/PJK/libcbor) | CBOR serialization | MIT | Small and clean; tiny FIDO messages, low perceived gain (estimated) |
+| [Expat](https://github.com/libexpat/libexpat) | XML parsing | MIT | Huge usage (dbus, fontconfig, CPython) but 16,800 lines, and the fork would have to follow upstream's security fixes |
+| [nanopb](https://github.com/nanopb/nanopb) | Protobuf serialization | zlib | Of interest for the "lighter" goal (ROM, RAM, stack) |
+| [stb_image](https://github.com/nothings/stb) | Image decoding | MIT or public domain | JPEG already partly vectorized |
+| [QOI](https://github.com/phoboslab/qoi) | Image decoding | MIT | 649 lines: a good school project to train the agents, low impact |
 
-## Écartés
+## Ruled out
 
-| Projet | Raison |
+| Project | Reason |
 | --- | --- |
-| lz4, LZMA SDK, base64 (aklomp), libwebp sans perte, libspng, libpng | Déjà vectorisés ou écrits en assembleur |
-| zlib, libdeflate, zstd, simdjson, yyjson, libjpeg-turbo | Fork optimisé existant ou déjà très optimisés |
-| pugixml | Déjà conçu pour la vitesse, usage Debian faible |
-| tinyxml2 | Parseur laxiste, pas d'oracle strict |
-| cmark | Doublon de md4c ; meilleur comme référence |
-| jsmn, inih, uriparser, cgltf | Usage faible ou jamais un goulot d'étranglement |
-| tomlc99 | Déclaré obsolète par son auteur |
-| dr_flac | Audio : hors des catégories de la v0 |
-| LZO | Licence GPL-2 |
-| libxml2 | Trop gros |
+| lz4, LZMA SDK, base64 (aklomp), lossless libwebp, libspng, libpng | Already vectorized or written in assembly |
+| zlib, libdeflate, zstd, simdjson, yyjson, libjpeg-turbo | An optimized fork exists, or already highly optimized |
+| pugixml | Already designed for speed, low Debian usage |
+| tinyxml2 | Lax parser, no strict oracle |
+| cmark | Duplicate of md4c; better as a reference |
+| jsmn, inih, uriparser, cgltf | Low usage, or never a bottleneck |
+| tomlc99 | Declared obsolete by its author |
+| dr_flac | Audio: outside the v0 categories |
+| LZO | GPL-2 license |
+| libxml2 | Too big |
 
-## Principales sources
+## Main sources
 
-- Licences et fichiers de licence : dépôts officiels de chaque projet ; [bzip2 sur sourceware](https://sourceware.org/git/?p=bzip2.git) ; [giflib sur SourceForge](https://sourceforge.net/p/giflib/code/ci/master/tree/COPYING).
-- OSS-Fuzz : [google/oss-fuzz, dossier projects](https://github.com/google/oss-fuzz/tree/master/projects).
-- Usage : [popcon Debian](https://popcon.debian.org/) et index des paquets de Debian trixie.
-- Marges de gain annoncées : [README de Wuffs](https://github.com/google/wuffs), [banc de rapidyaml](https://rapidyaml.readthedocs.io/).
+- Licenses and license files: each project's official repositories; [bzip2 on sourceware](https://sourceware.org/git/?p=bzip2.git); [giflib on SourceForge](https://sourceforge.net/p/giflib/code/ci/master/tree/COPYING).
+- OSS-Fuzz: [google/oss-fuzz, projects folder](https://github.com/google/oss-fuzz/tree/master/projects).
+- Usage: [Debian popcon](https://popcon.debian.org/) and the Debian trixie package index.
+- Claimed gain margins: [Wuffs README](https://github.com/google/wuffs), [rapidyaml bench](https://rapidyaml.readthedocs.io/).
