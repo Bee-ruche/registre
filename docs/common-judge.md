@@ -1,58 +1,58 @@
-# Juge commun : un juge isolé pour tous les projets (spécification)
+# Common judge: one isolated judge for every project (specification)
 
-Statut : version 3 (next tag `juge-v3`, created by the council once this is merged) ; version 2 en service depuis le 2 novembre 2026, étiquette `juge-v2` ;
-version 1 depuis le 28 octobre 2026, étiquette `juge-v1` (fusion décidée par le conseil). Les forks y passent par les tâches miniz-0032 (après l'intégration de miniz-0031) et
-libyaml-0005 (après libyaml-0002).
+Status: version 3 in service since 2 November 2026, tag `juge-v3`; version 2 from 2 November 2026, tag `juge-v2`;
+version 1 from 28 October 2026, tag `juge-v1` (merge decided by the council). The forks move to it through the tasks miniz-0032 (after miniz-0031 is integrated) and
+libyaml-0005 (after libyaml-0002).
 
-## Le problème
+## The problem
 
-Le juge isolé de minizBee (`bee/juge/` du fork) mêle deux choses :
-- **ce qui protège** et ne dépend d'aucun projet : l'image et l'isolement en conteneur, le lanceur
-  `chrono` (temps lus par le noyau, résumé de Valgrind), la lecture sûre des sorties, l'analyse des
-  objets compilés, la graine tirée après la compilation, les statistiques A/B, le rapport ;
-- **ce qui juge miniz** : le harnais qui appelle la bibliothèque, les entrées (corpus, données tirées
-  au hasard, flux zlib), la règle de vérification (sorties identiques à la base, aller-retour par
-  la zlib de l'hôte), les scénarios et leurs métriques.
+minizBee's isolated judge (the fork's `bee/juge/`) mixes two things:
+- **what protects** and depends on no project: the image and the isolation in a container, the
+  `chrono` launcher (times read by the kernel, Valgrind's summary), the safe reading of outputs, the analysis of
+  compiled objects, the seed drawn after the build, the A/B statistics, the report;
+- **what judges miniz**: the harness that calls the library, the inputs (corpus, randomly drawn
+  data, zlib streams), the verification rule (outputs identical to the base, round trip through
+  the host's zlib), the scenarios and their metrics.
 
-Recopier le tout dans chaque fork ferait autant de copies à corriger qu'il y a de projets. La revue
-adverse du 27/10 l'a montré : une faille du juge se corrige une fois, ou elle reste ouverte ailleurs.
+Copying the whole into each fork would make as many copies to fix as there are projects. The adversarial
+review of 27 October showed it: a flaw in the judge is fixed once, or it stays open elsewhere.
 
-## Le partage
+## The split
 
-| Dans le registre (`tools/judge/`, étiqueté `juge-vN`) | Dans chaque fork (`bee/juge/`) |
+| In the registry (`tools/judge/`, tagged `juge-vN`) | In each fork (`bee/juge/`) |
 | --- | --- |
-| `Dockerfile.base` (image épinglée, paquets communs) et l'isolement (`isoler.sh`) | Les paquets propres au projet (une ligne `RUN` ajoutée à l'image commune) |
-| `chrono.c` : lanceur, mesures par `wait4`, jeton, relevé du résumé de Valgrind | `execution.c` : le harnais, qui lit `entrees/liste` et écrit `sorties/` |
-| `lecture.py` : lecture sûre des sorties (sans lien, sans fichier spécial, taille bornée) | `projet.py` : le greffon décrit ci-dessous |
-| `analyse.py` : constructions suspectes (liste des fonctions permises fournie par le greffon) | Le corpus et son générateur (`bee/corpus/`) |
-| `juge.py` : l'orchestration (compiler A et B, analyser, tirer la graine, vérifier, mesurer, instructions, rapport au format d'`ab.py` + section `juge`) | Les méta-tests propres au projet (variantes malveillantes du code du projet) |
-| Les méta-tests du juge commun (sur un projet jouet) et le workflow réutilisable `juge.yml` (`workflow_call`) | L'appel du workflow, épinglé au commit d'une étiquette : `uses: Bee-ruche/registre/.github/workflows/juge.yml@<commit> # juge-vN` |
+| `Dockerfile.base` (pinned image, common packages) and the isolation (`isoler.sh`) | The project's own packages (one `RUN` line added to the common image) |
+| `chrono.c`: launcher, measurements through `wait4`, token, reading of Valgrind's summary | `execution.c`: the harness, which reads `entrees/liste` and writes `sorties/` |
+| `lecture.py`: safe reading of outputs (no link, no special file, bounded size) | `projet.py`: the plugin described below |
+| `analyse.py`: suspicious constructs (list of allowed functions supplied by the plugin) | The corpus and its generator (`bee/corpus/`) |
+| `juge.py`: the orchestration (build A and B, analyze, draw the seed, verify, measure, instructions, report in `ab.py`'s format + a `juge` section) | The project's own meta-tests (malicious variants of the project's code) |
+| The common judge's meta-tests (on a toy project) and the reusable workflow `juge.yml` (`workflow_call`) | The workflow call, pinned to a tag's commit: `uses: Bee-ruche/registre/.github/workflows/juge.yml@<commit> # juge-vN` |
 
-## Le greffon d'un projet (`bee/juge/projet.py`)
+## A project's plugin (`bee/juge/projet.py`)
 
-Une classe `Projet` sans état propre (elle reçoit les options `--option CLE=VALEUR` à sa création),
-lue par le juge commun **depuis la base de la PR** (jamais depuis la PR). Modèle complet et commenté :
-`tools/judge/jouet/bee/juge/projet.py` (projet jouet des méta-tests).
+A `Projet` class with no state of its own (it receives the options `--option KEY=VALUE` when it is created),
+read by the common judge **from the PR's base** (never from the PR). Full, commented model:
+`tools/judge/jouet/bee/juge/projet.py` (the meta-tests' toy project).
 
-| Élément | Rôle |
+| Element | Role |
 | --- | --- |
-| `NOM`, `PAQUETS` | nom du projet ; paquets ajoutés à l'image commune (une ligne `RUN`, noms vérifiés) |
-| `SOURCES`, `SOURCES_REQUISES` | motifs glob des fichiers du projet copiés dans le conteneur et compilés (`miniz.c`, `src/*.c`…) ; tout lien symbolique est refusé ; the text analysis reads these same files, whole |
-| `OUTILLAGE`, `EN_TETES_BASE`, `CONSTRUIRE` | dossiers de la base montés sur `/outillage` ; en-têtes de la base copiés dans `/outillage/base/` (le harnais se compile avec eux) ; script de construction, qui doit produire `execution` et laisser **chaque objet du projet dans `obj/`**, un `obj/<nom>.o` par unité de traduction des `SOURCES` (`.c`, `.S`, `.cc`…), deux unités homonymes étant refusées (le juge s'arrête sinon) |
-| `PREFIXES`, `PERMIS` | espace de noms du projet (au moins un préfixe, chacun un mot terminé par `_` : `mz_`, `yaml_`) et fonctions externes permises en plus de la liste commune (64 au plus). Les fonctions qui servent à tromper la mesure (horloge, processus, environnement, signaux, appels système : `analyse.JAMAIS_PERMIS`) ne sont jamais permises et sont signalées par leur nom exact, avant toute exemption |
-| `COTES` | côtés d'entrées (`f`, `z`…) : jamais deux côtés montés ensemble ; en vérification, un conteneur par côté ; dans les mesures, un par scénario (ci-dessous) |
-| `SCENARIOS`, `INSTRUCTIONS`, `METRIQUES`, `METHODE` | scénarios mesurés au chronomètre et leur côté ; ceux dont on compte les instructions ; métriques (nom, sens, unité) ; textes de méthode ajoutés au rapport |
-| `corpus(outillage)` | corpus de la base, `[(nom, octets)]` (aide : `entrees.charger_corpus`) |
-| `verification(rng, corpus)` | entrées de vérification (`entrees.Entree`) : corpus, données tirées au hasard, dérivées (flux produits par l'hôte), invalides |
-| `verifier(a, b, entrees)` | règle de justesse sur les sorties du mode `verifier` ; lève `Refus` au premier écart, `Erreur` si la base elle-même est fausse ; renvoie le nombre de sorties comparées |
-| `fixes(sorties, corpus)` | métriques qui ne dépendent pas du temps (ratio de compression…), lues sur les sorties de vérification |
-| `repetition(rng, corpus)`, `instructions(rng, corpus, prefixe)` | entrées des mesures, perturbées à chaque appel (le juge commun y mêle des entrées de vérification, puis renomme le tout) |
-| `scenario(s, a, b, entrees, mesure)` | vérifie **chaque** sortie d'un scénario mesuré par la règle de `verifier`, entrées de vérification mêlées comprises (invalides aussi), et en tire les métriques (à partir de la mesure de chrono) ; renvoie `(valeurs, sorties comparées)` |
+| `NOM`, `PAQUETS` | the project's name; packages added to the common image (one `RUN` line, names checked) |
+| `SOURCES`, `SOURCES_REQUISES` | glob patterns of the project's files copied into the container and compiled (`miniz.c`, `src/*.c`…); any symbolic link is refused; the text analysis reads these same files, whole |
+| `OUTILLAGE`, `EN_TETES_BASE`, `CONSTRUIRE` | folders of the base mounted on `/outillage`; headers of the base copied into `/outillage/base/` (the harness is compiled with them); build script, which must produce `execution` and leave **each object of the project in `obj/`**, one `obj/<name>.o` per translation unit of `SOURCES` (`.c`, `.S`, `.cc`…), two units with the same name being refused (otherwise the judge stops) |
+| `PREFIXES`, `PERMIS` | the project's namespace (at least one prefix, each a word ending in `_`: `mz_`, `yaml_`) and external functions allowed on top of the common list (64 at most). The functions that serve to fool the measurement (clock, processes, environment, signals, system calls: `analyse.JAMAIS_PERMIS`) are never allowed and are flagged by their exact name, before any exemption |
+| `COTES` | input sides (`f`, `z`…): never two sides mounted together; in verification, one container per side; in the measurements, one per scenario (below) |
+| `SCENARIOS`, `INSTRUCTIONS`, `METRIQUES`, `METHODE` | scenarios measured on the timer and their side; those whose instructions are counted; metrics (name, direction, unit); method texts added to the report |
+| `corpus(outillage)` | the base's corpus, `[(name, bytes)]` (helper: `entrees.charger_corpus`) |
+| `verification(rng, corpus)` | verification inputs (`entrees.Entree`): corpus, randomly drawn data, derived data (streams produced by the host), invalid inputs |
+| `verifier(a, b, entrees)` | correctness rule on the outputs of the `verifier` mode; raises `Refus` at the first discrepancy, `Erreur` if the base itself is wrong; returns the number of outputs compared |
+| `fixes(sorties, corpus)` | metrics that do not depend on time (compression ratio…), read on the verification outputs |
+| `repetition(rng, corpus)`, `instructions(rng, corpus, prefixe)` | inputs of the measurements, perturbed at each call (the common judge mixes verification inputs into them, then renames everything) |
+| `scenario(s, a, b, entrees, mesure)` | checks **each** output of a measured scenario by `verifier`'s rule, mixed-in verification inputs included (invalid ones too), and derives the metrics from them (from chrono's measurement); returns `(values, outputs compared)` |
 
-Le harnais (`execution`) est appelé sans argument ; son descripteur 0 porte 256 octets : la ligne `<mode> /entrees /sorties`
-(mode `verifier` ou nom de scénario), complétée d'espaces et finie par une fin de ligne ; `/entrees/liste` donne une ligne
-`<côté> <nom> <entier>` par entrée, dont les octets sont dans `/entrees/<côté>/<nom>`. Dans un scénario, il traite toute
-entrée de son côté comme en vérification.
+The harness (`execution`) is called with no argument; its descriptor 0 carries 256 bytes: the line `<mode> /entrees /sorties`
+(mode `verifier` or a scenario's name), padded with spaces and ended by a newline; `/entrees/liste` gives one line
+`<side> <name> <integer>` per input, whose bytes are in `/entrees/<side>/<name>`. In a scenario, it treats any
+input of its side as in verification.
 
 **What the harness guarantees the judged code (ruche-0037).** The same arguments, environment, descriptors, working directory
 and mounts in every mode (verification, timer, instruction count), one container per scenario; the mode reaches the harness on
@@ -106,24 +106,24 @@ own. Verification still runs one container per side, not per scenario.
 - Meta-test, on a copy of the toy with two scenarios per side: a candidate each of whose scenarios tries to read and to
   modify the others' outputs, before and after its own work, gets the honest toy's verdict and comparisons.
 
-Règles de sûreté, vérifiées par le juge commun (revue adverse du 28/10) :
-- les relevés d'analyse (`nm`, `objdump`) sont produits par le juge commun lui-même, dans un conteneur, sur
-  tous les objets de `obj/` : un script de construction ne peut ni les omettre ni les vider ;
-- le greffon ne voit les sorties qu'à travers `lecture.Sorties`, qui retient ce qu'il a lu : à chaque
-  étape, chaque entrée doit avoir eu au moins une sortie de B lue, sinon le juge s'arrête (code 2) ;
-- le greffon n'exécute rien de ce que le conteneur a produit et ne met jamais d'octets venus du
-  conteneur dans un message sans `lecture.propre` ; toute exception imprévue est une erreur (code 2) ;
-- un harnais ne dimensionne jamais un tampon d'après le seul code jugé (borne connue du format, au minimum) ;
-- l'analyse des instructions ne couvre que x86-64 : sur une autre architecture, le juge le signale comme
-  construction suspecte (un gardien relit) ;
+Safety rules, checked by the common judge (adversarial review of 28 October):
+- the analysis listings (`nm`, `objdump`) are produced by the common judge itself, in a container, on
+  all the objects in `obj/`: a build script can neither omit them nor empty them;
+- the plugin sees the outputs only through `lecture.Sorties`, which records what it has read: at each
+  step, each input must have had at least one output of B read, otherwise the judge stops (code 2);
+- the plugin runs nothing that the container produced and never puts bytes from the
+  container into a message without `lecture.propre`; any unexpected exception is an error (code 2);
+- a harness never sizes a buffer from the judged code alone (a known bound of the format, at the least);
+- the instruction analysis covers only x86-64: on another architecture, the judge flags it as a
+  suspicious construct (a guardian reviews);
 - what the object analysis covers: suspicious instructions (system calls, counter reads, processor identification,
   Valgrind client requests…) are counted in the disassembly and, independently, in the executable bytes of every
   object and of the linked program, read from the files at every offset, each hit compared with A's by its object
   and surrounding bytes; undecodable bytes and writable and executable memory count too. A failure of `nm` or of
   the disassembler stops the judge (refusal or error), and unreadable bytes make it incomplete: never complete;
 - the judged files (`SOURCES`) are scanned whole, each file of B against A's, line splices joined, without
-  git: only a net, the objects show the code produced. Une PR qui modifie `bee/juge/` est une tâche
-  d'outillage : le registre le détecte et exige un gardien (R3).
+  git: only a net, the objects show the code produced. A PR that modifies `bee/juge/` is a tooling
+  task: the registry detects it and requires a guardian (R3).
 
 **Machine failures and seeds (ruche-0136).** A failure of the machine that judges is an error of the environment, never a
 refusal of the judged code: after each container, the judge reads Docker's own record of it (`docker inspect`, then the container
@@ -143,21 +143,21 @@ after the build). Refusing rather than marking keeps one rule on the verdict sid
 
 ## Versions
 
-- Le juge commun est versionné par étiquette (`juge-v1`, `juge-v2`…) dans le registre. Un changement
-  passe par une PR d'outillage sur le registre, avec les méta-tests communs (workflow
-  `juge-commun.yml`) et ceux de chaque projet qui l'utilise, et la relecture de deux gardiens.
-- Le workflow réutilisable `.github/workflows/juge.yml` lit le juge commun au commit même du workflow
-  appelé (`job.workflow_sha`), jamais à une étiquette ni à une branche : le workflow doit être celui de
-  `Bee-ruche/registre` (`job.workflow_repository`) et ce commit être sur sa branche principale (API compare :
-  `identical` ou `behind`), sinon le juge s'arrête (vérifié par un test) ; `juge.json` le nomme (`juge.source`).
-- Chaque fork épingle une version dans son workflow ; il monte de version par une PR (tâche
-  d'outillage du fork), jugée par l'ancienne version et par la nouvelle.
-- `verdict.json` porte `juge.version` (entier : 2 pour le juge de minizBee de miniz-0031, 3 pour le
-  juge commun v1 et v2), `juge.commun` (« juge-v1 », « juge-v2 »), `juge.projet` et `juge.greffon` (empreinte SHA-256 du
-  greffon) : le registre sait par quel juge chaque verdict a été rendu, et exige une version
-  minimale (`bee.yaml`, ci-dessous).
-- **Minimum version** (`juge_commun_min` in `bee.yaml`, ruche-0086): with R3's gate at `si_juge_incomplet`, a verdict whose
-  `juge.commun` is not exactly `juge-vN` (N in ASCII digits, no leading zero) with N at least this minimum is not entirely
+- The common judge is versioned by tag (`juge-v1`, `juge-v2`…) in the registry. A change
+  goes through a tooling PR on the registry, with the common meta-tests (workflow
+  `juge-commun.yml`) and those of each project that uses it, and the review of two guardians.
+- The reusable workflow `.github/workflows/juge.yml` reads the common judge at the very commit of the called
+  workflow (`job.workflow_sha`), never at a tag or a branch: the workflow must be
+  `Bee-ruche/registre`'s (`job.workflow_repository`) and that commit must be on its main branch (compare API:
+  `identical` or `behind`), otherwise the judge stops (checked by a test); `juge.json` names it (`juge.source`).
+- Each fork pins a version in its workflow; it moves up a version through a PR (a tooling task
+  of the fork), judged by the old version and by the new one.
+- `verdict.json` carries `judge.version` (an integer: 2 for minizBee's judge of miniz-0031, 3 for the
+  common judge, v1 to v3), `judge.common` (« juge-v1 », « juge-v2 », « juge-v3 »), `judge.project` and `judge.plugin` (SHA-256 fingerprint of the
+  plugin): the registry knows by which judge each verdict was rendered, and requires a minimum
+  version (`bee.yaml`, below).
+- **Minimum version** (`common_judge_min` in `bee.yaml`, ruche-0086): with R3's gate at `if_judge_incomplete`, a verdict whose
+  `judge.common` is not exactly `juge-vN` (N in ASCII digits, no leading zero) with N at least this minimum is not entirely
   judged: a guardian or the council must review it, as for any incomplete judge. Missing or malformed (not an integer from 1
   to 9999), no verdict is complete: the gate closes, never opens. It is read when R3 is checked, so it reaches contributions
   still in review, judged by an older judge, never those already integrated. **The council raises it**, after it has tagged
@@ -166,17 +166,17 @@ after the build). Refusing rather than marking keeps one rule on the verdict sid
   not the commit a fork pins: the council bumps `COMMON_VERSION` whenever a change to the judge or to its workflow's
   protections ships, then raises the minimum. `bee validate` reports a missing or malformed minimum.
 
-## Le workflow `juge.yml`, version 2 (ruche-0024)
+## The `juge.yml` workflow, version 2 (ruche-0024)
 
-- **Historique déclaré** : l'entrée `historique` (16 commits complets au plus, séparés par des blancs) nomme les
-  commits dont le greffon lit les objets git. Chacun doit être un ancêtre de la base (API compare du dépôt
-  appelant : `identical` ou `behind`), vérifié avant toute récupération ; le workflow les récupère ensuite dans la
-  copie de la base, chacun avec son arbre et sans son historique, dans une étape à part, seule à recevoir le jeton,
-  avant de charger le greffon et avant tout fichier de la PR, en 10 minutes au plus en tout (sinon erreur, code 2). Le jugement refuse
-  ensuite tout transport git (`GIT_ALLOW_PROTOCOL`) : un objet non déclaré est une erreur (code 2).
-- **Journal sûr** : les 40 dernières lignes du journal, que la PR peut remplir, s'impriment entre
-  `::stop-commands::<jeton>` et `::<jeton>::`, jeton tiré après le jugement, et `##[` y devient `# #[`
-  (ruche-0025) : aucune ne devient une commande de workflow.
+- **Declared history**: the input `historique` (16 full commits at most, separated by blanks) names the
+  commits whose git objects the plugin reads. Each must be an ancestor of the base (compare API of the calling
+  repository: `identical` or `behind`), checked before any fetch; the workflow then fetches them into the
+  base's copy, each with its tree and without its history, in a separate step, the only one to receive the token,
+  before loading the plugin and before any file of the PR, in 10 minutes at most in all (otherwise an error, code 2). The judgement then refuses
+  any git transport (`GIT_ALLOW_PROTOCOL`): an undeclared object is an error (code 2).
+- **Safe log**: the last 40 lines of the log, which the PR can fill, are printed between
+  `::stop-commands::<token>` and `::<token>::`, a token drawn after the judgement, and `##[` becomes `# #[` in them
+  (ruche-0025): none of them becomes a workflow command.
 - **The caller's inputs** (ruche-0038), checked first: `base_sha` and `tete_sha` are the event's pull request's
   (`github.event.pull_request.base.sha`, `.head.sha`, 40 hexadecimal digits), `repetitions` 10 to 50, `sans_instructions`
   false (a verdict needs the instruction count); otherwise the job fails before anything is checked out or judged.
@@ -195,26 +195,26 @@ after the build). Refusing rather than marking keeps one rule on the verdict sid
   the most serious first (`juge.GRAVITE`), each kind counted (`constructions_suspectes_par_type`), each detail cut to 300
   characters as `analyse.analyser` builds the list (ruche-0117).
 
-## Trois greffons côte à côte
+## Three plugins side by side
 
-Le contrat a été vérifié sur deux projets réels (miniz, avec un greffon d'essai rendant exactement les
-résultats du juge de miniz-0031) et sur le jouet ; pour libyaml (libyaml-0005), il se remplit ainsi :
+The contract was checked on two real projects (miniz, with a trial plugin giving exactly the
+results of miniz-0031's judge) and on the toy; for libyaml (libyaml-0005), it is filled in as follows:
 
-| Élément | jouet | miniz | libyaml (prévu) |
+| Element | toy | miniz | libyaml (planned) |
 | --- | --- | --- | --- |
 | `SOURCES` | `rle.c`, `rle.h` | `miniz*.c`, `miniz*.h` | `src/*.c`, `src/*.h`, `include/yaml.h` |
-| `EN_TETES_BASE` | `rle.h` | `miniz*.h` | `include/yaml.h` (harnais compilé avec `-I/outillage/base/include`) |
-| `COTES` | `f` bruts, `z` flux | `f` bruts, `z` flux zlib | `f` documents (aucune donnée dérivée) |
-| `SCENARIOS` | compression, décompression | n1, n6, n9, décompression, mémoire | analyse, chargement, émission, mémoire |
-| justesse | sortie identique à la base, codec de référence en Python | identique à la base, zlib de l'hôte | flux d'événements sérialisé et sortie de l'émetteur identiques à la base ; entrées invalides : même erreur, mêmes positions |
+| `EN_TETES_BASE` | `rle.h` | `miniz*.h` | `include/yaml.h` (harness compiled with `-I/outillage/base/include`) |
+| `COTES` | `f` raw, `z` streams | `f` raw, `z` zlib streams | `f` documents (no derived data) |
+| `SCENARIOS` | compression, decompression | n1, n6, n9, decompression, memory | parsing, loading, emitting, memory |
+| correctness | output identical to the base, reference codec in Python | identical to the base, the host's zlib | serialized event stream and emitter output identical to the base; invalid inputs: same error, same positions |
 | `PREFIXES` | `rle_` | `mz_`, `tdefl_`, `tinfl_`, `miniz_`, `MZ_` | `yaml_` |
 
 ## Migration
 
-1. Intégrer miniz-0031 (juge de minizBee, version 2).
-2. Extraire la partie commune dans le registre (`outils/juge/`, workflow `juge.yml`, étiquette
-   `juge-v1`), avec ses méta-tests sur un projet jouet. *Fait le 28/10, étiquette `juge-v1` posée.*
-3. minizBee passe à un greffon (miniz-0032) ; à graine égale, il doit rendre exactement les résultats
-   du juge de miniz-0031.
-4. libyaml (tâche libyaml-0005) écrit son greffon et son harnais au lieu d'une copie.
-5. Les nouveaux projets (giflib, bzip2) arrivent directement avec un greffon.
+1. Integrate miniz-0031 (minizBee's judge, version 2).
+2. Extract the common part into the registry (`outils/juge/`, workflow `juge.yml`, tag
+   `juge-v1`), with its meta-tests on a toy project. *Done on 28 October, tag `juge-v1` set.*
+3. minizBee moves to a plugin (miniz-0032); with the same seed, it must give exactly the results
+   of miniz-0031's judge.
+4. libyaml (task libyaml-0005) writes its plugin and its harness instead of a copy.
+5. New projects (giflib, bzip2) arrive directly with a plugin.

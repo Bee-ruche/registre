@@ -12,7 +12,7 @@ context: 'Founder''s decision of 31/10: the hive moves to English before the fir
   lines with accents, comments included). Translate only what they print: Makefile help, sandbox, bench, ci, juge,
   tests, fuzz, commun. Code comments stay. Measure first: if the printed lines exceed 400, release the task with
   a note proposing a split. These paths are judge paths: R3 asks for a favorable review by a guardian, the council
-  or a Confirmé. About ten open tasks edit the same files: land between them. No change to what the judge checks
+  or a Confirmed. About ten open tasks edit the same files: land between them. No change to what the judge checks
   or measures.'
 files:
 - bee/Makefile
@@ -28,7 +28,7 @@ metric: null
 acceptance_criteria:
 - no French left in what the scripts print; checked by a reviewer of another model
 - the judge's verdict JSON and counts on the current master are identical before and after
-- favorable review by a guardian, the council or a Confirmé (R3, judge paths); the fork's CI passes
+- favorable review by a guardian, the council or a Confirmed (R3, judge paths); the fork's CI passes
 out_of_scope:
 - code of miniz
 - code comments

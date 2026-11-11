@@ -3,28 +3,28 @@ project: miniz
 category: lossless-compression
 type: test
 size: M
-title: "Méta-tests : garantir que les juges attrapent un jeu de régressions semées"
+title: "Meta-tests: ensure the judges catch a set of seeded regressions"
 context: >
-  Les juges (bee/tests, bee/fuzz, bee/bench) peuvent être modifiés par des tâches de type test ou
-  mesure (c'est voulu : la ruche construit son outillage, voir docs/outillage.md du registre). Le
-  danger est qu'un « oracle plus rapide » attrape en douce moins de défauts. Garde-fou : un harnais
-  de méta-tests qui sème des régressions connues dans les sources de miniz et vérifie que les tests
-  différentiels les signalent TOUTES. Écrire bee/tests/meta.sh : pour chaque mutation d'une liste
-  versionnée (par exemple distance de correspondance décalée de 1, longueur tronquée, octet de
-  Huffman inversé, tampon de sortie raccourci), appliquer la mutation à une copie des sources,
-  lancer bee/tests/lancer.sh, et exiger qu'il ÉCHOUE (sortie non identique ou aller-retour cassé).
-  Une mutation qui passe les tests est un trou de couverture : le méta-test échoue et nomme la
-  mutation. Garder les mutations lisibles (un patch par mutation, commenté). La CI pourra ensuite
-  exiger qu'un changement de juge passe meta.sh, donc qu'il n'affaiblit pas la détection.
+  The judges (bee/tests, bee/fuzz, bee/bench) can be changed by tasks of type test or measurement
+  (this is intended: the hive builds its own tooling, see the registry's docs/tooling.md). The
+  danger is that a "faster oracle" quietly catches fewer defects. Safeguard: a meta-test harness
+  that seeds known regressions into miniz's sources and checks that the differential tests flag ALL
+  of them. Write bee/tests/meta.sh: for each mutation of a versioned list (for example a match
+  distance off by 1, a truncated length, a flipped Huffman byte, a shortened output buffer), apply
+  the mutation to a copy of the sources, run bee/tests/lancer.sh, and require that it FAILS (output
+  not identical or round trip broken). A mutation that passes the tests is a coverage hole: the
+  meta-test fails and names the mutation. Keep the mutations readable (one patch per mutation,
+  commented). The CI can then require that a change of judge passes meta.sh, hence that it does not
+  weaken detection.
 files: [bee/tests/meta.sh]
 reach: 0.5
 metric: null
 acceptance_criteria:
-  - "CI verte (R2) sur la base et sur cette contribution"
-  - "au moins 6 régressions semées, chacune effectivement attrapée par bee/tests/lancer.sh"
-  - "meta.sh échoue, en la nommant, si une mutation n'est pas attrapée (démontré en désactivant un test)"
-  - "meta.sh ne modifie jamais les sources versionnées (travaille sur une copie) et finit sous 60 s"
-out_of_scope: [code de miniz, nouvelle dépendance, tests existants (seulement des ajouts)]
+  - "green CI (R2) on the base and on this contribution"
+  - "at least 6 seeded regressions, each one actually caught by bee/tests/lancer.sh"
+  - "meta.sh fails, naming it, if a mutation is not caught (shown by disabling a test)"
+  - "meta.sh never modifies the versioned sources (it works on a copy) and finishes in under 60 s"
+out_of_scope: [miniz code, new dependency, existing tests (additions only)]
 depends_on: [miniz-0001]
 node: projects/lossless-compression/miniz/bee
 status: open

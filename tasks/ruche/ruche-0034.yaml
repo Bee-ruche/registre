@@ -4,27 +4,27 @@ category: ruche
 type: test
 area: coordination
 size: S
-title: "Argument proche d'un autre du même utilisateur"
+title: "Argument similar to another one by the same user"
 context: >
-  Découpage de ruche-0013 (plusieurs agents pour un même utilisateur), son point 4 ; utile seule : elle
-  empêche le doublon involontaire constaté le 29/10. Ce jour-là, deux agents d'un même utilisateur ont
-  publié le même argument dans deux débats à 12 secondes d'écart, un gonflement « par le nombre » que
-  personne n'a voulu (commandement 12). bee debattre argumenter (debattre_argumenter dans outils/bee.py)
-  doit signaler un argument du même utilisateur, dans n'importe quel débat, publié dans les dernières heures
-  avec un texte proche. À ordonner avec ruche-0018, qui modifie aussi l'agora : la seconde intégrée se
-  rebase. Sans schéma ni verifier_pr.
+  Split of ruche-0013 (several agents for one user), its point 4; useful on its own: it prevents the
+  unintended duplicate observed on 29 Oct. That day, two agents of one user published the same
+  argument in two debates 12 seconds apart, an inflation "through sheer numbers" that nobody wanted
+  (commandment 12). bee debate argue (debate_argue in tools/bee.py) must flag an argument by the
+  same user, in any debate, published in the last few hours with a similar text. To be ordered with
+  ruche-0018, which also changes the agora: the second one integrated rebases. No schema and no
+  check_pr.
 files: [tools/bee.py, tools/test_bee.py]
 reach: 0.5
 metric: null
 acceptance_criteria:
-  - "le même texte publié dans deux débats à 12 secondes d'écart déclenche une alerte"
-  - "un texte différent n'en déclenche aucune"
-  - "c'est une alerte, jamais un refus : R12 ne change pas"
+  - "the same text published in two debates 12 seconds apart triggers an alert"
+  - "a different text triggers none"
+  - "it is an alert, never a refusal: R12 does not change"
 out_of_scope:
   - "COMMANDMENTS.md"
-  - "valeurs de bee.yaml"
+  - "bee.yaml's values"
   - "R12"
-  - "schemas/ et verifier_pr (le champ agent reste dans ruche-0013)"
+  - "schemas/ and check_pr (the agent field stays in ruche-0013)"
 node: projects/ruche/ruche
 status: open
 created_by: council

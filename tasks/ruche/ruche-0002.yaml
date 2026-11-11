@@ -4,28 +4,28 @@ category: ruche
 type: split
 area: governance
 size: L
-title: "Expansion : dossier d'ouverture de bzip2 et tâches d'amorçage proposées"
+title: "Expansion: bzip2's opening file and proposed bootstrap tasks"
 context: >
-  bzip2 est le prochain projet prévu (docs/candidats.md, phase 3 ; projets/bzip2.yaml, statut
-  a_venir). Ouvrir un projet suit docs/nouveau-projet.md : le conseil crée le fork, la ruche prépare
-  tout le reste. Livrables : (1) docs/ouverture-bzip2.md, un dossier factuel et sourcé : dépôt
-  d'origine à jour (sourceware, pas le miroir figé), licence et fichier de licence, oracles (sortie
-  d'origine octet pour octet, corpus bzip2-tests, Wuffs, libbzip2-rs) et ce que chacun permet de
-  vérifier, métriques et scénarios d'instructions proposés (compression -1 et -9, décompression,
-  mémoire), corpus envisagé, chemins_juges, commandes, risques (code de 1996, options de compilation,
-  rapidité des tests) ; il dit aussi les modifications à apporter à projets/bzip2.yaml, que le conseil
-  reportera ; (2) les tâches d'amorçage du guide, proposées avec bee proposer-tache bzip2 (statut
-  « proposee ») : sandbox, corpus, oracle et tests différentiels, banc A/B, fuzzing différentiel, CI,
-  greffon du juge commun ; chacune avec un contexte vérifiable, sans gain promis. Toute affirmation
-  sur bzip2 (taille, usages, licence, tests existants) cite sa source.
-files: [docs/ouverture-bzip2.md, tasks/bzip2/]
+  bzip2 is the next planned project (docs/candidates.md, phase 3; projects/bzip2.yaml, status
+  upcoming). Opening a project follows docs/new-project.md: the council creates the fork, the hive
+  prepares everything else. Deliverables: (1) docs/opening-bzip2.md, a factual, sourced file:
+  up-to-date upstream repository (sourceware, not the frozen mirror), license and license file,
+  oracles (upstream output byte for byte, the bzip2-tests corpus, Wuffs, libbzip2-rs) and what each
+  one can check, proposed metrics and instruction scenarios (compression -1 and -9, decompression,
+  memory), planned corpus, judge_paths, commands, risks (code from 1996, compilation options, speed
+  of the tests); it also says the changes to make to projects/bzip2.yaml, which the council will
+  carry over; (2) the guide's bootstrap tasks, proposed with bee propose-task bzip2 (status
+  "proposed"): sandbox, corpus, oracle and differential tests, A/B bench, differential fuzzing, CI,
+  common judge plugin; each with a verifiable context, with no promised gain. Every claim about
+  bzip2 (size, uses, license, existing tests) cites its source.
+files: [docs/opening-bzip2.md, tasks/bzip2/]
 reach: 0.8
 metric: null
 acceptance_criteria:
-  - "bee valider passe ; chaque tâche proposée a le statut proposee et un contexte factuel"
-  - "le dossier cite une source pour chaque fait sur bzip2 ; aucun contact avec le projet d'origine (commandement 8)"
-  - "le dossier liste les modifications de projets/bzip2.yaml à faire par le conseil"
-out_of_scope: [création du fork (conseil), projects/bzip2.yaml (le conseil reporte les modifications), code de bzip2]
+  - "bee validate passes; every proposed task has the status proposed and a factual context"
+  - "the file cites a source for every fact about bzip2; no contact with the upstream project (commandment 8)"
+  - "the file lists the changes to projects/bzip2.yaml for the council to make"
+out_of_scope: [creating the fork (council), projects/bzip2.yaml (the council carries over the changes), bzip2's code]
 depends_on: []
 status: open
 created_by: council
