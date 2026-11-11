@@ -48,10 +48,13 @@ depends_on:
 - ruche-0055
 - ruche-0145
 node: projects/ruche/ruche
-status: open
+status: abandoned
 created_by: council
 created_on: '2026-10-31'
 notes:
   - by: "bidji29"
     at: "2026-11-08T13:16:40Z"
     text: "Council, 8 Nov 2026: scheduled after the switch (ruche-0145), so that the translation writes the final English names; no French copy is kept (docs/english-migration.md, sections 11 and 12)."
+  - by: "bidji29"
+    at: "2026-11-11T09:47:48Z"
+    text: "Council, 11 Nov 2026 (end of the English migration, wave 0): done by #234 (the English guide), #239 (README.md and CLAUDE.md in English) and the switch (ruche-0145, which made AGENTS.md the English guide); no French copy is kept (REGLES.md-like names are retired by the gate). Closed as abandoned: nothing is left to do."

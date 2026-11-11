@@ -99,7 +99,7 @@ class TestLoadTest(unittest.TestCase):
         shutil.copytree(self.dir, target, symlinks=True)
         return target
 
-    # Critère 1 : bee valider, sans contrôle retiré ni outil modifié, à 100, 300 et 1 000 membres.
+    # Critère 1 : bee validate, sans contrôle retiré ni outil modifié, à 100, 300 et 1 000 membres.
     def test_valid_at_100_300_and_1000_members_without_removing_anything(self):
         for members in (100, 300, 1000):
             with self.subTest(members=members):
@@ -175,43 +175,71 @@ class TestLoadTest(unittest.TestCase):
             self.assertRegex(title, rf" \(#{i}\)$")
             self.assertEqual(merge, open + load_test.MERGE)
             if body.startswith("bee "):
-                self.assertRegex(body, rf"--(utilisateur|pseudo) {re.escape(author)}( |$)")
+                self.assertRegex(body, rf"--(user|login) {re.escape(author)}( |$)")
             else:
                 self.assertEqual((author, title.split(" (#")[0]), ("bidji29", "Ruche de charge : garants, gardiens et une tâche par membre"))
         self.assertEqual([p[3] for p in prs], sorted(p[3] for p in prs))
         self.assertEqual(load_test.git(self.dir / "central.git", "rev-parse", "main"), load_test.git(self.reg, "rev-parse", "main"))
         self.assertEqual(len((self.dir / "state" / "prs.tsv").read_text(encoding="utf-8").splitlines()), len(prs))
 
-    def test_a_gesture_of_each_kind_replays(self):
-        """La commande bee de la PR, sur l'état d'avant, écrit les mêmes octets ; bee check-pr --auto-merge l'accepte."""
+    def test_each_replayed_step_runs_the_command_it_names(self):
+        """ruche-0154 : une PR de chaque sorte ; la commande bee que nomme son message est celle que veut son titre, sous
+        son nom d'après la bascule ; rejouée sur l'état d'avant, elle tourne (code 0 : jamais le refus d'un nom renommé,
+        code 2, qui ne lance rien) et écrit les mêmes octets ; puis bee check-pr --auto-merge l'accepte (code 0 ; le geste
+        du conseil, écrit à la main : code 3, une revue humaine)."""
+        meant = {"Inscription": ("register",), "Réservation": ("take",), "Note": ("note",), "Soumission": ("submit",),
+                 "Relecture": ("review",), "Vote": ("vote",), "Proposition de tâche": ("propose-task",),
+                 "Argument": ("debate", "argue"), "Ruche de charge : garants, gardiens et une tâche par": ()}
         first_ones = {}
         for i, (_, _, _, _, title, _) in enumerate(log_text(self.reg), 1):
             first_ones.setdefault(re.sub(r" [^ ]+ \(#\d+\)$| \(#\d+\)$", "", title), i)
-        self.assertEqual(len(first_ones), 9, first_ones)
-        self.assertEqual(load_test.replay(self.dir, set(first_ones.values())), [])
+        self.assertEqual(sorted(first_ones), sorted(meant))
+        steps = []
+        self.assertEqual(load_test.replay(self.dir, set(first_ones.values()), steps), [])
+        for kind, number_of in first_ones.items():
+            with self.subTest(kind=kind):
+                ran = [(arguments, code, output) for k, arguments, code, output in steps if k == number_of]
+                command = meant[kind]
+                self.assertEqual([(a[:len(command)] if a[0] != "check-pr" else a[:1], c) for a, c, _ in ran],
+                                 ([(command, 0)] if command else []) + [(("check-pr",), 0 if command else 3)])
+                self.assertEqual([o for _, _, o in ran if "by the switch to English" in o], [])
 
     def test_the_replay_refuses_a_pr_that_does_not_come_from_its_command(self):
-        """Détournements : un vote dont le fichier ne dit pas ce que dit sa commande ; un auteur qui vote pour lui-même."""
+        """Détournements : un vote qui nomme la commande ou l'option d'avant la bascule (bee voter, --utilisateur), même
+        avec le fichier qu'écrirait bee vote : bee le refuse sans rien lancer (code 2), et le rejeu le dit (ruche-0154) ; un
+        vote dont le fichier ne dit pas ce que dit sa commande ; un auteur qui vote pour lui-même."""
         folder = self.copied("rejeu-trafique")
         reg, n = folder / "trust", len(log_text(self.reg))
         contribution = next(c for p in sorted((reg / "contributions").glob("*/*-c1.yaml")) if (c := read(p))["author"].startswith("abeille-"))
         cid, author = contribution["id"], contribution["author"]
-        voter = next(p.stem for p in sorted((reg / "members").glob("abeille-*.yaml"))
-                      if p.stem != author and not (reg / "votes" / cid / f"{p.stem}.yaml").exists())
-        for k, (who_is, value, command) in enumerate(((voter, -1, 1), (author, 1, 1)), 1):
+        voters = [p.stem for p in sorted((reg / "members").glob("abeille-*.yaml"))
+                  if p.stem != author and not (reg / "votes" / cid / f"{p.stem}.yaml").exists()]
+        doctored = ((voters[0], 1, f"voter {cid} --user {voters[0]} --value 1"),
+                    (voters[1], 1, f"vote {cid} --utilisateur {voters[1]} --value 1"),
+                    (voters[2], -1, f"vote {cid} --user {voters[2]} --value 1"), (author, 1, f"vote {cid} --user {author} --value 1"))
+        for k, (who_is, value, command) in enumerate(doctored, 1):
             path = reg / "votes" / cid / f"{who_is}.yaml"
             test_bee.bee.write_yaml(path, {"voter": who_is, "subject": cid, "value": value, "at": "2026-11-08T23:59:00Z"})
             load_test.git(reg, "add", "-A")
-            load_test.git(reg, "commit", "-q", "-m", f"Vote {cid} (#{n + k})\n\nbee voter {cid} --user {who_is} --value {command}",
+            load_test.git(reg, "commit", "-q", "-m", f"Vote {cid} (#{n + k})\n\nbee {command}",
                           GIT_AUTHOR_NAME=who_is, GIT_AUTHOR_EMAIL="q@sim.bee", GIT_COMMITTER_NAME="GitHub",
                           GIT_COMMITTER_EMAIL="noreply@github.com", GIT_AUTHOR_DATE="2026-11-08T23:59:00Z",
                           GIT_COMMITTER_DATE="2026-11-09T00:00:00Z")
-        gaps = {}
-        for number_of, cause in load_test.replay(folder, {n + 1, n + 2}):
+        gaps, steps = {}, []
+        for number_of, cause in load_test.replay(folder, {n + 1, n + 2, n + 3, n + 4}, steps):
             gaps[number_of] = gaps.get(number_of, "") + cause
-        self.assertEqual(sorted(gaps), [n + 1, n + 2])
-        self.assertIn("n'écrit pas ce que porte la PR", gaps[n + 1])
-        self.assertIn("you do not vote for your own contribution", gaps[n + 2])
+        self.assertEqual(sorted(gaps), [n + 1, n + 2, n + 3, n + 4])
+        ran = {k: (code, output) for k, arguments, code, output in steps if arguments[0] != "check-pr"}
+        self.assertEqual(ran[n + 1][0], 2)
+        self.assertIn("bee: « bee voter » was renamed « bee vote » by the switch to English (ruche-0145): nothing was run", ran[n + 1][1])
+        self.assertEqual(ran[n + 2][0], 2)
+        self.assertIn("bee vote: error: the following arguments are required: --user", ran[n + 2][1])
+        for k in (n + 1, n + 2):  # le fichier est un vote valide : seul le refus de la commande fait l'écart
+            self.assertTrue(gaps[k].startswith(f"bee {doctored[k - n - 1][2]} : bee la refuse (code 2) : "), gaps[k])
+        self.assertEqual([c for k, a, c, _ in steps if a[0] == "check-pr" and k in (n + 1, n + 2)], [0, 0])
+        self.assertEqual(ran[n + 3][0], 0)  # bee vote a tourné : c'est le fichier qui diffère
+        self.assertIn("n'écrit pas ce que porte la PR", gaps[n + 3])
+        self.assertIn("you do not vote for your own contribution", gaps[n + 4])
 
     # Critère 3 : déterministe.
     def test_the_same_seed_gives_the_same_bytes(self):
@@ -238,7 +266,7 @@ class TestLoadTest(unittest.TestCase):
             events, SURVEILLANCE = SURVEILLANCE, None
         self.assertEqual(code, 0, output_text)
         self.assertEqual([e for e, _ in events if e.startswith("socket.")], [])
-        self.assertGreater(sum(e == "subprocess.Popen" for e, _ in events), 10)  # l'espion a bien vu git et bee valider
+        self.assertGreater(sum(e == "subprocess.Popen" for e, _ in events), 10)  # l'espion a bien vu git et bee validate
         self.assertGreater(sum(e == "open" and isinstance(a[1], str) and "w" in a[1] for e, a in events), 100)
 
         def inside_it(path):
@@ -248,8 +276,11 @@ class TestLoadTest(unittest.TestCase):
             if event == "subprocess.Popen":
                 argv = [os.fsdecode(a) for a in arguments[1]]
                 if pathlib.Path(argv[0]).name == "git":
-                    target = argv[argv.index("-C") + 1]
-                    self.assertTrue(inside_it(target) or (target == str(self.source) and argv[3] in ("rev-parse", "log", "archive")), argv)
+                    if "-C" in argv:
+                        target, command = argv[argv.index("-C") + 1], argv[argv.index("-C") + 2]
+                    else:  # lancé dans un dossier (cwd), comme le journal de session des fonctions d'écriture de bee (ruche-0138)
+                        target, command = os.fsdecode(arguments[2] or os.getcwd()), argv[1]
+                    self.assertTrue(inside_it(target) or (target == str(self.source) and command in ("rev-parse", "log", "archive")), argv)
                 else:
                     self.assertEqual((argv[0], inside_it(argv[1])), (sys.executable, True), argv)
             elif event == "open":
