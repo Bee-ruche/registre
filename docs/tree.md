@@ -23,7 +23,7 @@ bee context miniz-0012 --budget 2000    # resserre : la donnée d'abord, puis le
 | Zones | `arbre/projets/<catégorie>/<projet>/<zone>/SENS.md` | Une partie du code : ce qui y compte (écrites par des tâches) |
 
 `roles/` et `projets/` rangent des nœuds sans en être un : un rôle ou une catégorie a la racine pour
-parent. Le site déplie l'arbre (page « Arbre ») et l'API le contient (`api/registre.json`, clé `arbre`).
+parent. Le site déplie l'arbre (page « Tree ») et l'API le contient (`api/registry.json`, clé `tree`).
 
 ## Le format d'un nœud
 

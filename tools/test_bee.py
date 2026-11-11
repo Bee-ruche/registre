@@ -2269,6 +2269,7 @@ class TestRegistry(BaseTest):
         self.assertIn("miniz-0001", page)
         self.assertIn("miniz-0099-c1", page)
         self.assertIn("Compression sans perte", page)
+        self.assertIn("<html lang='en'>", page)  # ruche-0147: every label is English (data may stay French)
         self.assertIn("id='c-pseudo'", page)  # consigne qui se remplit
         # R11 : le cap de la ruche (parts visées et réelles), le filtre par poste, et le projet « ruche »
         self.assertIn("id='cap'", page)
@@ -2278,8 +2279,8 @@ class TestRegistry(BaseTest):
         self.assertEqual({l["area"] for l in data["balance"]["areas"]}, {"governance", "projects", "coordination"})
         self.assertIn("in_progress", data["swarm"])
         ruche = (self.dir / "_site/projects/ruche.html").read_text(encoding="utf-8")
-        self.assertNotIn("non affilié", ruche)
-        self.assertNotIn("Métriques suivies", ruche)
+        self.assertNotIn("not affiliated", ruche)
+        self.assertNotIn("Tracked metrics", ruche)
 
     def test_site_isolated_judge_and_integration(self):
         cid = self.submit_0099()
@@ -2291,11 +2292,49 @@ class TestRegistry(BaseTest):
         code, text = self.bee("site", "--output", str(self.dir / "_site"))
         self.assertEqual(code, 0, text)
         page = (self.dir / "_site/contributions" / f"{cid}.html").read_text(encoding="utf-8")
-        self.assertIn("7\u202f868 sorties", page)
+        self.assertIn("7\u202f868 outputs", page)
         self.assertIn("1 &lt;occurrence&gt;", page)  # échappé : donnée venue d'un fork
-        self.assertIn("hors du conteneur, sur le corpus", page)
-        self.assertIn("Ce qui manque encore", page)
-        self.assertIn("Décompte d'instructions", page)
+        self.assertIn("outside the container, on the corpus", page)
+        self.assertIn("What is still missing", page)
+        self.assertIn("Instruction count", page)
+        self.assertIn("<dt>Measured gain</dt><dd>+5.0%</dd>", page)  # ruche-0147: English numbers (« +5,0 % » before)
+
+    def test_site_links_lead_somewhere(self):
+        """ruche-0147: the English switch broke the nav's #tasks and #participate (the index kept its French ids) and the
+        footer's api/registre.json (the site writes api/registry.json). Every link of the site to the site leads to a written
+        file, and its anchor to an id of that file; the old French anchors stay, for the links made before."""
+        self.submit_0099()
+        site = self.dir / "_site"
+        code, text = self.bee("site", "--output", str(site))
+        self.assertEqual(code, 0, text)
+        for page in site.rglob("*.html"):
+            for href in re.findall(r"""href=["']([^"']+)["']""", page.read_text(encoding="utf-8")):
+                if re.match(r"[a-z]+:", href):  # https://…: outside the site
+                    continue
+                path, _, anchor = href.partition("#")
+                target = (page.parent / path) if path else page
+                with self.subTest(page=str(page.relative_to(site)), href=href):
+                    self.assertTrue(target.is_file(), target)
+                    if anchor:
+                        self.assertRegex(target.read_text(encoding="utf-8"), rf"""id=["']{re.escape(anchor)}["']""")
+        index = (site / "index.html").read_text(encoding="utf-8")
+        self.assertIn('href="api/registry.json"', index)
+        for new_one, old_one in (("tasks", "taches"), ("participate", "participer")):
+            self.assertIn(f'href="index.html#{new_one}"', index)
+            self.assertIn(f"<span id='{old_one}'></span>", index)
+
+    def test_site_english_plurals_and_numbers(self):
+        """ruche-0147: the site's plural rule was French (« 0 argument »), and its numbers too (« 1,0 », « +5,0 % »)."""
+        import site_bee
+        reg = types.SimpleNamespace(setting=lambda name: 2)
+        self.assertEqual(site_bee.next_gate(reg, []), "To open phase 3: 0 integrated contributions out of 10, from 0 users out of 3. ")
+        self.assertEqual(site_bee.next_gate(reg, [{"status": "integrated", "author": "alice"}]),
+                         "To open phase 3: 1 integrated contribution out of 10, from 1 user out of 3. ")
+        source = (ROOT / "tools" / "site_bee.py").read_text(encoding="utf-8")
+        self.assertNotIn("> 1 else", source, "the French plural rule")
+        self.assertNotRegex(source, r"\{'' if [^{}]* else ''\}", "the empty plural left by the French adjectives")
+        self.assertEqual((site_bee.number(1.0, 1), site_bee.number(0.12345, 4)), ("1.0", "0.1235"))
+        self.assertEqual((site_bee.percent(0.05), site_bee.percent(-0.001)), ("+5.0%", "-0.1%"))
 
     def test_proposal_and_tally(self):
         # bidji29 (conseil) peut proposer pendant l'amorçage
@@ -5301,8 +5340,8 @@ class TestRace(BaseParallel):
         self.assertEqual(self.bee("ranking", "--status", "set_aside", "--json")[0], 0)
         self.assertEqual(self.bee("site", "--output", str(self.dir / "_site"))[0], 0)
         page = (self.dir / f"_site/contributions/{c1}.html").read_text(encoding="utf-8")
-        self.assertIn(f"Écartée au profit de <a class='id' href='{c2}.html'>{c2}</a>", page)
-        self.assertIn("Ce n'est pas un refus", page)
+        self.assertIn(f"Set aside in favour of <a class='id' href='{c2}.html'>{c2}</a>", page)
+        self.assertIn("This is not a refusal", page)
 
     def test_an_engaged_one_before_the_submission_delays_until_its_expiry(self):
         self.close_gate()

@@ -26,7 +26,7 @@ bee debates --status closed --json  # pour un programme
 **Lis la synthèse d'abord.** Elle dit l'état du débat en quelques paragraphes. `--voir` indique si elle
 est à jour, ou quels arguments sont arrivés après elle : lis alors ceux-là. Sur le site, la page
 **Agora** liste les débats ouverts et clos, et chaque débat a sa page, synthèse en tête ; l'API
-(`api/registre.json`, clé `debats`) donne tout. `bee swarm` montre les débats ouverts et leur dernière
+(`api/registry.json`, clé `debates`) donne tout. `bee swarm` montre les débats ouverts et leur dernière
 activité.
 
 ## Participer
