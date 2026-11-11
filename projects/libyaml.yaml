@@ -4,50 +4,50 @@ category: parsing-serialization
 upstream_repo: https://github.com/yaml/libyaml
 license: MIT
 fork: https://github.com/Bee-ruche/libyamlBee
-reference: yaml-test-suite (flux d'événements attendus, via tests/run-parser-test-suite.c) et libfyaml ; même flux d'événements, mêmes erreurs
+reference: yaml-test-suite (expected event streams, through tests/run-parser-test-suite.c) and libfyaml; same event stream, same errors
 scope:
-  - Analyseur (scanner, parser)
-  - Chargeur de documents
-  - Émetteur
+  - Parser (scanner, parser)
+  - Document loader
+  - Emitter
 out_of_scope:
-  - API publique (yaml.h)
+  - Public API (yaml.h)
 status: active
 opening_phase: 1
 maintainer_tier: none
 metrics:
   - id: parse_throughput
-    description: Débit du parseur seul (événements) sur le corpus de référence
+    description: Throughput of the parser alone (events) on the reference corpus
     unit: MB/s
     direction: higher
     instructions: instructions_parse
   - id: load_throughput
-    description: Débit du chargeur de documents sur le corpus de référence
+    description: Throughput of the document loader on the reference corpus
     unit: MB/s
     direction: higher
     instructions: instructions_load
   - id: emit_throughput
-    description: Débit de l'émetteur sur le corpus de référence
+    description: Throughput of the emitter on the reference corpus
     unit: MB/s
     direction: higher
     instructions: instructions_emit
   - id: max_memory_kb
-    description: Pic de tas pendant le chargement
+    description: Peak heap during loading
     unit: KB
     direction: lower
 paths_not_counted:
   - "bee/**"
   - "tests/**"
-# Chemins qui jugent les contributions : une tâche d'optimisation ne peut pas les modifier (commandement 3).
-# Tout bee/ en fait partie : corpus, tests, fuzzing, banc, scripts de CI, code commun, Makefile.
+# Paths that judge the contributions: an optimization task cannot change them (commandment 3).
+# All of bee/ is among them: corpus, tests, fuzzing, bench, CI scripts, common code, Makefile.
 judge_paths:
   - "bee/**"
   - "tests/**"
   - ".github/**"
-# Oracle : pour chaque fichier du corpus, tests/run-parser-test-suite émet le flux d'événements
-# canonique (format yaml-test-suite). Une optimisation doit produire un flux STRICTEMENT identique
-# et le même statut d'erreur (empreintes SHA-256, comme miniz). L'émetteur est vérifié par
-# aller-retour (événements → YAML → événements). Le fuzzing différentiel compare base et candidat
-# sur une entrée arbitraire : même flux, même erreur, plus ASan/UBSan.
+# Oracle: for each file of the corpus, tests/run-parser-test-suite emits the canonical event stream
+# (yaml-test-suite format). An optimization must produce a STRICTLY identical stream and the same
+# error status (SHA-256 fingerprints, as for miniz). The emitter is checked by round trip (events →
+# YAML → events). Differential fuzzing compares base and candidate on an arbitrary input: same
+# stream, same error, plus ASan/UBSan.
 commands:
   corpus: python3 bee/corpus/generer.py
   tests: bee/tests/lancer.sh

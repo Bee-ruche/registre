@@ -30,7 +30,7 @@
     "metrics": {
       "type": "object",
       "minProperties": 1,
-      "description": "One entry per measured metric (debit_compression_n1, …).",
+      "description": "One entry per measured metric (compression_throughput_n1, …).",
       "additionalProperties": {
         "type": "object",
         "additionalProperties": false,
