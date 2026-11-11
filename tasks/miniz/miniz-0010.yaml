@@ -3,46 +3,45 @@ project: miniz
 category: lossless-compression
 type: optimization
 size: S
-title: "tdefl_find_match : comparer les correspondances 16 bits par 16 bits, sans comportement indéfini"
+title: "tdefl_find_match: compare matches 16 bits at a time, without undefined behavior"
 context: >
-  Profil callgrind de la base 2948eeb (python3 bee/bench/profil.py : passes mesurées seulement,
-  128 premiers Kio de chaque fichier du corpus, 2,2 Mo). tdefl_find_match est la fonction la plus
-  coûteuse de la compression : 60,0 % des instructions au niveau 6, 72,1 % au niveau 9, 22,7 % au
-  niveau 1. Les trois TDEFL_PROBE (miniz_tdef.c l. 851-853) font à eux seuls 42,4 % au niveau 6,
-  et la comparaison octet par octet (l. 857-869) 10,7 %. miniz contient déjà une variante qui
-  compare 2 octets à la fois (l. 776-827 : TDEFL_READ_UNALIGNED_WORD, c01/s01, boucle de 4 × 16
-  bits), mais elle est compilée seulement si MINIZ_USE_UNALIGNED_LOADS_AND_STORES vaut 1, et
-  miniz.h le met à 0 par défaut, y compris sur x86-64 (l. 218-227) : c'est la variante octet par
-  octet (l. 829-871) qui tourne partout. ATTENTION : activer telle quelle cette
-  variante change la sortie compressée (41 empreintes sur 305, voir la note vérifiée ci-dessous) ; la
-  tâche demande une comparaison 16 bits qui choisit EXACTEMENT les mêmes correspondances.
-  Mesures exploratoires : essai hors dépôt, machine partagée (Xeon 2,1 GHz virtualisé, 2 cœurs,
-  gcc 13.3), ab.py 10 répétitions ; à refaire, elles ne font pas foi. Instructions −7,9 % (n6),
-  −8,4 % (n9), −5,2 % (n1) ; débit +16,9 % au niveau 6 (10/10 paires), +8,0 % au niveau 9 (10/10),
-  +4,6 % au niveau 1 (8/10, dans le bruit) ; décompression inchangée. Lectures non alignées sans
-  comportement indéfini : memcpy vers une variable locale (le compilateur en fait une seule
-  instruction), jamais de transtypage de pointeur ni de violation d'alias strict. Attention :
-  miniz.h (l. 210-215) remet l'option à 0 quand clang compile avec UBSan ; bee/tests/lancer.sh
-  --sanitiseurs compile avec gcc, qui ne définit pas __has_feature, et teste donc bien le nouveau
-  chemin : vérifier dans le manifeste que c'est le cas (par exemple avec un #error temporaire).
-  Les fonctions TDEFL_READ_UNALIGNED_WORD et TDEFL_READ_UNALIGNED_WORD2 (l. 760-771) le font déjà
-  sous MINIZ_UNALIGNED_USE_MEMCPY. Le chemin octet par octet doit rester disponible (R6) pour les
-  cibles où l'option est désactivée, et le choix ne doit pas toucher les autres usages de
-  MINIZ_USE_UNALIGNED_LOADS_AND_STORES (tâches miniz-0011 et miniz-0012). Attention : l. 819, la
-  fin de comparaison lit un octet de p et q pour le dernier caractère ; vérifier qu'elle ne
-  dépasse jamais m_dict (TDEFL_LZ_DICT_SIZE + TDEFL_MAX_MATCH_LEN - 1 octets).
+  Callgrind profile of the base 2948eeb (python3 bee/bench/profil.py: measured passes only, first
+  128 KiB of each file of the corpus, 2.2 MB). tdefl_find_match is the most expensive function of
+  compression: 60.0% of the instructions at level 6, 72.1% at level 9, 22.7% at level 1. The three
+  TDEFL_PROBE (miniz_tdef.c l. 851-853) alone make up 42.4% at level 6, and the byte-by-byte
+  comparison (l. 857-869) 10.7%. miniz already contains a variant that compares 2 bytes at a time
+  (l. 776-827: TDEFL_READ_UNALIGNED_WORD, c01/s01, a loop of 4 × 16 bits), but it is compiled only
+  if MINIZ_USE_UNALIGNED_LOADS_AND_STORES is 1, and miniz.h sets it to 0 by default, x86-64 included
+  (l. 218-227): the byte-by-byte variant (l. 829-871) is the one that runs everywhere. WARNING:
+  enabling this variant as it is changes the compressed output (41 fingerprints out of 305, see the
+  verified note below); the task asks for a 16-bit comparison that chooses EXACTLY the same matches.
+  Exploratory measurements: a trial outside the repository, on a shared machine (virtualized 2.1 GHz
+  Xeon, 2 cores, gcc 13.3), ab.py with 10 repetitions; to be redone, they are not authoritative.
+  Instructions −7.9% (n6), −8.4% (n9), −5.2% (n1); throughput +16.9% at level 6 (10/10 pairs), +8.0%
+  at level 9 (10/10), +4.6% at level 1 (8/10, within the noise); decompression unchanged. Unaligned
+  reads without undefined behavior: memcpy into a local variable (the compiler makes it a single
+  instruction), never a pointer cast nor a strict-aliasing violation. Caution: miniz.h (l. 210-215)
+  sets the option back to 0 when clang compiles with UBSan; bee/tests/lancer.sh --sanitiseurs
+  compiles with gcc, which does not define __has_feature, and therefore does test the new path:
+  check in the manifest that it does (for example with a temporary #error). The functions
+  TDEFL_READ_UNALIGNED_WORD and TDEFL_READ_UNALIGNED_WORD2 (l. 760-771) already do so under
+  MINIZ_UNALIGNED_USE_MEMCPY. The byte-by-byte path must stay available (R6) for the targets where
+  the option is disabled, and the choice must not touch the other uses of
+  MINIZ_USE_UNALIGNED_LOADS_AND_STORES (tasks miniz-0011 and miniz-0012). Caution: at l. 819, the
+  end of the comparison reads one byte of p and q for the last character; check that it never goes
+  past m_dict (TDEFL_LZ_DICT_SIZE + TDEFL_MAX_MATCH_LEN - 1 bytes).
 files: [miniz_tdef.c]
 reach: 0.3
 metric: debit_compression_n6
 compressed_output: identical
 acceptance_criteria:
-  - "CI verte (R2), x86-64 et ARM64 (R6)"
-  - "R4 : au moins 2 % d'instructions en moins sur debit_compression_n6 (instructions_n6), que le chronomètre confirme au-delà du bruit (sinon une mesure d'une autre configuration)"
-  - "aucune autre métrique dégradée de plus de 1 % (R5)"
-  - "bee/tests/lancer.sh --sanitiseurs (ASan et UBSan) reste propre"
-  - "lectures 16 bits par memcpy vers une variable locale, sans transtypage de pointeur"
-  - "le chemin octet par octet reste compilable et testé quand l'option est désactivée"
-out_of_scope: [format de sortie, API publique, nouvelle dépendance, tdefl_compress_fast, tdefl_compress_lz_codes, miniz_tinfl.c]
+  - "green CI (R2), x86-64 and ARM64 (R6)"
+  - "R4: at least 2% fewer instructions on debit_compression_n6 (instructions_n6), confirmed by the stopwatch beyond the noise (otherwise a measurement from another configuration)"
+  - "no other metric degraded by more than 1% (R5)"
+  - "bee/tests/lancer.sh --sanitiseurs (ASan and UBSan) stays clean"
+  - "16-bit reads by memcpy into a local variable, with no pointer cast"
+  - "the byte-by-byte path still compiles and is tested when the option is disabled"
+out_of_scope: [output format, public API, new dependency, tdefl_compress_fast, tdefl_compress_lz_codes, miniz_tinfl.c]
 depends_on: [miniz-0001]
 node: projects/lossless-compression/miniz/deflate
 status: open
