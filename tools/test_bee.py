@@ -2002,7 +2002,7 @@ class TestRegistry(BaseTest):
     def test_judge_v4_tag_recorded_and_sufficient(self):
         # ruche-0148: judge-v4 is a common judge's; so is the label judge.py writes (common_tag), whatever its COMMON_VERSION.
         judge = common_judge_module("judge")
-        self.assertEqual((ROOT / "tools/judge/judge.py").read_text(encoding="utf-8").count('"commun": common_tag(),'), 2)
+        self.assertEqual((ROOT / "tools/judge/judge.py").read_text(encoding="utf-8").count('"common": common_tag(),'), 2)
         for number in [*range(1, 10), 10, 99, 9999]:
             with self.subTest(number=number):
                 self.assertEqual(bee.common_judge_number(judge.common_tag(number)), number)
@@ -22928,7 +22928,7 @@ def f(n, path):
         self.assertIn("fields changed", self.cm.check(self.repo, "HEAD", None, ["m.py"], False)[0][0])  # a template still may not
 
 
-# --- ruche-0148 (J2): judge-v4's English contracts beside the French ones (the plugin, juge.yml's inputs) ---
+# --- ruche-0148 (J2): judge-v4's English contracts beside the French ones (the plugin, judge.json, juge.yml's inputs and outputs) ---
 
 def common_judge_module(name):
     """A module of tools/judge/, loaded with its folder first on the path, as the judge loads its own."""
@@ -22972,6 +22972,36 @@ class TestJudgeContractsRuche0148(unittest.TestCase):
             self.assertEqual((inputs[io[k]]["type"], inputs[io[k]].get("required", False), inputs[k].get("required", False)),
                              (inputs[k]["type"], False, False), k)
         self.assertEqual(set(inputs) - set(french) - {io[k] for k in french}, {"base_sha", "options", "repetitions"})
+
+    def test_each_output_by_its_english_name_and_its_french_one(self):
+        """juge.yml's outputs are report.py's figures (FORMATS) and the code, by their English names; each French name (names.yaml,
+        workflows: io) gives the same job output, until judge-v5. The artifact is judge (judge.json)."""
+        report, io, outputs = common_judge_module("report"), self.names["workflows"]["io"], self.call["outputs"]
+        english = ["code", *report.FORMATS]
+        french = {fr: en for fr, en in io.items() if en in english and fr != en}
+        self.assertEqual(sorted(french), ["empreinte", "graine", "greffon", "sorties_comparees", "suspectes", "tete"])
+        self.assertEqual({k: v["value"] for k, v in outputs.items()},
+                         {k: "${{ jobs.juge.outputs.%s }}" % french.get(k, k) for k in english + list(french)})
+        text = (ROOT / ".github/workflows/juge.yml").read_text(encoding="utf-8")
+        self.assertIn("          name: judge\n          path: results/\n", text)
+        self.assertIn("--json results/judge.json", text)
+
+    def test_report_reads_french_by_the_map_until_date_d(self):
+        """report.py's French keys and values are names.yaml's judge_report (keys, the verification keys, the domains), and it reads
+        French until bee's DATE_D."""
+        report, family = common_judge_module("report"), self.names["families"]["judge_report"]
+        known = {**family["keys"], **self.names["open_domains"]["judge_verification_keys"]}
+        self.assertEqual({k: known.get(k) for k in report.FRENCH}, report.FRENCH)
+        self.assertTrue(all(k != v for k, v in report.FRENCH.items()))
+        self.assertEqual(sorted(k for k, v in family["keys"].items() if k != v and k not in report.FRENCH),
+                         sorted(["coeurs", "compilateur", "degradation_au_dela_du_bruit", "deroulement", "egalites", "etape", "au_dela_du_bruit",
+                                 "isolement", "mediane", "minmax_disjoints", "p_amelioration", "paires", "paires_utiles", "permis",
+                                 "processeur", "sens", "seuil_k", "systeme", "temps_processeur", "temps_processeur_s", "test_du_signe",
+                                 "unite", "valeurs", "variantes", "verification_seulement", "victoires_A", "victoires_B"]))
+        domains = {**self.names["domains"]["judge_outcome"], **self.names["domains"]["seed_origin"]}
+        self.assertEqual(report.FRENCH_VALUES, domains)
+        self.assertEqual(set(report.ISSUES.values()), set(self.names["domains"]["judge_outcome"].values()))
+        self.assertEqual(report.DATE_D, bee.DATE_D)
 
 if __name__ == "__main__":
     sys.exit(principal_tests(sys.modules[__name__], __file__, sys.argv[1:]))

@@ -237,9 +237,15 @@ workflows:
     verif: check
     vert_push: green_push
   io:
+    empreinte: fingerprint
+    graine: seed
+    greffon: plugin
     historique: history
     immediat: immediate
     sans_instructions: no_instructions
+    sorties_comparees: outputs_compared
+    suspectes: suspects
+    tete: head
     tete_sha: head_sha
   concurrency:
     ecriture-main: main-write
@@ -1217,22 +1223,100 @@ families:
       degradations: null
       mesures: null
   judge_report:
-    note: 'juge.json of the common judge (pinned by SHA in the forks): judge track'
+    note: 'juge.json of the common judge, judge.json from judge-v4 on (ruche-0148, J2b): what judge.py writes, report.py reads (until
+      date D in either vocabulary, one per document) and the forks'' verdict jobs read. Keys that are data stay as written: metric ids,
+      scenarios, sides, variants, construct types, and the keys a plugin adds to method and verification (open domains)'
     files: []
-    writer: text
+    writer: json
     keys:
-      juge: judge
-      verification: verification
-      sorties_comparees: outputs_compared
-      code: code
-      issue: outcome
-      origine_des_graines: seed_origin
-      metriques: metrics
-      mesures: measurements
-      methode: method
       repetitions: repetitions
       chauffe: warmup
       ordre: order
+      machine: machine
+      processeur: processor
+      architecture: architecture
+      coeurs: cores
+      systeme: system
+      compilateur: compiler
+      methode: method
+      metriques: metrics
+      sens: direction
+      unite: unit
+      A: A
+      B: B
+      mediane: median
+      min: min
+      max: max
+      valeurs: values
+      gain: gain
+      au_dela_du_bruit: beyond_noise
+      degradation_au_dela_du_bruit: degradation_beyond_noise
+      verification_seulement: verification_only
+      test_du_signe: sign_test
+      paires: pairs
+      paires_utiles: useful_pairs
+      victoires_B: b_wins
+      victoires_A: a_wins
+      egalites: ties
+      seuil_k: threshold_k
+      p_amelioration: p_improvement
+      p_degradation: p_degradation
+      minmax_disjoints: minmax_disjoint
+      mesures: measurements
+      instructions: instructions
+      juge: judge
+      version: version
+      commun: common
+      source: source
+      base: base
+      tete: head
+      projet: project
+      greffon: plugin
+      code: code
+      issue: outcome
+      graine: seed
+      origine_des_graines: seed_origin
+      graine_ordre: order_seed
+      image: image
+      image_id: image_id
+      constructions_suspectes_omises: suspicious_constructs_omitted
+      constructions_suspectes_par_type: suspicious_constructs_by_type
+      isolation: isolation
+      verification: verification
+      analyse: analysis
+      prefixes: prefixes
+      permis: allowed
+      constructions_suspectes: suspicious_constructs
+      type: type
+      detail: detail
+      scenarios: scenarios
+      isolement: separation
+      temps_processeur: cpu_time
+      deroulement: steps
+      etape: step
+      variantes: variants
+      temps_processeur_s: cpu_time_s
+      panne_machine: machine_failure
+      motif: reason
+      duree_s: duration_s
+    values:
+      metriques/*/sens: direction
+      instructions/*/sens: direction
+      juge/issue: judge_outcome
+      juge/origine_des_graines/graine: seed_origin
+      juge/origine_des_graines/graine_ordre: seed_origin
+      juge/scenarios/deroulement[]/etape: judge_step
+    key_values:
+      methode: judge_method_keys
+      metriques: null
+      mesures/A: null
+      mesures/B: null
+      instructions: null
+      juge/constructions_suspectes_par_type: null
+      juge/verification: judge_verification_keys
+      juge/verification/*: null
+      juge/scenarios/deroulement[]/temps_processeur_s: null
+      juge/scenarios/deroulement[]/temps_processeur_s/*: null
   ab_report:
     note: bee/bench/ab.py report read by bee enregistrer-mesure --ab
     files: []
@@ -1820,6 +1904,17 @@ domains:
   direction:
     plus_haut: higher
     plus_bas: lower
+  judge_outcome:
+    juste: correct
+    refus: refusal
+    erreur_environnement: environment_error
+  judge_step:
+    chauffe: warmup
+    mesure: measurement
+    instructions: instructions
+  seed_origin:
+    donnee: given
+    tiree: drawn
   engaged_role:
     titulaire: holder
     en parallèle: parallel
@@ -1998,6 +2093,18 @@ domains:
     demande: request
     sans_reponse: no_answer
 open_domains:
+  judge_method_keys:
+    valeur_retenue: retained_value
+    gain: gain
+    au_dela_du_bruit: beyond_noise
+    chronometre: stopwatch
+    instructions: instructions
+  judge_verification_keys:
+    sorties_comparees: outputs_compared
+    entrees_melees: inputs_mixed
+    melees_par_repetition: mixed_per_repetition
+    instructions_sans_melange: instructions_without_mixing
+    fixes_sans_mesure: fixed_without_measurement
   command:
     python3 outils/test_bee.py && python3 outils/juge/test_juge.py: python3 tools/test_bee.py && python3 outils/juge/test_juge.py
     python3 outils/bee.py valider: python3 tools/bee.py validate

@@ -31,7 +31,8 @@ Usage :
 Sortie : rapport JSON au format d'ab.py (mesures, metriques, instructions) plus une section « juge ».
 Code de sortie : 0 si toutes les sorties de B sont justes, 1 si le juge refuse B, 2 si l'environnement
 ne convient pas (Docker absent, base qui ne compile pas, greffon invalide, juge mal monté), une panne de la machine
-(Docker, son runtime, l'image) comprise. With --json, juge.json says it in every case (juge.code, juge.issue: ISSUES).
+(Docker, son runtime, l'image) comprise. With --json, judge.json says it in every case (judge.code, judge.outcome: ISSUES); its keys
+and values are English from judge-v4 on (ruche-0148: names.yaml, judge_report), juge.json's French before.
 """
 
 import argparse
@@ -64,8 +65,8 @@ from lecture import Erreur, Panne, Refus, Sorties, exiger, figer, journal, propr
 
 COMMON_VERSION = 3   # étiquette juge-v3 du registre
 JUDGE_VERSION = 3      # numérotation de verdict.json : 2 = juge de minizBee (miniz-0031), 3 = juge commun (its tag in « commun »)
-ISSUES = {0: "juste", 1: "refus", 2: "erreur_environnement"}  # juge.json's juge.issue for each exit code (ruche-0136)
-FAILURE = {}  # what juge.json says when the judge stops (code 1 or 2): its path and the judge's identity, set by main
+ISSUES = {0: "correct", 1: "refusal", 2: "environment_error"}  # judge.json's judge.outcome for each exit code (ruche-0136)
+FAILURE = {}  # what judge.json says when the judge stops (code 1 or 2): its path and the judge's identity, set by main
 # ruche-0148 (J2): a base holds one plugin, in English (bee/judge/project.py, judge-v4 on) or in French (bee/juge/projet.py, read
 # until judge-v5). PLUGIN_NAMES gives the English name of each name of the French contract that has another one (identifiers.yaml,
 # judge: plugin); the judge reads an English plugin under the French names (EnglishPlugin), its directions as DIRECTIONS says.
@@ -340,7 +341,7 @@ def launch_by_side(run, variant, folders, outputs, plans, order, **options):
 
 def step(nom, variants_of, order, measurements):
     """Une étape de juge.json : ordre des variantes et des scénarios, temps processeur de chaque scénario (wait4, chrono)."""
-    return {"etape": nom, "variantes": "".join(variants_of), "ordre": list(order), "temps_processeur_s": {
+    return {"step": nom, "variants": "".join(variants_of), "order": list(order), "cpu_time_s": {
         v: {s: round(m[s]["utilisateur_s"] + m[s]["systeme_s"], 6) for s in order} for v, m in sorted(measurements.items())}}
 
 
@@ -516,8 +517,8 @@ def main(argv=None):
     # Defence in depth: the plugin, loaded later in this process, does not find GH_TOKEN in os.environ (the value
     # stays in /proc/<pid>/environ: juge.yml gives the token to the --historique-seulement call alone).
     token = os.environ.pop("GH_TOKEN", None)
-    FAILURE.update(json=args.json, juge={"version": JUDGE_VERSION, "commun": common_tag(), "source": args.judge_source,
-                                       "base": args.base, "tete": args.head})
+    FAILURE.update(json=args.json, judge={"version": JUDGE_VERSION, "common": common_tag(), "source": args.judge_source,
+                                        "base": args.base, "head": args.head})
     if args.history_only:
         print(" ".join(fetch_history(os.path.abspath(args.tooling), args.history, token)))
         return 0
@@ -635,24 +636,24 @@ def main(argv=None):
                     measurements[v].append(values_of)
                 outputs[v].controler()
             compared_ones += same_outputs(index, roots["B"], outputs["B"], shuffled, projet.SCENARIOS.items())
-            unfolding.append(step("chauffe" if i < args.warmup else "mesure", variants_of, order, raw))
+            unfolding.append(step("warmup" if i < args.warmup else "measurement", variants_of, order, raw))
             erase(outputs["A"], outputs["B"], folders)
             journal(f"répétition {i + 1}/{args.warmup + args.repetitions} ({'chauffe' if i < args.warmup else 'mesurée'}) faite")
 
         report = {
-            "repetitions": args.repetitions, "chauffe": args.warmup, "ordre": "A, B puis B, A, en alternance ; scénarios : juge.scenarios",
+            "repetitions": args.repetitions, "warmup": args.warmup, "order": "A, B puis B, A, en alternance ; scénarios : juge.scenarios",
             "machine": stats.description_machine(),
-            "methode": {
-                "valeur_retenue": "médiane des répétitions",
+            "method": {
+                "retained_value": "médiane des répétitions",
                 "gain": "médiane(B)/médiane(A) - 1 (plus_haut) ; 1 - médiane(B)/médiane(A) (plus_bas) ; positif = mieux",
-                "au_dela_du_bruit": f"test du signe sur les paires entrelacées, comme ab.py (k = {stats.sign_threshold(args.repetitions)} sur {args.repetitions})",
-                "chronometre": ("temps processeur (utilisateur + système) du processus qui exécute un scénario, lu par le "
+                "beyond_noise": f"test du signe sur les paires entrelacées, comme ab.py (k = {stats.sign_threshold(args.repetitions)} sur {args.repetitions})",
+                "stopwatch": ("temps processeur (utilisateur + système) du processus qui exécute un scénario, lu par le "
                                 "lanceur chrono du juge commun avec wait4 ; une exécution par scénario et par répétition, "
                                 "sur des entrées perturbées à chaque répétition"),
             },
-            "metriques": {}, "mesures": {"A": {}, "B": {}},
+            "metrics": {}, "measurements": {"A": {}, "B": {}},
         }
-        report["methode"].update(getattr(projet, "METHODE", {}))
+        report["method"].update(getattr(projet, "METHODE", {}))
         # A fixed metric that no scenario computes from its timed outputs is read on verification alone (ruche-0117): flagged, and
         # never beyond the noise (its value is the same at every repetition, which the sign test would take for a sure gain).
         without_measurement = sorted((set(fixes["A"]) | set(fixes["B"])) - timed)
@@ -661,15 +662,15 @@ def main(argv=None):
             values_b = [m.get(nom) for m in measurements["B"]]
             a, b = stats.summary(values_a), stats.summary(values_b)
             sign_char = stats.sign_test(values_a, values_b, direction)
-            report["metriques"][nom] = {
-                "sens": direction, "unite": unit, "A": a, "B": b, "gain": stats.relative_gain(a["mediane"], b["mediane"], direction),
-                "au_dela_du_bruit": sign_char["au_dela_du_bruit"] and nom not in without_measurement,
-                "degradation_au_dela_du_bruit": sign_char["degradation_au_dela_du_bruit"], "verification_seulement": nom in without_measurement,
-                "test_du_signe": sign_char,
-                "minmax_disjoints": (a["mediane"] is not None and b["mediane"] is not None and (a["max"] < b["min"] or b["max"] < a["min"])),
+            report["metrics"][nom] = {
+                "direction": DIRECTIONS[direction], "unit": unit, "A": a, "B": b, "gain": stats.relative_gain(a["median"], b["median"], direction),
+                "beyond_noise": sign_char["beyond_noise"] and nom not in without_measurement,
+                "degradation_beyond_noise": sign_char["degradation_beyond_noise"], "verification_only": nom in without_measurement,
+                "sign_test": sign_char,
+                "minmax_disjoint": (a["median"] is not None and b["median"] is not None and (a["max"] < b["min"] or b["max"] < a["min"])),
             }
-            report["mesures"]["A"][nom] = a["mediane"]
-            report["mesures"]["B"][nom] = b["mediane"]
+            report["measurements"]["A"][nom] = a["median"]
+            report["measurements"]["B"][nom] = b["median"]
 
         # 3. Décompte d'instructions : Valgrind dans le conteneur, tout le processus, résumé relevé par chrono.
         if not args.no_instructions and projet.INSTRUCTIONS:
@@ -698,43 +699,43 @@ def main(argv=None):
                 a, b = accounts["A"][s]["instructions"], accounts["B"][s]["instructions"]
                 gain = stats.relative_gain(a, b, "plus_bas")
                 report["instructions"]["instructions_" + s] = {
-                    "sens": "plus_bas", "unite": "instructions", "A": a, "B": b, "gain": gain,
-                    "au_dela_du_bruit": gain is not None and abs(gain) > args.instructions_threshold}
-            report["methode"]["instructions"] = (
+                    "direction": "lower", "unit": "instructions", "A": a, "B": b, "gain": gain,
+                    "beyond_noise": gain is not None and abs(gain) > args.instructions_threshold}
+            report["method"]["instructions"] = (
                 f"valgrind --tool=cachegrind dans le conteneur, tout le processus du harnais (rien n'échappe au décompte), "
                 f"entrées du greffon (préfixe de {args.instructions_prefix} octets), perturbées ; résumé relevé par "
                 f"chrono sur la dernière ligne de Valgrind ; au-delà du bruit si l'écart dépasse {100 * args.instructions_threshold:.2f} %")
 
-        verification = {"sorties_comparees": compared_ones, "entrees_melees": interleaved, "melees_par_repetition": how_many,
-                        "instructions_sans_melange": without_shuffle, "fixes_sans_mesure": without_measurement}
+        verification = {"outputs_compared": compared_ones, "inputs_mixed": interleaved, "mixed_per_repetition": how_many,
+                        "instructions_without_mixing": without_shuffle, "fixed_without_measurement": without_measurement}
         verification.update(getattr(projet, "VERIFICATION", {}))
-        report["juge"] = {
+        report["judge"] = {
             "version": JUDGE_VERSION,
-            "commun": common_tag(),
+            "common": common_tag(),
             "source": args.judge_source,
-            "base": args.base, "tete": args.head,
-            "projet": projet.NOM,
-            "greffon": plugin_fingerprint,
-            "code": 0, "issue": ISSUES[0],
-            "graine": seed.hex(),
+            "base": args.base, "head": args.head,
+            "project": projet.NOM,
+            "plugin": plugin_fingerprint,
+            "code": 0, "outcome": ISSUES[0],
+            "seed": seed.hex(),
             # A seed given on the command line is a local reproduction, never a judgement: rapport.py --verifier refuses it.
-            "origine_des_graines": {"graine": "donnee" if args.seed else "tiree", "graine_ordre": "donnee" if args.order_seed else "tiree"},
+            "seed_origin": {"seed": "given" if args.seed else "drawn", "order_seed": "given" if args.order_seed else "drawn"},
             "image": image,
             "image_id": docker.image,
-            "constructions_suspectes_omises": omitted_ones, "constructions_suspectes_par_type": by_type,
+            "suspicious_constructs_omitted": omitted_ones, "suspicious_constructs_by_type": by_type,
             "isolation": " ".join(container.ISOLATION + container.Docker.BOUNDS) + " --pids-limit 2 (exécution), 64 (compilation) ; "
                          f"chaque exécution sur son tmpfs ({container.TMPFS}), rempli à neuf",
             "verification": verification,
-            "analyse": {"architecture": platform.machine().lower(), "prefixes": list(projet.PREFIXES),
-                        "permis": list(getattr(projet, "PERMIS", ()))},
-            "constructions_suspectes": suspects,
-            "scenarios": {"isolement": "un conteneur par scénario (vérification : un par côté) ; ses sorties figées (SHA-256 de chaque "
+            "analysis": {"architecture": platform.machine().lower(), "prefixes": list(projet.PREFIXES),
+                         "allowed": list(getattr(projet, "PERMIS", ()))},
+            "suspicious_constructs": suspects,
+            "scenarios": {"separation": "un conteneur par scénario (vérification : un par côté) ; ses sorties figées (SHA-256 de chaque "
                           "fichier et liste) à la fin du conteneur, seules lues : un écart ensuite est un refus",
-                          "ordre": "tiré à chaque répétition, le même pour A et B", "graine_ordre": graine_ordre.hex(),
-                          "temps_processeur": "utilisateur + système, wait4 dans chrono (pas le cgroup) ; sous Valgrind en « instructions »",
-                          "deroulement": unfolding},
+                          "order": "tiré à chaque répétition, le même pour A et B", "order_seed": graine_ordre.hex(),
+                          "cpu_time": "utilisateur + système, wait4 dans chrono (pas le cgroup) ; sous Valgrind en « instructions »",
+                          "steps": unfolding},
         }
-        report["duree_s"] = round(time.time() - beginning, 1)
+        report["duration_s"] = round(time.time() - beginning, 1)
     finally:
         if args.keep:
             journal(f"dossier de travail conservé : {travail}")
@@ -769,8 +770,8 @@ def stop_it(code, message, fault=False):
     """The judge stops (1 refusal, 2 error): the message on standard error and, with --json, in juge.json (ruche-0136)."""
     print(message, file=sys.stderr)
     try:
-        write_report(FAILURE.get("json"), {"juge": dict(FAILURE.get("juge", {}), code=code, issue=ISSUES[code], panne_machine=fault,
-                                                        motif=message)})
+        write_report(FAILURE.get("json"), {"judge": dict(FAILURE.get("judge", {}), code=code, outcome=ISSUES[code], machine_failure=fault,
+                                                         reason=message)})
     except (OSError, ValueError):  # no report, never a stale or partial one: rapport.py --code keeps the exit code
         with contextlib.suppress(OSError, TypeError):
             os.unlink(FAILURE.get("json"))

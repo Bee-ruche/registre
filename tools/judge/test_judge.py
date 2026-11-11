@@ -344,12 +344,12 @@ class TestStatistics(unittest.TestCase):
 
     def test_sign_test(self):
         t = stats.sign_test([1, 1, 1, 1, 1, 1, 1, 1, 1, 1], [2, 2, 2, 2, 2, 2, 2, 2, 2, 1], "plus_haut")
-        self.assertEqual((t["victoires_B"], t["egalites"], t["seuil_k"], t["au_dela_du_bruit"]), (9, 1, 8, True))
+        self.assertEqual((t["b_wins"], t["ties"], t["threshold_k"], t["beyond_noise"]), (9, 1, 8, True))
         t = stats.sign_test([2] * 10, [1] * 10, "plus_haut")
-        self.assertTrue(t["degradation_au_dela_du_bruit"])
+        self.assertTrue(t["degradation_beyond_noise"])
 
     def test_summary_and_gain(self):
-        self.assertEqual(stats.summary([3, None, 1, 2])["mediane"], 2)
+        self.assertEqual(stats.summary([3, None, 1, 2])["median"], 2)
         self.assertAlmostEqual(stats.relative_gain(100, 98, "plus_bas"), 0.02)
         self.assertAlmostEqual(stats.relative_gain(100, 103, "plus_haut"), 0.03)
         self.assertIsNone(stats.relative_gain(0, 1, "plus_haut"))
@@ -1096,6 +1096,15 @@ class TestConditionsFixes(unittest.TestCase):
 # ------------------------------------------------------------------ ruche-0036: frozen outputs, drawn order, CPU times
 
 FOUR_SCENARIOS = {"compression": "f", "compression_bis": "f", "decompression": "z", "decompression_bis": "z"}
+# ruche-0148 (J2b): every key of juge.json as judge.py wrote it before J2b, on the four-scenario toy (TestOrderAndFingerprints).
+JUGE_V3_KEYS = """A B analyse architecture au_dela_du_bruit base chauffe chronometre code coeurs commun compilateur compression compression_bis
+constructions_suspectes constructions_suspectes_omises constructions_suspectes_par_type debit_compression debit_decompression decompression
+decompression_bis degradation_au_dela_du_bruit deroulement duree_s egalites entrees_melees etape f fixes_sans_mesure gain graine graine_ordre
+greffon image image_id instructions instructions_compression instructions_decompression instructions_sans_melange isolation isolement issue
+juge machine max mediane melees_par_repetition memoire memoire_max_ko mesures methode metriques min minmax_disjoints ordre
+origine_des_graines p_amelioration p_degradation paires paires_utiles permis prefixes processeur projet ratio repetitions scenarios sens
+seuil_k sortie_compressee sorties_comparees source systeme temps_processeur temps_processeur_s test_du_signe tete unite valeur_retenue
+valeurs variantes verification verification_seulement version victoires_A victoires_B z"""
 
 
 def toy_with_four_scenarios(folder, toy=TOY):
@@ -1214,9 +1223,41 @@ class TestOrderAndFingerprints(unittest.TestCase):
         reports = [self.run_the_judge(graine_ordre="01" * 16, base=b)[0] for b in (self.base, english)]
         for r, path in zip(reports, (toy_file(self.base, "plugin"), toy_file(english, "plugin"))):
             with open(path, "rb") as f:
-                self.assertEqual(r["juge"].pop("greffon"), hashlib.sha256(f.read()).hexdigest())
-            self.assertIsInstance(r.pop("duree_s"), float)
+                self.assertEqual(r["judge"].pop("plugin"), hashlib.sha256(f.read()).hexdigest())
+            self.assertIsInstance(r.pop("duration_s"), float)
         self.assertEqual(reports[1], reports[0])
+
+    def test_judge_json_is_the_map_translation(self):
+        """ruche-0148 (J2b), as proof P2 checks data: every key and closed value of judge.json is in names.yaml's judge_report (keys,
+        domains, data-keyed places), so it reads back into French and again into the same English; read back, it has the keys juge.json
+        had at juge-v3 (JUGE_V3_KEYS, from judge.py before J2b, on this toy at these seeds), the stopped judge's report too."""
+        if yaml is None:
+            self.skipTest("PyYAML required (pip install -r tools/requirements.txt)")
+        sys.path[:0] = [os.path.join(os.path.dirname(HERE), "migration"), os.path.dirname(HERE)]
+        try:
+            import rename
+        finally:
+            del sys.path[:2]
+        with open(os.path.join(os.path.dirname(HERE), "migration", "names.yaml"), encoding="utf-8") as f:
+            names = rename.Names(f.read())
+        english = self.run_the_judge(graine_ordre="01" * 16)[0]
+        french = names.data("judge_report", english, True)
+        self.assertEqual(names.data("judge_report", french, False), english)
+        keys = set()
+
+        def walk(o):
+            [(keys.add(k), walk(v)) for k, v in o.items()] if isinstance(o, dict) else [walk(x) for x in o] if isinstance(o, list) else None
+        walk(french)
+        self.assertEqual(keys, set(JUGE_V3_KEYS.split()))
+        self.assertEqual((french["juge"]["issue"], french["juge"]["origine_des_graines"]), ("juste", {"graine": "donnee", "graine_ordre": "donnee"}))
+        stopped = os.path.join(self.workdir, "stopped.json")
+        with mock.patch.dict(judge.FAILURE, json=stopped, judge={"version": 3, "common": "juge-v3", "source": None, "base": None, "head": None}), \
+                contextlib.redirect_stderr(io.StringIO()):
+            judge.stop_it(2, "juge : erreur : x", True)
+        with open(stopped, encoding="utf-8") as f:
+            self.assertEqual(names.data("judge_report", json.load(f), True), {"juge": {
+                "version": 3, "commun": "juge-v3", "source": None, "base": None, "tete": None, "code": 2, "issue": "erreur_environnement",
+                "panne_machine": True, "motif": "juge : erreur : x"}})
 
     def test_drawn_order_and_processor_time(self):
         """The order is drawn at each repetition, the same for A and B, from its own seed (secrets, independent of the
@@ -1226,33 +1267,33 @@ class TestOrderAndFingerprints(unittest.TestCase):
         self.assertEqual(len(emulated.containers), 2 * 2 + 2 * 4 * 4 + 2 * 2)  # verification, 1 + 3 repetitions, instructions
         for c in emulated.containers:  # ruche-0117: its fresh writable folder on its own tmpfs, mounted for it
             self.assertEqual((len(c["etiquettes"]), len(c["ecrits"]), c["neuf"], c["tmpfs"]), (1, 1, True, True))
-        unfolding = report["juge"]["scenarios"]["deroulement"]
-        self.assertEqual([e["etape"] for e in unfolding], ["chauffe", "mesure", "mesure", "mesure", "instructions"])
-        self.assertEqual([e["variantes"] for e in unfolding], ["AB", "BA", "AB", "BA", "AB"])
+        unfolding = report["judge"]["scenarios"]["steps"]
+        self.assertEqual([e["step"] for e in unfolding], ["warmup", "measurement", "measurement", "measurement", "instructions"])
+        self.assertEqual([e["variants"] for e in unfolding], ["AB", "BA", "AB", "BA", "AB"])
         instructions_given = []
         for e in unfolding:
-            expected_items = toy_plugin.Projet.INSTRUCTIONS if e["etape"] == "instructions" else FOUR_SCENARIOS
-            self.assertEqual(sorted(e["ordre"]), sorted(expected_items))
-            instructions_given += [(v, s, e["temps_processeur_s"][v][s]) for v in e["variantes"] for s in e["ordre"]]
+            expected_items = toy_plugin.Projet.INSTRUCTIONS if e["step"] == "instructions" else FOUR_SCENARIOS
+            self.assertEqual(sorted(e["order"]), sorted(expected_items))
+            instructions_given += [(v, s, e["cpu_time_s"][v][s]) for v in e["variants"] for s in e["order"]]
         runs_launched = [(c["variante"], c["etiquettes"][0], c["cpu"]) for c in emulated.containers if c["etiquettes"] != ["verifier"]]
         self.assertEqual(runs_launched, instructions_given)
-        self.assertGreater(len({tuple(e["ordre"]) for e in unfolding[:4]}), 1)
+        self.assertGreater(len({tuple(e["order"]) for e in unfolding[:4]}), 1)
 
         def orders(r):
-            return [e["ordre"] for e in r["juge"]["scenarios"]["deroulement"]]
+            return [e["order"] for e in r["judge"]["scenarios"]["steps"]]
 
         def drawn(graine_ordre):  # the orders the recorded order seed alone gives
             draw = random.Random(bytes.fromhex(graine_ordre))
             return [draw.sample(list(FOUR_SCENARIOS), 4) for _ in range(4)] + [draw.sample(list(toy_plugin.Projet.INSTRUCTIONS), 2)]
-        self.assertEqual((report["juge"]["scenarios"]["graine_ordre"], orders(report)), ("00" * 16, drawn("00" * 16)))
+        self.assertEqual((report["judge"]["scenarios"]["order_seed"], orders(report)), ("00" * 16, drawn("00" * 16)))
         self.assertEqual(orders(self.run_the_judge(seed="01" * 16, graine_ordre="00" * 16)[0]), orders(report))  # not from --graine
-        seeds = {report["juge"]["scenarios"]["graine_ordre"]}
+        seeds = {report["judge"]["scenarios"]["order_seed"]}
         for _ in range(2):  # same --graine, order seed from secrets: recorded, and it alone gives the orders
             other = self.run_the_judge()[0]
-            graine_ordre = other["juge"]["scenarios"]["graine_ordre"]
+            graine_ordre = other["judge"]["scenarios"]["order_seed"]
             self.assertRegex(graine_ordre, r"\A[0-9a-f]{32}\Z")
             self.assertEqual(orders(other), drawn(graine_ordre))
-            self.assertEqual((other["juge"]["graine"], other["juge"]["verification"]), (report["juge"]["graine"], report["juge"]["verification"]))
+            self.assertEqual((other["judge"]["seed"], other["judge"]["verification"]), (report["judge"]["seed"], report["judge"]["verification"]))
             seeds.add(graine_ordre)
         self.assertEqual(len(seeds), 3)
 
@@ -1261,17 +1302,17 @@ class TestOrderAndFingerprints(unittest.TestCase):
         command line (--seed, --order-seed: a local reproduction); only a report whose seeds were both drawn passes
         report.py --verify."""
         path = os.path.join(self.workdir, "graines.json")
-        for seed, graine_ordre, origins in ((None, None, ("tiree", "tiree")), ("00" * 16, None, ("donnee", "tiree")),
-                                               (None, "01" * 16, ("tiree", "donnee")), ("00" * 16, "01" * 16, ("donnee", "donnee"))):
+        for seed, graine_ordre, origins in ((None, None, ("drawn", "drawn")), ("00" * 16, None, ("given", "drawn")),
+                                               (None, "01" * 16, ("drawn", "given")), ("00" * 16, "01" * 16, ("given", "given"))):
             with self.subTest(seed=seed, graine_ordre=graine_ordre):
                 j = self.run_the_judge(seed=seed, graine_ordre=graine_ordre)[0]
-                j["juge"].update(base="2" * 40, tete="3" * 40)
-                self.assertEqual(j["juge"]["origine_des_graines"], dict(zip(("graine", "graine_ordre"), origins)))
-                self.assertEqual((j["juge"]["graine"] == seed, j["juge"]["scenarios"]["graine_ordre"] == graine_ordre),
+                j["judge"].update(base="2" * 40, head="3" * 40)
+                self.assertEqual(j["judge"]["seed_origin"], dict(zip(("seed", "order_seed"), origins)))
+                self.assertEqual((j["judge"]["seed"] == seed, j["judge"]["scenarios"]["order_seed"] == graine_ordre),
                                  (seed is not None, graine_ordre is not None))
                 with open(path, "w", encoding="utf-8") as f:
                     json.dump(j, f)
-                if origins == ("tiree", "tiree"):
+                if origins == ("drawn", "drawn"):
                     self.assertEqual(report.verifier(path, report.publish(path, "0"), "2" * 40, "3" * 40), j)
                 else:
                     with self.assertRaisesRegex(report.Gap, "seed given"):
@@ -1298,10 +1339,10 @@ class TestOrderAndFingerprints(unittest.TestCase):
         found_ones += [{"type": "symbole", "detail": "s"}, {"type": "inconnu", "detail": "?"}, {"type": "appel_interdit", "detail": "g"}]
         with mock.patch.object(judge.analysis, "analyse", return_value=found_ones), \
                 mock.patch.object(judge.platform, "machine", return_value="x86_64"):
-            j = self.run_the_judge()[0]["juge"]
-        self.assertEqual([s["type"] for s in j["constructions_suspectes"][:3]], ["appel_interdit", "symbole", "source"])
-        self.assertEqual((len(j["constructions_suspectes"]), j["constructions_suspectes_omises"]), (judge.SUSPICIOUS_MAX, 23))
-        self.assertEqual(j["constructions_suspectes_par_type"], {"appel_interdit": 1, "inconnu": 1, "source": 120, "symbole": 1})
+            j = self.run_the_judge()[0]["judge"]
+        self.assertEqual([s["type"] for s in j["suspicious_constructs"][:3]], ["appel_interdit", "symbole", "source"])
+        self.assertEqual((len(j["suspicious_constructs"]), j["suspicious_constructs_omitted"]), (judge.SUSPICIOUS_MAX, 23))
+        self.assertEqual(j["suspicious_constructs_by_type"], {"appel_interdit": 1, "inconnu": 1, "source": 120, "symbole": 1})
 
     def test_fixed_metric_read_on_verification_alone(self):
         """ruche-0117: a fixed metric that no scenario computes from its timed outputs (the ratio, here the base's scenario
@@ -1316,15 +1357,15 @@ class TestOrderAndFingerprints(unittest.TestCase):
             with open(path, "w", encoding="utf-8") as f:
                 f.write(replace_with(text, ', ratio=sum(traites) / compresse if compresse else None)', ")"))
         true_one = stats.sign_test
-        with mock.patch.object(judge.stats, "sign_test", side_effect=lambda a, b, direction: dict(true_one(a, b, direction), au_dela_du_bruit=True)):
+        with mock.patch.object(judge.stats, "sign_test", side_effect=lambda a, b, direction: dict(true_one(a, b, direction), beyond_noise=True)):
             honest_one, without_ratio = self.run_the_judge()[0], self.run_the_judge(base=base)[0]
-        self.assertEqual(honest_one["juge"]["verification"]["fixes_sans_mesure"], [])
-        self.assertEqual(without_ratio["juge"]["verification"]["fixes_sans_mesure"], ["ratio"])
+        self.assertEqual(honest_one["judge"]["verification"]["fixed_without_measurement"], [])
+        self.assertEqual(without_ratio["judge"]["verification"]["fixed_without_measurement"], ["ratio"])
         for report_, only_this in ((honest_one, False), (without_ratio, True)):
-            ratio = report_["metriques"]["ratio"]
-            self.assertEqual((ratio["verification_seulement"], ratio["au_dela_du_bruit"]), (only_this, not only_this))
-            self.assertTrue(report_["metriques"]["debit_compression"]["au_dela_du_bruit"])
-            self.assertFalse(report_["metriques"]["debit_compression"]["verification_seulement"])
+            ratio = report_["metrics"]["ratio"]
+            self.assertEqual((ratio["verification_only"], ratio["beyond_noise"]), (only_this, not only_this))
+            self.assertTrue(report_["metrics"]["debit_compression"]["beyond_noise"])
+            self.assertFalse(report_["metrics"]["debit_compression"]["verification_only"])
 
     def test_outputs_changed_after_fingerprint(self):
         """An output changed, added or removed after its container ended (here, while the next container runs) is refused."""
@@ -1471,12 +1512,15 @@ class TestJudgeWorkflow(unittest.TestCase):
         self.assertEqual(list(self.wf["jobs"]), ["juge"])
         self.assertEqual(self.wf["on"]["workflow_call"]["outputs"]["code"]["value"], "${{ jobs.juge.outputs.code }}")
         # ruche-0038: the report's SHA-256 and key figures too, all written by the judging step
+        # ruche-0148 (J2b): under their English names, and under their French ones until judge-v5
+        french = {"empreinte": "fingerprint", "suspectes": "suspects", "sorties_comparees": "outputs_compared", "greffon": "plugin",
+                  "graine": "seed", "tete": "head"}
         self.assertEqual({k: v["value"] for k, v in self.wf["on"]["workflow_call"]["outputs"].items()},
-                         {k: "${{ jobs.juge.outputs.%s }}" % k for k in JOB_OUTPUTS})
+                         {k: "${{ jobs.juge.outputs.%s }}" % french.get(k, k) for k in JOB_OUTPUTS + list(french)})
         self.assertEqual(self.wf["jobs"]["juge"]["outputs"], {k: "${{ steps.juge.outputs.%s }}" % k for k in JOB_OUTPUTS})
         self.assertEqual(step(self.wf, "Juger")["id"], "juge")
-        self.assertIn('report.py resultats/juge.json --code "$code" > resultats/sorties\n', step(self.wf, "Juger")["run"])
-        self.assertIn('cat resultats/sorties >> "$GITHUB_OUTPUT"', step(self.wf, "Juger")["run"])
+        self.assertIn('report.py results/judge.json --code "$code" > results/outputs\n', step(self.wf, "Juger")["run"])
+        self.assertIn('cat results/outputs >> "$GITHUB_OUTPUT"', step(self.wf, "Juger")["run"])
 
     def test_judge_code_read_at_the_workflow_commit(self):
         """No tag, no branch: the registry is checked out at the commit the preparation step checked."""
@@ -1561,9 +1605,9 @@ class TestJudgeWorkflow(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         # the judging step itself writes the job's code, and the report's figures (none: no report)
         self.assertEqual(output_text, "code=1\n" + "".join(f"{k}=\n" for k in report.FORMATS))
-        with open(os.path.join(self.dir, "resultats", "code")) as f:
+        with open(os.path.join(self.dir, "results", "code")) as f:
             self.assertEqual(f.read().strip(), "1")
-        with open(os.path.join(self.dir, "resultats", "journal.txt"), newline="") as f:
+        with open(os.path.join(self.dir, "results", "log.txt"), newline="") as f:
             journal = f.read()
         self.assertEqual(journal, hostile)
         self.assertGreaterEqual(len([c for c in runner_commands(journal) if c != "<resume>"]), 6)  # the simulator sees them
@@ -1636,15 +1680,15 @@ class TestJudgeWorkflow(unittest.TestCase):
                     "    open(sys.argv[sys.argv.index('--json') + 1], 'w').write(os.environ['FAUX_RAPPORT'])\n"
                     "sys.exit(int(os.environ['FAUX_CODE']))\n")
         good = json.dumps(REPORT, indent=2)
-        refusal, fault = ({"juge": dict(REPORT["juge"], code=c, issue=i, motif="m")} for c, i in ((1, "refus"), (2, "erreur_environnement")))
-        refusal, fault, fake = json.dumps(refusal), json.dumps(fault), json.dumps({"juge": dict(REPORT["juge"], code=1, issue="juste")})
+        refusal, fault = ({"judge": dict(REPORT["judge"], code=c, outcome=i, reason="m")} for c, i in ((1, "refusal"), (2, "environment_error")))
+        refusal, fault, fake = json.dumps(refusal), json.dumps(fault), json.dumps({"judge": dict(REPORT["judge"], code=1, outcome="correct")})
         announcements = {"0": "::notice title=Juge commun::code 0 :", "1": "::warning title=Juge commun::code 1 : refus du code jugé",
                     "2": "::error title=Juge commun::code 2 : erreur d'environnement"}
         for code, report_, expected in ((0, good, "0"), (0, "", "2"), (0, "{}", "2"), (0, good[:-1], "2"), (1, "", "1"), (2, "", "2"),
                                         (1, "{}", "1"), (1, refusal[:-9], "1"), (1, refusal, "1"), (2, fault, "2"), (1, fault, "2"), (2, refusal, "2"), (0, fault, "2"),
                                         (1, fake, "2"), (1, good, "2")):
             with self.subTest(code=code, report=report_[:20]):
-                shutil.rmtree(os.path.join(self.dir, "resultats"), ignore_errors=True)
+                shutil.rmtree(os.path.join(self.dir, "results"), ignore_errors=True)
                 r, output_text = self.launch(step(self.wf, "Juger")["run"], {"OPTIONS": "", "REPETITIONS": "10", "BASE": "2" * 40,
                                         "TETE": "3" * 40, "SOURCE": "x", "RUNNER_TEMP": "/rt", "FAUX_CODE": str(code),
                                         "FAUX_RAPPORT": report_})
@@ -1652,8 +1696,8 @@ class TestJudgeWorkflow(unittest.TestCase):
                 published_ones = dict(line_text.split("=", 1) for line_text in output_text.splitlines())
                 self.assertEqual(list(published_ones), JOB_OUTPUTS)
                 self.assertEqual(published_ones["code"], expected)
-                self.assertEqual(published_ones["empreinte"] != "", expected == "0")
-                with open(os.path.join(self.dir, "resultats", "code")) as f:
+                self.assertEqual(published_ones["fingerprint"] != "", expected == "0")
+                with open(os.path.join(self.dir, "results", "code")) as f:
                     self.assertEqual(f.read(), expected + "\n")
                 self.assertEqual([line_text for line_text in r.stdout.splitlines() if line_text.startswith("::") and "title=" in line_text][-1:],
                                  [l for l in r.stdout.splitlines() if l.startswith(announcements[expected])])
@@ -1678,30 +1722,30 @@ class TestJudgeWorkflow(unittest.TestCase):
         with open(os.path.join(common_judge, "judge.py"), "w", encoding="utf-8") as f:
             f.write("import json, sys\nopen('arguments.json', 'w').write(json.dumps(sys.argv[1:]))\n"
                     f"open(sys.argv[sys.argv.index('--json') + 1], 'w').write({json.dumps(REPORT, indent=2)!r})\n")
-        r, output_text = self.launch(step(self.wf, "Juger")["run"], {"OPTIONS": "", "REPETITIONS": "10", "BASE": REPORT["juge"]["base"],
-                                                                 "TETE": REPORT["juge"]["tete"], "SOURCE": "x", "RUNNER_TEMP": "/rt"})
+        r, output_text = self.launch(step(self.wf, "Juger")["run"], {"OPTIONS": "", "REPETITIONS": "10", "BASE": REPORT["judge"]["base"],
+                                                                 "TETE": REPORT["judge"]["head"], "SOURCE": "x", "RUNNER_TEMP": "/rt"})
         self.assertEqual(r.returncode, 0, r.stderr)
         with open(os.path.join(self.dir, "arguments.json")) as f:
             arguments = json.load(f)
         self.assertEqual(arguments[arguments.index("--base"):arguments.index("--workdir") + 2],
-                         ["--base", REPORT["juge"]["base"], "--head", REPORT["juge"]["tete"], "--workdir", "/rt/juge"])
-        path = os.path.join(self.dir, "resultats", "juge.json")
+                         ["--base", REPORT["judge"]["base"], "--head", REPORT["judge"]["head"], "--workdir", "/rt/juge"])
+        path = os.path.join(self.dir, "results", "judge.json")
         with open(path, "rb") as f:
             data = f.read()
         published_ones = dict(line_text.split("=", 1) for line_text in output_text.splitlines())
-        self.assertEqual(published_ones, {"code": "0", "empreinte": hashlib.sha256(data).hexdigest(), "suspectes": "103",
-                                    "sorties_comparees": "57", "greffon": "ab" * 32, "graine": "cd" * 16,
-                                    "base": REPORT["juge"]["base"], "tete": REPORT["juge"]["tete"]})
+        self.assertEqual(published_ones, {"code": "0", "fingerprint": hashlib.sha256(data).hexdigest(), "suspects": "103",
+                                    "outputs_compared": "57", "plugin": "ab" * 32, "seed": "cd" * 16,
+                                    "base": REPORT["judge"]["base"], "head": REPORT["judge"]["head"]})
         with open(os.path.join(self.dir, "sorties.json"), "w") as f:
             json.dump(published_ones, f)  # what toJSON(needs.juge.outputs) gives the verdict job
-        commits = [REPORT["juge"]["base"], REPORT["juge"]["tete"]]  # ruche-0117: the pull request's, given to --verifier
+        commits = [REPORT["judge"]["base"], REPORT["judge"]["head"]]  # ruche-0117: the pull request's, given to --verifier
         verifier = [sys.executable, os.path.join(HERE, "report.py"), path, "--verify", os.path.join(self.dir, "sorties.json"),
                     "--base", commits[0], "--head", commits[1]]
         self.assertEqual(subprocess.run(verifier, capture_output=True).returncode, 0)
-        self.assertEqual(report.verifier(path, published_ones, *commits)["juge"]["greffon"], "ab" * 32)
+        self.assertEqual(report.verifier(path, published_ones, *commits)["judge"]["plugin"], "ab" * 32)
         other = json.loads(json.dumps(REPORT))
-        other["juge"]["verification"]["sorties_comparees"] = 58
-        without_suspects = dict(REPORT, juge=dict(REPORT["juge"], constructions_suspectes=[], constructions_suspectes_omises=0))
+        other["judge"]["verification"]["outputs_compared"] = 58
+        without_suspects = dict(REPORT, judge=dict(REPORT["judge"], suspicious_constructs=[], suspicious_constructs_omitted=0))
         modified_items = [json.dumps(REPORT).encode(), data + b"\n", data.replace(b'"gain": 0.25', b'"gain": 0.35'),
                     json.dumps(other, indent=2).encode(), json.dumps(without_suspects, indent=2).encode(), b""]
         for changed_one in modified_items:
@@ -1713,7 +1757,7 @@ class TestJudgeWorkflow(unittest.TestCase):
                     report.verifier(path, published_ones, *commits)
         with open(path, "wb") as f:
             f.write(data)
-        for key, value in (("empreinte", ""), ("empreinte", "0" * 64), ("suspectes", "100"), ("tete", REPORT["juge"]["base"])):
+        for key, value in (("fingerprint", ""), ("fingerprint", "0" * 64), ("suspects", "100"), ("head", REPORT["judge"]["base"])):
             with self.subTest(output_text=key), self.assertRaises(report.Gap):
                 report.verifier(path, dict(published_ones, **{key: value}), *commits)
         os.remove(path)
@@ -1724,7 +1768,14 @@ class TestJudgeWorkflow(unittest.TestCase):
 
 
 # A judge's report: as juge.py writes it, with 100 suspicious constructs listed and 3 left out.
-REPORT = {"repetitions": 10, "metriques": {"debit_compression": {"gain": 0.25}}, "juge": {
+REPORT = {"repetitions": 10, "metrics": {"debit_compression": {"gain": 0.25}}, "judge": {
+    "version": 3, "common": "juge-v2", "source": "Bee-ruche/registre@" + "1" * 40, "base": "2" * 40, "head": "3" * 40,
+    "project": "jouet", "plugin": "ab" * 32, "code": 0, "outcome": "correct", "seed": "cd" * 16,
+    "seed_origin": {"seed": "drawn", "order_seed": "drawn"}, "image": "bee-juge-commun:0123456789abcdef",
+    "image_id": "sha256:" + "ef" * 32, "suspicious_constructs_omitted": 3, "verification": {"outputs_compared": 57},
+    "suspicious_constructs": [{"type": "source", "detail": f"pragma {i}"} for i in range(judge.SUSPICIOUS_MAX)]}}
+# ruche-0148 (J2b): the same report as juge-v1 to juge-v3 wrote it, in French (juge.json), read until DATE_D.
+FRENCH_REPORT = {"repetitions": 10, "metriques": {"debit_compression": {"gain": 0.25}}, "juge": {
     "version": 3, "commun": "juge-v2", "source": "Bee-ruche/registre@" + "1" * 40, "base": "2" * 40, "tete": "3" * 40,
     "projet": "jouet", "greffon": "ab" * 32, "code": 0, "issue": "juste", "graine": "cd" * 16,
     "origine_des_graines": {"graine": "tiree", "graine_ordre": "tiree"}, "image": "bee-juge-commun:0123456789abcdef",
@@ -1744,16 +1795,16 @@ class TestReport(unittest.TestCase):
 
     def test_figures(self):
         data = json.dumps(REPORT).encode()
-        self.assertEqual(report.digits(data)["suspectes"], str(judge.SUSPICIOUS_MAX + 3))
-        local = dict(REPORT, juge=dict(REPORT["juge"], base=None, tete=None))  # juge.py run by hand: no commits named
-        self.assertEqual([report.digits(json.dumps(local).encode())[k] for k in ("base", "tete")], ["", ""])
-        judge_ = REPORT["juge"]
-        wrong_one = [b"[]", b"{}", b"{\"juge\": []}", b"\xff", json.dumps(dict(REPORT, juge={})).encode()]
-        wrong_one += [json.dumps(dict(REPORT, juge=dict(judge_, **{key: value}))).encode() for key, value in (
-            ("constructions_suspectes_omises", -1), ("constructions_suspectes_omises", True), ("constructions_suspectes_omises", "3"),
-            ("constructions_suspectes", "abc"), ("constructions_suspectes", None), ("greffon", "x"), ("greffon", "AB" * 32),
-            ("graine", ""), ("graine", 12), ("base", "main"), ("tete", "3" * 39), ("verification", {"sorties_comparees": -1}),
-            ("verification", {"sorties_comparees": 1.5}), ("verification", {"sorties_comparees": True}), ("verification", {}))]
+        self.assertEqual(report.digits(data)["suspects"], str(judge.SUSPICIOUS_MAX + 3))
+        local = dict(REPORT, judge=dict(REPORT["judge"], base=None, head=None))  # judge.py run by hand: no commits named
+        self.assertEqual([report.digits(json.dumps(local).encode())[k] for k in ("base", "head")], ["", ""])
+        judge_ = REPORT["judge"]
+        wrong_one = [b"[]", b"{}", b"{\"judge\": []}", b"{\"juge\": []}", b"\xff", json.dumps(dict(REPORT, judge={})).encode()]
+        wrong_one += [json.dumps(dict(REPORT, judge=dict(judge_, **{key: value}))).encode() for key, value in (
+            ("suspicious_constructs_omitted", -1), ("suspicious_constructs_omitted", True), ("suspicious_constructs_omitted", "3"),
+            ("suspicious_constructs", "abc"), ("suspicious_constructs", None), ("plugin", "x"), ("plugin", "AB" * 32),
+            ("seed", ""), ("seed", 12), ("base", "main"), ("head", "3" * 39), ("verification", {"outputs_compared": -1}),
+            ("verification", {"outputs_compared": 1.5}), ("verification", {"outputs_compared": True}), ("verification", {}))]
         for data in wrong_one:
             with self.subTest(data=data[:80]), self.assertRaises(ValueError):
                 report.digits(data)
@@ -1763,8 +1814,8 @@ class TestReport(unittest.TestCase):
         request's, given by the verdict job; any other exit than 0 blocks the verdict."""
         with open(self.path, "w", encoding="utf-8") as f:
             json.dump(REPORT, f)
-        published_ones, commits = report.publish(self.path, "0"), (REPORT["juge"]["base"], REPORT["juge"]["tete"])
-        self.assertEqual(report.verifier(self.path, published_ones, *commits)["juge"]["greffon"], "ab" * 32)
+        published_ones, commits = report.publish(self.path, "0"), (REPORT["judge"]["base"], REPORT["judge"]["head"])
+        self.assertEqual(report.verifier(self.path, published_ones, *commits)["judge"]["plugin"], "ab" * 32)
         without_code = {k: v for k, v in published_ones.items() if k != "code"}
         for published_, base, head in ((dict(published_ones, code="1"), *commits), (dict(published_ones, code="2"), *commits), (without_code, *commits),
                                       (published_ones, commits[1], commits[0]), (published_ones, "0" * 40, commits[1]), (published_ones, commits[0], ""),
@@ -1785,11 +1836,11 @@ class TestReport(unittest.TestCase):
     def check_the_seeds(self, published_ones, commits):
         """ruche-0136: a report with a seed given on the command line (a local reproduction), or that does not say where its
         seeds came from, is never taken for a judgement: --verify refuses it, its figures and SHA-256 published or not."""
-        for origins in ({"graine": "donnee", "graine_ordre": "tiree"}, {"graine": "tiree", "graine_ordre": "donnee"},
-                         {"graine": "tiree"}, None, "tiree", {"graine": "tiree", "graine_ordre": "tiree", "x": 1}):
-            reproduction = dict(REPORT, juge=dict(REPORT["juge"], origine_des_graines=origins))
+        for origins in ({"seed": "given", "order_seed": "drawn"}, {"seed": "drawn", "order_seed": "given"},
+                         {"seed": "drawn"}, None, "drawn", {"seed": "drawn", "order_seed": "drawn", "x": 1}):
+            reproduction = dict(REPORT, judge=dict(REPORT["judge"], seed_origin=origins))
             if origins is None:
-                del reproduction["juge"]["origine_des_graines"]
+                del reproduction["judge"]["seed_origin"]
             with open(self.path, "w", encoding="utf-8") as f:
                 json.dump(reproduction, f)
             with self.subTest(origins=origins), self.assertRaisesRegex(report.Gap, "seed"):
@@ -1797,15 +1848,38 @@ class TestReport(unittest.TestCase):
         with open(self.path, "w", encoding="utf-8") as f:
             json.dump(REPORT, f)
 
+    def test_french_report_read_until_date_d_never_mixed(self):
+        """ruche-0148 (J2b): juge.json as juge-v1 to juge-v3 wrote it (French) gives the same figures, code and check as judge.json,
+        until DATE_D; from DATE_D on, or with keys of both vocabularies anywhere report.py looks, it is refused (code 2 published)."""
+        english, french = json.dumps(REPORT).encode(), json.dumps(FRENCH_REPORT).encode()
+        figures = report.digits(english)
+        self.assertEqual(dict(report.digits(french), fingerprint=figures["fingerprint"]), figures)
+        self.assertEqual((report.outcome(french), report.outcome(english)), ("0", "0"))
+        with open(self.path, "wb") as f:
+            f.write(french)
+        self.assertEqual(report.verifier(self.path, report.publish(self.path, "0"), "2" * 40, "3" * 40), FRENCH_REPORT)
+        judge_fr = FRENCH_REPORT["juge"]
+        for mixed in (dict(FRENCH_REPORT, metrics={}), dict(REPORT, metriques={}), dict(REPORT, juge=judge_fr),
+                      dict(REPORT, judge=dict(REPORT["judge"], tete="3" * 40)), dict(FRENCH_REPORT, juge=dict(judge_fr, head="3" * 40)),
+                      dict(FRENCH_REPORT, juge=dict(judge_fr, verification={"outputs_compared": 57})),
+                      dict(REPORT, judge=dict(REPORT["judge"], seed_origin={"graine": "tiree", "graine_ordre": "tiree"}))):
+            with self.subTest(mixed=json.dumps(mixed)[:60]), self.assertRaisesRegex(ValueError, "one vocabulary per report"):
+                report.digits(json.dumps(mixed).encode())
+        with mock.patch.object(report, "today", return_value=report.DATE_D), contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaisesRegex(ValueError, f"read until {report.DATE_D} only"):
+                report.digits(french)
+            self.assertEqual(report.publish(self.path, "0")["code"], "2")
+            self.assertEqual(report.digits(english), figures)
+
     def test_a_refusal_needs_no_report(self):
         """ruche-0136: a refusal (code 1) is published as 1 whatever state its report is in (none, cut short, malformed, not a
         regular file), unless the report states another code; a code 0 still needs its report, whole and checked."""
         def published(code):
             with contextlib.redirect_stderr(io.StringIO()):
                 return report.publish(self.path, code)["code"]
-        refusal = json.dumps({"juge": dict(REPORT["juge"], code=1, issue="refus", motif="m")})
-        for content, expected in ((None, "1"), ("", "1"), (refusal[:-7], "1"), ("[1]", "1"), ('{"juge": 3}', "1"), (refusal, "1"),
-                                 ("\xff", "1"), (json.dumps(REPORT), "2"), (refusal.replace('"refus"', '"juste"'), "2"),
+        refusal = json.dumps({"judge": dict(REPORT["judge"], code=1, outcome="refusal", reason="m")})
+        for content, expected in ((None, "1"), ("", "1"), (refusal[:-7], "1"), ("[1]", "1"), ('{"judge": 3}', "1"), (refusal, "1"),
+                                 ("\xff", "1"), (json.dumps(REPORT), "2"), (refusal.replace('"refusal"', '"correct"'), "2"),
                                  (refusal.replace('"code": 1', '"code": 2'), "2"), (refusal.replace('"code": 1', '"code": true'), "2")):
             with contextlib.suppress(FileNotFoundError):
                 os.remove(self.path)
@@ -1965,15 +2039,15 @@ class TestBounds(unittest.TestCase):
                            capture_output=True, text=True, timeout=300)
         self.assertEqual(r.returncode, 2, r.stderr)
         with open(path, encoding="utf-8") as f:
-            j = json.load(f)["juge"]
-        self.assertEqual((j["code"], j["issue"], j["panne_machine"], j["tete"], j["commun"]),
-                         (2, "erreur_environnement", True, "3" * 40, judge.common_tag()))
-        self.assertIn("machine du juge en panne", j["motif"])
+            j = json.load(f)["judge"]
+        self.assertEqual((j["code"], j["outcome"], j["machine_failure"], j["head"], j["common"]),
+                         (2, "environment_error", True, "3" * 40, judge.common_tag()))
+        self.assertIn("machine du juge en panne", j["reason"])
         self.assertEqual([report.publish(path, c)["code"] for c in "012"], ["2", "2", "2"])
-        with mock.patch.dict(judge.FAILURE, json=path, juge={}), contextlib.redirect_stderr(io.StringIO()):
+        with mock.patch.dict(judge.FAILURE, json=path, judge={}), contextlib.redirect_stderr(io.StringIO()):
             self.assertEqual(judge.stop_it(1, "juge : REFUS : B"), 1)
         with open(path, encoding="utf-8") as f:
-            self.assertEqual(json.load(f)["juge"], {"code": 1, "issue": "refus", "panne_machine": False, "motif": "juge : REFUS : B"})
+            self.assertEqual(json.load(f)["judge"], {"code": 1, "outcome": "refusal", "machine_failure": False, "reason": "juge : REFUS : B"})
         self.assertEqual([report.publish(path, c)["code"] for c in "012"], ["2", "1", "2"])
 
     def test_a_refusal_stays_a_refusal_whatever_its_message_holds(self):
@@ -1987,10 +2061,10 @@ class TestBounds(unittest.TestCase):
                            env=dict(os.environ, FAUX_DOCKER_ID="sha256:" + "a" * 64))
         self.assertEqual(r.returncode, 1, r.stderr)
         with open(path, encoding="utf-8") as f:
-            self.assertEqual((lambda j: (j["code"], j["issue"], j["panne_machine"]))(json.load(f)["juge"]), (1, "refus", False))
+            self.assertEqual((lambda j: (j["code"], j["outcome"], j["machine_failure"]))(json.load(f)["judge"]), (1, "refusal", False))
         output_text = subprocess.run([sys.executable, os.path.join(HERE, "report.py"), path, "--code", "1"], capture_output=True, text=True)
         self.assertEqual(output_text.stdout.splitlines()[0], "code=1")
-        with mock.patch.dict(judge.FAILURE, json=path, juge={}), contextlib.redirect_stderr(io.StringIO()), \
+        with mock.patch.dict(judge.FAILURE, json=path, judge={}), contextlib.redirect_stderr(io.StringIO()), \
                 mock.patch.object(os, "replace", side_effect=OSError("disque plein")):
             self.assertEqual(judge.stop_it(1, "juge : REFUS : B\udcff"), 1)
         self.assertEqual(os.listdir(os.path.dirname(path)), [])
@@ -3031,31 +3105,31 @@ class TestJudgeAgainstVariants(unittest.TestCase):
             return judge.main(argv), containers
 
     def types_suspects(self, report):
-        return {s["type"] for s in report["juge"]["constructions_suspectes"]}
+        return {s["type"] for s in report["judge"]["suspicious_constructs"]}
 
     def test_honest(self):
         code, report, _ = self.run_the_judge("honnete", self.prepare("honnete"))
         self.assertEqual(code, 0)
-        self.assertEqual(report["juge"]["constructions_suspectes"], [])
-        self.assertEqual(report["juge"]["projet"], "jouet")
-        self.assertGreater(report["juge"]["verification"]["sorties_comparees"], 30)
+        self.assertEqual(report["judge"]["suspicious_constructs"], [])
+        self.assertEqual(report["judge"]["project"], "jouet")
+        self.assertGreater(report["judge"]["verification"]["outputs_compared"], 30)
         for m in report["instructions"].values():
             self.assertEqual(m["A"], m["B"])
-        self.assertEqual(set(report["metriques"]), {"debit_compression", "debit_decompression", "ratio", "memoire_max_ko"})
-        self.assertIsNone(report["juge"]["source"])  # named by juge.yml (--source-juge), not by a local run
-        self.assertEqual(report["juge"]["origine_des_graines"], {"graine": "tiree", "graine_ordre": "tiree"})  # ruche-0136
-        verification = report["juge"]["verification"]  # ruche-0037: 20 f and 30 z verification inputs, over 2 repetitions
-        self.assertEqual(verification["melees_par_repetition"], {"f": 10, "z": 15})
-        self.assertEqual(verification["entrees_melees"], 3 * 25)  # 2 repetitions and the instruction count
-        self.assertEqual(verification["instructions_sans_melange"], [])
-        unfolding = report["juge"]["scenarios"]["deroulement"]  # ruche-0036: order and CPU time of each scenario
-        self.assertEqual([e["etape"] for e in unfolding], ["mesure", "mesure", "instructions"])
+        self.assertEqual(set(report["metrics"]), {"debit_compression", "debit_decompression", "ratio", "memoire_max_ko"})
+        self.assertIsNone(report["judge"]["source"])  # named by juge.yml (--source-juge), not by a local run
+        self.assertEqual(report["judge"]["seed_origin"], {"seed": "drawn", "order_seed": "drawn"})  # ruche-0136
+        verification = report["judge"]["verification"]  # ruche-0037: 20 f and 30 z verification inputs, over 2 repetitions
+        self.assertEqual(verification["mixed_per_repetition"], {"f": 10, "z": 15})
+        self.assertEqual(verification["inputs_mixed"], 3 * 25)  # 2 repetitions and the instruction count
+        self.assertEqual(verification["instructions_without_mixing"], [])
+        unfolding = report["judge"]["scenarios"]["steps"]  # ruche-0036: order and CPU time of each scenario
+        self.assertEqual([e["step"] for e in unfolding], ["measurement", "measurement", "instructions"])
         for e in unfolding:
-            expected_items = toy_plugin.Projet.INSTRUCTIONS if e["etape"] == "instructions" else toy_plugin.Projet.SCENARIOS
-            self.assertEqual(sorted(e["ordre"]), sorted(expected_items))
+            expected_items = toy_plugin.Projet.INSTRUCTIONS if e["step"] == "instructions" else toy_plugin.Projet.SCENARIOS
+            self.assertEqual(sorted(e["order"]), sorted(expected_items))
             for v in "AB":
-                self.assertEqual(sorted(e["temps_processeur_s"][v]), sorted(expected_items))
-                self.assertTrue(all(isinstance(x, (int, float)) and x >= 0 for x in e["temps_processeur_s"][v].values()))
+                self.assertEqual(sorted(e["cpu_time_s"][v]), sorted(expected_items))
+                self.assertTrue(all(isinstance(x, (int, float)) and x >= 0 for x in e["cpu_time_s"][v].values()))
 
     def test_neighbor_scenarios(self):
         """ruche-0036, on the toy with two scenarios per side: a candidate each of whose scenarios tries to read and to
@@ -3069,19 +3143,19 @@ class TestJudgeAgainstVariants(unittest.TestCase):
         code, report, output_text = self.run_the_judge("scenarios_voisins", self.prepare("scenarios_voisins", neighbor_scenarios), base=base,
                                            repetitions=3, extra=seeds)
         self.assertEqual((code_h, code), (0, 0), header_output + output_text)
-        self.assertEqual(report["juge"]["verification"], honest_one["juge"]["verification"])
-        self.assertEqual(report["juge"]["origine_des_graines"], {"graine": "donnee", "graine_ordre": "donnee"})  # ruche-0136
+        self.assertEqual(report["judge"]["verification"], honest_one["judge"]["verification"])
+        self.assertEqual(report["judge"]["seed_origin"], {"seed": "given", "order_seed": "given"})  # ruche-0136
         self.assertIn("appel_externe", self.types_suspects(report))  # its attempts are compiled in (opendir, fopen…)
-        unfolding = report["juge"]["scenarios"]["deroulement"]
-        self.assertEqual([e["ordre"] for e in unfolding], [e["ordre"] for e in honest_one["juge"]["scenarios"]["deroulement"]])
-        orders = [e["ordre"] for e in unfolding if e["etape"] == "mesure"]
+        unfolding = report["judge"]["scenarios"]["steps"]
+        self.assertEqual([e["order"] for e in unfolding], [e["order"] for e in honest_one["judge"]["scenarios"]["steps"]])
+        orders = [e["order"] for e in unfolding if e["step"] == "measurement"]
         self.assertEqual(len(orders), 3)
         self.assertGreater(len({tuple(o) for o in orders}), 1)
         for a, b in (("compression", "compression_bis"), ("decompression", "decompression_bis")):
             self.assertEqual({o.index(a) < o.index(b) for o in orders}, {True, False})
         for e in unfolding:
             for v in "AB":
-                self.assertEqual(sorted(e["temps_processeur_s"][v]), sorted(e["ordre"]))
+                self.assertEqual(sorted(e["cpu_time_s"][v]), sorted(e["order"]))
 
     def test_declared_history(self):
         """ruche-0024: the toy plugin reads rle.c at a commit the base does not have; declared, it is fetched in its own
@@ -3102,7 +3176,7 @@ class TestJudgeAgainstVariants(unittest.TestCase):
         code, report, output_text = self.run_the_judge("historique_declare", self.prepare("historique_declare"), True, base=base,
                                           options=[f"commit_corpus={commit}"])
         self.assertEqual(code, 0, output_text)
-        self.assertEqual(report["juge"]["verification"]["historique"], f"{commit}:rle.c ({len(old)} octets)")
+        self.assertEqual(report["judge"]["verification"]["historique"], f"{commit}:rle.c ({len(old)} octets)")
 
     def test_undeclared_history(self):
         """Not declared: a clean environment error (code 2), even for a plugin that tries to fetch it itself from an
@@ -3156,8 +3230,8 @@ class TestJudgeAgainstVariants(unittest.TestCase):
                 code, _, output_text = self.run_the_judge(f"panne-{rank}", self.prepare(f"panne-{rank}"), True, extra=["--json", path])
                 self.assertEqual(code, 2, output_text)
                 with open(path, encoding="utf-8") as f:
-                    j = json.load(f)["juge"]
-                self.assertEqual((j["code"], j["issue"], j["panne_machine"]), (2, "erreur_environnement", True))
+                    j = json.load(f)["judge"]
+                self.assertEqual((j["code"], j["outcome"], j["machine_failure"]), (2, "environment_error", True))
                 with open(account) as f:
                     self.assertEqual(f.read(), str(rank))
 
@@ -3171,8 +3245,8 @@ class TestJudgeAgainstVariants(unittest.TestCase):
         code, _, output_text = self.run_the_judge("panne_simulee", self.prepare("panne_simulee", simulate), True, extra=["--json", path])
         self.assertEqual(code, 1, output_text)
         with open(path, encoding="utf-8") as f:
-            j = json.load(f)["juge"]
-        self.assertEqual((j["code"], j["issue"], j["panne_machine"]), (1, "refus", False))
+            j = json.load(f)["judge"]
+        self.assertEqual((j["code"], j["outcome"], j["machine_failure"]), (1, "refusal", False))
 
     def test_early_exit(self):
         code, _, output_text = self.run_the_judge("sortie_anticipee", self.prepare("sortie_anticipee", early_exit), True)
@@ -3183,8 +3257,8 @@ class TestJudgeAgainstVariants(unittest.TestCase):
         code, report, _ = self.run_the_judge("faux_chronos", self.prepare("faux_chronos", fake_stopwatches), True)
         self.assertEqual(code, 0)
         self.assertIn("symbole_interdit", self.types_suspects(report))
-        m = report["metriques"]["debit_compression"]
-        self.assertLess(m["B"]["mediane"], m["A"]["mediane"])
+        m = report["metrics"]["debit_compression"]
+        self.assertLess(m["B"]["median"], m["A"]["median"])
 
     def test_precomputed_table(self):
         code, _, output_text = self.run_the_judge("table_precalculee", self.prepare("table_precalculee", precomputed_table), True)
@@ -3194,7 +3268,7 @@ class TestJudgeAgainstVariants(unittest.TestCase):
     def test_valgrind_request(self):
         code, report, _ = self.run_the_judge("requete_valgrind", self.prepare("requete_valgrind", valgrind_request))
         self.assertEqual(code, 0)
-        self.assertIn("preambule_valgrind", " ".join(s["detail"] for s in report["juge"]["constructions_suspectes"]))
+        self.assertIn("preambule_valgrind", " ".join(s["detail"] for s in report["judge"]["suspicious_constructs"]))
 
     def test_fake_summary(self):
         code, report, _ = self.run_the_judge("faux_resume", self.prepare("faux_resume", fake_summary))
@@ -3206,7 +3280,7 @@ class TestJudgeAgainstVariants(unittest.TestCase):
     def test_moved_workdir(self):
         code, report, _ = self.run_the_judge("travail_deplace", self.prepare("travail_deplace", moved_workdir))
         self.assertEqual(code, 0)
-        self.assertEqual(report["juge"]["constructions_suspectes"], [])
+        self.assertEqual(report["judge"]["suspicious_constructs"], [])
         m = report["instructions"]["instructions_compression"]
         self.assertLess(m["gain"], 0.002, "le travail déplacé dans rle_borne doit rester compté")
 
@@ -3225,7 +3299,7 @@ class TestJudgeAgainstVariants(unittest.TestCase):
                                   ': > "$sortie/desassemblage.txt"\necho "construction terminée"')
         code, report, _ = self.run_the_judge("releves_vides", self.prepare("releves_vides", valgrind_request), True, base=base)
         self.assertEqual(code, 0)
-        self.assertIn("preambule_valgrind", " ".join(s["detail"] for s in report["juge"]["constructions_suspectes"]))
+        self.assertIn("preambule_valgrind", " ".join(s["detail"] for s in report["judge"]["suspicious_constructs"]))
 
     def test_forgotten_object(self):
         """L'objet du projet est compilé hors de obj/ : il échapperait à l'analyse, le juge s'arrête."""
@@ -3237,7 +3311,7 @@ class TestJudgeAgainstVariants(unittest.TestCase):
     def test_split_tokens(self):
         code, report, _ = self.run_the_judge("jetons_scindes", self.prepare("jetons_scindes", split_tokens), True)
         self.assertEqual(code, 0)
-        self.assertIn("preambule_valgrind", " ".join(s["detail"] for s in report["juge"]["constructions_suspectes"]))
+        self.assertIn("preambule_valgrind", " ".join(s["detail"] for s in report["judge"]["suspicious_constructs"]))
 
     def test_distracted_plugin(self):
         """Le greffon de la base oublie de lire les sorties de B d'un scénario : erreur, jamais une acceptation."""
@@ -3251,7 +3325,7 @@ class TestJudgeAgainstVariants(unittest.TestCase):
         """Revue adverse n° 2 : getenv est signalé par son nom, quel que soit l'espace de noms déclaré."""
         code, report, _ = self.run_the_judge("appel_interdit", self.prepare("appel_interdit", call_laundered_by_prefix), True)
         self.assertEqual(code, 0)
-        self.assertIn("getenv", " ".join(s["detail"] for s in report["juge"]["constructions_suspectes"]))
+        self.assertIn("getenv", " ".join(s["detail"] for s in report["judge"]["suspicious_constructs"]))
 
     def test_seeded_bytes(self):
         code, report, _ = self.run_the_judge("seeded_bytes", self.prepare("seeded_bytes", lambda t, c: t + asm_bytes("48b80f05909090909090")), True)
@@ -3293,8 +3367,8 @@ class TestJudgeAgainstVariants(unittest.TestCase):
         code, containers = self.spied_judge_run(self.prepare("memes_montures", mounts_spy), base,
                                                ["--order-seed", seed], output_text)
         self.assertEqual(code, 0)
-        unfolding = json.loads(output_text.getvalue())["juge"]["scenarios"]["deroulement"]
-        self.assertEqual([(e["etape"], e["variantes"]) for e in unfolding], [("mesure", "AB"), ("mesure", "BA"), ("instructions", "AB")])
+        unfolding = json.loads(output_text.getvalue())["judge"]["scenarios"]["steps"]
+        self.assertEqual([(e["step"], e["variants"]) for e in unfolding], [("measurement", "AB"), ("measurement", "BA"), ("instructions", "AB")])
         by_side = {}
         for entry, error in containers:
             survey = mounts_reading(error)
@@ -3407,7 +3481,7 @@ class TestJudgeAgainstVariants(unittest.TestCase):
         code, report, output_text = self.run_the_judge("instructions_sans_melange", self.prepare("instructions_sans_melange"),
                                            extra=["--instructions-prefix", "1"])
         self.assertEqual(code, 0, output_text)
-        self.assertEqual(report["juge"]["verification"]["instructions_sans_melange"], ["decompression"])
+        self.assertEqual(report["judge"]["verification"]["instructions_without_mixing"], ["decompression"])
 
     def test_symbolic_link(self):
         source_b = self.prepare("lien_symbolique")
@@ -3438,24 +3512,24 @@ class TestJudgeAgainstVariants(unittest.TestCase):
         code, report_, log_, _ = self.bounded_judge("rapport_du_job", self.prepare("rapport_du_job", lambda t, c: t + lines),
                                                        "--base", base, "--head", head, "--json", path)
         self.assertEqual(code, 0, log_)
-        j = report_["juge"]
-        self.assertEqual((j["base"], j["tete"], len(j["constructions_suspectes"]), j["constructions_suspectes_omises"]),
+        j = report_["judge"]
+        self.assertEqual((j["base"], j["head"], len(j["suspicious_constructs"]), j["suspicious_constructs_omitted"]),
                          (base, head, judge.SUSPICIOUS_MAX, 28))
-        self.assertEqual([s["type"] for s in j["constructions_suspectes"][:3]], ["appel_interdit", "symbole_defini", "source"])
-        self.assertEqual(j["constructions_suspectes_par_type"], {"appel_interdit": 1, "source": 126, "symbole_defini": 1})
-        self.assertLessEqual(max(len(s["detail"]) for s in j["constructions_suspectes"]), analysis.DETAIL_MAX)
+        self.assertEqual([s["type"] for s in j["suspicious_constructs"][:3]], ["appel_interdit", "symbole_defini", "source"])
+        self.assertEqual(j["suspicious_constructs_by_type"], {"appel_interdit": 1, "source": 126, "symbole_defini": 1})
+        self.assertLessEqual(max(len(s["detail"]) for s in j["suspicious_constructs"]), analysis.DETAIL_MAX)
         self.assertEqual(log_.count("construction suspecte :"), judge.SUSPICIOUS_MAX)
         self.assertRegex(j["image_id"], r"^sha256:[0-9a-f]{64}$")
         self.assertEqual(j["image_id"], container.image_id(j["image"]))
         published_ones = report.digits(report.lire(path))
-        self.assertEqual((published_ones["suspectes"], published_ones["sorties_comparees"], published_ones["base"], published_ones["tete"]),
-                         (str(judge.SUSPICIOUS_MAX + 28), str(j["verification"]["sorties_comparees"]), base, head))
+        self.assertEqual((published_ones["suspects"], published_ones["outputs_compared"], published_ones["base"], published_ones["head"]),
+                         (str(judge.SUSPICIOUS_MAX + 28), str(j["verification"]["outputs_compared"]), base, head))
         published_ones = report.publish(path, "0")
         self.assertEqual(report.verifier(path, published_ones, base, head), report_)
         for others in ((head, base), (base, "6" * 40)):
             with self.assertRaises(report.Gap):
                 report.verifier(path, published_ones, *others)
-        j["constructions_suspectes"].pop()
+        j["suspicious_constructs"].pop()
         with open(path, "w", encoding="utf-8") as f:
             json.dump(report_, f, ensure_ascii=False, indent=2)
         with self.assertRaises(report.Gap):
