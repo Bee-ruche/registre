@@ -11040,12 +11040,12 @@ def declared_frames(reg, tid):
 
 
 def context_text(reg, task_identifier=None, role=None, budget=None, registry=None, already_read=False):
-    """Le texte de bee context : root, nœud du rôle, nœuds du projet (de la catégorie au plus précis), puis la tâche :
-    ce que bee en calcule, puis ses données encadrées. --budget retire d'abord de la donnée (les plus anciennes notes, puis
-    la fin d'un long contexte), ensuite les paliers de projet, du plus général au plus précis ; la racine, le nœud du rôle
-    et le reste de la tâche ne sont jamais retirés (revue adverse, I2). already_read (--already-read, avec une tâche) : la racine et
-    le nœud du rôle, que l'agent vient de lire avec --role, ne sont pas réimprimés (tour 2 : 61 lignes en double) ; une
-    ligne le dit, et le chemin reste entier."""
+    """The text of bee context: root, the role's node, the project's nodes (from the category to the most precise), then
+    the task: what bee computes from it, then its framed data. --budget first removes data (the oldest notes, then the
+    end of a long context), then the project levels, from the most general to the most precise; the root, the role's
+    node and the rest of the task are never removed (adversarial review, I2). already_read (--already-read, with a
+    task): the root and the role's node, which the agent has just read with --role, are not reprinted (round 2: 61
+    duplicated lines); a line says so, and the path stays whole."""
     task = reg.task(task_identifier)[1] if task_identifier else None
     read_role = role is not None
     role, branches = context_path(reg, task, role)
@@ -11066,7 +11066,7 @@ def context_text(reg, task_identifier=None, role=None, budget=None, registry=Non
 
     def assemble(too_small=False):
         kept_ones = [n for n in order if n not in state["omitted"]]
-        # Un palier sous un autre du chemin s'abrège : projets/compression-sans-perte > …/miniz.
+        # A level under another level of the path is shortened: projects/lossless-compression > …/miniz.
         shortened_items = [("…/" + n.rsplit("/", 1)[1]) if "/" in n and n.rsplit("/", 1)[0] in kept_ones else n for n in kept_ones]
         path = " > ".join(shortened_items + ([f"task {task_identifier}"] if task else []))
         head = [f"# bee context{' ' + task_identifier if task else ''}{' --role ' + role if role and not task else ''}: {path}"]
@@ -11074,15 +11074,15 @@ def context_text(reg, task_identifier=None, role=None, budget=None, registry=Non
             head.append(f"# Omitted to fit in --budget {budget}: {', '.join(state['omitted'])}.")
         if too_small:
             head.append(f"# The budget {budget} is smaller than the root, the role and the task, which are always kept.")
-        # Le rôle n'est sauté que s'il a été nommé (--role) : celui que donne le type de la tâche n'a peut-être jamais été lu.
+        # The role is skipped only if it was named (--role): the one the task's type gives may never have been read.
         skipped_items = [n for n in kept_ones if n == TREE_ROOT or (read_role and n == f"roles/{role}")] if already_read and task else []
         if TREE_ROOT in skipped_items and not vulnerability_brief(nodes[TREE_ROOT]):
-            skipped_items.remove(TREE_ROOT)  # sans la consigne des failles à rappeler, la racine s'imprime en entier (B1)
+            skipped_items.remove(TREE_ROOT)  # without the vulnerability brief to recall, the root is printed whole (B1)
         if skipped_items:
             head.append(f"# Already read (--already-read), not reprinted: {', '.join(skipped_items)}; without --already-read if you no longer have "
                         "them in front of you.")
             if TREE_ROOT in skipped_items:
-                # La consigne des failles reste sur chaque chemin (revue adverse de ruche-0010, B1), même abrégé.
+                # The vulnerability brief stays on every path (adversarial review of ruche-0010, B1), even shortened.
                 head += ["# Reminder from the root:"] + ["# " + l for l in vulnerability_brief(nodes[TREE_ROOT])]
         blocks = [context_node_render(nodes[n], kept_ones, nodes) for n in kept_ones if n not in skipped_items]
         if task:
@@ -11107,7 +11107,7 @@ def context_text(reg, task_identifier=None, role=None, budget=None, registry=Non
     text, tokens = assemble()
     while budget is not None and tokens > budget:
         current = state["context"] if state["context"] is not None else context_length
-        if state["declared"]:  # d'abord les déclarations recopiées des manifestes (revue adverse de ruche-0017)
+        if state["declared"]:  # first the declarations copied from the manifests (adversarial review of ruche-0017)
             state["declared"] = None
         elif state["notes"] < nb_notes:
             state["notes"] += 1
@@ -11124,9 +11124,9 @@ def context_text(reg, task_identifier=None, role=None, budget=None, registry=Non
 
 
 def yaml_comments(text, places=False):
-    """Les commentaires d'un texte YAML (en colonne 0 ou en fin de ligne), tels que les voit le lecteur YAML : ce qui reste
-    entre ses jetons. Le texte d'un bloc (| ou >) n'en est pas un. [] si le texte ne se lit pas (refusé par ailleurs).
-    `places` : [((nombre de jetons avant lui, en fin de ligne ?), commentaire)] (ruche-0140)."""
+    """The comments of a YAML text (in column 0 or at the end of a line), as the YAML reader sees them: what remains
+    between its tokens. The text of a block (| or >) is not one. [] if the text does not read (refused elsewhere).
+    `places`: [((number of tokens before it, at the end of a line?), comment)] (ruche-0140)."""
     try:
         covered_items = sorted(x for j in yaml.scan(text, Loader=yaml.SafeLoader) for a, b in [(j.start_mark.index, j.end_mark.index)] for x in (
             [(a, a + re.match(r"[|>][-+0-9]*", text[a:a + 4]).end()), (text.find("\n", a) % (len(text) + 1), b)] if getattr(j, "style", None) in ("|", ">") else [(a, b)]))
@@ -11144,11 +11144,12 @@ def yaml_comments(text, places=False):
 
 
 def comments_in_place(old, new, fingerprints, seen_items):
-    """ruche-0140 : à chaque place (entre les mêmes jetons YAML, en fin de ligne ou non), les commentaires de `nouveau` sont, dans
-    l'ordre, ceux d'`ancien` ou leur marque ; seul un commentaire qui la nomme s'ôte. `vus` reçoit les passages de ceux qui la nomment."""
+    """ruche-0140: at each place (between the same YAML tokens, at the end of a line or not), the comments of `new` are,
+    in order, those of `old` or their marker; only a comment that names them is removed. `seen_items` receives the
+    passages of those that name them."""
     a, n = [(g := defaultdict(list), [g[p].append(c) for p, c in yaml_comments(x, True)])[0] for x in (old, new)]
     for place in a.keys() | n.keys():
-        rest_of = n[place][::-1]  # du dernier au premier : chacun s'ôte en temps constant
+        rest_of = n[place][::-1]  # from the last to the first: each one is removed in constant time
         for c in a[place]:
             if (marker := removed_passages(c, fingerprints, v := [])) != c:
                 seen_items += v
@@ -11162,10 +11163,10 @@ def comments_in_place(old, new, fingerprints, seen_items):
 
 
 def check_pr_tree(reg, base, head, changes, links, is_council):
-    """Contrôles de l'arbre sur une PR (revue adverse de ruche-0010) : (I1) aucun commentaire YAML ajouté ou modifié dans
-    un fichier des dossiers du libre-service (il passerait sans contrôle et se lirait comme une ligne de bee) ; pour le
-    conseil, la PR sort du libre-service ; (m1) une tâche qui introduit ou change son champ noeud vise un nœud qui existe.
-    Renvoie (problèmes, natures)."""
+    """The tree's checks on a PR (adversarial review of ruche-0010): (I1) no YAML comment added or modified in a file of
+    the self-service folders (it would pass unchecked and read like a line of bee); for the council, the PR leaves
+    self-service; (m1) a task that introduces or changes its node field aims at a node that exists.
+    Returns (problems, natures)."""
     problems_found, natures = [], []
     nodes = load_tree(reg)["nodes"]
     for git_status, path in changes:
