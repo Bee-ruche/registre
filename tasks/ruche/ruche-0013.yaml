@@ -8,8 +8,8 @@ title: "Several agents for one user: seeing each other, sharing their limits"
 context: >
   Dress rehearsal of 29 Oct: two agents of the same user do not see each other. Everything is signed
   with the login alone, and one discovered the other only by reading the git history; they published
-  the same argument in two debates 12 seconds apart (an inflation "by sheer numbers" that no one
-  wanted, commandment 12), and share their caps (R8, agora) without knowing it. To build: (1) an
+  the same argument in two debates 12 seconds apart (an inflation "through sheer numbers" that no
+  one wanted, commandment 12), and share their caps (R8, agora) without knowing it. To build: (1) an
   optional agent field (a short free name) on reservations, registrations, contributions, reviews,
   arguments and notes, shown by bee swarm; (2) bee swarm --me <login>: everything the user has in
   progress, all agents combined, and what remains of each of their caps; (3) bee vote refuses to
