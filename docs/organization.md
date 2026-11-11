@@ -13,7 +13,7 @@ a memory kept in documents rather than in a session.
 
 | Role | Brief | What it does | What it never does |
 | --- | --- | --- | --- |
-| Architect (the agent principal) | [agent-principal.md](../governance/briefs/agent-principal.md) | It keeps the rules and the decisions, sorts and splits the tasks, writes the builders' brief, chooses the reviewers and merges what falls to the council | Write the code it merges; review its own work; carry out a project task |
+| Architect (the agent principal) | [agent-principal.md](../governance/briefs/agent-principal.md) | It keeps the rules and the decisions, sorts and splits the tasks, writes the builders' task brief, chooses the reviewers and merges what falls to the council | Write the code it merges; review its own work; carry out a project task |
 | Builder | [builder.md](../governance/briefs/builder.md) | It carries out a hive tooling task: a branch, tests, a report | Merge; go outside its task's scope |
 | Adversarial reviewer | [adversarial-reviewer.md](../governance/briefs/adversarial-reviewer.md) | It attacks a branch before its merge, then checks the fixes | Fix things itself; review what it wrote |
 | Council bee | [council-bee.md](../governance/briefs/council-bee.md) | It carries out project tasks (miniz, libyaml…) under the council's account, through a participant's path | Review, vote, measure for R4, release someone else's task or create tasks: under this account, these are council acts; touch the rules |
@@ -35,7 +35,7 @@ A single session never combines writing, reviewing and merging the same thing.
 - **During the week, once or twice**: an architect session, preferably with the founder for what falls to the
   council.
 - **From Friday evening to Saturday 6 a.m.: la Nuit des abeilles.** It is the quota that would be lost at the reset.
-  The architect opens the night (tasks chosen, briefs). The bees and the builders work, the reviewers
+  The architect opens the night (tasks chosen, task briefs). The bees and the builders work, the reviewers
   attack. The architect merges what falls to the council and has passed its review; project contributions are
   integrated only by the integration workflow (R3). At most three agents run the full test suite at the same time:
   the machine has only two cores, and a suite takes 30 to 40 minutes.
@@ -58,7 +58,7 @@ A single session never combines writing, reviewing and merging the same thing.
   --author <council>` locally. The lesson comes from the broken numbering of 30 October.
 - **Anything that touches the registry's security goes through an independent adversarial review** (PR verification,
   integration, verdicts, judges, outside contacts), then through a check of the fixes. The findings and what became
-  of them are summarized in the PR and in the line of docs/decisions.md that records the merge.
+  of them are summarized in the PR and in the line in docs/decisions.md that records the merge.
 - **No power without a condition the tool can check.** The lesson comes from redaction: a council act
   that was tied to nothing. An agent that works under the council's account performs no council act that its role
   does not give it.
@@ -66,14 +66,14 @@ A single session never combines writing, reviewing and merging the same thing.
   `laruche-architect`, declared as an agent account of the founder ([agent-accounts.yaml](../governance/agent-accounts.yaml),
   ruche-0089). The tool counts it as the founder wherever a person counts (caps, R8, votes, reviews,
   commandment 3), without ever making it a second person, but never gives it the council's status: what is
-  reserved to the council (its files, its exemptions from caps, a review that weighs like its own), only the council's
-  account itself decides. Such a PR from the agent principal always waits for a human.
+  reserved to the council (its files, its exemptions from caps, a review that weighs like its own) is decided only by
+  the council's account itself. A PR from the agent principal on any of these always waits for a human.
   An agent account never changes the authority files (commandments, council, agent accounts, guardians, guarantors,
   briefs, this page, docs/guarantors.md, docs/devolution.md): only the council's account does. Being on the council counts as registration: the agent
-  account inherits its person's identity, never their status. Before renaming or deleting this account, the
-  council withdraws its declaration: a released login can be taken again.
-- **The session's limits are reported, not worked around.** A session cannot set
-  a label, delete a branch or change a repository's settings.
+  account inherits its person's identity, never that person's status. Before renaming or deleting this account, the
+  council withdraws its declaration: a released login can be claimed again by another account.
+- **The session's limits are reported, not worked around.** A session cannot create
+  a tag, delete a branch or change a repository's settings.
 - **What changes this organization**, or the brief the guarantor gives to the agent principal, is proposed by
   the agent principal and adopted by the founder himself: the agent principal does not merge the rules of its own
   role.

@@ -23,6 +23,6 @@ cap. A bee does none of them. It keeps only a participant's acts on its own task
 
 - Review, vote, record a measurement for R4, release someone else's reservation, create or validate a task:
   under this account, these are council acts.
-- Touch the rules, the judges, the workflows or the hive's tasks: that is the architect's role.
-- Take more than 3 engagements at a time for the account (R8), counting those of the founder's other agents: the bootstrap exception (8 at most, until 1 December 2026 at 00:00 UTC, excluded) applies only if all of them are on the hive's tasks created by the council, never together with a project task.
+- Touch the rules, the judges, the workflows or the ruche-category tasks: that is the architect's role.
+- Take more than 3 engagements at a time for the account (R8), counting those of the founder's other agents: the bootstrap exception (8 at most, until 1 December 2026 at 00:00 UTC, excluded) applies only if all of them are on tasks of the ruche category created by the council, never together with a project task.
 - Run the code outside the fork's sandbox. Publish nothing about a vulnerability.
