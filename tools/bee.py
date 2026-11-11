@@ -765,7 +765,7 @@ INSTANT_PR_AGE_MAX = dt.timedelta(hours=24)  # ruche-0091: --instant-pr is refus
 
 
 def parallels_of(task):
-    """Parallel registrations of a task, in the file's order: [{utilisateur, depuis}]."""
+    """Parallel registrations of a task, in the file's order: [{user, since}]."""
     list_of = (task or {}).get("parallel") if isinstance(task, dict) else None
     return [p for p in list_of or [] if isinstance(p, dict)]
 
@@ -1123,7 +1123,7 @@ OPINIONS = ("favorable", "unfavorable", "abstention")
 
 
 def last_reviews(rec, who_is):
-    """{reviewer: sa relecture la plus récente} (append only: the list's order is that of publication)."""
+    """{reviewer: their latest review} (append only: the list's order is that of publication)."""
     return {who_is.name(r.get("reviewer")): r for r in rec.get("reviews") or [] if isinstance(r, dict)}
 
 
@@ -1341,8 +1341,8 @@ def first_parent_commits(root, ref, *paths, filter_fn=None):
 
 
 def read_versions(root, requests):
-    """Content of files at given revisions, in a single call (git cat-file --batch): {(sha, chemin): texte, ou None
-    si le fichier n'existe pas à cette révision ou n'est pas du texte UTF-8}. Only the paths of PATH_HISTORY are read.
+    """Content of files at given revisions, in a single call (git cat-file --batch): {(sha, path): text, or None
+    if the file does not exist at that revision or is not UTF-8 text}. Only the paths of PATH_HISTORY are read.
     ruche-0095: never a request that holds a newline or a carriage return (cat-file --batch reads one per line, and drops a
     final carriage return: it would read another file, or shift every answer after it)."""
     requests = [d for d in dict.fromkeys(requests) if PATH_HISTORY.match(d[1]) and not set("\n\r") & set(f"{d[0]}:{d[1]}")]
@@ -1596,7 +1596,7 @@ def _instant_or_none(value):
 
 
 def activity_by_area(reg, instant=None, days=None):
-    """The hive's work over the window, by area: ({area: {"total": poids, "gestes": {kind_of: poids}}}, days).
+    """The hive's work over the window, by area: ({area: {"total": weight, "gestures": {kind_of: weight}}}, days).
 
     Counts the reservations in progress and the contributions (weight of the task's size), the tasks created or
     proposed, the reviews, measurements and notes (coordination), the agora's open debates, arguments and syntheses
@@ -2646,7 +2646,7 @@ def numbers_in(reg, ref, folder, reason):
 
 
 def expected_numbers(added_items, following):
-    """{chemin ajouté: chemin attendu} for numbered files added together ([(number, path, template)]): the numbers
+    """{added path: expected path} for numbered files added together ([(number, path, template)]): the numbers
     that follow, in order; None for a number in the range reserved for tests."""
     expected_items = {}
     for number_of, path, template in sorted(added_items):
@@ -4752,7 +4752,7 @@ def form_problems(reg, path, data):
 
 
 def removal_of(reg, path, text, entry):
-    """(before, after, {place_of: passages retirés}) of a scanned file; « … » replaces the marker that would exceed a bound
+    """(before, after, {place_of: removed passages}) of a scanned file; « … » replaces the marker that would exceed a bound
     (never longer than the passage); a recorded identity's invitation withdraws its file (« withdrawn: request »)."""
     before, fingerprints, sort_kind = load_yaml_text(text, path), set(entry["fingerprints"]), scanned_kind(path)
     if not isinstance(before, dict):
@@ -4787,7 +4787,7 @@ def text_after(path, text, before, after, fingerprints):
 
 
 def sweep(reg, entry):
-    """({path: (texte, avant, après, trouvés)} of the scanned files the removal changes, [(path, line no.)] of the YAML
+    """({path: (text, before, after, found)} of the scanned files the removal changes, [(path, line no.)] of the YAML
     comments that name the person: the council corrects them by hand)."""
     results, comments, fingerprints = {}, [], set(entry["fingerprints"])
     for file in sorted(f for sort_kind in SCANNED for f in (reg.root / sort_kind).rglob("*.yaml") if f.is_file()):
@@ -5719,7 +5719,7 @@ def check_pr(reg, base, head, *args, **kwargs):
 def _check_pr(reg, base, head, author, account_created_on=None, instant=None, pr_authors=None, github_id=None):
     """Returns (problems, natures). `reg` must reflect the state of the PR's head.
 
-    pr_authors: {adresse de PR: login GitHub de son auteur} (PR address: GitHub login of its author), read by auto-merge
+    pr_authors: {PR address: (its author's GitHub login, account number or None)}, read by auto-merge
     from the API for each PR declared in an added or modified contribution; if given, each must belong to the
     contribution's author (or to their declared agent account), and a PR missing from the list is refused (fail closed).
 
@@ -10332,7 +10332,7 @@ def repo_owner(url):
 def prepared_engagements(repo, changes):
     """ruche-0129 (E7): the engagements (reservation, registration in parallel) prepared with the submission that follows them,
     in the same changes. The gate judges a submission on the engagement of its base (it is refused « open → in_review »):
-    the engagement goes first, alone. {chemin de la tâche : (titre de sa PR, ce que modify_task rejoue sur la tâche de HEAD)}."""
+    the engagement goes first, alone. {task path: (its PR's title, what modify_task replays on HEAD's task)}."""
     prepared = {}
     for path in changes:
         m = re.match(r"contributions/([a-z0-9-]+)/", path)
@@ -10707,7 +10707,7 @@ def read_node(text, place_of):
 
 
 def load_tree(reg):
-    """The nodes of tree/ ({identifier: nœud}) and the structure problems; cached on the registry."""
+    """The nodes of tree/ ({identifier: node}) and the structure problems; cached on the registry."""
     if getattr(reg, "_tree", None) is not None:
         return reg._tree
     nodes, problems_found = {}, []
