@@ -1,0 +1,10 @@
+id: ruche-0154-c1
+task: ruche-0154
+author: bidji29
+pr: https://github.com/Bee-ruche/registre/pull/279
+summary: The rehearsal's load test replays the English commands, proves each replayed step runs the command
+  it names, and runs in the full suite
+status: in_review
+submitted_at: '2026-11-11T10:19:26Z'
+engaged_since: '2026-11-11T09:23:47Z'
+reviews: []
