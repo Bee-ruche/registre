@@ -37,4 +37,4 @@ jobs:
         timeout-minutes: 30
         run: python3 tools/test_bee.py --processes 4
       - name: "Unit tests of the common judge (without Docker; meta-tests in the judge's own workflow)"
-        run: python3 outils/juge/test_juge.py
+        run: python3 tools/judge/test_judge.py
