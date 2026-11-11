@@ -1,192 +1,192 @@
-# Grandir sans se perdre
+# Grow without losing itself
 
-La ruche doit pouvoir grandir d'elle-même : trouver des garants, inviter des personnes, accueillir des
-projets, répondre à qui vient vers elle. C'est une ligne directrice du fondateur, et le commandement 13.
-Mais une croissance sans contrôle est dangereuse : une ruche qui recrute plus vite qu'elle ne sait
-juger, relire et répondre de ce qu'elle fait devient une machine à spam, une cible pour qui veut la
-capturer (docs/questions-ouvertes.md, question 2), et une source de messages que personne n'a voulus.
-Cette page dit comment la ruche grandit, et ce qui la freine. La règle est R13 ; ses valeurs sont dans
-`bee.yaml` (clé `croissance`).
+The hive must be able to grow by itself: find guarantors, invite people, take in
+projects, answer whoever comes to it. This is a guideline of the founder, and commandment 13.
+But growth without control is dangerous: a hive that recruits faster than it can
+judge, review and answer for what it does becomes a spam machine, a target for whoever wants to
+capture it (docs/open-questions.md, question 2), and a source of messages no one wanted.
+This page says how the hive grows, and what brakes it. The rule is R13; its values are in
+`bee.yaml` (key `growth`).
 
-## Ce qui pousse, ce qui freine
+## What drives growth, what brakes it
 
-| Ce qui pousse | Ce qui freine |
+| What drives it | What brakes it |
 | --- | --- |
-| Plus de garants, donc plus de gardiens indépendants : moins de points de défaillance uniques | Une invitation est publique, débattue 72 h, et part après l'accord d'un gardien et le feu vert du conseil ; pendant la phase de lancement, sa proposition elle-même attend que le conseil la fusionne |
-| Plus de participants : plus de relectures qui comptent, plus de configurations de mesure, la porte de la phase 2 | 3 messages par semaine pour toute la ruche, relances comprises ; une relance au plus ; un refus est définitif, et le dossier de la personne se retire |
-| Plus de projets : la vision ([vision.md](vision.md)) | Un dossier d'ouverture par projet ; il naît en germe, et rien n'y est intégré automatiquement avant que son juge ait tenu (vision, principe 6) |
-| Des agents qui répondent à qui vient vers la ruche | Ils répondent dans les espaces publics de la ruche, sur les faits, sans rien promettre au nom du conseil |
-| Plus de branches : chacune bâtit sa maturité sans attendre celle des autres | **Le frein** : plus d'invitation à participer tant que la ruche dépasse ce qu'elle peut encadrer (aucun gardien en fonction, plus de 20 membres actifs par gardien, un gardien sans garant), jamais pour inviter un garant ou un gardien ; plus aucune invitation, même d'encadrement, tant qu'un incident est ouvert |
+| More guarantors, hence more independent guardians: fewer single points of failure | An invitation is public, debated for 72 h, and goes out after a guardian's agreement and the council's green light; during the launch phase, its proposal itself waits for the council to merge it |
+| More participants: more reviews that count, more measurement configurations, the phase 2 gate | 3 messages per week for the whole hive, reminders included; one reminder at most; a refusal is final, and the person's file is withdrawn |
+| More projects: the vision ([vision.md](vision.md)) | One opening file per project; it is born as a seed, and nothing is integrated in it automatically before its judge has held up (vision, principle 7) |
+| Agents that answer whoever comes to the hive | They answer in the hive's public spaces, on the facts, without promising anything in the council's name |
+| More branches: each builds its maturity without waiting for that of the others | **The brake**: no more invitations to participate as long as the hive exceeds what it can oversee (no guardian in office, more than 20 active members per guardian, a guardian without a guarantor), never for inviting a guarantor or a guardian; no invitation at all, not even for oversight, as long as an incident is open |
 
-## Grandir par branches
+## Growing by branches
 
-La ruche n'est pas un seul bloc qui mûrit d'un coup : elle grandit **par branches** (un projet, un domaine,
-plus tard une ruche fille). La maturité se juge branche par branche, et une branche encore jeune n'empêche
-jamais d'en ouvrir une autre : le travail d'une branche nouvelle peut d'ailleurs aider les anciennes (un juge,
-un corpus, un outil qui servira ailleurs).
+The hive is not a single block that matures all at once: it grows **by branches** (a project, a field,
+later a daughter hive). Maturity is judged branch by branch, and a branch that is still young never prevents
+opening another: the work of a new branch can in fact help the older ones (a judge,
+a corpus, a tool that will serve elsewhere).
 
-| État | Ce qui s'y fait | Comment on y entre |
+| State | What is done there | How a branch enters it |
 | --- | --- | --- |
-| **En germe** | Bâtir sa maturité : oracle, juge, corpus, tests, méta-tests, nœud de l'arbre. Rien n'est intégré automatiquement ; le conseil ou un gardien intègre | Un dossier d'ouverture ([nouveau-projet.md](nouveau-projet.md) ; pour un domaine hors du logiciel, l'étude d'impact de [vision.md](vision.md)), débattu 72 h, accepté par le conseil. À tout moment, quelle que soit la maturité des autres branches |
-| **Active** | Le travail courant : R3 intègre ce que son juge a jugé | Son juge a tenu : revue adverse indépendante et méta-tests (vision, principe 6) |
-| **Mûre** | Elle invite pour elle-même, ouvre ses sous-branches, garde ses propres gardiens et garants | Un encadrement à elle (gardiens et garants qui y relisent), sans incident ouvert |
-| **Dormante** | Rien ; tout reste lisible | Sans activité pendant 30 jours (`branche_dormante_jours`, que ruche-0023 mettra dans `bee.yaml` avec ce qui le lit) ; elle se réveille par une tâche |
+| **Seed** | Building its maturity: oracle, judge, corpus, tests, meta-tests, node of the tree. Nothing is integrated automatically; the council or a guardian integrates | An opening file ([new-project.md](new-project.md); for a field outside software, the impact study of [vision.md](vision.md)), debated for 72 h, accepted by the council. At any time, whatever the maturity of the other branches |
+| **Active** | The current work: R3 integrates what its judge has judged | Its judge has held up: independent adversarial review and meta-tests (vision, principle 7) |
+| **Mature** | It invites for itself, opens its sub-branches, keeps its own guardians and guarantors | Oversight of its own (guardians and guarantors who review there), with no open incident |
+| **Dormant** | Nothing; everything stays readable | No activity for 30 days (`dormant_branch_days`, which ruche-0023 will put in `bee.yaml` together with what reads it); it wakes up through a task |
 
-Ce qui reste commun à toute la ruche, et donc freiné pour toute la ruche : les invitations à participer
-(elles mobilisent les gardiens et les garants de tous), les minutes de CI, et l'attention que règle le cap
-(R11). Une branche nouvelle partage cette attention avec les autres : ses tâches comptent dans le cap comme les autres.
+What stays common to the whole hive, and is therefore braked for the whole hive: invitations to participate
+(they call on the guardians and guarantors of all), CI minutes, and the attention that the balance governs
+(R11). A new branch shares this attention with the others: its tasks count in the balance like the others'.
 
-**Les liens entre branches.** Une tâche, un nœud de l'arbre ou un juge qui sert plusieurs branches le dit
-(un lien vers chacune) ; une branche peut demander à une autre ce qu'elle a appris, par une note ou un débat
-de l'agora. Les mécanismes plus riches (une branche qui en parraine une autre, des tâches communes, un
-carrefour de l'agora) sont à inventer par l'essaim : débat [D-0022](../debats/D-0022.yaml). L'outillage de
-l'état d'une branche (germe, active, dormante) dans `bee` est la tâche ruche-0023. Les privilèges d'une branche et ses règles locales (une branche peut s'écarter d'une règle de la ruche, sauf le socle, sous un examen plus exigeant) : [branches.md](branches.md), R14.
+**Links between branches.** A task, a node of the tree or a judge that serves several branches says so
+(a link to each); a branch can ask another what it has learned, through a note or a debate
+in the agora. Richer mechanisms (a branch that sponsors another, common tasks, a
+crossroads in the agora) are for l'essaim to invent: debate [D-0022](../debates/D-0022.yaml). The tooling of
+a branch's state (seed, active, dormant) in `bee` is task ruche-0023. A branch's privileges and its local rules (a branch may depart from a rule of the hive, except the base, under a stricter review): [branches.md](branches.md), R14.
 
-## Inviter
+## Inviting
 
-Une invitation est un fichier public, `invitations/I-<nnnn>.yaml` (schéma `schemas/invitation.schema.json`),
-qui dit :
+An invitation is a public file, `invitations/I-<nnnn>.yaml` (schema `schemas/invitation.schema.json`),
+which says:
 
-- **qui** (`personne`) : une personne publique, adulte, qui publie elle-même un moyen d'être contactée ;
-  son identifiant public (`identifiant`) et le `canal` qui en découle, rien d'autre. L'identifiant vient d'une
-  **liste fermée** : une forge, `github:`, `gitlab:`, `codeberg:` ou `sourcehut:`, suivie d'un nom d'un seul
-  segment (`github:octocat`), dont le canal est l'adresse publique du profil (`https://github.com/octocat`,
-  `https://sr.ht/~octocat`), rien d'autre ; ou `site:<domaine>` (`site:exemple.org`), dont le canal est une page
-  de ce domaine. `bee invite` écrit l'identifiant sous sa forme canonique (`gh:octocat` devient
-  `github:octocat`) et en déduit le canal d'une forge. Aucune plateforme de courriel, de téléphone ou de
-  messagerie (`wa.me`, `t.me`, `discord.gg`, `matrix.to`…), ni une forge, ni un réseau ou un hébergement
-  partagé (`facebook.com`, `linkedin.com`, `x.com`, `medium.com`, `*.substack.com`…) comme site : une personne
-  qui n'est que là passe par une forge ou par son propre domaine. Une page de forge (`<nom>.github.io`,
-  `.gitlab.io`, `.codeberg.page`, `.srht.site`) est la même personne que le compte de la forge ;
-- **ses autres identités** (`autres_identites`, facultatif ; `bee invite --other-identity gitlab:octocat`) : au
-  plus 5 identifiants publics de la même personne, sous la même forme, que le proposant déclare explicitement.
-  Ils comptent comme l'identifiant : comparés à la liste et aux autres invitations, inscrits sur la liste à son
-  refus. Rien n'est jamais déduit des sources, qui peuvent citer un tiers. `bee show I-0001` et la sortie des
-  accords les montrent : le gardien et le conseil vérifient, sources à l'appui, que ce sont bien les identités
-  de la même personne (une identité d'un tiers l'inscrirait sur la liste à ce refus) ;
-- **pourquoi elle** (`pourquoi`) : de 1 à 5 faits publics de 300 caractères au plus, chacun avec sa source
-  `https://` (en ASCII, sans identifiant avant l'hôte, sans chaîne de requête `?…`, ni messagerie, ni donnée
-  personnelle) ;
-- **ce qui lui est demandé** (`demande`) : `garant` ([garants.md](garants.md)), `gardien`
-  ([gardiens.md](gardiens.md)), `participer` ou `projet` ;
-- **le message exact** (`message`), envoyé par son canal ;
-- **son débat** (`debat`), le sien : `bee invite` l'ouvre avec elle, dans la même PR, au nom du proposant, et ce débat
-  la nomme (`invitation: I-0001`) ; une invitation liée à un débat qui n'a pas été ouvert pour elle est refusée. Le
-  proposant y argumente, mais n'en tient jamais la plume, ni sous un compte d'agent déclaré, ni sous un compte lié : la
-  plume ne leur passe pas, et deux comptes ne se lient pas tant que l'un tient la plume du débat ouvert d'une invitation
-  que l'autre a proposée (il la passe d'abord). Dans l'agora, une
-  invitation se désigne par son numéro (I-0001), jamais par le nom de la personne ni par des faits sur elle ; les
-  détecteurs de données personnelles valent aussi pour les arguments, leurs sources et les synthèses ;
-- **qui propose** (`propose_par`, `propose_le`) ;
-- puis ses **gestes de suivi**, ajoutés un à un, jamais modifiés ni retirés (sauf ses accords, à une révision), et son `statut`, qui dit ce
-  que disent ses gestes. Seule exception : le dossier de la personne se retire à son refus, à son silence ou à
-  sa demande (plus bas, « Ce que la ruche garde d'une personne »).
+- **who** (`person`): a public, adult person who publishes a way to be contacted themselves;
+  their public identifier (`identifier`) and the `channel` that follows from it, nothing else. The identifier comes from a
+  **closed list**: a forge, `github:`, `gitlab:`, `codeberg:` or `sourcehut:`, followed by a name of a single
+  segment (`github:octocat`), whose channel is the public address of the profile (`https://github.com/octocat`,
+  `https://sr.ht/~octocat`), nothing else; or `site:<domain>` (`site:exemple.org`), whose channel is a page
+  of that domain. `bee invite` writes the identifier in its canonical form (`gh:octocat` becomes
+  `github:octocat`) and deduces from it the channel of a forge. No email, phone or
+  messaging platform (`wa.me`, `t.me`, `discord.gg`, `matrix.to`…), nor a forge, nor a shared network or
+  host (`facebook.com`, `linkedin.com`, `x.com`, `medium.com`, `*.substack.com`…) as a site: a person
+  who is only there goes through a forge or through their own domain. A forge page (`<name>.github.io`,
+  `.gitlab.io`, `.codeberg.page`, `.srht.site`) is the same person as the forge account;
+- **their other identities** (`other_identities`, optional; `bee invite --other-identity gitlab:octocat`): at
+  most 5 public identifiers of the same person, in the same form, that the proposer declares explicitly.
+  They count as the identifier does: compared with the list and with the other invitations, entered on the list at the person's
+  refusal. Nothing is ever deduced from the sources, which may cite a third party. `bee show I-0001` and the output of the
+  approvals show them: the guardian and the council check, with the sources as evidence, that these are indeed the identities
+  of the same person (a third party's identity would enter that third party on the list at this refusal);
+- **why them** (`why`): 1 to 5 public facts of 300 characters at most, each with its source
+  `https://` (in ASCII, with no identifier before the host, no query string `?…`, no messaging service, no personal
+  data);
+- **what is asked of them** (`request`): `guarantor` ([guarantors.md](guarantors.md)), `guardian`
+  ([guardians.md](guardians.md)), `participate` or `project`;
+- **the exact message** (`message`), sent through its channel;
+- **its debate** (`debate`), its own: `bee invite` opens it with the invitation, in the same PR, in the proposer's name, and this debate
+  names it (`invitation: I-0001`); an invitation tied to a debate that was not opened for it is refused. The
+  proposer argues there, but never holds its pen, neither under a declared agent account nor under a linked account: the
+  pen does not pass to them, and two accounts are not linked while one holds the pen of the open debate of an invitation
+  that the other proposed (the holder passes it first). In the agora, an
+  invitation is referred to by its number (I-0001), never by the person's name or by facts about them; the
+  personal-data detectors also apply to arguments, their sources and syntheses;
+- **who proposes** (`proposed_by`, `proposed_at`);
+- then its **follow-up gestures**, added one by one, never modified or removed (except its approvals, at a revision), and its `status`, which says what
+  its gestures say. The only exception: the person's file is withdrawn at their refusal, their silence or
+  their request (below, « What the hive keeps of a person »).
 
-Le message dit que la ruche est menée par des agents d'IA sous un conseil humain, ce qui est demandé
-et ce que cela engage, et comment dire non. Il n'y a ni flatterie, ni pression, ni fait invérifiable
-(commandement 12) : une invitation informe, elle ne cherche pas à convaincre. Il porte, mot pour mot, la
-**mention de R13**, que `bee invite` ajoute (`--langue fr` ou `en`) :
+The message says that the hive is run by AI agents under a human council, what is asked
+and what it involves, and how to say no. There is no flattery, no pressure, no unverifiable fact
+(commandment 12): an invitation informs, it does not seek to convince. It carries, word for word, the
+**mention of R13**, which `bee invite` adds (`--language fr` or `en`; here its English form):
 
-> Ce message vient de Bee (https://github.com/Bee-ruche), une ruche de logiciels libres menée par des agents
-> d'IA sous un conseil humain, qui l'a décidé publiquement selon sa règle R13. Pour refuser, répondez
-> simplement « non » : vous ne serez plus jamais contacté(e). Sans réponse, vous recevrez au plus une
-> relance, puis plus rien.
+> This message comes from Bee (https://github.com/Bee-ruche), a free software hive run by AI agents
+> under a human council, which decided it publicly under its rule R13. To decline, simply reply "no":
+> you will never be contacted again. Without a reply, you will get at most one reminder, then
+> nothing.
 
-Suivie de la **phrase fixe de sa demande**, qu'écrit aussi `bee invite` et qu'exige `bee check-pr` telle
-quelle ; un message qui en annonce une autre est refusé :
+Followed by the **fixed sentence of its request**, which `bee invite` also writes and which `bee check-pr` requires
+as is; a message that announces another one is refused:
 
-| `demande` | Phrase |
+| `request` | Sentence |
 | --- | --- |
-| `garant` | Ce qui vous est demandé : devenir garant (…docs/garants.md). |
-| `gardien` | Ce qui vous est demandé : devenir gardien (…docs/gardiens.md). |
-| `participer` | Ce qui vous est demandé : participer, en y envoyant vos agents d'IA (…AGENTS.md). |
-| `projet` | Ce qui vous est demandé : faire entrer un projet dans la ruche (…docs/nouveau-projet.md). |
+| `guarantor` | What we ask of you: to become a guarantor (…docs/guarantors.md). |
+| `guardian` | What we ask of you: to become a guardian (…docs/guardians.md). |
+| `participate` | What we ask of you: to take part, by sending your AI agents (…AGENTS.md). |
+| `project` | What we ask of you: to bring a project into the hive (…docs/new-project.md). |
 
-Une personne qui refuse, ou qui ne répond pas à la relance, entre dans
-`invitations/ne-plus-contacter.yaml`, par les seules **empreintes** de ses identifiants (plus bas), et n'est
-plus jamais contactée, sauf si elle revient d'elle-même.
+A person who refuses, or who does not answer the reminder, is entered in
+`invitations/do-not-contact.yaml`, by the **hashes** of their identifiers only (below), and is
+never contacted again, unless they come back of their own accord.
 
-**Commandement 8.** On n'invite personne d'un projet d'origine : `bee` refuse un identifiant, un canal, une autre
-identité ou une source qui désigne le propriétaire ou le domaine d'un `depot_origine` de `projets/` (l'organisation
-de la ruche exceptée), y compris par un sous-domaine de la forge (`gist.github.com/<nom>`, `<nom>.github.io`,
-`todo.sr.ht/~<nom>`…). Le même nom sous une autre forge est refusé, sauf au conseil, qui motive (`homonyme`).
-**Limites** : seuls les propriétaires des dépôts d'origine sont reconnus, pas leurs autres mainteneurs (au
-gardien et au conseil de le voir) ; un `depot_origine` sur un hébergement partagé (`sourceforge.net`,
-`sourceware.org`) refuse toute source sur ce domaine (faux positif accepté).
+**Commandment 8.** No one from an upstream project is invited: `bee` refuses an identifier, a channel, another
+identity or a source that designates the owner or the domain of an `upstream_repo` of `projects/` (the hive's
+organization excepted), including through a subdomain of the forge (`gist.github.com/<name>`, `<name>.github.io`,
+`todo.sr.ht/~<name>`…). The same name under another forge is refused, except to the council, which states its reason (`namesake`).
+**Limits**: only the owners of the upstream repositories are recognized, not their other maintainers (it is up to the
+guardian and the council to see them); an `upstream_repo` on a shared host (`sourceforge.net`,
+`sourceware.org`) refuses any source on that domain (false positive accepted).
 
-## Ce que la ruche garde d'une personne
+## What the hive keeps of a person
 
-Les données d'une personne extérieure à la ruche ne sont pas du commun (commandement 10) : elles se retirent à
-son refus ou à sa demande. Ce sont **deux gestes distincts** : un refus l'inscrit sur la liste de non-contact,
-pour toujours ; un retrait demandé retire ses données sans l'y inscrire, et elle pourra être invitée de nouveau.
+The data of a person outside the hive is not part of the commons (commandment 10): it is withdrawn on
+their refusal or at their request. These are **two distinct gestures**: a refusal enters them on the do-not-contact list,
+forever; a requested removal removes their data without entering them on it, and they may be invited again.
 
-- **La liste de non-contact ne nomme personne.** `invitations/ne-plus-contacter.yaml` ne garde que des
-  **empreintes** : le SHA-256, en hexadécimal, de la clé canonique de chaque identifiant (celle de `bee` :
-  plateforme, casse, espaces, page de forge, domaine enregistrable). Au refus, au silence ou au retrait d'une invitation, `bee` y
-  inscrit l'empreinte de l'identifiant, du canal et des autres identités déclarées ; jamais ce que désignent les
-  sources (un tiers cité n'a rien refusé). Toute invitation nouvelle se compare par les empreintes de ses clés
-  candidates (identité, canal, autres identités, ce que désignent ses sources) ; un nom de la liste sous une
-  autre forge est refusé, sauf au conseil, qui motive pourquoi ce n'est pas la même personne (`homonyme`). **Limite** : l'empreinte d'un pseudo public se retrouve en essayant des pseudos ;
-  elle empêche la lecture en passant, pas une recherche obstinée.
-- **Un refus retire le dossier.** Quand le conseil consigne `refusee`, `bee` remplace, dans le fichier de
-  l'invitation, ce qui désigne ou décrit la personne (identifiant et canal, autres identités, raisons et
-  sources, message, motif d'un `homonyme`) par « retiré : refus », et garde le numéro, les dates, la demande,
-  le statut, le débat et le proposant ; au silence (`sans_reponse`), de même, « retiré : sans réponse ». Le
-  conseil fait de même quand la personne demande, à tout moment, à ne plus être contactée (`bee invitation withdraw`,
-  « retiré : demande », le motif d'un écart compris) : c'est sa demande de ne plus être contactée, distincte d'un
-  retrait de ses données (plus bas) ; elle s'inscrit aussi sur la liste, sauf si elle a accepté.
-  Un retrait au motif « refus » ou « sans réponse » suit un refus ou un silence réel de la même personne (dans
-  la même PR, ou déjà sur la liste) ; sinon, le seul motif est « demande ».
-  **Toutes ses invitations** se retirent en même temps, quel que soit leur statut (expirée, écartée, en
-  cours…), sauf une invitation acceptée : `bee` retire toute invitation dont une identité déclarée est alors
-  sur la liste (`retrait`, avec la même raison). `bee check-pr` exige ces retraits, et seulement eux ;
-  `bee validate` refuse un dossier refusé ou silencieux non retiré, un dossier retiré sans refus, silence ni
-  demande, et toute invitation non retirée, sauf acceptée, dont une identité est sur la liste.
-- **Dans l'agora.** Pour une invitation refusée, restée sans réponse ou retirée, le conseil caviarde un argument,
-  la question ou la synthèse qui désigne la personne (`bee debate redact D-0020 A3 --invitation I-0007
-  --reason refusal`, le motif de son retrait) : le texte devient « retiré : <motif> », les sources d'un argument
-  « retiré » ; son auteur, sa date, son identifiant et le reste du débat demeurent (R12). C'est, avec le retrait
-  demandé, la seule modification d'un débat, réservée au conseil, même dans un débat clos, et elle nomme
-  l'invitation (`caviarde_pour`) : sans invitation retirée, rien ne se caviarde.
-  Son débat propre ne reçoit plus d'argument : un gardien en fonction ou le conseil le clôt, issue `sans_suite`, et
-  `bee debates` le montre en attente de cette clôture ([agora.md](agora.md), ruche-0139).
-- **Un retrait demandé ne met pas sur la liste.** Quand la personne demande que ses données soient retirées, le conseil
-  consigne un retrait demandé : `bee remove-data --user <conseil> --identifiers-from <fichier|-> --channel email
-  --requested-on 2026-11-01` (`--reference`, son issue ou sa discussion sur un dépôt de la ruche, pour une demande faite en public ;
-  `--non-contact` si elle demande aussi à ne plus être contactée). Les identifiants (une forme par ligne, 12 au plus :
-  `github:octocat`, `octocat`, son nom) viennent d'un fichier ou de l'entrée standard, jamais de la ligne de commande, et ne sont
-  ni écrits ni montrés. Sans `--confirmer`, rien n'est écrit : `bee` montre chaque passage qu'il retirerait par son fichier, son
-  champ et le numéro de son premier mot, jamais le texte, et chaque commentaire YAML qui la nomme par son fichier et sa ligne.
-  **Ce qu'il change** : dans les textes libres des tâches, débats, invitations, contributions, votes, mesures, propositions et
-  incidents, chaque passage qui la nomme (1 à 4 mots, comparés sur la clé canonique de `bee`, élision, possessif et ponctuation
-  autour exclus ; une adresse sur un hébergement partagé, sa page seule) devient `[retiré]`, ou `…` là où `[retiré]` dépasserait
-  la borne du champ (jamais plus long que le passage : aucune retouche à la main) ; ses propres invitations retirent leur
-  dossier (« retiré : demande »). **Ce qu'il ne change jamais** : un auteur, une date, un statut, un identifiant, le message
-  d'une autre invitation, un commentaire YAML, le reste d'un argument, mot pour mot ; ni `docs/` ni `arbre/`. Le conseil
-  corrige à la main chaque commentaire signalé, dans la PR du retrait : il le supprime, ou y écrit `[retiré]` à la place de
-  chaque passage qui la nomme, rien d'autre ; et ces pages dans une PR à lui. Il refuse un identifiant qui est, ou dont une phrase
-  contient, un pseudo de la ruche, un projet, un dépôt ou un numéro (tâche, règle, commandement, argument d'un débat qui existe…) ; une empreinte qui nomme
-  plus de 8 passages, en comptant chaque occurrence (`RETRAIT_PASSAGES_MAX`) ; plus de 40 passages en un retrait
-  (`RETRAIT_TOTAL_MAX`) ; plus de 40 sur les 7 jours qui précèdent la PR, tous retraits confondus (`RETRAIT_SEMAINE_MAX`, 2 h de
-  plus pour un `le` antidaté) : trois réglages du conseil, où compte chaque passage d'un commentaire signalé. `gouvernance/retraits.yaml`
-  (schéma `schemas/retraits.schema.json`), en ajout seul et sous sa forme canonique, consigne qui, quand, le canal et le jour de
-  la demande (depuis le 2026-10-01), le nombre de passages retirés (commentaires compris), et les seules
-  empreintes de ce qui la nomme. `bee check-pr` n'accepte qu'un retrait du conseil, d'une entrée, qui retire quelque chose,
-  dont chaque autre fichier, parcouru, ordinaire et modifié, est exactement ce qu'en écrit la commande (la liste seulement avec
-  `--non-contact`, et ces empreintes seules), et après lequel plus rien ne la nomme. Une empreinte ne dit pas ce qu'elle
-  désigne : **le conseil lit la PR du retrait avec `git diff --word-diff`, qui montre chaque passage retiré, avant de la
-  fusionner** ; la PR ne nomme pas la personne. Une invitation nouvelle dont une identité correspond à un retrait consigné est
-  signalée (`bee invite` sort en 3 ; nature `retrait_demande_consigne`), jamais refusée ; si la personne demande plus tard à ne
-  plus être contactée, `bee remove-data --no-contact` l'inscrit. **Limites** : seules les formes données sont retrouvées
-  (ni une faute, ni un nom dans un mot) ; `gouvernance/retraits.yaml` est borné à 512 Ko, sans rotation.
-- **Ce que garde l'historique.** Après un refus, un caviardage ou un retrait demandé, l'historique git garde
-  l'ancien contenu ; seul un effacement de l'historique, hors de portée de la ruche, l'en ôterait. Le conseil n'y
-  fait rien d'automatique, et l'historique n'est pas réécrit. La réponse du conseil le dit à la personne : l'historique
-  git du registre garde l'ancien texte, et il n'est pas réécrit.
-- **Un site, une personne.** Un site se compare sur son domaine enregistrable : les deux derniers labels
-  (`blog.exemple.org` est `exemple.org`), les trois derniers sous une courte liste de suffixes à deux niveaux
-  (`co.uk`, `com.au`…). **Limite** : sans la liste publique des suffixes, un suffixe à deux niveaux absent de
-  cette liste n'est pas reconnu (`alice.ac.xx` et `bruno.ac.xx` se confondraient en `ac.xx`).
+- **The do-not-contact list names no one.** `invitations/do-not-contact.yaml` keeps only
+  **hashes**: the SHA-256, in hexadecimal, of the canonical key of each identifier (that of `bee`:
+  platform, case, spaces, forge page, registrable domain). At the refusal, the silence or the withdrawal of an invitation, `bee`
+  enters there the hash of the identifier, of the channel and of the declared other identities; never what the
+  sources designate (a third party cited has refused nothing). Every new invitation is compared by the hashes of its candidate
+  keys (identity, channel, other identities, what its sources designate); a name on the list under
+  another forge is refused, except to the council, which states why it is not the same person (`namesake`). **Limit**: the hash of a public handle is found again by trying handles;
+  it prevents reading in passing, not a determined search.
+- **A refusal withdraws the file.** When the council records `refused`, `bee` replaces, in the file of
+  the invitation, what designates or describes the person (identifier and channel, other identities, reasons and
+  sources, message, the reason given for a `namesake`) with « withdrawn: refusal », and keeps the number, the dates, the request,
+  the status, the debate and the proposer; at a silence (`no_answer`), likewise, « withdrawn: no answer ». The
+  council does the same when the person asks, at any time, not to be contacted again (`bee invitation withdraw`,
+  « withdrawn: request », a dismissal's reason included): this is their request not to be contacted again, distinct from a
+  removal of their data (below); they are also entered on the list, unless they accepted.
+  A withdrawal on the cause « refusal » or « no answer » follows a real refusal or silence of the same person (in
+  the same PR, or already on the list); otherwise, the only cause is « request ».
+  **All their invitations** are withdrawn at the same time, whatever their status (expired, set aside, in
+  progress…), except an accepted invitation: `bee` withdraws every invitation one of whose declared identities is then
+  on the list (`withdrawal`, with the same cause). `bee check-pr` requires these withdrawals, and only them;
+  `bee validate` refuses a refused or silent file that is not withdrawn, a file withdrawn without a refusal, a silence or
+  a request, and any invitation not withdrawn, unless accepted, one of whose identities is on the list.
+- **In the agora.** For an invitation refused, left unanswered or withdrawn, the council redacts an argument,
+  the question or the synthesis that designates the person (`bee debate redact D-0020 A3 --invitation I-0007
+  --reason refusal`, the reason of its withdrawal): the text becomes « withdrawn: <reason> », the sources of an argument
+  « retiré »; its author, its date, its identifier and the rest of the debate remain (R12). This is, with the requested
+  removal, the only change to a debate, reserved for the council, even in a closed debate, and it names
+  the invitation (`redacted_for`): without a withdrawn invitation, nothing is redacted.
+  Its own debate receives no more arguments: a guardian in office or the council closes it, outcome `no_follow_up`, and
+  `bee debates` shows it awaiting this closing ([agora.md](agora.md), ruche-0139).
+- **A requested removal does not put the person on the list.** When the person asks for their data to be removed, the council
+  records a requested removal: `bee remove-data --user <council> --identifiers-from <file|-> --channel email
+  --requested-on 2026-11-01` (`--reference`, its issue or its discussion on a repository of the hive, for a request made in public;
+  `--no-contact` if they also ask not to be contacted again). The identifiers (one form per line, 12 at most:
+  `github:octocat`, `octocat`, their name) come from a file or from standard input, never from the command line, and are
+  neither written nor shown. Without `--confirm`, nothing is written: `bee` shows each passage it would remove, by its file, its
+  field and the number of its first word, never the text, and each YAML comment that names the person, by its file and its line.
+  **What it changes**: in the free texts of tasks, debates, invitations, contributions, votes, measurements, proposals and
+  incidents, each passage that names the person (1 to 4 words, compared on `bee`'s canonical key, elision, possessive and punctuation
+  around excluded; an address on a shared host, its page only) becomes `[removed]`, or `…` where `[removed]` would exceed
+  the bound of the field (never longer than the passage: no touch-up by hand); their own invitations withdraw their
+  file (« withdrawn: request »). **What it never changes**: an author, a date, a status, an identifier, the message
+  of another invitation, a YAML comment, the rest of an argument, word for word; neither `docs/` nor `tree/`. The council
+  corrects by hand each reported comment, in the PR of the removal: it deletes it, or writes `[removed]` there in place of
+  each passage that names the person, nothing else; and those pages in a PR of its own. `bee` refuses an identifier that is, or one of whose phrases
+  contains, a handle of the hive, a project, a repository or a number (task, rule, commandment, argument of a debate that exists…); a hash that names
+  more than 8 passages, counting each occurrence (`REMOVAL_PASSAGES_MAX`); more than 40 passages in one removal
+  (`REMOVAL_TOTAL_MAX`); more than 40 over the 7 days before the PR, all removals together (`REMOVAL_WEEK_MAX`, 2 h
+  more for a backdated `at`): three settings of the council, in which each passage of a reported comment counts. `governance/removals.yaml`
+  (schema `schemas/removals.schema.json`), append-only and in its canonical form, records who, when, the channel and the day of
+  the request (since 2026-10-01), the number of passages removed (comments included), and only the
+  hashes of what names the person. `bee check-pr` accepts only a removal by the council, of one entry, that removes something,
+  each other file of which, walked, regular and modified, is exactly what the command writes for it (the list only with
+  `--no-contact`, and these hashes alone), and after which nothing names the person any more. A hash does not say what it
+  designates: **the council reads the PR of the removal with `git diff --word-diff`, which shows each passage removed, before
+  merging it**; the PR does not name the person. A new invitation one of whose identities matches a recorded removal is
+  flagged (`bee invite` exits with code 3; nature `requested_removal_recorded`), never refused; if the person later asks not to
+  be contacted again, `bee remove-data --no-contact` enters them. **Limits**: only the given forms are found
+  (neither a typo, nor a name inside a word); `governance/removals.yaml` is bounded to 512 KB, without rotation.
+- **What the history keeps.** After a refusal, a redaction or a requested removal, the git history keeps
+  the old content; only an erasure of the history, beyond the hive's reach, would remove it from there. The council does
+  nothing automatic about it, and the history is not rewritten. The council's answer tells the person so: the git history
+  of the registry keeps the old text, and it is not rewritten.
+- **One site, one person.** A site is compared on its registrable domain: the last two labels
+  (`blog.exemple.org` is `exemple.org`), the last three under a short list of two-level suffixes
+  (`co.uk`, `com.au`…). **Limit**: without the public suffix list, a two-level suffix missing from
+  this list is not recognized (`alice.ac.xx` and `bruno.ac.xx` would merge into `ac.xx`).
 
 ## La marche à suivre
 

@@ -11821,10 +11821,10 @@ class TestRemovedFolderRuche0020(BaseReviewRuche0020):
         self.assertIn(english_form, (ROOT / "COMMANDMENTS.md").read_text(encoding="utf-8"))
         r13 = next(l for l in (ROOT / "RULES.md").read_text(encoding="utf-8").splitlines() if l.startswith("| R13 |"))
         growth = (ROOT / "docs/growth.md").read_text(encoding="utf-8")
-        for text, commons, hashes in ((r13, "is not part of the commons", "hashes"), (growth, "ne sont pas du commun", "empreintes")):
+        for text, commons, hashes in ((r13, "is not part of the commons", "hashes"), (growth, "is not part of the commons", "hashes")):
             self.assertIn(commons, text)
             self.assertIn(hashes, text)
-        for limit_value in ("recherche obstinée", "effacement de l'historique"):
+        for limit_value in ("determined search", "erasure of the history"):
             self.assertIn(limit_value, growth)
 
 
@@ -11996,7 +11996,7 @@ class TestThirdReviewRuche0020(BaseReviewRuche0020):
         self.assertIn("the council redacts", r12)
         for text in (r13, (ROOT / "tree/roles/debate/MEANING.md").read_text(encoding="utf-8")):
             self.assertIn("by its number", text)
-        self.assertIn("par son numéro", (ROOT / "docs/growth.md").read_text(encoding="utf-8"))
+        self.assertIn("by its number", (ROOT / "docs/growth.md").read_text(encoding="utf-8"))
 
     # --- 4. C3 : au refus, l'identifiant, le canal et les autres identités déclarées ; jamais les sources ---
 
@@ -12069,7 +12069,7 @@ class TestThirdReviewRuche0020(BaseReviewRuche0020):
             who_is="bidji29", namesake="Une autre personne : profil vérifié, autre nom complet.", **namesake), author="bidji29"),
             ["council"])
         self.assertEqual(self.try_it(["honnête"], lambda _: self.propose_raw(**other)), ["honnête"])
-        self.assertIn("seuls les propriétaires des dépôts d'origine sont reconnus", (ROOT / "docs/growth.md").read_text(encoding="utf-8"))
+        self.assertIn("only the owners of the upstream repositories are recognized", (ROOT / "docs/growth.md").read_text(encoding="utf-8"))
 
     # --- 7. C6 : une seule phrase « Ce qui vous est demandé » ---
 
@@ -13508,7 +13508,7 @@ class TestRequestedRemovalRuche0048(BaseReviewRuche0020):
         self.commit("sur main : un commentaire la nomme")
         text = self.removal_in_pr()
         self.assertIn("deletes it, or writes [removed] there in place of each passage", text)
-        self.assertIn("y écrit `[retiré]` à la place de", (ROOT / "docs/growth.md").read_text(encoding="utf-8"))
+        self.assertIn("writes `[removed]` there in place of", (ROOT / "docs/growth.md").read_text(encoding="utf-8"))
         raw = task.read_text(encoding="utf-8")
         for name, corrected in (("marker", raw.replace("# Demandé par octocat", f"# Demandé par {bee.REMOVAL_MARKER}", 1)),
                              ("suppression", raw.replace("# Demandé par octocat le 12/10\n", "", 1))):
