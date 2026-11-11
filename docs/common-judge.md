@@ -1,7 +1,7 @@
 # Common judge: one isolated judge for every project (specification)
 
-Status: version 3 (next tag `juge-v3`, created by the council once this is merged); version 2 in service since 2 November 2026, tag `juge-v2`;
-version 1 since 28 October 2026, tag `juge-v1` (merge decided by the council). The forks move to it through the tasks miniz-0032 (after miniz-0031 is integrated) and
+Status: version 3 in service since 2 November 2026, tag `juge-v3`; version 2 from 2 November 2026, tag `juge-v2`;
+version 1 from 28 October 2026, tag `juge-v1` (merge decided by the council). The forks move to it through the tasks miniz-0032 (after miniz-0031 is integrated) and
 libyaml-0005 (after libyaml-0002).
 
 ## The problem
@@ -153,7 +153,7 @@ after the build). Refusing rather than marking keeps one rule on the verdict sid
 - Each fork pins a version in its workflow; it moves up a version through a PR (a tooling task
   of the fork), judged by the old version and by the new one.
 - `verdict.json` carries `judge.version` (an integer: 2 for minizBee's judge of miniz-0031, 3 for the
-  common judge v1 and v2), `judge.common` (« juge-v1 », « juge-v2 »), `judge.project` and `judge.plugin` (SHA-256 fingerprint of the
+  common judge, v1 to v3), `judge.common` (« juge-v1 », « juge-v2 », « juge-v3 »), `judge.project` and `judge.plugin` (SHA-256 fingerprint of the
   plugin): the registry knows by which judge each verdict was rendered, and requires a minimum
   version (`bee.yaml`, below).
 - **Minimum version** (`common_judge_min` in `bee.yaml`, ruche-0086): with R3's gate at `if_judge_incomplete`, a verdict whose
