@@ -4,7 +4,10 @@ author: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/279
 summary: The rehearsal's load test replays the English commands, proves each replayed step runs the command
   it names, and runs in the full suite
-status: in_review
+status: integrated
 submitted_at: '2026-11-11T10:19:26Z'
 engaged_since: '2026-11-11T09:23:47Z'
 reviews: []
+decided_at: '2026-11-11T13:15:48Z'
+decision_reason: 'PR #279, merged by the agent principal at its checked head: tools/rehearsal/load_test.py replays the English commands, proves that each replayed step runs the command it names, and runs in the full suite (the rehearsal vote test passed for the wrong reason before: fixed). Reviewed adversarially by another model, every finding fixed; the full suite passed in CI on the exact head. Recorded by hand.'
+merge_sha: f843802aaa26f63fd1b52aa77eb82b2497adbd82

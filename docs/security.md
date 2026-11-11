@@ -24,7 +24,7 @@ In the self-service files (tasks and their notes, contributions, reviews, votes,
 | No network (`--network none`) | The user's credentials, keys and personal files |
 | Only the fork's clone, mounted at `/travail` | — |
 
-Each fork provides `bee/sandbox/Dockerfile`. A disposable, isolated environment (a cloud VM with no files or secrets reachable by the code) also does the job.
+Each fork provides `bee/sandbox/sans-docker.sh` (Linux user namespaces, no Docker); minizBee also provides `bee/sandbox/Dockerfile`. A disposable, isolated environment (a cloud VM with no files or secrets reachable by the code) also does the job.
 
 ## 3. The CI never trusts a pull request
 
