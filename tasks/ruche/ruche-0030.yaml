@@ -4,31 +4,32 @@ category: ruche
 type: test
 area: coordination
 size: M
-title: "Suivre et retirer sa contribution, dire « non mesuré », signaler une tâche hors de portée de R4"
+title: "Track and withdraw your contribution, say \"not measured\", flag a task out of R4's reach"
 context: >
-  Répétition générale n° 3 (30/10), ines (optimiser) et karim (nouveau venu). (1) Rien ne permet
-  d'abandonner une contribution soumise : bee liberer refuse, et seul la fermeture de la PR du fork la clôt
-  (ines a dû la laisser en relecture). (2) bee voir n'affiche ni le verdict, ni le résumé, ni les
-  relectures, ni qui doit relire le nouveau commit ; il faut bee verifier-acceptation et lire le YAML. (3)
-  Le manifeste ne sait pas dire « non mesuré » : il exige au moins une répétition et aucune mesure à 0, si
-  bien qu'un agent honnête sans banc doit écrire des chiffres. (4) bee cap et bee lister proposent des
-  tâches dont le plafond connu est sous le seuil de R4 (miniz-0020 vers 1,5 %, miniz-0021 vers 1,7 % : le
-  poids de la boucle visée) ; ines les a écartées à la main, jules en a pris une. À construire : (1) bee
-  retirer <contribution> --utilisateur <auteur> --note : la contribution passe à « retiree », la tâche
-  redevient ouverte (R7 : pas de reprise par l'auteur avant 24 h), l'auteur dit de fermer sa PR ; (2) bee
-  voir <contribution> (ou bee voir <tâche> avec sa contribution) montre résumé, verdict (commit, CI,
-  gains), relectures qui comptent sur le commit jugé et ce qui manque ; (3) mesures: non_mesure accepté
-  par valider-contribution, et bee soumettre le signale aux relecteurs ; (4) un champ facultatif
-  plafond_connu sur une tâche d'optimisation (fraction, avec sa source), et bee lister et bee cap marquent
-  « hors de portée de R4 » une tâche dont le plafond est sous le seuil.
+  Dress rehearsal no. 3 (30 Oct), ines (optimize) and karim (newcomer). (1) Nothing allows
+  abandoning a submitted contribution: bee release refuses, and only closing the fork's PR closes it
+  (ines had to leave it in review). (2) bee show displays neither the verdict, nor the summary, nor
+  the reviews, nor who must review the new commit; it takes bee check-acceptance and reading the
+  YAML. (3) The manifest cannot say "not measured": it requires at least one repetition and no
+  measurement at 0, so that an honest agent without a bench has to write numbers. (4) bee balance
+  and bee list offer tasks whose known ceiling is below R4's threshold (miniz-0020 about 1.5%,
+  miniz-0021 about 1.7%: the weight of the targeted loop); ines set them aside by hand, jules took
+  one. To build: (1) bee withdraw <contribution> --user <author> --note: the contribution goes to
+  "withdrawn", the task becomes open again (R7: no retaking by the author before 24 h), the author
+  is told to close their PR; (2) bee show <contribution> (or bee show <task> with its contribution)
+  shows the summary, the verdict (commit, CI, gains), the reviews that count on the judged commit
+  and what is missing; (3) measurements: unmeasured accepted by validate-manifest, and bee submit
+  flags it to the reviewers; (4) an optional known_ceiling field on an optimization task (a
+  fraction, with its source), and bee list and bee balance mark "out of R4's reach" a task whose
+  ceiling is below the threshold.
 files: [tools/bee.py, tools/test_bee.py, schemas/, docs/contributions.md, tree/roles/optimize/MEANING.md]
 reach: 0.7
 metric: null
 acceptance_criteria:
-  - "test : une contribution retirée rouvre sa tâche, n'est plus intégrable, et son auteur ne la reprend pas avant 24 h"
-  - "test : bee voir d'une contribution montre son verdict et ses relectures sur le commit jugé"
-  - "test : un manifeste « non_mesure » est accepté et signalé ; une tâche au plafond connu sous R4 est marquée par bee lister"
-out_of_scope: [COMMANDMENTS.md, R3 et R4 eux-mêmes]
+  - "test: a withdrawn contribution reopens its task, is no longer integrable, and its author does not take it again before 24 h"
+  - "test: bee show for a contribution shows its verdict and its reviews on the judged commit"
+  - "test: an \"unmeasured\" manifest is accepted and flagged; a task with a known ceiling below R4 is marked by bee list"
+out_of_scope: [COMMANDMENTS.md, R3 and R4 themselves]
 depends_on: []
 node: projects/ruche
 status: open
