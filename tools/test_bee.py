@@ -16445,7 +16445,7 @@ class TestAgentAccounts(BaseDressRehearsal):
         code, text = self.bee("validate")
         self.assertEqual(code, 1, text)
         self.assertIn(f"votes/{cid}/{AGENT}.yaml: {AGENT} is an agent account (governance/agent-accounts.yaml): a person is "
-                      "written by their own pseudo", text)
+                      "written by their own login", text)
 
     def author_record(self, cid):
         return bee.read_yaml(self.dir / f"contributions/miniz/{cid}.yaml")["author"]
@@ -20562,7 +20562,7 @@ class TestLinkedAccountsRuche0051(BaseInvitations):
                 self.assertNotIn("account_of", bee.read_yaml(self.dir / "members/bruno.yaml"))
         bee.write_yaml(self.dir / "members/alice.yaml", {k: v for k, v in alice.items() if k != "login"})
         text = self.ko("members/farid.yaml: a link is one step, confirmed from both sides by account numbers, never to oneself, "
-                        "between two member files that name their pseudo", "validate")
+                        "between two member files that name their login", "validate")
         self.assertNotIn("Traceback", text)
 
     def test_one_vote_and_one_measurement_per_person(self):

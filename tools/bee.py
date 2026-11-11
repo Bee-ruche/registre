@@ -2134,7 +2134,7 @@ def check_registry(reg):
 def link_problems(reg):  # ruche-0051: a declaration alone does nothing; compte_de always confirms one, and no file lists itself
     linked = {id(f) for f, _ in confirmed_links([m for _, m in reg.members.values() if isinstance(m, dict)])}
     return [f"members/{stem}.yaml: a link is one step, confirmed from both sides by account numbers, never to oneself, between two "
-            "member files that name their pseudo (other_accounts, then account_of; only the council unlinks, in both files: ruche-0051)"
+            "member files that name their login (other_accounts, then account_of; only the council unlinks, in both files: ruche-0051)"
             for stem, (_, m) in reg.members.items() if isinstance(m, dict) and (("account_of" in m and id(m) not in linked) or (
                 isinstance(m.get("other_accounts"), list) and m.get("github_id") in m["other_accounts"]))]
 
@@ -2417,7 +2417,7 @@ def check_accounts(reg):
         for problem_text in self_service_text_problems(data, reg.rel(path)):
             add_to(problem_text)
         for p in sorted({p for p in identity_values(data) if p in reg.agents}):  # ruche-0089: never a second person
-            add_to(f"{reg.rel(path)}: {p} is an agent account ({AGENT_ACCOUNTS}): a person is written by their own pseudo")
+            add_to(f"{reg.rel(path)}: {p} is an agent account ({AGENT_ACCOUNTS}): a person is written by their own login")
 
     check_agent_accounts(reg, add_to)
     check_agora_registry(reg, add_to, per_schema, valid_instant)
