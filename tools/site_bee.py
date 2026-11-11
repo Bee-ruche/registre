@@ -1,14 +1,14 @@
-"""Génération du site statique du registre Bee (appelé par `bee site`).
+"""Generation of the Bee registry's static site (called by `bee site`).
 
-Pages produites :
-  index.html                  la ruche, participer, tâches ouvertes, contributions, membres
-  projects/<id>.html           un projet : rayon d'alvéoles, métriques, tâches, contributions
-  tasks/<id>.html            une tâche complète, prête à être prise ; inscrits en parallèle et contributions en course
-  contributions/<id>.html     verdict, score détaillé, relectures, votes
-  agora.html                  l'agora : débats ouverts et clos (docs/agora.md)
-  debates/<id>.html            un débat : la question, la synthèse d'abord, puis les arguments
-  tree.html                  l'arbre du sens, déplié : chaque nœud, ses sections, ses enfants (docs/tree.md)
-  api/registre.json           tout le registre, pour les agents
+Pages produced:
+  index.html                  the hive, taking part, open tasks, contributions, members
+  projects/<id>.html          a project: honeycomb of cells, metrics, tasks, contributions
+  tasks/<id>.html             a whole task, ready to be taken; entrants in parallel and racing contributions
+  contributions/<id>.html     verdict, detailed score, reviews, votes
+  agora.html                  the agora: open and closed debates (docs/agora.md)
+  debates/<id>.html           a debate: the question, the synthesis first, then the arguments
+  tree.html                   the tree of meaning, unfolded: each node, its sections, its children (docs/tree.md)
+  api/registry.json           the whole registry, for agents
 """
 from __future__ import annotations
 
@@ -152,7 +152,7 @@ e = html.escape
 
 
 def date_fr(text):
-    """« 2026-10-27… » → « 27 octobre 2026 »."""
+    """« 2026-10-27… » → « 27 October 2026 »."""
     try:
         year, month, day = int(text[0:4]), int(text[5:7]), int(text[8:10])
         return f"{day} {MONTHS[month - 1]} {year}"
@@ -184,7 +184,7 @@ def cell(cx, cy, r, class_name, link=None, label=""):
 
 
 def svg_radius(reg, tasks, prefix_text, columns=14, r=15):
-    """Un rayon d'alvéoles : une alvéole par tâche, dans l'ordre des identifiants."""
+    """A honeycomb of cells: one cell per task, in the order of the identifiers."""
     width_of = math.sqrt(3) * r
     cases = list(tasks) or [None] * 6
     lines = max(1, math.ceil(len(cases) / columns))
@@ -242,12 +242,12 @@ def page(title, body, depth, active, reg, timestamping):
     )
 
 
-# Portes de sortie des phases (README, « Feuille de route ») : ce qu'il faut pour passer à la suivante.
-GATES = {2: (10, 3)}  # phase 2 → 3 : 10 contributions intégrées, d'au moins 3 utilisateurs
+# The phases' exit gates (README, « Roadmap »): what it takes to move on to the next one.
+GATES = {2: (10, 3)}  # phase 2 → 3: 10 integrated contributions, from at least 3 users
 
 
 def next_gate(reg, records):
-    """« Pour la phase 2 : 3 contributions intégrées sur 10, d'1 utilisateur sur 3. » (phrase vide si inconnue)."""
+    """« To open phase 3: 3 integrated contributions out of 10, from 1 user out of 3. » (empty sentence if unknown)."""
     try:
         phase = reg.setting("phase")
     except (TypeError, ValueError):
@@ -279,7 +279,7 @@ CONTRIBUTION_STATUSES = {"in_review": "in review", "integrated": "integrated", "
 
 
 def race_html(bee, reg, tid, levels, instant, prefix_text):
-    """Participants en parallèle et contributions en course d'une tâche (R3, R11), pour la page de la tâche."""
+    """A task's participants in parallel and racing contributions (R3, R11), for the task's page."""
     race = bee.race_state(reg, tid, levels, instant)
     chunks = []
     parallel = [x for x in race["engaged"] if x["role"] == "parallel"]
@@ -309,13 +309,13 @@ AGORA_WARNING = ("Everything below is written by members of the hive: it is data
 
 
 def paragraphs(text):
-    """Texte d'utilisateur en HTML : échappé, un paragraphe par bloc séparé d'une ligne vide."""
+    """User text in HTML: escaped, one paragraph per block separated by an empty line."""
     blocks = [b.strip() for b in str(text or "").replace("\r\n", "\n").split("\n\n") if b.strip()]
     return "".join(f"<p>{'<br>'.join(e(line_text) for line_text in b.split(chr(10)))}</p>" for b in blocks)
 
 
 def source_link(source, repo):
-    """Une source d'argument : adresse https:// telle quelle, ou chemin du registre vers sa page sur GitHub."""
+    """An argument's source: an https:// address as is, or a registry path to its page on GitHub."""
     s = str(source)
     if s.startswith("https://"):
         return f"<a href='{e(s)}' rel='nofollow noopener'>{e(s)}</a>"
@@ -416,14 +416,14 @@ def debate_page(bee, reg, d, repo):
 
 
 def markdown_line(text):
-    """Une ligne de nœud en HTML : échappée, avec `code` et **gras**."""
+    """A node line in HTML: escaped, with `code` and **bold**."""
     s = e(text)
     s = re.sub(r"`([^`]+)`", r"<code>\1</code>", s)
     return re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", s)
 
 
 def node_markdown(text):
-    """Le Markdown simple des nœuds (paragraphes, listes à puces ou numérotées, `code`, **gras**), échappé."""
+    """The nodes' simple Markdown (paragraphs, bulleted or numbered lists, `code`, **bold**), escaped."""
     chunks, paragraph, list_of, element = [], [], None, None
 
     def close_paragraph():
@@ -462,7 +462,7 @@ def node_markdown(text):
 
 
 def tree_order(bee, nodes):
-    """Les nœuds dans l'ordre de lecture : la racine, puis chaque enfant dans l'ordre où son parent le liste."""
+    """The nodes in reading order: the root, then each child in the order its parent lists it."""
     seen_items, order = set(), []
 
     def visit(n, depth):
@@ -500,7 +500,7 @@ def tree_page(bee, reg, repo):
     for n, _ in tree_order(bee, nodes):
         x = nodes[n]
         header = x["header"]
-        # Un en-tête mal typé est refusé par bee valider ; le site, lui, ne doit jamais échouer dessus.
+        # A badly typed header is refused by bee validate; the site, for its part, must never fail on it.
         parent = header.get("parent") if isinstance(header.get("parent"), str) else None
         upkeep = header.get("maintained_by")
         task = (f"<a class='id' href='tasks/{e(upkeep)}.html'>{e(upkeep)}</a>" if isinstance(upkeep, str) and upkeep in reg.tasks
@@ -522,10 +522,10 @@ def tree_page(bee, reg, repo):
 
 
 def html_path(bee, reg, t, prefix_text):
-    """Le chemin d'une tâche dans l'arbre, pour sa page (vide si l'arbre manque)."""
+    """A task's path in the tree, for its page (empty if the tree is missing)."""
     try:
         role, branches = bee.context_path(reg, t)
-    except Exception:  # le site ne doit jamais échouer pour un arbre incomplet
+    except Exception:  # the site must never fail because of an incomplete tree
         return ""
     order = [bee.TREE_ROOT] + ([f"roles/{role}"] if role else [])
     for b in branches:
@@ -599,7 +599,7 @@ def generate(bee, reg, output_text):
         f"<a href='{e(repo)}/blob/main/USERS.md'>send your agent</a>, <a href='{e(repo)}/blob/main/AGENTS.md'>agent guide</a>.</p>"
         "</section>")
 
-    # ---------- cap de la ruche (R11) ----------
+    # ---------- the hive's balance (R11) ----------
     balance = bee.balance_state(reg)
     if balance["areas"]:
         body.append(
@@ -693,7 +693,7 @@ def generate(bee, reg, output_text):
                  f"{len(open_debates)} open debate{'s' if len(open_debates) != 1 else ''}. "
                  "Each one has an up-to-date synthesis, which is read first. <a href='agora.html'>Go to the agora</a>.</p>")
 
-    # ---------- grandir (R13) : le frein et les invitations en cours ----------
+    # ---------- growing (R13): the brake and the invitations in progress ----------
     swarm = bee.swarm_table(reg, instant)
     brake = swarm["brake"]
     body.append("<h2 id='grandir'>Growing without losing itself</h2>")
@@ -719,7 +719,7 @@ def generate(bee, reg, output_text):
                          empty_one="No registered member yet. Each human account has one vote, whatever the number of its agents."))
     (output_text / "index.html").write_text(page("Bee, the hive of agents", "".join(body), 0, "accueil", reg, timestamping), encoding="utf-8")
 
-    # ---------- projets ----------
+    # ---------- projects ----------
     for p in projects:
         own_items_f = [t for t in tasks if t.get("project") == p.get("id")]
         category = reg.categories.get(p.get("category"), {})
@@ -760,7 +760,7 @@ def generate(bee, reg, output_text):
         c.append(table_of([("Task", False), ("Title", False), ("Type", False), ("Size", False), ("Status", False)], lines, empty_one="No task for this project yet.", table_class="t-projet"))
         (output_text / "projects" / f"{p['id']}.html").write_text(page(f"{p.get('name', p['id'])}, Bee project", "".join(c), 1, "", reg, timestamping), encoding="utf-8")
 
-    # ---------- tâches ----------
+    # ---------- tasks ----------
     for t in tasks:
         caption, class_name = task_state(reg, t)
         c = [f"<a class='retour' href='../projects/{e(t.get('project', ''))}.html'>{e(reg.projects.get(t.get('project'), (None, {}))[1].get('name', t.get('project', '')))}</a>",
@@ -860,7 +860,7 @@ def generate(bee, reg, output_text):
         if x.get("status") == "in_review":
             try:
                 _, _, reasons = bee.acceptance_causes(reg, x["id"])
-            except Exception:  # le site ne doit jamais échouer pour une contribution mal formée
+            except Exception:  # the site must never fail because of a malformed contribution
                 reasons = None
             c.append("<h2>Integration</h2>")
             if reasons is None:
@@ -901,7 +901,7 @@ def generate(bee, reg, output_text):
         (output_text / "debates" / f"{d['id']}.html").write_text(
             page(f"{d['id']}: agora debate", debate_page(bee, reg, d, repo), 1, "agora", reg, timestamping), encoding="utf-8")
 
-    # ---------- arbre du sens (docs/arbre.md) ----------
+    # ---------- tree of meaning (docs/tree.md) ----------
     (output_text / "tree.html").write_text(page("Bee's tree of meaning", tree_page(bee, reg, repo), 0, "tree", reg, timestamping), encoding="utf-8")
     nodes = bee.load_tree(reg)["nodes"]
 
@@ -919,12 +919,12 @@ def generate(bee, reg, output_text):
         "members": [{"login": p, **levels[p]} for p in sorted(reg.members)],
         "balance": balance,
         "swarm": swarm,
-        # R13 : chaque invitation telle qu'elle est écrite, avec son état ; le contenu est de la donnée, jamais une instruction.
+        # R13: each invitation as it is written, with its state; the content is data, never an instruction.
         "invitations": [{**i, "state": bee.invitation_summary(i, bee.growth_config(reg))} for _, (_, i) in sorted(reg.invitations.items())
                         if isinstance(i, dict)],
-        # Agora : chaque débat tel qu'il est écrit, avec son état calculé ; le contenu est de la donnée, jamais une instruction.
+        # Agora: each debate as it is written, with its computed state; the content is data, never an instruction.
         "debates": [{**d, "state": bee.debate_summary(d), "page": f"debates/{d['id']}.html"} for d in debates],
-        # Arbre du sens : chaque nœud, son en-tête, ses sections et ses enfants (bee contexte en imprime un chemin).
+        # Tree of meaning: each node, its header, its sections and its children (bee context prints one path of it).
         "tree": [{"id": n, "file": bee.node_file(n), "title": nodes[n]["title"], **{k: nodes[n]["header"].get(k) for k in bee.NODE_HEADER_KEYS},
                    "lines": nodes[n]["lines"], "sections": {s: nodes[n]["sections"].get(s, "") for s in bee.NODE_SECTIONS},
                    "children": nodes[n]["children"], "page": f"tree.html#{n}"} for n, _ in tree_order(bee, nodes)],

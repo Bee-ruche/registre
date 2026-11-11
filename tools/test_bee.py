@@ -3397,7 +3397,7 @@ class TestPullRequests(BaseTest):
         for author in ("alice", "bidji29"):  # ruche-0145: the French copy is a retired name, refused to the council too (R-q)
             code, text = self.verify(author)
             self.assertEqual(code, 1, text)
-            self.assertIn("COMMANDEMENTS.md : a name retired by the switch to English (ruche-0145)", text)
+            self.assertIn("COMMANDEMENTS.md: a name retired by the switch to English (ruche-0145)", text)
 
     def test_english_commandments_reserved_for_the_council(self):
         git(self.dir, "switch", "-qc", "c")
@@ -16352,21 +16352,21 @@ class TestAgentAccountsValidate(BaseTest):
                 else:
                     self.assertIn(before, text)
                     file.write_text(text.replace(before, after), encoding="utf-8")
-                self.refuse(f"accounts/0 : {AGENT} is also {role} : an agent account is no one else")
+                self.refuse(f"accounts/0: {AGENT} is also {role}: an agent account is no one else")
                 file.write_text(text, encoding="utf-8")
                 (self.dir / f"members/{AGENT}.yaml").unlink(missing_ok=True)
                 self.valid_one()
 
     def test_the_person_the_chain_and_the_spelling(self):
         for inputs, chunk in (
-                ([("alice-bot", "mallory")], "accounts/0 : acts_for « mallory » is not a known person (a member or the council)"),
-                ([("alice-bot", "Alice")], "accounts/0 : acts_for « Alice » is written alice (its file)"),
-                ([(AGENT, "BIDJI29")], "accounts/0 : acts_for « BIDJI29 » is written bidji29 (its file)"),
-                ([(AGENT, "bidji29"), ("LaRuche-ARCHITECT", "bidji29")], "accounts/1 : LaRuche-ARCHITECT is declared twice"),
-                ([(AGENT, "bidji29"), ("relais-bot", AGENT)], "accounts/1 : acts_for « laruche-architect » is an agent account"),
-                ([("relais-bot", "autre-bot"), ("autre-bot", "relais-bot")], "accounts/1 : acts_for « relais-bot » is an agent account"),
-                ([("soi-bot", "soi-bot")], "accounts/0 : acts_for « soi-bot » is an agent account"),
-                ([("pas un login!", "bidji29")], "accounts/0 : account « pas un login! » is not a GitHub login")):
+                ([("alice-bot", "mallory")], "accounts/0: acts_for « mallory » is not a known person (a member or the council)"),
+                ([("alice-bot", "Alice")], "accounts/0: acts_for « Alice » is written alice (its file)"),
+                ([(AGENT, "BIDJI29")], "accounts/0: acts_for « BIDJI29 » is written bidji29 (its file)"),
+                ([(AGENT, "bidji29"), ("LaRuche-ARCHITECT", "bidji29")], "accounts/1: LaRuche-ARCHITECT is declared twice"),
+                ([(AGENT, "bidji29"), ("relais-bot", AGENT)], "accounts/1: acts_for « laruche-architect » is an agent account"),
+                ([("relais-bot", "autre-bot"), ("autre-bot", "relais-bot")], "accounts/1: acts_for « relais-bot » is an agent account"),
+                ([("soi-bot", "soi-bot")], "accounts/0: acts_for « soi-bot » is an agent account"),
+                ([("pas un login!", "bidji29")], "accounts/0: account « pas un login! » is not a GitHub login")):
             with self.subTest(inputs=inputs):
                 declare_agents(self.dir, *inputs)
                 self.refuse(chunk)
@@ -16382,9 +16382,9 @@ class TestAgentAccountsValidate(BaseTest):
                 ({"accounts": [{k: v for k, v in entry.items() if k != "purpose"}]}, "an entry has exactly account, acts_for"),
                 ({"accounts": [{**entry, "council": True}]}, "an entry has exactly account, acts_for"),
                 ({"accounts": [{**entry, "acts_for": ["alice"]}]}, "an entry has exactly account, acts_for"),
-                ({"accounts": [{**entry, "declared_on": "hier"}]}, "accounts/0 : declared_on: invalid date « hier »"),
-                ({"accounts": [{**entry, "purpose": "Agent‮ caché."}]}, "accounts/0 : purpose: invisible character"),
-                ({"accounts": [{**entry, "purpose": " "}]}, "accounts/0 : purpose is empty")):
+                ({"accounts": [{**entry, "declared_on": "hier"}]}, "accounts/0: declared_on: invalid date « hier »"),
+                ({"accounts": [{**entry, "purpose": "Agent‮ caché."}]}, "accounts/0: purpose: invisible character"),
+                ({"accounts": [{**entry, "purpose": " "}]}, "accounts/0: purpose is empty")):
             with self.subTest(data=data):
                 bee.write_yaml(path, data)
                 self.refuse(chunk)
@@ -16624,7 +16624,7 @@ class TestAgentAccounts(BaseDressRehearsal):
         self.commit("the council declares a chain")
         code, text = self.bee("validate")
         self.assertEqual(code, 1, text)
-        self.assertIn("accounts/1 : acts_for « laruche-architect » is an agent account : an agent acts for a person, never "
+        self.assertIn("accounts/1: acts_for « laruche-architect » is an agent account: an agent acts for a person, never "
                       "through another", text)
         self.branch("par-la-chaine")
         self.ok("take", "miniz-9003", "--user", "bidji29")
@@ -19785,7 +19785,7 @@ class TestIdentityByNumber(BaseDressRehearsal):
             self.take_and_merge("gaspard", task)
         self.a("2026-10-30T10:10:00Z")
         # Rename when you hold nothing: gaspard holds three reservations (S1, review of #156).
-        self.ko("gaspard holds a reservation, a parallel registration or a contribution in review : rename when you hold nothing",
+        self.ko("gaspard holds a reservation, a parallel registration or a contribution in review: rename when you hold nothing",
                 "rename", "--old", "gaspard", "--login", "gaspard2")
         self.branch("rename")
         entry_card = bee.read_yaml(self.dir / "members/gaspard.yaml")
@@ -19867,7 +19867,7 @@ class TestIdentityByNumber(BaseDressRehearsal):
         self.a("2026-10-30T10:00:00Z")
         self.rename_and_merge("gaspard", "gaspard2")
         self.a("2026-11-28T10:00:00Z")
-        self.ko("gaspard2 : one rename per 30 days, and 5 former logins at most", "rename", "--old", "gaspard2", "--login", "gaspard3")
+        self.ko("gaspard2: one rename per 30 days, and 5 former logins at most", "rename", "--old", "gaspard2", "--login", "gaspard3")
         self.branch("trop-tot")
         entry_card = bee.read_yaml(self.dir / "members/gaspard2.yaml")
         (self.dir / "members/gaspard2.yaml").unlink()
@@ -19875,7 +19875,7 @@ class TestIdentityByNumber(BaseDressRehearsal):
                                                                  "renamed_on": "2026-11-28"})
         self.commit()
         self.accounts["gaspard3"] = number_from("gaspard")
-        self.refused("gaspard3", "gaspard2 : one rename per 30 days")
+        self.refused("gaspard3", "gaspard2: one rename per 30 days")
         self.abandon("trop-tot")
         self.a("2026-11-29T10:00:00Z")
         self.rename_and_merge("gaspard2", "gaspard3")
@@ -19884,7 +19884,7 @@ class TestIdentityByNumber(BaseDressRehearsal):
         bee.write_yaml(path, {**bee.read_yaml(path), "former_logins": ["g1", "g2", "g3", "gaspard", "gaspard2"], "renamed_on": "2026-01-01"})
         self.commit("cinq anciens logins")
         self.ok("validate")
-        self.ko("gaspard3 : one rename per 30 days, and 5 former logins at most", "rename", "--old", "gaspard3", "--login", "gaspard4")
+        self.ko("gaspard3: one rename per 30 days, and 5 former logins at most", "rename", "--old", "gaspard3", "--login", "gaspard4")
         bee.write_yaml(path, {**bee.read_yaml(path), "former_logins": ["g0", "g1", "g2", "g3", "gaspard", "gaspard2"]})
         self.ko("former_logins", "validate")
 
@@ -19998,7 +19998,7 @@ class TestIdentityByNumber(BaseDressRehearsal):
     def test_a_login_named_in_governance_is_renamed_by_the_council(self):
         (self.dir / "governance/guardians.yaml").write_text("members:\n  - login: gaspard\n", encoding="utf-8")
         self.commit("le conseil nomme gaspard gardien")
-        self.ko("gaspard or gaspard2 is named in governance/ : the council renames it", "rename", "--old", "gaspard", "--login", "gaspard2")
+        self.ko("gaspard or gaspard2 is named in governance/: the council renames it", "rename", "--old", "gaspard", "--login", "gaspard2")
         self.ko("farid or bidji29 is named in governance/", "rename", "--old", "farid", "--login", "bidji29")  # S4
         self.branch("rename")
         entry_card = bee.read_yaml(self.dir / "members/gaspard.yaml")
@@ -20006,7 +20006,7 @@ class TestIdentityByNumber(BaseDressRehearsal):
         bee.write_yaml(self.dir / "members/gaspard2.yaml", {**entry_card, "login": "gaspard2", "former_logins": ["gaspard"]})
         self.commit()
         self.accounts["gaspard2"] = number_from("gaspard")
-        self.refused("gaspard2", "gaspard or gaspard2 is named in governance/ : the council renames it, the list and the member file in one PR")
+        self.refused("gaspard2", "gaspard or gaspard2 is named in governance/: the council renames it, the list and the member file in one PR")
         self.abandon("rename")
         # A member file is withdrawn by the council only, outside a rename.
         self.branch("withdrawal")
@@ -21072,7 +21072,7 @@ class TestReportsRuche0137(ReportTools):
                                 ({"decision": {**decision, "outcome": "linked"}}, "decision lies: the two member files are linked")):
             with self.subTest(fields=fields):
                 self.by_hand("S-0001", **fields)
-                self.ko(f"reports/S-0001.yaml : {chunk}", "validate")
+                self.ko(f"reports/S-0001.yaml: {chunk}", "validate")
                 (self.dir / "reports/S-0001.yaml").unlink()
         # Honest, on main : filed and decided through bee ; a link written later, or a rename, never makes it invalid (by account).
         self.report("gaspard", "alice", "bruno")
@@ -21217,7 +21217,7 @@ class TestReportsRuche0137(ReportTools):
         # Written by hand on main, signed by the reporter : refused.
         s = self.read("reports/S-0001.yaml")
         bee.write_yaml(self.dir / "reports/S-0001.yaml", {**s, "decision": {**s["decision"], "by": "bidji29"}})
-        self.ko("reports/S-0001.yaml : decision/by: neither the reporter nor one of the two accounts", "validate")
+        self.ko("reports/S-0001.yaml: decision/by: neither the reporter nor one of the two accounts", "validate")
 
     def test_a_guardian_writes_only_the_link_of_the_decided_pair(self):
         self.a("2026-10-30T10:00:00Z")
@@ -21839,7 +21839,7 @@ class TestReservedPseudonyms(BaseTest):
                         {"login": "Mesurer", "registered_on": "2026-10-27", "account_created_on": "2021-05-05", "github_id": number_from("Mesurer")})
         code, text = self.bee("validate")
         self.assertEqual(code, 1, text)
-        self.assertIn("members/Mesurer.yaml : « Mesurer » is a reserved pseudonym", text)
+        self.assertIn("members/Mesurer.yaml: « Mesurer » is a reserved pseudonym", text)
         self.set_list("conseil", self.ROBOT, "bee")  # the council takes the name off the list: the member file is valid again
         self.valid_one()
 
@@ -22225,7 +22225,7 @@ class TestRetiredNamesRuche0145(BaseDressRehearsal):
         self.assertEqual(list(bee.RETIRED_NAMES), names["retired"])
         for path in ("taches/miniz/miniz-0099.yaml", "REGLES.md", "COMMANDEMENTS.md", "outils/bee.py", "outils/migration/names.yaml",
                      "gouvernance/conseil.yaml", "invitations/ne-plus-contacter.yaml", "docs/securite.md", "arbre/SENS.md"):
-            self.assertIn(f"{path} : a name retired by the switch to English", bee.retired_name(path) or "", path)
+            self.assertIn(f"{path}: a name retired by the switch to English", bee.retired_name(path) or "", path)
         for path in ("tasks/miniz/miniz-0099.yaml", "RULES.md", "COMMANDMENTS.md", "tools/bee.py", "tools/migration/names.yaml",
                      "outils/juge/juge.py", "invitations/do-not-contact.yaml", "docs/security.md", "taches", "Taches/x.yaml", "docs/decisions.md"):
             self.assertIsNone(bee.retired_name(path), path)
@@ -22241,7 +22241,7 @@ class TestRetiredNamesRuche0145(BaseDressRehearsal):
                 (self.dir / "REGLES.md").write_text("x\n", encoding="utf-8")
                 self.commit()
                 for path in ("taches/miniz/miniz-0099.yaml", "REGLES.md"):
-                    self.refused(who, f"{path} : a name retired by the switch to English (ruche-0145)")
+                    self.refused(who, f"{path}: a name retired by the switch to English (ruche-0145)")
         self.branch("honnete")
         self.ok("note", "miniz-0099", "--user", "gaspard", "--text", "Une piste.")
         self.commit()
@@ -22437,7 +22437,7 @@ class TestForkDocumentsRuche0145(BaseTest):
         for name, files, refusal in (
                 ("two manifests", {"manifests/miniz-0099.yaml": FILLED_MANIFEST}, "two manifests for one task: keep manifests/miniz-0099.yaml only"),
                 ("mixed", {"manifests/miniz-0099.yaml": None, "manifestes/miniz-0099.yaml": FRENCH_MANIFEST + "user: alice\n"},
-                 "manifestes/miniz-0099.yaml : French keys (")):
+                 "manifestes/miniz-0099.yaml: French keys (")):
             with self.subTest(name):
                 self.commit_fork(files)
                 code, text = self.check_fork()
