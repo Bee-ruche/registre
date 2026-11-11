@@ -11,7 +11,7 @@ context: 'Follow-up of ruche-0035''s review (details in the architect''s brief).
   land, which symbol each finding belongs to, and the other points the brief names. A finding makes the judge incomplete
   (R3''s review gate); it never refuses on its own.'
 files:
-- outils/juge/
+- tools/judge/
 - docs/common-judge.md
 reach: 0.6
 metric: null

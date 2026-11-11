@@ -4,7 +4,10 @@ author: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/313
 summary: The open ruche task texts ruche-0053 and ruche-0054 in English, with tools/replay.py as the planned
   file
-status: in_review
+status: integrated
 submitted_at: '2026-11-11T18:33:30Z'
 engaged_since: '2026-11-11T18:28:14Z'
 reviews: []
+decided_at: '2026-11-11T18:45:45Z'
+decision_reason: 'The open ruche task texts ruche-0053 and ruche-0054 in English, in 1 registry PR (#313) merged by the agent principal at their checked heads. Each PR was reviewed by an agent of another model, every finding fixed or answered (council decisions noted in the PR bodies), and passed CI on its exact head. Recorded by hand: one task over several PRs.'
+merge_sha: fd95ffd09bb670df058c2a352098fdbdb3f6a92b

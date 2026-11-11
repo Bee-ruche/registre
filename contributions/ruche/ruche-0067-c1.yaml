@@ -3,7 +3,10 @@ task: ruche-0067
 author: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/311
 summary: The seven role nodes in English, with the tests that quote them, reviewed by another model
-status: in_review
+status: integrated
 submitted_at: '2026-11-11T17:31:47Z'
 engaged_since: '2026-11-11T17:08:24Z'
 reviews: []
+decided_at: '2026-11-11T18:45:45Z'
+decision_reason: 'The role nodes in English, in 1 registry PR (#311) merged by the agent principal at their checked heads. Each PR was reviewed by an agent of another model, every finding fixed or answered (council decisions noted in the PR bodies), and passed CI on its exact head. Recorded by hand: one task over several PRs.'
+merge_sha: 04dbaa4b1b57cbcb2fa7972383d2ecf1ab569e81

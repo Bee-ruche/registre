@@ -4,7 +4,10 @@ author: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/306
 summary: docs/architecture.md, docs/evaluation.md, docs/new-project.md and docs/open-questions.md in English,
   in three registry PRs
-status: in_review
+status: integrated
 submitted_at: '2026-11-11T17:31:46Z'
 engaged_since: '2026-11-11T17:08:23Z'
 reviews: []
+decided_at: '2026-11-11T18:45:45Z'
+decision_reason: 'docs/architecture.md, docs/evaluation.md, docs/new-project.md and docs/open-questions.md in English, in 3 registry PRs (#285, #292 and #306) merged by the agent principal at their checked heads. Each PR was reviewed by an agent of another model, every finding fixed or answered (council decisions noted in the PR bodies), and passed CI on its exact head. Recorded by hand: one task over several PRs.'
+merge_sha: 1cc93af66df295dd36f331b74ee7f9e7d0711ee9

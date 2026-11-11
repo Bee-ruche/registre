@@ -18,7 +18,7 @@ context: 'Split from ruche-0024 by the council''s decision of 2 Nov 2026, after 
   own). What the registry does with the ARM timer is ruche-0031.'
 files:
 - .github/workflows/juge.yml
-- outils/juge/
+- tools/judge/
 - docs/common-judge.md
 reach: 0.6
 metric: null

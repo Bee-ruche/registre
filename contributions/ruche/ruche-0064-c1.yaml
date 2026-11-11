@@ -4,7 +4,10 @@ author: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/322
 summary: docs/growth.md in English in two registry PRs, and docs/guarantors.md merged by the founder,
   each reviewed for fidelity
-status: in_review
+status: integrated
 submitted_at: '2026-11-11T17:31:45Z'
 engaged_since: '2026-11-11T17:08:23Z'
 reviews: []
+decided_at: '2026-11-11T18:45:45Z'
+decision_reason: 'docs/growth.md and docs/guarantors.md in English, in 2 registry PRs (#319 and #322) merged by the agent principal at their checked heads, plus #294 merged by the founder (authority file). Each PR was reviewed by an agent of another model, every finding fixed or answered (council decisions noted in the PR bodies), and passed CI on its exact head. Recorded by hand: one task over several PRs.'
+merge_sha: 5a505c39a6fc76cdb721b3ef983d93a4eb01af07

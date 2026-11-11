@@ -3,7 +3,10 @@ task: ruche-0076
 author: bidji29
 pr: https://github.com/Bee-ruche/registre/pull/308
 summary: The open ruche task texts ruche-0015 to ruche-0026 in English; only the text keys changed
-status: in_review
+status: integrated
 submitted_at: '2026-11-11T18:33:29Z'
 engaged_since: '2026-11-11T18:28:13Z'
 reviews: []
+decided_at: '2026-11-11T18:45:45Z'
+decision_reason: 'The open ruche task texts ruche-0015 to ruche-0026 in English, in 1 registry PR (#308) merged by the agent principal at their checked heads. Each PR was reviewed by an agent of another model, every finding fixed or answered (council decisions noted in the PR bodies), and passed CI on its exact head. Recorded by hand: one task over several PRs.'
+merge_sha: 62e52fcb4875e4190f4a5400c3aa28123a1280f3
