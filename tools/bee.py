@@ -7809,8 +7809,9 @@ def cmd_review(args):
 
 
 def cmd_confirm_defect(args):
-    """Un tiers (la CI, le conseil, un gardien ou un Confirmé) confirme, après l'avoir reproduit, le défaut qu'un autre a
-    signalé. Le défaut confirmé bloque R3 tant que le commit jugé est celui qu'il visait, et rapporte +2 à son relecteur."""
+    """A third party (the CI, the council, a guardian or a Confirmed member) confirms, after reproducing it, the defect
+    another reported. The confirmed defect blocks R3 as long as the judged commit is the one it targeted, and earns its
+    reviewer +2."""
     reg = Registry(args.registry)
     u = args.user
     if u not in reg.robots:
@@ -7825,7 +7826,7 @@ def cmd_confirm_defect(args):
     if reg.identities.same_one(u, rec.get("author")) or u in race_participants(reg, rec.get("task")):
         raise BeeError(f"{u} is in the race on task {rec.get('task')}: they confirm no defect there (commandment 3)")
     reviews = list(rec.get("reviews") or [])
-    for i, r in reversed(list(enumerate(reviews))):  # son défaut le plus récent, attaché au commit où il l'a signalé
+    for i, r in reversed(list(enumerate(reviews))):  # their most recent defect, attached to the commit where they reported it
         if r.get("reviewer") == args.reviewer and r.get("reported_defect") and not r.get("confirmed_defect"):
             reviews[i] = {**r, "confirmed_defect": True, "confirmed_by": u}
             break
@@ -7846,7 +7847,7 @@ def cmd_vote(args):
         if args.user in rivals_of(reg, reg.records[args.subject][1]):
             raise BeeError(f"{args.user} is in the race on the same task as {args.subject}: you do not vote on a "
                             "rival (commandment 3)")
-        if (status := reg.records[args.subject][1].get("status")) != "in_review":  # ruche-0042, as verifier-pr
+        if (status := reg.records[args.subject][1].get("status")) != "in_review":  # ruche-0042, as check-pr
             raise BeeError(f"the vote on {args.subject} is closed: the contribution is no longer in review (status: {status})")
     elif args.subject in reg.proposals:
         result = tally_proposal(reg, args.subject, compute_levels(reg), now_instant())
@@ -7865,7 +7866,7 @@ def cmd_vote(args):
     print(f"✓ vote {args.value:+d} recorded ({reg.rel(path)}). Publish: bee publish --title 'Vote {args.subject}'")
     level = (levels := compute_levels(reg)).get(args.user, {}).get("level", "New")
     if voice_weight(reg, levels, args.user) == 0:  # ruche-0051: the person's voice
-        # Comme bee relire (tour 2 : une Nouvelle croyait avoir pesé, dans le classement comme dans le quorum de R10).
+        # As bee review (round 2: a New member thought they had weighed, in the ranking as in R10's quorum).
         print(f"  Level {level}: your vote is public, but it weighs 0 (neither in the ranking nor in R10's quorum) until "
               "you have an integrated contribution (docs/reputation.md).")
     return 0
@@ -7877,8 +7878,8 @@ def cmd_propose(args):
     level = level_of(compute_levels(reg), args.user)
     if level != "Confirmed" and args.user not in reg.council and not setting(reg, "bootstrap"):
         raise BeeError(f"proposing a rule is reserved to Confirmed members outside bootstrap (current level: {level})")
-    # Numérotation (verifier-pr l'exige) : le plus grand numéro + 1, hors des numéros réservés aux tests (un P-9999 squatté
-    # ne gèle plus rien, T5) ; les fichiers présents comptent, même illisibles, et aucun n'est jamais écrasé.
+    # Numbering (check-pr requires it): the highest number + 1, outside the numbers reserved for tests (a squatted P-9999
+    # freezes nothing any more, T5); the files present count, even unreadable ones, and none is ever overwritten.
     folder = reg.root / "proposals"
     numbers_of = [int(m["n"]) for f in (folder.iterdir() if folder.is_dir() else []) if (m := PATH_PROPOSAL.match(f"proposals/{f.name}"))]
     number_of = next_number(numbers_of)
@@ -7892,7 +7893,7 @@ def cmd_propose(args):
     require_creation_allowed(reg, "proposals", args.user)
     data = {"id": identifier, "author": args.user, "rule": args.rule, "proposed_text": args.text,
                "reason": args.reason, "opened_at": en_iso(now_instant()), "status": "open"}
-    if problem_text := next(text_problems(data, reg.rel(path), "proposals"), None):  # what bee valider would refuse, before writing
+    if problem_text := next(text_problems(data, reg.rel(path), "proposals"), None):  # what bee validate would refuse, before writing
         raise BeeError(problem_text)
     write_yaml(path, data)
     print(f"✓ proposal {identifier} created. Publish: bee publish --title 'Proposal {identifier}'; the vote lasts {setting(reg, 'vote_duration_days')} days.")
@@ -7905,10 +7906,10 @@ def cmd_tally(args):
     return 0
 
 
-# --- Agora : bee debattre (ouvrir, argumenter, synthetiser, doublon, clore, importer-questions) et bee debats ---
+# --- Agora: bee debate (open, argue, synthesize, duplicate, close, import-questions) and bee debates ---
 
 class _DebateDumper(yaml.SafeDumper):
-    """Écrit les textes de plusieurs lignes en bloc littéral (|), lisible tel quel par un humain ou un agent."""
+    """Writes multi-line texts as a literal block (|), readable as is by a human or an agent."""
 
 
 def _represent_text(dumper, value):
@@ -7919,9 +7920,9 @@ _DebateDumper.add_representer(str, _represent_text)
 
 
 def debate_render(debate, origin_of="<debate>"):
-    """Le texte canonique d'un débat, celui qu'écrit bee debate : clés dans l'ordre (arguments en dernier, pour qu'un
-    argument ajouté s'ajoute en fin de fichier), textes de plusieurs lignes en bloc littéral. check_pr exige qu'un
-    débat publié soit exactement ce rendu de ses propres données (aucun commentaire, aucune autre forme)."""
+    """The canonical text of a debate, the one bee debate writes: keys in order (arguments last, so that an added
+    argument is appended at the end of the file), multi-line texts as a literal block. check_pr requires a published
+    debate to be exactly this rendering of its own data (no comment, no other form)."""
     ordered = {c: debate[c] for c in DEBATE_KEYS if c in debate}
     ordered.update({c: v for c, v in debate.items() if c not in ordered})
     ordered["arguments"] = [{**{c: a[c] for c in ARGUMENT_KEYS if c in a}, **{c: v for c, v in a.items() if c not in ARGUMENT_KEYS}}
@@ -7930,7 +7931,7 @@ def debate_render(debate, origin_of="<debate>"):
 
 
 def write_debate(path, debate):
-    """Écrit un débat sous sa forme canonique (debate_render)."""
+    """Writes a debate in its canonical form (debate_render)."""
     text = debate_render(debate, path)
     path = pathlib.Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -7963,8 +7964,8 @@ def _publish(identifier, nature):
 
 
 def _apply_synthesis(reg, d, u, text, following, instant):
-    """Publie la synthèse de u (le rapporteur, ou un participant qui relève un rapporteur absent) et désigne le rapporteur
-    suivant ; renvoie ce dernier."""
+    """Publishes the synthesis of u (the rapporteur, or a participant relieving an absent rapporteur) and designates the
+    next rapporteur; returns the latter."""
     if "rapporteur" not in d:
         raise BeeError(f"{d.get('id')} has no rapporteur and no argument yet: the first to argue becomes rapporteur "
                         "(bee debate argue)")
@@ -8012,7 +8013,7 @@ def debate_open(args):
                         f"next opening possible on {next_room(own_items, conf['openings_max_per_24h'])}. Until then, "
                         "argue in an existing debate (bee debates)")
     identifier = next_debate(reg)
-    if (reg.root / "debates" / f"{identifier}.yaml").exists():  # illisible, donc pas chargé : jamais écrasé
+    if (reg.root / "debates" / f"{identifier}.yaml").exists():  # unreadable, so not loaded: never overwritten
         raise BeeError(f"debates/{identifier}.yaml already exists: nothing was overwritten")
     d = {"id": identifier, "question": question, "opened_by": u, "opened_at": en_iso(instant), "status": "open",
          "rapporteur": u, "synthesis": "", "arguments": []}
@@ -8080,7 +8081,7 @@ def debate_argue(args):
     d = {**d, "arguments": list(existing) + [argument]}
     taking = "rapporteur" not in d and not (d.get("invitation") and same_person(reg, u, d.get("opened_by")))
     if taking:
-        d["rapporteur"] = u  # premier à argumenter dans un débat né sans rapporteur : la plume est à lui
+        d["rapporteur"] = u  # first to argue in a debate born without a rapporteur: the pen is theirs
     require_room(reg.rel(path), debate_render(d, path))
     write_debate(path, d)
     print(f"✓ argument {argument['id']} ({args.position}) added to {args.debate}: its id is {argument['id']}"
@@ -8147,9 +8148,9 @@ def debate_duplicate(args):
 
 
 def debate_redact(args):
-    """Le conseil caviarde un argument (commandement 10, phrase ajoutée ; R12) : au refus ou à la demande d'une personne
-    extérieure, son texte devient « retiré : refus » ou « retiré : demande », ses sources « retiré » ; l'identifiant, l'auteur
-    et la date demeurent. Même dans un débat clos."""
+    """The council redacts an argument (commandment 10, added sentence; R12): on the refusal or request of an outside
+    person, its text becomes « withdrawn: refusal » or « withdrawn: request », its sources « retiré »; the id, the author
+    and the date remain. Even in a closed debate."""
     reg = Registry(args.registry)
     u = args.user
     reg.require_spelling(u)
@@ -8231,8 +8232,8 @@ DEBATE_LINK = re.compile(r"^(?:Débat :|Debate:) \[(D-[0-9]{4})\]")
 
 
 def open_questions(text):
-    """Les questions numérotées de docs/open-questions.md : [(numéro, section, question, débat déjà lié ou None,
-    indice de la dernière ligne de la question, retrait de ses lignes de suite)]."""
+    """The numbered questions of docs/open-questions.md: [(number, section, question, debate already linked or None,
+    index of the question's last line, indentation of its continuation lines)]."""
     lines = text.split("\n")
     questions, section, i = [], "", 0
     while i < len(lines):
@@ -8258,9 +8259,9 @@ def open_questions(text):
 
 
 def debate_import_questions(args):
-    """Ouvre un débat par question de docs/open-questions.md qui n'en a pas encore, et ajoute à chacune le lien vers
-    son débat. Pensé pour le conseil, une fois l'agora en place (docs/agora.md) : le lien touche docs/, la PR est donc
-    relue par le conseil."""
+    """Opens one debate per question of docs/open-questions.md that has none yet, and adds to each the link to
+    its debate. Meant for the council, once the agora is in place (docs/agora.md): the link touches docs/, so the PR is
+    reviewed by the council."""
     reg = Registry(args.registry)
     u = args.user
     reg.require_member(u)
@@ -8275,7 +8276,7 @@ def debate_import_questions(args):
         if linked:
             continue
         question = f"{question} (docs/open-questions.md, « {section} », question {n})"
-        if question in already:  # débat déjà ouvert, lien pas encore écrit
+        if question in already:  # debate already opened, link not yet written
             links[end] = (already[question], withdrawal)
             continue
         _require_admissible(question, f"question {n}", conf["question_max"], "question_max")
@@ -8294,7 +8295,7 @@ def debate_import_questions(args):
     for identifier, question in to_open:
         write_debate(reg.root / "debates" / f"{identifier}.yaml",
                      {"id": identifier, "question": question, "opened_by": u, "opened_at": en_iso(instant), "status": "open",
-                      "synthesis": "", "arguments": []})  # sans rapporteur : le premier qui argumente le devient
+                      "synthesis": "", "arguments": []})  # without a rapporteur: the first to argue becomes it
     lines = text.split("\n")
     for end in sorted(links, reverse=True):
         identifier, withdrawal = links[end]
@@ -8314,7 +8315,7 @@ def cmd_debate(args):
 
 
 def _clean(text):
-    """Texte d'utilisateur à l'affichage : les caractères qui maquilleraient le terminal sont remplacés."""
+    """User text for display: the characters that would tamper with the terminal are replaced."""
     return "".join(chr(0xFFFD) if forbidden_outgoing_character(c) else c for c in str(text if text is not None else ""))
 
 
@@ -8366,7 +8367,7 @@ def show_debate(reg, identifier, en_json=False):
 
 
 def cmd_debates(args):
-    """L'agora : les débats, leur état et leur dernier argument ; --show <débat> pour en lire un, synthèse d'abord."""
+    """The agora: the debates, their state and their last argument; --show <debate> to read one, synthesis first."""
     reg = Registry(args.registry)
     if args.show:
         return show_debate(reg, args.show, args.json)
@@ -8407,7 +8408,7 @@ def cmd_debates(args):
     return 0
 
 
-# --- R13 : bee inviter (proposer une invitation) et bee invitation (ses gestes de suivi). Aucune n'envoie de message. ---
+# --- R13: bee invite (propose an invitation) and bee invitation (its follow-up gestures). Neither sends a message. ---
 
 ACTIONS_INVITATION = {"guardian-approval": "guardian_approval", "council-approval": "council_approval", "renew": "renewal",
                       "record-sent": "sent", "record-reminder": "reminder", "record-answer": "answer", "dismiss": "set_aside",
@@ -8415,7 +8416,7 @@ ACTIONS_INVITATION = {"guardian-approval": "guardian_approval", "council-approva
 
 
 def write_invitation(path, data):
-    """Écrit une invitation, ou la liste de non-contact, sous sa forme canonique (invitation_render)."""
+    """Writes an invitation, or the no-contact list, in its canonical form (invitation_render)."""
     text = invitation_render(data, path)
     path = pathlib.Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -8424,8 +8425,8 @@ def write_invitation(path, data):
 
 
 def cmd_invite(args):
-    """R13 : propose une invitation (invitations/I-<nnnn>.yaml, au numéro suivant), après avoir vérifié ce que check-pr
-    vérifiera. N'envoie rien : un gardien puis le conseil décident, et un humain du conseil envoie lui-même le message."""
+    """R13: proposes an invitation (invitations/I-<nnnn>.yaml, at the next number), after checking what check-pr will
+    check. Sends nothing: a guardian then the council decide, and a human of the council personally sends the message."""
     reg = Registry(args.registry)
     u = args.user
     reg.require_member(u)
@@ -8444,7 +8445,7 @@ def cmd_invite(args):
     require_creation_allowed(reg, "invitations", u)
     mention = mentions_invitation(reg, args.request)[args.language]
     text = text.strip()
-    # L'identifiant s'écrit sous sa forme canonique (gh:octocat -> github:octocat) ; le canal d'une forge en découle.
+    # The identifier is written in its canonical form (gh:octocat -> github:octocat); a forge's channel follows from it.
     identifier = identifier_form(args.identifier)[0] or args.identifier
     model = PLATFORMS.get(identifier.partition(":")[0], (None, None))[1]
     channel = args.channel or (model.format(identifier.partition(":")[2]) if model else None)
@@ -8465,7 +8466,7 @@ def cmd_invite(args):
            "request": args.request, "why": [{"fact": f, "source": s} for f, s in zip(facts, sources)],
            "message": text if mention in text else f"{text}\n\n{mention}", "debate": did, "proposed_by": u, "proposed_at": instant}
     if args.other_identity:
-        # Les autres identités de la même personne, déclarées (troisième revue adverse, C3) : sous leur forme canonique.
+        # The other identities of the same person, declared (third adversarial review, C3): in their canonical form.
         inv["other_identities"] = [identifier_form(x)[0] or x for x in args.other_identity]
     if args.namesake:
         inv["namesake"] = args.namesake.strip()
@@ -8485,7 +8486,7 @@ def cmd_invite(args):
     elif brake["tight"]:
         print("  The brake is tight today, but it does not stop an invitation that strengthens oversight (guarantor, guardian).")
     print(f"  Publish: bee publish --title 'Invitation {path.stem}'; the PR is not merged automatically.")
-    if {fingerprint(c) for c in own_identities(inv)} & removed_fingerprints(reg):  # ruche-0048 : un signal neutre, pas un refus
+    if {fingerprint(c) for c in own_identities(inv)} & removed_fingerprints(reg):  # ruche-0048: a neutral signal, not a refusal
         print("  ⚠ An identity of this invitation matches a recorded requested removal: the council sees it before any next step.")
         return 3
     return 0
@@ -8497,10 +8498,10 @@ IDENTITIES_BRIEF = ("Before any approval, check on the sources that each other d
 
 
 def identity_lines(inv):
-    """Les identités déclarées d'une invitation, et la consigne d'accord (bee invitation, bee show)."""
+    """An invitation's declared identities, and the approval brief (bee invitation, bee show)."""
     person = inv.get("person") if isinstance(inv.get("person"), dict) else {}
     others = inv.get("other_identities") if isinstance(inv.get("other_identities"), list) else []
-    # Par montrer (revue de ruche-0052) : ni commande de workflow (« :: » en début de ligne, « ##[ »), ni échappement du terminal.
+    # Through show_error (review of ruche-0052): no workflow command (« :: » at the start of a line, « ##[ »), no terminal escape.
     return [show_line(f"Identifier: {person.get('identifier', inv.get('person'))}; channel: {person.get('channel', '-')}"),
             show_line("Other declared identities: " + (", ".join(str(x) for x in others) if others else "none")),
             IDENTITIES_BRIEF]
@@ -8525,8 +8526,8 @@ def removal_block(user, instant):
 
 
 def cmd_invitation(args):
-    """R13 : ajoute à une invitation un geste de suivi, après avoir vérifié qu'il est permis (gesture_refusal, comme check-pr).
-    N'envoie rien : un humain du conseil envoie lui-même chaque message, hors de l'outil, puis le consigne ici."""
+    """R13: adds a follow-up gesture to an invitation, after checking that it is allowed (gesture_refusal, as check-pr).
+    Sends nothing: a human of the council personally sends each message, outside the tool, then records it here."""
     reg = Registry(args.registry)
     u = args.user
     reg.require_spelling(u)
@@ -8550,7 +8551,7 @@ def cmd_invitation(args):
         block["cause"] = args.cause
     new = {**inv, gesture: block}
     new["status"] = invitation_state(new)
-    # Commandement 10 : au refus, au silence ou à la demande de la personne, son dossier se retire du fichier.
+    # Commandment 10: on the person's refusal, silence or request, their file is withdrawn from the records.
     cause = {"withdrawal": args.cause if gesture == "withdrawal" else None,
               "answer": {"refused": "refusal", "no_answer": "no_answer"}.get(getattr(args, "value", None))}.get(gesture)
     if cause:
@@ -8560,15 +8561,15 @@ def cmd_invitation(args):
                         linked_refusal=bool(on_the_list(own_identities(inv), not_contacted(reg))))
     if refusal:
         raise BeeError(f"{args.invitation}: " + "; ".join(refusal))
-    if gesture == "sent" and (stale_one := invitation_debate_refusal(reg, inv, closed=True)):  # ruche-0050 : un fait, signalé
+    if gesture == "sent" and (stale_one := invitation_debate_refusal(reg, inv, closed=True)):  # ruche-0050: a fact, flagged
         print(f"⚠ {args.invitation}: {stale_one[0]}. The sending is recorded anyway (it is a fact), and it will be flagged (bee validate, "
               "bee swarm).")
     identifier = identifier_of(inv)
     also = {}
     if cause and invitation_state(inv) != "accepted":
-        # La personne entre sur la liste, par les seules empreintes de ses identités déclarées (identifiant, canal, autres
-        # identités ; jamais les sources : troisième revue adverse, C3). Toute autre invitation dont une identité est alors sur la
-        # liste se retire aussi, quel que soit son statut, et ses identités s'inscrivent à leur tour (C1).
+        # The person goes on the list, by the fingerprints of their declared identities only (identifier, channel, other
+        # identities; never the sources: third adversarial review, C3). Any other invitation one of whose identities is then on
+        # the list is withdrawn too, whatever its status, and its identities are entered in turn (C1).
         list_of = list(fingerprints_of(reg.do_not_contact) or [])
 
         def register(x):
@@ -8622,8 +8623,8 @@ def cmd_invitation(args):
 
 
 def cmd_remove_data(args):
-    """Retrait demandé (commandement 10, ruche-0048) : les identifiants viennent d'un fichier ou de l'entrée standard, ne sont ni
-    écrits ni montrés (governance/removals.yaml n'en garde que les empreintes) ; sans --confirm, rien n'est écrit."""
+    """Requested removal (commandment 10, ruche-0048): the identifiers come from a file or standard input, are neither written
+    nor shown (governance/removals.yaml keeps only their fingerprints); without --confirm, nothing is written."""
     reg, u = Registry(args.registry), args.user
     reg.require_spelling(u)
     if u not in reg.council:
@@ -8654,7 +8655,7 @@ def cmd_remove_data(args):
         raise BeeError(f"removal refused: {problem_text}")
     if not entry["passages"] and not args.no_contact:
         raise BeeError("nothing names these identifiers: there is nothing to remove, nor to record")
-    for path, (_, _, _, found_items) in results.items():  # où, jamais le texte : le fichier, le champ, le n° du mot
+    for path, (_, _, _, found_items) in results.items():  # where, never the text: the file, the field, the word's number
         print(f"  {path}: " + "; ".join(f"{'/'.join(map(str, place_of))} word(s) {', '.join(str(p[0]) for p in v)}" for place_of, v in found_items.items()))
     for path, line_text in comments:
         print(f"  ⚠ {path}:{line_text}: a comment names them; bee does not touch it: the council corrects it by hand "
@@ -8675,8 +8676,8 @@ def cmd_remove_data(args):
 
 
 def cmd_incident(args):
-    # R13, frein : un gardien en fonction ou le conseil inscrit un incident ouvert, tel que la porte l'accepte d'un gardien
-    # (verifier_pr) ; le frein le compte dès que le conseil a fusionné la PR.
+    # R13, brake: a guardian in office or the council enters an open incident, as the gate accepts it from a guardian
+    # (check_pr); the brake counts it as soon as the council has merged the PR.
     reg, path, u = Registry(args.registry), "governance/incidents.yaml", args.user
     list_of = reg.incidents.get("incidents") if isinstance(reg.incidents, dict) else None if (reg.root / path).exists() else []
     if u not in guardians_in_office(reg) | reg.council:
@@ -8686,7 +8687,7 @@ def cmd_incident(args):
     ident = next_incident(list_of)
     if problem_text := incident_title_refused(args.title) or (None if ident else "INC-9999 is the last number: the council decides what comes next"):
         raise BeeError(problem_text)
-    # La réécriture canonique (la seule forme que la porte accepte d'un gardien) perd les commentaires du fichier : on le dit.
+    # The canonical rewrite (the only form the gate accepts from a guardian) loses the file's comments: we say so.
     text = (reg.root / path).read_text(encoding="utf-8") if (reg.root / path).exists() else ""
     comments = text != invitation_render({"incidents": list_of}, path) and any(
         l.lstrip().startswith("#") or " #" in l for l in text.splitlines())
@@ -8754,7 +8755,7 @@ def canonical_pr(address):
 
 
 def read_pr_authors(path):
-    """Fichier « address<TAB>login<TAB>numéro du compte » (un par ligne), écrit par auto-merge d'après l'API GitHub."""
+    """File « address<TAB>login<TAB>account number » (one per line), written by auto-merge from the GitHub API."""
     authors = {}
     for line_text in pathlib.Path(path).read_text(encoding="utf-8").splitlines():
         address, _, rest_of = line_text.partition("\t")
@@ -8779,8 +8780,8 @@ def cmd_acts_for(args):
 
 
 def cmd_declared_prs(args):
-    """Adresses de PR déclarées par les contributions ajoutées ou modifiées entre base et tête (une par ligne, déjà
-    validées par expression régulière) : auto-merge relève l'auteur GitHub de chacune avant check-pr."""
+    """PR addresses declared by the contributions added or modified between base and head (one per line, already
+    validated by regular expression): auto-merge looks up the GitHub author of each before check-pr."""
     reg = Registry(args.registry)
     views = []
     for _, contribution in pr_contributions(reg, args.base, args.head):
@@ -8855,7 +8856,7 @@ def data_commit(parents, raw, additions):
 
 def last_code_commit(root, base, limit_value=DATA_COMMITS_LIMIT):
     """ruche-0132: the last commit of base's first-parent history that is not data (data_commit), from one `git log`
-    read as it comes and stopped there. None past `limite` data commits, or on any error (fails closed)."""
+    read as it comes and stopped there. None past `limit_value` data commits, or on any error (fails closed)."""
     def read(stream, rest_of=b""):  # its NUL-separated fields, as they come (bytes that are not UTF-8 kept apart), then None
         while block := stream.read1(1 << 16):
             *fields, rest_of = (rest_of + block).split(b"\0")
@@ -8880,8 +8881,8 @@ def last_code_commit(root, base, limit_value=DATA_COMMITS_LIMIT):
 
 def push_scope(root, before, after):
     """ruche-0133 (R-push): what a push to main runs, on the range it moved (validation.yml, site.yml), and the commit suite.yml
-    must test: apres's last code commit (last_code_commit, the one main-green expects), or apres if none is found.
-    "data" if avant is a strict ancestor of apres and that commit is avant or older (every first-parent commit since is data),
+    must test: after's last code commit (last_code_commit, the one main-green expects), or after if none is found.
+    "data" if before is a strict ancestor of after and that commit is before or older (every first-parent commit since is data),
     else "full". Fails closed: a new branch, a forced push, an empty or unreadable range, any error."""
     def ancestor(x, y):
         return subprocess.run(["git", "-C", str(root), "merge-base", "--is-ancestor", x, y], capture_output=True).returncode == 0
@@ -9051,9 +9052,9 @@ def cmd_api_budget(args):
     return 0
 
 
-# ruche-0120 (E1): one fusion pass merges every validated data PR, in order, each bound to its head: preparer, verifier, fusionner.
+# ruche-0120 (E1): one merge pass merges every validated data PR, in order, each bound to its head: prepare, verify, merge.
 CANDIDATES, PASS_AUTHORS, RESULTS, MERGE_PAUSE = "candidates.tsv", "pr_authors.tsv", "results.tsv", float(os.environ.get("BEE_MERGE_PAUSE", "10"))
-PR_AUTHOR_JQ = '"\\(.user.login // "")\\t\\(.user.id // "")"'  # login, then the account's number (lire_auteurs_pr)
+PR_AUTHOR_JQ = '"\\(.user.login // "")\\t\\(.user.id // "")"'  # login, then the account's number (read_pr_authors)
 gh_api = lambda *a: "" if (r := subprocess.run(["timeout", "60", "gh", "api", *a], capture_output=True, text=True, stdin=subprocess.DEVNULL)).returncode else r.stdout.strip()  # noqa: E731
 read_tsv = lambda path: [l.split("\t") for l in pathlib.Path(path).read_text(encoding="utf-8").splitlines() if l]  # noqa: E731
 
@@ -9168,9 +9169,9 @@ def cmd_check_fork(args):
 
 
 def declared_gain(reg, manifest, task):
-    """Gain relatif que l'agent déclare sur la métrique visée (positif = mieux), ou None. Le manifeste vient du fork :
-    toute forme inattendue (liste, texte, nombre non fini ou démesuré) donne None, jamais une exception qui ferait perdre
-    le verdict, ni un écart NaN que l'alerte ne verrait pas (revue adverse du tour 2)."""
+    """Relative gain the agent declares on the targeted metric (positive = better), or None. The manifest comes from the
+    fork: any unexpected form (list, text, non-finite or outsized number) gives None, never an exception that would lose
+    the verdict, nor a NaN gap the alert would not see (adversarial review of round 2)."""
     metric = task.get("metric")
     measurements = manifest.get("measurements") if isinstance(manifest, dict) else None
     if not metric or not isinstance(measurements, dict):
@@ -9190,35 +9191,36 @@ def declared_gain(reg, manifest, task):
         return None
     direction = reg.metrics(task.get("project")).get(metric, {}).get("direction", "higher")
     gain = after / before - 1 if direction == "higher" else 1 - after / before
-    # Borné avant tout calcul (ruche-0028, tour 3 : un gain de 1e300 donnait un écart de 2,5e298, imprimé en 300 chiffres).
+    # Bounded before any computation (ruche-0028, round 3: a gain of 1e300 gave a gap of 2.5e298, printed in 300 digits).
     return gain if math.isfinite(gain) and abs(gain) <= 1e6 else None
 
 
-# Ce que le verdict recopie du manifeste (ruche-0017) : données du fork, bornées en caractères et en taille écrite (rendu :
-# ce que YAML échappe pesait dix fois sa borne, revue adverse). Au-delà de 64 Kio, le manifeste n'est pas même lu.
+# What the verdict copies from the manifest (ruche-0017): fork data, bounded in characters and in written size (rendering:
+# what YAML escapes weighed ten times its bound, adversarial review). Beyond 64 KiB, the manifest is not even read.
 DECLARED_MAX = {"model": 200, "item": 800, "elements": 10, "doubts": 1600, "rendered": 12000}
 MANIFEST_MAX_BYTES = 64 * 1024
 
 
 def written_as_is(c):
-    """Vrai si YAML écrit ce caractère sans l'échapper (règle de l'émetteur de PyYAML, allow_unicode)."""
+    """True if YAML writes this character without escaping it (the rule of PyYAML's emitter, allow_unicode)."""
     return " " <= c <= "~" or "\xa0" <= c <= "\ud7ff" or "\ue000" <= c <= "\ufffd" or "\U00010000" <= c < "\U0010ffff"
 
 
 def declared_text(value, maximum):
-    """Un texte du manifeste recopié (None si ce n'est pas un texte, ou s'il est vide) : sur une ligne, l'invisible et ce que
-    YAML échapperait montrés (<U+202E>), coupé à `maximum` (« […] ») ; point fixe : declared_text(t, len(t)) == t."""
+    """A copied text of the manifest (None if it is not a text, or if it is empty): on one line, the invisible and what
+    YAML would escape shown (<U+202E>), cut at `maximum` (« […] »); fixed point: declared_text(t, len(t)) == t."""
     if not isinstance(value, str):
         return None
     text = " ".join("".join(c if c in "\n\t" or (written_as_is(c) and not forbidden_outgoing_character(c)) else f"<U+{ord(c):04X}>"
                              for c in value[:8 * maximum]).split())
-    text = neutralise_markers(text)  # ruche-0029 : le manifeste vient du fork ; il ne bloque pas le verdict, il est montré
+    text = neutralise_markers(text)  # ruche-0029: the manifest comes from the fork; it does not block the verdict, it is shown
     return (text if len(text) <= maximum else text[:maximum - 4].rstrip() + " […]") or None
 
 
 def copied_declaration(manifest, gain):
-    """Le bloc declare : modèle, gain déclaré sur la métrique visée, teste, untested et doutes, bornés et typés (un type
-    inattendu donne None ou []) ; écrit, au plus DECLARED_MAX["rendered"] caractères (la plus longue liste cède sa fin)."""
+    """The declared block: model, gain declared on the targeted metric, tested, untested and doubts, bounded and typed
+    (an unexpected type gives None or []); written, at most DECLARED_MAX["rendered"] characters (the longest list gives
+    up its end)."""
     agent = manifest.get("agent") if isinstance(manifest.get("agent"), dict) else {}
     lists_of = {c: v if isinstance(v, list) else [v] if isinstance(v, str) else [] for c in ("tested", "untested")
               for v in [manifest.get(c)]}
@@ -9238,10 +9240,11 @@ def copied_declaration(manifest, gain):
         kept_ones[longest] -= 1
 
 
-# ruche-0025 (revues adverses de minizBee #16) : verdicts.yml ne croit que la CI de la PR enregistrée, vers la branche par
-# défaut du fork, jamais changée de base, sans autre PR de la même tête (même dépôt, par id, et même branche, sans la casse) ;
-# la base que déclare verdict.json n'est jamais crue. Les réponses de l'API sont des données : rien ne s'imprime qui ne suive
-# un motif. Un refus pour raison de sécurité s'écrit dans la contribution (attente_verdict : une phrase fixe et la tête).
+# ruche-0025 (adversarial reviews of minizBee #16): verdicts.yml trusts only the CI of the recorded PR, to the fork's
+# default branch, its base never changed, with no other PR from the same head (same repository, by id, and same branch,
+# ignoring case); the base verdict.json declares is never trusted. The API's answers are data: nothing is printed that does
+# not follow a pattern. A refusal for a security reason is written in the contribution
+# (awaiting_verdict: a fixed sentence and the head).
 REF_PATTERN = r"[A-Za-z0-9._/-]{1,200}"
 BASE_CHANGES = ("base_ref_changed", "automatic_base_change_succeeded")
 VERDICT_WAIT = {
@@ -9257,8 +9260,8 @@ VERDICT_WAIT = {
 
 
 def note_wait(reg, cid, code, sha):
-    """Écrit dans la contribution ce qu'elle attend pour recevoir un verdict (verdicts.yml ne la rejuge qu'à une autre tête) :
-    le code du motif, dont la phrase se rend à l'affichage (elle peut changer sans invalider le registre)."""
+    """Writes in the contribution what it awaits to receive a verdict (verdicts.yml judges it again only at another head):
+    the reason's code, whose sentence is rendered at display (it can change without invalidating the registry)."""
     path, rec = reg.record(cid)
     if re.fullmatch(r"[0-9a-f]{7,40}", str(sha)):
         write_yaml(path, {**rec, "awaiting_verdict": {"reason": code, "sha": sha}})
@@ -9266,14 +9269,14 @@ def note_wait(reg, cid, code, sha):
 
 
 def declared_bases(raw):
-    """Les bases que verdict.json déclare : details.base, et judge_base.base quand judge_base existe (miniz-0032) ; None si illisible."""
+    """The bases verdict.json declares: details.base, and judge_base.base when judge_base exists (miniz-0032); None if unreadable."""
     blocks = [raw.get(c) for c in ("details", "judge_base")] if isinstance(raw, dict) else []
     return list(dict.fromkeys(b["base"] if isinstance(b["base"], str) and re.fullmatch(r"[0-9a-f]{40}", b["base"]) else None
                               for b in blocks if isinstance(b, dict) and "base" in b))
 
 
 def api_answers(folder, name):
-    """Les documents de <folder>/<name>.json, écrit par gh api (--paginate les met bout à bout), listes dépliées."""
+    """The documents of <folder>/<name>.json, written by gh api (--paginate puts them end to end), lists unfolded."""
     text, docs, i = pathlib.Path(folder, name + ".json").read_text(encoding="utf-8"), [], 0
     while (i := re.compile(r"\s*").match(text, i).end()) < len(text):
         doc, i = json.JSONDecoder().raw_decode(text, i)
@@ -9282,8 +9285,8 @@ def api_answers(folder, name):
 
 
 def cmd_pick_run(args):
-    """Imprime « <numéro> <address> <branche par défaut> » de l'exécution à croire ; sinon pourquoi (rien s'il n'y a pas
-    encore d'exécution) et code 1. Lit les réponses de l'API que verdicts.yml a rangées dans --api."""
+    """Prints « <number> <address> <default branch> » of the run to trust; otherwise why (nothing if there is no
+    run yet) and code 1. Reads the API's answers that verdicts.yml stored in --api."""
     reg = Registry(args.registry)
     m = re.fullmatch(r"https://github\.com/[A-Za-z0-9-]+/[A-Za-z0-9_.-]+/pull/([0-9]+)", str(reg.record(args.contribution)[1].get("pr")))
     name = f"{args.contribution}: PR #{m[1] if m else '?'}"
@@ -9294,20 +9297,20 @@ def cmd_pick_run(args):
         read, number_of = (lambda n: api_answers(args.api, n)), int(m[1])
         repo, pr, runs = read("repo")[0], read("pr")[0], [e for p in read("runs") for e in p["workflow_runs"]]
         defect, head, base, head_id, branch = repo["default_branch"], pr["head"], pr["base"]["ref"], pr["head"]["repo"]["id"], str(pr["head"]["ref"]).lower()
-        fallback = head_id != repo["id"] or pr["state"] != "open"  # GitHub ne lie une exécution qu'à une PR ouverte du fork même
-        # Les autres PR de la même tête, et quand elles ont pu produire une exécution : de leur création (- 1 min) à leur
-        # fermeture (+ 1 h : l'événement closed déclenche encore une exécution).
+        fallback = head_id != repo["id"] or pr["state"] != "open"  # GitHub links a run only to an open PR from the fork itself
+        # The other PRs of the same head, and when they could have produced a run: from their creation (- 1 min) to their
+        # closing (+ 1 h: the closed event still triggers a run).
         others = [(p["number"], p["state"] == "open", read_instant(p["created_at"]) - dt.timedelta(minutes=1),
                    None if p["state"] == "open" else read_instant(p["closed_at"]) + dt.timedelta(hours=1)) for p in read("pulls")
                   if p["number"] != number_of and (p["head"]["repo"] or {}).get("id") == head_id and str(p["head"]["ref"]).lower() == branch]
         timeline, update_flag = read("timeline"), read_instant(pr["updated_at"])
         changed_one = sorted({e.get("event") for e in read("events") + timeline} & set(BASE_CHANGES))
-        # Modifiée il y a moins de 5 minutes sans qu'un événement daté par GitHub l'explique (pas les commits, datés par
-        # leur auteur) : une base changée à l'instant pourrait manquer aux événements. Un commentaire ne repousse rien.
+        # Modified less than 5 minutes ago without an event dated by GitHub to explain it (not the commits, dated by
+        # their author): a base changed just now could be missing from the events. A comment postpones nothing.
         dates = [read_instant(e.get("created_at") or e["submitted_at"]) for e in timeline if e.get("created_at") or e.get("submitted_at")]
         fresh = now_instant() - update_flag < dt.timedelta(minutes=5) and update_flag > max(dates, default=update_flag - dt.timedelta(days=1)) + dt.timedelta(seconds=5)
 
-        def of_this_pr(e):  # pull_requests est vide pour une PR d'un autre dépôt ou fermée : elle se reconnaît alors à sa tête
+        def of_this_pr(e):  # pull_requests is empty for a PR from another repository or a closed one: it is then recognized by its head
             linked_ones = [p for p in e["pull_requests"] or [] if p["number"] == number_of]
             return (e["event"] == "pull_request" and e["status"] == "completed" and e["head_sha"] == args.sha
                     and str(e["head_branch"]).lower() == branch and (e["head_repository"] or {}).get("id") == head_id
@@ -9324,7 +9327,7 @@ def cmd_pick_run(args):
     if not kept:
         return refusal(f"{len(runs)} run(s) of bee-ci.yml on this commit, none of this PR to {defect} "
                      "(pull_request event)") if runs else 1
-    run_number, address, created_one = kept[-1]  # une relance garde created_at (vérifié sur l'API)
+    run_number, address, created_one = kept[-1]  # a rerun keeps created_at (checked on the API)
     if blocking := [(n, open) for n, open, beginning, end in others if beginning <= created_one and (open or created_one < end)]:
         return waiting("pr_open" if any(o for _, o in blocking) else "pr_closed", sorted(n for n, _ in blocking))
     if not (isinstance(run_number, int) and re.fullmatch(r"https://github\.com/[A-Za-z0-9_./-]+", str(address))):
@@ -9337,7 +9340,7 @@ def cmd_declared_bases(args):
     try:
         print(*[b for b in declared_bases(read_verdict_json(args.verdict)) if b])
     except (OSError, BeeError):
-        pass  # bee enregistrer-verdict refusera ce verdict
+        pass  # bee record-verdict will refuse this verdict
     return 0
 
 
@@ -9361,7 +9364,7 @@ def cmd_record_verdict(args):
     reg = Registry(args.registry)
     path, rec = reg.record(args.contribution)
     raw = read_verdict_json(args.verdict)
-    # Aucun nombre non fini (NaN, ±Infinity : json les accepte) dans un verdict : il fausserait le classement (R3).
+    # No non-finite number (NaN, ±Infinity: json accepts them) in a verdict: it would distort the ranking (R3).
     def unfinished(value):
         if isinstance(value, float):
             return not math.isfinite(value)
@@ -9385,7 +9388,7 @@ def cmd_record_verdict(args):
                         f"{said}, the task's: {want}); no verdict is recorded")
     if verdict["ci"] == "red":
         verdict["failed_step"] = str(raw.get("failed_step") or "inconnue")
-    elif args.bases is not None:  # ruche-0025 : verdicts.yml passe toujours --bases (« sha statut » de l'API compare) ; un rouge n'intègre rien
+    elif args.bases is not None:  # ruche-0025: verdicts.yml always passes --bases (« sha status » from the compare API); a red one integrates nothing
         with open(args.bases, encoding="utf-8") as f:
             checked_ones = {l.split()[0]: l.split()[1] for l in f if len(l.split()) == 2}
         bases, judge = declared_bases(raw), raw.get("judge_base")
@@ -9394,19 +9397,19 @@ def cmd_record_verdict(args):
         no_judge = reg.projects.get(reg.task(rec["task"])[1].get("project"), (None, {}))[1].get("verdict_requires_judge_base") and not (
             isinstance(judge, dict) and all(re.fullmatch(r"[0-9a-f]{40}", str(judge.get(c))) for c in ("base", "commit")))
         if no_judge or not bases or any(checked_ones.get(b) not in ("identical", "ahead") for b in bases):
-            # Attente seulement pour un refus certain ; une base non vérifiée (panne de l'API, quota) est rejugée au passage suivant.
+            # Waiting only for a certain refusal; an unverified base (API outage, quota) is judged again at the next pass.
             certain = no_judge or not bases or any(b is None or checked_ones.get(b) in ("behind", "diverged") for b in bases)
             code = "judge_base" if no_judge else "base"
             raise BeeError(f"{args.contribution}: verdict refused, {note_wait(reg, args.contribution, code, args.sha) if certain else VERDICT_WAIT[code]}"
                             f" (declared base: {', '.join(said) or 'absent'}); no verdict is recorded"
                             + ("" if certain else ", judged again at the next pass"))
-        verdict["base"] = bases[0]  # vérifiée (ancêtre de la branche par défaut) : le relecteur lit compare/<base>...<sha> (ruche-0028)
+        verdict["base"] = bases[0]  # verified (ancestor of the default branch): the reviewer reads compare/<base>...<sha> (ruche-0028)
     gain = raw.get("gain")
     verdict["gain"] = float(gain) if gain is not None else None
     if "beyond_noise" in raw:
         verdict["beyond_noise"] = bool(raw["beyond_noise"])
     if raw.get("bootstrap"):
-        verdict["bootstrap"] = True  # juges venus de la PR elle-même : à signaler aux relecteurs
+        verdict["bootstrap"] = True  # judges from the PR itself: to be flagged to the reviewers
     cut_off = []  # ruche-0040: what the bounds of VERDICT_MAX leave out, said in the log
     for key in ("instructions", "degradations"):
         if isinstance(raw.get(key), dict) and len(raw[key]) > VERDICT_MAX["keys"]:
@@ -9414,26 +9417,26 @@ def cmd_record_verdict(args):
             raw[key] = dict(list(raw[key].items())[:VERDICT_MAX["keys"]])
     instructions = raw.get("instructions")
     if isinstance(instructions, dict):
-        # R4 : décompte Cachegrind par scénario ({"instructions_n6": {"A", "B", "gain"}}), exact et reproductible.
+        # R4: Cachegrind count per scenario ({"instructions_n6": {"A", "B", "gain"}}), exact and reproducible.
         number = lambda v: float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else None
         verdict["instructions"] = {str(n): {k: number((v or {}).get(k)) for k in ("A", "B", "gain")}
                                    for n, v in instructions.items() if isinstance(v, dict)}
     degradations = raw.get("degradations")
     if isinstance(degradations, dict):
-        # R5 : métriques dégradées au-delà du bruit, avec leur gain relatif (négatif = pire).
+        # R5: metrics degraded beyond noise, with their relative gain (negative = worse).
         verdict["degradations"] = {str(m): (float(g) if isinstance(g, (int, float)) and not isinstance(g, bool) else None)
                                    for m, g in degradations.items()}
     judge = raw.get("judge")
     if isinstance(judge, dict):
-        # Juge isolé du fork : sorties vérifiées de l'extérieur, et constructions qui pourraient tromper la
-        # mesure de l'intérieur (R3 exige alors un gardien). Donnée : bornée et typée ici.
+        # Isolated judge of the fork: outputs checked from the outside, and constructs that could fool the
+        # measurement from the inside (R3 then requires a guardian). Data: bounded and typed here.
         suspects = judge.get("suspicious_constructs")
         if not isinstance(suspects, list):
             suspects = [{"type": "illisible", "detail": "list of suspicious constructs missing or unreadable"}]
         integer_value = lambda v: v if isinstance(v, int) and not isinstance(v, bool) and v >= 0 else None  # noqa: E731
         verdict["judge"] = {
             "version": integer_value(judge.get("version")),
-            # Juge commun du registre (outils/juge/, docs/juge-commun.md) : étiquette qui a rendu le verdict.
+            # The registry's common judge (outils/juge/, docs/common-judge.md): the tag that rendered the verdict.
             "common": judge.get("common") if isinstance(judge.get("common"), str) and re.fullmatch(r"juge-v[0-9]{1,4}", judge.get("common")) else None,
             "outputs_compared": integer_value(judge.get("outputs_compared")),
             "suspicious_constructs": [{"type": str(s.get("type", ""))[:40], "detail": str(s.get("detail", ""))[:300]}
@@ -9453,7 +9456,7 @@ def cmd_record_verdict(args):
         print(f"⚠ {replaced} unreadable scenario or metric key(s) in the verdict: replaced by refused_key_<n>")
     manifest_ignored, copied_text = None, None
     if args.manifest:
-        try:  # donnée venue du fork : illisible ou trop grosse (pas même lue), elle n'empêche pas d'enregistrer le verdict
+        try:  # data from the fork: unreadable or too big (not even read), it does not prevent recording the verdict
             too_big = os.path.getsize(args.manifest) > MANIFEST_MAX_BYTES
             manifest = None if too_big else read_yaml(args.manifest)
         except Exception:
@@ -9462,24 +9465,24 @@ def cmd_record_verdict(args):
             manifest = fork_document("manifest", manifest, "manifest")
         except BeeError:
             manifest = None
-        # Le manifeste d'une autre tâche (un CONTRIBUTION.yaml resté sur master) ne dit rien de cette contribution : un écart
-        # calculé contre lui serait faux (miniz-0018-c1 contre le manifeste de miniz-0016, tour 2).
+        # The manifest of another task (a CONTRIBUTION.yaml left on master) says nothing about this contribution: a gap
+        # computed against it would be wrong (miniz-0018-c1 against the manifest of miniz-0016, round 2).
         declared_task, user = (manifest.get("task"), manifest.get("user")) if isinstance(manifest, dict) else (None, None)
-        # Imprimée dans le journal de la CI : seulement si c'est un identifiant de tâche, jamais le texte du fork (un saut
-        # de ligne suivi de « :: » y deviendrait une commande de workflow GitHub ; revue adverse du tour 2).
+        # Printed in the CI's log: only if it is a task id, never the fork's text (a line
+        # break followed by « :: » would become a GitHub workflow command there; adversarial review of round 2).
         if too_big:
             manifest_ignored = f"more than {MANIFEST_MAX_BYTES // 1024} KiB"
         elif declared_task != rec.get("task"):
             readable = isinstance(declared_task, str) and re.fullmatch(TASK_ID_PATTERN, declared_task)
             manifest_ignored = f"task {declared_task if readable else 'unreadable'}, not {rec.get('task')}"
-        elif not (isinstance(user, str) and user.lower() == str(rec.get("author") or "").lower()):  # ni d'un autre auteur
+        elif not (isinstance(user, str) and user.lower() == str(rec.get("author") or "").lower()):  # nor from another author
             readable = isinstance(user, str) and re.fullmatch(LOGIN_PATTERN, user)
             manifest_ignored = f"author {user if readable else 'unreadable'}, not {rec.get('author')}"
         else:
             declared = declared_gain(reg, manifest, reg.task(rec["task"])[1])
             verdict["declared_gap"] = (round(abs(declared - verdict["gain"]), 4)
                                         if declared is not None and verdict["gain"] is not None else None)
-            try:  # ce que le relecteur doit voir (ruche-0017) ; une erreur imprévue ne fait jamais perdre le verdict
+            try:  # what the reviewer must see (ruche-0017); an unforeseen error never loses the verdict
                 copied_text = copied_declaration(manifest, declared)
             except Exception:
                 copied_text = None
@@ -9487,16 +9490,16 @@ def cmd_record_verdict(args):
         verdict["sha"] = args.sha
     tree_ignored = False
     if args.tree:
-        # Même contenu (revue adverse de ruche-0012) : l'arbre git du commit jugé, lu par verdicts.yml auprès de l'API ; un
-        # commit amendé (même arbre, autre sha) reste le même contenu dans le fil. Mal formé, il est ignoré : jamais une erreur
-        # qui ferait perdre le verdict (bee compare alors les sha).
+        # Same content (adversarial review of ruche-0012): the judged commit's git tree, read by verdicts.yml from the API;
+        # an amended commit (same tree, other sha) remains the same content in the thread. Malformed, it is ignored: never
+        # an error that would lose the verdict (bee then compares the shas).
         if re.fullmatch(r"[0-9a-f]{7,40}", args.tree):
             verdict["tree"] = args.tree
         else:
             tree_ignored = True
     if args.files:
-        # Contrôle de confiance : la liste vient de l'API GitHub (workflow du registre), pas de la PR.
-        # Une PR qui touche son workflow ou ses juges a pu fabriquer son propre verdict.
+        # Trust check: the list comes from the GitHub API (the registry's workflow), not from the PR.
+        # A PR that touches its workflow or its judges may have fabricated its own verdict.
         with open(args.files, encoding="utf-8") as f:
             files = sorted({l.strip() for l in f if l.strip()})
         project = reg.projects.get(reg.task(rec["task"])[1].get("project"), (None, {}))[1]
@@ -9504,23 +9507,23 @@ def cmd_record_verdict(args):
         judges = [c for c in files if matches(c, reasons)]
         verdict["checked_files"] = True
         if judges:
-            verdict["modified_judges"] = [neutralise_markers(show_error(j))[:VERDICT_MAX["name"]]  # noms venus de la PR (ruche-0029)
+            verdict["modified_judges"] = [neutralise_markers(show_error(j))[:VERDICT_MAX["name"]]  # names from the PR (ruche-0029)
                                          for j in judges[:VERDICT_MAX["judges"]]]
     if args.run:
         verdict["run"] = args.run
     rec = dict(rec)
-    # ruche-0028 (1) : chaque verdict s'ajoute à l'historique (un passage qui relit le même verdict n'ajoute rien) ; au-delà de
-    # VERDICTS_MAX, les plus anciens sortent et verdicts_oublies les compte (R4 exige alors une mesure d'une autre configuration).
+    # ruche-0028 (1): each verdict is added to the history (a pass that rereads the same verdict adds nothing); beyond
+    # VERDICTS_MAX, the oldest leave and dropped_verdicts counts them (R4 then requires a measurement of another configuration).
     old = rec.get("verdict") if isinstance(rec.get("verdict"), dict) and rec["verdict"].get("ci") else None
     history = list(rec.get("verdicts") or ([trace_verdict(old)] if old else []))
     history += [trace_verdict(verdict)] if not history or history[-1] != trace_verdict(verdict) else []
     if len(history) > VERDICTS_MAX:
         rec["dropped_verdicts"] = int(rec.get("dropped_verdicts") or 0) + len(history) - VERDICTS_MAX
     rec["verdict"], rec["verdicts"] = verdict, history[-VERDICTS_MAX:]
-    # La déclaration est celle du commit jugé : sans manifeste recopiable pour ce verdict, null (l'ancienne disparaît).
+    # The declaration is the judged commit's: without a copyable manifest for this verdict, null (the old one is gone).
     rec["declared"] = copied_text
     rec.pop("awaiting_verdict", None)
-    # ruche-0040: the robot never writes what bee valider would refuse: the contribution's bound, its schema.
+    # ruche-0040: the robot never writes what bee validate would refuse: the contribution's bound, its schema.
     errors = sorted({message_schema(e) for e in reg.schema("contribution-record").iter_errors(rec)})[:3]
     size = len(yaml_text(rec).encode("utf-8"))
     if errors or size > BYTES_MAX["contributions"]:
@@ -9539,11 +9542,11 @@ def cmd_record_verdict(args):
 
 
 def cmd_record_measurement(args):
-    """Transforme un rapport ab.py (--json) en fiche de mesure measurements/<contribution>/<login>.yaml."""
+    """Turns an ab.py report (--json) into a measurement file measurements/<contribution>/<login>.yaml."""
     reg = Registry(args.registry)
     reg.require_member(args.user)
-    reg.record(args.contribution)  # lève une erreur si la contribution est inconnue
-    if (already := reg.root / "measurements" / args.contribution / f"{args.user}.yaml").exists():  # ruche-0042, as verifier-pr
+    reg.record(args.contribution)  # raises an error if the contribution is unknown
+    if (already := reg.root / "measurements" / args.contribution / f"{args.user}.yaml").exists():  # ruche-0042, as check-pr
         raise BeeError(f"{reg.rel(already)} already exists: one measurement per person and per contribution, never changed once "
                         "published (commandment 10); if this file is not published yet, delete it, then rerun")
     with open(args.ab, encoding="utf-8") as f:
@@ -9586,7 +9589,7 @@ def cmd_record_measurement(args):
     if len(entry_card["base"]) < 7 or len(entry_card["candidate"]) < 7:
         raise BeeError("base/candidate sha missing from the report; give --base and --candidate (the compared commits)")
     path = reg.root / "measurements" / args.contribution / f"{args.user}.yaml"
-    if problem_text := next(text_problems(entry_card, reg.rel(path), "measurements"), None):  # --outil, and what ab.json gave, before writing
+    if problem_text := next(text_problems(entry_card, reg.rel(path), "measurements"), None):  # --tool, and what ab.json gave, before writing
         raise BeeError(problem_text)
     write_yaml(path, entry_card)
     aimed_at = ", ".join(f"{n} {100 * e['gain']:+.1f}%{'*' if e['beyond_noise'] else ''}" for n, e in metrics.items())
@@ -9597,10 +9600,10 @@ def cmd_record_measurement(args):
 
 
 def acceptance_causes(reg, cid, instant=None, assessment=None):
-    """Raisons qui empêchent l'intégration automatique de `cid` (R3) ; liste vide = intégrable.
+    """Reasons that prevent the automatic integration of `cid` (R3); empty list = integrable.
 
-    Renvoie (chemin, enr, raisons) : les conditions de R3 pour la contribution seule (r3_causes), puis, si
-    d'autres contributions de la même tâche sont en course, la règle de choix entre concurrentes (race_causes).
+    Returns (path, rec, reasons): R3's conditions for the contribution alone (r3_causes), then, if
+    other contributions of the same task are in the race, the rule for choosing between rivals (race_causes).
     """
     path, rec, reasons = r3_causes(reg, cid, assessment)
     if rec.get("status") == "in_review":
@@ -9609,24 +9612,24 @@ def acceptance_causes(reg, cid, instant=None, assessment=None):
 
 
 def race_causes(reg, cid, levels, instant):
-    """R3, contributions concurrentes : X n'est intégrée que si aucune concurrente encore en course ne pourrait être
-    mieux classée. Liste vide = X peut passer (si r3_causes est vide aussi).
+    """R3, rival contributions: X is integrated only if no rival still in the race could be
+    ranked better. Empty list = X can pass (if r3_causes is empty too).
 
-    Les bornes sont propres à X (wait_bounds), et ne dépendent d'aucune autre contribution. Jusqu'à
-    submitted_at(X) + 96 h (72 h de R7 + 24 h de fenêtre), X attend :
-      1. tout participant engagé sur la tâche BEFORE la soumission de X (titulaire, inscrit en parallèle) qui n'a pas
-         encore soumis, jusqu'à sa contribution, son retrait ou son expiration R7 ; un engagement postérieur à la
-         soumission de X ne la retarde pas ;
-      2. toute concurrente Z pas encore départagée : dans sa fenêtre de R3 (24 h depuis sa soumission), ou sans verdict
-         de CI si son auteur était engagé sur la tâche avant la soumission de X, jusqu'à min(submitted_at(Z) + 96 h,
-         submitted_at(X) + 96 h) (une CI lente ne fait pas perdre la course à qui travaillait déjà, mais une vieille
-         contribution sans verdict ne retarde pas chaque nouvelle ; celle d'un engagé tardif, sans verdict, ne retarde X
-         que pendant sa fenêtre) ;
-      3. toute concurrente mieux classée (ranking_key : le gain mesuré, sinon le vote net, puis l'ancienneté).
-    De submitted_at(X) + 96 h à + 120 h, X n'attend que les concurrentes intégrables (r3_causes vide) mieux classées
-    qu'elle : le workflow les intègre d'abord. Ensuite, plus rien ne retient X : une concurrente mieux classée qui ne
-    s'est pas intégrée d'elle-même (PR en conflit, commit sans verdict…) ne bloque plus. Toute attente de X finit donc au
-    plus tard à submitted_at(X) + 120 h, quelle que soit l'ancienneté des autres contributions de la tâche.
+    The bounds are X's own (wait_bounds), and depend on no other contribution. Until
+    submitted_at(X) + 96 h (72 h of R7 + 24 h of window), X waits for:
+      1. every participant engaged on the task BEFORE X's submission (holder, registered in parallel) who has not
+         submitted yet, until their contribution, their withdrawal or their R7 expiry; an engagement later than
+         X's submission does not delay it;
+      2. every rival Z not yet settled: in its R3 window (24 h since its submission), or without a CI verdict
+         if its author was engaged on the task before X's submission, until min(submitted_at(Z) + 96 h,
+         submitted_at(X) + 96 h) (a slow CI does not make whoever was already working lose the race, but an old
+         contribution without a verdict does not delay every new one; that of a late-engaged author, without a verdict,
+         delays X only during its window);
+      3. every rival ranked better (ranking_key: the measured gain, else the net vote, then seniority).
+    From submitted_at(X) + 96 h to + 120 h, X waits only for the integrable rivals (r3_causes empty) ranked better
+    than it: the workflow integrates them first. Then nothing holds X back any more: a better-ranked rival that has
+    not integrated by itself (PR in conflict, commit without a verdict…) no longer blocks. Every wait of X therefore ends
+    at the latest at submitted_at(X) + 120 h, whatever the seniority of the task's other contributions.
     """
     _, rec = reg.record(cid)
     tid = rec.get("task")
@@ -9635,8 +9638,8 @@ def race_causes(reg, cid, levels, instant):
     submitted = effective_submission(reg, rec)
     protection, waits_end = wait_bounds(reg, rec)
     if submitted is None or instant >= waits_end:
-        return []  # borne dure : passé soumise_le(X) + 120 h, personne ne retient plus X
-    declared_one = _instant_or_none(rec.get("submitted_at"))  # les engagements, datés par déclaration, se comparent à la sienne (ruche-0028)
+        return []  # hard bound: past submitted_at(X) + 120 h, no one holds X back any more
+    declared_one = _instant_or_none(rec.get("submitted_at"))  # the engagements, dated by declaration, are compared with its own (ruche-0028)
     window = dt.timedelta(hours=setting(reg, "acceptance_window_hours"))
     reasons = []
     my_key = ranking_key(reg, rec, levels)
@@ -9658,8 +9661,8 @@ def race_causes(reg, cid, levels, instant):
             beginning = effective_submission(reg, e)
             in_its_window = beginning is None or instant - beginning < window
             engaged_before = (engagement_start(e) or FAR_FUTURE) <= declared_one
-            # Sans verdict, une concurrente d'un auteur engagé avant X n'est attendue que jusqu'à la fin de SA protection
-            # (et jamais au-delà de celle de X) : une vieille contribution sans verdict ne retarde pas chaque nouvelle.
+            # Without a verdict, a rival by an author engaged before X is awaited only until the end of ITS protection
+            # (and never beyond X's): an old contribution without a verdict does not delay every new one.
             engaged_limit = min(wait_bounds(reg, e)[0], protection) if beginning is not None else protection
             if not e.get("verdict") and (in_its_window or (engaged_before and instant < engaged_limit)):
                 limit_value = engaged_limit if engaged_before or beginning is None else min(beginning + window, protection)
