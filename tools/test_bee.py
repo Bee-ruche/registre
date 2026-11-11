@@ -21885,6 +21885,38 @@ class TestLoadTestInTheSuite(unittest.TestCase):
         self.assertRegex(r.stderr, rf"\nRan {len(tests)} tests in [0-9.]+s\n\nOK\n$")  # not « OK (skipped=…) »
 
 
+class TestRehearsalKitRuche0157(unittest.TestCase):
+    """ruche-0157: the README that setup.sh generates names what the kit has. Its template said $BEE_SIMU, which setup.sh's
+    sed (it replaces $BEE_SIM) turned into paths ending in U/etat/..., and commands the switch had renamed."""
+
+    def test_the_readme_template_names_the_kits_variable_paths_and_commands(self):
+        kit = ROOT / "tools/rehearsal"
+        template, setup = (kit / "README-template.md").read_text(encoding="utf-8"), (kit / "setup.sh").read_text(encoding="utf-8")
+        self.assertIn('sed -e "s#\\$BEE_SIM#$S#g"', setup)
+        self.assertIn('> "$S/README.md"', setup)
+        self.assertNotRegex(template, r"\$BEE_SIM\w")  # each $BEE_SIM is replaced whole
+        paths = set(re.findall(r"\$BEE_SIM/([\w./-]*)", template))
+        self.assertLessEqual({"state/clock", "state/announcements.md", "bees/", "state/journals/", "tools"}, paths)
+        for path in paths:  # setup.sh creates each one
+            self.assertRegex(setup, rf'"\$S/{re.escape(path.rstrip("/"))}[/"]', path)
+        commands = set(re.findall(r"`([a-z-]+) <", template))
+        self.assertEqual(commands, {"publish", "open-fork-pr", "push-fork-pr", "simulated-ci"})
+        copied = re.search(r"\nfor f in ([^;]+); do\n", setup)[1].split()
+        for command in commands | {"council-decide"}:
+            self.assertIn(command, copied)
+            self.assertTrue((kit / command).is_file(), command)
+        for name in ("bee", "gh", "setup.sh"):  # their messages send members to the generated README
+            text = (kit / name).read_text(encoding="utf-8")
+            self.assertIn("README.md", text, name)
+            self.assertNotIn("LISEZMOI", text, name)
+        code = (kit / "load_test.py").read_text(encoding="utf-8")
+        doc = ast.get_docstring(ast.parse(code))  # the load test's docstring names what its code writes
+        self.assertIn('folder / "trust"', code)
+        self.assertIn('("end", end + "\\n")', code)
+        self.assertIn("trust (the registry", doc)
+        self.assertIn("state/ (base, end, prs.tsv, pr_authors.tsv)", doc)
+
+
 # --- ruche-0104: reserved pseudonyms (bee.yaml pseudos_reserves), refused in bee inscrire and the gate, reported by bee valider ---
 
 class TestReservedPseudonyms(BaseTest):
