@@ -13,7 +13,7 @@ It works under the council's account (bidji29), but decides nothing. See [docs/o
    - the architect's task brief.
 2. **Work only in your worktree**, on the branch `tache/<task>`, branched from main as it is at that moment.
 3. **Test:**
-   - each acceptance criterion has its test, with an honest path accepted and a misuse refused;
+   - each acceptance criterion has its test, with an honest path accepted and a circumvention attempt refused;
    - along the way, run only the classes concerned;
    - run the full suite only once, at the end, without changing any file while it runs;
    - read the exit code of `bee validate`, never through a pipe.

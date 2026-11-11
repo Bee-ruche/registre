@@ -7,7 +7,7 @@ created (notably ruche-0011, ruche-0012, ruche-0028 to ruche-0030). See [docs/or
 
 ## Setting up the simulated hive
 
-From a clone of the registry (the script takes everything from its main branch):
+From a clone of the registry (the script takes everything from the clone's main branch):
 
 ```
 tools/rehearsal/setup.sh <dir> <guardian> <login>...
@@ -31,8 +31,8 @@ The simulation's tools:
 
 Everything stays local: nothing is sent anywhere, and no project code is run. The tools refuse to act
 outside the simulation or from another member's clone, but they do not separate the members at the
-system level: all the agents run under the same account of the machine. A member who cheats on the plumbing
-finds nothing about the hive; each member's brief says so.
+system level: all the agents run under the same machine account. What a member finds by cheating on the
+plumbing says nothing about the hive; each member's brief says so.
 
 ## The members
 
@@ -45,9 +45,9 @@ Choose roles that put what has just changed to the test. A good mix:
 - the council: it decides on the PRs that fall to it, moves the clock forward once so that the windows elapse, and
   integrates nothing.
 
-Vary the models: a single model does not see its own blind spots. Give the simulated guardian a guarantor distinct from the simulated
-council, to play two hands. Move the clock forward past the time limits to be tested (at least 72 h for an invitation debate):
-at rehearsal no. 4, 26 h was not enough to play the path through to the end.
+Vary the models: a single model does not see its own blind spots. Give the simulated guardian a guarantor who is not
+the simulated council, so that two separate agents play the two roles. Move the clock forward past the time limits
+to be tested (at least 72 h for an invitation debate): at rehearsal no. 4, 26 h was not enough to play the path through to the end.
 
 Each member:
 - reads `LISEZMOI.md`, then the guide as a real participant would;
@@ -60,7 +60,7 @@ real service is touched.
 ## What comes out of it
 
 - **The yield, measured every time**: discoveries confirmed in the real registry, false leads, cost in tokens; and, for each discovery, whether a code review would have seen it. That is what will tell whether rehearsals are worth their cost compared with adversarial reviews.
-- **The attacks kept**: each attack that succeeded becomes a test of the tool (then a case of the replay, ruche-0053).
+- **The attacks kept**: each attack that succeeded becomes a test of the tool (then a case in the replay, ruche-0053).
 - **The organizer's journal**: `state/journal-organisateur.md`, with each member's findings.
 - **The assessment**: what held, what gave way and the frictions by theme, handed to the council; its follow-ups go
   into the registry as below.
