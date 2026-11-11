@@ -4728,7 +4728,7 @@ def form_problems(reg, path, data):
 
 
 def removal_of(reg, path, text, entry):
-    """(before, after, {place_of: removed passages}) of a scanned file; « … » replaces the marker that would exceed a bound
+    """(before, after, {place_of: passages retirés}) of a scanned file; « … » replaces the marker that would exceed a bound
     (never longer than the passage); a recorded identity's invitation withdraws its file (« withdrawn: request »)."""
     before, fingerprints, sort_kind = load_yaml_text(text, path), set(entry["fingerprints"]), scanned_kind(path)
     if not isinstance(before, dict):
@@ -4763,7 +4763,7 @@ def text_after(path, text, before, after, fingerprints):
 
 
 def sweep(reg, entry):
-    """({path: (text, before, after, found)} of the scanned files the removal changes, [(path, line no.)] of the YAML
+    """({path: (texte, avant, après, trouvés)} of the scanned files the removal changes, [(path, line no.)] of the YAML
     comments that name the person: the council corrects them by hand)."""
     results, comments, fingerprints = {}, [], set(entry["fingerprints"])
     for file in sorted(f for sort_kind in SCANNED for f in (reg.root / sort_kind).rglob("*.yaml") if f.is_file()):
