@@ -1,8 +1,8 @@
-"""Tests du générateur de l'essai de charge (ruche-0080) : python3 tools/rehearsal/test_load_test.py
+"""Tests of the load test's generator (ruche-0080): python3 tools/rehearsal/test_load_test.py
 
-La base est le registre des tests de bee (test_bee.BaseTest : le dépôt sans les données du registre réel, plus son jeu
-figé) et un débat ouvert, dans un dépôt git à un commit daté : jamais l'état réel du registre. Le garde de test_bee
-(importé ici) fait échouer un test qui lirait ces données réelles."""
+The base is bee's test registry (test_bee.BaseTest: the repository without the real registry's data, plus its frozen
+set) and an open debate, in a git repository at a dated commit: never the registry's real state. test_bee's guard
+(imported here) fails a test that would read that real data."""
 import contextlib
 import datetime as dt
 import io
@@ -23,10 +23,10 @@ import test_bee  # noqa: E402
 import load_test  # noqa: E402
 
 UTC = dt.timezone.utc
-BASE = int(dt.datetime(2026, 10, 27, 13, tzinfo=UTC).timestamp())  # inscriptions le lendemain du commit de base ; la semaine ensuite
+BASE = int(dt.datetime(2026, 10, 27, 13, tzinfo=UTC).timestamp())  # registrations the day after the base commit; the week after that
 MONDAY = dt.datetime(2026, 11, 2, tzinfo=UTC)
 END = "2026-11-09T00:00:00Z"
-SURVEILLANCE = None  # pendant test_hors_ligne : les événements d'audit relevés
+SURVEILLANCE = None  # during test_offline_and_nothing_outside_the_folder: the audit events caught
 
 
 def spy(event, arguments):
@@ -39,7 +39,7 @@ sys.addaudithook(spy)
 
 
 def source_registry(folder):
-    """Le registre des tests de bee et un débat ouvert (où argumenter), commités sur main à BASE."""
+    """bee's test registry and an open debate (where to argue), committed on main at BASE."""
     model = test_bee.BaseTest()
     model.setUp()
     try:
@@ -68,7 +68,7 @@ def read(path):
 
 
 def log_text(root):
-    """Les PR de la semaine : [(sha, auteur, ouverte, fusionnée, titre, corps)], dans l'ordre de main."""
+    """The week's PRs: [(sha, author, opened, merged, title, body)], in main's order."""
     base = load_test.git(root, "rev-list", "--max-parents=0", "main").decode().strip()
     output_text = load_test.git(root, "log", "--reverse", "--format=%H %an %at %ct%n%B%x00", f"{base}..main").decode()
     prs = []
@@ -99,17 +99,17 @@ class TestLoadTest(unittest.TestCase):
         shutil.copytree(self.dir, target, symlinks=True)
         return target
 
-    # Critère 1 : bee validate, sans contrôle retiré ni outil modifié, à 100, 300 et 1 000 membres.
+    # Criterion 1: bee validate, with no check removed and no tool modified, at 100, 300 and 1,000 members.
     def test_valid_at_100_300_and_1000_members_without_removing_anything(self):
         for members in (100, 300, 1000):
             with self.subTest(members=members):
                 folder = self.dir if members == 100 else self.temp_root / f"ruche{members}"
                 code, output_text = (self.code, self.output) if members == 100 else generate(self.source, folder, members)
                 self.assertEqual(code, 0, output_text)
-                self.assertIn(f"{members} membres, ", output_text)
-                r = load_test.run_bee(folder / "trust", END, "validate")  # le code de sortie, jamais à travers un tube
+                self.assertIn(f"{members} members, ", output_text)
+                r = load_test.run_bee(folder / "trust", END, "validate")  # the exit code, never through a pipe
                 self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-                # Rien de ce qui juge n'a changé : l'outil, ses schémas, les règles et leurs valeurs sont ceux de la base.
+                # Nothing that judges has changed: the tool, its schemas, the rules and their values are the base's.
                 base = (folder / "state" / "base").read_text(encoding="utf-8").strip()
                 touched = load_test.git(folder / "trust", "diff", "--name-only", base, "main").decode().split()
                 self.assertEqual(sorted({c.split("/")[0] for c in touched}),
@@ -120,7 +120,7 @@ class TestLoadTest(unittest.TestCase):
                     shutil.rmtree(folder)
 
     def test_validate_refuses_a_doctored_week(self):
-        """Détournement : un auteur qui relit sa propre contribution, glissé dans la ruche générée, est refusé."""
+        """Misuse: an author who reviews their own contribution, slipped into the generated hive, is refused."""
         reg = self.copied("trafiquee") / "trust"
         path = next(p for p in sorted((reg / "contributions").glob("*/*-c1.yaml")) if read(p)["author"].startswith("abeille-"))
         rec = read(path)
@@ -131,8 +131,8 @@ class TestLoadTest(unittest.TestCase):
         self.assertIn("the author cannot review their own contribution", r.stdout)
 
     def test_the_activity_model(self):
-        """Par membre actif et par semaine : une contribution, deux relectures, deux votes, une note ; une tâche proposée pour
-        10 membres, un argument pour 5 ; la moitié des contributions le vendredi soir ; un gardien pour 20, chacun garanti."""
+        """Per active member and per week: one contribution, two reviews, two votes, one note; one proposed task per 10
+        members, one argument per 5; half the contributions on Friday evening; one guardian per 20, each guaranteed."""
         members = sorted(p.stem for p in (self.reg / "members").glob("abeille-*.yaml"))
         self.assertEqual(len(members), 100)
         contributions = [read(p) for p in (self.reg / "contributions").glob("*/*.yaml") if read(p)["author"] in members]
@@ -159,18 +159,19 @@ class TestLoadTest(unittest.TestCase):
         guarantors = {g["login"] for g in read(self.reg / "governance" / "guarantors.yaml")["members"]}
         self.assertTrue(all(g["login"] in members and g["guarantor"] in guarantors for g in guardians))
         self.assertLessEqual(max(sum(g["guarantor"] == x for g in guardians) for x in guarantors), 2)
-        # Le frein de R13, lu par bee dans l'historique à la fin de la semaine : au maximum, sans être serré (un gardien de moins
-        # le serrerait). Les membres actifs : les 100 simulés et ceux que la base rend actifs (le conseil, auteur du jeu figé).
+        # R13's brake, read by bee in the history at the end of the week: at the maximum, without being tight (one guardian fewer
+        # would tighten it). The active members: the 100 simulated ones and those the base makes active (the council, author of
+        # the frozen set).
         with mock.patch.dict(os.environ, {"BEE_NOW": END}):
             brake = test_bee.bee.brake_state(test_bee.bee.Registry(self.reg))
         self.assertEqual((brake["guardians_in_office"], brake["oversight"]), (len(guardians), []))
         self.assertGreater(brake["active_members"], 100)
         self.assertTrue(20 * (len(guardians) - 1) < brake["active_members"] <= 20 * len(guardians), brake)
 
-    # Critère 2 : la forme exacte qu'écrit bee, et un historique qui se rejoue en PR.
+    # Criterion 2: the exact shape bee writes, and a history that replays as PRs.
     def test_the_history_is_a_series_of_prs_with_author_and_time(self):
         prs = log_text(self.reg)
-        self.assertEqual(len(prs), 100 * 8 + 1 + 10 + 20)  # inscription, 7 gestes par membre, le conseil, propositions, arguments
+        self.assertEqual(len(prs), 100 * 8 + 1 + 10 + 20)  # registration, 7 gestures per member, the council, proposals, arguments
         for i, (_, author, open, merge, title, body) in enumerate(prs, 1):
             self.assertRegex(title, rf" \(#{i}\)$")
             self.assertEqual(merge, open + load_test.MERGE)
@@ -183,10 +184,10 @@ class TestLoadTest(unittest.TestCase):
         self.assertEqual(len((self.dir / "state" / "prs.tsv").read_text(encoding="utf-8").splitlines()), len(prs))
 
     def test_each_replayed_step_runs_the_command_it_names(self):
-        """ruche-0154 : une PR de chaque sorte ; la commande bee que nomme son message est celle que veut son titre, sous
-        son nom d'après la bascule ; rejouée sur l'état d'avant, elle tourne (code 0 : jamais le refus d'un nom renommé,
-        code 2, qui ne lance rien) et écrit les mêmes octets ; puis bee check-pr --auto-merge l'accepte (code 0 ; le geste
-        du conseil, écrit à la main : code 3, une revue humaine)."""
+        """ruche-0154: one PR of each kind; the bee command its message names is the one its title means, under its
+        post-switch name; replayed on the state before it, it runs (code 0: never the refusal of a renamed name, code 2,
+        which runs nothing) and writes the same bytes; then bee check-pr --auto-merge accepts it (code 0; the council's
+        gesture, written by hand: code 3, a human review)."""
         meant = {"Inscription": ("register",), "Réservation": ("take",), "Note": ("note",), "Soumission": ("submit",),
                  "Relecture": ("review",), "Vote": ("vote",), "Proposition de tâche": ("propose-task",),
                  "Argument": ("debate", "argue"), "Ruche de charge : garants, gardiens et une tâche par": ()}
@@ -205,9 +206,9 @@ class TestLoadTest(unittest.TestCase):
                 self.assertEqual([o for _, _, o in ran if "by the switch to English" in o], [])
 
     def test_the_replay_refuses_a_pr_that_does_not_come_from_its_command(self):
-        """Détournements : un vote qui nomme la commande ou l'option d'avant la bascule (bee voter, --utilisateur), même
-        avec le fichier qu'écrirait bee vote : bee le refuse sans rien lancer (code 2), et le rejeu le dit (ruche-0154) ; un
-        vote dont le fichier ne dit pas ce que dit sa commande ; un auteur qui vote pour lui-même."""
+        """Misuses: a vote that names the pre-switch command or option (bee voter, --utilisateur), even with the file bee
+        vote would write: bee refuses it without running anything (code 2), and the replay says so (ruche-0154); a vote
+        whose file does not say what its command says; an author who votes for themselves."""
         folder = self.copied("rejeu-trafique")
         reg, n = folder / "trust", len(log_text(self.reg))
         contribution = next(c for p in sorted((reg / "contributions").glob("*/*-c1.yaml")) if (c := read(p))["author"].startswith("abeille-"))
@@ -234,26 +235,26 @@ class TestLoadTest(unittest.TestCase):
         self.assertIn("bee: « bee voter » was renamed « bee vote » by the switch to English (ruche-0145): nothing was run", ran[n + 1][1])
         self.assertEqual(ran[n + 2][0], 2)
         self.assertIn("bee vote: error: the following arguments are required: --user", ran[n + 2][1])
-        for k in (n + 1, n + 2):  # le fichier est un vote valide : seul le refus de la commande fait l'écart
-            self.assertTrue(gaps[k].startswith(f"bee {doctored[k - n - 1][2]} : bee la refuse (code 2) : "), gaps[k])
+        for k in (n + 1, n + 2):  # the file is a valid vote: only the command's refusal makes the gap
+            self.assertTrue(gaps[k].startswith(f"bee {doctored[k - n - 1][2]}: bee refuses it (code 2): "), gaps[k])
         self.assertEqual([c for k, a, c, _ in steps if a[0] == "check-pr" and k in (n + 1, n + 2)], [0, 0])
-        self.assertEqual(ran[n + 3][0], 0)  # bee vote a tourné : c'est le fichier qui diffère
-        self.assertIn("n'écrit pas ce que porte la PR", gaps[n + 3])
+        self.assertEqual(ran[n + 3][0], 0)  # bee vote ran: it is the file that differs
+        self.assertIn("does not write what the PR carries", gaps[n + 3])
         self.assertIn("you do not vote for your own contribution", gaps[n + 4])
 
-    # Critère 3 : déterministe.
+    # Criterion 3: deterministic.
     def test_the_same_seed_gives_the_same_bytes(self):
         folders = {name: self.temp_root / name for name in ("graine7a", "graine7b", "graine8")}
         for name, folder in folders.items():
             self.addCleanup(shutil.rmtree, folder, True)
             self.assertEqual(generate(self.source, folder, 20, "8" if name == "graine8" else "7")[0], 0)
         heads = {name: load_test.git(d / "central.git", "rev-parse", "main") for name, d in folders.items()}
-        self.assertEqual(heads["graine7a"], heads["graine7b"])  # un commit couvre tout : contenus, auteurs, heures, messages
+        self.assertEqual(heads["graine7a"], heads["graine7b"])  # a commit covers everything: contents, authors, times, messages
         self.assertNotEqual(heads["graine7a"], heads["graine8"])
         for name in ("base", "end", "prs.tsv", "pr_authors.tsv"):
             self.assertEqual((folders["graine7a"] / "state" / name).read_bytes(), (folders["graine7b"] / "state" / name).read_bytes())
 
-    # Critère 4 : hors ligne ; rien n'est écrit hors de la ruche jetable.
+    # Criterion 4: offline; nothing is written outside the throwaway hive.
     def test_offline_and_nothing_outside_the_folder(self):
         global SURVEILLANCE
         folder = self.temp_root / "surveillee"
@@ -278,7 +279,7 @@ class TestLoadTest(unittest.TestCase):
                 if pathlib.Path(argv[0]).name == "git":
                     if "-C" in argv:
                         target, command = argv[argv.index("-C") + 1], argv[argv.index("-C") + 2]
-                    else:  # lancé dans un dossier (cwd), comme le journal de session des fonctions d'écriture de bee (ruche-0138)
+                    else:  # run in a folder (cwd), like the session log of bee's writing functions (ruche-0138)
                         target, command = os.fsdecode(arguments[2] or os.getcwd()), argv[1]
                     self.assertTrue(inside_it(target) or (target == str(self.source) and command in ("rev-parse", "log", "archive")), argv)
                 else:

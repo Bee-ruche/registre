@@ -44,7 +44,7 @@ def lire_sortie(racine, relatif, maximum=TAILLE_MAX_SORTIE):
     Returns None if the file does not exist; Refus if it is not a regular file or if it exceeds maximum (TAILLE_MAX_SORTIE at most)."""
     maximum, morceaux = min(maximum, TAILLE_MAX_SORTIE), relatif.split("/")
     if any(m in ("", ".", "..") for m in morceaux):
-        raise Refus(f"chemin de sortie invalide : {relatif}")
+        raise Refus(f"invalid output path: {relatif}")
     fd = os.open(racine, os.O_RDONLY | os.O_DIRECTORY)
     try:
         for m in morceaux[:-1]:
@@ -53,7 +53,7 @@ def lire_sortie(racine, relatif, maximum=TAILLE_MAX_SORTIE):
             except FileNotFoundError:
                 return None
             except OSError:
-                raise Refus(f"sortie invalide (dossier piégé) : {relatif}")
+                raise Refus(f"invalid output (trapped folder): {relatif}")
             os.close(fd)
             fd = suivant
         try:
@@ -61,15 +61,15 @@ def lire_sortie(racine, relatif, maximum=TAILLE_MAX_SORTIE):
         except FileNotFoundError:
             return None
         except OSError:
-            raise Refus(f"sortie invalide (lien ou fichier spécial) : {relatif}")
+            raise Refus(f"invalid output (link or special file): {relatif}")
     finally:
         os.close(fd)
     try:
         st = os.fstat(ffd)
         if not stat.S_ISREG(st.st_mode):
-            raise Refus(f"sortie invalide (pas un fichier ordinaire) : {relatif}")
+            raise Refus(f"invalid output (not a regular file): {relatif}")
         if st.st_size > maximum:
-            raise Refus(f"sortie trop grosse : {relatif} ({st.st_size} octets)")
+            raise Refus(f"output too large: {relatif} ({st.st_size} bytes)")
         morceaux_lus, total = [], 0
         while True:
             bloc = os.read(ffd, 1 << 20)
@@ -77,7 +77,7 @@ def lire_sortie(racine, relatif, maximum=TAILLE_MAX_SORTIE):
                 break
             total += len(bloc)
             if total > maximum:
-                raise Refus(f"sortie trop grosse : {relatif}")
+                raise Refus(f"output too large: {relatif}")
             morceaux_lus.append(bloc)
         return b"".join(morceaux_lus)
     finally:
@@ -87,7 +87,7 @@ def lire_sortie(racine, relatif, maximum=TAILLE_MAX_SORTIE):
 def exiger(racine, relatif, maximum=TAILLE_MAX_SORTIE):
     donnees = lire_sortie(racine, relatif, maximum)
     if donnees is None:
-        raise Refus(f"sortie absente : {relatif}")
+        raise Refus(f"output missing: {relatif}")
     return donnees
 
 
@@ -96,12 +96,12 @@ def statut(racine, relatif, texte=None):
     texte = exiger(racine, relatif, 64) if texte is None else texte
     m = re.fullmatch(rb"(-?\d{1,6}) (\d{1,12})\n", texte)
     if not m:
-        raise Refus(f"statut illisible : {relatif}")
+        raise Refus(f"unreadable status: {relatif}")
     return int(m.group(1)), int(m.group(2))
 
 
 def _illisible(erreur):
-    raise Refus(f"sorties illisibles : {propre(str(erreur), 300)}")
+    raise Refus(f"unreadable outputs: {propre(str(erreur), 300)}")
 
 
 def figer(racine):
@@ -160,7 +160,7 @@ class Sorties:
     changed, added or removed after its fingerprint is a refusal (ruche-0036)."""
 
     def __init__(self, racines, noms=None, figees=None):
-        if isinstance(racines, Sorties):  # a new view of the same frozen outputs: its reads count apart
+        if isinstance(racines, Sorties):  # a new view of the same frozen outputs: its reads count separately
             racines, noms, figees = racines._racines, racines._noms if noms is None else noms, racines.figees
         self._racines, self._noms, self.figees = dict(racines), dict(noms or {}), figees
         self.lues = set()
@@ -177,7 +177,7 @@ class Sorties:
 
     def _racine(self, cote):
         if cote not in self._racines:
-            raise Erreur(f"côté inconnu : {cote}")
+            raise Erreur(f"unknown side: {cote}")
         return self._racines[cote]
 
     def lire(self, cote, relatif, maximum=TAILLE_MAX_SORTIE):
@@ -189,7 +189,7 @@ class Sorties:
     def exiger(self, cote, relatif, maximum=TAILLE_MAX_SORTIE):
         donnees = self.lire(cote, relatif, maximum)
         if donnees is None:
-            raise Refus(f"sortie absente : {relatif}")
+            raise Refus(f"output missing: {relatif}")
         return donnees
 
     def statut(self, cote, relatif):
@@ -200,14 +200,14 @@ class Sorties:
         donnees = lire_sortie(self._racine(cote), chemin, maximum)
         empreinte = None if donnees is None else hashlib.sha256(donnees).hexdigest()
         if self.figees is not None and empreinte != self.figees[cote].get(chemin):
-            raise Refus(f"sortie modifiée, ajoutée ou retirée après son empreinte : {propre(chemin, 200)}")
+            raise Refus(f"output changed, added or removed after its fingerprint: {propre(chemin, 200)}")
         return donnees
 
     def controler(self):
         """After the comparison: each folder is still exactly what was frozen (listing and contents)."""
         for cote, racine in self._racines.items():
             if figer(racine) != self.figees[cote]:
-                raise Refus(f"sorties modifiées, ajoutées ou retirées après leur empreinte (côté {cote})")
+                raise Refus(f"outputs changed, added or removed after their fingerprint (side {cote})")
 
     def couvre(self, cote, nom):
         """True if an output read on this side bears the input's name (« c/k000.6 » covers k000)."""

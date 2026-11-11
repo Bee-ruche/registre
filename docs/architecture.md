@@ -74,7 +74,7 @@ network, read-only, without privileges; the host checks each output with its own
 drawn at random after compilation; times are read by the kernel (`wait4`) in a launcher from the base, the instruction
 count from Valgrind's last line; an analysis of the compiled objects flags the constructs that could fool the
 measurement from inside (R3 then requires a guardian). Meta-tests: early exit and precomputed table refused, fake
-timers, a Valgrind client request and a fake summary flagged. Threat model: the fork's `bee/README.md`, « Juge isolé ».
+timers, a Valgrind client request and a fake summary flagged. Threat model: the fork's `bee/README.md`, « Threat model ».
 **Still open:** libyaml has no isolated judge yet; a deliberate write into Valgrind's memory would skew the count with
 no visible construct (at worst a false gain on correct code); and no judge proves the absence of a backdoor triggered
 by a precise input. The review gate stayed in force (`true`) until the isolated judge was integrated and had judged a

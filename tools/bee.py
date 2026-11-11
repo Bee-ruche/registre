@@ -1029,7 +1029,7 @@ def engagements_of(reg, user):
         if not isinstance(t, dict):
             continue
         if reg.identities.same_one((t.get("reservation") or {}).get("user"), user):
-            result.append((tid, "réservation"))
+            result.append((tid, "reservation"))
         if any(reg.identities.same_one(p.get("user"), user) for p in parallels_of(t)):
             result.append((tid, "parallel"))
     return result
@@ -3352,7 +3352,7 @@ def showable_verdict(verdict):
     of keys replaced."""
     replaced = 0
     if "failed_step" in verdict:
-        verdict["failed_step"] = declared_text(verdict["failed_step"], 200) or "inconnue"
+        verdict["failed_step"] = declared_text(verdict["failed_step"], 200) or "unknown"
     for field in ("instructions", "degradations"):
         if isinstance(verdict.get(field), dict):
             honest_ones = {c for c in verdict[field] if VERDICT_KEY.fullmatch(c)}
@@ -6297,7 +6297,7 @@ def check_pr_for(reg, base, head, author, account_created_on, instant, pr_author
                     # R3: a rival is set aside only in the same commit as the integration of the kept
                     # contribution, by the integration robot, or by the council when it integrates itself (the hive's
                     # tasks, never integrated automatically); and then all the rivals in the race are set aside
-                    # in favour of the same kept one. Never a setting aside alone, by hand.
+                    # in favor of the same kept one. Never a setting aside alone, by hand.
                     kept = new.get("kept") or ""
                     kept_path = modified.get(kept)
                     before_r = read_yaml_ref(reg.root, base, kept_path) if kept_path else None
@@ -6313,8 +6313,8 @@ def check_pr_for(reg, base, head, author, account_created_on, instant, pr_author
                     require(integrated_here, f"{path}: a contribution is set aside only in the same commit as the integration "
                                          f"of the kept contribution ({kept or 'not named'})")
                     require(not remaining_ones and not others_kept,
-                           f"{path}: the integration of {kept or 'the kept one'} sets aside all the rivals in the race in its favour "
-                           f"(still in review: {', '.join(remaining_ones) or 'none'}; set aside in favour of another: "
+                           f"{path}: the integration of {kept or 'the kept one'} sets aside all the rivals in the race in its favor "
+                           f"(still in review: {', '.join(remaining_ones) or 'none'}; set aside in favor of another: "
                            f"{', '.join(r or '?' for r in others_kept) or 'none'})")
             continue
 
@@ -6674,20 +6674,26 @@ SELF_SERVICE = {"reservation", "release", "submission", "update", "note", "revie
 # Checking a contribution branch on a fork (rule R1, commandment 3)
 # --------------------------------------------------------------------------
 
-# ruche-0145 (plan, sections 6 and 10, question 10): until DATE_D, the forks' documents (a manifest, verdict.json) are read in either
-# vocabulary, one per document, and a manifest also from manifestes/<task>.yaml or CONTRIBUTION.yaml; from DATE_D on, English only.
+# ruche-0145 (plan, sections 6 and 10, question 10): until DATE_D, the forks' documents (a manifest, verdict.json, the ab.py report
+# bee record-measurement reads) are read in either vocabulary, one per document, and a manifest also from manifestes/<task>.yaml or
+# CONTRIBUTION.yaml; from DATE_D on, English only.
 # The switch's merge plus six weeks, 2027-01-01 at the earliest: the council sets it at the freeze, and moves it only by a PR.
 DATE_D = "2027-01-01"
-# The forks' French keys and their English names (tools/migration/names.yaml, families manifest and fork_verdict; the others are the
-# same in both), read at the top of a document and in the mappings named in FORK_NESTED, never in data-keyed ones (metric ids).
+# The forks' French keys and their English names (tools/migration/names.yaml, families manifest, fork_verdict and ab_report; the
+# others are the same in both), read at the top of a document and in the mappings FORK_NESTED names by their path (* for any key of a
+# data-keyed mapping), never as data keys themselves (metric ids).
 FORK_KEYS = {"manifest": {"tache": "task", "utilisateur": "user", "modele": "model", "resume": "summary", "changement": "change",
                           "mesures": "measurements", "commande": "command", "avant": "before", "apres": "after", "teste": "tested",
                           "non_teste": "untested", "doutes": "doubts", "taille_reelle": "actual_size"},
              "verdict": {"etape_en_echec": "failed_step", "metrique": "metric", "au_dela_du_bruit": "beyond_noise", "mesures": "measurements",
                          "lignes_modifiees": "changed_lines", "amorcage": "bootstrap", "base_juge": "judge_base", "regle": "rule",
                          "depart": "start", "juge": "judge", "commun": "common", "projet": "project", "greffon": "plugin", "graine": "seed",
-                         "sorties_comparees": "outputs_compared", "constructions_suspectes": "suspicious_constructs", "etapes": "steps"}}
-FORK_NESTED = {"manifest": ("agent", "measurements"), "verdict": ("judge", "judge_base")}
+                         "sorties_comparees": "outputs_compared", "constructions_suspectes": "suspicious_constructs", "etapes": "steps"},
+             "ab_report": {"metriques": "metrics", "candidat": "candidate", "victoires_B": "b_wins", "paires": "pairs", "paires_utiles": "useful_pairs",
+                           "test_du_signe": "sign_test", "processeur": "processor", "coeurs": "cores", "systeme": "system",
+                           "compilateur": "compiler", "au_dela_du_bruit": "beyond_noise"}}
+FORK_NESTED = {"manifest": ("agent", "measurements"), "verdict": ("judge", "judge_base"),
+               "ab_report": ("machine", "metrics/*", "metrics/*/sign_test")}
 
 
 def before_date_d():
@@ -6695,20 +6701,30 @@ def before_date_d():
 
 
 def fork_document(kind, data, where):
-    """A fork's manifest or verdict.json (kind) in English, or BeeError: all English, as it is; all French, translated, until DATE_D;
-    French from DATE_D on, or both vocabularies in one document, refused. A document that is not a mapping is left to its checks."""
+    """A fork's manifest, verdict.json or ab.py report (kind) in English, or BeeError: all English, as it is; all French, translated,
+    until DATE_D; French from DATE_D on, or both vocabularies in one document, refused. A document that is not a mapping is left to its
+    checks."""
     if not isinstance(data, dict):
         return data
     table, nested = FORK_KEYS[kind], FORK_NESTED[kind]
-    keys = {k for k in data} | {k for x, v in data.items() if table.get(x, x) in nested and isinstance(v, dict) for k in v}
+
+    def walk(d, path, name):  # d rebuilt, name(key) for each key of the top and of the mappings at a path of FORK_NESTED
+        place, out = not path or "/".join(path) in nested, {}
+        for k, v in d.items():
+            inner = next((p for p in ((*path, str(table.get(k, k) if place else k)), (*path, "*")) if isinstance(v, dict)
+                          and any(f"{n}/".startswith("/".join(p) + "/") for n in nested)), None)
+            out[name(k) if place else k] = walk(v, inner, name) if inner else v
+        return out
+
+    keys = set()
+    walk(data, (), lambda k: keys.add(k) or k)
     french, english = sorted(k for k in keys if k in table), sorted(k for k in keys if k in set(table.values()))
     if french and english:
         raise BeeError(f"{where}: French keys ({', '.join(french[:3])}) and English keys ({', '.join(english[:3])}): one vocabulary per document")
     if french and not before_date_d():
         raise BeeError(f"{where}: French keys ({', '.join(french[:3])}): read until {DATE_D} only (the switch to English, ruche-0145); "
                        "write it again in English (bee manifest writes English)")
-    return {table.get(k, k): {table.get(x, x): y for x, y in v.items()} if table.get(k, k) in nested and isinstance(v, dict) else v
-            for k, v in data.items()} if french else data
+    return walk(data, (), lambda k: table.get(k, k)) if french else data
 
 
 # ruche-0149 (plan, section 6): the metric ids, French -> English (names.yaml, domain metric_id). A project's are in one vocabulary
@@ -9503,7 +9519,7 @@ def cmd_record_verdict(args):
         raise BeeError(f"{args.contribution}: verdict refused, {note_wait(reg, args.contribution, 'metric', args.sha)} (the verdict's metric: "
                         f"{said}, the task's: {want}); no verdict is recorded")
     if verdict["ci"] == "red":
-        verdict["failed_step"] = str(raw.get("failed_step") or "inconnue")
+        verdict["failed_step"] = str(raw.get("failed_step") or "unknown")
     elif args.bases is not None:  # ruche-0025: verdicts.yml always passes --bases (« sha status » from the compare API); a red one integrates nothing
         with open(args.bases, encoding="utf-8") as f:
             checked_ones = {l.split()[0]: l.split()[1] for l in f if len(l.split()) == 2}
@@ -9666,8 +9682,8 @@ def cmd_record_measurement(args):
         raise BeeError(f"{reg.rel(already)} already exists: one measurement per person and per contribution, never changed once "
                         "published (commandment 10); if this file is not published yet, delete it, then rerun")
     with open(args.ab, encoding="utf-8") as f:
-        raw = json.load(f)
-    # ruche-0149: the report's metric ids in either vocabulary until DATE_D, one per report, recorded in the project's spelling.
+        raw = fork_document("ab_report", json.load(f), args.ab)  # ruche-0145: the forks' ab.py writes French until F2, read until DATE_D
+    # ruche-0149: then the report's metric ids, in either vocabulary until DATE_D, one per report, recorded in the project's spelling.
     raw = fork_metrics("metrics", raw, reg.spelling(reg.tasks.get(rec.get("task"), (None, {}))[1].get("project")), args.ab)
     machine = raw.get("machine") or {}
     config = {k: machine[k] for k in ("processor", "architecture", "cores", "system", "compiler") if machine.get(k) is not None}
@@ -10114,7 +10130,7 @@ def cmd_integrate(args):
 
 def integrate(reg, args, path, rec, instant, reason, message=None):
     """Writes an integration (bee integrate; bee record-merge, ruche-0094): args.contribution and its task « integrated », with
-    args.merge_sha; its rivals still in the race « set_aside » in its favour; the task's engagements ended, with a note."""
+    args.merge_sha; its rivals still in the race « set_aside » in its favor; the task's engagements ended, with a note."""
     tid = rec["task"]
     rival = [(c, e) for c, e in racing_contributions(reg, tid) if c != args.contribution]
     rec = dict(rec)
@@ -10124,14 +10140,14 @@ def integrate(reg, args, path, rec, instant, reason, message=None):
     if args.merge_sha:
         rec["merge_sha"] = args.merge_sha
     write_yaml(path, rec)
-    # R3: the rivals still in review are set aside in favour of the kept one, in the same write (hence the
+    # R3: the rivals still in review are set aside in favor of the kept one, in the same write (hence the
     # same commit of the workflow). Set aside is not refused: nothing counts against the author or their reviewers.
     for c, e in rival:
         e = dict(e)
         e["status"] = "set_aside"
         e["kept"] = args.contribution
         e["decided_at"] = instant
-        e["decision_reason"] = (f"Set aside in favour of {args.contribution}, kept by R3 (race between rival contributions "
+        e["decision_reason"] = (f"Set aside in favor of {args.contribution}, kept by R3 (race between rival contributions "
                                f"of {tid}). This is not a refusal: nothing counts against its author or its reviewers.")
         write_yaml(reg.records[c][0], e)
     task_path, task = reg.task(tid)
@@ -10147,7 +10163,7 @@ def integrate(reg, args, path, rec, instant, reason, message=None):
         ends += [f"{p['user']} (in parallel)" for p in parallels_of(task)]
     texts_of = []
     if rival:
-        texts_of.append(f"Contribution kept: {args.contribution} (R3). Set aside in its favour: {', '.join(c for c, _ in rival)}.")
+        texts_of.append(f"Contribution kept: {args.contribution} (R3). Set aside in its favor: {', '.join(c for c, _ in rival)}.")
     if ends:
         texts_of.append(f"The task is integrated: the engagements of {', '.join(ends)} end.")
     note = {"by": "github-actions[bot]", "at": instant, "text": " ".join(texts_of)} if texts_of else None

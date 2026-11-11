@@ -1,0 +1,136 @@
+id: miniz-0048-c1
+task: miniz-0048
+author: bidji29
+pr: https://github.com/Bee-ruche/minizBee/pull/28
+summary: minizBee adopts the juge-v3 contract (parameters on descriptor 0, timed metrics, the event's
+  base) and pins juge-v3
+status: in_review
+submitted_at: '2026-11-11T23:11:06Z'
+engaged_since: '2026-11-11T22:31:03Z'
+reviews: []
+verdict:
+  ci: green
+  base: 5912781909254106d5c2ce21dd6134e77ad7060e
+  gain: null
+  beyond_noise: false
+  instructions:
+    instructions_n1:
+      A: 171457429.0
+      B: 171457429.0
+      gain: 0.0
+    instructions_n6:
+      A: 335529464.0
+      B: 335529464.0
+      gain: 0.0
+    instructions_n9:
+      A: 483867259.0
+      B: 483867259.0
+      gain: 0.0
+    instructions_decompression:
+      A: 27899375.0
+      B: 27899375.0
+      gain: 0.0
+  degradations: {}
+  judge:
+    version: 3
+    common: juge-v2
+    outputs_compared: 7868
+    suspicious_constructs: []
+  changed_lines: 104
+  declared_gap: null
+  sha: 5e0ef9903318d1ee54aba3cf52a4c3062629581e
+  tree: 3f079cbbb864e897501423cf66369a80f7068edf
+  checked_files: true
+  modified_judges:
+  - .github/workflows/bee-ci.yml
+  - bee/README.md
+  - bee/ci/test_verdict.py
+  - bee/ci/verdict.py
+  - bee/juge/execution.c
+  - bee/juge/projet.py
+  - bee/juge/test_juge.py
+  run: https://github.com/Bee-ruche/minizBee/actions/runs/43109741607
+verdicts:
+- sha: 5e0ef9903318d1ee54aba3cf52a4c3062629581e
+  tree: 3f079cbbb864e897501423cf66369a80f7068edf
+  ci: green
+  gain: null
+  beyond_noise: false
+  changed_lines: 104
+  instructions:
+    instructions_n1:
+      A: 171457429.0
+      B: 171457429.0
+      gain: 0.0
+    instructions_n6:
+      A: 335529464.0
+      B: 335529464.0
+      gain: 0.0
+    instructions_n9:
+      A: 483867259.0
+      B: 483867259.0
+      gain: 0.0
+    instructions_decompression:
+      A: 27899375.0
+      B: 27899375.0
+      gain: 0.0
+declared:
+  model: Claude Opus 5.5 (claude-opus-5-5), builder launched by La Ruche's architect
+  gain: null
+  tested:
+  - 'In bee/sandbox/sans-docker.sh: test_verdict.py 79 OK, test_juge.py 29 OK with BEE_HARNAIS_SANDBOX=1
+    (8 meta-tests skipped: they need Docker; BEE_JUGE_COMMUN = juge-v3''s outils/juge from git archive
+    of 3b21e97), test_ab.py and test_profil.py OK. The same test files against master''s verdict.py, bee-ci.yml
+    and projet.py: 14 failures or errors in each, so the new assertions bind; the sandbox harness tests
+    against the previous harness of this PR (f1bc7c9) fail on the output folders (4 failures), so they
+    bind too. Exception: test_rapport_refuse_rend_le_verdict_rouge passes on master''s verdict.py, which
+    already turns a juge_isole « echec » red.'
+  - 'The fork''s CI on f1bc7c9 (run 43105614723): every job green, the juge-v3 juge job skipped by design
+    (transition); the meta-juge job ran the 8 Docker meta-tests against juge-v3 in real containers, all
+    OK (mesure_devinee, sortie_anticipee and table_precalculee refused).'
+  - 'The harness by hand in the sandbox (built as construire.sh does, with -Werror): every mode reads
+    the 256-byte record on descriptor 0; each scenario''s outputs (n1, n6, n9, decompression with valid,
+    truncated, too-small-buffer and garbage streams, memoire) are byte-identical to verification''s at
+    the same paths; arguments, an extra field, an unknown mode or an empty record exit 2; an environment
+    variable changes nothing. A copy of miniz.c whose mz_compress2 reports what it sees: environ empty,
+    /proc/self/cmdline empty, descriptor 0 at end of file, in verification and in n6 alike.'
+  - 'The full juge-v3 judgement (juge.main at 3b21e97) in the sandbox, with Docker replaced by local processes
+    (a script of this session that maps mount targets to host folders: no container isolation, measurements
+    meaningless): honest A = B, --repetitions 2 --chauffe 0: code 0, no suspicious construct, 3,954 outputs
+    compared, 195 mixed-in inputs (f 41, z 24 per repetition), instructions_sans_melange and fixes_sans_mesure
+    empty, ratio_n6 not verification_seulement, instruction counts identical for A and B in the four scenarios.
+    Run again after F1 (folders created up front): the same 3,954 outputs, code 0. Variants from test_juge.py:
+    mesure_devinee refused (« scénario n6 : sortie de B différente de sa sortie en vérification »), sortie_anticipee
+    and table_precalculee refused.'
+  - 'The same emulation with juge-v2 (dab13a6) and master''s plugin: the honest variant gives code 0,
+    no suspicious construct, nothing beyond noise, identical A and B counts (2,378 outputs compared),
+    as juge-v3 does with this plugin; mesure_devinee with peut_changer is accepted there, with a fake
+    gain (+188% n6, +391% n9 throughput) and ratio_n6 unchanged, which juge-v3 refuses.'
+  - 'rapport.py at 3b21e97, as the verdict job calls it: checked by the fork''s CI on the first PR judged
+    by juge-v3; here the step''s wiring is tested with a stand-in that records its arguments and exits
+    0, 1 or 2.'
+  untested:
+  - 'The meta-tests with Docker (BEE_JUGE_INTEGRATION=1: honest, the six old variants and mesure_devinee,
+    against juge-v3 in real containers): the sandbox has no Docker; the fork''s meta-juge job runs them
+    on this PR.'
+  - 'The juge job at juge-v3 and the verdict job''s rapport.py check run for real only from the first
+    PR whose base pins juge-v3, after this one is merged: this PR''s base pins juge-v2, so its judgement
+    is the transition job''s (juge-v2, from its starting point), as on master today.'
+  - ARM64 and the instruction count on real runners were not run here beyond the emulation (local valgrind,
+    x86-64).
+  doubts: 'The transition adds a second judging job and a small remap of the jobs'' results in the verdict
+    job (verdict.py reads whichever judging job ran as « juge »), because master''s verdict.py, which
+    assembles this PR''s verdict, counts any skipped job as failed and reads the code from « juge » only;
+    both can go with the next version move (miniz-0050). The contract a base follows is read from the
+    JUGE_COMMUN_SHA line of its own bee-ci.yml (data of the base, never executed): a base pinning neither
+    juge-v3 nor juge-v2 is red. By design, the next pin move fails that check (its base pins juge-v3,
+    neither its new pin nor JUGE_V2_SHA): miniz-0050 must move the transition along (JUGE_V2_SHA and the
+    juge-v2 job to juge-v3) or drop it. The new verdict.json value base_de_la_pr is French like the other
+    values of base_juge.regle until miniz-0050 translates them (the registry''s names.yaml will need it);
+    the registry reads only base_juge.base and .commit. Measured values move under juge-v3 even on an
+    honest PR: mixed-in verification inputs (the 4 MB one included) enter every scenario, and ratio_n6
+    is now computed on perturbed and mixed inputs; verdicts are the same (accepted, nothing beyond noise),
+    not the figures. The plugin''s SHA-256 changes and bee/ changes, so open fork PRs must rebase after
+    the merge (the « rebasez » rule). The registry''s common_judge_min stays 2 until the council raises
+    it (libyamlBee also adopts juge-v3). This PR modifies bee/** and .github/workflows: a tooling task
+    with judge paths, for a guardian or the council (R3).'
