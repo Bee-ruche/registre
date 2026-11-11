@@ -20,9 +20,10 @@ context: >
   the same run. The registry already marks these PRs modified_judges (review required, R3). To do:
   run pr/bee/ci/test_verdict.py under a user without sudo; eventually, each artifact read by
   verdict.py is bound to a SHA-256 fingerprint published as an output of its job; qualify the
-  workflow comment that says no write by the PR reaches the verdict. (2) Under the « introduction »
-  rule, the verdict's assembler is the PR's own: the bootstrap flag is declarative there; write this
-  in bee/README.md.
+  workflow comment that says no write by the PR reaches the verdict. (2) Under the `introduction`
+  rule, the verdict's assembler is the PR's own: the bootstrap flag (`amorcage` in minizBee's
+  verdict.json until miniz-0050, which bee reads only before 2027-01-01; `bootstrap` from then on)
+  is declarative there; write this in bee/README.md.
 files: [bee/ci/etape.sh, .github/workflows/bee-ci.yml, bee/ci/test_verdict.py]
 reach: 0.5
 metric: null
@@ -30,7 +31,7 @@ acceptance_criteria:
   - "green CI (R2) on the base and on this contribution"
   - "test: a binary that writes ::error:: and ::add-mask:: produces neither an annotation nor a mask (CI log attached)"
   - "test: a SHA absent from the registry's main makes the check fail"
-  - "the PR's test_verdict.py runs under a user without sudo; README: the bootstrap flag is declarative under the introduction rule"
+  - "the PR's test_verdict.py runs under a user without sudo; README: the bootstrap flag (`amorcage: true` in verdict.json until miniz-0050) is declarative under the `introduction` rule"
 out_of_scope: [miniz code, the registry's juge.yml (ruche-0024)]
 depends_on: [miniz-0032]
 node: projects/lossless-compression/miniz/bee
